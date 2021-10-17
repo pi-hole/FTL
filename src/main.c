@@ -47,6 +47,7 @@ int main (int argc, char* argv[])
 	parse_args(argc, argv);
 
 	// Try to open FTL log
+	init_config_mutex();
 	init_FTL_log();
 	timer_start(EXIT_TIMER);
 	logg("########## FTL started on %s! ##########", hostname());

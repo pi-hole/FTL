@@ -39,6 +39,8 @@ FTLFileNamesStruct FTLfiles = {
 	NULL
 };
 
+pthread_mutex_t lock;
+
 // Private global variables
 static char *conflinebuffer = NULL;
 static size_t size = 0;
@@ -48,6 +50,19 @@ static char *parse_FTLconf(FILE *fp, const char * key);
 static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
 static void set_nice(const char *buffer, int fallback);
 static bool read_bool(const char *option, const bool fallback);
+
+void init_config_mutex(void)
+{
+	// Initialize the lock attributes
+	pthread_mutexattr_t lock_attr = {};
+	pthread_mutexattr_init(&lock_attr);
+
+	// Initialize the lock
+	pthread_mutex_init(&lock, &lock_attr);
+
+	// Destroy the lock attributes since we're done with it
+	pthread_mutexattr_destroy(&lock_attr);
+}
 
 void getLogFilePath(void)
 {
@@ -680,7 +695,7 @@ static void getpath(FILE* fp, const char *option, const char *defaultloc, char *
 	}
 }
 
-static char *parse_FTLconf(FILE *fp, const char * key)
+static char *parse_FTLconf(FILE *fp, const char *key)
 {
 	// Return NULL if fp is an invalid file pointer
 	if(fp == NULL)
@@ -694,11 +709,23 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	}
 	sprintf(keystr, "%s=", key);
 
+	// Lock mutex
+	const int lret = pthread_mutex_lock(&lock);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Obtained config lock");
+	if(lret != 0)
+		logg("Error when obtaining config lock: %s", strerror(lret));
+
 	// Go to beginning of file
 	fseek(fp, 0L, SEEK_SET);
 
 	if(config.debug & DEBUG_EXTRA)
 		logg("initial: conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
+
+	// Set size to zero if conflinebuffer is not available here
+	// This causes getline() to allocate memory for the buffer itself
+	if(conflinebuffer == NULL && size != 0)
+		size = 0;
 
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
@@ -720,18 +747,35 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 		if((strstr(conflinebuffer, keystr)) == NULL)
 			continue;
 
-		// otherwise: key found
-		free(keystr);
-		// Note: value is still a pointer into the conflinebuffer
+		// *** MATCH ****
+
+		// Note: value is still a pointer into the conflinebuffer,
+		// no need to duplicate memory here
 		char *value = find_equals(conflinebuffer) + 1;
-		// Trim whitespace at beginning and end, this function
-		// modifies the string inplace
+
+		// Trim whitespace at beginning and end, this function modifies
+		// the string inplace
 		trim_whitespace(value);
+
+		const int uret = pthread_mutex_unlock(&lock);
+		if(config.debug & DEBUG_LOCKS)
+			logg("Released config lock (match)");
+		if(uret != 0)
+			logg("Error when releasing config lock (match): %s", strerror(uret));
+
+		// Free keystr memory
+		free(keystr);
 		return value;
 	}
 
 	if(errno == ENOMEM)
 		logg("WARN: parse_FTLconf failed: could not allocate memory for getline");
+
+	const int uret = pthread_mutex_unlock(&lock);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Released config lock (no match)");
+	if(uret != 0)
+		logg("Error when releasing config lock (no match): %s", strerror(uret));
 
 	// Key not found or memory error -> return NULL
 	free(keystr);
