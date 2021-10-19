@@ -47,6 +47,7 @@ typedef struct {
 		bool complete :1;
 		bool blocked :1;
 		bool database :1;
+		bool response_calculated :1;
 	} flags;
 } queriesData;
 
