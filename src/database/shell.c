@@ -22323,10 +22323,10 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
       char *zHistory;
       int nHistory;
       printf(
-        "Pi-hole FTL %s %s\n", get_FTL_version(), GIT_DATE\n"
+        "Pi-hole FTL %s %s\n"
         "SQLite version %s %.19s\n" /*extra-version-info*/
         "Enter \".help\" for usage hints.\n",
-        sqlite3_libversion(), sqlite3_sourceid()
+        get_FTL_version(), GIT_DATE, sqlite3_libversion(), sqlite3_sourceid()
       );
       if( warnInmemoryDb ){
         printf("Connected to a ");
