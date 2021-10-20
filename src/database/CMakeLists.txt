@@ -17,6 +17,13 @@ set(sqlite3_sources
         sqlite3.c
         )
 
+add_custom_target(
+      gen_version ALL
+      COMMAND ${CMAKE_COMMAND} -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -P ${CMAKE_CURRENT_SOURCE_DIR}/../gen_version.cmake
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_dependencies(sqlite3_sources gen_version)
+
 add_library(sqlite3 OBJECT ${sqlite3_sources})
 target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type)
 
