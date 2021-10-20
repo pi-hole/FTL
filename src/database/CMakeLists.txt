@@ -17,10 +17,10 @@ set(sqlite3_sources
         sqlite3.c
         )
 
-add_dependencies(sqlite3 gen_version)
-
 add_library(sqlite3 OBJECT ${sqlite3_sources})
 target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type)
+
+add_dependencies(sqlite3 gen_version)
 
 set(database_sources
         common.c
