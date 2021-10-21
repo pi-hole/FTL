@@ -97,6 +97,8 @@ typedef unsigned char u8;
 #include <stdarg.h>
 // get_FTL_version()
 #include "../log.h"
+// GIT_DATE
+#include "../version.h"
 
 #if !defined(_WIN32) && !defined(WIN32)
 # include <signal.h>
@@ -434,7 +436,6 @@ static sqlite3 *globalDb = 0;
 ** True if an interrupt (Control-C) has been received.
 */
 static volatile int seenInterrupt = 0;
-
 #ifdef SQLITE_DEBUG
 /*
 ** Out-of-memory simulator variables
