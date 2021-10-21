@@ -71,8 +71,11 @@ if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
 fi
 
 # Prepare BATS
-mkdir -p test/libs
-git clone --depth=1 --quiet https://github.com/bats-core/bats-core test/libs/bats > /dev/null
+if [ -z "$BATS" ]; then
+  mkdir -p test/libs
+  git clone --depth=1 --quiet https://github.com/bats-core/bats-core test/libs/bats > /dev/null
+  BATS=test/libs/bats/bin/bats
+fi
 
 # Give FTL some time for startup preparations
 sleep 2
@@ -86,7 +89,7 @@ echo -n "Contained dnsmasq version (DNS): "
 dig TXT CHAOS version.bind @127.0.0.1 +short
 
 # Run tests
-test/libs/bats/bin/bats "test/test_suite.bats"
+$BATS "test/test_suite.bats"
 RET=$?
 
 curl_to_tricorder() {

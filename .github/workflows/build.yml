@@ -41,7 +41,7 @@ jobs:
             bin_name: pihole-FTL-armv8-linux-gnueabihf
           - arch: aarch64
             bin_name: pihole-FTL-aarch64-linux-gnu
-    container: ghcr.io/pi-hole/ftl-build:v1.15-${{ matrix.arch }}
+    container: ghcr.io/pi-hole/ftl-build:v1.16-${{ matrix.arch }}
     steps:
       -
         name: Checkout code

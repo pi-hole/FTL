@@ -343,14 +343,14 @@
 }
 
 @test "Local DNS test: SVCB svcb.ftl" {
-  run bash -c "dig TYPE64 svcb.ftl @127.0.0.1 +short"
+  run bash -c "dig +unknown TYPE64 svcb.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '\# 13 000109706F72743D2238302200' ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Local DNS test: HTTPS https.ftl" {
-  run bash -c "dig TYPE65 https.ftl @127.0.0.1 +short"
+  run bash -c "dig +unknown TYPE65 https.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '\# 15 000100000100080322683303683222' ]]
   [[ ${lines[1]} == "" ]]
