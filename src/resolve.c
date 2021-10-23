@@ -180,9 +180,8 @@ char *resolveHostname(const char *addr)
 	if(strstr(addr,":") != NULL)
 		IPv6 = true;
 
-	// Step 1: Convert address into binary form
+	// Convert address into binary form
 	struct sockaddr_storage ss = { 0 };
-	char *addrp = NULL;
 	if(IPv6)
 	{
 		// Get binary form of IPv6 address
@@ -192,7 +191,6 @@ char *resolveHostname(const char *addr)
 			logg("WARN: Invalid IPv6 address when trying to resolve hostname: %s", addr);
 			return strdup("");
 		}
-		addrp = (char*)&(((struct sockaddr_in6 *)&ss)->sin6_addr);
 	}
 	else
 	{
@@ -203,46 +201,6 @@ char *resolveHostname(const char *addr)
 			logg("WARN: Invalid IPv4 address when trying to resolve hostname: %s", addr);
 			return strdup("");
 		}
-		addrp = (char*)&(((struct sockaddr_in *)&ss)->sin_addr);
-	}
-
-	// Step 2: Read HOSTS file entries
-	bool found = false;
-	struct hostent *he = NULL;
-	// sethostent() opens/rewinds the prefix.ETC.HOSTS file
-	sethostent(1);
-	while(!found && (he = gethostent()) != NULL)
-	{
-		// Skip any non-IPv6 and non-IPv4 entries
-		if((IPv6 && he->h_addrtype != AF_INET6) || // not an IPv6 record
-		   (!IPv6 && he->h_addrtype != AF_INET))   // not an IPv4 record
-			continue;
-
-		// Loop over addresses for this HOSTS record
-		// h_addr_list is a NULL-terminated array of network addresses for the
-		// host
-		for (char **p = he->h_addr_list; *p; p++)
-		{
-			if(memcmp(*p, addrp, he->h_length) == 0)
-			{
-				hostname = strdup(he->h_name);
-				found = true;
-				break;
-			}
-		}
-	}
-
-	// endhostent() closes the prefix.ETC.HOSTS file
-	endhostent();
-
-	if(hostname != NULL)
-	{
-		// Return early when we found the entry in the HOSTS file
-		// No need to generate any PTR queries in this case
-		if(config.debug & DEBUG_RESOLVER)
-			logg(" ---> \"%s\" (found in HOSTS)", hostname);
-
-		return hostname;
 	}
 
 	// Initialize resolver subroutines if trying to resolve for the first time
@@ -255,13 +213,15 @@ char *resolveHostname(const char *addr)
 		res_initialized = true;
 	}
 
-	struct in_addr FTLaddr = { INADDR_LOOPBACK };
+	// INADDR_LOOPBACK is in host byte order, however, in_addr has to be in
+	// network byte order, convert it here if necessary
+	struct in_addr FTLaddr = { htonl(INADDR_LOOPBACK) };
 	in_port_t FTLport = htons(config.dns_port);
 
 	// Set FTL as system resolver only if not already the primary resolver
 	if(_res.nsaddr_list[0].sin_addr.s_addr != FTLaddr.s_addr || _res.nsaddr_list[0].sin_port != FTLport)
 	{
-		// Step 3: Backup configured name servers and invalidate them
+		// Backup configured name servers and invalidate them
 		struct in_addr ns_addr_bck[MAXNS];
 		in_port_t ns_port_bck[MAXNS];
 		for(unsigned int i = 0u; i < MAXNS; i++)
@@ -271,7 +231,7 @@ char *resolveHostname(const char *addr)
 			_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
 		}
 
-		// Step 4: Set FTL at 127.0.0.1 as the only resolver
+		// Set FTL at 127.0.0.1 as the only resolver
 		_res.nsaddr_list[0].sin_addr.s_addr = FTLaddr.s_addr;
 		// Set resolver port
 		_res.nsaddr_list[0].sin_port = FTLport;
@@ -279,11 +239,11 @@ char *resolveHostname(const char *addr)
 		if(config.debug & DEBUG_RESOLVER)
 			print_used_resolvers("Setting nameservers to:");
 
-		// Step 5: Try to resolve address
+		// Try to resolve address
 		char host[NI_MAXHOST] = { 0 };
 		int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
 
-		// Step 6: Check if getnameinfo() returned a host name
+		// Check if getnameinfo() returned a host name
 		if(ret == 0)
 		{
 			if(valid_hostname(host, addr))
@@ -304,7 +264,7 @@ char *resolveHostname(const char *addr)
 			logg(" ---> \"\" (not found internally: %s", gai_strerror(ret));
 		}
 
-		// Step 7: Restore resolvers (without forced FTL)
+		// Restore resolvers (without forced FTL)
 		for(unsigned int i = 0u; i < MAXNS; i++)
 		{
 			_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
@@ -316,7 +276,7 @@ char *resolveHostname(const char *addr)
 	else if(config.debug & DEBUG_RESOLVER)
 		print_used_resolvers("FTL already primary nameserver:");
 
-	// Step 8: If no host name was found before, try again with system-configured
+	// If no host name was found before, try again with system-configured
 	// resolvers (necessary for docker and friends)
 	if(hostname == NULL)
 	{
@@ -324,7 +284,7 @@ char *resolveHostname(const char *addr)
 		char host[NI_MAXHOST] = { 0 };
 		int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
 
-		// Step 6.1: Check if getnameinfo() returned a host name this time
+		// Check if getnameinfo() returned a host name this time
 		// First check for he not being NULL before trying to dereference it
 		if(ret == 0)
 		{

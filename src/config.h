@@ -22,6 +22,7 @@
 // struct in_addr, in6_addr
 #include <netinet/in.h>
 
+void init_config_mutex(void);
 void getLogFilePath(void);
 void read_FTLconf(void);
 void get_privacy_level(FILE *fp);

@@ -28,18 +28,6 @@ version: 2
           sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir html/${DIR}
           put ${BIN_NAME}* html/${DIR}"
     - run:
-        name: "Verify uploaded binary"
-        command: |
-          [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
-          [ "${CIRCLE_PROJECT_USERNAME}" == "pi-hole" ] || exit 0
-          DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
-          mkdir download
-          cd download
-          wget "https://ftl.pi-hole.net/${DIR}/${BIN_NAME}"
-          wget "https://ftl.pi-hole.net/${DIR}/${BIN_NAME}.sha1"
-          sha1sum -c "${BIN_NAME}.sha1"
-          cd ..
-    - run:
         name: "Test"
         command: |
           mv "${BIN_NAME}" pihole-FTL
@@ -47,7 +35,7 @@ version: 2
 
 .docker_template: &docker_template
   docker:
-    - image: pihole/ftl-build:v1.8-$CIRCLE_JOB
+    - image: pihole/ftl-build:v1.16-$CIRCLE_JOB
   <<: *job_steps
 
 jobs:

@@ -24,7 +24,9 @@ rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole.log /var/
 
 # Create necessary directories and files
 mkdir -p /home/pihole /etc/pihole /run/pihole /var/log
-touch /var/log/pihole-FTL.log /var/log/pihole.log /run/pihole-FTL.pid /run/pihole-FTL.port
+echo "" > /var/log/pihole-FTL.log
+echo "" > /var/log/pihole.log
+touch /run/pihole-FTL.pid /run/pihole-FTL.port dig.log ptr.log
 chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole.log /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
 
 # Copy binary into a location the new user pihole can access
@@ -51,6 +53,9 @@ cp test/pihole-FTL.conf /etc/pihole/pihole-FTL.conf
 # Prepare dnsmasq.conf
 cp test/dnsmasq.conf /etc/dnsmasq.conf
 
+# Prepare local powerDNS resolver
+bash test/pdns/setup.sh
+
 # Set restrictive umask
 OLDUMASK=$(umask)
 umask 0022
@@ -59,13 +64,6 @@ umask 0022
 mkdir -p /opt/pihole/libs
 wget -O /opt/pihole/libs/inspect.lua https://ftl.pi-hole.net/libraries/inspect.lua
 
-# Terminate running FTL instance (if any)
-if pidof pihole-FTL &> /dev/null; then
-  echo "Terminating running pihole-FTL instance"
-  killall pihole-FTL
-  sleep 2
-fi
-
 # Start FTL
 if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
   echo "pihole-FTL failed to start"
@@ -73,8 +71,11 @@ if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
 fi
 
 # Prepare BATS
-mkdir -p test/libs
-git clone --depth=1 --quiet https://github.com/bats-core/bats-core test/libs/bats > /dev/null
+if [ -z "$BATS" ]; then
+  mkdir -p test/libs
+  git clone --depth=1 --quiet https://github.com/bats-core/bats-core test/libs/bats > /dev/null
+  BATS=test/libs/bats/bin/bats
+fi
 
 # Give FTL some time for startup preparations
 sleep 2
@@ -88,7 +89,7 @@ echo -n "Contained dnsmasq version (DNS): "
 dig TXT CHAOS version.bind @127.0.0.1 +short
 
 # Run tests
-test/libs/bats/bin/bats "test/test_suite.bats"
+$BATS "test/test_suite.bats"
 RET=$?
 
 curl_to_tricorder() {
@@ -104,6 +105,9 @@ if [[ $RET != 0 ]]; then
   echo ""
   echo -n "dig.log: "
   curl_to_tricorder ./dig.log
+  echo ""
+  echo -n "ptr.log: "
+  curl_to_tricorder ./ptr.log
   echo ""
 fi
 

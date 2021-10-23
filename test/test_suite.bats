@@ -33,113 +33,113 @@
 @test "Number of compiled regex filters as expected" {
   run bash -c 'grep "Compiled [0-9]* whitelist" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == *"Compiled 2 whitelist and 1 blacklist regex filters"* ]]
+  [[ ${lines[0]} == *"Compiled 2 whitelist and 9 blacklist regex filters"* ]]
 }
 
 @test "Blacklisted domain is blocked" {
-  run bash -c "dig blacklist-blocked.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig blacklisted.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain is blocked" {
-  run bash -c "dig gravity-blocked.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig gravity.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain is blocked (TCP)" {
-  run bash -c "dig gravity-blocked.test.pi-hole.net @127.0.0.1 +tcp +short"
+  run bash -c "dig gravity.ftl @127.0.0.1 +tcp +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain + whitelist exact match is not blocked" {
-  run bash -c "dig whitelisted.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig whitelisted.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.4" ]]
 }
 
 @test "Gravity domain + whitelist regex match is not blocked" {
-  run bash -c "dig discourse.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig gravity-whitelisted.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.5" ]]
 }
 
 @test "Regex blacklist match is blocked" {
-  run bash -c "dig regex5.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regex5.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Regex blacklist mismatch is not blocked" {
-  run bash -c "dig regexA.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regexA.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.4" ]]
 }
 
 @test "Regex blacklist match + whitelist exact match is not blocked" {
-  run bash -c "dig regex1.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "Regex blacklist match + whitelist regex match is not blocked" {
-  run bash -c "dig regex2.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regex2.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.2" ]]
 }
 
 @test "Client 2: Gravity match matching unassociated whitelist is blocked" {
-  run bash -c "dig whitelisted.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
+  run bash -c "dig whitelisted.ftl -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
 }
 
 @test "Client 2: Regex blacklist match matching unassociated whitelist is blocked" {
-  run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
 }
 
 @test "Same domain is not blocked for client 1 ..." {
-  run bash -c "dig regex1.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "... or client 3" {
-  run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.3  @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl -b 127.0.0.3  @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "Client 2: Unassociated blacklist match is not blocked" {
-  run bash -c "dig blacklist-blocked.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
+  run bash -c "dig blacklisted.ftl -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.3" ]]
 }
 
 @test "Client 3: Exact blacklist domain is not blocked" {
-  run bash -c "dig blacklist-blocked.test.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
+  run bash -c "dig blacklisted.ftl -b 127.0.0.3 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.3" ]]
 }
 
 @test "Client 3: Regex blacklist domain is not blocked" {
-  run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl -b 127.0.0.3 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "Client 3: Gravity domain is not blocked" {
-  run bash -c "dig discourse.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
+  run bash -c "dig a.ftl -b 127.0.0.3 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.1" ]]
 }
 
 @test "Client 4: Client is recognized by MAC address" {
@@ -171,7 +171,7 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == "9" ]]
 }
 
 @test "Client 5: Client is recognized by MAC address" {
@@ -203,7 +203,7 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == "9" ]]
 }
 
 @test "Client 6: Client is recognized by interface name" {
@@ -241,26 +241,19 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == "9" ]]
 }
 
-@test "Google.com (A) is not blocked" {
-  run bash -c "dig A google.com @127.0.0.1 +short"
+@test "Normal query (A) is not blocked" {
+  run bash -c "dig A a.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.1" ]]
 }
 
-@test "Google.com (AAAA) is not blocked (TCP query)" {
-  run bash -c "dig AAAA google.com @127.0.0.1 +short +tcp"
+@test "Normal query (AAAA) is not blocked (TCP query)" {
+  run bash -c "dig AAAA aaaa.ftl @127.0.0.1 +short +tcp"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "::" ]]
-}
-
-@test "Known host is resolved as expected" {
-  run bash -c "dig ftl.pi-hole.net @127.0.0.1 +short"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "139.59.170.52" ]]
-  [[ ${lines[1]} == "" ]]
+  [[ ${lines[0]} == "fe80::1c01" ]]
 }
 
 @test "Mozilla canary domain is blocked with NXDOMAIN" {
@@ -272,31 +265,143 @@
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "DNS reply analysis test (using netmeister.org records)" {
-  run bash -c "bash test/dig.sh | tee dig.log"
+@test "Local DNS test: A a.ftl" {
+  run bash -c "dig A a.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "192.168.1.1" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: AAAA aaaa.ftl" {
+  run bash -c "dig AAAA aaaa.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "fe80::1c01" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: ANY any.ftl" {
+  run bash -c "dig ANY any.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"192.168.3.1"* ]]
+  [[ ${lines[@]} == *"fe80::3c01"* ]]
+}
+
+@test "Local DNS test: CNAME cname-ok.ftl" {
+  run bash -c "dig CNAME cname-ok.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "a.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: SRV srv.ftl" {
+  run bash -c "dig SRV srv.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0 1 80 a.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: SOA ftl" {
+  run bash -c "dig SOA ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "ns1.ftl. hostmaster.ftl. 1 10800 3600 604800 3600" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: PTR ptr.ftl" {
+  run bash -c "dig PTR ptr.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "ptr.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: TXT txt.ftl" {
+  run bash -c "dig TXT txt.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "\"Some example text\"" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: NAPTR naptr.ftl" {
+  run bash -c "dig NAPTR naptr.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *'10 10 "u" "smtp+E2U" "!.*([^.]+[^.]+)$!mailto:postmaster@$1!i" .'* ]]
+  [[ ${lines[@]} == *'20 10 "s" "http+N2L+N2C+N2R" "" ftl.'* ]]
+}
+
+@test "Local DNS test: MX mx.ftl" {
+  run bash -c "dig MX mx.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "50 ns1.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: NS ftl" {
+  run bash -c "dig NS ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "ns1.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: SVCB svcb.ftl" {
+  run bash -c "dig +unknown TYPE64 svcb.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '\# 13 000109706F72743D2238302200' ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: HTTPS https.ftl" {
+  run bash -c "dig +unknown TYPE65 https.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '\# 15 000100000100080322683303683222' ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "CNAME inspection: Shallow CNAME is blocked" {
+  run bash -c "dig A cname-1.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "CNAME inspection: Deep CNAME is blocked" {
+  run bash -c "dig A cname-7.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "DNSSEC: SECURE domain is resolved" {
+  run bash -c "dig A sigok.verteiltesysteme.net @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: NOERROR"* ]]
+}
+
+@test "DNSSEC: BOGUS domain is rejected" {
+  run bash -c "dig A sigfail.verteiltesysteme.net @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: SERVFAIL"* ]]
 }
 
 @test "Statistics as expected" {
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "domains_being_blocked 3" ]]
-  [[ ${lines[2]} == "dns_queries_today 78" ]]
-  [[ ${lines[3]} == "ads_blocked_today 6" ]]
+  [[ ${lines[2]} == "dns_queries_today 47" ]]
+  [[ ${lines[3]} == "ads_blocked_today 8" ]]
   #[[ ${lines[4]} == "ads_percentage_today 7.792208" ]]
-  [[ ${lines[5]} == "unique_domains 51" ]]
-  [[ ${lines[6]} == "queries_forwarded 61" ]]
-  [[ ${lines[7]} == "queries_cached 11" ]]
+  [[ ${lines[5]} == "unique_domains 35" ]]
+  [[ ${lines[6]} == "queries_forwarded 26" ]]
+  [[ ${lines[7]} == "queries_cached 13" ]]
   # Clients ever seen is commented out as CircleCI may have
   # more devices in its ARP cache so testing against a fixed
   # number of clients may not work in all cases
   #[[ ${lines[8]} == "clients_ever_seen 8" ]]
   #[[ ${lines[9]} == "unique_clients 8" ]]
-  [[ ${lines[10]} == "dns_queries_all_types 78" ]]
-  [[ ${lines[11]} == "reply_NODATA 9" ]]
+  [[ ${lines[10]} == "dns_queries_all_types 47" ]]
+  [[ ${lines[11]} == "reply_NODATA 0" ]]
   [[ ${lines[12]} == "reply_NXDOMAIN 1" ]]
-  [[ ${lines[13]} == "reply_CNAME 1" ]]
-  [[ ${lines[14]} == "reply_IP 22" ]]
+  [[ ${lines[13]} == "reply_CNAME 5" ]]
+  [[ ${lines[14]} == "reply_IP 23" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
   [[ ${lines[16]} == "status enabled" ]]
   [[ ${lines[17]} == "" ]]
@@ -311,8 +416,8 @@
 @test "Top Clients" {
   run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"34 :: "* ]]
-  [[ "${lines[@]}" == *"34 127.0.0.1 "* ]]
+  [[ ${lines[1]} == "0 32 127.0.0.1 "* ]]
+  [[ ${lines[2]} == "1 5 :: "* ]]
   [[ ${lines[3]} == "2 4 127.0.0.3 "* ]]
   [[ ${lines[4]} == "3 3 127.0.0.2 "* ]]
   [[ "${lines[@]}" == *"1 aliasclient-0 some-aliasclient"* ]]
@@ -324,58 +429,45 @@
   run bash -c 'echo ">top-domains (60) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *" 4 version.bind"* ]]
-  [[ "${lines[@]}" == *" 4 regex1.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 3 google.com"* ]]
-  [[ "${lines[@]}" == *" 3 dnskey.dns.netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 2 blacklist-blocked.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 4 regex1.ftl"* ]]
+  [[ "${lines[@]}" == *" 3 a.ftl"* ]]
+  [[ "${lines[@]}" == *" 2 blacklisted.ftl"* ]]
+  [[ "${lines[@]}" == *" 2 aaaa.ftl"* ]]
   [[ "${lines[@]}" == *" 2 net"* ]]
-  [[ "${lines[@]}" == *" 2 pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 2 discourse.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 2 com"* ]]
-  [[ "${lines[@]}" == *" 2 arpa"* ]]
-  [[ "${lines[@]}" == *" 2 in-addr.arpa"* ]]
-  [[ "${lines[@]}" == *" 2 166.in-addr.arpa"* ]]
-  [[ "${lines[@]}" == *" 2 ip6.arpa"* ]]
-  [[ "${lines[@]}" == *" 2 4.0.1.0.0.2.ip6.arpa"* ]]
-  [[ "${lines[@]}" == *" 2 org"* ]]
-  [[ "${lines[@]}" == *" 2 netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 2 dns.netmeister.org"* ]]
+  [[ "${lines[@]}" == *" 2 verteiltesysteme.net"* ]]
+  [[ "${lines[@]}" == *" 2 ftl"* ]]
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
-  [[ "${lines[@]}" == *" 1 whitelisted.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 a.dns.netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 1 any.dns.netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 srv.dns.netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 1 soa.dns.netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 1 99.7.84.166.in-addr.arpa"* ]]
-  [[ "${lines[@]}" == *" 1 aaaa.dns.netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 1 cname.dns.netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 1 regex2.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 regexa.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 "* ]]
-  [[ "${lines[@]}" == *" 1 84.166.in-addr.arpa"* ]]
-  [[ "${lines[@]}" == *" 1 0.0.9.3.2.7.e.f.f.f.3.6.6.7.2.e.4.8.0.0.0.3.0.0.0.7.4.0.1.0.0.2.ip6.arpa"* ]]
-  [[ "${lines[@]}" == *" 1 0.2.ip6.arpa"* ]]
-  [[ "${lines[@]}" == *" 1 0.0.2.ip6.arpa"* ]]
-  [[ "${lines[@]}" == *" 1 1.0.0.2.ip6.arpa"* ]]
-  [[ "${lines[@]}" == *" 1 2.ip6.arpa"* ]]
-  [[ "${lines[@]}" == *" 1 0.1.0.0.2.ip6.arpa"* ]]
-  [[ "${lines[@]}" == *" 1 7.4.0.1.0.0.2.ip6.arpa"* ]]
-  [[ "${lines[@]}" == *" 1 0.7.4.0.1.0.0.2.ip6.arpa"* ]]
-  [[ "${lines[@]}" == *" 1 ptr.dns.netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 1 txt.dns.netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 1 naptr.dns.netmeister.org"* ]]
+  [[ "${lines[@]}" == *" 1 whitelisted.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 gravity-whitelisted.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 regexa.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 regex2.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 use-application-dns.net"* ]]
+  [[ "${lines[@]}" == *" 1 any.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 cname-ok.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 srv.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 any.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 ptr.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 txt.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 naptr.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 mx.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 svcb.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 https.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 ."* ]]
+  [[ "${lines[@]}" == *" 1 sigok.verteiltesysteme.net"* ]]
+  [[ "${lines[@]}" == *" 1 sigfail.verteiltesysteme.net"* ]]
 }
 
 @test "Top Ads" {
   run bash -c 'echo ">top-ads (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *" 2 gravity-blocked.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 blacklist-blocked.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 whitelisted.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 regex5.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 regex1.test.pi-hole.net"* ]]
-  [[ ${lines[6]} == "" ]]
+  [[ "${lines[@]}" == *" 4 gravity.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 blacklisted.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 whitelisted.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 regex5.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 regex1.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 cname-1.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 cname-7.ftl"* ]]
+  [[ ${lines[8]} == "" ]]
 }
 
 @test "Domain auditing, approved domains are not shown" {
@@ -387,132 +479,101 @@
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 7.69 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 14.10 cache cache" ]]
-  [[ ${lines[3]} == "0 60.26 8.8.8.8#53 8.8.8.8#53" ]]
-  [[ ${lines[4]} == "1 17.95 84.200.69.80#53 84.200.69.80#53" ]]
+  [[ ${lines[1]} == "-2 17.02 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 27.66 cache cache" ]]
+  [[ ${lines[3]} == "0 51.06 127.0.0.1#5555 127.0.0.1#5555" ]]
+  [[ ${lines[4]} == "1 4.26 127.0.0.1#5554 127.0.0.1#5554" ]]
+  [[ ${lines[5]} == "" ]]
 }
 
 @test "Query Types reported correctly" {
   run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "A (IPv4): 26.92" ]]
-  [[ ${lines[2]} == "AAAA (IPv6): 2.56" ]]
-  [[ ${lines[3]} == "ANY: 1.28" ]]
-  [[ ${lines[4]} == "SRV: 1.28" ]]
-  [[ ${lines[5]} == "SOA: 1.28" ]]
-  [[ ${lines[6]} == "PTR: 3.85" ]]
-  [[ ${lines[7]} == "TXT: 7.69" ]]
-  [[ ${lines[8]} == "NAPTR: 1.28" ]]
-  [[ ${lines[9]} == "MX: 1.28" ]]
-  [[ ${lines[10]} == "DS: 28.21" ]]
-  [[ ${lines[11]} == "RRSIG: 1.28" ]]
-  [[ ${lines[12]} == "DNSKEY: 17.95" ]]
-  [[ ${lines[13]} == "NS: 1.28" ]]
-  [[ ${lines[14]} == "OTHER: 1.28" ]]
-  [[ ${lines[15]} == "SVCB: 1.28" ]]
-  [[ ${lines[16]} == "HTTPS: 1.28" ]]
+  [[ ${lines[1]}  == "A (IPv4): 51.06" ]]
+  [[ ${lines[2]}  == "AAAA (IPv6): 4.26" ]]
+  [[ ${lines[3]}  == "ANY: 2.13" ]]
+  [[ ${lines[4]}  == "SRV: 2.13" ]]
+  [[ ${lines[5]}  == "SOA: 2.13" ]]
+  [[ ${lines[6]}  == "PTR: 2.13" ]]
+  [[ ${lines[7]}  == "TXT: 12.77" ]]
+  [[ ${lines[8]}  == "NAPTR: 2.13" ]]
+  [[ ${lines[9]}  == "MX: 2.13" ]]
+  [[ ${lines[10]} == "DS: 4.26" ]]
+  [[ ${lines[11]} == "RRSIG: 0.00" ]]
+  [[ ${lines[12]} == "DNSKEY: 6.38" ]]
+  [[ ${lines[13]} == "NS: 2.13" ]]
+  [[ ${lines[14]} == "OTHER: 2.13" ]]
+  [[ ${lines[15]} == "SVCB: 2.13" ]]
+  [[ ${lines[16]} == "HTTPS: 2.13" ]]
   [[ ${lines[17]} == "" ]]
 }
 
-# Here and below: Acknowledge that there might be a host name after
-# the IP address of the client (..."*"...)
+# Here and below: Reply time is varying. don't test for a particular value (..."*"...)
 
 @test "Get all queries shows expected content" {
   run bash -c 'echo ">getallqueries >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 2 6 "* ]]
-  [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 3 2 6 "* ]]
-  [[ ${lines[3]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.1 5 2 4 "* ]]
-  [[ ${lines[4]} == *"A gravity-blocked.test.pi-hole.net 127.0.0.1 1 2 4 "* ]]
-  [[ ${lines[5]} == *"A gravity-blocked.test.pi-hole.net 127.0.0.1 1 2 4"* ]]
-  [[ ${lines[6]} == *"A whitelisted.test.pi-hole.net 127.0.0.1 2 1 4 "* ]]
-  [[ ${lines[7]} == *"DS net :: 2 1 11 "* ]]
-  [[ ${lines[8]} == *"DNSKEY . :: 2 1 11 "* ]]
-  [[ ${lines[9]} == *"DS pi-hole.net :: 2 1 11 "* ]]
-  [[ ${lines[10]} == *"DNSKEY net :: 2 1 11 "* ]]
-  [[ ${lines[11]} == *"DNSKEY pi-hole.net :: 2 1 11 "* ]]
-  [[ ${lines[12]} == *"A discourse.pi-hole.net 127.0.0.1 2 1 4 "* ]]
-  [[ ${lines[13]} == *"A regex5.test.pi-hole.net 127.0.0.1 4 2 4 "* ]]
-  [[ ${lines[14]} == *"A regexa.test.pi-hole.net 127.0.0.1 2 1 4 "* ]]
-  [[ ${lines[15]} == *"A regex1.test.pi-hole.net 127.0.0.1 2 1 4 "* ]]
-  [[ ${lines[16]} == *"A regex2.test.pi-hole.net 127.0.0.1 2 1 4 "* ]]
-  [[ ${lines[17]} == *"A whitelisted.test.pi-hole.net 127.0.0.2 1 2 4 "* ]]
-  [[ ${lines[18]} == *"A regex1.test.pi-hole.net 127.0.0.2 4 2 4 "* ]]
-  [[ ${lines[19]} == *"A regex1.test.pi-hole.net 127.0.0.1 3 1 4"* ]]
-  [[ ${lines[20]} == *"A regex1.test.pi-hole.net 127.0.0.3 3 1 4 "* ]]
-  [[ ${lines[21]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.2 2 1 4 "* ]]
-  [[ ${lines[22]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.3 3 1 4 "* ]]
-  [[ ${lines[23]} == *"A regex1.test.pi-hole.net 127.0.0.3 3 1 4 "* ]]
-  [[ ${lines[24]} == *"A discourse.pi-hole.net 127.0.0.3 3 1 4 "* ]]
-  [[ ${lines[25]} == *"TXT version.bind 127.0.0.4 3 2 6 "* ]]
-  [[ ${lines[26]} == *"TXT version.bind 127.0.0.5 3 2 6 "* ]]
-  [[ ${lines[27]} == *"TXT version.bind 127.0.0.6 3 2 6 "* ]]
-  [[ ${lines[28]} == *"A google.com 127.0.0.1 2 2 4 "* ]]
-  [[ ${lines[29]} == *"DS com :: 2 1 11 "* ]]
-  [[ ${lines[30]} == *"DS google.com :: 2 2 1 "* ]]
-  [[ ${lines[31]} == *"DNSKEY com :: 2 1 11 "* ]]
-  [[ ${lines[32]} == *"AAAA google.com 127.0.0.1 2 2 4 "* ]]
-  [[ ${lines[33]} == *"A ftl.pi-hole.net 127.0.0.1 2 1 4 "* ]]
-  [[ ${lines[34]} == *"A use-application-dns.net 127.0.0.1 3 2 2 "* ]]
-  [[ ${lines[35]} == *"A a.dns.netmeister.org 127.0.0.1 2 2 4 "* ]]
-  [[ ${lines[36]} == *"AAAA aaaa.dns.netmeister.org 127.0.0.1 2 2 4 "* ]]
-  [[ ${lines[37]} == *"ANY any.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[38]} == *"[CNAME] cname.dns.netmeister.org 127.0.0.1 2 2 3 "* ]]
-  [[ ${lines[39]} == *"SRV srv.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[40]} == *"SOA soa.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[41]} == *"PTR 99.7.84.166.in-addr.arpa 127.0.0.1 2 2 5 "* ]]
-  [[ ${lines[42]} == *"DS arpa :: 2 1 11 "* ]]
-  [[ ${lines[43]} == *"DS in-addr.arpa :: 2 1 11 "* ]]
-  [[ ${lines[44]} == *"DNSKEY arpa :: 2 1 11 "* ]]
-  [[ ${lines[45]} == *"DS 166.in-addr.arpa :: 2 1 11 "* ]]
-  [[ ${lines[46]} == *"DNSKEY in-addr.arpa :: 2 1 11 "* ]]
-  [[ ${lines[47]} == *"DS 84.166.in-addr.arpa :: 2 2 1 "* ]]
-  [[ ${lines[48]} == *"DNSKEY 166.in-addr.arpa :: 2 1 11 "* ]]
-  [[ ${lines[49]} == *"PTR 0.0.9.3.2.7.e.f.f.f.3.6.6.7.2.e.4.8.0.0.0.3.0.0.0.7.4.0.1.0.0.2.ip6.arpa 127.0.0.1 2 2 5 "* ]]
-  [[ ${lines[50]} == *"DS ip6.arpa :: 2 1 11 "* ]]
-  [[ ${lines[51]} == *"DS 2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[52]} == *"DNSKEY ip6.arpa :: 2 1 11 "* ]]
-  [[ ${lines[53]} == *"DS 0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[54]} == *"DS 0.0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[55]} == *"DS 1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[56]} == *"DS 0.1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[57]} == *"DS 4.0.1.0.0.2.ip6.arpa :: 2 1 11 "* ]]
-  [[ ${lines[58]} == *"DS 7.4.0.1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[59]} == *"DNSKEY 4.0.1.0.0.2.ip6.arpa :: 2 1 11 "* ]]
-  [[ ${lines[60]} == *"DS 0.7.4.0.1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[61]} == *"PTR ptr.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[62]} == *"TXT txt.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[63]} == *"NAPTR naptr.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[64]} == *"MX mx.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[65]} == *"DS ds.dns.netmeister.org 127.0.0.1 2 1 13 "* ]]
-  [[ ${lines[66]} == *"DS org :: 2 1 11 "* ]]
-  [[ ${lines[67]} == *"DS netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[68]} == *"DNSKEY org :: 2 1 11 "* ]]
-  [[ ${lines[69]} == *"DS dns.netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[70]} == *"DNSKEY netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[71]} == *"DNSKEY dns.netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[72]} == *"RRSIG rrsig.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[73]} == *"DNSKEY dnskey.dns.netmeister.org 127.0.0.1 2 1 13 "* ]]
-  [[ ${lines[74]} == *"DS dnskey.dns.netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[75]} == *"DNSKEY dnskey.dns.netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[76]} == *"NS ns.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[77]} == *"SVCB svcb.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[78]} == *"HTTPS https.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[79]} == "" ]]
+  [[ ${lines[1]}  == *" TXT version.ftl 127.0.0.1 3 2 6 "*" N/A -1 N/A#0 \"\" \"0\""* ]]
+  [[ ${lines[2]}  == *" TXT version.bind 127.0.0.1 3 2 6 "*" N/A -1 N/A#0 \"\" \"1\""* ]]
+  [[ ${lines[3]}  == *" A blacklisted.ftl 127.0.0.1 5 2 4 "*" N/A -1 N/A#0 \"\" \"2\""* ]]
+  [[ ${lines[4]}  == *" A gravity.ftl 127.0.0.1 1 2 4 "*" N/A -1 N/A#0 \"\" \"3\""* ]]
+  [[ ${lines[5]}  == *" A gravity.ftl 127.0.0.1 1 2 4 "*" N/A -1 N/A#0 \"\" \"4\""* ]]
+  [[ ${lines[6]}  == *" A whitelisted.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"5\""* ]]
+  [[ ${lines[7]}  == *" A gravity-whitelisted.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"6\""* ]]
+  [[ ${lines[8]}  == *" A regex5.ftl 127.0.0.1 4 2 4 "*" N/A 6 N/A#0 \"\" \"7\""* ]]
+  [[ ${lines[9]}  == *" A regexa.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"8\""* ]]
+  [[ ${lines[10]} == *" A regex1.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"9\""* ]]
+  [[ ${lines[11]} == *" A regex2.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"10\""* ]]
+  [[ ${lines[12]} == *" A whitelisted.ftl 127.0.0.2 1 2 4 "*" N/A -1 N/A#0 \"\" \"11\""* ]]
+  [[ ${lines[13]} == *" A regex1.ftl 127.0.0.2 4 2 4 "*" N/A 6 N/A#0 \"\" \"12\""* ]]
+  [[ ${lines[14]} == *" A regex1.ftl 127.0.0.1 3 2 4 "*" N/A -1 N/A#0 \"\" \"13\""* ]]
+  [[ ${lines[15]} == *" A regex1.ftl 127.0.0.3 3 2 4 "*" N/A -1 N/A#0 \"\" \"14\""* ]]
+  [[ ${lines[16]} == *" A blacklisted.ftl 127.0.0.2 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"15\""* ]]
+  [[ ${lines[17]} == *" A blacklisted.ftl 127.0.0.3 3 2 4 "*" N/A -1 N/A#0 \"\" \"16\""* ]]
+  [[ ${lines[18]} == *" A regex1.ftl 127.0.0.3 3 2 4 "*" N/A -1 N/A#0 \"\" \"17\""* ]]
+  [[ ${lines[19]} == *" A a.ftl 127.0.0.3 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"18\""* ]]
+  [[ ${lines[20]} == *" TXT version.bind 127.0.0.4 3 2 6 "*" N/A -1 N/A#0 \"\" \"19\""* ]]
+  [[ ${lines[21]} == *" TXT version.bind 127.0.0.5 3 2 6 "*" N/A -1 N/A#0 \"\" \"20\""* ]]
+  [[ ${lines[22]} == *" TXT version.bind 127.0.0.6 3 2 6 "*" N/A -1 N/A#0 \"\" \"21\""* ]]
+  [[ ${lines[23]} == *" A a.ftl 127.0.0.1 3 2 4 "*" N/A -1 N/A#0 \"\" \"22\""* ]]
+  [[ ${lines[24]} == *" AAAA aaaa.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"23\""* ]]
+  [[ ${lines[25]} == *" A use-application-dns.net 127.0.0.1 3 2 2 "*" N/A -1 N/A#0 \"\" \"24\""* ]]
+  [[ ${lines[26]} == *" A a.ftl 127.0.0.1 3 2 4 "*" N/A -1 N/A#0 \"\" \"25\""* ]]
+  [[ ${lines[27]} == *" AAAA aaaa.ftl 127.0.0.1 3 2 4 "*" N/A -1 N/A#0 \"\" \"26\""* ]]
+  [[ ${lines[28]} == *" ANY any.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"27\""* ]]
+  [[ ${lines[29]} == *" [CNAME] cname-ok.ftl 127.0.0.1 2 2 3 "*" N/A -1 127.0.0.1#5555 \"\" \"28\""* ]]
+  [[ ${lines[30]} == *" SRV srv.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"29\""* ]]
+  [[ ${lines[31]} == *" SOA ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"30\""* ]]
+  [[ ${lines[32]} == *" PTR ptr.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"31\""* ]]
+  [[ ${lines[33]} == *" TXT txt.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"32\""* ]]
+  [[ ${lines[34]} == *" NAPTR naptr.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"33\""* ]]
+  [[ ${lines[35]} == *" MX mx.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"34\""* ]]
+  [[ ${lines[36]} == *" NS ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"35\""* ]]
+  [[ ${lines[37]} == *" SVCB svcb.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5554 \"\" \"36\""* ]]
+  [[ ${lines[38]} == *" HTTPS https.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5554 \"\" \"37\""* ]]
+  [[ ${lines[39]} == *" A cname-1.ftl 127.0.0.1 9 2 3 "*" gravity.ftl -1 127.0.0.1#5555 \"\" \"38\""* ]]
+  [[ ${lines[40]} == *" A cname-7.ftl 127.0.0.1 9 2 3 "*" gravity.ftl -1 127.0.0.1#5555 \"\" \"39\""* ]]
+  [[ ${lines[41]} == *" A sigok.verteiltesysteme.net 127.0.0.1 2 1 4 "*" N/A -1 127.0.0.1#5555 \"\" \"40\""* ]]
+  [[ ${lines[42]} == *" DS net :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"41\""* ]]
+  [[ ${lines[43]} == *" DNSKEY . :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"42\""* ]]
+  [[ ${lines[44]} == *" DS verteiltesysteme.net :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"43\""* ]]
+  [[ ${lines[45]} == *" DNSKEY net :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"44\""* ]]
+  [[ ${lines[46]} == *" DNSKEY verteiltesysteme.net :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"45\""* ]]
+  [[ ${lines[47]} == *" A sigfail.verteiltesysteme.net 127.0.0.1 2 3 4 "*" N/A -1 127.0.0.1#5555 \"DNSKEY missing\" \"46\""* ]]
+  [[ ${lines[48]} == "" ]]
 }
 
 @test "Get all queries (domain filtered) shows expected content" {
-  run bash -c 'echo ">getallqueries-domain regexa.test.pi-hole.net >quit" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">getallqueries-domain regexa.ftl >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.test.pi-hole.net "?*" 2 1 4"* ]]
+  [[ ${lines[1]} == *"A regexa.ftl 127.0.0.1 2 2 4"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
 @test "Recent blocked shows expected content" {
   run bash -c 'echo ">recentBlocked >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "regex1.test.pi-hole.net" ]]
+  [[ ${lines[1]} == "cname-7.ftl" ]]
   [[ ${lines[2]} == "" ]]
 }
 
@@ -588,7 +649,7 @@
 
 # Regex tests
 @test "Compiled blacklist regex as expected" {
-  run bash -c 'grep -c "Compiling blacklist regex 0 (DB ID 6): regex\[0-9\].test.pi-hole.net" /var/log/pihole-FTL.log'
+  run bash -c 'grep -c "Compiling blacklist regex 0 (DB ID 6): regex\[0-9\].ftl" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
@@ -597,13 +658,13 @@
   run bash -c 'grep -c "Compiling whitelist regex 0 (DB ID 3): regex2" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c 'grep -c "Compiling whitelist regex 1 (DB ID 4): discourse" /var/log/pihole-FTL.log'
+  run bash -c 'grep -c "Compiling whitelist regex 1 (DB ID 4): ^gravity-whitelisted" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "Regex Test 1: \"regex7.test.pi-hole.net\" vs. [database regex]: MATCH" {
-  run bash -c './pihole-FTL regex-test "regex7.test.pi-hole.net"'
+@test "Regex Test 1: \"regex7.ftl\" vs. [database regex]: MATCH" {
+  run bash -c './pihole-FTL regex-test "regex7.ftl"'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
@@ -829,50 +890,22 @@
   [[ $status == 2 ]]
 }
 
-@test "Regex Test 37: Option \"^localhost$;querytype=A\" working as expected (ONLY matching A queries)" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=A\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 37: Option \";querytype=A\" working as expected (ONLY matching A queries)" {
+  run bash -c 'dig A regex-A @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-A @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} != "::" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=A\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 38: Option \"^localhost$;querytype=!A\" working as expected (NOT matching A queries)" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=!A\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 38: Option \";querytype=!A\" working as expected (NOT matching A queries)" {
+  run bash -c 'dig A regex-notA @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-notA @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "::" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=!A\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
 @test "Regex Test 39: Option \";invert\" working as expected (match is inverted)" {
@@ -891,139 +924,49 @@
   [[ ${lines[1]} == *"Overwriting previous querytype setting" ]]
 }
 
-@test "Regex Test 41: Option \"^localhost$;reply=NXDOMAIN\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=NXDOMAIN\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1'
+@test "Regex Test 41: Option \"^;reply=NXDOMAIN\" working as expected" {
+  run bash -c 'dig A regex-NXDOMAIN @127.0.0.1'
   printf "dig: %s\n" "${lines[@]}"
   [[ ${lines[3]} == *"status: NXDOMAIN"* ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=NXDOMAIN\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 42: Option \"^localhost$;reply=NODATA\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=NODATA\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
-  printf "dig (short): %s\n" "${lines[@]}"
-  [[ ${lines[0]} == "" ]]
-  run bash -c 'dig A localhost @127.0.0.1'
+@test "Regex Test 42: Option \"^;reply=NODATA\" working as expected" {
+  run bash -c 'dig A regex-NODATA @127.0.0.1'
   printf "dig (full): %s\n" "${lines[@]}"
   [[ ${lines[3]} == *"status: NOERROR"* ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=NODATA\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 43: Option \"^localhost$;reply=REFUSED\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=REFUSED\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
-  printf "dig (short): %s\n" "${lines[@]}"
-  [[ ${lines[0]} == "" ]]
-  run bash -c 'dig A localhost @127.0.0.1'
+@test "Regex Test 43: Option \";reply=REFUSED\" working as expected" {
+  run bash -c 'dig A regex-REFUSED @127.0.0.1'
   printf "dig (full): %s\n" "${lines[@]}"
   [[ ${lines[3]} == *"status: REFUSED"* ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=REFUSED\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 44: Option \"^localhost$;reply=1.2.3.4\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=1.2.3.4\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 44: Option \";reply=1.2.3.4\" working as expected" {
+  run bash -c 'dig A regex-REPLYv4 @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "1.2.3.4" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-REPLYv4 @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "::" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=1.2.3.4\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 45: Option \"^localhost$;reply=fe80::1234\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=fe80::1234\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 45: Option \";reply=fe80::1234\" working as expected" {
+  run bash -c 'dig A regex-REPLYv6 @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-REPLYv6 @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "fe80::1234" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=fe80::1234\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 46: Option \"^localhost$;reply=1.2.3.4;reply=fe80::1234\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=1.2.3.4;reply=fe80::1234\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 46: Option \";reply=1.2.3.4;reply=fe80::1234\" working as expected" {
+  run bash -c 'dig A regex-REPLYv46 @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "1.2.3.4" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-REPLYv46 @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "fe80::1234" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=1.2.3.4;reply=fe80::1234\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
 # x86_64-musl is built on busybox which has a slightly different
@@ -1098,7 +1041,7 @@
 }
 
 @test "Blocking status is correctly logged in pihole.log" {
-  run bash -c 'grep -c "gravity blocked gravity-blocked.test.pi-hole.net is 0.0.0.0" /var/log/pihole.log'
+  run bash -c 'grep -c "gravity blocked gravity.ftl is 0.0.0.0" /var/log/pihole.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "2" ]]
 }
@@ -1264,4 +1207,10 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "Hello from LUA" ]]
   rm abc.lua
+}
+
+@test "Pi-hole PTR generation check" {
+  run bash -c "bash test/hostnames.sh | tee ptr.log"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" != *"ERROR"* ]]
 }
