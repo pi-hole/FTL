@@ -228,7 +228,11 @@ void parse_args(int argc, char* argv[])
 		{
 			// Print FTL version
 			printf("****************************** FTL **********************************\n");
-			printf("Version:         %s\n\n", get_FTL_version());
+			printf("Version:         %s\n", get_FTL_version());
+			printf("Branch:          %s\n", GIT_BRANCH);
+			printf("Commit:          %s (%s)\n", GIT_HASH, GIT_DATE);
+			printf("Architecture:    %s\n", FTL_ARCH);
+			printf("Compiler:        %s\n\n", FTL_CC);
 
 			// Print dnsmasq version and compile time options
 			print_dnsmasq_version();
