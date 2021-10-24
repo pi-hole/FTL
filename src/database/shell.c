@@ -95,6 +95,8 @@ typedef unsigned char u8;
 #endif
 #include <ctype.h>
 #include <stdarg.h>
+// print_FTL_version()
+#include "../log.h"
 
 #if !defined(_WIN32) && !defined(WIN32)
 # include <signal.h>
@@ -22320,6 +22322,7 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
       char *zHome;
       char *zHistory;
       int nHistory;
+      print_FTL_version();
       printf(
         "SQLite version %s %.19s\n" /*extra-version-info*/
         "Enter \".help\" for usage hints.\n",

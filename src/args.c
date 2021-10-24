@@ -43,11 +43,6 @@ static inline bool strEndsWith(const char *input, const char *end){
 	return strcmp(input + strlen(input) - strlen(end), end) == 0;
 }
 
-static void print_FTL_version(void)
-{
-	printf("Pi-hole FTL %s %s\n", get_FTL_version(), GIT_DATE);
-}
-
 void parse_args(int argc, char* argv[])
 {
 	bool quiet = false;
@@ -81,11 +76,7 @@ void parse_args(int argc, char* argv[])
 	// Also, we do this if the first argument is a file with ".db" ending
 	if(strEndsWith(argv[0], "sqlite3") ||
 	   (argc > 1 && strEndsWith(argv[1], ".db")))
-	{
-		if(argc == 1) // No arguments after this one
-			print_FTL_version();
-		exit(sqlite3_shell_main(argc, argv));
-	}
+			exit(sqlite3_shell_main(argc, argv));
 
 	// start from 1, as argv[0] is the executable name
 	for(int i = 1; i < argc; i++)
@@ -110,11 +101,7 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "sql") == 0 ||
 		   strcmp(argv[i], "sqlite3") == 0 ||
 		   strcmp(argv[i], "--sqlite3") == 0)
-		{
-			if(argc == i+1) // No arguments after this one
-				print_FTL_version();
-			exit(sqlite3_shell_main(argc - i, &argv[i]));
-		}
+				exit(sqlite3_shell_main(argc - i, &argv[i]));
 
 		// Implement dnsmasq's test function, no need to prepare the entire FTL
 		// environment (initialize shared memory, lead queries from long-term
