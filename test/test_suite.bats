@@ -1201,6 +1201,13 @@
   [[ ${lines[0]} == "SQLite 3."* ]]
 }
 
+@test "Embedded SQLite3 shell prints FTL version in interactive mode" {
+  # shell.c contains a call to print_FTL_version
+  run bash -c "echo -e '.quit\n' | ./pihole-FTL sqlite3 -interactive"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Pi-hole FTL"* ]]
+}
+
 @test "Embedded LUA engine is called for .lua file" {
   echo 'print("Hello from LUA")' > abc.lua
   run bash -c './pihole-FTL abc.lua'
