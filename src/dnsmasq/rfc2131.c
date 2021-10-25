@@ -15,6 +15,7 @@
 */
 
 #include "dnsmasq.h"
+#include "../dnsmasq_interface.h"
 
 #ifdef HAVE_DHCP
 
@@ -2571,7 +2572,15 @@ static void do_options(struct dhcp_context *context,
       if (daemon->port == NAMESERVER_PORT &&
 	  in_list(req_options, OPTION_DNSSERVER) &&
 	  !option_find2(OPTION_DNSSERVER))
-	option_put(mess, end, OPTION_DNSSERVER, INADDRSZ, ntohl(context->local.s_addr));
+	/*** Pi-hole modification ***/
+	{
+	  struct in_addr overwrite;
+	  if(FTL_REPLY_ADDR4(&overwrite))
+	    option_put(mess, end, OPTION_DNSSERVER, INADDRSZ, ntohl(overwrite.s_addr));
+	  else
+	    option_put(mess, end, OPTION_DNSSERVER, INADDRSZ, ntohl(context->local.s_addr));
+	}
+	/****************************/
     }
 
   if (domain && in_list(req_options, OPTION_DOMAINNAME) && 

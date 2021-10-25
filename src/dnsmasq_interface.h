@@ -52,4 +52,6 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr);
 // defined in src/dnsmasq/cache.c
 extern char *querystr(char *desc, unsigned short type);
 
+int FTL_REPLY_ADDR4(struct in_addr *addr);
+
 #endif // DNSMASQ_INTERFACE_H

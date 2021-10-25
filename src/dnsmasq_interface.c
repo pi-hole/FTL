@@ -1026,6 +1026,19 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	}
 }
 
+// Overwrite reply address if configured to do so
+int FTL_REPLY_ADDR4(struct in_addr *addr)
+{
+	logg("Overwrite address");
+	// Return early if not applicable
+	if(!config.reply_addr.overwrite_v4)
+		return 0;
+
+	// Overwrite IPv4 address
+	memcpy(addr, &config.reply_addr.v4, sizeof(config.reply_addr.v4));
+	return 1;
+}
+
 static void check_pihole_PTR(char *domain)
 {
 	// Return early if Pi-hole PTR is not available
