@@ -2375,6 +2375,13 @@ static void FTL_upstream_error(const union all_addr *addr, const int id, const c
 		return;
 	}
 
+	// Save response time (if not done before)
+	// This is necessary to compute a reply time when there was an error
+	// upstream (e.g., DNSSEC BOGUS)
+	struct timeval response;
+	gettimeofday(&response, 0);
+	set_response_time(query, response);
+
 	// Translate dnsmasq's rcode into something we can use
 	const char *rcodestr = NULL;
 	switch(addr->log.rcode)
