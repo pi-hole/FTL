@@ -1956,19 +1956,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		return;
 	}
 
-	// Save response time
-	// Skipped internally if already computed
-	set_response_time(query, response);
-
-	// We only process the first reply further in here
-	// Check if reply type is still UNKNOWN
-	if(query->reply != REPLY_UNKNOWN)
-	{
-		// Nothing to be done here
-		unlock_shm();
-		return;
-	}
-
+	// EDE analysis
 	if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != EDE_UNSET)
 	{
 		query->ede = addr->log.ede;
@@ -1981,7 +1969,9 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	// have to check if the first answering upstream server is also the
 	// first one we sent the query to. If not, we need to change the
 	// upstream server associated with this query to get accurate statistics
-	if(!cached && last_server.sa.sa_family != 0)
+	// We use query->flags.response_calculated to check if this is the first
+	// response received for this query
+	if(!cached && last_server.sa.sa_family != 0 && !query->flags.response_calculated)
 	{
 		char ip[ADDRSTRLEN+1] = { 0 };
 		in_port_t port = 0;
@@ -2002,6 +1992,19 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			}
 			query->upstreamID = upstreamID;
 		}
+	}
+
+	// Save response time
+	// Skipped internally if already computed
+	set_response_time(query, response);
+
+	// We only process the first reply further in here
+	// Check if reply type is still UNKNOWN
+	if(query->reply != REPLY_UNKNOWN)
+	{
+		// Nothing to be done here
+		unlock_shm();
+		return;
 	}
 
 	// Determine if this reply is an exact match for the queried domain
