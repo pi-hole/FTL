@@ -66,12 +66,6 @@ jobs:
           export CIRCLE_JOB="${{ matrix.arch }}"
           bash test/arch_test.sh
       -
-        name: "Test x86_32/64 binaries"
-        if: matrix.arch == 'x86_64' || matrix.arch == 'x86_64-musl' || matrix.arch == 'x86_32'
-        run: |
-            export CIRCLE_JOB="${{ matrix.arch }}"
-            test/run.sh
-      -
         name: "Generate checksum file"
         run: |
           mv pihole-FTL "${{ matrix.bin_name }}"
