@@ -282,7 +282,9 @@ struct event_desc {
 #define OPT_UMBRELLA_DEVID 64
 #define OPT_CMARK_ALST_EN  65
 #define OPT_QUIET_TFTP     66
-#define OPT_LAST           67
+#define OPT_STRIP_ECS      67
+#define OPT_STRIP_MAC      68
+#define OPT_LAST           69
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
