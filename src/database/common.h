@@ -53,6 +53,13 @@ const char *get_sqlite3_version(void);
 
 extern bool DBdeleteoldqueries;
 
+// Return if FTL's database is known to be broken
+// We abort execution of all database-related activitites in this case
+bool FTLDBerror(void) __attribute__ ((pure));
+
+// Check SQLite3 non-success return codes for possible database corruption
+bool checkFTLDBrc(const int rc);
+
 // Database macros
 #define SQL_bool(db, ...) {\
 	int ret;\

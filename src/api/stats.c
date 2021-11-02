@@ -405,6 +405,7 @@ int api_stats_top_clients(bool blocked, struct ftl_conn *api)
 int api_stats_upstreams(struct ftl_conn *api)
 {
 	const int forwarded = get_forwarded_count();
+	unsigned int totalcount = 0;
 	int temparray[forwarded][2];
 
 	// Verify requesting client is allowed to see this ressource
@@ -412,6 +413,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 	{
 		return send_json_unauthorized(api);
 	}
+
 	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
 		// Get upstream pointer
@@ -420,7 +422,12 @@ int api_stats_upstreams(struct ftl_conn *api)
 			continue;
 
 		temparray[upstreamID][0] = upstreamID;
-		temparray[upstreamID][1] = upstream->count;
+
+		unsigned int count = 0;
+		for(unsigned i = 0; i < (sizeof(upstream->overTime)/sizeof(*upstream->overTime)); i++)
+			count += upstream->overTime[i];
+		temparray[upstreamID][1] = count;
+		totalcount += count;
 	}
 
 	// Sort temporary array in descending order

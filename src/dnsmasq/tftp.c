@@ -600,7 +600,7 @@ void check_tftp_listeners(time_t now)
 		  /* Wrong source address. See rfc1350 para 4. */
 		  prettyprint_addr(&peer, daemon->addrbuff);
 		  len = tftp_err(ERR_TID, daemon->packet, _("ignoring packet from %s (TID mismatch)"), daemon->addrbuff);
-		  sendto(transfer->sockfd, daemon->packet, len, 0, &peer.sa, sa_len(&peer));
+		  while(retry_send(sendto(transfer->sockfd, daemon->packet, len, 0, &peer.sa, sa_len(&peer))));
 		}
 	    }
 	}

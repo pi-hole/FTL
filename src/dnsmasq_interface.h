@@ -10,19 +10,50 @@
 #ifndef DNSMASQ_INTERFACE_H
 #define DNSMASQ_INTERFACE_H
 
-// Include only files that need to be visible to the dnsmasq source code
-#include "hooks/CNAME.h"
-#include "hooks/dnsmasq_reload.h"
-#include "hooks/fork_and_bind.h"
-#include "hooks/forwarding_retried.h"
-#include "hooks/hook.h"
-#include "hooks/iface.h"
-#include "hooks/log.h"
-#include "hooks/make_answer.h"
-#include "hooks/multiple_replies.h"
-#include "hooks/header_analysis.h"
-#include "hooks/new_query.h"
-#include "hooks/query_in_progress.h"
-#include "hooks/tcp_workers.h"
+// Including stdbool.h here as it is required for defining the boolean prototype of FTL_new_query
+#include <stdbool.h>
+
+#include "edns0.h"
+#include "cache_info.h"
+
+extern int socketfd, telnetfd4, telnetfd6;
+extern unsigned char *pihole_privacylevel;
+
+enum protocol { TCP, UDP, INTERNAL } __attribute__ ((packed));
+
+void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line);
+
+#define FTL_iface(iface, addr, addrfamily) _FTL_iface(iface, addr, addrfamily, __FILE__, __LINE__)
+void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_family_t addrfamily, const char* file, const int line);
+
+#define FTL_new_query(flags, name, addr, arg, qtype, id, edns, proto) _FTL_new_query(flags, name, addr, arg, qtype, id, edns, proto, __FILE__, __LINE__)
+bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, char *arg, const unsigned short qtype, const int id, const ednsData *edns, enum protocol proto, const char* file, const int line);
+
+#define FTL_header_analysis(header4, rcode, server, id) _FTL_header_analysis(header4, rcode, server, id, __FILE__, __LINE__)
+void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const struct server *server, const int id, const char* file, const int line);
+
+void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec);
+
+#define FTL_make_answer(header, limit, len, ede) _FTL_make_answer(header, limit, len, ede, __FILE__, __LINE__)
+size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede, const char* file, const int line);
+
+#define FTL_CNAME(domain, cpp, id) _FTL_CNAME(domain, cpp, id, __FILE__, __LINE__)
+bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line);
+
+unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t qlen);
+void FTL_query_in_progress(const int id);
+void FTL_multiple_replies(const int id, int *firstID);
+
+void FTL_dnsmasq_reload(void);
+void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
+void FTL_TCP_worker_created(const int confd);
+void FTL_TCP_worker_terminating(bool finished);
+
+bool FTL_unlink_DHCP_lease(const char *ipaddr);
+
+// defined in src/dnsmasq/cache.c
+extern char *querystr(char *desc, unsigned short type);
+
+extern void FTL_dnsmasq_log(const char *payload, const int length);
 
 #endif // DNSMASQ_INTERFACE_H

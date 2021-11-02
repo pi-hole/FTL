@@ -22,17 +22,51 @@
 #include "datastructure.h"
 // delete_query_from_db()
 #include "database/query-table.h"
+// logg_rate_limit_message()
+#include "database/message-table.h"
 
 bool doGC = false;
 
+// Subtract rate-limitation count from individual client counters
+// As long as client->rate_limit is still larger than the allowed
+// maximum count, the rate-limitation will just continue
 static void reset_rate_limiting(void)
 {
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
-		if(client != NULL)
-			client->rate_limit = 0;
+		if(!client)
+			continue;
+
+		// Check if we are currently rate-limiting this client
+		if(client->flags.rate_limited)
+		{
+			const char *clientIP = getstr(client->ippos);
+
+			// Check if we want to continue rate limiting
+			if(client->rate_limit > config.rate_limit.count)
+			{
+				log_info("Still rate-limiting %s as it made additional %d queries", clientIP, client->rate_limit);
+			}
+			// or if rate-limiting ends for this client now
+			else
+			{
+				log_info("Ending rate-limitation of %s", clientIP);
+				         client->flags.rate_limited = false;
+			}
+		}
+
+		// Reset counter
+		client->rate_limit = 0;
 	}
+}
+
+static time_t lastRateLimitCleaner = 0;
+// Returns how many more seconds until the current rate-limiting interval is over
+time_t get_rate_limit_turnaround(const unsigned int rate_limit_count)
+{
+	const unsigned int how_often = rate_limit_count/config.rate_limit.count;
+	return (time_t)config.rate_limit.interval*how_often - (time(NULL) - lastRateLimitCleaner);
 }
 
 void *GC_thread(void *val)
@@ -43,7 +77,7 @@ void *GC_thread(void *val)
 
 	// Remember when we last ran the actions
 	time_t lastGCrun = time(NULL) - time(NULL)%GCinterval;
-	time_t lastRateLimitCleaner = time(NULL);
+	lastRateLimitCleaner = time(NULL);
 
 	// Run as long as this thread is not canceled
 	while(!killed)
@@ -123,16 +157,7 @@ void *GC_thread(void *val)
 					case QUERY_RETRIED: // (fall through)
 					case QUERY_RETRIED_DNSSEC:
 						// Forwarded to an upstream DNS server
-						// Adjust counters
-						if(query->upstreamID > -1)
-						{
-							upstreamsData* upstream = getUpstream(query->upstreamID, true);
-							if(upstream != NULL)
-							{
-								upstream->overTime[timeidx]--;
-								upstream->count--;
-							}
-						}
+						// Adjusting counters is done below in moveOverTimeMemory()
 						break;
 					case QUERY_CACHE:
 						// Answered from local cache _or_ local config
@@ -144,8 +169,9 @@ void *GC_thread(void *val)
 					case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
 					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
 					case QUERY_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
-					case QUERY_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
 					case QUERY_REGEX_CNAME: // Regex denied domain in CNAME chain (fall through)
+					case QUERY_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
+					case QUERY_DBBUSY: // Blocked because gravity database was busy
 						//counters->blocked--;
 						overTime[timeidx].blocked--;
 						if(domain != NULL)
@@ -195,13 +221,18 @@ void *GC_thread(void *val)
 				// Example: (I = now invalid, X = still valid queries, F = free space)
 				//   Before: IIIIIIXXXXFF
 				//   After:  XXXXFFFFFFFF
-				memmove(getQuery(0, true), getQuery(removed, true), (counters->queries - removed)*sizeof(queriesData));
+				queriesData *dest = getQuery(0, true);
+				queriesData *src = getQuery(removed, true);
+				if(dest && src)
+					memmove(dest, src, (counters->queries - removed)*sizeof(queriesData));
 
 				// Update queries counter
 				counters->queries -= removed;
 
 				// ensure remaining memory is zeroed out (marked as "F" in the above example)
-				memset(getQuery(counters->queries, true), 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
+				queriesData *tail = getQuery(counters->queries, true);
+				if(tail)
+					memset(tail, 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
 			}
 
 			// Determine if overTime memory needs to get moved

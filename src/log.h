@@ -20,7 +20,7 @@
 
 void init_FTL_log(const char *name);
 void log_counter_info(void);
-void format_memory_size(char * const prefix, unsigned long long int bytes,
+void format_memory_size(char prefix[2], unsigned long long int bytes,
                         double * const formated);
 void format_time(char buffer[42], unsigned long seconds, double milliseconds);
 const char *get_FTL_version(void) __attribute__ ((malloc));
@@ -30,6 +30,7 @@ void get_timestr(char * const timestring, const time_t timein, const bool millis
 void debugstr(const enum debug_flag flag, const char **name, const char **desc);
 void logg_web(enum web_code code, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
+void print_FTL_version(void);
 
 // The actual logging routine can take extra options for specialized logging
 // The more general interfaces can be defined here as appropriate shortcuts
@@ -45,5 +46,11 @@ void log_ctrl(bool vlog, bool vstdout);
 void FTL_log_helper(const unsigned char n, ...);
 
 int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz, char *dst_str, size_t dst_sz);
+
+int forwarded_queries(void)  __attribute__ ((pure));
+int cached_queries(void)  __attribute__ ((pure));
+int blocked_queries(void)  __attribute__ ((pure));
+
+const char *short_path(const char *full_path) __attribute__ ((pure));
 
 #endif //LOG_H

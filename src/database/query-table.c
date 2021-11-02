@@ -614,7 +614,7 @@ void DB_read_queries(void)
 		}
 
 		const int status_int = sqlite3_column_int(stmt, 3);
-		if(status_int < QUERY_UNKNOWN || status_int >= QUERY_STATUS_MAX)
+		if(status_int < QUERY_UNKNOWN || status_int > QUERY_STATUS_MAX)
 		{
 			log_warn("Database: STATUS should be within [%i,%i] but is %i",
 			         QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status_int);
@@ -710,16 +710,17 @@ void DB_read_queries(void)
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
 		query->id = 0;
-		query->reply = reply;
+		query->response = 0;
+		query->flags.response_calculated = false;
 		query->dnssec = dnssec;
-		query->response = 0.0; // No need to restore this
-		query->ttl = 0; // No need to restore this
+		query->reply = reply;
 		query->CNAME_domainID = -1;
 		// Initialize flags
 		query->flags.complete = true; // Mark as all information is available
 		query->flags.blocked = false;
 		query->flags.allowed = false;
 		query->flags.database = true;
+		query->ede = -1; // EDE_UNSET == -1
 
 		// Set lastQuery timer for network table
 		clientsData *client = getClient(clientID, true);
@@ -779,14 +780,15 @@ void DB_read_queries(void)
 				break;
 
 			case QUERY_GRAVITY: // Blocked by gravity
-			case QUERY_REGEX: // Blocked by regex blacklist
-			case QUERY_DENYLIST: // Blocked by exact blacklist
+			case QUERY_REGEX: // Blocked by regex denylist
+			case QUERY_DENYLIST: // Blocked by exact denylist
 			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by external provider
 			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by external provider
 			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by external provider
 			case QUERY_GRAVITY_CNAME: // Blocked by gravity (inside CNAME path)
-			case QUERY_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
-			case QUERY_DENYLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
+			case QUERY_REGEX_CNAME: // Blocked by regex denylist (inside CNAME path)
+			case QUERY_DENYLIST_CNAME: // Blocked by exact denylist (inside CNAME path)
+			case QUERY_DBBUSY: // Blocked because gravity database was busy
 				query->flags.blocked = true;
 				// Get domain pointer
 				domainsData *domain = getDomain(domainID, true);
@@ -805,7 +807,6 @@ void DB_read_queries(void)
 					if(upstream != NULL)
 					{
 						upstream->overTime[timeidx]++;
-						upstream->count++;
 						upstream->lastQuery = queryTimeStamp;
 					}
 				}

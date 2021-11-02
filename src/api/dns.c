@@ -19,7 +19,7 @@
 #include "../timers.h"
 #include "../shmem.h"
 // getCacheInformation()
-#include "../hooks/cache_info.h"
+#include "../cache_info.h"
 
 static int get_blocking(struct ftl_conn *api)
 {
@@ -127,11 +127,22 @@ int api_dns_cache(struct ftl_conn *api)
 		return send_json_unauthorized(api);
 	}
 
-	cacheinforecord cacheinfo;
-	getCacheInformation(&cacheinfo);
+	struct cache_info ci = { 0 };
+	get_dnsmasq_cache_info(&ci);
 	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(json, "size", cacheinfo.cache_size);
-	JSON_OBJ_ADD_NUMBER(json, "inserted", cacheinfo.cache_inserted);
-	JSON_OBJ_ADD_NUMBER(json, "evicted", cacheinfo.cache_live_freed);
+	JSON_OBJ_ADD_NUMBER(json, "size", ci.cache_size);
+	JSON_OBJ_ADD_NUMBER(json, "inserted", ci.cache_inserted);
+	JSON_OBJ_ADD_NUMBER(json, "evicted", ci.cache_live_freed);
+	cJSON *valid = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(valid, "ipv4", ci.valid.ipv4);
+	JSON_OBJ_ADD_NUMBER(valid, "ipv6", ci.valid.ipv6);
+	JSON_OBJ_ADD_NUMBER(valid, "cname", ci.valid.cname);
+	JSON_OBJ_ADD_NUMBER(valid, "srv", ci.valid.srv);
+	JSON_OBJ_ADD_NUMBER(valid, "ds", ci.valid.ds);
+	JSON_OBJ_ADD_NUMBER(valid, "dnskey", ci.valid.dnskey);
+	JSON_OBJ_ADD_NUMBER(valid, "other", ci.valid.other);
+	JSON_OBJ_ADD_ITEM(json, "valid", valid);
+	JSON_OBJ_ADD_NUMBER(json, "expired", ci.expired);
+	JSON_OBJ_ADD_NUMBER(json, "immortal", ci.immortal);
 	JSON_SEND_OBJECT(json);
 }

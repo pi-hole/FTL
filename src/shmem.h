@@ -69,7 +69,7 @@ typedef struct {
 	int status[QUERY_STATUS_MAX];
 	int reply[QUERY_REPLY_MAX];
 } countersStruct;
-ASSERT_SIZEOF(countersStruct, 272, 272, 272);
+//ASSERT_SIZEOF(countersStruct, 272, 272, 272);
 
 typedef struct {
 	const char *func;
@@ -135,8 +135,9 @@ const char *getstr(const size_t pos);
 
 /**
  * Escapes a string by replacing special characters, such as spaces
+ * The input string is always duplicated, ensure to free it after use
  */
-char *str_escape(const char *input, unsigned int *N);
+char *str_escape(const char *input, unsigned int *N) __attribute__ ((malloc));
 
 /**
  * Compare two strings. Escape them if needed

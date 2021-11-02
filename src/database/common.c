@@ -28,24 +28,61 @@
 #include "query-table.h"
 
 bool DBdeleteoldqueries = false;
+static bool DBerror = false;
 long int lastdbindex = 0;
+
+bool __attribute__ ((pure)) FTLDBerror(void)
+{
+	return DBerror;
+}
+
+bool checkFTLDBrc(const int rc)
+{
+	// Check if the database file is malformed
+	if(rc == SQLITE_CORRUPT)
+	{
+		log_warn("Database %s is damaged and cannot be used.", config.files.database);
+		DBerror = true;
+	}
+	// Check if the database file is read-only
+	if(rc == SQLITE_READONLY)
+	{
+		log_warn("Database %s is read-only and cannot be used.", config.files.database);
+		DBerror = true;
+	}
+
+	return DBerror;
+}
 
 void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 {
-	log_debug(DEBUG_DATABASE, "Closing FTL database in %s() (%s:%i)", func, file, line);
+	// Silently return if the database is known to be broken. It may not be
+	// possible to close the connection properly.
+	if(FTLDBerror())
+		return;
+
+	if(config.debug & DEBUG_DATABASE)
+		log_debug(DEBUG_DATABASE, "Closing FTL database in %s() (%s:%i)", func, file, line);
 
 	// Only try to close an existing database connection
 	int rc = SQLITE_OK;
 	if(db != NULL && *db != NULL && (rc = sqlite3_close(*db)) != SQLITE_OK)
+	{
 		log_err("Error while trying to close database: %s",
 		        sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
+	}
 
 	// Always set database pointer to NULL, even when closing failed
-	*db = NULL;
+	if(db) *db = NULL;
 }
 
 sqlite3* _dbopen(bool create, const char *func, const int line, const char *file)
 {
+	// Silently return NULL if the database is known to be broken
+	if(FTLDBerror())
+		return NULL;
+
 	// Try to open database
 	log_debug(DEBUG_DATABASE, "Opening FTL database in %s() (%s:%i)", func, file, line);
 
@@ -58,6 +95,7 @@ sqlite3* _dbopen(bool create, const char *func, const int line, const char *file
 	if( rc != SQLITE_OK )
 	{
 		log_err("Error while trying to open database: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		return NULL;
 	}
 
@@ -68,6 +106,7 @@ sqlite3* _dbopen(bool create, const char *func, const int line, const char *file
 		log_err("Error while trying to set busy timeout (%d ms) on database: %s",
 		        DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
 		dbclose(&db);
+		checkFTLDBrc(rc);
 		return NULL;
 	}
 
@@ -76,6 +115,10 @@ sqlite3* _dbopen(bool create, const char *func, const int line, const char *file
 
 int dbquery(sqlite3* db, const char *format, ...)
 {
+	// Return early if the database is known to be broken
+	if(FTLDBerror())
+		return SQLITE_ERROR;
+
 	va_list args;
 	va_start(args, format);
 	char *query = sqlite3_vmprintf(format, args);
@@ -96,7 +139,7 @@ int dbquery(sqlite3* db, const char *format, ...)
 		return SQLITE_ERROR;
 	}
 
-log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", query);
+	log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", query);
 
 
 	int rc = sqlite3_exec(db, query, NULL, NULL, NULL);
@@ -104,6 +147,8 @@ log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", query);
 		log_err("SQL query \"%s\" failed: %s",
 		        query, sqlite3_errstr(rc));
 		sqlite3_free(query);
+		dbclose(&db);
+		checkFTLDBrc(rc);
 		return rc;
 	}
 
@@ -122,16 +167,32 @@ static bool create_counter_table(sqlite3* db)
 	SQL_bool(db, "CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );");
 
 	// ID 0 = total queries
-	db_set_counter(db, DB_TOTALQUERIES, 0);
+	if(!db_set_counter(db, DB_TOTALQUERIES, 0))
+	{
+		log_err("create_counter_table(): Failed to set total queries counter to zero!");
+		return false;
+	}
 
 	// ID 1 = total blocked queries
-	db_set_counter(db, DB_BLOCKEDQUERIES, 0);
+	if(!db_set_counter(db, DB_BLOCKEDQUERIES, 0))
+	{
+		log_err("create_counter_table(): Failed to set blocked queries counter to zero!");
+		return false;
+	}
 
 	// Time stamp of creation of the counters database
-	db_set_FTL_property(db, DB_FIRSTCOUNTERTIMESTAMP, (unsigned long)time(0));
+	if(!db_set_FTL_property(db, DB_FIRSTCOUNTERTIMESTAMP, (unsigned long)time(0)))
+	{
+		log_err("create_counter_table(): Failed to update first counter timestamp!");
+		return false;
+	}
 
 	// Update database version to 2
-	db_set_FTL_property(db, DB_VERSION, 2);
+	if(!db_set_FTL_property(db, DB_VERSION, 2))
+	{
+		log_err("create_counter_table(): Failed to update database version!");
+		return false;
+	}
 
 	return true;
 }
@@ -161,11 +222,6 @@ static bool db_create(void)
 
 	// Close database handle
 	dbclose(&db);
-
-	// Explicitly set permissions to 0644
-	// 644 =            u+w       u+r       g+r       o+r
-	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH;
-	chmod_file(config.files.database, mode);
 
 	return true;
 }
@@ -211,12 +267,23 @@ void db_init(void)
 		}
 	}
 
+	// Explicitly set permissions to 0644
+	// 644 =            u+w       u+r       g+r       o+r
+	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH;
+	chmod_file(config.files.database, mode);
+
 	// Open database
 	sqlite3 *db = dbopen(false);
 
+	// Return if database access failed
+	if(!db)
+		return;
+
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_int(db, DB_VERSION);
-	if(dbversion < 1)
+	// Warn if there is an error, however, do not warn on database file
+	// corruption. This has already been logged before
+	if(dbversion < 1 && !FTLDBerror())
 	{
 		log_warn("Database not available, please ensure the database is unlocked when starting pihole-FTL !");
 		dbclose(&db);
@@ -507,8 +574,11 @@ double db_query_double(sqlite3 *db, const char* querystr)
 	if( rc != SQLITE_OK )
 	{
 		if( rc != SQLITE_BUSY )
-			log_err("Encountered prepare error in db_query_double(\"%s\"): %s",
-			        querystr, sqlite3_errstr(rc));
+		{
+			log_err("Encountered prepare error in get_max_query_ID(): %s", sqlite3_errstr(rc));
+			checkFTLDBrc(rc);
+			dbclose(&db);
+		}
 
 		return DB_FAILED;
 	}
@@ -617,9 +687,8 @@ int db_query_int_from_until_type(sqlite3 *db, const char* querystr, const double
 		        querystr, rc, sqlite3_errstr(rc));
 		return DB_FAILED;
 	}
-
-	sqlite3_finalize(stmt);
-
+	rc = sqlite3_finalize(stmt);
+	checkFTLDBrc(rc);
 	return result;
 }
 

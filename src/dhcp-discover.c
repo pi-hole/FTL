@@ -55,6 +55,9 @@
 // Probe DHCP servers responding to the broadcast address
 #define PROBE_BCAST
 
+// Should we generate test data for DHCP option 249?
+//#define TEST_OPT_249
+
 // Global lock used by all threads
 static pthread_mutex_t lock;
 
@@ -68,9 +71,10 @@ static int create_dhcp_socket(const char *iname)
 {
 	struct sockaddr_in dhcp_socket;
 	struct ifreq interface;
-	int flag=1;
+	int flag = 1;
 
 	// Set up the address we're going to bind to (we will listen on any address).
+	memset(&interface, 0, sizeof(interface));
 	memset(&dhcp_socket, 0, sizeof(dhcp_socket));
 	dhcp_socket.sin_family = AF_INET;
 	dhcp_socket.sin_port = htons(DHCP_CLIENT_PORT);
@@ -88,10 +92,10 @@ static int create_dhcp_socket(const char *iname)
 	printf("DHCP socket: %d\n", sock);
 #endif
 	// set the reuse address flag so we don't get errors when restarting
-	flag=1;
 	if(setsockopt(sock,SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(flag))<0)
 	{
 		printf("Error: Could not set reuse address option on DHCP socket (%s)!\n", iname);
+		close(sock);
 		return -1;
 	}
 
@@ -99,6 +103,7 @@ static int create_dhcp_socket(const char *iname)
 	if(setsockopt(sock, SOL_SOCKET,SO_BROADCAST, (char *)&flag, sizeof flag) < 0)
 	{
 		printf("Error: Could not set broadcast option on DHCP socket (%s)!\n", iname);
+		close(sock);
 		return -1;
 	}
 
@@ -108,13 +113,16 @@ static int create_dhcp_socket(const char *iname)
 	{
 		printf("Error: Could not bind socket to interface %s (%s)\n       ---> Check your privileges (run with sudo)!\n",
 		       iname, strerror(errno));
+		close(sock);
 		return -1;
 	}
 
 	// bind the socket
-	if(bind(sock, (struct sockaddr *)&dhcp_socket, sizeof(dhcp_socket)) < 0){
+	if(bind(sock, (struct sockaddr *)&dhcp_socket, sizeof(dhcp_socket)) < 0)
+	{
 		printf("Error: Could not bind to DHCP socket (interface %s, port %d, %s)\n       ---> Check your privileges (run with sudo)!\n",
 		       iname, DHCP_CLIENT_PORT, strerror(errno));
+		close(sock);
 		return -1;
 	}
 
@@ -233,19 +241,43 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	return bytes > 0;
 }
 
+#ifdef TEST_OPT_249
+static void gen_249_test_data(dhcp_packet_data *offer_packet)
+{
+	// Test data for DHCP option 249 (length 14)
+	// See https://discourse.pi-hole.net/t/pi-hole-unbound-via-wireguard-stops-working-over-night/49149
+	char test_data[] = { 249, 14, 0x20, 0xAC, 0x1F, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAC, 0x1F, 0x01, 0x01};
+	// The first 4 bytes are DHCP magic cookie
+	memcpy(&offer_packet->options[4], test_data, sizeof(test_data));
+	offer_packet->options[sizeof(test_data)+4] = 0;
+}
+#endif
+
 // adds a DHCP OFFER to list in memory
 static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_packet)
 {
 	if(offer_packet == NULL)
 		return;
 
+	// Generate option test data
+#ifdef TEST_OPT_249
+	gen_249_test_data(offer_packet);
+#endif
+
 	// process all DHCP options present in the packet
 	// We start from 4 as the first 32 bit are the DHCP magic coockie (verified before)
-	for(unsigned long int x = 4; x < MAX_DHCP_OPTIONS_LENGTH;)
+	for(unsigned int x = 4; x < MAX_DHCP_OPTIONS_LENGTH;)
 	{
 		// End of options
 		if(offer_packet->options[x] == 0)
 			break;
+
+		// Sanity check
+		if(x >= MAX_DHCP_OPTIONS_LENGTH-2)
+		{
+			printf(" OVERFLOWING DHCP OPTION (invalid size)\n");
+			break;
+		}
 
 		// get option type
 		const uint8_t opttype = offer_packet->options[x++];
@@ -254,6 +286,13 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 		const uint8_t optlen = offer_packet->options[x++];
 
 		printf("   ");
+
+		// Sanity check
+		if(x + optlen > MAX_DHCP_OPTIONS_LENGTH)
+		{
+			printf(" OVERFLOWING DHCP OPTION (invalid size)\n");
+			break;
+		}
 
 		// Interpret option data, see RFC 1497 and RFC 2132, Section 3 for further details
 		// A nice summary can be found in https://tools.ietf.org/html/rfc2132#section-3
@@ -383,11 +422,56 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 				for(unsigned int n = 0; n < list_length; n++)
 				{
 					struct in_addr addr_list = { 0 };
-					memcpy(&addr_list.s_addr, &offer_packet->options[x+n*4], sizeof(addr_list.s_addr));
+					if(optlen < (n+1)*sizeof(addr_list.s_addr))
+						break;
+					memcpy(&addr_list.s_addr, &offer_packet->options[x+n*sizeof(addr_list.s_addr)], sizeof(addr_list.s_addr));
 					if(n > 0)
 						printf("   ");
 
 					printf("Port Control Protocol (PCP) server: %s\n", inet_ntoa(addr_list));
+				}
+			}
+			else if((opttype == 121 || opttype == 249) && optlen > 4)
+			{
+				// RFC 3442 / Microsoft Classless Static Route Option
+				// see
+				// - https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dhcpe/f9c19c79-1c7f-4746-b555-0c0fc523f3f9
+				// - https://datatracker.ietf.org/doc/html/rfc3442 (page 3)
+				printf("%s Classless Static Route:\n", opttype == 121 ? "RFC 3442" : "Microsoft");
+				// Loop over contained routes
+				unsigned int n = 0;
+				for(unsigned int i = 1; n < optlen; i++)
+				{
+					// Extract destionation descriptor
+					unsigned char cidr = offer_packet->options[x+n++];
+					unsigned char addr[4] = { 0 };
+					if(cidr > 0)
+						addr[0] = offer_packet->options[x+n++];
+					if(cidr > 8)
+						addr[1] = offer_packet->options[x+n++];
+					if(cidr > 16)
+						addr[2] = offer_packet->options[x+n++];
+					if(cidr > 24)
+						addr[3] = offer_packet->options[x+n++];
+
+					// Extract router address
+					unsigned char router[4] = { 0 };
+					for(int j = 0; j < 4; j++)
+						router[j] = offer_packet->options[x+n++];
+
+					if(cidr == 0)
+					{
+						// default route (0.0.0.0/0)
+						printf("     %d: default via %d.%d.%d.%d\n", i,
+						     router[0], router[1], router[2], router[3]);
+					}
+					else
+					{
+						// specific route
+						printf("     %d: %d.%d.%d.%d/%d via %d.%d.%d.%d\n", i,
+						     addr[0], addr[1], addr[2], addr[3], cidr,
+						     router[0], router[1], router[2], router[3]);
+					}
 				}
 			}
 			else
@@ -470,6 +554,9 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		else
 			responses++;
 
+		if(pthread_mutex_lock(&lock) != 0)
+			return false;
+
 #ifdef DEBUG
 		printf(" DHCPOFFER XID: %lu (0x%X)\n", (unsigned long) ntohl(offer_packet.xid), ntohl(offer_packet.xid));
 #endif
@@ -479,6 +566,8 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		{
 			printf("  DHCPOFFER XID (%lu) does not match our DHCPDISCOVER XID (%lu) - ignoring packet (not for us)\n",
 			     (unsigned long) ntohl(offer_packet.xid), (unsigned long) xid);
+
+			pthread_mutex_unlock(&lock);
 			continue;
 		}
 

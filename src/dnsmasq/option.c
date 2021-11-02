@@ -178,6 +178,7 @@ struct myoption {
 #define LOPT_CMARK_ALST_EN 365
 #define LOPT_CMARK_ALST    366
 #define LOPT_QUIET_TFTP    367
+#define LOPT_NFTSET        368
  
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -331,6 +332,7 @@ static const struct myoption opts[] =
     { "auth-sec-servers", 1, 0, LOPT_AUTHSFS },
     { "auth-peer", 1, 0, LOPT_AUTHPEER }, 
     { "ipset", 1, 0, LOPT_IPSET },
+    { "nftset", 1, 0, LOPT_NFTSET },
     { "connmark-allowlist-enable", 2, 0, LOPT_CMARK_ALST_EN },
     { "connmark-allowlist", 1, 0, LOPT_CMARK_ALST },
     { "synth-domain", 1, 0, LOPT_SYNTH },
@@ -518,6 +520,7 @@ static struct {
   { LOPT_AUTHSFS, ARG_DUP, "<NS>[,<NS>...]", gettext_noop("Secondary authoritative nameservers for forward domains"), NULL },
   { LOPT_AUTHPEER, ARG_DUP, "<ipaddr>[,<ipaddr>...]", gettext_noop("Peers which are allowed to do zone transfer"), NULL },
   { LOPT_IPSET, ARG_DUP, "/<domain>[/<domain>...]/<ipset>...", gettext_noop("Specify ipsets to which matching domains should be added"), NULL },
+  { LOPT_NFTSET, ARG_DUP, "/<domain>[/<domain>...]/<nftset>...", gettext_noop("Specify nftables sets to which matching domains should be added"), NULL },
   { LOPT_CMARK_ALST_EN, ARG_ONE, "[=<mask>]", gettext_noop("Enable filtering of DNS queries with connection-track marks."), NULL },
   { LOPT_CMARK_ALST, ARG_DUP, "<connmark>[/<mask>][,<pattern>[/<pattern>...]]", gettext_noop("Set allowed DNS patterns for a connection-track mark."), NULL },
   { LOPT_SYNTH, ARG_DUP, "<domain>,<range>,[<prefix>]", gettext_noop("Specify a domain and address range for synthesised names"), NULL },
@@ -658,7 +661,7 @@ static char *canonicalise_opt(char *s)
     return 0;
 
   if (strlen(s) == 0)
-    return "";
+    return opt_string_alloc("");
 
   unhide_metas(s);
   if (!(ret = canonicalise(s, &nomem)) && nomem)
@@ -802,7 +805,7 @@ static void do_usage(void)
 	     
       if (usage[i].arg)
 	{
-	  strcpy(buff, usage[i].arg);
+	  safe_strncpy(buff, usage[i].arg, sizeof(buff));
 	  for (j = 0; tab[j].handle; j++)
 	    if (tab[j].handle == *(usage[i].arg))
 	      sprintf(buff, "%d", tab[j].val);
@@ -939,52 +942,124 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
   return NULL;
 }
 
-static int domain_rev4(char *domain, struct in_addr addr, int msize)
+static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int size)
 {
-  in_addr_t a = ntohl(addr.s_addr);
- 
-  *domain = 0;
+  int i, j;
+  char *string;
+  int msize;
+  u16 flags = 0;
+  char domain[29]; /* strlen("xxx.yyy.zzz.ttt.in-addr.arpa")+1 */
+  union mysockaddr serv_addr, source_addr;
+  char interface[IF_NAMESIZE+1];
+  int count = 1, rem, addrbytes, addrbits;
   
-  switch (msize)
+  if (!server)
+    flags = SERV_LITERAL_ADDRESS;
+  else if ((string = parse_server(server, &serv_addr, &source_addr, interface, &flags)))
+    return string;
+
+  if (from_file)
+    flags |= SERV_FROM_FILE;
+
+  rem = size & 0x7;
+  addrbytes = (32 - size) >> 3;
+  addrbits = (32 - size) & 7;
+  
+  if (size > 32 || size < 1)
+    return _("bad IPv4 prefix length");
+
+  /* Zero out last address bits according to CIDR mask */
+  ((u8 *)addr4)[3-addrbytes] &= ~((1 << addrbits)-1);
+  
+  size = size & ~0x7;
+  
+  if (rem != 0)
+    count = 1 << (8 - rem);
+  
+  for (i = 0; i < count; i++)
     {
-    case 32:
-      domain += sprintf(domain, "%u.", a & 0xff);
-      /* fall through */
-    case 24:
-      domain += sprintf(domain, "%d.", (a >> 8) & 0xff);
-      /* fall through */
-    case 16:
-      domain += sprintf(domain, "%d.", (a >> 16) & 0xff);
-      /* fall through */
-    case 8:
-      domain += sprintf(domain, "%d.", (a >> 24) & 0xff);
-      break;
-    default:
-      return 0;
+      *domain = 0;
+      string = domain;
+      msize = size/8;
+  
+      for (j = (rem == 0) ? msize-1 : msize; j >= 0; j--)
+	{ 
+	  int dig = ((unsigned char *)addr4)[j];
+      
+	  if (j == msize)
+	    dig += i;
+      
+	  string += sprintf(string, "%d.", dig);
+	}
+
+      sprintf(string, "in-addr.arpa");
+
+      if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
+	return  _("error");
     }
-  
-  domain += sprintf(domain, "in-addr.arpa");
-  
-  return 1;
+
+  return NULL;
 }
 
-static int domain_rev6(char *domain, struct in6_addr *addr, int msize)
+static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, int size)
 {
-  int i;
+  int i, j;
+  char *string;
+  int msize;
+  u16 flags = 0;
+  char domain[73]; /* strlen("32*<n.>ip6.arpa")+1 */
+  union mysockaddr serv_addr, source_addr;
+  char interface[IF_NAMESIZE+1];
+  int count = 1, rem, addrbytes, addrbits;
 
-  if (msize%4)
-    return 0;
+  if (!server)
+    flags = SERV_LITERAL_ADDRESS;
+  else if ((string = parse_server(server, &serv_addr, &source_addr, interface, &flags)))
+    return string;
+
+  if (from_file)
+    flags |= SERV_FROM_FILE;
   
-  *domain = 0;
+  rem = size & 0x3;
+  addrbytes = (128 - size) >> 3;
+  addrbits = (128 - size) & 7;
+  
+  if (size > 128 || size < 1)
+    return _("bad IPv6 prefix length");
+  
+  /* Zero out last address bits according to CIDR mask */
+  addr6->s6_addr[15-addrbytes] &= ~((1 << addrbits) - 1);
+  
+  size = size & ~0x3;
+  
+  if (rem != 0)
+    count = 1 << (4 - rem);
+      
+  for (i = 0; i < count; i++)
+    {
+      *domain = 0;
+      string = domain;
+      msize = size/4;
+  
+      for (j = (rem == 0) ? msize-1 : msize; j >= 0; j--)
+	{ 
+	  int dig = ((unsigned char *)addr6)[j>>1];
+	  
+	  dig = j & 1 ? dig & 15 : dig >> 4;
+	  
+	  if (j == msize)
+	    dig += i;
+	  
+	  string += sprintf(string, "%.1x.", dig);
+	}
+      
+      sprintf(string, "ip6.arpa");
 
-  for (i = msize-1; i >= 0; i -= 4)
-    { 
-      int dig = ((unsigned char *)addr)[i>>3];
-      domain += sprintf(domain, "%.1x.", (i>>2) & 1 ? dig & 15 : dig >> 4);
+      if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
+	return  _("error");
     }
-  domain += sprintf(domain, "ip6.arpa");
-  
-  return 1;
+
+  return NULL;
 }
 
 #ifdef HAVE_DHCP
@@ -1192,11 +1267,15 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	{
 	  new->u.vendor_class = (unsigned char *)opt_string_alloc(arg+7);
 	  new->flags |= DHOPT_VENDOR;
+	  if ((new->flags & DHOPT_ENCAPSULATE) || flags == DHOPT_MATCH)
+	    goto_err(_("inappropriate vendor:"));
 	}
       else if (strstr(arg, "encap:") == arg)
 	{
 	  new->u.encap = atoi(arg+6);
 	  new->flags |= DHOPT_ENCAPSULATE;
+	  if ((new->flags & DHOPT_VENDOR) || flags == DHOPT_MATCH)
+	    goto_err(_("inappropriate encap:"));
 	}
       else if (strstr(arg, "vi-encap:") == arg)
 	{
@@ -1829,6 +1908,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		new->next = li;
 		*up = new;
 	      }
+	    else
+	      free(path);
 
 	  }
 
@@ -1995,7 +2076,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	
 	if (!(name = canonicalise_opt(arg)) || 
 	    (comma && !(target = canonicalise_opt(comma))))
-	  ret_err(_("bad MX name"));
+	  {
+	    free(name);
+	    free(target);
+	    ret_err(_("bad MX name"));
+	  }
 	
 	new = opt_malloc(sizeof(struct mx_srv_record));
 	new->next = daemon->mxnames;
@@ -2231,7 +2316,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  arg = comma;
 	  comma = split(arg);
 	  daemon->hostmaster = opt_string_alloc(arg);
-	  for (cp = daemon->hostmaster; *cp; cp++)
+	  for (cp = daemon->hostmaster; cp && *cp; cp++)
 	    if (*cp == '@')
 	      *cp = '.';
 
@@ -2261,10 +2346,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	{
 	  char *d, *d_raw = arg;
 	  comma = split(arg);
-	  if (!(d = canonicalise_opt(arg)))
+	  if (!(d = canonicalise_opt(d_raw)))
 	    ret_err(gen_err);
 	  else
 	    {
+	      free(d); /* allocate this again below. */
 	      if (comma)
 		{
 		  struct cond_domain *new = opt_malloc(sizeof(struct cond_domain));
@@ -2272,6 +2358,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		  
 		  new->prefix = NULL;
 		  new->indexed = 0;
+		  new->prefixlen = 0;
 		  
 		  unhide_metas(comma);
 		  if ((netpart = split_chr(comma, '/')))
@@ -2283,7 +2370,12 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			ret_err_free(gen_err, new);
 		      else if (inet_pton(AF_INET, comma, &new->start))
 			{
-			  int mask = (1 << (32 - msize)) - 1;
+			  int mask;
+
+			  if (msize > 32)
+			     ret_err_free(_("bad prefix length"), new);
+			  
+			  mask = (1 << (32 - msize)) - 1;
 			  new->is6 = 0; 			  
 			  new->start.s_addr = ntohl(htonl(new->start.s_addr) & ~mask);
 			  new->end.s_addr = new->start.s_addr | htonl(mask);
@@ -2295,17 +2387,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 				      strlen(new->prefix) > MAXLABEL - INET_ADDRSTRLEN)
 				    ret_err_free(_("bad prefix"), new);
 				}
-			      else if (strcmp(arg, "local") != 0 ||
-				       (msize != 8 && msize != 16 && msize != 24))
+			      else if (strcmp(arg, "local") != 0)
 				ret_err_free(gen_err, new);
 			      else
 				{
-				  char domain[29]; /* strlen("xxx.yyy.zzz.ttt.in-addr.arpa")+1 */
 				  /* local=/xxx.yyy.zzz.in-addr.arpa/ */
-				  /* domain_rev4 can't fail here, msize checked above. */
-				  domain_rev4(domain, new->start, msize);
-				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, domain, NULL);
-				  
+				  domain_rev4(0, NULL, &new->start, msize);
+				 				  
 				  /* local=/<domain>/ */
 				  /* d_raw can't failed to canonicalise here, checked above. */
 				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, d_raw, NULL);
@@ -2314,21 +2402,25 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			}
 		      else if (inet_pton(AF_INET6, comma, &new->start6))
 			{
-			  u64 mask = (1LLU << (128 - msize)) - 1LLU;
-			  u64 addrpart = addr6part(&new->start6);
+			  u64 mask, addrpart = addr6part(&new->start6);
+
+			  if (msize > 128)
+			    ret_err_free(_("bad prefix length"), new);
+
+			  mask = (1LLU << (128 - msize)) - 1LLU;
+
 			  new->is6 = 1;
+			  new->prefixlen = msize;
 			  
 			  /* prefix==64 overflows the mask calculation above */
-			  if (msize == 64)
+			  if (msize <= 64)
 			    mask = (u64)-1LL;
 			  
 			  new->end6 = new->start6;
 			  setaddr6part(&new->start6, addrpart & ~mask);
 			  setaddr6part(&new->end6, addrpart | mask);
 			  
-			  if (msize < 64)
-			    ret_err_free(gen_err, new);
-			  else if (arg)
+			  if (arg)
 			    {
 			      if (option != 's')
 				{
@@ -2336,16 +2428,14 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 				      strlen(new->prefix) > MAXLABEL - INET6_ADDRSTRLEN)
 				    ret_err_free(_("bad prefix"), new);
 				}	
-			      else if (strcmp(arg, "local") != 0 || ((msize & 4) != 0))
+			      else if (strcmp(arg, "local") != 0)
 				ret_err_free(gen_err, new);
 			      else 
 				{
-				  char domain[73]; /* strlen("32*<n.>ip6.arpa")+1 */
 				  /* generate the equivalent of
 				     local=/xxx.yyy.zzz.ip6.arpa/ */
-				  domain_rev6(domain, &new->start6, msize);
-				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, domain, NULL);
-
+				  domain_rev6(0, NULL, &new->start6, msize);
+				  
 				  /* local=/<domain>/ */
 				  /* d_raw can't failed to canonicalise here, checked above. */
 				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, d_raw, NULL);
@@ -2388,7 +2478,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			}
 		    }
 
-		  new->domain = d;
+		  new->domain = canonicalise_opt(d_raw);
 		  if (option  == 's')
 		    {
 		      new->next = daemon->cond_domain;
@@ -2397,19 +2487,21 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		  else
 		    {
 		      char *star;
-		      new->next = daemon->synth_domains;
-		      daemon->synth_domains = new;
 		      if (new->prefix &&
 			  (star = strrchr(new->prefix, '*'))
 			  && *(star+1) == 0)
 			{
 			  *star = 0;
 			  new->indexed = 1;
+			  if (new->is6 && new->prefixlen < 64)
+			    ret_err_free(_("prefix length too small"), new);
 			}
+		      new->next = daemon->synth_domains;
+		      daemon->synth_domains = new;
 		    }
 		}
 	      else if (option == 's')
-		daemon->domain_suffix = d;
+		daemon->domain_suffix = canonicalise_opt(d_raw);
 	      else 
 		ret_err(gen_err);
 	    }
@@ -2622,7 +2714,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       
     case LOPT_NO_REBIND: /*  --rebind-domain-ok */
       {
-	struct server *new;
+	struct rebind_domain *new;
 
 	unhide_metas(arg);
 
@@ -2631,9 +2723,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	
 	do {
 	  comma = split_chr(arg, '/');
-	  new = opt_malloc(sizeof(struct serv_local));
-	  new->domain = opt_string_alloc(arg);
-	  new->domain_len = strlen(arg);
+	  new = opt_malloc(sizeof(struct  rebind_domain));
+	  new->domain = canonicalise_opt(arg);
 	  new->next = daemon->no_rebind;
 	  daemon->no_rebind = new;
 	  arg = comma;
@@ -2671,7 +2762,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	
 	if (!arg || !*arg)
 	  flags = SERV_LITERAL_ADDRESS;
-	else if (option == 'A')
+	else if (option != 'S')
 	  {
 	    /* # as literal address means return zero address for 4 and 6 */
 	    if (strcmp(arg, "#") == 0)
@@ -2687,11 +2778,6 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  {
 	    if ((err = parse_server(arg, &serv_addr, &source_addr, interface, &flags)))
 	      ret_err(err);
-
-	    /* server=//1.2.3.4 is special. */
-	    if (strlen(domain) == 0 && lastdomain)
-	      flags |= SERV_FOR_NODOTS;
-
 	  }
 
 	if (servers_only && option == 'S')
@@ -2699,6 +2785,19 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	
 	while (1)
 	  {
+	    /* server=//1.2.3.4 is special. */
+	    if (lastdomain)
+	      {
+		if (strlen(domain) == 0)
+		  flags |= SERV_FOR_NODOTS;
+		else
+		  flags &= ~SERV_FOR_NODOTS;
+
+		/* address=/#/ matches the same as without domain */
+		if (option != 'S' && domain[0] == '#' && domain[1] == 0)
+		  domain[0] = 0;
+	      }
+	    
 	    if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, &addr))
 	      ret_err(gen_err);
 	    
@@ -2715,57 +2814,62 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       {
 	char *string;
 	int size;
-	u16 flags = 0;
-	char domain[73]; /* strlen("32*<n.>ip6.arpa")+1 */
 	struct in_addr addr4;
 	struct in6_addr addr6;
- 	union mysockaddr serv_addr, source_addr;
-	char interface[IF_NAMESIZE+1];
-	
+ 	
 	unhide_metas(arg);
 	if (!arg)
 	  ret_err(gen_err);
 	
 	comma=split(arg);
-
-	if (!(string = split_chr(arg, '/')) || !atoi_check(string, &size))
-	  ret_err(gen_err);
 	
+	if (!(string = split_chr(arg, '/')) || !atoi_check(string, &size))
+	  size = -1;
+
 	if (inet_pton(AF_INET, arg, &addr4))
 	  {
-	    if (!domain_rev4(domain, addr4, size))
-	      ret_err(_("bad IPv4 prefix"));
+	   if (size == -1)
+	     size = 32;
+
+	   if ((string = domain_rev4(servers_only, comma, &addr4, size)))
+	      ret_err(string);
 	  }
 	else if (inet_pton(AF_INET6, arg, &addr6))
 	  {
-	    if (!domain_rev6(domain, &addr6, size))
-	      ret_err(_("bad IPv6 prefix"));
+	     if (size == -1)
+	       size = 128;
+
+	     if ((string = domain_rev6(servers_only, comma, &addr6, size)))
+	      ret_err(string);
 	  }
 	else
-	  ret_err(gen_err);
-	
-	if (!comma)
-	  flags |= SERV_LITERAL_ADDRESS;
-	else if ((string = parse_server(comma, &serv_addr, &source_addr, interface, &flags)))
-	  ret_err(string);
-	
-	if (servers_only)
-	  flags |= SERV_FROM_FILE;
-
-	if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
 	  ret_err(gen_err);
 	
 	break;
       }
 
     case LOPT_IPSET: /* --ipset */
+    case LOPT_NFTSET: /* --nftset */
 #ifndef HAVE_IPSET
-      ret_err(_("recompile with HAVE_IPSET defined to enable ipset directives"));
-      break;
-#else
+      if (option == LOPT_IPSET)
+        {
+          ret_err(_("recompile with HAVE_IPSET defined to enable ipset directives"));
+          break;
+        }
+#endif
+#ifndef HAVE_NFTSET
+      if (option == LOPT_NFTSET)
+        {
+          ret_err(_("recompile with HAVE_NFTSET defined to enable nftset directives"));
+          break;
+        }
+#endif
+
       {
 	 struct ipsets ipsets_head;
 	 struct ipsets *ipsets = &ipsets_head;
+         struct ipsets **daemon_sets =
+           (option == LOPT_IPSET) ? &daemon->ipsets : &daemon->nftsets;
 	 int size;
 	 char *end;
 	 char **sets, **sets_pos;
@@ -2810,19 +2914,24 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	 sets = sets_pos = opt_malloc(sizeof(char *) * size);
 	 
 	 do {
+	   char *p;
 	   end = split(arg);
-	   *sets_pos++ = opt_string_alloc(arg);
+	   *sets_pos = opt_string_alloc(arg);
+	   /* Use '#' to delimit table and set */
+	   if (option == LOPT_NFTSET)
+	     while ((p = strchr(*sets_pos, '#')))
+	       *p = ' ';
+	   sets_pos++;
 	   arg = end;
 	 } while (end);
 	 *sets_pos = 0;
 	 for (ipsets = &ipsets_head; ipsets->next; ipsets = ipsets->next)
 	   ipsets->next->sets = sets;
-	 ipsets->next = daemon->ipsets;
-	 daemon->ipsets = ipsets_head.next;
+	 ipsets->next = *daemon_sets;
+	 *daemon_sets = ipsets_head.next;
 	 
 	 break;
       }
-#endif
       
     case LOPT_CMARK_ALST_EN: /* --connmark-allowlist-enable */
 #ifndef HAVE_CONNTRACK
@@ -3599,7 +3708,10 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		for (configs = daemon->dhcp_conf; configs; configs = configs->next) 
 		  if ((configs->flags & CONFIG_ADDR) && configs->addr.s_addr == in.s_addr)
 		    {
-		      sprintf(errstr, _("duplicate dhcp-host IP address %s"),  inet_ntoa(in));
+		      inet_ntop(AF_INET, &in, daemon->addrbuff, ADDRSTRLEN);
+		      sprintf(errstr, _("duplicate dhcp-host IP address %s"),
+			      daemon->addrbuff);
+		      dhcp_config_free(new);
 		      return 0;
 		    }	      
 	      }
@@ -3763,16 +3875,16 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
     case LOPT_NAME_MATCH: /* --dhcp-name-match */
       {
-	struct dhcp_match_name *new = opt_malloc(sizeof(struct dhcp_match_name));
-	struct dhcp_netid *id = opt_malloc(sizeof(struct dhcp_netid));
+	struct dhcp_match_name *new;
 	ssize_t len;
 	
 	if (!(comma = split(arg)) || (len = strlen(comma)) == 0)
 	  ret_err(gen_err);
 
+	new = opt_malloc(sizeof(struct dhcp_match_name));
 	new->wildcard = 0;
-	new->netid = id;
-	id->net = opt_string_alloc(set_prefix(arg));
+	new->netid = opt_malloc(sizeof(struct dhcp_netid));
+	new->netid->net = opt_string_alloc(set_prefix(arg));
 
 	if (comma[len-1] == '*')
 	  {
@@ -3976,6 +4088,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	       }
 	   }
 	 
+	 dhcp_netid_free(new->netid);
+	 free(new);
 	 ret_err(gen_err);
        }
 	 
@@ -4170,13 +4284,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	comma = split(arg);
 	new->interface = opt_string_alloc(split(comma));
 	new->iface_index = 0;
-	if (inet_pton(AF_INET, arg, &new->local) && inet_pton(AF_INET, comma, &new->server))
+	if (comma && inet_pton(AF_INET, arg, &new->local) && inet_pton(AF_INET, comma, &new->server))
 	  {
 	    new->next = daemon->relay4;
 	    daemon->relay4 = new;
 	  }
 #ifdef HAVE_DHCP6
-	else if (inet_pton(AF_INET6, arg, &new->local) && inet_pton(AF_INET6, comma, &new->server))
+	else if (comma && inet_pton(AF_INET6, arg, &new->local) && inet_pton(AF_INET6, comma, &new->server))
 	  {
 	    new->next = daemon->relay6;
 	    daemon->relay6 = new;
@@ -4351,7 +4465,7 @@ err:
     case LOPT_CNAME: /* --cname */
       {
 	struct cname *new;
-	char *alias, *target, *last, *pen;
+	char *alias, *target=NULL, *last, *pen;
 	int ttl = -1;
 
 	for (last = pen = NULL, comma = arg; comma; comma = split(comma))
@@ -4366,13 +4480,13 @@ err:
 	if (pen != arg && atoi_check(last, &ttl))
 	  last = pen;
 	  	
-    	target = canonicalise_opt(last);
-
 	while (arg != last)
 	  {
 	    int arglen = strlen(arg);
 	    alias = canonicalise_opt(arg);
 
+	    if (!target)
+	      target = canonicalise_opt(last);
 	    if (!alias || !target)
 	      {
 		free(target);
@@ -4675,7 +4789,7 @@ err:
 		struct name_list *nl;
 		if (!canon)
                   {
-		    struct name_list *tmp = new->names, *next;
+		    struct name_list *tmp, *next;
 		    for (tmp = new->names; tmp; tmp = next)
 		      {
 			next = tmp->next;
@@ -5012,15 +5126,33 @@ static int one_file(char *file, int hard_opt)
   return 1;
 }
 
+static int file_filter(const struct dirent *ent)
+{
+  size_t lenfile = strlen(ent->d_name);
+
+  /* ignore emacs backups and dotfiles */
+
+  if (lenfile == 0 || 
+      ent->d_name[lenfile - 1] == '~' ||
+      (ent->d_name[0] == '#' && ent->d_name[lenfile - 1] == '#') ||
+      ent->d_name[0] == '.')
+    return 0;
+
+  return 1;
+}
 /* expand any name which is a directory */
 struct hostsfile *expand_filelist(struct hostsfile *list)
 {
   unsigned int i;
-  struct hostsfile *ah;
+  int entcnt, n;
+  struct hostsfile *ah, *last, *next, **up;
+  struct dirent **namelist;
 
   /* find largest used index */
   for (i = SRC_AH, ah = list; ah; ah = ah->next)
     {
+      last = ah;
+      
       if (i <= ah->index)
 	i = ah->index + 1;
 
@@ -5036,46 +5168,48 @@ struct hostsfile *expand_filelist(struct hostsfile *list)
 	struct stat buf;
 	if (stat(ah->fname, &buf) != -1 && S_ISDIR(buf.st_mode))
 	  {
-	    DIR *dir_stream;
 	    struct dirent *ent;
 	    
 	    /* don't read this as a file */
 	    ah->flags |= AH_INACTIVE;
 	    
-	    if (!(dir_stream = opendir(ah->fname)))
+	    entcnt = scandir(ah->fname, &namelist, file_filter, alphasort);
+	    if (entcnt < 0)
 	      my_syslog(LOG_ERR, _("cannot access directory %s: %s"), 
 			ah->fname, strerror(errno));
 	    else
 	      {
-		while ((ent = readdir(dir_stream)))
+		for (n = 0; n < entcnt; n++)
 		  {
+		    ent = namelist[n];
 		    size_t lendir = strlen(ah->fname);
 		    size_t lenfile = strlen(ent->d_name);
 		    struct hostsfile *ah1;
 		    char *path;
-		    
-		    /* ignore emacs backups and dotfiles */
-		    if (lenfile == 0 || 
-			ent->d_name[lenfile - 1] == '~' ||
-			(ent->d_name[0] == '#' && ent->d_name[lenfile - 1] == '#') ||
-			ent->d_name[0] == '.')
-		      continue;
 		    
 		    /* see if we have an existing record.
 		       dir is ah->fname 
 		       file is ent->d_name
 		       path to match is ah1->fname */
 		    
-		    for (ah1 = list; ah1; ah1 = ah1->next)
+		    for (up = &list, ah1 = list; ah1; ah1 = next)
 		      {
+			next = ah1->next;
+
 			if (lendir < strlen(ah1->fname) &&
 			    strstr(ah1->fname, ah->fname) == ah1->fname &&
 			    ah1->fname[lendir] == '/' &&
 			    strcmp(ah1->fname + lendir + 1, ent->d_name) == 0)
 			  {
 			    ah1->flags &= ~AH_INACTIVE;
+			    /* If found, remove from list to re-insert at the end.
+			       Unless it's already at the end. */
+			    if (last != ah1)
+			      *up = next;
 			    break;
 			  }
+
+			up = &ah1->next;
 		      }
 		    
 		    /* make new record */
@@ -5096,17 +5230,21 @@ struct hostsfile *expand_filelist(struct hostsfile *list)
 			ah1->fname = path;
 			ah1->index = i++;
 			ah1->flags = AH_DIR;
-			ah1->next = list;
-			list = ah1;
 		      }
+
+		    /* Edge case, may be the last in the list anyway */
+		    if (last != ah1)
+		      last->next = ah1;
+		    ah1->next = NULL;
+		    last = ah1;
 		    
 		    /* inactivate record if not regular file */
 		    if ((ah1->flags & AH_DIR) && stat(ah1->fname, &buf) != -1 && !S_ISREG(buf.st_mode))
 		      ah1->flags |= AH_INACTIVE; 
 		    
 		  }
-		closedir(dir_stream);
 	      }
+	    free(namelist);
 	  }
       }
   
@@ -5221,7 +5359,8 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon = opt_malloc(sizeof(struct daemon));
   memset(daemon, 0, sizeof(struct daemon));
   daemon->namebuff = buff;
-
+  daemon->addrbuff = safe_malloc(ADDRSTRLEN);
+  
   /* Set defaults - everything else is zero or NULL */
   daemon->cachesize = CACHESIZ;
   daemon->ftabsize = FTABSIZ;

@@ -546,9 +546,9 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
       iface->done = iface->multicast_done = iface->warned = 0;
       iface->index = if_index;
       iface->label = is_label;
-      if ((iface->name = whine_malloc(strlen(ifr.ifr_name)+1)))
+      if ((iface->name = whine_malloc(strlen(label)+1)))
 	{
-	  strcpy(iface->name, ifr.ifr_name);
+	  strcpy(iface->name, label);
 	  iface->next = daemon->interfaces;
 	  daemon->interfaces = iface;
 	  return 1;
@@ -1602,6 +1602,9 @@ void check_servers(int no_loop_check)
       if (serv->sfd)
 	serv->sfd->used = 1;
       
+      if (count == SERVERS_LOGGED)
+	my_syslog(LOG_INFO, _("more servers are defined but not logged"));
+      
       if (++count > SERVERS_LOGGED)
 	continue;
       
@@ -1639,7 +1642,8 @@ void check_servers(int no_loop_check)
 	 continue;
        
        if ((serv->flags & SERV_LITERAL_ADDRESS) &&
-	   !(serv->flags & (SERV_6ADDR | SERV_4ADDR | SERV_ALL_ZEROS)))
+	   !(serv->flags & (SERV_6ADDR | SERV_4ADDR | SERV_ALL_ZEROS)) &&
+	   strlen(serv->domain))
 	 {
 	   count--;
 	   if (++locals <= LOCALS_LOGGED)
@@ -1704,7 +1708,7 @@ int reload_servers(char *fname)
       memset(&addr, 0, sizeof(addr));
       memset(&source_addr, 0, sizeof(source_addr));
       
-      if ((addr.in.sin_addr.s_addr = inet_addr(token)) != (in_addr_t) -1)
+      if (inet_pton(AF_INET, token, &addr.in.sin_addr) > 0)
 	{
 #ifdef HAVE_SOCKADDR_SA_LEN
 	  source_addr.in.sin_len = addr.in.sin_len = sizeof(source_addr.in);

@@ -746,6 +746,8 @@ static int add_lla(int index, unsigned int type, char *mac, size_t maclen, void 
 	 add 7 to round up */
       int len = (maclen + 9) >> 3;
       unsigned char *p = expand(len << 3);
+      if (!p)
+	return 1;
       memset(p, 0, len << 3);
       *p++ = ICMP6_OPT_SOURCE_MAC;
       *p++ = len;

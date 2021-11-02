@@ -97,8 +97,6 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 
 	// Set magic byte
 	upstream->magic = MAGICBYTE;
-	// Initialize its counter
-	upstream->count = 0;
 	// Save upstream destination IP address
 	upstream->ippos = addstr(upstreamString);
 	upstream->failed = 0;
@@ -365,13 +363,17 @@ bool isValidIPv6(const char *addr)
 const char *getDomainString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->domainID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->domainID, true);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(domain == NULL)
+			return "";
 
 		// Return string
 		return getstr(domain->domainpos);
@@ -385,13 +387,17 @@ const char *getDomainString(const queriesData* query)
 const char *getCNAMEDomainString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->CNAME_domainID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->CNAME_domainID, true);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(domain == NULL)
+			return "";
 
 		// Return string
 		return getstr(domain->domainpos);
@@ -405,13 +411,17 @@ const char *getCNAMEDomainString(const queriesData* query)
 const char *getClientIPString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->clientID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(query->clientID, false);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(client == NULL)
+			return "";
 
 		// Return string
 		return getstr(client->ippos);
@@ -425,13 +435,17 @@ const char *getClientIPString(const queriesData* query)
 const char *getClientNameString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->clientID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(query->clientID, true);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(client == NULL)
+			return "";
 
 		// Return string
 		return getstr(client->namepos);
@@ -573,6 +587,8 @@ const char * __attribute__ ((const)) get_query_status_str(const enum query_statu
 			return "RETRIED_DNSSEC";
 		case QUERY_IN_PROGRESS:
 			return "IN_PROGRESS";
+		case QUERY_DBBUSY:
+			return "DBBUSY";
 		case QUERY_STATUS_MAX:
 		default:
 			return "INVALID";
@@ -607,6 +623,10 @@ const char * __attribute__ ((const)) get_query_reply_str(const enum reply_type r
 			return "OTHER";
 		case REPLY_DNSSEC:
 			return "DNSSEC";
+		case REPLY_NONE:
+			return "NONE";
+		case REPLY_BLOB:
+			return "BLOB";
 		case QUERY_REPLY_MAX:
 		default:
 			return "N/A";
@@ -693,6 +713,7 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 		case QUERY_GRAVITY_CNAME:
 		case QUERY_REGEX_CNAME:
 		case QUERY_DENYLIST_CNAME:
+		case QUERY_DBBUSY:
 			return true;
 	}
 }
@@ -737,6 +758,10 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 			          query->id, oldstr, query->status, newstr, new_status, short_path(file), line);
 		}
 	}
+
+	// Sanity check
+	if(new_status >= QUERY_STATUS_MAX)
+		return;
 
 	// Update counters
 	if(query->status != new_status)

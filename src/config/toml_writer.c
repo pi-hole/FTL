@@ -51,11 +51,57 @@ bool writeFTLtoml(void)
 	catTOMLbool(fp, 1, "blockESNI", "Should _esni. subdomains be blocked by default?", config.blockESNI, defaults.blockESNI);
 	catTOMLbool(fp, 1, "EDNS0ECS", "Should FTL analyze possible ECS information to obtain client IPs hidden behind NATs?", config.edns0_ecs, defaults.edns0_ecs);
 	catTOMLbool(fp, 1, "ignoreLocalhost", "Should FTL hide queries made by localhost?", config.ignore_localhost, defaults.ignore_localhost);
+	catTOMLbool(fp, 1, "showDNSSEC", "Should FTL should internally generated DNSSEC queries?", config.show_dnssec, defaults.show_dnssec);
+
+	const char *ptrStr = "";
+	switch(config.pihole_ptr)
+	{
+		case PTR_PIHOLE:
+			ptrStr = "PI.HOLE";
+			break;
+		case PTR_HOSTNAME:
+			ptrStr = "HOSTNAME";
+			break;
+		case PTR_HOSTNAMEFQDN:
+			ptrStr = "HOSTNAMEFQDN";
+			break;
+		case PTR_NONE:
+			ptrStr = "NONE";
+			break;
+	}
+	catTOMLstring(fp, 1, "piholePTR", "Should FTL return \"pi.hole\" as name for PTR requests to local IP addresses?", "[ \"NONE\", \"HOSTNAME\", \"HOSTNAMEFQDN\", \"PI.HOLE\" ]", ptrStr, "PI.HOLE");
+
+	const char *replyStr = "";
+	switch(config.pihole_ptr)
+	{
+		case BUSY_BLOCK:
+			replyStr = "BLOCK";
+			break;
+		case BUSY_ALLOW:
+			replyStr = "ALLOW";
+			break;
+		case BUSY_REFUSE:
+			replyStr = "REFUSE";
+			break;
+		case BUSY_DROP:
+			replyStr = "DROP";
+			break;
+	}
+	catTOMLstring(fp, 1, "replyWhenBusy", "How should FTL handle queries when the gravity database is not available?", "[ \"BLOCK\", \"ALLOW\", \"REFUSE\", \"DROP\" ]", replyStr, "ALLOW");
+
+	catTOMLuint(fp, 1, "blockTTL", "TTL for blocked queries [seconds]", config.block_ttl, defaults.block_ttl);
 
 
 
-	// [dns.ipBlocking] subsection
-	catTOMLsection(fp, 1, "dns.ipBlocking");
+	// [dns.specialDomains] subsection
+	catTOMLsection(fp, 1, "dns.specialDomains");
+	catTOMLbool(fp, 2, "mozillaCanary", "Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?", config.special_domains.mozilla_canary, defaults.special_domains.mozilla_canary);
+	catTOMLbool(fp, 2, "blockICloudPR", "Should FTL handle the iCloud privacy relay domains specifically and always return NXDOMAIN?", config.special_domains.icloud_private_relay, defaults.special_domains.icloud_private_relay);
+
+
+
+	// [dns.reply] subsection
+	catTOMLsection(fp, 1, "dns.reply");
 	char addr4[INET_ADDRSTRLEN] = "";
 	if(config.reply_addr.overwrite_v4)
 		inet_ntop(AF_INET, &config.reply_addr.v4, addr4, INET_ADDRSTRLEN);
@@ -146,6 +192,7 @@ bool writeFTLtoml(void)
 	catTOMLuint(fp, 1, "privacyLevel", "Privacy level", config.privacylevel, defaults.privacylevel);
 	catTOMLint(fp, 1, "nice", "Set niceness of pihole-FTL (can be disabled by setting to -999)", config.nice, defaults.nice);
 	catTOMLuint(fp, 1, "delayStartup", "Artificially delay FTL's startup (0 to 300 seconds)", config.delay_startup, defaults.delay_startup);
+	catTOMLbool(fp, 1, "addr2line", "Should FTL try to call addr2line when generating backtraces?", config.addr2line, defaults.addr2line);
 
 
 

@@ -144,7 +144,6 @@ bool __attribute__((pure)) resolve_this_name(const char *ipaddr)
 char *resolveHostname(const char *addr)
 {
 	// Get host name
-	struct hostent *he = NULL;
 	char *hostname = NULL;
 
 	// Check if we want to resolve host names
@@ -190,6 +189,29 @@ char *resolveHostname(const char *addr)
 	if(strstr(addr,":") != NULL)
 		IPv6 = true;
 
+	// Convert address into binary form
+	struct sockaddr_storage ss = { 0 };
+	if(IPv6)
+	{
+		// Get binary form of IPv6 address
+		ss.ss_family = AF_INET6;
+		if(!inet_pton(ss.ss_family, addr, &(((struct sockaddr_in6 *)&ss)->sin6_addr)))
+		{
+			log_warn("Invalid IPv6 address when trying to resolve hostname: %s", addr);
+			return strdup("");
+		}
+	}
+	else
+	{
+		// Get binary form of IPv4 address
+		ss.ss_family = AF_INET;
+		if(!inet_pton(ss.ss_family, addr, &(((struct sockaddr_in *)&ss)->sin_addr)))
+		{
+			log_warn("Invalid IPv4 address when trying to resolve hostname: %s", addr);
+			return strdup("");
+		}
+	}
+
 	// Initialize resolver subroutines if trying to resolve for the first time
 	// res_init() reads resolv.conf to get the default domain name and name server
 	// address(es). If no server is given, the local host is tried. If no domain
@@ -200,92 +222,82 @@ char *resolveHostname(const char *addr)
 		res_initialized = true;
 	}
 
-	// Step 1: Backup configured name servers and invalidate them
-	struct in_addr ns_addr_bck[MAXNS];
-	in_port_t ns_port_bck[MAXNS];
-	for(unsigned int i = 0u; i < MAXNS; i++)
-	{
-		ns_addr_bck[i] = _res.nsaddr_list[i].sin_addr;
-		ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
-		_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
-	}
-	// Step 2: Set 127.0.0.1 (FTL) as the only resolver
-	const char *FTLip = "127.0.0.1";
-	// Set resolver address
-	inet_pton(AF_INET, FTLip, &_res.nsaddr_list[0].sin_addr);
-	// Set resolver port (have to convert from host to network byte order)
-	_res.nsaddr_list[0].sin_port = htons(config.dns_port);
+	// INADDR_LOOPBACK is in host byte order, however, in_addr has to be in
+	// network byte order, convert it here if necessary
+	struct in_addr FTLaddr = { htonl(INADDR_LOOPBACK) };
+	in_port_t FTLport = htons(config.dns_port);
 
-	print_used_resolvers("Setting nameservers to:");
-
-	// Step 3: Try to resolve addresses
-	if(IPv6) // Resolve IPv6 address
+	// Set FTL as system resolver only if not already the primary resolver
+	if(_res.nsaddr_list[0].sin_addr.s_addr != FTLaddr.s_addr || _res.nsaddr_list[0].sin_port != FTLport)
 	{
-		struct in6_addr ipaddr;
-		inet_pton(AF_INET6, addr, &ipaddr);
-		// Known to leak some tiny amounts of memory under certain conditions
-		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
-	}
-	else // Resolve IPv4 address
-	{
-		struct in_addr ipaddr;
-		inet_pton(AF_INET, addr, &ipaddr);
-		// Known to leak some tiny amounts of memory under certain conditions
-		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
-	}
-
-	// Step 4: Check if gethostbyaddr() returned a host name
-	// First check for he not being NULL before trying to dereference it
-	if(he != NULL)
-	{
-		if(valid_hostname(he->h_name, addr))
+		// Backup configured name servers and invalidate them
+		struct in_addr ns_addr_bck[MAXNS];
+		in_port_t ns_port_bck[MAXNS];
+		for(unsigned int i = 0u; i < MAXNS; i++)
 		{
-			// Return hostname copied to new memory location
-			hostname = strdup(he->h_name);
+			ns_addr_bck[i] = _res.nsaddr_list[i].sin_addr;
+			ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
+			_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
+		}
+
+		// Set FTL at 127.0.0.1 as the only resolver
+		_res.nsaddr_list[0].sin_addr.s_addr = FTLaddr.s_addr;
+		// Set resolver port
+		_res.nsaddr_list[0].sin_port = FTLport;
+
+		if(config.debug & DEBUG_RESOLVER)
+			print_used_resolvers("Setting nameservers to:");
+
+		// Try to resolve address
+		char host[NI_MAXHOST] = { 0 };
+		int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
+
+		// Check if getnameinfo() returned a host name
+		if(ret == 0)
+		{
+			if(valid_hostname(host, addr))
+			{
+				// Return hostname copied to new memory location
+				hostname = strdup(host);
+			}
+			else
+			{
+				hostname = strdup("[invalid host name]");
+			}
+
+			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found internally)", hostname);
 		}
 		else
-		{
-			hostname = strdup("[invalid host name]");
-		}
+			log_debug(DEBUG_RESOLVER, " ---> \"\" (not found internally: %s", gai_strerror(ret));
 
 		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found internally)", hostname);
-	}
 
-	// Step 5: Restore resolvers (without forced FTL)
-	for(unsigned int i = 0u; i < MAXNS; i++)
-	{
-		_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
-		_res.nsaddr_list[i].sin_port = ns_port_bck[i];
+		// Restore resolvers (without forced FTL)
+		for(unsigned int i = 0u; i < MAXNS; i++)
+		{
+			_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
+			_res.nsaddr_list[i].sin_port = ns_port_bck[i];
+		}
 	}
-	print_used_resolvers("Setting nameservers back to default:");
+	else if(config.debug & DEBUG_RESOLVER)
+		print_used_resolvers("FTL already primary nameserver:");
 
-	// Step 6: If no host name was found before, try again with system-configured
+	// If no host name was found before, try again with system-configured
 	// resolvers (necessary for docker and friends)
 	if(hostname == NULL)
 	{
-		if(IPv6) // Resolve IPv6 address
-		{
-			struct in6_addr ipaddr;
-			inet_pton(AF_INET6, addr, &ipaddr);
-			// Known to leak some tiny amounts of memory under certain conditions
-			he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
-		}
-		else // Resolve IPv4 address
-		{
-			struct in_addr ipaddr;
-			inet_pton(AF_INET, addr, &ipaddr);
-			// Known to leak some tiny amounts of memory under certain conditions
-			he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
-		}
+		// Try to resolve address
+		char host[NI_MAXHOST] = { 0 };
+		int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
 
-		// Step 6.1: Check if gethostbyaddr() returned a host name this time
+		// Check if getnameinfo() returned a host name this time
 		// First check for he not being NULL before trying to dereference it
-		if(he != NULL)
+		if(ret == 0)
 		{
-			if(valid_hostname(he->h_name, addr))
+			if(valid_hostname(host, addr))
 			{
 				// Return hostname copied to new memory location
-				hostname = strdup(he->h_name);
+				hostname = strdup(host);
 			}
 			else
 			{
@@ -299,7 +311,8 @@ char *resolveHostname(const char *addr)
 			// No hostname found (empty PTR)
 			hostname = strdup("");
 
-			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (%s)", hostname, he != NULL ? he->h_name : "N/A");
+			if(config.debug & DEBUG_RESOLVER)
+			log_debug(DEBUG_RESOLVER, " ---> \"\" (not found externally: %s)", gai_strerror(ret));
 		}
 	}
 
@@ -313,8 +326,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	// Get IP and host name strings. They are cloned in case shared memory is
 	// resized before the next lock
 	lock_shm();
-	char* ipaddr = strdup(getstr(ippos));
-	char* oldname = strdup(getstr(oldnamepos));
+	char *ipaddr = strdup(getstr(ippos));
+	char *oldname = strdup(getstr(oldnamepos));
 	unlock_shm();
 
 	// Test if we want to resolve host names, otherwise all calls to resolveHostname()
@@ -323,13 +336,17 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	{
 		log_debug(DEBUG_RESOLVER, " ---> \"\" (configured to not resolve host name)");
 
+		// Free allocated memory
+		free(ipaddr);
+		free(oldname);
+
 		// Return fixed position of empty string
 		return 0;
 	}
 
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
-	char* newname = resolveHostname(ipaddr);
+	char *newname = resolveHostname(ipaddr);
 
 	// If no hostname was found, try to obtain hostname from the network table
 	// This may be disabled due to a user setting
@@ -337,6 +354,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	{
 		free(newname);
 		newname = getNameFromIP(NULL, ipaddr);
+		if(newname != NULL)
+			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (provided by database)", newname);
 	}
 
 	// Only store new newname if it is valid and differs from oldname
@@ -415,8 +434,6 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			continue;
 		}
 
-		unlock_shm();
-
 		// If onlynew flag is set, we will only resolve new clients
 		// If not, we will try to re-resolve all known clients
 		if(!force_refreshing && onlynew && !newflag)
@@ -424,9 +441,12 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			log_debug(DEBUG_RESOLVER, "Skipping client %s (%s) because it is not new",
 			          getstr(ippos), getstr(oldnamepos));
 
+			unlock_shm();
 			skipped++;
 			continue;
 		}
+
+		unlock_shm();
 
 		// Check if we want to resolve an IPv6 address
 		bool IPv6 = false;
@@ -456,7 +476,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 
 				lock_shm();
 				log_debug(DEBUG_RESOLVER, "Skipping client %s (%s) because it should not be refreshed: %s",
-				     getstr(ippos), getstr(oldnamepos), reason);
+				          getstr(ippos), getstr(oldnamepos), reason);
 				unlock_shm();
 			}
 			skipped++;

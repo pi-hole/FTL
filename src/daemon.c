@@ -124,7 +124,7 @@ static void removepid(void)
 
 char *getUserName(void)
 {
-	char * name;
+	char *name;
 	// the getpwuid() function shall search the user database for an entry with a matching uid
 	// the geteuid() function shall return the effective user ID of the calling process - this is used as the search criteria for the getpwuid() function
 	const uid_t euid = geteuid();
@@ -197,7 +197,6 @@ pid_t FTL_gettid(void)
 
 static void terminate_threads(void)
 {
-	int s;
 	struct timespec ts;
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
@@ -223,7 +222,8 @@ static void terminate_threads(void)
 		// Timeout for joining is 2 seconds for each thread
 		ts.tv_sec += 2;
 
-		if((s = pthread_timedjoin_np(threads[i], NULL, &ts)) != 0)
+		const int s = pthread_timedjoin_np(threads[i], NULL, &ts);
+		if(s != 0)
 		{
 			log_info("Thread %s (%d) is still busy, cancelling it.",
 			     thread_names[i], i);

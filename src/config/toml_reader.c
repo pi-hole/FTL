@@ -74,11 +74,69 @@ bool readFTLtoml(void)
 		else
 			log_debug(DEBUG_CONFIG, "dns.ignoreLocalhost DOES NOT EXIST");
 
-		// Read [dns.ipBlocking] section
-		toml_table_t *ip_blocking = toml_table_in(dns, "ipBlocking");
-		if(ip_blocking)
+		toml_datum_t showDNSSEC = toml_bool_in(dns, "showDNSSEC");
+		if(showDNSSEC.ok)
+			config.show_dnssec = showDNSSEC.u.b;
+		else
+			log_debug(DEBUG_CONFIG, "dns.showDNSSEC DOES NOT EXIST");
+
+		toml_datum_t piholePTR = toml_string_in(dns, "piholePTR");
+		if(piholePTR.ok)
 		{
-			toml_datum_t ipv4 = toml_string_in(ip_blocking, "IPv4");
+			if(strcasecmp(piholePTR.u.s, "none") == 0 ||
+			   strcasecmp(piholePTR.u.s, "false") == 0)
+				config.pihole_ptr = PTR_NONE;
+			else if(strcasecmp(piholePTR.u.s, "hostname") == 0)
+				config.pihole_ptr = PTR_HOSTNAME;
+			else if(strcasecmp(piholePTR.u.s, "hostnamefqdn") == 0)
+				config.pihole_ptr = PTR_HOSTNAMEFQDN;
+		}
+		else
+			log_debug(DEBUG_CONFIG, "dns.piholePTR DOES NOT EXIST");
+
+		toml_datum_t replyWhenBusy = toml_string_in(dns, "replyWhenBusy");
+		if(replyWhenBusy.ok)
+		{
+			if(strcasecmp(replyWhenBusy.u.s, "DROP") == 0)
+				config.reply_when_busy = BUSY_DROP;
+			else if(strcasecmp(replyWhenBusy.u.s, "REFUSE") == 0)
+				config.reply_when_busy = BUSY_REFUSE;
+			else if(strcasecmp(replyWhenBusy.u.s, "BLOCK") == 0)
+				config.reply_when_busy = BUSY_BLOCK;
+		}
+		else
+			log_debug(DEBUG_CONFIG, "dns.replyWhenBusy DOES NOT EXIST");
+
+		toml_datum_t blockTTL = toml_int_in(dns, "blockTTL");
+		if(blockTTL.ok)
+			config.block_ttl = blockTTL.u.i;
+		else
+			log_debug(DEBUG_CONFIG, "dns.blockTTL DOES NOT EXIST");
+
+		// Read [dns.specialDomains] section
+		toml_table_t *specialDomains = toml_table_in(dns, "specialDomains");
+		if(specialDomains)
+		{
+			toml_datum_t mozillaCanary = toml_bool_in(dns, "mozillaCanary");
+			if(mozillaCanary.ok)
+				config.special_domains.mozilla_canary = mozillaCanary.u.b;
+			else
+				log_debug(DEBUG_CONFIG, "dns.specialDomains.mozillaCanary DOES NOT EXIST");
+
+			toml_datum_t blockICloudPR = toml_bool_in(dns, "blockICloudPR");
+			if(blockICloudPR.ok)
+				config.special_domains.mozilla_canary = blockICloudPR.u.b;
+			else
+				log_debug(DEBUG_CONFIG, "dns.specialDomains.blockICloudPR DOES NOT EXIST");
+		}
+		else
+			log_debug(DEBUG_CONFIG, "dns.specialDomains DOES NOT EXIST");
+
+		// Read [dns.reply] section
+		toml_table_t *reply = toml_table_in(dns, "reply");
+		if(reply)
+		{
+			toml_datum_t ipv4 = toml_string_in(reply, "IPv4");
 			if(ipv4.ok)
 			{
 				if(inet_pton(AF_INET, ipv4.u.s, &config.reply_addr.v4))
@@ -86,9 +144,9 @@ bool readFTLtoml(void)
 				free(ipv4.u.s);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "dns.ipBlocking.IPv4 DOES NOT EXIST");
+				log_debug(DEBUG_CONFIG, "dns.reply.IPv4 DOES NOT EXIST");
 
-			toml_datum_t ipv6 = toml_string_in(ip_blocking, "IPv6");
+			toml_datum_t ipv6 = toml_string_in(reply, "IPv6");
 			if(ipv6.ok)
 			{
 				if(inet_pton(AF_INET, ipv6.u.s, &config.reply_addr.v6))
@@ -96,8 +154,10 @@ bool readFTLtoml(void)
 				free(ipv6.u.s);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "dns.ipBlocking.IPv6 DOES NOT EXIST");
+				log_debug(DEBUG_CONFIG, "dns.reply.IPv6 DOES NOT EXIST");
 		}
+		else
+			log_debug(DEBUG_CONFIG, "dns.reply DOES NOT EXIST");
 
 		// Read [dns.rate_limit] section
 		toml_table_t *rate_limit = toml_table_in(dns, "rateLimit");
@@ -115,7 +175,11 @@ bool readFTLtoml(void)
 			else
 				log_debug(DEBUG_CONFIG, "dns.rateLimit.interval DOES NOT EXIST");
 		}
+		else
+			log_debug(DEBUG_CONFIG, "dns.rateLimit DOES NOT EXIST");
 	}
+	else
+		log_debug(DEBUG_CONFIG, "dns DOES NOT EXIST");
 
 	// Read [resolver] section
 	toml_table_t *resolver = toml_table_in(conf, "resolver");
@@ -161,6 +225,8 @@ bool readFTLtoml(void)
 		else
 			log_debug(DEBUG_CONFIG, "resolver.refresh DOES NOT EXIST");
 	}
+	else
+		log_debug(DEBUG_CONFIG, "resolver DOES NOT EXIST");
 
 	// Read [database] section
 	toml_table_t *database = toml_table_in(conf, "database");
@@ -418,6 +484,12 @@ bool readFTLtoml(void)
 		}
 		else
 			log_debug(DEBUG_CONFIG, "misc.delayStartup DOES NOT EXIST");
+
+		toml_datum_t addr2line = toml_bool_in(misc, "addr2line");
+		if(addr2line.ok)
+			config.addr2line = addr2line.u.b;
+		else
+			log_debug(DEBUG_CONFIG, "misc.addr2line DOES NOT EXIST");
 	}
 	else
 		log_debug(DEBUG_CONFIG, "misc DOES NOT EXIST");

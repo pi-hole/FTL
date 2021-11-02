@@ -47,6 +47,10 @@ static bool delete_old_queries_in_DB(sqlite3 *db)
 	return true;
 }
 
+#define DBOPEN_OR_AGAIN() { db = dbopen(false); if(db == NULL) { thread_sleepms(DB, 5000); continue; } }
+#define BREAK_IF_KILLED() { if(killed) break; }
+#define DBCLOSE_OR_BREAK() { dbclose(&db); BREAK_IF_KILLED(); }
+
 void *DB_thread(void *val)
 {
 	// Set thread name
@@ -58,7 +62,9 @@ void *DB_thread(void *val)
 	time_t before = time(NULL);
 	time_t lastDBsave = before - before%config.DBinterval;
 
-	// Run until shutdown of the process
+	// This thread runs until shutdown of the process. We keep this thread
+	// running when pihole-FTL.db is corrupted because reloading of privacy
+	// level, and the gravity database (initially and after gravity)
 	while(!killed)
 	{
 		const time_t now = time(NULL);
@@ -93,6 +99,7 @@ void *DB_thread(void *val)
 			// Save data to database (if enabled)
 			if(config.DBexport)
 			{
+				DBOPEN_OR_AGAIN();
 				lock_shm();
 				export_queries_to_disk(false);
 				unlock_shm();
@@ -108,6 +115,8 @@ void *DB_thread(void *val)
 					delete_old_queries_in_DB(db);
 					DBdeleteoldqueries = false;
 				}
+
+				DBCLOSE_OR_BREAK();
 			}
 
 			// Parse neighbor cache (fill network table) if enabled
@@ -122,34 +131,50 @@ void *DB_thread(void *val)
 		// Update MAC vendor strings once a month (the MAC vendor
 		// database is not updated very often)
 		if(now % 2592000L == 0)
+		{
+			DBOPEN_OR_AGAIN();
 			updateMACVendorRecords(db);
+			DBCLOSE_OR_BREAK();
+		}
 
 		// Intermediate cancellation-point
 		if(killed)
 			break;
 
+		// Parse ARP cache if requested
 		if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))
+		{
+			DBOPEN_OR_AGAIN();
 			parse_neighbor_cache(db);
+			DBCLOSE_OR_BREAK();
+		}
 
 		// Intermediate cancellation-point
-		if(killed)
-			break;
+		BREAK_IF_KILLED();
+
+		// Import alias-clients
+		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
+		{
+			DBOPEN_OR_AGAIN();
+			lock_shm();
+			reimport_aliasclients(db);
+			unlock_shm();
+			DBCLOSE_OR_BREAK();
+		}
 
 		// Process database related event queue elements
 		if(get_and_clear_event(RELOAD_GRAVITY))
 			FTL_reload_all_domainlists();
 
 		// Intermediate cancellation-point
-		if(killed)
-			break;
+		BREAK_IF_KILLED();
 
 		// Reload privacy level from pihole-FTL config
 		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))
 			getPrivacyLevel();
 
 		// Intermediate cancellation-point
-		if(killed)
-			break;
+		BREAK_IF_KILLED();
 
 		// Import alias-clients
 		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
@@ -159,7 +184,7 @@ void *DB_thread(void *val)
 			unlock_shm();
 		}
 
-		dbclose(&db);
+		BREAK_IF_KILLED();
 
 		// Sleep 1 sec
 		thread_sleepms(DB, 1000);

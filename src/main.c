@@ -51,6 +51,8 @@ int main (int argc, char *argv[])
 
 	// Initialize FTL log
 	init_FTL_log(argc > 0 ? argv[0] : NULL);
+	// Try to open FTL log
+	init_config_mutex();
 	timer_start(EXIT_TIMER);
 	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);

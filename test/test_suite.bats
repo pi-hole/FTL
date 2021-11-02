@@ -26,109 +26,109 @@
 }
 
 @test "denied domain is blocked" {
-  run bash -c "dig denylist-blocked.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig denied.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain is blocked" {
-  run bash -c "dig gravity-blocked.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig gravity.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain is blocked (TCP)" {
-  run bash -c "dig gravity-blocked.test.pi-hole.net @127.0.0.1 +tcp +short"
+  run bash -c "dig gravity.ftl @127.0.0.1 +tcp +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
-@test "Gravity domain + allowlist exact match is not blocked" {
-  run bash -c "dig allowlisted.test.pi-hole.net @127.0.0.1 +short"
+@test "Gravity domain + allowed exact match is not blocked" {
+  run bash -c "dig allowed.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.4" ]]
 }
 
-@test "Gravity domain + allowlist regex match is not blocked" {
-  run bash -c "dig discourse.pi-hole.net @127.0.0.1 +short"
+@test "Gravity domain + allowed regex match is not blocked" {
+  run bash -c "dig gravity-allowed.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.5" ]]
 }
 
-@test "Regex denylist match is blocked" {
-  run bash -c "dig regex5.test.pi-hole.net @127.0.0.1 +short"
+@test "Regex denied match is blocked" {
+  run bash -c "dig regex5.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Regex denylist mismatch is not blocked" {
-  run bash -c "dig regexA.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regexA.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.4" ]]
 }
 
 @test "Regex denylist match + allowlist exact match is not blocked" {
-  run bash -c "dig regex1.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "Regex denylist match + allowlist regex match is not blocked" {
-  run bash -c "dig regex2.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regex2.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.2" ]]
 }
 
 @test "Client 2: Gravity match matching unassociated allowlist is blocked" {
-  run bash -c "dig allowlisted.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
+  run bash -c "dig allowed.ftl -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
 }
 
-@test "Client 2: Regex denylist match matching unassociated allowlist is blocked" {
-  run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
+@test "Client 2: Regex denylist match matching unassociated whitelist is blocked" {
+  run bash -c "dig regex1.ftl -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
 }
 
 @test "Same domain is not blocked for client 1 ..." {
-  run bash -c "dig regex1.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "... or client 3" {
-  run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.3  @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl -b 127.0.0.3  @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "Client 2: Unassociated denylist match is not blocked" {
-  run bash -c "dig denylist-blocked.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
+  run bash -c "dig denied.ftl -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.3" ]]
 }
 
 @test "Client 3: Exact denylist domain is not blocked" {
-  run bash -c "dig denylist-blocked.test.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
+  run bash -c "dig denied.ftl -b 127.0.0.3 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.3" ]]
 }
 
 @test "Client 3: Regex denylist domain is not blocked" {
-  run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl -b 127.0.0.3 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "Client 3: Gravity domain is not blocked" {
-  run bash -c "dig discourse.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
+  run bash -c "dig a.ftl -b 127.0.0.3 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.1" ]]
 }
 
 @test "Client 4: Client is recognized by MAC address" {
@@ -160,7 +160,7 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == "9" ]]
 }
 
 @test "Client 5: Client is recognized by MAC address" {
@@ -192,7 +192,7 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == "9" ]]
 }
 
 @test "Client 6: Client is recognized by interface name" {
@@ -230,29 +230,148 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "9" ]]
+}
+
+@test "Normal query (A) is not blocked" {
+  run bash -c "dig A a.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "192.168.1.1" ]]
+}
+
+@test "Normal query (AAAA) is not blocked (TCP query)" {
+  run bash -c "dig AAAA aaaa.ftl @127.0.0.1 +short +tcp"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "fe80::1c01" ]]
+}
+
+@test "Mozilla canary domain is blocked with NXDOMAIN" {
+  run bash -c "dig A use-application-dns.net @127.0.0.1"
+  printf "dig: %s\n" "${lines[@]}"
+  [[ ${lines[3]} == *"status: NXDOMAIN"* ]]
+  run bash -c 'grep -c "Mozilla canary domain use-application-dns.net is NXDOMAIN" /var/log/pihole.log'
+  printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "Google.com (A) is not blocked" {
-  run bash -c "dig A google.com @127.0.0.1 +short"
+@test "Local DNS test: A a.ftl" {
+  run bash -c "dig A a.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
-}
-
-@test "Google.com (AAAA) is not blocked (TCP query)" {
-  run bash -c "dig AAAA google.com @127.0.0.1 +short +tcp"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "::" ]]
-}
-
-@test "Known host is resolved as expected" {
-  run bash -c "dig ftl.pi-hole.net @127.0.0.1 +short"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "139.59.170.52" ]]
+  [[ ${lines[0]} == "192.168.1.1" ]]
   [[ ${lines[1]} == "" ]]
 }
 
-@test "pihole-FTL.db schema as expected" {
+@test "Local DNS test: AAAA aaaa.ftl" {
+  run bash -c "dig AAAA aaaa.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "fe80::1c01" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: ANY any.ftl" {
+  run bash -c "dig ANY any.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"192.168.3.1"* ]]
+  [[ ${lines[@]} == *"fe80::3c01"* ]]
+}
+
+@test "Local DNS test: CNAME cname-ok.ftl" {
+  run bash -c "dig CNAME cname-ok.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "a.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: SRV srv.ftl" {
+  run bash -c "dig SRV srv.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0 1 80 a.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: SOA ftl" {
+  run bash -c "dig SOA ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "ns1.ftl. hostmaster.ftl. 1 10800 3600 604800 3600" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: PTR ptr.ftl" {
+  run bash -c "dig PTR ptr.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "ptr.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: TXT txt.ftl" {
+  run bash -c "dig TXT txt.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "\"Some example text\"" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: NAPTR naptr.ftl" {
+  run bash -c "dig NAPTR naptr.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *'10 10 "u" "smtp+E2U" "!.*([^.]+[^.]+)$!mailto:postmaster@$1!i" .'* ]]
+  [[ ${lines[@]} == *'20 10 "s" "http+N2L+N2C+N2R" "" ftl.'* ]]
+}
+
+@test "Local DNS test: MX mx.ftl" {
+  run bash -c "dig MX mx.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "50 ns1.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: NS ftl" {
+  run bash -c "dig NS ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "ns1.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: SVCB svcb.ftl" {
+  run bash -c "dig +unknown TYPE64 svcb.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '\# 13 000109706F72743D2238302200' ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: HTTPS https.ftl" {
+  run bash -c "dig +unknown TYPE65 https.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '\# 15 000100000100080322683303683222' ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "CNAME inspection: Shallow CNAME is blocked" {
+  run bash -c "dig A cname-1.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "CNAME inspection: Deep CNAME is blocked" {
+  run bash -c "dig A cname-7.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "DNSSEC: SECURE domain is resolved" {
+  run bash -c "dig A sigok.verteiltesysteme.net @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: NOERROR"* ]]
+}
+
+@test "DNSSEC: BOGUS domain is rejected" {
+  run bash -c "dig A sigfail.verteiltesysteme.net @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: SERVFAIL"* ]]
+}
+
+@test "pihole-FTL.db schema is as expected" {
   run bash -c 'sqlite3 /etc/pihole/pihole-FTL.db .dump'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"CREATE TABLE queries (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT, additional_info TEXT, reply INTEGER, dnssec INTEGER, reply_time INTEGER, client_name TEXT, ttl INTEGER, regex_id INTEGER);"* ]]
@@ -271,7 +390,7 @@
   printf "%s\n" "${lines[@]}"
   # Depending on the shell (x86_64-musl is built on busybox) there can be one or multiple spaces between user and group
   [[ ${lines[0]} == *"pihole"?*"pihole"* ]]
-  [[ ${lines[0]} == "-rw-r--r--"* ]]
+  [[ ${lines[0]} == "-rw-rw-r--"* ]]
   run bash -c 'file /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "/etc/pihole/pihole-FTL.db: SQLite 3.x database"* ]]
@@ -300,7 +419,7 @@
 
 # Regex tests
 @test "Compiled deny regex as expected" {
-  run bash -c 'grep -c "Compiling deny regex 0 (DB ID 6): regex\[0-9\].test.pi-hole.net" /var/log/pihole-FTL.log'
+  run bash -c 'grep -c "Compiling deny regex 0 (DB ID 6): regex\[0-9\].ftl" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
@@ -309,13 +428,13 @@
   run bash -c 'grep -c "Compiling allow regex 0 (DB ID 3): regex2" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c 'grep -c "Compiling allow regex 1 (DB ID 4): discourse" /var/log/pihole-FTL.log'
+  run bash -c 'grep -c "Compiling allow regex 1 (DB ID 4): ^gravity-allowed" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "Regex Test 1: \"regex7.test.pi-hole.net\" vs. [database regex]: MATCH" {
-  run bash -c './pihole-FTL regex-test "regex7.test.pi-hole.net"'
+@test "Regex Test 1: \"regex7.ftl\" vs. [database regex]: MATCH" {
+  run bash -c './pihole-FTL regex-test "regex7.ftl"'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
@@ -541,50 +660,22 @@
   [[ $status == 2 ]]
 }
 
-@test "Regex Test 37: Option \"^localhost$;querytype=A\" working as expected (ONLY matching A queries)" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=A\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 37: Option \";querytype=A\" working as expected (ONLY matching A queries)" {
+  run bash -c 'dig A regex-A @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-A @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} != "::" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=A\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 38: Option \"^localhost$;querytype=!A\" working as expected (NOT matching A queries)" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=!A\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 38: Option \";querytype=!A\" working as expected (NOT matching A queries)" {
+  run bash -c 'dig A regex-notA @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-notA @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "::" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=!A\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
 @test "Regex Test 39: Option \";invert\" working as expected (match is inverted)" {
@@ -603,6 +694,51 @@
   [[ ${lines[1]} == *"Overwriting previous querytype setting (multiple \"querytype=...\" found)" ]]
 }
 
+@test "Regex Test 41: Option \"^;reply=NXDOMAIN\" working as expected" {
+  run bash -c 'dig A regex-NXDOMAIN @127.0.0.1'
+  printf "dig: %s\n" "${lines[@]}"
+  [[ ${lines[3]} == *"status: NXDOMAIN"* ]]
+}
+
+@test "Regex Test 42: Option \"^;reply=NODATA\" working as expected" {
+  run bash -c 'dig A regex-NODATA @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[3]} == *"status: NOERROR"* ]]
+}
+
+@test "Regex Test 43: Option \";reply=REFUSED\" working as expected" {
+  run bash -c 'dig A regex-REFUSED @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[3]} == *"status: REFUSED"* ]]
+}
+
+@test "Regex Test 44: Option \";reply=1.2.3.4\" working as expected" {
+  run bash -c 'dig A regex-REPLYv4 @127.0.0.1 +short'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1.2.3.4" ]]
+  run bash -c 'dig AAAA regex-REPLYv4 @127.0.0.1 +short'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "::" ]]
+}
+
+@test "Regex Test 45: Option \";reply=fe80::1234\" working as expected" {
+  run bash -c 'dig A regex-REPLYv6 @127.0.0.1 +short'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  run bash -c 'dig AAAA regex-REPLYv6 @127.0.0.1 +short'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "fe80::1234" ]]
+}
+
+@test "Regex Test 46: Option \";reply=1.2.3.4;reply=fe80::1234\" working as expected" {
+  run bash -c 'dig A regex-REPLYv46 @127.0.0.1 +short'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1.2.3.4" ]]
+  run bash -c 'dig AAAA regex-REPLYv46 @127.0.0.1 +short'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "fe80::1234" ]]
+}
+
 # x86_64-musl is built on busybox which has a slightly different
 # variant of ls displaying three, instead of one, spaces between the
 # user and group names.
@@ -611,7 +747,7 @@
   run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == *"pihole pihole"* || ${lines[0]} == *"pihole   pihole"* ]]
-  [[ ${lines[0]} == "-rw-r--r--"* ]]
+  [[ ${lines[0]} == "-rw-rw-r--"* ]]
 }
 
 # "ldd" prints library dependencies and the used interpreter for a given program
@@ -675,7 +811,7 @@
 }
 
 @test "Blocking status is correctly logged in pihole.log" {
-  run bash -c 'grep -c "gravity blocked gravity-blocked.test.pi-hole.net is 0.0.0.0" /var/log/pihole.log'
+  run bash -c 'grep -c "gravity blocked gravity.ftl is 0.0.0.0" /var/log/pihole.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "2" ]]
 }
@@ -881,12 +1017,26 @@
   [[ ${lines[0]} == "SQLite 3."* ]]
 }
 
+@test "Embedded SQLite3 shell prints FTL version in interactive mode" {
+  # shell.c contains a call to print_FTL_version
+  run bash -c "echo -e '.quit\n' | ./pihole-FTL sqlite3 -interactive"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Pi-hole FTL"* ]]
+}
+
 @test "Embedded LUA engine is called for .lua file" {
   echo 'print("Hello from LUA")' > abc.lua
   run bash -c './pihole-FTL abc.lua'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "Hello from LUA" ]]
   rm abc.lua
+}
+
+
+@test "Pi-hole PTR generation check" {
+  run bash -c "bash test/hostnames.sh | tee ptr.log"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" != *"ERROR"* ]]
 }
 
 @test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {

@@ -39,14 +39,17 @@ void setDefaults(void)
 	defaults.networkNames = true;
 	defaults.edns0_ecs = true;
 	defaults.show_dnssec = true;
+	defaults.addr2line = true;
 	defaults.special_domains.mozilla_canary = true;
-	defaults.pihole_ptr = true;
+	defaults.special_domains.icloud_private_relay = true;
 
 	// enums
 	defaults.privacylevel = PRIVACY_SHOW_ALL;
 	defaults.blockingmode = MODE_NULL;
 	defaults.refresh_hostnames = REFRESH_IPV4_ONLY;
 	defaults.debug = 0;
+	defaults.pihole_ptr = PTR_PIHOLE;
+	defaults.reply_when_busy = BUSY_ALLOW;
 
 	// integer
 	defaults.nice = -10;
@@ -57,6 +60,7 @@ void setDefaults(void)
 	defaults.maxHistory = MAXLOGAGE*3600;
 	defaults.delay_startup = 0;
 	defaults.DBinterval = 60;
+	defaults.block_ttl = 2;
 
 	// struct rate_limit
 	defaults.rate_limit.count = 1000;

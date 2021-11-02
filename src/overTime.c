@@ -88,7 +88,7 @@ void initOverTime(void)
 }
 
 bool warned_about_hwclock = false;
-unsigned int getOverTimeID(time_t timestamp)
+unsigned int _getOverTimeID(time_t timestamp, const char *file, const int line)
 {
 	// Center timestamp in OVERTIME_INTERVAL
 	timestamp -= timestamp % OVERTIME_INTERVAL;
@@ -106,14 +106,30 @@ unsigned int getOverTimeID(time_t timestamp)
 		// Return first timestamp in case negative timestamp was determined
 		return 0;
 	}
-	else if(id > OVERTIME_SLOTS-1)
+	else if(id == OVERTIME_SLOTS)
 	{
+		// Possible race-collision (moving of the timeslots is just about to
+		// happen), silently add to the last bin because this is the correct
+		// thing to do
+		return OVERTIME_SLOTS-1;
+	}
+	else if(id > OVERTIME_SLOTS)
+	{
+		// This is definitely wrong. We warn about this (but only once)
 		if(!warned_about_hwclock)
 		{
+			char timestampStr[84] = "";
+			get_timestr(timestampStr, timestamp, false);
+
 			const time_t lastTimestamp = overTime[OVERTIME_SLOTS-1].timestamp;
-			log_warn("Found database entries in the future (%llu, last: %llu). "
-			         "Your over-time statistics may be incorrect",
-			         (long long)timestamp, (long long)lastTimestamp);
+			char lastTimestampStr[84] = "";
+			get_timestr(lastTimestampStr, lastTimestamp, false);
+
+			log_warn("Found database entries in the future (%s (%llu), last timestamp for importing: %s (%llu)). "
+			         "Your over-time statistics may be incorrect (found in %s:%d)",
+			         timestampStr, (long long)timestamp,
+			         lastTimestampStr, (long long)lastTimestamp,
+			         short_path(file), line);
 			warned_about_hwclock = true;
 		}
 		// Return last timestamp in case a too large timestamp was determined
@@ -176,9 +192,10 @@ void moveOverTimeMemory(const time_t mintime)
 		clientsData *client = getClient(clientID, true);
 		if(!client)
 			continue;
+
 		memmove(&(client->overTime[0]),
-			&(client->overTime[moveOverTime]),
-			remainingSlots*sizeof(int));
+		        &(client->overTime[moveOverTime]),
+		        remainingSlots*sizeof(*client->overTime));
 	}
 
 	// Process upstream data
@@ -188,23 +205,10 @@ void moveOverTimeMemory(const time_t mintime)
 		if(!upstream)
 			continue;
 
-		// Update upstream counters with overTime data we are going to move
-		// This is necessary because we can store inly one upstream with each query
-		// and garbage collection can only subtract this one when cleaning
-		unsigned int sum = 0;
-		for(unsigned int idx = 0; idx < moveOverTime; idx++)
-		{
-			sum += upstream->overTime[idx];
-		}
-		upstream->count -= sum;
-
-		log_debug(DEBUG_GC, "Subtracted %d from total count of upstream %s:%d, new total is %d",
-		          sum, getstr(upstream->ippos), upstream->port, upstream->count);
-
 		// Move upstream-specific overTime memory
 		memmove(&(upstream->overTime[0]),
 		        &(upstream->overTime[moveOverTime]),
-		        remainingSlots*sizeof(int));
+		        remainingSlots*sizeof(*upstream->overTime));
 	}
 
 	// Iterate over new overTime region and initialize it

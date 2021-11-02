@@ -23,6 +23,8 @@
 #include "events.h"
 // sleepms()
 #include "timers.h"
+// struct config
+#include "config/config.h"
 
 #define BINARY_NAME "pihole-FTL"
 
@@ -63,8 +65,9 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 	char addr2line_cmd[256];
 	snprintf(addr2line_cmd, sizeof(addr2line_cmd), "addr2line %p -e %.*s", addr, p, symbol);
 	FILE *addr2line = NULL;
-	char linebuffer[256];
-	if((addr2line = popen(addr2line_cmd, "r")) != NULL &&
+	char linebuffer[512];
+	if(config.addr2line &&
+	   (addr2line = popen(addr2line_cmd, "r")) != NULL &&
 	   fgets(linebuffer, sizeof(linebuffer), addr2line) != NULL)
 	{
 		char *pos;
@@ -74,13 +77,14 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 	}
 	else
 	{
-		snprintf(linebuffer, sizeof(linebuffer), "N/A (%p)", addr);
+		snprintf(linebuffer, sizeof(linebuffer), "N/A (%p -> %s)", addr, addr2line_cmd);
 	}
 	// Log result
 	log_info("L[%04i]: %s", j, linebuffer);
 
 	// Close pipe
-	pclose(addr2line);
+	if(addr2line != NULL)
+		pclose(addr2line);
 }
 #endif
 
@@ -96,7 +100,10 @@ void generate_backtrace(void)
 
 	char ** bcktrace = backtrace_symbols(buffer, calls);
 	if(bcktrace == NULL)
+	{
 		log_warn("Unable to obtain backtrace symbols!");
+		return;
+	}
 
 	// Try to compute binary offset from backtrace_symbols result
 	void *offset = NULL;
@@ -118,8 +125,7 @@ void generate_backtrace(void)
 		if(bcktrace != NULL)
 			print_addr2line(bcktrace[j], buffer[j], j, offset);
 	}
-	if(bcktrace != NULL)
-		free(bcktrace);
+	free(bcktrace);
 #else
 	log_info("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
 #endif
@@ -283,6 +289,9 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 
 		// Reload the privacy level in case the user changed it
 		set_event(RELOAD_PRIVACY_LEVEL);
+
+		// Reload blocking mode
+		set_event(RELOAD_BLOCKINGMODE);
 	}
 	else if(rtsig == 2)
 	{

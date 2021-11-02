@@ -23,6 +23,7 @@
 // Private global variables
 static char *conflinebuffer = NULL;
 static size_t size = 0;
+static pthread_mutex_t lock;
 
 // Private prototypes
 static char *parseFTLconf(FILE *fp, const char * key);
@@ -437,7 +438,54 @@ const char *readFTLlegacy(void)
 	// Should FTL return "pi.hole" as name for PTR requests to local IP addresses?
 	// defaults to: true
 	buffer = parseFTLconf(fp, "PIHOLE_PTR");
-	parseBool(buffer, &config.pihole_ptr);
+
+	if(buffer != NULL)
+	{
+		if(strcasecmp(buffer, "none") == 0 ||
+		   strcasecmp(buffer, "false") == 0)
+			config.pihole_ptr = PTR_NONE;
+		else if(strcasecmp(buffer, "hostname") == 0)
+			config.pihole_ptr = PTR_HOSTNAME;
+		else if(strcasecmp(buffer, "hostnamefqdn") == 0)
+			config.pihole_ptr = PTR_HOSTNAMEFQDN;
+	}
+
+	// ADDR2LINE
+	// Should FTL try to call addr2line when generating backtraces?
+	// defaults to: true
+	buffer = parseFTLconf(fp, "ADDR2LINE");
+	parseBool(buffer, &config.addr2line);
+
+	// REPLY_WHEN_BUSY
+	// How should FTL handle queries when the gravity database is not available?
+	// defaults to: BLOCK
+	buffer = parseFTLconf(fp, "REPLY_WHEN_BUSY");
+
+	if(buffer != NULL)
+	{
+		if(strcasecmp(buffer, "DROP") == 0)
+			config.reply_when_busy = BUSY_DROP;
+		else if(strcasecmp(buffer, "REFUSE") == 0)
+			config.reply_when_busy = BUSY_REFUSE;
+		else if(strcasecmp(buffer, "BLOCK") == 0)
+			config.reply_when_busy = BUSY_BLOCK;
+	}
+
+	// BLOCK_TTL
+	// defaults to: 2 seconds
+	config.block_ttl = 2;
+	buffer = parseFTLconf(fp, "BLOCK_TTL");
+
+	unsigned int uval = 0;
+	if(buffer != NULL && sscanf(buffer, "%u", &uval))
+		config.block_ttl = uval;
+
+	// BLOCK_ICLOUD_PR
+	// Should FTL handle the iCloud privacy relay domains specifically and
+	// always return NXDOMAIN??
+	// defaults to: true
+	buffer = parseFTLconf(fp, "BLOCK_ICLOUD_PR");
+	parseBool(buffer, &config.special_domains.icloud_private_relay);
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
@@ -498,6 +546,12 @@ static char *parseFTLconf(FILE *fp, const char * key)
 	}
 	sprintf(keystr, "%s=", key);
 
+	// Lock mutex
+	const int lret = pthread_mutex_lock(&lock);
+	log_debug(DEBUG_LOCKS, "Obtained config lock");
+	if(lret != 0)
+		log_err("Error when obtaining config lock: %s", strerror(lret));
+
 	// Go to beginning of file
 	fseek(fp, 0L, SEEK_SET);
 
@@ -524,11 +578,22 @@ static char *parseFTLconf(FILE *fp, const char * key)
 		// Trim whitespace at beginning and end, this function
 		// modifies the string inplace
 		trim_whitespace(value);
+
+		const int uret = pthread_mutex_unlock(&lock);
+		log_debug(DEBUG_LOCKS, "Released config lock (match)");
+		if(uret != 0)
+			log_err("Error when releasing config lock (no match): %s", strerror(uret));
+
 		return value;
 	}
 
 	if(errno == ENOMEM)
 		log_crit("Could not allocate memory (getline) in parseFTLconf()");
+
+	const int uret = pthread_mutex_unlock(&lock);
+	log_debug(DEBUG_LOCKS, "Released config lock (no match)");
+	if(uret != 0)
+		log_err("Error when releasing config lock (no match): %s", strerror(uret));
 
 	// Free keystr memory
 	free(keystr);
@@ -545,6 +610,19 @@ void releaseConfigMemory(void)
 		conflinebuffer = NULL;
 		size = 0;
 	}
+}
+
+void init_config_mutex(void)
+{
+	// Initialize the lock attributes
+	pthread_mutexattr_t lock_attr = {};
+	pthread_mutexattr_init(&lock_attr);
+
+	// Initialize the lock
+	pthread_mutex_init(&lock, &lock_attr);
+
+	// Destroy the lock attributes since we're done with it
+	pthread_mutexattr_destroy(&lock_attr);
 }
 
 static void getPrivacyLevelLegacy(FILE *fp)

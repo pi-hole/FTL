@@ -194,6 +194,10 @@ void debugstr(const enum debug_flag flag, const char **name, const char **desc)
 			*name = "DEBUG_CAPS";
 			*desc = "Print information about capabilities granted to the pihole-FTL process";
 			return;
+		case DEBUG_DNSSEC:
+			*name = "DEBUG_DNSSEC";
+			*desc = "Print information about DNSSEC activity";
+			return;
 		case DEBUG_VECTORS:
 			*name = "DEBUG_VECTORS";
 			*desc = "Print vector operation details";
@@ -430,8 +434,8 @@ void FTL_log_helper(const unsigned char n, ...)
 			free(arg[i]);
 }
 
-void format_memory_size(char* const prefix, const unsigned long long int bytes,
-                        double* const formated)
+void format_memory_size(char prefix[2], const unsigned long long int bytes,
+                        double * const formated)
 {
 	unsigned int i;
 	*formated = bytes;
@@ -442,9 +446,10 @@ void format_memory_size(char* const prefix, const unsigned long long int bytes,
 			break;
 		*formated /= 1e3;
 	}
-	const char *prefixes[8] = { " ", "K", "M", "G", "T", "P", "E", "?" };
+	const char prefixes[8] = { ' ', 'K', 'M', 'G', 'T', 'P', 'E', '?' };
 	// Chose matching SI prefix
-	strcpy(prefix, prefixes[i]);
+	prefix[0] = prefixes[i];
+	prefix[1] = '\0';
 }
 
 // Human-readable time
@@ -512,7 +517,11 @@ void log_FTL_version(const bool crashreport)
 	log_info("FTL commit: %s", GIT_HASH);
 	log_info("FTL date: %s", GIT_DATE);
 	if(crashreport)
-		log_info("FTL user: started as %s, ended as %s", username, getUserName());
+	{
+		char *username_now = getUserName();
+		log_info("FTL user: started as %s, ended as %s", username, username_now);
+		free(username_now);
+	}
 	else
 		log_info("FTL user: %s", username);
 	log_info("Compiled for %s using %s", FTL_ARCH, FTL_CC);
@@ -648,4 +657,36 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 	*dst = '\0';
 
 	return src - src_buf;
+}
+
+int __attribute__ ((pure)) forwarded_queries(void)
+{
+	return counters->status[QUERY_FORWARDED] +
+	       counters->status[QUERY_RETRIED] +
+	       counters->status[QUERY_RETRIED_DNSSEC];
+}
+
+int __attribute__ ((pure)) cached_queries(void)
+{
+	return counters->status[QUERY_CACHE];
+}
+
+int __attribute__ ((pure)) blocked_queries(void)
+{
+	int num = 0;
+	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
+		if(is_blocked(status))
+			num += counters->status[status];
+	return num;
+}
+
+const char * __attribute__ ((pure)) short_path(const char *full_path)
+{
+	const char *shorter = strstr(full_path, "src/");
+	return shorter != NULL ? shorter : full_path;
+}
+
+void print_FTL_version(void)
+{
+    printf("Pi-hole FTL %s\n", get_FTL_version());
 }

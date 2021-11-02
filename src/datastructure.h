@@ -48,6 +48,7 @@ typedef struct {
 		bool complete :1;
 		bool blocked :1;
 		bool database :1;
+		bool response_calculated :1;
 	} flags;
 } queriesData;
 
@@ -70,7 +71,7 @@ typedef struct {
 	double rtuncertainty;
 	double lastQuery;
 } upstreamsData;
-//ASSERT_SIZEOF(upstreamsData, 640, 628, 628);
+//ASSERT_SIZEOF(upstreamsData, 640, 624, 624);
 
 typedef struct {
 	unsigned char magic;
@@ -78,9 +79,10 @@ typedef struct {
 	char hwlen;
 	unsigned char hwaddr[16]; // See DHCP_CHADDR_MAX in dnsmasq/dhcp-protocol.h
 	struct client_flags {
-		bool new :1;
-		bool found_group: 1;
-		bool aliasclient :1;
+		bool new:1;
+		bool found_group:1;
+		bool aliasclient:1;
+		bool rate_limited:1;
 	} flags;
 	int count;
 	int blockedcount;
@@ -96,7 +98,6 @@ typedef struct {
 	time_t firstSeen;
 	double lastQuery;
 } clientsData;
-
 // ARM needs alignment to 8-byte boundary
 //ASSERT_SIZEOF(clientsData, 696, 672, 672);
 

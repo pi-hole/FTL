@@ -10,12 +10,6 @@
 #ifndef ENUMS_H
 #define ENUMS_H
 
-enum protocol {
-	TCP,
-	UDP,
-	INTERNAL
-} __attribute__ ((packed));
-
 enum memory_type {
 	QUERIES,
 	UPSTREAMS,
@@ -51,6 +45,7 @@ enum query_status {
 	QUERY_RETRIED,
 	QUERY_RETRIED_DNSSEC,
 	QUERY_IN_PROGRESS,
+	QUERY_DBBUSY,
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 
@@ -67,6 +62,8 @@ enum reply_type {
 	REPLY_NOTIMP,
 	REPLY_OTHER,
 	REPLY_DNSSEC,
+	REPLY_NONE,
+	REPLY_BLOB,
 	QUERY_REPLY_MAX
 }  __attribute__ ((packed));
 
@@ -146,7 +143,7 @@ enum debug_flag {
 	DEBUG_OVERTIME      = (1 << 10), /* 00000000 00000000 00000100 00000000 */
 	DEBUG_STATUS        = (1 << 11), /* 00000000 00000000 00001000 00000000 */
 	DEBUG_CAPS          = (1 << 12), /* 00000000 00000000 00010000 00000000 */
-	DEBUG_RESERVED      = (1 << 13), /* 00000000 00000000 00100000 00000000 */
+	DEBUG_DNSSEC        = (1 << 13), /* 00000000 00000000 00100000 00000000 */
 	DEBUG_VECTORS       = (1 << 14), /* 00000000 00000000 01000000 00000000 */
 	DEBUG_RESOLVER      = (1 << 15), /* 00000000 00000000 10000000 00000000 */
 	DEBUG_EDNS0         = (1 << 16), /* 00000000 00000001 00000000 00000000 */
@@ -156,6 +153,7 @@ enum debug_flag {
 	DEBUG_HELPER        = (1 << 20), /* 00000000 00010000 00000000 00000000 */
 	DEBUG_CONFIG        = (1 << 21), /* 00000000 00100000 00000000 00000000 */
 	DEBUG_EXTRA         = (1 << 22), /* 00000000 01000000 00000000 00000000 */
+	DEBUG_RESERVED      = (1 << 23), /* 00000000 10000000 00000000 00000000 */
 	// DEBUG_EXTRA has always to be the last option
 } __attribute__ ((packed));
 
@@ -167,6 +165,7 @@ enum events {
 	RERESOLVE_HOSTNAMES_FORCE,
 	REIMPORT_ALIASCLIENTS,
 	PARSE_NEIGHBOR_CACHE,
+	RELOAD_BLOCKINGMODE,
 	EVENTS_MAX
 } __attribute__ ((packed));
 
@@ -190,8 +189,8 @@ enum gravity_tables {
 	GRAVITY_TABLE,
 	EXACT_BLACKLIST_TABLE,
 	EXACT_WHITELIST_TABLE,
-	REGEX_BLACKLIST_TABLE,
-	REGEX_WHITELIST_TABLE,
+	REGEX_DENY_TABLE,
+	REGEX_ALLOW_TABLE,
 	CLIENTS_TABLE,
 	GROUPS_TABLE,
 	ADLISTS_TABLE,
@@ -228,11 +227,40 @@ enum api_auth_status {
 	API_AUTH_EMPTYPASS  = -3,
 } __attribute__ ((packed));
 
+enum db_result {
+	NOT_FOUND,
+	FOUND,
+	LIST_NOT_AVAILABLE
+} __attribute__ ((packed));
+
+enum busy_reply {
+	BUSY_BLOCK,
+	BUSY_ALLOW,
+	BUSY_REFUSE,
+	BUSY_DROP
+} __attribute__ ((packed));
+
 enum thread_types {
 	DB,
 	GC,
 	DNSclient,
 	THREADS_MAX
+} __attribute__ ((packed));
+
+enum message_type {
+	REGEX_MESSAGE,
+	SUBNET_MESSAGE,
+	HOSTNAME_MESSAGE,
+	DNSMASQ_CONFIG_MESSAGE,
+	RATE_LIMIT_MESSAGE,
+	MAX_MESSAGES
+} __attribute__ ((packed));
+
+enum ptr_type {
+	PTR_PIHOLE,
+	PTR_HOSTNAME,
+	PTR_HOSTNAMEFQDN,
+	PTR_NONE
 } __attribute__ ((packed));
 
 #endif // ENUMS_H

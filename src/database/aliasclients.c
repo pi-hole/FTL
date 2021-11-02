@@ -86,6 +86,10 @@ static void recompute_aliasclient(const int aliasclientID)
 // Store hostname of device identified by dbID
 bool import_aliasclients(sqlite3 *db)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return false;
+
 	sqlite3_stmt *stmt = NULL;
 	const char querystr[] = "SELECT id,name FROM aliasclient";
 
@@ -93,6 +97,7 @@ bool import_aliasclients(sqlite3 *db)
 	if(rc != SQLITE_OK)
 	{
 		log_err("import_aliasclients() - SQL error prepare: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		return false;
 	}
 
@@ -104,7 +109,8 @@ bool import_aliasclients(sqlite3 *db)
 		if(rc != SQLITE_ROW)
 		{
 			log_err("import_aliasclients() - SQL error step: %s", sqlite3_errstr(rc));
-			break;
+			checkFTLDBrc(rc);
+			return false;
 		}
 
 		// Get hardware address from database and store it as IP + MAC address of this client
@@ -115,6 +121,7 @@ bool import_aliasclients(sqlite3 *db)
 		if(asprintf(&aliasclient_str, "aliasclient-%i", aliasclient_id) < 10)
 		{
 			log_err("Memory error in import_aliasclients()");
+			checkFTLDBrc(rc);
 			return false;
 		}
 
@@ -153,6 +160,7 @@ bool import_aliasclients(sqlite3 *db)
 	if ((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
 	{
 		log_err("import_aliasclients() - SQL error finalize: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		return false;
 	}
 
@@ -207,6 +215,10 @@ static int get_aliasclient_ID(sqlite3 *db, const clientsData *client)
 
 void reset_aliasclient(sqlite3 *db, clientsData *client)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return;
+
 	// Open pihole-FTL.db database file if needed
 	bool db_opened = false;
 	if(db == NULL)
@@ -280,6 +292,10 @@ int *get_aliasclient_list(const int aliasclientID)
 // removed by nulling them before importing new clients
 void reimport_aliasclients(sqlite3 *db)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return;
+
 	// Open pihole-FTL.db database file if needed
 	bool db_opened = false;
 	if(db == NULL)

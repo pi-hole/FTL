@@ -115,7 +115,8 @@ u64 rand64(void)
   return (u64)out[outleft+1] + (((u64)out[outleft]) << 32);
 }
 
-/* returns 2 if names is OK but contains one or more underscores */
+/* returns 1 if name is OK and ascii printable
+ * returns 2 if name should be processed by IDN */
 static int check_name(char *in)
 {
   /* remove trailing . 
@@ -123,7 +124,9 @@ static int check_name(char *in)
   size_t dotgap = 0, l = strlen(in);
   char c;
   int nowhite = 0;
+  int idn_encode = 0;
   int hasuscore = 0;
+  int hasucase = 0;
   
   if (l == 0 || l > MAXDNAME) return 0;
   
@@ -136,28 +139,49 @@ static int check_name(char *in)
   for (; (c = *in); in++)
     {
       if (c == '.')
-	dotgap = 0;
+        dotgap = 0;
       else if (++dotgap > MAXLABEL)
-	return 0;
+        return 0;
       else if (isascii((unsigned char)c) && iscntrl((unsigned char)c)) 
-	/* iscntrl only gives expected results for ascii */
-	return 0;
-#if !defined(HAVE_IDN) && !defined(HAVE_LIBIDN2)
+        /* iscntrl only gives expected results for ascii */
+        return 0;
       else if (!isascii((unsigned char)c))
-	return 0;
+#if !defined(HAVE_IDN) && !defined(HAVE_LIBIDN2)
+        return 0;
+#else
+        idn_encode = 1;
 #endif
       else if (c != ' ')
-	{
-	  nowhite = 1;
-	  if (c == '_')
-	    hasuscore = 1;
-	}
+        {
+          nowhite = 1;
+#if defined(HAVE_LIBIDN2) && (!defined(IDN2_VERSION_NUMBER) || IDN2_VERSION_NUMBER < 0x02000003)
+          if (c == '_')
+            hasuscore = 1;
+#else
+          (void)hasuscore;
+#endif
+
+#if defined(HAVE_IDN) || defined(HAVE_LIBIDN2)
+          if (c >= 'A' && c <= 'Z')
+            hasucase = 1;
+#else
+          (void)hasucase;
+#endif
+        }
     }
 
   if (!nowhite)
     return 0;
 
-  return hasuscore ? 2 : 1;
+#if defined(HAVE_LIBIDN2) && (!defined(IDN2_VERSION_NUMBER) || IDN2_VERSION_NUMBER < 0x02000003)
+  /* Older libidn2 strips underscores, so don't do IDN processing
+     if the name has an underscore unless it also has non-ascii characters. */
+  idn_encode = idn_encode || (hasucase && !hasuscore);
+#else
+  idn_encode = idn_encode || hasucase;
+#endif
+
+  return (idn_encode) ? 2 : 1;
 }
 
 /* Hostnames have a more limited valid charset than domain names
@@ -204,12 +228,8 @@ char *canonicalise(char *in, int *nomem)
   if (!(rc = check_name(in)))
     return NULL;
   
-#if defined(HAVE_LIBIDN2) && (!defined(IDN2_VERSION_NUMBER) || IDN2_VERSION_NUMBER < 0x02000003)
-  /* older libidn2 strips underscores, so don't do IDN processing
-     if the name has an underscore (check_name() returned 2) */
-  if (rc != 2)
-#endif
 #if defined(HAVE_IDN) || defined(HAVE_LIBIDN2)
+  if (rc == 2)
     {
 #  ifdef HAVE_LIBIDN2
       rc = idn2_to_ascii_lz(in, &ret, IDN2_NONTRANSITIONAL);
@@ -234,12 +254,14 @@ char *canonicalise(char *in, int *nomem)
       
       return ret;
     }
+#else
+  (void)rc;
 #endif
   
   if ((ret = whine_malloc(strlen(in)+1)))
     strcpy(ret, in);
   else if (nomem)
-    *nomem = 1;    
+    *nomem = 1;
 
   return ret;
 }
@@ -408,13 +430,12 @@ int hostname_issubdomain(char *a, char *b)
 time_t dnsmasq_time(void)
 {
 #ifdef HAVE_BROKEN_RTC
-  struct tms dummy;
-  static long tps = 0;
+  struct timespec ts;
 
-  if (tps == 0)
-    tps = sysconf(_SC_CLK_TCK);
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0)
+    die(_("cannot read monotonic clock: %s"), NULL, EC_MISC);
 
-  return (time_t)(times(&dummy)/tps);
+  return ts.tv_sec;
 #else
   return time(NULL);
 #endif
@@ -528,7 +549,7 @@ void prettyprint_time(char *buf, unsigned int t)
       if ((x = (t/60)%60))
 	p += sprintf(&buf[p], "%um", x);
       if ((x = t%60))
-	p += sprintf(&buf[p], "%us", x);
+	sprintf(&buf[p], "%us", x);
     }
 }
 
@@ -574,7 +595,7 @@ int parse_hex(char *in, unsigned char *out, int maxlen,
 		  int j, bytes = (1 + (r - in))/2;
 		  for (j = 0; j < bytes; j++)
 		    { 
-		      char sav = sav;
+		      char sav;
 		      if (j < bytes - 1)
 			{
 			  sav = in[(j+1)*2];

@@ -28,4 +28,3 @@ set(sources
 
 add_library(tre-regex OBJECT ${sources})
 target_compile_options(tre-regex PRIVATE -Wno-maybe-uninitialized -Wno-unused-value)
-target_include_directories(tre-regex PRIVATE ${PROJECT_SOURCE_DIR}/src)

@@ -20,7 +20,6 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
                          const int chosen_match_id);
 void logg_hostname_warning(const char *ip, const char *name, const unsigned int pos);
 void logg_fatal_dnsmasq_message(const char *message);
-
-enum message_type { REGEX_MESSAGE, SUBNET_MESSAGE, HOSTNAME_MESSAGE, DNSMASQ_CONFIG_MESSAGE, MAX_MESSAGE };
+void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit_count);
 
 #endif //MESSAGETABLE_H

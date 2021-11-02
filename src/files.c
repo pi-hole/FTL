@@ -143,7 +143,7 @@ void ls_dir(const char* path)
 		char permissions[10];
 		get_permission_string(permissions, &st);
 
-		char prefix[2] = " ";
+		char prefix[2] = { 0 };
 		double formated = 0.0;
 		format_memory_size(prefix, (unsigned long long)st.st_size, &formated);
 
@@ -155,10 +155,4 @@ void ls_dir(const char* path)
 
 	// Close directory stream
 	closedir(dirp);
-}
-
-const char * __attribute__ ((pure)) short_path(const char *full_path)
-{
-	const char *shorter = strstr(full_path, "src/");
-	return shorter != NULL ? shorter : full_path;
 }
