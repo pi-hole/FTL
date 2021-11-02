@@ -78,7 +78,11 @@
 #endif
 
 #ifndef NAN
+#ifdef _WIN32
+#define NAN sqrt(-1.0)
+#else
 #define NAN 0.0/0.0
+#endif
 #endif
 
 typedef struct {
@@ -113,7 +117,7 @@ CJSON_PUBLIC(double) cJSON_GetNumberValue(const cJSON * const item)
 }
 
 /* This is a safeguard to prevent copy-pasters from using incompatible C and header files */
-#if (CJSON_VERSION_MAJOR != 1) || (CJSON_VERSION_MINOR != 7) || (CJSON_VERSION_PATCH != 14)
+#if (CJSON_VERSION_MAJOR != 1) || (CJSON_VERSION_MINOR != 7) || (CJSON_VERSION_PATCH != 15)
     #error cJSON.h and cJSON.c have different versions. Make sure that both have the same.
 #endif
 
@@ -507,10 +511,8 @@ static unsigned char* ensure(printbuffer * const p, size_t needed)
 
             return NULL;
         }
-        if (newbuffer)
-        {
-            memcpy(newbuffer, p->buffer, p->offset + 1);
-        }
+        
+        memcpy(newbuffer, p->buffer, p->offset + 1);
         p->hooks.deallocate(p->buffer);
     }
     p->length = newsize;
@@ -2544,6 +2546,7 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateIntArray(const int *numbers, int count)
     }
 
     a = cJSON_CreateArray();
+
     for(i = 0; a && (i < (size_t)count); i++)
     {
         n = cJSON_CreateNumber(numbers[i]);
@@ -2562,7 +2565,10 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateIntArray(const int *numbers, int count)
         }
         p = n;
     }
-    a->child->prev = n;
+
+    if (a && a->child) {
+        a->child->prev = n;
+    }
 
     return a;
 }
@@ -2599,7 +2605,10 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateFloatArray(const float *numbers, int count)
         }
         p = n;
     }
-    a->child->prev = n;
+
+    if (a && a->child) {
+        a->child->prev = n;
+    }
 
     return a;
 }
@@ -2618,7 +2627,7 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateDoubleArray(const double *numbers, int count)
 
     a = cJSON_CreateArray();
 
-    for(i = 0;a && (i < (size_t)count); i++)
+    for(i = 0; a && (i < (size_t)count); i++)
     {
         n = cJSON_CreateNumber(numbers[i]);
         if(!n)
@@ -2636,7 +2645,10 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateDoubleArray(const double *numbers, int count)
         }
         p = n;
     }
-    a->child->prev = n;
+
+    if (a && a->child) {
+        a->child->prev = n;
+    }
 
     return a;
 }
@@ -2673,8 +2685,11 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateStringArray(const char *const *strings, int co
         }
         p = n;
     }
-    a->child->prev = n;
 
+    if (a && a->child) {
+        a->child->prev = n;
+    }
+    
     return a;
 }
 
@@ -2961,7 +2976,7 @@ CJSON_PUBLIC(cJSON_bool) cJSON_IsRaw(const cJSON * const item)
 
 CJSON_PUBLIC(cJSON_bool) cJSON_Compare(const cJSON * const a, const cJSON * const b, const cJSON_bool case_sensitive)
 {
-    if ((a == NULL) || (b == NULL) || ((a->type & 0xFF) != (b->type & 0xFF)) || cJSON_IsInvalid(a))
+    if ((a == NULL) || (b == NULL) || ((a->type & 0xFF) != (b->type & 0xFF)))
     {
         return false;
     }
