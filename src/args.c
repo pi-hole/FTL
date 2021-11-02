@@ -30,6 +30,12 @@
 #include "dhcp-discover.h"
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(void);
+// mg_version()
+#include "civetweb/civetweb.h"
+// cJSON_Version()
+#include "cJSON/cJSON.h"
+// ph7_lib_version()
+#include "ph7/ph7.h"
 
 // defined in database/shell.c
 extern int sqlite3_shell_main(int argc, char **argv);
@@ -236,9 +242,18 @@ void parse_args(int argc, char* argv[])
 					printf(" ");
 				printf("%s", opt);
 			}
+			printf("\n\n");
+			printf("****************************** LUA **********************************\n");
+			printf("Version:         %s\n", LUA_COPYRIGHT);
 			printf("\n");
-			printf("******************************** LUA ********************************\n");
-			printf(LUA_COPYRIGHT"\n");
+			printf("****************************** CivetWeb *****************************\n");
+			printf("Version:         %s\n", mg_version());
+			printf("\n");
+			printf("****************************** cJSON ********************************\n");
+			printf("Version:         %s\n", cJSON_Version());
+			printf("\n");
+			printf("****************************** PH7 **********************************\n");
+			printf("Version:         %s\n", ph7_lib_version());
 			exit(EXIT_SUCCESS);
 		}
 
