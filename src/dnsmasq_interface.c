@@ -49,6 +49,8 @@
 #include "database/message-table.h"
 // add_to_dnsmasq_log_fifo_buffer()
 #include "fifo.h"
+// http_init()
+#include "webserver/webserver.h"
 
 // Private prototypes
 static const char *reply_status_str[QUERY_REPLY_MAX+1];
@@ -2551,6 +2553,73 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 	set_response_time(query, response);
 }
 
+static void init_pihole_PTR(void)
+{
+	char *ptrname = NULL;
+	// Determine name that should be replied to with on Pi-hole PTRs
+	switch (config.pihole_ptr)
+	{
+		default:
+		case PTR_NONE:
+		case PTR_PIHOLE:
+			ptrname = (char*)"pi.hole";
+			break;
+
+		case PTR_HOSTNAME:
+			ptrname = (char*)hostname();
+			break;
+
+		case PTR_HOSTNAMEFQDN:
+		{
+			char *suffix = daemon->domain_suffix;
+			// If local suffix is not available, we substitute "no_fqdn_available"
+			// see the comment about PIHOLE_PTR=HOSTNAMEFQDN in the Pi-hole docs
+			// for further details on why this was chosen
+			if(!suffix)
+				suffix = (char*)"no_fqdn_available";
+			ptrname = calloc(strlen(hostname()) + strlen(suffix) + 2, sizeof(char));
+			if(ptrname)
+			{
+				// Build "<hostname>.<local suffix>" domain
+				strcpy(ptrname, hostname());
+				strcat(ptrname, ".");
+				strcat(ptrname, suffix);
+			}
+			else
+			{
+				// Fallback to "<hostname>" on memory error
+				ptrname = (char*)hostname();
+			}
+		}
+			break;
+	}
+
+	// Obtain PTR record used for Pi-hole PTR injection (if enabled)
+	if(config.pihole_ptr != PTR_NONE)
+	{
+		// Add PTR record for pi.hole, the address will be injected later
+		pihole_ptr = calloc(1, sizeof(struct ptr_record));
+		pihole_ptr->name = strdup("x.x.x.x.in-addr.arpa");
+		pihole_ptr->ptr = ptrname;
+		pihole_ptr->next = NULL;
+		// Add our PTR record to the end of the linked list
+		if(daemon->ptr != NULL)
+		{
+			// Interate to the last PTR entry in dnsmasq's structure
+			struct ptr_record *ptr;
+			for(ptr = daemon->ptr; ptr && ptr->next; ptr = ptr->next);
+
+			// Add our record after the last existing ptr-record
+			ptr->next = pihole_ptr;
+		}
+		else
+		{
+			// Ours is the only record for daemon->ptr
+			daemon->ptr = pihole_ptr;
+		}
+	}
+}
+
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 {
 	// Going into daemon mode involves storing the
@@ -2637,69 +2706,11 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// Obtain DNS port from dnsmasq daemon
 	config.dns_port = daemon->port;
 
-	char *ptrname = NULL;
-	// Determine name that should be replied to with on Pi-hole PTRs
-	switch (config.pihole_ptr)
-	{
-		default:
-		case PTR_NONE:
-		case PTR_PIHOLE:
-			ptrname = (char*)"pi.hole";
-			break;
+	// Initialize FTL HTTP server
+	http_init();
 
-		case PTR_HOSTNAME:
-			ptrname = (char*)hostname();
-			break;
-
-		case PTR_HOSTNAMEFQDN:
-		{
-			char *suffix = daemon->domain_suffix;
-			// If local suffix is not available, we substitute "no_fqdn_available"
-			// see the comment about PIHOLE_PTR=HOSTNAMEFQDN in the Pi-hole docs
-			// for further details on why this was chosen
-			if(!suffix)
-				suffix = (char*)"no_fqdn_available";
-			ptrname = calloc(strlen(hostname()) + strlen(suffix) + 2, sizeof(char));
-			if(ptrname)
-			{
-				// Build "<hostname>.<local suffix>" domain
-				strcpy(ptrname, hostname());
-				strcat(ptrname, ".");
-				strcat(ptrname, suffix);
-			}
-			else
-			{
-				// Fallback to "<hostname>" on memory error
-				ptrname = (char*)hostname();
-			}
-		}
-			break;
-	}
-
-	// Obtain PTR record used for Pi-hole PTR injection (if enabled)
-	if(config.pihole_ptr != PTR_NONE)
-	{
-		// Add PTR record for pi.hole, the address will be injected later
-		pihole_ptr = calloc(1, sizeof(struct ptr_record));
-		pihole_ptr->name = strdup("x.x.x.x.in-addr.arpa");
-		pihole_ptr->ptr = ptrname;
-		pihole_ptr->next = NULL;
-		// Add our PTR record to the end of the linked list
-		if(daemon->ptr != NULL)
-		{
-			// Interate to the last PTR entry in dnsmasq's structure
-			struct ptr_record *ptr;
-			for(ptr = daemon->ptr; ptr && ptr->next; ptr = ptr->next);
-
-			// Add our record after the last existing ptr-record
-			ptr->next = pihole_ptr;
-		}
-		else
-		{
-			// Ours is the only record for daemon->ptr
-			daemon->ptr = pihole_ptr;
-		}
-	}
+	// Initialize Pi-hole PTR pointer
+	init_pihole_PTR();
 }
 
 void FTL_forwarding_retried(const struct server *serv, const int oldID, const int newID, const bool dnssec)
@@ -2851,7 +2862,7 @@ void FTL_TCP_worker_terminating(bool finished)
 
 	if(atomic_flag_test_and_set(&worker_already_terminating))
 	{
-		log_warn("TCP worker already terminating!");
+		log_debug(DEBUG_ANY, "TCP worker already terminating!");
 		return;
 	}
 
@@ -2859,7 +2870,7 @@ void FTL_TCP_worker_terminating(bool finished)
 	if(config.debug != 0)
 	{
 		const char *reason = finished ? "client disconnected" : "timeout";
-		log_warn("TCP worker terminating (%s)", reason);
+		log_debug(DEBUG_ANY, "TCP worker terminating (%s)", reason);
 	}
 
 	if(main_pid() == getpid())
@@ -2874,6 +2885,7 @@ void FTL_TCP_worker_terminating(bool finished)
 	// still holding a lock.
 	if(!is_our_lock())
 		lock_shm();
+
 	// Close dedicated database connections of this fork
 	gravityDB_close();
 	unlock_shm();
