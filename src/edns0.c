@@ -53,8 +53,13 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 
 	// Debug logging
 	if(config.debug & DEBUG_EDNS0)
+	{
+		char payload[5*plen+1];
+		memset(payload, 0, sizeof(payload));
 		for(unsigned int i = 0; i < plen; i++)
-			log_debug(DEBUG_EDNS0, "EDNS(0) pheader[%i] = 0x%02x", i, pheader[i]);
+			sprintf(&payload[5*i], "0x%02x ", pheader[i]);
+		log_debug(DEBUG_EDNS0, "EDNS(0) pheader = %s (%lu bytes)", payload, plen);
+	}
 
         // Working pointer
 	unsigned char *p = pheader;

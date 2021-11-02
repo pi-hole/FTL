@@ -227,7 +227,7 @@ bool __attribute__((pure)) getSetupVarsBool(const char * input)
 // Global variable showing current blocking status
 enum blocking_status blockingstatus = BLOCKING_UNKNOWN;
 
-void check_blocking_status(void)
+void read_blocking_status(void)
 {
 	const char* blocking = read_setupVarsconf("BLOCKING_ENABLED");
 	const char* message;

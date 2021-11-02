@@ -121,7 +121,7 @@ int main (int argc, char *argv[])
 			log_debug(DEBUG_ANY, "argv[%i] = \"%s\"", i, argv_dnsmasq[i]);
 	}
 	// Check initial blocking status
-	check_blocking_status();
+	read_blocking_status();
 
 	// Start the resolver
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);

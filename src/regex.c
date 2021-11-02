@@ -353,7 +353,6 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 		}
 
 		// Try to match the compiled regular expression against input
-		log_debug(DEBUG_REGEX, "Executing: index = %d, preg = %p, str = \"%s\", pmatch = %p", index, &regex[index].regex, input, &match);
 #ifdef USE_TRE_REGEX
 		int retval = tre_regexec(&regex->regex, input, 0, match, 0);
 #else
@@ -422,9 +421,8 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 		// Print no match message when in regex debug mode
 		if(match_idx == -1)
 		{
-			log_debug(DEBUG_REGEX, "Regex %s (%u, DB ID %i) NO match: \"%s\" vs. \"%s\"",
-			          regextype[regexid], index, regex[index].database_id,
-			          input, regex[index].string);
+			log_debug(DEBUG_REGEX, "Regex %s (FTL %u, DB %i) NO match: \"%s\" (input) vs. \"%s\" (regex)",
+			          regextype[regexid], index, regex[index].database_id, input, regex[index].string);
 		}
 	}
 

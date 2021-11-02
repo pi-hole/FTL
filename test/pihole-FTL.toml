@@ -22,7 +22,28 @@
   # Should FTL hide queries made by localhost?
   ignoreLocalhost = false
 
-  [dns.ipBlocking]
+  # Should FTL should internally generated DNSSEC queries?
+  showDNSSEC = true
+
+  # Should FTL return "pi.hole" as name for PTR requests to local IP addresses?
+  # Possible values are: [ "NONE", "HOSTNAME", "HOSTNAMEFQDN", "PI.HOLE" ]
+  piholePTR = "PI.HOLE"
+
+  # How should FTL handle queries when the gravity database is not available?
+  # Possible values are: [ "BLOCK", "ALLOW", "REFUSE", "DROP" ]
+  replyWhenBusy = "ALLOW"
+
+  # TTL for blocked queries [seconds]
+  blockTTL = 2
+
+  [dns.specialDomains]
+    # Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?
+    mozillaCanary = true
+
+    # Should FTL handle the iCloud privacy relay domains specifically and always return NXDOMAIN?
+    blockICloudPR = true
+
+  [dns.reply]
     # Use a specific IPv4 address in IP blocking mode
     # Possible values are: <valid IPv4 address> or empty string ("")
     IPv4 = ""
@@ -145,6 +166,9 @@
 
   # Artificially delay FTL's startup (0 to 300 seconds)
   delayStartup = 0
+
+  # Should FTL try to call addr2line when generating backtraces?
+  addr2line = true
 
 [debug]
   # Temporarily enable all debug flags

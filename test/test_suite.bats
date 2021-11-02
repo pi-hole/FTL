@@ -22,7 +22,7 @@
 @test "Number of compiled regex as expected" {
   run bash -c 'grep "Compiled [0-9]* allow" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == *"Compiled 2 allow and 1 deny regex"* ]]
+  [[ ${lines[0]} == *"Compiled 2 allow and 9 deny regex for 1 client in "* ]]
 }
 
 @test "denied domain is blocked" {

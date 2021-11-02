@@ -1201,7 +1201,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	if(get_and_clear_event(RELOAD_BLOCKINGMODE))
 	{
 		// Inspect setupVars.conf to see if Pi-hole blocking is enabled
-		check_blocking_status();
+		read_blocking_status();
 	}
 
 	// Only check blocking conditions when global blocking is enabled
@@ -2566,6 +2566,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// Helper processes are already split from the main instance
 	// so they will not listen to real-time signals
 	handle_realtime_signals();
+
+	// Inspect setupVars.conf to see if Pi-hole blocking is enabled
+	read_blocking_status();
 
 	// We will use the attributes object later to start all threads in
 	// detached mode

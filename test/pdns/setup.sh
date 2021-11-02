@@ -45,8 +45,8 @@ pdnsutil add-record ftl. . SOA "ns1.ftl. hostmaster.ftl. 1 10800 3600 604800 360
 # Create A records
 pdnsutil add-record ftl. a A 192.168.1.1
 pdnsutil add-record ftl. gravity A 192.168.1.2
-pdnsutil add-record ftl. blacklisted A 192.168.1.3
-pdnsutil add-record ftl. whitelisted A 192.168.1.4
+pdnsutil add-record ftl. denied A 192.168.1.3
+pdnsutil add-record ftl. allowed A 192.168.1.4
 pdnsutil add-record ftl. gravity-allowed A 192.168.1.5
 pdnsutil add-record ftl. regex1 A 192.168.2.1
 pdnsutil add-record ftl. regex2 A 192.168.2.2
