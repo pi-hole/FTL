@@ -87,7 +87,7 @@ static struct {
 	char name[IFNAMSIZ];
 	union all_addr addr4;
 	union all_addr addr6;
-} next_iface = {false, false, "", {{0}}, {{0}}};
+} next_iface = {false, false, "", {{ 0 }}, {{ 0 }}};
 
 // Fork-private copy of the server data the most recent reply came from
 static union mysockaddr last_server = {{ 0 }};

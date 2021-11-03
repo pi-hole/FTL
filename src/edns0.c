@@ -54,14 +54,15 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 	// Debug logging
 	if(config.debug & DEBUG_EDNS0)
 	{
-		char payload[5*plen+1];
+		char payload[3*plen+1];
 		memset(payload, 0, sizeof(payload));
 		for(unsigned int i = 0; i < plen; i++)
-			sprintf(&payload[5*i], "0x%02x ", pheader[i]);
-		log_debug(DEBUG_EDNS0, "EDNS(0) pheader = %s (%lu bytes)", payload, plen);
+			sprintf(&payload[3*i], "%02X ", pheader[i]);
+		log_debug(DEBUG_EDNS0, "EDNS(0) pheader: %s (%lu bytes)",
+		          payload, (long unsigned int)plen);
 	}
 
-        // Working pointer
+	// Working pointer
 	unsigned char *p = pheader;
 
 // RFC 6891                   EDNS(0) Extensions                   6.1.2.  Wire Format

@@ -65,7 +65,7 @@ typedef struct {
 			int denied;
 		} domains;
 	} database;
-	int querytype[TYPE_MAX-1];
+	int querytype[TYPE_MAX];
 	int status[QUERY_STATUS_MAX];
 	int reply[QUERY_REPLY_MAX];
 } countersStruct;

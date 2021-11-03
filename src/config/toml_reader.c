@@ -117,13 +117,13 @@ bool readFTLtoml(void)
 		toml_table_t *specialDomains = toml_table_in(dns, "specialDomains");
 		if(specialDomains)
 		{
-			toml_datum_t mozillaCanary = toml_bool_in(dns, "mozillaCanary");
+			toml_datum_t mozillaCanary = toml_bool_in(specialDomains, "mozillaCanary");
 			if(mozillaCanary.ok)
 				config.special_domains.mozilla_canary = mozillaCanary.u.b;
 			else
 				log_debug(DEBUG_CONFIG, "dns.specialDomains.mozillaCanary DOES NOT EXIST");
 
-			toml_datum_t blockICloudPR = toml_bool_in(dns, "blockICloudPR");
+			toml_datum_t blockICloudPR = toml_bool_in(specialDomains, "blockICloudPR");
 			if(blockICloudPR.ok)
 				config.special_domains.mozilla_canary = blockICloudPR.u.b;
 			else

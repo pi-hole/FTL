@@ -50,7 +50,7 @@ static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravityDB_opened = false;
 
 // Table names corresponding to the enum defined in gravity-db.h
-static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "" };
+static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "client", "group", "adlist", "denied_domains", "allowed_domains", "" };
 
 // Prototypes from functions in dnsmasq's source
 extern void rehash(int size);
@@ -900,10 +900,7 @@ static inline void gravityDB_finalize_client_statements(clientsData *client)
 
 	// Unset group found property to trigger a check next time the
 	// client sends a query
-	if(client != NULL)
-	{
-		client->flags.found_group = false;
-	}
+	client->flags.found_group = false;
 }
 
 // Close gravity database connection
