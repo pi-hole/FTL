@@ -23,6 +23,7 @@ void log_FTL_version(bool crashreport);
 void get_timestr(char * const timestring, const time_t timein, const bool millis);
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 void print_FTL_version(void);
+void dnsmasq_diagnosis_warning(char *message);
 
 // The actual logging routine can take extra options for specialized logging
 // The more general interfaces can be defined here as appropriate shortcuts

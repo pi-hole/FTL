@@ -26,6 +26,8 @@
 #include "procps.h"
 // init_overtime()
 #include "overTime.h"
+// flush_message_table()
+#include "database/message-table.h"
 
 char * username;
 bool needGC = false;
@@ -56,6 +58,9 @@ int main (int argc, char* argv[])
 	// Catch signals not handled by dnsmasq
 	// We configure real-time signals later (after dnsmasq has forked)
 	handle_signals();
+
+	// Flush messages stored in the long-term database
+	flush_message_table();
 
 	// Initialize shared memory
 	if(!init_shmem(true))

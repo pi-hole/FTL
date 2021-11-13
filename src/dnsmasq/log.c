@@ -314,6 +314,19 @@ void my_syslog(int priority, const char *format, ...)
       fputc('\n', stderr);
     }
 
+  /* Pi-hole diagnosis system */
+  if(priority == LOG_WARNING)
+    {
+      char *message;
+      va_start(ap, format);
+      if(vasprintf(&message, format, ap))
+        {
+          dnsmasq_diagnosis_warning(message);
+          free(message);
+        }
+      va_end(ap);
+    }
+
   if (log_fd == -1)
     {
 #ifdef __ANDROID__
