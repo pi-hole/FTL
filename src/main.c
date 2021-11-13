@@ -59,9 +59,6 @@ int main (int argc, char* argv[])
 	// We configure real-time signals later (after dnsmasq has forked)
 	handle_signals();
 
-	// Flush messages stored in the long-term database
-	flush_message_table();
-
 	// Initialize shared memory
 	if(!init_shmem(true))
 	{
@@ -90,6 +87,9 @@ int main (int argc, char* argv[])
 
 	// Initialize query database (pihole-FTL.db)
 	db_init();
+
+	// Flush messages stored in the long-term database
+	flush_message_table();
 
 	// Try to import queries from long-term database if available
 	if(config.DBimport)
