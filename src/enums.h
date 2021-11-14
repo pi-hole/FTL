@@ -200,6 +200,7 @@ enum message_type {
 	HOSTNAME_MESSAGE,
 	DNSMASQ_CONFIG_MESSAGE,
 	RATE_LIMIT_MESSAGE,
+	DNSMASQ_WARN_MESSAGE,
 	MAX_MESSAGE
 } __attribute__ ((packed));
 

@@ -27,7 +27,7 @@
 #include "../gc.h"
 
 static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT" };
+	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT" , "DNSMASQ_WARN" };
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -62,6 +62,13 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 		{	// RATE_LIMIT: The message column contains the IP address of the client in question
 			SQLITE_INTEGER, // Configured maximum number of queries
 			SQLITE_INTEGER, // Configured rate-limiting interval [seconds]
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL  // Not used
+		},
+		{	// DNSMASQ_WARN_MESSAGE: The message column contains the full message itself
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
 			SQLITE_NULL, // Not used
 			SQLITE_NULL, // Not used
 			SQLITE_NULL  // Not used
@@ -336,4 +343,13 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 
 	// Log to database
 	add_message(RATE_LIMIT_MESSAGE, clientIP, 2, config.rate_limit.count, config.rate_limit.interval);
+}
+
+void logg_warn_dnsmasq_message(char *message)
+{
+	// Log to pihole-FTL.log
+	logg("WARNING in dnsmasq core: %s", message);
+
+	// Log to database
+	add_message(DNSMASQ_WARN_MESSAGE, message, 0);
 }
