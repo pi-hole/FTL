@@ -18,8 +18,6 @@
 #include "api/socket.h"
 // gravityDB_close()
 #include "database/gravity-db.h"
-// dbclose()
-#include "database/common.h"
 // destroy_shmem()
 #include "shmem.h"
 // uname()
