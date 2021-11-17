@@ -2034,8 +2034,12 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
 	    }
 	}
       else if (flags & (F_IPV4 | F_IPV6))
-	inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6,
-		  addr, daemon->addrbuff, ADDRSTRLEN);
+	{
+	  inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6,
+		    addr, daemon->addrbuff, ADDRSTRLEN);
+	  if (flags & F_SERVER) // Add upstream server port if forwarding
+	    sprintf(strchr(daemon->addrbuff, '\0'), "#%u", daemon->log_port);
+	}
       else
 	dest = arg;
     }

@@ -125,9 +125,15 @@ static void set_outgoing_mark(struct frec *forward, int fd)
 static void _log_query_mysockaddr(unsigned int flags, char *name, union mysockaddr *addr, char *arg, unsigned short type, const int line)
 {
   if (addr->sa.sa_family == AF_INET)
+  {
+    daemon->log_port = ntohs(addr->in.sin_port);
     _log_query(flags | F_IPV4, name, (union all_addr *)&addr->in.sin_addr, arg, type, __FILE__, line);
+  }
   else
+  {
+    daemon->log_port = ntohs(addr->in6.sin6_port);
     _log_query(flags | F_IPV6, name, (union all_addr *)&addr->in6.sin6_addr, arg, type, __FILE__, line);
+  }
 }
 
 static void server_send(struct server *server, int fd,
