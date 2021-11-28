@@ -1402,6 +1402,7 @@ void safe_pipe(int *fd, int read_noblock);
 void *whine_malloc(size_t size);
 int sa_len(union mysockaddr *addr);
 int sockaddr_isequal(const union mysockaddr *s1, const union mysockaddr *s2);
+int hostname_order(const char *a, const char *b);
 int hostname_isequal(const char *a, const char *b);
 int hostname_issubdomain(char *a, char *b);
 time_t dnsmasq_time(void);

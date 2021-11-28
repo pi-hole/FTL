@@ -175,8 +175,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   unsigned int fwd_flags = 0;
   int is_dnssec = forward && (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY));
   struct server *master;
-  unsigned int gotname = extract_request(header, plen, daemon->namebuff, NULL);
   void *hash = hash_questions(header, plen, daemon->namebuff);
+  unsigned int gotname = extract_request(header, plen, daemon->namebuff, NULL);
   unsigned char *oph = find_pseudoheader(header, plen, NULL, NULL, NULL, NULL);
   int old_src = 0, old_reply = 0;
   int first, last, start = 0;

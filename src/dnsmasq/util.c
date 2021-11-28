@@ -367,7 +367,7 @@ int sa_len(union mysockaddr *addr)
 }
 
 /* don't use strcasecmp and friends here - they may be messed up by LOCALE */
-int hostname_isequal(const char *a, const char *b)
+int hostname_order(const char *a, const char *b)
 {
   unsigned int c1, c2;
   
@@ -380,11 +380,19 @@ int hostname_isequal(const char *a, const char *b)
     if (c2 >= 'A' && c2 <= 'Z')
       c2 += 'a' - 'A';
     
-    if (c1 != c2)
-      return 0;
+    if (c1 < c2)
+      return -1;
+    else if (c1 > c2)
+      return 1;
+    
   } while (c1);
   
-  return 1;
+  return 0;
+}
+
+int hostname_isequal(const char *a, const char *b)
+{
+  return hostname_order(a, b) == 0;
 }
 
 /* is b equal to or a subdomain of a return 2 for equal, 1 for subdomain */

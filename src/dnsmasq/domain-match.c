@@ -493,7 +493,7 @@ static int order(char *qdomain, size_t qlen, struct server *serv)
   if (qlen > dlen)
     return -1;
 
-  return strcmp(qdomain, serv->domain);
+  return hostname_order(qdomain, serv->domain);
 }
 
 static int order_servers(struct server *s1, struct server *s2)
