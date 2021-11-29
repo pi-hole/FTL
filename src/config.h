@@ -53,6 +53,11 @@ typedef struct {
 		bool mozilla_canary :1;
 		bool icloud_private_relay :1;
 	} special_domains;
+	struct {
+		bool load :1;
+		unsigned char shmem;
+		unsigned char disk;
+	} check;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
 	enum refresh_hostnames refresh_hostnames;
@@ -78,7 +83,7 @@ typedef struct {
 		struct in6_addr v6;
 	} reply_addr;
 } ConfigStruct;
-ASSERT_SIZEOF(ConfigStruct, 80, 76, 76);
+ASSERT_SIZEOF(ConfigStruct, 88, 80, 80);
 
 typedef struct {
 	const char* conf;

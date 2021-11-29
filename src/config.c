@@ -642,7 +642,7 @@ void read_FTLconf(void)
 
 	// BLOCK_ICLOUD_PR
 	// Should FTL handle the iCloud privacy relay domains specifically and
-	// always return NXDOMAIN??
+	// always return NXDOMAIN ?
 	// defaults to: true
 	buffer = parse_FTLconf(fp, "BLOCK_ICLOUD_PR");
 	config.special_domains.icloud_private_relay = read_bool(buffer, true);
@@ -651,6 +651,44 @@ void read_FTLconf(void)
 		logg("   BLOCK_ICLOUD_PR: Enabled");
 	else
 		logg("   BLOCK_ICLOUD_PR: Disabled");
+
+	// CHECK_LOAD
+	// Should FTL check the 15 min average of CPU load and complain if the
+	// load is larger than the number of available CPU cores?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "CHECK_LOAD");
+	config.check.load = read_bool(buffer, true);
+
+	if(config.check.load)
+		logg("   CHECK_LOAD: Enabled");
+	else
+		logg("   CHECK_LOAD: Disabled");
+
+	// CHECK_SHMEM
+	// Limit above which FTL should complain about a shared-memory shortage
+	// defaults to: 90%
+	config.check.shmem = 90;
+	buffer = parse_FTLconf(fp, "CHECK_SHMEM");
+
+	if(buffer != NULL &&
+	    sscanf(buffer, "%i", &ivalue) &&
+	    ivalue >= 0 && ivalue <= 100)
+			config.check.shmem = ivalue;
+
+	logg("   CHECK_LOAD: Warning if shared-memory usage exceeds %d%%", config.check.shmem);
+
+	// CHECK_disk
+	// Limit above which FTL should complain about a shared-memory shortage
+	// defaults to: 90%
+	config.check.disk = 90;
+	buffer = parse_FTLconf(fp, "CHECK_DISK");
+
+	if(buffer != NULL &&
+	    sscanf(buffer, "%i", &ivalue) &&
+	    ivalue >= 0 && ivalue <= 100)
+			config.check.disk = ivalue;
+
+	logg("   CHECK_LOAD: Warning if shared-memory usage exceeds %d%%", config.check.disk);
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);

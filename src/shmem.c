@@ -46,10 +46,6 @@
 #define SHARED_DNS_CACHE "FTL-dns-cache"
 #define SHARED_PER_CLIENT_REGEX "FTL-per-client-regex"
 
-// Limit from which on we warn users about space running out in SHMEM_PATH
-// default: 90%
-#define SHMEM_WARN_LIMIT 90
-
 // Allocation step for FTL-strings bucket. This is somewhat special as we use
 // this as a general-purpose storage which should always be large enough. If,
 // for some reason, more data than this step has to be stored (highly unlikely,
@@ -599,11 +595,11 @@ static SharedMemory create_shm(const char *name, const size_t size, bool create_
 {
 	char df[64] =  { 0 };
 	const int percentage = get_dev_shm_usage(df);
-	if(config.debug & DEBUG_SHMEM || percentage > SHMEM_WARN_LIMIT)
+	if(config.debug & DEBUG_SHMEM || percentage > config.check.shmem)
 	{
 		logg("Creating shared memory with name \"%s\" and size %zu (%s)", name, size, df);
 	}
-	if(percentage > SHMEM_WARN_LIMIT)
+	if(config.check.shmem > 0 && percentage > config.check.shmem)
 		log_resource_shortage(-1.0, 0, percentage, -1, SHMEM_PATH, df);
 
 	SharedMemory sharedMemory = {
@@ -742,7 +738,7 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 		logg("Remapping \"%s\" from %zu to (%zu * %zu) == %zu",
 		     sharedMemory->name, sharedMemory->size, size1, size2, size);
 
-	if(percentage > SHMEM_WARN_LIMIT)
+	if(config.check.shmem > 0 && percentage > config.check.shmem)
 		log_resource_shortage(-1.0, 0, percentage, -1, SHMEM_PATH, df);
 
 	// Resize shard memory object if requested

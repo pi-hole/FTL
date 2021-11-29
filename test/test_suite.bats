@@ -14,8 +14,8 @@
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[9]} == *"Initialization of shared memory failed." ]]
-  [[ ${lines[10]} == *"HINT: pihole-FTL is already running!"* ]]
+  [[ ${lines[10]} == *"Initialization of shared memory failed." ]]
+  [[ ${lines[11]} == *"HINT: pihole-FTL is already running!"* ]]
 }
 
 @test "Starting tests without prior history" {

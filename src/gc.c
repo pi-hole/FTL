@@ -81,16 +81,22 @@ time_t get_rate_limit_turnaround(const unsigned int rate_limit_count)
 
 static void check_space(const char *file)
 {
+	if(config.check.disk == 0)
+		return;
+
 	int perc = 0;
 	char buffer[64] = { 0 };
 	// Warn if space usage at the device holding the corresponding file
 	// exceeds the configured threshold
-	if((perc = get_filepath_usage(file, buffer)) > WARN_LIMIT)
+	if((perc = get_filepath_usage(file, buffer)) > config.check.disk)
 		log_resource_shortage(-1.0, 0, -1, perc, file, buffer);
 }
 
 static void check_load(void)
 {
+	if(!config.check.load)
+		return;
+
 	// Get CPU load averages
 	double load[3];
 	if (getloadavg(load, 3) == -1)
