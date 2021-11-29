@@ -642,7 +642,7 @@ void read_FTLconf(void)
 
 	// BLOCK_ICLOUD_PR
 	// Should FTL handle the iCloud privacy relay domains specifically and
-	// always return NXDOMAIN ?
+	// always return NXDOMAIN?
 	// defaults to: true
 	buffer = parse_FTLconf(fp, "BLOCK_ICLOUD_PR");
 	config.special_domains.icloud_private_relay = read_bool(buffer, true);

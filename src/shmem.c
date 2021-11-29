@@ -595,7 +595,7 @@ static SharedMemory create_shm(const char *name, const size_t size, bool create_
 {
 	char df[64] =  { 0 };
 	const int percentage = get_dev_shm_usage(df);
-	if(config.debug & DEBUG_SHMEM || percentage > config.check.shmem)
+	if(config.debug & DEBUG_SHMEM || (config.check.shmem > 0 && percentage > config.check.shmem))
 	{
 		logg("Creating shared memory with name \"%s\" and size %zu (%s)", name, size, df);
 	}
