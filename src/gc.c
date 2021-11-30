@@ -27,10 +27,6 @@
 // get_filepath_usage()
 #include "files.h"
 
-// Warn if space in a storage place exceeds this threshold
-// default: 90%
-#define WARN_LIMIT 90
-
 // Resource checking interval
 // default: 300 seconds
 #define RCinterval 300
