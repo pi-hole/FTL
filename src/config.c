@@ -675,10 +675,10 @@ void read_FTLconf(void)
 	    ivalue >= 0 && ivalue <= 100)
 			config.check.shmem = ivalue;
 
-	logg("   CHECK_LOAD: Warning if shared-memory usage exceeds %d%%", config.check.shmem);
+	logg("   CHECK_SHMEM: Warning if shared-memory usage exceeds %d%%", config.check.shmem);
 
-	// CHECK_disk
-	// Limit above which FTL should complain about a shared-memory shortage
+	// CHECK_DISK
+	// Limit above which FTL should complain about disk shortage for checked files
 	// defaults to: 90%
 	config.check.disk = 90;
 	buffer = parse_FTLconf(fp, "CHECK_DISK");
@@ -688,7 +688,7 @@ void read_FTLconf(void)
 	    ivalue >= 0 && ivalue <= 100)
 			config.check.disk = ivalue;
 
-	logg("   CHECK_LOAD: Warning if shared-memory usage exceeds %d%%", config.check.disk);
+	logg("   CHECK_DISK: Warning if certain disk usage exceeds %d%%", config.check.disk);
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
