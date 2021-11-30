@@ -69,6 +69,7 @@ static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, c
 static void check_pihole_PTR(char *domain);
 #define query_set_dnssec(query, dnssec) _query_set_dnssec(query, dnssec, __FILE__, __LINE__)
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line);
+static char *get_ptrname(struct in_addr *addr);
 
 // Static blocking metadata
 static const char *blockingreason = "";
@@ -1060,6 +1061,23 @@ static void check_pihole_PTR(char *domain)
 			// The last PTR record in daemon->ptr is reserved for Pi-hole
 			free(pihole_ptr->name);
 			pihole_ptr->name = strdup(domain);
+			if(family == AF_INET)
+			{
+				// IPv4 supports conditional domains
+				struct in_addr addrv4 = { 0 };
+				addrv4.s_addr = iface->addr.in.sin_addr.s_addr;
+				pihole_ptr->ptr = get_ptrname(&addrv4);
+			}
+			else
+			{
+				// IPv6 does not support conditional domains
+				pihole_ptr->ptr = get_ptrname(NULL);
+			}
+
+			// Debug logging
+			if(config.debug & DEBUG_QUERIES)
+				logg("Generating PTR response: %s -> %s", pihole_ptr->name, pihole_ptr->ptr);
+
 			return;
 		}
 	}
@@ -2765,52 +2783,13 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// Obtain DNS port from dnsmasq daemon
 	config.dns_port = daemon->port;
 
-	char *ptrname = NULL;
-	// Determine name that should be replied to with on Pi-hole PTRs
-	switch (config.pihole_ptr)
-	{
-		default:
-		case PTR_NONE:
-		case PTR_PIHOLE:
-			ptrname = (char*)"pi.hole";
-			break;
-
-		case PTR_HOSTNAME:
-			ptrname = (char*)hostname();
-			break;
-
-		case PTR_HOSTNAMEFQDN:
-		{
-			char *suffix = daemon->domain_suffix;
-			// If local suffix is not available, we substitute "no_fqdn_available"
-			// see the comment about PIHOLE_PTR=HOSTNAMEFQDN in the Pi-hole docs
-			// for further details on why this was chosen
-			if(!suffix)
-				suffix = (char*)"no_fqdn_available";
-			ptrname = calloc(strlen(hostname()) + strlen(suffix) + 2, sizeof(char));
-			if(ptrname)
-			{
-				// Build "<hostname>.<local suffix>" domain
-				strcpy(ptrname, hostname());
-				strcat(ptrname, ".");
-				strcat(ptrname, suffix);
-			}
-			else
-			{
-				// Fallback to "<hostname>" on memory error
-				ptrname = (char*)hostname();
-			}
-		}
-			break;
-	}
-
 	// Obtain PTR record used for Pi-hole PTR injection (if enabled)
 	if(config.pihole_ptr != PTR_NONE)
 	{
 		// Add PTR record for pi.hole, the address will be injected later
 		pihole_ptr = calloc(1, sizeof(struct ptr_record));
 		pihole_ptr->name = strdup("x.x.x.x.in-addr.arpa");
-		pihole_ptr->ptr = ptrname;
+		pihole_ptr->ptr = (char*)"";
 		pihole_ptr->next = NULL;
 		// Add our PTR record to the end of the linked list
 		if(daemon->ptr != NULL)
@@ -2828,6 +2807,65 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 			daemon->ptr = pihole_ptr;
 		}
 	}
+}
+
+static char *get_ptrname(struct in_addr *addr)
+{
+	static char *ptrname = NULL;
+	// Determine name that should be replied to with on Pi-hole PTRs
+	switch (config.pihole_ptr)
+	{
+		default:
+		case PTR_NONE:
+		case PTR_PIHOLE:
+			ptrname = (char*)"pi.hole";
+			break;
+
+		case PTR_HOSTNAME:
+			ptrname = (char*)hostname();
+			break;
+
+		case PTR_HOSTNAMEFQDN:
+		{
+			char *suffix;
+			size_t ptrnamesize = 0;
+			// get_domain() will also check conditional domains configured like
+			// domain=<domain>[,<address range>[,local]]
+			if(addr)
+				suffix = get_domain(*addr);
+			else
+				suffix = daemon->domain_suffix;
+			// If local suffix is not available, we substitute "no_fqdn_available"
+			// see the comment about PIHOLE_PTR=HOSTNAMEFQDN in the Pi-hole docs
+			// for further details on why this was chosen
+			if(!suffix)
+				suffix = (char*)"no_fqdn_available";
+
+			// Get enough space for domain building
+			size_t needspace = strlen(hostname()) + strlen(suffix) + 2;
+			if(ptrnamesize < needspace)
+			{
+				ptrname = realloc(ptrname, needspace);
+				ptrnamesize = needspace;
+			}
+
+			if(ptrname)
+			{
+				// Build "<hostname>.<local suffix>" domain
+				strcpy(ptrname, hostname());
+				strcat(ptrname, ".");
+				strcat(ptrname, suffix);
+			}
+			else
+			{
+				// Fallback to "<hostname>" on memory error
+				ptrname = (char*)hostname();
+			}
+			break;
+		}
+	}
+
+	return ptrname;
 }
 
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
