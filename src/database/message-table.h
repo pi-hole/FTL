@@ -22,5 +22,6 @@ void logg_hostname_warning(const char *ip, const char *name, const unsigned int 
 void logg_fatal_dnsmasq_message(const char *message);
 void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit_count);
 void logg_warn_dnsmasq_message(char *message);
+void log_resource_shortage(const double load, const int nprocs, const int shmem, const int disk, const char *path, const char *msg);
 
 #endif //MESSAGETABLE_H

@@ -22,6 +22,14 @@
 #include "datastructure.h"
 // logg_rate_limit_message()
 #include "database/message-table.h"
+// get_nprocs()
+#include <sys/sysinfo.h>
+// get_filepath_usage()
+#include "files.h"
+
+// Resource checking interval
+// default: 300 seconds
+#define RCinterval 300
 
 bool doGC = false;
 
@@ -67,6 +75,38 @@ time_t get_rate_limit_turnaround(const unsigned int rate_limit_count)
 	return (time_t)config.rate_limit.interval*how_often - (time(NULL) - lastRateLimitCleaner);
 }
 
+static void check_space(const char *file)
+{
+	if(config.check.disk == 0)
+		return;
+
+	int perc = 0;
+	char buffer[64] = { 0 };
+	// Warn if space usage at the device holding the corresponding file
+	// exceeds the configured threshold
+	if((perc = get_filepath_usage(file, buffer)) > config.check.disk)
+		log_resource_shortage(-1.0, 0, -1, perc, file, buffer);
+}
+
+static void check_load(void)
+{
+	if(!config.check.load)
+		return;
+
+	// Get CPU load averages
+	double load[3];
+	if (getloadavg(load, 3) == -1)
+		return;
+
+	// Get number of CPU cores
+	const int nprocs = get_nprocs();
+
+	// Warn if 15 minute average of load exceeds number of available
+	// processors
+	if(load[2] > nprocs)
+		log_resource_shortage(load[2], nprocs, -1, -1, NULL, NULL);
+}
+
 void *GC_thread(void *val)
 {
 	// Set thread name
@@ -76,6 +116,7 @@ void *GC_thread(void *val)
 	// Remember when we last ran the actions
 	time_t lastGCrun = time(NULL) - time(NULL)%GCinterval;
 	lastRateLimitCleaner = time(NULL);
+	time_t lastResourceCheck = 0;
 
 	// Run as long as this thread is not canceled
 	while(!killed)
@@ -92,6 +133,15 @@ void *GC_thread(void *val)
 		// Intermediate cancellation-point
 		if(killed)
 			break;
+
+		// Check available resources
+		if(now - lastResourceCheck >= RCinterval)
+		{
+			check_load();
+			check_space(FTLfiles.FTL_db);
+			check_space(FTLfiles.log);
+			lastResourceCheck = now;
+		}
 
 		if(now - GCdelay - lastGCrun >= GCinterval || doGC)
 		{
