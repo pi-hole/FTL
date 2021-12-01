@@ -220,7 +220,11 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  break;
       
       if (src)
-	old_src = 1;
+	{
+	  old_src = 1;
+	  /* If a query is retried, use the log_id for the retry when logging the answer. */
+	  src->log_id = daemon->log_id;
+	}
       else
 	{
 	  /* Existing query, but from new source, just add this 
@@ -294,6 +298,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	goto reply;
       /* table full - flags == 0, return REFUSED */
       
+      forward->frec_src.log_id = daemon->log_id;
       forward->frec_src.source = *udpaddr;
       forward->frec_src.orig_id = ntohs(header->id);
       forward->frec_src.dest = *dst_addr;
@@ -337,7 +342,6 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
     }
   else
     {
-      /* retry on existing query, from original source. Send to all available servers  */
 #ifdef HAVE_DNSSEC
       /* If we've already got an answer to this query, but we're awaiting keys for validation,
 	 there's no point retrying the query, retry the key query instead...... */
@@ -348,7 +352,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  
 	  while (forward->blocking_query)
 	    forward = forward->blocking_query;
-	   
+
+	  /* log_id should match previous DNSSEC query. */
+	  daemon->log_display_id = forward->frec_src.log_id;
+	  
 	  blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
 	  plen = forward->stash_len;
 	  /* get query for logging. */
@@ -395,7 +402,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		     Note that we can get here EITHER because a client retried,
 		     or an upstream server returned REFUSED. The above only
 		     applied in the later case. For client retries,
-		     keep tyring the last server.. */
+		     keep trying the last server.. */
 		  if (++start == last)
 		    {
 		      if (old_reply)
@@ -413,9 +420,6 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	 for this server */
       forward->flags |= FREC_TEST_PKTSZ;
     }
-
-  /* If a query is retried, use the log_id for the retry when logging the answer. */
-  forward->frec_src.log_id = daemon->log_id;
 
   /* We may be resending a DNSSEC query here, for which the below processing is not necessary. */
   if (!is_dnssec)
