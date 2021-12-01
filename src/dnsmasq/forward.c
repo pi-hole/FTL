@@ -315,7 +315,6 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (do_bit)
 	forward->flags |= FREC_DO_QUESTION;
 #endif
-      forward->frec_src.log_id = daemon->log_id;
       
       start = first;
 
@@ -414,6 +413,9 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	 for this server */
       forward->flags |= FREC_TEST_PKTSZ;
     }
+
+  /* If a query is retried, use the log_id for the retry when logging the answer. */
+  forward->frec_src.log_id = daemon->log_id;
 
   /* We may be resending a DNSSEC query here, for which the below processing is not necessary. */
   if (!is_dnssec)
