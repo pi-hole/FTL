@@ -447,3 +447,24 @@ const char * __attribute__ ((pure)) short_path(const char *full_path)
 	const char *shorter = strstr(full_path, "src/");
 	return shorter != NULL ? shorter : full_path;
 }
+
+void print_FTL_version(void)
+{
+    printf("Pi-hole FTL %s\n", get_FTL_version());
+}
+
+// Skip leading string if found
+static char *skipStr(const char *startstr, char *message)
+{
+	const size_t startlen = strlen(startstr);
+	if(strncmp(startstr, message, startlen) == 0)
+		return message + startlen;
+	else
+		return message;
+}
+
+void dnsmasq_diagnosis_warning(char *message)
+{
+	// Crop away any existing initial "warning: "
+	logg_warn_dnsmasq_message(skipStr("warning: ", message));
+}

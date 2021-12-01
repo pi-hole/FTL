@@ -492,11 +492,11 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
     }
   
   if (addr->sa.sa_family == AF_INET &&
-      !iface_check(AF_INET, (union all_addr *)&addr->in.sin_addr, label, &auth_dns))
+      !iface_check(AF_INET, (union all_addr *)&addr->in.sin_addr, ifr.ifr_name, &auth_dns))
     return 1;
 
   if (addr->sa.sa_family == AF_INET6 &&
-      !iface_check(AF_INET6, (union all_addr *)&addr->in6.sin6_addr, label, &auth_dns))
+      !iface_check(AF_INET6, (union all_addr *)&addr->in6.sin6_addr, ifr.ifr_name, &auth_dns))
     return 1;
     
 #ifdef HAVE_DHCP
@@ -546,9 +546,13 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
       iface->done = iface->multicast_done = iface->warned = 0;
       iface->index = if_index;
       iface->label = is_label;
-      if ((iface->name = whine_malloc(strlen(label)+1)))
+      /************** Pi-hole modification **************/
+      if ((iface->slabel = whine_malloc(strlen(label)+1)))
+	  strcpy(iface->slabel, label);
+      /**************************************************/
+      if ((iface->name = whine_malloc(strlen(ifr.ifr_name)+1)))
 	{
-	  strcpy(iface->name, label);
+	  strcpy(iface->name, ifr.ifr_name);
 	  iface->next = daemon->interfaces;
 	  daemon->interfaces = iface;
 	  return 1;

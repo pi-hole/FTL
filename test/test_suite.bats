@@ -1117,7 +1117,7 @@
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo:192.168.47.97#53 "* ]]
+  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo/192.168.47.97#53 "* ]]
 }
 
 @test "EDNS(0) ECS can overwrite client address (IPv6)" {
@@ -1136,7 +1136,7 @@
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo:fe80::b167:af1e:968b:dead#53 "* ]]
+  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo/fe80::b167:af1e:968b:dead#53 "* ]]
 }
 
 @test "alias-client is imported and used for configured client" {
@@ -1199,6 +1199,13 @@
   run bash -c './pihole-FTL abc.db ".version"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "SQLite 3."* ]]
+}
+
+@test "Embedded SQLite3 shell prints FTL version in interactive mode" {
+  # shell.c contains a call to print_FTL_version
+  run bash -c "echo -e '.quit\n' | ./pihole-FTL sqlite3 -interactive"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Pi-hole FTL"* ]]
 }
 
 @test "Embedded LUA engine is called for .lua file" {

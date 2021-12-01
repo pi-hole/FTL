@@ -52,9 +52,9 @@
 // Private prototypes
 static const char *reply_status_str[QUERY_REPLY_MAX+1];
 static void print_flags(const unsigned int flags);
-#define query_set_reply(flags, addr, query, response) _query_set_reply(flags, addr, query, response, __FILE__, __LINE__)
-static void _query_set_reply(const unsigned int flags, const union all_addr *addr, queriesData* query, const struct timeval response,
-                             const char *file, const int line);
+#define query_set_reply(flags, type, addr, query, response) _query_set_reply(flags, type, addr, query, response, __FILE__, __LINE__)
+static void _query_set_reply(const unsigned int flags, const enum reply_type reply, const union all_addr *addr, queriesData* query,
+                             const struct timeval response, const char *file, const int line);
 #define FTL_check_blocking(queryID, domainID, clientID) _FTL_check_blocking(queryID, domainID, clientID, __FILE__, __LINE__)
 static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
@@ -639,7 +639,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(config.debug & DEBUG_QUERIES)
 	{
 		const char *types = querystr(arg, qtype);
-		logg("**** new %sIPv%d %s query \"%s\" from %s:%s#%d (ID %i, FTL %i, %s:%i)",
+		logg("**** new %sIPv%d %s query \"%s\" from %s/%s#%d (ID %i, FTL %i, %s:%i)",
 		     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
 		     family == AF_INET ? 4 : 6, types, domainString, interface,
 		     internal_query ? "<internal>" : clientIP, clientPort,
@@ -868,13 +868,14 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		for (struct irec *iface = daemon->interfaces; iface; iface = iface->next)
 		{
 			char addrstr[INET6_ADDRSTRLEN] = { 0 };
+			const char *iname = iface->slabel ? iface->slabel : iface->name;
 			if(iface->addr.sa.sa_family == AF_INET)
 			{
 				inet_ntop(AF_INET, &iface->addr.in.sin_addr, addrstr, INET6_ADDRSTRLEN);
 				if(config.debug & DEBUG_NETWORKING)
 				{
 					logg("  - IPv4 interface %s (%d,%d) is %s",
-					     iface->name, iface->index, iface->label, addrstr);
+					     iname, iface->index, iface->label, addrstr);
 				}
 				if(iface->addr.in.sin_addr.s_addr == addr->addr4.s_addr)
 				{
@@ -889,7 +890,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 				if(config.debug & DEBUG_NETWORKING)
 				{
 					logg("  - IPv6 interface %s (%d,%d) is %s",
-					     iface->name, iface->index, iface->label, addrstr);
+					     iname, iface->index, iface->label, addrstr);
 				}
 				if(IN6_ARE_ADDR_EQUAL(&iface->addr.in6.sin6_addr, &addr->addr6))
 				{
@@ -925,8 +926,9 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	for (struct irec *iface = daemon->interfaces; iface != NULL; iface = iface->next)
 	{
 		const sa_family_t family = iface->addr.sa.sa_family;
+		const char *iname = iface->slabel ? iface->slabel : iface->name;
 		// If this interface has no name, we skip it
-		if(iface->name == NULL)
+		if(iname == NULL)
 		{
 			if(config.debug & DEBUG_NETWORKING)
 				logg("  - SKIP IPv%d interface (%d,%d): no name",
@@ -939,7 +941,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		{
 			if(config.debug & DEBUG_NETWORKING)
 				logg("  - SKIP IPv%d interface %s: (%d,%d) != (%d,%d)",
-				     family == AF_INET ? 4 : 6, iface->name, iface->index, iface->label,
+				     family == AF_INET ? 4 : 6, iname, iface->index, iface->label,
 				     recviface->index, recviface->label);
 			continue;
 		}
@@ -947,7 +949,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		// *** If we reach this point, we know this interface is the one we are looking for ***//
 
 		// Copy interface name
-		strncpy(next_iface.name, iface->name, sizeof(next_iface.name)-1);
+		strncpy(next_iface.name, iname, sizeof(next_iface.name)-1);
 		next_iface.name[sizeof(next_iface.name)-1] = '\0';
 
 		// Check if this family type is overwritten by config settings
@@ -957,7 +959,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		   {
 			if(config.debug & DEBUG_NETWORKING)
 				logg("  - SKIP IPv%d interface %s: REPLY_ADDR%d used",
-				     family == AF_INET ? 4 : 6, iface->name, family == AF_INET ? 4 : 6);
+				     family == AF_INET ? 4 : 6, iname, family == AF_INET ? 4 : 6);
 			continue;
 		   }
 
@@ -1010,7 +1012,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, buffer, ADDRSTRLEN);
 
 			const char *type = family == AF_INET6 ? isGUA ? " (GUA)" : isULA ? " (ULA)" : isLL ? " (LL)" : " (other)" : "";
-			logg("  -  OK  IPv%d interface %s (%d,%d) is %s%s",
+			logg("  -  OK  IPv%d interface %s: (%d,%d) is %s%s",
 			     family == AF_INET ? 4 : 6, next_iface.name,
 			     iface->index, iface->label, buffer, type);
 		}
@@ -1567,7 +1569,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		// Store query response as CNAME type
 		struct timeval response;
 		gettimeofday(&response, 0);
-		query_set_reply(F_CNAME, NULL, query, response);
+		query_set_reply(F_CNAME, 0, NULL, query, response);
 
 		// Store domain that was the reason for blocking the entire chain
 		query->CNAME_domainID = child_domainID;
@@ -1836,6 +1838,41 @@ static inline void set_response_time(queriesData *query, const struct timeval re
 	query->flags.response_calculated = true;
 }
 
+// Changes upstream server (only relevant when multiple servers are defined)
+// If this is an upstream response and the answering upstream is known (may not
+// be the case for internally generated DNSSEC queries), we have to check if the
+// first answering upstream server is also the first one we sent the query to.
+// If not, we need to change the upstream server associated with this query to
+// get accurate statistics
+static void update_upstream(queriesData *query, const int id)
+{
+	// We use query->flags.response_calculated to check if this is the first
+	// response received for this query and check the family of last server
+	// to see if it is available
+	if(query->flags.response_calculated || last_server.sa.sa_family == 0)
+		return;
+
+	char ip[ADDRSTRLEN+1] = { 0 };
+	in_port_t port = 0;
+	mysockaddr_extract_ip_port(&last_server, ip, &port);
+	int upstreamID = findUpstreamID(ip, port);
+	if(upstreamID != query->upstreamID)
+	{
+		if(config.debug & DEBUG_QUERIES)
+		{
+			upstreamsData *upstream = getUpstream(query->upstreamID, true);
+			if(upstream)
+			{
+				const char *oldaddr = getstr(upstream->ippos);
+				const in_port_t oldport = upstream->port;
+				logg("Query ID %d: Associated upstream changed (was %s#%d) as %s#%d replied earlier",
+					id, oldaddr, oldport, ip, port);
+			}
+		}
+		query->upstreamID = upstreamID;
+	}
+}
+
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr,
                       const char *arg, const int id, const char* file, const int line)
 {
@@ -1956,6 +1993,18 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		return;
 	}
 
+	// EDE analysis
+	if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != EDE_UNSET)
+	{
+		query->ede = addr->log.ede;
+		if(config.debug & DEBUG_QUERIES)
+			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
+	}
+
+	// Update upstream server (if applicable)
+	if(!cached)
+		update_upstream(query, id);
+
 	// Save response time
 	// Skipped internally if already computed
 	set_response_time(query, response);
@@ -1967,41 +2016,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Nothing to be done here
 		unlock_shm();
 		return;
-	}
-
-	if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != EDE_UNSET)
-	{
-		query->ede = addr->log.ede;
-		if(config.debug & DEBUG_QUERIES)
-			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
-	}
-
-	// If this is an upstream response and the answering upstream is known
-	// (may not be the case for internally generated DNSSEC queries), we
-	// have to check if the first answering upstream server is also the
-	// first one we sent the query to. If not, we need to change the
-	// upstream server associated with this query to get accurate statistics
-	if(!cached && last_server.sa.sa_family != 0)
-	{
-		char ip[ADDRSTRLEN+1] = { 0 };
-		in_port_t port = 0;
-		mysockaddr_extract_ip_port(&last_server, ip, &port);
-		int upstreamID = findUpstreamID(ip, port);
-		if(upstreamID != query->upstreamID)
-		{
-			if(config.debug & DEBUG_QUERIES)
-			{
-				upstreamsData *upstream = getUpstream(query->upstreamID, true);
-				if(upstream)
-				{
-					const char *oldaddr = getstr(upstream->ippos);
-					const in_port_t oldport = upstream->port;
-					logg("Query ID %d: Associated upstream changed from %s#%d to %s#%d (replied earlier)",
-					     id, oldaddr, oldport, ip, port);
-				}
-			}
-			query->upstreamID = upstreamID;
-		}
 	}
 
 	// Determine if this reply is an exact match for the queried domain
@@ -2036,7 +2050,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		}
 
 		// Save reply type and update individual reply counters
-		query_set_reply(flags, addr, query, response);
+		query_set_reply(flags, 0, addr, query, response);
 
 		// We know from cache that this domain is either SECURE or
 		// INSECURE, bogus queries are not cached
@@ -2066,7 +2080,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		query_set_status(query, QUERY_CACHE);
 
 		// Save reply type and update individual reply counters
-		query_set_reply(flags, addr, query, response);
+		query_set_reply(flags, 0, addr, query, response);
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
@@ -2109,7 +2123,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		}
 
 		// Save reply type and update individual reply counters
-		query_set_reply(reply_flags, addr, query, response);
+		query_set_reply(reply_flags, 0, addr, query, response);
 
 		// Further checks if this is an IP address
 		if(addr)
@@ -2138,7 +2152,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Hence, isExactMatch is always false
 
 		// Save reply type and update individual reply counters
-		query_set_reply(flags, addr, query, response);
+		query_set_reply(flags, 0, addr, query, response);
 	}
 	else if(isExactMatch && !query->flags.complete)
 	{
@@ -2354,6 +2368,10 @@ static void FTL_upstream_error(const union all_addr *addr, const int id, const c
 	if(!addr)
 		return;
 
+	// Record response time before queuing for the lock
+	struct timeval response;
+	gettimeofday(&response, 0);
+
 	// Lock shared memory
 	lock_shm();
 
@@ -2375,25 +2393,29 @@ static void FTL_upstream_error(const union all_addr *addr, const int id, const c
 		return;
 	}
 
+	// Update upstream server if necessary
+	update_upstream(query, id);
+
 	// Translate dnsmasq's rcode into something we can use
 	const char *rcodestr = NULL;
+	enum reply_type reply;
 	switch(addr->log.rcode)
 	{
 		case SERVFAIL:
 			rcodestr = "SERVFAIL";
-			query->reply = REPLY_SERVFAIL;
+			reply = REPLY_SERVFAIL;
 			break;
 		case REFUSED:
 			rcodestr = "REFUSED";
-			query->reply = REPLY_REFUSED;
+			reply = REPLY_REFUSED;
 			break;
 		case NOTIMP:
 			rcodestr = "NOT IMPLEMENTED";
-			query->reply = REPLY_NOTIMP;
+			reply = REPLY_NOTIMP;
 			break;
 		default:
 			rcodestr = "UNKNOWN";
-			query->reply = REPLY_OTHER;
+			reply = REPLY_OTHER;
 			break;
 	}
 
@@ -2410,7 +2432,19 @@ static void FTL_upstream_error(const union all_addr *addr, const int id, const c
 		else
 			domainname = "<cannot access domain struct>";
 
-		logg("**** got error report for %s: %s (ID %i, %s:%i)", domainname, rcodestr, id, file, line);
+		if(last_server.sa.sa_family == 0)
+			// Log error reply from unknown source
+			logg("**** got error reply: %s is %s (ID %i, %s:%i)",
+			     domainname, rcodestr, id, file, line);
+		else
+		{
+			char ip[ADDRSTRLEN+1] = { 0 };
+			in_port_t port = 0;
+			mysockaddr_extract_ip_port(&last_server, ip, &port);
+			// Log server which replied to our request
+			logg("**** got error reply from %s#%d: %s is %s (ID %i, %s:%i)",
+			     ip, port, domainname, rcodestr, id, file, line);
+		}
 
 		if(query->reply == REPLY_OTHER)
 		{
@@ -2420,6 +2454,9 @@ static void FTL_upstream_error(const union all_addr *addr, const int id, const c
 		if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
 			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
+
+	// Set query reply
+	query_set_reply(0, reply, addr, query, response);
 
 	// Unlock shared memory
 	unlock_shm();
@@ -2475,7 +2512,7 @@ static void FTL_mark_externally_blocked(const int id, const char* file, const in
 		query_blocked(query, domain, client, QUERY_EXTERNAL_BLOCKED_NXRA);
 
 	// Store reply type as replied with NXDOMAIN
-	query_set_reply(F_NEG | F_NXDOMAIN, NULL, query, response);
+	query_set_reply(F_NEG | F_NXDOMAIN, 0, NULL, query, response);
 
 	// Unlock shared memory
 	unlock_shm();
@@ -2547,12 +2584,18 @@ static const char *reply_status_str[QUERY_REPLY_MAX+1] = {
 	"MAX"
 };
 
-static void _query_set_reply(const unsigned int flags, const union all_addr *addr,
+static void _query_set_reply(const unsigned int flags, const enum reply_type reply,
+                             const union all_addr *addr,
                              queriesData *query, const struct timeval response,
                              const char *file, const int line)
 {
-	// Iterate through possible values
-	if(flags & F_NEG ||
+	// If reply is set, we use it directly instead of interpreting the flags
+	if(reply != 0)
+	{
+		query->reply = reply;
+	}
+	// else: Iterate through possible values by analyzing both the flags and the addr bits
+	else if(flags & F_NEG ||
 	   (flags & F_NOERR && !(flags & (F_IPV4 | F_IPV6))) || // <-- FTL_make_answer() when no A or AAAA is added
 	   force_next_DNS_reply == REPLY_NXDOMAIN ||
 	   force_next_DNS_reply == REPLY_NODATA)

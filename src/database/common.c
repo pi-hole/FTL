@@ -149,7 +149,6 @@ int dbquery(sqlite3* db, const char *format, ...)
 		logg("ERROR: SQL query \"%s\" failed: %s",
 		     query, sqlite3_errstr(rc));
 		sqlite3_free(query);
-		dbclose(&db);
 		checkFTLDBrc(rc);
 		return rc;
 	}
@@ -469,7 +468,6 @@ bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const long 
 	if(rc != SQLITE_OK)
 	{
 		checkFTLDBrc(rc);
-		dbclose(&db);
 		return false;
 	}
 
@@ -482,7 +480,6 @@ bool db_update_counters(sqlite3 *db, const int total, const int blocked)
 	if(rc != SQLITE_OK)
 	{
 		checkFTLDBrc(rc);
-		dbclose(&db);
 		return false;
 	}
 
@@ -490,7 +487,6 @@ bool db_update_counters(sqlite3 *db, const int total, const int blocked)
 	if(rc != SQLITE_OK)
 	{
 		checkFTLDBrc(rc);
-		dbclose(&db);
 		return false;
 	}
 
@@ -563,7 +559,6 @@ long int get_max_query_ID(sqlite3 *db)
 		{
 			logg("Encountered prepare error in get_max_query_ID(): %s", sqlite3_errstr(rc));
 			checkFTLDBrc(rc);
-			dbclose(&db);
 		}
 
 		// Return okay if the database is busy
@@ -575,7 +570,6 @@ long int get_max_query_ID(sqlite3 *db)
 	{
 		logg("Encountered step error in get_max_query_ID(): %s", sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
-		dbclose(&db);
 		return DB_FAILED;
 	}
 

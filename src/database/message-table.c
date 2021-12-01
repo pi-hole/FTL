@@ -27,7 +27,7 @@
 #include "../gc.h"
 
 static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT" };
+	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT" , "DNSMASQ_WARN" };
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -62,6 +62,13 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 		{	// RATE_LIMIT: The message column contains the IP address of the client in question
 			SQLITE_INTEGER, // Configured maximum number of queries
 			SQLITE_INTEGER, // Configured rate-limiting interval [seconds]
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL  // Not used
+		},
+		{	// DNSMASQ_WARN_MESSAGE: The message column contains the full message itself
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
 			SQLITE_NULL, // Not used
 			SQLITE_NULL, // Not used
 			SQLITE_NULL  // Not used
@@ -118,6 +125,7 @@ bool flush_message_table(void)
 static bool add_message(enum message_type type,
                         const char *message, const int count,...)
 {
+	bool okay = false;
 	// Return early if database is known to be broken
 	if(FTLDBerror())
 		return false;
@@ -139,8 +147,7 @@ static bool add_message(enum message_type type,
 		if( rc != SQLITE_OK ){
 			logg("add_message(type=%u, message=%s) - SQL error prepare DELETE: %s",
 			     type, message, sqlite3_errstr(rc));
-			dbclose(&db);
-			return false;
+			goto end_of_add_message;
 		}
 
 		// Bind type to prepared statement
@@ -150,8 +157,7 @@ static bool add_message(enum message_type type,
 			     type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
-			dbclose(&db);
-			return false;
+			goto end_of_add_message;
 		}
 
 		// Bind message to prepared statement
@@ -161,8 +167,7 @@ static bool add_message(enum message_type type,
 			     type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
-			dbclose(&db);
-			return false;
+			goto end_of_add_message;
 		}
 
 		// Execute and finalize
@@ -170,8 +175,7 @@ static bool add_message(enum message_type type,
 		{
 			logg("add_message(type=%u, message=%s) - SQL error step DELETE: %s",
 			     type, message, sqlite3_errstr(rc));
-			dbclose(&db);
-			return false;
+			goto end_of_add_message;
 		}
 		sqlite3_clear_bindings(stmt);
 		sqlite3_reset(stmt);
@@ -187,8 +191,7 @@ static bool add_message(enum message_type type,
 	{
 		logg("add_message(type=%u, message=%s) - SQL error prepare: %s",
 		     type, message, sqlite3_errstr(rc));
-		dbclose(&db);
-		return false;
+		goto end_of_add_message;
 	}
 
 	// Bind type to prepared statement
@@ -198,8 +201,7 @@ static bool add_message(enum message_type type,
 		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose(&db);
-		return false;
+		goto end_of_add_message;
 	}
 
 	// Bind message to prepared statement
@@ -209,8 +211,7 @@ static bool add_message(enum message_type type,
 		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose(&db);
-		return false;
+		goto end_of_add_message;
 	}
 
 	va_list ap;
@@ -242,9 +243,8 @@ static bool add_message(enum message_type type,
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			checkFTLDBrc(rc);
-			dbclose(&db);
 			va_end(ap);
-			return false;
+			goto end_of_add_message;
 		}
 	}
 	va_end(ap);
@@ -256,18 +256,19 @@ static bool add_message(enum message_type type,
 	{
 		logg("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
-		dbclose(&db);
-		return false;
+		goto end_of_add_message;
 	}
 
+	// Final database handling
 	sqlite3_clear_bindings(stmt);
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
+	okay = true;
 
-	// Close database connection
+end_of_add_message: // Close database connection
 	dbclose(&db);
 
-	return true;
+	return okay;
 }
 
 void logg_regex_warning(const char *type, const char *warning, const int dbindex, const char *regex)
@@ -336,4 +337,13 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 
 	// Log to database
 	add_message(RATE_LIMIT_MESSAGE, clientIP, 2, config.rate_limit.count, config.rate_limit.interval);
+}
+
+void logg_warn_dnsmasq_message(char *message)
+{
+	// Log to pihole-FTL.log
+	logg("WARNING in dnsmasq core: %s", message);
+
+	// Log to database
+	add_message(DNSMASQ_WARN_MESSAGE, message, 0);
 }
