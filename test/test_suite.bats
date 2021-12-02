@@ -1221,3 +1221,9 @@
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" != *"ERROR"* ]]
 }
+
+@test "Check dnsmasq warnings in source code" {
+  run bash -c "bash test/dnsmasq_warnings.sh"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "" ]]
+}
