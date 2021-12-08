@@ -158,11 +158,20 @@ static int domain_no_rebind(char *domain)
 {
   struct rebind_domain *rbd;
   size_t tlen, dlen = strlen(domain);
-  
+  char *dots = strchr(domain, '.');
+
+  /* Match whole labels only. Empty domain matches no dots (any single label) */
   for (rbd = daemon->no_rebind; rbd; rbd = rbd->next)
-    if (dlen >= (tlen = strlen(rbd->domain)) && strcmp(rbd->domain, &domain[dlen - tlen]) == 0)
+    {
+      if (dlen >= (tlen = strlen(rbd->domain)) &&
+	hostname_isequal(rbd->domain, &domain[dlen - tlen]) &&
+	(dlen == tlen || domain[dlen - tlen - 1] == '.'))
       return 1;
 
+      if (tlen == 0 && !dots)
+	return 1;
+    }
+  
   return 0;
 }
 
