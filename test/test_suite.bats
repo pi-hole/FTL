@@ -661,20 +661,24 @@
 }
 
 @test "Regex Test 37: Option \";querytype=A\" working as expected (ONLY matching A queries)" {
-  run bash -c 'dig A regex-A @127.0.0.1 +short'
+  run bash -c 'dig A regex-A @127.0.0.1'
   printf "dig A: %s\n" "${lines[@]}"
+  run bash -c 'dig A regex-A @127.0.0.1 +short'
   [[ ${lines[0]} == "0.0.0.0" ]]
-  run bash -c 'dig AAAA regex-A @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-A @127.0.0.1'
   printf "dig AAAA: %s\n" "${lines[@]}"
+  run bash -c 'dig AAAA regex-A @127.0.0.1 +short'
   [[ ${lines[0]} != "::" ]]
 }
 
 @test "Regex Test 38: Option \";querytype=!A\" working as expected (NOT matching A queries)" {
-  run bash -c 'dig A regex-notA @127.0.0.1 +short'
+  run bash -c 'dig A regex-notA @127.0.0.1'
   printf "dig A: %s\n" "${lines[@]}"
+  run bash -c 'dig A regex-notA @127.0.0.1 +short'
   [[ ${lines[0]} != "0.0.0.0" ]]
-  run bash -c 'dig AAAA regex-notA @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-notA @127.0.0.1'
   printf "dig AAAA: %s\n" "${lines[@]}"
+  run bash -c 'dig AAAA regex-notA @127.0.0.1 +short'
   [[ ${lines[0]} == "::" ]]
 }
 
