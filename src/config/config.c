@@ -8,12 +8,12 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "config.h"
 #include "toml_reader.h"
 #include "toml_writer.h"
-#include "setupVars.h"
-#include "log.h"
+#include "../setupVars.h"
+#include "../log.h"
 #include "../log.h"
 // readFTLlegacy()
 #include "legacy_reader.h"
@@ -40,8 +40,6 @@ void setDefaults(void)
 	defaults.edns0_ecs = true;
 	defaults.show_dnssec = true;
 	defaults.addr2line = true;
-	defaults.special_domains.mozilla_canary = true;
-	defaults.special_domains.icloud_private_relay = true;
 
 	// enums
 	defaults.privacylevel = PRIVACY_SHOW_ALL;
@@ -61,6 +59,15 @@ void setDefaults(void)
 	defaults.delay_startup = 0;
 	defaults.DBinterval = 60;
 	defaults.block_ttl = 2;
+
+	// struct special_domains
+	defaults.special_domains.mozilla_canary = true;
+	defaults.special_domains.icloud_private_relay = true;
+
+	// struct check
+	defaults.check.load = true;
+	defaults.check.disk = 90;
+	defaults.check.shmem = 90;
 
 	// struct rate_limit
 	defaults.rate_limit.count = 1000;

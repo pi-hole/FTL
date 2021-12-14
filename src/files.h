@@ -16,5 +16,7 @@ bool get_database_stat(struct stat *st);
 unsigned long long get_FTL_db_filesize(void);
 void get_permission_string(char permissions[10], struct stat *st);
 void ls_dir(const char* path);
+int get_path_usage(const char *path, char buffer[64]);
+int get_filepath_usage(const char *file, char buffer[64]);
 
 #endif //FILE_H

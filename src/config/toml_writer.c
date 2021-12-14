@@ -93,6 +93,14 @@ bool writeFTLtoml(void)
 
 
 
+	// [dns.check] subsection
+	catTOMLsection(fp, 1, "dns.check");
+	catTOMLbool(fp, 2, "load", "Should FTL check the 15 min average of CPU load and complain if the load is larger than the number of available CPU cores?", config.check.load, defaults.check.load);
+	catTOMLuint(fp, 2, "shmem", "Limit above which FTL should complain about a shared-memory shortage", config.check.shmem, defaults.check.shmem);
+	catTOMLuint(fp, 2, "disk", "Limit above which FTL should complain about disk shortage for checked files", config.check.disk, defaults.check.disk);
+
+
+
 	// [dns.specialDomains] subsection
 	catTOMLsection(fp, 1, "dns.specialDomains");
 	catTOMLbool(fp, 2, "mozillaCanary", "Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?", config.special_domains.mozilla_canary, defaults.special_domains.mozilla_canary);

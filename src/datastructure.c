@@ -16,8 +16,6 @@
 #include "regex_r.h"
 // reload_per_client_regex()
 #include "database/gravity-db.h"
-// flush_message_table()
-#include "database/message-table.h"
 // bool startup
 #include "main.h"
 // reset_aliasclient()
@@ -475,9 +473,6 @@ void FTL_reset_per_client_domain_data(void)
 void FTL_reload_all_domainlists(void)
 {
 	lock_shm();
-
-	// Flush messages stored in the long-term database
-	flush_message_table();
 
 	// (Re-)open gravity database connection
 	gravityDB_reopen();

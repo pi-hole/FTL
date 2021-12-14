@@ -71,6 +71,7 @@ static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, c
 static void check_pihole_PTR(char *domain);
 #define query_set_dnssec(query, dnssec) _query_set_dnssec(query, dnssec, __FILE__, __LINE__)
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line);
+static char *get_ptrname(struct in_addr *addr);
 
 // Static blocking metadata
 static const char *blockingreason = "";
@@ -623,7 +624,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(config.debug & DEBUG_QUERIES)
 	{
 		const char *types = querystr(arg, qtype);
-		log_debug(DEBUG_QUERIES, "**** new %sIPv%d %s query \"%s\" from %s:%s#%d (ID %i, FTL %i, %s:%i)",
+		log_debug(DEBUG_QUERIES, "**** new %sIPv%d %s query \"%s\" from %s/%s#%d (ID %i, FTL %i, %s:%i)",
 		          proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
 		          family == AF_INET ? 4 : 6, types, domainString, interface,
 		          internal_query ? "<internal>" : clientIP, clientPort,
@@ -852,11 +853,15 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		for (struct irec *iface = daemon->interfaces; iface; iface = iface->next)
 		{
 			char addrstr[INET6_ADDRSTRLEN] = { 0 };
+			const char *iname = iface->slabel ? iface->slabel : iface->name;
 			if(iface->addr.sa.sa_family == AF_INET)
 			{
-				inet_ntop(AF_INET, &iface->addr.in.sin_addr, addrstr, INET6_ADDRSTRLEN);
-				log_debug(DEBUG_NETWORKING, "  - IPv4 interface %s (%d,%d) is %s",
-				     iface->name, iface->index, iface->label, addrstr);
+				if(config.debug & DEBUG_NETWORKING)
+				{
+					inet_ntop(AF_INET, &iface->addr.in.sin_addr, addrstr, INET6_ADDRSTRLEN);
+					log_debug(DEBUG_NETWORKING, "  - IPv4 interface %s (%d,%d) is %s",
+					          iname, iface->index, iface->label, addrstr);
+				}
 
 				if(iface->addr.in.sin_addr.s_addr == addr->addr4.s_addr)
 				{
@@ -867,9 +872,12 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 			}
 			else if(iface->addr.sa.sa_family == AF_INET6)
 			{
-				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, addrstr, INET6_ADDRSTRLEN);
-				log_debug(DEBUG_NETWORKING, "  - IPv6 interface %s (%d,%d) is %s",
-				     iface->name, iface->index, iface->label, addrstr);
+				if(config.debug & DEBUG_NETWORKING)
+				{
+					inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, addrstr, INET6_ADDRSTRLEN);
+					log_debug(DEBUG_NETWORKING, "  - IPv6 interface %s (%d,%d) is %s",
+					          iname, iface->index, iface->label, addrstr);
+				}
 
 				if(IN6_ARE_ADDR_EQUAL(&iface->addr.in6.sin6_addr, &addr->addr6))
 				{
@@ -900,8 +908,9 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	for (struct irec *iface = daemon->interfaces; iface != NULL; iface = iface->next)
 	{
 		const sa_family_t family = iface->addr.sa.sa_family;
+		const char *iname = iface->slabel ? iface->slabel : iface->name;
 		// If this interface has no name, we skip it
-		if(iface->name == NULL)
+		if(iname == NULL)
 		{
 			if(config.debug & DEBUG_NETWORKING)
 				log_debug(DEBUG_NETWORKING, "  - SKIP IPv%d interface (%d,%d): no name",
@@ -914,7 +923,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		{
 			if(config.debug & DEBUG_NETWORKING)
 				log_debug(DEBUG_NETWORKING, "  - SKIP IPv%d interface %s: (%d,%d) != (%d,%d)",
-				     family == AF_INET ? 4 : 6, iface->name, iface->index, iface->label,
+				     family == AF_INET ? 4 : 6, iname, iface->index, iface->label,
 				     recviface->index, recviface->label);
 			continue;
 		}
@@ -922,7 +931,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		// *** If we reach this point, we know this interface is the one we are looking for ***//
 
 		// Copy interface name
-		strncpy(next_iface.name, iface->name, sizeof(next_iface.name)-1);
+		strncpy(next_iface.name, iname, sizeof(next_iface.name)-1);
 		next_iface.name[sizeof(next_iface.name)-1] = '\0';
 
 		// Check if this family type is overwritten by config settings
@@ -932,7 +941,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		   {
 			if(config.debug & DEBUG_NETWORKING)
 				log_debug(DEBUG_NETWORKING, "  - SKIP IPv%d interface %s: REPLY_ADDR%d used",
-				     family == AF_INET ? 4 : 6, iface->name, family == AF_INET ? 4 : 6);
+				     family == AF_INET ? 4 : 6, iname, family == AF_INET ? 4 : 6);
 			continue;
 		   }
 
@@ -986,8 +995,8 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 
 			const char *type = family == AF_INET6 ? isGUA ? " (GUA)" : isULA ? " (ULA)" : isLL ? " (LL)" : " (other)" : "";
 			log_debug(DEBUG_NETWORKING, "  -  OK  IPv%d interface %s (%d,%d) is %s%s",
-			     family == AF_INET ? 4 : 6, next_iface.name,
-			     iface->index, iface->label, buffer, type);
+			          family == AF_INET ? 4 : 6, next_iface.name,
+			          iface->index, iface->label, buffer, type);
 		}
 
 		// Exit loop early if we already have everything we need
@@ -1032,6 +1041,22 @@ static void check_pihole_PTR(char *domain)
 			// The last PTR record in daemon->ptr is reserved for Pi-hole
 			free(pihole_ptr->name);
 			pihole_ptr->name = strdup(domain);
+			if(family == AF_INET)
+			{
+				// IPv4 supports conditional domains
+				struct in_addr addrv4 = { 0 };
+				addrv4.s_addr = iface->addr.in.sin_addr.s_addr;
+				pihole_ptr->ptr = get_ptrname(&addrv4);
+			}
+			else
+			{
+				// IPv6 does not support conditional domains
+				pihole_ptr->ptr = get_ptrname(NULL);
+			}
+
+			// Debug logging
+			log_debug(DEBUG_QUERIES, "Generating PTR response: %s -> %s", pihole_ptr->name, pihole_ptr->ptr);
+
 			return;
 		}
 	}
@@ -2600,7 +2625,7 @@ static void init_pihole_PTR(void)
 		// Add PTR record for pi.hole, the address will be injected later
 		pihole_ptr = calloc(1, sizeof(struct ptr_record));
 		pihole_ptr->name = strdup("x.x.x.x.in-addr.arpa");
-		pihole_ptr->ptr = ptrname;
+		pihole_ptr->ptr = (char*)"";
 		pihole_ptr->next = NULL;
 		// Add our PTR record to the end of the linked list
 		if(daemon->ptr != NULL)
@@ -2711,6 +2736,65 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 
 	// Initialize Pi-hole PTR pointer
 	init_pihole_PTR();
+}
+
+static char *get_ptrname(struct in_addr *addr)
+{
+	static char *ptrname = NULL;
+	// Determine name that should be replied to with on Pi-hole PTRs
+	switch (config.pihole_ptr)
+	{
+		default:
+		case PTR_NONE:
+		case PTR_PIHOLE:
+			ptrname = (char*)"pi.hole";
+			break;
+
+		case PTR_HOSTNAME:
+			ptrname = (char*)hostname();
+			break;
+
+		case PTR_HOSTNAMEFQDN:
+		{
+			char *suffix;
+			size_t ptrnamesize = 0;
+			// get_domain() will also check conditional domains configured like
+			// domain=<domain>[,<address range>[,local]]
+			if(addr)
+				suffix = get_domain(*addr);
+			else
+				suffix = daemon->domain_suffix;
+			// If local suffix is not available, we substitute "no_fqdn_available"
+			// see the comment about PIHOLE_PTR=HOSTNAMEFQDN in the Pi-hole docs
+			// for further details on why this was chosen
+			if(!suffix)
+				suffix = (char*)"no_fqdn_available";
+
+			// Get enough space for domain building
+			size_t needspace = strlen(hostname()) + strlen(suffix) + 2;
+			if(ptrnamesize < needspace)
+			{
+				ptrname = realloc(ptrname, needspace);
+				ptrnamesize = needspace;
+			}
+
+			if(ptrname)
+			{
+				// Build "<hostname>.<local suffix>" domain
+				strcpy(ptrname, hostname());
+				strcat(ptrname, ".");
+				strcat(ptrname, suffix);
+			}
+			else
+			{
+				// Fallback to "<hostname>" on memory error
+				ptrname = (char*)hostname();
+			}
+			break;
+		}
+	}
+
+	return ptrname;
 }
 
 void FTL_forwarding_retried(const struct server *serv, const int oldID, const int newID, const bool dnssec)

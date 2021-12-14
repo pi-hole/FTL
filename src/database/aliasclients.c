@@ -240,8 +240,8 @@ void reset_aliasclient(sqlite3 *db, clientsData *client)
 	// Find corresponding alias-client (if any)
 	client->aliasclient_id = get_aliasclient_ID(db, client);
 
-	if(db_opened)
-		dbclose(&db);
+	// Close the database if we opened it here
+	if(db_opened) dbclose(&db);
 
 	// Skip if there is no responsible alias-client
 	if(client->aliasclient_id == -1)
@@ -341,6 +341,5 @@ void reimport_aliasclients(sqlite3 *db)
 	}
 
 	// Close the database if we opened it here
-	if(db_opened)
-		dbclose(&db);
+	if(db_opened) dbclose(&db);
 }

@@ -31,6 +31,7 @@ void debugstr(const enum debug_flag flag, const char **name, const char **desc);
 void logg_web(enum web_code code, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 void print_FTL_version(void);
+void dnsmasq_diagnosis_warning(char *message);
 
 // The actual logging routine can take extra options for specialized logging
 // The more general interfaces can be defined here as appropriate shortcuts

@@ -29,6 +29,8 @@
 #include "database/query-table.h"
 // init_overtime()
 #include "overTime.h"
+// flush_message_table()
+#include "database/message-table.h"
 
 char *username;
 bool needGC = false;
@@ -96,6 +98,9 @@ int main (int argc, char *argv[])
 		log_crit("FATAL: Cannot initialize in-memory database.");
 		return EXIT_FAILURE;
 	}
+
+	// Flush messages stored in the long-term database
+	flush_message_table();
 
 	// Try to import queries from long-term database if available
 	if(config.DBimport)

@@ -11,14 +11,14 @@
 #define CONFIG_H
 
 // enum privacy_level
-#include "enums.h"
+#include "../enums.h"
 #include <stdbool.h>
 // typedef int16_t
 #include <sys/types.h>
 // typedef uni32_t
 #include <stdint.h>
 // assert_sizeof
-#include "static_assert.h"
+#include "../static_assert.h"
 // struct in_addr, in6_addr
 #include <netinet/in.h>
 
@@ -58,6 +58,11 @@ typedef struct {
 		bool mozilla_canary;
 		bool icloud_private_relay;
 	} special_domains;
+	struct {
+		bool load;
+		unsigned char shmem;
+		unsigned char disk;
+	} check;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
 	enum refresh_hostnames refresh_hostnames;

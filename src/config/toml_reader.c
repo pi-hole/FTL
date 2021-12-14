@@ -113,6 +113,31 @@ bool readFTLtoml(void)
 		else
 			log_debug(DEBUG_CONFIG, "dns.blockTTL DOES NOT EXIST");
 
+		// Read [dns.check] section
+		toml_table_t *check = toml_table_in(dns, "check");
+		if(check)
+		{
+			toml_datum_t load = toml_bool_in(check, "load");
+			if(load.ok)
+				config.check.load = load.u.b;
+			else
+				log_debug(DEBUG_CONFIG, "dns.check.mozillaCanary DOES NOT EXIST");
+
+			toml_datum_t disk = toml_int_in(check, "disk");
+			if(disk.ok && disk.u.i >= 0 && disk.u.i <= 100)
+				config.check.disk = disk.u.i;
+			else
+				log_debug(DEBUG_CONFIG, "dns.check.disk DOES NOT EXIST or is INVALID");
+
+			toml_datum_t shmem = toml_int_in(check, "shmem");
+			if(shmem.ok && shmem.u.i >= 0 && shmem.u.i <= 100)
+				config.check.shmem = shmem.u.i;
+			else
+				log_debug(DEBUG_CONFIG, "dns.check.shmem DOES NOT EXIST or is INVALID");
+		}
+		else
+			log_debug(DEBUG_CONFIG, "dns.check DOES NOT EXIST");
+
 		// Read [dns.specialDomains] section
 		toml_table_t *specialDomains = toml_table_in(dns, "specialDomains");
 		if(specialDomains)

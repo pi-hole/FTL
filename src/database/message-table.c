@@ -26,10 +26,10 @@
 // get_rate_limit_turnaround()
 #include "../gc.h"
 
-static const char *message_types[MAX_MESSAGES] =
-	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT" };
+static const char *message_types[MAX_MESSAGE] =
+	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT", "DNSMASQ_WARN", "LOAD", "SHMEM", "DISK" };
 
-static unsigned char message_blob_types[MAX_MESSAGES][5] =
+static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
 		{	// REGEX_MESSAGE: The message column contains the regex warning text
 			SQLITE_TEXT, // regex type ("deny", "allow")
@@ -59,9 +59,37 @@ static unsigned char message_blob_types[MAX_MESSAGES][5] =
 			SQLITE_NULL, // Not used
 			SQLITE_NULL  // Not used
 		},
-		{	// RATE_LIMIT: The message column contains the IP address of the client in question
+		{	// RATE_LIMIT_MESSAGE: The message column contains the IP address of the client in question
 			SQLITE_INTEGER, // Configured maximum number of queries
 			SQLITE_INTEGER, // Configured rate-limiting interval [seconds]
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL  // Not used
+		},
+		{	// DNSMASQ_WARN_MESSAGE: The message column contains the full message itself
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL  // Not used
+		},
+		{	// LOAD_MESSAGE: The message column contains a general message
+			SQLITE_FLOAT, // 15min load average
+			SQLITE_INTEGER, // Number of cores
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL  // Not used
+		},
+		{	// SHMEM_MESSAGE: The message column contains the corresponding path
+			SQLITE_INTEGER, // Percentage currently used
+			SQLITE_TEXT, // Human-readable details about memory/disk usage
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL  // Not used
+		},
+		{	// DISK_MESSAGE: The message column contains the corresponding path
+			SQLITE_INTEGER, // Percentage currently used
+			SQLITE_TEXT, // Human-readable details about memory/disk usage
 			SQLITE_NULL, // Not used
 			SQLITE_NULL, // Not used
 			SQLITE_NULL  // Not used
@@ -115,9 +143,10 @@ bool flush_message_table(void)
 	return true;
 }
 
-static bool add_message(enum message_type type,
+static bool add_message(const enum message_type type, const bool unique,
                         const char *message, const int count,...)
 {
+	bool okay = false;
 	// Return early if database is known to be broken
 	if(FTLDBerror())
 		return false;
@@ -131,7 +160,7 @@ static bool add_message(enum message_type type,
 	}
 
 	// Ensure there are no duplicates when adding host name or rate-limiting messages
-	if(type == HOSTNAME_MESSAGE || type == RATE_LIMIT_MESSAGE)
+	if(unique)
 	{
 		sqlite3_stmt* stmt = NULL;
 		const char *querystr = "DELETE FROM message WHERE type = ?1 AND message = ?2";
@@ -139,8 +168,7 @@ static bool add_message(enum message_type type,
 		if( rc != SQLITE_OK ){
 			log_err("add_message(type=%u, message=%s) - SQL error prepare DELETE: %s",
 			        type, message, sqlite3_errstr(rc));
-			dbclose(&db);
-			return false;
+			goto end_of_add_message;
 		}
 
 		// Bind type to prepared statement
@@ -150,8 +178,7 @@ static bool add_message(enum message_type type,
 			        type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
-			dbclose(&db);
-			return false;
+			goto end_of_add_message;
 		}
 
 		// Bind message to prepared statement
@@ -161,8 +188,7 @@ static bool add_message(enum message_type type,
 			        type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
-			dbclose(&db);
-			return false;
+			goto end_of_add_message;
 		}
 
 		// Execute and finalize
@@ -170,8 +196,7 @@ static bool add_message(enum message_type type,
 		{
 			log_err("add_message(type=%u, message=%s) - SQL error step DELETE: %s",
 			        type, message, sqlite3_errstr(rc));
-			dbclose(&db);
-			return false;
+			goto end_of_add_message;
 		}
 		sqlite3_clear_bindings(stmt);
 		sqlite3_reset(stmt);
@@ -187,8 +212,7 @@ static bool add_message(enum message_type type,
 	{
 		log_err("add_message(type=%u, message=%s) - SQL error prepare: %s",
 		        type, message, sqlite3_errstr(rc));
-		dbclose(&db);
-		return false;
+		goto end_of_add_message;
 	}
 
 	// Bind type to prepared statement
@@ -198,8 +222,7 @@ static bool add_message(enum message_type type,
 		        type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose(&db);
-		return false;
+		goto end_of_add_message;
 	}
 
 	// Bind message to prepared statement
@@ -209,8 +232,7 @@ static bool add_message(enum message_type type,
 		        type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose(&db);
-		return false;
+		goto end_of_add_message;
 	}
 
 	va_list ap;
@@ -222,6 +244,10 @@ static bool add_message(enum message_type type,
 		{
 			case SQLITE_INTEGER:
 				rc = sqlite3_bind_int(stmt, 3 + j, va_arg(ap, int));
+				break;
+
+			case SQLITE_FLOAT:
+				rc = sqlite3_bind_double(stmt, 3 + j, va_arg(ap, double));
 				break;
 
 			case SQLITE_TEXT:
@@ -242,9 +268,8 @@ static bool add_message(enum message_type type,
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			checkFTLDBrc(rc);
-			dbclose(&db);
 			va_end(ap);
-			return false;
+			goto end_of_add_message;
 		}
 	}
 	va_end(ap);
@@ -256,18 +281,19 @@ static bool add_message(enum message_type type,
 	{
 		log_err("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
-		dbclose(&db);
-		return false;
+		goto end_of_add_message;
 	}
 
+	// Final database handling
 	sqlite3_clear_bindings(stmt);
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
+	okay = true;
 
-	// Close database connection
+end_of_add_message: // Close database connection
 	dbclose(&db);
 
-	return true;
+	return okay;
 }
 
 void logg_regex_warning(const char *type, const char *warning, const int dbindex, const char *regex)
@@ -287,7 +313,7 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 
 	// Log to database only if not in CLI mode
 	if(!cli_mode)
-		add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
+		add_message(REGEX_MESSAGE, false, warning, 3, type, regex, dbindex);
 }
 
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,
@@ -302,7 +328,7 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 
 	// Log to database
 	char *names = get_client_names_from_ids(matching_ids);
-	add_message(SUBNET_MESSAGE, ip, 5, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
+	add_message(SUBNET_MESSAGE, false, ip, 5, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
 	free(names);
 }
 
@@ -313,7 +339,7 @@ void logg_hostname_warning(const char *ip, const char *name, const unsigned int 
 	         ip, name, pos);
 
 	// Log to database
-	add_message(HOSTNAME_MESSAGE, ip, 2, name, (const int)pos);
+	add_message(HOSTNAME_MESSAGE, true, ip, 2, name, (const int)pos);
 }
 
 void logg_fatal_dnsmasq_message(const char *message)
@@ -322,7 +348,7 @@ void logg_fatal_dnsmasq_message(const char *message)
 	log_crit("Error in dnsmasq core: %s", message);
 
 	// Log to database
-	add_message(DNSMASQ_CONFIG_MESSAGE, message, 0);
+	add_message(DNSMASQ_CONFIG_MESSAGE, false, message, 0);
 
 	// FTL will dies after this point, so we should make sure to clean up
 	// behind ourselves
@@ -338,5 +364,33 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 	         clientIP, turnaround, turnaround == 1 ? "" : "s");
 
 	// Log to database
-	add_message(RATE_LIMIT_MESSAGE, clientIP, 2, config.rate_limit.count, config.rate_limit.interval);
+	add_message(RATE_LIMIT_MESSAGE, true, clientIP, 2, config.rate_limit.count, config.rate_limit.interval);
+}
+
+void logg_warn_dnsmasq_message(char *message)
+{
+	// Log to pihole-FTL.log
+	log_warn("WARNING in dnsmasq core: %s", message);
+
+	// Log to database
+	add_message(DNSMASQ_WARN_MESSAGE, false, message, 0);
+}
+
+void log_resource_shortage(const double load, const int nprocs, const int shmem, const int disk, const char *path, const char *msg)
+{
+	if(load > 0.0)
+	{
+		log_warn("Long-term load (15min avg) larger than number of processors: %.1f > %d", load, nprocs);
+		add_message(LOAD_MESSAGE, true, "excessive load", 2, load, nprocs);
+	}
+	else if(shmem > -1)
+	{
+		log_warn("RAM shortage (%s) ahead: %d%% is used (%s)", path, shmem, msg);
+		add_message(SHMEM_MESSAGE, true, path, 2, shmem, msg);
+	}
+	else if(disk > -1)
+	{
+		log_warn("Disk shortage (%s) ahead: %d%% is used (%s)", path, disk, msg);
+		add_message(DISK_MESSAGE, true, path, 2, disk, msg);
+	}
 }

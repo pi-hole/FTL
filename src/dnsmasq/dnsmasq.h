@@ -640,6 +640,9 @@ struct irec {
   struct in_addr netmask; /* only valid for IPv4 */
   int tftp_ok, dhcp_ok, mtu, done, warned, dad, dns_auth, index, multicast_done, found, label;
   char *name; 
+  /* Pi-hole modification */
+  char *slabel;
+  /************************/
   struct irec *next;
 };
 

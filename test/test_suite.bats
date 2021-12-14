@@ -937,7 +937,7 @@
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo:192.168.47.97#53 "* ]]
+  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo/192.168.47.97#53 "* ]]
 }
 
 @test "EDNS(0) ECS can overwrite client address (IPv6)" {
@@ -956,7 +956,7 @@
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo:fe80::b167:af1e:968b:dead#53 "* ]]
+  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo/fe80::b167:af1e:968b:dead#53 "* ]]
 }
 
 @test "alias-client is imported and used for configured client" {
@@ -1043,6 +1043,7 @@
   [[ "${lines[@]}" != *"ERROR"* ]]
 }
 
+<<<<<<< HEAD
 @test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
   run bash -c 'grep "WARNING: " /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
@@ -1073,4 +1074,10 @@
   run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole-FTL.log | grep -c "DOES NOT EXIST"'
   printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
+=======
+@test "Check dnsmasq warnings in source code" {
+  run bash -c "bash test/dnsmasq_warnings.sh"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "" ]]
+>>>>>>> development
 }

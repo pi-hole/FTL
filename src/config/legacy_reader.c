@@ -487,6 +487,33 @@ const char *readFTLlegacy(void)
 	buffer = parseFTLconf(fp, "BLOCK_ICLOUD_PR");
 	parseBool(buffer, &config.special_domains.icloud_private_relay);
 
+	// CHECK_LOAD
+	// Should FTL check the 15 min average of CPU load and complain if the
+	// load is larger than the number of available CPU cores?
+	// defaults to: true
+	buffer = parseFTLconf(fp, "CHECK_LOAD");
+	parseBool(buffer, &config.check.load);
+
+	// CHECK_SHMEM
+	// Limit above which FTL should complain about a shared-memory shortage
+	// defaults to: 90%
+	config.check.shmem = 90;
+	buffer = parseFTLconf(fp, "CHECK_SHMEM");
+
+	if(buffer != NULL && sscanf(buffer, "%i", &ivalue) &&
+	   ivalue >= 0 && ivalue <= 100)
+		config.check.shmem = ivalue;
+
+	// CHECK_DISK
+	// Limit above which FTL should complain about disk shortage for checked files
+	// defaults to: 90%
+	config.check.disk = 90;
+	buffer = parseFTLconf(fp, "CHECK_DISK");
+
+	if(buffer != NULL && sscanf(buffer, "%i", &ivalue) &&
+	   ivalue >= 0 && ivalue <= 100)
+			config.check.disk = ivalue;
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
 	// some rather verbose output into the log when

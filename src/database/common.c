@@ -147,7 +147,6 @@ int dbquery(sqlite3* db, const char *format, ...)
 		log_err("SQL query \"%s\" failed: %s",
 		        query, sqlite3_errstr(rc));
 		sqlite3_free(query);
-		dbclose(&db);
 		checkFTLDBrc(rc);
 		return rc;
 	}
@@ -477,6 +476,7 @@ double db_get_FTL_property_double(sqlite3 *db, const enum ftl_table_props ID)
 	if(querystr == NULL || ret < 0)
 	{
 		log_err("Memory allocation failed in db_get_FTL_property with ID = %u (%i)", ID, ret);
+		checkFTLDBrc(ret);
 		return DB_FAILED;
 	}
 
@@ -495,33 +495,41 @@ bool db_set_FTL_property(sqlite3 *db, const enum ftl_table_props ID, const int v
 
 bool db_set_FTL_property_double(sqlite3 *db, const enum ftl_table_props ID, const double value)
 {
-	// return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %f );", ID, value) == SQLITE_OK;
-	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %f );", ID, value);
+	int ret = dbquery(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %f );", ID, value);
+	if(ret != SQLITE_OK)
+	{
+		checkFTLDBrc(ret);
+		return false;
+	}
 	return true;
 }
 
 bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const int value)
 {
-	// return dbquery(db, "INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %ld );", ID, value) == SQLITE_OK;
-	SQL_bool(db, "INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %d );", ID, value);
+	int ret = dbquery(db, "INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %d );", ID, value);
+	if(ret != SQLITE_OK)
+	{
+		checkFTLDBrc(ret);
+		return false;
+	}
 	return true;
 }
 
 bool db_update_counters(sqlite3 *db, const int total, const int blocked)
 {
-	SQL_bool(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES);
-//	if(dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES) != SQLITE_OK)
-//	{
-//		dbclose(&db);
-//		return false;
-//	}
+	int ret = dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES);
+	if(ret != SQLITE_OK)
+	{
+		checkFTLDBrc(ret);
+		return false;
+	}
 
-	SQL_bool(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES);
-//	if(dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES) != SQLITE_OK)
-//	{
-//		dbclose(&db);
-//		return false;
-//	}
+	ret = dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES);
+	if(ret != SQLITE_OK)
+	{
+		checkFTLDBrc(ret);
+		return false;
+	}
 
 	return true;
 }
@@ -577,7 +585,6 @@ double db_query_double(sqlite3 *db, const char* querystr)
 		{
 			log_err("Encountered prepare error in get_max_query_ID(): %s", sqlite3_errstr(rc));
 			checkFTLDBrc(rc);
-			dbclose(&db);
 		}
 
 		return DB_FAILED;
@@ -601,6 +608,7 @@ double db_query_double(sqlite3 *db, const char* querystr)
 	{
 		log_err("Encountered step error in db_query_double(\"%s\"): %s",
 		        querystr, sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		return DB_FAILED;
 	}
 

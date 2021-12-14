@@ -1,0 +1,154 @@
+src/dnsmasq/auth.c
+		  my_syslog(LOG_WARNING, _("ignoring zone transfer request from %s"), daemon->addrbuff);
+src/dnsmasq/bpf.c
+      my_syslog(MS_DHCP | LOG_WARNING, _("DHCP request for unsupported hardware type (%d) received on %s"), 
+		mess->htype, ifr->ifr_name);
+src/dnsmasq/bpf.c
+	   my_syslog(LOG_WARNING, _("Unknown protocol version from route socket"));
+src/dnsmasq/cache.c
+  my_syslog(MS_DHCP | LOG_WARNING, _("No IPv4 address found for %s"), name);
+src/dnsmasq/cache.c
+	    my_syslog(MS_DHCP | LOG_WARNING, 
+		      _("%s is a CNAME, not giving it to the DHCP lease of %s"),
+		      host_name, daemon->addrbuff);
+src/dnsmasq/cache.c
+      my_syslog(MS_DHCP | LOG_WARNING, 
+		_("not giving name %s to the DHCP lease of %s because "
+		  "the name exists in %s with address %s"), 
+		host_name, daemon->addrbuff,
+		record_source(fail_crec->uid), daemon->namebuff);
+src/dnsmasq/dhcp6.c
+		    my_syslog(MS_DHCP | LOG_WARNING,
+			      _("unknown interface %s in bridge-interface"),
+			      bridge->iface);
+src/dnsmasq/dhcp.c
+		my_syslog(MS_DHCP | LOG_WARNING,
+			  _("unknown interface %s in bridge-interface"),
+			  bridge->iface);
+src/dnsmasq/dhcp.c
+	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP packet received on %s which has no address"), ifr.ifr_name);
+src/dnsmasq/dhcp.c
+      my_syslog(MS_DHCP | LOG_WARNING, _("Error sending DHCP packet to %s: %s"),
+		daemon->addrbuff, strerror(errno));
+src/dnsmasq/dhcp.c
+	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP range %s -- %s is not consistent with netmask %s"),
+		      daemon->dhcp_buff, daemon->dhcp_buff2, daemon->addrbuff);
+src/dnsmasq/dhcp-common.c
+	  my_syslog(MS_DHCP | LOG_WARNING, _("Ignoring duplicate dhcp-option %d"), tmp->opt); 
+src/dnsmasq/dhcp-common.c
+		my_syslog(MS_DHCP | LOG_WARNING, _("%s has more than one address in hostsfile, using %s for DHCP"), 
+			  config->hostname, daemon->addrbuff);
+src/dnsmasq/dhcp-common.c
+	    my_syslog(MS_DHCP | LOG_WARNING, _("duplicate IP address %s (%s) in dhcp-config directive"), 
+		      daemon->addrbuff, config->hostname);
+src/dnsmasq/dnsmasq.c
+	    my_syslog(LOG_WARNING, _("cache size greater than 10000 may cause performance issues, and is unlikely to be useful."));
+src/dnsmasq/dnsmasq.c
+    my_syslog(LOG_WARNING, "chown of PID file %s failed: %s", daemon->runfile, strerror(chown_warn));
+src/dnsmasq/dnsmasq.c
+    my_syslog(LOG_WARNING, _("warning: failed to change owner of %s: %s"), 
+	      daemon->log_file, strerror(log_err));
+src/dnsmasq/dnsmasq.c
+    my_syslog(LOG_WARNING, _("setting --bind-interfaces option because of OS limitations"));
+src/dnsmasq/dnsmasq.c
+	my_syslog(LOG_WARNING, _("warning: interface %s does not currently exist"), if_tmp->name);
+src/dnsmasq/dnsmasq.c
+	my_syslog(LOG_WARNING, _("warning: ignoring resolv-file flag because no-resolv is set"));
+src/dnsmasq/dnsmasq.c
+	my_syslog(LOG_WARNING, _("warning: no upstream servers configured"));
+src/dnsmasq/dnsmasq.c
+    my_syslog(LOG_WARNING, netlink_warn);
+src/dnsmasq/dnsmasq.c
+	my_syslog(MS_TFTP | LOG_WARNING, _("warning: %s inaccessible"), daemon->tftp_prefix);
+src/dnsmasq/dnsmasq.c
+	   my_syslog(MS_TFTP | LOG_WARNING, _("warning: TFTP directory %s inaccessible"), p->prefix);
+src/dnsmasq/dnsmasq.c
+	  my_syslog(MS_TFTP | LOG_WARNING, 
+		    _("restricting maximum simultaneous TFTP transfers to %d"), 
+		    daemon->tftp_max);
+src/dnsmasq/dnsmasq.c
+	my_syslog(LOG_WARNING, _("script process killed by signal %d"), ev.data);
+src/dnsmasq/dnsmasq.c
+	my_syslog(LOG_WARNING, _("script process exited with status %d"), ev.data);
+src/dnsmasq/dnsmasq.c
+	  my_syslog(LOG_WARNING, _("failed to access %s: %s"), res->name, strerror(errno));
+src/dnsmasq/dnsmasq.c
+	      my_syslog(LOG_WARNING, _("no servers found in %s, will retry"), latest->name);
+src/dnsmasq/dnssec.c
+      my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
+src/dnsmasq/forward.c
+	  my_syslog(LOG_WARNING, _("discarding DNS reply: subnet option mismatch"));
+src/dnsmasq/forward.c
+      my_syslog(LOG_WARNING, _("nameserver %s refused to do a recursive query"), daemon->namebuff);
+src/dnsmasq/forward.c
+	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
+src/dnsmasq/forward.c
+      my_syslog(LOG_WARNING, _("reducing DNS packet size for nameserver %s to %d"), daemon->addrbuff, SAFE_PKTSZ);
+src/dnsmasq/forward.c
+	      my_syslog(LOG_WARNING, _("Ignoring query from non-local network"));
+src/dnsmasq/forward.c
+	  my_syslog(LOG_WARNING, _("Ignoring query from non-local network"));
+src/dnsmasq/forward.c
+	my_syslog(LOG_WARNING, _("Maximum number of concurrent DNS queries reached (max: %d)"), daemon->ftabsize);
+src/dnsmasq/forward.c
+	my_syslog(LOG_WARNING, _("Maximum number of concurrent DNS queries to %s reached (max: %d)"), domain, daemon->ftabsize);
+src/dnsmasq/lease.c
+	    my_syslog(MS_DHCP | LOG_WARNING, _("ignoring invalid line in lease database: %s %s %s %s ..."),
+		      daemon->dhcp_buff3, daemon->dhcp_buff2,
+		      daemon->namebuff, daemon->dhcp_buff);
+src/dnsmasq/lease.c
+	    my_syslog(MS_DHCP | LOG_WARNING, _("ignoring invalid line in lease database, bad address: %s"),
+		      daemon->namebuff);
+src/dnsmasq/lease.c
+    my_syslog(MS_DHCP | LOG_WARNING, _("Ignoring domain %s for DHCP host name %s"), config_domain, name);
+src/dnsmasq/log.c
+		  my_syslog(LOG_WARNING, _("overflow: %d log entries lost"), e);
+src/dnsmasq/network.c
+	my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
+src/dnsmasq/network.c
+		my_syslog(LOG_WARNING, 
+			  _("LOUD WARNING: listening on %s may accept requests via interfaces other than %s"),
+			  daemon->addrbuff, iface->name);
+src/dnsmasq/network.c
+    my_syslog(LOG_WARNING, _("LOUD WARNING: use --bind-dynamic rather than --bind-interfaces to avoid DNS amplification attacks via these interface(s)")); 
+src/dnsmasq/network.c
+      my_syslog(LOG_WARNING, _("warning: using interface %s instead"), iface->name);
+src/dnsmasq/network.c
+      my_syslog(LOG_WARNING, _("warning: no addresses found for interface %s"), intname->intr);
+src/dnsmasq/network.c
+	  my_syslog(LOG_WARNING, _("ignoring nameserver %s - local interface"), daemon->namebuff);
+src/dnsmasq/network.c
+	  my_syslog(LOG_WARNING, 
+		    _("ignoring nameserver %s - cannot make/bind socket: %s"),
+		    daemon->namebuff, strerror(errno));
+src/dnsmasq/rfc2131.c
+      my_syslog(MS_DHCP | LOG_WARNING, _("no address range available for DHCP request %s %s"),
+		via, daemon->addrbuff);
+src/dnsmasq/rfc2131.c
+	  my_syslog(MS_DHCP | LOG_WARNING, _("disabling DHCP static address %s for %s"), 
+		    daemon->addrbuff, daemon->dhcp_buff);
+src/dnsmasq/rfc2131.c
+		  my_syslog(MS_DHCP | LOG_WARNING, _("not using configured address %s because it is leased to %s"),
+			    daemon->addrbuff, print_mac(daemon->namebuff, mac, len));
+src/dnsmasq/rfc2131.c
+		    my_syslog(MS_DHCP | LOG_WARNING, _("not using configured address %s because it is in use by the server or relay"), daemon->addrbuff);
+src/dnsmasq/rfc2131.c
+		    my_syslog(MS_DHCP | LOG_WARNING, _("not using configured address %s because it was previously declined"), daemon->addrbuff);
+src/dnsmasq/rfc2131.c
+	my_syslog(MS_DHCP | LOG_WARNING, _("cannot send DHCP/BOOTP option %d: no space left in packet"), opt);
+src/dnsmasq/rfc2131.c
+		my_syslog(MS_DHCP | LOG_WARNING, _("cannot send RFC3925 option: too many options for enterprise number %d"), opt->u.encap);
+src/dnsmasq/rfc3315.c
+	      my_syslog(MS_DHCP | LOG_WARNING, 
+			_("no address range available for DHCPv6 request from relay at %s"),
+			daemon->addrbuff);
+src/dnsmasq/rfc3315.c
+	  my_syslog(MS_DHCP | LOG_WARNING, 
+		    _("no address range available for DHCPv6 request via %s"), state->iface_name);
+src/dnsmasq/rfc3315.c
+		    my_syslog(MS_DHCP | LOG_WARNING, _("disabling DHCP static address %s for %s"), 
+			      daemon->addrbuff, daemon->dhcp_buff3);
+src/dnsmasq/tables.c
+      my_syslog(LOG_WARNING, _("IPset: error: %s"), pfr_strerror(errno));
+src/dnsmasq/tables.c
+      my_syslog(LOG_WARNING, _("warning: DIOCR%sADDRS: %s"), ( remove ? "DEL" : "ADD" ), pfr_strerror(errno));
