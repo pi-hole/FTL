@@ -355,6 +355,58 @@ bool add_additional_info_column(sqlite3 *db)
 	return true;
 }
 
+bool optimize_queries_table(sqlite3 *db)
+{
+	// Start transaction of database update
+	SQL_bool(db, "BEGIN TRANSACTION;");
+
+	// Create ID tables for domain, client, and forward strings
+	SQL_bool(db, "CREATE TABLE domain_by_id (id INTEGER PRIMARY KEY AUTOINCREMENT, domain TEXT NOT NULL);");
+	SQL_bool(db, "CREATE TABLE client_by_id (id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT NOT NULL, name TEXT);");
+	SQL_bool(db, "CREATE TABLE forward_by_id (id INTEGER PRIMARY KEY AUTOINCREMENT, forward TEXT NOT NULL);");
+
+	// Create UNIQUE index for the new tables
+	SQL_bool(db, "CREATE UNIQUE INDEX domain_by_id_domain_idx ON domain_by_id(domain);");
+	SQL_bool(db, "CREATE UNIQUE INDEX client_by_id_client_idx ON client_by_id(ip,name);");
+	SQL_bool(db, "CREATE UNIQUE INDEX forward_by_id_forward_idx ON forward_by_id(forward);");
+
+	// Rename current table "queries" to "queries_storage"
+	SQL_bool(db, "ALTER TABLE queries RENAME TO queries_storage;");
+
+	// Change column definitions of the queries_storage table to allow
+	// integer IDs. If we would leave the column definitions as TEXT, we
+	// could not tell apart integer IDs easily as everything INSERTed would
+	// be converted to TEXT form (this is very inefficient)
+	// We have to turn off defensive mode to do this.
+	sqlite3_config(SQLITE_DBCONFIG_DEFENSIVE, false, NULL);
+	SQL_bool(db, "PRAGMA writable_schema = ON;");
+	SQL_bool(db, "UPDATE sqlite_master SET sql = 'CREATE TABLE \"queries_storage\" ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER , additional_info TEXT)' WHERE type = 'table' AND name = 'queries_storage';");
+	SQL_bool(db, "PRAGMA writable_schema = OFF;");
+	sqlite3_config(SQLITE_DBCONFIG_DEFENSIVE, true, NULL);
+
+	// Create VIEW queries so user scripts continue to work despite our
+	// optimization here. The VIEW will pull the strings from the linked
+	// tables when needed to always server the strings.
+	SQL_bool(db, "CREATE VIEW queries AS "
+	                     "SELECT id, timestamp, type, status, "
+	                       "CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,"
+	                       "CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,"
+	                       "CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,"
+	                       "additional_info FROM queries_storage q;");
+
+	// Update database version to 10
+	if(!db_set_FTL_property(db, DB_VERSION, 10))
+	{
+		logg("optimize_queries_table(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool(db, "COMMIT");
+
+	return true;
+}
+
 // Get most recent 24 hours data from long-term database
 void DB_read_queries(void)
 {
