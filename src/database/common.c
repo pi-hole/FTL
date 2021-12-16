@@ -411,11 +411,26 @@ void db_init(void)
 	// Update to version 10 if lower
 	if(dbversion < 10)
 	{
-		// Update to version 9: Use linking tables for queries table
+		// Update to version 10: Use linking tables for queries table
 		logg("Updating long-term database to version 10");
 		if(!optimize_queries_table(db))
 		{
 			logg("Queries table not optimized, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 11 if lower
+	if(dbversion < 11)
+	{
+		// Update to version 11: Use link table also for additional_info column
+		logg("Updating long-term database to version 11");
+		if(!create_addinfo_table(db))
+		{
+			logg("Linkt table for additional_info not generated, database not available");
 			dbclose(&db);
 			return;
 		}

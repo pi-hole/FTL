@@ -86,6 +86,7 @@ int DB_save_queries(sqlite3 *db)
 	sqlite3_stmt *domain_stmt = NULL;
 	sqlite3_stmt *client_stmt = NULL;
 	sqlite3_stmt *forward_stmt = NULL;
+	sqlite3_stmt *addinfo_stmt = NULL;
 
 	int rc = dbquery(db, "BEGIN TRANSACTION IMMEDIATE");
 	if( rc != SQLITE_OK )
@@ -112,7 +113,8 @@ int DB_save_queries(sqlite3 *db)
 	                                 "(SELECT id FROM domain_by_id WHERE domain = ?4),"
 	                                 "(SELECT id FROM client_by_id WHERE ip = ?5 AND name = ?6),"
 	                                 "(SELECT id FROM forward_by_id WHERE forward = ?7),"
-	                                 "?8)", -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
+	                                 "(SELECT id FROM addinfo_by_id WHERE type = ?8 AND content = ?9))",
+	                         -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		const char *text, *spaces;
@@ -191,6 +193,32 @@ int DB_save_queries(sqlite3 *db)
 
 	rc = sqlite3_prepare_v3(db, "INSERT OR IGNORE INTO forward_by_id (forward) VALUES (?)",
 	                        -1, SQLITE_PREPARE_PERSISTENT, &forward_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		const char *text, *spaces;
+		if( rc == SQLITE_BUSY )
+		{
+			text   = "WARNING";
+			spaces = "       ";
+		}
+		else
+		{
+			text   = "ERROR";
+			spaces = "     ";
+		}
+
+		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
+		if(!checkFTLDBrc(rc))
+			logg("%s  Keeping queries in memory for later new attempt", spaces);
+		saving_failed_before = true;
+
+		if(db_opened) dbclose(&db);
+
+		return DB_FAILED;
+	}
+
+	rc = sqlite3_prepare_v3(db, "INSERT OR IGNORE INTO addinfo_by_id (type,content) VALUES (?,?)",
+	                        -1, SQLITE_PREPARE_PERSISTENT, &addinfo_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		const char *text, *spaces;
@@ -349,9 +377,23 @@ int DB_save_queries(sqlite3 *db)
 		   query->status == QUERY_REGEX_CNAME ||
 		   query->status == QUERY_BLACKLIST_CNAME)
 		{
-			// Restore domain blocked during deep CNAME inspection if applicable
-			const char* cname = getCNAMEDomainString(query);
-			sqlite3_bind_text(query_stmt, 8, cname, -1, SQLITE_STATIC);
+			// Save domain blocked during deep CNAME inspection
+			const char *cname = getCNAMEDomainString(query);
+			const int len = strlen(cname);
+			sqlite3_bind_int(query_stmt, 8, ADDINFO_CNAME_DOMAIN);
+			sqlite3_bind_text(query_stmt, 9, cname, len, SQLITE_STATIC);
+
+			// Execute prepared addinfo statement and check if successful
+			sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_CNAME_DOMAIN);
+			sqlite3_bind_text(addinfo_stmt, 2, cname, len, SQLITE_STATIC);
+			if(sqlite3_step(addinfo_stmt) != SQLITE_DONE)
+			{
+				logg("Encountered error while trying to store addinfo in long-term database");
+				error = true;
+				break;
+			}
+			sqlite3_clear_bindings(addinfo_stmt);
+			sqlite3_reset(addinfo_stmt);
 		}
 		else if(query->status == QUERY_REGEX)
 		{
@@ -359,7 +401,22 @@ int DB_save_queries(sqlite3 *db)
 			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			if(cache != NULL)
-				sqlite3_bind_int(query_stmt, 8, cache->black_regex_idx);
+			{
+				sqlite3_bind_int(query_stmt, 8, ADDINFO_REGEX_ID);
+				sqlite3_bind_int(query_stmt, 9, cache->black_regex_idx);
+
+				// Execute prepared addinfo statement and check if successful
+				sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_REGEX_ID);
+				sqlite3_bind_int(addinfo_stmt, 2, cache->black_regex_idx);
+				if(sqlite3_step(addinfo_stmt) != SQLITE_DONE)
+				{
+					logg("Encountered error while trying to store addinfo in long-term database");
+					error = true;
+					break;
+				}
+				sqlite3_clear_bindings(addinfo_stmt);
+				sqlite3_reset(addinfo_stmt);
+			}
 			else
 				sqlite3_bind_null(query_stmt, 8);
 		}
@@ -367,6 +424,7 @@ int DB_save_queries(sqlite3 *db)
 		{
 			// Nothing to add here
 			sqlite3_bind_null(query_stmt, 8);
+			sqlite3_bind_null(query_stmt, 9);
 		}
 
 		// Step and check if successful
@@ -399,7 +457,8 @@ int DB_save_queries(sqlite3 *db)
 	if(sqlite3_finalize(query_stmt) != SQLITE_OK ||
 	   sqlite3_finalize(domain_stmt) != SQLITE_OK ||
 	   sqlite3_finalize(client_stmt) != SQLITE_OK ||
-	   sqlite3_finalize(forward_stmt) != SQLITE_OK)
+	   sqlite3_finalize(forward_stmt) != SQLITE_OK ||
+	   sqlite3_finalize(addinfo_stmt) != SQLITE_OK)
 	{
 		logg("Statement finalization failed when trying to store queries to long-term database");
 
@@ -494,7 +553,7 @@ bool optimize_queries_table(sqlite3 *db)
 	// Start transaction of database update
 	SQL_bool(db, "BEGIN TRANSACTION;");
 
-	// Create ID tables for domain, client, and forward strings
+	// Create link tables for domain, client, and forward strings
 	SQL_bool(db, "CREATE TABLE domain_by_id (id INTEGER PRIMARY KEY AUTOINCREMENT, domain TEXT NOT NULL);");
 	SQL_bool(db, "CREATE TABLE client_by_id (id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT NOT NULL, name TEXT);");
 	SQL_bool(db, "CREATE TABLE forward_by_id (id INTEGER PRIMARY KEY AUTOINCREMENT, forward TEXT NOT NULL);");
@@ -512,11 +571,9 @@ bool optimize_queries_table(sqlite3 *db)
 	// could not tell apart integer IDs easily as everything INSERTed would
 	// be converted to TEXT form (this is very inefficient)
 	// We have to turn off defensive mode to do this.
-	sqlite3_config(SQLITE_DBCONFIG_DEFENSIVE, false, NULL);
 	SQL_bool(db, "PRAGMA writable_schema = ON;");
-	SQL_bool(db, "UPDATE sqlite_master SET sql = 'CREATE TABLE \"queries_storage\" ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER , additional_info TEXT)' WHERE type = 'table' AND name = 'queries_storage';");
+	SQL_bool(db, "UPDATE sqlite_master SET sql = 'CREATE TABLE \"query_storage\" ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER , additional_info TEXT)' WHERE type = 'table' AND name = 'query_storage';");
 	SQL_bool(db, "PRAGMA writable_schema = OFF;");
-	sqlite3_config(SQLITE_DBCONFIG_DEFENSIVE, true, NULL);
 
 	// Create VIEW queries so user scripts continue to work despite our
 	// optimization here. The VIEW will pull the strings from the linked
@@ -526,12 +583,57 @@ bool optimize_queries_table(sqlite3 *db)
 	                       "CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,"
 	                       "CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,"
 	                       "CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,"
-	                       "additional_info FROM queries_storage q;");
+	                       "additional_info FROM query_storage q;");
 
 	// Update database version to 10
 	if(!db_set_FTL_property(db, DB_VERSION, 10))
 	{
 		logg("optimize_queries_table(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool(db, "COMMIT");
+
+	return true;
+}
+
+bool create_addinfo_table(sqlite3 *db)
+{
+	// Start transaction of database update
+	SQL_bool(db, "BEGIN TRANSACTION;");
+
+	// Create link table for additional_info column
+	SQL_bool(db, "CREATE TABLE addinfo_by_id (id INTEGER PRIMARY KEY AUTOINCREMENT, type INTEGER NOT NULL, content NOT NULL);");
+
+	// Create UNIQUE index for the new tables
+	SQL_bool(db, "CREATE UNIQUE INDEX addinfo_by_id_idx ON addinfo_by_id(type,content);");
+
+	// Change column definitions of the queries_storage table to allow
+	// integer IDs. If we would leave the column definitions as TEXT, we
+	// could not tell apart integer IDs easily as everything INSERTed would
+	// be converted to TEXT form (this is very inefficient)
+	// We have to turn off defensive mode to do this.
+	SQL_bool(db, "PRAGMA writable_schema = ON;");
+	SQL_bool(db, "UPDATE sqlite_master SET sql = 'CREATE TABLE \"query_storage\" ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER, additional_info INTEGER)' WHERE type = 'table' AND name = 'query_storage';");
+	SQL_bool(db, "PRAGMA writable_schema = OFF;");
+
+	// Create VIEW queries so user scripts continue to work despite our
+	// optimization here. The VIEW will pull the strings from the linked
+	// tables when needed to always server the strings.
+	SQL_bool(db, "DROP VIEW queries");
+	SQL_bool(db, "CREATE VIEW queries AS "
+	                     "SELECT id, timestamp, type, status, "
+	                       "CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,"
+	                       "CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,"
+	                       "CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,"
+	                       "CASE typeof(additional_info) WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info "
+	                       "FROM query_storage q;");
+
+	// Update database version to 11
+	if(!db_set_FTL_property(db, DB_VERSION, 11))
+	{
+		logg("create_addinfo_table(): Failed to update database version!");
 		return false;
 	}
 
