@@ -105,14 +105,14 @@ int DB_save_queries(sqlite3 *db)
 	}
 
 	// Prepare statements
-	rc  = sqlite3_prepare_v2(db, "INSERT INTO query_storage "
+	rc  = sqlite3_prepare_v3(db, "INSERT INTO query_storage "
 	                                 "(timestamp,type,status,domain,client,forward,additional_info) "
 	                                 "VALUES "
 	                                 "(?1,?2,?3,"
 	                                 "(SELECT id FROM domain_by_id WHERE domain = ?4),"
 	                                 "(SELECT id FROM client_by_id WHERE ip = ?5 AND name = ?6),"
 	                                 "(SELECT id FROM forward_by_id WHERE forward = ?7),"
-	                                 "?8)", -1, &query_stmt, NULL);
+	                                 "?8)", -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		const char *text, *spaces;
@@ -137,7 +137,8 @@ int DB_save_queries(sqlite3 *db)
 		return DB_FAILED;
 	}
 
-	rc = sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO domain_by_id (domain) VALUES (?)", -1, &domain_stmt, NULL);
+	rc = sqlite3_prepare_v3(db, "INSERT OR IGNORE INTO domain_by_id (domain) VALUES (?)",
+	                        -1, SQLITE_PREPARE_PERSISTENT, &domain_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		const char *text, *spaces;
@@ -162,7 +163,8 @@ int DB_save_queries(sqlite3 *db)
 		return DB_FAILED;
 	}
 
-	rc = sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO client_by_id (ip,name) VALUES (?,?)", -1, &client_stmt, NULL);
+	rc = sqlite3_prepare_v3(db, "INSERT OR IGNORE INTO client_by_id (ip,name) VALUES (?,?)",
+	                        -1, SQLITE_PREPARE_PERSISTENT, &client_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		const char *text, *spaces;
@@ -187,7 +189,8 @@ int DB_save_queries(sqlite3 *db)
 		return DB_FAILED;
 	}
 
-	rc = sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO forward_by_id (forward) VALUES (?)", -1, &forward_stmt, NULL);
+	rc = sqlite3_prepare_v3(db, "INSERT OR IGNORE INTO forward_by_id (forward) VALUES (?)",
+	                        -1, SQLITE_PREPARE_PERSISTENT, &forward_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		const char *text, *spaces;
@@ -564,7 +567,7 @@ void DB_read_queries(void)
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt = NULL;
-	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v3(db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
