@@ -554,9 +554,9 @@ bool optimize_queries_table(sqlite3 *db)
 	SQL_bool(db, "BEGIN TRANSACTION;");
 
 	// Create link tables for domain, client, and forward strings
-	SQL_bool(db, "CREATE TABLE domain_by_id (id INTEGER PRIMARY KEY AUTOINCREMENT, domain TEXT NOT NULL);");
-	SQL_bool(db, "CREATE TABLE client_by_id (id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT NOT NULL, name TEXT);");
-	SQL_bool(db, "CREATE TABLE forward_by_id (id INTEGER PRIMARY KEY AUTOINCREMENT, forward TEXT NOT NULL);");
+	SQL_bool(db, "CREATE TABLE domain_by_id (id INTEGER PRIMARY KEY, domain TEXT NOT NULL);");
+	SQL_bool(db, "CREATE TABLE client_by_id (id INTEGER PRIMARY KEY, ip TEXT NOT NULL, name TEXT);");
+	SQL_bool(db, "CREATE TABLE forward_by_id (id INTEGER PRIMARY KEY, forward TEXT NOT NULL);");
 
 	// Create UNIQUE index for the new tables
 	SQL_bool(db, "CREATE UNIQUE INDEX domain_by_id_domain_idx ON domain_by_id(domain);");
@@ -572,7 +572,7 @@ bool optimize_queries_table(sqlite3 *db)
 	// be converted to TEXT form (this is very inefficient)
 	// We have to turn off defensive mode to do this.
 	SQL_bool(db, "PRAGMA writable_schema = ON;");
-	SQL_bool(db, "UPDATE sqlite_master SET sql = 'CREATE TABLE \"query_storage\" ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER , additional_info TEXT)' WHERE type = 'table' AND name = 'query_storage';");
+	SQL_bool(db, "UPDATE sqlite_master SET sql = 'CREATE TABLE \"query_storage\" (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER , additional_info TEXT)' WHERE type = 'table' AND name = 'query_storage';");
 	SQL_bool(db, "PRAGMA writable_schema = OFF;");
 
 	// Create VIEW queries so user scripts continue to work despite our
@@ -604,7 +604,7 @@ bool create_addinfo_table(sqlite3 *db)
 	SQL_bool(db, "BEGIN TRANSACTION;");
 
 	// Create link table for additional_info column
-	SQL_bool(db, "CREATE TABLE addinfo_by_id (id INTEGER PRIMARY KEY AUTOINCREMENT, type INTEGER NOT NULL, content NOT NULL);");
+	SQL_bool(db, "CREATE TABLE addinfo_by_id (id INTEGER PRIMARY KEY, type INTEGER NOT NULL, content NOT NULL);");
 
 	// Create UNIQUE index for the new tables
 	SQL_bool(db, "CREATE UNIQUE INDEX addinfo_by_id_idx ON addinfo_by_id(type,content);");
@@ -615,7 +615,7 @@ bool create_addinfo_table(sqlite3 *db)
 	// be converted to TEXT form (this is very inefficient)
 	// We have to turn off defensive mode to do this.
 	SQL_bool(db, "PRAGMA writable_schema = ON;");
-	SQL_bool(db, "UPDATE sqlite_master SET sql = 'CREATE TABLE \"query_storage\" ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER, additional_info INTEGER)' WHERE type = 'table' AND name = 'query_storage';");
+	SQL_bool(db, "UPDATE sqlite_master SET sql = 'CREATE TABLE \"query_storage\" (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER, additional_info INTEGER)' WHERE type = 'table' AND name = 'query_storage';");
 	SQL_bool(db, "PRAGMA writable_schema = OFF;");
 
 	// Create VIEW queries so user scripts continue to work despite our
