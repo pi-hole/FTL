@@ -105,10 +105,13 @@ int DB_save_queries(sqlite3 *db)
 	}
 
 	// Prepare statements
-	rc  = sqlite3_prepare_v2(db, "INSERT INTO queries_storage VALUES (NULL,?1,?2,?3,"
+	rc  = sqlite3_prepare_v2(db, "INSERT INTO query_storage "
+	                                 "(timestamp,type,status,domain,client,forward,additional_info) "
+	                                 "VALUES "
+	                                 "(?1,?2,?3,"
 	                                 "(SELECT id FROM domain_by_id WHERE domain = ?4),"
 	                                 "(SELECT id FROM client_by_id WHERE ip = ?5 AND name = ?6),"
-	                                 "CASE typeof(?7) WHEN 'NULL' THEN NULL ELSE (SELECT id FROM forward_by_id WHERE forward = ?7) END,"
+	                                 "(SELECT id FROM forward_by_id WHERE forward = ?7),"
 	                                 "?8)", -1, &query_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -301,13 +304,17 @@ int DB_save_queries(sqlite3 *db)
 		{
 			// Get forward pointer
 			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
-			if(upstream)
+			const char *forwardIP = getstr(upstream->ippos);
+			if(upstream && forwardIP)
 			{
 				char *buffer = NULL;
-				if(asprintf(&buffer, "%s#%u", getstr(upstream->ippos), upstream->port) > 0)
+				int len = 0; // The length of the string WITHOUT the NUL byte. This is what sqlite3_bind_text() expects.
+				if((len = asprintf(&buffer, "%s#%u", forwardIP, upstream->port)) > 0)
 				{
-					sqlite3_bind_text(query_stmt, 7, buffer, -1, SQLITE_TRANSIENT);
-					sqlite3_bind_text(forward_stmt, 1, buffer, -1, SQLITE_TRANSIENT);
+					// Use transient here as we step only after the buffer is freed below
+					sqlite3_bind_text(query_stmt, 7, buffer, len, SQLITE_TRANSIENT);
+					// Use static here as we insert right away
+					sqlite3_bind_text(forward_stmt, 1, buffer, len, SQLITE_STATIC);
 
 					// Execute prepared forward statement and check if successful
 					if(sqlite3_step(forward_stmt) != SQLITE_DONE)
@@ -318,7 +325,6 @@ int DB_save_queries(sqlite3 *db)
 					}
 					sqlite3_clear_bindings(forward_stmt);
 					sqlite3_reset(forward_stmt);
-
 				}
 				else
 				{
@@ -357,7 +363,7 @@ int DB_save_queries(sqlite3 *db)
 		else
 		{
 			// Nothing to add here
-			sqlite3_bind_null(query_stmt, 7);
+			sqlite3_bind_null(query_stmt, 8);
 		}
 
 		// Step and check if successful
@@ -495,8 +501,8 @@ bool optimize_queries_table(sqlite3 *db)
 	SQL_bool(db, "CREATE UNIQUE INDEX client_by_id_client_idx ON client_by_id(ip,name);");
 	SQL_bool(db, "CREATE UNIQUE INDEX forward_by_id_forward_idx ON forward_by_id(forward);");
 
-	// Rename current table "queries" to "queries_storage"
-	SQL_bool(db, "ALTER TABLE queries RENAME TO queries_storage;");
+	// Rename current queries table
+	SQL_bool(db, "ALTER TABLE queries RENAME TO query_storage;");
 
 	// Change column definitions of the queries_storage table to allow
 	// integer IDs. If we would leave the column definitions as TEXT, we
