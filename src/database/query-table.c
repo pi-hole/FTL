@@ -82,7 +82,10 @@ int DB_save_queries(sqlite3 *db)
 
 	int saved = 0;
 	bool error = false;
-	sqlite3_stmt* stmt = NULL;
+	sqlite3_stmt *query_stmt = NULL;
+	sqlite3_stmt *domain_stmt = NULL;
+	sqlite3_stmt *client_stmt = NULL;
+	sqlite3_stmt *forward_stmt = NULL;
 
 	int rc = dbquery(db, "BEGIN TRANSACTION IMMEDIATE");
 	if( rc != SQLITE_OK )
@@ -101,7 +104,12 @@ int DB_save_queries(sqlite3 *db)
 		return DB_FAILED;
 	}
 
-	rc = sqlite3_prepare_v2(db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?,?)", -1, &stmt, NULL);
+	// Prepare statements
+	rc  = sqlite3_prepare_v2(db, "INSERT INTO queries_storage VALUES (NULL,?1,?2,?3,"
+	                                 "(SELECT id FROM domain_by_id WHERE domain = ?4),"
+	                                 "(SELECT id FROM client_by_id WHERE ip = ?5 AND name = ?6),"
+	                                 "CASE typeof(?7) WHEN 'NULL' THEN NULL ELSE (SELECT id FROM forward_by_id WHERE forward = ?7) END,"
+	                                 "?8)", -1, &query_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		const char *text, *spaces;
@@ -116,7 +124,81 @@ int DB_save_queries(sqlite3 *db)
 			spaces = "     ";
 		}
 
-		// dbquery() above already logs the reson for why the query failed
+		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
+		if(!checkFTLDBrc(rc))
+			logg("%s  Keeping queries in memory for later new attempt", spaces);
+		saving_failed_before = true;
+
+		if(db_opened) dbclose(&db);
+
+		return DB_FAILED;
+	}
+
+	rc = sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO domain_by_id (domain) VALUES (?)", -1, &domain_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		const char *text, *spaces;
+		if( rc == SQLITE_BUSY )
+		{
+			text   = "WARNING";
+			spaces = "       ";
+		}
+		else
+		{
+			text   = "ERROR";
+			spaces = "     ";
+		}
+
+		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
+		if(!checkFTLDBrc(rc))
+			logg("%s  Keeping queries in memory for later new attempt", spaces);
+		saving_failed_before = true;
+
+		if(db_opened) dbclose(&db);
+
+		return DB_FAILED;
+	}
+
+	rc = sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO client_by_id (ip,name) VALUES (?,?)", -1, &client_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		const char *text, *spaces;
+		if( rc == SQLITE_BUSY )
+		{
+			text   = "WARNING";
+			spaces = "       ";
+		}
+		else
+		{
+			text   = "ERROR";
+			spaces = "     ";
+		}
+
+		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
+		if(!checkFTLDBrc(rc))
+			logg("%s  Keeping queries in memory for later new attempt", spaces);
+		saving_failed_before = true;
+
+		if(db_opened) dbclose(&db);
+
+		return DB_FAILED;
+	}
+
+	rc = sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO forward_by_id (forward) VALUES (?)", -1, &forward_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		const char *text, *spaces;
+		if( rc == SQLITE_BUSY )
+		{
+			text   = "WARNING";
+			spaces = "       ";
+		}
+		else
+		{
+			text   = "ERROR";
+			spaces = "     ";
+		}
+
 		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
 		if(!checkFTLDBrc(rc))
 			logg("%s  Keeping queries in memory for later new attempt", spaces);
@@ -164,30 +246,55 @@ int DB_save_queries(sqlite3 *db)
 		}
 
 		// TIMESTAMP
-		sqlite3_bind_int(stmt, 1, query->timestamp);
+		sqlite3_bind_int(query_stmt, 1, query->timestamp);
 
 		// TYPE
 		if(query->type != TYPE_OTHER)
 		{
 			// Store mapped type if query->type is not OTHER
-			sqlite3_bind_int(stmt, 2, query->type);
+			sqlite3_bind_int(query_stmt, 2, query->type);
 		}
 		else
 		{
 			// Store query type + offset if query-> type is OTHER
-			sqlite3_bind_int(stmt, 2, query->qtype + 100);
+			sqlite3_bind_int(query_stmt, 2, query->qtype + 100);
 		}
 
 		// STATUS
-		sqlite3_bind_int(stmt, 3, query->status);
+		sqlite3_bind_int(query_stmt, 3, query->status);
 
 		// DOMAIN
 		const char *domain = getDomainString(query);
-		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_STATIC);
+		sqlite3_bind_text(domain_stmt, 1, domain, -1, SQLITE_STATIC);
+		sqlite3_bind_text(query_stmt, 4, domain, -1, SQLITE_STATIC);
+
+		// Execute prepare client statement and check if successful
+		if(sqlite3_step(domain_stmt) != SQLITE_DONE)
+		{
+			logg("Encountered error while trying to store client in long-term database");
+			error = true;
+			break;
+		}
+		sqlite3_clear_bindings(domain_stmt);
+		sqlite3_reset(domain_stmt);
 
 		// CLIENT
-		const char *client = getClientIPString(query);
-		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_STATIC);
+		const char *clientIP = getClientIPString(query);
+		sqlite3_bind_text(query_stmt, 5, clientIP, -1, SQLITE_STATIC);
+		sqlite3_bind_text(client_stmt, 1, clientIP, -1, SQLITE_STATIC);
+		const char *clientName = getClientNameString(query);
+		sqlite3_bind_text(query_stmt, 6, clientName, -1, SQLITE_STATIC);
+		sqlite3_bind_text(client_stmt, 2, clientName, -1, SQLITE_STATIC);
+
+		// Execute prepare client statement and check if successful
+		if(sqlite3_step(client_stmt) != SQLITE_DONE)
+		{
+			logg("Encountered error while trying to store client in long-term database");
+			error = true;
+			break;
+		}
+		sqlite3_clear_bindings(client_stmt);
+		sqlite3_reset(client_stmt);
 
 		// FORWARD
 		if(query->upstreamID > -1)
@@ -198,16 +305,34 @@ int DB_save_queries(sqlite3 *db)
 			{
 				char *buffer = NULL;
 				if(asprintf(&buffer, "%s#%u", getstr(upstream->ippos), upstream->port) > 0)
-					sqlite3_bind_text(stmt, 6, buffer, -1, SQLITE_TRANSIENT);
+				{
+					sqlite3_bind_text(query_stmt, 7, buffer, -1, SQLITE_TRANSIENT);
+					sqlite3_bind_text(forward_stmt, 1, buffer, -1, SQLITE_TRANSIENT);
+
+					// Execute prepared forward statement and check if successful
+					if(sqlite3_step(forward_stmt) != SQLITE_DONE)
+					{
+						logg("Encountered error while trying to store forward destination in long-term database");
+						error = true;
+						break;
+					}
+					sqlite3_clear_bindings(forward_stmt);
+					sqlite3_reset(forward_stmt);
+
+				}
 				else
-					sqlite3_bind_null(stmt, 6);
+				{
+					// Memory error: Do not store the forward destination
+					sqlite3_bind_null(query_stmt, 7);
+				}
 
 				if(buffer) free(buffer);
 			}
 		}
 		else
 		{
-			sqlite3_bind_null(stmt, 6);
+			// No forward destination
+			sqlite3_bind_null(query_stmt, 7);
 		}
 
 		// ADDITIONAL_INFO
@@ -217,7 +342,7 @@ int DB_save_queries(sqlite3 *db)
 		{
 			// Restore domain blocked during deep CNAME inspection if applicable
 			const char* cname = getCNAMEDomainString(query);
-			sqlite3_bind_text(stmt, 7, cname, -1, SQLITE_STATIC);
+			sqlite3_bind_text(query_stmt, 8, cname, -1, SQLITE_STATIC);
 		}
 		else if(query->status == QUERY_REGEX)
 		{
@@ -225,27 +350,25 @@ int DB_save_queries(sqlite3 *db)
 			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			if(cache != NULL)
-				sqlite3_bind_int(stmt, 7, cache->black_regex_idx);
+				sqlite3_bind_int(query_stmt, 8, cache->black_regex_idx);
 			else
-				sqlite3_bind_null(stmt, 7);
+				sqlite3_bind_null(query_stmt, 8);
 		}
 		else
 		{
 			// Nothing to add here
-			sqlite3_bind_null(stmt, 7);
+			sqlite3_bind_null(query_stmt, 7);
 		}
 
 		// Step and check if successful
-		rc = sqlite3_step(stmt);
-		sqlite3_clear_bindings(stmt);
-		sqlite3_reset(stmt);
-
-		if( rc != SQLITE_DONE )
+		if(sqlite3_step(query_stmt) != SQLITE_DONE)
 		{
-			logg("Encountered error while trying to store queries in long-term database: %s", sqlite3_errstr(rc));
+			logg("Encountered error while trying to store queries in long-term database");
 			error = true;
 			break;
 		}
+		sqlite3_clear_bindings(query_stmt);
+		sqlite3_reset(query_stmt);
 
 		// Increment counters
 		saved++;
@@ -264,10 +387,12 @@ int DB_save_queries(sqlite3 *db)
 			newlasttimestamp = query->timestamp;
 	}
 
-	if((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
+	if(sqlite3_finalize(query_stmt) != SQLITE_OK ||
+	   sqlite3_finalize(domain_stmt) != SQLITE_OK ||
+	   sqlite3_finalize(client_stmt) != SQLITE_OK ||
+	   sqlite3_finalize(forward_stmt) != SQLITE_OK)
 	{
-		logg("Statement finalization failed when trying to store queries to long-term database: %s",
-		     sqlite3_errstr(rc));
+		logg("Statement finalization failed when trying to store queries to long-term database");
 
 		if(!checkFTLDBrc(rc) && rc == SQLITE_BUSY)
 		{
