@@ -1797,7 +1797,8 @@ void dump_cache(time_t now)
     {
       struct crec *cache ;
       int i;
-      my_syslog(LOG_INFO, "Host                                     Address                        Flags      Expires");
+      my_syslog(LOG_INFO, "Host                           Address                                  Flags      Expires");
+      my_syslog(LOG_INFO, "------------------------------ ---------------------------------------- ---------  ------------------------");
     
       for (i=0; i<hash_size; i++)
 	for (cache = hash_table[i]; cache; cache = cache->hash_next)
