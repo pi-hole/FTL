@@ -4285,26 +4285,56 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	}
       }
       break;
-
+      
     case LOPT_RELAY: /* --dhcp-relay */
       {
 	struct dhcp_relay *new = opt_malloc(sizeof(struct dhcp_relay));
-	comma = split(arg);
-	new->interface = opt_string_alloc(split(comma));
+	char *two = split(arg);
+	char *three = split(two);
+	
 	new->iface_index = 0;
-	if (comma && inet_pton(AF_INET, arg, &new->local) && inet_pton(AF_INET, comma, &new->server))
+
+	if (two)
 	  {
-	    new->next = daemon->relay4;
-	    daemon->relay4 = new;
-	  }
+	    if (inet_pton(AF_INET, arg, &new->local))
+	      {
+		if (!inet_pton(AF_INET, two, &new->server))
+		  {
+		    new->server.addr4.s_addr = 0;
+		    		    
+		    /* Fail for three arg version where there are not two addresses. 
+		       Also fail when broadcasting to wildcard address. */
+		    if (three || strchr(two, '*'))
+		      two = NULL;
+		    else
+		      three = two;
+		  }
+		
+		new->next = daemon->relay4;
+		daemon->relay4 = new;
+	      }
 #ifdef HAVE_DHCP6
-	else if (comma && inet_pton(AF_INET6, arg, &new->local) && inet_pton(AF_INET6, comma, &new->server))
-	  {
-	    new->next = daemon->relay6;
-	    daemon->relay6 = new;
-	  }
+	    else if (inet_pton(AF_INET6, arg, &new->local))
+	      {
+		if (!inet_pton(AF_INET6, two, &new->server))
+		  {
+		    inet_pton(AF_INET6, ALL_SERVERS, &new->server.addr6);
+		    /* Fail for three arg version where there are not two addresses.
+		       Also fail when multicasting to wildcard address. */
+		    if (three || strchr(two, '*'))
+		      two = NULL;
+		    else
+		      three = two;
+		  }
+		new->next = daemon->relay6;
+		daemon->relay6 = new;
+	      }
 #endif
-	else
+
+	    new->interface = opt_string_alloc(three);
+	  }
+	
+	if (!two)
 	  {
 	    free(new->interface);
 	    ret_err_free(_("Bad dhcp-relay"), new);

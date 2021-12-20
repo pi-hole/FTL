@@ -2170,7 +2170,10 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz,
 	      if (!relay->interface || strchr(relay->interface, '*') ||
 		  (multicast_iface = if_nametoindex(relay->interface)) == 0 ||
 		  setsockopt(daemon->dhcp6fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &multicast_iface, sizeof(multicast_iface)) == -1)
-		my_syslog(MS_DHCP | LOG_ERR, _("Cannot multicast to DHCPv6 server without correct interface"));
+		{
+		  my_syslog(MS_DHCP | LOG_ERR, _("Cannot multicast DHCP relay via interface %s"), relay->interface);
+		  return;
+		}
 	    }
 		
 	  send_from(daemon->dhcp6fd, 0, daemon->outpacket.iov_base, save_counter(-1), &to, &from, 0);
@@ -2178,8 +2181,11 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz,
 	  if (option_bool(OPT_LOG_OPTS))
 	    {
 	      inet_ntop(AF_INET6, &relay->local, daemon->addrbuff, ADDRSTRLEN);
-	      inet_ntop(AF_INET6, &relay->server, daemon->namebuff, ADDRSTRLEN);
-	      my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay %s -> %s"), daemon->addrbuff, daemon->namebuff);
+	      if (IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast))
+		snprintf(daemon->namebuff, MAXDNAME, _("multicast via %s"), relay->interface);
+	      else
+		inet_ntop(AF_INET6, &relay->server, daemon->namebuff, ADDRSTRLEN);
+	      my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay at %s -> %s"), daemon->addrbuff, daemon->namebuff);
 	    }
 
 	  /* Save this for replies */
