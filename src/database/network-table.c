@@ -1854,8 +1854,9 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3* db, const char *ipaddr)
 		logg("getMACfromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return NULL;
 	}
 
@@ -1867,8 +1868,9 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3* db, const char *ipaddr)
 		checkFTLDBrc(rc);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return NULL;
 	}
 
@@ -1899,8 +1901,7 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3* db, const char *ipaddr)
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
-	if(db_opened)
-		dbclose(&db);
+	if(db_opened) dbclose(&db);
 
 	return hwaddr;
 }
@@ -1941,8 +1942,9 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr)
 		logg("getAliasclientIDfromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return DB_FAILED;
 	}
 
@@ -1954,8 +1956,9 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr)
 		checkFTLDBrc(rc);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return DB_FAILED;
 	}
 
@@ -1980,8 +1983,8 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr)
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
-	if(db_opened)
-		dbclose(&db);
+
+	if(db_opened) dbclose(&db);
 
 	return aliasclient_id;
 }
@@ -2024,8 +2027,9 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 		logg("getNameFromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return NULL;
 	}
 
@@ -2037,8 +2041,9 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 		checkFTLDBrc(rc);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return NULL;
 	}
 
@@ -2066,8 +2071,8 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	// Return here if we found the name
 	if(name != NULL)
 	{
-		if(db_opened)
-			dbclose(&db);
+		if(db_opened) dbclose(&db);
+
 		return name;
 	}
 
@@ -2083,8 +2088,9 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	{
 		logg("getNameFromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return NULL;
 	}
 
@@ -2096,8 +2102,9 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 		checkFTLDBrc(rc);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return NULL;
 	}
 
@@ -2127,8 +2134,7 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
-	if(db_opened)
-		dbclose(&db);
+	if(db_opened) dbclose(&db);
 
 	return name;
 }
@@ -2167,8 +2173,9 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	{
 		logg("getIfaceFromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return NULL;
 	}
 
@@ -2186,8 +2193,9 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 		checkFTLDBrc(rc);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return NULL;
 	}
 
@@ -2212,8 +2220,7 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
-	if(db_opened)
-		dbclose(&db);
+	if(db_opened) dbclose(&db);
 
 	return iface;
 }

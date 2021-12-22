@@ -282,7 +282,9 @@ struct event_desc {
 #define OPT_UMBRELLA_DEVID 64
 #define OPT_CMARK_ALST_EN  65
 #define OPT_QUIET_TFTP     66
-#define OPT_LAST           67
+#define OPT_FILTER_A       67
+#define OPT_FILTER_AAAA    68
+#define OPT_LAST           69
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -640,6 +642,9 @@ struct irec {
   struct in_addr netmask; /* only valid for IPv4 */
   int tftp_ok, dhcp_ok, mtu, done, warned, dad, dns_auth, index, multicast_done, found, label;
   char *name; 
+  /* Pi-hole modification */
+  char *slabel;
+  /************************/
   struct irec *next;
 };
 
@@ -1400,6 +1405,7 @@ void safe_pipe(int *fd, int read_noblock);
 void *whine_malloc(size_t size);
 int sa_len(union mysockaddr *addr);
 int sockaddr_isequal(const union mysockaddr *s1, const union mysockaddr *s2);
+int hostname_order(const char *a, const char *b);
 int hostname_isequal(const char *a, const char *b);
 int hostname_issubdomain(char *a, char *b);
 time_t dnsmasq_time(void);
@@ -1786,7 +1792,11 @@ int do_poll(int timeout);
 size_t rrfilter(struct dns_header *header, size_t plen, int mode);
 u16 *rrfilter_desc(int type);
 int expand_workspace(unsigned char ***wkspc, int *szp, int new);
-
+/* modes. */
+#define RRFILTER_EDNS0   0
+#define RRFILTER_DNSSEC  1
+#define RRFILTER_A       2
+#define RRFILTER_AAAA    3
 /* edns0.c */
 unsigned char *find_pseudoheader(struct dns_header *header, size_t plen,
 				   size_t *len, unsigned char **p, int *is_sign, int *is_last);

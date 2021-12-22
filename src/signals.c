@@ -328,7 +328,7 @@ void handle_signals(void)
 {
 	struct sigaction old_action;
 
-	const int signals[] = { SIGSEGV, SIGBUS, SIGABRT, SIGILL, SIGFPE };
+	const int signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE };
 	for(unsigned int i = 0; i < sizeof(signals)/sizeof(signals[0]); i++)
 	{
 		// Catch this signal

@@ -51,8 +51,7 @@ int get_number_of_queries_in_DB(sqlite3 *db)
 	// Count number of rows using the index timestamp is faster than select(*)
 	int result = db_query_int(db, "SELECT COUNT(timestamp) FROM queries");
 
-	if(db_opened)
-		dbclose(&db);
+	if(db_opened) dbclose(&db);
 
 	return result;
 }
@@ -96,8 +95,9 @@ int DB_save_queries(sqlite3 *db)
 
 		logg("%s: Storing queries in long-term database failed: %s", text, sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return DB_FAILED;
 	}
 
@@ -121,8 +121,9 @@ int DB_save_queries(sqlite3 *db)
 		if(!checkFTLDBrc(rc))
 			logg("%s  Keeping queries in memory for later new attempt", spaces);
 		saving_failed_before = true;
-		if(db_opened)
-			dbclose(&db);
+
+		if(db_opened) dbclose(&db);
+
 		return DB_FAILED;
 	}
 
@@ -274,8 +275,7 @@ int DB_save_queries(sqlite3 *db)
 			saving_failed_before = true;
 		}
 
-		if(db_opened)
-			dbclose(&db);
+		if(db_opened) dbclose(&db);
 
 		return DB_FAILED;
 	}
@@ -301,8 +301,7 @@ int DB_save_queries(sqlite3 *db)
 			saving_failed_before = true;
 		}
 
-		if(db_opened)
-			dbclose(&db);
+		if(db_opened) dbclose(&db);
 
 		return DB_FAILED;
 	}
@@ -318,8 +317,7 @@ int DB_save_queries(sqlite3 *db)
 		}
 	}
 
-	if(db_opened)
-		dbclose(&db);
+	if(db_opened) dbclose(&db);
 
 	return saved;
 }
@@ -387,8 +385,7 @@ void DB_read_queries(void)
 	if( rc != SQLITE_OK ){
 		logg("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
-		dbclose(&db);
-		return;
+		goto end_of_DB_read_queries;
 	}
 
 	// Bind limit
@@ -396,8 +393,7 @@ void DB_read_queries(void)
 	{
 		logg("DB_read_queries() - Failed to bind type mintime: %s", sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
-		dbclose(&db);
-		return;
+		goto end_of_DB_read_queries;
 	}
 
 	// Lock shared memory
@@ -638,13 +634,12 @@ void DB_read_queries(void)
 	if( rc != SQLITE_DONE ){
 		logg("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
-		dbclose(&db);
-		return;
+		goto end_of_DB_read_queries;
 	}
 
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
 
-	// Close database here, we have to reopen it later (after forking)
+end_of_DB_read_queries:	// Close database here, we have to reopen it later (after forking)
 	dbclose(&db);
 }
