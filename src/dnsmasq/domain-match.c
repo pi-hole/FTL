@@ -418,9 +418,8 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
 	else
 	  addr.addr4 = srv->addr;
 	
-	header->ancount = htons(ntohs(header->ancount) + 1);
-	if (!add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_A, C_IN, "4", &addr))
-	  return 0;
+	if (add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_A, C_IN, "4", &addr))
+	  header->ancount = htons(ntohs(header->ancount) + 1);
 	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, name, (union all_addr *)&addr, NULL, 0);
       }
   
@@ -434,8 +433,8 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
 	else
 	  addr.addr6 = srv->addr;
 	
-	header->ancount = htons(ntohs(header->ancount) + 1);
-	add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_AAAA, C_IN, "6", &addr);
+	if (add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_AAAA, C_IN, "6", &addr))
+	  header->ancount = htons(ntohs(header->ancount) + 1);
 	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, name, (union all_addr *)&addr, NULL, 0);
       }
 
@@ -494,7 +493,7 @@ static int order(char *qdomain, size_t qlen, struct server *serv)
   if (qlen > dlen)
     return -1;
 
-  return strcmp(qdomain, serv->domain);
+  return hostname_order(qdomain, serv->domain);
 }
 
 static int order_servers(struct server *s1, struct server *s2)

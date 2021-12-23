@@ -1400,10 +1400,12 @@ struct in_addr a_record_from_hosts(char *name, time_t now)
   struct crec *crecp = NULL;
   struct in_addr ret;
   
-  while ((crecp = cache_find_by_name(crecp, name, now, F_IPV4)))
-    if (crecp->flags & F_HOSTS)
-      return crecp->addr.addr4;
-
+  /* If no DNS service, cache not initialised. */
+  if (daemon->port != 0)
+    while ((crecp = cache_find_by_name(crecp, name, now, F_IPV4)))
+      if (crecp->flags & F_HOSTS)
+	return crecp->addr.addr4;
+  
   my_syslog(MS_DHCP | LOG_WARNING, _("No IPv4 address found for %s"), name);
   
   ret.s_addr = 0;

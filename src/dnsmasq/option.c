@@ -179,7 +179,9 @@ struct myoption {
 #define LOPT_CMARK_ALST    366
 #define LOPT_QUIET_TFTP    367
 #define LOPT_NFTSET        368
- 
+#define LOPT_FILTER_A      369
+#define LOPT_FILTER_AAAA   370
+
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
 #else
@@ -216,6 +218,8 @@ static const struct myoption opts[] =
     { "ignore-address", 1, 0, LOPT_IGNORE_ADDR },
     { "selfmx", 0, 0, 'e' },
     { "filterwin2k", 0, 0, 'f' },
+    { "filter-A", 0, 0, LOPT_FILTER_A },
+    { "filter-AAAA", 0, 0, LOPT_FILTER_AAAA },
     { "pid-file", 2, 0, 'x' },
     { "strict-order", 0, 0, 'o' },
     { "server", 1, 0, 'S' },
@@ -386,6 +390,8 @@ static struct {
   { 'e', OPT_SELFMX, NULL, gettext_noop("Return self-pointing MX records for local hosts."), NULL },
   { 'E', OPT_EXPAND, NULL, gettext_noop("Expand simple names in /etc/hosts with domain-suffix."), NULL },
   { 'f', OPT_FILTER, NULL, gettext_noop("Don't forward spurious DNS requests from Windows hosts."), NULL },
+  { LOPT_FILTER_A, OPT_FILTER_A, NULL, gettext_noop("Don't include IPv4 addresses in DNS answers."), NULL },
+  { LOPT_FILTER_AAAA, OPT_FILTER_AAAA, NULL, gettext_noop("Don't include IPv6 addresses in DNS answers."), NULL },
   { 'F', ARG_DUP, "<ipaddr>,...", gettext_noop("Enable DHCP in the range given with lease duration."), NULL },
   { 'g', ARG_ONE, "<groupname>", gettext_noop("Change to this group after startup (defaults to %s)."), CHGRP },
   { 'G', ARG_DUP, "<hostspec>", gettext_noop("Set address or hostname for a specified machine."), NULL },
@@ -661,7 +667,7 @@ static char *canonicalise_opt(char *s)
     return 0;
 
   if (strlen(s) == 0)
-    return opt_string_alloc("");
+    return opt_malloc(1); /* Heap-allocated empty string */
 
   unhide_metas(s);
   if (!(ret = canonicalise(s, &nomem)) && nomem)
@@ -2231,8 +2237,10 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	comma = split(arg);
 		
 	new = opt_malloc(sizeof(struct auth_zone));
-	new->domain = opt_string_alloc(arg);
-	new->subnet = NULL;
+	new->domain = canonicalise_opt(arg);
+	if (!new->domain)
+	  ret_err_free(_("invalid auth-zone"), new);
+ 	new->subnet = NULL;
 	new->exclude = NULL;
 	new->interface_names = NULL;
 	new->next = daemon->auth_zones;
@@ -2762,7 +2770,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	
 	if (!arg || !*arg)
 	  flags = SERV_LITERAL_ADDRESS;
-	else if (option != 'S')
+	else if (option == 'A')
 	  {
 	    /* # as literal address means return zero address for 4 and 6 */
 	    if (strcmp(arg, "#") == 0)
@@ -2794,7 +2802,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		  flags &= ~SERV_FOR_NODOTS;
 
 		/* address=/#/ matches the same as without domain */
-		if (option != 'S' && domain[0] == '#' && domain[1] == 0)
+		if (option == 'A' && domain[0] == '#' && domain[1] == 0)
 		  domain[0] = 0;
 	      }
 	    
