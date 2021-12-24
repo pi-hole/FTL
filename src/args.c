@@ -341,7 +341,8 @@ void parse_args(int argc, char* argv[])
 			printf("\t--luac, luac        FTL's lua compiler\n");
 			printf("\tdhcp-discover       Discover DHCP servers in the local\n");
 			printf("\t                    network\n");
-			printf("\tsqlite3             FTL's SQLite3 shell\n");
+			printf("\tsql, sqlite3        FTL's SQLite3 shell\n");
+			printf("\tsql -h, sqlite3 -h  FTL's SQLite3 shell (human-readable mode)\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
 			exit(EXIT_SUCCESS);
 		}
