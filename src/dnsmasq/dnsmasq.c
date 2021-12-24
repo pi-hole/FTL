@@ -80,6 +80,9 @@ int main_dnsmasq (int argc, char **argv)
 
 #if defined(HAVE_IDN) || defined(HAVE_LIBIDN2) || defined(LOCALEDIR)
   setlocale(LC_ALL, "");
+  /*** Pi-hole modification ***/
+  setlocale(LC_NUMERIC, "C");
+  /****************************/
 #endif
 #ifdef LOCALEDIR
   bindtextdomain("dnsmasq", LOCALEDIR); 
