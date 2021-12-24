@@ -101,7 +101,26 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "sql") == 0 ||
 		   strcmp(argv[i], "sqlite3") == 0 ||
 		   strcmp(argv[i], "--sqlite3") == 0)
+		{
+			// Human-readable table output mode
+			if(i+1 < argc && strcmp(argv[i+1], "-h") == 0)
+			{
+				int argc2 = argc - i + 5 - 2;
+				char **argv2 = calloc(argc2, sizeof(char*));
+				argv2[0] = argv[0]; // Application name
+				argv2[1] = (char*)"-column";
+				argv2[2] = (char*)"-header";
+				argv2[3] = (char*)"-nullvalue";
+				argv2[4] = (char*)"(null)";
+				// i = "sqlite3"
+				// i+1 = "-h"
+				for(int j = 0; j < argc - i - 2; j++)
+					argv2[5 + j] = argv[i + 2 + j];
+				exit(sqlite3_shell_main(argc2, argv2));
+			}
+			else
 				exit(sqlite3_shell_main(argc - i, &argv[i]));
+		}
 
 		// Implement dnsmasq's test function, no need to prepare the entire FTL
 		// environment (initialize shared memory, lead queries from long-term
