@@ -164,6 +164,11 @@ void process_request(const char *client_message, int *sock)
 		processed = true;
 		delete_lease(client_message, sock);
 	}
+	else if(command(client_message, ">dns-port"))
+	{
+		processed = true;
+		getDNSport(sock);
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before
