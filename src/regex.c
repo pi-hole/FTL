@@ -421,8 +421,8 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 		// Print no match message when in regex debug mode
 		if(match_idx == -1)
 		{
-			log_debug(DEBUG_REGEX, "Regex %s (FTL %u, DB %i) NO match: \"%s\" (input) vs. \"%s\" (regex)",
-			          regextype[regexid], index, regex[index].database_id, input, regex[index].string);
+			log_debug(DEBUG_REGEX, "Regex %s (FTL %u, DB %i) NO match: \"%s\" (input) vs. \"%s\" (regex) = %s",
+			          regextype[regexid], index, regex[index].database_id, input, regex[index].string, retval == REG_OK ? "OK" : "NO");
 		}
 	}
 
