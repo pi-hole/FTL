@@ -712,7 +712,7 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		log_info("    Compiled regex filter in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against user-provided regular expression
-		log_info("Checking domain...");
+		log_info("Checking domain \"%s\"...", domainin);
 		timer_start(REGEX_TIMER);
 		matchidx = match_regex(domainin, NULL, -1, REGEX_CLI, true);
 		if(matchidx == -1)

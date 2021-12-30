@@ -53,7 +53,6 @@
 #include "webserver/webserver.h"
 
 // Private prototypes
-static const char *reply_status_str[QUERY_REPLY_MAX+1];
 static void print_flags(const unsigned int flags);
 #define query_set_reply(flags, type, addr, query, response) _query_set_reply(flags, type, addr, query, response, __FILE__, __LINE__)
 static void _query_set_reply(const unsigned int flags, const enum reply_type reply, const union all_addr *addr, queriesData* query,
@@ -1424,7 +1423,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		log_debug(DEBUG_QUERIES, "Blocking %s as %s is %s", domainstr, blockedDomain, blockingreason);
 
 		if(force_next_DNS_reply != 0)
-			log_debug(DEBUG_QUERIES, "Forcing next reply to %s", reply_status_str[force_next_DNS_reply]);
+			log_debug(DEBUG_QUERIES, "Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
 	}
 	else if(db_okay)
 	{
@@ -2568,7 +2567,7 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 	{
 		const char *path = short_path(file);
 		log_debug(DEBUG_QUERIES, "Set reply to %s (%d) in %s:%d",
-		          reply_status_str[query->reply], query->reply, path, line);
+		          get_query_reply_str(force_next_DNS_reply), query->reply, path, line);
 	}
 
 	counters->reply[query->reply]++;
