@@ -4132,7 +4132,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
     case LOPT_SUBSCR:   /* --dhcp-subscrid */
       {
 	 unsigned char *p;
-	 int dig = 0;
+	 int dig, colon;
 	 struct dhcp_vendor *new = opt_malloc(sizeof(struct dhcp_vendor));
 	 
 	 if (!(comma = split(arg)))
@@ -4156,13 +4156,16 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	 else
 	   comma = arg;
 	 
-	 for (p = (unsigned char *)comma; *p; p++)
+	 for (dig = 0, colon = 0, p = (unsigned char *)comma; *p; p++)
 	   if (isxdigit(*p))
 	     dig = 1;
-	   else if (*p != ':')
+	   else if (*p == ':')
+	     colon = 1;
+	   else
 	     break;
+	 
 	 unhide_metas(comma);
-	 if (option == 'U' || option == 'j' || *p || !dig)
+	 if (option == 'U' || option == 'j' || *p || !dig || !colon)
 	   {
 	     new->len = strlen(comma);  
 	     new->data = opt_malloc(new->len);
