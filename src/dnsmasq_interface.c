@@ -2661,9 +2661,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// so they will not listen to real-time signals
 	handle_realtime_signals();
 
-	// Inspect setupVars.conf to see if Pi-hole blocking is enabled
-	read_blocking_status();
-
 	// We will use the attributes object later to start all threads in
 	// detached mode
 	pthread_attr_t attr;
