@@ -641,9 +641,10 @@ void read_regex_from_database(void)
 	}
 
 	// Print message to FTL's log after reloading regex filters
-	log_info("Compiled %i allow and %i deny regex for %i clients in %.1f msec",
+	log_info("Compiled %i allow and %i deny regex for %i client%s in %.1f msec",
 	         num_regex[REGEX_ALLOW], num_regex[REGEX_DENY],
-	         counters->clients, timer_elapsed_msec(REGEX_TIMER));
+	         counters->clients, counters->clients > 1 ? "s" : "",
+	         timer_elapsed_msec(REGEX_TIMER));
 }
 
 int regex_test(const bool debug_mode, const bool quiet, const char *domainin, const char *regexin)
