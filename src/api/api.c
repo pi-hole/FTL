@@ -47,6 +47,11 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		// Locks handled internally
 		ret = api_dns_cache(&api);
 	}
+	else if(startsWith("/api/dns/port", &api))
+	{
+		// Locks not needed
+		ret = api_dns_port(&api);
+	}
 	/************ /api/domains, /api/groups, /api/lists, /api/clients ********/
 	else if(startsWith("/api/domains", &api))
 	{

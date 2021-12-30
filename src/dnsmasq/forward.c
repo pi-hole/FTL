@@ -158,11 +158,20 @@ static int domain_no_rebind(char *domain)
 {
   struct rebind_domain *rbd;
   size_t tlen, dlen = strlen(domain);
-  
+  char *dots = strchr(domain, '.');
+
+  /* Match whole labels only. Empty domain matches no dots (any single label) */
   for (rbd = daemon->no_rebind; rbd; rbd = rbd->next)
-    if (dlen >= (tlen = strlen(rbd->domain)) && strcmp(rbd->domain, &domain[dlen - tlen]) == 0)
+    {
+      if (dlen >= (tlen = strlen(rbd->domain)) &&
+	hostname_isequal(rbd->domain, &domain[dlen - tlen]) &&
+	(dlen == tlen || domain[dlen - tlen - 1] == '.'))
       return 1;
 
+      if (tlen == 0 && !dots)
+	return 1;
+    }
+  
   return 0;
 }
 
@@ -175,8 +184,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   unsigned int fwd_flags = 0;
   int is_dnssec = forward && (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY));
   struct server *master;
-  unsigned int gotname = extract_request(header, plen, daemon->namebuff, NULL);
   void *hash = hash_questions(header, plen, daemon->namebuff);
+  unsigned int gotname = extract_request(header, plen, daemon->namebuff, NULL);
   unsigned char *oph = find_pseudoheader(header, plen, NULL, NULL, NULL, NULL);
   int old_src = 0, old_reply = 0;
   int first, last, start = 0;
@@ -220,7 +229,11 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  break;
       
       if (src)
-	old_src = 1;
+	{
+	  old_src = 1;
+	  /* If a query is retried, use the log_id for the retry when logging the answer. */
+	  src->log_id = daemon->log_id;
+	}
       else
 	{
 	  /* Existing query, but from new source, just add this 
@@ -294,6 +307,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	goto reply;
       /* table full - flags == 0, return REFUSED */
       
+      forward->frec_src.log_id = daemon->log_id;
       forward->frec_src.source = *udpaddr;
       forward->frec_src.orig_id = ntohs(header->id);
       forward->frec_src.dest = *dst_addr;
@@ -315,7 +329,6 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (do_bit)
 	forward->flags |= FREC_DO_QUESTION;
 #endif
-      forward->frec_src.log_id = daemon->log_id;
       
       start = first;
 
@@ -338,7 +351,6 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
     }
   else
     {
-      /* retry on existing query, from original source. Send to all available servers  */
 #ifdef HAVE_DNSSEC
       /* If we've already got an answer to this query, but we're awaiting keys for validation,
 	 there's no point retrying the query, retry the key query instead...... */
@@ -349,7 +361,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  
 	  while (forward->blocking_query)
 	    forward = forward->blocking_query;
-	   
+
+	  /* log_id should match previous DNSSEC query. */
+	  daemon->log_display_id = forward->frec_src.log_id;
+	  
 	  blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
 	  plen = forward->stash_len;
 	  /* get query for logging. */
@@ -396,7 +411,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		     Note that we can get here EITHER because a client retried,
 		     or an upstream server returned REFUSED. The above only
 		     applied in the later case. For client retries,
-		     keep tyring the last server.. */
+		     keep trying the last server.. */
 		  if (++start == last)
 		    {
 		      if (old_reply)
@@ -639,7 +654,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  if (added_pheader)
 	    {
 	      /* client didn't send EDNS0, we added one, strip it off before returning answer. */
-	      n = rrfilter(header, n, 0);
+	      n = rrfilter(header, n, RRFILTER_EDNS0);
 	      pheader = NULL;
 	    }
 	  else
@@ -730,6 +745,17 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	      cache_secure = 0;
 	    }
 	}
+
+      /* Before extract_addresses() */
+      if (rcode == NOERROR)
+	{
+	  if (option_bool(OPT_FILTER_A))
+	    n = rrfilter(header, n, RRFILTER_A);
+
+	  if (option_bool(OPT_FILTER_AAAA))
+	    n = rrfilter(header, n, RRFILTER_AAAA);
+	}
+
       /******************************** Pi-hole modification ********************************/
       int ret = extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
       if (ret == 2)
@@ -769,7 +795,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       
       /* If the requestor didn't set the DO bit, don't return DNSSEC info. */
       if (!do_bit)
-	n = rrfilter(header, n, 1);
+	n = rrfilter(header, n, RRFILTER_DNSSEC);
     }
 #endif
 
@@ -793,7 +819,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       u16 swap = htons((u16)ede);
       n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
     }
-  
+
   return n;
 }
 

@@ -1043,7 +1043,6 @@
   [[ "${lines[@]}" != *"ERROR"* ]]
 }
 
-<<<<<<< HEAD
 @test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
   run bash -c 'grep "WARNING: " /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
@@ -1074,10 +1073,10 @@
   run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole-FTL.log | grep -c "DOES NOT EXIST"'
   printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
-=======
+}
+
 @test "Check dnsmasq warnings in source code" {
   run bash -c "bash test/dnsmasq_warnings.sh"
   printf "%s\n" "${lines[@]}"
   [[ "${lines[0]}" == "" ]]
->>>>>>> development
 }

@@ -156,7 +156,7 @@ static int check_rrs(unsigned char *p, struct dns_header *header, size_t plen, i
 }
 	
 
-/* mode is 0 to remove EDNS0, 1 to filter DNSSEC RRs */
+/* mode may be remove EDNS0 or DNSSEC RRs or remove A or AAAA from answer section. */
 size_t rrfilter(struct dns_header *header, size_t plen, int mode)
 {
   static unsigned char **rrs;
@@ -192,20 +192,37 @@ size_t rrfilter(struct dns_header *header, size_t plen, int mode)
       if (!ADD_RDLEN(header, p, plen, rdlen))
 	return plen;
 
-      /* Don't remove the answer. */
-      if (i < ntohs(header->ancount) && type == qtype && class == qclass)
-	continue;
-      
-      if (mode == 0) /* EDNS */
+      if (mode == RRFILTER_EDNS0) /* EDNS */
 	{
 	  /* EDNS mode, remove T_OPT from additional section only */
 	  if (i < (ntohs(header->nscount) + ntohs(header->ancount)) || type != T_OPT)
 	    continue;
 	}
-      else if (type != T_NSEC && type != T_NSEC3 && type != T_RRSIG)
-	/* DNSSEC mode, remove SIGs and NSECs from all three sections. */
-	continue;
-      
+      else if (mode == RRFILTER_DNSSEC)
+	{
+	  if (type != T_NSEC && type != T_NSEC3 && type != T_RRSIG)
+	    /* DNSSEC mode, remove SIGs and NSECs from all three sections. */
+	    continue;
+
+	  /* Don't remove the answer. */
+	  if (i < ntohs(header->ancount) && type == qtype && class == qclass)
+	    continue;
+	}
+      else
+	{
+	  /* Only looking at answer section now. */
+	  if (i >= ntohs(header->ancount))
+	    break;
+
+	  if (class != C_IN)
+	    continue;
+	  
+	  if (mode == RRFILTER_A && type != T_A)
+	    continue;
+
+	  if (mode == RRFILTER_AAAA && type != T_AAAA)
+	    continue;
+	}
       
       if (!expand_workspace(&rrs, &rr_sz, rr_found + 1))
 	return plen; 

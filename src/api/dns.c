@@ -20,6 +20,8 @@
 #include "../shmem.h"
 // getCacheInformation()
 #include "../cache_info.h"
+// config struct
+#include "../config/config.h"
 
 static int get_blocking(struct ftl_conn *api)
 {
@@ -144,5 +146,12 @@ int api_dns_cache(struct ftl_conn *api)
 	JSON_OBJ_ADD_ITEM(json, "valid", valid);
 	JSON_OBJ_ADD_NUMBER(json, "expired", ci.expired);
 	JSON_OBJ_ADD_NUMBER(json, "immortal", ci.immortal);
+	JSON_SEND_OBJECT(json);
+}
+
+int api_dns_port(struct ftl_conn *api)
+{
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(json, "dns_port", config.dns_port);
 	JSON_SEND_OBJECT(json);
 }
