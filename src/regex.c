@@ -321,10 +321,10 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 	for(unsigned int index = 0; index < num_regex[regexid]; index++)
 	{
 		// Only check regex which have been successfully compiled ...
-		if(!regex[index].available)
+		if(!regex->available)
 		{
 			log_debug(DEBUG_REGEX, "Regex %s (%u, DB ID %d) is NOT AVAILABLE (compilation error)",
-			          regextype[regexid], index, regex[index].database_id);
+			          regextype[regexid], index, regex->database_id);
 			continue;
 		}
 		// ... and are enabled for this client
@@ -345,8 +345,8 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 				if(client != NULL)
 				{
 					log_debug(DEBUG_REGEX, "Regex %s (%u, DB ID %d) \"%s\" NOT ENABLED for client %s",
-					          regextype[regexid], index, regex[index].database_id,
-					          regex[index].string, getstr(client->ippos));
+					          regextype[regexid], index, regex->database_id,
+					          regex->string, getstr(client->ippos));
 				}
 			}
 			continue;
@@ -379,37 +379,37 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 					}
 				}
 				// Set special reply type if configured for this regex
-				if(regex[index].ext.reply != REPLY_UNKNOWN)
-					dns_cache->force_reply = regex[index].ext.reply;
+				if(regex->ext.reply != REPLY_UNKNOWN)
+					dns_cache->force_reply = regex->ext.reply;
 			}
 
 			// Match, return true
-			match_idx = regex[index].database_id;
+			match_idx = regex->database_id;
 
 			// Print match message when in regex debug mode
 			log_debug(DEBUG_REGEX, "Regex %s (%u, DB ID %i) >> MATCH: \"%s\" vs. \"%s\"",
-			          regextype[regexid], index, regex[index].database_id,
-			          input, regex[index].string);
+			          regextype[regexid], index, regex->database_id,
+			          input, regex->string);
 
 			if(regextest && regexid == REGEX_CLI)
 			{
 				// CLI provided regular expression
 				log_info("    %s%s%s matches",
-				         cli_bold(), regex[index].string, cli_normal());
+				         cli_bold(), regex->string, cli_normal());
 			}
 			else if(regextest && regexid == REGEX_DENY)
 			{
 				// Database-sourced regular expression
 				log_info("    %s%s%s matches (deny regex, DB ID %i)",
-				         cli_bold(), regex[index].string, cli_normal(),
-				         regex[index].database_id);
+				         cli_bold(), regex->string, cli_normal(),
+				         regex->database_id);
 			}
 			else if(regextest && regexid == REGEX_ALLOW)
 			{
 				// Database-sourced regular expression
 				log_info("    %s%s%s matches (allow regex, DB ID %i)",
-				         cli_bold(), regex[index].string, cli_normal(),
-				         regex[index].database_id);
+				         cli_bold(), regex->string, cli_normal(),
+				         regex->database_id);
 			}
 			else
 			{
@@ -421,8 +421,8 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 		// Print no match message when in regex debug mode
 		if(match_idx == -1)
 		{
-			log_debug(DEBUG_REGEX, "Regex %s (FTL %u, DB %i) NO match: \"%s\" (input) vs. \"%s\" (regex) = %s",
-			          regextype[regexid], index, regex[index].database_id, input, regex[index].string, retval == REG_OK ? "OK" : "NO");
+			log_debug(DEBUG_REGEX, "Regex %s (FTL %u, DB %i) NO match: \"%s\" (input) vs. \"%s\" (regex)",
+			          regextype[regexid], index, regex->database_id, input, regex->string);
 		}
 	}
 

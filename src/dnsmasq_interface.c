@@ -1080,7 +1080,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		return false;
 
 	// Check domains against exact blacklist
-	enum db_result blacklist = in_blacklist(domain, client);
+	enum db_result blacklist = in_denylist(domain, client);
 	if(blacklist == FOUND)
 	{
 		// Set new status
@@ -1383,7 +1383,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	const char *blockedDomain = domainstr;
 
 	// Check whitelist (exact + regex) for match
-	query->flags.allowed = in_whitelist(domainstr, dns_cache, client) == FOUND;
+	query->flags.allowed = in_allowlist(domainstr, dns_cache, client) == FOUND;
 
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;

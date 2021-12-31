@@ -1214,7 +1214,7 @@ static void gravityDB_client_check_again(clientsData* client)
 	}
 }
 
-enum db_result in_whitelist(const char *domain, DNSCacheData *dns_cache, clientsData* client)
+enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clientsData* client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
@@ -1242,17 +1242,17 @@ enum db_result in_whitelist(const char *domain, DNSCacheData *dns_cache, clients
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
 	// whitelisted.
-	enum db_result on_whitelist = domain_in_list(domain, stmt, "whitelist");
+	enum db_result allowed = domain_in_list(domain, stmt, "allow");
 
 	// For performance reasons, the regex evaluations is executed only if the
 	// exact whitelist lookup does not deliver a positive match. This is an
 	// optimization as the database lookup will most likely hit (a) more domains
 	// and (b) will be faster (given a sufficiently large number of regex
 	// whitelisting filters).
-	if(on_whitelist == NOT_FOUND)
-		on_whitelist = match_regex(domain, dns_cache, client->id, REGEX_ALLOW, false) != -1;
+	if(allowed == NOT_FOUND)
+		allowed = match_regex(domain, dns_cache, client->id, REGEX_ALLOW, false) != -1;
 
-	return on_whitelist;
+	return allowed;
 }
 
 enum db_result in_gravity(const char *domain, clientsData *client)
@@ -1283,7 +1283,7 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 	return domain_in_list(domain, stmt, "gravity");
 }
 
-enum db_result in_blacklist(const char *domain, clientsData *client)
+enum db_result in_denylist(const char *domain, clientsData *client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
