@@ -1473,3 +1473,9 @@ void delete_lease(const char *client_message, const int *sock)
 	if(config.debug & DEBUG_API)
 		logg("...done");
 }
+
+void getDNSport(const int *sock)
+{
+	// Return DNS port used by FTL
+	ssend(*sock, "%d\n", config.dns_port);
+}

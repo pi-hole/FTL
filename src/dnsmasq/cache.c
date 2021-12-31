@@ -1731,9 +1731,7 @@ void get_dnsmasq_cache_info(struct cache_info *ci)
   const time_t now = time(NULL);
   for (int i=0; i < hash_size; i++)
     for (struct crec *cache = hash_table[i]; cache; cache = cache->hash_next)
-      if(cache->flags & F_IMMORTAL)
-	ci->immortal++;
-      else if(cache->ttd >= now)
+      if(cache->ttd >= now || cache->flags & F_IMMORTAL)
       {
 	if (cache->flags & F_IPV4)
 	  ci->valid.ipv4++;
@@ -1751,6 +1749,9 @@ void get_dnsmasq_cache_info(struct cache_info *ci)
 #endif
 	else
 	  ci->valid.other++;
+
+	if(cache->flags & F_IMMORTAL)
+	  ci->immortal++;
       }
       else
 	ci->expired++;
