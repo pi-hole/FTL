@@ -93,14 +93,6 @@ bool writeFTLtoml(void)
 
 
 
-	// [dns.check] subsection
-	catTOMLsection(fp, 1, "dns.check");
-	catTOMLbool(fp, 2, "load", "Should FTL check the 15 min average of CPU load and complain if the load is larger than the number of available CPU cores?", config.check.load, defaults.check.load);
-	catTOMLuint(fp, 2, "shmem", "Limit above which FTL should complain about a shared-memory shortage", config.check.shmem, defaults.check.shmem);
-	catTOMLuint(fp, 2, "disk", "Limit above which FTL should complain about disk shortage for checked files", config.check.disk, defaults.check.disk);
-
-
-
 	// [dns.specialDomains] subsection
 	catTOMLsection(fp, 1, "dns.specialDomains");
 	catTOMLbool(fp, 2, "mozillaCanary", "Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?", config.special_domains.mozilla_canary, defaults.special_domains.mozilla_canary);
@@ -201,6 +193,14 @@ bool writeFTLtoml(void)
 	catTOMLint(fp, 1, "nice", "Set niceness of pihole-FTL (can be disabled by setting to -999)", config.nice, defaults.nice);
 	catTOMLuint(fp, 1, "delayStartup", "Artificially delay FTL's startup (0 to 300 seconds)", config.delay_startup, defaults.delay_startup);
 	catTOMLbool(fp, 1, "addr2line", "Should FTL try to call addr2line when generating backtraces?", config.addr2line, defaults.addr2line);
+
+
+
+	// [misc.check] subsection
+	catTOMLsection(fp, 1, "misc.check");
+	catTOMLbool(fp, 2, "load", "Should FTL check the 15 min average of CPU load and complain if the load is larger than the number of available CPU cores?", config.check.load, defaults.check.load);
+	catTOMLuint(fp, 2, "shmem", "Limit above which FTL should complain about a shared-memory shortage", config.check.shmem, defaults.check.shmem);
+	catTOMLuint(fp, 2, "disk", "Limit above which FTL should complain about disk shortage for checked files", config.check.disk, defaults.check.disk);
 
 
 

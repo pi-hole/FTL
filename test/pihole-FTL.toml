@@ -170,6 +170,16 @@
   # Should FTL try to call addr2line when generating backtraces?
   addr2line = true
 
+  [misc.check]
+    # Should FTL check the 15 min average of CPU load and complain if the load is larger than the number of available CPU cores?
+    load = false
+
+    # Limit above which FTL should complain about a shared-memory shortage
+    disk = 0
+
+    # Limit above which FTL should complain about disk shortage for checked files
+    shmem = 0
+
 [debug]
   # Temporarily enable all debug flags
   all = true ### CHANGED, default = false
