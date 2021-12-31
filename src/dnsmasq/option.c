@@ -2529,7 +2529,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
           arg += 9;
           if (strlen(arg) != 16)
               ret_err(gen_err);
-          for (char *p = arg; *p; p++) {
+          char *p;
+          for (*p = arg; *p; p++) {
             if (!isxdigit((int)*p))
               ret_err(gen_err);
           }
@@ -2537,7 +2538,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
           u8 *u = daemon->umbrella_device;
           char word[3];
-          for (u8 i = 0; i < sizeof(daemon->umbrella_device); i++, arg+=2) {
+          u8 i;
+          for (i = 0; i < sizeof(daemon->umbrella_device); i++, arg+=2) {
             memcpy(word, &(arg[0]), 2);
             *u++ = strtoul(word, NULL, 16);
           }
