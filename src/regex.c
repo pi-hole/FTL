@@ -300,7 +300,6 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
                 const enum regex_type regexid, const bool regextest)
 {
 	int match_idx = -1;
-	regexData *regex = get_regex_ptr(regexid);
 #ifdef USE_TRE_REGEX
 	regmatch_t match[1] = {{ 0 }}; // This also disables any sub-matching
 #endif
@@ -312,14 +311,12 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 	{
 		log_info("Reloading externally changed regular expressions");
 		read_regex_from_database();
-		// Update regex pointer as it will have changed (free_regex has
-		// been called)
-		regex = get_regex_ptr(regexid);
 	}
 
 	// Loop over all configured regex filters of this type
 	for(unsigned int index = 0; index < num_regex[regexid]; index++)
 	{
+		regexData *regex = &get_regex_ptr(regexid)[index];
 		// Only check regex which have been successfully compiled ...
 		if(!regex->available)
 		{
