@@ -2523,41 +2523,48 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
     case LOPT_UMBRELLA: /* --umbrella */
       set_option_bool(OPT_UMBRELLA);
-      while (arg) {
-        comma = split(arg);
-        if (strstr(arg, "deviceid:")) {
-          arg += 9;
-          if (strlen(arg) != 16)
-              ret_err(gen_err);
-          char *p;
-          for (p = arg; *p; p++) {
-            if (!isxdigit((int)*p))
-              ret_err(gen_err);
-          }
-          set_option_bool(OPT_UMBRELLA_DEVID);
-
-          u8 *u = daemon->umbrella_device;
-          char word[3];
-          u8 i;
-          for (i = 0; i < sizeof(daemon->umbrella_device); i++, arg+=2) {
-            memcpy(word, &(arg[0]), 2);
-            *u++ = strtoul(word, NULL, 16);
-          }
-        }
-        else if (strstr(arg, "orgid:")) {
-          if (!strtoul_check(arg+6, &daemon->umbrella_org)) {
-            ret_err(gen_err);
-          }
-        }
-        else if (strstr(arg, "assetid:")) {
-          if (!strtoul_check(arg+8, &daemon->umbrella_asset)) {
-            ret_err(gen_err);
-          }
-        }
-        arg = comma;
-      }
+      while (arg)
+	{
+	  comma = split(arg);
+	  if (strstr(arg, "deviceid:"))
+	    {
+	      char *p;
+	      u8 *u = daemon->umbrella_device;
+	      char word[3];
+	      
+	      arg += 9;
+	      if (strlen(arg) != 16)
+		ret_err(gen_err);
+         
+	      for (p = arg; *p; p++)
+		if (!isxdigit((int)*p))
+		  ret_err(gen_err);
+          
+	      set_option_bool(OPT_UMBRELLA_DEVID);
+	   	      
+	      for (i = 0; i < (int)sizeof(daemon->umbrella_device); i++, arg+=2)
+		{
+		  memcpy(word, &(arg[0]), 2);
+		  *u++ = strtoul(word, NULL, 16);
+		}
+	    }
+	  else if (strstr(arg, "orgid:"))
+	    {
+	      if (!strtoul_check(arg+6, &daemon->umbrella_org))
+		ret_err(gen_err);
+	    }
+        else if (strstr(arg, "assetid:"))
+	  {
+	    if (!strtoul_check(arg+8, &daemon->umbrella_asset))
+	      ret_err(gen_err);
+	  }
+	else
+	  ret_err(gen_err);
+	  
+	  arg = comma;
+	}
       break;
-
+      
     case LOPT_ADD_MAC: /* --add-mac */
       if (!arg)
 	set_option_bool(OPT_ADD_MAC);
