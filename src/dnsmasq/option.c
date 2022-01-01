@@ -361,7 +361,7 @@ static const struct myoption opts[] =
     { "dhcp-ignore-clid", 0, 0,  LOPT_IGNORE_CLID },
     { "dynamic-host", 1, 0, LOPT_DYNHOST },
     { "log-debug", 0, 0, LOPT_LOG_DEBUG },
-	{ "umbrella", 2, 0, LOPT_UMBRELLA },
+    { "umbrella", 2, 0, LOPT_UMBRELLA },
     { "quiet-tftp", 0, 0, LOPT_QUIET_TFTP },
     { NULL, 0, 0, 0 }
   };
@@ -2530,7 +2530,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
           if (strlen(arg) != 16)
               ret_err(gen_err);
           char *p;
-          for (*p = arg; *p; p++) {
+          for (p = arg; *p; p++) {
             if (!isxdigit((int)*p))
               ret_err(gen_err);
           }
