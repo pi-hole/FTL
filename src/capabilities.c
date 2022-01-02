@@ -52,21 +52,18 @@ bool check_capabilities(void)
 	data = calloc(sizeof(*data), capsize);
 	capget(hdr, data);
 
-	if(config.debug & DEBUG_CAPS)
+	logg("***************************************");
+	logg("* Linux capability debugging enabled  *");
+	for(unsigned int i = 0u; i < numCaps; i++)
 	{
-		logg("***************************************");
-		logg("* Linux capability debugging enabled  *");
-		for(unsigned int i = 0u; i < numCaps; i++)
-		{
-			const unsigned int capid = capabilityIDs[i];
-			logg("* %-24s (%02u) = %s%s%s *",
-			     capabilityNames[capid], capid,
-			     ((data->permitted   & (1 << capid)) ? "P":"-"),
-			     ((data->inheritable & (1 << capid)) ? "I":"-"),
-			     ((data->effective   & (1 << capid)) ? "E":"-"));
-		}
-		logg("***************************************");
+		const unsigned int capid = capabilityIDs[i];
+		logg("* %-24s (%02u) = %s%s%s *",
+			capabilityNames[capid], capid,
+			((data->permitted   & (1 << capid)) ? "P":"-"),
+			((data->inheritable & (1 << capid)) ? "I":"-"),
+			((data->effective   & (1 << capid)) ? "E":"-"));
 	}
+	logg("***************************************");
 
 	bool capabilities_okay = true;
 	if (!(data->permitted & (1 << CAP_NET_ADMIN)) ||
@@ -93,7 +90,7 @@ bool check_capabilities(void)
 	if (!(data->permitted & (1 << CAP_SYS_NICE)) ||
 	    !(data->effective & (1 << CAP_SYS_NICE)))
 	{
-		// Necessary for dynamic port binding
+		// Necessary for setting higher process priority through nice
 		logg("WARNING: Required Linux capability CAP_SYS_NICE not available");
 		capabilities_okay = false;
 	}
@@ -107,7 +104,7 @@ bool check_capabilities(void)
 	if (!(data->permitted & (1 << CAP_CHOWN)) ||
 	    !(data->effective & (1 << CAP_CHOWN)))
 	{
-		// Necessary for chown() to work correctly
+		// Necessary to chown required files that are owned by another user
 		logg("WARNING: Required Linux capability CAP_CHOWN not available");
 		capabilities_okay = false;
 	}
