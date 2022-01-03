@@ -542,22 +542,39 @@ static int order_qsort(const void *a, const void *b)
   return rc;
 }
 
+/* Must be called before  add_update_server() to set daemon->servers_tail */
 void mark_servers(int flag)
 {
-  struct server *serv;
+  struct server *serv, **up;
 
+  daemon->servers_tail = NULL;
+  
   /* mark everything with argument flag */
   for (serv = daemon->servers; serv; serv = serv->next)
-    if (serv->flags & flag)
-      serv->flags |= SERV_MARK;
-    else
-      serv->flags &= ~SERV_MARK;
+    {
+      if (serv->flags & flag)
+	serv->flags |= SERV_MARK;
+      else
+	serv->flags &= ~SERV_MARK;
 
-  for (serv = daemon->local_domains; serv; serv = serv->next)
-    if (serv->flags & flag)
-      serv->flags |= SERV_MARK;
-    else
-      serv->flags &= ~SERV_MARK;
+      daemon->servers_tail = serv;
+    }
+  
+  /* --address etc is different: since they are expected to be 
+     1) numerous and 2) not reloaded often. We just delete 
+     and recreate. */
+  if (flag)
+    for (serv = daemon->local_domains, up = &daemon->local_domains; serv; serv = serv->next)
+      {
+	if (serv->flags & flag)
+	  {
+	    *up = serv->next;
+	    free(serv->domain);
+	    free(serv);
+	  }
+	else 
+	  up = &serv->next;
+      }
 }
 
 void cleanup_servers(void)
@@ -565,7 +582,7 @@ void cleanup_servers(void)
   struct server *serv, *tmp, **up;
 
   /* unlink and free anything still marked. */
-  for (serv = daemon->servers, up = &daemon->servers; serv; serv = tmp) 
+  for (serv = daemon->servers, up = &daemon->servers, daemon->servers_tail = NULL; serv; serv = tmp) 
     {
       tmp = serv->next;
       if (serv->flags & SERV_MARK)
@@ -581,19 +598,6 @@ void cleanup_servers(void)
 	  daemon->servers_tail = serv;
 	}
     }
-  
- for (serv = daemon->local_domains, up = &daemon->local_domains; serv; serv = tmp) 
-   {
-     tmp = serv->next;
-      if (serv->flags & SERV_MARK)
-       {
-	 *up = serv->next;
-	 free(serv->domain);
-	 free(serv);
-       }
-      else 
-	up = &serv->next;
-   }
 }
 
 int add_update_server(int flags,
@@ -626,36 +630,17 @@ int add_update_server(int flags,
 
   if (!alloc_domain)
     return 0;
-  
-  /* See if there is a suitable candidate, and unmark
-     only do this for forwarding servers, not 
-     address or local, to avoid delays on large numbers. */
-  if (!(flags & SERV_IS_LOCAL))
-    for (serv = daemon->servers; serv; serv = serv->next)
-      if ((serv->flags & SERV_MARK) &&
-	  hostname_isequal(alloc_domain, serv->domain))
-	break;
-  
-  if (serv)
-    {
-      free(alloc_domain);
-      alloc_domain = serv->domain;
-    }
-  else
+
+  if (flags & SERV_IS_LOCAL)
     {
       size_t size;
-
-      if (flags & SERV_IS_LOCAL)
-	{
-	  if (flags & SERV_6ADDR)
-	    size = sizeof(struct serv_addr6);
-	  else if (flags & SERV_4ADDR)
-	    size = sizeof(struct serv_addr4);
-	  else
-	    size = sizeof(struct serv_local);
-	}
+      
+      if (flags & SERV_6ADDR)
+	size = sizeof(struct serv_addr6);
+      else if (flags & SERV_4ADDR)
+	size = sizeof(struct serv_addr4);
       else
-	size = sizeof(struct server);
+	size = sizeof(struct serv_local);
       
       if (!(serv = whine_malloc(size)))
 	{
@@ -663,19 +648,53 @@ int add_update_server(int flags,
 	  return 0;
 	}
       
-      if (flags & SERV_IS_LOCAL)
+      serv->next = daemon->local_domains;
+      daemon->local_domains = serv;
+      
+      if (flags & SERV_4ADDR)
+	((struct serv_addr4*)serv)->addr = local_addr->addr4;
+      
+      if (flags & SERV_6ADDR)
+	((struct serv_addr6*)serv)->addr = local_addr->addr6;
+    }
+  else
+    { 
+      /* Upstream servers. See if there is a suitable candidate, if so unmark
+	 and move to the end of the list, for order. The entry found may already
+	 be at the end. */
+      struct server **up, *tmp;
+      
+      for (serv = daemon->servers, up = &daemon->servers; serv; serv = tmp)
 	{
-	  serv->next = daemon->local_domains;
-	  daemon->local_domains = serv;
+	  tmp = serv->next;
+	  if ((serv->flags & SERV_MARK) &&
+	      hostname_isequal(alloc_domain, serv->domain))
+	    {
+	      /* Need to move down? */
+	      if (serv->next)
+		{
+		  *up = serv->next;
+		  daemon->servers_tail->next = serv;
+		  daemon->servers_tail = serv;
+		  serv->next = NULL;
+		}
+	      break;
+	    }	
+	}
 
-	  if (flags & SERV_4ADDR)
-	    ((struct serv_addr4*)serv)->addr = local_addr->addr4;
-	  
-	  if (flags & SERV_6ADDR)
-	    ((struct serv_addr6*)serv)->addr = local_addr->addr6;
+      if (serv)
+	{
+	  free(alloc_domain);
+	  alloc_domain = serv->domain;
 	}
       else
 	{
+	  if (!(serv = whine_malloc(sizeof(struct server))))
+	    {
+	      free(alloc_domain);
+	      return 0;
+	    }
+	  
 	  memset(serv, 0, sizeof(struct server));
 	  
 	  /* Add to the end of the chain, for order */
@@ -684,20 +703,20 @@ int add_update_server(int flags,
 	  else
 	    daemon->servers = serv;
 	  daemon->servers_tail = serv;
-	  
+	}
+      
 #ifdef HAVE_LOOP
-	  serv->uid = rand32();
+      serv->uid = rand32();
 #endif      
 	  
-	  if (interface)
-	    safe_strncpy(serv->interface, interface, sizeof(serv->interface));
-	  if (addr)
-	    serv->addr = *addr;
-	  if (source_addr)
-	    serv->source_addr = *source_addr;
-	}
+      if (interface)
+	safe_strncpy(serv->interface, interface, sizeof(serv->interface));
+      if (addr)
+	serv->addr = *addr;
+      if (source_addr)
+	serv->source_addr = *source_addr;
     }
-  
+    
   serv->flags = flags;
   serv->domain = alloc_domain;
   serv->domain_len = strlen(alloc_domain);
