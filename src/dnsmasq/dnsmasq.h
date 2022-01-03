@@ -1721,7 +1721,9 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz, struct in6_addr *peer
 		     u32 scope_id, time_t now);
 
 int relay_reply6( struct sockaddr_in6 *peer, ssize_t sz, char *arrival_interface);
+#  ifdef HAVE_SCRIPT
 int do_snoop_script_run(void);
+#  endif
 #endif
 
 /* dhcp-common.c */

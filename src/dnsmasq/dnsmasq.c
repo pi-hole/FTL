@@ -1174,11 +1174,6 @@ int main_dnsmasq (int argc, char **argv)
       while (do_tftp_script_run());
 #    endif
 
-#    ifdef HAVE_DHCP6
-      while (helper_buf_empty() && do_snoop_script_run());
-#    endif
-      
-
 #endif
 
    

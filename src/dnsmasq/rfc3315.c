@@ -2277,9 +2277,9 @@ int relay_reply6(struct sockaddr_in6 *peer, ssize_t sz, char *arrival_interface)
   return 0;
 }
 
+#ifdef HAVE_SCRIPT
 int do_snoop_script_run(void)
 {
-#ifdef HAVE_SCRIPT
   struct dhcp_relay *relay;
   struct snoop_record *snoop;
   
@@ -2293,9 +2293,9 @@ int do_snoop_script_run(void)
 	queue_relay_snoop(&snoop->client, relay->iface_index, &snoop->prefix, snoop->prefix_len);
 	return 1;
       }
-#endif
   
   return 0;
 }
+#endif
 
 #endif
