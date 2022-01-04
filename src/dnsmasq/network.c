@@ -492,11 +492,11 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
     }
   
   if (addr->sa.sa_family == AF_INET &&
-      !iface_check(AF_INET, (union all_addr *)&addr->in.sin_addr, ifr.ifr_name, &auth_dns))
+      !iface_check(AF_INET, (union all_addr *)&addr->in.sin_addr, label, &auth_dns))
     return 1;
 
   if (addr->sa.sa_family == AF_INET6 &&
-      !iface_check(AF_INET6, (union all_addr *)&addr->in6.sin6_addr, ifr.ifr_name, &auth_dns))
+      !iface_check(AF_INET6, (union all_addr *)&addr->in6.sin6_addr, label, &auth_dns))
     return 1;
     
 #ifdef HAVE_DHCP
