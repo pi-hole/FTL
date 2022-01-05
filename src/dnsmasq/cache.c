@@ -414,7 +414,7 @@ static struct crec *cache_scan_free(char *name, union all_addr *addr, unsigned s
 	  if ((crecp->flags & F_FORWARD) && hostname_isequal(cache_get_name(crecp), name))
 	    {
 	      /* Don't delete DNSSEC in favour of a CNAME, they can co-exist */
-	      if ((flags & crecp->flags & (F_IPV4 | F_IPV6 | F_SRV)) || 
+	      if ((flags & crecp->flags & (F_IPV4 | F_IPV6 | F_SRV | F_NXDOMAIN)) || 
 		  (((crecp->flags | flags) & F_CNAME) && !(crecp->flags & (F_DNSKEY | F_DS))))
 		{
 		  if (crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG))
@@ -1731,9 +1731,7 @@ void get_dnsmasq_cache_info(struct cache_info *ci)
   const time_t now = time(NULL);
   for (int i=0; i < hash_size; i++)
     for (struct crec *cache = hash_table[i]; cache; cache = cache->hash_next)
-      if(cache->flags & F_IMMORTAL)
-	ci->immortal++;
-      else if(cache->ttd >= now)
+      if(cache->ttd >= now || cache->flags & F_IMMORTAL)
       {
 	if (cache->flags & F_IPV4)
 	  ci->valid.ipv4++;
@@ -1751,6 +1749,9 @@ void get_dnsmasq_cache_info(struct cache_info *ci)
 #endif
 	else
 	  ci->valid.other++;
+
+	if(cache->flags & F_IMMORTAL)
+	  ci->immortal++;
       }
       else
 	ci->expired++;

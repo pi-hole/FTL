@@ -1095,14 +1095,35 @@ static int  relay_upstream4(struct dhcp_relay *relay, struct dhcp_packet *mess, 
       to.sa.sa_family = AF_INET;
       to.in.sin_addr = relay->server.addr4;
       to.in.sin_port = htons(daemon->dhcp_server_port);
-      
+
+      /* Broadcasting to server. */
+      if (relay->server.addr4.s_addr == 0)
+	{
+	   struct ifreq ifr;
+
+	   if (relay->interface)
+	     safe_strncpy(ifr.ifr_name, relay->interface, IF_NAMESIZE);
+	   
+	   if (!relay->interface || strchr(relay->interface, '*') ||
+	       ioctl(daemon->dhcpfd, SIOCGIFBRDADDR, &ifr) == -1)
+	     {
+	       my_syslog(MS_DHCP | LOG_ERR, _("Cannot broadcast DHCP relay via interface %s"), relay->interface);
+	       return 1;
+	     }
+
+	   to.in.sin_addr = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr;
+	}
+
       send_from(daemon->dhcpfd, 0, (char *)mess, sz, &to, &from, 0);
       
       if (option_bool(OPT_LOG_OPTS))
 	{
 	  inet_ntop(AF_INET, &relay->local, daemon->addrbuff, ADDRSTRLEN);
-	  inet_ntop(AF_INET, &relay->server.addr4, daemon->dhcp_buff2, DHCP_BUFF_SZ);
-	  my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay %s -> %s"), daemon->addrbuff, daemon->dhcp_buff2);
+	  if (relay->server.addr4.s_addr == 0)
+	    snprintf(daemon->dhcp_buff2, DHCP_BUFF_SZ, _("broadcast via %s"), relay->interface);
+	  else
+	    inet_ntop(AF_INET, &relay->server.addr4, daemon->dhcp_buff2, DHCP_BUFF_SZ);
+	  my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay at %s -> %s"), daemon->addrbuff, daemon->dhcp_buff2);
 	}
       
       /* Save this for replies */

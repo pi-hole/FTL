@@ -985,11 +985,27 @@ void log_context(int family, struct dhcp_context *context)
 
 void log_relay(int family, struct dhcp_relay *relay)
 {
+  int broadcast = relay->server.addr4.s_addr == 0;
   inet_ntop(family, &relay->local, daemon->addrbuff, ADDRSTRLEN);
   inet_ntop(family, &relay->server, daemon->namebuff, ADDRSTRLEN); 
 
+#ifdef HAVE_DHCP6
+  struct in6_addr multicast;
+
+  inet_pton(AF_INET6, ALL_SERVERS, &multicast);
+
+  if (family == AF_INET6)
+    broadcast = IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast);
+#endif
+  
+  
   if (relay->interface)
-    my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s to %s via %s"), daemon->addrbuff, daemon->namebuff, relay->interface);
+    {
+      if (broadcast)
+	my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s via %s"), daemon->addrbuff, relay->interface);
+      else
+	my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s to %s via %s"), daemon->addrbuff, daemon->namebuff, relay->interface);
+    }
   else
     my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s to %s"), daemon->addrbuff, daemon->namebuff);
 }

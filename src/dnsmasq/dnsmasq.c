@@ -743,7 +743,11 @@ int main_dnsmasq (int argc, char **argv)
    /* if we are to run scripts, we need to fork a helper before dropping root. */
   daemon->helperfd = -1;
 #ifdef HAVE_SCRIPT 
-  if ((daemon->dhcp || daemon->dhcp6 || option_bool(OPT_TFTP) || option_bool(OPT_SCRIPT_ARP)) && 
+  if ((daemon->dhcp ||
+       daemon->dhcp6 ||
+       daemon->relay6 ||
+       option_bool(OPT_TFTP) ||
+       option_bool(OPT_SCRIPT_ARP)) && 
       (daemon->lease_change_command || daemon->luascript))
       daemon->helperfd = create_helper(pipewrite, err_pipe[1], script_uid, script_gid, max_fd);
 #endif
@@ -1152,6 +1156,10 @@ int main_dnsmasq (int argc, char **argv)
       while (helper_buf_empty() && do_tftp_script_run());
 #    endif
 
+#    ifdef HAVE_DHCP6
+      while (helper_buf_empty() && do_snoop_script_run());
+#    endif
+      
       if (!helper_buf_empty())
 	poll_listen(daemon->helperfd, POLLOUT);
 #else
@@ -1713,6 +1721,11 @@ static void poll_resolv(int force, int do_reload, time_t now)
 	}
       else 
 	{
+	  /* If we're delaying things, we don't call check_servers(), but 
+	     reload_servers() may have deleted some servers, rendering the server_array
+	     invalid, so just rebuild that here. Once reload_servers() succeeds,
+	     we call check_servers() above, which calls build_server_array itself. */
+	  build_server_array();
 	  latest->mtime = 0;
 	  if (!warned)
 	    {
