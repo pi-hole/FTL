@@ -129,9 +129,9 @@ int is_valid_dns_name(const char *value)
   
   size_t num_bytes = 0;
   size_t num_labels = 0;
-  const char *label = NULL;
+  const char *c, *label = NULL;
   int is_label_numeric = 1;
-  for (const char *c = value;; c++)
+  for (c = value;; c++)
     {
       if (*c &&
 	  *c != '-' && *c != '.' &&
@@ -242,11 +242,11 @@ int is_valid_dns_name_pattern(const char *value)
   
   size_t num_bytes = 0;
   size_t num_labels = 0;
-  const char *label = NULL;
+  const char *c, *label = NULL;
   int is_label_numeric = 1;
   size_t num_wildcards = 0;
   int previous_label_has_wildcard = 1;
-  for (const char *c = value;; c++)
+  for (c = value;; c++)
     {
       if (*c &&
 	  *c != '*' && /* Wildcard. */

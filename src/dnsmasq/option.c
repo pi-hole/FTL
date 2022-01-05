@@ -361,7 +361,7 @@ static const struct myoption opts[] =
     { "dhcp-ignore-clid", 0, 0,  LOPT_IGNORE_CLID },
     { "dynamic-host", 1, 0, LOPT_DYNHOST },
     { "log-debug", 0, 0, LOPT_LOG_DEBUG },
-	{ "umbrella", 2, 0, LOPT_UMBRELLA },
+    { "umbrella", 2, 0, LOPT_UMBRELLA },
     { "quiet-tftp", 0, 0, LOPT_QUIET_TFTP },
     { NULL, 0, 0, 0 }
   };
@@ -2523,39 +2523,48 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
     case LOPT_UMBRELLA: /* --umbrella */
       set_option_bool(OPT_UMBRELLA);
-      while (arg) {
-        comma = split(arg);
-        if (strstr(arg, "deviceid:")) {
-          arg += 9;
-          if (strlen(arg) != 16)
-              ret_err(gen_err);
-          for (char *p = arg; *p; p++) {
-            if (!isxdigit((int)*p))
-              ret_err(gen_err);
-          }
-          set_option_bool(OPT_UMBRELLA_DEVID);
-
-          u8 *u = daemon->umbrella_device;
-          char word[3];
-          for (u8 i = 0; i < sizeof(daemon->umbrella_device); i++, arg+=2) {
-            memcpy(word, &(arg[0]), 2);
-            *u++ = strtoul(word, NULL, 16);
-          }
-        }
-        else if (strstr(arg, "orgid:")) {
-          if (!strtoul_check(arg+6, &daemon->umbrella_org)) {
-            ret_err(gen_err);
-          }
-        }
-        else if (strstr(arg, "assetid:")) {
-          if (!strtoul_check(arg+8, &daemon->umbrella_asset)) {
-            ret_err(gen_err);
-          }
-        }
-        arg = comma;
-      }
+      while (arg)
+	{
+	  comma = split(arg);
+	  if (strstr(arg, "deviceid:"))
+	    {
+	      char *p;
+	      u8 *u = daemon->umbrella_device;
+	      char word[3];
+	      
+	      arg += 9;
+	      if (strlen(arg) != 16)
+		ret_err(gen_err);
+         
+	      for (p = arg; *p; p++)
+		if (!isxdigit((int)*p))
+		  ret_err(gen_err);
+          
+	      set_option_bool(OPT_UMBRELLA_DEVID);
+	   	      
+	      for (i = 0; i < (int)sizeof(daemon->umbrella_device); i++, arg+=2)
+		{
+		  memcpy(word, &(arg[0]), 2);
+		  *u++ = strtoul(word, NULL, 16);
+		}
+	    }
+	  else if (strstr(arg, "orgid:"))
+	    {
+	      if (!strtoul_check(arg+6, &daemon->umbrella_org))
+		ret_err(gen_err);
+	    }
+        else if (strstr(arg, "assetid:"))
+	  {
+	    if (!strtoul_check(arg+8, &daemon->umbrella_asset))
+	      ret_err(gen_err);
+	  }
+	else
+	  ret_err(gen_err);
+	  
+	  arg = comma;
+	}
       break;
-
+      
     case LOPT_ADD_MAC: /* --add-mac */
       if (!arg)
 	set_option_bool(OPT_ADD_MAC);
@@ -4132,7 +4141,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
     case LOPT_SUBSCR:   /* --dhcp-subscrid */
       {
 	 unsigned char *p;
-	 int dig = 0;
+	 int dig, colon;
 	 struct dhcp_vendor *new = opt_malloc(sizeof(struct dhcp_vendor));
 	 
 	 if (!(comma = split(arg)))
@@ -4156,13 +4165,16 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	 else
 	   comma = arg;
 	 
-	 for (p = (unsigned char *)comma; *p; p++)
+	 for (dig = 0, colon = 0, p = (unsigned char *)comma; *p; p++)
 	   if (isxdigit(*p))
 	     dig = 1;
-	   else if (*p != ':')
+	   else if (*p == ':')
+	     colon = 1;
+	   else
 	     break;
+	 
 	 unhide_metas(comma);
-	 if (option == 'U' || option == 'j' || *p || !dig)
+	 if (option == 'U' || option == 'j' || *p || !dig || !colon)
 	   {
 	     new->len = strlen(comma);  
 	     new->data = opt_malloc(new->len);
@@ -4285,26 +4297,56 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	}
       }
       break;
-
+      
     case LOPT_RELAY: /* --dhcp-relay */
       {
 	struct dhcp_relay *new = opt_malloc(sizeof(struct dhcp_relay));
-	comma = split(arg);
-	new->interface = opt_string_alloc(split(comma));
+	char *two = split(arg);
+	char *three = split(two);
+	
 	new->iface_index = 0;
-	if (comma && inet_pton(AF_INET, arg, &new->local) && inet_pton(AF_INET, comma, &new->server))
+
+	if (two)
 	  {
-	    new->next = daemon->relay4;
-	    daemon->relay4 = new;
-	  }
+	    if (inet_pton(AF_INET, arg, &new->local))
+	      {
+		if (!inet_pton(AF_INET, two, &new->server))
+		  {
+		    new->server.addr4.s_addr = 0;
+		    		    
+		    /* Fail for three arg version where there are not two addresses. 
+		       Also fail when broadcasting to wildcard address. */
+		    if (three || strchr(two, '*'))
+		      two = NULL;
+		    else
+		      three = two;
+		  }
+		
+		new->next = daemon->relay4;
+		daemon->relay4 = new;
+	      }
 #ifdef HAVE_DHCP6
-	else if (comma && inet_pton(AF_INET6, arg, &new->local) && inet_pton(AF_INET6, comma, &new->server))
-	  {
-	    new->next = daemon->relay6;
-	    daemon->relay6 = new;
-	  }
+	    else if (inet_pton(AF_INET6, arg, &new->local))
+	      {
+		if (!inet_pton(AF_INET6, two, &new->server))
+		  {
+		    inet_pton(AF_INET6, ALL_SERVERS, &new->server.addr6);
+		    /* Fail for three arg version where there are not two addresses.
+		       Also fail when multicasting to wildcard address. */
+		    if (three || strchr(two, '*'))
+		      two = NULL;
+		    else
+		      three = two;
+		  }
+		new->next = daemon->relay6;
+		daemon->relay6 = new;
+	      }
 #endif
-	else
+
+	    new->interface = opt_string_alloc(three);
+	  }
+	
+	if (!two)
 	  {
 	    free(new->interface);
 	    ret_err_free(_("Bad dhcp-relay"), new);

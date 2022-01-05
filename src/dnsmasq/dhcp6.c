@@ -135,9 +135,8 @@ void dhcp6_packet(time_t now)
   if (!indextoname(daemon->dhcp6fd, if_index, ifr.ifr_name))
     return;
 
-  if ((port = relay_reply6(&from, sz, ifr.ifr_name)) != 0)
+  if (relay_reply6(&from, sz, ifr.ifr_name))
     {
-      from.sin6_port = htons(port);
       while (retry_send(sendto(daemon->dhcp6fd, daemon->outpacket.iov_base, 
 			       save_counter(-1), 0, (struct sockaddr *)&from, 
 			       sizeof(from))));

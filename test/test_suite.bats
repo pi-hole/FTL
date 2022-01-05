@@ -11,6 +11,13 @@
   [[ ${lines[6]} == "" ]]
 }
 
+@test "DNS server port is reported" {
+  run bash -c 'echo ">dns-port >quit" | nc -v 127.0.0.1 4711'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "53" ]]
+  [[ ${lines[2]} == "" ]]
+}
+
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
