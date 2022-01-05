@@ -790,6 +790,7 @@ struct frec {
 #define ACTION_TFTP          5
 #define ACTION_ARP           6
 #define ACTION_ARP_DEL       7
+#define ACTION_RELAY_SNOOP   8
 
 #define LEASE_NEW            1  /* newly created */
 #define LEASE_CHANGED        2  /* modified */
@@ -1088,6 +1089,13 @@ struct dhcp_relay {
   union all_addr local, server;
   char *interface; /* Allowable interface for replies from server, and dest for IPv6 multicast */
   int iface_index; /* working - interface in which requests arrived, for return */
+#ifdef HAVE_SCRIPT
+  struct snoop_record {
+    struct in6_addr client, prefix;
+    int prefix_len;
+    struct snoop_record *next;
+  } *snoop_records;
+#endif
   struct dhcp_relay *current, *next;
 };
 
@@ -1239,13 +1247,18 @@ extern struct daemon {
   unsigned char *duid;
   struct iovec outpacket;
   int dhcp6fd, icmp6fd;
+#  ifdef HAVE_SCRIPT
+  struct snoop_record *free_snoops;
+#  endif
 #endif
+  
   /* DBus stuff */
   /* void * here to avoid depending on dbus headers outside dbus.c */
   void *dbus;
 #ifdef HAVE_DBUS
   struct watch *watches;
 #endif
+
   /* UBus stuff */
 #ifdef HAVE_UBUS
   /* void * here to avoid depending on ubus headers outside ubus.c */
@@ -1659,6 +1672,9 @@ void queue_tftp(off_t file_len, char *filename, union mysockaddr *peer);
 void queue_arp(int action, unsigned char *mac, int maclen,
 	       int family, union all_addr *addr);
 int helper_buf_empty(void);
+#ifdef HAVE_DHCP6
+void queue_relay_snoop(struct in6_addr *client, int if_index, struct in6_addr *prefix, int prefix_len);
+#endif
 #endif
 
 /* tftp.c */
@@ -1704,7 +1720,10 @@ unsigned short dhcp6_reply(struct dhcp_context *context, int interface, char *if
 void relay_upstream6(struct dhcp_relay *relay, ssize_t sz, struct in6_addr *peer_address, 
 		     u32 scope_id, time_t now);
 
-unsigned short relay_reply6( struct sockaddr_in6 *peer, ssize_t sz, char *arrival_interface);
+int relay_reply6( struct sockaddr_in6 *peer, ssize_t sz, char *arrival_interface);
+#  ifdef HAVE_SCRIPT
+int do_snoop_script_run(void);
+#  endif
 #endif
 
 /* dhcp-common.c */

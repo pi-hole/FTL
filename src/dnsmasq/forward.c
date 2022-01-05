@@ -1666,6 +1666,9 @@ void receive_query(struct listener *listen, time_t now)
       
       if (m >= 1)
 	{
+#ifdef HAVE_DUMPFILE
+	  dump_packet(DUMP_REPLY, daemon->packet, m, NULL, &source_addr);
+#endif
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
 		    (char *)header, m, &source_addr, &dst_addr, if_index);
 	  daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
@@ -1679,6 +1682,9 @@ void receive_query(struct listener *listen, time_t now)
 		      local_auth, do_bit, have_pseudoheader);
       if (m >= 1)
 	{
+#ifdef HAVE_DUMPFILE
+	  dump_packet(DUMP_REPLY, daemon->packet, m, NULL, &source_addr);
+#endif
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
 	  if (local_auth)
 	    if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
@@ -1978,7 +1984,7 @@ unsigned char *tcp_request(int confd, time_t now,
   bool piholeblocked = false;
   /**********************************************/
 
-  if (getpeername(confd, (struct sockaddr *)&peer_addr, &peer_len) == -1)
+  if (!packet || getpeername(confd, (struct sockaddr *)&peer_addr, &peer_len) == -1)
     return packet;
 
 #ifdef HAVE_CONNTRACK

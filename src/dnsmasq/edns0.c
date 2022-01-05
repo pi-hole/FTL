@@ -460,31 +460,33 @@ static size_t add_umbrella_opt(struct dns_header *header, size_t plen, unsigned 
 
   struct umbrella_opt opt = {{"ODNS"}, UMBRELLA_VERSION, 0, {}};
   u8 *u = &opt.fields[0];
-
-  if (daemon->umbrella_org) {
-    PUTSHORT(UMBRELLA_ORG, u);
-    PUTLONG(daemon->umbrella_org, u);
-  }
-
   int family = source->sa.sa_family;
-  PUTSHORT(family == AF_INET ? UMBRELLA_IPV4 : UMBRELLA_IPV6, u);
   int size = family == AF_INET ? INADDRSZ : IN6ADDRSZ;
+
+  if (daemon->umbrella_org)
+    {
+      PUTSHORT(UMBRELLA_ORG, u);
+      PUTLONG(daemon->umbrella_org, u);
+    }
+  
+  PUTSHORT(family == AF_INET ? UMBRELLA_IPV4 : UMBRELLA_IPV6, u);
   memcpy(u, get_addrp(source, family), size);
   u += size;
+  
+  if (option_bool(OPT_UMBRELLA_DEVID))
+    {
+      PUTSHORT(UMBRELLA_DEVICE, u);
+      memcpy(u, (char *)&daemon->umbrella_device, UMBRELLA_DEVICESZ);
+      u += UMBRELLA_DEVICESZ;
+    }
 
-  if (option_bool(OPT_UMBRELLA_DEVID)) {
-    PUTSHORT(UMBRELLA_DEVICE, u);
-    memcpy(u, (char *)&daemon->umbrella_device, UMBRELLA_DEVICESZ);
-    u += UMBRELLA_DEVICESZ;
-  }
-
-  if (daemon->umbrella_asset) {
-    PUTSHORT(UMBRELLA_ASSET, u);
-    PUTLONG(daemon->umbrella_asset, u);
-  }
-
-  int len = u - &opt.magic[0];
-  return add_pseudoheader(header, plen, (unsigned char *)limit, PACKETSZ, EDNS0_OPTION_UMBRELLA, (unsigned char *)&opt, len, 0, 1);
+  if (daemon->umbrella_asset)
+    {
+      PUTSHORT(UMBRELLA_ASSET, u);
+      PUTLONG(daemon->umbrella_asset, u);
+    }
+  
+  return add_pseudoheader(header, plen, (unsigned char *)limit, PACKETSZ, EDNS0_OPTION_UMBRELLA, (unsigned char *)&opt, u - (u8 *)&opt, 0, 1);
 }
 
 /* Set *check_subnet if we add a client subnet option, which needs to checked 

@@ -414,7 +414,7 @@ static struct crec *cache_scan_free(char *name, union all_addr *addr, unsigned s
 	  if ((crecp->flags & F_FORWARD) && hostname_isequal(cache_get_name(crecp), name))
 	    {
 	      /* Don't delete DNSSEC in favour of a CNAME, they can co-exist */
-	      if ((flags & crecp->flags & (F_IPV4 | F_IPV6 | F_SRV)) || 
+	      if ((flags & crecp->flags & (F_IPV4 | F_IPV6 | F_SRV | F_NXDOMAIN)) || 
 		  (((crecp->flags | flags) & F_CNAME) && !(crecp->flags & (F_DNSKEY | F_DS))))
 		{
 		  if (crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG))
