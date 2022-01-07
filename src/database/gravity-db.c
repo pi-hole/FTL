@@ -1125,6 +1125,8 @@ int gravityDB_count(const enum gravity_tables list)
 		if(list == GRAVITY_TABLE)
 		{
 			logg("Count of gravity domains not available. Please run pihole -g");
+			// set the gravity count to zero if no gravity domains are available
+			const int result = 0;
 		}
 		gravityDB_finalizeTable();
 		gravityDB_close();
