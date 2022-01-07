@@ -291,7 +291,7 @@ static size_t add_dns_client(struct dns_header *header, size_t plen, unsigned ch
 
 
 static size_t add_mac(struct dns_header *header, size_t plen, unsigned char *limit,
-		      union mysockaddr *l3, time_t now, int *cacheablep)
+		      union mysockaddr *l3, time_t now, int *cacheablep, const int replace)
 {
   int maclen;
   unsigned char mac[DHCP_CHADDR_MAX];
@@ -299,8 +299,13 @@ static size_t add_mac(struct dns_header *header, size_t plen, unsigned char *lim
   if ((maclen = find_mac(l3, mac, 1, now)) != 0)
     {
       *cacheablep = 0;
-      plen = add_pseudoheader(header, plen, limit, PACKETSZ, EDNS0_OPTION_MAC, mac, maclen, 0, 0); 
+      plen = add_pseudoheader(header, plen, limit, PACKETSZ, EDNS0_OPTION_MAC, mac, maclen, 0, replace);
     }
+  else if(replace > 0)
+  {
+    /* Asked to replace MAC address but it is not available here. We just remove whatever might be there */
+    plen = add_pseudoheader(header, plen, (unsigned char *)limit, daemon->edns_pktsz, EDNS0_OPTION_MAC, NULL, 0, 0, 2);
+  }
   
   return plen; 
 }
@@ -378,7 +383,8 @@ static size_t calc_subnet_opt(struct subnet_opt *opt, union mysockaddr *source, 
   return len + 4;
 }
  
-static size_t add_source_addr(struct dns_header *header, size_t plen, unsigned char *limit, union mysockaddr *source, int *cacheable)
+static size_t add_source_addr(struct dns_header *header, size_t plen, unsigned char *limit,
+			      union mysockaddr *source, int *cacheable, const int replace)
 {
   /* http://tools.ietf.org/html/draft-vandergaast-edns-client-subnet-02 */
   
@@ -386,7 +392,7 @@ static size_t add_source_addr(struct dns_header *header, size_t plen, unsigned c
   struct subnet_opt opt;
   
   len = calc_subnet_opt(&opt, source, cacheable);
-  return add_pseudoheader(header, plen, (unsigned char *)limit, PACKETSZ, EDNS0_OPTION_CLIENT_SUBNET, (unsigned char *)&opt, len, 0, 0);
+  return add_pseudoheader(header, plen, (unsigned char *)limit, PACKETSZ, EDNS0_OPTION_CLIENT_SUBNET, (unsigned char *)&opt, len, 0, replace);
 }
 
 int check_source(struct dns_header *header, size_t plen, unsigned char *pseudoheader, union mysockaddr *peer)
@@ -498,11 +504,19 @@ size_t add_edns0_config(struct dns_header *header, size_t plen, unsigned char *l
   *check_subnet = 0;
   *cacheable = 1;
   
+  /* OPT_ADD_MAC = MAC is added (if available)
+     OPT_ADD_MAC + OPT_STRIP_MAC = MAC is replaced, if not available, it is only removed
+     OPT_STRIP_MAC = MAC is removed */
   if (option_bool(OPT_ADD_MAC))
-    plen  = add_mac(header, plen, limit, source, now, cacheable);
-  
+    plen  = add_mac(header, plen, limit, source, now, cacheable, option_bool(OPT_STRIP_MAC) ? 1 : 0);
+  else if (option_bool(OPT_STRIP_MAC))
+    plen = add_pseudoheader(header, plen, (unsigned char *)limit, daemon->edns_pktsz, EDNS0_OPTION_MAC, NULL, 0, 0, 2);
+
+  /* Use --strip-mac also for --add-mac=hex and --add-mac=text */
   if (option_bool(OPT_MAC_B64) || option_bool(OPT_MAC_HEX))
     plen = add_dns_client(header, plen, limit, source, now, cacheable);
+  else if (option_bool(OPT_STRIP_MAC))
+    plen = add_pseudoheader(header, plen, (unsigned char *)limit, daemon->edns_pktsz, EDNS0_OPTION_NOMDEVICEID, NULL, 0, 0, 2);
   
   if (daemon->dns_client_id)
     plen = add_pseudoheader(header, plen, limit, PACKETSZ, EDNS0_OPTION_NOMCPEID, 
@@ -511,11 +525,16 @@ size_t add_edns0_config(struct dns_header *header, size_t plen, unsigned char *l
   if (option_bool(OPT_UMBRELLA))
     plen = add_umbrella_opt(header, plen, limit, source, cacheable);
   
+  /* OPT_CLIENT_SUBNET = client subnet is added
+     OPT_CLIENT_SUBNET + OPT_STRIP_ECS = client subnet is replaced
+     OPT_STRIP_ECS = client subnet is removed */
   if (option_bool(OPT_CLIENT_SUBNET))
     {
-      plen = add_source_addr(header, plen, limit, source, cacheable); 
+      plen = add_source_addr(header, plen, limit, source, cacheable, option_bool(OPT_STRIP_ECS) ? 1 : 0);
       *check_subnet = 1;
     }
+  else if (option_bool(OPT_STRIP_ECS))
+    plen = add_pseudoheader(header, plen, (unsigned char *)limit, daemon->edns_pktsz, EDNS0_OPTION_CLIENT_SUBNET, NULL, 0, 0, 2);
 	  
   return plen;
 }

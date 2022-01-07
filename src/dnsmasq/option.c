@@ -181,6 +181,8 @@ struct myoption {
 #define LOPT_NFTSET        368
 #define LOPT_FILTER_A      369
 #define LOPT_FILTER_AAAA   370
+#define LOPT_STRIP_SBNET   371
+#define LOPT_STRIP_MAC     372
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -318,7 +320,9 @@ static const struct myoption opts[] =
     { "dhcp-generate-names", 2, 0, LOPT_GEN_NAMES },
     { "rebind-localhost-ok", 0, 0,  LOPT_LOC_REBND },
     { "add-mac", 2, 0, LOPT_ADD_MAC },
+    { "strip-mac", 0, 0, LOPT_STRIP_MAC },
     { "add-subnet", 2, 0, LOPT_ADD_SBNET },
+    { "strip-subnet", 0, 0, LOPT_STRIP_SBNET },
     { "add-cpe-id", 1, 0 , LOPT_CPE_ID },
     { "proxy-dnssec", 0, 0, LOPT_DNSSEC },
     { "dhcp-sequential-ip", 0, 0,  LOPT_INCR_ADDR },
@@ -505,7 +509,9 @@ static struct {
   { LOPT_PXE_SERV, ARG_DUP, "<service>", gettext_noop("Boot service for PXE menu."), NULL },
   { LOPT_TEST, 0, NULL, gettext_noop("Check configuration syntax."), NULL },
   { LOPT_ADD_MAC, ARG_DUP, "[=base64|text]", gettext_noop("Add requestor's MAC address to forwarded DNS queries."), NULL },
+  { LOPT_STRIP_MAC, OPT_STRIP_MAC, NULL, gettext_noop("Strip MAC information from queries."), NULL },
   { LOPT_ADD_SBNET, ARG_ONE, "<v4 pref>[,<v6 pref>]", gettext_noop("Add specified IP subnet to forwarded DNS queries."), NULL },
+  { LOPT_STRIP_SBNET, OPT_STRIP_ECS, NULL, gettext_noop("Strip ECS information from queries."), NULL },
   { LOPT_CPE_ID, ARG_ONE, "<text>", gettext_noop("Add client identification to forwarded DNS queries."), NULL },
   { LOPT_DNSSEC, OPT_DNSSEC_PROXY, NULL, gettext_noop("Proxy DNSSEC validation results from upstream nameservers."), NULL },
   { LOPT_INCR_ADDR, OPT_CONSEC_ADDR, NULL, gettext_noop("Attempt to allocate sequential IP addresses to DHCP clients."), NULL },

@@ -284,7 +284,9 @@ struct event_desc {
 #define OPT_QUIET_TFTP     66
 #define OPT_FILTER_A       67
 #define OPT_FILTER_AAAA    68
-#define OPT_LAST           69
+#define OPT_STRIP_ECS      69
+#define OPT_STRIP_MAC      70
+#define OPT_LAST           71
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
