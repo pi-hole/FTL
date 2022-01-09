@@ -280,6 +280,15 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   /* new query */
   if (!forward)
     {
+      /* If the query is malformed, we can't forward it because
+	 we can't get a reliable hash to recognise the answer. */
+      if (!hash)
+	{
+	  flags = 0;
+	  ede = EDE_INVALID_DATA;
+	  goto reply;
+	}
+      
       if (lookup_domain(daemon->namebuff, gotname, &first, &last))
 	flags = is_local_answer(now, first, daemon->namebuff);
       else
@@ -889,8 +898,10 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 				     STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz);
 	  
 	  flags = STAT_ISEQUAL(status, STAT_NEED_KEY) ? FREC_DNSKEY_QUERY : FREC_DS_QUERY;
-	  hash = hash_questions(header, nn, daemon->namebuff);
 
+	  if (!(hash = hash_questions(header, nn, daemon->namebuff)))
+	    return;
+	  
 	  if ((new = lookup_frec_by_query(hash, flags, FREC_DNSKEY_QUERY | FREC_DS_QUERY)))
 	    {
 	      forward->next_dependent = new->dependent;
@@ -1767,13 +1778,16 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
   unsigned char *payload = &packet[2];
   struct dns_header *header = (struct dns_header *)payload;
   unsigned char c1, c2;
-  unsigned char hash[HASH_SIZE];
+  unsigned char hash[HASH_SIZE], *hashp;
   unsigned int rsize;
   
   (void)mark;
   (void)have_mark;
 
-  memcpy(hash, hash_questions(header, (unsigned int)qsize, daemon->namebuff), HASH_SIZE);
+  if (!(hashp = hash_questions(header, (unsigned int)qsize, daemon->namebuff)))
+    return 0;
+
+  memcpy(hash, hashp, HASH_SIZE);
   
   while (1) 
     {
@@ -1854,7 +1868,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	 someone might be attempting to insert bogus values into the cache by 
 	 sending replies containing questions and bogus answers. 
 	 Try another server, or give up */
-      if (memcmp(hash, hash_questions(header, rsize, daemon->namebuff), HASH_SIZE) != 0)
+      if (!(hashp = hash_questions(header, rsize, daemon->namebuff)) || memcmp(hash, hashp, HASH_SIZE) != 0)
 	continue;
       
       serv->flags |= SERV_GOT_TCP;
@@ -2660,28 +2674,29 @@ static struct frec *lookup_frec(unsigned short id, int fd, void *hash, int *firs
   struct server *s;
   int first, last;
   struct randfd_list *fdl;
-  
-  for(f = daemon->frec_list; f; f = f->next)
-    if (f->sentto && f->new_id == id && 
-	(memcmp(hash, f->hash, HASH_SIZE) == 0))
-      {
-	filter_servers(f->sentto->arrayposn, F_SERVER, firstp, lastp);
 
-	/* sent from random port */
-	for (fdl = f->rfds; fdl; fdl = fdl->next)
-	  if (fdl->rfd->fd == fd)
-	  return f;
-	
-	/* Sent to upstream from socket associated with a server. 
-	   Note we have to iterate over all the possible servers, since they may
-	   have different bound sockets. */
-	for (first = *firstp, last = *lastp; first != last; first++)
-	  {
-	    s = daemon->serverarray[first];
-	    if (s->sfd && s->sfd->fd == fd)
+  if (hash)
+    for (f = daemon->frec_list; f; f = f->next)
+      if (f->sentto && f->new_id == id && 
+	  (memcmp(hash, f->hash, HASH_SIZE) == 0))
+	{
+	  filter_servers(f->sentto->arrayposn, F_SERVER, firstp, lastp);
+	  
+	  /* sent from random port */
+	  for (fdl = f->rfds; fdl; fdl = fdl->next)
+	    if (fdl->rfd->fd == fd)
 	      return f;
-	  }
-      }
+	  
+	  /* Sent to upstream from socket associated with a server. 
+	     Note we have to iterate over all the possible servers, since they may
+	     have different bound sockets. */
+	  for (first = *firstp, last = *lastp; first != last; first++)
+	    {
+	      s = daemon->serverarray[first];
+	      if (s->sfd && s->sfd->fd == fd)
+		return f;
+	    }
+	}
   
   return NULL;
 }
@@ -2690,11 +2705,12 @@ static struct frec *lookup_frec_by_query(void *hash, unsigned int flags, unsigne
 {
   struct frec *f;
 
-  for(f = daemon->frec_list; f; f = f->next)
-    if (f->sentto &&
-	(f->flags & flagmask) == flags &&
-	memcmp(hash, f->hash, HASH_SIZE) == 0)
-      return f;
+  if (hash)
+    for(f = daemon->frec_list; f; f = f->next)
+      if (f->sentto &&
+	  (f->flags & flagmask) == flags &&
+	  memcmp(hash, f->hash, HASH_SIZE) == 0)
+	return f;
   
   return NULL;
 }
