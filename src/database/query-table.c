@@ -49,7 +49,7 @@ int get_number_of_queries_in_DB(sqlite3 *db)
 	}
 
 	// Count number of rows using the index timestamp is faster than select(*)
-	int result = db_query_int(db, "SELECT COUNT(timestamp) FROM queries");
+	int result = db_query_int(db, "SELECT COUNT(timestamp) FROM query_storage");
 
 	if(db_opened) dbclose(&db);
 
@@ -523,7 +523,7 @@ void delete_old_queries_in_DB(sqlite3 *db)
 
 	int timestamp = time(NULL) - config.maxDBdays * 86400;
 
-	if(dbquery(db, "DELETE FROM queries WHERE timestamp <= %i", timestamp) != SQLITE_OK)
+	if(dbquery(db, "DELETE FROM query_storage WHERE timestamp <= %i", timestamp) != SQLITE_OK)
 	{
 		logg("delete_old_queries_in_DB(): Deleting queries due to age of entries failed!");
 		return;
