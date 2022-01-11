@@ -20,6 +20,7 @@
 static struct frec *get_new_frec(time_t now, struct server *serv, int force);
 static struct frec *lookup_frec(unsigned short id, int fd, void *hash, int *firstp, int *lastp);
 static struct frec *lookup_frec_by_query(void *hash, unsigned int flags, unsigned int flagmask);
+static struct frec *lookup_frec_dnssec(char *target, int class, int flags, struct dns_header *header);
 
 static unsigned short get_id(void);
 static void free_frec(struct frec *f);
@@ -879,90 +880,104 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
   if (STAT_ISEQUAL(status, STAT_NEED_DS) || STAT_ISEQUAL(status, STAT_NEED_KEY))
     {
       struct frec *new = NULL;
-      int serverind;
       struct blockdata *stash;
       
       /* Now save reply pending receipt of key data */
-      if ((serverind = dnssec_server(forward->sentto, daemon->keyname, NULL, NULL)) != -1 &&
-	  (stash = blockdata_alloc((char *)header, plen)))
+      if ((stash = blockdata_alloc((char *)header, plen)))
 	{
-	  struct server *server = daemon->serverarray[serverind];
-	  struct frec *orig;
-	  unsigned int flags;
-	  void *hash;
-	  size_t nn;
-
 	  /* validate routines leave name of required record in daemon->keyname */
-	  nn = dnssec_generate_query(header, ((unsigned char *) header) + server->edns_pktsz,
-				     daemon->keyname, forward->class,
-				     STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz);
-	  
-	  flags = STAT_ISEQUAL(status, STAT_NEED_KEY) ? FREC_DNSKEY_QUERY : FREC_DS_QUERY;
+	  unsigned int flags = STAT_ISEQUAL(status, STAT_NEED_KEY) ? FREC_DNSKEY_QUERY : FREC_DS_QUERY;
 
-	  if (!(hash = hash_questions(header, nn, daemon->namebuff)))
-	    return;
-	  
-	  if ((new = lookup_frec_by_query(hash, flags, FREC_DNSKEY_QUERY | FREC_DS_QUERY)))
+	  if ((new = lookup_frec_dnssec(daemon->keyname, forward->class, flags, header)))
 	    {
-	      forward->next_dependent = new->dependent;
-	      new->dependent = forward;
-	      /* Make consistent, only replace query copy with unvalidated answer
-		 when we set ->blocking_query. */
-	      if (forward->stash)
-		blockdata_free(forward->stash);
-	      forward->blocking_query = new;
-	      forward->stash_len = plen;
-	      forward->stash = stash;
-	      return;
+	      /* This is tricky; it detects loops in the dependency
+		 graph for DNSSEC validation, say validating A requires DS B
+		 and validating DS B requires DNSKEY C and validating DNSKEY C requires DS B.
+		 This should never happen in correctly signed records, but it's
+		 likely the case that sufficiently broken ones can cause our validation
+		 code requests to exhibit cycles. The result is that the ->blocking_query list
+		 can form a cycle, and under certain circumstances that can lock us in 
+		 an infinite loop. Here we transform the situation into ABANDONED. */
+	      struct frec *f;
+	      for (f = new; f; f = f->blocking_query)
+		if (f == forward)
+		  break;
+
+	      if (!f)
+		{
+		  forward->next_dependent = new->dependent;
+		  new->dependent = forward;
+		  /* Make consistent, only replace query copy with unvalidated answer
+		     when we set ->blocking_query. */
+		  if (forward->stash)
+		    blockdata_free(forward->stash);
+		  forward->blocking_query = new;
+		  forward->stash_len = plen;
+		  forward->stash = stash;
+		  return;
+		}
+	      
+	      my_syslog(LOG_WARNING, _("detected DNSSEC dependency loop involving %s"), daemon->keyname);
 	    }
-	    
-	  /* Find the original query that started it all.... */
-	  for (orig = forward; orig->dependent; orig = orig->dependent);
-	  
-	  /* Make sure we don't expire and free the orig frec during the
-	     allocation of a new one: third arg of get_new_frec() does that. */
-	  if (--orig->work_counter == 0 || !(new = get_new_frec(now, server, 1)))
-	    blockdata_free(stash); /* don't leak this on failure. */
 	  else
 	    {
-	      int fd;
-	      struct frec *next = new->next;
-
-	      *new = *forward; /* copy everything, then overwrite */
-	      new->next = next;
-	      new->blocking_query = NULL;
+	      struct server *server;
+	      struct frec *orig;
+	      void *hash;
+	      size_t nn;
+	      int serverind, fd;
+	      struct randfd_list *rfds = NULL;
 	      
-	      new->frec_src.log_id = daemon->log_display_id = ++daemon->log_id;
-	      new->sentto = server;
-	      new->rfds = NULL;
-	      new->frec_src.next = NULL;
-	      new->flags &= ~(FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_HAS_EXTRADATA);
-	      new->flags |= flags;
-	      new->forwardall = 0;
+	      /* Find the original query that started it all.... */
+	      for (orig = forward; orig->dependent; orig = orig->dependent);
 	      
-	      forward->next_dependent = NULL;
-	      new->dependent = forward; /* to find query awaiting new one. */
-
-	      /* Make consistent, only replace query copy with unvalidated answer
-		 when we set ->blocking_query. */
-	      forward->blocking_query = new; 
-	      if (forward->stash)
-		blockdata_free(forward->stash);
-	      forward->stash_len = plen;
-	      forward->stash = stash;
-	      
-	      memcpy(new->hash, hash, HASH_SIZE);
-	      new->new_id = get_id();
-	      header->id = htons(new->new_id);
-	      /* Save query for retransmission */
-	      new->stash = blockdata_alloc((char *)header, nn);
-	      new->stash_len = nn;
-	      
-	      /* Don't resend this. */
-	      daemon->srv_save = NULL;
-	      
-	      if ((fd = allocate_rfd(&new->rfds, server)) != -1)
+	      /* Make sure we don't expire and free the orig frec during the
+		 allocation of a new one: third arg of get_new_frec() does that. */
+	      if ((serverind = dnssec_server(forward->sentto, daemon->keyname, NULL, NULL)) != -1 &&
+		  (server = daemon->serverarray[serverind]) &&
+		  (nn = dnssec_generate_query(header, ((unsigned char *) header) + server->edns_pktsz,
+					      daemon->keyname, forward->class,
+					      STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz)) && 
+		  (hash = hash_questions(header, nn, daemon->namebuff)) &&
+		  --orig->work_counter != 0 &&
+		  (fd = allocate_rfd(&rfds, server)) != -1 &&
+		  (new = get_new_frec(now, server, 1)))
 		{
+		  struct frec *next = new->next;
+		  
+		  *new = *forward; /* copy everything, then overwrite */
+		  new->next = next;
+		  new->blocking_query = NULL;
+		  
+		  new->frec_src.log_id = daemon->log_display_id = ++daemon->log_id;
+		  new->sentto = server;
+		  new->rfds = rfds;
+		  new->frec_src.next = NULL;
+		  new->flags &= ~(FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_HAS_EXTRADATA);
+		  new->flags |= flags;
+		  new->forwardall = 0;
+		  
+		  forward->next_dependent = NULL;
+		  new->dependent = forward; /* to find query awaiting new one. */
+		  
+		  /* Make consistent, only replace query copy with unvalidated answer
+		     when we set ->blocking_query. */
+		  forward->blocking_query = new; 
+		  if (forward->stash)
+		    blockdata_free(forward->stash);
+		  forward->stash_len = plen;
+		  forward->stash = stash;
+		  
+		  memcpy(new->hash, hash, HASH_SIZE);
+		  new->new_id = get_id();
+		  header->id = htons(new->new_id);
+		  /* Save query for retransmission and de-dup */
+		  new->stash = blockdata_alloc((char *)header, nn);
+		  new->stash_len = nn;
+		  
+		  /* Don't resend this. */
+		  daemon->srv_save = NULL;
+		  
 #ifdef HAVE_CONNTRACK
 		  if (option_bool(OPT_CONNTRACK))
 		    set_outgoing_mark(orig, fd);
@@ -971,16 +986,19 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 				  F_NOEXTRA | F_DNSSEC, daemon->keyname,
 				  "dnssec-query", STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS);
 		  server->queries++;
+		  return;
 		}
 	      
-	      return;
+	      free_rfds(&rfds); /* error unwind */
 	    }
+	  
+	  blockdata_free(stash); /* don't leak this on failure. */
 	}
 
       /* sending DNSSEC query failed. */
       status = STAT_ABANDONED;
     }
-  
+
   /* Validated original answer, all done. */
   if (!forward->dependent)
     return_reply(now, forward, header, plen, status);
@@ -2706,7 +2724,7 @@ static struct frec *lookup_frec_by_query(void *hash, unsigned int flags, unsigne
   struct frec *f;
 
   if (hash)
-    for(f = daemon->frec_list; f; f = f->next)
+    for (f = daemon->frec_list; f; f = f->next)
       if (f->sentto &&
 	  (f->flags & flagmask) == flags &&
 	  memcmp(hash, f->hash, HASH_SIZE) == 0)
@@ -2714,6 +2732,36 @@ static struct frec *lookup_frec_by_query(void *hash, unsigned int flags, unsigne
   
   return NULL;
 }
+
+/* DNSSEC frecs have the complete query in the block stash.
+   Search for an existing query using that. */
+static struct frec *lookup_frec_dnssec(char *target, int class, int flags, struct dns_header *header)
+{
+   struct frec *f;
+
+   for (f = daemon->frec_list; f; f = f->next)
+     if (f->sentto &&
+	 (f->flags & flags) &&
+	 blockdata_retrieve(f->stash, f->stash_len, (void *)header))
+       {
+	 unsigned char *p = (unsigned char *)(header+1);
+	 int hclass;
+
+	 if (extract_name(header, f->stash_len, &p, target, 0, 4) != 1)
+	   continue;
+
+	 p += 2;  /* type, known from flags */ 
+	 GETSHORT(hclass, p);
+
+	 if (class != hclass)
+	   continue;
+
+	 return f;
+       }
+
+   return NULL;
+}
+
 
 /* Send query packet again, if we can. */
 void resend_query()
