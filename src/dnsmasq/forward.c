@@ -1492,7 +1492,8 @@ void receive_query(struct listener *listen, time_t now)
 	  static int warned = 0;
 	  if (!warned)
 	    {
-	      my_syslog(LOG_WARNING, _("Ignoring query from non-local network"));
+	      prettyprint_addr(&source_addr, daemon->addrbuff);
+	      my_syslog(LOG_WARNING, _("ignoring query from non-local network %s (logged only once)"), daemon->addrbuff);
 	      warned = 1;
 	    }
 	  return;
@@ -2067,7 +2068,8 @@ unsigned char *tcp_request(int confd, time_t now,
 	}
       if (!addr)
 	{
-	  my_syslog(LOG_WARNING, _("Ignoring query from non-local network"));
+	  prettyprint_addr(&peer_addr, daemon->addrbuff);
+	  my_syslog(LOG_WARNING, _("ignoring query from non-local network %s"), daemon->addrbuff);
 	  return packet;
 	}
     }
