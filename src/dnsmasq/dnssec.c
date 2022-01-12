@@ -2101,7 +2101,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	      if (qtype == T_DS)
 		return STAT_BOGUS | DNSSEC_FAIL_NONSEC;
 	      
-	      if (STAT_ISEQUAL((rc = zone_status(name, qclass, keyname, now)), STAT_SECURE))
+	      if (!STAT_ISEQUAL((rc = zone_status(name, qclass, keyname, now)), STAT_SECURE))
 		{
 		  if (class)
 		    *class = qclass; /* Class for NEED_DS or NEED_KEY */
