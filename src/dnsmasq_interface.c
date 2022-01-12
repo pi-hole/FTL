@@ -60,7 +60,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const queriesData *query, const domainsData *domain);
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
-static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
+static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, unsigned short port, const int id, const char* file, const int line);
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char* arg, const int id, const char* file, const int line);
 static void FTL_upstream_error(const union all_addr *addr, const int id, const char* file, const int line);
 static void FTL_dnssec(const char *result, const union all_addr *addr, const int id, const char* file, const int line);
@@ -116,8 +116,8 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 	if((flags & F_QUERY) && (flags & F_FORWARD))
 		; // New query, handled by FTL_new_query via separate call
 	else if(flags & F_FORWARD && flags & F_SERVER)
-		// forwarded upstream
-		FTL_forwarded(flags, name, addr, id, path, line);
+		// forwarded upstream (type is used to store the upstream port)
+		FTL_forwarded(flags, name, addr, type, id, path, line);
 	else if(flags == F_SECSTAT)
 		// DNSSEC validation result
 		FTL_dnssec(arg, addr, id, path, line);
@@ -131,19 +131,9 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 			return;
 
 		const ednsData edns = { 0 };
-		union mysockaddr saddr = {{ 0 }};
-		if(flags & F_IPV4)
-		{
-			saddr.in.sin_addr = addr->addr4;
-			saddr.sa.sa_family = AF_INET;
-		}
-		else
-		{
-			memcpy(&saddr.in6.sin6_addr, &addr->addr6, sizeof(addr->addr6));
-			saddr.sa.sa_family = AF_INET;
-		}
 		_FTL_new_query(flags, name, NULL, arg, type, id, &edns, INTERNAL, file, line);
-		FTL_forwarded(flags, name, addr, id, path, line);
+		// forwarded upstream (type is used to store the upstream port)
+		FTL_forwarded(flags, name, addr, type, id, path, line);
 	}
 	else if(flags & F_AUTH)
 		; // Ignored
@@ -1639,7 +1629,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 }
 
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr,
-                          const int id, const char* file, const int line)
+                          unsigned short port, const int id, const char* file, const int line)
 {
 	// Save that this query got forwarded to an upstream server
 
@@ -1657,19 +1647,23 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 		{
 			inet_ntop(AF_INET, addr, dest, ADDRSTRLEN);
 			// Reverse-engineer port from underlying sockaddr_in structure
-			const in_port_t *port = (in_port_t*)((void*)addr
+			const in_port_t *rport = (in_port_t*)((void*)addr
 			                                     - offsetof(struct sockaddr_in, sin_addr)
 			                                     + offsetof(struct sockaddr_in, sin_port));
-			upstreamPort = ntohs(*port);
+			upstreamPort = ntohs(*rport);
+			if(upstreamPort != port)
+				logg("ERR: Port mismatch for %s: we derived %d, dnsmasq told us %d", dest, upstreamPort, port);
 		}
 		else
 		{
 			inet_ntop(AF_INET6, addr, dest, ADDRSTRLEN);
 			// Reverse-engineer port from underlying sockaddr_in6 structure
-			const in_port_t *port = (in_port_t*)((void*)addr
+			const in_port_t *rport = (in_port_t*)((void*)addr
 			                                     - offsetof(struct sockaddr_in6, sin6_addr)
 			                                     + offsetof(struct sockaddr_in6, sin6_port));
-			upstreamPort = ntohs(*port);
+			upstreamPort = ntohs(*rport);
+			if(upstreamPort != port)
+				logg("ERR: Port mismatch for %s: we derived %d, dnsmasq told us %d", dest, upstreamPort, port);
 		}
 	}
 
