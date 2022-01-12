@@ -131,7 +131,17 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 			return;
 
 		const ednsData edns = { 0 };
-		_FTL_new_query(flags, name, NULL, arg, type, id, &edns, INTERNAL, file, line);
+
+		// Type is overloaded with port since 2d65d55, so we have to
+		// derive the real query type from the arg string
+		unsigned short qtype = type;
+		if(strcmp(arg, "dnssec-query[DNSKEY]") == 0)
+			qtype = T_DNSKEY;
+		else if(strcmp(arg, "dnssec-query[DS]") == 0)
+			qtype = T_DS;
+		arg = (char*)"dnssec-query";
+
+		_FTL_new_query(flags, name, NULL, arg, qtype, id, &edns, INTERNAL, file, line);
 		// forwarded upstream (type is used to store the upstream port)
 		FTL_forwarded(flags, name, addr, type, id, path, line);
 	}
