@@ -1867,7 +1867,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
   int type1, class1, rdlen1 = 0, type2, class2, rdlen2, qclass, qtype, targetidx;
   int i, j, rc = STAT_INSECURE;
   int secure = STAT_SECURE;
-
+   
   /* extend rr_status if necessary */
   if (daemon->rr_status_sz < ntohs(header->ancount) + ntohs(header->nscount))
     {
@@ -1989,7 +1989,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	    {
 	      /* NSEC and NSEC3 records must be signed. We make this assumption elsewhere. */
 	      if (type1 == T_NSEC || type1 == T_NSEC3)
-		rc = STAT_INSECURE;
+		return STAT_BOGUS | DNSSEC_FAIL_NOSIG;
 	      else if (nons && i >= ntohs(header->ancount))
 		/* If we're validating a DS reply, rather than looking for the value of AD bit,
 		   we only care that NSEC and NSEC3 RRs in the auth section are signed. 
@@ -2003,6 +2003,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 		      rc = zone_status(name, class1, keyname, now);
 		      if (STAT_ISEQUAL(rc, STAT_SECURE))
 			rc = STAT_BOGUS | DNSSEC_FAIL_NOSIG;
+		      
 		      if (class)
 			*class = class1; /* Class for NEED_DS or NEED_KEY */
 		    }
@@ -2081,36 +2082,35 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
     }
 
   /* OK, all the RRsets validate, now see if we have a missing answer or CNAME target. */
-  if (STAT_ISEQUAL(secure, STAT_SECURE))
-    for (j = 0; j <targetidx; j++)
-      if ((p2 = targets[j]))
-	{
-	  if (neganswer)
-	    *neganswer = 1;
-	  
-	  if (!extract_name(header, plen, &p2, name, 1, 10))
-	    return STAT_BOGUS; /* bad packet */
-	  
-	  /* NXDOMAIN or NODATA reply, unanswered question is (name, qclass, qtype) */
-	  
-	  /* For anything other than a DS record, this situation is OK if either
-	     the answer is in an unsigned zone, or there's a NSEC records. */
-	  if (!prove_non_existence(header, plen, keyname, name, qtype, qclass, NULL, nons, nsec_ttl))
-	    {
-	      /* Empty DS without NSECS */
-	      if (qtype == T_DS)
-		return STAT_BOGUS | DNSSEC_FAIL_NONSEC;
-	      
-	      if (!STAT_ISEQUAL((rc = zone_status(name, qclass, keyname, now)), STAT_SECURE))
-		{
-		  if (class)
-		    *class = qclass; /* Class for NEED_DS or NEED_KEY */
-		  return rc;
-		} 
-	      
-	      return STAT_BOGUS | DNSSEC_FAIL_NONSEC; /* signed zone, no NSECs */
-	    }
-	}
+  for (j = 0; j <targetidx; j++)
+    if ((p2 = targets[j]))
+      {
+	if (neganswer)
+	  *neganswer = 1;
+	
+	if (!extract_name(header, plen, &p2, name, 1, 10))
+	  return STAT_BOGUS; /* bad packet */
+	
+	/* NXDOMAIN or NODATA reply, unanswered question is (name, qclass, qtype) */
+	
+	/* For anything other than a DS record, this situation is OK if either
+	   the answer is in an unsigned zone, or there's a NSEC records. */
+	if (!prove_non_existence(header, plen, keyname, name, qtype, qclass, NULL, nons, nsec_ttl))
+	  {
+	    /* Empty DS without NSECS */
+	    if (qtype == T_DS)
+	      return STAT_BOGUS | DNSSEC_FAIL_NONSEC;
+	    
+	    if (!STAT_ISEQUAL((rc = zone_status(name, qclass, keyname, now)), STAT_SECURE))
+	      {
+		if (class)
+		  *class = qclass; /* Class for NEED_DS or NEED_KEY */
+		return rc;
+	      } 
+	    
+	    return STAT_BOGUS | DNSSEC_FAIL_NONSEC; /* signed zone, no NSECs */
+	  }
+      }
   
   return secure;
 }
