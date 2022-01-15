@@ -200,7 +200,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   unsigned char *oph = find_pseudoheader(header, plen, NULL, NULL, NULL, NULL);
   int old_src = 0, old_reply = 0;
   int first, last, start = 0;
-  int subnet, cacheable, forwarded = 0;
+  int cacheable, forwarded = 0;
   size_t edns0_len;
   unsigned char *pheader;
   int ede = EDE_UNSET;
@@ -455,10 +455,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
     {
       header->id = htons(forward->new_id);
       
-      plen = add_edns0_config(header, plen, ((unsigned char *)header) + PACKETSZ, &forward->frec_src.source, now, &subnet, &cacheable);
-      
-      if (subnet)
-	forward->flags |= FREC_HAS_SUBNET;
+      plen = add_edns0_config(header, plen, ((unsigned char *)header) + PACKETSZ, &forward->frec_src.source, now, &cacheable);
       
       if (!cacheable)
 	forward->flags |= FREC_NO_CACHE;
@@ -636,7 +633,7 @@ static struct ipsets *domain_find_sets(struct ipsets *setlist, const char *domai
 
 static size_t process_reply(struct dns_header *header, time_t now, struct server *server, size_t n, int check_rebind, 
 			    int no_cache, int cache_secure, int bogusanswer, int ad_reqd, int do_bit, int added_pheader, 
-			    int check_subnet, union mysockaddr *query_source, unsigned char *limit, int ede)
+			    union mysockaddr *query_source, unsigned char *limit, int ede)
 {
   unsigned char *pheader, *sizep;
   struct ipsets *ipsets = NULL, *nftsets = NULL;
@@ -663,7 +660,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       /* Get extended RCODE. */
       rcode |= sizep[2] << 4;
 
-      if (check_subnet && !check_source(header, plen, pheader, query_source))
+      if (option_bool(OPT_CLIENT_SUBNET) && !check_source(header, plen, pheader, query_source))
 	{
 	  my_syslog(LOG_WARNING, _("discarding DNS reply: subnet option mismatch"));
 	  return 0;
@@ -1265,7 +1262,7 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
   
   if ((nn = process_reply(header, now, forward->sentto, (size_t)n, check_rebind, no_cache_dnssec, cache_secure, bogusanswer, 
 			  forward->flags & FREC_AD_QUESTION, forward->flags & FREC_DO_QUESTION, 
-			  forward->flags & FREC_ADDED_PHEADER, forward->flags & FREC_HAS_SUBNET, &forward->frec_src.source,
+			  forward->flags & FREC_ADDED_PHEADER, &forward->frec_src.source,
 			  ((unsigned char *)header) + daemon->edns_pktsz, ede)))
     {
       struct frec_src *src;
@@ -2001,7 +1998,7 @@ unsigned char *tcp_request(int confd, time_t now,
   int local_auth = 0;
 #endif
   int checking_disabled, do_bit, added_pheader = 0, have_pseudoheader = 0;
-  int check_subnet, cacheable, no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
+  int cacheable, no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
   size_t m;
   unsigned short qtype;
   unsigned int gotname;
@@ -2257,7 +2254,7 @@ unsigned char *tcp_request(int confd, time_t now,
 		  else
 		    start = master->last_server;
 		  
-		  size = add_edns0_config(header, size, ((unsigned char *) header) + 65536, &peer_addr, now, &check_subnet, &cacheable);
+		  size = add_edns0_config(header, size, ((unsigned char *) header) + 65536, &peer_addr, now, &cacheable);
 		  
 #ifdef HAVE_DNSSEC
 		  if (option_bool(OPT_DNSSEC_VALID) && (master->flags & SERV_DO_DNSSEC))
@@ -2335,7 +2332,7 @@ unsigned char *tcp_request(int confd, time_t now,
 		  
 		  m = process_reply(header, now, serv, (unsigned int)m, 
 				    option_bool(OPT_NO_REBIND) && !norebind, no_cache_dnssec, cache_secure, bogusanswer,
-				    ad_reqd, do_bit, added_pheader, check_subnet, &peer_addr, ((unsigned char *)header) + 65536, ede); 
+				    ad_reqd, do_bit, added_pheader, &peer_addr, ((unsigned char *)header) + 65536, ede); 
 		}
 	    }
 	  /************ Pi-hole modification ************/
