@@ -47,7 +47,7 @@ static bool delete_old_queries_in_DB(sqlite3 *db)
 	return true;
 }
 
-#define DBOPEN_OR_AGAIN() { db = dbopen(false); if(db == NULL) { thread_sleepms(DB, 5000); continue; } }
+#define DBOPEN_OR_AGAIN() { if(!db) db = dbopen(false); if(!db) { thread_sleepms(DB, 5000); continue; } }
 #define BREAK_IF_KILLED() { if(killed) break; }
 #define DBCLOSE_OR_BREAK() { dbclose(&db); BREAK_IF_KILLED(); }
 
@@ -65,6 +65,7 @@ void *DB_thread(void *val)
 	// This thread runs until shutdown of the process. We keep this thread
 	// running when pihole-FTL.db is corrupted because reloading of privacy
 	// level, and the gravity database (initially and after gravity)
+	sqlite3 *db = NULL;
 	while(!killed)
 	{
 		const time_t now = time(NULL);
@@ -80,15 +81,6 @@ void *DB_thread(void *val)
 		// Intermediate cancellation-point
 		if(killed)
 			break;
-
-		// Open database connection
-		sqlite3 *db = dbopen(false);
-		if(db == NULL)
-		{
-			// Try again after 5 sec
-			thread_sleepms(DB, 5000);
-			continue;
-		}
 
 		// Store queries in on-disk database
 		if(now - lastDBsave >= (time_t)config.DBinterval)
@@ -189,6 +181,10 @@ void *DB_thread(void *val)
 		// Sleep 1 sec
 		thread_sleepms(DB, 1000);
 	}
+
+	// Close database handle if still open
+	if(db)
+		dbclose(&db);
 
 	log_info("Terminating database thread");
 	return NULL;
