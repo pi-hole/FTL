@@ -18,36 +18,6 @@ version: 2
           mv pihole-FTL "${BIN_NAME}"
           sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
     - run:
-        name: "Upload binary to binary bucket"
-        command: |
-          [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
-          [ "${CIRCLE_PROJECT_USERNAME}" == "pi-hole" ] || exit 0
-          DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
-          mkdir -p ~/.ssh/
-          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
-          sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir html/${DIR}
-          put ${BIN_NAME}* html/${DIR}"
-    - run:
-        name: "Upload documentation to binary bucket"
-        command: |
-          [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
-          [[ "${CIRCLE_JOB}" == "x86_64" ]] || exit 0
-          DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
-          sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir html/${DIR}/docs
-          put -r src/api/docs/content/* html/${DIR}/docs"
-    - run:
-        name: "Verify uploaded binary"
-        command: |
-          [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
-          [ "${CIRCLE_PROJECT_USERNAME}" == "pi-hole" ] || exit 0
-          DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
-          mkdir download
-          cd download
-          wget "https://ftl.pi-hole.net/${DIR}/${BIN_NAME}"
-          wget "https://ftl.pi-hole.net/${DIR}/${BIN_NAME}.sha1"
-          sha1sum -c "${BIN_NAME}.sha1"
-          cd ..
-    - run:
         name: "Test"
         command: |
           mv "${BIN_NAME}" pihole-FTL

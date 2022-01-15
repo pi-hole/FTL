@@ -77,22 +77,33 @@ jobs:
           mv pihole-FTL "${{ matrix.bin_name }}"
           sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
       -
-        name: Upload artifacts to job for later processing
+        name: Store binary artifacts for deployoment
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v2
         with:
-          name: tmp-binary-storage
+          name: tmp-storage
           path: '${{ matrix.bin_name }}*'
+      -
+        name: Tar documentation files
+        if: github.event_name != 'pull_request' && matrix.arch == 'x86_64'
+        run: tar -C src/api/docs/content/ -czvf api-docs.tar.gz .
+      -
+        name: Upload documentation artifacts for deployoment
+        if: github.event_name != 'pull_request' && matrix.arch == 'x86_64'
+        uses: actions/upload-artifact@v2
+        with:
+          name: tmp-storage
+          path: 'api-docs.tar.gz'
 
   deploy:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Get Binaries built in previous jobs
+      - name: Get Binaries and documentation built in previous jobs
         uses: actions/download-artifact@v2
         with:
-          name: tmp-binary-storage
+          name: tmp-storage
       -
         name: Display structure of downloaded files
         run: ls -R
@@ -103,14 +114,26 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           known_hosts: ${{ secrets.KNOWN_HOSTS }}
       -
-        name: Transfer Builds to Pi-hole server for pihole checkout
+        name: Untar documentation files
         run: |
-          sftp -b - ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} <<< "-mkdir ${{ needs.build.outputs.OUTPUT_DIR }}
-          put * ${{ needs.build.outputs.OUTPUT_DIR }}"
+          mkdir docs/
+          tar xzvf api-docs.tar.gz -C docs/
+      -
+        name: Transfer Binaries and Documentation to Pi-hole server
+        run: |
+          sftp -r -b - ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} <<< "
+          -mkdir -p ${{ needs.build.outputs.OUTPUT_DIR }}
+          -mkdir ${{ needs.build.outputs.OUTPUT_DIR }}/docs
+          -mkdir ${{ needs.build.outputs.OUTPUT_DIR }}/docs/external
+          -mkdir ${{ needs.build.outputs.OUTPUT_DIR }}/docs/images
+          -mkdir ${{ needs.build.outputs.OUTPUT_DIR }}/docs/specs
+          put pihole* ${{ needs.build.outputs.OUTPUT_DIR }}
+          put docs/* ${{ needs.build.outputs.OUTPUT_DIR }}/docs/"
       -
         name: Attach binaries to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            *
+            pihole-FTL*
+            api-docs.tar.gz
