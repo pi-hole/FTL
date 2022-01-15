@@ -124,7 +124,8 @@ void *GC_thread(void *val)
 	while(!killed)
 	{
 		const time_t now = time(NULL);
-		if((unsigned int)(now - lastRateLimitCleaner) >= config.rate_limit.interval)
+		if(config.rate_limit.interval > 0 &&
+		   (unsigned int)(now - lastRateLimitCleaner) >= config.rate_limit.interval)
 		{
 			lastRateLimitCleaner = now;
 			lock_shm();
