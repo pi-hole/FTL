@@ -214,4 +214,9 @@ enum ptr_type {
 	PTR_NONE
 } __attribute__ ((packed));
 
+enum addinfo_type {
+	ADDINFO_CNAME_DOMAIN = 1,
+	ADDINFO_REGEX_ID
+} __attribute__ ((packed));
+
 #endif // ENUMS_H
