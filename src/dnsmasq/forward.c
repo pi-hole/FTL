@@ -923,8 +923,6 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  forward->stash = stash;
 		  return;
 		}
-	      
-	      my_syslog(LOG_WARNING, _("detected DNSSEC dependency loop involving %s"), daemon->keyname);
 	    }
 	  else
 	    {
@@ -1002,7 +1000,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	  blockdata_free(stash); /* don't leak this on failure. */
 	}
 
-      /* sending DNSSEC query failed. */
+      /* sending DNSSEC query failed or loop detected. */
       status = STAT_ABANDONED;
     }
 
