@@ -438,6 +438,21 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 12 if lower
+	if(dbversion < 12)
+	{
+		// Update to version 12: Add additional columns for reply type and time, and dnssec status
+		logg("Updating long-term database to version 12");
+		if(!add_query_storage_columns(db))
+		{
+			logg("Additional records not generated, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
 	lock_shm();
 	import_aliasclients(db);
 	unlock_shm();

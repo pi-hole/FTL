@@ -107,13 +107,14 @@ int DB_save_queries(sqlite3 *db)
 
 	// Prepare statements
 	rc  = sqlite3_prepare_v3(db, "INSERT INTO query_storage "
-	                                 "(timestamp,type,status,domain,client,forward,additional_info) "
+	                                 "(timestamp,type,status,domain,client,forward,additional_info,reply_type,reply_time,dnssec) "
 	                                 "VALUES "
 	                                 "(?1,?2,?3,"
 	                                 "(SELECT id FROM domain_by_id WHERE domain = ?4),"
 	                                 "(SELECT id FROM client_by_id WHERE ip = ?5 AND name = ?6),"
 	                                 "(SELECT id FROM forward_by_id WHERE forward = ?7),"
-	                                 "(SELECT id FROM addinfo_by_id WHERE type = ?8 AND content = ?9))",
+	                                 "(SELECT id FROM addinfo_by_id WHERE type = ?8 AND content = ?9),"
+	                                 "?10,?11,?12)",
 	                         -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -427,6 +428,15 @@ int DB_save_queries(sqlite3 *db)
 			sqlite3_bind_null(query_stmt, 9);
 		}
 
+		// REPLY_TYPE
+		sqlite3_bind_int(query_stmt, 10, query->reply);
+
+		// REPLY_TIME (stored in units of seconds)
+		sqlite3_bind_double(query_stmt, 11, 1e-4*query->response);
+
+		// DNSSEC
+		sqlite3_bind_int(query_stmt, 12, query->dnssec);
+
 		// Step and check if successful
 		if(sqlite3_step(query_stmt) != SQLITE_DONE)
 		{
@@ -548,6 +558,40 @@ bool add_additional_info_column(sqlite3 *db)
 	return true;
 }
 
+bool add_query_storage_columns(sqlite3 *db)
+{
+	// Start transaction of database update
+	SQL_bool(db, "BEGIN TRANSACTION");
+
+	// Add additional columns to the query_storage table
+	SQL_bool(db, "ALTER TABLE query_storage ADD COLUMN reply_type INTEGER");
+	SQL_bool(db, "ALTER TABLE query_storage ADD COLUMN reply_time REAL");
+	SQL_bool(db, "ALTER TABLE query_storage ADD COLUMN dnssec INTEGER");
+
+	// Update VIEW queries
+	SQL_bool(db, "DROP VIEW queries");
+	SQL_bool(db, "CREATE VIEW queries AS "
+	                     "SELECT id, timestamp, type, status, "
+	                       "CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,"
+	                       "CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,"
+	                       "CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,"
+	                       "CASE typeof(additional_info) WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, "
+	                       "reply_type, reply_time, dnssec "
+	                       "FROM query_storage q");
+
+	// Update database version to 12
+	if(!db_set_FTL_property(db, DB_VERSION, 12))
+	{
+		logg("add_query_storage_columns(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool(db, "COMMIT");
+
+	return true;
+}
+
 bool optimize_queries_table(sqlite3 *db)
 {
 	// Start transaction of database update
@@ -662,7 +706,7 @@ void DB_read_queries(void)
 	// Get time stamp 24 hours in the past
 	const time_t now = time(NULL);
 	const time_t mintime = now - config.maxlogage;
-	const char *querystr = "SELECT * FROM queries WHERE timestamp >= ?";
+	const char *querystr = "SELECT id,timestamp,type,status,domain,client,forward,additional_info,reply_type,reply_time,dnssec FROM queries WHERE timestamp >= ?";
 	// Log FTL_db query string in debug mode
 	if(config.debug & DEBUG_DATABASE)
 		logg("DB_read_queries(): \"%s\" with ? = %lli", querystr, (long long)mintime);
@@ -767,6 +811,42 @@ void DB_read_queries(void)
 			upstreamID = findUpstreamID(serv_addr, (in_port_t)serv_port);
 		}
 
+		int reply_type = REPLY_UNKNOWN;
+		if(sqlite3_column_type(stmt, 7) == SQLITE_INTEGER)
+		{
+			// The field has been added for database version 12
+			reply_type = sqlite3_column_int(stmt, 7);
+			if(reply_type < REPLY_UNKNOWN || reply_type >= QUERY_REPLY_MAX)
+			{
+				logg("DB warn: REPLY value %i is invalid, %lli", reply_type, (long long)queryTimeStamp);
+				continue;
+			}
+		}
+
+		double reply_time = 0.0;
+		if(sqlite3_column_type(stmt, 8) == SQLITE_FLOAT)
+		{
+			// The field has been added for database version 12
+			reply_time = sqlite3_column_double(stmt, 8);
+			if(reply_time < 0.0)
+			{
+				logg("DB warn: REPLY_TIME value %f is invalid, %lli", reply_time, (long long)queryTimeStamp);
+				continue;
+			}
+		}
+
+		int dnssec = DNSSEC_UNSPECIFIED;
+		if(sqlite3_column_type(stmt, 9) == SQLITE_INTEGER)
+		{
+			// The field has been added for database version 12
+			dnssec = sqlite3_column_int(stmt, 9);
+			if(dnssec < DNSSEC_UNSPECIFIED || dnssec >= DNSSEC_ABANDONED)
+			{
+				logg("DB warn: DNSSEC value %i is invalid, %lli", dnssec, (long long)queryTimeStamp);
+				continue;
+			}
+		}
+
 		// Obtain IDs only after filtering which queries we want to keep
 		const int timeidx = getOverTimeID(queryTimeStamp);
 		const int domainID = findDomainID(domainname, true);
@@ -798,8 +878,9 @@ void DB_read_queries(void)
 		query->id = 0;
 		query->response = 0;
 		query->flags.response_calculated = false;
-		query->dnssec = DNSSEC_UNSPECIFIED;
-		query->reply = REPLY_UNKNOWN;
+		query->dnssec = dnssec;
+		query->reply = reply_type;
+		query->response = reply_time * 1e4; // convert to tenth-millisecond unit
 		query->CNAME_domainID = -1;
 		// Initialize flags
 		query->flags.complete = true; // Mark as all information is available

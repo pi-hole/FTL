@@ -40,8 +40,8 @@ typedef struct {
 	// and straddle the individual bytes. It is useful to pack the memory as
 	// tightly as possible as there may be dozens of thousands of these
 	// objects in memory (one per query).
-	// C99 guarentees that bit-fields will be packed as tightly as possible,
-	// provided they don’t cross storageau unit boundaries (6.7.2.1 #10).
+	// C99 guarantees that bit-fields will be packed as tightly as possible,
+	// provided they don't cross storage unit boundaries (6.7.2.1 #10).
 	struct query_flags {
 		bool whitelisted :1;
 		bool complete :1;
