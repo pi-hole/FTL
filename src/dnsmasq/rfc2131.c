@@ -2200,8 +2200,9 @@ static int pxe_uefi_workaround(int pxe_arch, struct dhcp_netid *netid, struct dh
       inet_ntop(AF_INET, &mess->siaddr, (char *)mess->sname, INET_ADDRSTRLEN);
     }
   
-  snprintf((char *)mess->file, sizeof(mess->file), 
-	   strchr(found->basename, '.') ? "%s" : "%s.0", found->basename);
+  if (found->basename)
+    snprintf((char *)mess->file, sizeof(mess->file), 
+	     strchr(found->basename, '.') ? "%s" : "%s.0", found->basename);
   
   return 1;
 }
