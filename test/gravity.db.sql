@@ -213,7 +213,7 @@ INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803
 INSERT INTO gravity VALUES('whitelisted.ftl',1);
 INSERT INTO gravity VALUES('gravity.ftl',1);
 INSERT INTO gravity VALUES('gravity-whitelisted.ftl',1);
-INSERT INTO info VALUES("gravity_count",3);
+INSERT INTO info VALUES('gravity_count',3);
 
 INSERT INTO "group" VALUES(1,0,'Test group',1559928803,1559928803,'A disabled test group');
 INSERT INTO domainlist_by_group VALUES(15,1);
