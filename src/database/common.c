@@ -419,6 +419,12 @@ void db_init(void)
 			dbclose(&db);
 			return;
 		}
+
+		// Reopen database after low-level schema editing to reload the schema
+		dbclose(&db);
+		if(!(db = dbopen(false)))
+			return;
+
 		// Get updated version
 		dbversion = db_get_int(db, DB_VERSION);
 	}
@@ -434,6 +440,12 @@ void db_init(void)
 			dbclose(&db);
 			return;
 		}
+
+		// Reopen database after low-level schema editing to reload the schema
+		dbclose(&db);
+		if(!(db = dbopen(false)))
+			return;
+
 		// Get updated version
 		dbversion = db_get_int(db, DB_VERSION);
 	}
