@@ -555,7 +555,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 				// Whats the percentage of cached queries on the total amount of queries?
 				percentage = 1e2f * cached_queries() / counters->queries;
 		}
-		else if(i == -1 && others > 0)
+		else if(i == -1)
 		{
 			// Others
 			ip = "other";

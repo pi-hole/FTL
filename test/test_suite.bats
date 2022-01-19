@@ -486,11 +486,12 @@
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 17.02 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 27.66 cache cache" ]]
-  [[ ${lines[3]} == "0 51.06 127.0.0.1#5555 127.0.0.1#5555" ]]
-  [[ ${lines[4]} == "1 4.26 127.0.0.1#5554 127.0.0.1#5554" ]]
-  [[ ${lines[5]} == "" ]]
+  [[ ${lines[1]} == "-3 17.02 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-2 27.66 cache cache" ]]
+  [[ ${lines[3]} == "-1 0.00 other other" ]]
+  [[ ${lines[4]} == "0 51.06 127.0.0.1#5555 127.0.0.1#5555" ]]
+  [[ ${lines[5]} == "1 4.26 127.0.0.1#5554 127.0.0.1#5554" ]]
+  [[ ${lines[6]} == "" ]]
 }
 
 @test "Query Types reported correctly" {
