@@ -498,7 +498,7 @@ void getTopClients(const char *client_message, const int *sock)
 void getUpstreamDestinations(const char *client_message, const int *sock)
 {
 	bool sort = true;
-	int temparray[counters->upstreams][2], totalqueries = 0, totalcount = 0;
+	int temparray[counters->upstreams][2], totalcount = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
@@ -525,34 +525,45 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		qsort(temparray, counters->upstreams, sizeof(int[2]), cmpdesc);
 	}
 
-	totalqueries = totalcount + cached_queries() + blocked_queries();
+	const int totalqueries = totalcount + cached_queries() + blocked_queries();
+	const int others = counters->queries - totalqueries;
 
 	// Loop over available forward destinations
-	for(int i = -2; i < min(counters->upstreams, 8); i++)
+	for(int i = -3; i < min(counters->upstreams, 8); i++)
 	{
 		float percentage = 0.0f;
 		const char *ip, *name;
 		in_port_t upstream_port = 0;
 
-		if(i == -2)
+		if(i == -3)
 		{
 			// Blocked queries (local lists)
 			ip = "blocklist";
 			name = ip;
 
-			if(totalqueries > 0)
+			if(counters->queries > 0)
 				// Whats the percentage of locked queries on the total amount of queries?
-				percentage = 1e2f * blocked_queries() / totalqueries;
+				percentage = 1e2f * blocked_queries() / counters->queries;
 		}
-		else if(i == -1)
+		else if(i == -2)
 		{
 			// Local cache
 			ip = "cache";
 			name = ip;
 
-			if(totalqueries > 0)
+			if(counters->queries > 0)
 				// Whats the percentage of cached queries on the total amount of queries?
-				percentage = 1e2f * cached_queries() / totalqueries;
+				percentage = 1e2f * cached_queries() / counters->queries;
+		}
+		else if(i == -1 && others > 0)
+		{
+			// Others
+			ip = "other";
+			name = ip;
+
+			if(counters->queries > 0)
+				// Whats the percentage of cached queries on the total amount of queries?
+				percentage = 1e2f * others / counters->queries;
 		}
 		else
 		{
@@ -574,8 +585,8 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			upstream_port = upstream->port;
 
 			// Get percentage
-			if(totalqueries > 0)
-				percentage = 1e2f * count / totalqueries;
+			if(counters->queries > 0)
+				percentage = 1e2f * count / counters->queries;
 		}
 
 		// Send data:
