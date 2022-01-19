@@ -542,7 +542,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			name = ip;
 
 			if(counters->queries > 0)
-				// Whats the percentage of locked queries on the total amount of queries?
+				// Whats the percentage of blocked queries on the total amount of queries?
 				percentage = 1e2f * blocked_queries() / counters->queries;
 		}
 		else if(i == -2)
@@ -731,10 +731,12 @@ void getAllQueries(const char *client_message, const int *sock)
 		sscanf(client_message, ">getallqueries-forward %255s", forwarddest);
 		filterforwarddest = true;
 
-		if(strcmp(forwarddest, "cache") == 0)
-			forwarddestid = -1;
-		else if(strcmp(forwarddest, "blocklist") == 0)
+		if(strcmp(forwarddest, "blocklist") == 0)
+			forwarddestid = -3;
+		else if(strcmp(forwarddest, "cache") == 0)
 			forwarddestid = -2;
+		else if(strcmp(forwarddest, "other") == 0)
+			forwarddestid = -1;
 		else
 		{
 			// Extract address/name and port
@@ -987,10 +989,13 @@ void getAllQueries(const char *client_message, const int *sock)
 		if(filterforwarddest)
 		{
 			// Skip if not from the virtual blocking "upstream" server
-			if(forwarddestid == -2 && !query->flags.blocked)
+			if(forwarddestid == -3 && !query->flags.blocked)
 				continue;
 			// Does the user want to see queries answered from local cache?
-			else if(forwarddestid == -1 && query->status != QUERY_CACHE)
+			else if(forwarddestid == -2 && query->status != QUERY_CACHE)
+				continue;
+			// Does the user want to see queries from the "other" category
+			else if(forwarddestid == -1 && query->status != QUERY_IN_PROGRESS)
 				continue;
 			// Does the user want to see queries answered by an upstream server?
 			else if(forwarddestid >= 0 && forwarddestid != query->upstreamID)
