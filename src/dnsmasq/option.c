@@ -2541,13 +2541,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	      arg += 9;
 	      if (strlen(arg) != 16)
 		ret_err(gen_err);
-         
+	      
 	      for (p = arg; *p; p++)
 		if (!isxdigit((int)*p))
 		  ret_err(gen_err);
-          
+	      
 	      set_option_bool(OPT_UMBRELLA_DEVID);
-	   	      
+	      
 	      for (i = 0; i < (int)sizeof(daemon->umbrella_device); i++, arg+=2)
 		{
 		  memcpy(word, &(arg[0]), 2);
@@ -2559,13 +2559,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	      if (!strtoul_check(arg+6, &daemon->umbrella_org))
 		ret_err(gen_err);
 	    }
-        else if (strstr(arg, "assetid:"))
-	  {
-	    if (!strtoul_check(arg+8, &daemon->umbrella_asset))
-	      ret_err(gen_err);
-	  }
-	else
-	  ret_err(gen_err);
+	  else if (strstr(arg, "assetid:"))
+	    {
+	      if (!strtoul_check(arg+8, &daemon->umbrella_asset))
+		ret_err(gen_err);
+	    }
+	  else
+	    ret_err(gen_err);
 	  
 	  arg = comma;
 	}
