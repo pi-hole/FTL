@@ -116,13 +116,8 @@ int iface_check(int family, union all_addr *addr, char *name, int *auth)
   struct iname *tmp;
   int ret = 1, match_addr = 0;
 
-  /* Note: have to check all and not bail out early, so that we set the
-     "used" flags.
-
-     May be called with family == AF_LOCALto check interface by name only. */
-  
-  if (auth)
-    *auth = 0;
+  /* Note: have to check all and not bail out early, so that we set the "used" flags.
+     May be called with family == AF_LOCAL to check interface by name only. */
   
   if (daemon->if_names || daemon->if_addrs)
     {
@@ -151,25 +146,29 @@ int iface_check(int family, union all_addr *addr, char *name, int *auth)
       if (tmp->name && wildcard_match(tmp->name, name))
 	ret = 0;
     
-
-  for (tmp = daemon->authinterface; tmp; tmp = tmp->next)
-    if (tmp->name)
-      {
-	if (strcmp(tmp->name, name) == 0 &&
-	    (tmp->addr.sa.sa_family == 0 || tmp->addr.sa.sa_family == family))
-	  break;
-      }
-    else if (addr && tmp->addr.sa.sa_family == AF_INET && family == AF_INET &&
-	     tmp->addr.in.sin_addr.s_addr == addr->addr4.s_addr)
-      break;
-    else if (addr && tmp->addr.sa.sa_family == AF_INET6 && family == AF_INET6 &&
-	     IN6_ARE_ADDR_EQUAL(&tmp->addr.in6.sin6_addr, &addr->addr6))
-      break;
-
-  if (tmp && auth) 
+  if (auth)
     {
-      *auth = 1;
-      ret = 1;
+      *auth = 0;
+
+      for (tmp = daemon->authinterface; tmp; tmp = tmp->next)
+	if (tmp->name)
+	  {
+	    if (strcmp(tmp->name, name) == 0 &&
+		(tmp->addr.sa.sa_family == 0 || tmp->addr.sa.sa_family == family))
+	      break;
+	  }
+	else if (addr && tmp->addr.sa.sa_family == AF_INET && family == AF_INET &&
+		 tmp->addr.in.sin_addr.s_addr == addr->addr4.s_addr)
+	  break;
+	else if (addr && tmp->addr.sa.sa_family == AF_INET6 && family == AF_INET6 &&
+		 IN6_ARE_ADDR_EQUAL(&tmp->addr.in6.sin6_addr, &addr->addr6))
+	  break;
+      
+      if (tmp) 
+	{
+	  *auth = 1;
+	  ret = 1;
+	}
     }
 
   return ret; 
