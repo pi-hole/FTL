@@ -986,6 +986,34 @@
   [[ ${lines[0]} == "fe80::1234" ]]
 }
 
+@test "Regex Test 47: Option \";querytype=A\" reported on CLI" {
+  run bash -c './pihole-FTL regex-test "f" f\;querytype=A'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[4]} == "    Hint: This regex matches only type A queries" ]]
+}
+
+@test "Regex Test 48: Option \";querytype=!TXT\" reported on CLI" {
+  run bash -c './pihole-FTL regex-test "f" f\;querytype=!TXT'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[4]} == "    Hint: This regex does not match type TXT queries" ]]
+}
+
+@test "Regex Test 49: Option \";reply=NXDOMAIN\" reported on CLI" {
+  run bash -c './pihole-FTL regex-test "f" f\;reply=NXDOMAIN'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[4]} == "    Hint: This regex forces reply type NXDOMAIN" ]]
+}
+
+@test "Regex Test 50: Option \";invert\" reported on CLI" {
+  run bash -c './pihole-FTL regex-test "f" g\;invert'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[4]} == "    Hint: This regex is inverted" ]]
+}
+
 # x86_64-musl is built on busybox which has a slightly different
 # variant of ls displaying three, instead of one, spaces between the
 # user and group names.
