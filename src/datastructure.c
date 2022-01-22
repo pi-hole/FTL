@@ -588,3 +588,41 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	// Update status
 	query->status = new_status;
 }
+
+const char * __attribute__ ((const)) get_query_reply_str(const enum reply_type reply)
+{
+	switch(reply)
+	{
+		case REPLY_UNKNOWN:
+			return "UNKNOWN";
+		case REPLY_NODATA:
+			return "NODATA";
+		case REPLY_NXDOMAIN:
+			return "NXDOMAIN";
+		case REPLY_CNAME:
+			return "CNAME";
+		case REPLY_IP:
+			return "IP";
+		case REPLY_DOMAIN:
+			return "DOMAIN";
+		case REPLY_RRNAME:
+			return "RRNAME";
+		case REPLY_SERVFAIL:
+			return "SERVFAIL";
+		case REPLY_REFUSED:
+			return "REFUSED";
+		case REPLY_NOTIMP:
+			return "NOTIMP";
+		case REPLY_OTHER:
+			return "OTHER";
+		case REPLY_DNSSEC:
+			return "DNSSEC";
+		case REPLY_NONE:
+			return "NONE";
+		case REPLY_BLOB:
+			return "BLOB";
+		default:
+		case QUERY_REPLY_MAX:
+			return "INVALID";
+	}
+}
