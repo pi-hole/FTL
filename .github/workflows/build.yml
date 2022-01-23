@@ -14,13 +14,19 @@ jobs:
       github.event_name == 'push'
       || github.event_name == 'release'
       || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+
     outputs:
       GIT_TAG: ${{ steps.variables.outputs.GIT_TAG }}
       GIT_BRANCH: ${{ steps.variables.outputs.GIT_BRANCH }}
       OUTPUT_DIR: ${{ steps.variables.outputs.OUTPUT_DIR }}
+
     runs-on: ubuntu-latest
+
+    container: ghcr.io/pi-hole/ftl-build:v1.16-${{ matrix.arch }}
+
     strategy:
       fail-fast: false
+
       matrix:
         include:
           - arch: x86_64
@@ -41,13 +47,16 @@ jobs:
             bin_name: pihole-FTL-armv8-linux-gnueabihf
           - arch: aarch64
             bin_name: pihole-FTL-aarch64-linux-gnu
-    container: ghcr.io/pi-hole/ftl-build:v1.16-${{ matrix.arch }}
+
+    env:
+      CI_ARCH: ${{ matrix.arch }}
+
     steps:
       -
         name: Checkout code
         uses: actions/checkout@v2
       -
-        name: Calculate required variables
+        name: Calculate required build variables
         id: variables
         run: |
           GIT_TAG=${{ github.event.release.tag_name }}
@@ -58,19 +67,20 @@ jobs:
           echo ::set-output name=OUTPUT_DIR::${GIT_TAG:-${GIT_BRANCH}}
       -
         name: "Build"
+        env:
+          GIT_BRANCH: ${{ steps.variables.outputs.GIT_BRANCH }}
+          GIT_TAG: ${{ steps.variables.outputs.GIT_TAG }}
         run: |
-          bash .circleci/build-CI.sh "-DSTATIC=${STATIC}" "${{ steps.variables.outputs.GIT_BRANCH }}" "${{ steps.variables.outputs.GIT_TAG }}" "${{ matrix.arch }}"
+          bash build.sh "-DSTATIC=${STATIC}"
       -
         name: "Binary checks"
         run: |
-          export CIRCLE_JOB="${{ matrix.arch }}"
           bash test/arch_test.sh
       -
         name: "Test x86_32/64 binaries"
         if: matrix.arch == 'x86_64' || matrix.arch == 'x86_64-musl' || matrix.arch == 'x86_32'
         run: |
-            export CIRCLE_JOB="${{ matrix.arch }}"
-            test/run.sh
+          bash test/run.sh
       -
         name: "Generate checksum file"
         run: |
@@ -89,7 +99,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Get Binaries built in previous jobs
+      -
+        name: Get Binaries built in previous jobs
         uses: actions/download-artifact@v2
         with:
           name: tmp-binary-storage
