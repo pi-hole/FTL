@@ -12,10 +12,23 @@
 # Abort script if one command returns a non-zero value
 set -e
 
+for var in "$@"
+do
+    case "${var}" in
+        "-c" | "clean"   ) clean=1;;
+        "-C" | "CLEAN"   ) clean=1 && nobuild=1;;
+        "-i" | "install" ) install=1;;
+        "-t" | "test"    ) test=1;;
+    esac
+done
+
 # Prepare build environment
-if [[ "${1}" == "clean" ]]; then
+if [[ -n "${clean}" ]]; then
+    echo "Cleaning build environment"
     rm -rf cmake/
-    exit 0
+    if [[ -n ${nobuild} ]]; then
+        exit 0
+    fi
 fi
 
 # Configure build, pass CMake CACHE entries if present
@@ -34,8 +47,16 @@ cmake --build . -- -j $(nproc)
 
 # If we are asked to install, we do this here
 # Otherwise, we simply copy the binary one level up
-if [[ "${1}" == "install" || "${2}" == "install" ]]; then
-    sudo make install
+if [[ -n "${install}" ]]; then
+    echo "Installing pihole-FTL"
+    SUDO=$(which sudo)
+    ${SUDO} make install
 else
+    echo "Copying compiled pihole-FTL binary to repository root"
     cp pihole-FTL ../
+fi
+
+if [[ -n "${test}" ]]; then
+    cd ..
+    ./test/run.sh
 fi

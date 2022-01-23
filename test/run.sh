@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Only run tests on x86_64, x86_64-musl, and x86_32 targets
-if [[ ${CI} == "true" && "${CIRCLE_JOB}" != "x86_64" &&  "${CIRCLE_JOB}" != "x86_64-musl" && "${CIRCLE_JOB}" != "x86_32" ]]; then
-  echo "Skipping tests (CIRCLE_JOB: ${CIRCLE_JOB})!"
+if [[ ${CI} == "true" && "${CI_ARCH}" != "x86_64" &&  "${CI_ARCH}" != "x86_64-musl" && "${CI_ARCH}" != "x86_32" ]]; then
+  echo "Skipping tests (CI_ARCH: ${CI_ARCH})!"
   exit 0
 fi
 

@@ -399,7 +399,7 @@
   [[ ${lines[5]} == "unique_domains 35" ]]
   [[ ${lines[6]} == "queries_forwarded 26" ]]
   [[ ${lines[7]} == "queries_cached 13" ]]
-  # Clients ever seen is commented out as CircleCI may have
+  # Clients ever seen is commented out as the CI may have
   # more devices in its ARP cache so testing against a fixed
   # number of clients may not work in all cases
   #[[ ${lines[8]} == "clients_ever_seen 8" ]]
@@ -1033,14 +1033,14 @@
 
 @test "Architecture is correctly reported on startup" {
   run bash -c 'grep "Compiled for" /var/log/pihole-FTL.log'
-  printf "Output: %s\n\$CIRCLE_JOB: %s\nuname -m: %s\n" "${lines[@]:-not set}" "${CIRCLE_JOB:-not set}" "$(uname -m)"
-  [[ ${lines[0]} == *"Compiled for ${CIRCLE_JOB:-$(uname -m)}"* ]]
+  printf "Output: %s\n\$CI_ARCH: %s\nuname -m: %s\n" "${lines[@]:-not set}" "${CI_ARCH:-not set}" "$(uname -m)"
+  [[ ${lines[0]} == *"Compiled for ${CI_ARCH:-$(uname -m)}"* ]]
 }
 
 @test "Building machine (CI) is reported on startup" {
-  [[ ${CIRCLE_JOB} != "" ]] && compiled_str="on CI" || compiled_str="locally" && export compiled_str
+  [[ ${CI_ARCH} != "" ]] && compiled_str="on CI" || compiled_str="locally" && export compiled_str
   run bash -c 'grep "Compiled for" /var/log/pihole-FTL.log'
-  printf "Output: %s\n\$CIRCLE_JOB: %s\n" "${lines[@]:-not set}" "${CIRCLE_JOB:-not set}"
+  printf "Output: %s\n\$CI_ARCH: %s\n" "${lines[@]:-not set}" "${CI_ARCH:-not set}"
   [[ ${lines[0]} == *"(compiled ${compiled_str})"* ]]
 }
 
