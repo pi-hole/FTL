@@ -1,0 +1,10 @@
+{
+  "name": "FTL x86_64 Build Env",  
+  "image": "ghcr.io/pi-hole/ftl-build:x86_64", 
+  "extensions": [
+    "jetmartin.bats",
+    "ms-vscode.cpptools",
+    "ms-vscode.cmake-tools",
+    "eamodio.gitlens"
+  ],  
+}
