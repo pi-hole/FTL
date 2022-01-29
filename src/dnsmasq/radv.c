@@ -198,21 +198,29 @@ void icmp6_packet(time_t now)
     {
       char *mac = "";
       struct dhcp_bridge *bridge, *alias;
-
+      ssize_t rem;
+      unsigned char *p;
+      int opt_sz;
+      
 #ifdef HAVE_DUMPFILE
       dump_packet(DUMP_RA, (void *)packet, sz, (union mysockaddr *)&from, NULL, -1);
 #endif           
       
       /* look for link-layer address option for logging */
-      if (sz >= 16 && packet[8] == ICMP6_OPT_SOURCE_MAC && (packet[9] * 8) + 8 <= sz)
+      for (rem = sz - 8, p = &packet[8]; rem >= 2; rem -= opt_sz, p += opt_sz)
 	{
-	  if ((packet[9] * 8 - 2) * 3 - 1 >= MAXDNAME) {
-	    return;
-	  }
-	  print_mac(daemon->namebuff, &packet[10], (packet[9] * 8) - 2);
-	  mac = daemon->namebuff;
+	  opt_sz = p[1] * 8;
+	  
+	  if (opt_sz == 0 || opt_sz > rem)
+	    return; /* Bad packet */
+	  
+	  if (p[0] == ICMP6_OPT_SOURCE_MAC && ((opt_sz - 2) * 3 - 1 < MAXDNAME))
+	    {
+	      print_mac(daemon->namebuff, &p[2], opt_sz - 2);
+	      mac = daemon->namebuff;
+	    }
 	}
-         
+      
       if (!option_bool(OPT_QUIET_RA))
 	my_syslog(MS_DHCP | LOG_INFO, "RTR-SOLICIT(%s) %s", interface, mac);
 
