@@ -18,6 +18,8 @@
 
 #ifdef HAVE_DUMPFILE
 
+#include <netinet/icmp6.h>
+
 static u32 packet_count;
 
 /* https://wiki.wireshark.org/Development/LibpcapFileFormat */
@@ -79,8 +81,9 @@ void dump_init(void)
     }
 }
 
+/* port == -1 ->ICMPv6 */
 void dump_packet(int mask, void *packet, size_t len,
-		 union mysockaddr *src, union mysockaddr *dst, unsigned short port)
+		 union mysockaddr *src, union mysockaddr *dst, int port)
 {
   struct ip ip;
   struct ip6_hdr ip6;
@@ -116,10 +119,19 @@ void dump_packet(int mask, void *packet, size_t len,
       memset(&ip6, 0, sizeof(ip6));
       
       ip6.ip6_vfc = 6 << 4;
-      ip6.ip6_plen = htons(sizeof(struct udphdr) + len);
-      ip6.ip6_nxt = IPPROTO_UDP;
       ip6.ip6_hops = 64;
 
+      if (port == -1)
+	{
+	  ip6.ip6_plen = htons(len);
+	  ip6.ip6_nxt = IPPROTO_ICMPV6;
+	}
+      else
+	{
+	  ip6.ip6_plen = htons(sizeof(struct udphdr) + len);
+	  ip6.ip6_nxt = IPPROTO_UDP;
+	}
+      
       if (src)
 	{
 	  memcpy(&ip6.ip6_src, &src->in6.sin6_addr, IN6ADDRSZ);
@@ -137,7 +149,6 @@ void dump_packet(int mask, void *packet, size_t len,
 	{
 	  sum += ip6.ip6_src.s6_addr[i] + (ip6.ip6_src.s6_addr[i+1] << 8) ;
 	  sum += ip6.ip6_dst.s6_addr[i] + (ip6.ip6_dst.s6_addr[i+1] << 8) ;
-	  
 	}
     }
   else
@@ -148,9 +159,18 @@ void dump_packet(int mask, void *packet, size_t len,
       
       ip.ip_v = IPVERSION;
       ip.ip_hl = sizeof(struct ip) / 4;
-      ip.ip_len = htons(sizeof(struct ip) + sizeof(struct udphdr) + len); 
       ip.ip_ttl = IPDEFTTL;
-      ip.ip_p = IPPROTO_UDP;
+
+      if (port == -1)
+	{
+	  ip.ip_len = htons(sizeof(struct ip) + len);
+	  ip.ip_p = IPPROTO_ICMP;
+	}
+      else
+	{
+	  ip.ip_len = htons(sizeof(struct ip) + sizeof(struct udphdr) + len); 
+	  ip.ip_p = IPPROTO_UDP;
+	}
       
       if (src)
 	{
@@ -181,31 +201,59 @@ void dump_packet(int mask, void *packet, size_t len,
   if (len & 1)
     ((unsigned char *)packet)[len] = 0; /* for checksum, in case length is odd. */
 
-  udp.uh_sum = 0;
-  udp.uh_ulen = htons(sizeof(struct udphdr) + len);
-  sum += htons(IPPROTO_UDP);
-  sum += htons(sizeof(struct udphdr) + len);
-  for (i = 0; i < sizeof(struct udphdr)/2; i++)
-    sum += ((u16 *)&udp)[i];
-  for (i = 0; i < (len + 1) / 2; i++)
-    sum += ((u16 *)packet)[i];
-  while (sum >> 16)
-    sum = (sum & 0xffff) + (sum >> 16);
-  udp.uh_sum = (sum == 0xffff) ? sum : ~sum;
+  if (port == -1)
+    {
+      /* ICMP - ICMPv6 packet is a superset of ICMP */
+      struct icmp6_hdr *icmp = packet;
+      
+      /* See comment in UDP code below. */
+      sum += htons(family == AF_INET6 ? IPPROTO_ICMPV6 : IPPROTO_ICMP);
+      sum += htons(len);
+      
+      icmp->icmp6_cksum = 0;
+      for (i = 0; i < (len + 1) / 2; i++)
+	sum += ((u16 *)packet)[i];
+      while (sum >> 16)
+	sum = (sum & 0xffff) + (sum >> 16);
+      icmp->icmp6_cksum = (sum == 0xffff) ? sum : ~sum;
 
+      pcap_header.incl_len = pcap_header.orig_len = ipsz + len;
+    }
+  else
+    {
+      /* Add Remaining part of the pseudoheader. Note that though the
+	 IPv6 pseudoheader is very different to the IPv4 one, the 
+	 net result of this calculation is correct as long as the 
+	 packet length is less than 65536, which is fine for us. */
+      sum += htons(IPPROTO_UDP);
+      sum += htons(sizeof(struct udphdr) + len);
+      
+      udp.uh_sum = 0;
+      udp.uh_ulen = htons(sizeof(struct udphdr) + len);
+      
+      for (i = 0; i < sizeof(struct udphdr)/2; i++)
+	sum += ((u16 *)&udp)[i];
+      for (i = 0; i < (len + 1) / 2; i++)
+	sum += ((u16 *)packet)[i];
+      while (sum >> 16)
+	sum = (sum & 0xffff) + (sum >> 16);
+      udp.uh_sum = (sum == 0xffff) ? sum : ~sum;
+
+      pcap_header.incl_len = pcap_header.orig_len = ipsz + sizeof(udp) + len;
+    }
+  
   rc = gettimeofday(&time, NULL);
   pcap_header.ts_sec = time.tv_sec;
   pcap_header.ts_usec = time.tv_usec;
-  pcap_header.incl_len = pcap_header.orig_len = ipsz + sizeof(udp) + len;
   
   if (rc == -1 ||
       !read_write(daemon->dumpfd, (void *)&pcap_header, sizeof(pcap_header), 0) ||
       !read_write(daemon->dumpfd, iphdr, ipsz, 0) ||
-      !read_write(daemon->dumpfd, (void *)&udp, sizeof(udp), 0) ||
+      (port != -1 && !read_write(daemon->dumpfd, (void *)&udp, sizeof(udp), 0)) ||
       !read_write(daemon->dumpfd, (void *)packet, len, 0))
     my_syslog(LOG_ERR, _("failed to write packet dump"));
   else
-    my_syslog(LOG_INFO, _("dumping UDP packet %u mask 0x%04x"), ++packet_count, mask);
+    my_syslog(LOG_INFO, _("dumping packet %u mask 0x%04x"), ++packet_count, mask);
 
 }
 

@@ -712,6 +712,7 @@ struct hostsfile {
 #define DUMP_SEC_BOGUS     0x0080
 #define DUMP_DHCP          0x1000
 #define DUMP_DHCPV6        0x2000
+#define DUMP_RA            0x4000
 #define DUMP_TFTP          0x8000
 
 /* DNSSEC status values. */
@@ -1838,7 +1839,7 @@ int do_arp_script_run(void);
 #ifdef HAVE_DUMPFILE
 void dump_init(void);
 void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src,
-		 union mysockaddr *dst, unsigned short port);
+		 union mysockaddr *dst, int port);
 #endif
 
 /* domain-match.c */
