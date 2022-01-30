@@ -147,8 +147,8 @@ void dump_packet(int mask, void *packet, size_t len,
       /* start UDP checksum */
       for (sum = 0, i = 0; i < IN6ADDRSZ; i+=2)
 	{
-	  sum += ip6.ip6_src.s6_addr[i] + (ip6.ip6_src.s6_addr[i+1] << 8) ;
-	  sum += ip6.ip6_dst.s6_addr[i] + (ip6.ip6_dst.s6_addr[i+1] << 8) ;
+	  sum += ntohs((ip6.ip6_src.s6_addr[i] << 8) + (ip6.ip6_src.s6_addr[i+1])) ;
+	  sum += ntohs((ip6.ip6_dst.s6_addr[i] << 8) + (ip6.ip6_dst.s6_addr[i+1])) ; 
 	}
     }
   else
@@ -207,7 +207,7 @@ void dump_packet(int mask, void *packet, size_t len,
       struct icmp6_hdr *icmp = packet;
       
       /* See comment in UDP code below. */
-      sum += htons(family == AF_INET6 ? IPPROTO_ICMPV6 : IPPROTO_ICMP);
+      sum += htons((family == AF_INET6) ? IPPROTO_ICMPV6 : IPPROTO_ICMP);
       sum += htons(len);
       
       icmp->icmp6_cksum = 0;
