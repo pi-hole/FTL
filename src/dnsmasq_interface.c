@@ -853,8 +853,8 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 
 	// Check if we need to identify the receving interface by its address
 	if(!recviface && addr &&
-	   ((addrfamily == AF_INET && addr->addr4.s_addr != 0) ||
-	    (addrfamily == AF_INET6 && addr->addr6.s6_addr[0] != 0)))
+	   ((addrfamily == AF_INET && addr->addr4.s_addr != INADDR_ANY) ||
+	    (addrfamily == AF_INET6 && !IN6_IS_ADDR_UNSPECIFIED(&addr->addr6))))
 	{
 		if(config.debug & DEBUG_NETWORKING)
 		{
