@@ -506,17 +506,17 @@ void read_FTLconf(void)
 	// Use a specific IP address instead of automatically detecting the
 	// IPv4 interface address a query arrived on
 	// defaults to: not set
-	config.reply_addr.overwrite_v4 = false;
-	config.reply_addr.v4.s_addr = 0;
+	config.reply_addr.own_host.overwrite_v4 = false;
+	config.reply_addr.own_host.v4.s_addr = 0;
 	buffer = parse_FTLconf(fp, "REPLY_ADDR4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.reply_addr.v4))
-		config.reply_addr.overwrite_v4 = true;
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.reply_addr.own_host.v4))
+		config.reply_addr.own_host.overwrite_v4 = true;
 
-	if(config.reply_addr.overwrite_v4)
+	if(config.reply_addr.own_host.overwrite_v4)
 	{
 		char addr[INET_ADDRSTRLEN] = { 0 };
-		inet_ntop(AF_INET, &config.reply_addr.v4, addr, INET_ADDRSTRLEN);
-		logg("   REPLY_ADDR4: Using IPv4 address %s in IP blocking mode", addr);
+		inet_ntop(AF_INET, &config.reply_addr.own_host.v4, addr, INET_ADDRSTRLEN);
+		logg("   REPLY_ADDR4: Using IPv4 address %s for pi.hole and hostname", addr);
 	}
 	else
 		logg("   REPLY_ADDR4: Automatic interface-dependent detection of address");
@@ -525,20 +525,56 @@ void read_FTLconf(void)
 	// Use a specific IP address instead of automatically detecting the
 	// IPv6 interface address a query arrived on
 	// defaults to: not set
-	config.reply_addr.overwrite_v6 = false;
-	memset(&config.reply_addr.v6, 0, sizeof(config.reply_addr.v6));
+	config.reply_addr.own_host.overwrite_v6 = false;
+	memset(&config.reply_addr.own_host.v6, 0, sizeof(config.reply_addr.own_host.v6));
 	buffer = parse_FTLconf(fp, "REPLY_ADDR6");
-	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.reply_addr.v6))
-		config.reply_addr.overwrite_v6 = true;
+	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.reply_addr.own_host.v6))
+		config.reply_addr.own_host.overwrite_v6 = true;
 
-	if(config.reply_addr.overwrite_v6)
+	if(config.reply_addr.own_host.overwrite_v6)
 	{
 		char addr[INET6_ADDRSTRLEN] = { 0 };
-		inet_ntop(AF_INET6, &config.reply_addr.v6, addr, INET6_ADDRSTRLEN);
-		logg("   REPLY_ADDR6: Using IPv6 address %s in IP blocking mode", addr);
+		inet_ntop(AF_INET6, &config.reply_addr.own_host.v6, addr, INET6_ADDRSTRLEN);
+		logg("   REPLY_ADDR6: Using IPv6 address %s for pi.hole and hostname", addr);
 	}
 	else
 		logg("   REPLY_ADDR6: Automatic interface-dependent detection of address");
+
+	// FORCE_IP4
+	// Use a specific IPv4 address for IP blocking mode replies
+	// defaults to: REPLY_ADDR4 setting
+	config.reply_addr.ip_blocking.overwrite_v4 = config.reply_addr.own_host.overwrite_v4;
+	config.reply_addr.ip_blocking.v4.s_addr = config.reply_addr.own_host.v4.s_addr;
+	buffer = parse_FTLconf(fp, "FORCE_IP4");
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.reply_addr.ip_blocking.v4))
+		config.reply_addr.ip_blocking.overwrite_v4 = true;
+
+	if(config.reply_addr.ip_blocking.overwrite_v4)
+	{
+		char addr[INET_ADDRSTRLEN] = { 0 };
+		inet_ntop(AF_INET, &config.reply_addr.ip_blocking.v4, addr, INET_ADDRSTRLEN);
+		logg("   FORCE_IP4: Using IPv4 address %s in IP blocking mode", addr);
+	}
+	else
+		logg("   FORCE_IP4: Automatic interface-dependent detection of address");
+
+	// FORCE_IP6
+	// Use a specific IPv6 address for IP blocking mode replies
+	// defaults to: REPLY_ADDR6 setting
+	config.reply_addr.ip_blocking.overwrite_v6 = config.reply_addr.own_host.overwrite_v6;
+	memcpy(&config.reply_addr.ip_blocking.v6, &config.reply_addr.own_host.v6, sizeof(config.reply_addr.ip_blocking.v6));
+	buffer = parse_FTLconf(fp, "FORCE_IP6");
+	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.reply_addr.ip_blocking.v6))
+		config.reply_addr.ip_blocking.overwrite_v6 = true;
+
+	if(config.reply_addr.ip_blocking.overwrite_v6)
+	{
+		char addr[INET6_ADDRSTRLEN] = { 0 };
+		inet_ntop(AF_INET6, &config.reply_addr.ip_blocking.v6, addr, INET6_ADDRSTRLEN);
+		logg("   FORCE_IP6: Using IPv6 address %s in IP blocking mode", addr);
+	}
+	else
+		logg("   FORCE_IP6: Automatic interface-dependent detection of address");
 
 	// SHOW_DNSSEC
 	// Should FTL analyze and include automatically generated DNSSEC queries in the Query Log?
