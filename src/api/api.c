@@ -1495,3 +1495,9 @@ void getDNSport(const int *sock)
 	// Return DNS port used by FTL
 	ssend(*sock, "%d\n", config.dns_port);
 }
+
+void getMAXLOGAGE(const int *sock)
+{
+	// Return maxlogage used by FTL
+	ssend(*sock, "%d\n", config.maxlogage);
+}
