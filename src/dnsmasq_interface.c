@@ -520,8 +520,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			// Send NODATA when the current interface doesn't have
 			// the requested IP address, for instance AAAA on an
 			// virtual interface that has only an IPv4 address
-			if((querytype == TYPE_A && !next_iface.haveIPv4) ||
-			   (querytype == TYPE_AAAA && !next_iface.haveIPv6))
+			if((querytype == TYPE_A &&
+			    !next_iface.haveIPv4 &&
+			    !config.reply_addr.own_host.overwrite_v4) ||
+			   (querytype == TYPE_AAAA &&
+			    !next_iface.haveIPv6 &&
+			    !config.reply_addr.own_host.overwrite_v6))
 				force_next_DNS_reply = REPLY_NODATA;
 			else
 				force_next_DNS_reply = REPLY_IP;
