@@ -812,10 +812,10 @@ void DB_read_queries(void)
 		}
 
 		int reply_type = REPLY_UNKNOWN;
-		if(sqlite3_column_type(stmt, 7) == SQLITE_INTEGER)
+		if(sqlite3_column_type(stmt, 8) == SQLITE_INTEGER)
 		{
 			// The field has been added for database version 12
-			reply_type = sqlite3_column_int(stmt, 7);
+			reply_type = sqlite3_column_int(stmt, 8);
 			if(reply_type < REPLY_UNKNOWN || reply_type >= QUERY_REPLY_MAX)
 			{
 				logg("DB warn: REPLY value %i is invalid, %lli", reply_type, (long long)queryTimeStamp);
@@ -824,10 +824,12 @@ void DB_read_queries(void)
 		}
 
 		double reply_time = 0.0;
-		if(sqlite3_column_type(stmt, 8) == SQLITE_FLOAT)
+		bool reply_time_avail = false;
+		if(sqlite3_column_type(stmt, 9) == SQLITE_FLOAT)
 		{
 			// The field has been added for database version 12
-			reply_time = sqlite3_column_double(stmt, 8);
+			reply_time = sqlite3_column_double(stmt, 9);
+			reply_time_avail = true;
 			if(reply_time < 0.0)
 			{
 				logg("DB warn: REPLY_TIME value %f is invalid, %lli", reply_time, (long long)queryTimeStamp);
@@ -836,10 +838,10 @@ void DB_read_queries(void)
 		}
 
 		int dnssec = DNSSEC_UNSPECIFIED;
-		if(sqlite3_column_type(stmt, 9) == SQLITE_INTEGER)
+		if(sqlite3_column_type(stmt, 10) == SQLITE_INTEGER)
 		{
 			// The field has been added for database version 12
-			dnssec = sqlite3_column_int(stmt, 9);
+			dnssec = sqlite3_column_int(stmt, 10);
 			if(dnssec < DNSSEC_UNSPECIFIED || dnssec >= DNSSEC_ABANDONED)
 			{
 				logg("DB warn: DNSSEC value %i is invalid, %lli", dnssec, (long long)queryTimeStamp);
@@ -877,7 +879,7 @@ void DB_read_queries(void)
 		query->upstreamID = upstreamID;
 		query->id = 0;
 		query->response = 0;
-		query->flags.response_calculated = false;
+		query->flags.response_calculated = reply_time_avail;
 		query->dnssec = dnssec;
 		query->reply = reply_type;
 		query->response = reply_time * 1e4; // convert to tenth-millisecond unit
