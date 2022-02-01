@@ -169,6 +169,11 @@ void process_request(const char *client_message, int *sock)
 		processed = true;
 		getDNSport(sock);
 	}
+	else if(command(client_message, ">maxlogage"))
+	{
+		processed = true;
+		getMAXLOGAGE(sock);
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before

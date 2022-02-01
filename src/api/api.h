@@ -27,6 +27,7 @@ void getClientID(const int *sock);
 void getVersion(const int *sock);
 void getDBstats(const int *sock);
 void getUnknownQueries(const int *sock);
+void getMAXLOGAGE(const int *sock);
 
 // DNS resolver methods (dnsmasq_interface.c)
 void getCacheInformation(const int *sock);
