@@ -833,20 +833,6 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	if(config.debug & DEBUG_NETWORKING)
 		logg("Interfaces: Called from %s:%d", short_path(file), line);
 
-	// Copy overwrite addresses if configured via REPLY_ADDR4 and/or REPLY_ADDR6 settings
-	if(config.reply_addr.own_host.overwrite_v4)
-	{
-		next_iface.haveIPv4 = true;
-		if(config.debug & DEBUG_NETWORKING)
-			logg("Configuration overwrites IPv4 address");
-	}
-	if(config.reply_addr.own_host.overwrite_v6)
-	{
-		next_iface.haveIPv6 = true;
-		if(config.debug & DEBUG_NETWORKING)
-			logg("Configuration overwrites IPv6 address");
-	}
-
 	// Use dummy when interface record is not available
 	next_iface.name[0] = '-';
 	next_iface.name[1] = '\0';
@@ -953,17 +939,6 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		// Copy interface name
 		strncpy(next_iface.name, iname, sizeof(next_iface.name)-1);
 		next_iface.name[sizeof(next_iface.name)-1] = '\0';
-
-		// Check if this family type is overwritten by config settings
-		// We logged this above
-		if((config.reply_addr.own_host.overwrite_v4 && family == AF_INET) ||
-		   (config.reply_addr.own_host.overwrite_v6 && family == AF_INET6))
-		   {
-			if(config.debug & DEBUG_NETWORKING)
-				logg("  - SKIP IPv%d interface %s: REPLY_ADDR%d used",
-				     family == AF_INET ? 4 : 6, iname, family == AF_INET ? 4 : 6);
-			continue;
-		   }
 
 		bool isULA = false, isGUA = false, isLL = false;
 		// Check if this address is different from 0000:0000:0000:0000:0000:0000:0000:0000
