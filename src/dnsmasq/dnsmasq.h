@@ -1101,7 +1101,7 @@ struct dhcp_relay {
     struct snoop_record *next;
   } *snoop_records;
 #endif
-  struct dhcp_relay *current, *next;
+  struct dhcp_relay *next;
 };
 
 extern struct daemon {
@@ -1722,7 +1722,7 @@ void get_client_mac(struct in6_addr *client, int iface, unsigned char *mac,
 unsigned short dhcp6_reply(struct dhcp_context *context, int interface, char *iface_name,  
 			   struct in6_addr *fallback, struct in6_addr *ll_addr, struct in6_addr *ula_addr,
 			   size_t sz, struct in6_addr *client_addr, time_t now);
-void relay_upstream6(struct dhcp_relay *relay, ssize_t sz, struct in6_addr *peer_address, 
+int relay_upstream6(int iface_index, ssize_t sz, struct in6_addr *peer_address, 
 		     u32 scope_id, time_t now);
 
 int relay_reply6( struct sockaddr_in6 *peer, ssize_t sz, char *arrival_interface);

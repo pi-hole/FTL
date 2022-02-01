@@ -1763,6 +1763,8 @@ int reload_servers(char *fname)
 /* Called when addresses are added or deleted from an interface */
 void newaddress(time_t now)
 {
+  struct dhcp_relay *relay;
+
   (void)now;
   
   if (option_bool(OPT_CLEVERBIND) || option_bool(OPT_LOCAL_SERVICE) ||
@@ -1771,6 +1773,12 @@ void newaddress(time_t now)
   
   if (option_bool(OPT_CLEVERBIND))
     create_bound_listeners(0);
+
+#ifdef HAVE_DHCP
+  /* clear cache of subnet->relay index */
+  for (relay = daemon->relay4; relay; relay = relay->next)
+    relay->iface_index = 0;
+#endif
   
 #ifdef HAVE_DHCP6
   if (daemon->doing_dhcp6 || daemon->relay6 || daemon->doing_ra)
@@ -1781,5 +1789,8 @@ void newaddress(time_t now)
   
   if (daemon->doing_dhcp6)
     lease_find_interfaces(now);
+
+  for (relay = daemon->relay6; relay; relay = relay->next)
+    relay->iface_index = 0;
 #endif
 }

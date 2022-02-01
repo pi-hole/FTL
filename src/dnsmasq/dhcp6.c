@@ -22,8 +22,7 @@
 
 struct iface_param {
   struct dhcp_context *current;
-  struct dhcp_relay *relay;
-  struct in6_addr fallback, relay_local, ll_addr, ula_addr;
+  struct in6_addr fallback, ll_addr, ula_addr;
   int ind, addr_match;
 };
 
@@ -90,7 +89,6 @@ void dhcp6_init(void)
 void dhcp6_packet(time_t now)
 {
   struct dhcp_context *context;
-  struct dhcp_relay *relay;
   struct iface_param parm;
   struct cmsghdr *cmptr;
   struct msghdr msg;
@@ -105,7 +103,8 @@ void dhcp6_packet(time_t now)
   struct iname *tmp;
   unsigned short port;
   struct in6_addr dst_addr;
-
+  struct in6_addr all_servers;
+  
   memset(&dst_addr, 0, sizeof(dst_addr));
 
   msg.msg_control = control_u.control6;
@@ -164,8 +163,6 @@ void dhcp6_packet(time_t now)
 	  return;
       
       parm.current = NULL;
-      parm.relay = NULL;
-      memset(&parm.relay_local, 0, IN6ADDRSZ);
       parm.ind = if_index;
       parm.addr_match = 0;
       memset(&parm.fallback, 0, IN6ADDRSZ);
@@ -210,10 +207,22 @@ void dhcp6_packet(time_t now)
 	    memset(&context->local6, 0, IN6ADDRSZ);
 	  }
       
-      for (relay = daemon->relay6; relay; relay = relay->next)
-	relay->current = relay;
+      /* Ignore requests sent to the ALL_SERVERS multicast address for relay when
+	 we're listening there for DHCPv6 server reasons. */
+      inet_pton(AF_INET6, ALL_SERVERS, &all_servers);
+      
+      if (!IN6_ARE_ADDR_EQUAL(&dst_addr, &all_servers) &&
+	  relay_upstream6(if_index, (size_t)sz, &from.sin6_addr, from.sin6_scope_id, now))
+	return;
       
       if (!iface_enumerate(AF_INET6, &parm, complete_context6))
+	return;
+      
+      /* Check for a relay again after iface_enumerate/complete_context has had
+	 chance to fill in relay->iface_index fields. This handles first time through
+	 and any changes in interface config. */
+      if (!IN6_ARE_ADDR_EQUAL(&dst_addr, &all_servers) &&
+	  relay_upstream6(if_index, (size_t)sz, &from.sin6_addr, from.sin6_scope_id, now))
 	return;
       
       if (daemon->if_names || daemon->if_addrs)
@@ -225,19 +234,6 @@ void dhcp6_packet(time_t now)
 	  
 	  if (!tmp && !parm.addr_match)
 	    return;
-	}
-      
-      if (parm.relay)
-	{
-	  /* Ignore requests sent to the ALL_SERVERS multicast address for relay when
-	     we're listening there for DHCPv6 server reasons. */
-	  struct in6_addr all_servers;
-	  
-	  inet_pton(AF_INET6, ALL_SERVERS, &all_servers);
-	  
-	  if (!IN6_ARE_ADDR_EQUAL(&dst_addr, &all_servers))
-	    relay_upstream6(parm.relay, sz, &from.sin6_addr, from.sin6_scope_id, now);
-	  return;
 	}
       
       /* May have configured relay, but not DHCP server */
@@ -326,6 +322,7 @@ static int complete_context6(struct in6_addr *local,  int prefix,
   struct dhcp_relay *relay;
   struct iface_param *param = vparam;
   struct iname *tmp;
+  int match = !daemon->if_addrs;
  
   (void)scope; /* warning */
   
@@ -347,7 +344,7 @@ static int complete_context6(struct in6_addr *local,  int prefix,
   for (tmp = daemon->if_addrs; tmp; tmp = tmp->next)
     if (tmp->addr.sa.sa_family == AF_INET6 &&
 	IN6_ARE_ADDR_EQUAL(&tmp->addr.in6.sin6_addr, local))
-      param->addr_match = 1;
+      match = param->addr_match = 1;
   
   /* Determine a globally address on the arrival interface, even
      if we have no matching dhcp-context, because we're only
@@ -419,16 +416,12 @@ static int complete_context6(struct in6_addr *local,  int prefix,
 	      }
 	  }      
       }
-
-  for (relay = daemon->relay6; relay; relay = relay->next)
-    if (IN6_ARE_ADDR_EQUAL(local, &relay->local.addr6) && relay->current == relay &&
-	(IN6_IS_ADDR_UNSPECIFIED(&param->relay_local) || IN6_ARE_ADDR_EQUAL(local, &param->relay_local)))
-      {
-	relay->current = param->relay;
-	param->relay = relay;
-	param->relay_local = *local;
-      }
-     
+  
+  if (match)
+    for (relay = daemon->relay6; relay; relay = relay->next)
+      if (IN6_ARE_ADDR_EQUAL(local, &relay->local.addr6))
+	relay->iface_index = if_index;
+  
   return 1;
 }
 

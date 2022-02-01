@@ -20,8 +20,6 @@
 
 struct iface_param {
   struct dhcp_context *current;
-  struct dhcp_relay *relay;
-  struct in_addr relay_local;
   int ind;
 };
 
@@ -34,7 +32,7 @@ static int complete_context(struct in_addr local, int if_index, char *label,
 			    struct in_addr netmask, struct in_addr broadcast, void *vparam);
 static int check_listen_addrs(struct in_addr local, int if_index, char *label,
 			      struct in_addr netmask, struct in_addr broadcast, void *vparam);
-static int relay_upstream4(struct dhcp_relay *relay, struct dhcp_packet *mess, size_t sz, int iface_index);
+static int relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz);
 static struct dhcp_relay *relay_reply4(struct dhcp_packet *mess, char *arrival_interface);
 
 static int make_fd(int port)
@@ -307,12 +305,7 @@ void dhcp_packet(time_t now, int pxe_fd)
       for (context = daemon->dhcp; context; context = context->next)
 	context->current = context;
       
-      for (relay = daemon->relay4; relay; relay = relay->next)
-	relay->current = relay;
-      
       parm.current = NULL;
-      parm.relay = NULL;
-      parm.relay_local.s_addr = 0;
       parm.ind = iface_index;
       
       if (!iface_check(AF_INET, (union all_addr *)&iface_addr, ifr.ifr_name, NULL))
@@ -334,15 +327,19 @@ void dhcp_packet(time_t now, int pxe_fd)
 	     there is more than one address on the interface in the same subnet */
 	  complete_context(match.addr, iface_index, NULL, match.netmask, match.broadcast, &parm);
 	}    
+            
+      if (relay_upstream4(iface_index, mess, (size_t)sz))
+	return;
       
       if (!iface_enumerate(AF_INET, &parm, complete_context))
 	return;
 
-      /* We're relaying this request */
-      if  (parm.relay_local.s_addr != 0 &&
-	   relay_upstream4(parm.relay, mess, (size_t)sz, iface_index))
+      /* Check for a relay again after iface_enumerate/complete_context has had
+	 chance to fill in relay->iface_index fields. This handles first time through
+	 and any changes in interface config. */
+       if (relay_upstream4(iface_index, mess, (size_t)sz))
 	return;
-
+       
       /* May have configured relay, but not DHCP server */
       if (!daemon->dhcp)
 	return;
@@ -631,14 +628,9 @@ static int complete_context(struct in_addr local, int if_index, char *label,
     }
 
   for (relay = daemon->relay4; relay; relay = relay->next)
-    if (if_index == param->ind && relay->local.addr4.s_addr == local.s_addr && relay->current == relay &&
-	(param->relay_local.s_addr == 0 || param->relay_local.s_addr == local.s_addr))
-      {
-	relay->current = param->relay;
-	param->relay = relay;
-	param->relay_local = local;	
-      }
-
+    if (relay->local.addr4.s_addr == local.s_addr)
+      relay->iface_index = if_index;
+  
   return 1;
 }
 	  
@@ -1079,85 +1071,96 @@ char *host_from_dns(struct in_addr addr)
   return NULL;
 }
 
-static int  relay_upstream4(struct dhcp_relay *relay, struct dhcp_packet *mess, size_t sz, int iface_index)
+static int relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz)
 {
-  /* ->local is same value for all relays on ->current chain */
-  union all_addr from;
-  
+  struct in_addr giaddr = mess->giaddr;
+  u8 hops = mess->hops;
+  struct dhcp_relay *relay;
+
   if (mess->op != BOOTREQUEST)
     return 0;
 
-  /* source address == relay address */
-  from.addr4 = relay->local.addr4;
+  for (relay = daemon->relay4; relay; relay = relay->next)
+    if (relay->iface_index != 0 && relay->iface_index == iface_index)
+      break;
+
+  /* No relay config. */
+  if (!relay)
+    return 0;
   
-  /* already gatewayed ? */
-  if (mess->giaddr.s_addr)
-    {
-      /* if so check if by us, to stomp on loops. */
-      if (mess->giaddr.s_addr == relay->local.addr4.s_addr)
-	return 1;
-    }
-  else
-    {
-      /* plug in our address */
-      mess->giaddr.s_addr = relay->local.addr4.s_addr;
-    }
-
-  if ((mess->hops++) > 20)
-    return 1;
-
-  for (; relay; relay = relay->current)
-    {
-      union mysockaddr to;
-      
-      to.sa.sa_family = AF_INET;
-      to.in.sin_addr = relay->server.addr4;
-      to.in.sin_port = htons(daemon->dhcp_server_port);
-
-      /* Broadcasting to server. */
-      if (relay->server.addr4.s_addr == 0)
-	{
-	   struct ifreq ifr;
-
-	   if (relay->interface)
-	     safe_strncpy(ifr.ifr_name, relay->interface, IF_NAMESIZE);
-	   
-	   if (!relay->interface || strchr(relay->interface, '*') ||
-	       ioctl(daemon->dhcpfd, SIOCGIFBRDADDR, &ifr) == -1)
-	     {
-	       my_syslog(MS_DHCP | LOG_ERR, _("Cannot broadcast DHCP relay via interface %s"), relay->interface);
-	       return 1;
-	     }
-
-	   to.in.sin_addr = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr;
-	}
-
-#ifdef HAVE_DUMPFILE
+  for (; relay; relay = relay->next)
+    if (relay->iface_index != 0 && relay->iface_index == iface_index)
       {
-	union mysockaddr fromsock;
-	fromsock.in.sin_port = htons(daemon->dhcp_server_port);
-	fromsock.in.sin_addr = from.addr4;
-	fromsock.sa.sa_family = AF_INET;
+	union mysockaddr to;
+	union all_addr from;
+
+	mess->hops = hops;
+	mess->giaddr = giaddr;
 	
-	dump_packet(DUMP_DHCP, (void *)mess, sz, &fromsock, &to, 0);
-      }
-#endif
-      
-      send_from(daemon->dhcpfd, 0, (char *)mess, sz, &to, &from, 0);
-      
-      if (option_bool(OPT_LOG_OPTS))
+	if ((mess->hops++) > 20)
+	  continue;
+	
+	/* source address == relay address */
+	from.addr4 = relay->local.addr4;
+
+	/* already gatewayed ? */
+	if (giaddr.s_addr)
+	  {
+	    /* if so check if by us, to stomp on loops. */
+	    if (giaddr.s_addr == relay->local.addr4.s_addr)
+	      continue;
+	  }
+	else
+	  {
+	    /* plug in our address */
+	    mess->giaddr.s_addr = relay->local.addr4.s_addr;
+	  }
+	
+	to.sa.sa_family = AF_INET;
+	to.in.sin_addr = relay->server.addr4;
+	to.in.sin_port = htons(daemon->dhcp_server_port);
+	
+	/* Broadcasting to server. */
+	if (relay->server.addr4.s_addr == 0)
+	  {
+	    struct ifreq ifr;
+	    
+	    if (relay->interface)
+	      safe_strncpy(ifr.ifr_name, relay->interface, IF_NAMESIZE);
+	    
+	    if (!relay->interface || strchr(relay->interface, '*') ||
+		ioctl(daemon->dhcpfd, SIOCGIFBRDADDR, &ifr) == -1)
+	      {
+		my_syslog(MS_DHCP | LOG_ERR, _("Cannot broadcast DHCP relay via interface %s"), relay->interface);
+		continue;
+	      }
+	    
+	    to.in.sin_addr = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr;
+	  }
+	
+#ifdef HAVE_DUMPFILE
 	{
-	  inet_ntop(AF_INET, &relay->local, daemon->addrbuff, ADDRSTRLEN);
-	  if (relay->server.addr4.s_addr == 0)
-	    snprintf(daemon->dhcp_buff2, DHCP_BUFF_SZ, _("broadcast via %s"), relay->interface);
-	  else
-	    inet_ntop(AF_INET, &relay->server.addr4, daemon->dhcp_buff2, DHCP_BUFF_SZ);
-	  my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay at %s -> %s"), daemon->addrbuff, daemon->dhcp_buff2);
+	  union mysockaddr fromsock;
+	  fromsock.in.sin_port = htons(daemon->dhcp_server_port);
+	  fromsock.in.sin_addr = from.addr4;
+	  fromsock.sa.sa_family = AF_INET;
+	  
+	  dump_packet(DUMP_DHCP, (void *)mess, sz, &fromsock, &to, 0);
 	}
-      
-      /* Save this for replies */
-      relay->iface_index = iface_index;
-    }
+#endif
+	
+	 send_from(daemon->dhcpfd, 0, (char *)mess, sz, &to, &from, 0);
+	 
+	 if (option_bool(OPT_LOG_OPTS))
+	   {
+	     inet_ntop(AF_INET, &relay->local, daemon->addrbuff, ADDRSTRLEN);
+	     if (relay->server.addr4.s_addr == 0)
+	       snprintf(daemon->dhcp_buff2, DHCP_BUFF_SZ, _("broadcast via %s"), relay->interface);
+	     else
+	       inet_ntop(AF_INET, &relay->server.addr4, daemon->dhcp_buff2, DHCP_BUFF_SZ);
+	     my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay at %s -> %s"), daemon->addrbuff, daemon->dhcp_buff2);
+	   }
+      }
   
   return 1;
 }

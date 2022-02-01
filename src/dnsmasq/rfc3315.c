@@ -2100,110 +2100,113 @@ static unsigned int opt6_uint(unsigned char *opt, int offset, int size)
   return ret;
 } 
 
-void relay_upstream6(struct dhcp_relay *relay, ssize_t sz, 
-		     struct in6_addr *peer_address, u32 scope_id, time_t now)
+int relay_upstream6(int iface_index, ssize_t sz, 
+		    struct in6_addr *peer_address, u32 scope_id, time_t now)
 {
-  /* ->local is same value for all relays on ->current chain */
-  
-  union all_addr from;
   unsigned char *header;
   unsigned char *inbuff = daemon->dhcp_packet.iov_base;
   int msg_type = *inbuff;
-  int hopcount;
+  int hopcount, o;
   struct in6_addr multicast;
   unsigned int maclen, mactype;
   unsigned char mac[DHCP_CHADDR_MAX];
+  struct dhcp_relay *relay;
+  
+  for (relay = daemon->relay6; relay; relay = relay->next)
+    if (relay->iface_index != 0 && relay->iface_index == iface_index)
+      break;
 
+  /* No relay config. */
+  if (!relay)
+    return 0;
+  
   inet_pton(AF_INET6, ALL_SERVERS, &multicast);
   get_client_mac(peer_address, scope_id, mac, &maclen, &mactype, now);
-
-  /* source address == relay address */
-  from.addr6 = relay->local.addr6;
-    
+  
   /* Get hop count from nested relayed message */ 
   if (msg_type == DHCP6RELAYFORW)
     hopcount = *((unsigned char *)inbuff+1) + 1;
   else
     hopcount = 0;
 
-  /* RFC 3315 HOP_COUNT_LIMIT */
-  if (hopcount > 32)
-    return;
-
   reset_counter();
 
-  if ((header = put_opt6(NULL, 34)))
+  /* RFC 3315 HOP_COUNT_LIMIT */
+  if (hopcount > 32 || !(header = put_opt6(NULL, 34)))
+    return 1;
+  
+  header[0] = DHCP6RELAYFORW;
+  header[1] = hopcount;
+  memcpy(&header[18], peer_address, IN6ADDRSZ);
+  
+  /* RFC-6939 */
+  if (maclen != 0)
     {
-      int o;
-
-      header[0] = DHCP6RELAYFORW;
-      header[1] = hopcount;
-      memcpy(&header[2],  &relay->local.addr6, IN6ADDRSZ);
-      memcpy(&header[18], peer_address, IN6ADDRSZ);
- 
-      /* RFC-6939 */
-      if (maclen != 0)
-	{
-	  o = new_opt6(OPTION6_CLIENT_MAC);
-	  put_opt6_short(mactype);
-	  put_opt6(mac, maclen);
-	  end_opt6(o);
-	}
-      
-      o = new_opt6(OPTION6_RELAY_MSG);
-      put_opt6(inbuff, sz);
+      o = new_opt6(OPTION6_CLIENT_MAC);
+      put_opt6_short(mactype);
+      put_opt6(mac, maclen);
       end_opt6(o);
-      
-      for (; relay; relay = relay->current)
-	{
-	  union mysockaddr to;
-	  
-	  to.sa.sa_family = AF_INET6;
-	  to.in6.sin6_addr = relay->server.addr6;
-	  to.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
-	  to.in6.sin6_flowinfo = 0;
-	  to.in6.sin6_scope_id = 0;
-
-	  if (IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast))
-	    {
-	      int multicast_iface;
-	      if (!relay->interface || strchr(relay->interface, '*') ||
-		  (multicast_iface = if_nametoindex(relay->interface)) == 0 ||
-		  setsockopt(daemon->dhcp6fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &multicast_iface, sizeof(multicast_iface)) == -1)
-		{
-		  my_syslog(MS_DHCP | LOG_ERR, _("Cannot multicast DHCP relay via interface %s"), relay->interface);
-		  return;
-		}
-	    }
-		
-#ifdef HAVE_DUMPFILE
-	  {
-	    union mysockaddr fromsock;
-	    fromsock.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
-	    fromsock.in6.sin6_addr = from.addr6;
-	    fromsock.sa.sa_family = AF_INET6;
-	    fromsock.in6.sin6_flowinfo = 0;
-	    fromsock.in6.sin6_scope_id = 0;
-	    
-	    dump_packet(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), &fromsock, &to, 0);
-	  }
-#endif
-	  send_from(daemon->dhcp6fd, 0, daemon->outpacket.iov_base, save_counter(-1), &to, &from, 0);
-	  
-	  if (option_bool(OPT_LOG_OPTS))
-	    {
-	      inet_ntop(AF_INET6, &relay->local, daemon->addrbuff, ADDRSTRLEN);
-	      if (IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast))
-		snprintf(daemon->namebuff, MAXDNAME, _("multicast via %s"), relay->interface);
-	      else
-		inet_ntop(AF_INET6, &relay->server, daemon->namebuff, ADDRSTRLEN);
-	      my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay at %s -> %s"), daemon->addrbuff, daemon->namebuff);
-	    }
-
-	  /* Save this for replies */
-	  relay->iface_index = scope_id;
-	}
     }
+  
+  o = new_opt6(OPTION6_RELAY_MSG);
+  put_opt6(inbuff, sz);
+  end_opt6(o);
+  
+  for (; relay; relay = relay->next)
+    if (relay->iface_index != 0 && relay->iface_index == iface_index)
+      {
+	union mysockaddr to;
+	union all_addr from;
+	
+	/* source address == relay address */
+	from.addr6 = relay->local.addr6;
+	memcpy(&header[2], &relay->local.addr6, IN6ADDRSZ);
+	
+	to.sa.sa_family = AF_INET6;
+	to.in6.sin6_addr = relay->server.addr6;
+	to.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
+	to.in6.sin6_flowinfo = 0;
+	to.in6.sin6_scope_id = 0;
+	
+	if (IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast))
+	  {
+	    int multicast_iface;
+	    if (!relay->interface || strchr(relay->interface, '*') ||
+		(multicast_iface = if_nametoindex(relay->interface)) == 0 ||
+		setsockopt(daemon->dhcp6fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &multicast_iface, sizeof(multicast_iface)) == -1)
+	      {
+		my_syslog(MS_DHCP | LOG_ERR, _("Cannot multicast DHCP relay via interface %s"), relay->interface);
+		continue;
+	      }
+	  }
+	
+#ifdef HAVE_DUMPFILE
+	{
+	  union mysockaddr fromsock;
+	  fromsock.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
+	  fromsock.in6.sin6_addr = from.addr6;
+	  fromsock.sa.sa_family = AF_INET6;
+	  fromsock.in6.sin6_flowinfo = 0;
+	  fromsock.in6.sin6_scope_id = 0;
+	  
+	  dump_packet(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), &fromsock, &to, 0);
+	}
+#endif
+	send_from(daemon->dhcp6fd, 0, daemon->outpacket.iov_base, save_counter(-1), &to, &from, 0);
+	
+	if (option_bool(OPT_LOG_OPTS))
+	  {
+	    inet_ntop(AF_INET6, &relay->local, daemon->addrbuff, ADDRSTRLEN);
+	    if (IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast))
+	      snprintf(daemon->namebuff, MAXDNAME, _("multicast via %s"), relay->interface);
+	    else
+	      inet_ntop(AF_INET6, &relay->server, daemon->namebuff, ADDRSTRLEN);
+	    my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay at %s -> %s"), daemon->addrbuff, daemon->namebuff);
+	  }
+	
+      }
+  
+  return 1;
 }
 
 int relay_reply6(struct sockaddr_in6 *peer, ssize_t sz, char *arrival_interface)
