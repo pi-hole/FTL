@@ -62,7 +62,7 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char* arg, const int id, const char* file, const int line);
-static void FTL_upstream_error(const union all_addr *addr, const int id, const char* file, const int line);
+static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char* file, const int line);
 static void FTL_dnssec(const char *result, const union all_addr *addr, const int id, const char* file, const int line);
 static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
@@ -121,9 +121,9 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 	else if(flags == F_SECSTAT)
 		// DNSSEC validation result
 		FTL_dnssec(arg, addr, id, path, line);
-	else if(flags == (F_UPSTREAM | F_RCODE) && name && strcasecmp(name, "error") == 0)
+	else if(flags & F_RCODE && name && strcasecmp(name, "error") == 0)
 		// upstream sent something different than NOERROR or NXDOMAIN
-		FTL_upstream_error(addr, id, path, line);
+		FTL_upstream_error(addr, flags, id, path, line);
 	else if(flags & F_NOEXTRA && flags & F_DNSSEC)
 	{
 		// This is a new DNSSEC query (dnssec-query[DS])
@@ -2376,9 +2376,9 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 	unlock_shm();
 }
 
-static void FTL_upstream_error(const union all_addr *addr, const int id, const char* file, const int line)
+static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char* file, const int line)
 {
-	// Process upstream errors
+	// Process local and upstream errors
 	// Queries with error are those where the RCODE
 	// in the DNS header is neither NOERROR nor NXDOMAIN.
 
@@ -2450,10 +2450,18 @@ static void FTL_upstream_error(const union all_addr *addr, const int id, const c
 		else
 			domainname = "<cannot access domain struct>";
 
-		if(last_server.sa.sa_family == 0)
+		if(flags & F_CONFIG)
+		{
+			// Log local error, typically "nowhere to forward to"
+			logg("**** local error (nowhere to forward to): %s is %s (ID %i, %s:%i)",
+			     domainname, rcodestr, id, file, line);
+		}
+		else if(last_server.sa.sa_family == 0)
+		{
 			// Log error reply from unknown source
 			logg("**** got error reply: %s is %s (ID %i, %s:%i)",
 			     domainname, rcodestr, id, file, line);
+		}
 		else
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
