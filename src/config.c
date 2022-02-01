@@ -523,7 +523,7 @@ void read_FTLconf(void)
 
 	// LOCAL_IPV6
 	// Use a specific IP address instead of automatically detecting the
-	// IPv4 interface address a query arrived on for AAAA hostname queries
+	// IPv6 interface address a query arrived on for AAAA hostname queries
 	// defaults to: not set
 	config.reply_addr.own_host.overwrite_v6 = false;
 	memset(&config.reply_addr.own_host.v6, 0, sizeof(config.reply_addr.own_host.v6));
