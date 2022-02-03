@@ -79,7 +79,8 @@ void dump_init(void)
     }
 }
 
-void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src, union mysockaddr *dst)
+void dump_packet(int mask, void *packet, size_t len,
+		 union mysockaddr *src, union mysockaddr *dst, unsigned short port)
 {
   struct ip ip;
   struct ip6_hdr ip6;
@@ -101,7 +102,7 @@ void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src, unio
     return;
   
   /* So wireshark can Id the packet. */
-  udp.uh_sport = udp.uh_dport = htons(NAMESERVER_PORT);
+  udp.uh_sport = udp.uh_dport = htons(port);
 
   if (src)
     family = src->sa.sa_family;

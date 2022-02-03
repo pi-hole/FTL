@@ -702,14 +702,17 @@ struct hostsfile {
 };
 
 /* packet-dump flags */
-#define DUMP_QUERY     0x0001
-#define DUMP_REPLY     0x0002
-#define DUMP_UP_QUERY  0x0004
-#define DUMP_UP_REPLY  0x0008
-#define DUMP_SEC_QUERY 0x0010
-#define DUMP_SEC_REPLY 0x0020
-#define DUMP_BOGUS     0x0040
-#define DUMP_SEC_BOGUS 0x0080
+#define DUMP_QUERY         0x0001
+#define DUMP_REPLY         0x0002
+#define DUMP_UP_QUERY      0x0004 
+#define DUMP_UP_REPLY      0x0008
+#define DUMP_SEC_QUERY     0x0010
+#define DUMP_SEC_REPLY     0x0020
+#define DUMP_BOGUS         0x0040 
+#define DUMP_SEC_BOGUS     0x0080
+#define DUMP_DHCP          0x1000
+#define DUMP_DHCPV6        0x2000
+#define DUMP_TFTP          0x8000
 
 /* DNSSEC status values. */
 #define STAT_SECURE             0x10000
@@ -1834,7 +1837,8 @@ int do_arp_script_run(void);
 /* dump.c */
 #ifdef HAVE_DUMPFILE
 void dump_init(void);
-void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src, union mysockaddr *dst);
+void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src,
+		 union mysockaddr *dst, unsigned short port);
 #endif
 
 /* domain-match.c */

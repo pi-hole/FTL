@@ -177,11 +177,16 @@ void dhcp_packet(time_t now, int pxe_fd)
   if ((sz = recv_dhcp_packet(fd, &msg)) == -1 || 
       (sz < (ssize_t)(sizeof(*mess) - sizeof(mess->options)))) 
     return;
-    
-  #if defined (HAVE_LINUX_NETWORK)
+  
+#ifdef HAVE_DUMPFILE
+  dump_packet(DUMP_DHCP, (void *)daemon->dhcp_packet.iov_base, sz, (union mysockaddr *)&dest, NULL,
+	      pxe_fd ? PXE_PORT : daemon->dhcp_server_port);
+#endif
+  
+#if defined (HAVE_LINUX_NETWORK)
   if (ioctl(fd, SIOCGSTAMP, &tv) == 0)
     recvtime = tv.tv_sec;
-
+  
   if (msg.msg_controllen >= sizeof(struct cmsghdr))
     for (cmptr = CMSG_FIRSTHDR(&msg); cmptr; cmptr = CMSG_NXTHDR(&msg, cmptr))
       if (cmptr->cmsg_level == IPPROTO_IP && cmptr->cmsg_type == IP_PKTINFO)
@@ -455,6 +460,14 @@ void dhcp_packet(time_t now, int pxe_fd)
 #elif defined(HAVE_BSD_NETWORK)
   else 
     {
+#ifdef HAVE_DUMPFILE
+      dest.sin_addr.s_addr = (ntohs(mess->flags) & 0x8000) ? INADDR_BROADCAST : mess->yiaddr;
+      dest.sin_port = htons(daemon->dhcp_client_port);
+
+      dump_packet(DUMP_DHCP, (void *)iov.iov_base, iov.iov_len, NULL,
+		  (union mysockaddr *)&dest, daemon->dhcp_server_port);
+#endif
+      
       send_via_bpf(mess, iov.iov_len, iface_addr, &ifr);
       return;
     }
@@ -462,6 +475,11 @@ void dhcp_packet(time_t now, int pxe_fd)
    
 #ifdef HAVE_SOLARIS_NETWORK
   setsockopt(fd, IPPROTO_IP, IP_BOUND_IF, &iface_index, sizeof(iface_index));
+#endif
+
+#ifdef HAVE_DUMPFILE
+  dump_packet(DUMP_DHCP, (void *)iov.iov_base, iov.iov_len, NULL,
+	      (union mysockaddr *)&dest, daemon->dhcp_server_port);
 #endif
   
   while(retry_send(sendmsg(fd, &msg, 0)));
@@ -1114,6 +1132,17 @@ static int  relay_upstream4(struct dhcp_relay *relay, struct dhcp_packet *mess, 
 	   to.in.sin_addr = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr;
 	}
 
+#ifdef HAVE_DUMPFILE
+      {
+	union mysockaddr fromsock;
+	fromsock.in.sin_port = htons(daemon->dhcp_server_port);
+	fromsock.in.sin_addr = from.addr4;
+	fromsock.sa.sa_family = AF_INET;
+	
+	dump_packet(DUMP_DHCP, (void *)mess, sz, &fromsock, &to, 0);
+      }
+#endif
+      
       send_from(daemon->dhcpfd, 0, (char *)mess, sz, &to, &from, 0);
       
       if (option_bool(OPT_LOG_OPTS))

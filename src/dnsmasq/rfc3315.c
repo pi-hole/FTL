@@ -2176,6 +2176,18 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz,
 		}
 	    }
 		
+#ifdef HAVE_DUMPFILE
+	  {
+	    union mysockaddr fromsock;
+	    fromsock.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
+	    fromsock.in6.sin6_addr = from.addr6;
+	    fromsock.sa.sa_family = AF_INET6;
+	    fromsock.in6.sin6_flowinfo = 0;
+	    fromsock.in6.sin6_scope_id = 0;
+	    
+	    dump_packet(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), &fromsock, &to, 0);
+	  }
+#endif
 	  send_from(daemon->dhcp6fd, 0, daemon->outpacket.iov_base, save_counter(-1), &to, &from, 0);
 	  
 	  if (option_bool(OPT_LOG_OPTS))

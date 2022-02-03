@@ -119,6 +119,11 @@ void dhcp6_packet(time_t now)
   if ((sz = recv_dhcp_packet(daemon->dhcp6fd, &msg)) == -1)
     return;
   
+#ifdef HAVE_DUMPFILE
+  dump_packet(DUMP_DHCPV6, (void *)daemon->dhcp_packet.iov_base, sz,
+	      (union mysockaddr *)&from, NULL, DHCPV6_SERVER_PORT);
+#endif
+  
   for (cmptr = CMSG_FIRSTHDR(&msg); cmptr; cmptr = CMSG_NXTHDR(&msg, cmptr))
     if (cmptr->cmsg_level == IPPROTO_IPV6 && cmptr->cmsg_type == daemon->v6pktinfo)
       {
@@ -137,6 +142,11 @@ void dhcp6_packet(time_t now)
 
   if (relay_reply6(&from, sz, ifr.ifr_name))
     {
+#ifdef HAVE_DUMPFILE
+      dump_packet(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), NULL,
+		  (union mysockaddr *)&from, DHCPV6_SERVER_PORT);
+#endif
+      
       while (retry_send(sendto(daemon->dhcp6fd, daemon->outpacket.iov_base, 
 			       save_counter(-1), 0, (struct sockaddr *)&from, 
 			       sizeof(from))));
@@ -144,7 +154,7 @@ void dhcp6_packet(time_t now)
   else
     {
       struct dhcp_bridge *bridge, *alias;
-
+      
       for (tmp = daemon->if_except; tmp; tmp = tmp->next)
 	if (tmp->name && wildcard_match(tmp->name, ifr.ifr_name))
 	  return;
@@ -161,7 +171,7 @@ void dhcp6_packet(time_t now)
       memset(&parm.fallback, 0, IN6ADDRSZ);
       memset(&parm.ll_addr, 0, IN6ADDRSZ);
       memset(&parm.ula_addr, 0, IN6ADDRSZ);
-
+      
       /* If the interface on which the DHCPv6 request was received is
          an alias of some other interface (as specified by the
          --bridge-interface option), change parm.ind so that we look
@@ -199,13 +209,13 @@ void dhcp6_packet(time_t now)
 	    context->current = context;
 	    memset(&context->local6, 0, IN6ADDRSZ);
 	  }
-
+      
       for (relay = daemon->relay6; relay; relay = relay->next)
 	relay->current = relay;
       
       if (!iface_enumerate(AF_INET6, &parm, complete_context6))
 	return;
-
+      
       if (daemon->if_names || daemon->if_addrs)
 	{
 	  
@@ -233,7 +243,7 @@ void dhcp6_packet(time_t now)
       /* May have configured relay, but not DHCP server */
       if (!daemon->doing_dhcp6)
 	return;
-
+      
       lease_prune(NULL, now); /* lose any expired leases */
       
       port = dhcp6_reply(parm.current, if_index, ifr.ifr_name, &parm.fallback, 
@@ -246,11 +256,16 @@ void dhcp6_packet(time_t now)
       if (port != 0)
 	{
 	  from.sin6_port = htons(port);
-	  while (retry_send(sendto(daemon->dhcp6fd, daemon->outpacket.iov_base, 
-				   save_counter(-1), 0, (struct sockaddr *)&from, 
-				   sizeof(from))));
+	  
+#ifdef HAVE_DUMPFILE
+	  dump_packet(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1),
+		      NULL, (union mysockaddr *)&from, DHCPV6_SERVER_PORT);
+#endif 
+	  
+	  while (retry_send(sendto(daemon->dhcp6fd, daemon->outpacket.iov_base,
+				   save_counter(-1), 0, (struct sockaddr *)&from, sizeof(from))));
 	}
-
+      
       /* These need to be called _after_ we send DHCPv6 packet, since lease_update_file()
 	 may trigger sending an RA packet, which overwrites our buffer. */
       lease_update_file(now);
