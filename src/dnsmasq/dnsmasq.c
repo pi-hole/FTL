@@ -394,28 +394,9 @@ int main_dnsmasq (int argc, char **argv)
 #if defined(HAVE_LINUX_NETWORK) && defined(HAVE_DHCP)
       /* after enumerate_interfaces()  */
       bound_device = whichdevice();
-      
-      if (daemon->dhcp)
-	{
-	  if (!daemon->relay4 && bound_device)
-	    {
-	      bindtodevice(bound_device, daemon->dhcpfd);
-	      did_bind = 1;
-	    }
-	  if (daemon->enable_pxe && bound_device && daemon->pxefd != -1)
-	    {
-	      bindtodevice(bound_device, daemon->pxefd);
-	      did_bind = 1;
-	    }
-	}
-#endif
 
-#if defined(HAVE_LINUX_NETWORK) && defined(HAVE_DHCP6)
-      if (daemon->doing_dhcp6 && !daemon->relay6 && bound_device)
-	{
-	  bindtodevice(bound_device, daemon->dhcp6fd);
-	  did_bind = 1;
-	}
+      if ((did_bind = bind_dhcp_devices(bound_device)) & 2)
+	die(_("failed to set SO_BINDTODEVICE on DHCP socket: %s"), NULL, EC_BADNET);	
 #endif
     }
   else 
@@ -1113,6 +1094,17 @@ int main_dnsmasq (int argc, char **argv)
 #endif
       
 #ifdef HAVE_DHCP
+#  if defined(HAVE_LINUX_NETWORK)
+      if (bind_dhcp_devices(bound_device) & 2)
+	{
+	  static int warned = 0;
+	  if (!warned)
+	    {
+	      my_syslog(LOG_ERR, _("error binding DHCP socket to device %s"), bound_device);
+	      warned = 1;
+	    }
+	}
+# endif
       if (daemon->dhcp || daemon->relay4)
 	{
 	  poll_listen(daemon->dhcpfd, POLLIN);
