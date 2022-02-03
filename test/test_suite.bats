@@ -1279,3 +1279,33 @@
   printf "%s\n" "${lines[@]}"
   [[ "${lines[0]}" == "" ]]
 }
+
+@test "Pi-hole uses LOCAL_IPV4/6 for pi.hole" {
+  run bash -c "dig A pi.hole +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "10.100.0.10" ]]
+  run bash -c "dig AAAA pi.hole +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "fe80::10" ]]
+}
+
+@test "Pi-hole uses LOCAL_IPV4/6 for hostname" {
+  run bash -c "dig A $(hostname) +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "10.100.0.10" ]]
+  run bash -c "dig AAAA $(hostname) +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "fe80::10" ]]
+}
+
+@test "Pi-hole uses BLOCK_IPV4/6 for blocked domain" {
+  echo "BLOCKINGMODE=IP" >> /etc/pihole/pihole-FTL.conf
+  run bash -c "kill -HUP $(cat /run/pihole-FTL.pid)"
+  sleep 2
+  run bash -c "dig A blacklisted.ftl +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "10.100.0.11" ]]
+  run bash -c "dig AAAA blacklisted.ftl +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "fe80::11" ]]
+}

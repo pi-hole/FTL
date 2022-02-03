@@ -77,13 +77,21 @@ typedef struct {
 	enum debug_flags debug;
 	time_t DBinterval;
 	struct {
-		bool overwrite_v4 :1;
-		bool overwrite_v6 :1;
-		struct in_addr v4;
-		struct in6_addr v6;
+		struct {
+			bool overwrite_v4 :1;
+			bool overwrite_v6 :1;
+			struct in_addr v4;
+			struct in6_addr v6;
+		} own_host;
+		struct {
+			bool overwrite_v4 :1;
+			bool overwrite_v6 :1;
+			struct in_addr v4;
+			struct in6_addr v6;
+		} ip_blocking;
 	} reply_addr;
 } ConfigStruct;
-ASSERT_SIZEOF(ConfigStruct, 88, 80, 80);
+ASSERT_SIZEOF(ConfigStruct, 112, 104, 104);
 
 typedef struct {
 	const char* conf;

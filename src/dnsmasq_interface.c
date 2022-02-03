@@ -73,7 +73,6 @@ static char *get_ptrname(struct in_addr *addr);
 
 // Static blocking metadata
 static const char *blockingreason = "";
-static union all_addr null_addrp = {{ 0 }};
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static int last_regex_idx = -1;
 static struct ptr_record *pihole_ptr = NULL;
@@ -322,21 +321,28 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Add A answer record if requested
 	if(flags & F_IPV4)
 	{
-		union all_addr *addr = &null_addrp;
+		union all_addr addr = {{ 0 }};
 
 		// Overwrite with IP address if requested
 		if(redirecting)
-			addr = &redirect_addr4;
+			memcpy(&addr, &redirect_addr4, sizeof(addr));
 		else if(config.blockingmode == MODE_IP ||
 		        config.blockingmode == MODE_IP_NODATA_AAAA ||
 		        forced_ip)
-			addr = &next_iface.addr4;
+		{
+			if(hostname && config.reply_addr.own_host.overwrite_v4)
+				memcpy(&addr, &config.reply_addr.own_host.v4, sizeof(addr));
+			else if(!hostname && config.reply_addr.ip_blocking.overwrite_v4)
+				memcpy(&addr, &config.reply_addr.ip_blocking.v4, sizeof(addr));
+			else
+				memcpy(&addr, &next_iface.addr4, sizeof(addr));
+		}
 
 		// Debug logging
 		if(config.debug & DEBUG_QUERIES)
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
-			alladdr_extract_ip(addr, AF_INET, ip);
+			alladdr_extract_ip(&addr, AF_INET, ip);
 			logg("  Adding RR: \"%s A %s\"", name, ip);
 		}
 
@@ -344,27 +350,34 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
-		                       NULL, T_A, C_IN, (char*)"4", &addr->addr4))
-			log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason, 0);
+		                       NULL, T_A, C_IN, (char*)"4", &addr.addr4))
+			log_query(flags & ~F_IPV6, name, &addr, (char*)blockingreason, 0);
 	}
 
 	// Add AAAA answer record if requested
 	if(flags & F_IPV6)
 	{
-		union all_addr *addr = &null_addrp;
+		union all_addr addr = {{ 0 }};
 
 		// Overwrite with IP address if requested
 		if(redirecting)
-			addr = &redirect_addr6;
+			memcpy(&addr, &redirect_addr6, sizeof(addr));
 		else if(config.blockingmode == MODE_IP ||
 		        forced_ip)
-			addr = &next_iface.addr6;
+		{
+			if(hostname && config.reply_addr.own_host.overwrite_v6)
+				memcpy(&addr, &config.reply_addr.own_host.v6, sizeof(addr));
+			else if(!hostname && config.reply_addr.ip_blocking.overwrite_v6)
+				memcpy(&addr, &config.reply_addr.ip_blocking.v6, sizeof(addr));
+			else
+				memcpy(&addr, &next_iface.addr6, sizeof(addr));
+		}
 
 		// Debug logging
 		if(config.debug & DEBUG_QUERIES)
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
-			alladdr_extract_ip(addr, AF_INET6, ip);
+			alladdr_extract_ip(&addr, AF_INET6, ip);
 			logg("  Adding RR: \"%s AAAA %s\"", name, ip);
 		}
 
@@ -372,8 +385,8 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
-		                       NULL, T_AAAA, C_IN, (char*)"6", &addr->addr6))
-			log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason, 0);
+		                       NULL, T_AAAA, C_IN, (char*)"6", &addr.addr6))
+			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
 	}
 
 	// Log empty replies
@@ -507,8 +520,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			// Send NODATA when the current interface doesn't have
 			// the requested IP address, for instance AAAA on an
 			// virtual interface that has only an IPv4 address
-			if((querytype == TYPE_A && !next_iface.haveIPv4) ||
-			   (querytype == TYPE_AAAA && !next_iface.haveIPv6))
+			if((querytype == TYPE_A &&
+			    !next_iface.haveIPv4 &&
+			    !config.reply_addr.own_host.overwrite_v4) ||
+			   (querytype == TYPE_AAAA &&
+			    !next_iface.haveIPv6 &&
+			    !config.reply_addr.own_host.overwrite_v6))
 				force_next_DNS_reply = REPLY_NODATA;
 			else
 				force_next_DNS_reply = REPLY_IP;
@@ -820,40 +837,14 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	if(config.debug & DEBUG_NETWORKING)
 		logg("Interfaces: Called from %s:%d", short_path(file), line);
 
-	// Copy overwrite addresses if configured via REPLY_ADDR4 and/or REPLY_ADDR6 settings
-	if(config.reply_addr.overwrite_v4)
-	{
-		memcpy(&next_iface.addr4, &config.reply_addr.v4, sizeof(config.reply_addr.v4));
-		next_iface.haveIPv4 = true;
-
-		if(config.debug & DEBUG_NETWORKING)
-		{
-			char buffer[ADDRSTRLEN+1] = { 0 };
-			inet_ntop(AF_INET, &next_iface.addr4, buffer, ADDRSTRLEN);
-			logg("Configuration overwrites IPv4 address: %s", buffer);
-		}
-	}
-	if(config.reply_addr.overwrite_v6)
-	{
-		memcpy(&next_iface.addr6, &config.reply_addr.v6, sizeof(config.reply_addr.v6));
-		next_iface.haveIPv6 = true;
-
-		if(config.debug & DEBUG_NETWORKING)
-		{
-			char buffer[ADDRSTRLEN+1] = { 0 };
-			inet_ntop(AF_INET6, &next_iface.addr6, buffer, ADDRSTRLEN);
-			logg("Configuration overwrites IPv6 address: %s", buffer);
-		}
-	}
-
 	// Use dummy when interface record is not available
 	next_iface.name[0] = '-';
 	next_iface.name[1] = '\0';
 
 	// Check if we need to identify the receving interface by its address
 	if(!recviface && addr &&
-	   ((addrfamily == AF_INET && addr->addr4.s_addr != 0) ||
-	    (addrfamily == AF_INET6 && addr->addr6.s6_addr[0] != 0)))
+	   ((addrfamily == AF_INET && addr->addr4.s_addr != INADDR_ANY) ||
+	    (addrfamily == AF_INET6 && !IN6_IS_ADDR_UNSPECIFIED(&addr->addr6))))
 	{
 		if(config.debug & DEBUG_NETWORKING)
 		{
@@ -952,17 +943,6 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		// Copy interface name
 		strncpy(next_iface.name, iname, sizeof(next_iface.name)-1);
 		next_iface.name[sizeof(next_iface.name)-1] = '\0';
-
-		// Check if this family type is overwritten by config settings
-		// We logged this above
-		if((config.reply_addr.overwrite_v4 && family == AF_INET) ||
-		   (config.reply_addr.overwrite_v6 && family == AF_INET6))
-		   {
-			if(config.debug & DEBUG_NETWORKING)
-				logg("  - SKIP IPv%d interface %s: REPLY_ADDR%d used",
-				     family == AF_INET ? 4 : 6, iname, family == AF_INET ? 4 : 6);
-			continue;
-		   }
 
 		bool isULA = false, isGUA = false, isLL = false;
 		// Check if this address is different from 0000:0000:0000:0000:0000:0000:0000:0000
