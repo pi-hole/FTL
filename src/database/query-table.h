@@ -19,5 +19,6 @@ bool optimize_queries_table(sqlite3 *db);
 bool create_addinfo_table(sqlite3 *db);
 int DB_save_queries(sqlite3 *db);
 void DB_read_queries(void);
+bool add_query_storage_columns(sqlite3 *db);
 
 #endif //DATABASE_QUERY_TABLE_H
