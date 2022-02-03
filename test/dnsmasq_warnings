@@ -83,8 +83,6 @@ src/dnsmasq/forward.c
 src/dnsmasq/forward.c
 	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
 src/dnsmasq/forward.c
-	      my_syslog(LOG_WARNING, _("detected DNSSEC dependency loop involving %s"), daemon->keyname);
-src/dnsmasq/forward.c
       my_syslog(LOG_WARNING, _("reducing DNS packet size for nameserver %s to %d"), daemon->addrbuff, SAFE_PKTSZ);
 src/dnsmasq/forward.c
 	      my_syslog(LOG_WARNING, _("ignoring query from non-local network %s (logged only once)"), daemon->addrbuff);
