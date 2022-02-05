@@ -431,8 +431,11 @@ int DB_save_queries(sqlite3 *db)
 		// REPLY_TYPE
 		sqlite3_bind_int(query_stmt, 10, query->reply);
 
-		// REPLY_TIME (stored in units of seconds)
-		sqlite3_bind_double(query_stmt, 11, 1e-4*query->response);
+		// REPLY_TIME (stored in units of seconds) if available, NULL otherwise
+		if(query->flags.response_calculated)
+			sqlite3_bind_double(query_stmt, 11, 1e-4*query->response);
+		else
+			sqlite3_bind_null(query_stmt, 11);
 
 		// DNSSEC
 		sqlite3_bind_int(query_stmt, 12, query->dnssec);
