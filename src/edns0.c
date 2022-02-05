@@ -200,10 +200,11 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			//   8: |                           ADDRESS...                          /
 			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 			union all_addr addr = {{ 0 }};
-			if(family == 1 && optlen == 4 + sizeof(addr.addr4.s_addr)) // IPv4
-				memcpy(&addr.addr4.s_addr, p, sizeof(addr.addr4.s_addr));
-			else if(family == 2 && optlen == 4 + sizeof(addr.addr6.s6_addr)) // IPv6
-				memcpy(addr.addr6.s6_addr, p, sizeof(addr.addr6.s6_addr));
+			const size_t addrlen = optlen - 4;
+			if(family == 1 && addrlen <= sizeof(addr.addr4.s_addr)) // IPv4
+				memcpy(&addr.addr4.s_addr, p, addrlen);
+			else if(family == 2 && addrlen <= sizeof(addr.addr6.s6_addr)) // IPv6
+				memcpy(addr.addr6.s6_addr, p, addrlen);
 			else
 				continue;
 
@@ -216,7 +217,12 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			// Only use /32 (IPv4) and /128 (IPv6) addresses
 			if(!(family == 1 && source_netmask == 32) &&
 			   !(family == 2 && source_netmask == 128))
+			{
+				if(config.debug & DEBUG_EDNS0)
+					logg("EDNS(0) CLIENT SUBNET: %s/%u found (IPv%u)",
+					     ipaddr, source_netmask, family == 1 ? 4 : 6);
 				continue;
+			}
 
 			// Copy data to edns struct
 			strncpy(edns->client, ipaddr, ADDRSTRLEN);

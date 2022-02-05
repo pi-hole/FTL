@@ -502,43 +502,129 @@ void read_FTLconf(void)
 	else
 		logg("   RATE_LIMIT: Disabled");
 
-	// REPLY_ADDR4
+	// LOCAL_IPV4
 	// Use a specific IP address instead of automatically detecting the
-	// IPv4 interface address a query arrived on
+	// IPv4 interface address a query arrived on for A hostname queries
 	// defaults to: not set
-	config.reply_addr.overwrite_v4 = false;
-	config.reply_addr.v4.s_addr = 0;
-	buffer = parse_FTLconf(fp, "REPLY_ADDR4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.reply_addr.v4))
-		config.reply_addr.overwrite_v4 = true;
+	config.reply_addr.own_host.overwrite_v4 = false;
+	config.reply_addr.own_host.v4.s_addr = 0;
+	buffer = parse_FTLconf(fp, "LOCAL_IPV4");
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.reply_addr.own_host.v4))
+		config.reply_addr.own_host.overwrite_v4 = true;
 
-	if(config.reply_addr.overwrite_v4)
+	if(config.reply_addr.own_host.overwrite_v4)
 	{
 		char addr[INET_ADDRSTRLEN] = { 0 };
-		inet_ntop(AF_INET, &config.reply_addr.v4, addr, INET_ADDRSTRLEN);
-		logg("   REPLY_ADDR4: Using IPv4 address %s in IP blocking mode", addr);
+		inet_ntop(AF_INET, &config.reply_addr.own_host.v4, addr, INET_ADDRSTRLEN);
+		logg("   LOCAL_IPV4: Using IPv4 address %s for pi.hole and hostname", addr);
 	}
 	else
-		logg("   REPLY_ADDR4: Automatic interface-dependent detection of address");
+		logg("   LOCAL_IPV4: Automatic interface-dependent detection of address");
 
-	// REPLY_ADDR6
+	// LOCAL_IPV6
 	// Use a specific IP address instead of automatically detecting the
-	// IPv6 interface address a query arrived on
+	// IPv6 interface address a query arrived on for AAAA hostname queries
 	// defaults to: not set
-	config.reply_addr.overwrite_v6 = false;
-	memset(&config.reply_addr.v6, 0, sizeof(config.reply_addr.v6));
-	buffer = parse_FTLconf(fp, "REPLY_ADDR6");
-	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.reply_addr.v6))
-		config.reply_addr.overwrite_v6 = true;
+	config.reply_addr.own_host.overwrite_v6 = false;
+	memset(&config.reply_addr.own_host.v6, 0, sizeof(config.reply_addr.own_host.v6));
+	buffer = parse_FTLconf(fp, "LOCAL_IPV6");
+	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.reply_addr.own_host.v6))
+		config.reply_addr.own_host.overwrite_v6 = true;
 
-	if(config.reply_addr.overwrite_v6)
+	if(config.reply_addr.own_host.overwrite_v6)
 	{
 		char addr[INET6_ADDRSTRLEN] = { 0 };
-		inet_ntop(AF_INET6, &config.reply_addr.v6, addr, INET6_ADDRSTRLEN);
-		logg("   REPLY_ADDR6: Using IPv6 address %s in IP blocking mode", addr);
+		inet_ntop(AF_INET6, &config.reply_addr.own_host.v6, addr, INET6_ADDRSTRLEN);
+		logg("   LOCAL_IPV6: Using IPv6 address %s for pi.hole and hostname", addr);
 	}
 	else
-		logg("   REPLY_ADDR6: Automatic interface-dependent detection of address");
+		logg("   LOCAL_IPV6: Automatic interface-dependent detection of address");
+
+	// BLOCK_IPV4
+	// Use a specific IPv4 address for IP blocking mode replies
+	// defaults to: REPLY_ADDR4 setting
+	config.reply_addr.ip_blocking.overwrite_v4 = false;
+	config.reply_addr.ip_blocking.v4.s_addr = 0;
+	buffer = parse_FTLconf(fp, "BLOCK_IPV4");
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.reply_addr.ip_blocking.v4))
+		config.reply_addr.ip_blocking.overwrite_v4 = true;
+
+	if(config.reply_addr.ip_blocking.overwrite_v4)
+	{
+		char addr[INET_ADDRSTRLEN] = { 0 };
+		inet_ntop(AF_INET, &config.reply_addr.ip_blocking.v4, addr, INET_ADDRSTRLEN);
+		logg("   BLOCK_IPV4: Using IPv4 address %s in IP blocking mode", addr);
+	}
+	else
+		logg("   BLOCK_IPV4: Automatic interface-dependent detection of address");
+
+	// BLOCK_IPV6
+	// Use a specific IPv6 address for IP blocking mode replies
+	// defaults to: REPLY_ADDR6 setting
+	config.reply_addr.ip_blocking.overwrite_v6 = false;
+	memset(&config.reply_addr.ip_blocking.v6, 0, sizeof(config.reply_addr.own_host.v6));
+	buffer = parse_FTLconf(fp, "BLOCK_IPV6");
+	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.reply_addr.ip_blocking.v6))
+		config.reply_addr.ip_blocking.overwrite_v6 = true;
+
+	if(config.reply_addr.ip_blocking.overwrite_v6)
+	{
+		char addr[INET6_ADDRSTRLEN] = { 0 };
+		inet_ntop(AF_INET6, &config.reply_addr.ip_blocking.v6, addr, INET6_ADDRSTRLEN);
+		logg("   BLOCK_IPV6: Using IPv6 address %s in IP blocking mode", addr);
+	}
+	else
+		logg("   BLOCK_IPV6: Automatic interface-dependent detection of address");
+
+	// REPLY_ADDR4 (deprecated setting)
+	// Use a specific IP address instead of automatically detecting the
+	// IPv4 interface address a query arrived on A hostname and IP blocked queries
+	// defaults to: not set
+	struct in_addr reply_addr4;
+	buffer = parse_FTLconf(fp, "REPLY_ADDR4");
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr4))
+	{
+		if(config.reply_addr.own_host.overwrite_v4 || config.reply_addr.ip_blocking.overwrite_v4)
+		{
+			logg("   WARNING: Ignoring REPLY_ADDR4 as LOCAL_IPV4 or BLOCK_IPV4 has been specified.");
+		}
+		else
+		{
+			config.reply_addr.own_host.overwrite_v4 = true;
+			memcpy(&config.reply_addr.own_host.v4, &reply_addr4, sizeof(reply_addr4));
+			config.reply_addr.ip_blocking.overwrite_v4 = true;
+			memcpy(&config.reply_addr.ip_blocking.v4, &reply_addr4, sizeof(reply_addr4));
+
+			char addr[INET_ADDRSTRLEN] = { 0 };
+			inet_ntop(AF_INET, &reply_addr4, addr, INET_ADDRSTRLEN);
+			logg("   REPLY_ADDR4: Using IPv4 address %s instead of automatically determined IP address", addr);
+		}
+	}
+
+	// REPLY_ADDR6 (deprecated setting)
+	// Use a specific IP address instead of automatically detecting the
+	// IPv4 interface address a query arrived on A hostname and IP blocked queries
+	// defaults to: not set
+	struct in6_addr reply_addr6;
+	buffer = parse_FTLconf(fp, "REPLY_ADDR6");
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr6))
+	{
+		if(config.reply_addr.own_host.overwrite_v6 || config.reply_addr.ip_blocking.overwrite_v6)
+		{
+			logg("   WARNING: Ignoring REPLY_ADDR6 as LOCAL_IPV6 or BLOCK_IPV6 has been specified.");
+		}
+		else
+		{
+			config.reply_addr.own_host.overwrite_v6 = true;
+			memcpy(&config.reply_addr.own_host.v6, &reply_addr6, sizeof(reply_addr6));
+			config.reply_addr.ip_blocking.overwrite_v6 = true;
+			memcpy(&config.reply_addr.ip_blocking.v6, &reply_addr6, sizeof(reply_addr6));
+
+			char addr[INET6_ADDRSTRLEN] = { 0 };
+			inet_ntop(AF_INET6, &reply_addr6, addr, INET6_ADDRSTRLEN);
+			logg("   REPLY_ADDR6: Using IPv6 address %s instead of automatically determined IP address", addr);
+		}
+	}
 
 	// SHOW_DNSSEC
 	// Should FTL analyze and include automatically generated DNSSEC queries in the Query Log?
