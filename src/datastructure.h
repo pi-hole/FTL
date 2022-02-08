@@ -97,9 +97,10 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
+	uint32_t domainhash;
 	size_t domainpos;
 } domainsData;
-ASSERT_SIZEOF(domainsData, 24, 16, 16);
+ASSERT_SIZEOF(domainsData, 24, 20, 20);
 
 typedef struct {
 	unsigned char magic;
@@ -113,6 +114,7 @@ typedef struct {
 ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
 
 void strtolower(char *str);
+uint32_t hashStr(const char *s) __attribute__((const));
 int findQueryID(const int id);
 int findUpstreamID(const char * upstream, const in_port_t port);
 int findDomainID(const char *domain, const bool count);
