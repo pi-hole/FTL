@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -95,6 +95,10 @@ void tftp_request(struct listener *listen, time_t now)
 
   if ((len = recvmsg(listen->tftpfd, &msg, 0)) < 2)
     return;
+
+#ifdef HAVE_DUMPFILE
+  dump_packet(DUMP_TFTP, (void *)packet, len, (union mysockaddr *)&peer, NULL, TFTP_PORT);
+#endif
   
   /* Can always get recvd interface for IPv6 */
   if (!check_dest)
@@ -482,6 +486,10 @@ void tftp_request(struct listener *listen, time_t now)
     }
 
   send_from(transfer->sockfd, !option_bool(OPT_SINGLE_PORT), packet, len, &peer, &addra, if_index);
+
+#ifdef HAVE_DUMPFILE
+  dump_packet(DUMP_TFTP, (void *)packet, len, NULL, (union mysockaddr *)&peer, TFTP_PORT);
+#endif
   
   if (is_err)
     free_transfer(transfer);
@@ -600,6 +608,10 @@ void check_tftp_listeners(time_t now)
 		  prettyprint_addr(&peer, daemon->addrbuff);
 		  len = tftp_err(ERR_TID, daemon->packet, _("ignoring packet from %s (TID mismatch)"), daemon->addrbuff, NULL);
 		  while(retry_send(sendto(transfer->sockfd, daemon->packet, len, 0, &peer.sa, sa_len(&peer))));
+
+#ifdef HAVE_DUMPFILE
+		  dump_packet(DUMP_TFTP, (void *)daemon->packet, len, NULL, (union mysockaddr *)&peer, TFTP_PORT);
+#endif
 		}
 	    }
 	}
@@ -634,9 +646,14 @@ void check_tftp_listeners(time_t now)
 	    }
 
 	  if (len != 0)
-	    send_from(transfer->sockfd, !option_bool(OPT_SINGLE_PORT), daemon->packet, len,
-		      &transfer->peer, &transfer->source, transfer->if_index);
-	  	  
+	    {
+	      send_from(transfer->sockfd, !option_bool(OPT_SINGLE_PORT), daemon->packet, len,
+			&transfer->peer, &transfer->source, transfer->if_index);
+#ifdef HAVE_DUMPFILE
+	      dump_packet(DUMP_TFTP, (void *)daemon->packet, len, NULL, (union mysockaddr *)&transfer->peer, TFTP_PORT);
+#endif
+	    }
+	  
 	  if (endcon || len == 0)
 	    {
 	      strcpy(daemon->namebuff, transfer->file->filename);

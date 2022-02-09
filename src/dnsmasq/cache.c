@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1797,7 +1797,8 @@ void dump_cache(time_t now)
     {
       struct crec *cache ;
       int i;
-      my_syslog(LOG_INFO, "Host                                     Address                        Flags      Expires");
+      my_syslog(LOG_INFO, "Host                           Address                                  Flags      Expires                  Source");
+      my_syslog(LOG_INFO, "------------------------------ ---------------------------------------- ---------- ------------------------ ------------");
     
       for (i=0; i<hash_size; i++)
 	for (cache = hash_table[i]; cache; cache = cache->hash_next)
@@ -1855,7 +1856,10 @@ void dump_cache(time_t now)
 	    else if (cache->flags & F_DNSKEY)
 	      t = "K";
 #endif
-	    p += sprintf(p, "%-40.40s %s%s%s%s%s%s%s%s%s  ", a, t,
+	    else /* non-terminal */
+	      t = "!";
+
+	    p += sprintf(p, "%-40.40s %s%s%s%s%s%s%s%s%s%s ", a, t,
 			 cache->flags & F_FORWARD ? "F" : " ",
 			 cache->flags & F_REVERSE ? "R" : " ",
 			 cache->flags & F_IMMORTAL ? "I" : " ",
@@ -1863,14 +1867,16 @@ void dump_cache(time_t now)
 			 cache->flags & F_NEG ? "N" : " ",
 			 cache->flags & F_NXDOMAIN ? "X" : " ",
 			 cache->flags & F_HOSTS ? "H" : " ",
+			 cache->flags & F_CONFIG ? "C" : " ",
 			 cache->flags & F_DNSSECOK ? "V" : " ");
 #ifdef HAVE_BROKEN_RTC
-	    p += sprintf(p, "%lu", cache->flags & F_IMMORTAL ? 0: (unsigned long)(cache->ttd - now));
+	    p += sprintf(p, "%-24lu", cache->flags & F_IMMORTAL ? 0: (unsigned long)(cache->ttd - now));
 #else
-	    p += sprintf(p, "%s", cache->flags & F_IMMORTAL ? "\n" : ctime(&(cache->ttd)));
-	    /* ctime includes trailing \n - eat it */
-	    *(p-1) = 0;
+	    p += sprintf(p, "%-24.24s", cache->flags & F_IMMORTAL ? "" : ctime(&(cache->ttd)));
 #endif
+	    if(cache->flags & (F_HOSTS | F_CONFIG) && cache->uid > 0)
+		p += sprintf(p, " %s", record_source(cache->uid));
+
 	    my_syslog(LOG_INFO, "%s", daemon->namebuff);
 	  }
     }
@@ -1994,6 +2000,7 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   char *source, *dest = arg;
   char *verb = "is";
   char *extra = "";
+  char portstring[7]; /* space for #<portnum> */
 
   FTL_hook(flags, name, addr, arg, daemon->log_display_id, type, file, line);
   
@@ -2001,7 +2008,7 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     return;
 
   /* build query type string if requested */
-  if(type > 0)
+  if (!(flags & (F_SERVER | F_IPSET)) && type > 0)
     arg = querystr(arg, type);
 
 #ifdef HAVE_DNSSEC
@@ -2037,8 +2044,15 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
 	    }
 	}
       else if (flags & (F_IPV4 | F_IPV6))
-	inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6,
-		  addr, daemon->addrbuff, ADDRSTRLEN);
+	{
+	  inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6,
+		    addr, daemon->addrbuff, ADDRSTRLEN);
+	  if ((flags & F_SERVER) && type != NAMESERVER_PORT)
+	    {
+	      extra = portstring;
+	      sprintf(portstring, "#%u", type);
+	    }
+	}
       else
 	dest = arg;
     }
@@ -2090,7 +2104,12 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     }
   else if (flags & F_AUTH)
     source = "auth";
-  else if (flags & F_SERVER)
+   else if (flags & F_DNSSEC)
+    {
+      source = arg;
+      verb = "to";
+    }
+   else if (flags & F_SERVER)
     {
       source = "forwarded";
       verb = "to";
@@ -2099,11 +2118,6 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     {
       source = arg;
       verb = "from";
-    }
-  else if (flags & F_DNSSEC)
-    {
-      source = arg;
-      verb = "to";
     }
   else if (flags & F_IPSET)
     {

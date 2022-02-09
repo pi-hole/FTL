@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -566,12 +566,16 @@ char *whichdevice(void)
       }
 
   if (found)
-    return found->name;
-
+    {
+      char *ret = safe_malloc(strlen(found->name)+1);
+      strcpy(ret, found->name);
+      return ret;
+    }
+  
   return NULL;
 }
  
-void  bindtodevice(char *device, int fd)
+static int bindtodevice(char *device, int fd)
 {
   size_t len = strlen(device)+1;
   if (len > IFNAMSIZ)
@@ -579,7 +583,33 @@ void  bindtodevice(char *device, int fd)
   /* only allowed by root. */
   if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, device, len) == -1 &&
       errno != EPERM)
-    die(_("failed to set SO_BINDTODEVICE on DHCP socket: %s"), NULL, EC_BADNET);
+    return 2;
+  
+  return 1;
+}
+
+int bind_dhcp_devices(char *bound_device)
+{
+  int ret = 0;
+
+  if (bound_device)
+    {
+      if (daemon->dhcp)
+	{
+	  if (!daemon->relay4)
+	    ret |= bindtodevice(bound_device, daemon->dhcpfd);
+	  
+	  if (daemon->enable_pxe && daemon->pxefd != -1)
+	    ret |= bindtodevice(bound_device, daemon->pxefd);
+	}
+      
+#if defined(HAVE_DHCP6)
+      if (daemon->doing_dhcp6 && !daemon->relay6)
+	ret |= bindtodevice(bound_device, daemon->dhcp6fd);
+#endif
+    }
+  
+  return ret;
 }
 #endif
 
