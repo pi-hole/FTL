@@ -493,7 +493,7 @@
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-3 17.02 blocklist blocklist" ]]
+  [[ ${lines[1]} == "-3 17.02 blocked blocked" ]]
   [[ ${lines[2]} == "-2 27.66 cache cache" ]]
   [[ ${lines[3]} == "-1 0.00 other other" ]]
   [[ ${lines[4]} == "0 51.06 127.0.0.1#5555 127.0.0.1#5555" ]]

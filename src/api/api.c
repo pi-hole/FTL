@@ -538,7 +538,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		if(i == -3)
 		{
 			// Blocked queries (local lists)
-			ip = "blocklist";
+			ip = "blocked";
 			name = ip;
 
 			if(counters->queries > 0)
@@ -590,7 +590,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		}
 
 		// Send data:
-		// - always if i < 0 (special upstreams: blocklist and cache)
+		// - always if i < 0 (special upstreams: blocked and cache)
 		// - only if percentage > 0.0 for all others (i > 0)
 		if(percentage > 0.0f || i < 0)
 		{
@@ -731,7 +731,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		sscanf(client_message, ">getallqueries-forward %255s", forwarddest);
 		filterforwarddest = true;
 
-		if(strcmp(forwarddest, "blocklist") == 0)
+		if(strcmp(forwarddest, "blocked") == 0)
 			forwarddestid = -3;
 		else if(strcmp(forwarddest, "cache") == 0)
 			forwarddestid = -2;
