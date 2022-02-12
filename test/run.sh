@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Only run tests on x86_64, x86_64-musl, and x86_32 targets
-if [[ ${CI} == "true" && "${CIRCLE_JOB}" != "x86_64" &&  "${CIRCLE_JOB}" != "x86_64-musl" && "${CIRCLE_JOB}" != "x86_32" ]]; then
-  echo "Skipping tests (CIRCLE_JOB: ${CIRCLE_JOB})!"
+if [[ ${CI} == "true" && "${CI_ARCH}" != "x86_64" &&  "${CI_ARCH}" != "x86_64-musl" && "${CI_ARCH}" != "x86_32" ]]; then
+  echo "Skipping tests (CI_ARCH: ${CI_ARCH})!"
   exit 0
 fi
 
@@ -36,12 +36,12 @@ chmod +x /home/pihole/pihole-FTL
 setcap CAP_NET_BIND_SERVICE+eip /home/pihole/pihole-FTL
 
 # Prepare gravity database
-sqlite3 /etc/pihole/gravity.db < test/gravity.db.sql
+./pihole-FTL sqlite3 /etc/pihole/gravity.db < test/gravity.db.sql
 chown pihole:pihole /etc/pihole/gravity.db
 
 # Prepare pihole-FTL database
 rm -rf /etc/pihole/pihole-FTL.db
-sqlite3 /etc/pihole/pihole-FTL.db < test/pihole-FTL.db.sql
+./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db < test/pihole-FTL.db.sql
 chown pihole:pihole /etc/pihole/pihole-FTL.db
 
 # Prepare setupVars.conf

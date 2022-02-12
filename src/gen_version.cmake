@@ -68,9 +68,9 @@ else()
     )
 endif()
 
-# If CIRCLE_JOB is unset (local compilation), ask uname -m and add locally compiled comment
-if(DEFINED ENV{CIRCLE_JOB})
-    set(FTL_ARCH "$ENV{CIRCLE_JOB} (compiled on CI)")
+# If CI_ARCH is unset (local compilation), ask uname -m and add locally compiled comment
+if(DEFINED ENV{CI_ARCH})
+    set(FTL_ARCH "$ENV{CI_ARCH} (compiled on CI)")
 else()
     execute_process(
             COMMAND           uname -m

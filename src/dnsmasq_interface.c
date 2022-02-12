@@ -60,9 +60,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const queriesData *query, const domainsData *domain);
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
-static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
+static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, unsigned short port, const int id, const char* file, const int line);
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char* arg, const int id, const char* file, const int line);
-static void FTL_upstream_error(const union all_addr *addr, const int id, const char* file, const int line);
+static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char* file, const int line);
 static void FTL_dnssec(const char *result, const union all_addr *addr, const int id, const char* file, const int line);
 static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
@@ -73,7 +73,6 @@ static char *get_ptrname(struct in_addr *addr);
 
 // Static blocking metadata
 static const char *blockingreason = "";
-static union all_addr null_addrp = {{ 0 }};
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static int last_regex_idx = -1;
 static struct ptr_record *pihole_ptr = NULL;
@@ -116,14 +115,14 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 	if((flags & F_QUERY) && (flags & F_FORWARD))
 		; // New query, handled by FTL_new_query via separate call
 	else if(flags & F_FORWARD && flags & F_SERVER)
-		// forwarded upstream
-		FTL_forwarded(flags, name, addr, id, path, line);
+		// forwarded upstream (type is used to store the upstream port)
+		FTL_forwarded(flags, name, addr, type, id, path, line);
 	else if(flags == F_SECSTAT)
 		// DNSSEC validation result
 		FTL_dnssec(arg, addr, id, path, line);
-	else if(flags == (F_UPSTREAM | F_RCODE) && name && strcasecmp(name, "error") == 0)
+	else if(flags & F_RCODE && name && strcasecmp(name, "error") == 0)
 		// upstream sent something different than NOERROR or NXDOMAIN
-		FTL_upstream_error(addr, id, path, line);
+		FTL_upstream_error(addr, flags, id, path, line);
 	else if(flags & F_NOEXTRA && flags & F_DNSSEC)
 	{
 		// This is a new DNSSEC query (dnssec-query[DS])
@@ -131,19 +130,19 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 			return;
 
 		const ednsData edns = { 0 };
-		union mysockaddr saddr = {{ 0 }};
-		if(flags & F_IPV4)
-		{
-			saddr.in.sin_addr = addr->addr4;
-			saddr.sa.sa_family = AF_INET;
-		}
-		else
-		{
-			memcpy(&saddr.in6.sin6_addr, &addr->addr6, sizeof(addr->addr6));
-			saddr.sa.sa_family = AF_INET;
-		}
-		_FTL_new_query(flags, name, NULL, arg, type, id, &edns, INTERNAL, file, line);
-		FTL_forwarded(flags, name, addr, id, path, line);
+
+		// Type is overloaded with port since 2d65d55, so we have to
+		// derive the real query type from the arg string
+		unsigned short qtype = type;
+		if(strcmp(arg, "dnssec-query[DNSKEY]") == 0)
+			qtype = T_DNSKEY;
+		else if(strcmp(arg, "dnssec-query[DS]") == 0)
+			qtype = T_DS;
+		arg = (char*)"dnssec-query";
+
+		_FTL_new_query(flags, name, NULL, arg, qtype, id, &edns, INTERNAL, file, line);
+		// forwarded upstream (type is used to store the upstream port)
+		FTL_forwarded(flags, name, addr, type, id, path, line);
 	}
 	else if(flags & F_AUTH)
 		; // Ignored
@@ -322,21 +321,28 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Add A answer record if requested
 	if(flags & F_IPV4)
 	{
-		union all_addr *addr = &null_addrp;
+		union all_addr addr = {{ 0 }};
 
 		// Overwrite with IP address if requested
 		if(redirecting)
-			addr = &redirect_addr4;
+			memcpy(&addr, &redirect_addr4, sizeof(addr));
 		else if(config.blockingmode == MODE_IP ||
 		        config.blockingmode == MODE_IP_NODATA_AAAA ||
 		        forced_ip)
-			addr = &next_iface.addr4;
+		{
+			if(hostname && config.reply_addr.own_host.overwrite_v4)
+				memcpy(&addr, &config.reply_addr.own_host.v4, sizeof(addr));
+			else if(!hostname && config.reply_addr.ip_blocking.overwrite_v4)
+				memcpy(&addr, &config.reply_addr.ip_blocking.v4, sizeof(addr));
+			else
+				memcpy(&addr, &next_iface.addr4, sizeof(addr));
+		}
 
 		// Debug logging
 		if(config.debug & DEBUG_QUERIES)
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
-			alladdr_extract_ip(addr, AF_INET, ip);
+			alladdr_extract_ip(&addr, AF_INET, ip);
 			logg("  Adding RR: \"%s A %s\"", name, ip);
 		}
 
@@ -344,27 +350,34 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
-		                       NULL, T_A, C_IN, (char*)"4", &addr->addr4))
-			log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason, 0);
+		                       NULL, T_A, C_IN, (char*)"4", &addr.addr4))
+			log_query(flags & ~F_IPV6, name, &addr, (char*)blockingreason, 0);
 	}
 
 	// Add AAAA answer record if requested
 	if(flags & F_IPV6)
 	{
-		union all_addr *addr = &null_addrp;
+		union all_addr addr = {{ 0 }};
 
 		// Overwrite with IP address if requested
 		if(redirecting)
-			addr = &redirect_addr6;
+			memcpy(&addr, &redirect_addr6, sizeof(addr));
 		else if(config.blockingmode == MODE_IP ||
 		        forced_ip)
-			addr = &next_iface.addr6;
+		{
+			if(hostname && config.reply_addr.own_host.overwrite_v6)
+				memcpy(&addr, &config.reply_addr.own_host.v6, sizeof(addr));
+			else if(!hostname && config.reply_addr.ip_blocking.overwrite_v6)
+				memcpy(&addr, &config.reply_addr.ip_blocking.v6, sizeof(addr));
+			else
+				memcpy(&addr, &next_iface.addr6, sizeof(addr));
+		}
 
 		// Debug logging
 		if(config.debug & DEBUG_QUERIES)
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
-			alladdr_extract_ip(addr, AF_INET6, ip);
+			alladdr_extract_ip(&addr, AF_INET6, ip);
 			logg("  Adding RR: \"%s AAAA %s\"", name, ip);
 		}
 
@@ -372,8 +385,8 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
-		                       NULL, T_AAAA, C_IN, (char*)"6", &addr->addr6))
-			log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason, 0);
+		                       NULL, T_AAAA, C_IN, (char*)"6", &addr.addr6))
+			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
 	}
 
 	// Log empty replies
@@ -507,8 +520,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			// Send NODATA when the current interface doesn't have
 			// the requested IP address, for instance AAAA on an
 			// virtual interface that has only an IPv4 address
-			if((querytype == TYPE_A && !next_iface.haveIPv4) ||
-			   (querytype == TYPE_AAAA && !next_iface.haveIPv6))
+			if((querytype == TYPE_A &&
+			    !next_iface.haveIPv4 &&
+			    !config.reply_addr.own_host.overwrite_v4) ||
+			   (querytype == TYPE_AAAA &&
+			    !next_iface.haveIPv6 &&
+			    !config.reply_addr.own_host.overwrite_v6))
 				force_next_DNS_reply = REPLY_NODATA;
 			else
 				force_next_DNS_reply = REPLY_IP;
@@ -820,40 +837,14 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	if(config.debug & DEBUG_NETWORKING)
 		logg("Interfaces: Called from %s:%d", short_path(file), line);
 
-	// Copy overwrite addresses if configured via REPLY_ADDR4 and/or REPLY_ADDR6 settings
-	if(config.reply_addr.overwrite_v4)
-	{
-		memcpy(&next_iface.addr4, &config.reply_addr.v4, sizeof(config.reply_addr.v4));
-		next_iface.haveIPv4 = true;
-
-		if(config.debug & DEBUG_NETWORKING)
-		{
-			char buffer[ADDRSTRLEN+1] = { 0 };
-			inet_ntop(AF_INET, &next_iface.addr4, buffer, ADDRSTRLEN);
-			logg("Configuration overwrites IPv4 address: %s", buffer);
-		}
-	}
-	if(config.reply_addr.overwrite_v6)
-	{
-		memcpy(&next_iface.addr6, &config.reply_addr.v6, sizeof(config.reply_addr.v6));
-		next_iface.haveIPv6 = true;
-
-		if(config.debug & DEBUG_NETWORKING)
-		{
-			char buffer[ADDRSTRLEN+1] = { 0 };
-			inet_ntop(AF_INET6, &next_iface.addr6, buffer, ADDRSTRLEN);
-			logg("Configuration overwrites IPv6 address: %s", buffer);
-		}
-	}
-
 	// Use dummy when interface record is not available
 	next_iface.name[0] = '-';
 	next_iface.name[1] = '\0';
 
 	// Check if we need to identify the receving interface by its address
 	if(!recviface && addr &&
-	   ((addrfamily == AF_INET && addr->addr4.s_addr != 0) ||
-	    (addrfamily == AF_INET6 && addr->addr6.s6_addr[0] != 0)))
+	   ((addrfamily == AF_INET && addr->addr4.s_addr != INADDR_ANY) ||
+	    (addrfamily == AF_INET6 && !IN6_IS_ADDR_UNSPECIFIED(&addr->addr6))))
 	{
 		if(config.debug & DEBUG_NETWORKING)
 		{
@@ -952,17 +943,6 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		// Copy interface name
 		strncpy(next_iface.name, iname, sizeof(next_iface.name)-1);
 		next_iface.name[sizeof(next_iface.name)-1] = '\0';
-
-		// Check if this family type is overwritten by config settings
-		// We logged this above
-		if((config.reply_addr.overwrite_v4 && family == AF_INET) ||
-		   (config.reply_addr.overwrite_v6 && family == AF_INET6))
-		   {
-			if(config.debug & DEBUG_NETWORKING)
-				logg("  - SKIP IPv%d interface %s: REPLY_ADDR%d used",
-				     family == AF_INET ? 4 : 6, iname, family == AF_INET ? 4 : 6);
-			continue;
-		   }
 
 		bool isULA = false, isGUA = false, isLL = false;
 		// Check if this address is different from 0000:0000:0000:0000:0000:0000:0000:0000
@@ -1639,7 +1619,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 }
 
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr,
-                          const int id, const char* file, const int line)
+                          unsigned short port, const int id, const char* file, const int line)
 {
 	// Save that this query got forwarded to an upstream server
 
@@ -1657,19 +1637,23 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 		{
 			inet_ntop(AF_INET, addr, dest, ADDRSTRLEN);
 			// Reverse-engineer port from underlying sockaddr_in structure
-			const in_port_t *port = (in_port_t*)((void*)addr
+			const in_port_t *rport = (in_port_t*)((void*)addr
 			                                     - offsetof(struct sockaddr_in, sin_addr)
 			                                     + offsetof(struct sockaddr_in, sin_port));
-			upstreamPort = ntohs(*port);
+			upstreamPort = ntohs(*rport);
+			if(upstreamPort != port)
+				logg("ERR: Port mismatch for %s: we derived %d, dnsmasq told us %d", dest, upstreamPort, port);
 		}
 		else
 		{
 			inet_ntop(AF_INET6, addr, dest, ADDRSTRLEN);
 			// Reverse-engineer port from underlying sockaddr_in6 structure
-			const in_port_t *port = (in_port_t*)((void*)addr
+			const in_port_t *rport = (in_port_t*)((void*)addr
 			                                     - offsetof(struct sockaddr_in6, sin6_addr)
 			                                     + offsetof(struct sockaddr_in6, sin6_port));
-			upstreamPort = ntohs(*port);
+			upstreamPort = ntohs(*rport);
+			if(upstreamPort != port)
+				logg("ERR: Port mismatch for %s: we derived %d, dnsmasq told us %d", dest, upstreamPort, port);
 		}
 	}
 
@@ -2376,9 +2360,9 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 	unlock_shm();
 }
 
-static void FTL_upstream_error(const union all_addr *addr, const int id, const char* file, const int line)
+static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char* file, const int line)
 {
-	// Process upstream errors
+	// Process local and upstream errors
 	// Queries with error are those where the RCODE
 	// in the DNS header is neither NOERROR nor NXDOMAIN.
 
@@ -2450,10 +2434,18 @@ static void FTL_upstream_error(const union all_addr *addr, const int id, const c
 		else
 			domainname = "<cannot access domain struct>";
 
-		if(last_server.sa.sa_family == 0)
+		if(flags & F_CONFIG)
+		{
+			// Log local error, typically "nowhere to forward to"
+			logg("**** local error (nowhere to forward to): %s is %s (ID %i, %s:%i)",
+			     domainname, rcodestr, id, file, line);
+		}
+		else if(last_server.sa.sa_family == 0)
+		{
 			// Log error reply from unknown source
 			logg("**** got error reply: %s is %s (ID %i, %s:%i)",
 			     domainname, rcodestr, id, file, line);
+		}
 		else
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };

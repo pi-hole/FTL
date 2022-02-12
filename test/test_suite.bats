@@ -11,10 +11,17 @@
   [[ ${lines[6]} == "" ]]
 }
 
-@test "DNS server port is reported" {
+@test "DNS server port is reported over Telnet API" {
   run bash -c 'echo ">dns-port >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "53" ]]
+  [[ ${lines[2]} == "" ]]
+}
+
+@test "Maxlogage value is reported over Telnet API" {
+  run bash -c 'echo ">maxlogage >quit" | nc -v 127.0.0.1 4711'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "86400" ]]
   [[ ${lines[2]} == "" ]]
 }
 
@@ -399,7 +406,7 @@
   [[ ${lines[5]} == "unique_domains 35" ]]
   [[ ${lines[6]} == "queries_forwarded 26" ]]
   [[ ${lines[7]} == "queries_cached 13" ]]
-  # Clients ever seen is commented out as CircleCI may have
+  # Clients ever seen is commented out as the CI may have
   # more devices in its ARP cache so testing against a fixed
   # number of clients may not work in all cases
   #[[ ${lines[8]} == "clients_ever_seen 8" ]]
@@ -486,11 +493,12 @@
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 17.02 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 27.66 cache cache" ]]
-  [[ ${lines[3]} == "0 51.06 127.0.0.1#5555 127.0.0.1#5555" ]]
-  [[ ${lines[4]} == "1 4.26 127.0.0.1#5554 127.0.0.1#5554" ]]
-  [[ ${lines[5]} == "" ]]
+  [[ ${lines[1]} == "-3 17.02 blocked blocked" ]]
+  [[ ${lines[2]} == "-2 27.66 cached cached" ]]
+  [[ ${lines[3]} == "-1 0.00 other other" ]]
+  [[ ${lines[4]} == "0 51.06 127.0.0.1#5555 127.0.0.1#5555" ]]
+  [[ ${lines[5]} == "1 4.26 127.0.0.1#5554 127.0.0.1#5554" ]]
+  [[ ${lines[6]} == "" ]]
 }
 
 @test "Query Types reported correctly" {
@@ -585,17 +593,26 @@
 }
 
 @test "pihole-FTL.db schema is as expected" {
-  run bash -c 'sqlite3 /etc/pihole/pihole-FTL.db .dump'
+  run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db .dump'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"CREATE TABLE queries (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT, additional_info TEXT);"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"query_storage\" (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER, additional_info INTEGER, reply_type INTEGER, reply_time REAL, dnssec INTEGER);"* ]]
+  [[ "${lines[@]}" == *"CREATE INDEX idx_queries_timestamps ON \"query_storage\" (timestamp);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE ftl (id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE counters (id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network\" (id INTEGER PRIMARY KEY NOT NULL, hwaddr TEXT UNIQUE NOT NULL, interface TEXT NOT NULL, firstSeen INTEGER NOT NULL, lastQuery INTEGER NOT NULL, numQueries INTEGER NOT NULL, macVendor TEXT, aliasclient_id INTEGER);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network_addresses\" (network_id INTEGER NOT NULL, ip TEXT UNIQUE NOT NULL, lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), name TEXT, nameUpdated INTEGER, FOREIGN KEY(network_id) REFERENCES network(id));"* ]]
-  [[ "${lines[@]}" == *"CREATE INDEX idx_queries_timestamps ON queries (timestamp);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE aliasclient (id INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, comment TEXT);"* ]]
-  # Depending on the version of sqlite3, ftl can be enquoted or not...
-  [[ "${lines[@]}" == *"INSERT INTO"?*"ftl"?*"VALUES(0,9);"* ]]
+  [[ "${lines[@]}" == *"INSERT INTO ftl VALUES(0,12);"* ]] # Expecting FTL database version 12
+  # vvv This has been added in version 10 vvv
+  [[ "${lines[@]}" == *"CREATE VIEW queries AS SELECT id, timestamp, type, status, CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,CASE typeof(additional_info) WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, reply_type, reply_time, dnssec FROM query_storage q;"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE domain_by_id (id INTEGER PRIMARY KEY, domain TEXT NOT NULL);"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE client_by_id (id INTEGER PRIMARY KEY, ip TEXT NOT NULL, name TEXT);"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE forward_by_id (id INTEGER PRIMARY KEY, forward TEXT NOT NULL);"* ]]
+  [[ "${lines[@]}" == *"CREATE UNIQUE INDEX domain_by_id_domain_idx ON domain_by_id(domain);"* ]]
+  [[ "${lines[@]}" == *"CREATE UNIQUE INDEX client_by_id_client_idx ON client_by_id(ip,name);"* ]]
+  # vvv This has been added in version 11 vvv
+  [[ "${lines[@]}" == *"CREATE TABLE addinfo_by_id (id INTEGER PRIMARY KEY, type INTEGER NOT NULL, content NOT NULL);"* ]]
+  [[ "${lines[@]}" == *"CREATE UNIQUE INDEX addinfo_by_id_idx ON addinfo_by_id(type,content);"* ]]
 }
 
 @test "Ownership, permissions and type of pihole-FTL.db correct" {
@@ -976,6 +993,34 @@
   [[ ${lines[0]} == "fe80::1234" ]]
 }
 
+@test "Regex Test 47: Option \";querytype=A\" reported on CLI" {
+  run bash -c './pihole-FTL regex-test "f" f\;querytype=A'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[4]} == "    Hint: This regex matches only type A queries" ]]
+}
+
+@test "Regex Test 48: Option \";querytype=!TXT\" reported on CLI" {
+  run bash -c './pihole-FTL regex-test "f" f\;querytype=!TXT'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[4]} == "    Hint: This regex does not match type TXT queries" ]]
+}
+
+@test "Regex Test 49: Option \";reply=NXDOMAIN\" reported on CLI" {
+  run bash -c './pihole-FTL regex-test "f" f\;reply=NXDOMAIN'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[4]} == "    Hint: This regex forces reply type NXDOMAIN" ]]
+}
+
+@test "Regex Test 50: Option \";invert\" reported on CLI" {
+  run bash -c './pihole-FTL regex-test "f" g\;invert'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[4]} == "    Hint: This regex is inverted" ]]
+}
+
 # x86_64-musl is built on busybox which has a slightly different
 # variant of ls displaying three, instead of one, spaces between the
 # user and group names.
@@ -1023,14 +1068,14 @@
 
 @test "Architecture is correctly reported on startup" {
   run bash -c 'grep "Compiled for" /var/log/pihole-FTL.log'
-  printf "Output: %s\n\$CIRCLE_JOB: %s\nuname -m: %s\n" "${lines[@]:-not set}" "${CIRCLE_JOB:-not set}" "$(uname -m)"
-  [[ ${lines[0]} == *"Compiled for ${CIRCLE_JOB:-$(uname -m)}"* ]]
+  printf "Output: %s\n\$CI_ARCH: %s\nuname -m: %s\n" "${lines[@]:-not set}" "${CI_ARCH:-not set}" "$(uname -m)"
+  [[ ${lines[0]} == *"Compiled for ${CI_ARCH:-$(uname -m)}"* ]]
 }
 
 @test "Building machine (CI) is reported on startup" {
-  [[ ${CIRCLE_JOB} != "" ]] && compiled_str="on CI" || compiled_str="locally" && export compiled_str
+  [[ ${CI_ARCH} != "" ]] && compiled_str="on CI" || compiled_str="locally" && export compiled_str
   run bash -c 'grep "Compiled for" /var/log/pihole-FTL.log'
-  printf "Output: %s\n\$CIRCLE_JOB: %s\n" "${lines[@]:-not set}" "${CIRCLE_JOB:-not set}"
+  printf "Output: %s\n\$CI_ARCH: %s\n" "${lines[@]:-not set}" "${CI_ARCH:-not set}"
   [[ ${lines[0]} == *"(compiled ${compiled_str})"* ]]
 }
 
@@ -1233,4 +1278,34 @@
   run bash -c "bash test/dnsmasq_warnings.sh"
   printf "%s\n" "${lines[@]}"
   [[ "${lines[0]}" == "" ]]
+}
+
+@test "Pi-hole uses LOCAL_IPV4/6 for pi.hole" {
+  run bash -c "dig A pi.hole +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "10.100.0.10" ]]
+  run bash -c "dig AAAA pi.hole +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "fe80::10" ]]
+}
+
+@test "Pi-hole uses LOCAL_IPV4/6 for hostname" {
+  run bash -c "dig A $(hostname) +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "10.100.0.10" ]]
+  run bash -c "dig AAAA $(hostname) +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "fe80::10" ]]
+}
+
+@test "Pi-hole uses BLOCK_IPV4/6 for blocked domain" {
+  echo "BLOCKINGMODE=IP" >> /etc/pihole/pihole-FTL.conf
+  run bash -c "kill -HUP $(cat /run/pihole-FTL.pid)"
+  sleep 2
+  run bash -c "dig A blacklisted.ftl +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "10.100.0.11" ]]
+  run bash -c "dig AAAA blacklisted.ftl +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "fe80::11" ]]
 }

@@ -155,7 +155,7 @@ bool gravityDB_open(void)
 	//            matches 'google.de' and all of its subdomains but
 	//            also other domains starting in google.de, like
 	//            abcgoogle.de
-	rc = sqlite3_prepare_v2(gravity_db,
+	rc = sqlite3_prepare_v3(gravity_db,
 	        "SELECT EXISTS("
 	          "SELECT domain, "
 	            "CASE WHEN substr(domain, 1, 1) = '*' " // Does the database string start in '*' ?
@@ -163,7 +163,7 @@ bool gravityDB_open(void)
 	              "ELSE :input " // If not: Use input domain directly for comparison
 	            "END matcher "
 	          "FROM domain_audit WHERE matcher = domain" // Match where (modified) domain equals the database domain
-	        ");", -1, &auditlist_stmt, NULL);
+	        ");", -1, SQLITE_PREPARE_PERSISTENT, &auditlist_stmt, NULL);
 
 	if( rc != SQLITE_OK )
 	{
@@ -867,7 +867,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 		logg("gravityDB_open(): Preparing vw_whitelist statement for client %s", clientip);
 	querystr = get_client_querystr("vw_whitelist", getstr(client->groupspos));
 	sqlite3_stmt* stmt = NULL;
-	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... vw_whitelist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
@@ -881,7 +881,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
 	querystr = get_client_querystr("vw_gravity", getstr(client->groupspos));
-	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... vw_gravity ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
@@ -895,7 +895,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing vw_blacklist statement for client %s", clientip);
 	querystr = get_client_querystr("vw_blacklist", getstr(client->groupspos));
-	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... vw_blacklist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));

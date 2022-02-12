@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -51,6 +51,9 @@ const char* introspection_xml_template =
 "    </method>\n"
 "    <method name=\"SetFilterWin2KOption\">\n"
 "      <arg name=\"filterwin2k\" direction=\"in\" type=\"b\"/>\n"
+"    </method>\n"
+"    <method name=\"SetLocaliseQueriesOption\">\n"
+"      <arg name=\"localise-queries\" direction=\"in\" type=\"b\"/>\n"
 "    </method>\n"
 "    <method name=\"SetBogusPrivOption\">\n"
 "      <arg name=\"boguspriv\" direction=\"in\" type=\"b\"/>\n"
@@ -693,6 +696,10 @@ DBusHandlerResult message_handler(DBusConnection *connection,
   else if (strcmp(method, "SetFilterWin2KOption") == 0)
     {
       reply = dbus_set_bool(message, OPT_FILTER, "filterwin2k");
+    }
+  else if (strcmp(method, "SetLocaliseQueriesOption") == 0)
+    {
+      reply = dbus_set_bool(message, OPT_LOCALISE, "localise-queries");
     }
   else if (strcmp(method, "SetBogusPrivOption") == 0)
     {

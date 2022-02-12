@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -66,17 +66,10 @@ char *netlink_init(void)
   addr.nl_pad = 0;
   addr.nl_pid = 0; /* autobind */
   addr.nl_groups = RTMGRP_IPV4_ROUTE;
-  if (option_bool(OPT_CLEVERBIND))
-    addr.nl_groups |= RTMGRP_IPV4_IFADDR;  
+  addr.nl_groups |= RTMGRP_IPV4_IFADDR;  
   addr.nl_groups |= RTMGRP_IPV6_ROUTE;
-  if (option_bool(OPT_CLEVERBIND))
-    addr.nl_groups |= RTMGRP_IPV6_IFADDR;
+  addr.nl_groups |= RTMGRP_IPV6_IFADDR;
 
-#ifdef HAVE_DHCP6
-  if (daemon->doing_ra || daemon->doing_dhcp6)
-    addr.nl_groups |= RTMGRP_IPV6_IFADDR;
-#endif
-  
   /* May not be able to have permission to set multicast groups don't die in that case */
   if ((daemon->netlinkfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE)) != -1)
     {

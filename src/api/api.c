@@ -498,7 +498,7 @@ void getTopClients(const char *client_message, const int *sock)
 void getUpstreamDestinations(const char *client_message, const int *sock)
 {
 	bool sort = true;
-	int temparray[counters->upstreams][2], totalqueries = 0, totalcount = 0;
+	int temparray[counters->upstreams][2], totalcount = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
@@ -525,34 +525,45 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		qsort(temparray, counters->upstreams, sizeof(int[2]), cmpdesc);
 	}
 
-	totalqueries = totalcount + cached_queries() + blocked_queries();
+	const int totalqueries = totalcount + cached_queries() + blocked_queries();
+	const int others = counters->queries - totalqueries;
 
 	// Loop over available forward destinations
-	for(int i = -2; i < min(counters->upstreams, 8); i++)
+	for(int i = -3; i < min(counters->upstreams, 8); i++)
 	{
 		float percentage = 0.0f;
 		const char *ip, *name;
 		in_port_t upstream_port = 0;
 
-		if(i == -2)
+		if(i == -3)
 		{
 			// Blocked queries (local lists)
-			ip = "blocklist";
+			ip = "blocked";
 			name = ip;
 
-			if(totalqueries > 0)
-				// Whats the percentage of locked queries on the total amount of queries?
-				percentage = 1e2f * blocked_queries() / totalqueries;
+			if(counters->queries > 0)
+				// Whats the percentage of blocked queries on the total amount of queries?
+				percentage = 1e2f * blocked_queries() / counters->queries;
+		}
+		else if(i == -2)
+		{
+			// Local cache
+			ip = "cached";
+			name = ip;
+
+			if(counters->queries > 0)
+				// Whats the percentage of cached queries on the total amount of queries?
+				percentage = 1e2f * cached_queries() / counters->queries;
 		}
 		else if(i == -1)
 		{
-			// Local cache
-			ip = "cache";
+			// Others
+			ip = "other";
 			name = ip;
 
-			if(totalqueries > 0)
+			if(counters->queries > 0)
 				// Whats the percentage of cached queries on the total amount of queries?
-				percentage = 1e2f * cached_queries() / totalqueries;
+				percentage = 1e2f * others / counters->queries;
 		}
 		else
 		{
@@ -574,12 +585,12 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			upstream_port = upstream->port;
 
 			// Get percentage
-			if(totalqueries > 0)
-				percentage = 1e2f * count / totalqueries;
+			if(counters->queries > 0)
+				percentage = 1e2f * count / counters->queries;
 		}
 
 		// Send data:
-		// - always if i < 0 (special upstreams: blocklist and cache)
+		// - always if i < 0 (special upstreams: blocked and cached)
 		// - only if percentage > 0.0 for all others (i > 0)
 		if(percentage > 0.0f || i < 0)
 		{
@@ -720,10 +731,12 @@ void getAllQueries(const char *client_message, const int *sock)
 		sscanf(client_message, ">getallqueries-forward %255s", forwarddest);
 		filterforwarddest = true;
 
-		if(strcmp(forwarddest, "cache") == 0)
-			forwarddestid = -1;
-		else if(strcmp(forwarddest, "blocklist") == 0)
+		if(strcmp(forwarddest, "blocked") == 0)
+			forwarddestid = -3;
+		else if(strcmp(forwarddest, "cached") == 0)
 			forwarddestid = -2;
+		else if(strcmp(forwarddest, "other") == 0)
+			forwarddestid = -1;
 		else
 		{
 			// Extract address/name and port
@@ -976,10 +989,13 @@ void getAllQueries(const char *client_message, const int *sock)
 		if(filterforwarddest)
 		{
 			// Skip if not from the virtual blocking "upstream" server
-			if(forwarddestid == -2 && !query->flags.blocked)
+			if(forwarddestid == -3 && !query->flags.blocked)
 				continue;
 			// Does the user want to see queries answered from local cache?
-			else if(forwarddestid == -1 && query->status != QUERY_CACHE)
+			else if(forwarddestid == -2 && query->status != QUERY_CACHE)
+				continue;
+			// Does the user want to see queries from the "other" category
+			else if(forwarddestid == -1 && query->status != QUERY_IN_PROGRESS)
 				continue;
 			// Does the user want to see queries answered by an upstream server?
 			else if(forwarddestid >= 0 && forwarddestid != query->upstreamID)
@@ -1478,4 +1494,10 @@ void getDNSport(const int *sock)
 {
 	// Return DNS port used by FTL
 	ssend(*sock, "%d\n", config.dns_port);
+}
+
+void getMAXLOGAGE(const int *sock)
+{
+	// Return maxlogage used by FTL
+	ssend(*sock, "%d\n", config.maxlogage);
 }

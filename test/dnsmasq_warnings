@@ -85,9 +85,9 @@ src/dnsmasq/forward.c
 src/dnsmasq/forward.c
       my_syslog(LOG_WARNING, _("reducing DNS packet size for nameserver %s to %d"), daemon->addrbuff, SAFE_PKTSZ);
 src/dnsmasq/forward.c
-	      my_syslog(LOG_WARNING, _("Ignoring query from non-local network"));
+	      my_syslog(LOG_WARNING, _("ignoring query from non-local network %s (logged only once)"), daemon->addrbuff);
 src/dnsmasq/forward.c
-	  my_syslog(LOG_WARNING, _("Ignoring query from non-local network"));
+	  my_syslog(LOG_WARNING, _("ignoring query from non-local network %s"), daemon->addrbuff);
 src/dnsmasq/forward.c
 	my_syslog(LOG_WARNING, _("Maximum number of concurrent DNS queries reached (max: %d)"), daemon->ftabsize);
 src/dnsmasq/forward.c

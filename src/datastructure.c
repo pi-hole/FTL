@@ -40,6 +40,24 @@ void strtolower(char *str)
 	while(str[i]){ str[i] = tolower(str[i]); i++; }
 }
 
+// creates a simple hash of a string that fits into a uint32_t
+uint32_t hashStr(const char *s)
+{
+        uint32_t hash = 0;
+        // Jenkins' One-at-a-Time hash (http://www.burtleburtle.net/bob/hash/doobs.html)
+        for(; *s; ++s)
+        {
+                hash += *s;
+                hash += hash << 10;
+                hash ^= hash >> 6;
+        }
+
+        hash += hash << 3;
+        hash ^= hash >> 11;
+        hash += hash << 15;
+        return hash;
+}
+
 int findQueryID(const int id)
 {
 	// Loop over all queries - we loop in reverse order (start from the most recent query and
@@ -121,6 +139,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 
 int findDomainID(const char *domainString, const bool count)
 {
+	uint32_t domainHash = hashStr(domainString);
 	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
@@ -130,8 +149,8 @@ int findDomainID(const char *domainString, const bool count)
 		if(domain == NULL)
 			continue;
 
-		// Quick test: Does the domain start with the same character?
-		if(getstr(domain->domainpos)[0] != domainString[0])
+		// Quicker test: Does the domain match the pre-computed hash?
+		if(domain->domainhash != domainHash)
 			continue;
 
 		// If so, compare the full domain using strcmp
@@ -164,6 +183,8 @@ int findDomainID(const char *domainString, const bool count)
 	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domain->domainpos = addstr(domainString);
+	// Store pre-computed hash of domain for faster lookups later on
+	domain->domainhash = hashStr(domainString);
 	// Increase counter by one
 	counters->domains++;
 
@@ -587,4 +608,42 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 
 	// Update status
 	query->status = new_status;
+}
+
+const char * __attribute__ ((const)) get_query_reply_str(const enum reply_type reply)
+{
+	switch(reply)
+	{
+		case REPLY_UNKNOWN:
+			return "UNKNOWN";
+		case REPLY_NODATA:
+			return "NODATA";
+		case REPLY_NXDOMAIN:
+			return "NXDOMAIN";
+		case REPLY_CNAME:
+			return "CNAME";
+		case REPLY_IP:
+			return "IP";
+		case REPLY_DOMAIN:
+			return "DOMAIN";
+		case REPLY_RRNAME:
+			return "RRNAME";
+		case REPLY_SERVFAIL:
+			return "SERVFAIL";
+		case REPLY_REFUSED:
+			return "REFUSED";
+		case REPLY_NOTIMP:
+			return "NOTIMP";
+		case REPLY_OTHER:
+			return "OTHER";
+		case REPLY_DNSSEC:
+			return "DNSSEC";
+		case REPLY_NONE:
+			return "NONE";
+		case REPLY_BLOB:
+			return "BLOB";
+		default:
+		case QUERY_REPLY_MAX:
+			return "INVALID";
+	}
 }
