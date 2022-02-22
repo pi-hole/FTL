@@ -4978,26 +4978,20 @@ err:
   return 1;
 }
 
-static void read_file(char *file, FILE *f, int hard_opt)	
+static void read_file(char *file, FILE *f, int hard_opt, int from_script)	
 {
   volatile int lineno = 0;
   char *buff = daemon->namebuff;
   
   while (fgets(buff, MAXDNAME, f))
     {
-      int white, i, script = 0;
+      int white, i;
       volatile int option;
       char *errmess, *p, *arg, *start;
       size_t len;
 
-      if (hard_opt == LOPT_CONF_SCRIPT)
-	{
-	  hard_opt = 0;
-	  script = 1;
-	}
-      
       option = (hard_opt == LOPT_REV_SERV) ? 0 : hard_opt;
- 
+
       /* Memory allocation failure longjmps here if mem_recover == 1 */ 
       if (option != 0 || hard_opt == LOPT_REV_SERV)
 	{
@@ -5005,7 +4999,7 @@ static void read_file(char *file, FILE *f, int hard_opt)
 	    continue;
 	  mem_recover = 1;
 	}
-      
+
       arg = NULL;
       lineno++;
       errmess = NULL;
@@ -5111,7 +5105,7 @@ static void read_file(char *file, FILE *f, int hard_opt)
 	  
       if (errmess || !one_opt(option, arg, daemon->namebuff, _("error"), 0, hard_opt == LOPT_REV_SERV))
 	{
-	  if (script)
+	  if (from_script)
 	    sprintf(daemon->namebuff + strlen(daemon->namebuff), _(" in output from %s"), file);
 	  else
 	    sprintf(daemon->namebuff + strlen(daemon->namebuff), _(" at line %d of %s"), lineno, file);
@@ -5157,8 +5151,14 @@ static int one_file(char *file, int hard_opt)
       hard_opt = 0;
       nofile_ok = 1;
     }
-  
-  if (hard_opt == 0 && strcmp(file, "-") == 0)
+
+   if (hard_opt == LOPT_CONF_SCRIPT)
+     {
+       hard_opt = 0;
+       do_popen = 1;
+     }
+   
+   if (hard_opt == 0 && !do_popen && strcmp(file, "-") == 0)
     {
       if (read_stdin == 1)
 	return 1;
@@ -5171,12 +5171,6 @@ static int one_file(char *file, int hard_opt)
       /* ignore repeated files. */
       struct stat statbuf;
     
-      if (hard_opt == LOPT_CONF_SCRIPT)
-	{
-	  hard_opt = 0;
-	  do_popen = 1;
-	}
-      
       if (hard_opt == 0 && stat(file, &statbuf) == 0)
 	{
 	  struct fileread *r;
@@ -5215,7 +5209,7 @@ static int one_file(char *file, int hard_opt)
 	} 
     }
   
-  read_file(file, f, do_popen ? LOPT_CONF_SCRIPT : hard_opt);
+   read_file(file, f, hard_opt, do_popen);
 
   if (do_popen)
     {
@@ -5369,7 +5363,7 @@ void read_servers_file(void)
     }
   
   mark_servers(SERV_FROM_FILE);
-  read_file(daemon->servers_file, f, LOPT_REV_SERV);
+  read_file(daemon->servers_file, f, LOPT_REV_SERV, 0);
   fclose(f);
   cleanup_servers();
   check_servers(0);
