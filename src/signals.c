@@ -293,7 +293,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		set_event(RELOAD_PRIVACY_LEVEL);
 
 		// Reload blocking mode
-		set_event(RELOAD_BLOCKINGMODE);
+		set_event(RELOAD_BLOCKINGSTATUS);
 	}
 	else if(rtsig == 2)
 	{
