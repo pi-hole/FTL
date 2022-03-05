@@ -2496,9 +2496,15 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			  else if (!inet_pton(AF_INET6, arg, &new->end6))
 			    ret_err_free(gen_err, new);
 			}
-		      else 
+		      else if (option == 's')
+			{
+			  /* subnet from interface. */
+			  new->interface = opt_string_alloc(comma);
+			  new->al = NULL;
+			}
+		      else
 			ret_err_free(gen_err, new);
-
+		      
 		      if (option != 's' && prefstr)
 			{
 			  if (!(new->prefix = canonicalise_opt(prefstr)) ||

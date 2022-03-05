@@ -987,6 +987,8 @@ struct dhcp_bridge {
 
 struct cond_domain {
   char *domain, *prefix; /* prefix is text-prefix on domain name */
+  char *interface;       /* These two set when domain comes from interface. */
+  struct addrlist *al;
   struct in_addr start, end;
   struct in6_addr start6, end6;
   int is6, indexed, prefixlen;
