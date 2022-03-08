@@ -100,8 +100,8 @@ static const char *eventtext(const enum events event)
 			return "PARSE_NEIGHBOR_CACHE";
 		case RESOLVE_NEW_HOSTNAMES:
 			return "RESOLVE_NEW_HOSTNAMES";
-		case RELOAD_BLOCKINGMODE:
-			return "RELOAD_BLOCKINGMODE";
+		case RELOAD_BLOCKINGSTATUS:
+			return "RELOAD_BLOCKINGSTATUS";
 		case EVENTS_MAX: // fall through
 		default:
 			return "UNKNOWN";

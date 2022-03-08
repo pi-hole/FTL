@@ -26,6 +26,8 @@
 #include "aliasclients.h"
 // Eventqueue routines
 #include "../events.h"
+// check_blocking_status()
+#include "../setupVars.h"
 
 #define DBOPEN_OR_AGAIN() { db = dbopen(false); if(db == NULL) { thread_sleepms(DB, 5000); continue; } }
 #define BREAK_IF_KILLED() { if(killed) break; }
@@ -116,8 +118,14 @@ void *DB_thread(void *val)
 
 		BREAK_IF_KILLED();
 
-		// Sleep 1 sec
-		thread_sleepms(DB, 1000);
+		// Inspect setupVars.conf to see if Pi-hole blocking is enabled
+		if(get_and_clear_event(RELOAD_BLOCKINGSTATUS))
+			check_blocking_status();
+
+		BREAK_IF_KILLED();
+
+		// Sleep 0.1 sec
+		thread_sleepms(DB, 100);
 	}
 
 	logg("Terminating database thread");

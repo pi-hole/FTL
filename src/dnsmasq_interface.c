@@ -1230,12 +1230,6 @@ static bool special_domain(const queriesData *query, const char *domain)
 
 static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line)
 {
-	if(get_and_clear_event(RELOAD_BLOCKINGMODE))
-	{
-		// Inspect setupVars.conf to see if Pi-hole blocking is enabled
-		check_blocking_status();
-	}
-
 	// Only check blocking conditions when global blocking is enabled
 	if(blockingstatus == BLOCKING_DISABLED)
 	{
@@ -1773,9 +1767,9 @@ void FTL_dnsmasq_reload(void)
 	logg("Reloading DNS cache");
 	lock_shm();
 
-	// Request reload the privacy level and blocking mode
+	// Request reload the privacy level and blocking status
 	set_event(RELOAD_PRIVACY_LEVEL);
-	set_event(RELOAD_BLOCKINGMODE);
+	set_event(RELOAD_BLOCKINGSTATUS);
 
 	// Reread pihole-FTL.conf to see which blocking mode the user wants to use
 	// It is possible to change the blocking mode here as we anyhow clear the
