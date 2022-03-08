@@ -1767,7 +1767,7 @@ void FTL_dnsmasq_reload(void)
 	logg("Reloading DNS cache");
 	lock_shm();
 
-	// Request reload the privacy level and blocking mode
+	// Request reload the privacy level and blocking status
 	set_event(RELOAD_PRIVACY_LEVEL);
 	set_event(RELOAD_BLOCKINGSTATUS);
 
