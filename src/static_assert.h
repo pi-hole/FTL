@@ -18,14 +18,10 @@
 #if defined(__x86_64__) || defined(__aarch64__)
 #define ASSERT_SIZEOF(OBJECT, SIZE64, SIZE32, SIZEARM) \
 	STATIC_ASSERT(OBJECT, SIZE64)
-#elif defined(__i386__)
+#elif defined(__i386__) || defined(__mips__) // issue #290
 #define ASSERT_SIZEOF(OBJECT, SIZE64, SIZE32, SIZEARM) \
 	STATIC_ASSERT(OBJECT, SIZE32)
 #elif defined(__arm__)
 #define ASSERT_SIZEOF(OBJECT, SIZE64, SIZE32, SIZEARM) \
 	STATIC_ASSERT(OBJECT, SIZEARM)
-// Added support for compilation on MIPS platforms. See issue #290
-#elif defined(__mips__)
-#define ASSERT_SIZEOF(OBJECT, SIZE64, SIZE32, SIZEARM) \
-	STATIC_ASSERT(OBJECT, SIZE32)
 #endif
