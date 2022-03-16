@@ -24,4 +24,8 @@
 #elif defined(__arm__)
 #define ASSERT_SIZEOF(OBJECT, SIZE64, SIZE32, SIZEARM) \
 	STATIC_ASSERT(OBJECT, SIZEARM)
+// Added support for compilation on MIPS platforms. See issue #290
+#elif defined(__mips__)
+#define ASSERT_SIZEOF(OBJECT, SIZE64, SIZE32, SIZEARM) \
+	STATIC_ASSERT(OBJECT, SIZE32)
 #endif
