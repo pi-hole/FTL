@@ -885,6 +885,7 @@ void DB_read_queries(void)
 		query->flags.response_calculated = reply_time_avail;
 		query->dnssec = dnssec;
 		query->reply = reply_type;
+		counters->reply[query->reply]++;
 		query->response = reply_time * 1e4; // convert to tenth-millisecond unit
 		query->CNAME_domainID = -1;
 		// Initialize flags
