@@ -430,6 +430,9 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	      
 	      end = extradata + data.ed_len;
 	      buf = extradata;
+
+	      lua_pushnumber(lua, data.ed_len == 0 ? 1 : 0);
+	      lua_setfield(lua, -2, "data_missing");
 	      
 	      if (!is6)
 		buf = grab_extradata_lua(buf, end, "vendor_class");
@@ -608,6 +611,9 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	  
 	  end = extradata + data.ed_len;
 	  buf = extradata;
+
+	  if (data.ed_len == 0)
+	    my_setenv("DNSMASQ_DATA_MISSING", "1", &err);
 	  
 	  if (!is6)
 	    buf = grab_extradata(buf, end, "DNSMASQ_VENDOR_CLASS", &err);
