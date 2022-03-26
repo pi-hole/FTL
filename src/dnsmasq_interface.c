@@ -663,9 +663,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		     id, queryID, short_path(file), line);
 	}
 
-	// Update counters
-	counters->querytype[querytype-1]++;
-
 	// Update overTime
 	const unsigned int timeidx = getOverTimeID(querytimestamp);
 
@@ -754,6 +751,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Set lastQuery timer and add one query for network table
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
+
+	// Update counters
+	counters->querytype[querytype-1]++;
 
 	// Process interface information of client (if available)
 	// Skip interface name length 1 to skip "-". No real interface should
