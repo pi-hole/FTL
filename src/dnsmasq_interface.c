@@ -2606,15 +2606,20 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 	else if((flags & F_RCODE && addr != NULL) || force_next_DNS_reply == REPLY_REFUSED)
 	{
 		if((addr != NULL && addr->log.rcode == REFUSED)
-		   || force_next_DNS_reply == REPLY_REFUSED )
+		   || force_next_DNS_reply == REPLY_REFUSED)
 		{
-			// REFUSED query
+			// REFUSED reply
 			new_reply = REPLY_REFUSED;
 		}
 		else if(addr != NULL && addr->log.rcode == SERVFAIL)
 		{
-			// SERVFAIL query
+			// SERVFAIL reply
 			new_reply = REPLY_SERVFAIL;
+		}
+		else if(addr != NULL && addr->log.rcode == NOTIMP)
+		{
+			// NOT IMPLEMENTED reply
+			query->reply = REPLY_NOTIMP;
 		}
 	}
 	else if(flags & F_KEYTAG)
