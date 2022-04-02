@@ -121,9 +121,13 @@ void getStats(const int *sock)
 		ssend(*sock, "dns_queries_all_types %i\n", sumalltypes);
 
 		// Send individual reply type counters
-		ssend(*sock, "reply_NODATA %i\nreply_NXDOMAIN %i\nreply_CNAME %i\nreply_IP %i\n",
-		      counters->reply[REPLY_NODATA], counters->reply[REPLY_NXDOMAIN],
-		      counters->reply[REPLY_CNAME], counters->reply[REPLY_IP]);
+		int sumallreplies = 0;
+		for(enum reply_type reply = REPLY_UNKNOWN; reply < QUERY_REPLY_MAX; reply++)
+		{
+			ssend(*sock, "reply_%s %i\n", get_query_reply_str(reply), counters->reply[reply]);
+			sumallreplies += counters->reply[reply];
+		}
+		ssend(*sock, "dns_queries_all_replies %i\n", sumallreplies);
 		ssend(*sock, "privacy_level %i\n", config.privacylevel);
 	}
 	else

@@ -50,7 +50,6 @@
 #include "database/message-table.h"
 
 // Private prototypes
-static const char *reply_status_str[QUERY_REPLY_MAX+1];
 static void print_flags(const unsigned int flags);
 #define query_set_reply(flags, type, addr, query, response) _query_set_reply(flags, type, addr, query, response, __FILE__, __LINE__)
 static void _query_set_reply(const unsigned int flags, const enum reply_type reply, const union all_addr *addr, queriesData* query,
@@ -664,9 +663,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		     id, queryID, short_path(file), line);
 	}
 
-	// Update counters
-	counters->querytype[querytype-1]++;
-
 	// Update overTime
 	const unsigned int timeidx = getOverTimeID(querytimestamp);
 
@@ -720,6 +716,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->flags.response_calculated = false;
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
+	counters->reply[REPLY_UNKNOWN]++;
 	// Store DNSSEC result for this domain
 	query->dnssec = DNSSEC_UNSPECIFIED;
 	// Every domain is insecure in the beginning. It can get secure or bogus
@@ -754,6 +751,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Set lastQuery timer and add one query for network table
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
+
+	// Update counters
+	counters->querytype[querytype-1]++;
 
 	// Process interface information of client (if available)
 	// Skip interface name length 1 to skip "-". No real interface should
@@ -1449,7 +1449,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			logg("Blocking %s as %s is %s", domainstr, blockedDomain, blockingreason);
 
 		if(force_next_DNS_reply != 0)
-			logg("Forcing next reply to %s", reply_status_str[force_next_DNS_reply]);
+			logg("Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
 	}
 	else if(db_okay)
 	{
@@ -2570,95 +2570,86 @@ void print_flags(const unsigned int flags)
 	free(flagstr);
 }
 
-static const char *reply_status_str[QUERY_REPLY_MAX+1] = {
-	"UNKNOWN",
-	"NODATA",
-	"NXDOMAIN",
-	"CNAME",
-	"IP",
-	"DOMAIN",
-	"RRNAME",
-	"SERVFAIL",
-	"REFUSED",
-	"NOTIMP",
-	"OTHER",
-	"DNSSEC",
-	"NONE",
-	"BLOB",
-	"MAX"
-};
-
 static void _query_set_reply(const unsigned int flags, const enum reply_type reply,
                              const union all_addr *addr,
                              queriesData *query, const struct timeval response,
                              const char *file, const int line)
 {
+	enum reply_type new_reply = REPLY_UNKNOWN;
 	// If reply is set, we use it directly instead of interpreting the flags
 	if(reply != 0)
 	{
-		query->reply = reply;
+		new_reply = reply;
 	}
 	// else: Iterate through possible values by analyzing both the flags and the addr bits
 	else if(flags & F_NEG ||
-	   (flags & F_NOERR && !(flags & (F_IPV4 | F_IPV6))) || // <-- FTL_make_answer() when no A or AAAA is added
-	   force_next_DNS_reply == REPLY_NXDOMAIN ||
-	   force_next_DNS_reply == REPLY_NODATA)
+	        (flags & F_NOERR && !(flags & (F_IPV4 | F_IPV6))) || // <-- FTL_make_answer() when no A or AAAA is added
+	        force_next_DNS_reply == REPLY_NXDOMAIN ||
+	        force_next_DNS_reply == REPLY_NODATA)
 	{
 		if(flags & F_NXDOMAIN || force_next_DNS_reply == REPLY_NXDOMAIN)
 			// NXDOMAIN
-			query->reply = REPLY_NXDOMAIN;
+			new_reply = REPLY_NXDOMAIN;
 		else
 			// NODATA(-IPv6)
-			query->reply = REPLY_NODATA;
+			new_reply = REPLY_NODATA;
 	}
 	else if(flags & F_CNAME)
 		// <CNAME>
-		query->reply = REPLY_CNAME;
+		new_reply = REPLY_CNAME;
 	else if(flags & F_REVERSE)
 		// reserve lookup
-		query->reply = REPLY_DOMAIN;
+		new_reply = REPLY_DOMAIN;
 	else if(flags & F_RRNAME)
 		// TXT query
-		query->reply = REPLY_RRNAME;
+		new_reply = REPLY_RRNAME;
 	else if((flags & F_RCODE && addr != NULL) || force_next_DNS_reply == REPLY_REFUSED)
 	{
 		if((addr != NULL && addr->log.rcode == REFUSED)
 		   || force_next_DNS_reply == REPLY_REFUSED )
 		{
 			// REFUSED query
-			query->reply = REPLY_REFUSED;
+			new_reply = REPLY_REFUSED;
 		}
 		else if(addr != NULL && addr->log.rcode == SERVFAIL)
 		{
 			// SERVFAIL query
-			query->reply = REPLY_SERVFAIL;
+			new_reply = REPLY_SERVFAIL;
 		}
 	}
 	else if(flags & F_KEYTAG)
-		query->reply = REPLY_DNSSEC;
+		new_reply = REPLY_DNSSEC;
 	else if(force_next_DNS_reply == REPLY_NONE)
 	{
-		query->reply = REPLY_NONE;
+		new_reply = REPLY_NONE;
 	}
 	else if(flags & (F_IPV4 | F_IPV6))
 	{
 		// IP address
-		query->reply = REPLY_IP;
+		new_reply = REPLY_IP;
 	}
 	else
 	{
 		// Other binary, possibly proprietry, data
-		query->reply = REPLY_BLOB;
+		new_reply = REPLY_BLOB;
 	}
 
 	if(config.debug & DEBUG_QUERIES)
 	{
 		const char *path = short_path(file);
-		logg("Set reply to %s (%d) in %s:%d", reply_status_str[query->reply], query->reply,
+		logg("Set reply to %s (%d) in %s:%d", get_query_reply_str(query->reply), query->reply,
 		     path, line);
+		if(query->reply != REPLY_UNKNOWN && query->reply != new_reply)
+			logg("Reply of query %i was %s now changing to %s", query->id,
+			     get_query_reply_str(query->reply), get_query_reply_str(new_reply));
 	}
 
-	counters->reply[query->reply]++;
+	// Subtract from old reply counter
+	counters->reply[query->reply]--;
+	// Add to new reply counter
+	counters->reply[new_reply]++;
+	// Store reply type
+	query->reply = new_reply;
 
 	// Save response time
 	// Skipped internally if already computed

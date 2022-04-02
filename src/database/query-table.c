@@ -867,7 +867,14 @@ void DB_read_queries(void)
 		if(type < 100)
 		{
 			// Mapped query type
-			query->type = type;
+			if(type >= TYPE_A && type < TYPE_MAX)
+				query->type = type;
+			else
+			{
+				// Invalid query type
+				logg("DB warn: Query type %d is invalid.", type);
+				continue;
+			}
 		}
 		else
 		{
@@ -900,8 +907,7 @@ void DB_read_queries(void)
 		client->lastQuery = queryTimeStamp;
 
 		// Handle type counters
-		if(type >= TYPE_A && type < TYPE_MAX)
-			counters->querytype[type-1]++;
+		counters->querytype[query->type-1]++;
 
 		// Update overTime data
 		overTime[timeidx].total++;
