@@ -537,8 +537,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		}
 #ifdef HAVE_DNSSEC
 	      else
-		log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, daemon->namebuff, &srv->addr,
-				     "dnssec-retry", (forward->flags & FREC_DNSKEY_QUERY) ? T_DNSKEY : T_DS);
+		log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, daemon->namebuff, &srv->addr,
+				     (forward->flags & FREC_DNSKEY_QUERY) ? "dnssec-retry[DNSKEY]" : "dnssec-retry[DS]", 0);
 #endif
 
 	      srv->queries++;
