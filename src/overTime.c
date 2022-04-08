@@ -71,8 +71,8 @@ void initOverTime(void)
 	time_t now = time(NULL);
 
 	// Get the centered timestamp of the current timestamp
-	time_t first_slot_ts = now - now % OVERTIME_INTERVAL + (OVERTIME_INTERVAL / 2);
-	time_t last_slot_ts = first_slot_ts + (OVERTIME_SLOTS-1) * OVERTIME_INTERVAL;
+	const time_t last_slot_ts = now - now % OVERTIME_INTERVAL + (OVERTIME_INTERVAL / 2);
+	const time_t first_slot_ts = last_slot_ts - (OVERTIME_SLOTS-1) * OVERTIME_INTERVAL;
 
 	if(config.debug & DEBUG_OVERTIME)
 		logg("initOverTime(): Initializing %i slots from %llu to %llu",
