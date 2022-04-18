@@ -677,6 +677,7 @@ struct resolvc {
   struct resolvc *next;
   int is_default, logged;
   time_t mtime;
+  ino_t ino;
   char *name;
 #ifdef HAVE_INOTIFY
   int wd; /* inotify watch descriptor */
