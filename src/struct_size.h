@@ -10,6 +10,9 @@
 #ifndef STRUCT_SIZE_HEADER
 #define STRUCT_SIZE_HEADER
 
-int check_one_struct(const char *struct_name, const long found_size, const long size64, const long size32, const long sizeARM);
+// type size_t
+#include <stddef.h>
+
+int check_one_struct(const char *struct_name, const size_t found_size, const size_t size64, const size_t size32, const size_t sizeARM);
 
 #endif // STRUCT_SIZE_HEADER

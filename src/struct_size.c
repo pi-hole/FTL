@@ -12,23 +12,26 @@
 #include "struct_size.h"
 #include <stdio.h>
 
-int check_one_struct(const char *struct_name, const long found_size, const long size64, const long size32, const long sizeARM)
+int check_one_struct(const char *struct_name, const size_t found_size, const size_t size64, const size_t size32, const size_t sizeARM)
 {
 #if defined(__x86_64__)
-	const long expected_size = size64;
+	const size_t expected_size = size64;
 	const char *arch = "x86_64";
 #elif defined(__aarch64__)
-	const long expected_size = size64;
+	const size_t expected_size = size64;
 	const char *arch = "aarch64";
 #elif defined(__i386__)
-	const long expected_size = size32;
+	const size_t expected_size = size32;
 	const char *arch = "i386";
 #elif defined(__mips__) // issue #290
-	const long expected_size = size32;
+	const size_t expected_size = size32;
 	const char *arch = "mips";
 #elif defined(__arm__)
-	const long expected_size = sizeARM;
+	const size_t expected_size = sizeARM;
 	const char *arch = "arm";
+#else
+	const size_t expected_size = 0;
+	const char *arch = NULL;
 #endif
 
 	// Check struct size meets expectation
@@ -36,9 +39,11 @@ int check_one_struct(const char *struct_name, const long found_size, const long 
 		return 0;
 
 	// Size mismatch
-	printf("WARNING: sizeof(%s) should be %lu on %s but is %lu\n",
-	       struct_name, expected_size, arch, found_size);
+	if(arch)
+		printf("WARNING: sizeof(%s) should be %zu on %s but is %zu\n",
+		       struct_name, expected_size, arch, found_size);
+	else
+		printf("WARNING: Unknown architecture, sizeof(%s) = %zu\n",
+		       struct_name, found_size);
 	return 1;
 }
-
-
