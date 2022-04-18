@@ -14,9 +14,6 @@
 // TYPE_MAX
 #include "datastructure.h"
 
-// assert_sizeof
-#include "static_assert.h"
-
 void initOverTime(void);
 
 #define getOverTimeID(timestamp) _getOverTimeID(timestamp, __FILE__, __LINE__)
@@ -38,7 +35,6 @@ typedef struct {
 	int forwarded;
 	time_t timestamp;
 } overTimeData;
-ASSERT_SIZEOF(overTimeData, 32, 24, 24);
 
 extern overTimeData *overTime;
 
