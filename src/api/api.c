@@ -121,9 +121,13 @@ void getStats(const int *sock)
 		ssend(*sock, "dns_queries_all_types %i\n", sumalltypes);
 
 		// Send individual reply type counters
-		ssend(*sock, "reply_NODATA %i\nreply_NXDOMAIN %i\nreply_CNAME %i\nreply_IP %i\n",
-		      counters->reply[REPLY_NODATA], counters->reply[REPLY_NXDOMAIN],
-		      counters->reply[REPLY_CNAME], counters->reply[REPLY_IP]);
+		int sumallreplies = 0;
+		for(enum reply_type reply = REPLY_UNKNOWN; reply < QUERY_REPLY_MAX; reply++)
+		{
+			ssend(*sock, "reply_%s %i\n", get_query_reply_str(reply), counters->reply[reply]);
+			sumallreplies += counters->reply[reply];
+		}
+		ssend(*sock, "dns_queries_all_replies %i\n", sumallreplies);
 		ssend(*sock, "privacy_level %i\n", config.privacylevel);
 	}
 	else
@@ -498,7 +502,7 @@ void getTopClients(const char *client_message, const int *sock)
 void getUpstreamDestinations(const char *client_message, const int *sock)
 {
 	bool sort = true;
-	int temparray[counters->upstreams][2], totalcount = 0;
+	int temparray[counters->upstreams][2], sumforwarded = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
@@ -516,7 +520,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		for(unsigned i = 0; i < (sizeof(upstream->overTime)/sizeof(*upstream->overTime)); i++)
 			count += upstream->overTime[i];
 		temparray[upstreamID][1] = count;
-		totalcount += count;
+		sumforwarded += count;
 	}
 
 	if(sort)
@@ -525,8 +529,13 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		qsort(temparray, counters->upstreams, sizeof(int[2]), cmpdesc);
 	}
 
-	const int totalqueries = totalcount + cached_queries() + blocked_queries();
-	const int others = counters->queries - totalqueries;
+	const int cached = cached_queries();
+	const int blocked = blocked_queries();
+	const int others = counters->queries - counters->status[QUERY_FORWARDED] - cached - blocked;
+	// The total number of DNS packets can be different than the total
+	// number of queries as FTL is periodically sending queries to multiple
+	// DNS upstream servers to probe which one is the fastest
+	const int totalqueries = sumforwarded + blocked + cached + others;
 
 	// Loop over available forward destinations
 	for(int i = -3; i < min(counters->upstreams, 8); i++)
@@ -541,9 +550,9 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			ip = "blocked";
 			name = ip;
 
-			if(counters->queries > 0)
+			if(totalqueries > 0)
 				// Whats the percentage of blocked queries on the total amount of queries?
-				percentage = 1e2f * blocked_queries() / counters->queries;
+				percentage = 1e2f * blocked / totalqueries;
 		}
 		else if(i == -2)
 		{
@@ -551,9 +560,9 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			ip = "cached";
 			name = ip;
 
-			if(counters->queries > 0)
+			if(totalqueries > 0)
 				// Whats the percentage of cached queries on the total amount of queries?
-				percentage = 1e2f * cached_queries() / counters->queries;
+				percentage = 1e2f * cached / totalqueries;
 		}
 		else if(i == -1)
 		{
@@ -561,9 +570,9 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			ip = "other";
 			name = ip;
 
-			if(counters->queries > 0)
+			if(totalqueries > 0)
 				// Whats the percentage of cached queries on the total amount of queries?
-				percentage = 1e2f * others / counters->queries;
+				percentage = 1e2f * others / totalqueries;
 		}
 		else
 		{

@@ -70,23 +70,22 @@ void initOverTime(void)
 	// Get current timestamp
 	time_t now = time(NULL);
 
-	// The last timestamp (overTime[149]) should be the last interval of this hour
-	// If the current time is 09:35, the last interval is 09:50 - 10:00 (centered at 09:55)
-	time_t timestamp = now - now % 3600 + 3600 - (OVERTIME_INTERVAL / 2);
+	// Get the centered timestamp of the current timestamp
+	const time_t last_slot_ts = now - now % OVERTIME_INTERVAL + (OVERTIME_INTERVAL / 2);
+	const time_t first_slot_ts = last_slot_ts - (OVERTIME_SLOTS-1) * OVERTIME_INTERVAL;
 
 	if(config.debug & DEBUG_OVERTIME)
 		logg("initOverTime(): Initializing %i slots from %llu to %llu",
 		     OVERTIME_SLOTS,
-		     (long long)timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL,
-		     (long long)timestamp);
+		     (long long)first_slot_ts,
+		     (long long)last_slot_ts);
 
 	// Iterate over overTime
-	for(int i = OVERTIME_SLOTS-1; i >= 0 ; i--)
+	for(int i = 0; i < OVERTIME_SLOTS; i++)
 	{
-		// Initialize onerTime slot
-		initSlot(i, timestamp);
-		// Prepare for next iteration
-		timestamp -= OVERTIME_INTERVAL;
+		time_t this_slot_ts = first_slot_ts + OVERTIME_INTERVAL * i;
+		// Initialize overTime slot
+		initSlot(i, this_slot_ts);
 	}
 }
 

@@ -156,10 +156,10 @@ void *GC_thread(void *val)
 			// Get minimum timestamp to keep (this can be set with MAXLOGAGE)
 			time_t mintime = (now - GCdelay) - config.maxlogage;
 
-			// Align to the start of the next hour. This will also align with
-			// the oldest overTime interval after GC is done.
-			mintime -= mintime % 3600;
-			mintime += 3600;
+			// Align the start time of this GC run to the GCinterval. This will also align with the
+			// oldest overTime interval after GC is done.
+			mintime -= mintime % GCinterval;
+			mintime += GCinterval;
 
 			if(config.debug & DEBUG_GC)
 			{
