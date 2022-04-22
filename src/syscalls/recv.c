@@ -28,7 +28,7 @@ ssize_t FTLrecv(int sockfd, void *buf, size_t len, int flags, const char *file, 
 	// incoming signal
 	while(ret < 0 && errno == EINTR);
 
-	// Final error checking (may have faild for some other reason then an
+	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret < 0)
 		logg("WARN: Could not recv() in %s() (%s:%i): %s",

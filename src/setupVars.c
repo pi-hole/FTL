@@ -196,11 +196,11 @@ bool insetupVarsArray(const char * str)
 		if(setupVarsArray[i][0] == '*')
 		{
 			// Copying strlen-1 chars into buffer of size strlen: OK
-			size_t lenght = strlen(setupVarsArray[i]);
-			char * domain = calloc(lenght, sizeof(char));
+			size_t length = strlen(setupVarsArray[i]);
+			char * domain = calloc(length, sizeof(char));
 			if(domain == NULL) return false;
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
-			strncat(domain, setupVarsArray[i]+1, lenght-1);
+			strncat(domain, setupVarsArray[i]+1, length-1);
 
 			if(strstr(str, domain) != NULL)
 			{

@@ -841,7 +841,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	next_iface.name[0] = '-';
 	next_iface.name[1] = '\0';
 
-	// Check if we need to identify the receving interface by its address
+	// Check if we need to identify the receiving interface by its address
 	if(!recviface && addr &&
 	   ((addrfamily == AF_INET && addr->addr4.s_addr != INADDR_ANY) ||
 	    (addrfamily == AF_INET6 && !IN6_IS_ADDR_UNSPECIFIED(&addr->addr6))))
@@ -1723,7 +1723,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 		// up in a situation where dnsmasq can answer the first level of
 		// the DNS result (the CNAME) from cache, hence the status of this
 		// query is marked as "answered from cache" in FTLDNS. However, for
-		// server.a.com wit the much shorter TTL, we still have to forward
+		// server.a.com with the much shorter TTL, we still have to forward
 		// something and ask the upstream server for the final IP address.
 
 		// Correct reply timer if a response time has already been calculated
@@ -1948,7 +1948,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			}
 			else if(rcode == SERVFAIL)
 			{
-				// This happens on upstream destionation errors
+				// This happens on upstream destination errors
 				answer = "SERVFAIL";
 			}
 		}
@@ -2071,7 +2071,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Answered from local configuration, might be a wildcard or user-provided
 
 		// Answered from a custom (user provided) cache file or because
-		// we're the authorative DNS server (e.g. DHCP server and this
+		// we're the authoritative DNS server (e.g. DHCP server and this
 		// is our own domain)
 		query_set_status(query, QUERY_CACHE);
 
@@ -2771,7 +2771,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		// Add our PTR record to the end of the linked list
 		if(daemon->ptr != NULL)
 		{
-			// Interate to the last PTR entry in dnsmasq's structure
+			// Iterate to the last PTR entry in dnsmasq's structure
 			struct ptr_record *ptr;
 			for(ptr = daemon->ptr; ptr && ptr->next; ptr = ptr->next);
 

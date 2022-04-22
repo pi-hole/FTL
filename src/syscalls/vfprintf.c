@@ -152,7 +152,7 @@ int FTLvfprintf(FILE *stream, const char *file, const char *func, const int line
 	// to an interruption by an incoming signal
 	while(_buffer < buffer && errno == EINTR);
 
-	// Final error checking (may have faild for some other reason then an
+	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(_buffer < buffer)
 	{
