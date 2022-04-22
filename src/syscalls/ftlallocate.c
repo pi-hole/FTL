@@ -27,7 +27,7 @@ int FTLfallocate(const int fd, const off_t offset, const off_t len, const char *
 	// interruption by an incoming signal
 	while(ret == EINTR);
 
-	// Final error checking (may have faild for some other reason then an
+	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret > 0)
 		logg("WARN: Could not fallocate() in %s() (%s:%i): %s",

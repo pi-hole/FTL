@@ -1256,7 +1256,7 @@ void parse_neighbor_cache(sqlite3* db)
 		else
 			text = "ERROR";
 
-		// dbquery() above already logs the reson for why the query failed
+		// dbquery() above already logs the reason for why the query failed
 		logg("%s: Storing devices in network table (\"%s\") failed", text, sql);
 		pclose(arpfp);
 		return;
@@ -1448,7 +1448,7 @@ void parse_neighbor_cache(sqlite3* db)
 				unmock_netDB_device(db, hwaddr, macVendor, dbID);
 
 				// Host name, count and last query timestamp will be set in the next
-				// loop interation for the sake of simplicity
+				// loop iteration for the sake of simplicity
 			}
 
 			// Free allocated memory
@@ -1545,7 +1545,7 @@ void parse_neighbor_cache(sqlite3* db)
 
 	// Finally, loop over the available interfaces to ensure we list the
 	// IP addresses correctly (local addresses are NOT contained in the
-	// ARP/neighor cache).
+	// ARP/neighbor cache).
 	if(!add_local_interfaces_to_network_table(db, now, &additional_entries))
 		return;
 

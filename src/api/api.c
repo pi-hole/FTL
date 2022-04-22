@@ -46,7 +46,7 @@ extern char *querystr(char *desc, unsigned short type);
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
-/* qsort comparision function (count field), sort ASC */
+/* qsort comparison function (count field), sort ASC */
 static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 {
 	const int *elem1 = (int*)a;
@@ -551,7 +551,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			name = ip;
 
 			if(totalqueries > 0)
-				// Whats the percentage of blocked queries on the total amount of queries?
+				// What's the percentage of blocked queries on the total amount of queries?
 				percentage = 1e2f * blocked / totalqueries;
 		}
 		else if(i == -2)
@@ -561,7 +561,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			name = ip;
 
 			if(totalqueries > 0)
-				// Whats the percentage of cached queries on the total amount of queries?
+				// What's the percentage of cached queries on the total amount of queries?
 				percentage = 1e2f * cached / totalqueries;
 		}
 		else if(i == -1)
@@ -571,7 +571,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			name = ip;
 
 			if(totalqueries > 0)
-				// Whats the percentage of cached queries on the total amount of queries?
+				// What's the percentage of cached queries on the total amount of queries?
 				percentage = 1e2f * others / totalqueries;
 		}
 		else
@@ -1165,7 +1165,7 @@ void getRecentBlocked(const char *client_message, const int *sock)
 			else if(!pack_str32(*sock, domain))
 				return;
 
-			// Only count when sent succesfully
+			// Only count when sent successfully
 			found++;
 		}
 
@@ -1238,12 +1238,12 @@ void getDBstats(const int *sock)
 	unsigned long long int filesize = get_FTL_db_filesize();
 
 	char prefix[2] = { 0 };
-	double formated = 0.0;
-	format_memory_size(prefix, filesize, &formated);
+	double formatted = 0.0;
+	format_memory_size(prefix, filesize, &formatted);
 
 	if(istelnet[*sock])
 		ssend(*sock, "queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n",
-		             get_number_of_queries_in_DB(NULL), formated, prefix, get_sqlite3_version());
+		             get_number_of_queries_in_DB(NULL), formatted, prefix, get_sqlite3_version());
 	else {
 		pack_int32(*sock, get_number_of_queries_in_DB(NULL));
 		pack_int64(*sock, filesize);
