@@ -1382,7 +1382,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		dns_cache->force_reply = force_next_DNS_reply;
 
 		// Adjust counters
-		query_blocked(query, domain, client, QUERY_CACHE);
+		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 
 		// Debug output
 		if(config.debug & DEBUG_QUERIES)

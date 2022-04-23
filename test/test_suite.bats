@@ -401,11 +401,11 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "domains_being_blocked 3" ]]
   [[ ${lines[2]} == "dns_queries_today 47" ]]
-  [[ ${lines[3]} == "ads_blocked_today 8" ]]
+  [[ ${lines[3]} == "ads_blocked_today 9" ]]
   #[[ ${lines[4]} == "ads_percentage_today 7.792208" ]]
   [[ ${lines[5]} == "unique_domains 35" ]]
   [[ ${lines[6]} == "queries_forwarded 26" ]]
-  [[ ${lines[7]} == "queries_cached 13" ]]
+  [[ ${lines[7]} == "queries_cached 12" ]]
   # Clients ever seen is commented out as the CI may have
   # more devices in its ARP cache so testing against a fixed
   # number of clients may not work in all cases
@@ -466,7 +466,6 @@
   [[ "${lines[@]}" == *" 1 gravity-whitelisted.ftl"* ]]
   [[ "${lines[@]}" == *" 1 regexa.ftl"* ]]
   [[ "${lines[@]}" == *" 1 regex2.ftl"* ]]
-  [[ "${lines[@]}" == *" 1 use-application-dns.net"* ]]
   [[ "${lines[@]}" == *" 1 any.ftl"* ]]
   [[ "${lines[@]}" == *" 1 cname-ok.ftl"* ]]
   [[ "${lines[@]}" == *" 1 srv.ftl"* ]]
@@ -492,7 +491,8 @@
   [[ "${lines[@]}" == *" 1 regex1.ftl"* ]]
   [[ "${lines[@]}" == *" 1 cname-1.ftl"* ]]
   [[ "${lines[@]}" == *" 1 cname-7.ftl"* ]]
-  [[ ${lines[8]} == "" ]]
+  [[ "${lines[@]}" == *" 1 use-application-dns.net"* ]]
+  [[ ${lines[9]} == "" ]]
 }
 
 @test "Domain auditing, approved domains are not shown" {
@@ -504,8 +504,8 @@
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-3 17.02 blocked blocked" ]]
-  [[ ${lines[2]} == "-2 27.66 cached cached" ]]
+  [[ ${lines[1]} == "-3 19.15 blocked blocked" ]]
+  [[ ${lines[2]} == "-2 25.53 cached cached" ]]
   [[ ${lines[3]} == "-1 0.00 other other" ]]
   [[ ${lines[4]} == "0 51.06 127.0.0.1#5555 127.0.0.1#5555" ]]
   [[ ${lines[5]} == "1 4.26 127.0.0.1#5554 127.0.0.1#5554" ]]
@@ -563,7 +563,7 @@
   [[ ${lines[22]} == *" TXT version.bind 127.0.0.6 3 2 6 "*" N/A -1 N/A#0 \"\" \"21\""* ]]
   [[ ${lines[23]} == *" A a.ftl 127.0.0.1 3 2 4 "*" N/A -1 N/A#0 \"\" \"22\""* ]]
   [[ ${lines[24]} == *" AAAA aaaa.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"23\""* ]]
-  [[ ${lines[25]} == *" A use-application-dns.net 127.0.0.1 3 2 2 "*" N/A -1 N/A#0 \"\" \"24\""* ]]
+  [[ ${lines[25]} == *" A use-application-dns.net 127.0.0.1 16 2 2 "*" N/A -1 N/A#0 \"\" \"24\""* ]]
   [[ ${lines[26]} == *" A a.ftl 127.0.0.1 3 2 4 "*" N/A -1 N/A#0 \"\" \"25\""* ]]
   [[ ${lines[27]} == *" AAAA aaaa.ftl 127.0.0.1 3 2 4 "*" N/A -1 N/A#0 \"\" \"26\""* ]]
   [[ ${lines[28]} == *" ANY any.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"27\""* ]]

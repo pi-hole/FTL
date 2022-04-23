@@ -220,6 +220,7 @@ void *GC_thread(void *val)
 					case QUERY_REGEX_CNAME: // Regex blacklisted domain in CNAME chain (fall through)
 					case QUERY_BLACKLIST_CNAME: // Exactly blacklisted domain in CNAME chain (fall through)
 					case QUERY_DBBUSY: // Blocked because gravity database was busy
+					case QUERY_SPECIAL_DOMAIN: // Blocked by special domain handling
 						if(domain != NULL)
 							domain->blockedcount--;
 						if(client != NULL)
