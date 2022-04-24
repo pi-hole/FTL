@@ -12,7 +12,7 @@
 #include "struct_size.h"
 #include <stdio.h>
 
-int check_one_struct(const char *struct_name, const size_t found_size, const size_t size64, const size_t size32, const size_t sizeARM)
+int check_one_struct(const char *struct_name, const size_t found_size, const size_t size64, const size_t size32)
 {
 #if defined(__x86_64__)
 	const size_t expected_size = size64;
@@ -27,7 +27,7 @@ int check_one_struct(const char *struct_name, const size_t found_size, const siz
 	const size_t expected_size = size32;
 	const char *arch = "mips";
 #elif defined(__arm__)
-	const size_t expected_size = sizeARM;
+	const size_t expected_size = size32;
 	const char *arch = "arm";
 #else
 	const size_t expected_size = 0;

@@ -3345,19 +3345,19 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 int check_struct_sizes(void)
 {
 	int result = 0;
-	result += check_one_struct("ConfigStruct", sizeof(ConfigStruct), 112, 104, 104);
-	result += check_one_struct("queriesData", sizeof(queriesData), 56, 44, 44);
-	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 624, 624);
-	result += check_one_struct("clientsData", sizeof(clientsData), 696, 668, 668);
-	result += check_one_struct("domainsData", sizeof(domainsData), 24, 20, 20);
-	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 16, 16, 16);
-	result += check_one_struct("ednsData", sizeof(ednsData), 72, 72, 72);
-	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24, 24);
-	result += check_one_struct("regexData", sizeof(regexData), 56, 44, 44);
-	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12, 12);
-	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 12, 12, 12);
-	result += check_one_struct("countersStruct", sizeof(countersStruct), 240, 240, 240);
-	result += check_one_struct("sqlite3_stmt_vec", sizeof(sqlite3_stmt_vec), 32, 16, 16);
+	result += check_one_struct("ConfigStruct", sizeof(ConfigStruct), 112, 104);
+	result += check_one_struct("queriesData", sizeof(queriesData), 56, 44);
+	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 624);
+	result += check_one_struct("clientsData", sizeof(clientsData), 696, 668);
+	result += check_one_struct("domainsData", sizeof(domainsData), 24, 20);
+	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 16, 16);
+	result += check_one_struct("ednsData", sizeof(ednsData), 72, 72);
+	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24);
+	result += check_one_struct("regexData", sizeof(regexData), 56, 44);
+	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
+	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 12, 12);
+	result += check_one_struct("countersStruct", sizeof(countersStruct), 240, 240);
+	result += check_one_struct("sqlite3_stmt_vec", sizeof(sqlite3_stmt_vec), 32, 16);
 
 	if(result == 0)
 		printf("All okay\n");

@@ -13,6 +13,6 @@
 // type size_t
 #include <stddef.h>
 
-int check_one_struct(const char *struct_name, const size_t found_size, const size_t size64, const size_t size32, const size_t sizeARM);
+int check_one_struct(const char *struct_name, const size_t found_size, const size_t size64, const size_t size32);
 
 #endif // STRUCT_SIZE_HEADER
