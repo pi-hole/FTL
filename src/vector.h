@@ -18,8 +18,6 @@
 #include <stdbool.h>
 // type sqlite3_stmt
 #include "database/sqlite3.h"
-// assert_sizeof
-#include "static_assert.h"
 
 #define VEC_ALLOC_STEP 10u
 
@@ -29,7 +27,6 @@ typedef struct sqlite3_stmt_vec {
 	sqlite3_stmt *(*get)(struct sqlite3_stmt_vec *, unsigned int);
 	void (*set)(struct sqlite3_stmt_vec *, unsigned int, sqlite3_stmt*);
 } sqlite3_stmt_vec;
-ASSERT_SIZEOF(sqlite3_stmt_vec, 32, 16, 16);
 
 sqlite3_stmt_vec *new_sqlite3_stmt_vec(unsigned int initial_size);
 void set_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int index, sqlite3_stmt* item);
