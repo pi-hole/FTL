@@ -438,7 +438,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 				unsigned int n = 0;
 				for(unsigned int i = 1; n < optlen; i++)
 				{
-					// Extract destionation descriptor
+					// Extract destination descriptor
 					unsigned char cidr = offer_packet->options[x+n++];
 					unsigned char addr[4] = { 0 };
 					if(cidr > 0)

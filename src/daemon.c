@@ -214,7 +214,7 @@ static void terminate_threads(void)
 
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
 		{
-			logg("Thread %s (%d) is busy, cancelling it (cannot set timout).",
+			logg("Thread %s (%d) is busy, cancelling it (cannot set timeout).",
 			     thread_names[i], i);
 			pthread_cancel(threads[i]);
 			continue;

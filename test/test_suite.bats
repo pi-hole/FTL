@@ -1097,6 +1097,12 @@
   [[ ${lines[0]} == *"using ${compiler_version}"* ]]
 }
 
+@test "Struct sizes are as expected" {
+  run bash -c './pihole-FTL --check-structs'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
 @test "No errors on setting busy handlers for the databases" {
   run bash -c 'grep -c "Cannot set busy handler" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"

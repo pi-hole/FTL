@@ -117,12 +117,12 @@ static int get_dev_shm_usage(char buffer[64])
 
 	// Generate human-readable "used by FTL" size
 	char prefix_FTL[2] = { 0 };
-	double formated_FTL = 0.0;
-	format_memory_size(prefix_FTL, used_shmem, &formated_FTL);
+	double formatted_FTL = 0.0;
+	format_memory_size(prefix_FTL, used_shmem, &formatted_FTL);
 
 	// Print result into buffer passed to this subroutine
 	snprintf(buffer, 64, "%s, FTL uses %.1f%sB",
-	         buffer2, formated_FTL, prefix_FTL);
+	         buffer2, formatted_FTL, prefix_FTL);
 
 	// Return percentage
 	return percentage;
@@ -561,14 +561,14 @@ bool init_shmem(bool create_new)
 	return true;
 }
 
-// CHOWN all shared memory objects to suppplied user/group
+// CHOWN all shared memory objects to supplied user/group
 void chown_all_shmem(struct passwd *ent_pw)
 {
 	for(unsigned int i = 0; i < NUM_SHMEM; i++)
 		chown_shmem(sharedMemories[i], ent_pw);
 }
 
-// Destory mutex and, subsequently, delete all shared memory objects
+// Destroy mutex and, subsequently, delete all shared memory objects
 void destroy_shmem(void)
 {
 	// First, we destroy the mutex

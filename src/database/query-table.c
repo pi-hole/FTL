@@ -486,7 +486,7 @@ int DB_save_queries(sqlite3 *db)
 		return DB_FAILED;
 	}
 
-	// Store index for next loop interation round and update last time stamp
+	// Store index for next loop iteration round and update last time stamp
 	// in the database only if all queries have been saved successfully
 	if(saved > 0 && !error)
 	{
@@ -935,7 +935,7 @@ void DB_read_queries(void)
 		}
 		else if(status == QUERY_REGEX)
 		{
-			// QUERY_REGEX: Set ID regex which was the reson for blocking
+			// QUERY_REGEX: Set ID regex which was the reason for blocking
 			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			// Only load if

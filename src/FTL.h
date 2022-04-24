@@ -111,7 +111,7 @@
 #define NUM_RECHECKS 3
 
 // Use out own syscalls handling functions that will detect possible errors
-// and report accordingly in the log. This will make debugging FTL crashs
+// and report accordingly in the log. This will make debugging FTL crash
 // caused by insufficient memory or by code bugs (not properly dealing
 // with NULL pointers) much easier.
 #undef strdup // strdup() is a macro in itself, it needs special handling

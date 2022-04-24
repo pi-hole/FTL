@@ -56,7 +56,7 @@ check_FP_arch() {
 check_file() {
   filedetails="$(file -b pihole-FTL | sed "s/, BuildID[^,]*//g")"
   if [[ "${filedetails}" != "${1}" ]]; then
-    echo "Wrong binary clasification"
+    echo "Wrong binary classification"
     echo "Expected: ${1}"
     echo "Found: ${filedetails}"
     exit 1

@@ -28,7 +28,7 @@ int FTLselect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, st
 	// incoming signal
 	while(ret < 0 && errno == EINTR);
 
-	// Final error checking (may have faild for some other reason then an
+	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret < 0)
 		logg("WARN: Could not select() in %s() (%s:%i): %s",

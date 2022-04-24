@@ -302,7 +302,7 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
 			client->overTime[overTimeIdx] += overTimeMod;
 
-		// Also add counts to the conencted alias-client (if any)
+		// Also add counts to the connected alias-client (if any)
 		if(client->flags.aliasclient)
 		{
 			logg("WARN: Should not add to alias-client directly (client \"%s\" (%s))!",

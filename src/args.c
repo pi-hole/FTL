@@ -354,6 +354,12 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_SUCCESS);
 		}
 
+		// Return number of errors on this undocumented flag
+		if(strcmp(argv[i], "--check-structs") == 0)
+		{
+			exit(check_struct_sizes());
+		}
+
 		// Complain if invalid options have been found
 		if(!ok)
 		{
