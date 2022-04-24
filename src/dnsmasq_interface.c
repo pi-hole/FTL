@@ -1386,7 +1386,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		dns_cache->force_reply = force_next_DNS_reply;
 
 		// Adjust counters
-		query_blocked(query, domain, client, QUERY_CACHE);
+		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 
 		// Debug output
 		if(config.debug & DEBUG_QUERIES)
@@ -3356,7 +3356,7 @@ int check_struct_sizes(void)
 	result += check_one_struct("regexData", sizeof(regexData), 56, 44);
 	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
 	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 12, 12);
-	result += check_one_struct("countersStruct", sizeof(countersStruct), 240, 240);
+	result += check_one_struct("countersStruct", sizeof(countersStruct), 244, 244);
 	result += check_one_struct("sqlite3_stmt_vec", sizeof(sqlite3_stmt_vec), 32, 16);
 
 	if(result == 0)
