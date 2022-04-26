@@ -1450,10 +1450,11 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 		// Debug output
 		if(config.debug & DEBUG_QUERIES)
+		{
 			logg("Blocking %s as %s is %s", domainstr, blockedDomain, blockingreason);
-
-		if(force_next_DNS_reply != 0)
-			logg("Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
+			if(force_next_DNS_reply != 0)
+				logg("Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
+		}
 	}
 	else if(db_okay)
 	{
