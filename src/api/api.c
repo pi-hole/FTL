@@ -152,39 +152,9 @@ void getStats(const int *sock)
 
 void getOverTime(const int *sock)
 {
-	int from = 0, until = OVERTIME_SLOTS;
-	bool found = false;
-	time_t mintime = overTime[0].timestamp;
-
-	// Start with the first non-empty overTime slot
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) &&
-		   overTime[slot].timestamp >= mintime)
-		{
-			from = slot;
-			found = true;
-			break;
-		}
-	}
-
-	// End with last non-empty overTime slot
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if(overTime[slot].timestamp >= time(NULL))
-		{
-			until = slot;
-			break;
-		}
-	}
-
-	// Check if there is any data to be sent
-	if(!found)
-		return;
-
 	if(istelnet[*sock])
 	{
-		for(int slot = from; slot < until; slot++)
+		for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 		{
 			ssend(*sock,"%lli %i %i\n",
 			      (long long)overTime[slot].timestamp,
@@ -198,15 +168,15 @@ void getOverTime(const int *sock)
 		// and map16 can hold up to (2^16)-1 = 65535 pairs
 
 		// Send domains over time
-		pack_map16_start(*sock, (uint16_t) (until - from));
-		for(int slot = from; slot < until; slot++) {
+		pack_map16_start(*sock, (uint16_t) OVERTIME_SLOTS);
+		for(int slot = 0; slot < OVERTIME_SLOTS; slot++) {
 			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
 			pack_int32(*sock, overTime[slot].total);
 		}
 
 		// Send ads over time
-		pack_map16_start(*sock, (uint16_t) (until - from));
-		for(int slot = from; slot < until; slot++) {
+		pack_map16_start(*sock, (uint16_t) OVERTIME_SLOTS);
+		for(int slot = 0; slot < OVERTIME_SLOTS; slot++) {
 			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
 			pack_int32(*sock, overTime[slot].blocked);
 		}
