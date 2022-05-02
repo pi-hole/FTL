@@ -79,7 +79,8 @@ void initOverTime(void)
 	//                    previous GC interval   next GC int. 5 minutes less than full
 	//                    vvvvvvvvvvvvvvvvvvvvvv vvvvvvvvvvvv vvvvvvvvvvvvvvvvvvvvvvvvv
 	const time_t newest = now - now % GCinterval + GCinterval - (OVERTIME_INTERVAL / 2);
-	const time_t oldest = newest - OVERTIME_SLOTS * OVERTIME_INTERVAL;
+	// Oldest timestamp is (OVERTIME_SLOTS-1) times the OVERTIME_INTERVAL in the past
+	const time_t oldest = newest - (OVERTIME_SLOTS-1) * OVERTIME_INTERVAL;
 
 	if(config.debug & DEBUG_OVERTIME)
 	{
