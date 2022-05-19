@@ -73,11 +73,14 @@
 #define OVERTIME_INTERVAL GCinterval
 
 // How many overTime slots do we need?
-// (24+1) hours * number of intervals per hour
-// We need to be able to hold 25 hours as we need some reserve
-// due to that GC is only running once an hours so the shown data
-// can be 24 hours + 59 minutes
-#define OVERTIME_SLOTS ((MAXLOGAGE+1)*3600/OVERTIME_INTERVAL)
+// This is the maximum log age divided by the overtime interval
+// plus one extra timeslot for the very first timeslot.
+// Example (default settings): 24*3600/600 + 1 = 144 + 1 slots
+// Which corresponds to something like
+//    Mon 08:05:00 - Tue 08:05:00
+// Without the extra last timestamp, the first timeslot
+// would incorrectly be located at Mon 08:15:00
+#define OVERTIME_SLOTS ((MAXLOGAGE*3600)/OVERTIME_INTERVAL + 1)
 
 // Interval for re-resolving ALL known host names [seconds]
 // Default: 3600 (once every hour)
