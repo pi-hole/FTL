@@ -194,7 +194,7 @@ void delay_startup(void)
 	// Sleep if requested by DELAY_STARTUP
 	logg("Sleeping for %d seconds as requested by configuration ...", config.delay_startup);
 	sleep(config.delay_startup);
-	logg("Done sleeping, continuing startup of resolver...\n");
+	logg("Done sleeping, continuing startup of resolver...");
 }
 
 // Is this a fork?

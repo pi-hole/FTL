@@ -112,7 +112,7 @@
 
 // DELAY_STARTUP should only delay the startup of the resolver during a starting up system
 // This setting control how long after boot we consider a system to be in starting-up mode
-// Default: 600 [seconds]
+// Default: 60 [seconds]
 #define DELAY_UPTIME 60
 
 // Use out own syscalls handling functions that will detect possible errors
