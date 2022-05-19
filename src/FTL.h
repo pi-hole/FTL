@@ -52,8 +52,8 @@
 #define SOCKETBUFFERLEN 1024
 
 // How often do we garbage collect (to ensure we only have data fitting to the MAXLOGAGE defined above)? [seconds]
-// Default: 3600 (once per hour)
-#define GCinterval 3600
+// Default: 600 (10 minute intervals)
+#define GCinterval 600
 
 // Delay applied to the garbage collecting [seconds]
 // Default: -60 (one minute before a full hour)
@@ -69,8 +69,8 @@
 #define MAXLOGAGE 24
 
 // Interval for overTime data [seconds]
-// Default: 600 (10 minute intervals)
-#define OVERTIME_INTERVAL 600
+// Default: same as GCinterval
+#define OVERTIME_INTERVAL GCinterval
 
 // How many overTime slots do we need?
 // (24+1) hours * number of intervals per hour
