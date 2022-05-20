@@ -159,7 +159,6 @@ void *GC_thread(void *val)
 			// Align the start time of this GC run to the GCinterval. This will also align with the
 			// oldest overTime interval after GC is done.
 			mintime -= mintime % GCinterval;
-			mintime += GCinterval;
 
 			if(config.debug & DEBUG_GC)
 			{

@@ -152,39 +152,9 @@ void getStats(const int *sock)
 
 void getOverTime(const int *sock)
 {
-	int from = 0, until = OVERTIME_SLOTS;
-	bool found = false;
-	time_t mintime = overTime[0].timestamp;
-
-	// Start with the first non-empty overTime slot
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) &&
-		   overTime[slot].timestamp >= mintime)
-		{
-			from = slot;
-			found = true;
-			break;
-		}
-	}
-
-	// End with last non-empty overTime slot
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if(overTime[slot].timestamp >= time(NULL))
-		{
-			until = slot;
-			break;
-		}
-	}
-
-	// Check if there is any data to be sent
-	if(!found)
-		return;
-
 	if(istelnet[*sock])
 	{
-		for(int slot = from; slot < until; slot++)
+		for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 		{
 			ssend(*sock,"%lli %i %i\n",
 			      (long long)overTime[slot].timestamp,
@@ -198,15 +168,15 @@ void getOverTime(const int *sock)
 		// and map16 can hold up to (2^16)-1 = 65535 pairs
 
 		// Send domains over time
-		pack_map16_start(*sock, (uint16_t) (until - from));
-		for(int slot = from; slot < until; slot++) {
+		pack_map16_start(*sock, (uint16_t) OVERTIME_SLOTS);
+		for(int slot = 0; slot < OVERTIME_SLOTS; slot++) {
 			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
 			pack_int32(*sock, overTime[slot].total);
 		}
 
 		// Send ads over time
-		pack_map16_start(*sock, (uint16_t) (until - from));
-		for(int slot = from; slot < until; slot++) {
+		pack_map16_start(*sock, (uint16_t) OVERTIME_SLOTS);
+		for(int slot = 0; slot < OVERTIME_SLOTS; slot++) {
 			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
 			pack_int32(*sock, overTime[slot].blocked);
 		}
@@ -1255,35 +1225,10 @@ void getDBstats(const int *sock)
 
 void getClientsOverTime(const int *sock)
 {
-	int sendit = -1, until = OVERTIME_SLOTS;
-
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 		return;
-
-	// Find minimum ID to send
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) &&
-		   overTime[slot].timestamp >= overTime[0].timestamp)
-		{
-			sendit = slot;
-			break;
-		}
-	}
-	if(sendit < 0)
-		return;
-
-	// Find minimum ID to send
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if(overTime[slot].timestamp >= time(NULL))
-		{
-			until = slot;
-			break;
-		}
-	}
 
 	// Get clients which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
@@ -1314,7 +1259,7 @@ void getClientsOverTime(const int *sock)
 	}
 
 	// Main return loop
-	for(int slot = sendit; slot < until; slot++)
+	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		if(istelnet[*sock])
 			ssend(*sock, "%lli", (long long)overTime[slot].timestamp);
