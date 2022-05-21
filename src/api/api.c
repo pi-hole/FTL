@@ -564,8 +564,8 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			upstream_port = upstream->port;
 
 			// Get percentage
-			if(counters->queries > 0)
-				percentage = 1e2f * count / counters->queries;
+			if(totalqueries > 0)
+				percentage = 1e2f * count / totalqueries;
 		}
 
 		// Send data:
