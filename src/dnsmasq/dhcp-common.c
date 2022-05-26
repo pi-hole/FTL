@@ -1017,7 +1017,10 @@ void log_relay(int family, struct dhcp_relay *relay)
 {
   int broadcast = relay->server.addr4.s_addr == 0;
   inet_ntop(family, &relay->local, daemon->addrbuff, ADDRSTRLEN);
-  inet_ntop(family, &relay->server, daemon->namebuff, ADDRSTRLEN); 
+  inet_ntop(family, &relay->server, daemon->namebuff, ADDRSTRLEN);
+
+  if (family == AF_INET && relay->port != DHCP_SERVER_PORT)
+    sprintf(daemon->namebuff + strlen(daemon->namebuff), "#%u", relay->port);
 
 #ifdef HAVE_DHCP6
   struct in6_addr multicast;
@@ -1025,7 +1028,11 @@ void log_relay(int family, struct dhcp_relay *relay)
   inet_pton(AF_INET6, ALL_SERVERS, &multicast);
 
   if (family == AF_INET6)
-    broadcast = IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast);
+    {
+      broadcast = IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast);
+      if (relay->port != DHCPV6_SERVER_PORT)
+	sprintf(daemon->namebuff + strlen(daemon->namebuff), "#%u", relay->port);
+    }
 #endif
   
   

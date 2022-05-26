@@ -2170,7 +2170,7 @@ int relay_upstream6(int iface_index, ssize_t sz,
 	
 	to.sa.sa_family = AF_INET6;
 	to.in6.sin6_addr = relay->server.addr6;
-	to.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
+	to.in6.sin6_port = htons(relay->port);
 	to.in6.sin6_flowinfo = 0;
 	to.in6.sin6_scope_id = 0;
 	

@@ -1121,7 +1121,7 @@ static int relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz)
 	
 	to.sa.sa_family = AF_INET;
 	to.in.sin_addr = relay->server.addr4;
-	to.in.sin_port = htons(daemon->dhcp_server_port);
+	to.in.sin_port = htons(relay->port);
 	
 	/* Broadcasting to server. */
 	if (relay->server.addr4.s_addr == 0)

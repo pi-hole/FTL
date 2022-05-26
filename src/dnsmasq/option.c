@@ -4337,6 +4337,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  {
 	    if (inet_pton(AF_INET, arg, &new->local))
 	      {
+		char *hash = split_chr(two, '#');
+
+		if (!hash || !atoi_check16(hash, &new->port))
+		  new->port = DHCP_SERVER_PORT;
+		
 		if (!inet_pton(AF_INET, two, &new->server))
 		  {
 		    new->server.addr4.s_addr = 0;
@@ -4355,6 +4360,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 #ifdef HAVE_DHCP6
 	    else if (inet_pton(AF_INET6, arg, &new->local))
 	      {
+		char *hash = split_chr(two, '#');
+
+		if (!hash || !atoi_check16(hash, &new->port))
+		  new->port = DHCPV6_SERVER_PORT;
+
 		if (!inet_pton(AF_INET6, two, &new->server))
 		  {
 		    inet_pton(AF_INET6, ALL_SERVERS, &new->server.addr6);
