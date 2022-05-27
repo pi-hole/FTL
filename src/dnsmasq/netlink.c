@@ -258,7 +258,16 @@ int iface_enumerate(int family, void *parm, int (*callback)())
 		    
 		    while (RTA_OK(rta, len1))
 		      {
-			if (rta->rta_type == IFA_ADDRESS)
+			/*
+			 * Important comment: (from if_addr.h)
+			 * IFA_ADDRESS is prefix address, rather than local interface address.
+			 * It makes no difference for normally configured broadcast interfaces,
+			 * but for point-to-point IFA_ADDRESS is DESTINATION address,
+			 * local address is supplied in IFA_LOCAL attribute.
+			 */
+			if (rta->rta_type == IFA_LOCAL)
+			  addrp = ((struct in6_addr *)(rta+1));
+			else if (rta->rta_type == IFA_ADDRESS && !addrp)
 			  addrp = ((struct in6_addr *)(rta+1)); 
 			else if (rta->rta_type == IFA_CACHEINFO)
 			  {
