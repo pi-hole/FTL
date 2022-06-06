@@ -54,8 +54,18 @@ void saveport(int port)
 	}
 	else
 	{
-		// FTL is terminating: Leave file truncated
+		// FTL is terminating: Truncate file and remove it (if possible)
 		fclose(f);
+		// We also try to remove the file. We still empty the file above
+		// to ensure it is at least empty when it cannot be removed.
+		// because removing files on Linux is actually unlinking them.
+		// If any processes still have the file open, it will remain
+		// in existence until the last file descriptor referring to
+		// it is closed.
+		if(remove(FTLfiles.port) != 0)
+		{
+			logg("WARNING: Unable to remove PORT file: %s", strerror(errno));
+		}
 	}
 }
 
