@@ -1455,3 +1455,36 @@ void getMAXLOGAGE(const int *sock)
 	// Return maxlogage used by FTL
 	ssend(*sock, "%d\n", config.maxlogage);
 }
+
+void getGateway(const int *sock)
+{
+	// Get IPv4 default route gateway and associated interface
+	in_addr_t gw = 0;
+	long dest_r = 0, gw_r = 0;
+	char iface[IF_NAMESIZE] = { 0 };
+	char iface_r[IF_NAMESIZE] = { 0 };
+	char buf[1024] = { 0 };
+
+	FILE *file;
+	if((file = fopen("/proc/net/route", "r")))
+	{
+		// Parse /proc/net/route - the kernel's IPv4 routing table
+		while(fgets(buf, sizeof(buf), file))
+		{
+			if(sscanf(buf, "%s %lx %lx", iface_r, &dest_r, &gw_r) == 3)
+			{
+				// Skip non-default routes
+				if(dest_r != 0)
+					continue;
+
+				// default 0.0.0.0
+				gw = gw_r;
+				strcpy(iface, iface_r);
+				break;
+			}
+		}
+		fclose(file);
+	}
+
+	ssend(*sock, "%s %s\n", inet_ntoa(*(struct in_addr *) &gw), iface);
+}
