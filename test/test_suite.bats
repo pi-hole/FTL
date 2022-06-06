@@ -1326,3 +1326,12 @@
   printf "%s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::11" ]]
 }
+
+@test "Reported default gateway is correct" {
+  run bash -c 'echo ">gateway >quit" | nc -v 127.0.0.1 4711'
+  printf "%s\n" "${lines[@]}"
+  # Check gateway IP address
+  [[ "$(awk '{print $1}' <<< "${lines[0]}")" == "$(ip -4 route show default | awk '{print $3}')" ]]
+  # Check gateway interface
+  [[ "$(awk '{print $2}' <<< "${lines[0]}")" == "$(ip -4 route show default | awk '{print $5}')" ]]
+}
