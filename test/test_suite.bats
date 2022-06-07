@@ -1332,7 +1332,7 @@
   ipaddr="$(awk '{print $3}' <<< $routes)"
   interf="$(awk '{print $5}' <<< $routes)"
   printf "ip -4 route show default: %s\n" "${routes}"
-  run bash -c 'echo ">gateway >quit" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">gateway >quit" | nc 127.0.0.1 4711'
   ftlip="$(awk '{print $1}' <<< "${lines[0]}")"
   ftlif="$(awk '{print $2}' <<< "${lines[0]}")"
   printf "%s\n" "${lines[@]}"
