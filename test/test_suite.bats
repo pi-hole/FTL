@@ -1328,10 +1328,18 @@
 }
 
 @test "Reported default gateway is correct" {
+  routes="$(ip -4 route show default)"
+  ipaddr="$(awk '{print $3}' <<< $routes)"
+  interf="$(awk '{print $5}' <<< $routes)"
+  printf "ip -4 route show default: %s\n" "${routes}"
   run bash -c 'echo ">gateway >quit" | nc -v 127.0.0.1 4711'
+  ftlip="$(awk '{print $1}' <<< "${lines[0]}")"
+  ftlif="$(awk '{print $2}' <<< "${lines[0]}")"
   printf "%s\n" "${lines[@]}"
   # Check gateway IP address
-  [[ "$(awk '{print $1}' <<< "${lines[0]}")" == "$(ip -4 route show default | awk '{print $3}')" ]]
+  printf "Checking IP: %s == %s\n" "$ftlip" "$ipaddr"
+  [[ "$ftlip" == "$ipaddr" ]]
   # Check gateway interface
-  [[ "$(awk '{print $2}' <<< "${lines[0]}")" == "$(ip -4 route show default | awk '{print $5}')" ]]
+  printf "Checking IF: %s == %s\n" "$ftlif" "$interf"
+  [[ "$ftlif" == "$interf" ]]
 }
