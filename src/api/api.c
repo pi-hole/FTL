@@ -40,6 +40,8 @@
 #include "../database/aliasclients.h"
 // get_edestr()
 #include "api_helper.h"
+// RTF_UP, RTF_GATEWAY
+#include <linux/route.h>
 
 // defined in src/dnsmasq/cache.c
 extern char *querystr(char *desc, unsigned short type);
@@ -1454,4 +1456,51 @@ void getMAXLOGAGE(const int *sock)
 {
 	// Return maxlogage used by FTL
 	ssend(*sock, "%d\n", config.maxlogage);
+}
+
+void getGateway(const int *sock)
+{
+	// Get IPv4 default route gateway and associated interface
+	in_addr_t gw = 0;
+	long dest_r = 0, gw_r = 0;
+	int flags = 0, metric = 0, minmetric = __INT_MAX__;
+	char iface[IF_NAMESIZE] = { 0 };
+	char iface_r[IF_NAMESIZE] = { 0 };
+	char buf[1024] = { 0 };
+
+	FILE *file;
+	if((file = fopen("/proc/net/route", "r")))
+	{
+		// Parse /proc/net/route - the kernel's IPv4 routing table
+		while(fgets(buf, sizeof(buf), file))
+		{
+			if(sscanf(buf, "%s %lx %lx %x %*i %*i %i", iface_r, &dest_r, &gw_r, &flags, &metric) != 5)
+				continue;
+
+			// Only anaylze routes which are UP and whose
+			// destinations are a gateway
+			if(!(flags & RTF_UP) || !(flags & RTF_GATEWAY))
+				continue;
+
+			// Only analyze "catch all" routes (destination 0.0.0.0)
+			if(dest_r != 0)
+				continue;
+
+			// Store default gateway, overwrite if we find a route with
+			// a lower metric
+			if(metric < minmetric)
+			{
+				minmetric = metric;
+				gw = gw_r;
+				strcpy(iface, iface_r);
+
+				if(config.debug & DEBUG_API)
+					logg("Reading interfaces: flags: %i, addr: %s, iface: %s, metric: %i, minmetric: %i",
+					     flags, inet_ntoa(*(struct in_addr *) &gw), iface, metric, minmetric);
+			}
+		}
+		fclose(file);
+	}
+
+	ssend(*sock, "%s %s\n", inet_ntoa(*(struct in_addr *) &gw), iface);
 }
