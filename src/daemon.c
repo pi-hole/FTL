@@ -24,6 +24,9 @@
 #include <sys/utsname.h>
 // killed
 #include "signals.h"
+// sysinfo()
+#include <sys/sysinfo.h>
+#include <errno.h>
 
 pthread_t threads[THREADS_MAX] = { 0 };
 pthread_t api_threads[MAX_API_THREADS] = { 0 };
@@ -184,11 +187,25 @@ void delay_startup(void)
 	if(config.delay_startup == 0u)
 		return;
 
+	// Get uptime of system
+	struct sysinfo info = { 0 };
+	if(sysinfo(&info) == 0)
+	{
+		if(info.uptime > DELAY_UPTIME)
+		{
+			logg("Not sleeping as system has finished booting");
+			return;
+		}
+	}
+	else
+	{
+		logg("Unable to obtain sysinfo: %s (%i)", strerror(errno), errno);
+	}
+
 	// Sleep if requested by DELAY_STARTUP
-	logg("Sleeping for %d seconds as requested by configuration ...",
-	     config.delay_startup);
+	logg("Sleeping for %d seconds as requested by configuration ...", config.delay_startup);
 	sleep(config.delay_startup);
-	logg("Done sleeping, continuing startup of resolver...\n");
+	logg("Done sleeping, continuing startup of resolver...");
 }
 
 // Is this a fork?
