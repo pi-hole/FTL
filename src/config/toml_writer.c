@@ -103,13 +103,26 @@ bool writeFTLtoml(void)
 	// [dns.reply] subsection
 	catTOMLsection(fp, 1, "dns.reply");
 	char addr4[INET_ADDRSTRLEN] = "";
-	if(config.reply_addr.overwrite_v4)
-		inet_ntop(AF_INET, &config.reply_addr.v4, addr4, INET_ADDRSTRLEN);
-	catTOMLstring(fp, 2, "IPv4", "Use a specific IPv4 address in IP blocking mode", "<valid IPv4 address> or empty string (\"\")", addr4, "");
 	char addr6[INET6_ADDRSTRLEN] = "";
-	if(config.reply_addr.overwrite_v6)
-		inet_ntop(AF_INET6, &config.reply_addr.v6, addr6, INET6_ADDRSTRLEN);
-	catTOMLstring(fp, 2, "IPv6", "Use a specific IPv6 address in IP blocking mode", "<valid IPv6 address> or empty string (\"\")", addr6, "");
+	// [dns.reply.own_host] subsection
+	catTOMLsection(fp, 2, "dns.reply.own_host");
+	if(config.reply_addr.own_host.overwrite_v4)
+		inet_ntop(AF_INET, &config.reply_addr.own_host.v4, addr4, INET_ADDRSTRLEN);
+	catTOMLstring(fp, 3, "IPv4", "Use a specific IPv4 address for the Pi-hole host", "<valid IPv4 address> or empty string (\"\")", addr4, "");
+	if(config.reply_addr.own_host.overwrite_v6)
+		inet_ntop(AF_INET6, &config.reply_addr.own_host.v6, addr6, INET6_ADDRSTRLEN);
+	catTOMLstring(fp, 3, "IPv6", "Use a specific IPv6 address for the Pi-hole host", "<valid IPv6 address> or empty string (\"\")", addr6, "");
+
+	// [dns.reply.ip_blocking] subsection
+	catTOMLsection(fp, 2, "dns.reply.ip_blocking");
+	memset(addr4, 0, INET_ADDRSTRLEN);
+	if(config.reply_addr.ip_blocking.overwrite_v4)
+		inet_ntop(AF_INET, &config.reply_addr.ip_blocking.v4, addr4, INET_ADDRSTRLEN);
+	catTOMLstring(fp, 3, "IPv4", "Use a specific IPv4 address in IP blocking mode", "<valid IPv4 address> or empty string (\"\")", addr4, "");
+	memset(addr6, 0, INET6_ADDRSTRLEN);
+	if(config.reply_addr.ip_blocking.overwrite_v6)
+		inet_ntop(AF_INET6, &config.reply_addr.ip_blocking.v6, addr6, INET6_ADDRSTRLEN);
+	catTOMLstring(fp, 3, "IPv6", "Use a specific IPv6 address in IP blocking mode", "<valid IPv6 address> or empty string (\"\")", addr6, "");
 
 
 

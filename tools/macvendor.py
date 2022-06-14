@@ -22,7 +22,7 @@ print("Downloading...")
 opener = urllib.request.build_opener()
 opener.addheaders = [('User-agent', 'Mozilla/5.0')]
 urllib.request.install_opener(opener)
-urllib.request.urlretrieve("https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf", "manuf.data")
+urllib.request.urlretrieve("https://gitlab.com/wireshark/wireshark/-/raw/master/manuf", "manuf.data")
 print("...done")
 
 # Read file into memory and process lines

@@ -14,7 +14,6 @@
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
 #include "api.h"
-#include "../config/config.h"
 #include "../shmem.h"
 
 int api_handler(struct mg_connection *conn, void *ignored)
@@ -93,6 +92,16 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		// Locks not needed
 		ret = api_ftl_dbinfo(&api);
+	}
+	else if(startsWith("/api/ftl/maxhistory", &api))
+	{
+		// Locks not needed
+		ret = api_ftl_maxhistory(&api);
+	}
+	else if(startsWith("/api/ftl/gateway", &api))
+	{
+		// Locks not needed
+		ret = api_ftl_gateway(&api);
 	}
 	/******************************** /api/network ****************************/
 	else if(startsWith("/api/network", &api))

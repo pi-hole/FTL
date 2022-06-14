@@ -136,25 +136,62 @@ bool readFTLtoml(void)
 		toml_table_t *reply = toml_table_in(dns, "reply");
 		if(reply)
 		{
-			toml_datum_t ipv4 = toml_string_in(reply, "IPv4");
-			if(ipv4.ok)
+			// Read [dns.reply.own_host] section
+			toml_table_t *own_host = toml_table_in(reply, "own_host");
+			if(own_host)
 			{
-				if(inet_pton(AF_INET, ipv4.u.s, &config.reply_addr.v4))
-					config.reply_addr.overwrite_v4 = true;
-				free(ipv4.u.s);
-			}
-			else
-				log_debug(DEBUG_CONFIG, "dns.reply.IPv4 DOES NOT EXIST");
+				toml_datum_t ipv4 = toml_string_in(own_host, "IPv4");
+				if(ipv4.ok)
+				{
+					if(inet_pton(AF_INET, ipv4.u.s, &config.reply_addr.own_host.v4))
+						config.reply_addr.own_host.overwrite_v4 = true;
+					free(ipv4.u.s);
+				}
+				else
+					log_debug(DEBUG_CONFIG, "dns.reply.own_host.IPv4 DOES NOT EXIST");
 
-			toml_datum_t ipv6 = toml_string_in(reply, "IPv6");
-			if(ipv6.ok)
-			{
-				if(inet_pton(AF_INET, ipv6.u.s, &config.reply_addr.v6))
-					config.reply_addr.overwrite_v6 = true;
-				free(ipv6.u.s);
+				toml_datum_t ipv6 = toml_string_in(own_host, "IPv6");
+				if(ipv6.ok)
+				{
+					if(inet_pton(AF_INET, ipv6.u.s, &config.reply_addr.own_host.v6))
+						config.reply_addr.own_host.overwrite_v6 = true;
+					free(ipv6.u.s);
+				}
+				else
+					log_debug(DEBUG_CONFIG, "dns.reply.own_host.IPv6 DOES NOT EXIST");
 			}
 			else
-				log_debug(DEBUG_CONFIG, "dns.reply.IPv6 DOES NOT EXIST");
+			{
+				log_debug(DEBUG_CONFIG, "dns.reply.own_host DOES NOT EXIST");
+			}
+			// Read [dns.reply.ip_blocking] section
+			toml_table_t *ip_blocking = toml_table_in(reply, "ip_blocking");
+			if(ip_blocking)
+			{
+				toml_datum_t ipv4 = toml_string_in(ip_blocking, "IPv4");
+				if(ipv4.ok)
+				{
+					if(inet_pton(AF_INET, ipv4.u.s, &config.reply_addr.ip_blocking.v4))
+						config.reply_addr.ip_blocking.overwrite_v4 = true;
+					free(ipv4.u.s);
+				}
+				else
+					log_debug(DEBUG_CONFIG, "dns.reply.ip_blocking.IPv4 DOES NOT EXIST");
+
+				toml_datum_t ipv6 = toml_string_in(ip_blocking, "IPv6");
+				if(ipv6.ok)
+				{
+					if(inet_pton(AF_INET, ipv6.u.s, &config.reply_addr.ip_blocking.v6))
+						config.reply_addr.ip_blocking.overwrite_v6 = true;
+					free(ipv6.u.s);
+				}
+				else
+					log_debug(DEBUG_CONFIG, "dns.reply.ip_blocking.IPv6 DOES NOT EXIST");
+			}
+			else
+			{
+				log_debug(DEBUG_CONFIG, "dns.reply.ip_blocking DOES NOT EXIST");
+			}
 		}
 		else
 			log_debug(DEBUG_CONFIG, "dns.reply DOES NOT EXIST");

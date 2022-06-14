@@ -26,7 +26,7 @@ int FTLaccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, const char 
 	// incoming signal
 	while(ret < 0 && errno == EINTR);
 
-	// Final error checking (may have faild for some other reason then an
+	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret < 0)
 		log_warn("Could not accept() in %s() (%s:%i): %s",

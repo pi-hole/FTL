@@ -22,6 +22,9 @@
 #include <sys/utsname.h>
 // killed
 #include "signals.h"
+// sysinfo()
+#include <sys/sysinfo.h>
+#include <errno.h>
 
 pthread_t threads[THREADS_MAX] = { 0 };
 pthread_t api_threads[MAX_API_THREADS] = { 0 };
@@ -118,6 +121,17 @@ static void removepid(void)
 		return;
 	}
 	fclose(f);
+
+	// We also try to remove the file. We still empty the file above
+	// to ensure it is at least empty when it cannot be removed.
+	// because removing files on Linux is actually unlinking them.
+	// If any processes still have the file open, it will remain
+	// in existence until the last file descriptor referring to
+	// it is closed.
+	if(remove(config.files.pid) != 0)
+	{
+		log_warn("Unable to remove PID file: %s", strerror(errno));
+	}
 }
 
 char *getUserName(void)
@@ -170,11 +184,25 @@ void delay_startup(void)
 	if(config.delay_startup == 0u)
 		return;
 
+	// Get uptime of system
+	struct sysinfo info = { 0 };
+	if(sysinfo(&info) == 0)
+	{
+		if(info.uptime > DELAY_UPTIME)
+		{
+			log_info("Not sleeping as system has finished booting");
+			return;
+		}
+	}
+	else
+	{
+		log_err("Unable to obtain sysinfo: %s (%i)", strerror(errno), errno);
+	}
+
 	// Sleep if requested by DELAY_STARTUP
-	log_info("Sleeping for %d seconds as requested by configuration ...",
-	     config.delay_startup);
+	log_info("Sleeping for %d seconds as requested by configuration ...", config.delay_startup);
 	sleep(config.delay_startup);
-	log_info("Done sleeping, continuing startup of resolver...\n");
+	log_info("Done sleeping, continuing startup of resolver...");
 }
 
 // Is this a fork?
@@ -205,14 +233,14 @@ static void terminate_threads(void)
 		if(thread_cancellable[i])
 		{
 			log_info("Thread %s (%d) is idle, terminating it.",
-			     thread_names[i], i);
+			         thread_names[i], i);
 			pthread_cancel(threads[i]);
 		}
 
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
 		{
-			log_info("Thread %s (%d) is busy, cancelling it (cannot set timout).",
-			     thread_names[i], i);
+			log_info("Thread %s (%d) is busy, cancelling it (cannot set timeout).",
+			         thread_names[i], i);
 			pthread_cancel(threads[i]);
 			continue;
 		}

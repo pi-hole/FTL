@@ -388,25 +388,51 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 			          regextype[regexid], index, regex->database_id,
 			          input, regex->string);
 
-			if(regextest && regexid == REGEX_CLI)
+			if(regextest)
 			{
-				// CLI provided regular expression
-				log_info("    %s%s%s matches",
-				         cli_bold(), regex->string, cli_normal());
-			}
-			else if(regextest && regexid == REGEX_DENY)
-			{
-				// Database-sourced regular expression
-				log_info("    %s%s%s matches (deny regex, DB ID %i)",
-				         cli_bold(), regex->string, cli_normal(),
-				         regex->database_id);
-			}
-			else if(regextest && regexid == REGEX_ALLOW)
-			{
-				// Database-sourced regular expression
-				log_info("    %s%s%s matches (allow regex, DB ID %i)",
-				         cli_bold(), regex->string, cli_normal(),
-				         regex->database_id);
+				if(regexid == REGEX_CLI)
+				{
+					// CLI provided regular expression
+					log_info("    %s%s%s matches",
+					cli_bold(), regex[index].string, cli_normal());
+				}
+				else if(regextest && regexid == REGEX_DENY)
+				{
+					// Database-sourced regular expression
+					log_info("    %s%s%s matches (regex blacklist, DB ID %i)",
+					cli_bold(), regex[index].string, cli_normal(),
+					regex[index].database_id);
+				}
+				else if(regextest && regexid == REGEX_ALLOW)
+				{
+					// Database-sourced regular expression
+					log_info("    %s%s%s matches (regex whitelist, DB ID %i)",
+					cli_bold(), regex[index].string, cli_normal(),
+					regex[index].database_id);
+				}
+
+				// Check query type filtering
+				if(regex[index].ext.query_type != 0)
+				{
+					const char *typestr = get_query_type_str(regex[index].ext.query_type, NULL, NULL);
+					log_info("    Hint: This regex %s type %s queries",
+					         regex[index].ext.query_type_inverted ? "does not match" : "matches only",
+					         typestr);
+				}
+
+				// Check inversion
+				if(regex[index].ext.inverted)
+				{
+					log_info("    Hint: This regex is inverted");
+				}
+
+				// Check special reply type
+				if(regex[index].ext.reply != REPLY_UNKNOWN)
+				{
+					const char *replystr = get_query_reply_str(regex[index].ext.reply);
+					log_info("    Hint: This regex forces reply type %s", replystr);
+				}
+
 			}
 			else
 			{

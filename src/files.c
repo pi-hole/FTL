@@ -67,7 +67,11 @@ bool file_exists(const char *filename)
 
 bool get_database_stat(struct stat *st)
 {
-	return stat(config.files.database, st) != 0;
+	if(stat(config.files.database, st) == 0)
+		return true;
+
+	log_err("Cannot stat %s: %s", config.files.database, strerror(errno));
+	return false;
 }
 
 unsigned long long get_FTL_db_filesize(void)
@@ -148,11 +152,11 @@ void ls_dir(const char* path)
 		get_permission_string(permissions, &st);
 
 		char prefix[2] = { 0 };
-		double formated = 0.0;
-		format_memory_size(prefix, (unsigned long long)st.st_size, &formated);
+		double formatted = 0.0;
+		format_memory_size(prefix, (unsigned long long)st.st_size, &formatted);
 
 		// Log output for this file
-		log_info("%s %-15s %3.0f%s  %s", permissions, usergroup, formated, prefix, filename);
+		log_info("%s %-15s %3.0f%s  %s", permissions, usergroup, formatted, prefix, filename);
 	}
 
 	log_info("---------------------------------------------------");
@@ -181,17 +185,17 @@ int get_path_usage(const char *path, char buffer[64])
 
 	// Create human-readable total size
 	char prefix_size[2] = { 0 };
-	double formated_size = 0.0;
-	format_memory_size(prefix_size, size, &formated_size);
+	double formatted_size = 0.0;
+	format_memory_size(prefix_size, size, &formatted_size);
 
 	// Generate human-readable "total used" size
 	char prefix_used[2] = { 0 };
-	double formated_used = 0.0;
-	format_memory_size(prefix_used, used, &formated_used);
+	double formatted_used = 0.0;
+	format_memory_size(prefix_used, used, &formatted_used);
 
 	// Print result into buffer passed to this subroutine
 	snprintf(buffer, 64, "%s: %.1f%sB used, %.1f%sB total", path,
-	         formated_used, prefix_used, formated_size, prefix_size);
+	         formatted_used, prefix_used, formatted_size, prefix_size);
 
 	// Return percentage of used shared memory
 	// Adding 1 avoids FPE if the size turns out to be zero

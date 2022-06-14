@@ -55,7 +55,7 @@ unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name
       char *cp, c;
 
       if (!extract_name(header, plen, &p, name, 1, 4))
-	break; /* bad packet */
+	return NULL; /* bad packet */
 
       for (cp = name; (c = *cp); cp++)
 	 if (c >= 'A' && c <= 'Z')
@@ -67,7 +67,7 @@ unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name
 
       p += 4;
       if (!CHECK_LEN(header, p, plen, 0))
-	break; /* bad packet */
+	return NULL; /* bad packet */
     }
   
   hash->digest(ctx, hash->digest_size, digest);
@@ -109,7 +109,7 @@ unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name
       char *cp, c;
 
       if (!extract_name(header, plen, &p, name, 1, 4))
-	break; /* bad packet */
+	return NULL; /* bad packet */
 
       for (cp = name; (c = *cp); cp++)
 	 if (c >= 'A' && c <= 'Z')
@@ -121,7 +121,7 @@ unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name
 
       p += 4;
       if (!CHECK_LEN(header, p, plen, 0))
-	break; /* bad packet */
+	return NULL; /* bad packet */
     }
   
   sha256_final(&ctx, digest);

@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -566,12 +566,16 @@ char *whichdevice(void)
       }
 
   if (found)
-    return found->name;
-
+    {
+      char *ret = safe_malloc(strlen(found->name)+1);
+      strcpy(ret, found->name);
+      return ret;
+    }
+  
   return NULL;
 }
  
-void  bindtodevice(char *device, int fd)
+static int bindtodevice(char *device, int fd)
 {
   size_t len = strlen(device)+1;
   if (len > IFNAMSIZ)
@@ -579,7 +583,33 @@ void  bindtodevice(char *device, int fd)
   /* only allowed by root. */
   if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, device, len) == -1 &&
       errno != EPERM)
-    die(_("failed to set SO_BINDTODEVICE on DHCP socket: %s"), NULL, EC_BADNET);
+    return 2;
+  
+  return 1;
+}
+
+int bind_dhcp_devices(char *bound_device)
+{
+  int ret = 0;
+
+  if (bound_device)
+    {
+      if (daemon->dhcp)
+	{
+	  if (!daemon->relay4)
+	    ret |= bindtodevice(bound_device, daemon->dhcpfd);
+	  
+	  if (daemon->enable_pxe && daemon->pxefd != -1)
+	    ret |= bindtodevice(bound_device, daemon->pxefd);
+	}
+      
+#if defined(HAVE_DHCP6)
+      if (daemon->doing_dhcp6 && !daemon->relay6)
+	ret |= bindtodevice(bound_device, daemon->dhcp6fd);
+#endif
+    }
+  
+  return ret;
 }
 #endif
 
@@ -985,11 +1015,27 @@ void log_context(int family, struct dhcp_context *context)
 
 void log_relay(int family, struct dhcp_relay *relay)
 {
+  int broadcast = relay->server.addr4.s_addr == 0;
   inet_ntop(family, &relay->local, daemon->addrbuff, ADDRSTRLEN);
   inet_ntop(family, &relay->server, daemon->namebuff, ADDRSTRLEN); 
 
+#ifdef HAVE_DHCP6
+  struct in6_addr multicast;
+
+  inet_pton(AF_INET6, ALL_SERVERS, &multicast);
+
+  if (family == AF_INET6)
+    broadcast = IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast);
+#endif
+  
+  
   if (relay->interface)
-    my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s to %s via %s"), daemon->addrbuff, daemon->namebuff, relay->interface);
+    {
+      if (broadcast)
+	my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s via %s"), daemon->addrbuff, relay->interface);
+      else
+	my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s to %s via %s"), daemon->addrbuff, daemon->namebuff, relay->interface);
+    }
   else
     my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s to %s"), daemon->addrbuff, daemon->namebuff);
 }

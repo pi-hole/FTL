@@ -30,6 +30,10 @@
 #include <grp.h>
 // config struct
 #include "../config/config.h"
+// struct clientsData
+#include "../datastructure.h"
+// Routing information and flags
+#include <net/route.h>
 
 int api_ftl_client(struct ftl_conn *api)
 {
@@ -184,7 +188,7 @@ int api_ftl_dbinfo(struct ftl_conn *api)
 	JSON_OBJ_ADD_ITEM(json, "owner", owner);
 
 	// Add number of queries in on-disk database
-	const int queries_in_database = get_number_of_queries_in_DB(NULL, true, false);
+	const int queries_in_database = get_number_of_queries_in_DB(NULL, "query_storage", true);
 	JSON_OBJ_ADD_NUMBER(json, "queries", queries_in_database);
 
 	// Add SQLite library version
@@ -453,5 +457,62 @@ int api_ftl_sysinfo(struct ftl_conn *api)
 		return ret;
 
 	JSON_OBJ_ADD_ITEM(json, "ftl", ftl);
+	JSON_SEND_OBJECT(json);
+}
+
+int api_ftl_maxhistory(struct ftl_conn *api)
+{
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(json, "maxHistory", config.maxHistory);
+	JSON_SEND_OBJECT(json);
+}
+
+int api_ftl_gateway(struct ftl_conn *api)
+{
+	// Get IPv4 default route gateway and associated interface
+	in_addr_t gw = 0;
+	long dest_r = 0, gw_r = 0;
+	int flags = 0, metric = 0, minmetric = __INT_MAX__;
+	char iface[IF_NAMESIZE] = { 0 };
+	char iface_r[IF_NAMESIZE] = { 0 };
+	char buf[1024] = { 0 };
+
+	FILE *file;
+	if((file = fopen("/proc/net/route", "r")))
+	{
+		// Parse /proc/net/route - the kernel's IPv4 routing table
+		while(fgets(buf, sizeof(buf), file))
+		{
+			if(sscanf(buf, "%s %lx %lx %x %*i %*i %i", iface_r, &dest_r, &gw_r, &flags, &metric) != 5)
+				continue;
+
+			// Only anaylze routes which are UP and whose
+			// destinations are a gateway
+			if(!(flags & RTF_UP) || !(flags & RTF_GATEWAY))
+				continue;
+
+			// Only analyze "catch all" routes (destination 0.0.0.0)
+			if(dest_r != 0)
+				continue;
+
+			// Store default gateway, overwrite if we find a route with
+			// a lower metric
+			if(metric < minmetric)
+			{
+				minmetric = metric;
+				gw = gw_r;
+				strcpy(iface, iface_r);
+
+				log_debug(DEBUG_API, "Reading interfaces: flags: %i, addr: %s, iface: %s, metric: %i, minmetric: %i",
+				          flags, inet_ntoa(*(struct in_addr *) &gw), iface, metric, minmetric);
+			}
+		}
+		fclose(file);
+	}
+
+	cJSON *json = JSON_NEW_OBJ();
+	const char *gwaddr = inet_ntoa(*(struct in_addr *) &gw);
+	JSON_OBJ_COPY_STR(json, "address", gwaddr);
+	JSON_OBJ_REF_STR(json, "interface", iface);
 	JSON_SEND_OBJECT(json);
 }

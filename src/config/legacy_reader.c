@@ -394,32 +394,84 @@ const char *readFTLlegacy(void)
 		config.rate_limit.interval = interval;
 	}
 
-	// REPLY_ADDR4
+	// LOCAL_IPV4
 	// Use a specific IP address instead of automatically detecting the
-	// IPv4 interface address a query arrived on
+	// IPv4 interface address a query arrived on for A hostname queries
 	// defaults to: not set
-	buffer = parseFTLconf(fp, "REPLY_ADDR4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.reply_addr.v4))
-		config.reply_addr.overwrite_v4 = true;
+	config.reply_addr.own_host.overwrite_v4 = false;
+	config.reply_addr.own_host.v4.s_addr = 0;
+	buffer = parseFTLconf(fp, "LOCAL_IPV4");
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.reply_addr.own_host.v4))
+		config.reply_addr.own_host.overwrite_v4 = true;
 
-	if(config.reply_addr.overwrite_v4)
+	// LOCAL_IPV6
+	// Use a specific IP address instead of automatically detecting the
+	// IPv6 interface address a query arrived on for AAAA hostname queries
+	// defaults to: not set
+	config.reply_addr.own_host.overwrite_v6 = false;
+	memset(&config.reply_addr.own_host.v6, 0, sizeof(config.reply_addr.own_host.v6));
+	buffer = parseFTLconf(fp, "LOCAL_IPV6");
+	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.reply_addr.own_host.v6))
+		config.reply_addr.own_host.overwrite_v6 = true;
+
+	// BLOCK_IPV4
+	// Use a specific IPv4 address for IP blocking mode replies
+	// defaults to: REPLY_ADDR4 setting
+	config.reply_addr.ip_blocking.overwrite_v4 = false;
+	config.reply_addr.ip_blocking.v4.s_addr = 0;
+	buffer = parseFTLconf(fp, "BLOCK_IPV4");
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.reply_addr.ip_blocking.v4))
+		config.reply_addr.ip_blocking.overwrite_v4 = true;
+
+	// BLOCK_IPV6
+	// Use a specific IPv6 address for IP blocking mode replies
+	// defaults to: REPLY_ADDR6 setting
+	config.reply_addr.ip_blocking.overwrite_v6 = false;
+	memset(&config.reply_addr.ip_blocking.v6, 0, sizeof(config.reply_addr.own_host.v6));
+	buffer = parseFTLconf(fp, "BLOCK_IPV6");
+	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.reply_addr.ip_blocking.v6))
+		config.reply_addr.ip_blocking.overwrite_v6 = true;
+
+	// REPLY_ADDR4 (deprecated setting)
+	// Use a specific IP address instead of automatically detecting the
+	// IPv4 interface address a query arrived on A hostname and IP blocked queries
+	// defaults to: not set
+	struct in_addr reply_addr4;
+	buffer = parseFTLconf(fp, "REPLY_ADDR4");
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr4))
 	{
-		char addr[INET_ADDRSTRLEN] = { 0 };
-		inet_ntop(AF_INET, &config.reply_addr.v4, addr, INET_ADDRSTRLEN);
+		if(config.reply_addr.own_host.overwrite_v4 || config.reply_addr.ip_blocking.overwrite_v4)
+		{
+			log_warn("Ignoring REPLY_ADDR4 as LOCAL_IPV4 or BLOCK_IPV4 has been specified.");
+		}
+		else
+		{
+			config.reply_addr.own_host.overwrite_v4 = true;
+			memcpy(&config.reply_addr.own_host.v4, &reply_addr4, sizeof(reply_addr4));
+			config.reply_addr.ip_blocking.overwrite_v4 = true;
+			memcpy(&config.reply_addr.ip_blocking.v4, &reply_addr4, sizeof(reply_addr4));
+		}
 	}
 
-	// REPLY_ADDR6
+	// REPLY_ADDR6 (deprecated setting)
 	// Use a specific IP address instead of automatically detecting the
-	// IPv6 interface address a query arrived on
+	// IPv4 interface address a query arrived on A hostname and IP blocked queries
 	// defaults to: not set
+	struct in6_addr reply_addr6;
 	buffer = parseFTLconf(fp, "REPLY_ADDR6");
-	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.reply_addr.v6))
-		config.reply_addr.overwrite_v6 = true;
-
-	if(config.reply_addr.overwrite_v6)
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr6))
 	{
-		char addr[INET6_ADDRSTRLEN] = { 0 };
-		inet_ntop(AF_INET6, &config.reply_addr.v6, addr, INET6_ADDRSTRLEN);
+		if(config.reply_addr.own_host.overwrite_v6 || config.reply_addr.ip_blocking.overwrite_v6)
+		{
+			log_warn("Ignoring REPLY_ADDR6 as LOCAL_IPV6 or BLOCK_IPV6 has been specified.");
+		}
+		else
+		{
+			config.reply_addr.own_host.overwrite_v6 = true;
+			memcpy(&config.reply_addr.own_host.v6, &reply_addr6, sizeof(reply_addr6));
+			config.reply_addr.ip_blocking.overwrite_v6 = true;
+			memcpy(&config.reply_addr.ip_blocking.v6, &reply_addr6, sizeof(reply_addr6));
+		}
 	}
 
 	// SHOW_DNSSEC

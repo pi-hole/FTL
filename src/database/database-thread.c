@@ -28,13 +28,15 @@
 #include "../events.h"
 // get_FTL_db_filesize()
 #include "../files.h"
+// read_blocking_status()
+#include "../setupVars.h"
 
 #define TIME_T "%li"
 
 static bool delete_old_queries_in_DB(sqlite3 *db)
 {
 	const time_t timestamp = time(NULL) - config.maxDBdays * 86400;
-	SQL_bool(db, "DELETE FROM queries WHERE timestamp <= "TIME_T, timestamp);
+	SQL_bool(db, "DELETE FROM query_storage WHERE timestamp <= "TIME_T, timestamp);
 
 	// Get how many rows have been affected (deleted)
 	const int affected = sqlite3_changes(db);
@@ -178,8 +180,14 @@ void *DB_thread(void *val)
 
 		BREAK_IF_KILLED();
 
-		// Sleep 1 sec
-		thread_sleepms(DB, 1000);
+		// Inspect setupVars.conf to see if Pi-hole blocking is enabled
+		if(get_and_clear_event(RELOAD_BLOCKINGSTATUS))
+			read_blocking_status();
+
+		BREAK_IF_KILLED();
+
+		// Sleep 0.1 sec
+		thread_sleepms(DB, 100);
 	}
 
 	// Close database handle if still open

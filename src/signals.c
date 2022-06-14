@@ -51,7 +51,7 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 	if(strstr(symbol, BINARY_NAME) == NULL)
 		return;
 
-	// Find first occurence of '(' or ' ' in the obtaned symbol string and
+	// Find first occurrence of '(' or ' ' in the obtaned symbol string and
 	// assume everything before that is the file name. (Don't go beyond the
 	// string terminator \0)
 	int p = 0;
@@ -185,7 +185,7 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 		switch (si->si_code)
 		{
 			case BUS_ADRALN:    log_info("     with code:  BUS_ADRALN (Invalid address alignment)"); break;
-			case BUS_ADRERR:    log_info("     with code:  BUS_ADRERR (Non-existant physical address)"); break;
+			case BUS_ADRERR:    log_info("     with code:  BUS_ADRERR (Non-existent physical address)"); break;
 			case BUS_OBJERR:    log_info("     with code:  BUS_OBJERR (Object specific hardware error)"); break;
 			case BUS_MCEERR_AR: log_info("     with code:  BUS_MCEERR_AR (Hardware memory error: action required)"); break;
 			case BUS_MCEERR_AO: log_info("     with code:  BUS_MCEERR_AO (Hardware memory error: action optional)"); break;
@@ -290,8 +290,8 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		// Reload the privacy level in case the user changed it
 		set_event(RELOAD_PRIVACY_LEVEL);
 
-		// Reload blocking mode
-		set_event(RELOAD_BLOCKINGMODE);
+		// Reload blocking status
+		set_event(RELOAD_BLOCKINGSTATUS);
 	}
 	else if(rtsig == 2)
 	{

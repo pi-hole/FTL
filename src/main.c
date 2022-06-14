@@ -112,9 +112,9 @@ int main (int argc, char *argv[])
 	log_counter_info();
 	check_setupVarsconf();
 
-	// Check for availability of advanced capabilities
-	// immediately before starting the resolver.
-	check_capabilities();
+	// Check for availability of capabilities in debug mode
+	if(config.debug & DEBUG_CAPS)
+		check_capabilities();
 
 	// Initialize pseudo-random number generator
 	srand(time(NULL));

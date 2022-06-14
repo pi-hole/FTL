@@ -17,10 +17,12 @@
 #include <sys/types.h>
 // typedef uni32_t
 #include <stdint.h>
-// assert_sizeof
-#include "../static_assert.h"
 // struct in_addr, in6_addr
 #include <netinet/in.h>
+// type bool
+#include <stdbool.h>
+// type FILE
+#include <stdio.h>
 
 #define GLOBALTOMLPATH "/etc/pihole/pihole-FTL.toml"
 
@@ -82,10 +84,18 @@ typedef struct {
 		unsigned int interval;
 	} rate_limit;
 	struct {
-		bool overwrite_v4 :1;
-		bool overwrite_v6 :1;
-		struct in_addr v4;
-		struct in6_addr v6;
+		struct {
+			bool overwrite_v4 :1;
+			bool overwrite_v6 :1;
+			struct in_addr v4;
+			struct in6_addr v6;
+		} own_host;
+		struct {
+			bool overwrite_v4 :1;
+			bool overwrite_v6 :1;
+			struct in_addr v4;
+			struct in6_addr v6;
+		} ip_blocking;
 	} reply_addr;
 	struct {
 		bool localAPIauth;
@@ -110,7 +120,6 @@ typedef struct {
 		char *ph7_error;
 	} files;
 } ConfigStruct;
-//ASSERT_SIZEOF(ConfigStruct, 200, 144, 144);
 
 typedef struct {
 	const char* conf;

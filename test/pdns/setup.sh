@@ -30,10 +30,10 @@ cp test/pdns/recursor.conf $RECURSOR_CONF
 # Create zone database
 if [ -f /usr/share/doc/pdns-backend-sqlite3/schema.sqlite3.sql ]; then
   # Debian
-  sqlite3 /var/lib/powerdns/pdns.sqlite3 < /usr/share/doc/pdns-backend-sqlite3/schema.sqlite3.sql
+  ./pihole-FTL sqlite3 /var/lib/powerdns/pdns.sqlite3 < /usr/share/doc/pdns-backend-sqlite3/schema.sqlite3.sql
 elif [ -f /usr/share/doc/pdns/schema.sqlite3.sql ]; then
   # Alpine
-  sqlite3 /var/lib/powerdns/pdns.sqlite3 < /usr/share/doc/pdns/schema.sqlite3.sql
+  ./pihole-FTL sqlite3 /var/lib/powerdns/pdns.sqlite3 < /usr/share/doc/pdns/schema.sqlite3.sql
 else
   echo "Error: powerDNS SQL schema not found"
   exit 1

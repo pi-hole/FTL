@@ -194,7 +194,7 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 
 	// transaction id is supposed to be random
 	discover_packet.xid = htonl(xid);
-	ntohl(discover_packet.xid);
+	//ntohl(discover_packet.xid);
 	discover_packet.secs = 0x00;
 
 	// tell server it should broadcast its response
@@ -442,7 +442,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 				unsigned int n = 0;
 				for(unsigned int i = 1; n < optlen; i++)
 				{
-					// Extract destionation descriptor
+					// Extract destination descriptor
 					unsigned char cidr = offer_packet->options[x+n++];
 					unsigned char addr[4] = { 0 };
 					if(cidr > 0)

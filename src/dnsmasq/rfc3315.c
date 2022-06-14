@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -2100,95 +2100,116 @@ static unsigned int opt6_uint(unsigned char *opt, int offset, int size)
   return ret;
 } 
 
-void relay_upstream6(struct dhcp_relay *relay, ssize_t sz, 
-		     struct in6_addr *peer_address, u32 scope_id, time_t now)
+int relay_upstream6(int iface_index, ssize_t sz, 
+		    struct in6_addr *peer_address, u32 scope_id, time_t now)
 {
-  /* ->local is same value for all relays on ->current chain */
-  
-  union all_addr from;
   unsigned char *header;
   unsigned char *inbuff = daemon->dhcp_packet.iov_base;
   int msg_type = *inbuff;
-  int hopcount;
+  int hopcount, o;
   struct in6_addr multicast;
   unsigned int maclen, mactype;
   unsigned char mac[DHCP_CHADDR_MAX];
+  struct dhcp_relay *relay;
+  
+  for (relay = daemon->relay6; relay; relay = relay->next)
+    if (relay->iface_index != 0 && relay->iface_index == iface_index)
+      break;
 
+  /* No relay config. */
+  if (!relay)
+    return 0;
+  
   inet_pton(AF_INET6, ALL_SERVERS, &multicast);
   get_client_mac(peer_address, scope_id, mac, &maclen, &mactype, now);
-
-  /* source address == relay address */
-  from.addr6 = relay->local.addr6;
-    
+  
   /* Get hop count from nested relayed message */ 
   if (msg_type == DHCP6RELAYFORW)
     hopcount = *((unsigned char *)inbuff+1) + 1;
   else
     hopcount = 0;
 
-  /* RFC 3315 HOP_COUNT_LIMIT */
-  if (hopcount > 32)
-    return;
-
   reset_counter();
 
-  if ((header = put_opt6(NULL, 34)))
+  /* RFC 3315 HOP_COUNT_LIMIT */
+  if (hopcount > 32 || !(header = put_opt6(NULL, 34)))
+    return 1;
+  
+  header[0] = DHCP6RELAYFORW;
+  header[1] = hopcount;
+  memcpy(&header[18], peer_address, IN6ADDRSZ);
+  
+  /* RFC-6939 */
+  if (maclen != 0)
     {
-      int o;
-
-      header[0] = DHCP6RELAYFORW;
-      header[1] = hopcount;
-      memcpy(&header[2],  &relay->local.addr6, IN6ADDRSZ);
-      memcpy(&header[18], peer_address, IN6ADDRSZ);
- 
-      /* RFC-6939 */
-      if (maclen != 0)
-	{
-	  o = new_opt6(OPTION6_CLIENT_MAC);
-	  put_opt6_short(mactype);
-	  put_opt6(mac, maclen);
-	  end_opt6(o);
-	}
-      
-      o = new_opt6(OPTION6_RELAY_MSG);
-      put_opt6(inbuff, sz);
+      o = new_opt6(OPTION6_CLIENT_MAC);
+      put_opt6_short(mactype);
+      put_opt6(mac, maclen);
       end_opt6(o);
-      
-      for (; relay; relay = relay->current)
-	{
-	  union mysockaddr to;
-	  
-	  to.sa.sa_family = AF_INET6;
-	  to.in6.sin6_addr = relay->server.addr6;
-	  to.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
-	  to.in6.sin6_flowinfo = 0;
-	  to.in6.sin6_scope_id = 0;
-
-	  if (IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast))
-	    {
-	      int multicast_iface;
-	      if (!relay->interface || strchr(relay->interface, '*') ||
-		  (multicast_iface = if_nametoindex(relay->interface)) == 0 ||
-		  setsockopt(daemon->dhcp6fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &multicast_iface, sizeof(multicast_iface)) == -1)
-		my_syslog(MS_DHCP | LOG_ERR, _("Cannot multicast to DHCPv6 server without correct interface"));
-	    }
-		
-	  send_from(daemon->dhcp6fd, 0, daemon->outpacket.iov_base, save_counter(-1), &to, &from, 0);
-	  
-	  if (option_bool(OPT_LOG_OPTS))
-	    {
-	      inet_ntop(AF_INET6, &relay->local, daemon->addrbuff, ADDRSTRLEN);
-	      inet_ntop(AF_INET6, &relay->server, daemon->namebuff, ADDRSTRLEN);
-	      my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay %s -> %s"), daemon->addrbuff, daemon->namebuff);
-	    }
-
-	  /* Save this for replies */
-	  relay->iface_index = scope_id;
-	}
     }
+  
+  o = new_opt6(OPTION6_RELAY_MSG);
+  put_opt6(inbuff, sz);
+  end_opt6(o);
+  
+  for (; relay; relay = relay->next)
+    if (relay->iface_index != 0 && relay->iface_index == iface_index)
+      {
+	union mysockaddr to;
+	union all_addr from;
+	
+	/* source address == relay address */
+	from.addr6 = relay->local.addr6;
+	memcpy(&header[2], &relay->local.addr6, IN6ADDRSZ);
+	
+	to.sa.sa_family = AF_INET6;
+	to.in6.sin6_addr = relay->server.addr6;
+	to.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
+	to.in6.sin6_flowinfo = 0;
+	to.in6.sin6_scope_id = 0;
+	
+	if (IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast))
+	  {
+	    int multicast_iface;
+	    if (!relay->interface || strchr(relay->interface, '*') ||
+		(multicast_iface = if_nametoindex(relay->interface)) == 0 ||
+		setsockopt(daemon->dhcp6fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &multicast_iface, sizeof(multicast_iface)) == -1)
+	      {
+		my_syslog(MS_DHCP | LOG_ERR, _("Cannot multicast DHCP relay via interface %s"), relay->interface);
+		continue;
+	      }
+	  }
+	
+#ifdef HAVE_DUMPFILE
+	{
+	  union mysockaddr fromsock;
+	  fromsock.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
+	  fromsock.in6.sin6_addr = from.addr6;
+	  fromsock.sa.sa_family = AF_INET6;
+	  fromsock.in6.sin6_flowinfo = 0;
+	  fromsock.in6.sin6_scope_id = 0;
+	  
+	  dump_packet(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), &fromsock, &to, 0);
+	}
+#endif
+	send_from(daemon->dhcp6fd, 0, daemon->outpacket.iov_base, save_counter(-1), &to, &from, 0);
+	
+	if (option_bool(OPT_LOG_OPTS))
+	  {
+	    inet_ntop(AF_INET6, &relay->local, daemon->addrbuff, ADDRSTRLEN);
+	    if (IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast))
+	      snprintf(daemon->namebuff, MAXDNAME, _("multicast via %s"), relay->interface);
+	    else
+	      inet_ntop(AF_INET6, &relay->server, daemon->namebuff, ADDRSTRLEN);
+	    my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay at %s -> %s"), daemon->addrbuff, daemon->namebuff);
+	  }
+	
+      }
+  
+  return 1;
 }
 
-unsigned short relay_reply6(struct sockaddr_in6 *peer, ssize_t sz, char *arrival_interface)
+int relay_reply6(struct sockaddr_in6 *peer, ssize_t sz, char *arrival_interface)
 {
   struct dhcp_relay *relay;
   struct in6_addr link;
@@ -2220,11 +2241,76 @@ unsigned short relay_reply6(struct sockaddr_in6 *peer, ssize_t sz, char *arrival
 	    put_opt6(opt6_ptr(opt, 0), opt6_len(opt));
 	    memcpy(&peer->sin6_addr, &inbuff[18], IN6ADDRSZ); 
 	    peer->sin6_scope_id = relay->iface_index;
-	    return encap_type == DHCP6RELAYREPL ? DHCPV6_SERVER_PORT : DHCPV6_CLIENT_PORT;
-	  }
-    }
 
+	    if (encap_type == DHCP6RELAYREPL)
+	      {
+		peer->sin6_port = ntohs(DHCPV6_SERVER_PORT);
+		return 1;
+	      }
+
+	    peer->sin6_port = ntohs(DHCPV6_CLIENT_PORT);
+	    
+#ifdef HAVE_SCRIPT
+	    if (daemon->lease_change_command && encap_type == DHCP6REPLY)
+	      {
+		/* decapsulate relayed message */
+		opts = opt6_ptr(opt, 4);
+		end = opt6_ptr(opt, opt6_len(opt));
+
+		for (opt = opts; opt; opt = opt6_next(opt, end))
+		  if (opt6_type(opt) == OPTION6_IA_PD && opt6_len(opt) > 12) 
+		    {
+		      void *ia_opts = opt6_ptr(opt, 12);
+		      void *ia_end = opt6_ptr(opt, opt6_len(opt));
+		      void *ia_opt;
+		      
+		      for (ia_opt = ia_opts; ia_opt; ia_opt = opt6_next(ia_opt, ia_end))
+			/* valid lifetime must not be zero. */
+			if (opt6_type(ia_opt) == OPTION6_IAPREFIX && opt6_len(ia_opt) >= 25 && opt6_uint(ia_opt, 4, 4) != 0)
+			  {
+			    if (daemon->free_snoops ||
+				(daemon->free_snoops = whine_malloc(sizeof(struct snoop_record))))
+			      {
+				struct snoop_record *snoop = daemon->free_snoops;
+				
+				daemon->free_snoops = snoop->next;
+				snoop->client = peer->sin6_addr;
+				snoop->prefix_len = opt6_uint(ia_opt, 8, 1); 
+				memcpy(&snoop->prefix, opt6_ptr(ia_opt, 9), IN6ADDRSZ); 
+				snoop->next = relay->snoop_records;
+				relay->snoop_records = snoop;
+			      }
+			  }
+		    }
+	      }
+#endif		
+	    return 1;
+	  }
+      
+    }
+  
   return 0;
 }
+
+#ifdef HAVE_SCRIPT
+int do_snoop_script_run(void)
+{
+  struct dhcp_relay *relay;
+  struct snoop_record *snoop;
+  
+  for (relay = daemon->relay6; relay; relay = relay->next)
+    if ((snoop = relay->snoop_records))
+      {
+	relay->snoop_records = snoop->next;
+	snoop->next = daemon->free_snoops;
+	daemon->free_snoops = snoop;
+	
+	queue_relay_snoop(&snoop->client, relay->iface_index, &snoop->prefix, snoop->prefix_len);
+	return 1;
+      }
+  
+  return 0;
+}
+#endif
 
 #endif

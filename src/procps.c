@@ -17,7 +17,7 @@
 
 #define PROCESS_NAME   "pihole-FTL"
 
-static bool get_process_name(const pid_t pid, char name[128])
+static bool get_process_name(const pid_t pid, char name[16])
 {
 	if(pid == 0)
 	{
@@ -33,7 +33,7 @@ static bool get_process_name(const pid_t pid, char name[128])
 		return false;
 
 	// Read name from opened file
-	if(fscanf(f, "%128s", name) != 1)
+	if(fscanf(f, "%15s", name) != 1)
 		false;
 	fclose(f);
 
@@ -111,7 +111,7 @@ bool check_running_FTL(void)
 			continue;
 
 		// Get process name
-		char name[128] = { 0 };
+		char name[16] = { 0 };
 		if(!get_process_name(pid, name))
 			continue;
 
@@ -123,7 +123,7 @@ bool check_running_FTL(void)
 		pid_t ppid;
 		if(!get_process_ppid(pid, &ppid))
 			continue;
-		char ppid_name[128] = { 0 };
+		char ppid_name[16] = { 0 };
 		if(!get_process_name(ppid, ppid_name))
 			continue;
 

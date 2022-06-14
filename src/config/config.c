@@ -74,10 +74,14 @@ void setDefaults(void)
 	defaults.rate_limit.interval = 60;
 
 	// struct reply_addr
-	defaults.reply_addr.overwrite_v4 = false;
-	memset(&defaults.reply_addr.v4, 0, sizeof(config.reply_addr.v4));
-	defaults.reply_addr.overwrite_v6 = false;
-	memset(&defaults.reply_addr.v6, 0, sizeof(config.reply_addr.v6));
+	defaults.reply_addr.ip_blocking.overwrite_v4 = false;
+	memset(&defaults.reply_addr.ip_blocking.v4, 0, sizeof(config.reply_addr.ip_blocking.v4));
+	defaults.reply_addr.ip_blocking.overwrite_v6 = false;
+	memset(&defaults.reply_addr.ip_blocking.v6, 0, sizeof(config.reply_addr.ip_blocking.v6));
+	defaults.reply_addr.own_host.overwrite_v4 = false;
+	memset(&defaults.reply_addr.own_host.v4, 0, sizeof(config.reply_addr.own_host.v4));
+	defaults.reply_addr.own_host.overwrite_v6 = false;
+	memset(&defaults.reply_addr.own_host.v6, 0, sizeof(config.reply_addr.own_host.v6));
 
 	// struct http
 	defaults.http.localAPIauth = true;

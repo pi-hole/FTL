@@ -241,17 +241,6 @@ void db_init(void)
 	// explicitly check for failures to have happened
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
 
-	// SQLITE_DBCONFIG_DEFENSIVE
-	// Disbale language features that allow ordinary SQL to deliberately corrupt
-	// the database file. The disabled features include but are not limited to
-	// the following:
-	//
-	// - The PRAGMA writable_schema=ON statement.
-	// - The PRAGMA journal_mode=OFF statement.
-	// - Writes to the sqlite_dbpage virtual table.
-	// - Direct writes to shadow tables.
-	sqlite3_config(SQLITE_DBCONFIG_DEFENSIVE, true);
-
 	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
 	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
 
@@ -417,11 +406,53 @@ void db_init(void)
 	// Update to version 10 if lower
 	if(dbversion < 10)
 	{
-		// Update to version 10: Add more fields to queries table
+		// Update to version 10: Use linking tables for queries table
 		log_info("Updating long-term database to version 10");
-		if(!create_more_queries_columns(db))
+		if(!optimize_queries_table(db))
 		{
-			log_err("Long-term database not initialized, database not available");
+			log_info("Queries table not optimized, database not available");
+			dbclose(&db);
+			return;
+		}
+
+		// Reopen database after low-level schema editing to reload the schema
+		dbclose(&db);
+		if(!(db = dbopen(false)))
+			return;
+
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 11 if lower
+	if(dbversion < 11)
+	{
+		// Update to version 11: Use link table also for additional_info column
+		log_info("Updating long-term database to version 11");
+		if(!create_addinfo_table(db))
+		{
+			log_info("Link table for additional_info not generated, database not available");
+			dbclose(&db);
+			return;
+		}
+
+		// Reopen database after low-level schema editing to reload the schema
+		dbclose(&db);
+		if(!(db = dbopen(false)))
+			return;
+
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 12 if lower
+	if(dbversion < 12)
+	{
+		// Update to version 12: Add additional columns for reply type and time, and dnssec status
+		log_info("Updating long-term database to version 12");
+		if(!add_query_storage_columns(db))
+		{
+			log_info("Additional records not generated, database not available");
 			dbclose(&db);
 			return;
 		}

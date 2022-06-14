@@ -151,7 +151,7 @@ bool gravityDB_open(void)
 	//            matches 'google.de' and all of its subdomains but
 	//            also other domains starting in google.de, like
 	//            abcgoogle.de
-	rc = sqlite3_prepare_v2(gravity_db,
+	rc = sqlite3_prepare_v3(gravity_db,
 	        "SELECT EXISTS("
 	          "SELECT domain, "
 	            "CASE WHEN substr(domain, 1, 1) = '*' " // Does the database string start in '*' ?
@@ -159,7 +159,7 @@ bool gravityDB_open(void)
 	              "ELSE :input " // If not: Use input domain directly for comparison
 	            "END matcher "
 	          "FROM domain_audit WHERE matcher = domain" // Match where (modified) domain equals the database domain
-	        ");", -1, &auditlist_stmt, NULL);
+	        ");", -1, SQLITE_PREPARE_PERSISTENT, &auditlist_stmt, NULL);
 
 	if( rc != SQLITE_OK )
 	{
@@ -631,7 +631,7 @@ static bool get_client_groupids(clientsData* client)
 	}
 
 	// We use the default group and return early here
-	// if aboves lookups didn't return any results
+	// if above lookups didn't return any results
 	// (the client is not configured through the client table)
 	if(chosen_match_id < 0)
 	{
@@ -835,7 +835,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_whitelist statement for client %s", clientip);
 	querystr = get_client_querystr("vw_whitelist", getstr(client->groupspos));
 	sqlite3_stmt* stmt = NULL;
-	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open(\"SELECT EXISTS(... vw_whitelist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
@@ -848,7 +848,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	// Prepare gravity statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
 	querystr = get_client_querystr("vw_gravity", getstr(client->groupspos));
-	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open(\"SELECT EXISTS(... vw_gravity ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
@@ -861,7 +861,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	// Prepare blacklist statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_blacklist statement for client %s", clientip);
 	querystr = get_client_querystr("vw_blacklist", getstr(client->groupspos));
-	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open(\"SELECT EXISTS(... vw_blacklist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
@@ -1082,9 +1082,6 @@ int gravityDB_count(const enum gravity_tables list)
 			return DB_FAILED;
 	}
 
-	log_debug(DEBUG_DATABASE, "Querying count of distinct domains in gravity database table %s: %s",
-	          tablename[list], querystr);
-
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK){
@@ -1109,12 +1106,10 @@ int gravityDB_count(const enum gravity_tables list)
 
 	// Get result when there was no error
 	const int result = sqlite3_column_int(table_stmt, 0);
+	log_debug(DEBUG_DATABASE, "Found %d distinct rows in gravity table %s", result, tablename[list]);
 
 	// Finalize statement
 	gravityDB_finalizeTable();
-
-	log_debug(DEBUG_DATABASE, "gravityDB_count(%d): %i entries in %s",
-	          list, result, tablename[list]);
 
 	// Return result
 	return result;
@@ -1134,7 +1129,7 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 	// Bind domain to prepared statement
 	// SQLITE_STATIC: Use the string without first duplicating it internally.
 	// We can do this as domain has dynamic scope that exceeds that of the binding.
-	// We need to bind the domain onl once even to the prepared audit statement as:
+	// We need to bind the domain only once even to the prepared audit statement as:
 	//     When the same named SQL parameter is used more than once, second and
 	//     subsequent occurrences have the same index as the first occurrence.
 	//     (https://www.sqlite.org/c3ref/bind_blob.html)

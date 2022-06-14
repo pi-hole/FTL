@@ -36,7 +36,7 @@ ssize_t FTLwrite(int fd, const void *buf, size_t total, const char *file, const 
 	// (b) the last write() call failed due to an interruption by an incoming signal
 	while((written < total && errno == 0) || (ret < 0 && errno == EINTR));
 
-	// Final error checking (may have faild for some other reason then an
+	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(written < total)
 		log_warn("Could not write() everything in %s() [%s:%i]: %s",

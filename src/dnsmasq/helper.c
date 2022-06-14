@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -238,8 +238,13 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	  is6 = (data.flags != AF_INET);
 	  data.action = ACTION_ARP;
 	}
-       else 
-	continue;
+       else if (data.action == ACTION_RELAY_SNOOP)
+	 {
+	   is6 = 1;
+	   action_str = "relay-snoop";
+	 }
+       else
+	 continue;
 
       /************************** Pi-hole modification **************************/
       FTL_log_helper(1, action_str);
@@ -295,7 +300,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	  char *dot;
 	  hostname = (char *)buf;
 	  hostname[data.hostname_len - 1] = 0;
-	  if (data.action != ACTION_TFTP)
+	  if (data.action != ACTION_TFTP && data.action != ACTION_RELAY_SNOOP)
 	    {
 	      if (!legal_hostname(hostname))
 		hostname = NULL;
@@ -338,6 +343,24 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 		  lua_setfield(lua, -2, "file_name"); 
 		  lua_pushstring(lua, is6 ? daemon->packet : daemon->dhcp_buff);
 		  lua_setfield(lua, -2, "file_size");
+		  lua_call(lua, 2, 0);	/* pass 2 values, expect 0 */
+		}
+	    }
+	  else if (data.action == ACTION_RELAY_SNOOP)
+	    {
+	      lua_getglobal(lua, "snoop"); 
+	      if (lua_type(lua, -1) != LUA_TFUNCTION)
+		lua_pop(lua, 1); /* tftp function optional */
+	      else
+		{
+		  lua_pushstring(lua, action_str); /* arg1 - action */
+		  lua_newtable(lua);               /* arg2 - data table */
+		  lua_pushstring(lua, daemon->addrbuff);
+		  lua_setfield(lua, -2, "client_address");
+		  lua_pushstring(lua, hostname);
+		  lua_setfield(lua, -2, "prefix"); 
+		  lua_pushstring(lua, data.interface);
+		  lua_setfield(lua, -2, "client_interface");
 		  lua_call(lua, 2, 0);	/* pass 2 values, expect 0 */
 		}
 	    }
@@ -441,8 +464,8 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 		buf = grab_extradata_lua(buf, end, "relay_address");
 	      else if (data.giaddr.s_addr != 0)
 		{
-		  inet_ntop(AF_INET, &data.giaddr, daemon->addrbuff, ADDRSTRLEN);
-		  lua_pushstring(lua, daemon->addrbuff);
+		  inet_ntop(AF_INET, &data.giaddr, daemon->dhcp_buff2, ADDRSTRLEN);
+		  lua_pushstring(lua, daemon->dhcp_buff2);
 		  lua_setfield(lua, -2, "relay_address");
 		}
 	      
@@ -562,7 +585,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	  close(pipeout[1]);
 	}
       
-      if (data.action != ACTION_TFTP && data.action != ACTION_ARP)
+      if (data.action != ACTION_TFTP && data.action != ACTION_ARP && data.action != ACTION_RELAY_SNOOP)
 	{
 #ifdef HAVE_DHCP6
 	  my_setenv("DNSMASQ_IAID", is6 ? daemon->dhcp_buff3 : NULL, &err);
@@ -624,7 +647,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	    {
 	      const char *giaddr = NULL;
 	      if (data.giaddr.s_addr != 0)
-		  giaddr = inet_ntop(AF_INET, &data.giaddr, daemon->addrbuff, ADDRSTRLEN);
+		  giaddr = inet_ntop(AF_INET, &data.giaddr, daemon->dhcp_buff2, ADDRSTRLEN);
 	      my_setenv("DNSMASQ_RELAY_ADDRESS", giaddr, &err);
 	    }
 	  
@@ -649,6 +672,9 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	fcntl(event_fd, F_SETFD, i | FD_CLOEXEC);
       close(pipefd[0]);
 
+      if (data.action == ACTION_RELAY_SNOOP)
+	strcpy(daemon->packet, data.interface);
+      
       /**************************** Pi-hole modification ****************************/
       FTL_log_helper(5, daemon->lease_change_command, action_str,
 		     (is6 && data.action != ACTION_ARP) ? daemon->packet : daemon->dhcp_buff,
@@ -827,6 +853,29 @@ void queue_script(int action, struct dhcp_lease *lease, char *hostname, time_t n
     }
   bytes_in_buf = p - (unsigned char *)buf;
 }
+
+#ifdef HAVE_DHCP6
+void queue_relay_snoop(struct in6_addr *client, int if_index, struct in6_addr *prefix, int prefix_len)
+{
+  /* no script */
+  if (daemon->helperfd == -1)
+    return;
+  
+  inet_ntop(AF_INET6, prefix, daemon->addrbuff, ADDRSTRLEN);
+
+  /* 5 for /nnn and zero on the end of the prefix. */
+  buff_alloc(sizeof(struct script_data) + ADDRSTRLEN + 5);
+  memset(buf, 0, sizeof(struct script_data));
+
+  buf->action = ACTION_RELAY_SNOOP;
+  buf->addr6 = *client;
+  buf->hostname_len = sprintf((char *)(buf+1), "%s/%u", daemon->addrbuff, prefix_len) + 1;
+  
+  indextoname(daemon->dhcp6fd, if_index, buf->interface);
+
+  bytes_in_buf = sizeof(struct script_data) + buf->hostname_len;
+}
+#endif
 
 #ifdef HAVE_TFTP
 /* This nastily re-uses DHCP-fields for TFTP stuff */

@@ -36,6 +36,24 @@ void strtolower(char *str)
 	while(str[i]){ str[i] = tolower(str[i]); i++; }
 }
 
+// creates a simple hash of a string that fits into a uint32_t
+uint32_t hashStr(const char *s)
+{
+        uint32_t hash = 0;
+        // Jenkins' One-at-a-Time hash (http://www.burtleburtle.net/bob/hash/doobs.html)
+        for(; *s; ++s)
+        {
+                hash += *s;
+                hash += hash << 10;
+                hash ^= hash >> 6;
+        }
+
+        hash += hash << 3;
+        hash ^= hash >> 11;
+        hash += hash << 15;
+        return hash;
+}
+
 int findQueryID(const int id)
 {
 	// Loop over all queries - we loop in reverse order (start from the most recent query and
@@ -121,6 +139,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 
 int findDomainID(const char *domainString, const bool count)
 {
+	uint32_t domainHash = hashStr(domainString);
 	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
@@ -130,8 +149,8 @@ int findDomainID(const char *domainString, const bool count)
 		if(domain == NULL)
 			continue;
 
-		// Quick test: Does the domain start with the same character?
-		if(getstr(domain->domainpos)[0] != domainString[0])
+		// Quicker test: Does the domain match the pre-computed hash?
+		if(domain->domainhash != domainHash)
 			continue;
 
 		// If so, compare the full domain using strcmp
@@ -164,6 +183,8 @@ int findDomainID(const char *domainString, const bool count)
 	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domain->domainpos = addstr(domainString);
+	// Store pre-computed hash of domain for faster lookups later on
+	domain->domainhash = hashStr(domainString);
 	// Increase counter by one
 	counters->domains++;
 
@@ -281,7 +302,7 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
 			client->overTime[overTimeIdx] += overTimeMod;
 
-		// Also add counts to the conencted alias-client (if any)
+		// Also add counts to the connected alias-client (if any)
 		if(client->flags.aliasclient)
 		{
 			log_warn("Should not add to alias-client directly (client \"%s\" (%s))!",
@@ -496,7 +517,7 @@ void FTL_reload_all_domainlists(void)
 	unlock_shm();
 }
 
-const char *get_query_type_str(const enum query_type type, const queriesData *query, char *buffer)
+const char *get_query_type_str(const enum query_type type, const queriesData *query, char buffer[20])
 {
 	switch (type)
 	{
@@ -584,6 +605,8 @@ const char * __attribute__ ((const)) get_query_status_str(const enum query_statu
 			return "IN_PROGRESS";
 		case QUERY_DBBUSY:
 			return "DBBUSY";
+		case QUERY_SPECIAL_DOMAIN:
+			return "SPECIAL_DOMAIN";
 		case QUERY_STATUS_MAX:
 		default:
 			return "INVALID";
@@ -709,6 +732,7 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 		case QUERY_REGEX_CNAME:
 		case QUERY_DENYLIST_CNAME:
 		case QUERY_DBBUSY:
+		case QUERY_SPECIAL_DOMAIN:
 			return true;
 	}
 }
@@ -743,14 +767,14 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 		const char *oldstr = get_query_status_str(query->status);
 		if(query->status == new_status)
 		{
-			log_debug(DEBUG_STATUS, "Query %i: status unchanged: %s (%d) in %s:%i",
-			          query->id, oldstr, query->status, short_path(file), line);
+			log_debug(DEBUG_STATUS, "Query status unchanged: %s (%d) in %s:%i",
+			          oldstr, query->status, short_path(file), line);
 		}
 		else
 		{
 			const char *newstr = get_query_status_str(new_status);
-			log_debug(DEBUG_STATUS, "Query %i: status changed: %s (%d) -> %s (%d) in %s:%i",
-			          query->id, oldstr, query->status, newstr, new_status, short_path(file), line);
+			log_debug(DEBUG_STATUS, "Query status changed: %s (%d) -> %s (%d) in %s:%i",
+			          oldstr, query->status, newstr, new_status, short_path(file), line);
 		}
 	}
 

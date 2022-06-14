@@ -46,6 +46,7 @@ enum query_status {
 	QUERY_RETRIED_DNSSEC,
 	QUERY_IN_PROGRESS,
 	QUERY_DBBUSY,
+	QUERY_SPECIAL_DOMAIN,
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 
@@ -165,7 +166,7 @@ enum events {
 	RERESOLVE_HOSTNAMES_FORCE,
 	REIMPORT_ALIASCLIENTS,
 	PARSE_NEIGHBOR_CACHE,
-	RELOAD_BLOCKINGMODE,
+	RELOAD_BLOCKINGSTATUS,
 	EVENTS_MAX
 } __attribute__ ((packed));
 
@@ -265,6 +266,11 @@ enum ptr_type {
 	PTR_HOSTNAME,
 	PTR_HOSTNAMEFQDN,
 	PTR_NONE
+} __attribute__ ((packed));
+
+enum addinfo_type {
+	ADDINFO_CNAME_DOMAIN = 1,
+	ADDINFO_REGEX_ID
 } __attribute__ ((packed));
 
 #endif // ENUMS_H

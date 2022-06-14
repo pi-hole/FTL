@@ -18,22 +18,17 @@
 // TYPE_MAX
 #include "datastructure.h"
 
-// assert_sizeof
-#include "static_assert.h"
-
 typedef struct {
     const char *name;
     size_t size;
     void *ptr;
 } SharedMemory;
-ASSERT_SIZEOF(SharedMemory, 24, 12, 12);
 
 typedef struct {
 	int version;
 	unsigned int global_shm_counter;
 	unsigned int next_str_pos;
 } ShmSettings;
-ASSERT_SIZEOF(ShmSettings, 12, 12, 12);
 
 typedef struct {
 	int queries;
@@ -69,15 +64,6 @@ typedef struct {
 	int status[QUERY_STATUS_MAX];
 	int reply[QUERY_REPLY_MAX];
 } countersStruct;
-//ASSERT_SIZEOF(countersStruct, 272, 272, 272);
-
-typedef struct {
-	const char *func;
-	pid_t pid;
-	int tid;
-} lockInfoStruct;
-
-#define INIT_LOCK_INFO {"", -1, -1}
 
 extern countersStruct *counters;
 

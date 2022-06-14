@@ -27,8 +27,12 @@ overTimeData *overTime = NULL;
 static void initSlot(const unsigned int index, const time_t timestamp)
 {
 	// Possible debug printing
-	log_debug(DEBUG_OVERTIME, "initSlot(%u, %llu): Zeroing overTime slot",
-	          index, (long long)timestamp);
+	if(config.debug & DEBUG_OVERTIME)
+	{
+		char timestr[20];
+		strftime(timestr, 20, "%Y-%m-%d %H:%M:%S", localtime(&timestamp));
+		log_debug(DEBUG_OVERTIME, "initSlot(%u, %llu): Zeroing overTime slot at %s", index, (long long)timestamp, timestr);
+	}
 
 	// Initialize overTime entry
 	overTime[index].magic = MAGICBYTE;
@@ -68,22 +72,31 @@ void initOverTime(void)
 	// Get current timestamp
 	time_t now = time(NULL);
 
-	// The last timestamp (overTime[149]) should be the last interval of this hour
-	// If the current time is 09:35, the last interval is 09:50 - 10:00 (centered at 09:55)
-	time_t timestamp = now - now % 3600 + 3600 - (OVERTIME_INTERVAL / 2);
+	// Get the centered timestamp of the end of the next garbage collection interval
+	// This is necessary to construct all slots until the point where we are moving
+	// the entire overTime structure into the future (i.e., generate "new" slots)
+	//                    Get beginning of       Advance to   Center this interval at
+	//                    previous GC interval   next GC int. 5 minutes less than full
+	//                    vvvvvvvvvvvvvvvvvvvvvv vvvvvvvvvvvv vvvvvvvvvvvvvvvvvvvvvvvvv
+	const time_t newest = now - now % GCinterval + GCinterval - (OVERTIME_INTERVAL / 2);
+	// Oldest timestamp is (OVERTIME_SLOTS-1) times the OVERTIME_INTERVAL in the past
+	const time_t oldest = newest - (OVERTIME_SLOTS-1) * OVERTIME_INTERVAL;
 
-	log_debug(DEBUG_OVERTIME, "initOverTime(): Initializing %i slots from %llu to %llu",
-	          OVERTIME_SLOTS,
-	          (long long)timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL,
-	          (long long)timestamp);
+	if(config.debug & DEBUG_OVERTIME)
+	{
+		char first[20], last[20];
+		strftime(first, 20, "%Y-%m-%d %H:%M:%S", localtime(&oldest));
+		strftime(last, 20, "%Y-%m-%d %H:%M:%S", localtime(&newest));
+		log_debug(DEBUG_OVERTIME, "initOverTime(): Initializing %i slots from %s (%llu) to %s (%llu)",
+		          OVERTIME_SLOTS, first, (long long)oldest, last, (long long)newest);
+	}
 
 	// Iterate over overTime
-	for(int i = OVERTIME_SLOTS-1; i >= 0 ; i--)
+	for(int i = 0; i < OVERTIME_SLOTS; i++)
 	{
-		// Initialize onerTime slot
-		initSlot(i, timestamp);
-		// Prepare for next iteration
-		timestamp -= OVERTIME_INTERVAL;
+		time_t this_slot_ts = oldest + OVERTIME_INTERVAL * i;
+		// Initialize overTime slot
+		initSlot(i, this_slot_ts);
 	}
 }
 

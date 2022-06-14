@@ -16,8 +16,8 @@
 // enum privacy_level
 #include "enums.h"
 
-// assert_sizeof
-#include "static_assert.h"
+// Definitions like OVERTIME_SLOT
+#include "FTL.h"
 
 typedef struct {
 	unsigned char magic;
@@ -41,8 +41,8 @@ typedef struct {
 	// and straddle the individual bytes. It is useful to pack the memory as
 	// tightly as possible as there may be dozens of thousands of these
 	// objects in memory (one per query).
-	// C99 guarentees that bit-fields will be packed as tightly as possible,
-	// provided they don’t cross storageau unit boundaries (6.7.2.1 #10).
+	// C99 guarantees that bit-fields will be packed as tightly as possible,
+	// provided they don't cross storage unit boundaries (6.7.2.1 #10).
 	struct query_flags {
 		bool allowed :1;
 		bool complete :1;
@@ -51,9 +51,6 @@ typedef struct {
 		bool response_calculated :1;
 	} flags;
 } queriesData;
-
-// ARM needs alignment to 8-byte boundary
-//ASSERT_SIZEOF(queriesData, 64, 64, 64);
 
 typedef struct {
 	unsigned char magic;
@@ -71,7 +68,6 @@ typedef struct {
 	double rtuncertainty;
 	double lastQuery;
 } upstreamsData;
-//ASSERT_SIZEOF(upstreamsData, 640, 624, 624);
 
 typedef struct {
 	unsigned char magic;
@@ -98,16 +94,14 @@ typedef struct {
 	time_t firstSeen;
 	double lastQuery;
 } clientsData;
-// ARM needs alignment to 8-byte boundary
-//ASSERT_SIZEOF(clientsData, 696, 672, 672);
 
 typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
+	uint32_t domainhash;
 	size_t domainpos;
 } domainsData;
-//ASSERT_SIZEOF(domainsData, 24, 16, 16);
 
 typedef struct {
 	unsigned char magic;
@@ -118,9 +112,9 @@ typedef struct {
 	int clientID;
 	int deny_regex_id;
 } DNSCacheData;
-//ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
 
 void strtolower(char *str);
+uint32_t hashStr(const char *s) __attribute__((const));
 int findQueryID(const int id);
 int findUpstreamID(const char * upstream, const in_port_t port);
 int findDomainID(const char *domain, const bool count);
@@ -146,7 +140,7 @@ const char *getClientIPString(const queriesData* query);
 const char *getClientNameString(const queriesData* query);
 
 void change_clientcount(clientsData *client, int total, int blocked, int overTimeIdx, int overTimeMod);
-const char *get_query_type_str(const enum query_type type, const queriesData *query, char *buffer);
+const char *get_query_type_str(const enum query_type type, const queriesData *query, char buffer[20]);
 const char *get_query_status_str(const enum query_status status) __attribute__ ((const));
 const char *get_query_dnssec_str(const enum dnssec_status dnssec) __attribute__ ((const));
 const char *get_query_reply_str(const enum reply_type query) __attribute__ ((const));

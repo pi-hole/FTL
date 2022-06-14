@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -394,28 +394,9 @@ int main_dnsmasq (int argc, char **argv)
 #if defined(HAVE_LINUX_NETWORK) && defined(HAVE_DHCP)
       /* after enumerate_interfaces()  */
       bound_device = whichdevice();
-      
-      if (daemon->dhcp)
-	{
-	  if (!daemon->relay4 && bound_device)
-	    {
-	      bindtodevice(bound_device, daemon->dhcpfd);
-	      did_bind = 1;
-	    }
-	  if (daemon->enable_pxe && bound_device && daemon->pxefd != -1)
-	    {
-	      bindtodevice(bound_device, daemon->pxefd);
-	      did_bind = 1;
-	    }
-	}
-#endif
 
-#if defined(HAVE_LINUX_NETWORK) && defined(HAVE_DHCP6)
-      if (daemon->doing_dhcp6 && !daemon->relay6 && bound_device)
-	{
-	  bindtodevice(bound_device, daemon->dhcp6fd);
-	  did_bind = 1;
-	}
+      if ((did_bind = bind_dhcp_devices(bound_device)) & 2)
+	die(_("failed to set SO_BINDTODEVICE on DHCP socket: %s"), NULL, EC_BADNET);	
 #endif
     }
   else 
@@ -743,7 +724,11 @@ int main_dnsmasq (int argc, char **argv)
    /* if we are to run scripts, we need to fork a helper before dropping root. */
   daemon->helperfd = -1;
 #ifdef HAVE_SCRIPT 
-  if ((daemon->dhcp || daemon->dhcp6 || option_bool(OPT_TFTP) || option_bool(OPT_SCRIPT_ARP)) && 
+  if ((daemon->dhcp ||
+       daemon->dhcp6 ||
+       daemon->relay6 ||
+       option_bool(OPT_TFTP) ||
+       option_bool(OPT_SCRIPT_ARP)) && 
       (daemon->lease_change_command || daemon->luascript))
       daemon->helperfd = create_helper(pipewrite, err_pipe[1], script_uid, script_gid, max_fd);
 #endif
@@ -1109,6 +1094,17 @@ int main_dnsmasq (int argc, char **argv)
 #endif
       
 #ifdef HAVE_DHCP
+#  if defined(HAVE_LINUX_NETWORK)
+      if (bind_dhcp_devices(bound_device) & 2)
+	{
+	  static int warned = 0;
+	  if (!warned)
+	    {
+	      my_syslog(LOG_ERR, _("error binding DHCP socket to device %s"), bound_device);
+	      warned = 1;
+	    }
+	}
+# endif
       if (daemon->dhcp || daemon->relay4)
 	{
 	  poll_listen(daemon->dhcpfd, POLLIN);
@@ -1152,6 +1148,10 @@ int main_dnsmasq (int argc, char **argv)
       while (helper_buf_empty() && do_tftp_script_run());
 #    endif
 
+#    ifdef HAVE_DHCP6
+      while (helper_buf_empty() && do_snoop_script_run());
+#    endif
+      
       if (!helper_buf_empty())
 	poll_listen(daemon->helperfd, POLLOUT);
 #else
@@ -1713,6 +1713,11 @@ static void poll_resolv(int force, int do_reload, time_t now)
 	}
       else 
 	{
+	  /* If we're delaying things, we don't call check_servers(), but 
+	     reload_servers() may have deleted some servers, rendering the server_array
+	     invalid, so just rebuild that here. Once reload_servers() succeeds,
+	     we call check_servers() above, which calls build_server_array itself. */
+	  build_server_array();
 	  latest->mtime = 0;
 	  if (!warned)
 	    {
