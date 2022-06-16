@@ -179,6 +179,11 @@ void process_request(const char *client_message, int *sock)
 		processed = true;
 		getGateway(sock);
 	}
+	else if(command(client_message, ">interfaces"))
+	{
+		processed = true;
+		getInterfaces(sock);
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before

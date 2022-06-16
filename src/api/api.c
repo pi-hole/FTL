@@ -1512,3 +1512,164 @@ void getGateway(const int *sock)
 	getDefaultInterface(iface, &gw);
 	ssend(*sock, "%s %s\n", inet_ntoa(*(struct in_addr *) &gw), iface);
 }
+
+struct if_info {
+	bool carrier;
+	bool default_iface;
+	char *name;
+	char *addr;
+	int speed;
+	ssize_t rx_bytes;
+	ssize_t tx_bytes;
+	struct if_info *next;
+};
+
+#include <dirent.h>
+
+static bool listInterfaces(struct if_info **head, char default_iface[IF_NAMESIZE])
+{
+	// Loop over interfaces and extract information
+	DIR *dfd;
+	FILE *f;
+	struct dirent *dp;
+	struct if_info *tail = NULL;
+	size_t tx_sum = 0, rx_sum = 0;
+	char fname[64 + IF_NAMESIZE] = { 0 };
+	char readbuffer[1024] = { 0 };
+
+	// Open /sys/class/net directory
+	if ((dfd = opendir("/sys/class/net")) == NULL)
+	{
+		logg("API: Cannot access /sys/class/net");
+		return false;
+	}
+
+	// Walk /sys/class/net directory
+	while ((dp = readdir(dfd)) != NULL)
+	{
+		// Skip "." and ".."
+		if(!dp->d_name || strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
+			continue;
+
+		// Create new interface record
+		struct if_info *new = calloc(1, sizeof(struct if_info));
+		new->name = strdup(dp->d_name);
+
+		new->default_iface = strcmp(new->name, default_iface) == 0;
+
+		// Extract carrier status
+		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/carrier", new->name);
+		if((f = fopen(fname, "r")) != NULL && fgets(readbuffer, sizeof(readbuffer)-1, f) != NULL)
+			new->carrier = readbuffer[0] == '1';
+
+		// Extract link speed (may not be possible, e.g., for WiFi devices with dynamic link speeds)
+		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/speed", new->name);
+		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%i", &(new->speed)) != 1)
+			new->speed = -1;
+
+		// Extract hardware address
+		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/address", new->name);
+		if((f = fopen(fname, "r")) != NULL && fgets(readbuffer, sizeof(readbuffer)-1, f) != NULL)
+		{
+			const size_t len = strlen(readbuffer);
+			if(len > 0 && readbuffer[len-1] == '\n')
+				readbuffer[len-1] = '\0';
+			if(len > 1)
+				new->addr = strdup(readbuffer);
+		}
+
+		// Get total transmitted bytes
+		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/statistics/tx_bytes", new->name);
+		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%zi", &(new->tx_bytes)) != 1)
+			new->tx_bytes = -1;
+
+		// Get total transmitted bytes
+		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/statistics/rx_bytes", new->name);
+		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%zi", &(new->rx_bytes)) != 1)
+			new->rx_bytes = -1;
+
+		// Add to end of the linked list
+		if(!*head)
+			*head = new;
+		if(tail)
+			tail->next = new;
+		tail = new;
+
+		tx_sum += new->tx_bytes;
+		rx_sum += new->rx_bytes;
+	}
+
+	// Create sum entry only if there is more than one interface
+	if(head == NULL)
+		return true;
+
+	struct if_info *new = calloc(1, sizeof(struct if_info));
+	new->name = strdup("sum");
+	new->carrier = true;
+	new->speed = 0;
+	new->tx_bytes = tx_sum;
+	new->rx_bytes = rx_sum;
+	if(tail)
+		tail->next = new;
+	tail = new;
+
+	return true;
+}
+
+static void send_iface(const int *sock, struct if_info *iface)
+{
+	double tx = 0.0, rx = 0.0;
+	char txp[2] = { 0 }, rxp[2] = { 0 };
+	format_memory_size(txp, iface->tx_bytes, &tx);
+	format_memory_size(rxp, iface->rx_bytes, &rx);
+	ssend(*sock, "%s %s %s %i %.1f%sB %.1f%sB\n",
+	      iface->name, iface->addr,
+	      iface->carrier ? "UP" : "DOWN",
+	      iface->speed,
+	      tx, txp, rx, rxp);
+}
+
+void getInterfaces(const int *sock)
+{
+	// Get interface with default route
+	in_addr_t gw = 0;
+	char default_iface[IF_NAMESIZE] = { 0 };
+	getDefaultInterface(default_iface, &gw);
+
+	// Enumerate and list interfaces
+	struct if_info *ifinfo = NULL;
+	if(!listInterfaces(&ifinfo, default_iface))
+	{
+		ssend(*sock, "ERROR");
+		return;
+	}
+
+	// Loop over collected interface information
+	struct if_info *iface = ifinfo;
+	// Show only the default interface as first interface
+	while(iface)
+	{
+		if(iface->default_iface)
+		{
+			send_iface(sock, iface);
+			break;
+		}
+		iface = iface->next;
+	}
+	iface = ifinfo;
+	// Show all but the default interface
+	while(iface)
+	{
+		if(!iface->default_iface)
+			send_iface(sock, iface);
+
+		// Free associated memory
+		struct if_info *next = iface->next;
+		if(iface->name)
+			free(iface->name);
+		if(iface->addr)
+			free(iface->addr);
+		free(iface);
+		iface = next;
+	}
+}
