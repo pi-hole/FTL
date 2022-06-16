@@ -1458,13 +1458,11 @@ void getMAXLOGAGE(const int *sock)
 	ssend(*sock, "%d\n", config.maxlogage);
 }
 
-void getGateway(const int *sock)
+static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 {
 	// Get IPv4 default route gateway and associated interface
-	in_addr_t gw = 0;
 	long dest_r = 0, gw_r = 0;
 	int flags = 0, metric = 0, minmetric = __INT_MAX__;
-	char iface[IF_NAMESIZE] = { 0 };
 	char iface_r[IF_NAMESIZE] = { 0 };
 	char buf[1024] = { 0 };
 
@@ -1491,16 +1489,26 @@ void getGateway(const int *sock)
 			if(metric < minmetric)
 			{
 				minmetric = metric;
-				gw = gw_r;
+				*gw = gw_r;
 				strcpy(iface, iface_r);
 
 				if(config.debug & DEBUG_API)
 					logg("Reading interfaces: flags: %i, addr: %s, iface: %s, metric: %i, minmetric: %i",
-					     flags, inet_ntoa(*(struct in_addr *) &gw), iface, metric, minmetric);
+					     flags, inet_ntoa(*(struct in_addr *) gw), iface, metric, minmetric);
 			}
 		}
 		fclose(file);
 	}
 
+	// Return success based on having found the default gateway's address
+	return gw != 0;
+}
+
+void getGateway(const int *sock)
+{
+	in_addr_t gw = 0;
+	char iface[IF_NAMESIZE] = { 0 };
+
+	getDefaultInterface(iface, &gw);
 	ssend(*sock, "%s %s\n", inet_ntoa(*(struct in_addr *) &gw), iface);
 }
