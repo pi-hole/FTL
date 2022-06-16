@@ -1567,17 +1567,6 @@ static bool listInterfaces(struct if_info **head, char default_iface[IF_NAMESIZE
 		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%i", &(new->speed)) != 1)
 			new->speed = -1;
 
-		// Extract hardware address
-		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/address", new->name);
-		if((f = fopen(fname, "r")) != NULL && fgets(readbuffer, sizeof(readbuffer)-1, f) != NULL)
-		{
-			const size_t len = strlen(readbuffer);
-			if(len > 0 && readbuffer[len-1] == '\n')
-				readbuffer[len-1] = '\0';
-			if(len > 1)
-				new->addr = strdup(readbuffer);
-		}
-
 		// Get total transmitted bytes
 		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/statistics/tx_bytes", new->name);
 		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%zi", &(new->tx_bytes)) != 1)
@@ -1622,8 +1611,8 @@ static void send_iface(const int *sock, struct if_info *iface)
 	char txp[2] = { 0 }, rxp[2] = { 0 };
 	format_memory_size(txp, iface->tx_bytes, &tx);
 	format_memory_size(rxp, iface->rx_bytes, &rx);
-	ssend(*sock, "%s %s %s %i %.1f%sB %.1f%sB\n",
-	      iface->name, iface->addr,
+	ssend(*sock, "%s %s %i %.1f%sB %.1f%sB\n",
+	      iface->name,
 	      iface->carrier ? "UP" : "DOWN",
 	      iface->speed,
 	      tx, txp, rx, rxp);
