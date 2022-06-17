@@ -1366,7 +1366,7 @@
   [[ "$lastiface" == "sum" ]]
   [[ "$lastcarrier" == "UP" ]]
   [[ "$lastspeed" == "0" ]]
-  # Check we are reporting five quantities for the interfaces
-  [[ "$firstnum" == 5 ]]
-  [[ "$lastnum" == 5 ]]
+  # Check we are reporting seven quantities for the interfaces
+  [[ "$firstnum" == 7 ]]
+  [[ "$lastnum" == 7 ]]
 }

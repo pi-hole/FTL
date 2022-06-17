@@ -1517,10 +1517,14 @@ struct if_info {
 	bool carrier;
 	bool default_iface;
 	char *name;
-	char *addr;
+	struct {
+		char *v4;
+		char *v6;
+	} ip;
 	int speed;
 	ssize_t rx_bytes;
 	ssize_t tx_bytes;
+	sa_family_t family;
 	struct if_info *next;
 };
 
@@ -1543,6 +1547,11 @@ static bool listInterfaces(struct if_info **head, char default_iface[IF_NAMESIZE
 		logg("API: Cannot access /sys/class/net");
 		return false;
 	}
+
+	// Get IP addresses of all interfaces on this machine
+	struct ifaddrs *ifap = NULL;
+	if(getifaddrs(&ifap) == -1)
+		logg("API error: Cannot get interface addresses: %s", strerror(errno));
 
 	// Walk /sys/class/net directory
 	while ((dp = readdir(dfd)) != NULL)
@@ -1577,6 +1586,74 @@ static bool listInterfaces(struct if_info **head, char default_iface[IF_NAMESIZE
 		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%zi", &(new->rx_bytes)) != 1)
 			new->rx_bytes = -1;
 
+		// Get IP address(es) of this interface
+		if(ifap)
+		{
+			// Walk through linked list of interface addresses
+
+			for(struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next)
+			{
+				// Skip interfaces without an address and those
+				// not matching the current interface
+				if(ifa->ifa_addr == NULL || strcmp(ifa->ifa_name, new->name) != 0)
+					continue;
+
+				// If we reach this point, we found the correct interface
+				new->family = ifa->ifa_addr->sa_family;
+				char host[NI_MAXHOST] = { 0 };
+				if(new->family == AF_INET || new->family == AF_INET6)
+				{
+					// Get IP address
+					const int s = getnameinfo(ifa->ifa_addr,
+					                          (new->family == AF_INET) ?
+					                               sizeof(struct sockaddr_in) :
+					                               sizeof(struct sockaddr_in6),
+					                          host, NI_MAXHOST,
+					                          NULL, 0, NI_NUMERICHOST);
+					if (s != 0)
+					{
+						logg("API warning: getnameinfo() failed: %s\n", gai_strerror(s));
+						continue;
+					}
+
+					if(new->family == AF_INET)
+					{
+						// IPv4 address
+						if(!new->ip.v4)
+						{
+							// First or only IPv4 address of this interface
+							new->ip.v4 = strdup(host);
+						}
+						else
+						{
+							// Create comma-separated list
+							char *new_v4 = calloc(strlen(new->ip.v4) + strlen(host) + 2, sizeof(char));
+							sprintf(new_v4, "%s,%s", new->ip.v4, host);
+							free(new->ip.v4);
+							new->ip.v4 = new_v4;
+						}
+					}
+					else if(new->family == AF_INET6)
+					{
+						// IPv6 address
+						if(!new->ip.v6)
+						{
+							// First or only IPv6 address of this interface
+							new->ip.v6 = strdup(host);
+						}
+						else
+						{
+							// Create comma-separated list
+							char *new_v6 = calloc(strlen(new->ip.v6) + strlen(host) + 2, sizeof(char));
+							sprintf(new_v6, "%s,%s", new->ip.v6, host);
+							free(new->ip.v6);
+							new->ip.v6 = new_v6;
+						}
+					}
+				}
+			}
+		}
+
 		// Add to end of the linked list
 		if(!*head)
 			*head = new;
@@ -1587,6 +1664,8 @@ static bool listInterfaces(struct if_info **head, char default_iface[IF_NAMESIZE
 		tx_sum += new->tx_bytes;
 		rx_sum += new->rx_bytes;
 	}
+
+	freeifaddrs(ifap);
 
 	// Create sum entry only if there is more than one interface
 	if(head == NULL)
@@ -1611,11 +1690,13 @@ static void send_iface(const int *sock, struct if_info *iface)
 	char txp[2] = { 0 }, rxp[2] = { 0 };
 	format_memory_size(txp, iface->tx_bytes, &tx);
 	format_memory_size(rxp, iface->rx_bytes, &rx);
-	ssend(*sock, "%s %s %i %.1f%sB %.1f%sB\n",
+	ssend(*sock, "%s %s %i %.1f%sB %.1f%sB %s %s\n",
 	      iface->name,
 	      iface->carrier ? "UP" : "DOWN",
 	      iface->speed,
-	      tx, txp, rx, rxp);
+	      tx, txp, rx, rxp,
+	      iface->carrier && iface->ip.v4 ? iface->ip.v4 : "-",
+	      iface->carrier && iface->ip.v6 ? iface->ip.v6 : "-");
 }
 
 void getInterfaces(const int *sock)
@@ -1656,8 +1737,10 @@ void getInterfaces(const int *sock)
 		struct if_info *next = iface->next;
 		if(iface->name)
 			free(iface->name);
-		if(iface->addr)
-			free(iface->addr);
+		if(iface->ip.v4)
+			free(iface->ip.v4);
+		if(iface->ip.v6)
+			free(iface->ip.v6);
 		free(iface);
 		iface = next;
 	}
