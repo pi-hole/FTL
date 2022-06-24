@@ -13,13 +13,13 @@ jobs:
       issues: write
 
     steps:
-    - uses: actions/stale@v4
+    - uses: actions/stale@v5
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
         days-before-stale: 30
         days-before-close: 5
         stale-issue-message: 'This issue is stale because it has been open 30 days with no activity. Please comment or update this issue or it will be closed in 5 days.'
         stale-issue-label: 'stale'
-        exempt-issue-labels: 'Fixed in next release, Bug, documentation needed, internal'
+        exempt-issue-labels: 'Fixed in next release, Bug, Bug:Confirmed, Bugfix in progress, documentation needed, internal'
         exempt-all-issue-assignees: true
         operations-per-run: 300
