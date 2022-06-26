@@ -89,7 +89,7 @@ jobs:
       -
         name: Upload artifacts to job for later processing
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: tmp-binary-storage
           path: '${{ matrix.bin_name }}*'
