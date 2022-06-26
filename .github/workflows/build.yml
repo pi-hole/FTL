@@ -101,7 +101,7 @@ jobs:
     steps:
       -
         name: Get Binaries built in previous jobs
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: tmp-binary-storage
       -
