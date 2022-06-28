@@ -34,6 +34,8 @@
 #include "../datastructure.h"
 // Routing information and flags
 #include <net/route.h>
+// Interate through directories
+#include <dirent.h>
 
 int api_ftl_client(struct ftl_conn *api)
 {
@@ -467,13 +469,11 @@ int api_ftl_maxhistory(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_ftl_gateway(struct ftl_conn *api)
+static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 {
 	// Get IPv4 default route gateway and associated interface
-	in_addr_t gw = 0;
 	long dest_r = 0, gw_r = 0;
 	int flags = 0, metric = 0, minmetric = __INT_MAX__;
-	char iface[IF_NAMESIZE] = { 0 };
 	char iface_r[IF_NAMESIZE] = { 0 };
 	char buf[1024] = { 0 };
 
@@ -500,19 +500,313 @@ int api_ftl_gateway(struct ftl_conn *api)
 			if(metric < minmetric)
 			{
 				minmetric = metric;
-				gw = gw_r;
+				*gw = gw_r;
 				strcpy(iface, iface_r);
 
 				log_debug(DEBUG_API, "Reading interfaces: flags: %i, addr: %s, iface: %s, metric: %i, minmetric: %i",
-				          flags, inet_ntoa(*(struct in_addr *) &gw), iface, metric, minmetric);
+				          flags, inet_ntoa(*(struct in_addr *) gw), iface, metric, minmetric);
 			}
 		}
 		fclose(file);
 	}
 
+	// Return success based on having found the default gateway's address
+	return gw != 0;
+}
+
+int api_ftl_gateway(struct ftl_conn *api)
+{
+	in_addr_t gw = 0;
+	char iface[IF_NAMESIZE] = { 0 };
+
+	// Get default interface
+	getDefaultInterface(iface, &gw);
+
+	// Generate JSON response
 	cJSON *json = JSON_NEW_OBJ();
 	const char *gwaddr = inet_ntoa(*(struct in_addr *) &gw);
 	JSON_OBJ_COPY_STR(json, "address", gwaddr);
 	JSON_OBJ_REF_STR(json, "interface", iface);
+	JSON_SEND_OBJECT(json);
+}
+
+
+struct if_info {
+	bool carrier;
+	bool default_iface;
+	char *name;
+	struct {
+		char *v4;
+		char *v6;
+	} ip;
+	int speed;
+	ssize_t rx_bytes;
+	ssize_t tx_bytes;
+	sa_family_t family;
+	struct if_info *next;
+};
+
+static bool listInterfaces(struct if_info **head, char default_iface[IF_NAMESIZE])
+{
+	// Loop over interfaces and extract information
+	DIR *dfd;
+	FILE *f;
+	struct dirent *dp;
+	struct if_info *tail = NULL;
+	size_t tx_sum = 0, rx_sum = 0;
+	char fname[64 + IF_NAMESIZE] = { 0 };
+	char readbuffer[1024] = { 0 };
+
+	// Open /sys/class/net directory
+	if ((dfd = opendir("/sys/class/net")) == NULL)
+	{
+		log_err("API: Cannot access /sys/class/net");
+		return false;
+	}
+
+	// Get IP addresses of all interfaces on this machine
+	struct ifaddrs *ifap = NULL;
+	if(getifaddrs(&ifap) == -1)
+		log_err("API: Cannot get interface addresses: %s", strerror(errno));
+
+	// Walk /sys/class/net directory
+	while ((dp = readdir(dfd)) != NULL)
+	{
+		// Skip "." and ".."
+		if(!dp->d_name || strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
+			continue;
+
+		// Create new interface record
+		struct if_info *new = calloc(1, sizeof(struct if_info));
+		new->name = strdup(dp->d_name);
+
+		new->default_iface = strcmp(new->name, default_iface) == 0;
+
+		// Extract carrier status
+		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/carrier", new->name);
+		if((f = fopen(fname, "r")) != NULL && fgets(readbuffer, sizeof(readbuffer)-1, f) != NULL)
+			new->carrier = readbuffer[0] == '1';
+
+		// Extract link speed (may not be possible, e.g., for WiFi devices with dynamic link speeds)
+		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/speed", new->name);
+		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%i", &(new->speed)) != 1)
+			new->speed = -1;
+
+		// Get total transmitted bytes
+		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/statistics/tx_bytes", new->name);
+		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%zi", &(new->tx_bytes)) != 1)
+			new->tx_bytes = -1;
+
+		// Get total transmitted bytes
+		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/statistics/rx_bytes", new->name);
+		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%zi", &(new->rx_bytes)) != 1)
+			new->rx_bytes = -1;
+
+		// Get IP address(es) of this interface
+		if(ifap)
+		{
+			// Walk through linked list of interface addresses
+
+			for(struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next)
+			{
+				// Skip interfaces without an address and those
+				// not matching the current interface
+				if(ifa->ifa_addr == NULL || strcmp(ifa->ifa_name, new->name) != 0)
+					continue;
+
+				// If we reach this point, we found the correct interface
+				new->family = ifa->ifa_addr->sa_family;
+				char host[NI_MAXHOST] = { 0 };
+				if(new->family == AF_INET || new->family == AF_INET6)
+				{
+					// Get IP address
+					const int s = getnameinfo(ifa->ifa_addr,
+					                          (new->family == AF_INET) ?
+					                               sizeof(struct sockaddr_in) :
+					                               sizeof(struct sockaddr_in6),
+					                          host, NI_MAXHOST,
+					                          NULL, 0, NI_NUMERICHOST);
+					if (s != 0)
+					{
+						log_warn("API: getnameinfo() failed: %s\n", gai_strerror(s));
+						continue;
+					}
+
+					if(new->family == AF_INET)
+					{
+						// IPv4 address
+						if(!new->ip.v4)
+						{
+							// First or only IPv4 address of this interface
+							new->ip.v4 = strdup(host);
+						}
+						else
+						{
+							// Create comma-separated list
+							char *new_v4 = calloc(strlen(new->ip.v4) + strlen(host) + 2, sizeof(char));
+							sprintf(new_v4, "%s,%s", new->ip.v4, host);
+							free(new->ip.v4);
+							new->ip.v4 = new_v4;
+						}
+					}
+					else if(new->family == AF_INET6)
+					{
+						// IPv6 address
+						if(!new->ip.v6)
+						{
+							// First or only IPv6 address of this interface
+							new->ip.v6 = strdup(host);
+						}
+						else
+						{
+							// Create comma-separated list
+							char *new_v6 = calloc(strlen(new->ip.v6) + strlen(host) + 2, sizeof(char));
+							sprintf(new_v6, "%s,%s", new->ip.v6, host);
+							free(new->ip.v6);
+							new->ip.v6 = new_v6;
+						}
+					}
+				}
+			}
+		}
+
+		// Add to end of the linked list
+		if(!*head)
+			*head = new;
+		if(tail)
+			tail->next = new;
+		tail = new;
+
+		tx_sum += new->tx_bytes;
+		rx_sum += new->rx_bytes;
+	}
+
+	freeifaddrs(ifap);
+
+	// Create sum entry only if there is more than one interface
+	if(head == NULL)
+		return true;
+
+	struct if_info *new = calloc(1, sizeof(struct if_info));
+	new->name = strdup("sum");
+	new->carrier = true;
+	new->speed = 0;
+	new->tx_bytes = tx_sum;
+	new->rx_bytes = rx_sum;
+	if(tail)
+		tail->next = new;
+	tail = new;
+
+	return true;
+}
+
+static int json_iface(struct ftl_conn *api, struct if_info *iface, cJSON *json)
+{
+	double tx = 0.0, rx = 0.0;
+	char tx_unit[3] = { 0 }, rx_unit[3] = { 0 };
+	format_memory_size(tx_unit, iface->tx_bytes, &tx);
+	format_memory_size(rx_unit, iface->rx_bytes, &rx);
+	if(tx_unit[0] != '\0')
+		tx_unit[1] = 'B';
+	if(rx_unit[0] != '\0')
+		rx_unit[1] = 'B';
+
+	JSON_OBJ_COPY_STR(json, "name", iface->name);
+	JSON_OBJ_ADD_BOOL(json, "carrier", iface->carrier);
+	JSON_OBJ_ADD_NUMBER(json, "speed", iface->speed);
+
+	cJSON *tx_json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(tx_json, "num", tx);
+	JSON_OBJ_COPY_STR(tx_json, "unit", rx_unit);
+	JSON_OBJ_ADD_ITEM(json, "tx", tx_json);
+
+	cJSON *rx_json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(rx_json, "num", rx);
+	JSON_OBJ_COPY_STR(rx_json, "unit", rx_unit);
+	JSON_OBJ_ADD_ITEM(json, "rx", rx_json);
+
+	if( iface->carrier && iface->ip.v4)
+	{
+		JSON_OBJ_COPY_STR(json, "ipv4", iface->ip.v4);
+	}
+	else
+	{
+		JSON_OBJ_REF_STR(json, "ipv4", "-");
+	}
+
+	if( iface->carrier && iface->ip.v6)
+	{
+		JSON_OBJ_COPY_STR(json, "ipv6", iface->ip.v6);
+	}
+	else
+	{
+		JSON_OBJ_REF_STR(json, "ipv6", "-");
+	}
+
+	return 200;
+}
+
+int api_ftl_interfaces(struct ftl_conn *api)
+{
+	cJSON *json = JSON_NEW_OBJ();
+	cJSON *gateway = JSON_NEW_OBJ();
+	cJSON *interfaces = JSON_NEW_ARRAY();
+
+	// Get interface with default route
+	in_addr_t gw = 0;
+	char default_iface[IF_NAMESIZE] = { 0 };
+	getDefaultInterface(default_iface, &gw);
+
+	const char *gwaddr = inet_ntoa(*(struct in_addr *) &gw);
+	JSON_OBJ_COPY_STR(gateway, "address", gwaddr);
+	JSON_OBJ_REF_STR(gateway, "interface", default_iface);
+	JSON_OBJ_ADD_ITEM(json, "gateway", gateway);
+
+	// Enumerate and list interfaces
+	struct if_info *ifinfo = NULL;
+	if(!listInterfaces(&ifinfo, default_iface))
+		JSON_SEND_OBJECT(json);
+
+	// Loop over collected interface information
+	struct if_info *iface = ifinfo;
+	// Show only the default interface as first interface
+	while(iface)
+	{
+		if(iface->default_iface)
+		{
+			cJSON *ijson = JSON_NEW_OBJ();
+			int rc = json_iface(api, iface, ijson);
+			if(rc != 200)
+				return rc;
+			JSON_ARRAY_ADD_ITEM(interfaces, ijson);
+			break;
+		}
+		iface = iface->next;
+	}
+	iface = ifinfo;
+	// Show all but the default interface
+	while(iface)
+	{
+		if(!iface->default_iface)
+		{
+			cJSON *ijson = JSON_NEW_OBJ();
+			int rc = json_iface(api, iface, ijson);
+			if(rc != 200)
+				return rc;
+			JSON_ARRAY_ADD_ITEM(interfaces, ijson);
+		}
+
+		// Free associated memory
+		struct if_info *next = iface->next;
+		if(iface->name)
+			free(iface->name);
+		if(iface->ip.v4)
+			free(iface->ip.v4);
+		if(iface->ip.v6)
+			free(iface->ip.v6);
+		free(iface);
+		iface = next;
+	}
+	JSON_OBJ_ADD_ITEM(json, "interfaces", interfaces);
 	JSON_SEND_OBJECT(json);
 }

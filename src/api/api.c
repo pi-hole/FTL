@@ -103,6 +103,11 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		// Locks not needed
 		ret = api_ftl_gateway(&api);
 	}
+	else if(startsWith("/api/ftl/interfaces", &api))
+	{
+		// Locks not needed
+		ret = api_ftl_interfaces(&api);
+	}
 	/******************************** /api/network ****************************/
 	else if(startsWith("/api/network", &api))
 	{
