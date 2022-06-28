@@ -132,6 +132,13 @@
 // Default: 60 [seconds]
 #define DELAY_UPTIME 60
 
+// DB_QUERY_MAX_ITER defines how many queries we check periodically for updates to be added
+// to the in-memory database. This value may need to be increased on *very* busy systems.
+// However, there is an algorithm in place that tries to ensure we are not missing queries
+// on systems with > 100 queries per second
+// Default: 100 (per second)
+#define DB_QUERY_MAX_ITER 100
+
 // Use out own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crash
 // caused by insufficient memory or by code bugs (not properly dealing

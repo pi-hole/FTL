@@ -700,7 +700,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->domainID = domainID;
 	query->clientID = clientID;
 	// Initialize database field, will be set when the query is stored in the long-term DB
-	query->flags.database = false;
+	query->flags.database.stored = false;
+	query->flags.database.changed = true;
 	query->flags.complete = false;
 	query->response = converttimeval(request);
 	query->flags.response_calculated = false;
@@ -812,7 +813,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	free(domainString);
 
 	// Store query in database
-	query_to_database(query);
+	query->flags.database.changed = true;
 
 	// Release thread lock
 	unlock_shm();
@@ -1557,8 +1558,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	else
 		log_debug(DEBUG_QUERIES, "Query %d: CNAME %s ---> %s", id, src, dst);
 
-	// Update query in database
-	query_to_database(query);
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 
 	// Return result
 	free(child_domain);
@@ -1707,8 +1708,8 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	// Release allocated memory
 	free(upstreamIP);
 
-	// Update query in database
-	query_to_database(query);
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -2000,8 +2001,8 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
 
-		// Update query in database
-		query_to_database(query);
+		// Mark query for updating in the database
+		query->flags.database.changed = true;
 
 		unlock_shm();
 		return;
@@ -2026,8 +2027,8 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
 
-		// Update query in database
-		query_to_database(query);
+		// Mark query for updating in the database
+		query->flags.database.changed = true;
 	}
 	else if((flags & (F_FORWARD | F_UPSTREAM)) && isExactMatch)
 	{
@@ -2084,8 +2085,8 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			}
 		}
 
-		// Update query in database
-		query_to_database(query);
+		// Mark query for updating in the database
+		query->flags.database.changed = true;
 	}
 	else if(flags & F_REVERSE)
 	{
@@ -2101,8 +2102,8 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Save reply type and update individual reply counters
 		query_set_reply(flags, 0, addr, query, response);
 
-		// Update query in database
-		query_to_database(query);
+		// Mark query for updating in the database
+		query->flags.database.changed = true;
 	}
 	else if(isExactMatch && !query->flags.complete)
 	{
@@ -2248,8 +2249,8 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	// Update status
 	query_set_status(query, new_status);
 
-	// Update query in database
-//	query_to_database(query);
+	// Mark query for updating in the database
+//	query->flags.database.changed = true;
 }
 
 static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id, const char* file, const int line)
@@ -2304,8 +2305,8 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 	else
 		log_warn("Unknown DNSSEC status \"%s\"", arg);
 
-	// Update query in database
-	query_to_database(query);
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -2419,8 +2420,8 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 	// Set query reply
 	query_set_reply(0, reply, addr, query, response);
 
-	// Update query in database
-	query_to_database(query);
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -2478,8 +2479,8 @@ static void FTL_mark_externally_blocked(const int id, const char* file, const in
 	// Store reply type as replied with NXDOMAIN
 	query_set_reply(F_NEG | F_NXDOMAIN, 0, NULL, query, response);
 
-	// Update query in database
-	query_to_database(query);
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -2911,8 +2912,8 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 				query_set_status(query, QUERY_RETRIED);
 			}
 
-			// Update query in database
-			query_to_database(query);
+			// Mark query for updating in the database
+			query->flags.database.changed = true;
 		}
 	}
 
@@ -3157,8 +3158,8 @@ void FTL_query_in_progress(const int id)
 	// Store status
 	query_set_status(query, QUERY_IN_PROGRESS);
 
-	// Update query in database
-	query_to_database(query);
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -3229,8 +3230,8 @@ void FTL_multiple_replies(const int id, int *firstID)
 	if(source_query->status != QUERY_FORWARDED)
 		query_set_status(duplicated_query, source_query->status);
 
-	// Update query in database
-	query_to_database(duplicated_query);
+	// Mark query for updating in the database
+	duplicated_query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();

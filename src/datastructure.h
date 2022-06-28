@@ -47,8 +47,11 @@ typedef struct {
 		bool allowed :1;
 		bool complete :1;
 		bool blocked :1;
-		bool database :1;
 		bool response_calculated :1;
+		struct database_flags {
+			bool changed :1;
+			bool stored :1;
+		} database;
 	} flags;
 } queriesData;
 

@@ -72,11 +72,12 @@ void *DB_thread(void *val)
 	{
 		const time_t now = time(NULL);
 
-		// Move queries from non-blocking newdb into the larger memdb
+		// If the database is busy, no moving is happening and queries are retained in
+		// here until the next try. This ensures we cannot loose queries.
 		// Do this once per second
 		if(now > before)
 		{
-			mv_newdb_memdb();
+			queries_to_database();
 			before = now;
 		}
 

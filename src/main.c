@@ -93,7 +93,7 @@ int main (int argc, char *argv[])
 	db_init();
 
 	// Initialize in-memory databases
-	if(!init_memory_databases())
+	if(!init_memory_database())
 	{
 		log_crit("FATAL: Cannot initialize in-memory database.");
 		return EXIT_FAILURE;
