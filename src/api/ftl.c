@@ -509,6 +509,8 @@ static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 		}
 		fclose(file);
 	}
+	else
+		log_err("Cannot read /proc/net/route: %s", strerror(errno));
 
 	// Return success based on having found the default gateway's address
 	return gw != 0;
@@ -584,23 +586,47 @@ static bool listInterfaces(struct if_info **head, char default_iface[IF_NAMESIZE
 
 		// Extract carrier status
 		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/carrier", new->name);
-		if((f = fopen(fname, "r")) != NULL && fgets(readbuffer, sizeof(readbuffer)-1, f) != NULL)
-			new->carrier = readbuffer[0] == '1';
+		if((f = fopen(fname, "r")) != NULL)
+		{
+			if(fgets(readbuffer, sizeof(readbuffer)-1, f) != NULL)
+				new->carrier = readbuffer[0] == '1';
+			fclose(f);
+		}
+		else
+			log_err("Cannot read %s: %s", fname, strerror(errno));
 
 		// Extract link speed (may not be possible, e.g., for WiFi devices with dynamic link speeds)
 		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/speed", new->name);
-		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%i", &(new->speed)) != 1)
-			new->speed = -1;
+		if((f = fopen(fname, "r")) != NULL)
+		{
+			if(fscanf(f, "%i", &(new->speed)) != 1)
+				new->speed = -1;
+			fclose(f);
+		}
+		else
+			log_err("Cannot read %s: %s", fname, strerror(errno));
 
 		// Get total transmitted bytes
 		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/statistics/tx_bytes", new->name);
-		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%zi", &(new->tx_bytes)) != 1)
-			new->tx_bytes = -1;
+		if((f = fopen(fname, "r")) != NULL)
+		{
+			if(fscanf(f, "%zi", &(new->tx_bytes)) != 1)
+				new->tx_bytes = -1;
+			fclose(f);
+		}
+		else
+			log_err("Cannot read %s: %s", fname, strerror(errno));
 
 		// Get total transmitted bytes
 		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/statistics/rx_bytes", new->name);
-		if((f = fopen(fname, "r")) == NULL || fscanf(f, "%zi", &(new->rx_bytes)) != 1)
-			new->rx_bytes = -1;
+		if((f = fopen(fname, "r")) != NULL)
+		{
+			if(fscanf(f, "%zi", &(new->rx_bytes)) != 1)
+				new->rx_bytes = -1;
+			fclose(f);
+		}
+		else
+			log_err("Cannot read %s: %s", fname, strerror(errno));
 
 		// Get IP address(es) of this interface
 		if(ifap)
