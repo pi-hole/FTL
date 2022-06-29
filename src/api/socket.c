@@ -247,27 +247,12 @@ void __attribute__ ((format (gnu_printf, 2, 3))) ssend(const int sock, const cha
 	}
 }
 
-static inline int checkClientLimit(const int socket) {
-	if(socket < MAXCONNS)
-	{
-		return socket;
-	}
-	else
-	{
-		logg("Client denied (at max capacity of %i): %i", MAXCONNS, socket);
-
-		close(socket);
-		return -1;
-	}
-}
-
 static int listener(const int sockfd, const char type)
 {
+	socklen_t socklen = 0;
 	struct sockaddr_un un_addr;
 	struct sockaddr_in in4_addr;
 	struct sockaddr_in6 in6_addr;
-	socklen_t socklen = 0;
-	int socket;
 
 	switch(type)
 	{
@@ -279,14 +264,12 @@ static int listener(const int sockfd, const char type)
 		case 4: // Internet socket (IPv4)
 			memset(&in4_addr, 0, sizeof(in4_addr));
 			socklen = sizeof(un_addr);
-			socket = accept(sockfd, (struct sockaddr *) &in4_addr, &socklen);
-			return checkClientLimit(socket);
+			return accept(sockfd, (struct sockaddr *) &in4_addr, &socklen);
 
 		case 6: // Internet socket (IPv6)
 			memset(&in6_addr, 0, sizeof(in6_addr));
 			socklen = sizeof(un_addr);
-			socket = accept(sockfd, (struct sockaddr *) &in6_addr, &socklen);
-			return checkClientLimit(socket);
+			return accept(sockfd, (struct sockaddr *) &in6_addr, &socklen);
 
 		default: // Should not happen
 			logg("Cannot listen on type %i connection, code error!", type);
@@ -350,16 +333,24 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 		return NULL;
 	}
 
+	if(config.debug & DEBUG_API)
+		logg("New telnet thread for socket %d", *(int*)socket_desc);
+
 	// Receive from client
 	ssize_t n;
-	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
+	while((n = recv(sock, client_message, SOCKETBUFFERLEN-1, 0)))
 	{
 		if (n > 0 && n < SOCKETBUFFERLEN)
 		{
 			// Null-terminate client string
 			client_message[n] = '\0';
 			char *message = strdup(client_message);
-			if(message == NULL) break;
+			if(message == NULL)
+			{
+				if(config.debug & DEBUG_API)
+					logg("Break in telnet thread for socket %d: Memory error", *(int*)socket_desc);
+				break;
+			}
 
 			// Clear client message receive buffer
 			memset(client_message, 0, sizeof client_message);
@@ -371,14 +362,21 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 			if(sock == 0)
 			{
 				// Client disconnected by sending EOT or ">quit"
+				if(config.debug & DEBUG_API)
+					logg("Break in telnet thread for socket %d: Client disconnected", *(int*)socket_desc);
 				break;
 			}
 		}
 		else if(n == -1)
 		{
+			if(config.debug & DEBUG_API)
+				logg("Break in telnet thread for socket %d: No data received", *(int*)socket_desc);
 			break;
 		}
 	}
+
+	if(config.debug & DEBUG_API)
+		logg("Terminating telnet thread for socket %d", *(int*)socket_desc);
 
 	// Free the socket pointer
 	if(sock != 0)
@@ -503,6 +501,8 @@ void *telnet_listening_thread_IPv4(void *args)
 			logg("IPv4 telnet error: %s (%i)", strerror(errno), errno);
 			continue;
 		}
+
+		logg("Accepting new telnet connection at socket %d", csck);
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		int *newsock;
