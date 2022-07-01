@@ -30,6 +30,9 @@ bool DBdeleteoldqueries = false;
 static bool DBerror = false;
 long int lastdbindex = 0;
 
+// Optimize database
+static void optimize_database(sqlite3 *db, const bool debug);
+
 bool __attribute__ ((pure)) FTLDBerror(void)
 {
 	return DBerror;
@@ -59,6 +62,9 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 	// possible to close the connection properly.
 	if(FTLDBerror())
 		return;
+
+	// Optimize database
+	optimize_database(*db, config.debug & DEBUG_DATABASE);
 
 	if(config.debug & DEBUG_DATABASE)
 		logg("Closing FTL database in %s() (%s:%i)", func, file, line);
@@ -633,4 +639,90 @@ long int get_max_query_ID(sqlite3 *db)
 const char *get_sqlite3_version(void)
 {
 	return sqlite3_libversion();
+}
+
+// To execute statement as efficiently as possible, SQLite has a query planner,
+// which tries to read the tables to provide good performance (for instance by
+// evaluating the WHERE clauses that select the fewest rows first).
+//
+// This query planner sometimes needs to know whether a column has many values
+// or only a few, repeated values (like a boolean column would). To know this,
+// it can’t read the whole table, as that may prove as costly as running the
+// part of the query that is being optimized, so it uses some statistics
+// collected in internal tables.
+//
+// The ANALYZE command gathers statistics about tables and indices and stores
+// the collected information in internal tables of the database where the query
+// optimizer can access the information and use it to help make better query
+// planning choices.
+//
+// Each SQLite database connection records cases when the query planner would
+// benefit from having accurate results of ANALYZE at hand. These records are
+// held in memory and accumulate over the life of a database connection. The
+// PRAGMA optimize command looks at those records and runs ANALYZE on only those
+// tables for which new or updated ANALYZE data seems likely to be useful. In
+// most cases PRAGMA optimize will not run ANALYZE, but it will occasionally do
+// so either for tables that have never before been analyzed, or for tables that
+// have grown significantly since they were last analyzed.
+//
+// The recommended practice is for applications to invoke the PRAGMA optimize
+// statement just before closing each database connection.
+// (https://sqlite.org/lang_analyze.html#autoanalyze).
+//
+// It is planned that future releases of SQLite3 will add further features to
+// PRAGMA optimize. Planned features are:
+// - Record usage and performance information from the current session in the
+//   database file so that it will be available to "optimize" pragmas run by
+//   future database connections.
+// - Create indexes that might have been helpful to recent queries
+static void optimize_database(sqlite3 *db, const bool debug)
+{
+	double start = double_time();
+	sqlite3_stmt *stmt;
+	if(debug)
+		logg("Performing database optimization dry-run:");
+
+	// Prepare optimization statement
+	const char *querystr = debug ? "PRAGMA optimize(0x03)" : "PRAGMA optimize(0x02)";
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		if(rc != SQLITE_BUSY)
+			logg("Encountered prepare error in optimize_database(): %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
+		return;
+	}
+
+	// Step optimization statement
+	unsigned int instructions = 0U;
+	while((rc = sqlite3_step(stmt)) != SQLITE_DONE)
+	{
+		// Check if we ran into an error
+		if(rc != SQLITE_ROW)
+		{
+			logg("optimize_database() - SQL error step: %s", sqlite3_errstr(rc));
+			checkFTLDBrc(rc);
+			return;
+		}
+
+		instructions ++;
+		const char *zSubSql = (char*)sqlite3_column_text(stmt, 0);
+		logg("  %s", zSubSql);
+	}
+	sqlite3_finalize(stmt);
+
+	if(debug)
+		logg(instructions > 0 ? "  COMMIT" : "  ---");
+
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("Database optimization %s took %.4f seconds",
+		     debug ? "simulation" : "execution",
+		     (double_time() - start));
+	}
+
+	// If anything would have happened, we actually perform
+	// the optimization in a second step
+	if(instructions > 0)
+		optimize_database(db, false);
 }
