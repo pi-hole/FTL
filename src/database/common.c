@@ -241,7 +241,7 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 void db_init(void)
 {
 	// Initialize SQLite3 logging callback
-	// This ensures SQLite3 errors and warnings are logged to pihole-FTL.log
+	// This ensures SQLite3 errors and warnings are logged to FTL.log
 	// We use this to possibly catch even more errors in places we do not
 	// explicitly check for failures to have happened
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
