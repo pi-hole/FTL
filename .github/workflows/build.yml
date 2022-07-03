@@ -4,7 +4,10 @@ on:
   push:
     branches:
       - '**'
+      - '!dependabot/**'
   pull_request:
+    branches-ignore:
+      - 'dependabot/**'
   release:
     types: [published]
 
@@ -54,7 +57,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       -
         name: Calculate required build variables
         id: variables
@@ -89,7 +92,7 @@ jobs:
       -
         name: Store binary artifacts for deployoment
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: tmp-storage
           path: '${{ matrix.bin_name }}*'
@@ -111,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Get Binaries and documentation built in previous jobs
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: tmp-storage
       -
