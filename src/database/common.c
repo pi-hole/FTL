@@ -679,8 +679,6 @@ static void optimize_database(sqlite3 *db, const bool debug)
 {
 	double start = double_time();
 	sqlite3_stmt *stmt;
-	if(debug)
-		logg("Performing database optimization dry-run:");
 
 	// Prepare optimization statement
 	const char *querystr = debug ? "PRAGMA optimize(0x03)" : "PRAGMA optimize(0x02)";
@@ -705,19 +703,19 @@ static void optimize_database(sqlite3 *db, const bool debug)
 			return;
 		}
 
-		instructions ++;
+
+		if(debug && instructions == 0)
+			logg("Performing database optimization dry-run:");
 		const char *zSubSql = (char*)sqlite3_column_text(stmt, 0);
 		logg("  %s", zSubSql);
+		instructions++;
 	}
 	sqlite3_finalize(stmt);
-
-	if(debug)
-		logg(instructions > 0 ? "  COMMIT" : "  ---");
 
 	if(config.debug & DEBUG_DATABASE)
 	{
 		logg("Database optimization %s took %.4f seconds",
-		     debug ? "simulation" : "execution",
+		     debug ? "dry-run" : "execution",
 		     (double_time() - start));
 	}
 
