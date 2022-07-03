@@ -28,6 +28,8 @@
 #include "overTime.h"
 // flush_message_table()
 #include "database/message-table.h"
+// supervisor()
+#include "supervisor.h"
 
 char * username;
 bool needGC = false;
@@ -46,11 +48,16 @@ int main (int argc, char* argv[])
 	// Parse arguments
 	// We run this also for no direct arguments
 	// to have arg{c,v}_dnsmasq initialized
-	parse_args(argc, argv);
+	const bool supervision = parse_args(argc, argv);
 
 	// Try to open FTL log
 	init_config_mutex();
 	init_FTL_log();
+
+	// Block here if started as supervisor
+	if(supervision)
+		exit(supervisor(argc, argv));
+
 	timer_start(EXIT_TIMER);
 	logg("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);

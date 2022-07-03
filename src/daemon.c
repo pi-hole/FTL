@@ -93,8 +93,6 @@ void go_daemon(void)
 		exit(EXIT_SUCCESS);
 	}
 
-	savepid();
-
 	// Closing stdin, stdout and stderr is handled by dnsmasq
 }
 

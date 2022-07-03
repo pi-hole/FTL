@@ -149,6 +149,8 @@ set(sources
         signals.h
         struct_size.c
         struct_size.h
+        supervisor.c
+        supervisor.h
         timers.c
         timers.h
         vector.c

@@ -2669,8 +2669,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// the PID of the current process in the PID file
 	if(daemonmode)
 		go_daemon();
-	else
-		savepid();
+	savepid();
 
 	// Handle real-time signals in this process (and its children)
 	// Helper processes are already split from the main instance

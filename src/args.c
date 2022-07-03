@@ -43,9 +43,10 @@ static inline bool strEndsWith(const char *input, const char *end){
 	return strcmp(input + strlen(input) - strlen(end), end) == 0;
 }
 
-void parse_args(int argc, char* argv[])
+bool parse_args(int argc, char* argv[])
 {
 	bool quiet = false;
+	bool supervised = false;
 	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
 	argc_dnsmasq = 3;
 	argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
@@ -79,7 +80,15 @@ void parse_args(int argc, char* argv[])
 			exit(sqlite3_shell_main(argc, argv));
 
 	// start from 1, as argv[0] is the executable name
-	for(int i = 1; i < argc; i++)
+	int start = 1;
+	if(argc > 1 && strcmp(argv[1], "--supervised") == 0)
+	{
+		supervised = true;
+		start++;
+	}
+
+	// Iterate over possible arguments
+	for(int i = start; i < argc; i++)
 	{
 		bool ok = false;
 
@@ -196,7 +205,7 @@ void parse_args(int argc, char* argv[])
 			}
 
 			// Return early: We have consumes all available command line arguments
-			return;
+			return supervised;
 		}
 
 		// What follows beyond this point are FTL internal command line arguments
@@ -375,6 +384,8 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_FAILURE);
 		}
 	}
+
+	return supervised;
 }
 
 // Extended SGR sequence:
