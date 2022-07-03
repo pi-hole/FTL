@@ -1120,7 +1120,6 @@
   rm abc.lua
 }
 
-
 @test "Pi-hole PTR generation check" {
   run bash -c "bash test/hostnames.sh | tee ptr.log"
   printf "%s\n" "${lines[@]}"
@@ -1184,7 +1183,7 @@
 }
 
 @test "Pi-hole uses BLOCK_IPV4/6 for blocked domain" {
-  echo "BLOCKINGMODE=IP" >> /etc/pihole/pihole-FTL.conf
+  sed -i "s/blockingmode = \"NULL\"/blockingmode = \"IP\"" /etc/pihole/pihole-FTL.toml
   run bash -c "kill -HUP $(cat /run/pihole-FTL.pid)"
   sleep 2
   run bash -c "dig A blacklisted.ftl +short @127.0.0.1"
@@ -1193,48 +1192,4 @@
   run bash -c "dig AAAA blacklisted.ftl +short @127.0.0.1"
   printf "%s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::11" ]]
-}
-
-@test "Reported default gateway is correct" {
-  routes="$(ip -4 route show default)"
-  ipaddr="$(awk '{print $3}' <<< $routes)"
-  interf="$(awk '{print $5}' <<< $routes)"
-  printf "ip -4 route show default: %s\n" "${routes}"
-  run bash -c 'echo ">gateway >quit" | nc 127.0.0.1 4711'
-  ftlip="$(awk '{print $1}' <<< "${lines[0]}")"
-  ftlif="$(awk '{print $2}' <<< "${lines[0]}")"
-  printf "%s\n" "${lines[@]}"
-  # Check gateway IP address
-  printf "Checking IP: %s == %s\n" "$ftlip" "$ipaddr"
-  [[ "$ftlip" == "$ipaddr" ]]
-  # Check gateway interface
-  printf "Checking IF: %s == %s\n" "$ftlif" "$interf"
-  [[ "$ftlif" == "$interf" ]]
-}
-
-@test "Reported interface statistics are as expected" {
-  routes="$(ip -4 route show default)"
-  interf="$(awk '{print $5}' <<< $routes)"
-  printf "ip -4 route show default: %s\n" "${routes}"
-  run bash -c 'echo ">interfaces >quit" | nc 127.0.0.1 4711'
-  firstiface="$(awk '{print $1}' <<< "${lines[0]}")"
-  firstcarrier="$(awk '{print $2}' <<< "${lines[0]}")"
-  firstnum="$(awk '{print NF}' <<< "${lines[0]}")"
-  lastiface="$(awk '{print $1}' <<< "${lines[-1]}")"
-  lastcarrier="$(awk '{print $2}' <<< "${lines[-1]}")"
-  lastspeed="$(awk '{print $3}' <<< "${lines[-1]}")"
-  lastnum="$(awk '{print NF}' <<< "${lines[-1]}")"
-  printf "%s\n" "${lines[@]}"
-  # Check default interface is reported in first line
-  printf "Checking IF: %s == %s\n" "$firstiface" "$interf"
-  [[ "$firstiface" == "$interf" ]]
-  # Check default interface is reported as being UP
-  [[ "$firstcarrier" == "UP" ]]
-  # Check last reported record is the sum
-  [[ "$lastiface" == "sum" ]]
-  [[ "$lastcarrier" == "UP" ]]
-  [[ "$lastspeed" == "0" ]]
-  # Check we are reporting seven quantities for the interfaces
-  [[ "$firstnum" == 7 ]]
-  [[ "$lastnum" == 7 ]]
 }
