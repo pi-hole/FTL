@@ -127,7 +127,7 @@
 [files]
   # The location of FTL's log file
   # Possible values are: <any writable file>
-  log = "/var/log/pihole-FTL.log"
+  log = "/var/log/pihole/pihole-FTL.log"
 
   # The location of FTL's PID file
   # Possible values are: <any writable file>
