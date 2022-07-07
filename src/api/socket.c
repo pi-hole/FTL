@@ -502,7 +502,8 @@ void *telnet_listening_thread_IPv4(void *args)
 			continue;
 		}
 
-		logg("Accepting new telnet connection at socket %d", csck);
+		if(config.debug & DEBUG_API)
+			logg("Accepting new telnet connection at socket %d", csck);
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		int *newsock;
