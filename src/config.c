@@ -78,7 +78,7 @@ void getLogFilePath(void)
 	}
 
 	// Read LOGFILE value if available
-	// defaults to: "/var/log/pihole-FTL.log"
+	// defaults to: "/var/log/pihole/FTL.log"
 	buffer = parse_FTLconf(fp, "LOGFILE");
 
 	errno = 0;
@@ -86,7 +86,7 @@ void getLogFilePath(void)
 	if(buffer == NULL || sscanf(buffer, "%127ms", &FTLfiles.log) != 1)
 	{
 		// Use standard path if no custom path was obtained from the config file
-		FTLfiles.log = strdup("/var/log/pihole-FTL.log");
+		FTLfiles.log = strdup("/var/log/pihole/FTL.log");
 	}
 
 	// Test if memory allocation was successful
@@ -688,13 +688,13 @@ void read_FTLconf(void)
 
 	// REPLY_WHEN_BUSY
 	// How should FTL handle queries when the gravity database is not available?
-	// defaults to: BLOCK
+	// defaults to: DROP
 	buffer = parse_FTLconf(fp, "REPLY_WHEN_BUSY");
 
-	if(buffer != NULL && strcasecmp(buffer, "DROP") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "ACCEPT") == 0)
 	{
-		config.reply_when_busy = BUSY_DROP;
-		logg("   REPLY_WHEN_BUSY: Drop queries when the database is busy");
+		config.reply_when_busy = BUSY_ALLOW;
+		logg("   REPLY_WHEN_BUSY: Permit queries when the database is busy");
 	}
 	else if(buffer != NULL && strcasecmp(buffer, "REFUSE") == 0)
 	{
@@ -708,8 +708,8 @@ void read_FTLconf(void)
 	}
 	else
 	{
-		config.reply_when_busy = BUSY_ALLOW;
-		logg("   REPLY_WHEN_BUSY: Permit queries when the database is busy");
+		config.reply_when_busy = BUSY_DROP;
+		logg("   REPLY_WHEN_BUSY: Drop queries when the database is busy");
 	}
 
 	// BLOCK_TTL

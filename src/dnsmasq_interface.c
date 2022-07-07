@@ -48,6 +48,10 @@
 #include "api/api_helper.h"
 // logg_rate_limit_message()
 #include "database/message-table.h"
+// type struct sqlite3_stmt_vec
+#include "vector.h"
+// check_one_struct()
+#include "struct_size.h"
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
@@ -841,7 +845,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	next_iface.name[0] = '-';
 	next_iface.name[1] = '\0';
 
-	// Check if we need to identify the receving interface by its address
+	// Check if we need to identify the receiving interface by its address
 	if(!recviface && addr &&
 	   ((addrfamily == AF_INET && addr->addr4.s_addr != INADDR_ANY) ||
 	    (addrfamily == AF_INET6 && !IN6_IS_ADDR_UNSPECIFIED(&addr->addr6))))
@@ -1382,7 +1386,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		dns_cache->force_reply = force_next_DNS_reply;
 
 		// Adjust counters
-		query_blocked(query, domain, client, QUERY_CACHE);
+		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 
 		// Debug output
 		if(config.debug & DEBUG_QUERIES)
@@ -1446,10 +1450,11 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 		// Debug output
 		if(config.debug & DEBUG_QUERIES)
+		{
 			logg("Blocking %s as %s is %s", domainstr, blockedDomain, blockingreason);
-
-		if(force_next_DNS_reply != 0)
-			logg("Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
+			if(force_next_DNS_reply != 0)
+				logg("Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
+		}
 	}
 	else if(db_okay)
 	{
@@ -1723,7 +1728,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 		// up in a situation where dnsmasq can answer the first level of
 		// the DNS result (the CNAME) from cache, hence the status of this
 		// query is marked as "answered from cache" in FTLDNS. However, for
-		// server.a.com wit the much shorter TTL, we still have to forward
+		// server.a.com with the much shorter TTL, we still have to forward
 		// something and ask the upstream server for the final IP address.
 
 		// Correct reply timer if a response time has already been calculated
@@ -1948,7 +1953,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			}
 			else if(rcode == SERVFAIL)
 			{
-				// This happens on upstream destionation errors
+				// This happens on upstream destination errors
 				answer = "SERVFAIL";
 			}
 		}
@@ -2071,7 +2076,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Answered from local configuration, might be a wildcard or user-provided
 
 		// Answered from a custom (user provided) cache file or because
-		// we're the authorative DNS server (e.g. DHCP server and this
+		// we're the authoritative DNS server (e.g. DHCP server and this
 		// is our own domain)
 		query_set_status(query, QUERY_CACHE);
 
@@ -2771,7 +2776,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		// Add our PTR record to the end of the linked list
 		if(daemon->ptr != NULL)
 		{
-			// Interate to the last PTR entry in dnsmasq's structure
+			// Iterate to the last PTR entry in dnsmasq's structure
 			struct ptr_record *ptr;
 			for(ptr = daemon->ptr; ptr && ptr->next; ptr = ptr->next);
 
@@ -3334,4 +3339,29 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 
 	// Set DNSSEC status
 	query->dnssec = dnssec;
+}
+
+// Check sizes of all important in-memory objects. This routine returns the number of
+// errors found (i.e., a return value of 0 is what we want and expect)
+int check_struct_sizes(void)
+{
+	int result = 0;
+	result += check_one_struct("ConfigStruct", sizeof(ConfigStruct), 112, 104);
+	result += check_one_struct("queriesData", sizeof(queriesData), 56, 44);
+	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 616, 604);
+	result += check_one_struct("clientsData", sizeof(clientsData), 672, 648);
+	result += check_one_struct("domainsData", sizeof(domainsData), 24, 20);
+	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 16, 16);
+	result += check_one_struct("ednsData", sizeof(ednsData), 72, 72);
+	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24);
+	result += check_one_struct("regexData", sizeof(regexData), 56, 44);
+	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
+	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 12, 12);
+	result += check_one_struct("countersStruct", sizeof(countersStruct), 244, 244);
+	result += check_one_struct("sqlite3_stmt_vec", sizeof(sqlite3_stmt_vec), 32, 16);
+
+	if(result == 0)
+		printf("All okay\n");
+
+	return result;
 }

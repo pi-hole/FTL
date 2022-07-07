@@ -51,7 +51,7 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 	if(strstr(symbol, BINARY_NAME) == NULL)
 		return;
 
-	// Find first occurence of '(' or ' ' in the obtaned symbol string and
+	// Find first occurrence of '(' or ' ' in the obtaned symbol string and
 	// assume everything before that is the file name. (Don't go beyond the
 	// string terminator \0)
 	int p = 0;
@@ -185,7 +185,7 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 		switch (si->si_code)
 		{
 			case BUS_ADRALN:    logg("     with code:  BUS_ADRALN (Invalid address alignment)"); break;
-			case BUS_ADRERR:    logg("     with code:  BUS_ADRERR (Non-existant physical address)"); break;
+			case BUS_ADRERR:    logg("     with code:  BUS_ADRERR (Non-existent physical address)"); break;
 			case BUS_OBJERR:    logg("     with code:  BUS_OBJERR (Object specific hardware error)"); break;
 			case BUS_MCEERR_AR: logg("     with code:  BUS_MCEERR_AR (Hardware memory error: action required)"); break;
 			case BUS_MCEERR_AO: logg("     with code:  BUS_MCEERR_AO (Hardware memory error: action optional)"); break;

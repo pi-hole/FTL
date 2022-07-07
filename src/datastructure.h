@@ -15,8 +15,9 @@
 
 // enum privacy_level
 #include "enums.h"
-// assert_sizeof
-#include "static_assert.h"
+
+// Definitions like OVERTIME_SLOT
+#include "FTL.h"
 
 extern const char *querytypes[TYPE_MAX];
 
@@ -51,9 +52,6 @@ typedef struct {
 	} flags;
 } queriesData;
 
-// ARM needs extra padding at the end
-ASSERT_SIZEOF(queriesData, 56, 44, 44);
-
 typedef struct {
 	unsigned char magic;
 	bool new;
@@ -64,7 +62,6 @@ typedef struct {
 	size_t namepos;
 	time_t lastQuery;
 } upstreamsData;
-ASSERT_SIZEOF(upstreamsData, 640, 624, 624);
 
 typedef struct {
 	unsigned char magic;
@@ -91,7 +88,6 @@ typedef struct {
 	time_t lastQuery;
 	time_t firstSeen;
 } clientsData;
-ASSERT_SIZEOF(clientsData, 696, 668, 668);
 
 typedef struct {
 	unsigned char magic;
@@ -100,7 +96,6 @@ typedef struct {
 	uint32_t domainhash;
 	size_t domainpos;
 } domainsData;
-ASSERT_SIZEOF(domainsData, 24, 20, 20);
 
 typedef struct {
 	unsigned char magic;
@@ -111,7 +106,6 @@ typedef struct {
 	int clientID;
 	int black_regex_idx;
 } DNSCacheData;
-ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
 
 void strtolower(char *str);
 uint32_t hashStr(const char *s) __attribute__((const));

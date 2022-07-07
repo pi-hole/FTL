@@ -28,7 +28,7 @@ int FTLpthread_mutex_lock(pthread_mutex_t *__mutex, const char *file, const char
 	// incoming signal
 	while(ret < 0 && errno == EINTR);
 
-	// Final error checking (may have faild for some other reason then an
+	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret < 0)
 		logg("WARN: Could not pthread_mutex_lock() in %s() (%s:%i): %s",

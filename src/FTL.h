@@ -52,8 +52,8 @@
 #define SOCKETBUFFERLEN 1024
 
 // How often do we garbage collect (to ensure we only have data fitting to the MAXLOGAGE defined above)? [seconds]
-// Default: 3600 (once per hour)
-#define GCinterval 3600
+// Default: 600 (10 minute intervals)
+#define GCinterval 600
 
 // Delay applied to the garbage collecting [seconds]
 // Default: -60 (one minute before a full hour)
@@ -69,15 +69,18 @@
 #define MAXLOGAGE 24
 
 // Interval for overTime data [seconds]
-// Default: 600 (10 minute intervals)
-#define OVERTIME_INTERVAL 600
+// Default: same as GCinterval
+#define OVERTIME_INTERVAL GCinterval
 
 // How many overTime slots do we need?
-// (24+1) hours * number of intervals per hour
-// We need to be able to hold 25 hours as we need some reserve
-// due to that GC is only running once an hours so the shown data
-// can be 24 hours + 59 minutes
-#define OVERTIME_SLOTS ((MAXLOGAGE+1)*3600/OVERTIME_INTERVAL)
+// This is the maximum log age divided by the overtime interval
+// plus one extra timeslot for the very first timeslot.
+// Example (default settings): 24*3600/600 + 1 = 144 + 1 slots
+// Which corresponds to something like
+//    Mon 08:05:00 - Tue 08:05:00
+// Without the extra last timestamp, the first timeslot
+// would incorrectly be located at Mon 08:15:00
+#define OVERTIME_SLOTS ((MAXLOGAGE*3600)/OVERTIME_INTERVAL + 1)
 
 // Interval for re-resolving ALL known host names [seconds]
 // Default: 3600 (once every hour)
@@ -110,8 +113,13 @@
 // Important: This number has to be smaller than 256 for this mechanism to work
 #define NUM_RECHECKS 3
 
+// DELAY_STARTUP should only delay the startup of the resolver during a starting up system
+// This setting control how long after boot we consider a system to be in starting-up mode
+// Default: 60 [seconds]
+#define DELAY_UPTIME 60
+
 // Use out own syscalls handling functions that will detect possible errors
-// and report accordingly in the log. This will make debugging FTL crashs
+// and report accordingly in the log. This will make debugging FTL crash
 // caused by insufficient memory or by code bugs (not properly dealing
 // with NULL pointers) much easier.
 #undef strdup // strdup() is a macro in itself, it needs special handling

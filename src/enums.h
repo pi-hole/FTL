@@ -45,6 +45,7 @@ enum query_status {
 	QUERY_RETRIED_DNSSEC,
 	QUERY_IN_PROGRESS,
 	QUERY_DBBUSY,
+	QUERY_SPECIAL_DOMAIN,
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 

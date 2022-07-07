@@ -659,7 +659,7 @@ static bool get_client_groupids(clientsData* client)
 	}
 
 	// We use the default group and return early here
-	// if aboves lookups didn't return any results
+	// if above lookups didn't return any results
 	// (the client is not configured through the client table)
 	if(chosen_match_id < 0)
 	{
@@ -1021,7 +1021,7 @@ bool gravityDB_getTable(const unsigned char list)
 // as there are domains available. Once we reached the
 // end of the table, it returns NULL. It also returns
 // NULL when it encounters an error (e.g., on reading
-// errors). Errors are logged to pihole-FTL.log
+// errors). Errors are logged to FTL.log
 // This function is performance critical as it might
 // be called millions of times for large blocking lists
 inline const char* gravityDB_getDomain(int *rowid)
@@ -1066,9 +1066,8 @@ void gravityDB_finalizeTable(void)
 	table_stmt = NULL;
 }
 
-// Get number of domains in a specified table of the gravity database
-// We return the constant DB_FAILED and log to pihole-FTL.log if we
-// encounter any error
+// Get number of domains in a specified table of the gravity database We return
+// the constant DB_FAILED and log to FTL.log if we encounter any error
 int gravityDB_count(const enum gravity_tables list)
 {
 	if(!gravityDB_opened && !gravityDB_open())
@@ -1160,7 +1159,7 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 	// Bind domain to prepared statement
 	// SQLITE_STATIC: Use the string without first duplicating it internally.
 	// We can do this as domain has dynamic scope that exceeds that of the binding.
-	// We need to bind the domain onl once even to the prepared audit statement as:
+	// We need to bind the domain only once even to the prepared audit statement as:
 	//     When the same named SQL parameter is used more than once, second and
 	//     subsequent occurrences have the same index as the first occurrence.
 	//     (https://www.sqlite.org/c3ref/bind_blob.html)

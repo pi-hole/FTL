@@ -17,10 +17,12 @@
 #include <sys/types.h>
 // typedef uni32_t
 #include <stdint.h>
-// assert_sizeof
-#include "static_assert.h"
 // struct in_addr, in6_addr
 #include <netinet/in.h>
+// type bool
+#include <stdbool.h>
+// type FILE
+#include <stdio.h>
 
 void init_config_mutex(void);
 void getLogFilePath(void);
@@ -91,7 +93,6 @@ typedef struct {
 		} ip_blocking;
 	} reply_addr;
 } ConfigStruct;
-ASSERT_SIZEOF(ConfigStruct, 112, 104, 104);
 
 typedef struct {
 	const char* conf;

@@ -28,9 +28,9 @@ FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const c
 	// incoming signal
 	while(file_ptr == NULL && errno == EINTR);
 
-	// Final error checking (may have faild for some other reason then an
+	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
-	// The already_writing coutner prevents a possible infinite loop
+	// The already_writing counter prevents a possible infinite loop
 	if(file_ptr == NULL && (already_writing++) == 1)
 		logg("WARN: Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
 		     pathname, mode, func, file, line, strerror(errno));

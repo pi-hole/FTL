@@ -96,7 +96,7 @@ void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 	char idstr[42];
 	const int pid = getpid(); // Get the process ID of the calling process
 	const int mpid = main_pid(); // Get the process ID of the main FTL process
-	const int tid = gettid(); // Get the thread ID of the callig process
+	const int tid = gettid(); // Get the thread ID of the calling process
 
 	// There are four cases we have to differentiate here:
 	if(pid == tid)
@@ -197,18 +197,18 @@ void FTL_log_helper(const unsigned char n, ...)
 }
 
 void format_memory_size(char prefix[2], const unsigned long long int bytes,
-                        double * const formated)
+                        double * const formatted)
 {
 	unsigned int i;
-	*formated = bytes;
+	*formatted = bytes;
 	// Determine exponent for human-readable display
 	for(i = 0; i < 7; i++)
 	{
-		if(*formated <= 1e3)
+		if(*formatted <= 1e3)
 			break;
-		*formated /= 1e3;
+		*formatted /= 1e3;
 	}
-	const char prefixes[8] = { ' ', 'K', 'M', 'G', 'T', 'P', 'E', '?' };
+	const char prefixes[8] = { '\0', 'K', 'M', 'G', 'T', 'P', 'E', '?' };
 	// Chose matching SI prefix
 	prefix[0] = prefixes[i];
 	prefix[1] = '\0';
@@ -345,7 +345,7 @@ const char __attribute__ ((const)) *get_ordinal_suffix(unsigned int number)
 	// For example: 2nd, 7th, 20th, 23rd, 52nd, 135th, 301st BUT 311th (covered above)
 }
 
-// Converts a buffer of specified lenth to ASCII representation as it was a C
+// Converts a buffer of specified length to ASCII representation as it was a C
 // string literal. Returns how much bytes from source was processed
 // Inspired by https://stackoverflow.com/a/56123950
 int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,

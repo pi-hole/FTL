@@ -302,7 +302,7 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
 			client->overTime[overTimeIdx] += overTimeMod;
 
-		// Also add counts to the conencted alias-client (if any)
+		// Also add counts to the connected alias-client (if any)
 		if(client->flags.aliasclient)
 		{
 			logg("WARN: Should not add to alias-client directly (client \"%s\" (%s))!",
@@ -537,6 +537,7 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 		case QUERY_REGEX_CNAME:
 		case QUERY_BLACKLIST_CNAME:
 		case QUERY_DBBUSY:
+		case QUERY_SPECIAL_DOMAIN:
 			return true;
 	}
 }
@@ -557,7 +558,8 @@ static const char *query_status_str[QUERY_STATUS_MAX] = {
 	"RETRIED",
 	"RETRIED_DNSSEC",
 	"IN_PROGRESS",
-	"DBBUSY"
+	"DBBUSY",
+	"SPECIAL_DOMAIN"
 };
 
 void _query_set_status(queriesData *query, const enum query_status new_status, const char *file, const int line)
