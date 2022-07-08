@@ -35,7 +35,7 @@ extern void print_dnsmasq_version(void);
 extern int sqlite3_shell_main(int argc, char **argv);
 
 bool dnsmasq_debug = false;
-bool daemonmode = true, cli_mode = false;
+bool daemonmode = true, cli_mode = false, supervised = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
 
@@ -43,10 +43,9 @@ static inline bool strEndsWith(const char *input, const char *end){
 	return strcmp(input + strlen(input) - strlen(end), end) == 0;
 }
 
-bool parse_args(int argc, char* argv[])
+void parse_args(int argc, char* argv[])
 {
 	bool quiet = false;
-	bool supervised = false;
 	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
 	argc_dnsmasq = 3;
 	argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
@@ -79,16 +78,8 @@ bool parse_args(int argc, char* argv[])
 	   (argc > 1 && strEndsWith(argv[1], ".db")))
 			exit(sqlite3_shell_main(argc, argv));
 
-	// start from 1, as argv[0] is the executable name
-	int start = 1;
-	if(argc > 1 && strcmp(argv[1], "--supervised") == 0)
-	{
-		supervised = true;
-		start++;
-	}
-
 	// Iterate over possible arguments
-	for(int i = start; i < argc; i++)
+	for(int i = 1; i < argc; i++)
 	{
 		bool ok = false;
 
@@ -205,7 +196,7 @@ bool parse_args(int argc, char* argv[])
 			}
 
 			// Return early: We have consumes all available command line arguments
-			return supervised;
+			return;
 		}
 
 		// What follows beyond this point are FTL internal command line arguments
@@ -289,6 +280,13 @@ bool parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "no-daemon") == 0)
 		{
 			daemonmode = false;
+			ok = true;
+		}
+
+		// Start supervised FTL process
+		if(strcmp(argv[i], "--supervised") == 0)
+		{
+			supervised = true;
 			ok = true;
 		}
 
@@ -385,7 +383,7 @@ bool parse_args(int argc, char* argv[])
 		}
 	}
 
-	return supervised;
+	return;
 }
 
 // Extended SGR sequence:

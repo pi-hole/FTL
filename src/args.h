@@ -10,9 +10,10 @@
 #ifndef ARGS_H
 #define ARGS_H
 
-bool parse_args(int argc, char* argv[]);
+void parse_args(int argc, char* argv[]);
 
-extern bool daemonmode, cli_mode, dnsmasq_debug;
+extern bool dnsmasq_debug;
+extern bool daemonmode, cli_mode, supervised;
 extern int argc_dnsmasq;
 extern const char ** argv_dnsmasq;
 

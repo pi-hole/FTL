@@ -15,6 +15,8 @@
 #include "daemon.h"
 // sleepms()
 #include "timers.h"
+// bool daemonmode, supervised
+#include "args.h"
 
 // PATH_MAX
 #include <limits.h>
@@ -26,8 +28,9 @@ static pid_t child_pid;
 static void signal_handler(int sig, siginfo_t *si, void *unused)
 {
 	// Forward signal to child
-	logg("### Supervisor received signal \"%s\" (%d), forwarding to %d", strsignal(sig), sig, child_pid);
-	kill(child_pid, sig);
+	logg("### Supervisor received signal \"%s\" (%d), forwarding to PID %d", strsignal(sig), sig, child_pid);
+	if(child_pid != 0)
+		kill(child_pid, sig);
 }
 
 // Register ordinary signals handler
@@ -56,86 +59,106 @@ static void redirect_signals(void)
 	}
 }
 
-int supervisor(int argc, char* argv[])
+bool supervisor(int *exitcode)
 {
-	// Replace "--supervised" by "no-deamon"
-	argv[1] = (char*)"no-daemon";
-
-	// Fork supervisor into background
-	go_daemon();
-
-	char self[PATH_MAX] = { 0 };
-	if(readlink("/proc/self/exe", self, sizeof self) == 0)
-		strcpy(self, "/usr/bin/pihole-FTL");
+	// Fork supervisor into background if requested
+	if(supervised)
+		go_daemon();
 
 	// Start FTL in non-daemon sub-process
 	bool restart = true;
-	int rc = EXIT_SUCCESS;
+	bool running = false;
 	do
 	{
-		logg("### Supervisor: Starting %s", self);
-
-		int status;
-		if((child_pid = fork()) == 0)
+		if(!running)
 		{
-			// Launch child from PATH
-			execv(self, argv);
-			/* if execl() was successful, this won't be reached */
-			exit(127);
+			if((child_pid = fork()) == 0)
+			{
+				logg("### Supervisor: Starting sub-process");
+				// Continue FTL operation
+				daemonmode = false;
+				return false;
+			}
 		}
 
 		if (child_pid > 0)
 		{
 			// Redirect signals to the child's PID
+			logg("### Supervisor: Redirecting signals to PID %d", child_pid);
 			redirect_signals();
 
 			/* the parent process calls waitpid() on the child */
-			const pid_t wrc = waitpid(child_pid, &status, 0);
+			int status;
+			const pid_t wrc = waitpid(child_pid, &status, WUNTRACED | WCONTINUED);
 			if (wrc != -1)
 			{
 				if (WIFEXITED(status))
 				{
-					rc = WEXITSTATUS(status);
-					logg("### Supervisor: Subprocess exited with code %d", rc);
-					restart = (rc != 0 && rc != 127);
+					// The child process terminated normally, that is, by calling exit(3) or _exit(2), or by returning from main()
+					*exitcode = WEXITSTATUS(status); // returns the exit status of the child
+					logg("### Supervisor: Subprocess exited with code %d", *exitcode);
+					restart = (*exitcode != 0);
+					running = false;
 				}
 				else if(WIFSIGNALED(status))
 				{
-					const int sig = WTERMSIG(status);
-					logg("### Supervisor: Subprocess was terminated by external signal %s (%d)", strsignal(sig), sig);
-					rc = -1;
-					restart = false;
+					// The child process was terminated by a signal
+					const int sig = WTERMSIG(status); // returns the number of the signal that caused the child process to terminate
+#ifdef WCOREDUMP
+					const bool coredump = WCOREDUMP(status);
+#else
+					const bool coredump = false;
+#endif
+					logg("### Supervisor: Subprocess was terminated by external signal >>> %s <<< (%d)%s",
+					     strsignal(sig), sig, coredump ? " - CORE DUMPED" : "");
+					restart = true;
+					running = false;
 				}
 				else if(WIFSTOPPED(status))
 				{
-					const int sig = WSTOPSIG(status);
-					logg("### Supervisor: Subprocess was stopped by external signal %s (%d)", strsignal(sig), sig);
-					rc = -1;
+					// returns true if the child process was stopped by delivery of a signal; this is possible only if the call
+					// was done using WUNTRACED or when the child is being traced (see ptrace(2))
+					const int sig = WSTOPSIG(status); // returns the number of the signal which caused the child to stop
+					logg("### Supervisor: Subprocess was stopped by external signal >>> %s <<< (%d)", strsignal(sig), sig);
 					restart = false;
+					running = true;
+				}
+				else if(WIFCONTINUED(status))
+				{
+					// (since Linux 2.6.10) returns true if the child process was resumed by delivery of SIGCONT
+					const int sig = SIGCONT;
+					logg("### Supervisor: Subprocess was resumed by external signal >>> %s <<< (%d)", strsignal(sig), sig);
+					restart = false;
+					running = true;
 				}
 				else
 				{
 					/* the program didn't terminate normally */
 					logg("### Supervisor: Abnormal termination of subprocess");
-					rc = -1;
 					restart = true;
+					running = true;
 				}
 			}
 			else
 			{
 				logg("### Supervisor: waitpid() failed: %s (%d)", strerror(errno), errno);
+				restart = true;
+				running = false;
 			}
 		}
 		else
 		{
 			logg("### Supervisor: fork() failed: %s (%d)", strerror(errno), errno);
+			restart = true;
+			running = false;
 		}
 
 	// Delay restarting to avoid race-collisions with left-over shared memory files
 	if(restart)
 		sleepms(1000);
-	} while( restart );
+	} while( running || restart );
 
-	logg("### Supervisor: Terminated (code %d)", rc);
-	return rc;
+	logg("### Supervisor: Terminated (code %d)", *exitcode);
+	// Exit with code
+	return true;
 }

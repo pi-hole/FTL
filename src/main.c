@@ -48,15 +48,19 @@ int main (int argc, char* argv[])
 	// Parse arguments
 	// We run this also for no direct arguments
 	// to have arg{c,v}_dnsmasq initialized
-	const bool supervision = parse_args(argc, argv);
+	parse_args(argc, argv);
 
 	// Try to open FTL log
 	init_config_mutex();
 	init_FTL_log();
 
-	// Block here if started as supervisor
-	if(supervision)
-		exit(supervisor(argc, argv));
+	// Stop here if started as supervised process
+	if(supervised)
+	{
+		int exitcode = EXIT_SUCCESS;
+		if(supervisor(&exitcode))
+			exit(exitcode);
+	}
 
 	timer_start(EXIT_TIMER);
 	logg("########## FTL started on %s! ##########", hostname());

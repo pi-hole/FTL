@@ -10,6 +10,6 @@
 #ifndef SUPERVISOR_H
 #define SUPERVISOR_H
 
-int supervisor(int argc, char* argv[]);
+bool supervisor(int *exitcode);
 
 #endif // SUPERVISOR_H
