@@ -519,8 +519,8 @@ void *telnet_listening_thread_IPv4(void *args)
 			logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
 		}
 	}
-
-	logg("Terminating IPv4 telnet thread");
+	if(config.debug & DEBUG_API)
+		logg("Terminating IPv4 telnet thread");
 	return NULL;
 }
 
