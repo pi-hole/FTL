@@ -20,14 +20,14 @@ while pidof -s pihole-FTL > /dev/null; do
 done
 
 # Clean up possible old files from earlier test runs
-rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole/pihole.log /var/log/pihole/pihole-FTL.log /dev/shm/FTL-*
+rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole/pihole.log /var/log/pihole/FTL.log /dev/shm/FTL-*
 
 # Create necessary directories and files
 mkdir -p /home/pihole /etc/pihole /run/pihole /var/log/pihole
-echo "" > /var/log/pihole/pihole-FTL.log
+echo "" > /var/log/pihole/FTL.log
 echo "" > /var/log/pihole/pihole.log
 touch /run/pihole-FTL.pid /run/pihole-FTL.port dig.log ptr.log
-chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole/pihole.log /var/log/pihole/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
+chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole/pihole.log /var/log/pihole/FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
 
 # Copy binary into a location the new user pihole can access
 cp ./pihole-FTL /home/pihole/pihole-FTL
@@ -97,11 +97,11 @@ curl_to_tricorder() {
 }
 
 if [[ $RET != 0 ]]; then
-  echo -n "pihole.log: "
+  echo -n "pihole/pihole.log: "
   curl_to_tricorder /var/log/pihole/pihole.log
   echo ""
-  echo -n "pihole-FTL.log: "
-  curl_to_tricorder /var/log/pihole/pihole-FTL.log
+  echo -n "pihole/FTL.log: "
+  curl_to_tricorder /var/log/pihole/FTL.log
   echo ""
   echo -n "dig.log: "
   curl_to_tricorder ./dig.log

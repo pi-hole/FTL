@@ -78,7 +78,7 @@ void getLogFilePath(void)
 	}
 
 	// Read LOGFILE value if available
-	// defaults to: "/var/log/pihole/pihole-FTL.log"
+	// defaults to: "/var/log/pihole/FTL.log"
 	buffer = parse_FTLconf(fp, "LOGFILE");
 
 	errno = 0;
@@ -86,7 +86,7 @@ void getLogFilePath(void)
 	if(buffer == NULL || sscanf(buffer, "%127ms", &FTLfiles.log) != 1)
 	{
 		// Use standard path if no custom path was obtained from the config file
-		FTLfiles.log = strdup("/var/log/pihole/pihole-FTL.log");
+		FTLfiles.log = strdup("/var/log/pihole/FTL.log");
 	}
 
 	// Test if memory allocation was successful

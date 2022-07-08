@@ -502,7 +502,8 @@ void *telnet_listening_thread_IPv4(void *args)
 			continue;
 		}
 
-		logg("Accepting new telnet connection at socket %d", csck);
+		if(config.debug & DEBUG_API)
+			logg("Accepting new telnet connection at socket %d", csck);
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		int *newsock;
@@ -518,8 +519,8 @@ void *telnet_listening_thread_IPv4(void *args)
 			logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
 		}
 	}
-
-	logg("Terminating IPv4 telnet thread");
+	if(config.debug & DEBUG_API)
+		logg("Terminating IPv4 telnet thread");
 	return NULL;
 }
 
