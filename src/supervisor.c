@@ -17,6 +17,8 @@
 #include "timers.h"
 // bool daemonmode, supervised
 #include "args.h"
+// destroy_shmem()
+#include "shmem.h"
 
 // PATH_MAX
 #include <limits.h>
@@ -41,8 +43,8 @@ static void redirect_signals(void)
 	// Loop over all possible signals, including real-time signals
 	for(unsigned int signum = 0; signum < NSIG; signum++)
 	{
-		// Do not modify SIGCHLD handling
-		if(signum == SIGCHLD)
+		// Do not modify SIGCHLD and SIGSEGV (crash of the supervisor) handling
+		if(signum == SIGCHLD || signum == SIGSEGV)
 			continue;
 
 		// Catch this signal
@@ -66,10 +68,11 @@ bool supervisor(int *exitcode)
 		go_daemon();
 
 	// Start FTL in non-daemon sub-process
-	bool restart = true;
+	bool restart = false;
 	bool running = false;
 	do
 	{
+		// Fork new process when FTL is NOT running (might be STOPed)
 		if(!running)
 		{
 			if((child_pid = fork()) == 0)
@@ -81,6 +84,7 @@ bool supervisor(int *exitcode)
 			}
 		}
 
+		// This is the supervisor code
 		if (child_pid > 0)
 		{
 			// Redirect signals to the child's PID
@@ -156,6 +160,15 @@ bool supervisor(int *exitcode)
 	// Delay restarting to avoid race-collisions with left-over shared memory files
 	if(restart)
 		sleepms(1000);
+
+	if(restart)
+	{
+		// We are restarting a failed FTL and may need to clean up left-over shared memory objects
+		// if the failed process wasn't able to (e.g., received SIGKILL)
+		logg("### Supervisor: Cleaning shared memory objects");
+		unlink_shm();
+	}
+
 	} while( running || restart );
 
 	logg("### Supervisor: Terminated (code %d)", *exitcode);

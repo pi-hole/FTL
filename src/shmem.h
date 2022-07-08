@@ -101,6 +101,7 @@ void _unlock_log(const char* func, const int line, const char * file);
 
 bool init_shmem(bool create_new);
 void destroy_shmem(void);
+void unlink_shm(void);
 size_t addstr(const char *str);
 const char *getstr(const size_t pos);
 

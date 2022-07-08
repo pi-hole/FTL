@@ -45,6 +45,17 @@
 #define SHARED_SETTINGS_NAME "FTL-settings"
 #define SHARED_DNS_CACHE "FTL-dns-cache"
 #define SHARED_PER_CLIENT_REGEX "FTL-per-client-regex"
+static const char* shmNames[] = { SHARED_LOCK_NAME,
+                                  SHARED_STRINGS_NAME,
+                                  SHARED_COUNTERS_NAME,
+                                  SHARED_DOMAINS_NAME,
+                                  SHARED_CLIENTS_NAME,
+                                  SHARED_QUERIES_NAME,
+                                  SHARED_UPSTREAMS_NAME,
+                                  SHARED_OVERTIME_NAME,
+                                  SHARED_SETTINGS_NAME,
+                                  SHARED_DNS_CACHE,
+                                  SHARED_PER_CLIENT_REGEX };
 
 // Allocation step for FTL-strings bucket. This is somewhat special as we use
 // this as a general-purpose storage which should always be large enough. If,
@@ -819,6 +830,13 @@ static void delete_shm(SharedMemory *sharedMemory)
 	// unlink, it will be destroyed.
 	if(shm_unlink(sharedMemory->name) != 0)
 		logg("delete_shm(): shm_unlink(%s) failed: %s", sharedMemory->name, strerror(errno));
+}
+
+void unlink_shm(void)
+{
+	// Unlink the shared memory objects
+	for(unsigned int i = 0; i < NUM_SHMEM; i++)
+		shm_unlink(shmNames[i]);
 }
 
 // Euclidean algorithm to return greatest common divisor of the numbers
