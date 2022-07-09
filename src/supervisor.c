@@ -86,7 +86,7 @@ bool supervisor(int *exitcode)
 	bool running = false;
 	do
 	{
-		// Fork new process when FTL is NOT running (might be STOPed)
+		// Fork new process when FTL is NOT running (might be STOPped)
 		if(!running)
 		{
 			if((child_pid = fork()) == 0)
