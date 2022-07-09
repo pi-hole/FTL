@@ -647,8 +647,10 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	  
 	  buf = grab_extradata(buf, end, "DNSMASQ_TAGS", &err);
 
-	  if (is6)
-	    buf = grab_extradata(buf, end, "DNSMASQ_RELAY_ADDRESS", &err);
+	  if (is6) {
+	       buf = grab_extradata(buf, end, "DNSMASQ_RELAY_ADDRESS", &err);
+	       buf = grab_extradata(buf, end, "DNSMASQ_MUD_URL", &err);
+	     }
 	  else
 	    {
 	      const char *giaddr = NULL;

@@ -1934,6 +1934,16 @@ static void update_leases(struct state *state, struct dhcp_context *context, str
 	  
 	  lease_add_extradata(lease, (unsigned char *)daemon->addrbuff, state->link_address ? strlen(daemon->addrbuff) : 0, 0);
 	  
+	  void *mud_opt;
+	  if ((mud_opt = opt6_find(state->packet_options, state->end, OPTION6_MUD_URL, 1)))
+	    {
+	      lease_add_extradata(lease, opt6_ptr(mud_opt, 0), opt6_len(mud_opt), NULL);
+	    }
+	  else
+	    {
+	      lease_add_extradata(lease, NULL, 0, 0);
+	    }
+	  
 	  if ((class_opt = opt6_find(state->packet_options, state->end, OPTION6_USER_CLASS, 2)))
 	    {
 	      void *enc_opt, *enc_end = opt6_ptr(class_opt, opt6_len(class_opt));
