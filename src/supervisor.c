@@ -117,8 +117,8 @@ bool supervisor(int *exitcode)
 					// FTL exitcodes:
 					// - 0 means ordinary exit (we shall not restart)
 					// - 1 means error (we will restart)
-					// - 127 is failed to create shared memory objects (we will not restart)
-					restart = (*exitcode != 0 && *exitcode != 127);
+					// - 2 means failed to create shared memory objects (we will not restart)
+					restart = (*exitcode != EXIT_SUCCESS && *exitcode != (EXIT_FAILURE + 1));
 					running = false;
 				}
 				else if(WIFSIGNALED(status))
