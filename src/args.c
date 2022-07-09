@@ -78,7 +78,7 @@ void parse_args(int argc, char* argv[])
 	   (argc > 1 && strEndsWith(argv[1], ".db")))
 			exit(sqlite3_shell_main(argc, argv));
 
-	// Iterate over possible arguments
+	// start from 1, as argv[0] is the executable name
 	for(int i = 1; i < argc; i++)
 	{
 		bool ok = false;

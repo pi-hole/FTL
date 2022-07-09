@@ -26,6 +26,13 @@
 #include <sys/wait.h>
 
 static pid_t child_pid;
+static pid_t supervisor_pid = 0;
+
+// Get the process ID of the supervisor.
+pid_t __attribute__ ((pure)) get_supervisor_pid(void)
+{
+	return supervisor_pid;
+}
 
 static void signal_handler(int sig, siginfo_t *si, void *unused)
 {
@@ -64,8 +71,15 @@ static void redirect_signals(void)
 bool supervisor(int *exitcode)
 {
 	// Fork supervisor into background if requested
-	if(supervised)
+	if(daemonmode)
+	{
 		go_daemon();
+		// Do not fork into background further times down the line
+		daemonmode = false;
+	}
+
+	// Store supervisor's PID
+	supervisor_pid = getpid();
 
 	// Start FTL in non-daemon sub-process
 	bool restart = false;
@@ -78,8 +92,7 @@ bool supervisor(int *exitcode)
 			if((child_pid = fork()) == 0)
 			{
 				logg("### Supervisor: Starting sub-process");
-				// Continue FTL operation
-				daemonmode = false;
+				// Continue FTL operation in main()
 				return false;
 			}
 		}
@@ -101,7 +114,11 @@ bool supervisor(int *exitcode)
 					// The child process terminated normally, that is, by calling exit(3) or _exit(2), or by returning from main()
 					*exitcode = WEXITSTATUS(status); // returns the exit status of the child
 					logg("### Supervisor: Subprocess exited with code %d", *exitcode);
-					restart = (*exitcode != 0);
+					// FTL exitcodes:
+					// - 0 means ordinary exit (we shall not restart)
+					// - 1 means error (we will restart)
+					// - 127 is failed to create shared memory objects (we will not restart)
+					restart = (*exitcode != 0 && *exitcode != 127);
 					running = false;
 				}
 				else if(WIFSIGNALED(status))

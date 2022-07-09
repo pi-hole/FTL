@@ -14,6 +14,8 @@
 #include <dirent.h>
 // getpid()
 #include <unistd.h>
+// get_supervisor_pid()
+#include "supervisor.h"
 
 #define PROCESS_NAME   "pihole-FTL"
 
@@ -80,6 +82,7 @@ bool check_running_FTL(void)
 	DIR *dirPos;
 	struct dirent *entry;
 	const pid_t ourselves = getpid();
+	const pid_t supervisor = get_supervisor_pid();
 	bool process_running = false;
 
 	// Open /proc
@@ -106,8 +109,8 @@ bool check_running_FTL(void)
 		// Extract PID
 		const pid_t pid = strtol(entry->d_name, NULL, 10);
 
-		// Skip our own process
-		if(pid == ourselves)
+		// Skip our own process or the supervisor's PID
+		if(pid == ourselves || pid == supervisor)
 			continue;
 
 		// Get process name

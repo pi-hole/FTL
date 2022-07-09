@@ -10,6 +10,7 @@
 #ifndef SUPERVISOR_H
 #define SUPERVISOR_H
 
+pid_t get_supervisor_pid(void) __attribute__ ((pure));
 bool supervisor(int *exitcode);
 
 #endif // SUPERVISOR_H

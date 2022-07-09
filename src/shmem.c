@@ -28,6 +28,8 @@
 #include "files.h"
 // log_resource_shortage()
 #include "database/message-table.h"
+// static_assert()
+#include <assert.h>
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 14
@@ -92,6 +94,8 @@ static SharedMemory *sharedMemories[] = { &shm_lock,
                                           &shm_dns_cache,
                                           &shm_per_client_regex };
 #define NUM_SHMEM (sizeof(sharedMemories)/sizeof(SharedMemory*))
+
+static_assert(sizeof(shmNames)/sizeof(shmNames[0]) == NUM_SHMEM, "Number of shared memory objects incorrect");
 
 // Variable size array structs
 static queriesData *queries = NULL;

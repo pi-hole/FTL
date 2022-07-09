@@ -75,8 +75,7 @@ int main (int argc, char* argv[])
 	{
 		logg("Initialization of shared memory failed.");
 		// Check if there is already a running FTL process
-		check_running_FTL();
-		return EXIT_FAILURE;
+		return check_running_FTL() ? 127 : EXIT_FAILURE;
 	}
 
 	// Process pihole-FTL.conf
