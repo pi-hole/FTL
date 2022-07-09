@@ -1370,3 +1370,16 @@
   [[ "$firstnum" == 7 ]]
   [[ "$lastnum" == 7 ]]
 }
+
+@test "Terminate FTL and check if supervisor is working" {
+  kill -TERM $(pidof pihole-FTL)
+  sleep 2
+  run bash -c "grep '### Supervisor' /var/log/pihole/FTL.log"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == *"### Supervisor: Redirecting signals to PID "* ]]
+  [[ "${lines[1]}" == *"### Supervisor: Starting sub-process" ]]
+  [[ "${lines[2]}" == *"### Supervisor received signal \"Terminated\" (15), forwarding to PID "* ]]
+  [[ "${lines[3]}" == *"### Supervisor: Subprocess exited with code 0" ]]
+  [[ "${lines[4]}" == *"### Supervisor: Terminated (code 0)" ]]
+  [[ "${lines[5]}" == "" ]]
+}

@@ -65,7 +65,7 @@ mkdir -p /opt/pihole/libs
 wget -O /opt/pihole/libs/inspect.lua https://ftl.pi-hole.net/libraries/inspect.lua
 
 # Start FTL
-if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
+if ! su pihole -s /bin/sh -c "/home/pihole/pihole-FTL --supervised" &> /dev/null; then
   echo "pihole-FTL failed to start"
   exit 1
 fi
@@ -96,23 +96,19 @@ curl_to_tricorder() {
   curl --silent --upload-file "${1}" https://tricorder.pi-hole.net
 }
 
-if [[ $RET != 0 ]]; then
-  echo -n "pihole/pihole.log: "
-  curl_to_tricorder /var/log/pihole/pihole.log
-  echo ""
-  echo -n "pihole/FTL.log: "
-  curl_to_tricorder /var/log/pihole/FTL.log
-  echo ""
-  echo -n "dig.log: "
-  curl_to_tricorder ./dig.log
-  echo ""
-  echo -n "ptr.log: "
-  curl_to_tricorder ./ptr.log
-  echo ""
-fi
-
-# Kill pihole-FTL after having completed tests
-kill $(pidof pihole-FTL)
+# Upload logs to tricorder
+echo -n "pihole/pihole.log: "
+curl_to_tricorder /var/log/pihole/pihole.log
+echo ""
+echo -n "pihole/FTL.log: "
+curl_to_tricorder /var/log/pihole/FTL.log
+echo ""
+echo -n "dig.log: "
+curl_to_tricorder ./dig.log
+echo ""
+echo -n "ptr.log: "
+curl_to_tricorder ./ptr.log
+echo ""
 
 # Restore umask
 umask $OLDUMASK
