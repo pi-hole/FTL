@@ -231,6 +231,11 @@ static void terminate_threads(void)
 	logg("Waiting for threads to join");
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
+		// Skip threads that were not started (e.g. asked not to resolve
+		// host names -> the "DNS client" thread is not started)
+		if(thread_names[i] == NULL)
+			continue;
+
 		if(thread_cancellable[i])
 		{
 			logg("Thread %s (%d) is idle, terminating it.",
@@ -248,7 +253,6 @@ static void terminate_threads(void)
 
 		// Timeout for joining is 2 seconds for each thread
 		ts.tv_sec += 2;
-
 		const int s = pthread_timedjoin_np(threads[i], NULL, &ts);
 		if(s != 0)
 		{

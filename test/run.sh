@@ -65,7 +65,7 @@ mkdir -p /opt/pihole/libs
 wget -O /opt/pihole/libs/inspect.lua https://ftl.pi-hole.net/libraries/inspect.lua
 
 # Start FTL
-if ! su pihole -s /bin/sh -c "/home/pihole/pihole-FTL --supervised" &> /dev/null; then
+if ! su -s /bin/sh -c "/home/pihole/pihole-FTL --supervised" pihole &> /dev/null; then
   echo "pihole-FTL failed to start"
   exit 1
 fi

@@ -1383,3 +1383,9 @@
   [[ "${lines[4]}" == *"### Supervisor: Terminated (code 0)" ]]
   [[ "${lines[5]}" == "" ]]
 }
+
+@test "FTL did not crash" {
+  run bash -c "grep -c \"FTL crashed!\" /var/log/pihole/FTL.log"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "0" ]]
+}
