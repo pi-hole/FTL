@@ -115,8 +115,8 @@
 
 // DELAY_STARTUP should only delay the startup of the resolver during a starting up system
 // This setting control how long after boot we consider a system to be in starting-up mode
-// Default: 60 [seconds]
-#define DELAY_UPTIME 60
+// Default: 180 [seconds]
+#define DELAY_UPTIME 180
 
 // Use out own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crash
