@@ -3268,10 +3268,10 @@ void FTL_dnsmasq_log(const char *payload, const int length)
 int check_struct_sizes(void)
 {
 	int result = 0;
-	result += check_one_struct("ConfigStruct", sizeof(ConfigStruct), 232, 104);
-	result += check_one_struct("queriesData", sizeof(queriesData), 72, 44);
-	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 604);
-	result += check_one_struct("clientsData", sizeof(clientsData), 672, 648);
+	result += check_one_struct("ConfigStruct", sizeof(ConfigStruct), 232, 180);
+	result += check_one_struct("queriesData", sizeof(queriesData), 72, 64);
+	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 628);
+	result += check_one_struct("clientsData", sizeof(clientsData), 672, 652);
 	result += check_one_struct("domainsData", sizeof(domainsData), 24, 20);
 	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 16, 16);
 	result += check_one_struct("ednsData", sizeof(ednsData), 72, 72);
@@ -3279,7 +3279,7 @@ int check_struct_sizes(void)
 	result += check_one_struct("regexData", sizeof(regexData), 56, 44);
 	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
 	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 12, 12);
-	result += check_one_struct("countersStruct", sizeof(countersStruct), 292, 244);
+	result += check_one_struct("countersStruct", sizeof(countersStruct), 292, 292);
 	result += check_one_struct("sqlite3_stmt_vec", sizeof(sqlite3_stmt_vec), 32, 16);
 
 	if(result == 0)
