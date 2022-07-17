@@ -124,7 +124,7 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 	else if(flags == F_SECSTAT)
 		// DNSSEC validation result
 		FTL_dnssec(arg, addr, id, path, line);
-	else if(flags & F_RCODE && name && strcasecmp(name, "error") == 0)
+	else if(flags & F_RCODE && !(flags & F_CONFIG) && name && strcasecmp(name, "error") == 0)
 		// upstream sent something different than NOERROR or NXDOMAIN
 		FTL_upstream_error(addr, flags, id, path, line);
 	else if(flags & F_NOEXTRA && flags & F_DNSSEC)
@@ -1857,7 +1857,8 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		{
 			; // Okay
 		}
-		log_debug(DEBUG_FLAGS, "***** Unknown cache query");
+		else
+			log_debug(DEBUG_FLAGS, "***** Unknown cache query");
 	}
 
 	// Possible debugging output
