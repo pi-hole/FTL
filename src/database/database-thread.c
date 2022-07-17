@@ -77,7 +77,9 @@ void *DB_thread(void *val)
 		// Do this once per second
 		if(now > before)
 		{
+			lock_shm();
 			queries_to_database();
+			unlock_shm();
 			before = now;
 		}
 
