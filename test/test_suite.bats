@@ -1158,19 +1158,19 @@
 
 @test "Pi-hole uses dns.reply.own_host.IPv4/6 for pi.hole" {
   run bash -c "dig A pi.hole +short @127.0.0.1"
-  printf "%s\n" "${lines[@]}"
+  printf "A: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.10" ]]
   run bash -c "dig AAAA pi.hole +short @127.0.0.1"
-  printf "%s\n" "${lines[@]}"
+  printf "AAAA: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::10" ]]
 }
 
 @test "Pi-hole uses dns.reply.own_host.IPv4/6 for hostname" {
   run bash -c "dig A $(hostname) +short @127.0.0.1"
-  printf "%s\n" "${lines[@]}"
+  printf "A: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.10" ]]
   run bash -c "dig AAAA $(hostname) +short @127.0.0.1"
-  printf "%s\n" "${lines[@]}"
+  printf "AAAA: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::10" ]]
 }
 
@@ -1178,10 +1178,10 @@
   sed -i "s/blockingmode = \"NULL\"/blockingmode = \"IP\"/" /etc/pihole/pihole-FTL.toml
   run bash -c "kill -HUP $(cat /run/pihole-FTL.pid)"
   sleep 2
-  run bash -c "dig A blacklisted.ftl +short @127.0.0.1"
-  printf "%s\n" "${lines[@]}"
+  run bash -c "dig A denied.ftl +short @127.0.0.1"
+  printf "A: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.11" ]]
-  run bash -c "dig AAAA blacklisted.ftl +short @127.0.0.1"
-  printf "%s\n" "${lines[@]}"
+  run bash -c "dig AAAA denied.ftl +short @127.0.0.1"
+  printf "AAAA: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::11" ]]
 }

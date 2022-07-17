@@ -145,6 +145,8 @@ bool readFTLtoml(void)
 				{
 					if(inet_pton(AF_INET, ipv4.u.s, &config.reply_addr.own_host.v4))
 						config.reply_addr.own_host.overwrite_v4 = true;
+					else
+						log_warn("Invalid dns.reply.own_host.IPv4 setting. Ignoring.");
 					free(ipv4.u.s);
 				}
 				else
@@ -153,8 +155,10 @@ bool readFTLtoml(void)
 				toml_datum_t ipv6 = toml_string_in(own_host, "IPv6");
 				if(ipv6.ok)
 				{
-					if(inet_pton(AF_INET, ipv6.u.s, &config.reply_addr.own_host.v6))
+					if(inet_pton(AF_INET6, ipv6.u.s, &config.reply_addr.own_host.v6))
 						config.reply_addr.own_host.overwrite_v6 = true;
+					else
+						log_warn("Invalid dns.reply.own_host.IPv6 setting. Ignoring.");
 					free(ipv6.u.s);
 				}
 				else
@@ -173,6 +177,8 @@ bool readFTLtoml(void)
 				{
 					if(inet_pton(AF_INET, ipv4.u.s, &config.reply_addr.ip_blocking.v4))
 						config.reply_addr.ip_blocking.overwrite_v4 = true;
+					else
+						log_warn("Invalid dns.reply.ip_blocking.IPv4 setting. Ignoring.");
 					free(ipv4.u.s);
 				}
 				else
@@ -181,8 +187,10 @@ bool readFTLtoml(void)
 				toml_datum_t ipv6 = toml_string_in(ip_blocking, "IPv6");
 				if(ipv6.ok)
 				{
-					if(inet_pton(AF_INET, ipv6.u.s, &config.reply_addr.ip_blocking.v6))
+					if(inet_pton(AF_INET6, ipv6.u.s, &config.reply_addr.ip_blocking.v6))
 						config.reply_addr.ip_blocking.overwrite_v6 = true;
+					else
+						log_warn("Invalid dns.reply.ip_blocking.IPv6 setting. Ignoring.");
 					free(ipv6.u.s);
 				}
 				else
