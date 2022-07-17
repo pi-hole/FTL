@@ -382,6 +382,20 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	}
 	JSON_OBJ_ADD_ITEM(system, "sensors", sensors);
 
+	// Try to obtain device model
+	FILE *f_model = fopen("/sys/firmware/devicetree/base/model", "r");
+	char model[1024] = { 0 };
+	if(f_model != NULL && fread(model, sizeof(char), sizeof(model)-1, f_model) > 0)
+	{
+		JSON_OBJ_COPY_STR(system, "model", model);
+	}
+	else
+	{
+		JSON_OBJ_ADD_NULL(system, "model");
+	}
+	if(f_model)
+		fclose(f_model);
+
 	cJSON *dns = JSON_NEW_OBJ();
 	const bool blocking = get_blockingstatus();
 	JSON_OBJ_ADD_BOOL(dns, "blocking", blocking); // same reply type as in /api/dns/status
