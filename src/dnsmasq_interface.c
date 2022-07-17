@@ -1718,13 +1718,12 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 void FTL_dnsmasq_reload(void)
 {
 	// This function is called by the dnsmasq code on receive of SIGHUP
-	// *before* clearing the cache and rereading the lists
-	log_info("Reloading DNS cache");
-	lock_shm();
+	// *before* clearing the cache and re-reading the lists
 
-	// Request reload the privacy level and blocking status
+	// Request reload the privacy level and blocking status + mode
 	set_event(RELOAD_PRIVACY_LEVEL);
 	set_event(RELOAD_BLOCKINGSTATUS);
+	set_event(RELOAD_BLOCKINGMODE);
 
 	// Gravity database updates
 	// - (Re-)open gravity database connection
@@ -1736,8 +1735,6 @@ void FTL_dnsmasq_reload(void)
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
 		check_capabilities();
-
-	unlock_shm();
 
 	// Set resolver as ready
 	resolver_ready = true;

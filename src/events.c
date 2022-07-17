@@ -102,6 +102,8 @@ static const char *eventtext(const enum events event)
 			return "RESOLVE_NEW_HOSTNAMES";
 		case RELOAD_BLOCKINGSTATUS:
 			return "RELOAD_BLOCKINGSTATUS";
+		case RELOAD_BLOCKINGMODE:
+			return "RELOAD_BLOCKINGMODE";
 		case EVENTS_MAX: // fall through
 		default:
 			return "UNKNOWN";

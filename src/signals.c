@@ -292,6 +292,9 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 
 		// Reload blocking status
 		set_event(RELOAD_BLOCKINGSTATUS);
+
+		// Reload blocking mode
+		set_event(RELOAD_BLOCKINGMODE);
 	}
 	else if(rtsig == 2)
 	{

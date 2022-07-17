@@ -189,6 +189,12 @@ void *DB_thread(void *val)
 
 		BREAK_IF_KILLED();
 
+		// Read blocking mode from pihole-FTL.toml
+		if(get_and_clear_event(RELOAD_BLOCKINGMODE))
+			getBlockingMode();
+
+		BREAK_IF_KILLED();
+
 		// Sleep 0.1 sec
 		thread_sleepms(DB, 100);
 	}
