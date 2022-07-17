@@ -215,8 +215,10 @@ static int read_temp_sensor(struct ftl_conn *api,
 		if(fscanf(f_value, "%d", &temp) == 1)
 		{
 			cJSON *item = JSON_NEW_OBJ();
-			if(f_label != NULL && fread(label, sizeof(label)-1, 1, f_label) > 0)
+			if(f_label != NULL && fread(label, sizeof(char), sizeof(label)-1, f_label) > 0)
 			{
+				if(label[strlen(label)-1] == '\n')
+					label[strlen(label)-1] = '\0';
 				label[sizeof(label)-1] = '\0';
 				JSON_OBJ_COPY_STR(item, "name", label);
 			}
