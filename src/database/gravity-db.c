@@ -978,14 +978,12 @@ bool gravityDB_getTable(const unsigned char list)
 	return true;
 }
 
-// Get a single domain from a running SELECT operation
-// This function returns a pointer to a string as long
-// as there are domains available. Once we reached the
-// end of the table, it returns NULL. It also returns
-// NULL when it encounters an error (e.g., on reading
-// errors). Errors are logged to pihole-FTL.log
-// This function is performance critical as it might
-// be called millions of times for large blocking lists
+// Get a single domain from a running SELECT operation This function returns a
+// pointer to a string as long as there are domains available. Once we reached
+// the end of the table, it returns NULL. It also returns NULL when it
+// encounters an error (e.g., on reading errors). Errors are logged to FTL.log
+// This function is performance critical as it might be called millions of times
+// for large blocking lists
 inline const char* gravityDB_getDomain(int *rowid)
 {
 	// Perform step
@@ -1028,9 +1026,8 @@ void gravityDB_finalizeTable(void)
 	table_stmt = NULL;
 }
 
-// Get number of domains in a specified table of the gravity database
-// We return the constant DB_FAILED and log to pihole-FTL.log if we
-// encounter any error
+// Get number of domains in a specified table of the gravity database We return
+// the constant DB_FAILED and log to FTL.log if we encounter any error
 int gravityDB_count(const enum gravity_tables list)
 {
 	if(!gravityDB_opened && !gravityDB_open())

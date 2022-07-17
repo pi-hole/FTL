@@ -131,7 +131,7 @@ void readFTLconf(void)
 bool getLogFilePath(void)
 {
 	// Set default
-	defaults.files.log = (char*)"/var/log/pihole-FTL.log";
+	defaults.files.log = (char*)"/var/log/pihole/FTL.log";
 	config.files.log = defaults.files.log;
 
 	// Check if the config file contains a different path

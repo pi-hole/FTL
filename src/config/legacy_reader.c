@@ -59,7 +59,7 @@ bool getLogFilePathLegacy(FILE *fp)
 		return false;
 
 	// Read LOGFILE value if available
-	// defaults to: "/var/log/pihole-FTL.log"
+	// defaults to: "/var/log/pihole/FTL.log"
 	char *buffer = parseFTLconf(fp, "LOGFILE");
 
 	errno = 0;
@@ -67,7 +67,7 @@ bool getLogFilePathLegacy(FILE *fp)
 	if(buffer == NULL)
 	{
 		// Use standard path if no custom path was obtained from the config file
-		config.files.log = strdup("/var/log/pihole-FTL.log");
+		config.files.log = strdup("/var/log/pihole/FTL.log");
 
 		// Test if memory allocation was successful
 		if(config.files.log == NULL)

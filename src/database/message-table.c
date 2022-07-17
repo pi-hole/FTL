@@ -307,7 +307,7 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 	if(getpid() != main_pid())
 		return;
 
-	// Log to pihole-FTL.log
+	// Log to FTL.log
 	log_warn("Invalid regex %s filter \"%s\": %s",
 	         type, regex, warning);
 
@@ -320,7 +320,7 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
                          const int matching_bits, const char *chosen_match_text,
                          const int chosen_match_id)
 {
-	// Log to pihole-FTL.log
+	// Log to FTL.log
 	log_warn("Client %s is managed by %i groups (IDs %s), all describing /%i subnets. "
 	         "FTL chose the most recent entry %s (ID %i) for this client.",
 	         ip, matching_count, matching_ids, matching_bits,
@@ -334,7 +334,7 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 
 void logg_hostname_warning(const char *ip, const char *name, const unsigned int pos)
 {
-	// Log to pihole-FTL.log
+	// Log to FTL.log
 	log_warn("Host name of client \"%s\" => \"%s\" contains (at least) one invalid character at position %d",
 	         ip, name, pos);
 
@@ -344,7 +344,7 @@ void logg_hostname_warning(const char *ip, const char *name, const unsigned int 
 
 void logg_fatal_dnsmasq_message(const char *message)
 {
-	// Log to pihole-FTL.log
+	// Log to FTL.log
 	log_crit("Error in dnsmasq core: %s", message);
 
 	// Log to database
@@ -359,7 +359,7 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 {
 	const time_t turnaround = get_rate_limit_turnaround(rate_limit_count);
 
-	// Log to pihole-FTL.log
+	// Log to FTL.log
 	log_warn("Rate-limiting %s for at least %ld second%s",
 	         clientIP, turnaround, turnaround == 1 ? "" : "s");
 
@@ -369,7 +369,7 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 
 void logg_warn_dnsmasq_message(char *message)
 {
-	// Log to pihole-FTL.log
+	// Log to FTL.log
 	log_warn("WARNING in dnsmasq core: %s", message);
 
 	// Log to database
