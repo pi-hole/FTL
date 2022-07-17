@@ -1126,14 +1126,6 @@
   [[ "${lines[@]}" != *"ERROR"* ]]
 }
 
-@test "No WARNING messages in FTL.log (besides known capability issues)" {
-  run bash -c 'grep "WARNING: " /var/log/pihole/FTL.log'
-  printf "%s\n" "${lines[@]}"
-  run bash -c 'grep "WARNING: " /var/log/pihole/FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
-  printf "count: %s\n" "${lines[@]}"
-  [[ ${lines[0]} == "0" ]]
-}
-
 @test "No ERROR messages in FTL.log (besides known index.html error)" {
   run bash -c 'grep "ERR: " /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
@@ -1154,7 +1146,7 @@
   run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole/FTL.log | grep -c "DOES NOT EXIST"'
-  printf "count: %s\n" "${lines[@]}"
+  printf "DOES NOT EXIST count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
 
@@ -1164,7 +1156,7 @@
   [[ "${lines[0]}" == "" ]]
 }
 
-@test "Pi-hole uses LOCAL_IPV4/6 for pi.hole" {
+@test "Pi-hole uses dns.reply.own_host.IPv4/6 for pi.hole" {
   run bash -c "dig A pi.hole +short @127.0.0.1"
   printf "%s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.10" ]]
@@ -1173,7 +1165,7 @@
   [[ "${lines[0]}" == "fe80::10" ]]
 }
 
-@test "Pi-hole uses LOCAL_IPV4/6 for hostname" {
+@test "Pi-hole uses dns.reply.own_host.IPv4/6 for hostname" {
   run bash -c "dig A $(hostname) +short @127.0.0.1"
   printf "%s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.10" ]]
@@ -1182,8 +1174,8 @@
   [[ "${lines[0]}" == "fe80::10" ]]
 }
 
-@test "Pi-hole uses BLOCK_IPV4/6 for blocked domain" {
-  sed -i "s/blockingmode = \"NULL\"/blockingmode = \"IP\"" /etc/pihole/pihole-FTL.toml
+@test "Pi-hole uses dns.reply.ip_blocking.IPv4/6 for blocked domain" {
+  sed -i "s/blockingmode = \"NULL\"/blockingmode = \"IP\"/" /etc/pihole/pihole-FTL.toml
   run bash -c "kill -HUP $(cat /run/pihole-FTL.pid)"
   sleep 2
   run bash -c "dig A blacklisted.ftl +short @127.0.0.1"
