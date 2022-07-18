@@ -105,14 +105,15 @@ void poll_listen(int fd, short event)
 
 	   arrsize = (arrsize == 0) ? 64 : arrsize * 2;
 
-	   if (!(new = whine_malloc(arrsize * sizeof(struct pollfd))))
+	   if (!(new = whine_realloc(pollfds, arrsize * sizeof(struct pollfd))))
 	     return;
 
 	   if (pollfds)
 	     {
-	       memcpy(new, pollfds, i * sizeof(struct pollfd));
-	       memcpy(&new[i+1], &pollfds[i], (nfds - i) * sizeof(struct pollfd));
-	       free(pollfds);
+	       memmove(&new[i+1], &new[i], (nfds - i) * sizeof(struct pollfd));
+	       /* clear remaining space with zeroes. */
+	       if (nfds+1 < arrsize)
+	         memset(new+nfds+1, 0, arrsize-nfds-1);
 	     }
 	   
 	   pollfds = new;
