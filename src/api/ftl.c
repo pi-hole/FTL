@@ -215,11 +215,11 @@ static int read_temp_sensor(struct ftl_conn *api,
 		if(fscanf(f_value, "%d", &temp) == 1)
 		{
 			cJSON *item = JSON_NEW_OBJ();
-			if(f_label != NULL && fread(label, sizeof(char), sizeof(label)-1, f_label) > 0)
+			if(f_label && fgets(label, sizeof(label)-1, f_label))
 			{
-				if(label[strlen(label)-1] == '\n')
-					label[strlen(label)-1] = '\0';
-				label[sizeof(label)-1] = '\0';
+				// Remove newline if present
+				char *p = strchr(label, '\n');
+				if (p != NULL) *p = '\0';
 				JSON_OBJ_COPY_STR(item, "name", label);
 			}
 			else
@@ -227,7 +227,7 @@ static int read_temp_sensor(struct ftl_conn *api,
 				JSON_OBJ_ADD_NULL(item, "name");
 			}
 			JSON_OBJ_COPY_STR(item, "path", short_path);
-			JSON_OBJ_ADD_NUMBER(item, "value", temp < 1000 ? temp : 1e-3f*temp);
+			JSON_OBJ_ADD_NUMBER(item, "value", temp < 1000 ? temp : 1e-3*temp);
 			JSON_ARRAY_ADD_ITEM(object, item);
 		}
 	}
@@ -385,8 +385,11 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// Try to obtain device model
 	FILE *f_model = fopen("/sys/firmware/devicetree/base/model", "r");
 	char model[1024] = { 0 };
-	if(f_model != NULL && fread(model, sizeof(char), sizeof(model)-1, f_model) > 0)
+	if(f_model && fgets(model, sizeof(model)-1, f_model))
 	{
+		// Remove newline if present
+		char *p = strchr(model, '\n');
+		if (p != NULL) *p = '\0';
 		JSON_OBJ_COPY_STR(system, "model", model);
 	}
 	else
