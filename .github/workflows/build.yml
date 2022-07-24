@@ -124,7 +124,7 @@ jobs:
       -
         name: Attach binaries to release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1.0.0
+        uses: softprops/action-gh-release@v1
         with:
           files: |
             *
