@@ -69,16 +69,8 @@ jobs:
           echo ::set-output name=GIT_TAG::${GIT_TAG}
           echo ::set-output name=OUTPUT_DIR::${GIT_TAG:-${GIT_BRANCH}}
       -
-        name: "Print environment details"
-        env:
-          GIT_BRANCH: ${{ steps.variables.outputs.GIT_BRANCH }}
-          GIT_TAG: ${{ steps.variables.outputs.GIT_TAG }}
-        run: |
-          printenv
-          find . ! -user root -exec ls -lh {} \;
-          chown -R root .
-          git --no-pager describe --always --dirty
-          git log -1 --format='%h'
+        name: "Fix ownership of repository"
+        run: chown -R root .
       -
         name: "Build"
         env:
