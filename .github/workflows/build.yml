@@ -25,7 +25,7 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    container: ghcr.io/pi-hole/ftl-build:v1.16-${{ matrix.arch }}
+    container: ghcr.io/pi-hole/ftl-build:v1.18-${{ matrix.arch }}
 
     strategy:
       fail-fast: false
@@ -68,6 +68,9 @@ jobs:
           echo ::set-output name=GIT_BRANCH::${GIT_BRANCH}
           echo ::set-output name=GIT_TAG::${GIT_TAG}
           echo ::set-output name=OUTPUT_DIR::${GIT_TAG:-${GIT_BRANCH}}
+      -
+        name: "Fix ownership of repository"
+        run: chown -R root .
       -
         name: "Build"
         env:
