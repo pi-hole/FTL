@@ -77,7 +77,7 @@ if [[ "${CI_ARCH}" == "x86_64" ]]; then
 
   check_machine "ELF64" "Advanced Micro Devices X86-64"
   check_libs "[libm.so.6] [librt.so.1] [libpthread.so.0] [libc.so.6]"
-  check_file "ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 2.6.32, not stripped"
+  check_file "ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
 elif [[ "${CI_ARCH}" == "x86_64-musl" ]]; then
 
@@ -90,19 +90,19 @@ elif [[ "${CI_ARCH}" == "x86_32" ]]; then
 
   check_machine "ELF32" "Intel 80386"
   check_libs "[libm.so.6] [librt.so.1] [libpthread.so.0] [libc.so.6]"
-  check_file "ELF 32-bit LSB shared object, Intel 80386, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.2, for GNU/Linux 2.6.32, not stripped"
+  check_file "ELF 32-bit LSB shared object, Intel 80386, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.2, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
 elif [[ "${CI_ARCH}" == "aarch64" ]]; then
 
   check_machine "ELF64" "AArch64"
   check_libs "[libm.so.6] [librt.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-aarch64.so.1]"
-  check_file "ELF 64-bit LSB shared object, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, not stripped"
+  check_file "ELF 64-bit LSB shared object, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, with debug_info, not stripped"
 
 elif [[ "${CI_ARCH}" == "armv4t" ]]; then
 
   check_machine "ELF32" "ARM"
   check_libs "[libm.so.6] [librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
-  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, not stripped"
+  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
   check_CPU_arch "v4T"
   check_FP_arch "" # No specified FP arch
@@ -111,7 +111,7 @@ elif [[ "${CI_ARCH}" == "armv5te" ]]; then
 
   check_machine "ELF32" "ARM"
   check_libs "[libm.so.6] [librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
-  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, not stripped"
+  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
   check_CPU_arch "v4T"
   check_FP_arch "" # No specified FP arch
@@ -120,7 +120,7 @@ elif [[ "${CI_ARCH}" == "armv6hf" ]]; then
 
   check_machine "ELF32" "ARM"
   check_libs "[libm.so.6] [librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-armhf.so.3]"
-  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 2.6.32, not stripped"
+  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
   check_CPU_arch "v6"
   check_FP_arch "VFPv2"
@@ -129,7 +129,7 @@ elif [[ "${CI_ARCH}" == "armv7hf" ]]; then
 
   check_machine "ELF32" "ARM"
   check_libs "[libm.so.6] [librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-armhf.so.3]"
-  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 3.2.0, not stripped"
+  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
   check_CPU_arch "v7"
   check_FP_arch "VFPv3-D16"
@@ -138,7 +138,7 @@ elif [[ "${CI_ARCH}" == "armv8a" ]]; then
 
   check_machine "ELF32" "ARM"
   check_libs "[libm.so.6] [librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-armhf.so.3]"
-  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 3.2.0, not stripped"
+  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
   check_CPU_arch "v8"
   check_FP_arch "VFPv3-D16"
