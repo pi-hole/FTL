@@ -101,7 +101,7 @@ fi
 # HTTPS
 if ! pdnsutil add-record ftl. https HTTPS '1 . alpn="h3,h2"'; then
   # comment above applies
-  pdnsutil add-record ftl. https TYPE65 "\# 15 000100000100080322683303683222"
+  pdnsutil add-record ftl. https TYPE65 "\# 13 00010000010006026833026832"
 fi
 
 # Create reverse lookup zone

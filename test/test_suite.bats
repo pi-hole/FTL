@@ -317,7 +317,7 @@
 @test "Local DNS test: SOA ftl" {
   run bash -c "dig SOA ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "ns1.ftl. hostmaster.ftl. 1 10800 3600 604800 3600" ]]
+  [[ ${lines[0]} == "ns1.ftl. hostmaster.ftl. 0 10800 3600 604800 3600" ]]
   [[ ${lines[1]} == "" ]]
 }
 
@@ -366,7 +366,7 @@
 @test "Local DNS test: HTTPS https.ftl" {
   run bash -c "dig +unknown TYPE65 https.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '\# 15 000100000100080322683303683222' ]]
+  [[ ${lines[0]} == '\# 13 00010000010006026833026832' ]]
   [[ ${lines[1]} == "" ]]
 }
 
