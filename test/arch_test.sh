@@ -113,7 +113,7 @@ elif [[ "${CI_ARCH}" == "armv5te" ]]; then
   check_libs "[libm.so.6] [librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
   check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
-  check_CPU_arch "v4T"
+  check_CPU_arch "v5TE"
   check_FP_arch "" # No specified FP arch
 
 elif [[ "${CI_ARCH}" == "armv6hf" ]]; then
