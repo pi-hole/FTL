@@ -2851,11 +2851,11 @@ static char *get_ptrname(struct in_addr *addr)
 }
 
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
-void getCacheInformation(const int *sock)
+void getCacheInformation(const int sock)
 {
 	struct cache_info ci;
 	get_dnsmasq_cache_info(&ci);
-	ssend(*sock,"cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\nipv4: %i\nipv6: %i\nsrv: %i\ncname: %i\nds: %i\ndnskey: %i\nother: %i\nexpired: %i\nimmortal: %i\n",
+	ssend(sock, "cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\nipv4: %i\nipv6: %i\nsrv: %i\ncname: %i\nds: %i\ndnskey: %i\nother: %i\nexpired: %i\nimmortal: %i\n",
 	            daemon->cachesize,
 	            daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED],
 	            daemon->metrics[METRIC_DNS_CACHE_INSERTED],
@@ -3133,15 +3133,6 @@ void FTL_TCP_worker_created(const int confd)
 	if(config.debug != 0)
 		logg("Reopening Gravity database for this fork");
 	gravityDB_forked();
-
-	// Children inherit file descriptors from their parents
-	// We don't need them in the forks, so we clean them up
-	if(config.debug != 0)
-		logg("Closing Telnet socket for this fork");
-	close_telnet_socket();
-	if(config.debug != 0)
-		logg("Closing Unix socket for this fork");
-	close_unix_socket(false);
 }
 
 bool FTL_unlink_DHCP_lease(const char *ipaddr)

@@ -31,9 +31,7 @@
 #define BACKLOG 5
 
 // File descriptors
-int socketfd = 0, telnetfd4 = 0, telnetfd6 = 0;
 bool dualstack = false;
-bool ipv4telnet = false, ipv6telnet = false, sock_avail = false;
 bool istelnet[MAXCONNS];
 
 void saveport(int port)
@@ -59,12 +57,11 @@ void saveport(int port)
 	}
 }
 
-static bool bind_to_telnet_port_IPv4(int *socketdescriptor)
+static int bind_to_telnet_port_IPv4(void)
 {
 	// IPv4 socket
-	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
-
-	if(*socketdescriptor < 0)
+	const int socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
+	if(socketdescriptor < 0)
 	{
 		logg("Error opening IPv4 telnet socket: %s (%i)", strerror(errno), errno);
 		exit(EXIT_FAILURE);
@@ -77,7 +74,7 @@ static bool bind_to_telnet_port_IPv4(int *socketdescriptor)
 	// new instance will fail if there were connections open to the previous
 	// instance when you killed it. Those connections will hold the TCP port in
 	// the TIME_WAIT state for 30-120 seconds, so you fall into case 1 above.
-	if(setsockopt(*socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) != 0)
+	if(setsockopt(socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) != 0)
 		logg("WARN: allowing re-binding (IPv6) failed: %s", strerror(errno));
 
 	struct sockaddr_in serv_addr4;
@@ -92,29 +89,28 @@ static bool bind_to_telnet_port_IPv4(int *socketdescriptor)
 
 	// Bind to IPv4 port
 	serv_addr4.sin_port = htons(config.port);
-	if(bind(*socketdescriptor, (struct sockaddr *) &serv_addr4, sizeof(serv_addr4)) < 0)
+	if(bind(socketdescriptor, (struct sockaddr *) &serv_addr4, sizeof(serv_addr4)) < 0)
 	{
 		logg("Error listening on IPv4 port %i: %s (%i)", config.port, strerror(errno), errno);
-		return false;
+		return -1;
 	}
 
 	// The listen system call allows the process to listen on the socket for connections
-	if(listen(*socketdescriptor, BACKLOG) == -1)
+	if(listen(socketdescriptor, BACKLOG) == -1)
 	{
 		logg("Error listening on IPv4 socket: %s (%i)", strerror(errno), errno);
-		return false;
+		return -1;
 	}
 
 	logg("Listening on port %i for incoming IPv4 telnet connections", config.port);
-	return true;
+	return socketdescriptor;
 }
 
-static bool bind_to_telnet_port_IPv6(int *socketdescriptor)
+static int bind_to_telnet_port_IPv6(void)
 {
 	// IPv6 socket
-	*socketdescriptor = socket(AF_INET6, SOCK_STREAM, 0);
-
-	if(*socketdescriptor < 0)
+	const int socketdescriptor = socket(AF_INET6, SOCK_STREAM, 0);
+	if(socketdescriptor < 0)
 	{
 		logg("Error opening IPv6 telnet socket: %s (%i)", strerror(errno), errno);
 		exit(EXIT_FAILURE);
@@ -124,7 +120,7 @@ static bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 	// stricted  to  sending  and receiving IPv6 packets only.  In this
 	// case, an IPv4 and an IPv6 application can bind to a single  port
 	// at the same time.
-	if(setsockopt(*socketdescriptor, IPPROTO_IPV6, IPV6_V6ONLY, &(int){ 1 }, sizeof(int)) != 0)
+	if(setsockopt(socketdescriptor, IPPROTO_IPV6, IPV6_V6ONLY, &(int){ 1 }, sizeof(int)) != 0)
 		logg("WARN: setting socket to IPv6-only failed: %s", strerror(errno));
 
 	// Set SO_REUSEADDR to allow re-binding to the port that has been used
@@ -134,7 +130,7 @@ static bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 	// new instance will fail if there were connections open to the previous
 	// instance when you killed it. Those connections will hold the TCP port in
 	// the TIME_WAIT state for 30-120 seconds, so you fall into case 1 above.
-	if(setsockopt(*socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) != 0)
+	if(setsockopt(socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) != 0)
 		logg("WARN: allowing re-binding (IPv6) failed: %s", strerror(errno));
 
 	struct sockaddr_in6 serv_addr;
@@ -156,31 +152,30 @@ static bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 
 	// Bind to IPv6 socket
 	serv_addr.sin6_port = htons(config.port);
-	if(bind(*socketdescriptor, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+	if(bind(socketdescriptor, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
 	{
 		logg("Error listening on IPv6 port %i: %s (%i)", config.port, strerror(errno), errno);
-		return false;
+		return -1;
 	}
 
 	// The listen system call allows the process to listen on the socket for connections
-	if(listen(*socketdescriptor, BACKLOG) == -1)
+	if(listen(socketdescriptor, BACKLOG) == -1)
 	{
 		logg("Error listening on IPv6 socket: %s (%i)", strerror(errno), errno);
-		return false;
+		return -1;
 	}
 
 	logg("Listening on port %i for incoming IPv6 telnet connections", config.port);
-	return true;
+	return socketdescriptor;
 }
 
-static bool bind_to_unix_socket(int *socketdescriptor)
+static int bind_to_unix_socket(void)
 {
-	*socketdescriptor = socket(AF_LOCAL, SOCK_STREAM, 0);
-
-	if(*socketdescriptor < 0)
+	const int socketdescriptor = socket(AF_LOCAL, SOCK_STREAM, 0);
+	if(socketdescriptor < 0)
 	{
 		logg("WARNING: Error opening Unix socket.");
-		return false;
+		return -1;
 	}
 
 	// Make sure unix socket file handle does not exist, if it exists, remove it
@@ -198,21 +193,21 @@ static bool bind_to_unix_socket(int *socketdescriptor)
 
 	// Bind to Unix socket handle
 	errno = 0;
-	if(bind(*socketdescriptor, (struct sockaddr *) &address, sizeof (address)) != 0)
+	if(bind(socketdescriptor, (struct sockaddr *) &address, sizeof (address)) != 0)
 	{
 		logg("WARNING: Cannot bind on Unix socket %s: %s (%i)", FTLfiles.socketfile, strerror(errno), errno);
-		return false;
+		return -1;
 	}
 
 	// The listen system call allows the process to listen on the Unix socket for connections
-	if(listen(*socketdescriptor, BACKLOG) == -1)
+	if(listen(socketdescriptor, BACKLOG) == -1)
 	{
 		logg("WARNING: Cannot listen on Unix socket: %s (%i)", strerror(errno), errno);
-		return false;
+		return -1;
 	}
 
 	logg("Listening on Unix socket");
-	return true;
+	return socketdescriptor;
 }
 
 void seom(const int sock)
@@ -223,7 +218,7 @@ void seom(const int sock)
 		pack_eom(sock);
 }
 
-void __attribute__ ((format (gnu_printf, 2, 3))) ssend(const int sock, const char *format, ...)
+bool __attribute__ ((format (gnu_printf, 5, 6))) _ssend(const int sock, const char *file, const char *func, const int line, const char *format, ...)
 {
 	char *buffer;
 	va_list args;
@@ -232,68 +227,16 @@ void __attribute__ ((format (gnu_printf, 2, 3))) ssend(const int sock, const cha
 	va_end(args);
 	if(bytes > 0 && buffer != NULL)
 	{
-		write(sock, buffer, bytes);
+		FTLwrite(sock, buffer, bytes, short_path(file), func, line);
 		free(buffer);
 	}
-}
-
-static int listener(const int sockfd, const char type)
-{
-	socklen_t socklen = 0;
-	struct sockaddr_un un_addr;
-	struct sockaddr_in in4_addr;
-	struct sockaddr_in6 in6_addr;
-
-	switch(type)
-	{
-		case 0: // Unix socket
-			memset(&un_addr, 0, sizeof(un_addr));
-			socklen = sizeof(un_addr);
-			return accept(sockfd, (struct sockaddr *) &un_addr, &socklen);
-
-		case 4: // Internet socket (IPv4)
-			memset(&in4_addr, 0, sizeof(in4_addr));
-			socklen = sizeof(un_addr);
-			return accept(sockfd, (struct sockaddr *) &in4_addr, &socklen);
-
-		case 6: // Internet socket (IPv6)
-			memset(&in6_addr, 0, sizeof(in6_addr));
-			socklen = sizeof(un_addr);
-			return accept(sockfd, (struct sockaddr *) &in6_addr, &socklen);
-
-		default: // Should not happen
-			logg("Cannot listen on type %i connection, code error!", type);
-			exit(EXIT_FAILURE);
-	}
-}
-
-void close_telnet_socket(void)
-{
-	// Using global variable here
-	if(telnetfd4 != 0)
-		close(telnetfd4);
-	if(telnetfd6 != 0)
-		close(telnetfd6);
-}
-
-void close_unix_socket(bool unlink_file)
-{
-	// Using global variable here
-	if(sock_avail != 0)
-		close(socketfd);
-
-	// The process has to take care of unlinking the socket file description
-	// on exit
-	if(unlink_file)
-	{
-		unlink(FTLfiles.socketfile);
-	}
+	return errno == 0;
 }
 
 static void *telnet_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
-	int sock = *(int*)socket_desc;
+	const int sock = *(int*)socket_desc;
 	// Set connection type to telnet
 	istelnet[sock] = true;
 
@@ -324,7 +267,7 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 	}
 
 	if(config.debug & DEBUG_API)
-		logg("New telnet thread for socket %d", *(int*)socket_desc);
+		logg("New telnet thread for socket %d", sock);
 
 	// Receive from client
 	ssize_t n;
@@ -338,7 +281,7 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 			if(message == NULL)
 			{
 				if(config.debug & DEBUG_API)
-					logg("Break in telnet thread for socket %d: Memory error", *(int*)socket_desc);
+					logg("Break in telnet thread for socket %d: Memory error", sock);
 				break;
 			}
 
@@ -346,31 +289,23 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 			memset(client_message, 0, sizeof client_message);
 
 			// Process received message
-			process_request(message, &sock);
+			const bool eom = process_request(message, sock);
 			free(message);
-
-			if(sock == 0)
-			{
-				// Client disconnected by sending EOT or ">quit"
-				if(config.debug & DEBUG_API)
-					logg("Break in telnet thread for socket %d: Client disconnected", *(int*)socket_desc);
-				break;
-			}
+			if(eom) break;
 		}
 		else if(n == -1)
 		{
 			if(config.debug & DEBUG_API)
-				logg("Break in telnet thread for socket %d: No data received", *(int*)socket_desc);
+				logg("Break in telnet thread for socket %d: No data received", sock);
 			break;
 		}
 	}
 
 	if(config.debug & DEBUG_API)
-		logg("Terminating telnet thread for socket %d", *(int*)socket_desc);
+		logg("Terminating telnet thread for socket %d", sock);
 
-	// Free the socket pointer
-	if(sock != 0)
-		close(sock);
+	// Close the socket pointer
+	close(sock);
 	free(socket_desc);
 
 	// Release thread from list
@@ -383,7 +318,7 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 static void *socket_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
-	int sock = *(int*)socket_desc;
+	const int sock = *(int*)socket_desc;
 	// Set connection type to not telnet
 	istelnet[sock] = false;
 
@@ -420,7 +355,7 @@ static void *socket_connection_handler_thread(void *socket_desc)
 
 	// Receive from client
 	ssize_t n;
-	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
+	while((n = recv(sock, client_message, SOCKETBUFFERLEN-1, 0)))
 	{
 		if (n > 0 && n < SOCKETBUFFERLEN)
 		{
@@ -433,14 +368,9 @@ static void *socket_connection_handler_thread(void *socket_desc)
 			memset(client_message, 0, sizeof client_message);
 
 			// Process received message
-			process_request(message, &sock);
+			const bool eom = process_request(message, sock);
 			free(message);
-
-			if(sock == 0)
-			{
-				// Socket connection interrupted by sending EOT or ">quit"
-				break;
-			}
+			if(eom) break;
 		}
 		else if(n == -1)
 		{
@@ -448,9 +378,8 @@ static void *socket_connection_handler_thread(void *socket_desc)
 		}
 	}
 
-	// Free the socket pointer
-	if(sock != 0)
-		close(sock);
+	// Close the socket pointer
+	close(sock);
 	free(socket_desc);
 
 	// Release thread from list
@@ -474,43 +403,58 @@ void *telnet_listening_thread_IPv4(void *args)
 	thread_names[TELNETv4] = "telnet-IPv4";
 	prctl(PR_SET_NAME, thread_names[TELNETv4], 0, 0, 0);
 
-	// Initialize IPv4 telnet socket
-	ipv4telnet = bind_to_telnet_port_IPv4(&telnetfd4);
-	if(!ipv4telnet)
-		return NULL;
-
-	thread_cancellable[TELNETv4] = true;
-
-	// Listen as long as this thread is not canceled
 	while(!killed)
 	{
-		// Look for new clients that want to connect
-		const int csck = listener(telnetfd4, 4);
-		if(csck == -1)
+		// Initialize IPv4 telnet socket´
+		const int telnetfd4 = bind_to_telnet_port_IPv4();
+		if(telnetfd4 < 0)
+			return NULL;
+
+		if(config.debug & DEBUG_API)
+			logg("Telnet-IPv4 listener accepting on fd %d", telnetfd4);
+
+		thread_cancellable[TELNETv4] = true;
+
+		// Listen as long as this thread is not canceled
+		int errors = 0;
+		while(!killed)
 		{
-			logg("IPv4 telnet error: %s (%i)", strerror(errno), errno);
-			continue;
+			// Look for new clients that want to connect
+			const int csck = accept(telnetfd4, NULL, NULL);
+			if(csck == -1)
+			{
+				logg("IPv4 telnet error: %s (%i, sockfd: %d)", strerror(errno), errno, telnetfd4);
+				if(errors++ > 20)
+					break;
+				continue;
+			}
+
+			if(config.debug & DEBUG_API)
+				logg("Accepting new telnet connection at socket %d", csck);
+
+			// Allocate memory used to transport client socket ID to client listening thread
+			int *newsock;
+			newsock = calloc(1,sizeof(int));
+			if(newsock == NULL) break;
+			*newsock = csck;
+
+			pthread_t telnet_connection_thread;
+			// Create a new thread
+			if(pthread_create( &telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
+			{
+				// Log the error code description
+				logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
+			}
 		}
 
 		if(config.debug & DEBUG_API)
-			logg("Accepting new telnet connection at socket %d", csck);
+			logg("Telnet-IPv4 listener closed (fd %d)", telnetfd4);
 
-		// Allocate memory used to transport client socket ID to client listening thread
-		int *newsock;
-		newsock = calloc(1,sizeof(int));
-		if(newsock == NULL) break;
-		*newsock = csck;
-
-		pthread_t telnet_connection_thread;
-		// Create a new thread
-		if(pthread_create( &telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
-		{
-			// Log the error code description
-			logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
-		}
+		// Close telnet socket
+		close(telnetfd4);
+		thread_sleepms(TELNETv4, 1000);
 	}
-	if(config.debug & DEBUG_API)
-		logg("Terminating IPv4 telnet thread");
+	logg("Terminating IPv4 telnet thread");
 	return NULL;
 }
 
@@ -532,38 +476,53 @@ void *telnet_listening_thread_IPv6(void *args)
 	if(!ipv6_available())
 		return NULL;
 
-	ipv6telnet = bind_to_telnet_port_IPv6(&telnetfd6);
-	if(!ipv6telnet)
-		return NULL;
-
-	thread_cancellable[TELNETv6] = true;
-
-	// Listen as long as this thread is not canceled
 	while(!killed)
 	{
-		// Look for new clients that want to connect
-		const int csck = listener(telnetfd6, 6);
-		if(csck == -1)
+		const int telnetfd6 = bind_to_telnet_port_IPv6();
+		if(telnetfd6 < 0)
+			return NULL;
+
+		if(config.debug & DEBUG_API)
+			logg("Telnet-IPv6 listener accepting on fd %d", telnetfd6);
+
+		thread_cancellable[TELNETv6] = true;
+
+		// Listen as long as this thread is not canceled
+		int errors = 0;
+		while(!killed)
 		{
-			logg("IPv6 telnet error: %s (%i)", strerror(errno), errno);
-			continue;
+			// Look for new clients that want to connect
+			const int csck = accept(telnetfd6, NULL, NULL);
+			if(csck == -1)
+			{
+				logg("IPv6 telnet error: %s (%i, sockfd: %d)", strerror(errno), errno, telnetfd6);
+				if(errors++ > 20)
+					break;
+				continue;
+			}
+
+			// Allocate memory used to transport client socket ID to client listening thread
+			int *newsock;
+			newsock = calloc(1,sizeof(int));
+			if(newsock == NULL) break;
+			*newsock = csck;
+
+			pthread_t telnet_connection_thread;
+			// Create a new thread
+			if(pthread_create( &telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
+			{
+				// Log the error code description
+				logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
+			}
 		}
 
-		// Allocate memory used to transport client socket ID to client listening thread
-		int *newsock;
-		newsock = calloc(1,sizeof(int));
-		if(newsock == NULL) break;
-		*newsock = csck;
+		if(config.debug & DEBUG_API)
+			logg("Telnet-IPv6 listener closed (fd %d)", telnetfd6);
 
-		pthread_t telnet_connection_thread;
-		// Create a new thread
-		if(pthread_create( &telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
-		{
-			// Log the error code description
-			logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
-		}
+		// Close telnet socket
+		close(telnetfd6);
+		thread_sleepms(TELNETv6, 1000);
 	}
-
 	logg("Terminating IPv6 telnet thread");
 	return NULL;
 }
@@ -582,39 +541,53 @@ void *socket_listening_thread(void *args)
 	thread_names[SOCKET] = "telnet-socket";
 	prctl(PR_SET_NAME, thread_names[SOCKET], 0, 0, 0);
 
-	// Return early to avoid CPU spinning if Unix socket is not available
-	sock_avail = bind_to_unix_socket(&socketfd);
-	if(!sock_avail)
-	{
-		logg("INFO: Unix socket will not be available");
-		return NULL;
-	}
-
-	thread_cancellable[SOCKET] = true;
-
-	// Listen as long as this thread is not canceled
 	while(!killed)
 	{
-		// Look for new clients that want to connect
-		const int csck = listener(socketfd, 0);
-		if(csck < 0)
-			continue;
-
-		// Allocate memory used to transport client socket ID to client listening thread
-		int *newsock;
-		newsock = calloc(1,sizeof(int));
-		if(newsock == NULL) break;
-		*newsock = csck;
-
-		pthread_t socket_connection_thread;
-		// Create a new thread
-		if(pthread_create( &socket_connection_thread, &attr, socket_connection_handler_thread, (void*) newsock ) != 0)
+		// Return early to avoid CPU spinning if Unix socket is not available
+		const int socketfd = bind_to_unix_socket();
+		if(socketfd < 0)
 		{
-			// Log the error code description
-			logg("WARNING: Unable to open socket processing thread: %s", strerror(errno));
+			logg("INFO: Unix socket will not be available");
+			return NULL;
 		}
-	}
 
+		if(config.debug & DEBUG_API)
+			logg("Telnet-socket listener accepting on fd %d", socketfd);
+
+		thread_cancellable[SOCKET] = true;
+
+		// Listen as long as this thread is not canceled
+		while(!killed)
+		{
+			// Look for new clients that want to connect
+			const int csck = accept(socketfd, NULL, NULL);
+			if(csck < 0)
+				continue;
+
+			// Allocate memory used to transport client socket ID to client listening thread
+			int *newsock;
+			newsock = calloc(1,sizeof(int));
+			if(newsock == NULL) break;
+			*newsock = csck;
+
+			pthread_t socket_connection_thread;
+			// Create a new thread
+			if(pthread_create( &socket_connection_thread, &attr, socket_connection_handler_thread, (void*) newsock ) != 0)
+			{
+				// Log the error code description
+				logg("WARNING: Unable to open socket processing thread: %s", strerror(errno));
+			}
+		}
+
+		if(config.debug & DEBUG_API)
+			logg("Telnet-socket listener closed (fd %d)", socketfd);
+
+		// Close Unix socket
+		close(socketfd);
+	}
+	// The process has to take care of unlinking the socket file description
+	// on exit
+	unlink(FTLfiles.socketfile);
 	logg("Terminating socket thread");
 	return NULL;
 }

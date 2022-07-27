@@ -15,7 +15,6 @@
 
 #include "edns0.h"
 
-extern int socketfd, telnetfd4, telnetfd6;
 extern unsigned char* pihole_privacylevel;
 enum protocol { TCP, UDP, INTERNAL };
 
