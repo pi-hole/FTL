@@ -26,7 +26,7 @@ bool __attribute__((pure)) command(const char *client_message, const char* cmd) 
 	return strstr(client_message, cmd) != NULL;
 }
 
-void process_request(const char *client_message, int *sock)
+bool process_request(const char *client_message, const int sock)
 {
 	char EOT[2];
 	EOT[0] = 0x04;
@@ -191,21 +191,15 @@ void process_request(const char *client_message, int *sock)
 	if(command(client_message, ">quit") || command(client_message, EOT))
 	{
 		if(config.debug & DEBUG_API)
-			logg("Received >quit or EOT on socket %d", *sock);
-		processed = true;
-		close(*sock);
-		*sock = 0;
+			logg("Received >quit or EOT on socket %d", sock);
+		return true;
 	}
 
 	if(!processed)
-	{
-		ssend(*sock, "unknown command: %s\n", client_message);
-	}
+		ssend(sock, "unknown command: %s\n", client_message);
 
-	// End of queryable commands
-	if(*sock != 0)
-	{
-		// Send EOM
-		seom(*sock);
-	}
+	// End of queryable commands: Send EOM
+	seom(sock);
+
+	return false;
 }

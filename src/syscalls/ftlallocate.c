@@ -35,5 +35,6 @@ int FTLfallocate(const int fd, const off_t offset, const off_t len, const char *
 
 	// Set errno ourselves as posix_fallocate doesn't do it
 	errno = ret;
+
 	return ret;
 }

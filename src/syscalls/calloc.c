@@ -30,10 +30,17 @@ void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(const s
 	// an incoming signal
 	while(ptr == NULL && errno == EINTR);
 
+	// Backup errno value
+	const int _errno = errno;
+
 	// Handle other errors than EINTR
 	if(ptr == NULL)
 		logg("FATAL: Memory allocation (%zu x %zu) failed in %s() (%s:%i)",
 		     nmemb, size, func, file, line);
 
+	// Restore errno value
+	errno = _errno;
+
+	// Return memory pointer
 	return ptr;
 }

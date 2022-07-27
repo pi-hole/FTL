@@ -14,7 +14,7 @@
 #include "log.h"
 // sleepms()
 #include "timers.h"
-// close_telnet_socket()
+// saveport()
 #include "api/socket.h"
 // gravityDB_close()
 #include "database/gravity-db.h"
@@ -288,10 +288,6 @@ void cleanup(const int ret)
 		lock_shm();
 		gravityDB_close();
 		unlock_shm();
-
-		// Close sockets and delete Unix socket file handle
-		close_telnet_socket();
-		close_unix_socket(true);
 	}
 
 	// Empty API port file, port 0 = truncate file
