@@ -2683,26 +2683,10 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// Initialize thread attributes object with default attribute values
 	pthread_attr_init(&attr);
 
-	// Start TELNET IPv4 thread
-	if(pthread_create( &threads[TELNETv4], &attr, telnet_listening_thread_IPv4, NULL ) != 0)
-	{
-		logg("Unable to open IPv4 telnet listening thread. Exiting...");
-		exit(EXIT_FAILURE);
-	}
-
-	// Start TELNET IPv6 thread
-	if(pthread_create( &threads[TELNETv6], &attr, telnet_listening_thread_IPv6, NULL ) != 0)
-	{
-		logg("Unable to open IPv6 telnet listening thread. Exiting...");
-		exit(EXIT_FAILURE);
-	}
-
-	// Start SOCKET thread
-	if(pthread_create( &threads[SOCKET], &attr, socket_listening_thread, NULL ) != 0)
-	{
-		logg("Unable to open Unix socket listening thread. Exiting...");
-		exit(EXIT_FAILURE);
-	}
+	// Start listening on telnet-like interface
+	listen_telnet(TELNETv4);
+	listen_telnet(TELNETv6);
+	listen_telnet(TELNET_SOCK);
 
 	// Start database thread if database is used
 	if(pthread_create( &threads[DB], &attr, DB_thread, NULL ) != 0)
