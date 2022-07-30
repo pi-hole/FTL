@@ -29,8 +29,7 @@
 #include <errno.h>
 
 pthread_t threads[THREADS_MAX] = { 0 };
-pthread_t api_threads[MAX_API_THREADS] = { 0 };
-pid_t api_tids[MAX_API_THREADS] = { 0 };
+pthread_t api_threads[TELNET_MAX][MAX_API_THREADS] = {{ 0 }};
 bool resolver_ready = false;
 
 void go_daemon(void)
@@ -261,16 +260,15 @@ void cleanup(const int ret)
 		terminate_threads();
 
 		// Cancel and join possibly still running API worker threads
-		for(unsigned int tid = 0; tid < MAX_API_THREADS; tid++)
+		for(enum telnet_type tt = 0; tt < TELNET_MAX; tt++)
 		{
-			// Skip if this is an unused slot
-			if(api_threads[tid] == 0)
-				continue;
-
-			// Otherwise, cancel and join the thread
-			logg("Joining API worker thread %d", tid);
-			pthread_cancel(api_threads[tid]);
-			pthread_join(api_threads[tid], NULL);
+			for(unsigned int tid = 0; tid < MAX_API_THREADS; tid++)
+			{
+				// Otherwise, cancel and join the thread
+				logg("Joining API worker thread %d/%d", tt,tid);
+				pthread_cancel(api_threads[tt][tid]);
+				pthread_join(api_threads[tt][tid], NULL);
+			}
 		}
 
 		// Close database connection

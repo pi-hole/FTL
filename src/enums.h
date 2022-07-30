@@ -186,13 +186,17 @@ enum busy_reply {
 } __attribute__ ((packed));
 
 enum thread_types {
-	TELNETv4,
-	TELNETv6,
-	SOCKET,
 	DB,
 	GC,
 	DNSclient,
 	THREADS_MAX
+} __attribute__ ((packed));
+
+enum telnet_type {
+	TELNETv4,
+	TELNETv6,
+	TELNET_SOCK,
+	TELNET_MAX
 } __attribute__ ((packed));
 
 enum message_type {
