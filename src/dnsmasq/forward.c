@@ -1661,13 +1661,17 @@ void receive_query(struct listener *listen, time_t now)
 	
       /* If the client provides an EDNS0 UDP size, use that to limit our reply.
 	 (bounded by the maximum configured). If no EDNS0, then it
-	 defaults to 512 */
+	 defaults to 512. We write this value into the query packet too, so that
+	 if it's forwarded, we don't specify a maximum size greater than we can handle. */
       if (udp_size > daemon->edns_pktsz)
 	udp_size = daemon->edns_pktsz;
       else if (udp_size < PACKETSZ)
 	udp_size = PACKETSZ; /* Sanity check - can't reduce below default. RFC 6891 6.2.3 */
-    }
 
+      pheader -= 6; /* ext_class */
+      PUTSHORT(udp_size, pheader); /* Bounding forwarded queries to maximum configured */
+    }
+  
 #ifdef HAVE_CONNTRACK
 #ifdef HAVE_AUTH
   if (!auth_dns || local_auth)
