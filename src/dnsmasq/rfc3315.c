@@ -1905,6 +1905,11 @@ static void update_leases(struct state *state, struct dhcp_context *context, str
 	  lease_add_extradata(lease, (unsigned char *)state->client_hostname, 
 			      state->client_hostname ? strlen(state->client_hostname) : 0, 0);				
 	  
+	  if ((opt = opt6_find(state->packet_options, state->end, OPTION6_MUD_URL, 1)))
+	    lease_add_extradata(lease, opt6_ptr(opt, 0), opt6_len(opt), 0);
+	  else
+	    lease_add_extradata(lease, NULL, 0, 0);
+
 	  /* space-concat tag set */
 	  if (!tagif && !context->netid.net)
 	    lease_add_extradata(lease, NULL, 0, 0);
@@ -1933,11 +1938,6 @@ static void update_leases(struct state *state, struct dhcp_context *context, str
 	    inet_ntop(AF_INET6, state->link_address, daemon->addrbuff, ADDRSTRLEN);
 	  
 	  lease_add_extradata(lease, (unsigned char *)daemon->addrbuff, state->link_address ? strlen(daemon->addrbuff) : 0, 0);
-	  
-	  if ((opt = opt6_find(state->packet_options, state->end, OPTION6_MUD_URL, 1)))
-	    lease_add_extradata(lease, opt6_ptr(opt, 0), opt6_len(opt), 0);
-	  else
-	    lease_add_extradata(lease, NULL, 0, 0);
 	  
 	  if ((opt = opt6_find(state->packet_options, state->end, OPTION6_USER_CLASS, 2)))
 	    {

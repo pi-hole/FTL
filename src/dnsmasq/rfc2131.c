@@ -1417,9 +1417,6 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		      add_extradata_opt(lease, NULL);
 		    }
 
-		  if ((opt = option_find(mess, sz, OPTION_MUD_URL_V4, 1)))
-		    add_extradata_opt(lease, opt);
-		  
 		  /* DNSMASQ_REQUESTED_OPTIONS */
 		  if ((opt = option_find(mess, sz, OPTION_REQUESTED_OPTIONS, 1)))
 		    {
@@ -1437,7 +1434,9 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		    {
 		      add_extradata_opt(lease, NULL);
 		    }
-
+		  
+		  add_extradata_opt(lease, option_find(mess, sz, OPTION_MUD_URL_V4, 1));
+		  
 		  /* space-concat tag set */
 		  if (!tagif_netid)
 		    add_extradata_opt(lease, NULL);
