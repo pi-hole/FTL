@@ -459,9 +459,9 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 		  buf = grab_extradata_lua(buf, end, "circuit_id");
 		  buf = grab_extradata_lua(buf, end, "subscriber_id");
 		  buf = grab_extradata_lua(buf, end, "remote_id");
-		  buf = grab_extradata_lua(buf, end, "requested_options");
 		}
-	      
+
+	      buf = grab_extradata_lua(buf, end, "requested_options");
 	      buf = grab_extradata_lua(buf, end, "mud_url");
 	      buf = grab_extradata_lua(buf, end, "tags");
 	      
@@ -644,9 +644,9 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	      buf = grab_extradata(buf, end, "DNSMASQ_CIRCUIT_ID", &err);
 	      buf = grab_extradata(buf, end, "DNSMASQ_SUBSCRIBER_ID", &err);
 	      buf = grab_extradata(buf, end, "DNSMASQ_REMOTE_ID", &err);
-	      buf = grab_extradata(buf, end, "DNSMASQ_REQUESTED_OPTIONS", &err);
 	    }
 	  
+	  buf = grab_extradata(buf, end, "DNSMASQ_REQUESTED_OPTIONS", &err);
 	  buf = grab_extradata(buf, end, "DNSMASQ_MUD_URL", &err);
 	  buf = grab_extradata(buf, end, "DNSMASQ_TAGS", &err);
 	  	  

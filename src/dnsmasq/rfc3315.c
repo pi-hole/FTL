@@ -1880,6 +1880,7 @@ static void update_leases(struct state *state, struct dhcp_context *context, str
       if (daemon->lease_change_command)
 	{
 	  void *opt;
+	  
 	  lease->flags |= LEASE_CHANGED;
 	  free(lease->extradata);
 	  lease->extradata = NULL;
@@ -1905,6 +1906,19 @@ static void update_leases(struct state *state, struct dhcp_context *context, str
 	  lease_add_extradata(lease, (unsigned char *)state->client_hostname, 
 			      state->client_hostname ? strlen(state->client_hostname) : 0, 0);				
 	  
+	  /* DNSMASQ_REQUESTED_OPTIONS */
+	  if ((opt = opt6_find(state->packet_options, state->end, OPTION6_ORO, 2)))
+	    {
+	      int i, len = opt6_len(opt)/2;
+	      u16 *rop = opt6_ptr(opt, 0);
+	      
+	      for (i = 0; i < len; i++)
+		lease_add_extradata(lease, (unsigned char *)daemon->namebuff,
+				    sprintf(daemon->namebuff, "%u", ntohs(rop[i])), (i + 1) == len ? 0 : ',');
+	    }
+	  else
+	    lease_add_extradata(lease, NULL, 0, 0);
+
 	  if ((opt = opt6_find(state->packet_options, state->end, OPTION6_MUD_URL, 1)))
 	    lease_add_extradata(lease, opt6_ptr(opt, 0), opt6_len(opt), 0);
 	  else
