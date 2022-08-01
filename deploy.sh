@@ -37,8 +37,20 @@ unset IFS
 old_path="."
 
 for dir in "${path[@]}"; do
-    sftp -b - "${USER}"@"${HOST}" <<< "cd ${old_path}
-    -mkdir ${dir}"
+    mapfile -t dir_content <<< "$(
+        sftp -b - "${USER}"@"${HOST}" <<< "cd ${old_path}
+        ls -1"
+    )"
+
+    # Only try to create the subdir if does not already exist
+    if [[ "${dir_content[*]}" =~ "${dir}" ]]; then
+        echo "Dir: ${old_path}/${dir} already exists"
+    else
+        echo "Creating dir: ${old_path}/${dir}"
+        sftp -b - "${USER}"@"${HOST}" <<< "cd ${old_path}
+        -mkdir ${dir}"
+    fi
+
     old_path="${old_path}/${dir}"
 done
 
