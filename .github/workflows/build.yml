@@ -12,7 +12,7 @@ on:
     types: [published]
 
 jobs:
-  build:
+  smoke-tests:
     if: |
       github.event_name == 'push'
       || github.event_name == 'release'
@@ -24,6 +24,37 @@ jobs:
       OUTPUT_DIR: ${{ steps.variables.outputs.OUTPUT_DIR }}
 
     runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout code
+        uses: actions/checkout@v3
+      -
+        name: "Calculate required variables"
+        id: variables
+        run: |
+          GIT_TAG=${{ github.event.release.tag_name }}
+          # If GIT_TAG is set then GIT BRANCH should be "master", else set it from GITHUB_REF
+          GIT_BRANCH=$([ -n "${GIT_TAG}" ] && echo "master" || echo "${GITHUB_REF#refs/*/}")
+          echo ::set-output name=GIT_BRANCH::${GIT_BRANCH}
+          echo ::set-output name=GIT_TAG::${GIT_TAG}
+          echo ::set-output name=OUTPUT_DIR::${GIT_TAG:-${GIT_BRANCH}}
+      -
+        name: "Check git branch name depth"
+        env:
+          GIT_BRANCH: ${{ steps.variables.outputs.GIT_BRANCH }}
+        run: |
+          IFS='/';
+          read -r -a branch <<<"${GIT_BRANCH}";
+          if [[ "${#branch[@]}" -gt 2 ]]; then echo "Error: Your branch name contains more than one subdir, which will cause issues with the build process." && FAIL=1; fi;
+          unset IFS;
+          # If FAIL is 1 then we fail.
+          [[ $FAIL == 1 ]] && exit 1 || echo "Branch name depth check passed."
+        shell: bash
+
+  build:
+    runs-on: ubuntu-latest
+
+    needs: smoke-tests
 
     container: ghcr.io/pi-hole/ftl-build:v1.18-${{ matrix.arch }}
 
@@ -59,23 +90,16 @@ jobs:
         name: Checkout code
         uses: actions/checkout@v3.0.2
       -
-        name: Calculate required build variables
-        id: variables
-        run: |
-          GIT_TAG=${{ github.event.release.tag_name }}
-          # If GIT_TAG is set then GIT BRANCH should be "master", else set it from GITHUB_REF
-          GIT_BRANCH=$([ -n "${GIT_TAG}" ] && echo "master" || echo "${GITHUB_REF#refs/*/}")
-          echo ::set-output name=GIT_BRANCH::${GIT_BRANCH}
-          echo ::set-output name=GIT_TAG::${GIT_TAG}
-          echo ::set-output name=OUTPUT_DIR::${GIT_TAG:-${GIT_BRANCH}}
+        name: "Fix ownership of repository"
+        run: chown -R root .
       -
         name: "Fix ownership of repository"
         run: chown -R root .
       -
         name: "Build"
         env:
-          GIT_BRANCH: ${{ steps.variables.outputs.GIT_BRANCH }}
-          GIT_TAG: ${{ steps.variables.outputs.GIT_TAG }}
+          GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
+          GIT_TAG: ${{ needs.smoke-tests.outputs.GIT_TAG }}
         run: |
           bash build.sh "-DSTATIC=${STATIC}"
       -
@@ -102,17 +126,23 @@ jobs:
 
   deploy:
     if: github.event_name != 'pull_request'
-    needs: build
+    needs: [smoke-tests, build]
     runs-on: ubuntu-latest
     steps:
       -
+        name: Checkout code
+        uses: actions/checkout@v3
+      -
         name: Get Binaries built in previous jobs
         uses: actions/download-artifact@v3.0.0
+        id: download
         with:
           name: tmp-binary-storage
+          path: ftl-builds/
       -
         name: Display structure of downloaded files
         run: ls -R
+        working-directory: ${{steps.download.outputs.download-path}}
       -
         name: Install SSH Key
         uses: shimataro/ssh-key-action@v2.3.1
@@ -121,9 +151,13 @@ jobs:
           known_hosts: ${{ secrets.KNOWN_HOSTS }}
       -
         name: Transfer Builds to Pi-hole server for pihole checkout
+        env:
+          USER: ${{ secrets.SSH_USER }}
+          HOST: ${{ secrets.SSH_HOST }}
+          TARGET_DIR: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
+          SOURCE_DIR: ${{ steps.download.outputs.download-path }}
         run: |
-          sftp -b - ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} <<< "-mkdir ${{ needs.build.outputs.OUTPUT_DIR }}
-          put * ${{ needs.build.outputs.OUTPUT_DIR }}"
+          bash ./deploy.sh
       -
         name: Attach binaries to release
         if: github.event_name == 'release'
