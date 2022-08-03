@@ -10,7 +10,7 @@
 #ifndef REQUEST_H
 #define REQUEST_H
 
-void process_request(const char *client_message, int *sock);
+bool process_request(const char *client_message, const int sock, const bool istelnet);
 bool command(const char *client_message, const char* cmd) __attribute__((pure));
 
 #endif //REQUEST_H

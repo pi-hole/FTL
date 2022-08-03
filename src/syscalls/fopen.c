@@ -28,6 +28,9 @@ FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const c
 	// incoming signal
 	while(file_ptr == NULL && errno == EINTR);
 
+	// Backup errno value
+	const int _errno = errno;
+
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	// The already_writing counter prevents a possible infinite loop
@@ -38,5 +41,9 @@ FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const c
 	// Decrement warning counter
 	already_writing--;
 
+	// Restore errno value
+	errno = _errno;
+
+	// Return file pointer
 	return file_ptr;
 }

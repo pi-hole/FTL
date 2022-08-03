@@ -11,29 +11,29 @@
 #define API_H
 
 // Statistic methods
-void getStats(const int *sock);
-void getOverTime(const int *sock);
-void getTopDomains(const char *client_message, const int *sock);
-void getTopClients(const char *client_message, const int *sock);
-void getUpstreamDestinations(const char *client_message, const int *sock);
-void getQueryTypes(const int *sock);
-void getAllQueries(const char *client_message, const int *sock);
-void getRecentBlocked(const char *client_message, const int *sock);
-void getClientsOverTime(const int *sock);
-void getClientNames(const int *sock);
+void getStats(const int sock, const bool istelnet);
+void getOverTime(const int sock, const bool istelnet);
+void getTopDomains(const char *client_message, const int sock, const bool istelnet);
+void getTopClients(const char *client_message, const int sock, const bool istelnet);
+void getUpstreamDestinations(const char *client_message, const int sock, const bool istelnet);
+void getQueryTypes(const int sock, const bool istelnet);
+void getAllQueries(const char *client_message, const int sock, const bool istelnet);
+void getRecentBlocked(const char *client_message, const int sock, const bool istelnet);
+void getClientsOverTime(const int sock, const bool istelnet);
+void getClientNames(const int sock, const bool istelnet);
 
 // FTL methods
-void getClientID(const int *sock);
-void getVersion(const int *sock);
-void getDBstats(const int *sock);
-void getUnknownQueries(const int *sock);
-void getMAXLOGAGE(const int *sock);
-void getGateway(const int *sock);
-void getInterfaces(const int *sock);
+void getClientID(const int sock, const bool istelnet);
+void getVersion(const int sock, const bool istelnet);
+void getDBstats(const int sock, const bool istelnet);
+void getUnknownQueries(const int sock, const bool istelnet);
+void getMAXLOGAGE(const int sock);
+void getGateway(const int sock);
+void getInterfaces(const int sock);
 
 // DNS resolver methods (dnsmasq_interface.c)
-void getCacheInformation(const int *sock);
-void getDNSport(const int *sock);
+void getCacheInformation(const int sock);
+void getDNSport(const int sock);
 
 // MessagePack serialization helpers
 void pack_eom(const int sock);
@@ -48,6 +48,6 @@ bool pack_str32(const int sock, const char *string);
 void pack_map16_start(const int sock, const uint16_t length);
 
 // DHCP lease management
-void delete_lease(const char *client_message, const int *sock);
+void delete_lease(const char *client_message, const int sock);
 
 #endif // API_H

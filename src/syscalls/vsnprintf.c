@@ -47,6 +47,10 @@ int FTLvsnprintf(const char *file, const char *func, const int line, char *__res
 		                      stdout, _errno, format, func, file, line);
 	}
 
+
+	// Restore errno value
+	errno = _errno;
+
 	// Return number of written bytes
 	return length;
 }

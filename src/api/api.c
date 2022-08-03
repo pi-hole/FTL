@@ -15,7 +15,7 @@
 #include "../shmem.h"
 // read_setupVarsconf()
 #include "../setupVars.h"
-// istelnet()
+// ssend()
 #include "socket.h"
 // get_FTL_db_filesize()
 #include "../files.h"
@@ -76,7 +76,7 @@ static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-void getStats(const int *sock)
+void getStats(const int sock, const bool istelnet)
 {
 	const int blocked = blocked_queries();
 	const int total = counters->queries;
@@ -87,11 +87,11 @@ void getStats(const int *sock)
 		percentage = 1e2f*blocked/total;
 
 	// Send domains being blocked
-	if(istelnet[*sock]) {
-		ssend(*sock, "domains_being_blocked %i\n", counters->gravity);
+	if(istelnet) {
+		ssend(sock, "domains_being_blocked %i\n", counters->gravity);
 	}
 	else
-		pack_int32(*sock, counters->gravity);
+		pack_int32(sock, counters->gravity);
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int activeclients = 0;
@@ -106,13 +106,13 @@ void getStats(const int *sock)
 			activeclients++;
 	}
 
-	if(istelnet[*sock]) {
-		ssend(*sock, "dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
+	if(istelnet) {
+		ssend(sock, "dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
 		      total, blocked, percentage);
-		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
+		ssend(sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
 		      counters->domains, forwarded_queries(), cached_queries());
-		ssend(*sock, "clients_ever_seen %i\n", counters->clients);
-		ssend(*sock, "unique_clients %i\n", activeclients);
+		ssend(sock, "clients_ever_seen %i\n", counters->clients);
+		ssend(sock, "unique_clients %i\n", activeclients);
 
 		// Sum up all query types (A, AAAA, ANY, SRV, SOA, ...)
 		int sumalltypes = 0;
@@ -120,45 +120,45 @@ void getStats(const int *sock)
 		{
 			sumalltypes += counters->querytype[queryType];
 		}
-		ssend(*sock, "dns_queries_all_types %i\n", sumalltypes);
+		ssend(sock, "dns_queries_all_types %i\n", sumalltypes);
 
 		// Send individual reply type counters
 		int sumallreplies = 0;
 		for(enum reply_type reply = REPLY_UNKNOWN; reply < QUERY_REPLY_MAX; reply++)
 		{
-			ssend(*sock, "reply_%s %i\n", get_query_reply_str(reply), counters->reply[reply]);
+			ssend(sock, "reply_%s %i\n", get_query_reply_str(reply), counters->reply[reply]);
 			sumallreplies += counters->reply[reply];
 		}
-		ssend(*sock, "dns_queries_all_replies %i\n", sumallreplies);
-		ssend(*sock, "privacy_level %i\n", config.privacylevel);
+		ssend(sock, "dns_queries_all_replies %i\n", sumallreplies);
+		ssend(sock, "privacy_level %i\n", config.privacylevel);
 	}
 	else
 	{
-		pack_int32(*sock, total);
-		pack_int32(*sock, blocked);
-		pack_float(*sock, percentage);
-		pack_int32(*sock, counters->domains);
-		pack_int32(*sock, forwarded_queries());
-		pack_int32(*sock, cached_queries());
-		pack_int32(*sock, counters->clients);
-		pack_int32(*sock, activeclients);
+		pack_int32(sock, total);
+		pack_int32(sock, blocked);
+		pack_float(sock, percentage);
+		pack_int32(sock, counters->domains);
+		pack_int32(sock, forwarded_queries());
+		pack_int32(sock, cached_queries());
+		pack_int32(sock, counters->clients);
+		pack_int32(sock, activeclients);
 	}
 
 	// Send status
-	if(istelnet[*sock]) {
-		ssend(*sock, "status %s\n", blockingstatus ? "enabled" : "disabled");
+	if(istelnet) {
+		ssend(sock, "status %s\n", blockingstatus ? "enabled" : "disabled");
 	}
 	else
-		pack_uint8(*sock, blockingstatus);
+		pack_uint8(sock, blockingstatus);
 }
 
-void getOverTime(const int *sock)
+void getOverTime(const int sock, const bool istelnet)
 {
-	if(istelnet[*sock])
+	if(istelnet)
 	{
 		for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 		{
-			ssend(*sock,"%lli %i %i\n",
+			ssend(sock,"%lli %i %i\n",
 			      (long long)overTime[slot].timestamp,
 			      overTime[slot].total,
 			      overTime[slot].blocked);
@@ -170,22 +170,22 @@ void getOverTime(const int *sock)
 		// and map16 can hold up to (2^16)-1 = 65535 pairs
 
 		// Send domains over time
-		pack_map16_start(*sock, (uint16_t) OVERTIME_SLOTS);
+		pack_map16_start(sock, (uint16_t) OVERTIME_SLOTS);
 		for(int slot = 0; slot < OVERTIME_SLOTS; slot++) {
-			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
-			pack_int32(*sock, overTime[slot].total);
+			pack_int32(sock, (int32_t)overTime[slot].timestamp);
+			pack_int32(sock, overTime[slot].total);
 		}
 
 		// Send ads over time
-		pack_map16_start(*sock, (uint16_t) OVERTIME_SLOTS);
+		pack_map16_start(sock, (uint16_t) OVERTIME_SLOTS);
 		for(int slot = 0; slot < OVERTIME_SLOTS; slot++) {
-			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
-			pack_int32(*sock, overTime[slot].blocked);
+			pack_int32(sock, (int32_t)overTime[slot].timestamp);
+			pack_int32(sock, overTime[slot].blocked);
 		}
 	}
 }
 
-void getTopDomains(const char *client_message, const int *sock)
+void getTopDomains(const char *client_message, const int sock, const bool istelnet)
 {
 	int temparray[counters->domains][2], count=10, num;
 	bool audit = false, asc = false;
@@ -196,8 +196,8 @@ void getTopDomains(const char *client_message, const int *sock)
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS) {
 		// Always send the total number of domains, but pretend it's 0
-		if(!istelnet[*sock])
-			pack_int32(*sock, 0);
+		if(!istelnet)
+			pack_int32(sock, 0);
 
 		return;
 	}
@@ -269,13 +269,13 @@ void getTopDomains(const char *client_message, const int *sock)
 		}
 	}
 
-	if(!istelnet[*sock])
+	if(!istelnet)
 	{
 		// Send the data required to get the percentage each domain has been blocked / queried
 		if(blocked)
-			pack_int32(*sock, blocked_queries());
+			pack_int32(sock, blocked_queries());
 		else
-			pack_int32(*sock, counters->queries);
+			pack_int32(sock, counters->queries);
 	}
 
 	int n = 0;
@@ -306,26 +306,26 @@ void getTopDomains(const char *client_message, const int *sock)
 
 		if(blocked && showblocked && domain->blockedcount > 0)
 		{
-			if(istelnet[*sock])
-				ssend(*sock, "%i %i %s\n", n, domain->blockedcount, getstr(domain->domainpos));
+			if(istelnet)
+				ssend(sock, "%i %i %s\n", n, domain->blockedcount, getstr(domain->domainpos));
 			else {
-				if(!pack_str32(*sock, getstr(domain->domainpos)))
+				if(!pack_str32(sock, getstr(domain->domainpos)))
 					return;
 
-				pack_int32(*sock, domain->blockedcount);
+				pack_int32(sock, domain->blockedcount);
 			}
 			n++;
 		}
 		else if(!blocked && showpermitted && (domain->count - domain->blockedcount) > 0)
 		{
-			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s\n",n,(domain->count - domain->blockedcount),getstr(domain->domainpos));
+			if(istelnet)
+				ssend(sock,"%i %i %s\n",n,(domain->count - domain->blockedcount),getstr(domain->domainpos));
 			else
 			{
-				if(!pack_str32(*sock, getstr(domain->domainpos)))
+				if(!pack_str32(sock, getstr(domain->domainpos)))
 					return;
 
-				pack_int32(*sock, domain->count - domain->blockedcount);
+				pack_int32(sock, domain->count - domain->blockedcount);
 			}
 			n++;
 		}
@@ -339,7 +339,7 @@ void getTopDomains(const char *client_message, const int *sock)
 		clearSetupVarsArray();
 }
 
-void getTopClients(const char *client_message, const int *sock)
+void getTopClients(const char *client_message, const int sock, const bool istelnet)
 {
 	int temparray[counters->clients][2], count=10, num;
 
@@ -347,8 +347,8 @@ void getTopClients(const char *client_message, const int *sock)
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS) {
 		// Always send the total number of clients, but pretend it's 0
-		if(!istelnet[*sock])
-			pack_int32(*sock, 0);
+		if(!istelnet)
+			pack_int32(sock, 0);
 
 		return;
 	}
@@ -408,10 +408,10 @@ void getTopClients(const char *client_message, const int *sock)
 		getSetupVarsArray(excludeclients);
 	}
 
-	if(!istelnet[*sock])
+	if(!istelnet)
 	{
 		// Send the total queries so they can make percentages from this data
-		pack_int32(*sock, counters->queries);
+		pack_int32(sock, counters->queries);
 	}
 
 	int n = 0;
@@ -450,14 +450,14 @@ void getTopClients(const char *client_message, const int *sock)
 		// - the client made at least one query within the most recent 24 hours
 		if(includezeroclients || ccount > 0)
 		{
-			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s %s\n", n, ccount, client_ip, client_name);
+			if(istelnet)
+				ssend(sock,"%i %i %s %s\n", n, ccount, client_ip, client_name);
 			else
 			{
-				if(!pack_str32(*sock, "") || !pack_str32(*sock, client_ip))
+				if(!pack_str32(sock, "") || !pack_str32(sock, client_ip))
 					return;
 
-				pack_int32(*sock, ccount);
+				pack_int32(sock, ccount);
 			}
 			n++;
 		}
@@ -471,7 +471,7 @@ void getTopClients(const char *client_message, const int *sock)
 }
 
 
-void getUpstreamDestinations(const char *client_message, const int *sock)
+void getUpstreamDestinations(const char *client_message, const int sock, const bool istelnet)
 {
 	bool sort = true;
 	int temparray[counters->upstreams][2], sumforwarded = 0;
@@ -575,24 +575,24 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		// - only if percentage > 0.0 for all others (i > 0)
 		if(percentage > 0.0f || i < 0)
 		{
-			if(istelnet[*sock])
+			if(istelnet)
 				if(upstream_port != 0)
-					ssend(*sock, "%i %.2f %s#%u %s#%u\n", i, percentage,
+					ssend(sock, "%i %.2f %s#%u %s#%u\n", i, percentage,
 					      ip, upstream_port, name, upstream_port);
 				else
-					ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
+					ssend(sock, "%i %.2f %s %s\n", i, percentage, ip, name);
 			else
 			{
-				if(!pack_str32(*sock, name) || !pack_str32(*sock, ip))
+				if(!pack_str32(sock, name) || !pack_str32(sock, ip))
 					return;
 
-				pack_float(*sock, percentage);
+				pack_float(sock, percentage);
 			}
 		}
 	}
 }
 
-void getQueryTypes(const int *sock)
+void getQueryTypes(const int sock, const bool istelnet)
 {
 	int total = 0;
 	for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
@@ -611,8 +611,8 @@ void getQueryTypes(const int *sock)
 		}
 	}
 
-	if(istelnet[*sock]) {
-		ssend(*sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\n"
+	if(istelnet) {
+		ssend(sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\n"
 		             "SOA: %.2f\nPTR: %.2f\nTXT: %.2f\nNAPTR: %.2f\n"
 		             "MX: %.2f\nDS: %.2f\nRRSIG: %.2f\nDNSKEY: %.2f\n"
 		             "NS: %.2f\n" "OTHER: %.2f\n\nSVCB: %.2f\nHTTPS: %.2f\n",
@@ -622,42 +622,42 @@ void getQueryTypes(const int *sock)
 		      percentage[TYPE_NS], percentage[TYPE_OTHER], percentage[TYPE_SVCB], percentage[TYPE_HTTPS]);
 	}
 	else {
-		pack_str32(*sock, "A (IPv4)");
-		pack_float(*sock, percentage[TYPE_A]);
-		pack_str32(*sock, "AAAA (IPv6)");
-		pack_float(*sock, percentage[TYPE_AAAA]);
-		pack_str32(*sock, "ANY");
-		pack_float(*sock, percentage[TYPE_ANY]);
-		pack_str32(*sock, "SRV");
-		pack_float(*sock, percentage[TYPE_SRV]);
-		pack_str32(*sock, "SOA");
-		pack_float(*sock, percentage[TYPE_SOA]);
-		pack_str32(*sock, "PTR");
-		pack_float(*sock, percentage[TYPE_PTR]);
-		pack_str32(*sock, "TXT");
-		pack_float(*sock, percentage[TYPE_TXT]);
-		pack_str32(*sock, "NAPTR");
-		pack_float(*sock, percentage[TYPE_NAPTR]);
-		pack_str32(*sock, "MX");
-		pack_float(*sock, percentage[TYPE_MX]);
-		pack_str32(*sock, "DS");
-		pack_float(*sock, percentage[TYPE_DS]);
-		pack_str32(*sock, "RRSIG");
-		pack_float(*sock, percentage[TYPE_RRSIG]);
-		pack_str32(*sock, "DNSKEY");
-		pack_float(*sock, percentage[TYPE_DNSKEY]);
-		pack_str32(*sock, "NS");
-		pack_float(*sock, percentage[TYPE_NS]);
-		pack_str32(*sock, "OTHER");
-		pack_float(*sock, percentage[TYPE_OTHER]);
-		pack_str32(*sock, "SVCB");
-		pack_float(*sock, percentage[TYPE_SVCB]);
-		pack_str32(*sock, "HTTPS");
-		pack_float(*sock, percentage[TYPE_HTTPS]);
+		pack_str32(sock, "A (IPv4)");
+		pack_float(sock, percentage[TYPE_A]);
+		pack_str32(sock, "AAAA (IPv6)");
+		pack_float(sock, percentage[TYPE_AAAA]);
+		pack_str32(sock, "ANY");
+		pack_float(sock, percentage[TYPE_ANY]);
+		pack_str32(sock, "SRV");
+		pack_float(sock, percentage[TYPE_SRV]);
+		pack_str32(sock, "SOA");
+		pack_float(sock, percentage[TYPE_SOA]);
+		pack_str32(sock, "PTR");
+		pack_float(sock, percentage[TYPE_PTR]);
+		pack_str32(sock, "TXT");
+		pack_float(sock, percentage[TYPE_TXT]);
+		pack_str32(sock, "NAPTR");
+		pack_float(sock, percentage[TYPE_NAPTR]);
+		pack_str32(sock, "MX");
+		pack_float(sock, percentage[TYPE_MX]);
+		pack_str32(sock, "DS");
+		pack_float(sock, percentage[TYPE_DS]);
+		pack_str32(sock, "RRSIG");
+		pack_float(sock, percentage[TYPE_RRSIG]);
+		pack_str32(sock, "DNSKEY");
+		pack_float(sock, percentage[TYPE_DNSKEY]);
+		pack_str32(sock, "NS");
+		pack_float(sock, percentage[TYPE_NS]);
+		pack_str32(sock, "OTHER");
+		pack_float(sock, percentage[TYPE_OTHER]);
+		pack_str32(sock, "SVCB");
+		pack_float(sock, percentage[TYPE_SVCB]);
+		pack_str32(sock, "HTTPS");
+		pack_float(sock, percentage[TYPE_HTTPS]);
 	}
 }
 
-void getAllQueries(const char *client_message, const int *sock)
+void getAllQueries(const char *client_message, const int sock, const bool istelnet)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -1053,9 +1053,9 @@ void getAllQueries(const char *client_message, const int *sock)
 			delay = 0UL;
 		}
 
-		if(istelnet[*sock])
+		if(istelnet)
 		{
-			ssend(*sock,"%lli %s %s %s %i %i %i %lu %s %i %s#%u \"%s\"",
+			ssend(sock,"%lli %s %s %s %i %i %i %lu %s %i %s#%u \"%s\"",
 				(long long)query->timestamp,
 				qtype,
 				domain,
@@ -1071,23 +1071,23 @@ void getAllQueries(const char *client_message, const int *sock)
 				query->ede == -1 ? "" : get_edestr(query->ede));
 
 			if(config.debug & DEBUG_API)
-				ssend(*sock, " \"%i\"", queryID);
-			ssend(*sock, "\n");
+				ssend(sock, " \"%i\"", queryID);
+			ssend(sock, "\n");
 		}
 		else
 		{
-			pack_int32(*sock, (int32_t)query->timestamp);
+			pack_int32(sock, (int32_t)query->timestamp);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
-			if(!pack_fixstr(*sock, qtype))
+			if(!pack_fixstr(sock, qtype))
 				break;
 
 			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			if(!pack_str32(*sock, domain) || !pack_str32(*sock, clientIPName))
+			if(!pack_str32(sock, domain) || !pack_str32(sock, clientIPName))
 				break;
 
-			pack_uint8(*sock, query->status);
-			pack_uint8(*sock, query->dnssec);
+			pack_uint8(sock, query->status);
+			pack_uint8(sock, query->dnssec);
 		}
 	}
 
@@ -1105,7 +1105,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		free(clientid_list);
 }
 
-void getRecentBlocked(const char *client_message, const int *sock)
+void getRecentBlocked(const char *client_message, const int sock, const bool istelnet)
 {
 	int num=1;
 
@@ -1132,9 +1132,9 @@ void getRecentBlocked(const char *client_message, const int *sock)
 			if(domain == NULL)
 				continue;
 
-			if(istelnet[*sock])
-				ssend(*sock,"%s\n", domain);
-			else if(!pack_str32(*sock, domain))
+			if(istelnet)
+				ssend(sock,"%s\n", domain);
+			else if(!pack_str32(sock, domain))
 				return;
 
 			// Only count when sent successfully
@@ -1146,15 +1146,15 @@ void getRecentBlocked(const char *client_message, const int *sock)
 	}
 }
 
-void getClientID(const int *sock)
+void getClientID(const int sock, const bool istelnet)
 {
-	if(istelnet[*sock])
-		ssend(*sock,"%i\n", *sock);
+	if(istelnet)
+		ssend(sock,"%i\n", sock);
 	else
-		pack_int32(*sock, *sock);
+		pack_int32(sock, sock);
 }
 
-void getVersion(const int *sock)
+void getVersion(const int sock, const bool istelnet)
 {
 	const char *commit = GIT_HASH;
 	const char *tag = GIT_TAG;
@@ -1165,38 +1165,30 @@ void getVersion(const int *sock)
 	memcpy(hash, commit, min((size_t)7, strlen(commit)));
 
 	if(strlen(tag) > 1) {
-		if(istelnet[*sock])
-			ssend(
-					*sock,
-					"version %s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
-					version, tag, GIT_BRANCH, hash, GIT_DATE
-			);
+		if(istelnet)
+			ssend(sock, "version %s\ntag %s\nbranch %s\nhash %s\ndate %s\n", version, tag, GIT_BRANCH, hash, GIT_DATE);
 		else {
-			if(!pack_str32(*sock, version) ||
-					!pack_str32(*sock, (char *) tag) ||
-					!pack_str32(*sock, GIT_BRANCH) ||
-					!pack_str32(*sock, hash) ||
-					!pack_str32(*sock, GIT_DATE))
+			if(!pack_str32(sock, version) ||
+					!pack_str32(sock, (char *) tag) ||
+					!pack_str32(sock, GIT_BRANCH) ||
+					!pack_str32(sock, hash) ||
+					!pack_str32(sock, GIT_DATE))
 				return;
 		}
 	}
 	else {
-		if(istelnet[*sock])
-			ssend(
-					*sock,
-					"version vDev-%s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
-					hash, tag, GIT_BRANCH, hash, GIT_DATE
-			);
+		if(istelnet)
+			ssend(sock, "version vDev-%s\ntag %s\nbranch %s\nhash %s\ndate %s\n", hash, tag, GIT_BRANCH, hash, GIT_DATE);
 		else {
 			char *hashVersion = calloc(6 + strlen(hash), sizeof(char));
 			if(hashVersion == NULL) return;
 			sprintf(hashVersion, "vDev-%s", hash);
 
-			if(!pack_str32(*sock, hashVersion) ||
-					!pack_str32(*sock, (char *) tag) ||
-					!pack_str32(*sock, GIT_BRANCH) ||
-					!pack_str32(*sock, hash) ||
-					!pack_str32(*sock, GIT_DATE))
+			if(!pack_str32(sock, hashVersion) ||
+					!pack_str32(sock, (char *) tag) ||
+					!pack_str32(sock, GIT_BRANCH) ||
+					!pack_str32(sock, hash) ||
+					!pack_str32(sock, GIT_DATE))
 				return;
 
 			free(hashVersion);
@@ -1204,7 +1196,7 @@ void getVersion(const int *sock)
 	}
 }
 
-void getDBstats(const int *sock)
+void getDBstats(const int sock, const bool istelnet)
 {
 	// Get file details
 	unsigned long long int filesize = get_FTL_db_filesize();
@@ -1213,19 +1205,19 @@ void getDBstats(const int *sock)
 	double formatted = 0.0;
 	format_memory_size(prefix, filesize, &formatted);
 
-	if(istelnet[*sock])
-		ssend(*sock, "queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n",
+	if(istelnet)
+		ssend(sock, "queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n",
 		             get_number_of_queries_in_DB(NULL), formatted, prefix, get_sqlite3_version());
 	else {
-		pack_int32(*sock, get_number_of_queries_in_DB(NULL));
-		pack_int64(*sock, filesize);
+		pack_int32(sock, get_number_of_queries_in_DB(NULL));
+		pack_int64(sock, filesize);
 
-		if(!pack_str32(*sock, (char *) get_sqlite3_version()))
+		if(!pack_str32(sock, (char *) get_sqlite3_version()))
 			return;
 	}
 }
 
-void getClientsOverTime(const int *sock)
+void getClientsOverTime(const int sock, const bool istelnet)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -1263,10 +1255,10 @@ void getClientsOverTime(const int *sock)
 	// Main return loop
 	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
-		if(istelnet[*sock])
-			ssend(*sock, "%lli", (long long)overTime[slot].timestamp);
+		if(istelnet)
+			ssend(sock, "%lli", (long long)overTime[slot].timestamp);
 		else
-			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
+			pack_int32(sock, (int32_t)overTime[slot].timestamp);
 
 		// Loop over forward destinations to generate output to be sent to the client
 		for(int clientID = 0; clientID < counters->clients; clientID++)
@@ -1284,23 +1276,23 @@ void getClientsOverTime(const int *sock)
 				continue;
 			const int thisclient = client->overTime[slot];
 
-			if(istelnet[*sock])
-				ssend(*sock, " %i", thisclient);
+			if(istelnet)
+				ssend(sock, " %i", thisclient);
 			else
-				pack_int32(*sock, thisclient);
+				pack_int32(sock, thisclient);
 		}
 
-		if(istelnet[*sock])
-			ssend(*sock, "\n");
+		if(istelnet)
+			ssend(sock, "\n");
 		else
-			pack_int32(*sock, -1);
+			pack_int32(sock, -1);
 	}
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
 }
 
-void getClientNames(const int *sock)
+void getClientNames(const int sock, const bool istelnet)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -1353,11 +1345,11 @@ void getClientNames(const int *sock)
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = getstr(client->namepos);
 
-		if(istelnet[*sock])
-			ssend(*sock, "%s %s\n", client_name, client_ip);
+		if(istelnet)
+			ssend(sock, "%s %s\n", client_name, client_ip);
 		else {
-			pack_str32(*sock, client_name);
-			pack_str32(*sock, client_ip);
+			pack_str32(sock, client_name);
+			pack_str32(sock, client_ip);
 		}
 	}
 
@@ -1365,7 +1357,7 @@ void getClientNames(const int *sock)
 		clearSetupVarsArray();
 }
 
-void getUnknownQueries(const int *sock)
+void getUnknownQueries(const int sock, const bool istelnet)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -1401,22 +1393,22 @@ void getUnknownQueries(const int *sock)
 		// Get client IP string
 		const char *clientIP = getstr(client->ippos);
 
-		if(istelnet[*sock])
-			ssend(*sock, "%lli %i %i %s %s %s %i %s\n", (long long)query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->flags.complete ? "true" : "false");
+		if(istelnet)
+			ssend(sock, "%lli %i %i %s %s %s %i %s\n", (long long)query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->flags.complete ? "true" : "false");
 		else {
-			pack_int32(*sock, (int32_t)query->timestamp);
-			pack_int32(*sock, query->id);
+			pack_int32(sock, (int32_t)query->timestamp);
+			pack_int32(sock, query->id);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
-			if(!pack_fixstr(*sock, type))
+			if(!pack_fixstr(sock, type))
 				return;
 
 			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			if(!pack_str32(*sock, getstr(domain->domainpos)) || !pack_str32(*sock, clientIP))
+			if(!pack_str32(sock, getstr(domain->domainpos)) || !pack_str32(sock, clientIP))
 				return;
 
-			pack_uint8(*sock, query->status);
-			pack_bool(*sock, query->flags.complete);
+			pack_uint8(sock, query->status);
+			pack_bool(sock, query->flags.complete);
 		}
 	}
 }
@@ -1424,12 +1416,12 @@ void getUnknownQueries(const int *sock)
 // FTL_unlink_DHCP_lease()
 extern bool FTL_unlink_DHCP_lease(const char *ipaddr);
 
-void delete_lease(const char *client_message, const int *sock)
+void delete_lease(const char *client_message, const int sock)
 {
 	// Extract IP address from request
 	char ipaddr[INET6_ADDRSTRLEN] = { 0 };
 	if(sscanf(client_message, ">delete-lease %"xstr(INET6_ADDRSTRLEN)"s", ipaddr) < 1) {
-		ssend(*sock, "ERROR: No IP address specified!\n");
+		ssend(sock, "ERROR: No IP address specified!\n");
 		return;
 	}
 	ipaddr[sizeof(ipaddr) - 1] = '\0';
@@ -1438,24 +1430,24 @@ void delete_lease(const char *client_message, const int *sock)
 		logg("Received request to delete lease for %s", ipaddr);
 
 	if(FTL_unlink_DHCP_lease(ipaddr))
-		ssend(*sock, "OK: Removed specified lease\n");
+		ssend(sock, "OK: Removed specified lease\n");
 	else
-		ssend(*sock, "ERROR: Specified IP address invalid!\n");
+		ssend(sock, "ERROR: Specified IP address invalid!\n");
 
 	if(config.debug & DEBUG_API)
 		logg("...done");
 }
 
-void getDNSport(const int *sock)
+void getDNSport(const int sock)
 {
 	// Return DNS port used by FTL
-	ssend(*sock, "%d\n", config.dns_port);
+	ssend(sock, "%d\n", config.dns_port);
 }
 
-void getMAXLOGAGE(const int *sock)
+void getMAXLOGAGE(const int sock)
 {
 	// Return maxlogage used by FTL
-	ssend(*sock, "%d\n", config.maxlogage);
+	ssend(sock, "%d\n", config.maxlogage);
 }
 
 static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
@@ -1506,13 +1498,13 @@ static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 	return gw != 0;
 }
 
-void getGateway(const int *sock)
+void getGateway(const int sock)
 {
 	in_addr_t gw = 0;
 	char iface[IF_NAMESIZE] = { 0 };
 
 	getDefaultInterface(iface, &gw);
-	ssend(*sock, "%s %s\n", inet_ntoa(*(struct in_addr *) &gw), iface);
+	ssend(sock, "%s %s\n", inet_ntoa(*(struct in_addr *) &gw), iface);
 }
 
 struct if_info {
@@ -1691,6 +1683,7 @@ static bool listInterfaces(struct if_info **head, char default_iface[IF_NAMESIZE
 		rx_sum += new->rx_bytes;
 	}
 
+	closedir(dfd);
 	freeifaddrs(ifap);
 
 	// Create sum entry only if there is more than one interface
@@ -1710,22 +1703,22 @@ static bool listInterfaces(struct if_info **head, char default_iface[IF_NAMESIZE
 	return true;
 }
 
-static void send_iface(const int *sock, struct if_info *iface)
+static bool send_iface(const int sock, struct if_info *iface)
 {
 	double tx = 0.0, rx = 0.0;
 	char txp[2] = { 0 }, rxp[2] = { 0 };
 	format_memory_size(txp, iface->tx_bytes, &tx);
 	format_memory_size(rxp, iface->rx_bytes, &rx);
-	ssend(*sock, "%s %s %i %.1f%sB %.1f%sB %s %s\n",
-	      iface->name,
-	      iface->carrier ? "UP" : "DOWN",
-	      iface->speed,
-	      tx, txp, rx, rxp,
-	      iface->carrier && iface->ip.v4 ? iface->ip.v4 : "-",
-	      iface->carrier && iface->ip.v6 ? iface->ip.v6 : "-");
+	return ssend(sock, "%s %s %i %.1f%sB %.1f%sB %s %s\n",
+	             iface->name,
+	             iface->carrier ? "UP" : "DOWN",
+	             iface->speed,
+	             tx, txp, rx, rxp,
+	             iface->carrier && iface->ip.v4 ? iface->ip.v4 : "-",
+	             iface->carrier && iface->ip.v6 ? iface->ip.v6 : "-");
 }
 
-void getInterfaces(const int *sock)
+void getInterfaces(const int sock)
 {
 	// Get interface with default route
 	in_addr_t gw = 0;
@@ -1736,7 +1729,7 @@ void getInterfaces(const int *sock)
 	struct if_info *ifinfo = NULL;
 	if(!listInterfaces(&ifinfo, default_iface))
 	{
-		ssend(*sock, "ERROR");
+		ssend(sock, "ERROR");
 		return;
 	}
 
