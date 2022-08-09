@@ -25,7 +25,7 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    container: ghcr.io/pi-hole/ftl-build:v1.18-${{ matrix.arch }}
+    container: ghcr.io/pi-hole/ftl-build:v1.19-${{ matrix.arch }}
 
     strategy:
       fail-fast: false
