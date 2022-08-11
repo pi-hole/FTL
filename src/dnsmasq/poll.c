@@ -96,9 +96,7 @@ void poll_listen(int fd, short event)
      pollfds[i].events |= event;
    else
      {
-       if (arrsize != nfds)
-	 memmove(&pollfds[i+1], &pollfds[i], (nfds - i) * sizeof(struct pollfd));
-       else
+       if (arrsize == nfds)
 	 {
 	   /* Array too small, extend. */
 	   struct pollfd *new;
@@ -108,17 +106,11 @@ void poll_listen(int fd, short event)
 	   if (!(new = whine_realloc(pollfds, arrsize * sizeof(struct pollfd))))
 	     return;
 
-	   if (pollfds)
-	     {
-	       memmove(&new[i+1], &new[i], (nfds - i) * sizeof(struct pollfd));
-	       /* clear remaining space with zeroes. */
-	       if (nfds+1 < arrsize)
-	         memset(new+nfds+1, 0, arrsize-nfds-1);
-	     }
-	   
 	   pollfds = new;
 	 }
-       
+
+       memmove(&pollfds[i+1], &pollfds[i], (nfds - i) * sizeof(struct pollfd));
+
        pollfds[i].fd = fd;
        pollfds[i].events = event;
        nfds++;
