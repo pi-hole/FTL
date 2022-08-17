@@ -2451,7 +2451,7 @@ int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
 {
   static int finger = 0;
   int i, j = 0;
-  struct randfd_list *rfl;
+  struct randfd_list **up, *rfl, *found, **found_link;
   struct randfd *rfd = NULL;
   int fd = 0;
   
@@ -2459,17 +2459,27 @@ int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
   if (serv->sfd)
     return serv->sfd->fd;
   
-  /* existing suitable random port socket linked to this transaction? */
-  for (rfl = *fdlp; rfl; rfl = rfl->next)
+  /* existing suitable random port socket linked to this transaction?
+     Find the last one in the list and count how many there are. */
+  for (found = NULL, found_link = NULL, i = 0, up = fdlp, rfl = *fdlp; rfl; up = &rfl->next, rfl = rfl->next)
     if (server_isequal(serv, rfl->rfd->serv))
-      return rfl->rfd->fd;
+      {
+	i++;
+	found = rfl;
+	found_link = up;
+      }
 
-  /* No. need new link. */
-  if ((rfl = daemon->rfl_spare))
-    daemon->rfl_spare = rfl->next;
-  else if (!(rfl = whine_malloc(sizeof(struct randfd_list))))
-    return -1;
-   
+  /* We have the maximum number for this query already. Promote
+     the last one on the list to the head, to circulate them,
+     and return it. */
+  if (found && i >= daemon->randport_limit)
+    {
+      *found_link = found->next;
+      found->next = *fdlp;
+      *fdlp = found;
+      return found->rfd->fd;
+    }
+  
   /* limit the number of sockets we have open to avoid starvation of 
      (eg) TFTP. Once we have a reasonable number, randomness should be OK */
   for (i = 0; i < daemon->numrrand; i++)
@@ -2484,6 +2494,31 @@ int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
 	  }
 	break;
       }
+
+  /* We've hit the global limit on sockets before hitting the query limit,
+     use an exsiting socket as source in that case. */
+  if (!rfd && found)
+    {
+      *found_link = found->next;
+      found->next = *fdlp;
+      *fdlp = found;
+      return found->rfd->fd;
+    }
+  
+  /* No good existing. Need new link. */
+  if ((rfl = daemon->rfl_spare))
+    daemon->rfl_spare = rfl->next;
+  else if (!(rfl = whine_malloc(sizeof(struct randfd_list))))
+    {
+      /* malloc failed, don't leak allocated sock */
+      if (rfd)
+	{
+	  close(rfd->fd);
+	  rfd->refcount = 0;
+	}
+
+      return -1;
+    }
   
   /* No free ones or cannot get new socket, grab an existing one */
   if (!rfd)

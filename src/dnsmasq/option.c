@@ -185,6 +185,7 @@ struct myoption {
 #define LOPT_STRIP_MAC     372
 #define LOPT_CONF_OPT      373
 #define LOPT_CONF_SCRIPT   374
+#define LOPT_RANDPORT_LIM  375
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -370,6 +371,7 @@ static const struct myoption opts[] =
     { "log-debug", 0, 0, LOPT_LOG_DEBUG },
     { "umbrella", 2, 0, LOPT_UMBRELLA },
     { "quiet-tftp", 0, 0, LOPT_QUIET_TFTP },
+    { "port-limit", 1, 0, LOPT_RANDPORT_LIM },
     { NULL, 0, 0, 0 }
   };
 
@@ -434,6 +436,7 @@ static struct {
   { 'P', ARG_ONE, "<integer>", gettext_noop("Maximum supported UDP packet size for EDNS.0 (defaults to %s)."), "*" },
   { 'q', ARG_DUP, NULL, gettext_noop("Log DNS queries."), NULL },
   { 'Q', ARG_ONE, "<integer>", gettext_noop("Force the originating port for upstream DNS queries."), NULL },
+  { LOPT_RANDPORT_LIM, ARG_ONE, "#ports", gettext_noop("Set maximum number of random originating ports for a query."), NULL },
   { 'R', OPT_NO_RESOLV, NULL, gettext_noop("Do NOT read resolv.conf."), NULL },
   { 'r', ARG_DUP, "<path>", gettext_noop("Specify path to resolv.conf (defaults to %s)."), RESOLVFILE }, 
   { LOPT_SERVERS_FILE, ARG_ONE, "<path>", gettext_noop("Specify path to file with server= options"), NULL },
@@ -3183,6 +3186,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       if (daemon->query_port == 0)
 	daemon->osport = 1;
       break;
+
+    case LOPT_RANDPORT_LIM: /* --port-limit */
+      if (!atoi_check(arg, &daemon->randport_limit) || (daemon->randport_limit < 1))
+	ret_err(gen_err);
+      break;
       
     case 'T':         /* --local-ttl */
     case LOPT_NEGTTL: /* --neg-ttl */
@@ -5498,6 +5506,7 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->soa_refresh = SOA_REFRESH;
   daemon->soa_retry = SOA_RETRY;
   daemon->soa_expiry = SOA_EXPIRY;
+  daemon->randport_limit = 1;
   
 #ifndef NO_ID
   add_txt("version.bind", "dnsmasq-" VERSION, 0 );
