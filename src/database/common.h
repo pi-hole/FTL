@@ -48,7 +48,7 @@ extern long int lastdbindex;
 extern bool DBdeleteoldqueries;
 
 // Return if FTL's database is known to be broken
-// We abort execution of all database-related activitites in this case
+// We abort execution of all database-related activities in this case
 bool FTLDBerror(void) __attribute__ ((pure));
 
 // Check SQLite3 non-success return codes for possible database corruption
