@@ -104,7 +104,7 @@ typedef struct {
 	enum query_types query_type;
 	int domainID;
 	int clientID;
-	int black_regex_idx;
+	int domainlist_id;
 } DNSCacheData;
 
 void strtolower(char *str);

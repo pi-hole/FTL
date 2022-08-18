@@ -1009,14 +1009,13 @@ void getAllQueries(const char *client_message, const int sock, const bool isteln
 		}
 
 		// Get ID of blocking regex, if applicable and permitted by privacy settings
-		int regex_idx = -1;
-		if ((query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME) &&
-		    config.privacylevel < PRIVACY_HIDE_DOMAINS)
+		int domainlist_id = -1;
+		if (config.privacylevel < PRIVACY_HIDE_DOMAINS)
 		{
 			unsigned int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 			if(dns_cache != NULL)
-				regex_idx = dns_cache->black_regex_idx;
+				domainlist_id = dns_cache->domainlist_id;
 		}
 
 		// Get IP of upstream destination, if applicable
@@ -1065,7 +1064,7 @@ void getAllQueries(const char *client_message, const int sock, const bool isteln
 				reply,
 				delay,
 				CNAME_domain,
-				regex_idx,
+				domainlist_id,
 				upstream_name,
 				upstream_port,
 				query->ede == -1 ? "" : get_edestr(query->ede));

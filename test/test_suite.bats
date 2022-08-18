@@ -171,13 +171,13 @@
   run bash -c "grep -c 'Regex whitelist: Querying groups for client 127.0.0.4: \"SELECT id from vw_regex_whitelist WHERE group_id IN (4);\"' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_whitelist WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_blacklist WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_blacklist WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
   run bash -c "grep -c 'Regex whitelist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole/FTL.log"
@@ -203,13 +203,13 @@
   run bash -c "grep -c 'Regex whitelist: Querying groups for client 127.0.0.5: \"SELECT id from vw_regex_whitelist WHERE group_id IN (4);\"' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_whitelist WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_blacklist WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_blacklist WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
   run bash -c "grep -c 'Regex whitelist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole/FTL.log"
@@ -241,13 +241,13 @@
   run bash -c "grep -c 'Regex whitelist: Querying groups for client 127.0.0.6: \"SELECT id from vw_regex_whitelist WHERE group_id IN (5);\"' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ? AND group_id IN (5));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_whitelist WHERE domain = ? AND group_id IN (5);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_blacklist WHERE domain = ? AND group_id IN (5));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_blacklist WHERE domain = ? AND group_id IN (5);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (5));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (5);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
   run bash -c "grep -c 'Regex whitelist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
@@ -537,22 +537,22 @@
 # Here and below: Reply time is varying. don't test for a particular value (..."*"...)
 
 @test "Get all queries shows expected content" {
-  run bash -c 'echo ">getallqueries >quit" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">getallqueries >quit" | nc -v 127.0.0.1 4711 | tee getallqueries.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]}  == *" TXT version.ftl 127.0.0.1 3 2 6 "*" N/A -1 N/A#0 \"\" \"0\""* ]]
   [[ ${lines[2]}  == *" TXT version.bind 127.0.0.1 3 2 6 "*" N/A -1 N/A#0 \"\" \"1\""* ]]
-  [[ ${lines[3]}  == *" A blacklisted.ftl 127.0.0.1 5 2 4 "*" N/A -1 N/A#0 \"\" \"2\""* ]]
+  [[ ${lines[3]}  == *" A blacklisted.ftl 127.0.0.1 5 2 4 "*" N/A 5 N/A#0 \"\" \"2\""* ]]
   [[ ${lines[4]}  == *" A gravity.ftl 127.0.0.1 1 2 4 "*" N/A -1 N/A#0 \"\" \"3\""* ]]
   [[ ${lines[5]}  == *" A gravity.ftl 127.0.0.1 1 2 4 "*" N/A -1 N/A#0 \"\" \"4\""* ]]
-  [[ ${lines[6]}  == *" A whitelisted.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"5\""* ]]
-  [[ ${lines[7]}  == *" A gravity-whitelisted.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"6\""* ]]
+  [[ ${lines[6]}  == *" A whitelisted.ftl 127.0.0.1 2 2 4 "*" N/A 1 127.0.0.1#5555 \"\" \"5\""* ]]
+  [[ ${lines[7]}  == *" A gravity-whitelisted.ftl 127.0.0.1 2 2 4 "*" N/A 4 127.0.0.1#5555 \"\" \"6\""* ]]
   [[ ${lines[8]}  == *" A regex5.ftl 127.0.0.1 4 2 4 "*" N/A 6 N/A#0 \"\" \"7\""* ]]
   [[ ${lines[9]}  == *" A regexa.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"8\""* ]]
-  [[ ${lines[10]} == *" A regex1.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"9\""* ]]
-  [[ ${lines[11]} == *" A regex2.ftl 127.0.0.1 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"10\""* ]]
+  [[ ${lines[10]} == *" A regex1.ftl 127.0.0.1 2 2 4 "*" N/A 2 127.0.0.1#5555 \"\" \"9\""* ]]
+  [[ ${lines[11]} == *" A regex2.ftl 127.0.0.1 2 2 4 "*" N/A 3 127.0.0.1#5555 \"\" \"10\""* ]]
   [[ ${lines[12]} == *" A whitelisted.ftl 127.0.0.2 1 2 4 "*" N/A -1 N/A#0 \"\" \"11\""* ]]
   [[ ${lines[13]} == *" A regex1.ftl 127.0.0.2 4 2 4 "*" N/A 6 N/A#0 \"\" \"12\""* ]]
-  [[ ${lines[14]} == *" A regex1.ftl 127.0.0.1 3 2 4 "*" N/A -1 N/A#0 \"\" \"13\""* ]]
+  [[ ${lines[14]} == *" A regex1.ftl 127.0.0.1 3 2 4 "*" N/A 2 N/A#0 \"\" \"13\""* ]]
   [[ ${lines[15]} == *" A regex1.ftl 127.0.0.3 3 2 4 "*" N/A -1 N/A#0 \"\" \"14\""* ]]
   [[ ${lines[16]} == *" A blacklisted.ftl 127.0.0.2 2 2 4 "*" N/A -1 127.0.0.1#5555 \"\" \"15\""* ]]
   [[ ${lines[17]} == *" A blacklisted.ftl 127.0.0.3 3 2 4 "*" N/A -1 N/A#0 \"\" \"16\""* ]]

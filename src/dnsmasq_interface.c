@@ -1089,7 +1089,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		return false;
 
 	// Check domains against exact blacklist
-	enum db_result blacklist = in_blacklist(domain, client);
+	enum db_result blacklist = in_blacklist(domain, dns_cache, client);
 	if(blacklist == FOUND)
 	{
 		// Set new status
@@ -1158,8 +1158,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 
 	// Check domain against blacklist regex filters
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
-	int regex_idx = 0;
-	if((regex_idx = match_regex(domain, dns_cache, client->id, REGEX_BLACKLIST, false)) > -1)
+	if(in_regex(domain, dns_cache, client-> id, REGEX_BLACKLIST) == FOUND)
 	{
 		// Set new status
 		*new_status = QUERY_REGEX;
@@ -1167,14 +1166,13 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 
 		// Mark domain as regex matched for this client
 		set_dnscache_blockingstatus(dns_cache, client, REGEX_BLOCKED, domain);
-		dns_cache->black_regex_idx = regex_idx;
 
 		// Regex may be overwriting reply type for this domain
 		if(dns_cache->force_reply != REPLY_UNKNOWN)
 			force_next_DNS_reply = dns_cache->force_reply;
 
 		// Store ID of this regex (fork-private)
-		last_regex_idx = regex_idx;
+		last_regex_idx = dns_cache->domainlist_id;
 
 		// We block this domain
 		return true;
@@ -1330,7 +1328,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			if(!query->flags.whitelisted)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
-				last_regex_idx = dns_cache->black_regex_idx;
+				last_regex_idx = dns_cache->domainlist_id;
 				query_blocked(query, domain, client, QUERY_REGEX);
 				return true;
 			}
@@ -1413,6 +1411,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 	// Check whitelist (exact + regex) for match
 	query->flags.whitelisted = in_whitelist(domainstr, dns_cache, client) == FOUND;
+
+	if(!query->flags.whitelisted)
+		query->flags.whitelisted = in_regex(domainstr, dns_cache, client->id, REGEX_WHITELIST) == FOUND;
 
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;
@@ -1589,7 +1590,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 			// Propagate ID of responsible regex up from the child to the parent domain
 			if(parent_cache != NULL && child_cache != NULL)
 			{
-				child_cache->black_regex_idx = parent_cache->black_regex_idx;
+				child_cache->domainlist_id = parent_cache->domainlist_id;
 			}
 
 			// Set status
