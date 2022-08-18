@@ -34,10 +34,16 @@ void __attribute__((alloc_size(2))) *FTLrealloc(void *ptr_in, const size_t size,
 	// an incoming signal
 	while(ptr_out == NULL && errno == EINTR);
 
+	// Backup errno value
+	const int _errno = errno;
+
 	// Handle other errors than EINTR
 	if(ptr_out == NULL)
 		logg("FATAL: Memory reallocation (%p -> %zu) failed in %s() (%s:%i)",
 		     ptr_in, size, func, file, line);
+
+	// Restore errno value
+	errno = _errno;
 
 	return ptr_out;
 }
