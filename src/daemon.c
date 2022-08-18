@@ -123,17 +123,6 @@ static void removepid(void)
 		return;
 	}
 	fclose(f);
-
-	// We also try to remove the file. We still empty the file above
-	// to ensure it is at least empty when it cannot be removed.
-	// because removing files on Linux is actually unlinking them.
-	// If any processes still have the file open, it will remain
-	// in existence until the last file descriptor referring to
-	// it is closed.
-	if(remove(FTLfiles.pid) != 0)
-	{
-		logg("WARNING: Unable to remove PID file: %s", strerror(errno));
-	}
 }
 
 char *getUserName(void)

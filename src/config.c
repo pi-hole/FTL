@@ -691,7 +691,7 @@ void read_FTLconf(void)
 	// defaults to: DROP
 	buffer = parse_FTLconf(fp, "REPLY_WHEN_BUSY");
 
-	if(buffer != NULL && strcasecmp(buffer, "ACCEPT") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "ALLOW") == 0)
 	{
 		config.reply_when_busy = BUSY_ALLOW;
 		logg("   REPLY_WHEN_BUSY: Permit queries when the database is busy");

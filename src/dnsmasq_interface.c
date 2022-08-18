@@ -1361,7 +1361,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			}
 
 			force_next_DNS_reply = dns_cache->force_reply;
-			query_blocked(query, domain, client, QUERY_CACHE);
+			query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 			return true;
 			break;
 
