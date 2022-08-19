@@ -1095,12 +1095,15 @@ void reply_query(int fd, time_t now)
       size_t nn = 0;
       
 #ifdef HAVE_DNSSEC
-      /* DNSSEC queries have a copy of the original query stashed. 
-	 The query MAY have got a good answer, and be awaiting
+      /* The query MAY have got a good answer, and be awaiting
 	 the results of further queries, in which case
 	 The Stash contains something else and we don't need to retry anyway. */
-      if ((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) && !forward->blocking_query)
+      if (forward->blocking_query)
+	return;
+      
+      if (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY))
 	{
+	  /* DNSSEC queries have a copy of the original query stashed. */
 	  blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
 	  nn = forward->stash_len;
 	  udp_size = daemon->edns_pktsz;
