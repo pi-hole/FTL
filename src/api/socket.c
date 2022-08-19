@@ -71,7 +71,7 @@ static int bind_to_telnet_socket(const enum telnet_type type, const char *stype)
 	if(socketdescriptor < 0)
 	{
 		logg("Error opening %s telnet socket: %s (%i)", stype, strerror(errno), errno);
-		exit(EXIT_FAILURE);
+		return -1;
 	}
 
 	const size_t addrlen = MAX(sizeof(struct sockaddr_un), MAX(sizeof(struct sockaddr_in), sizeof(struct sockaddr_in6)));
