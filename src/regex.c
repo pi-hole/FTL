@@ -475,7 +475,7 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 	return match_idx;
 }
 
-enum db_result in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, const enum regex_type regexid)
+bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, const enum regex_type regexid)
 {
 	// For performance reasons, the regex evaluations is executed only if the
 	// exact whitelist lookup does not deliver a positive match. This is an
@@ -487,10 +487,10 @@ enum db_result in_regex(const char *domain, DNSCacheData *dns_cache, const int c
 	{
 		// We found a match
 		dns_cache->domainlist_id = regex_id;
-		return FOUND;
+		return true;
 	}
 
-	return NOT_FOUND;
+	return false;
 }
 
 static void free_regex(void)

@@ -272,14 +272,14 @@ size_t addstr(const char *input)
 	return (shmSettings->next_str_pos - len);
 }
 
-const char *getstr(const size_t pos)
+const char *_getstr(const size_t pos, const char *func, const int line, const char *file)
 {
 	// Only access the string memory if this memory region has already been set
 	if(pos < shmSettings->next_str_pos)
 		return &((const char*)shm_strings.ptr)[pos];
 	else
 	{
-		logg("WARN: Tried to access %zu but next_str_pos is %u", pos, shmSettings->next_str_pos);
+		logg("WARN: Tried to access %zu in %s() (%s:%i) but next_str_pos is %u", pos, func, file, line, shmSettings->next_str_pos);
 		return "";
 	}
 }
@@ -337,7 +337,7 @@ static void remap_shm(void)
 }
 
 // Obtain SHMEM lock
-void _lock_shm(const char* func, const int line, const char * file)
+void _lock_shm(const char *func, const int line, const char *file)
 {
 	if(config.debug & DEBUG_LOCKS)
 		logg("Waiting for SHM lock in %s() (%s:%i)", func, file, line);

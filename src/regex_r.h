@@ -44,7 +44,7 @@ typedef struct {
 } regexData;
 
 unsigned int get_num_regex(const enum regex_type regexid) __attribute__((pure));
-enum db_result in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, const enum regex_type regexid);
+bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, const enum regex_type regexid);
 void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void reload_per_client_regex(clientsData *client);
 void read_regex_from_database(void);

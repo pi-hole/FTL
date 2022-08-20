@@ -1158,7 +1158,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 
 	// Check domain against blacklist regex filters
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
-	if(in_regex(domain, dns_cache, client-> id, REGEX_BLACKLIST) == FOUND)
+	if(in_regex(domain, dns_cache, client-> id, REGEX_BLACKLIST))
 	{
 		// Set new status
 		*new_status = QUERY_REGEX;
@@ -1409,11 +1409,12 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	domainstr = strdup(domainstr);
 	const char *blockedDomain = domainstr;
 
-	// Check whitelist (exact + regex) for match
+	// Check exact whitelist for match
 	query->flags.whitelisted = in_whitelist(domainstr, dns_cache, client) == FOUND;
 
+	// If not found: Check regex whitelist for match
 	if(!query->flags.whitelisted)
-		query->flags.whitelisted = in_regex(domainstr, dns_cache, client->id, REGEX_WHITELIST) == FOUND;
+		query->flags.whitelisted = in_regex(domainstr, dns_cache, client->id, REGEX_WHITELIST);
 
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;
