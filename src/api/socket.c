@@ -263,7 +263,6 @@ void listen_telnet(const enum telnet_type type)
 	for(unsigned int i = 0; i < MAX_API_THREADS; i++)
 	{
 		// Spawn telnet thread
-		pthread_t telnet_connection_thread;
 		// Create a private copy of the socket fd for the child thread
 		struct thread_info *tinfo = calloc(1, sizeof(struct thread_info));
 		if(!tinfo)
@@ -273,7 +272,7 @@ void listen_telnet(const enum telnet_type type)
 		tinfo->tid = i;
 		tinfo->istelnet = (type == TELNETv4 || type == TELNETv6);
 		tinfo->stype = stype;
-		if(pthread_create(&telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) tinfo) != 0)
+		if(pthread_create(&api_threads[i], &attr, telnet_connection_handler_thread, (void*) tinfo) != 0)
 		{
 			// Log the error code description
 			logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
