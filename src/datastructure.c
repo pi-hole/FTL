@@ -319,13 +319,13 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		}
 }
 
-int findCacheID(int domainID, int clientID, enum query_types query_type)
+int _findCacheID(int domainID, int clientID, enum query_types query_type, const char *func, int line, const char *file)
 {
 	// Compare content of client against known client IP addresses
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Get cache pointer
-		DNSCacheData* dns_cache = getDNSCache(cacheID, true);
+		DNSCacheData* dns_cache = _getDNSCache(cacheID, true, line, func, file);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(dns_cache == NULL)
@@ -343,7 +343,7 @@ int findCacheID(int domainID, int clientID, enum query_types query_type)
 	const int cacheID = counters->dns_cache_size;
 
 	// Get client pointer
-	DNSCacheData* dns_cache = getDNSCache(cacheID, false);
+	DNSCacheData* dns_cache = _getDNSCache(cacheID, false, line, func, file);
 
 	if(dns_cache == NULL)
 	{
@@ -563,7 +563,7 @@ static const char *query_status_str[QUERY_STATUS_MAX] = {
 	"SPECIAL_DOMAIN"
 };
 
-void _query_set_status(queriesData *query, const enum query_status new_status, const char *file, const int line)
+void _query_set_status(queriesData *query, const enum query_status new_status, const char *func, const int line, const char *file)
 {
 	// Debug logging
 	if(config.debug & DEBUG_STATUS)
@@ -571,14 +571,14 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str[query->status] : "INVALID";
 		if(query->status == new_status)
 		{
-			logg("Query %i: status unchanged: %s (%d) in %s:%i",
-			     query->id, oldstr, query->status, short_path(file), line);
+			logg("Query %i: status unchanged: %s (%d) in %s() (%s:%i)",
+			     query->id, oldstr, query->status, func, short_path(file), line);
 		}
 		else
 		{
 			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str[new_status] : "INVALID";
-			logg("Query %i: status changed: %s (%d) -> %s (%d) in %s:%i",
-			     query->id, oldstr, query->status, newstr, new_status, short_path(file), line);
+			logg("Query %i: status changed: %s (%d) -> %s (%d) in %s() (%s:%i)",
+			     query->id, oldstr, query->status, newstr, new_status, func, short_path(file), line);
 		}
 	}
 
