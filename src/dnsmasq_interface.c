@@ -1249,7 +1249,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	}
 
 	// Get cache pointer
-	unsigned int cacheID = findCacheID(domainID, clientID, query->type);
+	unsigned int cacheID = findCacheID(domainID, clientID, query->type, true);
 	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 	if(dns_cache == NULL)
 	{
@@ -1581,8 +1581,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		else if(query->status == QUERY_REGEX)
 		{
 			// Get parent and child DNS cache entries
-			const int parent_cacheID = findCacheID(parent_domainID, clientID, query->type);
-			const int child_cacheID = findCacheID(child_domainID, clientID, query->type);
+			const int parent_cacheID = findCacheID(parent_domainID, clientID, query->type, false);
+			const int child_cacheID = findCacheID(child_domainID, clientID, query->type, false);
 
 			// Get cache pointers
 			DNSCacheData *parent_cache = getDNSCache(parent_cacheID, true);

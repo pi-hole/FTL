@@ -319,7 +319,7 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		}
 }
 
-int _findCacheID(int domainID, int clientID, enum query_types query_type, const char *func, int line, const char *file)
+int _findCacheID(const int domainID, const int clientID, const enum query_types query_type, const bool create_new, const char *func, int line, const char *file)
 {
 	// Compare content of client against known client IP addresses
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
@@ -338,6 +338,9 @@ int _findCacheID(int domainID, int clientID, enum query_types query_type, const 
 			return cacheID;
 		}
 	}
+
+	if(!create_new)
+		return -1;
 
 	// Get ID of new cache entry
 	const int cacheID = counters->dns_cache_size;

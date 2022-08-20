@@ -1012,7 +1012,7 @@ void getAllQueries(const char *client_message, const int sock, const bool isteln
 		int domainlist_id = -1;
 		if (config.privacylevel < PRIVACY_HIDE_DOMAINS)
 		{
-			unsigned int cacheID = findCacheID(query->domainID, query->clientID, query->type);
+			unsigned int cacheID = findCacheID(query->domainID, query->clientID, query->type, false);
 			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 			if(dns_cache != NULL)
 				domainlist_id = dns_cache->domainlist_id;

@@ -373,7 +373,7 @@ int DB_save_queries(sqlite3 *db)
 			sqlite3_bind_null(query_stmt, 7);
 		}
 
-		const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
+		const int cacheID = findCacheID(query->domainID, query->clientID, query->type, false);
 		DNSCacheData *cache = getDNSCache(cacheID, true);
 
 		// ADDITIONAL_INFO
@@ -933,7 +933,7 @@ void DB_read_queries(void)
 			// Set ID of the domainlist entry that was the reason for permitting/blocking this query
 			// We assume the value in this field is said ID when it is not a CNAME-related domain
 			// (checked above) and the value of additional_info is not NULL (0 bytes storage size)
-			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
+			const int cacheID = findCacheID(query->domainID, query->clientID, query->type, true);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			// Only load if
 			//  a) we have a cache entry

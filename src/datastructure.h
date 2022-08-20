@@ -113,8 +113,8 @@ int findQueryID(const int id);
 int findUpstreamID(const char * upstream, const in_port_t port);
 int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count, const bool aliasclient);
-#define findCacheID(domainID, clientID, query_type) _findCacheID(domainID, clientID, query_type, __FUNCTION__, __LINE__, __FILE__)
-int _findCacheID(int domainID, int clientID, enum query_types query_type, const char *func, const int line, const char *file);
+#define findCacheID(domainID, clientID, query_type, create_new) _findCacheID(domainID, clientID, query_type, create_new, __FUNCTION__, __LINE__, __FILE__)
+int _findCacheID(const int domainID, const int clientID, const enum query_types query_type, const bool create_new, const char *func, const int line, const char *file);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 
