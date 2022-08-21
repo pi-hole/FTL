@@ -319,6 +319,13 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	goto reply;
       /* table full - flags == 0, return REFUSED */
       
+      /* Keep copy of query if we're doing fast retry. */
+      if (daemon->fast_retry_time != 0)
+	{
+	  forward->stash = blockdata_alloc((char *)header, plen);
+	  forward->stash_len = plen;
+	}
+      
       forward->frec_src.log_id = daemon->log_id;
       forward->frec_src.source = *udpaddr;
       forward->frec_src.orig_id = ntohs(header->id);
@@ -366,14 +373,14 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 #ifdef HAVE_DNSSEC
       /* If we've already got an answer to this query, but we're awaiting keys for validation,
 	 there's no point retrying the query, retry the key query instead...... */
-      if (forward->blocking_query)
+      while (forward->blocking_query)
+	forward = forward->blocking_query;
+
+      if (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY))
 	{
 	  int is_sign;
 	  unsigned char *pheader;
 	  
-	  while (forward->blocking_query)
-	    forward = forward->blocking_query;
-
 	  /* log_id should match previous DNSSEC query. */
 	  daemon->log_display_id = forward->frec_src.log_id;
 	  
@@ -563,7 +570,11 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
     }
   
   if (forwarded || is_dnssec)
-    return 1;
+    {
+      if (daemon->fast_retry_time != 0)
+	forward->forward_timestamp = dnsmasq_milliseconds();
+      return 1;
+    }
   
   /* could not send on, prepare to return */ 
   header->id = htons(forward->frec_src.orig_id);
@@ -600,6 +611,64 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
     }
 	  
   return 0;
+}
+
+/* Check if any frecs need to do a retry, and action that if so. 
+   Return time in milliseconds until he next retyr will be required,
+   or -1 if none. */
+int fast_retry(time_t now)
+{
+  struct frec *f;
+  int ret = -1;
+  
+  if (daemon->fast_retry_time != 0)
+    {
+      u32 millis = dnsmasq_milliseconds();
+      
+      for (f = daemon->frec_list; f; f = f->next)
+	if (f->sentto && f->stash && difftime(now, f->time) < TIMEOUT)
+	  {
+#ifdef HAVE_DNSSEC
+	    if (f->blocking_query)
+	      continue;
+#endif
+	    /* t is milliseconds since last query sent. */ 
+	    int to_run, t = (int)(millis - f->forward_timestamp);
+	    
+	    if (t < daemon->fast_retry_time)
+	      to_run = daemon->fast_retry_time - t;
+	    else
+	      {
+		unsigned char *udpsz;
+		unsigned short udp_size =  PACKETSZ; /* default if no EDNS0 */
+		struct dns_header *header = (struct dns_header *)daemon->packet;
+		
+		/* packet buffer overwritten */
+		daemon->srv_save = NULL;
+		
+		blockdata_retrieve(f->stash, f->stash_len, (void *)header);
+		
+		/* UDP size already set in saved query. */
+		if (find_pseudoheader(header, f->stash_len, NULL, &udpsz, NULL, NULL))
+		  GETSHORT(udp_size, udpsz);
+		
+		daemon->log_display_id = f->frec_src.log_id;
+		
+		if (option_bool(OPT_LOG))
+		  my_syslog(LOG_INFO, _("fast retry"), NULL);
+		
+		forward_query(-1, NULL, NULL, 0, header, f->stash_len, ((char *) header) + udp_size, now, f,
+			      f->flags & FREC_AD_QUESTION, f->flags & FREC_DO_QUESTION);
+
+		to_run = daemon->fast_retry_time;
+	      }
+
+	    if (ret == -1 || ret > to_run)
+	      ret = to_run;
+	  }
+      
+    }
+  return ret;
 }
 
 static struct ipsets *domain_find_sets(struct ipsets *setlist, const char *domain) {
@@ -990,6 +1059,8 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  /* Save query for retransmission and de-dup */
 		  new->stash = blockdata_alloc((char *)header, nn);
 		  new->stash_len = nn;
+		  if (daemon->fast_retry_time != 0)
+		    new->forward_timestamp = dnsmasq_milliseconds();
 		  
 		  /* Don't resend this. */
 		  daemon->srv_save = NULL;
@@ -1107,7 +1178,7 @@ void reply_query(int fd, time_t now)
   if (daemon->ignore_addr && RCODE(header) == NOERROR &&
       check_for_ignored_address(header, n))
     return;
-
+  
   /* Note: if we send extra options in the EDNS0 header, we can't recreate
      the query from the reply. */
   if ((RCODE(header) == REFUSED || RCODE(header) == SERVFAIL) &&
@@ -1138,34 +1209,46 @@ void reply_query(int fd, time_t now)
       else
 #endif
 	{
-	  /* recreate query from reply */
-	  if ((pheader = find_pseudoheader(header, (size_t)n, &plen, &udpsz, &is_sign, NULL)))
-	    GETSHORT(udp_size, udpsz);
-	  
-	  /* If the client provides an EDNS0 UDP size, use that to limit our reply.
-	     (bounded by the maximum configured). If no EDNS0, then it
-	     defaults to 512 */
-	  if (udp_size > daemon->edns_pktsz)
-	    udp_size = daemon->edns_pktsz;
-	  else if (udp_size < PACKETSZ)
-	    udp_size = PACKETSZ; /* Sanity check - can't reduce below default. RFC 6891 6.2.3 */
-	  
-	  if (!is_sign &&
-	      (nn = resize_packet(header, (size_t)n, pheader, plen)) &&
-	      (forward->flags & FREC_DO_QUESTION))
-	    add_do_bit(header, nn,  (unsigned char *)pheader + plen);
-
-	  header->ancount = htons(0);
-	  header->nscount = htons(0);
-	  header->arcount = htons(0);
-	  header->hb3 &= ~(HB3_QR | HB3_AA | HB3_TC);
-	  header->hb4 &= ~(HB4_RA | HB4_RCODE | HB4_CD | HB4_AD);
-	  if (forward->flags & FREC_CHECKING_DISABLED)
-	    header->hb4 |= HB4_CD;
-	  if (forward->flags & FREC_AD_QUESTION)
-	    header->hb4 |= HB4_AD;
+	  /* in fast retry mode, we have a copy of the query. */
+	  if (daemon->fast_retry_time != 0 && forward->stash)
+	    {
+	      blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
+	      nn = forward->stash_len;
+	      /* UDP size already set in saved query. */
+	      if (find_pseudoheader(header, (size_t)n, NULL, &udpsz, NULL, NULL))
+		GETSHORT(udp_size, udpsz);
+	    }
+	  else
+	    {
+	      /* recreate query from reply */
+	      if ((pheader = find_pseudoheader(header, (size_t)n, &plen, &udpsz, &is_sign, NULL)))
+		GETSHORT(udp_size, udpsz);
+	      
+	      /* If the client provides an EDNS0 UDP size, use that to limit our reply.
+		 (bounded by the maximum configured). If no EDNS0, then it
+		 defaults to 512 */
+	      if (udp_size > daemon->edns_pktsz)
+		udp_size = daemon->edns_pktsz;
+	      else if (udp_size < PACKETSZ)
+		udp_size = PACKETSZ; /* Sanity check - can't reduce below default. RFC 6891 6.2.3 */
+	      
+	      if (!is_sign &&
+		  (nn = resize_packet(header, (size_t)n, pheader, plen)) &&
+		  (forward->flags & FREC_DO_QUESTION))
+		add_do_bit(header, nn,  (unsigned char *)pheader + plen);
+	      
+	      header->ancount = htons(0);
+	      header->nscount = htons(0);
+	      header->arcount = htons(0);
+	      header->hb3 &= ~(HB3_QR | HB3_AA | HB3_TC);
+	      header->hb4 &= ~(HB4_RA | HB4_RCODE | HB4_CD | HB4_AD);
+	      if (forward->flags & FREC_CHECKING_DISABLED)
+		header->hb4 |= HB4_CD;
+	      if (forward->flags & FREC_AD_QUESTION)
+		header->hb4 |= HB4_AD;
+	    }
 	}
-
+      
       if (nn)
 	{
 	  forward_query(-1, NULL, NULL, 0, header, nn, ((char *) header) + udp_size, now, forward,
@@ -2644,13 +2727,13 @@ static void free_frec(struct frec *f)
   f->sentto = NULL;
   f->flags = 0;
 
-#ifdef HAVE_DNSSEC
   if (f->stash)
     {
       blockdata_free(f->stash);
       f->stash = NULL;
     }
-
+  
+#ifdef HAVE_DNSSEC
   /* Anything we're waiting on is pointless now, too */
   if (f->blocking_query)
     {

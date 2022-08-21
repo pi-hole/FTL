@@ -186,6 +186,7 @@ struct myoption {
 #define LOPT_CONF_OPT      373
 #define LOPT_CONF_SCRIPT   374
 #define LOPT_RANDPORT_LIM  375
+#define LOPT_FAST_RETRY    376
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -372,6 +373,7 @@ static const struct myoption opts[] =
     { "umbrella", 2, 0, LOPT_UMBRELLA },
     { "quiet-tftp", 0, 0, LOPT_QUIET_TFTP },
     { "port-limit", 1, 0, LOPT_RANDPORT_LIM },
+    { "fast-dns-retry", 1, 0, LOPT_FAST_RETRY },
     { NULL, 0, 0, 0 }
   };
 
@@ -450,6 +452,7 @@ static struct {
   { LOPT_MAXTTL, ARG_ONE, "<integer>", gettext_noop("Specify time-to-live in seconds for maximum TTL to send to clients."), NULL },
   { LOPT_MAXCTTL, ARG_ONE, "<integer>", gettext_noop("Specify time-to-live ceiling for cache."), NULL },
   { LOPT_MINCTTL, ARG_ONE, "<integer>", gettext_noop("Specify time-to-live floor for cache."), NULL },
+  { LOPT_FAST_RETRY, ARG_ONE, "<milliseconds>", gettext_noop("Retry DNS queries after this many milliseconds."), NULL},
   { 'u', ARG_ONE, "<username>", gettext_noop("Change to this user after startup. (defaults to %s)."), CHUSER }, 
   { 'U', ARG_DUP, "set:<tag>,<class>", gettext_noop("Map DHCP vendor class to tag."), NULL },
   { 'v', 0, NULL, gettext_noop("Display dnsmasq version and copyright information."), NULL },
@@ -3226,6 +3229,15 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  daemon->local_ttl = (unsigned long)ttl;
 	break;
       }
+
+    case LOPT_FAST_RETRY:
+      {
+	int retry;
+      	if (!atoi_check(arg, &retry) || retry < 500)
+	  ret_err(gen_err);
+	daemon->fast_retry_time = retry;
+	break;
+      }
       
 #ifdef HAVE_DHCP
     case 'X': /* --dhcp-lease-max */
@@ -5507,7 +5519,7 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->soa_retry = SOA_RETRY;
   daemon->soa_expiry = SOA_EXPIRY;
   daemon->randport_limit = 1;
-  
+    
 #ifndef NO_ID
   add_txt("version.bind", "dnsmasq-" VERSION, 0 );
   add_txt("authors.bind", "Simon Kelley", 0);

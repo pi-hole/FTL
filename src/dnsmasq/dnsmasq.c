@@ -1068,19 +1068,20 @@ int main_dnsmasq (int argc, char **argv)
   
   while (!terminate)
     {
-      int timeout = -1;
+      int timeout = fast_retry(now);
       
       poll_reset();
       
       /* Whilst polling for the dbus, or doing a tftp transfer, wake every quarter second */
-      if (daemon->tftp_trans ||
-	  (option_bool(OPT_DBUS) && !daemon->dbus))
+      if ((daemon->tftp_trans || (option_bool(OPT_DBUS) && !daemon->dbus)) &&
+	  (timeout == -1 || timeout > 250))
 	timeout = 250;
-
+      
       /* Wake every second whilst waiting for DAD to complete */
-      else if (is_dad_listeners())
+      else if (is_dad_listeners() &&
+	       (timeout == -1 || timeout > 1000))
 	timeout = 1000;
-
+      
       set_dns_listeners();
 
 #ifdef HAVE_DBUS

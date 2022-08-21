@@ -767,11 +767,12 @@ struct frec {
   unsigned short new_id;
   int forwardall, flags;
   time_t time;
+  u32 forward_timestamp;
   unsigned char *hash[HASH_SIZE];
-#ifdef HAVE_DNSSEC 
-  int class, work_counter;
   struct blockdata *stash; /* Saved reply, whilst we validate */
   size_t stash_len;
+#ifdef HAVE_DNSSEC 
+  int class, work_counter;
   struct frec *dependent; /* Query awaiting internally-generated DNSKEY or DS query */
   struct frec *next_dependent; /* list of above. */
   struct frec *blocking_query; /* Query which is blocking us. */
@@ -1196,6 +1197,7 @@ extern struct daemon {
   int dump_mask;
   unsigned long soa_sn, soa_refresh, soa_retry, soa_expiry;
   u32 metrics[__METRIC_MAX];
+  int fast_retry_time;
 #ifdef HAVE_DNSSEC
   struct ds_config *ds;
   char *timestamp_file;
@@ -1433,6 +1435,7 @@ int hostname_order(const char *a, const char *b);
 int hostname_isequal(const char *a, const char *b);
 int hostname_issubdomain(char *a, char *b);
 time_t dnsmasq_time(void);
+u32 dnsmasq_milliseconds(void);
 int netmask_length(struct in_addr mask);
 int is_same_net(struct in_addr a, struct in_addr b, struct in_addr mask);
 int is_same_net_prefix(struct in_addr a, struct in_addr b, int prefix);
@@ -1492,6 +1495,7 @@ int send_from(int fd, int nowild, char *packet, size_t len,
 void resend_query(void);
 int allocate_rfd(struct randfd_list **fdlp, struct server *serv);
 void free_rfds(struct randfd_list **fdlp);
+int fast_retry(time_t now);
 
 /* network.c */
 int indextoname(int fd, int index, char *name);

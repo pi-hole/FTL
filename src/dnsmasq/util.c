@@ -457,6 +457,15 @@ time_t dnsmasq_time(void)
 #endif
 }
 
+u32 dnsmasq_milliseconds(void)
+{
+  struct timeval tv;
+
+  gettimeofday(&tv, NULL);
+
+  return (tv.tv_sec) * 1000 + (tv.tv_usec / 1000);
+}
+
 int netmask_length(struct in_addr mask)
 {
   int zero_count = 0;
