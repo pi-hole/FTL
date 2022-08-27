@@ -18,7 +18,7 @@
 extern unsigned char* pihole_privacylevel;
 enum protocol { TCP, UDP, INTERNAL };
 
-void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line);
+void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line);
 
 #define FTL_iface(iface, addr, addrfamily) _FTL_iface(iface, addr, addrfamily, __FILE__, __LINE__)
 void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_family_t addrfamily, const char* file, const int line);
