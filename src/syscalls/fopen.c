@@ -15,7 +15,7 @@
 static uint8_t already_writing = 0;
 
 #undef fopen
-FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const char *func, const int line)
+FILE * __attribute__ ((__malloc__)) FTLfopen(const char *pathname, const char *mode, const char *file, const char *func, const int line)
 {
 	FILE *file_ptr = 0;
 	do
