@@ -773,11 +773,16 @@ void DB_read_queries(void)
 		}
 		const enum query_status status = status_int;
 
-		const char * domainname = (const char *)sqlite3_column_text(stmt, 4);
+		const char *domainname = (const char *)sqlite3_column_text(stmt, 4);
 		if(domainname == NULL)
 		{
 			logg("DB warn: DOMAIN should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
+		}
+		if(!domainname[0])
+		{
+			// Substitute "." for the root zone (stored as empty domain in earlier FTL versions)
+			domainname = ".";
 		}
 
 		const char * clientIP = (const char *)sqlite3_column_text(stmt, 5);
