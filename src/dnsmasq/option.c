@@ -187,6 +187,7 @@ struct myoption {
 #define LOPT_CONF_SCRIPT   374
 #define LOPT_RANDPORT_LIM  375
 #define LOPT_FAST_RETRY    376
+#define LOPT_STALE_CACHE   377
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -374,6 +375,7 @@ static const struct myoption opts[] =
     { "quiet-tftp", 0, 0, LOPT_QUIET_TFTP },
     { "port-limit", 1, 0, LOPT_RANDPORT_LIM },
     { "fast-dns-retry", 1, 0, LOPT_FAST_RETRY },
+    { "use-stale-cache", 0, 0 , LOPT_STALE_CACHE },
     { NULL, 0, 0, 0 }
   };
 
@@ -431,6 +433,7 @@ static struct {
   { 'M', ARG_DUP, "<bootp opts>", gettext_noop("Specify BOOTP options to DHCP server."), NULL },
   { 'n', OPT_NO_POLL, NULL, gettext_noop("Do NOT poll %s file, reload only on SIGHUP."), RESOLVFILE }, 
   { 'N', OPT_NO_NEG, NULL, gettext_noop("Do NOT cache failed search results."), NULL },
+  { LOPT_STALE_CACHE, OPT_STALE_CACHE, NULL, gettext_noop("Use expired cache data for faster reply."), NULL },
   { 'o', OPT_ORDER, NULL, gettext_noop("Use nameservers strictly in the order given in %s."), RESOLVFILE },
   { 'O', ARG_DUP, "<optspec>", gettext_noop("Specify options to be sent to DHCP clients."), NULL },
   { LOPT_FORCE, ARG_DUP, "<optspec>", gettext_noop("DHCP option sent even if the client does not request it."), NULL},

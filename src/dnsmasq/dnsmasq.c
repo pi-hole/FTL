@@ -2052,9 +2052,6 @@ static void check_dns_listeners(time_t now)
 	      FTL_TCP_worker_terminating(true);
 	      /**********************************************/
 
-	      shutdown(confd, SHUT_RDWR);
-	      close(confd);
-	      
 	      if (buff)
 		free(buff);
 	      

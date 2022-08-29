@@ -286,7 +286,8 @@ struct event_desc {
 #define OPT_FILTER_AAAA    68
 #define OPT_STRIP_ECS      69
 #define OPT_STRIP_MAC      70
-#define OPT_LAST           71
+#define OPT_STALE_CACHE    71
+#define OPT_LAST           72
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -520,6 +521,7 @@ struct crec {
 #define F_DOMAINSRV (1u<<28)
 #define F_RCODE     (1u<<29)
 #define F_SRV       (1u<<30)
+#define F_STALE     (1u<<31)
 
 #define UID_NONE      0
 /* Values of uid in crecs with F_CONFIG bit set. */
@@ -1369,7 +1371,8 @@ void report_addresses(struct dns_header *header, size_t len, u32 mark);
 #endif
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
-		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader);
+		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader,
+		      int *stale);
 int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name, 
 			     time_t now);
 int check_for_ignored_address(struct dns_header *header, size_t qlen);
