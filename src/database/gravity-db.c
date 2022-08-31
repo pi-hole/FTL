@@ -22,6 +22,7 @@
 // SQLite3 prepared statement vectors
 #include "../vector.h"
 // log_subnet_warning()
+// logg_inaccessible_adlist
 #include "message-table.h"
 // getMACfromIP()
 #include "network-table.h"
@@ -1406,4 +1407,43 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 	free(querystr);
 
 	return true;
+}
+
+void check_inaccessible_adlists(void){
+
+	// check if any adlist was inaccessible in the last gravity run
+	// if so, gravity stored `status` in the adlist table with
+	// "3": List unavailable, Pi-hole used a local copy
+	// "4": List unavailable, there is no local copy available 
+
+	// Do not proceed when database is not available
+	if(!gravityDB_opened && !gravityDB_open())
+	{
+		logg("check_inaccessible_adlists(): Gravity database not available");
+		return;
+	}
+
+	const char *querystr = "SELECT id, address FROM adlist WHERE status IN (3,4)";
+	
+	// Prepare query
+	sqlite3_stmt *query_stmt;
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &query_stmt, NULL);
+	if(rc != SQLITE_OK){
+		logg("check_inaccessible_adlists(): %s - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
+		gravityDB_close();
+		return;
+	}
+
+    // Perform query
+    while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
+    {
+        int id = sqlite3_column_int(query_stmt, 0);
+        const char *address = strdup((const char*)sqlite3_column_text(query_stmt, 1));
+
+        // log to the message table
+        logg_inaccessible_adlist(id, address);
+    }
+
+    // Finalize statement
+    sqlite3_finalize(query_stmt);
 }
