@@ -1423,7 +1423,7 @@ void check_inaccessible_adlists(void){
 		return;
 	}
 
-	const char *querystr = "SELECT id, address FROM adlist WHERE status IN (3,4)";
+	const char *querystr = "SELECT id, address FROM adlist WHERE status IN (3,4) AND enabled=1";
 	
 	// Prepare query
 	sqlite3_stmt *query_stmt;
