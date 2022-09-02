@@ -73,6 +73,7 @@ static void check_pihole_PTR(char *domain);
 #define query_set_dnssec(query, dnssec) _query_set_dnssec(query, dnssec, __FILE__, __LINE__)
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line);
 static char *get_ptrname(struct in_addr *addr);
+static const char *check_dnsmasq_name(const char *name);
 
 // Static blocking metadata
 static const char *blockingreason = "";
@@ -96,23 +97,18 @@ static union mysockaddr last_server = {{ 0 }};
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
 
-void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
+void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
 {
 	// Extract filename from path
 	const char *path = short_path(file);
 	if(config.debug & DEBUG_FLAGS)
 	{
-		logg("Processing FTL hook from %s:%d...", path, line);
+		logg("Processing FTL hook from %s:%d (name: \"%s\")...", path, line, name);
 		print_flags(flags);
 	}
 
-	// Special domain name handling
-	// 1. Substitute "(NULL)" if no name is available (should not happen)
-	// 2. Substitute "." if we are querying the root domain (e.g. DNSKEY)
-	if(!name)
-		name = (char*)"(NULL)";
-	else if(!name[0])
-		name = (char*)".";
+	// Check domain name received from dnsmasq
+	name = check_dnsmasq_name(name);
 
 	// Note: The order matters here!
 	if((flags & F_QUERY) && (flags & F_FORWARD))
@@ -512,6 +508,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			querytype = TYPE_OTHER;
 			break;
 	}
+
+	// Check domain name received from dnsmasq
+	name = check_dnsmasq_name(name);
 
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
@@ -1361,7 +1360,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			}
 
 			force_next_DNS_reply = dns_cache->force_reply;
-			query_blocked(query, domain, client, QUERY_CACHE);
+			query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 			return true;
 			break;
 
@@ -3339,4 +3338,17 @@ int check_struct_sizes(void)
 		printf("All okay\n");
 
 	return result;
+}
+
+static const char *check_dnsmasq_name(const char *name)
+{
+	// Special domain name handling
+	if(!name)
+		// 1. Substitute "(NULL)" if no name is available (should not happen)
+		return "(NULL)";
+	else if(!name[0])
+		// 2. Substitute "." if we are querying the root domain (e.g. DNSKEY)
+		return ".";
+	// else
+	return name;
 }
