@@ -203,7 +203,7 @@ void icmp6_packet(time_t now)
       int opt_sz;
       
 #ifdef HAVE_DUMPFILE
-      dump_packet(DUMP_RA, (void *)packet, sz, (union mysockaddr *)&from, NULL, -1);
+      dump_packet_icmp(DUMP_RA, (void *)packet, sz, (union mysockaddr *)&from, NULL);
 #endif           
       
       /* look for link-layer address option for logging */
@@ -560,7 +560,7 @@ static void send_ra_alias(time_t now, int iface, char *iface_name, struct in6_ad
     }
   
 #ifdef HAVE_DUMPFILE
-  dump_packet(DUMP_RA, (void *)daemon->outpacket.iov_base, save_counter(-1), NULL, (union mysockaddr *)&addr, -1);
+  dump_packet_icmp(DUMP_RA, (void *)daemon->outpacket.iov_base, save_counter(-1), NULL, (union mysockaddr *)&addr);
 #endif
 
   while (retry_send(sendto(daemon->icmp6fd, daemon->outpacket.iov_base, 

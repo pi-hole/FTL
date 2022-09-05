@@ -1843,8 +1843,10 @@ int do_arp_script_run(void);
 /* dump.c */
 #ifdef HAVE_DUMPFILE
 void dump_init(void);
-void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src,
-		 union mysockaddr *dst, int port);
+void dump_packet_udp(int mask, void *packet, size_t len, union mysockaddr *src,
+		     union mysockaddr *dst, int fd);
+void dump_packet_icmp(int mask, void *packet, size_t len, union mysockaddr *src,
+		      union mysockaddr *dst);
 #endif
 
 /* domain-match.c */

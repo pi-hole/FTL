@@ -2214,7 +2214,7 @@ int relay_upstream6(int iface_index, ssize_t sz,
 	  fromsock.in6.sin6_flowinfo = 0;
 	  fromsock.in6.sin6_scope_id = 0;
 	  
-	  dump_packet(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), &fromsock, &to, 0);
+	  dump_packet_udp(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), &fromsock, &to, -1);
 	}
 #endif
 	send_from(daemon->dhcp6fd, 0, daemon->outpacket.iov_base, save_counter(-1), &to, &from, 0);

@@ -520,7 +520,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  if (errno == 0)
 	    {
 #ifdef HAVE_DUMPFILE
-	      dump_packet(DUMP_UP_QUERY, (void *)header, plen, NULL, &srv->addr, daemon->port);
+	      dump_packet_udp(DUMP_UP_QUERY, (void *)header, plen, NULL, &srv->addr, fd);
 #endif
 	      
 	      /* Keep info in case we want to re-send this packet */
@@ -861,8 +861,8 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 				       NULL, NULL, NULL);
 #ifdef HAVE_DUMPFILE
       if (STAT_ISEQUAL(status, STAT_BOGUS))
-	dump_packet((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_BOGUS : DUMP_BOGUS,
-		    header, (size_t)plen, &forward->sentto->addr, NULL, daemon->port);
+	dump_packet_udp((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_BOGUS : DUMP_BOGUS,
+			header, (size_t)plen, &forward->sentto->addr, NULL, -daemon->port);
 #endif
     }
   
@@ -972,13 +972,13 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		    set_outgoing_mark(orig, fd);
 #endif
 		  
+		  server_send(server, fd, header, nn, 0);
+		  server->queries++;
 #ifdef HAVE_DUMPFILE
-		  dump_packet(DUMP_SEC_QUERY, (void *)header, (size_t)nn, NULL, &server->addr, daemon->port);
+		  dump_packet_udp(DUMP_SEC_QUERY, (void *)header, (size_t)nn, NULL, &server->addr, fd);
 #endif
 		  log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, daemon->keyname, &server->addr,
 				       STAT_ISEQUAL(status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
-		  server_send(server, fd, header, nn, 0);
-		  server->queries++;
 		  return;
 		}
 	      
@@ -1067,16 +1067,16 @@ void reply_query(int fd, time_t now)
   if (difftime(now, server->pktsz_reduced) > UDP_TEST_TIME)
     server->edns_pktsz = daemon->edns_pktsz;
 
-#ifdef HAVE_DUMPFILE
-  dump_packet((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_REPLY : DUMP_UP_REPLY,
-	      (void *)header, n, &serveraddr, NULL, daemon->port);
-#endif
-
   /* log_query gets called indirectly all over the place, so 
      pass these in global variables - sorry. */
   daemon->log_display_id = forward->frec_src.log_id;
   daemon->log_source_addr = &forward->frec_src.source;
   
+#ifdef HAVE_DUMPFILE
+  dump_packet_udp((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_REPLY : DUMP_UP_REPLY,
+		  (void *)header, n, &serveraddr, NULL, fd);
+#endif
+
   if (daemon->ignore_addr && RCODE(header) == NOERROR &&
       check_for_ignored_address(header, n))
     return;
@@ -1273,7 +1273,7 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 	  header->id = htons(src->orig_id);
 	  
 #ifdef HAVE_DUMPFILE
-	  dump_packet(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source, daemon->port);
+	  dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source, src->fd);
 #endif
 	  
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
@@ -1601,7 +1601,7 @@ void receive_query(struct listener *listen, time_t now)
   daemon->log_source_addr = &source_addr;
 
 #ifdef HAVE_DUMPFILE
-  dump_packet(DUMP_QUERY, daemon->packet, (size_t)n, &source_addr, NULL, daemon->port);
+  dump_packet_udp(DUMP_QUERY, daemon->packet, (size_t)n, &source_addr, NULL, listen->fd);
 #endif
   
 #ifdef HAVE_CONNTRACK
@@ -1695,7 +1695,7 @@ void receive_query(struct listener *listen, time_t now)
       if (m >= 1)
 	{
 #ifdef HAVE_DUMPFILE
-	  dump_packet(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, daemon->port);
+	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
 #endif
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
 		    (char *)header, m, &source_addr, &dst_addr, if_index);
@@ -1711,7 +1711,7 @@ void receive_query(struct listener *listen, time_t now)
       if (m >= 1)
 	{
 #ifdef HAVE_DUMPFILE
-	  dump_packet(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, daemon->port);
+	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
 #endif
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
 	  if (local_auth)
@@ -1767,7 +1767,7 @@ void receive_query(struct listener *listen, time_t now)
       if (m >= 1)
 	{
 #ifdef HAVE_DUMPFILE
-	  dump_packet(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, daemon->port);
+	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
 #endif
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
 	  if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))

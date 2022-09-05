@@ -119,8 +119,8 @@ void dhcp6_packet(time_t now)
     return;
   
 #ifdef HAVE_DUMPFILE
-  dump_packet(DUMP_DHCPV6, (void *)daemon->dhcp_packet.iov_base, sz,
-	      (union mysockaddr *)&from, NULL, DHCPV6_SERVER_PORT);
+  dump_packet_udp(DUMP_DHCPV6, (void *)daemon->dhcp_packet.iov_base, sz,
+		  (union mysockaddr *)&from, NULL, daemon->dhcp6fd);
 #endif
   
   for (cmptr = CMSG_FIRSTHDR(&msg); cmptr; cmptr = CMSG_NXTHDR(&msg, cmptr))
@@ -142,8 +142,8 @@ void dhcp6_packet(time_t now)
   if (relay_reply6(&from, sz, ifr.ifr_name))
     {
 #ifdef HAVE_DUMPFILE
-      dump_packet(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), NULL,
-		  (union mysockaddr *)&from, DHCPV6_SERVER_PORT);
+      dump_packet_udp(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), NULL,
+		      (union mysockaddr *)&from, daemon->dhcp6fd);
 #endif
       
       while (retry_send(sendto(daemon->dhcp6fd, daemon->outpacket.iov_base, 
@@ -254,8 +254,8 @@ void dhcp6_packet(time_t now)
 	  from.sin6_port = htons(port);
 	  
 #ifdef HAVE_DUMPFILE
-	  dump_packet(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1),
-		      NULL, (union mysockaddr *)&from, DHCPV6_SERVER_PORT);
+	  dump_packet_udp(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1),
+			  NULL, (union mysockaddr *)&from, daemon->dhcp6fd);
 #endif 
 	  
 	  while (retry_send(sendto(daemon->dhcp6fd, daemon->outpacket.iov_base,
