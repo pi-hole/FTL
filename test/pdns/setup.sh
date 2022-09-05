@@ -65,6 +65,7 @@ pdnsutil add-record ftl. regex-REPLYv4 AAAA fe80::2c01
 pdnsutil add-record ftl. regex-REPLYv6 AAAA fe80::2c02
 pdnsutil add-record ftl. regex-REPLYv46 AAAA fe80::2c03
 pdnsutil add-record ftl. any AAAA fe80::3c01
+pdnsutil add-record ftl. gravity-aaaa AAAA fe80::4c01
 
 # Create CNAME records
 pdnsutil add-record ftl. cname-1 CNAME gravity.ftl
@@ -78,6 +79,10 @@ pdnsutil add-record ftl. cname-ok CNAME a.ftl
 
 # Create CNAME for SOA test domain
 pdnsutil add-record ftl. soa CNAME ftl
+
+# Create CNAME for NODATA tests
+pdnsutil add-record ftl. aaaa-cname CNAME gravity-aaaa.ftl
+pdnsutil add-record ftl. a-cname CNAME gravity.ftl
 
 # Create PTR records
 pdnsutil add-record ftl. ptr PTR ptr.ftl.
