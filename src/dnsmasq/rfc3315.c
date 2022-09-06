@@ -2181,10 +2181,7 @@ int relay_upstream6(int iface_index, ssize_t sz,
     if (relay->iface_index != 0 && relay->iface_index == iface_index)
       {
 	union mysockaddr to;
-	union all_addr from;
-	
-	/* source address == relay address */
-	from.addr6 = relay->local.addr6;
+
 	memcpy(&header[2], &relay->local.addr6, IN6ADDRSZ);
 	
 	to.sa.sa_family = AF_INET6;
@@ -2206,18 +2203,11 @@ int relay_upstream6(int iface_index, ssize_t sz,
 	  }
 	
 #ifdef HAVE_DUMPFILE
-	{
-	  union mysockaddr fromsock;
-	  fromsock.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
-	  fromsock.in6.sin6_addr = from.addr6;
-	  fromsock.sa.sa_family = AF_INET6;
-	  fromsock.in6.sin6_flowinfo = 0;
-	  fromsock.in6.sin6_scope_id = 0;
-	  
-	  dump_packet_udp(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), &fromsock, &to, -1);
-	}
+	dump_packet_udp(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), NULL, &to, daemon->dhcp6fd);
 #endif
-	send_from(daemon->dhcp6fd, 0, daemon->outpacket.iov_base, save_counter(-1), &to, &from, 0);
+
+	while (retry_send(sendto(daemon->dhcp6fd, (void *)daemon->outpacket.iov_base, save_counter(-1),
+				 0, (struct sockaddr *)&to, sa_len(&to))));
 	
 	if (option_bool(OPT_LOG_OPTS))
 	  {
