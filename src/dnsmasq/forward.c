@@ -654,9 +654,6 @@ int fast_retry(time_t now)
 		
 		daemon->log_display_id = f->frec_src.log_id;
 		
-		if (option_bool(OPT_LOG))
-		  my_syslog(LOG_INFO, _("fast retry"), NULL);
-		
 		forward_query(-1, NULL, NULL, 0, header, f->stash_len, ((char *) header) + udp_size, now, f,
 			      f->flags & FREC_AD_QUESTION, f->flags & FREC_DO_QUESTION);
 
