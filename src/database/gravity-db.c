@@ -1409,7 +1409,8 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 	return true;
 }
 
-void check_inaccessible_adlists(void){
+void check_inaccessible_adlists(void)
+{
 
 	// check if any adlist was inaccessible in the last gravity run
 	// if so, gravity stored `status` in the adlist table with
@@ -1434,16 +1435,16 @@ void check_inaccessible_adlists(void){
 		return;
 	}
 
-    // Perform query
-    while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
-    {
-        int id = sqlite3_column_int(query_stmt, 0);
-        const char *address = strdup((const char*)sqlite3_column_text(query_stmt, 1));
+	// Perform query
+	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
+	{
+		int id = sqlite3_column_int(query_stmt, 0);
+		const char *address = (const char*)sqlite3_column_text(query_stmt, 1);
 
-        // log to the message table
-        logg_inaccessible_adlist(id, address);
-    }
+		// log to the message table
+		logg_inaccessible_adlist(id, address);
+	}
 
-    // Finalize statement
-    sqlite3_finalize(query_stmt);
+	// Finalize statement
+	sqlite3_finalize(query_stmt);
 }
