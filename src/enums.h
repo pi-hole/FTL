@@ -209,7 +209,8 @@ enum message_type {
 	LOAD_MESSAGE,
 	SHMEM_MESSAGE,
 	DISK_MESSAGE,
-	MAX_MESSAGE
+	INACCESSIBLE_ADLIST_MESSAGE,
+	MAX_MESSAGE,
 } __attribute__ ((packed));
 
 enum ptr_type {

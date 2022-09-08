@@ -1776,6 +1776,7 @@ void FTL_dnsmasq_reload(void)
 	// Gravity database updates
 	// - (Re-)open gravity database connection
 	// - Get number of blocked domains
+	// - check adlist table for inaccessible adlists
 	// - Read and compile regex filters (incl. per-client)
 	// - Flush FTL's DNS cache
 	set_event(RELOAD_GRAVITY);
