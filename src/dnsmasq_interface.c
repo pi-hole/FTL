@@ -1474,13 +1474,10 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 }
 
 
-bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line)
+bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file, const int line)
 {
 	if(config.debug & DEBUG_QUERIES)
-	{
-		const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
-		logg("FTL_CNAME called with: src = %s, dst = %s, id = %d", src, domain, id);
-	}
+		logg("FTL_CNAME called with: src = %s, dst = %s, id = %d", src, dst, id);
 
 	// Does the user want to skip deep CNAME inspection?
 	if(!config.cname_inspection)
@@ -1492,10 +1489,6 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 	// Lock shared memory
 	lock_shm();
-
-	// Get CNAME destination and source (if applicable)
-	const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
-	const char *dst = domain;
 
 	// Save status and upstreamID in corresponding query identified by dnsmasq's ID
 	const int queryID = findQueryID(id);
@@ -1534,7 +1527,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 	// child_domain = Intermediate domain in CNAME path
 	// This is the domain which was queried later in this chain
-	char *child_domain = strdup(domain);
+	char *child_domain = strdup(dst);
 	// Convert to lowercase for matching
 	strtolower(child_domain);
 	const int child_domainID = findDomainID(child_domain, false);
@@ -1603,12 +1596,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 	// Debug logging for deep CNAME inspection (if enabled)
 	if(config.debug & DEBUG_QUERIES)
-	{
-		if(src == NULL)
-			logg("Query %d: CNAME %s", id, dst);
-		else
-			logg("Query %d: CNAME %s ---> %s", id, src, dst);
-	}
+		logg("Query %d: CNAME %s ---> %s", id, src, dst);
 
 	// Return result
 	free(child_domain);
@@ -2641,8 +2629,7 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 	if(config.debug & DEBUG_QUERIES)
 	{
 		const char *path = short_path(file);
-		logg("Set reply to %s (%d) in %s:%d", get_query_reply_str(query->reply), query->reply,
-		     path, line);
+		logg("Set reply to %s (%d) in %s:%d", get_query_reply_str(new_reply), new_reply, path, line);
 		if(query->reply != REPLY_UNKNOWN && query->reply != new_reply)
 			logg("Reply of query %i was %s now changing to %s", query->id,
 			     get_query_reply_str(query->reply), get_query_reply_str(new_reply));

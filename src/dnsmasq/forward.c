@@ -624,6 +624,9 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   int munged = 0, is_sign;
   unsigned int rcode = RCODE(header);
   size_t plen; 
+  /******** Pi-hole modification ********/
+  unsigned char *pheader_copy = NULL;
+  /**************************************/
     
   (void)ad_reqd;
   (void)do_bit;
@@ -762,6 +765,16 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       if (ret == 2)
 	{
 	  cache_secure = 0;
+	  // Make a private copy of the pheader to ensure
+	  // we are not accidentially rewriting what is in
+	  // the pheader when we're creating a crafted reply
+	  // further below (when a query is to be blocked)
+	  if (pheader)
+	  {
+	    pheader_copy = calloc(1, plen);
+	    memcpy(pheader_copy, pheader, plen);
+	  }
+
 	  // Generate DNS packet for reply, a possibly existing pseudo header
 	  // will be restored later inside resize_packet()
 	  n = FTL_make_answer(header, ((char *) header) + 65536, n, &ede);
@@ -813,7 +826,13 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   /* the bogus-nxdomain stuff, doctor and NXDOMAIN->NODATA munging can all elide
      sections of the packet. Find the new length here and put back pseudoheader
      if it was removed. */
-  n = resize_packet(header, n, pheader, plen);
+  n = resize_packet(header, n, pheader_copy ? pheader_copy : pheader, plen);
+  /******** Pi-hole modification ********/
+  // The line above was modified to use
+  // pheader_copy instead of pheader
+  if(pheader_copy)
+    free(pheader_copy);
+  /**************************************/
 
   if (pheader && ede != EDE_UNSET)
     {
