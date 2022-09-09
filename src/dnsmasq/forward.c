@@ -2579,12 +2579,12 @@ static int random_sock(struct server *s)
 	return fd;
 
       if (s->interface[0] == 0)
-	(void)prettyprint_addr(&s->source_addr, daemon->namebuff);
+	(void)prettyprint_addr(&s->source_addr, daemon->addrbuff);
       else
-	strcpy(daemon->namebuff, s->interface);
+	safe_strncpy(daemon->addrbuff, s->interface, ADDRSTRLEN);
 
       my_syslog(LOG_ERR, _("failed to bind server socket to %s: %s"),
-		daemon->namebuff, strerror(errno));
+		daemon->addrbuff, strerror(errno));
       close(fd);
     }
   
