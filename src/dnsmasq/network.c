@@ -1391,7 +1391,7 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifind
 	 or both are set. Otherwise use the OS's random ephemeral port allocation by
 	 leaving port == 0 and tries == 1 */
       ports_avail = daemon->max_port - daemon->min_port + 1;
-      tries =  (ports_avail < 30) ? ports_avail : 100;
+      tries =  (ports_avail < SMALL_PORT_RANGE) ? ports_avail : 100;
       port = htons(daemon->min_port + (rand16() % ports_avail));
     }
   
@@ -1421,7 +1421,7 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifind
 	return 0;
 
       /* For small ranges, do a systematic search, not a random one. */
-      if (ports_avail < 30)
+      if (ports_avail < SMALL_PORT_RANGE)
 	{
 	  unsigned short hport = ntohs(port);
 	  if (hport++ == daemon->max_port)

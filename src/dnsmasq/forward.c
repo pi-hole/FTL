@@ -2575,6 +2575,21 @@ static int random_sock(struct server *s)
 
   if ((fd = socket(s->source_addr.sa.sa_family, SOCK_DGRAM, 0)) != -1)
     {
+      /* We need to set IPV6ONLY so we can use the same ports
+	 for IPv4 and IPV6, otherwise, in restriced port situations,
+	 we can end up with all our available ports in use for 
+	 one address family, and the other address family cannot be used. */
+      if (s->source_addr.sa.sa_family == AF_INET6)
+	{
+	  int opt = 1;
+
+	  if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt)) == -1)
+	    {
+	      close(fd);
+	      return -1;
+	    }
+	}
+      
       if (local_bind(fd, &s->source_addr, s->interface, s->ifindex, 0))
 	return fd;
 
@@ -2619,9 +2634,22 @@ int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
 {
   static int finger = 0;
   int i, j = 0;
+  int ports_full = 0;
   struct randfd_list **up, *rfl, *found, **found_link;
   struct randfd *rfd = NULL;
   int fd = 0;
+  int ports_avail = 0;
+  
+  /* We can't have more randomsocks for this AF available than ports in  our port range,
+     so check that here, to avoid trying and failing to bind every port
+     in local_bind(), called from random_sock(). The actual check is below when 
+     ports_avail != 0 */
+  if (daemon->max_port != 0)
+    {
+      ports_avail = daemon->max_port - daemon->min_port + 1;
+      if (ports_avail >= SMALL_PORT_RANGE)
+	ports_avail = 0;
+    }
   
   /* If server has a pre-allocated fd, use that. */
   if (serv->sfd)
@@ -2647,22 +2675,38 @@ int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
       *fdlp = found;
       return found->rfd->fd;
     }
+
+  /* check for all available ports in use. */
+  if (ports_avail != 0)
+    {
+      int ports_inuse;
+
+      for (ports_inuse = 0, i = 0; i < daemon->numrrand; i++)
+	if (daemon->randomsocks[i].refcount != 0 &&
+	    daemon->randomsocks[i].serv->source_addr.sa.sa_family == serv->source_addr.sa.sa_family &&
+	    ++ports_inuse >= ports_avail)
+	  {
+	    ports_full = 1;
+	    break;
+	  }
+    }
   
   /* limit the number of sockets we have open to avoid starvation of 
      (eg) TFTP. Once we have a reasonable number, randomness should be OK */
-  for (i = 0; i < daemon->numrrand; i++)
-    if (daemon->randomsocks[i].refcount == 0)
-      {
-	if ((fd = random_sock(serv)) != -1)
-    	  {
-	    rfd = &daemon->randomsocks[i];
-	    rfd->serv = serv;
-	    rfd->fd = fd;
-	    rfd->refcount = 1;
-	  }
-	break;
-      }
-
+  if (!ports_full)
+    for (i = 0; i < daemon->numrrand; i++)
+      if (daemon->randomsocks[i].refcount == 0)
+	{
+	  if ((fd = random_sock(serv)) != -1)
+	    {
+	      rfd = &daemon->randomsocks[i];
+	      rfd->serv = serv;
+	      rfd->fd = fd;
+	      rfd->refcount = 1;
+	    }
+	  break;
+	}
+    
   /* No good existing. Need new link. */
   if ((rfl = daemon->rfl_spare))
     daemon->rfl_spare = rfl->next;
