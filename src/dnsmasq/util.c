@@ -364,6 +364,19 @@ int sockaddr_isequal(const union mysockaddr *s1, const union mysockaddr *s2)
   return 0;
 }
 
+int sockaddr_isnull(const union mysockaddr *s)
+{
+  if (s->sa.sa_family == AF_INET &&
+      s->in.sin_addr.s_addr == 0)
+    return 1;
+  
+  if (s->sa.sa_family == AF_INET6 &&
+      IN6_IS_ADDR_UNSPECIFIED(&s->in6.sin6_addr))
+    return 1;
+  
+  return 0;
+}
+
 int sa_len(union mysockaddr *addr)
 {
 #ifdef HAVE_SOCKADDR_SA_LEN

@@ -1434,6 +1434,7 @@ void *whine_malloc(size_t size);
 void *whine_realloc(void *ptr, size_t size);
 int sa_len(union mysockaddr *addr);
 int sockaddr_isequal(const union mysockaddr *s1, const union mysockaddr *s2);
+int sockaddr_isnull(const union mysockaddr *s);
 int hostname_order(const char *a, const char *b);
 int hostname_isequal(const char *a, const char *b);
 int hostname_issubdomain(char *a, char *b);

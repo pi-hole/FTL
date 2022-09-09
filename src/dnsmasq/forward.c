@@ -2578,13 +2578,18 @@ static int random_sock(struct server *s)
       if (local_bind(fd, &s->source_addr, s->interface, s->ifindex, 0))
 	return fd;
 
-      if (s->interface[0] == 0)
-	(void)prettyprint_addr(&s->source_addr, daemon->addrbuff);
-      else
-	safe_strncpy(daemon->addrbuff, s->interface, ADDRSTRLEN);
-
-      my_syslog(LOG_ERR, _("failed to bind server socket to %s: %s"),
-		daemon->addrbuff, strerror(errno));
+      /* don't log errors due to running out of available ports, we handle those. */
+      if (!sockaddr_isnull(&s->source_addr) || errno != EADDRINUSE)
+	{
+	  if (s->interface[0] == 0)
+	    (void)prettyprint_addr(&s->source_addr, daemon->addrbuff);
+	  else
+	    safe_strncpy(daemon->addrbuff, s->interface, ADDRSTRLEN);
+	  
+	  my_syslog(LOG_ERR, _("failed to bind server socket to %s: %s"),
+		    daemon->addrbuff, strerror(errno));
+	}
+	  
       close(fd);
     }
   
@@ -2658,16 +2663,6 @@ int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
 	break;
       }
 
-  /* We've hit the global limit on sockets before hitting the query limit,
-     use an exsiting socket as source in that case. */
-  if (!rfd && found)
-    {
-      *found_link = found->next;
-      found->next = *fdlp;
-      *fdlp = found;
-      return found->rfd->fd;
-    }
-  
   /* No good existing. Need new link. */
   if ((rfl = daemon->rfl_spare))
     daemon->rfl_spare = rfl->next;
@@ -2692,10 +2687,19 @@ int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
 	    server_isequal(serv, daemon->randomsocks[i].serv) &&
 	    daemon->randomsocks[i].refcount != 0xfffe)
 	  {
-	    finger = i + 1;
-	    rfd = &daemon->randomsocks[i];
-	    rfd->refcount++;
-	    break;
+	    struct randfd_list *rl;
+	    /* Don't pick one we already have. */
+	    for (rl = *fdlp; rl; rl = rl->next)
+	      if (rl->rfd == &daemon->randomsocks[i])
+		break;
+
+	    if (!rl)
+	      {
+		finger = i + 1;
+		rfd = &daemon->randomsocks[i];
+		rfd->refcount++;
+		break;
+	      }
 	  }
       }
 
