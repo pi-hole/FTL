@@ -410,19 +410,19 @@ static inline bool __attribute__ ((const)) is_term(void)
 }
 
 // Returns green [✓]
-const char __attribute__ ((const)) *cli_tick(void)
+const char __attribute__ ((const, pure)) *cli_tick(void)
 {
 	return is_term() ? "["COL_GREEN"✓"COL_NC"]" : "[✓]";
 }
 
 // Returns red [✗]
-const char __attribute__ ((const)) *cli_cross(void)
+const char __attribute__ ((const, pure)) *cli_cross(void)
 {
 	return is_term() ? "["COL_RED"✗"COL_NC"]" : "[✗]";
 }
 
 // Returns [i]
-const char __attribute__ ((const)) *cli_info(void)
+const char __attribute__ ((const, pure)) *cli_info(void)
 {
 	return is_term() ? COL_BOLD"[i]"COL_NC : "[i]";
 }
@@ -434,19 +434,19 @@ const char __attribute__ ((const)) *cli_qst(void)
 }
 
 // Returns green "done!""
-const char __attribute__ ((const)) *cli_done(void)
+const char __attribute__ ((const, pure)) *cli_done(void)
 {
 	return is_term() ? COL_GREEN"done!"COL_NC : "done!";
 }
 
 // Sets font to bold
-const char __attribute__ ((const)) *cli_bold(void)
+const char __attribute__ ((const, pure)) *cli_bold(void)
 {
 	return is_term() ? COL_BOLD : "";
 }
 
 // Resets font to normal
-const char __attribute__ ((const)) *cli_normal(void)
+const char __attribute__ ((const, pure)) *cli_normal(void)
 {
 	return is_term() ? COL_NC : "";
 }
