@@ -230,9 +230,17 @@ int is_rev_synth(int flag, union all_addr *addr, char *name)
 
 static int match_domain(struct in_addr addr, struct cond_domain *c)
 {
-  if (!c->is6 &&
-      ntohl(addr.s_addr) >= ntohl(c->start.s_addr) &&
-      ntohl(addr.s_addr) <= ntohl(c->end.s_addr))
+  if (c->interface)
+    {
+      struct addrlist *al;
+      for (al = c->al; al; al = al->next)
+	if (!(al->flags & ADDRLIST_IPV6) &&
+	    is_same_net_prefix(addr, al->addr.addr4, al->prefixlen))
+	  return 1;
+    }
+  else if (!c->is6 &&
+	   ntohl(addr.s_addr) >= ntohl(c->start.s_addr) &&
+	   ntohl(addr.s_addr) <= ntohl(c->end.s_addr))
     return 1;
 
   return 0;
@@ -259,12 +267,21 @@ char *get_domain(struct in_addr addr)
 
 static int match_domain6(struct in6_addr *addr, struct cond_domain *c)
 {
-  u64 addrpart = addr6part(addr);
-  
-  if (c->is6)
+    
+  /* subnet from interface address. */
+  if (c->interface)
+    {
+      struct addrlist *al;
+      for (al = c->al; al; al = al->next)
+	if (al->flags & ADDRLIST_IPV6 &&
+	    is_same_net6(addr, &al->addr.addr6, al->prefixlen))
+	  return 1;
+    }
+  else if (c->is6)
     {
       if (c->prefixlen >= 64)
 	{
+	  u64 addrpart = addr6part(addr);
 	  if (is_same_net6(addr, &c->start6, 64) &&
 	      addrpart >= addr6part(&c->start6) &&
 	      addrpart <= addr6part(&c->end6))
@@ -273,7 +290,7 @@ static int match_domain6(struct in6_addr *addr, struct cond_domain *c)
       else if (is_same_net6(addr, &c->start6, c->prefixlen))
 	return 1;
     }
-
+    
   return 0;
 }
 

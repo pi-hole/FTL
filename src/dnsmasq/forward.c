@@ -520,7 +520,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  if (errno == 0)
 	    {
 #ifdef HAVE_DUMPFILE
-	      dump_packet(DUMP_UP_QUERY, (void *)header, plen, NULL, &srv->addr, daemon->port);
+	      dump_packet_udp(DUMP_UP_QUERY, (void *)header, plen, NULL, &srv->addr, fd);
 #endif
 	      
 	      /* Keep info in case we want to re-send this packet */
@@ -537,8 +537,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		}
 #ifdef HAVE_DNSSEC
 	      else
-		log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, daemon->namebuff, &srv->addr,
-				     "dnssec-retry", (forward->flags & FREC_DNSKEY_QUERY) ? T_DNSKEY : T_DS);
+		log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, daemon->namebuff, &srv->addr,
+				     (forward->flags & FREC_DNSKEY_QUERY) ? "dnssec-retry[DNSKEY]" : "dnssec-retry[DS]", 0);
 #endif
 
 	      srv->queries++;
@@ -880,8 +880,8 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 				       NULL, NULL, NULL);
 #ifdef HAVE_DUMPFILE
       if (STAT_ISEQUAL(status, STAT_BOGUS))
-	dump_packet((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_BOGUS : DUMP_BOGUS,
-		    header, (size_t)plen, &forward->sentto->addr, NULL, daemon->port);
+	dump_packet_udp((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_BOGUS : DUMP_BOGUS,
+			header, (size_t)plen, &forward->sentto->addr, NULL, -daemon->port);
 #endif
     }
   
@@ -991,13 +991,13 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		    set_outgoing_mark(orig, fd);
 #endif
 		  
+		  server_send(server, fd, header, nn, 0);
+		  server->queries++;
 #ifdef HAVE_DUMPFILE
-		  dump_packet(DUMP_SEC_QUERY, (void *)header, (size_t)nn, NULL, &server->addr, daemon->port);
+		  dump_packet_udp(DUMP_SEC_QUERY, (void *)header, (size_t)nn, NULL, &server->addr, fd);
 #endif
 		  log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, daemon->keyname, &server->addr,
 				       STAT_ISEQUAL(status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
-		  server_send(server, fd, header, nn, 0);
-		  server->queries++;
 		  return;
 		}
 	      
@@ -1086,16 +1086,16 @@ void reply_query(int fd, time_t now)
   if (difftime(now, server->pktsz_reduced) > UDP_TEST_TIME)
     server->edns_pktsz = daemon->edns_pktsz;
 
-#ifdef HAVE_DUMPFILE
-  dump_packet((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_REPLY : DUMP_UP_REPLY,
-	      (void *)header, n, &serveraddr, NULL, daemon->port);
-#endif
-
   /* log_query gets called indirectly all over the place, so 
      pass these in global variables - sorry. */
   daemon->log_display_id = forward->frec_src.log_id;
   daemon->log_source_addr = &forward->frec_src.source;
   
+#ifdef HAVE_DUMPFILE
+  dump_packet_udp((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_REPLY : DUMP_UP_REPLY,
+		  (void *)header, n, &serveraddr, NULL, fd);
+#endif
+
   if (daemon->ignore_addr && RCODE(header) == NOERROR &&
       check_for_ignored_address(header, n))
     return;
@@ -1114,12 +1114,15 @@ void reply_query(int fd, time_t now)
       size_t nn = 0;
       
 #ifdef HAVE_DNSSEC
-      /* DNSSEC queries have a copy of the original query stashed. 
-	 The query MAY have got a good answer, and be awaiting
+      /* The query MAY have got a good answer, and be awaiting
 	 the results of further queries, in which case
 	 The Stash contains something else and we don't need to retry anyway. */
-      if ((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) && !forward->blocking_query)
+      if (forward->blocking_query)
+	return;
+      
+      if (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY))
 	{
+	  /* DNSSEC queries have a copy of the original query stashed. */
 	  blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
 	  nn = forward->stash_len;
 	  udp_size = daemon->edns_pktsz;
@@ -1185,6 +1188,13 @@ void reply_query(int fd, time_t now)
     }
 
   forward->sentto = server;
+
+  /* We have a good answer, and will now validate it or return it. 
+     It may be some time before this the validation completes, but we don't need
+     any more answers, so close the socket(s) on which we were expecting
+     answers, to conserve file descriptors, and to save work reading and
+     discarding answers for other upstreams. */
+  free_rfds(&forward->rfds);
   
 #ifdef HAVE_DNSSEC
   if ((forward->sentto->flags & SERV_DO_DNSSEC) && 
@@ -1292,7 +1302,7 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 	  header->id = htons(src->orig_id);
 	  
 #ifdef HAVE_DUMPFILE
-	  dump_packet(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source, daemon->port);
+	  dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source, src->fd);
 #endif
 	  
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
@@ -1620,7 +1630,7 @@ void receive_query(struct listener *listen, time_t now)
   daemon->log_source_addr = &source_addr;
 
 #ifdef HAVE_DUMPFILE
-  dump_packet(DUMP_QUERY, daemon->packet, (size_t)n, &source_addr, NULL, daemon->port);
+  dump_packet_udp(DUMP_QUERY, daemon->packet, (size_t)n, &source_addr, NULL, listen->fd);
 #endif
   
 #ifdef HAVE_CONNTRACK
@@ -1680,13 +1690,17 @@ void receive_query(struct listener *listen, time_t now)
 	
       /* If the client provides an EDNS0 UDP size, use that to limit our reply.
 	 (bounded by the maximum configured). If no EDNS0, then it
-	 defaults to 512 */
+	 defaults to 512. We write this value into the query packet too, so that
+	 if it's forwarded, we don't specify a maximum size greater than we can handle. */
       if (udp_size > daemon->edns_pktsz)
 	udp_size = daemon->edns_pktsz;
       else if (udp_size < PACKETSZ)
 	udp_size = PACKETSZ; /* Sanity check - can't reduce below default. RFC 6891 6.2.3 */
-    }
 
+      pheader -= 6; /* ext_class */
+      PUTSHORT(udp_size, pheader); /* Bounding forwarded queries to maximum configured */
+    }
+  
 #ifdef HAVE_CONNTRACK
 #ifdef HAVE_AUTH
   if (!auth_dns || local_auth)
@@ -1710,7 +1724,7 @@ void receive_query(struct listener *listen, time_t now)
       if (m >= 1)
 	{
 #ifdef HAVE_DUMPFILE
-	  dump_packet(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, daemon->port);
+	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
 #endif
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
 		    (char *)header, m, &source_addr, &dst_addr, if_index);
@@ -1726,7 +1740,7 @@ void receive_query(struct listener *listen, time_t now)
       if (m >= 1)
 	{
 #ifdef HAVE_DUMPFILE
-	  dump_packet(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, daemon->port);
+	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
 #endif
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
 	  if (local_auth)
@@ -1782,7 +1796,7 @@ void receive_query(struct listener *listen, time_t now)
       if (m >= 1)
 	{
 #ifdef HAVE_DUMPFILE
-	  dump_packet(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, daemon->port);
+	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
 #endif
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
 	  if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))

@@ -33,9 +33,9 @@ struct state {
   unsigned int mac_len, mac_type;
 };
 
-static int dhcp6_maybe_relay(struct state *state, void *inbuff, size_t sz, 
+static int dhcp6_maybe_relay(struct state *state, unsigned char *inbuff, size_t sz, 
 			     struct in6_addr *client_addr, int is_unicast, time_t now);
-static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_t sz, int is_unicast, time_t now);
+static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbuff, size_t sz, int is_unicast, time_t now);
 static void log6_opts(int nest, unsigned int xid, void *start_opts, void *end_opts);
 static void log6_packet(struct state *state, char *type, struct in6_addr *addr, char *string);
 static void log6_quiet(struct state *state, char *type, struct in6_addr *addr, char *string);
@@ -104,12 +104,12 @@ unsigned short dhcp6_reply(struct dhcp_context *context, int interface, char *if
 }
 
 /* This cost me blood to write, it will probably cost you blood to understand - srk. */
-static int dhcp6_maybe_relay(struct state *state, void *inbuff, size_t sz, 
+static int dhcp6_maybe_relay(struct state *state, unsigned char *inbuff, size_t sz, 
 			     struct in6_addr *client_addr, int is_unicast, time_t now)
 {
   void *end = inbuff + sz;
   void *opts = inbuff + 34;
-  int msg_type = *((unsigned char *)inbuff);
+  int msg_type = *inbuff;
   unsigned char *outmsgtypep;
   void *opt;
   struct dhcp_vendor *vendor;
@@ -259,15 +259,15 @@ static int dhcp6_maybe_relay(struct state *state, void *inbuff, size_t sz,
   return 1;
 }
 
-static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_t sz, int is_unicast, time_t now)
+static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbuff, size_t sz, int is_unicast, time_t now)
 {
   void *opt;
-  int i, o, o1, start_opts;
+  int i, o, o1, start_opts, start_msg;
   struct dhcp_opt *opt_cfg;
   struct dhcp_netid *tagif;
   struct dhcp_config *config = NULL;
   struct dhcp_netid known_id, iface_id, v6_id;
-  unsigned char *outmsgtypep;
+  unsigned char outmsgtype;
   struct dhcp_vendor *vendor;
   struct dhcp_context *context_tmp;
   struct dhcp_mac *mac_opt;
@@ -296,12 +296,13 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
   v6_id.next = state->tags;
   state->tags = &v6_id;
 
-  /* copy over transaction-id, and save pointer to message type */
-  if (!(outmsgtypep = put_opt6(inbuff, 4)))
+  start_msg = save_counter(-1);
+  /* copy over transaction-id */
+  if (!put_opt6(inbuff, 4))
     return 0;
   start_opts = save_counter(-1);
-  state->xid = outmsgtypep[3] | outmsgtypep[2] << 8 | outmsgtypep[1] << 16;
-   
+  state->xid = inbuff[3] | inbuff[2] << 8 | inbuff[1] << 16;
+    
   /* We're going to be linking tags from all context we use. 
      mark them as unused so we don't link one twice and break the list */
   for (context_tmp = state->context; context_tmp; context_tmp = context_tmp->current)
@@ -347,7 +348,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
       (msg_type == DHCP6REQUEST || msg_type == DHCP6RENEW || msg_type == DHCP6RELEASE || msg_type == DHCP6DECLINE))
     
     {  
-      *outmsgtypep = DHCP6REPLY;
+      outmsgtype = DHCP6REPLY;
       o1 = new_opt6(OPTION6_STATUS_CODE);
       put_opt6_short(DHCP6USEMULTI);
       put_opt6_string("Use multicast");
@@ -619,11 +620,11 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	struct dhcp_netid *solicit_tags;
 	struct dhcp_context *c;
 	
-	*outmsgtypep = DHCP6ADVERTISE;
+	outmsgtype = DHCP6ADVERTISE;
 	
 	if (opt6_find(state->packet_options, state->end, OPTION6_RAPID_COMMIT, 0))
 	  {
-	    *outmsgtypep = DHCP6REPLY;
+	    outmsgtype = DHCP6REPLY;
 	    state->lease_allocate = 1;
 	    o = new_opt6(OPTION6_RAPID_COMMIT);
 	    end_opt6(o);
@@ -809,7 +810,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	int start = save_counter(-1);
 
 	/* set reply message type */
-	*outmsgtypep = DHCP6REPLY;
+	outmsgtype = DHCP6REPLY;
 	state->lease_allocate = 1;
 
 	log6_quiet(state, "DHCPREQUEST", NULL, ignore ? _("ignored") : NULL);
@@ -924,7 +925,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	int address_assigned = 0;
 
 	/* set reply message type */
-	*outmsgtypep = DHCP6REPLY;
+	outmsgtype = DHCP6REPLY;
 	
 	log6_quiet(state, msg_type == DHCP6RENEW ? "DHCPRENEW" : "DHCPREBIND", NULL, NULL);
 
@@ -1057,7 +1058,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	int good_addr = 0;
 
 	/* set reply message type */
-	*outmsgtypep = DHCP6REPLY;
+	outmsgtype = DHCP6REPLY;
 	
 	log6_quiet(state, "DHCPCONFIRM", NULL, NULL);
 	
@@ -1121,7 +1122,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	log6_quiet(state, "DHCPINFORMATION-REQUEST", NULL, ignore ? _("ignored") : state->hostname);
 	if (ignore)
 	  return 0;
-	*outmsgtypep = DHCP6REPLY;
+	outmsgtype = DHCP6REPLY;
 	tagif = add_options(state, 1);
 	break;
       }
@@ -1130,7 +1131,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
     case DHCP6RELEASE:
       {
 	/* set reply message type */
-	*outmsgtypep = DHCP6REPLY;
+	outmsgtype = DHCP6REPLY;
 
 	log6_quiet(state, "DHCPRELEASE", NULL, NULL);
 
@@ -1195,7 +1196,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
     case DHCP6DECLINE:
       {
 	/* set reply message type */
-	*outmsgtypep = DHCP6REPLY;
+	outmsgtype = DHCP6REPLY;
 	
 	log6_quiet(state, "DHCPDECLINE", NULL, NULL);
 
@@ -1275,7 +1276,12 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
       }
 
     }
-  
+
+  /* Fill in the message type. Note that we store the offset,
+     not a direct pointer, since the packet memory may have been 
+     reallocated. */
+  ((unsigned char *)(daemon->outpacket.iov_base))[start_msg] = outmsgtype;
+
   log_tags(tagif, state->xid);
   log6_opts(0, state->xid, daemon->outpacket.iov_base + start_opts, daemon->outpacket.iov_base + save_counter(-1));
   
@@ -1873,23 +1879,24 @@ static void update_leases(struct state *state, struct dhcp_context *context, str
 #ifdef HAVE_SCRIPT
       if (daemon->lease_change_command)
 	{
-	  void *class_opt;
+	  void *opt;
+	  
 	  lease->flags |= LEASE_CHANGED;
 	  free(lease->extradata);
 	  lease->extradata = NULL;
 	  lease->extradata_size = lease->extradata_len = 0;
 	  lease->vendorclass_count = 0; 
 	  
-	  if ((class_opt = opt6_find(state->packet_options, state->end, OPTION6_VENDOR_CLASS, 4)))
+	  if ((opt = opt6_find(state->packet_options, state->end, OPTION6_VENDOR_CLASS, 4)))
 	    {
-	      void *enc_opt, *enc_end = opt6_ptr(class_opt, opt6_len(class_opt));
+	      void *enc_opt, *enc_end = opt6_ptr(opt, opt6_len(opt));
 	      lease->vendorclass_count++;
 	      /* send enterprise number first  */
-	      sprintf(daemon->dhcp_buff2, "%u", opt6_uint(class_opt, 0, 4));
+	      sprintf(daemon->dhcp_buff2, "%u", opt6_uint(opt, 0, 4));
 	      lease_add_extradata(lease, (unsigned char *)daemon->dhcp_buff2, strlen(daemon->dhcp_buff2), 0);
 	      
-	      if (opt6_len(class_opt) >= 6) 
-		for (enc_opt = opt6_ptr(class_opt, 4); enc_opt; enc_opt = opt6_next(enc_opt, enc_end))
+	      if (opt6_len(opt) >= 6) 
+		for (enc_opt = opt6_ptr(opt, 4); enc_opt; enc_opt = opt6_next(enc_opt, enc_end))
 		  {
 		    lease->vendorclass_count++;
 		    lease_add_extradata(lease, opt6_ptr(enc_opt, 0), opt6_len(enc_opt), 0);
@@ -1899,6 +1906,24 @@ static void update_leases(struct state *state, struct dhcp_context *context, str
 	  lease_add_extradata(lease, (unsigned char *)state->client_hostname, 
 			      state->client_hostname ? strlen(state->client_hostname) : 0, 0);				
 	  
+	  /* DNSMASQ_REQUESTED_OPTIONS */
+	  if ((opt = opt6_find(state->packet_options, state->end, OPTION6_ORO, 2)))
+	    {
+	      int i, len = opt6_len(opt)/2;
+	      u16 *rop = opt6_ptr(opt, 0);
+	      
+	      for (i = 0; i < len; i++)
+		lease_add_extradata(lease, (unsigned char *)daemon->namebuff,
+				    sprintf(daemon->namebuff, "%u", ntohs(rop[i])), (i + 1) == len ? 0 : ',');
+	    }
+	  else
+	    lease_add_extradata(lease, NULL, 0, 0);
+
+	  if ((opt = opt6_find(state->packet_options, state->end, OPTION6_MUD_URL, 1)))
+	    lease_add_extradata(lease, opt6_ptr(opt, 0), opt6_len(opt), 0);
+	  else
+	    lease_add_extradata(lease, NULL, 0, 0);
+
 	  /* space-concat tag set */
 	  if (!tagif && !context->netid.net)
 	    lease_add_extradata(lease, NULL, 0, 0);
@@ -1928,10 +1953,10 @@ static void update_leases(struct state *state, struct dhcp_context *context, str
 	  
 	  lease_add_extradata(lease, (unsigned char *)daemon->addrbuff, state->link_address ? strlen(daemon->addrbuff) : 0, 0);
 	  
-	  if ((class_opt = opt6_find(state->packet_options, state->end, OPTION6_USER_CLASS, 2)))
+	  if ((opt = opt6_find(state->packet_options, state->end, OPTION6_USER_CLASS, 2)))
 	    {
-	      void *enc_opt, *enc_end = opt6_ptr(class_opt, opt6_len(class_opt));
-	      for (enc_opt = opt6_ptr(class_opt, 0); enc_opt; enc_opt = opt6_next(enc_opt, enc_end))
+	      void *enc_opt, *enc_end = opt6_ptr(opt, opt6_len(opt));
+	      for (enc_opt = opt6_ptr(opt, 0); enc_opt; enc_opt = opt6_next(enc_opt, enc_end))
 		lease_add_extradata(lease, opt6_ptr(enc_opt, 0), opt6_len(enc_opt), 0);
 	    }
 	}
@@ -2156,15 +2181,12 @@ int relay_upstream6(int iface_index, ssize_t sz,
     if (relay->iface_index != 0 && relay->iface_index == iface_index)
       {
 	union mysockaddr to;
-	union all_addr from;
-	
-	/* source address == relay address */
-	from.addr6 = relay->local.addr6;
+
 	memcpy(&header[2], &relay->local.addr6, IN6ADDRSZ);
 	
 	to.sa.sa_family = AF_INET6;
 	to.in6.sin6_addr = relay->server.addr6;
-	to.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
+	to.in6.sin6_port = htons(relay->port);
 	to.in6.sin6_flowinfo = 0;
 	to.in6.sin6_scope_id = 0;
 	
@@ -2181,18 +2203,11 @@ int relay_upstream6(int iface_index, ssize_t sz,
 	  }
 	
 #ifdef HAVE_DUMPFILE
-	{
-	  union mysockaddr fromsock;
-	  fromsock.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
-	  fromsock.in6.sin6_addr = from.addr6;
-	  fromsock.sa.sa_family = AF_INET6;
-	  fromsock.in6.sin6_flowinfo = 0;
-	  fromsock.in6.sin6_scope_id = 0;
-	  
-	  dump_packet(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), &fromsock, &to, 0);
-	}
+	dump_packet_udp(DUMP_DHCPV6, (void *)daemon->outpacket.iov_base, save_counter(-1), NULL, &to, daemon->dhcp6fd);
 #endif
-	send_from(daemon->dhcp6fd, 0, daemon->outpacket.iov_base, save_counter(-1), &to, &from, 0);
+
+	while (retry_send(sendto(daemon->dhcp6fd, (void *)daemon->outpacket.iov_base, save_counter(-1),
+				 0, (struct sockaddr *)&to, sa_len(&to))));
 	
 	if (option_bool(OPT_LOG_OPTS))
 	  {
