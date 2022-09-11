@@ -102,7 +102,8 @@ void _unlock_log(const char* func, const int line, const char * file);
 bool init_shmem(bool create_new);
 void destroy_shmem(void);
 size_t addstr(const char *str);
-const char *getstr(const size_t pos);
+#define getstr(pos) _getstr(pos, __FUNCTION__, __LINE__, __FILE__)
+const char *_getstr(const size_t pos, const char *func, const int line, const char *file);
 
 /**
  * Escapes a string by replacing special characters, such as spaces

@@ -108,6 +108,9 @@ if [[ $RET != 0 ]]; then
   echo ""
   echo -n "ptr.log: "
   curl_to_tricorder ./ptr.log
+  echo ""getallqueries
+  echo -n "getallqueries.log: "
+  curl_to_tricorder ./getallqueries.log
   echo ""
 fi
 

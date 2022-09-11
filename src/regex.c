@@ -302,8 +302,8 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 	return true;
 }
 
-int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
-                const enum regex_type regexid, const bool regextest)
+static int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
+                       const enum regex_type regexid, const bool regextest)
 {
 	int match_idx = -1;
 	regexData *regex = get_regex_ptr(regexid);
@@ -473,6 +473,24 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 
 	// Return match_idx (-1 if there was no match)
 	return match_idx;
+}
+
+bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, const enum regex_type regexid)
+{
+	// For performance reasons, the regex evaluations is executed only if the
+	// exact whitelist lookup does not deliver a positive match. This is an
+	// optimization as the database lookup will most likely hit (a) more domains
+	// and (b) will be faster (given a sufficiently large number of regex
+	// whitelisting filters).
+	const int regex_id = match_regex(domain, dns_cache, clientID, regexid, false);
+	if(regex_id != -1)
+	{
+		// We found a match
+		dns_cache->domainlist_id = regex_id;
+		return true;
+	}
+
+	return false;
 }
 
 static void free_regex(void)
