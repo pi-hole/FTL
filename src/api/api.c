@@ -1008,7 +1008,7 @@ void getAllQueries(const char *client_message, const int sock, const bool isteln
 			CNAME_domain = getCNAMEDomainString(query);
 		}
 
-		// Get ID of blocking regex, if applicable and permitted by privacy settings
+		// Get domainlist table ID, if applicable and permitted by privacy settings
 		int domainlist_id = -1;
 		if (config.privacylevel < PRIVACY_HIDE_DOMAINS)
 		{

@@ -1204,7 +1204,6 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 	sqlite3_clear_bindings(stmt);
 
 	// Return if domain was found in current table
-	// SELECT EXISTS(...) either returns 0 (false) or 1 (true).
 	return (rc == SQLITE_ROW) ? FOUND : NOT_FOUND;
 }
 
