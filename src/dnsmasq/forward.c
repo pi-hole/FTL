@@ -614,7 +614,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 }
 
 /* Check if any frecs need to do a retry, and action that if so. 
-   Return time in milliseconds until he next retyr will be required,
+   Return time in milliseconds until he next retry will be required,
    or -1 if none. */
 int fast_retry(time_t now)
 {
@@ -1813,6 +1813,13 @@ void receive_query(struct listener *listen, time_t now)
       
       if (m >= 1)
 	{
+	  if (stale && have_pseudoheader)
+	    {
+	      u16 swap = htons(EDE_STALE);
+	      
+	      m = add_pseudoheader(header,  m,  ((unsigned char *) header) + udp_size, daemon->edns_pktsz,
+				   EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	    }
 #ifdef HAVE_DUMPFILE
 	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
 #endif
@@ -2530,6 +2537,12 @@ unsigned char *tcp_request(int confd, time_t now,
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 	    }
 	}
+      else if (stale)
+	 {
+	   u16 swap = htons((u16)EDE_STALE);
+	   
+	   m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	 }
       
       check_log_writer(1);
       
