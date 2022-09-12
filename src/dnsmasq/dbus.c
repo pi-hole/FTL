@@ -91,6 +91,9 @@ const char* introspection_xml_template =
 "    <method name=\"GetMetrics\">\n"
 "      <arg name=\"metrics\" direction=\"out\" type=\"a{su}\"/>\n"
 "    </method>\n"
+"    <method name=\"GetServerMetrics\">\n"
+"      <arg name=\"metrics\" direction=\"out\" type=\"a{ss}\"/>\n"
+"    </method>\n"
 "  </interface>\n"
 "</node>\n";
 
@@ -644,6 +647,56 @@ static DBusMessage *dbus_get_metrics(DBusMessage* message)
   return reply;
 }
 
+static void add_dict_entry(DBusMessageIter *container, const char *key, const char *val)
+{
+  DBusMessageIter dict;
+
+  dbus_message_iter_open_container(container, DBUS_TYPE_DICT_ENTRY, NULL, &dict);
+  dbus_message_iter_append_basic(&dict, DBUS_TYPE_STRING, &key);
+  dbus_message_iter_append_basic(&dict, DBUS_TYPE_STRING, &val);
+  dbus_message_iter_close_container(container, &dict);
+}
+
+static void add_dict_int(DBusMessageIter *container, const char *key, const unsigned int val)
+{
+  snprintf(daemon->namebuff, MAXDNAME, "%u", val);
+  
+  add_dict_entry(container, key, daemon->namebuff);
+}
+
+static DBusMessage *dbus_get_server_metrics(DBusMessage* message)
+{
+  DBusMessage *reply = dbus_message_new_method_return(message);
+  DBusMessageIter server_array, dict_array, dict, server_iter, dict_iter;
+  struct server *serv;
+  
+  dbus_message_iter_init_append(reply, &server_iter);
+  dbus_message_iter_open_container(&server_iter, DBUS_TYPE_ARRAY, "a{ss}", &server_array);
+  
+  for (serv = daemon->servers; serv; serv = serv->next)
+    {
+      unsigned int port;
+      
+      dbus_message_iter_open_container(&server_array, DBUS_TYPE_ARRAY, "{ss}", &dict_array);
+      
+      port = prettyprint_addr(&serv->addr, daemon->namebuff);
+      add_dict_entry(&dict_array, "address", daemon->namebuff);
+      
+      add_dict_int(&dict_array, "port", port);
+      add_dict_int(&dict_array, "queries", serv->queries);
+      add_dict_int(&dict_array, "failed_queries", serv->failed_queries);
+      
+      if (strlen(serv->domain) != 0)
+	add_dict_entry(&dict_array, "domain", serv->domain);
+      
+      dbus_message_iter_close_container(&server_array, &dict_array);
+    }
+
+  dbus_message_iter_close_container(&server_iter, &server_array);
+
+  return reply;
+}
+
 DBusHandlerResult message_handler(DBusConnection *connection, 
 				  DBusMessage *message, 
 				  void *user_data)
@@ -718,6 +771,10 @@ DBusHandlerResult message_handler(DBusConnection *connection,
   else if (strcmp(method, "GetMetrics") == 0)
     {
       reply = dbus_get_metrics(message);
+    }
+  else if (strcmp(method, "GetServerMetrics") == 0)
+    {
+      reply = dbus_get_server_metrics(message);
     }
   else if (strcmp(method, "ClearCache") == 0)
     clear_cache = 1;
