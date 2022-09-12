@@ -1898,7 +1898,7 @@ void receive_query(struct listener *listen, time_t now)
 #endif
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
 		    (char *)header, m, &source_addr, &dst_addr, if_index);
-	  daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+	  daemon->metrics[stale ? METRIC_DNS_STALE_ANSWERED : METRIC_DNS_LOCAL_ANSWERED]++;
 	}
       
       if (m == 0 || stale)
