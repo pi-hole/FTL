@@ -667,7 +667,7 @@ static void add_dict_int(DBusMessageIter *container, const char *key, const unsi
 static DBusMessage *dbus_get_server_metrics(DBusMessage* message)
 {
   DBusMessage *reply = dbus_message_new_method_return(message);
-  DBusMessageIter server_array, dict_array, dict, server_iter, dict_iter;
+  DBusMessageIter server_array, dict_array, server_iter;
   struct server *serv;
   
   dbus_message_iter_init_append(reply, &server_iter);
