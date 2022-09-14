@@ -27,7 +27,7 @@
 #include "../gc.h"
 
 static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT", "DNSMASQ_WARN", "LOAD", "SHMEM", "DISK" };
+	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT", "DNSMASQ_WARN", "LOAD", "SHMEM", "DISK", "ADLIST" };
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -93,6 +93,13 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_NULL, // Not used
 			SQLITE_NULL, // Not used
 			SQLITE_NULL  // Not used
+		},
+		{	// INACCESSIBLE_ADLIST_MESSAGE: The message column contains the corresponding adlist URL
+			SQLITE_INTEGER, // database index of the adlist (so the dashboard can show a link)
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
 		},
 	};
 // Create message table in the database
@@ -390,4 +397,13 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		logg("WARNING: Disk shortage (%s) ahead: %d%% is used (%s)", path, disk, msg);
 		add_message(DISK_MESSAGE, true, path, 2, disk, msg);
 	}
+}
+
+void logg_inaccessible_adlist(const int dbindex, const char *address)
+{
+	// Log to FTL.log
+	logg("Adlist warning: Adlist with ID %d (%s) was inaccessible during last gravity run", dbindex, address);
+
+	// Log to database
+	add_message(INACCESSIBLE_ADLIST_MESSAGE, false, address, 1, dbindex);
 }

@@ -1851,7 +1851,7 @@ static int zone_status(char *name, int class, char *keyname, time_t now)
    STAT_NEED_DS  need DS to complete validation (name is returned in keyname)
 
    daemon->rr_status points to a char array which corressponds to the RRs in the 
-   answer and auth sections. This is set to 1 for each RR which is validated, and 0 for any which aren't.
+   answer and auth sections. This is set to >1 for each RR which is validated, and 0 for any which aren't.
 
    When validating replies to DS records, we're only interested in the NSEC{3} RRs in the auth section.
    Other RRs in that section missing sigs will not cause am INSECURE reply. We determine this mode

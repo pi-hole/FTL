@@ -23,7 +23,7 @@
 
    The hash used is SHA-256. If we're building with DNSSEC support,
    we use the Nettle cypto library. If not, we prefer not to
-   add a dependency on Nettle, and use a stand-alone implementaion. 
+   add a dependency on Nettle, and use a stand-alone implementation. 
 */
 
 #include "dnsmasq.h"

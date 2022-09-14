@@ -677,6 +677,7 @@ struct resolvc {
   struct resolvc *next;
   int is_default, logged;
   time_t mtime;
+  ino_t ino;
   char *name;
 #ifdef HAVE_INOTIFY
   int wd; /* inotify watch descriptor */
@@ -987,6 +988,8 @@ struct dhcp_bridge {
 
 struct cond_domain {
   char *domain, *prefix; /* prefix is text-prefix on domain name */
+  char *interface;       /* These two set when domain comes from interface. */
+  struct addrlist *al;
   struct in_addr start, end;
   struct in6_addr start6, end6;
   int is6, indexed, prefixlen;
@@ -1094,6 +1097,7 @@ struct dhcp_relay {
   union all_addr local, server;
   char *interface; /* Allowable interface for replies from server, and dest for IPv6 multicast */
   int iface_index; /* working - interface in which requests arrived, for return */
+  int port;        /* Port of relay we forward to. */
 #ifdef HAVE_SCRIPT
   struct snoop_record {
     struct in6_addr client, prefix;
@@ -1421,6 +1425,7 @@ void *safe_malloc(size_t size);
 void safe_strncpy(char *dest, const char *src, size_t size);
 void safe_pipe(int *fd, int read_noblock);
 void *whine_malloc(size_t size);
+void *whine_realloc(void *ptr, size_t size);
 int sa_len(union mysockaddr *addr);
 int sockaddr_isequal(const union mysockaddr *s1, const union mysockaddr *s2);
 int hostname_order(const char *a, const char *b);
@@ -1838,8 +1843,10 @@ int do_arp_script_run(void);
 /* dump.c */
 #ifdef HAVE_DUMPFILE
 void dump_init(void);
-void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src,
-		 union mysockaddr *dst, int port);
+void dump_packet_udp(int mask, void *packet, size_t len, union mysockaddr *src,
+		     union mysockaddr *dst, int fd);
+void dump_packet_icmp(int mask, void *packet, size_t len, union mysockaddr *src,
+		      union mysockaddr *dst);
 #endif
 
 /* domain-match.c */

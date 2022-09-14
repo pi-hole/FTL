@@ -1683,10 +1683,8 @@ int cache_make_stat(struct txt_record *t)
 	      {
 		/* expand buffer if necessary */
 		newlen = bytes_needed + 1 + bufflen - bytes_avail;
-		if (!(new = whine_malloc(newlen)))
+		if (!(new = whine_realloc(buff, newlen)))
 		  return 0;
-		memcpy(new, buff, bufflen);
-		free(buff);
 		p = new + (p - buff);
 		lenp = p - 1;
 		buff = new;

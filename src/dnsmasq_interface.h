@@ -34,8 +34,8 @@ void FTL_forwarding_retried(const struct server *server, const int oldID, const 
 #define FTL_make_answer(header, limit, len, ede) _FTL_make_answer(header, limit, len, ede, __FILE__, __LINE__)
 size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede, const char* file, const int line);
 
-#define FTL_CNAME(domain, cpp, id) _FTL_CNAME(domain, cpp, id, __FILE__, __LINE__)
-bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line);
+#define FTL_CNAME(dst, src, id) _FTL_CNAME(dst, src, id, __FILE__, __LINE__)
+bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file, const int line);
 
 unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t qlen);
 void FTL_query_in_progress(const int id);

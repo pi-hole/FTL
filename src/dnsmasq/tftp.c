@@ -97,7 +97,7 @@ void tftp_request(struct listener *listen, time_t now)
     return;
 
 #ifdef HAVE_DUMPFILE
-  dump_packet(DUMP_TFTP, (void *)packet, len, (union mysockaddr *)&peer, NULL, TFTP_PORT);
+  dump_packet_udp(DUMP_TFTP, (void *)packet, len, (union mysockaddr *)&peer, NULL, listen->tftpfd);
 #endif
   
   /* Can always get recvd interface for IPv6 */
@@ -488,7 +488,7 @@ void tftp_request(struct listener *listen, time_t now)
   send_from(transfer->sockfd, !option_bool(OPT_SINGLE_PORT), packet, len, &peer, &addra, if_index);
 
 #ifdef HAVE_DUMPFILE
-  dump_packet(DUMP_TFTP, (void *)packet, len, NULL, (union mysockaddr *)&peer, TFTP_PORT);
+  dump_packet_udp(DUMP_TFTP, (void *)packet, len, NULL, (union mysockaddr *)&peer, transfer->sockfd);
 #endif
   
   if (is_err)
@@ -610,7 +610,7 @@ void check_tftp_listeners(time_t now)
 		  while(retry_send(sendto(transfer->sockfd, daemon->packet, len, 0, &peer.sa, sa_len(&peer))));
 
 #ifdef HAVE_DUMPFILE
-		  dump_packet(DUMP_TFTP, (void *)daemon->packet, len, NULL, (union mysockaddr *)&peer, TFTP_PORT);
+		  dump_packet_udp(DUMP_TFTP, (void *)daemon->packet, len, NULL, (union mysockaddr *)&peer, transfer->sockfd);
 #endif
 		}
 	    }
@@ -650,7 +650,7 @@ void check_tftp_listeners(time_t now)
 	      send_from(transfer->sockfd, !option_bool(OPT_SINGLE_PORT), daemon->packet, len,
 			&transfer->peer, &transfer->source, transfer->if_index);
 #ifdef HAVE_DUMPFILE
-	      dump_packet(DUMP_TFTP, (void *)daemon->packet, len, NULL, (union mysockaddr *)&transfer->peer, TFTP_PORT);
+	      dump_packet_udp(DUMP_TFTP, (void *)daemon->packet, len, NULL, (union mysockaddr *)&transfer->peer, transfer->sockfd);
 #endif
 	    }
 	  

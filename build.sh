@@ -49,7 +49,7 @@ cmake --build . -- -j $(nproc)
 # Otherwise, we simply copy the binary one level up
 if [[ -n "${install}" ]]; then
     echo "Installing pihole-FTL"
-    SUDO=$(which sudo)
+    SUDO=$(command -v sudo)
     ${SUDO} cmake --install .
 else
     echo "Copying compiled pihole-FTL binary to repository root"

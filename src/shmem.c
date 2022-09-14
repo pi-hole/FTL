@@ -272,14 +272,14 @@ size_t addstr(const char *input)
 	return (shmSettings->next_str_pos - len);
 }
 
-const char *getstr(const size_t pos)
+const char *_getstr(const size_t pos, const char *func, const int line, const char *file)
 {
 	// Only access the string memory if this memory region has already been set
 	if(pos < shmSettings->next_str_pos)
 		return &((const char*)shm_strings.ptr)[pos];
 	else
 	{
-		logg("WARN: Tried to access %zu but next_str_pos is %u", pos, shmSettings->next_str_pos);
+		logg("WARN: Tried to access %zu in %s() (%s:%i) but next_str_pos is %u", pos, func, file, line, shmSettings->next_str_pos);
 		return "";
 	}
 }
@@ -337,7 +337,7 @@ static void remap_shm(void)
 }
 
 // Obtain SHMEM lock
-void _lock_shm(const char* func, const int line, const char * file)
+void _lock_shm(const char *func, const int line, const char *file)
 {
 	if(config.debug & DEBUG_LOCKS)
 		logg("Waiting for SHM lock in %s() (%s:%i)", func, file, line);
@@ -999,16 +999,13 @@ void set_per_client_regex(const int clientID, const int regexID, const bool valu
 	((bool*) shm_per_client_regex.ptr)[id] = value;
 }
 
-static inline bool check_range(int ID, int MAXID, const char* type, int line, const char * function, const char * file)
+static inline bool check_range(int ID, int MAXID, const char* type, const char *func, int line, const char *file)
 {
 	// Check bounds
 	if(ID < 0 || ID > MAXID)
 	{
-		if(config.debug)
-		{
-			logg("ERROR: Trying to access %s ID %i, but maximum is %i", type, ID, MAXID);
-			logg("       found in %s() (%s:%i)", function, file, line);
-		}
+		logg("ERROR: Trying to access %s ID %i, but maximum is %i", type, ID, MAXID);
+		logg("       found in %s() (%s:%i)", func, short_path(file), line);
 		return false;
 	}
 
@@ -1016,16 +1013,13 @@ static inline bool check_range(int ID, int MAXID, const char* type, int line, co
 	return true;
 }
 
-static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, const char* type, int line, const char * function, const char * file)
+static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, const char *type, const char *func, int line, const char *file)
 {
 	// Check magic only if requested (skipped for new entries which are uninitialized)
 	if(checkMagic && magic != MAGICBYTE)
 	{
-		if(config.debug)
-		{
-			logg("ERROR: Trying to access %s ID %i, but magic byte is %x", type, ID, magic);
-			logg("       found in %s() (%s:%i)", function, file, line);
-		}
+		logg("ERROR: Trying to access %s ID %i, but magic byte is %x", type, ID, magic);
+		logg("       found in %s() (%s:%i)", func, short_path(file), line);
 		return false;
 	}
 
@@ -1033,7 +1027,7 @@ static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, con
 	return true;
 }
 
-queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * function, const char * file)
+queriesData* _getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file)
 {
 	// This does not exist, return a NULL pointer
 	if(queryID == -1)
@@ -1043,19 +1037,19 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * func
 	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		logg("ERROR: Tried to obtain query pointer without lock in %s() (%s:%i)!",
-		     function, file, line);
+		     func, short_path(file), line);
 		generate_backtrace();
 		return NULL;
 	}
 
-	if(check_range(queryID, counters->queries_MAX, "query", line, function, file) &&
-	   check_magic(queryID, checkMagic, queries[queryID].magic, "query", line, function, file))
+	if(check_range(queryID, counters->queries_MAX, "query", func, line, file) &&
+	   check_magic(queryID, checkMagic, queries[queryID].magic, "query", func, line, file))
 		return &queries[queryID];
 	else
 		return NULL;
 }
 
-clientsData* _getClient(int clientID, bool checkMagic, int line, const char * function, const char * file)
+clientsData* _getClient(int clientID, bool checkMagic, int line, const char *func, const char *file)
 {
 	// This does not exist, we return a NULL pointer
 	if(clientID == -1)
@@ -1065,19 +1059,19 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char * fu
 	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		logg("ERROR: Tried to obtain client pointer without lock in %s() (%s:%i)!",
-		     function, file, line);
+		     func, short_path(file), line);
 		generate_backtrace();
 		return NULL;
 	}
 
-	if(check_range(clientID, counters->clients_MAX, "client", line, function, file) &&
-	   check_magic(clientID, checkMagic, clients[clientID].magic, "client", line, function, file))
+	if(check_range(clientID, counters->clients_MAX, "client", func, line, file) &&
+	   check_magic(clientID, checkMagic, clients[clientID].magic, "client", func, line, file))
 		return &clients[clientID];
 	else
 		return NULL;
 }
 
-domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * function, const char * file)
+domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *func, const char *file)
 {
 	// This does not exist, we return a NULL pointer
 	if(domainID == -1)
@@ -1087,19 +1081,19 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * fu
 	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		logg("ERROR: Tried to obtain domain pointer without lock in %s() (%s:%i)!",
-		     function, file, line);
+		     func, short_path(file), line);
 		generate_backtrace();
 		return NULL;
 	}
 
-	if(check_range(domainID, counters->domains_MAX, "domain", line, function, file) &&
-	   check_magic(domainID, checkMagic, domains[domainID].magic, "domain", line, function, file))
+	if(check_range(domainID, counters->domains_MAX, "domain", func, line, file) &&
+	   check_magic(domainID, checkMagic, domains[domainID].magic, "domain", func, line, file))
 		return &domains[domainID];
 	else
 		return NULL;
 }
 
-upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char * function, const char * file)
+upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char *func, const char *file)
 {
 	// This does not exist, we return a NULL pointer
 	if(upstreamID == -1)
@@ -1109,19 +1103,19 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		logg("ERROR: Tried to obtain upstream pointer without lock in %s() (%s:%i)!",
-		     function, file, line);
+		     func, short_path(file), line);
 		generate_backtrace();
 		return NULL;
 	}
 
-	if(check_range(upstreamID, counters->upstreams_MAX, "upstream", line, function, file) &&
-	   check_magic(upstreamID, checkMagic, upstreams[upstreamID].magic, "upstream", line, function, file))
+	if(check_range(upstreamID, counters->upstreams_MAX, "upstream", func, line, file) &&
+	   check_magic(upstreamID, checkMagic, upstreams[upstreamID].magic, "upstream", func, line, file))
 		return &upstreams[upstreamID];
 	else
 		return NULL;
 }
 
-DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char * function, const char * file)
+DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char *func, const char *file)
 {
 	// This does not exist, we return a NULL pointer
 	if(cacheID == -1)
@@ -1131,13 +1125,13 @@ DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char * 
 	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		logg("ERROR: Tried to obtain cache pointer without lock in %s() (%s:%i)!",
-		     function, file, line);
+		     func, short_path(file), line);
 		generate_backtrace();
 		return NULL;
 	}
 
-	if(check_range(cacheID, counters->dns_cache_MAX, "dns_cache", line, function, file) &&
-	   check_magic(cacheID, checkMagic, dns_cache[cacheID].magic, "dns_cache", line, function, file))
+	if(check_range(cacheID, counters->dns_cache_MAX, "dns_cache", func, line, file) &&
+	   check_magic(cacheID, checkMagic, dns_cache[cacheID].magic, "dns_cache", func, line, file))
 		return &dns_cache[cacheID];
 	else
 		return NULL;

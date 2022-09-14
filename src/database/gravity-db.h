@@ -29,9 +29,10 @@ const char* gravityDB_getDomain(int *rowid);
 char* get_client_names_from_ids(const char *group_ids) __attribute__ ((malloc));
 void gravityDB_finalizeTable(void);
 int gravityDB_count(const enum gravity_tables list);
+void check_inaccessible_adlists(void);
 
 enum db_result in_gravity(const char *domain, clientsData *client);
-enum db_result in_blacklist(const char *domain, clientsData *client);
+enum db_result in_blacklist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
 enum db_result in_whitelist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
 bool in_auditlist(const char *domain);
 

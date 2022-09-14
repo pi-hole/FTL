@@ -763,16 +763,6 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    }
 #endif	  
 	  
-	// ****************************** Pi-hole modification ******************************
-	if(FTL_CNAME(name, cpp, daemon->log_display_id))
-	  {
-	    // Found while processing a reply from upstream. We prevent cache insertion here
-	    // This query is to be blocked as we found a blocked
-	    // domain while walking the CNAME path. Log to pihole.log here
-	    log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection", 0);
-	    return 2;
-	  }
-	// **********************************************************************************
 
 	  if (aqtype == T_CNAME)
 	    {
@@ -804,6 +794,17 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      if (!extract_name(header, qlen, &p1, name, 1, 0))
 		return 0;
 	      
+	      // ****************************** Pi-hole modification ******************************
+	      const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
+	      if(FTL_CNAME(name, src, daemon->log_display_id))
+		{
+		  // Found while processing a reply from upstream. We prevent cache insertion here
+		  // This query is to be blocked as we found a blocked
+		  // domain while walking the CNAME path. Log to pihole.log here
+		  log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection", 0);
+		  return 2;
+		}
+	      // **********************************************************************************
 	      if (qtype != T_CNAME)
 		goto cname_loop1;
 
@@ -1609,7 +1610,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    
 		    if (addrlist)
 		      break;
-		    else
+		    else if (!(intr->flags & INP4))
 		      while (intr->next && strcmp(intr->intr, intr->next->intr) == 0)
 			intr = intr->next;
 		  }
@@ -1624,7 +1625,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    
 		    if (addrlist)
 		      break;
-		    else
+		    else if (!(intr->flags & INP6))
 		      while (intr->next && strcmp(intr->intr, intr->next->intr) == 0)
 			intr = intr->next;
 		  }
@@ -1859,7 +1860,8 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 				log_query(crecp->flags & ~F_REVERSE, name, &crecp->addr,
 					  record_source(crecp->uid), 0);
 				// ****************************** Pi-hole modification ******************************
-				if(FTL_CNAME(name, crecp, daemon->log_display_id))
+				const char *src = crecp != NULL ? crecp->flags & F_BIGNAME ? crecp->name.bname->name : crecp->name.sname : NULL;
+				if(FTL_CNAME(name, src, daemon->log_display_id))
 				  {
 				    // Served from cache. This can happen if a domain hidden in the CNAME path
 				    // is only blocked for some but not all clients. In this case, the entire
