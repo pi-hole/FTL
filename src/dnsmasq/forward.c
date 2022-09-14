@@ -626,7 +626,7 @@ int fast_retry(time_t now)
       u32 millis = dnsmasq_milliseconds();
       
       for (f = daemon->frec_list; f; f = f->next)
-	if (f->sentto && f->stash && difftime(now, f->time) < TIMEOUT)
+	if (f->sentto && f->stash && difftime(now, f->time) < daemon->fast_retry_timeout)
 	  {
 #ifdef HAVE_DNSSEC
 	    if (f->blocking_query)
@@ -635,8 +635,8 @@ int fast_retry(time_t now)
 	    /* t is milliseconds since last query sent. */ 
 	    int to_run, t = (int)(millis - f->forward_timestamp);
 	    
-	    if (t < daemon->fast_retry_time)
-	      to_run = daemon->fast_retry_time - t;
+	    if (t < f->forward_delay)
+	      to_run = f->forward_delay - t;
 	    else
 	      {
 		unsigned char *udpsz;
@@ -657,7 +657,7 @@ int fast_retry(time_t now)
 		forward_query(-1, NULL, NULL, 0, header, f->stash_len, ((char *) header) + udp_size, now, f,
 			      f->flags & FREC_AD_QUESTION, f->flags & FREC_DO_QUESTION);
 
-		to_run = daemon->fast_retry_time;
+		to_run = f->forward_delay = 2 * f->forward_delay;
 	      }
 
 	    if (ret == -1 || ret > to_run)
@@ -2962,8 +2962,11 @@ static struct frec *get_new_frec(time_t now, struct server *master, int force)
     }
 
   if (target)
-    target->time = now;
-
+    {
+      target->time = now;
+      target->forward_delay = daemon->fast_retry_time;
+    }
+  
   return target;
 }
 

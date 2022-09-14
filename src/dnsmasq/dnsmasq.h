@@ -770,6 +770,7 @@ struct frec {
   int forwardall, flags;
   time_t time;
   u32 forward_timestamp;
+  int forward_delay;
   unsigned char *hash[HASH_SIZE];
   struct blockdata *stash; /* Saved reply, whilst we validate */
   size_t stash_len;
@@ -1199,7 +1200,7 @@ extern struct daemon {
   int dump_mask;
   unsigned long soa_sn, soa_refresh, soa_retry, soa_expiry;
   u32 metrics[__METRIC_MAX];
-  int fast_retry_time;
+  int fast_retry_time, fast_retry_timeout;
 #ifdef HAVE_DNSSEC
   struct ds_config *ds;
   char *timestamp_file;

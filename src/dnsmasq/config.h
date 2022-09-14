@@ -61,6 +61,7 @@
 #define SOA_EXPIRY 1209600 /* SOA expiry default */
 #define LOOP_TEST_DOMAIN "test" /* domain for loop testing, "test" is reserved by RFC 2606 and won't therefore clash */
 #define LOOP_TEST_TYPE T_TXT
+#define DEFAULT_FAST_RETRY 1000 /* ms, default delay before fast retry */
  
 /* compile-time options: uncomment below to enable or do eg.
    make COPTS=-DHAVE_BROKEN_RTC

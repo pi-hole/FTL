@@ -374,7 +374,7 @@ static const struct myoption opts[] =
     { "umbrella", 2, 0, LOPT_UMBRELLA },
     { "quiet-tftp", 0, 0, LOPT_QUIET_TFTP },
     { "port-limit", 1, 0, LOPT_RANDPORT_LIM },
-    { "fast-dns-retry", 1, 0, LOPT_FAST_RETRY },
+    { "fast-dns-retry", 2, 0, LOPT_FAST_RETRY },
     { "use-stale-cache", 0, 0 , LOPT_STALE_CACHE },
     { NULL, 0, 0, 0 }
   };
@@ -3234,14 +3234,28 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       }
 
     case LOPT_FAST_RETRY:
-      {
-	int retry;
-      	if (!atoi_check(arg, &retry) || retry < 500)
-	  ret_err(gen_err);
-	daemon->fast_retry_time = retry;
-	break;
-      }
+      daemon->fast_retry_timeout = TIMEOUT;
       
+      if (!arg)
+	daemon->fast_retry_time = DEFAULT_FAST_RETRY;
+      else
+	{
+	  int retry;
+	  
+	  comma = split(arg);
+	  if (!atoi_check(arg, &retry) || retry < 50)
+	    ret_err(gen_err);
+	  daemon->fast_retry_time = retry;
+	  
+	  if (comma)
+	    {
+	      if (!atoi_check(comma, &retry))
+		ret_err(gen_err);
+	      daemon->fast_retry_timeout = retry/1000;
+	    }
+	}
+      break;
+            
 #ifdef HAVE_DHCP
     case 'X': /* --dhcp-lease-max */
       if (!atoi_check(arg, &daemon->dhcp_max))
