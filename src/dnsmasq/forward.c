@@ -2930,6 +2930,7 @@ static struct frec *get_new_frec(time_t now, struct server *master, int force)
 	    {
 	      if (difftime(now, f->time) >= 4*TIMEOUT)
 		{
+		  daemon->metrics[METRIC_DNS_UNANSWERED_QUERY]++;
 		  free_frec(f);
 		  target = f;
 		}
@@ -2951,6 +2952,7 @@ static struct frec *get_new_frec(time_t now, struct server *master, int force)
   if (!target && oldest && ((int)difftime(now, oldest->time)) >= TIMEOUT)
     { 
       /* can't find empty one, use oldest if there is one and it's older than timeout */
+      daemon->metrics[METRIC_DNS_UNANSWERED_QUERY]++;
       free_frec(oldest);
       target = oldest;
     }
