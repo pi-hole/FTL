@@ -685,6 +685,7 @@ static DBusMessage *dbus_get_server_metrics(DBusMessage* message)
       add_dict_int(&dict_array, "port", port);
       add_dict_int(&dict_array, "queries", serv->queries);
       add_dict_int(&dict_array, "failed_queries", serv->failed_queries);
+      add_dict_int(&dict_array, "nxdomain", serv->nxdomain_replies);
       
       if (strlen(serv->domain) != 0)
 	add_dict_entry(&dict_array, "domain", serv->domain);

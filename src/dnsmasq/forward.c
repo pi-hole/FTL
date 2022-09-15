@@ -914,6 +914,9 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
     }
 
+  if (RCODE(header) == NXDOMAIN)
+    server->nxdomain_replies++;
+
   return n;
 }
 

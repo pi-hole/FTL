@@ -1671,18 +1671,19 @@ int cache_make_stat(struct txt_record *t)
 	  {
 	    char *new, *lenp;
 	    int port, newlen, bytes_avail, bytes_needed;
-	    unsigned int queries = 0, failed_queries = 0;
+	    unsigned int queries = 0, failed_queries = 0, nxdomain_replies = 0;
 	    for (serv1 = serv; serv1; serv1 = serv1->next)
 	      if (!(serv1->flags & SERV_MARK) && sockaddr_isequal(&serv->addr, &serv1->addr))
 		{
 		  serv1->flags |= SERV_MARK;
 		  queries += serv1->queries;
 		  failed_queries += serv1->failed_queries;
+		  nxdomain_replies += serv1->nxdomain_replies;
 		}
 	    port = prettyprint_addr(&serv->addr, daemon->addrbuff);
 	    lenp = p++; /* length */
 	    bytes_avail = bufflen - (p - buff );
-	    bytes_needed = snprintf(p, bytes_avail, "%s#%d %u %u", daemon->addrbuff, port, queries, failed_queries);
+	    bytes_needed = snprintf(p, bytes_avail, "%s#%d %u %u %u", daemon->addrbuff, port, queries, failed_queries, nxdomain_replies);
 	    if (bytes_needed >= bytes_avail)
 	      {
 		/* expand buffer if necessary */
@@ -1785,16 +1786,18 @@ void dump_cache(time_t now)
     if (!(serv->flags & SERV_MARK))
       {
 	int port;
-	unsigned int queries = 0, failed_queries = 0;
+	unsigned int queries = 0, failed_queries = 0, nxdomain_replies = 0;
 	for (serv1 = serv; serv1; serv1 = serv1->next)
 	  if (!(serv1->flags & SERV_MARK) && sockaddr_isequal(&serv->addr, &serv1->addr))
 	    {
 	      serv1->flags |= SERV_MARK;
 	      queries += serv1->queries;
 	      failed_queries += serv1->failed_queries;
+	      nxdomain_replies += serv1->nxdomain_replies;
 	    }
 	port = prettyprint_addr(&serv->addr, daemon->addrbuff);
-	my_syslog(LOG_INFO, _("server %s#%d: queries sent %u, retried or failed %u"), daemon->addrbuff, port, queries, failed_queries);
+	my_syslog(LOG_INFO, _("server %s#%d: queries sent %u, retried or failed %u, nxdomain replies %u"),
+		  daemon->addrbuff, port, queries, failed_queries, nxdomain_replies);
       }
 
   if (option_bool(OPT_DEBUG) || option_bool(OPT_LOG))
