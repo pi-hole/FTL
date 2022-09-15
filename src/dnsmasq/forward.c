@@ -571,8 +571,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   
   if (forwarded || is_dnssec)
     {
-      if (daemon->fast_retry_time != 0)
-	forward->forward_timestamp = dnsmasq_milliseconds();
+      forward->forward_timestamp = dnsmasq_milliseconds();
       return 1;
     }
   
@@ -1286,6 +1285,12 @@ void reply_query(int fd, time_t now)
      answers, to conserve file descriptors, and to save work reading and
      discarding answers for other upstreams. */
   free_rfds(&forward->rfds);
+
+  /* calculate modified moving average of server latency */
+  server->mma_latency += dnsmasq_milliseconds() - forward->forward_timestamp - server->query_latency;
+  /* denominator controls how many queries we average over. */
+  server->query_latency = server->mma_latency/128;
+  
   
 #ifdef HAVE_DNSSEC
   if ((forward->sentto->flags & SERV_DO_DNSSEC) && 

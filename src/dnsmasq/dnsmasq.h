@@ -596,6 +596,7 @@ struct server {
   int tcpfd, edns_pktsz;
   time_t pktsz_reduced;
   unsigned int queries, failed_queries, nxdomain_replies;
+  unsigned int query_latency, mma_latency;
   time_t forwardtime;
   int forwardcount;
 #ifdef HAVE_LOOP
