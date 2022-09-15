@@ -1785,7 +1785,7 @@ void dump_cache(time_t now)
     if (!(serv->flags & SERV_MARK))
       {
 	int port;
-	unsigned int queries = 0, failed_queries = 0, nxdomain_replies = 0;
+	unsigned int queries = 0, failed_queries = 0, nxdomain_replies = 0, retrys = 0;
 	unsigned int sigma_latency = 0, count_latency = 0;
 
 	for (serv1 = serv; serv1; serv1 = serv1->next)
@@ -1795,12 +1795,13 @@ void dump_cache(time_t now)
 	      queries += serv1->queries;
 	      failed_queries += serv1->failed_queries;
 	      nxdomain_replies += serv1->nxdomain_replies;
+	      retrys += serv1->retrys;
 	      sigma_latency += serv1->query_latency;
 	      count_latency++;
 	    }
 	port = prettyprint_addr(&serv->addr, daemon->addrbuff);
-	my_syslog(LOG_INFO, _("server %s#%d: queries sent %u, retried or failed %u, nxdomain replies %u, avg. latency %ums"),
-		  daemon->addrbuff, port, queries, failed_queries, nxdomain_replies, sigma_latency/count_latency);
+	my_syslog(LOG_INFO, _("server %s#%d: queries sent %u, retried %u, failed %u, nxdomain replies %u, avg. latency %ums"),
+		  daemon->addrbuff, port, queries, retrys, failed_queries, nxdomain_replies, sigma_latency/count_latency);
       }
 
   if (option_bool(OPT_DEBUG) || option_bool(OPT_LOG))

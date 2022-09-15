@@ -681,7 +681,7 @@ static DBusMessage *dbus_get_server_metrics(DBusMessage* message)
     if (!(serv->flags & SERV_MARK))
       {
 	unsigned int port;
-	unsigned int queries = 0, failed_queries = 0, nxdomain_replies = 0;
+	unsigned int queries = 0, failed_queries = 0, nxdomain_replies = 0, retrys = 0;
 	unsigned int sigma_latency = 0, count_latency = 0;
 	
 	struct server *serv1;
@@ -693,6 +693,7 @@ static DBusMessage *dbus_get_server_metrics(DBusMessage* message)
 	      queries += serv1->queries;
 	      failed_queries += serv1->failed_queries;
 	      nxdomain_replies += serv1->nxdomain_replies;
+	      retrys += serv1->retrys;
 	      sigma_latency += serv1->query_latency;
 	      count_latency++;
 	    }
@@ -706,6 +707,7 @@ static DBusMessage *dbus_get_server_metrics(DBusMessage* message)
 	add_dict_int(&dict_array, "queries", serv->queries);
 	add_dict_int(&dict_array, "failed_queries", serv->failed_queries);
 	add_dict_int(&dict_array, "nxdomain", serv->nxdomain_replies);
+	add_dict_int(&dict_array, "retries", serv->retrys);
 	add_dict_int(&dict_array, "latency", sigma_latency/count_latency;
 		     
 	dbus_message_iter_close_container(&server_array, &dict_array);

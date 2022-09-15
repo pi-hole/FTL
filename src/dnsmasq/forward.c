@@ -405,8 +405,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 #endif
 	{
 	  /* retry on existing query, from original source. Send to all available servers  */
-	  if (!fast_retry)
+	  if (udpfd == -1 && !fast_retry)
 	    forward->sentto->failed_queries++;
+	  else
+	    forward->sentto->retrys++;
 
 	  FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_display_id, false);
 	  

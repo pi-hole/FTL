@@ -595,7 +595,7 @@ struct server {
   struct serverfd *sfd; 
   int tcpfd, edns_pktsz;
   time_t pktsz_reduced;
-  unsigned int queries, failed_queries, nxdomain_replies;
+  unsigned int queries, failed_queries, nxdomain_replies, retrys;
   unsigned int query_latency, mma_latency;
   time_t forwardtime;
   int forwardcount;
