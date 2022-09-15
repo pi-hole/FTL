@@ -173,7 +173,7 @@ static int domain_no_rebind(char *domain)
 static int forward_query(int udpfd, union mysockaddr *udpaddr,
 			 union all_addr *dst_addr, unsigned int dst_iface,
 			 struct dns_header *header, size_t plen,  char *limit, time_t now, 
-			 struct frec *forward, int ad_reqd, int do_bit)
+			 struct frec *forward, int ad_reqd, int do_bit, int fast_retry)
 {
   unsigned int flags = 0;
   unsigned int fwd_flags = 0;
@@ -405,7 +405,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 #endif
 	{
 	  /* retry on existing query, from original source. Send to all available servers  */
-	  forward->sentto->failed_queries++;
+	  if (!fast_retry)
+	    forward->sentto->failed_queries++;
 
 	  FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_display_id, false);
 	  
@@ -415,13 +416,13 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  master = daemon->serverarray[first];
 	  
 	  /* Forward to all available servers on retry of query from same host. */
-	  if (!option_bool(OPT_ORDER) && old_src)
+	  if (!option_bool(OPT_ORDER) && old_src && !fast_retry)
 	    forward->forwardall = 1;
 	  else
 	    {
 	      start = forward->sentto->arrayposn;
 	      
-	      if (option_bool(OPT_ORDER))
+	      if (option_bool(OPT_ORDER) && !fast_retry)
 		{
 		  /* In strict order mode, there must be a server later in the list
 		     left to send to, otherwise without the forwardall mechanism,
@@ -654,7 +655,7 @@ int fast_retry(time_t now)
 		daemon->log_display_id = f->frec_src.log_id;
 		
 		forward_query(-1, NULL, NULL, 0, header, f->stash_len, ((char *) header) + udp_size, now, f,
-			      f->flags & FREC_AD_QUESTION, f->flags & FREC_DO_QUESTION);
+			      f->flags & FREC_AD_QUESTION, f->flags & FREC_DO_QUESTION, 1);
 
 		to_run = f->forward_delay = 2 * f->forward_delay;
 	      }
@@ -1251,7 +1252,7 @@ void reply_query(int fd, time_t now)
       if (nn)
 	{
 	  forward_query(-1, NULL, NULL, 0, header, nn, ((char *) header) + udp_size, now, forward,
-			forward->flags & FREC_AD_QUESTION, forward->flags & FREC_DO_QUESTION);
+			forward->flags & FREC_AD_QUESTION, forward->flags & FREC_DO_QUESTION, 0);
 	  return;
 	}
     }
@@ -1940,7 +1941,7 @@ void receive_query(struct listener *listen, time_t now)
 	    }
 	  
 	  if (forward_query(fd, &source_addr, &dst_addr, if_index,
-			    header, (size_t)n,  ((char *) header) + udp_size, now, NULL, ad_reqd, do_bit))
+			    header, (size_t)n,  ((char *) header) + udp_size, now, NULL, ad_reqd, do_bit, 0))
 	    daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
 	  else
 	    daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
