@@ -1290,7 +1290,10 @@ void reply_query(int fd, time_t now)
   free_rfds(&forward->rfds);
 
   /* calculate modified moving average of server latency */
-  server->mma_latency += dnsmasq_milliseconds() - forward->forward_timestamp - server->query_latency;
+  if (server->query_latency == 0)
+    server->mma_latency = (dnsmasq_milliseconds() - forward->forward_timestamp) * 128; /* init */
+  else
+    server->mma_latency += dnsmasq_milliseconds() - forward->forward_timestamp - server->query_latency;
   /* denominator controls how many queries we average over. */
   server->query_latency = server->mma_latency/128;
   
