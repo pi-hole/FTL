@@ -672,27 +672,40 @@ static DBusMessage *dbus_get_server_metrics(DBusMessage* message)
   
   dbus_message_iter_init_append(reply, &server_iter);
   dbus_message_iter_open_container(&server_iter, DBUS_TYPE_ARRAY, "a{ss}", &server_array);
+
+  /* sum counts from different records for same server */
+  for (serv = daemon->servers; serv; serv = serv->next)
+    serv->flags &= ~SERV_MARK;
   
   for (serv = daemon->servers; serv; serv = serv->next)
-    {
-      unsigned int port;
-      
-      dbus_message_iter_open_container(&server_array, DBUS_TYPE_ARRAY, "{ss}", &dict_array);
-      
-      port = prettyprint_addr(&serv->addr, daemon->namebuff);
-      add_dict_entry(&dict_array, "address", daemon->namebuff);
-      
-      add_dict_int(&dict_array, "port", port);
-      add_dict_int(&dict_array, "queries", serv->queries);
-      add_dict_int(&dict_array, "failed_queries", serv->failed_queries);
-      add_dict_int(&dict_array, "nxdomain", serv->nxdomain_replies);
-      
-      if (strlen(serv->domain) != 0)
-	add_dict_entry(&dict_array, "domain", serv->domain);
-      
-      dbus_message_iter_close_container(&server_array, &dict_array);
-    }
+    if (!(serv->flags & SERV_MARK))
+      {
+	unsigned int port;
+	unsigned int queries = 0, failed_queries = 0, nxdomain_replies = 0;
+	struct server *serv1;
 
+	for (serv1 = serv; serv1; serv1 = serv1->next)
+	  if (!(serv1->flags & SERV_MARK) && sockaddr_isequal(&serv->addr, &serv1->addr))
+	    {
+	      serv1->flags |= SERV_MARK;
+	      queries += serv1->queries;
+	      failed_queries += serv1->failed_queries;
+	      nxdomain_replies += serv1->nxdomain_replies;
+	    }
+	
+	dbus_message_iter_open_container(&server_array, DBUS_TYPE_ARRAY, "{ss}", &dict_array);
+	
+	port = prettyprint_addr(&serv->addr, daemon->namebuff);
+	add_dict_entry(&dict_array, "address", daemon->namebuff);
+	
+	add_dict_int(&dict_array, "port", port);
+	add_dict_int(&dict_array, "queries", serv->queries);
+	add_dict_int(&dict_array, "failed_queries", serv->failed_queries);
+	add_dict_int(&dict_array, "nxdomain", serv->nxdomain_replies);
+	
+	dbus_message_iter_close_container(&server_array, &dict_array);
+      }
+  
   dbus_message_iter_close_container(&server_iter, &server_array);
 
   return reply;
