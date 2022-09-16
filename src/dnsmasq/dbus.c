@@ -94,6 +94,8 @@ const char* introspection_xml_template =
 "    <method name=\"GetServerMetrics\">\n"
 "      <arg name=\"metrics\" direction=\"out\" type=\"a{ss}\"/>\n"
 "    </method>\n"
+"    <method name=\"ClearMetrics\">\n"
+"    </method>\n"
 "  </interface>\n"
 "</node>\n";
 
@@ -708,13 +710,13 @@ static DBusMessage *dbus_get_server_metrics(DBusMessage* message)
 	add_dict_int(&dict_array, "failed_queries", serv->failed_queries);
 	add_dict_int(&dict_array, "nxdomain", serv->nxdomain_replies);
 	add_dict_int(&dict_array, "retries", serv->retrys);
-	add_dict_int(&dict_array, "latency", sigma_latency/count_latency;
-		     
+	add_dict_int(&dict_array, "latency", sigma_latency/count_latency);
+	
 	dbus_message_iter_close_container(&server_array, &dict_array);
       }
   
   dbus_message_iter_close_container(&server_iter, &server_array);
-
+  
   return reply;
 }
 
@@ -796,6 +798,10 @@ DBusHandlerResult message_handler(DBusConnection *connection,
   else if (strcmp(method, "GetServerMetrics") == 0)
     {
       reply = dbus_get_server_metrics(message);
+    }
+  else if (strcmp(method, "ClearMetrics") == 0)
+    {
+      clear_metrics();
     }
   else if (strcmp(method, "ClearCache") == 0)
     clear_cache = 1;

@@ -43,3 +43,4 @@ enum {
 };
 
 const char* get_metric_name(int);
+void clear_metrics(void);
