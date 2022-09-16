@@ -375,8 +375,9 @@ static int is_outdated_cname_pointer(struct crec *crecp)
 
 static int is_expired(time_t now, struct crec *crecp)
 {
-  /* Don't dump expired entries if we're using them, cache becomes strictly LRU in that case. */
-  if (option_bool(OPT_STALE_CACHE))
+  /* Don't dump expired entries if we're using them, cache becomes strictly LRU in that case.
+     Never use expired DS or DNSKEY entries. */
+  if (option_bool(OPT_STALE_CACHE) && !(crecp->flags & (F_DS | F_DNSKEY)))
     return 0;
 
   if (crecp->flags & F_IMMORTAL)
@@ -558,7 +559,7 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
 {
   struct crec *new, *target_crec = NULL;
   union bigname *big_name = NULL;
-  int freed_all = flags & F_REVERSE;
+  int freed_all = (flags & F_REVERSE);
   int free_avail = 0;
   unsigned int target_uid;
   
@@ -633,8 +634,12 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
 	{
 	  /* For DNSSEC records, uid holds class. */
 	  free_avail = 1; /* Must be free space now. */
+	  
+	  /* condition valid when stale-caching */
+	  if (difftime(now, new->ttd) < 0)
+	    daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED]++;
+	  
 	  cache_scan_free(cache_get_name(new), &new->addr, new->uid, now, new->flags, NULL, NULL);
-	  daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED]++;
 	}
       else
 	{
