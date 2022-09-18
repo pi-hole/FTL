@@ -4,10 +4,7 @@ on:
   push:
     branches:
       - '**'
-      - '!dependabot/**'
   pull_request:
-    branches-ignore:
-      - 'dependabot/**'
   release:
     types: [published]
 
