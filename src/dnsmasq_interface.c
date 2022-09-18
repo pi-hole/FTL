@@ -134,10 +134,29 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 		// derive the real query type from the arg string
 		unsigned short qtype = type;
 		if(strcmp(arg, "dnssec-query[DNSKEY]") == 0)
+		{
 			qtype = T_DNSKEY;
+			arg = (char*)"dnssec-query";
+		}
 		else if(strcmp(arg, "dnssec-query[DS]") == 0)
+		{
 			qtype = T_DS;
-		arg = (char*)"dnssec-query";
+			arg = (char*)"dnssec-query";
+		}
+		else if(strcmp(arg, "dnssec-retry[DNSKEY]") == 0)
+		{
+			qtype = T_DNSKEY;
+			arg = (char*)"dnssec-retry";
+		}
+		else if(strcmp(arg, "dnssec-retry[DS]") == 0)
+		{
+			qtype = T_DS;
+			arg = (char*)"dnssec-retry";
+		}
+		else
+		{
+			arg = (char*)"dnssec-unknown";
+		}
 
 		_FTL_new_query(flags, name, NULL, arg, qtype, id, &edns, INTERNAL, file, line);
 		// forwarded upstream (type is used to store the upstream port)
