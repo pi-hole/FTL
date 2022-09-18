@@ -10,3 +10,6 @@ updates:
   target-branch: development
   reviewers:
     - "pi-hole/ftl-maintainers"
+  pull-request-branch-name:
+      # Separate sections of the branch name with a hyphen
+      separator: "-"
