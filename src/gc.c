@@ -146,12 +146,8 @@ void *GC_thread(void *val)
 		if(now - lastResourceCheck >= RCinterval)
 		{
 			check_load();
-			int DBStorageUsage = check_space(FTLfiles.FTL_db, LastDBStorageUsage);
-			int LogStorageUsage = check_space(FTLfiles.log, LastLogStorageUsage);
-			
-			LastLogStorageUsage = LogStorageUsage;
-			LastDBStorageUsage = DBStorageUsage;
-
+			LastDBStorageUsage = check_space(FTLfiles.FTL_db, LastDBStorageUsage);
+			LastLogStorageUsage = check_space(FTLfiles.log, LastLogStorageUsage);
 			lastResourceCheck = now;
 		}
 
