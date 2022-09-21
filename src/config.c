@@ -14,8 +14,6 @@
 #include "log.h"
 // nice()
 #include <unistd.h>
-// saveport()
-#include "api/socket.h"
 // argv_dnsmasq
 #include "args.h"
 
@@ -339,10 +337,6 @@ void read_FTLconf(void)
 
 	// PIDFILE
 	getpath(fp, "PIDFILE", "/run/pihole-FTL.pid", &FTLfiles.pid);
-
-	// PORTFILE
-	getpath(fp, "PORTFILE", "/run/pihole-FTL.port", &FTLfiles.port);
-	saveport(config.port);
 
 	// SOCKETFILE
 	getpath(fp, "SOCKETFILE", "/run/pihole/FTL.sock", &FTLfiles.socketfile);

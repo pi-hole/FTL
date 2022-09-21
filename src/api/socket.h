@@ -20,7 +20,6 @@ struct thread_info {
 	const char *stype;
 };
 
-void saveport(int port);
 void close_unix_socket(bool unlink_file);
 void seom(const int sock, const bool istelnet);
 #define ssend(sock, format, ...) _ssend(sock, __FILE__, __FUNCTION__,  __LINE__, format, ##__VA_ARGS__)

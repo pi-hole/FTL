@@ -14,8 +14,6 @@
 #include "log.h"
 // sleepms()
 #include "timers.h"
-// saveport()
-#include "api/socket.h"
 // gravityDB_close()
 #include "database/gravity-db.h"
 // destroy_shmem()
@@ -274,9 +272,6 @@ void cleanup(const int ret)
 		gravityDB_close();
 		unlock_shm();
 	}
-
-	// Empty API port file, port 0 = truncate file
-	saveport(0);
 
 	// Remove PID file
 	removepid();

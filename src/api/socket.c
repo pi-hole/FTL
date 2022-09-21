@@ -32,29 +32,6 @@
 // reattempt at connection succeeds.
 #define BACKLOG 5
 
-void saveport(int port)
-{
-	FILE *f;
-	// Open "w" for truncation/creating file
-	if((f = fopen(FTLfiles.port, "w")) == NULL)
-	{
-		// Opening failed (permissions, path does not exist, etc.)
-		logg("WARNING: Unable to write used port to file");
-		logg("         (API might not find the port)");
-	}
-	else if(port > 0)
-	{
-		// Save port to file
-		fprintf(f, "%i", port);
-		fclose(f);
-	}
-	else
-	{
-		// FTL is terminating: Leave file truncated
-		fclose(f);
-	}
-}
-
 static int bind_to_telnet_socket(const enum telnet_type type, const char *stype)
 {
 	const int socketdescriptor = socket(type == TELNET_SOCK ? AF_LOCAL : (type == TELNETv4 ? AF_INET : AF_INET6), SOCK_STREAM, 0);

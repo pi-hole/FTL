@@ -1141,12 +1141,6 @@
   [[ ${lines[0]} == "2" ]]
 }
 
-@test "Port file exists and contains expected API port" {
-  run bash -c 'cat /run/pihole-FTL.port'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "4711" ]]
-}
-
 @test "LUA: Interpreter returns FTL version" {
   run bash -c './pihole-FTL lua -e "print(pihole.ftl_version())"'
   printf "%s\n" "${lines[@]}"
