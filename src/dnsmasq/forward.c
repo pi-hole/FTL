@@ -247,6 +247,14 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  if (!daemon->free_frec_src)
 	    {
 	      query_full(now, NULL);
+	      /* This is tricky; if we're blasted with the same query
+		 over and over, we'll end up taking this path each time
+		 and never resetting until the frec gets deleted by
+		 aging followed by the receipt of a different query. This
+		 is a bit of a DoS vuln. Avoid by explicitly deleting the
+		 frec once it expires. */
+	      if (difftime(now, forward->time) >= TIMEOUT)
+		free_frec(forward);
 	      goto reply;
 	    }
 	  
