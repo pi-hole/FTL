@@ -155,14 +155,13 @@ bool gravityDB_open(void)
 	//            also other domains starting in google.de, like
 	//            abcgoogle.de
 	rc = sqlite3_prepare_v3(gravity_db,
-	        "SELECT EXISTS("
-	          "SELECT domain, "
-	            "CASE WHEN substr(domain, 1, 1) = '*' " // Does the database string start in '*' ?
-	              "THEN '*' || substr(:input, - length(domain) + 1) " // If so: Crop the input domain and prepend '*'
-	              "ELSE :input " // If not: Use input domain directly for comparison
-	            "END matcher "
-	          "FROM domain_audit WHERE matcher = domain" // Match where (modified) domain equals the database domain
-	        ");", -1, SQLITE_PREPARE_PERSISTENT, &auditlist_stmt, NULL);
+	        "SELECT domain, "
+	          "CASE WHEN substr(domain, 1, 1) = '*' " // Does the database string start in '*' ?
+	            "THEN '*' || substr(:input, - length(domain) + 1) " // If so: Crop the input domain and prepend '*'
+	            "ELSE :input " // If not: Use input domain directly for comparison
+	          "END matcher "
+	        "FROM domain_audit WHERE matcher = domain" // Match where (modified) domain equals the database domain
+	        ";", -1, SQLITE_PREPARE_PERSISTENT, &auditlist_stmt, NULL);
 
 	if( rc != SQLITE_OK )
 	{
