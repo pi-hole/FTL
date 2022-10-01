@@ -523,6 +523,12 @@
   [[ ${lines[@]} != *"google.com"* ]]
 }
 
+@test "Domain auditing, ten non-approved domains are shown" {
+  run bash -c 'echo ">top-domains for audit >quit" | nc -v 127.0.0.1 4711 | wc -l'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "10" ]]
+}
+
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
