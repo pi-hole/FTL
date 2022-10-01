@@ -293,7 +293,7 @@ void getTopDomains(const char *client_message, const int sock, const bool isteln
 			continue;
 
 		// Skip this domain if already audited
-		if(audit && in_auditlist(getstr(domain->domainpos)) > 0)
+		if(audit && in_auditlist(getstr(domain->domainpos)) == FOUND)
 		{
 			if(config.debug & DEBUG_API)
 				logg("API: %s has been audited.", getstr(domain->domainpos));
