@@ -113,14 +113,14 @@ static int bind_to_telnet_socket(const enum telnet_type type, const char *stype)
 	// Bind to socket
 	if(bind(socketdescriptor, (struct sockaddr *) address, addrlen) < 0)
 	{
-		logg("Error listening on Unix socket %s: %s (%i)", FTLfiles.socketfile, strerror(errno), errno);
+		logg("Error binding to %s telnet socket: %s (%i)", stype, strerror(errno), errno);
 		return -1;
 	}
 
 	// The listen system call allows the process to listen on the socket for connections
 	if(listen(socketdescriptor, BACKLOG) == -1)
 	{
-		logg("Error listening on %s socket: %s (%i)", stype, strerror(errno), errno);
+		logg("Error listening on %s telnet socket: %s (%i)", stype, strerror(errno), errno);
 		return -1;
 	}
 
