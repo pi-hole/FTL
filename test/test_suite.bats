@@ -523,6 +523,12 @@
   [[ ${lines[@]} != *"google.com"* ]]
 }
 
+@test "Domain auditing, ten non-approved domains are shown" {
+  run bash -c 'echo ">top-domains for audit >quit" | nc -v 127.0.0.1 4711 | wc -l'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "10" ]]
+}
+
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
@@ -1139,12 +1145,6 @@
   run bash -c 'grep -c "gravity blocked gravity.ftl is 0.0.0.0" /var/log/pihole/pihole.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "2" ]]
-}
-
-@test "Port file exists and contains expected API port" {
-  run bash -c 'cat /run/pihole-FTL.port'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "4711" ]]
 }
 
 @test "LUA: Interpreter returns FTL version" {
