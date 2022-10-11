@@ -152,7 +152,7 @@ bool gravityDB_open(void)
 	//            BUT NOT google.de itself
 	// Example 3: *google.de
 	//            matches 'google.de' and all of its subdomains but
-	//            also other domains starting in google.de, like
+	//            also other domains ending in google.de, like
 	//            abcgoogle.de
 	rc = sqlite3_prepare_v3(gravity_db,
 	        "SELECT domain, "
@@ -1398,7 +1398,7 @@ void check_inaccessible_adlists(void)
 	// check if any adlist was inaccessible in the last gravity run
 	// if so, gravity stored `status` in the adlist table with
 	// "3": List unavailable, Pi-hole used a local copy
-	// "4": List unavailable, there is no local copy available 
+	// "4": List unavailable, there is no local copy available
 
 	// Do not proceed when database is not available
 	if(!gravityDB_opened && !gravityDB_open())
@@ -1408,7 +1408,7 @@ void check_inaccessible_adlists(void)
 	}
 
 	const char *querystr = "SELECT id, address FROM adlist WHERE status IN (3,4) AND enabled=1";
-	
+
 	// Prepare query
 	sqlite3_stmt *query_stmt;
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &query_stmt, NULL);
