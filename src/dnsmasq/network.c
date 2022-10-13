@@ -362,7 +362,7 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
 		
 		if (int_name->flags & INP4)
 		  {
-		    if (netmask.s_addr == 0xffff)
+		    if (netmask.s_addr == 0xffffffff)
 		      continue;
 
 		    newaddr.s_addr = (addr->in.sin_addr.s_addr & netmask.s_addr) |
