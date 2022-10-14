@@ -173,6 +173,8 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 // This is inspired by make_local_answer()
 size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede, const char *file, const int line)
 {
+	if(config.debug & DEBUG_FLAGS)
+		logg("FTL_make_answer() called from %s:%d", short_path(file), line);
 	// Exit early if there are no questions in this query
 	if(ntohs(header->qdcount) == 0)
 		return 0;

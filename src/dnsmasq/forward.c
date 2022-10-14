@@ -2387,6 +2387,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	  if(piholeblocked)
 	  {
 	    int ede = EDE_UNSET;
+	    stale = 0;
 	    // Generate DNS packet for reply
 	    m = FTL_make_answer(header, ((char *) header) + 65536, size, &ede);
 	    // The pseudoheader may contain important information such as EDNS0 version important for
