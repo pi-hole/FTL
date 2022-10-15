@@ -142,10 +142,10 @@ jobs:
         working-directory: ${{steps.download.outputs.download-path}}
       -
         name: Install SSH Key
-        uses: shimataro/ssh-key-action@v2.3.1
+        uses: benoitchantre/setup-ssh-authentication-action@1.0.0
         with:
-          key: ${{ secrets.SSH_KEY }}
-          known_hosts: ${{ secrets.KNOWN_HOSTS }}
+          private-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.KNOWN_HOSTS }}
       -
         name: Transfer Builds to Pi-hole server for pihole checkout
         env:
