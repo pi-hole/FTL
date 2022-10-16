@@ -32,9 +32,9 @@ jobs:
           GIT_TAG=${{ github.event.release.tag_name }}
           # If GIT_TAG is set then GIT BRANCH should be "master", else set it from GITHUB_REF
           GIT_BRANCH=$([ -n "${GIT_TAG}" ] && echo "master" || echo "${GITHUB_REF#refs/*/}")
-          echo ::set-output name=GIT_BRANCH::${GIT_BRANCH}
-          echo ::set-output name=GIT_TAG::${GIT_TAG}
-          echo ::set-output name=OUTPUT_DIR::${GIT_TAG:-${GIT_BRANCH}}
+          echo "GIT_BRANCH=${GIT_BRANCH}" >> $GITHUB_OUTPUT
+          echo "GIT_TAG=${GIT_TAG}" >> $GITHUB_OUTPUT
+          echo "OUTPUT_DIR=${GIT_TAG:-${GIT_BRANCH}}" >> $GITHUB_OUTPUT
       -
         name: "Check git branch name depth"
         env:
