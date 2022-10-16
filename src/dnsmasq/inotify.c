@@ -294,12 +294,16 @@ int inotify_check(time_t now)
 		    strcat(path, "/");
 		    strcat(path, in->name);
 		     
-		    my_syslog(LOG_INFO, _("inotify, new or changed file %s"), path);
+		    my_syslog(LOG_INFO, _("inotify: new, removed or changed file %s"), path);
 
 		    if (dd->flags & AH_HOSTS)
 		      {
 			if ((ah = dyndir_addhosts(dd, path)))
 			  {
+			    const unsigned int removed = cache_remove_uid(ah->index);
+			    if (removed > 0)
+			      my_syslog(LOG_INFO, _("flushed %u outdated entries"), removed);
+
 			    read_hostsfile(path, ah->index, 0, NULL, 0);
 #ifdef HAVE_DHCP
 			    if (daemon->dhcp || daemon->doing_dhcp6) 

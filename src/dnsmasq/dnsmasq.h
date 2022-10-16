@@ -1333,6 +1333,7 @@ struct crec *cache_find_by_name(struct crec *crecp,
 				char *name, time_t now, unsigned int prot);
 void cache_end_insert(void);
 void cache_start_insert(void);
+unsigned int cache_remove_uid(const unsigned int uid);
 int cache_recv_insert(time_t now, int fd);
 struct crec *cache_insert(char *name, union all_addr *addr, unsigned short class, 
 			  time_t now, unsigned long ttl, unsigned int flags);
