@@ -2166,15 +2166,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
     case LOPT_DHCP_HOST:     /* --dhcp-hostsfile */
     case LOPT_DHCP_OPTS:     /* --dhcp-optsfile */
-    case LOPT_DHCP_INOTIFY:  /* --dhcp-hostsdir */
-    case LOPT_DHOPT_INOTIFY: /* --dhcp-optsdir */
-    case LOPT_HOST_INOTIFY:  /* --hostsdir */
     case 'H':                /* --addn-hosts */
       {
 	struct hostsfile *new = opt_malloc(sizeof(struct hostsfile));
-	static unsigned int hosts_index = SRC_AH;
 	new->fname = opt_string_alloc(arg);
-	new->index = hosts_index++;
+	new->index = daemon->host_index++;
 	new->flags = 0;
 	if (option == 'H')
 	  {
@@ -2190,19 +2186,27 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  {
 	    new->next = daemon->dhcp_opts_file;
 	    daemon->dhcp_opts_file = new;
-	  } 	  
-	else 
-	  {
-	    new->next = daemon->dynamic_dirs;
-	    daemon->dynamic_dirs = new; 
-	    if (option == LOPT_DHCP_INOTIFY)
-	      new->flags |= AH_DHCP_HST;
-	    else if (option == LOPT_DHOPT_INOTIFY)
-	      new->flags |= AH_DHCP_OPT;
-	    else if (option == LOPT_HOST_INOTIFY)
-	      new->flags |= AH_HOSTS;
 	  }
 	
+	break;
+      }
+
+    case LOPT_DHCP_INOTIFY:  /* --dhcp-hostsdir */
+    case LOPT_DHOPT_INOTIFY: /* --dhcp-optsdir */
+    case LOPT_HOST_INOTIFY:  /* --hostsdir */
+      {
+	struct dyndir *new = opt_malloc(sizeof(struct dyndir));
+	new->dname = opt_string_alloc(arg);
+	new->flags = 0;
+	new->next = daemon->dynamic_dirs;
+	daemon->dynamic_dirs = new; 
+	if (option == LOPT_DHCP_INOTIFY)
+	new->flags |= AH_DHCP_HST;
+	else if (option == LOPT_DHOPT_INOTIFY)
+	new->flags |= AH_DHCP_OPT;
+	else if (option == LOPT_HOST_INOTIFY)
+	new->flags |= AH_HOSTS;
+
 	break;
       }
       
@@ -5536,7 +5540,8 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->soa_retry = SOA_RETRY;
   daemon->soa_expiry = SOA_EXPIRY;
   daemon->randport_limit = 1;
-    
+  daemon->host_index = SRC_AH;
+  
 #ifndef NO_ID
   add_txt("version.bind", "dnsmasq-" VERSION, 0 );
   add_txt("authors.bind", "Simon Kelley", 0);

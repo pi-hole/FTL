@@ -1901,6 +1901,7 @@ void dump_cache(time_t now)
 char *record_source(unsigned int index)
 {
   struct hostsfile *ah;
+  struct dyndir *dd;
 
   if (index == SRC_CONFIG)
     return "config";
@@ -1912,9 +1913,11 @@ char *record_source(unsigned int index)
       return ah->fname;
 
 #ifdef HAVE_INOTIFY
-  for (ah = daemon->dynamic_dirs; ah; ah = ah->next)
-     if (ah->index == index)
-       return ah->fname;
+  /* Dynamic directories contain multiple files */
+  for (dd = daemon->dynamic_dirs; dd; dd = dd->next)
+    for (ah = dd->files; ah; ah = ah->next)
+      if (ah->index == index)
+	return ah->fname;
 #endif
 
   return "<unknown>";
