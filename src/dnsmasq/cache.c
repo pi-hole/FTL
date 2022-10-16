@@ -1049,16 +1049,17 @@ struct crec *cache_find_by_addr(struct crec *crecp, union all_addr *addr,
 void add_hosts_entry(struct crec *cache, union all_addr *addr, int addrlen, 
 			     unsigned int index, struct crec **rhash, int hashsz)
 {
-  struct crec *lookup = cache_find_by_name(NULL, cache_get_name(cache), 0, cache->flags & (F_IPV4 | F_IPV6));
   int i;
   unsigned int j; 
+  struct crec *lookup = NULL;
 
   /* Remove duplicates in hosts files. */
-  if (lookup && (lookup->flags & F_HOSTS) && memcmp(&lookup->addr, addr, addrlen) == 0)
-    {
-      free(cache);
-      return;
-    }
+  while ((lookup = cache_find_by_name(lookup, cache_get_name(cache), 0, cache->flags & (F_IPV4 | F_IPV6))))
+    if ((lookup->flags & F_HOSTS) && memcmp(&lookup->addr, addr, addrlen) == 0)
+      {
+	free(cache);
+	return;
+      }
     
   /* Ensure there is only one address -> name mapping (first one trumps) 
      We do this by steam here, The entries are kept in hash chains, linked
