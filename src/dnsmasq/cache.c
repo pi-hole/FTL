@@ -234,7 +234,8 @@ static void cache_hash(struct crec *crecp)
      immortal entries are at the end of the hash-chain.
      This allows reverse searches and garbage collection to be optimised */
 
-  struct crec **up = hash_bucket(cache_get_name(crecp));
+  char *name = cache_get_name(crecp);
+  struct crec **up = hash_bucket(name);
 
   if (!(crecp->flags & F_REVERSE))
     {
@@ -245,6 +246,11 @@ static void cache_hash(struct crec *crecp)
 	while (*up && !((*up)->flags & F_IMMORTAL))
 	  up = &((*up)->hash_next);
     }
+
+  /* Preserve order when inserting the same name multiple times. */
+  while (*up && hostname_isequal(cache_get_name(*up), name))
+    up = &((*up)->hash_next);
+  
   crecp->hash_next = *up;
   *up = crecp;
 }
@@ -723,7 +729,7 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
   new->ttd = now + (time_t)ttl;
   new->next = new_chain;
   new_chain = new;
-
+  
   return new;
 }
 
@@ -901,7 +907,7 @@ int cache_find_non_terminal(char *name, time_t now)
 struct crec *cache_find_by_name(struct crec *crecp, char *name, time_t now, unsigned int prot)
 {
   struct crec *ans;
-  int no_rr = prot & F_NO_RR;
+  int no_rr = (prot & F_NO_RR) || option_bool(OPT_NORR);
 
   prot &= ~F_NO_RR;
   

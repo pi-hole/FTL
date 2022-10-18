@@ -188,6 +188,7 @@ struct myoption {
 #define LOPT_RANDPORT_LIM  375
 #define LOPT_FAST_RETRY    376
 #define LOPT_STALE_CACHE   377
+#define LOPT_NORR          378
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -240,6 +241,7 @@ static const struct myoption opts[] =
     { "localmx", 0, 0, 'L' },
     { "local-ttl", 1, 0, 'T' },
     { "no-negcache", 0, 0, 'N' },
+    { "no-round-robin", 0, 0, LOPT_NORR },
     { "addn-hosts", 1, 0, 'H' },
     { "hostsdir", 1, 0, LOPT_HOST_INOTIFY },
     { "query-port", 1, 0, 'Q' },
@@ -571,6 +573,7 @@ static struct {
   { LOPT_SCRIPT_TIME, OPT_LEASE_RENEW, NULL, gettext_noop("Call dhcp-script when lease expiry changes."), NULL },
   { LOPT_UMBRELLA, ARG_ONE, "[=<optspec>]", gettext_noop("Send Cisco Umbrella identifiers including remote IP."), NULL },
   { LOPT_QUIET_TFTP, OPT_QUIET_TFTP, NULL, gettext_noop("Do not log routine TFTP."), NULL },
+  { LOPT_NORR, OPT_NORR, NULL, gettext_noop("Suppress round-robin ordering of DNS records."), NULL },
   { 0, 0, NULL, NULL, NULL }
 }; 
 
