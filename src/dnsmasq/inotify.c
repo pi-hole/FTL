@@ -296,9 +296,9 @@ int inotify_check(time_t now)
 
 		    /* Is this is a deletion event? */
 		    if (in->mask & IN_DELETE)
-		      my_syslog(LOG_INFO, _("inotify: %s (removed)"), path);
-		    else
-		      my_syslog(LOG_INFO, _("inotify: %s (new or modified)"), path);
+		      my_syslog(LOG_INFO, _("inotify: %s removed"), path);
+		    else 
+		      my_syslog(LOG_INFO, _("inotify: %s new or modified"), path);
 
 		    if (dd->flags & AH_HOSTS)
 		      {
@@ -306,7 +306,7 @@ int inotify_check(time_t now)
 			  {
 			    const unsigned int removed = cache_remove_uid(ah->index);
 			    if (removed > 0)
-			      my_syslog(LOG_INFO, _("flushed %u outdated entries"), removed);
+			      my_syslog(LOG_INFO, _("inotify: flushed %u addresses read from %s"), removed, path);
 
 			    /* (Re-)load hostsfile only if this event isn't triggered by deletion */
 			    if (!(in->mask & IN_DELETE))
