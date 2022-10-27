@@ -1153,15 +1153,22 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	  tagif_netid = run_tag_if(&context->netid);
 	}
 
-      log_tags(tagif_netid, ntohl(mess->xid));
       apply_delay(mess->xid, recvtime, tagif_netid);
 
       if (option_bool(OPT_RAPID_COMMIT) && option_find(mess, sz, OPTION_RAPID_COMMIT, 0))
 	{
 	  rapid_commit = 1;
+	  /* If a lease exists for this host and another address, squash it. */
+	  if (lease && lease->addr.s_addr != mess->yiaddr.s_addr)
+	    {
+	      lease_prune(lease, now);
+	      lease = NULL;
+	    }
 	  goto rapid_commit;
 	}
       
+      log_tags(tagif_netid, ntohl(mess->xid));
+
       daemon->metrics[METRIC_DHCPOFFER]++;
       log_packet("DHCPOFFER" , &mess->yiaddr, emac, emac_len, iface_name, NULL, NULL, mess->xid);
       
