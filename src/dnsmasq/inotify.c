@@ -293,8 +293,12 @@ int inotify_check(time_t now)
 		    strcpy(path, dd->dname);
 		    strcat(path, "/");
 		    strcat(path, in->name);
-		     
-		    my_syslog(LOG_INFO, _("inotify: new, removed or changed file %s"), path);
+
+		    /* Is this is a deletion event? */
+		    if (in->mask & IN_DELETE)
+		      my_syslog(LOG_INFO, _("inotify: %s (removed)"), path);
+		    else
+		      my_syslog(LOG_INFO, _("inotify: %s (new or modified)"), path);
 
 		    if (dd->flags & AH_HOSTS)
 		      {
@@ -304,7 +308,9 @@ int inotify_check(time_t now)
 			    if (removed > 0)
 			      my_syslog(LOG_INFO, _("flushed %u outdated entries"), removed);
 
-			    read_hostsfile(path, ah->index, 0, NULL, 0);
+			    /* (Re-)load hostsfile only if this event isn't triggered by deletion */
+			    if (!(in->mask & IN_DELETE))
+			      read_hostsfile(path, ah->index, 0, NULL, 0);
 #ifdef HAVE_DHCP
 			    if (daemon->dhcp || daemon->doing_dhcp6) 
 			      {
