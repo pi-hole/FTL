@@ -306,7 +306,7 @@ int inotify_check(time_t now)
 			  {
 			    const unsigned int removed = cache_remove_uid(ah->index);
 			    if (removed > 0)
-			      my_syslog(LOG_INFO, _("inotify: flushed %u addresses read from %s"), removed, path);
+			      my_syslog(LOG_INFO, _("inotify: flushed %u names read from %s"), removed, path);
 
 			    /* (Re-)load hostsfile only if this event isn't triggered by deletion */
 			    if (!(in->mask & IN_DELETE))

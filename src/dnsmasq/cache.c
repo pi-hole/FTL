@@ -190,7 +190,7 @@ void rehash(int size)
   else if (new_size <= hash_size || !(new = whine_malloc(new_size * sizeof(struct crec *))))
     return;
 
-  for(i = 0; i < new_size; i++)
+  for (i = 0; i < new_size; i++)
     new[i] = NULL;
 
   old = hash_table;
@@ -1170,7 +1170,7 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 {  
   FILE *f = fopen(filename, "r");
   char *token = daemon->namebuff, *domain_suffix = NULL;
-  int addr_count = 0, name_count = cache_size, lineno = 1;
+  int names_done = 0, name_count = cache_size, lineno = 1;
   unsigned int flags = 0;
   union all_addr addr;
   int atnl, addrlen = 0;
@@ -1206,8 +1206,6 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 	  continue;
 	}
       
-      addr_count++;
-      
       /* rehash every 1000 names. */
       if (rhash && ((name_count - cache_size) > 1000))
 	{
@@ -1239,6 +1237,7 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 		  cache->ttd = daemon->local_ttl;
 		  add_hosts_entry(cache, &addr, addrlen, index, rhash, hashsz);
 		  name_count++;
+		  names_done++;
 		}
 	      if ((cache = whine_malloc(SIZEOF_BARE_CREC + strlen(canon) + 1)))
 		{
@@ -1247,6 +1246,7 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 		  cache->ttd = daemon->local_ttl;
 		  add_hosts_entry(cache, &addr, addrlen, index, rhash, hashsz);
 		  name_count++;
+		  names_done++;
 		}
 	      free(canon);
 	      
@@ -1263,7 +1263,7 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
   if (rhash)
     rehash(name_count); 
   
-  my_syslog(LOG_INFO, _("read %s - %d addresses"), filename, addr_count);
+  my_syslog(LOG_INFO, _("read %s - %d names"), filename, names_done);
   
   return name_count;
 }
