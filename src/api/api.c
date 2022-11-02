@@ -1550,7 +1550,7 @@ static bool listInterfaces(struct if_info **head, char default_iface[IF_NAMESIZE
 	while ((dp = readdir(dfd)) != NULL)
 	{
 		// Skip "." and ".."
-		if(!dp->d_name || strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
+		if(strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
 			continue;
 
 		// Create new interface record
