@@ -28,6 +28,8 @@
 #include "files.h"
 // log_resource_shortage()
 #include "database/message-table.h"
+// check_running_FTL()
+#include "procps.h"
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 14
@@ -104,6 +106,7 @@ static ShmSettings *shmSettings = NULL;
 
 static int pagesize;
 static unsigned int local_shm_counter = 0;
+static pid_t shmem_pid = 0;
 static size_t used_shmem = 0u;
 static size_t get_optimal_object_size(const size_t objsize, const size_t minsize);
 
@@ -126,6 +129,56 @@ static int get_dev_shm_usage(char buffer[64])
 
 	// Return percentage
 	return percentage;
+}
+
+// Verify the PID stored during shared memory initialization is the same as ours
+// (while we initialized the shared memory objects)
+static void verify_shmem_pid(void)
+{
+	const int fd = shm_open(SHARED_SETTINGS_NAME, O_RDWR, S_IRUSR | S_IWUSR);
+	if(fd == -1)
+	{
+		logg("FATAL: verify_shmem_pid(): Failed to open shared memory object \"%s\": %s",
+		     SHARED_SETTINGS_NAME, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	// Get new pointer
+	void *shm = mmap(NULL, shm_settings.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+	// Check for `mmap` error
+	if(shm == MAP_FAILED)
+	{
+		logg("FATAL: verify_shmem_pid(): Failed to map shared memory object \"%s\" (%i): %s",
+		     SHARED_SETTINGS_NAME, fd, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	// Close file descriptor after call to mmap
+	close(fd);
+
+	// Unmap old memory region
+	if(munmap(shm_settings.ptr, shm_settings.size) < 0)
+	{
+		logg("FATAL: verify_shmem_pid(): Failed to unmap shared memory object \"%s\" (%i): %s",
+		     SHARED_SETTINGS_NAME, fd, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	// Update pointer
+	shmSettings = shm_settings.ptr = shm;
+
+	// Compare the SHM's PID to the one we had when creating the SHM objects
+	if(shmSettings->pid == shmem_pid)
+		return;
+
+	// If we reach here, we are in serious trouble. Terminating with error
+	// code is the most sensible thing we can do at this point
+	logg("FATAL: Shared memory is owned by a different process (PID %d)",
+	     shmSettings->pid);
+	check_running_FTL();
+	logg("Exiting now!");
+	exit(EXIT_FAILURE);
 }
 
 // chown_shmem() changes the file ownership of a given shared memory object
@@ -461,6 +514,7 @@ bool init_shmem()
 	shmSettings = (ShmSettings*)shm_settings.ptr;
 	shmSettings->version = SHARED_MEMORY_VERSION;
 	shmSettings->global_shm_counter = 0;
+	shmSettings->pid = shmem_pid = getpid();
 
 	/****************************** shared strings buffer ******************************/
 	// Try to create shared memory object
@@ -867,6 +921,9 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 // Enlarge shared memory to be able to hold at least one new record
 void shm_ensure_size(void)
 {
+	// Verify shared memory ownership
+	verify_shmem_pid();
+
 	if(counters->queries >= counters->queries_MAX-1)
 	{
 		// Have to reallocate shared memory

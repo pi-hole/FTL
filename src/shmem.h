@@ -26,6 +26,7 @@ typedef struct {
 
 typedef struct {
 	int version;
+	pid_t pid;
 	unsigned int global_shm_counter;
 	unsigned int next_str_pos;
 } ShmSettings;
