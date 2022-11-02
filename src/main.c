@@ -60,7 +60,7 @@ int main (int argc, char* argv[])
 	handle_signals();
 
 	// Initialize shared memory
-	if(!init_shmem(true))
+	if(!init_shmem())
 	{
 		logg("Initialization of shared memory failed.");
 		// Check if there is already a running FTL process
