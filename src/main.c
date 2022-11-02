@@ -55,6 +55,9 @@ int main (int argc, char* argv[])
 	logg("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
 
+	// Process pihole-FTL.conf
+	read_FTLconf();
+
 	// Catch signals not handled by dnsmasq
 	// We configure real-time signals later (after dnsmasq has forked)
 	handle_signals();
@@ -67,9 +70,6 @@ int main (int argc, char* argv[])
 		check_running_FTL();
 		return EXIT_FAILURE;
 	}
-
-	// Process pihole-FTL.conf
-	read_FTLconf();
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with file permissions
 	// print warning otherwise
