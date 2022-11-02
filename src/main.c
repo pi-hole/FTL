@@ -76,6 +76,10 @@ int main (int argc, char* argv[])
 	if(strcmp(username, "pihole") != 0)
 		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
 
+	// Write PID early on so systemd cannot be fooled during DELAY_STARTUP
+	// times. The PID in this file will later be overwritten after forking
+	savepid();
+
 	// Delay startup (if requested)
 	// Do this before reading the database to make this option not only
 	// useful for interfaces that aren't ready but also for fake-hwclocks
