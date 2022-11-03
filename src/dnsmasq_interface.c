@@ -3339,7 +3339,7 @@ int check_struct_sizes(void)
 	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24);
 	result += check_one_struct("regexData", sizeof(regexData), 56, 44);
 	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
-	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 12, 12);
+	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 16, 16);
 	result += check_one_struct("countersStruct", sizeof(countersStruct), 244, 244);
 	result += check_one_struct("sqlite3_stmt_vec", sizeof(sqlite3_stmt_vec), 32, 16);
 
