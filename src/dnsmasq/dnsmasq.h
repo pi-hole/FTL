@@ -140,6 +140,7 @@ typedef unsigned long long u64;
 #include <sys/uio.h>
 #include <syslog.h>
 #include <dirent.h>
+#include <netdb.h>
 #ifndef HAVE_LINUX_NETWORK
 #  include <net/if_dl.h>
 #endif
@@ -1304,6 +1305,14 @@ extern struct daemon {
 #endif
 } *daemon;
 
+struct server_details {
+  union mysockaddr *addr, *source_addr;
+  struct addrinfo *hostinfo;
+  char *interface, *source, *scope_id, *interface_opt;
+  int serv_port, source_port, addr_type, scope_index, valid, resolved;
+  u16 *flags;
+};
+
 /* cache.c */
 void cache_init(void);
 void next_uid(struct crec *crecp);
@@ -1496,8 +1505,8 @@ void read_servers_file(void);
 void set_option_bool(unsigned int opt);
 void reset_option_bool(unsigned int opt);
 struct hostsfile *expand_filelist(struct hostsfile *list);
-char *parse_server(char *arg, union mysockaddr *addr, 
-		   union mysockaddr *source_addr, char *interface, u16 *flags);
+char *parse_server(char *arg, struct server_details *sdetails, const int can_resolve);
+char *parse_server_addr(struct server_details *sdetails);
 int option_read_dynfile(char *file, int flags);
 
 /* forward.c */

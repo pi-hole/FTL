@@ -859,115 +859,235 @@ static char *parse_mysockaddr(char *arg, union mysockaddr *addr)
   return NULL;
 }
 
-char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_addr, char *interface, u16 *flags)
+char *parse_server(char *arg, struct server_details *sdetails, const int can_resolve)
 {
-  int source_port = 0, serv_port = NAMESERVER_PORT;
-  char *portno, *source;
-  char *interface_opt = NULL;
-  int scope_index = 0;
-  char *scope_id;
+  sdetails->serv_port = NAMESERVER_PORT;
+  char *portno;
+  int ecode = 0;
+  struct addrinfo hints = { 0 };
 
-  *interface = 0;
+  *sdetails->interface = 0;
 
   if (strcmp(arg, "#") == 0)
     {
-      if (flags)
-	*flags |= SERV_USE_RESOLV;
+      if (sdetails->flags)
+	*sdetails->flags |= SERV_USE_RESOLV;
+      sdetails->valid = 1;
       return NULL;
     }
   
-  if ((source = split_chr(arg, '@')) && /* is there a source. */
-      (portno = split_chr(source, '#')) &&
-      !atoi_check16(portno, &source_port))
+  if ((sdetails->source = split_chr(arg, '@')) && /* is there a source. */
+      (portno = split_chr(sdetails->source, '#')) &&
+      !atoi_check16(portno, &sdetails->source_port))
     return _("bad port");
   
   if ((portno = split_chr(arg, '#')) && /* is there a port no. */
-      !atoi_check16(portno, &serv_port))
+      !atoi_check16(portno, &sdetails->serv_port))
     return _("bad port");
   
-  scope_id = split_chr(arg, '%');
+  sdetails->scope_id = split_chr(arg, '%');
   
-  if (source) {
-    interface_opt = split_chr(source, '@');
+  if (sdetails->source) {
+    sdetails->interface_opt = split_chr(sdetails->source, '@');
 
-    if (interface_opt)
+    if (sdetails->interface_opt)
       {
 #if defined(SO_BINDTODEVICE)
-	safe_strncpy(interface, source, IF_NAMESIZE);
-	source = interface_opt;
+	safe_strncpy(sdetails->interface, sdetails->source, IF_NAMESIZE);
+	sdetails->source = sdetails->interface_opt;
 #else
 	return _("interface binding not supported");
 #endif
       }
   }
 
-  if (inet_pton(AF_INET, arg, &addr->in.sin_addr) > 0)
+  if (inet_pton(AF_INET, arg, &sdetails->addr->in.sin_addr) > 0)
+      sdetails->addr_type = AF_INET;
+  else if (inet_pton(AF_INET6, arg, &sdetails->addr->in6.sin6_addr) > 0)
+      sdetails->addr_type = AF_INET6;
+  /* if the argument is neither an IPv4 not an IPv6 address, it might be a
+     hostname and we should try to resolve it to a suitable address.
+     However, we don't try this in domain_rev4/6 (can_resolve = 0) */
+  else if (can_resolve)
     {
-      addr->in.sin_port = htons(serv_port);	
-      addr->sa.sa_family = source_addr->sa.sa_family = AF_INET;
+      memset(&hints, 0, sizeof(hints));
+      /* The AI_ADDRCONFIG flag ensures that then IPv4 addresses are returned in
+         the result only if the local system has at least one IPv4 address
+         configured, and IPv6 addresses are returned only if the local system
+         has at least one IPv6 address configured. The loopback address is not
+         considered for this case as valid as a configured address. This flag is
+         useful on, for example, IPv4-only systems, to ensure that getaddrinfo()
+         does not return IPv6 socket addresses that would always fail in
+         subsequent connect() or bind() attempts. */
+      hints.ai_flags = AI_ADDRCONFIG;
+#if defined(HAVE_IDN) && defined(AI_IDN)
+      /* If the AI_IDN flag is specified and we have glibc 2.3.4 or newer, then
+         the node name given in node is converted to IDN format if necessary.
+         The source encoding is that of the current locale. */
+      hints.ai_flags |= AI_IDN;
+#endif
+      /* The value AF_UNSPEC indicates that getaddrinfo() should return socket
+         addresses for any address family (either IPv4 or IPv6, for example)
+         that can be used with node <arg> and service "domain". */
+      hints.ai_family = AF_UNSPEC;
+
+      /* Get addresses suitable for sending datagrams or TCP connections. */
+      hints.ai_socktype = 0;
+
+      /* Get address associated with this hostname */
+      ecode = getaddrinfo(arg, NULL, &hints, &sdetails->hostinfo);
+      if (ecode == 0)
+	{
+	  /* The getaddrinfo() function allocated and initialized a linked list of
+	     addrinfo structures, one for each network address that matches node
+	     and service, subject to the restrictions imposed by our <hints>
+	     above, and returns a pointer to the start of the list in <hostinfo>.
+	     The items in the linked list are linked by the <ai_next> field. */
+	  sdetails->valid = 1;
+	  sdetails->resolved = 1;
+	  return NULL;
+	}
+      else
+	{
+	  /* Lookup failed, return human readable error string */
+	  if (ecode == EAI_AGAIN)
+	    return _("Cannot resolve server name");
+	  else
+	    return _((char*)gai_strerror(ecode));
+	}
+    }
+  else
+    return _("bad address");
+  
+  sdetails->valid = 1;
+  return NULL;
+}
+
+char *parse_server_addr(struct server_details *sdetails)
+{
+  if (sdetails->addr_type == AF_INET)
+    {
+      sdetails->addr->in.sin_port = htons(sdetails->serv_port);
+      sdetails->addr->sa.sa_family = sdetails->source_addr->sa.sa_family = AF_INET;
 #ifdef HAVE_SOCKADDR_SA_LEN
       source_addr->in.sin_len = addr->in.sin_len = sizeof(struct sockaddr_in);
 #endif
-      source_addr->in.sin_addr.s_addr = INADDR_ANY;
-      source_addr->in.sin_port = htons(daemon->query_port);
+      sdetails->source_addr->in.sin_addr.s_addr = INADDR_ANY;
+      sdetails->source_addr->in.sin_port = htons(daemon->query_port);
       
-      if (source)
+      if (sdetails->source)
 	{
-	  if (flags)
-	    *flags |= SERV_HAS_SOURCE;
-	  source_addr->in.sin_port = htons(source_port);
-	  if (!(inet_pton(AF_INET, source, &source_addr->in.sin_addr) > 0))
+	  if (sdetails->flags)
+	    *sdetails->flags |= SERV_HAS_SOURCE;
+	  sdetails->source_addr->in.sin_port = htons(sdetails->source_port);
+	  if (inet_pton(AF_INET, sdetails->source, &sdetails->source_addr->in.sin_addr) == 0)
 	    {
+	      if (inet_pton(AF_INET6, sdetails->source, &sdetails->source_addr->in6.sin6_addr) == 1)
+		{
+		  sdetails->source_addr->sa.sa_family = AF_INET6;
+		  /* When resolving a server IP by hostname, we can simply skip mismatching
+		     server / source IP pairs. Otherwise, when an IP address is given directly,
+		     this is a fatal error. */
+		  if(!sdetails->resolved)
+		    return _("cannot use IPv4 server address with IPv6 source address");
+		}
+	      else
+		{
 #if defined(SO_BINDTODEVICE)
-	      if (interface_opt)
-		return _("interface can only be specified once");
-	      
-	      source_addr->in.sin_addr.s_addr = INADDR_ANY;
-	      safe_strncpy(interface, source, IF_NAMESIZE);
+		  if (sdetails->interface_opt)
+		    return _("interface can only be specified once");
+
+		  sdetails->source_addr->in.sin_addr.s_addr = INADDR_ANY;
+		  safe_strncpy(sdetails->interface, sdetails->source, IF_NAMESIZE);
 #else
-	      return _("interface binding not supported");
+		  return _("interface binding not supported");
 #endif
+		}
 	    }
 	}
     }
-  else if (inet_pton(AF_INET6, arg, &addr->in6.sin6_addr) > 0)
+  else if (sdetails->addr_type == AF_INET6)
     {
-      if (scope_id && (scope_index = if_nametoindex(scope_id)) == 0)
+      if (sdetails->scope_id && (sdetails->scope_index = if_nametoindex(sdetails->scope_id)) == 0)
 	return _("bad interface name");
-      
-      addr->in6.sin6_port = htons(serv_port);
-      addr->in6.sin6_scope_id = scope_index;
-      source_addr->in6.sin6_addr = in6addr_any; 
-      source_addr->in6.sin6_port = htons(daemon->query_port);
-      source_addr->in6.sin6_scope_id = 0;
-      addr->sa.sa_family = source_addr->sa.sa_family = AF_INET6;
-      addr->in6.sin6_flowinfo = source_addr->in6.sin6_flowinfo = 0;
+
+      sdetails->addr->in6.sin6_port = htons(sdetails->serv_port);
+      sdetails->addr->in6.sin6_scope_id = sdetails->scope_index;
+      sdetails->source_addr->in6.sin6_addr = in6addr_any;
+      sdetails->source_addr->in6.sin6_port = htons(daemon->query_port);
+      sdetails->source_addr->in6.sin6_scope_id = 0;
+      sdetails->addr->sa.sa_family = sdetails->source_addr->sa.sa_family = AF_INET6;
+      sdetails->addr->in6.sin6_flowinfo = sdetails->source_addr->in6.sin6_flowinfo = 0;
 #ifdef HAVE_SOCKADDR_SA_LEN
-      addr->in6.sin6_len = source_addr->in6.sin6_len = sizeof(addr->in6);
+      sdetails->addr->in6.sin6_len = sdetails->source_addr->in6.sin6_len = sizeof(addr->in6);
 #endif
-      if (source)
+      if (sdetails->source)
 	{
-	  if (flags)
-	    *flags |= SERV_HAS_SOURCE;
-	  source_addr->in6.sin6_port = htons(source_port);
-	  if (inet_pton(AF_INET6, source, &source_addr->in6.sin6_addr) == 0)
+	  if (sdetails->flags)
+	    *sdetails->flags |= SERV_HAS_SOURCE;
+	  sdetails->source_addr->in6.sin6_port = htons(sdetails->source_port);
+	  if (inet_pton(AF_INET6, sdetails->source, &sdetails->source_addr->in6.sin6_addr) == 0)
 	    {
+	      if (inet_pton(AF_INET, sdetails->source, &sdetails->source_addr->in.sin_addr) == 1)
+		{
+		  sdetails->source_addr->sa.sa_family = AF_INET;
+		  /* When resolving a server IP by hostname, we can simply skip mismatching
+		     server / source IP pairs. Otherwise, when an IP address is given directly,
+		     this is a fatal error. */
+		  if(!sdetails->resolved)
+		    return _("cannot use IPv6 server address with IPv4 source address");
+		}
+	      else
+		{
 #if defined(SO_BINDTODEVICE)
-	      if (interface_opt)
-		return _("interface can only be specified once");
-	      
-	      source_addr->in6.sin6_addr = in6addr_any;
-	      safe_strncpy(interface, source, IF_NAMESIZE);
+		  if (sdetails->interface_opt)
+		  return _("interface can only be specified once");
+
+		  sdetails->source_addr->in6.sin6_addr = in6addr_any;
+		  safe_strncpy(sdetails->interface, sdetails->source, IF_NAMESIZE);
 #else
-	      return _("interface binding not supported");
+		  return _("interface binding not supported");
 #endif
+		}
 	    }
 	}
     }
   else
     return _("bad address");
-
   return NULL;
+}
+
+static int parse_server_next(struct server_details *sdetails)
+{
+  /* Looping over resolved addresses? */
+  if (sdetails->hostinfo)
+    {
+      /* Get address type */
+      sdetails->addr_type = sdetails->hostinfo->ai_family;
+
+      /* Get address */
+      if (sdetails->addr_type == AF_INET)
+	memcpy(&sdetails->addr->in.sin_addr,
+		&((struct sockaddr_in *) sdetails->hostinfo->ai_addr)->sin_addr,
+		sizeof(sdetails->addr->in.sin_addr));
+      else if (sdetails->addr_type == AF_INET6)
+	memcpy(&sdetails->addr->in6.sin6_addr,
+		&((struct sockaddr_in6 *) sdetails->hostinfo->ai_addr)->sin6_addr,
+		sizeof(sdetails->addr->in6.sin6_addr));
+
+      /* Iterate to the next available address */
+      sdetails->valid = sdetails->hostinfo->ai_next != NULL;
+      sdetails->hostinfo = sdetails->hostinfo->ai_next;
+      return 1;
+    }
+  else if (sdetails->valid)
+    {
+      /* When using an IP address, we return the address only once */
+      sdetails->valid = 0;
+      return 1;
+    }
+  /* Stop iterating here, we used all available addresses */
+  return 0;
 }
 
 static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int size)
@@ -980,10 +1100,16 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
   union mysockaddr serv_addr, source_addr;
   char interface[IF_NAMESIZE+1];
   int count = 1, rem, addrbytes, addrbits;
-  
+  struct server_details sdetails = { 0 };
+  sdetails.addr = &serv_addr;
+  sdetails.source_addr = &source_addr;
+  sdetails.interface = interface;
+  sdetails.flags = &flags;
+
   if (!server)
     flags = SERV_LITERAL_ADDRESS;
-  else if ((string = parse_server(server, &serv_addr, &source_addr, interface, &flags)))
+  else if ((string = parse_server(server, &sdetails, 0)) ||
+	   (string = parse_server_addr(&sdetails)))
     return string;
 
   if (from_file)
@@ -1039,10 +1165,16 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
   union mysockaddr serv_addr, source_addr;
   char interface[IF_NAMESIZE+1];
   int count = 1, rem, addrbytes, addrbits;
+  struct server_details sdetails = { 0 };
+  sdetails.addr = &serv_addr;
+  sdetails.source_addr = &source_addr;
+  sdetails.interface = interface;
+  sdetails.flags = &flags;
 
   if (!server)
     flags = SERV_LITERAL_ADDRESS;
-  else if ((string = parse_server(server, &serv_addr, &source_addr, interface, &flags)))
+  else if ((string = parse_server(server, &sdetails, 0)) ||
+	   (string = parse_server_addr(&sdetails)))
     return string;
 
   if (from_file)
@@ -2804,6 +2936,12 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	union mysockaddr serv_addr, source_addr;
 	char interface[IF_NAMESIZE+1];
 
+	struct server_details sdetails = { 0 };
+	sdetails.addr = &serv_addr;
+	sdetails.source_addr = &source_addr;
+	sdetails.interface = interface;
+	sdetails.flags = &flags;
+
 	unhide_metas(arg);
 	
 	/* split the domain args, if any and skip to the end of them. */
@@ -2836,36 +2974,48 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  }
 	else
 	  {
-	    if ((err = parse_server(arg, &serv_addr, &source_addr, interface, &flags)))
+	    if ((err = parse_server(arg, &sdetails, 1)))
 	      ret_err(err);
 	  }
 
 	if (servers_only && option == 'S')
 	  flags |= SERV_FROM_FILE;
 	
-	while (1)
+	while (parse_server_next(&sdetails))
 	  {
-	    /* server=//1.2.3.4 is special. */
-	    if (lastdomain)
-	      {
-		if (strlen(domain) == 0)
-		  flags |= SERV_FOR_NODOTS;
-		else
-		  flags &= ~SERV_FOR_NODOTS;
+	    if ((err = parse_server_addr(&sdetails)))
+	      ret_err(err);
 
-		/* address=/#/ matches the same as without domain */
-		if (option == 'A' && domain[0] == '#' && domain[1] == 0)
-		  domain[0] = 0;
+	    /* When source is set only use DNS records of the same type and skip all others */
+	    if (flags & SERV_HAS_SOURCE && sdetails.addr_type != sdetails.source_addr->sa.sa_family)
+	      continue;
+
+	    while (1)
+	      {
+		/* server=//1.2.3.4 is special. */
+		if (lastdomain)
+		{
+		  if (strlen(domain) == 0)
+		    flags |= SERV_FOR_NODOTS;
+		  else
+		    flags &= ~SERV_FOR_NODOTS;
+
+		  /* address=/#/ matches the same as without domain */
+		  if (option == 'A' && domain[0] == '#' && domain[1] == 0)
+		    domain[0] = 0;
+		}
+
+		if (!add_update_server(flags, sdetails.addr, sdetails.source_addr, sdetails.interface, domain, &addr))
+		  ret_err(gen_err);
+
+		if (!lastdomain || domain == lastdomain)
+		  break;
+
+		domain += strlen(domain) + 1;
 	      }
-	    
-	    if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, &addr))
-	      ret_err(gen_err);
-	    
-	    if (!lastdomain || domain == lastdomain)
-	      break;
-	    
-	    domain += strlen(domain) + 1;
 	  }
+	  if (sdetails.resolved)
+	    freeaddrinfo(sdetails.hostinfo);
 	
      	break;
       }

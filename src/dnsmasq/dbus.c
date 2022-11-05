@@ -292,6 +292,11 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
       u16 flags = 0;
       char interface[IF_NAMESIZE];
       char *str_addr, *str_domain = NULL;
+      struct server_details sdetails = { 0 };
+      sdetails.addr = &addr;
+      sdetails.source_addr = &source_addr;
+      sdetails.interface = interface;
+      sdetails.flags = &flags;
 
       if (strings)
 	{
@@ -375,7 +380,8 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 	}
 
       /* parse the IP address */
-      if ((addr_err = parse_server(str_addr, &addr, &source_addr, (char *) &interface, &flags)))
+      if ((addr_err = parse_server(str_addr, &sdetails, 0)) ||
+          (addr_err = parse_server_addr(&sdetails)))
 	{
           error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
                                                 "Invalid IP address '%s': %s",
