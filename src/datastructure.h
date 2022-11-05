@@ -108,7 +108,7 @@ typedef struct {
 } DNSCacheData;
 
 void strtolower(char *str);
-uint32_t hashStr(const char *s) __attribute__((const));
+uint32_t hashStr(const char *s) __attribute__((pure));
 int findQueryID(const int id);
 int findUpstreamID(const char * upstream, const in_port_t port);
 int findDomainID(const char *domain, const bool count);

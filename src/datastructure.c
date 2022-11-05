@@ -41,7 +41,7 @@ void strtolower(char *str)
 }
 
 // creates a simple hash of a string that fits into a uint32_t
-uint32_t hashStr(const char *s)
+uint32_t __attribute__ ((pure)) hashStr(const char *s)
 {
         uint32_t hash = 0;
         // Jenkins' One-at-a-Time hash (http://www.burtleburtle.net/bob/hash/doobs.html)
