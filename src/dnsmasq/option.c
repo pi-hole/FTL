@@ -2981,9 +2981,9 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	if (servers_only && option == 'S')
 	  flags |= SERV_FROM_FILE;
 	
-	while (parse_server_next(&sdetails))
+	while ((flags & SERV_LITERAL_ADDRESS) || parse_server_next(&sdetails))
 	  {
-	    if ((err = parse_server_addr(&sdetails)))
+	    if (!(flags & SERV_LITERAL_ADDRESS) && (err = parse_server_addr(&sdetails)))
 	      ret_err(err);
 
 	    /* When source is set only use DNS records of the same type and skip all others */
@@ -3013,9 +3013,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
 		domain += strlen(domain) + 1;
 	      }
+
+	    if (flags & SERV_LITERAL_ADDRESS)
+	      break;
 	  }
-	  if (sdetails.resolved)
-	    freeaddrinfo(sdetails.hostinfo);
+
+	if (sdetails.resolved)
+	  freeaddrinfo(sdetails.hostinfo);
 	
      	break;
       }
