@@ -1505,7 +1505,7 @@ void read_servers_file(void);
 void set_option_bool(unsigned int opt);
 void reset_option_bool(unsigned int opt);
 struct hostsfile *expand_filelist(struct hostsfile *list);
-char *parse_server(char *arg, struct server_details *sdetails, const int can_resolve);
+char *parse_server(char *arg, struct server_details *sdetails);
 char *parse_server_addr(struct server_details *sdetails);
 int option_read_dynfile(char *file, int flags);
 

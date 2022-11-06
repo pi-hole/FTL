@@ -859,7 +859,7 @@ static char *parse_mysockaddr(char *arg, union mysockaddr *addr)
   return NULL;
 }
 
-char *parse_server(char *arg, struct server_details *sdetails, const int can_resolve)
+char *parse_server(char *arg, struct server_details *sdetails)
 {
   sdetails->serv_port = NAMESERVER_PORT;
   char *portno;
@@ -905,11 +905,10 @@ char *parse_server(char *arg, struct server_details *sdetails, const int can_res
       sdetails->addr_type = AF_INET;
   else if (inet_pton(AF_INET6, arg, &sdetails->addr->in6.sin6_addr) > 0)
       sdetails->addr_type = AF_INET6;
-  /* if the argument is neither an IPv4 not an IPv6 address, it might be a
-     hostname and we should try to resolve it to a suitable address.
-     However, we don't try this in domain_rev4/6 (can_resolve = 0) */
-  else if (can_resolve)
+  else 
     {
+      /* if the argument is neither an IPv4 not an IPv6 address, it might be a
+	 hostname and we should try to resolve it to a suitable address. */
       memset(&hints, 0, sizeof(hints));
       /* The AI_ADDRCONFIG flag ensures that then IPv4 addresses are returned in
          the result only if the local system has at least one IPv4 address
@@ -931,8 +930,10 @@ char *parse_server(char *arg, struct server_details *sdetails, const int can_res
          that can be used with node <arg> and service "domain". */
       hints.ai_family = AF_UNSPEC;
 
-      /* Get addresses suitable for sending datagrams or TCP connections. */
-      hints.ai_socktype = 0;
+      /* Get addresses suitable for sending datagrams. We assume that we can use the
+	 same addresses for TCP connections. Settting this to zero gets each address
+	 threes times, for SOCK_STREAM, SOCK_RAW and SOCK_DGRAM, which is not useful. */
+      hints.ai_socktype = SOCK_DGRAM;
 
       /* Get address associated with this hostname */
       ecode = getaddrinfo(arg, NULL, &hints, &sdetails->hostinfo);
@@ -956,8 +957,6 @@ char *parse_server(char *arg, struct server_details *sdetails, const int can_res
 	    return _((char*)gai_strerror(ecode));
 	}
     }
-  else
-    return _("bad address");
   
   sdetails->valid = 1;
   return NULL;
@@ -988,7 +987,7 @@ char *parse_server_addr(struct server_details *sdetails)
 		  /* When resolving a server IP by hostname, we can simply skip mismatching
 		     server / source IP pairs. Otherwise, when an IP address is given directly,
 		     this is a fatal error. */
-		  if(!sdetails->resolved)
+		  if (!sdetails->resolved)
 		    return _("cannot use IPv4 server address with IPv6 source address");
 		}
 	      else
@@ -1108,20 +1107,19 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
 
   if (!server)
     flags = SERV_LITERAL_ADDRESS;
-  else if ((string = parse_server(server, &sdetails, 0)) ||
-	   (string = parse_server_addr(&sdetails)))
+  else if ((string = parse_server(server, &sdetails)))
     return string;
-
+  
   if (from_file)
     flags |= SERV_FROM_FILE;
-
+ 
   rem = size & 0x7;
   addrbytes = (32 - size) >> 3;
   addrbits = (32 - size) & 7;
   
   if (size > 32 || size < 1)
     return _("bad IPv4 prefix length");
-
+  
   /* Zero out last address bits according to CIDR mask */
   ((u8 *)addr4)[3-addrbytes] &= ~((1 << addrbits)-1);
   
@@ -1135,23 +1133,37 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
       *domain = 0;
       string = domain;
       msize = size/8;
-  
+      
       for (j = (rem == 0) ? msize-1 : msize; j >= 0; j--)
 	{ 
 	  int dig = ((unsigned char *)addr4)[j];
-      
+	  
 	  if (j == msize)
 	    dig += i;
-      
+	  
 	  string += sprintf(string, "%d.", dig);
 	}
-
+      
       sprintf(string, "in-addr.arpa");
 
-      if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
-	return  _("error");
+      if (flags & SERV_LITERAL_ADDRESS)
+	{
+	  if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
+	    return  _("error");
+	}
+      else
+	{
+	  while (parse_server_next(&sdetails))
+	    {
+	      if ((string = parse_server_addr(&sdetails)))
+		return string;
+	      
+	      if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
+		return  _("error");
+	    }
+	}
     }
-
+  
   return NULL;
 }
 
@@ -1173,8 +1185,7 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
 
   if (!server)
     flags = SERV_LITERAL_ADDRESS;
-  else if ((string = parse_server(server, &sdetails, 0)) ||
-	   (string = parse_server_addr(&sdetails)))
+  else if ((string = parse_server(server, &sdetails)))
     return string;
 
   if (from_file)
@@ -1215,10 +1226,24 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
       
       sprintf(string, "ip6.arpa");
 
-      if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
-	return  _("error");
+      if (flags & SERV_LITERAL_ADDRESS)
+	{
+	  if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
+	    return  _("error");
+	}
+      else
+	{
+	  while (parse_server_next(&sdetails))
+	    {
+	      if ((string = parse_server_addr(&sdetails)))
+		return string;
+	      
+	      if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
+		return  _("error");
+	    }
+	}
     }
-
+  
   return NULL;
 }
 
@@ -2974,7 +2999,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  }
 	else
 	  {
-	    if ((err = parse_server(arg, &sdetails, 1)))
+	    if ((err = parse_server(arg, &sdetails)))
 	      ret_err(err);
 	  }
 

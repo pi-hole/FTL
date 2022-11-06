@@ -380,7 +380,7 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 	}
 
       /* parse the IP address */
-      if ((addr_err = parse_server(str_addr, &sdetails, 0)) ||
+      if ((addr_err = parse_server(str_addr, &sdetails)) ||
           (addr_err = parse_server_addr(&sdetails)))
 	{
           error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
