@@ -13,6 +13,12 @@
 #include "dnsmasq/dnsmasq.h"
 #undef __USE_XOPEN
 
+#include <nettle/bignum.h>
+#if !defined(NETTLE_VERSION_MAJOR)
+#  define NETTLE_VERSION_MAJOR 2
+#  define NETTLE_VERSION_MINOR 0
+#endif
+
 #include "FTL.h"
 #include "args.h"
 #include "version.h"
@@ -258,6 +264,10 @@ void parse_args(int argc, char* argv[])
 			printf("\n");
 			printf("******************************** LUA ********************************\n");
 			printf(LUA_COPYRIGHT"\n");
+			printf("\n");
+			printf("***************************** LIBNETTLE *****************************\n");
+			printf("Version: %d.%d\n", NETTLE_VERSION_MAJOR, NETTLE_VERSION_MINOR);
+			printf("GMP: %s\n", NETTLE_USE_MINI_GMP ? "Mini" : "Full");
 			exit(EXIT_SUCCESS);
 		}
 
