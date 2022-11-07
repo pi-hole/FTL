@@ -867,11 +867,13 @@ char *parse_server(char *arg, struct server_details *sdetails)
   struct addrinfo hints = { 0 };
 
   *sdetails->interface = 0;
-
+  sdetails->addr_type = AF_UNSPEC;
+  
   if (strcmp(arg, "#") == 0)
     {
       if (sdetails->flags)
 	*sdetails->flags |= SERV_USE_RESOLV;
+      sdetails->addr_type = AF_LOCAL;
       sdetails->valid = 1;
       return NULL;
     }
@@ -1051,7 +1053,7 @@ char *parse_server_addr(struct server_details *sdetails)
 	    }
 	}
     }
-  else
+  else if (sdetails->addr_type != AF_LOCAL)
     return _("bad address");
   
   return NULL;
