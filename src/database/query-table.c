@@ -988,6 +988,7 @@ void DB_read_queries(void)
 				break;
 
 			case QUERY_CACHE: // Cached or local config
+			case QUERY_CACHE_STALE:
 				// Nothing to be done here
 				break;
 
