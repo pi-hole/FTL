@@ -1161,6 +1161,9 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
 	      if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
 		return  _("error");
 	    }
+
+	  if (sdetails.resolved)
+	    freeaddrinfo(sdetails.hostinfo);
 	}
     }
   
@@ -1241,6 +1244,9 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
 	      if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
 		return  _("error");
 	    }
+
+	  if (sdetails.resolved)
+	    freeaddrinfo(sdetails.hostinfo);
 	}
     }
   
