@@ -26,8 +26,38 @@
 // get_rate_limit_turnaround()
 #include "../gc.h"
 
-static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT", "DNSMASQ_WARN", "LOAD", "SHMEM", "DISK", "ADLIST", "DOMAIN_RATE_LIMIT_MESSAGE" };
+static const char *get_message_type(enum message_type type)
+{
+	switch (type)
+	{
+	case REGEX_MESSAGE:
+		return "REGEX";
+	case SUBNET_MESSAGE:
+		return "SUBNET";
+	case HOSTNAME_MESSAGE:
+		return "HOSTNAME";
+	case DNSMASQ_CONFIG_MESSAGE:
+		return "DNSMASQ_CONFIG";
+	case RATE_LIMIT_MESSAGE:
+		return "RATE_LIMIT";
+	case DNSMASQ_WARN_MESSAGE:
+		return "DNSMASQ_WARN";
+	case LOAD_MESSAGE:
+		return "LOAD";
+	case SHMEM_MESSAGE:
+		return "SHMEM";
+	case DISK_MESSAGE:
+		return "DISK";
+	case INACCESSIBLE_ADLIST_MESSAGE:
+		return "ADLIST";
+	case DOMAIN_RATE_LIMIT_MESSAGE:
+		return "DOMAIN_RATE_LIMIT";
+	case MAX_MESSAGE:
+		return NULL;
+	}
+	return NULL;
+}
+
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -183,8 +213,11 @@ static bool add_message(const enum message_type type,
 		goto end_of_add_message;
 	}
 
+	// Get string representation of message type
+	const char *message_type = get_message_type(type);
+
 	// Bind type to prepared statement
-	if((rc = sqlite3_bind_text(stmt, 1, message_types[type], -1, SQLITE_STATIC)) != SQLITE_OK)
+	if((rc = sqlite3_bind_text(stmt, 1, message_type, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		logg("add_message(type=%u, message=%s) - Failed to bind type DELETE: %s",
 			type, message, sqlite3_errstr(rc));
@@ -227,7 +260,7 @@ static bool add_message(const enum message_type type,
 	}
 
 	// Bind type to prepared statement
-	if((rc = sqlite3_bind_text(stmt, 1, message_types[type], -1, SQLITE_STATIC)) != SQLITE_OK)
+	if((rc = sqlite3_bind_text(stmt, 1, message_type, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		logg("add_message(type=%u, message=%s) - Failed to bind type: %s",
 		     type, message, sqlite3_errstr(rc));
