@@ -379,21 +379,6 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 	  strcpy(str_addr, str);
 	}
 
-      /* parse the IP address */
-      if ((addr_err = parse_server(str_addr, &sdetails)) ||
-          (addr_err = parse_server_addr(&sdetails)))
-	{
-          error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
-                                                "Invalid IP address '%s': %s",
-                                                str, addr_err);
-          break;
-        }
-      
-      /* 0.0.0.0 for server address == NULL, for Dbus */
-      if (addr.in.sin_family == AF_INET &&
-          addr.in.sin_addr.s_addr == 0)
-        flags |= SERV_LITERAL_ADDRESS;
-      
       if (strings)
 	{
 	  char *p;
@@ -407,7 +392,31 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 	    else 
 	      p = NULL;
 	    
-	    add_update_server(flags | SERV_FROM_DBUS, &addr, &source_addr, interface, str_domain, NULL);
+	     if (strings && strlen(str_addr) == 0)
+	       add_update_server(SERV_LITERAL_ADDRESS | SERV_FROM_DBUS, &addr, &source_addr, interface, str_domain, NULL);
+	     else
+	       {
+		 if ((addr_err = parse_server(str_addr, &sdetails)))
+		   {
+		     error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
+							   "Invalid IP address '%s': %s",
+							   str, addr_err);
+		     break;
+		   }
+		 
+		 while (parse_server_next(&sdetails))
+		   {
+		     if ((addr_err = parse_server_addr(&sdetails)))
+		       {
+			 error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
+							       "Invalid IP address '%s': %s",
+							       str, addr_err);
+			 break;
+		       }
+		     
+		     add_update_server(flags | SERV_FROM_DBUS, &addr, &source_addr, interface, str_domain, NULL);
+		   }
+	       }
 	  } while ((str_domain = p));
 	}
       else
@@ -421,11 +430,40 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 	    if (dbus_message_iter_get_arg_type(&string_iter) == DBUS_TYPE_STRING)
 	      dbus_message_iter_get_basic(&string_iter, &str);
 	    dbus_message_iter_next (&string_iter);
+
+	    if ((addr_err = parse_server(str_addr, &sdetails)))
+	      {
+		error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
+						      "Invalid IP address '%s': %s",
+						      str, addr_err);
+		break;
+	      }
 	    
-	    add_update_server(flags | SERV_FROM_DBUS, &addr, &source_addr, interface, str, NULL);
+	    while (parse_server_next(&sdetails))
+	      {
+		if ((addr_err = parse_server_addr(&sdetails)))
+		  {
+		    error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
+							  "Invalid IP address '%s': %s",
+							  str, addr_err);
+		    break;
+		  }
+		
+		/* 0.0.0.0 for server address == NULL, for Dbus */
+		if (addr.in.sin_family == AF_INET &&
+		    addr.in.sin_addr.s_addr == 0)
+		  flags |= SERV_LITERAL_ADDRESS;
+		else
+		  flags &= ~SERV_LITERAL_ADDRESS;
+		
+		add_update_server(flags | SERV_FROM_DBUS, &addr, &source_addr, interface, str, NULL);
+	      }
 	  } while (dbus_message_iter_get_arg_type(&string_iter) == DBUS_TYPE_STRING);
 	}
-	 
+      
+      if (sdetails.resolved)
+	freeaddrinfo(sdetails.hostinfo);
+      
       /* jump to next element in outer array */
       dbus_message_iter_next(&array_iter);
     }

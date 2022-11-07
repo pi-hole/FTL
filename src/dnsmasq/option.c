@@ -1053,10 +1053,11 @@ char *parse_server_addr(struct server_details *sdetails)
     }
   else
     return _("bad address");
+  
   return NULL;
 }
 
-static int parse_server_next(struct server_details *sdetails)
+int parse_server_next(struct server_details *sdetails)
 {
   /* Looping over resolved addresses? */
   if (sdetails->hostinfo)

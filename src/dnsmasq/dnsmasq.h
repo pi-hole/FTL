@@ -1507,6 +1507,7 @@ void reset_option_bool(unsigned int opt);
 struct hostsfile *expand_filelist(struct hostsfile *list);
 char *parse_server(char *arg, struct server_details *sdetails);
 char *parse_server_addr(struct server_details *sdetails);
+int parse_server_next(struct server_details *sdetails);
 int option_read_dynfile(char *file, int flags);
 
 /* forward.c */
