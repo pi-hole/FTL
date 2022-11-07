@@ -2961,7 +2961,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
     case LOPT_LOCAL:     /*  --local */
     case 'A':            /*  --address */
       {
-	char *lastdomain = NULL, *domain = "";
+	char *lastdomain = NULL, *domain = "", *cur_domain;
 	u16 flags = 0;
 	char *err;
 	union all_addr addr;
@@ -3012,9 +3012,12 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
 	if (servers_only && option == 'S')
 	  flags |= SERV_FROM_FILE;
-	
+
+	cur_domain = domain;
 	while ((flags & SERV_LITERAL_ADDRESS) || parse_server_next(&sdetails))
 	  {
+	    cur_domain = domain;
+
 	    if (!(flags & SERV_LITERAL_ADDRESS) && (err = parse_server_addr(&sdetails)))
 	      ret_err(err);
 
@@ -3026,24 +3029,24 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	      {
 		/* server=//1.2.3.4 is special. */
 		if (lastdomain)
-		{
-		  if (strlen(domain) == 0)
-		    flags |= SERV_FOR_NODOTS;
-		  else
-		    flags &= ~SERV_FOR_NODOTS;
-
-		  /* address=/#/ matches the same as without domain */
-		  if (option == 'A' && domain[0] == '#' && domain[1] == 0)
-		    domain[0] = 0;
-		}
-
-		if (!add_update_server(flags, sdetails.addr, sdetails.source_addr, sdetails.interface, domain, &addr))
+		  {
+		    if (strlen(cur_domain) == 0)
+		      flags |= SERV_FOR_NODOTS;
+		    else
+		      flags &= ~SERV_FOR_NODOTS;
+		    
+		    /* address=/#/ matches the same as without domain */
+		    if (option == 'A' && cur_domain[0] == '#' && cur_domain[1] == 0)
+		      cur_domain[0] = 0;
+		  }
+		
+		if (!add_update_server(flags, sdetails.addr, sdetails.source_addr, sdetails.interface, cur_domain, &addr))
 		  ret_err(gen_err);
-
-		if (!lastdomain || domain == lastdomain)
+		
+		if (!lastdomain || cur_domain == lastdomain)
 		  break;
 
-		domain += strlen(domain) + 1;
+		cur_domain += strlen(cur_domain) + 1;
 	      }
 
 	    if (flags & SERV_LITERAL_ADDRESS)
