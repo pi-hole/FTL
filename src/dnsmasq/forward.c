@@ -1827,13 +1827,6 @@ void receive_query(struct listener *listen, time_t now)
       
       if (m >= 1)
 	{
-	  if (stale && have_pseudoheader)
-	    {
-	      u16 swap = htons(EDE_STALE);
-	      
-	      m = add_pseudoheader(header,  m,  ((unsigned char *) header) + udp_size, daemon->edns_pktsz,
-				   EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
-	    }
 #ifdef HAVE_DUMPFILE
 	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
 #endif
@@ -1910,6 +1903,13 @@ void receive_query(struct listener *listen, time_t now)
       
       if (m >= 1)
 	{
+	  if (stale && have_pseudoheader)
+	    {
+	      u16 swap = htons(EDE_STALE);
+	      
+	      m = add_pseudoheader(header,  m,  ((unsigned char *) header) + udp_size, daemon->edns_pktsz,
+				   EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	    }
 #ifdef HAVE_DUMPFILE
 	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
 #endif
