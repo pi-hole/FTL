@@ -14,13 +14,6 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/* Pi-hole definitions */
-#define HAVE_DNSSEC
-#define HAVE_DNSSEC_STATIC
-#define HAVE_IDN
-#define HAVE_LUASCRIPT
-/***********************/
-
 #define COPYRIGHT "Copyright (c) 2000-2022 Simon Kelley"
 
 /* We do defines that influence behavior of stdio.h, so complain

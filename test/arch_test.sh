@@ -76,7 +76,11 @@ check_static() {
 if [[ "${CI_ARCH}" == "x86_64" ]]; then
 
   check_machine "ELF64" "Advanced Micro Devices X86-64"
-  check_libs "[libm.so.6] [librt.so.1] [libpthread.so.0] [libc.so.6]"
+  if [[ "${GIT_TAG}" == "all-dependencies-test-build" ]]; then
+    check_libs "[libm.so.6] [librt.so.1] [libdbus-1.so.3] [libmnl.so.0] [libnftables.so.1] [libnftnl.so.11] [libnfnetlink.so.0] [libnetfilter_conntrack.so.3] [libpthread.so.0] [libc.so.6]"
+  else
+    check_libs "[libm.so.6] [librt.so.1] [libpthread.so.0] [libc.so.6]"
+  fi
   check_file "ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
 elif [[ "${CI_ARCH}" == "x86_64-musl" ]]; then
