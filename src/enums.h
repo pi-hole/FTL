@@ -46,6 +46,7 @@ enum query_status {
 	QUERY_IN_PROGRESS,
 	QUERY_DBBUSY,
 	QUERY_SPECIAL_DOMAIN,
+	QUERY_CACHE_STALE,
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 

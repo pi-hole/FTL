@@ -683,7 +683,9 @@ int add_update_server(int flags,
 		  serv->next = NULL;
 		}
 	      break;
-	    }	
+	    }
+	  else
+	    up = &serv->next;
 	}
 
       if (serv)

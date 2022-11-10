@@ -362,7 +362,7 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
 		
 		if (int_name->flags & INP4)
 		  {
-		    if (netmask.s_addr == 0xffff)
+		    if (netmask.s_addr == 0xffffffff)
 		      continue;
 
 		    newaddr.s_addr = (addr->in.sin_addr.s_addr & netmask.s_addr) |
@@ -1391,7 +1391,7 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifind
 	 or both are set. Otherwise use the OS's random ephemeral port allocation by
 	 leaving port == 0 and tries == 1 */
       ports_avail = daemon->max_port - daemon->min_port + 1;
-      tries = ports_avail < 30 ? 3 * ports_avail : 100;
+      tries =  (ports_avail < SMALL_PORT_RANGE) ? ports_avail : 100;
       port = htons(daemon->min_port + (rand16() % ports_avail));
     }
   
@@ -1420,7 +1420,16 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifind
       if (--tries == 0)
 	return 0;
 
-      port = htons(daemon->min_port + (rand16() % ports_avail));
+      /* For small ranges, do a systematic search, not a random one. */
+      if (ports_avail < SMALL_PORT_RANGE)
+	{
+	  unsigned short hport = ntohs(port);
+	  if (hport++ == daemon->max_port)
+	    hport = daemon->min_port;
+	  port = htons(hport);
+	}
+      else
+	port = htons(daemon->min_port + (rand16() % ports_avail));
     }
 
   if (!is_tcp && ifindex > 0)

@@ -530,6 +530,7 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 		case QUERY_RETRIED:
 		case QUERY_RETRIED_DNSSEC:
 		case QUERY_IN_PROGRESS:
+		case QUERY_CACHE_STALE:
 		case QUERY_STATUS_MAX:
 		default:
 			return false;
@@ -549,32 +550,58 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 	}
 }
 
-static const char *query_status_str[QUERY_STATUS_MAX] = {
-	"UNKNOWN",
-	"GRAVITY",
-	"FORWARDED",
-	"CACHE",
-	"REGEX",
-	"BLACKLIST",
-	"EXTERNAL_BLOCKED_IP",
-	"EXTERNAL_BLOCKED_NULL",
-	"EXTERNAL_BLOCKED_NXRA",
-	"GRAVITY_CNAME",
-	"REGEX_CNAME",
-	"BLACKLIST_CNAME",
-	"RETRIED",
-	"RETRIED_DNSSEC",
-	"IN_PROGRESS",
-	"DBBUSY",
-	"SPECIAL_DOMAIN"
-};
+static const char* __attribute__ ((const)) query_status_str(const enum query_status status)
+{
+	switch (status)
+	{
+		case QUERY_UNKNOWN:
+			return "UNKNOWN";
+		case QUERY_GRAVITY:
+			return "GRAVITY";
+		case QUERY_FORWARDED:
+			return "FORWARDED";
+		case QUERY_CACHE:
+			return "CACHE";
+		case QUERY_REGEX:
+			return "REGEX";
+		case QUERY_BLACKLIST:
+			return "BLACKLIST";
+		case QUERY_EXTERNAL_BLOCKED_IP:
+			return "EXTERNAL_BLOCKED_IP";
+		case QUERY_EXTERNAL_BLOCKED_NULL:
+			return "EXTERNAL_BLOCKED_NULL";
+		case QUERY_EXTERNAL_BLOCKED_NXRA:
+			return "EXTERNAL_BLOCKED_NXRA";
+		case QUERY_GRAVITY_CNAME:
+			return "GRAVITY_CNAME";
+		case QUERY_REGEX_CNAME:
+			return "REGEX_CNAME";
+		case QUERY_BLACKLIST_CNAME:
+			return "BLACKLIST_CNAME";
+		case QUERY_RETRIED:
+			return "RETRIED";
+		case QUERY_RETRIED_DNSSEC:
+			return "RETRIED_DNSSEC";
+		case QUERY_IN_PROGRESS:
+			return "IN_PROGRESS";
+		case QUERY_DBBUSY:
+			return "DBBUSY";
+		case QUERY_SPECIAL_DOMAIN:
+			return "SPECIAL_DOMAIN";
+		case QUERY_CACHE_STALE:
+			return "CACHE_STALE";
+		case QUERY_STATUS_MAX:
+			return NULL;
+	}
+	return NULL;
+}
 
 void _query_set_status(queriesData *query, const enum query_status new_status, const char *func, const int line, const char *file)
 {
 	// Debug logging
 	if(config.debug & DEBUG_STATUS)
 	{
-		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str[query->status] : "INVALID";
+		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str(query->status) : "INVALID";
 		if(query->status == new_status)
 		{
 			logg("Query %i: status unchanged: %s (%d) in %s() (%s:%i)",
@@ -582,7 +609,7 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 		}
 		else
 		{
-			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str[new_status] : "INVALID";
+			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str(new_status) : "INVALID";
 			logg("Query %i: status changed: %s (%d) -> %s (%d) in %s() (%s:%i)",
 			     query->id, oldstr, query->status, newstr, new_status, func, short_path(file), line);
 		}

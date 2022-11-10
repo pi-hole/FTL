@@ -190,7 +190,7 @@ void rehash(int size)
   else if (new_size <= hash_size || !(new = whine_malloc(new_size * sizeof(struct crec *))))
     return;
 
-  for(i = 0; i < new_size; i++)
+  for (i = 0; i < new_size; i++)
     new[i] = NULL;
 
   old = hash_table;
@@ -234,7 +234,8 @@ static void cache_hash(struct crec *crecp)
      immortal entries are at the end of the hash-chain.
      This allows reverse searches and garbage collection to be optimised */
 
-  struct crec **up = hash_bucket(cache_get_name(crecp));
+  char *name = cache_get_name(crecp);
+  struct crec **up = hash_bucket(name);
 
   if (!(crecp->flags & F_REVERSE))
     {
@@ -245,6 +246,11 @@ static void cache_hash(struct crec *crecp)
 	while (*up && !((*up)->flags & F_IMMORTAL))
 	  up = &((*up)->hash_next);
     }
+
+  /* Preserve order when inserting the same name multiple times. */
+  while (*up && hostname_isequal(cache_get_name(*up), name))
+    up = &((*up)->hash_next);
+  
   crecp->hash_next = *up;
   *up = crecp;
 }
@@ -375,6 +381,11 @@ static int is_outdated_cname_pointer(struct crec *crecp)
 
 static int is_expired(time_t now, struct crec *crecp)
 {
+  /* Don't dump expired entries if we're using them, cache becomes strictly LRU in that case.
+     Never use expired DS or DNSKEY entries. */
+  if (option_bool(OPT_STALE_CACHE) && !(crecp->flags & (F_DS | F_DNSKEY)))
+    return 0;
+
   if (crecp->flags & F_IMMORTAL)
     return 0;
 
@@ -382,6 +393,27 @@ static int is_expired(time_t now, struct crec *crecp)
     return 0;
   
   return 1;
+}
+
+/* Remove entries with a given UID from the cache */
+unsigned int cache_remove_uid(const unsigned int uid)
+{
+  int i;
+  unsigned int removed = 0;
+  struct crec *crecp, **up;
+
+  for (i = 0; i < hash_size; i++)
+    for (crecp = hash_table[i], up = &hash_table[i]; crecp; crecp = crecp->hash_next)
+      if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) && crecp->uid == uid)
+	{
+	  *up = crecp->hash_next;
+	  free(crecp);
+	  removed++;
+	}
+      else
+	up = &crecp->hash_next;
+  
+  return removed;
 }
 
 static struct crec *cache_scan_free(char *name, union all_addr *addr, unsigned short class, time_t now,
@@ -554,7 +586,7 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
 {
   struct crec *new, *target_crec = NULL;
   union bigname *big_name = NULL;
-  int freed_all = flags & F_REVERSE;
+  int freed_all = (flags & F_REVERSE);
   int free_avail = 0;
   unsigned int target_uid;
   
@@ -629,8 +661,12 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
 	{
 	  /* For DNSSEC records, uid holds class. */
 	  free_avail = 1; /* Must be free space now. */
+	  
+	  /* condition valid when stale-caching */
+	  if (difftime(now, new->ttd) < 0)
+	    daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED]++;
+	  
 	  cache_scan_free(cache_get_name(new), &new->addr, new->uid, now, new->flags, NULL, NULL);
-	  daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED]++;
 	}
       else
 	{
@@ -693,7 +729,7 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
   new->ttd = now + (time_t)ttl;
   new->next = new_chain;
   new_chain = new;
-
+  
   return new;
 }
 
@@ -871,7 +907,7 @@ int cache_find_non_terminal(char *name, time_t now)
 struct crec *cache_find_by_name(struct crec *crecp, char *name, time_t now, unsigned int prot)
 {
   struct crec *ans;
-  int no_rr = prot & F_NO_RR;
+  int no_rr = (prot & F_NO_RR) || option_bool(OPT_NORR);
 
   prot &= ~F_NO_RR;
   
@@ -1019,16 +1055,17 @@ struct crec *cache_find_by_addr(struct crec *crecp, union all_addr *addr,
 void add_hosts_entry(struct crec *cache, union all_addr *addr, int addrlen, 
 			     unsigned int index, struct crec **rhash, int hashsz)
 {
-  struct crec *lookup = cache_find_by_name(NULL, cache_get_name(cache), 0, cache->flags & (F_IPV4 | F_IPV6));
   int i;
   unsigned int j; 
+  struct crec *lookup = NULL;
 
   /* Remove duplicates in hosts files. */
-  if (lookup && (lookup->flags & F_HOSTS) && memcmp(&lookup->addr, addr, addrlen) == 0)
-    {
-      free(cache);
-      return;
-    }
+  while ((lookup = cache_find_by_name(lookup, cache_get_name(cache), 0, cache->flags & (F_IPV4 | F_IPV6))))
+    if ((lookup->flags & F_HOSTS) && memcmp(&lookup->addr, addr, addrlen) == 0)
+      {
+	free(cache);
+	return;
+      }
     
   /* Ensure there is only one address -> name mapping (first one trumps) 
      We do this by steam here, The entries are kept in hash chains, linked
@@ -1133,7 +1170,7 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 {  
   FILE *f = fopen(filename, "r");
   char *token = daemon->namebuff, *domain_suffix = NULL;
-  int addr_count = 0, name_count = cache_size, lineno = 1;
+  int names_done = 0, name_count = cache_size, lineno = 1;
   unsigned int flags = 0;
   union all_addr addr;
   int atnl, addrlen = 0;
@@ -1169,8 +1206,6 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 	  continue;
 	}
       
-      addr_count++;
-      
       /* rehash every 1000 names. */
       if (rhash && ((name_count - cache_size) > 1000))
 	{
@@ -1202,6 +1237,7 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 		  cache->ttd = daemon->local_ttl;
 		  add_hosts_entry(cache, &addr, addrlen, index, rhash, hashsz);
 		  name_count++;
+		  names_done++;
 		}
 	      if ((cache = whine_malloc(SIZEOF_BARE_CREC + strlen(canon) + 1)))
 		{
@@ -1210,6 +1246,7 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 		  cache->ttd = daemon->local_ttl;
 		  add_hosts_entry(cache, &addr, addrlen, index, rhash, hashsz);
 		  name_count++;
+		  names_done++;
 		}
 	      free(canon);
 	      
@@ -1226,7 +1263,7 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
   if (rhash)
     rehash(name_count); 
   
-  my_syslog(LOG_INFO, _("read %s - %d addresses"), filename, addr_count);
+  my_syslog(LOG_INFO, _("read %s - %d names"), filename, names_done);
   
   return name_count;
 }
@@ -1765,6 +1802,8 @@ void dump_cache(time_t now)
 	    daemon->cachesize, daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED], daemon->metrics[METRIC_DNS_CACHE_INSERTED]);
   my_syslog(LOG_INFO, _("queries forwarded %u, queries answered locally %u"), 
 	    daemon->metrics[METRIC_DNS_QUERIES_FORWARDED], daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]);
+  if (option_bool(OPT_STALE_CACHE))
+    my_syslog(LOG_INFO, _("queries answered from stale cache %u"), daemon->metrics[METRIC_DNS_STALE_ANSWERED]);
 #ifdef HAVE_AUTH
   my_syslog(LOG_INFO, _("queries for authoritative zones %u"), daemon->metrics[METRIC_DNS_AUTH_ANSWERED]);
 #endif
@@ -1779,16 +1818,23 @@ void dump_cache(time_t now)
     if (!(serv->flags & SERV_MARK))
       {
 	int port;
-	unsigned int queries = 0, failed_queries = 0;
+	unsigned int queries = 0, failed_queries = 0, nxdomain_replies = 0, retrys = 0;
+	unsigned int sigma_latency = 0, count_latency = 0;
+
 	for (serv1 = serv; serv1; serv1 = serv1->next)
 	  if (!(serv1->flags & SERV_MARK) && sockaddr_isequal(&serv->addr, &serv1->addr))
 	    {
 	      serv1->flags |= SERV_MARK;
 	      queries += serv1->queries;
 	      failed_queries += serv1->failed_queries;
+	      nxdomain_replies += serv1->nxdomain_replies;
+	      retrys += serv1->retrys;
+	      sigma_latency += serv1->query_latency;
+	      count_latency++;
 	    }
 	port = prettyprint_addr(&serv->addr, daemon->addrbuff);
-	my_syslog(LOG_INFO, _("server %s#%d: queries sent %u, retried or failed %u"), daemon->addrbuff, port, queries, failed_queries);
+	my_syslog(LOG_INFO, _("server %s#%d: queries sent %u, retried %u, failed %u, nxdomain replies %u, avg. latency %ums"),
+		  daemon->addrbuff, port, queries, retrys, failed_queries, nxdomain_replies, sigma_latency/count_latency);
       }
 
   if (option_bool(OPT_DEBUG) || option_bool(OPT_LOG))
@@ -1883,6 +1929,7 @@ void dump_cache(time_t now)
 char *record_source(unsigned int index)
 {
   struct hostsfile *ah;
+  struct dyndir *dd;
 
   if (index == SRC_CONFIG)
     return "config";
@@ -1894,9 +1941,11 @@ char *record_source(unsigned int index)
       return ah->fname;
 
 #ifdef HAVE_INOTIFY
-  for (ah = daemon->dynamic_dirs; ah; ah = ah->next)
-     if (ah->index == index)
-       return ah->fname;
+  /* Dynamic directories contain multiple files */
+  for (dd = daemon->dynamic_dirs; dd; dd = dd->next)
+    for (ah = dd->files; ah; ah = ah->next)
+      if (ah->index == index)
+	return ah->fname;
 #endif
 
   return "<unknown>";
@@ -2124,6 +2173,8 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
       name = arg;
       verb = daemon->addrbuff;
     }
+  else if (flags & F_STALE)
+    source = "cached-stale";
   else
     source = "cached";
   

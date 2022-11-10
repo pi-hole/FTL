@@ -24,6 +24,7 @@
 #define KEYBLOCK_LEN 40 /* choose to minimise fragmentation when storing DNSSEC keys */
 #define DNSSEC_WORK 50 /* Max number of queries to validate one question */
 #define TIMEOUT 10     /* drop UDP queries after TIMEOUT seconds */
+#define SMALL_PORT_RANGE 30 /* If DNS port range is smaller than this, use different allocation. */
 #define FORWARD_TEST 1000 /* try all servers every 1000 queries */
 #define FORWARD_TIME 600 /* or 10 minutes */
 #define UDP_TEST_TIME 60 /* How often to reset our idea of max packet size. */
@@ -60,6 +61,7 @@
 #define SOA_EXPIRY 1209600 /* SOA expiry default */
 #define LOOP_TEST_DOMAIN "test" /* domain for loop testing, "test" is reserved by RFC 2606 and won't therefore clash */
 #define LOOP_TEST_TYPE T_TXT
+#define DEFAULT_FAST_RETRY 1000 /* ms, default delay before fast retry */
  
 /* compile-time options: uncomment below to enable or do eg.
    make COPTS=-DHAVE_BROKEN_RTC

@@ -215,6 +215,7 @@ void *GC_thread(void *val)
 						// Adjusting counters is done below in moveOverTimeMemory()
 						break;
 					case QUERY_CACHE:
+					case QUERY_CACHE_STALE:
 						// Answered from local cache _or_ local config
 						break;
 					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)

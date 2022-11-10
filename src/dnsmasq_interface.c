@@ -95,7 +95,7 @@ static struct {
 static union mysockaddr last_server = {{ 0 }};
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
-const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
+const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE", "F_SRV", "F_STALE" };
 
 void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
 {
@@ -173,6 +173,8 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 // This is inspired by make_local_answer()
 size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede, const char *file, const int line)
 {
+	if(config.debug & DEBUG_FLAGS)
+		logg("FTL_make_answer() called from %s:%d", short_path(file), line);
 	// Exit early if there are no questions in this query
 	if(ntohs(header->qdcount) == 0)
 		return 0;
@@ -1930,6 +1932,9 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			logg("***** Unknown cache query");
 	}
 
+	// Is this a stale reply?
+	const bool stale = flags & F_STALE;
+
 	// Possible debugging output
 	if(config.debug & DEBUG_QUERIES)
 	{
@@ -1981,16 +1986,18 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 		if(cached || last_server.sa.sa_family == 0)
 			// Log cache or upstream reply from unknown source
-			logg("**** got %s reply: %s is %s (ID %i, %s:%i)",
-			     cached ? "cache" : "upstream", dispname, answer, id, file, line);
+			logg("**** got %s%s reply: %s is %s (ID %i, %s:%i)",
+			     stale ? "stale ": "", cached ? "cache" : "upstream",
+			     dispname, answer, id, file, line);
 		else
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
 			in_port_t port = 0;
 			mysockaddr_extract_ip_port(&last_server, ip, &port);
 			// Log server which replied to our request
-			logg("**** got %s reply from %s#%d: %s is %s (ID %i, %s:%i)",
-			     cached ? "cache" : "upstream", ip, port, dispname, answer, id, file, line);
+			logg("**** got %s%s reply from %s#%d: %s is %s (ID %i, %s:%i)",
+			     stale ? "stale ": "", cached ? "cache" : "upstream",
+			     ip, port, dispname, answer, id, file, line);
 		}
 	}
 
@@ -2040,13 +2047,16 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		return;
 	}
 
+	// Determine query status (live or stale data?)
+	const enum query_status qs = stale ? QUERY_CACHE_STALE : QUERY_CACHE;
+
 	// This is either a reply served from cache or a blocked query (which appear
 	// to be from cache because of flags containing F_HOSTS)
 	if(cached)
 	{
 		// Set status of this query only if this is not a blocked query
 		if(!is_blocked(query->status))
-			query_set_status(query, QUERY_CACHE);
+			query_set_status(query, qs);
 
 		// Detect if returned IP indicates that this query was blocked
 		const enum query_status new_status = detect_blocked_IP(flags, addr, query, domain);
@@ -2087,7 +2097,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Answered from a custom (user provided) cache file or because
 		// we're the authoritative DNS server (e.g. DHCP server and this
 		// is our own domain)
-		query_set_status(query, QUERY_CACHE);
+		query_set_status(query, qs);
 
 		// Save reply type and update individual reply counters
 		query_set_reply(flags, 0, addr, query, response);
@@ -3340,7 +3350,7 @@ int check_struct_sizes(void)
 	result += check_one_struct("regexData", sizeof(regexData), 56, 44);
 	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
 	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 16, 16);
-	result += check_one_struct("countersStruct", sizeof(countersStruct), 244, 244);
+	result += check_one_struct("countersStruct", sizeof(countersStruct), 248, 248);
 	result += check_one_struct("sqlite3_stmt_vec", sizeof(sqlite3_stmt_vec), 32, 16);
 
 	if(result == 0)
