@@ -73,10 +73,10 @@ check_static() {
   echo "Static executable check: OK"
 }
 
-if [[ "${CI_ARCH}" == "x86_64" ]]; then
+if [[ "${CI_ARCH}" == "x86_64" || "${CI_ARCH}" == "x86_64_full" ]]; then
 
   check_machine "ELF64" "Advanced Micro Devices X86-64"
-  if [[ "${GIT_TAG}" == "all-dependencies-test-build" ]]; then
+  if [[ "${CI_ARCH}" == "x86_64_full" ]]; then
     check_libs "[libm.so.6] [librt.so.1] [libdbus-1.so.3] [libmnl.so.0] [libnftables.so.1] [libnftnl.so.11] [libnfnetlink.so.0] [libnetfilter_conntrack.so.3] [libpthread.so.0] [libc.so.6]"
   else
     check_libs "[libm.so.6] [librt.so.1] [libpthread.so.0] [libc.so.6]"
