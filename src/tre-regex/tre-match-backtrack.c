@@ -118,10 +118,12 @@ typedef struct tre_backtrack_struct {
 #define tre_bt_mem_new		  tre_mem_newa
 #define tre_bt_mem_alloc	  tre_mem_alloca
 #define tre_bt_mem_destroy(obj)	  do { } while (0,0)
+#define tre_bt_mem_free(ptr)	  do { } while (0,0)
 #else /* !TRE_USE_ALLOCA */
 #define tre_bt_mem_new		  tre_mem_new
 #define tre_bt_mem_alloc	  tre_mem_alloc
 #define tre_bt_mem_destroy	  tre_mem_destroy
+#define tre_bt_mem_free(ptr)	  if (ptr) xfree(ptr)
 #endif /* !TRE_USE_ALLOCA */
 
 
@@ -136,12 +138,9 @@ typedef struct tre_backtrack_struct {
 	  if (!s)							      \
 	    {								      \
 	      tre_bt_mem_destroy(mem);					      \
-	      if (tags)							      \
-		xfree(tags);						      \
-	      if (pmatch)						      \
-		xfree(pmatch);						      \
-	      if (states_seen)						      \
-		xfree(states_seen);					      \
+	      tre_bt_mem_free(tags);					      \
+	      tre_bt_mem_free(pmatch);					      \
+	      tre_bt_mem_free(states_seen);				      \
 	      return REG_ESPACE;					      \
 	    }								      \
 	  s->prev = stack;						      \
@@ -151,12 +150,9 @@ typedef struct tre_backtrack_struct {
 	  if (!s->item.tags)						      \
 	    {								      \
 	      tre_bt_mem_destroy(mem);					      \
-	      if (tags)							      \
-		xfree(tags);						      \
-	      if (pmatch)						      \
-		xfree(pmatch);						      \
-	      if (states_seen)						      \
-		xfree(states_seen);					      \
+	      tre_bt_mem_free(tags);					      \
+	      tre_bt_mem_free(pmatch);					      \
+	      tre_bt_mem_free(states_seen);				      \
 	      return REG_ESPACE;					      \
 	    }								      \
 	  stack->next = s;						      \
