@@ -390,7 +390,12 @@ static int (*verify_func(int algo))(struct blockdata *key_data, unsigned int key
       return dnsmasq_ecdsa_verify;
       
 #if MIN_VERSION(3, 1)
-    case 15: case 16:
+    case 15:
+      return dnsmasq_eddsa_verify;
+#endif
+
+#if MIN_VERSION(3, 6)
+    case 16:
       return dnsmasq_eddsa_verify;
 #endif
     }
@@ -444,11 +449,17 @@ char *algo_digest_name(int algo)
     case 7: return "sha1";        /* RSASHA1-NSEC3-SHA1 */
     case 8: return "sha256";      /* RSA/SHA-256 */
     case 10: return "sha512";     /* RSA/SHA-512 */
+#if MIN_VERSION(3, 6)
     case 12: return "gosthash94"; /* ECC-GOST */
+#endif
     case 13: return "sha256";     /* ECDSAP256SHA256 */
     case 14: return "sha384";     /* ECDSAP384SHA384 */ 	
+#if MIN_VERSION(3, 1)
     case 15: return "null_hash";  /* ED25519 */
+#  if MIN_VERSION(3, 6)
     case 16: return "null_hash";  /* ED448 */
+#  endif
+#endif
     default: return NULL;
     }
 }
