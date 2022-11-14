@@ -53,7 +53,7 @@ jobs:
 
     needs: smoke-tests
 
-    container: ghcr.io/pi-hole/ftl-build:v1.22-${{ matrix.arch }}
+    container: ghcr.io/pi-hole/ftl-build:v1.23-${{ matrix.arch }}
 
     strategy:
       fail-fast: false
@@ -62,6 +62,9 @@ jobs:
         include:
           - arch: x86_64
             bin_name: pihole-FTL-linux-x86_64
+          - arch: x86_64
+            arch_extra: _full
+            bin_name: pihole-FTL-linux-x86_64_full
           - arch: x86_64-musl
             bin_name: pihole-FTL-musl-linux-x86_64
           - arch: x86_32
@@ -80,7 +83,7 @@ jobs:
             bin_name: pihole-FTL-aarch64-linux-gnu
 
     env:
-      CI_ARCH: ${{ matrix.arch }}
+      CI_ARCH: ${{ matrix.arch }}${{ matrix.arch_extra }}
 
     steps:
       -

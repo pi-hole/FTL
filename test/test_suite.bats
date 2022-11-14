@@ -11,6 +11,17 @@
   [[ ${lines[6]} == "" ]]
 }
 
+@test "dnsmasq options as expected" {
+  run bash -c './pihole-FTL -vv | grep "cryptohash"'
+  printf "%s\n" "${lines[@]}"
+  if [[ "${CI_ARCH}" == "x86_64_full" ]]; then
+    [[ ${lines[0]} == "Compile options: IPv6 GNU-getopt DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP conntrack ipset nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
+  else
+    [[ ${lines[0]} == "Compile options: IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
+  fi
+  [[ ${lines[1]} == "" ]]
+}
+
 @test "DNS server port is reported over Telnet API" {
   run bash -c 'echo ">dns-port >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"

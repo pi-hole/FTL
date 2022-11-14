@@ -217,6 +217,22 @@ else()
     message(STATUS "Building FTL with readline support: NO")
 endif()
 
+# Do we want to compile an all-in FTL version?
+if($ENV{CI_ARCH} STREQUAL "x86_64_full")
+    add_definitions(-DDNSMASQ_ALL_OPTS)
+    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
+    find_package(DBus REQUIRED)
+    # Use results of find_package() call.
+    include_directories(${DBUS_INCLUDE_DIRS})
+    target_link_libraries(pihole-FTL ${DBUS_LIBRARIES})
+    find_library(LIBMNL mnl)
+    find_library(LIBNFTNL nftnl)
+    find_library(LIBNFTABLES nftables)
+    find_library(LIBNFNETLINK nfnetlink)
+    find_library(LIBNETFILTER_CONNTRACK netfilter_conntrack)
+    target_link_libraries(pihole-FTL ${LIBMNL} ${LIBNFTABLES} ${LIBNFTNL} ${LIBNFNETLINK} ${LIBNETFILTER_CONNTRACK})
+endif()
+
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
 endif()
