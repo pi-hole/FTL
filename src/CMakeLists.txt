@@ -218,7 +218,8 @@ else()
 endif()
 
 # Do we want to compile an all-in FTL version?
-if($ENV{CI_ARCH} STREQUAL "x86_64_full")
+if(DEFINED ENV{CI_ARCH})
+  if($ENV{CI_ARCH} STREQUAL "x86_64_full")
     add_definitions(-DDNSMASQ_ALL_OPTS)
     set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
     find_package(DBus REQUIRED)
@@ -231,6 +232,7 @@ if($ENV{CI_ARCH} STREQUAL "x86_64_full")
     find_library(LIBNFNETLINK nfnetlink)
     find_library(LIBNETFILTER_CONNTRACK netfilter_conntrack)
     target_link_libraries(pihole-FTL ${LIBMNL} ${LIBNFTABLES} ${LIBNFTNL} ${LIBNFNETLINK} ${LIBNETFILTER_CONNTRACK})
+  endif()
 endif()
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
