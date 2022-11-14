@@ -24,7 +24,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v3.1.0
       -
         name: "Calculate required variables"
         id: variables
@@ -32,9 +32,9 @@ jobs:
           GIT_TAG=${{ github.event.release.tag_name }}
           # If GIT_TAG is set then GIT BRANCH should be "master", else set it from GITHUB_REF
           GIT_BRANCH=$([ -n "${GIT_TAG}" ] && echo "master" || echo "${GITHUB_REF#refs/*/}")
-          echo ::set-output name=GIT_BRANCH::${GIT_BRANCH}
-          echo ::set-output name=GIT_TAG::${GIT_TAG}
-          echo ::set-output name=OUTPUT_DIR::${GIT_TAG:-${GIT_BRANCH}}
+          echo "GIT_BRANCH=${GIT_BRANCH}" >> $GITHUB_OUTPUT
+          echo "GIT_TAG=${GIT_TAG}" >> $GITHUB_OUTPUT
+          echo "OUTPUT_DIR=${GIT_TAG:-${GIT_BRANCH}}" >> $GITHUB_OUTPUT
       -
         name: "Check git branch name depth"
         env:
@@ -53,7 +53,7 @@ jobs:
 
     needs: smoke-tests
 
-    container: ghcr.io/pi-hole/ftl-build:v1.19-${{ matrix.arch }}
+    container: ghcr.io/pi-hole/ftl-build:v1.23-${{ matrix.arch }}
 
     strategy:
       fail-fast: false
@@ -62,6 +62,9 @@ jobs:
         include:
           - arch: x86_64
             bin_name: pihole-FTL-linux-x86_64
+          - arch: x86_64
+            arch_extra: _full
+            bin_name: pihole-FTL-linux-x86_64_full
           - arch: x86_64-musl
             bin_name: pihole-FTL-musl-linux-x86_64
           - arch: x86_32
@@ -80,12 +83,12 @@ jobs:
             bin_name: pihole-FTL-aarch64-linux-gnu
 
     env:
-      CI_ARCH: ${{ matrix.arch }}
+      CI_ARCH: ${{ matrix.arch }}${{ matrix.arch_extra }}
 
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.0.2
+        uses: actions/checkout@v3.1.0
       -
         name: "Fix ownership of repository"
         run: chown -R root .
@@ -116,7 +119,7 @@ jobs:
       -
         name: Upload artifacts to job for later processing
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v3.1.0
+        uses: actions/upload-artifact@v3.1.1
         with:
           name: tmp-binary-storage
           path: '${{ matrix.bin_name }}*'
@@ -128,10 +131,10 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v3.1.0
       -
         name: Get Binaries built in previous jobs
-        uses: actions/download-artifact@v3.0.0
+        uses: actions/download-artifact@v3.0.1
         id: download
         with:
           name: tmp-binary-storage
@@ -142,10 +145,10 @@ jobs:
         working-directory: ${{steps.download.outputs.download-path}}
       -
         name: Install SSH Key
-        uses: shimataro/ssh-key-action@v2.3.1
+        uses: benoitchantre/setup-ssh-authentication-action@1.0.0
         with:
-          key: ${{ secrets.SSH_KEY }}
-          known_hosts: ${{ secrets.KNOWN_HOSTS }}
+          private-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.KNOWN_HOSTS }}
       -
         name: Transfer Builds to Pi-hole server for pihole checkout
         env:

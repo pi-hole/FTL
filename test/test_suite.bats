@@ -11,6 +11,17 @@
   [[ ${lines[6]} == "" ]]
 }
 
+@test "dnsmasq options as expected" {
+  run bash -c './pihole-FTL -vv | grep "cryptohash"'
+  printf "%s\n" "${lines[@]}"
+  if [[ "${CI_ARCH}" == "x86_64_full" ]]; then
+    [[ ${lines[0]} == "Compile options: IPv6 GNU-getopt DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP conntrack ipset nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
+  else
+    [[ ${lines[0]} == "Compile options: IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
+  fi
+  [[ ${lines[1]} == "" ]]
+}
+
 @test "DNS server port is reported over Telnet API" {
   run bash -c 'echo ">dns-port >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
@@ -28,8 +39,8 @@
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[9]} == *"Initialization of shared memory failed." ]]
-  [[ ${lines[10]} == *"HINT: pihole-FTL is already running!"* ]]
+  [[ "${lines[@]}" == *"Initialization of shared memory failed."* ]]
+  [[ "${lines[@]}" == *"HINT: pihole-FTL is already running!"* ]]
 }
 
 @test "Starting tests without prior history" {
@@ -404,13 +415,13 @@
 }
 
 @test "DNSSEC: SECURE domain is resolved" {
-  run bash -c "dig A sigok.verteiltesysteme.net @127.0.0.1"
+  run bash -c "dig A dnssec.works @127.0.0.1"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"status: NOERROR"* ]]
 }
 
 @test "DNSSEC: BOGUS domain is rejected" {
-  run bash -c "dig A sigfail.verteiltesysteme.net @127.0.0.1"
+  run bash -c "dig A fail01.dnssec.works @127.0.0.1"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"status: SERVFAIL"* ]]
 }
@@ -419,18 +430,18 @@
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "domains_being_blocked 4" ]]
-  [[ ${lines[2]} == "dns_queries_today 51" ]]
+  [[ ${lines[2]} == "dns_queries_today 52" ]]
   [[ ${lines[3]} == "ads_blocked_today 13" ]]
   #[[ ${lines[4]} == "ads_percentage_today 7.792208" ]]
-  [[ ${lines[5]} == "unique_domains 38" ]]
-  [[ ${lines[6]} == "queries_forwarded 26" ]]
+  [[ ${lines[5]} == "unique_domains 37" ]]
+  [[ ${lines[6]} == "queries_forwarded 27" ]]
   [[ ${lines[7]} == "queries_cached 12" ]]
   # Clients ever seen is commented out as the CI may have
   # more devices in its ARP cache so testing against a fixed
   # number of clients may not work in all cases
   #[[ ${lines[8]} == "clients_ever_seen 8" ]]
   #[[ ${lines[9]} == "unique_clients 8" ]]
-  [[ ${lines[10]} == "dns_queries_all_types 51" ]]
+  [[ ${lines[10]} == "dns_queries_all_types 52" ]]
   [[ ${lines[11]} == "reply_UNKNOWN 0" ]]
   [[ ${lines[12]} == "reply_NODATA 0" ]]
   [[ ${lines[13]} == "reply_NXDOMAIN 1" ]]
@@ -442,10 +453,10 @@
   [[ ${lines[19]} == "reply_REFUSED 0" ]]
   [[ ${lines[20]} == "reply_NOTIMP 0" ]]
   [[ ${lines[21]} == "reply_OTHER 0" ]]
-  [[ ${lines[22]} == "reply_DNSSEC 5" ]]
+  [[ ${lines[22]} == "reply_DNSSEC 6" ]]
   [[ ${lines[23]} == "reply_NONE 0" ]]
   [[ ${lines[24]} == "reply_BLOB 10" ]]
-  [[ ${lines[25]} == "dns_queries_all_replies 51" ]]
+  [[ ${lines[25]} == "dns_queries_all_replies 52" ]]
   [[ ${lines[26]} == "privacy_level 0" ]]
   [[ ${lines[27]} == "status enabled" ]]
   [[ ${lines[28]} == "" ]]
@@ -461,7 +472,7 @@
   run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "0 36 127.0.0.1 "* ]]
-  [[ ${lines[2]} == "1 5 :: "* ]]
+  [[ ${lines[2]} == "1 6 :: "* ]]
   [[ ${lines[3]} == "2 4 127.0.0.3 "* ]]
   [[ ${lines[4]} == "3 3 127.0.0.2 "* ]]
   [[ "${lines[@]}" == *"1 aliasclient-0 some-aliasclient"* ]]
@@ -475,11 +486,12 @@
   [[ "${lines[@]}" == *" 4 version.bind"* ]]
   [[ "${lines[@]}" == *" 4 regex1.ftl"* ]]
   [[ "${lines[@]}" == *" 3 a.ftl"* ]]
+  [[ "${lines[@]}" == *" 3 dnssec.works"* ]]
   [[ "${lines[@]}" == *" 2 blacklisted.ftl"* ]]
   [[ "${lines[@]}" == *" 2 aaaa.ftl"* ]]
-  [[ "${lines[@]}" == *" 2 net"* ]]
-  [[ "${lines[@]}" == *" 2 verteiltesysteme.net"* ]]
+  [[ "${lines[@]}" == *" 2 works"* ]]
   [[ "${lines[@]}" == *" 2 ftl"* ]]
+  [[ "${lines[@]}" == *" 2 fail01.dnssec.works"* ]]
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
   [[ "${lines[@]}" == *" 1 whitelisted.ftl"* ]]
   [[ "${lines[@]}" == *" 1 gravity-whitelisted.ftl"* ]]
@@ -496,8 +508,6 @@
   [[ "${lines[@]}" == *" 1 svcb.ftl"* ]]
   [[ "${lines[@]}" == *" 1 https.ftl"* ]]
   [[ "${lines[@]}" == *" 1 ."* ]]
-  [[ "${lines[@]}" == *" 1 sigok.verteiltesysteme.net"* ]]
-  [[ "${lines[@]}" == *" 1 sigfail.verteiltesysteme.net"* ]]
 }
 
 @test "Top Ads" {
@@ -532,33 +542,33 @@
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-3 25.49 blocked blocked" ]]
-  [[ ${lines[2]} == "-2 23.53 cached cached" ]]
+  [[ ${lines[1]} == "-3 25.00 blocked blocked" ]]
+  [[ ${lines[2]} == "-2 23.08 cached cached" ]]
   [[ ${lines[3]} == "-1 0.00 other other" ]]
-  [[ ${lines[4]} == "0 47.06 127.0.0.1#5555 127.0.0.1#5555" ]]
-  [[ ${lines[5]} == "1 3.92 127.0.0.1#5554 127.0.0.1#5554" ]]
+  [[ ${lines[4]} == "0 48.08 127.0.0.1#5555 127.0.0.1#5555" ]]
+  [[ ${lines[5]} == "1 3.85 127.0.0.1#5554 127.0.0.1#5554" ]]
   [[ ${lines[6]} == "" ]]
 }
 
 @test "Query Types reported correctly" {
   run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]}  == "A (IPv4): 50.98" ]]
-  [[ ${lines[2]}  == "AAAA (IPv6): 7.84" ]]
-  [[ ${lines[3]}  == "ANY: 1.96" ]]
-  [[ ${lines[4]}  == "SRV: 1.96" ]]
-  [[ ${lines[5]}  == "SOA: 1.96" ]]
-  [[ ${lines[6]}  == "PTR: 1.96" ]]
-  [[ ${lines[7]}  == "TXT: 11.76" ]]
-  [[ ${lines[8]}  == "NAPTR: 1.96" ]]
-  [[ ${lines[9]}  == "MX: 1.96" ]]
-  [[ ${lines[10]} == "DS: 3.92" ]]
+  [[ ${lines[1]}  == "A (IPv4): 50.00" ]]
+  [[ ${lines[2]}  == "AAAA (IPv6): 7.69" ]]
+  [[ ${lines[3]}  == "ANY: 1.92" ]]
+  [[ ${lines[4]}  == "SRV: 1.92" ]]
+  [[ ${lines[5]}  == "SOA: 1.92" ]]
+  [[ ${lines[6]}  == "PTR: 1.92" ]]
+  [[ ${lines[7]}  == "TXT: 11.54" ]]
+  [[ ${lines[8]}  == "NAPTR: 1.92" ]]
+  [[ ${lines[9]}  == "MX: 1.92" ]]
+  [[ ${lines[10]} == "DS: 5.77" ]]
   [[ ${lines[11]} == "RRSIG: 0.00" ]]
-  [[ ${lines[12]} == "DNSKEY: 5.88" ]]
-  [[ ${lines[13]} == "NS: 1.96" ]]
-  [[ ${lines[14]} == "OTHER: 1.96" ]]
-  [[ ${lines[15]} == "SVCB: 1.96" ]]
-  [[ ${lines[16]} == "HTTPS: 1.96" ]]
+  [[ ${lines[12]} == "DNSKEY: 5.77" ]]
+  [[ ${lines[13]} == "NS: 1.92" ]]
+  [[ ${lines[14]} == "OTHER: 1.92" ]]
+  [[ ${lines[15]} == "SVCB: 1.92" ]]
+  [[ ${lines[16]} == "HTTPS: 1.92" ]]
   [[ ${lines[17]} == "" ]]
 }
 
@@ -611,14 +621,15 @@
   [[ ${lines[42]} == *" AAAA a-cname.ftl 127.0.0.1 9 2 3 "*" gravity.ftl -1 127.0.0.1#5555 \"\" \"41\""* ]]
   [[ ${lines[43]} == *" A aaaa-cname.ftl 127.0.0.1 9 2 3 "*" gravity-aaaa.ftl -1 127.0.0.1#5555 \"\" \"42\""* ]]
   [[ ${lines[44]} == *" AAAA aaaa-cname.ftl 127.0.0.1 9 2 3 "*" gravity-aaaa.ftl -1 127.0.0.1#5555 \"\" \"43\""* ]]
-  [[ ${lines[45]} == *" A sigok.verteiltesysteme.net 127.0.0.1 2 1 4 "*" N/A -1 127.0.0.1#5555 \"\" \"44\""* ]]
-  [[ ${lines[46]} == *" DS net :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"45\""* ]]
+  [[ ${lines[45]} == *" A dnssec.works 127.0.0.1 2 1 4 "*" N/A -1 127.0.0.1#5555 \"\" \"44\""* ]]
+  [[ ${lines[46]} == *" DS works :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"45\""* ]]
   [[ ${lines[47]} == *" DNSKEY . :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"46\""* ]]
-  [[ ${lines[48]} == *" DS verteiltesysteme.net :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"47\""* ]]
-  [[ ${lines[49]} == *" DNSKEY net :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"48\""* ]]
-  [[ ${lines[50]} == *" DNSKEY verteiltesysteme.net :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"49\""* ]]
-  [[ ${lines[51]} == *" A sigfail.verteiltesysteme.net 127.0.0.1 2 3 4 "*" N/A -1 127.0.0.1#5555 \"DNSKEY missing\" \"50\""* ]]
-  [[ ${lines[52]} == "" ]]
+  [[ ${lines[48]} == *" DS dnssec.works :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"47\""* ]]
+  [[ ${lines[49]} == *" DNSKEY works :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"48\""* ]]
+  [[ ${lines[50]} == *" DNSKEY dnssec.works :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"49\""* ]]
+  [[ ${lines[51]} == *" A fail01.dnssec.works 127.0.0.1 2 3 4 "*" N/A -1 127.0.0.1#5555 \"RRSIG missing\" \"50\""* ]]
+  [[ ${lines[52]} == *" DS fail01.dnssec.works :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"51\""* ]]
+  [[ ${lines[53]} == "" ]]
 }
 
 @test "Get all queries (domain filtered) shows expected content" {
