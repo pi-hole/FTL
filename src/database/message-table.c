@@ -399,7 +399,7 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 void logg_inaccessible_adlist(const int dbindex, const char *address)
 {
 	// Log to FTL.log
-	logg("Adlist warning: Adlist with ID %d (%s) was inaccessible during last gravity run", dbindex, address);
+	logg("ADLIST WARNING: Adlist with ID %d (%s) was inaccessible during last gravity run", dbindex, address);
 
 	// Log to database
 	add_message(INACCESSIBLE_ADLIST_MESSAGE, address, 1, dbindex);
