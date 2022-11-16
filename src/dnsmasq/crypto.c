@@ -452,7 +452,7 @@ char *algo_digest_name(int algo)
     case 8: return "sha256";      /* RSA/SHA-256 */
     case 10: return "sha512";     /* RSA/SHA-512 */
 #if MIN_VERSION(3, 6)
-    case 12: return "gosthash94cp"; /* ECC-GOST */
+    case 12: return "gosthash94cp"; /* ECC-GOST */ 
 #endif
     case 13: return "sha256";     /* ECDSAP256SHA256 */
     case 14: return "sha384";     /* ECDSAP384SHA384 */ 	
