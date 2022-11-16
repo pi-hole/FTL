@@ -146,6 +146,10 @@ static void verify_shmem_pid(void)
 	// Get new pointer
 	void *shm = mmap(NULL, shm_settings.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
+	// Debug logging
+	if(config.debug & DEBUG_SHMEM)
+		logg("verify_shmem_pid(): updating pointer of shmSettings: %p -> %p", shm_settings.ptr, shm);
+
 	// Check for `mmap` error
 	if(shm == MAP_FAILED)
 	{
