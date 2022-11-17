@@ -979,10 +979,13 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 }
 
 /* The DNS packet is expected to contain the answer to a DS query
-   Put all DSs in the answer which are valid into the cache.
+   Put all DSs in the answer which are valid and have hash and signature algos
+   we support into the cache.
    Also handles replies which prove that there's no DS at this location, 
    either because the zone is unsigned or this isn't a zone cut. These are
    cached too.
+   If none of the DS's are for supported algos, treat the answer as if 
+   it's a proof of no DS at this location. RFC4035 para 5.2.
    return codes:
    STAT_OK          At least one valid DS found and in cache.
    STAT_BOGUS       no DS in reply or not signed, fails validation, bad packet.
@@ -993,8 +996,8 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class)
 {
   unsigned char *p = (unsigned char *)(header+1);
-  int qtype, qclass, rc, i, neganswer, nons, neg_ttl = 0;
-  int aclass, atype, rdlen;
+  int qtype, qclass, rc, i, neganswer, nons, neg_ttl = 0, found_supported = 0;
+  int aclass, atype, rdlen, flags;
   unsigned long ttl;
   union all_addr a;
 
@@ -1065,14 +1068,22 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 	      algo = *p++;
 	      digest = *p++;
 	      
-	      if ((key = blockdata_alloc((char*)p, rdlen - 4)))
+	      if (!ds_digest_name(digest) || !ds_digest_name(digest))
+		{
+		  a.log.keytag = keytag;
+		  a.log.algo = algo;
+		  a.log.digest = digest;
+		  log_query(F_NOEXTRA | F_KEYTAG | F_UPSTREAM, name, &a, "DS keytag %hu, algo %hu, digest %hu (not supported)", 0);
+		  neg_ttl = ttl;
+		} 
+	      else if ((key = blockdata_alloc((char*)p, rdlen - 4)))
 		{
 		  a.ds.digest = digest;
 		  a.ds.keydata = key;
 		  a.ds.algo = algo;
 		  a.ds.keytag = keytag;
 		  a.ds.keylen = rdlen - 4;
-
+		  
 		  if (!cache_insert(name, &a, class, now, ttl, F_FORWARD | F_DS | F_DNSSECOK))
 		    {
 		      blockdata_free(key);
@@ -1083,26 +1094,29 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 		      a.log.keytag = keytag;
 		      a.log.algo = algo;
 		      a.log.digest = digest;
-		      if (ds_digest_name(digest) && algo_digest_name(algo))
-			log_query(F_NOEXTRA | F_KEYTAG | F_UPSTREAM, name, &a, "DS keytag %hu, algo %hu, digest %hu", 0);
-		      else
-			log_query(F_NOEXTRA | F_KEYTAG | F_UPSTREAM, name, &a, "DS keytag %hu, algo %hu, digest %hu (not supported)", 0);
+		      log_query(F_NOEXTRA | F_KEYTAG | F_UPSTREAM, name, &a, "DS keytag %hu, algo %hu, digest %hu", 0);
+		      found_supported = 1;
 		    } 
 		}
 	      
 	      p = psave;
 	    }
+
 	  if (!ADD_RDLEN(header, p, plen, rdlen))
 	    return STAT_BOGUS; /* bad packet */
 	}
 
       cache_end_insert();
 
+      /* Fall through if no supported algo DS found. */
+      if (found_supported)
+	return STAT_OK;
     }
-  else
+  
+  flags = F_FORWARD | F_DS | F_NEG | F_DNSSECOK;
+  
+  if (neganswer)
     {
-      int flags = F_FORWARD | F_DS | F_NEG | F_DNSSECOK;
-            
       if (RCODE(header) == NXDOMAIN)
 	flags |= F_NXDOMAIN;
       
@@ -1110,17 +1124,18 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 	 to store presence/absence of NS. */
       if (nons)
 	flags &= ~F_DNSSECOK;
-      
-      cache_start_insert();
-	  
-      /* Use TTL from NSEC for negative cache entries */
-      if (!cache_insert(name, NULL, class, now, neg_ttl, flags))
-	return STAT_BOGUS;
-      
-      cache_end_insert();  
-      
-      log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, nons ? "no DS/cut" : "no DS", 0);
     }
+  
+  cache_start_insert();
+  
+  /* Use TTL from NSEC for negative cache entries */
+  if (!cache_insert(name, NULL, class, now, neg_ttl, flags))
+    return STAT_BOGUS;
+  
+  cache_end_insert();  
+  
+  if (neganswer)
+    log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, nons ? "no DS/cut" : "no DS", 0);
       
   return STAT_OK;
 }
