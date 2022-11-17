@@ -1300,9 +1300,9 @@ extern struct daemon {
 
 struct server_details {
   union mysockaddr *addr, *source_addr;
-  struct addrinfo *hostinfo;
+  struct addrinfo *hostinfo, *orig_hostinfo;
   char *interface, *source, *scope_id, *interface_opt;
-  int serv_port, source_port, addr_type, scope_index, valid, resolved;
+  int serv_port, source_port, addr_type, scope_index, valid;
   u16 *flags;
 };
 
