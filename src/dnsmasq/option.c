@@ -870,10 +870,7 @@ char *parse_server(char *arg, struct server_details *sdetails)
   
   *sdetails->interface = 0;
   sdetails->addr_type = AF_UNSPEC;
-  sdetails->valid = 0;
-  sdetails->hostinfo = sdetails->orig_hostinfo = NULL;
-  
-   
+     
   if (strcmp(arg, "#") == 0)
     {
       if (sdetails->flags)
@@ -1108,6 +1105,8 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
   char interface[IF_NAMESIZE+1];
   int count = 1, rem, addrbytes, addrbits;
   struct server_details sdetails;
+
+  memset(&sdetails, 0, sizeof(struct server_details));
   sdetails.addr = &serv_addr;
   sdetails.source_addr = &source_addr;
   sdetails.interface = interface;
@@ -1189,6 +1188,8 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
   char interface[IF_NAMESIZE+1];
   int count = 1, rem, addrbytes, addrbits;
   struct server_details sdetails;
+  
+  memset(&sdetails, 0, sizeof(struct server_details));
   sdetails.addr = &serv_addr;
   sdetails.source_addr = &source_addr;
   sdetails.interface = interface;
@@ -2974,13 +2975,14 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	union all_addr addr;
 	union mysockaddr serv_addr, source_addr;
 	char interface[IF_NAMESIZE+1];
-
 	struct server_details sdetails;
+
+	memset(&sdetails, 0, sizeof(struct server_details));
 	sdetails.addr = &serv_addr;
 	sdetails.source_addr = &source_addr;
 	sdetails.interface = interface;
 	sdetails.flags = &flags;
-		
+			
 	unhide_metas(arg);
 	
 	/* split the domain args, if any and skip to the end of them. */
