@@ -202,6 +202,17 @@ RESOLVFILE
 /* #define HAVE_DNSSEC */
 /* #define HAVE_NFTSET */
 
+/* Pi-hole definitions */
+#define HAVE_LUASCRIPT
+#define HAVE_IDN
+#define HAVE_DNSSEC
+#ifdef DNSMASQ_ALL_OPTS
+  #define HAVE_DBUS
+  #define HAVE_CONNTRACK
+  #define HAVE_NFTSET
+#endif
+/***********************/
+
 /* Default locations for important system files. */
 
 #ifndef LEASEFILE

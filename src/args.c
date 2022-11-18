@@ -285,6 +285,12 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_SUCCESS);
 		}
 
+		if(strcmp(argv[i], "--hash") == 0)
+		{
+			printf("%s\n",GIT_HASH);
+			exit(EXIT_SUCCESS);
+		}
+
 		// Don't go into background
 		if(strcmp(argv[i], "-f") == 0 ||
 		   strcmp(argv[i], "no-daemon") == 0)
