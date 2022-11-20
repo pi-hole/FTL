@@ -16,6 +16,7 @@
 #include "../log.h"
 #include <readline/history.h>
 #include <wordexp.h>
+#include "scripts/scripts.h"
 
 int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 {
@@ -98,9 +99,28 @@ LUAMOD_API int luaopen_pihole(lua_State *L) {
 	return LUA_YIELD;
 }
 
+const char *script = inspect_lua;
+
+static bool ftl_lua_load_embedded_script(lua_State *L, const char *name, const char *script, const bool make_global)
+{
+	if (luaL_dostring(L, script) != 0)
+	{
+		const char *lua_err = lua_tostring(L, -1);
+		logg("LUA error: %s", lua_err);
+		return false;
+	}
+
+	if(make_global)
+	{
+		/* Set global[name] = luaL_dostring return */
+		lua_setglobal(L, name);
+	}
+
+	return true;
+}
+
 // Load bundled libraries and make the available globally
 void ftl_lua_init(lua_State *L)
 {
-	if(dolibrary(L, "inspect") != LUA_OK)
-		printf("Failed to load library inspect.lua\n");
+	ftl_lua_load_embedded_script(L, "inspect", inspect_lua, true);
 }
