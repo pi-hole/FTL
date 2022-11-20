@@ -99,14 +99,15 @@ LUAMOD_API int luaopen_pihole(lua_State *L) {
 	return LUA_YIELD;
 }
 
-const char *script = inspect_lua;
-
-static bool ftl_lua_load_embedded_script(lua_State *L, const char *name, const char *script, const bool make_global)
+static bool ftl_lua_load_embedded_script(lua_State *L, const char *name, const char *script, const size_t script_len, const bool make_global)
 {
-	if (luaL_dostring(L, script) != 0)
+	// Explanation:
+	// luaL_dostring(L, script)   expands to   (luaL_loadstring(L, script) || lua_pcall(L, 0, LUA_MULTRET, 0))
+	// luaL_loadstring(L, script)   calls   luaL_loadbuffer(L, s, strlen(s), s)
+	if (luaL_loadbufferx(L, script, script_len, name, NULL) || lua_pcall(L, 0, LUA_MULTRET, 0) != 0)
 	{
 		const char *lua_err = lua_tostring(L, -1);
-		logg("LUA error: %s", lua_err);
+		printf("LUA error while trying to import %s.lua: %s\n", name, lua_err);
 		return false;
 	}
 
@@ -122,5 +123,5 @@ static bool ftl_lua_load_embedded_script(lua_State *L, const char *name, const c
 // Load bundled libraries and make the available globally
 void ftl_lua_init(lua_State *L)
 {
-	ftl_lua_load_embedded_script(L, "inspect", inspect_lua, true);
+	ftl_lua_load_embedded_script(L, "inspect", inspect_lua, sizeof(inspect_lua), true);
 }
