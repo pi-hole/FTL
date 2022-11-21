@@ -58,8 +58,8 @@ static void print_flags(const unsigned int flags);
 #define query_set_reply(flags, type, addr, query, response) _query_set_reply(flags, type, addr, query, response, __FILE__, __LINE__)
 static void _query_set_reply(const unsigned int flags, const enum reply_type reply, const union all_addr *addr, queriesData* query,
                              const struct timeval response, const char *file, const int line);
-#define FTL_check_blocking(queryID, domainID, clientID) _FTL_check_blocking(queryID, domainID, clientID, __FILE__, __LINE__)
-static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line);
+#define FTL_check_blocking(query, domain, client, cache) _FTL_check_blocking(query, domain, client, cache, __FILE__, __LINE__)
+static bool _FTL_check_blocking(queriesData *query, domainsData *domain, clientsData *client, DNSCacheData *dns_cache, const char* file, const int line);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const queriesData *query, const domainsData *domain);
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
@@ -635,6 +635,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client == NULL)
 	{
 		// Encountered memory error, skip query
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
 		// Free allocated memory
 		free(domainString);
 		// Release thread lock
@@ -646,23 +648,43 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// automatically generated DNSSEC queries
 	const char *interface = internal_query ? "-" : next_iface.name;
 
+	// Go through already knows domains and see if it is one of them
+	const int domainID = findDomainID(domainString, true);
+	domainsData *domain = getDomain(domainID, true);
+	if(domain == NULL)
+	{
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
+		return false;
+	}
+
+	// Get (or create) DNS cache entry
+	unsigned int cacheID = findCacheID(domainID, clientID, querytype, true);
+	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+	if(dns_cache == NULL)
+	{
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
+		return false;
+	}
+
 	// Check rate-limit for this client
 	if(!internal_query && config.rate_limit.count > 0 &&
-	   (++client->rate_limit > config.rate_limit.count  || client->flags.rate_limited))
+	   (++dns_cache->rate_limit > config.rate_limit.count || dns_cache->flags.rate_limited))
 	{
-		if(!client->flags.rate_limited)
+		if(!dns_cache->flags.rate_limited)
 		{
 			// Log the first rate-limited query for this client in
 			// this interval. We do not log the blocked domain for
 			// privacy reasons
-			logg_rate_limit_message(clientIP, client->rate_limit);
+			logg_rate_limit_message(domainString, clientIP, dns_cache->rate_limit);
 			// Reset rate-limiting counter so we can count what
 			// comes within the adjacent interval
-			client->rate_limit = 0;
+			dns_cache->rate_limit = 0;
 		}
 
 		// Memorize this client needs rate-limiting
-		client->flags.rate_limited = true;
+		dns_cache->flags.rate_limited = true;
 
 		// Block this query
 		force_next_DNS_reply = REPLY_REFUSED;
@@ -705,15 +727,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		return false;
 	}
 
-	// Go through already knows domains and see if it is one of them
-	const int domainID = findDomainID(domainString, true);
-
 	// Save everything
 	queriesData* query = getQuery(queryID, false);
 	if(query == NULL)
 	{
 		// Encountered memory error, skip query
-		logg("WARN: No memory available, skipping query analysis");
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
 		// Free allocated memory
 		free(domainString);
 		// Release thread lock
@@ -837,7 +857,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Check if this should be blocked only for active queries
 	// (skipped for internally generated ones, e.g., DNSSEC)
 	if(!internal_query)
-		blockDomain = FTL_check_blocking(queryID, domainID, clientID);
+		blockDomain = FTL_check_blocking(query, domain, client, dns_cache);
 
 	// Free allocated memory
 	free(domainString);
@@ -1100,8 +1120,8 @@ inline static void set_dnscache_blockingstatus(DNSCacheData * dns_cache, clients
 	}
 }
 
-static bool check_domain_blocked(const char *domain, const int clientID,
-                                 clientsData *client, queriesData *query, DNSCacheData *dns_cache,
+static bool check_domain_blocked(const char *domain, clientsData *client,
+                                 queriesData *query, DNSCacheData *dns_cache,
                                  enum query_status *new_status, bool *db_okay)
 {
 	// Return early if this domain is explicitly allowed
@@ -1250,30 +1270,13 @@ static bool special_domain(const queriesData *query, const char *domain)
 	return false;
 }
 
-static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line)
+static bool _FTL_check_blocking(queriesData *query, domainsData *domain,
+                                clientsData *client, DNSCacheData *dns_cache,
+                                const char* file, const int line)
 {
 	// Only check blocking conditions when global blocking is enabled
 	if(blockingstatus == BLOCKING_DISABLED)
 	{
-		return false;
-	}
-
-	// Get query, domain and client pointers
-	queriesData *query  = getQuery(queryID, true);
-	domainsData *domain = getDomain(domainID, true);
-	clientsData *client = getClient(clientID, true);
-	if(query == NULL || domain == NULL || client == NULL)
-	{
-		logg("Error: No memory available, skipping query analysis");
-		return false;
-	}
-
-	// Get cache pointer
-	unsigned int cacheID = findCacheID(domainID, clientID, query->type, true);
-	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-	if(dns_cache == NULL)
-	{
-		logg("WARN: No memory available, skipping query analysis");
 		return false;
 	}
 
@@ -1439,7 +1442,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;
 	bool db_okay = true;
-	bool blockDomain = check_domain_blocked(domainstr, clientID, client, query, dns_cache, &new_status, &db_okay);
+	bool blockDomain = check_domain_blocked(domainstr, client, query, dns_cache, &new_status, &db_okay);
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled
 	// (defaulting to true)
@@ -1447,7 +1450,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	   !query->flags.whitelisted && blockDomain == NOT_FOUND &&
 	    strlen(domainstr) > 6 && strncasecmp(domainstr, "_esni.", 6u) == 0)
 	{
-		blockDomain = check_domain_blocked(domainstr + 6u, clientID, client, query, dns_cache, &new_status, &db_okay);
+		blockDomain = check_domain_blocked(domainstr + 6u, client, query, dns_cache, &new_status, &db_okay);
 
 		if(blockDomain)
 		{
@@ -1550,17 +1553,51 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 
 	// child_domain = Intermediate domain in CNAME path
 	// This is the domain which was queried later in this chain
-	char *child_domain = strdup(dst);
+	char *child_domain_str = strdup(dst);
+	if(child_domain_str == NULL)
+	{
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
+		return false;
+	}
 	// Convert to lowercase for matching
-	strtolower(child_domain);
-	const int child_domainID = findDomainID(child_domain, false);
+	strtolower(child_domain_str);
+	const int child_domainID = findDomainID(child_domain_str, false);
+	domainsData *child_domain = getDomain(child_domainID, true);
+	if(child_domain == NULL)
+	{
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
+		free(child_domain_str);
+		return false;
+	}
 
 	// Get client ID from the original query (the entire chain always
 	// belongs to the same client)
 	const int clientID = query->clientID;
+	clientsData *client = getClient(clientID, true);
+	if(client == NULL)
+	{
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
+		free(child_domain_str);
+		return false;
+	}
+
+	// Get child's DNS cache entry (we eed to create a new cache entry here
+	// if this is a internally generated, e.g., DNSSEC query)
+	const unsigned int child_cacheID = findCacheID(child_domainID, clientID, query->type, true);
+	DNSCacheData *child_cache = getDNSCache(child_cacheID, true);
+	if(child_cache == NULL)
+	{
+		logg("WARN: No memory available (%d:%d:%d), skipping query analysis (%s:%d)",
+		     child_domainID, clientID, query->type, short_path(__FILE__), __LINE__);
+		free(child_domain_str);
+		return false;
+	}
 
 	// Check per-client blocking for the child domain
-	const bool block = FTL_check_blocking(queryID, child_domainID, clientID);
+	const bool block = FTL_check_blocking(query, child_domain, client, child_cache);
 
 	// If we find during a CNAME inspection that we want to block the entire chain,
 	// the originally queried domain itself was not counted as blocked. We have to
@@ -1572,7 +1609,9 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 		if(parent_domain == NULL)
 		{
 			// Memory error, return
-			free(child_domain);
+			logg("WARN: No memory available, skipping query analysis (%s:%d)",
+			     short_path(__FILE__), __LINE__);
+			free(child_domain_str);
 			unlock_shm();
 			return false;
 		}
@@ -1595,11 +1634,9 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 		{
 			// Get parent and child DNS cache entries
 			const int parent_cacheID = findCacheID(parent_domainID, clientID, query->type, false);
-			const int child_cacheID = findCacheID(child_domainID, clientID, query->type, false);
 
 			// Get cache pointers
 			DNSCacheData *parent_cache = getDNSCache(parent_cacheID, true);
-			DNSCacheData *child_cache = getDNSCache(child_cacheID, true);
 
 			// Propagate ID of responsible regex up from the child to the parent domain
 			if(parent_cache != NULL && child_cache != NULL)
@@ -1622,7 +1659,7 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 		logg("Query %d: CNAME %s ---> %s", id, src, dst);
 
 	// Return result
-	free(child_domain);
+	free(child_domain_str);
 	unlock_shm();
 	return block;
 }
@@ -2043,6 +2080,8 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	if(domain == NULL)
 	{
 		// Memory error, skip reply
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
 		unlock_shm();
 		return;
 	}
@@ -2343,6 +2382,8 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 	if(query == NULL)
 	{
 		// Memory error, skip this DNSSEC details
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
 		unlock_shm();
 		return;
 	}
@@ -2409,6 +2450,8 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 	if(query == NULL)
 	{
 		// Memory error, skip this query
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
 		unlock_shm();
 		return;
 	}
@@ -2509,6 +2552,8 @@ static void FTL_mark_externally_blocked(const int id, const char* file, const in
 	if(query == NULL)
 	{
 		// Memory error, skip this query
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
 		unlock_shm();
 		return;
 	}
@@ -2518,6 +2563,8 @@ static void FTL_mark_externally_blocked(const int id, const char* file, const in
 	if(domain == NULL)
 	{
 		// Memory error, skip this query
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
 		unlock_shm();
 		return;
 	}
@@ -3199,6 +3246,8 @@ void FTL_query_in_progress(const int id)
 	if(query == NULL)
 	{
 		// Memory error, skip this DNSSEC details
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
 		unlock_shm();
 		return;
 	}
@@ -3268,6 +3317,8 @@ void FTL_multiple_replies(const int id, int *firstID)
 	if(duplicated_query == NULL || source_query == NULL)
 	{
 		// Memory error, skip this duplicate
+		logg("WARN: No memory available, skipping query analysis (%s:%d)",
+		     short_path(__FILE__), __LINE__);
 		unlock_shm();
 		return;
 	}
@@ -3342,9 +3393,9 @@ int check_struct_sizes(void)
 	result += check_one_struct("ConfigStruct", sizeof(ConfigStruct), 112, 104);
 	result += check_one_struct("queriesData", sizeof(queriesData), 56, 44);
 	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 616, 604);
-	result += check_one_struct("clientsData", sizeof(clientsData), 672, 648);
+	result += check_one_struct("clientsData", sizeof(clientsData), 672, 644);
 	result += check_one_struct("domainsData", sizeof(domainsData), 24, 20);
-	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 16, 16);
+	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 24, 24);
 	result += check_one_struct("ednsData", sizeof(ednsData), 72, 72);
 	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24);
 	result += check_one_struct("regexData", sizeof(regexData), 56, 44);

@@ -211,6 +211,7 @@ enum message_type {
 	SHMEM_MESSAGE,
 	DISK_MESSAGE,
 	INACCESSIBLE_ADLIST_MESSAGE,
+	DOMAIN_RATE_LIMIT_MESSAGE,
 	MAX_MESSAGE,
 } __attribute__ ((packed));
 

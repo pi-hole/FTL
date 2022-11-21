@@ -38,32 +38,38 @@ bool doGC = false;
 // maximum count, the rate-limitation will just continue
 static void reset_rate_limiting(void)
 {
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
-		clientsData *client = getClient(clientID, true);
-		if(!client)
+		DNSCacheData *cache = getDNSCache(cacheID, true);
+		if(!cache)
 			continue;
 
-		// Check if we are currently rate-limiting this client
-		if(client->flags.rate_limited)
+		// Check if we are currently rate-limiting this entry
+		if(cache->flags.rate_limited)
 		{
+			clientsData *client = getClient(cache->clientID, true);
+			domainsData *domain = getDomain(cache->domainID, true);
+			if(!client || !domain)
+				continue;
+
+			const char *domainStr = getstr(domain->domainpos);
 			const char *clientIP = getstr(client->ippos);
 
 			// Check if we want to continue rate limiting
-			if(client->rate_limit > config.rate_limit.count)
+			if(cache->rate_limit > config.rate_limit.count)
 			{
-				logg("Still rate-limiting %s as it made additional %d queries", clientIP, client->rate_limit);
+				logg("Still rate-limiting %s/%s as it made additional %d queries", domainStr, clientIP, cache->rate_limit);
 			}
 			// or if rate-limiting ends for this client now
 			else
 			{
-				logg("Ending rate-limitation of %s", clientIP);
-				client->flags.rate_limited = false;
+				logg("Ending rate-limitation of %s/%s", domainStr, clientIP);
+				cache->flags.rate_limited = false;
 			}
 		}
 
 		// Reset counter
-		client->rate_limit = 0;
+		cache->rate_limit = 0;
 	}
 }
 

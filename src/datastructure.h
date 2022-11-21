@@ -72,13 +72,11 @@ typedef struct {
 		bool new:1;
 		bool found_group:1;
 		bool aliasclient:1;
-		bool rate_limited:1;
 	} flags;
 	int count;
 	int blockedcount;
 	int aliasclient_id;
 	unsigned int id;
-	unsigned int rate_limit;
 	unsigned int numQueriesARP;
 	int overTime[OVERTIME_SLOTS];
 	size_t groupspos;
@@ -99,12 +97,16 @@ typedef struct {
 
 typedef struct {
 	unsigned char magic;
+	struct cache_flags {
+		bool rate_limited:1;
+	} flags;
 	enum domain_client_status blocking_status;
 	enum reply_type force_reply;
 	enum query_types query_type;
 	int domainID;
 	int clientID;
 	int domainlist_id;
+	unsigned int rate_limit;
 } DNSCacheData;
 
 void strtolower(char *str);

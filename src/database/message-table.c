@@ -27,7 +27,7 @@
 #include "../gc.h"
 
 static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT", "DNSMASQ_WARN", "LOAD", "SHMEM", "DISK", "ADLIST" };
+	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT", "DNSMASQ_WARN", "LOAD", "SHMEM", "DISK", "ADLIST", "DOMAIN_RATE_LIMIT_MESSAGE" };
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -100,6 +100,13 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
+		},
+		{	// DOMAIN_RATE_LIMIT_MESSAGE: The message column contains the domain
+			SQLITE_TEXT, // Client IP address
+			SQLITE_INTEGER, // Configured maximum number of queries
+			SQLITE_INTEGER, // Configured rate-limiting interval [seconds]
+			SQLITE_NULL, // Not used
+			SQLITE_NULL // Not used
 		},
 	};
 // Create message table in the database
@@ -356,16 +363,16 @@ void logg_fatal_dnsmasq_message(const char *message)
 	cleanup(EXIT_FAILURE);
 }
 
-void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit_count)
+void logg_rate_limit_message(const char *domainStr, const char *clientIP, const unsigned int rate_limit_count)
 {
 	const time_t turnaround = get_rate_limit_turnaround(rate_limit_count);
 
 	// Log to FTL.log
-	logg("Rate-limiting %s for at least %ld second%s",
-	     clientIP, turnaround, turnaround == 1 ? "" : "s");
+	logg("Rate-limiting %s/%s for at least %ld second%s",
+	     domainStr, clientIP, turnaround, turnaround == 1 ? "" : "s");
 
 	// Log to database
-	add_message(RATE_LIMIT_MESSAGE, clientIP, 2, config.rate_limit.count, config.rate_limit.interval);
+	add_message(DOMAIN_RATE_LIMIT_MESSAGE, domainStr, 3, clientIP, config.rate_limit.count, config.rate_limit.interval);
 }
 
 void logg_warn_dnsmasq_message(char *message)
