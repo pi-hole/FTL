@@ -546,11 +546,23 @@ static int order_qsort(const void *a, const void *b)
   return rc;
 }
 
+
+/* When loading large numbers of server=.... lines during startup,
+   there's no possibility that there will be server records that can be reused, but
+   searching a long list for each server added grows as O(n^2) and slows things down.
+   This flag is set only if is known there may be free server records that can be reused.
+   There's a call to mark_servers(0) in read_opts() to reset the flag before
+   main config read. */
+
+static int maybe_free_servers = 0;
+
 /* Must be called before  add_update_server() to set daemon->servers_tail */
 void mark_servers(int flag)
 {
   struct server *serv, **up;
 
+  maybe_free_servers = !!flag;
+  
   daemon->servers_tail = NULL;
   
   /* mark everything with argument flag */
@@ -667,27 +679,30 @@ int add_update_server(int flags,
 	 and move to the end of the list, for order. The entry found may already
 	 be at the end. */
       struct server **up, *tmp;
-      
-      for (serv = daemon->servers, up = &daemon->servers; serv; serv = tmp)
-	{
-	  tmp = serv->next;
-	  if ((serv->flags & SERV_MARK) &&
-	      hostname_isequal(alloc_domain, serv->domain))
-	    {
-	      /* Need to move down? */
-	      if (serv->next)
-		{
-		  *up = serv->next;
-		  daemon->servers_tail->next = serv;
-		  daemon->servers_tail = serv;
-		  serv->next = NULL;
-		}
-	      break;
-	    }
-	  else
-	    up = &serv->next;
-	}
 
+      serv = NULL;
+      
+      if (maybe_free_servers)
+	for (serv = daemon->servers, up = &daemon->servers; serv; serv = tmp)
+	  {
+	    tmp = serv->next;
+	    if ((serv->flags & SERV_MARK) &&
+		hostname_isequal(alloc_domain, serv->domain))
+	      {
+		/* Need to move down? */
+		if (serv->next)
+		  {
+		    *up = serv->next;
+		    daemon->servers_tail->next = serv;
+		    daemon->servers_tail = serv;
+		    serv->next = NULL;
+		  }
+		break;
+	      }
+	    else
+	      up = &serv->next;
+	  }
+      
       if (serv)
 	{
 	  free(alloc_domain);
