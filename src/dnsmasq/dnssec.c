@@ -1068,7 +1068,7 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 	      algo = *p++;
 	      digest = *p++;
 	      
-	      if (!ds_digest_name(digest) || !ds_digest_name(digest))
+	      if (!ds_digest_name(digest) || !algo_digest_name(algo))
 		{
 		  a.log.keytag = keytag;
 		  a.log.algo = algo;

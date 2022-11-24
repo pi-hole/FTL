@@ -5763,7 +5763,10 @@ void read_opts(int argc, char **argv, char *compile_opts)
   /******** Pi-hole modification ********/
   add_txt("version.FTL", (char*)get_FTL_version(), 0 );
   /**************************************/
-
+  
+  /* See comment above make_servers(). Optimises server-read code. */
+  mark_servers(0);
+  
   while (1) 
     {
 #ifdef HAVE_GETOPT_LONG
