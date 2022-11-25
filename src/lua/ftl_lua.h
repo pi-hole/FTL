@@ -21,6 +21,7 @@ int run_luac(const int argc, char **argv);
 int lua_main (int argc, char **argv);
 int luac_main (int argc, char **argv);
 
+void print_embedded_scripts(void);
 void ftl_lua_init(lua_State *L);
 
 #endif //FTL_LUA_H
