@@ -264,7 +264,9 @@ void parse_args(int argc, char* argv[])
 			printf("\n\n");
 			printf("******************************** LUA ********************************\n");
 			printf(LUA_COPYRIGHT"\n");
-			printf("\n");
+			printf("Embedded libraries: ");
+			print_embedded_scripts();
+			printf("\n\n");
 			printf("***************************** LIBNETTLE *****************************\n");
 			printf("Version: %d.%d\n", NETTLE_VERSION_MAJOR, NETTLE_VERSION_MINOR);
 			printf("GMP: %s\n", NETTLE_USE_MINI_GMP ? "Mini" : "Full");
