@@ -31,6 +31,14 @@ if [[ -n "${clean}" ]]; then
     fi
 fi
 
+# Remove compiled LUA scripts if older than the plain ones
+for scriptname in src/lua/scripts/*.lua; do
+    if [ -f "${scriptname}.hex" ] && [ "${scriptname}.hex" -ot "${scriptname}" ]; then
+        echo "INFO: ${scriptname} is outdated and will be recompiled"
+        rm "${scriptname}.hex"
+    fi
+done
+
 # Configure build, pass CMake CACHE entries if present
 # Wrap multiple options in "" as first argument to ./build.sh:
 #     ./build.sh "-DA=1 -DB=2" install
