@@ -23,16 +23,6 @@
 
 
 /*
-** Lua will use at most ~(2^LUAI_HASHLIMIT) bytes from a long string to
-** compute its hash
-*/
-#if !defined(LUAI_HASHLIMIT)
-#define LUAI_HASHLIMIT		5
-#endif
-
-
-
-/*
 ** Maximum size for string table.
 */
 #define MAXSTRTB	cast_int(luaM_limitN(MAX_INT, TString*))
@@ -50,10 +40,9 @@ int luaS_eqlngstr (TString *a, TString *b) {
 }
 
 
-unsigned int luaS_hash (const char *str, size_t l, unsigned int seed,
-                        size_t step) {
+unsigned int luaS_hash (const char *str, size_t l, unsigned int seed) {
   unsigned int h = seed ^ cast_uint(l);
-  for (; l >= step; l -= step)
+  for (; l > 0; l--)
     h ^= ((h<<5) + (h>>2) + cast_byte(str[l - 1]));
   return h;
 }
@@ -63,8 +52,7 @@ unsigned int luaS_hashlongstr (TString *ts) {
   lua_assert(ts->tt == LUA_VLNGSTR);
   if (ts->extra == 0) {  /* no hash? */
     size_t len = ts->u.lnglen;
-    size_t step = (len >> LUAI_HASHLIMIT) + 1;
-    ts->hash = luaS_hash(getstr(ts), len, ts->hash, step);
+    ts->hash = luaS_hash(getstr(ts), len, ts->hash);
     ts->extra = 1;  /* now it has its hash */
   }
   return ts->hash;
@@ -101,7 +89,7 @@ void luaS_resize (lua_State *L, int nsize) {
   if (nsize < osize)  /* shrinking table? */
     tablerehash(tb->hash, osize, nsize);  /* depopulate shrinking part */
   newvect = luaM_reallocvector(L, tb->hash, osize, nsize, TString*);
-  if (unlikely(newvect == NULL)) {  /* reallocation failed? */
+  if (l_unlikely(newvect == NULL)) {  /* reallocation failed? */
     if (nsize < osize)  /* was it shrinking table? */
       tablerehash(tb->hash, nsize, osize);  /* restore to original size */
     /* leave table as it was */
@@ -184,7 +172,7 @@ void luaS_remove (lua_State *L, TString *ts) {
 
 
 static void growstrtab (lua_State *L, stringtable *tb) {
-  if (unlikely(tb->nuse == MAX_INT)) {  /* too many strings? */
+  if (l_unlikely(tb->nuse == MAX_INT)) {  /* too many strings? */
     luaC_fullgc(L, 1);  /* try to free some... */
     if (tb->nuse == MAX_INT)  /* still too many? */
       luaM_error(L);  /* cannot even create a message... */
@@ -201,7 +189,7 @@ static TString *internshrstr (lua_State *L, const char *str, size_t l) {
   TString *ts;
   global_State *g = G(L);
   stringtable *tb = &g->strt;
-  unsigned int h = luaS_hash(str, l, g->seed, 1);
+  unsigned int h = luaS_hash(str, l, g->seed);
   TString **list = &tb->hash[lmod(h, tb->size)];
   lua_assert(str != NULL);  /* otherwise 'memcmp'/'memcpy' are undefined */
   for (ts = *list; ts != NULL; ts = ts->u.hnext) {
@@ -235,7 +223,7 @@ TString *luaS_newlstr (lua_State *L, const char *str, size_t l) {
     return internshrstr(L, str, l);
   else {
     TString *ts;
-    if (unlikely(l >= (MAX_SIZE - sizeof(TString))/sizeof(char)))
+    if (l_unlikely(l >= (MAX_SIZE - sizeof(TString))/sizeof(char)))
       luaM_toobig(L);
     ts = luaS_createlngstrobj(L, l);
     memcpy(getstr(ts), str, l * sizeof(char));
@@ -271,7 +259,7 @@ Udata *luaS_newudata (lua_State *L, size_t s, int nuvalue) {
   Udata *u;
   int i;
   GCObject *o;
-  if (unlikely(s > MAX_SIZE - udatamemoffset(nuvalue)))
+  if (l_unlikely(s > MAX_SIZE - udatamemoffset(nuvalue)))
     luaM_toobig(L);
   o = luaC_newobj(L, LUA_VUSERDATA, sizeudata(nuvalue, s));
   u = gco2u(o);

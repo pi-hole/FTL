@@ -24,14 +24,14 @@ index 454ce12f..a363925c 100644
  #if !defined(LUA_PROGNAME)
  #define LUA_PROGNAME		"lua"
 @@ -190,7 +192,7 @@ static int dostring (lua_State *L, const char *s, const char *name) {
- ** Calls 'require(name)' and stores the result in a global variable
- ** with the given name.
+ /*
+ ** Receives 'globname[=modname]' and runs 'globname = require(modname)'.
  */
--static int dolibrary (lua_State *L, const char *name) {
-+int dolibrary (lua_State *L, const char *name) {
+-static int dolibrary (lua_State *L, char *globname) {
++int dolibrary (lua_State *L, char *globname) {
    int status;
-   lua_getglobal(L, "require");
-   lua_pushstring(L, name);
+   char *modname = strchr(globname, '=');
+   if (modname == NULL)  /* no explicit name? */
 @@ -597,6 +599,10 @@ static int pmain (lua_State *L) {
      if (handle_luainit(L) != LUA_OK)  /* run LUA_INIT */
        return 0;  /* error running LUA_INIT */
