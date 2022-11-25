@@ -54,8 +54,8 @@ bool FTLDBerror(void) __attribute__ ((pure));
 // Check SQLite3 non-success return codes for possible database corruption
 bool checkFTLDBrc(const int rc);
 
-// Get human-readable *extended* error codes
-const char *sqlite3ErrName(int rc);
+// Get human-readable *extended* error codes (defined in sqlite3.c)
+extern const char *sqlite3ErrName(int rc);
 
 // Database macros
 #define SQL_bool(db, ...) {\
