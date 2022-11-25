@@ -20,9 +20,7 @@
 #include "lauxlib.h"
 #include "lualib.h"
 
-/************** Pi-hole modification ***************/
 #include "ftl_lua.h"
-/***************************************************/
 
 
 #if !defined(LUA_PROGNAME)
@@ -194,9 +192,7 @@ static int dostring (lua_State *L, const char *s, const char *name) {
 ** Calls 'require(name)' and stores the result in a global variable
 ** with the given name.
 */
-/************** Pi-hole modification ***************/
 int dolibrary (lua_State *L, const char *name) {
-/***************************************************/
   int status;
   lua_getglobal(L, "require");
   lua_pushstring(L, name);
@@ -604,11 +600,8 @@ static int pmain (lua_State *L) {
       return 0;  /* error running LUA_INIT */
   }
 
-
-  /************** Pi-hole modification ***************/
   // Load and enable libraries bundled with Pi-hole
   ftl_lua_init(L);
-  /***************************************************/
 
   if (!runargs(L, argv, script))  /* execute arguments -e and -l */
     return 0;  /* something failed */
