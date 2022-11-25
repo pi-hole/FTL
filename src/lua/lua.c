@@ -194,9 +194,7 @@ static int dostring (lua_State *L, const char *s, const char *name) {
 ** Calls 'require(name)' and stores the result in a global variable
 ** with the given name.
 */
-/************** Pi-hole modification ***************/
-int dolibrary (lua_State *L, const char *name) {
-/***************************************************/
+static int dolibrary (lua_State *L, const char *name) {
   int status;
   lua_getglobal(L, "require");
   lua_pushstring(L, name);
