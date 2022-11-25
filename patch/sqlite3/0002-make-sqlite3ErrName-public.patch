@@ -1,0 +1,22 @@
+diff --git a/src/database/sqlite3.c b/src/database/sqlite3.c
+index 2763b1b4..55f88efb 100644
+--- a/src/database/sqlite3.c
++++ b/src/database/sqlite3.c
+@@ -173885,8 +173885,7 @@ SQLITE_PRIVATE void sqlite3RollbackAll(sqlite3 *db, int tripCode){
+ ** Return a static string containing the name corresponding to the error code
+ ** specified in the argument.
+ */
+-#if defined(SQLITE_NEED_ERR_NAME)
+-SQLITE_PRIVATE const char *sqlite3ErrName(int rc){
++SQLITE_API const char *sqlite3ErrName(int rc){
+   const char *zName = 0;
+   int i, origRc = rc;
+   for(i=0; i<2 && zName==0; i++, rc &= 0xff){
+@@ -173991,7 +173990,6 @@ SQLITE_PRIVATE const char *sqlite3ErrName(int rc){
+   }
+   return zName;
+ }
+-#endif
+ 
+ /*
+ ** Return a static string that describes the kind of error specified in the

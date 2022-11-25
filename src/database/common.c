@@ -146,8 +146,8 @@ int dbquery(sqlite3* db, const char *format, ...)
 
 	int rc = sqlite3_exec(db, query, NULL, NULL, NULL);
 	if( rc != SQLITE_OK ){
-		logg("ERROR: SQL query \"%s\" failed: %s",
-		     query, sqlite3_errstr(rc));
+		logg("ERROR: SQL query \"%s\" failed: %s (%s)",
+		     query, sqlite3_errstr(rc), sqlite3ErrName(sqlite3_extended_errcode(db)));
 		sqlite3_free(query);
 		checkFTLDBrc(rc);
 		return rc;
