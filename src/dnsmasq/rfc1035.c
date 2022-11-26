@@ -539,7 +539,9 @@ static int print_txt(struct dns_header *header, const size_t qlen, char *name,
 /* Note that the following code can create CNAME chains that don't point to a real record,
    either because of lack of memory, or lack of SOA records.  These are treated by the cache code as 
    expired and cleaned out that way. 
-   Return 1 if we reject an address because it look like part of dns-rebinding attack. */
+   Return 1 if we reject an address because it look like part of dns-rebinding attack. 
+   Return 2 if the packet is malformed.
+*/
 int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t now, 
 		      struct ipsets *ipsets, struct ipsets *nftsets, int is_sign, int check_rebind,
 		      int no_cache_dnssec, int secure, int *doctored)
@@ -590,7 +592,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
   namep = p = (unsigned char *)(header+1);
   
   if (ntohs(header->qdcount) != 1 || !extract_name(header, qlen, &p, name, 1, 4))
-    return 0; /* bad packet */
+    return 2; /* bad packet */
   
   GETSHORT(qtype, p); 
   GETSHORT(qclass, p);
@@ -608,13 +610,13 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	{
 	cname_loop:
 	  if (!(p1 = skip_questions(header, qlen)))
-	    return 0;
+	    return 2;
 	  
 	  for (j = 0; j < ntohs(header->ancount); j++) 
 	    {
 	      int secflag = 0;
 	      if (!(res = extract_name(header, qlen, &p1, name, 0, 10)))
-		return 0; /* bad packet */
+		return 2; /* bad packet */
 	      
 	      GETSHORT(aqtype, p1); 
 	      GETSHORT(aqclass, p1);
@@ -651,7 +653,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		    log_query(secflag | F_CNAME | F_FORWARD | F_UPSTREAM, name, NULL, NULL, 0);
 		  
 		  if (!extract_name(header, qlen, &p1, name, 1, 0))
-		    return 0;
+		    return 2;
 		  
 		  if (aqtype == T_CNAME)
 		    {
@@ -677,7 +679,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 
 	      p1 = endrr;
 	      if (!CHECK_LEN(header, p1, qlen, 0))
-		return 0; /* bad packet */
+		return 2; /* bad packet */
 	    }
 	}
       
@@ -722,14 +724,14 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
       
     cname_loop1:
       if (!(p1 = skip_questions(header, qlen)))
-	return 0;
+	return 2;
       
       for (j = 0; j < ntohs(header->ancount); j++) 
 	{
 	  int secflag = 0;
 	  
 	  if (!(res = extract_name(header, qlen, &p1, name, 0, 10)))
-	    return 0; /* bad packet */
+	    return 2; /* bad packet */
 	  
 	  GETSHORT(aqtype, p1); 
 	  GETSHORT(aqclass, p1);
@@ -747,7 +749,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    {
 	      p1 = endrr;
 	      if (!CHECK_LEN(header, p1, qlen, 0))
-		return 0; /* bad packet */
+		return 2; /* bad packet */
 	      continue;
 	    }
 	  
@@ -791,7 +793,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      
 	      namep = p1;
 	      if (!extract_name(header, qlen, &p1, name, 1, 0))
-		return 0;
+		return 2;
 	      
 	      // ****************************** Pi-hole modification ******************************
 	      const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
@@ -825,25 +827,25 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		  unsigned char *tmp = namep;
 		  
 		  if (!CHECK_LEN(header, p1, qlen, 6))
-		    return 0; /* bad packet */
+		    return 2; /* bad packet */
 		  GETSHORT(addr.srv.priority, p1);
 		  GETSHORT(addr.srv.weight, p1);
 		  GETSHORT(addr.srv.srvport, p1);
 		  if (!extract_name(header, qlen, &p1, name, 1, 0))
-		    return 0;
+		    return 2;
 		  addr.srv.targetlen = strlen(name) + 1; /* include terminating zero */
 		  if (!(addr.srv.target = blockdata_alloc(name, addr.srv.targetlen)))
 		    return 0;
 		  
 		  /* we overwrote the original name, so get it back here. */
 		  if (!extract_name(header, qlen, &tmp, name, 1, 0))
-		    return 0;
+		    return 2;
 		}
 	      else if (flags & (F_IPV4 | F_IPV6))
 		{
 		  /* copy address into aligned storage */
 		  if (!CHECK_LEN(header, p1, qlen, addrlen))
-		    return 0; /* bad packet */
+		    return 2; /* bad packet */
 		  memcpy(&addr, p1, addrlen);
 		  
 		  /* check for returned address in private space */
@@ -887,7 +889,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      if (aqtype == T_TXT)
 		{
 		  if (!print_txt(header, qlen, name, p1, ardlen, secflag))
-		    return 0;
+		    return 2;
 		}
 	      else
 		log_query(flags | F_FORWARD | secflag | F_UPSTREAM, name, &addr, NULL, aqtype);
@@ -895,7 +897,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	  
 	  p1 = endrr;
 	  if (!CHECK_LEN(header, p1, qlen, 0))
-	    return 0; /* bad packet */
+	    return 2; /* bad packet */
 	}
       
       if (!found && (qtype != T_ANY || (flags & F_NXDOMAIN)))
