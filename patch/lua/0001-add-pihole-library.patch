@@ -2,11 +2,13 @@ diff --git a/src/lua/linit.c b/src/lua/linit.c
 index 69808f84..83b89555 100644
 --- a/src/lua/linit.c
 +++ b/src/lua/linit.c
-@@ -50,6 +50,7 @@ static const luaL_Reg loadedlibs[] = {
+@@ -50,6 +50,9 @@ static const luaL_Reg loadedlibs[] = {
    {LUA_MATHLIBNAME, luaopen_math},
    {LUA_UTF8LIBNAME, luaopen_utf8},
    {LUA_DBLIBNAME, luaopen_debug},
++  /****** Pi-hole modification ******/
 +  {LUA_PIHOLELIBNAME, luaopen_pihole},
++  /**********************************/
    {NULL, NULL}
  };
  
@@ -14,41 +16,49 @@ diff --git a/src/lua/lua.c b/src/lua/lua.c
 index 454ce12f..a363925c 100644
 --- a/src/lua/lua.c
 +++ b/src/lua/lua.c
-@@ -20,6 +20,8 @@
+@@ -20,6 +20,10 @@
  #include "lauxlib.h"
  #include "lualib.h"
  
++/** Pi-hole modification **/
 +#include "ftl_lua.h"
++/**************************/
 +
  
  #if !defined(LUA_PROGNAME)
  #define LUA_PROGNAME		"lua"
-@@ -190,7 +192,7 @@ static int dostring (lua_State *L, const char *s, const char *name) {
+@@ -190,7 +194,9 @@ static int dostring (lua_State *L, const char *s, const char *name) {
  /*
  ** Receives 'globname[=modname]' and runs 'globname = require(modname)'.
  */
 -static int dolibrary (lua_State *L, char *globname) {
++/************** Pi-hole modification ***************/
 +int dolibrary (lua_State *L, char *globname) {
++/***************************************************/
    int status;
    char *modname = strchr(globname, '=');
    if (modname == NULL)  /* no explicit name? */
-@@ -597,6 +599,10 @@ static int pmain (lua_State *L) {
+@@ -597,6 +599,12 @@ static int pmain (lua_State *L) {
      if (handle_luainit(L) != LUA_OK)  /* run LUA_INIT */
        return 0;  /* error running LUA_INIT */
    }
 +
++  /************** Pi-hole modification ***************/
 +  // Load and enable libraries bundled with Pi-hole
 +  ftl_lua_init(L);
++  /***************************************************/
 +
    if (!runargs(L, argv, script))  /* execute arguments -e and -l */
      return 0;  /* something failed */
    if (script < argc &&  /* execute main script (if there is one) */
-@@ -616,7 +622,7 @@ static int pmain (lua_State *L) {
+@@ -616,7 +622,9 @@ static int pmain (lua_State *L) {
  }
  
  
 -int main (int argc, char **argv) {
++/******* Pi-hole modification ********/
 +int lua_main (int argc, char **argv) {
++/*************************************/
    int status, result;
    lua_State *L = luaL_newstate();  /* create state */
    if (L == NULL) {
@@ -56,12 +66,14 @@ diff --git a/src/lua/luac.c b/src/lua/luac.c
 index 56ddc414..d7d219e4 100644
 --- a/src/lua/luac.c
 +++ b/src/lua/luac.c
-@@ -194,7 +194,7 @@ static int pmain(lua_State* L)
+@@ -194,7 +194,9 @@ static int pmain(lua_State* L)
   return 0;
  }
  
 -int main(int argc, char* argv[])
++/******* Pi-hole modification ********/
 +int luac_main(int argc, char* argv[])
++/*************************************/
  {
   lua_State* L;
   int i=doargs(argc,argv);
@@ -69,12 +81,14 @@ diff --git a/src/lua/lualib.h b/src/lua/lualib.h
 index eb08b530..e6dfbf6c 100644
 --- a/src/lua/lualib.h
 +++ b/src/lua/lualib.h
-@@ -44,6 +44,8 @@ LUAMOD_API int (luaopen_debug) (lua_State *L);
+@@ -44,6 +44,10 @@ LUAMOD_API int (luaopen_debug) (lua_State *L);
  #define LUA_LOADLIBNAME	"package"
  LUAMOD_API int (luaopen_package) (lua_State *L);
  
++/************ Pi-hole modification *************/
 +#define LUA_PIHOLELIBNAME	"pihole"
 +LUAMOD_API int (luaopen_pihole) (lua_State *L);
++/***********************************************/
  
  /* open all previous libraries */
  LUALIB_API void (luaL_openlibs) (lua_State *L);

@@ -20,7 +20,9 @@
 #include "lauxlib.h"
 #include "lualib.h"
 
+/** Pi-hole modification **/
 #include "ftl_lua.h"
+/**************************/
 
 
 #if !defined(LUA_PROGNAME)
@@ -212,7 +214,9 @@ static int dostring (lua_State *L, const char *s, const char *name) {
 /*
 ** Receives 'globname[=modname]' and runs 'globname = require(modname)'.
 */
+/************** Pi-hole modification ***************/
 int dolibrary (lua_State *L, char *globname) {
+/***************************************************/
   int status;
   char *modname = strchr(globname, '=');
   if (modname == NULL)  /* no explicit name? */
@@ -631,8 +635,10 @@ static int pmain (lua_State *L) {
       return 0;  /* error running LUA_INIT */
   }
 
+  /************** Pi-hole modification ***************/
   // Load and enable libraries bundled with Pi-hole
   ftl_lua_init(L);
+  /***************************************************/
 
   if (!runargs(L, argv, script))  /* execute arguments -e and -l */
     return 0;  /* something failed */
@@ -653,7 +659,9 @@ static int pmain (lua_State *L) {
 }
 
 
+/******* Pi-hole modification ********/
 int lua_main (int argc, char **argv) {
+/*************************************/
   int status, result;
   lua_State *L = luaL_newstate();  /* create state */
   if (L == NULL) {
