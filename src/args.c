@@ -261,7 +261,7 @@ void parse_args(int argc, char* argv[])
 					printf(" ");
 				printf("%s", opt);
 			}
-			printf("\n");
+			printf("\n\n");
 			printf("******************************** LUA ********************************\n");
 			printf(LUA_COPYRIGHT"\n");
 			printf("Embedded libraries: ");

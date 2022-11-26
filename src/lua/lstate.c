@@ -76,7 +76,7 @@ static unsigned int luai_makeseed (lua_State *L) {
   addbuff(buff, p, &h);  /* local variable */
   addbuff(buff, p, &lua_newstate);  /* public function */
   lua_assert(p == sizeof(buff));
-  return luaS_hash(buff, p, h, 1);
+  return luaS_hash(buff, p, h);
 }
 
 #endif
@@ -97,66 +97,14 @@ void luaE_setdebt (global_State *g, l_mem debt) {
 
 
 LUA_API int lua_setcstacklimit (lua_State *L, unsigned int limit) {
-  global_State *g = G(L);
-  int ccalls;
-  luaE_freeCI(L);  /* release unused CIs */
-  ccalls = getCcalls(L);
-  if (limit >= 40000)
-    return 0;  /* out of bounds */
-  limit += CSTACKERR;
-  if (L != g-> mainthread)
-    return 0;  /* only main thread can change the C stack */
-  else if (ccalls <= CSTACKERR)
-    return 0;  /* handling overflow */
-  else {
-    int diff = limit - g->Cstacklimit;
-    if (ccalls + diff <= CSTACKERR)
-      return 0;  /* new limit would cause an overflow */
-    g->Cstacklimit = limit;  /* set new limit */
-    L->nCcalls += diff;  /* correct 'nCcalls' */
-    return limit - diff - CSTACKERR;  /* success; return previous limit */
-  }
-}
-
-
-/*
-** Decrement count of "C calls" and check for overflows. In case of
-** a stack overflow, check appropriate error ("regular" overflow or
-** overflow while handling stack overflow).  If 'nCcalls' is smaller
-** than CSTACKERR but larger than CSTACKMARK, it means it has just
-** entered the "overflow zone", so the function raises an overflow
-** error.  If 'nCcalls' is smaller than CSTACKMARK (which means it is
-** already handling an overflow) but larger than CSTACKERRMARK, does
-** not report an error (to allow message handling to work). Otherwise,
-** report a stack overflow while handling a stack overflow (probably
-** caused by a repeating error in the message handling function).
-*/
-
-void luaE_enterCcall (lua_State *L) {
-  int ncalls = getCcalls(L);
-  L->nCcalls--;
-  if (ncalls <= CSTACKERR) {  /* possible overflow? */
-    luaE_freeCI(L);  /* release unused CIs */
-    ncalls = getCcalls(L);  /* update call count */
-    if (ncalls <= CSTACKERR) {  /* still overflow? */
-      if (ncalls <= CSTACKERRMARK)  /* below error-handling zone? */
-        luaD_throw(L, LUA_ERRERR);  /* error while handling stack error */
-      else if (ncalls >= CSTACKMARK) {
-        /* not in error-handling zone; raise the error now */
-        L->nCcalls = (CSTACKMARK - 1);  /* enter error-handling zone */
-        luaG_runerror(L, "C stack overflow");
-      }
-      /* else stack is in the error-handling zone;
-         allow message handler to work */
-    }
-  }
+  UNUSED(L); UNUSED(limit);
+  return LUAI_MAXCCALLS;  /* warning?? */
 }
 
 
 CallInfo *luaE_extendCI (lua_State *L) {
   CallInfo *ci;
   lua_assert(L->ci->next == NULL);
-  luaE_enterCcall(L);
   ci = luaM_new(L, CallInfo);
   lua_assert(L->ci->next == NULL);
   L->ci->next = ci;
@@ -175,13 +123,11 @@ void luaE_freeCI (lua_State *L) {
   CallInfo *ci = L->ci;
   CallInfo *next = ci->next;
   ci->next = NULL;
-  L->nCcalls += L->nci;  /* add removed elements back to 'nCcalls' */
   while ((ci = next) != NULL) {
     next = ci->next;
     luaM_free(L, ci);
     L->nci--;
   }
-  L->nCcalls -= L->nci;  /* adjust result */
 }
 
 
@@ -194,7 +140,6 @@ void luaE_shrinkCI (lua_State *L) {
   CallInfo *next;
   if (ci == NULL)
     return;  /* no extra elements */
-  L->nCcalls += L->nci;  /* add removed elements back to 'nCcalls' */
   while ((next = ci->next) != NULL) {  /* two extra elements? */
     CallInfo *next2 = next->next;  /* next's next */
     ci->next = next2;  /* remove next from the list */
@@ -207,19 +152,40 @@ void luaE_shrinkCI (lua_State *L) {
       ci = next2;  /* continue */
     }
   }
-  L->nCcalls -= L->nci;  /* adjust result */
+}
+
+
+/*
+** Called when 'getCcalls(L)' larger or equal to LUAI_MAXCCALLS.
+** If equal, raises an overflow error. If value is larger than
+** LUAI_MAXCCALLS (which means it is handling an overflow) but
+** not much larger, does not report an error (to allow overflow
+** handling to work).
+*/
+void luaE_checkcstack (lua_State *L) {
+  if (getCcalls(L) == LUAI_MAXCCALLS)
+    luaG_runerror(L, "C stack overflow");
+  else if (getCcalls(L) >= (LUAI_MAXCCALLS / 10 * 11))
+    luaD_throw(L, LUA_ERRERR);  /* error while handling stack error */
+}
+
+
+LUAI_FUNC void luaE_incCstack (lua_State *L) {
+  L->nCcalls++;
+  if (l_unlikely(getCcalls(L) >= LUAI_MAXCCALLS))
+    luaE_checkcstack(L);
 }
 
 
 static void stack_init (lua_State *L1, lua_State *L) {
   int i; CallInfo *ci;
   /* initialize stack array */
-  L1->stack = luaM_newvector(L, BASIC_STACK_SIZE, StackValue);
-  L1->stacksize = BASIC_STACK_SIZE;
-  for (i = 0; i < BASIC_STACK_SIZE; i++)
+  L1->stack = luaM_newvector(L, BASIC_STACK_SIZE + EXTRA_STACK, StackValue);
+  L1->tbclist = L1->stack;
+  for (i = 0; i < BASIC_STACK_SIZE + EXTRA_STACK; i++)
     setnilvalue(s2v(L1->stack + i));  /* erase new stack */
   L1->top = L1->stack;
-  L1->stack_last = L1->stack + L1->stacksize - EXTRA_STACK;
+  L1->stack_last = L1->stack + BASIC_STACK_SIZE;
   /* initialize first ci */
   ci = &L1->base_ci;
   ci->next = ci->previous = NULL;
@@ -240,7 +206,7 @@ static void freestack (lua_State *L) {
   L->ci = &L->base_ci;  /* free the entire 'ci' list */
   luaE_freeCI(L);
   lua_assert(L->nci == 0);
-  luaM_freearray(L, L->stack, L->stacksize);  /* free stack array */
+  luaM_freearray(L, L->stack, stacksize(L) + EXTRA_STACK);  /* free stack */
 }
 
 
@@ -248,24 +214,19 @@ static void freestack (lua_State *L) {
 ** Create registry table and its predefined values
 */
 static void init_registry (lua_State *L, global_State *g) {
-  TValue temp;
   /* create registry */
   Table *registry = luaH_new(L);
   sethvalue(L, &g->l_registry, registry);
   luaH_resize(L, registry, LUA_RIDX_LAST, 0);
   /* registry[LUA_RIDX_MAINTHREAD] = L */
-  setthvalue(L, &temp, L);  /* temp = L */
-  luaH_setint(L, registry, LUA_RIDX_MAINTHREAD, &temp);
-  /* registry[LUA_RIDX_GLOBALS] = table of globals */
-  sethvalue(L, &temp, luaH_new(L));  /* temp = new table (global table) */
-  luaH_setint(L, registry, LUA_RIDX_GLOBALS, &temp);
+  setthvalue(L, &registry->array[LUA_RIDX_MAINTHREAD - 1], L);
+  /* registry[LUA_RIDX_GLOBALS] = new table (table of globals) */
+  sethvalue(L, &registry->array[LUA_RIDX_GLOBALS - 1], luaH_new(L));
 }
 
 
 /*
 ** open parts of the state that may cause memory-allocation errors.
-** ('g->nilvalue' being a nil value flags that the state was completely
-** build.)
 */
 static void f_luaopen (lua_State *L, void *ud) {
   global_State *g = G(L);
@@ -275,8 +236,8 @@ static void f_luaopen (lua_State *L, void *ud) {
   luaS_init(L);
   luaT_init(L);
   luaX_init(L);
-  g->gcrunning = 1;  /* allow gc */
-  setnilvalue(&g->nilvalue);
+  g->gcstp = 0;  /* allow gc */
+  setnilvalue(&g->nilvalue);  /* now state is complete */
   luai_userstateopen(L);
 }
 
@@ -290,8 +251,8 @@ static void preinit_thread (lua_State *L, global_State *g) {
   L->stack = NULL;
   L->ci = NULL;
   L->nci = 0;
-  L->stacksize = 0;
   L->twups = L;  /* thread has no upvalues */
+  L->nCcalls = 0;
   L->errorJmp = NULL;
   L->hook = NULL;
   L->hookmask = 0;
@@ -307,10 +268,14 @@ static void preinit_thread (lua_State *L, global_State *g) {
 
 static void close_state (lua_State *L) {
   global_State *g = G(L);
-  luaF_close(L, L->stack, CLOSEPROTECT);  /* close all upvalues */
-  luaC_freeallobjects(L);  /* collect all objects */
-  if (ttisnil(&g->nilvalue))  /* closing a fully built state? */
+  if (!completestate(g))  /* closing a partially built state? */
+    luaC_freeallobjects(L);  /* just collect its objects */
+  else {  /* closing a fully built state */
+    L->ci = &L->base_ci;  /* unwind CallInfo list */
+    luaD_closeprotected(L, 1, LUA_OK);  /* close all upvalues */
+    luaC_freeallobjects(L);  /* collect all objects */
     luai_userstateclose(L);
+  }
   luaM_freearray(L, G(L)->strt.hash, G(L)->strt.size);
   freestack(L);
   lua_assert(gettotalbytes(g) == sizeof(LG));
@@ -335,7 +300,6 @@ LUA_API lua_State *lua_newthread (lua_State *L) {
   setthvalue2s(L, L->top, L1);
   api_incr_top(L);
   preinit_thread(L1, g);
-  L1->nCcalls = getCcalls(L);
   L1->hookmask = L->hookmask;
   L1->basehookcount = L->basehookcount;
   L1->hook = L->hook;
@@ -352,7 +316,7 @@ LUA_API lua_State *lua_newthread (lua_State *L) {
 
 void luaE_freethread (lua_State *L, lua_State *L1) {
   LX *l = fromstate(L1);
-  luaF_close(L1, L1->stack, NOCLOSINGMETH);  /* close all upvalues */
+  luaF_closeupval(L1, L1->stack);  /* close all upvalues */
   lua_assert(L1->openupval == NULL);
   luai_userstatefree(L, L1);
   freestack(L1);
@@ -360,23 +324,29 @@ void luaE_freethread (lua_State *L, lua_State *L1) {
 }
 
 
-int lua_resetthread (lua_State *L) {
-  CallInfo *ci;
-  int status;
-  lua_lock(L);
-  L->ci = ci = &L->base_ci;  /* unwind CallInfo list */
+int luaE_resetthread (lua_State *L, int status) {
+  CallInfo *ci = L->ci = &L->base_ci;  /* unwind CallInfo list */
   setnilvalue(s2v(L->stack));  /* 'function' entry for basic 'ci' */
   ci->func = L->stack;
   ci->callstatus = CIST_C;
-  status = luaF_close(L, L->stack, CLOSEPROTECT);
-  if (status != CLOSEPROTECT)  /* real errors? */
-    luaD_seterrorobj(L, status, L->stack + 1);
-  else {
+  if (status == LUA_YIELD)
     status = LUA_OK;
+  L->status = LUA_OK;  /* so it can run __close metamethods */
+  status = luaD_closeprotected(L, 1, status);
+  if (status != LUA_OK)  /* errors? */
+    luaD_seterrorobj(L, status, L->stack + 1);
+  else
     L->top = L->stack + 1;
-  }
   ci->top = L->top + LUA_MINSTACK;
-  L->status = status;
+  luaD_reallocstack(L, cast_int(ci->top - L->stack), 0);
+  return status;
+}
+
+
+LUA_API int lua_resetthread (lua_State *L) {
+  int status;
+  lua_lock(L);
+  status = luaE_resetthread(L, L->status);
   lua_unlock(L);
   return status;
 }
@@ -396,7 +366,6 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   preinit_thread(L, g);
   g->allgc = obj2gco(L);  /* by now, only object is the main thread */
   L->next = NULL;
-  g->Cstacklimit = L->nCcalls = LUAI_MAXCSTACK + CSTACKERR;
   incnny(L);  /* main thread is always non yieldable */
   g->frealloc = f;
   g->ud = ud;
@@ -404,13 +373,14 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   g->ud_warn = NULL;
   g->mainthread = L;
   g->seed = luai_makeseed(L);
-  g->gcrunning = 0;  /* no GC while building state */
+  g->gcstp = GCSTPGC;  /* no GC while building state */
   g->strt.size = g->strt.nuse = 0;
   g->strt.hash = NULL;
   setnilvalue(&g->l_registry);
   g->panic = NULL;
   g->gcstate = GCSpause;
   g->gckind = KGC_INC;
+  g->gcstopem = 0;
   g->gcemergency = 0;
   g->finobj = g->tobefnz = g->fixedgc = NULL;
   g->firstold1 = g->survival = g->old1 = g->reallyold = NULL;

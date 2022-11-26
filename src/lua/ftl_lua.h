@@ -21,6 +21,8 @@ int run_luac(const int argc, char **argv);
 int lua_main (int argc, char **argv);
 int luac_main (int argc, char **argv);
 
+extern int dolibrary (lua_State *L, char *name);
+
 void print_embedded_scripts(void);
 void ftl_lua_init(lua_State *L);
 

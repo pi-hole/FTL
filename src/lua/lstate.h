@@ -87,48 +87,12 @@
 
 
 /*
-** About 'nCcalls': each thread in Lua (a lua_State) keeps a count of
-** how many "C calls" it still can do in the C stack, to avoid C-stack
-** overflow.  This count is very rough approximation; it considers only
-** recursive functions inside the interpreter, as non-recursive calls
-** can be considered using a fixed (although unknown) amount of stack
-** space.
-**
-** The count has two parts: the lower part is the count itself; the
-** higher part counts the number of non-yieldable calls in the stack.
-** (They are together so that we can change both with one instruction.)
-**
-** Because calls to external C functions can use an unknown amount
-** of space (e.g., functions using an auxiliary buffer), calls
-** to these functions add more than one to the count (see CSTACKCF).
-**
-** The proper count excludes the number of CallInfo structures allocated
-** by Lua, as a kind of "potential" calls. So, when Lua calls a function
-** (and "consumes" one CallInfo), it needs neither to decrement nor to
-** check 'nCcalls', as its use of C stack is already accounted for.
+** About 'nCcalls':  This count has two parts: the lower 16 bits counts
+** the number of recursive invocations in the C stack; the higher
+** 16 bits counts the number of non-yieldable calls in the stack.
+** (They are together so that we can change and save both with one
+** instruction.)
 */
-
-/* number of "C stack slots" used by an external C function */
-#define CSTACKCF	10
-
-
-/*
-** The C-stack size is sliced in the following zones:
-** - larger than CSTACKERR: normal stack;
-** - [CSTACKMARK, CSTACKERR]: buffer zone to signal a stack overflow;
-** - [CSTACKCF, CSTACKERRMARK]: error-handling zone;
-** - below CSTACKERRMARK: buffer zone to signal overflow during overflow;
-** (Because the counter can be decremented CSTACKCF at once, we need
-** the so called "buffer zones", with at least that size, to properly
-** detect a change from one zone to the next.)
-*/
-#define CSTACKERR	(8 * CSTACKCF)
-#define CSTACKMARK	(CSTACKERR - (CSTACKCF + 2))
-#define CSTACKERRMARK	(CSTACKCF + 2)
-
-
-/* initial limit for the C-stack of threads */
-#define CSTACKTHREAD	(2 * CSTACKERR)
 
 
 /* true if this thread does not have non-yieldable calls in the stack */
@@ -144,13 +108,8 @@
 /* Decrement the number of non-yieldable calls */
 #define decnny(L)	((L)->nCcalls -= 0x10000)
 
-/* Increment the number of non-yieldable calls and decrement nCcalls */
-#define incXCcalls(L)	((L)->nCcalls += 0x10000 - CSTACKCF)
-
-/* Decrement the number of non-yieldable calls and increment nCcalls */
-#define decXCcalls(L)	((L)->nCcalls -= 0x10000 - CSTACKCF)
-
-
+/* Non-yieldable call increment */
+#define nyci	(0x10000 | 1)
 
 
 
@@ -168,11 +127,19 @@ struct lua_longjmp;  /* defined in ldo.c */
 #endif
 
 
-/* extra stack space to handle TM calls and some other extras */
+/*
+** Extra stack space to handle TM calls and some other extras. This
+** space is not included in 'stack_last'. It is used only to avoid stack
+** checks, either because the element will be promptly popped or because
+** there will be a stack check soon after the push. Function frames
+** never use this extra space, so it does not need to be kept clean.
+*/
 #define EXTRA_STACK   5
 
 
 #define BASIC_STACK_SIZE        (2*LUA_MINSTACK)
+
+#define stacksize(th)	cast_int((th)->stack_last - (th)->stack)
 
 
 /* kinds of Garbage Collection */
@@ -189,6 +156,18 @@ typedef struct stringtable {
 
 /*
 ** Information about a call.
+** About union 'u':
+** - field 'l' is used only for Lua functions;
+** - field 'c' is used only for C functions.
+** About union 'u2':
+** - field 'funcidx' is used only by C functions while doing a
+** protected call;
+** - field 'nyield' is used only while a function is "doing" an
+** yield (from the yield until the next resume);
+** - field 'nres' is used only while closing tbc variables when
+** returning from a function;
+** - field 'transferinfo' is used only during call/returnhooks,
+** before the function starts or after it ends.
 */
 typedef struct CallInfo {
   StkId func;  /* function index in the stack */
@@ -209,6 +188,7 @@ typedef struct CallInfo {
   union {
     int funcidx;  /* called-function index */
     int nyield;  /* number of values yielded */
+    int nres;  /* number of values returned */
     struct {  /* info about transferred values (for call/return hooks) */
       unsigned short ftransfer;  /* offset of first value transferred */
       unsigned short ntransfer;  /* number of values transferred */
@@ -224,15 +204,33 @@ typedef struct CallInfo {
 */
 #define CIST_OAH	(1<<0)	/* original value of 'allowhook' */
 #define CIST_C		(1<<1)	/* call is running a C function */
-#define CIST_HOOKED	(1<<2)	/* call is running a debug hook */
-#define CIST_YPCALL	(1<<3)	/* call is a yieldable protected call */
-#define CIST_TAIL	(1<<4)	/* call was tail called */
-#define CIST_HOOKYIELD	(1<<5)	/* last hook called yielded */
-#define CIST_FIN	(1<<6)  /* call is running a finalizer */
-#define CIST_TRAN	(1<<7)	/* 'ci' has transfer information */
+#define CIST_FRESH	(1<<2)	/* call is on a fresh "luaV_execute" frame */
+#define CIST_HOOKED	(1<<3)	/* call is running a debug hook */
+#define CIST_YPCALL	(1<<4)	/* doing a yieldable protected call */
+#define CIST_TAIL	(1<<5)	/* call was tail called */
+#define CIST_HOOKYIELD	(1<<6)	/* last hook called yielded */
+#define CIST_FIN	(1<<7)	/* function "called" a finalizer */
+#define CIST_TRAN	(1<<8)	/* 'ci' has transfer information */
+#define CIST_CLSRET	(1<<9)  /* function is closing tbc variables */
+/* Bits 10-12 are used for CIST_RECST (see below) */
+#define CIST_RECST	10
 #if defined(LUA_COMPAT_LT_LE)
-#define CIST_LEQ	(1<<8)  /* using __lt for __le */
+#define CIST_LEQ	(1<<13)  /* using __lt for __le */
 #endif
+
+
+/*
+** Field CIST_RECST stores the "recover status", used to keep the error
+** status while closing to-be-closed variables in coroutines, so that
+** Lua can correctly resume after an yield from a __close method called
+** because of an error.  (Three bits are enough for error status.)
+*/
+#define getcistrecst(ci)     (((ci)->callstatus >> CIST_RECST) & 7)
+#define setcistrecst(ci,st)  \
+  check_exp(((st) & 7) == (st),   /* status must fit in three bits */  \
+            ((ci)->callstatus = ((ci)->callstatus & ~(7 << CIST_RECST))  \
+                                                  | ((st) << CIST_RECST)))
+
 
 /* active function is a Lua function */
 #define isLua(ci)	(!((ci)->callstatus & CIST_C))
@@ -262,9 +260,10 @@ typedef struct global_State {
   lu_byte currentwhite;
   lu_byte gcstate;  /* state of garbage collector */
   lu_byte gckind;  /* kind of GC running */
+  lu_byte gcstopem;  /* stops emergency collections */
   lu_byte genminormul;  /* control for minor generational collections */
   lu_byte genmajormul;  /* control for major generational collections */
-  lu_byte gcrunning;  /* true if GC is running */
+  lu_byte gcstp;  /* control whether GC is running */
   lu_byte gcemergency;  /* true if this is an emergency collection */
   lu_byte gcpause;  /* size of pause between successive GCs */
   lu_byte gcstepmul;  /* GC "speed" */
@@ -296,7 +295,6 @@ typedef struct global_State {
   TString *strcache[STRCACHE_N][STRCACHE_M];  /* cache for strings in API */
   lua_WarnFunction warnf;  /* warning function */
   void *ud_warn;         /* auxiliary data to 'warnf' */
-  unsigned int Cstacklimit;  /* current limit for the C stack */
 } global_State;
 
 
@@ -311,18 +309,18 @@ struct lua_State {
   StkId top;  /* first free slot in the stack */
   global_State *l_G;
   CallInfo *ci;  /* call info for current function */
-  StkId stack_last;  /* last free slot in the stack */
+  StkId stack_last;  /* end of stack (last element + 1) */
   StkId stack;  /* stack base */
   UpVal *openupval;  /* list of open upvalues in this stack */
+  StkId tbclist;  /* list of to-be-closed variables */
   GCObject *gclist;
   struct lua_State *twups;  /* list of threads with open upvalues */
   struct lua_longjmp *errorJmp;  /* current error recover point */
   CallInfo base_ci;  /* CallInfo for first level (C calling Lua) */
   volatile lua_Hook hook;
   ptrdiff_t errfunc;  /* current error handling function (stack index) */
-  l_uint32 nCcalls;  /* number of allowed nested C calls - 'nci' */
+  l_uint32 nCcalls;  /* number of nested (non-yieldable | C)  calls */
   int oldpc;  /* last pc traced */
-  int stacksize;
   int basehookcount;
   int hookcount;
   volatile l_signalT hookmask;
@@ -330,6 +328,12 @@ struct lua_State {
 
 
 #define G(L)	(L->l_G)
+
+/*
+** 'g->nilvalue' being a nil value flags that the state was completely
+** build.
+*/
+#define completestate(g)	ttisnil(&g->nilvalue)
 
 
 /*
@@ -389,12 +393,12 @@ LUAI_FUNC void luaE_freethread (lua_State *L, lua_State *L1);
 LUAI_FUNC CallInfo *luaE_extendCI (lua_State *L);
 LUAI_FUNC void luaE_freeCI (lua_State *L);
 LUAI_FUNC void luaE_shrinkCI (lua_State *L);
-LUAI_FUNC void luaE_enterCcall (lua_State *L);
+LUAI_FUNC void luaE_checkcstack (lua_State *L);
+LUAI_FUNC void luaE_incCstack (lua_State *L);
 LUAI_FUNC void luaE_warning (lua_State *L, const char *msg, int tocont);
 LUAI_FUNC void luaE_warnerror (lua_State *L, const char *where);
+LUAI_FUNC int luaE_resetthread (lua_State *L, int status);
 
-
-#define luaE_exitCcall(L)	((L)->nCcalls++)
 
 #endif
 
