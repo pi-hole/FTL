@@ -377,7 +377,7 @@ static const struct myoption opts[] =
     { "quiet-tftp", 0, 0, LOPT_QUIET_TFTP },
     { "port-limit", 1, 0, LOPT_RANDPORT_LIM },
     { "fast-dns-retry", 2, 0, LOPT_FAST_RETRY },
-    { "use-stale-cache", 0, 0 , LOPT_STALE_CACHE },
+    { "use-stale-cache", 2, 0 , LOPT_STALE_CACHE },
     { NULL, 0, 0, 0 }
   };
 
@@ -435,7 +435,7 @@ static struct {
   { 'M', ARG_DUP, "<bootp opts>", gettext_noop("Specify BOOTP options to DHCP server."), NULL },
   { 'n', OPT_NO_POLL, NULL, gettext_noop("Do NOT poll %s file, reload only on SIGHUP."), RESOLVFILE }, 
   { 'N', OPT_NO_NEG, NULL, gettext_noop("Do NOT cache failed search results."), NULL },
-  { LOPT_STALE_CACHE, OPT_STALE_CACHE, NULL, gettext_noop("Use expired cache data for faster reply."), NULL },
+  { LOPT_STALE_CACHE, ARG_ONE, "[=<max_expired>]", gettext_noop("Use expired cache data for faster reply."), NULL },
   { 'o', OPT_ORDER, NULL, gettext_noop("Use nameservers strictly in the order given in %s."), RESOLVFILE },
   { 'O', ARG_DUP, "<optspec>", gettext_noop("Specify options to be sent to DHCP clients."), NULL },
   { LOPT_FORCE, ARG_DUP, "<optspec>", gettext_noop("DHCP option sent even if the client does not request it."), NULL},
@@ -5152,6 +5152,24 @@ err:
 	  daemon->host_records_tail->next = new;
 	new->next = NULL;
 	daemon->host_records_tail = new;
+	break;
+      }
+
+    case LOPT_STALE_CACHE:
+      {
+	int max_expiry = STALE_CACHE_EXPIRY;
+	if (arg)
+	  {
+	    /* Don't accept negative TTLs here, they'd have the counter-intuitive
+	       side-effect of evicting cache records before they expire */
+	    if (!atoi_check(arg, &max_expiry) || max_expiry < 0)
+	      ret_err(gen_err);
+	    /* Store "serve expired forever" as -1 internally, the option isn't
+	       active for daemon->cache_max_expiry == 0 */
+	    if (max_expiry == 0)
+	      max_expiry = -1;
+	  }
+	daemon->cache_max_expiry = max_expiry;
 	break;
       }
 
