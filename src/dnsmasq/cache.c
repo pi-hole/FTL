@@ -1937,8 +1937,10 @@ void dump_cache(time_t now)
 char *record_source(unsigned int index)
 {
   struct hostsfile *ah;
+#ifdef HAVE_INOTIFY
   struct dyndir *dd;
-
+#endif
+  
   if (index == SRC_CONFIG)
     return "config";
   else if (index == SRC_HOSTS)
