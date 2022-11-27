@@ -852,6 +852,24 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  cache_secure = 0;
 	  ede = EDE_OTHER;
 	  break;
+
+	  /* Pi-hole modification */
+	case 99:
+	  cache_secure = 0;
+	  // Make a private copy of the pheader to ensure
+	  // we are not accidentially rewriting what is in
+	  // the pheader when we're creating a crafted reply
+	  // further below (when a query is to be blocked)
+	  if (pheader)
+	  {
+	    pheader_copy = calloc(1, plen);
+	    memcpy(pheader_copy, pheader, plen);
+	  }
+
+	  // Generate DNS packet for reply, a possibly existing pseudo header
+	  // will be restored later inside resize_packet()
+	  n = FTL_make_answer(header, ((char *) header) + 65536, n, &ede);
+	  break;
 	}
 
       if (doctored)
