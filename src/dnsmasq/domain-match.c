@@ -559,7 +559,7 @@ static int maybe_free_servers = 0;
 /* Must be called before  add_update_server() to set daemon->servers_tail */
 void mark_servers(int flag)
 {
-  struct server *serv, **up;
+  struct server *serv, *next, **up;
 
   maybe_free_servers = !!flag;
   
@@ -580,11 +580,13 @@ void mark_servers(int flag)
      1) numerous and 2) not reloaded often. We just delete 
      and recreate. */
   if (flag)
-    for (serv = daemon->local_domains, up = &daemon->local_domains; serv; serv = serv->next)
+    for (serv = daemon->local_domains, up = &daemon->local_domains; serv; serv = next)
       {
+	next = serv->next;
+
 	if (serv->flags & flag)
 	  {
-	    *up = serv->next;
+	    *up = next;
 	    free(serv->domain);
 	    free(serv);
 	  }

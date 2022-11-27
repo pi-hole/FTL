@@ -280,9 +280,8 @@ struct event_desc {
 #define OPT_FILTER_AAAA    68
 #define OPT_STRIP_ECS      69
 #define OPT_STRIP_MAC      70
-#define OPT_STALE_CACHE    71
-#define OPT_NORR           72
-#define OPT_LAST           73
+#define OPT_NORR           71
+#define OPT_LAST           72
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -1206,6 +1205,7 @@ extern struct daemon {
   unsigned long soa_sn, soa_refresh, soa_retry, soa_expiry;
   u32 metrics[__METRIC_MAX];
   int fast_retry_time, fast_retry_timeout;
+  int cache_max_expiry;
 #ifdef HAVE_DNSSEC
   struct ds_config *ds;
   char *timestamp_file;
