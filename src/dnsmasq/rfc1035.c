@@ -541,7 +541,7 @@ static int print_txt(struct dns_header *header, const size_t qlen, char *name,
    expired and cleaned out that way. 
    Return 1 if we reject an address because it look like part of dns-rebinding attack. 
    Return 2 if the packet is malformed.
-   Return 3 if we reject parts of a CNAME chain (*** Pi-hole modification ***)
+   Return 99 if we reject parts of a CNAME chain (*** Pi-hole modification ***)
 */
 int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t now, 
 		      struct ipsets *ipsets, struct ipsets *nftsets, int is_sign, int check_rebind,
