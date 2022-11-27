@@ -540,7 +540,6 @@ static int print_txt(struct dns_header *header, const size_t qlen, char *name,
    either because of lack of memory, or lack of SOA records.  These are treated by the cache code as 
    expired and cleaned out that way. 
    Return 1 if we reject an address because it look like part of dns-rebinding attack. */
-// Pi-hole: Return 2 if we reject a part of a CNAME chain
 int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t now, 
 		      struct ipsets *ipsets, struct ipsets *nftsets, int is_sign, int check_rebind,
 		      int no_cache_dnssec, int secure, int *doctored)

@@ -836,27 +836,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	    n = rrfilter(header, n, RRFILTER_AAAA);
 	}
 
-      /******************************** Pi-hole modification ********************************/
-      int ret = extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
-      if (ret == 2)
-	{
-	  cache_secure = 0;
-	  // Make a private copy of the pheader to ensure
-	  // we are not accidentially rewriting what is in
-	  // the pheader when we're creating a crafted reply
-	  // further below (when a query is to be blocked)
-	  if (pheader)
-	  {
-	    pheader_copy = calloc(1, plen);
-	    memcpy(pheader_copy, pheader, plen);
-	  }
-
-	  // Generate DNS packet for reply, a possibly existing pseudo header
-	  // will be restored later inside resize_packet()
-	  n = FTL_make_answer(header, ((char *) header) + 65536, n, &ede);
-	}
-      else if(ret)
-      /**************************************************************************************/
+      if (extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure, &doctored))
 	{
 	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
 	  munged = 1;
