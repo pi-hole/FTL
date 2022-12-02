@@ -19,8 +19,7 @@ void getUpstreamDestinations(const char *client_message, const int sock, const b
 void getQueryTypes(const int sock, const bool istelnet);
 void getAllQueries(const char *client_message, const int sock, const bool istelnet);
 void getRecentBlocked(const char *client_message, const int sock, const bool istelnet);
-void getClientsOverTime(const int sock, const bool istelnet);
-void getClientNames(const int sock, const bool istelnet);
+void getClientData(bool isoverTime, const int sock, const bool istelnet);
 
 // FTL methods
 void getClientID(const int sock, const bool istelnet);

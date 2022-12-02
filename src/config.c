@@ -770,6 +770,18 @@ void read_FTLconf(void)
 
 	logg("   CHECK_DISK: Warning if certain disk usage exceeds %d%%", config.check.disk);
 
+	// API_NUM_CLIENTS
+	// Maximum number of clients to be reported for the >ClientsoverTime API callback
+	// defaults to: 10
+	config.api_num_clients = 10;
+	buffer = parse_FTLconf(fp, "API_NUM_CLIENTS");
+
+	if(buffer != NULL &&
+	    sscanf(buffer, "%u", &uval))
+			config.api_num_clients = uval;
+
+	logg("   API_NUM_CLIENTS: Showing at most %d clients in over-time API data", config.api_num_clients);
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 

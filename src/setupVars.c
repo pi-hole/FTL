@@ -222,7 +222,7 @@ bool insetupVarsArray(const char * str)
 	return false;
 }
 
-bool __attribute__((pure)) getSetupVarsBool(const char * input)
+bool __attribute__((pure)) getSetupVarsBool(const char *input)
 {
 	if((strcmp(input, "true")) == 0)
 		return true;
@@ -244,7 +244,6 @@ void check_blocking_status(void)
 		// or explicitly set to true
 		blockingstatus = BLOCKING_ENABLED;
 		message = "enabled";
-		clearSetupVarsArray();
 	}
 	else
 	{
@@ -252,6 +251,7 @@ void check_blocking_status(void)
 		blockingstatus = BLOCKING_DISABLED;
 		message = "disabled";
 	}
+	clearSetupVarsArray();
 
 	logg("Blocking status is %s", message);
 }

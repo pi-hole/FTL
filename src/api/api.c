@@ -1216,119 +1216,14 @@ void getDBstats(const int sock, const bool istelnet)
 	}
 }
 
-void getClientsOverTime(const int sock, const bool istelnet)
+static inline void client_loop(const int num, const int clientIDs[counters->clients][2],
+                               const bool skipclient[counters->clients], const bool istelnet,
+                               const bool isoverTime, const int slot, const int sock)
 {
-	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
-		return;
-
-	// Get clients which the user doesn't want to see
-	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
-	// Array of clients to be skipped in the output
-	// if skipclient[i] == true then this client should be hidden from
-	// returned data. We initialize it with false
-	bool skipclient[counters->clients];
-	memset(skipclient, false, counters->clients*sizeof(bool));
-
-	if(excludeclients != NULL)
+	// Loop over forward destinations to generate output to be sent to the client
+	for(int i = 0; i < num; i++)
 	{
-		getSetupVarsArray(excludeclients);
-
-		for(int clientID=0; clientID < counters->clients; clientID++)
-		{
-			// Get client pointer
-			const clientsData* client = getClient(clientID, true);
-			// Skip invalid clients
-			if(client == NULL)
-				continue;
-
-			// Check if this client should be skipped
-			if(insetupVarsArray(getstr(client->ippos)) ||
-			   insetupVarsArray(getstr(client->namepos)) ||
-			   (!client->flags.aliasclient && client->aliasclient_id > -1))
-				skipclient[clientID] = true;
-		}
-	}
-
-	// Main return loop
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if(istelnet)
-			ssend(sock, "%lli", (long long)overTime[slot].timestamp);
-		else
-			pack_int32(sock, (int32_t)overTime[slot].timestamp);
-
-		// Loop over forward destinations to generate output to be sent to the client
-		for(int clientID = 0; clientID < counters->clients; clientID++)
-		{
-			if(skipclient[clientID])
-				continue;
-
-			// Get client pointer
-			const clientsData* client = getClient(clientID, true);
-			// Skip invalid clients and also those managed by alias clients
-			if(client == NULL || client->aliasclient_id >= 0)
-				continue;
-			// Also skip clients with no active counts at all (may be old IPv6 addresses)
-			if(client->count == 0)
-				continue;
-			const int thisclient = client->overTime[slot];
-
-			if(istelnet)
-				ssend(sock, " %i", thisclient);
-			else
-				pack_int32(sock, thisclient);
-		}
-
-		if(istelnet)
-			ssend(sock, "\n");
-		else
-			pack_int32(sock, -1);
-	}
-
-	if(excludeclients != NULL)
-		clearSetupVarsArray();
-}
-
-void getClientNames(const int sock, const bool istelnet)
-{
-	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
-		return;
-
-	// Get clients which the user doesn't want to see
-	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
-	// Array of clients to be skipped in the output
-	// if skipclient[i] == true then this client should be hidden from
-	// returned data. We initialize it with false
-	bool skipclient[counters->clients];
-	memset(skipclient, false, counters->clients*sizeof(bool));
-
-	if(excludeclients != NULL)
-	{
-		getSetupVarsArray(excludeclients);
-
-		for(int clientID=0; clientID < counters->clients; clientID++)
-		{
-			// Get client pointer
-			const clientsData* client = getClient(clientID, true);
-			// Skip invalid clients
-			if(client == NULL)
-				continue;
-
-			// Check if this client should be skipped
-			if(insetupVarsArray(getstr(client->ippos)) ||
-			   insetupVarsArray(getstr(client->namepos)) ||
-			   (!client->flags.aliasclient && client->aliasclient_id > -1))
-				skipclient[clientID] = true;
-		}
-	}
-
-	// Loop over clients to generate output to be sent to the client
-	for(int clientID = 0; clientID < counters->clients; clientID++)
-	{
+		const int clientID = clientIDs[i][0];
 		if(skipclient[clientID])
 			continue;
 
@@ -1337,23 +1232,117 @@ void getClientNames(const int sock, const bool istelnet)
 		// Skip invalid clients and also those managed by alias clients
 		if(client == NULL || client->aliasclient_id >= 0)
 			continue;
-		// Skip clients with no active counts at all (may be old IPv6 addresses)
+		// Also skip clients with no active counts at all (may be old IPv6 addresses)
 		if(client->count == 0)
 			continue;
 
-		const char *client_ip = getstr(client->ippos);
-		const char *client_name = getstr(client->namepos);
-
-		if(istelnet)
-			ssend(sock, "%s %s\n", client_name, client_ip);
-		else {
-			pack_str32(sock, client_name);
-			pack_str32(sock, client_ip);
+		if(isoverTime)
+		{
+			// >ClientsOverTime
+			const int thisclient = client->overTime[slot];
+			if(istelnet)
+				ssend(sock, " %i", thisclient);
+			else
+				pack_int32(sock, thisclient);
 		}
+		else
+		{
+			// >client-names
+			const char *client_ip = getstr(client->ippos);
+			const char *client_name = getstr(client->namepos);
+
+			if(istelnet)
+				ssend(sock, "%s %s %d\n", client_name, client_ip, clientIDs[i][1]);
+			else {
+				pack_str32(sock, client_name);
+				pack_str32(sock, client_ip);
+			}
+		}
+	}
+}
+
+void getClientData(bool isoverTime, const int sock, const bool istelnet)
+{
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+		return;
+
+	// Test for integer that specifies number of clients to be shown
+	const int num = min(config.api_num_clients, (unsigned int)counters->clients);
+
+	// Get clients which the user doesn't want to see
+	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
+	// Array of clients to be skipped in the output
+	// if skipclient[i] == true then this client should be hidden from
+	// returned data. We initialize it with false
+	bool skipclient[counters->clients];
+	memset(skipclient, false, counters->clients*sizeof(bool));
+
+	if(excludeclients != NULL)
+	{
+		getSetupVarsArray(excludeclients);
+
+		for(int clientID=0; clientID < counters->clients; clientID++)
+		{
+			// Get client pointer
+			const clientsData* client = getClient(clientID, true);
+			// Skip invalid clients
+			if(client == NULL)
+				continue;
+
+			// Check if this client should be skipped
+			if(insetupVarsArray(getstr(client->ippos)) ||
+			   insetupVarsArray(getstr(client->namepos)) ||
+			   (!client->flags.aliasclient && client->aliasclient_id > -1))
+				skipclient[clientID] = true;
+		}
+	}
+
+	// Get clients to be shown
+	int clientIDs[counters->clients][2];
+	for(int clientID=0; clientID < counters->clients; clientID++)
+	{
+		// Get client pointer
+		const clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
+		clientIDs[clientID][0] = clientID;
+		clientIDs[clientID][1] = client->count;
+	}
+
+	// Sort ID array
+	qsort(clientIDs, counters->clients, sizeof(int[2]), cmpdesc);
+
+	// Main return loop
+	if(isoverTime)
+	{
+		// >ClientsOverTime
+		for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
+		{
+			if(istelnet)
+				ssend(sock, "%lli", (long long)overTime[slot].timestamp);
+			else
+				pack_int32(sock, (int32_t)overTime[slot].timestamp);
+
+			client_loop(num, clientIDs, skipclient, istelnet, true, slot, sock);
+
+			if(istelnet)
+				ssend(sock, "\n");
+			else
+				pack_int32(sock, -1);
+		}
+	}
+	else
+	{
+		// >client-names
+		client_loop(num, clientIDs, skipclient, istelnet, false, -1, sock);
 	}
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
+
 }
 
 void getUnknownQueries(const int sock, const bool istelnet)

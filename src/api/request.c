@@ -120,14 +120,14 @@ bool process_request(const char *client_message, const int sock, const bool iste
 	{
 		processed = true;
 		lock_shm();
-		getClientsOverTime(sock, istelnet);
+		getClientData(true, sock, istelnet);
 		unlock_shm();
 	}
 	else if(command(client_message, ">client-names"))
 	{
 		processed = true;
 		lock_shm();
-		getClientNames(sock, istelnet);
+		getClientData(false, sock, istelnet);
 		unlock_shm();
 	}
 	else if(command(client_message, ">unknown"))

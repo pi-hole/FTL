@@ -72,6 +72,7 @@ typedef struct {
 	unsigned int delay_startup;
 	unsigned int network_expire;
 	unsigned int block_ttl;
+	unsigned int api_num_clients;
 	struct {
 		unsigned int count;
 		unsigned int interval;
