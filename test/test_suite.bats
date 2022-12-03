@@ -480,6 +480,14 @@
   [[ "${lines[@]}" == *"1 127.0.0.5 "* ]]
 }
 
+@test "Number of clients for over-time data is limited to 3 (config setting)" {
+  run bash -c 'echo ">client-names >quit" | nc -v 127.0.0.1 4711'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'echo ">client-names >quit" | nc -v 127.0.0.1 4711 | wc -l'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "3" ]]
+}
+
 @test "Top Domains" {
   run bash -c 'echo ">top-domains (60) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
