@@ -722,6 +722,8 @@ static const struct opttab_t opttab6[] = {
   { "sntp-server", 31,  OT_ADDR_LIST },
   { "information-refresh-time", 32, OT_TIME },
   { "FQDN", 39, OT_INTERNAL | OT_RFC1035_NAME },
+  { "posix-timezone", 41, OT_NAME }, /* RFC 4833, Sec. 3 */
+  { "tzdb-timezone", 42, OT_NAME }, /* RFC 4833, Sec. 3 */
   { "ntp-server", 56, 0 /* OT_ADDR_LIST | OT_RFC1035_NAME */ },
   { "bootfile-url", 59, OT_NAME },
   { "bootfile-param", 60, OT_CSTRING },
