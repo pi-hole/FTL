@@ -480,12 +480,16 @@
   [[ "${lines[@]}" == *"1 127.0.0.5 "* ]]
 }
 
-@test "Number of clients for over-time data is limited to 3 (config setting)" {
-  run bash -c 'echo ">client-names >quit" | nc -v 127.0.0.1 4711'
+@test "Clients-over-time returns valid JSON" {
+  run bash -c 'echo ">clientsOverTimeJSON >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  run bash -c 'echo ">client-names >quit" | nc -v 127.0.0.1 4711 | wc -l'
+  # Use jq to validate JSON, return nothing if valid, error otherwise
+  run bash -c 'echo ">clientsOverTimeJSON >quit" | nc -v 127.0.0.1 4711 | jq empty'
+  [[ $status == 0 ]]
+  # Use jq check returned JSON data array contains the expected number of entries
+  run bash -c 'echo ">clientsOverTimeJSON >quit" | nc -v 127.0.0.1 4711 | jq ".data | length"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "3" ]]
+  [[ ${lines[1]} == "145" ]]
 }
 
 @test "Top Domains" {

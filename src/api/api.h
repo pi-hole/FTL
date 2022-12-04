@@ -20,6 +20,7 @@ void getQueryTypes(const int sock, const bool istelnet);
 void getAllQueries(const char *client_message, const int sock, const bool istelnet);
 void getRecentBlocked(const char *client_message, const int sock, const bool istelnet);
 void getClientData(bool isoverTime, const int sock, const bool istelnet);
+void getClientsOverTimeJSON(const int sock);
 
 // FTL methods
 void getClientID(const int sock, const bool istelnet);

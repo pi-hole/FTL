@@ -185,6 +185,14 @@ bool process_request(const char *client_message, const int sock, const bool iste
 		processed = true;
 		getInterfaces(sock);
 	}
+	else if(command(client_message, ">clientsOverTimeJSON"))
+	{
+		processed = true;
+		lock_shm();
+		if(istelnet)
+			getClientsOverTimeJSON(sock);
+		unlock_shm();
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before

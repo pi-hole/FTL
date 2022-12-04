@@ -1216,25 +1216,17 @@ void getDBstats(const int sock, const bool istelnet)
 	}
 }
 
-static inline void client_loop(const int num, const int clientIDs[counters->clients][2],
+static inline void client_loop(const int clientIDs[counters->clients][2],
                                const bool skipclient[counters->clients], const bool istelnet,
                                const bool isoverTime, const int slot, const int sock)
 {
 	// Loop over forward destinations to generate output to be sent to the client
-	for(int i = 0; i < num; i++)
+	for(int i = 0; i < counters->clients; i++)
 	{
 		const int clientID = clientIDs[i][0];
-		if(skipclient[clientID])
-			continue;
 
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		// Skip invalid clients and also those managed by alias clients
-		if(client == NULL || client->aliasclient_id >= 0)
-			continue;
-		// Also skip clients with no active counts at all (may be old IPv6 addresses)
-		if(client->count == 0)
-			continue;
 
 		if(isoverTime)
 		{
@@ -1268,9 +1260,6 @@ void getClientData(bool isoverTime, const int sock, const bool istelnet)
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 		return;
 
-	// Test for integer that specifies number of clients to be shown
-	const int num = min(config.api_num_clients, (unsigned int)counters->clients);
-
 	// Get clients which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
 	// Array of clients to be skipped in the output
@@ -1285,6 +1274,9 @@ void getClientData(bool isoverTime, const int sock, const bool istelnet)
 
 		for(int clientID=0; clientID < counters->clients; clientID++)
 		{
+			if(skipclient[clientID])
+				continue;
+
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
 			// Skip invalid clients
@@ -1305,7 +1297,11 @@ void getClientData(bool isoverTime, const int sock, const bool istelnet)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
+		// Skip invalid clients and also those managed by alias clients
+		if(client == NULL || client->aliasclient_id >= 0)
+			continue;
+		// Also skip clients with no active counts at all (may be old IPv6 addresses)
+		if(client->count == 0)
 			continue;
 
 		clientIDs[clientID][0] = clientID;
@@ -1326,7 +1322,7 @@ void getClientData(bool isoverTime, const int sock, const bool istelnet)
 			else
 				pack_int32(sock, (int32_t)overTime[slot].timestamp);
 
-			client_loop(num, clientIDs, skipclient, istelnet, true, slot, sock);
+			client_loop(clientIDs, skipclient, istelnet, true, slot, sock);
 
 			if(istelnet)
 				ssend(sock, "\n");
@@ -1337,13 +1333,201 @@ void getClientData(bool isoverTime, const int sock, const bool istelnet)
 	else
 	{
 		// >client-names
-		client_loop(num, clientIDs, skipclient, istelnet, false, -1, sock);
+		client_loop(clientIDs, skipclient, istelnet, false, -1, sock);
 	}
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
-
 }
+
+// Escape a string for use in a JSON string following
+// RFC 8259, scn. 7 with the exception that we skip
+// control sequences (except for \n)
+// This code was inspired by https://stackoverflow.com/a/62008590
+// but then largely rewritten to be more efficient
+static char *escape_string_for_json(const char *in)
+{
+	// Return NULL rightaway if input is NULL
+	if(in == NULL)
+		return NULL;
+
+	// First, count the number of characters that need to be escaped
+	const size_t inlen = strlen(in);
+	// Then, allocate a buffer of thwice this size
+	char *out = calloc(2*inlen, sizeof(char));
+	if (out == NULL)
+		return NULL;
+
+	// Loop through each character and escape what we have to
+	// this code likes simplificty over full compliance
+	// so we just skip control sequences and unicode
+	long unsigned int c = 0, d = 0;
+	while(c < inlen)
+	{
+		// Skip escape sequences
+		if(in[c] <= '\x1f')
+			continue;
+
+		// Escape double quotes and backslashes
+		if(in[c] == '"' || in[c] == '\\')
+		{
+			// Add the escape character
+			out[d++] = '\\';
+			// Add the character to be escaped
+			out[d++] = in[c++];
+		}
+		else
+		{
+			// Simply copy the character
+			out[d++] = in[c++];
+		}
+	}
+
+	// Add the null terminator to the string
+	out[d++] = '\0';
+	return out;
+}
+
+
+void getClientsOverTimeJSON(const int sock)
+{
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+		return;
+
+	// Get number of clients to be shown
+	const unsigned int num = min(config.api_num_clients, (unsigned int)counters->clients);
+
+	// Get clients which the user doesn't want to see
+	char *excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
+	// Array of clients to be skipped in the output
+	// if skipclient[i] == true then this client should be hidden from
+	// returned data. We initialize it with false
+	bool skipclient[counters->clients];
+	memset(skipclient, false, sizeof(skipclient));
+
+	// Remember which clients have been sent
+	bool sentclient[counters->clients];
+	memset(sentclient, false, sizeof(sentclient));
+
+	if(excludeclients != NULL)
+	{
+		getSetupVarsArray(excludeclients);
+		for(int clientID = 0; clientID < counters->clients; clientID++)
+		{
+			// Get client pointer
+			const clientsData *client = getClient(clientID, true);
+			// Skip invalid clients
+			if(client == NULL)
+				continue;
+
+			// Check if this client should be skipped
+			if(insetupVarsArray(getstr(client->ippos)) ||
+			   insetupVarsArray(getstr(client->namepos)) ||
+			   (!client->flags.aliasclient && client->aliasclient_id > -1))
+				skipclient[clientID] = true;
+		}
+	}
+
+	// Initialize the JSON object
+	ssend(sock, "{\"data\":{");
+
+	bool first = true;
+	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
+	{
+		// Send timestamp of this timeslot
+		ssend(sock, "%s\"%lld\":{", first ? "":",", (long long)overTime[slot].timestamp);
+		first = false;
+
+		// Sort clients in this timeslot
+		int clientIDs[counters->clients][2];
+		memset(clientIDs, 0, sizeof(clientIDs));
+		for(int clientID = 0; clientID < counters->clients; clientID++)
+		{
+			// Skip clients we should not show
+			if(skipclient[clientID])
+				continue;
+
+			// Get client pointer
+			const clientsData* client = getClient(clientID, true);
+
+			// Skip invalid clients and also those managed by alias clients
+			if(client == NULL || client->aliasclient_id >= 0)
+				continue;
+
+			// Also skip clients with no active counts at all (may be old IPv6 addresses)
+			if(client->count == 0)
+				continue;
+
+			// Add client to array
+			clientIDs[clientID][0] = clientID;
+			clientIDs[clientID][1] = client->count;
+		}
+
+		// Sort clientIDs array
+		qsort(clientIDs, counters->clients, sizeof(int[2]), cmpdesc);
+
+		// Loop over <num> clients
+		bool first_client = true;
+		for(unsigned int i = 0; i < num; i++)
+		{
+			// Get client ID from sorted array
+			const int clientID = clientIDs[i][0];
+
+			// Get client pointer
+			const clientsData* client = getClient(clientID, true);
+			if (client == NULL)
+				continue;
+
+			// Memorize that we have sent this client
+			sentclient[clientID] = true;
+			// Send client data
+			ssend(sock, "%s\"%i\":%i", first_client ? "":",",
+			      clientID, client->overTime[slot]);
+			first_client = false;
+		}
+
+		// End of this timeslot
+		ssend(sock, "}");
+	}
+
+	// Send client details
+	ssend(sock, "},\"clients\":{");
+	first = true;
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		// Only send clients which have been sent in the data section
+		if(!sentclient[clientID])
+			continue;
+
+		// Get client pointer
+		const clientsData* client = getClient(clientID, true);
+		if (client == NULL)
+			continue;
+
+		// Get client IP address and escape it for JSON
+		char *client_ip = escape_string_for_json(getstr(client->ippos));
+		// Get client name and escape it for JSON
+		char *client_name = escape_string_for_json(getstr(client->namepos));
+
+		// Send client data
+		ssend(sock, "%s\"%i\":{\"name\":\"%s\",\"ip\":\"%s\",\"total\":%d}",
+		      first ? "":",", clientID, client_name, client_ip, client->count);
+		first = false;
+
+		// Free memory
+		if(client_name != NULL)
+			free(client_name);
+		if(client_ip != NULL)
+			free(client_ip);
+	}
+	ssend(sock, "}}\n");
+
+	if(excludeclients != NULL)
+		clearSetupVarsArray();
+}
+
 
 void getUnknownQueries(const int sock, const bool istelnet)
 {
