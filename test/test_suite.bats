@@ -485,7 +485,7 @@
   printf "%s\n" "${lines[@]}"
   run bash -c 'echo ">client-names >quit" | nc -v 127.0.0.1 4711 | wc -l'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "3" ]]
+  [[ ${lines[1]} == "4" ]]
 }
 
 @test "Top Domains" {
