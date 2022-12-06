@@ -1221,6 +1221,7 @@ static inline void client_loop(const int num, const int clientIDs[counters->clie
                                const bool isoverTime, const int slot, const int sock)
 {
 	// Loop over forward destinations to generate output to be sent to the client
+	unsigned int client_sum = 0;
 	for(int i = 0; i < num; i++)
 	{
 		const int clientID = clientIDs[i][0];
@@ -1240,6 +1241,7 @@ static inline void client_loop(const int num, const int clientIDs[counters->clie
 		{
 			// >ClientsOverTime
 			const int thisclient = client->overTime[slot];
+			client_sum += thisclient;
 			if(istelnet)
 				ssend(sock, " %i", thisclient);
 			else
@@ -1257,6 +1259,28 @@ static inline void client_loop(const int num, const int clientIDs[counters->clie
 				pack_str32(sock, client_name);
 				pack_str32(sock, client_ip);
 			}
+		}
+	}
+
+	// Add special "other" client only if num < counters->clients
+	if(num >= counters->clients)
+		return;
+	if(isoverTime)
+	{
+		// >ClientsOverTime
+		if(istelnet)
+			ssend(sock, " %u", client_sum);
+		else
+			pack_int32(sock, client_sum);
+	}
+	else
+	{
+		// >client-names
+		if(istelnet)
+			ssend(sock, "other other -1\n");
+		else {
+			pack_str32(sock, "other");
+			pack_str32(sock, "other");
 		}
 	}
 }
