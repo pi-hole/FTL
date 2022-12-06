@@ -1457,23 +1457,24 @@ void getClientsOverTimeJSON(const int sock)
 				continue;
 
 			// Also skip clients with no active counts at all (may be old IPv6 addresses)
-			if(client->count == 0)
+			if(client->overTime[slot] == 0)
 				continue;
 
 			// Add client to array
 			clientIDs[clientID][0] = clientID;
-			clientIDs[clientID][1] = client->count;
+			clientIDs[clientID][1] = client->overTime[slot];
 		}
 
 		// Sort clientIDs array
 		qsort(clientIDs, counters->clients, sizeof(int[2]), cmpdesc);
 
 		// Loop over <num> clients
-		bool first_client = true;
+		unsigned int clients_sum = 0;
 		for(unsigned int i = 0; i < num; i++)
 		{
 			// Get client ID from sorted array
 			const int clientID = clientIDs[i][0];
+			const int client_count = clientIDs[i][1];
 
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
@@ -1483,13 +1484,15 @@ void getClientsOverTimeJSON(const int sock)
 			// Memorize that we have sent this client
 			sentclient[clientID] = true;
 			// Send client data
-			ssend(sock, "%s\"%i\":%i", first_client ? "":",",
-			      clientID, client->overTime[slot]);
-			first_client = false;
+			ssend(sock, "\"%i\":%i,", clientID, client_count);
+			clients_sum += client_count;
 		}
 
+		// Get others count
+		const int other = overTime[slot].total - clients_sum;
+
 		// End of this timeslot
-		ssend(sock, "}");
+		ssend(sock, "\"other\":%d}", other);
 	}
 
 	// Send client details
