@@ -475,7 +475,7 @@ void parse_args(int argc, char* argv[])
 
 			printf("%sEmbedded SQLite3 shell:%s\n", yellow, normal);
 			printf("\t%ssql %s[-h]%s, %ssqlite3 %s[-h]%s        FTL's SQLite3 shell\n", green, gray, normal, green, gray, normal);
-			printf("\tthe optional %s-h%s starts a special %shuman-readable mode%s\n\n", gray, normal, bold, normal);
+			printf("\t%s-h%s starts a special %shuman-readable mode%s\n\n", gray, normal, bold, normal);
 
 			printf("    Usage: %spihole-FTL sqlite3 %s[-h] %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, gray, 	cyan, normal);
 			printf("    Options:\n\n");
