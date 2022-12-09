@@ -137,8 +137,7 @@ void parse_args(int argc, char* argv[])
 			const char *arg[2];
 			arg[0] = "";
 			arg[1] = "--test";
-			main_dnsmasq(2, arg);
-			ok = true;
+			exit(main_dnsmasq(2, arg));
 		}
 
 		// If we find "--" we collect everything behind that for dnsmasq
