@@ -477,7 +477,7 @@ void parse_args(int argc, char* argv[])
 			printf("\t%ssql %s[-h]%s, %ssqlite3 %s[-h]%s        FTL's SQLite3 shell\n", green, gray, normal, green, gray, normal);
 			printf("\tthe optional %s-h%s starts a special %shuman-readable mode%s\n\n", gray, normal, bold, normal);
 
-			printf("    Usage: %spihole-FTL sqlite3 %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, cyan, normal);
+			printf("    Usage: %spihole-FTL sqlite3 %s[-h] %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, gray, 	cyan, normal);
 			printf("    Options:\n\n");
 			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
 			printf("      options can be found in %spihole-FTL sqlite3 --help%s\n", green, normal);
@@ -497,7 +497,7 @@ void parse_args(int argc, char* argv[])
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdnsmasq-test%s        Test syntax of dnsmasq's\n", green, normal);
-			printf("\t                    config files and exit\n\n");
+			printf("\t                    config files and exit\n");
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
