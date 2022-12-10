@@ -761,7 +761,7 @@ void DB_read_queries(void)
 		}
 
 		const int status_int = sqlite3_column_int(stmt, 3);
-		if(status_int < QUERY_UNKNOWN || status_int > QUERY_STATUS_MAX)
+		if(status_int < QUERY_UNKNOWN || status_int >= QUERY_STATUS_MAX)
 		{
 			logg("DB warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status_int);
 			continue;
@@ -840,7 +840,7 @@ void DB_read_queries(void)
 		{
 			// The field has been added for database version 12
 			dnssec = sqlite3_column_int(stmt, 10);
-			if(dnssec < DNSSEC_UNSPECIFIED || dnssec >= DNSSEC_ABANDONED)
+			if(dnssec < DNSSEC_UNSPECIFIED || dnssec > DNSSEC_ABANDONED)
 			{
 				logg("DB warn: DNSSEC value %i is invalid, %lli", dnssec, (long long)queryTimeStamp);
 				continue;
