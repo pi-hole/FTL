@@ -227,21 +227,21 @@ void parse_args(int argc, char* argv[])
 			// Remember that the rest is for dnsmasq ...
 			consume_for_dnsmasq = true;
 
-			// Special command interpretation for "pihole-FTL -- --help dhcp"
-			if(argc > 1 && strcmp(argv[argc-2], "--help") == 0 && strcmp(argv[argc-1], "dhcp") == 0)
-			{
-				display_opts();
-				exit(EXIT_SUCCESS);
-			}
-			// and "pihole-FTL -- --help dhcp6"
-			if(argc > 1 && strcmp(argv[argc-2], "--help") == 0 && strcmp(argv[argc-1], "dhcp6") == 0)
-			{
-				display_opts6();
-				exit(EXIT_SUCCESS);
-			}
-
 			// ... and skip the current argument ("--")
 			continue;
+		}
+
+		// List available DHCPv4 config options
+		if(strcmp(argv[i], "--list-dhcp") == 0 || strcmp(argv[i], "--list-dhcp4") == 0)
+		{
+			display_opts();
+			exit(EXIT_SUCCESS);
+		}
+		// List available DHCPv6 config options
+		if(strcmp(argv[i], "--list-dhcp6") == 0)
+		{
+			display_opts6();
+			exit(EXIT_SUCCESS);
 		}
 
 		// If consume_for_dnsmasq is true, we collect all remaining options for
@@ -448,7 +448,8 @@ void parse_args(int argc, char* argv[])
 			printf("\t%s-v%s, %sversion%s         Return FTL version\n", green, normal, green, normal);
 			printf("\t%s-vv%s                 Return verbose version information\n", green, normal);
 			printf("\t%s-t%s, %stag%s             Return git tag\n", green, normal, green, normal);
-			printf("\t%s-b%s, %sbranch%s          Return git branch\n\n", green, normal, green, normal);
+			printf("\t%s-b%s, %sbranch%s          Return git branch\n", green, normal, green, normal);
+			printf("\t%s--hash%s              Return git commit hash\n\n", green, normal);
 
 			printf("%sRegular expression testing:%s\n", yellow, normal);
 			printf("\t%sregex-test %sstr%s      Test %sstr%s against all regular\n", green, blue, normal, blue, normal);
@@ -458,6 +459,8 @@ void parse_args(int argc, char* argv[])
 
 			printf("    Example: %spihole-FTL regex-test %ssomebad.domain %sbad%s\n", green, blue, cyan, normal);
 			printf("    to test %ssomebad.domain%s against %sbad%s\n\n", blue, normal, cyan, normal);
+			printf("    An optional %s-q%s prevents any output (exit code testing):\n", gray, normal);
+			printf("    %spihole-FTL %s-q%s regex-test %ssomebad.domain %sbad%s\n\n", green, gray, green, blue, cyan, normal);
 
 			printf("%sEmbedded Lua engine:%s\n", yellow, normal);
 			printf("\t%s--lua%s, %slua%s          FTL's lua interpreter\n", green, normal, green, normal);
@@ -477,7 +480,7 @@ void parse_args(int argc, char* argv[])
 			printf("\t%ssql %s[-h]%s, %ssqlite3 %s[-h]%s        FTL's SQLite3 shell\n", green, gray, normal, green, gray, normal);
 			printf("\t%s-h%s starts a special %shuman-readable mode%s\n\n", gray, normal, bold, normal);
 
-			printf("    Usage: %spihole-FTL sqlite3 %s[-h] %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, gray, 	cyan, normal);
+			printf("    Usage: %spihole-FTL sqlite3 %s[-h] %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, gray, cyan, normal);
 			printf("    Options:\n\n");
 			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
 			printf("      options can be found in %spihole-FTL sqlite3 --help%s\n", green, normal);
@@ -488,16 +491,18 @@ void parse_args(int argc, char* argv[])
 			printf("    - %s[SQL]%s is an optional SQL statement to be executed. If\n", cyan, normal);
 			printf("      omitted, an interactive shell is started instead.\n\n");
 
+			printf("%sEmbedded dnsmasq options:%s\n", yellow, normal);
+			printf("\t%sdnsmasq-test%s        Test syntax of dnsmasq's config\n", green, normal);
+			printf("\t%s--list-dhcp4%s        List known DHCPv4 config options\n", green, normal);
+			printf("\t%s--list-dhcp6%s        List known DHCPv6 config options\n\n", green, normal);
+
 			printf("%sDebugging and special use:%s\n", yellow, normal);
-			printf("\t%sdebug%s               More verbose logging,\n", green, normal);
-			printf("\t                    don't go into daemon mode\n");
+			printf("\t%sd%s, %sdebug%s            Enter debugging mode\n", green, normal, green, normal);
 			printf("\t%stest%s                Don't start pihole-FTL but\n", green, normal);
 			printf("\t                    instead quit immediately\n");
 			printf("\t%s-f%s, %sno-daemon%s       Don't go into daemon mode\n\n", green, normal, green, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
-			printf("\t%sdnsmasq-test%s        Test syntax of dnsmasq's\n", green, normal);
-			printf("\t                    config files and exit\n");
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
