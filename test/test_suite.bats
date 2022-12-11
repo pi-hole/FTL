@@ -15,9 +15,9 @@
   run bash -c './pihole-FTL -vv | grep "cryptohash"'
   printf "%s\n" "${lines[@]}"
   if [[ "${CI_ARCH}" == "x86_64_full" ]]; then
-    [[ ${lines[0]} == "Compile options: IPv6 GNU-getopt DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP conntrack ipset nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
+    [[ ${lines[0]} == "Features:        IPv6 GNU-getopt DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP conntrack ipset nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
   else
-    [[ ${lines[0]} == "Compile options: IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
+    [[ ${lines[0]} == "Features:        IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
   fi
   [[ ${lines[1]} == "" ]]
 }
@@ -691,8 +691,7 @@
 @test "Help CLI argument return help text" {
   run bash -c '/home/pihole/pihole-FTL help'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
-  [[ ${lines[3]} == "Available arguments:" ]]
+  [[ ${lines[0]} == "The Pi-hole FTL engine - "* ]]
 }
 
 @test "No WARNING messages in FTL.log (besides known capability issues)" {
