@@ -2231,10 +2231,11 @@ int delay_dhcp(time_t start, int sec, int fd, uint32_t addr, unsigned short id)
 #endif /* HAVE_DHCP */
 
 /******************************** Pi-hole modification ********************************/
-void print_dnsmasq_version(void)
+void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal)
 {
-  printf("****************************** dnsmasq ******************************\n");
-  printf(_("Version:         %s\n"), VERSION);
-  printf(_("Compile options: %s\n\n"), compile_opts);
+  printf("****************************** %s%sdnsmasq%s ******************************\n",
+         bold, yellow, normal);
+  printf(_("Version:         %s%s%s%s\n"), bold, green, VERSION, normal);
+  printf(_("Features:        %s\n\n"), compile_opts);
 }
 /**************************************************************************************/

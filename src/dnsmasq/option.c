@@ -377,7 +377,7 @@ static const struct myoption opts[] =
     { "quiet-tftp", 0, 0, LOPT_QUIET_TFTP },
     { "port-limit", 1, 0, LOPT_RANDPORT_LIM },
     { "fast-dns-retry", 2, 0, LOPT_FAST_RETRY },
-    { "use-stale-cache", 0, 0 , LOPT_STALE_CACHE },
+    { "use-stale-cache", 2, 0 , LOPT_STALE_CACHE },
     { NULL, 0, 0, 0 }
   };
 
@@ -435,7 +435,7 @@ static struct {
   { 'M', ARG_DUP, "<bootp opts>", gettext_noop("Specify BOOTP options to DHCP server."), NULL },
   { 'n', OPT_NO_POLL, NULL, gettext_noop("Do NOT poll %s file, reload only on SIGHUP."), RESOLVFILE }, 
   { 'N', OPT_NO_NEG, NULL, gettext_noop("Do NOT cache failed search results."), NULL },
-  { LOPT_STALE_CACHE, OPT_STALE_CACHE, NULL, gettext_noop("Use expired cache data for faster reply."), NULL },
+  { LOPT_STALE_CACHE, ARG_ONE, "[=<max_expired>]", gettext_noop("Use expired cache data for faster reply."), NULL },
   { 'o', OPT_ORDER, NULL, gettext_noop("Use nameservers strictly in the order given in %s."), RESOLVFILE },
   { 'O', ARG_DUP, "<optspec>", gettext_noop("Specify options to be sent to DHCP clients."), NULL },
   { LOPT_FORCE, ARG_DUP, "<optspec>", gettext_noop("DHCP option sent even if the client does not request it."), NULL},
@@ -864,11 +864,13 @@ char *parse_server(char *arg, struct server_details *sdetails)
   sdetails->serv_port = NAMESERVER_PORT;
   char *portno;
   int ecode = 0;
-  struct addrinfo hints = { 0 };
+  struct addrinfo hints;
 
+  memset(&hints, 0, sizeof(struct addrinfo));
+  
   *sdetails->interface = 0;
   sdetails->addr_type = AF_UNSPEC;
-  
+     
   if (strcmp(arg, "#") == 0)
     {
       if (sdetails->flags)
@@ -947,7 +949,7 @@ char *parse_server(char *arg, struct server_details *sdetails)
 	     above, and returns a pointer to the start of the list in <hostinfo>.
 	     The items in the linked list are linked by the <ai_next> field. */
 	  sdetails->valid = 1;
-	  sdetails->resolved = 1;
+	  sdetails->orig_hostinfo = sdetails->hostinfo;
 	  return NULL;
 	}
       else
@@ -971,7 +973,7 @@ char *parse_server_addr(struct server_details *sdetails)
       sdetails->addr->in.sin_port = htons(sdetails->serv_port);
       sdetails->addr->sa.sa_family = sdetails->source_addr->sa.sa_family = AF_INET;
 #ifdef HAVE_SOCKADDR_SA_LEN
-      source_addr->in.sin_len = addr->in.sin_len = sizeof(struct sockaddr_in);
+      sdetails->source_addr->in.sin_len = sdetails->addr->in.sin_len = sizeof(struct sockaddr_in);
 #endif
       sdetails->source_addr->in.sin_addr.s_addr = INADDR_ANY;
       sdetails->source_addr->in.sin_port = htons(daemon->query_port);
@@ -989,7 +991,7 @@ char *parse_server_addr(struct server_details *sdetails)
 		  /* When resolving a server IP by hostname, we can simply skip mismatching
 		     server / source IP pairs. Otherwise, when an IP address is given directly,
 		     this is a fatal error. */
-		  if (!sdetails->resolved)
+		  if (!sdetails->orig_hostinfo)
 		    return _("cannot use IPv4 server address with IPv6 source address");
 		}
 	      else
@@ -1020,7 +1022,7 @@ char *parse_server_addr(struct server_details *sdetails)
       sdetails->addr->sa.sa_family = sdetails->source_addr->sa.sa_family = AF_INET6;
       sdetails->addr->in6.sin6_flowinfo = sdetails->source_addr->in6.sin6_flowinfo = 0;
 #ifdef HAVE_SOCKADDR_SA_LEN
-      sdetails->addr->in6.sin6_len = sdetails->source_addr->in6.sin6_len = sizeof(addr->in6);
+      sdetails->addr->in6.sin6_len = sdetails->source_addr->in6.sin6_len = sizeof(sdetails->addr->in6);
 #endif
       if (sdetails->source)
 	{
@@ -1035,7 +1037,7 @@ char *parse_server_addr(struct server_details *sdetails)
 		  /* When resolving a server IP by hostname, we can simply skip mismatching
 		     server / source IP pairs. Otherwise, when an IP address is given directly,
 		     this is a fatal error. */
-		  if(!sdetails->resolved)
+		  if(!sdetails->orig_hostinfo)
 		    return _("cannot use IPv6 server address with IPv4 source address");
 		}
 	      else
@@ -1102,12 +1104,14 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
   union mysockaddr serv_addr, source_addr;
   char interface[IF_NAMESIZE+1];
   int count = 1, rem, addrbytes, addrbits;
-  struct server_details sdetails = { 0 };
+  struct server_details sdetails;
+
+  memset(&sdetails, 0, sizeof(struct server_details));
   sdetails.addr = &serv_addr;
   sdetails.source_addr = &source_addr;
   sdetails.interface = interface;
   sdetails.flags = &flags;
-
+    
   if (!server)
     flags = SERV_LITERAL_ADDRESS;
   else if ((string = parse_server(server, &sdetails)))
@@ -1165,8 +1169,8 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
 		return  _("error");
 	    }
 
-	  if (sdetails.resolved)
-	    freeaddrinfo(sdetails.hostinfo);
+	  if (sdetails.orig_hostinfo)
+	    freeaddrinfo(sdetails.orig_hostinfo);
 	}
     }
   
@@ -1183,12 +1187,14 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
   union mysockaddr serv_addr, source_addr;
   char interface[IF_NAMESIZE+1];
   int count = 1, rem, addrbytes, addrbits;
-  struct server_details sdetails = { 0 };
+  struct server_details sdetails;
+  
+  memset(&sdetails, 0, sizeof(struct server_details));
   sdetails.addr = &serv_addr;
   sdetails.source_addr = &source_addr;
   sdetails.interface = interface;
   sdetails.flags = &flags;
-
+   
   if (!server)
     flags = SERV_LITERAL_ADDRESS;
   else if ((string = parse_server(server, &sdetails)))
@@ -1248,8 +1254,8 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
 		return  _("error");
 	    }
 
-	  if (sdetails.resolved)
-	    freeaddrinfo(sdetails.hostinfo);
+	  if (sdetails.orig_hostinfo)
+	    freeaddrinfo(sdetails.orig_hostinfo);
 	}
     }
   
@@ -2969,13 +2975,14 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	union all_addr addr;
 	union mysockaddr serv_addr, source_addr;
 	char interface[IF_NAMESIZE+1];
+	struct server_details sdetails;
 
-	struct server_details sdetails = { 0 };
+	memset(&sdetails, 0, sizeof(struct server_details));
 	sdetails.addr = &serv_addr;
 	sdetails.source_addr = &source_addr;
 	sdetails.interface = interface;
 	sdetails.flags = &flags;
-
+			
 	unhide_metas(arg);
 	
 	/* split the domain args, if any and skip to the end of them. */
@@ -3055,8 +3062,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	      break;
 	  }
 
-	if (sdetails.resolved)
-	  freeaddrinfo(sdetails.hostinfo);
+	if (sdetails.orig_hostinfo)
+	  freeaddrinfo(sdetails.orig_hostinfo);
 	
      	break;
       }
@@ -5148,6 +5155,24 @@ err:
 	break;
       }
 
+    case LOPT_STALE_CACHE:
+      {
+	int max_expiry = STALE_CACHE_EXPIRY;
+	if (arg)
+	  {
+	    /* Don't accept negative TTLs here, they'd have the counter-intuitive
+	       side-effect of evicting cache records before they expire */
+	    if (!atoi_check(arg, &max_expiry) || max_expiry < 0)
+	      ret_err(gen_err);
+	    /* Store "serve expired forever" as -1 internally, the option isn't
+	       active for daemon->cache_max_expiry == 0 */
+	    if (max_expiry == 0)
+	      max_expiry = -1;
+	  }
+	daemon->cache_max_expiry = max_expiry;
+	break;
+      }
+
 #ifdef HAVE_DNSSEC
     case LOPT_DNSSEC_STAMP: /* --dnssec-timestamp */
       daemon->timestamp_file = opt_string_alloc(arg); 
@@ -5756,7 +5781,10 @@ void read_opts(int argc, char **argv, char *compile_opts)
   /******** Pi-hole modification ********/
   add_txt("version.FTL", (char*)get_FTL_version(), 0 );
   /**************************************/
-
+  
+  /* See comment above make_servers(). Optimises server-read code. */
+  mark_servers(0);
+  
   while (1) 
     {
 #ifdef HAVE_GETOPT_LONG

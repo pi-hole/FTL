@@ -381,9 +381,17 @@ static int is_outdated_cname_pointer(struct crec *crecp)
 
 static int is_expired(time_t now, struct crec *crecp)
 {
-  /* Don't dump expired entries if we're using them, cache becomes strictly LRU in that case.
-     Never use expired DS or DNSKEY entries. */
-  if (option_bool(OPT_STALE_CACHE) && !(crecp->flags & (F_DS | F_DNSKEY)))
+  /* Don't dump expired entries if they are within the accepted timeout range.
+     The cache becomes approx. LRU. Never use expired DS or DNSKEY entries.
+     Possible values for daemon->cache_max_expiry:
+      -1  == serve cached content regardless how long ago it expired
+       0  == the option is disabled, expired content isn't served
+      <n> == serve cached content only if it expire less than <n> seconds
+             ago (where n is a positive integer) */
+  if (daemon->cache_max_expiry != 0 &&
+      (daemon->cache_max_expiry == -1 ||
+       difftime(now, crecp->ttd) < daemon->cache_max_expiry) &&
+      !(crecp->flags & (F_DS | F_DNSKEY)))
     return 0;
 
   if (crecp->flags & F_IMMORTAL)
@@ -1802,7 +1810,7 @@ void dump_cache(time_t now)
 	    daemon->cachesize, daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED], daemon->metrics[METRIC_DNS_CACHE_INSERTED]);
   my_syslog(LOG_INFO, _("queries forwarded %u, queries answered locally %u"), 
 	    daemon->metrics[METRIC_DNS_QUERIES_FORWARDED], daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]);
-  if (option_bool(OPT_STALE_CACHE))
+  if (daemon->cache_max_expiry != 0)
     my_syslog(LOG_INFO, _("queries answered from stale cache %u"), daemon->metrics[METRIC_DNS_STALE_ANSWERED]);
 #ifdef HAVE_AUTH
   my_syslog(LOG_INFO, _("queries for authoritative zones %u"), daemon->metrics[METRIC_DNS_AUTH_ANSWERED]);
@@ -1929,8 +1937,10 @@ void dump_cache(time_t now)
 char *record_source(unsigned int index)
 {
   struct hostsfile *ah;
+#ifdef HAVE_INOTIFY
   struct dyndir *dd;
-
+#endif
+  
   if (index == SRC_CONFIG)
     return "config";
   else if (index == SRC_HOSTS)

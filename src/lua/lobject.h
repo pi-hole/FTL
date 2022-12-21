@@ -21,10 +21,12 @@
 */
 #define LUA_TUPVAL	LUA_NUMTYPES  /* upvalues */
 #define LUA_TPROTO	(LUA_NUMTYPES+1)  /* function prototypes */
+#define LUA_TDEADKEY	(LUA_NUMTYPES+2)  /* removed keys in tables */
+
 
 
 /*
-** number of all possible types (including LUA_TNONE)
+** number of all possible types (including LUA_TNONE but excluding DEADKEY)
 */
 #define LUA_TOTALTYPES		(LUA_TPROTO + 2)
 
@@ -66,7 +68,7 @@ typedef struct TValue {
 
 
 #define val_(o)		((o)->value_)
-#define valraw(o)	(&val_(o))
+#define valraw(o)	(val_(o))
 
 
 /* raw type tag of a TValue */
@@ -110,7 +112,7 @@ typedef struct TValue {
 #define settt_(o,t)	((o)->tt_=(t))
 
 
-/* main macro to copy values (from 'obj1' to 'obj2') */
+/* main macro to copy values (from 'obj2' to 'obj1') */
 #define setobj(L,obj1,obj2) \
 	{ TValue *io1=(obj1); const TValue *io2=(obj2); \
           io1->value_ = io2->value_; settt_(io1, io2->tt_); \
@@ -134,10 +136,19 @@ typedef struct TValue {
 
 
 /*
-** Entries in the Lua stack
+** Entries in a Lua stack. Field 'tbclist' forms a list of all
+** to-be-closed variables active in this stack. Dummy entries are
+** used when the distance between two tbc variables does not fit
+** in an unsigned short. They are represented by delta==0, and
+** their real delta is always the maximum value that fits in
+** that field.
 */
 typedef union StackValue {
   TValue val;
+  struct {
+    TValuefields;
+    unsigned short delta;
+  } tbclist;
 } StackValue;
 
 
@@ -555,7 +566,7 @@ typedef struct Proto {
 
 /*
 ** {==================================================================
-** Closures
+** Functions
 ** ===================================================================
 */
 
@@ -568,10 +579,11 @@ typedef struct Proto {
 #define LUA_VCCL	makevariant(LUA_TFUNCTION, 2)  /* C closure */
 
 #define ttisfunction(o)		checktype(o, LUA_TFUNCTION)
-#define ttisclosure(o)		((rawtt(o) & 0x1F) == LUA_VLCL)
 #define ttisLclosure(o)		checktag((o), ctb(LUA_VLCL))
 #define ttislcf(o)		checktag((o), LUA_VLCF)
 #define ttisCclosure(o)		checktag((o), ctb(LUA_VCCL))
+#define ttisclosure(o)         (ttisLclosure(o) || ttisCclosure(o))
+
 
 #define isLfunction(o)	ttisLclosure(o)
 
@@ -743,13 +755,13 @@ typedef struct Table {
 
 
 /*
-** Use a "nil table" to mark dead keys in a table. Those keys serve
-** to keep space for removed entries, which may still be part of
-** chains. Note that the 'keytt' does not have the BIT_ISCOLLECTABLE
-** set, so these values are considered not collectable and are different
-** from any valid value.
+** Dead keys in tables have the tag DEADKEY but keep their original
+** gcvalue. This distinguishes them from regular keys but allows them to
+** be found when searched in a special way. ('next' needs that to find
+** keys removed from a table during a traversal.)
 */
-#define setdeadkey(n)	(keytt(n) = LUA_TTABLE, gckey(n) = NULL)
+#define setdeadkey(node)	(keytt(node) = LUA_TDEADKEY)
+#define keyisdead(node)		(keytt(node) == LUA_TDEADKEY)
 
 /* }================================================================== */
 
