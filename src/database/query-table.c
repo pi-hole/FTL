@@ -63,8 +63,7 @@ int DB_save_queries(sqlite3 *db)
 		return DB_FAILED;
 
 	// Start database timer
-	if(config.debug & DEBUG_DATABASE)
-		timer_start(DATABASE_WRITE_TIMER);
+	timer_start(DATABASE_WRITE_TIMER);
 
 	// Open pihole-FTL.db database file if needed
 	bool db_opened = false;
