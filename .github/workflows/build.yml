@@ -24,7 +24,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.1.0
+        uses: actions/checkout@v3.2.0
       -
         name: "Calculate required variables"
         id: variables
@@ -88,7 +88,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.1.0
+        uses: actions/checkout@v3.2.0
       -
         name: "Fix ownership of repository"
         run: chown -R root .
@@ -131,7 +131,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.1.0
+        uses: actions/checkout@v3.2.0
       -
         name: Get Binaries built in previous jobs
         uses: actions/download-artifact@v3.0.1
