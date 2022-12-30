@@ -12,7 +12,7 @@
 #include "toml_helper.h"
 #include "../config/config.h"
 
-FILE *openFTLtoml(const char *mode)
+FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode)
 {
 	FILE *fp;
 	// If reading: first check if there is a local file

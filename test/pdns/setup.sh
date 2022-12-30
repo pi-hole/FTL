@@ -40,7 +40,7 @@ else
 fi
 # Create zone ftl
 pdnsutil create-zone ftl ns1.ftl
-pdnsutil add-record ftl. . SOA "ns1.ftl. hostmaster.ftl. 1 10800 3600 604800 3600"
+pdnsutil disable-dnssec ftl
 
 # Create A records
 pdnsutil add-record ftl. a A 192.168.1.1
@@ -65,6 +65,7 @@ pdnsutil add-record ftl. regex-REPLYv4 AAAA fe80::2c01
 pdnsutil add-record ftl. regex-REPLYv6 AAAA fe80::2c02
 pdnsutil add-record ftl. regex-REPLYv46 AAAA fe80::2c03
 pdnsutil add-record ftl. any AAAA fe80::3c01
+pdnsutil add-record ftl. gravity-aaaa AAAA fe80::4c01
 
 # Create CNAME records
 pdnsutil add-record ftl. cname-1 CNAME gravity.ftl
@@ -79,6 +80,10 @@ pdnsutil add-record ftl. cname-ok CNAME a.ftl
 # Create CNAME for SOA test domain
 pdnsutil add-record ftl. soa CNAME ftl
 
+# Create CNAME for NODATA tests
+pdnsutil add-record ftl. aaaa-cname CNAME gravity-aaaa.ftl
+pdnsutil add-record ftl. a-cname CNAME gravity.ftl
+
 # Create PTR records
 pdnsutil add-record ftl. ptr PTR ptr.ftl.
 
@@ -92,17 +97,10 @@ pdnsutil add-record ftl. naptr NAPTR '20 10 "s" "http+N2L+N2C+N2R" "" ftl.'
 pdnsutil add-record ftl. mx MX "50 ns1.ftl."
 
 # SVCB + HTTPS
-if ! pdnsutil add-record ftl. svcb SVCB '1 port="80"'; then
-  # see RFC3597: Handling of Unknown DNS Resource Record (RR) Types
-  # and https://ypcs.fi/howto/2020/09/30/announce-https-via-dns/
-  pdnsutil add-record ftl. svcb TYPE64 "\# 13 000109706F72743D2238302200"
-fi
+pdnsutil add-record ftl. svcb SVCB '1 port="80"'
 
 # HTTPS
-if ! pdnsutil add-record ftl. https HTTPS '1 . alpn="h3,h2"'; then
-  # comment above applies
-  pdnsutil add-record ftl. https TYPE65 "\# 15 000100000100080322683303683222"
-fi
+pdnsutil add-record ftl. https HTTPS '1 . alpn="h3,h2"'
 
 # Create reverse lookup zone
 pdnsutil create-zone arpa ns1.ftl
@@ -119,6 +117,8 @@ pdnsutil rectify-all-zones
 # Do final checking
 pdnsutil check-zone ftl
 pdnsutil check-zone arpa
+
+pdnsutil list-all-zones
 
 echo "********* Done installing PowerDNS configuration **********"
 

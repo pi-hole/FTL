@@ -34,6 +34,14 @@ fi
 # Remove possibly generated api/docs elements
 rm -rf src/api/docs/hex
 
+# Remove compiled LUA scripts if older than the plain ones
+for scriptname in src/lua/scripts/*.lua; do
+    if [ -f "${scriptname}.hex" ] && [ "${scriptname}.hex" -ot "${scriptname}" ]; then
+        echo "INFO: ${scriptname} is outdated and will be recompiled"
+        rm "${scriptname}.hex"
+    fi
+done
+
 # Configure build, pass CMake CACHE entries if present
 # Wrap multiple options in "" as first argument to ./build.sh:
 #     ./build.sh "-DA=1 -DB=2" install
@@ -52,7 +60,7 @@ cmake --build . -- -j $(nproc)
 # Otherwise, we simply copy the binary one level up
 if [[ -n "${install}" ]]; then
     echo "Installing pihole-FTL"
-    SUDO=$(which sudo)
+    SUDO=$(command -v sudo)
     ${SUDO} cmake --install .
 else
     echo "Copying compiled pihole-FTL binary to repository root"

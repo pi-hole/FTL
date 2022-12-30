@@ -26,6 +26,7 @@ typedef struct {
 
 typedef struct {
 	int version;
+	pid_t pid;
 	unsigned int global_shm_counter;
 	unsigned int next_str_pos;
 } ShmSettings;
@@ -72,10 +73,9 @@ extern countersStruct *counters;
 ///
 /// \param name the name of the shared memory
 /// \param size the size to allocate
-/// \param create_new true = delete old file, create new, false = connect to existing object or fail
 /// \return a structure with a pointer to the mounted shared memory. The pointer
 /// will always be valid, because if it failed FTL will have exited.
-static SharedMemory create_shm(const char *name, const size_t size, bool create_new);
+static SharedMemory create_shm(const char *name, const size_t size);
 
 /// Reallocate shared memory
 ///
@@ -114,10 +114,11 @@ void _unlock_log(const char* func, const int line, const char * file);
 
 /// Block until a lock can be obtained
 
-bool init_shmem(bool create_new);
+bool init_shmem(void);
 void destroy_shmem(void);
 size_t addstr(const char *str);
-const char *getstr(const size_t pos);
+#define getstr(pos) _getstr(pos, __FUNCTION__, __LINE__, __FILE__)
+const char *_getstr(const size_t pos, const char *func, const int line, const char *file);
 
 /**
  * Escapes a string by replacing special characters, such as spaces

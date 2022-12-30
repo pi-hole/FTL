@@ -159,7 +159,7 @@ static int check_rrs(unsigned char *p, struct dns_header *header, size_t plen, i
 /* mode may be remove EDNS0 or DNSSEC RRs or remove A or AAAA from answer section. */
 size_t rrfilter(struct dns_header *header, size_t plen, int mode)
 {
-  static unsigned char **rrs;
+  static unsigned char **rrs = NULL;
   static int rr_sz = 0;
 
   unsigned char *p = (unsigned char *)(header+1);
@@ -339,15 +339,11 @@ int expand_workspace(unsigned char ***wkspc, int *szp, int new)
     return 0;
 
   new += 5;
-  
-  if (!(p = whine_malloc(new * sizeof(unsigned char *))))
-    return 0;  
-  
-  if (old != 0 && *wkspc)
-    {
-      memcpy(p, *wkspc, old * sizeof(unsigned char *));
-      free(*wkspc);
-    }
+
+  if (!(p = whine_realloc(*wkspc, new * sizeof(unsigned char *))))
+    return 0;
+
+  memset(p+old, 0, new-old);
   
   *wkspc = p;
   *szp = new;

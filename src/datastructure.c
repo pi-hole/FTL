@@ -37,7 +37,7 @@ void strtolower(char *str)
 }
 
 // creates a simple hash of a string that fits into a uint32_t
-uint32_t hashStr(const char *s)
+uint32_t __attribute__ ((pure)) hashStr(const char *s)
 {
         uint32_t hash = 0;
         // Jenkins' One-at-a-Time hash (http://www.burtleburtle.net/bob/hash/doobs.html)
@@ -319,13 +319,14 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		}
 }
 
-int findCacheID(int domainID, int clientID, enum query_type query_type)
+int _findCacheID(const int domainID, const int clientID, const enum query_type query_type,
+                 const bool create_new, const char *func, int line, const char *file)
 {
 	// Compare content of client against known client IP addresses
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Get cache pointer
-		DNSCacheData* dns_cache = getDNSCache(cacheID, true);
+		DNSCacheData* dns_cache = _getDNSCache(cacheID, true, line, func, file);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(dns_cache == NULL)
@@ -339,11 +340,14 @@ int findCacheID(int domainID, int clientID, enum query_type query_type)
 		}
 	}
 
+	if(!create_new)
+		return -1;
+
 	// Get ID of new cache entry
 	const int cacheID = counters->dns_cache_size;
 
 	// Get client pointer
-	DNSCacheData* dns_cache = getDNSCache(cacheID, false);
+	DNSCacheData* dns_cache = _getDNSCache(cacheID, false, line, func, file);
 
 	if(dns_cache == NULL)
 	{
@@ -358,6 +362,7 @@ int findCacheID(int domainID, int clientID, enum query_type query_type)
 	dns_cache->clientID = clientID;
 	dns_cache->query_type = query_type;
 	dns_cache->force_reply = 0u;
+	dns_cache->domainlist_id = -1; // -1 = not set
 
 	// Increase counter by one
 	counters->dns_cache_size++;
@@ -510,6 +515,9 @@ void FTL_reload_all_domainlists(void)
 	// only after having called gravityDB_open()
 	read_regex_from_database();
 
+	// Check for inaccessible adlist URLs
+	check_inaccessible_adlists();
+
 	// Reset FTL's internal DNS cache storing whether a specific domain
 	// has already been validated for a specific user
 	FTL_reset_per_client_domain_data();
@@ -607,6 +615,8 @@ const char * __attribute__ ((const)) get_query_status_str(const enum query_statu
 			return "DBBUSY";
 		case QUERY_SPECIAL_DOMAIN:
 			return "SPECIAL_DOMAIN";
+		case QUERY_CACHE_STALE:
+			return "CACHE_STALE";
 		case QUERY_STATUS_MAX:
 		default:
 			return "INVALID";
@@ -718,6 +728,7 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 		case QUERY_RETRIED:
 		case QUERY_RETRIED_DNSSEC:
 		case QUERY_IN_PROGRESS:
+		case QUERY_CACHE_STALE:
 		case QUERY_STATUS_MAX:
 		default:
 			return false;
@@ -759,22 +770,68 @@ int __attribute__ ((pure)) get_cached_count(void)
 	return counters->status[QUERY_CACHE];
 }
 
-void _query_set_status(queriesData *query, const enum query_status new_status, const char *file, const int line)
+static const char* __attribute__ ((const)) query_status_str(const enum query_status status)
+{
+	switch (status)
+	{
+		case QUERY_UNKNOWN:
+			return "UNKNOWN";
+		case QUERY_GRAVITY:
+			return "GRAVITY";
+		case QUERY_FORWARDED:
+			return "FORWARDED";
+		case QUERY_CACHE:
+			return "CACHE";
+		case QUERY_REGEX:
+			return "REGEX";
+		case QUERY_DENYLIST:
+			return "DENYLIST";
+		case QUERY_EXTERNAL_BLOCKED_IP:
+			return "EXTERNAL_BLOCKED_IP";
+		case QUERY_EXTERNAL_BLOCKED_NULL:
+			return "EXTERNAL_BLOCKED_NULL";
+		case QUERY_EXTERNAL_BLOCKED_NXRA:
+			return "EXTERNAL_BLOCKED_NXRA";
+		case QUERY_GRAVITY_CNAME:
+			return "GRAVITY_CNAME";
+		case QUERY_REGEX_CNAME:
+			return "REGEX_CNAME";
+		case QUERY_DENYLIST_CNAME:
+			return "DENYLIST_CNAME";
+		case QUERY_RETRIED:
+			return "RETRIED";
+		case QUERY_RETRIED_DNSSEC:
+			return "RETRIED_DNSSEC";
+		case QUERY_IN_PROGRESS:
+			return "IN_PROGRESS";
+		case QUERY_DBBUSY:
+			return "DBBUSY";
+		case QUERY_SPECIAL_DOMAIN:
+			return "SPECIAL_DOMAIN";
+		case QUERY_CACHE_STALE:
+			return "CACHE_STALE";
+		case QUERY_STATUS_MAX:
+			return NULL;
+	}
+	return NULL;
+}
+
+void _query_set_status(queriesData *query, const enum query_status new_status, const char *func, const int line, const char *file)
 {
 	// Debug logging
 	if(config.debug & DEBUG_STATUS)
 	{
-		const char *oldstr = get_query_status_str(query->status);
+		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str(query->status) : "INVALID";
 		if(query->status == new_status)
 		{
-			log_debug(DEBUG_STATUS, "Query status unchanged: %s (%d) in %s:%i",
-			          oldstr, query->status, short_path(file), line);
+			log_debug(DEBUG_STATUS, "Query %i: status unchanged: %s (%d) in %s() (%s:%i)",
+			          query->id, oldstr, query->status, func, short_path(file), line);
 		}
 		else
 		{
-			const char *newstr = get_query_status_str(new_status);
-			log_debug(DEBUG_STATUS, "Query status changed: %s (%d) -> %s (%d) in %s:%i",
-			          oldstr, query->status, newstr, new_status, short_path(file), line);
+			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str(new_status) : "INVALID";
+			log_debug(DEBUG_STATUS, "Query %i: status changed: %s (%d) -> %s (%d) in %s() (%s:%i)",
+			          query->id, oldstr, query->status, newstr, new_status, func, short_path(file), line);
 		}
 	}
 

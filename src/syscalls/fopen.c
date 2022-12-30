@@ -15,7 +15,7 @@
 static uint8_t already_writing = 0;
 
 #undef fopen
-FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const char *func, const int line)
+FILE * __attribute__ ((__malloc__)) FTLfopen(const char *pathname, const char *mode, const char *file, const char *func, const int line)
 {
 	FILE *file_ptr = 0;
 	do
@@ -28,16 +28,22 @@ FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const c
 	// incoming signal
 	while(file_ptr == NULL && errno == EINTR);
 
-	// Final error checking (may have faild for some other reason then an
-	// EINTR = interrupted system call). The already_writing coutner
-	// prevents a possible infinite loop. We accept "No such file or
-	// directory" as this is something we'll deal with elsewhere
-	if(file_ptr == NULL && errno != ENOENT && (already_writing++) == 1)
+	// Backup errno value
+	const int _errno = errno;
+
+	// Final error checking (may have failed for some other reason then an
+	// EINTR = interrupted system call)
+	// The already_writing counter prevents a possible infinite loop
+	if(file_ptr == NULL && (already_writing++) == 1)
 		log_warn("Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
 		         pathname, mode, func, file, line, strerror(errno));
 
 	// Decrement warning counter
 	already_writing--;
 
+	// Restore errno value
+	errno = _errno;
+
+	// Return file pointer
 	return file_ptr;
 }

@@ -77,17 +77,21 @@ time_t get_rate_limit_turnaround(const unsigned int rate_limit_count)
 	return (time_t)config.rate_limit.interval*how_often - (time(NULL) - lastRateLimitCleaner);
 }
 
-static void check_space(const char *file)
+static int check_space(const char *file, int LastUsage)
 {
 	if(config.check.disk == 0)
-		return;
+		return 0;
 
 	int perc = 0;
 	char buffer[64] = { 0 };
 	// Warn if space usage at the device holding the corresponding file
-	// exceeds the configured threshold
-	if((perc = get_filepath_usage(file, buffer)) > config.check.disk)
+	// exceeds the configured threshold and current usage is higher than
+	// usage in the last run (to prevent log spam)
+	perc = get_filepath_usage(file, buffer);
+	if(perc > config.check.disk && perc > LastUsage )
 		log_resource_shortage(-1.0, 0, -1, perc, file, buffer);
+	
+	return perc;
 }
 
 static void check_load(void)
@@ -120,6 +124,10 @@ void *GC_thread(void *val)
 	lastRateLimitCleaner = time(NULL);
 	time_t lastResourceCheck = 0;
 
+	// Remember disk usage
+	int LastLogStorageUsage = 0;
+	int LastDBStorageUsage = 0;
+
 	// Run as long as this thread is not canceled
 	while(!killed)
 	{
@@ -141,8 +149,8 @@ void *GC_thread(void *val)
 		if(now - lastResourceCheck >= RCinterval)
 		{
 			check_load();
-			check_space(config.files.database);
-			check_space(config.files.log);
+			LastDBStorageUsage = check_space(config.files.database, LastDBStorageUsage);
+			LastLogStorageUsage = check_space(config.files.log, LastLogStorageUsage);
 			lastResourceCheck = now;
 		}
 
@@ -210,6 +218,7 @@ void *GC_thread(void *val)
 						// Adjusting counters is done below in moveOverTimeMemory()
 						break;
 					case QUERY_CACHE:
+					case QUERY_CACHE_STALE:
 						// Answered from local cache _or_ local config
 						break;
 					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)

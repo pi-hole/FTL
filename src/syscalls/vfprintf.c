@@ -134,6 +134,9 @@ int FTLvfprintf(FILE *stream, const char *file, const char *func, const int line
 		if(buffer != NULL)
 			free(buffer);
 
+		// Restore errno value
+		errno = _errno;
+
 		// Return early, there isn't anything we can do here
 		return length;
 	}
@@ -152,6 +155,9 @@ int FTLvfprintf(FILE *stream, const char *file, const char *func, const int line
 	// to an interruption by an incoming signal
 	while(_buffer < buffer && errno == EINTR);
 
+	// Backup errno value
+	_errno = errno;
+
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(_buffer < buffer)
@@ -162,6 +168,9 @@ int FTLvfprintf(FILE *stream, const char *file, const char *func, const int line
 
 	// Free allocated memory
 	free(buffer);
+
+	// Restore errno value
+	errno = _errno;
 
 	// Return number of written bytes
 	return length;

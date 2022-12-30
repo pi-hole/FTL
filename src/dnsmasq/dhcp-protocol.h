@@ -64,6 +64,7 @@
 #define OPTION_SIP_SERVER        120
 #define OPTION_VENDOR_IDENT      124
 #define OPTION_VENDOR_IDENT_OPT  125
+#define OPTION_MUD_URL_V4        161
 #define OPTION_END               255
 
 #define SUBOPT_CIRCUIT_ID        1

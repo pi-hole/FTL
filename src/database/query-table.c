@@ -404,8 +404,7 @@ bool export_queries_to_disk(bool final)
 	          last_disk_db_idx, last_mem_db_idx, time);
 
 	// Start database timer
-	if(config.debug & DEBUG_DATABASE)
-		timer_start(DATABASE_WRITE_TIMER);
+	timer_start(DATABASE_WRITE_TIMER);
 
 	// Attach disk database
 	if(!attach_disk_database(NULL))
@@ -761,7 +760,7 @@ void DB_read_queries(void)
 		}
 
 		const int status_int = sqlite3_column_int(stmt, 3);
-		if(status_int < QUERY_UNKNOWN || status_int > QUERY_STATUS_MAX)
+		if(status_int < QUERY_UNKNOWN || status_int >= QUERY_STATUS_MAX)
 		{
 			log_warn("Database: STATUS should be within [%i,%i] but is %i",
 			         QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status_int);
@@ -925,16 +924,18 @@ void DB_read_queries(void)
 				query->CNAME_domainID = CNAMEdomainID;
 			}
 		}
-		else if(status == QUERY_REGEX)
+		else if(sqlite3_column_bytes(stmt, 7) != 0)
 		{
-			// QUERY_REGEX: Set ID regex which was the reason for blocking
-			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
+			// Set ID of the domainlist entry that was the reason for permitting/blocking this query
+			// We assume the value in this field is said ID when it is not a CNAME-related domain
+			// (checked above) and the value of additional_info is not NULL (0 bytes storage size)
+			const int cacheID = findCacheID(query->domainID, query->clientID, query->type, true);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			// Only load if
 			//  a) we have a cache entry
 			//  b) the value of additional_info is not NULL (0 bytes storage size)
 			if(cache != NULL && sqlite3_column_bytes(stmt, 7) != 0)
-				cache->deny_regex_id = sqlite3_column_int(stmt, 7);
+				cache->domainlist_id = sqlite3_column_int(stmt, 7);
 		}
 
 		// Increment status counters, we first have to add one to the count of
@@ -985,6 +986,7 @@ void DB_read_queries(void)
 				break;
 
 			case QUERY_CACHE: // Cached or local config
+			case QUERY_CACHE_STALE:
 				// Nothing to be done here
 				break;
 
@@ -1280,16 +1282,16 @@ bool queries_to_database(void)
 		else if(query->status == QUERY_REGEX)
 		{
 			// Restore regex ID if applicable
-			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
+			const int cacheID = findCacheID(query->domainID, query->clientID, query->type, false);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			if(cache != NULL)
 			{
 				sqlite3_bind_int(query_stmt, 9, ADDINFO_REGEX_ID);
-				sqlite3_bind_int(query_stmt, 10, cache->deny_regex_id);
+				sqlite3_bind_int(query_stmt, 10, cache->domainlist_id);
 
 				// Execute prepared addinfo statement and check if successful
 				sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_REGEX_ID);
-				sqlite3_bind_int(addinfo_stmt, 2, cache->deny_regex_id);
+				sqlite3_bind_int(addinfo_stmt, 2, cache->domainlist_id);
 				if(sqlite3_step(addinfo_stmt) != SQLITE_DONE)
 				{
 					log_err("Encountered error while trying to store addinfo");

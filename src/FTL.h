@@ -129,8 +129,8 @@
 
 // DELAY_STARTUP should only delay the startup of the resolver during a starting up system
 // This setting control how long after boot we consider a system to be in starting-up mode
-// Default: 60 [seconds]
-#define DELAY_UPTIME 60
+// Default: 180 [seconds]
+#define DELAY_UPTIME 180
 
 // DB_QUERY_MAX_ITER defines how many queries we check periodically for updates to be added
 // to the in-memory database. This value may need to be increased on *very* busy systems.

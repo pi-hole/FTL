@@ -77,6 +77,7 @@ static void check_pihole_PTR(char *domain);
 #define query_set_dnssec(query, dnssec) _query_set_dnssec(query, dnssec, __FILE__, __LINE__)
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line);
 static char *get_ptrname(struct in_addr *addr);
+static const char *check_dnsmasq_name(const char *name);
 
 // Static blocking metadata
 static const char *blockingreason = "";
@@ -98,22 +99,17 @@ static struct {
 static union mysockaddr last_server = {{ 0 }};
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
-const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
+const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE", "F_SRV", "F_STALE" };
 
-void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
+void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
 {
 	// Extract filename from path
 	const char *path = short_path(file);
-	log_debug(DEBUG_FLAGS, "Processing FTL hook from %s:%d...", path, line);
+	log_debug(DEBUG_FLAGS, "Processing FTL hook from %s:%d (name: \"%s\")...", path, line, name);
 	print_flags(flags);
 
-	// Special domain name handling
-	// 1. Substitute "(NULL)" if no name is available (should not happen)
-	// 2. Substitute "." if we are querying the root domain (e.g. DNSKEY)
-	if(!name)
-		name = (char*)"(NULL)";
-	else if(!name[0])
-		name = (char*)".";
+	// Check domain name received from dnsmasq
+	name = check_dnsmasq_name(name);
 
 	// Note: The order matters here!
 	if((flags & F_QUERY) && (flags & F_FORWARD))
@@ -139,10 +135,29 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 		// derive the real query type from the arg string
 		unsigned short qtype = type;
 		if(strcmp(arg, "dnssec-query[DNSKEY]") == 0)
+		{
 			qtype = T_DNSKEY;
+			arg = (char*)"dnssec-query";
+		}
 		else if(strcmp(arg, "dnssec-query[DS]") == 0)
+		{
 			qtype = T_DS;
-		arg = (char*)"dnssec-query";
+			arg = (char*)"dnssec-query";
+		}
+		else if(strcmp(arg, "dnssec-retry[DNSKEY]") == 0)
+		{
+			qtype = T_DNSKEY;
+			arg = (char*)"dnssec-retry";
+		}
+		else if(strcmp(arg, "dnssec-retry[DS]") == 0)
+		{
+			qtype = T_DS;
+			arg = (char*)"dnssec-retry";
+		}
+		else
+		{
+			arg = (char*)"dnssec-unknown";
+		}
 
 		_FTL_new_query(flags, name, NULL, arg, qtype, id, &edns, INTERNAL, file, line);
 		// forwarded upstream (type is used to store the upstream port)
@@ -159,6 +174,7 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 // This is inspired by make_local_answer()
 size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede, const char *file, const int line)
 {
+	log_debug(DEBUG_FLAGS, "FTL_make_answer() called from %s:%d", short_path(file), line);
 	// Exit early if there are no questions in this query
 	if(ntohs(header->qdcount) == 0)
 		return 0;
@@ -500,6 +516,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			querytype = TYPE_OTHER;
 			break;
 	}
+
+	// Check domain name received from dnsmasq
+	name = check_dnsmasq_name(name);
 
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
@@ -1074,7 +1093,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		return false;
 
 	// Check domains against exact blacklist
-	enum db_result blacklist = in_denylist(domain, client);
+	enum db_result blacklist = in_denylist(domain, dns_cache, client);
 	if(blacklist == FOUND)
 	{
 		// Set new status
@@ -1140,10 +1159,9 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		return true;
 	}
 
-	// Check domain against deny regex filters
-	// Skipped when the domain is whitelisted or blocked by exact denylist or gravity
-	int regex_idx = 0;
-	if((regex_idx = match_regex(domain, dns_cache, client->id, REGEX_DENY, false)) > -1)
+	// Check domain against blacklist regex filters
+	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
+	if(in_regex(domain, dns_cache, client-> id, REGEX_DENY))
 	{
 		// Set new status
 		*new_status = QUERY_REGEX;
@@ -1151,14 +1169,13 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 
 		// Mark domain as regex matched for this client
 		set_dnscache_blockingstatus(dns_cache, client, REGEX_BLOCKED, domain);
-		dns_cache->deny_regex_id = regex_idx;
 
 		// Regex may be overwriting reply type for this domain
 		if(dns_cache->force_reply != REPLY_UNKNOWN)
 			force_next_DNS_reply = dns_cache->force_reply;
 
 		// Store ID of this regex (fork-private)
-		last_regex_idx = regex_idx;
+		last_regex_idx = dns_cache->domainlist_id;
 
 		// We block this domain
 		return true;
@@ -1235,7 +1252,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	}
 
 	// Get cache pointer
-	unsigned int cacheID = findCacheID(domainID, clientID, query->type);
+	unsigned int cacheID = findCacheID(domainID, clientID, query->type, true);
 	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 	if(dns_cache == NULL)
 	{
@@ -1302,7 +1319,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
-				last_regex_idx = dns_cache->deny_regex_id;
+				last_regex_idx = dns_cache->domainlist_id;
 				query_blocked(query, domain, client, QUERY_REGEX);
 				return true;
 			}
@@ -1327,7 +1344,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			log_debug(DEBUG_QUERIES, "%s is known as special domain", domainstr);
 
 			force_next_DNS_reply = dns_cache->force_reply;
-			query_blocked(query, domain, client, QUERY_CACHE);
+			query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 			return true;
 			break;
 
@@ -1370,8 +1387,12 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	domainstr = strdup(domainstr);
 	const char *blockedDomain = domainstr;
 
-	// Check whitelist (exact + regex) for match
+	// Check exact whitelist for match
 	query->flags.allowed = in_allowlist(domainstr, dns_cache, client) == FOUND;
+
+	// If not found: Check regex whitelist for match
+	if(!query->flags.allowed)
+		query->flags.allowed = in_regex(domainstr, dns_cache, client->id, REGEX_ALLOW);
 
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;
@@ -1433,12 +1454,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 }
 
 
-bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line)
+bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file, const int line)
 {
-	// Get CNAME destination and source (if applicable)
-	const char *dst = domain;
-	const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
-	log_debug(DEBUG_QUERIES, "FTL_CNAME called with: src = %s, dst = %s, id = %d", src, domain, id);
+	log_debug(DEBUG_QUERIES, "FTL_CNAME called with: src = %s, dst = %s, id = %d", src, dst, id);
 
 	// Does the user want to skip deep CNAME inspection?
 	if(!config.cname_deep_inspection)
@@ -1485,7 +1503,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 	// child_domain = Intermediate domain in CNAME path
 	// This is the domain which was queried later in this chain
-	char *child_domain = strdup(domain);
+	char *child_domain = strdup(dst);
 	// Convert to lowercase for matching
 	strtolower(child_domain);
 	const int child_domainID = findDomainID(child_domain, false);
@@ -1529,8 +1547,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		else if(query->status == QUERY_REGEX)
 		{
 			// Get parent and child DNS cache entries
-			const int parent_cacheID = findCacheID(parent_domainID, clientID, query->type);
-			const int child_cacheID = findCacheID(child_domainID, clientID, query->type);
+			const int parent_cacheID = findCacheID(parent_domainID, clientID, query->type, false);
+			const int child_cacheID = findCacheID(child_domainID, clientID, query->type, false);
 
 			// Get cache pointers
 			DNSCacheData *parent_cache = getDNSCache(parent_cacheID, true);
@@ -1538,9 +1556,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 			// Propagate ID of responsible regex up from the child to the parent domain
 			if(parent_cache != NULL && child_cache != NULL)
-			{
-				child_cache->deny_regex_id = parent_cache->deny_regex_id;
-			}
+				child_cache->domainlist_id = parent_cache->domainlist_id;
 
 			// Set status
 			query_set_status(query, QUERY_REGEX_CNAME);
@@ -1553,10 +1569,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	}
 
 	// Debug logging for deep CNAME inspection (if enabled)
-	if(src == NULL)
-		log_debug(DEBUG_QUERIES, "Query %d: CNAME %s", id, dst);
-	else
-		log_debug(DEBUG_QUERIES, "Query %d: CNAME %s ---> %s", id, src, dst);
+	log_debug(DEBUG_QUERIES, "Query %d: CNAME %s ---> %s", id, src, dst);
 
 	// Mark query for updating in the database
 	query->flags.database.changed = true;
@@ -1728,6 +1741,7 @@ void FTL_dnsmasq_reload(void)
 	// Gravity database updates
 	// - (Re-)open gravity database connection
 	// - Get number of blocked domains
+	// - check adlist table for inaccessible adlists
 	// - Read and compile regex filters (incl. per-client)
 	// - Flush FTL's DNS cache
 	set_event(RELOAD_GRAVITY);
@@ -1858,6 +1872,9 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			log_debug(DEBUG_FLAGS, "***** Unknown cache query");
 	}
 
+	// Is this a stale reply?
+	const bool stale = flags & F_STALE;
+
 	// Possible debugging output
 	if(config.debug & DEBUG_QUERIES)
 	{
@@ -1909,16 +1926,18 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 		if(cached || last_server.sa.sa_family == 0)
 			// Log cache or upstream reply from unknown source
-			log_debug(DEBUG_QUERIES, "**** got %s reply: %s is %s (ID %i, %s:%i)",
-			          cached ? "cache" : "upstream", dispname, answer, id, file, line);
+			log_debug(DEBUG_QUERIES, "**** got %s%s reply: %s is %s (ID %i, %s:%i)",
+			          stale ? "stale ": "", cached ? "cache" : "upstream",
+			          dispname, answer, id, file, line);
 		else
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
 			in_port_t port = 0;
 			mysockaddr_extract_ip_port(&last_server, ip, &port);
 			// Log server which replied to our request
-			log_debug(DEBUG_QUERIES, "**** got %s reply from %s#%d: %s is %s (ID %i, %s:%i)",
-			          cached ? "cache" : "upstream", ip, port, dispname, answer, id, file, line);
+			log_debug(DEBUG_QUERIES, "**** got %s%s reply from %s#%d: %s is %s (ID %i, %s:%i)",
+			          stale ? "stale ": "", cached ? "cache" : "upstream",
+			          ip, port, dispname, answer, id, file, line);
 		}
 	}
 
@@ -1967,13 +1986,16 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		return;
 	}
 
+	// Determine query status (live or stale data?)
+	const enum query_status qs = stale ? QUERY_CACHE_STALE : QUERY_CACHE;
+
 	// This is either a reply served from cache or a blocked query (which appear
 	// to be from cache because of flags containing F_HOSTS)
 	if(cached)
 	{
 		// Set status of this query only if this is not a blocked query
 		if(!is_blocked(query->status))
-			query_set_status(query, QUERY_CACHE);
+			query_set_status(query, qs);
 
 		// Detect if returned IP indicates that this query was blocked
 		const enum query_status new_status = detect_blocked_IP(flags, addr, query, domain);
@@ -2017,7 +2039,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Answered from a custom (user provided) cache file or because
 		// we're the authoritative DNS server (e.g. DHCP server and this
 		// is our own domain)
-		query_set_status(query, QUERY_CACHE);
+		query_set_status(query, qs);
 
 		// Save reply type and update individual reply counters
 		query_set_reply(flags, 0, addr, query, response);
@@ -2597,8 +2619,7 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 	if(config.debug & DEBUG_QUERIES)
 	{
 		const char *path = short_path(file);
-		log_debug(DEBUG_QUERIES, "Set reply to %s (%d) in %s:%d", get_query_reply_str(query->reply), query->reply,
-		          path, line);
+		log_debug(DEBUG_QUERIES, "Set reply to %s (%d) in %s:%d", get_query_reply_str(new_reply), new_reply, path, line);
 		if(query->reply != REPLY_UNKNOWN && query->reply != new_reply)
 			log_debug(DEBUG_QUERIES, "Reply of query %i was %s now changing to %s", query->id,
 			          get_query_reply_str(query->reply), get_query_reply_str(new_reply));
@@ -3278,12 +3299,25 @@ int check_struct_sizes(void)
 	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24);
 	result += check_one_struct("regexData", sizeof(regexData), 56, 44);
 	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
-	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 12, 12);
-	result += check_one_struct("countersStruct", sizeof(countersStruct), 292, 292);
+	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 16, 16);
+	result += check_one_struct("countersStruct", sizeof(countersStruct), 248, 248);
 	result += check_one_struct("sqlite3_stmt_vec", sizeof(sqlite3_stmt_vec), 32, 16);
 
 	if(result == 0)
 		printf("All okay\n");
 
 	return result;
+}
+
+static const char *check_dnsmasq_name(const char *name)
+{
+	// Special domain name handling
+	if(!name)
+		// 1. Substitute "(NULL)" if no name is available (should not happen)
+		return "(NULL)";
+	else if(!name[0])
+		// 2. Substitute "." if we are querying the root domain (e.g. DNSKEY)
+		return ".";
+	// else
+	return name;
 }

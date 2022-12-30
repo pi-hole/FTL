@@ -16,6 +16,7 @@
 #include "../log.h"
 #include <readline/history.h>
 #include <wordexp.h>
+#include "scripts/scripts.h"
 
 int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 {
@@ -98,9 +99,53 @@ LUAMOD_API int luaopen_pihole(lua_State *L) {
 	return LUA_YIELD;
 }
 
-// Load bundled libraries and make the available globally
+static bool ftl_lua_load_embedded_script(lua_State *L, const char *name, const char *script, const size_t script_len, const bool make_global)
+{
+	// Explanation:
+	// luaL_dostring(L, script)   expands to   (luaL_loadstring(L, script) || lua_pcall(L, 0, LUA_MULTRET, 0))
+	// luaL_loadstring(L, script)   calls   luaL_loadbuffer(L, s, strlen(s), s)
+	if (luaL_loadbufferx(L, script, script_len, name, NULL) || lua_pcall(L, 0, LUA_MULTRET, 0) != 0)
+	{
+		const char *lua_err = lua_tostring(L, -1);
+		printf("LUA error while trying to import %s.lua: %s\n", name, lua_err);
+		return false;
+	}
+
+	if(make_global)
+	{
+		/* Set global[name] = luaL_dostring return */
+		lua_setglobal(L, name);
+	}
+
+	return true;
+}
+
+struct {
+	const char *name;
+	const char *content;
+	const size_t contentlen;
+	const bool global;
+} scripts[] =
+{
+	{"inspect", inspect_lua, sizeof(inspect_lua), true},
+};
+
+// Loop over bundled LUA libraries and print their names on the console
+void print_embedded_scripts(void)
+{
+	for(unsigned int i = 0; i < sizeof(scripts)/sizeof(scripts[0]); i++)
+	{
+		char prefix[2] = { 0 };
+		double formatted = 0.0;
+		format_memory_size(prefix, scripts[i].contentlen, &formatted);
+
+		printf("%s.lua (%.2f %sB) ", scripts[i].name, formatted, prefix);
+	}
+}
+
+// Loop over bundled LUA libraries and load them
 void ftl_lua_init(lua_State *L)
 {
-	if(dolibrary(L, "inspect") != LUA_OK)
-		printf("Failed to load library inspect.lua\n");
+	for(unsigned int i = 0; i < sizeof(scripts)/sizeof(scripts[0]); i++)
+		ftl_lua_load_embedded_script(L, scripts[i].name, scripts[i].content, scripts[i].contentlen, scripts[i].global);
 }

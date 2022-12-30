@@ -539,8 +539,10 @@ static int print_txt(struct dns_header *header, const size_t qlen, char *name,
 /* Note that the following code can create CNAME chains that don't point to a real record,
    either because of lack of memory, or lack of SOA records.  These are treated by the cache code as 
    expired and cleaned out that way. 
-   Return 1 if we reject an address because it look like part of dns-rebinding attack. */
-// Pi-hole: Return 2 if we reject a part of a CNAME chain
+   Return 1 if we reject an address because it look like part of dns-rebinding attack. 
+   Return 2 if the packet is malformed.
+   Return 99 if we reject parts of a CNAME chain (*** Pi-hole modification ***)
+*/
 int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t now, 
 		      struct ipsets *ipsets, struct ipsets *nftsets, int is_sign, int check_rebind,
 		      int no_cache_dnssec, int secure, int *doctored)
@@ -591,7 +593,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
   namep = p = (unsigned char *)(header+1);
   
   if (ntohs(header->qdcount) != 1 || !extract_name(header, qlen, &p, name, 1, 4))
-    return 0; /* bad packet */
+    return 2; /* bad packet */
   
   GETSHORT(qtype, p); 
   GETSHORT(qclass, p);
@@ -609,13 +611,13 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	{
 	cname_loop:
 	  if (!(p1 = skip_questions(header, qlen)))
-	    return 0;
+	    return 2;
 	  
 	  for (j = 0; j < ntohs(header->ancount); j++) 
 	    {
 	      int secflag = 0;
 	      if (!(res = extract_name(header, qlen, &p1, name, 0, 10)))
-		return 0; /* bad packet */
+		return 2; /* bad packet */
 	      
 	      GETSHORT(aqtype, p1); 
 	      GETSHORT(aqclass, p1);
@@ -652,7 +654,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		    log_query(secflag | F_CNAME | F_FORWARD | F_UPSTREAM, name, NULL, NULL, 0);
 		  
 		  if (!extract_name(header, qlen, &p1, name, 1, 0))
-		    return 0;
+		    return 2;
 		  
 		  if (aqtype == T_CNAME)
 		    {
@@ -678,7 +680,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 
 	      p1 = endrr;
 	      if (!CHECK_LEN(header, p1, qlen, 0))
-		return 0; /* bad packet */
+		return 2; /* bad packet */
 	    }
 	}
       
@@ -723,14 +725,14 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
       
     cname_loop1:
       if (!(p1 = skip_questions(header, qlen)))
-	return 0;
+	return 2;
       
       for (j = 0; j < ntohs(header->ancount); j++) 
 	{
 	  int secflag = 0;
 	  
 	  if (!(res = extract_name(header, qlen, &p1, name, 0, 10)))
-	    return 0; /* bad packet */
+	    return 2; /* bad packet */
 	  
 	  GETSHORT(aqtype, p1); 
 	  GETSHORT(aqclass, p1);
@@ -748,7 +750,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    {
 	      p1 = endrr;
 	      if (!CHECK_LEN(header, p1, qlen, 0))
-		return 0; /* bad packet */
+		return 2; /* bad packet */
 	      continue;
 	    }
 	  
@@ -763,16 +765,6 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    }
 #endif	  
 	  
-	// ****************************** Pi-hole modification ******************************
-	if(FTL_CNAME(name, cpp, daemon->log_display_id))
-	  {
-	    // Found while processing a reply from upstream. We prevent cache insertion here
-	    // This query is to be blocked as we found a blocked
-	    // domain while walking the CNAME path. Log to pihole.log here
-	    log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection", 0);
-	    return 2;
-	  }
-	// **********************************************************************************
 
 	  if (aqtype == T_CNAME)
 	    {
@@ -802,8 +794,19 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      
 	      namep = p1;
 	      if (!extract_name(header, qlen, &p1, name, 1, 0))
-		return 0;
+		return 2;
 	      
+	      // ****************************** Pi-hole modification ******************************
+	      const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
+	      if(FTL_CNAME(name, src, daemon->log_display_id))
+		{
+		  // Found while processing a reply from upstream. We prevent cache insertion here
+		  // This query is to be blocked as we found a blocked
+		  // domain while walking the CNAME path. Log to pihole.log here
+		  log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection", 0);
+		  return 99;
+		}
+	      // **********************************************************************************
 	      if (qtype != T_CNAME)
 		goto cname_loop1;
 
@@ -825,25 +828,25 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		  unsigned char *tmp = namep;
 		  
 		  if (!CHECK_LEN(header, p1, qlen, 6))
-		    return 0; /* bad packet */
+		    return 2; /* bad packet */
 		  GETSHORT(addr.srv.priority, p1);
 		  GETSHORT(addr.srv.weight, p1);
 		  GETSHORT(addr.srv.srvport, p1);
 		  if (!extract_name(header, qlen, &p1, name, 1, 0))
-		    return 0;
+		    return 2;
 		  addr.srv.targetlen = strlen(name) + 1; /* include terminating zero */
 		  if (!(addr.srv.target = blockdata_alloc(name, addr.srv.targetlen)))
 		    return 0;
 		  
 		  /* we overwrote the original name, so get it back here. */
 		  if (!extract_name(header, qlen, &tmp, name, 1, 0))
-		    return 0;
+		    return 2;
 		}
 	      else if (flags & (F_IPV4 | F_IPV6))
 		{
 		  /* copy address into aligned storage */
 		  if (!CHECK_LEN(header, p1, qlen, addrlen))
-		    return 0; /* bad packet */
+		    return 2; /* bad packet */
 		  memcpy(&addr, p1, addrlen);
 		  
 		  /* check for returned address in private space */
@@ -887,7 +890,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      if (aqtype == T_TXT)
 		{
 		  if (!print_txt(header, qlen, name, p1, ardlen, secflag))
-		    return 0;
+		    return 2;
 		}
 	      else
 		log_query(flags | F_FORWARD | secflag | F_UPSTREAM, name, &addr, NULL, aqtype);
@@ -895,7 +898,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	  
 	  p1 = endrr;
 	  if (!CHECK_LEN(header, p1, qlen, 0))
-	    return 0; /* bad packet */
+	    return 2; /* bad packet */
 	}
       
       if (!found && (qtype != T_ANY || (flags & F_NXDOMAIN)))
@@ -1372,8 +1375,15 @@ int add_resource_record(struct dns_header *header, char *limit, int *truncp, int
 #undef CHECK_LIMIT
 }
 
+static int crec_isstale(struct crec *crecp, time_t now)
+{
+  return (!(crecp->flags & F_IMMORTAL)) && difftime(crecp->ttd, now) < 0; 
+}
+
 static unsigned long crec_ttl(struct crec *crecp, time_t now)
 {
+  signed long ttl = difftime(crecp->ttd, now);
+
   /* Return 0 ttl for DHCP entries, which might change
      before the lease expires, unless configured otherwise. */
 
@@ -1382,8 +1392,8 @@ static unsigned long crec_ttl(struct crec *crecp, time_t now)
       int conf_ttl = daemon->use_dhcp_ttl ? daemon->dhcp_ttl : daemon->local_ttl;
       
       /* Apply ceiling of actual lease length to configured TTL. */
-      if (!(crecp->flags & F_IMMORTAL) && (crecp->ttd - now) < conf_ttl)
-	return crecp->ttd - now;
+      if (!(crecp->flags & F_IMMORTAL) && ttl < conf_ttl)
+	return ttl;
       
       return conf_ttl;
     }	  
@@ -1392,9 +1402,13 @@ static unsigned long crec_ttl(struct crec *crecp, time_t now)
   if (crecp->flags & F_IMMORTAL)
     return crecp->ttd;
 
+  /* Stale cache entries. */
+  if (ttl < 0)
+    return 0;
+  
   /* Return the Max TTL value if it is lower than the actual TTL */
-  if (daemon->max_ttl == 0 || ((unsigned)(crecp->ttd - now) < daemon->max_ttl))
-    return crecp->ttd - now;
+  if (daemon->max_ttl == 0 || ((unsigned)ttl < daemon->max_ttl))
+    return ttl;
   else
     return daemon->max_ttl;
 }
@@ -1407,7 +1421,8 @@ static int cache_validated(const struct crec *crecp)
 /* return zero if we can't answer from cache, or packet size if we can */
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
-		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader) 
+		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader,
+		      int *stale) 
 {
   char *name = daemon->namebuff;
   unsigned char *p, *ansp;
@@ -1423,6 +1438,9 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   size_t len;
   int rd_bit = (header->hb3 & HB3_RD);
 
+  if (stale)
+    *stale = 0;
+  
   /* never answer queries with RD unset, to avoid cache snooping. */
   if (ntohs(header->ancount) != 0 ||
       ntohs(header->nscount) != 0 ||
@@ -1471,13 +1489,22 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	while (--count != 0 && (crecp = cache_find_by_name(NULL, name, now, F_CNAME | F_NXDOMAIN)))
 	  {
 	    char *cname_target;
-
+	    int stale_flag = 0;
+	    
+	    if (crec_isstale(crecp, now))
+	      {
+		if (stale)
+		  *stale = 1;
+		
+		stale_flag = F_STALE;
+	      }
+	    
 	    if (crecp->flags & F_NXDOMAIN)
 	      {
 		if (qtype == T_CNAME)
 		  {
 		   if (!dryrun)
-		     log_query(crecp->flags, name, NULL, record_source(crecp->uid), 0);
+		     log_query(stale_flag | crecp->flags, name, NULL, record_source(crecp->uid), 0);
 		    auth = 0;
 		    nxdomain = 1;
 		    ans = 1;
@@ -1499,7 +1526,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		
 		if (!dryrun)
 		  {
-		    log_query(crecp->flags, name, NULL, record_source(crecp->uid), 0);
+		    log_query(stale_flag | crecp->flags, name, NULL, record_source(crecp->uid), 0);
 		    if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					    crec_ttl(crecp, now), &nameoffset,
 					    T_CNAME, C_IN, "d", cname_target))
@@ -1609,7 +1636,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    
 		    if (addrlist)
 		      break;
-		    else
+		    else if (!(intr->flags & INP4))
 		      while (intr->next && strcmp(intr->intr, intr->next->intr) == 0)
 			intr = intr->next;
 		  }
@@ -1624,7 +1651,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    
 		    if (addrlist)
 		      break;
-		    else
+		    else if (!(intr->flags & INP6))
 		      while (intr->next && strcmp(intr->intr, intr->next->intr) == 0)
 			intr = intr->next;
 		  }
@@ -1668,22 +1695,33 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    {
 		      do 
 			{ 
+			  int stale_flag = 0;
+			  
+			  if (crec_isstale(crecp, now))
+			    {
+			      if (stale)
+				*stale = 1;
+			      
+			      stale_flag = F_STALE;
+			    }
+			  
 			  /* don't answer wildcard queries with data not from /etc/hosts or dhcp leases */
 			  if (qtype == T_ANY && !(crecp->flags & (F_HOSTS | F_DHCP)))
 			    continue;
 			  
+			  
 			  if (!(crecp->flags & F_DNSSECOK))
 			    sec_data = 0;
-			   
+			  
 			  ans = 1;
-			   
+			  
 			  if (crecp->flags & F_NEG)
 			    {
 			      auth = 0;
 			      if (crecp->flags & F_NXDOMAIN)
 				nxdomain = 1;
 			      if (!dryrun)
-				log_query(crecp->flags & ~F_FORWARD, name, &addr, NULL, 0);
+				log_query(stale_flag | (crecp->flags & ~F_FORWARD), name, &addr, NULL, 0);
 			    }
 			  else
 			    {
@@ -1691,9 +1729,9 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 				auth = 0;
 			      if (!dryrun)
 				{
-				  log_query(crecp->flags & ~F_FORWARD, cache_get_name(crecp), &addr, 
+				  log_query(stale_flag | (crecp->flags & ~F_FORWARD), cache_get_name(crecp), &addr, 
 					    record_source(crecp->uid), 0);
-
+ 				  
 				  if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 							  crec_ttl(crecp, now), NULL,
 							  T_PTR, C_IN, "d", cache_get_name(crecp)))
@@ -1800,7 +1838,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	      if ((crecp = cache_find_by_name(NULL, name, now, flag | F_NXDOMAIN | (dryrun ? F_NO_RR : 0))))
 		{
 		  int localise = 0;
-		  
+		 		  
 		  /* See if a putative address is on the network from which we received
 		     the query, is so we'll filter other answers. */
 		  if (local_addr.s_addr != 0 && option_bool(OPT_LOCALISE) && flag == F_IPV4)
@@ -1822,6 +1860,16 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      (rd_bit && (!do_bit || cache_validated(crecp)) ))
 		    do
 		      { 
+			int stale_flag = 0;
+			
+			if (crec_isstale(crecp, now))
+			  {
+			    if (stale)
+			      *stale = 1;
+			    
+			    stale_flag = F_STALE;
+			  }
+			
 			/* don't answer wildcard queries with data not from /etc/hosts
 			   or DHCP leases */
 			if (qtype == T_ANY && !(crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)))
@@ -1839,7 +1887,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    if (!dryrun)
 			      // Pi-hole modification: Added record_source(crecp->uid) such that the subroutines know
 			      //                       where the reply came from (e.g. gravity.list)
-			      log_query(crecp->flags, name, NULL, record_source(crecp->uid), 0);
+			      log_query(stale_flag | crecp->flags, name, NULL, record_source(crecp->uid), 0);
 			  }
 			else 
 			  {
@@ -1856,10 +1904,11 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    ans = 1;
 			    if (!dryrun)
 			      {
-				log_query(crecp->flags & ~F_REVERSE, name, &crecp->addr,
+				log_query(stale_flag | (crecp->flags & ~F_REVERSE), name, &crecp->addr,
 					  record_source(crecp->uid), 0);
 				// ****************************** Pi-hole modification ******************************
-				if(FTL_CNAME(name, crecp, daemon->log_display_id))
+				const char *src = crecp != NULL ? crecp->flags & F_BIGNAME ? crecp->name.bname->name : crecp->name.sname : NULL;
+				if(FTL_CNAME(name, src, daemon->log_display_id))
 				  {
 				    // Served from cache. This can happen if a domain hidden in the CNAME path
 				    // is only blocked for some but not all clients. In this case, the entire
@@ -1979,6 +2028,15 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      rd_bit && (!do_bit || (option_bool(OPT_DNSSEC_VALID) && !(crecp->flags & F_DNSSECOK))))
 		    do
 		      {
+			int stale_flag = 0;
+			
+			if (crec_isstale(crecp, now))
+			  {
+			    if (stale)
+			      *stale = 1;
+			    
+			    stale_flag = F_STALE;
+			  }
 			/* don't answer wildcard queries with data not from /etc/hosts or dhcp leases, except for NXDOMAIN */
 			if (qtype == T_ANY && !(crecp->flags & (F_NXDOMAIN)))
 			  break;
@@ -1994,12 +2052,12 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    if (crecp->flags & F_NXDOMAIN)
 			      nxdomain = 1;
 			    if (!dryrun)
-			      log_query(crecp->flags, name, NULL, NULL, 0);
+			      log_query(stale_flag | crecp->flags, name, NULL, NULL, 0);
 			  }
 			else if (!dryrun)
 			  {
 			    char *target = blockdata_retrieve(crecp->addr.srv.target, crecp->addr.srv.targetlen, NULL);
-			    log_query(crecp->flags, name, NULL, NULL, 0);
+			    log_query(stale_flag | crecp->flags, name, NULL, NULL, 0);
 			    
 			    if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 						    crec_ttl(crecp, now), NULL, T_SRV, C_IN, "sssd",

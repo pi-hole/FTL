@@ -272,6 +272,10 @@ int main_dnsmasq (int argc, char **argv)
    
   if (daemon->max_port < daemon->min_port)
     die(_("max_port cannot be smaller than min_port"), NULL, EC_BADCONF);
+
+  if (daemon->max_port != 0 &&
+      daemon->max_port - daemon->min_port + 1 < daemon->randport_limit)
+    die(_("port_limit must not be larger than available port range"), NULL, EC_BADCONF);
   
   now = dnsmasq_time();
 
@@ -1068,19 +1072,20 @@ int main_dnsmasq (int argc, char **argv)
   
   while (!terminate)
     {
-      int timeout = -1;
+      int timeout = fast_retry(now);
       
       poll_reset();
       
       /* Whilst polling for the dbus, or doing a tftp transfer, wake every quarter second */
-      if (daemon->tftp_trans ||
-	  (option_bool(OPT_DBUS) && !daemon->dbus))
+      if ((daemon->tftp_trans || (option_bool(OPT_DBUS) && !daemon->dbus)) &&
+	  (timeout == -1 || timeout > 250))
 	timeout = 250;
-
+      
       /* Wake every second whilst waiting for DAD to complete */
-      else if (is_dad_listeners())
+      else if (is_dad_listeners() &&
+	       (timeout == -1 || timeout > 1000))
 	timeout = 1000;
-
+      
       set_dns_listeners();
 
 #ifdef HAVE_DBUS
@@ -1689,9 +1694,10 @@ static void poll_resolv(int force, int do_reload, time_t now)
     else
       {
 	res->logged = 0;
-	if (force || (statbuf.st_mtime != res->mtime))
+	if (force || (statbuf.st_mtime != res->mtime || statbuf.st_ino != res->ino))
           {
             res->mtime = statbuf.st_mtime;
+	    res->ino = statbuf.st_ino;
 	    if (difftime(statbuf.st_mtime, last_change) > 0.0)
 	      {
 		last_change = statbuf.st_mtime;
@@ -2050,9 +2056,6 @@ static void check_dns_listeners(time_t now)
 	      FTL_TCP_worker_terminating(true);
 	      /**********************************************/
 
-	      shutdown(confd, SHUT_RDWR);
-	      close(confd);
-	      
 	      if (buff)
 		free(buff);
 	      
@@ -2228,10 +2231,11 @@ int delay_dhcp(time_t start, int sec, int fd, uint32_t addr, unsigned short id)
 #endif /* HAVE_DHCP */
 
 /******************************** Pi-hole modification ********************************/
-void print_dnsmasq_version(void)
+void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal)
 {
-  printf("****************************** dnsmasq ******************************\n");
-  printf(_("Version:         %s\n"), VERSION);
-  printf(_("Compile options: %s\n\n"), compile_opts);
+  printf("****************************** %s%sdnsmasq%s ******************************\n",
+         bold, yellow, normal);
+  printf(_("Version:         %s%s%s%s\n"), bold, green, VERSION, normal);
+  printf(_("Features:        %s\n\n"), compile_opts);
 }
 /**************************************************************************************/

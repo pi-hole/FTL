@@ -213,9 +213,13 @@ int lookup_domain(char *domain, int flags, int *lowout, int *highout)
 	       to continue generalising */
 	    {
 	      /* We've matched a setting which says to use servers without a domain.
-		 Continue the search with empty query */
+		 Continue the search with empty query. We set the F_SERVER flag
+		 so that --address=/#/... doesn't match. */
 	      if (daemon->serverarray[nlow]->flags & SERV_USE_RESOLV)
-		crop_query = qlen;
+		{
+		  crop_query = qlen;
+		  flags |= F_SERVER;
+		}
 	      else
 		break;
 	    }
@@ -299,7 +303,7 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
       
       for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_6ADDR); i++);
       
-      if (i != nlow && (flags & F_IPV6))
+      if (!(flags & F_SERVER) && i != nlow && (flags & F_IPV6))
 	nhigh = i;
       else
 	{
@@ -307,7 +311,7 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
 	  
 	  for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_4ADDR); i++);
 	  
-	  if (i != nlow && (flags & F_IPV4))
+	  if (!(flags & F_SERVER) && i != nlow && (flags & F_IPV4))
 	    nhigh = i;
 	  else
 	    {
@@ -315,7 +319,7 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
 	      
 	      for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_ALL_ZEROS); i++);
 	      
-	      if (i != nlow && (flags & (F_IPV4 | F_IPV6)))
+	      if (!(flags & F_SERVER) && i != nlow && (flags & (F_IPV4 | F_IPV6)))
 		nhigh = i;
 	      else
 		{
@@ -542,11 +546,23 @@ static int order_qsort(const void *a, const void *b)
   return rc;
 }
 
+
+/* When loading large numbers of server=.... lines during startup,
+   there's no possibility that there will be server records that can be reused, but
+   searching a long list for each server added grows as O(n^2) and slows things down.
+   This flag is set only if is known there may be free server records that can be reused.
+   There's a call to mark_servers(0) in read_opts() to reset the flag before
+   main config read. */
+
+static int maybe_free_servers = 0;
+
 /* Must be called before  add_update_server() to set daemon->servers_tail */
 void mark_servers(int flag)
 {
-  struct server *serv, **up;
+  struct server *serv, *next, **up;
 
+  maybe_free_servers = !!flag;
+  
   daemon->servers_tail = NULL;
   
   /* mark everything with argument flag */
@@ -564,11 +580,13 @@ void mark_servers(int flag)
      1) numerous and 2) not reloaded often. We just delete 
      and recreate. */
   if (flag)
-    for (serv = daemon->local_domains, up = &daemon->local_domains; serv; serv = serv->next)
+    for (serv = daemon->local_domains, up = &daemon->local_domains; serv; serv = next)
       {
+	next = serv->next;
+
 	if (serv->flags & flag)
 	  {
-	    *up = serv->next;
+	    *up = next;
 	    free(serv->domain);
 	    free(serv);
 	  }
@@ -663,25 +681,30 @@ int add_update_server(int flags,
 	 and move to the end of the list, for order. The entry found may already
 	 be at the end. */
       struct server **up, *tmp;
-      
-      for (serv = daemon->servers, up = &daemon->servers; serv; serv = tmp)
-	{
-	  tmp = serv->next;
-	  if ((serv->flags & SERV_MARK) &&
-	      hostname_isequal(alloc_domain, serv->domain))
-	    {
-	      /* Need to move down? */
-	      if (serv->next)
-		{
-		  *up = serv->next;
-		  daemon->servers_tail->next = serv;
-		  daemon->servers_tail = serv;
-		  serv->next = NULL;
-		}
-	      break;
-	    }	
-	}
 
+      serv = NULL;
+      
+      if (maybe_free_servers)
+	for (serv = daemon->servers, up = &daemon->servers; serv; serv = tmp)
+	  {
+	    tmp = serv->next;
+	    if ((serv->flags & SERV_MARK) &&
+		hostname_isequal(alloc_domain, serv->domain))
+	      {
+		/* Need to move down? */
+		if (serv->next)
+		  {
+		    *up = serv->next;
+		    daemon->servers_tail->next = serv;
+		    daemon->servers_tail = serv;
+		    serv->next = NULL;
+		  }
+		break;
+	      }
+	    else
+	      up = &serv->next;
+	  }
+      
       if (serv)
 	{
 	  free(alloc_domain);

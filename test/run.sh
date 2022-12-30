@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Only run tests on x86_64, x86_64-musl, and x86_32 targets
-if [[ ${CI} == "true" && "${CI_ARCH}" != "x86_64" &&  "${CI_ARCH}" != "x86_64-musl" && "${CI_ARCH}" != "x86_32" ]]; then
+# Only run tests on x86_* targets (where the CI can natively run the binaries)
+if [[ ${CI} == "true" && "${CI_ARCH}" != "x86_"* ]]; then
   echo "Skipping tests (CI_ARCH: ${CI_ARCH})!"
   exit 0
 fi
@@ -15,7 +15,7 @@ fi
 while pidof -s pihole-FTL > /dev/null; do
   pid="$(pidof -s pihole-FTL)"
   echo "Terminating running pihole-FTL process with PID ${pid}"
-  kill $pid
+  kill "$pid"
   sleep 1
 done
 
@@ -62,10 +62,6 @@ bash test/pdns/setup.sh
 OLDUMASK=$(umask)
 umask 0022
 
-# Prepare LUA scripts
-mkdir -p /opt/pihole/libs
-wget -O /opt/pihole/libs/inspect.lua https://ftl.pi-hole.net/libraries/inspect.lua
-
 # Start FTL
 if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
   echo "pihole-FTL failed to start"
@@ -99,10 +95,14 @@ curl_to_tricorder() {
 }
 
 if [[ $RET != 0 ]]; then
-  echo -n "pihole.log: "
+  echo -n "pihole/pihole.log: "
   curl_to_tricorder /var/log/pihole/pihole.log
   echo ""
+<<<<<<< HEAD
   echo -n "FTL.log: "
+=======
+  echo -n "pihole/FTL.log: "
+>>>>>>> development
   curl_to_tricorder /var/log/pihole/FTL.log
   echo ""
   echo -n "dig.log: "
@@ -110,6 +110,9 @@ if [[ $RET != 0 ]]; then
   echo ""
   echo -n "ptr.log: "
   curl_to_tricorder ./ptr.log
+  echo ""getallqueries
+  echo -n "getallqueries.log: "
+  curl_to_tricorder ./getallqueries.log
   echo ""
   echo -n "HTTP_info.log: "
   openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole/HTTP_info.log
@@ -120,10 +123,10 @@ if [[ $RET != 0 ]]; then
 fi
 
 # Kill pihole-FTL after having completed tests
-kill $(pidof pihole-FTL)
+kill "$(pidof pihole-FTL)"
 
 # Restore umask
-umask $OLDUMASK
+umask "$OLDUMASK"
 
 # Remove copied file
 rm /home/pihole/pihole-FTL

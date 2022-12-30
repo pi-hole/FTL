@@ -32,7 +32,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_USE_URI=1: The advantage of using a URI filename is that query parameters on the URI can be used to control details of the newly created database connection.
 # SQLITE_OMIT_DESERIALIZE: This option causes the the sqlite3_serialize() and sqlite3_deserialize() interfaces to be omitted from the build (was the default before 3.36.0)
 # HAVE_READLINE: Enable readline support to allow easy editing, history and auto-completion
-set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=2 -DSQLITE_DEFAULT_CACHE_SIZE=-8000 -DSQLITE_USE_URI=1 -DSQLITE_OMIT_DESERIALIZE -DHAVE_READLINE")
+# SQLITE_DEFAULT_CACHE_SIZE=-16384: Allow up to 16 MiB of cache to be used by SQLite3 (default is 2000 kiB)
+set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=2 -DSQLITE_DEFAULT_CACHE_SIZE=-8000 -DSQLITE_USE_URI=1 -DSQLITE_OMIT_DESERIALIZE -DHAVE_READLINE_CACHE_SIZE=-16384")
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
@@ -228,6 +229,24 @@ else()
     message(STATUS "Building FTL with readline support: NO")
 endif()
 
+# Do we want to compile an all-in FTL version?
+if(DEFINED ENV{CI_ARCH})
+  if($ENV{CI_ARCH} STREQUAL "x86_64_full")
+    add_definitions(-DDNSMASQ_ALL_OPTS)
+    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
+    find_package(DBus REQUIRED)
+    # Use results of find_package() call.
+    include_directories(${DBUS_INCLUDE_DIRS})
+    target_link_libraries(pihole-FTL ${DBUS_LIBRARIES})
+    find_library(LIBMNL mnl)
+    find_library(LIBNFTNL nftnl)
+    find_library(LIBNFTABLES nftables)
+    find_library(LIBNFNETLINK nfnetlink)
+    find_library(LIBNETFILTER_CONNTRACK netfilter_conntrack)
+    target_link_libraries(pihole-FTL ${LIBMNL} ${LIBNFTABLES} ${LIBNFTNL} ${LIBNFNETLINK} ${LIBNETFILTER_CONNTRACK})
+  endif()
+endif()
+
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
 endif()
@@ -246,6 +265,7 @@ add_subdirectory(ph7)
 add_subdirectory(database)
 add_subdirectory(dnsmasq)
 add_subdirectory(lua)
+add_subdirectory(lua/scripts)
 add_subdirectory(tre-regex)
 add_subdirectory(syscalls)
 add_subdirectory(config)

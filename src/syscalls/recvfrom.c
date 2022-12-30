@@ -18,7 +18,7 @@
 #undef recvfrom
 ssize_t FTLrecvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen, const char *file, const char *func, const int line)
 {
-    ssize_t ret = 0;
+	ssize_t ret = 0;
 	do
 	{
 		// Reset errno before trying to write
@@ -29,11 +29,17 @@ ssize_t FTLrecvfrom(int sockfd, void *buf, size_t len, int flags, struct sockadd
 	// incoming signal
 	while(ret < 0 && errno == EINTR);
 
+	// Backup errno value
+	const int _errno = errno;
+
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret < 0)
 		log_warn("Could not recvfrom() in %s() (%s:%i): %s",
 		         func, file, line, strerror(errno));
 
-    return ret;
+	// Restore errno value
+	errno = _errno;
+
+	return ret;
 }

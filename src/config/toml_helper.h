@@ -12,7 +12,7 @@
 
 #include "../FTL.h"
 
-FILE *openFTLtoml(const char *mode);
+FILE *openFTLtoml(const char *mode) __attribute((malloc)) __attribute((nonnull(1)));
 void catTOMLsection(FILE *fp, const unsigned int indent, const char *key);
 void catTOMLextrainfo(FILE *fp, const unsigned int indent, const char *infostr);
 void catTOMLstring(FILE *fp, const unsigned int indent, const char *key, const char *description, const char *values, const char *val, const char *dptr);

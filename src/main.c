@@ -59,12 +59,15 @@ int main (int argc, char *argv[])
 	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
 
+	// Process pihole-FTL.toml configuration file
+	readFTLconf();
+
 	// Catch signals not handled by dnsmasq
 	// We configure real-time signals later (after dnsmasq has forked)
 	handle_signals();
 
 	// Initialize shared memory
-	if(!init_shmem(true))
+	if(!init_shmem())
 	{
 		log_crit("Initialization of shared memory failed.");
 		// Check if there is already a running FTL process
@@ -72,13 +75,14 @@ int main (int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-	// Process FTL config file
-	readFTLconf();
-
 	// pihole-FTL should really be run as user "pihole" to not mess up with file permissions
 	// print warning otherwise
 	if(strcmp(username, "pihole") != 0)
 		log_warn("Starting pihole-FTL as user %s is not recommended", username);
+
+	// Write PID early on so systemd cannot be fooled during DELAY_STARTUP
+	// times. The PID in this file will later be overwritten after forking
+	savepid();
 
 	// Delay startup (if requested)
 	// Do this before reading the database to make this option not only

@@ -27,7 +27,7 @@
 #include "../gc.h"
 
 static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT", "DNSMASQ_WARN", "LOAD", "SHMEM", "DISK" };
+	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT", "DNSMASQ_WARN", "LOAD", "SHMEM", "DISK", "ADLIST" };
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -94,6 +94,13 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_NULL, // Not used
 			SQLITE_NULL  // Not used
 		},
+		{	// INACCESSIBLE_ADLIST_MESSAGE: The message column contains the corresponding adlist URL
+			SQLITE_INTEGER, // database index of the adlist (so the dashboard can show a link)
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
+		},
 	};
 // Create message table in the database
 bool create_message_table(sqlite3 *db)
@@ -143,7 +150,7 @@ bool flush_message_table(void)
 	return true;
 }
 
-static bool add_message(const enum message_type type, const bool unique,
+static bool add_message(const enum message_type type,
                         const char *message, const int count,...)
 {
 	bool okay = false;
@@ -159,55 +166,52 @@ static bool add_message(const enum message_type type, const bool unique,
 		return false;
 	}
 
-	// Ensure there are no duplicates when adding host name or rate-limiting messages
-	if(unique)
-	{
-		sqlite3_stmt* stmt = NULL;
-		const char *querystr = "DELETE FROM message WHERE type = ?1 AND message = ?2";
-		int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
-		if( rc != SQLITE_OK ){
-			log_err("add_message(type=%u, message=%s) - SQL error prepare DELETE: %s",
-			        type, message, sqlite3_errstr(rc));
-			goto end_of_add_message;
-		}
-
-		// Bind type to prepared statement
-		if((rc = sqlite3_bind_text(stmt, 1, message_types[type], -1, SQLITE_STATIC)) != SQLITE_OK)
-		{
-			log_err("add_message(type=%u, message=%s) - Failed to bind type DELETE: %s",
-			        type, message, sqlite3_errstr(rc));
-			sqlite3_reset(stmt);
-			sqlite3_finalize(stmt);
-			goto end_of_add_message;
-		}
-
-		// Bind message to prepared statement
-		if((rc = sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC)) != SQLITE_OK)
-		{
-			log_err("add_message(type=%u, message=%s) - Failed to bind message DELETE: %s",
-			        type, message, sqlite3_errstr(rc));
-			sqlite3_reset(stmt);
-			sqlite3_finalize(stmt);
-			goto end_of_add_message;
-		}
-
-		// Execute and finalize
-		if((rc = sqlite3_step(stmt)) != SQLITE_OK && rc != SQLITE_DONE)
-		{
-			log_err("add_message(type=%u, message=%s) - SQL error step DELETE: %s",
-			        type, message, sqlite3_errstr(rc));
-			goto end_of_add_message;
-		}
-		sqlite3_clear_bindings(stmt);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
+	// Ensure there are no duplicates when adding messages
+	sqlite3_stmt* stmt = NULL;
+	const char *querystr = "DELETE FROM message WHERE type = ?1 AND message = ?2";
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		log_err("add_message(type=%u, message=%s) - SQL error prepare DELETE: %s",
+		        type, message, sqlite3_errstr(rc));
+		goto end_of_add_message;
 	}
 
+	// Bind type to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, message_types[type], -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		log_err("add_message(type=%u, message=%s) - Failed to bind type DELETE: %s",
+			type, message, sqlite3_errstr(rc));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		goto end_of_add_message;
+	}
+
+	// Bind message to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		log_err("add_message(type=%u, message=%s) - Failed to bind message DELETE: %s",
+			type, message, sqlite3_errstr(rc));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		goto end_of_add_message;
+	}
+
+	// Execute and finalize
+	if((rc = sqlite3_step(stmt)) != SQLITE_OK && rc != SQLITE_DONE)
+	{
+		log_err("add_message(type=%u, message=%s) - SQL error step DELETE: %s",
+			type, message, sqlite3_errstr(rc));
+		goto end_of_add_message;
+	}
+	sqlite3_clear_bindings(stmt);
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+	stmt = NULL;
+
 	// Prepare SQLite statement
-	sqlite3_stmt* stmt = NULL;
-	const char *querystr = "INSERT INTO message (timestamp,type,message,blob1,blob2,blob3,blob4,blob5) "
-	                       "VALUES ((cast(strftime('%s', 'now') as int)),?,?,?,?,?,?,?);";
-	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	querystr = "INSERT INTO message (timestamp,type,message,blob1,blob2,blob3,blob4,blob5) "
+	           "VALUES ((cast(strftime('%s', 'now') as int)),?,?,?,?,?,?,?);";
+	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("add_message(type=%u, message=%s) - SQL error prepare: %s",
@@ -313,7 +317,7 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 
 	// Log to database only if not in CLI mode
 	if(!cli_mode)
-		add_message(REGEX_MESSAGE, false, warning, 3, type, regex, dbindex);
+		add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
 }
 
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,
@@ -328,7 +332,7 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 
 	// Log to database
 	char *names = get_client_names_from_ids(matching_ids);
-	add_message(SUBNET_MESSAGE, false, ip, 5, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
+	add_message(SUBNET_MESSAGE, ip, 5, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
 	free(names);
 }
 
@@ -339,7 +343,7 @@ void logg_hostname_warning(const char *ip, const char *name, const unsigned int 
 	         ip, name, pos);
 
 	// Log to database
-	add_message(HOSTNAME_MESSAGE, true, ip, 2, name, (const int)pos);
+	add_message(HOSTNAME_MESSAGE, ip, 2, name, (const int)pos);
 }
 
 void logg_fatal_dnsmasq_message(const char *message)
@@ -348,7 +352,7 @@ void logg_fatal_dnsmasq_message(const char *message)
 	log_crit("Error in dnsmasq core: %s", message);
 
 	// Log to database
-	add_message(DNSMASQ_CONFIG_MESSAGE, false, message, 0);
+	add_message(DNSMASQ_CONFIG_MESSAGE, message, 0);
 
 	// FTL will dies after this point, so we should make sure to clean up
 	// behind ourselves
@@ -364,7 +368,7 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 	         clientIP, turnaround, turnaround == 1 ? "" : "s");
 
 	// Log to database
-	add_message(RATE_LIMIT_MESSAGE, true, clientIP, 2, config.rate_limit.count, config.rate_limit.interval);
+	add_message(RATE_LIMIT_MESSAGE, clientIP, 2, config.rate_limit.count, config.rate_limit.interval);
 }
 
 void logg_warn_dnsmasq_message(char *message)
@@ -373,7 +377,7 @@ void logg_warn_dnsmasq_message(char *message)
 	log_warn("WARNING in dnsmasq core: %s", message);
 
 	// Log to database
-	add_message(DNSMASQ_WARN_MESSAGE, false, message, 0);
+	add_message(DNSMASQ_WARN_MESSAGE, message, 0);
 }
 
 void log_resource_shortage(const double load, const int nprocs, const int shmem, const int disk, const char *path, const char *msg)
@@ -381,16 +385,25 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 	if(load > 0.0)
 	{
 		log_warn("Long-term load (15min avg) larger than number of processors: %.1f > %d", load, nprocs);
-		add_message(LOAD_MESSAGE, true, "excessive load", 2, load, nprocs);
+		add_message(LOAD_MESSAGE, "excessive load", 2, load, nprocs);
 	}
 	else if(shmem > -1)
 	{
 		log_warn("RAM shortage (%s) ahead: %d%% is used (%s)", path, shmem, msg);
-		add_message(SHMEM_MESSAGE, true, path, 2, shmem, msg);
+		add_message(SHMEM_MESSAGE, path, 2, shmem, msg);
 	}
 	else if(disk > -1)
 	{
 		log_warn("Disk shortage (%s) ahead: %d%% is used (%s)", path, disk, msg);
-		add_message(DISK_MESSAGE, true, path, 2, disk, msg);
+		add_message(DISK_MESSAGE, path, 2, disk, msg);
 	}
+}
+
+void logg_inaccessible_adlist(const int dbindex, const char *address)
+{
+	// Log to FTL.log
+	log_warn("Adlist with ID %d (%s) was inaccessible during last gravity run", dbindex, address);
+
+	// Log to database
+	add_message(INACCESSIBLE_ADLIST_MESSAGE, address, 1, dbindex);
 }

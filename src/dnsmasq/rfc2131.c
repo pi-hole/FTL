@@ -1153,15 +1153,22 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	  tagif_netid = run_tag_if(&context->netid);
 	}
 
-      log_tags(tagif_netid, ntohl(mess->xid));
       apply_delay(mess->xid, recvtime, tagif_netid);
 
       if (option_bool(OPT_RAPID_COMMIT) && option_find(mess, sz, OPTION_RAPID_COMMIT, 0))
 	{
 	  rapid_commit = 1;
+	  /* If a lease exists for this host and another address, squash it. */
+	  if (lease && lease->addr.s_addr != mess->yiaddr.s_addr)
+	    {
+	      lease_prune(lease, now);
+	      lease = NULL;
+	    }
 	  goto rapid_commit;
 	}
       
+      log_tags(tagif_netid, ntohl(mess->xid));
+
       daemon->metrics[METRIC_DHCPOFFER]++;
       log_packet("DHCPOFFER" , &mess->yiaddr, emac, emac_len, iface_name, NULL, NULL, mess->xid);
       
@@ -1420,21 +1427,18 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  /* DNSMASQ_REQUESTED_OPTIONS */
 		  if ((opt = option_find(mess, sz, OPTION_REQUESTED_OPTIONS, 1)))
 		    {
-		      int len = option_len(opt);
+		      int i, len = option_len(opt);
 		      unsigned char *rop = option_ptr(opt, 0);
-		      char *q = daemon->namebuff;
-		      int i;
+		      
 		      for (i = 0; i < len; i++)
-		        {
-		          q += snprintf(q, MAXDNAME - (q - daemon->namebuff), "%d%s", rop[i], i + 1 == len ? "" : ",");
-		        }
-		      lease_add_extradata(lease, (unsigned char *)daemon->namebuff, (q - daemon->namebuff), 0); 
+			lease_add_extradata(lease, (unsigned char *)daemon->namebuff,
+					    sprintf(daemon->namebuff, "%u", rop[i]), (i + 1) == len ? 0 : ',');
 		    }
 		  else
-		    {
-		      add_extradata_opt(lease, NULL);
-		    }
-
+		    lease_add_extradata(lease, NULL, 0, 0);
+		  
+		  add_extradata_opt(lease, option_find(mess, sz, OPTION_MUD_URL_V4, 1));
+		  
 		  /* space-concat tag set */
 		  if (!tagif_netid)
 		    add_extradata_opt(lease, NULL);

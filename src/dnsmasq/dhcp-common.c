@@ -685,6 +685,7 @@ const struct opttab_t {
   { "client-machine-id", 97, 0 },
   { "posix-timezone", 100, OT_NAME }, /* RFC 4833, Sec. 2 */
   { "tzdb-timezone", 101, OT_NAME }, /* RFC 4833, Sec. 2 */
+  { "ipv6-only", 108, 4 | OT_DEC },  /* RFC 8925 */ 
   { "subnet-select", 118, OT_INTERNAL },
   { "domain-search", 119, OT_RFC1035_NAME },
   { "sip-server", 120, 0 },
@@ -721,6 +722,8 @@ static const struct opttab_t opttab6[] = {
   { "sntp-server", 31,  OT_ADDR_LIST },
   { "information-refresh-time", 32, OT_TIME },
   { "FQDN", 39, OT_INTERNAL | OT_RFC1035_NAME },
+  { "posix-timezone", 41, OT_NAME }, /* RFC 4833, Sec. 3 */
+  { "tzdb-timezone", 42, OT_NAME }, /* RFC 4833, Sec. 3 */
   { "ntp-server", 56, 0 /* OT_ADDR_LIST | OT_RFC1035_NAME */ },
   { "bootfile-url", 59, OT_NAME },
   { "bootfile-param", 60, OT_CSTRING },
@@ -1017,7 +1020,10 @@ void log_relay(int family, struct dhcp_relay *relay)
 {
   int broadcast = relay->server.addr4.s_addr == 0;
   inet_ntop(family, &relay->local, daemon->addrbuff, ADDRSTRLEN);
-  inet_ntop(family, &relay->server, daemon->namebuff, ADDRSTRLEN); 
+  inet_ntop(family, &relay->server, daemon->namebuff, ADDRSTRLEN);
+
+  if (family == AF_INET && relay->port != DHCP_SERVER_PORT)
+    sprintf(daemon->namebuff + strlen(daemon->namebuff), "#%u", relay->port);
 
 #ifdef HAVE_DHCP6
   struct in6_addr multicast;
@@ -1025,7 +1031,11 @@ void log_relay(int family, struct dhcp_relay *relay)
   inet_pton(AF_INET6, ALL_SERVERS, &multicast);
 
   if (family == AF_INET6)
-    broadcast = IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast);
+    {
+      broadcast = IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast);
+      if (relay->port != DHCPV6_SERVER_PORT)
+	sprintf(daemon->namebuff + strlen(daemon->namebuff), "#%u", relay->port);
+    }
 #endif
   
   

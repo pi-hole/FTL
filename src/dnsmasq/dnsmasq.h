@@ -14,13 +14,6 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/* Pi-hole definitions */
-#define HAVE_DNSSEC
-#define HAVE_DNSSEC_STATIC
-#define HAVE_IDN
-#define HAVE_LUASCRIPT
-/***********************/
-
 #define COPYRIGHT "Copyright (c) 2000-2022 Simon Kelley"
 
 /* We do defines that influence behavior of stdio.h, so complain
@@ -140,6 +133,7 @@ typedef unsigned long long u64;
 #include <sys/uio.h>
 #include <syslog.h>
 #include <dirent.h>
+#include <netdb.h>
 #ifndef HAVE_LINUX_NETWORK
 #  include <net/if_dl.h>
 #endif
@@ -286,7 +280,8 @@ struct event_desc {
 #define OPT_FILTER_AAAA    68
 #define OPT_STRIP_ECS      69
 #define OPT_STRIP_MAC      70
-#define OPT_LAST           71
+#define OPT_NORR           71
+#define OPT_LAST           72
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -520,6 +515,7 @@ struct crec {
 #define F_DOMAINSRV (1u<<28)
 #define F_RCODE     (1u<<29)
 #define F_SRV       (1u<<30)
+#define F_STALE     (1u<<31)
 
 #define UID_NONE      0
 /* Values of uid in crecs with F_CONFIG bit set. */
@@ -593,7 +589,8 @@ struct server {
   struct serverfd *sfd; 
   int tcpfd, edns_pktsz;
   time_t pktsz_reduced;
-  unsigned int queries, failed_queries;
+  unsigned int queries, failed_queries, nxdomain_replies, retrys;
+  unsigned int query_latency, mma_latency;
   time_t forwardtime;
   int forwardcount;
 #ifdef HAVE_LOOP
@@ -677,6 +674,7 @@ struct resolvc {
   struct resolvc *next;
   int is_default, logged;
   time_t mtime;
+  ino_t ino;
   char *name;
 #ifdef HAVE_INOTIFY
   int wd; /* inotify watch descriptor */
@@ -695,10 +693,17 @@ struct hostsfile {
   struct hostsfile *next;
   int flags;
   char *fname;
+  unsigned int index; /* matches to cache entries for logging */
+};
+
+struct dyndir {
+  struct dyndir *next;
+  struct hostsfile *files;
+  int flags;
+  char *dname;
 #ifdef HAVE_INOTIFY
   int wd; /* inotify watch descriptor */
 #endif
-  unsigned int index; /* matches to cache entries for logging */
 };
 
 /* packet-dump flags */
@@ -766,11 +771,13 @@ struct frec {
   unsigned short new_id;
   int forwardall, flags;
   time_t time;
+  u32 forward_timestamp;
+  int forward_delay;
   unsigned char *hash[HASH_SIZE];
-#ifdef HAVE_DNSSEC 
-  int class, work_counter;
   struct blockdata *stash; /* Saved reply, whilst we validate */
   size_t stash_len;
+#ifdef HAVE_DNSSEC 
+  int class, work_counter;
   struct frec *dependent; /* Query awaiting internally-generated DNSKEY or DS query */
   struct frec *next_dependent; /* list of above. */
   struct frec *blocking_query; /* Query which is blocking us. */
@@ -987,6 +994,8 @@ struct dhcp_bridge {
 
 struct cond_domain {
   char *domain, *prefix; /* prefix is text-prefix on domain name */
+  char *interface;       /* These two set when domain comes from interface. */
+  struct addrlist *al;
   struct in_addr start, end;
   struct in6_addr start6, end6;
   int is6, indexed, prefixlen;
@@ -1094,6 +1103,7 @@ struct dhcp_relay {
   union all_addr local, server;
   char *interface; /* Allowable interface for replies from server, and dest for IPv6 multicast */
   int iface_index; /* working - interface in which requests arrived, for return */
+  int port;        /* Port of relay we forward to. */
 #ifdef HAVE_SCRIPT
   struct snoop_record {
     struct in6_addr client, prefix;
@@ -1147,6 +1157,7 @@ extern struct daemon {
   int log_fac; /* log facility */
   char *log_file; /* optional log file */
   int max_logs;  /* queue limit */
+  int randport_limit; /* Maximum number of source ports for query. */
   int cachesize, ftabsize;
   int port, query_port, min_port, max_port;
   unsigned long local_ttl, neg_ttl, max_ttl, min_cache_ttl, max_cache_ttl, auth_ttl, dhcp_ttl, use_dhcp_ttl;
@@ -1154,6 +1165,7 @@ extern struct daemon {
   u32 umbrella_org;
   u32 umbrella_asset;
   u8 umbrella_device[8];
+  int host_index;
   struct hostsfile *addn_hosts;
   struct dhcp_context *dhcp, *dhcp6;
   struct ra_interface *ra_interfaces;
@@ -1174,7 +1186,8 @@ extern struct daemon {
   int doing_ra, doing_dhcp6;
   struct dhcp_netid_list *dhcp_ignore, *dhcp_ignore_names, *dhcp_gen_names; 
   struct dhcp_netid_list *force_broadcast, *bootp_dynamic;
-  struct hostsfile *dhcp_hosts_file, *dhcp_opts_file, *dynamic_dirs;
+  struct hostsfile *dhcp_hosts_file, *dhcp_opts_file;
+  struct dyndir *dynamic_dirs;
   int dhcp_max, tftp_max, tftp_mtu;
   int dhcp_server_port, dhcp_client_port;
   int start_tftp_port, end_tftp_port; 
@@ -1191,6 +1204,8 @@ extern struct daemon {
   int dump_mask;
   unsigned long soa_sn, soa_refresh, soa_retry, soa_expiry;
   u32 metrics[__METRIC_MAX];
+  int fast_retry_time, fast_retry_timeout;
+  int cache_max_expiry;
 #ifdef HAVE_DNSSEC
   struct ds_config *ds;
   char *timestamp_file;
@@ -1283,6 +1298,14 @@ extern struct daemon {
 #endif
 } *daemon;
 
+struct server_details {
+  union mysockaddr *addr, *source_addr;
+  struct addrinfo *hostinfo, *orig_hostinfo;
+  char *interface, *source, *scope_id, *interface_opt;
+  int serv_port, source_port, addr_type, scope_index, valid;
+  u16 *flags;
+};
+
 /* cache.c */
 void cache_init(void);
 void next_uid(struct crec *crecp);
@@ -1300,6 +1323,7 @@ struct crec *cache_find_by_name(struct crec *crecp,
 				char *name, time_t now, unsigned int prot);
 void cache_end_insert(void);
 void cache_start_insert(void);
+unsigned int cache_remove_uid(const unsigned int uid);
 int cache_recv_insert(time_t now, int fd);
 struct crec *cache_insert(char *name, union all_addr *addr, unsigned short class, 
 			  time_t now, unsigned long ttl, unsigned int flags);
@@ -1349,7 +1373,8 @@ void report_addresses(struct dns_header *header, size_t len, u32 mark);
 #endif
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
-		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader);
+		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader,
+		      int *stale);
 int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name, 
 			     time_t now);
 int check_for_ignored_address(struct dns_header *header, size_t qlen);
@@ -1408,12 +1433,15 @@ void *safe_malloc(size_t size);
 void safe_strncpy(char *dest, const char *src, size_t size);
 void safe_pipe(int *fd, int read_noblock);
 void *whine_malloc(size_t size);
+void *whine_realloc(void *ptr, size_t size);
 int sa_len(union mysockaddr *addr);
 int sockaddr_isequal(const union mysockaddr *s1, const union mysockaddr *s2);
+int sockaddr_isnull(const union mysockaddr *s);
 int hostname_order(const char *a, const char *b);
 int hostname_isequal(const char *a, const char *b);
 int hostname_issubdomain(char *a, char *b);
 time_t dnsmasq_time(void);
+u32 dnsmasq_milliseconds(void);
 int netmask_length(struct in_addr mask);
 int is_same_net(struct in_addr a, struct in_addr b, struct in_addr mask);
 int is_same_net_prefix(struct in_addr a, struct in_addr b, int prefix);
@@ -1457,8 +1485,9 @@ void read_servers_file(void);
 void set_option_bool(unsigned int opt);
 void reset_option_bool(unsigned int opt);
 struct hostsfile *expand_filelist(struct hostsfile *list);
-char *parse_server(char *arg, union mysockaddr *addr, 
-		   union mysockaddr *source_addr, char *interface, u16 *flags);
+char *parse_server(char *arg, struct server_details *sdetails);
+char *parse_server_addr(struct server_details *sdetails);
+int parse_server_next(struct server_details *sdetails);
 int option_read_dynfile(char *file, int flags);
 
 /* forward.c */
@@ -1473,6 +1502,7 @@ int send_from(int fd, int nowild, char *packet, size_t len,
 void resend_query(void);
 int allocate_rfd(struct randfd_list **fdlp, struct server *serv);
 void free_rfds(struct randfd_list **fdlp);
+int fast_retry(time_t now);
 
 /* network.c */
 int indextoname(int fd, int index, char *name);
@@ -1825,8 +1855,10 @@ int do_arp_script_run(void);
 /* dump.c */
 #ifdef HAVE_DUMPFILE
 void dump_init(void);
-void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src,
-		 union mysockaddr *dst, int port);
+void dump_packet_udp(int mask, void *packet, size_t len, union mysockaddr *src,
+		     union mysockaddr *dst, int fd);
+void dump_packet_icmp(int mask, void *packet, size_t len, union mysockaddr *src,
+		      union mysockaddr *dst);
 #endif
 
 /* domain-match.c */

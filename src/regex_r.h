@@ -46,8 +46,7 @@ typedef struct {
 #define REGEX_MSG_LEN 256
 bool compile_regex(const char *regexin, regexData *regex, char **message);
 unsigned int get_num_regex(const enum regex_type regexid) __attribute__((pure));
-int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
-                const enum regex_type regexid, const bool regextest);
+bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, const enum regex_type regexid);
 void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void reload_per_client_regex(clientsData *client);
 void read_regex_from_database(void);

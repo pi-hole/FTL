@@ -32,6 +32,17 @@
   [[ ${lines[9]} == *"pihole-FTL is already running!" ]]
 }
 
+@test "dnsmasq options as expected" {
+  run bash -c './pihole-FTL -vv | grep "cryptohash"'
+  printf "%s\n" "${lines[@]}"
+  if [[ "${CI_ARCH}" == "x86_64_full" ]]; then
+    [[ ${lines[0]} == "Features:        IPv6 GNU-getopt DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP conntrack ipset nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
+  else
+    [[ ${lines[0]} == "Features:        IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
+  fi
+  [[ ${lines[1]} == "" ]]
+}
+
 @test "Starting tests without prior history" {
   run bash -c 'grep -c "Total DNS queries: 0" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
@@ -317,7 +328,7 @@
 @test "Local DNS test: SOA ftl" {
   run bash -c "dig SOA ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "ns1.ftl. hostmaster.ftl. 1 10800 3600 604800 3600" ]]
+  [[ ${lines[0]} == "ns1.ftl. hostmaster.ftl. 0 10800 3600 604800 3600" ]]
   [[ ${lines[1]} == "" ]]
 }
 
@@ -357,16 +368,16 @@
 }
 
 @test "Local DNS test: SVCB svcb.ftl" {
-  run bash -c "dig +unknown TYPE64 svcb.ftl @127.0.0.1 +short"
+  run bash -c "dig SVCB svcb.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '\# 13 000109706F72743D2238302200' ]]
+  [[ ${lines[0]} == '1 port=\"80\".' ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Local DNS test: HTTPS https.ftl" {
-  run bash -c "dig +unknown TYPE65 https.ftl @127.0.0.1 +short"
+  run bash -c "dig HTTPS https.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '\# 15 000100000100080322683303683222' ]]
+  [[ ${lines[0]} == '1 . alpn="h3,h2"' ]]
   [[ ${lines[1]} == "" ]]
 }
 
@@ -384,14 +395,33 @@
   [[ ${lines[1]} == "" ]]
 }
 
+@test "CNAME inspection: NODATA CNAME targets are blocked" {
+  run bash -c "dig A a-cname.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c "dig AAAA a-cname.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "::" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c "dig A aaaa-cname.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c "dig AAAA aaaa-cname.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "::" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
 @test "DNSSEC: SECURE domain is resolved" {
-  run bash -c "dig A sigok.verteiltesysteme.net @127.0.0.1"
+  run bash -c "dig A dnssec.works @127.0.0.1"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"status: NOERROR"* ]]
 }
 
 @test "DNSSEC: BOGUS domain is rejected" {
-  run bash -c "dig A sigfail.verteiltesysteme.net @127.0.0.1"
+  run bash -c "dig A fail01.dnssec.works @127.0.0.1"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"status: SERVFAIL"* ]]
 }
@@ -441,8 +471,7 @@
 @test "Help CLI argument return help text" {
   run bash -c '/home/pihole/pihole-FTL help'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
-  [[ ${lines[3]} == "Available arguments:" ]]
+  [[ ${lines[0]} == "The Pi-hole FTL engine - "* ]]
 }
 
 #@test "No WARNING messages in FTL.log (besides known capability issues)" {

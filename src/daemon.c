@@ -28,7 +28,6 @@
 
 pthread_t threads[THREADS_MAX] = { 0 };
 pthread_t api_threads[MAX_API_THREADS] = { 0 };
-pid_t api_tids[MAX_API_THREADS] = { 0 };
 bool resolver_ready = false;
 
 void go_daemon(void)
@@ -121,17 +120,6 @@ static void removepid(void)
 		return;
 	}
 	fclose(f);
-
-	// We also try to remove the file. We still empty the file above
-	// to ensure it is at least empty when it cannot be removed.
-	// because removing files on Linux is actually unlinking them.
-	// If any processes still have the file open, it will remain
-	// in existence until the last file descriptor referring to
-	// it is closed.
-	if(remove(config.files.pid) != 0)
-	{
-		log_warn("Unable to remove PID file: %s", strerror(errno));
-	}
 }
 
 char *getUserName(void)
@@ -201,7 +189,12 @@ void delay_startup(void)
 
 	// Sleep if requested by DELAY_STARTUP
 	log_info("Sleeping for %d seconds as requested by configuration ...", config.delay_startup);
-	sleep(config.delay_startup);
+	if(sleep(config.delay_startup) != 0)
+	{
+		log_crit("Sleeping was interrupted by an external signal");
+		cleanup(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
+	}
 	log_info("Done sleeping, continuing startup of resolver...");
 }
 
@@ -266,15 +259,12 @@ void cleanup(const int ret)
 	// Do proper cleanup only if FTL started successfully
 	if(resolver_ready)
 	{
+		// Terminate threads
 		terminate_threads();
 
 		// Cancel and join possibly still running API worker threads
 		for(unsigned int tid = 0; tid < MAX_API_THREADS; tid++)
 		{
-			// Skip if this is an unused slot
-			if(api_threads[tid] == 0)
-				continue;
-
 			// Otherwise, cancel and join the thread
 			log_notice("Joining API worker thread %d", tid);
 			pthread_cancel(api_threads[tid]);

@@ -336,6 +336,16 @@ void *whine_malloc(size_t size)
   return ret;
 }
 
+void *whine_realloc(void *ptr, size_t size)
+{
+  void *ret = realloc(ptr, size);
+
+  if (!ret)
+    my_syslog(LOG_ERR, _("failed to reallocate %d bytes"), (int) size);
+
+  return ret;
+}
+
 int sockaddr_isequal(const union mysockaddr *s1, const union mysockaddr *s2)
 {
   if (s1->sa.sa_family == s2->sa.sa_family)
@@ -351,6 +361,19 @@ int sockaddr_isequal(const union mysockaddr *s1, const union mysockaddr *s2)
 	  IN6_ARE_ADDR_EQUAL(&s1->in6.sin6_addr, &s2->in6.sin6_addr))
 	return 1;
     }
+  return 0;
+}
+
+int sockaddr_isnull(const union mysockaddr *s)
+{
+  if (s->sa.sa_family == AF_INET &&
+      s->in.sin_addr.s_addr == 0)
+    return 1;
+  
+  if (s->sa.sa_family == AF_INET6 &&
+      IN6_IS_ADDR_UNSPECIFIED(&s->in6.sin6_addr))
+    return 1;
+  
   return 0;
 }
 
@@ -445,6 +468,15 @@ time_t dnsmasq_time(void)
 #else
   return time(NULL);
 #endif
+}
+
+u32 dnsmasq_milliseconds(void)
+{
+  struct timeval tv;
+
+  gettimeofday(&tv, NULL);
+
+  return (tv.tv_sec) * 1000 + (tv.tv_usec / 1000);
 }
 
 int netmask_length(struct in_addr mask)

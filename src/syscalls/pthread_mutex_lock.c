@@ -17,7 +17,7 @@
 #undef pthread_mutex_lock
 int FTLpthread_mutex_lock(pthread_mutex_t *__mutex, const char *file, const char *func, const int line)
 {
-	int ret = 0;
+	ssize_t ret = 0;
 	do
 	{
 		ret = pthread_mutex_lock(__mutex);
@@ -26,11 +26,17 @@ int FTLpthread_mutex_lock(pthread_mutex_t *__mutex, const char *file, const char
 	// incoming signal
 	while(ret == EINTR);
 
-	// Final errer checking (may have faild for some other reason then an
+	// Backup errno value
+	const int _errno = errno;
+
+	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
-	if(ret != 0)
+	if(ret < 0)
 		log_warn("Could not pthread_mutex_lock() in %s() (%s:%i): %s",
-		         func, file, line, strerror(ret));
+		         func, file, line, strerror(errno));
+
+	// Restore errno value
+	errno = _errno;
 
 	return ret;
 }
