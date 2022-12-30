@@ -130,7 +130,7 @@ jobs:
       -
         name: Upload documentation artifacts for deployoment
         if: github.event_name != 'pull_request' && matrix.arch == 'x86_64'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3.1.1
         with:
           name: tmp-storage
           path: 'api-docs.tar.gz'
@@ -162,9 +162,14 @@ jobs:
           known-hosts: ${{ secrets.KNOWN_HOSTS }}
       -
         name: Untar documentation files
+        working-directory: ${{steps.download.outputs.download-path}}
         run: |
           mkdir docs/
           tar xzvf api-docs.tar.gz -C docs/
+      -
+        name: Display structure of files ready for upload
+        run: ls -R
+        working-directory: ${{steps.download.outputs.download-path}}
       -
         name: Transfer Builds to Pi-hole server for pihole checkout
         env:
