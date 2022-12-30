@@ -98,11 +98,7 @@ if [[ $RET != 0 ]]; then
   echo -n "pihole/pihole.log: "
   curl_to_tricorder /var/log/pihole/pihole.log
   echo ""
-<<<<<<< HEAD
-  echo -n "FTL.log: "
-=======
   echo -n "pihole/FTL.log: "
->>>>>>> development
   curl_to_tricorder /var/log/pihole/FTL.log
   echo ""
   echo -n "dig.log: "

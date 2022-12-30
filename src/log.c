@@ -337,7 +337,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	}
 }
 
-static FILE *open_web_log(const enum web_code code)
+static FILE * __attribute__((malloc, warn_unused_result)) open_web_log(const enum web_code code)
 {
 	// Open the log file in append/create mode
 	char *file = NULL;

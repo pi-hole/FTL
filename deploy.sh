@@ -55,4 +55,9 @@ for dir in "${path[@]}"; do
 done
 
 sftp -r -b - "${USER}"@"${HOST}" <<< "cd ${old_path}
-put ${SOURCE_DIR}/* ./"
+mkdir ${{ dir }}/docs
+mkdir ${{ dir }}/docs/external
+mkdir ${{ dir }}/docs/images
+mkdir ${{ dir }}/docs/specs
+put ${SOURCE_DIR}/pihole* ./
+put ${SOURCE_DIR}/docs/* ./docs/"

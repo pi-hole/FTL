@@ -26,7 +26,7 @@ static size_t size = 0;
 static pthread_mutex_t lock;
 
 // Private prototypes
-static char *parseFTLconf(FILE *fp, const char * key);
+static char *parseFTLconf(FILE *fp, const char *key);
 static void releaseConfigMemory(void);
 static void getPath(FILE* fp, const char *option, char **ptr);
 static void setnice(const char *buffer, int fallback);
@@ -35,7 +35,7 @@ static void readDebugingSettingsLegacy(FILE *fp);
 static void getBlockingModeLegacy(FILE *fp);
 static void getPrivacyLevelLegacy(FILE *fp);
 
-static FILE *openFTLconf(const char **path)
+static FILE * __attribute__((nonnull(1), malloc, warn_unused_result)) openFTLconf(const char **path)
 {
 	FILE *fp;
 	// First check if there is a local file overwriting the global one

@@ -140,23 +140,16 @@ jobs:
     needs: [smoke-tests, build]
     runs-on: ubuntu-latest
     steps:
-<<<<<<< HEAD
-      - name: Get Binaries and documentation built in previous jobs
-        uses: actions/download-artifact@v3
-        with:
-          name: tmp-storage
-=======
       -
         name: Checkout code
         uses: actions/checkout@v3.2.0
       -
-        name: Get Binaries built in previous jobs
+        name: Get Binaries and documentation built in previous jobs
         uses: actions/download-artifact@v3.0.1
         id: download
         with:
-          name: tmp-binary-storage
+          name: tmp-storage
           path: ftl-builds/
->>>>>>> development
       -
         name: Display structure of downloaded files
         run: ls -R
@@ -168,23 +161,11 @@ jobs:
           private-key: ${{ secrets.SSH_KEY }}
           known-hosts: ${{ secrets.KNOWN_HOSTS }}
       -
-<<<<<<< HEAD
         name: Untar documentation files
         run: |
           mkdir docs/
           tar xzvf api-docs.tar.gz -C docs/
       -
-        name: Transfer Binaries and Documentation to Pi-hole server
-        run: |
-          sftp -r -b - ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} <<< "
-          -mkdir -p ${{ needs.build.outputs.OUTPUT_DIR }}
-          -mkdir ${{ needs.build.outputs.OUTPUT_DIR }}/docs
-          -mkdir ${{ needs.build.outputs.OUTPUT_DIR }}/docs/external
-          -mkdir ${{ needs.build.outputs.OUTPUT_DIR }}/docs/images
-          -mkdir ${{ needs.build.outputs.OUTPUT_DIR }}/docs/specs
-          put pihole* ${{ needs.build.outputs.OUTPUT_DIR }}
-          put docs/* ${{ needs.build.outputs.OUTPUT_DIR }}/docs/"
-=======
         name: Transfer Builds to Pi-hole server for pihole checkout
         env:
           USER: ${{ secrets.SSH_USER }}
@@ -193,16 +174,10 @@ jobs:
           SOURCE_DIR: ${{ steps.download.outputs.download-path }}
         run: |
           bash ./deploy.sh
->>>>>>> development
       -
         name: Attach binaries to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
           files: |
-<<<<<<< HEAD
-            pihole-FTL*
-            api-docs.tar.gz
-=======
             ${{ steps.download.outputs.download-path }}/*
->>>>>>> development

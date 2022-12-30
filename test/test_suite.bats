@@ -28,8 +28,8 @@
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[8]} == *"Initialization of shared memory failed." ]]
-  [[ ${lines[9]} == *"pihole-FTL is already running!" ]]
+  [[ ${lines[43]} == *"CRIT: Initialization of shared memory failed." ]]
+  [[ ${lines[44]} == *"INFO: pihole-FTL is already running!" ]]
 }
 
 @test "dnsmasq options as expected" {
@@ -182,13 +182,13 @@
   run bash -c "grep -c 'Regex allow: Querying groups for client 127.0.0.4: \"SELECT id from vw_regex_whitelist WHERE group_id IN (4);\"' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_whitelist WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_blacklist WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_blacklist WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
   run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole/FTL.log"
@@ -214,13 +214,13 @@
   run bash -c "grep -c 'Regex allow: Querying groups for client 127.0.0.5: \"SELECT id from vw_regex_whitelist WHERE group_id IN (4);\"' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_whitelist WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_blacklist WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_blacklist WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
   run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole/FTL.log"
@@ -252,13 +252,13 @@
   run bash -c "grep -c 'Regex allow: Querying groups for client 127.0.0.6: \"SELECT id from vw_regex_whitelist WHERE group_id IN (5);\"' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ? AND group_id IN (5));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_whitelist WHERE domain = ? AND group_id IN (5);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_blacklist WHERE domain = ? AND group_id IN (5));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT id from vw_blacklist WHERE domain = ? AND group_id IN (5);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (5));' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (5);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
   run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
