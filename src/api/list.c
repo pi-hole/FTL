@@ -36,18 +36,18 @@ static int api_list_read(struct ftl_conn *api,
 	cJSON *rows = JSON_NEW_ARRAY();
 	while(gravityDB_readTableGetRow(&table, &sql_msg))
 	{
-		cJSON *row = JSON_NEW_OBJ();
+		cJSON *row = JSON_NEW_OBJECT();
 
 		// Special fields
 		if(listtype == GRAVITY_GROUPS)
 		{
-			JSON_OBJ_COPY_STR(row, "name", table.name);
-			JSON_OBJ_COPY_STR(row, "comment", table.comment);
+			JSON_COPY_STR_TO_OBJECT(row, "name", table.name);
+			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
 		}
 		else if(listtype == GRAVITY_ADLISTS)
 		{
-			JSON_OBJ_COPY_STR(row, "address", table.address);
-			JSON_OBJ_COPY_STR(row, "comment", table.comment);
+			JSON_COPY_STR_TO_OBJECT(row, "address", table.address);
+			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
 		}
 		else if(listtype == GRAVITY_CLIENTS)
 		{
@@ -59,9 +59,9 @@ static int api_list_read(struct ftl_conn *api,
 					name = getNameFromIP(NULL, table.client);
 			}
 
-			JSON_OBJ_COPY_STR(row, "client", table.client);
-			JSON_OBJ_COPY_STR(row, "name", name);
-			JSON_OBJ_COPY_STR(row, "comment", table.comment);
+			JSON_COPY_STR_TO_OBJECT(row, "client", table.client);
+			JSON_COPY_STR_TO_OBJECT(row, "name", name);
+			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
 
 			// Free allocated memory (if applicable)
 			if(name != NULL)
@@ -69,10 +69,10 @@ static int api_list_read(struct ftl_conn *api,
 		}
 		else // domainlists
 		{
-			JSON_OBJ_COPY_STR(row, "domain", table.domain);
-			JSON_OBJ_REF_STR(row, "type", table.type);
-			JSON_OBJ_REF_STR(row, "kind", table.kind);
-			JSON_OBJ_COPY_STR(row, "comment", table.comment);
+			JSON_COPY_STR_TO_OBJECT(row, "domain", table.domain);
+			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
+			JSON_REF_STR_IN_OBJECT(row, "kind", table.kind);
+			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
 		}
 
 		// Groups don't have the groups property
@@ -89,33 +89,33 @@ static int api_list_read(struct ftl_conn *api,
 				group_ids_str[sizeof(group_ids_str)-2u] = ']';
 				group_ids_str[sizeof(group_ids_str)-1u] = '\0';
 				cJSON * group_ids = cJSON_Parse(group_ids_str);
-				JSON_OBJ_ADD_ITEM(row, "groups", group_ids);
+				JSON_ADD_ITEM_TO_OBJECT(row, "groups", group_ids);
 			} else {
 				// Empty group set
 				cJSON *group_ids = JSON_NEW_ARRAY();
-				JSON_OBJ_ADD_ITEM(row, "groups", group_ids);
+				JSON_ADD_ITEM_TO_OBJECT(row, "groups", group_ids);
 			}
 		}
 
 		// Clients don't have the enabled property
 		if(listtype != GRAVITY_CLIENTS)
-			JSON_OBJ_ADD_BOOL(row, "enabled", table.enabled);
+			JSON_ADD_BOOL_TO_OBJECT(row, "enabled", table.enabled);
 
 		// Add read-only database parameters
-		JSON_OBJ_ADD_NUMBER(row, "id", table.id);
-		JSON_OBJ_ADD_NUMBER(row, "date_added", table.date_added);
-		JSON_OBJ_ADD_NUMBER(row, "date_modified", table.date_modified);
+		JSON_ADD_NUMBER_TO_OBJECT(row, "id", table.id);
+		JSON_ADD_NUMBER_TO_OBJECT(row, "date_added", table.date_added);
+		JSON_ADD_NUMBER_TO_OBJECT(row, "date_modified", table.date_modified);
 
 		// Properties added in https://github.com/pi-hole/pi-hole/pull/3951
 		if(listtype == GRAVITY_ADLISTS)
 		{
-			JSON_OBJ_ADD_NUMBER(row, "date_updated", table.date_updated);
-			JSON_OBJ_ADD_NUMBER(row, "number", table.number);
-			JSON_OBJ_ADD_NUMBER(row, "invalid_domains", table.invalid_domains);
-			JSON_OBJ_ADD_NUMBER(row, "status", table.status);
+			JSON_ADD_NUMBER_TO_OBJECT(row, "date_updated", table.date_updated);
+			JSON_ADD_NUMBER_TO_OBJECT(row, "number", table.number);
+			JSON_ADD_NUMBER_TO_OBJECT(row, "invalid_domains", table.invalid_domains);
+			JSON_ADD_NUMBER_TO_OBJECT(row, "status", table.status);
 		}
 
-		JSON_ARRAY_ADD_ITEM(rows, row);
+		JSON_ADD_ITEM_TO_ARRAY(rows, row);
 	}
 	gravityDB_readTableFinalize();
 
@@ -123,7 +123,7 @@ static int api_list_read(struct ftl_conn *api,
 	{
 		// No error, send domains array
 		const char *objname;
-		cJSON *json = JSON_NEW_OBJ();
+		cJSON *json = JSON_NEW_OBJECT();
 		if(listtype == GRAVITY_GROUPS)
 			objname = "groups";
 		else if(listtype == GRAVITY_ADLISTS)
@@ -132,7 +132,7 @@ static int api_list_read(struct ftl_conn *api,
 			objname = "clients";
 		else // domainlists
 			objname = "domains";
-		JSON_OBJ_ADD_ITEM(json, objname, rows);
+		JSON_ADD_ITEM_TO_OBJECT(json, objname, rows);
 		JSON_SEND_OBJECT_CODE(json, code);
 	}
 	else
@@ -335,7 +335,7 @@ static int api_list_remove(struct ftl_conn *api,
 		set_event(RELOAD_GRAVITY);
 
 		// Send empty reply with code 204 No Content
-		cJSON *json = JSON_NEW_OBJ();
+		cJSON *json = JSON_NEW_OBJECT();
 		JSON_SEND_OBJECT_CODE(json, 204);
 	}
 	else

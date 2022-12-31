@@ -119,15 +119,15 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 			previous_timestamp = timestamp;
 			if(item != NULL)
 			{
-				JSON_OBJ_ADD_NUMBER(item, "total_queries", total);
+				JSON_ADD_NUMBER_TO_OBJECT(item, "total_queries", total);
 				total = 0;
-				JSON_OBJ_ADD_NUMBER(item, "blocked_queries", blocked);
+				JSON_ADD_NUMBER_TO_OBJECT(item, "blocked_queries", blocked);
 				blocked = 0;
-				JSON_ARRAY_ADD_ITEM(json, item);
+				JSON_ADD_ITEM_TO_ARRAY(json, item);
 			}
 
-			item = JSON_NEW_OBJ();
-			JSON_OBJ_ADD_NUMBER(item, "timestamp", timestamp);
+			item = JSON_NEW_OBJECT();
+			JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", timestamp);
 		}
 
 		const int status = sqlite3_column_int(stmt, 1);
@@ -298,15 +298,15 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	{
 		const char* string = (char*)sqlite3_column_text(stmt, 0);
 		const int count = sqlite3_column_int(stmt, 1);
-		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_COPY_STR(item, (domains ? "domain" : "ip"), string);
+		cJSON *item = JSON_NEW_OBJECT();
+		JSON_COPY_STR_TO_OBJECT(item, (domains ? "domain" : "ip"), string);
 		// Add empty name field for top_client requests
 		if(!domains)
 		{
-			JSON_OBJ_REF_STR(item, "name", "");
+			JSON_REF_STR_IN_OBJECT(item, "name", "");
 		}
-		JSON_OBJ_ADD_NUMBER(item, "count", count);
-		JSON_ARRAY_ADD_ITEM(top_items, item);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "count", count);
+		JSON_ADD_ITEM_TO_ARRAY(top_items, item);
 		total += count;
 	}
 
@@ -314,9 +314,9 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	sqlite3_finalize(stmt);
 	dbclose(&db);
 
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, (domains ? "top_domains" : "top_clients"), top_items);
-	JSON_OBJ_ADD_NUMBER(json, (blocked ? "blocked_queries" : "total_queries"), total);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, (domains ? "top_domains" : "top_clients"), top_items);
+	JSON_ADD_NUMBER_TO_OBJECT(json, (blocked ? "blocked_queries" : "total_queries"), total);
 	JSON_SEND_OBJECT(json);
 }
 
@@ -376,12 +376,12 @@ int api_stats_database_summary(struct ftl_conn *api)
 	}
 
 	// Loop over and accumulate results
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(json, "gravity_size", "?");
-	JSON_OBJ_ADD_NUMBER(json, "sum_queries", sum_queries);
-	JSON_OBJ_ADD_NUMBER(json, "blocked_queries", blocked_queries);
-	JSON_OBJ_ADD_NUMBER(json, "percent_blocked", percent_blocked);
-	JSON_OBJ_ADD_NUMBER(json, "total_clients", total_clients);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_REF_STR_IN_OBJECT(json, "gravity_size", "?");
+	JSON_ADD_NUMBER_TO_OBJECT(json, "sum_queries", sum_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "percent_blocked", percent_blocked);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "total_clients", total_clients);
 
 	// Close (= unlock) database connection
 	dbclose(&db);
@@ -470,10 +470,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const char* client = (char*)sqlite3_column_text(stmt, 0);
-		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_COPY_STR(item, "ip", client);
-		JSON_OBJ_REF_STR(item, "name", "");
-		JSON_ARRAY_ADD_ITEM(clients, item);
+		cJSON *item = JSON_NEW_OBJECT();
+		JSON_COPY_STR_TO_OBJECT(item, "ip", client);
+		JSON_REF_STR_IN_OBJECT(item, "name", "");
+		JSON_ADD_ITEM_TO_ARRAY(clients, item);
 		num_clients++;
 	}
 	sqlite3_finalize(stmt);
@@ -553,11 +553,11 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 			previous_timestamp = timestamp;
 			if(item != NULL && data != NULL)
 			{
-				JSON_OBJ_ADD_ITEM(item, "data", data);
-				JSON_ARRAY_ADD_ITEM(over_time, item);
+				JSON_ADD_ITEM_TO_OBJECT(item, "data", data);
+				JSON_ADD_ITEM_TO_ARRAY(over_time, item);
 			}
 
-			item = JSON_NEW_OBJ();
+			item = JSON_NEW_OBJECT();
 			data = JSON_NEW_ARRAY();
 			// Prefill data with zeroes
 			// We have to do this as not all clients may have
@@ -565,9 +565,9 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 			// querying
 			for(unsigned int i = 0; i < num_clients; i++)
 			{
-				JSON_ARRAY_ADD_NUMBER(data, 0);
+				JSON_ADD_NUMBER_TO_ARRAY(data, 0);
 			}
-			JSON_OBJ_ADD_NUMBER(item, "timestamp", timestamp);
+			JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", timestamp);
 		}
 
 		const char *client = (char*)sqlite3_column_text(stmt, 1);
@@ -592,16 +592,16 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		}
 
 		// ... and replace corresponding number in data array
-		JSON_ARRAY_REPLACE_NUMBER(data, idx, count);
+		JSON_REPLACE_NUMBER_IN_ARRAY(data, idx, count);
 	}
 
 	// Finalize statement and close (= unlock) database connection
 	sqlite3_finalize(stmt);
 	dbclose(&db);
 
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "over_time", over_time);
-	JSON_OBJ_ADD_ITEM(json, "clients", clients);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "over_time", over_time);
+	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
 	JSON_SEND_OBJECT(json);
 }
 
@@ -640,15 +640,15 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       "AND type = :type";
 		// Add 1 as type is stored one-based in the database for historical reasons
 		int count = db_query_int_from_until_type(db, querystr, from, until, i+1);
-		JSON_OBJ_ADD_NUMBER(types, get_query_type_str(i, NULL, NULL), count);
+		JSON_ADD_NUMBER_TO_OBJECT(types, get_query_type_str(i, NULL, NULL), count);
 	}
 
 	// Close (= unlock) database connection
 	dbclose(&db);
 
 	// Send JSON object
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "types", types);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "types", types);
 	JSON_SEND_OBJECT(json);
 }
 
@@ -749,11 +749,11 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	{
 		const char* upstream = (char*)sqlite3_column_text(stmt, 0);
 		const int count = sqlite3_column_int(stmt, 1);
-		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_COPY_STR(item, "ip", upstream);
-		JSON_OBJ_REF_STR(item, "name", "");
-		JSON_OBJ_ADD_NUMBER(item, "count", count);
-		JSON_ARRAY_ADD_ITEM(upstreams, item);
+		cJSON *item = JSON_NEW_OBJECT();
+		JSON_COPY_STR_TO_OBJECT(item, "ip", upstream);
+		JSON_REF_STR_IN_OBJECT(item, "name", "");
+		JSON_ADD_NUMBER_TO_OBJECT(item, "count", count);
+		JSON_ADD_ITEM_TO_ARRAY(upstreams, item);
 		forwarded_queries += count;
 	}
 	sqlite3_finalize(stmt);
@@ -762,25 +762,25 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	sum_queries += forwarded_queries;
 
 	// Add cache and blocklist as upstreams
-	cJSON *cached = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(cached, "ip", "");
-	JSON_OBJ_REF_STR(cached, "name", "cache");
-	JSON_OBJ_ADD_NUMBER(cached, "count", cached_queries);
-	JSON_ARRAY_ADD_ITEM(upstreams, cached);
+	cJSON *cached = JSON_NEW_OBJECT();
+	JSON_REF_STR_IN_OBJECT(cached, "ip", "");
+	JSON_REF_STR_IN_OBJECT(cached, "name", "cache");
+	JSON_ADD_NUMBER_TO_OBJECT(cached, "count", cached_queries);
+	JSON_ADD_ITEM_TO_ARRAY(upstreams, cached);
 
-	cJSON *blocked = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(blocked, "ip", "");
-	JSON_OBJ_REF_STR(blocked, "name", "blocklist");
-	JSON_OBJ_ADD_NUMBER(blocked, "count", blocked_queries);
-	JSON_ARRAY_ADD_ITEM(upstreams, blocked);
+	cJSON *blocked = JSON_NEW_OBJECT();
+	JSON_REF_STR_IN_OBJECT(blocked, "ip", "");
+	JSON_REF_STR_IN_OBJECT(blocked, "name", "blocklist");
+	JSON_ADD_NUMBER_TO_OBJECT(blocked, "count", blocked_queries);
+	JSON_ADD_ITEM_TO_ARRAY(upstreams, blocked);
 
 	// Close (= unlock) database connection
 	dbclose(&db);
 
 	// Send JSON object
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "upstreams", upstreams);
-	JSON_OBJ_ADD_NUMBER(json, "forwarded_queries", forwarded_queries);
-	JSON_OBJ_ADD_NUMBER(json, "total_queries", sum_queries);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "upstreams", upstreams);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "forwarded_queries", forwarded_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", sum_queries);
 	JSON_SEND_OBJECT(json);
 }

@@ -50,15 +50,15 @@ int api_network(struct ftl_conn *api)
 	network_record network;
 	while(networkTable_readDevicesGetRecord(device_stmt, &network, &sql_msg))
 	{
-		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(item, "id", network.id);
-		JSON_OBJ_COPY_STR(item, "hwaddr", network.hwaddr);
-		JSON_OBJ_COPY_STR(item, "interface", network.iface);
-		JSON_OBJ_COPY_STR(item, "name", network.name);
-		JSON_OBJ_ADD_NUMBER(item, "firstSeen", network.firstSeen);
-		JSON_OBJ_ADD_NUMBER(item, "lastQuery", network.lastQuery);
-		JSON_OBJ_ADD_NUMBER(item, "numQueries", network.numQueries);
-		JSON_OBJ_COPY_STR(item, "macVendor", network.macVendor);
+		cJSON *item = JSON_NEW_OBJECT();
+		JSON_ADD_NUMBER_TO_OBJECT(item, "id", network.id);
+		JSON_COPY_STR_TO_OBJECT(item, "hwaddr", network.hwaddr);
+		JSON_COPY_STR_TO_OBJECT(item, "interface", network.iface);
+		JSON_COPY_STR_TO_OBJECT(item, "name", network.name);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "firstSeen", network.firstSeen);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "lastQuery", network.lastQuery);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "numQueries", network.numQueries);
+		JSON_COPY_STR_TO_OBJECT(item, "macVendor", network.macVendor);
 
 		// Build array of all IP addresses known associated to this client
 		cJSON *ip = JSON_NEW_ARRAY();
@@ -67,7 +67,7 @@ int api_network(struct ftl_conn *api)
 			// Walk known IP addresses
 			network_addresses_record network_address;
 			while(networkTable_readIPsGetRecord(ip_stmt, &network_address, &sql_msg))
-				JSON_ARRAY_COPY_STR(ip, network_address.ip);
+				JSON_COPY_STR_TO_ARRAY(ip, network_address.ip);
 
 			// Possible error handling
 			if(sql_msg != NULL)
@@ -84,10 +84,10 @@ int api_network(struct ftl_conn *api)
 		}
 
 		// Add array of IP addresses to device
-		JSON_OBJ_ADD_ITEM(item, "ip", ip);
+		JSON_ADD_ITEM_TO_OBJECT(item, "ip", ip);
 
 		// Add device to array of all devices
-		JSON_ARRAY_ADD_ITEM(json, item);
+		JSON_ADD_ITEM_TO_ARRAY(json, item);
 	}
 
 	if(sql_msg != NULL)

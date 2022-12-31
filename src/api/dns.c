@@ -26,9 +26,9 @@
 static int get_blocking(struct ftl_conn *api)
 {
 	// Return current status
-	cJSON *json = JSON_NEW_OBJ();
+	cJSON *json = JSON_NEW_OBJECT();
 	const bool blocking = get_blockingstatus();
-	JSON_OBJ_ADD_BOOL(json, "blocking", blocking);
+	JSON_ADD_BOOL_TO_OBJECT(json, "blocking", blocking);
 
 	// Get timer information (if applicable)
 	int delay;
@@ -36,11 +36,11 @@ static int get_blocking(struct ftl_conn *api)
 	get_blockingmode_timer(&delay, &target_status);
 	if(delay > -1)
 	{
-		JSON_OBJ_ADD_NUMBER(json, "timer", delay);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "timer", delay);
 	}
 	else
 	{
-		JSON_OBJ_ADD_NULL(json, "timer");
+		JSON_ADD_NULL_TO_OBJECT(json, "timer");
 	}
 
 	// Send object (HTTP 200 OK)
@@ -131,27 +131,27 @@ int api_dns_cache(struct ftl_conn *api)
 
 	struct cache_info ci = { 0 };
 	get_dnsmasq_cache_info(&ci);
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(json, "size", ci.cache_size);
-	JSON_OBJ_ADD_NUMBER(json, "inserted", ci.cache_inserted);
-	JSON_OBJ_ADD_NUMBER(json, "evicted", ci.cache_live_freed);
-	cJSON *valid = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(valid, "ipv4", ci.valid.ipv4);
-	JSON_OBJ_ADD_NUMBER(valid, "ipv6", ci.valid.ipv6);
-	JSON_OBJ_ADD_NUMBER(valid, "cname", ci.valid.cname);
-	JSON_OBJ_ADD_NUMBER(valid, "srv", ci.valid.srv);
-	JSON_OBJ_ADD_NUMBER(valid, "ds", ci.valid.ds);
-	JSON_OBJ_ADD_NUMBER(valid, "dnskey", ci.valid.dnskey);
-	JSON_OBJ_ADD_NUMBER(valid, "other", ci.valid.other);
-	JSON_OBJ_ADD_ITEM(json, "valid", valid);
-	JSON_OBJ_ADD_NUMBER(json, "expired", ci.expired);
-	JSON_OBJ_ADD_NUMBER(json, "immortal", ci.immortal);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(json, "size", ci.cache_size);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "inserted", ci.cache_inserted);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "evicted", ci.cache_live_freed);
+	cJSON *valid = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(valid, "ipv4", ci.valid.ipv4);
+	JSON_ADD_NUMBER_TO_OBJECT(valid, "ipv6", ci.valid.ipv6);
+	JSON_ADD_NUMBER_TO_OBJECT(valid, "cname", ci.valid.cname);
+	JSON_ADD_NUMBER_TO_OBJECT(valid, "srv", ci.valid.srv);
+	JSON_ADD_NUMBER_TO_OBJECT(valid, "ds", ci.valid.ds);
+	JSON_ADD_NUMBER_TO_OBJECT(valid, "dnskey", ci.valid.dnskey);
+	JSON_ADD_NUMBER_TO_OBJECT(valid, "other", ci.valid.other);
+	JSON_ADD_ITEM_TO_OBJECT(json, "valid", valid);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "expired", ci.expired);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "immortal", ci.immortal);
 	JSON_SEND_OBJECT(json);
 }
 
 int api_dns_port(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(json, "dns_port", config.dns_port);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(json, "dns_port", config.dns_port);
 	JSON_SEND_OBJECT(json);
 }

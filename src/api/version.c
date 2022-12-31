@@ -18,7 +18,7 @@
 
 int api_version(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJ();
+	cJSON *json = JSON_NEW_OBJECT();
 
 	FILE* file;
 	char coreversion[256] = "N/A", webversion[256]  = "N/A";
@@ -35,24 +35,24 @@ int api_version(struct ftl_conn *api)
 	}
 
 	// Build web object
-	cJSON *web = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(web, "branch", webbranch);
-	JSON_OBJ_REF_STR(web, "tag", webversion);
-	JSON_OBJ_ADD_ITEM(json, "web", web);
+	cJSON *web = JSON_NEW_OBJECT();
+	JSON_REF_STR_IN_OBJECT(web, "branch", webbranch);
+	JSON_REF_STR_IN_OBJECT(web, "tag", webversion);
+	JSON_ADD_ITEM_TO_OBJECT(json, "web", web);
 
 	// Build core object
-	cJSON *core = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(core, "branch", corebranch);
-	JSON_OBJ_REF_STR(core, "tag", coreversion);
-	JSON_OBJ_ADD_ITEM(json, "core", core);
+	cJSON *core = JSON_NEW_OBJECT();
+	JSON_REF_STR_IN_OBJECT(core, "branch", corebranch);
+	JSON_REF_STR_IN_OBJECT(core, "tag", coreversion);
+	JSON_ADD_ITEM_TO_OBJECT(json, "core", core);
 
 	// Build ftl object
-	cJSON *ftl = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(ftl, "branch", GIT_BRANCH);
+	cJSON *ftl = JSON_NEW_OBJECT();
+	JSON_REF_STR_IN_OBJECT(ftl, "branch", GIT_BRANCH);
 	const char *version = get_FTL_version();
-	JSON_OBJ_REF_STR(ftl, "tag", version);
-	JSON_OBJ_REF_STR(ftl, "date", GIT_DATE);
-	JSON_OBJ_ADD_ITEM(json, "ftl", ftl);
+	JSON_REF_STR_IN_OBJECT(ftl, "tag", version);
+	JSON_REF_STR_IN_OBJECT(ftl, "date", GIT_DATE);
+	JSON_ADD_ITEM_TO_OBJECT(json, "ftl", ftl);
 
 	// Send reply
 	JSON_SEND_OBJECT(json);

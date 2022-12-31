@@ -64,9 +64,9 @@ static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 		// We add the collective OTHER type at the end
 		if(i == TYPE_OTHER)
 			continue;
-		JSON_OBJ_ADD_NUMBER(types, get_query_type_str(i, NULL, NULL), counters->querytype[i]);
+		JSON_ADD_NUMBER_TO_OBJECT(types, get_query_type_str(i, NULL, NULL), counters->querytype[i]);
 	}
-	JSON_OBJ_ADD_NUMBER(types, "OTHER", counters->querytype[TYPE_OTHER]);
+	JSON_ADD_NUMBER_TO_OBJECT(types, "OTHER", counters->querytype[TYPE_OTHER]);
 
 	return 0;
 }
@@ -86,48 +86,48 @@ int api_stats_summary(struct ftl_conn *api)
 	// Lock shared memory
 	lock_shm();
 
-	cJSON *queries = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(queries, "total", total);
-	JSON_OBJ_ADD_NUMBER(queries, "blocked", blocked);
-	JSON_OBJ_ADD_NUMBER(queries, "percent_blocked", percent_blocked);
-	JSON_OBJ_ADD_NUMBER(queries, "unique_domains", counters->domains);
-	JSON_OBJ_ADD_NUMBER(queries, "forwarded", forwarded);
-	JSON_OBJ_ADD_NUMBER(queries, "cached", cached);
+	cJSON *queries = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(queries, "total", total);
+	JSON_ADD_NUMBER_TO_OBJECT(queries, "blocked", blocked);
+	JSON_ADD_NUMBER_TO_OBJECT(queries, "percent_blocked", percent_blocked);
+	JSON_ADD_NUMBER_TO_OBJECT(queries, "unique_domains", counters->domains);
+	JSON_ADD_NUMBER_TO_OBJECT(queries, "forwarded", forwarded);
+	JSON_ADD_NUMBER_TO_OBJECT(queries, "cached", cached);
 
-	cJSON *types = JSON_NEW_OBJ();
+	cJSON *types = JSON_NEW_OBJECT();
 	int ret = get_query_types_obj(api, types);
 	if(ret != 0)
 		return ret;
-	JSON_OBJ_ADD_ITEM(queries, "types", types);
+	JSON_ADD_ITEM_TO_OBJECT(queries, "types", types);
 
 
-	cJSON *replies = JSON_NEW_OBJ();
+	cJSON *replies = JSON_NEW_OBJECT();
 	for(enum reply_type reply = 0; reply <QUERY_REPLY_MAX; reply++)
-		JSON_OBJ_ADD_NUMBER(replies, get_query_reply_str(reply), counters->reply[reply]);
-	JSON_OBJ_ADD_ITEM(queries, "replies", replies);
+		JSON_ADD_NUMBER_TO_OBJECT(replies, get_query_reply_str(reply), counters->reply[reply]);
+	JSON_ADD_ITEM_TO_OBJECT(queries, "replies", replies);
 
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "queries", queries);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
 
 	// Get system object
-	cJSON *system = JSON_NEW_OBJ();
+	cJSON *system = JSON_NEW_OBJECT();
 	ret = get_system_obj(api, system);
 	if(ret != 0)
 	{
 		unlock_shm();
 		return ret;
 	}
-	JSON_OBJ_ADD_ITEM(json, "system", system);
+	JSON_ADD_ITEM_TO_OBJECT(json, "system", system);
 
 	// Get FTL object
-	cJSON *ftl = JSON_NEW_OBJ();
+	cJSON *ftl = JSON_NEW_OBJECT();
 	ret = get_ftl_obj(api, ftl, true);
 	if(ret != 0)
 	{
 		unlock_shm();
 		return ret;
 	}
-	JSON_OBJ_ADD_ITEM(json, "ftl", ftl);
+	JSON_ADD_ITEM_TO_OBJECT(json, "ftl", ftl);
 
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
@@ -154,9 +154,9 @@ int api_stats_top_domains(struct ftl_conn *api)
 
 		// Minimum structure is
 		// {"top_domains":[]}
-		cJSON *json = JSON_NEW_OBJ();
+		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *top_domains = JSON_NEW_ARRAY();
-		JSON_OBJ_ADD_ITEM(json, "top_domains", top_domains);
+		JSON_ADD_ITEM_TO_OBJECT(json, "top_domains", top_domains);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -260,10 +260,10 @@ int api_stats_top_domains(struct ftl_conn *api)
 		}
 		if(count > -1)
 		{
-			cJSON *domain_item = JSON_NEW_OBJ();
-			JSON_OBJ_REF_STR(domain_item, "domain", getstr(domain->domainpos));
-			JSON_OBJ_ADD_NUMBER(domain_item, "count", count);
-			JSON_ARRAY_ADD_ITEM(top_domains, domain_item);
+			cJSON *domain_item = JSON_NEW_OBJECT();
+			JSON_REF_STR_IN_OBJECT(domain_item, "domain", getstr(domain->domainpos));
+			JSON_ADD_NUMBER_TO_OBJECT(domain_item, "count", count);
+			JSON_ADD_ITEM_TO_ARRAY(top_domains, domain_item);
 		}
 
 		// Only count entries that are actually sent and return when we have send enough data
@@ -274,17 +274,17 @@ int api_stats_top_domains(struct ftl_conn *api)
 	if(excludedomains != NULL)
 		clearSetupVarsArray();
 
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "top_domains", top_domains);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "top_domains", top_domains);
 
 	if(blocked)
 	{
 		const int blocked_queries = get_blocked_count();
-		JSON_OBJ_ADD_NUMBER(json, "blocked_queries", blocked_queries);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
 	}
 	else
 	{
-		JSON_OBJ_ADD_NUMBER(json, "total_queries", counters->queries);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
 	}
 
 	JSON_SEND_OBJECT_UNLOCK(json);
@@ -312,9 +312,9 @@ int api_stats_top_clients(struct ftl_conn *api)
 
 		// Minimum structure is
 		// {"top_clients":[]}
-		cJSON *json = JSON_NEW_OBJ();
+		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *top_clients = JSON_NEW_ARRAY();
-		JSON_OBJ_ADD_ITEM(json, "top_clients", top_clients);
+		JSON_ADD_ITEM_TO_OBJECT(json, "top_clients", top_clients);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -389,11 +389,11 @@ int api_stats_top_clients(struct ftl_conn *api)
 		// - the client made at least one query within the most recent 24 hours
 		if(includezeroclients || count > 0)
 		{
-			cJSON *client_item = JSON_NEW_OBJ();
-			JSON_OBJ_REF_STR(client_item, "name", client_name);
-			JSON_OBJ_REF_STR(client_item, "ip", client_ip);
-			JSON_OBJ_ADD_NUMBER(client_item, "count", count);
-			JSON_ARRAY_ADD_ITEM(top_clients, client_item);
+			cJSON *client_item = JSON_NEW_OBJECT();
+			JSON_REF_STR_IN_OBJECT(client_item, "name", client_name);
+			JSON_REF_STR_IN_OBJECT(client_item, "ip", client_ip);
+			JSON_ADD_NUMBER_TO_OBJECT(client_item, "count", count);
+			JSON_ADD_ITEM_TO_ARRAY(top_clients, client_item);
 			n++;
 		}
 
@@ -404,17 +404,17 @@ int api_stats_top_clients(struct ftl_conn *api)
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
 
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "top_clients", top_clients);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "top_clients", top_clients);
 
 	if(blocked)
 	{
 		const int blocked_queries = get_blocked_count();
-		JSON_OBJ_ADD_NUMBER(json, "blocked_queries", blocked_queries);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
 	}
 	else
 	{
-		JSON_OBJ_ADD_NUMBER(json, "total_queries", counters->queries);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
 	}
 
 	JSON_SEND_OBJECT_UNLOCK(json);
@@ -516,22 +516,22 @@ int api_stats_upstreams(struct ftl_conn *api)
 		// - only if there are any queries for all others (i > 0)
 		if(count > 0 || i < 0)
 		{
-			cJSON *upstream = JSON_NEW_OBJ();
-			JSON_OBJ_REF_STR(upstream, "name", name);
-			JSON_OBJ_REF_STR(upstream, "ip", ip);
-			JSON_OBJ_ADD_NUMBER(upstream, "port", port);
-			JSON_OBJ_ADD_NUMBER(upstream, "count", count);
-			JSON_OBJ_ADD_NUMBER(upstream, "responsetime", responsetime);
-			JSON_OBJ_ADD_NUMBER(upstream, "uncertainty", uncertainty);
-			JSON_ARRAY_ADD_ITEM(upstreams, upstream);
+			cJSON *upstream = JSON_NEW_OBJECT();
+			JSON_REF_STR_IN_OBJECT(upstream, "name", name);
+			JSON_REF_STR_IN_OBJECT(upstream, "ip", ip);
+			JSON_ADD_NUMBER_TO_OBJECT(upstream, "port", port);
+			JSON_ADD_NUMBER_TO_OBJECT(upstream, "count", count);
+			JSON_ADD_NUMBER_TO_OBJECT(upstream, "responsetime", responsetime);
+			JSON_ADD_NUMBER_TO_OBJECT(upstream, "uncertainty", uncertainty);
+			JSON_ADD_ITEM_TO_ARRAY(upstreams, upstream);
 		}
 	}
 
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "upstreams", upstreams);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "upstreams", upstreams);
 	const int forwarded_queries = get_forwarded_count();
-	JSON_OBJ_ADD_NUMBER(json, "forwarded_queries", forwarded_queries);
-	JSON_OBJ_ADD_NUMBER(json, "total_queries", counters->queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "forwarded_queries", forwarded_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
@@ -545,7 +545,7 @@ int api_stats_query_types(struct ftl_conn *api)
 
 	lock_shm();
 
-	cJSON *types = JSON_NEW_OBJ();
+	cJSON *types = JSON_NEW_OBJECT();
 	int ret = get_query_types_obj(api, types);
 	if(ret != 0)
 	{
@@ -553,8 +553,8 @@ int api_stats_query_types(struct ftl_conn *api)
 		return ret;
 	}
 
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "types", types);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "types", types);
 
 	// Send response
 	JSON_SEND_OBJECT_UNLOCK(json);
@@ -575,8 +575,8 @@ int api_stats_recentblocked(struct ftl_conn *api)
 	{
 		// Minimum structure is
 		// {"blocked":null}
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NULL(json, "blocked");
+		cJSON *json = JSON_NEW_OBJECT();
+		JSON_ADD_NULL_TO_OBJECT(json, "blocked");
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -611,7 +611,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 				continue;
 			}
 
-			JSON_ARRAY_REF_STR(blocked, domain);
+			JSON_REF_STR_IN_ARRAY(blocked, domain);
 
 			// Only count when added succesfully
 			found++;
@@ -621,7 +621,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 			break;
 	}
 
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "blocked", blocked);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "blocked", blocked);
 	JSON_SEND_OBJECT_UNLOCK(json);
 }

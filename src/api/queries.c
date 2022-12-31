@@ -50,7 +50,7 @@ static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *
 
 	// Loop through returned rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-		JSON_ARRAY_COPY_STR(array, (const char*)sqlite3_column_text(stmt, 0));
+		JSON_COPY_STR_TO_ARRAY(array, (const char*)sqlite3_column_text(stmt, 0));
 
 	if( rc != SQLITE_DONE )
 	{
@@ -118,7 +118,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	{
 		query.type = t;
 		const char *string = get_query_type_str(t, &query, NULL);
-		JSON_ARRAY_REF_STR(type, string);
+		JSON_REF_STR_IN_ARRAY(type, string);
 	}
 
 	// Get status
@@ -127,7 +127,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	{
 		query.status = s;
 		const char *string = get_query_status_str(query.status);
-		JSON_ARRAY_REF_STR(status, string);
+		JSON_REF_STR_IN_ARRAY(status, string);
 	}
 
 	// Get reply types
@@ -136,7 +136,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	{
 		query.reply = r;
 		const char *string = get_query_reply_str(query.reply);
-		JSON_ARRAY_REF_STR(reply, string);
+		JSON_REF_STR_IN_ARRAY(reply, string);
 	}
 
 	// Get dnssec status
@@ -145,17 +145,17 @@ int api_queries_suggestions(struct ftl_conn *api)
 	{
 		query.dnssec = d;
 		const char *string = get_query_dnssec_str(query.dnssec);
-		JSON_ARRAY_REF_STR(dnssec, string);
+		JSON_REF_STR_IN_ARRAY(dnssec, string);
 	}
 
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "domain", domain);
-	JSON_OBJ_ADD_ITEM(json, "client", client);
-	JSON_OBJ_ADD_ITEM(json, "upstream", upstream);
-	JSON_OBJ_ADD_ITEM(json, "type", type);
-	JSON_OBJ_ADD_ITEM(json, "status", status);
-	JSON_OBJ_ADD_ITEM(json, "reply", reply);
-	JSON_OBJ_ADD_ITEM(json, "dnssec", dnssec);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "domain", domain);
+	JSON_ADD_ITEM_TO_OBJECT(json, "client", client);
+	JSON_ADD_ITEM_TO_OBJECT(json, "upstream", upstream);
+	JSON_ADD_ITEM_TO_OBJECT(json, "type", type);
+	JSON_ADD_ITEM_TO_OBJECT(json, "status", status);
+	JSON_ADD_ITEM_TO_OBJECT(json, "reply", reply);
+	JSON_ADD_ITEM_TO_OBJECT(json, "dnssec", dnssec);
 
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
@@ -196,11 +196,11 @@ int api_queries(struct ftl_conn *api)
 	{
 		// Minimum structure is
 		// {"queries":[], "cursor": null}
-		cJSON *json = JSON_NEW_OBJ();
+		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *queries = JSON_NEW_ARRAY();
-		JSON_OBJ_ADD_ITEM(json, "queries", queries);
+		JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
 		// There are no more queries available, send NULL cursor
-		JSON_OBJ_ADD_NULL(json, "cursor");
+		JSON_ADD_NULL_TO_OBJECT(json, "cursor");
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -580,74 +580,74 @@ int api_queries(struct ftl_conn *api)
 		}
 
 		// Build item object
-		cJSON *item = JSON_NEW_OBJ();
+		cJSON *item = JSON_NEW_OBJECT();
 		queriesData query = { 0 };
 		char buffer[20] = { 0 };
-		JSON_OBJ_ADD_NUMBER(item, "id", id);
-		JSON_OBJ_ADD_NUMBER(item, "time", sqlite3_column_double(read_stmt, 1));
+		JSON_ADD_NUMBER_TO_OBJECT(item, "id", id);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "time", sqlite3_column_double(read_stmt, 1));
 		query.type = sqlite3_column_int(read_stmt, 2);
 		query.status = sqlite3_column_int(read_stmt, 3);
 		query.reply = sqlite3_column_int(read_stmt, 8);
 		query.dnssec = sqlite3_column_int(read_stmt, 9);
 		// We have to copy the string as TYPExxx string won't be static
-		JSON_OBJ_COPY_STR(item, "type", get_query_type_str(query.type, &query, buffer));
-		JSON_OBJ_REF_STR(item, "status", get_query_status_str(query.status));
-		JSON_OBJ_REF_STR(item, "dnssec", get_query_dnssec_str(query.dnssec));
-		JSON_OBJ_COPY_STR(item, "domain", sqlite3_column_text(read_stmt, 4));
+		JSON_COPY_STR_TO_OBJECT(item, "type", get_query_type_str(query.type, &query, buffer));
+		JSON_REF_STR_IN_OBJECT(item, "status", get_query_status_str(query.status));
+		JSON_REF_STR_IN_OBJECT(item, "dnssec", get_query_dnssec_str(query.dnssec));
+		JSON_COPY_STR_TO_OBJECT(item, "domain", sqlite3_column_text(read_stmt, 4));
 		if(sqlite3_column_type(read_stmt, 6) == SQLITE_NULL)
 		{
-			JSON_OBJ_ADD_NULL(item, "upstream");
+			JSON_ADD_NULL_TO_OBJECT(item, "upstream");
 		}
 		else
 		{
-			JSON_OBJ_COPY_STR(item, "upstream", sqlite3_column_text(read_stmt, 6));
+			JSON_COPY_STR_TO_OBJECT(item, "upstream", sqlite3_column_text(read_stmt, 6));
 		}
 
-		cJSON *reply = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(reply, "type", get_query_reply_str(query.reply));
-		JSON_OBJ_ADD_NUMBER(reply, "time", sqlite3_column_double(read_stmt, 10));
-		JSON_OBJ_ADD_ITEM(item, "reply", reply);
+		cJSON *reply = JSON_NEW_OBJECT();
+		JSON_REF_STR_IN_OBJECT(reply, "type", get_query_reply_str(query.reply));
+		JSON_ADD_NUMBER_TO_OBJECT(reply, "time", sqlite3_column_double(read_stmt, 10));
+		JSON_ADD_ITEM_TO_OBJECT(item, "reply", reply);
 
-		cJSON *client = JSON_NEW_OBJ();
-		JSON_OBJ_COPY_STR(client, "ip", sqlite3_column_text(read_stmt, 5));
+		cJSON *client = JSON_NEW_OBJECT();
+		JSON_COPY_STR_TO_OBJECT(client, "ip", sqlite3_column_text(read_stmt, 5));
 		if(sqlite3_column_type(read_stmt, 11) == SQLITE_TEXT)
 		{
-			JSON_OBJ_COPY_STR(client, "name", sqlite3_column_text(read_stmt, 11));
+			JSON_COPY_STR_TO_OBJECT(client, "name", sqlite3_column_text(read_stmt, 11));
 		}
 		else
 		{
-			JSON_OBJ_ADD_NULL(client, "name");
+			JSON_ADD_NULL_TO_OBJECT(client, "name");
 		}
-		JSON_OBJ_ADD_ITEM(item, "client", client);
+		JSON_ADD_ITEM_TO_OBJECT(item, "client", client);
 
-		JSON_OBJ_ADD_NUMBER(item, "ttl", sqlite3_column_int(read_stmt, 12));
-		JSON_OBJ_ADD_NUMBER(item, "regex_id", sqlite3_column_int(read_stmt, 13));
+		JSON_ADD_NUMBER_TO_OBJECT(item, "ttl", sqlite3_column_int(read_stmt, 12));
+		JSON_ADD_NUMBER_TO_OBJECT(item, "regex_id", sqlite3_column_int(read_stmt, 13));
 
-		JSON_ARRAY_ADD_ITEM(queries, item);
+		JSON_ADD_ITEM_TO_ARRAY(queries, item);
 
 		added++;
 	}
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "queries", queries);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
 
 	if(cursor_set)
 	{
 		// Repeat cursor received in the request. This ensures we get a
 		// static result by skipping any newer queries.
-		JSON_OBJ_ADD_NUMBER(json, "cursor", cursor);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", cursor);
 	}
 	else
 	{
 		// Send cursor pointing to the firstID of the data obtained in
 		// this query. This ensures we get a static result by skipping
 		// any newer queries.
-		JSON_OBJ_ADD_NUMBER(json, "cursor", firstID);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", firstID);
 	}
 
 	// DataTables specific properties
-	JSON_OBJ_ADD_NUMBER(json, "recordsTotal", disk ? disk_dbnum : mem_dbnum);
-	JSON_OBJ_ADD_NUMBER(json, "recordsFiltered", records);
-	JSON_OBJ_ADD_NUMBER(json, "draw", draw);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", disk ? disk_dbnum : mem_dbnum);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", records);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "draw", draw);
 
 	if(disk && !detach_disk_database(&message))
 	{

@@ -58,25 +58,25 @@ int api_history(struct ftl_conn *api)
 	if(!found)
 	{
 		cJSON *json = JSON_NEW_ARRAY();
-		cJSON *item = JSON_NEW_OBJ();
-		JSON_ARRAY_ADD_ITEM(json, item);
+		cJSON *item = JSON_NEW_OBJECT();
+		JSON_ADD_ITEM_TO_ARRAY(json, item);
 		JSON_SEND_OBJECT_UNLOCK(json);
 	}
 
 	// Minimum structure is
 	// {"history":[]}
-	cJSON *json = JSON_NEW_OBJ();
+	cJSON *json = JSON_NEW_OBJECT();
 	cJSON *history = JSON_NEW_ARRAY();
 	for(int slot = from; slot < until; slot++)
 	{
-		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(item, "timestamp", overTime[slot].timestamp);
-		JSON_OBJ_ADD_NUMBER(item, "total", overTime[slot].total);
-		JSON_OBJ_ADD_NUMBER(item, "cached", overTime[slot].cached);
-		JSON_OBJ_ADD_NUMBER(item, "blocked", overTime[slot].blocked);
-		JSON_ARRAY_ADD_ITEM(history, item);
+		cJSON *item = JSON_NEW_OBJECT();
+		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "total", overTime[slot].total);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "cached", overTime[slot].cached);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "blocked", overTime[slot].blocked);
+		JSON_ADD_ITEM_TO_ARRAY(history, item);
 	}
-	JSON_OBJ_ADD_ITEM(json, "history", history);
+	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
@@ -108,11 +108,11 @@ int api_history_clients(struct ftl_conn *api)
 	{
 		// Minimum structure is
 		// {"history":[], "clients":[]}
-		cJSON *json = JSON_NEW_OBJ();
+		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *history = JSON_NEW_ARRAY();
-		JSON_OBJ_ADD_ITEM(json, "history", history);
+		JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 		cJSON *clients = JSON_NEW_ARRAY();
-		JSON_OBJ_ADD_ITEM(json, "clients", clients);
+		JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
 		JSON_SEND_OBJECT_UNLOCK(json);
 	}
 
@@ -156,8 +156,8 @@ int api_history_clients(struct ftl_conn *api)
 	// Main return loop
 	for(int slot = sendit; slot < until; slot++)
 	{
-		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(item, "timestamp", overTime[slot].timestamp);
+		cJSON *item = JSON_NEW_OBJECT();
+		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
 
 		// Loop over clients to generate output to be sent to the client
 		cJSON *data = JSON_NEW_ARRAY();
@@ -175,13 +175,13 @@ int api_history_clients(struct ftl_conn *api)
 
 			const int thisclient = client->overTime[slot];
 
-			JSON_ARRAY_ADD_NUMBER(data, thisclient);
+			JSON_ADD_NUMBER_TO_ARRAY(data, thisclient);
 		}
-		JSON_OBJ_ADD_ITEM(item, "data", data);
-		JSON_ARRAY_ADD_ITEM(history, item);
+		JSON_ADD_ITEM_TO_OBJECT(item, "data", data);
+		JSON_ADD_ITEM_TO_ARRAY(history, item);
 	}
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "history", history);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 
 	cJSON *clients = JSON_NEW_ARRAY();
 	// Loop over clients to generate output to be sent to the client
@@ -198,12 +198,12 @@ int api_history_clients(struct ftl_conn *api)
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = client->namepos != 0 ? getstr(client->namepos) : NULL;
 
-		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(item, "name", client_name);
-		JSON_OBJ_REF_STR(item, "ip", client_ip);
-		JSON_ARRAY_ADD_ITEM(clients, item);
+		cJSON *item = JSON_NEW_OBJECT();
+		JSON_REF_STR_IN_OBJECT(item, "name", client_name);
+		JSON_REF_STR_IN_OBJECT(item, "ip", client_ip);
+		JSON_ADD_ITEM_TO_ARRAY(clients, item);
 	}
-	JSON_OBJ_ADD_ITEM(json, "clients", clients);
+	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();

@@ -77,21 +77,21 @@ int send_json_error(struct ftl_conn *api, const int code,
                     const char *key, const char* message,
                     const char *hint)
 {
-	cJSON *json = JSON_NEW_OBJ();
+	cJSON *json = JSON_NEW_OBJECT();
 
-	cJSON *error = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(error, "key", key);
-	JSON_OBJ_REF_STR(error, "message", message);
-	JSON_OBJ_REF_STR(error, "hint", hint);
+	cJSON *error = JSON_NEW_OBJECT();
+	JSON_REF_STR_IN_OBJECT(error, "key", key);
+	JSON_REF_STR_IN_OBJECT(error, "message", message);
+	JSON_REF_STR_IN_OBJECT(error, "hint", hint);
 
-	JSON_OBJ_ADD_ITEM(json, "error", error);
+	JSON_ADD_ITEM_TO_OBJECT(json, "error", error);
 	JSON_SEND_OBJECT_CODE(json, code);
 }
 
 int send_json_success(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(json, "status", "success");
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_REF_STR_IN_OBJECT(json, "status", "success");
 	JSON_SEND_OBJECT(json);
 }
 

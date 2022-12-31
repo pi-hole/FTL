@@ -39,27 +39,27 @@
 
 int api_ftl_client(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJ();
+	cJSON *json = JSON_NEW_OBJECT();
 	// Add client's IP address
-	JSON_OBJ_REF_STR(json, "remote_addr", api->request->remote_addr);
+	JSON_REF_STR_IN_OBJECT(json, "remote_addr", api->request->remote_addr);
 
 	// Add HTTP version
-	JSON_OBJ_REF_STR(json, "http_version", api->request->http_version);
+	JSON_REF_STR_IN_OBJECT(json, "http_version", api->request->http_version);
 
 	// Add request method
-	JSON_OBJ_REF_STR(json, "method", api->request->request_method);
+	JSON_REF_STR_IN_OBJECT(json, "method", api->request->request_method);
 
 	// Add HTTP headers
 	cJSON *headers = JSON_NEW_ARRAY();
 	for(int i = 0; i < api->request->num_headers; i++)
 	{
 		// Add headers
-		cJSON *header = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(header, "name", api->request->http_headers[i].name);
-		JSON_OBJ_REF_STR(header, "value", api->request->http_headers[i].value);
-		JSON_ARRAY_ADD_ITEM(headers, header);
+		cJSON *header = JSON_NEW_OBJECT();
+		JSON_REF_STR_IN_OBJECT(header, "name", api->request->http_headers[i].name);
+		JSON_REF_STR_IN_OBJECT(header, "value", api->request->http_headers[i].value);
+		JSON_ADD_ITEM_TO_ARRAY(headers, header);
 	}
-	JSON_OBJ_ADD_ITEM(json, "headers", headers);
+	JSON_ADD_ITEM_TO_OBJECT(json, "headers", headers);
 
 	JSON_SEND_OBJECT(json);
 }
@@ -108,7 +108,7 @@ int api_ftl_logs_dns(struct ftl_conn *api)
 	}
 
 	// Process data
-	cJSON *json = JSON_NEW_OBJ();
+	cJSON *json = JSON_NEW_OBJECT();
 	cJSON *log = JSON_NEW_ARRAY();
 	for(unsigned int i = start; i < LOG_SIZE; i++)
 	{
@@ -118,13 +118,13 @@ int api_ftl_logs_dns(struct ftl_conn *api)
 			break;
 		}
 
-		cJSON *entry = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(entry, "timestamp", fifo_log->timestamp[i]);
-		JSON_OBJ_REF_STR(entry, "message", fifo_log->message[i]);
-		JSON_ARRAY_ADD_ITEM(log, entry);
+		cJSON *entry = JSON_NEW_OBJECT();
+		JSON_ADD_NUMBER_TO_OBJECT(entry, "timestamp", fifo_log->timestamp[i]);
+		JSON_REF_STR_IN_OBJECT(entry, "message", fifo_log->message[i]);
+		JSON_ADD_ITEM_TO_ARRAY(log, entry);
 	}
-	JSON_OBJ_ADD_ITEM(json, "log", log);
-	JSON_OBJ_ADD_NUMBER(json, "nextID", fifo_log->next_id);
+	JSON_ADD_ITEM_TO_OBJECT(json, "log", log);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "nextID", fifo_log->next_id);
 
 	// Send data
 	JSON_SEND_OBJECT(json);
@@ -132,12 +132,12 @@ int api_ftl_logs_dns(struct ftl_conn *api)
 
 int api_ftl_dbinfo(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJ();
+	cJSON *json = JSON_NEW_OBJECT();
 
 	// Add database stat details
 	struct stat st;
 	get_database_stat(&st);
-	JSON_OBJ_ADD_NUMBER(json, "size", st.st_size); // Total size, in bytes
+	JSON_ADD_NUMBER_TO_OBJECT(json, "size", st.st_size); // Total size, in bytes
 
 	// File type
 	const char *filetype;
@@ -147,54 +147,54 @@ int api_ftl_dbinfo(struct ftl_conn *api)
 		filetype = "Symbolic link";
 	else
 		filetype = "Unknown";
-	JSON_OBJ_REF_STR(json, "type", filetype);
+	JSON_REF_STR_IN_OBJECT(json, "type", filetype);
 
 	// File mode
 	char permissions[10] = { 0 };
 	get_permission_string(permissions, &st);
-	JSON_OBJ_REF_STR(json, "mode", permissions);
+	JSON_REF_STR_IN_OBJECT(json, "mode", permissions);
 
-	JSON_OBJ_ADD_NUMBER(json, "atime", st.st_atime); // Time of last access
-	JSON_OBJ_ADD_NUMBER(json, "mtime", st.st_mtime); // Time of last modification
-	JSON_OBJ_ADD_NUMBER(json, "ctime", st.st_ctime); // Time of last status change (owner or mode change, etc.)
+	JSON_ADD_NUMBER_TO_OBJECT(json, "atime", st.st_atime); // Time of last access
+	JSON_ADD_NUMBER_TO_OBJECT(json, "mtime", st.st_mtime); // Time of last modification
+	JSON_ADD_NUMBER_TO_OBJECT(json, "ctime", st.st_ctime); // Time of last status change (owner or mode change, etc.)
 
 	// Get owner details
-	cJSON *user = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(user, "uid", st.st_uid); // UID
+	cJSON *user = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(user, "uid", st.st_uid); // UID
 	const struct passwd *pw = getpwuid(st.st_uid);
 	if(pw != NULL)
 	{
-		JSON_OBJ_COPY_STR(user, "name", pw->pw_name); // User name
-		JSON_OBJ_COPY_STR(user, "info", pw->pw_gecos); // User information
+		JSON_COPY_STR_TO_OBJECT(user, "name", pw->pw_name); // User name
+		JSON_COPY_STR_TO_OBJECT(user, "info", pw->pw_gecos); // User information
 	}
 	else
 	{
-		JSON_OBJ_ADD_NULL(user, "name");
-		JSON_OBJ_ADD_NULL(user, "info");
+		JSON_ADD_NULL_TO_OBJECT(user, "name");
+		JSON_ADD_NULL_TO_OBJECT(user, "info");
 	}
 
-	cJSON *group = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(group, "gid", st.st_gid); // GID
+	cJSON *group = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(group, "gid", st.st_gid); // GID
 	const struct group *gr = getgrgid(st.st_uid);
 	if(gr != NULL)
 	{
-		JSON_OBJ_COPY_STR(group, "name", gr->gr_name); // Group name
+		JSON_COPY_STR_TO_OBJECT(group, "name", gr->gr_name); // Group name
 	}
 	else
 	{
-		JSON_OBJ_ADD_NULL(group, "name");
+		JSON_ADD_NULL_TO_OBJECT(group, "name");
 	}
-	cJSON *owner = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(owner, "user", user);
-	JSON_OBJ_ADD_ITEM(owner, "group", group);
-	JSON_OBJ_ADD_ITEM(json, "owner", owner);
+	cJSON *owner = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(owner, "user", user);
+	JSON_ADD_ITEM_TO_OBJECT(owner, "group", group);
+	JSON_ADD_ITEM_TO_OBJECT(json, "owner", owner);
 
 	// Add number of queries in on-disk database
 	const int queries_in_database = get_number_of_queries_in_DB(NULL, "query_storage", true);
-	JSON_OBJ_ADD_NUMBER(json, "queries", queries_in_database);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "queries", queries_in_database);
 
 	// Add SQLite library version
-	JSON_OBJ_REF_STR(json, "sqlite_version", get_sqlite3_version());
+	JSON_REF_STR_IN_OBJECT(json, "sqlite_version", get_sqlite3_version());
 
 	// Send reply to user
 	JSON_SEND_OBJECT(json);
@@ -214,21 +214,21 @@ static int read_temp_sensor(struct ftl_conn *api,
 		char label[1024];
 		if(fscanf(f_value, "%d", &temp) == 1)
 		{
-			cJSON *item = JSON_NEW_OBJ();
+			cJSON *item = JSON_NEW_OBJECT();
 			if(f_label && fgets(label, sizeof(label)-1, f_label))
 			{
 				// Remove newline if present
 				char *p = strchr(label, '\n');
 				if (p != NULL) *p = '\0';
-				JSON_OBJ_COPY_STR(item, "name", label);
+				JSON_COPY_STR_TO_OBJECT(item, "name", label);
 			}
 			else
 			{
-				JSON_OBJ_ADD_NULL(item, "name");
+				JSON_ADD_NULL_TO_OBJECT(item, "name");
 			}
-			JSON_OBJ_COPY_STR(item, "path", short_path);
-			JSON_OBJ_ADD_NUMBER(item, "value", temp < 1000 ? temp : 1e-3*temp);
-			JSON_ARRAY_ADD_ITEM(object, item);
+			JSON_COPY_STR_TO_OBJECT(item, "path", short_path);
+			JSON_ADD_NUMBER_TO_OBJECT(item, "value", temp < 1000 ? temp : 1e-3*temp);
+			JSON_ADD_ITEM_TO_ARRAY(object, item);
 		}
 	}
 	if(f_label != NULL)
@@ -288,10 +288,10 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 		return send_json_error(api, 500, "error", strerror(errno), NULL);
 
 	// Seconds since boot
-	JSON_OBJ_ADD_NUMBER(system, "uptime", info.uptime);
+	JSON_ADD_NUMBER_TO_OBJECT(system, "uptime", info.uptime);
 
-	cJSON *memory = JSON_NEW_OBJ();
-	cJSON *ram = JSON_NEW_OBJ();
+	cJSON *memory = JSON_NEW_OBJECT();
+	cJSON *ram = JSON_NEW_OBJECT();
 	// We cannot use the memory information available through sysinfo() as
 	// this is not what we want. It is worth noting that freeram in sysinfo
 	// is not what most people would call "free RAM". freeram excludes
@@ -304,11 +304,11 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	long mem_total = -1, mem_used = -1, mem_free = -1, mem_avail = -1;
 	GetRamInKB(&mem_total, &mem_used, &mem_free, &mem_avail);
 	// Total usable main memory size
-	JSON_OBJ_ADD_NUMBER(ram, "total", mem_total);
+	JSON_ADD_NUMBER_TO_OBJECT(ram, "total", mem_total);
 	// Free memory size
-	JSON_OBJ_ADD_NUMBER(ram, "free", mem_free);
+	JSON_ADD_NUMBER_TO_OBJECT(ram, "free", mem_free);
 	// Used memory size
-	JSON_OBJ_ADD_NUMBER(ram, "used", mem_used);
+	JSON_ADD_NUMBER_TO_OBJECT(ram, "used", mem_used);
 	// Available memory size
 	// See https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=34e431b0ae398fc54ea69ff85ec700722c9da773
 	// This Linux kernel commit message explains there are more nuances. It
@@ -316,25 +316,25 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// memory is available. They generally do this by adding up "free" and
 	// "cached", which was fine ten years ago, but is pretty much guaranteed
 	// to be wrong today."
-	JSON_OBJ_ADD_NUMBER(ram, "available", mem_avail);
-	JSON_OBJ_ADD_ITEM(memory, "ram", ram);
+	JSON_ADD_NUMBER_TO_OBJECT(ram, "available", mem_avail);
+	JSON_ADD_ITEM_TO_OBJECT(memory, "ram", ram);
 
-	cJSON *swap = JSON_NEW_OBJ();
+	cJSON *swap = JSON_NEW_OBJECT();
 	// Total swap space size
-	JSON_OBJ_ADD_NUMBER(swap, "total", info.totalswap * info.mem_unit);
+	JSON_ADD_NUMBER_TO_OBJECT(swap, "total", info.totalswap * info.mem_unit);
 	// Swap space still available
-	JSON_OBJ_ADD_NUMBER(swap, "free", info.freeswap * info.mem_unit);
+	JSON_ADD_NUMBER_TO_OBJECT(swap, "free", info.freeswap * info.mem_unit);
 	// Used swap space
-	JSON_OBJ_ADD_NUMBER(swap, "used", (info.totalswap - info.freeswap) * info.mem_unit);
-	JSON_OBJ_ADD_ITEM(memory, "swap", swap);
-	JSON_OBJ_ADD_ITEM(system, "memory", memory);
+	JSON_ADD_NUMBER_TO_OBJECT(swap, "used", (info.totalswap - info.freeswap) * info.mem_unit);
+	JSON_ADD_ITEM_TO_OBJECT(memory, "swap", swap);
+	JSON_ADD_ITEM_TO_OBJECT(system, "memory", memory);
 
 	// Number of current processes
-	JSON_OBJ_ADD_NUMBER(system, "procs", info.procs);
+	JSON_ADD_NUMBER_TO_OBJECT(system, "procs", info.procs);
 
-	cJSON *cpu = JSON_NEW_OBJ();
+	cJSON *cpu = JSON_NEW_OBJECT();
 	// Number of available processors
-	JSON_OBJ_ADD_NUMBER(cpu, "nprocs", nprocs);
+	JSON_ADD_NUMBER_TO_OBJECT(cpu, "nprocs", nprocs);
 
 	// 1, 5, and 15 minute load averages (we need to convert them)
 	cJSON *raw = JSON_NEW_ARRAY();
@@ -344,16 +344,16 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	for(unsigned int i = 0; i < 3; i++)
 	{
 		load_f[i] = longfloat * info.loads[i];
-		JSON_ARRAY_ADD_NUMBER(raw, load_f[i]);
-		JSON_ARRAY_ADD_NUMBER(percent, (100.f*load_f[i]/nprocs));
+		JSON_ADD_NUMBER_TO_ARRAY(raw, load_f[i]);
+		JSON_ADD_NUMBER_TO_ARRAY(percent, (100.f*load_f[i]/nprocs));
 	}
 
 	// Averaged CPU usage in percent
-	cJSON *load = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(load, "raw", raw);
-	JSON_OBJ_ADD_ITEM(load, "percent", percent);
-	JSON_OBJ_ADD_ITEM(cpu, "load", load);
-	JSON_OBJ_ADD_ITEM(system, "cpu", cpu);
+	cJSON *load = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(load, "raw", raw);
+	JSON_ADD_ITEM_TO_OBJECT(load, "percent", percent);
+	JSON_ADD_ITEM_TO_OBJECT(cpu, "load", load);
+	JSON_ADD_ITEM_TO_OBJECT(system, "cpu", cpu);
 
 	// Source available temperatures, we try to read as many
 	// temperature sensors as there are cores on this system
@@ -380,7 +380,7 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 		if(ret != 0)
 			return ret;
 	}
-	JSON_OBJ_ADD_ITEM(system, "sensors", sensors);
+	JSON_ADD_ITEM_TO_OBJECT(system, "sensors", sensors);
 
 	// Try to obtain device model
 	FILE *f_model = fopen("/sys/firmware/devicetree/base/model", "r");
@@ -390,26 +390,26 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 		// Remove newline if present
 		char *p = strchr(model, '\n');
 		if (p != NULL) *p = '\0';
-		JSON_OBJ_COPY_STR(system, "model", model);
+		JSON_COPY_STR_TO_OBJECT(system, "model", model);
 	}
 	else
 	{
-		JSON_OBJ_ADD_NULL(system, "model");
+		JSON_ADD_NULL_TO_OBJECT(system, "model");
 	}
 	if(f_model)
 		fclose(f_model);
 
-	cJSON *dns = JSON_NEW_OBJ();
+	cJSON *dns = JSON_NEW_OBJECT();
 	const bool blocking = get_blockingstatus();
-	JSON_OBJ_ADD_BOOL(dns, "blocking", blocking); // same reply type as in /api/dns/status
-	JSON_OBJ_ADD_ITEM(system, "dns", dns);
+	JSON_ADD_BOOL_TO_OBJECT(dns, "blocking", blocking); // same reply type as in /api/dns/status
+	JSON_ADD_ITEM_TO_OBJECT(system, "dns", dns);
 
 	return 0;
 }
 
 int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked)
 {
-	cJSON *database = JSON_NEW_OBJ();
+	cJSON *database = JSON_NEW_OBJECT();
 
 	// Source from shared objects within lock
 	if(!is_locked)
@@ -438,53 +438,53 @@ int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked)
 	if(!is_locked)
 		unlock_shm();
 
-	JSON_OBJ_ADD_NUMBER(database, "gravity", db_gravity);
-	JSON_OBJ_ADD_NUMBER(database, "groups", db_groups);
-	JSON_OBJ_ADD_NUMBER(database, "lists", db_lists);
-	JSON_OBJ_ADD_NUMBER(database, "clients", db_clients);
+	JSON_ADD_NUMBER_TO_OBJECT(database, "gravity", db_gravity);
+	JSON_ADD_NUMBER_TO_OBJECT(database, "groups", db_groups);
+	JSON_ADD_NUMBER_TO_OBJECT(database, "lists", db_lists);
+	JSON_ADD_NUMBER_TO_OBJECT(database, "clients", db_clients);
 
-	cJSON *domains = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(domains, "allowed", db_allowed);
-	JSON_OBJ_ADD_NUMBER(domains, "denied", db_denied);
-	JSON_OBJ_ADD_ITEM(database, "domains", domains);
-	JSON_OBJ_ADD_ITEM(ftl, "database", database);
+	cJSON *domains = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(domains, "allowed", db_allowed);
+	JSON_ADD_NUMBER_TO_OBJECT(domains, "denied", db_denied);
+	JSON_ADD_ITEM_TO_OBJECT(database, "domains", domains);
+	JSON_ADD_ITEM_TO_OBJECT(ftl, "database", database);
 
-	JSON_OBJ_ADD_NUMBER(ftl, "privacy_level", privacylevel);
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "privacy_level", privacylevel);
 
-	cJSON *clients = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(clients, "total",clients_total);
-	JSON_OBJ_ADD_NUMBER(clients, "active", activeclients);
-	JSON_OBJ_ADD_ITEM(ftl, "clients", clients);
+	cJSON *clients = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(clients, "total",clients_total);
+	JSON_ADD_NUMBER_TO_OBJECT(clients, "active", activeclients);
+	JSON_ADD_ITEM_TO_OBJECT(ftl, "clients", clients);
 
 	return 0;
 }
 
 int api_ftl_sysinfo(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJ();
+	cJSON *json = JSON_NEW_OBJECT();
 
 	// Get system object
-	cJSON *system = JSON_NEW_OBJ();
+	cJSON *system = JSON_NEW_OBJECT();
 	int ret = get_system_obj(api, system);
 	if (ret != 0)
 		return ret;
 
-	JSON_OBJ_ADD_ITEM(json, "system", system);
+	JSON_ADD_ITEM_TO_OBJECT(json, "system", system);
 
 	// Get FTL object
-	cJSON *ftl = JSON_NEW_OBJ();
+	cJSON *ftl = JSON_NEW_OBJECT();
 	ret = get_ftl_obj(api, ftl, false);
 	if(ret != 0)
 		return ret;
 
-	JSON_OBJ_ADD_ITEM(json, "ftl", ftl);
+	JSON_ADD_ITEM_TO_OBJECT(json, "ftl", ftl);
 	JSON_SEND_OBJECT(json);
 }
 
 int api_ftl_maxhistory(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(json, "maxHistory", config.maxHistory);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(json, "maxHistory", config.maxHistory);
 	JSON_SEND_OBJECT(json);
 }
 
@@ -544,10 +544,10 @@ int api_ftl_gateway(struct ftl_conn *api)
 	getDefaultInterface(iface, &gw);
 
 	// Generate JSON response
-	cJSON *json = JSON_NEW_OBJ();
+	cJSON *json = JSON_NEW_OBJECT();
 	const char *gwaddr = inet_ntoa(*(struct in_addr *) &gw);
-	JSON_OBJ_COPY_STR(json, "address", gwaddr);
-	JSON_OBJ_REF_STR(json, "interface", iface);
+	JSON_COPY_STR_TO_OBJECT(json, "address", gwaddr);
+	JSON_REF_STR_IN_OBJECT(json, "interface", iface);
 	JSON_SEND_OBJECT(json);
 }
 
@@ -756,36 +756,36 @@ static int json_iface(struct ftl_conn *api, struct if_info *iface, cJSON *json)
 	if(rx_unit[0] != '\0')
 		rx_unit[1] = 'B';
 
-	JSON_OBJ_COPY_STR(json, "name", iface->name);
-	JSON_OBJ_ADD_BOOL(json, "carrier", iface->carrier);
-	JSON_OBJ_ADD_NUMBER(json, "speed", iface->speed);
+	JSON_COPY_STR_TO_OBJECT(json, "name", iface->name);
+	JSON_ADD_BOOL_TO_OBJECT(json, "carrier", iface->carrier);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "speed", iface->speed);
 
-	cJSON *tx_json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(tx_json, "num", tx);
-	JSON_OBJ_COPY_STR(tx_json, "unit", rx_unit);
-	JSON_OBJ_ADD_ITEM(json, "tx", tx_json);
+	cJSON *tx_json = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(tx_json, "num", tx);
+	JSON_COPY_STR_TO_OBJECT(tx_json, "unit", rx_unit);
+	JSON_ADD_ITEM_TO_OBJECT(json, "tx", tx_json);
 
-	cJSON *rx_json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(rx_json, "num", rx);
-	JSON_OBJ_COPY_STR(rx_json, "unit", rx_unit);
-	JSON_OBJ_ADD_ITEM(json, "rx", rx_json);
+	cJSON *rx_json = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(rx_json, "num", rx);
+	JSON_COPY_STR_TO_OBJECT(rx_json, "unit", rx_unit);
+	JSON_ADD_ITEM_TO_OBJECT(json, "rx", rx_json);
 
 	if( iface->carrier && iface->ip.v4)
 	{
-		JSON_OBJ_COPY_STR(json, "ipv4", iface->ip.v4);
+		JSON_COPY_STR_TO_OBJECT(json, "ipv4", iface->ip.v4);
 	}
 	else
 	{
-		JSON_OBJ_REF_STR(json, "ipv4", "-");
+		JSON_REF_STR_IN_OBJECT(json, "ipv4", "-");
 	}
 
 	if( iface->carrier && iface->ip.v6)
 	{
-		JSON_OBJ_COPY_STR(json, "ipv6", iface->ip.v6);
+		JSON_COPY_STR_TO_OBJECT(json, "ipv6", iface->ip.v6);
 	}
 	else
 	{
-		JSON_OBJ_REF_STR(json, "ipv6", "-");
+		JSON_REF_STR_IN_OBJECT(json, "ipv6", "-");
 	}
 
 	return 200;
@@ -793,8 +793,8 @@ static int json_iface(struct ftl_conn *api, struct if_info *iface, cJSON *json)
 
 int api_ftl_interfaces(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJ();
-	cJSON *gateway = JSON_NEW_OBJ();
+	cJSON *json = JSON_NEW_OBJECT();
+	cJSON *gateway = JSON_NEW_OBJECT();
 	cJSON *interfaces = JSON_NEW_ARRAY();
 
 	// Get interface with default route
@@ -803,9 +803,9 @@ int api_ftl_interfaces(struct ftl_conn *api)
 	getDefaultInterface(default_iface, &gw);
 
 	const char *gwaddr = inet_ntoa(*(struct in_addr *) &gw);
-	JSON_OBJ_COPY_STR(gateway, "address", gwaddr);
-	JSON_OBJ_REF_STR(gateway, "interface", default_iface);
-	JSON_OBJ_ADD_ITEM(json, "gateway", gateway);
+	JSON_COPY_STR_TO_OBJECT(gateway, "address", gwaddr);
+	JSON_REF_STR_IN_OBJECT(gateway, "interface", default_iface);
+	JSON_ADD_ITEM_TO_OBJECT(json, "gateway", gateway);
 
 	// Enumerate and list interfaces
 	struct if_info *ifinfo = NULL;
@@ -819,11 +819,11 @@ int api_ftl_interfaces(struct ftl_conn *api)
 	{
 		if(iface->default_iface)
 		{
-			cJSON *ijson = JSON_NEW_OBJ();
+			cJSON *ijson = JSON_NEW_OBJECT();
 			int rc = json_iface(api, iface, ijson);
 			if(rc != 200)
 				return rc;
-			JSON_ARRAY_ADD_ITEM(interfaces, ijson);
+			JSON_ADD_ITEM_TO_ARRAY(interfaces, ijson);
 			break;
 		}
 		iface = iface->next;
@@ -834,11 +834,11 @@ int api_ftl_interfaces(struct ftl_conn *api)
 	{
 		if(!iface->default_iface)
 		{
-			cJSON *ijson = JSON_NEW_OBJ();
+			cJSON *ijson = JSON_NEW_OBJECT();
 			int rc = json_iface(api, iface, ijson);
 			if(rc != 200)
 				return rc;
-			JSON_ARRAY_ADD_ITEM(interfaces, ijson);
+			JSON_ADD_ITEM_TO_ARRAY(interfaces, ijson);
 		}
 
 		// Free associated memory
@@ -852,6 +852,6 @@ int api_ftl_interfaces(struct ftl_conn *api)
 		free(iface);
 		iface = next;
 	}
-	JSON_OBJ_ADD_ITEM(json, "interfaces", interfaces);
+	JSON_ADD_ITEM_TO_OBJECT(json, "interfaces", interfaces);
 	JSON_SEND_OBJECT(json);
 }

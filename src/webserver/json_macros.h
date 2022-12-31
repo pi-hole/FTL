@@ -12,12 +12,12 @@
 // logging routines
 #include "../log.h"
 
-#define JSON_NEW_OBJ() cJSON_CreateObject();
+#define JSON_NEW_OBJECT() cJSON_CreateObject();
 #define JSON_NEW_ARRAY() cJSON_CreateArray();
 
-#define JSON_ARRAY_ADD_ITEM(array, item) cJSON_AddItemToArray(array, item);
+#define JSON_ADD_ITEM_TO_ARRAY(array, item) cJSON_AddItemToArray(array, item);
 
-#define JSON_OBJ_COPY_STR(object, key, string){ \
+#define JSON_COPY_STR_TO_OBJECT(object, key, string){ \
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
@@ -31,13 +31,13 @@
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
-		log_err("JSON_OBJ_COPY_STR FAILED (key: \"%s\", string: \"%s\")!", key, string); \
+		log_err("JSON_COPY_STR_TO_OBJECT FAILED (key: \"%s\", string: \"%s\")!", key, string); \
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, string_item); \
 }
 
-#define JSON_OBJ_REF_STR(object, key, string){ \
+#define JSON_REF_STR_IN_OBJECT(object, key, string){ \
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
@@ -51,67 +51,67 @@
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
-		log_err("JSON_OBJ_REF_STR FAILED (key: \"%s\", string: \"%s\")!", key, string); \
+		log_err("JSON_REF_STR_IN_OBJECT FAILED (key: \"%s\", string: \"%s\")!", key, string); \
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, string_item); \
 }
 
-#define JSON_OBJ_ADD_NUMBER(object, key, num){ \
+#define JSON_ADD_NUMBER_TO_OBJECT(object, key, num){ \
 	const double number = num; \
 	if(cJSON_AddNumberToObject(object, key, number) == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
-		log_err("JSON_OBJ_ADD_NUMBER FAILED!"); \
+		log_err("JSON_ADD_NUMBER_TO_OBJECT FAILED!"); \
 		return 500; \
 	} \
 }
 
-#define JSON_OBJ_ADD_NULL(object, key) {\
+#define JSON_ADD_NULL_TO_OBJECT(object, key) {\
 	cJSON *null_item = cJSON_CreateNull(); \
 	if(null_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
-		log_err("JSON_OBJ_ADD_NULL FAILED!"); \
+		log_err("JSON_ADD_NULL_TO_OBJECT FAILED!"); \
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, null_item); \
 }
 
-#define JSON_OBJ_ADD_BOOL(object, key, val) {\
+#define JSON_ADD_BOOL_TO_OBJECT(object, key, val) {\
 	const cJSON_bool value = val; \
 	cJSON *bool_item = cJSON_CreateBool(value); \
 	if(bool_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
-		log_err("JSON_OBJ_ADD_BOOL FAILED!"); \
+		log_err("JSON_ADD_BOOL_TO_OBJECT FAILED!"); \
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, bool_item); \
 }
 
-#define JSON_ARRAY_ADD_NUMBER(object, num){ \
+#define JSON_ADD_NUMBER_TO_ARRAY(object, num){ \
 	const double number = num; \
 	cJSON *number_item = cJSON_CreateNumber(number); \
 	cJSON_AddItemToArray(object, number_item); \
 }
 
-#define JSON_ARRAY_REPLACE_NUMBER(object, index, num){ \
+#define JSON_REPLACE_NUMBER_IN_ARRAY(object, index, num){ \
 	const double number = num; \
 	cJSON *number_item = cJSON_CreateNumber(number); \
 	cJSON_ReplaceItemInArray(object, index, number_item); \
 }
 
-#define JSON_ARRAY_ADD_BOOL(object, val){ \
+#define JSON_ADD_BOOL_TO_ARRAY(object, val){ \
 	const cJSON_bool value = val; \
 	cJSON *bool_item = cJSON_CreateBool(value); \
 	cJSON_AddItemToArray(object, bool_item); \
 }
 
-#define JSON_ARRAY_REF_STR(array, string){ \
+#define JSON_REF_STR_IN_ARRAY(array, string){ \
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
@@ -125,13 +125,13 @@
 	{ \
 		cJSON_Delete(array); \
 		send_http_internal_error(api); \
-		log_err("JSON_ARRAY_REF_STR FAILED!"); \
+		log_err("JSON_REF_STR_IN_ARRAY FAILED!"); \
 		return 500; \
 	} \
 	cJSON_AddItemToArray(array, string_item); \
 }
 
-#define JSON_ARRAY_COPY_STR(array, string){ \
+#define JSON_COPY_STR_TO_ARRAY(array, string){ \
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
@@ -145,7 +145,7 @@
 	{ \
 		cJSON_Delete(array); \
 		send_http_internal_error(api); \
-		log_err("JSON_ARRAY_COPY_STR FAILED!"); \
+		log_err("JSON_COPY_STR_TO_ARRAY FAILED!"); \
 		return 500; \
 	} \
 	cJSON_AddItemToArray(array, string_item); \
@@ -154,7 +154,7 @@
 // cJSON_AddItemToObject() does not return anything
 // Note that this operation transfers the ownership of the added item to the
 // new parent so that when that array or object is deleted, it gets deleted as well.
-#define JSON_OBJ_ADD_ITEM(object, key, item) cJSON_AddItemToObject(object, key, item)
+#define JSON_ADD_ITEM_TO_OBJECT(object, key, item) cJSON_AddItemToObject(object, key, item)
 
 #define JSON_DELETE(object) cJSON_Delete(object)
 

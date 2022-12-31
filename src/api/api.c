@@ -135,15 +135,15 @@ static int api_endpoints(struct ftl_conn *api)
 		return send_json_unauthorized(api);
 	}
 
-	cJSON *json = JSON_NEW_OBJ();
+	cJSON *json = JSON_NEW_OBJECT();
 	cJSON *endpoints = JSON_NEW_ARRAY();
 
 	// Add endpoints to JSON array
 	for(unsigned int i = 0; i < sizeof(api_request)/sizeof(api_request[0]); i++)
-		JSON_ARRAY_REF_STR(endpoints, api_request[i].uri);
+		JSON_REF_STR_IN_ARRAY(endpoints, api_request[i].uri);
 
 	// Add endpoints to JSON object
-	JSON_OBJ_ADD_ITEM(json, "endpoints", endpoints);
+	JSON_ADD_ITEM_TO_OBJECT(json, "endpoints", endpoints);
 
 	// Send response
 	JSON_SEND_OBJECT_UNLOCK(json);

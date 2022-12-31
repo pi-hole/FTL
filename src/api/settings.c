@@ -15,8 +15,8 @@
 
 int api_settings_web(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(json, "layout", "boxed");
-	JSON_OBJ_REF_STR(json, "language", "en");
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_REF_STR_IN_OBJECT(json, "layout", "boxed");
+	JSON_REF_STR_IN_OBJECT(json, "language", "en");
 	JSON_SEND_OBJECT(json);
 }

@@ -231,31 +231,31 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 	// Authentication not needed
 	if(user_id == API_AUTH_LOCALHOST || user_id == API_AUTH_EMPTYPASS)
 	{
-		cJSON *session = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_BOOL(session, "valid", true);
-		JSON_OBJ_ADD_NULL(session, "sid");
-		JSON_OBJ_ADD_NUMBER(session, "validity", -1);
-		JSON_OBJ_ADD_ITEM(json, "session", session);
+		cJSON *session = JSON_NEW_OBJECT();
+		JSON_ADD_BOOL_TO_OBJECT(session, "valid", true);
+		JSON_ADD_NULL_TO_OBJECT(session, "sid");
+		JSON_ADD_NUMBER_TO_OBJECT(session, "validity", -1);
+		JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
 		return 0;
 	}
 
 	// Valid session
 	if(user_id > API_AUTH_UNAUTHORIZED && auth_data[user_id].used)
 	{
-		cJSON *session = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_BOOL(session, "valid", true);
-		JSON_OBJ_REF_STR(session, "sid", auth_data[user_id].sid);
-		JSON_OBJ_ADD_NUMBER(session, "validity", auth_data[user_id].valid_until - now);
-		JSON_OBJ_ADD_ITEM(json, "session", session);
+		cJSON *session = JSON_NEW_OBJECT();
+		JSON_ADD_BOOL_TO_OBJECT(session, "valid", true);
+		JSON_REF_STR_IN_OBJECT(session, "sid", auth_data[user_id].sid);
+		JSON_ADD_NUMBER_TO_OBJECT(session, "validity", auth_data[user_id].valid_until - now);
+		JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
 		return 0;
 	}
 
 	// No valid session
-	cJSON *session = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_BOOL(session, "valid", false);
-	JSON_OBJ_ADD_NULL(session, "sid");
-	JSON_OBJ_ADD_NUMBER(session, "validity", -1);
-	JSON_OBJ_ADD_ITEM(json, "session", session);
+	cJSON *session = JSON_NEW_OBJECT();
+	JSON_ADD_BOOL_TO_OBJECT(session, "valid", false);
+	JSON_ADD_NULL_TO_OBJECT(session, "sid");
+	JSON_ADD_NUMBER_TO_OBJECT(session, "validity", -1);
+	JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
 	return 0;
 }
 
@@ -277,8 +277,8 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 	{
 		log_debug(DEBUG_API, "API Auth status: OK (localhost does not need auth)");
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NULL(json, "challenge");
+		cJSON *json = JSON_NEW_OBJECT();
+		JSON_ADD_NULL_TO_OBJECT(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
@@ -287,8 +287,8 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 	{
 		log_debug(DEBUG_API, "API Auth status: OK (empty password)");
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NULL(json, "challenge");
+		cJSON *json = JSON_NEW_OBJECT();
+		JSON_ADD_NULL_TO_OBJECT(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
@@ -305,8 +305,8 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 			return send_json_error(api, 500, "internal_error", "Internal server error", NULL);
 		}
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NULL(json, "challenge");
+		cJSON *json = JSON_NEW_OBJECT();
+		JSON_ADD_NULL_TO_OBJECT(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
@@ -318,8 +318,8 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 		delete_session(user_id);
 
 		strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NULL(json, "challenge");
+		cJSON *json = JSON_NEW_OBJECT();
+		JSON_ADD_NULL_TO_OBJECT(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT_CODE(json, 410); // 410 Gone
 	}
@@ -328,8 +328,8 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 		log_debug(DEBUG_API, "API Auth status: Invalid, asking to delete cookie");
 
 		strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NULL(json, "challenge");
+		cJSON *json = JSON_NEW_OBJECT();
+		JSON_ADD_NULL_TO_OBJECT(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT_CODE(json, 401); // 401 Unauthorized
 	}
@@ -563,8 +563,8 @@ int api_auth(struct ftl_conn *api)
 		log_debug(DEBUG_API, "API: Sending challenge=%s", challenges[i].challenge);
 
 		// Return to user
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "challenge", challenges[i].challenge);
+		cJSON *json = JSON_NEW_OBJECT();
+		JSON_REF_STR_IN_OBJECT(json, "challenge", challenges[i].challenge);
 		get_session_object(api, json, -1, now);
 		JSON_SEND_OBJECT(json);
 	}
