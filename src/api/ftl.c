@@ -794,18 +794,12 @@ static int json_iface(struct ftl_conn *api, struct if_info *iface, cJSON *json)
 int api_ftl_interfaces(struct ftl_conn *api)
 {
 	cJSON *json = JSON_NEW_OBJECT();
-	cJSON *gateway = JSON_NEW_OBJECT();
 	cJSON *interfaces = JSON_NEW_ARRAY();
 
 	// Get interface with default route
 	in_addr_t gw = 0;
 	char default_iface[IF_NAMESIZE] = { 0 };
 	getDefaultInterface(default_iface, &gw);
-
-	const char *gwaddr = inet_ntoa(*(struct in_addr *) &gw);
-	JSON_COPY_STR_TO_OBJECT(gateway, "address", gwaddr);
-	JSON_REF_STR_IN_OBJECT(gateway, "interface", default_iface);
-	JSON_ADD_ITEM_TO_OBJECT(json, "gateway", gateway);
 
 	// Enumerate and list interfaces
 	struct if_info *ifinfo = NULL;

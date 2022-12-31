@@ -146,5 +146,5 @@ static int api_endpoints(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(json, "endpoints", endpoints);
 
 	// Send response
-	JSON_SEND_OBJECT_UNLOCK(json);
+	JSON_SEND_OBJECT(json);
 }
