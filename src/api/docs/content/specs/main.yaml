@@ -110,6 +110,9 @@ paths:
   /ftl/endpoints:
     $ref: 'ftl.yaml#/components/paths/endpoints'
 
+  /ftl/gateway:
+    $ref: 'ftl.yaml#/components/paths/gateway'
+
   /version:
     $ref: 'version.yaml#/components/paths/version'
 
