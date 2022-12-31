@@ -89,6 +89,22 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    port:
+      get:
+        summary: Get DNS port
+        tags:
+          - Metrics
+        operationId: "get_dns_port"
+        description: |
+          This API hook returns the DNS port currently used by Pi-hole.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/dns_port'
   schemas:
     blocking:
       type: object
@@ -126,6 +142,13 @@ components:
           type: integer
           description: The number of cache entries that had to be removed although the corresponding entries were **not** expired
           example: 0
+    dns_port:
+      type: object
+      properties:
+        dns_port:
+          type: integer
+          description: DNS port
+          example: 53
     errors:
       item_missing:
         type: object

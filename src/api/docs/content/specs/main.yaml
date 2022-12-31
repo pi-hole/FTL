@@ -68,6 +68,9 @@ paths:
   /dns/cache:
     $ref: 'dns.yaml#/components/paths/cache'
 
+  /dns/port:
+    $ref: 'dns.yaml#/components/paths/port'
+
   /domains/{type}/{kind}/{domain}:
     $ref: 'domains.yaml#/components/paths/type_kind_domain'
 
