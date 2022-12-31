@@ -76,7 +76,7 @@ index 81f642be..ed360a76 100644
  int
  mg_send_http_error(struct mg_connection *conn, int status, const char *fmt, ...)
  {
-@@ -10538,6 +10587,10 @@ parse_http_request(char *buf, int len, struct mg_request_info *ri)
+@@ -10649,6 +10649,10 @@ parse_http_request(char *buf, int len, struct mg_request_info *ri)
  	    NULL;
  	ri->num_headers = 0;
  
@@ -84,7 +84,7 @@ index 81f642be..ed360a76 100644
 +	strncpy(ri->raw_http_head, buf, sizeof(ri->raw_http_head));
 +	/**************************************************************/
 +
- 	/* RFC says that all initial whitespaces should be ingored */
+ 	/* RFC says that all initial whitespaces should be ignored */
  	/* This included all leading \r and \n (isspace) */
  	/* See table: http://www.cplusplus.com/reference/cctype/ */
 diff --git a/src/civetweb/civetweb.h b/src/civetweb/civetweb.h

@@ -362,8 +362,12 @@ __cyg_profile_func_exit(void *this_fn, void *call_site)
 #endif
 #endif
 
+#ifndef CLOCK_MONOTONIC
 #define CLOCK_MONOTONIC (1)
+#endif
+#ifndef CLOCK_REALTIME
 #define CLOCK_REALTIME (2)
+#endif
 
 #include <mach/clock.h>
 #include <mach/mach.h>
@@ -1774,6 +1778,7 @@ typedef struct SSL_CTX SSL_CTX;
 #if !defined(OPENSSL_API_3_0)
 #define OPENSSL_API_3_0
 #endif
+#define OPENSSL_REMOVE_THREAD_STATE()
 #else
 #if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
 #if !defined(OPENSSL_API_1_1)
@@ -1928,6 +1933,7 @@ enum {
 	ENABLE_WEBSOCKET_PING_PONG,
 #endif
 	DECODE_URL,
+	DECODE_QUERY_STRING,
 #if defined(USE_LUA)
 	LUA_BACKGROUND_SCRIPT,
 	LUA_BACKGROUND_SCRIPT_PARAMS,
@@ -2066,6 +2072,7 @@ static const struct mg_option config_options[] = {
     {"enable_websocket_ping_pong", MG_CONFIG_TYPE_BOOLEAN, "no"},
 #endif
     {"decode_url", MG_CONFIG_TYPE_BOOLEAN, "yes"},
+    {"decode_query_string", MG_CONFIG_TYPE_BOOLEAN, "no"},
 #if defined(USE_LUA)
     {"lua_background_script", MG_CONFIG_TYPE_FILE, NULL},
     {"lua_background_script_params", MG_CONFIG_TYPE_STRING_LIST, NULL},
@@ -3200,24 +3207,6 @@ mg_get_user_connection_data(const struct mg_connection *conn)
 }
 
 
-#if defined(MG_LEGACY_INTERFACE)
-/* Deprecated: Use mg_get_server_ports instead. */
-size_t
-mg_get_ports(const struct mg_context *ctx, size_t size, int *ports, int *ssl)
-{
-	size_t i;
-	if (!ctx) {
-		return 0;
-	}
-	for (i = 0; i < size && i < ctx->num_listening_sockets; i++) {
-		ssl[i] = ctx->listening_sockets[i].is_ssl;
-		ports[i] = ntohs(USA_IN_PORT_UNSAFE(&(ctx->listening_sockets[i].lsa)));
-	}
-	return i;
-}
-#endif
-
-
 int
 mg_get_server_ports(const struct mg_context *ctx,
                     int size,
@@ -4032,6 +4021,18 @@ should_decode_url(const struct mg_connection *conn)
 	}
 
 	return (mg_strcasecmp(conn->dom_ctx->config[DECODE_URL], "yes") == 0);
+}
+
+
+static int
+should_decode_query_string(const struct mg_connection *conn)
+{
+	if (!conn || !conn->dom_ctx) {
+		return 0;
+	}
+
+	return (mg_strcasecmp(conn->dom_ctx->config[DECODE_QUERY_STRING], "yes")
+	        == 0);
 }
 
 
@@ -5223,9 +5224,11 @@ mg_readdir(DIR *dir)
 #undef POLLIN
 #undef POLLPRI
 #undef POLLOUT
+#undef POLLERR
 #define POLLIN (1)  /* Data ready - read will not block. */
 #define POLLPRI (2) /* Priority data ready. */
 #define POLLOUT (4) /* Send queue not full - write will not block. */
+#define POLLERR (8) /* Error event */
 
 FUNCTION_MAY_BE_UNUSED
 static int
@@ -5234,6 +5237,7 @@ poll(struct mg_pollfd *pfd, unsigned int n, int milliseconds)
 	struct timeval tv;
 	fd_set rset;
 	fd_set wset;
+	fd_set eset;
 	unsigned int i;
 	int result;
 	SOCKET maxfd = 0;
@@ -5243,13 +5247,18 @@ poll(struct mg_pollfd *pfd, unsigned int n, int milliseconds)
 	tv.tv_usec = (milliseconds % 1000) * 1000;
 	FD_ZERO(&rset);
 	FD_ZERO(&wset);
+	FD_ZERO(&eset);
 
 	for (i = 0; i < n; i++) {
-		if (pfd[i].events & POLLIN) {
-			FD_SET(pfd[i].fd, &rset);
-		}
-		if (pfd[i].events & POLLOUT) {
-			FD_SET(pfd[i].fd, &wset);
+		if (pfd[i].events & (POLLIN | POLLOUT | POLLERR)) {
+			if (pfd[i].events & POLLIN) {
+				FD_SET(pfd[i].fd, &rset);
+			}
+			if (pfd[i].events & POLLOUT) {
+				FD_SET(pfd[i].fd, &wset);
+			}
+			/* Check for errors for any FD in the set */
+			FD_SET(pfd[i].fd, &eset);
 		}
 		pfd[i].revents = 0;
 
@@ -5258,13 +5267,16 @@ poll(struct mg_pollfd *pfd, unsigned int n, int milliseconds)
 		}
 	}
 
-	if ((result = select((int)maxfd + 1, &rset, &wset, NULL, &tv)) > 0) {
+	if ((result = select((int)maxfd + 1, &rset, &wset, &eset, &tv)) > 0) {
 		for (i = 0; i < n; i++) {
 			if (FD_ISSET(pfd[i].fd, &rset)) {
 				pfd[i].revents |= POLLIN;
 			}
 			if (FD_ISSET(pfd[i].fd, &wset)) {
 				pfd[i].revents |= POLLOUT;
+			}
+			if (FD_ISSET(pfd[i].fd, &eset)) {
+				pfd[i].revents |= POLLERR;
 			}
 		}
 	}
@@ -5944,12 +5956,19 @@ static int
 mg_poll(struct mg_pollfd *pfd,
         unsigned int n,
         int milliseconds,
-        stop_flag_t *stop_flag)
+        const stop_flag_t *stop_flag)
 {
 	/* Call poll, but only for a maximum time of a few seconds.
 	 * This will allow to stop the server after some seconds, instead
 	 * of having to wait for a long socket timeout. */
 	int ms_now = SOCKET_TIMEOUT_QUANTUM; /* Sleep quantum in ms */
+
+	int check_pollerr = 0;
+	if ((n == 1) && ((pfd[0].events & POLLERR) == 0)) {
+		/* If we wait for only one file descriptor, wait on error as well */
+		pfd[0].events |= POLLERR;
+		check_pollerr = 1;
+	}
 
 	do {
 		int result;
@@ -5967,6 +5986,12 @@ mg_poll(struct mg_pollfd *pfd,
 		if (result != 0) {
 			/* Poll returned either success (1) or error (-1).
 			 * Forward both to the caller. */
+			if ((check_pollerr)
+			    && ((pfd[0].revents & (POLLIN | POLLOUT | POLLERR))
+			        == POLLERR)) {
+				/* One and only file descriptor returned error */
+				return -1;
+			}
 			return result;
 		}
 
@@ -6174,7 +6199,8 @@ push_all(struct mg_context *ctx,
 		timeout = atoi(ctx->dd.config[REQUEST_TIMEOUT]) / 1000.0;
 	}
 	if (timeout <= 0.0) {
-		timeout = atof(config_options[REQUEST_TIMEOUT].default_value) / 1000.0;
+		timeout = strtod(config_options[REQUEST_TIMEOUT].default_value, NULL)
+		          / 1000.0;
 	}
 
 	while ((len > 0) && STOP_FLAG_IS_ZERO(&ctx->stop_flag)) {
@@ -6442,7 +6468,8 @@ pull_all(FILE *fp, struct mg_connection *conn, char *buf, int len)
 		timeout = atoi(conn->dom_ctx->config[REQUEST_TIMEOUT]) / 1000.0;
 	}
 	if (timeout <= 0.0) {
-		timeout = atof(config_options[REQUEST_TIMEOUT].default_value) / 1000.0;
+		timeout = strtod(config_options[REQUEST_TIMEOUT].default_value, NULL)
+		          / 1000.0;
 	}
 	start_time = mg_get_current_time_ns();
 	timeout_ns = (uint64_t)(timeout * 1.0E9);
@@ -8076,6 +8103,7 @@ static const struct {
     {".sil", 4, "application/font-sfnt"},
     {".pfr", 4, "application/font-tdpfr"},
     {".woff", 5, "application/font-woff"},
+    {".woff2", 6, "application/font-woff2"},
 
     /* audio */
     {".mp3", 4, "audio/mpeg"},
@@ -8132,6 +8160,7 @@ static const struct {
     {".aac",
      4,
      "audio/aac"}, /* http://en.wikipedia.org/wiki/Advanced_Audio_Coding */
+    {".flac", 5, "audio/flac"},
     {".aif", 4, "audio/x-aif"},
     {".m3u", 4, "audio/x-mpegurl"},
     {".mid", 4, "audio/x-midi"},
@@ -8821,14 +8850,16 @@ is_authorized_for_put(struct mg_connection *conn)
 #endif
 
 
-int
-mg_modify_passwords_file(const char *fname,
-                         const char *domain,
-                         const char *user,
-                         const char *pass)
+static int
+modify_passwords_file(const char *fname,
+                      const char *domain,
+                      const char *user,
+                      const char *pass,
+                      const char *ha1)
 {
 	int found, i;
-	char line[512], u[512] = "", d[512] = "", ha1[33], tmp[UTF8_PATH_MAX + 8];
+	char line[512], u[512] = "", d[512] = "", ha1buf[33],
+	                tmp[UTF8_PATH_MAX + 8];
 	FILE *fp, *fp2;
 
 	found = 0;
@@ -8907,7 +8938,9 @@ mg_modify_passwords_file(const char *fname,
 		if (!strcmp(u, user) && !strcmp(d, domain)) {
 			found++;
 			if (pass != NULL) {
-				mg_md5(ha1, user, ":", domain, ":", pass, NULL);
+				mg_md5(ha1buf, user, ":", domain, ":", pass, NULL);
+				fprintf(fp2, "%s:%s:%s\n", user, domain, ha1buf);
+			} else if (ha1 != NULL) {
 				fprintf(fp2, "%s:%s:%s\n", user, domain, ha1);
 			}
 		} else {
@@ -8916,9 +8949,13 @@ mg_modify_passwords_file(const char *fname,
 	}
 
 	/* If new user, just add it */
-	if (!found && (pass != NULL)) {
-		mg_md5(ha1, user, ":", domain, ":", pass, NULL);
-		fprintf(fp2, "%s:%s:%s\n", user, domain, ha1);
+	if (!found) {
+		if (pass != NULL) {
+			mg_md5(ha1buf, user, ":", domain, ":", pass, NULL);
+			fprintf(fp2, "%s:%s:%s\n", user, domain, ha1buf);
+		} else if (ha1 != NULL) {
+			fprintf(fp2, "%s:%s:%s\n", user, domain, ha1);
+		}
 	}
 
 	/* Close files */
@@ -8930,6 +8967,26 @@ mg_modify_passwords_file(const char *fname,
 	IGNORE_UNUSED_RESULT(rename(tmp, fname));
 
 	return 1;
+}
+
+
+int
+mg_modify_passwords_file(const char *fname,
+                         const char *domain,
+                         const char *user,
+                         const char *pass)
+{
+	return modify_passwords_file(fname, domain, user, pass, NULL);
+}
+
+
+int
+mg_modify_passwords_file_ha1(const char *fname,
+                             const char *domain,
+                             const char *user,
+                             const char *ha1)
+{
+	return modify_passwords_file(fname, domain, user, NULL, ha1);
 }
 
 
@@ -9017,7 +9074,7 @@ connect_socket(
 	if (port == -99) {
 		/* Unix domain socket */
 		size_t hostlen = strlen(host);
-		if (hostlen >= sizeof(sa->lsa.sun.sun_path)) {
+		if (hostlen >= sizeof(sa->sun.sun_path)) {
 			mg_snprintf(NULL,
 			            NULL, /* No truncation check for ebuf */
 			            ebuf,
@@ -9071,7 +9128,7 @@ connect_socket(
 		/* check (hostlen < sizeof(sun.sun_path)) already passed above */
 		ip_ver = -99;
 		sa->sun.sun_family = AF_UNIX;
-		memset(sa->sun.sun_path, 0, sizeof(sa->lsa.sun.sun_path));
+		memset(sa->sun.sun_path, 0, sizeof(sa->sun.sun_path));
 		memcpy(sa->sun.sun_path, host, hostlen);
 	} else
 #endif
@@ -9822,7 +9879,12 @@ send_file_data(struct mg_connection *conn,
 static int
 parse_range_header(const char *header, int64_t *a, int64_t *b)
 {
-	return sscanf(header, "bytes=%" INT64_FMT "-%" INT64_FMT, a, b);
+	return sscanf(header,
+	              "bytes=%" INT64_FMT "-%" INT64_FMT,
+	              a,
+	              b); // NOLINT(cert-err34-c) 'sscanf' used to convert a string
+	                  // to an integer value, but function will not report
+	                  // conversion errors; consider using 'strtol' instead
 }
 
 
@@ -10591,7 +10653,7 @@ parse_http_request(char *buf, int len, struct mg_request_info *ri)
 	strncpy(ri->raw_http_head, buf, sizeof(ri->raw_http_head));
 	/**************************************************************/
 
-	/* RFC says that all initial whitespaces should be ingored */
+	/* RFC says that all initial whitespaces should be ignored */
 	/* This included all leading \r and \n (isspace) */
 	/* See table: http://www.cplusplus.com/reference/cctype/ */
 	while ((len > 0) && isspace((unsigned char)*buf)) {
@@ -10628,11 +10690,6 @@ parse_http_request(char *buf, int len, struct mg_request_info *ri)
 		return -1;
 	}
 
-	/* Check for a valid http method */
-	if (!is_valid_http_method(ri->request_method)) {
-		return -1;
-	}
-
 	/* The second word is the URI */
 	ri->request_uri = buf;
 
@@ -10653,6 +10710,11 @@ parse_http_request(char *buf, int len, struct mg_request_info *ri)
 		return -1;
 	}
 	ri->http_version += 5;
+
+	/* Check for a valid http method */
+	if (!is_valid_http_method(ri->request_method)) {
+		return -1;
+	}
 
 	/* Parse all HTTP headers */
 	ri->num_headers = parse_http_headers(&buf, ri->http_headers);
@@ -10791,15 +10853,18 @@ read_message(FILE *fp,
 
 	if (conn->dom_ctx->config[REQUEST_TIMEOUT]) {
 		/* value of request_timeout is in seconds, config in milliseconds */
-		request_timeout = atof(conn->dom_ctx->config[REQUEST_TIMEOUT]) / 1000.0;
+		request_timeout =
+		    strtod(conn->dom_ctx->config[REQUEST_TIMEOUT], NULL) / 1000.0;
 	} else {
 		request_timeout =
-		    atof(config_options[REQUEST_TIMEOUT].default_value) / 1000.0;
+		    strtod(config_options[REQUEST_TIMEOUT].default_value, NULL)
+		    / 1000.0;
 	}
 	if (conn->handled_requests > 0) {
 		if (conn->dom_ctx->config[KEEP_ALIVE_TIMEOUT]) {
 			request_timeout =
-			    atof(conn->dom_ctx->config[KEEP_ALIVE_TIMEOUT]) / 1000.0;
+			    strtod(conn->dom_ctx->config[KEEP_ALIVE_TIMEOUT], NULL)
+			    / 1000.0;
 		}
 	}
 
@@ -12598,8 +12663,8 @@ read_websocket(struct mg_connection *conn,
 							    data_len
 							    * 4; // Initial guess of the inflated message
 							         // size. We double the memory when needed.
-							Bytef *inflated;
-							Bytef *new_mem;
+							Bytef *inflated = NULL;
+							Bytef *new_mem = NULL;
 							conn->websocket_inflate_state.avail_in =
 							    (uInt)(data_len + 4);
 							conn->websocket_inflate_state.next_in = data;
@@ -12610,12 +12675,14 @@ read_websocket(struct mg_connection *conn,
 							data[data_len + 3] = '\xff';
 							do {
 								if (inflate_buf_size_old == 0) {
-									new_mem = mg_calloc(inflate_buf_size,
-									                    sizeof(Bytef));
+									new_mem =
+									    (Bytef *)mg_calloc(inflate_buf_size,
+									                       sizeof(Bytef));
 								} else {
 									inflate_buf_size *= 2;
 									new_mem =
-									    mg_realloc(inflated, inflate_buf_size);
+									    (Bytef *)mg_realloc(inflated,
+									                        inflate_buf_size);
 								}
 								if (new_mem == NULL) {
 									mg_cry_internal(
@@ -12803,7 +12870,7 @@ mg_websocket_write_exec(struct mg_connection *conn,
 		header[0] = 0xC0u | (unsigned char)((unsigned)opcode & 0xf);
 		conn->websocket_deflate_state.avail_in = (uInt)dataLen;
 		conn->websocket_deflate_state.next_in = (unsigned char *)data;
-		deflated_size = compressBound((uLong)dataLen);
+		deflated_size = (Bytef *)compressBound((uLong)dataLen);
 		deflated = mg_calloc(deflated_size, sizeof(Bytef));
 		if (deflated == NULL) {
 			mg_cry_internal(
@@ -13228,9 +13295,15 @@ parse_match_net(const struct vec *vec, const union usa *sa, int no_strict)
 	int n;
 	unsigned int a, b, c, d, slash;
 
-	if (sscanf(vec->ptr, "%u.%u.%u.%u/%u%n", &a, &b, &c, &d, &slash, &n) != 5) {
+	if (sscanf(vec->ptr, "%u.%u.%u.%u/%u%n", &a, &b, &c, &d, &slash, &n)
+	    != 5) { // NOLINT(cert-err34-c) 'sscanf' used to convert a string to an
+		        // integer value, but function will not report conversion
+		        // errors; consider using 'strtol' instead
 		slash = 32;
-		if (sscanf(vec->ptr, "%u.%u.%u.%u%n", &a, &b, &c, &d, &n) != 4) {
+		if (sscanf(vec->ptr, "%u.%u.%u.%u%n", &a, &b, &c, &d, &n)
+		    != 4) { // NOLINT(cert-err34-c) 'sscanf' used to convert a string to
+			        // an integer value, but function will not report conversion
+			        // errors; consider using 'strtol' instead
 			n = 0;
 		}
 	}
@@ -13239,7 +13312,7 @@ parse_match_net(const struct vec *vec, const union usa *sa, int no_strict)
 		if ((a < 256) && (b < 256) && (c < 256) && (d < 256) && (slash < 33)) {
 			/* IPv4 format */
 			if (sa->sa.sa_family == AF_INET) {
-				uint32_t ip = (uint32_t)ntohl(sa->sin.sin_addr.s_addr);
+				uint32_t ip = ntohl(sa->sin.sin_addr.s_addr);
 				uint32_t net = ((uint32_t)a << 24) | ((uint32_t)b << 16)
 				               | ((uint32_t)c << 8) | (uint32_t)d;
 				uint32_t mask = slash ? (0xFFFFFFFFu << (32 - slash)) : 0;
@@ -13335,7 +13408,11 @@ set_throttle(const char *spec, const union usa *rsa, const char *uri)
 
 	while ((spec = next_option(spec, &vec, &val)) != NULL) {
 		mult = ',';
-		if ((val.ptr == NULL) || (sscanf(val.ptr, "%lf%c", &v, &mult) < 1)
+		if ((val.ptr == NULL)
+		    || (sscanf(val.ptr, "%lf%c", &v, &mult)
+		        < 1) // NOLINT(cert-err34-c) 'sscanf' used to convert a string
+		             // to an integer value, but function will not report
+		             // conversion errors; consider using 'strtol' instead
 		    || (v < 0)
 		    || ((lowercase(&mult) != 'k') && (lowercase(&mult) != 'm')
 		        && (mult != ','))) {
@@ -13479,14 +13556,6 @@ switch_domain_context(struct mg_connection *conn)
 
 	return 1;
 }
-
-
-static int mg_construct_local_link(const struct mg_connection *conn,
-                                   char *buf,
-                                   size_t buflen,
-                                   const char *define_proto,
-                                   int define_port,
-                                   const char *define_uri);
 
 
 static void
@@ -14022,8 +14091,11 @@ handle_request(struct mg_connection *conn)
 	if (should_decode_url(conn)) {
 		mg_url_decode(
 		    ri->local_uri, uri_len, (char *)ri->local_uri, uri_len + 1, 0);
+	}
 
-		if (conn->request_info.query_string) {
+	/* URL decode the query-string only if explicity set in the configuration */
+	if (conn->request_info.query_string) {
+		if (should_decode_query_string(conn)) {
 			url_decode_in_place((char *)conn->request_info.query_string);
 		}
 	}
@@ -14043,7 +14115,6 @@ handle_request(struct mg_connection *conn)
 	ri->local_uri = tmp;
 
 	/* step 1. completed, the url is known now */
-	uri_len = (int)strlen(ri->local_uri);
 	DEBUG_TRACE("URL: %s", ri->local_uri);
 
 	/* 2. if this ip has limited speed, set it for this connection */
@@ -14683,7 +14754,16 @@ parse_port_string(const struct vec *vec, struct socket *so, int *ip_version)
 	len = 0;
 
 	/* Test for different ways to format this string */
-	if (sscanf(vec->ptr, "%u.%u.%u.%u:%u%n", &a, &b, &c, &d, &port, &len)
+	if (sscanf(vec->ptr,
+	           "%u.%u.%u.%u:%u%n",
+	           &a,
+	           &b,
+	           &c,
+	           &d,
+	           &port,
+	           &len) // NOLINT(cert-err34-c) 'sscanf' used to convert a string
+	                 // to an integer value, but function will not report
+	                 // conversion errors; consider using 'strtol' instead
 	    == 5) {
 		/* Bind to a specific IPv4 address, e.g. 192.168.1.5:8080 */
 		so->lsa.sin.sin_addr.s_addr =
@@ -14704,7 +14784,11 @@ parse_port_string(const struct vec *vec, struct socket *so, int *ip_version)
 #endif
 
 	} else if ((vec->ptr[0] == '+')
-	           && (sscanf(vec->ptr + 1, "%u%n", &port, &len) == 1)) {
+	           && (sscanf(vec->ptr + 1, "%u%n", &port, &len)
+	               == 1)) { // NOLINT(cert-err34-c) 'sscanf' used to convert a
+		                    // string to an integer value, but function will not
+		                    // report conversion errors; consider using 'strtol'
+		                    // instead
 
 		/* Port is specified with a +, bind to IPv6 and IPv4, INADDR_ANY */
 		/* Add 1 to len for the + character we skipped before */
@@ -14752,7 +14836,11 @@ parse_port_string(const struct vec *vec, struct socket *so, int *ip_version)
 
 		if (mg_inet_pton(
 		        AF_INET, hostname, &so->lsa.sin, sizeof(so->lsa.sin), 1)) {
-			if (sscanf(cb + 1, "%u%n", &port, &len) == 1) {
+			if (sscanf(cb + 1, "%u%n", &port, &len)
+			    == 1) { // NOLINT(cert-err34-c) 'sscanf' used to convert a
+				        // string to an integer value, but function will not
+				        // report conversion errors; consider using 'strtol'
+				        // instead
 				*ip_version = 4;
 				so->lsa.sin.sin_port = htons((uint16_t)port);
 				len += (int)(hostnlen + 1);
@@ -16055,7 +16143,8 @@ initialize_openssl(char *ebuf, size_t ebuf_len)
 	}
 #endif /* NO_SSL_DL */
 
-#if defined(OPENSSL_API_1_1) || defined(OPENSSL_API_3_0)
+#if (defined(OPENSSL_API_1_1) || defined(OPENSSL_API_3_0))                     \
+    && !defined(NO_SSL_DL)
 	/* Initialize SSL library */
 	OPENSSL_init_ssl(0, NULL);
 	OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS
@@ -16389,7 +16478,8 @@ init_ssl_ctx_impl(struct mg_context *phys_ctx,
 	int protocol_ver;
 	int ssl_cache_timeout;
 
-#if defined(OPENSSL_API_1_1) || defined(OPENSSL_API_3_0)
+#if (defined(OPENSSL_API_1_1) || defined(OPENSSL_API_3_0))                     \
+    && !defined(NO_SSL_DL)
 	if ((dom_ctx->ssl_ctx = SSL_CTX_new(TLS_server_method())) == NULL) {
 		mg_cry_ctx_internal(phys_ctx,
 		                    "SSL_CTX_new (server) error: %s",
@@ -16845,11 +16935,6 @@ reset_per_request_attributes(struct mg_connection *conn)
 #if defined(USE_SERVER_STATS)
 	conn->processing_time = 0;
 #endif
-
-#if defined(MG_LEGACY_INTERFACE)
-	/* Legacy before split into local_uri and request_uri */
-	conn->request_info.uri = NULL;
-#endif
 }
 
 
@@ -17203,7 +17288,8 @@ mg_connect_client_impl(const struct mg_client_options *client_options,
 	}
 
 #if !defined(NO_SSL) && !defined(USE_MBEDTLS) // TODO: mbedTLS client
-#if defined(OPENSSL_API_1_1) || defined(OPENSSL_API_3_0)
+#if (defined(OPENSSL_API_1_1) || defined(OPENSSL_API_3_0))                     \
+    && !defined(NO_SSL_DL)
 	if (use_ssl
 	    && (conn->dom_ctx->ssl_ctx = SSL_CTX_new(TLS_client_method()))
 	           == NULL) {
@@ -17760,6 +17846,15 @@ get_request(struct mg_connection *conn, char *ebuf, size_t ebuf_len, int *err)
 		return 0;
 	}
 
+#if USE_ZLIB
+	if (((cl = get_header(conn->request_info.http_headers,
+	                      conn->request_info.num_headers,
+	                      "Accept-Encoding"))
+	     != NULL)
+	    && strstr(cl, "gzip")) {
+		conn->accept_gzip = 1;
+	}
+#endif
 	if (((cl = get_header(conn->request_info.http_headers,
 	                      conn->request_info.num_headers,
 	                      "Transfer-Encoding"))
@@ -17933,11 +18028,7 @@ mg_get_response(struct mg_connection *conn,
 	ret = get_response(conn, ebuf, ebuf_len, &err);
 	conn->dom_ctx->config[REQUEST_TIMEOUT] = save_timeout;
 
-#if defined(MG_LEGACY_INTERFACE)
-	/* TODO: 1) uri is deprecated;
-	 *       2) here, ri.uri is the http response code */
-	conn->request_info.uri = conn->request_info.request_uri;
-#endif
+	/* TODO: here, the URI is the http response code */
 	conn->request_info.local_uri_raw = conn->request_info.request_uri;
 	conn->request_info.local_uri = conn->request_info.local_uri_raw;
 
@@ -17984,11 +18075,7 @@ mg_download(const char *host,
 			conn->data_len = 0;
 			get_response(conn, ebuf, ebuf_len, &reqerr);
 
-#if defined(MG_LEGACY_INTERFACE)
-			/* TODO: 1) uri is deprecated;
-			 *       2) here, ri.uri is the http response code */
-			conn->request_info.uri = conn->request_info.request_uri;
-#endif
+			/* TODO: here, the URI is the http response code */
 			conn->request_info.local_uri = conn->request_info.request_uri;
 		}
 	}
@@ -18521,11 +18608,6 @@ process_new_connection(struct mg_connection *conn)
 			}
 			conn->request_info.local_uri =
 			    (char *)conn->request_info.local_uri_raw;
-
-#if defined(MG_LEGACY_INTERFACE)
-			/* Legacy before split into local_uri and request_uri */
-			conn->request_info.uri = conn->request_info.local_uri;
-#endif
 		}
 
 		if (ebuf[0] != '\0') {
@@ -19204,7 +19286,11 @@ master_thread_run(struct mg_context *ctx)
 			pfd[i].events = POLLIN;
 		}
 
-		if (poll(pfd, ctx->num_listening_sockets, 200) > 0) {
+		if (mg_poll(pfd,
+		            ctx->num_listening_sockets,
+		            SOCKET_TIMEOUT_QUANTUM,
+		            &(ctx->stop_flag))
+		    > 0) {
 			for (i = 0; i < ctx->num_listening_sockets; i++) {
 				/* NOTE(lsm): on QNX, poll() returns POLLRDNORM after the
 				 * successful poll, and POLLIN is defined as
@@ -19533,11 +19619,8 @@ legacy_init(const char **options)
 }
 
 
-#if !defined(MG_EXPERIMENTAL_INTERFACES)
-static
-#endif
-    struct mg_context *
-    mg_start2(struct mg_init_data *init, struct mg_error_data *error)
+struct mg_context *
+mg_start2(struct mg_init_data *init, struct mg_error_data *error)
 {
 	struct mg_context *ctx;
 	const char *name, *value, *default_value;
@@ -20222,7 +20305,6 @@ mg_start(const struct mg_callbacks *callbacks,
 }
 
 
-#if defined(MG_EXPERIMENTAL_INTERFACES)
 /* Add an additional domain to an already running web server. */
 int
 mg_start_domain2(struct mg_context *ctx,
@@ -20418,8 +20500,6 @@ mg_start_domain(struct mg_context *ctx, const char **options)
 {
 	return mg_start_domain2(ctx, options, NULL);
 }
-
-#endif
 
 
 /* Feature check API function */
