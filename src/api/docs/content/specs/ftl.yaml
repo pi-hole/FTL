@@ -134,6 +134,27 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    interfaces:
+      get:
+        summary: Get info about the interfaces of your Pi-hole
+        tags:
+          - "FTL information"
+        operationId: "get_interfaces"
+        description: |
+          This API hook returns infos about the networking interfaces of your Pi-hole.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/interfaces'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     client:
       remote_addr:
@@ -451,6 +472,92 @@ components:
           type: string
           description: Interface of your Pi-hole connected to the gateway
           example: "eth0"
+    interfaces:
+      type: object
+      properties:
+        interfaces:
+          type: array
+          description: Interface information
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                nullable: true
+                description: Interface name
+              carrier:
+                type: boolean
+                description: If the interface is connected
+              speed:
+                type: number
+                description: Speed of the interface in Mbit/s (-1 if not applicable)
+              tx:
+                type: object
+                properties:
+                  num:
+                    type: integer
+                    description: Number of transmitted data since boot
+                  unit:
+                    type: string
+                    description: Unit of transmitted data since boot
+              rx:
+                type: object
+                properties:
+                  num:
+                    type: integer
+                    description: Number of received data since boot
+                  unit:
+                    type: string
+                    description: Unit of received data since boot
+              ipv4:
+                type: array
+                nullable: true
+                description: Array of associated IPv4 addresses
+                items:
+                  type: string
+              ipv6:
+                type: array
+                nullable: true
+                description: Array of associated IPv6 addresses
+                items:
+                  type: string
+          example:
+            - name: "eth0"
+              default: true
+              carrier: true
+              speed: 1000
+              tx:
+                num: 10.4
+                unit: "MB"
+              rx:
+                num: 8.1
+                unit: "MB"
+              ipv4: ["192.168.0.123"]
+              ipv6: ["fe80::1234:5678:9abc:def0", "2001:db8::1234:5678:9abc:def0"]
+            - name: "wlan0"
+              default: false
+              carrier: false
+              speed: -1
+              tx:
+                num: 0
+                unit: "B"
+              rx:
+                num: 0
+                unit: "B"
+              ipv4: []
+              ipv6: []
+            - name: "wg0"
+              default: false
+              carrier: true
+              speed: -1
+              tx:
+                num: 170.3
+                unit: "kB"
+              rx:
+                num: 222.3
+                unit: "kB"
+              ipv4: ["10.1.0.1"]
+              ipv6: ["fd00:4711::1"]
 
   parameters:
     logs:

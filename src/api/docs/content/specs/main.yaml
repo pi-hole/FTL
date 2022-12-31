@@ -113,6 +113,9 @@ paths:
   /ftl/gateway:
     $ref: 'ftl.yaml#/components/paths/gateway'
 
+  /ftl/interfaces:
+    $ref: 'ftl.yaml#/components/paths/interfaces'
+
   /version:
     $ref: 'version.yaml#/components/paths/version'
 
