@@ -38,6 +38,7 @@ static struct {
 	{ "/api/ftl/maxhistory",                    api_ftl_maxhistory,                    { false, false } },
 	{ "/api/ftl/gateway",                       api_ftl_gateway,                       { false, false } },
 	{ "/api/ftl/interfaces",                    api_ftl_interfaces,                    { false, false } },
+	{ "/api/ftl/endpoints",                     api_endpoints,                         { false, false } },
 	{ "/api/network",                           api_network,                           { false, false } },
 	{ "/api/history/clients",                   api_history_clients,                   { false, false } },
 	{ "/api/history",                           api_history,                           { false, false } },
@@ -63,7 +64,6 @@ static struct {
 	{ "/api/auth",                              api_auth,                              { false, false } },
 	{ "/api/settings/web",                      api_settings_web,                      { false, false } },
 	{ "/api/docs",                              api_docs,                              { false, false } },
-	{ "/api/endpoints",                         api_endpoints,                         { false, false } }
 };
 #define API_ENDPOINTS "/api/endpoints"
 
@@ -135,10 +135,15 @@ static int api_endpoints(struct ftl_conn *api)
 		return send_json_unauthorized(api);
 	}
 
-	cJSON *json = JSON_NEW_ARRAY();
+	cJSON *json = JSON_NEW_OBJ();
+	cJSON *endpoints = JSON_NEW_ARRAY();
 
+	// Add endpoints to JSON array
 	for(unsigned int i = 0; i < sizeof(api_request)/sizeof(api_request[0]); i++)
-		JSON_ARRAY_REF_STR(json, api_request[i].uri);
+		JSON_ARRAY_REF_STR(endpoints, api_request[i].uri);
+
+	// Add endpoints to JSON object
+	JSON_OBJ_ADD_ITEM(json, "endpoints", endpoints);
 
 	// Send response
 	JSON_SEND_OBJECT_UNLOCK(json);

@@ -92,6 +92,27 @@ components:
                 schema:
                   allOf:
                     - $ref: '#/components/schemas/database'
+    endpoints:
+      get:
+        summary: Get list of available API endpoints
+        tags:
+          - "FTL information"
+        operationId: "get_endpoints"
+        description: |
+          This API hook returns the list of all available API endpoints.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/endpoints'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     client:
       remote_addr:
@@ -389,6 +410,15 @@ components:
           type: string
           description: Version of embedded SQLite3 engine
           example: "3.34.0"
+    endpoints:
+      type: object
+      properties:
+        endpoints:
+          type: array
+          description: Endpoints
+          items:
+            type: string
+          example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
 
   parameters:
     logs:

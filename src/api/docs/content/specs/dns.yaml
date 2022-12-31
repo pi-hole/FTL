@@ -103,8 +103,7 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/dns_port'
+                  $ref: '#/components/schemas/dns_port'
   schemas:
     blocking:
       type: object

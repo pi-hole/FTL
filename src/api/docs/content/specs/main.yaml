@@ -107,6 +107,9 @@ paths:
   /ftl/dbinfo:
     $ref: 'ftl.yaml#/components/paths/dbinfo'
 
+  /ftl/endpoints:
+    $ref: 'ftl.yaml#/components/paths/endpoints'
+
   /version:
     $ref: 'version.yaml#/components/paths/version'
 
