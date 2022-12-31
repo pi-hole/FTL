@@ -12,6 +12,7 @@
 # Abort script if one command returns a non-zero value
 set -e
 
+# Parse arguments
 for var in "$@"
 do
     case "${var}" in
@@ -25,19 +26,32 @@ done
 # Prepare build environment
 if [[ -n "${clean}" ]]; then
     echo "Cleaning build environment"
+    # Remove build directory
     rm -rf cmake/
     if [[ -n ${nobuild} ]]; then
         exit 0
     fi
 fi
 
-# Remove possibly generated api/docs elements
-rm -rf src/api/docs/hex
+# Remove possibly outdated api/docs elements
+for filename in src/api/docs/hex/* src/api/docs/hex/**/*; do
+    # Skip if not a file
+    if [ ! -f "${filename}" ]; then
+        continue
+    fi
+
+    # Get the original filename
+    original_filename="${filename/"src/api/docs/hex/"/"src/api/docs/content/"}"
+
+    # Remove the file if it is outdated
+    if [ "${filename}" -ot "${original_filename}" ]; then
+        rm "${filename}"
+    fi
+done
 
 # Remove compiled LUA scripts if older than the plain ones
 for scriptname in src/lua/scripts/*.lua; do
     if [ -f "${scriptname}.hex" ] && [ "${scriptname}.hex" -ot "${scriptname}" ]; then
-        echo "INFO: ${scriptname} is outdated and will be recompiled"
         rm "${scriptname}.hex"
     fi
 done
@@ -53,10 +67,10 @@ else
     cmake ..
 fi
 
-# Build the sources
+# Build the sources with the number of available cores
 cmake --build . -- -j $(nproc)
 
-# If we are asked to install, we do this here
+# If we are asked to install, we do this here (requires root privileges)
 # Otherwise, we simply copy the binary one level up
 if [[ -n "${install}" ]]; then
     echo "Installing pihole-FTL"
@@ -67,6 +81,7 @@ else
     cp pihole-FTL ../
 fi
 
+# If we are asked to run tests, we do this here
 if [[ -n "${test}" ]]; then
     cd ..
     ./test/run.sh
