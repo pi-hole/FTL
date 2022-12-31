@@ -75,12 +75,16 @@ int api_queries_suggestions(struct ftl_conn *api)
 		return send_json_unauthorized(api);
 	}
 
+	// Lock shared memory
+	lock_shm();
+
 	// Get domains
 	cJSON *domain = JSON_NEW_ARRAY();
 	rc = add_strings_to_array(api, domain, "SELECT DISTINCT(domain) FROM queries");
 	if(rc != 0)
 	{
 		cJSON_Delete(domain);
+		unlock_shm();
 		return rc;
 	}
 
@@ -91,6 +95,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	{
 		cJSON_Delete(domain);
 		cJSON_Delete(client);
+		unlock_shm();
 		return rc;
 	}
 
@@ -102,6 +107,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 		cJSON_Delete(domain);
 		cJSON_Delete(client);
 		cJSON_Delete(upstream);
+		unlock_shm();
 		return rc;
 	}
 
@@ -151,7 +157,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	JSON_OBJ_ADD_ITEM(json, "reply", reply);
 	JSON_OBJ_ADD_ITEM(json, "dnssec", dnssec);
 
-	JSON_SEND_OBJECT(json);
+	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
 #define QUERYSTR "SELECT id,timestamp,type,status,domain,client,forward,additional_info,reply,dnssec,reply_time,client_name,ttl,regex_id"
@@ -203,6 +209,9 @@ int api_queries(struct ftl_conn *api)
 	{
 		return send_json_unauthorized(api);
 	}
+
+	// Lock shared memory
+	lock_shm();
 
 	// On-disk database lookup requested?
 	bool disk = false;
@@ -296,6 +305,7 @@ int api_queries(struct ftl_conn *api)
 					msg = "Cursor larger than largest database index";
 				// Cursors larger than the current known number
 				// of queries are invalid
+				unlock_shm();
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested cursor is invalid",
@@ -347,10 +357,11 @@ int api_queries(struct ftl_conn *api)
 		                       "internal_error",
 		                       "Internal server error, cannot attach disk database",
 		                       message);
+		unlock_shm();
 		return false;
 	}
 
-	// Prepare SQLIte3 statement
+	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -358,6 +369,7 @@ int api_queries(struct ftl_conn *api)
 		                       "internal_error",
 		                       "Internal server error, failed to prepare SQL query",
 		                       sqlite3_errstr(rc));
+		unlock_shm();
 		return false;
 	}
 
@@ -370,6 +382,7 @@ int api_queries(struct ftl_conn *api)
 		{
 			sqlite3_reset(read_stmt);
 			sqlite3_finalize(read_stmt);
+			unlock_shm();
 			return send_json_error(api, 500,
 			                       "internal_error",
 			                       "Internal server error, failed to bind domain to SQL query",
@@ -380,6 +393,7 @@ int api_queries(struct ftl_conn *api)
 		{
 			sqlite3_reset(read_stmt);
 			sqlite3_finalize(read_stmt);
+			unlock_shm();
 			return send_json_error(api, 500,
 			                       "internal_error",
 			                       "Internal server error, failed to bind client to SQL query",
@@ -390,6 +404,7 @@ int api_queries(struct ftl_conn *api)
 		{
 			sqlite3_reset(read_stmt);
 			sqlite3_finalize(read_stmt);
+			unlock_shm();
 			return send_json_error(api, 500,
 			                       "internal_error",
 			                       "Internal server error, failed to bind upstream to SQL query",
@@ -411,6 +426,7 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					unlock_shm();
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind type to SQL query",
@@ -419,6 +435,7 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				unlock_shm();
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested type is invalid",
@@ -441,6 +458,7 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					unlock_shm();
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind status to SQL query",
@@ -449,6 +467,7 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				unlock_shm();
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested status is invalid",
@@ -471,6 +490,7 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					unlock_shm();
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind reply to SQL query",
@@ -479,6 +499,7 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				unlock_shm();
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested reply is invalid",
@@ -501,6 +522,7 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					unlock_shm();
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind dnssec to SQL query",
@@ -509,6 +531,7 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				unlock_shm();
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested dnssec is invalid",
@@ -628,12 +651,12 @@ int api_queries(struct ftl_conn *api)
 
 	if(disk && !detach_disk_database(&message))
 	{
+		unlock_shm();
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error, cannot detach disk database",
 		                       message);
-		return false;
 	}
 
-	JSON_SEND_OBJECT(json);
+	JSON_SEND_OBJECT_UNLOCK(json);
 }

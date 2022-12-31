@@ -16,6 +16,57 @@
 #include "api.h"
 #include "../shmem.h"
 
+static int api_endpoints(struct ftl_conn *api);
+
+static struct {
+	const char *uri;
+	int (*func)(struct ftl_conn *api);
+	const bool opts[2];
+} api_request[] = {
+	// URI                                      FUNCTION                               OPTIONS
+	{ "/api/dns/blocking",                      api_dns_blocking,                      { false, false } },
+	{ "/api/dns/cache",                         api_dns_cache,                         { false, false } },
+	{ "/api/dns/port",                          api_dns_port,                          { false, false } },
+	{ "/api/domains",                           api_list,                              { false, false } },
+	{ "/api/groups",                            api_list,                              { false, false } },
+	{ "/api/lists",                             api_list,                              { false, false } },
+	{ "/api/clients",                           api_list,                              { false, false } },
+	{ "/api/ftl/client",                        api_ftl_client,                        { false, false } },
+	{ "/api/ftl/logs/dns",                      api_ftl_logs_dns,                      { false, false } },
+	{ "/api/ftl/sysinfo",                       api_ftl_sysinfo,                       { false, false } },
+	{ "/api/ftl/dbinfo",                        api_ftl_dbinfo,                        { false, false } },
+	{ "/api/ftl/maxhistory",                    api_ftl_maxhistory,                    { false, false } },
+	{ "/api/ftl/gateway",                       api_ftl_gateway,                       { false, false } },
+	{ "/api/ftl/interfaces",                    api_ftl_interfaces,                    { false, false } },
+	{ "/api/network",                           api_network,                           { false, false } },
+	{ "/api/history/clients",                   api_history_clients,                   { false, false } },
+	{ "/api/history",                           api_history,                           { false, false } },
+	{ "/api/queries/suggestions",               api_queries_suggestions,               { false, false } },
+	{ "/api/queries",                           api_queries,                           { false, false } },
+	{ "/api/stats/summary",                     api_stats_summary,                     { false, false } },
+	{ "/api/stats/query_types",                 api_stats_query_types,                 { false, false } },
+	{ "/api/stats/upstreams",                   api_stats_upstreams,                   { false, false } },
+	{ "/api/stats/top_domains",                 api_stats_top_domains,                 { false, false } },
+	{ "/api/stats/top_blocked",                 api_stats_top_domains,                 { true,  false } },
+	{ "/api/stats/top_clients",                 api_stats_top_clients,                 { false, false } },
+	{ "/api/stats/top_blocked_clients",         api_stats_top_clients,                 { true,  false } },
+	{ "/api/stats/recent_blocked",              api_stats_recentblocked,               { false, false } },
+	{ "/api/stats/database/overTime/history",   api_stats_database_overTime_history,   { false, false } },
+	{ "/api/stats/database/top_domains",        api_stats_database_top_items,          { false, true  } },
+	{ "/api/stats/database/top_blocked",        api_stats_database_top_items,          { true,  true  } },
+	{ "/api/stats/database/top_clients",        api_stats_database_top_items,          { false, false } },
+	{ "/api/stats/database/summary",            api_stats_database_summary,            { false, false } },
+	{ "/api/stats/database/overTime/clients",   api_stats_database_overTime_clients,   { false, false } },
+	{ "/api/stats/database/query_types",        api_stats_database_query_types,        { false, false } },
+	{ "/api/stats/database/upstreams",          api_stats_database_upstreams,          { false, false } },
+	{ "/api/version",                           api_version,                           { false, false } },
+	{ "/api/auth",                              api_auth,                              { false, false } },
+	{ "/api/settings/web",                      api_settings_web,                      { false, false } },
+	{ "/api/docs",                              api_docs,                              { false, false } },
+	{ "/api/endpoints",                         api_endpoints,                         { false, false } }
+};
+#define API_ENDPOINTS "/api/endpoints"
+
 int api_handler(struct mg_connection *conn, void *ignored)
 {
 	// Prepare API info struct
@@ -25,7 +76,8 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		http_method(conn),
 		NULL,
 		NULL,
-		{ 0 }
+		{ 0 },
+		{ false, false }
 	};
 	read_and_parse_payload(&api);
 
@@ -35,223 +87,20 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	          api.request->query_string);
 
 	int ret = 0;
-	/******************************** /api/dns ********************************/
-	if(startsWith("/api/dns/blocking", &api))
+
+	// Loop over all API endpoints and check if the requested URI matches
+	for(unsigned int i = 0; i < sizeof(api_request)/sizeof(api_request[0]); i++)
 	{
-		// Locks handled internally
-		ret = api_dns_blocking(&api);
+		// Check if the requested URI starts with the API endpoint
+		if((api.item = startsWith(api_request[i].uri, &api)) != NULL)
+		{
+			// Copy options to API struct
+			memcpy(api.opts, api_request[i].opts, sizeof(api.opts));
+			// Call the API function and get the return code
+			ret = api_request[i].func(&api);
+		}
 	}
-	else if(startsWith("/api/dns/cache", &api))
-	{
-		// Locks handled internally
-		ret = api_dns_cache(&api);
-	}
-	else if(startsWith("/api/dns/port", &api))
-	{
-		// Locks not needed
-		ret = api_dns_port(&api);
-	}
-	/************ /api/domains, /api/groups, /api/lists, /api/clients ********/
-	else if(startsWith("/api/domains", &api))
-	{
-		// Locks handled internally
-		ret = api_list(&api);
-	}
-	else if(startsWith("/api/groups", &api))
-	{
-		// Locks handled internally
-		ret = api_list(&api);
-	}
-	else if(startsWith("/api/lists", &api))
-	{
-		// Locks handled internally
-		ret = api_list(&api);
-	}
-	else if(startsWith("/api/clients", &api))
-	{
-		// Locks handled internally
-		ret = api_list(&api);
-	}
-	/******************************** /api/ftl ****************************/
-	else if(startsWith("/api/ftl/client", &api))
-	{
-		// Locks not needed
-		ret = api_ftl_client(&api);
-	}
-	else if(startsWith("/api/ftl/logs/dns", &api))
-	{
-		// Locks handled internally
-		ret = api_ftl_logs_dns(&api);
-	}
-	else if(startsWith("/api/ftl/sysinfo", &api))
-	{
-		// Locks not needed
-		ret = api_ftl_sysinfo(&api);
-	}
-	else if(startsWith("/api/ftl/dbinfo", &api))
-	{
-		// Locks not needed
-		ret = api_ftl_dbinfo(&api);
-	}
-	else if(startsWith("/api/ftl/maxhistory", &api))
-	{
-		// Locks not needed
-		ret = api_ftl_maxhistory(&api);
-	}
-	else if(startsWith("/api/ftl/gateway", &api))
-	{
-		// Locks not needed
-		ret = api_ftl_gateway(&api);
-	}
-	else if(startsWith("/api/ftl/interfaces", &api))
-	{
-		// Locks not needed
-		ret = api_ftl_interfaces(&api);
-	}
-	/******************************** /api/network ****************************/
-	else if(startsWith("/api/network", &api))
-	{
-		ret = api_network(&api);
-	}
-	/******************************** /api/history **************************/
-	else if(startsWith("/api/history/clients", &api))
-	{
-		lock_shm();
-		ret = api_history_clients(&api);
-		unlock_shm();
-	}
-	else if(startsWith("/api/history", &api))
-	{
-		lock_shm();
-		ret = api_history(&api);
-		unlock_shm();
-	}
-	/******************************** /api/queries **************************/
-	else if(startsWith("/api/queries/suggestions", &api))
-	{
-		lock_shm();
-		ret = api_queries_suggestions(&api);
-		unlock_shm();
-	}
-	else if(startsWith("/api/queries", &api))
-	{
-		lock_shm();
-		ret = api_queries(&api);
-		unlock_shm();
-	}
-	/******************************** /api/stats **************************/
-	else if(startsWith("/api/stats/summary", &api))
-	{
-		lock_shm();
-		ret = api_stats_summary(&api);
-		unlock_shm();
-	}
-	else if(startsWith("/api/stats/query_types", &api))
-	{
-		lock_shm();
-		ret = api_stats_query_types(&api);
-		unlock_shm();
-	}
-	else if(startsWith("/api/stats/upstreams", &api))
-	{
-		lock_shm();
-		ret = api_stats_upstreams(&api);
-		unlock_shm();
-	}
-	else if(startsWith("/api/stats/top_domains", &api))
-	{
-		lock_shm();
-		ret = api_stats_top_domains(false, &api);
-		unlock_shm();
-	}
-	else if(startsWith("/api/stats/top_blocked", &api))
-	{
-		lock_shm();
-		ret = api_stats_top_domains(true, &api);
-		unlock_shm();
-	}
-	else if(startsWith("/api/stats/top_clients", &api))
-	{
-		lock_shm();
-		ret = api_stats_top_clients(false, &api);
-		unlock_shm();
-	}
-	else if(startsWith("/api/stats/top_blocked_clients", &api))
-	{
-		lock_shm();
-		ret = api_stats_top_clients(true, &api);
-		unlock_shm();
-	}
-	else if(startsWith("/api/stats/recent_blocked", &api))
-	{
-		lock_shm();
-		ret = api_stats_recentblocked(&api);
-		unlock_shm();
-	}
-	else if(startsWith("/api/stats/database/overTime/history", &api))
-	{
-		// Locks not needed
-		ret = api_stats_database_overTime_history(&api);
-	}
-	else if(startsWith("/api/stats/database/top_domains", &api))
-	{
-		// Locks not needed
-		ret = api_stats_database_top_items(false, true, &api);
-	}
-	else if(startsWith("/api/stats/database/top_blocked", &api))
-	{
-		// Locks not needed
-		ret = api_stats_database_top_items(true, true, &api);
-	}
-	else if(startsWith("/api/stats/database/top_clients", &api))
-	{
-		// Locks not needed
-		ret = api_stats_database_top_items(false, false, &api);
-	}
-	else if(startsWith("/api/stats/database/summary", &api))
-	{
-		// Locks not needed
-		ret = api_stats_database_summary(&api);
-	}
-	else if(startsWith("/api/stats/database/overTime/clients", &api))
-	{
-		// Locks not needed
-		ret = api_stats_database_overTime_clients(&api);
-	}
-	else if(startsWith("/api/stats/database/query_types", &api))
-	{
-		// Locks not needed
-		ret = api_stats_database_query_types(&api);
-	}
-	else if(startsWith("/api/stats/database/upstreams", &api))
-	{
-		// Locks not needed
-		ret = api_stats_database_upstreams(&api);
-	}
-	/******************************** /api/version ****************************/
-	else if(startsWith("/api/version", &api))
-	{
-		// Locks not needed
-		ret = api_version(&api);
-	}
-	/******************************** /api/auth ****************************/
-	else if(startsWith("/api/auth", &api))
-	{
-		// Locks not needed
-		ret = api_auth(&api);
-	}
-	/******************************** /api/settings ****************************/
-	else if(startsWith("/api/settings/web", &api))
-	{
-		// Locks not needed
-		ret = api_settings_web(&api);
-	}
-	/******************************** /api/settings ****************************/
-	else if((api.item = startsWith("/api/docs", &api)) != NULL)
-	{
-		// Locks not needed
-		ret = api_docs(&api);
-	}
+
 	/******************************** not found or invalid request**************/
 	if(ret == 0)
 	{
@@ -276,4 +125,21 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	}
 
 	return ret;
+}
+
+static int api_endpoints(struct ftl_conn *api)
+{
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
+	{
+		return send_json_unauthorized(api);
+	}
+
+	cJSON *json = JSON_NEW_ARRAY();
+
+	for(unsigned int i = 0; i < sizeof(api_request)/sizeof(api_request[0]); i++)
+		JSON_ARRAY_REF_STR(json, api_request[i].uri);
+
+	// Send response
+	JSON_SEND_OBJECT_UNLOCK(json);
 }

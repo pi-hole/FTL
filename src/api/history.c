@@ -27,6 +27,8 @@ int api_history(struct ftl_conn *api)
 {
 	int from = 0, until = OVERTIME_SLOTS;
 	bool found = false;
+
+	lock_shm();
 	time_t mintime = overTime[0].timestamp;
 
 	// Start with the first non-empty overTime slot
@@ -58,7 +60,7 @@ int api_history(struct ftl_conn *api)
 		cJSON *json = JSON_NEW_ARRAY();
 		cJSON *item = JSON_NEW_OBJ();
 		JSON_ARRAY_ADD_ITEM(json, item);
-		JSON_SEND_OBJECT(json);
+		JSON_SEND_OBJECT_UNLOCK(json);
 	}
 
 	// Minimum structure is
@@ -75,12 +77,14 @@ int api_history(struct ftl_conn *api)
 		JSON_ARRAY_ADD_ITEM(history, item);
 	}
 	JSON_OBJ_ADD_ITEM(json, "history", history);
-	JSON_SEND_OBJECT(json);
+	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
 int api_history_clients(struct ftl_conn *api)
 {
 	int sendit = -1, until = OVERTIME_SLOTS;
+
+	lock_shm();
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
@@ -109,7 +113,7 @@ int api_history_clients(struct ftl_conn *api)
 		JSON_OBJ_ADD_ITEM(json, "history", history);
 		cJSON *clients = JSON_NEW_ARRAY();
 		JSON_OBJ_ADD_ITEM(json, "clients", clients);
-		JSON_SEND_OBJECT(json);
+		JSON_SEND_OBJECT_UNLOCK(json);
 	}
 
 	// Find minimum ID to send
@@ -204,5 +208,5 @@ int api_history_clients(struct ftl_conn *api)
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
 
-	JSON_SEND_OBJECT(json);
+	JSON_SEND_OBJECT_UNLOCK(json);
 }

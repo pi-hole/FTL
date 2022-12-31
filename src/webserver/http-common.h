@@ -31,6 +31,8 @@ struct ftl_conn {
 		char raw[MAX_PAYLOAD_BYTES];
 		cJSON *json;
 	} payload;
+
+	bool opts[2];
 };
 
 

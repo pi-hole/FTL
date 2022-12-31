@@ -147,10 +147,16 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *api)
+int api_stats_database_top_items(struct ftl_conn *api)
 {
 	unsigned int show = 10;
 	double from = 0.0, until = 0.0;
+
+	// Get options from API struct
+	bool blocked = api->opts[0]; // Can be overwritten by query string
+	const bool domains = api->opts[1];
+
+	// Get optional parameters from query string
 	if(api->request->query_string != NULL)
 	{
 		get_double_var(api->request->query_string, "from", &from);

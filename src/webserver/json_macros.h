@@ -105,6 +105,12 @@
 	cJSON_ReplaceItemInArray(object, index, number_item); \
 }
 
+#define JSON_ARRAY_ADD_BOOL(object, val){ \
+	const cJSON_bool value = val; \
+	cJSON *bool_item = cJSON_CreateBool(value); \
+	cJSON_AddItemToArray(object, bool_item); \
+}
+
 #define JSON_ARRAY_REF_STR(array, string){ \
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
@@ -163,6 +169,22 @@
 	} \
 	send_http(api, "application/json; charset=utf-8", msg); \
 	cJSON_Delete(object); \
+	return 200; \
+}
+
+#define JSON_SEND_OBJECT_UNLOCK(object){ \
+	const char* msg = json_formatter(object); \
+	if(msg == NULL) \
+	{ \
+		cJSON_Delete(object); \
+		send_http_internal_error(api); \
+		log_err("JSON_SEND_OBJECT FAILED!"); \
+		unlock_shm(); \
+		return 500; \
+	} \
+	send_http(api, "application/json; charset=utf-8", msg); \
+	cJSON_Delete(object); \
+	unlock_shm(); \
 	return 200; \
 }
 

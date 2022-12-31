@@ -83,6 +83,9 @@ int api_stats_summary(struct ftl_conn *api)
 	if(total > 0)
 		percent_blocked = 1e2f*blocked/total;
 
+	// Lock shared memory
+	lock_shm();
+
 	cJSON *queries = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_NUMBER(queries, "total", total);
 	JSON_OBJ_ADD_NUMBER(queries, "blocked", blocked);
@@ -110,23 +113,32 @@ int api_stats_summary(struct ftl_conn *api)
 	cJSON *system = JSON_NEW_OBJ();
 	ret = get_system_obj(api, system);
 	if(ret != 0)
+	{
+		unlock_shm();
 		return ret;
+	}
 	JSON_OBJ_ADD_ITEM(json, "system", system);
 
 	// Get FTL object
 	cJSON *ftl = JSON_NEW_OBJ();
 	ret = get_ftl_obj(api, ftl, true);
 	if(ret != 0)
+	{
+		unlock_shm();
 		return ret;
+	}
 	JSON_OBJ_ADD_ITEM(json, "ftl", ftl);
 
-	JSON_SEND_OBJECT(json);
+	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
-int api_stats_top_domains(bool blocked, struct ftl_conn *api)
+int api_stats_top_domains(struct ftl_conn *api)
 {
 	int temparray[counters->domains][2], show = 10;
 	bool audit = false;
+
+	// Get options from API struct
+	bool blocked = api->opts[0]; // Can be overwritten by query string
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
@@ -161,6 +173,9 @@ int api_stats_top_domains(bool blocked, struct ftl_conn *api)
 		// Apply Audit Log filtering?
 		get_bool_var(api->request->query_string, "audit", &audit);
 	}
+
+	// Lock shared memory
+	lock_shm();
 
 	for(int domainID=0; domainID < counters->domains; domainID++)
 	{
@@ -203,9 +218,7 @@ int api_stats_top_domains(bool blocked, struct ftl_conn *api)
 	{
 		excludedomains = read_setupVarsconf("API_EXCLUDE_DOMAINS");
 		if(excludedomains != NULL)
-		{
 			getSetupVarsArray(excludedomains);
-		}
 	}
 
 	int n = 0;
@@ -274,13 +287,16 @@ int api_stats_top_domains(bool blocked, struct ftl_conn *api)
 		JSON_OBJ_ADD_NUMBER(json, "total_queries", counters->queries);
 	}
 
-	JSON_SEND_OBJECT(json);
+	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
-int api_stats_top_clients(bool blocked, struct ftl_conn *api)
+int api_stats_top_clients(struct ftl_conn *api)
 {
 	int temparray[counters->clients][2], show = 10;
 	bool includezeroclients = false;
+
+	// Get options from API struct
+	bool blocked = api->opts[0]; // Can be overwritten by query string
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
@@ -315,6 +331,9 @@ int api_stats_top_clients(bool blocked, struct ftl_conn *api)
 		// Show also clients which have not been active recently?
 		get_bool_var(api->request->query_string, "withzero", &includezeroclients);
 	}
+
+	// Lock shared memory
+	lock_shm();
 
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
@@ -398,7 +417,7 @@ int api_stats_top_clients(bool blocked, struct ftl_conn *api)
 		JSON_OBJ_ADD_NUMBER(json, "total_queries", counters->queries);
 	}
 
-	JSON_SEND_OBJECT(json);
+	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
 
@@ -413,6 +432,9 @@ int api_stats_upstreams(struct ftl_conn *api)
 	{
 		return send_json_unauthorized(api);
 	}
+
+	// Lock shared memory
+	lock_shm();
 
 	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
@@ -504,12 +526,13 @@ int api_stats_upstreams(struct ftl_conn *api)
 			JSON_ARRAY_ADD_ITEM(upstreams, upstream);
 		}
 	}
+
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "upstreams", upstreams);
 	const int forwarded_queries = get_forwarded_count();
 	JSON_OBJ_ADD_NUMBER(json, "forwarded_queries", forwarded_queries);
 	JSON_OBJ_ADD_NUMBER(json, "total_queries", counters->queries);
-	JSON_SEND_OBJECT(json);
+	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
 int api_stats_query_types(struct ftl_conn *api)
@@ -520,16 +543,21 @@ int api_stats_query_types(struct ftl_conn *api)
 		return send_json_unauthorized(api);
 	}
 
+	lock_shm();
+
 	cJSON *types = JSON_NEW_OBJ();
 	int ret = get_query_types_obj(api, types);
 	if(ret != 0)
+	{
+		unlock_shm();
 		return ret;
+	}
 
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "types", types);
 
 	// Send response
-	JSON_SEND_OBJECT(json);
+	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
 int api_stats_recentblocked(struct ftl_conn *api)
@@ -558,6 +586,9 @@ int api_stats_recentblocked(struct ftl_conn *api)
 		// Note: We do not accept zero query requests here
 		get_uint_var(api->request->query_string, "show", &show);
 	}
+
+	// Lock shared memory
+	lock_shm();
 
 	// Find most recently blocked query
 	unsigned int found = 0;
@@ -592,5 +623,5 @@ int api_stats_recentblocked(struct ftl_conn *api)
 
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "blocked", blocked);
-	JSON_SEND_OBJECT(json);
+	JSON_SEND_OBJECT_UNLOCK(json);
 }
