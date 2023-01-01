@@ -17,10 +17,10 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: '#/components/schemas/client/remote_addr'
-                    - $ref: '#/components/schemas/client/http_version'
-                    - $ref: '#/components/schemas/client/method'
-                    - $ref: '#/components/schemas/client/headers'
+                    - $ref: 'ftl.yaml#/components/schemas/client/remote_addr'
+                    - $ref: 'ftl.yaml#/components/schemas/client/http_version'
+                    - $ref: 'ftl.yaml#/components/schemas/client/method'
+                    - $ref: 'ftl.yaml#/components/schemas/client/headers'
     logs:
       dns:
         get:
@@ -37,7 +37,7 @@ components:
             The expected behavior for an immediate re-request of a log line with the same ID is an empty response.
             As soon as the next message arrived, this will be included in your request and `nextID` is incremented by one.
           parameters:
-            - $ref: '#/components/parameters/logs/dns/nextID'
+            - $ref: 'ftl.yaml#/components/parameters/logs/dns/nextID'
           responses:
             '200':
               description: OK
@@ -45,8 +45,8 @@ components:
                 application/json:
                   schema:
                     allOf:
-                      - $ref: '#/components/schemas/logs/dns/log'
-                      - $ref: '#/components/schemas/logs/dns/nextID'
+                      - $ref: 'ftl.yaml#/components/schemas/logs/dns/log'
+                      - $ref: 'ftl.yaml#/components/schemas/logs/dns/nextID'
             '401':
               description: Unauthorized
               content:
@@ -68,8 +68,8 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: '#/components/schemas/system'
-                    - $ref: '#/components/schemas/ftl'
+                    - $ref: 'ftl.yaml#/components/schemas/system'
+                    - $ref: 'ftl.yaml#/components/schemas/ftl'
           '401':
             description: Unauthorized
             content:
@@ -91,7 +91,7 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: '#/components/schemas/database'
+                    - $ref: 'ftl.yaml#/components/schemas/database'
     endpoints:
       get:
         summary: Get list of available API endpoints
@@ -106,7 +106,7 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/endpoints'
+                  $ref: 'ftl.yaml#/components/schemas/endpoints'
           '401':
             description: Unauthorized
             content:
@@ -127,7 +127,7 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/gateway'
+                  $ref: 'ftl.yaml#/components/schemas/gateway'
           '401':
             description: Unauthorized
             content:
@@ -148,7 +148,7 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/interfaces'
+                  $ref: 'ftl.yaml#/components/schemas/interfaces'
           '401':
             description: Unauthorized
             content:
@@ -169,7 +169,7 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/config'
+                  $ref: 'ftl.yaml#/components/schemas/config'
           '401':
             description: Unauthorized
             content:
@@ -726,9 +726,9 @@ components:
                 acl:
                   type: string
                   example: "+0.0.0.0/0"
-                  port:
-                    type: string
-                    example: "8080,[::]:8080"
+                port:
+                  type: string
+                  example: "8080,[::]:8080"
                 paths:
                   type: object
                   properties:

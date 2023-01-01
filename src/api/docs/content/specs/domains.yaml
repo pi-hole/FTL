@@ -4,9 +4,9 @@ components:
     type_kind_domain:
       summary: Modify domains and regular expressions
       parameters:
-        - $ref: '#/components/parameters/type'
-        - $ref: '#/components/parameters/kind'
-        - $ref: '#/components/parameters/domain'
+        - $ref: 'domains.yaml#/components/parameters/type'
+        - $ref: 'domains.yaml#/components/parameters/kind'
+        - $ref: 'domains.yaml#/components/parameters/domain'
       get:
         summary: Get domain
         tags:
@@ -40,10 +40,10 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/domains/get'
+                  $ref: 'domains.yaml#/components/schemas/domains/get'
                 examples:
                   domains:
-                    $ref: '#/components/examples/domains'
+                    $ref: 'domains.yaml#/components/examples/domains'
           '401':
             description: Unauthorized
             content:
@@ -71,17 +71,17 @@ components:
           content:
             'application/json':
               schema:
-                $ref: '#/components/schemas/domains/put'
+                $ref: 'domains.yaml#/components/schemas/domains/put'
         responses:
           '201':
             description: Created domain
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/domains/get'
+                  $ref: 'domains.yaml#/components/schemas/domains/get'
                 examples:
                   domains:
-                    $ref: '#/components/examples/domains'
+                    $ref: 'domains.yaml#/components/examples/domains'
           '400':
             description: Bad request
             content:
@@ -90,15 +90,15 @@ components:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
                   list_imprecise:
-                    $ref: '#/components/examples/errors/uri_error/list_imprecise'
+                    $ref: 'domains.yaml#/components/examples/errors/uri_error/list_imprecise'
                   item_missing:
-                    $ref: '#/components/examples/errors/uri_error/item_missing'
+                    $ref: 'domains.yaml#/components/examples/errors/uri_error/item_missing'
                   no_payload:
-                    $ref: '#/components/examples/errors/bad_request/no_payload'
+                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
                   duplicate:
-                    $ref: '#/components/examples/errors/database_error/duplicate'
+                    $ref: 'domains.yaml#/components/examples/errors/database_error/duplicate'
                   invalid_regex:
-                    $ref: '#/components/examples/errors/regex_error/invalid_regex'
+                    $ref: 'domains.yaml#/components/examples/errors/regex_error/invalid_regex'
           '401':
             description: Unauthorized
             content:
@@ -123,9 +123,9 @@ components:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
                   list_imprecise:
-                    $ref: '#/components/examples/errors/uri_error/list_imprecise'
+                    $ref: 'domains.yaml#/components/examples/errors/uri_error/list_imprecise'
                   item_missing:
-                    $ref: '#/components/examples/errors/uri_error/item_missing'
+                    $ref: 'domains.yaml#/components/examples/errors/uri_error/item_missing'
           '401':
             description: Unauthorized
             content:
@@ -134,8 +134,8 @@ components:
                   $ref: 'common.yaml#/components/errors/unauthorized'
     type_kind:
       parameters:
-        - $ref: '#/components/parameters/type'
-        - $ref: '#/components/parameters/kind'
+        - $ref: 'domains.yaml#/components/parameters/type'
+        - $ref: 'domains.yaml#/components/parameters/kind'
       post:
         summary: Add new domain
         tags:
@@ -156,14 +156,14 @@ components:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/domains/post'
+                $ref: 'domains.yaml#/components/schemas/domains/post'
         responses:
           '201':
             description: Created domain
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/domains/get'
+                  $ref: 'domains.yaml#/components/schemas/domains/get'
             headers:
               Location:
                 $ref: 'common.yaml#/components/headers/Location'
@@ -175,13 +175,13 @@ components:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
                   list_imprecise:
-                    $ref: '#/components/examples/errors/uri_error/list_imprecise'
+                    $ref: 'domains.yaml#/components/examples/errors/uri_error/list_imprecise'
                   no_payload:
-                    $ref: '#/components/examples/errors/bad_request/no_payload'
+                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
                   duplicate:
-                    $ref: '#/components/examples/errors/database_error/duplicate'
+                    $ref: 'domains.yaml#/components/examples/errors/database_error/duplicate'
                   invalid_regex:
-                    $ref: '#/components/examples/errors/regex_error/invalid_regex'
+                    $ref: 'domains.yaml#/components/examples/errors/regex_error/invalid_regex'
           '401':
             description: Unauthorized
             content:
@@ -197,26 +197,26 @@ components:
             type: array
             items:
               allOf:
-                - $ref: '#/components/schemas/domain'
-                - $ref: '#/components/schemas/type'
-                - $ref: '#/components/schemas/kind'
-                - $ref: '#/components/schemas/comment'
-                - $ref: '#/components/schemas/groups'
-                - $ref: '#/components/schemas/enabled'
-                - $ref: '#/components/schemas/readonly'
+                - $ref: 'domains.yaml#/components/schemas/domain'
+                - $ref: 'domains.yaml#/components/schemas/type'
+                - $ref: 'domains.yaml#/components/schemas/kind'
+                - $ref: 'domains.yaml#/components/schemas/comment'
+                - $ref: 'domains.yaml#/components/schemas/groups'
+                - $ref: 'domains.yaml#/components/schemas/enabled'
+                - $ref: 'domains.yaml#/components/schemas/readonly'
       put:
         allOf:
-          - $ref: '#/components/schemas/type'
-          - $ref: '#/components/schemas/kind'
-          - $ref: '#/components/schemas/comment'
-          - $ref: '#/components/schemas/groups'
-          - $ref: '#/components/schemas/enabled'
+          - $ref: 'domains.yaml#/components/schemas/type'
+          - $ref: 'domains.yaml#/components/schemas/kind'
+          - $ref: 'domains.yaml#/components/schemas/comment'
+          - $ref: 'domains.yaml#/components/schemas/groups'
+          - $ref: 'domains.yaml#/components/schemas/enabled'
       post:
         allOf:
-          - $ref: '#/components/schemas/domain'
-          - $ref: '#/components/schemas/comment'
-          - $ref: '#/components/schemas/groups'
-          - $ref: '#/components/schemas/enabled'
+          - $ref: 'domains.yaml#/components/schemas/domain'
+          - $ref: 'domains.yaml#/components/schemas/comment'
+          - $ref: 'domains.yaml#/components/schemas/groups'
+          - $ref: 'domains.yaml#/components/schemas/enabled'
     domain:
       type: object
       properties:

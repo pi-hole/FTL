@@ -15,7 +15,7 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/version'
+                  $ref: 'version.yaml#/components/schemas/version'
 
   schemas:
     version:

@@ -116,7 +116,7 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/queries'
+                  $ref: 'queries.yaml#/components/schemas/queries'
           '401':
             description: Unauthorized
             content:

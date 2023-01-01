@@ -4,7 +4,7 @@ components:
     list:
       summary: Modify list
       parameters:
-        - $ref: '#/components/parameters/list'
+        - $ref: 'lists.yaml#/components/parameters/list'
       get:
         summary: Get lists
         tags:
@@ -22,10 +22,10 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/lists/get'
+                  $ref: 'lists.yaml#/components/schemas/lists/get'
                 examples:
                   lists:
-                    $ref: '#/components/examples/lists'
+                    $ref: 'lists.yaml#/components/examples/lists'
           '401':
             description: Unauthorized
             content:
@@ -47,14 +47,14 @@ components:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/lists/put'
+                $ref: 'lists.yaml#/components/schemas/lists/put'
         responses:
           '201':
             description: Created item
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/lists/get' # identical to GET
+                  $ref: 'lists.yaml#/components/schemas/lists/get' # identical to GET
           '400':
             description: Bad request
             content:
@@ -63,9 +63,9 @@ components:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
                   item_missing:
-                    $ref: '#/components/examples/errors/uri_error/item_missing'
+                    $ref: 'lists.yaml#/components/examples/errors/uri_error/item_missing'
                   no_payload:
-                    $ref: '#/components/examples/errors/bad_request/no_payload'
+                    $ref: 'lists.yaml#/components/examples/errors/bad_request/no_payload'
           '401':
             description: Unauthorized
             content:
@@ -90,7 +90,7 @@ components:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
                   item_missing:
-                    $ref: '#/components/examples/errors/uri_error/item_missing'
+                    $ref: 'lists.yaml#/components/examples/errors/uri_error/item_missing'
           '401':
             description: Unauthorized
             content:
@@ -120,14 +120,14 @@ components:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/lists/post'
+                $ref: 'lists.yaml#/components/schemas/lists/post'
         responses:
           '201':
             description: Created item
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/lists/get'
+                  $ref: 'lists.yaml#/components/schemas/lists/get'
             headers:
               Location:
                 $ref: 'common.yaml#/components/headers/Location'
@@ -139,9 +139,9 @@ components:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
                   no_payload:
-                    $ref: '#/components/examples/errors/bad_request/no_payload'
+                    $ref: 'lists.yaml#/components/examples/errors/bad_request/no_payload'
                   duplicate:
-                    $ref: '#/components/examples/errors/database_error/duplicate'
+                    $ref: 'lists.yaml#/components/examples/errors/database_error/duplicate'
           '401':
             description: Unauthorized
             content:
@@ -157,22 +157,22 @@ components:
             type: array
             items:
               allOf:
-                - $ref: '#/components/schemas/list'
-                - $ref: '#/components/schemas/comment'
-                - $ref: '#/components/schemas/groups'
-                - $ref: '#/components/schemas/enabled'
-                - $ref: '#/components/schemas/readonly'
+                - $ref: 'lists.yaml#/components/schemas/list'
+                - $ref: 'lists.yaml#/components/schemas/comment'
+                - $ref: 'lists.yaml#/components/schemas/groups'
+                - $ref: 'lists.yaml#/components/schemas/enabled'
+                - $ref: 'lists.yaml#/components/schemas/readonly'
       put:
         allOf:
-          - $ref: '#/components/schemas/comment'
-          - $ref: '#/components/schemas/groups'
-          - $ref: '#/components/schemas/enabled'
+          - $ref: 'lists.yaml#/components/schemas/comment'
+          - $ref: 'lists.yaml#/components/schemas/groups'
+          - $ref: 'lists.yaml#/components/schemas/enabled'
       post:
         allOf:
-          - $ref: '#/components/schemas/list'
-          - $ref: '#/components/schemas/comment'
-          - $ref: '#/components/schemas/groups'
-          - $ref: '#/components/schemas/enabled'
+          - $ref: 'lists.yaml#/components/schemas/list'
+          - $ref: 'lists.yaml#/components/schemas/comment'
+          - $ref: 'lists.yaml#/components/schemas/groups'
+          - $ref: 'lists.yaml#/components/schemas/enabled'
     list:
       type: object
       properties:

@@ -4,7 +4,7 @@ components:
     client:
       summary: Modify client
       parameters:
-        - $ref: '#/components/parameters/client'
+        - $ref: 'clients.yaml#/components/parameters/client'
       get:
         summary: Get clients
         tags:
@@ -22,10 +22,10 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/clients/get'
+                  $ref: 'clients.yaml#/components/schemas/clients/get'
                 examples:
                   clients:
-                    $ref: '#/components/examples/clients'
+                    $ref: 'clients.yaml#/components/examples/clients'
           '401':
             description: Unauthorized
             content:
@@ -47,14 +47,14 @@ components:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/clients/put'
+                $ref: 'clients.yaml#/components/schemas/clients/put'
         responses:
           '201':
             description: Created item
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/clients/get' # identical to GET
+                  $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
           '400':
             description: Bad request
             content:
@@ -63,9 +63,9 @@ components:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
                   item_missing:
-                    $ref: '#/components/examples/errors/uri_error/item_missing'
+                    $ref: 'clients.yaml#/components/examples/errors/uri_error/item_missing'
                   no_payload:
-                    $ref: '#/components/examples/errors/bad_request/no_payload'
+                    $ref: 'clients.yaml#/components/examples/errors/bad_request/no_payload'
           '401':
             description: Unauthorized
             content:
@@ -90,7 +90,7 @@ components:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
                   item_missing:
-                    $ref: '#/components/examples/errors/uri_error/item_missing'
+                    $ref: 'clients.yaml#/components/examples/errors/uri_error/item_missing'
           '401':
             description: Unauthorized
             content:
@@ -120,14 +120,14 @@ components:
           content:
             'application/json':
               schema:
-                $ref: '#/components/schemas/clients/post'
+                $ref: 'clients.yaml#/components/schemas/clients/post'
         responses:
           '201':
             description: Created item
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/clients/get' # identical to GET
+                  $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
             headers:
               Location:
                 $ref: 'common.yaml#/components/headers/Location'
@@ -139,9 +139,9 @@ components:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
                   no_payload:
-                    $ref: '#/components/examples/errors/bad_request/no_payload'
+                    $ref: 'clients.yaml#/components/examples/errors/bad_request/no_payload'
                   duplicate:
-                    $ref: '#/components/examples/errors/database_error/duplicate'
+                    $ref: 'clients.yaml#/components/examples/errors/database_error/duplicate'
           '401':
             description: Unauthorized
             content:
@@ -157,19 +157,19 @@ components:
             type: array
             items:
               allOf:
-                - $ref: '#/components/schemas/client'
-                - $ref: '#/components/schemas/comment'
-                - $ref: '#/components/schemas/groups'
-                - $ref: '#/components/schemas/readonly'
+                - $ref: 'clients.yaml#/components/schemas/client'
+                - $ref: 'clients.yaml#/components/schemas/comment'
+                - $ref: 'clients.yaml#/components/schemas/groups'
+                - $ref: 'clients.yaml#/components/schemas/readonly'
       post:
         allOf:
-          - $ref: '#/components/schemas/client'
-          - $ref: '#/components/schemas/comment'
-          - $ref: '#/components/schemas/groups'
+          - $ref: 'clients.yaml#/components/schemas/client'
+          - $ref: 'clients.yaml#/components/schemas/comment'
+          - $ref: 'clients.yaml#/components/schemas/groups'
       put:
         allOf:
-          - $ref: '#/components/schemas/comment'
-          - $ref: '#/components/schemas/groups'
+          - $ref: 'clients.yaml#/components/schemas/comment'
+          - $ref: 'clients.yaml#/components/schemas/groups'
     client:
       type: object
       properties:

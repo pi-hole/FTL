@@ -19,14 +19,14 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/session'
+                  $ref: 'auth.yaml#/components/schemas/session'
                 examples:
                   login_okay:
-                    $ref: '#/components/examples/login_okay'
+                    $ref: 'auth.yaml#/components/examples/login_okay'
                   no_login_required:
-                    $ref: '#/components/examples/no_login_required'
+                    $ref: 'auth.yaml#/components/examples/no_login_required'
                   login_required:
-                    $ref: '#/components/examples/login_required'
+                    $ref: 'auth.yaml#/components/examples/login_required'
       post:
         summary: Submit response for login
         tags:
@@ -39,32 +39,32 @@ components:
           content:
             'application/json':
               schema:
-                $ref: '#/components/schemas/response'
+                $ref: 'auth.yaml#/components/schemas/response'
         responses:
           '200':
             description: OK
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/session'
+                  $ref: 'auth.yaml#/components/schemas/session'
                 examples:
                   login_okay:
-                    $ref: '#/components/examples/login_okay'
+                    $ref: 'auth.yaml#/components/examples/login_okay'
                   no_login_required:
-                    $ref: '#/components/examples/no_login_required'
+                    $ref: 'auth.yaml#/components/examples/no_login_required'
           '400':
             description: Bad Request
             content:
               application/json:
                 schema:
-                  $ref: '#/components/errors/bad_request'
+                  $ref: 'auth.yaml#/components/errors/bad_request'
                 examples:
                   no_payload:
-                    $ref: '#/components/examples/errors/no_payload'
+                    $ref: 'auth.yaml#/components/examples/errors/no_payload'
                   no_response:
-                    $ref: '#/components/examples/errors/no_response'
+                    $ref: 'auth.yaml#/components/examples/errors/no_response'
                   response_inval:
-                    $ref: '#/components/examples/errors/response_inval'
+                    $ref: 'auth.yaml#/components/examples/errors/response_inval'
           '401':
             description: Unauthorized
             content:
@@ -86,10 +86,10 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/session'
+                  $ref: 'auth.yaml#/components/schemas/session'
                 examples:
                   no_login_required:
-                    $ref: '#/components/examples/no_login_required'
+                    $ref: 'auth.yaml#/components/examples/no_login_required'
           '401':
             description: Unauthorized
             content:
@@ -101,10 +101,10 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/session'
+                  $ref: 'auth.yaml#/components/schemas/session'
                 examples:
                   login_failed:
-                    $ref: '#/components/examples/login_failed'
+                    $ref: 'auth.yaml#/components/examples/login_failed'
 
   schemas:
     session:

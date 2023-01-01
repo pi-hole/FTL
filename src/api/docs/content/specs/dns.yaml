@@ -20,8 +20,8 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: '#/components/schemas/blocking'
-                    - $ref: '#/components/schemas/timer'
+                    - $ref: 'dns.yaml#/components/schemas/blocking'
+                    - $ref: 'dns.yaml#/components/schemas/timer'
       post:
         summary: Change current blocking status
         tags:
@@ -40,8 +40,8 @@ components:
             'application/json':
               schema:
                 allOf:
-                  - $ref: '#/components/schemas/blocking'
-                  - $ref: '#/components/schemas/timer'
+                  - $ref: 'dns.yaml#/components/schemas/blocking'
+                  - $ref: 'dns.yaml#/components/schemas/timer'
         responses:
           '200':
             description: OK
@@ -49,16 +49,16 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: '#/components/schemas/blocking'
-                    - $ref: '#/components/schemas/timer'
+                    - $ref: 'dns.yaml#/components/schemas/blocking'
+                    - $ref: 'dns.yaml#/components/schemas/timer'
           '400':
             description: Bad request
             content:
               application/json:
                 schema:
                   oneOf:
-                  - $ref: '#/components/schemas/errors/no_payload'
-                  - $ref: '#/components/schemas/errors/item_missing'
+                  - $ref: 'dns.yaml#/components/schemas/errors/no_payload'
+                  - $ref: 'dns.yaml#/components/schemas/errors/item_missing'
           '401':
             description: Unauthorized
             content:
@@ -80,9 +80,9 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: '#/components/schemas/cache_size'
-                    - $ref: '#/components/schemas/cache_inserted'
-                    - $ref: '#/components/schemas/cache_evicted'
+                    - $ref: 'dns.yaml#/components/schemas/cache_size'
+                    - $ref: 'dns.yaml#/components/schemas/cache_inserted'
+                    - $ref: 'dns.yaml#/components/schemas/cache_evicted'
           '401':
             description: Unauthorized
             content:
@@ -103,7 +103,7 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/dns_port'
+                  $ref: 'dns.yaml#/components/schemas/dns_port'
   schemas:
     blocking:
       type: object

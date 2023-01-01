@@ -16,7 +16,7 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: '#/components/schemas/queries'
+                    - $ref: 'stats.yaml#/components/schemas/queries'
                     - $ref: 'ftl.yaml#/components/schemas/system'
                     - $ref: 'ftl.yaml#/components/schemas/ftl'
 

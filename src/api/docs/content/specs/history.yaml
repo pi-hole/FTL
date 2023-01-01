@@ -15,7 +15,7 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/total_history'
+                  $ref: 'history.yaml#/components/schemas/total_history'
     clients:
       get:
         summary: Get per-client activity graph data
@@ -30,7 +30,7 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/client_history'
+                  $ref: 'history.yaml#/components/schemas/client_history'
           '401':
             description: Unauthorized
             content:
