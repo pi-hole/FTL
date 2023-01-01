@@ -176,7 +176,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		log_debug(DEBUG_EDNS0, "EDNS(0) code %u, optlen %u (bytes %zu - %zu of %u)",
 		          code, optlen, offset, offset + optlen, rdlen);
 
-		if (code == EDNS0_ECS && config.edns0_ecs)
+		if (code == EDNS0_ECS && config.dns.EDNS0ECS)
 		{
 			// EDNS(0) CLIENT SUBNET
 			// RFC 7871              Client Subnet in DNS Queries              6.  Option Format

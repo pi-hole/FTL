@@ -41,62 +41,62 @@ void init_config_mutex(void);
 // architectures (such as ARM) and savng a few bit of RAM but bloating up the
 // rest of the application each time these fields are accessed is bad.
 typedef struct {
-	bool socket_listenlocal;
-	bool analyze_AAAA;
-	bool resolveIPv6;
-	bool resolveIPv4;
-	bool ignore_localhost;
-	bool analyze_only_A_AAAA;
-	bool DBimport;
-	bool DBexport;
-	bool parse_arp_cache;
-	bool cname_deep_inspection;
-	bool blockESNI;
-	bool networkNames;
-	bool edns0_ecs;
-	bool show_dnssec;
-	bool addr2line;
 	struct {
-		bool mozilla_canary;
-		bool icloud_private_relay;
-	} special_domains;
-	struct {
-		bool load;
-		unsigned char shmem;
-		unsigned char disk;
-	} check;
-	enum privacy_level privacylevel;
-	enum blocking_mode blockingmode;
-	enum refresh_hostnames refresh_hostnames;
-	enum debug_flag debug;
-	int nice;
-	enum busy_reply reply_when_busy;
-	enum ptr_type pihole_ptr;
-	int maxDBdays;
-	unsigned int maxHistory;
-	unsigned int delay_startup;
-	unsigned int DBinterval;
-	unsigned int dns_port; // set in fork_and_bind.c
-	unsigned int network_expire;
-	unsigned int block_ttl;
-	struct {
-		unsigned int count;
-		unsigned int interval;
-	} rate_limit;
-	struct {
+		bool CNAMEdeepInspect;
+		bool blockESNI;
+		bool EDNS0ECS;
+		bool ignoreLocalhost;
+		bool showDNSSEC;
+		bool analyzeAAAA;
+		bool analyzeOnlyAandAAAA;
+		enum ptr_type piholePTR;
+		enum busy_reply replyWhenBusy;
+		unsigned int blockTTL;
+		unsigned int port; // set in fork_and_bind.c
+		enum blocking_mode blockingmode;
 		struct {
-			bool overwrite_v4 :1;
-			bool overwrite_v6 :1;
-			struct in_addr v4;
-			struct in6_addr v6;
-		} own_host;
+			bool mozillaCanary;
+			bool iCloudPrivateRelay;
+		} specialDomains;
 		struct {
-			bool overwrite_v4 :1;
-			bool overwrite_v6 :1;
-			struct in_addr v4;
-			struct in6_addr v6;
-		} ip_blocking;
-	} reply_addr;
+			struct {
+				bool overwrite_v4 :1;
+				bool overwrite_v6 :1;
+				struct in_addr v4;
+				struct in6_addr v6;
+			} host;
+			struct {
+				bool overwrite_v4 :1;
+				bool overwrite_v6 :1;
+				struct in_addr v4;
+				struct in6_addr v6;
+			} blocking;
+		} reply;
+		struct {
+			unsigned int count;
+			unsigned int interval;
+		} rateLimit;
+	} dns;
+
+	struct {
+		bool resolveIPv4;
+		bool resolveIPv6;
+		bool networkNames;
+		enum refresh_hostnames refreshNames;
+	} resolver;
+
+	struct {
+		bool DBimport;
+		bool DBexport;
+		unsigned int maxHistory;
+		int maxDBdays;
+		unsigned int DBinterval;
+		struct {
+			bool parseARPcache;
+			unsigned int expire;
+		} network;
+	} database;
+
 	struct {
 		bool localAPIauth;
 		bool prettyJSON;
@@ -109,6 +109,7 @@ typedef struct {
 			char *webhome;
 		} paths;
 	} http;
+
 	struct {
 		char *log;
 		char *pid;
@@ -119,6 +120,20 @@ typedef struct {
 		char *http_info;
 		char *ph7_error;
 	} files;
+
+	struct {
+		int nice;
+		unsigned int delay_startup;
+		bool addr2line;
+		enum privacy_level privacylevel;
+		struct {
+			bool load;
+			unsigned char shmem;
+			unsigned char disk;
+		} check;
+	} misc;
+
+	enum debug_flag debug;
 } ConfigStruct;
 
 typedef struct {

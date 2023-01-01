@@ -470,11 +470,11 @@ void db_init(void)
 
 	// Log if users asked us to not use the long-term database for queries
 	// We will still use it to store warnings in it
-	config.DBexport = true;
-	if(config.maxDBdays == 0)
+	config.database.DBexport = true;
+	if(config.database.maxDBdays == 0)
 	{
 		log_info("Not using the database for storing queries");
-		config.DBexport = false;
+		config.database.DBexport = false;
 	}
 
 	log_info("Database successfully initialized");

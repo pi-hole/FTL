@@ -35,7 +35,7 @@ static struct {
 	{ "/api/ftl/logs/dns",                      api_ftl_logs_dns,                      { false, false } },
 	{ "/api/ftl/sysinfo",                       api_ftl_sysinfo,                       { false, false } },
 	{ "/api/ftl/dbinfo",                        api_ftl_dbinfo,                        { false, false } },
-	{ "/api/ftl/maxhistory",                    api_ftl_maxhistory,                    { false, false } },
+	{ "/api/ftl/config",                        api_ftl_config,                        { false, false } },
 	{ "/api/ftl/gateway",                       api_ftl_gateway,                       { false, false } },
 	{ "/api/ftl/interfaces",                    api_ftl_interfaces,                    { false, false } },
 	{ "/api/ftl/endpoints",                     api_endpoints,                         { false, false } },

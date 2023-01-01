@@ -66,7 +66,7 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 	snprintf(addr2line_cmd, sizeof(addr2line_cmd), "addr2line %p -e %.*s", addr, p, symbol);
 	FILE *addr2line = NULL;
 	char linebuffer[512];
-	if(config.addr2line &&
+	if(config.misc.addr2line &&
 	   (addr2line = popen(addr2line_cmd, "r")) != NULL &&
 	   fgets(linebuffer, sizeof(linebuffer), addr2line) != NULL)
 	{

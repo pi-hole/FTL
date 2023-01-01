@@ -116,6 +116,9 @@ paths:
   /ftl/interfaces:
     $ref: 'ftl.yaml#/components/paths/interfaces'
 
+  /ftl/config:
+    $ref: 'ftl.yaml#/components/paths/config'
+
   /version:
     $ref: 'version.yaml#/components/paths/version'
 

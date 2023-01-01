@@ -169,7 +169,7 @@ const char *hostname(void)
 void delay_startup(void)
 {
 	// Exit early if not sleeping
-	if(config.delay_startup == 0u)
+	if(config.misc.delay_startup == 0u)
 		return;
 
 	// Get uptime of system
@@ -188,8 +188,8 @@ void delay_startup(void)
 	}
 
 	// Sleep if requested by DELAY_STARTUP
-	log_info("Sleeping for %d seconds as requested by configuration ...", config.delay_startup);
-	if(sleep(config.delay_startup) != 0)
+	log_info("Sleeping for %d seconds as requested by configuration ...", config.misc.delay_startup);
+	if(sleep(config.misc.delay_startup) != 0)
 	{
 		log_crit("Sleeping was interrupted by an external signal");
 		cleanup(EXIT_FAILURE);

@@ -149,6 +149,8 @@ const char *get_query_dnssec_str(const enum dnssec_status dnssec) __attribute__ 
 const char *get_query_reply_str(const enum reply_type query) __attribute__ ((const));
 const char *get_refresh_hostnames_str(const enum refresh_hostnames refresh) __attribute__ ((const));
 const char *get_blocking_mode_str(const enum blocking_mode mode) __attribute__ ((const));
+const char *get_ptr_type_str(const enum ptr_type piholePTR) __attribute__ ((const));
+const char *get_busy_reply_str(const enum busy_reply replyWhenBusy) __attribute__ ((const));
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)

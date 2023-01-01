@@ -368,7 +368,7 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 	         clientIP, turnaround, turnaround == 1 ? "" : "s");
 
 	// Log to database
-	add_message(RATE_LIMIT_MESSAGE, clientIP, 2, config.rate_limit.count, config.rate_limit.interval);
+	add_message(RATE_LIMIT_MESSAGE, clientIP, 2, config.dns.rateLimit.count, config.dns.rateLimit.interval);
 }
 
 void logg_warn_dnsmasq_message(char *message)

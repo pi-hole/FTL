@@ -642,11 +642,11 @@ static SharedMemory create_shm(const char *name, const size_t size)
 {
 	char df[64] = { 0 };
 	const int percentage = get_dev_shm_usage(df);
-	if(config.debug & DEBUG_SHMEM || (config.check.shmem > 0 && percentage > config.check.shmem))
+	if(config.debug & DEBUG_SHMEM || (config.misc.check.shmem > 0 && percentage > config.misc.check.shmem))
 	{
 		log_info("Creating shared memory with name \"%s\" and size %zu (%s)", name, size, df);
 	}
-	if(config.check.shmem > 0 && percentage > config.check.shmem)
+	if(config.misc.check.shmem > 0 && percentage > config.misc.check.shmem)
 		log_resource_shortage(-1.0, 0, percentage, -1, SHMEM_PATH, df);
 
 	SharedMemory sharedMemory = {
@@ -786,7 +786,7 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 		log_debug(DEBUG_SHMEM, "Remapping \"%s\" from %zu to (%zu * %zu) == %zu",
 		          sharedMemory->name, sharedMemory->size, size1, size2, size);
 
-	if(config.check.shmem > 0 && percentage > config.check.shmem)
+	if(config.misc.check.shmem > 0 && percentage > config.misc.check.shmem)
 		log_resource_shortage(-1.0, 0, percentage, -1, SHMEM_PATH, df);
 
 	// Resize shard memory object if requested

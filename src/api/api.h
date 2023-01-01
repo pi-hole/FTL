@@ -50,7 +50,7 @@ int api_ftl_dbinfo(struct ftl_conn *api);
 int api_ftl_sysinfo(struct ftl_conn *api);
 int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked);
 int get_system_obj(struct ftl_conn *api, cJSON *system);
-int api_ftl_maxhistory(struct ftl_conn *api);
+int api_ftl_config(struct ftl_conn *api);
 int api_ftl_gateway(struct ftl_conn *api);
 int api_ftl_interfaces(struct ftl_conn *api);
 

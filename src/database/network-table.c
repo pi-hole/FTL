@@ -1238,9 +1238,9 @@ void parse_neighbor_cache(sqlite3* db)
 	}
 
 	// Remove all but the most recent IP addresses not seen for more than a certain time
-	if(config.network_expire > 0)
+	if(config.database.network.expire > 0)
 	{
-		const time_t limit = time(NULL)-24*3600*config.network_expire;
+		const time_t limit = time(NULL)-24*3600*config.database.network.expire;
 		rc = dbquery(db, "DELETE FROM network_addresses "
 		                        "WHERE lastSeen < %lu;", (unsigned long)limit);
 		if(rc != SQLITE_OK)

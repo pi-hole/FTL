@@ -308,7 +308,7 @@ bool import_queries_from_disk(void)
 	// Get time stamp 24 hours (or what was configured) in the past
 	bool okay = false;
 	const double now = double_time();
-	const double mintime = now - config.maxHistory;
+	const double mintime = now - config.database.maxHistory;
 	const char *querystr = "INSERT INTO query_storage SELECT * FROM disk.query_storage WHERE timestamp >= ?";
 
 	// Attach disk database
@@ -691,7 +691,7 @@ void DB_read_queries(void)
 	// Prepare request
 	// Get time stamp 24 hours in the past
 	const double now = double_time();
-	const double mintime = now - config.maxHistory;
+	const double mintime = now - config.database.maxHistory;
 	const char *querystr = "SELECT id,"\
 	                              "timestamp,"\
 	                              "type,"\
@@ -754,7 +754,7 @@ void DB_read_queries(void)
 		}
 		// Don't import AAAA queries from database if the user set
 		// AAAA_QUERY_ANALYSIS=no in pihole-FTL.conf
-		if(type == TYPE_AAAA && !config.analyze_AAAA)
+		if(type == TYPE_AAAA && !config.dns.analyzeAAAA)
 		{
 			continue;
 		}
@@ -783,7 +783,7 @@ void DB_read_queries(void)
 		}
 
 		// Check if user wants to skip queries coming from localhost
-		if(config.ignore_localhost &&
+		if(config.dns.ignoreLocalhost &&
 		   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
 		{
 			continue;
@@ -1067,7 +1067,7 @@ bool queries_to_database(void)
 
 	// Skip, we never store nor count queries recorded while have been in
 	// maximum privacy mode in the database
-	if(config.privacylevel >= PRIVACY_MAXIMUM)
+	if(config.misc.privacylevel >= PRIVACY_MAXIMUM)
 	{
 		log_debug(DEBUG_DATABASE, "Not storing query in database due to privacy level settings");
 		return true;

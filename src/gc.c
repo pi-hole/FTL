@@ -52,7 +52,7 @@ static void reset_rate_limiting(void)
 			const char *clientIP = getstr(client->ippos);
 
 			// Check if we want to continue rate limiting
-			if(client->rate_limit > config.rate_limit.count)
+			if(client->rate_limit > config.dns.rateLimit.count)
 			{
 				log_info("Still rate-limiting %s as it made additional %d queries", clientIP, client->rate_limit);
 			}
@@ -73,13 +73,13 @@ static time_t lastRateLimitCleaner = 0;
 // Returns how many more seconds until the current rate-limiting interval is over
 time_t get_rate_limit_turnaround(const unsigned int rate_limit_count)
 {
-	const unsigned int how_often = rate_limit_count/config.rate_limit.count;
-	return (time_t)config.rate_limit.interval*how_often - (time(NULL) - lastRateLimitCleaner);
+	const unsigned int how_often = rate_limit_count/config.dns.rateLimit.count;
+	return (time_t)config.dns.rateLimit.interval*how_often - (time(NULL) - lastRateLimitCleaner);
 }
 
 static int check_space(const char *file, int LastUsage)
 {
-	if(config.check.disk == 0)
+	if(config.misc.check.disk == 0)
 		return 0;
 
 	int perc = 0;
@@ -88,7 +88,7 @@ static int check_space(const char *file, int LastUsage)
 	// exceeds the configured threshold and current usage is higher than
 	// usage in the last run (to prevent log spam)
 	perc = get_filepath_usage(file, buffer);
-	if(perc > config.check.disk && perc > LastUsage )
+	if(perc > config.misc.check.disk && perc > LastUsage )
 		log_resource_shortage(-1.0, 0, -1, perc, file, buffer);
 	
 	return perc;
@@ -96,7 +96,7 @@ static int check_space(const char *file, int LastUsage)
 
 static void check_load(void)
 {
-	if(!config.check.load)
+	if(!config.misc.check.load)
 		return;
 
 	// Get CPU load averages
@@ -132,8 +132,8 @@ void *GC_thread(void *val)
 	while(!killed)
 	{
 		const time_t now = time(NULL);
-		if(config.rate_limit.interval > 0 &&
-		   (unsigned int)(now - lastRateLimitCleaner) >= config.rate_limit.interval)
+		if(config.dns.rateLimit.interval > 0 &&
+		   (unsigned int)(now - lastRateLimitCleaner) >= config.dns.rateLimit.interval)
 		{
 			lastRateLimitCleaner = now;
 			lock_shm();
@@ -165,7 +165,7 @@ void *GC_thread(void *val)
 			lock_shm();
 
 			// Get minimum timestamp to keep (this can be set with MAXLOGAGE)
-			time_t mintime = (now - GCdelay) - config.maxHistory;
+			time_t mintime = (now - GCdelay) - config.database.maxHistory;
 
 			// Align the start time of this GC run to the GCinterval. This will also align with the
 			// oldest overTime interval after GC is done.

@@ -25,63 +25,63 @@ ConfigStruct defaults;
 
 void setDefaults(void)
 {
-	// bools
-	defaults.socket_listenlocal = true;
-	defaults.analyze_AAAA = true;
-	defaults.resolveIPv6 = true;
-	defaults.resolveIPv4 = true;
-	defaults.ignore_localhost = false;
-	defaults.analyze_only_A_AAAA = false;
-	defaults.DBimport = true;
-	defaults.parse_arp_cache = true;
-	defaults.cname_deep_inspection = true;
-	defaults.blockESNI = true;
-	defaults.networkNames = true;
-	defaults.edns0_ecs = true;
-	defaults.show_dnssec = true;
-	defaults.addr2line = true;
-
-	// enums
-	defaults.privacylevel = PRIVACY_SHOW_ALL;
-	defaults.blockingmode = MODE_NULL;
-	defaults.refresh_hostnames = REFRESH_IPV4_ONLY;
+	// top-level properties
 	defaults.debug = 0;
-	defaults.pihole_ptr = PTR_PIHOLE;
-	defaults.reply_when_busy = BUSY_ALLOW;
 
-	// integer
-	defaults.nice = -10;
-	defaults.maxDBdays = 365;
-	defaults.network_expire = defaults.maxDBdays;
+	// struct dns
+	defaults.dns.CNAMEdeepInspect = true;
+	defaults.dns.blockESNI = true;
+	defaults.dns.EDNS0ECS = true;
+	defaults.dns.ignoreLocalhost = false;
 
-	// unsigned integer
-	defaults.maxHistory = MAXLOGAGE*3600;
-	defaults.delay_startup = 0;
-	defaults.DBinterval = 60;
-	defaults.block_ttl = 2;
+	defaults.dns.piholePTR = PTR_PIHOLE;
+	defaults.dns.replyWhenBusy = BUSY_ALLOW;
+	defaults.dns.showDNSSEC = true;
+	defaults.dns.blockTTL = 2;
+	defaults.dns.analyzeAAAA = true;
+	defaults.dns.analyzeOnlyAandAAAA = false;
+	defaults.dns.blockingmode = MODE_NULL;
+	// sub-struct rate_limit
+	defaults.dns.rateLimit.count = 1000;
+	defaults.dns.rateLimit.interval = 60;
+	// sub-struct special_domains
+	defaults.dns.specialDomains.mozillaCanary = true;
+	defaults.dns.specialDomains.iCloudPrivateRelay = true;
+	// sub-struct reply_addr
+	defaults.dns.reply.blocking.overwrite_v4 = false;
+	memset(&defaults.dns.reply.blocking.v4, 0, sizeof(config.dns.reply.blocking.v4));
+	defaults.dns.reply.blocking.overwrite_v6 = false;
+	memset(&defaults.dns.reply.blocking.v6, 0, sizeof(config.dns.reply.blocking.v6));
+	defaults.dns.reply.host.overwrite_v4 = false;
+	memset(&defaults.dns.reply.host.v4, 0, sizeof(config.dns.reply.host.v4));
+	defaults.dns.reply.host.overwrite_v6 = false;
+	memset(&defaults.dns.reply.host.v6, 0, sizeof(config.dns.reply.host.v6));
 
-	// struct special_domains
-	defaults.special_domains.mozilla_canary = true;
-	defaults.special_domains.icloud_private_relay = true;
+	// struct resolver
+	defaults.resolver.resolveIPv6 = true;
+	defaults.resolver.resolveIPv4 = true;
+	defaults.resolver.networkNames = true;
+	defaults.resolver.refreshNames = REFRESH_IPV4_ONLY;
 
-	// struct check
-	defaults.check.load = true;
-	defaults.check.disk = 90;
-	defaults.check.shmem = 90;
+	// struct database
+	defaults.database.DBimport = true;
+	defaults.database.maxDBdays = 365;
+	defaults.database.maxHistory = MAXLOGAGE*3600;
+	defaults.database.DBinterval = 60;
+	// sub-struct network
+	defaults.database.network.parseARPcache = true;
+	defaults.database.network.expire = defaults.database.maxDBdays;
 
-	// struct rate_limit
-	defaults.rate_limit.count = 1000;
-	defaults.rate_limit.interval = 60;
+	// struct misc
+	defaults.misc.nice = -10;
+	defaults.misc.delay_startup = 0;
+	defaults.misc.addr2line = true;
+	defaults.misc.privacylevel = PRIVACY_SHOW_ALL;
 
-	// struct reply_addr
-	defaults.reply_addr.ip_blocking.overwrite_v4 = false;
-	memset(&defaults.reply_addr.ip_blocking.v4, 0, sizeof(config.reply_addr.ip_blocking.v4));
-	defaults.reply_addr.ip_blocking.overwrite_v6 = false;
-	memset(&defaults.reply_addr.ip_blocking.v6, 0, sizeof(config.reply_addr.ip_blocking.v6));
-	defaults.reply_addr.own_host.overwrite_v4 = false;
-	memset(&defaults.reply_addr.own_host.v4, 0, sizeof(config.reply_addr.own_host.v4));
-	defaults.reply_addr.own_host.overwrite_v6 = false;
-	memset(&defaults.reply_addr.own_host.v6, 0, sizeof(config.reply_addr.own_host.v6));
+	// sub-struct check
+	defaults.misc.check.load = true;
+	defaults.misc.check.disk = 90;
+	defaults.misc.check.shmem = 90;
 
 	// struct http
 	defaults.http.localAPIauth = true;
@@ -93,6 +93,7 @@ void setDefaults(void)
 	defaults.http.paths.webroot = (char*)"/var/www/html";
 	defaults.http.paths.webhome = (char*)"/admin/";
 
+	// struct files
 	defaults.files.database = (char*)"/etc/pihole/pihole-FTL.db";
 	defaults.files.pid = (char*)"/run/pihole-FTL.pid";
 	defaults.files.setupVars = (char*)"/etc/pihole/setupVars.conf";

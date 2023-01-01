@@ -127,7 +127,7 @@ static void print_used_resolvers(const char *message)
 // (may be disabled due to config settings)
 bool __attribute__((pure)) resolve_names(void)
 {
-	if(!config.resolveIPv4 && !config.resolveIPv6)
+	if(!config.resolver.resolveIPv4 && !config.resolver.resolveIPv6)
 		return false;
 	return true;
 }
@@ -135,8 +135,8 @@ bool __attribute__((pure)) resolve_names(void)
 // Return if we want to resolve this type of address to a name
 bool __attribute__((pure)) resolve_this_name(const char *ipaddr)
 {
-	if(!config.resolveIPv4 ||
-	  (!config.resolveIPv6 && strstr(ipaddr,":") != NULL))
+	if(!config.resolver.resolveIPv4 ||
+	  (!config.resolver.resolveIPv6 && strstr(ipaddr,":") != NULL))
 		return false;
 	return true;
 }
@@ -225,7 +225,7 @@ char *resolveHostname(const char *addr)
 	// INADDR_LOOPBACK is in host byte order, however, in_addr has to be in
 	// network byte order, convert it here if necessary
 	struct in_addr FTLaddr = { htonl(INADDR_LOOPBACK) };
-	in_port_t FTLport = htons(config.dns_port);
+	in_port_t FTLport = htons(config.dns.port);
 
 	// Set FTL as system resolver only if not already the primary resolver
 	if(_res.nsaddr_list[0].sin_addr.s_addr != FTLaddr.s_addr || _res.nsaddr_list[0].sin_port != FTLport)
@@ -350,7 +350,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 
 	// If no hostname was found, try to obtain hostname from the network table
 	// This may be disabled due to a user setting
-	if(strlen(newname) == 0 && config.networkNames)
+	if(strlen(newname) == 0 && config.resolver.networkNames)
 	{
 		free(newname);
 		newname = getNameFromIP(NULL, ipaddr);
@@ -460,18 +460,18 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// 3. We should only refresh unknown hostnames, but leave
 		//    existing ones as they are
 		if(onlynew == false &&
-		   (config.refresh_hostnames == REFRESH_NONE ||
-		   (config.refresh_hostnames == REFRESH_IPV4_ONLY && IPv6) ||
-		   (config.refresh_hostnames == REFRESH_UNKNOWN && oldnamepos != 0)))
+		   (config.resolver.refreshNames == REFRESH_NONE ||
+		   (config.resolver.refreshNames == REFRESH_IPV4_ONLY && IPv6) ||
+		   (config.resolver.refreshNames == REFRESH_UNKNOWN && oldnamepos != 0)))
 		{
 			if(config.debug & DEBUG_RESOLVER)
 			{
 				const char *reason = "N/A";
-				if(config.refresh_hostnames == REFRESH_NONE)
+				if(config.resolver.refreshNames == REFRESH_NONE)
 					reason = "Not refreshing any hostnames";
-				else if(config.refresh_hostnames == REFRESH_IPV4_ONLY)
+				else if(config.resolver.refreshNames == REFRESH_IPV4_ONLY)
 					reason = "Only refreshing IPv4 names";
-				else if(config.refresh_hostnames == REFRESH_UNKNOWN)
+				else if(config.resolver.refreshNames == REFRESH_UNKNOWN)
 					reason = "Looking only for unknown hostnames";
 
 				lock_shm();

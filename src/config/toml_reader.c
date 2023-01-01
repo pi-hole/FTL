@@ -52,31 +52,31 @@ bool readFTLtoml(void)
 
 		toml_datum_t cname_deep_inspect = toml_bool_in(dns, "CNAMEdeepInspect");
 		if(cname_deep_inspect.ok)
-			config.cname_deep_inspection = cname_deep_inspect.u.b;
+			config.dns.CNAMEdeepInspect = cname_deep_inspect.u.b;
 		else
 			log_debug(DEBUG_CONFIG, "dns.CNAMEdeepInspect DOES NOT EXIST");
 
 		toml_datum_t block_esni = toml_bool_in(dns, "blockESNI");
 		if(block_esni.ok)
-			config.blockESNI = block_esni.u.b;
+			config.dns.blockESNI = block_esni.u.b;
 		else
 			log_debug(DEBUG_CONFIG, "dns.blockESNI DOES NOT EXIST");
 
 		toml_datum_t edns0_ecs = toml_bool_in(dns, "EDNS0ECS");
 		if(edns0_ecs.ok)
-			config.edns0_ecs = edns0_ecs.u.b;
+			config.dns.EDNS0ECS = edns0_ecs.u.b;
 		else
 			log_debug(DEBUG_CONFIG, "dns.EDNS0ECS DOES NOT EXIST");
 
-		toml_datum_t ignore_localhost = toml_bool_in(dns, "ignoreLocalhost");
-		if(ignore_localhost.ok)
-			config.ignore_localhost = ignore_localhost.u.b;
+		toml_datum_t ignoreLocalhost = toml_bool_in(dns, "ignoreLocalhost");
+		if(ignoreLocalhost.ok)
+			config.dns.ignoreLocalhost = ignoreLocalhost.u.b;
 		else
 			log_debug(DEBUG_CONFIG, "dns.ignoreLocalhost DOES NOT EXIST");
 
 		toml_datum_t showDNSSEC = toml_bool_in(dns, "showDNSSEC");
 		if(showDNSSEC.ok)
-			config.show_dnssec = showDNSSEC.u.b;
+			config.dns.showDNSSEC = showDNSSEC.u.b;
 		else
 			log_debug(DEBUG_CONFIG, "dns.showDNSSEC DOES NOT EXIST");
 
@@ -85,11 +85,11 @@ bool readFTLtoml(void)
 		{
 			if(strcasecmp(piholePTR.u.s, "none") == 0 ||
 			   strcasecmp(piholePTR.u.s, "false") == 0)
-				config.pihole_ptr = PTR_NONE;
+				config.dns.piholePTR = PTR_NONE;
 			else if(strcasecmp(piholePTR.u.s, "hostname") == 0)
-				config.pihole_ptr = PTR_HOSTNAME;
+				config.dns.piholePTR = PTR_HOSTNAME;
 			else if(strcasecmp(piholePTR.u.s, "hostnamefqdn") == 0)
-				config.pihole_ptr = PTR_HOSTNAMEFQDN;
+				config.dns.piholePTR = PTR_HOSTNAMEFQDN;
 		}
 		else
 			log_debug(DEBUG_CONFIG, "dns.piholePTR DOES NOT EXIST");
@@ -98,20 +98,33 @@ bool readFTLtoml(void)
 		if(replyWhenBusy.ok)
 		{
 			if(strcasecmp(replyWhenBusy.u.s, "DROP") == 0)
-				config.reply_when_busy = BUSY_DROP;
+				config.dns.replyWhenBusy = BUSY_DROP;
 			else if(strcasecmp(replyWhenBusy.u.s, "REFUSE") == 0)
-				config.reply_when_busy = BUSY_REFUSE;
+				config.dns.replyWhenBusy = BUSY_REFUSE;
 			else if(strcasecmp(replyWhenBusy.u.s, "BLOCK") == 0)
-				config.reply_when_busy = BUSY_BLOCK;
+				config.dns.replyWhenBusy = BUSY_BLOCK;
 		}
 		else
 			log_debug(DEBUG_CONFIG, "dns.replyWhenBusy DOES NOT EXIST");
 
 		toml_datum_t blockTTL = toml_int_in(dns, "blockTTL");
 		if(blockTTL.ok)
-			config.block_ttl = blockTTL.u.i;
+			config.dns.blockTTL = blockTTL.u.i;
 		else
 			log_debug(DEBUG_CONFIG, "dns.blockTTL DOES NOT EXIST");
+
+
+		toml_datum_t analyzeAAAA = toml_bool_in(dns, "analyzeAAAA");
+		if(analyzeAAAA.ok)
+			config.dns.analyzeAAAA = analyzeAAAA.u.b;
+		else
+			log_debug(DEBUG_CONFIG, "dns.analyzeAAAA DOES NOT EXIST");
+
+		toml_datum_t analyzeOnlyAandAAAA = toml_bool_in(dns, "analyzeOnlyAandAAAA");
+		if(analyzeOnlyAandAAAA.ok)
+			config.dns.analyzeOnlyAandAAAA = analyzeOnlyAandAAAA.u.b;
+		else
+			log_debug(DEBUG_CONFIG, "dns.analyzeOnlyAandAAAA DOES NOT EXIST");
 
 		// Read [dns.specialDomains] section
 		toml_table_t *specialDomains = toml_table_in(dns, "specialDomains");
@@ -119,15 +132,15 @@ bool readFTLtoml(void)
 		{
 			toml_datum_t mozillaCanary = toml_bool_in(specialDomains, "mozillaCanary");
 			if(mozillaCanary.ok)
-				config.special_domains.mozilla_canary = mozillaCanary.u.b;
+				config.dns.specialDomains.mozillaCanary = mozillaCanary.u.b;
 			else
 				log_debug(DEBUG_CONFIG, "dns.specialDomains.mozillaCanary DOES NOT EXIST");
 
-			toml_datum_t blockICloudPR = toml_bool_in(specialDomains, "blockICloudPR");
-			if(blockICloudPR.ok)
-				config.special_domains.mozilla_canary = blockICloudPR.u.b;
+			toml_datum_t iCloudPrivateRelay = toml_bool_in(specialDomains, "iCloudPrivateRelay");
+			if(iCloudPrivateRelay.ok)
+				config.dns.specialDomains.iCloudPrivateRelay = iCloudPrivateRelay.u.b;
 			else
-				log_debug(DEBUG_CONFIG, "dns.specialDomains.blockICloudPR DOES NOT EXIST");
+				log_debug(DEBUG_CONFIG, "dns.specialDomains.iCloudPrivateRelay DOES NOT EXIST");
 		}
 		else
 			log_debug(DEBUG_CONFIG, "dns.specialDomains DOES NOT EXIST");
@@ -136,87 +149,87 @@ bool readFTLtoml(void)
 		toml_table_t *reply = toml_table_in(dns, "reply");
 		if(reply)
 		{
-			// Read [dns.reply.own_host] section
-			toml_table_t *own_host = toml_table_in(reply, "own_host");
-			if(own_host)
+			// Read [dns.reply.host] section
+			toml_table_t *host = toml_table_in(reply, "host");
+			if(host)
 			{
-				toml_datum_t ipv4 = toml_string_in(own_host, "IPv4");
+				toml_datum_t ipv4 = toml_string_in(host, "IPv4");
 				if(ipv4.ok)
 				{
-					if(inet_pton(AF_INET, ipv4.u.s, &config.reply_addr.own_host.v4))
-						config.reply_addr.own_host.overwrite_v4 = true;
+					if(inet_pton(AF_INET, ipv4.u.s, &config.dns.reply.host.v4))
+						config.dns.reply.host.overwrite_v4 = true;
 					else
-						log_warn("Invalid dns.reply.own_host.IPv4 setting. Ignoring.");
+						log_warn("Invalid dns.reply.host.IPv4 setting. Ignoring.");
 					free(ipv4.u.s);
 				}
 				else
-					log_debug(DEBUG_CONFIG, "dns.reply.own_host.IPv4 DOES NOT EXIST");
+					log_debug(DEBUG_CONFIG, "dns.reply.host.IPv4 DOES NOT EXIST");
 
-				toml_datum_t ipv6 = toml_string_in(own_host, "IPv6");
+				toml_datum_t ipv6 = toml_string_in(host, "IPv6");
 				if(ipv6.ok)
 				{
-					if(inet_pton(AF_INET6, ipv6.u.s, &config.reply_addr.own_host.v6))
-						config.reply_addr.own_host.overwrite_v6 = true;
+					if(inet_pton(AF_INET6, ipv6.u.s, &config.dns.reply.host.v6))
+						config.dns.reply.host.overwrite_v6 = true;
 					else
-						log_warn("Invalid dns.reply.own_host.IPv6 setting. Ignoring.");
+						log_warn("Invalid dns.reply.host.IPv6 setting. Ignoring.");
 					free(ipv6.u.s);
 				}
 				else
-					log_debug(DEBUG_CONFIG, "dns.reply.own_host.IPv6 DOES NOT EXIST");
+					log_debug(DEBUG_CONFIG, "dns.reply.host.IPv6 DOES NOT EXIST");
 			}
 			else
 			{
-				log_debug(DEBUG_CONFIG, "dns.reply.own_host DOES NOT EXIST");
+				log_debug(DEBUG_CONFIG, "dns.reply.host DOES NOT EXIST");
 			}
-			// Read [dns.reply.ip_blocking] section
-			toml_table_t *ip_blocking = toml_table_in(reply, "ip_blocking");
-			if(ip_blocking)
+			// Read [dns.reply.blocking] section
+			toml_table_t *blocking = toml_table_in(reply, "blocking");
+			if(blocking)
 			{
-				toml_datum_t ipv4 = toml_string_in(ip_blocking, "IPv4");
+				toml_datum_t ipv4 = toml_string_in(blocking, "IPv4");
 				if(ipv4.ok)
 				{
-					if(inet_pton(AF_INET, ipv4.u.s, &config.reply_addr.ip_blocking.v4))
-						config.reply_addr.ip_blocking.overwrite_v4 = true;
+					if(inet_pton(AF_INET, ipv4.u.s, &config.dns.reply.blocking.v4))
+						config.dns.reply.blocking.overwrite_v4 = true;
 					else
-						log_warn("Invalid dns.reply.ip_blocking.IPv4 setting. Ignoring.");
+						log_warn("Invalid dns.reply.blocking.IPv4 setting. Ignoring.");
 					free(ipv4.u.s);
 				}
 				else
-					log_debug(DEBUG_CONFIG, "dns.reply.ip_blocking.IPv4 DOES NOT EXIST");
+					log_debug(DEBUG_CONFIG, "dns.reply.blocking.IPv4 DOES NOT EXIST");
 
-				toml_datum_t ipv6 = toml_string_in(ip_blocking, "IPv6");
+				toml_datum_t ipv6 = toml_string_in(blocking, "IPv6");
 				if(ipv6.ok)
 				{
-					if(inet_pton(AF_INET6, ipv6.u.s, &config.reply_addr.ip_blocking.v6))
-						config.reply_addr.ip_blocking.overwrite_v6 = true;
+					if(inet_pton(AF_INET6, ipv6.u.s, &config.dns.reply.blocking.v6))
+						config.dns.reply.blocking.overwrite_v6 = true;
 					else
-						log_warn("Invalid dns.reply.ip_blocking.IPv6 setting. Ignoring.");
+						log_warn("Invalid dns.reply.blocking.IPv6 setting. Ignoring.");
 					free(ipv6.u.s);
 				}
 				else
-					log_debug(DEBUG_CONFIG, "dns.reply.ip_blocking.IPv6 DOES NOT EXIST");
+					log_debug(DEBUG_CONFIG, "dns.reply.blocking.IPv6 DOES NOT EXIST");
 			}
 			else
 			{
-				log_debug(DEBUG_CONFIG, "dns.reply.ip_blocking DOES NOT EXIST");
+				log_debug(DEBUG_CONFIG, "dns.reply.blocking DOES NOT EXIST");
 			}
 		}
 		else
 			log_debug(DEBUG_CONFIG, "dns.reply DOES NOT EXIST");
 
-		// Read [dns.rate_limit] section
-		toml_table_t *rate_limit = toml_table_in(dns, "rateLimit");
-		if(rate_limit)
+		// Read [dns.rateLimit] section
+		toml_table_t *rateLimit = toml_table_in(dns, "rateLimit");
+		if(rateLimit)
 		{
-			toml_datum_t count = toml_int_in(rate_limit, "count");
+			toml_datum_t count = toml_int_in(rateLimit, "count");
 			if(count.ok)
-				config.rate_limit.count = count.u.i;
+				config.dns.rateLimit.count = count.u.i;
 			else
 				log_debug(DEBUG_CONFIG, "dns.rateLimit.count DOES NOT EXIST");
 
-			toml_datum_t interval = toml_int_in(rate_limit, "interval");
+			toml_datum_t interval = toml_int_in(rateLimit, "interval");
 			if(interval.ok)
-				config.rate_limit.interval = interval.u.i;
+				config.dns.rateLimit.interval = interval.u.i;
 			else
 				log_debug(DEBUG_CONFIG, "dns.rateLimit.interval DOES NOT EXIST");
 		}
@@ -232,40 +245,40 @@ bool readFTLtoml(void)
 	{
 		toml_datum_t resolve_ipv4 = toml_bool_in(resolver, "resolveIPv4");
 		if(resolve_ipv4.ok)
-			config.resolveIPv4 = resolve_ipv4.u.b;
+			config.resolver.resolveIPv4 = resolve_ipv4.u.b;
 		else
 			log_debug(DEBUG_CONFIG, "resolver.resolveIPv4 DOES NOT EXIST");
 
 		toml_datum_t resolve_ipv6 = toml_bool_in(resolver, "resolveIPv6");
 		if(resolve_ipv6.ok)
-			config.resolveIPv6 = resolve_ipv6.u.b;
+			config.resolver.resolveIPv6 = resolve_ipv6.u.b;
 		else
 			log_debug(DEBUG_CONFIG, "resolver.resolveIPv6 DOES NOT EXIST");
 
 		toml_datum_t network_names = toml_bool_in(resolver, "networkNames");
 		if(network_names.ok)
-			config.networkNames = network_names.u.b;
+			config.resolver.networkNames = network_names.u.b;
 		else
 			log_debug(DEBUG_CONFIG, "resolver.networkNames DOES NOT EXIST");
 
-		toml_datum_t refresh = toml_string_in(resolver, "refresh");
-		if(refresh.ok)
+		toml_datum_t refreshNames = toml_string_in(resolver, "refreshNames");
+		if(refreshNames.ok)
 		{
 			// Iterate over possible blocking modes and check if it applies
 			bool found = false;
 			for(enum refresh_hostnames rh = REFRESH_ALL; rh <= REFRESH_NONE; rh++)
 			{
 				const char *rhstr = get_refresh_hostnames_str(rh);
-				if(strcasecmp(rhstr, refresh.u.s) == 0)
+				if(strcasecmp(rhstr, refreshNames.u.s) == 0)
 				{
-					config.refresh_hostnames = rh;
+					config.resolver.refreshNames = rh;
 					found = true;
 					break;
 				}
 			}
 			if(!found)
-				log_warn("Unknown hostname refresh mode, using default");
-			free(refresh.u.s);
+				log_warn("Unknown hostname refreshNames mode, using default");
+			free(refreshNames.u.s);
 		}
 		else
 			log_debug(DEBUG_CONFIG, "resolver.refresh DOES NOT EXIST");
@@ -279,33 +292,39 @@ bool readFTLtoml(void)
 	{
 		toml_datum_t dbimport = toml_bool_in(database, "DBimport");
 		if(dbimport.ok)
-			config.DBimport = dbimport.u.b;
+			config.database.DBimport = dbimport.u.b;
 		else
 			log_debug(DEBUG_CONFIG, "database.DBimport DOES NOT EXIST");
 
-		toml_datum_t max_history = toml_int_in(database, "maxHistory");
-		if(max_history.ok)
+		toml_datum_t dbexport = toml_bool_in(database, "DBexport");
+		if(dbexport.ok)
+			config.database.DBexport = dbexport.u.b;
+		else
+			log_debug(DEBUG_CONFIG, "database.DBexport DOES NOT EXIST");
+
+		toml_datum_t maxHistory = toml_int_in(database, "maxHistory");
+		if(maxHistory.ok)
 		{
 			// Sanity check
-			if(max_history.u.i >= 0.0 && max_history.u.i <= MAXLOGAGE * 3600)
-				config.maxHistory = max_history.u.i;
+			if(maxHistory.u.i >= 0.0 && maxHistory.u.i <= MAXLOGAGE * 3600)
+				config.database.maxHistory = maxHistory.u.i;
 			else
 				log_warn("Invalid setting for database.maxHistory, using default");
 		}
 		else
 			log_debug(DEBUG_CONFIG, "database.maxHistory DOES NOT EXIST");
 
-		toml_datum_t maxdbdays = toml_int_in(database, "maxDBdays");
-		if(maxdbdays.ok)
+		toml_datum_t maxDBdays = toml_int_in(database, "maxDBdays");
+		if(maxDBdays.ok)
 		{
-			const int maxdbdays_max = INT_MAX / 24 / 60 / 60;
+			const int maxDBdays_max = INT_MAX / 24 / 60 / 60;
 			// Prevent possible overflow
-			if(maxdbdays.u.i > maxdbdays_max)
-				config.maxDBdays = maxdbdays_max;
+			if(maxDBdays.u.i > maxDBdays_max)
+				config.database.maxDBdays = maxDBdays_max;
 
 			// Only use valid values
-			else if(maxdbdays.u.i == -1 || maxdbdays.u.i >= 0)
-				config.maxDBdays = maxdbdays.u.i;
+			else if(maxDBdays.u.i == -1 || maxDBdays.u.i >= 0)
+				config.database.maxDBdays = maxDBdays.u.i;
 			else
 				log_warn("Invalid setting for database.maxDBdays, using default");
 		}
@@ -319,7 +338,7 @@ bool readFTLtoml(void)
 			// - larger than 10sec, and
 			// - smaller than 24*60*60sec (once a day)
 			if(dbinterval.u.i >= 10 && dbinterval.u.i <= 24*60*60)
-				config.DBinterval = dbinterval.u.i;
+				config.database.DBinterval = dbinterval.u.i;
 			else
 				log_warn("Invalid setting for database.DBinterval, using default");
 		}
@@ -330,18 +349,18 @@ bool readFTLtoml(void)
 		toml_table_t *network = toml_table_in(database, "network");
 		if(network)
 		{
-			toml_datum_t parse_arp = toml_bool_in(network, "parseARP");
+			toml_datum_t parse_arp = toml_bool_in(network, "parseARPcache");
 			if(parse_arp.ok)
-				config.parse_arp_cache = parse_arp.u.b;
+				config.database.network.parseARPcache = parse_arp.u.b;
 			else
-				log_debug(DEBUG_CONFIG, "database.network.parseARP DOES NOT EXIST");
+				log_debug(DEBUG_CONFIG, "database.network.parseARPcache DOES NOT EXIST");
 
 			toml_datum_t expire = toml_int_in(network, "expire");
 			if(expire.ok)
 			{
 				// Only use valid values, max is one year
 				if(expire.u.i > 0 && expire.u.i <= 365)
-					config.maxDBdays = expire.u.i;
+					config.database.network.expire = expire.u.i;
 				else
 					log_warn("Invalid setting for database.network.expire, using default");
 			}
@@ -488,13 +507,13 @@ bool readFTLtoml(void)
 			const int priority = nicey.u.i;
 			const int which = PRIO_PROCESS;
 			const id_t pid = getpid();
-			config.nice = getpriority(which, pid);
+			config.misc.nice = getpriority(which, pid);
 
-			if(priority == -999 || config.nice == priority)
+			if(priority == -999 || config.misc.nice == priority)
 			{
 				// Do not set nice value
 				log_debug(DEBUG_CONFIG, "Not changing process priority.");
-				log_debug(DEBUG_CONFIG, "  Asked for %d, is %d", priority, config.nice);
+				log_debug(DEBUG_CONFIG, "  Asked for %d, is %d", priority, config.misc.nice);
 			}
 			else
 			{
@@ -508,12 +527,12 @@ bool readFTLtoml(void)
 					log_warn("Cannot set process priority to %d: %s",
 					         priority, strerror(errno));
 
-				config.nice = getpriority(which, pid);
+				config.misc.nice = getpriority(which, pid);
 			}
 
-			if(config.nice != priority)
+			if(config.misc.nice != priority)
 				log_info("Set process niceness to %d (instead of %d)",
-				         config.nice, priority);
+				         config.misc.nice, priority);
 		}
 		else
 			log_debug(DEBUG_CONFIG, "misc.nice DOES NOT EXIST");
@@ -523,7 +542,7 @@ bool readFTLtoml(void)
 		{
 			// Maximum is 300 seconds
 			if(delay_startup.u.i >= 0 && delay_startup.u.i <= 300)
-				config.delay_startup = delay_startup.u.i;
+				config.misc.delay_startup = delay_startup.u.i;
 			else
 				log_warn("Invalid setting for misc.delayStartup, using default");
 		}
@@ -532,7 +551,7 @@ bool readFTLtoml(void)
 
 		toml_datum_t addr2line = toml_bool_in(misc, "addr2line");
 		if(addr2line.ok)
-			config.addr2line = addr2line.u.b;
+			config.misc.addr2line = addr2line.u.b;
 		else
 			log_debug(DEBUG_CONFIG, "misc.addr2line DOES NOT EXIST");
 
@@ -542,19 +561,19 @@ bool readFTLtoml(void)
 		{
 			toml_datum_t load = toml_bool_in(check, "load");
 			if(load.ok)
-				config.check.load = load.u.b;
+				config.misc.check.load = load.u.b;
 			else
 				log_debug(DEBUG_CONFIG, "misc.check.load DOES NOT EXIST");
 
 			toml_datum_t disk = toml_int_in(check, "disk");
 			if(disk.ok && disk.u.i >= 0 && disk.u.i <= 100)
-				config.check.disk = disk.u.i;
+				config.misc.check.disk = disk.u.i;
 			else
 				log_debug(DEBUG_CONFIG, "misc.check.disk DOES NOT EXIST or is INVALID");
 
 			toml_datum_t shmem = toml_int_in(check, "shmem");
 			if(shmem.ok && shmem.u.i >= 0 && shmem.u.i <= 100)
-				config.check.shmem = shmem.u.i;
+				config.misc.check.shmem = shmem.u.i;
 			else
 				log_debug(DEBUG_CONFIG, "misc.check.shmem DOES NOT EXIST or is INVALID");
 		}
@@ -626,7 +645,7 @@ bool getPrivacyLevel(void)
 	}
 
 	if(privacylevel.u.i >= PRIVACY_SHOW_ALL && privacylevel.u.i <= PRIVACY_MAXIMUM)
-		config.privacylevel = privacylevel.u.i;
+		config.misc.privacylevel = privacylevel.u.i;
 	else
 		log_warn("Invalid setting for misc.privacyLevel");
 
@@ -665,7 +684,7 @@ bool getBlockingMode(void)
 		const char *bmstr = get_blocking_mode_str(bm);
 		if(strcasecmp(bmstr, blockingmode.u.s) == 0)
 		{
-			config.blockingmode = bm;
+			config.dns.blockingmode = bm;
 			found = true;
 			break;
 		}

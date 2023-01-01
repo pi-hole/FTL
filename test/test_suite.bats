@@ -1185,7 +1185,7 @@
   [[ "${lines[0]}" == "" ]]
 }
 
-@test "Pi-hole uses dns.reply.own_host.IPv4/6 for pi.hole" {
+@test "Pi-hole uses dns.reply.host.IPv4/6 for pi.hole" {
   run bash -c "dig A pi.hole +short @127.0.0.1"
   printf "A: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.10" ]]
@@ -1194,7 +1194,7 @@
   [[ "${lines[0]}" == "fe80::10" ]]
 }
 
-@test "Pi-hole uses dns.reply.own_host.IPv4/6 for hostname" {
+@test "Pi-hole uses dns.reply.host.IPv4/6 for hostname" {
   run bash -c "dig A $(hostname) +short @127.0.0.1"
   printf "A: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.10" ]]
@@ -1203,7 +1203,7 @@
   [[ "${lines[0]}" == "fe80::10" ]]
 }
 
-@test "Pi-hole uses dns.reply.ip_blocking.IPv4/6 for blocked domain" {
+@test "Pi-hole uses dns.reply.blocking.IPv4/6 for blocked domain" {
   sed -i "s/blockingmode = \"NULL\"/blockingmode = \"IP\"/" /etc/pihole/pihole-FTL.toml
   run bash -c "kill -HUP $(cat /run/pihole-FTL.pid)"
   sleep 2

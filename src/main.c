@@ -107,7 +107,7 @@ int main (int argc, char *argv[])
 	flush_message_table();
 
 	// Try to import queries from long-term database if available
-	if(config.DBimport)
+	if(config.database.DBimport)
 	{
 		import_queries_from_disk();
 		DB_read_queries();
@@ -139,7 +139,7 @@ int main (int argc, char *argv[])
 	sleepms(250);
 
 	// Save new queries to database (if database is used)
-	if(config.DBexport)
+	if(config.database.DBexport)
 	{
 		export_queries_to_disk(true);
 		log_info("Finished final database update");

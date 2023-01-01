@@ -35,7 +35,7 @@
 
 static bool delete_old_queries_in_DB(sqlite3 *db)
 {
-	const time_t timestamp = time(NULL) - config.maxDBdays * 86400;
+	const time_t timestamp = time(NULL) - config.database.maxDBdays * 86400;
 	SQL_bool(db, "DELETE FROM query_storage WHERE timestamp <= "TIME_T, timestamp);
 
 	// Get how many rows have been affected (deleted)
@@ -62,7 +62,7 @@ void *DB_thread(void *val)
 	// Save timestamp as we do not want to store immediately
 	// to the database
 	time_t before = time(NULL);
-	time_t lastDBsave = before - before%config.DBinterval;
+	time_t lastDBsave = before - before%config.database.DBinterval;
 
 	// This thread runs until shutdown of the process. We keep this thread
 	// running when pihole-FTL.db is corrupted because reloading of privacy
@@ -88,13 +88,13 @@ void *DB_thread(void *val)
 			break;
 
 		// Store queries in on-disk database
-		if(now - lastDBsave >= (time_t)config.DBinterval)
+		if(now - lastDBsave >= (time_t)config.database.DBinterval)
 		{
 			// Update lastDBsave timer
-			lastDBsave = now - now%config.DBinterval;
+			lastDBsave = now - now%config.database.DBinterval;
 
 			// Save data to database (if enabled)
-			if(config.DBexport)
+			if(config.database.DBexport)
 			{
 				DBOPEN_OR_AGAIN();
 				lock_shm();
@@ -106,7 +106,7 @@ void *DB_thread(void *val)
 					break;
 
 				// Check if GC should be done on the database
-				if(DBdeleteoldqueries && config.maxDBdays != -1)
+				if(DBdeleteoldqueries && config.database.maxDBdays != -1)
 				{
 					// No thread locks needed
 					delete_old_queries_in_DB(db);
@@ -117,7 +117,7 @@ void *DB_thread(void *val)
 			}
 
 			// Parse neighbor cache (fill network table) if enabled
-			if (config.parse_arp_cache)
+			if (config.database.network.parseARPcache)
 				set_event(PARSE_NEIGHBOR_CACHE);
 		}
 

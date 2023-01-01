@@ -865,3 +865,35 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	// Update status
 	query->status = new_status;
 }
+
+const char * __attribute__ ((const)) get_ptr_type_str(const enum ptr_type piholePTR)
+{
+	switch(piholePTR)
+	{
+		case PTR_PIHOLE:
+			return "PI.HOLE";
+		case PTR_HOSTNAME:
+			return "HOSTNAME";
+		case PTR_HOSTNAMEFQDN:
+			return "HOSTNAMEFQDN";
+		case PTR_NONE:
+			return "NONE";
+	}
+	return NULL;
+}
+
+const char * __attribute__ ((const)) get_busy_reply_str(const enum busy_reply replyWhenBusy)
+{
+	switch(replyWhenBusy)
+	{
+		case BUSY_BLOCK:
+			return "BLOCK";
+		case BUSY_ALLOW:
+			return "ALLOW";
+		case BUSY_REFUSE:
+			return "REFUSE";
+		case BUSY_DROP:
+			return "DROP";
+	}
+	return NULL;
+}

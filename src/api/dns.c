@@ -152,6 +152,6 @@ int api_dns_cache(struct ftl_conn *api)
 int api_dns_port(struct ftl_conn *api)
 {
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "dns_port", config.dns_port);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "dns_port", config.dns.port);
 	JSON_SEND_OBJECT(json);
 }

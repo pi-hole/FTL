@@ -147,10 +147,10 @@ int api_stats_top_domains(struct ftl_conn *api)
 	}
 
 	// Exit before processing any data if requested via config setting
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
+	if(config.misc.privacylevel >= PRIVACY_HIDE_DOMAINS)
 	{
 		log_debug(DEBUG_API, "Not returning top domains: Privacy level is set to %i",
-		          config.privacylevel);
+		          config.misc.privacylevel);
 
 		// Minimum structure is
 		// {"top_domains":[]}
@@ -305,10 +305,10 @@ int api_stats_top_clients(struct ftl_conn *api)
 	}
 
 	// Exit before processing any data if requested via config setting
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+	if(config.misc.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		log_debug(DEBUG_API, "Not returning top clients: Privacy level is set to %i",
-		          config.privacylevel);
+		          config.misc.privacylevel);
 
 		// Minimum structure is
 		// {"top_clients":[]}
@@ -571,7 +571,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 	}
 
 	// Exit before processing any data if requested via config setting
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
+	if(config.misc.privacylevel >= PRIVACY_HIDE_DOMAINS)
 	{
 		// Minimum structure is
 		// {"blocked":null}

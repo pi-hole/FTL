@@ -104,7 +104,7 @@ int api_history_clients(struct ftl_conn *api)
 	}
 
 	// Exit before processing any data if requested via config setting
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS || sendit < 0)
+	if(config.misc.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS || sendit < 0)
 	{
 		// Minimum structure is
 		// {"history":[], "clients":[]}
