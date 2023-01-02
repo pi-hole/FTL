@@ -25,7 +25,6 @@ int api_ftl_network(struct ftl_conn *api)
 		return send_json_unauthorized(api);
 	}
 
-
 	// Open pihole-FTL.db database file
 	sqlite3_stmt *device_stmt = NULL, *ip_stmt = NULL;
 	sqlite3 *db = dbopen(false);

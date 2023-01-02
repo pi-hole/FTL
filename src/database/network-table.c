@@ -2181,7 +2181,7 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 bool networkTable_readDevices(sqlite3 *db, sqlite3_stmt **read_stmt, const char **message)
 {
 	// Prepare SQLite statement
-	const char *querystr = "SELECT id,hwaddr,interface,firstSeen,lastQuery,numQueries,macVendor FROM network;";
+	const char *querystr = "SELECT id,hwaddr,interface,firstSeen,lastQuery,numQueries,macVendor FROM network ORDER BY lastQuery DESC;";
 	int rc = sqlite3_prepare_v2(db, querystr, -1, read_stmt, NULL);
 	if( rc != SQLITE_OK ){
 		*message = sqlite3_errstr(rc);
