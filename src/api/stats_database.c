@@ -19,7 +19,7 @@
 // db
 #include "../database/common.h"
 
-int api_stats_database_overTime_history(struct ftl_conn *api)
+int api_history_database(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
@@ -60,7 +60,7 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	sqlite3_stmt *stmt;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("api_stats_database_overTime_history() - SQL error prepare (%i): %s",
+		log_err("api_stats_database_history() - SQL error prepare (%i): %s",
 		        rc, sqlite3_errstr(rc));
 		return false;
 	}
@@ -68,7 +68,7 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	// Bind interval to prepared statement
 	if((rc = sqlite3_bind_int(stmt, 1, interval)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_history(): Failed to bind interval (error %d) - %s",
+		log_err("api_stats_database_history(): Failed to bind interval (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -83,7 +83,7 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	// Bind from to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 2, from)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_history(): Failed to bind from (error %d) - %s",
+		log_err("api_stats_database_history(): Failed to bind from (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -98,7 +98,7 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	// Bind until to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 3, until)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_history(): Failed to bind until (error %d) - %s",
+		log_err("api_stats_database_history(): Failed to bind until (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -110,28 +110,35 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Loop over and accumulate results
-	cJSON *json = JSON_NEW_ARRAY();
+	// Loop over returned data and accumulate results
+	cJSON *history = JSON_NEW_ARRAY();
 	cJSON *item = NULL;
-	int previous_timestamp = 0, blocked = 0, total = 0;
+	unsigned int previous_timeslot = 0u, blocked = 0u, total = 0u, cached = 0u;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		const int timestamp = sqlite3_column_int(stmt, 0);
-		// Begin new array item for each new timestamp
-		if(timestamp != previous_timestamp)
+		// Get timestamp and derive timeslot from it
+		const unsigned int timestamp = sqlite3_column_int(stmt, 0);
+		const unsigned int timeslot = timestamp - timestamp % interval;
+		// Begin new array item for each new timeslot
+		if(timeslot != previous_timeslot)
 		{
-			previous_timestamp = timestamp;
+			previous_timeslot = timeslot;
 			if(item != NULL)
 			{
-				JSON_ADD_NUMBER_TO_OBJECT(item, "total_queries", total);
+				// Add and reset total counter
+				JSON_ADD_NUMBER_TO_OBJECT(item, "total", total);
 				total = 0;
-				JSON_ADD_NUMBER_TO_OBJECT(item, "blocked_queries", blocked);
+				// Add and reset totacachedl counter
+				JSON_ADD_NUMBER_TO_OBJECT(item, "cached", cached);
+				cached = 0;
+				// Add and reset blocked counter
+				JSON_ADD_NUMBER_TO_OBJECT(item, "blocked", blocked);
 				blocked = 0;
-				JSON_ADD_ITEM_TO_ARRAY(json, item);
+				JSON_ADD_ITEM_TO_ARRAY(history, item);
 			}
 
 			item = JSON_NEW_OBJECT();
-			JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", timestamp);
+			JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", timeslot);
 		}
 
 		const int status = sqlite3_column_int(stmt, 1);
@@ -139,15 +146,31 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		// Always add to total count
 		total += count;
 
-		// Add to blocked count if this is the result for a blocked status
+		// Add to blocked / cached count if applicable
 		if(is_blocked(status))
 			blocked += count;
+		else if(is_cached(status))
+			cached += count;
+	}
+
+	// Append final timeslot at the end if applicable
+	if(total > 0 && item != NULL)
+	{
+		// Add total counter
+		JSON_ADD_NUMBER_TO_OBJECT(item, "total", total);
+		// Add cached counter
+		JSON_ADD_NUMBER_TO_OBJECT(item, "cached", cached);
+		// Add blocked counter
+		JSON_ADD_NUMBER_TO_OBJECT(item, "blocked", blocked);
+		JSON_ADD_ITEM_TO_ARRAY(history, item);
 	}
 
 	// Finalize statement and close (= unlock) database connection
 	sqlite3_finalize(stmt);
 	dbclose(&db);
 
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 	JSON_SEND_OBJECT(json);
 }
 
@@ -157,7 +180,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 		return send_json_unauthorized(api);
 
-	unsigned int show = 10;
+	unsigned int count = 10;
 	double from = 0.0, until = 0.0;
 
 	// Get options from API struct
@@ -177,7 +200,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		get_uint_var(api->request->query_string, "show", &show);
+		get_uint_var(api->request->query_string, "count", &count);
 	}
 
 	// Check if we received the required information
@@ -207,7 +230,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 			           "WHERE (status == 2 OR status == 3) "
 			           "AND timestamp >= :from AND timestamp <= :until "
 			           "GROUP by domain ORDER by cnt DESC "
-			           "LIMIT :show";
+			           "LIMIT :count";
 		}
 		else
 		{
@@ -215,7 +238,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 			           "WHERE status != 0 AND status != 2 AND status != 3 "
 			           "AND timestamp >= :from AND timestamp <= :until "
 			           "GROUP by domain ORDER by cnt DESC "
-			           "LIMIT :show";
+			           "LIMIT :count";
 		}
 	}
 	else
@@ -226,7 +249,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 			           "WHERE (status == 2 OR status == 3) "
 			           "AND timestamp >= :from AND timestamp <= :until "
 			           "GROUP by client ORDER by cnt DESC "
-			           "LIMIT :show";
+			           "LIMIT :count";
 		}
 		else
 		{
@@ -234,7 +257,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 			           "WHERE status != 0 AND status != 2 AND status != 3 "
 			           "AND timestamp >= :from AND timestamp <= :until "
 			           "GROUP by client ORDER by cnt DESC "
-			           "LIMIT :show";
+			           "LIMIT :count";
 		}
 	}
 
@@ -243,7 +266,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	sqlite3_stmt *stmt;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("api_stats_database_overTime_history() - SQL error prepare (%i): %s",
+		log_err("api_stats_database_history() - SQL error prepare (%i): %s",
 		        rc, sqlite3_errstr(rc));
 
 		dbclose(&db);
@@ -257,7 +280,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	// Bind from to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_history(): Failed to bind from (error %d) - %s",
+		log_err("api_stats_database_history(): Failed to bind from (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -272,7 +295,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	// Bind until to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_history(): Failed to bind until (error %d) - %s",
+		log_err("api_stats_database_history(): Failed to bind until (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -284,10 +307,10 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Bind show to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 3, show)) != SQLITE_OK)
+	// Bind count to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 3, count)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_history(): Failed to bind show (error %d) - %s",
+		log_err("api_stats_database_history(): Failed to bind count (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -295,7 +318,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 
 		return send_json_error(api, 500,
 		                       "internal_error",
-		                       "Failed to bind show",
+		                       "Failed to bind count",
 		                       NULL);
 	}
 
@@ -305,7 +328,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const char* string = (char*)sqlite3_column_text(stmt, 0);
-		const int count = sqlite3_column_int(stmt, 1);
+		const int cnt = sqlite3_column_int(stmt, 1);
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_COPY_STR_TO_OBJECT(item, (domains ? "domain" : "ip"), string);
 		// Add empty name field for top_client requests
@@ -313,7 +336,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		{
 			JSON_REF_STR_IN_OBJECT(item, "name", "");
 		}
-		JSON_ADD_NUMBER_TO_OBJECT(item, "count", count);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "count", cnt);
 		JSON_ADD_ITEM_TO_ARRAY(top_items, item);
 		total += count;
 	}
@@ -402,7 +425,7 @@ int api_stats_database_summary(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_database_overTime_clients(struct ftl_conn *api)
+int api_history_database_clients(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
@@ -441,7 +464,7 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	sqlite3_stmt *stmt;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("api_stats_database_overTime_clients() - SQL error prepare outer (%i): %s",
+		log_err("api_stats_database_clients() - SQL error prepare outer (%i): %s",
 		        rc, sqlite3_errstr(rc));
 
 		return send_json_error(api, 500,
@@ -453,7 +476,7 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	// Bind from to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_clients(): Failed to bind from (error %d) - %s",
+		log_err("api_stats_database_clients(): Failed to bind from (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -468,7 +491,7 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	// Bind until to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_clients(): Failed to bind until (error %d) - %s",
+		log_err("api_stats_database_clients(): Failed to bind until (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -502,7 +525,7 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	// Prepare SQLite statement
 	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("api_stats_database_overTime_clients() - SQL error prepare (%i): %s",
+		log_err("api_stats_database_clients() - SQL error prepare (%i): %s",
 		   rc, sqlite3_errstr(rc));
 
 		return send_json_error(api, 500,
@@ -514,7 +537,7 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	// Bind interval to prepared statement
 	if((rc = sqlite3_bind_int(stmt, 1, interval)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_clients(): Failed to bind interval (error %d) - %s",
+		log_err("api_stats_database_clients(): Failed to bind interval (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -529,7 +552,7 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	// Bind from to prepared statement
 	if((rc = sqlite3_bind_int(stmt, 2, from)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_clients(): Failed to bind from (error %d) - %s",
+		log_err("api_stats_database_clients(): Failed to bind from (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -544,7 +567,7 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	// Bind until to prepared statement
 	if((rc = sqlite3_bind_int(stmt, 3, until)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_clients(): Failed to bind until (error %d) - %s",
+		log_err("api_stats_database_clients(): Failed to bind until (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -727,7 +750,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	sqlite3_stmt *stmt;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("api_stats_database_overTime_clients() - SQL error prepare (%i): %s",
+		log_err("api_stats_database_clients() - SQL error prepare (%i): %s",
 		        rc, sqlite3_errstr(rc));
 
 		return send_json_error(api, 500,
@@ -739,7 +762,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	// Bind from to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_clients(): Failed to bind from (error %d) - %s",
+		log_err("api_stats_database_clients(): Failed to bind from (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -754,7 +777,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	// Bind until to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_overTime_clients(): Failed to bind until (error %d) - %s",
+		log_err("api_stats_database_clients(): Failed to bind until (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);

@@ -65,7 +65,6 @@ int api_history(struct ftl_conn *api)
 
 	// Minimum structure is
 	// {"history":[]}
-	cJSON *json = JSON_NEW_OBJECT();
 	cJSON *history = JSON_NEW_ARRAY();
 	for(int slot = from; slot < until; slot++)
 	{
@@ -76,6 +75,8 @@ int api_history(struct ftl_conn *api)
 		JSON_ADD_NUMBER_TO_OBJECT(item, "blocked", overTime[slot].blocked);
 		JSON_ADD_ITEM_TO_ARRAY(history, item);
 	}
+
+	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 	JSON_SEND_OBJECT_UNLOCK(json);
 }

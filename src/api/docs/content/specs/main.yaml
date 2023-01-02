@@ -66,6 +66,9 @@ paths:
   /history/clients:
     $ref: 'history.yaml#/components/paths/clients'
 
+  /history/database:
+    $ref: 'history.yaml#/components/paths/database_history'
+
   /queries:
     $ref: 'queries.yaml#/components/paths/queries'
 

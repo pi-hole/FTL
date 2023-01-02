@@ -22,6 +22,28 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    database_history:
+      get:
+        summary: Get activity graph data (long-term data)
+        tags:
+          - Metrics
+        operationId: "get_activity_metrics_database"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'history.yaml#/components/schemas/total_history'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
 
     clients:
       get:
@@ -31,6 +53,28 @@ components:
         operationId: "get_client_metrics"
         description: |
           Request data needed to generate the \"Client activity over last 24 hours\" graph
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'history.yaml#/components/schemas/client_history'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    database_clients:
+      get:
+        summary: Get per-client activity graph data (long-term data)
+        tags:
+          - Metrics
+        operationId: "get_client_metrics_database"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
         responses:
           '200':
             description: OK

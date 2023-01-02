@@ -43,3 +43,29 @@ components:
       description: Location of created resource
       schema:
         type: string
+
+  parameters:
+    database:
+      from:
+        in: query
+        description: Unix timestamp from when the data should be requested
+        name: from
+        schema:
+          type: integer
+        required: true
+        example: 1672580025
+      until:
+        in: query
+        description: Unix timestamp from when the data should be requested
+        name: until
+        schema:
+          type: integer
+        required: true
+        example: 1672666425
+      blocked:
+        in: query
+        description: Should this query return only blocked queries?
+        schema:
+          type: boolean
+        required: false
+        example: false

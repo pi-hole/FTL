@@ -31,15 +31,17 @@ int api_stats_recentblocked(struct ftl_conn *api);
 int api_history(struct ftl_conn *api);
 int api_history_clients(struct ftl_conn *api);
 
+// History methods (database)
+int api_history_database(struct ftl_conn *api);
+int api_history_database_clients(struct ftl_conn *api);
+
 // Query methods
 int api_queries(struct ftl_conn *api);
 int api_queries_suggestions(struct ftl_conn *api);
 
 // Statistics methods (database)
-int api_stats_database_overTime_history(struct ftl_conn *api);
 int api_stats_database_top_items(struct ftl_conn *api);
 int api_stats_database_summary(struct ftl_conn *api);
-int api_stats_database_overTime_clients(struct ftl_conn *api);
 int api_stats_database_query_types(struct ftl_conn *api);
 int api_stats_database_upstreams(struct ftl_conn *api);
 

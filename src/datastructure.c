@@ -767,7 +767,37 @@ int __attribute__ ((pure)) get_forwarded_count(void)
 
 int __attribute__ ((pure)) get_cached_count(void)
 {
-	return counters->status[QUERY_CACHE];
+	return counters->status[QUERY_CACHE] + counters->status[QUERY_CACHE_STALE];
+}
+
+bool __attribute__ ((const)) is_cached(const enum query_status status)
+{
+	switch (status)
+	{
+		case QUERY_CACHE:
+		case QUERY_CACHE_STALE:
+			return true;
+
+		case QUERY_UNKNOWN:
+		case QUERY_FORWARDED:
+		case QUERY_RETRIED:
+		case QUERY_RETRIED_DNSSEC:
+		case QUERY_IN_PROGRESS:
+		case QUERY_STATUS_MAX:
+		case QUERY_GRAVITY:
+		case QUERY_REGEX:
+		case QUERY_DENYLIST:
+		case QUERY_EXTERNAL_BLOCKED_IP:
+		case QUERY_EXTERNAL_BLOCKED_NULL:
+		case QUERY_EXTERNAL_BLOCKED_NXRA:
+		case QUERY_GRAVITY_CNAME:
+		case QUERY_REGEX_CNAME:
+		case QUERY_DENYLIST_CNAME:
+		case QUERY_DBBUSY:
+		case QUERY_SPECIAL_DOMAIN:
+		default:
+			return false;
+	}
 }
 
 static const char* __attribute__ ((const)) query_status_str(const enum query_status status)

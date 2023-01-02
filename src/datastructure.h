@@ -128,6 +128,7 @@ bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 
 bool is_blocked(const enum query_status status) __attribute__ ((const));
+bool is_cached(const enum query_status status) __attribute__ ((const));
 int get_blocked_count(void) __attribute__ ((pure));
 int get_forwarded_count(void) __attribute__ ((pure));
 int get_cached_count(void) __attribute__ ((pure));

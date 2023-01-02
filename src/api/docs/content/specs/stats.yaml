@@ -50,8 +50,8 @@ components:
           - Metrics
         operationId: "get_metrics_upstreams_database"
         parameters:
-          - $ref: 'stats.yaml#/components/parameters/database/from'
-          - $ref: 'stats.yaml#/components/parameters/database/until'
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
         responses:
           '200':
             description: OK
@@ -235,22 +235,3 @@ components:
           type: integer
           description: Total number of queries
           example: 29160
-
-  parameters:
-    database:
-      from:
-        in: query
-        description: Unix timestamp from when the data should be requested
-        name: from
-        schema:
-          type: integer
-        required: true
-        example: 1672580025
-      until:
-        in: query
-        description: Unix timestamp from when the data should be requested
-        name: until
-        schema:
-          type: integer
-        required: true
-        example: 1672688280
