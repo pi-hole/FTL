@@ -28,6 +28,8 @@ components:
         tags:
           - Metrics
         operationId: "get_activity_metrics_database"
+        description: |
+          Request long-term data needed to generate the activity graph
         parameters:
           - $ref: 'common.yaml#/components/parameters/database/from'
           - $ref: 'common.yaml#/components/parameters/database/until'
@@ -72,6 +74,8 @@ components:
         tags:
           - Metrics
         operationId: "get_client_metrics_database"
+        description: |
+          Request long-term data needed to generate the client activity graph
         parameters:
           - $ref: 'common.yaml#/components/parameters/database/from'
           - $ref: 'common.yaml#/components/parameters/database/until'

@@ -188,11 +188,11 @@ components:
                 description: Interface this device is connected to
                 example: enp2s0
               firstSeen:
-                type: interger
+                type: integer
                 description: Unix timestamp when this device was first seen by your Pi-hole
                 example: 1664623620
               lastQuery:
-                type: interger
+                type: integer
                 description: Unix timestamp when your Pi-hole received the last query from this device
                 example: 1664688620
               numQueries:
@@ -217,9 +217,11 @@ components:
                       description: Associated hostname (can be null)
                       example: ubuntu-server
                     lastSeen:
+                      type: integer
                       description: Unix timestamp when your Pi-hole has seen this address the last time
                       example: 1664688620
                     nameUpdated:
+                      type: integer
                       description: Unix timestamp when device updated its hostname the last time
                       example: 1664688620
 

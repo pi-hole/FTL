@@ -29,6 +29,8 @@ components:
         tags:
           - Metrics
         operationId: "get_metrics_upstreams"
+        description: |
+          Request upstream metrics
         responses:
           '200':
             description: OK
@@ -45,10 +47,12 @@ components:
 
     database_upstreams:
       get:
-        summary: Get metrics about Pi-hole's upstream destinations (database)
+        summary: Get metrics about Pi-hole's upstream destinations (long-term database)
         tags:
           - Metrics
         operationId: "get_metrics_upstreams_database"
+        description: |
+          Request upstream metrics (long-term database)
         parameters:
           - $ref: 'common.yaml#/components/parameters/database/from'
           - $ref: 'common.yaml#/components/parameters/database/until'
@@ -220,11 +224,11 @@ components:
                 type: object
                 properties:
                   response:
-                    type: string
+                    type: number
                     description: Average response time of this upstream destination in seconds (0 if not applicable)
                     example: 0.0254856
                   variance:
-                    type: string
+                    type: number
                     description: Standard deviation of the average response time (0 if not applicable)
                     example: 0.02058
         forwarded_queries:

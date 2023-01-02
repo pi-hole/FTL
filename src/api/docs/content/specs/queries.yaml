@@ -258,7 +258,7 @@ components:
               description: Array of suggested domains
               items:
                 type: string
-                example: []
+              example: ["pi-hole.net","amazon.com"]
             client:
               type: array
               description: Array of suggested clients

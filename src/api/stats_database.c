@@ -34,11 +34,11 @@ int api_history_database(struct ftl_conn *api)
 	}
 
 	// Check if we received the required information
-	if(until < 1.0)
+	if(from < 1.0 || until < 1.0)
 	{
 		return send_json_error(api, 400,
 		                       "bad_request",
-		                       "You need to specify \"until\" in the request.",
+		                       "You need to specify both \"from\" and \"until\" in the request.",
 		                       NULL);
 	}
 
@@ -138,7 +138,7 @@ int api_history_database(struct ftl_conn *api)
 			}
 
 			item = JSON_NEW_OBJECT();
-			JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", timeslot);
+			JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", previous_timeslot);
 		}
 
 		const int status = sqlite3_column_int(stmt, 1);
@@ -456,7 +456,8 @@ int api_history_database_clients(struct ftl_conn *api)
 		                       "Failed to open long-term database",
 		                       NULL);
 
-	const char *querystr = "SELECT DISTINCT client FROM queries "
+	const char *querystr = "SELECT DISTINCT(client),ip,name FROM query_storage "
+	                       "JOIN client_by_id ON client_by_id.id = client "
 	                       "WHERE timestamp >= :from AND timestamp <= :until "
 	                       "ORDER BY client DESC";
 
@@ -508,10 +509,9 @@ int api_history_database_clients(struct ftl_conn *api)
 	unsigned int num_clients = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		const char* client = (char*)sqlite3_column_text(stmt, 0);
 		cJSON *item = JSON_NEW_OBJECT();
-		JSON_COPY_STR_TO_OBJECT(item, "ip", client);
-		JSON_REF_STR_IN_OBJECT(item, "name", "");
+		JSON_COPY_STR_TO_OBJECT(item, "ip", sqlite3_column_text(stmt, 1));
+		JSON_COPY_STR_TO_OBJECT(item, "name", sqlite3_column_text(stmt, 2));
 		JSON_ADD_ITEM_TO_ARRAY(clients, item);
 		num_clients++;
 	}
@@ -579,17 +579,19 @@ int api_history_database_clients(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	cJSON *over_time = JSON_NEW_ARRAY();
 	cJSON *item = NULL;
 	cJSON *data = NULL;
-	int previous_timestamp = 0;
+	unsigned int previous_timeslot = 0u;
+	cJSON *over_time = JSON_NEW_ARRAY();
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		const int timestamp = sqlite3_column_int(stmt, 0);
-		// Begin new array item for each new timestamp
-		if(timestamp != previous_timestamp)
+		// Get timestamp and derive timeslot from it
+		const unsigned int timestamp = sqlite3_column_int(stmt, 0);
+		const unsigned int timeslot = timestamp - timestamp % interval;
+		// Begin new array item for each new timeslot
+		if(timeslot != previous_timeslot)
 		{
-			previous_timestamp = timestamp;
+			previous_timeslot = timeslot;
 			if(item != NULL && data != NULL)
 			{
 				JSON_ADD_ITEM_TO_OBJECT(item, "data", data);
@@ -606,7 +608,7 @@ int api_history_database_clients(struct ftl_conn *api)
 			{
 				JSON_ADD_NUMBER_TO_ARRAY(data, 0);
 			}
-			JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", timestamp);
+			JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", previous_timeslot);
 		}
 
 		const char *client = (char*)sqlite3_column_text(stmt, 1);
@@ -634,12 +636,19 @@ int api_history_database_clients(struct ftl_conn *api)
 		JSON_REPLACE_NUMBER_IN_ARRAY(data, idx, count);
 	}
 
+	// Append final timeslot at the end if applicable
+	if(item != NULL && data != NULL)
+	{
+		JSON_ADD_ITEM_TO_OBJECT(item, "data", data);
+		JSON_ADD_ITEM_TO_ARRAY(over_time, item);
+	}
+
 	// Finalize statement and close (= unlock) database connection
 	sqlite3_finalize(stmt);
 	dbclose(&db);
 
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "over_time", over_time);
+	JSON_ADD_ITEM_TO_OBJECT(json, "history", over_time);
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
 	JSON_SEND_OBJECT(json);
 }
