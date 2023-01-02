@@ -353,9 +353,7 @@ int api_list(struct ftl_conn *api)
 	// Verify requesting client is allowed to see this ressource
 	char payload[MAX_PAYLOAD_BYTES] = { 0 };
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	enum gravity_list_type listtype;
 	bool can_modify = false;

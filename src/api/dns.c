@@ -51,9 +51,7 @@ static int set_blocking(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to access this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	if (api->payload.json == NULL) {
 		return send_json_error(api, 400,
@@ -125,9 +123,7 @@ int api_dns_cache(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to access this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	struct cache_info ci = { 0 };
 	get_dnsmasq_cache_info(&ci);

@@ -142,9 +142,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel >= PRIVACY_HIDE_DOMAINS)
@@ -300,9 +298,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
@@ -429,9 +425,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	// Lock shared memory
 	lock_shm();
@@ -539,9 +533,7 @@ int api_stats_query_types(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	lock_shm();
 
@@ -566,9 +558,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel >= PRIVACY_HIDE_DOMAINS)

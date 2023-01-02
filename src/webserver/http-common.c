@@ -103,6 +103,8 @@ int send_http_internal_error(struct ftl_conn *api)
 bool get_bool_var(const char *source, const char *var, bool *boolean)
 {
 	char buffer[16] = { 0 };
+	if(!source)
+		return false;
 	if(GET_VAR(var, buffer, source) > 0)
 	{
 		*boolean = (strcasecmp(buffer, "true") == 0);
@@ -204,6 +206,8 @@ bool get_int_var_msg(const char *source, const char *var, int *num, const char *
 bool get_int_var(const char *source, const char *var, int *num)
 {
 	const char *msg = NULL;
+	if(!source)
+		return false;
 	return get_int_var_msg(source, var, num, &msg);
 }
 
@@ -232,12 +236,16 @@ bool get_uint_var_msg(const char *source, const char *var, unsigned int *num, co
 bool get_uint_var(const char *source, const char *var, unsigned int *num)
 {
 	const char *msg = NULL;
+	if(!source)
+		return false;
 	return get_uint_var_msg(source, var, num, &msg);
 }
 
 bool get_double_var_msg(const char *source, const char *var, double *num, const char **msg)
 {
 	char buffer[128] = { 0 };
+	if(!source)
+		return false;
 	if(GET_VAR(var, buffer, source) < 1)
 	{
 		// Parameter not found
@@ -271,6 +279,8 @@ bool get_double_var_msg(const char *source, const char *var, double *num, const 
 bool get_double_var(const char *source, const char *var, double *num)
 {
 	const char *msg = NULL;
+	if(!source)
+		return false;
 	return get_double_var_msg(source, var, num, &msg);
 }
 

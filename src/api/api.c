@@ -35,10 +35,6 @@ static struct {
 	{ "/api/ftl/logs/dns",                      api_ftl_logs_dns,                      { false, false } },
 	{ "/api/ftl/sysinfo",                       api_ftl_sysinfo,                       { false, false } },
 	{ "/api/ftl/dbinfo",                        api_ftl_dbinfo,                        { false, false } },
-	{ "/api/ftl/config",                        api_ftl_config,                        { false, false } },
-	{ "/api/ftl/gateway",                       api_ftl_gateway,                       { false, false } },
-	{ "/api/ftl/interfaces",                    api_ftl_interfaces,                    { false, false } },
-	{ "/api/ftl/network",                       api_ftl_network,                       { false, false } },
 	{ "/api/ftl/endpoints",                     api_ftl_endpoints,                     { false, false } },
 	{ "/api/history/clients",                   api_history_clients,                   { false, false } },
 	{ "/api/history",                           api_history,                           { false, false } },
@@ -63,6 +59,10 @@ static struct {
 	{ "/api/version",                           api_version,                           { false, false } },
 	{ "/api/auth",                              api_auth,                              { false, false } },
 	{ "/api/settings/web",                      api_settings_web,                      { false, false } },
+	{ "/api/config",                            api_config,                            { false, false } },
+	{ "/api/network/gateway",                   api_network_gateway,                   { false, false } },
+	{ "/api/network/interfaces",                api_network_interfaces,                { false, false } },
+	{ "/api/network/devices",                   api_network_devices,                   { false, false } },
 	{ "/api/docs",                              api_docs,                              { false, false } },
 };
 
@@ -130,9 +130,7 @@ static int api_ftl_endpoints(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	cJSON *json = JSON_NEW_OBJECT();
 	cJSON *endpoints = JSON_NEW_ARRAY();

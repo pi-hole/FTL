@@ -71,9 +71,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	int rc;
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	// Lock shared memory
 	lock_shm();
@@ -206,9 +204,7 @@ int api_queries(struct ftl_conn *api)
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	// Lock shared memory
 	lock_shm();

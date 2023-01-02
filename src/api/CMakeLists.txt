@@ -15,8 +15,8 @@ set(sources
         dns.c
         dns.h
         ftl.c
-        ftl/config.c
-        ftl/network.c
+        config.c
+        network.c
         history.c
         list.c
         queries.c

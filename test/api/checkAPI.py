@@ -40,9 +40,9 @@ except Exception as e:
 	exit(1)
 
 # Resolve a reference
-def resolveSingleReference(ref: str, k: str):
+def resolveSingleReference(ref_str: str, k: str):
 	# Read and parse the referenced file
-	ref = ref.partition("#")
+	ref = ref_str.partition("#")
 	if len(ref[0]) == 0:
 		# Empty references are not allowed
 		raise Exception("Empty reference, always specify a file in the API specification")
@@ -57,12 +57,12 @@ def resolveSingleReference(ref: str, k: str):
 		# Reduce to what we want to import
 		for x in ref[2].split("/"):
 			if len(x) > 0:
+				#if x not in refYML:
 				refYML = refYML[x]
 		return refYML
 	except Exception as e:
-		print("Exception when reading " + file + ": " + e)
-		print("Tried to read" + ref + " in:\n" + json.dumps(refYML, indent=2))
-		print("Tried to resolve " + k + " pointing to " + ref)
+		print("Exception when reading " + file + ": " + str(e))
+		print("Tried to resolve " + ref_str + " in:\n" + json.dumps(refYML, indent=2))
 		exit(1)
 
 # Recursively resolve references, this can take a few seconds

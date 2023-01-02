@@ -37,13 +37,11 @@
 // Interate through directories
 #include <dirent.h>
 
-int api_ftl_config(struct ftl_conn *api)
+int api_config(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
 		return send_json_unauthorized(api);
-	}
 
 	cJSON *config_j = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(config_j, "debug",config.debug); /* TODO: Split into individual fields */
