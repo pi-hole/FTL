@@ -656,14 +656,9 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
 	 insert. Once in this state, all inserts will probably fail. */
       if (free_avail)
 	{
-	  static int warned = 0;
-	  if (!warned)
-	    {
-	      my_syslog(LOG_ERR, _("Internal error in cache."));
-	      /* Log the entry we tried to delete. */
-	      dump_cache_entry(free_avail, now);
-	      warned = 1;
-	    }
+	  my_syslog(LOG_ERR, _("Internal error in cache."));
+	  /* Log the entry we tried to delete. */
+	  dump_cache_entry(free_avail, now);
 	  insert_error = 1;
 	  return NULL;
 	}
