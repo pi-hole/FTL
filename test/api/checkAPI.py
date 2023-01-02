@@ -10,10 +10,12 @@ base_path = "src/api/docs/content/specs/"
 # List of methods we want to extract
 methods = ["get", "post", "put", "delete"]
 
-# Prepare list of endpoints
-endpoints = {}
+API_ROOT = "/api"
+
+# Prepare list of YAML endpoints
+YAMLendpoints = {}
 for method in methods:
-	endpoints[method] = []
+	YAMLendpoints[method] = []
 
 # Cache for already read files
 yamls = {}
@@ -83,10 +85,14 @@ print("Resolving references...")
 recurseRef(paths, "")
 print("...done\n")
 
-# Sort the list of endpoints
-YAMLendpoints = {}
+# Build and sort the list of endpoints
 for method in methods:
-	YAMLendpoints[method] = sorted(endpoints[method])
+	for path in paths:
+		if method in paths[path]:
+			# Strip possible variables from path
+			clean_path = API_ROOT + path.partition("/{")[0]
+			YAMLendpoints[method].append(clean_path)
+	YAMLendpoints[method] = sorted(YAMLendpoints[method])
 
 # Query the endpoints from FTL for comparison with the OpenAPI specs
 try:
