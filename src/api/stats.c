@@ -535,8 +535,6 @@ int api_stats_query_types(struct ftl_conn *api)
 
 int api_stats_recentblocked(struct ftl_conn *api)
 {
-	unsigned int show = 1;
-
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 		return send_json_unauthorized(api);
@@ -551,11 +549,12 @@ int api_stats_recentblocked(struct ftl_conn *api)
 		JSON_SEND_OBJECT(json);
 	}
 
+	unsigned int count = 1;
 	if(api->request->query_string != NULL)
 	{
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		get_uint_var(api->request->query_string, "show", &show);
+		get_uint_var(api->request->query_string, "count", &count);
 	}
 
 	// Lock shared memory
@@ -588,7 +587,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 			found++;
 		}
 
-		if(found >= show)
+		if(found >= count)
 			break;
 	}
 

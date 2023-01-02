@@ -69,6 +69,29 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    recent_blocked:
+      get:
+        summary: Get most recently blocked domain
+        tags:
+          - Metrics
+        operationId: "get_metrics_recent_blocked"
+        description: |
+          Request most recently blocked domain
+        parameters:
+          - $ref: 'stats.yaml#/components/parameters/recent_blocked/count'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'stats.yaml#/components/schemas/queries'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
 
   schemas:
     queries:
@@ -239,3 +262,14 @@ components:
           type: integer
           description: Total number of queries
           example: 29160
+
+  parameters:
+    recent_blocked:
+      count:
+        in: query
+        description: Number of requested blocked domains
+        name: count
+        schema:
+          type: integer
+        required: false
+        example: 1

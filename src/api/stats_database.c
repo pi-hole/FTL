@@ -389,7 +389,7 @@ int api_stats_database_summary(struct ftl_conn *api)
 
 	querystr = "SELECT COUNT(*) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
-		   "AND status != 0 AND status != 2 AND status != 3";
+	           "AND status != 0 AND status != 2 AND status != 3";
 	int blocked_queries = db_query_int_from_until(db, querystr, from, until);
 
 	querystr = "SELECT COUNT(DISTINCT client) FROM queries "
