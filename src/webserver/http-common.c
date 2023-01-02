@@ -77,13 +77,14 @@ int send_json_error(struct ftl_conn *api, const int code,
                     const char *key, const char* message,
                     const char *hint)
 {
-	cJSON *json = JSON_NEW_OBJECT();
+	log_err("API error: %s, hint: %s", message, hint);
 
 	cJSON *error = JSON_NEW_OBJECT();
 	JSON_REF_STR_IN_OBJECT(error, "key", key);
 	JSON_REF_STR_IN_OBJECT(error, "message", message);
 	JSON_REF_STR_IN_OBJECT(error, "hint", hint);
 
+	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "error", error);
 	JSON_SEND_OBJECT_CODE(json, code);
 }

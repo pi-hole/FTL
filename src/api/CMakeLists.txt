@@ -13,14 +13,12 @@ set(sources
         api.c
         auth.c
         dns.c
-        dns.h
         ftl.c
         config.c
         network.c
         history.c
         list.c
         queries.c
-        settings.c
         stats_database.c
         stats.c
         version.c

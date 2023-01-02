@@ -24,6 +24,8 @@ static struct {
 	const bool opts[2];
 } api_request[] = {
 	// URI                                      FUNCTION                               OPTIONS
+	// Note: The order of appearance matters here, more specific URIs have to
+	// appear *before* less specific URIs: 1. "/a/b/c", 2. "/a/b", 3. "/a"
 	{ "/api/dns/blocking",                      api_dns_blocking,                      { false, false } },
 	{ "/api/dns/cache",                         api_dns_cache,                         { false, false } },
 	{ "/api/dns/port",                          api_dns_port,                          { false, false } },
@@ -95,7 +97,9 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			// Copy options to API struct
 			memcpy(api.opts, api_request[i].opts, sizeof(api.opts));
 			// Call the API function and get the return code
+			log_debug(DEBUG_API, "Sending to %s", api_request[i].uri);
 			ret = api_request[i].func(&api);
+			break;
 		}
 	}
 

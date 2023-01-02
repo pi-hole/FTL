@@ -350,8 +350,9 @@ int api_network_devices(struct ftl_conn *api)
 	// Read record for a single device
 	cJSON *devices = JSON_NEW_ARRAY();
 	network_record network;
-	unsigned int device_counter = 1;
-	while(networkTable_readDevicesGetRecord(device_stmt, &network, &sql_msg))
+	unsigned int device_counter = 0;
+	while(networkTable_readDevicesGetRecord(device_stmt, &network, &sql_msg) &&
+	      ++device_counter > device_count)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(item, "id", network.id);
@@ -368,8 +369,9 @@ int api_network_devices(struct ftl_conn *api)
 		{
 			// Walk known IP addresses + names
 			network_addresses_record network_address;
-			unsigned int address_counter = 1;
-			while(networkTable_readIPsGetRecord(ip_stmt, &network_address, &sql_msg))
+			unsigned int address_counter = 0;
+			while(networkTable_readIPsGetRecord(ip_stmt, &network_address, &sql_msg) &&
+			      ++address_counter > address_count)
 			{
 				cJSON *ip = JSON_NEW_OBJECT();
 				JSON_COPY_STR_TO_OBJECT(ip, "ip", network_address.ip);
@@ -377,8 +379,6 @@ int api_network_devices(struct ftl_conn *api)
 				JSON_ADD_NUMBER_TO_OBJECT(ip, "lastSeen", network_address.lastSeen);
 				JSON_ADD_NUMBER_TO_OBJECT(ip, "nameUpdated", network_address.nameUpdated);
 				JSON_ADD_ITEM_TO_ARRAY(ips, ip);
-				if(++address_counter > address_count)
-					break;
 			}
 
 			// Possible error handling
@@ -394,9 +394,6 @@ int api_network_devices(struct ftl_conn *api)
 
 			// Finalize sub-query
 			networkTable_readIPsFinalize(ip_stmt);
-
-			if(++device_counter > device_count)
-				break;
 		}
 
 		// Add array of IP addresses to device

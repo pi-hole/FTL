@@ -63,6 +63,9 @@ paths:
   /queries:
     $ref: 'queries.yaml#/components/paths/queries'
 
+  /queries/suggestions:
+    $ref: 'queries.yaml#/components/paths/suggestions'
+
   /dns/blocking:
     $ref: 'dns.yaml#/components/paths/blocking'
 

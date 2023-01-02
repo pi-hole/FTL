@@ -8,20 +8,19 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "dns.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
 #include "api.h"
 // {s,g}et_blockingstatus()
-#include "../setupVars.h"
+#include "setupVars.h"
 // set_blockingmode_timer()
-#include "../timers.h"
-#include "../shmem.h"
+#include "timers.h"
+#include "shmem.h"
 // getCacheInformation()
-#include "../cache_info.h"
+#include "cache_info.h"
 // config struct
-#include "../config/config.h"
+#include "config/config.h"
 
 static int get_blocking(struct ftl_conn *api)
 {

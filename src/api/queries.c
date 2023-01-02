@@ -26,7 +26,7 @@
 // dbopen(), dbclose()
 #include "../database/common.h"
 
-static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *querystr)
+static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *querystr, const int max_count)
 {
 
 	sqlite3 *memdb = get_memdb();
@@ -49,11 +49,17 @@ static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *
 	}
 
 	// Loop through returned rows
-	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	int counter = 0;
+	while((rc = sqlite3_step(stmt)) == SQLITE_ROW &&
+	      (max_count < 0 || ++counter < max_count))
 		JSON_COPY_STR_TO_ARRAY(array, (const char*)sqlite3_column_text(stmt, 0));
 
-	if( rc != SQLITE_DONE )
+	// Acceptable return codes are either
+	// - SQLITE_DONE: We read all lines, or
+	// - SQLITE_ROW: We ended reading early because of set limit
+	if( rc != SQLITE_DONE && rc != SQLITE_ROW )
 	{
+		sqlite3_finalize(stmt);
 		return send_json_error(api, 500, // 500 Internal error
 		                       "database_error",
 		                       "Could not step in-memory database",
@@ -73,24 +79,41 @@ int api_queries_suggestions(struct ftl_conn *api)
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 		return send_json_unauthorized(api);
 
+	// Does the user request a custom number of records to be included?
+	int count = 10;
+	get_int_var(api->request->query_string, "count", &count);
+
 	// Lock shared memory
 	lock_shm();
 
 	// Get domains
 	cJSON *domain = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, domain, "SELECT DISTINCT(domain) FROM queries");
+	rc = add_strings_to_array(api, domain, "SELECT domain FROM domain_by_id", count);
 	if(rc != 0)
 	{
+		log_err("Cannot read domains from database");
 		cJSON_Delete(domain);
 		unlock_shm();
 		return rc;
 	}
 
-	// Get clients
+	// Get clients, both by IP and names
+	// We have to call DISTINCT() here as multiple IPs can map to and name and
+	// vice versa
 	cJSON *client = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, client, "SELECT DISTINCT(client) FROM queries");
+	rc = add_strings_to_array(api, client, "SELECT DISTINCT(ip) FROM client_by_id", count/2);
 	if(rc != 0)
 	{
+		log_err("Cannot read client IPs from database");
+		cJSON_Delete(domain);
+		cJSON_Delete(client);
+		unlock_shm();
+		return rc;
+	}
+	rc = add_strings_to_array(api, client, "SELECT DISTINCT(name) FROM client_by_id", count/2);
+	if(rc != 0)
+	{
+		log_err("Cannot read client names from database");
 		cJSON_Delete(domain);
 		cJSON_Delete(client);
 		unlock_shm();
@@ -99,9 +122,10 @@ int api_queries_suggestions(struct ftl_conn *api)
 
 	// Get upstreams
 	cJSON *upstream = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, upstream, "SELECT DISTINCT(forward) FROM queries WHERE forward IS NOT NULL");
+	rc = add_strings_to_array(api, upstream, "SELECT forward FROM forward_by_id", count);
 	if(rc != 0)
 	{
+		log_err("Cannot read forward from database");
 		cJSON_Delete(domain);
 		cJSON_Delete(client);
 		cJSON_Delete(upstream);
@@ -146,19 +170,21 @@ int api_queries_suggestions(struct ftl_conn *api)
 		JSON_REF_STR_IN_ARRAY(dnssec, string);
 	}
 
+	cJSON *suggestions = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(suggestions, "domain", domain);
+	JSON_ADD_ITEM_TO_OBJECT(suggestions, "client", client);
+	JSON_ADD_ITEM_TO_OBJECT(suggestions, "upstream", upstream);
+	JSON_ADD_ITEM_TO_OBJECT(suggestions, "type", type);
+	JSON_ADD_ITEM_TO_OBJECT(suggestions, "status", status);
+	JSON_ADD_ITEM_TO_OBJECT(suggestions, "reply", reply);
+	JSON_ADD_ITEM_TO_OBJECT(suggestions, "dnssec", dnssec);
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "domain", domain);
-	JSON_ADD_ITEM_TO_OBJECT(json, "client", client);
-	JSON_ADD_ITEM_TO_OBJECT(json, "upstream", upstream);
-	JSON_ADD_ITEM_TO_OBJECT(json, "type", type);
-	JSON_ADD_ITEM_TO_OBJECT(json, "status", status);
-	JSON_ADD_ITEM_TO_OBJECT(json, "reply", reply);
-	JSON_ADD_ITEM_TO_OBJECT(json, "dnssec", dnssec);
+	JSON_ADD_ITEM_TO_OBJECT(json, "suggestions", suggestions);
 
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
-#define QUERYSTR "SELECT id,timestamp,type,status,domain,client,forward,additional_info,reply,dnssec,reply_time,client_name,ttl,regex_id"
+#define QUERYSTR "SELECT id,timestamp,type,status,domain,client,forward,additional_info,reply_type,reply_time,dnssec,client_name,ttl,regex_id"
 #define QUERYSTRORDER "ORDER BY id DESC"
 #define QUERYSTRLEN 4096
 static void add_querystr_double(struct ftl_conn *api, char *querystr, const char *sql, const char *uripart, bool *where)
@@ -349,24 +375,22 @@ int api_queries(struct ftl_conn *api)
 	const char *message = "";
 	if(disk && !attach_disk_database(&message))
 	{
+		unlock_shm();
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error, cannot attach disk database",
 		                       message);
-		unlock_shm();
-		return false;
 	}
 
 	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
+		unlock_shm();
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error, failed to prepare SQL query",
 		                       sqlite3_errstr(rc));
-		unlock_shm();
-		return false;
 	}
 
 	// Bind items to prepared statement (if GET-filtering)

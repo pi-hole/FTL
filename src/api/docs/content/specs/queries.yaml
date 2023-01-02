@@ -124,6 +124,28 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
 
+    suggestions:
+      get:
+        summary: Get query filter suggestions
+        tags:
+          - Metrics
+        operationId: "get_suggestions"
+        description: |
+          This endpoint provides suggestions for filters suitable to be used with /queries
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'queries.yaml#/components/schemas/suggestions'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+
   schemas:
     queries:
       type: object
@@ -225,3 +247,45 @@ components:
           type: integer
           description: DataTables-specific integer (echos input value)
           example: 1
+    suggestions:
+      type: object
+      properties:
+        suggestions:
+          type: object
+          properties:
+            domain:
+              type: array
+              description: Array of suggested domains
+              items:
+                type: string
+                example: []
+            client:
+              type: array
+              description: Array of suggested clients
+              items:
+                type: string
+            upstream:
+              type: array
+              description: Array of suggested upstreams
+              items:
+                type: string
+            type:
+              type: array
+              description: Array of suggested query types
+              items:
+                type: string
+            status:
+              type: array
+              description: Array of suggested query statuses
+              items:
+                type: string
+            reply:
+              type: array
+              description: Array of suggested query replies
+              items:
+                type: string
+            dnssec:
+              type: array
+              description: Array of suggested DNSSEC statuses
+              items:
+                type: string
