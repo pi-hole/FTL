@@ -73,9 +73,6 @@ int api_version(struct ftl_conn *api);
 int check_client_auth(struct ftl_conn *api);
 int api_auth(struct ftl_conn *api);
 
-// Settings methods
-int api_settings_web(struct ftl_conn *api);
-
 // Documentation methods
 int api_docs(struct ftl_conn *api);
 

@@ -58,7 +58,6 @@ static struct {
 	{ "/api/stats/database/upstreams",          api_stats_database_upstreams,          { false, false } },
 	{ "/api/version",                           api_version,                           { false, false } },
 	{ "/api/auth",                              api_auth,                              { false, false } },
-	{ "/api/settings/web",                      api_settings_web,                      { false, false } },
 	{ "/api/config",                            api_config,                            { false, false } },
 	{ "/api/network/gateway",                   api_network_gateway,                   { false, false } },
 	{ "/api/network/interfaces",                api_network_interfaces,                { false, false } },
