@@ -15,19 +15,31 @@ endpoints = {}
 for method in methods:
 	endpoints[method] = []
 
+# Cache for already read files
+yamls = {}
+
+def read_yaml_maybe_cache(file: str) -> dict:
+	if file not in yamls:
+		# Read the file
+		with open(file, "r") as stream:
+			try:
+				yamls[file] = yaml.safe_load(stream)
+			except Exception as e:
+				print("Exception when reading " + file + ": " + e)
+				exit(1)
+	return yamls[file]
+
 # Read and parse the main file
-with open(base_path + "main.yaml", "r") as stream:
-	try:
-		# Get the paths
-		paths = yaml.safe_load(stream)["paths"]
-	except Exception as e:
-		print(e)
-		exit(1)
+try:
+	# Get the paths
+	paths = read_yaml_maybe_cache(base_path + "main.yaml")["paths"]
+except Exception as e:
+	print(e)
+	exit(1)
 
 # Resolve a reference
 def resolveSingleReference(ref: str, k: str):
 	# Read and parse the referenced file
-	print("Resolving reference " + k + " defined in " + ref)
 	ref = ref.partition("#")
 	if len(ref[0]) == 0:
 		# Empty references are not allowed
@@ -36,20 +48,20 @@ def resolveSingleReference(ref: str, k: str):
 	file = base_path + ref[0]
 
 	# Read the referenced file
-	with open(file, "r") as stream:
-		try:
-			# Extract the YAML
-			refYML_full = yaml.safe_load(stream)
-			refYML = refYML_full.copy()
-			# Reduce to what we want to import
-			for x in ref[2].split("/"):
-				if len(x) > 0:
-					refYML = refYML[x]
-			return refYML
-		except Exception as e:
-			print("Tried to read" + str(ref[2]) + " in:\n" + json.dumps(refYML, indent=2))
-			print("Exception when reading " + file + ": " + e)
-			exit(1)
+	try:
+		# Extract the YAML
+		refYML_full = read_yaml_maybe_cache(file)
+		refYML = refYML_full.copy()
+		# Reduce to what we want to import
+		for x in ref[2].split("/"):
+			if len(x) > 0:
+				refYML = refYML[x]
+		return refYML
+	except Exception as e:
+		print("Exception when reading " + file + ": " + e)
+		print("Tried to read" + ref + " in:\n" + json.dumps(refYML, indent=2))
+		print("Tried to resolve " + k + " pointing to " + ref)
+		exit(1)
 
 # Recursively resolve references, this can take a few seconds
 def recurseRef(dict_in: dict, dict_key: str):
@@ -63,14 +75,20 @@ def recurseRef(dict_in: dict, dict_key: str):
 			else:
 				# Recurse into the dictionary
 				recurseRef(dict_in[a],  next_dict_key)
-recurseRef(paths, "")
 
+# Recursively resolve references in the paths
+# We do this in a separate step to avoid resolving references multiple times
+# References are resolved in-place
+print("Resolving references...")
+recurseRef(paths, "")
+print("...done\n")
+
+# Sort the list of endpoints
 YAMLendpoints = {}
 for method in methods:
-	# Sort the list of endpoints
 	YAMLendpoints[method] = sorted(endpoints[method])
 
-# Get the endpoints from FTL's API
+# Query the endpoints from FTL for comparison with the OpenAPI specs
 try:
 	with urllib.request.urlopen("http://127.0.0.1:8080/api/ftl/endpoints") as url:
 		FTLendpoints = sorted(json.load(url)["endpoints"])
