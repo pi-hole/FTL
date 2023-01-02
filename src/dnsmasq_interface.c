@@ -3289,7 +3289,7 @@ void FTL_dnsmasq_log(const char *payload, const int length)
 int check_struct_sizes(void)
 {
 	int result = 0;
-	result += check_one_struct("ConfigStruct", sizeof(ConfigStruct), 232, 180);
+	result += check_one_struct("ConfigStruct", sizeof(ConfigStruct), 248, 188);
 	result += check_one_struct("queriesData", sizeof(queriesData), 72, 64);
 	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 628);
 	result += check_one_struct("clientsData", sizeof(clientsData), 672, 652);
