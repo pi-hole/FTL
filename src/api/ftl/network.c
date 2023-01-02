@@ -8,16 +8,16 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
-#include "api.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
+#include "api/api.h"
 // networkrecord
-#include "../database/network-table.h"
+#include "database/network-table.h"
 // dbopen()
-#include "../database/common.h"
+#include "database/common.h"
 
-int api_network(struct ftl_conn *api)
+int api_ftl_network(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
@@ -54,24 +54,31 @@ int api_network(struct ftl_conn *api)
 		JSON_ADD_NUMBER_TO_OBJECT(item, "id", network.id);
 		JSON_COPY_STR_TO_OBJECT(item, "hwaddr", network.hwaddr);
 		JSON_COPY_STR_TO_OBJECT(item, "interface", network.iface);
-		JSON_COPY_STR_TO_OBJECT(item, "name", network.name);
 		JSON_ADD_NUMBER_TO_OBJECT(item, "firstSeen", network.firstSeen);
 		JSON_ADD_NUMBER_TO_OBJECT(item, "lastQuery", network.lastQuery);
 		JSON_ADD_NUMBER_TO_OBJECT(item, "numQueries", network.numQueries);
 		JSON_COPY_STR_TO_OBJECT(item, "macVendor", network.macVendor);
 
 		// Build array of all IP addresses known associated to this client
-		cJSON *ip = JSON_NEW_ARRAY();
+		cJSON *ips = JSON_NEW_ARRAY();
 		if(networkTable_readIPs(db, &ip_stmt, network.id, &sql_msg))
 		{
-			// Walk known IP addresses
+			// Walk known IP addresses + names
 			network_addresses_record network_address;
 			while(networkTable_readIPsGetRecord(ip_stmt, &network_address, &sql_msg))
-				JSON_COPY_STR_TO_ARRAY(ip, network_address.ip);
+			{
+				cJSON *ip = JSON_NEW_OBJECT();
+				JSON_COPY_STR_TO_OBJECT(ip, "ip", network_address.ip);
+				JSON_COPY_STR_TO_OBJECT(ip, "name", network_address.name);
+				JSON_ADD_NUMBER_TO_OBJECT(ip, "lastSeen", network_address.lastSeen);
+				JSON_ADD_NUMBER_TO_OBJECT(ip, "nameUpdated", network_address.nameUpdated);
+				JSON_ADD_ITEM_TO_ARRAY(ips, ip);
+			}
 
 			// Possible error handling
 			if(sql_msg != NULL)
 			{
+				cJSON_Delete(ips);
 				cJSON_Delete(json);
 				return send_json_error(api, 500,
 				                       "database_error",
@@ -84,7 +91,7 @@ int api_network(struct ftl_conn *api)
 		}
 
 		// Add array of IP addresses to device
-		JSON_ADD_ITEM_TO_OBJECT(item, "ip", ip);
+		JSON_ADD_ITEM_TO_OBJECT(item, "ips", ips);
 
 		// Add device to array of all devices
 		JSON_ADD_ITEM_TO_ARRAY(json, item);

@@ -53,9 +53,9 @@ int get_system_obj(struct ftl_conn *api, cJSON *system);
 int api_ftl_config(struct ftl_conn *api);
 int api_ftl_gateway(struct ftl_conn *api);
 int api_ftl_interfaces(struct ftl_conn *api);
+int api_ftl_network(struct ftl_conn *api);
 
 // Network methods
-int api_network(struct ftl_conn *api);
 
 // DNS methods
 int api_dns_blocking(struct ftl_conn *api);

@@ -2181,7 +2181,7 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 bool networkTable_readDevices(sqlite3 *db, sqlite3_stmt **read_stmt, const char **message)
 {
 	// Prepare SQLite statement
-	const char *querystr = "SELECT id,hwaddr,interface,name,firstSeen,lastQuery,numQueries,macVendor FROM network;";
+	const char *querystr = "SELECT id,hwaddr,interface,firstSeen,lastQuery,numQueries,macVendor FROM network;";
 	int rc = sqlite3_prepare_v2(db, querystr, -1, read_stmt, NULL);
 	if( rc != SQLITE_OK ){
 		*message = sqlite3_errstr(rc);
@@ -2205,11 +2205,10 @@ bool networkTable_readDevicesGetRecord(sqlite3_stmt *read_stmt, network_record *
 		network->id = sqlite3_column_int(read_stmt, 0);
 		network->hwaddr = (char*)sqlite3_column_text(read_stmt, 1);
 		network->iface = (char*)sqlite3_column_text(read_stmt, 2);
-		network->name = (char*)sqlite3_column_text(read_stmt, 3);
-		network->firstSeen = sqlite3_column_int(read_stmt, 4);
-		network->lastQuery = sqlite3_column_int(read_stmt, 5);
-		network->numQueries = sqlite3_column_int(read_stmt, 6);
-		network->macVendor = (char*)sqlite3_column_text(read_stmt, 7);
+		network->firstSeen = sqlite3_column_int(read_stmt, 3);
+		network->lastQuery = sqlite3_column_int(read_stmt, 4);
+		network->numQueries = sqlite3_column_int(read_stmt, 5);
+		network->macVendor = (char*)sqlite3_column_text(read_stmt, 6);
 		return true;
 	}
 
@@ -2238,7 +2237,7 @@ void networkTable_readDevicesFinalize(sqlite3_stmt *read_stmt)
 bool networkTable_readIPs(sqlite3 *db, sqlite3_stmt **read_stmt, const int id, const char **message)
 {
 	// Prepare SQLite statement
-	const char *querystr = "SELECT ip FROM network_addresses WHERE network_id = ? ORDER BY lastSeen DESC;";
+	const char *querystr = "SELECT ip,lastSeen,name,nameUpdated FROM network_addresses WHERE network_id = ? ORDER BY lastSeen DESC;";
 	int rc = sqlite3_prepare_v2(db, querystr, -1, read_stmt, NULL);
 	if( rc != SQLITE_OK ){
 		*message = sqlite3_errstr(rc);
@@ -2270,6 +2269,9 @@ bool networkTable_readIPsGetRecord(sqlite3_stmt *read_stmt, network_addresses_re
 	if(rc == SQLITE_ROW)
 	{
 		network_addresses->ip = (char*)sqlite3_column_text(read_stmt, 0);
+		network_addresses->lastSeen = sqlite3_column_int64(read_stmt, 1);
+		network_addresses->name = (char*)sqlite3_column_text(read_stmt, 2);
+		network_addresses->nameUpdated = sqlite3_column_int64(read_stmt, 1);
 		return true;
 	}
 

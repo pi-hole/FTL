@@ -29,7 +29,6 @@ typedef struct {
 	unsigned int id;
 	const char *hwaddr;
 	const char *iface;
-	const char *name;
 	const char *macVendor;
 	unsigned long numQueries;
 	time_t firstSeen;
@@ -42,6 +41,9 @@ void networkTable_readDevicesFinalize(sqlite3_stmt *read_stmt);
 
 typedef struct {
 	const char *ip;
+	const char *name;
+	time_t lastSeen;
+	time_t nameUpdated;
 } network_addresses_record;
 
 bool networkTable_readIPs(sqlite3 *db, sqlite3_stmt **read_stmt, const int id, const char **message);

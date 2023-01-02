@@ -16,7 +16,7 @@
 #include "api.h"
 #include "../shmem.h"
 
-static int api_endpoints(struct ftl_conn *api);
+static int api_ftl_endpoints(struct ftl_conn *api);
 
 static struct {
 	const char *uri;
@@ -38,8 +38,8 @@ static struct {
 	{ "/api/ftl/config",                        api_ftl_config,                        { false, false } },
 	{ "/api/ftl/gateway",                       api_ftl_gateway,                       { false, false } },
 	{ "/api/ftl/interfaces",                    api_ftl_interfaces,                    { false, false } },
-	{ "/api/ftl/endpoints",                     api_endpoints,                         { false, false } },
-	{ "/api/network",                           api_network,                           { false, false } },
+	{ "/api/ftl/network",                       api_ftl_network,                       { false, false } },
+	{ "/api/ftl/endpoints",                     api_ftl_endpoints,                     { false, false } },
 	{ "/api/history/clients",                   api_history_clients,                   { false, false } },
 	{ "/api/history",                           api_history,                           { false, false } },
 	{ "/api/queries/suggestions",               api_queries_suggestions,               { false, false } },
@@ -65,7 +65,6 @@ static struct {
 	{ "/api/settings/web",                      api_settings_web,                      { false, false } },
 	{ "/api/docs",                              api_docs,                              { false, false } },
 };
-#define API_ENDPOINTS "/api/endpoints"
 
 int api_handler(struct mg_connection *conn, void *ignored)
 {
@@ -127,7 +126,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	return ret;
 }
 
-static int api_endpoints(struct ftl_conn *api)
+static int api_ftl_endpoints(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
