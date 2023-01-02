@@ -106,15 +106,12 @@ if [[ $RET != 0 ]]; then
   echo ""
   echo -n "ptr.log: "
   curl_to_tricorder ./ptr.log
-  echo ""getallqueries
-  echo -n "getallqueries.log: "
-  curl_to_tricorder ./getallqueries.log
   echo ""
   echo -n "HTTP_info.log: "
-  openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole/HTTP_info.log
+  curl_to_tricorder /var/log/pihole/HTTP_info.log
   echo ""
   echo -n "PH7.log: "
-  openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole/PH7.log
+  curl_to_tricorder /var/log/pihole/PH7.log
   echo ""
 fi
 

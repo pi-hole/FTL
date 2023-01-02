@@ -510,13 +510,13 @@ components:
                 type: boolean
                 description: If the interface is connected
               speed:
-                type: number
+                type: integer
                 description: Speed of the interface in Mbit/s (-1 if not applicable)
               tx:
                 type: object
                 properties:
                   num:
-                    type: integer
+                    type: number
                     description: Number of transmitted data since boot
                   unit:
                     type: string
@@ -525,7 +525,7 @@ components:
                 type: object
                 properties:
                   num:
-                    type: integer
+                    type: number
                     description: Number of received data since boot
                   unit:
                     type: string
@@ -644,19 +644,19 @@ components:
                       properties:
                         ipv4:
                           type: string
-                          example: null
+                          example: ""
                         ipv6:
                           type: string
-                          example: null
+                          example: ""
                     blocking:
                       type: object
                       properties:
                         ipv4:
                           type: string
-                          example: null
+                          example: ""
                         ipv6:
                           type: string
-                          example: null
+                          example: ""
                 rateLimit:
                   type: object
                   properties:

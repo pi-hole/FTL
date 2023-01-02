@@ -28,8 +28,8 @@
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[43]} == *"CRIT: Initialization of shared memory failed." ]]
-  [[ ${lines[44]} == *"INFO: pihole-FTL is already running!" ]]
+  [[ "${lines[@]}" == *"CRIT: Initialization of shared memory failed."* ]]
+  [[ "${lines[@]}" == *"INFO: pihole-FTL is already running!"* ]]
 }
 
 @test "dnsmasq options as expected" {

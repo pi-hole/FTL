@@ -36,15 +36,21 @@
   # TTL for blocked queries [seconds]
   blockTTL = 2
 
+  # Should FTL analyze AAAA queries?
+  analyzeAAAA = true
+
+  # Should FTL analyze only A and AAAA queries?
+  analyzeOnlyAandAAAA = false
+
   [dns.specialDomains]
     # Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?
     mozillaCanary = true
 
     # Should FTL handle the iCloud privacy relay domains specifically and always return NXDOMAIN?
-    blockICloudPR = true
+    iCloudPrivateRelay = true
 
   [dns.reply]
-    [dns.reply.own_host]
+    [dns.reply.host]
       # Use a specific IPv4 address for the Pi-hole host
       # Possible values are: <valid IPv4 address> or empty string ("")
       IPv4 = "10.100.0.10" ### CHANGED, default = ""
@@ -53,7 +59,7 @@
       # Possible values are: <valid IPv6 address> or empty string ("")
       IPv6 = "fe80::10" ### CHANGED, default = ""
 
-    [dns.reply.ip_blocking]
+    [dns.reply.blocking]
       # Use a specific IPv4 address in IP blocking mode
       # Possible values are: <valid IPv4 address> or empty string ("")
       IPv4 = "10.100.0.11" ### CHANGED, default = ""
@@ -81,11 +87,14 @@
 
   # How (and if) hourly PTR lookups should be made
   # Possible values are: [ "IPV4_ONLY", "ALL", "UNKNOWN", "NONE" ]
-  refresh = "IPV4_ONLY"
+  refreshNames = "IPV4_ONLY"
 
 [database]
   # Should FTL load information from the database on startup to be aware of the most recent history?
   DBimport = true
+
+  # Should FTL store queries in the long-term database?
+  DBexport = true
 
   # How much history should be imported from the database [seconds]? (max 24*60*60 = 86400)
   maxHistory = 86400
@@ -98,7 +107,7 @@
 
   [database.network]
     # Should FTL anaylze the local ARP cache?
-    parseARP = false ### CHANGED, default = true
+    parseARPcache = false ### CHANGED, default = true
 
     # How long should IP addresses be kept in the network_addresses table [days]?
     expire = 365

@@ -281,7 +281,7 @@ bool readFTLtoml(void)
 			free(refreshNames.u.s);
 		}
 		else
-			log_debug(DEBUG_CONFIG, "resolver.refresh DOES NOT EXIST");
+			log_debug(DEBUG_CONFIG, "resolver.refreshNames DOES NOT EXIST");
 	}
 	else
 		log_debug(DEBUG_CONFIG, "resolver DOES NOT EXIST");
