@@ -77,7 +77,7 @@ int send_json_error(struct ftl_conn *api, const int code,
                     const char *key, const char* message,
                     const char *hint)
 {
-	log_err("API error: %s, hint: %s", message, hint);
+	log_warn("API error: %s, hint: %s", message, hint);
 
 	cJSON *error = JSON_NEW_OBJECT();
 	JSON_REF_STR_IN_OBJECT(error, "key", key);

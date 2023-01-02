@@ -54,6 +54,12 @@ paths:
   /stats/summary:
     $ref: 'stats.yaml#/components/paths/summary'
 
+  /stats/upstreams:
+    $ref: 'stats.yaml#/components/paths/upstreams'
+
+  /stats/database/upstreams:
+    $ref: 'stats.yaml#/components/paths/database_upstreams'
+
   /history:
     $ref: 'history.yaml#/components/paths/history'
 

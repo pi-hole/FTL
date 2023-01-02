@@ -882,7 +882,7 @@ void DB_read_queries(void)
 		query->dnssec = dnssec;
 		query->reply = reply;
 		counters->reply[query->reply]++;
-		query->response = reply_time * 1e4; // convert to tenth-millisecond unit
+		query->response = reply_time;
 		query->CNAME_domainID = -1;
 		// Initialize flags
 		query->flags.complete = true; // Mark as all information is available
@@ -981,6 +981,7 @@ void DB_read_queries(void)
 					{
 						upstream->overTime[timeidx]++;
 						upstream->lastQuery = queryTimeStamp;
+						upstream->count++;
 					}
 				}
 				break;
@@ -1315,8 +1316,8 @@ bool queries_to_database(void)
 
 		// REPLY_TIME
 		if(query->flags.response_calculated)
-			// Store difference (in milliseconds) when applicable
-			sqlite3_bind_double(query_stmt, 12, 1e-4*query->response);
+			// Store difference (in seconds) when applicable
+			sqlite3_bind_double(query_stmt, 12, query->response);
 		else
 			// Store NULL otherwise
 			sqlite3_bind_null(query_stmt, 12);

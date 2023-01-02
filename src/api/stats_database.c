@@ -21,6 +21,10 @@
 
 int api_stats_database_overTime_history(struct ftl_conn *api)
 {
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
+		return send_json_unauthorized(api);
+
 	double from = 0, until = 0;
 	const int interval = 600;
 	if(api->request->query_string != NULL)
@@ -149,6 +153,10 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 
 int api_stats_database_top_items(struct ftl_conn *api)
 {
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
+		return send_json_unauthorized(api);
+
 	unsigned int show = 10;
 	double from = 0.0, until = 0.0;
 
@@ -322,6 +330,10 @@ int api_stats_database_top_items(struct ftl_conn *api)
 
 int api_stats_database_summary(struct ftl_conn *api)
 {
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
+		return send_json_unauthorized(api);
+
 	double from = 0, until = 0;
 	if(api->request->query_string != NULL)
 	{
@@ -392,6 +404,10 @@ int api_stats_database_summary(struct ftl_conn *api)
 
 int api_stats_database_overTime_clients(struct ftl_conn *api)
 {
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
+		return send_json_unauthorized(api);
+
 	double from = 0, until = 0;
 	const int interval = 600;
 	if(api->request->query_string != NULL)
@@ -607,6 +623,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 
 int api_stats_database_query_types(struct ftl_conn *api)
 {
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
+		return send_json_unauthorized(api);
+
 	double from = 0, until = 0;
 	if(api->request->query_string != NULL)
 	{
@@ -655,6 +675,10 @@ int api_stats_database_query_types(struct ftl_conn *api)
 
 int api_stats_database_upstreams(struct ftl_conn *api)
 {
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
+		return send_json_unauthorized(api);
+
 	double from = 0, until = 0;
 	if(api->request->query_string != NULL)
 	{
@@ -749,10 +773,26 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	{
 		const char* upstream = (char*)sqlite3_column_text(stmt, 0);
 		const int count = sqlite3_column_int(stmt, 1);
+
 		cJSON *item = JSON_NEW_OBJECT();
-		JSON_COPY_STR_TO_OBJECT(item, "ip", upstream);
+		unsigned int port = -1;
+		char buffer[512] =  { 0 };
+		if(sscanf(upstream, "%511[^#]#%u", buffer, &port) == 2)
+		{
+			buffer[sizeof(buffer)-1] = '\0';
+			JSON_COPY_STR_TO_OBJECT(item, "ip", buffer)
+		}
+		else
+			JSON_COPY_STR_TO_OBJECT(item, "ip", upstream);
 		JSON_REF_STR_IN_OBJECT(item, "name", "");
+		JSON_ADD_NUMBER_TO_OBJECT(item, "port", port);
 		JSON_ADD_NUMBER_TO_OBJECT(item, "count", count);
+
+		cJSON *statistics = JSON_NEW_OBJECT();
+		JSON_ADD_NUMBER_TO_OBJECT(statistics, "response", 0);
+		JSON_ADD_NUMBER_TO_OBJECT(statistics, "variance", 0);
+		JSON_ADD_ITEM_TO_OBJECT(item, "statistics", statistics);
+
 		JSON_ADD_ITEM_TO_ARRAY(upstreams, item);
 		forwarded_queries += count;
 	}
@@ -763,15 +803,25 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 
 	// Add cache and blocklist as upstreams
 	cJSON *cached = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(cached, "ip", "");
+	JSON_REF_STR_IN_OBJECT(cached, "ip", "cache");
 	JSON_REF_STR_IN_OBJECT(cached, "name", "cache");
+	JSON_ADD_NUMBER_TO_OBJECT(cached, "port", -1);
 	JSON_ADD_NUMBER_TO_OBJECT(cached, "count", cached_queries);
+
+	cJSON *statistics = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(statistics, "response", 0);
+	JSON_ADD_NUMBER_TO_OBJECT(statistics, "variance", 0);
+	JSON_ADD_ITEM_TO_OBJECT(cached, "statistics", statistics);
+
 	JSON_ADD_ITEM_TO_ARRAY(upstreams, cached);
 
 	cJSON *blocked = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(blocked, "ip", "");
+	JSON_REF_STR_IN_OBJECT(blocked, "ip", "blocklist");
 	JSON_REF_STR_IN_OBJECT(blocked, "name", "blocklist");
+	JSON_ADD_NUMBER_TO_OBJECT(blocked, "port", -1);
 	JSON_ADD_NUMBER_TO_OBJECT(blocked, "count", blocked_queries);
+	JSON_ADD_ITEM_TO_OBJECT(blocked, "statistics", statistics);
+
 	JSON_ADD_ITEM_TO_ARRAY(upstreams, blocked);
 
 	// Close (= unlock) database connection

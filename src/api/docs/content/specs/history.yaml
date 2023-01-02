@@ -16,6 +16,13 @@ components:
               application/json:
                 schema:
                   $ref: 'history.yaml#/components/schemas/total_history'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+
     clients:
       get:
         summary: Get per-client activity graph data

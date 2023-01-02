@@ -722,7 +722,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->flags.database.stored = false;
 	query->flags.database.changed = true;
 	query->flags.complete = false;
-	query->response = converttimeval(request);
+	query->response = querytimestamp;
 	query->flags.response_calculated = false;
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
@@ -1584,6 +1584,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
                           unsigned short port, const int id, const char* file, const int line)
 {
 	// Save that this query got forwarded to an upstream server
+	const double now = double_time();
 
 	// Lock shared memory
 	lock_shm();
@@ -1660,6 +1661,8 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 		upstream->overTime[timeidx]++;
 		// Update lastQuery timestamp
 		upstream->lastQuery = time(NULL);
+		// Count forwarded query
+		upstream->count++;
 	}
 
 	// Proceed only if
@@ -1701,7 +1704,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 			// can go back in time to measure both the initial cache
 			// lookup and the (now starting) time it takes for the
 			// upstream to respond
-			query->response = converttimeval(response) - query->response;
+			query->response = now - query->response;
 			query->flags.response_calculated = false;
 		}
 	}
@@ -1779,14 +1782,14 @@ static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTR
 }
 
 // Compute cache/upstream response time
-static inline void set_response_time(queriesData *query, const struct timeval response)
+static inline void set_response_time(queriesData *query, const double now)
 {
 	// Do this only if this is the first time we set a reply
 	if(query->flags.response_calculated)
 		return;
 
 	// Convert absolute timestamp to relative timestamp
-	query->response = converttimeval(response) - query->response;
+	query->response = now - query->response;
 	query->flags.response_calculated = true;
 }
 
@@ -1828,6 +1831,7 @@ static void update_upstream(queriesData *query, const int id)
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr,
                       const char *arg, const int id, const char* file, const int line)
 {
+	const double now = double_time();
 	// If domain is "pi.hole", we skip this query
 	// We compare case-insensitive here
 	// Hint: name can be NULL, e.g. for NODATA/NXDOMAIN replies
@@ -1963,7 +1967,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 	// Save response time
 	// Skipped internally if already computed
-	set_response_time(query, response);
+	set_response_time(query, now);
 
 	// We only process the first reply further in here
 	// Check if reply type is still UNKNOWN
@@ -2052,6 +2056,14 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	}
 	else if((flags & (F_FORWARD | F_UPSTREAM)) && isExactMatch)
 	{
+		upstreamsData *upstream = getUpstream(query->upstreamID, true);
+		upstream->responses++;
+
+		// Re-compute upstream average response time and uncertainty
+		upstream->rtime += query->response;
+		const double mean = upstream->rtime / upstream->responses;
+		upstream->rtuncertainty += (mean - query->response)*(mean - query->response);
+
 		// Only proceed if query is not already known
 		// to have been blocked by Quad9
 		if(query->status == QUERY_EXTERNAL_BLOCKED_IP ||
@@ -2247,6 +2259,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 		{
 			const int timeidx = getOverTimeID(query->timestamp);
 			upstream->overTime[timeidx]--;
+			upstream->count--;
 		}
 	}
 	else if(is_blocked(query->status))
@@ -2558,6 +2571,7 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
                              const char *file, const int line)
 {
 	enum reply_type new_reply = REPLY_UNKNOWN;
+	const double now = double_time();
 	// If reply is set, we use it directly instead of interpreting the flags
 	if(reply != 0)
 	{
@@ -2634,7 +2648,7 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 
 	// Save response time
 	// Skipped internally if already computed
-	set_response_time(query, response);
+	set_response_time(query, now);
 }
 
 static void init_pihole_PTR(void)

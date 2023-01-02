@@ -15,10 +15,56 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: 'stats.yaml#/components/schemas/queries'
-                    - $ref: 'ftl.yaml#/components/schemas/system'
-                    - $ref: 'ftl.yaml#/components/schemas/ftl'
+                  $ref: 'stats.yaml#/components/schemas/queries'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+
+    upstreams:
+      get:
+        summary: Get metrics about Pi-hole's upstream destinations
+        tags:
+          - Metrics
+        operationId: "get_metrics_upstreams"
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'stats.yaml#/components/schemas/upstreams'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+
+    database_upstreams:
+      get:
+        summary: Get metrics about Pi-hole's upstream destinations (database)
+        tags:
+          - Metrics
+        operationId: "get_metrics_upstreams_database"
+        parameters:
+          - $ref: 'stats.yaml#/components/parameters/database/from'
+          - $ref: 'stats.yaml#/components/parameters/database/until'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'stats.yaml#/components/schemas/upstreams'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
 
   schemas:
     queries:
@@ -143,3 +189,68 @@ components:
                   type: integer
                   description: text responses
                   example: 16
+    upstreams:
+      type: object
+      properties:
+        upstreams:
+          type: array
+          description: Array of upstream destinations
+          items:
+            type: object
+            properties:
+              ip:
+                type: string
+                description: Upstream destination's IP address (can be either IPv4 or IPv6)
+                nullable: true
+                example: "127.0.0.1"
+              name:
+                type: string
+                description: Upstream destination's hostname (if available)
+                nullable: true
+                example: "localhost"
+              port:
+                type: integer
+                description: Upstream destination's destination port (-1 if not applicable, e.g., for the local chace)
+                example: 53
+              count:
+                type: integer
+                description: Number of queries this upstream destination has been used for
+                example: 65445
+              statistics:
+                type: object
+                properties:
+                  response:
+                    type: string
+                    description: Average response time of this upstream destination in seconds (0 if not applicable)
+                    example: 0.0254856
+                  variance:
+                    type: string
+                    description: Standard deviation of the average response time (0 if not applicable)
+                    example: 0.02058
+        forwarded_queries:
+          type: integer
+          description: Number of forwarded queries
+          example: 6379
+        total_queries:
+          type: integer
+          description: Total number of queries
+          example: 29160
+
+  parameters:
+    database:
+      from:
+        in: query
+        description: Unix timestamp from when the data should be requested
+        name: from
+        schema:
+          type: integer
+        required: true
+        example: 1672580025
+      until:
+        in: query
+        description: Unix timestamp from when the data should be requested
+        name: until
+        schema:
+          type: integer
+        required: true
+        example: 1672688280

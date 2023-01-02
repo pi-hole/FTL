@@ -218,6 +218,9 @@ void moveOverTimeMemory(const time_t mintime)
 		if(!upstream)
 			continue;
 
+		// Adjust upstream's queries counter
+		upstream->count -= upstream->overTime[0];
+
 		// Move upstream-specific overTime memory
 		memmove(&(upstream->overTime[0]),
 		        &(upstream->overTime[moveOverTime]),

@@ -108,27 +108,6 @@ int api_stats_summary(struct ftl_conn *api)
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
-
-	// Get system object
-	cJSON *system = JSON_NEW_OBJECT();
-	ret = get_system_obj(api, system);
-	if(ret != 0)
-	{
-		unlock_shm();
-		return ret;
-	}
-	JSON_ADD_ITEM_TO_OBJECT(json, "system", system);
-
-	// Get FTL object
-	cJSON *ftl = JSON_NEW_OBJECT();
-	ret = get_ftl_obj(api, ftl, true);
-	if(ret != 0)
-	{
-		unlock_shm();
-		return ret;
-	}
-	JSON_ADD_ITEM_TO_OBJECT(json, "ftl", ftl);
-
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
@@ -419,13 +398,13 @@ int api_stats_top_clients(struct ftl_conn *api)
 
 int api_stats_upstreams(struct ftl_conn *api)
 {
-	const int forwarded = get_forwarded_count();
-	unsigned int totalcount = 0;
-	int temparray[forwarded][2];
-
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 		return send_json_unauthorized(api);
+
+	const int forwarded = get_forwarded_count();
+	unsigned int totalcount = 0;
+	int temparray[forwarded][2];
 
 	// Lock shared memory
 	lock_shm();
@@ -455,7 +434,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 	{
 		int count = 0;
 		const char* ip, *name;
-		unsigned short port = 53;
+		int port = -1;
 		double responsetime = 0.0, uncertainty = 0.0;
 
 		if(i == -2)
@@ -511,12 +490,14 @@ int api_stats_upstreams(struct ftl_conn *api)
 		if(count > 0 || i < 0)
 		{
 			cJSON *upstream = JSON_NEW_OBJECT();
-			JSON_REF_STR_IN_OBJECT(upstream, "name", name);
 			JSON_REF_STR_IN_OBJECT(upstream, "ip", ip);
+			JSON_REF_STR_IN_OBJECT(upstream, "name", name);
 			JSON_ADD_NUMBER_TO_OBJECT(upstream, "port", port);
 			JSON_ADD_NUMBER_TO_OBJECT(upstream, "count", count);
-			JSON_ADD_NUMBER_TO_OBJECT(upstream, "responsetime", responsetime);
-			JSON_ADD_NUMBER_TO_OBJECT(upstream, "uncertainty", uncertainty);
+			cJSON *statistics = JSON_NEW_OBJECT();
+			JSON_ADD_NUMBER_TO_OBJECT(statistics, "response", responsetime);
+			JSON_ADD_NUMBER_TO_OBJECT(statistics, "variance", uncertainty);
+			JSON_ADD_ITEM_TO_OBJECT(upstream, "statistics", statistics);
 			JSON_ADD_ITEM_TO_ARRAY(upstreams, upstream);
 		}
 	}

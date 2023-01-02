@@ -27,7 +27,7 @@ def read_yaml_maybe_cache(file: str) -> dict:
 			try:
 				yamls[file] = yaml.safe_load(stream)
 			except Exception as e:
-				print("Exception when reading " + file + ": " + e)
+				print("Exception when reading " + file + ": " + str(e))
 				exit(1)
 	return yamls[file]
 
