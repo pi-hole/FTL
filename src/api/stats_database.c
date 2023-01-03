@@ -55,7 +55,7 @@ int api_history_database(struct ftl_conn *api)
 		                       NULL);
 
 	// Build SQL string
-	const char *querystr = "SELECT (timestamp/:interval)*:interval interval,status,COUNT(*) FROM queries "
+	const char *querystr = "SELECT (timestamp/:interval)*:interval interval,status,COUNT(*) FROM query_storage "
 	                       "WHERE (status != 0) AND timestamp >= :from AND timestamp <= :until "
 	                       "GROUP by interval,status ORDER by interval";
 
@@ -404,16 +404,16 @@ int api_stats_database_summary(struct ftl_conn *api)
 
 	// Perform SQL queries
 	const char *querystr;
-	querystr = "SELECT COUNT(*) FROM queries "
+	querystr = "SELECT COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until";
 	const int sum_queries = db_query_int_from_until(db, querystr, from, until);
 
-	querystr = "SELECT COUNT(*) FROM queries "
+	querystr = "SELECT COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 	           "AND " FILTER_STATUS_BLOCKED;
 	const int sum_blocked = db_query_int_from_until(db, querystr, from, until);
 
-	querystr = "SELECT COUNT(DISTINCT client) FROM queries "
+	querystr = "SELECT COUNT(DISTINCT client) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until";
 	const int total_clients = db_query_int_from_until(db, querystr, from, until);
 
@@ -538,7 +538,7 @@ int api_history_database_clients(struct ftl_conn *api)
 	sqlite3_finalize(stmt);
 
 	// Build SQL string
-	querystr = "SELECT (timestamp/:interval)*:interval interval,client,COUNT(*) FROM queries "
+	querystr = "SELECT (timestamp/:interval)*:interval interval,client,COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 	           "GROUP BY interval,client ORDER BY interval DESC, client DESC";
 
@@ -707,7 +707,7 @@ int api_stats_database_query_types(struct ftl_conn *api)
 	cJSON *types = JSON_NEW_OBJECT();
 	for(int i = TYPE_A; i < TYPE_MAX; i++)
 	{
-		const char *querystr = "SELECT COUNT(*) FROM queries "
+		const char *querystr = "SELECT COUNT(*) FROM query_storage "
 		                       "WHERE timestamp >= :from AND timestamp <= :until "
 		                       "AND type = :type";
 		// Add 1 as type is stored one-based in the database for historical reasons
@@ -758,19 +758,19 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	// Perform simple SQL queries
 	unsigned int sum_queries = 0;
 	const char *querystr;
-	querystr = "SELECT COUNT(*) FROM queries "
+	querystr = "SELECT COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 	           "AND status = 3";
 	int cached_queries = db_query_int_from_until(db, querystr, from, until);
 	sum_queries += cached_queries;
 
-	querystr = "SELECT COUNT(*) FROM queries "
+	querystr = "SELECT COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 		   "AND status != 0 AND status != 2 AND status != 3";
 	int blocked_queries = db_query_int_from_until(db, querystr, from, until);
 	sum_queries += blocked_queries;
 
-	querystr = "SELECT forward,COUNT(*) FROM queries "
+	querystr = "SELECT forward,COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 		   "AND forward IS NOT NULL "
 	           "GROUP BY forward ORDER BY forward";
