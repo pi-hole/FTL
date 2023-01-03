@@ -66,6 +66,12 @@ paths:
   /stats/database/top_domains:
     $ref: 'stats.yaml#/components/paths/database_top_domains'
 
+  /stats/top_clients:
+    $ref: 'stats.yaml#/components/paths/top_clients'
+
+  /stats/database/top_clients:
+    $ref: 'stats.yaml#/components/paths/database_top_clients'
+
   /stats/recent_blocked:
     $ref: 'stats.yaml#/components/paths/recent_blocked'
 

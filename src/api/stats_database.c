@@ -245,12 +245,13 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		}
 
 		// Count total number of queries for domains
-		count_total_str = "SELECT COUNT(DISTINCT domain) FROM query_storage"
+		count_total_str = "SELECT COUNT(DISTINCT domain) FROM query_storage "
 		                  "WHERE timestamp >= :from AND timestamp <= :until";
 
 		// Count total number of blocked queries for domains
-		count_blocked_str = "SELECT COUNT(DISTINCT domain) FROM query_storage"
-		                    "WHERE timestamp >= :from AND timestamp <= :until";
+		count_blocked_str = "SELECT COUNT(DISTINCT domain) FROM query_storage "
+		                    "WHERE timestamp >= :from AND timestamp <= :until "
+			            "AND status NOT IN (0,2,3,12,13,14,17)";
 	}
 	else
 	{
@@ -274,12 +275,13 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		}
 
 		// Count total number of queries for clients
-		count_total_str = "SELECT COUNT(DISTINCT client) FROM query_storage"
+		count_total_str = "SELECT COUNT(DISTINCT client) FROM query_storage "
 		                  "WHERE timestamp >= :from AND timestamp <= :until";
 
 		// Count number of blocked queries for clients
-		count_blocked_str = "SELECT COUNT(DISTINCT client) FROM query_storage"
-		                    "WHERE timestamp >= :from AND timestamp <= :until";
+		count_blocked_str = "SELECT COUNT(DISTINCT client) FROM query_storage "
+		                    "WHERE timestamp >= :from AND timestamp <= :until "
+			            "AND status NOT IN (0,2,3,12,13,14,17)";
 	}
 
 
@@ -354,14 +356,15 @@ int api_stats_database_top_items(struct ftl_conn *api)
 
 	// Finalize statement and close (= unlock) database connection
 	sqlite3_finalize(stmt);
-	dbclose(&db);
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, (domains ? "domains" : "clients"), top_items);
-	const int total_num = db_query_int(db, count_total_str);
-	const int blocked_num = db_query_int(db, count_blocked_str);
+	const int total_num = db_query_int_from_until(db, count_total_str, from, until);
+	const int blocked_num = db_query_int_from_until(db, count_blocked_str, from, until);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", total_num);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_num);
+
+	dbclose(&db);
 	JSON_SEND_OBJECT(json);
 }
 

@@ -142,6 +142,56 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    top_clients:
+      get:
+        summary: Get top clients
+        tags:
+          - Metrics
+        operationId: "get_metrics_top_clients"
+        description: |
+          Request top clients
+        parameters:
+          - $ref: 'stats.yaml#/components/parameters/top_items/blocked'
+          - $ref: 'stats.yaml#/components/parameters/top_items/count'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'stats.yaml#/components/schemas/top_clients'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    database_top_clients:
+      get:
+        summary: Get top clients (long-term database)
+        tags:
+          - Metrics
+        operationId: "get_metrics_database_top_clients"
+        description: |
+          Request top clients
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+          - $ref: 'stats.yaml#/components/parameters/top_items/blocked'
+          - $ref: 'stats.yaml#/components/parameters/top_items/count'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'stats.yaml#/components/schemas/top_clients'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
 
   schemas:
     queries:
@@ -329,6 +379,31 @@ components:
                 type: integer
                 description: Number of times this domain has been requested
                 example: 8516
+        total_queries:
+          type: integer
+          description: Total number of queries
+          example: 29160
+    top_clients:
+      type: object
+      properties:
+        clients:
+          type: array
+          description: Array of clients
+          items:
+            type: object
+            properties:
+              ip:
+                type: string
+                description: Client IP address (can be either IPv4 or IPv6)
+                example: "192.168.0.44"
+              name:
+                type: string
+                description: Client hostname (if available)
+                example: "raspberrypi.lan"
+              count:
+                type: integer
+                description: Number of queries this client has made
+                example: 5896
         total_queries:
           type: integer
           description: Total number of queries
