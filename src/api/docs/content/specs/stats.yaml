@@ -23,6 +23,31 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
 
+    database_summary:
+      get:
+        summary: Get database content details
+        tags:
+          - Metrics
+        operationId: "get_metrics_database_summary"
+        description: |
+          Request various database content details
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'stats.yaml#/components/schemas/database_summary'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+
     upstreams:
       get:
         summary: Get metrics about Pi-hole's upstream destinations
@@ -462,68 +487,87 @@ components:
           properties:
             A:
               type: integer
-              description: Number of queries of type A
+              description: Type A queries
               example: 18268
             AAAA:
               type: integer
-              description: Number of queries of type AAAA
+              description: Type AAAA queries
               example: 2332
             ANY:
               type: integer
-              description: Number of queries of type ANY
+              description: Type ANY queries
               example: 0
             SRV:
               type: integer
-              description: Number of queries of type SRV
+              description: Type SRV queries
               example: 6
             SOA:
               type: integer
-              description: Number of queries of type SOA
+              description: Type SOA queries
               example: 44
             PTR:
               type: integer
-              description: Number of queries of type PTR
+              description: Type PTR queries
               example: 389
             TXT:
               type: integer
-              description: Number of queries of type TXT
+              description: Type TXT queries
               example: 0
             NAPTR:
               type: integer
-              description: Number of queries of type NAPTR
+              description: Type NAPTR queries
               example: 1
             MX:
               type: integer
-              description: Number of queries of type MX
+              description: Type MX queries
               example: 109
             DS:
               type: integer
-              description: Number of queries of type DS
+              description: Type DS queries
               example: 596
             RRSIG:
               type: integer
-              description: Number of queries of type RRSIG
+              description: Type RRSIG queries
               example: 25
             DNSKEY:
               type: integer
-              description: Number of queries of type DNSKEY
+              description: Type DNSKEY queries
               example: 240
             NS:
               type: integer
-              description: Number of queries of type NS
+              description: Type NS queries
               example: 18
             SVCB:
               type: integer
-              description: Number of queries of type SVCB
+              description: Type SVCB queries
               example: 0
             HTTPS:
               type: integer
-              description: Number of queries of type HTTPS
+              description: Type HTTPS queries
               example: 11
             OTHER:
               type: integer
-              description: Number of queries of type OTHER
+              description: Type OTHER queries
               example: 0
+    database_summary:
+      type: object
+      properties:
+        sum_queries:
+          type: integer
+          description: Total number of queries
+          example: 29160
+        sum_blocked:
+          type: integer
+          description: Total number of blocked queries
+          example: 6379
+        percent_blocked:
+          type: number
+          description: Percentage of blocked queries
+          example: 21.9
+        total_clients:
+          type: integer
+          description: Total number of clients
+          example: 10
 
   parameters:
     recent_blocked:

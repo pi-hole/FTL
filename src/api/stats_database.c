@@ -19,6 +19,10 @@
 // db
 #include "../database/common.h"
 
+// SQL Query type filters for the database
+#define FILTER_STATUS_NOT_BLOCKED "status IN (0,2,3,12,13,14,17)"
+#define FILTER_STATUS_BLOCKED "status NOT IN (0,2,3,12,13,14,17)"
+
 int api_history_database(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
@@ -231,7 +235,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 			querystr = "SELECT COUNT(*),d.domain AS cnt FROM query_storage q "
 			           "JOIN domain_by_id d ON d.id = q.domain "
 			           "WHERE timestamp >= :from AND timestamp <= :until "
-			           "AND status NOT IN (0,2,3,12,13,14,17) "
+			           "AND " FILTER_STATUS_BLOCKED " "
 			           "GROUP by q.domain";
 		}
 		else
@@ -240,7 +244,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 			querystr = "SELECT COUNT(*),d.domain AS cnt FROM query_storage q "
 			           "JOIN domain_by_id d ON d.id = q.domain "
 			           "WHERE timestamp >= :from AND timestamp <= :until "
-			           "AND status IN (0,2,3,12,13,14,17) "
+			           "AND " FILTER_STATUS_NOT_BLOCKED " "
 			           "GROUP by q.domain";
 		}
 
@@ -251,7 +255,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		// Count total number of blocked queries for domains
 		count_blocked_str = "SELECT COUNT(DISTINCT domain) FROM query_storage "
 		                    "WHERE timestamp >= :from AND timestamp <= :until "
-			            "AND status NOT IN (0,2,3,12,13,14,17)";
+			            "AND " FILTER_STATUS_BLOCKED;
 	}
 	else
 	{
@@ -261,7 +265,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 			querystr = "SELECT COUNT(*),c.ip,c.name AS cnt FROM query_storage q "
 			           "JOIN client_by_id c ON c.id = q.client"
 			           "WHERE timestamp >= :from AND timestamp <= :until "
-			           "AND status NOT IN (0,2,3,12,13,14,17) "
+			           "AND " FILTER_STATUS_BLOCKED " "
 			           "GROUP by q.client";
 		}
 		else
@@ -270,7 +274,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 			querystr = "SELECT COUNT(*),c.ip,c.name AS cnt FROM query_storage q "
 			           "JOIN client_by_id c ON c.id = q.client "
 			           "WHERE timestamp >= :from AND timestamp <= :until "
-			           "AND status IN (0,2,3,12,13,14,17) "
+			           "AND " FILTER_STATUS_NOT_BLOCKED " "
 			           "GROUP by q.client";
 		}
 
@@ -281,7 +285,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		// Count number of blocked queries for clients
 		count_blocked_str = "SELECT COUNT(DISTINCT client) FROM query_storage "
 		                    "WHERE timestamp >= :from AND timestamp <= :until "
-			            "AND status NOT IN (0,2,3,12,13,14,17)";
+			            "AND " FILTER_STATUS_BLOCKED;
 	}
 
 
@@ -402,20 +406,20 @@ int api_stats_database_summary(struct ftl_conn *api)
 	const char *querystr;
 	querystr = "SELECT COUNT(*) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until";
-	int sum_queries = db_query_int_from_until(db, querystr, from, until);
+	const int total_queries = db_query_int_from_until(db, querystr, from, until);
 
 	querystr = "SELECT COUNT(*) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
-	           "AND status != 0 AND status != 2 AND status != 3";
-	int blocked_queries = db_query_int_from_until(db, querystr, from, until);
+	           "AND " FILTER_STATUS_BLOCKED;
+	const int blocked_queries = db_query_int_from_until(db, querystr, from, until);
 
 	querystr = "SELECT COUNT(DISTINCT client) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until";
-	int total_clients = db_query_int_from_until(db, querystr, from, until);
+	const int total_clients = db_query_int_from_until(db, querystr, from, until);
 
-	float percent_blocked = 1e2f*blocked_queries/sum_queries;
+	const float percent_blocked = 1e2f*blocked_queries/total_queries;
 
-	if(sum_queries < 0 || blocked_queries < 0 || total_clients < 0)
+	if(total_queries < 0 || blocked_queries < 0 || total_clients < 0)
 	{
 
 		// Close (= unlock) database connection
@@ -429,8 +433,7 @@ int api_stats_database_summary(struct ftl_conn *api)
 
 	// Loop over and accumulate results
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(json, "gravity_size", "?");
-	JSON_ADD_NUMBER_TO_OBJECT(json, "sum_queries", sum_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", total_queries);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "percent_blocked", percent_blocked);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "total_clients", total_clients);
