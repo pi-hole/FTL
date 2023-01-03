@@ -192,6 +192,51 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    query_types:
+      get:
+        summary: Get query types
+        tags:
+          - Metrics
+        operationId: "get_metrics_query_types"
+        description: |
+          Request query types
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'stats.yaml#/components/schemas/query_types'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    database_query_types:
+      get:
+        summary: Get query types (long-term database)
+        tags:
+          - Metrics
+        operationId: "get_metrics_database_query_types"
+        description: |
+          Request query types
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'stats.yaml#/components/schemas/query_types'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
 
   schemas:
     queries:
@@ -408,6 +453,77 @@ components:
           type: integer
           description: Total number of queries
           example: 29160
+    query_types:
+      type: object
+      properties:
+        types:
+          type: object
+          description: Number of individual query types
+          properties:
+            A:
+              type: integer
+              description: Number of queries of type A
+              example: 18268
+            AAAA:
+              type: integer
+              description: Number of queries of type AAAA
+              example: 2332
+            ANY:
+              type: integer
+              description: Number of queries of type ANY
+              example: 0
+            SRV:
+              type: integer
+              description: Number of queries of type SRV
+              example: 6
+            SOA:
+              type: integer
+              description: Number of queries of type SOA
+              example: 44
+            PTR:
+              type: integer
+              description: Number of queries of type PTR
+              example: 389
+            TXT:
+              type: integer
+              description: Number of queries of type TXT
+              example: 0
+            NAPTR:
+              type: integer
+              description: Number of queries of type NAPTR
+              example: 1
+            MX:
+              type: integer
+              description: Number of queries of type MX
+              example: 109
+            DS:
+              type: integer
+              description: Number of queries of type DS
+              example: 596
+            RRSIG:
+              type: integer
+              description: Number of queries of type RRSIG
+              example: 25
+            DNSKEY:
+              type: integer
+              description: Number of queries of type DNSKEY
+              example: 240
+            NS:
+              type: integer
+              description: Number of queries of type NS
+              example: 18
+            SVCB:
+              type: integer
+              description: Number of queries of type SVCB
+              example: 0
+            HTTPS:
+              type: integer
+              description: Number of queries of type HTTPS
+              example: 11
+            OTHER:
+              type: integer
+              description: Number of queries of type OTHER
+              example: 0
 
   parameters:
     recent_blocked:

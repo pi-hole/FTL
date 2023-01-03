@@ -701,7 +701,7 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       NULL);
 
 	// Perform SQL queries
-	cJSON *types = JSON_NEW_ARRAY();
+	cJSON *types = JSON_NEW_OBJECT();
 	for(int i = TYPE_A; i < TYPE_MAX; i++)
 	{
 		const char *querystr = "SELECT COUNT(*) FROM queries "

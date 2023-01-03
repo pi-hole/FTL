@@ -72,6 +72,12 @@ paths:
   /stats/database/top_clients:
     $ref: 'stats.yaml#/components/paths/database_top_clients'
 
+  /stats/query_types:
+    $ref: 'stats.yaml#/components/paths/query_types'
+
+  /stats/database/query_types:
+    $ref: 'stats.yaml#/components/paths/database_query_types'
+
   /stats/recent_blocked:
     $ref: 'stats.yaml#/components/paths/recent_blocked'
 
