@@ -60,6 +60,12 @@ paths:
   /stats/database/upstreams:
     $ref: 'stats.yaml#/components/paths/database_upstreams'
 
+  /stats/top_domains:
+    $ref: 'stats.yaml#/components/paths/top_domains'
+
+  /stats/database/top_domains:
+    $ref: 'stats.yaml#/components/paths/database_top_domains'
+
   /stats/recent_blocked:
     $ref: 'stats.yaml#/components/paths/recent_blocked'
 

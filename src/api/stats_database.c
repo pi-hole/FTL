@@ -187,9 +187,10 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	bool blocked = api->opts[0]; // Can be overwritten by query string
 	const bool domains = api->opts[1];
 
-	// Get optional parameters from query string
+	// Get parameters from query string
 	if(api->request->query_string != NULL)
 	{
+		// Get time interval from query string
 		get_double_var(api->request->query_string, "from", &from);
 		get_double_var(api->request->query_string, "until", &until);
 
@@ -221,44 +222,64 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		                       NULL);
 
 	// Build SQL string
-	const char *querystr;
+	const char *querystr, *count_total_str, *count_blocked_str;
 	if(domains)
 	{
-		if(!blocked)
+		if(blocked)
 		{
-			querystr = "SELECT domain,COUNT(*) AS cnt FROM queries "
-			           "WHERE (status == 2 OR status == 3) "
-			           "AND timestamp >= :from AND timestamp <= :until "
-			           "GROUP by domain ORDER by cnt DESC "
-			           "LIMIT :count";
+			// Get domains and count of queries (blocked)
+			querystr = "SELECT COUNT(*),d.domain AS cnt FROM query_storage q "
+			           "JOIN domain_by_id d ON d.id = q.domain "
+			           "WHERE timestamp >= :from AND timestamp <= :until "
+			           "AND status NOT IN (0,2,3,12,13,14,17) "
+			           "GROUP by q.domain";
 		}
 		else
 		{
-			querystr = "SELECT domain,COUNT(*) AS cnt FROM queries "
-			           "WHERE status != 0 AND status != 2 AND status != 3 "
-			           "AND timestamp >= :from AND timestamp <= :until "
-			           "GROUP by domain ORDER by cnt DESC "
-			           "LIMIT :count";
+			// Get domains and count of queries (not blocked)
+			querystr = "SELECT COUNT(*),d.domain AS cnt FROM query_storage q "
+			           "JOIN domain_by_id d ON d.id = q.domain "
+			           "WHERE timestamp >= :from AND timestamp <= :until "
+			           "AND status IN (0,2,3,12,13,14,17) "
+			           "GROUP by q.domain";
 		}
+
+		// Count total number of queries for domains
+		count_total_str = "SELECT COUNT(DISTINCT domain) FROM query_storage"
+		                  "WHERE timestamp >= :from AND timestamp <= :until";
+
+		// Count total number of blocked queries for domains
+		count_blocked_str = "SELECT COUNT(DISTINCT domain) FROM query_storage"
+		                    "WHERE timestamp >= :from AND timestamp <= :until";
 	}
 	else
 	{
-		if(!blocked)
+		if(blocked)
 		{
-			querystr = "SELECT client,COUNT(*) AS cnt FROM queries "
-			           "WHERE (status == 2 OR status == 3) "
-			           "AND timestamp >= :from AND timestamp <= :until "
-			           "GROUP by client ORDER by cnt DESC "
-			           "LIMIT :count";
+			// Get clients and count of queries (blocked)
+			querystr = "SELECT COUNT(*),c.ip,c.name AS cnt FROM query_storage q "
+			           "JOIN client_by_id c ON c.id = q.client"
+			           "WHERE timestamp >= :from AND timestamp <= :until "
+			           "AND status NOT IN (0,2,3,12,13,14,17) "
+			           "GROUP by q.client";
 		}
 		else
 		{
-			querystr = "SELECT client,COUNT(*) AS cnt FROM queries "
-			           "WHERE status != 0 AND status != 2 AND status != 3 "
-			           "AND timestamp >= :from AND timestamp <= :until "
-			           "GROUP by client ORDER by cnt DESC "
-			           "LIMIT :count";
+			// Get clients and count of queries (not blocked)
+			querystr = "SELECT COUNT(*),c.ip,c.name AS cnt FROM query_storage q "
+			           "JOIN client_by_id c ON c.id = q.client "
+			           "WHERE timestamp >= :from AND timestamp <= :until "
+			           "AND status IN (0,2,3,12,13,14,17) "
+			           "GROUP by q.client";
 		}
+
+		// Count total number of queries for clients
+		count_total_str = "SELECT COUNT(DISTINCT client) FROM query_storage"
+		                  "WHERE timestamp >= :from AND timestamp <= :until";
+
+		// Count number of blocked queries for clients
+		count_blocked_str = "SELECT COUNT(DISTINCT client) FROM query_storage"
+		                    "WHERE timestamp >= :from AND timestamp <= :until";
 	}
 
 
@@ -307,38 +328,28 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Bind count to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 3, count)) != SQLITE_OK)
-	{
-		log_err("api_stats_database_history(): Failed to bind count (error %d) - %s",
-		        rc, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		dbclose(&db);
-
-		return send_json_error(api, 500,
-		                       "internal_error",
-		                       "Failed to bind count",
-		                       NULL);
-	}
-
 	// Loop over and accumulate results
 	cJSON *top_items = JSON_NEW_ARRAY();
-	int total = 0;
-	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	unsigned int total = 0;
+	while((rc = sqlite3_step(stmt)) == SQLITE_ROW &&
+	       ++total < count)
 	{
-		const char* string = (char*)sqlite3_column_text(stmt, 0);
-		const int cnt = sqlite3_column_int(stmt, 1);
+		// Get count
+		const int cnt = sqlite3_column_int(stmt, 0);
 		cJSON *item = JSON_NEW_OBJECT();
-		JSON_COPY_STR_TO_OBJECT(item, (domains ? "domain" : "ip"), string);
-		// Add empty name field for top_client requests
-		if(!domains)
+		if(domains)
 		{
-			JSON_REF_STR_IN_OBJECT(item, "name", "");
+			// Add domain to item
+			JSON_COPY_STR_TO_OBJECT(item, "domain", sqlite3_column_text(stmt, 1));
+		}
+		else
+		{
+			// Add client to item
+			JSON_COPY_STR_TO_OBJECT(item, "ip", sqlite3_column_text(stmt, 1));
+			JSON_COPY_STR_TO_OBJECT(item, "name", sqlite3_column_text(stmt, 2));
 		}
 		JSON_ADD_NUMBER_TO_OBJECT(item, "count", cnt);
 		JSON_ADD_ITEM_TO_ARRAY(top_items, item);
-		total += count;
 	}
 
 	// Finalize statement and close (= unlock) database connection
@@ -346,8 +357,11 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	dbclose(&db);
 
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, (domains ? "top_domains" : "top_clients"), top_items);
-	JSON_ADD_NUMBER_TO_OBJECT(json, (blocked ? "blocked_queries" : "total_queries"), total);
+	JSON_ADD_ITEM_TO_OBJECT(json, (domains ? "domains" : "clients"), top_items);
+	const int total_num = db_query_int(db, count_total_str);
+	const int blocked_num = db_query_int(db, count_blocked_str);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", total_num);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_num);
 	JSON_SEND_OBJECT(json);
 }
 

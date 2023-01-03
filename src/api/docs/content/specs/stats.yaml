@@ -92,6 +92,56 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    top_domains:
+      get:
+        summary: Get top domains
+        tags:
+          - Metrics
+        operationId: "get_metrics_top_domains"
+        description: |
+          Request top domains
+        parameters:
+          - $ref: 'stats.yaml#/components/parameters/top_items/blocked'
+          - $ref: 'stats.yaml#/components/parameters/top_items/count'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'stats.yaml#/components/schemas/top_domains'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    database_top_domains:
+      get:
+        summary: Get top domains (long-term database)
+        tags:
+          - Metrics
+        operationId: "get_metrics_database_top_domains"
+        description: |
+          Request top domains
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+          - $ref: 'stats.yaml#/components/parameters/top_items/blocked'
+          - $ref: 'stats.yaml#/components/parameters/top_items/count'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'stats.yaml#/components/schemas/top_domains'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
 
   schemas:
     queries:
@@ -262,6 +312,27 @@ components:
           type: integer
           description: Total number of queries
           example: 29160
+    top_domains:
+      type: object
+      properties:
+        domains:
+          type: array
+          description: Array of domains
+          items:
+            type: object
+            properties:
+              domain:
+                type: string
+                description: Requested domain
+                example: "pi-hole.net"
+              count:
+                type: integer
+                description: Number of times this domain has been requested
+                example: 8516
+        total_queries:
+          type: integer
+          description: Total number of queries
+          example: 29160
 
   parameters:
     recent_blocked:
@@ -273,3 +344,20 @@ components:
           type: integer
         required: false
         example: 1
+    top_items:
+      blocked:
+        in: query
+        description: Return information about permitted or blocked queries
+        name: blocked
+        schema:
+          type: boolean
+        required: false
+        example: false
+      count:
+        in: query
+        description: Number of requested items
+        name: count
+        schema:
+          type: integer
+        required: false
+        example: 10

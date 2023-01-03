@@ -113,7 +113,7 @@ int api_stats_summary(struct ftl_conn *api)
 
 int api_stats_top_domains(struct ftl_conn *api)
 {
-	int temparray[counters->domains][2], show = 10;
+	int temparray[counters->domains][2], count = 10;
 	bool audit = false;
 
 	// Get options from API struct
@@ -145,7 +145,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		get_int_var(api->request->query_string, "show", &show);
+		get_int_var(api->request->query_string, "count", &count);
 
 		// Apply Audit Log filtering?
 		get_bool_var(api->request->query_string, "audit", &audit);
@@ -224,27 +224,27 @@ int api_stats_top_domains(struct ftl_conn *api)
 		if(strcmp(getstr(domain->domainpos), HIDDEN_DOMAIN) == 0)
 			continue;
 
-		int count = -1;
+		int domain_count = -1;
 		if(blocked && showblocked && domain->blockedcount > 0)
 		{
-			count = domain->blockedcount;
+			domain_count = domain->blockedcount;
 			n++;
 		}
 		else if(!blocked && showpermitted && (domain->count - domain->blockedcount) > 0)
 		{
-			count = domain->count - domain->blockedcount;
+			domain_count = domain->count - domain->blockedcount;
 			n++;
 		}
 		if(count > -1)
 		{
 			cJSON *domain_item = JSON_NEW_OBJECT();
 			JSON_REF_STR_IN_OBJECT(domain_item, "domain", getstr(domain->domainpos));
-			JSON_ADD_NUMBER_TO_OBJECT(domain_item, "count", count);
+			JSON_ADD_NUMBER_TO_OBJECT(domain_item, "count", domain_count);
 			JSON_ADD_ITEM_TO_ARRAY(top_domains, domain_item);
 		}
 
 		// Only count entries that are actually sent and return when we have send enough data
-		if(n == show)
+		if(n == count)
 			break;
 	}
 
@@ -252,24 +252,18 @@ int api_stats_top_domains(struct ftl_conn *api)
 		clearSetupVarsArray();
 
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "top_domains", top_domains);
+	JSON_ADD_ITEM_TO_OBJECT(json, "domains", top_domains);
 
-	if(blocked)
-	{
-		const int blocked_queries = get_blocked_count();
-		JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
-	}
-	else
-	{
-		JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
-	}
+	const int blocked_queries = get_blocked_count();
+	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
 
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
 int api_stats_top_clients(struct ftl_conn *api)
 {
-	int temparray[counters->clients][2], show = 10;
+	int temparray[counters->clients][2], count = 10;
 	bool includezeroclients = false;
 
 	// Get options from API struct
@@ -301,7 +295,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		get_int_var(api->request->query_string, "show", &show);
+		get_int_var(api->request->query_string, "count", &count);
 
 		// Show also clients which have not been active recently?
 		get_bool_var(api->request->query_string, "withzero", &includezeroclients);
@@ -340,7 +334,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 	{
 		// Get sorted indices and counter values (may be either total or blocked count)
 		const int clientID = temparray[i][0];
-		const int count = temparray[i][1];
+		const int client_count = temparray[i][1];
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
 		if(client == NULL)
@@ -367,12 +361,12 @@ int api_stats_top_clients(struct ftl_conn *api)
 			cJSON *client_item = JSON_NEW_OBJECT();
 			JSON_REF_STR_IN_OBJECT(client_item, "name", client_name);
 			JSON_REF_STR_IN_OBJECT(client_item, "ip", client_ip);
-			JSON_ADD_NUMBER_TO_OBJECT(client_item, "count", count);
+			JSON_ADD_NUMBER_TO_OBJECT(client_item, "count", client_count);
 			JSON_ADD_ITEM_TO_ARRAY(top_clients, client_item);
 			n++;
 		}
 
-		if(n == show)
+		if(n == count)
 			break;
 	}
 
@@ -380,7 +374,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 		clearSetupVarsArray();
 
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "top_clients", top_clients);
+	JSON_ADD_ITEM_TO_OBJECT(json, "clients", top_clients);
 
 	if(blocked)
 	{
