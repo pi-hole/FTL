@@ -27,7 +27,6 @@
 #include <errno.h>
 
 pthread_t threads[THREADS_MAX] = { 0 };
-pthread_t api_threads[MAX_API_THREADS] = { 0 };
 bool resolver_ready = false;
 
 void go_daemon(void)
@@ -261,15 +260,6 @@ void cleanup(const int ret)
 	{
 		// Terminate threads
 		terminate_threads();
-
-		// Cancel and join possibly still running API worker threads
-		for(unsigned int tid = 0; tid < MAX_API_THREADS; tid++)
-		{
-			// Otherwise, cancel and join the thread
-			log_notice("Joining API worker thread %d", tid);
-			pthread_cancel(api_threads[tid]);
-			pthread_join(api_threads[tid], NULL);
-		}
 
 		// Close database connection
 		lock_shm();

@@ -75,7 +75,7 @@ int api_config(struct ftl_conn *api)
 		}
 		else
 		{
-			JSON_ADD_NULL_TO_OBJECT(host, "IPv4");
+			JSON_REF_STR_IN_OBJECT(host, "IPv4", "");
 		}
 		char ip6[INET6_ADDRSTRLEN] = { 0 };
 		if(config.dns.reply.host.overwrite_v6)
@@ -84,7 +84,7 @@ int api_config(struct ftl_conn *api)
 		}
 		else
 		{
-			JSON_ADD_NULL_TO_OBJECT(host, "IPv6");
+			JSON_REF_STR_IN_OBJECT(host, "IPv6", "");
 		}
 	}
 	JSON_ADD_ITEM_TO_OBJECT(reply, "host", host);
@@ -96,7 +96,7 @@ int api_config(struct ftl_conn *api)
 		}
 		else
 		{
-			JSON_ADD_NULL_TO_OBJECT(blocking, "IPv4");
+			JSON_REF_STR_IN_OBJECT(blocking, "IPv4", "");
 		}
 		char ip6[INET6_ADDRSTRLEN] = { 0 };
 		if(config.dns.reply.blocking.overwrite_v6)
@@ -105,7 +105,7 @@ int api_config(struct ftl_conn *api)
 		}
 		else
 		{
-			JSON_ADD_NULL_TO_OBJECT(blocking, "IPv6");
+			JSON_REF_STR_IN_OBJECT(blocking, "IPv6", "");
 		}
 	}
 	JSON_ADD_ITEM_TO_OBJECT(reply, "blocking", blocking);

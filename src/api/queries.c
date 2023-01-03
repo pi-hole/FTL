@@ -184,9 +184,10 @@ int api_queries_suggestions(struct ftl_conn *api)
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
-#define QUERYSTR "SELECT id,timestamp,type,status,domain,client,forward,additional_info,reply_type,reply_time,dnssec,client_name,ttl,regex_id"
-#define QUERYSTRORDER "ORDER BY id DESC"
-#define QUERYSTRLEN 4096
+#define QUERYSTR "SELECT q.id,timestamp,type,status,domain,client,forward,additional_info,reply_type,reply_time,dnssec,c.name,c.ip" // ttl, regex_id
+#define JOINSTR "JOIN client_by_id c ON q.client = c.id"
+#define QUERYSTRORDER "ORDER BY q.id DESC"
+#define QUERYSTRBUFFERLEN 4096
 static void add_querystr_double(struct ftl_conn *api, char *querystr, const char *sql, const char *uripart, bool *where)
 {
 	double val;
@@ -196,7 +197,7 @@ static void add_querystr_double(struct ftl_conn *api, char *querystr, const char
 	const size_t strpos = strlen(querystr);
 	const char *glue = *where ? "AND" : "WHERE";
 	*where = true;
-	snprintf(querystr + strpos, QUERYSTRLEN - strpos, " %s %s%f", glue, sql, val);
+	snprintf(querystr + strpos, QUERYSTRBUFFERLEN - strpos, " %s %s%f", glue, sql, val);
 }
 
 static void add_querystr_string(struct ftl_conn *api, char *querystr, const char *sql, const char *val, bool *where)
@@ -204,13 +205,13 @@ static void add_querystr_string(struct ftl_conn *api, char *querystr, const char
 	const size_t strpos = strlen(querystr);
 	const char *glue = *where ? "AND" : "WHERE";
 	*where = true;
-	snprintf(querystr + strpos, QUERYSTRLEN - strpos, " %s %s%s", glue, sql, val);
+	snprintf(querystr + strpos, QUERYSTRBUFFERLEN - strpos, " %s %s%s", glue, sql, val);
 }
 
 static void querystr_finish(char *querystr)
 {
 	const size_t strpos = strlen(querystr);
-	snprintf(querystr + strpos, QUERYSTRLEN - strpos, " %s", QUERYSTRORDER);
+	snprintf(querystr + strpos, QUERYSTRBUFFERLEN - strpos, " %s", QUERYSTRORDER);
 }
 
 int api_queries(struct ftl_conn *api)
@@ -241,8 +242,8 @@ int api_queries(struct ftl_conn *api)
 		get_bool_var(api->request->query_string, "disk", &disk);
 
 	// Start building database query string
-	char querystr[QUERYSTRLEN] = { 0 };
-	sprintf(querystr, "%s FROM %s", QUERYSTR, disk ? "disk.queries" : "queries");
+	char querystr[QUERYSTRBUFFERLEN] = { 0 };
+	sprintf(querystr, "%s FROM %s q %s", QUERYSTR, disk ? "disk.queries" : "queries", JOINSTR);
 	int draw = 0;
 
 	char domainname[512] = { 0 };
@@ -583,11 +584,13 @@ int api_queries(struct ftl_conn *api)
 		if((unsigned long)id > cursor)
 		{
 			// Skip all results with id BEFORE cursor (static tip of table)
+			log_info("Skipping BEFORE 1");
 			continue;
 		}
 		else if(start > 0 && start >= records)
 		{
 			// Skip all results BEFORE start (server-side pagination)
+			log_info("Skipping BEFORE 2");
 			continue;
 		}
 		else if(length > 0 && added >= (unsigned int)length)
@@ -596,8 +599,10 @@ int api_queries(struct ftl_conn *api)
 			// everything.
 			// Skip everything AFTER we added the requested number
 			// of queries if length is > 0.
+			log_info("Skipping BEFORE 3");
 			continue;
 		}
+		log_info("Processing");
 
 		// Build item object
 		cJSON *item = JSON_NEW_OBJECT();

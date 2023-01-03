@@ -110,7 +110,7 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'stats.yaml#/components/schemas/queries'
+                  $ref: 'stats.yaml#/components/schemas/recent_blocked'
           '401':
             description: Unauthorized
             content:
@@ -366,26 +366,62 @@ components:
               type: object
               description: Number of individual replies
               properties:
+                UNKNOWN:
+                  type: integer
+                  description: Type UNKNOWN replies
+                  example: 3
                 NODATA:
                   type: integer
-                  description: NODATA responses
-                  example: 14
+                  description: Type NODATA replies
+                  example: 72
                 NXDOMAIN:
                   type: integer
-                  description: NXDOMAIN responses
-                  example: 45
+                  description: Type NXDOMAIN replies
+                  example: 533
                 CNAME:
                   type: integer
-                  description: CNAME responses
-                  example: 76
+                  description: Type CNAME replies
+                  example: 32
                 IP:
                   type: integer
-                  description: IP responses
-                  example: 85
-                text:
+                  description: Type IP replies
+                  example: 84
+                DOMAIN:
                   type: integer
-                  description: text responses
-                  example: 16
+                  description: Type DOMAIN replies
+                  example: 31
+                RRNAME:
+                  type: integer
+                  description: Type RRNAME replies
+                  example: 0
+                SERVFAIL:
+                  type: integer
+                  description: Type SERVFAIL replies
+                  example: 0
+                REFUSED:
+                  type: integer
+                  description: Type REFUSED replies
+                  example: 0
+                NOTIMP:
+                  type: integer
+                  description: Type NOTIMP replies
+                  example: 0
+                OTHER:
+                  type: integer
+                  description: Type OTHER replies
+                  example: 0
+                DNSSEC:
+                  type: integer
+                  description: Type DNSSEC replies
+                  example: 31
+                NONE:
+                  type: integer
+                  description: Type NONE replies
+                  example: 0
+                BLOB:
+                  type: integer
+                  description: Type BLOB replies
+                  example: 0
     upstreams:
       type: object
       properties:
@@ -568,6 +604,15 @@ components:
           type: integer
           description: Total number of clients
           example: 10
+    recent_blocked:
+      type: object
+      properties:
+        blocked:
+          type: array
+          description: List of blocked domains
+          items:
+            type: string
+          example: ["doubleclick.net"]
 
   parameters:
     recent_blocked:

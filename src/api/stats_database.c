@@ -406,20 +406,20 @@ int api_stats_database_summary(struct ftl_conn *api)
 	const char *querystr;
 	querystr = "SELECT COUNT(*) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until";
-	const int total_queries = db_query_int_from_until(db, querystr, from, until);
+	const int sum_queries = db_query_int_from_until(db, querystr, from, until);
 
 	querystr = "SELECT COUNT(*) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 	           "AND " FILTER_STATUS_BLOCKED;
-	const int blocked_queries = db_query_int_from_until(db, querystr, from, until);
+	const int sum_blocked = db_query_int_from_until(db, querystr, from, until);
 
 	querystr = "SELECT COUNT(DISTINCT client) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until";
 	const int total_clients = db_query_int_from_until(db, querystr, from, until);
 
-	const float percent_blocked = 1e2f*blocked_queries/total_queries;
+	const float percent_blocked = 1e2f*sum_blocked/sum_queries;
 
-	if(total_queries < 0 || blocked_queries < 0 || total_clients < 0)
+	if(sum_queries < 0 || sum_blocked < 0 || total_clients < 0)
 	{
 
 		// Close (= unlock) database connection
@@ -433,8 +433,8 @@ int api_stats_database_summary(struct ftl_conn *api)
 
 	// Loop over and accumulate results
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", total_queries);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "sum_queries", sum_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "sum_blocked", sum_blocked);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "percent_blocked", percent_blocked);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "total_clients", total_clients);
 
@@ -823,7 +823,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	int forwarded_queries = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		const char* upstream = (char*)sqlite3_column_text(stmt, 0);
+		const char *upstream = (char*)sqlite3_column_text(stmt, 0);
 		const int count = sqlite3_column_int(stmt, 1);
 
 		cJSON *item = JSON_NEW_OBJECT();
@@ -859,12 +859,10 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	JSON_REF_STR_IN_OBJECT(cached, "name", "cache");
 	JSON_ADD_NUMBER_TO_OBJECT(cached, "port", -1);
 	JSON_ADD_NUMBER_TO_OBJECT(cached, "count", cached_queries);
-
 	cJSON *statistics = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(statistics, "response", 0);
 	JSON_ADD_NUMBER_TO_OBJECT(statistics, "variance", 0);
 	JSON_ADD_ITEM_TO_OBJECT(cached, "statistics", statistics);
-
 	JSON_ADD_ITEM_TO_ARRAY(upstreams, cached);
 
 	cJSON *blocked = JSON_NEW_OBJECT();
@@ -872,8 +870,10 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	JSON_REF_STR_IN_OBJECT(blocked, "name", "blocklist");
 	JSON_ADD_NUMBER_TO_OBJECT(blocked, "port", -1);
 	JSON_ADD_NUMBER_TO_OBJECT(blocked, "count", blocked_queries);
-	JSON_ADD_ITEM_TO_OBJECT(blocked, "statistics", statistics);
-
+	statistics = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(statistics, "response", 0);
+	JSON_ADD_NUMBER_TO_OBJECT(statistics, "variance", 0);
+	JSON_ADD_ITEM_TO_OBJECT(cached, "statistics", statistics);
 	JSON_ADD_ITEM_TO_ARRAY(upstreams, blocked);
 
 	// Close (= unlock) database connection

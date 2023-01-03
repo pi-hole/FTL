@@ -727,15 +727,14 @@ void DB_read_queries(void)
 	lock_shm();
 
 	// Loop through returned database rows
-	sqlite3_int64 dbID = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		dbID = sqlite3_column_int64(stmt, 0);
 		const double queryTimeStamp = sqlite3_column_double(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			log_warn("Database: TIMESTAMP should be larger than 01/01/2017 but is %f (DB ID %lli)", queryTimeStamp, dbID);
+			sqlite3_int64 dbID = sqlite3_column_int64(stmt, 0);
+			log_warn("Database: TIMESTAMP of query should be larger than 01/01/2017 but is %f (DB ID %lli)", queryTimeStamp, dbID);
 			continue;
 		}
 		if(queryTimeStamp > now)
@@ -1018,41 +1017,37 @@ void DB_read_queries(void)
 
 	log_info("Imported %i queries from the long-term database", counters->queries);
 
-	// If the Pi-hole was down fore more than 24 hours, we will not import
-	// anything here. Query the database to get the maximum database ID is
-	// important to avoid starting counting from zero
-	if(dbID == 0)
-	{
-		querystr = "SELECT MAX(id) FROM disk.queries";
+	// Query the database to get the maximum database ID is important to avoid
+	// starting counting from zero (would result in a UNIQUE constraint violation)
+	querystr = "SELECT MAX(id) FROM disk.query_storage";
 
-		// Attach disk database
-		if(!attach_disk_database(NULL))
-			return;
+	// Attach disk database
+	if(!attach_disk_database(NULL))
+		return;
 
-		// Prepare SQLite3 statement
-		rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	// Prepare SQLite3 statement
+	rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 
-		// Perform step
-		if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-			dbID = sqlite3_column_int64(stmt, 0);
-		else
-			log_err("DB_read_queries(): Failed to get MAX(id) from queries: %s",
-			        sqlite3_errstr(rc));
+	// Perform step
+	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+		last_disk_db_idx = sqlite3_column_int64(stmt, 0);
+	else
+		log_err("DB_read_queries(): Failed to get MAX(id) from queries: %s",
+		        sqlite3_errstr(rc));
 
-		// Finalize statement
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
+	// Finalize statement
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
 
-		if(!detach_disk_database(NULL))
-			return;
+	log_debug(DEBUG_DATABASE, "Last long-term idx is %lu", last_disk_db_idx);
 
-		log_debug(DEBUG_DATABASE, "Last long-term idx is %lld", dbID);
-	}
+	if(!detach_disk_database(NULL))
+		return;
+
 
 	// Update indices so that the next call to DB_save_queries() skips the
 	// queries that we just imported from the database
-	last_disk_db_idx = dbID;
-	last_mem_db_idx = dbID;
+	last_mem_db_idx = last_disk_db_idx;
 }
 
 bool queries_to_database(void)

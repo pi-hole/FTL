@@ -2283,7 +2283,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	query_set_status(query, new_status);
 
 	// Mark query for updating in the database
-//	query->flags.database.changed = true;
+	query->flags.database.changed = true;
 }
 
 static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id, const char* file, const int line)

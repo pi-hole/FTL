@@ -537,9 +537,10 @@ int api_stats_recentblocked(struct ftl_conn *api)
 	if(config.misc.privacylevel >= PRIVACY_HIDE_DOMAINS)
 	{
 		// Minimum structure is
-		// {"blocked":null}
+		// {"blocked":[]}
 		cJSON *json = JSON_NEW_OBJECT();
-		JSON_ADD_NULL_TO_OBJECT(json, "blocked");
+		cJSON *blocked = JSON_NEW_ARRAY();
+		JSON_ADD_ITEM_TO_OBJECT(json, "blocked", blocked);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -571,9 +572,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 			// the privacy settings at the time the query was made
 			const char *domain = getDomainString(query);
 			if(domain == NULL)
-			{
 				continue;
-			}
 
 			JSON_REF_STR_IN_ARRAY(blocked, domain);
 

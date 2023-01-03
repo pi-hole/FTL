@@ -41,7 +41,7 @@ components:
                 blockESNI:
                   type: boolean
                   example: true
-                EDN0ECS:
+                EDNS0ECS:
                   type: boolean
                   example: true
                 ignoreLocalhost:
@@ -86,19 +86,19 @@ components:
                     host:
                       type: object
                       properties:
-                        ipv4:
+                        IPv4:
                           type: string
-                          example: ""
-                        ipv6:
+                          example: "192.168.2.4"
+                        IPv6:
                           type: string
-                          example: ""
+                          example: "fd08:4582::1425"
                     blocking:
                       type: object
                       properties:
-                        ipv4:
+                        IPv4:
                           type: string
                           example: ""
-                        ipv6:
+                        IPv6:
                           type: string
                           example: ""
                 rateLimit:

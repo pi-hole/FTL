@@ -8,60 +8,61 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 // struct mg_connection
-#include "../civetweb/civetweb.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
+#include "civetweb/civetweb.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
 #include "api.h"
-#include "../shmem.h"
+#include "shmem.h"
 
 static int api_ftl_endpoints(struct ftl_conn *api);
 
 static struct {
 	const char *uri;
+	const char *parameters;
 	int (*func)(struct ftl_conn *api);
 	const bool opts[2];
 } api_request[] = {
-	// URI                                      FUNCTION                               OPTIONS
+	// URI                                      ARGUMENTS                     FUNCTION                               OPTIONS
 	// Note: The order of appearance matters here, more specific URIs have to
 	// appear *before* less specific URIs: 1. "/a/b/c", 2. "/a/b", 3. "/a"
-	{ "/api/dns/blocking",                      api_dns_blocking,                      { false, false } },
-	{ "/api/dns/cache",                         api_dns_cache,                         { false, false } },
-	{ "/api/dns/port",                          api_dns_port,                          { false, false } },
-	{ "/api/domains",                           api_list,                              { false, false } },
-	{ "/api/groups",                            api_list,                              { false, false } },
-	{ "/api/lists",                             api_list,                              { false, false } },
-	{ "/api/clients",                           api_list,                              { false, false } },
-	{ "/api/ftl/client",                        api_ftl_client,                        { false, false } },
-	{ "/api/ftl/logs/dns",                      api_ftl_logs_dns,                      { false, false } },
-	{ "/api/ftl/sysinfo",                       api_ftl_sysinfo,                       { false, false } },
-	{ "/api/ftl/dbinfo",                        api_ftl_dbinfo,                        { false, false } },
-	{ "/api/ftl/endpoints",                     api_ftl_endpoints,                     { false, false } },
-	{ "/api/history/clients",                   api_history_clients,                   { false, false } },
-	{ "/api/history/database/clients",          api_history_database_clients,          { false, false } },
-	{ "/api/history/database",                  api_history_database,                  { false, false } },
-	{ "/api/history",                           api_history,                           { false, false } },
-	{ "/api/queries/suggestions",               api_queries_suggestions,               { false, false } },
-	{ "/api/queries",                           api_queries,                           { false, false } },
-	{ "/api/stats/summary",                     api_stats_summary,                     { false, false } },
-	{ "/api/stats/query_types",                 api_stats_query_types,                 { false, false } },
-	{ "/api/stats/upstreams",                   api_stats_upstreams,                   { false, false } },
-	{ "/api/stats/top_domains",                 api_stats_top_domains,                 { false, false } },
-	{ "/api/stats/top_clients",                 api_stats_top_clients,                 { false, false } },
-	{ "/api/stats/recent_blocked",              api_stats_recentblocked,               { false, false } },
-	{ "/api/stats/database/top_domains",        api_stats_database_top_items,          { false, true  } },
-	{ "/api/stats/database/top_clients",        api_stats_database_top_items,          { false, false } },
-	{ "/api/stats/database/summary",            api_stats_database_summary,            { false, false } },
-	{ "/api/stats/database/query_types",        api_stats_database_query_types,        { false, false } },
-	{ "/api/stats/database/upstreams",          api_stats_database_upstreams,          { false, false } },
-	{ "/api/version",                           api_version,                           { false, false } },
-	{ "/api/auth",                              api_auth,                              { false, false } },
-	{ "/api/config",                            api_config,                            { false, false } },
-	{ "/api/network/gateway",                   api_network_gateway,                   { false, false } },
-	{ "/api/network/interfaces",                api_network_interfaces,                { false, false } },
-	{ "/api/network/devices",                   api_network_devices,                   { false, false } },
-	{ "/api/docs",                              api_docs,                              { false, false } },
+	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { false, false } },
+	{ "/api/dns/cache",                         "",                           api_dns_cache,                         { false, false } },
+	{ "/api/dns/port",                          "",                           api_dns_port,                          { false, false } },
+	{ "/api/clients",                           "/{client}",                  api_list,                              { false, false } },
+	{ "/api/domains",                           "/{type}/{kind}/{domain}",    api_list,                              { false, false } },
+	{ "/api/groups",                            "/{name}",                    api_list,                              { false, false } },
+	{ "/api/lists",                             "/{list}",                    api_list,                              { false, false } },
+	{ "/api/ftl/client",                        "",                           api_ftl_client,                        { false, false } },
+	{ "/api/ftl/logs/dns",                      "",                           api_ftl_logs_dns,                      { false, false } },
+	{ "/api/ftl/sysinfo",                       "",                           api_ftl_sysinfo,                       { false, false } },
+	{ "/api/ftl/dbinfo",                        "",                           api_ftl_dbinfo,                        { false, false } },
+	{ "/api/ftl/endpoints",                     "",                           api_ftl_endpoints,                     { false, false } },
+	{ "/api/history/clients",                   "",                           api_history_clients,                   { false, false } },
+	{ "/api/history/database/clients",          "",                           api_history_database_clients,          { false, false } },
+	{ "/api/history/database",                  "",                           api_history_database,                  { false, false } },
+	{ "/api/history",                           "",                           api_history,                           { false, false } },
+	{ "/api/queries/suggestions",               "",                           api_queries_suggestions,               { false, false } },
+	{ "/api/queries",                           "",                           api_queries,                           { false, false } },
+	{ "/api/stats/summary",                     "",                           api_stats_summary,                     { false, false } },
+	{ "/api/stats/query_types",                 "",                           api_stats_query_types,                 { false, false } },
+	{ "/api/stats/upstreams",                   "",                           api_stats_upstreams,                   { false, false } },
+	{ "/api/stats/top_domains",                 "",                           api_stats_top_domains,                 { false, false } },
+	{ "/api/stats/top_clients",                 "",                           api_stats_top_clients,                 { false, false } },
+	{ "/api/stats/recent_blocked",              "",                           api_stats_recentblocked,               { false, false } },
+	{ "/api/stats/database/top_domains",        "",                           api_stats_database_top_items,          { false, true  } },
+	{ "/api/stats/database/top_clients",        "",                           api_stats_database_top_items,          { false, false } },
+	{ "/api/stats/database/summary",            "",                           api_stats_database_summary,            { false, false } },
+	{ "/api/stats/database/query_types",        "",                           api_stats_database_query_types,        { false, false } },
+	{ "/api/stats/database/upstreams",          "",                           api_stats_database_upstreams,          { false, false } },
+	{ "/api/version",                           "",                           api_version,                           { false, false } },
+	{ "/api/auth",                              "",                           api_auth,                              { false, false } },
+	{ "/api/config",                            "",                           api_config,                            { false, false } },
+	{ "/api/network/gateway",                   "",                           api_network_gateway,                   { false, false } },
+	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { false, false } },
+	{ "/api/network/devices",                   "",                           api_network_devices,                   { false, false } },
+	{ "/api/docs",                              "",                           api_docs,                              { false, false } },
 };
 
 int api_handler(struct mg_connection *conn, void *ignored)
@@ -96,6 +97,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			// Call the API function and get the return code
 			log_debug(DEBUG_API, "Sending to %s", api_request[i].uri);
 			ret = api_request[i].func(&api);
+			log_debug(DEBUG_API, "Done");
 			break;
 		}
 	}
@@ -137,7 +139,12 @@ static int api_ftl_endpoints(struct ftl_conn *api)
 
 	// Add endpoints to JSON array
 	for(unsigned int i = 0; i < sizeof(api_request)/sizeof(api_request[0]); i++)
-		JSON_REF_STR_IN_ARRAY(endpoints, api_request[i].uri);
+	{
+		cJSON *endpoint = JSON_NEW_OBJECT();
+		JSON_REF_STR_IN_OBJECT(endpoint, "uri", api_request[i].uri);
+		JSON_REF_STR_IN_OBJECT(endpoint, "parameters", api_request[i].parameters);
+		JSON_ADD_ITEM_TO_ARRAY(endpoints, endpoint);
+	}
 
 	// Add endpoints to JSON object
 	JSON_ADD_ITEM_TO_OBJECT(json, "endpoints", endpoints);

@@ -293,6 +293,7 @@ components:
               type: string
               description: Device model (if available, `null` otherwise)
               example: "Raspberry Pi Model 4B"
+              nullable: true
             dns:
               $ref: 'dns.yaml#/components/schemas/blocking'
     ftl:
