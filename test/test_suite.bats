@@ -1214,3 +1214,9 @@
   printf "AAAA: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::11" ]]
 }
+
+@test "API validation" {
+  run python3 -m pytest -v test/api/checkAPI.py
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}

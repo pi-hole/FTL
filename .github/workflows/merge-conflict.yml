@@ -9,7 +9,7 @@ on:
     types: [synchronize]
 
 jobs:
-  main:
+  merge-conflict:
     runs-on: ubuntu-latest
     steps:
       - name: Check if PRs are have merge conflicts
