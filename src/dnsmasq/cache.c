@@ -1079,7 +1079,6 @@ void add_hosts_entry(struct crec *cache, union all_addr *addr, int addrlen,
      the array rhash, hashed on address. Note that rhash and the values
      in ->next are only valid  whilst reading hosts files: the buckets are
      then freed, and the ->next pointer used for other things. 
-
      Only insert each unique address once into this hashing structure.
 
      This complexity avoids O(n^2) divergent CPU use whilst reading
@@ -1830,7 +1829,7 @@ static void dump_cache_entry(struct crec *cache, time_t now)
   else if (cache->flags & F_DNSKEY)
     t = "K";
 #endif
-  else /* non-terminal */
+  else if (!(cache->flags & F_NXDOMAIN)) /* non-terminal */
     t = "!";
   
   p += sprintf(p, "%-40.40s %s%s%s%s%s%s%s%s%s%s ", a, t,
