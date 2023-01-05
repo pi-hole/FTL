@@ -170,7 +170,7 @@
 #include "syscalls/syscalls.h"
 
 // Preprocessor help functions
-#define str(x) # x
+#define str(x) #x
 #define xstr(x) str(x)
 
 // Intentionally ignore result of function declared warn_unused_result

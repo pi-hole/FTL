@@ -126,10 +126,10 @@ int api_dns_cache(struct ftl_conn *api)
 
 	struct cache_info ci = { 0 };
 	get_dnsmasq_cache_info(&ci);
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "size", ci.cache_size);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "inserted", ci.cache_inserted);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "evicted", ci.cache_live_freed);
+	cJSON *cache = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "size", ci.cache_size);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "inserted", ci.cache_inserted);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "evicted", ci.cache_live_freed);
 	cJSON *valid = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(valid, "ipv4", ci.valid.ipv4);
 	JSON_ADD_NUMBER_TO_OBJECT(valid, "ipv6", ci.valid.ipv6);
@@ -138,15 +138,18 @@ int api_dns_cache(struct ftl_conn *api)
 	JSON_ADD_NUMBER_TO_OBJECT(valid, "ds", ci.valid.ds);
 	JSON_ADD_NUMBER_TO_OBJECT(valid, "dnskey", ci.valid.dnskey);
 	JSON_ADD_NUMBER_TO_OBJECT(valid, "other", ci.valid.other);
-	JSON_ADD_ITEM_TO_OBJECT(json, "valid", valid);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "expired", ci.expired);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "immortal", ci.immortal);
+	JSON_ADD_ITEM_TO_OBJECT(cache, "valid", valid);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "expired", ci.expired);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "immortal", ci.immortal);
+
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "cache", cache);
 	JSON_SEND_OBJECT(json);
 }
 
 int api_dns_port(struct ftl_conn *api)
 {
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "dns_port", config.dns.port);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "dns_port", dns_port);
 	JSON_SEND_OBJECT(json);
 }

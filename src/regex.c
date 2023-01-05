@@ -191,7 +191,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				}
 
 				// Debug output
-				else if(config.debug & DEBUG_REGEX)
+				else if(config.debug.config.v.b)
 				{
 					const char *qtypestr = get_query_type_str(regex->ext.query_type, NULL, NULL);
 					log_debug(DEBUG_REGEX, "   This regex will %s match query type %s",
@@ -336,7 +336,7 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 		// We allow clientID = -1 to get all regex (for testing)
 		if(clientID >= 0 && !get_per_client_regex(clientID, regexID))
 		{
-			if(config.debug & DEBUG_REGEX)
+			if(config.debug.regex.v.b)
 			{
 				clientsData* client = getClient(clientID, true);
 				if(client != NULL)
@@ -699,7 +699,7 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 
 	// Disable all debugging output if not explicitly in debug mode (CLI argument "d")
 	if(!debug_mode)
-		config.debug = 0;
+		set_all_debug(false);
 	// Re-enable terminal output
 	log_ctrl(false, !quiet);
 

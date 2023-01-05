@@ -45,7 +45,10 @@ if __name__ == "__main__":
 	if errs[1] == 0:
 		print("  No missing endpoints\n")
 
-	print("Verifying endpoints...")
+	# Check if endpoints that are in both FTL and OpenAPI specs match
+	# and have the same response format. Also verify that the examples
+	# matches the OpenAPI specs.
+	print("Verifying the individual endpoint properties...")
 	for path in openapi.endpoints["get"]:
 		verifyer = ResponseVerifyer(ftl, openapi)
 		errors = verifyer.verify_endpoint(path)
@@ -70,6 +73,7 @@ if __name__ == "__main__":
 	if sum(errs) > 0:
 		exit(1)
 
-	# If there are no missing endpoints, exit with success
-	print("No missing endpoints")
+	# If there are no errors, exit with success
+	# (this is important for the CI)
+	print("Everything okay!")
 	exit(0)

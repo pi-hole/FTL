@@ -41,13 +41,13 @@ bool checkFTLDBrc(const int rc)
 	// Check if the database file is malformed
 	if(rc == SQLITE_CORRUPT)
 	{
-		log_warn("Database %s is damaged and cannot be used.", config.files.database);
+		log_warn("Database %s is damaged and cannot be used.", config.files.database.v.s);
 		DBerror = true;
 	}
 	// Check if the database file is read-only
 	if(rc == SQLITE_READONLY)
 	{
-		log_warn("Database %s is read-only and cannot be used.", config.files.database);
+		log_warn("Database %s is read-only and cannot be used.", config.files.database.v.s);
 		DBerror = true;
 	}
 
@@ -61,7 +61,7 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 	if(FTLDBerror())
 		return;
 
-	if(config.debug & DEBUG_DATABASE)
+	if(config.debug.database.v.b)
 		log_debug(DEBUG_DATABASE, "Closing FTL database in %s() (%s:%i)", func, file, line);
 
 	// Only try to close an existing database connection
@@ -91,7 +91,7 @@ sqlite3* _dbopen(bool create, const char *func, const int line, const char *file
 		flags |= SQLITE_OPEN_CREATE;
 
 	sqlite3 *db = NULL;
-	int rc = sqlite3_open_v2(config.files.database, &db, flags, NULL);
+	int rc = sqlite3_open_v2(config.files.database.v.s, &db, flags, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("Error while trying to open database: %s", sqlite3_errstr(rc));
@@ -245,7 +245,7 @@ void db_init(void)
 	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
 
 	// Check if database exists, if not create empty database
-	if(!file_exists(config.files.database))
+	if(!file_exists(config.files.database.v.s))
 	{
 		log_warn("No database file found, creating new (empty) database");
 		if (!db_create())
@@ -258,7 +258,7 @@ void db_init(void)
 	// Explicitly set permissions to 0644
 	// 644 =            u+w       u+r       g+w       g+r      o+r
 	const mode_t mode = S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP| S_IROTH;
-	chmod_file(config.files.database, mode);
+	chmod_file(config.files.database.v.s, mode);
 
 	// Open database
 	sqlite3 *db = dbopen(false);
@@ -470,11 +470,11 @@ void db_init(void)
 
 	// Log if users asked us to not use the long-term database for queries
 	// We will still use it to store warnings in it
-	config.database.DBexport = true;
-	if(config.database.maxDBdays == 0)
+	config.database.DBexport.v.b = true;
+	if(config.database.maxDBdays.v.i == 0)
 	{
 		log_info("Not using the database for storing queries");
-		config.database.DBexport = false;
+		config.database.DBexport.v.b = false;
 	}
 
 	log_info("Database successfully initialized");

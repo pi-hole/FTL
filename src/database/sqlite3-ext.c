@@ -163,7 +163,7 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	}
 
 	// Possible debug logging
-	if(config.debug & DEBUG_DATABASE)
+	if(config.debug.database.v.b)
 	{
 		char subnet[INET6_ADDRSTRLEN];
 		inet_ntop(isIPv6_FTL ? AF_INET6 : AF_INET, &bitmask, subnet, sizeof(subnet));

@@ -29,210 +29,312 @@ components:
         config:
           type: object
           properties:
-            debug:
-              type: integer
-              example: 0
             dns:
               type: object
               properties:
                 CNAMEdeepInspect:
                   type: boolean
-                  example: true
                 blockESNI:
                   type: boolean
-                  example: true
                 EDNS0ECS:
                   type: boolean
-                  example: true
                 ignoreLocalhost:
                   type: boolean
-                  example: false
                 showDNSSEC:
                   type: boolean
-                  example: true
                 analyzeAAAA:
                   type: boolean
-                  example: true
                 analyzeOnlyAandAAAA:
                   type: boolean
-                  example: false
                 piholePTR:
                   type: string
-                  example: "PI.HOLE"
                 replyWhenBusy:
                   type: string
-                  example: "ALLOW"
                 blockTTL:
                   type: integer
-                  example: 2
                 blockingmode:
                   type: string
-                  example: "NULL"
                 port:
                   type: integer
-                  example: 53
                 specialDomains:
                   type: object
                   properties:
                     mozillaCanary:
                       type: boolean
-                      example: true
                     iCloudPrivateRelay:
                       type: boolean
-                      example: true
                 reply:
                   type: object
                   properties:
                     host:
                       type: object
                       properties:
+                        overwrite_v4:
+                          type: boolean
+                        overwrite_v6:
+                          type: boolean
                         IPv4:
                           type: string
-                          example: "192.168.2.4"
                         IPv6:
                           type: string
-                          example: "fd08:4582::1425"
                     blocking:
                       type: object
                       properties:
+                        overwrite_v4:
+                          type: boolean
+                        overwrite_v6:
+                          type: boolean
                         IPv4:
                           type: string
-                          example: ""
                         IPv6:
                           type: string
-                          example: ""
                 rateLimit:
                   type: object
                   properties:
                     count:
                       type: integer
-                      example: 1000
                     interval:
                       type: integer
-                      example: 60
             resolver:
               type: object
               properties:
                 resolveIPv4:
                   type: boolean
-                  example: true
                 resolveIPv6:
                   type: boolean
-                  example: true
                 networkNames:
                   type: boolean
-                  example: true
                 refreshNames:
                   type: string
-                  example: "IPV4_ONLY"
             database:
               type: object
               properties:
                 DBimport:
                   type: boolean
-                  example: true
                 DBexport:
                   type: boolean
-                  example: true
                 maxHistory:
                   type: integer
-                  example: 86400
                 maxDBdays:
                   type: integer
-                  example: 365
                 DBinterval:
                   type: integer
-                  example: 60
                 network:
                   type: object
                   properties:
                     parseARPcache:
                       type: boolean
-                      example: true
                     expire:
                       type: integer
-                      example: 365
             http:
               type: object
               properties:
                 localAPIauth:
                   type: boolean
-                  example: true
                 prettyJSON:
                   type: boolean
-                  example: false
                 sessionTimeout:
                   type: integer
-                  example: 300
                 domain:
                   type: string
-                  example: "pi.hole"
                 acl:
                   type: string
-                  example: "+0.0.0.0/0"
                 port:
                   type: string
-                  example: "8080,[::]:8080"
                 paths:
                   type: object
                   properties:
                     webroot:
                       type: string
-                      example: "/var/www/html"
                     webhome:
                       type: string
-                      example: "/admin/"
             files:
               type: object
               properties:
                 log:
                   type: string
-                  example: "/var/log/pihole/FTL.log"
                 pid:
                   type: string
-                  example: "/run/pihole-FTL.pid"
                 database:
                   type: string
-                  example: "/etc/pihole/pihole-FTL.db"
                 gravity:
                   type: string
-                  example: "/etc/pihole/gravity.db"
                 macvendor:
                   type: string
-                  example: "/etc/pihole/macvendor.db"
                 setupVars:
                   type: string
-                  example: "/etc/pihole/setupVars.conf"
                 http_info:
                   type: string
-                  example: "/var/log/pihole/HTTP_info.log"
                 ph7_error:
                   type: string
-                  example: "/var/log/pihole/PH7_error.log"
             misc:
               type: object
               properties:
                 nice:
                   type: integer
-                  example: -10
                 delay_startup:
                   type: integer
-                  example: 0
                 addr2line:
                   type: boolean
-                  example: true
                 privacylevel:
                   type: integer
-                  example: 0
                 check:
                   type: object
                   properties:
                     load:
                       type: boolean
-                      example: true
                     shmem:
                       type: integer
-                      example: 90
                     disk:
                       type: integer
-                      example: 90
+            debug:
+              type: object
+              properties:
+                database:
+                  type: boolean
+                networking:
+                  type: boolean
+                locks:
+                  type: boolean
+                queries:
+                  type: boolean
+                flags:
+                  type: boolean
+                shmem:
+                  type: boolean
+                gc:
+                  type: boolean
+                arp:
+                  type: boolean
+                regex:
+                  type: boolean
+                api:
+                  type: boolean
+                overtime:
+                  type: boolean
+                status:
+                  type: boolean
+                caps:
+                  type: boolean
+                dnssec:
+                  type: boolean
+                vectors:
+                  type: boolean
+                resolver:
+                  type: boolean
+                edns0:
+                  type: boolean
+                clients:
+                  type: boolean
+                aliasclients:
+                  type: boolean
+                events:
+                  type: boolean
+                helper:
+                  type: boolean
+                config:
+                  type: boolean
+                extra:
+                  type: boolean
+                reserved:
+                  type: boolean
+  examples:
+    config:
+      config:
+        dns:
+          CNAMEdeepInspect: true
+          blockESNI: true
+          EDNS0ECS: true
+          ignoreLocalhost: false
+          showDNSSEC: true
+          analyzeAAAA: true
+          analyzeOnlyAandAAAA: false
+          piholePTR: PI.HOLE
+          replyWhenBusy: ALLOW
+          blockTTL: 2
+          blockingmode: 'NULL'
+          specialDomains:
+            mozillaCanary: true
+            iCloudPrivateRelay: true
+          reply:
+            host:
+              overwrite_v4: false
+              overwrite_v6: false
+              IPv4: 0.0.0.0
+              IPv6: "::"
+            blocking:
+              overwrite_v4: false
+              overwrite_v6: false
+              IPv4: 0.0.0.0
+              IPv6: "::"
+          rateLimit:
+            count: 0
+            interval: 0
+          port: 53
+        resolver:
+          resolveIPv4: true
+          resolveIPv6: true
+          networkNames: true
+          refreshNames: IPV4_ONLY
+        database:
+          DBimport: true
+          DBexport: true
+          maxHistory: 86400
+          maxDBdays: 365
+          DBinterval: 60
+          network:
+            parseARPcache: true
+            expire: 365
+        http:
+          localAPIauth: false
+          prettyJSON: false
+          sessionTimeout: 300
+          domain: pi.hole
+          acl: "+0.0.0.0/0"
+          port: 8080,[::]:8080
+          paths:
+            webroot: "/var/www/html"
+            webhome: "/admin/"
+        files:
+          log: "/var/log/pihole/FTL.log"
+          pid: "/run/pihole-FTL.pid"
+          database: "/etc/pihole/pihole-FTL.db"
+          gravity: "/etc/pihole/gravity.db"
+          macvendor: "/etc/pihole/macvendor.db"
+          setupVars: "/etc/pihole/setupVars.conf"
+          http_info: "/var/log/pihole/HTTP_info.log"
+          ph7_error: "/var/log/pihole/PH7.log"
+        misc:
+          nice: -10
+          delay_startup: 10
+          addr2line: true
+          privacylevel: 0
+          check:
+            load: true
+            shmem: 90
+            disk: 90
+        debug:
+          database: false
+          networking: false
+          locks: false
+          queries: false
+          flags: false
+          shmem: false
+          gc: false
+          arp: false
+          regex: false
+          api: false
+          overtime: false
+          status: false
+          caps: false
+          dnssec: false
+          vectors: false
+          resolver: false
+          edns0: false
+          clients: false
+          aliasclients: false
+          events: false
+          helper: false
+          config: false
+          extra: false
+          reserved: false

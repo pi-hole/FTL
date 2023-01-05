@@ -52,7 +52,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		return;
 
 	// Debug logging
-	if(config.debug & DEBUG_EDNS0)
+	if(config.debug.edns0.v.b)
 	{
 		char payload[3*plen+1];
 		memset(payload, 0, sizeof(payload));
@@ -176,7 +176,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		log_debug(DEBUG_EDNS0, "EDNS(0) code %u, optlen %u (bytes %zu - %zu of %u)",
 		          code, optlen, offset, offset + optlen, rdlen);
 
-		if (code == EDNS0_ECS && config.dns.EDNS0ECS)
+		if (code == EDNS0_ECS && config.dns.EDNS0ECS.v.b)
 		{
 			// EDNS(0) CLIENT SUBNET
 			// RFC 7871              Client Subnet in DNS Queries              6.  Option Format
@@ -250,7 +250,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			// EDNS(0) COOKIE client
 			unsigned char client_cookie[8];
 			memcpy(client_cookie, p, 8);
-			if(config.debug & DEBUG_EDNS0)
+			if(config.debug.edns0.v.b)
 			{
 				char pretty_client_cookie[8*2 + 1]; // client: fixed length
 				char *pp = pretty_client_cookie;
@@ -272,7 +272,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			unsigned short server_cookie_len = optlen - 8;
 			unsigned char server_cookie[server_cookie_len];
 			memcpy(server_cookie, p + 8u, server_cookie_len);
-			if(config.debug & DEBUG_EDNS0)
+			if(config.debug.edns0.v.b)
 			{
 				char pretty_client_cookie[8*2 + 1]; // client: fixed length
 				char *pp = pretty_client_cookie;
@@ -338,7 +338,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			unsigned char payload[optlen + 1u]; // variable length
 			memcpy(payload, p, optlen);
 			payload[optlen] = '\0';
-			if(config.debug & DEBUG_EDNS0)
+			if(config.debug.edns0.v.b)
 			{
 				char pretty_payload[optlen*5 + 1u];
 				char *pp = pretty_payload;

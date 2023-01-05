@@ -18,7 +18,6 @@ class openApi():
 	METHODS = ["get", "post", "put", "delete"]
 
 	def __init__(self, base_path: str, api_root: str = "/api") -> None:
-
 		# Store arguments
 		self.base_path = base_path
 		self.api_root = api_root
@@ -31,7 +30,7 @@ class openApi():
 		# Cache for already read files
 		self.yaml_cache = {}
 
-
+	# Read YAML file and add content to a cache
 	def read_yaml_maybe_cache(self, file: str) -> dict:
 		# Check if we have already read + parsed this file
 		if file not in self.yaml_cache:
@@ -39,6 +38,7 @@ class openApi():
 			try:
 				with open(file, "r") as stream:
 					try:
+						# Parse the file
 						self.yaml_cache[file] = yaml.safe_load(stream)
 					except Exception as e:
 						print("Exception when trying to parse " + file + ": " + str(e))
@@ -81,9 +81,11 @@ class openApi():
 	def recurseRef(self, dict_in: dict, dict_key: str):
 		# Loop over all items in this dict
 		for a in dict_in.keys():
+			# Create the next dict key
 			next_dict_key = dict_key + "/" + a if len(dict_key) > 0 else a
 			# If the item is a dict, we check if it is a reference
 			if isinstance(dict_in[a], dict):
+				# Check if this is a reference
 				if "$ref" in dict_in[a]:
 					# Yes, this is a reference, replace it with the actual content and ...
 					dict_in[a] = self.resolveSingleReference(dict_in[a]["$ref"])
@@ -94,7 +96,9 @@ class openApi():
 					self.recurseRef(dict_in[a], next_dict_key)
 			# If it is not a dict, it may be a list with references (e.g., OpenAPI's "allOf/anyOf")
 			elif isinstance(dict_in[a], list):
+				# Loop over all items in the list
 				for i in range(len(dict_in[a])):
+					# If the item is a dict, we check if it is a reference
 					if isinstance(dict_in[a][i], dict):
 						if "$ref" in dict_in[a][i]:
 							# Yes, this is a reference, replace it with the actual content and ...

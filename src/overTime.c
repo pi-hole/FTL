@@ -27,7 +27,7 @@ overTimeData *overTime = NULL;
 static void initSlot(const unsigned int index, const time_t timestamp)
 {
 	// Possible debug printing
-	if(config.debug & DEBUG_OVERTIME)
+	if(config.debug.overtime.v.b)
 	{
 		char timestr[20];
 		strftime(timestr, 20, "%Y-%m-%d %H:%M:%S", localtime(&timestamp));
@@ -82,7 +82,7 @@ void initOverTime(void)
 	// Oldest timestamp is (OVERTIME_SLOTS-1) times the OVERTIME_INTERVAL in the past
 	const time_t oldest = newest - (OVERTIME_SLOTS-1) * OVERTIME_INTERVAL;
 
-	if(config.debug & DEBUG_OVERTIME)
+	if(config.debug.overtime.v.b)
 	{
 		char first[20], last[20];
 		strftime(first, 20, "%Y-%m-%d %H:%M:%S", localtime(&oldest));

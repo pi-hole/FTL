@@ -25,6 +25,8 @@
 // sysinfo()
 #include <sys/sysinfo.h>
 #include <errno.h>
+// getprio(), setprio()
+#include <sys/resource.h>
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -98,7 +100,7 @@ void savepid(void)
 {
 	FILE *f;
 	const pid_t pid = getpid();
-	if((f = fopen(config.files.pid, "w+")) == NULL)
+	if((f = fopen(config.files.pid.v.s, "w+")) == NULL)
 	{
 		log_warn("Unable to write PID to file.");
 	}
@@ -113,7 +115,7 @@ void savepid(void)
 static void removepid(void)
 {
 	FILE *f;
-	if((f = fopen(config.files.pid, "w")) == NULL)
+	if((f = fopen(config.files.pid.v.s, "w")) == NULL)
 	{
 		log_warn("Unable to empty PID file");
 		return;
@@ -168,7 +170,7 @@ const char *hostname(void)
 void delay_startup(void)
 {
 	// Exit early if not sleeping
-	if(config.misc.delay_startup == 0u)
+	if(config.misc.delay_startup.v.ui == 0u)
 		return;
 
 	// Get uptime of system
@@ -187,8 +189,8 @@ void delay_startup(void)
 	}
 
 	// Sleep if requested by DELAY_STARTUP
-	log_info("Sleeping for %d seconds as requested by configuration ...", config.misc.delay_startup);
-	if(sleep(config.misc.delay_startup) != 0)
+	log_info("Sleeping for %d seconds as requested by configuration ...", config.misc.delay_startup.v.ui);
+	if(sleep(config.misc.delay_startup.v.ui) != 0)
 	{
 		log_crit("Sleeping was interrupted by an external signal");
 		cleanup(EXIT_FAILURE);
@@ -250,6 +252,32 @@ static void terminate_threads(void)
 		}
 	}
 	log_info("All threads joined");
+}
+
+void set_nice(void)
+{
+	const int which = PRIO_PROCESS;
+	const id_t pid = getpid();
+	const int priority = getpriority(which, pid);
+
+	// config value -999 => do not change niceness
+	if(config.misc.nice.v.i == -999)
+	{
+		// Do not set nice value
+		log_debug(DEBUG_CONFIG, "Not changing process priority.");
+	}
+	else
+	{
+		const int ret = setpriority(which, pid, config.misc.nice.v.i);
+		if(ret == -1)
+			// ERROR EPERM: The calling process attempted to increase its priority
+			// by supplying a negative value but has insufficient privileges.
+			// On Linux, the RLIMIT_NICE resource limit can be used to define a limit to
+			// which an unprivileged process's nice value can be raised. We are not
+			// affected by this limit when pihole-FTL is running with CAP_SYS_NICE
+			log_warn("Cannot set process priority to %d: %s. Process priority remains at %d",
+			         config.misc.nice.v.i, strerror(errno), priority);
+	}
 }
 
 // Clean up on exit

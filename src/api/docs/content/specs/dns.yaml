@@ -79,10 +79,10 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: 'dns.yaml#/components/schemas/cache_size'
-                    - $ref: 'dns.yaml#/components/schemas/cache_inserted'
-                    - $ref: 'dns.yaml#/components/schemas/cache_evicted'
+                  $ref: 'dns.yaml#/components/schemas/cache'
+                examples:
+                  cache:
+                    $ref: 'dns.yaml#/components/examples/cache'
           '401':
             description: Unauthorized
             content:
@@ -120,27 +120,6 @@ components:
           description: Remaining seconds until blocking mode is automatically changed
           nullable: true
           example: 15
-    cache_size:
-      type: object
-      properties:
-        size:
-          type: integer
-          description: Size of the DNS domain cache
-          example: 10000
-    cache_inserted:
-      type: object
-      properties:
-        inserted:
-          type: integer
-          description: Number of total insertions into the cache
-          example: 100
-    cache_evicted:
-      type: object
-      properties:
-        evicted:
-          type: integer
-          description: The number of cache entries that had to be removed although the corresponding entries were **not** expired
-          example: 0
     dns_port:
       type: object
       properties:
@@ -148,6 +127,53 @@ components:
           type: integer
           description: DNS port
           example: 53
+    cache:
+      type: object
+      properties:
+        cache:
+          type: object
+          description: Cache information
+          properties:
+            size:
+              type: integer
+              description: Cache size
+            inserted:
+              type: integer
+              description: Number of inserted entries
+            evicted:
+              type: integer
+              description: Number of evicted entries
+            expired:
+              type: integer
+              description: Number of expired entries
+            immortal:
+              type: integer
+              description: Number of immortal entries
+            valid:
+              type: object
+              description: Number of valid entries
+              properties:
+                ipv4:
+                  type: integer
+                  description: Number of valid IPv4 entries
+                ipv6:
+                  type: integer
+                  description: Number of valid IPv6 entries
+                cname:
+                  type: integer
+                  description: Number of valid CNAME entries
+                srv:
+                  type: integer
+                  description: Number of valid SRV entries
+                ds:
+                  type: integer
+                  description: Number of valid DS entries
+                dnskey:
+                  type: integer
+                  description: Number of valid DNSKEY entries
+                other:
+                  type: integer
+                  description: Number of valid other entries
     errors:
       item_missing:
         type: object
@@ -189,3 +215,21 @@ components:
                 nullable: true
                 description: "Additional data (if available)"
                 example: null
+  examples:
+    cache:
+      summary: Cache info
+      value:
+        cache:
+          size: 10000
+          inserted: 4060
+          evicted: 0
+          expired: 0
+          immortal: 0
+          valid:
+            ipv4: 212
+            ipv6: 61
+            cname: 14
+            srv: 0
+            ds: 60
+            dnskey: 35
+            other: 14

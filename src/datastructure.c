@@ -698,6 +698,21 @@ const char * __attribute__ ((const)) get_refresh_hostnames_str(const enum refres
 	}
 }
 
+int __attribute__ ((const)) get_refresh_hostnames_val(const char *refresh_hostnames)
+{
+	if(strcasecmp(refresh_hostnames, "ALL") == 0)
+		return REFRESH_ALL;
+	else if(strcasecmp(refresh_hostnames, "IPV4_ONLY") == 0)
+		return REFRESH_IPV4_ONLY;
+	else if(strcasecmp(refresh_hostnames, "UNKNOWN") == 0)
+		return REFRESH_UNKNOWN;
+	else if(strcasecmp(refresh_hostnames, "NONE") == 0)
+		return REFRESH_NONE;
+
+	// Invalid value
+	return -1;
+}
+
 const char * __attribute__ ((const)) get_blocking_mode_str(const enum blocking_mode mode)
 {
 	switch (mode)
@@ -716,6 +731,23 @@ const char * __attribute__ ((const)) get_blocking_mode_str(const enum blocking_m
 		default:
 			return "N/A";
 	}
+}
+
+int __attribute__ ((const)) get_blocking_mode_val(const char *blocking_mode)
+{
+	if(strcasecmp(blocking_mode, "IP") == 0)
+		return MODE_IP;
+	else if(strcasecmp(blocking_mode, "NX") == 0)
+		return MODE_NX;
+	else if(strcasecmp(blocking_mode, "NULL") == 0)
+		return MODE_NULL;
+	else if(strcasecmp(blocking_mode, "IP_NODATA_AAAA") == 0)
+		return MODE_IP_NODATA_AAAA;
+	else if(strcasecmp(blocking_mode, "NODATA") == 0)
+		return MODE_NODATA;
+
+	// Invalid value
+	return -1;
 }
 
 bool __attribute__ ((const)) is_blocked(const enum query_status status)
@@ -849,7 +881,7 @@ static const char* __attribute__ ((const)) query_status_str(const enum query_sta
 void _query_set_status(queriesData *query, const enum query_status new_status, const char *func, const int line, const char *file)
 {
 	// Debug logging
-	if(config.debug & DEBUG_STATUS)
+	if(config.debug.status.v.b)
 	{
 		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str(query->status) : "INVALID";
 		if(query->status == new_status)
@@ -912,6 +944,22 @@ const char * __attribute__ ((const)) get_ptr_type_str(const enum ptr_type pihole
 	return NULL;
 }
 
+int __attribute__ ((const)) get_ptr_type_val(const char *piholePTR)
+{
+	if(strcasecmp(piholePTR, "pi.hole") == 0)
+		return PTR_PIHOLE;
+	else if(strcasecmp(piholePTR, "hostname") == 0)
+		return PTR_HOSTNAME;
+	else if(strcasecmp(piholePTR, "hostnamefqdn") == 0)
+		return PTR_HOSTNAMEFQDN;
+	else if(strcasecmp(piholePTR, "none") == 0 ||
+		strcasecmp(piholePTR, "false") == 0)
+		return PTR_NONE;
+
+	// Invalid value
+	return -1;
+}
+
 const char * __attribute__ ((const)) get_busy_reply_str(const enum busy_reply replyWhenBusy)
 {
 	switch(replyWhenBusy)
@@ -926,4 +974,19 @@ const char * __attribute__ ((const)) get_busy_reply_str(const enum busy_reply re
 			return "DROP";
 	}
 	return NULL;
+}
+
+int __attribute__ ((const)) get_busy_reply_val(const char *replyWhenBusy)
+{
+	if(strcasecmp(replyWhenBusy, "BLOCK") == 0)
+		return BUSY_BLOCK;
+	else if(strcasecmp(replyWhenBusy, "ALLOW") == 0)
+		return BUSY_ALLOW;
+	else if(strcasecmp(replyWhenBusy, "REFUSE") == 0)
+		return BUSY_REFUSE;
+	else if(strcasecmp(replyWhenBusy, "DROP") == 0)
+		return BUSY_DROP;
+
+	// Invalid value
+	return -1;
 }

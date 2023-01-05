@@ -1216,7 +1216,7 @@
 }
 
 @test "API validation" {
-  run python3 -m pytest -v test/api/checkAPI.py
+  run python3 test/api/checkAPI.py
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }

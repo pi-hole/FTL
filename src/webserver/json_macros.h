@@ -81,8 +81,8 @@
 }
 
 #define JSON_ADD_BOOL_TO_OBJECT(object, key, val) {\
-	const cJSON_bool value = val; \
-	cJSON *bool_item = cJSON_CreateBool(value); \
+	const cJSON_bool var_val = val; \
+	cJSON *bool_item = cJSON_CreateBool(var_val); \
 	if(bool_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
@@ -106,8 +106,8 @@
 }
 
 #define JSON_ADD_BOOL_TO_ARRAY(object, val){ \
-	const cJSON_bool value = val; \
-	cJSON *bool_item = cJSON_CreateBool(value); \
+	const cJSON_bool var_val = val; \
+	cJSON *bool_item = cJSON_CreateBool(var_val); \
 	cJSON_AddItemToArray(object, bool_item); \
 }
 

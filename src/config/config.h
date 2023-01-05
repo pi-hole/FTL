@@ -26,9 +26,14 @@
 
 #define GLOBALTOMLPATH "/etc/pihole/pihole-FTL.toml"
 
-void setDefaults(void);
+// Defined in config.c
+void set_all_debug(const bool status);
+void initConfig(void);
 void readFTLconf(void);
 bool getLogFilePath(void);
+struct conf_item *get_conf_item(unsigned int n);
+struct conf_item *get_debug_item(const enum debug_flag debug);
+unsigned int config_path_depth(struct conf_item *conf_item) __attribute__ ((pure));
 
 // Defined in toml_reader.c
 bool getPrivacyLevel(void);
@@ -36,121 +41,179 @@ bool getBlockingMode(void);
 bool readDebugSettings(void);
 void init_config_mutex(void);
 
-// We do not use bitfields in here as this struct exists only once in memory.
-// Accessing bitfields may produce slightly more inefficient code on some
-// architectures (such as ARM) and savng a few bit of RAM but bloating up the
-// rest of the application each time these fields are accessed is bad.
-typedef struct {
+union conf_value {
+	bool b;
+	int i;
+	unsigned int ui;
+	long l;
+	unsigned long ul;
+	char *s;
+	enum ptr_type ptr_type;
+	enum busy_reply busy_reply;
+	enum blocking_mode blocking_mode;
+	enum refresh_hostnames refresh_hostnames;
+	enum privacy_level privacy_level;
+	enum debug_flag debug_flag;
+	struct in_addr in_addr;
+	struct in6_addr in6_addr;
+};
+
+enum conf_type {
+	CONF_BOOL,
+	CONF_INT,
+	CONF_UINT,
+	CONF_LONG,
+	CONF_ULONG,
+	CONF_STRING,
+	CONF_ENUM_PTR_TYPE,
+	CONF_ENUM_BUSY_TYPE,
+	CONF_ENUM_BLOCKING_MODE,
+	CONF_ENUM_REFRESH_HOSTNAMES,
+	CONF_ENUM_PRIVACY_LEVEL,
+	CONF_STRUCT_IN_ADDR,
+	CONF_STRUCT_IN6_ADDR
+} __attribute__ ((packed));
+
+#define MAX_CONFIG_PATH_DEPTH 4
+
+struct conf_item {
+	const char *k;       // item Key
+	char **p;            // item Path
+	const char *h;       // Help text / description
+	const char *a;       // string of Allowed values (where applicable)
+	enum conf_type t;    // variable Type
+	union conf_value v;  // current Value
+	union conf_value d;  // Default value
+};
+
+struct config {
 	struct {
-		bool CNAMEdeepInspect;
-		bool blockESNI;
-		bool EDNS0ECS;
-		bool ignoreLocalhost;
-		bool showDNSSEC;
-		bool analyzeAAAA;
-		bool analyzeOnlyAandAAAA;
-		enum ptr_type piholePTR;
-		enum busy_reply replyWhenBusy;
-		unsigned int blockTTL;
-		unsigned int port; // set in fork_and_bind.c
-		enum blocking_mode blockingmode;
+		struct conf_item CNAMEdeepInspect;
+		struct conf_item blockESNI;
+		struct conf_item EDNS0ECS;
+		struct conf_item ignoreLocalhost;
+		struct conf_item showDNSSEC;
+		struct conf_item analyzeAAAA;
+		struct conf_item analyzeOnlyAandAAAA;
+		struct conf_item piholePTR;
+		struct conf_item replyWhenBusy;
+		struct conf_item blockTTL;
+		struct conf_item blockingmode;
 		struct {
-			bool mozillaCanary;
-			bool iCloudPrivateRelay;
+			struct conf_item mozillaCanary;
+			struct conf_item iCloudPrivateRelay;
 		} specialDomains;
 		struct {
 			struct {
-				bool overwrite_v4 :1;
-				bool overwrite_v6 :1;
-				struct in_addr v4;
-				struct in6_addr v6;
+				struct conf_item overwrite_v4;
+				struct conf_item overwrite_v6;
+				struct conf_item v4;
+				struct conf_item v6;
 			} host;
 			struct {
-				bool overwrite_v4 :1;
-				bool overwrite_v6 :1;
-				struct in_addr v4;
-				struct in6_addr v6;
+				struct conf_item overwrite_v4;
+				struct conf_item overwrite_v6;
+				struct conf_item v4;
+				struct conf_item v6;
 			} blocking;
 		} reply;
 		struct {
-			unsigned int count;
-			unsigned int interval;
+			struct conf_item count;
+			struct conf_item interval;
 		} rateLimit;
 	} dns;
 
 	struct {
-		bool resolveIPv4;
-		bool resolveIPv6;
-		bool networkNames;
-		enum refresh_hostnames refreshNames;
+		struct conf_item resolveIPv4;
+		struct conf_item resolveIPv6;
+		struct conf_item networkNames;
+		struct conf_item refreshNames;
 	} resolver;
 
 	struct {
-		bool DBimport;
-		bool DBexport;
-		unsigned int maxHistory;
-		int maxDBdays;
-		unsigned int DBinterval;
+		struct conf_item DBimport;
+		struct conf_item DBexport;
+		struct conf_item maxHistory;
+		struct conf_item maxDBdays;
+		struct conf_item DBinterval;
 		struct {
-			bool parseARPcache;
-			unsigned int expire;
+			struct conf_item parseARPcache;
+			struct conf_item expire;
 		} network;
 	} database;
 
 	struct {
-		bool localAPIauth;
-		bool prettyJSON;
-		unsigned int sessionTimeout;
-		char *domain;
-		char *acl;
-		char *port;
+		struct conf_item localAPIauth;
+		struct conf_item prettyJSON;
+		struct conf_item sessionTimeout;
+		struct conf_item domain;
+		struct conf_item acl;
+		struct conf_item port;
 		struct {
-			char *webroot;
-			char *webhome;
+			struct conf_item webroot;
+			struct conf_item webhome;
 		} paths;
 	} http;
 
 	struct {
-		char *log;
-		char *pid;
-		char *database;
-		char *gravity;
-		char *macvendor;
-		char *setupVars;
-		char *http_info;
-		char *ph7_error;
+		struct conf_item log;
+		struct conf_item pid;
+		struct conf_item database;
+		struct conf_item gravity;
+		struct conf_item macvendor;
+		struct conf_item setupVars;
+		struct conf_item http_info;
+		struct conf_item ph7_error;
 	} files;
 
 	struct {
-		int nice;
-		unsigned int delay_startup;
-		bool addr2line;
-		enum privacy_level privacylevel;
+		struct conf_item nice;
+		struct conf_item delay_startup;
+		struct conf_item addr2line;
+		struct conf_item privacylevel;
 		struct {
-			bool load;
-			unsigned char shmem;
-			unsigned char disk;
+			struct conf_item load;
+			struct conf_item shmem;
+			struct conf_item disk;
 		} check;
 	} misc;
 
-	enum debug_flag debug;
-} ConfigStruct;
+	struct {
+		// The order of items in this struct has to match the order in
+		// enum debug_flags due to a few simplifications made elsewhere
+		// in the code
+		struct conf_item database;
+		struct conf_item networking;
+		struct conf_item locks;
+		struct conf_item queries;
+		struct conf_item flags;
+		struct conf_item shmem;
+		struct conf_item gc;
+		struct conf_item arp;
+		struct conf_item regex;
+		struct conf_item api;
+		struct conf_item overtime;
+		struct conf_item status;
+		struct conf_item caps;
+		struct conf_item dnssec;
+		struct conf_item vectors;
+		struct conf_item resolver;
+		struct conf_item edns0;
+		struct conf_item clients;
+		struct conf_item aliasclients;
+		struct conf_item events;
+		struct conf_item helper;
+		struct conf_item config;
+		struct conf_item extra;
+		struct conf_item reserved;
+	} debug;
+};
 
-typedef struct {
-	const char* conf;
-	const char* snapConf;
-	char* log;
-	char* pid;
-	char* port;
-	char* socketfile;
-	char* FTL_db;
-	char* gravity_db;
-	char* macvendor_db;
-	char* setupVars;
-	char* auditlist;
-} FTLFileNamesStruct;
+extern struct config config;
+extern int dns_port;
+extern bool debug_any;
 
-extern ConfigStruct config;
-extern ConfigStruct defaults;
+#define CONFIG_ELEMENTS (sizeof(config)/sizeof(struct conf_item))
+#define DEBUG_ELEMENTS (sizeof(config.debug)/sizeof(struct conf_item))
 
 #endif //CONFIG_H

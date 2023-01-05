@@ -489,6 +489,10 @@ components:
           type: integer
           description: Total number of queries
           example: 29160
+        blocked_queries:
+          type: integer
+          description: Number of blocked queries
+          example: 6379
     top_clients:
       type: object
       properties:
@@ -514,6 +518,10 @@ components:
           type: integer
           description: Total number of queries
           example: 29160
+        blocked_queries:
+          type: integer
+          description: Number of blocked queries
+          example: 6379
     query_types:
       type: object
       properties:

@@ -86,7 +86,7 @@ static void sha256_hex(uint8_t *data, char *buffer)
 int check_client_auth(struct ftl_conn *api)
 {
 	// Is the user requesting from localhost?
-	if(!config.http.localAPIauth && (strcmp(api->request->remote_addr, LOCALHOSTv4) == 0 ||
+	if(!config.http.localAPIauth.v.b && (strcmp(api->request->remote_addr, LOCALHOSTv4) == 0 ||
 	                                           strcmp(api->request->remote_addr, LOCALHOSTv6) == 0))
 	{
 		return API_AUTH_LOCALHOST;
@@ -179,17 +179,17 @@ int check_client_auth(struct ftl_conn *api)
 
 		// Update timestamp of this client to extend
 		// the validity of their API authentication
-		auth_data[user_id].valid_until = now + config.http.sessionTimeout;
+		auth_data[user_id].valid_until = now + config.http.sessionTimeout.v.ui;
 
 		// Update user cookie
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 		            FTL_SET_COOKIE,
-		            auth_data[user_id].sid, config.http.sessionTimeout) < 0)
+		            auth_data[user_id].sid, config.http.sessionTimeout.v.ui) < 0)
 		{
 			return send_json_error(api, 500, "internal_error", "Internal server error", NULL);
 		}
 
-		if(config.debug & DEBUG_API)
+		if(config.debug.api.v.b)
 		{
 			char timestr[128];
 			get_timestr(timestr, auth_data[user_id].valid_until, false);
@@ -488,7 +488,7 @@ int api_auth(struct ftl_conn *api)
 				if(!auth_data[i].used)
 				{
 					auth_data[i].used = true;
-					auth_data[i].valid_until = now + config.http.sessionTimeout;
+					auth_data[i].valid_until = now + config.http.sessionTimeout.v.ui;
 					strncpy(auth_data[i].remote_addr, api->request->remote_addr, sizeof(auth_data[i].remote_addr));
 					auth_data[i].remote_addr[sizeof(auth_data[i].remote_addr)-1] = '\0';
 					generateSID(auth_data[i].sid);
@@ -499,7 +499,7 @@ int api_auth(struct ftl_conn *api)
 			}
 
 			// Debug logging
-			if(config.debug & DEBUG_API && user_id > API_AUTH_UNAUTHORIZED)
+			if(config.debug.api.v.b && user_id > API_AUTH_UNAUTHORIZED)
 			{
 				char timestr[128];
 				get_timestr(timestr, auth_data[user_id].valid_until, false);

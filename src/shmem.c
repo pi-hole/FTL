@@ -455,7 +455,7 @@ void _lock_shm(const char *func, const int line, const char *file)
 // Release SHM lock
 void _unlock_shm(const char* func, const int line, const char * file)
 {
-	if(config.debug & DEBUG_LOCKS && !is_our_lock())
+	if(config.debug.locks.v.b && !is_our_lock())
 	{
 		log_err("Tried to unlock but lock is owned by %li/%li",
 		        (long int)shmLock->owner.pid, (long int)shmLock->owner.tid);
@@ -641,12 +641,11 @@ void destroy_shmem(void)
 static SharedMemory create_shm(const char *name, const size_t size)
 {
 	char df[64] = { 0 };
-	const int percentage = get_dev_shm_usage(df);
-	if(config.debug & DEBUG_SHMEM || (config.misc.check.shmem > 0 && percentage > config.misc.check.shmem))
-	{
+	const unsigned int percentage = get_dev_shm_usage(df);
+	if(config.debug.shmem.v.b || (config.misc.check.shmem.v.ui > 0 && percentage > config.misc.check.shmem.v.ui))
 		log_info("Creating shared memory with name \"%s\" and size %zu (%s)", name, size, df);
-	}
-	if(config.misc.check.shmem > 0 && percentage > config.misc.check.shmem)
+
+	if(config.misc.check.shmem.v.ui > 0 && percentage > config.misc.check.shmem.v.ui)
 		log_resource_shortage(-1.0, 0, percentage, -1, SHMEM_PATH, df);
 
 	SharedMemory sharedMemory = {
@@ -776,7 +775,7 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 
 	// Log that we are doing something here
 	char df[64] =  { 0 };
-	const int percentage = get_dev_shm_usage(df);
+	const unsigned int percentage = get_dev_shm_usage(df);
 
 	// Log output
 	if(resize)
@@ -786,7 +785,7 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 		log_debug(DEBUG_SHMEM, "Remapping \"%s\" from %zu to (%zu * %zu) == %zu",
 		          sharedMemory->name, sharedMemory->size, size1, size2, size);
 
-	if(config.misc.check.shmem > 0 && percentage > config.misc.check.shmem)
+	if(config.misc.check.shmem.v.ui > 0 && percentage > config.misc.check.shmem.v.ui)
 		log_resource_shortage(-1.0, 0, percentage, -1, SHMEM_PATH, df);
 
 	// Resize shard memory object if requested
@@ -1046,7 +1045,7 @@ static inline bool check_range(int ID, int MAXID, const char* type, const char *
 	// Check bounds
 	if(ID < 0 || ID > MAXID)
 	{
-		if(config.debug)
+		if(debug_any)
 		{
 			log_err("Trying to access %s ID %i, but maximum is %i", type, ID, MAXID);
 			log_err("found in %s() (%s:%i)", func, short_path(file), line);
@@ -1063,7 +1062,7 @@ static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, con
 	// Check magic only if requested (skipped for new entries which are uninitialized)
 	if(checkMagic && magic != MAGICBYTE)
 	{
-		if(config.debug)
+		if(debug_any)
 		{
 			log_err("Trying to access %s ID %i, but magic byte is %x", type, ID, magic);
 			log_err("found in %s() (%s:%i)", func, short_path(file), line);
@@ -1082,9 +1081,9 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char *func,
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(config.debug & DEBUG_LOCKS && !is_our_lock())
+	if(config.debug.locks.v.b && !is_our_lock())
 	{
-		if(config.debug)
+		if(debug_any)
 		{
 			log_err("Tried to obtain query pointer without lock in %s() (%s:%i)!",
 			        func, short_path(file), line);
@@ -1107,9 +1106,9 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char *fun
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(config.debug & DEBUG_LOCKS && !is_our_lock())
+	if(config.debug.locks.v.b && !is_our_lock())
 	{
-		if(config.debug)
+		if(debug_any)
 		{
 			log_err("Tried to obtain client pointer without lock in %s() (%s:%i)!",
 			        func, short_path(file), line);
@@ -1132,9 +1131,9 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *fun
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(config.debug & DEBUG_LOCKS && !is_our_lock())
+	if(config.debug.locks.v.b && !is_our_lock())
 	{
-		if(config.debug)
+		if(debug_any)
 		{
 			log_err("Tried to obtain domain pointer without lock in %s() (%s:%i)!",
 			        func, short_path(file), line);
@@ -1157,9 +1156,9 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(config.debug & DEBUG_LOCKS && !is_our_lock())
+	if(config.debug.locks.v.b && !is_our_lock())
 	{
-		if(config.debug)
+		if(debug_any)
 		{
 			log_err("Tried to obtain upstream pointer without lock in %s() (%s:%i)!",
 			        func, short_path(file), line);
@@ -1182,9 +1181,9 @@ DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char *f
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(config.debug & DEBUG_LOCKS && !is_our_lock())
+	if(config.debug.locks.v.b && !is_our_lock())
 	{
-		if(config.debug)
+		if(debug_any)
 		{
 			log_err("Tried to obtain cache pointer without lock in %s() (%s:%i)!",
 			        func, short_path(file), line);

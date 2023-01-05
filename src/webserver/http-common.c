@@ -25,7 +25,7 @@ char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN] = { 0 };
 // tyoically contain a JSON explorer
 const char* json_formatter(const cJSON *object)
 {
-	if(config.http.prettyJSON)
+	if(config.http.prettyJSON.v.b)
 	{
 		/* Examplary output:
 		{

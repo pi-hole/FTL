@@ -99,10 +99,10 @@ void gravityDB_forked(void)
 bool gravityDB_open(void)
 {
 	struct stat st;
-	if(stat(config.files.gravity, &st) != 0)
+	if(stat(config.files.gravity.v.s, &st) != 0)
 	{
 		// File does not exist
-		log_warn("gravityDB_open(): %s does not exist", config.files.gravity);
+		log_warn("gravityDB_open(): %s does not exist", config.files.gravity.v.s);
 		return false;
 	}
 
@@ -112,8 +112,8 @@ bool gravityDB_open(void)
 		return true;
 	}
 
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Trying to open %s in read-only mode", config.files.gravity);
-	int rc = sqlite3_open_v2(config.files.gravity, &gravity_db, SQLITE_OPEN_READWRITE, NULL);
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Trying to open %s in read-only mode", config.files.gravity.v.s);
+	int rc = sqlite3_open_v2(config.files.gravity.v.s, &gravity_db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open() - SQL error: %s", sqlite3_errstr(rc));
@@ -720,7 +720,7 @@ static bool get_client_groupids(clientsData* client)
 	gravityDB_finalizeTable();
 
 	// Debug logging
-	if(config.debug & DEBUG_CLIENTS)
+	if(config.debug.clients.v.b)
 	{
 		if(interface != NULL)
 		{
@@ -1591,7 +1591,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	sqlite3_finalize(stmt);
 
 	// Debug output
-	if(config.debug & DEBUG_API)
+	if(config.debug.api.v.b)
 	{
 		log_debug(DEBUG_API, "SQL: %s", querystr);
 		if(item_idx > 0)
@@ -1699,7 +1699,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 	}
 
 	// Debug output
-	if(config.debug & DEBUG_API)
+	if(config.debug.api.v.b)
 	{
 		log_debug(DEBUG_API, "SQL: %s", querystr);
 		if(arg_idx > 0)
@@ -1761,7 +1761,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 		}
 
 		// Debug output
-		if(config.debug & DEBUG_API)
+		if(config.debug.api.v.b)
 		{
 			log_debug(DEBUG_API, "SQL: %s", querystr2);
 			if(arg_idx > 0)
@@ -1896,7 +1896,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype, const char *item
 	}
 
 	// Debug output
-	if(config.debug & DEBUG_API)
+	if(config.debug.api.v.b)
 	{
 		log_debug(DEBUG_API, "SQL: %s", querystr);
 		log_debug(DEBUG_API, "     :item = \"%s\"", item);
@@ -2099,7 +2099,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	}
 
 	// Debug output
-	if(config.debug & DEBUG_API)
+	if(config.debug.api.v.b)
 	{
 		log_debug(DEBUG_API, "SQL: %s", get_querystr);
 		log_debug(DEBUG_API, "     :item = \"%s\"", row->item);
@@ -2148,7 +2148,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	}
 
 	// Debug output
-	if(config.debug & DEBUG_API)
+	if(config.debug.api.v.b)
 	{
 		log_debug(DEBUG_API, "SQL: %s", del_querystr);
 		log_debug(DEBUG_API, "     :id = \"%d\"", id);
@@ -2213,7 +2213,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		}
 
 		// Debug output
-		if(config.debug & DEBUG_API)
+		if(config.debug.api.v.b)
 		{
 			log_debug(DEBUG_API, "INSERT: %i -> (%i,%i)", rc, id, group->valueint);
 			log_debug(DEBUG_API, "SQL: %s", add_querystr);

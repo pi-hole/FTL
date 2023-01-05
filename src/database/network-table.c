@@ -1211,7 +1211,7 @@ void parse_neighbor_cache(sqlite3* db)
 	}
 
 	// Start ARP timer
-	if(config.debug & DEBUG_ARP)
+	if(config.debug.arp.v.b)
 		timer_start(ARP_TIMER);
 
 	// Prepare buffers
@@ -1238,9 +1238,9 @@ void parse_neighbor_cache(sqlite3* db)
 	}
 
 	// Remove all but the most recent IP addresses not seen for more than a certain time
-	if(config.database.network.expire > 0)
+	if(config.database.network.expire.v.ui > 0)
 	{
-		const time_t limit = time(NULL)-24*3600*config.database.network.expire;
+		const time_t limit = time(NULL)-24*3600*config.database.network.expire.v.ui;
 		rc = dbquery(db, "DELETE FROM network_addresses "
 		                        "WHERE lastSeen < %lu;", (unsigned long)limit);
 		if(rc != SQLITE_OK)
@@ -1634,10 +1634,10 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 			return strdup("virtual interface");
 
 	struct stat st;
-	if(stat(config.files.macvendor, &st) != 0)
+	if(stat(config.files.macvendor.v.s, &st) != 0)
 	{
 		// File does not exist
-		log_debug(DEBUG_ARP, "getMACVenor(\"%s\"): %s does not exist", hwaddr, config.files.macvendor);
+		log_debug(DEBUG_ARP, "getMACVenor(\"%s\"): %s does not exist", hwaddr, config.files.macvendor.v.s);
 		return strdup("");
 	}
 	else if(strlen(hwaddr) != 17 || strstr(hwaddr, "ip-") != NULL)
@@ -1648,7 +1648,7 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 	}
 
 	sqlite3 *macvendor_db = NULL;
-	int rc = sqlite3_open_v2(config.files.macvendor, &macvendor_db, SQLITE_OPEN_READONLY, NULL);
+	int rc = sqlite3_open_v2(config.files.macvendor.v.s, &macvendor_db, SQLITE_OPEN_READONLY, NULL);
 	if(rc != SQLITE_OK)
 	{
 		log_err("getMACVendor(\"%s\") - SQL error: %s", hwaddr, sqlite3_errstr(rc));
@@ -1715,10 +1715,10 @@ void updateMACVendorRecords(sqlite3 *db)
 		return;
 
 	struct stat st;
-	if(stat(config.files.macvendor, &st) != 0)
+	if(stat(config.files.macvendor.v.s, &st) != 0)
 	{
 		// File does not exist
-		log_debug(DEBUG_ARP, "updateMACVendorRecords(): \"%s\" does not exist", config.files.macvendor);
+		log_debug(DEBUG_ARP, "updateMACVendorRecords(): \"%s\" does not exist", config.files.macvendor.v.s);
 		return;
 	}
 
@@ -2068,15 +2068,15 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 		// Database record found (result might be empty)
 		name = strdup((char*)sqlite3_column_text(stmt, 0));
 
-		if(config.debug & (DEBUG_DATABASE | DEBUG_RESOLVER))
-			log_debug(DEBUG_ANY, "Found database host name (same device) %s -> %s",
+		if(config.debug.resolver.v.b)
+			log_debug(DEBUG_RESOLVER, "Found database host name (same device) %s -> %s",
 			          ipaddr, name);
 	}
 	else if(rc == SQLITE_DONE)
 	{
 		// Not found
-		if(config.debug & (DEBUG_DATABASE | DEBUG_RESOLVER))
-			log_debug(DEBUG_ANY, " ---> not found");
+		if(config.debug.resolver.v.b)
+			log_debug(DEBUG_RESOLVER, " ---> not found");
 	}
 	else
 	{
@@ -2132,9 +2132,9 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 		return NULL;
 	}
 
-	if(config.debug & (DEBUG_DATABASE | DEBUG_RESOLVER))
+	if(config.debug.resolver.v.b)
 	{
-		log_debug(DEBUG_ANY, "getDatabaseHostname(): \"%s\" with ? = \"%s\"",
+		log_debug(DEBUG_RESOLVER, "getDatabaseHostname(): \"%s\" with ? = \"%s\"",
 		          querystr, ipaddr);
 	}
 

@@ -217,7 +217,7 @@ static void querystr_finish(char *querystr)
 int api_queries(struct ftl_conn *api)
 {
 	// Exit before processing any data if requested via config setting
-	if(config.misc.privacylevel >= PRIVACY_MAXIMUM)
+	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_MAXIMUM)
 	{
 		// Minimum structure is
 		// {"queries":[], "cursor": null}

@@ -423,7 +423,7 @@ int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked)
 	const int db_allowed = counters->database.domains.allowed;
 	const int db_denied = counters->database.domains.denied;
 	const int clients_total = counters->clients;
-	const int privacylevel = config.misc.privacylevel;
+	const int privacylevel = config.misc.privacylevel.v.privacy_level;
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int activeclients = 0;

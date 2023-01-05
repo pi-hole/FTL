@@ -59,12 +59,15 @@ int main (int argc, char *argv[])
 	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
 
-	// Process pihole-FTL.toml configuration file
-	readFTLconf();
-
 	// Catch signals not handled by dnsmasq
 	// We configure real-time signals later (after dnsmasq has forked)
 	handle_signals();
+
+	// Process pihole-FTL.toml configuration file
+	readFTLconf();
+
+	// Set process priority
+	set_nice();
 
 	// Initialize shared memory
 	if(!init_shmem())
@@ -107,7 +110,7 @@ int main (int argc, char *argv[])
 	flush_message_table();
 
 	// Try to import queries from long-term database if available
-	if(config.database.DBimport)
+	if(config.database.DBimport.v.b)
 	{
 		import_queries_from_disk();
 		DB_read_queries();
@@ -117,20 +120,14 @@ int main (int argc, char *argv[])
 	check_setupVarsconf();
 
 	// Check for availability of capabilities in debug mode
-	if(config.debug & DEBUG_CAPS)
+	if(config.debug.caps.v.b)
 		check_capabilities();
 
 	// Initialize pseudo-random number generator
 	srand(time(NULL));
 
-	startup = false;
-	if(config.debug != 0)
-	{
-		for(int i = 0; i < argc_dnsmasq; i++)
-			log_debug(DEBUG_ANY, "argv[%i] = \"%s\"", i, argv_dnsmasq[i]);
-	}
-
 	// Start the resolver
+	startup = false;
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
 	log_info("Shutting down...");
@@ -139,7 +136,7 @@ int main (int argc, char *argv[])
 	sleepms(250);
 
 	// Save new queries to database (if database is used)
-	if(config.database.DBexport)
+	if(config.database.DBexport.v.b)
 	{
 		export_queries_to_disk(true);
 		log_info("Finished final database update");

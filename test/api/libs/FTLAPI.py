@@ -12,12 +12,14 @@
 import urllib.request
 import json
 
+# Class to query the FTL API
 class FTLAPI():
 	def __init__(self, api_url: str):
 		self.api_url = api_url
 		self.endpoints = []
 		self.errors = []
 
+	# Query the FTL API and return the response
 	def getFTLresponse(self, uri: str, params: list[str] = []):
 		self.errors = []
 		try:
@@ -32,6 +34,7 @@ class FTLAPI():
 	# Query the endpoints from FTL for comparison with the OpenAPI specs
 	def get_endpoints(self):
 		try:
+			# Get all endpoints from FTL and sort them for comparison
 			for endpoint in self.getFTLresponse("/api/ftl/endpoints")["endpoints"]:
 				self.endpoints.append(endpoint["uri"] + endpoint["parameters"])
 			self.endpoints = sorted(self.endpoints)

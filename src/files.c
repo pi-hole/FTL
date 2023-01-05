@@ -67,10 +67,10 @@ bool file_exists(const char *filename)
 
 bool get_database_stat(struct stat *st)
 {
-	if(stat(config.files.database, st) == 0)
+	if(stat(config.files.database.v.s, st) == 0)
 		return true;
 
-	log_err("Cannot stat %s: %s", config.files.database, strerror(errno));
+	log_err("Cannot stat %s: %s", config.files.database.v.s, strerror(errno));
 	return false;
 }
 

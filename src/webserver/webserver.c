@@ -59,7 +59,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	}
 
 	// API debug logging
-	if(config.debug & DEBUG_API)
+	if(config.debug.api.v.b)
 	{
 		log_debug(DEBUG_API, "Host header: \"%s\", extracted host: \"%.*s\"", host, (int)host_len, host);
 
@@ -71,9 +71,9 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	}
 
 	// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
-	if(host != NULL && strncmp(host, config.http.domain, host_len) == 0)
+	if(host != NULL && strncmp(host, config.http.domain.v.s, host_len) == 0)
 	{
-		mg_send_http_redirect(conn, config.http.paths.webhome, 308);
+		mg_send_http_redirect(conn, config.http.paths.webhome.v.s, 308);
 		return 1;
 	}
 
@@ -90,7 +90,7 @@ static int log_http_message(const struct mg_connection *conn, const char *messag
 static int log_http_access(const struct mg_connection *conn, const char *message)
 {
 	// Only log when in API debugging mode
-	if(config.debug & DEBUG_API)
+	if(config.debug.api.v.b)
 		logg_web(HTTP_INFO, "ACCESS: %s", message);
 
 	return 1;
@@ -98,7 +98,7 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 
 void http_init(void)
 {
-	logg_web(HTTP_INFO, "Initializing HTTP server on port %s", config.http.port);
+	logg_web(HTTP_INFO, "Initializing HTTP server on port %s", config.http.port.v.s);
 
 	/* Initialize the library */
 	unsigned int features = MG_FEATURES_FILES |
@@ -134,12 +134,12 @@ void http_init(void)
 	//   send no referrer information.
 	// The latter four headers are set as expected by https://securityheaders.io
 	const char *options[] = {
-		"document_root", config.http.paths.webroot,
-		"listening_ports", config.http.port,
+		"document_root", config.http.paths.webroot.v.s,
+		"listening_ports", config.http.port.v.s,
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
 		"num_threads", "16",
-		"access_control_list", config.http.acl,
+		"access_control_list", config.http.acl.v.s,
 		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
 		                     "X-Frame-Options: SAMEORIGIN\r\n"
 		                     "X-Xss-Protection: 1; mode=block\r\n"
@@ -161,7 +161,7 @@ void http_init(void)
 	{
 		log_err("Start of webserver failed!. Web interface will not be available!");
 		log_err("       Check webroot %s and listening ports %s",
-		        config.http.paths.webroot, config.http.port);
+		        config.http.paths.webroot.v.s, config.http.port.v.s);
 		return;
 	}
 

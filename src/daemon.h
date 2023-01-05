@@ -20,6 +20,7 @@ const char *hostname(void);
 void delay_startup(void);
 bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
 void cleanup(const int ret);
+void set_nice(void);
 
 #include <sys/syscall.h>
 #include <unistd.h>

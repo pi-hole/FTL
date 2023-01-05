@@ -28,8 +28,7 @@ static pthread_mutex_t lock;
 // Private prototypes
 static char *parseFTLconf(FILE *fp, const char *key);
 static void releaseConfigMemory(void);
-static void getPath(FILE* fp, const char *option, char **ptr);
-static void setnice(const char *buffer, int fallback);
+static char *getPath(FILE* fp, const char *option, char *ptr);
 static bool parseBool(const char *option, bool *ptr);
 static void readDebugingSettingsLegacy(FILE *fp);
 static void getBlockingModeLegacy(FILE *fp);
@@ -67,21 +66,21 @@ bool getLogFilePathLegacy(FILE *fp)
 	if(buffer == NULL)
 	{
 		// Use standard path if no custom path was obtained from the config file
-		config.files.log = strdup("/var/log/pihole/FTL.log");
+		config.files.log.v.s = strdup("/var/log/pihole/FTL.log");
 
 		// Test if memory allocation was successful
-		if(config.files.log == NULL)
+		if(config.files.log.v.s == NULL)
 		{
-			printf("FATAL: Allocating memory for config.files.log failed (%s, %i). Exiting.",
+			printf("FATAL: Allocating memory for config.files.log.v.s failed (%s, %i). Exiting.",
 			       strerror(errno), errno);
 			exit(EXIT_FAILURE);
 		}
 	}
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	else if(sscanf(buffer, "%127ms", &config.files.log) == 0)
+	else if(sscanf(buffer, "%127ms", &config.files.log.v.s) == 0)
 	{
 		// Empty file string
-		config.files.log = NULL;
+		config.files.log.v.s = NULL;
 		log_info("Using syslog facility");
 	}
 
@@ -103,7 +102,7 @@ const char *readFTLlegacy(void)
 	// AAAA_QUERY_ANALYSIS
 	// defaults to: Yes
 	buffer = parseFTLconf(fp, "AAAA_QUERY_ANALYSIS");
-	parseBool(buffer, &config.dns.analyzeAAAA);
+	parseBool(buffer, &config.dns.analyzeAAAA.v.b);
 
 	// MAXDBDAYS
 	// defaults to: 365 days
@@ -119,18 +118,18 @@ const char *readFTLlegacy(void)
 
 		// Only use valid values
 		if(value == -1 || value >= 0)
-			config.database.maxDBdays = value;
+			config.database.maxDBdays.v.i = value;
 	}
 
 	// RESOLVE_IPV6
 	// defaults to: Yes
 	buffer = parseFTLconf(fp, "RESOLVE_IPV6");
-	parseBool(buffer, &config.resolver.resolveIPv6);
+	parseBool(buffer, &config.resolver.resolveIPv6.v.b);
 
 	// RESOLVE_IPV4
 	// defaults to: Yes
 	buffer = parseFTLconf(fp, "RESOLVE_IPV4");
-	parseBool(buffer, &config.resolver.resolveIPv4);
+	parseBool(buffer, &config.resolver.resolveIPv4.v.b);
 
 	// DBINTERVAL
 	// How often do we store queries in FTL's database [minutes]?
@@ -144,25 +143,25 @@ const char *readFTLlegacy(void)
 		// - larger than 0.1min (6sec), and
 		// - smaller than 1440.0min (once a day)
 		if(fvalue >= 0.1f && fvalue <= 1440.0f)
-			config.database.DBinterval = (int)(fvalue * 60);
+			config.database.DBinterval.v.ui = (int)(fvalue * 60);
 
 	// DBFILE
 	// defaults to: "/etc/pihole/pihole-FTL.db"
 	buffer = parseFTLconf(fp, "DBFILE");
 
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	if(!(buffer != NULL && sscanf(buffer, "%127ms", &config.files.database)))
+	if(!(buffer != NULL && sscanf(buffer, "%127ms", &config.files.database.v.s)))
 	{
 		// Use standard path if no custom path was obtained from the config file
-		config.files.database = strdup(defaults.files.database);
+		config.files.database.v.s = config.files.database.d.s;
 	}
 
-	if(config.files.database == NULL || strlen(config.files.database) == 0)
+	if(config.files.database.v.s == NULL || strlen(config.files.database.v.s) == 0)
 	{
 		// Use standard path if path was set to zero but override
 		// MAXDBDAYS=0 to ensure no queries are stored in the database
-		config.files.database = strdup(defaults.files.database);
-		config.database.maxDBdays = 0;
+		config.files.database.v.s = config.files.database.d.s;
+		config.database.maxDBdays.v.i = 0;
 	}
 
 	// MAXLOGAGE
@@ -174,7 +173,7 @@ const char *readFTLlegacy(void)
 	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
 	{
 		if(fvalue >= 0.0f && fvalue <= 1.0f*MAXLOGAGE)
-			config.database.maxHistory = (int)(fvalue * 3600);
+			config.database.maxHistory.v.ui = (int)(fvalue * 3600);
 	}
 
 	// PRIVACYLEVEL
@@ -192,10 +191,10 @@ const char *readFTLlegacy(void)
 	// ignoreLocalhost
 	// defaults to: false
 	buffer = parseFTLconf(fp, "IGNORE_LOCALHOST");
-	parseBool(buffer, &config.dns.ignoreLocalhost);
+	parseBool(buffer, &config.dns.ignoreLocalhost.v.b);
 
 	if(buffer != NULL && strcasecmp(buffer, "yes") == 0)
-		config.dns.ignoreLocalhost = true;
+		config.dns.ignoreLocalhost.v.b = true;
 
 	// BLOCKINGMODE
 	// defaults to: MODE_IP
@@ -204,54 +203,53 @@ const char *readFTLlegacy(void)
 	// ANALYZE_ONLY_A_AND_AAAA
 	// defaults to: false
 	buffer = parseFTLconf(fp, "ANALYZE_ONLY_A_AND_AAAA");
-	parseBool(buffer, &config.dns.analyzeOnlyAandAAAA);
+	parseBool(buffer, &config.dns.analyzeOnlyAandAAAA.v.b);
 
 	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.dns.analyzeOnlyAandAAAA = true;
+		config.dns.analyzeOnlyAandAAAA.v.b = true;
 
 	// DBIMPORT
 	// defaults to: Yes
 	buffer = parseFTLconf(fp, "DBIMPORT");
-	parseBool(buffer, &config.database.DBimport);
+	parseBool(buffer, &config.database.DBimport.v.b);
 
 	// PIDFILE
-	getPath(fp, "PIDFILE", &config.files.pid);
+	config.files.pid.v.s = getPath(fp, "PIDFILE", config.files.pid.v.s);
 
 	// SETUPVARSFILE
-	getPath(fp, "SETUPVARSFILE", &config.files.setupVars);
+	config.files.setupVars.v.s = getPath(fp, "SETUPVARSFILE", config.files.setupVars.v.s);
 
 	// MACVENDORDB
-	getPath(fp, "MACVENDORDB", &config.files.macvendor);
+	config.files.macvendor.v.s = getPath(fp, "MACVENDORDB", config.files.macvendor.v.s);
 
 	// GRAVITYDB
-	getPath(fp, "GRAVITYDB", &config.files.gravity);
+	config.files.gravity.v.s = getPath(fp, "GRAVITYDB", config.files.gravity.v.s);
 
 	// PARSE_ARP_CACHE
 	// defaults to: true
 	buffer = parseFTLconf(fp, "PARSE_ARP_CACHE");
-	parseBool(buffer, &config.database.network.parseARPcache);
+	parseBool(buffer, &config.database.network.parseARPcache.v.b);
 
 	// CNAME_DEEP_INSPECT
 	// defaults to: true
 	buffer = parseFTLconf(fp, "CNAME_DEEP_INSPECT");
-	parseBool(buffer, &config.dns.CNAMEdeepInspect);
+	parseBool(buffer, &config.dns.CNAMEdeepInspect.v.b);
 
 	// DELAY_STARTUP
 	// defaults to: zero (seconds)
 	buffer = parseFTLconf(fp, "DELAY_STARTUP");
-	config.misc.delay_startup = defaults.misc.delay_startup;
 
 	unsigned int unum;
 	if(buffer != NULL && sscanf(buffer, "%u", &unum) && unum > 0 && unum <= 300)
-		config.misc.delay_startup = unum;
+		config.misc.delay_startup.v.ui = unum;
 
 	// BLOCK_ESNI
 	// defaults to: true
 	buffer = parseFTLconf(fp, "BLOCK_ESNI");
-	parseBool(buffer, &config.dns.blockESNI);
+	parseBool(buffer, &config.dns.blockESNI.v.b);
 
 	// WEBROOT
-	getPath(fp, "WEBROOT", &config.http.paths.webroot);
+	config.http.paths.webroot.v.s = getPath(fp, "WEBROOT", config.http.paths.webroot.v.s);
 
 	// WEBPORT
 	// On which port should FTL's API be listening?
@@ -260,12 +258,12 @@ const char *readFTLlegacy(void)
 
 	value = 0;
 	if(buffer != NULL && strlen(buffer) > 0)
-		config.http.port = strdup(buffer);
+		config.http.port.v.s = strdup(buffer);
 
 	// WEBHOME
 	// From which sub-directory is the web interface served from?
 	// Defaults to: /admin/ (both slashes are needed!)
-	getPath(fp, "WEBHOME", &config.http.paths.webhome);
+	config.http.paths.webhome.v.s = getPath(fp, "WEBHOME", config.http.paths.webhome.v.s);
 
 	// WEBACL
 	// Default: allow all access
@@ -289,12 +287,12 @@ const char *readFTLlegacy(void)
 	//
 	buffer = parseFTLconf(fp, "WEBACL");
 	if(buffer != NULL)
-		config.http.acl = strdup(buffer);
+		config.http.acl.v.s = strdup(buffer);
 
 	// API_AUTH_FOR_LOCALHOST
 	// defaults to: true
 	buffer = parseFTLconf(fp, "API_AUTH_FOR_LOCALHOST");
-	parseBool(buffer, &config.http.localAPIauth);
+	parseBool(buffer, &config.http.localAPIauth.v.b);
 
 	// API_SESSION_TIMEOUT
 	// How long should a session be considered valid after login?
@@ -303,18 +301,18 @@ const char *readFTLlegacy(void)
 
 	value = 0;
 	if(buffer != NULL && sscanf(buffer, "%i", &value) && value > 0)
-		config.http.sessionTimeout = value;
+		config.http.sessionTimeout.v.ui = value;
 
 	// API_PRETTY_JSON
 	// defaults to: false
 	buffer = parseFTLconf(fp, "API_PRETTY_JSON");
-	parseBool(buffer, &config.http.prettyJSON);
+	parseBool(buffer, &config.http.prettyJSON.v.b);
 
 	// API_ERROR_LOG
-	getPath(fp, "API_ERROR_LOG", &config.files.ph7_error);
+	config.files.ph7_error.v.s = getPath(fp, "API_ERROR_LOG", config.files.ph7_error.v.s);
 
 	// API_INFO_LOG
-	getPath(fp, "API_INFO_LOG", &config.files.http_info);
+	config.files.http_info.v.s = getPath(fp, "API_INFO_LOG", config.files.http_info.v.s);
 
 	// NICE
 	// Shall we change the nice of the current process?
@@ -328,7 +326,6 @@ const char *readFTLlegacy(void)
 	// systems, the range is -20..20. Very early Linux kernels (Before Linux
 	// 2.0) had the range -infinity..15.
 	buffer = parseFTLconf(fp, "NICE");
-	setnice(buffer, defaults.misc.nice);
 
 	// MAXNETAGE
 	// IP addresses (and associated host names) older than the specified number
@@ -340,7 +337,7 @@ const char *readFTLlegacy(void)
 	if(buffer != NULL &&
 	    sscanf(buffer, "%i", &ivalue) &&
 	    ivalue > 0 && ivalue <= 8760) // 8760 days = 24 years
-			config.database.network.expire = ivalue;
+			config.database.network.expire.v.ui = ivalue;
 
 	// NAMES_FROM_NETDB
 	// Should we use the fallback option to try to obtain client names from
@@ -351,30 +348,30 @@ const char *readFTLlegacy(void)
 	// device. This behavior can be disabled using NAMES_FROM_NETDB=false
 	// defaults to: true
 	buffer = parseFTLconf(fp, "NAMES_FROM_NETDB");
-	parseBool(buffer, &config.resolver.networkNames);
+	parseBool(buffer, &config.resolver.networkNames.v.b);
 
 	// EDNS0_ECS
 	// Should we overwrite the query source when client information is
 	// provided through EDNS0 client subnet (ECS) information?
 	// defaults to: true
 	buffer = parseFTLconf(fp, "EDNS0_ECS");
-	parseBool(buffer, &config.dns.EDNS0ECS);
+	parseBool(buffer, &config.dns.EDNS0ECS.v.b);
 
 	// REFRESH_HOSTNAMES
 	// defaults to: IPV4
 	buffer = parseFTLconf(fp, "REFRESH_HOSTNAMES");
 
 	if(buffer != NULL && strcasecmp(buffer, "ALL") == 0)
-		config.resolver.refreshNames = REFRESH_ALL;
+		config.resolver.refreshNames.v.refresh_hostnames = REFRESH_ALL;
 	else if(buffer != NULL && strcasecmp(buffer, "NONE") == 0)
-		config.resolver.refreshNames = REFRESH_NONE;
+		config.resolver.refreshNames.v.refresh_hostnames = REFRESH_NONE;
 	else if(buffer != NULL && strcasecmp(buffer, "UNKNOWN") == 0)
-		config.resolver.refreshNames = REFRESH_UNKNOWN;
+		config.resolver.refreshNames.v.refresh_hostnames = REFRESH_UNKNOWN;
 	else
-		config.resolver.refreshNames = REFRESH_IPV4_ONLY;
+		config.resolver.refreshNames.v.refresh_hostnames = REFRESH_IPV4_ONLY;
 
 	// WEBDOMAIN
-	getPath(fp, "WEBDOMAIN", &config.http.domain);
+	config.http.domain.v.s = getPath(fp, "WEBDOMAIN", config.http.domain.v.s);
 
 	// RATE_LIMIT
 	// defaults to: 1000 queries / 60 seconds
@@ -383,47 +380,47 @@ const char *readFTLlegacy(void)
 	unsigned int count = 0, interval = 0;
 	if(buffer != NULL && sscanf(buffer, "%u/%u", &count, &interval) == 2)
 	{
-		config.dns.rateLimit.count = count;
-		config.dns.rateLimit.interval = interval;
+		config.dns.rateLimit.count.v.ui = count;
+		config.dns.rateLimit.interval.v.ui = interval;
 	}
 
 	// LOCAL_IPV4
 	// Use a specific IP address instead of automatically detecting the
 	// IPv4 interface address a query arrived on for A hostname queries
 	// defaults to: not set
-	config.dns.reply.host.overwrite_v4 = false;
-	config.dns.reply.host.v4.s_addr = 0;
+	config.dns.reply.host.overwrite_v4.v.b = false;
+	config.dns.reply.host.v4.v.in_addr.s_addr = 0;
 	buffer = parseFTLconf(fp, "LOCAL_IPV4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.dns.reply.host.v4))
-		config.dns.reply.host.overwrite_v4 = true;
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.dns.reply.host.v4.v.in_addr))
+		config.dns.reply.host.overwrite_v4.v.b = true;
 
 	// LOCAL_IPV6
 	// Use a specific IP address instead of automatically detecting the
 	// IPv6 interface address a query arrived on for AAAA hostname queries
 	// defaults to: not set
-	config.dns.reply.host.overwrite_v6 = false;
-	memset(&config.dns.reply.host.v6, 0, sizeof(config.dns.reply.host.v6));
+	config.dns.reply.host.overwrite_v6.v.b = false;
+	memset(&config.dns.reply.host.v6.v.in6_addr, 0, sizeof(config.dns.reply.host.v6.v.in6_addr));
 	buffer = parseFTLconf(fp, "LOCAL_IPV6");
-	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.dns.reply.host.v6))
-		config.dns.reply.host.overwrite_v6 = true;
+	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.dns.reply.host.v6.v.in6_addr))
+		config.dns.reply.host.overwrite_v6.v.b = true;
 
 	// BLOCK_IPV4
 	// Use a specific IPv4 address for IP blocking mode replies
 	// defaults to: REPLY_ADDR4 setting
-	config.dns.reply.blocking.overwrite_v4 = false;
-	config.dns.reply.blocking.v4.s_addr = 0;
+	config.dns.reply.blocking.overwrite_v4.v.b = false;
+	config.dns.reply.blocking.v4.v.in_addr.s_addr = 0;
 	buffer = parseFTLconf(fp, "BLOCK_IPV4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.dns.reply.blocking.v4))
-		config.dns.reply.blocking.overwrite_v4 = true;
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.dns.reply.blocking.v4.v.in_addr))
+		config.dns.reply.blocking.overwrite_v4.v.b = true;
 
 	// BLOCK_IPV6
 	// Use a specific IPv6 address for IP blocking mode replies
 	// defaults to: REPLY_ADDR6 setting
-	config.dns.reply.blocking.overwrite_v6 = false;
-	memset(&config.dns.reply.blocking.v6, 0, sizeof(config.dns.reply.host.v6));
+	config.dns.reply.blocking.overwrite_v6.v.b = false;
+	memset(&config.dns.reply.blocking.v6.v.in6_addr, 0, sizeof(config.dns.reply.host.v6.v.in6_addr));
 	buffer = parseFTLconf(fp, "BLOCK_IPV6");
-	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.dns.reply.blocking.v6))
-		config.dns.reply.blocking.overwrite_v6 = true;
+	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.dns.reply.blocking.v6.v.in6_addr))
+		config.dns.reply.blocking.overwrite_v6.v.b = true;
 
 	// REPLY_ADDR4 (deprecated setting)
 	// Use a specific IP address instead of automatically detecting the
@@ -433,16 +430,16 @@ const char *readFTLlegacy(void)
 	buffer = parseFTLconf(fp, "REPLY_ADDR4");
 	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr4))
 	{
-		if(config.dns.reply.host.overwrite_v4 || config.dns.reply.blocking.overwrite_v4)
+		if(config.dns.reply.host.overwrite_v4.v.b || config.dns.reply.blocking.overwrite_v4.v.b)
 		{
 			log_warn("Ignoring REPLY_ADDR4 as LOCAL_IPV4 or BLOCK_IPV4 has been specified.");
 		}
 		else
 		{
-			config.dns.reply.host.overwrite_v4 = true;
-			memcpy(&config.dns.reply.host.v4, &reply_addr4, sizeof(reply_addr4));
-			config.dns.reply.blocking.overwrite_v4 = true;
-			memcpy(&config.dns.reply.blocking.v4, &reply_addr4, sizeof(reply_addr4));
+			config.dns.reply.host.overwrite_v4.v.b = true;
+			memcpy(&config.dns.reply.host.v4.v.in_addr, &reply_addr4, sizeof(reply_addr4));
+			config.dns.reply.blocking.overwrite_v4.v.b = true;
+			memcpy(&config.dns.reply.blocking.v4.v.in_addr, &reply_addr4, sizeof(reply_addr4));
 		}
 	}
 
@@ -454,16 +451,16 @@ const char *readFTLlegacy(void)
 	buffer = parseFTLconf(fp, "REPLY_ADDR6");
 	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr6))
 	{
-		if(config.dns.reply.host.overwrite_v6 || config.dns.reply.blocking.overwrite_v6)
+		if(config.dns.reply.host.overwrite_v6.v.b || config.dns.reply.blocking.overwrite_v6.v.b)
 		{
 			log_warn("Ignoring REPLY_ADDR6 as LOCAL_IPV6 or BLOCK_IPV6 has been specified.");
 		}
 		else
 		{
-			config.dns.reply.host.overwrite_v6 = true;
-			memcpy(&config.dns.reply.host.v6, &reply_addr6, sizeof(reply_addr6));
-			config.dns.reply.blocking.overwrite_v6 = true;
-			memcpy(&config.dns.reply.blocking.v6, &reply_addr6, sizeof(reply_addr6));
+			config.dns.reply.host.overwrite_v6.v.b = true;
+			memcpy(&config.dns.reply.host.v6.v.in6_addr, &reply_addr6, sizeof(reply_addr6));
+			config.dns.reply.blocking.overwrite_v6.v.b = true;
+			memcpy(&config.dns.reply.blocking.v6.v.in6_addr, &reply_addr6, sizeof(reply_addr6));
 		}
 	}
 
@@ -471,13 +468,13 @@ const char *readFTLlegacy(void)
 	// Should FTL analyze and include automatically generated DNSSEC queries in the Query Log?
 	// defaults to: true
 	buffer = parseFTLconf(fp, "SHOW_DNSSEC");
-	parseBool(buffer, &config.dns.showDNSSEC);
+	parseBool(buffer, &config.dns.showDNSSEC.v.b);
 
 	// MOZILLA_CANARY
 	// Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?
 	// defaults to: true
 	buffer = parseFTLconf(fp, "MOZILLA_CANARY");
-	parseBool(buffer, &config.dns.specialDomains.mozillaCanary);
+	parseBool(buffer, &config.dns.specialDomains.mozillaCanary.v.b);
 
 	// PIHOLE_PTR
 	// Should FTL return "pi.hole" as name for PTR requests to local IP addresses?
@@ -488,18 +485,18 @@ const char *readFTLlegacy(void)
 	{
 		if(strcasecmp(buffer, "none") == 0 ||
 		   strcasecmp(buffer, "false") == 0)
-			config.dns.piholePTR = PTR_NONE;
+			config.dns.piholePTR.v.ptr_type = PTR_NONE;
 		else if(strcasecmp(buffer, "hostname") == 0)
-			config.dns.piholePTR = PTR_HOSTNAME;
+			config.dns.piholePTR.v.ptr_type = PTR_HOSTNAME;
 		else if(strcasecmp(buffer, "hostnamefqdn") == 0)
-			config.dns.piholePTR = PTR_HOSTNAMEFQDN;
+			config.dns.piholePTR.v.ptr_type = PTR_HOSTNAMEFQDN;
 	}
 
 	// ADDR2LINE
 	// Should FTL try to call addr2line when generating backtraces?
 	// defaults to: true
 	buffer = parseFTLconf(fp, "ADDR2LINE");
-	parseBool(buffer, &config.misc.addr2line);
+	parseBool(buffer, &config.misc.addr2line.v.b);
 
 	// REPLY_WHEN_BUSY
 	// How should FTL handle queries when the gravity database is not available?
@@ -509,55 +506,55 @@ const char *readFTLlegacy(void)
 	if(buffer != NULL)
 	{
 		if(strcasecmp(buffer, "DROP") == 0)
-			config.dns.replyWhenBusy = BUSY_DROP;
+			config.dns.replyWhenBusy.v.busy_reply = BUSY_DROP;
 		else if(strcasecmp(buffer, "REFUSE") == 0)
-			config.dns.replyWhenBusy = BUSY_REFUSE;
+			config.dns.replyWhenBusy.v.busy_reply = BUSY_REFUSE;
 		else if(strcasecmp(buffer, "BLOCK") == 0)
-			config.dns.replyWhenBusy = BUSY_BLOCK;
+			config.dns.replyWhenBusy.v.busy_reply = BUSY_BLOCK;
 	}
 
 	// BLOCK_TTL
 	// defaults to: 2 seconds
-	config.dns.blockTTL = 2;
+	config.dns.blockTTL.v.ui = 2;
 	buffer = parseFTLconf(fp, "BLOCK_TTL");
 
 	unsigned int uval = 0;
 	if(buffer != NULL && sscanf(buffer, "%u", &uval))
-		config.dns.blockTTL = uval;
+		config.dns.blockTTL.v.ui = uval;
 
 	// BLOCK_ICLOUD_PR
 	// Should FTL handle the iCloud privacy relay domains specifically and
 	// always return NXDOMAIN??
 	// defaults to: true
 	buffer = parseFTLconf(fp, "BLOCK_ICLOUD_PR");
-	parseBool(buffer, &config.dns.specialDomains.iCloudPrivateRelay);
+	parseBool(buffer, &config.dns.specialDomains.iCloudPrivateRelay.v.b);
 
 	// CHECK_LOAD
 	// Should FTL check the 15 min average of CPU load and complain if the
 	// load is larger than the number of available CPU cores?
 	// defaults to: true
 	buffer = parseFTLconf(fp, "CHECK_LOAD");
-	parseBool(buffer, &config.misc.check.load);
+	parseBool(buffer, &config.misc.check.load.v.b);
 
 	// CHECK_SHMEM
 	// Limit above which FTL should complain about a shared-memory shortage
 	// defaults to: 90%
-	config.misc.check.shmem = 90;
+	config.misc.check.shmem.v.ui = 90;
 	buffer = parseFTLconf(fp, "CHECK_SHMEM");
 
 	if(buffer != NULL && sscanf(buffer, "%i", &ivalue) &&
 	   ivalue >= 0 && ivalue <= 100)
-		config.misc.check.shmem = ivalue;
+		config.misc.check.shmem.v.ui = ivalue;
 
 	// CHECK_DISK
 	// Limit above which FTL should complain about disk shortage for checked files
 	// defaults to: 90%
-	config.misc.check.disk = 90;
+	config.misc.check.disk.v.b = 90;
 	buffer = parseFTLconf(fp, "CHECK_DISK");
 
 	if(buffer != NULL && sscanf(buffer, "%i", &ivalue) &&
 	   ivalue >= 0 && ivalue <= 100)
-			config.misc.check.disk = ivalue;
+			config.misc.check.disk.v.b = ivalue;
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
@@ -574,34 +571,35 @@ const char *readFTLlegacy(void)
 	return path;
 }
 
-static void getPath(FILE* fp, const char *option, char **ptr)
+static char* getPath(FILE* fp, const char *option, char *ptr)
 {
 	// This subroutine is used to read paths from pihole-FTL.conf
 	// fp:         File ptr to opened and readable config file
 	// option:     Option string ("key") to try to read
-	// defaultloc: Value used if key is not found in file
 	// ptr:        Location where read (or default) parameter is stored
 	char *buffer = parseFTLconf(fp, option);
 
 	errno = 0;
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	if(buffer == NULL || sscanf(buffer, "%127ms", ptr) != 1)
+	if(buffer == NULL || sscanf(buffer, "%127ms", &ptr) != 1)
 	{
 		// Use standard path if no custom path was obtained from the config file
-		return;
+		return ptr;
 	}
 
 	// Test if memory allocation was successful
-	if(*ptr == NULL)
+	if(ptr == NULL)
 	{
 		log_crit("Allocating memory for %s failed (%s, %i). Exiting.", option, strerror(errno), errno);
 		exit(EXIT_FAILURE);
 	}
-	else if(strlen(*ptr) == 0)
+	else if(strlen(ptr) == 0)
 	{
 		log_info("   %s: Empty path is not possible, using default",
 		         option);
 	}
+
+	return ptr;
 }
 
 static char *parseFTLconf(FILE *fp, const char * key)
@@ -718,9 +716,9 @@ static void getPrivacyLevelLegacy(FILE *fp)
 		// Check for change and validity of privacy level (set in FTL.h)
 		if(value >= PRIVACY_SHOW_ALL &&
 		   value <= PRIVACY_MAXIMUM &&
-		   value > config.misc.privacylevel)
+		   value > config.misc.privacylevel.v.privacy_level)
 		{
-			config.misc.privacylevel = value;
+			config.misc.privacylevel.v.privacy_level = value;
 		}
 	}
 
@@ -734,8 +732,8 @@ static void getPrivacyLevelLegacy(FILE *fp)
 
 static void getBlockingModeLegacy(FILE *fp)
 {
-	// Set default value
-	config.dns.blockingmode = defaults.dns.blockingmode;
+	// (Re-)set default value
+	config.dns.blockingmode.v.blocking_mode = config.dns.blockingmode.d.blocking_mode;
 
 	// See if we got a file handle, if not we have to open
 	// the config file ourselves
@@ -754,15 +752,15 @@ static void getBlockingModeLegacy(FILE *fp)
 	if(buffer != NULL)
 	{
 		if(strcasecmp(buffer, "NXDOMAIN") == 0)
-			config.dns.blockingmode = MODE_NX;
+			config.dns.blockingmode.v.blocking_mode = MODE_NX;
 		else if(strcasecmp(buffer, "NULL") == 0)
-			config.dns.blockingmode = MODE_NULL;
+			config.dns.blockingmode.v.blocking_mode = MODE_NULL;
 		else if(strcasecmp(buffer, "IP-NODATA-AAAA") == 0)
-			config.dns.blockingmode = MODE_IP_NODATA_AAAA;
+			config.dns.blockingmode.v.blocking_mode = MODE_IP_NODATA_AAAA;
 		else if(strcasecmp(buffer, "IP") == 0)
-			config.dns.blockingmode = MODE_IP;
+			config.dns.blockingmode.v.blocking_mode = MODE_IP;
 		else if(strcasecmp(buffer, "NODATA") == 0)
-			config.dns.blockingmode = MODE_NODATA;
+			config.dns.blockingmode.v.blocking_mode = MODE_NODATA;
 		else
 			log_warn("Unknown blocking mode, using NULL as fallback");
 	}
@@ -776,7 +774,7 @@ static void getBlockingModeLegacy(FILE *fp)
 }
 
 // Routine for setting the debug flags in the config struct
-static void setDebugOption(FILE* fp, const char* option, enum debug_flag bitmask)
+static void setDebugOption(FILE* fp, const char* option, enum debug_flag flag)
 {
 	const char *buffer = parseFTLconf(fp, option);
 
@@ -784,21 +782,22 @@ static void setDebugOption(FILE* fp, const char* option, enum debug_flag bitmask
 	if(buffer == NULL)
 		return;
 
+	struct conf_item *debug = get_debug_item(flag);
+
 	// Set bit if value equals "true", clear bit otherwise
 	bool bit = false;
 	if(parseBool(buffer, &bit))
-	{
-		if(bit)
-			config.debug |= bitmask;
-		else
-			config.debug &= ~bitmask;
-	}
+		debug->v.b = bit;
+
+	// Remember if we set *any* debugging flag
+	if(bit)
+		debug_any = true;
 }
 
 static void readDebugingSettingsLegacy(FILE *fp)
 {
 	// Set default (no debug instructions set)
-	config.debug = 0;
+	set_all_debug(false);
 
 	// See if we got a file handle, if not we have to open
 	// the config file ourselves
@@ -820,12 +819,12 @@ static void readDebugingSettingsLegacy(FILE *fp)
 	for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
 	{
 		// DEBUG_DATABASE
-		const char *name, *desc;
-		debugstr(flag, &name, &desc);
+		const char *name;
+		debugstr(flag, &name);
 		setDebugOption(fp, name, flag);
 	}
 
-	if(config.debug != 0)
+	if(debug_any)
 	{
 		// Enable debug logging in dnsmasq (only effective before starting the resolver)
 		argv_dnsmasq[2] = "--log-debug";
@@ -840,37 +839,6 @@ static void readDebugingSettingsLegacy(FILE *fp)
 		// Otherwise, it may still be needed outside of
 		// this function (initial config parsing)
 		releaseConfigMemory();
-	}
-}
-
-static void setnice(const char *buffer, const int fallback)
-{
-	int value, nice_set, nice_target = fallback;
-
-	// Try to read niceness value
-	// Attempts to set a nice value outside the range are clamped to the range.
-	if(buffer != NULL && sscanf(buffer, "%i", &value) == 1)
-		nice_target = value;
-
-	config.misc.nice = nice_target;
-
-	// Skip setting niceness if set to -999
-	if(nice_target == -999)
-		return;
-
-	// Adjust if != -999
-	errno = 0;
-	if((nice_set = nice(nice_target)) == -1 &&
-	   errno == EPERM)
-	{
-		// ERROR EPERM: The calling process attempted to increase its priority
-		// by supplying a negative value but has insufficient privileges.
-		// On Linux, the RLIMIT_NICE resource limit can be used to define a limit to
-		// which an unprivileged process's nice value can be raised. We are not
-		// affected by this limit when pihole-FTL is running with CAP_SYS_NICE
-		log_info("   NICE: Cannot change niceness to %d (permission denied)",
-		     nice_target);
-		return;
 	}
 }
 

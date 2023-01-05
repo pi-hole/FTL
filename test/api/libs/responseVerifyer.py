@@ -13,6 +13,7 @@ from types import NoneType
 from libs.openAPI import openApi
 import urllib.request, urllib.parse
 from libs.FTLAPI import FTLAPI
+from collections.abc import MutableMapping
 
 class ResponseVerifyer():
 
@@ -24,24 +25,44 @@ class ResponseVerifyer():
 		self.openapi = openapi
 		self.errors = []
 
-	def verify_endpoint(self, endpoint: str):
 
+	def flatten_dict(self, d: MutableMapping, parent_key: str = '', sep: str ='.') -> MutableMapping:
+		items = []
+		# Iterate over all items in the dictionary
+		for k, v in d.items():
+			# Create a new key by appending the current key to the parent key
+			new_key = parent_key + sep + k if parent_key else k
+			# If the value is a dictionary, recursively flatten it, otherwise
+			# simply add it to the list of items
+			if isinstance(v, MutableMapping):
+				items.extend(self.flatten_dict(v, new_key, sep=sep).items())
+			else:
+				items.append((new_key, v))
+		return dict(items)
+
+
+	def verify_endpoint(self, endpoint: str):
+		# If the endpoint starts with /api, remove this part (it is not
+		# part of the YAML specs)
 		if endpoint.startswith("/api"):
 			endpoint = endpoint[4:]
 
 		method = 'get'
 		rcode = '200'
+		# Check if the endpoint is defined in the API specs
 		if endpoint not in self.openapi.paths:
-			self.errors.append("Endpoint " + endpoint + " not found in OpenAPI specs")
+			self.errors.append("Endpoint " + endpoint + " not found in the API specs")
 			return self.errors
+		# Check if this endpoint + method are defined in the API specs
 		if method not in self.openapi.paths[endpoint]:
-			self.errors.append("Method " + method + " not found in OpenAPI specs (" + endpoint + ")")
+			self.errors.append("Method " + method + " not found in the API specs")
 			return self.errors
 
 		# Get YAML response schema and examples (if applicable)
 		jsonData = self.openapi.paths[endpoint][method]['responses'][str(rcode)]['content']['application/json']
 		YAMLresponseSchema = jsonData['schema']
 		YAMLresponseExamples = jsonData['examples'] if 'examples' in jsonData else None
+
 		# Prepare required parameters (if any)
 		FTLparameters = []
 		if 'parameters' in self.openapi.paths[endpoint][method]:
@@ -55,73 +76,127 @@ class ResponseVerifyer():
 					continue
 				FTLparameters.append(param['name'] + "=" + urllib.parse.quote_plus(str(param['example'])))
 
+		# Get FTL response
 		FTLresponse = self.ftl.getFTLresponse("/api" + endpoint, FTLparameters)
 		if FTLresponse is None:
 			return self.ftl.errors
 
+		self.YAMLresponse = {}
+		# Check if the response is an object. If so, we have to check it
+		# recursively
 		if 'type' in YAMLresponseSchema and YAMLresponseSchema['type'] == 'object':
+			# Loop over all properties of the object
 			for prop in YAMLresponseSchema['properties']:
 				self.verify_property(YAMLresponseSchema['properties'], YAMLresponseExamples, FTLresponse, [prop])
 
+		# Check if the response is a gather-all object. If so, we have
+		# to check all objects in the array individually
 		elif 'allOf' in YAMLresponseSchema and len(YAMLresponseSchema['allOf']) > 0:
 			for i in range(len(YAMLresponseSchema['allOf'])):
 				for prop in YAMLresponseSchema['allOf'][i]['properties']:
 					self.verify_property(YAMLresponseSchema['allOf'][i]['properties'], YAMLresponseExamples, FTLresponse, [prop])
+
+		# If neither of the above is true, thie definition is invalid
 		else:
 			self.errors.append("Top-level response should be either an object or a non-empty allOf/anyOf/oneOf")
 
+		# Finally, we check if there are extra properties in the FTL response
+		# that are not defined in the API specs
+
+		# Flatten the FTL response
+		FTLflat = self.flatten_dict(FTLresponse)
+		YAMLflat = self.YAMLresponse
+
+		# Check for properties in FTL that are not in the API specs
+		for property in FTLflat.keys():
+			if property not in YAMLflat.keys():
+				self.errors.append("Property '" + property + "' missing in the API specs")
+
+		# Return all errors
 		return self.errors
 
 
+	# Verify a single property's type
 	def verify_type(self, prop_type: any, yaml_type: str, yaml_nullable: bool):
 		# None is an acceptable reply when this is specified in the API specs
 		if prop_type == NoneType and yaml_nullable:
 			return True
+		# Check if the type is correct using the YAML_TYPES translation table
 		return prop_type in self.YAML_TYPES[yaml_type]
 
 
+	# Verify a single property
 	def verify_property(self, YAMLprops: dict, YAMLexamples: dict, FTLprops: dict, props: list):
 		all_okay = True
 
+		# Build flat path of this property
+		flat_path = ".".join(props)
+
+		# Check if the property is defined in the API specs
 		if props[-1] not in YAMLprops:
-			self.errors.append("Property " + props[-1] + " missing in API specs")
+			self.errors.append("Property '" + flat_path + "' missing in the API specs")
 			return False
 		YAMLprop = YAMLprops[props[-1]]
+
+		# Check if the property is defined in the FTL response
 		if props[-1] not in FTLprops:
-			self.errors.append("Property " + props[-1] + " missing in FTL's response")
+			self.errors.append("Property '" + flat_path + "' missing in FTL's response")
 			return False
 		FTLprop = FTLprops[props[-1]]
 
 		# If this is another object, we have to dive deeper
 		if YAMLprop['type'] == 'object':
+			# Loop over all properties of the object ...
 			for prop in YAMLprop['properties']:
+				# ... and check them recursively
 				if not self.verify_property(YAMLprop['properties'], YAMLexamples, FTLprop, props + [prop]):
 					all_okay = False
 		else:
 			# Check this property
-			full_path = " => ".join(props)
+
+			# Get type of this property using the YAML_TYPES translation table
 			yaml_type = YAMLprop['type']
+
+			# Check if this property is nullable (can be None even
+			# if not defined as string, integer, etc.)
 			yaml_nullable = 'nullable' in YAMLprop and YAMLprop['nullable'] == True
+
+			# Add this property to the YAML response
+			self.YAMLresponse[flat_path] = []
 
 			# Check type of YAML example (if defined)
 			if 'example' in YAMLprop:
 				example_type = type(YAMLprop['example'])
+				# Check if the type of the example matches the
+				# type we defined in the API specs
+				self.YAMLresponse[flat_path].append(YAMLprop['example'])
 				if not self.verify_type(example_type, yaml_type, yaml_nullable):
-					self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {full_path}")
+					self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path}")
 					return False
+
+			# Check type of externally defined YAML examples (next to schema)
 			elif YAMLexamples is not None:
 				for t in YAMLexamples:
+					if 'value' not in YAMLexamples[t]:
+						self.errors.append(f"Example {flat_path} does not have a 'value' property")
+						return False
 					example = YAMLexamples[t]['value']
+					# Dive into the example to get to the property we want
 					for p in props:
+						if p not in example:
+							self.errors.append(f"Example {flat_path} does not have an '{p}' item")
+							return False
 						example = example[p]
+					# Check if the type of the example matches the type we defined in the API specs
 					example_type = type(example)
+					self.YAMLresponse[flat_path].append(example)
 					if not self.verify_type(example_type, yaml_type, yaml_nullable):
-						self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {full_path}")
+						self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path}")
 						return False
 
 			# Compare type of FTL's reply against what we defined in the API specs
 			ftl_type = type(FTLprop)
 			if not self.verify_type(ftl_type, yaml_type, yaml_nullable):
-				self.errors.append(f"FTL's reply ({str(ftl_type)}) does not match defined type ({yaml_type}) in {full_path}")
+				self.errors.append(f"FTL's reply ({str(ftl_type)}) does not match defined type ({yaml_type}) in {flat_path}")
 				return False
 		return all_okay

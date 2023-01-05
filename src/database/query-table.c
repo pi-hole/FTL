@@ -172,7 +172,7 @@ static bool get_memdb_size(sqlite3 *db, size_t *memsize, int *queries)
 // Log the memory usage of in-memory databases
 static void log_in_memory_usage(void)
 {
-	if(!(config.debug & DEBUG_DATABASE))
+	if(!(config.debug.database.v.b))
 		return;
 
 	size_t memsize = 0;
@@ -205,7 +205,7 @@ bool attach_disk_database(const char **message)
 		return false;
 	}
 	// Bind path to prepared index
-	if((rc = sqlite3_bind_text(stmt, 1, config.files.database, -1, SQLITE_STATIC)) != SQLITE_OK)
+	if((rc = sqlite3_bind_text(stmt, 1, config.files.database.v.s, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		log_err("attach_disk_database(): Failed to bind path: %s",
 		        sqlite3_errstr(rc));
@@ -308,7 +308,7 @@ bool import_queries_from_disk(void)
 	// Get time stamp 24 hours (or what was configured) in the past
 	bool okay = false;
 	const double now = double_time();
-	const double mintime = now - config.database.maxHistory;
+	const double mintime = now - config.database.maxHistory.v.ui;
 	const char *querystr = "INSERT INTO query_storage SELECT * FROM disk.query_storage WHERE timestamp >= ?";
 
 	// Attach disk database
@@ -691,7 +691,7 @@ void DB_read_queries(void)
 	// Prepare request
 	// Get time stamp 24 hours in the past
 	const double now = double_time();
-	const double mintime = now - config.database.maxHistory;
+	const double mintime = now - config.database.maxHistory.v.ui;
 	const char *querystr = "SELECT id,"\
 	                              "timestamp,"\
 	                              "type,"\
@@ -753,7 +753,7 @@ void DB_read_queries(void)
 		}
 		// Don't import AAAA queries from database if the user set
 		// AAAA_QUERY_ANALYSIS=no in pihole-FTL.conf
-		if(type == TYPE_AAAA && !config.dns.analyzeAAAA)
+		if(type == TYPE_AAAA && !config.dns.analyzeAAAA.v.b)
 		{
 			continue;
 		}
@@ -782,7 +782,7 @@ void DB_read_queries(void)
 		}
 
 		// Check if user wants to skip queries coming from localhost
-		if(config.dns.ignoreLocalhost &&
+		if(config.dns.ignoreLocalhost.v.b &&
 		   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
 		{
 			continue;
@@ -1063,7 +1063,7 @@ bool queries_to_database(void)
 
 	// Skip, we never store nor count queries recorded while have been in
 	// maximum privacy mode in the database
-	if(config.misc.privacylevel >= PRIVACY_MAXIMUM)
+	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_MAXIMUM)
 	{
 		log_debug(DEBUG_DATABASE, "Not storing query in database due to privacy level settings");
 		return true;
@@ -1383,7 +1383,7 @@ bool queries_to_database(void)
 		return false;
 	}
 
-	if(config.debug & DEBUG_DATABASE && updated + added > 0)
+	if(config.debug.database.v.b && updated + added > 0)
 	{
 		log_debug(DEBUG_DATABASE, "In-memory database: Added %d new, updated %d known queries", added, updated);
 		log_in_memory_usage();

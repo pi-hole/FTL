@@ -124,10 +124,10 @@ int api_stats_top_domains(struct ftl_conn *api)
 		return send_json_unauthorized(api);
 
 	// Exit before processing any data if requested via config setting
-	if(config.misc.privacylevel >= PRIVACY_HIDE_DOMAINS)
+	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
 	{
 		log_debug(DEBUG_API, "Not returning top domains: Privacy level is set to %i",
-		          config.misc.privacylevel);
+		          config.misc.privacylevel.v.privacy_level);
 
 		// Minimum structure is
 		// {"top_domains":[]}
@@ -274,10 +274,10 @@ int api_stats_top_clients(struct ftl_conn *api)
 		return send_json_unauthorized(api);
 
 	// Exit before processing any data if requested via config setting
-	if(config.misc.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		log_debug(DEBUG_API, "Not returning top clients: Privacy level is set to %i",
-		          config.misc.privacylevel);
+		          config.misc.privacylevel.v.privacy_level);
 
 		// Minimum structure is
 		// {"top_clients":[]}
@@ -376,16 +376,9 @@ int api_stats_top_clients(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", top_clients);
 
-	if(blocked)
-	{
-		const int blocked_queries = get_blocked_count();
-		JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
-	}
-	else
-	{
-		JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
-	}
-
+	const int blocked_queries = get_blocked_count();
+	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
@@ -534,7 +527,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 		return send_json_unauthorized(api);
 
 	// Exit before processing any data if requested via config setting
-	if(config.misc.privacylevel >= PRIVACY_HIDE_DOMAINS)
+	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
 	{
 		// Minimum structure is
 		// {"blocked":[]}

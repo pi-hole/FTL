@@ -37,142 +37,172 @@
 // Interate through directories
 #include <dirent.h>
 
-int api_config(struct ftl_conn *api)
+// The following functions are used to create the JSON output
+// of the /api/config endpoint.
+
+// This function is used to build the object architecture. It is called
+// recursively to build the tree of objects.
+static cJSON *get_or_create_object(cJSON *parent, const char *path_element)
+{
+	// Check if this object already exists
+	cJSON *object = cJSON_GetObjectItem(parent, path_element);
+
+	// If not, create and append it to the parent
+	if(object == NULL)
+	{
+		object = JSON_NEW_OBJECT();
+		JSON_ADD_ITEM_TO_OBJECT(parent, path_element, object);
+	}
+
+	// Return the object
+	return object;
+}
+
+// This function is used to add a property to the JSON output using the
+// appropriate type of the config item to add.
+static cJSON *add_property(const enum conf_type conf_type, union conf_value *val)
+{
+	switch(conf_type)
+	{
+		case CONF_BOOL:
+			return cJSON_CreateBool(val->b);
+		case CONF_INT:
+			return cJSON_CreateNumber(val->i);
+		case CONF_UINT:
+		case CONF_ENUM_PRIVACY_LEVEL:
+			return cJSON_CreateNumber(val->ui);
+		case CONF_LONG:
+			return cJSON_CreateNumber(val->l);
+		case CONF_ULONG:
+			return cJSON_CreateNumber(val->ul);
+		case CONF_STRING:
+			return val->s ? cJSON_CreateStringReference(val->s) : cJSON_CreateNull();
+		case CONF_ENUM_PTR_TYPE:
+			return cJSON_CreateStringReference(get_ptr_type_str(val->ptr_type));
+		case CONF_ENUM_BUSY_TYPE:
+			return cJSON_CreateStringReference(get_busy_reply_str(val->busy_reply));
+		case CONF_ENUM_BLOCKING_MODE:
+			return cJSON_CreateStringReference(get_blocking_mode_str(val->blocking_mode));
+		case CONF_ENUM_REFRESH_HOSTNAMES:
+			return cJSON_CreateStringReference(get_refresh_hostnames_str(val->refresh_hostnames));
+		case CONF_STRUCT_IN_ADDR:
+		{
+			char addr4[INET_ADDRSTRLEN] = { 0 };
+			inet_ntop(AF_INET, &val->in_addr, addr4, INET_ADDRSTRLEN);
+			return cJSON_CreateString(addr4); // Performs a copy
+		}
+		case CONF_STRUCT_IN6_ADDR:
+		{
+			char addr6[INET6_ADDRSTRLEN] = { 0 };
+			inet_ntop(AF_INET6, &val->in6_addr, addr6, INET6_ADDRSTRLEN);
+			return cJSON_CreateString(addr6); // Performs a copy
+		}
+		default:
+			return NULL;
+	}
+}
+
+static int api_config_get(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 		return send_json_unauthorized(api);
 
+	// Parse query string parameters
+	bool detailed = false;
+	if(api->request->query_string != NULL)
+	{
+		// Check if we should return detailed config information
+		get_bool_var(api->request->query_string, "detailed", &detailed);
+	}
+
+	// Create root JSON object
 	cJSON *config_j = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(config_j, "debug",config.debug); /* TODO: Split into individual fields */
 
-	cJSON *dns = JSON_NEW_OBJECT();
-	JSON_ADD_BOOL_TO_OBJECT(dns, "CNAMEdeepInspect", config.dns.CNAMEdeepInspect);
-	JSON_ADD_BOOL_TO_OBJECT(dns, "blockESNI", config.dns.blockESNI);
-	JSON_ADD_BOOL_TO_OBJECT(dns, "EDNS0ECS", config.dns.EDNS0ECS);
-	JSON_ADD_BOOL_TO_OBJECT(dns, "ignoreLocalhost", config.dns.ignoreLocalhost);
-	JSON_ADD_BOOL_TO_OBJECT(dns, "showDNSSEC", config.dns.showDNSSEC);
-	JSON_ADD_BOOL_TO_OBJECT(dns, "analyzeAAAA", config.dns.analyzeAAAA);
-	JSON_ADD_BOOL_TO_OBJECT(dns, "analyzeOnlyAandAAAA", config.dns.analyzeOnlyAandAAAA);
-	const char *piholePTR = get_ptr_type_str(config.dns.piholePTR);
-	JSON_REF_STR_IN_OBJECT(dns, "piholePTR", piholePTR);
-	const char *replyWhenBusy = get_busy_reply_str(config.dns.replyWhenBusy);
-	JSON_REF_STR_IN_OBJECT(dns, "replyWhenBusy", replyWhenBusy);
-	JSON_ADD_NUMBER_TO_OBJECT(dns, "blockTTL", config.dns.blockTTL);
-	const char *blockingmode = get_blocking_mode_str(config.dns.blockingmode);
-	JSON_REF_STR_IN_OBJECT(dns, "blockingmode", blockingmode);
-	JSON_ADD_NUMBER_TO_OBJECT(dns, "port", config.dns.port);
-	cJSON *specialDomains = JSON_NEW_OBJECT();
-	JSON_ADD_BOOL_TO_OBJECT(specialDomains, "mozillaCanary", config.dns.specialDomains.mozillaCanary);
-	JSON_ADD_BOOL_TO_OBJECT(specialDomains, "iCloudPrivateRelay", config.dns.specialDomains.iCloudPrivateRelay);
-	JSON_ADD_ITEM_TO_OBJECT(dns, "specialDomains", specialDomains);
-	cJSON *reply = JSON_NEW_OBJECT();
-	cJSON *host = JSON_NEW_OBJECT();
+	// Iterate over all known config elements and create appropriate JSON
+	// objects + items for each of them
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
-		if(config.dns.reply.host.overwrite_v4)
+		// Get pointer to memory location of this conf_item
+		struct conf_item *conf_item = get_conf_item(i);
+
+		// Get path depth
+		unsigned int level = config_path_depth(conf_item);
+
+		cJSON *parent = config_j;
+		// Parse tree of properties and create JSON objects for each
+		// path element if they do not exist yet. We do not create the
+		// leaf object itself here (level - 1) as we want to add the
+		// actual value of the config item to it.
+		for(unsigned int j = 0; j < level - 1; j++)
+			parent = get_or_create_object(parent, conf_item->p[j]);
+
+		// Create the config item leaf object
+		if(detailed)
 		{
-			JSON_COPY_STR_TO_OBJECT(host, "IPv4", inet_ntoa(config.dns.reply.host.v4));
+			cJSON *leaf = JSON_NEW_OBJECT();
+			JSON_REF_STR_IN_OBJECT(leaf, "description", conf_item->h);
+			JSON_REF_STR_IN_OBJECT(leaf, "hints", conf_item->a);
+			// Create the config item leaf object
+			cJSON *val = add_property(conf_item->t, &conf_item->v);
+			if(val == NULL)
+			{
+				log_warn("Cannot format config item type %s of type %i",
+					conf_item->k, conf_item->t);
+				continue;
+			}
+			cJSON *dval = add_property(conf_item->t, &conf_item->d);
+			if(dval == NULL)
+			{
+				log_warn("Cannot format config item type %s of type %i",
+					conf_item->k, conf_item->t);
+				continue;
+			}
+			const bool changed = memcmp(&conf_item->v, &conf_item->d, sizeof(conf_item->v)) != 0;
+			JSON_ADD_ITEM_TO_OBJECT(leaf, "value", val);
+			JSON_ADD_ITEM_TO_OBJECT(leaf, "default", dval);
+			JSON_ADD_BOOL_TO_OBJECT(leaf, "changed", changed);
+			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level - 1], leaf);
 		}
 		else
 		{
-			JSON_REF_STR_IN_OBJECT(host, "IPv4", "");
-		}
-		char ip6[INET6_ADDRSTRLEN] = { 0 };
-		if(config.dns.reply.host.overwrite_v6)
-		{
-			JSON_COPY_STR_TO_OBJECT(host, "IPv6", inet_ntop(AF_INET6, &config.dns.reply.host.v6, ip6, INET6_ADDRSTRLEN));
-		}
-		else
-		{
-			JSON_REF_STR_IN_OBJECT(host, "IPv6", "");
+			// Create the config item leaf object
+			cJSON *leaf = add_property(conf_item->t, &conf_item->v);
+			if(leaf == NULL)
+			{
+				log_warn("Cannot format config item type %s of type %i",
+					conf_item->k, conf_item->t);
+				continue;
+			}
+			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level - 1], leaf);
 		}
 	}
-	JSON_ADD_ITEM_TO_OBJECT(reply, "host", host);
-	cJSON *blocking = JSON_NEW_OBJECT();
-	{
-		if(config.dns.reply.blocking.overwrite_v4)
-		{
-			JSON_COPY_STR_TO_OBJECT(blocking, "IPv4", inet_ntoa(config.dns.reply.blocking.v4));
-		}
-		else
-		{
-			JSON_REF_STR_IN_OBJECT(blocking, "IPv4", "");
-		}
-		char ip6[INET6_ADDRSTRLEN] = { 0 };
-		if(config.dns.reply.blocking.overwrite_v6)
-		{
-			JSON_COPY_STR_TO_OBJECT(blocking, "IPv6", inet_ntop(AF_INET6, &config.dns.reply.blocking.v6, ip6, INET6_ADDRSTRLEN));
-		}
-		else
-		{
-			JSON_REF_STR_IN_OBJECT(blocking, "IPv6", "");
-		}
-	}
-	JSON_ADD_ITEM_TO_OBJECT(reply, "blocking", blocking);
-	JSON_ADD_ITEM_TO_OBJECT(dns, "reply", reply);
-	cJSON *rateLimit = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(rateLimit, "count", config.dns.rateLimit.count);
-	JSON_ADD_NUMBER_TO_OBJECT(rateLimit, "interval", config.dns.rateLimit.interval);
-	JSON_ADD_ITEM_TO_OBJECT(dns, "rateLimit", rateLimit);
-	JSON_ADD_ITEM_TO_OBJECT(config_j, "dns", dns);
 
-	cJSON *resolver = JSON_NEW_OBJECT();
-	JSON_ADD_BOOL_TO_OBJECT(resolver, "resolveIPv4", config.resolver.resolveIPv4);
-	JSON_ADD_BOOL_TO_OBJECT(resolver, "resolveIPv6", config.resolver.resolveIPv6);
-	JSON_ADD_BOOL_TO_OBJECT(resolver, "networkNames", config.resolver.networkNames);
-	const char *refreshstr = get_refresh_hostnames_str(config.resolver.refreshNames);
-	JSON_REF_STR_IN_OBJECT(resolver, "refreshNames", refreshstr);
-	JSON_ADD_ITEM_TO_OBJECT(config_j, "resolver", resolver);
+	// Add special item DNS port
+	cJSON *dns = get_or_create_object(config_j, "dns");
+	JSON_ADD_NUMBER_TO_OBJECT(dns, "port", dns_port);
 
-	cJSON *database = JSON_NEW_OBJECT();
-	JSON_ADD_BOOL_TO_OBJECT(database, "DBimport", config.database.DBimport);
-	JSON_ADD_BOOL_TO_OBJECT(database, "DBexport", config.database.DBexport);
-	JSON_ADD_NUMBER_TO_OBJECT(database, "maxHistory", config.database.maxHistory);
-	JSON_ADD_NUMBER_TO_OBJECT(database, "maxDBdays", config.database.maxDBdays);
-	JSON_ADD_NUMBER_TO_OBJECT(database, "DBinterval", config.database.DBinterval);
-	cJSON *network = JSON_NEW_OBJECT();
-	JSON_ADD_BOOL_TO_OBJECT(network, "parseARPcache", config.database.network.parseARPcache);
-	JSON_ADD_NUMBER_TO_OBJECT(network, "expire", config.database.network.expire);
-	JSON_ADD_ITEM_TO_OBJECT(database, "network", network);
-	JSON_ADD_ITEM_TO_OBJECT(config_j, "database", database);
-
-	cJSON *http = JSON_NEW_OBJECT();
-	JSON_ADD_BOOL_TO_OBJECT(http, "localAPIauth", config.http.localAPIauth);
-	JSON_ADD_BOOL_TO_OBJECT(http, "prettyJSON", config.http.prettyJSON);
-	JSON_ADD_NUMBER_TO_OBJECT(http, "sessionTimeout", config.http.sessionTimeout);
-	JSON_REF_STR_IN_OBJECT(http, "domain", config.http.domain);
-	JSON_REF_STR_IN_OBJECT(http, "acl", config.http.acl);
-	JSON_REF_STR_IN_OBJECT(http, "port", config.http.port);
-	cJSON *paths = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(paths, "webroot", config.http.paths.webroot);
-	JSON_REF_STR_IN_OBJECT(paths, "webhome", config.http.paths.webhome);
-	JSON_ADD_ITEM_TO_OBJECT(http, "paths", paths);
-	JSON_ADD_ITEM_TO_OBJECT(config_j, "http", http);
-
-	cJSON *files = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(files, "log", config.files.log);
-	JSON_REF_STR_IN_OBJECT(files, "pid", config.files.pid);
-	JSON_REF_STR_IN_OBJECT(files, "database", config.files.database);
-	JSON_REF_STR_IN_OBJECT(files, "gravity", config.files.gravity);
-	JSON_REF_STR_IN_OBJECT(files, "macvendor", config.files.macvendor);
-	JSON_REF_STR_IN_OBJECT(files, "setupVars", config.files.setupVars);
-	JSON_REF_STR_IN_OBJECT(files, "http_info", config.files.http_info);
-	JSON_REF_STR_IN_OBJECT(files, "ph7_error", config.files.ph7_error);
-	JSON_ADD_ITEM_TO_OBJECT(config_j, "files", files);
-
-	cJSON *misc = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(misc, "nice", config.misc.nice);
-	JSON_ADD_NUMBER_TO_OBJECT(misc, "delay_startup", config.misc.delay_startup);
-	JSON_ADD_BOOL_TO_OBJECT(misc, "addr2line", config.misc.addr2line);
-	JSON_ADD_NUMBER_TO_OBJECT(misc, "privacylevel", config.misc.privacylevel);
-	cJSON *check = JSON_NEW_OBJECT();
-	JSON_ADD_BOOL_TO_OBJECT(check, "load", config.misc.check.load);
-	JSON_ADD_NUMBER_TO_OBJECT(check, "shmem", config.misc.check.shmem);
-	JSON_ADD_NUMBER_TO_OBJECT(check, "disk", config.misc.check.disk);
-	JSON_ADD_ITEM_TO_OBJECT(misc, "check", check);
-	JSON_ADD_ITEM_TO_OBJECT(config_j, "misc", misc);
-
+	// Build and return JSON response
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "config", config_j);
 	JSON_SEND_OBJECT(json);
+}
+
+// Endpoint /api/config router
+int api_config(struct ftl_conn *api)
+{
+	if(api->method == HTTP_GET)
+		return api_config_get(api);
+
+	// POST: Create a new config (not supported)
+	// PATCH: Replace parts of the the config with the provided one
+	// PUT: Replaces the entire config with the provided one (not supported
+	// but PATCH with a full config is the same)
+//	else if(api->method == HTTP_PATCH)
+//		return api_config_patch(api);
+	else
+		return send_json_error(api, 405, "method_error",
+		                       "Method not allowed",
+		                       "Use GET to retrieve the current config and "
+		                       "PATCH to change it (either partially or fully)");
 }

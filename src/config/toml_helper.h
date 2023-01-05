@@ -10,14 +10,15 @@
 #ifndef CONFIG_WRITER_H
 #define CONFIG_WRITER_H
 
-#include "../FTL.h"
+#include "FTL.h"
+// union conf_value
+#include "config.h"
+// type toml_table_t
+#include "tomlc99/toml.h"
 
+void indentTOML(FILE *fp, const unsigned int indent);
 FILE *openFTLtoml(const char *mode) __attribute((malloc)) __attribute((nonnull(1)));
-void catTOMLsection(FILE *fp, const unsigned int indent, const char *key);
-void catTOMLextrainfo(FILE *fp, const unsigned int indent, const char *infostr);
-void catTOMLstring(FILE *fp, const unsigned int indent, const char *key, const char *description, const char *values, const char *val, const char *dptr);
-void catTOMLbool(FILE *fp, const unsigned int indent, const char *key, const char *description, const bool val, const bool dval);
-void catTOMLint(FILE *fp, const unsigned int indent, const char *key, const char *description, const int val, const int dval);
-void catTOMLuint(FILE *fp, const unsigned int indent, const char *key, const char *description, const unsigned int val, const unsigned int dval);
+void writeTOMLvalue(FILE * fp, const enum conf_type t, union conf_value *v);
+void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *toml);
 
 #endif //CONFIG_WRITER_H

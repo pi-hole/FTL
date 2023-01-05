@@ -40,14 +40,14 @@ void init_FTL_log(const char *name)
 	getLogFilePath();
 
 	// Open the log file in append/create mode
-	if(config.files.log != NULL)
+	if(config.files.log.v.s != NULL)
 	{
 		FILE *logfile = NULL;
-		if((logfile = fopen(config.files.log, "a+")) == NULL)
+		if((logfile = fopen(config.files.log.v.s, "a+")) == NULL)
 		{
 			syslog(LOG_ERR, "Opening of FTL\'s log file failed, using syslog instead!");
-			printf("ERR: Opening of FTL log (%s) failed!\n",config.files.log);
-			config.files.log = NULL;
+			printf("ERR: Opening of FTL log (%s) failed!\n",config.files.log.v.s);
+			config.files.log.v.s = NULL;
 		}
 
 		// Close log file
@@ -104,7 +104,7 @@ void get_timestr(char * const timestring, const time_t timein, const bool millis
 
 static const char *priostr(const int priority, const enum debug_flag flag)
 {
-	const char *name, *desc;
+	const char *name;
 	switch (priority)
 	{
 		// system is unusable
@@ -130,7 +130,7 @@ static const char *priostr(const int priority, const enum debug_flag flag)
 			return "INFO";
 		// debug-level messages
 		case LOG_DEBUG:
-			debugstr(flag, &name, &desc);
+			debugstr(flag, &name);
 			return name;
 		// invalid option
 		default:
@@ -138,109 +138,84 @@ static const char *priostr(const int priority, const enum debug_flag flag)
 	}
 }
 
-void debugstr(const enum debug_flag flag, const char **name, const char **desc)
+void debugstr(const enum debug_flag flag, const char **name)
 {
 	switch (flag)
 	{
 		case DEBUG_DATABASE:
 			*name = "DEBUG_DATABASE";
-			*desc = "Enable extra logging of database actions";
 			return;
 		case DEBUG_NETWORKING:
 			*name = "DEBUG_NETWORKING";
-			*desc = "Enable extra logging of detected interfaces";
 			return;
 		case DEBUG_LOCKS:
 			*name = "DEBUG_LOCKS";
-			*desc = "Enable extra logging of shared memory lock actions";
 			return;
 		case DEBUG_QUERIES:
 			*name = "DEBUG_QUERIES";
-			*desc = "Print extensive query information";
 			return;
 		case DEBUG_FLAGS:
 			*name = "DEBUG_FLAGS";
-			*desc = "Print flags of queries received by the DNS hooks";
 			return;
 		case DEBUG_SHMEM:
 			*name = "DEBUG_SHMEM";
-			*desc = "Print information about shared memory buffers";
 			return;
 		case DEBUG_GC:
 			*name = "DEBUG_GC";
-			*desc = "Print information about garbage collection";
 			return;
 		case DEBUG_ARP:
 			*name = "DEBUG_ARP";
-			*desc = "Print information about ARP table processing";
 			return;
 		case DEBUG_REGEX:
 			*name = "DEBUG_REGEX";
-			*desc = "Enable extra logging of regex matching details";
 			return;
 		case DEBUG_API:
 			*name = "DEBUG_API";
-			*desc = "Enable extra logging of API activities";
 			return;
 		case DEBUG_OVERTIME:
 			*name = "DEBUG_OVERTIME";
-			*desc = "Print information about overTime memory operations";
 			return;
 		case DEBUG_STATUS:
 			*name = "DEBUG_STATUS";
-			*desc = "Enable extra logging of query status changes";
 			return;
 		case DEBUG_CAPS:
 			*name = "DEBUG_CAPS";
-			*desc = "Print information about capabilities granted to the pihole-FTL process";
 			return;
 		case DEBUG_DNSSEC:
 			*name = "DEBUG_DNSSEC";
-			*desc = "Print information about DNSSEC activity";
 			return;
 		case DEBUG_VECTORS:
 			*name = "DEBUG_VECTORS";
-			*desc = "Print vector operation details";
 			return;
 		case DEBUG_RESOLVER:
 			*name = "DEBUG_RESOLVER";
-			*desc = "Extensive information about hostname resolution like which DNS servers are used";
 			return;
 		case DEBUG_EDNS0:
 			*name = "DEBUG_EDNS0";
-			*desc = "Print EDNS(0) debugging information";
 			return;
 		case DEBUG_CLIENTS:
 			*name = "DEBUG_CLIENTS";
-			*desc = "Enable extra client detail logging";
 			return;
 		case DEBUG_ALIASCLIENTS:
 			*name = "DEBUG_ALIASCLIENTS";
-			*desc = "Print aliasclient details";
 			return;
 		case DEBUG_EVENTS:
 			*name = "DEBUG_EVENTS";
-			*desc = "Log information about processed internal events";
 			return;
 		case DEBUG_HELPER:
 			*name = "DEBUG_HELPER";
-			*desc = "Enable logging of script helper activity";
 			return;
 		case DEBUG_EXTRA:
 			*name = "DEBUG_EXTRA";
-			*desc = "Special debug flag that may be used for debugging specific issues";
 			return;
 		case DEBUG_CONFIG:
 			*name = "DEBUG_CONFIG";
-			*desc = "Print config parsing details";
 			return;
 		case DEBUG_RESERVED:
 			*name = "DEBUG_RESERVED";
-			*desc = "Reserved debug flag";
 			return;
-		default:
-			*name = "DEBUG_ANY";
-			*desc = "N/A";
+		case DEBUG_MAX:
+			*name = "DEBUG_MAX";
 			return;
 	}
 }
@@ -255,7 +230,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 		return;
 
 	// Check if this is something we should print only in debug mode
-	if(priority == LOG_DEBUG && (config.debug == 0 || (flag != 0 && !(config.debug & flag))))
+	if(priority == LOG_DEBUG && (!debug_any || (flag != 0 && !(get_debug_item(flag)->v.b))))
 		return;
 
 	// Get human-readable time
@@ -299,10 +274,10 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	// Print to log file or syslog
 	if(print_log)
 	{
-		if(config.files.log != NULL)
+		if(config.files.log.v.s != NULL)
 		{
 			// Open log file
-			FILE *logfile = fopen(config.files.log, "a+");
+			FILE *logfile = fopen(config.files.log.v.s, "a+");
 
 			// Write to log file
 			if(logfile != NULL)
@@ -344,13 +319,13 @@ static FILE * __attribute__((malloc, warn_unused_result)) open_web_log(const enu
 	switch (code)
 	{
 	case HTTP_INFO:
-		file = config.files.http_info;
+		file = config.files.http_info.v.s;
 		break;
 	case PH7_ERROR:
-		file = config.files.ph7_error;
+		file = config.files.ph7_error.v.s;
 		break;
 	default:
-		file = config.files.ph7_error;
+		file = config.files.ph7_error.v.s;
 		break;
 	}
 
@@ -393,7 +368,7 @@ void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, co
 void FTL_log_helper(const unsigned char n, ...)
 {
 	// Only log helper debug messages if enabled
-	if(!(config.debug & DEBUG_HELPER))
+	if(!(config.debug.helper.v.b))
 		return;
 
 	// Extract all variable arguments
