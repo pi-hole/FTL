@@ -119,7 +119,7 @@ jobs:
       -
         name: Upload artifacts to job for later processing
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v3.1.1
+        uses: actions/upload-artifact@v3.1.2
         with:
           name: tmp-binary-storage
           path: '${{ matrix.bin_name }}*'
@@ -151,7 +151,7 @@ jobs:
           known-hosts: ${{ secrets.KNOWN_HOSTS }}
       -
         name: Transfer Builds to Pi-hole server for pihole checkout
-        if: github.actor != 'dependabot'
+        if: github.actor != 'dependabot[bot]'
         env:
           USER: ${{ secrets.SSH_USER }}
           HOST: ${{ secrets.SSH_HOST }}
