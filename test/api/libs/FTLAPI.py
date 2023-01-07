@@ -10,6 +10,7 @@
 # Please see LICENSE file for your rights under this license.
 
 import urllib.request
+from typing import List
 import json
 
 # Class to query the FTL API
@@ -20,7 +21,7 @@ class FTLAPI():
 		self.errors = []
 
 	# Query the FTL API and return the response
-	def getFTLresponse(self, uri: str, params: list[str] = []):
+	def getFTLresponse(self, uri: str, params: List[str] = []):
 		self.errors = []
 		try:
 			if len(params) > 0:

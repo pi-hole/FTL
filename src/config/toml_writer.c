@@ -79,7 +79,8 @@ bool writeFTLtoml(void)
 		writeTOMLvalue(fp, conf_item->t, &conf_item->v);
 
 		// Compare with default value and add a comment on difference
-		if(memcmp(&conf_item->v, &conf_item->d, sizeof(conf_item->v)) != 0)
+		if((conf_item->t == CONF_STRING && strcmp(conf_item->v.s, conf_item->d.s) != 0) ||
+		   (conf_item->t != CONF_STRING && memcmp(&conf_item->v, &conf_item->d, sizeof(conf_item->v)) != 0))
 		{
 			fprintf(fp, " ### CHANGED, default = ");
 			writeTOMLvalue(fp, conf_item->t, &conf_item->d);

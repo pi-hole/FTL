@@ -24,7 +24,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.2.0
+        uses: actions/checkout@v3.3.0
       -
         name: "Calculate required variables"
         id: variables
@@ -88,7 +88,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.2.0
+        uses: actions/checkout@v3.3.0
       -
         name: "Fix ownership of repository"
         run: chown -R root .
@@ -119,7 +119,7 @@ jobs:
       -
         name: Store binary artifacts for deployoment
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v3.1.1
+        uses: actions/upload-artifact@v3.1.2
         with:
           name: tmp-storage
           path: '${{ matrix.bin_name }}*'
@@ -142,10 +142,10 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.2.0
+        uses: actions/checkout@v3.3.0
       -
         name: Get Binaries and documentation built in previous jobs
-        uses: actions/download-artifact@v3.0.1
+        uses: actions/download-artifact@v3.0.2
         id: download
         with:
           name: tmp-storage
@@ -172,6 +172,7 @@ jobs:
         working-directory: ${{steps.download.outputs.download-path}}
       -
         name: Transfer Builds to Pi-hole server for pihole checkout
+        if: github.actor != 'dependabot[bot]'
         env:
           USER: ${{ secrets.SSH_USER }}
           HOST: ${{ secrets.SSH_HOST }}

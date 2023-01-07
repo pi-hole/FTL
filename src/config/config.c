@@ -43,51 +43,51 @@ void set_all_debug(const bool status)
 // Extract and store key from full path
 static char **gen_config_path(const char *pathin)
 {
-		char *path = (char*)pathin;
-		char *saveptr = path;
+	char *path = (char*)pathin;
+	char *saveptr = path;
 
-		// Sanity check
-		if(!pathin)
-		{
-			log_err("Config path is empty");
-			return NULL;
-		}
+	// Sanity check
+	if(!pathin)
+	{
+		log_err("Config path is empty");
+		return NULL;
+	}
 
-		// Allocate memory for the path elements
-		char **paths = calloc(MAX_CONFIG_PATH_DEPTH, sizeof(char*));
-		//char *token;
+	// Allocate memory for the path elements
+	char **paths = calloc(MAX_CONFIG_PATH_DEPTH, sizeof(char*));
+	//char *token;
 
-		size_t pathlen = 0;
-		// Extract all path elements
-		while(*path != '\0')
-		{
-			// Advance to either the next delimiter
-			// But only until the end of the string
-			while(*path != '.' && *path != '\0')
-				path++;
+	size_t pathlen = 0;
+	// Extract all path elements
+	while(*path != '\0')
+	{
+		// Advance to either the next delimiter
+		// But only until the end of the string
+		while(*path != '.' && *path != '\0')
+			path++;
 
-			// Get length of the extracted string
-			size_t len = path - saveptr;
-			// Create a private copy of this element in the chain of elements
-			paths[pathlen] = calloc(len + 1, sizeof(char));
-			// No need to NULL-terminate, strncpy does this for us
-			strncpy(paths[pathlen], saveptr, len);
+		// Get length of the extracted string
+		size_t len = path - saveptr;
+		// Create a private copy of this element in the chain of elements
+		paths[pathlen] = calloc(len + 1, sizeof(char));
+		// No need to NULL-terminate, strncpy does this for us
+		strncpy(paths[pathlen], saveptr, len);
 
-			// Did we reach the end of the string?
-			if(*path == '\0')
-				break;
+		// Did we reach the end of the string?
+		if(*path == '\0')
+			break;
 
-			// Advance to next character
-			saveptr = ++path;
-			// Advance to next path element
-			pathlen++;
+		// Advance to next character
+		saveptr = ++path;
+		// Advance to next path element
+		pathlen++;
 
-			// Safetly measure: Exit if this path is too deep
-			if(pathlen > MAX_CONFIG_PATH_DEPTH-1)
-				break;
-		}
+		// Safetly measure: Exit if this path is too deep
+		if(pathlen > MAX_CONFIG_PATH_DEPTH-1)
+			break;
+	}
 
-		return paths;
+	return paths;
 }
 
 struct conf_item *get_conf_item(const unsigned int n)
@@ -95,7 +95,7 @@ struct conf_item *get_conf_item(const unsigned int n)
 	// Sanity check
 	if(n > CONFIG_ELEMENTS-1)
 	{
-		log_err("Config item with index %u requested but we have only %lu elements", n, CONFIG_ELEMENTS-1);
+		log_err("Config item with index %u requested but we have only %u elements", n, (unsigned int)CONFIG_ELEMENTS-1);
 		return NULL;
 	}
 
@@ -143,7 +143,7 @@ void initConfig(void)
 	config.dns.blockESNI.d.b = true;
 
 	config.dns.EDNS0ECS.k = "dns.EDNS0ECS";
-	config.dns.EDNS0ECS.h = "Should _esni. subdomains be blocked by default?";
+	config.dns.EDNS0ECS.h = "Should FTL analyze possible ECS information to obtain client IPs hidden behind NATs?";
 	config.dns.EDNS0ECS.t = CONF_BOOL;
 	config.dns.EDNS0ECS.d.b = true;
 
@@ -293,12 +293,12 @@ void initConfig(void)
 	config.database.DBexport.d.b = true;
 
 	config.database.maxDBdays.k = "database.maxDBdays";
-	config.database.maxDBdays.h = "How much history should be imported from the database [seconds]? (max 24*60*60 = 86400)";
+	config.database.maxDBdays.h = "How long should queries be stored in the database [days]?";
 	config.database.maxDBdays.t = CONF_INT;
 	config.database.maxDBdays.d.i = 365;
 
 	config.database.maxHistory.k = "database.maxHistory";
-	config.database.maxHistory.h = "How long should queries be stored in the database [days]?";
+	config.database.maxHistory.h = "How much history should be imported from the database [seconds]? (max 24*60*60 = 86400)";
 	config.database.maxHistory.t = CONF_UINT;
 	config.database.maxHistory.d.ui = MAXLOGAGE*3600;
 
@@ -605,7 +605,7 @@ void initConfig(void)
 
 		// Verify all config options are defined above
 		if(!conf_item->p)
-			log_err("Config option %u/%lu is not set!", i, CONFIG_ELEMENTS);
+			log_err("Config option %u/%u is not set!", i, (unsigned int)CONFIG_ELEMENTS);
 		else
 			if(conf_item->p[3])
 				log_debug(DEBUG_CONFIG, "Config option %u is %s.%s.%s.%s", i, conf_item->p[0], conf_item->p[1], conf_item->p[2], conf_item->p[3]);

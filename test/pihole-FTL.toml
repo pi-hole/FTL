@@ -3,13 +3,9 @@
 # Do not edit the file while FTL is
 # running or your changes may be overwritten
 #
-# Last update: 2021-06-10 11:36:29
+# Last update: 2023-01-07 18:28:45
 
 [dns]
-  # How should FTL reply to blocked queries?
-  # Possible values are: [ "NULL", "IP-NODATA-AAAA", "IP", "NXDOMAIN" ]
-  blockingmode = "NULL"
-
   # Should FTL walk CNAME paths?
   CNAMEdeepInspect = true
 
@@ -25,6 +21,12 @@
   # Should FTL should internally generated DNSSEC queries?
   showDNSSEC = true
 
+  # Should FTL analyze AAAA queries?
+  analyzeAAAA = true
+
+  # Should FTL analyze *only* A and AAAA queries?
+  analyzeOnlyAandAAAA = false
+
   # Should FTL return "pi.hole" as name for PTR requests to local IP addresses?
   # Possible values are: [ "NONE", "HOSTNAME", "HOSTNAMEFQDN", "PI.HOLE" ]
   piholePTR = "PI.HOLE"
@@ -36,11 +38,9 @@
   # TTL for blocked queries [seconds]
   blockTTL = 2
 
-  # Should FTL analyze AAAA queries?
-  analyzeAAAA = true
-
-  # Should FTL analyze only A and AAAA queries?
-  analyzeOnlyAandAAAA = false
+  # How should FTL reply to blocked queries?
+  # Possible values are: [ "NULL", "IP-NODATA-AAAA", "IP", "NXDOMAIN" ]
+  blockingmode = "NULL"
 
   [dns.specialDomains]
     # Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?
@@ -49,22 +49,33 @@
     # Should FTL handle the iCloud privacy relay domains specifically and always return NXDOMAIN?
     iCloudPrivateRelay = true
 
-  [dns.reply]
     [dns.reply.host]
-      # Use a specific IPv4 address for the Pi-hole host
-      # Possible values are: <valid IPv4 address> or empty string ("")
-      IPv4 = "10.100.0.10" ### CHANGED, default = ""
+      # Use a specific IPv4 address for the Pi-hole host?
+      overwrite_v4 = true ### CHANGED, default = false
 
-      # Use a specific IPv6 address for the Pi-hole host
+      # Use a specific IPv6 address for the Pi-hole host?
+      overwrite_v6 = true ### CHANGED, default = false
+
+      # Custom IPv4 address for the Pi-hole host
+      # Possible values are: <valid IPv4 address> or empty string ("")
+      IPv4 = "10.100.0.10" ### CHANGED, default = "
+
+      # Custom IPv6 address for the Pi-hole host
       # Possible values are: <valid IPv6 address> or empty string ("")
       IPv6 = "fe80::10" ### CHANGED, default = ""
 
     [dns.reply.blocking]
-      # Use a specific IPv4 address in IP blocking mode
+      # Use a specific IPv4 address in IP blocking mode?
+      overwrite_v4 = true ### CHANGED, default = false
+
+      # Use a specific IPv6 address in IP blocking mode?
+      overwrite_v6 = true ### CHANGED, default = false
+
+      # Custom IPv4 address for IP blocking mode
       # Possible values are: <valid IPv4 address> or empty string ("")
       IPv4 = "10.100.0.11" ### CHANGED, default = ""
 
-      # Use a specific IPv6 address in IP blocking mode
+      # Custom IPv6 address for IP blocking mode
       # Possible values are: <valid IPv6 address> or empty string ("")
       IPv6 = "fe80::11" ### CHANGED, default = ""
 
@@ -72,7 +83,7 @@
     # How many queries are permitted...
     count = 0 ### CHANGED, default = 1000
 
-    # ..in the set interval before rate-limiting?
+    # ... in the set interval before rate-limiting?
     interval = 0 ### CHANGED, default = 60
 
 [resolver]
@@ -82,7 +93,7 @@
   # Should FTL try to resolve IPv6 addresses to hostnames?
   resolveIPv6 = false ### CHANGED, default = true
 
-  # Try to obtain client names from the network table
+  # Try to obtain client names from the network table?
   networkNames = false ### CHANGED, default = true
 
   # How (and if) hourly PTR lookups should be made
@@ -114,9 +125,9 @@
 
 [http]
   # Does local clients need to authenticate to access the API?
-  localAPIauth = true
+  localAPIauth = false ### CHANGED, default = true
 
-  # Should FTL insert extra spaces to prettify the API output?
+  # Should FTL prettify the API output?
   prettyJSON = false
 
   # How long should a session be considered valid after login [seconds]?
@@ -126,12 +137,12 @@
   # Possible values are: <valid domain>
   domain = "pi.hole"
 
-  # Webserver access control list.
+  # Webserver access control list
   # Possible values are: <valid ACL>
   acl = "+0.0.0.0/0"
 
   # Ports to be used by the webserver
-  # Possible values are: list of <[ip_address:]port>
+  # Possible values are: comma-separated list of <[ip_address:]port>
   port = "8080,[::]:8080"
 
   [http.paths]
@@ -139,7 +150,7 @@
     # Possible values are: <valid path>
     webroot = "/var/www/html"
 
-    # From which sub-directory is the web interface served from?
+    # Sub-directory of the root containing the web interface
     # Possible values are: <valid subpath>, both slashes are needed!
     webhome = "/admin/"
 
@@ -157,115 +168,118 @@
   database = "/etc/pihole/pihole-FTL.db"
 
   # The location of Pi-hole's gravity database
-  # Possible values are: <any gravity database>
+  # Possible values are: <any Pi-hole gravity database>
   gravity = "/etc/pihole/gravity.db"
 
   # The database containing MAC -> Vendor information for the network table
-  # Possible values are: <any macvendor database>
+  # Possible values are: <any Pi-hole macvendor database>
   macvendor = "/etc/pihole/macvendor.db"
 
   # The config file of Pi-hole
-  # Possible values are: <any setupVars file>
+  # Possible values are: <any Pi-hole setupVars file>
   setupVars = "/etc/pihole/setupVars.conf"
 
   # The log file used by the webserver
-  # Possible values are: <any writable database>
-  HTTPinfo = "/var/log/pihole/HTTP_info.log"
+  # Possible values are: <any writable file>
+  http_info = "/var/log/pihole/HTTP_info.log"
 
   # The log file used by the dynamic interpreter PH7
   # Possible values are: <any writable file>
-  PH7error = "/var/log/pihole/PH7.log"
+  ph7_error = "/var/log/pihole/PH7.log"
 
 [misc]
-  # Privacy level
-  privacyLevel = 0
-
   # Set niceness of pihole-FTL (can be disabled by setting to -999)
   nice = -999 ### CHANGED, default = -10
 
-  # Artificially delay FTL's startup (0 to 300 seconds)
-  delayStartup = 0
-
   # Should FTL try to call addr2line when generating backtraces?
+  delay_startup = 0
+
+  # The log file used by the dynamic interpreter PH7
   addr2line = true
+
+  # Privacy level
+  privacylevel = 0
 
   [misc.check]
     # Should FTL check the 15 min average of CPU load and complain if the load is larger than the number of available CPU cores?
-    load = false
+    load = false ### CHANGED, default = true
 
-    # Limit above which FTL should complain about a shared-memory shortage
-    disk = 0
+    # Limit above which FTL should complain about disk shortage for checked files [percent]
+    shmem = 0 ### CHANGED, default = 90
 
-    # Limit above which FTL should complain about disk shortage for checked files
-    shmem = 0
+    # Limit above which FTL should complain about a shared-memory shortage [percent]
+    disk = 0 ### CHANGED, default = 90
 
 [debug]
-  # Temporarily enable all debug flags
-  all = true ### CHANGED, default = false
-
   # Enable extra logging of database actions
-  database = false
+  database = true ### CHANGED, default = false
 
   # Enable extra logging of detected interfaces
-  networking = false
+  networking = true ### CHANGED, default = false
 
   # Enable extra logging of shared memory lock actions
-  locks = false
+  locks = true ### CHANGED, default = false
 
   # Print extensive query information
-  queries = false
+  queries = true ### CHANGED, default = false
 
   # Print flags of queries received by the DNS hooks
-  flags = false
+  flags = true ### CHANGED, default = false
 
   # Print information about shared memory buffers
-  shmem = false
+  shmem = true ### CHANGED, default = false
 
   # Print information about garbage collection
-  gc = false
+  gc = true ### CHANGED, default = false
 
   # Print information about ARP table processing
-  arp = false
+  arp = true ### CHANGED, default = false
 
   # Enable extra logging of regex matching details
-  regex = false
+  regex = true ### CHANGED, default = false
 
   # Enable extra logging of API activities
-  api = false
+  api = true ### CHANGED, default = false
 
   # Print information about overTime memory operations
-  overtime = false
+  overtime = true ### CHANGED, default = false
 
   # Enable extra logging of query status changes
-  status = false
+  status = true ### CHANGED, default = false
 
   # Print information about capabilities granted to the pihole-FTL process
-  caps = false
+  caps = true ### CHANGED, default = false
 
-  # Enable extra logging in dnsmasq's log routine
-  dnsmasq_lines = false
+  # Print information about DNSSEC activity
+  dnssec = true ### CHANGED, default = false
 
   # Print vector operation details
-  vectors = false
+  vectors = true ### CHANGED, default = false
 
   # Extensive information about hostname resolution like which DNS servers are used
-  resolver = false
+  resolver = true ### CHANGED, default = false
 
   # Print EDNS(0) debugging information
-  edns0 = false
+  edns0 = true ### CHANGED, default = false
 
   # Enable extra client detail logging
-  clients = false
+  clients = true ### CHANGED, default = false
 
   # Print aliasclient details
-  aliasclients = false
+  aliasclients = true ### CHANGED, default = false
 
   # Log information about processed internal events
-  events = false
+  events = true ### CHANGED, default = false
 
   # Enable logging of script helper activity
-  helper = false
+  helper = true ### CHANGED, default = false
 
   # Print config parsing details
-  config = false
+  config = true ### CHANGED, default = false
+
+  # Special debug flag that may be used for debugging specific issues
+  extra = true ### CHANGED, default = false
+
+  # Reserved debug flag
+  reserved = true ### CHANGED, default = false
 

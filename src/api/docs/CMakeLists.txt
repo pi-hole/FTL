@@ -31,6 +31,8 @@ set(sources
         hex/specs/queries.yaml
         hex/specs/stats.yaml
         hex/specs/version.yaml
+        hex/specs/config.yaml
+        hex/specs/network.yaml
         docs.c
         )
 

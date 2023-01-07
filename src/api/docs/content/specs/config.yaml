@@ -9,6 +9,8 @@ components:
         operationId: "get_config"
         description: |
           This API hook returns infos about the config of your Pi-hole.
+        parameters:
+          - $ref: 'config.yaml#/components/parameters/detailed'
         responses:
           '200':
             description: OK
@@ -16,6 +18,9 @@ components:
               application/json:
                 schema:
                   $ref: 'config.yaml#/components/schemas/config'
+                examples:
+                  config:
+                    $ref: 'config.yaml#/components/examples/config'
           '401':
             description: Unauthorized
             content:
@@ -240,101 +245,113 @@ components:
                   type: boolean
   examples:
     config:
-      config:
-        dns:
-          CNAMEdeepInspect: true
-          blockESNI: true
-          EDNS0ECS: true
-          ignoreLocalhost: false
-          showDNSSEC: true
-          analyzeAAAA: true
-          analyzeOnlyAandAAAA: false
-          piholePTR: PI.HOLE
-          replyWhenBusy: ALLOW
-          blockTTL: 2
-          blockingmode: 'NULL'
-          specialDomains:
-            mozillaCanary: true
-            iCloudPrivateRelay: true
-          reply:
-            host:
-              overwrite_v4: false
-              overwrite_v6: false
-              IPv4: 0.0.0.0
-              IPv6: "::"
-            blocking:
-              overwrite_v4: false
-              overwrite_v6: false
-              IPv4: 0.0.0.0
-              IPv6: "::"
-          rateLimit:
-            count: 0
-            interval: 0
-          port: 53
-        resolver:
-          resolveIPv4: true
-          resolveIPv6: true
-          networkNames: true
-          refreshNames: IPV4_ONLY
-        database:
-          DBimport: true
-          DBexport: true
-          maxHistory: 86400
-          maxDBdays: 365
-          DBinterval: 60
-          network:
-            parseARPcache: true
-            expire: 365
-        http:
-          localAPIauth: false
-          prettyJSON: false
-          sessionTimeout: 300
-          domain: pi.hole
-          acl: "+0.0.0.0/0"
-          port: 8080,[::]:8080
-          paths:
-            webroot: "/var/www/html"
-            webhome: "/admin/"
-        files:
-          log: "/var/log/pihole/FTL.log"
-          pid: "/run/pihole-FTL.pid"
-          database: "/etc/pihole/pihole-FTL.db"
-          gravity: "/etc/pihole/gravity.db"
-          macvendor: "/etc/pihole/macvendor.db"
-          setupVars: "/etc/pihole/setupVars.conf"
-          http_info: "/var/log/pihole/HTTP_info.log"
-          ph7_error: "/var/log/pihole/PH7.log"
-        misc:
-          nice: -10
-          delay_startup: 10
-          addr2line: true
-          privacylevel: 0
-          check:
-            load: true
-            shmem: 90
-            disk: 90
-        debug:
-          database: false
-          networking: false
-          locks: false
-          queries: false
-          flags: false
-          shmem: false
-          gc: false
-          arp: false
-          regex: false
-          api: false
-          overtime: false
-          status: false
-          caps: false
-          dnssec: false
-          vectors: false
-          resolver: false
-          edns0: false
-          clients: false
-          aliasclients: false
-          events: false
-          helper: false
-          config: false
-          extra: false
-          reserved: false
+      summary: FTL's configuration
+      value:
+        config:
+          dns:
+            CNAMEdeepInspect: true
+            blockESNI: true
+            EDNS0ECS: true
+            ignoreLocalhost: false
+            showDNSSEC: true
+            analyzeAAAA: true
+            analyzeOnlyAandAAAA: false
+            piholePTR: PI.HOLE
+            replyWhenBusy: ALLOW
+            blockTTL: 2
+            blockingmode: 'NULL'
+            specialDomains:
+              mozillaCanary: true
+              iCloudPrivateRelay: true
+            reply:
+              host:
+                overwrite_v4: false
+                overwrite_v6: false
+                IPv4: 0.0.0.0
+                IPv6: "::"
+              blocking:
+                overwrite_v4: false
+                overwrite_v6: false
+                IPv4: 0.0.0.0
+                IPv6: "::"
+            rateLimit:
+              count: 0
+              interval: 0
+            port: 53
+          resolver:
+            resolveIPv4: true
+            resolveIPv6: true
+            networkNames: true
+            refreshNames: IPV4_ONLY
+          database:
+            DBimport: true
+            DBexport: true
+            maxHistory: 86400
+            maxDBdays: 365
+            DBinterval: 60
+            network:
+              parseARPcache: true
+              expire: 365
+          http:
+            localAPIauth: false
+            prettyJSON: false
+            sessionTimeout: 300
+            domain: pi.hole
+            acl: "+0.0.0.0/0"
+            port: 8080,[::]:8080
+            paths:
+              webroot: "/var/www/html"
+              webhome: "/admin/"
+          files:
+            log: "/var/log/pihole/FTL.log"
+            pid: "/run/pihole-FTL.pid"
+            database: "/etc/pihole/pihole-FTL.db"
+            gravity: "/etc/pihole/gravity.db"
+            macvendor: "/etc/pihole/macvendor.db"
+            setupVars: "/etc/pihole/setupVars.conf"
+            http_info: "/var/log/pihole/HTTP_info.log"
+            ph7_error: "/var/log/pihole/PH7.log"
+          misc:
+            nice: -10
+            delay_startup: 10
+            addr2line: true
+            privacylevel: 0
+            check:
+              load: true
+              shmem: 90
+              disk: 90
+          debug:
+            database: false
+            networking: false
+            locks: false
+            queries: false
+            flags: false
+            shmem: false
+            gc: false
+            arp: false
+            regex: false
+            api: false
+            overtime: false
+            status: false
+            caps: false
+            dnssec: false
+            vectors: false
+            resolver: false
+            edns0: false
+            clients: false
+            aliasclients: false
+            events: false
+            helper: false
+            config: false
+            extra: false
+            reserved: false
+  parameters:
+    detailed:
+      name: detailed
+      in: query
+      description: Return detailed information about the configuration
+      required: false
+      schema:
+        type: boolean
+        default: false
+        example: false
