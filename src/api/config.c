@@ -142,7 +142,6 @@ static int api_config_get(struct ftl_conn *api)
 		{
 			cJSON *leaf = JSON_NEW_OBJECT();
 			JSON_REF_STR_IN_OBJECT(leaf, "description", conf_item->h);
-			JSON_REF_STR_IN_OBJECT(leaf, "hints", conf_item->a);
 			// Create the config item leaf object
 			cJSON *val = add_property(conf_item->t, &conf_item->v);
 			if(val == NULL)
@@ -158,10 +157,9 @@ static int api_config_get(struct ftl_conn *api)
 					conf_item->k, conf_item->t);
 				continue;
 			}
-			const bool changed = memcmp(&conf_item->v, &conf_item->d, sizeof(conf_item->v)) != 0;
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "value", val);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "default", dval);
-			JSON_ADD_BOOL_TO_OBJECT(leaf, "changed", changed);
+			JSON_REF_STR_IN_OBJECT(leaf, "allowed", conf_item->a);
 			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level - 1], leaf);
 		}
 		else

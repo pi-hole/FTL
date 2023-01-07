@@ -221,8 +221,14 @@ bool getLogFilePathTOML(void)
 
 static void reportDebugConfig(void)
 {
-	if(!debug_any)
-		return;
+	// Loop over all debug options and check if at least one is enabled
+	debug_any = false;
+	for(unsigned int i = 0; i < DEBUG_ELEMENTS; i++)
+	{
+		struct conf_item *debug_item = get_debug_item(i);
+		if(debug_item->v.b)
+			debug_any = true;
+	}
 
 	log_debug(DEBUG_ANY, "***********************");
 	log_debug(DEBUG_ANY, "*    DEBUG SETTINGS   *");

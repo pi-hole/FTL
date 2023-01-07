@@ -98,7 +98,7 @@
 
   # How (and if) hourly PTR lookups should be made
   # Possible values are: [ "IPV4_ONLY", "ALL", "UNKNOWN", "NONE" ]
-  refreshNames = "IPV4_ONLY"
+  refreshNames = "NONE" ### CHANGED, default = "IPV4_ONLY"
 
 [database]
   # Should FTL load information from the database on startup to be aware of the most recent history?

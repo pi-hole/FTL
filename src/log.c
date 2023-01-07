@@ -230,7 +230,10 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 		return;
 
 	// Check if this is something we should print only in debug mode
-	if(priority == LOG_DEBUG && (!debug_any || (flag != 0 && !(get_debug_item(flag)->v.b))))
+	// We return immediately if this is a debug message and ...
+	//  - debug_any is false (i.e. no debug messages should be printed)
+	//  - the debug flag is set but this debug option is not enabled
+	if(priority == LOG_DEBUG && (!debug_any || !(flag != 0 && (get_debug_item(flag)->v.b))))
 		return;
 
 	// Get human-readable time

@@ -9,7 +9,6 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-from types import NoneType
 from libs.openAPI import openApi
 import urllib.request, urllib.parse
 from libs.FTLAPI import FTLAPI
@@ -119,7 +118,7 @@ class ResponseVerifyer():
 	# Verify a single property's type
 	def verify_type(self, prop_type: any, yaml_type: str, yaml_nullable: bool):
 		# None is an acceptable reply when this is specified in the API specs
-		if prop_type == NoneType and yaml_nullable:
+		if prop_type is None and yaml_nullable:
 			return True
 		# Check if the type is correct using the YAML_TYPES translation table
 		return prop_type in self.YAML_TYPES[yaml_type]

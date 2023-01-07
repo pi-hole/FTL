@@ -186,7 +186,7 @@ void initConfig(void)
 
 	config.dns.blockingmode.k = "dns.blockingmode";
 	config.dns.blockingmode.h = "How should FTL reply to blocked queries?";
-	config.dns.blockingmode.a = "[ \"NULL\", \"IP-NODATA-AAAA\", \"IP\", \"NXDOMAIN\" ]";
+	config.dns.blockingmode.a = "[ \"NULL\", \"IP-NODATA-AAAA\", \"IP\", \"NXDOMAIN\", \"NODATA\" ]";
 	config.dns.blockingmode.t = CONF_ENUM_BLOCKING_MODE;
 	config.dns.blockingmode.d.blocking_mode = MODE_NULL;
 
