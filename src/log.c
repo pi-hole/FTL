@@ -27,6 +27,26 @@
 
 static bool print_log = true, print_stdout = true;
 static const char *process = "";
+bool debug_any = false;
+bool debug_flags[DEBUG_MAX] = { false };
+
+void parse_debug_options(void)
+{
+	// Reset debug flags
+	debug_any = false;
+	memset(debug_flags, false, sizeof(debug_flags));
+
+	// Loop over all debug options and check if at least one is enabled
+	for(unsigned int i = 0; i < DEBUG_ELEMENTS; i++)
+	{
+		struct conf_item *debug_item = get_debug_item(i);
+		if(debug_item->v.b)
+		{
+			debug_flags[i] = true;
+			debug_any = true;
+		}
+	}
+}
 
 void log_ctrl(bool plog, bool pstdout)
 {
@@ -217,6 +237,9 @@ void debugstr(const enum debug_flag flag, const char **name)
 		case DEBUG_MAX:
 			*name = "DEBUG_MAX";
 			return;
+		default:
+			*name = "DEBUG_ANY";
+			return;
 	}
 }
 
@@ -227,13 +250,6 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 
 	// We have been explicitly asked to not print anything to the log
 	if(!print_log && !print_stdout)
-		return;
-
-	// Check if this is something we should print only in debug mode
-	// We return immediately if this is a debug message and ...
-	//  - debug_any is false (i.e. no debug messages should be printed)
-	//  - the debug flag is set but this debug option is not enabled
-	if(priority == LOG_DEBUG && (!debug_any || !(flag != 0 && (get_debug_item(flag)->v.b))))
 		return;
 
 	// Get human-readable time

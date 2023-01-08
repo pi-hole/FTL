@@ -625,9 +625,8 @@ int api_history_database_clients(struct ftl_conn *api)
 			// have been active in any time interval we're
 			// querying
 			for(unsigned int i = 0; i < num_clients; i++)
-			{
 				JSON_ADD_NUMBER_TO_ARRAY(data, 0);
-			}
+
 			JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", previous_timeslot);
 		}
 
@@ -641,9 +640,7 @@ int api_history_database_clients(struct ftl_conn *api)
 			const char *array_client = cJSON_GetStringValue(cJSON_GetObjectItem(cJSON_GetArrayItem(clients, idx), "ip"));
 			if(array_client != NULL &&
 			   strcmp(client, array_client) == 0)
-			{
 				break;
-			}
 		}
 
 		if(idx == num_clients)
@@ -832,7 +829,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		if(sscanf(upstream, "%511[^#]#%u", buffer, &port) == 2)
 		{
 			buffer[sizeof(buffer)-1] = '\0';
-			JSON_COPY_STR_TO_OBJECT(item, "ip", buffer)
+			JSON_COPY_STR_TO_OBJECT(item, "ip", buffer);
 		}
 		else
 			JSON_COPY_STR_TO_OBJECT(item, "ip", upstream);

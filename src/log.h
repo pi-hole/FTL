@@ -18,6 +18,10 @@
 
 #define DEBUG_ANY 0
 
+extern bool debug_any;
+extern bool debug_flags[DEBUG_MAX];
+
+void parse_debug_options(void);
 void init_FTL_log(const char *name);
 void log_counter_info(void);
 void format_memory_size(char prefix[2], unsigned long long int bytes,
@@ -40,7 +44,10 @@ void dnsmasq_diagnosis_warning(char *message);
 #define log_warn(format, ...) _FTL_log(LOG_WARNING, 0, format, ## __VA_ARGS__)
 #define log_notice(format, ...) _FTL_log(LOG_NOTICE, 0, format, ## __VA_ARGS__)
 #define log_info(format, ...) _FTL_log(LOG_INFO, 0, format, ## __VA_ARGS__)
-#define log_debug(flag, format, ...) _FTL_log(LOG_DEBUG, flag, format, ## __VA_ARGS__)
+#define log_debug(flag, format, ...)({ \
+	if((flag == DEBUG_ANY && debug_any) || (flag < DEBUG_MAX && debug_flags[flag])) \
+		_FTL_log(LOG_DEBUG, flag, format, ## __VA_ARGS__); \
+})
 void _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...) __attribute__ ((format (gnu_printf, 3, 4)));
 void FTL_log_dnsmasq_fatal(const char *format, ...) __attribute__ ((format (gnu_printf, 1, 2)));
 void log_ctrl(bool vlog, bool vstdout);

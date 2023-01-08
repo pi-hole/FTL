@@ -170,7 +170,7 @@ class ResponseVerifyer():
 				# type we defined in the API specs
 				self.YAMLresponse[flat_path].append(YAMLprop['example'])
 				if not self.verify_type(example_type, yaml_type, yaml_nullable):
-					self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path}")
+					self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + "True" if yaml_nullable else "False" + ")")
 					return False
 
 			# Check type of externally defined YAML examples (next to schema)
@@ -190,7 +190,7 @@ class ResponseVerifyer():
 					example_type = type(example)
 					self.YAMLresponse[flat_path].append(example)
 					if not self.verify_type(example_type, yaml_type, yaml_nullable):
-						self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path}")
+						self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + "True" if yaml_nullable else "False" + ")")
 						return False
 
 			# Compare type of FTL's reply against what we defined in the API specs

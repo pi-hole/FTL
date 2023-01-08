@@ -17,7 +17,7 @@
 
 #define JSON_ADD_ITEM_TO_ARRAY(array, item) cJSON_AddItemToArray(array, item);
 
-#define JSON_COPY_STR_TO_OBJECT(object, key, string){ \
+#define JSON_COPY_STR_TO_OBJECT(object, key, string)({ \
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
@@ -35,9 +35,9 @@
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, string_item); \
-}
+})
 
-#define JSON_REF_STR_IN_OBJECT(object, key, string){ \
+#define JSON_REF_STR_IN_OBJECT(object, key, string)({ \
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
@@ -55,9 +55,9 @@
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, string_item); \
-}
+})
 
-#define JSON_ADD_NUMBER_TO_OBJECT(object, key, num){ \
+#define JSON_ADD_NUMBER_TO_OBJECT(object, key, num)({ \
 	const double number = num; \
 	if(cJSON_AddNumberToObject(object, key, number) == NULL) \
 	{ \
@@ -66,9 +66,9 @@
 		log_err("JSON_ADD_NUMBER_TO_OBJECT FAILED!"); \
 		return 500; \
 	} \
-}
+})
 
-#define JSON_ADD_NULL_TO_OBJECT(object, key) {\
+#define JSON_ADD_NULL_TO_OBJECT(object, key)({\
 	cJSON *null_item = cJSON_CreateNull(); \
 	if(null_item == NULL) \
 	{ \
@@ -78,9 +78,9 @@
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, null_item); \
-}
+})
 
-#define JSON_ADD_BOOL_TO_OBJECT(object, key, val) {\
+#define JSON_ADD_BOOL_TO_OBJECT(object, key, val)({\
 	const cJSON_bool var_val = val; \
 	cJSON *bool_item = cJSON_CreateBool(var_val); \
 	if(bool_item == NULL) \
@@ -91,27 +91,27 @@
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, bool_item); \
-}
+})
 
-#define JSON_ADD_NUMBER_TO_ARRAY(object, num){ \
+#define JSON_ADD_NUMBER_TO_ARRAY(object, num)({ \
 	const double number = num; \
 	cJSON *number_item = cJSON_CreateNumber(number); \
 	cJSON_AddItemToArray(object, number_item); \
-}
+})
 
-#define JSON_REPLACE_NUMBER_IN_ARRAY(object, index, num){ \
+#define JSON_REPLACE_NUMBER_IN_ARRAY(object, index, num)({ \
 	const double number = num; \
 	cJSON *number_item = cJSON_CreateNumber(number); \
 	cJSON_ReplaceItemInArray(object, index, number_item); \
-}
+})
 
-#define JSON_ADD_BOOL_TO_ARRAY(object, val){ \
+#define JSON_ADD_BOOL_TO_ARRAY(object, val)({ \
 	const cJSON_bool var_val = val; \
 	cJSON *bool_item = cJSON_CreateBool(var_val); \
 	cJSON_AddItemToArray(object, bool_item); \
-}
+})
 
-#define JSON_REF_STR_IN_ARRAY(array, string){ \
+#define JSON_REF_STR_IN_ARRAY(array, string)({ \
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
@@ -129,9 +129,9 @@
 		return 500; \
 	} \
 	cJSON_AddItemToArray(array, string_item); \
-}
+})
 
-#define JSON_COPY_STR_TO_ARRAY(array, string){ \
+#define JSON_COPY_STR_TO_ARRAY(array, string)({ \
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
@@ -149,7 +149,7 @@
 		return 500; \
 	} \
 	cJSON_AddItemToArray(array, string_item); \
-}
+})
 
 // cJSON_AddItemToObject() does not return anything
 // Note that this operation transfers the ownership of the added item to the
@@ -158,7 +158,7 @@
 
 #define JSON_DELETE(object) cJSON_Delete(object)
 
-#define JSON_SEND_OBJECT(object){ \
+#define JSON_SEND_OBJECT(object)({ \
 	const char* msg = json_formatter(object); \
 	if(msg == NULL) \
 	{ \
@@ -170,9 +170,9 @@
 	send_http(api, "application/json; charset=utf-8", msg); \
 	cJSON_Delete(object); \
 	return 200; \
-}
+})
 
-#define JSON_SEND_OBJECT_UNLOCK(object){ \
+#define JSON_SEND_OBJECT_UNLOCK(object)({ \
 	const char* msg = json_formatter(object); \
 	if(msg == NULL) \
 	{ \
@@ -186,9 +186,9 @@
 	cJSON_Delete(object); \
 	unlock_shm(); \
 	return 200; \
-}
+})
 
-#define JSON_SEND_OBJECT_CODE(object, code){ \
+#define JSON_SEND_OBJECT_CODE(object, code)({ \
 	const char* msg = json_formatter(object); \
 	if(msg == NULL) \
 	{ \
@@ -200,9 +200,9 @@
 	send_http_code(api, "application/json; charset=utf-8", code, msg); \
 	cJSON_Delete(object); \
 	return code; \
-}
+})
 /*
-#define JSON_SEND_OBJECT_AND_HEADERS(object, additional_headers){ \
+#define JSON_SEND_OBJECT_AND_HEADERS(object, additional_headers)({ \
 	const char* msg = json_formatter(object); \
 	if(msg == NULL) \
 	{ \
@@ -215,9 +215,9 @@
 	cJSON_Delete(object); \
 	free(additional_headers); \
 	return 200; \
-}
+})
 
-#define JSON_SEND_OBJECT_AND_HEADERS_CODE(object, code, additional_headers){ \
+#define JSON_SEND_OBJECT_AND_HEADERS_CODE(object, code, additional_headers)({ \
 	const char* msg = json_formatter(object); \
 	if(msg == NULL) \
 	{ \
@@ -230,5 +230,5 @@
 	cJSON_Delete(object); \
 	free(additional_headers); \
 	return code; \
-}
+})
 */

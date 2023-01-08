@@ -125,7 +125,7 @@
 
 [http]
   # Does local clients need to authenticate to access the API?
-  localAPIauth = false ### CHANGED, default = true
+  localAPIauth = true
 
   # Should FTL prettify the API output?
   prettyJSON = false

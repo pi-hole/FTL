@@ -555,9 +555,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 	{
 		const queriesData* query = getQuery(queryID, true);
 		if(query == NULL)
-		{
 			continue;
-		}
 
 		if(query->flags.blocked)
 		{

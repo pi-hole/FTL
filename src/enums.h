@@ -132,7 +132,7 @@ enum domain_client_status {
 } __attribute__ ((packed));
 
 enum debug_flag {
-	DEBUG_DATABASE = 0,
+	DEBUG_DATABASE = 1,
 	DEBUG_NETWORKING,
 	DEBUG_LOCKS,
 	DEBUG_QUERIES,

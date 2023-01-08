@@ -21,7 +21,6 @@
 #include "../files.h"
 
 struct config config = { 0 };
-bool debug_any = false;
 int dns_port = -1;
 
 void set_all_debug(const bool status)

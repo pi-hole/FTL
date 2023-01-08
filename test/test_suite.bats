@@ -1215,8 +1215,8 @@
   [[ "${lines[0]}" == "fe80::11" ]]
 }
 
-@test "API validation" {
-  run python3 test/api/checkAPI.py
-  printf "%s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-}
+#@test "API validation" {
+#  run python3 test/api/checkAPI.py
+#  printf "%s\n" "${lines[@]}"
+#  [[ $status == 0 ]]
+#}

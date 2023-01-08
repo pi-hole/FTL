@@ -72,6 +72,7 @@ bool readFTLtoml(void)
 	}
 
 	// Report debug config if enabled
+	parse_debug_options();
 	reportDebugConfig();
 
 	// Free memory allocated by the TOML parser and return success
@@ -221,26 +222,16 @@ bool getLogFilePathTOML(void)
 
 static void reportDebugConfig(void)
 {
-	// Loop over all debug options and check if at least one is enabled
-	debug_any = false;
-	for(unsigned int i = 0; i < DEBUG_ELEMENTS; i++)
-	{
-		struct conf_item *debug_item = get_debug_item(i);
-		if(debug_item->v.b)
-			debug_any = true;
-	}
-
 	log_debug(DEBUG_ANY, "***********************");
 	log_debug(DEBUG_ANY, "*    DEBUG SETTINGS   *");
 
 	// Read all known debug config items
-	for(unsigned int i = 0; i < DEBUG_ELEMENTS; i++)
+	for(unsigned int debug_flag = 0; debug_flag < DEBUG_ELEMENTS; debug_flag++)
 	{
-		struct conf_item *debug_item = get_debug_item(i);
 		const char *name;
-		debugstr(i, &name);
+		debugstr(debug_flag, &name);
 		unsigned int spaces = 20 - strlen(name);
-		log_debug(DEBUG_ANY, "* %s:%*s %s  *", name+6, spaces, "", debug_item->v.b ? "YES" : "NO ");
+		log_debug(DEBUG_ANY, "* %s:%*s %s  *", name+6, spaces, "", debug_flags[debug_flag] ? "YES" : "NO ");
 	}
 	log_debug(DEBUG_ANY, "***********************");
 }

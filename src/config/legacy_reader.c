@@ -788,10 +788,6 @@ static void setDebugOption(FILE* fp, const char* option, enum debug_flag flag)
 	bool bit = false;
 	if(parseBool(buffer, &bit))
 		debug->v.b = bit;
-
-	// Remember if we set *any* debugging flag
-	if(bit)
-		debug_any = true;
 }
 
 static void readDebugingSettingsLegacy(FILE *fp)
@@ -823,6 +819,9 @@ static void readDebugingSettingsLegacy(FILE *fp)
 		debugstr(flag, &name);
 		setDebugOption(fp, name, flag);
 	}
+
+	// Parse debug options
+	parse_debug_options();
 
 	if(debug_any)
 	{

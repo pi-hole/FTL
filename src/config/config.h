@@ -211,7 +211,6 @@ struct config {
 
 extern struct config config;
 extern int dns_port;
-extern bool debug_any;
 
 #define CONFIG_ELEMENTS (sizeof(config)/sizeof(struct conf_item))
 #define DEBUG_ELEMENTS (sizeof(config.debug)/sizeof(struct conf_item))
