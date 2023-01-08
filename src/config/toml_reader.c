@@ -52,10 +52,12 @@ bool readFTLtoml(void)
 	{
 		// Get pointer to memory location of this conf_item
 		struct conf_item *conf_item = get_conf_item(i);
-		toml_table_t *table[MAX_CONFIG_PATH_DEPTH] = { 0 };
+
+		// Get config path depth
 		unsigned int level = config_path_depth(conf_item);
 
 		// Parse tree of properties
+		toml_table_t *table[MAX_CONFIG_PATH_DEPTH] = { 0 };
 		for(unsigned int j = 0; j < level-1; j++)
 		{
 			// Get table at this level
@@ -222,8 +224,8 @@ bool getLogFilePathTOML(void)
 
 static void reportDebugConfig(void)
 {
-	log_debug(DEBUG_ANY, "***********************");
-	log_debug(DEBUG_ANY, "*    DEBUG SETTINGS   *");
+	log_debug(DEBUG_ANY, "************************");
+	log_debug(DEBUG_ANY, "*    DEBUG SETTINGS    *");
 
 	// Read all known debug config items
 	for(unsigned int debug_flag = 0; debug_flag < DEBUG_ELEMENTS; debug_flag++)
@@ -233,5 +235,5 @@ static void reportDebugConfig(void)
 		unsigned int spaces = 20 - strlen(name);
 		log_debug(DEBUG_ANY, "* %s:%*s %s  *", name+6, spaces, "", debug_flags[debug_flag] ? "YES" : "NO ");
 	}
-	log_debug(DEBUG_ANY, "***********************");
+	log_debug(DEBUG_ANY, "************************");
 }

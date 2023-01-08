@@ -45,16 +45,15 @@ static char **gen_config_path(const char *pathin)
 	char *path = (char*)pathin;
 	char *saveptr = path;
 
+	// Allocate memory for the path elements
+	char **paths = calloc(MAX_CONFIG_PATH_DEPTH, sizeof(char*));
+
 	// Sanity check
 	if(!pathin)
 	{
 		log_err("Config path is empty");
-		return NULL;
+		return paths;
 	}
-
-	// Allocate memory for the path elements
-	char **paths = calloc(MAX_CONFIG_PATH_DEPTH, sizeof(char*));
-	//char *token;
 
 	size_t pathlen = 0;
 	// Extract all path elements
@@ -617,7 +616,7 @@ void initConfig(void)
 	}
 }
 
-void readFTLconf(void)
+void readFTLconf(const bool rewrite)
 {
 	// First try to read TOML config file
 	if(readFTLtoml())
@@ -625,7 +624,8 @@ void readFTLconf(void)
 		// If successful, we write the config file back to disk
 		// to ensure that all options are present and comments
 		// about options deviating from the default are present
-		writeFTLtoml();
+		if(rewrite)
+			writeFTLtoml();
 		return;
 	}
 

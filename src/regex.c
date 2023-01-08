@@ -694,8 +694,10 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 	counters = calloc(1, sizeof(countersStruct));
 	// Disable terminal output during config config file parsing
 	log_ctrl(false, false);
+
 	// Process pihole-FTL.conf to get gravity.db path
-	readFTLconf();
+	// Do not overwrite the file after reading it
+	readFTLconf(false);
 
 	// Disable all debugging output if not explicitly in debug mode (CLI argument "d")
 	if(!debug_mode)

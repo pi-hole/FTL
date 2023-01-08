@@ -46,6 +46,9 @@ int main (int argc, char *argv[])
 	// it if needed
 	username = getUserName();
 
+	// Obtain log file location
+	getLogFilePath();
+
 	// Parse arguments
 	// We run this also for no direct arguments
 	// to have arg{c,v}_dnsmasq initialized
@@ -64,7 +67,9 @@ int main (int argc, char *argv[])
 	handle_signals();
 
 	// Process pihole-FTL.toml configuration file
-	readFTLconf();
+	// The file is rewritten after parsing to ensure that all
+	// settings are present and have a valid value
+	readFTLconf(true);
 
 	// Set process priority
 	set_nice();

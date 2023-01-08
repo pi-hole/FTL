@@ -29,7 +29,7 @@
 // Defined in config.c
 void set_all_debug(const bool status);
 void initConfig(void);
-void readFTLconf(void);
+void readFTLconf(const bool rewrite);
 bool getLogFilePath(void);
 struct conf_item *get_conf_item(unsigned int n);
 struct conf_item *get_debug_item(const enum debug_flag debug);

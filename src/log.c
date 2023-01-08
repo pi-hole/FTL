@@ -56,9 +56,6 @@ void log_ctrl(bool plog, bool pstdout)
 
 void init_FTL_log(const char *name)
 {
-	// Obtain log file location
-	getLogFilePath();
-
 	// Open the log file in append/create mode
 	if(config.files.log.v.s != NULL)
 	{
