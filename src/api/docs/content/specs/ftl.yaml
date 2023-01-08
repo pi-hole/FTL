@@ -296,6 +296,27 @@ components:
               nullable: true
             dns:
               $ref: 'dns.yaml#/components/schemas/blocking'
+            uname:
+              type: object
+              properties:
+                domainname:
+                  type: string
+                  example: "(none)"
+                machine:
+                  type: string
+                  example: "x86_64"
+                nodename:
+                  type: string
+                  example: "raspberrypi"
+                release:
+                  type: string
+                  example: "5.15.0-52-generic"
+                sysname:
+                  type: string
+                  example: "Linux"
+                version:
+                  type: string
+                  example: "#58-Ubuntu SMP Thu Oct 13 08:03:55 UTC 2022"
     ftl:
       type: object
       properties:

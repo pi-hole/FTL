@@ -32,6 +32,8 @@
 #include "../config/config.h"
 // struct clientsData
 #include "../datastructure.h"
+// uname()
+#include <sys/utsname.h>
 
 int api_ftl_client(struct ftl_conn *api)
 {
@@ -397,9 +399,22 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	if(f_model)
 		fclose(f_model);
 
+	struct utsname un = { 0 };
+	uname(&un);
+
 	cJSON *dns = JSON_NEW_OBJECT();
 	const bool blocking = get_blockingstatus();
 	JSON_ADD_BOOL_TO_OBJECT(dns, "blocking", blocking); // same reply type as in /api/dns/status
+
+	cJSON *uname_ = JSON_NEW_OBJECT();
+	JSON_REF_STR_IN_OBJECT(uname_, "domainname", un.domainname);
+	JSON_REF_STR_IN_OBJECT(uname_, "machine", un.machine);
+	JSON_REF_STR_IN_OBJECT(uname_, "nodename", un.nodename);
+	JSON_REF_STR_IN_OBJECT(uname_, "release", un.release);
+	JSON_REF_STR_IN_OBJECT(uname_, "sysname", un.sysname);
+	JSON_REF_STR_IN_OBJECT(uname_, "version", un.version);
+	JSON_ADD_ITEM_TO_OBJECT(system, "uname", uname_);
+
 	JSON_ADD_ITEM_TO_OBJECT(system, "dns", dns);
 
 	return 0;
