@@ -8,28 +8,26 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 #include "database-thread.h"
 #include "common.h"
 // [un]lock_shm();
-#include "../shmem.h"
+#include "shmem.h"
 // parse_neighbor_cache()
 #include "network-table.h"
 // export_queries_to_disk()
 #include "query-table.h"
-#include "../config/config.h"
-#include "../log.h"
-#include "../timers.h"
+#include "config/config.h"
+#include "log.h"
+#include "timers.h"
 // global variable killed
-#include "../signals.h"
+#include "signals.h"
 // reimport_aliasclients()
 #include "aliasclients.h"
 // Eventqueue routines
-#include "../events.h"
+#include "events.h"
 // get_FTL_db_filesize()
-#include "../files.h"
-// read_blocking_status()
-#include "../setupVars.h"
+#include "files.h"
 
 #define TIME_T "%li"
 
@@ -166,13 +164,6 @@ void *DB_thread(void *val)
 		// Intermediate cancellation-point
 		BREAK_IF_KILLED();
 
-		// Reload privacy level from pihole-FTL config
-		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))
-			getPrivacyLevel();
-
-		// Intermediate cancellation-point
-		BREAK_IF_KILLED();
-
 		// Import alias-clients
 		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
 		{
@@ -180,18 +171,6 @@ void *DB_thread(void *val)
 			reimport_aliasclients(db);
 			unlock_shm();
 		}
-
-		BREAK_IF_KILLED();
-
-		// Inspect setupVars.conf to see if Pi-hole blocking is enabled
-		if(get_and_clear_event(RELOAD_BLOCKINGSTATUS))
-			read_blocking_status();
-
-		BREAK_IF_KILLED();
-
-		// Read blocking mode from pihole-FTL.toml
-		if(get_and_clear_event(RELOAD_BLOCKINGMODE))
-			getBlockingMode();
 
 		BREAK_IF_KILLED();
 

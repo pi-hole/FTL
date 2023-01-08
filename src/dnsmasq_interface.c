@@ -266,21 +266,21 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	else
 	{
 		// Overwrite flags only if not replying with a forced reply
-		if(config.dns.blockingmode.v.blocking_mode == MODE_NX)
+		if(config.dns.blocking.mode.v.blocking_mode == MODE_NX)
 		{
 			// If we block in NXDOMAIN mode, we set flags to NXDOMAIN
 			// (NEG will be added after setup_reply() below)
 			flags = F_NXDOMAIN;
 			log_debug(DEBUG_FLAGS, "Configured blocking mode is NXDOMAIN");
 		}
-		else if(config.dns.blockingmode.v.blocking_mode == MODE_NODATA ||
-				(config.dns.blockingmode.v.blocking_mode == MODE_IP_NODATA_AAAA && (flags & F_IPV6)))
+		else if(config.dns.blocking.mode.v.blocking_mode == MODE_NODATA ||
+				(config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA && (flags & F_IPV6)))
 		{
 			// If we block in NODATA mode or NODATA for AAAA queries, we apply
 			// the NOERROR response flag. This ensures we're sending an empty response
 			flags = F_NOERR;
 			log_debug(DEBUG_FLAGS, "Configured blocking mode is NODATA%s",
-				     config.dns.blockingmode.v.blocking_mode == MODE_IP_NODATA_AAAA ? "-IPv6" : "");
+				     config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ? "-IPv6" : "");
 		}
 	}
 
@@ -334,8 +334,8 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Overwrite with IP address if requested
 		if(redirecting)
 			memcpy(&addr, &redirect_addr4, sizeof(addr));
-		else if(config.dns.blockingmode.v.blocking_mode == MODE_IP ||
-		        config.dns.blockingmode.v.blocking_mode == MODE_IP_NODATA_AAAA ||
+		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
+		        config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ||
 		        forced_ip)
 		{
 			if(hostname && config.dns.reply.host.overwrite_v4.v.b)
@@ -370,7 +370,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Overwrite with IP address if requested
 		if(redirecting)
 			memcpy(&addr, &redirect_addr6, sizeof(addr));
-		else if(config.dns.blockingmode.v.blocking_mode == MODE_IP ||
+		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
 		        forced_ip)
 		{
 			if(hostname && config.dns.reply.host.overwrite_v6.v.b)
@@ -1735,11 +1735,6 @@ void FTL_dnsmasq_reload(void)
 {
 	// This function is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and re-reading the lists
-
-	// Request reload the privacy level and blocking status + mode
-	set_event(RELOAD_PRIVACY_LEVEL);
-	set_event(RELOAD_BLOCKINGSTATUS);
-	set_event(RELOAD_BLOCKINGMODE);
 
 	// Gravity database updates
 	// - (Re-)open gravity database connection

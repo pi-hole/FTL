@@ -162,6 +162,21 @@ void writeTOMLvalue(FILE * fp, const enum conf_type t, union conf_value *v)
 			printTOMLstring(fp, addr6);
 			break;
 		}
+		case CONF_JSON_STRING_ARRAY:
+		{
+			fputs("[ ", fp);
+			const unsigned int elems = cJSON_GetArraySize(v->json);
+			for(unsigned int i = 0; i < elems; i++)
+			{
+				cJSON *item = cJSON_GetArrayItem(v->json, i);
+				printTOMLstring(fp, item->valuestring);
+				// Add a comma if there is one more element to come
+				if(item->next)
+					fputs(", ", fp);
+			}
+			fputs(" ]", fp);
+			break;
+		}
 	}
 }
 
@@ -319,6 +334,34 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			const toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok && inet_pton(AF_INET6, val.u.s, &addr6))
 				memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
+			break;
+		}
+		case CONF_JSON_STRING_ARRAY:
+		{
+			// Free previously allocated JSON array
+			cJSON_free(conf_item->v.json);
+			conf_item->v.json = cJSON_CreateArray();
+			// Parse TOML array and generate a JSON array
+			const toml_array_t *array = toml_array_in(toml, key);
+			if(array != NULL)
+			{
+				const unsigned int nelem = toml_array_nelem(array);
+				for(unsigned int i = 0; i < nelem; i++)
+				{
+					// Get string from TOML
+					const toml_datum_t d = toml_string_at(array, i);
+					if(!d.ok)
+					{
+						log_debug(DEBUG_CONFIG, "%s is an invalid array (found at index %d)", conf_item->k, i);
+						break;
+					}
+					// Add string to our JSON array
+					cJSON *item = cJSON_CreateString(d.u.s);
+					cJSON_AddItemToArray(conf_item->v.json, item);
+				}
+			}
+			else
+				log_debug(DEBUG_CONFIG, "%s does not exist", conf_item->k);
 			break;
 		}
 	}

@@ -77,10 +77,15 @@ components:
                   type: string
                 blockTTL:
                   type: integer
-                blockingmode:
-                  type: string
                 port:
                   type: integer
+                blocking:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    mode:
+                      type: string
                 specialDomains:
                   type: object
                   properties:
@@ -151,7 +156,7 @@ components:
                       type: boolean
                     expire:
                       type: integer
-            http:
+            api:
               type: object
               properties:
                 localAPIauth:
@@ -160,6 +165,19 @@ components:
                   type: boolean
                 sessionTimeout:
                   type: integer
+                pwhash:
+                  type: string
+                exclude_clients:
+                  type: array
+                  items:
+                    type: string
+                exclude_domains:
+                  type: array
+                  items:
+                    type: string
+            http:
+              type: object
+              properties:
                 domain:
                   type: string
                 acl:
@@ -279,7 +297,9 @@ components:
             piholePTR: PI.HOLE
             replyWhenBusy: ALLOW
             blockTTL: 2
-            blockingmode: 'NULL'
+            blocking:
+              active: true
+              mode: 'NULL'
             specialDomains:
               mozillaCanary: true
               iCloudPrivateRelay: true
@@ -312,10 +332,14 @@ components:
             network:
               parseARPcache: true
               expire: 365
-          http:
+          api:
             localAPIauth: false
             prettyJSON: false
             sessionTimeout: 300
+            pwhash: ''
+            exclude_clients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
+            exclude_domains: [ 'google.de', 'pi-hole.net' ]
+          http:
             domain: pi.hole
             acl: "+0.0.0.0/0"
             port: 8080,[::]:8080

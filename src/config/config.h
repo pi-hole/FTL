@@ -23,6 +23,8 @@
 #include <stdbool.h>
 // type FILE
 #include <stdio.h>
+// type cJSON
+#include "cJSON/cJSON.h"
 
 #define GLOBALTOMLPATH "/etc/pihole/pihole-FTL.toml"
 
@@ -40,6 +42,8 @@ bool getPrivacyLevel(void);
 bool getBlockingMode(void);
 bool readDebugSettings(void);
 void init_config_mutex(void);
+bool get_blockingstatus(void) __attribute__((pure));
+void set_blockingstatus(bool enabled);
 
 union conf_value {
 	bool b;
@@ -56,6 +60,7 @@ union conf_value {
 	enum debug_flag debug_flag;
 	struct in_addr in_addr;
 	struct in6_addr in6_addr;
+	cJSON *json;
 };
 
 enum conf_type {
@@ -72,7 +77,10 @@ enum conf_type {
 	CONF_ENUM_REFRESH_HOSTNAMES,
 	CONF_ENUM_PRIVACY_LEVEL,
 	CONF_STRUCT_IN_ADDR,
-	CONF_STRUCT_IN6_ADDR
+	CONF_STRUCT_IN6_ADDR,
+	// We could theoretically use a more generic type, however, we want this
+	// here for strict input checking
+	CONF_JSON_STRING_ARRAY
 } __attribute__ ((packed));
 
 #define MAX_CONFIG_PATH_DEPTH 4
@@ -99,7 +107,10 @@ struct config {
 		struct conf_item piholePTR;
 		struct conf_item replyWhenBusy;
 		struct conf_item blockTTL;
-		struct conf_item blockingmode;
+		struct {
+			struct conf_item active;
+			struct conf_item mode;
+		} blocking;
 		struct {
 			struct conf_item mozillaCanary;
 			struct conf_item iCloudPrivateRelay;
@@ -147,6 +158,12 @@ struct config {
 		struct conf_item localAPIauth;
 		struct conf_item prettyJSON;
 		struct conf_item sessionTimeout;
+		struct conf_item pwhash;
+		struct conf_item exclude_clients;
+		struct conf_item exclude_domains;
+	} api;
+
+	struct {
 		struct conf_item domain;
 		struct conf_item acl;
 		struct conf_item port;

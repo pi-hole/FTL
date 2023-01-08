@@ -14,7 +14,7 @@
 // killed
 #include "signals.h"
 // set_blockingmode()
-#include "setupVars.h"
+#include "config/config.h"
 
 struct timespec t0[NUMTIMERS];
 

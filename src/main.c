@@ -122,7 +122,6 @@ int main (int argc, char *argv[])
 	}
 
 	log_counter_info();
-	check_setupVarsconf();
 
 	// Check for availability of capabilities in debug mode
 	if(config.debug.caps.v.b)

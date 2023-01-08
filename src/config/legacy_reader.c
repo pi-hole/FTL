@@ -310,7 +310,7 @@ const char *readFTLlegacy(void)
 	// API_AUTH_FOR_LOCALHOST
 	// defaults to: true
 	buffer = parseFTLconf(fp, "API_AUTH_FOR_LOCALHOST");
-	parseBool(buffer, &config.http.localAPIauth.v.b);
+	parseBool(buffer, &config.api.localAPIauth.v.b);
 
 	// API_SESSION_TIMEOUT
 	// How long should a session be considered valid after login?
@@ -319,12 +319,12 @@ const char *readFTLlegacy(void)
 
 	value = 0;
 	if(buffer != NULL && sscanf(buffer, "%i", &value) && value > 0)
-		config.http.sessionTimeout.v.ui = value;
+		config.api.sessionTimeout.v.ui = value;
 
 	// API_PRETTY_JSON
 	// defaults to: false
 	buffer = parseFTLconf(fp, "API_PRETTY_JSON");
-	parseBool(buffer, &config.http.prettyJSON.v.b);
+	parseBool(buffer, &config.api.prettyJSON.v.b);
 
 	// API_ERROR_LOG
 	config.files.ph7_error.v.s = getPath(fp, "API_ERROR_LOG", config.files.ph7_error.v.s);
@@ -751,7 +751,7 @@ static void getPrivacyLevelLegacy(FILE *fp)
 static void getBlockingModeLegacy(FILE *fp)
 {
 	// (Re-)set default value
-	config.dns.blockingmode.v.blocking_mode = config.dns.blockingmode.d.blocking_mode;
+	config.dns.blocking.mode.v.blocking_mode = config.dns.blocking.mode.d.blocking_mode;
 
 	// See if we got a file handle, if not we have to open
 	// the config file ourselves
@@ -770,15 +770,15 @@ static void getBlockingModeLegacy(FILE *fp)
 	if(buffer != NULL)
 	{
 		if(strcasecmp(buffer, "NXDOMAIN") == 0)
-			config.dns.blockingmode.v.blocking_mode = MODE_NX;
+			config.dns.blocking.mode.v.blocking_mode = MODE_NX;
 		else if(strcasecmp(buffer, "NULL") == 0)
-			config.dns.blockingmode.v.blocking_mode = MODE_NULL;
+			config.dns.blocking.mode.v.blocking_mode = MODE_NULL;
 		else if(strcasecmp(buffer, "IP-NODATA-AAAA") == 0)
-			config.dns.blockingmode.v.blocking_mode = MODE_IP_NODATA_AAAA;
+			config.dns.blocking.mode.v.blocking_mode = MODE_IP_NODATA_AAAA;
 		else if(strcasecmp(buffer, "IP") == 0)
-			config.dns.blockingmode.v.blocking_mode = MODE_IP;
+			config.dns.blocking.mode.v.blocking_mode = MODE_IP;
 		else if(strcasecmp(buffer, "NODATA") == 0)
-			config.dns.blockingmode.v.blocking_mode = MODE_NODATA;
+			config.dns.blocking.mode.v.blocking_mode = MODE_NODATA;
 		else
 			log_warn("Unknown blocking mode, using NULL as fallback");
 	}

@@ -185,11 +185,17 @@ void initConfig(void)
 	config.dns.blockTTL.t = CONF_UINT;
 	config.dns.blockTTL.d.ui = 2;
 
-	config.dns.blockingmode.k = "dns.blockingmode";
-	config.dns.blockingmode.h = "How should FTL reply to blocked queries?";
-	config.dns.blockingmode.a = "[ \"NULL\", \"IP-NODATA-AAAA\", \"IP\", \"NXDOMAIN\", \"NODATA\" ]";
-	config.dns.blockingmode.t = CONF_ENUM_BLOCKING_MODE;
-	config.dns.blockingmode.d.blocking_mode = MODE_NULL;
+	// sub-struct dns.blocking
+	config.dns.blocking.active.k = "dns.blocking.active";
+	config.dns.blocking.active.h = "Should FTL block queries?";
+	config.dns.blocking.active.t = CONF_BOOL;
+	config.dns.blocking.active.d.b = true;
+
+	config.dns.blocking.mode.k = "dns.blocking.mode";
+	config.dns.blocking.mode.h = "How should FTL reply to blocked queries?";
+	config.dns.blocking.mode.a = "[ \"NULL\", \"IP-NODATA-AAAA\", \"IP\", \"NXDOMAIN\", \"NODATA\" ]";
+	config.dns.blocking.mode.t = CONF_ENUM_BLOCKING_MODE;
+	config.dns.blocking.mode.d.blocking_mode = MODE_NULL;
 
 	// sub-struct dns.rate_limit
 	config.dns.rateLimit.count.k = "dns.rateLimit.count";
@@ -320,22 +326,42 @@ void initConfig(void)
 	config.database.network.expire.d.ui = config.database.maxDBdays.d.ui;
 
 
+	// struct api
+	config.api.localAPIauth.k = "api.localAPIauth";
+	config.api.localAPIauth.h = "Does local clients need to authenticate to access the API?";
+	config.api.localAPIauth.t = CONF_BOOL;
+	config.api.localAPIauth.d.b = true;
+
+	config.api.prettyJSON.k = "api.prettyJSON";
+	config.api.prettyJSON.h = "Should FTL prettify the API output?";
+	config.api.prettyJSON.t = CONF_BOOL;
+	config.api.prettyJSON.d.b = false;
+
+	config.api.sessionTimeout.k = "api.sessionTimeout";
+	config.api.sessionTimeout.h = "How long should a session be considered valid after login [seconds]?";
+	config.api.sessionTimeout.t = CONF_UINT;
+	config.api.sessionTimeout.d.ui = 300;
+
+	config.api.pwhash.k = "api.pwhash";
+	config.api.pwhash.h = "API password hash";
+	config.api.pwhash.a = "<valid Pi-hole password hash>";
+	config.api.pwhash.t = CONF_STRING;
+	config.api.pwhash.d.s = NULL;
+
+	config.api.exclude_clients.k = "api.exclude_clients";
+	config.api.exclude_clients.h = "Array of clients to be excluded from certain API responses";
+	config.api.exclude_clients.a = "array of IP addresses and/or hostnames, e.g. [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
+	config.api.exclude_clients.t = CONF_JSON_STRING_ARRAY;
+	config.api.exclude_clients.d.json = cJSON_CreateArray();
+
+	config.api.exclude_domains.k = "api.exclude_domains";
+	config.api.exclude_domains.h = "Array of domains to be excluded from certain API responses";
+	config.api.exclude_domains.a = "array of IP addresses and/or hostnames, e.g. [ \"google.de\", \"pi-hole.net\" ]";
+	config.api.exclude_domains.t = CONF_JSON_STRING_ARRAY;
+	config.api.exclude_domains.d.json = cJSON_CreateArray();
+
+
 	// struct http
-	config.http.localAPIauth.k = "http.localAPIauth";
-	config.http.localAPIauth.h = "Does local clients need to authenticate to access the API?";
-	config.http.localAPIauth.t = CONF_BOOL;
-	config.http.localAPIauth.d.b = true;
-
-	config.http.prettyJSON.k = "http.prettyJSON";
-	config.http.prettyJSON.h = "Should FTL prettify the API output?";
-	config.http.prettyJSON.t = CONF_BOOL;
-	config.http.prettyJSON.d.b = false;
-
-	config.http.sessionTimeout.k = "http.sessionTimeout";
-	config.http.sessionTimeout.h = "How long should a session be considered valid after login [seconds]?";
-	config.http.sessionTimeout.t = CONF_UINT;
-	config.http.sessionTimeout.d.ui = 300;
-
 	config.http.domain.k = "http.domain";
 	config.http.domain.h = "On which domain is the web interface served?";
 	config.http.domain.a = "<valid domain>";
@@ -599,7 +625,15 @@ void initConfig(void)
 
 		// Initialize config value with default one for all *except* the log file path
 		if(conf_item != &config.files.log)
-			memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->d));
+		{
+			if(conf_item->t == CONF_JSON_STRING_ARRAY)
+				// JSON objects really need to be duplicated as the config
+				// structure stores only a pointer to memory somewhere else
+				conf_item->v.json = cJSON_Duplicate(conf_item->d.json, true);
+			else
+				// Ordinary value: Simply copy the union over
+				memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->d));
+		}
 
 		// Parse and split paths
 		conf_item->p = gen_config_path(conf_item->k);
@@ -643,10 +677,19 @@ void readFTLconf(const bool rewrite)
 			log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
 	}
 
-	// We initialize the TOML config file (every user gets one) only if none is already
-	// present (may be containing errors)
-	if(!file_exists(GLOBALTOMLPATH))
-		writeFTLtoml();
+	importsetupVarsConf();
+
+	// When we reach this point but the FTL TOML config file exists, it may
+	// contain errors such as syntax errors, etc. We move it into a ".bck" location
+	// so it can be revisited later
+	if(file_exists(GLOBALTOMLPATH))
+	{
+		const char new_name[] = GLOBALTOMLPATH ".bck";
+		rename(GLOBALTOMLPATH, new_name);
+	}
+
+	// Initialize the TOML config file
+	writeFTLtoml();
 }
 
 bool getLogFilePath(void)
@@ -667,4 +710,16 @@ bool getLogFilePath(void)
 		return getLogFilePathLegacy(NULL);
 
 	return true;
+}
+
+bool __attribute__((pure)) get_blockingstatus(void)
+{
+	return config.dns.blocking.active.v.b;
+}
+
+void set_blockingstatus(bool enabled)
+{
+	config.dns.blocking.active.v.b = enabled;
+	writeFTLtoml();
+	raise(SIGHUP);
 }

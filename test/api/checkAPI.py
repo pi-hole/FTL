@@ -67,7 +67,7 @@ if __name__ == "__main__":
 	if errs[1] > 0:
 		print("Found " + str(errs[1]) + " undocumented endpoints")
 	if errs[2] > 0:
-		print("Found " + str(errs[2]) + " endpoints not matching specs")
+		print("Found " + str(errs[2]) + " specs mismatches")
 
 	# Exit with an error if there are missing endpoints
 	if sum(errs) > 0:

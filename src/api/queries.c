@@ -8,23 +8,21 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
-#include "api.h"
-#include "../shmem.h"
-#include "../datastructure.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
+#include "api/api.h"
+#include "shmem.h"
+#include "datastructure.h"
 // config struct
-#include "../config/config.h"
-// read_setupVarsconf()
-#include "../setupVars.h"
+#include "config/config.h"
 // get_aliasclient_list()
-#include "../database/aliasclients.h"
+#include "database/aliasclients.h"
 // get_memdb()
-#include "../database/query-table.h"
+#include "database/query-table.h"
 
 // dbopen(), dbclose()
-#include "../database/common.h"
+#include "database/common.h"
 
 static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *querystr, const int max_count)
 {

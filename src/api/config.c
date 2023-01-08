@@ -102,6 +102,12 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 			inet_ntop(AF_INET6, &val->in6_addr, addr6, INET6_ADDRSTRLEN);
 			return cJSON_CreateString(addr6); // Performs a copy
 		}
+		case CONF_JSON_STRING_ARRAY:
+		{
+			// Return a duplicate to ensure our instance isn't getting freed
+			// after returning the reply
+			return cJSON_Duplicate(val->json, true);
+		}
 		default:
 			return NULL;
 	}
@@ -277,6 +283,20 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 			memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 			log_debug(DEBUG_CONFIG, "Set %s to %s", conf_item->k, elem->valuestring);
 			break;
+		}
+		case CONF_JSON_STRING_ARRAY:
+		{
+			if(!cJSON_IsArray(elem))
+				return "not of type array";
+			const unsigned int elems = cJSON_GetArraySize(elem);
+			for(unsigned int i = 0; i < elems; i++)
+			{
+				const cJSON *item = cJSON_GetArrayItem(elem, i);
+				if(!cJSON_IsString(item))
+					return "array has invalid elements";
+			}
+			// If we reach this point, all elements are valid
+			conf_item->v.json = cJSON_Duplicate(elem, true);
 		}
 	}
 	return NULL;

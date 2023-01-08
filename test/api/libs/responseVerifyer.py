@@ -121,6 +121,9 @@ class ResponseVerifyer():
 		if prop_type is type(None) and yaml_nullable:
 			return True
 		# Check if the type is correct using the YAML_TYPES translation table
+		if yaml_type not in self.YAML_TYPES:
+			self.errors.append("Property type \"" + yaml_type + "\" is not valid in OpenAPI specs")
+			return False
 		return prop_type in self.YAML_TYPES[yaml_type]
 
 

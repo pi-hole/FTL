@@ -181,10 +181,10 @@ bool getBlockingMode(void)
 	// Iterate over possible blocking modes and check if it applies
 	const int blocking_mode = get_blocking_mode_val(blockingmode.u.s);
 	if(blocking_mode != -1)
-		config.dns.blockingmode.v.blocking_mode = blocking_mode;
+		config.dns.blocking.mode.v.blocking_mode = blocking_mode;
 	else
 		log_warn("Config setting %s is invalid, allowed options are: %s",
-		         config.dns.blockingmode.k, config.dns.blockingmode.h);
+		         config.dns.blocking.mode.k, config.dns.blocking.mode.h);
 	free(blockingmode.u.s);
 
 	// Free memory and return success

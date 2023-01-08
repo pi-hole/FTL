@@ -126,29 +126,40 @@ int api_history_clients(struct ftl_conn *api)
 	}
 
 	// Get clients which the user doesn't want to see
-	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
-	// Array of clients to be skipped in the output
 	// if skipclient[i] == true then this client should be hidden from
 	// returned data. We initialize it with false
 	bool skipclient[counters->clients];
 	memset(skipclient, false, counters->clients*sizeof(bool));
 
-	if(excludeclients != NULL)
+	unsigned int exclude_clients = cJSON_GetArraySize(config.api.exclude_clients.v.json);
+	if(exclude_clients > 0)
 	{
-		getSetupVarsArray(excludeclients);
-
-		for(int clientID=0; clientID < counters->clients; clientID++)
+		for(int clientID = 0; clientID < counters->clients; clientID++)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
 			if(client == NULL)
 				continue;
 			// Check if this client should be skipped
-			if(insetupVarsArray(getstr(client->ippos)) ||
-			   insetupVarsArray(getstr(client->namepos)) ||
-			   (!client->flags.aliasclient && client->aliasclient_id > -1))
-				skipclient[clientID] = true;
+			for(unsigned int i = 0; i < exclude_clients; i++)
+			{
+				cJSON *item = cJSON_GetArrayItem(config.api.exclude_clients.v.json, i);
+				if(strcmp(getstr(client->ippos), item->valuestring) == 0 ||
+				   strcmp(getstr(client->namepos), item->valuestring) == 0)
+					skipclient[clientID] = true;
+			}
 		}
+	}
+
+	// Also skip alias-clients
+	for(int clientID=0; clientID < counters->clients; clientID++)
+	{
+		// Get client pointer
+		const clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+		if(!client->flags.aliasclient && client->aliasclient_id > -1)
+			skipclient[clientID] = true;
 	}
 
 	cJSON *history = JSON_NEW_ARRAY();
@@ -203,9 +214,6 @@ int api_history_clients(struct ftl_conn *api)
 		JSON_ADD_ITEM_TO_ARRAY(clients, item);
 	}
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
-
-	if(excludeclients != NULL)
-		clearSetupVarsArray();
 
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
