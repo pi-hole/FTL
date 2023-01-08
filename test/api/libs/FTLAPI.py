@@ -41,12 +41,14 @@ class FTLAPI():
 
 	def login(self, password: str = None):
 		# Get challenge from FTL
-		challenge = self.GET("/api/auth")
+		response = self.GET("/api/auth")
 
 		# Check if we are already logged in or authentication is not
 		# required
-		if 'session' in challenge and challenge['session']['valid']:
-			self.session = challenge
+		if 'session' in response and response['session']['valid']:
+			if 'session' not in response:
+				raise Exception("FTL returned invalid challenge item")
+			self.session = response["session"]
 			return
 
 		pwhash = None
@@ -62,14 +64,17 @@ class FTLAPI():
 				self.errors.append("Exception when reading setupVars.conf: " + str(e))
 
 		else:
-			# Hash the given password twice
+			# Generate password hash
 			pwhash = sha256(password.encode("ascii")).hexdigest()
 			pwhash = sha256(pwhash.encode("ascii")).hexdigest()
 
 		# Get the challenge from FTL
 		challenge = challenge["challenge"].encode("ascii")
 		response = sha256(challenge + b":" + pwhash.encode("ascii")).hexdigest()
-		self.session = self.POST("/api/auth", {"response": response})["session"]
+		response = self.POST("/api/auth", {"response": response})
+		if 'session' not in response:
+			raise Exception("FTL returned invalid challenge item")
+		self.session = response["session"]
 
 	# Query the FTL API (GET) and return the response
 	def GET(self, uri: str, params: List[str] = []):
