@@ -37,6 +37,9 @@ void set_all_debug(const bool status)
 		// Set status
 		conf_item->v.b = status;
 	}
+
+	// Update debug flags
+	set_debug_flags();
 }
 
 // Extract and store key from full path

@@ -21,7 +21,7 @@
 extern bool debug_any;
 extern bool debug_flags[DEBUG_MAX];
 
-void parse_debug_options(void);
+void set_debug_flags(void);
 void init_FTL_log(const char *name);
 void log_counter_info(void);
 void format_memory_size(char prefix[2], unsigned long long int bytes,

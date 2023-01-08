@@ -417,7 +417,11 @@ int api_stats_database_summary(struct ftl_conn *api)
 	           "WHERE timestamp >= :from AND timestamp <= :until";
 	const int total_clients = db_query_int_from_until(db, querystr, from, until);
 
-	const float percent_blocked = 1e2f*sum_blocked/sum_queries;
+	// Calculate percentage of blocked queries, substituting 0.0 if there
+	// are no blocked queries
+	float percent_blocked = 0.0;
+	if(sum_queries > 0.0)
+		percent_blocked = 1e2f*sum_blocked/sum_queries;
 
 	if(sum_queries < 0 || sum_blocked < 0 || total_clients < 0)
 	{

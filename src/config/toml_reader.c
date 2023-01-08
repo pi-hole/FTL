@@ -74,7 +74,7 @@ bool readFTLtoml(void)
 	}
 
 	// Report debug config if enabled
-	parse_debug_options();
+	set_debug_flags();
 	reportDebugConfig();
 
 	// Free memory allocated by the TOML parser and return success

@@ -821,7 +821,7 @@ static void readDebugingSettingsLegacy(FILE *fp)
 	}
 
 	// Parse debug options
-	parse_debug_options();
+	set_debug_flags();
 
 	if(debug_any)
 	{

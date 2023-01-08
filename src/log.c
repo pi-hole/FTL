@@ -30,7 +30,10 @@ static const char *process = "";
 bool debug_any = false;
 bool debug_flags[DEBUG_MAX] = { false };
 
-void parse_debug_options(void)
+// Set debug flags from config struct to global debug_flags array
+// This is called whenever the config is reloaded and debug flags may have
+// changed
+void set_debug_flags(void)
 {
 	// Reset debug flags
 	debug_any = false;
