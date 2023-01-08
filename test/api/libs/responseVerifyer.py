@@ -76,7 +76,7 @@ class ResponseVerifyer():
 				FTLparameters.append(param['name'] + "=" + urllib.parse.quote_plus(str(param['example'])))
 
 		# Get FTL response
-		FTLresponse = self.ftl.getFTLresponse("/api" + endpoint, FTLparameters)
+		FTLresponse = self.ftl.GET("/api" + endpoint, FTLparameters)
 		if FTLresponse is None:
 			return self.ftl.errors
 
@@ -118,7 +118,7 @@ class ResponseVerifyer():
 	# Verify a single property's type
 	def verify_type(self, prop_type: any, yaml_type: str, yaml_nullable: bool):
 		# None is an acceptable reply when this is specified in the API specs
-		if prop_type is None and yaml_nullable:
+		if prop_type is type(None) and yaml_nullable:
 			return True
 		# Check if the type is correct using the YAML_TYPES translation table
 		return prop_type in self.YAML_TYPES[yaml_type]
@@ -170,7 +170,7 @@ class ResponseVerifyer():
 				# type we defined in the API specs
 				self.YAMLresponse[flat_path].append(YAMLprop['example'])
 				if not self.verify_type(example_type, yaml_type, yaml_nullable):
-					self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + "True" if yaml_nullable else "False" + ")")
+					self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + ("True" if yaml_nullable else "False") + ")")
 					return False
 
 			# Check type of externally defined YAML examples (next to schema)
@@ -190,7 +190,7 @@ class ResponseVerifyer():
 					example_type = type(example)
 					self.YAMLresponse[flat_path].append(example)
 					if not self.verify_type(example_type, yaml_type, yaml_nullable):
-						self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + "True" if yaml_nullable else "False" + ")")
+						self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + ("True" if yaml_nullable else "False") + ")")
 						return False
 
 			# Compare type of FTL's reply against what we defined in the API specs

@@ -224,15 +224,22 @@ bool getLogFilePathTOML(void)
 
 static void reportDebugConfig(void)
 {
+	// Print debug settings
 	log_debug(DEBUG_ANY, "************************");
 	log_debug(DEBUG_ANY, "*    DEBUG SETTINGS    *");
 
 	// Read all known debug config items
-	for(unsigned int debug_flag = 0; debug_flag < DEBUG_ELEMENTS; debug_flag++)
+	for(unsigned int debug_flag = 1; debug_flag < DEBUG_ELEMENTS; debug_flag++)
 	{
 		const char *name;
+		// Get name of debug flag
+		// We do not need to add an offset as this loop starts counting
+		// at 1
 		debugstr(debug_flag, &name);
+		// Calculate number of spaces to nicely align output
 		unsigned int spaces = 20 - strlen(name);
+		// Print debug flag
+		// We skip the first 6 characters of the flags as they are always "DEBUG_"
 		log_debug(DEBUG_ANY, "* %s:%*s %s  *", name+6, spaces, "", debug_flags[debug_flag] ? "YES" : "NO ");
 	}
 	log_debug(DEBUG_ANY, "************************");

@@ -86,11 +86,10 @@ static void sha256_hex(uint8_t *data, char *buffer)
 int check_client_auth(struct ftl_conn *api)
 {
 	// Is the user requesting from localhost?
+	// This may be allowed without authentication depending on the configuration
 	if(!config.http.localAPIauth.v.b && (strcmp(api->request->remote_addr, LOCALHOSTv4) == 0 ||
-	                                           strcmp(api->request->remote_addr, LOCALHOSTv6) == 0))
-	{
+	                                     strcmp(api->request->remote_addr, LOCALHOSTv6) == 0))
 		return API_AUTH_LOCALHOST;
-	}
 
 	// Check if there is a password hash
 	char *password_hash = get_password_hash();
@@ -102,6 +101,7 @@ int check_client_auth(struct ftl_conn *api)
 	// Does the client provide a session cookie?
 	char sid[SID_SIZE];
 	const char *sid_source = "cookie";
+	// Try to extract SID from cookie
 	bool sid_avail = http_get_cookie_str(api, "sid", sid, SID_SIZE);
 
 	// If not, does the client provide a session ID via GET/POST?
@@ -115,9 +115,11 @@ int check_client_auth(struct ftl_conn *api)
 				if(sid[i] == ' ')
 					sid[i] = '+';
 
-			// Zero terminate
+			// Zero terminate SID string
 			sid[SID_SIZE-1] = '\0';
+			// Mention source of SID
 			sid_source = "payload (form-data)";
+			// Mark SID as available
 			sid_avail = true;
 		}
 		// Try to extract SID from root of a possibly included JSON payload
@@ -126,9 +128,13 @@ int check_client_auth(struct ftl_conn *api)
 			cJSON *sid_obj = cJSON_GetObjectItem(api->payload.json, "sid");
 			if(cJSON_IsString(sid_obj))
 			{
+				// Copy SID string
 				strncpy(sid, sid_obj->valuestring, SID_SIZE - 1u);
+				// Zero terminate SID string
 				sid[SID_SIZE-1] = '\0';
+				// Mention source of SID
 				sid_source = "payload (JSON)";
+				// Mark SID as available
 				sid_avail = true;
 			}
 		}
@@ -138,11 +144,16 @@ int check_client_auth(struct ftl_conn *api)
 	if(!sid_avail)
 	{
 		const char *sid_header = NULL;
+		// Try to extract SID from header
 		if((sid_header = mg_get_header(api->conn, "sid")) != NULL)
 		{
+			// Copy SID string
 			strncpy(sid, sid_header, SID_SIZE - 1u);
+			// Zero terminate SID string
 			sid[SID_SIZE-1] = '\0';
+			// Mention source of SID
 			sid_source = "header";
+			// Mark SID as available
 			sid_avail = true;
 		}
 	}
@@ -150,7 +161,6 @@ int check_client_auth(struct ftl_conn *api)
 	if(!sid_avail)
 	{
 		log_debug(DEBUG_API, "API Authentification: FAIL (no SID provided)");
-
 		return API_AUTH_UNAUTHORIZED;
 	}
 

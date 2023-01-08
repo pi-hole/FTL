@@ -358,23 +358,20 @@ enum http_method __attribute__((pure)) http_method(struct mg_connection *conn)
 
 void read_and_parse_payload(struct ftl_conn *api)
 {
-	// Try to extract payload from GET request
-	if(api->method == HTTP_GET && api->request->query_string != NULL)
-	{
-		strncpy(api->payload.raw, api->request->query_string, MAX_PAYLOAD_BYTES-1);
-		api->payload.avail = true;
-	}
-	else // POST, PUT
-	{
-		int data_len = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
-		log_debug(DEBUG_API, "Received payload with size: %d", data_len);
-		if ((data_len < 1) || (data_len >= MAX_PAYLOAD_BYTES))
-			return;
+	// Read payload
+	int data_len = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
+	if ((data_len < 1) || (data_len >= MAX_PAYLOAD_BYTES))
+		return;
 
-		api->payload.raw[data_len] = '\0';
-		api->payload.avail = true;
+	// Debug output of received payload (if enabled)
+	log_debug(DEBUG_API, "Received payload with size: %d", data_len);
 
-		// Try to parse possibly existing JSON payload
-		api->payload.json = cJSON_Parse(api->payload.raw);
-	}
+	// Terminate string
+	api->payload.raw[data_len] = '\0';
+
+	// Set flag to indicate that we have a payload
+	api->payload.avail = true;
+
+	// Try to parse possibly existing JSON payload
+	api->payload.json = cJSON_Parse(api->payload.raw);
 }

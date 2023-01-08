@@ -42,7 +42,8 @@ void parse_debug_options(void)
 		struct conf_item *debug_item = get_debug_item(i);
 		if(debug_item->v.b)
 		{
-			debug_flags[i] = true;
+			// Add offset of 1 as the first element is "ANY"
+			debug_flags[i + 1] = true;
 			debug_any = true;
 		}
 	}
