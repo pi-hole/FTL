@@ -53,7 +53,7 @@ jobs:
 
     needs: smoke-tests
 
-    container: ghcr.io/pi-hole/ftl-build:v1.24-${{ matrix.arch }}
+    container: ghcr.io/pi-hole/ftl-build:v1.25-${{ matrix.arch }}
 
     strategy:
       fail-fast: false
