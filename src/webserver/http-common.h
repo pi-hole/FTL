@@ -18,8 +18,8 @@
 #include <string.h>
 
 // API-internal definitions
-#define MAX_PAYLOAD_BYTES 2048
-enum http_method { HTTP_UNKNOWN, HTTP_GET, HTTP_POST, HTTP_PUT, HTTP_DELETE };
+#define MAX_PAYLOAD_BYTES 128*1024
+enum http_method { HTTP_UNKNOWN, HTTP_GET, HTTP_POST, HTTP_PUT, HTTP_PATCH, HTTP_DELETE };
 struct ftl_conn {
 	struct mg_connection *conn;
 	const struct mg_request_info *request;

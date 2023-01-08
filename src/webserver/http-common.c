@@ -352,6 +352,8 @@ enum http_method __attribute__((pure)) http_method(struct mg_connection *conn)
 		return HTTP_PUT;
 	else if(strcmp(request->request_method, "POST") == 0)
 		return HTTP_POST;
+	else if(strcmp(request->request_method, "PATCH") == 0)
+		return HTTP_PATCH;
 	else
 		return HTTP_UNKNOWN;
 }
@@ -360,8 +362,16 @@ void read_and_parse_payload(struct ftl_conn *api)
 {
 	// Read payload
 	int data_len = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
-	if ((data_len < 1) || (data_len >= MAX_PAYLOAD_BYTES))
+	if (data_len < 1)
+	{
+		log_debug(DEBUG_API, "Received no payload");
 		return;
+	}
+	else if (data_len > MAX_PAYLOAD_BYTES)
+	{
+		log_debug(DEBUG_API, "Received too large payload with size: %d - DISCARDING", data_len);
+		return;
+	}
 
 	// Debug output of received payload (if enabled)
 	log_debug(DEBUG_API, "Received payload with size: %d", data_len);

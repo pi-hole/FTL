@@ -3,7 +3,7 @@ components:
   paths:
     config:
       get:
-        summary: Get info about the config of your Pi-hole
+        summary: Get current configuration of your Pi-hole
         tags:
           - "FTL information"
         operationId: "get_config"
@@ -27,6 +27,26 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+      patch:
+        summary: Change configuration of your Pi-hole
+        tags:
+          - "FTL information"
+        operationId: "patch_config"
+        description: |
+          This API hook allows to modify the config of your Pi-hole. This endpoint supports changing multiple properties at once when you specify several in the payload. See examples below.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                $ref: 'config.yaml#/components/schemas/config'
+              examples:
+                config_one:
+                  $ref: 'config.yaml#/components/examples/config_one'
+                config_two:
+                  $ref: 'config.yaml#/components/examples/config_two'
+                config:
+                  $ref: 'config.yaml#/components/examples/config'
   schemas:
     config:
       type: object
@@ -245,7 +265,7 @@ components:
                   type: boolean
   examples:
     config:
-      summary: FTL's configuration
+      summary: The entire configuration
       value:
         config:
           dns:
@@ -345,6 +365,21 @@ components:
             config: false
             extra: false
             reserved: false
+    config_one:
+      summary: One option
+      value:
+        config:
+          dns:
+            CNAMEdeepInspect: true
+    config_two:
+      summary: Two options
+      value:
+        config:
+          dns:
+            specialDomains:
+              mozillaCanary: true
+          misc:
+            nice: -10
   parameters:
     detailed:
       name: detailed

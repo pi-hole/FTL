@@ -14,6 +14,8 @@
 #include "config/config.h"
 // get_refresh_hostnames_str()
 #include "datastructure.h"
+// flock(), LOCK_SH
+#include <sys/file.h>
 
 // Open the TOML file for reading or writing
 FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode)
@@ -27,7 +29,28 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	// No readable local file found, try global file
 	fp = fopen(GLOBALTOMLPATH, mode);
 
+	// Return early if opening failed
+	if(!fp)
+		return NULL;
+
+	// Lock file, may block if the file is currently opened
+	if(flock(fileno(fp), LOCK_EX) != 0)
+		log_err("Cannot open FTL's config file in exclusive mode: %s", strerror(errno));
+
 	return fp;
+}
+
+// Open the TOML file for reading or writing
+void closeFTLtoml(FILE *fp)
+{
+	// Lock file, may block if the file is currently opened
+	if(flock(fileno(fp), LOCK_UN) != 0)
+		log_err("Cannot release lock on FTL's config file: %s", strerror(errno));
+
+	if(fclose(fp) != 0)
+		log_err("Cannot close FTL's config file: %s", strerror(errno));
+
+	return;
 }
 
 // Print a string to a TOML file, escaping special characters as necessary
@@ -110,6 +133,7 @@ void writeTOMLvalue(FILE * fp, const enum conf_type t, union conf_value *v)
 			fprintf(fp, "%lu", v->ul);
 			break;
 		case CONF_STRING:
+		case CONF_STRING_ALLOCATED:
 			printTOMLstring(fp, v->s);
 			break;
 		case CONF_ENUM_PTR_TYPE:
@@ -144,6 +168,12 @@ void writeTOMLvalue(FILE * fp, const enum conf_type t, union conf_value *v)
 // Read a TOML value from a table depending on its type
 void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *toml)
 {
+	if(conf_item == NULL || key == NULL || toml == NULL)
+	{
+		log_debug(DEBUG_CONFIG, "readTOMLvalue(%p, %p, %p) called with invalid arguments, skipping",
+		          conf_item, key, toml);
+		return;
+	}
 	switch(conf_item->t)
 	{
 		case CONF_BOOL:
@@ -192,10 +222,16 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			break;
 		}
 		case CONF_STRING:
+		case CONF_STRING_ALLOCATED:
 		{
 			const toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
-				conf_item->v.s = val.u.s;
+			{
+				if(conf_item->t == CONF_STRING_ALLOCATED)
+					free(conf_item->v.s);
+				conf_item->v.s = val.u.s; // allocated string
+				conf_item->t = CONF_STRING_ALLOCATED;
+			}
 			else
 				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type string", conf_item->k);
 			break;

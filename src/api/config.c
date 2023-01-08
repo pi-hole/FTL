@@ -36,6 +36,10 @@
 #include <net/route.h>
 // Interate through directories
 #include <dirent.h>
+// INT_MIN, INT_MAX, ...
+#include <limits.h>
+// writeFTLtoml()
+#include "config/toml_writer.h"
 
 // The following functions are used to create the JSON output
 // of the /api/config endpoint.
@@ -60,7 +64,7 @@ static cJSON *get_or_create_object(cJSON *parent, const char *path_element)
 
 // This function is used to add a property to the JSON output using the
 // appropriate type of the config item to add.
-static cJSON *add_property(const enum conf_type conf_type, union conf_value *val)
+static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val)
 {
 	switch(conf_type)
 	{
@@ -76,6 +80,7 @@ static cJSON *add_property(const enum conf_type conf_type, union conf_value *val
 		case CONF_ULONG:
 			return cJSON_CreateNumber(val->ul);
 		case CONF_STRING:
+		case CONF_STRING_ALLOCATED:
 			return val->s ? cJSON_CreateStringReference(val->s) : cJSON_CreateNull();
 		case CONF_ENUM_PTR_TYPE:
 			return cJSON_CreateStringReference(get_ptr_type_str(val->ptr_type));
@@ -100,6 +105,181 @@ static cJSON *add_property(const enum conf_type conf_type, union conf_value *val
 		default:
 			return NULL;
 	}
+}
+
+static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
+{
+	if(conf_item == NULL || elem == NULL)
+	{
+		log_debug(DEBUG_CONFIG, "getJSONvalue(%p, %p) called with invalid arguments, skipping",
+		          conf_item, elem);
+		return "invalid arguments";
+	}
+	switch(conf_item->t)
+	{
+		case CONF_BOOL:
+		{
+			// Check type
+			if(!cJSON_IsBool(elem))
+				return "not of type bool";
+			// Set item
+			conf_item->v.b = elem->valueint;
+			log_debug(DEBUG_CONFIG, "Set %s to %s", conf_item->k, elem->valueint ? "true" : "false");
+			break;
+		}
+		case CONF_INT:
+		{
+			// 1. Check it is a number
+			// 2. Check the number is within the allowed range for the given data type
+			if(!cJSON_IsNumber(elem) ||
+			   elem->valuedouble < INT_MIN || elem->valuedouble > INT_MAX)
+				return "not of type integer";
+			// Set item
+			conf_item->v.i = elem->valueint;
+			log_debug(DEBUG_CONFIG, "Set %s to %i", conf_item->k, elem->valueint);
+			break;
+		}
+		case CONF_UINT:
+		{
+			// 1. Check it is a number
+			// 2. Check the number is within the allowed range for the given data type
+			if(!cJSON_IsNumber(elem) ||
+			   elem->valuedouble < 0 || elem->valuedouble > UINT_MAX)
+				return "not of type unsigned integer";
+			// Set item
+			conf_item->v.ui = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "Set %s to %u", conf_item->k, (unsigned int)elem->valuedouble);
+			break;
+		}
+		case CONF_LONG:
+		{
+			// 1. Check it is a number
+			// 2. Check the number is within the allowed range for the given data type
+			if(!cJSON_IsNumber(elem) ||
+			   elem->valuedouble < LONG_MIN || elem->valuedouble > LONG_MAX)
+				return "not of type long";
+			// Set item
+			conf_item->v.l = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "Set %s to %li", conf_item->k, (long)elem->valuedouble);
+			break;
+		}
+		case CONF_ULONG:
+		{
+			// 1. Check it is a number
+			// 2. Check the number is within the allowed range for the given data type
+			if(!cJSON_IsNumber(elem) ||
+			   elem->valuedouble < 0 || elem->valuedouble > ULONG_MAX)
+				return "not of type unsigned long";
+			// Set item
+			conf_item->v.l = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "Set %s to %lu", conf_item->k, (unsigned long)elem->valuedouble);
+			break;
+		}
+		case CONF_STRING:
+		case CONF_STRING_ALLOCATED:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			// Free previously allocated memory (if applicable)
+			if(conf_item->t == CONF_STRING_ALLOCATED)
+				free(conf_item->v.s);
+			// Set item
+			conf_item->v.s = strdup(elem->valuestring);
+			log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, elem->valuestring);
+			break;
+		}
+		case CONF_ENUM_PTR_TYPE:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int ptr_type = get_ptr_type_val(elem->valuestring);
+			if(ptr_type == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.ptr_type = ptr_type;
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, ptr_type);
+			break;
+		}
+		case CONF_ENUM_BUSY_TYPE:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int busy_reply = get_busy_reply_val(elem->valuestring);
+			if(busy_reply == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.busy_reply = busy_reply;
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, busy_reply);
+			break;
+		}
+		case CONF_ENUM_BLOCKING_MODE:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int blocking_mode = get_blocking_mode_val(elem->valuestring);
+			if(blocking_mode == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.blocking_mode = blocking_mode;
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, blocking_mode);
+			break;
+		}
+		case CONF_ENUM_REFRESH_HOSTNAMES:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int refresh_hostnames = get_refresh_hostnames_val(elem->valuestring);
+			if(refresh_hostnames == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.refresh_hostnames = refresh_hostnames;
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, refresh_hostnames);
+			break;
+		}
+		case CONF_ENUM_PRIVACY_LEVEL:
+		{
+			// Check type
+			if(!cJSON_IsNumber(elem))
+				return "not of type integer";
+			// Check allowed interval
+			if(elem->valuedouble < PRIVACY_SHOW_ALL || elem->valuedouble > PRIVACY_MAXIMUM)
+				return "not within valid range";
+			// Set item
+			conf_item->v.i = elem->valueint;
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, elem->valueint);
+			break;
+		}
+		case CONF_STRUCT_IN_ADDR:
+		{
+			struct in_addr addr4 = { 0 };
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			if(!inet_pton(AF_INET, elem->valuestring, &addr4))
+				return "not a valid IPv4 address";
+			// Set item
+			memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
+			log_debug(DEBUG_CONFIG, "Set %s to %s", conf_item->k, elem->valuestring);
+			break;
+		}
+		case CONF_STRUCT_IN6_ADDR:
+		{
+			struct in6_addr addr6 = { 0 };
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			if(!inet_pton(AF_INET6, elem->valuestring, &addr6))
+				return "not a valid IPv6 address";
+			// Set item
+			memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
+			log_debug(DEBUG_CONFIG, "Set %s to %s", conf_item->k, elem->valuestring);
+			break;
+		}
+	}
+	return NULL;
 }
 
 static int api_config_get(struct ftl_conn *api)
@@ -143,14 +323,14 @@ static int api_config_get(struct ftl_conn *api)
 			cJSON *leaf = JSON_NEW_OBJECT();
 			JSON_REF_STR_IN_OBJECT(leaf, "description", conf_item->h);
 			// Create the config item leaf object
-			cJSON *val = add_property(conf_item->t, &conf_item->v);
+			cJSON *val = addJSONvalue(conf_item->t, &conf_item->v);
 			if(val == NULL)
 			{
 				log_warn("Cannot format config item type %s of type %i",
 					conf_item->k, conf_item->t);
 				continue;
 			}
-			cJSON *dval = add_property(conf_item->t, &conf_item->d);
+			cJSON *dval = addJSONvalue(conf_item->t, &conf_item->d);
 			if(dval == NULL)
 			{
 				log_warn("Cannot format config item type %s of type %i",
@@ -165,7 +345,7 @@ static int api_config_get(struct ftl_conn *api)
 		else
 		{
 			// Create the config item leaf object
-			cJSON *leaf = add_property(conf_item->t, &conf_item->v);
+			cJSON *leaf = addJSONvalue(conf_item->t, &conf_item->v);
 			if(leaf == NULL)
 			{
 				log_warn("Cannot format config item type %s of type %i",
@@ -186,6 +366,63 @@ static int api_config_get(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
+static int api_config_patch(struct ftl_conn *api)
+{
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
+		return send_json_unauthorized(api);
+
+	// Is there a payload with valid JSON data?
+	if (api->payload.json == NULL) {
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Invalid request body data (no valid JSON)",
+		                       NULL);
+	}
+
+	// Is there a "config" object at the root of the received JSON payload?
+	cJSON *conf = cJSON_GetObjectItem(api->payload.json, "config");
+	if (!cJSON_IsObject(conf)) {
+		return send_json_error(api, 400,
+		                       "body_error",
+		                       "No \"config\" object in body data",
+		                       NULL);
+	}
+
+	// Read all known config items
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		// Get pointer to memory location of this conf_item
+		struct conf_item *conf_item = get_conf_item(i);
+
+		// Get path depth
+		unsigned int level = config_path_depth(conf_item);
+
+		cJSON *elem = conf;
+		// Parse tree of properties and get the individual JSON elements
+		for(unsigned int j = 0; j < level; j++)
+			elem = cJSON_GetObjectItem(elem, conf_item->p[j]);
+
+		// Check if this element is present - it doesn't have to be!
+		if(elem == NULL)
+		{
+			log_debug(DEBUG_CONFIG, "%s not in JSON payload", conf_item->k);
+			continue;
+		}
+
+		// Try to set value and report error on failure
+		const char *response = getJSONvalue(conf_item, elem);
+		if(response != NULL)
+			log_err("/api/config: %s invalid: %s", conf_item->k, response);
+	}
+
+	// Store changed configuration to disk
+	writeFTLtoml();
+
+	// Return full config after possible changes above
+	return api_config_get(api);
+}
+
 // Endpoint /api/config router
 int api_config(struct ftl_conn *api)
 {
@@ -196,8 +433,8 @@ int api_config(struct ftl_conn *api)
 	// PATCH: Replace parts of the the config with the provided one
 	// PUT: Replaces the entire config with the provided one (not supported
 	// but PATCH with a full config is the same)
-//	else if(api->method == HTTP_PATCH)
-//		return api_config_patch(api);
+	else if(api->method == HTTP_PATCH)
+		return api_config_patch(api);
 	else
 		return send_json_error(api, 405, "method_error",
 		                       "Method not allowed",

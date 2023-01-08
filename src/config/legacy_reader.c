@@ -60,6 +60,7 @@ bool getLogFilePathLegacy(FILE *fp)
 	// Read LOGFILE value if available
 	// defaults to: "/var/log/pihole/FTL.log"
 	char *buffer = parseFTLconf(fp, "LOGFILE");
+	char *val_buffer = NULL;
 
 	errno = 0;
 	// No option set => use default log location
@@ -67,6 +68,7 @@ bool getLogFilePathLegacy(FILE *fp)
 	{
 		// Use standard path if no custom path was obtained from the config file
 		config.files.log.v.s = strdup("/var/log/pihole/FTL.log");
+		config.files.log.t = CONF_STRING_ALLOCATED;
 
 		// Test if memory allocation was successful
 		if(config.files.log.v.s == NULL)
@@ -77,11 +79,27 @@ bool getLogFilePathLegacy(FILE *fp)
 		}
 	}
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	else if(sscanf(buffer, "%127ms", &config.files.log.v.s) == 0)
+	else if(sscanf(buffer, "%127ms", &val_buffer) == 0)
 	{
-		// Empty file string
+		// Free previously allocated memory (if any)
+		if(config.files.log.t == CONF_STRING_ALLOCATED)
+			free(config.files.log.v.s);
+
+		// Set empty file string
 		config.files.log.v.s = NULL;
+		config.files.log.t = CONF_STRING;
 		log_info("Using syslog facility");
+	}
+
+	if(val_buffer)
+	{
+		// Free previously allocated memory (if any)
+		if(config.files.log.t == CONF_STRING_ALLOCATED)
+			free(config.files.log.v.s);
+
+		// Set string
+		config.files.log.v.s = val_buffer;
+		config.files.log.t = CONF_STRING_ALLOCATED;
 	}
 
 	fclose(fp);

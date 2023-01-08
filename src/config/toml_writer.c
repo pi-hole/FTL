@@ -90,8 +90,8 @@ bool writeFTLtoml(void)
 		fputs("\n\n", fp);
 	}
 
-	// Close and flush file
-	fclose(fp);
+	// Close file and release exclusive lock
+	closeFTLtoml(fp);
 
 	return true;
 }

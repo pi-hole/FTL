@@ -44,6 +44,7 @@ bool readFTLtoml(void)
 	toml_table_t *conf_debug = toml_table_in(conf, "debug");
 	if(conf_debug)
 		readTOMLvalue(&config.debug.config, "config", conf_debug);
+	set_debug_flags();
 
 	log_debug(DEBUG_CONFIG, "Reading TOML config file: full config");
 
@@ -97,7 +98,9 @@ static toml_table_t *parseTOML(void)
 	// Parse lines in the config file
 	char errbuf[200];
 	toml_table_t *conf = toml_parse_file(fp, errbuf, sizeof(errbuf));
-	fclose(fp);
+
+	// Close file and release exclusive lock
+	closeFTLtoml(fp);
 
 	// Check for errors
 	if(conf == NULL)
@@ -129,10 +132,10 @@ bool getPrivacyLevel(void)
 	}
 
 	// Get misc.privacyLevel
-	toml_datum_t privacylevel = toml_int_in(misc, "privacyLevel");
+	toml_datum_t privacylevel = toml_int_in(misc, "privacylevel");
 	if(!privacylevel.ok)
 	{
-		log_debug(DEBUG_CONFIG, "misc.privacyLevel does not exist");
+		log_debug(DEBUG_CONFIG, "misc.privacylevel does not exist");
 		toml_free(conf);
 		return false;
 	}
@@ -141,7 +144,8 @@ bool getPrivacyLevel(void)
 	if(privacylevel.u.i >= PRIVACY_SHOW_ALL && privacylevel.u.i <= PRIVACY_MAXIMUM)
 		config.misc.privacylevel.v.privacy_level = privacylevel.u.i;
 	else
-		log_warn("Invalid setting for misc.privacyLevel");
+		log_warn("Invalid setting for misc.privacylevel, should be an integer between %d and %d",
+		         PRIVACY_SHOW_ALL, PRIVACY_MAXIMUM);
 
 	toml_free(conf);
 	return true;
@@ -214,7 +218,10 @@ bool getLogFilePathTOML(void)
 
 	// Only replace string when it is different
 	if(strcmp(config.files.log.v.s,log.u.s) != 0)
+	{
+		config.files.log.t = CONF_STRING_ALLOCATED;
 		config.files.log.v.s = log.u.s; // Allocated string
+	}
 	else
 		free(log.u.s);
 
