@@ -46,21 +46,21 @@ bool get_blockingstatus(void) __attribute__((pure));
 void set_blockingstatus(bool enabled);
 
 union conf_value {
-	bool b;
-	int i;
-	unsigned int ui;
-	long l;
-	unsigned long ul;
-	char *s;
-	enum ptr_type ptr_type;
-	enum busy_reply busy_reply;
-	enum blocking_mode blocking_mode;
-	enum refresh_hostnames refresh_hostnames;
-	enum privacy_level privacy_level;
-	enum debug_flag debug_flag;
-	struct in_addr in_addr;
-	struct in6_addr in6_addr;
-	cJSON *json;
+	bool b;                                     // boolean value
+	int i;                                      // integer value
+	unsigned int ui;                            // unsigned int value
+	long l;                                     // long value
+	unsigned long ul;                           // unsigned long value
+	char *s;                                    // char * value
+	enum ptr_type ptr_type;                     // enum ptr_type value
+	enum busy_reply busy_reply;                 // enum busy_reply value
+	enum blocking_mode blocking_mode;           // enum blocking_mode value
+	enum refresh_hostnames refresh_hostnames;   // enum refresh_hostnames value
+	enum privacy_level privacy_level;           // enum privacy_level value
+	enum debug_flag debug_flag;                 // enum debug_flag value
+	struct in_addr in_addr;                     // struct in_addr value
+	struct in6_addr in6_addr;                   // struct in6_addr value
+	cJSON *json;                                // cJSON * value
 };
 
 enum conf_type {

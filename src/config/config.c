@@ -346,7 +346,7 @@ void initConfig(void)
 	config.api.pwhash.h = "API password hash";
 	config.api.pwhash.a = "<valid Pi-hole password hash>";
 	config.api.pwhash.t = CONF_STRING;
-	config.api.pwhash.d.s = NULL;
+	config.api.pwhash.d.s = (char*)"";
 
 	config.api.exclude_clients.k = "api.exclude_clients";
 	config.api.exclude_clients.h = "Array of clients to be excluded from certain API responses";
@@ -630,6 +630,9 @@ void initConfig(void)
 				// JSON objects really need to be duplicated as the config
 				// structure stores only a pointer to memory somewhere else
 				conf_item->v.json = cJSON_Duplicate(conf_item->d.json, true);
+			else if(conf_item->t == CONF_STRING_ALLOCATED)
+				// Allocated string: Make our own copy
+				conf_item->v.s = strdup(conf_item->d.s);
 			else
 				// Ordinary value: Simply copy the union over
 				memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->d));

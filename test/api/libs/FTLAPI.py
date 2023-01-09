@@ -45,6 +45,8 @@ class FTLAPI():
 
 		# Check if we are already logged in or authentication is not
 		# required
+		if response is None:
+			raise Exception("No response from FTL API")
 		if 'session' in response and response['session']['valid']:
 			if 'session' not in response:
 				raise Exception("FTL returned invalid challenge item")
@@ -53,23 +55,33 @@ class FTLAPI():
 
 		pwhash = None
 		if password is None:
-			# Try to read the password hash from setupVars.conf
+			# Try to obtain the password hash from pihole-FTL.toml
 			try:
-				with open("/etc/pihole/setupVars.conf", "r") as f:
+				with open("/etc/pihole/pihole-FTL.toml", "r") as f:
+					# Iterate over all lines
 					for line in f:
-						if line.startswith("WEBPASSWORD="):
-							pwhash = line[12:].strip()
+						# Find the line with the password hash
+						if line.startswith("  pwhash = "):
+							# Remove quotes and whitespace
+							line = line.split("=")[1].split("\"")
+							if len(line) > 2:
+								pwhash = line[1].strip()
 							break
 			except Exception as e:
-				self.errors.append("Exception when reading setupVars.conf: " + str(e))
+				# Could not read pihole-FTL.toml, throw an error
+				raise Exception("Could not read pihole-FTL.toml: " + str(e))
+			if pwhash is None:
+				# The password hash was not found in pihole-FTL.toml, throw an error
+				raise Exception("No password hash found in pihole-FTL.toml")
 
 		else:
 			# Generate password hash
 			pwhash = sha256(password.encode("ascii")).hexdigest()
 			pwhash = sha256(pwhash.encode("ascii")).hexdigest()
+		print("Using password hash: \"" + pwhash + "\"")
 
 		# Get the challenge from FTL
-		challenge = challenge["challenge"].encode("ascii")
+		challenge = response["challenge"].encode("ascii")
 		response = sha256(challenge + b":" + pwhash.encode("ascii")).hexdigest()
 		response = self.POST("/api/auth", {"response": response})
 		if 'session' not in response:

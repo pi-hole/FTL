@@ -46,11 +46,9 @@ rm -rf /etc/pihole/pihole-FTL.db
 ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db < test/pihole-FTL.db.sql
 chown pihole:pihole /etc/pihole/pihole-FTL.db
 
-# Prepare setupVars.conf
-echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
-
 # Prepare pihole-FTL.toml
 cp test/pihole-FTL.toml /etc/pihole/pihole-FTL.toml
+chown pihole:pihole /etc/pihole/pihole-FTL.toml
 
 # Prepare dnsmasq.conf
 cp test/dnsmasq.conf /etc/dnsmasq.conf

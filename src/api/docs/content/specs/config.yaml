@@ -47,6 +47,22 @@ components:
                   $ref: 'config.yaml#/components/examples/config_two'
                 config:
                   $ref: 'config.yaml#/components/examples/config'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'config.yaml#/components/schemas/config'
+                examples:
+                  config:
+                    $ref: 'config.yaml#/components/examples/config'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     config:
       type: object

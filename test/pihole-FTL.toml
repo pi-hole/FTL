@@ -3,7 +3,7 @@
 # Do not edit the file while FTL is
 # running or your changes may be overwritten
 #
-# Last update: 2023-01-07 18:28:45
+# Last update: 2023-01-09 16:26:00
 
 [dns]
   # Should FTL walk CNAME paths?
@@ -38,9 +38,13 @@
   # TTL for blocked queries [seconds]
   blockTTL = 2
 
-  # How should FTL reply to blocked queries?
-  # Possible values are: [ "NULL", "IP-NODATA-AAAA", "IP", "NXDOMAIN" ]
-  blockingmode = "NULL"
+  [dns.blocking]
+    # Should FTL block queries?
+    active = true
+
+    # How should FTL reply to blocked queries?
+    # Possible values are: [ "NULL", "IP-NODATA-AAAA", "IP", "NXDOMAIN", "NODATA" ]
+    mode = "NULL"
 
   [dns.specialDomains]
     # Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?
@@ -118,12 +122,12 @@
 
   [database.network]
     # Should FTL anaylze the local ARP cache?
-    parseARPcache = false ### CHANGED, default = true
+    parseARPcache = true
 
     # How long should IP addresses be kept in the network_addresses table [days]?
     expire = 365
 
-[http]
+[api]
   # Does local clients need to authenticate to access the API?
   localAPIauth = true
 
@@ -133,6 +137,19 @@
   # How long should a session be considered valid after login [seconds]?
   sessionTimeout = 300
 
+  # API password hash
+  # Possible values are: <valid Pi-hole password hash>
+  pwhash = ""
+
+  # Array of clients to be excluded from certain API responses
+  # Possible values are: array of IP addresses and/or hostnames, e.g. [ "192.168.2.56", "fe80::341", "localhost" ]
+  exclude_clients = [ "1.2.3.4" ] ### CHANGED, default = [  ]
+
+  # Array of domains to be excluded from certain API responses
+  # Possible values are: array of IP addresses and/or hostnames, e.g. [ "google.de", "pi-hole.net" ]
+  exclude_domains = [  ]
+
+[http]
   # On which domain is the web interface served?
   # Possible values are: <valid domain>
   domain = "pi.hole"

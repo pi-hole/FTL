@@ -33,7 +33,7 @@ static volatile pid_t mpid = -1;
 static time_t FTLstarttime = 0;
 extern volatile int exit_code;
 
-volatile sig_atomic_t thread_cancellable[THREADS_MAX] = { false };
+volatile sig_atomic_t thread_cancellable[THREADS_MAX] = { true };
 const char *thread_names[THREADS_MAX] = { "" };
 
 // Return the (null-terminated) name of the calling thread

@@ -1748,6 +1748,9 @@ void FTL_dnsmasq_reload(void)
 	if(config.debug.caps.v.b)
 		check_capabilities();
 
+	// Report blocking mode
+	log_info("Blocking status is %s", config.dns.blocking.active.v.b ? "enabled" : "disabled");
+
 	// Set resolver as ready
 	resolver_ready = true;
 }
@@ -3298,7 +3301,7 @@ void FTL_dnsmasq_log(const char *payload, const int length)
 int check_struct_sizes(void)
 {
 	int result = 0;
-	result += check_one_struct("struct config", sizeof(struct config), 5832, 4212);
+	result += check_one_struct("struct config", sizeof(struct config), 6120, 4420);
 	result += check_one_struct("queriesData", sizeof(queriesData), 72, 64);
 	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 628);
 	result += check_one_struct("clientsData", sizeof(clientsData), 672, 652);

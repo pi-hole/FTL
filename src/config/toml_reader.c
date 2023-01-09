@@ -58,6 +58,7 @@ bool readFTLtoml(void)
 		unsigned int level = config_path_depth(conf_item);
 
 		// Parse tree of properties
+		bool item_available = true;
 		toml_table_t *table[MAX_CONFIG_PATH_DEPTH] = { 0 };
 		for(unsigned int j = 0; j < level-1; j++)
 		{
@@ -66,9 +67,14 @@ bool readFTLtoml(void)
 			if(!table[j])
 			{
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST", conf_item->k);
+				item_available = false;
 				break;
 			}
 		}
+
+		// Skip this config item if it does not exist
+		if(!item_available)
+			continue;
 
 		// Try to parse config item
 		readTOMLvalue(conf_item, conf_item->p[level-1], table[level-2]);

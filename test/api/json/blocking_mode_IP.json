@@ -1,0 +1,9 @@
+{
+        "config": {
+                "dns": {
+                        "blocking": {
+                                "mode": "IP"
+                        }
+                }
+        }
+}

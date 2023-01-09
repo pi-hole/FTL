@@ -945,46 +945,6 @@
   [[ ${lines[0]} == "Error 404: Not Found" ]]
 }
 
-@test "API authorization (without password): No login required" {
-  run bash -c 'curl -s 127.0.0.1:8080/api/auth'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '{"challenge":null,"session":{"valid":true,"sid":null,"validity":-1}}' ]]
-}
-
-@test "API authorization (with password): FTL challenges us" {
-  # Password: ABC
-  echo "WEBPASSWORD=183c1b634da0078fcf5b0af84bdcbb3e817708c3f22b329be84165f4bad1ae48" >> /etc/pihole/setupVars.conf
-  run bash -c 'curl -s 127.0.0.1:8080/api/auth | jq ".challenge | length"'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "64" ]]
-}
-
-@test "API authorization (with password): Incorrect response is rejected" {
-  run bash -c 'curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"0123456789012345678901234567890123456789012345678901234567890123\"}" | jq .session.valid'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "false" ]]
-}
-
-@test "API authorization (with password): Correct password is accepted" {
-  computeResponse() {
-      local pwhash challenge response
-      pwhash="${1}"
-      challenge="${2}"
-      response=$(echo -n "${challenge}:${pwhash}" | sha256sum | sed 's/\s.*$//')
-      echo "${response}"
-  }
-  pwhash="183c1b634da0078fcf5b0af84bdcbb3e817708c3f22b329be84165f4bad1ae48"
-  challenge="$(curl -s -X GET 127.0.0.1:8080/api/auth | jq --raw-output .challenge)"
-  printf "Challenge: %s\n" "${challenge}"
-  response="$(computeResponse "$pwhash" "$challenge")"
-  printf "Response: %s\n" "${response}"
-  session="$(curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"$response\"}")"
-  printf "Session: %s\n" "${session}"
-  run jq .session.valid <<< "${session}"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "true" ]]
-}
-
 @test "LUA: Interpreter returns FTL version" {
   run bash -c './pihole-FTL lua -e "print(pihole.ftl_version())"'
   printf "%s\n" "${lines[@]}"
@@ -1204,7 +1164,7 @@
 }
 
 @test "Pi-hole uses dns.reply.blocking.IPv4/6 for blocked domain" {
-  sed -i "s/blockingmode = \"NULL\"/blockingmode = \"IP\"/" /etc/pihole/pihole-FTL.toml
+  run bash -c 'curl -X PATCH http://127.0.0.1:8080/api/config -d "@test/api/json/blocking_mode_IP.json"'
   run bash -c "kill -HUP $(cat /run/pihole-FTL.pid)"
   sleep 2
   run bash -c "dig A denied.ftl +short @127.0.0.1"
@@ -1213,6 +1173,46 @@
   run bash -c "dig AAAA denied.ftl +short @127.0.0.1"
   printf "AAAA: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::11" ]]
+}
+
+@test "API authorization (without password): No login required" {
+  run bash -c 'curl -s 127.0.0.1:8080/api/auth'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '{"challenge":null,"session":{"valid":true,"sid":null,"validity":-1}}' ]]
+}
+
+@test "API authorization (with password): FTL challenges us" {
+  # Password: ABC
+  run bash -c 'curl -X PATCH http://127.0.0.1:8080/api/config -d "@test/api/json/add_password.json"'
+  run bash -c 'curl -s 127.0.0.1:8080/api/auth | jq ".challenge | length"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "64" ]]
+}
+
+@test "API authorization (with password): Incorrect response is rejected" {
+  run bash -c 'curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"0123456789012345678901234567890123456789012345678901234567890123\"}" | jq .session.valid'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "false" ]]
+}
+
+@test "API authorization (with password): Correct password is accepted" {
+  computeResponse() {
+      local pwhash challenge response
+      pwhash="${1}"
+      challenge="${2}"
+      response=$(echo -n "${challenge}:${pwhash}" | sha256sum | sed 's/\s.*$//')
+      echo "${response}"
+  }
+  pwhash="183c1b634da0078fcf5b0af84bdcbb3e817708c3f22b329be84165f4bad1ae48"
+  challenge="$(curl -s -X GET 127.0.0.1:8080/api/auth | jq --raw-output .challenge)"
+  printf "Challenge: %s\n" "${challenge}"
+  response="$(computeResponse "$pwhash" "$challenge")"
+  printf "Response: %s\n" "${response}"
+  session="$(curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"$response\"}")"
+  printf "Session: %s\n" "${session}"
+  run jq .session.valid <<< "${session}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "true" ]]
 }
 
 @test "API validation" {
