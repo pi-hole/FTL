@@ -18,7 +18,9 @@
 #include <string.h>
 
 // API-internal definitions
-#define MAX_PAYLOAD_BYTES 128*1024
+
+// Maximum size of received and processed payload: 64 KB
+#define MAX_PAYLOAD_BYTES 64*1024
 enum http_method { HTTP_UNKNOWN, HTTP_GET, HTTP_POST, HTTP_PUT, HTTP_PATCH, HTTP_DELETE };
 struct ftl_conn {
 	struct mg_connection *conn;
@@ -27,8 +29,9 @@ struct ftl_conn {
 	char *action_path;
 	const char *item;
 	struct {
-		bool avail :1;
-		char raw[MAX_PAYLOAD_BYTES];
+		bool avail;
+		size_t size;
+		char *raw;
 		cJSON *json;
 	} payload;
 

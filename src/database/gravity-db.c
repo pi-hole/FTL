@@ -1990,7 +1990,7 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 				row->status = sqlite3_column_int(read_stmt, c);
 
 			else
-				log_err("Internal API error: Encountered unknown column %s", cname);
+				log_err("API: Encountered unknown column %s", cname);
 		}
 		return true;
 	}

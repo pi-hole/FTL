@@ -77,7 +77,10 @@ int send_json_error(struct ftl_conn *api, const int code,
                     const char *key, const char* message,
                     const char *hint)
 {
-	log_warn("API error: %s, hint: %s", message, hint);
+	if(hint)
+		log_warn("API: %s (%s)", message, hint);
+	else
+		log_warn("API: %s", message);
 
 	cJSON *error = JSON_NEW_OBJECT();
 	JSON_REF_STR_IN_OBJECT(error, "key", key);
@@ -361,23 +364,26 @@ enum http_method __attribute__((pure)) http_method(struct mg_connection *conn)
 void read_and_parse_payload(struct ftl_conn *api)
 {
 	// Read payload
-	int data_len = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
-	if (data_len < 1)
+	api->payload.size = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
+	if (api->payload.size < 1)
 	{
 		log_debug(DEBUG_API, "Received no payload");
 		return;
 	}
-	else if (data_len > MAX_PAYLOAD_BYTES)
+	else if (api->payload.size >= MAX_PAYLOAD_BYTES-1)
 	{
-		log_debug(DEBUG_API, "Received too large payload with size: %d - DISCARDING", data_len);
+		// If we reached the upper limit of payload size, we have likely
+		// truncated the payload. The only reasonable thing to do here is to
+		// discard the payload altogether
+		log_warn("API: Received too large payload - DISCARDING");
 		return;
 	}
 
 	// Debug output of received payload (if enabled)
-	log_debug(DEBUG_API, "Received payload with size: %d", data_len);
+	log_debug(DEBUG_API, "Received payload with size: %lu", api->payload.size);
 
 	// Terminate string
-	api->payload.raw[data_len] = '\0';
+	api->payload.raw[api->payload.size] = '\0';
 
 	// Set flag to indicate that we have a payload
 	api->payload.avail = true;

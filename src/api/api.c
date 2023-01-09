@@ -74,9 +74,21 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		http_method(conn),
 		NULL,
 		NULL,
-		{ 0 },
+		{ false, 0u, NULL, NULL },
 		{ false, false }
 	};
+
+	// Allocate memory for the payload
+	api.payload.raw = calloc(MAX_PAYLOAD_BYTES, sizeof(char));
+	if(!api.payload.raw)
+	{
+		log_crit("Cannot handle API request %s %s: %s",
+		         api.request->request_method,
+		         api.request->local_uri_raw,
+		         strerror(ENOMEM));
+	}
+
+	// Read and try to parse payload
 	read_and_parse_payload(&api);
 
 	log_debug(DEBUG_API, "Requested API URI: %s %s ? %s",
@@ -124,6 +136,9 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		free(api.action_path);
 		api.action_path = NULL;
 	}
+
+	// Free raw payload bytes (always allocated)
+	free(api.payload.raw);
 
 	return ret;
 }
