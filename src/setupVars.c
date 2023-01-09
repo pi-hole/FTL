@@ -19,7 +19,7 @@ char ** setupVarsArray = NULL;
 void importsetupVarsConf(void)
 {
 	// Try to obtain password hash from setupVars.conf
-	const char* pwhash = read_setupVarsconf("WEBPASSWORD");
+	const char *pwhash = read_setupVarsconf("WEBPASSWORD");
 	if(pwhash == NULL)
 		pwhash = "";
 
@@ -33,7 +33,7 @@ void importsetupVarsConf(void)
 	clearSetupVarsArray();
 
 	// Try to obtain blocking active boolean
-	const char* blocking = read_setupVarsconf("BLOCKING_ENABLED");
+	const char *blocking = read_setupVarsconf("BLOCKING_ENABLED");
 
 	if(blocking == NULL || getSetupVarsBool(blocking))
 	{
@@ -51,7 +51,7 @@ void importsetupVarsConf(void)
 	clearSetupVarsArray();
 
 	// Get clients which the user doesn't want to see
-	char *excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
+	const char *excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
 
 	if(excludeclients != NULL)
 	{
@@ -86,8 +86,8 @@ void importsetupVarsConf(void)
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
 
-	// Try to obtain blocking active boolean
-	const char* temp_limit = read_setupVarsconf("TEMPERATURE_LIMIT");
+	// Try to obtain temperature hot value
+	const char *temp_limit = read_setupVarsconf("TEMPERATURE_LIMIT");
 
 	if(temp_limit != NULL)
 	{
@@ -98,11 +98,36 @@ void importsetupVarsConf(void)
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
+
+	// Try to obtain boxed-layout boolean
+	const char *boxed_layout = read_setupVarsconf("WEBUIBOXEDLAYOUT");
+	// If the property is set to false and different than "boxed", the property
+	// is disabled. This is consistent with the code in AdminLTE when writing
+	// this code
+	if(boxed_layout != NULL && strcasecmp(boxed_layout, "boxed") != 0)
+		config.http.interface.boxed.v.b = false;
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	// Try to obtain theme string
+	const char *web_theme = read_setupVarsconf("WEBTHEME");
+	if(web_theme == NULL)
+		web_theme = "";
+
+	// Free previously allocated memory (if applicable)
+	if(config.http.interface.theme.t == CONF_STRING_ALLOCATED)
+		free(config.http.interface.theme.v.s);
+	config.http.interface.theme.v.s = strdup(web_theme);
+	config.http.interface.theme.t = CONF_STRING_ALLOCATED;
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
 }
 
-char* __attribute__((pure)) find_equals(const char* s)
+char* __attribute__((pure)) find_equals(const char *s)
 {
-	const char* chars = "=";
+	const char *chars = "=";
 	while (*s && (!chars || !strchr(chars, *s)))
 		s++;
 	return (char*)s;

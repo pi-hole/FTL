@@ -173,6 +173,10 @@ struct config {
 			struct conf_item webroot;
 			struct conf_item webhome;
 		} paths;
+		struct {
+			struct conf_item boxed;
+			struct conf_item theme;
+		} interface;
 	} http;
 
 	struct {

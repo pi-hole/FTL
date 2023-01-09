@@ -207,6 +207,13 @@ components:
                       type: string
                     webhome:
                       type: string
+                interface:
+                  type: object
+                  properties:
+                    boxed:
+                      type: boolean
+                    theme:
+                      type: string
             files:
               type: object
               properties:
@@ -364,6 +371,9 @@ components:
             paths:
               webroot: "/var/www/html"
               webhome: "/admin/"
+            interface:
+              boxed: true
+              theme: "default-darker"
           files:
             log: "/var/log/pihole/FTL.log"
             pid: "/run/pihole-FTL.pid"

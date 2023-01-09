@@ -411,6 +411,18 @@ void initConfig(void)
 	config.http.paths.webhome.t = CONF_STRING;
 	config.http.paths.webhome.d.s = (char*)"/admin/";
 
+	// sub-struct interface
+	config.http.interface.boxed.k = "http.interface.boxed";
+	config.http.interface.boxed.h = "Should the web interface use the boxed layout?";
+	config.http.interface.boxed.t = CONF_BOOL;
+	config.http.interface.boxed.d.b = true;
+
+	config.http.interface.theme.k = "http.interface.theme";
+	config.http.interface.theme.h = "Theme used by the Pi-hole web interface";
+	config.http.interface.theme.a = "<valid themename>";
+	config.http.interface.theme.t = CONF_STRING;
+	config.http.interface.theme.d.s = (char*)"default";
+
 
 	// struct files
 	// config.files.log is set in a separate function
