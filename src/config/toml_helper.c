@@ -200,7 +200,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok)
 				conf_item->v.b = val.u.b;
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type bool", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type bool", conf_item->k);
 			break;
 		}
 		case CONF_INT:
@@ -209,7 +209,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok)
 				conf_item->v.i = val.u.i;
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type integer", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type integer", conf_item->k);
 			break;
 		}
 		case CONF_UINT:
@@ -218,7 +218,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok && val.u.i >= 0)
 				conf_item->v.ui = val.u.i;
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type unsigned integer", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type unsigned integer", conf_item->k);
 			break;
 		}
 		case CONF_LONG:
@@ -227,7 +227,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok)
 				conf_item->v.l = val.u.i;
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type long", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type long", conf_item->k);
 			break;
 		}
 		case CONF_ULONG:
@@ -236,7 +236,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok && val.u.i >= 0)
 				conf_item->v.ul = val.u.i;
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type unsigned long", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type unsigned long", conf_item->k);
 			break;
 		}
 		case CONF_DOUBLE:
@@ -245,7 +245,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok)
 				conf_item->v.d = val.u.d;
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type double", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type double", conf_item->k);
 			break;
 		}
 		case CONF_STRING:
@@ -260,7 +260,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 				conf_item->t = CONF_STRING_ALLOCATED;
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type string", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type string", conf_item->k);
 			break;
 		}
 		case CONF_ENUM_PTR_TYPE:
@@ -275,7 +275,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type string", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type string", conf_item->k);
 			break;
 		}
 		case CONF_ENUM_BUSY_TYPE:
@@ -290,7 +290,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type string", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type string", conf_item->k);
 			break;
 		}
 		case CONF_ENUM_BLOCKING_MODE:
@@ -305,7 +305,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type string", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type string", conf_item->k);
 			break;
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
@@ -320,7 +320,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type string", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type string", conf_item->k);
 			break;
 		}
 		case CONF_ENUM_PRIVACY_LEVEL:
@@ -329,7 +329,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok && val.u.i >= PRIVACY_SHOW_ALL && val.u.i <= PRIVACY_MAXIMUM)
 				conf_item->v.i = val.u.i;
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist or is invalid", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is invalid", conf_item->k);
 			break;
 		}
 		case CONF_STRUCT_IN_ADDR:
@@ -373,7 +373,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 				}
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s does not exist", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST", conf_item->k);
 			break;
 		}
 	}

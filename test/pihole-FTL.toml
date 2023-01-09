@@ -171,6 +171,14 @@
     # Possible values are: <valid subpath>, both slashes are needed!
     webhome = "/admin/"
 
+  [http.interface]
+    # Should the web interface use the boxed layout?
+    boxed = true
+
+    # Theme used by the Pi-hole web interface
+    # Possible values are: <valid themename>
+    theme = "default"
+
 [files]
   # The location of FTL's log file
   # Possible values are: <any writable file>
@@ -216,6 +224,9 @@
 
   # Privacy level
   privacylevel = 0
+
+  # Which upper temperature limit should be used by Pi-hole [°C]? Temperatures above this limit will be shown as "hot"
+  temp_limit = 60.000000
 
   [misc.check]
     # Should FTL check the 15 min average of CPU load and complain if the load is larger than the number of available CPU cores?

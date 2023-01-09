@@ -80,7 +80,7 @@ bool writeFTLtoml(void)
 
 		// Compare with default value and add a comment on difference
 		bool changed = false;
-		if(conf_item->t == CONF_STRING)
+		if(conf_item->t == CONF_STRING || conf_item->t == CONF_STRING_ALLOCATED)
 			changed = strcmp(conf_item->v.s, conf_item->d.s) != 0;
 		else if(conf_item->t == CONF_JSON_STRING_ARRAY)
 			changed = !cJSON_Compare(conf_item->v.json, conf_item->d.json, true);

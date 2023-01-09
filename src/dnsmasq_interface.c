@@ -3301,7 +3301,8 @@ void FTL_dnsmasq_log(const char *payload, const int length)
 int check_struct_sizes(void)
 {
 	int result = 0;
-	result += check_one_struct("struct config", sizeof(struct config), 6120, 4420);
+	// sizeof(struct conf_item) is 72 on x86_64 and 52 on x86_32
+	result += check_one_struct("struct config", sizeof(struct config), 6336, 4576);
 	result += check_one_struct("queriesData", sizeof(queriesData), 72, 64);
 	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 628);
 	result += check_one_struct("clientsData", sizeof(clientsData), 672, 652);

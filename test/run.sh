@@ -53,6 +53,9 @@ chown pihole:pihole /etc/pihole/pihole-FTL.toml
 # Prepare dnsmasq.conf
 cp test/dnsmasq.conf /etc/dnsmasq.conf
 
+# Prepare versions file (read by /api/version)
+cp test/versions /etc/pihole/versions
+
 # Prepare local powerDNS resolver
 bash test/pdns/setup.sh
 
