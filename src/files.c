@@ -217,3 +217,33 @@ int get_filepath_usage(const char *file, char buffer[64])
 	// Get percentage of disk usage at this path
 	return get_path_usage(path, buffer);
 }
+
+// Credits: https://stackoverflow.com/a/55410469
+static char *trim(char *str)
+{
+	char *start = str;
+	char *end = str + strlen(str);
+
+	while(*start && isspace(*start))
+		start++;
+
+	while(end > start && isspace(*(end - 1)))
+		end--;
+
+	*end = '\0';
+	return start;
+}
+
+// Credits: https://stackoverflow.com/a/55410469
+int parse_line(char *line, char **key, char **value)
+{
+	char *ptr = strchr(line, '=');
+	if (ptr == NULL)
+		return -1;
+
+	*ptr++ = '\0';
+	*key = trim(line);
+	*value = trim(ptr);
+
+	return 0;
+}

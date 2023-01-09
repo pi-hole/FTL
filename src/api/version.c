@@ -8,52 +8,106 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
 #include "api.h"
 // get_FTL_version()
-#include "../log.h"
-#include "../version.h"
+#include "log.h"
+#include "version.h"
+// prase_line()
+#include "files.h"
+
+#define VERSIONS_FILE "/etc/pihole/versions"
 
 int api_version(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJECT();
+	char *line = NULL;
+	size_t len = 0;
+	ssize_t read;
+	char *key, *value;
+	cJSON *core_local = JSON_NEW_OBJECT();
+	cJSON *web_local = JSON_NEW_OBJECT();
+	cJSON *ftl_local = JSON_NEW_OBJECT();
+	cJSON *core_remote = JSON_NEW_OBJECT();
+	cJSON *web_remote = JSON_NEW_OBJECT();
+	cJSON *ftl_remote = JSON_NEW_OBJECT();
 
-	FILE* file;
-	char coreversion[256] = "N/A", webversion[256]  = "N/A";
-	if((file = fopen("/etc/pihole/localversions", "r")) != NULL)
+	FILE *fp = fopen(VERSIONS_FILE, "r");
+	if(!fp)
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to read " VERSIONS_FILE,
+		                       NULL);
+
+	// Loop over KEY=VALUE parts in the versions file
+	while((read = getline(&line, &len, fp)) != -1)
 	{
-		igr(fscanf(file, "%255s %255s", coreversion, webversion));
-		fclose(file);
-	}
-	char corebranch[256] = "N/A", webbranch[256]  = "N/A";
-	if((file = fopen("/etc/pihole/localbranches", "r")) != NULL)
-	{
-		igr(fscanf(file, "%255s %255s", corebranch, webbranch));
-		fclose(file);
+		if (parse_line(line, &key, &value))
+			continue;
+
+		if(strcmp(key, "CORE_BRANCH") == 0)
+			JSON_COPY_STR_TO_OBJECT(core_local, "branch", value);
+		else if(strcmp(key, "WEB_BRANCH") == 0)
+			JSON_COPY_STR_TO_OBJECT(web_local, "branch", value);
+		// Added below from the running FTL binary itself
+		//else if(strcmp(key, "FTL_BRANCH") == 0)
+		//	JSON_COPY_STR_TO_OBJECT(ftl_local, "branch", value);
+		else if(strcmp(key, "CORE_VERSION") == 0)
+			JSON_COPY_STR_TO_OBJECT(core_local, "version", value);
+		else if(strcmp(key, "WEB_VERSION") == 0)
+			JSON_COPY_STR_TO_OBJECT(web_local, "version", value);
+		// Added below from the running FTL binary itself
+		//else if(strcmp(key, "FTL_VERSION") == 0)
+		//	JSON_COPY_STR_TO_OBJECT(ftl_local, "version", value);
+		else if(strcmp(key, "GITHUB_CORE_VERSION") == 0)
+			JSON_COPY_STR_TO_OBJECT(core_remote, "version", value);
+		else if(strcmp(key, "GITHUB_WEB_VERSION") == 0)
+			JSON_COPY_STR_TO_OBJECT(web_remote, "version", value);
+		else if(strcmp(key, "GITHUB_FTL_VERSION") == 0)
+			JSON_COPY_STR_TO_OBJECT(ftl_remote, "version", value);
+		else if(strcmp(key, "CORE_HASH") == 0)
+			JSON_COPY_STR_TO_OBJECT(core_local, "hash", value);
+		else if(strcmp(key, "WEB_HASH") == 0)
+			JSON_COPY_STR_TO_OBJECT(web_local, "hash", value);
+		else if(strcmp(key, "FTL_HASH") == 0)
+			JSON_COPY_STR_TO_OBJECT(ftl_local, "hash", value);
+		else if(strcmp(key, "GITHUB_CORE_HASH") == 0)
+			JSON_COPY_STR_TO_OBJECT(core_remote, "hash", value);
+		else if(strcmp(key, "GITHUB_WEB_HASH") == 0)
+			JSON_COPY_STR_TO_OBJECT(web_remote, "hash", value);
+		else if(strcmp(key, "GITHUB_FTL_HASH") == 0)
+			JSON_COPY_STR_TO_OBJECT(ftl_remote, "hash", value);
 	}
 
-	// Build web object
-	cJSON *web = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(web, "branch", webbranch);
-	JSON_REF_STR_IN_OBJECT(web, "tag", webversion);
-	JSON_ADD_ITEM_TO_OBJECT(json, "web", web);
+	// Free allocated memory and release file pointer
+	free(line);
+	fclose(fp);
 
-	// Build core object
+	// Add remaining properties to ftl object
+	JSON_REF_STR_IN_OBJECT(ftl_local, "branch", GIT_BRANCH);
+	JSON_REF_STR_IN_OBJECT(ftl_local, "version", get_FTL_version());
+	JSON_REF_STR_IN_OBJECT(ftl_local, "date", GIT_DATE);
+
+	cJSON *version = JSON_NEW_OBJECT();
+
 	cJSON *core = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(core, "branch", corebranch);
-	JSON_REF_STR_IN_OBJECT(core, "tag", coreversion);
-	JSON_ADD_ITEM_TO_OBJECT(json, "core", core);
+	JSON_ADD_ITEM_TO_OBJECT(core, "local", core_local);
+	JSON_ADD_ITEM_TO_OBJECT(core, "remote", core_remote);
+	JSON_ADD_ITEM_TO_OBJECT(version, "core", core);
 
-	// Build ftl object
+	cJSON *web = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(web, "local", web_local);
+	JSON_ADD_ITEM_TO_OBJECT(web, "remote", web_remote);
+	JSON_ADD_ITEM_TO_OBJECT(version, "web", web);
+
 	cJSON *ftl = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(ftl, "branch", GIT_BRANCH);
-	const char *version = get_FTL_version();
-	JSON_REF_STR_IN_OBJECT(ftl, "tag", version);
-	JSON_REF_STR_IN_OBJECT(ftl, "date", GIT_DATE);
-	JSON_ADD_ITEM_TO_OBJECT(json, "ftl", ftl);
+	JSON_ADD_ITEM_TO_OBJECT(ftl, "local", ftl_local);
+	JSON_ADD_ITEM_TO_OBJECT(ftl, "remote", ftl_remote);
+	JSON_ADD_ITEM_TO_OBJECT(version, "ftl", ftl);
 
 	// Send reply
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "version", version);
 	JSON_SEND_OBJECT(json);
 }

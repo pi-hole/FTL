@@ -19,4 +19,6 @@ void ls_dir(const char* path);
 int get_path_usage(const char *path, char buffer[64]);
 int get_filepath_usage(const char *file, char buffer[64]);
 
+int parse_line(char *line, char **key, char **value);
+
 #endif //FILE_H
