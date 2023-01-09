@@ -79,6 +79,8 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 			return cJSON_CreateNumber(val->l);
 		case CONF_ULONG:
 			return cJSON_CreateNumber(val->ul);
+		case CONF_DOUBLE:
+			return cJSON_CreateNumber(val->d);
 		case CONF_STRING:
 		case CONF_STRING_ALLOCATED:
 			return val->s ? cJSON_CreateStringReference(val->s) : cJSON_CreateNull();
@@ -130,7 +132,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				return "not of type bool";
 			// Set item
 			conf_item->v.b = elem->valueint;
-			log_debug(DEBUG_CONFIG, "Set %s to %s", conf_item->k, elem->valueint ? "true" : "false");
+			log_debug(DEBUG_CONFIG, "Set %s to %s", conf_item->k, conf_item->v.b ? "true" : "false");
 			break;
 		}
 		case CONF_INT:
@@ -142,7 +144,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				return "not of type integer";
 			// Set item
 			conf_item->v.i = elem->valueint;
-			log_debug(DEBUG_CONFIG, "Set %s to %i", conf_item->k, elem->valueint);
+			log_debug(DEBUG_CONFIG, "Set %s to %i", conf_item->k, conf_item->v.i);
 			break;
 		}
 		case CONF_UINT:
@@ -154,7 +156,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				return "not of type unsigned integer";
 			// Set item
 			conf_item->v.ui = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "Set %s to %u", conf_item->k, (unsigned int)elem->valuedouble);
+			log_debug(DEBUG_CONFIG, "Set %s to %u", conf_item->k, conf_item->v.ui);
 			break;
 		}
 		case CONF_LONG:
@@ -166,7 +168,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				return "not of type long";
 			// Set item
 			conf_item->v.l = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "Set %s to %li", conf_item->k, (long)elem->valuedouble);
+			log_debug(DEBUG_CONFIG, "Set %s to %li", conf_item->k, conf_item->v.l);
 			break;
 		}
 		case CONF_ULONG:
@@ -177,8 +179,18 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 			   elem->valuedouble < 0 || elem->valuedouble > ULONG_MAX)
 				return "not of type unsigned long";
 			// Set item
-			conf_item->v.l = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "Set %s to %lu", conf_item->k, (unsigned long)elem->valuedouble);
+			conf_item->v.ul = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "Set %s to %lu", conf_item->k, conf_item->v.ul);
+			break;
+		}
+		case CONF_DOUBLE:
+		{
+			// Check it is a number
+			if(!cJSON_IsNumber(elem))
+				return "not of type unsigned long";
+			// Set item
+			conf_item->v.d = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "Set %s to %f", conf_item->k, conf_item->v.d);
 			break;
 		}
 		case CONF_STRING:
@@ -257,7 +269,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				return "not within valid range";
 			// Set item
 			conf_item->v.i = elem->valueint;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, elem->valueint);
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.i);
 			break;
 		}
 		case CONF_STRUCT_IN_ADDR:

@@ -478,6 +478,12 @@ void initConfig(void)
 	config.misc.delay_startup.t = CONF_UINT;
 	config.misc.delay_startup.d.ui = 0;
 
+	// sub-struct misc.temp
+	config.misc.temp_limit.k = "misc.temp_limit";
+	config.misc.temp_limit.h = "Which upper temperature limit should be used by Pi-hole [°C]? Temperatures above this limit will be shown as \"hot\"";
+	config.misc.temp_limit.t = CONF_DOUBLE;
+	config.misc.temp_limit.d.d = 60.0; // °C
+
 	// sub-struct misc.check
 	config.misc.check.load.k = "misc.check.load";
 	config.misc.check.load.h = "Should FTL check the 15 min average of CPU load and complain if the load is larger than the number of available CPU cores?";

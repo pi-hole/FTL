@@ -285,10 +285,18 @@ components:
                   value:
                     type: number
                     description: Sensor value
+                  hot_limit:
+                    type: number
+                    description: Limit defined in FTL's config beyond which the CPU should be considered hot
+                  unit:
+                    type: string
+                    description: Sensor value unit
               example:
-                - name: null
+                - name: "Composite"
                   path: "hwmon0/temp1"
                   value: 30.4
+                  hot_limit: 60.0
+                  unit: "C"
             model:
               type: string
               description: Device model (if available, `null` otherwise)

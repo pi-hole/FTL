@@ -85,6 +85,19 @@ void importsetupVarsConf(void)
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
+
+	// Try to obtain blocking active boolean
+	const char* temp_limit = read_setupVarsconf("TEMPERATURE_LIMIT");
+
+	if(temp_limit != NULL)
+	{
+		double lim;
+		if(sscanf(temp_limit, "%lf", &lim) == 1)
+			config.misc.temp_limit.v.d = lim;
+	}
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
 }
 
 char* __attribute__((pure)) find_equals(const char* s)

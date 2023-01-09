@@ -69,7 +69,7 @@ static void printTOMLstring(FILE *fp, const char *s)
 	}
 
 	// If string is printable and does not contain any special characters, we can
-	// print it as is without furhter escaping
+	// print it as is without further escaping
 	if (ok)
 	{
 		fprintf(fp, "\"%s\"", s);
@@ -131,6 +131,9 @@ void writeTOMLvalue(FILE * fp, const enum conf_type t, union conf_value *v)
 			break;
 		case CONF_ULONG:
 			fprintf(fp, "%lu", v->ul);
+			break;
+		case CONF_DOUBLE:
+			fprintf(fp, "%f", v->d);
 			break;
 		case CONF_STRING:
 		case CONF_STRING_ALLOCATED:
@@ -234,6 +237,15 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 				conf_item->v.ul = val.u.i;
 			else
 				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type unsigned long", conf_item->k);
+			break;
+		}
+		case CONF_DOUBLE:
+		{
+			const toml_datum_t val = toml_double_in(toml, key);
+			if(val.ok)
+				conf_item->v.d = val.u.d;
+			else
+				log_debug(DEBUG_CONFIG, "%s does not exist or is not of type double", conf_item->k);
 			break;
 		}
 		case CONF_STRING:

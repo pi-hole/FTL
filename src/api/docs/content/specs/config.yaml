@@ -237,6 +237,8 @@ components:
                   type: boolean
                 privacylevel:
                   type: integer
+                temp_limit:
+                  type: number
                 check:
                   type: object
                   properties:
@@ -376,6 +378,7 @@ components:
             delay_startup: 10
             addr2line: true
             privacylevel: 0
+            temp_limit: 60.0
             check:
               load: true
               shmem: 90

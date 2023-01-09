@@ -51,6 +51,7 @@ union conf_value {
 	unsigned int ui;                            // unsigned int value
 	long l;                                     // long value
 	unsigned long ul;                           // unsigned long value
+	double d;                                   // double value
 	char *s;                                    // char * value
 	enum ptr_type ptr_type;                     // enum ptr_type value
 	enum busy_reply busy_reply;                 // enum busy_reply value
@@ -69,6 +70,7 @@ enum conf_type {
 	CONF_UINT,
 	CONF_LONG,
 	CONF_ULONG,
+	CONF_DOUBLE,
 	CONF_STRING,
 	CONF_STRING_ALLOCATED,
 	CONF_ENUM_PTR_TYPE,
@@ -189,6 +191,7 @@ struct config {
 		struct conf_item delay_startup;
 		struct conf_item addr2line;
 		struct conf_item privacylevel;
+		struct conf_item temp_limit;
 		struct {
 			struct conf_item load;
 			struct conf_item shmem;
