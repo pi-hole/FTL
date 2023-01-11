@@ -15,6 +15,11 @@
 #include "webserver/json_macros.h"
 #include "api.h"
 #include "shmem.h"
+// exit_code
+#include "signals.h"
+
+// defined in dnsmasq/dnsmasq.h
+extern volatile char FTL_terminate;
 
 static int api_ftl_endpoints(struct ftl_conn *api);
 
@@ -75,6 +80,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		NULL,
 		NULL,
 		{ false, 0u, NULL, NULL },
+		{ false },
 		{ false, false }
 	};
 
@@ -139,6 +145,14 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 	// Free raw payload bytes (always allocated)
 	free(api.payload.raw);
+
+	// Restart FTL if requested
+	if(api.ftl.restart)
+	{
+		// Trigger an automatic restart by systemd
+		exit_code = 22;
+		FTL_terminate = 1;
+	}
 
 	return ret;
 }

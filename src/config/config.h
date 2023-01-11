@@ -59,6 +59,7 @@ union conf_value {
 	enum refresh_hostnames refresh_hostnames;   // enum refresh_hostnames value
 	enum privacy_level privacy_level;           // enum privacy_level value
 	enum debug_flag debug_flag;                 // enum debug_flag value
+	enum listening_mode listening_mode;         // enum listening_mode value
 	struct in_addr in_addr;                     // struct in_addr value
 	struct in6_addr in6_addr;                   // struct in6_addr value
 	cJSON *json;                                // cJSON * value
@@ -78,6 +79,7 @@ enum conf_type {
 	CONF_ENUM_BLOCKING_MODE,
 	CONF_ENUM_REFRESH_HOSTNAMES,
 	CONF_ENUM_PRIVACY_LEVEL,
+	CONF_ENUM_LISTENING_MODE,
 	CONF_STRUCT_IN_ADDR,
 	CONF_STRUCT_IN6_ADDR,
 	// We could theoretically use a more generic type, however, we want this
@@ -88,13 +90,14 @@ enum conf_type {
 #define MAX_CONFIG_PATH_DEPTH 4
 
 struct conf_item {
-	const char *k;       // item Key
-	char **p;            // item Path
-	const char *h;       // Help text / description
-	const char *a;       // string of Allowed values (where applicable)
-	enum conf_type t;    // variable Type
-	union conf_value v;  // current Value
-	union conf_value d;  // Default value
+	const char *k;        // item Key
+	char **p;             // item Path
+	const char *h;        // Help text / description
+	const char *a;        // string of Allowed values (where applicable)
+	enum conf_type t;     // variable Type
+	union conf_value v;   // current Value
+	union conf_value d;   // Default value
+	bool restart_dnsmasq; // De we need to restart the dnsmasq core when this changes?
 };
 
 struct config {
@@ -136,6 +139,34 @@ struct config {
 			struct conf_item interval;
 		} rateLimit;
 	} dns;
+
+	struct {
+		struct conf_item upstreams;
+		struct conf_item domain;
+		struct conf_item domain_needed;
+		struct conf_item expand_hosts;
+		struct conf_item bogus_priv;
+		struct conf_item dnssec;
+		struct conf_item interface;
+		struct conf_item host_record;
+		struct conf_item listening_mode;
+		struct conf_item cache_size;
+		struct {
+			struct conf_item active;
+			struct conf_item cidr;
+			struct conf_item target;
+			struct conf_item domain;
+		} rev_server;
+		struct {
+			struct conf_item active;
+			struct conf_item start;
+			struct conf_item end;
+			struct conf_item router;
+			struct conf_item leasetime;
+			struct conf_item ipv6;
+			struct conf_item rapid_commit;
+		} dhcp;
+	} dnsmasq;
 
 	struct {
 		struct conf_item resolveIPv4;
@@ -180,7 +211,6 @@ struct config {
 	} http;
 
 	struct {
-		struct conf_item log;
 		struct conf_item pid;
 		struct conf_item database;
 		struct conf_item gravity;
@@ -188,6 +218,10 @@ struct config {
 		struct conf_item setupVars;
 		struct conf_item http_info;
 		struct conf_item ph7_error;
+		struct {
+			struct conf_item ftl;
+			struct conf_item dnsmasq;
+		} log;
 	} files;
 
 	struct {

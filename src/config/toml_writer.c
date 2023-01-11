@@ -64,13 +64,11 @@ bool writeFTLtoml(void)
 		}
 
 		// Write comment
-		indentTOML(fp, level-1);
-		fprintf(fp, "# %s\n", conf_item->h);
+		print_comment(fp, conf_item->h, "", 85, level-1);
 		if(conf_item->a != NULL)
 		{
 			// Write possible values if applicable
-			indentTOML(fp, level-1);
-			fprintf(fp, "# Possible values are: %s\n", conf_item->a);
+			print_comment(fp, conf_item->a, "Possible values are: ", 85, level-1);
 		}
 
 		// Write value

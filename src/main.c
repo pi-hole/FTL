@@ -16,6 +16,7 @@
 #include "config/config.h"
 #include "database/common.h"
 #include "main.h"
+// exit_code
 #include "signals.h"
 #include "regex_r.h"
 // init_shmem()
@@ -36,7 +37,6 @@ char *username;
 bool needGC = false;
 bool needDBGC = false;
 bool startup = true;
-volatile int exit_code = EXIT_SUCCESS;
 
 int main (int argc, char *argv[])
 {
@@ -135,8 +135,8 @@ int main (int argc, char *argv[])
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
 	log_info("Shutting down...");
-	// Extra grace time is needed as dnsmasq script-helpers may not be
-	// terminating immediately
+	// Extra grace time is needed as dnsmasq script-helpers and the API may not
+	// be terminating immediately
 	sleepms(250);
 
 	// Save new queries to database (if database is used)

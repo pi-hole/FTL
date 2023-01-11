@@ -19,6 +19,7 @@
 void indentTOML(FILE *fp, const unsigned int indent);
 FILE *openFTLtoml(const char *mode) __attribute((malloc)) __attribute((nonnull(1)));
 void closeFTLtoml(FILE *fp);
+void print_comment(FILE *fp, const char *str, const char *intro, const unsigned int width, const unsigned int indent);
 void writeTOMLvalue(FILE * fp, const enum conf_type t, union conf_value *v);
 void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *toml);
 

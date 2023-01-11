@@ -2772,9 +2772,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		{
 			log_info("FTL is going to drop from root to user %s (UID %d)",
 			     ent_pw->pw_name, (int)ent_pw->pw_uid);
-			if(chown(config.files.log.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			if(chown(config.files.log.ftl.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 				log_warn("Setting ownership (%i:%i) of %s failed: %s (%i)",
-				ent_pw->pw_uid, ent_pw->pw_gid, config.files.log.v.s, strerror(errno), errno);
+				ent_pw->pw_uid, ent_pw->pw_gid, config.files.log.ftl.v.s, strerror(errno), errno);
 			if(chown(config.files.database.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 				log_warn("Setting ownership (%i:%i) of %s failed: %s (%i)",
 				ent_pw->pw_uid, ent_pw->pw_gid, config.files.database.v.s, strerror(errno), errno);

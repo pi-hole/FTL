@@ -34,6 +34,9 @@ struct ftl_conn {
 		char *raw;
 		cJSON *json;
 	} payload;
+	struct {
+		bool restart;
+	} ftl;
 
 	bool opts[2];
 };

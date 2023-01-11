@@ -223,10 +223,10 @@ bool getLogFilePathTOML(void)
 	}
 
 	// Only replace string when it is different
-	if(strcmp(config.files.log.v.s,log.u.s) != 0)
+	if(strcmp(config.files.log.ftl.v.s,log.u.s) != 0)
 	{
-		config.files.log.t = CONF_STRING_ALLOCATED;
-		config.files.log.v.s = log.u.s; // Allocated string
+		config.files.log.ftl.t = CONF_STRING_ALLOCATED;
+		config.files.log.ftl.v.s = log.u.s; // Allocated string
 	}
 	else
 		free(log.u.s);

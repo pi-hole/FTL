@@ -280,4 +280,11 @@ enum addinfo_type {
 	ADDINFO_REGEX_ID
 } __attribute__ ((packed));
 
+enum listening_mode {
+	LISTEN_LOCAL,
+	LISTEN_ALL,
+	LISTEN_SINGLE,
+	LISTEN_BIND
+} __attribute__ ((packed));
+
 #endif // ENUMS_H

@@ -35,7 +35,11 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 
 	// Lock file, may block if the file is currently opened
 	if(flock(fileno(fp), LOCK_EX) != 0)
+	{
 		log_err("Cannot open FTL's config file in exclusive mode: %s", strerror(errno));
+		fclose(fp);
+		return NULL;
+	}
 
 	return fp;
 }
@@ -43,10 +47,11 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 // Open the TOML file for reading or writing
 void closeFTLtoml(FILE *fp)
 {
-	// Lock file, may block if the file is currently opened
+	// Release file lock
 	if(flock(fileno(fp), LOCK_UN) != 0)
 		log_err("Cannot release lock on FTL's config file: %s", strerror(errno));
 
+	// Close file
 	if(fclose(fp) != 0)
 		log_err("Cannot close FTL's config file: %s", strerror(errno));
 
@@ -111,6 +116,90 @@ void indentTOML(FILE *fp, const unsigned int indent)
 		fputc(' ', fp);
 }
 
+// measure the length until either the end of the string or to the next space
+// (whatever comes first)
+static unsigned int __attribute__((pure)) length(const char * p)
+{
+	const char *p2 = p;
+	while(*(++p2) && *p2 != ' ');
+	return p2 - p;
+}
+
+void print_comment(FILE *fp, const char *str, const char *intro, const unsigned int width, const unsigned int indent)
+{
+	unsigned int i = 0;
+	unsigned int extraspace = 0;
+	unsigned int ratac = strlen(intro);
+
+	// Add intro if present
+	if(ratac > 0)
+	{
+		for (unsigned int j = 0; j != 2*indent; ++j)
+			fputc(' ', fp);
+		fputs("# ", fp);
+		fputs(intro, fp);
+		extraspace = ratac;
+		ratac = 0;
+	}
+	else
+	{
+		// Add indentation
+		for(unsigned int j = 0; j < 2*indent; ++j)
+			fputc(' ', fp);
+		fputs("# ", fp);
+		for(unsigned int j = 0; j < extraspace; ++j)
+			fputc(' ', fp);
+	}
+
+	// Print string
+	while(str[i] != '\0')
+	{
+		// Wrap to next line if we already printed too much for this one
+		if(ratac >= width-extraspace)
+		{
+			// If this the first line? If not, add a newline
+			if (i > 0)
+				fputc('\n', fp);
+			// Add intendation
+			for (unsigned int j = 0; j != 2*indent; ++j)
+				fputc(' ', fp);
+			// Start a new line
+			fputc('#', fp);
+			for(unsigned int j = 0; j < extraspace; ++j)
+				fputc(' ', fp);
+			fputc(' ', fp);
+			ratac = 0;
+		}
+
+		// If the text character is a space, we print it right away
+		// Print a word - measure the length until either the end of the
+		// string or to the next space (whatever comes first) and print this
+		// part of the string
+		unsigned int len = length(str + i);
+
+		// Print word if we either have enough space to print this word or
+		// it is really a long word and we are at the beginning of a line
+		if(((ratac + len) <= width-extraspace) || (ratac == 0))
+		{
+			// Add spaces after words but not at the beginning of new lines
+			if(ratac > 0 && str[i] == ' ')
+				fputc(' ', fp);
+
+			// Print the next word
+			ratac += len;
+			while (len--)
+				if(str[i++] != ' ')
+					fputc(str[i-1], fp);
+		}
+		else
+		{
+			// Mark this line as full
+			ratac = width;
+		}
+	}
+	fputc('\n', fp);
+}
+
 // Write a TOML value to a file depending on its type
 void writeTOMLvalue(FILE * fp, const enum conf_type t, union conf_value *v)
 {
@@ -150,6 +239,9 @@ void writeTOMLvalue(FILE * fp, const enum conf_type t, union conf_value *v)
 			break;
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 			printTOMLstring(fp, get_refresh_hostnames_str(v->refresh_hostnames));
+			break;
+		case CONF_ENUM_LISTENING_MODE:
+			printTOMLstring(fp, get_listening_mode_str(v->listening_mode));
 			break;
 		case CONF_STRUCT_IN_ADDR:
 		{
@@ -316,6 +408,21 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 				const int refresh_hostnames = get_refresh_hostnames_val(val.u.s);
 				if(refresh_hostnames != -1)
 					conf_item->v.refresh_hostnames = refresh_hostnames;
+				else
+					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
+			}
+			else
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type string", conf_item->k);
+			break;
+		}
+		case CONF_ENUM_LISTENING_MODE:
+		{
+			const toml_datum_t val = toml_string_in(toml, key);
+			if(val.ok)
+			{
+				const int listening_mode = get_listening_mode_val(val.u.s);
+				if(listening_mode != -1)
+					conf_item->v.listening_mode = listening_mode;
 				else
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}

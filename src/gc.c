@@ -150,7 +150,7 @@ void *GC_thread(void *val)
 		{
 			check_load();
 			LastDBStorageUsage = check_space(config.files.database.v.s, LastDBStorageUsage);
-			LastLogStorageUsage = check_space(config.files.log.v.s, LastLogStorageUsage);
+			LastLogStorageUsage = check_space(config.files.log.ftl.v.s, LastLogStorageUsage);
 			lastResourceCheck = now;
 		}
 

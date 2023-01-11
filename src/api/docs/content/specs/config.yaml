@@ -141,6 +141,59 @@ components:
                       type: integer
                     interval:
                       type: integer
+            dnsmasq:
+              type: object
+              properties:
+                upstreams:
+                  type: array
+                  items:
+                    type: string
+                domain:
+                  type: string
+                domain_needed:
+                  type: boolean
+                expand_hosts:
+                  type: boolean
+                bogus_priv:
+                  type: boolean
+                dnssec:
+                  type: boolean
+                interface:
+                  type: string
+                host_record:
+                  type: string
+                listening_mode:
+                  type: string
+                cache_size:
+                  type: integer
+                rev_server:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    cidr:
+                      type: string
+                    target:
+                      type: string
+                    domain:
+                      type: string
+                dhcp:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    start:
+                      type: string
+                    end:
+                      type: string
+                    router:
+                      type: string
+                    leasetime:
+                      type: string
+                    ipv6:
+                      type: boolean
+                    rapid_commit:
+                      type: boolean
             resolver:
               type: object
               properties:
@@ -217,8 +270,6 @@ components:
             files:
               type: object
               properties:
-                log:
-                  type: string
                 pid:
                   type: string
                 database:
@@ -233,6 +284,13 @@ components:
                   type: string
                 ph7_error:
                   type: string
+                log:
+                  type: object
+                  properties:
+                    ftl:
+                      type: string
+                    dnsmasq:
+                      type: string
             misc:
               type: object
               properties:
@@ -343,6 +401,30 @@ components:
               count: 0
               interval: 0
             port: 53
+          dnsmasq:
+            upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
+            domain: "lan"
+            domain_needed: true
+            expand_hosts: true
+            bogus_priv: true
+            dnssec: true
+            interface: "eth0"
+            host_record: ""
+            listening_mode: "local"
+            cache_size: 10000
+            rev_server:
+              active: false
+              cidr: "192.168.0.0/24"
+              target: "192.168.0.1"
+              domain: "lan"
+            dhcp:
+              active: false
+              start: "192.168.0.10"
+              end: "192.168.0.250"
+              router: "192.168.0.1"
+              leasetime: "24h"
+              ipv6: true
+              rapid_commit: true
           resolver:
             resolveIPv4: true
             resolveIPv6: true
@@ -375,7 +457,6 @@ components:
               boxed: true
               theme: "default-darker"
           files:
-            log: "/var/log/pihole/FTL.log"
             pid: "/run/pihole-FTL.pid"
             database: "/etc/pihole/pihole-FTL.db"
             gravity: "/etc/pihole/gravity.db"
@@ -383,6 +464,9 @@ components:
             setupVars: "/etc/pihole/setupVars.conf"
             http_info: "/var/log/pihole/HTTP_info.log"
             ph7_error: "/var/log/pihole/PH7.log"
+            log:
+              ftl: "/var/log/pihole/FTL.log"
+              dnsmasq: "/var/log/pihole/pihole.log"
           misc:
             nice: -10
             delay_startup: 10

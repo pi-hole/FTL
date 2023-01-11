@@ -12,79 +12,102 @@
 #include "log.h"
 #include "config/config.h"
 #include "setupVars.h"
+#include "datastructure.h"
 
 unsigned int setupVarsElements = 0;
 char ** setupVarsArray = NULL;
 
+static void get_conf_string_from_setupVars(const char *key, struct conf_item *conf_item)
+{
+	const char *setupVarsValue = read_setupVarsconf(key);
+	if(setupVarsValue == NULL)
+		setupVarsValue = "";
+
+	// Free previously allocated memory (if applicable)
+	if(conf_item->t == CONF_STRING_ALLOCATED)
+		free(conf_item->v.s);
+	conf_item->v.s = strdup(setupVarsValue);
+	conf_item->t = CONF_STRING_ALLOCATED;
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+}
+
+static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf_item)
+{
+	const char *boolean = read_setupVarsconf(key);
+
+	if(boolean == NULL)
+		// Do not change default value, this value is not set in setupVars.conf
+		;
+	else
+		// Parameter present in setupVars.conf
+		conf_item->v.b = getSetupVarsBool(boolean);
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+}
+
+static void get_conf_string_array_from_setupVars(const char *key, struct conf_item *conf_item)
+{
+	// Get clients which the user doesn't want to see
+	const char *array = read_setupVarsconf(key);
+
+	if(array != NULL)
+	{
+		getSetupVarsArray(array);
+		for (unsigned int i = 0; i < setupVarsElements; ++i)
+		{
+			log_debug(DEBUG_CONFIG, "%s: [%d] = %s\n", key, i, setupVarsArray[i]);
+			// Add string to our JSON array
+			cJSON *item = cJSON_CreateString(setupVarsArray[i]);
+			cJSON_AddItemToArray(conf_item->v.json, item);
+		}
+	}
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+}
+
+static void get_conf_upstream_servers_from_setupVars(struct conf_item *conf_item)
+{
+	// Try to import up to 50 servers...
+	#define MAX_SERVERS 50
+	for(unsigned int j = 0; j < MAX_SERVERS; j++)
+	{
+		// Get clients which the user doesn't want to see
+		char server_key[strlen("PIHOLE_DNS_XX") + 1];
+		sprintf(server_key, "PIHOLE_DNS_%d", j);
+		const char *value = read_setupVarsconf(server_key);
+
+		if(value != NULL)
+		{
+			log_debug(DEBUG_CONFIG, "%s = %s\n", server_key, value);
+			// Add string to our JSON array
+			cJSON *item = cJSON_CreateString(value);
+			cJSON_AddItemToArray(conf_item->v.json, item);
+		}
+
+		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+		clearSetupVarsArray();
+	}
+}
+
 void importsetupVarsConf(void)
 {
 	// Try to obtain password hash from setupVars.conf
-	const char *pwhash = read_setupVarsconf("WEBPASSWORD");
-	if(pwhash == NULL)
-		pwhash = "";
-
-	// Free previously allocated memory (if applicable)
-	if(config.api.pwhash.t == CONF_STRING_ALLOCATED)
-		free(config.api.pwhash.v.s);
-	config.api.pwhash.v.s = strdup(pwhash);
-	config.api.pwhash.t = CONF_STRING_ALLOCATED;
-
-	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
-	clearSetupVarsArray();
+	get_conf_string_from_setupVars("WEBPASSWORD", &config.api.pwhash);
 
 	// Try to obtain blocking active boolean
-	const char *blocking = read_setupVarsconf("BLOCKING_ENABLED");
-
-	if(blocking == NULL || getSetupVarsBool(blocking))
-	{
-		// Parameter either not present in setupVars.conf
-		// or explicitly set to true
-		config.dns.blocking.active.v.b = true;
-	}
-	else
-	{
-		// Disabled
-		config.dns.blocking.active.v.b = false;
-	}
-
-	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
-	clearSetupVarsArray();
+	get_conf_bool_from_setupVars("BLOCKING_ENABLED", &config.dns.blocking.active);
 
 	// Get clients which the user doesn't want to see
-	const char *excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
-
-	if(excludeclients != NULL)
-	{
-		getSetupVarsArray(excludeclients);
-		for (unsigned int i = 0; i < setupVarsElements; ++i)
-		{
-			log_debug(DEBUG_CONFIG, "API_EXCLUDE_CLIENTS: [%d] = %s\n", i, setupVarsArray[i]);
-			// Add string to our JSON array
-			cJSON *item = cJSON_CreateString(setupVarsArray[i]);
-			cJSON_AddItemToArray(config.api.exclude_clients.v.json, item);
-		}
-	}
-
-	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
-	clearSetupVarsArray();
+	get_conf_string_array_from_setupVars("API_EXCLUDE_CLIENTS", &config.api.exclude_clients);
 
 	// Get domains which the user doesn't want to see
-	char *excludedomains = read_setupVarsconf("API_EXCLUDE_DOMAINS");
+	get_conf_string_array_from_setupVars("API_EXCLUDE_DOMAINS", &config.api.exclude_domains);
 
-	if(excludedomains != NULL)
-	{
-		getSetupVarsArray(excludedomains);
-		for (unsigned int i = 0; i < setupVarsElements; ++i)
-		{
-			log_debug(DEBUG_CONFIG, "API_EXCLUDE_DOMAINS: [%d] = %s\n", i, setupVarsArray[i]);
-			// Add string to our JSON array
-			cJSON *item = cJSON_CreateString(setupVarsArray[i]);
-			cJSON_AddItemToArray(config.api.exclude_domains.v.json, item);
-		}
-	}
 
-	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
-	clearSetupVarsArray();
 
 	// Try to obtain temperature hot value
 	const char *temp_limit = read_setupVarsconf("TEMPERATURE_LIMIT");
@@ -99,6 +122,8 @@ void importsetupVarsConf(void)
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
 
+
+
 	// Try to obtain boxed-layout boolean
 	const char *boxed_layout = read_setupVarsconf("WEBUIBOXEDLAYOUT");
 	// If the property is set to false and different than "boxed", the property
@@ -110,27 +135,73 @@ void importsetupVarsConf(void)
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
 
-	// Try to obtain theme string
-	const char *web_theme = read_setupVarsconf("WEBTHEME");
-	if(web_theme == NULL)
-		web_theme = "";
 
-	// Free previously allocated memory (if applicable)
-	if(config.http.interface.theme.t == CONF_STRING_ALLOCATED)
-		free(config.http.interface.theme.v.s);
-	config.http.interface.theme.v.s = strdup(web_theme);
-	config.http.interface.theme.t = CONF_STRING_ALLOCATED;
+
+	// Try to obtain theme string
+	get_conf_string_from_setupVars("WEBTHEME", &config.http.interface.theme);
+
+	// Try to obtain list of upstream servers
+	get_conf_upstream_servers_from_setupVars(&config.dnsmasq.upstreams);
+
+	// Try to get Pi-hole domain
+	get_conf_string_from_setupVars("PIHOLE_DOMAIN", &config.dnsmasq.domain);
+
+	// Try to get bool properties (the first two are intentionally set from the same key)
+	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dnsmasq.domain_needed);
+	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dnsmasq.expand_hosts);
+	get_conf_bool_from_setupVars("DNS_BOGUS_PRIV", &config.dnsmasq.bogus_priv);
+	get_conf_bool_from_setupVars("DNSSEC", &config.dnsmasq.dnssec);
+	get_conf_string_from_setupVars("PIHOLE_INTERFACE", &config.dnsmasq.interface);
+	get_conf_string_from_setupVars("HOSTRECORD", &config.dnsmasq.host_record);
+
+
+
+	// Try to obtain listening mode and transfort to the enum
+	const char *listening_mode = read_setupVarsconf("DNSMASQ_LISTENING");
+	// If the property is set to false and different than "boxed", the property
+	// is disabled. This is consistent with the code in AdminLTE when writing
+	// this code
+	if(listening_mode != NULL)
+	{
+		int listening_mode_enum = get_listening_mode_val(listening_mode);
+		if(listening_mode_enum != -1)
+			config.dnsmasq.listening_mode.v.listening_mode = listening_mode_enum;
+	}
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
+
+	// Try to obtain REV_SERVER settings
+	get_conf_bool_from_setupVars("REV_SERVER", &config.dnsmasq.rev_server.active);
+	get_conf_string_from_setupVars("REV_SERVER_CIDR", &config.dnsmasq.rev_server.cidr);
+	get_conf_string_from_setupVars("REV_SERVER_TARGET", &config.dnsmasq.rev_server.target);
+	get_conf_string_from_setupVars("REV_SERVER_DOMAIN", &config.dnsmasq.rev_server.domain);
+
+	// Try to obtain DHCP settings
+	get_conf_bool_from_setupVars("DHCP_ACTIVE", &config.dnsmasq.dhcp.active);
+	get_conf_string_from_setupVars("DHCP_START", &config.dnsmasq.dhcp.start);
+	get_conf_string_from_setupVars("DHCP_END", &config.dnsmasq.dhcp.end);
+	get_conf_string_from_setupVars("DHCP_ROUTER", &config.dnsmasq.dhcp.router);
+	get_conf_string_from_setupVars("DHCP_LEASETIME", &config.dnsmasq.dhcp.leasetime);
+	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dnsmasq.dhcp.ipv6);
+	get_conf_bool_from_setupVars("DHCP_rapid_commit", &config.dnsmasq.dhcp.rapid_commit);
 }
 
-char* __attribute__((pure)) find_equals(const char *s)
+char* __attribute__((pure)) find_equals(char *s)
 {
 	const char *chars = "=";
+	// Make s point to the first char after the "=" sign
 	while (*s && (!chars || !strchr(chars, *s)))
 		s++;
-	return (char*)s;
+
+	// additionally, we have to check if there is a whitespace and end here
+	// (there may be a bash comment afterwards)
+	char *p = s;
+	while(*p && *p != ' ')
+		p++;
+	*p = '\0';
+
+	return s;
 }
 
 void trim_whitespace(char *string)
@@ -264,8 +335,5 @@ void clearSetupVarsArray(void)
 
 bool __attribute__((pure)) getSetupVarsBool(const char * input)
 {
-	if((strcmp(input, "true")) == 0)
-		return true;
-	else
-		return false;
+	return (strcmp(input, "true")) == 0;
 }

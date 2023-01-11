@@ -8,17 +8,19 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "config.h"
-#include "toml_reader.h"
-#include "toml_writer.h"
-#include "../setupVars.h"
-#include "../log.h"
-#include "../log.h"
+#include "FTL.h"
+#include "config/config.h"
+#include "config/toml_reader.h"
+#include "config/toml_writer.h"
+#include "setupVars.h"
+#include "log.h"
+#include "log.h"
 // readFTLlegacy()
 #include "legacy_reader.h"
 // file_exists()
-#include "../files.h"
+#include "files.h"
+// write_dnsmasq_config()
+#include "config/dnsmasq_config.h"
 
 struct config config = { 0 };
 int dns_port = -1;
@@ -265,6 +267,148 @@ void initConfig(void)
 	memset(&config.dns.reply.blocking.v6.d.in6_addr, 0, sizeof(struct in6_addr));
 
 
+	// struct dnsmasq
+	config.dnsmasq.upstreams.k = "dnsmasq.upstreams";
+	config.dnsmasq.upstreams.h = "Array of upstream DNS servers used by Pi-hole";
+	config.dnsmasq.upstreams.a = "array of IP addresses and/or hostnames, optionally with a port, e.g. [ \"8.8.8.8\", \"127.0.0.1#5353\", \"docker-resolver\" ]";
+	config.dnsmasq.upstreams.t = CONF_JSON_STRING_ARRAY;
+	config.dnsmasq.upstreams.d.json = cJSON_CreateArray();
+	config.dnsmasq.upstreams.restart_dnsmasq = true;
+
+	config.dnsmasq.domain.k = "dnsmasq.domain";
+	config.dnsmasq.domain.h = "The DNS domain used by your Pi-hole";
+	config.dnsmasq.domain.a = "<any valid domain>";
+	config.dnsmasq.domain.t = CONF_STRING;
+	config.dnsmasq.domain.d.s = (char*)"lan";
+	config.dnsmasq.domain.restart_dnsmasq = true;
+
+	config.dnsmasq.domain_needed.k = "dnsmasq.domain_needed";
+	config.dnsmasq.domain_needed.h = "If set, A and AAAA queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
+	config.dnsmasq.domain_needed.t = CONF_BOOL;
+	config.dnsmasq.domain_needed.d.b = false;
+	config.dnsmasq.domain_needed.restart_dnsmasq = true;
+
+	config.dnsmasq.expand_hosts.k = "dnsmasq.expand_hosts";
+	config.dnsmasq.expand_hosts.h = "If set, the domain is added to simple names (without a period) in /etc/hosts in the same way as for DHCP-derived names";
+	config.dnsmasq.expand_hosts.t = CONF_BOOL;
+	config.dnsmasq.expand_hosts.d.b = false;
+	config.dnsmasq.expand_hosts.restart_dnsmasq = true;
+
+	config.dnsmasq.bogus_priv.k = "dnsmasq.bogus_priv";
+	config.dnsmasq.bogus_priv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
+	config.dnsmasq.bogus_priv.t = CONF_BOOL;
+	config.dnsmasq.bogus_priv.d.b = true;
+	config.dnsmasq.bogus_priv.restart_dnsmasq = true;
+
+	config.dnsmasq.dnssec.k = "dnsmasq.dnssec";
+	config.dnsmasq.dnssec.h = "Validate DNS replies and cache DNSSEC data";
+	config.dnsmasq.dnssec.t = CONF_BOOL;
+	config.dnsmasq.dnssec.d.b = true;
+	config.dnsmasq.dnssec.restart_dnsmasq = true;
+
+	config.dnsmasq.interface.k = "dnsmasq.interface";
+	config.dnsmasq.interface.h = "Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)";
+	config.dnsmasq.interface.a = "a valid interface name";
+	config.dnsmasq.interface.t = CONF_STRING;
+	config.dnsmasq.interface.d.s = (char*)"";
+	config.dnsmasq.interface.restart_dnsmasq = true;
+
+	config.dnsmasq.host_record.k = "dnsmasq.host_record";
+	config.dnsmasq.host_record.h = "Add A, AAAA and PTR records to the DNS. This adds one or more names to the DNS with associated IPv4 (A) and IPv6 (AAAA) records";
+	config.dnsmasq.host_record.a = "<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]";
+	config.dnsmasq.host_record.t = CONF_STRING;
+	config.dnsmasq.host_record.d.s = (char*)"";
+	config.dnsmasq.host_record.restart_dnsmasq = true;
+
+	config.dnsmasq.listening_mode.k = "dnsmasq.listening_mode";
+	config.dnsmasq.listening_mode.h = "Pi-hole interface listening modes";
+	config.dnsmasq.listening_mode.a = "[ \"LOCAL\", \"ALL\", \"SINGLE\", \"BIND\" ]";
+	config.dnsmasq.listening_mode.t = CONF_ENUM_LISTENING_MODE;
+	config.dnsmasq.listening_mode.d.listening_mode = LISTEN_LOCAL;
+	config.dnsmasq.listening_mode.restart_dnsmasq = true;
+
+	config.dnsmasq.cache_size.k = "dnsmasq.cache_size";
+	config.dnsmasq.cache_size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 100,000+ range";
+	config.dnsmasq.cache_size.t = CONF_UINT;
+	config.dnsmasq.cache_size.d.ui = 10000u;
+	config.dnsmasq.cache_size.restart_dnsmasq = true;
+
+	// sub-struct rev_server
+	config.dnsmasq.rev_server.active.k = "dnsmasq.rev_server.active";
+	config.dnsmasq.rev_server.active.h = "Is the reverse server (former also called \"conditional forwarding\") feature enabled?";
+	config.dnsmasq.rev_server.active.t = CONF_BOOL;
+	config.dnsmasq.rev_server.active.d.b = false;
+	config.dnsmasq.rev_server.active.restart_dnsmasq = true;
+
+	config.dnsmasq.rev_server.cidr.k = "dnsmasq.rev_server.cidr";
+	config.dnsmasq.rev_server.cidr.h = "Address range for the reverse server feature in CIDR notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are substitutet (exact address match). This is almost certainly not what you want here.";
+	config.dnsmasq.rev_server.cidr.a = "<ip-address>[/<prefix-len>], e.g., \"192.168.0.0/24\" for the range 192.168.0.1 - 192.168.0.255";
+	config.dnsmasq.rev_server.cidr.t = CONF_STRING;
+	config.dnsmasq.rev_server.cidr.d.s = (char*)"";
+	config.dnsmasq.rev_server.cidr.restart_dnsmasq = true;
+
+	config.dnsmasq.rev_server.target.k = "dnsmasq.rev_server.target";
+	config.dnsmasq.rev_server.target.h = "Target server tp be used for the reverse server feature";
+	config.dnsmasq.rev_server.target.a = "<server>[#<port>], e.g., \"192.168.0.1\"";
+	config.dnsmasq.rev_server.target.t = CONF_STRING;
+	config.dnsmasq.rev_server.target.d.s = (char*)"";
+	config.dnsmasq.rev_server.target.restart_dnsmasq = true;
+
+	config.dnsmasq.rev_server.domain.k = "dnsmasq.rev_server.domain";
+	config.dnsmasq.rev_server.domain.h = "Domain used for the reverse server feature";
+	config.dnsmasq.rev_server.domain.a = "<valid domain>, typically set to the same value as dnsmasq.domain";
+	config.dnsmasq.rev_server.domain.t = CONF_STRING;
+	config.dnsmasq.rev_server.domain.d.s = (char*)"";
+	config.dnsmasq.rev_server.domain.restart_dnsmasq = true;
+
+	// sub-struct dhcp
+	config.dnsmasq.dhcp.active.k = "dnsmasq.dhcp.active";
+	config.dnsmasq.dhcp.active.h = "Is the embedded DHCP server enabled?";
+	config.dnsmasq.dhcp.active.t = CONF_BOOL;
+	config.dnsmasq.dhcp.active.d.b = false;
+	config.dnsmasq.dhcp.active.restart_dnsmasq = true;
+
+	config.dnsmasq.dhcp.start.k = "dnsmasq.dhcp.start";
+	config.dnsmasq.dhcp.start.h = "Start address of the DHCP address pool";
+	config.dnsmasq.dhcp.start.a = "<ip-addr>, e.g., \"192.168.0.10\"";
+	config.dnsmasq.dhcp.start.t = CONF_STRING;
+	config.dnsmasq.dhcp.start.d.s = (char*)"";
+	config.dnsmasq.dhcp.start.restart_dnsmasq = true;
+
+	config.dnsmasq.dhcp.end.k = "dnsmasq.dhcp.end";
+	config.dnsmasq.dhcp.end.h = "End address of the DHCP address pool";
+	config.dnsmasq.dhcp.end.a = "<ip-addr>, e.g., \"192.168.0.250\"";
+	config.dnsmasq.dhcp.end.t = CONF_STRING;
+	config.dnsmasq.dhcp.end.d.s = (char*)"";
+	config.dnsmasq.dhcp.end.restart_dnsmasq = true;
+
+	config.dnsmasq.dhcp.router.k = "dnsmasq.dhcp.router";
+	config.dnsmasq.dhcp.router.h = "Address of the gateway to be used (typicaly the address of your router in a home installation)";
+	config.dnsmasq.dhcp.router.a = "<ip-addr>, e.g., \"192.168.0.1\"";
+	config.dnsmasq.dhcp.router.t = CONF_STRING;
+	config.dnsmasq.dhcp.router.d.s = (char*)"";
+	config.dnsmasq.dhcp.router.restart_dnsmasq = true;
+
+	config.dnsmasq.dhcp.leasetime.k = "dnsmasq.dhcp.leasetime";
+	config.dnsmasq.dhcp.leasetime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
+	config.dnsmasq.dhcp.leasetime.a = "The lease time can be in seconds, or minutes (e.g., \"45m\") or hours (e.g., \"1h\") or days (like \"2d\") or even weeks (\"1w\"). You may also use \"infinite\" as string but be aware of the drawbacks";
+	config.dnsmasq.dhcp.leasetime.t = CONF_STRING;
+	config.dnsmasq.dhcp.leasetime.d.s = (char*)"";
+	config.dnsmasq.dhcp.leasetime.restart_dnsmasq = true;
+
+	config.dnsmasq.dhcp.ipv6.k = "dnsmasq.dhcp.ipv6";
+	config.dnsmasq.dhcp.ipv6.h = "Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that IPv6 works a whole lot different than IPv4)";
+	config.dnsmasq.dhcp.ipv6.t = CONF_BOOL;
+	config.dnsmasq.dhcp.ipv6.d.b = false;
+	config.dnsmasq.dhcp.ipv6.restart_dnsmasq = true;
+
+	config.dnsmasq.dhcp.rapid_commit.k = "dnsmasq.dhcp.rapid_commit";
+	config.dnsmasq.dhcp.rapid_commit.h = "Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if either the server is the only server for the subnet to avoid conflicts";
+	config.dnsmasq.dhcp.rapid_commit.t = CONF_BOOL;
+	config.dnsmasq.dhcp.rapid_commit.d.b = false;
+	config.dnsmasq.dhcp.rapid_commit.restart_dnsmasq = true;
+
+
 	// struct resolver
 	config.resolver.resolveIPv6.k = "resolver.resolveIPv6";
 	config.resolver.resolveIPv6.h = "Should FTL try to resolve IPv6 addresses to hostnames?";
@@ -425,7 +569,6 @@ void initConfig(void)
 
 
 	// struct files
-	// config.files.log is set in a separate function
 	config.files.pid.k = "files.pid";
 	config.files.pid.h = "The location of FTL's PID file";
 	config.files.pid.a = "<any writable file>";
@@ -467,6 +610,15 @@ void initConfig(void)
 	config.files.ph7_error.a = "<any writable file>";
 	config.files.ph7_error.t = CONF_STRING;
 	config.files.ph7_error.d.s = (char*)"/var/log/pihole/PH7.log";
+
+	// sub-struct files.log
+	// config.files.log.ftl is set in a separate function
+
+	config.files.log.dnsmasq.k = "files.log.dnsmasq";
+	config.files.log.dnsmasq.h = "The log file used by the embedded dnsmasq DNS server";
+	config.files.log.dnsmasq.a = "<any writable file>";
+	config.files.log.dnsmasq.t = CONF_STRING;
+	config.files.log.dnsmasq.d.s = (char*)"/var/log/pihole/pihole.log";
 
 
 	// struct misc
@@ -642,7 +794,7 @@ void initConfig(void)
 		struct conf_item *conf_item = get_conf_item(i);
 
 		// Initialize config value with default one for all *except* the log file path
-		if(conf_item != &config.files.log)
+		if(conf_item != &config.files.log.ftl)
 		{
 			if(conf_item->t == CONF_JSON_STRING_ARRAY)
 				// JSON objects really need to be duplicated as the config
@@ -683,7 +835,10 @@ void readFTLconf(const bool rewrite)
 		// to ensure that all options are present and comments
 		// about options deviating from the default are present
 		if(rewrite)
+		{
 			writeFTLtoml();
+			write_dnsmasq_config(false);
+		}
 		return;
 	}
 
@@ -711,6 +866,7 @@ void readFTLconf(const bool rewrite)
 
 	// Initialize the TOML config file
 	writeFTLtoml();
+	write_dnsmasq_config(false);
 }
 
 bool getLogFilePath(void)
@@ -719,12 +875,12 @@ bool getLogFilePath(void)
 	memset(&config, 0, sizeof(config));
 
 	// Initialize the config file path
-	config.files.log.k = "files.log";
-	config.files.log.h = "The location of FTL's log file";
-	config.files.log.a = "<any writable file>";
-	config.files.log.t = CONF_STRING;
-	config.files.log.d.s = (char*)"/var/log/pihole/FTL.log";
-	config.files.log.v.s = config.files.log.d.s;
+	config.files.log.ftl.k = "files.log.ftl";
+	config.files.log.ftl.h = "The location of FTL's log file";
+	config.files.log.ftl.a = "<any writable file>";
+	config.files.log.ftl.t = CONF_STRING;
+	config.files.log.ftl.d.s = (char*)"/var/log/pihole/FTL.log";
+	config.files.log.ftl.v.s = config.files.log.ftl.d.s;
 
 	// Check if the config file contains a different path
 	if(!getLogFilePathTOML())

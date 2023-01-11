@@ -67,13 +67,13 @@ bool getLogFilePathLegacy(FILE *fp)
 	if(buffer == NULL)
 	{
 		// Use standard path if no custom path was obtained from the config file
-		config.files.log.v.s = strdup("/var/log/pihole/FTL.log");
-		config.files.log.t = CONF_STRING_ALLOCATED;
+		config.files.log.ftl.v.s = strdup("/var/log/pihole/FTL.log");
+		config.files.log.ftl.t = CONF_STRING_ALLOCATED;
 
 		// Test if memory allocation was successful
-		if(config.files.log.v.s == NULL)
+		if(config.files.log.ftl.v.s == NULL)
 		{
-			printf("FATAL: Allocating memory for config.files.log.v.s failed (%s, %i). Exiting.",
+			printf("FATAL: Allocating memory for config.files.log.ftl.v.s failed (%s, %i). Exiting.",
 			       strerror(errno), errno);
 			exit(EXIT_FAILURE);
 		}
@@ -82,24 +82,24 @@ bool getLogFilePathLegacy(FILE *fp)
 	else if(sscanf(buffer, "%127ms", &val_buffer) == 0)
 	{
 		// Free previously allocated memory (if any)
-		if(config.files.log.t == CONF_STRING_ALLOCATED)
-			free(config.files.log.v.s);
+		if(config.files.log.ftl.t == CONF_STRING_ALLOCATED)
+			free(config.files.log.ftl.v.s);
 
 		// Set empty file string
-		config.files.log.v.s = NULL;
-		config.files.log.t = CONF_STRING;
+		config.files.log.ftl.v.s = NULL;
+		config.files.log.ftl.t = CONF_STRING;
 		log_info("Using syslog facility");
 	}
 
 	if(val_buffer)
 	{
 		// Free previously allocated memory (if any)
-		if(config.files.log.t == CONF_STRING_ALLOCATED)
-			free(config.files.log.v.s);
+		if(config.files.log.ftl.t == CONF_STRING_ALLOCATED)
+			free(config.files.log.ftl.v.s);
 
 		// Set string
-		config.files.log.v.s = val_buffer;
-		config.files.log.t = CONF_STRING_ALLOCATED;
+		config.files.log.ftl.v.s = val_buffer;
+		config.files.log.ftl.t = CONF_STRING_ALLOCATED;
 	}
 
 	fclose(fp);

@@ -40,6 +40,8 @@
 #include <limits.h>
 // writeFTLtoml()
 #include "config/toml_writer.h"
+// write_dnsmasq_config()
+#include "config/dnsmasq_config.h"
 
 // The following functions are used to create the JSON output
 // of the /api/config endpoint.
@@ -92,6 +94,8 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 			return cJSON_CreateStringReference(get_blocking_mode_str(val->blocking_mode));
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 			return cJSON_CreateStringReference(get_refresh_hostnames_str(val->refresh_hostnames));
+		case CONF_ENUM_LISTENING_MODE:
+			return cJSON_CreateStringReference(get_listening_mode_str(val->listening_mode));
 		case CONF_STRUCT_IN_ADDR:
 		{
 			char addr4[INET_ADDRSTRLEN] = { 0 };
@@ -204,7 +208,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				free(conf_item->v.s);
 			// Set item
 			conf_item->v.s = strdup(elem->valuestring);
-			log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, elem->valuestring);
+			log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
 			break;
 		}
 		case CONF_ENUM_PTR_TYPE:
@@ -217,7 +221,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				return "invalid option";
 			// Set item
 			conf_item->v.ptr_type = ptr_type;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, ptr_type);
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.ptr_type);
 			break;
 		}
 		case CONF_ENUM_BUSY_TYPE:
@@ -230,7 +234,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				return "invalid option";
 			// Set item
 			conf_item->v.busy_reply = busy_reply;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, busy_reply);
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.busy_reply);
 			break;
 		}
 		case CONF_ENUM_BLOCKING_MODE:
@@ -243,7 +247,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				return "invalid option";
 			// Set item
 			conf_item->v.blocking_mode = blocking_mode;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, blocking_mode);
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.blocking_mode);
 			break;
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
@@ -256,7 +260,20 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				return "invalid option";
 			// Set item
 			conf_item->v.refresh_hostnames = refresh_hostnames;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, refresh_hostnames);
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.refresh_hostnames );
+			break;
+		}
+		case CONF_ENUM_LISTENING_MODE:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int listening_mode = get_listening_mode_val(elem->valuestring);
+			if(listening_mode == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.listening_mode = listening_mode;
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.listening_mode);
 			break;
 		}
 		case CONF_ENUM_PRIVACY_LEVEL:
@@ -422,6 +439,7 @@ static int api_config_patch(struct ftl_conn *api)
 	}
 
 	// Read all known config items
+	bool dnsmasq_changed = false;
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
@@ -445,11 +463,24 @@ static int api_config_patch(struct ftl_conn *api)
 		// Try to set value and report error on failure
 		const char *response = getJSONvalue(conf_item, elem);
 		if(response != NULL)
+		{
 			log_err("/api/config: %s invalid: %s", conf_item->k, response);
+			continue;
+		}
+
+		// If we reach this point, a valid setting was found and changed
+		// Check if this item requires a config-rewrite + restart of dnsmasq
+		if(conf_item->restart_dnsmasq)
+			dnsmasq_changed = true;
 	}
 
 	// Store changed configuration to disk
 	writeFTLtoml();
+
+	// Request restart of FTL
+	if(dnsmasq_changed)
+		write_dnsmasq_config(true);
+	//api->ftl.restart = true;
 
 	// Return full config after possible changes above
 	return api_config_get(api);

@@ -11,6 +11,8 @@
 set(sources
         config.c
         config.h
+        dnsmasq_config.c
+        dnsmasq_config.h
         legacy_reader.c
         legacy_reader.h
         toml_writer.c

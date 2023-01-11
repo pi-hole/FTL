@@ -61,14 +61,14 @@ void log_ctrl(bool plog, bool pstdout)
 void init_FTL_log(const char *name)
 {
 	// Open the log file in append/create mode
-	if(config.files.log.v.s != NULL)
+	if(config.files.log.ftl.v.s != NULL)
 	{
 		FILE *logfile = NULL;
-		if((logfile = fopen(config.files.log.v.s, "a+")) == NULL)
+		if((logfile = fopen(config.files.log.ftl.v.s, "a+")) == NULL)
 		{
 			syslog(LOG_ERR, "Opening of FTL\'s log file failed, using syslog instead!");
-			printf("ERR: Opening of FTL log (%s) failed!\n",config.files.log.v.s);
-			config.files.log.v.s = NULL;
+			printf("ERR: Opening of FTL log (%s) failed!\n",config.files.log.ftl.v.s);
+			config.files.log.ftl.v.s = NULL;
 		}
 
 		// Close log file
@@ -294,10 +294,10 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	// Print to log file or syslog
 	if(print_log)
 	{
-		if(config.files.log.v.s != NULL)
+		if(config.files.log.ftl.v.s != NULL)
 		{
 			// Open log file
-			FILE *logfile = fopen(config.files.log.v.s, "a+");
+			FILE *logfile = fopen(config.files.log.ftl.v.s, "a+");
 
 			// Write to log file
 			if(logfile != NULL)

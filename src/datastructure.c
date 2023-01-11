@@ -990,3 +990,34 @@ int __attribute__ ((const)) get_busy_reply_val(const char *replyWhenBusy)
 	// Invalid value
 	return -1;
 }
+
+const char * __attribute__ ((const)) get_listening_mode_str(const enum listening_mode listening_mode)
+{
+	switch(listening_mode)
+	{
+		case LISTEN_LOCAL:
+			return "LOCAL";
+		case LISTEN_ALL:
+			return "ALL";
+		case LISTEN_SINGLE:
+			return "SINGLE";
+		case LISTEN_BIND:
+			return "BIND";
+	}
+	return NULL;
+}
+
+int __attribute__ ((const)) get_listening_mode_val(const char *listening_mode)
+{
+	if(strcasecmp(listening_mode, "LOCAL") == 0)
+		return LISTEN_LOCAL;
+	else if(strcasecmp(listening_mode, "ALL") == 0)
+		return LISTEN_ALL;
+	else if(strcasecmp(listening_mode, "SINGLE") == 0)
+		return LISTEN_SINGLE;
+	else if(strcasecmp(listening_mode, "BIND") == 0)
+		return LISTEN_BIND;
+
+	// Invalid value
+	return -1;
+}

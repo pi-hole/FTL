@@ -101,7 +101,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 
 			mg_printf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
 			          "PHP compilation error, check %s for further details.",
-			          config.files.log.v.s);
+			          config.files.log.ftl.v.s);
 
 			/* Extract error log */
 			const char *zErrLog = NULL;

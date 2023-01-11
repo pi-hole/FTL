@@ -15,7 +15,7 @@ char *read_setupVarsconf(const char * key);
 void getSetupVarsArray(const char * input);
 void clearSetupVarsArray(void);
 bool getSetupVarsBool(const char * input) __attribute__((pure));
-char *find_equals(const char* s) __attribute__((pure));
+char *find_equals(char* s) __attribute__((pure));
 void trim_whitespace(char *string);
 
 #endif //SETUPVARS_H

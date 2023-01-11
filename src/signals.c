@@ -31,7 +31,7 @@
 volatile sig_atomic_t killed = 0;
 static volatile pid_t mpid = -1;
 static time_t FTLstarttime = 0;
-extern volatile int exit_code;
+volatile int exit_code = EXIT_SUCCESS;
 
 volatile sig_atomic_t thread_cancellable[THREADS_MAX] = { true };
 const char *thread_names[THREADS_MAX] = { "" };
