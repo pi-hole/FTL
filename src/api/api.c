@@ -79,7 +79,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		http_method(conn),
 		NULL,
 		NULL,
-		{ false, 0u, NULL, NULL },
+		{ false, NULL, NULL, 0u },
 		{ false },
 		{ false, false }
 	};
@@ -150,7 +150,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	if(api.ftl.restart)
 	{
 		// Trigger an automatic restart by systemd
-		exit_code = 22;
+		exit_code = RESTART_FTL_CODE;
 		FTL_terminate = 1;
 	}
 

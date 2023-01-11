@@ -114,6 +114,9 @@ if [[ $RET != 0 ]]; then
   echo -n "PH7.log: "
   curl_to_tricorder /var/log/pihole/PH7.log
   echo ""
+  echo -n "pihole-FTL.toml: "
+  curl_to_tricorder /etc/pihole/pihole-FTL.toml
+  echo ""
 fi
 
 # Kill pihole-FTL after having completed tests

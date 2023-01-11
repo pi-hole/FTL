@@ -48,6 +48,7 @@ extern void print_dnsmasq_version(const char *yellow, const char *green, const c
 extern int sqlite3_shell_main(int argc, char **argv);
 
 bool dnsmasq_debug = false;
+bool no_ftl_logging = false;
 bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
@@ -224,7 +225,23 @@ void parse_args(int argc, char* argv[])
 			const char *arg[2];
 			arg[0] = "";
 			arg[1] = "--test";
+			no_ftl_logging = true;
 			exit(main_dnsmasq(2, arg));
+		}
+
+		// Implement dnsmasq's test function, no need to prepare the entire FTL
+		// environment (initialize shared memory, lead queries from long-term
+		// database, ...) when the task is a simple (dnsmasq) syntax check
+		if(argc == 3 && strcmp(argv[1], "dnsmasq-test-file") == 0)
+		{
+			const char *arg[3];
+			char filename[strlen(argv[2])+strlen("--conf-file=")+1];
+			arg[0] = "";
+			sprintf(filename, "--conf-file=%s", argv[2]);
+			arg[1] = filename;
+			arg[2] = "--test";
+			no_ftl_logging = true;
+			exit(main_dnsmasq(3, arg));
 		}
 
 		// If we find "--" we collect everything behind that for dnsmasq

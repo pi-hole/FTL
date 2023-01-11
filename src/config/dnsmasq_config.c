@@ -21,7 +21,19 @@
 // JSON array functions
 #include "cJSON/cJSON.h"
 
-#define DNSMASQ_01_PIHOLE "/tmp/etc_dnsmasq.d_01-pihole.conf"
+#define DNSMASQ_01_PIHOLE "/etc/pihole/01-pihole.conf"
+#define DNSMASQ_TEMP_CONF "/etc/pihole/01-pihole.temp"
+
+static bool test_dnsmasq_config(void)
+{
+	FILE *pipe = popen("pihole-FTL dnsmasq-test-file "DNSMASQ_TEMP_CONF, "r");
+	if(!pipe)
+	{
+		log_err("Cannot open pipe to pihole-FTL dnsmasq-test-file: %s", strerror(errno));
+		return false;
+	}
+	return WEXITSTATUS(pclose(pipe)) == EXIT_SUCCESS;
+}
 
 static void write_config_header(FILE *fp)
 {
@@ -32,8 +44,7 @@ static void write_config_header(FILE *fp)
 	fputs("# Dnsmasq config for Pi-hole's FTLDNS\n", fp);
 	fputs("#\n", fp);
 	fputs("# This file is copyright under the latest version of the EUPL.\n", fp);
-	fputs("# Please see LICENSE file for your rights under this license.\n", fp);
-	fputc('\n', fp);
+	fputs("# Please see LICENSE file for your rights under this license.\n\n", fp);
 	fputs("###############################################################################\n", fp);
 	fputs("#                  FILE AUTOMATICALLY POPULATED BY PI-HOLE                    #\n", fp);
 	fputs("#  ANY CHANGES MADE TO THIS FILE WILL BE LOST WHEN THE CONFIGURATION CHANGES  #\n", fp);
@@ -42,23 +53,25 @@ static void write_config_header(FILE *fp)
 	fputs("#                      /etc/pihole/pihole-FTL.toml                            #\n", fp);
 	fputs("#                         and restart pihole-FTL                              #\n", fp);
 	fputs("#                                                                             #\n", fp);
+	fputs("#                                                                             #\n", fp);
 	fputs("#        ANY OTHER CHANGES SHOULD BE MADE IN A SEPARATE CONFIG FILE           #\n", fp);
 	fputs("#                    WITHIN /etc/dnsmasq.d/yourname.conf                      #\n", fp);
-	fputs("###############################################################################\n", fp);
-	fputc('\n', fp);
+	fputs("#                                                                             #\n", fp);
+	char timestring[84] = "";
+	get_timestr(timestring, time(NULL), false);
+	fputs("#                      Last update: ", fp);
+	fputs(timestring, fp);
+	fputs("                       #\n", fp);
+	fputs("###############################################################################\n\n", fp);
 }
 
 bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 {
-	FILE *pihole_conf = fopen(DNSMASQ_01_PIHOLE, "w");
+	FILE *pihole_conf = fopen(DNSMASQ_TEMP_CONF, "w");
 	// Return early if opening failed
 	if(!pihole_conf)
-		return false;
-
-	// Lock file, may block if the file is currently opened
-	if(flock(fileno(pihole_conf), LOCK_EX) != 0)
 	{
-		log_err("Cannot open dnsmasq config file "DNSMASQ_01_PIHOLE" in exclusive mode: %s", strerror(errno));
+		log_err("Cannot open "DNSMASQ_TEMP_CONF" for writing, unable to update dnsmasq configuration: %s", strerror(errno));
 		return false;
 	}
 
@@ -151,9 +164,9 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 		// never forward queries on that domain to any upstream servers
 		if(config.dnsmasq.domain_needed.v.b)
 		{
-			fputs("# Never forward A or AAAA queries for plain names, without \n", pihole_conf);
-			fputs("# dots or domain parts, to upstream nameservers. If the name \n", pihole_conf);
-			fputs("# is not known from /etc/hosts or DHCP a NXDOMAIN is returned. \n", pihole_conf);
+			fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
+			fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
+			fputs("# is not known from /etc/hosts or DHCP a NXDOMAIN is returned\n", pihole_conf);
 				fprintf(pihole_conf, "local=/%s/\n",
 				        config.dnsmasq.domain.v.s);
 			fputs("\n", pihole_conf);
@@ -235,20 +248,34 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 		}
 	}
 
+	// Flush config file to disk
+	fflush(pihole_conf);
+
 	// Unlock file
 	if(flock(fileno(pihole_conf), LOCK_UN) != 0)
 	{
-		log_err("Cannot release lock on dnsmasq config file "DNSMASQ_01_PIHOLE": %s", strerror(errno));
+		log_err("Cannot release lock on dnsmasq config file: %s", strerror(errno));
 		fclose(pihole_conf);
+		return false;
+	}
+
+	if(test_config && !test_dnsmasq_config())
+	{
+		log_warn("New dnsmasq configuration is not valid, using previous one");
+		return false;
+	}
+
+	if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_01_PIHOLE) != 0)
+	{
+		log_err("Cannot install dnsmasq config file: %s", strerror(errno));
 		return false;
 	}
 
 	// Close file
 	if(fclose(pihole_conf) != 0)
 	{
-		log_err("Cannot close dnsmasq config file "DNSMASQ_01_PIHOLE": %s", strerror(errno));
+		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
 		return false;
 	}
-
 	return true;
 }

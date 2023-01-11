@@ -481,6 +481,8 @@ void format_time(char buffer[42], unsigned long seconds, double milliseconds)
 
 void FTL_log_dnsmasq_fatal(const char *format, ...)
 {
+	if(no_ftl_logging)
+		return;
 	// Build a complete string from possible multi-part string passed from dnsmasq
 	char message[256] = { 0 };
 	va_list args;

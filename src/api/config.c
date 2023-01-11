@@ -479,8 +479,8 @@ static int api_config_patch(struct ftl_conn *api)
 
 	// Request restart of FTL
 	if(dnsmasq_changed)
-		write_dnsmasq_config(true);
-	//api->ftl.restart = true;
+		if(write_dnsmasq_config(true))
+			api->ftl.restart = true;
 
 	// Return full config after possible changes above
 	return api_config_get(api);

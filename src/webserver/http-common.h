@@ -30,9 +30,9 @@ struct ftl_conn {
 	const char *item;
 	struct {
 		bool avail;
-		size_t size;
 		char *raw;
 		cJSON *json;
+		long unsigned int size;
 	} payload;
 	struct {
 		bool restart;

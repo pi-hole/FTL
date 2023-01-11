@@ -3,7 +3,7 @@
 # Do not edit the file while FTL is
 # running or your changes may be overwritten
 #
-# Last update: 2023-01-09 16:26:00
+# Last update: 2023-01-11 20:53:00
 
 [dns]
   # Should FTL walk CNAME paths?
@@ -50,7 +50,8 @@
     # Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?
     mozillaCanary = true
 
-    # Should FTL handle the iCloud privacy relay domains specifically and always return NXDOMAIN?
+    # Should FTL handle the iCloud privacy relay domains specifically and always return
+    # NXDOMAIN?
     iCloudPrivateRelay = true
 
     [dns.reply.host]
@@ -62,11 +63,11 @@
 
       # Custom IPv4 address for the Pi-hole host
       # Possible values are: <valid IPv4 address> or empty string ("")
-      IPv4 = "10.100.0.10" ### CHANGED, default = "
+      IPv4 = "10.100.0.10" ### CHANGED, default = "0.0.0.0"
 
       # Custom IPv6 address for the Pi-hole host
       # Possible values are: <valid IPv6 address> or empty string ("")
-      IPv6 = "fe80::10" ### CHANGED, default = ""
+      IPv6 = "fe80::10" ### CHANGED, default = "::"
 
     [dns.reply.blocking]
       # Use a specific IPv4 address in IP blocking mode?
@@ -77,11 +78,11 @@
 
       # Custom IPv4 address for IP blocking mode
       # Possible values are: <valid IPv4 address> or empty string ("")
-      IPv4 = "10.100.0.11" ### CHANGED, default = ""
+      IPv4 = "10.100.0.11" ### CHANGED, default = "0.0.0.0"
 
       # Custom IPv6 address for IP blocking mode
       # Possible values are: <valid IPv6 address> or empty string ("")
-      IPv6 = "fe80::11" ### CHANGED, default = ""
+      IPv6 = "fe80::11" ### CHANGED, default = "::"
 
   [dns.rateLimit]
     # How many queries are permitted...
@@ -89,6 +90,104 @@
 
     # ... in the set interval before rate-limiting?
     interval = 0 ### CHANGED, default = 60
+
+[dnsmasq]
+  # Array of upstream DNS servers used by Pi-hole
+  # Possible values are: array of IP addresses and/or hostnames, optionally with a port,
+  #                      e.g. [ "8.8.8.8", "127.0.0.1#5353", "docker-resolver" ]
+  upstreams = [  ]
+
+  # The DNS domain used by your Pi-hole
+  # Possible values are: <any valid domain>
+  domain = "lan"
+
+  # If set, A and AAAA queries for plain names, without dots or domain parts, are never
+  # forwarded to upstream nameservers
+  domain_needed = false
+
+  # If set, the domain is added to simple names (without a period) in /etc/hosts in the
+  # same way as for DHCP-derived names
+  expand_hosts = false
+
+  # Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are
+  # not found in /etc/hosts or the DHCP leases file be answered with "no such domain"
+  # rather than being forwarded upstream?
+  bogus_priv = true
+
+  # Validate DNS replies and cache DNSSEC data
+  dnssec = true
+
+  # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)
+  # Possible values are: a valid interface name
+  interface = ""
+
+  # Add A, AAAA and PTR records to the DNS. This adds one or more names to the DNS with
+  # associated IPv4 (A) and IPv6 (AAAA) records
+  # Possible values are: <name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]
+  host_record = ""
+
+  # Pi-hole interface listening modes
+  # Possible values are: [ "LOCAL", "ALL", "SINGLE", "BIND" ]
+  listening_mode = "LOCAL"
+
+  # Cache size of the DNS server. Note that expiring cache entries naturally make room
+  # for new insertions over time. Setting this number too high will have an adverse
+  # effect as not only more space is needed, but also lookup speed gets degraded in the
+  # 100,000+ range
+  cache_size = 10000
+
+  [dnsmasq.rev_server]
+    # Is the reverse server (former also called "conditional forwarding") feature enabled?
+    active = false
+
+    # Address range for the reverse server feature in CIDR notation. If the prefix length
+    # is omitted, either 32 (IPv4) or 128 (IPv6) are substitutet (exact address match).
+    # This is almost certainly not what you want here.
+    # Possible values are: <ip-address>[/<prefix-len>], e.g., "192.168.0.0/24" for the
+    #                      range 192.168.0.1 - 192.168.0.255
+    cidr = ""
+
+    # Target server tp be used for the reverse server feature
+    # Possible values are: <server>[#<port>], e.g., "192.168.0.1"
+    target = ""
+
+    # Domain used for the reverse server feature
+    # Possible values are: <valid domain>, typically set to the same value as
+    #                      dnsmasq.domain
+    domain = ""
+
+  [dnsmasq.dhcp]
+    # Is the embedded DHCP server enabled?
+    active = false
+
+    # Start address of the DHCP address pool
+    # Possible values are: <ip-addr>, e.g., "192.168.0.10"
+    start = ""
+
+    # End address of the DHCP address pool
+    # Possible values are: <ip-addr>, e.g., "192.168.0.250"
+    end = ""
+
+    # Address of the gateway to be used (typicaly the address of your router in a home
+    # installation)
+    # Possible values are: <ip-addr>, e.g., "192.168.0.1"
+    router = ""
+
+    # If the lease time is given, then leases will be given for that length of time. If not
+    # given, the default lease time is one hour for IPv4 and one day for IPv6.
+    # Possible values are: The lease time can be in seconds, or minutes (e.g., "45m") or
+    #                      hours (e.g., "1h") or days (like "2d") or even weeks ("1w").
+    #                      You may also use "infinite" as string but be aware of the
+    #                      drawbacks
+    leasetime = ""
+
+    # Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that
+    # IPv6 works a whole lot different than IPv4)
+    ipv6 = false
+
+    # Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if
+    # either the server is the only server for the subnet to avoid conflicts
+    rapid_commit = false
 
 [resolver]
   # Should FTL try to resolve IPv4 addresses to hostnames?
@@ -105,13 +204,15 @@
   refreshNames = "NONE" ### CHANGED, default = "IPV4_ONLY"
 
 [database]
-  # Should FTL load information from the database on startup to be aware of the most recent history?
+  # Should FTL load information from the database on startup to be aware of the most
+  # recent history?
   DBimport = true
 
   # Should FTL store queries in the long-term database?
   DBexport = true
 
-  # How much history should be imported from the database [seconds]? (max 24*60*60 = 86400)
+  # How much history should be imported from the database [seconds]? (max 24*60*60 =
+  # 86400)
   maxHistory = 86400
 
   # How long should queries be stored in the database [days]?
@@ -142,11 +243,13 @@
   pwhash = ""
 
   # Array of clients to be excluded from certain API responses
-  # Possible values are: array of IP addresses and/or hostnames, e.g. [ "192.168.2.56", "fe80::341", "localhost" ]
+  # Possible values are: array of IP addresses and/or hostnames, e.g. [ "192.168.2.56",
+  #                      "fe80::341", "localhost" ]
   exclude_clients = [ "1.2.3.4" ] ### CHANGED, default = [  ]
 
   # Array of domains to be excluded from certain API responses
-  # Possible values are: array of IP addresses and/or hostnames, e.g. [ "google.de", "pi-hole.net" ]
+  # Possible values are: array of IP addresses and/or hostnames, e.g. [ "google.de",
+  #                      "pi-hole.net" ]
   exclude_domains = [  ]
 
 [http]
@@ -180,10 +283,6 @@
     theme = "default"
 
 [files]
-  # The location of FTL's log file
-  # Possible values are: <any writable file>
-  log = "/var/log/pihole/FTL.log"
-
   # The location of FTL's PID file
   # Possible values are: <any writable file>
   pid = "/run/pihole-FTL.pid"
@@ -212,6 +311,15 @@
   # Possible values are: <any writable file>
   ph7_error = "/var/log/pihole/PH7.log"
 
+  [files.log]
+    # The location of FTL's log file
+    # Possible values are: <any writable file>
+    ftl = "/var/log/pihole/FTL.log"
+
+    # The log file used by the embedded dnsmasq DNS server
+    # Possible values are: <any writable file>
+    dnsmasq = "/var/log/pihole/pihole.log"
+
 [misc]
   # Set niceness of pihole-FTL (can be disabled by setting to -999)
   nice = -999 ### CHANGED, default = -10
@@ -225,11 +333,13 @@
   # Privacy level
   privacylevel = 0
 
-  # Which upper temperature limit should be used by Pi-hole [°C]? Temperatures above this limit will be shown as "hot"
+  # Which upper temperature limit should be used by Pi-hole [°C]? Temperatures above
+  # this limit will be shown as "hot"
   temp_limit = 60.000000
 
   [misc.check]
-    # Should FTL check the 15 min average of CPU load and complain if the load is larger than the number of available CPU cores?
+    # Should FTL check the 15 min average of CPU load and complain if the load is larger
+    # than the number of available CPU cores?
     load = false ### CHANGED, default = true
 
     # Limit above which FTL should complain about disk shortage for checked files [percent]

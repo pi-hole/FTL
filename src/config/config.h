@@ -95,9 +95,9 @@ struct conf_item {
 	const char *h;        // Help text / description
 	const char *a;        // string of Allowed values (where applicable)
 	enum conf_type t;     // variable Type
+	bool restart_dnsmasq; // De we need to restart the dnsmasq core when this changes?
 	union conf_value v;   // current Value
 	union conf_value d;   // Default value
-	bool restart_dnsmasq; // De we need to restart the dnsmasq core when this changes?
 };
 
 struct config {
