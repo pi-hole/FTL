@@ -237,19 +237,23 @@ static void cache_hash(struct crec *crecp)
 
   char *name = cache_get_name(crecp);
   struct crec **up = hash_bucket(name);
-
-  if (!(crecp->flags & F_REVERSE))
+  unsigned int flags = crecp->flags & (F_IMMORTAL | F_REVERSE);
+  
+  if (!(flags & F_REVERSE))
     {
       while (*up && ((*up)->flags & F_REVERSE))
 	up = &((*up)->hash_next); 
       
-      if (crecp->flags & F_IMMORTAL)
+      if (flags & F_IMMORTAL)
 	while (*up && !((*up)->flags & F_IMMORTAL))
 	  up = &((*up)->hash_next);
     }
 
-  /* Preserve order when inserting the same name multiple times. */
-  while (*up && hostname_isequal(cache_get_name(*up), name))
+  /* Preserve order when inserting the same name multiple times.
+     Do not mess up the flag invariants. */
+  while (*up &&
+	 hostname_isequal(cache_get_name(*up), name) &&
+	 flags == ((*up)->flags & (F_IMMORTAL | F_REVERSE)))
     up = &((*up)->hash_next);
   
   crecp->hash_next = *up;
