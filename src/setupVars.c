@@ -116,11 +116,14 @@ void importsetupVarsConf(void)
 	{
 		double lim;
 		if(sscanf(temp_limit, "%lf", &lim) == 1)
-			config.misc.temp_limit.v.d = lim;
+			config.misc.temp.limit.v.d = lim;
 	}
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
+
+	// Try to obtain password hash from setupVars.conf
+	get_conf_string_from_setupVars("TEMPERATURE_UNIT", &config.misc.temp.unit);
 
 
 

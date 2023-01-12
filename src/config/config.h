@@ -229,7 +229,10 @@ struct config {
 		struct conf_item delay_startup;
 		struct conf_item addr2line;
 		struct conf_item privacylevel;
-		struct conf_item temp_limit;
+		struct {
+			struct conf_item limit;
+			struct conf_item unit;
+		} temp;
 		struct {
 			struct conf_item load;
 			struct conf_item shmem;

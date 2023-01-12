@@ -643,10 +643,16 @@ void initConfig(void)
 	config.misc.delay_startup.d.ui = 0;
 
 	// sub-struct misc.temp
-	config.misc.temp_limit.k = "misc.temp_limit";
-	config.misc.temp_limit.h = "Which upper temperature limit should be used by Pi-hole [°C]? Temperatures above this limit will be shown as \"hot\"";
-	config.misc.temp_limit.t = CONF_DOUBLE;
-	config.misc.temp_limit.d.d = 60.0; // °C
+	config.misc.temp.limit.k = "misc.temp.limit";
+	config.misc.temp.limit.h = "Which upper temperature limit should be used by Pi-hole? Temperatures above this limit will be shown as \"hot\". The number specified here is in the unit defined below";
+	config.misc.temp.limit.t = CONF_DOUBLE;
+	config.misc.temp.limit.d.d = 60.0; // °C
+
+	config.misc.temp.unit.k = "misc.temp.unit";
+	config.misc.temp.unit.h = "Which temperature unit should be used for temperatures processed by FTL?";
+	config.misc.temp.unit.a = "[ \"C\", \"F\", \"K\" ]";
+	config.misc.temp.unit.t = CONF_STRING;
+	config.misc.temp.unit.d.s = (char*)"C";
 
 	// sub-struct misc.check
 	config.misc.check.load.k = "misc.check.load";

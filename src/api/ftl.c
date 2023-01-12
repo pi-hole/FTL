@@ -230,9 +230,20 @@ static int read_temp_sensor(struct ftl_conn *api,
 
 			// Compute actual temperature
 			double temp = raw_temp < 1000 ? raw_temp : 1e-3*raw_temp;
+			const char *unit = "C";
+			if(config.misc.temp.unit.v.s[0] == 'F')
+			{
+				temp = 1.8*temp + 32; // Convert °Celsius to °Fahrenheit
+				unit = "F";
+			}
+			else if(config.misc.temp.unit.v.s[0] == 'K')
+			{
+				temp += 273.15; // Convert °Celsius to Kelvin
+				unit = "K";
+			}
 			JSON_ADD_NUMBER_TO_OBJECT(item, "value", temp);
-			JSON_ADD_NUMBER_TO_OBJECT(item, "hot_limit", config.misc.temp_limit.v.d);
-			JSON_REF_STR_IN_OBJECT(item, "unit", "C");
+			JSON_ADD_NUMBER_TO_OBJECT(item, "hot_limit", config.misc.temp.limit.v.d);
+			JSON_REF_STR_IN_OBJECT(item, "unit", unit);
 			JSON_ADD_ITEM_TO_ARRAY(object, item);
 		}
 	}
