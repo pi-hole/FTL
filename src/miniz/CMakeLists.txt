@@ -3,16 +3,16 @@
 # Network-wide ad blocking via your own hardware.
 #
 # FTL Engine
-# /src/microtar/CMakeList.txt
+# /src/miniz/CMakeList.txt
 #
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
 set(sources
-        microtar.c
-        microtar.h
+        miniz.c
+        miniz.h
         )
 
-add_library(microtar OBJECT ${sources})
-target_compile_options(microtar PRIVATE)
-target_include_directories(microtar PRIVATE ${PROJECT_SOURCE_DIR}/src)
+add_library(miniz OBJECT ${sources})
+target_compile_options(miniz PRIVATE)
+target_include_directories(miniz PRIVATE ${PROJECT_SOURCE_DIR}/src)
