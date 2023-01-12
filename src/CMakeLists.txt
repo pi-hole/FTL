@@ -182,6 +182,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:ph7_ext>
         $<TARGET_OBJECTS:civetweb>
         $<TARGET_OBJECTS:cJSON>
+        $<TARGET_OBJECTS:microtar>
         $<TARGET_OBJECTS:ph7>
         $<TARGET_OBJECTS:database>
         $<TARGET_OBJECTS:dnsmasq>
@@ -261,6 +262,7 @@ add_subdirectory(api)
 add_subdirectory(webserver)
 add_subdirectory(civetweb)
 add_subdirectory(cJSON)
+add_subdirectory(microtar)
 add_subdirectory(ph7)
 add_subdirectory(database)
 add_subdirectory(dnsmasq)
