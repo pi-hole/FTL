@@ -12,6 +12,9 @@
 # Abort script if one command returns a non-zero value
 set -e
 
+# Set builddir
+builddir="cmake/"
+
 # Parse arguments
 for var in "$@"
 do
@@ -20,6 +23,7 @@ do
         "-C" | "CLEAN"   ) clean=1 && nobuild=1;;
         "-i" | "install" ) install=1;;
         "-t" | "test"    ) test=1;;
+        "ci"             ) builddir="cmake_ci/";;
     esac
 done
 
@@ -27,7 +31,7 @@ done
 if [[ -n "${clean}" ]]; then
     echo "Cleaning build environment"
     # Remove build directory
-    rm -rf cmake/
+    rm -rf "${builddir}"
     if [[ -n ${nobuild} ]]; then
         exit 0
     fi
@@ -59,8 +63,8 @@ done
 # Configure build, pass CMake CACHE entries if present
 # Wrap multiple options in "" as first argument to ./build.sh:
 #     ./build.sh "-DA=1 -DB=2" install
-mkdir -p cmake
-cd cmake
+mkdir -p "${builddir}"
+cd "${builddir}"
 if [[ "${1}" == "-D"* ]]; then
     cmake "${1}" ..
 else
