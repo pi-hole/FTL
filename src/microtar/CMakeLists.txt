@@ -9,6 +9,8 @@
 # Please see LICENSE file for your rights under this license.
 
 set(sources
+        microtar-mmap.c
+        microtar-mmap.h
         microtar.c
         microtar.h
         )

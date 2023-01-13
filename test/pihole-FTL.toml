@@ -333,9 +333,14 @@
   # Privacy level
   privacylevel = 0
 
-  # Which upper temperature limit should be used by Pi-hole [°C]? Temperatures above
-  # this limit will be shown as "hot"
-  temp_limit = 60.000000
+  [misc.temp]
+    # Which upper temperature limit should be used by Pi-hole? Temperatures above this
+    # limit will be shown as "hot". The number specified here is in the unit defined below
+    limit = 60.000000
+
+    # Which temperature unit should be used for temperatures processed by FTL?
+    # Possible values are: [ "C", "F", "K" ]
+    unit = "C"
 
   [misc.check]
     # Should FTL check the 15 min average of CPU load and complain if the load is larger

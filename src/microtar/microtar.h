@@ -16,7 +16,8 @@ extern "C"
 #include <stdio.h>
 #include <stdlib.h>
 
-#define MTAR_VERSION "0.1.0"
+#define MTAR_VERSION "0.2.0"
+#define MTAR_NULL_BLOCKSIZE 16
 
 enum {
   MTAR_ESUCCESS     =  0,
@@ -54,33 +55,44 @@ typedef struct {
 typedef struct mtar_t mtar_t;
 
 struct mtar_t {
-  int (*read)(mtar_t *tar, void *data, unsigned size);
-  int (*write)(mtar_t *tar, const void *data, unsigned size);
-  int (*seek)(mtar_t *tar, unsigned pos);
+  int (*read)(mtar_t *tar, void *data, size_t size);
+  int (*write)(mtar_t *tar, const void *data, size_t size);
+  int (*seek)(mtar_t *tar, size_t pos);
   int (*close)(mtar_t *tar);
   void *stream;
-  unsigned pos;
-  unsigned remaining_data;
-  unsigned last_header;
+  size_t pos;
+  size_t remaining_data;
+  size_t last_header;
 };
+
+struct mtar_mem_stream_t {
+  char *data;
+  size_t size;
+  size_t pos;
+};
+
+typedef struct mtar_mem_stream_t mtar_mem_stream_t;
 
 
 const char* mtar_strerror(int err);
 
+int mtar_init_mem_stream(mtar_mem_stream_t *mem, void *buff, size_t size);
+
+int mtar_open_mem(mtar_t *tar, mtar_mem_stream_t *mem);
 int mtar_open(mtar_t *tar, const char *filename, const char *mode);
 int mtar_close(mtar_t *tar);
 
-int mtar_seek(mtar_t *tar, unsigned pos);
+int mtar_seek(mtar_t *tar, size_t pos);
 int mtar_rewind(mtar_t *tar);
 int mtar_next(mtar_t *tar);
 int mtar_find(mtar_t *tar, const char *name, mtar_header_t *h);
 int mtar_read_header(mtar_t *tar, mtar_header_t *h);
-int mtar_read_data(mtar_t *tar, void *ptr, unsigned size);
+int mtar_read_data(mtar_t *tar, void *ptr, size_t size);
 
 int mtar_write_header(mtar_t *tar, const mtar_header_t *h);
-int mtar_write_file_header(mtar_t *tar, const char *name, unsigned size);
+int mtar_write_file_header(mtar_t *tar, const char *name, size_t size);
 int mtar_write_dir_header(mtar_t *tar, const char *name);
-int mtar_write_data(mtar_t *tar, const void *data, unsigned size);
+int mtar_write_data(mtar_t *tar, const void *data, size_t size);
 int mtar_finalize(mtar_t *tar);
 
 #ifdef __cplusplus
