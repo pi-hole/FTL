@@ -21,8 +21,8 @@
 // JSON array functions
 #include "cJSON/cJSON.h"
 
-#define DNSMASQ_01_PIHOLE "/etc/pihole/01-pihole.conf"
-#define DNSMASQ_TEMP_CONF "/etc/pihole/01-pihole.temp"
+#define DNSMASQ_PH_CONFIG "/etc/pihole/dnsmasq.conf"
+#define DNSMASQ_TEMP_CONF "/etc/pihole/dnsmasq.conf.temp"
 
 static bool test_dnsmasq_config(void)
 {
@@ -76,7 +76,6 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 	}
 
 	write_config_header(pihole_conf);
-	fputs("# Additional hosts lists\n", pihole_conf);
 	fputs("addn-hosts=/etc/pihole/local.list\n", pihole_conf);
 	fputs("addn-hosts=/etc/pihole/custom.list\n", pihole_conf);
 	fputs("\n", pihole_conf);
@@ -224,6 +223,7 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 		if(!config.dnsmasq.domain_needed.v.b)
 			fprintf(pihole_conf, "server=//%s\n",
 			        config.dnsmasq.rev_server.target.v.s);
+		fputs("\n", pihole_conf);
 	}
 
 	if(config.dnsmasq.dhcp.active.v.b)
@@ -246,7 +246,38 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 			fputs("dhcp-option=option6:dns-server,[::]\n", pihole_conf);
 			fprintf(pihole_conf, "dhcp-range=::,constructor:%s,ra-names,ra-stateless,64\n", interface);
 		}
+		fputs("\n", pihole_conf);
 	}
+
+	fputs("# RFC 6761: Caching DNS servers SHOULD recognize\n", pihole_conf);
+	fputs("#     test, localhost, invalid\n", pihole_conf);
+	fputs("# names as special and SHOULD NOT attempt to look up NS records for them, or\n", pihole_conf);
+	fputs("# otherwise query authoritative DNS servers in an attempt to resolve these\n", pihole_conf);
+	fputs("# names.\n", pihole_conf);
+	fputs("server=/test/\n", pihole_conf);
+	fputs("server=/localhost/\n", pihole_conf);
+	fputs("server=/invalid/\n", pihole_conf);
+	fputs("\n", pihole_conf);
+	fputs("# The same RFC requests something similar for\n", pihole_conf);
+	fputs("#     10.in-addr.arpa.      21.172.in-addr.arpa.  27.172.in-addr.arpa.\n", pihole_conf);
+	fputs("#     16.172.in-addr.arpa.  22.172.in-addr.arpa.  28.172.in-addr.arpa.\n", pihole_conf);
+	fputs("#     17.172.in-addr.arpa.  23.172.in-addr.arpa.  29.172.in-addr.arpa.\n", pihole_conf);
+	fputs("#     18.172.in-addr.arpa.  24.172.in-addr.arpa.  30.172.in-addr.arpa.\n", pihole_conf);
+	fputs("#     19.172.in-addr.arpa.  25.172.in-addr.arpa.  31.172.in-addr.arpa.\n", pihole_conf);
+	fputs("#     20.172.in-addr.arpa.  26.172.in-addr.arpa.  168.192.in-addr.arpa.\n", pihole_conf);
+	fputs("# Pi-hole implements this via the dnsmasq option \"bogus-priv\" above\n", pihole_conf);
+	fputs("# (if enabled!) as this option also covers IPv6.\n", pihole_conf);
+	fputs("\n", pihole_conf);
+	fputs("# OpenWRT furthermore blocks    bind, local, onion    domains\n", pihole_conf);
+	fputs("# see https://git.openwrt.org/?p=openwrt/openwrt.git;a=blob_plain;f=package/network/services/dnsmasq/files/rfc6761.conf;hb=HEAD\n", pihole_conf);
+	fputs("# and https://www.iana.org/assignments/special-use-domain-names/special-use-domain-names.xhtml\n", pihole_conf);
+	fputs("# We do not include the \".local\" rule ourselves, see https://github.com/pi-hole/pi-hole/pull/4282#discussion_r689112972\n", pihole_conf);
+	fputs("server=/bind/\n", pihole_conf);
+	fputs("server=/onion/\n", pihole_conf);
+
+	fputs("# Load possible additional user scripts\n", pihole_conf);
+	fputs("conf-dir=/etc/dnsmasq.d\n", pihole_conf);
+	fputs("\n", pihole_conf);
 
 	// Flush config file to disk
 	fflush(pihole_conf);
@@ -265,7 +296,7 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 		return false;
 	}
 
-	if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_01_PIHOLE) != 0)
+	if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
 	{
 		log_err("Cannot install dnsmasq config file: %s", strerror(errno));
 		return false;
