@@ -344,6 +344,7 @@ void parse_args(int argc, char* argv[])
 			const char *bold = cli_bold();
 			const char *normal = cli_normal();
 			const char *green = cli_color(COL_GREEN);
+			const char *red = cli_color(COL_RED);
 			const char *yellow = cli_color(COL_YELLOW);
 
 			// Print FTL version
@@ -390,6 +391,55 @@ void parse_args(int argc, char* argv[])
 			printf("****************************** %s%sCivetWeb%s *****************************\n",
 			       yellow, bold, normal);
 			printf("Version:         %s%s%s%s\n", green, bold, mg_version(), normal);
+			printf("Features:        ");
+			if(mg_check_feature(MG_FEATURES_FILES))
+				printf("Files: %sYes%s, ", green, normal);
+			else
+				printf("Files: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_TLS))
+				printf("TLS: %sYes%s, ", green, normal);
+			else
+				printf("TLS: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_CGI))
+				printf("CGI: %sYes%s, ", green, normal);
+			else
+				printf("CGI: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_IPV6))
+				printf("IPv6: %sYes%s, \n", green, normal);
+			else
+				printf("IPv6: %sNo%s, \n", red, normal);
+			if(mg_check_feature(MG_FEATURES_WEBSOCKET))
+				printf("                 WebSockets: %sYes%s, ", green, normal);
+			else
+				printf("                 WebSockets: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_SSJS))
+				printf("Server-side JavaScript: %sYes%s\n", green, normal);
+			else
+				printf("Server-side JavaScript: %sNo%s\n", red, normal);
+			if(mg_check_feature(MG_FEATURES_LUA))
+				printf("                 Lua: %sYes%s, ", green, normal);
+			else
+				printf("                 Lua: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_CACHE))
+				printf("Cache: %sYes%s, ", green, normal);
+			else
+				printf("Cache: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_STATS))
+				printf("Stats: %sYes%s, ", green, normal);
+			else
+				printf("Stats: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_COMPRESSION))
+				printf("Compression: %sYes%s\n", green, normal);
+			else
+				printf("Compression: %sNo%s\n", red, normal);
+			if(mg_check_feature(MG_FEATURES_HTTP2))
+				printf("                 HTTP2: %sYes%s, ", green, normal);
+			else
+				printf("                 HTTP2: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_X_DOMAIN_SOCKET))
+				printf("Unix domain sockets: %sYes%s\n", green, normal);
+			else
+				printf("Unix domain sockets: %sNo%s\n", red, normal);
 			printf("\n");
 			printf("****************************** %s%scJSON%s ********************************\n",
 			       yellow, bold, normal);

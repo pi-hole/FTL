@@ -29,6 +29,8 @@ target_compile_definitions(civetweb PRIVATE NO_CGI
                                             NO_SSL_DL
                                             NO_SSL
                                             USE_SERVER_STATS
-                                            USE_IPV6)
+                                            USE_IPV6
+                                            USE_LUA)
 
+include_directories(${PROJECT_SOURCE_DIR}/src/lua)
 target_include_directories(civetweb PRIVATE ${PROJECT_SOURCE_DIR}/src)
