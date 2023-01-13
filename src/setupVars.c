@@ -21,7 +21,14 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 {
 	const char *setupVarsValue = read_setupVarsconf(key);
 	if(setupVarsValue == NULL)
-		setupVarsValue = "";
+	{
+		// Do not change default value, this value is not set in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Not set", key);
+
+		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+		clearSetupVarsArray();
+		return;
+	}
 
 	// Free previously allocated memory (if applicable)
 	if(conf_item->t == CONF_STRING_ALLOCATED)
@@ -31,6 +38,9 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
+
+	// Parameter present in setupVars.conf
+	log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s to %s", key, conf_item->k, conf_item->v.s);
 }
 
 static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf_item)
@@ -38,14 +48,26 @@ static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf
 	const char *boolean = read_setupVarsconf(key);
 
 	if(boolean == NULL)
+	{
 		// Do not change default value, this value is not set in setupVars.conf
-		;
+		log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Not set", key);
+
+		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+		clearSetupVarsArray();
+		return;
+	}
 	else
+	{
 		// Parameter present in setupVars.conf
 		conf_item->v.b = getSetupVarsBool(boolean);
+	}
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
+
+	// Parameter present in setupVars.conf
+	log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s to %s",
+	          key, conf_item->k, conf_item->v.b ? "true" : "false");
 }
 
 static void get_conf_string_array_from_setupVars(const char *key, struct conf_item *conf_item)
@@ -58,10 +80,12 @@ static void get_conf_string_array_from_setupVars(const char *key, struct conf_it
 		getSetupVarsArray(array);
 		for (unsigned int i = 0; i < setupVarsElements; ++i)
 		{
-			log_debug(DEBUG_CONFIG, "%s: [%d] = %s\n", key, i, setupVarsArray[i]);
 			// Add string to our JSON array
 			cJSON *item = cJSON_CreateString(setupVarsArray[i]);
 			cJSON_AddItemToArray(conf_item->v.json, item);
+
+			log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s[%d] = %s\n",
+			          key, conf_item->k, i, item->valuestring);
 		}
 	}
 
@@ -78,6 +102,7 @@ static void get_conf_upstream_servers_from_setupVars(struct conf_item *conf_item
 		// Get clients which the user doesn't want to see
 		char server_key[strlen("PIHOLE_DNS_XX") + 1];
 		sprintf(server_key, "PIHOLE_DNS_%d", j);
+		// Get value from setupVars.conf (if present)
 		const char *value = read_setupVarsconf(server_key);
 
 		if(value != NULL)
@@ -86,10 +111,121 @@ static void get_conf_upstream_servers_from_setupVars(struct conf_item *conf_item
 			// Add string to our JSON array
 			cJSON *item = cJSON_CreateString(value);
 			cJSON_AddItemToArray(conf_item->v.json, item);
+
+			log_debug(DEBUG_CONFIG, "setupVars.conf:PIHOLE_DNS_%d -> Setting %s[%d] = %s\n",
+			          j, conf_item->k, j, item->valuestring);
 		}
 
 		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 		clearSetupVarsArray();
+	}
+}
+
+static void get_conf_temp_limit_from_setupVars(void)
+{
+	// Try to obtain temperature hot value
+	const char *temp_limit = read_setupVarsconf("TEMPERATURE_LIMIT");
+
+	if(temp_limit == NULL)
+	{
+		// Do not change default value, this value is not set in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_LIMIT -> Not set");
+
+		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+		clearSetupVarsArray();
+		return;
+	}
+
+	double lim;
+	bool set = false;
+	if(sscanf(temp_limit, "%lf", &lim) == 1)
+	{
+		// Parameter present in setupVars.conf
+		config.misc.temp.limit.v.d = lim;
+		set = true;
+	}
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	if(set)
+	{
+		// Parameter present in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_LIMIT -> Setting %s to %f",
+		          config.misc.temp.limit.k, config.misc.temp.limit.v.d);
+	}
+	else
+	{
+		// Parameter not present in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_LIMIT -> Not set (found invalid value)");
+	}
+}
+
+static void get_conf_weblayout_from_setupVars(void)
+{
+	// Try to obtain web layout
+	const char *web_layout = read_setupVarsconf("WEBUIBOXEDLAYOUT");
+
+	if(web_layout == NULL)
+	{
+		// Do not change default value, this value is not set in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:WEBUIBOXEDLAYOUT -> Not set");
+
+		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+		clearSetupVarsArray();
+		return;
+	}
+
+	// If the property is set to false and different than "boxed", the property
+	// is disabled. This is consistent with the code in AdminLTE when writing
+	// this code
+	if(web_layout != NULL && strcasecmp(web_layout, "boxed") != 0)
+		config.http.interface.boxed.v.b = false;
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	// Parameter present in setupVars.conf
+	log_debug(DEBUG_CONFIG, "setupVars.conf:WEBUIBOXEDLAYOUT -> Setting %s to %s",
+	         config.http.interface.boxed.k,config.http.interface.boxed.v.b ? "true" : "false");
+}
+
+static void get_conf_listening_mode_from_setupVars(void)
+{
+	// Try to obtain listening mode
+	const char *listening_mode = read_setupVarsconf("DNSMASQ_LISTENING");
+
+	if(listening_mode == NULL)
+	{
+		// Do not change default value, this value is not set in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:DNSMASQ_LISTENING -> Not set");
+
+		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+		clearSetupVarsArray();
+		return;
+	}
+
+	bool set = false;
+	int listening_mode_enum = get_listening_mode_val(listening_mode);
+	if(listening_mode_enum != -1)
+	{
+		set = true;
+		config.dnsmasq.listening_mode.v.listening_mode = listening_mode_enum;
+	}
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	if(set)
+	{
+		// Parameter present in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:DNSMASQ_LISTENING -> Setting %s to %s",
+		          config.dnsmasq.listening_mode.k, get_listening_mode_str(config.dnsmasq.listening_mode.v.listening_mode));
+	}
+	else
+	{
+		// Parameter not present in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:DNSMASQ_LISTENING -> Not set (found invalid value)");
 	}
 }
 
@@ -107,38 +243,14 @@ void importsetupVarsConf(void)
 	// Get domains which the user doesn't want to see
 	get_conf_string_array_from_setupVars("API_EXCLUDE_DOMAINS", &config.api.exclude_domains);
 
-
-
 	// Try to obtain temperature hot value
-	const char *temp_limit = read_setupVarsconf("TEMPERATURE_LIMIT");
-
-	if(temp_limit != NULL)
-	{
-		double lim;
-		if(sscanf(temp_limit, "%lf", &lim) == 1)
-			config.misc.temp.limit.v.d = lim;
-	}
-
-	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
-	clearSetupVarsArray();
+	get_conf_temp_limit_from_setupVars();
 
 	// Try to obtain password hash from setupVars.conf
 	get_conf_string_from_setupVars("TEMPERATURE_UNIT", &config.misc.temp.unit);
 
-
-
-	// Try to obtain boxed-layout boolean
-	const char *boxed_layout = read_setupVarsconf("WEBUIBOXEDLAYOUT");
-	// If the property is set to false and different than "boxed", the property
-	// is disabled. This is consistent with the code in AdminLTE when writing
-	// this code
-	if(boxed_layout != NULL && strcasecmp(boxed_layout, "boxed") != 0)
-		config.http.interface.boxed.v.b = false;
-
-	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
-	clearSetupVarsArray();
-
-
+	// Try to obtain web layout
+	get_conf_weblayout_from_setupVars();
 
 	// Try to obtain theme string
 	get_conf_string_from_setupVars("WEBTHEME", &config.http.interface.theme);
@@ -157,22 +269,8 @@ void importsetupVarsConf(void)
 	get_conf_string_from_setupVars("PIHOLE_INTERFACE", &config.dnsmasq.interface);
 	get_conf_string_from_setupVars("HOSTRECORD", &config.dnsmasq.host_record);
 
-
-
-	// Try to obtain listening mode and transfort to the enum
-	const char *listening_mode = read_setupVarsconf("DNSMASQ_LISTENING");
-	// If the property is set to false and different than "boxed", the property
-	// is disabled. This is consistent with the code in AdminLTE when writing
-	// this code
-	if(listening_mode != NULL)
-	{
-		int listening_mode_enum = get_listening_mode_val(listening_mode);
-		if(listening_mode_enum != -1)
-			config.dnsmasq.listening_mode.v.listening_mode = listening_mode_enum;
-	}
-
-	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
-	clearSetupVarsArray();
+	// Try to obtain listening mode
+	get_conf_listening_mode_from_setupVars();
 
 	// Try to obtain REV_SERVER settings
 	get_conf_bool_from_setupVars("REV_SERVER", &config.dnsmasq.rev_server.active);
