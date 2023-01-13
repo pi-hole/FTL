@@ -26,6 +26,7 @@ add_library(civetweb OBJECT ${sources})
 #   - Amount of data read and written
 # USE_IPV6: add IPv6 support
 target_compile_definitions(civetweb PRIVATE NO_CGI
+                                            NO_DLOPEN
                                             NO_SSL_DL
                                             NO_SSL
                                             USE_SERVER_STATS
