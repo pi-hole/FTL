@@ -302,11 +302,6 @@ components:
               description: Device model (if available, `null` otherwise)
               example: "Raspberry Pi Model 4B"
               nullable: true
-            hostname:
-              type: string
-              nullable: true
-              description: Hostname of the device
-              example: "raspberrypi"
             dns:
               $ref: 'dns.yaml#/components/schemas/blocking'
             uname:

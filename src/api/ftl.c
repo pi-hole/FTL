@@ -378,16 +378,6 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	if(f_model)
 		fclose(f_model);
 
-	// Add hostname to system object
-	char hostname[256] = { 0 };
-	if(gethostname(hostname, sizeof(hostname)) != 0)
-	{
-		log_warn("gethostname() failed: %s", strerror(errno));
-		JSON_ADD_NULL_TO_OBJECT(system, "hostname");
-	}
-	else
-		JSON_COPY_STR_TO_OBJECT(system, "hostname", hostname);
-
 	cJSON *dns = JSON_NEW_OBJECT();
 	const bool blocking = get_blockingstatus();
 	JSON_ADD_BOOL_TO_OBJECT(dns, "blocking", blocking); // same reply type as in /api/dns/status
