@@ -18,7 +18,7 @@
 // get_blocking_mode_str()
 #include "datastructure.h"
 
-bool writeFTLtoml(void)
+bool writeFTLtoml(const bool verbose)
 {
 	// Try to open global config file
 	FILE *fp;
@@ -29,7 +29,8 @@ bool writeFTLtoml(void)
 	}
 
 	// Store lines in the config file
-	log_info("Writing config file");
+	if(verbose)
+		log_info("Writing config file");
 
 	// Write header
 	fputs("# This file is managed by pihole-FTL\n#\n", fp);

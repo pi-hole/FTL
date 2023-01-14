@@ -9,6 +9,8 @@
 # Please see LICENSE file for your rights under this license.
 
 set(sources
+        cli.c
+        cli.h
         config.c
         config.h
         dnsmasq_config.c

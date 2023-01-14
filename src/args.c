@@ -40,6 +40,8 @@
 #include "cJSON/cJSON.h"
 // ph7_lib_version()
 #include "ph7/ph7.h"
+#include "config/cli.h"
+#include "config/config.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -171,6 +173,23 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "sqlite3") ||
 	   (argc > 1 && strEndsWith(argv[1], ".db")))
 			exit(sqlite3_shell_main(argc, argv));
+
+	// Set config option through CLI
+	if(argc > 1 && strcmp(argv[1], "-c") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		readFTLconf(false);
+		if(argc == 3)
+			exit(get_config_from_CLI(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
+		else if(argc == 4)
+			exit(set_config_from_CLI(argv[2], argv[3]) ? EXIT_SUCCESS : EXIT_FAILURE);
+		else
+		{
+			printf("Usage: %s -c <config option> [<value>]\n", argv[0]);
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	// start from 1, as argv[0] is the executable name
 	for(int i = 1; i < argc; i++)
@@ -586,6 +605,10 @@ void parse_args(int argc, char* argv[])
 			printf("\t%stest%s                Don't start pihole-FTL but\n", green, normal);
 			printf("\t                    instead quit immediately\n");
 			printf("\t%s-f%s, %sno-daemon%s       Don't go into daemon mode\n\n", green, normal, green, normal);
+
+			printf("%sConfig options:%s\n", yellow, normal);
+			printf("\t%s-c %skey%s              Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
+			printf("\t%s-c %skey %svalue%s        Set new %svalue%s of config item %skey%s\n", green, blue, cyan, normal, cyan, normal, blue, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);

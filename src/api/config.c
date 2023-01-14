@@ -475,7 +475,7 @@ static int api_config_patch(struct ftl_conn *api)
 	}
 
 	// Store changed configuration to disk
-	writeFTLtoml();
+	writeFTLtoml(true);
 
 	// Request restart of FTL
 	if(dnsmasq_changed)

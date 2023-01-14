@@ -842,7 +842,7 @@ void readFTLconf(const bool rewrite)
 		// about options deviating from the default are present
 		if(rewrite)
 		{
-			writeFTLtoml();
+			writeFTLtoml(true);
 			write_dnsmasq_config(false);
 		}
 		return;
@@ -871,7 +871,7 @@ void readFTLconf(const bool rewrite)
 	}
 
 	// Initialize the TOML config file
-	writeFTLtoml();
+	writeFTLtoml(true);
 	write_dnsmasq_config(false);
 }
 
@@ -903,6 +903,6 @@ bool __attribute__((pure)) get_blockingstatus(void)
 void set_blockingstatus(bool enabled)
 {
 	config.dns.blocking.active.v.b = enabled;
-	writeFTLtoml();
+	writeFTLtoml(true);
 	raise(SIGHUP);
 }

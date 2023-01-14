@@ -1,15 +1,16 @@
 /* Pi-hole: A black hole for Internet advertisements
-*  (c) 2021 Pi-hole, LLC (https://pi-hole.net)
+*  (c) 2023 Pi-hole, LLC (https://pi-hole.net)
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  TOML config writer prototypes
+*  FTL CLI config file prototypes
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
-#ifndef TOML_WRITER_H
-#define TOML_WRITER_H
+#ifndef CONFIG_CLI_H
+#define CONFIG_CLI_H
 
-bool writeFTLtoml(const bool verbose);
+bool set_config_from_CLI(const char *key, const char *value);
+bool get_config_from_CLI(const char *key);
 
-#endif //TOML_WRITER_H
+#endif //CONFIG_CLI_H
