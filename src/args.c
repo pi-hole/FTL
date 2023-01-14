@@ -175,7 +175,7 @@ void parse_args(int argc, char* argv[])
 			exit(sqlite3_shell_main(argc, argv));
 
 	// Set config option through CLI
-	if(argc > 1 && strcmp(argv[1], "-c") == 0)
+	if(argc > 1 && strcmp(argv[1], "--config") == 0)
 	{
 		// Enable stdout printing
 		cli_mode = true;
@@ -186,7 +186,8 @@ void parse_args(int argc, char* argv[])
 			exit(set_config_from_CLI(argv[2], argv[3]) ? EXIT_SUCCESS : EXIT_FAILURE);
 		else
 		{
-			printf("Usage: %s -c <config option> [<value>]\n", argv[0]);
+			printf("Usage: %s --config <config item key> [<value>]\n", argv[0]);
+			printf("Example: %s --config dns.blockESNI true\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -607,8 +608,8 @@ void parse_args(int argc, char* argv[])
 			printf("\t%s-f%s, %sno-daemon%s       Don't go into daemon mode\n\n", green, normal, green, normal);
 
 			printf("%sConfig options:%s\n", yellow, normal);
-			printf("\t%s-c %skey%s              Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
-			printf("\t%s-c %skey %svalue%s        Set new %svalue%s of config item %skey%s\n", green, blue, cyan, normal, cyan, normal, blue, normal);
+			printf("\t%s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
+			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n", green, blue, cyan, normal, cyan, normal, blue, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
