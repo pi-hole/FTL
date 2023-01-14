@@ -308,3 +308,30 @@ void cleanup(const int ret)
 	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
 	log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
 }
+
+static clock_t last_clock = -1;
+static float cpu_usage = 0.0f;
+void calc_cpu_usage(void)
+{
+	// Get the current CPU usage
+	const clock_t clk = clock();
+	if(clk == (clock_t)-1)
+	{
+		log_warn("calc_cpu_usage() failed: %s", strerror(errno));
+		return;
+	}
+	if(last_clock == -1)
+	{
+		// Initialize the value and return
+		last_clock = clk;
+		return;
+	}
+	// Percentage of CPU time spent executing instructions
+	cpu_usage = 100.0f * (clk - last_clock) / CLOCKS_PER_SEC;
+	last_clock = clk;
+}
+
+float __attribute__((pure)) get_cpu_percentage(void)
+{
+	return cpu_usage;
+}

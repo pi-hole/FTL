@@ -14,6 +14,7 @@
 #include <dirent.h>
 // getpid()
 #include <unistd.h>
+#include <sys/times.h>
 
 #define PROCESS_NAME   "pihole-FTL"
 
@@ -156,4 +157,90 @@ bool check_running_FTL(void)
 
 	closedir(dirPos);
 	return process_running;
+}
+
+bool read_self_memory_status(struct statm_t *result)
+{
+	const char* statm_path = "/proc/self/statm";
+
+	FILE *f = fopen(statm_path,"r");
+	if(!f){
+		perror(statm_path);
+		return false;
+	}
+	if(fscanf(f,"%lu %lu %lu %lu %lu %lu %lu",
+	   &result->size, &result->resident, &result->shared,
+	   &result->text, &result->lib, &result->data,
+	   &result->dirty) != 7)
+	{
+		perror(statm_path);
+		return false;
+	}
+	fclose(f);
+
+	return true;
+}
+
+bool getProcessMemory(struct proc_mem *mem, const unsigned long total_memory)
+{
+	// Open /proc/self/status
+	FILE *file = fopen("/proc/self/status", "r");
+	if(file == NULL)
+		return false;
+
+	// Parse the entire file
+	char line[256];
+	while(fgets(line, sizeof(line), file))
+	{
+		sscanf(line, "VmRSS: %lu", &mem->VmRSS);
+		sscanf(line, "VmHWM: %lu", &mem->VmHWM);
+		sscanf(line, "VmSize: %lu", &mem->VmSize);
+		sscanf(line, "VmPeak: %lu", &mem->VmPeak);
+	}
+	fclose(file);
+
+	mem->VmRSS_percent = 100.0f * mem->VmRSS / total_memory;
+	if(mem->VmRSS_percent > 99.9f)
+		mem->VmRSS_percent = 99.9f;
+
+	return true;
+}
+
+// Get RAM information in units of kB
+// This is implemented similar to how free (procps) does it
+bool parse_proc_meminfo(struct proc_meminfo *mem)
+{
+	long page_cached = -1, buffers = -1, slab_reclaimable = -1;
+	FILE *meminfo = fopen("/proc/meminfo", "r");
+	if(meminfo == NULL)
+		return false;
+
+	char line[256];
+	while(fgets(line, sizeof(line), meminfo))
+	{
+		sscanf(line, "MemTotal: %lu kB", &mem->total);
+		sscanf(line, "MemFree: %lu kB", &mem->mfree);
+		sscanf(line, "MemAvailable: %lu kB", &mem->avail);
+		sscanf(line, "Cached: %lu kB", &page_cached);
+		sscanf(line, "Buffers: %lu kB", &buffers);
+		sscanf(line, "SReclaimable: %lu kB", &slab_reclaimable);
+	}
+	fclose(meminfo);
+
+	// Compute actual memory numbers
+	mem->cached = page_cached + slab_reclaimable;
+
+	// This logic is copied from procps (meminfo.c)
+	// if mem->avail is greater than mem->total or our calculation of used
+	// overflows, that's symptomatic of running within a lxc container where
+	// such values will be dramatically distorted over those of the host.
+	if (mem->avail > mem->total)
+		mem->avail = mem->mfree;
+	if (mem->total >= mem->mfree + mem->cached + buffers)
+		mem->used = mem->total - mem->mfree - mem->cached - buffers;
+	else
+		mem->used = mem->total - mem->mfree;
+
+	// Return success
+	return true;
 }

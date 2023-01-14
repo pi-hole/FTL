@@ -34,6 +34,10 @@
 #include "../datastructure.h"
 // uname()
 #include <sys/utsname.h>
+// get_cpu_percentage()
+#include "../daemon.h"
+// getProcessMemory()
+#include "procps.h"
 
 int api_ftl_client(struct ftl_conn *api)
 {
@@ -255,47 +259,6 @@ static int read_temp_sensor(struct ftl_conn *api,
 	return 0;
 }
 
-// Get RAM information in units of kB
-// This is implemented similar to how free (procps) does it
-static bool GetRamInKB(long *mem_total, long *mem_used, long *mem_free, long *mem_avail)
-{
-	long page_cached = -1, buffers = -1, slab_reclaimable = -1;
-	FILE *meminfo = fopen("/proc/meminfo", "r");
-	if(meminfo == NULL)
-		return false;
-
-	char line[256];
-	while(fgets(line, sizeof(line), meminfo))
-	{
-		sscanf(line, "MemTotal: %ld kB", mem_total);
-		sscanf(line, "MemFree: %ld kB", mem_free);
-		sscanf(line, "MemAvailable: %ld kB", mem_avail);
-		sscanf(line, "Cached: %ld kB", &page_cached);
-		sscanf(line, "Buffers: %ld kB", &buffers);
-		sscanf(line, "SReclaimable: %ld kB", &slab_reclaimable);
-
-		// Exit if we have them all
-		if(*mem_total > -1 && *mem_avail > -1 && *mem_free > -1 &&
-		   buffers > -1 && slab_reclaimable > -1)
-			break;
-	}
-	fclose(meminfo);
-
-	// Compute actual memory numbers
-	const long mem_cached = page_cached + slab_reclaimable;
-	// if mem_avail is greater than mem_total or our calculation of used
-	// overflows, that's symptomatic of running within a lxc container where
-	// such values will be dramatically distorted over those of the host.
-	if (*mem_avail > *mem_total)
-		*mem_avail = *mem_free;
-	*mem_used = *mem_total - *mem_free - mem_cached - buffers;
-	if (*mem_used < 0)
-		*mem_used = *mem_total - *mem_free;
-
-	// Return success
-	return true;
-}
-
 int get_system_obj(struct ftl_conn *api, cJSON *system)
 {
 	const int nprocs = get_nprocs();
@@ -317,14 +280,14 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// size used by buffers (sysinfo.bufferram), but not cache. The best
 	// option is to use the MemAvailable (as opposed to MemFree) entry in
 	// /proc/meminfo instead.
-	long mem_total = -1, mem_used = -1, mem_free = -1, mem_avail = -1;
-	GetRamInKB(&mem_total, &mem_used, &mem_free, &mem_avail);
+	struct proc_meminfo mem = { 0 };
+	parse_proc_meminfo(&mem);
 	// Total usable main memory size
-	JSON_ADD_NUMBER_TO_OBJECT(ram, "total", mem_total);
+	JSON_ADD_NUMBER_TO_OBJECT(ram, "total", mem.total);
 	// Free memory size
-	JSON_ADD_NUMBER_TO_OBJECT(ram, "free", mem_free);
+	JSON_ADD_NUMBER_TO_OBJECT(ram, "free", mem.mfree);
 	// Used memory size
-	JSON_ADD_NUMBER_TO_OBJECT(ram, "used", mem_used);
+	JSON_ADD_NUMBER_TO_OBJECT(ram, "used", mem.used);
 	// Available memory size
 	// See https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=34e431b0ae398fc54ea69ff85ec700722c9da773
 	// This Linux kernel commit message explains there are more nuances. It
@@ -332,7 +295,7 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// memory is available. They generally do this by adding up "free" and
 	// "cached", which was fine ten years ago, but is pretty much guaranteed
 	// to be wrong today."
-	JSON_ADD_NUMBER_TO_OBJECT(ram, "available", mem_avail);
+	JSON_ADD_NUMBER_TO_OBJECT(ram, "available", mem.avail);
 	JSON_ADD_ITEM_TO_OBJECT(memory, "ram", ram);
 
 	cJSON *swap = JSON_NEW_OBJECT();
@@ -415,23 +378,31 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	if(f_model)
 		fclose(f_model);
 
-	struct utsname un = { 0 };
-	uname(&un);
+	// Add hostname to system object
+	char hostname[256] = { 0 };
+	if(gethostname(hostname, sizeof(hostname)) != 0)
+	{
+		log_warn("gethostname() failed: %s", strerror(errno));
+		JSON_ADD_NULL_TO_OBJECT(system, "hostname");
+	}
+	else
+		JSON_COPY_STR_TO_OBJECT(system, "hostname", hostname);
 
 	cJSON *dns = JSON_NEW_OBJECT();
 	const bool blocking = get_blockingstatus();
 	JSON_ADD_BOOL_TO_OBJECT(dns, "blocking", blocking); // same reply type as in /api/dns/status
+	JSON_ADD_ITEM_TO_OBJECT(system, "dns", dns);
 
 	cJSON *uname_ = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(uname_, "domainname", un.domainname);
-	JSON_REF_STR_IN_OBJECT(uname_, "machine", un.machine);
-	JSON_REF_STR_IN_OBJECT(uname_, "nodename", un.nodename);
-	JSON_REF_STR_IN_OBJECT(uname_, "release", un.release);
-	JSON_REF_STR_IN_OBJECT(uname_, "sysname", un.sysname);
-	JSON_REF_STR_IN_OBJECT(uname_, "version", un.version);
+	struct utsname un = { 0 };
+	uname(&un);
+	JSON_COPY_STR_TO_OBJECT(uname_, "domainname", un.domainname);
+	JSON_COPY_STR_TO_OBJECT(uname_, "machine", un.machine);
+	JSON_COPY_STR_TO_OBJECT(uname_, "nodename", un.nodename);
+	JSON_COPY_STR_TO_OBJECT(uname_, "release", un.release);
+	JSON_COPY_STR_TO_OBJECT(uname_, "sysname", un.sysname);
+	JSON_COPY_STR_TO_OBJECT(uname_, "version", un.version);
 	JSON_ADD_ITEM_TO_OBJECT(system, "uname", uname_);
-
-	JSON_ADD_ITEM_TO_OBJECT(system, "dns", dns);
 
 	return 0;
 }
@@ -488,6 +459,15 @@ int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked)
 	JSON_ADD_NUMBER_TO_OBJECT(clients, "total",clients_total);
 	JSON_ADD_NUMBER_TO_OBJECT(clients, "active", activeclients);
 	JSON_ADD_ITEM_TO_OBJECT(ftl, "clients", clients);
+
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "pid", getpid());
+
+	struct proc_mem pmem = { 0 };
+	struct proc_meminfo mem = { 0 };
+	parse_proc_meminfo(&mem);
+	getProcessMemory(&pmem, mem.total);
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%mem", pmem.VmRSS_percent);
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%cpu", get_cpu_percentage());
 
 	return 0;
 }

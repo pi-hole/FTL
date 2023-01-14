@@ -21,6 +21,8 @@ void delay_startup(void);
 bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
 void cleanup(const int ret);
 void set_nice(void);
+void calc_cpu_usage(void);
+float get_cpu_percentage(void) __attribute__((pure));
 
 #include <sys/syscall.h>
 #include <unistd.h>

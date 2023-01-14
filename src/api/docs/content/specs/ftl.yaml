@@ -302,6 +302,11 @@ components:
               description: Device model (if available, `null` otherwise)
               example: "Raspberry Pi Model 4B"
               nullable: true
+            hostname:
+              type: string
+              nullable: true
+              description: Hostname of the device
+              example: "raspberrypi"
             dns:
               $ref: 'dns.yaml#/components/schemas/blocking'
             uname:
@@ -376,6 +381,18 @@ components:
                   type: integer
                   description: Number of clients actively using FTL
                   example: 8
+            pid:
+              type: integer
+              description: PID of FTL process
+              example: 1234
+            "%mem":
+              type: number
+              description: Percentage of total RAM memory used by FTL
+              example: 0.1
+            "%cpu":
+              type: number
+              description: Percentage of total CPU used by FTL
+              example: 1.2
     database:
       type: object
       properties:

@@ -28,6 +28,8 @@
 #include <sys/sysinfo.h>
 // get_filepath_usage()
 #include "files.h"
+// void calc_cpu_usage()
+#include "daemon.h"
 
 // Resource checking interval
 // default: 300 seconds
@@ -90,7 +92,7 @@ static int check_space(const char *file, int LastUsage)
 	perc = get_filepath_usage(file, buffer);
 	if(perc > config.misc.check.disk.v.b && perc > LastUsage )
 		log_resource_shortage(-1.0, 0, -1, perc, file, buffer);
-	
+
 	return perc;
 }
 
@@ -144,6 +146,10 @@ void *GC_thread(void *val)
 		// Intermediate cancellation-point
 		if(killed)
 			break;
+
+		// Calculate average CPU usage
+		// This is done every second to get averaged values
+		calc_cpu_usage();
 
 		// Check available resources
 		if(now - lastResourceCheck >= RCinterval)
