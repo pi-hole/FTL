@@ -145,7 +145,7 @@ jobs:
         working-directory: ${{steps.download.outputs.download-path}}
       -
         name: Install SSH Key
-        uses: benoitchantre/setup-ssh-authentication-action@1.0.0
+        uses: benoitchantre/setup-ssh-authentication-action@1.0.1
         with:
           private-key: ${{ secrets.SSH_KEY }}
           known-hosts: ${{ secrets.KNOWN_HOSTS }}
