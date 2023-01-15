@@ -210,7 +210,11 @@ static int read_temp_sensor(struct ftl_conn *api,
                             const char *short_path,
                             cJSON *object)
 {
-	FILE *f_label = fopen(label_path, "r");
+	// Check if sensor is available
+	if(file_exists(value_path) == false)
+		return 0;
+
+	// Open files
 	FILE *f_value = fopen(value_path, "r");
 	if(f_value != NULL)
 	{
@@ -218,6 +222,10 @@ static int read_temp_sensor(struct ftl_conn *api,
 		char label[1024];
 		if(fscanf(f_value, "%d", &raw_temp) == 1)
 		{
+			FILE *f_label = NULL;
+			if(file_exists(label_path))
+				f_label = fopen(label_path, "r");
+
 			cJSON *item = JSON_NEW_OBJECT();
 			if(f_label && fgets(label, sizeof(label)-1, f_label))
 			{
@@ -231,6 +239,9 @@ static int read_temp_sensor(struct ftl_conn *api,
 				JSON_ADD_NULL_TO_OBJECT(item, "name");
 			}
 			JSON_COPY_STR_TO_OBJECT(item, "path", short_path);
+
+			if(f_label != NULL)
+				fclose(f_label);
 
 			// Compute actual temperature
 			double temp = raw_temp < 1000 ? raw_temp : 1e-3*raw_temp;
@@ -251,8 +262,6 @@ static int read_temp_sensor(struct ftl_conn *api,
 			JSON_ADD_ITEM_TO_ARRAY(object, item);
 		}
 	}
-	if(f_label != NULL)
-		fclose(f_label);
 	if(f_value != NULL)
 		fclose(f_value);
 

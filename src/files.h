@@ -18,7 +18,7 @@ void get_permission_string(char permissions[10], struct stat *st);
 void ls_dir(const char* path);
 int get_path_usage(const char *path, char buffer[64]);
 int get_filepath_usage(const char *file, char buffer[64]);
-bool directoryExists(const char *path);
+bool directory_exists(const char *path);
 
 int parse_line(char *line, char **key, char **value);
 

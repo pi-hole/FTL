@@ -20,7 +20,7 @@
 #include "config/config.h"
 // JSON array functions
 #include "cJSON/cJSON.h"
-// directoryExists()
+// directory_exists()
 #include "files.h"
 
 #define DNSMASQ_PH_CONFIG "/etc/pihole/dnsmasq.conf"
@@ -290,7 +290,7 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 	fputs("server=/bind/\n", pihole_conf);
 	fputs("server=/onion/\n", pihole_conf);
 
-	if(directoryExists("/etc/dnsmasq.d"))
+	if(directory_exists("/etc/dnsmasq.d"))
 	{
 		// Load possible additional user scripts from /etc/dnsmasq.d if
 		// the directory exists (it may not, e.g., in a container)

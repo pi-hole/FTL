@@ -59,10 +59,40 @@ bool chmod_file(const char *filename, const mode_t mode)
 	return true;
 }
 
+/**
+ * Function to check whether a file exists or not.
+ * It returns true if given path is a file and exists
+ * otherwise returns false.
+ */
 bool file_exists(const char *filename)
 {
-	struct stat st;
-	return stat(filename, &st) == 0;
+	struct stat stats = { 0 };
+	if(stat(filename, &stats) != 0)
+	{
+		// Directory does not exist
+		return false;
+	}
+
+	// Check if this is a directory
+	return S_ISREG(stats.st_mode);
+}
+
+/**
+ * Function to check whether a directory exists or not.
+ * It returns true if given path is a directory and exists
+ * otherwise returns false.
+ */
+bool directory_exists(const char *path)
+{
+	struct stat stats = { 0 };
+	if(stat(path, &stats) != 0)
+	{
+		// Directory does not exist
+		return false;
+	}
+
+	// Check if this is a directory
+	return S_ISDIR(stats.st_mode);
 }
 
 bool get_database_stat(struct stat *st)
@@ -232,24 +262,6 @@ static char *trim(char *str)
 
 	*end = '\0';
 	return start;
-}
-
-/**
- * Function to check whether a directory exists or not.
- * It returns 1 if given path is directory and  exists
- * otherwise returns 0.
- */
-bool directoryExists(const char *path)
-{
-	struct stat stats = { 0 };
-	if(stat(path, &stats) != 0)
-	{
-		// Directory does not exist
-		return false;
-	}
-
-	// Check if this is a directory
-	return S_ISDIR(stats.st_mode);
 }
 
 // Credits: https://stackoverflow.com/a/55410469
