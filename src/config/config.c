@@ -333,6 +333,12 @@ void initConfig(void)
 	config.dnsmasq.cache_size.d.ui = 10000u;
 	config.dnsmasq.cache_size.restart_dnsmasq = true;
 
+	config.dnsmasq.logging.k = "dnsmasq.logging";
+	config.dnsmasq.logging.h = "Log DNS queries and replies to pihole.log";
+	config.dnsmasq.logging.t = CONF_BOOL;
+	config.dnsmasq.logging.d.b = true;
+	config.dnsmasq.logging.restart_dnsmasq = true;
+
 	// sub-struct rev_server
 	config.dnsmasq.rev_server.active.k = "dnsmasq.rev_server.active";
 	config.dnsmasq.rev_server.active.h = "Is the reverse server (former also called \"conditional forwarding\") feature enabled?";

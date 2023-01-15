@@ -166,6 +166,8 @@ components:
                   type: string
                 cache_size:
                   type: integer
+                logging:
+                  type: boolean
                 rev_server:
                   type: object
                   properties:
@@ -417,6 +419,7 @@ components:
             host_record: ""
             listening_mode: "local"
             cache_size: 10000
+            logging: true
             rev_server:
               active: false
               cidr: "192.168.0.0/24"

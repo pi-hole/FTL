@@ -108,11 +108,24 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 	fputs("localise-queries\n", pihole_conf);
 	fputs("\n", pihole_conf);
 
-	if(strlen(config.files.log.dnsmasq.v.s) > 0)
+	if(config.dnsmasq.logging.v.b)
 	{
 		fputs("# Enable query logging\n", pihole_conf);
 		fputs("log-queries\n", pihole_conf);
 		fputs("log-async\n", pihole_conf);
+	}
+	else
+	{
+		fputs("# Disable query logging\n", pihole_conf);
+		fputs("#log-queries\n", pihole_conf);
+		fputs("#log-async\n", pihole_conf);
+	}
+
+	if(strlen(config.files.log.dnsmasq.v.s) > 0)
+	{
+		fputs("# Specify the log file to use\n", pihole_conf);
+		fputs("# We set this even if logging is disabled to store warnings\n", pihole_conf);
+		fputs("# and errors in this file. This is useful for debugging.\n", pihole_conf);
 		fprintf(pihole_conf, "log-facility=%s\n", config.files.log.dnsmasq.v.s);
 		fputs("\n", pihole_conf);
 	}

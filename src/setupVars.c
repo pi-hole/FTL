@@ -286,6 +286,8 @@ void importsetupVarsConf(void)
 	get_conf_string_from_setupVars("DHCP_LEASETIME", &config.dnsmasq.dhcp.leasetime);
 	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dnsmasq.dhcp.ipv6);
 	get_conf_bool_from_setupVars("DHCP_rapid_commit", &config.dnsmasq.dhcp.rapid_commit);
+
+	get_conf_bool_from_setupVars("QUERY_LOGGING", &config.dnsmasq.logging);
 }
 
 char* __attribute__((pure)) find_equals(char *s)

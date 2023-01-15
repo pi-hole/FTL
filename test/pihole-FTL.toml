@@ -136,6 +136,9 @@
   # 100,000+ range
   cache_size = 10000
 
+  # Log DNS queries and replies to pihole.log
+  logging = true
+
   [dnsmasq.rev_server]
     # Is the reverse server (former also called "conditional forwarding") feature enabled?
     active = false
