@@ -115,3 +115,16 @@ components:
                       type: string
                       description: Remote (Github) Pi-hole FTL hash
                       example: "64441ed6"
+            docker:
+              type: object
+              properties:
+                local:
+                  type: string
+                  nullable: true
+                  description: Local Pi-hole Docker image version (`null` if not running in Docker)
+                  example: "v6.1"
+                remote:
+                  type: string
+                  nullable: true
+                  description: Remote (Docker Hub) Pi-hole Docker image version (`null` if not running in Docker)
+                  example: "v6.1"

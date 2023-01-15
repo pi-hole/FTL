@@ -32,6 +32,7 @@ int api_version(struct ftl_conn *api)
 	cJSON *core_remote = JSON_NEW_OBJECT();
 	cJSON *web_remote = JSON_NEW_OBJECT();
 	cJSON *ftl_remote = JSON_NEW_OBJECT();
+	cJSON *docker = JSON_NEW_OBJECT();
 
 	FILE *fp = fopen(VERSIONS_FILE, "r");
 	if(!fp)
@@ -78,6 +79,10 @@ int api_version(struct ftl_conn *api)
 			JSON_COPY_STR_TO_OBJECT(web_remote, "hash", value);
 		else if(strcmp(key, "GITHUB_FTL_HASH") == 0)
 			JSON_COPY_STR_TO_OBJECT(ftl_remote, "hash", value);
+		else if(strcmp(key, "DOCKER_VERSION") == 0)
+			JSON_COPY_STR_TO_OBJECT(docker, "local", value);
+		else if(strcmp(key, "GITHUB_DOCKER_VERSION") == 0)
+			JSON_COPY_STR_TO_OBJECT(docker, "remote", value);
 	}
 
 	// Free allocated memory and release file pointer
@@ -105,6 +110,13 @@ int api_version(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(ftl, "local", ftl_local);
 	JSON_ADD_ITEM_TO_OBJECT(ftl, "remote", ftl_remote);
 	JSON_ADD_ITEM_TO_OBJECT(version, "ftl", ftl);
+
+	// Add nulls to docker if we didn't find any version
+	if(!cJSON_HasObjectItem(docker, "local"))
+		JSON_ADD_NULL_TO_OBJECT(docker, "local");
+	if(!cJSON_HasObjectItem(docker, "remote"))
+		JSON_ADD_NULL_TO_OBJECT(docker, "remote");
+	JSON_ADD_ITEM_TO_OBJECT(version, "docker", docker);
 
 	// Send reply
 	cJSON *json = JSON_NEW_OBJECT();
