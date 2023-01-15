@@ -414,6 +414,13 @@ void initConfig(void)
 	config.dnsmasq.dhcp.rapid_commit.d.b = false;
 	config.dnsmasq.dhcp.rapid_commit.restart_dnsmasq = true;
 
+	config.dnsmasq.dhcp.hosts.k = "dnsmasq.dhcp.hosts";
+	config.dnsmasq.dhcp.hosts.h = "Per host parameters for the DHCP server. This allows a machine with a particular hardware address to be always allocated the same hostname, IP address and lease time or to specify static DHCP leases";
+	config.dnsmasq.dhcp.hosts.a = "Array of static leases each on in one of the following forms: \"[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]\"";
+	config.dnsmasq.dhcp.hosts.t = CONF_JSON_STRING_ARRAY;
+	config.dnsmasq.dhcp.hosts.d.json = cJSON_CreateArray();
+	config.dnsmasq.dhcp.hosts.restart_dnsmasq = true;
+
 
 	// struct resolver
 	config.resolver.resolveIPv6.k = "resolver.resolveIPv6";
@@ -851,6 +858,7 @@ void readFTLconf(const bool rewrite)
 			writeFTLtoml(true);
 			write_dnsmasq_config(false);
 		}
+		read_legacy_dhcp_static_config();
 		return;
 	}
 

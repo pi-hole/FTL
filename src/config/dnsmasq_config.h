@@ -11,5 +11,6 @@
 #define DNSMASQ_CONFIG_H
 
 bool write_dnsmasq_config(bool test_config);
+bool read_legacy_dhcp_static_config(void);
 
 #endif //DNSMASQ_CONFIG_H

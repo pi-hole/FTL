@@ -3306,7 +3306,7 @@ int check_struct_sizes(void)
 	int result = 0;
 	// sizeof(struct conf_item) is 72 on x86_64 and 52 on x86_32
 	// number of config elements: CONFIG_ELEMENTS
-	result += check_one_struct("struct config", sizeof(struct config), 8064, 5824);
+	result += check_one_struct("struct config", sizeof(struct config), 8136, 5876);
 	result += check_one_struct("queriesData", sizeof(queriesData), 72, 64);
 	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 628);
 	result += check_one_struct("clientsData", sizeof(clientsData), 672, 652);

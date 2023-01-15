@@ -22,9 +22,12 @@
 #include "cJSON/cJSON.h"
 // directory_exists()
 #include "files.h"
+// trim_whitespace()
+#include "setupVars.h"
 
 #define DNSMASQ_PH_CONFIG "/etc/pihole/dnsmasq.conf"
 #define DNSMASQ_TEMP_CONF "/etc/pihole/dnsmasq.conf.temp"
+#define DNSMASQ_STATIC_LEASES "/etc/pihole/04-pihole-static-dhcp.conf"
 
 static bool test_dnsmasq_config(void)
 {
@@ -262,6 +265,18 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 			fprintf(pihole_conf, "dhcp-range=::,constructor:%s,ra-names,ra-stateless,64\n", interface);
 		}
 		fputs("\n", pihole_conf);
+		if(cJSON_GetArraySize(config.dnsmasq.dhcp.hosts.v.json) > 0)
+		{
+			fputs("# Per host parameters for the DHCP server\n", pihole_conf);
+			const int n = cJSON_GetArraySize(config.dnsmasq.dhcp.hosts.v.json);
+			for(int i = 0; i < n; i++)
+			{
+				cJSON *server = cJSON_GetArrayItem(config.dnsmasq.dhcp.hosts.v.json, i);
+				if(server != NULL && cJSON_IsString(server))
+					fprintf(pihole_conf, "dhcp-host=%s\n", server->valuestring);
+			}
+			fputs("\n", pihole_conf);
+		}
 	}
 
 	fputs("# RFC 6761: Caching DNS servers SHOULD recognize\n", pihole_conf);
@@ -328,5 +343,56 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
 		return false;
 	}
+	return true;
+}
+
+bool read_legacy_dhcp_static_config(void)
+{
+	// Check if file exists, if not, there is nothing to do
+	if(!file_exists(DNSMASQ_STATIC_LEASES))
+		return true;
+
+	FILE *fp = fopen(DNSMASQ_STATIC_LEASES, "r");
+	if(!fp)
+	{
+		log_err("Cannot read "DNSMASQ_STATIC_LEASES" for reading, unable to import static leases: %s", strerror(errno));
+		return false;
+	}
+
+	char *linebuffer = NULL;
+	size_t size = 0u;
+	errno = 0;
+	unsigned int j = 0;
+	while(getline(&linebuffer, &size, fp) != -1)
+	{
+		// Check if memory allocation failed
+		if(linebuffer == NULL)
+			break;
+
+		// Skip lines with other keys
+		if((strstr(linebuffer, "dhcp-host=")) == NULL)
+			continue;
+
+		// Note: value is still a pointer into the linebuffer
+		char *value = find_equals(linebuffer) + 1;
+		// Trim whitespace at beginning and end, this function
+		// modifies the string inplace
+		trim_whitespace(value);
+
+		// Add entry to config.dnsmasq.dhcp.hosts
+		cJSON *item = cJSON_CreateString(value);
+		cJSON_AddItemToArray(config.dnsmasq.dhcp.hosts.v.json, item);
+
+		log_debug(DEBUG_CONFIG, DNSMASQ_STATIC_LEASES": Setting %s[%d] = %s\n",
+		          config.dnsmasq.dhcp.hosts.k, j++, item->valuestring);
+	}
+
+	// Close file
+	if(fclose(fp) != 0)
+	{
+		log_err("Cannot close "DNSMASQ_STATIC_LEASES": %s", strerror(errno));
+		return false;
+	}
+
 	return true;
 }

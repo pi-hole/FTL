@@ -100,6 +100,10 @@ struct conf_item {
 	union conf_value d;   // Default value
 };
 
+// When new config items are added, the following places need to be updated:
+// - src/config/config.c: New default item
+// - src/dnsmasq_interface.c: sizeof(struct config) increases (see comment there)
+// - test/pihole-FTL.toml: Add the new item to the test config file
 struct config {
 	struct {
 		struct conf_item CNAMEdeepInspect;
@@ -166,6 +170,7 @@ struct config {
 			struct conf_item leasetime;
 			struct conf_item ipv6;
 			struct conf_item rapid_commit;
+			struct conf_item hosts;
 		} dhcp;
 	} dnsmasq;
 

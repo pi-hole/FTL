@@ -192,6 +192,13 @@
     # either the server is the only server for the subnet to avoid conflicts
     rapid_commit = false
 
+    # Per host parameters for the DHCP server. This allows a machine with a particular
+    # hardware address to be always allocated the same hostname, IP address and lease time
+    # or to specify static DHCP leases
+    # Possible values are: Array of static leases each on in one of the following forms:
+    #                      "[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]"
+    hosts = [  ]
+
 [resolver]
   # Should FTL try to resolve IPv4 addresses to hostnames?
   resolveIPv4 = false ### CHANGED, default = true
