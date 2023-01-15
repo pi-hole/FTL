@@ -25,10 +25,6 @@
 // trim_whitespace()
 #include "setupVars.h"
 
-#define DNSMASQ_PH_CONFIG "/etc/pihole/dnsmasq.conf"
-#define DNSMASQ_TEMP_CONF "/etc/pihole/dnsmasq.conf.temp"
-#define DNSMASQ_STATIC_LEASES "/etc/pihole/04-pihole-static-dhcp.conf"
-
 static bool test_dnsmasq_config(void)
 {
 	FILE *pipe = popen("pihole-FTL dnsmasq-test-file "DNSMASQ_TEMP_CONF, "r");
@@ -80,9 +76,17 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 		return false;
 	}
 
+	// Lock file, may block if the file is currently opened
+	if(flock(fileno(pihole_conf), LOCK_EX) != 0)
+	{
+		log_err("Cannot open "DNSMASQ_TEMP_CONF" in exclusive mode: %s", strerror(errno));
+		fclose(pihole_conf);
+		return false;
+	}
+
 	write_config_header(pihole_conf);
 	fputs("addn-hosts=/etc/pihole/local.list\n", pihole_conf);
-	fputs("addn-hosts=/etc/pihole/custom.list\n", pihole_conf);
+	fputs("addn-hosts="DNSMASQ_CUSTOM_LIST"\n", pihole_conf);
 	fputs("\n", pihole_conf);
 	fputs("# Don't read /etc/resolv.conf. Get upstream servers only from the configuration\n", pihole_conf);
 	fputs("no-resolv\n", pihole_conf);
@@ -389,6 +393,9 @@ bool read_legacy_dhcp_static_config(void)
 		log_debug(DEBUG_CONFIG, DNSMASQ_STATIC_LEASES": Setting %s[%d] = %s\n",
 		          config.dnsmasq.dhcp.hosts.k, j++, item->valuestring);
 	}
+
+	// Free allocated memory
+	free(linebuffer);
 
 	// Close file
 	if(fclose(fp) != 0)

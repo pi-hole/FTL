@@ -111,6 +111,9 @@ paths:
   /dns/port:
     $ref: 'dns.yaml#/components/paths/port'
 
+  /dns/entries:
+    $ref: 'dns.yaml#/components/paths/entries'
+
   /domains/{type}/{kind}/{domain}:
     $ref: 'domains.yaml#/components/paths/type_kind_domain'
 

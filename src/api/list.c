@@ -8,15 +8,15 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
 #include "api.h"
-#include "../database/gravity-db.h"
-#include "../events.h"
-#include "../shmem.h"
+#include "database/gravity-db.h"
+#include "events.h"
+#include "shmem.h"
 // getNameFromIP()
-#include "../database/network-table.h"
+#include "database/network-table.h"
 
 static int api_list_read(struct ftl_conn *api,
                          const int code,
@@ -147,8 +147,7 @@ static int api_list_read(struct ftl_conn *api,
 
 static int api_list_write(struct ftl_conn *api,
                           const enum gravity_list_type listtype,
-                          const char *item,
-                          char payload[MAX_PAYLOAD_BYTES])
+                          const char *item)
 {
 	tablerow row = { 0 };
 
@@ -179,7 +178,7 @@ static int api_list_write(struct ftl_conn *api,
 				else
 				{
 					return send_json_error(api, 400,
-					                       "uri_error",
+					                       "bad_request",
 					                       "Invalid request: No item \"domain\" in payload",
 					                       NULL);
 				}
@@ -192,7 +191,7 @@ static int api_list_write(struct ftl_conn *api,
 				else
 				{
 					return send_json_error(api, 400,
-					                       "uri_error",
+					                       "bad_request",
 					                       "Invalid request: No item \"name\" in payload",
 					                       NULL);
 				}
@@ -205,7 +204,7 @@ static int api_list_write(struct ftl_conn *api,
 				else
 				{
 					return send_json_error(api, 400,
-					                       "uri_error",
+					                       "bad_request",
 					                       "Invalid request: No item \"client\" in payload",
 					                       NULL);
 				}
@@ -218,7 +217,7 @@ static int api_list_write(struct ftl_conn *api,
 				else
 				{
 					return send_json_error(api, 400,
-					                       "uri_error",
+					                       "bad_request",
 					                       "Invalid request: No item \"address\" in payload",
 					                       NULL);
 				}
@@ -351,7 +350,6 @@ static int api_list_remove(struct ftl_conn *api,
 int api_list(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
-	char payload[MAX_PAYLOAD_BYTES] = { 0 };
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 		return send_json_unauthorized(api);
 
@@ -447,7 +445,7 @@ int api_list(struct ftl_conn *api)
 			// however, we do this for simplicity to ensure nobody
 			// else is editing the lists while we're doing this here
 			lock_shm();
-			const int ret = api_list_write(api, listtype, api->item, payload);
+			const int ret = api_list_write(api, listtype, api->item);
 			unlock_shm();
 			return ret;
 		}
@@ -468,7 +466,7 @@ int api_list(struct ftl_conn *api)
 			// however, we do this for simplicity to ensure nobody
 			// else is editing the lists while we're doing this here
 			lock_shm();
-			const int ret = api_list_write(api, listtype, api->item, payload);
+			const int ret = api_list_write(api, listtype, api->item);
 			unlock_shm();
 			return ret;
 		}
