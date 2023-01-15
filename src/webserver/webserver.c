@@ -18,6 +18,8 @@
 #include "webserver.h"
 // ph7_handler
 #include "ph7.h"
+// get_nprocs()
+#include <sys/sysinfo.h>
 
 // Server context handle
 static struct mg_context *ctx = NULL;
@@ -133,12 +135,14 @@ void http_init(void)
 	//   A referrer will be sent for same-site origins, but cross-origin requests will
 	//   send no referrer information.
 	// The latter four headers are set as expected by https://securityheaders.io
+	char num_threads[3] = { 0 };
+	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
 	const char *options[] = {
 		"document_root", config.http.paths.webroot.v.s,
 		"listening_ports", config.http.port.v.s,
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
-		"num_threads", "16",
+		"num_threads", num_threads,
 		"access_control_list", config.http.acl.v.s,
 		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
 		                     "X-Frame-Options: SAMEORIGIN\r\n"
