@@ -160,6 +160,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				if(regex->ext.query_type != 0)
 				{
 					*message = strdup("Overwriting previous querytype setting (multiple \"querytype=...\" found)");
+					free(buf);
 					return false;
 				}
 
@@ -187,6 +188,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				{
 					if(asprintf(message, "Unknown querytype \"%s\"", extra) < 1)
 						log_err("Memory allocation failed in compile_regex()");
+					free(buf);
 					return false;
 				}
 
@@ -255,6 +257,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				{
 					if(asprintf(message, "Unknown reply type \"%s\"", extra) < 1)
 						log_err("Memory allocation failed in compile_regex()");
+					free(buf);
 					return false;
 				}
 
@@ -266,6 +269,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 			{
 				if(asprintf(message, "Invalid regex option \"%s\"", part) < 1)
 					log_err("Memory allocation failed in compile_regex()");
+				free(buf);
 				return false;
 			}
 		}
