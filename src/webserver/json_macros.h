@@ -166,22 +166,23 @@
 #define JSON_DELETE(object) cJSON_Delete(object)
 
 #define JSON_SEND_OBJECT(object)({ \
-	const char* msg = json_formatter(object); \
-	if(msg == NULL) \
+	char *json_string = json_formatter(object); \
+	if(json_string == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
 		log_err("JSON_SEND_OBJECT FAILED!"); \
 		return 500; \
 	} \
-	send_http(api, "application/json; charset=utf-8", msg); \
+	send_http(api, "application/json; charset=utf-8", json_string); \
+	cJSON_free(json_string); \
 	cJSON_Delete(object); \
 	return 200; \
 })
 
 #define JSON_SEND_OBJECT_UNLOCK(object)({ \
-	const char* msg = json_formatter(object); \
-	if(msg == NULL) \
+	char *json_string = json_formatter(object); \
+	if(json_string == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
@@ -189,51 +190,55 @@
 		unlock_shm(); \
 		return 500; \
 	} \
-	send_http(api, "application/json; charset=utf-8", msg); \
+	send_http(api, "application/json; charset=utf-8", json_string); \
+	cJSON_free(json_string); \
 	cJSON_Delete(object); \
 	unlock_shm(); \
 	return 200; \
 })
 
 #define JSON_SEND_OBJECT_CODE(object, code)({ \
-	const char* msg = json_formatter(object); \
-	if(msg == NULL) \
+	char *json_string = json_formatter(object); \
+	if(json_string == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
 		log_err("JSON_SEND_OBJECT_CODE FAILED!"); \
 		return 500; \
 	} \
-	send_http_code(api, "application/json; charset=utf-8", code, msg); \
+	send_http_code(api, "application/json; charset=utf-8", code, json_string); \
+	cJSON_free(json_string); \
 	cJSON_Delete(object); \
 	return code; \
 })
 /*
 #define JSON_SEND_OBJECT_AND_HEADERS(object, additional_headers)({ \
-	const char* msg = json_formatter(object); \
-	if(msg == NULL) \
+	char *json_string = json_formatter(object); \
+	if(json_string == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
 		log_err("JSON_SEND_OBJECT_AND_HEADERS FAILED!"); \
 		return 500; \
 	} \
-	send_http(api, "application/json; charset=utf-8", additional_headers, msg); \
+	send_http(api, "application/json; charset=utf-8", additional_headers, json_string); \
+	cJSON_free(json_string); \
 	cJSON_Delete(object); \
 	free(additional_headers); \
 	return 200; \
 })
 
 #define JSON_SEND_OBJECT_AND_HEADERS_CODE(object, code, additional_headers)({ \
-	const char* msg = json_formatter(object); \
-	if(msg == NULL) \
+	char *json_string = json_formatter(object); \
+	if(json_string == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
 		log_err("JSON_SEND_OBJECT_AND_HEADERS_CODE FAILED!"); \
 		return 500; \
 	} \
-	send_http_code(api, "application/json; charset=utf-8", additional_headers, code, msg); \
+	send_http_code(api, "application/json; charset=utf-8", additional_headers, code, json_string); \
+	cJSON_free(json_string); \
 	cJSON_Delete(object); \
 	free(additional_headers); \
 	return code; \

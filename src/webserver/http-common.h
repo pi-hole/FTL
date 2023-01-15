@@ -42,7 +42,7 @@ struct ftl_conn {
 };
 
 
-const char* json_formatter(const cJSON *object);
+char *json_formatter(const cJSON *object);
 
 int send_http(struct ftl_conn *api, const char *mime_type, const char *msg);
 int send_http_code(struct ftl_conn *api, const char *mime_type, int code, const char *msg);

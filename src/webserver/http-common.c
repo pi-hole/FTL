@@ -22,8 +22,9 @@ char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN] = { 0 };
 
 // Provides a compile-time flag for JSON formatting
 // This should never be needed as all modern browsers
-// tyoically contain a JSON explorer
-const char* json_formatter(const cJSON *object)
+// typically contain a JSON explorer
+// This string needs to be freed after using it
+char *json_formatter(const cJSON *object)
 {
 	if(config.api.prettyJSON.v.b)
 	{
