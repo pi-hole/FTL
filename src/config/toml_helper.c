@@ -361,6 +361,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok)
 			{
 				const int ptr_type = get_ptr_type_val(val.u.s);
+				free(val.u.s);
 				if(ptr_type != -1)
 					conf_item->v.ptr_type = ptr_type;
 				else
@@ -376,6 +377,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok)
 			{
 				const int busy_reply = get_busy_reply_val(val.u.s);
+				free(val.u.s);
 				if(busy_reply != -1)
 					conf_item->v.busy_reply = busy_reply;
 				else
@@ -391,6 +393,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok)
 			{
 				const int blocking_mode = get_blocking_mode_val(val.u.s);
+				free(val.u.s);
 				if(blocking_mode != -1)
 					conf_item->v.blocking_mode = blocking_mode;
 				else
@@ -406,6 +409,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok)
 			{
 				const int refresh_hostnames = get_refresh_hostnames_val(val.u.s);
+				free(val.u.s);
 				if(refresh_hostnames != -1)
 					conf_item->v.refresh_hostnames = refresh_hostnames;
 				else
@@ -421,6 +425,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			if(val.ok)
 			{
 				const int listening_mode = get_listening_mode_val(val.u.s);
+				free(val.u.s);
 				if(listening_mode != -1)
 					conf_item->v.listening_mode = listening_mode;
 				else
@@ -443,16 +448,24 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		{
 			struct in_addr addr4 = { 0 };
 			const toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok && inet_pton(AF_INET, val.u.s, &addr4))
-				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
+			if(val.ok)
+			{
+				if(inet_pton(AF_INET, val.u.s, &addr4))
+					memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
+				free(val.u.s);
+			}
 			break;
 		}
 		case CONF_STRUCT_IN6_ADDR:
 		{
 			struct in6_addr addr6 = { 0 };
 			const toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok && inet_pton(AF_INET6, val.u.s, &addr6))
-				memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
+			if(val.ok)
+			{
+				if(inet_pton(AF_INET6, val.u.s, &addr6))
+					memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
+				free(val.u.s);
+			}
 			break;
 		}
 		case CONF_JSON_STRING_ARRAY:
@@ -476,6 +489,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 					}
 					// Add string to our JSON array
 					cJSON *item = cJSON_CreateString(d.u.s);
+					free(d.u.s);
 					cJSON_AddItemToArray(conf_item->v.json, item);
 				}
 			}
