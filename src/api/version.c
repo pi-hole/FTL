@@ -97,25 +97,38 @@ int api_version(struct ftl_conn *api)
 	cJSON *version = JSON_NEW_OBJECT();
 
 	cJSON *core = JSON_NEW_OBJECT();
+	JSON_ADD_NULL_IF_NOT_EXISTS(core_local, "branch");
+	JSON_ADD_NULL_IF_NOT_EXISTS(core_local, "version");
+	JSON_ADD_NULL_IF_NOT_EXISTS(core_local, "hash");
 	JSON_ADD_ITEM_TO_OBJECT(core, "local", core_local);
+	JSON_ADD_NULL_IF_NOT_EXISTS(core_remote, "version");
+	JSON_ADD_NULL_IF_NOT_EXISTS(core_remote, "hash");
 	JSON_ADD_ITEM_TO_OBJECT(core, "remote", core_remote);
 	JSON_ADD_ITEM_TO_OBJECT(version, "core", core);
 
 	cJSON *web = JSON_NEW_OBJECT();
+	JSON_ADD_NULL_IF_NOT_EXISTS(web_local, "branch");
+	JSON_ADD_NULL_IF_NOT_EXISTS(web_local, "version");
+	JSON_ADD_NULL_IF_NOT_EXISTS(web_local, "hash");
 	JSON_ADD_ITEM_TO_OBJECT(web, "local", web_local);
+	JSON_ADD_NULL_IF_NOT_EXISTS(web_remote, "version");
+	JSON_ADD_NULL_IF_NOT_EXISTS(web_remote, "hash");
 	JSON_ADD_ITEM_TO_OBJECT(web, "remote", web_remote);
 	JSON_ADD_ITEM_TO_OBJECT(version, "web", web);
 
 	cJSON *ftl = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(ftl, "local", ftl_local);
+	JSON_ADD_NULL_IF_NOT_EXISTS(ftl_local, "branch");
+	JSON_ADD_NULL_IF_NOT_EXISTS(ftl_local, "version");
+	JSON_ADD_NULL_IF_NOT_EXISTS(ftl_local, "hash");
 	JSON_ADD_ITEM_TO_OBJECT(ftl, "remote", ftl_remote);
+	JSON_ADD_NULL_IF_NOT_EXISTS(ftl_remote, "version");
+	JSON_ADD_NULL_IF_NOT_EXISTS(ftl_remote, "hash");
 	JSON_ADD_ITEM_TO_OBJECT(version, "ftl", ftl);
 
 	// Add nulls to docker if we didn't find any version
-	if(!cJSON_HasObjectItem(docker, "local"))
-		JSON_ADD_NULL_TO_OBJECT(docker, "local");
-	if(!cJSON_HasObjectItem(docker, "remote"))
-		JSON_ADD_NULL_TO_OBJECT(docker, "remote");
+	JSON_ADD_NULL_IF_NOT_EXISTS(docker, "local");
+	JSON_ADD_NULL_IF_NOT_EXISTS(docker, "remote");
 	JSON_ADD_ITEM_TO_OBJECT(version, "docker", docker);
 
 	// Send reply

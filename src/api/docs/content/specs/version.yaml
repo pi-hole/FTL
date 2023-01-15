@@ -32,14 +32,17 @@ components:
                   properties:
                     branch:
                       type: string
+                      nullable: true
                       description: Local Pi-hole Core branch
                       example: "development"
                     version:
                       type: string
+                      nullable: true
                       description: Local Pi-hole Core version
                       example: "v6.1"
                     hash:
                       type: string
+                      nullable: true
                       description: Local Pi-hole Core hash
                       example: "955e36a9"
                 remote:
@@ -47,10 +50,12 @@ components:
                   properties:
                     version:
                       type: string
+                      nullable: true
                       description: Remote (Github) Pi-hole Core version
                       example: "v6.1"
                     hash:
                       type: string
+                      nullable: true
                       description: Remote (Github) Pi-hole Core hash
                       example: "955e36a9"
             web:
@@ -61,14 +66,17 @@ components:
                   properties:
                     branch:
                       type: string
+                      nullable: true
                       description: Local Pi-hole Web branch
                       example: "devel"
                     version:
                       type: string
+                      nullable: true
                       description: Local Pi-hole Web version
                       example: "v6.1"
                     hash:
                       type: string
+                      nullable: true
                       description: Local Pi-hole Web hash
                       example: "f69f7e88"
                 remote:
@@ -76,10 +84,12 @@ components:
                   properties:
                     version:
                       type: string
+                      nullable: true
                       description: Remote (Github) Pi-hole Web version
                       example: "v6.1"
                     hash:
                       type: string
+                      nullable: true
                       description: Remote (Github) Pi-hole Web hash
                       example: "f69f7e88"
             ftl:
@@ -90,18 +100,22 @@ components:
                   properties:
                     branch:
                       type: string
+                      nullable: true
                       description: Local Pi-hole FTL branch
                       example: "development"
                     version:
                       type: string
+                      nullable: true
                       description: Local Pi-hole FTL version
                       example: "v6.1"
                     hash:
                       type: string
+                      nullable: true
                       description: Local Pi-hole FTL hash
                       example: "64441ed6-dirty"
                     date:
                       type: string
+                      nullable: true
                       description: Build time of your local Pi-hole FTL
                       example: "2023-01-09 20:25:24 +0100"
                 remote:
@@ -109,10 +123,12 @@ components:
                   properties:
                     version:
                       type: string
+                      nullable: true
                       description: Remote (Github) Pi-hole FTL version
                       example: "v6.1"
                     hash:
                       type: string
+                      nullable: true
                       description: Remote (Github) Pi-hole FTL hash
                       example: "64441ed6"
             docker:

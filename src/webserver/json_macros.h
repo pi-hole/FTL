@@ -156,6 +156,13 @@
 // new parent so that when that array or object is deleted, it gets deleted as well.
 #define JSON_ADD_ITEM_TO_OBJECT(object, key, item) cJSON_AddItemToObject(object, key, item)
 
+#define JSON_ADD_NULL_IF_NOT_EXISTS(object, key)({ \
+	if(cJSON_GetObjectItemCaseSensitive(object, key) == NULL) \
+	{ \
+		cJSON_AddNullToObject(object, key); \
+	} \
+})
+
 #define JSON_DELETE(object) cJSON_Delete(object)
 
 #define JSON_SEND_OBJECT(object)({ \
