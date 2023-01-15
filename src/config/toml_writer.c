@@ -75,7 +75,7 @@ bool writeFTLtoml(const bool verbose)
 		// Write value
 		indentTOML(fp, level-1);
 		fprintf(fp, "%s = ", conf_item->p[level-1]);
-		writeTOMLvalue(fp, conf_item->t, &conf_item->v);
+		writeTOMLvalue(fp, level-1, conf_item->t, &conf_item->v);
 
 		// Compare with default value and add a comment on difference
 		bool changed = false;
@@ -89,7 +89,7 @@ bool writeFTLtoml(const bool verbose)
 		if(changed)
 		{
 			fprintf(fp, " ### CHANGED, default = ");
-			writeTOMLvalue(fp, conf_item->t, &conf_item->d);
+			writeTOMLvalue(fp, -1, conf_item->t, &conf_item->d);
 		}
 
 		// Add newlines after each entry

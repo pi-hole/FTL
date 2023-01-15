@@ -268,7 +268,7 @@ bool set_config_from_CLI(const char *key, const char *value)
 	if(readStringvalue(conf_item, value))
 	{
 		// Print value
-		writeTOMLvalue(stdout, conf_item->t, &conf_item->v);
+		writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
 		putchar('\n');
 		writeFTLtoml(false);
 		return true;
@@ -302,7 +302,7 @@ bool get_config_from_CLI(const char *key)
 	}
 
 	// Print value
-	writeTOMLvalue(stdout, conf_item->t, &conf_item->v);
+	writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
 	putchar('\n');
 
 	return true;

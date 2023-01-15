@@ -201,7 +201,7 @@ void print_comment(FILE *fp, const char *str, const char *intro, const unsigned 
 }
 
 // Write a TOML value to a file depending on its type
-void writeTOMLvalue(FILE * fp, const enum conf_type t, union conf_value *v)
+void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union conf_value *v)
 {
 	switch(t)
 	{
@@ -259,17 +259,40 @@ void writeTOMLvalue(FILE * fp, const enum conf_type t, union conf_value *v)
 		}
 		case CONF_JSON_STRING_ARRAY:
 		{
-			fputs("[ ", fp);
+			// Start the array
+			fputc('[', fp);
 			const unsigned int elems = cJSON_GetArraySize(v->json);
+			if(indent > -1 && elems > 0)
+				// If there are elements and we are indenting,
+				// add a new line
+				fputc('\n', fp);
+			else
+				// If there are no elements, add a space
+				fputc(' ', fp);
 			for(unsigned int i = 0; i < elems; i++)
 			{
+				// Add intendation (if we are indenting)
+				if(indent > -1)
+					indentTOML(fp, indent + 1);
+
+				// Get and print the element
 				cJSON *item = cJSON_GetArrayItem(v->json, i);
 				printTOMLstring(fp, item->valuestring);
+
 				// Add a comma if there is one more element to come
 				if(item->next)
-					fputs(", ", fp);
+					fputc(',', fp);
+
+				// Add a space after the comma if we are not indenting
+				if(indent < 0)
+					fputc(' ', fp);
+				// Add a new line (if we are indenting)
+				else
+					fputc('\n', fp);
 			}
-			fputs(" ]", fp);
+			if(indent > -1)
+				indentTOML(fp, indent);
+			fputc(']', fp);
 			break;
 		}
 	}
