@@ -234,6 +234,24 @@ static char *trim(char *str)
 	return start;
 }
 
+/**
+ * Function to check whether a directory exists or not.
+ * It returns 1 if given path is directory and  exists
+ * otherwise returns 0.
+ */
+bool directoryExists(const char *path)
+{
+	struct stat stats = { 0 };
+	if(stat(path, &stats) != 0)
+	{
+		// Directory does not exist
+		return false;
+	}
+
+	// Check if this is a directory
+	return S_ISDIR(stats.st_mode);
+}
+
 // Credits: https://stackoverflow.com/a/55410469
 int parse_line(char *line, char **key, char **value)
 {

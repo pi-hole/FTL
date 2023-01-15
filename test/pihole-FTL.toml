@@ -95,7 +95,7 @@
   # Array of upstream DNS servers used by Pi-hole
   # Possible values are: array of IP addresses and/or hostnames, optionally with a port,
   #                      e.g. [ "8.8.8.8", "127.0.0.1#5353", "docker-resolver" ]
-  upstreams = [  ]
+  upstreams = [ "127.0.0.1#5555" ] ### CHANGED, default = [  ]
 
   # The DNS domain used by your Pi-hole
   # Possible values are: <any valid domain>

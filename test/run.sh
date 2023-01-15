@@ -50,8 +50,9 @@ chown pihole:pihole /etc/pihole/pihole-FTL.db
 cp test/pihole-FTL.toml /etc/pihole/pihole-FTL.toml
 chown pihole:pihole /etc/pihole/pihole-FTL.toml
 
-# Prepare dnsmasq.conf
-cp test/dnsmasq.conf /etc/dnsmasq.conf
+# Prepare 01-pihole-tests.conf
+mkdir /etc/dnsmasq.d
+cp test/01-pihole-tests.conf /etc/dnsmasq.d/01-pihole-tests.conf
 
 # Prepare versions file (read by /api/version)
 cp test/versions /etc/pihole/versions

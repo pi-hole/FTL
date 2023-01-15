@@ -20,6 +20,8 @@
 #include "config/config.h"
 // JSON array functions
 #include "cJSON/cJSON.h"
+// directoryExists()
+#include "files.h"
 
 #define DNSMASQ_PH_CONFIG "/etc/pihole/dnsmasq.conf"
 #define DNSMASQ_TEMP_CONF "/etc/pihole/dnsmasq.conf.temp"
@@ -288,9 +290,14 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 	fputs("server=/bind/\n", pihole_conf);
 	fputs("server=/onion/\n", pihole_conf);
 
-	fputs("# Load possible additional user scripts\n", pihole_conf);
-	fputs("conf-dir=/etc/dnsmasq.d\n", pihole_conf);
-	fputs("\n", pihole_conf);
+	if(directoryExists("/etc/dnsmasq.d"))
+	{
+		// Load possible additional user scripts from /etc/dnsmasq.d if
+		// the directory exists (it may not, e.g., in a container)
+		fputs("# Load possible additional user scripts\n", pihole_conf);
+		fputs("conf-dir=/etc/dnsmasq.d\n", pihole_conf);
+		fputs("\n", pihole_conf);
+	}
 
 	// Flush config file to disk
 	fflush(pihole_conf);
