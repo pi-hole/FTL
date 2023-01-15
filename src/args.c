@@ -75,7 +75,6 @@ const char** argv_dnsmasq = NULL;
 #define COL_ULINE	"\x1b[4m"  // underline font
 #define COL_GREEN	"\x1b[32m" // normal foreground color
 #define COL_YELLOW	"\x1b[33m" // normal foreground color
-#define COL_GRAY	"\x1b[90m" // bright foreground color
 #define COL_RED		"\x1b[91m" // bright foreground color
 #define COL_BLUE	"\x1b[94m" // bright foreground color
 #define COL_PURPLE	"\x1b[95m" // bright foreground color
@@ -537,7 +536,6 @@ void parse_args(int argc, char* argv[])
 			const char *normal = cli_normal();
 			const char *blue = cli_color(COL_BLUE);
 			const char *cyan = cli_color(COL_CYAN);
-			const char *gray = cli_color(COL_GRAY);
 			const char *green = cli_color(COL_GREEN);
 			const char *yellow = cli_color(COL_YELLOW);
 			const char *purple = cli_color(COL_PURPLE);
@@ -564,8 +562,8 @@ void parse_args(int argc, char* argv[])
 
 			printf("    Example: %spihole-FTL regex-test %ssomebad.domain %sbad%s\n", green, blue, cyan, normal);
 			printf("    to test %ssomebad.domain%s against %sbad%s\n\n", blue, normal, cyan, normal);
-			printf("    An optional %s-q%s prevents any output (exit code testing):\n", gray, normal);
-			printf("    %spihole-FTL %s-q%s regex-test %ssomebad.domain %sbad%s\n\n", green, gray, green, blue, cyan, normal);
+			printf("    An optional %s-q%s prevents any output (exit code testing):\n", purple, normal);
+			printf("    %spihole-FTL %s-q%s regex-test %ssomebad.domain %sbad%s\n\n", green, purple, green, blue, cyan, normal);
 
 			printf("%sEmbedded Lua engine:%s\n", yellow, normal);
 			printf("\t%s--lua%s, %slua%s          FTL's lua interpreter\n", green, normal, green, normal);
@@ -582,10 +580,10 @@ void parse_args(int argc, char* argv[])
 			printf("      the script.\n\n");
 
 			printf("%sEmbedded SQLite3 shell:%s\n", yellow, normal);
-			printf("\t%ssql %s[-h]%s, %ssqlite3 %s[-h]%s        FTL's SQLite3 shell\n", green, gray, normal, green, gray, normal);
-			printf("\t%s-h%s starts a special %shuman-readable mode%s\n\n", gray, normal, bold, normal);
+			printf("\t%ssql %s[-h]%s, %ssqlite3 %s[-h]%s        FTL's SQLite3 shell\n", green, purple, normal, green, purple, normal);
+			printf("\t%s-h%s starts a special %shuman-readable mode%s\n\n", purple, normal, bold, normal);
 
-			printf("    Usage: %spihole-FTL sqlite3 %s[-h] %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, gray, cyan, normal);
+			printf("    Usage: %spihole-FTL sqlite3 %s[-h] %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, purple, cyan, normal);
 			printf("    Options:\n\n");
 			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
 			printf("      options can be found in %spihole-FTL sqlite3 --help%s\n", green, normal);
