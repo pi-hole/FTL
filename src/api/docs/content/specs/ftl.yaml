@@ -207,7 +207,7 @@ components:
               properties:
                 ram:
                   type: object
-                  description: RAM memory
+                  description: RAM
                   properties:
                     total:
                       type: integer
@@ -215,7 +215,7 @@ components:
                       example: 10317877
                     free:
                       type: integer
-                      description: Total free RAM memory
+                      description: Total free RAM
                       example: 308736
                     used:
                       type: integer
@@ -223,8 +223,12 @@ components:
                       example: 8920416
                     available:
                       type: integer
-                      description: Total available RAM memory
+                      description: Total available RAM
                       example: 972304
+                    "%used":
+                      type: number
+                      description: Used RAM in percent
+                      example: 26.854
                 swap:
                   type: object
                   description: swap memory
@@ -241,6 +245,10 @@ components:
                       type: integer
                       description: Total free swap memory
                       example: 308736
+                    "%used":
+                      type: number
+                      description: Used swap in percent
+                      example: 1.67
             procs:
               type: integer
               description: Number of current processes

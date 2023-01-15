@@ -16,6 +16,7 @@
 #include "../fifo.h"
 // sysinfo()
 #include <sys/sysinfo.h>
+#include <linux/sysinfo.h>
 // get_blockingstatus()
 #include "../setupVars.h"
 // counters
@@ -305,15 +306,19 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// "cached", which was fine ten years ago, but is pretty much guaranteed
 	// to be wrong today."
 	JSON_ADD_NUMBER_TO_OBJECT(ram, "available", mem.avail);
+	JSON_ADD_NUMBER_TO_OBJECT(ram, "%used", 100.0*mem.used/mem.total);
 	JSON_ADD_ITEM_TO_OBJECT(memory, "ram", ram);
 
 	cJSON *swap = JSON_NEW_OBJECT();
 	// Total swap space size
-	JSON_ADD_NUMBER_TO_OBJECT(swap, "total", info.totalswap * info.mem_unit);
+	const float total_swap = info.totalswap * info.mem_unit / 1024;
+	JSON_ADD_NUMBER_TO_OBJECT(swap, "total", total_swap);
 	// Swap space still available
-	JSON_ADD_NUMBER_TO_OBJECT(swap, "free", info.freeswap * info.mem_unit);
+	JSON_ADD_NUMBER_TO_OBJECT(swap, "free", info.freeswap * info.mem_unit / 1024);
 	// Used swap space
-	JSON_ADD_NUMBER_TO_OBJECT(swap, "used", (info.totalswap - info.freeswap) * info.mem_unit);
+	const float used_swap = (info.totalswap - info.freeswap) * info.mem_unit / 1024;
+	JSON_ADD_NUMBER_TO_OBJECT(swap, "used", used_swap);
+	JSON_ADD_NUMBER_TO_OBJECT(swap, "%used", 100.0*used_swap/total_swap);
 	JSON_ADD_ITEM_TO_OBJECT(memory, "swap", swap);
 	JSON_ADD_ITEM_TO_OBJECT(system, "memory", memory);
 
@@ -328,10 +333,10 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	cJSON *raw = JSON_NEW_ARRAY();
 	cJSON *percent = JSON_NEW_ARRAY();
 	float load_f[3] = { 0.f };
-	const float longfloat = 1.f / (1 << SI_LOAD_SHIFT);
+	const float f_load = 1.f / (1 << SI_LOAD_SHIFT);
 	for(unsigned int i = 0; i < 3; i++)
 	{
-		load_f[i] = longfloat * info.loads[i];
+		load_f[i] = f_load * info.loads[i];
 		JSON_ADD_NUMBER_TO_ARRAY(raw, load_f[i]);
 		JSON_ADD_NUMBER_TO_ARRAY(percent, (100.f*load_f[i]/nprocs));
 	}
