@@ -196,6 +196,10 @@ components:
                       type: boolean
                     rapid_commit:
                       type: boolean
+                    hosts:
+                      type: array
+                      items:
+                        type: string
             resolver:
               type: object
               properties:
@@ -433,6 +437,9 @@ components:
               leasetime: "24h"
               ipv6: true
               rapid_commit: true
+              hosts:
+                - "11:22:33:44:55:66,192.168.1.123"
+                - "11:22:33:44:55:67,192.168.1.124,hostname"
           resolver:
             resolveIPv4: true
             resolveIPv6: true
