@@ -341,7 +341,7 @@ char *read_setupVarsconf(const char *key)
 	FILE *setupVarsfp;
 	if((setupVarsfp = fopen(config.files.setupVars.v.s, "r")) == NULL)
 	{
-		log_warn("Reading setupVars.conf failed: %s", strerror(errno));
+		log_debug(DEBUG_CONFIG, "Reading setupVars.conf failed: %s", strerror(errno));
 		return NULL;
 	}
 
