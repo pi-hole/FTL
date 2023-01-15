@@ -998,7 +998,7 @@
   run bash -c './pihole-FTL regex-test "f" g\;querytype=!A\;querytype=A'
   printf "%s\n" "${lines[@]}"
   [[ $status == 2 ]]
-  [[ ${lines[1]} == *"Overwriting previous querytype setting" ]]
+  [[ "${lines[@]}" == *"Overwriting previous querytype setting"* ]]
 }
 
 @test "Regex Test 41: Option \"^;reply=NXDOMAIN\" working as expected" {
@@ -1050,14 +1050,14 @@
   run bash -c './pihole-FTL regex-test "f" f\;querytype=A'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  [[ ${lines[4]} == "    Hint: This regex matches only type A queries" ]]
+  [[ "${lines[@]}" == *"- A"* ]]
 }
 
 @test "Regex Test 48: Option \";querytype=!TXT\" reported on CLI" {
   run bash -c './pihole-FTL regex-test "f" f\;querytype=!TXT'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  [[ ${lines[4]} == "    Hint: This regex does not match type TXT queries" ]]
+  [[ "${lines[@]}" != *"- TXT"* ]]
 }
 
 @test "Regex Test 49: Option \";reply=NXDOMAIN\" reported on CLI" {
@@ -1072,6 +1072,14 @@
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
   [[ ${lines[4]} == "    Hint: This regex is inverted" ]]
+}
+
+@test "Regex Test 51: Option \";querytype=A,HTTPS\" reported on CLI" {
+  run bash -c './pihole-FTL regex-test "f" f\;querytype=A,HTTPS'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ "${lines[@]}" == *"- A"* ]]
+  [[ "${lines[@]}" == *"- HTTPS"* ]]
 }
 
 # x86_64-musl is built on busybox which has a slightly different

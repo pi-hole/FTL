@@ -26,6 +26,11 @@
 // cli_stuff()
 #include "args.h"
 
+// Safety-measure for future extensions
+#if TYPE_MAX > 30
+#error "Too many query types to be handled by a 32-bit integer"
+#endif
+
 const char *regextype[REGEX_MAX] = { "blacklist", "whitelist", "CLI" };
 
 static regexData *white_regex = NULL;
@@ -164,38 +169,48 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 					                   "Overwriting previous querytype setting",
 					                   dbidx, regexin);
 
-				// Test input string against all implemented query types
-				for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
+				// Split input string into individual query types
+				char *saveptr2 = NULL;
+				char *token = strtok_r(extra, ",", &saveptr2);
+				while(token != NULL)
 				{
-					// Check for querytype
-					if(strcasecmp(extra, querytypes[type]) == 0)
+					// Test input string against all implemented query types
+					for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 					{
-						regex[index].ext.query_type = type;
-						regex[index].ext.query_type_inverted = false;
-						break;
+						// Check for querytype
+						if(strcasecmp(token, querytypes[type]) == 0)
+						{
+							regex[index].ext.query_type ^= 1 << type;
+							break;
+						}
+						// Check for INVERTED querytype
+						else if(token[0] == '!' && strcasecmp(token + 1u, querytypes[type]) == 0)
+						{
+							regex[index].ext.query_type ^= ~(1 << type);
+							break;
+						}
 					}
-					// Check for INVERTED querytype
-					else if(extra[0] == '!' && strcasecmp(extra + 1u, querytypes[type]) == 0)
+					// Check if we found a valid query type
+					if(regex[index].ext.query_type == 0)
 					{
-						regex[index].ext.query_type = type;
-						regex[index].ext.query_type_inverted = true;
-						break;
+						logg_regex_warning(regextype[regexid],
+						                   "Unknown query type",
+						                   dbidx, regexin);
+						free(buf);
+						return false;
 					}
-				}
-				// Nothing found
-				if(regex[index].ext.query_type == 0)
-				{
-					char msg[64] = { 0 };
-					snprintf(msg, sizeof(msg), "Unknown querytype \"%s\"", extra);
-					logg_regex_warning(regextype[regexid], msg, dbidx, regexin);
-				}
 
-				// Debug output
-				else if(config.debug & DEBUG_REGEX)
+					// Get next token
+					token = strtok_r(NULL, ",", &saveptr2);
+				}
+				if(regex[index].ext.query_type != 0)
 				{
-					logg("   This regex will %s match query type %s",
-					     regex[index].ext.query_type_inverted ? "NOT" : "ONLY",
-					     querytypes[regex[index].ext.query_type]);
+					logg("    Hint: This regex matches only specific query types:");
+					for(int i = TYPE_A; i < TYPE_MAX; i++)
+					{
+						if(regex[index].ext.query_type & (1 << i))
+							logg("      - %s", querytypes[i]);
+					}
 				}
 			}
 			// option: ";invert"
@@ -380,15 +395,14 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 				// Check query type filtering
 				if(regex[index].ext.query_type != 0)
 				{
-					if((!regex[index].ext.query_type_inverted && regex[index].ext.query_type != dns_cache->query_type) ||
-					    (regex[index].ext.query_type_inverted && regex[index].ext.query_type == dns_cache->query_type))
+					if(!(regex[index].ext.query_type & (1 << dns_cache->query_type)))
 					{
 						if(config.debug & DEBUG_REGEX)
 						{
 							logg("Regex %s (%u, DB ID %i) NO match: \"%s\" vs. \"%s\""
-								" (skipped because of query type %smatch)",
+								" (skipped because of query type mismatch)",
 							regextype[regexid], index, regex[index].database_id,
-							input, regex[index].string, regex[index].ext.query_type_inverted ? "inversion " : "mis");
+							input, regex[index].string);
 						}
 						continue;
 					}
@@ -436,9 +450,12 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 				// Check query type filtering
 				if(regex[index].ext.query_type != 0)
 				{
-					logg("    Hint: This regex %s type %s queries",
-					     regex[index].ext.query_type_inverted ? "does not match" : "matches only",
-					     querytypes[regex[index].ext.query_type]);
+					logg("    Hint: This regex matches only specific query types:");
+					for(int i = TYPE_A; i < TYPE_MAX; i++)
+					{
+						if(regex[index].ext.query_type & (1 << i))
+							logg("      - %s", querytypes[i]);
+					}
 				}
 
 				// Check inversion
