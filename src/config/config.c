@@ -868,7 +868,7 @@ void readFTLconf(const bool rewrite)
 	if((path = readFTLlegacy()) != NULL)
 	{
 		const char *target = "/etc/pihole/pihole-FTL.conf.bck";
-		log_debug(DEBUG_CONFIG, "Moving %s to %s", path, target);
+		log_info("Moving %s to %s", path, target);
 		if(rename(path, target) != 0)
 			log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
 	}

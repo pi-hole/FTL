@@ -349,13 +349,16 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 bool read_legacy_dhcp_static_config(void)
 {
 	// Check if file exists, if not, there is nothing to do
-	if(!file_exists(DNSMASQ_STATIC_LEASES))
+	const char *path = DNSMASQ_STATIC_LEASES;
+	const char *target = DNSMASQ_STATIC_LEASES".bck";
+	if(!file_exists(path))
 		return true;
 
-	FILE *fp = fopen(DNSMASQ_STATIC_LEASES, "r");
+	FILE *fp = fopen(path, "r");
 	if(!fp)
 	{
-		log_err("Cannot read "DNSMASQ_STATIC_LEASES" for reading, unable to import static leases: %s", strerror(errno));
+		log_err("Cannot read %s for reading, unable to import static leases: %s",
+		        path, strerror(errno));
 		return false;
 	}
 
@@ -390,9 +393,14 @@ bool read_legacy_dhcp_static_config(void)
 	// Close file
 	if(fclose(fp) != 0)
 	{
-		log_err("Cannot close "DNSMASQ_STATIC_LEASES": %s", strerror(errno));
+		log_err("Cannot close %s: %s", path, strerror(errno));
 		return false;
 	}
+
+	// Move file to backup location
+	log_info("Moving %s to %s", path, target);
+	if(rename(path, target) != 0)
+		log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
 
 	return true;
 }
