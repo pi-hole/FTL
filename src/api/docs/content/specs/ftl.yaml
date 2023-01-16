@@ -464,11 +464,34 @@ components:
       type: object
       properties:
         endpoints:
-          type: array
+          type: object
           description: Endpoints
-          items:
-            type: string
-          example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+          properties:
+            get:
+              type: array
+              items:
+                type: string
+              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+            post:
+              type: array
+              items:
+                type: string
+              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+            put:
+              type: array
+              items:
+                type: string
+              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+            patch:
+              type: array
+              items:
+                type: string
+              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+            delete:
+              type: array
+              items:
+                type: string
+              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
 
   parameters:
     logs:

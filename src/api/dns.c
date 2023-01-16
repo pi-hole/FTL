@@ -125,8 +125,7 @@ int api_dns_blocking(struct ftl_conn *api)
 	}
 	else
 	{
-		// This results in error 404
-		return 0;
+		return send_json_error(api, 405, "method_not_allowed", "Method not allowed", NULL);
 	}
 }
 

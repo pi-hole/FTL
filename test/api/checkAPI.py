@@ -27,7 +27,7 @@ if __name__ == "__main__":
 	print("Endpoints in OpenAPI specs but not in FTL:")
 	# Check for endpoints in OpenAPI specs that are not defined in FTL
 	for path in openapi.endpoints["get"]:
-		if path not in ftl.endpoints:
+		if path not in ftl.endpoints["get"]:
 			print("  Missing GET endpoint in FTL: " + path)
 			errs[0] += 1
 	if errs[0] == 0:
@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
 	# Check for endpoints in FTL that are not in the OpenAPI specs
 	print("Endpoints in FTL but not in OpenAPI specs:")
-	for path in ftl.endpoints:
+	for path in ftl.endpoints["get"]:
 		if path not in openapi.endpoints["get"]:
 			# Ignore the docs endpoint
 			if path in ["/api/docs"]:

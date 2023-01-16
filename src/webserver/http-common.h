@@ -21,7 +21,14 @@
 
 // Maximum size of received and processed payload: 64 KB
 #define MAX_PAYLOAD_BYTES 64*1024
-enum http_method { HTTP_UNKNOWN, HTTP_GET, HTTP_POST, HTTP_PUT, HTTP_PATCH, HTTP_DELETE };
+enum http_method {
+	HTTP_UNKNOWN = 0,
+	HTTP_GET = 1 << 0,
+	HTTP_POST = 1 << 1,
+	HTTP_PUT = 1 << 2,
+	HTTP_PATCH = 1 << 3,
+	HTTP_DELETE = 1 << 4,
+};
 struct ftl_conn {
 	struct mg_connection *conn;
 	const struct mg_request_info *request;

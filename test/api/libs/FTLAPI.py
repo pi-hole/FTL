@@ -29,7 +29,13 @@ sid = session["session"]["sid"] # SID string if succesful, null otherwise
 class FTLAPI():
 	def __init__(self, api_url: str):
 		self.api_url = api_url
-		self.endpoints = []
+		self.endpoints = {
+			"get": [],
+			"post": [],
+			"put": [],
+			"patch": [],
+			"delete": []
+		}
 		self.errors = []
 		self.session = None
 		self.verbose = False
@@ -130,9 +136,12 @@ class FTLAPI():
 	def get_endpoints(self):
 		try:
 			# Get all endpoints from FTL and sort them for comparison
-			for endpoint in self.GET("/api/ftl/endpoints")["endpoints"]:
-				self.endpoints.append(endpoint["uri"] + endpoint["parameters"])
-			self.endpoints = sorted(self.endpoints)
+			response = self.GET("/api/ftl/endpoints")
+			for method in response["endpoints"]:
+				for endpoint in response["endpoints"][method]:
+					self.endpoints[method].append(endpoint["uri"] + endpoint["parameters"])
+			for method in self.endpoints:
+				self.endpoints[method] = sorted(self.endpoints[method])
 		except Exception as e:
 			print("Exception when pre-processing endpoints from FTL: " + str(e))
 			exit(1)
