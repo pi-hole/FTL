@@ -28,49 +28,50 @@ static struct {
 	const char *parameters;
 	int (*func)(struct ftl_conn *api);
 	const bool opts[2];
+	bool require_auth;
 	enum http_method methods;
 } api_request[] = {
-	// URI                                      ARGUMENTS                     FUNCTION                               OPTIONS           ALLOWED METHODS
+	// URI                                      ARGUMENTS                     FUNCTION                               OPTIONS           AUTH   ALLOWED METHODS
 	// Note: The order of appearance matters here, more specific URIs have to
 	// appear *before* less specific URIs: 1. "/a/b/c", 2. "/a/b", 3. "/a"
-	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { false, false }, HTTP_GET | HTTP_POST },
-	{ "/api/dns/cache",                         "",                           api_dns_cache,                         { false, false }, HTTP_GET },
-	{ "/api/dns/port",                          "",                           api_dns_port,                          { false, false }, HTTP_GET },
-	{ "/api/dns/entries",                       "",                           api_dns_entries,                       { false, false }, HTTP_GET },
-	{ "/api/dns/entries",                       "/{ip}/{host}",               api_dns_entries,                       { false, false }, HTTP_PUT | HTTP_DELETE },
-	{ "/api/clients",                           "/{client}",                  api_list,                              { false, false }, HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
-	{ "/api/domains",                           "/{type}/{kind}/{domain}",    api_list,                              { false, false }, HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
-	{ "/api/groups",                            "/{name}",                    api_list,                              { false, false }, HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
-	{ "/api/lists",                             "/{list}",                    api_list,                              { false, false }, HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
-	{ "/api/ftl/client",                        "",                           api_ftl_client,                        { false, false }, HTTP_GET },
-	{ "/api/ftl/logs/dns",                      "",                           api_ftl_logs_dns,                      { false, false }, HTTP_GET },
-	{ "/api/ftl/sysinfo",                       "",                           api_ftl_sysinfo,                       { false, false }, HTTP_GET },
-	{ "/api/ftl/dbinfo",                        "",                           api_ftl_dbinfo,                        { false, false }, HTTP_GET },
-	{ "/api/ftl/endpoints",                     "",                           api_ftl_endpoints,                     { false, false }, HTTP_GET },
-	{ "/api/history/clients",                   "",                           api_history_clients,                   { false, false }, HTTP_GET },
-	{ "/api/history/database/clients",          "",                           api_history_database_clients,          { false, false }, HTTP_GET },
-	{ "/api/history/database",                  "",                           api_history_database,                  { false, false }, HTTP_GET },
-	{ "/api/history",                           "",                           api_history,                           { false, false }, HTTP_GET },
-	{ "/api/queries/suggestions",               "",                           api_queries_suggestions,               { false, false }, HTTP_GET },
-	{ "/api/queries",                           "",                           api_queries,                           { false, false }, HTTP_GET },
-	{ "/api/stats/summary",                     "",                           api_stats_summary,                     { false, false }, HTTP_GET },
-	{ "/api/stats/query_types",                 "",                           api_stats_query_types,                 { false, false }, HTTP_GET },
-	{ "/api/stats/upstreams",                   "",                           api_stats_upstreams,                   { false, false }, HTTP_GET },
-	{ "/api/stats/top_domains",                 "",                           api_stats_top_domains,                 { false, false }, HTTP_GET },
-	{ "/api/stats/top_clients",                 "",                           api_stats_top_clients,                 { false, false }, HTTP_GET },
-	{ "/api/stats/recent_blocked",              "",                           api_stats_recentblocked,               { false, false }, HTTP_GET },
-	{ "/api/stats/database/top_domains",        "",                           api_stats_database_top_items,          { false, true  }, HTTP_GET },
-	{ "/api/stats/database/top_clients",        "",                           api_stats_database_top_items,          { false, false }, HTTP_GET },
-	{ "/api/stats/database/summary",            "",                           api_stats_database_summary,            { false, false }, HTTP_GET },
-	{ "/api/stats/database/query_types",        "",                           api_stats_database_query_types,        { false, false }, HTTP_GET },
-	{ "/api/stats/database/upstreams",          "",                           api_stats_database_upstreams,          { false, false }, HTTP_GET },
-	{ "/api/version",                           "",                           api_version,                           { false, false }, HTTP_GET },
-	{ "/api/auth",                              "",                           api_auth,                              { false, false }, HTTP_GET | HTTP_POST | HTTP_DELETE },
-	{ "/api/config",                            "",                           api_config,                            { false, false }, HTTP_GET | HTTP_PATCH },
-	{ "/api/network/gateway",                   "",                           api_network_gateway,                   { false, false }, HTTP_GET },
-	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { false, false }, HTTP_GET },
-	{ "/api/network/devices",                   "",                           api_network_devices,                   { false, false }, HTTP_GET },
-	{ "/api/docs",                              "",                           api_docs,                              { false, false }, HTTP_GET },
+	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { false, false }, true,  HTTP_GET | HTTP_POST },
+	{ "/api/dns/cache",                         "",                           api_dns_cache,                         { false, false }, true,  HTTP_GET },
+	{ "/api/dns/port",                          "",                           api_dns_port,                          { false, false }, true,  HTTP_GET },
+	{ "/api/dns/entries",                       "",                           api_dns_entries,                       { false, false }, true,  HTTP_GET },
+	{ "/api/dns/entries",                       "/{ip}/{host}",               api_dns_entries,                       { false, false }, true,  HTTP_PUT | HTTP_DELETE },
+	{ "/api/clients",                           "/{client}",                  api_list,                              { false, false }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
+	{ "/api/domains",                           "/{type}/{kind}/{domain}",    api_list,                              { false, false }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
+	{ "/api/groups",                            "/{name}",                    api_list,                              { false, false }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
+	{ "/api/lists",                             "/{list}",                    api_list,                              { false, false }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
+	{ "/api/ftl/client",                        "",                           api_ftl_client,                        { false, false }, false, HTTP_GET },
+	{ "/api/ftl/logs/dns",                      "",                           api_ftl_logs_dns,                      { false, false }, true,  HTTP_GET },
+	{ "/api/ftl/sysinfo",                       "",                           api_ftl_sysinfo,                       { false, false }, true,  HTTP_GET },
+	{ "/api/ftl/dbinfo",                        "",                           api_ftl_dbinfo,                        { false, false }, true,  HTTP_GET },
+	{ "/api/ftl/endpoints",                     "",                           api_ftl_endpoints,                     { false, false }, true,  HTTP_GET },
+	{ "/api/history/clients",                   "",                           api_history_clients,                   { false, false }, true,  HTTP_GET },
+	{ "/api/history/database/clients",          "",                           api_history_database_clients,          { false, false }, true,  HTTP_GET },
+	{ "/api/history/database",                  "",                           api_history_database,                  { false, false }, true,  HTTP_GET },
+	{ "/api/history",                           "",                           api_history,                           { false, false }, true,  HTTP_GET },
+	{ "/api/queries/suggestions",               "",                           api_queries_suggestions,               { false, false }, true,  HTTP_GET },
+	{ "/api/queries",                           "",                           api_queries,                           { false, false }, true,  HTTP_GET },
+	{ "/api/stats/summary",                     "",                           api_stats_summary,                     { false, false }, true,  HTTP_GET },
+	{ "/api/stats/query_types",                 "",                           api_stats_query_types,                 { false, false }, true,  HTTP_GET },
+	{ "/api/stats/upstreams",                   "",                           api_stats_upstreams,                   { false, false }, true,  HTTP_GET },
+	{ "/api/stats/top_domains",                 "",                           api_stats_top_domains,                 { false, false }, true,  HTTP_GET },
+	{ "/api/stats/top_clients",                 "",                           api_stats_top_clients,                 { false, false }, true,  HTTP_GET },
+	{ "/api/stats/recent_blocked",              "",                           api_stats_recentblocked,               { false, false }, true,  HTTP_GET },
+	{ "/api/stats/database/top_domains",        "",                           api_stats_database_top_items,          { false, true  }, true,  HTTP_GET },
+	{ "/api/stats/database/top_clients",        "",                           api_stats_database_top_items,          { false, false }, true,  HTTP_GET },
+	{ "/api/stats/database/summary",            "",                           api_stats_database_summary,            { false, false }, true,  HTTP_GET },
+	{ "/api/stats/database/query_types",        "",                           api_stats_database_query_types,        { false, false }, true,  HTTP_GET },
+	{ "/api/stats/database/upstreams",          "",                           api_stats_database_upstreams,          { false, false }, true,  HTTP_GET },
+	{ "/api/version",                           "",                           api_version,                           { false, false }, true,  HTTP_GET },
+	{ "/api/auth",                              "",                           api_auth,                              { false, false }, false, HTTP_GET | HTTP_POST | HTTP_DELETE },
+	{ "/api/config",                            "",                           api_config,                            { false, false }, true,  HTTP_GET | HTTP_PATCH },
+	{ "/api/network/gateway",                   "",                           api_network_gateway,                   { false, false }, true,  HTTP_GET },
+	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { false, false }, true,  HTTP_GET },
+	{ "/api/network/devices",                   "",                           api_network_devices,                   { false, false }, true,  HTTP_GET },
+	{ "/api/docs",                              "",                           api_docs,                              { false, false }, false, HTTP_GET },
 };
 
 int api_handler(struct mg_connection *conn, void *ignored)
@@ -119,6 +120,11 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		{
 			// Copy options to API struct
 			memcpy(api.opts, api_request[i].opts, sizeof(api.opts));
+
+			// Verify requesting client is allowed to see this ressource
+			if(api_request[i].require_auth && check_client_auth(&api) == API_AUTH_UNAUTHORIZED)
+				return send_json_unauthorized(&api);
+
 			// Call the API function and get the return code
 			log_debug(DEBUG_API, "Sending to %s", api_request[i].uri);
 			ret = api_request[i].func(&api);
@@ -166,10 +172,6 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 static int api_ftl_endpoints(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	cJSON *get = JSON_NEW_ARRAY();
 	cJSON *post = JSON_NEW_ARRAY();
 	cJSON *put = JSON_NEW_ARRAY();

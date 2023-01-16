@@ -70,10 +70,6 @@ static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 
 int api_network_gateway(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	in_addr_t gw = 0;
 	char iface[IF_NAMESIZE] = { 0 };
 
@@ -90,10 +86,6 @@ int api_network_gateway(struct ftl_conn *api)
 
 int api_network_interfaces(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	cJSON *json = JSON_NEW_OBJECT();
 
 	// Get interface with default route
@@ -316,10 +308,6 @@ int api_network_interfaces(struct ftl_conn *api)
 
 int api_network_devices(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	// Does the user request a custom number of devices to be included?
 	unsigned int device_count = 10;
 	get_uint_var(api->request->query_string, "device_count", &device_count);

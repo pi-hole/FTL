@@ -333,10 +333,6 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 
 static int api_config_get(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	// Parse query string parameters
 	bool detailed = false;
 	if(api->request->query_string != NULL)
@@ -417,10 +413,6 @@ static int api_config_get(struct ftl_conn *api)
 
 static int api_config_patch(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	// Is there a payload with valid JSON data?
 	if (api->payload.json == NULL) {
 		return send_json_error(api, 400,

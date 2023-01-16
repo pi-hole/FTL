@@ -60,10 +60,6 @@ static int get_blocking(struct ftl_conn *api)
 
 static int set_blocking(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to access this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	if (api->payload.json == NULL) {
 		return send_json_error(api, 400,
 		                       "bad_request",
@@ -131,10 +127,6 @@ int api_dns_blocking(struct ftl_conn *api)
 
 int api_dns_cache(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to access this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	struct cache_info ci = { 0 };
 	get_dnsmasq_cache_info(&ci);
 	cJSON *cache = JSON_NEW_OBJECT();
@@ -449,10 +441,6 @@ static int remove_from_custom_list(struct ftl_conn *api, cJSON *entries)
 
 int api_dns_entries(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	if(api->method == HTTP_GET)
 	{
 		// Read list item identified by URI (or read them all)

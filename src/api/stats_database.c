@@ -25,10 +25,6 @@
 
 int api_history_database(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	double from = 0, until = 0;
 	const int interval = 600;
 	if(api->request->query_string != NULL)
@@ -180,10 +176,6 @@ int api_history_database(struct ftl_conn *api)
 
 int api_stats_database_top_items(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	unsigned int count = 10;
 	double from = 0.0, until = 0.0;
 
@@ -374,10 +366,6 @@ int api_stats_database_top_items(struct ftl_conn *api)
 
 int api_stats_database_summary(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	double from = 0, until = 0;
 	if(api->request->query_string != NULL)
 	{
@@ -451,10 +439,6 @@ int api_stats_database_summary(struct ftl_conn *api)
 
 int api_history_database_clients(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	double from = 0, until = 0;
 	const int interval = 600;
 	if(api->request->query_string != NULL)
@@ -676,10 +660,6 @@ int api_history_database_clients(struct ftl_conn *api)
 
 int api_stats_database_query_types(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	double from = 0, until = 0;
 	if(api->request->query_string != NULL)
 	{
@@ -728,10 +708,6 @@ int api_stats_database_query_types(struct ftl_conn *api)
 
 int api_stats_database_upstreams(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	double from = 0, until = 0;
 	if(api->request->query_string != NULL)
 	{

@@ -70,10 +70,6 @@ int api_ftl_client(struct ftl_conn *api)
 fifologData *fifo_log = NULL;
 int api_ftl_logs_dns(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	unsigned int start = 0u;
 	if(api->request->query_string != NULL)
 	{
@@ -132,10 +128,6 @@ int api_ftl_logs_dns(struct ftl_conn *api)
 
 int api_ftl_dbinfo(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	cJSON *json = JSON_NEW_OBJECT();
 
 	// Add database stat details
@@ -412,10 +404,6 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 
 int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	cJSON *database = JSON_NEW_OBJECT();
 
 	// Source from shared objects within lock
@@ -477,10 +465,6 @@ int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked)
 
 int api_ftl_sysinfo(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	cJSON *json = JSON_NEW_OBJECT();
 
 	// Get system object

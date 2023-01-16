@@ -87,10 +87,6 @@ int api_history_clients(struct ftl_conn *api)
 
 	lock_shm();
 
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	// Find minimum ID to send
 	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{

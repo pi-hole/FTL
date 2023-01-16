@@ -119,10 +119,6 @@ int api_stats_top_domains(struct ftl_conn *api)
 	// Get options from API struct
 	bool blocked = api->opts[0]; // Can be overwritten by query string
 
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
 	{
@@ -274,10 +270,6 @@ int api_stats_top_clients(struct ftl_conn *api)
 	// Get options from API struct
 	bool blocked = api->opts[0]; // Can be overwritten by query string
 
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
@@ -393,10 +385,6 @@ int api_stats_top_clients(struct ftl_conn *api)
 
 int api_stats_upstreams(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	const int forwarded = get_forwarded_count();
 	unsigned int totalcount = 0;
 	int temparray[forwarded][2];
@@ -507,10 +495,6 @@ int api_stats_upstreams(struct ftl_conn *api)
 
 int api_stats_query_types(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	lock_shm();
 
 	cJSON *types = JSON_NEW_OBJECT();
@@ -530,10 +514,6 @@ int api_stats_query_types(struct ftl_conn *api)
 
 int api_stats_recentblocked(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
 	{

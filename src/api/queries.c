@@ -73,10 +73,6 @@ static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *
 int api_queries_suggestions(struct ftl_conn *api)
 {
 	int rc;
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
-
 	// Does the user request a custom number of records to be included?
 	int count = 10;
 	get_int_var(api->request->query_string, "count", &count);
@@ -226,10 +222,6 @@ int api_queries(struct ftl_conn *api)
 		JSON_ADD_NULL_TO_OBJECT(json, "cursor");
 		JSON_SEND_OBJECT(json);
 	}
-
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-		return send_json_unauthorized(api);
 
 	// Lock shared memory
 	lock_shm();
