@@ -18,6 +18,7 @@ set(sources
         network.c
         history.c
         list.c
+        logs.c
         queries.c
         stats_database.c
         stats.c

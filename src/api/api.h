@@ -47,12 +47,14 @@ int api_stats_database_upstreams(struct ftl_conn *api);
 
 // FTL methods
 int api_ftl_client(struct ftl_conn *api);
-int api_ftl_logs_dns(struct ftl_conn *api);
 int api_ftl_dbinfo(struct ftl_conn *api);
 int api_ftl_sysinfo(struct ftl_conn *api);
 int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked);
 int get_system_obj(struct ftl_conn *api, cJSON *system);
 int api_config(struct ftl_conn *api);
+
+// Log methods
+int api_logs_dnsmasq(struct ftl_conn *api);
 
 // Network methods
 int api_network_gateway(struct ftl_conn *api);
