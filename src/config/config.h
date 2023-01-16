@@ -156,6 +156,7 @@ struct config {
 		struct conf_item listening_mode;
 		struct conf_item cache_size;
 		struct conf_item logging;
+		struct conf_item cnames;
 		struct {
 			struct conf_item active;
 			struct conf_item cidr;

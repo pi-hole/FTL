@@ -339,6 +339,13 @@ void initConfig(void)
 	config.dnsmasq.logging.d.b = true;
 	config.dnsmasq.logging.restart_dnsmasq = true;
 
+	config.dnsmasq.cnames.k = "dnsmasq.cnames";
+	config.dnsmasq.cnames.h = "List of CNAME records which indicate that <cname> is really <target>. If the <TTL> is given, it overwrites the value of local-ttl";
+	config.dnsmasq.cnames.a = "Array of static leases each on in one of the following forms: \"<cname>,<target>[,<TTL>]\"";
+	config.dnsmasq.cnames.t = CONF_JSON_STRING_ARRAY;
+	config.dnsmasq.cnames.d.json = cJSON_CreateArray();
+	config.dnsmasq.cnames.restart_dnsmasq = true;
+
 	// sub-struct rev_server
 	config.dnsmasq.rev_server.active.k = "dnsmasq.rev_server.active";
 	config.dnsmasq.rev_server.active.h = "Is the reverse server (former also called \"conditional forwarding\") feature enabled?";
@@ -859,6 +866,7 @@ void readFTLconf(const bool rewrite)
 			write_dnsmasq_config(false);
 		}
 		read_legacy_dhcp_static_config();
+		read_legacy_cnames_config();
 		return;
 	}
 

@@ -283,6 +283,19 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 		}
 	}
 
+	if(cJSON_GetArraySize(config.dnsmasq.cnames.v.json) > 0)
+	{
+		fputs("# User-defined custom CNAMEs\n", pihole_conf);
+		const int n = cJSON_GetArraySize(config.dnsmasq.cnames.v.json);
+		for(int i = 0; i < n; i++)
+		{
+			cJSON *server = cJSON_GetArrayItem(config.dnsmasq.cnames.v.json, i);
+			if(server != NULL && cJSON_IsString(server))
+				fprintf(pihole_conf, "cname=%s\n", server->valuestring);
+		}
+		fputs("\n", pihole_conf);
+	}
+
 	fputs("# RFC 6761: Caching DNS servers SHOULD recognize\n", pihole_conf);
 	fputs("#     test, localhost, invalid\n", pihole_conf);
 	fputs("# names as special and SHOULD NOT attempt to look up NS records for them, or\n", pihole_conf);
@@ -392,6 +405,69 @@ bool read_legacy_dhcp_static_config(void)
 
 		log_debug(DEBUG_CONFIG, DNSMASQ_STATIC_LEASES": Setting %s[%d] = %s\n",
 		          config.dnsmasq.dhcp.hosts.k, j++, item->valuestring);
+	}
+
+	// Free allocated memory
+	free(linebuffer);
+
+	// Close file
+	if(fclose(fp) != 0)
+	{
+		log_err("Cannot close %s: %s", path, strerror(errno));
+		return false;
+	}
+
+	// Move file to backup location
+	log_info("Moving %s to %s", path, target);
+	if(rename(path, target) != 0)
+		log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
+
+	return true;
+}
+
+
+bool read_legacy_cnames_config(void)
+{
+	// Check if file exists, if not, there is nothing to do
+	const char *path = DNSMASQ_CNAMES;
+	const char *target = DNSMASQ_CNAMES".bck";
+	if(!file_exists(path))
+		return true;
+
+	FILE *fp = fopen(path, "r");
+	if(!fp)
+	{
+		log_err("Cannot read %s for reading, unable to import list of custom cnames: %s",
+		        path, strerror(errno));
+		return false;
+	}
+
+	char *linebuffer = NULL;
+	size_t size = 0u;
+	errno = 0;
+	unsigned int j = 0;
+	while(getline(&linebuffer, &size, fp) != -1)
+	{
+		// Check if memory allocation failed
+		if(linebuffer == NULL)
+			break;
+
+		// Skip lines with other keys
+		if((strstr(linebuffer, "cname=")) == NULL)
+			continue;
+
+		// Note: value is still a pointer into the linebuffer
+		char *value = find_equals(linebuffer) + 1;
+		// Trim whitespace at beginning and end, this function
+		// modifies the string inplace
+		trim_whitespace(value);
+
+		// Add entry to config.dnsmasq.cnames
+		cJSON *item = cJSON_CreateString(value);
+		cJSON_AddItemToArray(config.dnsmasq.cnames.v.json, item);
+
+		log_debug(DEBUG_CONFIG, DNSMASQ_CNAMES": Setting %s[%d] = %s\n",
+		          config.dnsmasq.cnames.k, j++, item->valuestring);
 	}
 
 	// Free allocated memory

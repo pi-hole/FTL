@@ -168,6 +168,10 @@ components:
                   type: integer
                 logging:
                   type: boolean
+                cnames:
+                  type: array
+                  items:
+                    type: string
                 rev_server:
                   type: object
                   properties:
@@ -424,6 +428,9 @@ components:
             listening_mode: "local"
             cache_size: 10000
             logging: true
+            cnames:
+              - "*.example.com,default.example.com"
+              - "hourly.yetanother.com,yetanother.com,3600"
             rev_server:
               active: false
               cidr: "192.168.0.0/24"
