@@ -7,7 +7,7 @@ env:
 
 jobs:
   openapi-validator:
-    name: Node ${{ matrix.node }}
+    name: Node
     runs-on: ubuntu-latest
 
     steps:

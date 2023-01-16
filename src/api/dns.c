@@ -311,43 +311,20 @@ static int write_custom_list(struct ftl_conn *api, cJSON *entries)
 
 static int add_to_custom_list(struct ftl_conn *api, cJSON *entries)
 {
-	// Check if valid JSON payload is available
-	if (api->payload.json == NULL)
-	{
-		cJSON_Delete(entries);
-		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "Invalid request body data (no valid JSON)",
-		                       NULL);
-	}
-
+	// Split URI into IP and host
 	char *ip = NULL;
-	cJSON *json_ip = cJSON_GetObjectItem(api->payload.json, "ip");
-	if(cJSON_IsString(json_ip) && strlen(json_ip->valuestring) > 0)
-	{
-		ip = json_ip->valuestring;
-	}
-	else
-	{
-		cJSON_Delete(entries);
-		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "Invalid request: No item \"ip\" in payload",
-		                       NULL);
-	}
 	char *host = NULL;
-	cJSON *json_host = cJSON_GetObjectItem(api->payload.json, "host");
-	if(cJSON_IsString(json_host) && strlen(json_host->valuestring) > 0)
-	{
-		host = json_host->valuestring;
-	}
-	else
+	if(sscanf(api->item, "%m[^/]/%m[^/]", &ip, &host) != 2)
 	{
 		cJSON_Delete(entries);
+		if(ip != NULL)
+			free(ip);
+		if(host != NULL)
+			free(host);
 		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "Invalid request: No item \"host\" in payload",
-		                       NULL);
+		                       "validation_error",
+		                       "Invalid URI",
+		                       "URI must be in the format /api/dns/entries/{ip}/{host}");
 	}
 
 	// Convert domain to lowercase
@@ -358,6 +335,8 @@ static int add_to_custom_list(struct ftl_conn *api, cJSON *entries)
 	if(error != NULL)
 	{
 		cJSON_Delete(entries);
+		free(ip);
+		free(host);
 		return send_json_error(api, 400,
 		                       "validation_error",
 		                       "Specified host is not valid",
@@ -369,6 +348,8 @@ static int add_to_custom_list(struct ftl_conn *api, cJSON *entries)
 	if(!isValidIPv4(ip) && !isValidIPv6(ip))
 	{
 		cJSON_Delete(entries);
+		free(ip);
+		free(host);
 		return send_json_error(api, 400,
 		                       "validation_error",
 		                       "Specified IP address is neither a valid IPv4 nor IPv6 address",
@@ -395,6 +376,8 @@ static int add_to_custom_list(struct ftl_conn *api, cJSON *entries)
 		   strcmp(host, list_host->valuestring) == 0)
 		{
 			// Entry already present in list, no need to add it
+			free(ip);
+			free(host);
 			return 200;
 		}
 	}
@@ -406,48 +389,27 @@ static int add_to_custom_list(struct ftl_conn *api, cJSON *entries)
 	JSON_ADD_ITEM_TO_ARRAY(entries, entry);
 
 	// Write the file
+	free(ip);
+	free(host);
 	return write_custom_list(api, entries);
 }
 
 static int remove_from_custom_list(struct ftl_conn *api, cJSON *entries)
 {
-	// Check if valid JSON payload is available
-	if (api->payload.json == NULL)
-	{
-		cJSON_Delete(entries);
-		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "Invalid request body data (no valid JSON)",
-		                       NULL);
-	}
-
+	// Split URI into IP and host
 	char *ip = NULL;
-	cJSON *json_ip = cJSON_GetObjectItem(api->payload.json, "ip");
-	if(cJSON_IsString(json_ip) && strlen(json_ip->valuestring) > 0)
-	{
-		ip = json_ip->valuestring;
-	}
-	else
-	{
-		cJSON_Delete(entries);
-		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "Invalid request: No item \"ip\" in payload",
-		                       NULL);
-	}
 	char *host = NULL;
-	cJSON *json_host = cJSON_GetObjectItem(api->payload.json, "host");
-	if(cJSON_IsString(json_host) && strlen(json_host->valuestring) > 0)
-	{
-		host = json_host->valuestring;
-	}
-	else
+	if(sscanf(api->item, "%m[^/]/%m[^/]", &ip, &host) != 2)
 	{
 		cJSON_Delete(entries);
+		if(ip != NULL)
+			free(ip);
+		if(host != NULL)
+			free(host);
 		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "Invalid request: No item \"host\" in payload",
-		                       NULL);
+		                       "validation_error",
+		                       "Invalid URI",
+		                       "URI must be in the format /api/dns/entries/{ip}/{host}");
 	}
 
 	// Convert domain to lowercase
@@ -456,7 +418,11 @@ static int remove_from_custom_list(struct ftl_conn *api, cJSON *entries)
 	// Read list from disk
 	int ret = read_custom_list(api, entries);
 	if(ret != 200)
+	{
+		free(ip);
+		free(host);
 		return ret;
+	}
 
 	// Check if this entry exists in the list
 	for(int i = 0; i < cJSON_GetArraySize(entries); i++)
@@ -477,6 +443,8 @@ static int remove_from_custom_list(struct ftl_conn *api, cJSON *entries)
 	}
 
 	// Write the file
+	free(ip);
+	free(host);
 	return write_custom_list(api, entries);
 }
 
@@ -501,7 +469,7 @@ int api_dns_entries(struct ftl_conn *api)
 			JSON_SEND_OBJECT(json);
 		}
 	}
-	else if(api->method == HTTP_POST)
+	else if(api->method == HTTP_PUT)
 	{
 		// Add item to list identified by payload
 		cJSON *entries = JSON_NEW_ARRAY();

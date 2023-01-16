@@ -16,7 +16,6 @@
 #include "../fifo.h"
 // sysinfo()
 #include <sys/sysinfo.h>
-#include <linux/sysinfo.h>
 // get_blockingstatus()
 #include "../setupVars.h"
 // counters

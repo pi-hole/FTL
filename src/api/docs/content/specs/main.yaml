@@ -112,7 +112,10 @@ paths:
     $ref: 'dns.yaml#/components/paths/port'
 
   /dns/entries:
-    $ref: 'dns.yaml#/components/paths/entries'
+    $ref: 'dns.yaml#/components/paths/entries/get'
+
+  /dns/entries/{ip}/{host}:
+    $ref: 'dns.yaml#/components/paths/entries/put_delete'
 
   /domains/{type}/{kind}/{domain}:
     $ref: 'domains.yaml#/components/paths/type_kind_domain'

@@ -35,7 +35,7 @@ static struct {
 	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { false, false } },
 	{ "/api/dns/cache",                         "",                           api_dns_cache,                         { false, false } },
 	{ "/api/dns/port",                          "",                           api_dns_port,                          { false, false } },
-	{ "/api/dns/entries",                       "",                           api_dns_entries,                       { false, false } },
+	{ "/api/dns/entries",                       "/{ip}/{host}",               api_dns_entries,                       { false, false } },
 	{ "/api/clients",                           "/{client}",                  api_list,                              { false, false } },
 	{ "/api/domains",                           "/{type}/{kind}/{domain}",    api_list,                              { false, false } },
 	{ "/api/groups",                            "/{name}",                    api_list,                              { false, false } },

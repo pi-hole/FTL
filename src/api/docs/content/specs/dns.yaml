@@ -105,86 +105,80 @@ components:
                 schema:
                   $ref: 'dns.yaml#/components/schemas/dns_port'
     entries:
-      summary: Modify list of additional DNS records
       get:
-        summary: Get current list of additional DNS records
-        tags:
-          - DNS control
-        operationId: "get_dns_entries"
-        description: Returns a list of currently configured additional DNS records (if any)
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: 'dns.yaml#/components/schemas/host_records'
-      post:
-        summary: Add entry to list of additional DNS records
-        tags:
-          - DNS control
-        operationId: "add_dns_entries"
-        description: |
-          Adds an additional DNS records to the list of known DNS records
-        requestBody:
-          description: Callback payload
-          content:
-            'application/json':
-              schema:
-                $ref: 'dns.yaml#/components/schemas/host_record'
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: 'dns.yaml#/components/schemas/host_records'
-          '400':
-            description: Bad request
-            content:
-              application/json:
-                schema:
-                  oneOf:
-                  - $ref: 'dns.yaml#/components/schemas/errors/no_payload'
-          '401':
-            description: Unauthorized
-            content:
-              application/json:
-                schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
-      delete:
-        summary: Remove entry to list of additional DNS records
-        tags:
-          - DNS control
-        operationId: "remove_dns_entries"
-        description: |
-          Removes an additional DNS records from the list of known DNS records
-        requestBody:
-          description: Callback payload
-          content:
-            'application/json':
-              schema:
-                $ref: 'dns.yaml#/components/schemas/host_record'
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: 'dns.yaml#/components/schemas/host_records'
-          '400':
-            description: Bad request
-            content:
-              application/json:
-                schema:
-                  oneOf:
-                  - $ref: 'dns.yaml#/components/schemas/errors/no_payload'
-          '401':
-            description: Unauthorized
-            content:
-              application/json:
-                schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+        summary: Read list of additional DNS records
+        get:
+          summary: Get current list of additional DNS records
+          tags:
+            - DNS control
+          operationId: "get_dns_entries"
+          description: Returns a list of currently configured additional DNS records (if any)
+          responses:
+            '200':
+              description: OK
+              content:
+                application/json:
+                  schema:
+                    $ref: 'dns.yaml#/components/schemas/host_records'
+      put_delete:
+        summary: Modify list of additional DNS records
+        parameters:
+          - $ref: 'dns.yaml#/components/parameters/ip'
+          - $ref: 'dns.yaml#/components/parameters/host'
+        put:
+          summary: Add entry to list of additional DNS records
+          tags:
+            - DNS control
+          operationId: "add_dns_entries"
+          description: |
+            Adds an additional DNS records to the list of known DNS records
+          responses:
+            '200':
+              description: OK
+              content:
+                application/json:
+                  schema:
+                    $ref: 'dns.yaml#/components/schemas/host_records'
+            '400':
+              description: Bad request
+              content:
+                application/json:
+                  schema:
+                    oneOf:
+                    - $ref: 'dns.yaml#/components/schemas/errors/no_payload'
+            '401':
+              description: Unauthorized
+              content:
+                application/json:
+                  schema:
+                    $ref: 'common.yaml#/components/errors/unauthorized'
+        delete:
+          summary: Remove entry to list of additional DNS records
+          tags:
+            - DNS control
+          operationId: "remove_dns_entries"
+          description: |
+            Removes an additional DNS records from the list of known DNS records
+          responses:
+            '200':
+              description: OK
+              content:
+                application/json:
+                  schema:
+                    $ref: 'dns.yaml#/components/schemas/host_records'
+            '400':
+              description: Bad request
+              content:
+                application/json:
+                  schema:
+                    oneOf:
+                    - $ref: 'dns.yaml#/components/schemas/errors/no_payload'
+            '401':
+              description: Unauthorized
+              content:
+                application/json:
+                  schema:
+                    $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     blocking:
       type: object
@@ -330,3 +324,20 @@ components:
             ds: 60
             dnskey: 35
             other: 14
+  parameters:
+    ip:
+      in: path
+      name: ip
+      description: IP address (Pv4 or IPv6)
+      schema:
+        type: string
+      required: true
+      example: "192.168.2.10"
+    host:
+      in: path
+      name: host
+      description: Hostname
+      schema:
+        type: string
+      required: true
+      example: "mymusicbox"

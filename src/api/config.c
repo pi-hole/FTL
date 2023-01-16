@@ -474,6 +474,9 @@ static int api_config_patch(struct ftl_conn *api)
 			dnsmasq_changed = true;
 	}
 
+	// Reload debug levels
+	set_debug_flags();
+
 	// Store changed configuration to disk
 	writeFTLtoml(true);
 
