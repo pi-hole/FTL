@@ -21,7 +21,7 @@
 // defined in dnsmasq/dnsmasq.h
 extern volatile char FTL_terminate;
 
-static int api_ftl_endpoints(struct ftl_conn *api);
+static int api_endpoints(struct ftl_conn *api);
 
 static struct {
 	const char *uri;
@@ -47,7 +47,6 @@ static struct {
 	{ "/api/ftl/logs/dns",                      "",                           api_ftl_logs_dns,                      { false, false }, true,  HTTP_GET },
 	{ "/api/ftl/sysinfo",                       "",                           api_ftl_sysinfo,                       { false, false }, true,  HTTP_GET },
 	{ "/api/ftl/dbinfo",                        "",                           api_ftl_dbinfo,                        { false, false }, true,  HTTP_GET },
-	{ "/api/ftl/endpoints",                     "",                           api_ftl_endpoints,                     { false, false }, true,  HTTP_GET },
 	{ "/api/history/clients",                   "",                           api_history_clients,                   { false, false }, true,  HTTP_GET },
 	{ "/api/history/database/clients",          "",                           api_history_database_clients,          { false, false }, true,  HTTP_GET },
 	{ "/api/history/database",                  "",                           api_history_database,                  { false, false }, true,  HTTP_GET },
@@ -71,6 +70,7 @@ static struct {
 	{ "/api/network/gateway",                   "",                           api_network_gateway,                   { false, false }, true,  HTTP_GET },
 	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { false, false }, true,  HTTP_GET },
 	{ "/api/network/devices",                   "",                           api_network_devices,                   { false, false }, true,  HTTP_GET },
+	{ "/api/endpoints",                         "",                           api_endpoints,                         { false, false }, true,  HTTP_GET },
 	{ "/api/docs",                              "",                           api_docs,                              { false, false }, false, HTTP_GET },
 };
 
@@ -170,7 +170,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	return ret;
 }
 
-static int api_ftl_endpoints(struct ftl_conn *api)
+static int api_endpoints(struct ftl_conn *api)
 {
 	cJSON *get = JSON_NEW_ARRAY();
 	cJSON *post = JSON_NEW_ARRAY();

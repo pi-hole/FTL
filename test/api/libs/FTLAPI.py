@@ -136,7 +136,7 @@ class FTLAPI():
 	def get_endpoints(self):
 		try:
 			# Get all endpoints from FTL and sort them for comparison
-			response = self.GET("/api/ftl/endpoints")
+			response = self.GET("/api/endpoints")
 			for method in response["endpoints"]:
 				for endpoint in response["endpoints"][method]:
 					self.endpoints[method].append(endpoint["uri"] + endpoint["parameters"])

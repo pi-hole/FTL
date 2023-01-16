@@ -153,8 +153,8 @@ paths:
   /ftl/dbinfo:
     $ref: 'ftl.yaml#/components/paths/dbinfo'
 
-  /ftl/endpoints:
-    $ref: 'ftl.yaml#/components/paths/endpoints'
+  /endpoints:
+    $ref: 'endpoints.yaml#/components/paths/endpoints'
 
   /config:
     $ref: 'config.yaml#/components/paths/config'
