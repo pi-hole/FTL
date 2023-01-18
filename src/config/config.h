@@ -52,6 +52,7 @@ union conf_value {
 	bool b;                                     // boolean value
 	int i;                                      // integer value
 	unsigned int ui;                            // unsigned int value
+	uint16_t u16;                                // 16 bit unsigned int value
 	long l;                                     // long value
 	unsigned long ul;                           // unsigned long value
 	double d;                                   // double value
@@ -72,6 +73,7 @@ enum conf_type {
 	CONF_BOOL,
 	CONF_INT,
 	CONF_UINT,
+	CONF_UINT16,
 	CONF_LONG,
 	CONF_ULONG,
 	CONF_DOUBLE,
@@ -160,6 +162,7 @@ struct config {
 		struct conf_item cache_size;
 		struct conf_item logging;
 		struct conf_item cnames;
+		struct conf_item port;
 		struct {
 			struct conf_item active;
 			struct conf_item cidr;
@@ -282,7 +285,6 @@ struct config {
 };
 
 extern struct config config;
-extern int dns_port;
 
 #define CONFIG_ELEMENTS (sizeof(config)/sizeof(struct conf_item))
 #define DEBUG_ELEMENTS (sizeof(config.debug)/sizeof(struct conf_item))

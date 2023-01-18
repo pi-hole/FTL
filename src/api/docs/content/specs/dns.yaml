@@ -89,21 +89,6 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
-    port:
-      get:
-        summary: Get DNS port
-        tags:
-          - Metrics
-        operationId: "get_dns_port"
-        description: |
-          This API hook returns the DNS port currently used by Pi-hole.
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: 'dns.yaml#/components/schemas/dns_port'
     entries:
       get:
         summary: Read list of additional DNS records
@@ -195,13 +180,6 @@ components:
           description: Remaining seconds until blocking mode is automatically changed
           nullable: true
           example: 15
-    dns_port:
-      type: object
-      properties:
-        dns_port:
-          type: integer
-          description: DNS port
-          example: 53
     host_record:
       type: object
       properties:

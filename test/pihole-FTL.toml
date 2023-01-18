@@ -145,6 +145,9 @@
   #                      "<cname>,<target>[,<TTL>]"
   cnames = [   ]
 
+  # Port used by the DNS server
+  port = 53
+
   [dnsmasq.rev_server]
     # Is the reverse server (former also called "conditional forwarding") feature enabled?
     active = false

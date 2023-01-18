@@ -150,13 +150,6 @@ int api_dns_cache(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_dns_port(struct ftl_conn *api)
-{
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "dns_port", dns_port);
-	JSON_SEND_OBJECT(json);
-}
-
 static regex_t domain_validation_regex = { 0 };
 static regex_t label_validation_regex = { 0 };
 static const char *check_domain(const char *domain)

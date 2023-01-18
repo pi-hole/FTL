@@ -23,7 +23,6 @@
 #include "config/dnsmasq_config.h"
 
 struct config config = { 0 };
-int dns_port = -1;
 
 void set_all_debug(const bool status)
 {
@@ -366,6 +365,12 @@ void initConfig(void)
 	config.dnsmasq.cnames.t = CONF_JSON_STRING_ARRAY;
 	config.dnsmasq.cnames.d.json = cJSON_CreateArray();
 	config.dnsmasq.cnames.restart_dnsmasq = true;
+
+	config.dnsmasq.port.k = "dnsmasq.port";
+	config.dnsmasq.port.h = "Port used by the DNS server";
+	config.dnsmasq.port.t = CONF_UINT16;
+	config.dnsmasq.port.d.ui = 53u;
+	config.dnsmasq.port.restart_dnsmasq = true;
 
 	// sub-struct rev_server
 	config.dnsmasq.rev_server.active.k = "dnsmasq.rev_server.active";

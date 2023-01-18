@@ -36,7 +36,6 @@ static struct {
 	// appear *before* less specific URIs: 1. "/a/b/c", 2. "/a/b", 3. "/a"
 	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { false, 0             }, true,  HTTP_GET | HTTP_POST },
 	{ "/api/dns/cache",                         "",                           api_dns_cache,                         { false, 0             }, true,  HTTP_GET },
-	{ "/api/dns/port",                          "",                           api_dns_port,                          { false, 0             }, true,  HTTP_GET },
 	{ "/api/dns/entries",                       "",                           api_dns_entries,                       { false, 0             }, true,  HTTP_GET },
 	{ "/api/dns/entries",                       "/{ip}/{host}",               api_dns_entries,                       { false, 0             }, true,  HTTP_PUT | HTTP_DELETE },
 	{ "/api/clients",                           "/{client}",                  api_list,                              { false, 0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },

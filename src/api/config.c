@@ -57,6 +57,8 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 		case CONF_UINT:
 		case CONF_ENUM_PRIVACY_LEVEL:
 			return cJSON_CreateNumber(val->ui);
+		case CONF_UINT16:
+			return cJSON_CreateNumber(val->u16);
 		case CONF_LONG:
 			return cJSON_CreateNumber(val->l);
 		case CONF_ULONG:
@@ -138,6 +140,18 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 			if(!cJSON_IsNumber(elem) ||
 			   elem->valuedouble < 0 || elem->valuedouble > UINT_MAX)
 				return "not of type unsigned integer";
+			// Set item
+			conf_item->v.ui = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "Set %s to %u", conf_item->k, conf_item->v.ui);
+			break;
+		}
+		case CONF_UINT16:
+		{
+			// 1. Check it is a number
+			// 2. Check the number is within the allowed range for the given data type
+			if(!cJSON_IsNumber(elem) ||
+			   elem->valuedouble < 0 || elem->valuedouble > UINT16_MAX)
+				return "not of type unsigned integer (16bit)";
 			// Set item
 			conf_item->v.ui = elem->valuedouble;
 			log_debug(DEBUG_CONFIG, "Set %s to %u", conf_item->k, conf_item->v.ui);

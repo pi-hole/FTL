@@ -91,6 +91,8 @@ bool __attribute__((const)) write_dnsmasq_config(bool test_config)
 	fputs("# Don't read /etc/resolv.conf. Get upstream servers only from the configuration\n", pihole_conf);
 	fputs("no-resolv\n", pihole_conf);
 	fputs("\n", pihole_conf);
+	fputs("# DNS port to be used\n", pihole_conf);
+	fprintf(pihole_conf, "port=%u\n", config.dnsmasq.port.v.u16);
 	if(cJSON_GetArraySize(config.dnsmasq.upstreams.v.json) > 0)
 	{
 		fputs("# List of upstream DNS server\n", pihole_conf);

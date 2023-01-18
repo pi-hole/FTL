@@ -69,6 +69,18 @@ static bool readStringvalue(struct conf_item *conf_item, const char *value)
 			}
 			break;
 		}
+		case CONF_UINT16:
+		{
+			uint16_t val;
+			if(sscanf(value, "%hu", &val) == 1)
+				conf_item->v.ui = val;
+			else
+			{
+				log_err("Config setting %s is invalid, allowed options are: unsigned integer (16 bit)", conf_item->k);
+				return false;
+			}
+			break;
+		}
 		case CONF_LONG:
 		{
 			long val;

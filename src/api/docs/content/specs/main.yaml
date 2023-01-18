@@ -108,9 +108,6 @@ paths:
   /dns/cache:
     $ref: 'dns.yaml#/components/paths/cache'
 
-  /dns/port:
-    $ref: 'dns.yaml#/components/paths/port'
-
   /dns/entries:
     $ref: 'dns.yaml#/components/paths/entries/get'
 

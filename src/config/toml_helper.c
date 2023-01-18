@@ -215,6 +215,9 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 		case CONF_ENUM_PRIVACY_LEVEL:
 			fprintf(fp, "%u", v->ui);
 			break;
+		case CONF_UINT16:
+			fprintf(fp, "%hu", v->u16);
+			break;
 		case CONF_LONG:
 			fprintf(fp, "%li", v->l);
 			break;
@@ -334,6 +337,15 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 				conf_item->v.ui = val.u.i;
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type unsigned integer", conf_item->k);
+			break;
+		}
+		case CONF_UINT16:
+		{
+			const toml_datum_t val = toml_int_in(toml, key);
+			if(val.ok && val.u.i >= 0 && val.u.i <= UINT16_MAX)
+				conf_item->v.ui = val.u.i;
+			else
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type unsigned integer (16 bit)", conf_item->k);
 			break;
 		}
 		case CONF_LONG:

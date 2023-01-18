@@ -225,7 +225,7 @@ char *resolveHostname(const char *addr)
 	// INADDR_LOOPBACK is in host byte order, however, in_addr has to be in
 	// network byte order, convert it here if necessary
 	struct in_addr FTLaddr = { htonl(INADDR_LOOPBACK) };
-	in_port_t FTLport = htons(dns_port);
+	in_port_t FTLport = htons(config.dnsmasq.port.v.u16);
 
 	// Set FTL as system resolver only if not already the primary resolver
 	if(_res.nsaddr_list[0].sin_addr.s_addr != FTLaddr.s_addr || _res.nsaddr_list[0].sin_port != FTLport)

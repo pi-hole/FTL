@@ -93,8 +93,6 @@ components:
                   type: string
                 blockTTL:
                   type: integer
-                port:
-                  type: integer
                 blocking:
                   type: object
                   properties:
@@ -172,6 +170,8 @@ components:
                   type: array
                   items:
                     type: string
+                port:
+                  type: integer
                 rev_server:
                   type: object
                   properties:
@@ -415,7 +415,6 @@ components:
             rateLimit:
               count: 0
               interval: 0
-            port: 53
           dnsmasq:
             upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
             domain: "lan"
@@ -431,6 +430,7 @@ components:
             cnames:
               - "*.example.com,default.example.com"
               - "hourly.yetanother.com,yetanother.com,3600"
+            port: 53
             rev_server:
               active: false
               cidr: "192.168.0.0/24"
