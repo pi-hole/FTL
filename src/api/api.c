@@ -131,15 +131,13 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			log_debug(DEBUG_API, "Done");
 			break;
 		}
-	}
 
-	/******************************** not found or invalid request**************/
-	if(ret == 0)
-	{
-		ret = send_json_error(&api, 404,
-		                      "not_found",
-		                      "Not found",
-		                      api.request->local_uri_raw);
+		// Free memory allocated for action path (if allocated)
+		if(api.action_path != NULL)
+		{
+			free(api.action_path);
+			api.action_path = NULL;
+		}
 	}
 
 	// Free JSON-parsed payload memory (if allocated)
@@ -149,15 +147,18 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		api.payload.json = NULL;
 	}
 
-	// Free action path (if allocated)
-	if(api.action_path != NULL)
-	{
-		free(api.action_path);
-		api.action_path = NULL;
-	}
-
 	// Free raw payload bytes (always allocated)
 	free(api.payload.raw);
+	api.payload.raw = NULL;
+
+	if(ret == 0)
+	{
+		// not found or invalid request
+		ret = send_json_error(&api, 404,
+		                      "not_found",
+		                      "Not found",
+		                      api.request->local_uri_raw);
+	}
 
 	// Restart FTL if requested
 	if(api.ftl.restart)

@@ -263,6 +263,7 @@ int api_network_interfaces(struct ftl_conn *api)
 	}
 
 	freeifaddrs(ifap);
+	closedir(dfd);
 
 	cJSON *sum = JSON_NEW_OBJECT();
 	JSON_COPY_STR_TO_OBJECT(sum, "name", "sum");
