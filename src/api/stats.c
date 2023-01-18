@@ -116,9 +116,6 @@ int api_stats_top_domains(struct ftl_conn *api)
 	int temparray[counters->domains][2], count = 10;
 	bool audit = false;
 
-	// Get options from API struct
-	bool blocked = api->opts[0]; // Can be overwritten by query string
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
 	{
@@ -133,7 +130,8 @@ int api_stats_top_domains(struct ftl_conn *api)
 		JSON_SEND_OBJECT(json);
 	}
 
-	// /api/stats/top_domains?blocked=true is allowed as well
+	bool blocked = false; // Can be overwritten by query string
+	// /api/stats/top_domains?blocked=true
 	if(api->request->query_string != NULL)
 	{
 		// Should blocked clients be shown?
@@ -267,9 +265,6 @@ int api_stats_top_clients(struct ftl_conn *api)
 	int temparray[counters->clients][2], count = 10;
 	bool includezeroclients = false;
 
-	// Get options from API struct
-	bool blocked = api->opts[0]; // Can be overwritten by query string
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
@@ -284,7 +279,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 		JSON_SEND_OBJECT(json);
 	}
 
-	// /api/stats/top_clients9?blocked=true is allowed as well
+	bool blocked = false; // /api/stats/top_clients?blocked=true
 	if(api->request->query_string != NULL)
 	{
 		// Should blocked clients be shown?

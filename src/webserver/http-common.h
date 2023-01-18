@@ -11,8 +11,10 @@
 #define HTTP_H
 
 // External components
-#include "../civetweb/civetweb.h"
-#include "../cJSON/cJSON.h"
+#include "civetweb/civetweb.h"
+#include "cJSON/cJSON.h"
+// enum fifo_logs
+#include "enums.h"
 
 // strlen()
 #include <string.h>
@@ -29,6 +31,12 @@ enum http_method {
 	HTTP_PATCH = 1 << 3,
 	HTTP_DELETE = 1 << 4,
 };
+
+struct api_options {
+	bool domains :1;
+	enum fifo_logs which;
+};
+
 struct ftl_conn {
 	struct mg_connection *conn;
 	const struct mg_request_info *request;
@@ -45,7 +53,7 @@ struct ftl_conn {
 		bool restart;
 	} ftl;
 
-	bool opts[2];
+	struct api_options opts;
 };
 
 

@@ -15,7 +15,6 @@ void parse_args(int argc, char* argv[]);
 extern bool daemonmode, cli_mode, dnsmasq_debug;
 extern int argc_dnsmasq;
 extern const char ** argv_dnsmasq;
-extern bool no_ftl_logging;
 
 const char *cli_tick(void) __attribute__ ((pure));
 const char *cli_cross(void) __attribute__ ((pure));

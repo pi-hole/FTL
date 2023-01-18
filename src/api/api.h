@@ -54,7 +54,7 @@ int get_system_obj(struct ftl_conn *api, cJSON *system);
 int api_config(struct ftl_conn *api);
 
 // Log methods
-int api_logs_dnsmasq(struct ftl_conn *api);
+int api_logs(struct ftl_conn *api);
 
 // Network methods
 int api_network_gateway(struct ftl_conn *api);

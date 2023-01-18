@@ -153,6 +153,15 @@ paths:
   /logs/dnsmasq:
     $ref: 'logs.yaml#/components/paths/logs/dnsmasq'
 
+  /logs/ftl:
+    $ref: 'logs.yaml#/components/paths/logs/ftl'
+
+  /logs/http:
+    $ref: 'logs.yaml#/components/paths/logs/http'
+
+  /logs/ph7:
+    $ref: 'logs.yaml#/components/paths/logs/ph7'
+
   /endpoints:
     $ref: 'endpoints.yaml#/components/paths/endpoints'
 

@@ -85,7 +85,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
-	logg_web(HTTP_INFO, "HTTP info: %s", message);
+	logg_web(FIFO_CIVETWEB, "HTTP info: %s", message);
 	return 1;
 }
 
@@ -93,14 +93,14 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 {
 	// Only log when in API debugging mode
 	if(config.debug.api.v.b)
-		logg_web(HTTP_INFO, "ACCESS: %s", message);
+		logg_web(FIFO_CIVETWEB, "ACCESS: %s", message);
 
 	return 1;
 }
 
 void http_init(void)
 {
-	logg_web(HTTP_INFO, "Initializing HTTP server on port %s", config.http.port.v.s);
+	logg_web(FIFO_CIVETWEB, "Initializing HTTP server on port %s", config.http.port.v.s);
 
 	/* Initialize the library */
 	unsigned int features = MG_FEATURES_FILES |
@@ -111,7 +111,7 @@ void http_init(void)
 
 	if(mg_init_library(features) == 0)
 	{
-		logg_web(HTTP_INFO, "Initializing HTTP library failed!");
+		logg_web(FIFO_CIVETWEB, "Initializing HTTP library failed!");
 		return;
 	}
 

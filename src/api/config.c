@@ -12,30 +12,10 @@
 #include "webserver/http-common.h"
 #include "webserver/json_macros.h"
 #include "api/api.h"
-// struct fifologData
-#include "fifo.h"
-// sysinfo()
-#include <sys/sysinfo.h>
-// get_blockingstatus()
-#include "setupVars.h"
-// counters
-#include "shmem.h"
-// get_FTL_db_filesize()
-#include "files.h"
-// get_sqlite3_version()
-#include "database/common.h"
-// get_number_of_queries_in_DB()
-#include "database/query-table.h"
-// getgrgid()
-#include <grp.h>
 // config struct
 #include "config/config.h"
 // struct clientsData
 #include "datastructure.h"
-// Routing information and flags
-#include <net/route.h>
-// Interate through directories
-#include <dirent.h>
 // INT_MIN, INT_MAX, ...
 #include <limits.h>
 // writeFTLtoml()

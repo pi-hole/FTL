@@ -180,8 +180,8 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	double from = 0.0, until = 0.0;
 
 	// Get options from API struct
-	bool blocked = api->opts[0]; // Can be overwritten by query string
-	const bool domains = api->opts[1];
+	bool blocked = false; // Can be overwritten by query string
+	const bool domains = api->opts.domains;
 
 	// Get parameters from query string
 	if(api->request->query_string != NULL)

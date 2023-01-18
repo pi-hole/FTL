@@ -16,8 +16,6 @@
 #include "config/config.h"
 // data getter functions
 #include "datastructure.h"
-// fifologData
-#include "fifo.h"
 // get_num_regex()
 #include "regex_r.h"
 // sleepms()
@@ -90,7 +88,7 @@ static SharedMemory *sharedMemories[] = { &shm_lock,
                                           &shm_settings,
                                           &shm_dns_cache,
                                           &shm_per_client_regex,
-					  &shm_fifo_log };
+                                          &shm_fifo_log };
 #define NUM_SHMEM (sizeof(sharedMemories)/sizeof(SharedMemory*))
 
 // Variable size array structs
@@ -402,6 +400,7 @@ static void remap_shm(void)
 void _lock_shm(const char *func, const int line, const char *file)
 {
 	log_debug(DEBUG_LOCKS, "Waiting for SHM lock in %s() (%s:%i)", func, file, line);
+	log_debug(DEBUG_LOCKS, "SHM lock: %p", shmLock);
 
 	int result = pthread_mutex_lock(&shmLock->lock.outer);
 

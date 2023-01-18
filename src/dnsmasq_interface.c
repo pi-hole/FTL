@@ -29,6 +29,7 @@
 #include "capabilities.h"
 #include "resolve.h"
 #include "files.h"
+// add_to_fifo_buffer() u.a.
 #include "log.h"
 // Prototype of getCacheInformation()
 #include "api/api.h"
@@ -47,8 +48,6 @@
 #include "api/api_helper.h"
 // logg_rate_limit_message()
 #include "database/message-table.h"
-// add_to_dnsmasq_log_fifo_buffer()
-#include "fifo.h"
 // http_init()
 #include "webserver/webserver.h"
 // type struct sqlite3_stmt_vec
@@ -3293,10 +3292,14 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
 void FTL_dnsmasq_log(const char *payload, const int length)
 {
-	// e.g. on config testing
-	if(no_ftl_logging)
-		return;
-	add_to_dnsmasq_log_fifo_buffer(payload, length);
+	// Lock SHM
+	lock_shm();
+
+	// Add to FIFO buffer
+	add_to_fifo_buffer(FIFO_DNSMASQ, payload, length);
+
+	// Unlock SHM
+	unlock_shm();
 }
 
 // Check sizes of all important in-memory objects. This routine returns the number of

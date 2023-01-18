@@ -121,8 +121,6 @@ set(sources
         dhcp-discover.h
         dnsmasq_interface.c
         dnsmasq_interface.h
-        fifo.c
-        fifo.h
         edns0.c
         edns0.h
         enums.h

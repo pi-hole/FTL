@@ -84,20 +84,20 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	{
 		if( rc == PH7_IO_ERR )
 		{
-			logg_web(PH7_ERROR, "%s: IO error while opening the target file", full_path);
+			logg_web(FIFO_PH7, "%s: IO error while opening the target file", full_path);
 			// Fall back to HTTP server to handle the 404 event
 			return 0;
 		}
 		else if( rc == PH7_VM_ERR )
 		{
-			logg_web(PH7_ERROR, "%s: VM initialization error", full_path);
+			logg_web(FIFO_PH7, "%s: VM initialization error", full_path);
 			// Mark file as processed - this prevents the HTTP server
 			// from printing the raw PHP source code to the user
 			return 1;
 		}
 		else
 		{
-			logg_web(PH7_ERROR, "%s: Compile error (%d)", full_path, rc);
+			logg_web(FIFO_PH7, "%s: Compile error (%d)", full_path, rc);
 
 			mg_printf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
 			          "PHP compilation error, check %s for further details.",
@@ -109,7 +109,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 			ph7_config(pEngine, PH7_CONFIG_ERR_LOG, &zErrLog, &niLen);
 			if( niLen > 0 ){
 				/* zErrLog is null terminated */
-				logg_web(PH7_ERROR, " ---> %s", zErrLog);
+				logg_web(FIFO_PH7, " ---> %s", zErrLog);
 			}
 			// Mark file as processed - this prevents the HTTP server
 			// from printing the raw PHP source code to the user
@@ -134,7 +134,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	{
 		rc = ph7_create_function(pVm, aFunc[i].zName, aFunc[i].xProc, NULL /* NULL: No private data */);
 		if( rc != PH7_OK ){
-			logg_web(PH7_ERROR, "%s: Error while registering foreign function %s()",
+			logg_web(FIFO_PH7, "%s: Error while registering foreign function %s()",
 			         full_path, aFunc[i].zName);
 		}
 	}
@@ -143,7 +143,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	rc = ph7_vm_exec(pVm,0);
 	if( rc != PH7_OK )
 	{
-		logg_web(PH7_ERROR, "%s: VM execution error", full_path);
+		logg_web(FIFO_PH7, "%s: VM execution error", full_path);
 		// Mark file as processed - this prevents the HTTP server
 		// from printing the raw PHP source code to the user
 		return 1;
@@ -173,7 +173,7 @@ static int PH7_error_report(const void *pOutput, unsigned int nOutputLen,
 	// Log error message, strip trailing newline character if any
 	if(((const char*)pOutput)[nOutputLen-1] == '\n')
 		nOutputLen--;
-	logg_web(PH7_ERROR, "%.*s", nOutputLen, (const char*)pOutput);
+	logg_web(FIFO_PH7, "%.*s", nOutputLen, (const char*)pOutput);
 	return PH7_OK;
 }
 
@@ -181,7 +181,7 @@ void init_ph7(void)
 {
 	if(ph7_init(&pEngine) != PH7_OK )
 	{
-		logg_web(PH7_ERROR, "Error while initializing a new PH7 engine instance");
+		logg_web(FIFO_PH7, "Error while initializing a new PH7 engine instance");
 		return;
 	}
 

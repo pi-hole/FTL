@@ -209,11 +209,6 @@ enum timers {
 	LAST_TIMER
 } __attribute__ ((packed));
 
-enum web_code {
-	HTTP_INFO,
-	PH7_ERROR
-} __attribute__ ((packed));
-
 enum refresh_hostnames {
 	REFRESH_ALL,
 	REFRESH_IPV4_ONLY,
@@ -285,6 +280,14 @@ enum listening_mode {
 	LISTEN_ALL,
 	LISTEN_SINGLE,
 	LISTEN_BIND
+} __attribute__ ((packed));
+
+enum fifo_logs {
+	FIFO_FTL = 1,
+	FIFO_DNSMASQ,
+	FIFO_CIVETWEB,
+	FIFO_PH7,
+	FIFO_MAX
 } __attribute__ ((packed));
 
 #endif // ENUMS_H

@@ -32,7 +32,7 @@ void log_FTL_version(bool crashreport);
 double double_time(void);
 void get_timestr(char * const timestring, const time_t timein, const bool millis);
 void debugstr(const enum debug_flag flag, const char **name);
-void logg_web(enum web_code code, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
+void logg_web(enum fifo_logs which, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 void print_FTL_version(void);
 void dnsmasq_diagnosis_warning(char *message);
@@ -60,5 +60,25 @@ int cached_queries(void)  __attribute__ ((pure));
 int blocked_queries(void)  __attribute__ ((pure));
 
 const char *short_path(const char *full_path) __attribute__ ((pure));
+
+/* From RFC 3164 */
+#define MAX_MSG_FIFO 1024u
+
+// How many messages do we keep in memory (FIFO message buffer)?
+// This number multiplied by MAX_MSG_FIFO (see above) gives the total buffer size
+// Defaults to 128 [use 128 KB of memory for the log]
+#define LOG_SIZE 128u
+
+void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const size_t length);
+
+typedef struct {
+	struct {
+		unsigned int next_id;
+		double timestamp[LOG_SIZE];
+		char message[LOG_SIZE][MAX_MSG_FIFO];
+	} logs[FIFO_MAX];
+} fifologData;
+
+extern fifologData *fifo_log;
 
 #endif //LOG_H

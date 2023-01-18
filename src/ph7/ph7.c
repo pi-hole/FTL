@@ -126,8 +126,8 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /******************************* Pi-hole modification ******************************/
-enum web_code { HTTP_INFO, PH7_ERROR };
-extern void logg_web(enum web_code code, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
+#include "enums.h"
+extern void logg_web(enum fifo_logs which, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 /***********************************************************************************/
  /* $SymiscID: ph7.h v2.1 UNIX|WIN32/64 2012-09-15 09:43 stable <chm@symisc.net> $ */
 #include <stdarg.h> /* needed for the definition of va_list */
@@ -5010,7 +5010,7 @@ static sxi32 VmThrowException(ph7_vm *pVm,ph7_class_instance *pThis);
 static sxi32 VmCallErrorHandler(ph7_vm *pVm,SyBlob *pMsg)
 {
 	/* Invoke the output consumer callback */
-	logg_web(PH7_ERROR, "%.*s", SyBlobLength(pMsg), (char *)SyBlobData(pMsg));
+	logg_web(FIFO_PH7, "%.*s", SyBlobLength(pMsg), (char *)SyBlobData(pMsg));
 	return SXRET_OK;
 }
 /*

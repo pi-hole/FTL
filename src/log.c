@@ -294,6 +294,13 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	// Print to log file or syslog
 	if(print_log)
 	{
+		// Add line to FIFO buffer
+		char buffer[MAX_MSG_FIFO + 1u];
+		va_start(args, format);
+		const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
+		va_end(args);
+		add_to_fifo_buffer(FIFO_FTL, buffer, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
+
 		if(config.files.log.ftl.v.s != NULL)
 		{
 			// Open log file
@@ -332,40 +339,51 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	}
 }
 
-static FILE * __attribute__((malloc, warn_unused_result)) open_web_log(const enum web_code code)
+static FILE * __attribute__((malloc, warn_unused_result)) open_web_log(const enum fifo_logs which)
 {
 	// Open the log file in append/create mode
 	char *file = NULL;
-	switch (code)
+	switch (which)
 	{
-	case HTTP_INFO:
-		file = config.files.http_info.v.s;
-		break;
-	case PH7_ERROR:
-		file = config.files.ph7_error.v.s;
-		break;
-	default:
-		file = config.files.ph7_error.v.s;
-		break;
+		case FIFO_CIVETWEB:
+			file = config.files.http_info.v.s;
+			break;
+		case FIFO_PH7:
+			file = config.files.ph7_error.v.s;
+			break;
+		case FIFO_FTL:
+		case FIFO_DNSMASQ:
+		case FIFO_MAX:
+		default:
+			log_err("Invalid logging requested");
+			return NULL;
 	}
 
 	return fopen(file, "a+");
 }
 
-void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, const char *format, ...)
+void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum fifo_logs which, const char *format, ...)
 {
 	char timestring[84] = "";
+	const time_t now = time(NULL);
 	va_list args;
 
+	// Add line to FIFO buffer
+	char buffer[MAX_MSG_FIFO + 1u];
+	va_start(args, format);
+	const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
+	va_end(args);
+	add_to_fifo_buffer(which, buffer, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
+
 	// Get human-readable time
-	get_timestr(timestring, time(NULL), true);
+	get_timestr(timestring, now, true);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
 	const long pid = (long)getpid();
 
 	// Open web log file
-	FILE *weblog = open_web_log(code);
+	FILE *weblog = open_web_log(which);
 
 	// Write to web log file
 	if(weblog != NULL)
@@ -481,7 +499,7 @@ void format_time(char buffer[42], unsigned long seconds, double milliseconds)
 
 void FTL_log_dnsmasq_fatal(const char *format, ...)
 {
-	if(no_ftl_logging)
+	if(!print_log)
 		return;
 	// Build a complete string from possible multi-part string passed from dnsmasq
 	char message[256] = { 0 };
@@ -702,4 +720,40 @@ void dnsmasq_diagnosis_warning(char *message)
 {
 	// Crop away any existing initial "warning: "
 	logg_warn_dnsmasq_message(skipStr("warning: ", message));
+}
+
+void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const size_t length)
+{
+	const double now = double_time();
+
+	// Do not try to log when shared memory isn't initialized yet
+	if(!fifo_log)
+		return;
+
+	unsigned int idx = fifo_log->logs[which].next_id++;
+	if(idx >= LOG_SIZE)
+	{
+		// Log is full, move everything one slot forward to make space for a new record at the end
+		// This pruges the oldest message from the list (it is overwritten by the second message)
+		memmove(&fifo_log->logs[which].message[0][0], &fifo_log->logs[which].message[1][0], (LOG_SIZE - 1u) * MAX_MSG_FIFO);
+		memmove(&fifo_log->logs[which].timestamp[0], &fifo_log->logs[which].timestamp[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].timestamp[0]));
+		idx = LOG_SIZE - 1u;
+	}
+
+	// Copy relevant string into temporary buffer
+	size_t copybytes = length < MAX_MSG_FIFO ? length : MAX_MSG_FIFO;
+	memcpy(fifo_log->logs[which].message[idx], payload, copybytes);
+
+	// Zero-terminate buffer, truncate newline if found
+	if(fifo_log->logs[which].message[idx][copybytes - 1u] == '\n')
+	{
+		fifo_log->logs[which].message[idx][copybytes - 1u] = '\0';
+	}
+	else
+	{
+		fifo_log->logs[which].message[idx][copybytes] = '\0';
+	}
+
+	// Set timestamp
+	fifo_log->logs[which].timestamp[idx] = now;
 }

@@ -50,7 +50,6 @@ extern void print_dnsmasq_version(const char *yellow, const char *green, const c
 extern int sqlite3_shell_main(int argc, char **argv);
 
 bool dnsmasq_debug = false;
-bool no_ftl_logging = false;
 bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
@@ -244,7 +243,7 @@ void parse_args(int argc, char* argv[])
 			const char *arg[2];
 			arg[0] = "";
 			arg[1] = "--test";
-			no_ftl_logging = true;
+			log_ctrl(false, true);
 			exit(main_dnsmasq(2, arg));
 		}
 
@@ -259,7 +258,7 @@ void parse_args(int argc, char* argv[])
 			sprintf(filename, "--conf-file=%s", argv[2]);
 			arg[1] = filename;
 			arg[2] = "--test";
-			no_ftl_logging = true;
+			log_ctrl(false, true);
 			exit(main_dnsmasq(3, arg));
 		}
 
