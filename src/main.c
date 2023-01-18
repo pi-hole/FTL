@@ -134,7 +134,7 @@ int main (int argc, char *argv[])
 	startup = false;
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
-	log_info("Shutting down...");
+	log_info("Shutting down... // exit code %d", exit_code);
 	// Extra grace time is needed as dnsmasq script-helpers and the API may not
 	// be terminating immediately
 	sleepms(250);

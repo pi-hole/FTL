@@ -22,6 +22,8 @@
 #include "config/toml_writer.h"
 // write_dnsmasq_config()
 #include "config/dnsmasq_config.h"
+// shm_lock()
+#include "shmem.h"
 
 // The following functions are used to create the JSON output
 // of the /api/config endpoint.
@@ -352,7 +354,7 @@ static int api_config_get(struct ftl_conn *api)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(i);
+		struct conf_item *conf_item = get_conf_item(&config, i);
 
 		// Get path depth
 		unsigned int level = config_path_depth(conf_item->p);
@@ -455,10 +457,12 @@ static int api_config_patch(struct ftl_conn *api)
 
 	// Read all known config items
 	bool dnsmasq_changed = false;
+	struct config conf_copy;
+	duplicate_config(&conf_copy);
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(i);
+		struct conf_item *conf_item = get_conf_item(&conf_copy, i);
 
 		// Get path depth
 		unsigned int level = config_path_depth(conf_item->p);
@@ -489,16 +493,37 @@ static int api_config_patch(struct ftl_conn *api)
 			dnsmasq_changed = true;
 	}
 
-	// Reload debug levels
-	set_debug_flags();
+	// Request restart of FTL
+	if(dnsmasq_changed)
+	{
+		char errbuf[ERRBUF_SIZE] = { 0 };
+		if(write_dnsmasq_config(&conf_copy, true, errbuf))
+			api->ftl.restart = true;
+		else
+		{
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid configuration",
+			                       errbuf);
+		}
+	}
+
+	// Install new configuration
+	lock_shm();
+	// Backup old config struct (so we can free it)
+	struct config old_conf;
+	memcpy(&old_conf, &config, sizeof(struct config));
+	// Replace old config struct by changed one
+	memcpy(&config, &conf_copy, sizeof(struct config));
+	// Free old backup struct
+	free_config(&old_conf);
+	unlock_shm();
 
 	// Store changed configuration to disk
 	writeFTLtoml(true);
 
-	// Request restart of FTL
-	if(dnsmasq_changed)
-		if(write_dnsmasq_config(true))
-			api->ftl.restart = true;
+	// Reload debug levels
+	set_debug_flags();
 
 	// Return full config after possible changes above
 	return api_config_get(api);
@@ -546,10 +571,12 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Read all known config items
 	bool dnsmasq_changed = false;
 	bool found = false;
+	struct config conf_copy;
+	duplicate_config(&conf_copy);
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(i);
+		struct conf_item *conf_item = get_conf_item(&conf_copy, i);
 
 		// We support PUT only for adding to string arrays
 		if(conf_item->t != CONF_JSON_STRING_ARRAY)
@@ -637,13 +664,40 @@ static int api_config_put_delete(struct ftl_conn *api)
 		                       hint);
 	}
 
+	// We need to build a new config (and carefully test it!) whenever dnsmasq
+	// options have changed that need a restart of the resolver
+	if(dnsmasq_changed)
+	{
+		char errbuf[ERRBUF_SIZE] = { 0 };
+		// Request restart of FTL
+		if(write_dnsmasq_config(&conf_copy, true, errbuf))
+			api->ftl.restart = true;
+		else
+		{
+			// The new config did not work
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid configuration",
+			                       errbuf);
+		}
+	}
+
+	// Install new configuration
+	lock_shm();
+	// Backup old config struct (so we can free it)
+	struct config old_conf;
+	memcpy(&old_conf, &config, sizeof(struct config));
+	// Replace old config struct by changed one
+	memcpy(&config, &conf_copy, sizeof(struct config));
+	// Free old backup struct
+	free_config(&old_conf);
+	unlock_shm();
+
 	// Store changed configuration to disk
 	writeFTLtoml(true);
 
-	// Request restart of FTL
-	if(dnsmasq_changed)
-		if(write_dnsmasq_config(true))
-			api->ftl.restart = false;
+	// Reload debug levels
+	set_debug_flags();
 
 	return api->method == HTTP_PUT ? 201 : 204; // 201 - Created or 204 - No content
 }

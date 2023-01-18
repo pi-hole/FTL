@@ -402,6 +402,9 @@ void _lock_shm(const char *func, const int line, const char *file)
 	log_debug(DEBUG_LOCKS, "Waiting for SHM lock in %s() (%s:%i)", func, file, line);
 	log_debug(DEBUG_LOCKS, "SHM lock: %p", shmLock);
 
+	if(shmLock == NULL)
+		return;
+
 	int result = pthread_mutex_lock(&shmLock->lock.outer);
 
 	if(result != 0)
@@ -459,6 +462,9 @@ void _unlock_shm(const char* func, const int line, const char * file)
 		log_err("Tried to unlock but lock is owned by %li/%li",
 		        (long int)shmLock->owner.pid, (long int)shmLock->owner.tid);
 	}
+
+	if(shmLock == NULL)
+		return;
 
 	// Unlock mutex
 	int result = pthread_mutex_unlock(&shmLock->lock.inner);
@@ -860,6 +866,9 @@ static void delete_shm(SharedMemory *sharedMemory)
 			log_warn("delete_shm(): munmap(%p, %zu) failed: %s",
 			         sharedMemory->ptr, sharedMemory->size, strerror(errno));
 	}
+
+	// Set unmapped pointer to NULL
+	sharedMemory->ptr = NULL;
 
 	// Now you can no longer `shm_open` the memory, and once all others
 	// unlink, it will be destroyed.

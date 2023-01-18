@@ -24,6 +24,8 @@ const char *cli_done(void) __attribute__ ((pure));
 const char *cli_bold(void) __attribute__ ((pure));
 const char *cli_normal(void) __attribute__ ((pure));
 
+void test_dnsmasq_options(int argc, const char *argv[]);
+
 // defined in dnsmasq_interface.c
 int check_struct_sizes(void);
 

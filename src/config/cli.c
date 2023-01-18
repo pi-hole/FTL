@@ -13,6 +13,7 @@
 #include "config/config.h"
 #include "config/toml_helper.h"
 #include "config/toml_writer.h"
+#include "config/dnsmasq_config.h"
 
 #include "log.h"
 #include "datastructure.h"
@@ -255,11 +256,13 @@ static bool readStringvalue(struct conf_item *conf_item, const char *value)
 bool set_config_from_CLI(const char *key, const char *value)
 {
 	// Identify config option
+	struct config conf_copy;
+	duplicate_config(&conf_copy);
 	struct conf_item *conf_item = NULL;
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *item = get_conf_item(i);
+		struct conf_item *item = get_conf_item(&conf_copy, i);
 
 		if(strcmp(item->k, key) != 0)
 			continue;
@@ -277,16 +280,37 @@ bool set_config_from_CLI(const char *key, const char *value)
 	}
 
 	// Parse value
-	if(readStringvalue(conf_item, value))
+	if(!readStringvalue(conf_item, value))
+		return false;
+
+	// Is this a dnsmasq option we need to check?
+	if(conf_item->restart_dnsmasq)
 	{
-		// Print value
-		writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
-		putchar('\n');
-		writeFTLtoml(false);
-		return true;
+		char errbuf[ERRBUF_SIZE] = { 0 };
+		if(!write_dnsmasq_config(&conf_copy, true, errbuf))
+		{
+			int lineno = get_lineno_from_string(errbuf);
+			char *line = get_dnsmasq_line(lineno);
+			log_err("Corresponding line: \"%s\"", line);
+			free(line);
+			return false;
+		}
 	}
 
-	return false;
+	// Install new configuration
+	// Backup old config struct (so we can free it)
+	struct config old_conf;
+	memcpy(&old_conf, &config, sizeof(struct config));
+	// Replace old config struct by changed one
+	memcpy(&config, &conf_copy, sizeof(struct config));
+	// Free old backup struct
+	free_config(&old_conf);
+
+	// Print value
+	writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
+	putchar('\n');
+	writeFTLtoml(false);
+	return true;
 }
 
 bool get_config_from_CLI(const char *key)
@@ -296,7 +320,7 @@ bool get_config_from_CLI(const char *key)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *item = get_conf_item(i);
+		struct conf_item *item = get_conf_item(&config, i);
 
 		if(strcmp(item->k, key) != 0)
 			continue;

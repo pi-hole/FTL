@@ -45,7 +45,7 @@ bool writeFTLtoml(const bool verbose)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(i);
+		struct conf_item *conf_item = get_conf_item(&config, i);
 
 		// Get path depth
 		unsigned int level = config_path_depth(conf_item->p);

@@ -10,7 +10,13 @@
 #ifndef DNSMASQ_CONFIG_H
 #define DNSMASQ_CONFIG_H
 
-bool write_dnsmasq_config(bool test_config);
+#include "config/config.h"
+
+#define ERRBUF_SIZE 1024
+
+bool write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE]);
+int get_lineno_from_string(const char *string);
+char *get_dnsmasq_line(const unsigned int lineno);
 bool read_legacy_dhcp_static_config(void);
 bool read_legacy_cnames_config(void);
 

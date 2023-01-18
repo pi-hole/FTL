@@ -29,7 +29,7 @@ void set_all_debug(const bool status)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(i);
+		struct conf_item *conf_item = get_conf_item(&config, i);
 
 		// Skip config entries whose path's are not starting in "debug."
 		if(strcmp("debug", conf_item->p[0]) != 0)
@@ -131,8 +131,7 @@ bool __attribute__ ((pure)) check_paths_equal(char **paths1, char **paths2, unsi
 	}
 	return true;
 }
-
-struct conf_item *get_conf_item(const unsigned int n)
+struct conf_item *get_conf_item(struct config *conf, const unsigned int n)
 {
 	// Sanity check
 	if(n > CONFIG_ELEMENTS-1)
@@ -142,7 +141,7 @@ struct conf_item *get_conf_item(const unsigned int n)
 	}
 
 	// Return n-th config element
-	return (void*)&config + n*sizeof(struct conf_item);
+	return (void*)conf + n*sizeof(struct conf_item);
 }
 
 struct conf_item *get_debug_item(const enum debug_flag debug)
@@ -169,6 +168,92 @@ unsigned int __attribute__ ((pure)) config_path_depth(char **paths)
 	// MAX_CONFIG_PATH_DEPTH
 	return MAX_CONFIG_PATH_DEPTH;
 
+}
+
+void duplicate_config(struct config *conf)
+{
+	// Post-processing:
+	// Initialize and verify config data
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		// Get pointer to memory location of this conf_item (original)
+		struct conf_item *conf_item = get_conf_item(&config, i);
+
+		// Get pointer to memory location of this conf_item (copy)
+		struct conf_item *copy_item = get_conf_item(conf, i);
+
+		// Copy constant/static fields
+		memcpy(copy_item, conf_item, sizeof(*conf_item));
+
+		// Make a type-dependent copy of the value
+		switch(conf_item->t)
+		{
+			case CONF_BOOL:
+			case CONF_INT:
+			case CONF_UINT:
+			case CONF_UINT16:
+			case CONF_LONG:
+			case CONF_ULONG:
+			case CONF_DOUBLE:
+			case CONF_STRING:
+			case CONF_ENUM_PTR_TYPE:
+			case CONF_ENUM_BUSY_TYPE:
+			case CONF_ENUM_BLOCKING_MODE:
+			case CONF_ENUM_REFRESH_HOSTNAMES:
+			case CONF_ENUM_PRIVACY_LEVEL:
+			case CONF_ENUM_LISTENING_MODE:
+			case CONF_STRUCT_IN_ADDR:
+			case CONF_STRUCT_IN6_ADDR:
+				// Nothing to do, the memcpy above has already covered this
+				break;
+			case CONF_STRING_ALLOCATED:
+				copy_item->v.s = strdup(conf_item->v.s);
+				break;
+			case CONF_JSON_STRING_ARRAY:
+				copy_item->v.json = cJSON_Duplicate(conf_item->v.json, true);
+				break;
+		}
+	}
+}
+
+void free_config(struct config *conf)
+{
+	// Post-processing:
+	// Initialize and verify config data
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		// Get pointer to memory location of this conf_item (copy)
+		struct conf_item *copy_item = get_conf_item(conf, i);
+
+		// Make a type-dependent copy of the value
+		switch(copy_item->t)
+		{
+			case CONF_BOOL:
+			case CONF_INT:
+			case CONF_UINT:
+			case CONF_UINT16:
+			case CONF_LONG:
+			case CONF_ULONG:
+			case CONF_DOUBLE:
+			case CONF_STRING:
+			case CONF_ENUM_PTR_TYPE:
+			case CONF_ENUM_BUSY_TYPE:
+			case CONF_ENUM_BLOCKING_MODE:
+			case CONF_ENUM_REFRESH_HOSTNAMES:
+			case CONF_ENUM_PRIVACY_LEVEL:
+			case CONF_ENUM_LISTENING_MODE:
+			case CONF_STRUCT_IN_ADDR:
+			case CONF_STRUCT_IN6_ADDR:
+				// Nothing to do
+				break;
+			case CONF_STRING_ALLOCATED:
+				free(copy_item->v.s);
+				break;
+			case CONF_JSON_STRING_ARRAY:
+				cJSON_Delete(copy_item->v.json);
+				break;
+		}
+	}
 }
 
 void initConfig(void)
@@ -862,7 +947,7 @@ void initConfig(void)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(i);
+		struct conf_item *conf_item = get_conf_item(&config, i);
 
 		// Initialize config value with default one for all *except* the log file path
 		if(conf_item != &config.files.log.ftl)
@@ -908,7 +993,7 @@ void readFTLconf(const bool rewrite)
 		if(rewrite)
 		{
 			writeFTLtoml(true);
-			write_dnsmasq_config(false);
+			write_dnsmasq_config(&config, false, NULL);
 		}
 		read_legacy_dhcp_static_config();
 		read_legacy_cnames_config();
@@ -939,7 +1024,7 @@ void readFTLconf(const bool rewrite)
 
 	// Initialize the TOML config file
 	writeFTLtoml(true);
-	write_dnsmasq_config(false);
+	write_dnsmasq_config(&config, false, NULL);
 }
 
 bool getLogFilePath(void)

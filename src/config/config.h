@@ -28,26 +28,6 @@
 
 #define GLOBALTOMLPATH "/etc/pihole/pihole-FTL.toml"
 
-// Defined in config.c
-void set_all_debug(const bool status);
-void initConfig(void);
-void readFTLconf(const bool rewrite);
-bool getLogFilePath(void);
-struct conf_item *get_conf_item(unsigned int n);
-struct conf_item *get_debug_item(const enum debug_flag debug);
-unsigned int config_path_depth(char **paths) __attribute__ ((pure));
-char **gen_config_path(const char *pathin, const char delim);
-void free_config_path(char **paths);
-bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __attribute__ ((pure));
-
-// Defined in toml_reader.c
-bool getPrivacyLevel(void);
-bool getBlockingMode(void);
-bool readDebugSettings(void);
-void init_config_mutex(void);
-bool get_blockingstatus(void) __attribute__((pure));
-void set_blockingstatus(bool enabled);
-
 union conf_value {
 	bool b;                                     // boolean value
 	int i;                                      // integer value
@@ -288,5 +268,27 @@ extern struct config config;
 
 #define CONFIG_ELEMENTS (sizeof(config)/sizeof(struct conf_item))
 #define DEBUG_ELEMENTS (sizeof(config.debug)/sizeof(struct conf_item))
+
+// Defined in config.c
+void set_all_debug(const bool status);
+void initConfig(void);
+void readFTLconf(const bool rewrite);
+bool getLogFilePath(void);
+struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
+struct conf_item *get_debug_item(const enum debug_flag debug);
+unsigned int config_path_depth(char **paths) __attribute__ ((pure));
+void duplicate_config(struct config *conf);
+void free_config(struct config *conf);
+char **gen_config_path(const char *pathin, const char delim);
+void free_config_path(char **paths);
+bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __attribute__ ((pure));
+
+// Defined in toml_reader.c
+bool getPrivacyLevel(void);
+bool getBlockingMode(void);
+bool readDebugSettings(void);
+void init_config_mutex(void);
+bool get_blockingstatus(void) __attribute__((pure));
+void set_blockingstatus(bool enabled);
 
 #endif //CONFIG_H

@@ -113,6 +113,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	int ret = 0;
 
 	// Loop over all API endpoints and check if the requested URI matches
+	bool unauthorized = false;
 	for(unsigned int i = 0; i < sizeof(api_request)/sizeof(api_request[0]); i++)
 	{
 		// Check if the requested method is allowed
@@ -127,7 +128,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 			// Verify requesting client is allowed to see this ressource
 			if(api_request[i].require_auth && check_client_auth(&api) == API_AUTH_UNAUTHORIZED)
-				return send_json_unauthorized(&api);
+			{
+				unauthorized = true;
+				break;
+			}
 
 			// Call the API function and get the return code
 			log_debug(DEBUG_API, "Sending to %s", api_request[i].uri);
@@ -163,11 +167,16 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		                      "Not found",
 		                      api.request->local_uri_raw);
 	}
+	else if(unauthorized)
+	{
+		// Return with unauthorized payload
+		// Do this only after having cleaned up above
+		return send_json_unauthorized(&api);
+	}
 
 	// Restart FTL if requested
 	if(api.ftl.restart)
 	{
-		// Trigger an automatic restart by systemd
 		exit_code = RESTART_FTL_CODE;
 		FTL_terminate = 1;
 	}
