@@ -38,7 +38,7 @@ components:
           summary: Get DNS log content
           tags:
             - "FTL information"
-          operationId: "get_dns_log"
+          operationId: "get_ftl_log"
           description: |
             This API hook returns content from the log of FTL.
 
@@ -69,7 +69,7 @@ components:
           summary: Get DNS log content
           tags:
             - "FTL information"
-          operationId: "get_dns_log"
+          operationId: "get_http_log"
           description: |
             This API hook returns content from the log of the embedded CivetWeb HTTP server.
 
@@ -100,7 +100,7 @@ components:
           summary: Get DNS log content
           tags:
             - "FTL information"
-          operationId: "get_dns_log"
+          operationId: "get_ph7_log"
           description: |
             This API hook returns content from the log of the embedded PH7 engine.
 

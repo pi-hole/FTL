@@ -31,7 +31,7 @@ static struct {
 	bool require_auth;
 	enum http_method methods;
 } api_request[] = {
-	// URI                                      ARGUMENTS                     FUNCTION                               OPTIONS           AUTH   ALLOWED METHODS
+	// URI                                      ARGUMENTS                     FUNCTION                               OPTIONS                   AUTH   ALLOWED METHODS
 	// Note: The order of appearance matters here, more specific URIs have to
 	// appear *before* less specific URIs: 1. "/a/b/c", 2. "/a/b", 3. "/a"
 	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { false, 0             }, true,  HTTP_GET | HTTP_POST },
@@ -68,7 +68,9 @@ static struct {
 	{ "/api/stats/database/upstreams",          "",                           api_stats_database_upstreams,          { false, 0             }, true,  HTTP_GET },
 	{ "/api/version",                           "",                           api_version,                           { false, 0             }, true,  HTTP_GET },
 	{ "/api/auth",                              "",                           api_auth,                              { false, 0             }, false, HTTP_GET | HTTP_POST | HTTP_DELETE },
-	{ "/api/config",                            "",                           api_config,                            { false, 0             }, true,  HTTP_GET | HTTP_PATCH },
+	{ "/api/config",                            "",                           api_config,                            { false, 0             }, true,  HTTP_GET | HTTP_PUT },
+	{ "/api/config",                            "/{element}",                 api_config,                            { false, 0             }, true,  HTTP_GET | HTTP_PUT },
+	{ "/api/config",                            "/{element}/{value}",         api_config,                            { false, 0             }, true,  HTTP_DELETE | HTTP_PATCH },
 	{ "/api/network/gateway",                   "",                           api_network_gateway,                   { false, 0             }, true,  HTTP_GET },
 	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { false, 0             }, true,  HTTP_GET },
 	{ "/api/network/devices",                   "",                           api_network_devices,                   { false, 0             }, true,  HTTP_GET },
@@ -133,13 +135,13 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			log_debug(DEBUG_API, "Done");
 			break;
 		}
+	}
 
-		// Free memory allocated for action path (if allocated)
-		if(api.action_path != NULL)
-		{
-			free(api.action_path);
-			api.action_path = NULL;
-		}
+	// Free memory allocated for action path (if allocated)
+	if(api.action_path != NULL)
+	{
+		free(api.action_path);
+		api.action_path = NULL;
 	}
 
 	// Free JSON-parsed payload memory (if allocated)

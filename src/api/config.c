@@ -345,7 +345,6 @@ static int api_config_get(struct ftl_conn *api)
 	{
 		requested_path = gen_config_path(api->item, '/');
 		min_level = config_path_depth(requested_path);
-
 	}
 
 	// Iterate over all known config elements and create appropriate JSON
@@ -356,7 +355,7 @@ static int api_config_get(struct ftl_conn *api)
 		struct conf_item *conf_item = get_conf_item(i);
 
 		// Get path depth
-		unsigned int level = config_path_depth(conf_item->p) - 1;
+		unsigned int level = config_path_depth(conf_item->p);
 
 		// Subset checking (if requested)
 		if(min_level > 0)
@@ -367,7 +366,12 @@ static int api_config_get(struct ftl_conn *api)
 			// Skip entry if level if too deep (add one level for the array itself)
 			if(min_level > level+1 && conf_item->t == CONF_JSON_STRING_ARRAY)
 				continue;
-			if(!check_paths_equal(conf_item->p, requested_path))
+			// Check equality of paths up to the requested level (if any)
+			// Examples:
+			//  requested was /config/dnsmasq -> skip all entries that do not start in dnsmasq.
+			//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dnsmasq.dhcp
+			//  etc.
+			if(!check_paths_equal(conf_item->p, requested_path, min_level - 1))
 				continue;
 		}
 
@@ -376,7 +380,7 @@ static int api_config_get(struct ftl_conn *api)
 		// path element if they do not exist yet. We do not create the
 		// leaf object itself here (level - 1) as we want to add the
 		// actual value of the config item to it.
-		for(unsigned int j = 0; j < level; j++)
+		for(unsigned int j = 0; j < level - 1; j++)
 			parent = get_or_create_object(parent, conf_item->p[j]);
 
 		// Create the config item leaf object
@@ -402,7 +406,7 @@ static int api_config_get(struct ftl_conn *api)
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "value", val);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "default", dval);
 			JSON_REF_STR_IN_OBJECT(leaf, "allowed", conf_item->a);
-			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level], leaf);
+			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level - 1], leaf);
 		}
 		else
 		{
@@ -414,7 +418,7 @@ static int api_config_get(struct ftl_conn *api)
 					conf_item->k, conf_item->t);
 				continue;
 			}
-			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level], leaf);
+			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level - 1], leaf);
 		}
 	}
 
@@ -431,7 +435,8 @@ static int api_config_get(struct ftl_conn *api)
 static int api_config_patch(struct ftl_conn *api)
 {
 	// Is there a payload with valid JSON data?
-	if (api->payload.json == NULL) {
+	if (api->payload.json == NULL)
+	{
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "Invalid request body data (no valid JSON)",
@@ -440,7 +445,8 @@ static int api_config_patch(struct ftl_conn *api)
 
 	// Is there a "config" object at the root of the received JSON payload?
 	cJSON *conf = cJSON_GetObjectItem(api->payload.json, "config");
-	if (!cJSON_IsObject(conf)) {
+	if (!cJSON_IsObject(conf))
+	{
 		return send_json_error(api, 400,
 		                       "body_error",
 		                       "No \"config\" object in body data",
@@ -498,6 +504,150 @@ static int api_config_patch(struct ftl_conn *api)
 	return api_config_get(api);
 }
 
+// Inspired by https://stackoverflow.com/a/32496721
+//static void replace_char(char* str, char find, char replace)
+//{
+//	for (char *current_pos = strchr(str, find); (current_pos = strchr(str+1, find)) != NULL; *current_pos = replace);
+//}
+
+static int api_config_put_delete(struct ftl_conn *api)
+{
+	if(api->item == NULL || strlen(api->item) == 0)
+		return 0;
+
+	char **requested_path = gen_config_path(api->item, '/');
+	const unsigned int min_level = config_path_depth(requested_path);
+
+	const char *hint = NULL, *message = NULL;
+	if(api->method == HTTP_PUT)
+		hint = "Use, e.g., PUT /config/dnsmasq/upstreams/127.0.0.1 to add \"127.0.0.1\" to config.dnsmasq.upstreams";
+	else
+		hint = "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dnsmasq.upstreams";
+
+	if(min_level < 2)
+	{
+		// Release allocated memory
+		if(requested_path != NULL)
+			free_config_path(requested_path);
+
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Invalid path depth",
+		                       hint);
+	}
+
+	char *new_item = requested_path[min_level - 1];
+
+	// Convert path to items, e.g.,
+	// dnsmasq/dhcp/active -> dnsmasq.dhcp.active
+	//char *item = strdup(api->item);
+	//replace_char(item, '/', '.');
+
+	// Read all known config items
+	bool dnsmasq_changed = false;
+	bool found = false;
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		// Get pointer to memory location of this conf_item
+		struct conf_item *conf_item = get_conf_item(i);
+
+		// We support PUT only for adding to string arrays
+		if(conf_item->t != CONF_JSON_STRING_ARRAY)
+			continue;
+
+		// Get path depth
+		const unsigned int level = config_path_depth(conf_item->p);
+
+		// Check equality of paths up to the requested level (if any)
+		// Examples:
+		//  requested was /config/dnsmasq -> skip all entries that do not start in dnsmasq.
+		//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dnsmasq.dhcp
+		//  etc.
+		if(!check_paths_equal(conf_item->p, requested_path, max(min_level - 2, level - 1)))
+			continue;
+
+		// Check if this is a property where we want to add an item
+		if(min_level != level + 1)
+			continue;
+
+		// Check if this entry does already exist in the array
+		int idx = 0;
+		for(; idx < cJSON_GetArraySize(conf_item->v.json); idx++)
+		{
+			cJSON *elem = cJSON_GetArrayItem(conf_item->v.json, idx);
+			log_info("Item %d: %s vs. %s", idx, elem->valuestring, new_item);
+			if(elem != NULL && elem->valuestring != NULL &&
+				strcmp(elem->valuestring, new_item) == 0)
+			{
+				found = true;
+				break;
+			}
+		}
+
+		if(api->method == HTTP_PUT)
+		{
+			if(found)
+			{
+				message = "Item already present";
+				hint = "Uniqueness of items is enforced";
+			}
+			else
+			{
+				JSON_COPY_STR_TO_ARRAY(conf_item->v.json, new_item);
+				found = true;
+
+				// If we reach this point, a valid setting was found and changed
+				// Check if this item requires a config-rewrite + restart of dnsmasq
+				if(conf_item->restart_dnsmasq)
+					dnsmasq_changed = true;
+			}
+		}
+		else
+		{
+			if(found)
+			{
+				cJSON_DeleteItemFromArray(conf_item->v.json, idx);
+
+				// If we reach this point, a valid setting was found and changed
+				// Check if this item requires a config-rewrite + restart of dnsmasq
+				if(conf_item->restart_dnsmasq)
+					dnsmasq_changed = true;
+			}
+			else
+			{
+				message = "Item not found";
+				hint = "Can only delete existing items";
+			}
+		}
+		break;
+	}
+
+	// Release allocated memory
+	if(requested_path != NULL)
+		free_config_path(requested_path);
+
+	// Error 404 if not found
+	if(!found || message != NULL)
+	{
+		if(!message)
+			message = "No item specified";
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       message,
+		                       hint);
+	}
+
+	// Store changed configuration to disk
+	writeFTLtoml(true);
+
+	// Request restart of FTL
+	if(dnsmasq_changed)
+		if(write_dnsmasq_config(true))
+			api->ftl.restart = false;
+
+	return api->method == HTTP_PUT ? 201 : 204; // 201 - Created or 204 - No content
+}
+
 // Endpoint /api/config router
 int api_config(struct ftl_conn *api)
 {
@@ -510,9 +660,8 @@ int api_config(struct ftl_conn *api)
 	// but PATCH with a full config is the same)
 	else if(api->method == HTTP_PATCH)
 		return api_config_patch(api);
-	else
-		return send_json_error(api, 405, "method_error",
-		                       "Method not allowed",
-		                       "Use GET to retrieve the current config and "
-		                       "PATCH to change it (either partially or fully)");
+	else if(api->method == HTTP_PUT || api->method == HTTP_DELETE)
+		return api_config_put_delete(api);
+
+	return 0;
 }

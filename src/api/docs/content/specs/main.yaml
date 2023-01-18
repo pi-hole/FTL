@@ -44,6 +44,8 @@ tags:
     description: Methods used to manage lists on your Pi-hole
   - name: "FTL information"
     description: Methods used to gather advanced data from your Pi-hole
+  - name: "Pi-hole configuration"
+    description: Methods used to configure your Pi-hole
   - name: "Network information"
     description: Methods used to gather advanced information about your network
 
@@ -164,6 +166,12 @@ paths:
 
   /config:
     $ref: 'config.yaml#/components/paths/config'
+
+  /config/{element}:
+    $ref: 'config.yaml#/components/paths/config_elem'
+
+  /config/{element}/{value}:
+    $ref: 'config.yaml#/components/paths/config_elem_value'
 
   /network/devices:
     $ref: 'network.yaml#/components/paths/devices'

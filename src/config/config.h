@@ -38,7 +38,7 @@ struct conf_item *get_debug_item(const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
 char **gen_config_path(const char *pathin, const char delim);
 void free_config_path(char **paths);
-bool check_paths_equal(char **paths1, char **paths2) __attribute__ ((pure));
+bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __attribute__ ((pure));
 
 // Defined in toml_reader.c
 bool getPrivacyLevel(void);
@@ -92,7 +92,7 @@ enum conf_type {
 	CONF_JSON_STRING_ARRAY
 } __attribute__ ((packed));
 
-#define MAX_CONFIG_PATH_DEPTH 4
+#define MAX_CONFIG_PATH_DEPTH 6
 
 struct conf_item {
 	const char *k;        // item Key

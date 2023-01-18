@@ -58,9 +58,13 @@ class ResponseVerifyer():
 			return self.errors
 
 		# Get YAML response schema and examples (if applicable)
-		jsonData = self.openapi.paths[endpoint][method]['responses'][str(rcode)]['content']['application/json']
-		YAMLresponseSchema = jsonData['schema']
-		YAMLresponseExamples = jsonData['examples'] if 'examples' in jsonData else None
+		if 'content' in self.openapi.paths[endpoint][method]['responses'][str(rcode)]:
+			jsonData = self.openapi.paths[endpoint][method]['responses'][str(rcode)]['content']['application/json']
+			YAMLresponseSchema = jsonData['schema']
+			YAMLresponseExamples = jsonData['examples'] if 'examples' in jsonData else None
+		else:
+			# No response defined
+			return self.errors
 
 		# Prepare required parameters (if any)
 		FTLparameters = []

@@ -5,7 +5,7 @@ components:
       get:
         summary: Get current configuration of your Pi-hole
         tags:
-          - "FTL information"
+          - "Pi-hole Configuration"
         operationId: "get_config"
         description: |
           This API hook returns infos about the config of your Pi-hole.
@@ -30,7 +30,7 @@ components:
       patch:
         summary: Change configuration of your Pi-hole
         tags:
-          - "FTL information"
+          - "Pi-hole Configuration"
         operationId: "patch_config"
         description: |
           This API hook allows to modify the config of your Pi-hole. This endpoint supports changing multiple properties at once when you specify several in the payload. See examples below.
@@ -57,6 +57,88 @@ components:
                 examples:
                   config:
                     $ref: 'config.yaml#/components/examples/config'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    config_elem:
+      get:
+        summary: Get specific part of current configuration of your Pi-hole
+        tags:
+          - "Pi-hole Configuration"
+        operationId: "get_config_elem"
+        description: |
+          This API hook returns infos about the requested subset of your Pi-hole's configuration.
+          The response will be a filtered JSON object and a subset of the full `GET /config` response.
+        parameters:
+          - $ref: 'config.yaml#/components/parameters/detailed'
+          - $ref: 'config.yaml#/components/parameters/element'
+        responses:
+          '200':
+            description: OK
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    config_elem_value:
+      put:
+        summary: Add config array item
+        tags:
+          - "Pi-hole Configuration"
+        operationId: "add_array_item"
+        description: |
+          *Note:* There will be no content on success.
+        parameters:
+          - $ref: 'config.yaml#/components/parameters/element'
+          - $ref: 'config.yaml#/components/parameters/value'
+        responses:
+          '201':
+            description: Item created
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/bad_request'
+                examples:
+                  invalid_path_depth:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
+                  item_not_found:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/item_already_present'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+      delete:
+        summary: Delete config array item
+        tags:
+          - "Pi-hole Configuration"
+        operationId: "delete_array_item"
+        description: |
+          *Note:* There will be no content on success.
+        parameters:
+          - $ref: 'config.yaml#/components/parameters/element'
+          - $ref: 'config.yaml#/components/parameters/value'
+        responses:
+          '204':
+            description: Item deleted
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/bad_request'
+                examples:
+                  invalid_path_depth:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
+                  item_not_found:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/item_not_found'
           '401':
             description: Unauthorized
             content:
@@ -541,6 +623,29 @@ components:
               mozillaCanary: true
           misc:
             nice: -10
+    errors:
+      bad_request:
+        invalid_path_depth:
+          summary: Invalid path
+          value:
+            error:
+              key: "bad_request"
+              message: "Invalid path depth"
+              hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dnsmasq.upstreams"
+        item_not_found:
+          summary: Item to be deleted does not exist
+          value:
+            error:
+              key: "bad_request"
+              message: "Item not found"
+              hint: "Can only delete existing items"
+        item_already_present:
+          summary: Item to be added exists already
+          value:
+            error:
+              key: "bad_request"
+              message: "Item already present"
+              hint: "Uniqueness of items is enforced"
   parameters:
     detailed:
       name: detailed
@@ -551,3 +656,19 @@ components:
         type: boolean
         default: false
         example: false
+    element:
+      in: path
+      name: element
+      schema:
+        type: string
+      required: true
+      description: config element
+      example: "dnsmasq/upstreams"
+    value:
+      in: path
+      name: value
+      schema:
+        type: string
+      required: true
+      description: config value
+      example: "8.8.8.8"

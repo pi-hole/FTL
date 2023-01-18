@@ -102,14 +102,33 @@ void free_config_path(char **paths)
 			free(paths[i]);
 }
 
-bool __attribute__ ((pure)) check_paths_equal(char **paths1, char **paths2)
+bool __attribute__ ((pure)) check_paths_equal(char **paths1, char **paths2, unsigned int max_level)
 {
 	if(paths1 == NULL || paths2 == NULL)
 		return false;
 
 	for(unsigned int i = 0; i < MAX_CONFIG_PATH_DEPTH; i++)
-		if(paths1[i] != NULL && paths2[i] != NULL && strcmp(paths1[i],paths2[i]) != 0)
+	{
+		if(i > 0 && paths1[i] == NULL && paths2[i] == NULL)
+		{
+			// Exact match so far and we reached the end, e.g.
+			// config.dnsmasq.upstreams.(null) <-> config.dnsmasq.upstreams.(null)
+			return true;
+		}
+
+		if(i > max_level)
+		{
+			// Reached end of maximum to inspect level (to get children)
+			return true;
+		}
+
+		if(paths1[i] == NULL || paths2[i] == NULL || strcmp(paths1[i],paths2[i]) != 0)
+		{
+			// One of the paths is shorter than the other or one of the elements
+			// doesn't match
 			return false;
+		}
+	}
 	return true;
 }
 
