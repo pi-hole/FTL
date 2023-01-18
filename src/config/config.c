@@ -45,7 +45,7 @@ void set_all_debug(const bool status)
 }
 
 // Extract and store key from full path
-static char **gen_config_path(const char *pathin)
+char **gen_config_path(const char *pathin, const char delim)
 {
 	char *path = (char*)pathin;
 	char *saveptr = path;
@@ -66,7 +66,7 @@ static char **gen_config_path(const char *pathin)
 	{
 		// Advance to either the next delimiter
 		// But only until the end of the string
-		while(*path != '.' && *path != '\0')
+		while(*path != delim && *path != '\0')
 			path++;
 
 		// Get length of the extracted string
@@ -91,6 +91,27 @@ static char **gen_config_path(const char *pathin)
 	}
 
 	return paths;
+}
+
+void free_config_path(char **paths)
+{
+	if(paths == NULL)
+		return;
+
+	for(unsigned int i = 0; i < MAX_CONFIG_PATH_DEPTH; i++)
+		if(paths[i] != NULL)
+			free(paths[i]);
+}
+
+bool __attribute__ ((pure)) check_paths_equal(char **paths1, char **paths2)
+{
+	if(paths1 == NULL || paths2 == NULL)
+		return false;
+
+	for(unsigned int i = 0; i < MAX_CONFIG_PATH_DEPTH; i++)
+		if(paths1[i] != NULL && paths2[i] != NULL && strcmp(paths1[i],paths2[i]) != 0)
+			return false;
+	return true;
 }
 
 struct conf_item *get_conf_item(const unsigned int n)
@@ -119,11 +140,11 @@ struct conf_item *get_debug_item(const enum debug_flag debug)
 	return (void*)&config.debug + debug*sizeof(struct conf_item);
 }
 
-unsigned int __attribute__ ((pure)) config_path_depth(struct conf_item *conf_item)
+unsigned int __attribute__ ((pure)) config_path_depth(char **paths)
 {
 	// Determine depth of this config path
 	for(unsigned int i = 0; i < MAX_CONFIG_PATH_DEPTH; i++)
-		if(conf_item->p[i] == NULL)
+		if(paths[i] == NULL)
 			return i;
 
 	// This should never happen as we have a maximum depth of
@@ -835,7 +856,7 @@ void initConfig(void)
 		}
 
 		// Parse and split paths
-		conf_item->p = gen_config_path(conf_item->k);
+		conf_item->p = gen_config_path(conf_item->k, '.');
 
 		// Verify all config options are defined above
 		if(!conf_item->p)

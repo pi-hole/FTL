@@ -48,7 +48,7 @@ bool writeFTLtoml(const bool verbose)
 		struct conf_item *conf_item = get_conf_item(i);
 
 		// Get path depth
-		unsigned int level = config_path_depth(conf_item);
+		unsigned int level = config_path_depth(conf_item->p);
 
 		// Write path if it is different from the last one
 		if(level > 1 && strcmp(last_path, conf_item->p[level-2]) != 0)

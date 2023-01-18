@@ -55,7 +55,7 @@ bool readFTLtoml(void)
 		struct conf_item *conf_item = get_conf_item(i);
 
 		// Get config path depth
-		unsigned int level = config_path_depth(conf_item);
+		unsigned int level = config_path_depth(conf_item->p);
 
 		// Parse tree of properties
 		bool item_available = true;

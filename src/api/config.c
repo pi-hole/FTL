@@ -324,6 +324,16 @@ static int api_config_get(struct ftl_conn *api)
 	// Create root JSON object
 	cJSON *config_j = JSON_NEW_OBJECT();
 
+	// Does the user request only a subset of /config?
+	char **requested_path = NULL;
+	unsigned int min_level = 0;
+	if(api->item != NULL && strlen(api->item) > 0)
+	{
+		requested_path = gen_config_path(api->item, '/');
+		min_level = config_path_depth(requested_path);
+
+	}
+
 	// Iterate over all known config elements and create appropriate JSON
 	// objects + items for each of them
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -332,14 +342,27 @@ static int api_config_get(struct ftl_conn *api)
 		struct conf_item *conf_item = get_conf_item(i);
 
 		// Get path depth
-		unsigned int level = config_path_depth(conf_item);
+		unsigned int level = config_path_depth(conf_item->p) - 1;
+
+		// Subset checking (if requested)
+		if(min_level > 0)
+		{
+			// Skip entry if level is too deep (don't skip arrays here)
+			if(min_level > level && conf_item->t != CONF_JSON_STRING_ARRAY)
+				continue;
+			// Skip entry if level if too deep (add one level for the array itself)
+			if(min_level > level+1 && conf_item->t == CONF_JSON_STRING_ARRAY)
+				continue;
+			if(!check_paths_equal(conf_item->p, requested_path))
+				continue;
+		}
 
 		cJSON *parent = config_j;
 		// Parse tree of properties and create JSON objects for each
 		// path element if they do not exist yet. We do not create the
 		// leaf object itself here (level - 1) as we want to add the
 		// actual value of the config item to it.
-		for(unsigned int j = 0; j < level - 1; j++)
+		for(unsigned int j = 0; j < level; j++)
 			parent = get_or_create_object(parent, conf_item->p[j]);
 
 		// Create the config item leaf object
@@ -365,7 +388,7 @@ static int api_config_get(struct ftl_conn *api)
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "value", val);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "default", dval);
 			JSON_REF_STR_IN_OBJECT(leaf, "allowed", conf_item->a);
-			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level - 1], leaf);
+			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level], leaf);
 		}
 		else
 		{
@@ -377,13 +400,13 @@ static int api_config_get(struct ftl_conn *api)
 					conf_item->k, conf_item->t);
 				continue;
 			}
-			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level - 1], leaf);
+			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level], leaf);
 		}
 	}
 
-	// Add special item DNS port
-	cJSON *dns = get_or_create_object(config_j, "dns");
-	JSON_ADD_NUMBER_TO_OBJECT(dns, "port", dns_port);
+	// Release allocated memory
+	if(requested_path != NULL)
+		free_config_path(requested_path);
 
 	// Build and return JSON response
 	cJSON *json = JSON_NEW_OBJECT();
@@ -418,7 +441,7 @@ static int api_config_patch(struct ftl_conn *api)
 		struct conf_item *conf_item = get_conf_item(i);
 
 		// Get path depth
-		unsigned int level = config_path_depth(conf_item);
+		unsigned int level = config_path_depth(conf_item->p);
 
 		cJSON *elem = conf;
 		// Parse tree of properties and get the individual JSON elements
