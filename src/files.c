@@ -195,7 +195,7 @@ void ls_dir(const char* path)
 	closedir(dirp);
 }
 
-int get_path_usage(const char *path, char buffer[64])
+unsigned int get_path_usage(const char *path, char buffer[64])
 {
 	// Get filesystem information about /dev/shm (typically a tmpfs)
 	struct statvfs f;
@@ -227,12 +227,17 @@ int get_path_usage(const char *path, char buffer[64])
 	snprintf(buffer, 64, "%s: %.1f%sB used, %.1f%sB total", path,
 	         formatted_used, prefix_used, formatted_size, prefix_size);
 
-	// Return percentage of used shared memory
-	// Adding 1 avoids FPE if the size turns out to be zero
+	// If size is 0, we return 0% to avoid division by zero below
+	if(size == 0)
+		return 0;
+	// If used is larger than size, we return 100%
+	if(used > size)
+		return 100;
+	// Return percentage of used memory at this path (rounded down)
 	return (used*100)/(size + 1);
 }
 
-int get_filepath_usage(const char *file, char buffer[64])
+unsigned int get_filepath_usage(const char *file, char buffer[64])
 {
 	if(file == NULL || strlen(file) == 0)
 		return -1;

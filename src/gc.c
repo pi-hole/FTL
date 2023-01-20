@@ -79,18 +79,21 @@ time_t get_rate_limit_turnaround(const unsigned int rate_limit_count)
 	return (time_t)config.dns.rateLimit.interval.v.ui*how_often - (time(NULL) - lastRateLimitCleaner);
 }
 
-static int check_space(const char *file, int LastUsage)
+static int check_space(const char *file, unsigned int LastUsage)
 {
-	if(config.misc.check.disk.v.b == 0)
+	if(config.misc.check.disk.v.ui == 0)
 		return 0;
 
-	int perc = 0;
+	unsigned int perc = 0;
 	char buffer[64] = { 0 };
 	// Warn if space usage at the device holding the corresponding file
 	// exceeds the configured threshold and current usage is higher than
 	// usage in the last run (to prevent log spam)
 	perc = get_filepath_usage(file, buffer);
-	if(perc > config.misc.check.disk.v.i && perc > LastUsage )
+	log_debug(DEBUG_GC, "Checking free space at %s: %u%% %s %u%%", file, perc,
+	          perc > config.misc.check.disk.v.ui ? ">" : "<=",
+	          config.misc.check.disk.v.ui);
+	if(perc > config.misc.check.disk.v.ui && perc > LastUsage )
 		log_resource_shortage(-1.0, 0, -1, perc, file, buffer);
 
 	return perc;
@@ -127,8 +130,8 @@ void *GC_thread(void *val)
 	time_t lastResourceCheck = 0;
 
 	// Remember disk usage
-	int LastLogStorageUsage = 0;
-	int LastDBStorageUsage = 0;
+	unsigned int LastLogStorageUsage = 0;
+	unsigned int LastDBStorageUsage = 0;
 
 	// Run as long as this thread is not canceled
 	while(!killed)

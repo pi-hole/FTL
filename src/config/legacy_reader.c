@@ -567,12 +567,12 @@ const char *readFTLlegacy(void)
 	// CHECK_DISK
 	// Limit above which FTL should complain about disk shortage for checked files
 	// defaults to: 90%
-	config.misc.check.disk.v.b = 90;
+	config.misc.check.disk.v.ui = 90;
 	buffer = parseFTLconf(fp, "CHECK_DISK");
 
 	if(buffer != NULL && sscanf(buffer, "%i", &ivalue) &&
 	   ivalue >= 0 && ivalue <= 100)
-			config.misc.check.disk.v.b = ivalue;
+			config.misc.check.disk.v.ui = ivalue;
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
