@@ -33,6 +33,8 @@ set(sources
         hex/specs/version.yaml
         hex/specs/config.yaml
         hex/specs/network.yaml
+        hex/specs/logs.yaml
+        hex/specs/endpoints.yaml
         docs.c
         )
 

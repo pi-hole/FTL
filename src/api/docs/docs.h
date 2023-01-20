@@ -111,6 +111,14 @@ static const char specs_config_yaml[] = {
 static const char specs_network_yaml[] = {
 #include "hex/specs/network.yaml"
 };
+
+static const char specs_logs_yaml[] = {
+#include "hex/specs/logs.yaml"
+};
+
+static const char specs_endpoints_yaml[] = {
+#include "hex/specs/endpoints.yaml"
+};
 struct {
     const char *path;
     const char *mime_type;
@@ -142,6 +150,8 @@ struct {
     {"specs/version.yaml", "text/plain", specs_version_yaml, sizeof(specs_version_yaml)},
     {"specs/config.yaml", "text/plain", specs_config_yaml, sizeof(specs_config_yaml)},
     {"specs/network.yaml", "text/plain", specs_network_yaml, sizeof(specs_network_yaml)},
+    {"specs/logs.yaml", "text/plain", specs_logs_yaml, sizeof(specs_logs_yaml)},
+    {"specs/endpoints.yaml", "text/plain", specs_endpoints_yaml, sizeof(specs_endpoints_yaml)},
 };
 
 #endif // API_DOCS_H
