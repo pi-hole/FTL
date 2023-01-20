@@ -159,6 +159,15 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	free(api.payload.raw);
 	api.payload.raw = NULL;
 
+	// Check if we need to return with unauthorized payload
+	if(unauthorized)
+	{
+		// Return with unauthorized payload
+		// Do this only after having cleaned up above
+		return send_json_unauthorized(&api);
+	}
+
+	// Check if we need to return with not found payload
 	if(ret == 0)
 	{
 		// not found or invalid request
@@ -166,12 +175,6 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		                      "not_found",
 		                      "Not found",
 		                      api.request->local_uri_raw);
-	}
-	else if(unauthorized)
-	{
-		// Return with unauthorized payload
-		// Do this only after having cleaned up above
-		return send_json_unauthorized(&api);
 	}
 
 	// Restart FTL if requested
