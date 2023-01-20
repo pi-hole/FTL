@@ -83,6 +83,8 @@ static const char *blockingreason = "";
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static int last_regex_idx = -1;
 static struct ptr_record *pihole_ptr = NULL;
+static char *pihole_suffix = NULL;
+static char *hostname_suffix = NULL;
 #define HOSTNAME "Pi-hole hostname"
 
 // Fork-private copy of the interface data the most recent query came from
@@ -424,7 +426,6 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 static bool is_pihole_domain(const char *domain)
 {
-	static char *pihole_suffix = NULL;
 	if(!pihole_suffix && daemon->domain_suffix)
 	{
 		// Build "pi.hole.<local suffix>" domain
@@ -433,7 +434,6 @@ static bool is_pihole_domain(const char *domain)
 		strcat(pihole_suffix, daemon->domain_suffix);
 		log_debug(DEBUG_QUERIES, "Domain suffix is \"%s\"", daemon->domain_suffix);
 	}
-	static char *hostname_suffix = NULL;
 	if(!hostname_suffix && daemon->domain_suffix)
 	{
 		// Build "<hostname>.<local suffix>" domain

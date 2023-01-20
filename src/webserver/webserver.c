@@ -85,7 +85,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
-	logg_web(FIFO_CIVETWEB, "HTTP info: %s", message);
+	logg_web(FIFO_CIVETWEB, "HTTP: %s", message);
 	return 1;
 }
 
@@ -143,7 +143,6 @@ void http_init(void)
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
-		"access_control_list", config.http.acl.v.s,
 		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
 		                     "X-Frame-Options: SAMEORIGIN\r\n"
 		                     "X-Xss-Protection: 1; mode=block\r\n"
@@ -152,8 +151,19 @@ void http_init(void)
 //		"cgi_interpreter", config.http.php_location,
 //		"cgi_pattern", "**.php$", // ** allows the files to by anywhere inside the web root
 		"index_files", "index.html,index.htm,index.php",
+		NULL, NULL, // Leave two slots for access control list (ACL) if configured
 		NULL
 	};
+
+	// Add access control list if configured (last two options)
+	if(strlen(config.http.acl.v.s) > 0)
+	{
+		options[(sizeof(options)/sizeof(*options)) - 3] = "access_control_list";
+		// Note: The string is duplicated by CivetWeb, so it doesn't matter if
+		//       the original string is freed (config changes) after mg_start()
+		//       returns below.
+		options[(sizeof(options)/sizeof(*options)) - 2] = config.http.acl.v.s;
+	}
 
 	// Configure logging handlers
 	struct mg_callbacks callbacks = { NULL };

@@ -278,7 +278,7 @@
 
   # Webserver access control list
   # Possible values are: <valid ACL>
-  acl = "+0.0.0.0/0"
+  acl = ""
 
   # Ports to be used by the webserver
   # Possible values are: comma-separated list of <[ip_address:]port>

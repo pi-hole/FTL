@@ -662,29 +662,11 @@ void initConfig(void)
 	config.http.domain.t = CONF_STRING;
 	config.http.domain.d.s = (char*)"pi.hole";
 
-	// Webserver access control list
-	//
-	// Allows restrictions to be put on the list of IP addresses which have
-	// access to our web server. The ACL is a comma separated list of IP
-	// subnets, where each subnet is pre-pended by either a - or a + sign. A
-	// plus sign means allow, where a minus sign means deny. If a subnet mask is
-	// omitted, such as -1.2.3.4, this means to deny only that single IP
-	// address. The default setting is to allow all accesses.
-	//
-	// On each request the full list is traversed, and the last (!) match wins.
-	//
-	// Example 1: acl = \"-0.0.0.0/0,+127.0.0.1\" ---> deny all accesses, except
-	// from 127.0.0.1
-	//
-	// Example 2: acl = \"-0.0.0.0/0,+192.168.0.0/16\" ---> deny all accesses,
-	// except from the 192.168/16 subnet
-	//
-	// IPv6 addresses are specified in CIDR-form [a:b::c]/64
 	config.http.acl.k = "http.acl";
-	config.http.acl.h = "Webserver access control list";
+	config.http.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny. If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: acl = \"+127.0.0.1,+[::1]\"\n ---> deny all access, except from 127.0.0.1 and ::1,\n Example 2: acl = \"+192.168.0.0/16\"\n ---> deny all accesses, except from the 192.168.0.0/16 subnet,\n Example 3: acl = \"+[::]/0\" ---> allow only IPv6 access.";
 	config.http.acl.a = "<valid ACL>";
 	config.http.acl.t = CONF_STRING;
-	config.http.acl.d.s = (char*)"+0.0.0.0/0";
+	config.http.acl.d.s = (char*)"";
 
 	config.http.port.k = "http.port";
 	config.http.port.h = "Ports to be used by the webserver";

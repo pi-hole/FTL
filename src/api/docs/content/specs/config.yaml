@@ -552,7 +552,7 @@ components:
             exclude_domains: [ 'google.de', 'pi-hole.net' ]
           http:
             domain: pi.hole
-            acl: "+0.0.0.0/0"
+            acl: "+0.0.0.0/0,::/0"
             port: 8080,[::]:8080
             paths:
               webroot: "/var/www/html"

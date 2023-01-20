@@ -169,7 +169,6 @@ void print_comment(FILE *fp, const char *str, const char *intro, const unsigned 
 			fputc('#', fp);
 			for(unsigned int j = 0; j < extraspace; ++j)
 				fputc(' ', fp);
-			fputc(' ', fp);
 			ratac = 0;
 		}
 
@@ -183,15 +182,28 @@ void print_comment(FILE *fp, const char *str, const char *intro, const unsigned 
 		// it is really a long word and we are at the beginning of a line
 		if(((ratac + len) <= width-extraspace) || (ratac == 0))
 		{
-			// Add spaces after words but not at the beginning of new lines
-			if(ratac > 0 && str[i] == ' ')
+			// Add spaces where needed
+			if(str[i] == ' ')
 				fputc(' ', fp);
 
 			// Print the next word
 			ratac += len;
 			while (len--)
-				if(str[i++] != ' ')
-					fputc(str[i-1], fp);
+			{
+				// Print characters until we encounter a space or newline
+				if(str[i] != ' ' && str[i] != '\n')
+					fputc(str[i], fp);
+				// If we encounter a newline, we need to break out of the
+				// loop and start a new line
+				if(str[i] == '\n')
+				{
+					i++;
+					ratac = 2*width;
+					break;
+				}
+				// Advance to next character
+				i++;
+			}
 		}
 		else
 		{
