@@ -51,6 +51,7 @@ void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void reload_per_client_regex(clientsData *client);
 void read_regex_from_database(void);
 bool regex_get_redirect(const int regexID, struct in_addr *addr4, struct in6_addr *addr6);
+void free_regex(void);
 
 int regex_test(const bool debug_mode, const bool quiet, const char *domainin, const char *regexin);
 

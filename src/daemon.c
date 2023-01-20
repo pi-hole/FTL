@@ -27,6 +27,8 @@
 #include <errno.h>
 // getprio(), setprio()
 #include <sys/resource.h>
+// free_regex()
+#include "regex_r.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -317,6 +319,9 @@ void cleanup(const int ret)
 
 	// Remove PID file
 	removepid();
+
+	// Free regex filter memory
+	free_regex();
 
 	// Remove shared memory objects
 	// Important: This invalidated all objects such as

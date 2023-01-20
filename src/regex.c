@@ -475,7 +475,7 @@ bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, c
 	return false;
 }
 
-static void free_regex(void)
+void free_regex(void)
 {
 	// Return early if we don't use any regex filters
 	if(allow_regex == NULL &&
