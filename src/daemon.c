@@ -52,7 +52,7 @@ void go_daemon(void)
 		exit(EXIT_SUCCESS);
 	}
 
-	//unmask the file mode
+	// Unmask the file mode
 	umask(0);
 
 	// Set new session to ensure we have no controlling terminal
@@ -99,13 +99,17 @@ void go_daemon(void)
 void savepid(void)
 {
 	FILE *f;
+	// Get PID of the current process
 	const pid_t pid = getpid();
+	// Open file for writing
 	if((f = fopen(config.files.pid.v.s, "w+")) == NULL)
 	{
+		// Log error
 		log_warn("Unable to write PID to file: %s", strerror(errno));
 	}
 	else
 	{
+		// Write PID to file
 		fprintf(f, "%i", (int)pid);
 		fclose(f);
 	}
@@ -114,7 +118,10 @@ void savepid(void)
 
 static void removepid(void)
 {
+	// Note that this function is not really removing the PID file but
+	// rather emptying it
 	FILE *f;
+	// Open file for writing (emptying it)
 	if((f = fopen(config.files.pid.v.s, "w")) == NULL)
 	{
 		log_warn("Unable to empty PID file: %s", strerror(errno));
@@ -129,13 +136,20 @@ char *getUserName(void)
 	// the getpwuid() function shall search the user database for an entry with a matching uid
 	// the geteuid() function shall return the effective user ID of the calling process - this is used as the search criteria for the getpwuid() function
 	const uid_t euid = geteuid();
+	errno = 0;
 	const struct passwd *pw = getpwuid(euid);
 	if(pw)
 	{
+		// If the user is found, we return the username
 		name = strdup(pw->pw_name);
 	}
 	else
 	{
+		// If there was an error, we log it
+		if(errno != 0)
+			log_warn("getpwuid(%u) failed: %s", euid, strerror(errno));
+
+		// If the user is not found, we return the UID as string
 		if(asprintf(&name, "%u", euid) < 0)
 			return NULL;
 	}
@@ -177,6 +191,7 @@ void delay_startup(void)
 	struct sysinfo info = { 0 };
 	if(sysinfo(&info) == 0)
 	{
+		// Exit early if system has already been running for a while
 		if(info.uptime > DELAY_UPTIME)
 		{
 			log_info("Not sleeping as system has finished booting");
@@ -185,6 +200,7 @@ void delay_startup(void)
 	}
 	else
 	{
+		// Log error but continue
 		log_err("Unable to obtain sysinfo: %s (%i)", strerror(errno), errno);
 	}
 
@@ -224,6 +240,7 @@ static void terminate_threads(void)
 	log_info("Waiting for threads to join");
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
+		// Cancel thread if it is idle
 		if(thread_cancellable[i])
 		{
 			log_info("Thread %s (%d) is idle, terminating it.",
@@ -231,6 +248,7 @@ static void terminate_threads(void)
 			pthread_cancel(threads[i]);
 		}
 
+		// Cancel thread if we cannot set a timeout for joining
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
 		{
 			log_info("Thread %s (%d) is busy, cancelling it (cannot set timeout).",
@@ -242,6 +260,7 @@ static void terminate_threads(void)
 		// Timeout for joining is 2 seconds for each thread
 		ts.tv_sec += 2;
 
+		// Try to join thread and cancel it if it is still busy
 		const int s = pthread_timedjoin_np(threads[i], NULL, &ts);
 		if(s != 0)
 		{
@@ -268,6 +287,7 @@ void set_nice(void)
 	}
 	else
 	{
+		// Set nice value
 		const int ret = setpriority(which, pid, config.misc.nice.v.i);
 		if(ret == -1)
 			// ERROR EPERM: The calling process attempted to increase its priority
