@@ -102,7 +102,7 @@ void savepid(void)
 	const pid_t pid = getpid();
 	if((f = fopen(config.files.pid.v.s, "w+")) == NULL)
 	{
-		log_warn("Unable to write PID to file.");
+		log_warn("Unable to write PID to file: %s", strerror(errno));
 	}
 	else
 	{
@@ -117,7 +117,7 @@ static void removepid(void)
 	FILE *f;
 	if((f = fopen(config.files.pid.v.s, "w")) == NULL)
 	{
-		log_warn("Unable to empty PID file");
+		log_warn("Unable to empty PID file: %s", strerror(errno));
 		return;
 	}
 	fclose(f);
