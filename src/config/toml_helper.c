@@ -16,6 +16,8 @@
 #include "datastructure.h"
 // flock(), LOCK_SH
 #include <sys/file.h>
+// rotate_files()
+#include "files.h"
 
 // Open the TOML file for reading or writing
 FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode)
@@ -25,6 +27,9 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	if(strcmp(mode, "r") == 0 &&
 	   (fp = fopen("pihole-FTL.toml", mode)) != NULL)
 		return fp;
+
+	// Rotate config file, no rotation is done when the file does not exist
+	rotate_files(GLOBALTOMLPATH, MAX_ROTATION);
 
 	// No readable local file found, try global file
 	fp = fopen(GLOBALTOMLPATH, mode);

@@ -1014,11 +1014,12 @@ void readFTLconf(const bool rewrite)
 	importsetupVarsConf();
 
 	// When we reach this point but the FTL TOML config file exists, it may
-	// contain errors such as syntax errors, etc. We move it into a ".bck" location
-	// so it can be revisited later
+	// contain errors such as syntax errors, etc. We move it into a
+	// ".broken" location so it can be revisited later
 	if(file_exists(GLOBALTOMLPATH))
 	{
-		const char new_name[] = GLOBALTOMLPATH ".bck";
+		const char new_name[] = GLOBALTOMLPATH ".broken";
+		rotate_files(new_name, MAX_ROTATION);
 		rename(GLOBALTOMLPATH, new_name);
 	}
 

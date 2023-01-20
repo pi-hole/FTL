@@ -481,6 +481,9 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		return false;
 	}
 
+	// Rotate old config files
+	rotate_files(DNSMASQ_PH_CONFIG, MAX_ROTATION);
+
 	log_debug(DEBUG_CONFIG, "Installing "DNSMASQ_TEMP_CONF" to "DNSMASQ_PH_CONFIG);
 	if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
 	{

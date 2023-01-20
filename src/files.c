@@ -269,6 +269,46 @@ static char *trim(char *str)
 	return start;
 }
 
+// Rotate files in a directory
+void rotate_files(const char *path, const unsigned int num)
+{
+	// Check if file exists. If not, we don't need to rotate anything here
+	if(!file_exists(path))
+	{
+		log_debug(DEBUG_CONFIG, "rotate_files(): File \"%s\" does not exist, not rotating", path);
+		return;
+	}
+	// Rename all files to one number higher
+	for(unsigned int i = num; i > 0; i--)
+	{
+		// Construct old and new paths
+		char new_path[PATH_MAX + NAME_MAX + 4] = { 0 };
+		char old_path[PATH_MAX + NAME_MAX + 4] = { 0 };
+		if(i == 1)
+			snprintf(old_path, sizeof(old_path), "%s", path);
+		else
+			snprintf(old_path, sizeof(old_path), "%s.%u", path, i-1);
+		snprintf(new_path, sizeof(new_path), "%s.%u", path, i);
+
+		// Rename file
+		if(rename(old_path, new_path) < 0)
+		{
+			// Ignore ENOENT errors, as the file might not exist
+			// (e.g. if we are rotating 5 files, but only 3 exist)
+			if(errno == ENOENT)
+				continue;
+			log_warn("rotate_files(): failed when moving %s -> %s: %s (%d)",
+			         old_path, new_path, strerror(errno), errno);
+		}
+		else
+		{
+			// Log success if debug is enabled
+			log_debug(DEBUG_CONFIG, "rotate_files(): moved %s%s -> %s",
+			          old_path, i == 1 ? "  " : "", new_path);
+		}
+	}
+}
+
 // Credits: https://stackoverflow.com/a/55410469
 int parse_line(char *line, char **key, char **value)
 {
