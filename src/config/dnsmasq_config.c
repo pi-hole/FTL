@@ -483,7 +483,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 
 	// Rotate old config files
-	rotate_files(DNSMASQ_PH_CONFIG, MAX_ROTATION);
+	rotate_files(DNSMASQ_PH_CONFIG);
 
 	log_debug(DEBUG_CONFIG, "Installing "DNSMASQ_TEMP_CONF" to "DNSMASQ_PH_CONFIG);
 	if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
@@ -657,7 +657,10 @@ bool read_legacy_custom_hosts_config(void)
 		trim_whitespace(linebuffer);
 
 		// Skip empty lines
-		if(strlen(linebuffer) == 0)
+		if(strlen(linebuffer) == 0 ||
+		   linebuffer[0] == '\n' ||
+		   linebuffer[0] == '\r' ||
+		   linebuffer[0] == '\0')
 			continue;
 
 		// Skip comments
@@ -690,7 +693,7 @@ bool read_legacy_custom_hosts_config(void)
 bool write_custom_list(void)
 {
 	// Rotate old hosts files
-	rotate_files(DNSMASQ_CUSTOM_LIST, MAX_ROTATION);
+	rotate_files(DNSMASQ_CUSTOM_LIST);
 
 	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST" for writing");
 	FILE *pihole_conf = fopen(DNSMASQ_CUSTOM_LIST, "w");

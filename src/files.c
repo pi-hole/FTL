@@ -26,6 +26,10 @@
 #include <sys/statvfs.h>
 // dirname()
 #include <libgen.h>
+// compression functions
+#include "miniz/miniz.h"
+
+static bool compress_file(const char *in, const char* out);
 
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
@@ -270,7 +274,7 @@ static char *trim(char *str)
 }
 
 // Rotate files in a directory
-void rotate_files(const char *path, const unsigned int num)
+void rotate_files(const char *path)
 {
 	// Check if file exists. If not, we don't need to rotate anything here
 	if(!file_exists(path))
@@ -279,34 +283,229 @@ void rotate_files(const char *path, const unsigned int num)
 		return;
 	}
 	// Rename all files to one number higher
-	for(unsigned int i = num; i > 0; i--)
+	for(unsigned int i = MAX_ROTATIONS; i > 0; i--)
 	{
 		// Construct old and new paths
-		char new_path[PATH_MAX + NAME_MAX + 4] = { 0 };
-		char old_path[PATH_MAX + NAME_MAX + 4] = { 0 };
+		char old_path[strlen(path) + 4];
 		if(i == 1)
 			snprintf(old_path, sizeof(old_path), "%s", path);
 		else
 			snprintf(old_path, sizeof(old_path), "%s.%u", path, i-1);
+		char new_path[strlen(old_path) + 4];
 		snprintf(new_path, sizeof(new_path), "%s.%u", path, i);
 
-		// Rename file
-		if(rename(old_path, new_path) < 0)
+		char old_path_compressed[strlen(old_path) + 4];
+		snprintf(old_path_compressed, sizeof(old_path_compressed), "%s.gz", old_path);
+
+		char new_path_compressed[strlen(new_path) + 4];
+		snprintf(new_path_compressed, sizeof(new_path_compressed), "%s.gz", new_path);
+
+		if(file_exists(old_path))
 		{
-			// Ignore ENOENT errors, as the file might not exist
-			// (e.g. if we are rotating 5 files, but only 3 exist)
-			if(errno == ENOENT)
-				continue;
-			log_warn("rotate_files(): failed when moving %s -> %s: %s (%d)",
-			         old_path, new_path, strerror(errno), errno);
+			// Rename file
+			if(rename(old_path, new_path) < 0)
+			{
+				if(i == 1)
+					log_warn("Rotation %s{ -> .%u} failed: %s (%d)",
+					         path, i, strerror(errno), errno);
+				else
+					log_warn("Rotation %s.{%u -> %u} failed: %s (%d)",
+					         path, i-1, i, strerror(errno), errno);
+			}
+			else
+			{
+				// Log success if debug is enabled
+				if(i == 1)
+					log_debug(DEBUG_CONFIG, "Rotated %s{ -> .%u}",
+					          path, i);
+				else
+					log_debug(DEBUG_CONFIG, "Rotated %s.{%u -> %u}",
+					          path, i-1, i);
+			}
+
+			// Compress file if we are rotating a sufficiently old file
+			if(i > ZIP_ROTATIONS)
+			{
+				if(i == 1)
+					log_debug(DEBUG_CONFIG, "Compressing %s{ -> .%u.gz}",
+					          path, i);
+				else
+					log_debug(DEBUG_CONFIG, "Compressing %s.{%u -> %u.gz}",
+					          path, i-1, i);
+				if(compress_file(new_path, new_path_compressed))
+				{
+					// On success, we remove the uncompressed file
+					remove(new_path);
+				}
+			}
 		}
-		else
+		else if(file_exists(old_path_compressed))
 		{
-			// Log success if debug is enabled
-			log_debug(DEBUG_CONFIG, "rotate_files(): moved %s%s -> %s",
-			          old_path, i == 1 ? "  " : "", new_path);
+			// Rename file
+			if(rename(old_path_compressed, new_path_compressed) < 0)
+			{
+				if(i == 1)
+					log_warn("Rotation %s{ -> .%u}.gz failed: %s (%d)",
+					         path, i, strerror(errno), errno);
+				else
+					log_warn("Rotation %s.{%u -> %u}.gz failed: %s (%d)",
+					         path, i-1, i, strerror(errno), errno);
+			}
+			else
+			{
+				// Log success if debug is enabled
+				if(i == 1)
+					log_debug(DEBUG_CONFIG, "Rotated %s{ -> .%u}.gz",
+					          path, i);
+				else
+					log_debug(DEBUG_CONFIG, "Rotated %s.{%u -> %u}.gz",
+					          path, i-1, i);
+			}
 		}
 	}
+}
+
+static bool compress_file(const char *in, const char *out)
+{
+	// Read entire file into memory
+	FILE *fp = fopen(in, "rb");
+	if(fp == NULL)
+	{
+		log_warn("compress_file(): failed to open %s: %s (%d)", in, strerror(errno), errno);
+		return false;
+	}
+
+	// Get file size
+	fseek(fp, 0, SEEK_END);
+	const mz_ulong size = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+
+	// Read file into memory
+	unsigned char *buffer = malloc(size);
+	if(buffer == NULL)
+	{
+		log_warn("compress_file(): failed to allocate %lu bytes of memory", (unsigned long)size);
+		fclose(fp);
+		return false;
+	}
+	if(fread(buffer, 1, size, fp) != size)
+	{
+		log_warn("compress_file(): failed to read %lu bytes from %s", (unsigned long)size, in);
+		fclose(fp);
+		free(buffer);
+		return false;
+	}
+	fclose(fp);
+
+	// Allocate memory for compressed file
+	// (compressBound() returns the maximum size of the compressed data)
+	mz_ulong size_compressed = compressBound(size);
+	unsigned char *buffer_compressed = malloc(size_compressed);
+	if(buffer_compressed == NULL)
+	{
+		log_warn("compress_file(): failed to allocate %lu bytes of memory", (unsigned long)size_compressed);
+		free(buffer);
+		return false;
+	}
+
+	// Compress file (ZLIB stream format - not GZIP! - see https://tools.ietf.org/html/rfc1950)
+	int ret = compress2(buffer_compressed, &size_compressed, buffer, size, Z_BEST_COMPRESSION);
+	if(ret != Z_OK)
+	{
+		log_warn("compress_file(): failed to compress %s: %s (%d)", in, zError(ret), ret);
+		free(buffer);
+		free(buffer_compressed);
+		return false;
+	}
+
+	// Create compressed file
+	fp = fopen(out, "wb");
+	if(fp == NULL)
+	{
+		log_warn("compress_file(): failed to open %s: %s (%d)", out, strerror(errno), errno);
+		free(buffer);
+		free(buffer_compressed);
+		return false;
+	}
+
+	// Generate GZIP header (without timestamp and extra flags)
+	// (see https://tools.ietf.org/html/rfc1952#section-2.3)
+	//
+	//   0   1   2   3   4   5   6   7   8   9
+	// +---+---+---+---+---+---+---+---+---+---+
+	// |ID1|ID2|CM |FLG|     MTIME     |XFL|OS | (more-->)
+	// +---+---+---+---+---+---+---+---+---+---+
+	//
+	// 1F8B: magic number
+	// 08: compression method (deflate)
+	// 01: flags (FTEXT is set)
+	// 00000000: timestamp (set later). For simplicity, we set it to the current time
+	// 02: extra flags (maximum compression)
+	// 03: operating system (Unix)
+	const unsigned char gzip_header[] = { 0x1F, 0x8B, 0x08, 0x01, 0x00, 0x00, 0x00, 0x00, 0x02, 0x03 };
+	// Set timestamp
+	uint32_t now = htole32(time(NULL));
+	memcpy((void*)(gzip_header+4), &now, sizeof(now));
+	// Write header
+	if(fwrite(gzip_header, 1, sizeof(gzip_header), fp) != sizeof(gzip_header))
+	{
+		log_warn("compress_file(): failed to write GZIP header to %s", out);
+		fclose(fp);
+		free(buffer);
+		free(buffer_compressed);
+		return false;
+	}
+
+	// Write compressed data, strip ZLIB header (first two bytes) and footer (last four bytes)
+	// +=======================+
+	// |...compressed blocks...| (more-->)
+	// +=======================+
+	if(fwrite(buffer_compressed + 2, 1, size_compressed - (2 + 4), fp) != size_compressed-6)
+	{
+		log_warn("compress_file(): failed to write %lu bytes to %s", (unsigned long)size_compressed, out);
+		fclose(fp);
+		free(buffer);
+		free(buffer_compressed);
+		return false;
+	}
+
+	// Write GZIP footer (CRC32 and uncompressed size)
+	// (see https://tools.ietf.org/html/rfc1952#section-2.3)
+	//
+	//   0   1   2   3   4   5   6   7
+	// +---+---+---+---+---+---+---+---+
+	// |     CRC32     |     ISIZE     |
+	// +---+---+---+---+---+---+---+---+
+	//
+	// CRC32: This contains a Cyclic Redundancy Check value of the
+	//        uncompressed data computed according to CRC-32 algorithm used in
+	//        the ISO 3309 standard and in section 8.1.1.6.2 of ITU-T
+	//        recommendation V.42.  (See http://www.iso.ch for ordering ISO
+	//        documents. See gopher://info.itu.ch for an online version of
+	//        ITU-T V.42.)
+	// isize: This contains the size of the original (uncompressed) input
+	//        data modulo 2^32 (little endian).
+	uint32_t crc = mz_crc32(MZ_CRC32_INIT, buffer, size);
+	uint32_t isize = htole32(size);
+	free(buffer);
+	if(fwrite(&crc, 1, sizeof(crc), fp) != sizeof(crc))
+	{
+		log_warn("compress_file(): failed to write CRC32 to %s", out);
+		fclose(fp);
+		free(buffer_compressed);
+		return false;
+	}
+	if(fwrite(&isize, 1, sizeof(isize), fp) != sizeof(isize))
+	{
+		log_warn("compress_file(): failed to write isize to %s", out);
+		fclose(fp);
+		free(buffer_compressed);
+		return false;
+	}
+
+	fclose(fp);
+	free(buffer_compressed);
+	return true;
 }
 
 // Credits: https://stackoverflow.com/a/55410469

@@ -10,7 +10,8 @@
 #ifndef FILE_H
 #define FILE_H
 
-#define MAX_ROTATION 5
+#define ZIP_ROTATIONS 3
+#define MAX_ROTATIONS 15
 
 bool chmod_file(const char *filename, const mode_t mode);
 bool file_exists(const char *filename);
@@ -21,7 +22,7 @@ void ls_dir(const char* path);
 unsigned int get_path_usage(const char *path, char buffer[64]);
 unsigned int get_filepath_usage(const char *file, char buffer[64]);
 bool directory_exists(const char *path);
-void rotate_files(const char *path, const unsigned int num);
+void rotate_files(const char *path);
 
 int parse_line(char *line, char **key, char **value);
 

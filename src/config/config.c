@@ -1015,7 +1015,7 @@ void readFTLconf(const bool rewrite)
 	if(file_exists(GLOBALTOMLPATH))
 	{
 		const char new_name[] = GLOBALTOMLPATH ".broken";
-		rotate_files(new_name, MAX_ROTATION);
+		rotate_files(new_name);
 		rename(GLOBALTOMLPATH, new_name);
 	}
 
