@@ -29,7 +29,7 @@
 static toml_table_t *parseTOML(void);
 static void reportDebugConfig(void);
 
-bool readFTLtoml(void)
+bool readFTLtoml(const bool verbose)
 {
 	// Initialize config with default values
 	initConfig();
@@ -82,7 +82,8 @@ bool readFTLtoml(void)
 
 	// Report debug config if enabled
 	set_debug_flags();
-	reportDebugConfig();
+	if(verbose)
+		reportDebugConfig();
 
 	// Free memory allocated by the TOML parser and return success
 	toml_free(conf);
@@ -96,7 +97,7 @@ static toml_table_t *parseTOML(void)
 	FILE *fp;
 	if((fp = openFTLtoml("r")) == NULL)
 	{
-		log_debug(DEBUG_CONFIG, "No config file available (%s), using defaults",
+		log_warn("No config file available (%s), using defaults",
 		          strerror(errno));
 		return NULL;
 	}

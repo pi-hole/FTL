@@ -23,13 +23,10 @@
 FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode)
 {
 	FILE *fp;
-	// If reading: first check if there is a local file
-	if(strcmp(mode, "r") == 0 &&
-	   (fp = fopen("pihole-FTL.toml", mode)) != NULL)
-		return fp;
-
-	// Rotate config file, no rotation is done when the file does not exist
-	rotate_files(GLOBALTOMLPATH, MAX_ROTATION);
+	// Rotate config file, no rotation is done when the file is opened for
+	// reading (mode == "r")
+	if(mode[0] != 'r')
+		rotate_files(GLOBALTOMLPATH, MAX_ROTATION);
 
 	// No readable local file found, try global file
 	fp = fopen(GLOBALTOMLPATH, mode);

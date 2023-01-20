@@ -28,8 +28,9 @@ bool writeFTLtoml(const bool verbose)
 		return false;
 	}
 
-	// Store lines in the config file
-	if(verbose)
+	// Log that we are (re-)writing the config file if either in verbose or
+	// debug mode
+	if(verbose || config.debug.config.v.b)
 		log_info("Writing config file");
 
 	// Write header

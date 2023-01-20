@@ -10,7 +10,7 @@
 #ifndef TOML_READER_H
 #define TOML_READER_H
 
-bool readFTLtoml(void);
+bool readFTLtoml(const bool verbose);
 bool getLogFilePathTOML(void);
 
 #endif //TOML_READER_H

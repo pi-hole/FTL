@@ -970,7 +970,8 @@ void initConfig(void)
 		// Verify all config options are defined above
 		if(!conf_item->p)
 			log_err("Config option %u/%u is not set!", i, (unsigned int)CONFIG_ELEMENTS);
-		else
+		else if(config.debug.config.v.b)
+		{
 			if(conf_item->p[3])
 				log_debug(DEBUG_CONFIG, "Config option %u is %s.%s.%s.%s", i, conf_item->p[0], conf_item->p[1], conf_item->p[2], conf_item->p[3]);
 			else if(conf_item->p[2])
@@ -979,13 +980,14 @@ void initConfig(void)
 				log_debug(DEBUG_CONFIG, "Config option %u is %s.%s", i, conf_item->p[0], conf_item->p[1]);
 			else
 				log_debug(DEBUG_CONFIG, "Config option %u is %s", i, conf_item->p[0]);
+		}
 	}
 }
 
 void readFTLconf(const bool rewrite)
 {
 	// First try to read TOML config file
-	if(readFTLtoml())
+	if(readFTLtoml(rewrite))
 	{
 		// If successful, we write the config file back to disk
 		// to ensure that all options are present and comments
@@ -995,8 +997,6 @@ void readFTLconf(const bool rewrite)
 			writeFTLtoml(true);
 			write_dnsmasq_config(&config, false, NULL);
 		}
-		read_legacy_dhcp_static_config();
-		read_legacy_cnames_config();
 		return;
 	}
 
@@ -1010,8 +1010,13 @@ void readFTLconf(const bool rewrite)
 		if(rename(path, target) != 0)
 			log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
 	}
-
+	// Import bits and pieces from legacy config files
+	// setupVars.conf
 	importsetupVarsConf();
+	// 04-pihole-static-dhcp.conf
+	read_legacy_dhcp_static_config();
+	// 05-pihole-custom-cname.conf
+	read_legacy_cnames_config();
 
 	// When we reach this point but the FTL TOML config file exists, it may
 	// contain errors such as syntax errors, etc. We move it into a
