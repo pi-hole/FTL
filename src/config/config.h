@@ -101,6 +101,7 @@ struct config {
 		struct conf_item piholePTR;
 		struct conf_item replyWhenBusy;
 		struct conf_item blockTTL;
+		struct conf_item hosts;
 		struct {
 			struct conf_item active;
 			struct conf_item mode;

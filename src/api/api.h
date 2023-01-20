@@ -64,7 +64,6 @@ int api_network_devices(struct ftl_conn *api);
 // DNS methods
 int api_dns_blocking(struct ftl_conn *api);
 int api_dns_cache(struct ftl_conn *api);
-int api_dns_entries(struct ftl_conn *api);
 
 // List methods
 int api_list(struct ftl_conn *api);

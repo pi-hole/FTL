@@ -296,6 +296,14 @@ bool set_config_from_CLI(const char *key, const char *value)
 			return false;
 		}
 	}
+	else if(conf_item == &conf_copy.dns.hosts)
+	{
+		// We need to rewrite the custom.list file but do not need to
+		// restart dnsmasq. If dnsmasq is going to be restarted anyway,
+		// this is not necessary as the file will be rewritten during
+		// the restart
+		write_custom_list();
+	}
 
 	// Install new configuration
 	// Backup old config struct (so we can free it)

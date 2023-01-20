@@ -457,6 +457,7 @@ static int api_config_patch(struct ftl_conn *api)
 
 	// Read all known config items
 	bool dnsmasq_changed = false;
+	bool rewrite_custom_list = false;
 	struct config conf_copy;
 	duplicate_config(&conf_copy);
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -491,6 +492,10 @@ static int api_config_patch(struct ftl_conn *api)
 		// Check if this item requires a config-rewrite + restart of dnsmasq
 		if(conf_item->restart_dnsmasq)
 			dnsmasq_changed = true;
+
+		// Check if this item requires a rewrite of the custom.list file
+		if(conf_item == &conf_copy.dns.hosts)
+			rewrite_custom_list = true;
 	}
 
 	// Request restart of FTL
@@ -506,6 +511,14 @@ static int api_config_patch(struct ftl_conn *api)
 			                       "Invalid configuration",
 			                       errbuf);
 		}
+	}
+	else if(rewrite_custom_list)
+	{
+		// We need to rewrite the custom.list file but do not need to
+		// restart dnsmasq. If dnsmasq is going to be restarted anyway,
+		// this is not necessary as the file will be rewritten during
+		// the restart
+		write_custom_list();
 	}
 
 	// Install new configuration
@@ -570,6 +583,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 	// Read all known config items
 	bool dnsmasq_changed = false;
+	bool rewrite_custom_list = false;
 	bool found = false;
 	struct config conf_copy;
 	duplicate_config(&conf_copy);
@@ -615,37 +629,42 @@ static int api_config_put_delete(struct ftl_conn *api)
 		{
 			if(found)
 			{
+				// Item already present
 				message = "Item already present";
 				hint = "Uniqueness of items is enforced";
+				break;
 			}
 			else
 			{
+				// Add new item to array
 				JSON_COPY_STR_TO_ARRAY(conf_item->v.json, new_item);
 				found = true;
-
-				// If we reach this point, a valid setting was found and changed
-				// Check if this item requires a config-rewrite + restart of dnsmasq
-				if(conf_item->restart_dnsmasq)
-					dnsmasq_changed = true;
 			}
 		}
 		else
 		{
 			if(found)
 			{
+				// Remove item from array
 				cJSON_DeleteItemFromArray(conf_item->v.json, idx);
-
-				// If we reach this point, a valid setting was found and changed
-				// Check if this item requires a config-rewrite + restart of dnsmasq
-				if(conf_item->restart_dnsmasq)
-					dnsmasq_changed = true;
 			}
 			else
 			{
+				// Item not found
 				message = "Item not found";
 				hint = "Can only delete existing items";
+				break;
 			}
 		}
+
+		// If we reach this point, a valid setting was found and changed
+		// Check if this item requires a config-rewrite + restart of dnsmasq
+		if(conf_item->restart_dnsmasq)
+			dnsmasq_changed = true;
+
+		// Check if this item requires a rewrite of the custom.list file
+		if(conf_item == &conf_copy.dns.hosts)
+			rewrite_custom_list = true;
 		break;
 	}
 
@@ -680,6 +699,14 @@ static int api_config_put_delete(struct ftl_conn *api)
 			                       "Invalid configuration",
 			                       errbuf);
 		}
+	}
+	else if(rewrite_custom_list)
+	{
+		// We need to rewrite the custom.list file but do not need to
+		// restart dnsmasq. If dnsmasq is going to be restarted anyway,
+		// this is not necessary as the file will be rewritten during
+		// the restart
+		write_custom_list();
 	}
 
 	// Install new configuration

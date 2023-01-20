@@ -38,6 +38,12 @@
   # TTL for blocked queries [seconds]
   blockTTL = 2
 
+  # Custom DNS records
+  # Example: hosts = [ "127.0.0.1 mylocal", "192.168.0.1 therouter" ]
+  # Possible values are: Array of custom DNS records each one in HOSTS form: "IP
+  #                      HOSTNAME"
+  hosts = [   ]
+
   [dns.blocking]
     # Should FTL block queries?
     active = true

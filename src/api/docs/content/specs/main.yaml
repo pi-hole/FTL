@@ -110,12 +110,6 @@ paths:
   /dns/cache:
     $ref: 'dns.yaml#/components/paths/cache'
 
-  /dns/entries:
-    $ref: 'dns.yaml#/components/paths/entries/get'
-
-  /dns/entries/{ip}/{host}:
-    $ref: 'dns.yaml#/components/paths/entries/put_delete'
-
   /domains/{type}/{kind}/{domain}:
     $ref: 'domains.yaml#/components/paths/type_kind_domain'
 

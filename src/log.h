@@ -27,6 +27,7 @@ void log_counter_info(void);
 void format_memory_size(char prefix[2], unsigned long long int bytes,
                         double * const formatted);
 void format_time(char buffer[42], unsigned long seconds, double milliseconds);
+unsigned int get_year(const time_t timein);
 const char *get_FTL_version(void);
 void log_FTL_version(bool crashreport);
 double double_time(void);

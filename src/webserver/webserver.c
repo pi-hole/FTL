@@ -138,6 +138,7 @@ void http_init(void)
 	char num_threads[3] = { 0 };
 	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
 	const char *options[] = {
+		// All passed strings are duplicated internally. See also comment below.
 		"document_root", config.http.paths.webroot.v.s,
 		"listening_ports", config.http.port.v.s,
 		"decode_url", "yes",
@@ -151,7 +152,7 @@ void http_init(void)
 //		"cgi_interpreter", config.http.php_location,
 //		"cgi_pattern", "**.php$", // ** allows the files to by anywhere inside the web root
 		"index_files", "index.html,index.htm,index.php",
-		NULL, NULL, // Leave two slots for access control list (ACL) if configured
+		NULL, NULL, // Leave two slots for access control list (ACL) at the end
 		NULL
 	};
 

@@ -19,6 +19,8 @@ int get_lineno_from_string(const char *string);
 char *get_dnsmasq_line(const unsigned int lineno);
 bool read_legacy_dhcp_static_config(void);
 bool read_legacy_cnames_config(void);
+bool read_legacy_custom_hosts_config(void);
+bool write_custom_list(void);
 
 #define DNSMASQ_PH_CONFIG "/etc/pihole/dnsmasq.conf"
 #define DNSMASQ_TEMP_CONF "/etc/pihole/dnsmasq.conf.temp"

@@ -311,6 +311,12 @@ void initConfig(void)
 	config.dns.blockTTL.t = CONF_UINT;
 	config.dns.blockTTL.d.ui = 2;
 
+	config.dns.hosts.k = "dns.hosts";
+	config.dns.hosts.h = "Custom DNS records\n Example: hosts = [ \"127.0.0.1 mylocal\", \"192.168.0.1 therouter\" ]";
+	config.dns.hosts.a = "Array of custom DNS records each one in HOSTS form: \"IP HOSTNAME\"";
+	config.dns.hosts.t = CONF_JSON_STRING_ARRAY;
+	config.dns.hosts.d.json = cJSON_CreateArray();
+
 	// sub-struct dns.blocking
 	config.dns.blocking.active.k = "dns.blocking.active";
 	config.dns.blocking.active.h = "Should FTL block queries?";
@@ -393,8 +399,8 @@ void initConfig(void)
 
 	// struct dnsmasq
 	config.dnsmasq.upstreams.k = "dnsmasq.upstreams";
-	config.dnsmasq.upstreams.h = "Array of upstream DNS servers used by Pi-hole";
-	config.dnsmasq.upstreams.a = "array of IP addresses and/or hostnames, optionally with a port, e.g. [ \"8.8.8.8\", \"127.0.0.1#5353\", \"docker-resolver\" ]";
+	config.dnsmasq.upstreams.h = "Array of upstream DNS servers used by Pi-hole\n Example: [ \"8.8.8.8\", \"127.0.0.1#5353\", \"docker-resolver\" ]";
+	config.dnsmasq.upstreams.a = "array of IP addresses and/or hostnames, optionally with a port";
 	config.dnsmasq.upstreams.t = CONF_JSON_STRING_ARRAY;
 	config.dnsmasq.upstreams.d.json = cJSON_CreateArray();
 	config.dnsmasq.upstreams.restart_dnsmasq = true;
@@ -627,7 +633,7 @@ void initConfig(void)
 	config.api.localAPIauth.d.b = true;
 
 	config.api.prettyJSON.k = "api.prettyJSON";
-	config.api.prettyJSON.h = "Should FTL prettify the API output?";
+	config.api.prettyJSON.h = "Should FTL prettify the API output (add extra spaces, newlines and indentation)?";
 	config.api.prettyJSON.t = CONF_BOOL;
 	config.api.prettyJSON.d.b = false;
 
@@ -643,14 +649,14 @@ void initConfig(void)
 	config.api.pwhash.d.s = (char*)"";
 
 	config.api.exclude_clients.k = "api.exclude_clients";
-	config.api.exclude_clients.h = "Array of clients to be excluded from certain API responses";
-	config.api.exclude_clients.a = "array of IP addresses and/or hostnames, e.g. [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
+	config.api.exclude_clients.h = "Array of clients to be excluded from certain API responses\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
+	config.api.exclude_clients.a = "array of IP addresses and/or hostnames";
 	config.api.exclude_clients.t = CONF_JSON_STRING_ARRAY;
 	config.api.exclude_clients.d.json = cJSON_CreateArray();
 
 	config.api.exclude_domains.k = "api.exclude_domains";
-	config.api.exclude_domains.h = "Array of domains to be excluded from certain API responses";
-	config.api.exclude_domains.a = "array of IP addresses and/or hostnames, e.g. [ \"google.de\", \"pi-hole.net\" ]";
+	config.api.exclude_domains.h = "Array of domains to be excluded from certain API responses\n Example: [ \"google.de\", \"pi-hole.net\" ]";
+	config.api.exclude_domains.a = "array of IP addresses and/or hostnames";
 	config.api.exclude_domains.t = CONF_JSON_STRING_ARRAY;
 	config.api.exclude_domains.d.json = cJSON_CreateArray();
 
@@ -978,6 +984,7 @@ void readFTLconf(const bool rewrite)
 		{
 			writeFTLtoml(true);
 			write_dnsmasq_config(&config, false, NULL);
+			write_custom_list();
 		}
 		return;
 	}
@@ -999,6 +1006,8 @@ void readFTLconf(const bool rewrite)
 	read_legacy_dhcp_static_config();
 	// 05-pihole-custom-cname.conf
 	read_legacy_cnames_config();
+	// custom.list
+	read_legacy_custom_hosts_config();
 
 	// When we reach this point but the FTL TOML config file exists, it may
 	// contain errors such as syntax errors, etc. We move it into a
@@ -1013,6 +1022,7 @@ void readFTLconf(const bool rewrite)
 	// Initialize the TOML config file
 	writeFTLtoml(true);
 	write_dnsmasq_config(&config, false, NULL);
+	write_custom_list();
 }
 
 bool getLogFilePath(void)

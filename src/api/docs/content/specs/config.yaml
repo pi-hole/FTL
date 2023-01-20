@@ -175,6 +175,10 @@ components:
                   type: string
                 blockTTL:
                   type: integer
+                hosts:
+                  type: array
+                  items:
+                    type: string
                 blocking:
                   type: object
                   properties:
@@ -477,6 +481,8 @@ components:
             piholePTR: PI.HOLE
             replyWhenBusy: ALLOW
             blockTTL: 2
+            hosts:
+              - "192.168.2.123 mymusicbox"
             blocking:
               active: true
               mode: 'NULL'

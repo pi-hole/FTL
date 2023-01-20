@@ -165,30 +165,31 @@ char *get_dnsmasq_line(const unsigned int lineno)
 	return NULL;
 }
 
-static void write_config_header(FILE *fp)
+static void write_config_header(FILE *fp, const char *description)
 {
+	const time_t now = time(NULL);
 	fputs("# Pi-hole: A black hole for Internet advertisements\n", fp);
-	fputs("# (c) 2023 Pi-hole, LLC (https://pi-hole.net)\n", fp);
+	fprintf(fp, "# (c) %u Pi-hole, LLC (https://pi-hole.net)\n", get_year(now));
 	fputs("# Network-wide ad blocking via your own hardware.\n", fp);
 	fputs("#\n", fp);
-	fputs("# Dnsmasq config for Pi-hole's FTLDNS\n", fp);
+	fputs("# ", fp);
+	fputs(description, fp);
+	fputs("\n", fp);
 	fputs("#\n", fp);
-	fputs("# This file is copyright under the latest version of the EUPL.\n", fp);
-	fputs("# Please see LICENSE file for your rights under this license.\n\n", fp);
+	fputs("# This file is copyright under the latest version of the EUPL.\n#\n", fp);
 	fputs("###############################################################################\n", fp);
 	fputs("#                  FILE AUTOMATICALLY POPULATED BY PI-HOLE                    #\n", fp);
 	fputs("#  ANY CHANGES MADE TO THIS FILE WILL BE LOST WHEN THE CONFIGURATION CHANGES  #\n", fp);
 	fputs("#                                                                             #\n", fp);
-	fputs("#        IF YOU WISH TO CHANGE THE UPSTREAM SERVERS, CHANGE THEM IN:          #\n", fp);
+	fputs("#         IF YOU WISH TO CHANGE ANY OF THESE VALUES, CHANGE THEM IN:          #\n", fp);
 	fputs("#                      /etc/pihole/pihole-FTL.toml                            #\n", fp);
 	fputs("#                         and restart pihole-FTL                              #\n", fp);
-	fputs("#                                                                             #\n", fp);
 	fputs("#                                                                             #\n", fp);
 	fputs("#        ANY OTHER CHANGES SHOULD BE MADE IN A SEPARATE CONFIG FILE           #\n", fp);
 	fputs("#                    WITHIN /etc/dnsmasq.d/yourname.conf                      #\n", fp);
 	fputs("#                                                                             #\n", fp);
 	char timestring[84] = "";
-	get_timestr(timestring, time(NULL), false);
+	get_timestr(timestring, now, false);
 	fputs("#                      Last update: ", fp);
 	fputs(timestring, fp);
 	fputs("                       #\n", fp);
@@ -214,7 +215,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		return false;
 	}
 
-	write_config_header(pihole_conf);
+	write_config_header(pihole_conf, "Dnsmasq config for Pi-hole's FTLDNS");
 	fputs("addn-hosts=/etc/pihole/local.list\n", pihole_conf);
 	fputs("addn-hosts="DNSMASQ_CUSTOM_LIST"\n", pihole_conf);
 	fputs("\n", pihole_conf);
@@ -622,5 +623,119 @@ bool read_legacy_cnames_config(void)
 	if(rename(path, target) != 0)
 		log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
 
+	return true;
+}
+
+bool read_legacy_custom_hosts_config(void)
+{
+	// Check if file exists, if not, there is nothing to do
+	const char *path = DNSMASQ_CUSTOM_LIST;
+	const char *target = DNSMASQ_CUSTOM_LIST".bck";
+	if(!file_exists(path))
+		return true;
+
+	FILE *fp = fopen(path, "r");
+	if(!fp)
+	{
+		log_err("Cannot read %s for reading, unable to import list of custom cnames: %s",
+		        path, strerror(errno));
+		return false;
+	}
+
+	char *linebuffer = NULL;
+	size_t size = 0u;
+	errno = 0;
+	while(getline(&linebuffer, &size, fp) != -1)
+	{
+		// Check if memory allocation failed
+		if(linebuffer == NULL)
+			break;
+
+		// Import lines in the file
+		// Trim whitespace at beginning and end, this function
+		// modifies the string inplace
+		trim_whitespace(linebuffer);
+
+		// Skip empty lines
+		if(strlen(linebuffer) == 0)
+			continue;
+
+		// Skip comments
+		if(linebuffer[0] == '#')
+			continue;
+
+		// Add entry to config.dns.hosts
+		cJSON *item = cJSON_CreateString(linebuffer);
+		cJSON_AddItemToArray(config.dns.hosts.v.json, item);
+	}
+
+	// Free allocated memory
+	free(linebuffer);
+
+	// Close file
+	if(fclose(fp) != 0)
+	{
+		log_err("Cannot close %s: %s", path, strerror(errno));
+		return false;
+	}
+
+	// Move file to backup location
+	log_info("Moving %s to %s", path, target);
+	if(rename(path, target) != 0)
+		log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
+
+	return true;
+}
+
+bool write_custom_list(void)
+{
+	// Rotate old hosts files
+	rotate_files(DNSMASQ_CUSTOM_LIST, MAX_ROTATION);
+
+	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST" for writing");
+	FILE *pihole_conf = fopen(DNSMASQ_CUSTOM_LIST, "w");
+	// Return early if opening failed
+	if(!pihole_conf)
+	{
+		log_err("Cannot open "DNSMASQ_CUSTOM_LIST" for writing, unable to update custom.list: %s", strerror(errno));
+		return false;
+	}
+
+	// Lock file, may block if the file is currently opened
+	if(flock(fileno(pihole_conf), LOCK_EX) != 0)
+	{
+		log_err("Cannot open "DNSMASQ_CUSTOM_LIST" in exclusive mode: %s", strerror(errno));
+		fclose(pihole_conf);
+		return false;
+	}
+
+	write_config_header(pihole_conf, "Custom DNS entries (HOSTS file)");
+
+	if(cJSON_GetArraySize(config.dns.hosts.v.json) > 0)
+	{
+		const int n = cJSON_GetArraySize(config.dns.hosts.v.json);
+		for(int i = 0; i < n; i++)
+		{
+			cJSON *entry = cJSON_GetArrayItem(config.dns.hosts.v.json, i);
+			if(entry != NULL && cJSON_IsString(entry))
+				fprintf(pihole_conf, "%s\n", entry->valuestring);
+		}
+		fputs("\n", pihole_conf);
+	}
+
+	// Unlock file
+	if(flock(fileno(pihole_conf), LOCK_UN) != 0)
+	{
+		log_err("Cannot release lock on custom.list: %s", strerror(errno));
+		fclose(pihole_conf);
+		return false;
+	}
+
+	// Close file
+	if(fclose(pihole_conf) != 0)
+	{
+		log_err("Cannot close custom.list: %s", strerror(errno));
+		return false;
+	}
 	return true;
 }

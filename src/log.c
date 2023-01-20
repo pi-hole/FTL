@@ -123,6 +123,14 @@ void get_timestr(char * const timestring, const time_t timein, const bool millis
 	}
 }
 
+// Return the current year
+unsigned int get_year(const time_t timein)
+{
+	struct tm tm;
+	localtime_r(&timein, &tm);
+	return tm.tm_year + 1900;
+}
+
 static const char *priostr(const int priority, const enum debug_flag flag)
 {
 	const char *name;
