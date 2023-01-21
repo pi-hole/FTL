@@ -134,14 +134,17 @@ paths:
   /lists:
     $ref: 'lists.yaml#/components/paths/direct'
 
-  /ftl/client:
-    $ref: 'ftl.yaml#/components/paths/client'
+  /info/client:
+    $ref: 'info.yaml#/components/paths/client'
 
-  /ftl/sysinfo:
-    $ref: 'ftl.yaml#/components/paths/sysinfo'
+  /info/system:
+    $ref: 'info.yaml#/components/paths/system'
 
-  /ftl/dbinfo:
-    $ref: 'ftl.yaml#/components/paths/dbinfo'
+  /info/database:
+    $ref: 'info.yaml#/components/paths/database'
+
+  /info/version:
+    $ref: 'info.yaml#/components/paths/version'
 
   /logs/dnsmasq:
     $ref: 'logs.yaml#/components/paths/logs/dnsmasq'
@@ -178,9 +181,6 @@ paths:
 
   /network/interfaces:
     $ref: 'network.yaml#/components/paths/interfaces'
-
-  /version:
-    $ref: 'version.yaml#/components/paths/version'
 
 components:
   securitySchemes:

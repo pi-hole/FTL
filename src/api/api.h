@@ -45,12 +45,11 @@ int api_stats_database_summary(struct ftl_conn *api);
 int api_stats_database_query_types(struct ftl_conn *api);
 int api_stats_database_upstreams(struct ftl_conn *api);
 
-// FTL methods
-int api_ftl_client(struct ftl_conn *api);
-int api_ftl_dbinfo(struct ftl_conn *api);
-int api_ftl_sysinfo(struct ftl_conn *api);
-int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked);
-int get_system_obj(struct ftl_conn *api, cJSON *system);
+// Info methods
+int api_info_client(struct ftl_conn *api);
+int api_info_database(struct ftl_conn *api);
+int api_info_system(struct ftl_conn *api);
+int api_info_version(struct ftl_conn *api);
 
 // Config methods
 int api_config(struct ftl_conn *api);
@@ -71,9 +70,6 @@ int api_dns_cache(struct ftl_conn *api);
 // List methods
 int api_list(struct ftl_conn *api);
 int api_group(struct ftl_conn *api);
-
-// Version method
-int api_version(struct ftl_conn *api);
 
 // Auth method
 int check_client_auth(struct ftl_conn *api);

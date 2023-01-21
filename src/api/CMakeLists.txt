@@ -13,16 +13,15 @@ set(sources
         api.c
         auth.c
         dns.c
-        ftl.c
         config.c
         network.c
         history.c
+        info.c
         list.c
         logs.c
         queries.c
         stats_database.c
         stats.c
-        version.c
         )
 
 add_library(api OBJECT ${sources})

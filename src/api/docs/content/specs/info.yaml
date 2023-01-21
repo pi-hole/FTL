@@ -17,10 +17,10 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'ftl.yaml#/components/schemas/client/remote_addr'
-                    - $ref: 'ftl.yaml#/components/schemas/client/http_version'
-                    - $ref: 'ftl.yaml#/components/schemas/client/method'
-                    - $ref: 'ftl.yaml#/components/schemas/client/headers'
+                    - $ref: 'info.yaml#/components/schemas/client/remote_addr'
+                    - $ref: 'info.yaml#/components/schemas/client/http_version'
+                    - $ref: 'info.yaml#/components/schemas/client/method'
+                    - $ref: 'info.yaml#/components/schemas/client/headers'
     logs:
       dns:
         get:
@@ -37,7 +37,7 @@ components:
             The expected behavior for an immediate re-request of a log line with the same ID is an empty response.
             As soon as the next message arrived, this will be included in your request and `nextID` is incremented by one.
           parameters:
-            - $ref: 'ftl.yaml#/components/parameters/logs/dns/nextID'
+            - $ref: 'info.yaml#/components/parameters/logs/dns/nextID'
           responses:
             '200':
               description: OK
@@ -45,15 +45,15 @@ components:
                 application/json:
                   schema:
                     allOf:
-                      - $ref: 'ftl.yaml#/components/schemas/logs/dns/log'
-                      - $ref: 'ftl.yaml#/components/schemas/logs/dns/nextID'
+                      - $ref: 'info.yaml#/components/schemas/logs/dns/log'
+                      - $ref: 'info.yaml#/components/schemas/logs/dns/nextID'
             '401':
               description: Unauthorized
               content:
                 application/json:
                   schema:
                     $ref: 'common.yaml#/components/errors/unauthorized'
-    sysinfo:
+    system:
       get:
         summary: Get info about various system parameters
         tags:
@@ -68,15 +68,15 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'ftl.yaml#/components/schemas/system'
-                    - $ref: 'ftl.yaml#/components/schemas/ftl'
+                    - $ref: 'info.yaml#/components/schemas/system'
+                    - $ref: 'info.yaml#/components/schemas/ftl'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
-    dbinfo:
+    database:
       get:
         summary: Get info about long-term database
         tags:
@@ -91,7 +91,22 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'ftl.yaml#/components/schemas/database'
+                    - $ref: 'info.yaml#/components/schemas/database'
+    version:
+      get:
+        summary: Get Pi-hole version
+        tags:
+          - "FTL information"
+        operationId: "get_version"
+        description: |
+          Request versions of the individual Pi-hole components
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'info.yaml#/components/schemas/version'
   schemas:
     client:
       remote_addr:
@@ -439,6 +454,133 @@ components:
           type: string
           description: Version of embedded SQLite3 engine
           example: "3.34.0"
+    version:
+      type: object
+      properties:
+        version:
+          type: object
+          properties:
+            core:
+              type: object
+              properties:
+                local:
+                  type: object
+                  properties:
+                    branch:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Core branch
+                      example: "development"
+                    version:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Core version
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Core hash
+                      example: "955e36a9"
+                remote:
+                  type: object
+                  properties:
+                    version:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole Core version
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole Core hash
+                      example: "955e36a9"
+            web:
+              type: object
+              properties:
+                local:
+                  type: object
+                  properties:
+                    branch:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Web branch
+                      example: "devel"
+                    version:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Web version
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Web hash
+                      example: "f69f7e88"
+                remote:
+                  type: object
+                  properties:
+                    version:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole Web version
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole Web hash
+                      example: "f69f7e88"
+            ftl:
+              type: object
+              properties:
+                local:
+                  type: object
+                  properties:
+                    branch:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole FTL branch
+                      example: "development"
+                    version:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole FTL version
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole FTL hash
+                      example: "64441ed6-dirty"
+                    date:
+                      type: string
+                      nullable: true
+                      description: Build time of your local Pi-hole FTL
+                      example: "2023-01-09 20:25:24 +0100"
+                remote:
+                  type: object
+                  properties:
+                    version:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole FTL version
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole FTL hash
+                      example: "64441ed6"
+            docker:
+              type: object
+              properties:
+                local:
+                  type: string
+                  nullable: true
+                  description: Local Pi-hole Docker image version (`null` if not running in Docker)
+                  example: "v6.1"
+                remote:
+                  type: string
+                  nullable: true
+                  description: Remote (Docker Hub) Pi-hole Docker image version (`null` if not running in Docker)
+                  example: "v6.1"
+
 
   parameters:
     logs:
