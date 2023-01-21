@@ -203,6 +203,7 @@ static int read_temp_sensor(struct ftl_conn *api,
 	if(f_value != NULL)
 		fclose(f_value);
 
+	// All okay
 	return 0;
 }
 
@@ -285,10 +286,16 @@ static int get_system_obj(struct ftl_conn *api, cJSON *system)
 	JSON_ADD_ITEM_TO_OBJECT(cpu, "load", load);
 	JSON_ADD_ITEM_TO_OBJECT(system, "cpu", cpu);
 
+	// All okay
+	return 0;
+}
+
+static int get_sensors_arr(struct ftl_conn *api, cJSON *sensors)
+{
 	// Source available temperatures, we try to read as many
 	// temperature sensors as there are cores on this system
-	cJSON *sensors = JSON_NEW_ARRAY();
 	char label_path[256], value_path[256], fallback_label[64];
+	const int nprocs = get_nprocs();
 	int ret;
 	for(int i = 0; i < nprocs; i++)
 	{
@@ -310,7 +317,23 @@ static int get_system_obj(struct ftl_conn *api, cJSON *system)
 		if(ret != 0)
 			return ret;
 	}
-	JSON_ADD_ITEM_TO_OBJECT(system, "sensors", sensors);
+
+	// All okay
+	return 0;
+}
+
+static int get_host_obj(struct ftl_conn *api, cJSON *host)
+{
+	cJSON *uname_ = JSON_NEW_OBJECT();
+	struct utsname un = { 0 };
+	uname(&un);
+	JSON_COPY_STR_TO_OBJECT(uname_, "domainname", un.domainname);
+	JSON_COPY_STR_TO_OBJECT(uname_, "machine", un.machine);
+	JSON_COPY_STR_TO_OBJECT(uname_, "nodename", un.nodename);
+	JSON_COPY_STR_TO_OBJECT(uname_, "release", un.release);
+	JSON_COPY_STR_TO_OBJECT(uname_, "sysname", un.sysname);
+	JSON_COPY_STR_TO_OBJECT(uname_, "version", un.version);
+	JSON_ADD_ITEM_TO_OBJECT(host, "uname", uname_);
 
 	// Try to obtain device model
 	if(file_exists("/sys/firmware/devicetree/base/model"))
@@ -322,46 +345,30 @@ static int get_system_obj(struct ftl_conn *api, cJSON *system)
 			// Remove newline if present
 			char *p = strchr(model, '\n');
 			if (p != NULL) *p = '\0';
-			JSON_COPY_STR_TO_OBJECT(system, "model", model);
+			JSON_COPY_STR_TO_OBJECT(host, "model", model);
 		}
 		else
 		{
-			JSON_ADD_NULL_TO_OBJECT(system, "model");
+			JSON_ADD_NULL_TO_OBJECT(host, "model");
 		}
 		if(f_model)
 			fclose(f_model);
 	}
 	else
 	{
-		JSON_ADD_NULL_TO_OBJECT(system, "model");
+		JSON_ADD_NULL_TO_OBJECT(host, "model");
 	}
 
-	cJSON *dns = JSON_NEW_OBJECT();
-	const bool blocking = get_blockingstatus();
-	JSON_ADD_BOOL_TO_OBJECT(dns, "blocking", blocking); // same reply type as in /api/dns/status
-	JSON_ADD_ITEM_TO_OBJECT(system, "dns", dns);
-
-	cJSON *uname_ = JSON_NEW_OBJECT();
-	struct utsname un = { 0 };
-	uname(&un);
-	JSON_COPY_STR_TO_OBJECT(uname_, "domainname", un.domainname);
-	JSON_COPY_STR_TO_OBJECT(uname_, "machine", un.machine);
-	JSON_COPY_STR_TO_OBJECT(uname_, "nodename", un.nodename);
-	JSON_COPY_STR_TO_OBJECT(uname_, "release", un.release);
-	JSON_COPY_STR_TO_OBJECT(uname_, "sysname", un.sysname);
-	JSON_COPY_STR_TO_OBJECT(uname_, "version", un.version);
-	JSON_ADD_ITEM_TO_OBJECT(system, "uname", uname_);
-
+	// All okay
 	return 0;
 }
 
-static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked)
+static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 {
 	cJSON *database = JSON_NEW_OBJECT();
 
 	// Source from shared objects within lock
-	if(!is_locked)
-		lock_shm();
+	lock_shm();
 	const int db_gravity = counters->database.gravity;
 	const int db_groups = counters->database.groups;
 	const int db_lists = counters->database.lists;
@@ -383,8 +390,7 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked)
 		if(client->count > 0)
 			activeclients++;
 	}
-	if(!is_locked)
-		unlock_shm();
+	unlock_shm();
 
 	JSON_ADD_NUMBER_TO_OBJECT(database, "gravity", db_gravity);
 	JSON_ADD_NUMBER_TO_OBJECT(database, "groups", db_groups);
@@ -413,6 +419,7 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked)
 	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%mem", pmem.VmRSS_percent);
 	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%cpu", get_cpu_percentage());
 
+	// All okay
 	return 0;
 }
 
@@ -427,14 +434,48 @@ int api_info_system(struct ftl_conn *api)
 		return ret;
 
 	JSON_ADD_ITEM_TO_OBJECT(json, "system", system);
+	JSON_SEND_OBJECT(json);
+}
 
-	// Get FTL object
+int api_info_ftl(struct ftl_conn *api)
+{
+	cJSON *json = JSON_NEW_OBJECT();
+
+	// Get ftl object
 	cJSON *ftl = JSON_NEW_OBJECT();
-	ret = get_ftl_obj(api, ftl, false);
-	if(ret != 0)
+	int ret = get_ftl_obj(api, ftl);
+	if (ret != 0)
 		return ret;
 
 	JSON_ADD_ITEM_TO_OBJECT(json, "ftl", ftl);
+	JSON_SEND_OBJECT(json);
+}
+
+int api_info_host(struct ftl_conn *api)
+{
+	cJSON *json = JSON_NEW_OBJECT();
+
+	// Get host object
+	cJSON *host = JSON_NEW_OBJECT();
+	int ret = get_host_obj(api, host);
+	if (ret != 0)
+		return ret;
+
+	JSON_ADD_ITEM_TO_OBJECT(json, "host", host);
+	JSON_SEND_OBJECT(json);
+}
+
+int api_info_sensors(struct ftl_conn *api)
+{
+	cJSON *json = JSON_NEW_OBJECT();
+
+	// Get sensors array
+	cJSON *sensors = JSON_NEW_ARRAY();
+	int ret = get_sensors_arr(api, sensors);
+	if (ret != 0)
+		return ret;
+
+	JSON_ADD_ITEM_TO_OBJECT(json, "sensors", sensors);
 	JSON_SEND_OBJECT(json);
 }
 

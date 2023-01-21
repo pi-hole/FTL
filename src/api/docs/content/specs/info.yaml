@@ -58,7 +58,7 @@ components:
         summary: Get info about various system parameters
         tags:
           - "FTL information"
-        operationId: "get_sysinfo"
+        operationId: "get_systeminfo"
         description: |
           This API hook returns a collection of various system infos.
         responses:
@@ -67,9 +67,70 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: 'info.yaml#/components/schemas/system'
-                    - $ref: 'info.yaml#/components/schemas/ftl'
+                  $ref: 'info.yaml#/components/schemas/system'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    host:
+      get:
+        summary: Get info about various host parameters
+        tags:
+          - "FTL information"
+        operationId: "get_hostinfo"
+        description: |
+          This API hook returns a collection of host infos.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'info.yaml#/components/schemas/host'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    ftl:
+      get:
+        summary: Get info about various ftl parameters
+        tags:
+          - "FTL information"
+        operationId: "get_ftlinfo"
+        description: |
+          This API hook returns a collection of various ftl infos.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'info.yaml#/components/schemas/ftl'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    sensors:
+      get:
+        summary: Get info about various sensors
+        tags:
+          - "FTL information"
+        operationId: "get_sensors"
+        description: |
+          This API hook returns a collection of various sensors.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'info.yaml#/components/schemas/sensors'
           '401':
             description: Unauthorized
             content:
@@ -271,41 +332,48 @@ components:
                       items:
                         type: number
                       example: [4.903157711029053, 5.415853023529053, 5.562337398529053]
-            sensors:
-              type: array
-              description: Sensor information (temperature)
-              items:
-                type: object
-                properties:
-                  name:
-                    type: string
-                    nullable: true
-                    description: Description of temperature sensor (if available, `null` otherwise)
-                  path:
-                    type: string
-                    description: Short path of temperature sensor
-                  value:
-                    type: number
-                    description: Sensor value
-                  hot_limit:
-                    type: number
-                    description: Limit defined in FTL's config beyond which the CPU should be considered hot
-                  unit:
-                    type: string
-                    description: Sensor value unit
-              example:
-                - name: "Composite"
-                  path: "hwmon0/temp1"
-                  value: 30.4
-                  hot_limit: 60.0
-                  unit: "C"
+    sensors:
+      type: object
+      properties:
+        sensors:
+          type: array
+          description: Sensor information (temperature)
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                nullable: true
+                description: Description of temperature sensor (if available, `null` otherwise)
+              path:
+                type: string
+                description: Short path of temperature sensor
+              value:
+                type: number
+                description: Sensor value
+              hot_limit:
+                type: number
+                description: Limit defined in FTL's config beyond which the CPU should be considered hot
+              unit:
+                type: string
+                description: Sensor value unit
+          example:
+            - name: "Composite"
+              path: "hwmon0/temp1"
+              value: 30.4
+              hot_limit: 60.0
+              unit: "C"
+    host:
+      type: object
+      properties:
+        host:
+          type: object
+          properties:
             model:
               type: string
               description: Device model (if available, `null` otherwise)
               example: "Raspberry Pi Model 4B"
               nullable: true
-            dns:
-              $ref: 'dns.yaml#/components/schemas/blocking'
             uname:
               type: object
               properties:

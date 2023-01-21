@@ -49,6 +49,9 @@ int api_stats_database_upstreams(struct ftl_conn *api);
 int api_info_client(struct ftl_conn *api);
 int api_info_database(struct ftl_conn *api);
 int api_info_system(struct ftl_conn *api);
+int api_info_ftl(struct ftl_conn *api);
+int api_info_host(struct ftl_conn *api);
+int api_info_sensors(struct ftl_conn *api);
 int api_info_version(struct ftl_conn *api);
 
 // Config methods

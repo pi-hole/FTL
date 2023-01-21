@@ -143,6 +143,15 @@ paths:
   /info/database:
     $ref: 'info.yaml#/components/paths/database'
 
+  /info/ftl:
+    $ref: 'info.yaml#/components/paths/ftl'
+
+  /info/host:
+    $ref: 'info.yaml#/components/paths/host'
+
+  /info/sensors:
+    $ref: 'info.yaml#/components/paths/sensors'
+
   /info/version:
     $ref: 'info.yaml#/components/paths/version'
 
