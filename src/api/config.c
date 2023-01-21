@@ -25,6 +25,22 @@
 // shm_lock()
 #include "shmem.h"
 
+static struct {
+	const char *name;
+	const char *description;
+} config_topics[] =
+{
+	{ "dns", "DNS server settings" },
+	{ "dnsmasq", "dnsmasq settings" },
+	{ "resolver", "Resolver settings" },
+	{ "database", "Database settings" },
+	{ "api", "API settings" },
+	{ "http", "HTTP settings" },
+	{ "files", "File locations" },
+	{ "misc", "Miscellaneous settings" },
+	{ "debug", "Debug settings" }
+};
+
 // The following functions are used to create the JSON output
 // of the /api/config endpoint.
 
@@ -754,4 +770,21 @@ int api_config(struct ftl_conn *api)
 		return api_config_put_delete(api);
 
 	return 0;
+}
+
+int api_config_topics(struct ftl_conn *api)
+{
+	cJSON *topics = JSON_NEW_ARRAY();
+	for(unsigned int i = 0; i < sizeof(config_topics)/sizeof(*config_topics); i++)
+	{
+		cJSON *topic = JSON_NEW_OBJECT();
+		JSON_REF_STR_IN_OBJECT(topic, "name", config_topics[i].name);
+		JSON_REF_STR_IN_OBJECT(topic, "description", config_topics[i].description);
+		JSON_ADD_ITEM_TO_ARRAY(topics, topic);
+	}
+
+	// Build and return JSON response
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "topics", topics);
+	JSON_SEND_OBJECT(json);
 }

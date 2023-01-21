@@ -66,6 +66,7 @@ static struct {
 	{ "/api/stats/database/upstreams",          "",                           api_stats_database_upstreams,          { false, 0             }, true,  HTTP_GET },
 	{ "/api/version",                           "",                           api_version,                           { false, 0             }, true,  HTTP_GET },
 	{ "/api/auth",                              "",                           api_auth,                              { false, 0             }, false, HTTP_GET | HTTP_POST | HTTP_DELETE },
+	{ "/api/config/_topics",                    "",                           api_config_topics,                     { false, 0             }, true,  HTTP_GET },
 	{ "/api/config",                            "",                           api_config,                            { false, 0             }, true,  HTTP_GET | HTTP_PUT },
 	{ "/api/config",                            "/{element}",                 api_config,                            { false, 0             }, true,  HTTP_GET | HTTP_PUT },
 	{ "/api/config",                            "/{element}/{value}",         api_config,                            { false, 0             }, true,  HTTP_DELETE | HTTP_PATCH },

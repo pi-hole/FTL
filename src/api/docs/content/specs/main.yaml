@@ -161,6 +161,9 @@ paths:
   /config:
     $ref: 'config.yaml#/components/paths/config'
 
+  /config/_topics:
+    $ref: 'config.yaml#/components/paths/topics'
+
   /config/{element}:
     $ref: 'config.yaml#/components/paths/config_elem'
 

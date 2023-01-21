@@ -145,6 +145,30 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    topics:
+      get:
+        summary: Get configuration topics
+        tags:
+          - "Pi-hole Configuration"
+        operationId: "get_config_topics"
+        description: |
+          This API hook returns categories that may be used to group configuration options.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'config.yaml#/components/schemas/topics'
+                examples:
+                  topics:
+                    $ref: 'config.yaml#/components/examples/topics'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     config:
       type: object
@@ -465,6 +489,21 @@ components:
                   type: boolean
                 reserved:
                   type: boolean
+    topics:
+      type: object
+      properties:
+        topics:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: The name of the topic
+              description:
+                type: string
+                description: A human-readable description of the topic
+
   examples:
     config:
       summary: The entire configuration
@@ -629,6 +668,28 @@ components:
               mozillaCanary: true
           misc:
             nice: -10
+    topics:
+      summary: All topics
+      value:
+        topics:
+          - name: DNS
+            description: DNS settings
+          - name: dnsmasq
+            description: dnsmasq settings
+          - name: Resolver
+            description: Resolver settings
+          - name: Database
+            description: Database settings
+          - name: API
+            description: API settings
+          - name: HTTP
+            description: HTTP settings
+          - name: Files
+            description: File locations
+          - name: Miscellaneous
+            description: Miscellaneous settings
+          - name: Debug
+            description: Debug settings
     errors:
       bad_request:
         invalid_path_depth:
