@@ -10,6 +10,9 @@
 #ifndef FILE_H
 #define FILE_H
 
+#include <stdbool.h>
+#include <sys/stat.h>
+
 #define ZIP_ROTATIONS 3
 #define MAX_ROTATIONS 15
 

@@ -30,6 +30,7 @@ enum http_method {
 	HTTP_PUT = 1 << 2,
 	HTTP_PATCH = 1 << 3,
 	HTTP_DELETE = 1 << 4,
+	HTTP_OPTIONS = 1 << 5,
 };
 
 struct api_options {
@@ -67,6 +68,7 @@ int send_json_error(struct ftl_conn *api, const int code,
                     const char *key, const char* message,
                     const char *hint);
 int send_json_success(struct ftl_conn *api);
+const char *get_http_method_str(const enum http_method method) __attribute__((const));
 
 void http_reread_index_html(void);
 

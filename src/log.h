@@ -36,6 +36,7 @@ void debugstr(const enum debug_flag flag, const char **name);
 void logg_web(enum fifo_logs which, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 void print_FTL_version(void);
+unsigned int countchar(const char *str, const char c) __attribute__ ((pure));
 void dnsmasq_diagnosis_warning(char *message);
 
 // The actual logging routine can take extra options for specialized logging

@@ -358,8 +358,32 @@ enum http_method __attribute__((pure)) http_method(struct mg_connection *conn)
 		return HTTP_POST;
 	else if(strcmp(request->request_method, "PATCH") == 0)
 		return HTTP_PATCH;
+	else if(strcmp(request->request_method, "OPTIONS") == 0)
+		return HTTP_OPTIONS;
 	else
 		return HTTP_UNKNOWN;
+}
+
+const char * __attribute__((const)) get_http_method_str(const enum http_method method)
+{
+	switch(method)
+	{
+		case HTTP_GET:
+			return "GET";
+		case HTTP_DELETE:
+			return "DELETE";
+		case HTTP_PUT:
+			return "PUT";
+		case HTTP_POST:
+			return "POST";
+		case HTTP_PATCH:
+			return "PATCH";
+		case HTTP_OPTIONS:
+			return "OPTIONS";
+		case HTTP_UNKNOWN: // fall through
+		default:
+			return "UNKNOWN";
+	}
 }
 
 void read_and_parse_payload(struct ftl_conn *api)

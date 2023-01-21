@@ -67,9 +67,9 @@ static struct {
 	{ "/api/version",                           "",                           api_version,                           { false, 0             }, true,  HTTP_GET },
 	{ "/api/auth",                              "",                           api_auth,                              { false, 0             }, false, HTTP_GET | HTTP_POST | HTTP_DELETE },
 	{ "/api/config/_topics",                    "",                           api_config_topics,                     { false, 0             }, true,  HTTP_GET },
-	{ "/api/config",                            "",                           api_config,                            { false, 0             }, true,  HTTP_GET | HTTP_PUT },
-	{ "/api/config",                            "/{element}",                 api_config,                            { false, 0             }, true,  HTTP_GET | HTTP_PUT },
-	{ "/api/config",                            "/{element}/{value}",         api_config,                            { false, 0             }, true,  HTTP_DELETE | HTTP_PATCH },
+	{ "/api/config",                            "",                           api_config,                            { false, 0             }, true,  HTTP_GET | HTTP_PATCH },
+	{ "/api/config",                            "/{element}",                 api_config,                            { false, 0             }, true,  HTTP_GET | HTTP_PATCH },
+	{ "/api/config",                            "/{element}/{value}",         api_config,                            { false, 0             }, true,  HTTP_DELETE | HTTP_PUT },
 	{ "/api/network/gateway",                   "",                           api_network_gateway,                   { false, 0             }, true,  HTTP_GET },
 	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { false, 0             }, true,  HTTP_GET },
 	{ "/api/network/devices",                   "",                           api_network_devices,                   { false, 0             }, true,  HTTP_GET },
@@ -113,17 +113,27 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 	// Loop over all API endpoints and check if the requested URI matches
 	bool unauthorized = false;
+	enum http_method allowed_methods = 0;
 	for(unsigned int i = 0; i < sizeof(api_request)/sizeof(api_request[0]); i++)
 	{
 		// Check if the requested method is allowed
-		if(!(api_request[i].methods & api.method))
+		if(!(api_request[i].methods & api.method) && api.method != HTTP_OPTIONS)
 			continue;
 
 		// Check if the requested URI starts with the API endpoint
 		if((api.item = startsWith(api_request[i].uri, &api)) != NULL)
 		{
+
 			// Copy options to API struct
 			memcpy(&api.opts, &api_request[i].opts, sizeof(api.opts));
+
+			// If this is an OPTIONS request, we add the supported
+			// options of this endpoint and continue
+			if(api.method == HTTP_OPTIONS)
+			{
+				allowed_methods |= api_request[i].methods;
+				continue;
+			}
 
 			// Verify requesting client is allowed to see this ressource
 			if(api_request[i].require_auth && check_client_auth(&api) == API_AUTH_UNAUTHORIZED)
@@ -164,6 +174,33 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		// Return with unauthorized payload
 		// Do this only after having cleaned up above
 		return send_json_unauthorized(&api);
+	}
+
+	// The HTTP OPTIONS method requests permitted communication options for
+	// a given URL or server. We no not implement the wildcard OPTIONS method
+	// but instead return the allowed methods for the requested endpoint
+	// in the Allow header.
+	// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
+	if(api.method == HTTP_OPTIONS)
+	{
+		// Send Allow header
+		mg_printf(conn, "HTTP/1.1 204 No Content\r\n"
+		                "Allow: ");
+
+		// Loop over all possible methods
+		unsigned int m = 0;
+		for(enum http_method j = HTTP_GET; j < HTTP_OPTIONS; j <<= 1)
+		{
+			// Check if this method is allowed for this endpoint
+			if(allowed_methods & j)
+				mg_printf(conn, "%s%s", m++ > 0 ? ", " : "", get_http_method_str(j));
+		}
+
+		// Finish header and send empty body
+		mg_printf(conn, "\r\n"
+		                "Content-Length: 0\r\n"
+		                "Connection: close\r\n\r\n");
+		return 204;
 	}
 
 	// Check if we need to return with not found payload
@@ -208,7 +245,8 @@ static int api_endpoints(struct ftl_conn *api)
 			// Add endpoint to the correct array
 			switch(method)
 			{
-				case HTTP_UNKNOWN:
+				case HTTP_UNKNOWN: // fall through
+				case HTTP_OPTIONS:
 					cJSON_Delete(endpoint);
 					break;
 				case HTTP_GET:
