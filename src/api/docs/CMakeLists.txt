@@ -23,14 +23,13 @@ set(sources
         hex/specs/common.yaml
         hex/specs/dns.yaml
         hex/specs/domains.yaml
-        hex/specs/ftl.yaml
         hex/specs/groups.yaml
         hex/specs/history.yaml
         hex/specs/lists.yaml
         hex/specs/main.yaml
         hex/specs/queries.yaml
         hex/specs/stats.yaml
-        hex/specs/version.yaml
+        hex/specs/info.yaml
         hex/specs/config.yaml
         hex/specs/network.yaml
         hex/specs/logs.yaml

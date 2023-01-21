@@ -72,8 +72,8 @@ static const char specs_domains_yaml[] = {
 #include "hex/specs/domains.yaml"
 };
 
-static const char specs_ftl_yaml[] = {
-#include "hex/specs/ftl.yaml"
+static const char specs_info_yaml[] = {
+#include "hex/specs/info.yaml"
 };
 
 static const char specs_groups_yaml[] = {
@@ -98,10 +98,6 @@ static const char specs_queries_yaml[] = {
 
 static const char specs_stats_yaml[] = {
 #include "hex/specs/stats.yaml"
-};
-
-static const char specs_version_yaml[] = {
-#include "hex/specs/version.yaml"
 };
 
 static const char specs_config_yaml[] = {
@@ -140,14 +136,13 @@ struct {
     {"specs/common.yaml", "text/plain", specs_common_yaml, sizeof(specs_common_yaml)},
     {"specs/dns.yaml", "text/plain", specs_dns_yaml, sizeof(specs_dns_yaml)},
     {"specs/domains.yaml", "text/plain", specs_domains_yaml, sizeof(specs_domains_yaml)},
-    {"specs/ftl.yaml", "text/plain", specs_ftl_yaml, sizeof(specs_ftl_yaml)},
+    {"specs/info.yaml", "text/plain", specs_info_yaml, sizeof(specs_info_yaml)},
     {"specs/groups.yaml", "text/plain", specs_groups_yaml, sizeof(specs_groups_yaml)},
     {"specs/history.yaml", "text/plain", specs_history_yaml, sizeof(specs_history_yaml)},
     {"specs/lists.yaml", "text/plain", specs_lists_yaml, sizeof(specs_lists_yaml)},
     {"specs/main.yaml", "text/plain", specs_main_yaml, sizeof(specs_main_yaml)},
     {"specs/queries.yaml", "text/plain", specs_queries_yaml, sizeof(specs_queries_yaml)},
     {"specs/stats.yaml", "text/plain", specs_stats_yaml, sizeof(specs_stats_yaml)},
-    {"specs/version.yaml", "text/plain", specs_version_yaml, sizeof(specs_version_yaml)},
     {"specs/config.yaml", "text/plain", specs_config_yaml, sizeof(specs_config_yaml)},
     {"specs/network.yaml", "text/plain", specs_network_yaml, sizeof(specs_network_yaml)},
     {"specs/logs.yaml", "text/plain", specs_logs_yaml, sizeof(specs_logs_yaml)},
