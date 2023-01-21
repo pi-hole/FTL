@@ -42,6 +42,8 @@
 #include "ph7/ph7.h"
 #include "config/cli.h"
 #include "config/config.h"
+// compression functions
+#include "miniz/compression.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -171,6 +173,27 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "sqlite3") ||
 	   (argc > 1 && strEndsWith(argv[1], ".db")))
 			exit(sqlite3_shell_main(argc, argv));
+
+	// Compression feature
+	if((argc == 3 || argc == 4) && strcmp(argv[1], "--compress") == 0)
+	{
+		const char *infile = argv[2];
+		char *outfile = NULL;
+		if(argc == 4)
+			outfile = argv[3];
+		else
+		{
+			// If no output file is given, we use the input file name with ".gz" appended
+			outfile = calloc(strlen(infile)+4, sizeof(char));
+			strcpy(outfile, infile);
+			strcat(outfile, ".gz");
+		}
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		// Compress file
+		exit(compress_file(infile, outfile, true) ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
 
 	// Set config option through CLI
 	if(argc > 1 && strcmp(argv[1], "--config") == 0)
@@ -606,7 +629,15 @@ void parse_args(int argc, char* argv[])
 
 			printf("%sConfig options:%s\n", yellow, normal);
 			printf("\t%s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
-			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n", green, blue, cyan, normal, cyan, normal, blue, normal);
+			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n\n", green, blue, cyan, normal, cyan, normal, blue, normal);
+
+			printf("%sEmbedded GZIP compressor:%s\n", yellow, normal);
+			printf("    A simple but fast gzip-compatible compressor optimized\n");
+			printf("    for processing small files (< 100 MB).\n");
+			printf("    Usage: %spihole-FTL --compress %sinfile %s[outfile]%s\n\n", green, cyan, purple, normal);
+			printf("    - %sinfile%s is the file to be compressed.\n", cyan, normal);
+			printf("    - %s[outfile]%s is the optional target. If omitted, FTL will\n", purple, normal);
+			printf("      use the %sinfile%s and append %s.gz%s at the end.\n\n", cyan, normal, cyan, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);

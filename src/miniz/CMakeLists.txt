@@ -9,6 +9,8 @@
 # Please see LICENSE file for your rights under this license.
 
 set(sources
+        compression.c
+        compression.h
         miniz.c
         miniz.h
         )
