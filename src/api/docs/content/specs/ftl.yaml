@@ -169,7 +169,7 @@ components:
             nextID:
               type: integer
               description: next ID to query if checking for new log lines
-              example: 229
+              example: 0
     system:
       type: object
       properties:

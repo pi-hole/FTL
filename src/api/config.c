@@ -390,6 +390,16 @@ static int api_config_get(struct ftl_conn *api)
 		{
 			cJSON *leaf = JSON_NEW_OBJECT();
 			JSON_REF_STR_IN_OBJECT(leaf, "description", conf_item->h);
+			cJSON *allowed = cJSON_Parse(conf_item->a);
+			if(allowed != NULL)
+			{	log_info("Adding allowed values for %s as JSON", conf_item->k);
+				JSON_ADD_ITEM_TO_OBJECT(leaf, "allowed", allowed);
+			}
+			else
+			{	log_info("Adding allowed values for %s as string", conf_item->k);
+				JSON_REF_STR_IN_OBJECT(leaf, "allowed", conf_item->a);
+			}
+			JSON_REF_STR_IN_OBJECT(leaf, "type", get_conf_type_str(conf_item->t));
 			// Create the config item leaf object
 			cJSON *val = addJSONvalue(conf_item->t, &conf_item->v);
 			if(val == NULL)
@@ -407,7 +417,6 @@ static int api_config_get(struct ftl_conn *api)
 			}
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "value", val);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "default", dval);
-			JSON_REF_STR_IN_OBJECT(leaf, "allowed", conf_item->a);
 			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level - 1], leaf);
 		}
 		else

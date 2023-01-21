@@ -956,18 +956,52 @@ void initConfig(void)
 		conf_item->p = gen_config_path(conf_item->k, '.');
 
 		// Verify all config options are defined above
-		if(!conf_item->p)
-			log_err("Config option %u/%u is not set!", i, (unsigned int)CONFIG_ELEMENTS);
-		else if(config.debug.config.v.b)
+		if(!conf_item->p || !conf_item->k || !conf_item->h)
 		{
-			if(conf_item->p[3])
-				log_debug(DEBUG_CONFIG, "Config option %u is %s.%s.%s.%s", i, conf_item->p[0], conf_item->p[1], conf_item->p[2], conf_item->p[3]);
-			else if(conf_item->p[2])
-				log_debug(DEBUG_CONFIG, "Config option %u is %s.%s.%s", i, conf_item->p[0], conf_item->p[1], conf_item->p[2]);
-			else if(conf_item->p[1])
-				log_debug(DEBUG_CONFIG, "Config option %u is %s.%s", i, conf_item->p[0], conf_item->p[1]);
-			else
-				log_debug(DEBUG_CONFIG, "Config option %u is %s", i, conf_item->p[0]);
+			log_err("Config option %u/%u is not set!", i, (unsigned int)CONFIG_ELEMENTS);
+			continue;
+		}
+
+		// Verify that all config options have a type
+		if(conf_item->t == 0)
+		{
+			log_err("Config option %s has no type!", conf_item->k);
+			continue;
+		}
+
+		// Verify that our ENUM options all have a valid JSON values list
+		switch(conf_item->t)
+		{
+			case CONF_BOOL: // fall through
+			case CONF_INT: // fall through
+			case CONF_UINT: // fall through
+			case CONF_ENUM_PRIVACY_LEVEL: // fall through, it's actually an unsigned int
+			case CONF_UINT16: // fall through
+			case CONF_LONG: // fall through
+			case CONF_ULONG: // fall through
+			case CONF_DOUBLE: // fall through
+			case CONF_STRING: // fall through
+			case CONF_STRING_ALLOCATED: // fall through
+			case CONF_STRUCT_IN_ADDR: // fall through
+			case CONF_STRUCT_IN6_ADDR: // fall through
+			case CONF_JSON_STRING_ARRAY: // fall through
+			default:
+				break;
+			case CONF_ENUM_PTR_TYPE: // fall through
+			case CONF_ENUM_BUSY_TYPE: // fall through
+			case CONF_ENUM_BLOCKING_MODE: // fall through
+			case CONF_ENUM_REFRESH_HOSTNAMES: // fall through
+			case CONF_ENUM_LISTENING_MODE:
+			{
+				cJSON *allowed = cJSON_Parse(conf_item->a);
+				if(allowed == NULL)
+				{
+					log_err("Config option %s has no valid JSON allowed values list!", conf_item->k);
+					break;
+				}
+				cJSON_Delete(allowed);
+				break;
+			}
 		}
 	}
 }
@@ -1055,4 +1089,43 @@ void set_blockingstatus(bool enabled)
 	config.dns.blocking.active.v.b = enabled;
 	writeFTLtoml(true);
 	raise(SIGHUP);
+}
+
+const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type)
+{
+	switch(type)
+	{
+		case CONF_BOOL:
+			return "boolean";
+		case CONF_INT:
+			return "integer";
+		case CONF_UINT: // fall through
+		case CONF_ENUM_PRIVACY_LEVEL:
+			return "unsigned integer";
+		case CONF_UINT16:
+			return "unsigned integer (16 bit)";
+		case CONF_LONG:
+			return "long integer";
+		case CONF_ULONG:
+			return "unsigned long integer";
+		case CONF_DOUBLE:
+			return "double";
+		case CONF_STRING: // fall through
+		case CONF_STRING_ALLOCATED:
+			return "string";
+		case CONF_ENUM_PTR_TYPE:
+		case CONF_ENUM_BUSY_TYPE:
+		case CONF_ENUM_BLOCKING_MODE:
+		case CONF_ENUM_REFRESH_HOSTNAMES:
+		case CONF_ENUM_LISTENING_MODE:
+			return "enum (string)";
+		case CONF_STRUCT_IN_ADDR:
+			return "IPv4 address";
+		case CONF_STRUCT_IN6_ADDR:
+			return "IPv6 address";
+		case CONF_JSON_STRING_ARRAY:
+			return "string array";
+		default:
+			return "unknown";
+	}
 }

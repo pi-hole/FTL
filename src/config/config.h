@@ -50,7 +50,7 @@ union conf_value {
 };
 
 enum conf_type {
-	CONF_BOOL,
+	CONF_BOOL = 1,
 	CONF_INT,
 	CONF_UINT,
 	CONF_UINT16,
@@ -283,6 +283,7 @@ void free_config(struct config *conf);
 char **gen_config_path(const char *pathin, const char delim);
 void free_config_path(char **paths);
 bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __attribute__ ((pure));
+const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const));
 
 // Defined in toml_reader.c
 bool getPrivacyLevel(void);
