@@ -114,6 +114,19 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 			        WCOREDUMP(status) ? "(core dumped)" : "");
 		}
 
+		if(code != EXIT_SUCCESS)
+		{
+			int lineno = get_lineno_from_string(errbuf);
+			if(lineno > 0)
+			{
+				const size_t errbuf_size = strlen(errbuf);
+				char *line = get_dnsmasq_line(lineno);
+				// Append line to error message
+				snprintf(errbuf+errbuf_size, ERRBUF_SIZE-errbuf_size, ": \"%s\"", line);
+				free(line);
+			}
+		}
+
 		log_debug(DEBUG_CONFIG, "Code: %d", code);
 
 		// Close the reading end of the pipe
@@ -154,8 +167,9 @@ char *get_dnsmasq_line(const unsigned int lineno)
 		if (count == lineno)
 		{
 			fclose(fp);
-			if(linebuffer[strlen(linebuffer)] == '\n')
-				linebuffer[strlen(linebuffer)] = '\0';
+			// Strip newline characters (if present)
+			while(strlen(linebuffer) > 0 && linebuffer[strlen(linebuffer)-1] == '\n')
+				linebuffer[strlen(linebuffer)-1] = '\0';
 			return linebuffer;
 		}
 		else

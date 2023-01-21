@@ -641,7 +641,6 @@ static int api_config_put_delete(struct ftl_conn *api)
 		for(; idx < cJSON_GetArraySize(conf_item->v.json); idx++)
 		{
 			cJSON *elem = cJSON_GetArrayItem(conf_item->v.json, idx);
-			log_info("Item %d: %s vs. %s", idx, elem->valuestring, new_item);
 			if(elem != NULL && elem->valuestring != NULL &&
 				strcmp(elem->valuestring, new_item) == 0)
 			{

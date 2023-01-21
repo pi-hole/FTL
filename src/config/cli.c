@@ -289,10 +289,6 @@ bool set_config_from_CLI(const char *key, const char *value)
 		char errbuf[ERRBUF_SIZE] = { 0 };
 		if(!write_dnsmasq_config(&conf_copy, true, errbuf))
 		{
-			int lineno = get_lineno_from_string(errbuf);
-			char *line = get_dnsmasq_line(lineno);
-			log_err("Corresponding line: \"%s\"", line);
-			free(line);
 			return false;
 		}
 	}
