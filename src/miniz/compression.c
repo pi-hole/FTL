@@ -37,7 +37,7 @@ static bool deflate_buffer(const unsigned char *buffer_uncompressed, const mz_ul
 	int ret = compress2(*buffer_compressed, size_compressed, buffer_uncompressed, size_uncompressed, Z_BEST_COMPRESSION);
 	if(ret != Z_OK)
 	{
-		log_warn("Failed to compress: %s (%d)", zError(ret), ret);
+		log_warn("Failed to compress: %s", zError(ret));
 		return false;
 	}
 
@@ -97,97 +97,6 @@ static bool deflate_buffer(const unsigned char *buffer_uncompressed, const mz_ul
 	const uint32_t isize = htole32(size_uncompressed);
 	memcpy(*buffer_compressed + *size_compressed, &isize, sizeof(isize));
 	*size_compressed += sizeof(isize);
-
-	return true;
-}
-
-bool deflate_file(const char *infile, const char *outfile, bool verbose)
-{
-	// Read entire file into memory
-	FILE *fp = fopen(infile, "rb");
-	if(fp == NULL)
-	{
-		log_warn("Failed to open %s: %s (%d)", infile, strerror(errno), errno);
-		return false;
-	}
-
-	// Get file size
-	fseek(fp, 0, SEEK_END);
-	const mz_ulong size_uncompressed = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-
-	// Read file into memory
-	unsigned char *buffer_uncompressed = malloc(size_uncompressed);
-	if(buffer_uncompressed == NULL)
-	{
-		log_warn("Failed to allocate %lu bytes of memory", (unsigned long)size_uncompressed);
-		fclose(fp);
-		return false;
-	}
-	if(fread(buffer_uncompressed, 1, size_uncompressed, fp) != size_uncompressed)
-	{
-		log_warn("Failed to read %lu bytes from %s", (unsigned long)size_uncompressed, infile);
-		fclose(fp);
-		free(buffer_uncompressed);
-		return false;
-	}
-	fclose(fp);
-
-	unsigned char *buffer_compressed = NULL;
-	mz_ulong size_compressed = 0;
-	bool success = deflate_buffer(buffer_uncompressed, size_uncompressed,
-	                              &buffer_compressed, &size_compressed);
-
-	// Free memory
-	free(buffer_uncompressed);
-
-	// Check if compression was successful
-	if(!success)
-	{
-		log_warn("Failed to compress %s", infile);
-		free(buffer_uncompressed);
-		if(buffer_compressed)
-			free(buffer_compressed);
-		fclose(fp);
-		return false;
-	}
-
-	// Create compressed file
-	fp = fopen(outfile, "wb");
-	if(fp == NULL)
-	{
-		log_warn("Failed to open %s: %s (%d)", outfile, strerror(errno), errno);
-		free(buffer_uncompressed);
-		free(buffer_compressed);
-		return false;
-	}
-	if(fwrite(buffer_compressed, sizeof(char), size_compressed, fp) != size_compressed)
-	{
-		log_warn("Failed to write %lu bytes to %s", (unsigned long)size_compressed, outfile);
-		fclose(fp);
-		free(buffer_uncompressed);
-		free(buffer_compressed);
-		return false;
-	}
-	fclose(fp);
-
-	free(buffer_compressed);
-
-	if(verbose)
-	{
-		// Print compression ratio
-		// Compressed size = size of compressed data
-		//                 + 10 bytes for GZIP header
-		//                 + 8 bytes for GZIP footer
-		const size_t csize = size_compressed - (2 + 4) + 10 + 8;
-		double raw_size, comp_size;
-		char raw_prefix[2], comp_prefix[2];
-		format_memory_size(raw_prefix, size_uncompressed, &raw_size);
-		format_memory_size(comp_prefix, csize, &comp_size);
-		log_info("Compressed %s (%.1f%sB) to %s (%.1f%sB), %.1f%% size reduction",
-		         infile, raw_size, raw_prefix, outfile, comp_size, comp_prefix,
-		         100.0 - 100.0*csize / size_uncompressed);
-	}
 
 	return true;
 }
@@ -356,7 +265,7 @@ static bool inflate_buffer(unsigned char *buffer_compressed, mz_ulong size_compr
 	int ret = mz_uncompress2_raw(*buffer_uncompressed, size_uncompressed, buffer_compressed, &size_compressed);
 	if(ret != Z_OK)
 	{
-		log_warn("Failed to uncompress: %s (%d)", zError(ret), ret);
+		log_warn("Failed to uncompress: %s", zError(ret));
 		return false;
 	}
 
@@ -376,7 +285,7 @@ bool inflate_file(const char *infile, const char *outfile, bool verbose)
 	FILE *fp = fopen(infile, "rb");
 	if(fp == NULL)
 	{
-		log_warn("Failed to open %s: %s (%d)", infile, strerror(errno), errno);
+		log_warn("Failed to open %s: %s", infile, strerror(errno));
 		return false;
 	}
 
@@ -421,7 +330,7 @@ bool inflate_file(const char *infile, const char *outfile, bool verbose)
 	fp = fopen(outfile, "wb");
 	if(fp == NULL)
 	{
-		log_warn("Failed to open %s: %s (%d)", outfile, strerror(errno), errno);
+		log_warn("Failed to open %s: %s", outfile, strerror(errno));
 		return false;
 	}
 	if(fwrite(buffer_uncompressed, sizeof(char), size_uncompressed, fp) != size_uncompressed)
@@ -444,6 +353,97 @@ bool inflate_file(const char *infile, const char *outfile, bool verbose)
 		log_info("Uncompressed %s (%.1f%sB) to %s (%.1f%sB), %.1f%% size increase",
 		         infile, raw_size, raw_prefix, outfile, comp_size, comp_prefix,
 		         100.0*size_uncompressed / size_compressed - 100.0);
+	}
+
+	return true;
+}
+
+bool deflate_file(const char *infile, const char *outfile, bool verbose)
+{
+	// Read entire file into memory
+	FILE *fp = fopen(infile, "rb");
+	if(fp == NULL)
+	{
+		log_warn("Failed to open %s: %s", infile, strerror(errno));
+		return false;
+	}
+
+	// Get file size
+	fseek(fp, 0, SEEK_END);
+	const mz_ulong size_uncompressed = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+
+	// Read file into memory
+	unsigned char *buffer_uncompressed = malloc(size_uncompressed);
+	if(buffer_uncompressed == NULL)
+	{
+		log_warn("Failed to allocate %lu bytes of memory", (unsigned long)size_uncompressed);
+		fclose(fp);
+		return false;
+	}
+	if(fread(buffer_uncompressed, 1, size_uncompressed, fp) != size_uncompressed)
+	{
+		log_warn("Failed to read %lu bytes from %s", (unsigned long)size_uncompressed, infile);
+		fclose(fp);
+		free(buffer_uncompressed);
+		return false;
+	}
+	fclose(fp);
+
+	unsigned char *buffer_compressed = NULL;
+	mz_ulong size_compressed = 0;
+	bool success = deflate_buffer(buffer_uncompressed, size_uncompressed,
+	                              &buffer_compressed, &size_compressed);
+
+	// Free memory
+	free(buffer_uncompressed);
+
+	// Check if compression was successful
+	if(!success)
+	{
+		log_warn("Failed to compress %s", infile);
+		free(buffer_uncompressed);
+		if(buffer_compressed)
+			free(buffer_compressed);
+		fclose(fp);
+		return false;
+	}
+
+	// Create compressed file
+	fp = fopen(outfile, "wb");
+	if(fp == NULL)
+	{
+		log_warn("Failed to open %s: %s", outfile, strerror(errno));
+		free(buffer_uncompressed);
+		free(buffer_compressed);
+		return false;
+	}
+	if(fwrite(buffer_compressed, sizeof(char), size_compressed, fp) != size_compressed)
+	{
+		log_warn("Failed to write %lu bytes to %s", (unsigned long)size_compressed, outfile);
+		fclose(fp);
+		free(buffer_uncompressed);
+		free(buffer_compressed);
+		return false;
+	}
+	fclose(fp);
+
+	free(buffer_compressed);
+
+	if(verbose)
+	{
+		// Print compression ratio
+		// Compressed size = size of compressed data
+		//                 + 10 bytes for GZIP header
+		//                 + 8 bytes for GZIP footer
+		const size_t csize = size_compressed - (2 + 4) + 10 + 8;
+		double raw_size, comp_size;
+		char raw_prefix[2], comp_prefix[2];
+		format_memory_size(raw_prefix, size_uncompressed, &raw_size);
+		format_memory_size(comp_prefix, csize, &comp_size);
+		log_info("Compressed %s (%.1f%sB) to %s (%.1f%sB), %.1f%% size reduction",
+		         infile, raw_size, raw_prefix, outfile, comp_size, comp_prefix,
+		         100.0 - 100.0*csize / size_uncompressed);
 	}
 
 	return true;
