@@ -29,6 +29,8 @@
 // compression functions
 #include "miniz/compression.h"
 
+#define BACKUP_DIR "/etc/pihole/config_backups"
+
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
 // octal number representing the bit pattern for the new mode bits
@@ -280,17 +282,27 @@ void rotate_files(const char *path)
 		log_debug(DEBUG_CONFIG, "rotate_files(): File \"%s\" does not exist, not rotating", path);
 		return;
 	}
+
+	// Try to create backup directory if it does not exist
+	if(!directory_exists(BACKUP_DIR))
+		mkdir(BACKUP_DIR, S_IRWXU | S_IRWXG); // mode 0770
+
 	// Rename all files to one number higher
 	for(unsigned int i = MAX_ROTATIONS; i > 0; i--)
 	{
 		// Construct old and new paths
-		char old_path[strlen(path) + 4];
+		char *fname = strdup(path);
+		const char *filename = basename(fname);
+		// extra 6 bytes is enough space for up to 999 rotations ("/", ".", "\0", "999")
+		const size_t buflen = strlen(filename) + MAX(strlen(BACKUP_DIR), strlen(path)) + 6;
+		char old_path[buflen];
 		if(i == 1)
-			snprintf(old_path, sizeof(old_path), "%s", path);
+			snprintf(old_path, buflen, "%s", path);
 		else
-			snprintf(old_path, sizeof(old_path), "%s.%u", path, i-1);
-		char new_path[strlen(old_path) + 4];
-		snprintf(new_path, sizeof(new_path), "%s.%u", path, i);
+			snprintf(old_path, buflen, BACKUP_DIR"/%s.%u", filename, i-1);
+		char new_path[buflen];
+		snprintf(new_path, buflen, BACKUP_DIR"/%s.%u", filename, i);
+		free(fname);
 
 		char old_path_compressed[strlen(old_path) + 4];
 		snprintf(old_path_compressed, sizeof(old_path_compressed), "%s.gz", old_path);
@@ -303,33 +315,21 @@ void rotate_files(const char *path)
 			// Rename file
 			if(rename(old_path, new_path) < 0)
 			{
-				if(i == 1)
-					log_warn("Rotation %s{ -> .%u} failed: %s (%d)",
-					         path, i, strerror(errno), errno);
-				else
-					log_warn("Rotation %s.{%u -> %u} failed: %s (%d)",
-					         path, i-1, i, strerror(errno), errno);
+				log_warn("Rotation %s -> %s failed: %s",
+				         old_path, new_path, strerror(errno));
 			}
 			else
 			{
 				// Log success if debug is enabled
-				if(i == 1)
-					log_debug(DEBUG_CONFIG, "Rotated %s{ -> .%u}",
-					          path, i);
-				else
-					log_debug(DEBUG_CONFIG, "Rotated %s.{%u -> %u}",
-					          path, i-1, i);
+				log_debug(DEBUG_CONFIG, "Rotated %s -> %s",
+				          old_path, new_path);
 			}
 
 			// Compress file if we are rotating a sufficiently old file
 			if(i > ZIP_ROTATIONS)
 			{
-				if(i == 1)
-					log_debug(DEBUG_CONFIG, "Compressing %s{ -> .%u.gz}",
-					          path, i);
-				else
-					log_debug(DEBUG_CONFIG, "Compressing %s.{%u -> %u.gz}",
-					          path, i-1, i);
+				log_debug(DEBUG_CONFIG, "Compressing %s -> %s",
+				          new_path, new_path_compressed);
 				if(deflate_file(new_path, new_path_compressed, false))
 				{
 					// On success, we remove the uncompressed file
@@ -342,22 +342,14 @@ void rotate_files(const char *path)
 			// Rename file
 			if(rename(old_path_compressed, new_path_compressed) < 0)
 			{
-				if(i == 1)
-					log_warn("Rotation %s{ -> .%u}.gz failed: %s (%d)",
-					         path, i, strerror(errno), errno);
-				else
-					log_warn("Rotation %s.{%u -> %u}.gz failed: %s (%d)",
-					         path, i-1, i, strerror(errno), errno);
+				log_warn("Rotation %s -> %s failed: %s",
+				         old_path_compressed, new_path_compressed, strerror(errno));
 			}
 			else
 			{
 				// Log success if debug is enabled
-				if(i == 1)
-					log_debug(DEBUG_CONFIG, "Rotated %s{ -> .%u}.gz",
-					          path, i);
-				else
-					log_debug(DEBUG_CONFIG, "Rotated %s.{%u -> %u}.gz",
-					          path, i-1, i);
+				log_debug(DEBUG_CONFIG, "Rotated %s -> %s",
+				          new_path_compressed, new_path);
 			}
 		}
 	}
