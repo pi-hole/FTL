@@ -138,6 +138,10 @@ bool deflate_file(const char *infile, const char *outfile, bool verbose)
 	bool success = deflate_buffer(buffer_uncompressed, size_uncompressed,
 	                              &buffer_compressed, &size_compressed);
 
+	// Free memory
+	free(buffer_uncompressed);
+
+	// Check if compression was successful
 	if(!success)
 	{
 		log_warn("Failed to compress %s", infile);
@@ -166,6 +170,8 @@ bool deflate_file(const char *infile, const char *outfile, bool verbose)
 		return false;
 	}
 	fclose(fp);
+
+	free(buffer_compressed);
 
 	if(verbose)
 	{
@@ -391,7 +397,6 @@ bool inflate_file(const char *infile, const char *outfile, bool verbose)
 	{
 		log_warn("Failed to read %lu bytes from %s", (unsigned long)size_compressed, infile);
 		fclose(fp);
-		free(buffer_compressed);
 		return false;
 	}
 	fclose(fp);
@@ -400,13 +405,14 @@ bool inflate_file(const char *infile, const char *outfile, bool verbose)
 	mz_ulong size_uncompressed = 0;
 	bool success = inflate_buffer(buffer_compressed, size_compressed,
 	                              &buffer_uncompressed, &size_uncompressed);
+	// Free memory
+	free(buffer_compressed);
 
+	// Check if uncompression was successful
 	if(!success)
 	{
 		log_warn("Failed to uncompress %s", infile);
 		free(buffer_uncompressed);
-		if(buffer_compressed)
-			free(buffer_compressed);
 		fclose(fp);
 		return false;
 	}
@@ -416,19 +422,17 @@ bool inflate_file(const char *infile, const char *outfile, bool verbose)
 	if(fp == NULL)
 	{
 		log_warn("Failed to open %s: %s (%d)", outfile, strerror(errno), errno);
-		free(buffer_uncompressed);
-		free(buffer_compressed);
 		return false;
 	}
 	if(fwrite(buffer_uncompressed, sizeof(char), size_uncompressed, fp) != size_uncompressed)
 	{
 		log_warn("Failed to write %lu bytes to %s", (unsigned long)size_uncompressed, outfile);
 		fclose(fp);
-		free(buffer_uncompressed);
-		free(buffer_compressed);
 		return false;
 	}
 	fclose(fp);
+
+	free(buffer_uncompressed);
 
 	if(verbose)
 	{

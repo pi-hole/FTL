@@ -175,7 +175,8 @@ void parse_args(int argc, char* argv[])
 			exit(sqlite3_shell_main(argc, argv));
 
 	// Compression feature
-	if((argc == 3 || argc == 4) && strcmp(argv[1], "--compress") == 0)
+	if((argc == 3 || argc == 4) &&
+	   (strcmp(argv[1], "gzip") == 0 || strcmp(argv[1], "--gzip") == 0))
 	{
 		// Enable stdout printing
 		cli_mode = true;
@@ -183,18 +184,47 @@ void parse_args(int argc, char* argv[])
 
 		// Get input and output file names
 		const char *infile = argv[2];
+		bool is_gz = strEndsWith(infile, ".gz");
 		char *outfile = NULL;
 		if(argc == 4)
-			outfile = argv[3];
+		{
+			// If an output file is given, we use it
+			outfile = strdup(argv[3]);
+		}
+		else if(is_gz)
+		{
+			// If no output file is given, and this is a gzipped
+			// file, we use the input file name without ".gz"
+			// appended
+			outfile = calloc(strlen(infile)-2, sizeof(char));
+			strncpy(outfile, infile, strlen(infile)-3);
+		}
 		else
 		{
-			// If no output file is given, we use the input file name with ".gz" appended
+			// If no output file is given, and this is not a gzipped
+			// file, we use the input file name with ".gz" appended
 			outfile = calloc(strlen(infile)+4, sizeof(char));
 			strcpy(outfile, infile);
 			strcat(outfile, ".gz");
 		}
-		// Compress file
-		exit(deflate_file(infile, outfile, true) ? EXIT_SUCCESS : EXIT_FAILURE);
+
+		bool success = false;
+		if(is_gz)
+		{
+			// If the input file is already gzipped, we decompress it
+			success = inflate_file(infile, outfile, true);
+		}
+		else
+		{
+			// If the input file is not gzipped, we compress it
+			success = deflate_file(infile, outfile, true);
+		}
+
+		// Free allocated memory
+		free(outfile);
+
+		// Return exit code
+		exit(success ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Deompression feature

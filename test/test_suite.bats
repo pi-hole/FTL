@@ -1219,6 +1219,39 @@
   [[ ${lines[0]} == "true" ]]
 }
 
+@test "Test embedded GZIP compressor" {
+  run bash -c './pihole-FTL gzip test/pihole-FTL.db.sql'
+  printf "Compression output:\n"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[0]} == "Compressed test/pihole-FTL.db.sql ("* ]]
+  printf "Uncompress (FTL) output:\n"
+  run bash -c './pihole-FTL gzip test/pihole-FTL.db.sql.gz test/pihole-FTL.db.sql.1'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[0]} == "Uncompressed test/pihole-FTL.db.sql.gz ("* ]]
+  printf "Uncompress (gzip) output:\n"
+  run bash -c 'gzip -dkc test/pihole-FTL.db.sql.gz > test/pihole-FTL.db.sql.2'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  printf "Remove generated GZIP file:\n"
+  run bash -c 'rm test/pihole-FTL.db.sql.gz'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  printf "Compare uncompressed files (original vs. FTL uncompressed):\n"
+  run bash -c 'cmp test/pihole-FTL.db.sql test/pihole-FTL.db.sql.1'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  printf "Compare uncompressed files (original vs. gzip uncompressed):\n"
+  run bash -c 'cmp test/pihole-FTL.db.sql test/pihole-FTL.db.sql.2'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  printf "Remove generated files:\n"
+  run bash -c 'rm test/pihole-FTL.db.sql.[1-2]'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
 @test "API validation" {
   run python3 test/api/checkAPI.py
   printf "%s\n" "${lines[@]}"
