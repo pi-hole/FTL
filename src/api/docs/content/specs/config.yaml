@@ -213,8 +213,6 @@ components:
                   type: boolean
                 showDNSSEC:
                   type: boolean
-                analyzeAAAA:
-                  type: boolean
                 analyzeOnlyAandAAAA:
                   type: boolean
                 piholePTR:
@@ -560,7 +558,6 @@ components:
             EDNS0ECS: true
             ignoreLocalhost: false
             showDNSSEC: true
-            analyzeAAAA: true
             analyzeOnlyAandAAAA: false
             piholePTR: PI.HOLE
             replyWhenBusy: ALLOW

@@ -74,7 +74,7 @@ bool writeFTLtoml(const bool verbose)
 		if(conf_item->a != NULL)
 		{
 			// Write possible values if applicable
-			print_comment(fp, conf_item->a, "Possible values are: ", 85, level-1);
+			print_toml_allowed_values(conf_item->a, fp, 85, level-1);
 		}
 
 		// Write value

@@ -148,7 +148,10 @@ void print_comment(FILE *fp, const char *str, const char *intro, const unsigned 
 		// Add indentation
 		for(unsigned int j = 0; j < 2*indent; ++j)
 			fputc(' ', fp);
-		fputs("# ", fp);
+		if(strlen(intro) + strlen(str) > 0)
+			fputs("# ", fp);
+		else
+			fputc('#', fp);
 		for(unsigned int j = 0; j < extraspace; ++j)
 			fputc(' ', fp);
 	}
@@ -212,6 +215,63 @@ void print_comment(FILE *fp, const char *str, const char *intro, const unsigned 
 		}
 	}
 	fputc('\n', fp);
+}
+
+void print_toml_allowed_values(cJSON *allowed_values, FILE *fp, const unsigned int width, const unsigned int indent)
+{
+	print_comment(fp, "", "", 85, indent);
+	print_comment(fp, "", "Possible values are:", 85, indent);
+	if(cJSON_IsArray(allowed_values))
+	{
+		// Loop over array items
+		for(int icnt = 0; icnt < cJSON_GetArraySize(allowed_values); icnt++)
+		{
+			// Get array item
+			const cJSON *jopt = cJSON_GetArrayItem(allowed_values, icnt);
+			// Skip if this wasn't possible
+			if(!jopt)
+				continue;
+			// Get item and description
+			const cJSON *item = cJSON_GetObjectItem(jopt, "item");
+			const cJSON *description = cJSON_GetObjectItem(jopt, "description");
+			// Skip if one of them is either NULL or not a string
+			if(!cJSON_IsString(item) && !cJSON_IsNumber(item))
+				continue;
+			if(!cJSON_IsString(description))
+				continue;
+			if(cJSON_IsString(item))
+			{
+				// Frame item name in "..."
+				const size_t buflen = strlen(item->valuestring) + 3u;
+				char *itemname = calloc(buflen, sizeof(char));
+				itemname[0] = '"';
+				strncpy(itemname+1, item->valuestring, buflen);
+				itemname[buflen-2] = '"';
+				// Print item name
+				print_comment(fp, itemname, "  - ", 85, indent);
+				free(itemname);
+			}
+			else if(item->valueint < 100)
+			{
+				// Interger value
+				char *itemname = calloc(3, sizeof(char));
+				snprintf(itemname, 3, "%d", item->valueint);
+				// Print item name
+				print_comment(fp, itemname, "  - ", 85, indent);
+				free(itemname);
+			}
+			// Print item description
+			print_comment(fp, description->valuestring, "      ", 85, indent);
+		}
+	}
+	else if(cJSON_IsString(allowed_values))
+	{
+		print_comment(fp, allowed_values->valuestring, "    ", 85, indent);
+	}
+	else
+	{
+		print_comment(fp, "UNKNOWN, please contact Pi-hole support", "    ", 85, indent);
+	}
 }
 
 // Write a TOML value to a file depending on its type

@@ -117,11 +117,6 @@ const char *readFTLlegacy(void)
 
 	log_notice("Reading legacy config file");
 
-	// AAAA_QUERY_ANALYSIS
-	// defaults to: Yes
-	buffer = parseFTLconf(fp, "AAAA_QUERY_ANALYSIS");
-	parseBool(buffer, &config.dns.analyzeAAAA.v.b);
-
 	// MAXDBDAYS
 	// defaults to: 365 days
 	buffer = parseFTLconf(fp, "MAXDBDAYS");

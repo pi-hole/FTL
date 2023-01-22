@@ -429,15 +429,10 @@ static int api_config_get(struct ftl_conn *api)
 		{
 			cJSON *leaf = JSON_NEW_OBJECT();
 			JSON_REF_STR_IN_OBJECT(leaf, "description", conf_item->h);
-			cJSON *allowed = cJSON_Parse(conf_item->a);
-			if(allowed != NULL)
-			{	log_info("Adding allowed values for %s as JSON", conf_item->k);
-				JSON_ADD_ITEM_TO_OBJECT(leaf, "allowed", allowed);
-			}
+			if(conf_item->a != NULL)
+				JSON_ADD_ITEM_TO_OBJECT(leaf, "allowed", conf_item->a);
 			else
-			{	log_info("Adding allowed values for %s as string", conf_item->k);
-				JSON_REF_STR_IN_OBJECT(leaf, "allowed", conf_item->a);
-			}
+				JSON_ADD_NULL_TO_OBJECT(leaf, "allowed");
 			JSON_REF_STR_IN_OBJECT(leaf, "type", get_conf_type_str(conf_item->t));
 			// Create the config item leaf object
 			cJSON *val = addJSONvalue(conf_item->t, &conf_item->v);
@@ -538,7 +533,7 @@ static int api_config_patch(struct ftl_conn *api)
 
 		// If we reach this point, a valid setting was found and changed
 		// Check if this item requires a config-rewrite + restart of dnsmasq
-		if(conf_item->restart_dnsmasq)
+		if(conf_item->f & FLAG_RESTART_DNSMASQ)
 			dnsmasq_changed = true;
 
 		// Check if this item requires a rewrite of the custom.list file
@@ -706,7 +701,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 		// If we reach this point, a valid setting was found and changed
 		// Check if this item requires a config-rewrite + restart of dnsmasq
-		if(conf_item->restart_dnsmasq)
+		if(conf_item->f & FLAG_RESTART_DNSMASQ)
 			dnsmasq_changed = true;
 
 		// Check if this item requires a rewrite of the custom.list file

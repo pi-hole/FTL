@@ -751,12 +751,6 @@ void DB_read_queries(void)
 			log_warn("Database: TYPE should not be %i", type);
 			continue;
 		}
-		// Don't import AAAA queries from database if the user set
-		// AAAA_QUERY_ANALYSIS=no in pihole-FTL.conf
-		if(type == TYPE_AAAA && !config.dns.analyzeAAAA.v.b)
-		{
-			continue;
-		}
 
 		const int status_int = sqlite3_column_int(stmt, 3);
 		if(status_int < QUERY_UNKNOWN || status_int >= QUERY_STATUS_MAX)

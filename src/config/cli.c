@@ -134,7 +134,10 @@ static bool readStringvalue(struct conf_item *conf_item, const char *value)
 				conf_item->v.ptr_type = ptr_type;
 			else
 			{
-				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->a);
+				char *allowed = NULL;
+				CONFIG_ITEM_ARRAY(conf_item->a, allowed);
+				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, allowed);
+				free(allowed);
 				return false;
 			}
 			break;
@@ -146,7 +149,10 @@ static bool readStringvalue(struct conf_item *conf_item, const char *value)
 				conf_item->v.busy_reply = busy_reply;
 			else
 			{
-				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->a);
+				char *allowed = NULL;
+				CONFIG_ITEM_ARRAY(conf_item->a, allowed);
+				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, allowed);
+				free(allowed);
 				return false;
 			}
 			break;
@@ -158,7 +164,10 @@ static bool readStringvalue(struct conf_item *conf_item, const char *value)
 				conf_item->v.blocking_mode = blocking_mode;
 			else
 			{
-				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->a);
+				char *allowed = NULL;
+				CONFIG_ITEM_ARRAY(conf_item->a, allowed);
+				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, allowed);
+				free(allowed);
 				return false;
 			}
 			break;
@@ -170,7 +179,10 @@ static bool readStringvalue(struct conf_item *conf_item, const char *value)
 				conf_item->v.refresh_hostnames = refresh_hostnames;
 			else
 			{
-				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->a);
+				char *allowed = NULL;
+				CONFIG_ITEM_ARRAY(conf_item->a, allowed);
+				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, allowed);
+				free(allowed);
 				return false;
 			}
 			break;
@@ -182,7 +194,10 @@ static bool readStringvalue(struct conf_item *conf_item, const char *value)
 				conf_item->v.listening_mode = listening_mode;
 			else
 			{
-				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->a);
+				char *allowed = NULL;
+				CONFIG_ITEM_ARRAY(conf_item->a, allowed);
+				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, allowed);
+				free(allowed);
 				return false;
 			}
 			break;
@@ -284,7 +299,7 @@ bool set_config_from_CLI(const char *key, const char *value)
 		return false;
 
 	// Is this a dnsmasq option we need to check?
-	if(conf_item->restart_dnsmasq)
+	if(conf_item->f & FLAG_RESTART_DNSMASQ)
 	{
 		char errbuf[ERRBUF_SIZE] = { 0 };
 		if(!write_dnsmasq_config(&conf_copy, true, errbuf))

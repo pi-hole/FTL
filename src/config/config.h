@@ -74,15 +74,22 @@ enum conf_type {
 
 #define MAX_CONFIG_PATH_DEPTH 6
 
+#define FLAG_RESTART_DNSMASQ    (1 << 0)
+#define FLAG_ADVANCED_SETTING   (1 << 1)
 struct conf_item {
 	const char *k;        // item Key
 	char **p;             // item Path
 	const char *h;        // Help text / description
-	const char *a;        // string of Allowed values (where applicable)
+	cJSON *a;             // JSON array or object of Allowed values (where applicable)
 	enum conf_type t;     // variable Type
-	bool restart_dnsmasq; // De we need to restart the dnsmasq core when this changes?
+	uint8_t f;            // additional Flags
 	union conf_value v;   // current Value
 	union conf_value d;   // Default value
+};
+
+struct enum_options {
+	const char *item;
+	const char *description;
 };
 
 // When new config items are added, the following places need to be updated:
@@ -96,7 +103,6 @@ struct config {
 		struct conf_item EDNS0ECS;
 		struct conf_item ignoreLocalhost;
 		struct conf_item showDNSSEC;
-		struct conf_item analyzeAAAA;
 		struct conf_item analyzeOnlyAandAAAA;
 		struct conf_item piholePTR;
 		struct conf_item replyWhenBusy;
@@ -292,5 +298,42 @@ bool readDebugSettings(void);
 void init_config_mutex(void);
 bool get_blockingstatus(void) __attribute__((pure));
 void set_blockingstatus(bool enabled);
+
+// Add enum items with descriptions
+#define CONFIG_ADD_ENUM_OPTIONS(json, opts)({ \
+	json = cJSON_CreateArray(); \
+	for(unsigned int i = 0; i < sizeof(opts)/sizeof(*opts); i++) \
+	{ \
+		cJSON *jopt = cJSON_CreateObject(); \
+		if(opts[i].item[0] >= '0' && opts[i].item[0] <= '9') \
+			cJSON_AddItemToObject(jopt, "item", cJSON_CreateNumber(opts[i].item[0] - '0')); \
+		else \
+			cJSON_AddItemToObject(jopt, "item", cJSON_CreateStringReference(opts[i].item)); \
+		cJSON_AddItemToObject(jopt, "description", cJSON_CreateStringReference(opts[i].description)); \
+		cJSON_AddItemToArray(json, jopt); \
+	} \
+})
+
+// Get a string representation of the allowed value, this is always allocated
+// and needs to be freed after use
+#define CONFIG_ITEM_ARRAY(json, output)({ \
+	if(cJSON_IsArray(json)) \
+	{ \
+		cJSON *array = cJSON_CreateArray(); \
+		for(int icnt = 0; icnt < cJSON_GetArraySize(json); icnt++) \
+		{ \
+			cJSON *jopt = cJSON_GetArrayItem(json, icnt); \
+			cJSON *item = cJSON_GetObjectItem(jopt, "item"); \
+			if(cJSON_IsString(item)) \
+				cJSON_AddItemToArray(array, cJSON_Duplicate(item, true)); \
+		} \
+		output = cJSON_PrintUnformatted(array); \
+		cJSON_free(array); \
+	} \
+	else if(cJSON_IsString(json)) \
+	{ \
+		output = strdup(json->valuestring); \
+	} \
+})
 
 #endif //CONFIG_H

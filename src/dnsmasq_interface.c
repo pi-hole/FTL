@@ -560,13 +560,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(querytype == TYPE_PTR && config.dns.piholePTR.v.ptr_type != PTR_NONE)
 		check_pihole_PTR((char*)name);
 
-	// Skip AAAA queries if user doesn't want to have them analyzed
-	if(!config.dns.analyzeAAAA.v.b && querytype == TYPE_AAAA)
-	{
-		log_debug(DEBUG_QUERIES, "Not analyzing AAAA query");
-		return false;
-	}
-
 	// Convert domain to lower case
 	char *domainString = strdup(name);
 	strtolower(domainString);
@@ -3306,7 +3299,8 @@ int check_struct_sizes(void)
 	int result = 0;
 	// sizeof(struct conf_item) is 72 on x86_64 and 52 on x86_32
 	// number of config elements: CONFIG_ELEMENTS
-	result += check_one_struct("struct config", sizeof(struct config), 8352, 6032);
+	result += check_one_struct("struct conf_item", sizeof(struct conf_item), 72, 52);
+	result += check_one_struct("struct config", sizeof(struct config), 8280, 5880);
 	result += check_one_struct("queriesData", sizeof(queriesData), 72, 64);
 	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 628);
 	result += check_one_struct("clientsData", sizeof(clientsData), 672, 652);

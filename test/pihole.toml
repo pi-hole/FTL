@@ -21,9 +21,6 @@
   # Should FTL should internally generated DNSSEC queries?
   showDNSSEC = true
 
-  # Should FTL analyze AAAA queries?
-  analyzeAAAA = true
-
   # Should FTL analyze *only* A and AAAA queries?
   analyzeOnlyAandAAAA = false
 
