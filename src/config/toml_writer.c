@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "config.h"
-// get_timestr()
+// get_timestr(), get_FTL_version())
 #include "log.h"
 #include "tomlc99/toml.h"
 #include "toml_writer.h"
@@ -39,7 +39,11 @@ bool writeFTLtoml(const bool verbose)
 	fputs("# running or your changes may be overwritten\n#\n", fp);
 	char timestring[84] = "";
 	get_timestr(timestring, time(NULL), false);
-	fprintf(fp, "# Last update: %s\n\n", timestring);
+	fputs("# Last updated on ", fp);
+	fputs(timestring, fp);
+	fputs("\n# by FTL ", fp);
+	fputs(get_FTL_version(), fp);
+	fputs("\n\n", fp);
 
 	// Iterate over configuration and store it into the file
 	char *last_path = (char*)"";

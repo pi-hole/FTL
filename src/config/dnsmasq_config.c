@@ -31,6 +31,8 @@
 // wait
 #include <sys/wait.h>
 
+#define HEADER_WIDTH 80
+
 static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 {
 	// Create a pipe for communication with our child
@@ -182,6 +184,8 @@ char *get_dnsmasq_line(const unsigned int lineno)
 static void write_config_header(FILE *fp, const char *description)
 {
 	const time_t now = time(NULL);
+	char timestring[84] = "";
+	get_timestr(timestring, now, false);
 	fputs("# Pi-hole: A black hole for Internet advertisements\n", fp);
 	fprintf(fp, "# (c) %u Pi-hole, LLC (https://pi-hole.net)\n", get_year(now));
 	fputs("# Network-wide ad blocking via your own hardware.\n", fp);
@@ -190,24 +194,22 @@ static void write_config_header(FILE *fp, const char *description)
 	fputs(description, fp);
 	fputs("\n", fp);
 	fputs("#\n", fp);
-	fputs("# This file is copyright under the latest version of the EUPL.\n#\n", fp);
-	fputs("###############################################################################\n", fp);
-	fputs("#                  FILE AUTOMATICALLY POPULATED BY PI-HOLE                    #\n", fp);
-	fputs("#  ANY CHANGES MADE TO THIS FILE WILL BE LOST WHEN THE CONFIGURATION CHANGES  #\n", fp);
-	fputs("#                                                                             #\n", fp);
-	fputs("#         IF YOU WISH TO CHANGE ANY OF THESE VALUES, CHANGE THEM IN:          #\n", fp);
-	fputs("#                      /etc/pihole/pihole-FTL.toml                            #\n", fp);
-	fputs("#                         and restart pihole-FTL                              #\n", fp);
-	fputs("#                                                                             #\n", fp);
-	fputs("#        ANY OTHER CHANGES SHOULD BE MADE IN A SEPARATE CONFIG FILE           #\n", fp);
-	fputs("#                    WITHIN /etc/dnsmasq.d/yourname.conf                      #\n", fp);
-	fputs("#                                                                             #\n", fp);
-	char timestring[84] = "";
-	get_timestr(timestring, now, false);
-	fputs("#                      Last update: ", fp);
-	fputs(timestring, fp);
-	fputs("                       #\n", fp);
-	fputs("###############################################################################\n\n", fp);
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "################################################################################");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "FILE AUTOMATICALLY POPULATED BY PI-HOLE");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY CHANGES MADE TO THIS FILE WILL BE LOST WHEN THE CONFIGURATION CHANGES");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "IF YOU WISH TO CHANGE ANY OF THESE VALUES, CHANGE THEM IN");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "etc/pihole/pihole-FTL.toml");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "and restart pihole-FTL");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY OTHER CHANGES SHOULD BE MADE IN A SEPARATE CONFIG FILE");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "WITHIN /etc/dnsmasq.d/yourname.conf");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "Last updated: %s", timestring);
+	CONFIG_CENTER(fp, HEADER_WIDTH, "by FTL version %s", get_FTL_version());
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "################################################################################");
 }
 
 bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
