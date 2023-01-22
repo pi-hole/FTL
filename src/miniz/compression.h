@@ -12,6 +12,7 @@
 
 #include <stdbool.h>
 
-bool compress_file(const char *in, const char *out, bool verbose);
+bool deflate_file(const char *in, const char *out, bool verbose);
+bool inflate_file(const char *infile, const char *outfile, bool verbose);
 
 #endif // COMPRESSION_H

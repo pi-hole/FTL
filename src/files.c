@@ -330,7 +330,7 @@ void rotate_files(const char *path)
 				else
 					log_debug(DEBUG_CONFIG, "Compressing %s.{%u -> %u.gz}",
 					          path, i-1, i);
-				if(compress_file(new_path, new_path_compressed, false))
+				if(deflate_file(new_path, new_path_compressed, false))
 				{
 					// On success, we remove the uncompressed file
 					remove(new_path);
