@@ -41,6 +41,29 @@ static struct {
 	{ "debug", "Debug settings" }
 };
 
+static struct {
+	const char *name;
+	struct {
+		const char *addr1;
+		const char *addr2;
+	} v4;
+	struct {
+		const char *addr1;
+		const char *addr2;
+	} v6;
+} dns_server[] =
+{
+	{ "Google (ECS, DNSSEC)", { "8.8.8.8", "8.8.4.4" }, { "2001:4860:4860:0:0:0:0:8888", "2001:4860:4860:0:0:0:0:8844" } },
+	{ "OpenDNS (ECS, DNSSEC)", { "208.67.222.222", "208.67.220.220" }, {"2620:119:35::35", "2620:119:53::53"} },
+	{ "Level3", { "4.2.2.1", "4.2.2.2" }, { NULL, NULL } },
+	{ "Comodo", { "8.26.56.26", "8.20.247.20" }, { NULL, NULL} },
+	{ "DNS.WATCH (DNSSEC)", { "84.200.69.80", "84.200.70.40" }, { "2001:1608:10:25:0:0:1c04:b12f", "2001:1608:10:25:0:0:9249:d69b" } },
+	{ "Quad9 (filtered, DNSSEC)", {"9.9.9.9", "149.112.112.112" }, { "2620:fe::fe", "2620:fe::9" } },
+	{ "Quad9 (unfiltered, no DNSSEC)", { "9.9.9.10", "149.112.112.10" }, { "2620:fe::10", "2620:fe::fe:10" } },
+	{ "Quad9 (filtered, ECS, DNSSEC)", { "9.9.9.11", "149.112.112.11" }, { "2620:fe::11", "2620:fe::fe:11" } },
+	{ "Cloudflare (DNSSEC)", { "1.1.1.1", "1.0.0.1" }, { "2606:4700:4700::1111", "2606:4700:4700::1001" } }
+};
+
 // The following functions are used to create the JSON output
 // of the /api/config endpoint.
 
@@ -785,5 +808,36 @@ int api_config_topics(struct ftl_conn *api)
 	// Build and return JSON response
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "topics", topics);
+	JSON_SEND_OBJECT(json);
+}
+
+int api_config_server(struct ftl_conn *api)
+{
+	cJSON *servers = JSON_NEW_ARRAY();
+	for(unsigned int i = 0; i < sizeof(dns_server)/sizeof(*dns_server); i++)
+	{
+		cJSON *server = JSON_NEW_OBJECT();
+		JSON_REF_STR_IN_OBJECT(server, "name", dns_server[i].name);
+
+		cJSON *v4 = JSON_NEW_ARRAY();
+		if(dns_server[i].v4.addr1 != NULL)
+			JSON_REF_STR_IN_ARRAY(v4, dns_server[i].v4.addr1);
+		if(dns_server[i].v4.addr2 != NULL)
+			JSON_REF_STR_IN_ARRAY(v4, dns_server[i].v4.addr2);
+		JSON_ADD_ITEM_TO_OBJECT(server, "v4", v4);
+
+		cJSON *v6 = JSON_NEW_ARRAY();
+		if(dns_server[i].v6.addr1 != NULL)
+			JSON_REF_STR_IN_ARRAY(v6, dns_server[i].v6.addr1);
+		if(dns_server[i].v6.addr2 != NULL)
+			JSON_REF_STR_IN_ARRAY(v6, dns_server[i].v6.addr2);
+		JSON_ADD_ITEM_TO_OBJECT(server, "v6", v6);
+
+		JSON_ADD_ITEM_TO_ARRAY(servers, server);
+	}
+
+	// Build and return JSON response
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "server", servers);
 	JSON_SEND_OBJECT(json);
 }

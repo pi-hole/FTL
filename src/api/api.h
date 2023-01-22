@@ -57,6 +57,7 @@ int api_info_version(struct ftl_conn *api);
 // Config methods
 int api_config(struct ftl_conn *api);
 int api_config_topics(struct ftl_conn *api);
+int api_config_server(struct ftl_conn *api);
 
 // Log methods
 int api_logs(struct ftl_conn *api);

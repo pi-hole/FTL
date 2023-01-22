@@ -169,6 +169,30 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    server:
+      get:
+        summary: Get DNS server suggestions
+        tags:
+          - "Pi-hole Configuration"
+        operationId: "get_config_server_suggestions"
+        description: |
+          This API hook returns a list of DNS servers known to be compatible with Pi-hole.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'config.yaml#/components/schemas/server'
+                examples:
+                  server:
+                    $ref: 'config.yaml#/components/examples/server'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     config:
       type: object
@@ -503,6 +527,27 @@ components:
               description:
                 type: string
                 description: A human-readable description of the topic
+    server:
+      type: object
+      properties:
+        server:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Human-readable name of this server
+              v4:
+                type: array
+                description: Array of IPv4 addresses (if any)
+                items:
+                  type: string
+              v6:
+                type: array
+                description: Array of IPv6 addresses (if any)
+                items:
+                  type: string
 
   examples:
     config:
@@ -690,6 +735,16 @@ components:
             description: Miscellaneous settings
           - name: Debug
             description: Debug settings
+    server:
+      summary: Several servers being suggested
+      value:
+        server:
+          - name: Google (ECS, DNSSEC)
+            v4: ["8.8.8.8", "8.8.4.4"]
+            v6: ["2001:4860:4860:0:0:0:0:8888","2001:4860:4860:0:0:0:0:8844"]
+          - name: OpenDNS (ECS, DNSSEC)
+            v4: ["208.67.222.222", "208.67.220.220"]
+            v6: ["2620:119:35::35","2620:119:53::53"]
     errors:
       bad_request:
         invalid_path_depth:
