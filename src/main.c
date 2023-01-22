@@ -66,7 +66,7 @@ int main (int argc, char *argv[])
 	// We configure real-time signals later (after dnsmasq has forked)
 	handle_signals();
 
-	// Process pihole-FTL.toml configuration file
+	// Process pihole.toml configuration file
 	// The file is rewritten after parsing to ensure that all
 	// settings are present and have a valid value
 	readFTLconf(true);

@@ -26,7 +26,7 @@
 // type cJSON
 #include "cJSON/cJSON.h"
 
-#define GLOBALTOMLPATH "/etc/pihole/pihole-FTL.toml"
+#define GLOBALTOMLPATH "/etc/pihole/pihole.toml"
 
 union conf_value {
 	bool b;                                     // boolean value
@@ -88,7 +88,7 @@ struct conf_item {
 // When new config items are added, the following places need to be updated:
 // - src/config/config.c: New default item
 // - src/dnsmasq_interface.c: sizeof(struct config) increases (see comment there)
-// - test/pihole-FTL.toml: Add the new item to the test config file
+// - test/pihole.toml: Add the new item to the test config file
 struct config {
 	struct {
 		struct conf_item CNAMEdeepInspect;

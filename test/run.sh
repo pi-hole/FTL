@@ -46,9 +46,9 @@ rm -rf /etc/pihole/pihole-FTL.db
 ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db < test/pihole-FTL.db.sql
 chown pihole:pihole /etc/pihole/pihole-FTL.db
 
-# Prepare pihole-FTL.toml
-cp test/pihole-FTL.toml /etc/pihole/pihole-FTL.toml
-chown pihole:pihole /etc/pihole/pihole-FTL.toml
+# Prepare pihole.toml
+cp test/pihole.toml /etc/pihole/pihole.toml
+chown pihole:pihole /etc/pihole/pihole.toml
 
 # Prepare 01-pihole-tests.conf
 mkdir /etc/dnsmasq.d
@@ -115,8 +115,8 @@ if [[ $RET != 0 ]]; then
   echo -n "PH7.log: "
   curl_to_tricorder /var/log/pihole/PH7.log
   echo ""
-  echo -n "pihole-FTL.toml: "
-  curl_to_tricorder /etc/pihole/pihole-FTL.toml
+  echo -n "pihole.toml: "
+  curl_to_tricorder /etc/pihole/pihole.toml
   echo ""
 fi
 

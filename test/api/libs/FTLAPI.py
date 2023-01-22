@@ -61,9 +61,9 @@ class FTLAPI():
 
 		pwhash = None
 		if password is None:
-			# Try to obtain the password hash from pihole-FTL.toml
+			# Try to obtain the password hash from pihole.toml
 			try:
-				with open("/etc/pihole/pihole-FTL.toml", "r") as f:
+				with open("/etc/pihole/pihole.toml", "r") as f:
 					# Iterate over all lines
 					for line in f:
 						# Find the line with the password hash
@@ -74,11 +74,11 @@ class FTLAPI():
 								pwhash = line[1].strip()
 							break
 			except Exception as e:
-				# Could not read pihole-FTL.toml, throw an error
-				raise Exception("Could not read pihole-FTL.toml: " + str(e))
+				# Could not read pihole.toml, throw an error
+				raise Exception("Could not read pihole.toml: " + str(e))
 			if pwhash is None:
-				# The password hash was not found in pihole-FTL.toml, throw an error
-				raise Exception("No password hash found in pihole-FTL.toml")
+				# The password hash was not found in pihole.toml, throw an error
+				raise Exception("No password hash found in pihole.toml")
 
 		else:
 			# Generate password hash
