@@ -322,6 +322,29 @@ static int get_sensors_arr(struct ftl_conn *api, cJSON *sensors)
 	return 0;
 }
 
+static cJSON *read_sys_property(const char *path)
+{
+	if(!file_exists(path))
+		return cJSON_CreateNull();
+
+	FILE *fp = fopen(path, "r");
+	if(fp == NULL)
+		return cJSON_CreateNull();
+
+	char buf[256];
+	if(fgets(buf, sizeof(buf), fp) == NULL)
+	{
+		fclose(fp);
+		return NULL;
+	}
+	fclose(fp);
+
+	// Remove newline if present
+	char *p = strchr(buf, '\n');
+	if (p != NULL) *p = '\0';
+	return cJSON_CreateString(buf);
+}
+
 static int get_host_obj(struct ftl_conn *api, cJSON *host)
 {
 	cJSON *uname_ = JSON_NEW_OBJECT();
@@ -335,29 +358,30 @@ static int get_host_obj(struct ftl_conn *api, cJSON *host)
 	JSON_COPY_STR_TO_OBJECT(uname_, "version", un.version);
 	JSON_ADD_ITEM_TO_OBJECT(host, "uname", uname_);
 
-	// Try to obtain device model
-	if(file_exists("/sys/firmware/devicetree/base/model"))
-	{
-		FILE *f_model = fopen("/sys/firmware/devicetree/base/model", "r");
-		char model[1024] = { 0 };
-		if(f_model && fgets(model, sizeof(model)-1, f_model))
-		{
-			// Remove newline if present
-			char *p = strchr(model, '\n');
-			if (p != NULL) *p = '\0';
-			JSON_COPY_STR_TO_OBJECT(host, "model", model);
-		}
-		else
-		{
-			JSON_ADD_NULL_TO_OBJECT(host, "model");
-		}
-		if(f_model)
-			fclose(f_model);
-	}
-	else
-	{
-		JSON_ADD_NULL_TO_OBJECT(host, "model");
-	}
+	JSON_ADD_ITEM_TO_OBJECT(host, "model", read_sys_property("/sys/firmware/devicetree/base/model"));
+
+	cJSON *dmi = JSON_NEW_OBJECT();
+	cJSON *bios = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(bios, "vendor", read_sys_property("/sys/devices/virtual/dmi/id/bios_vendor"));
+
+	cJSON *board = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(board, "name", read_sys_property("/sys/devices/virtual/dmi/id/board_name"));
+	JSON_ADD_ITEM_TO_OBJECT(board, "vendor", read_sys_property("/sys/devices/virtual/dmi/id/board_vendor"));
+	JSON_ADD_ITEM_TO_OBJECT(board, "version", read_sys_property("/sys/devices/virtual/dmi/id/board_version"));
+
+	cJSON *product = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(product, "name", read_sys_property("/sys/devices/virtual/dmi/id/product_name"));
+	JSON_ADD_ITEM_TO_OBJECT(product, "family", read_sys_property("/sys/devices/virtual/dmi/id/product_family"));
+	JSON_ADD_ITEM_TO_OBJECT(product, "version", read_sys_property("/sys/devices/virtual/dmi/id/product_version"));
+
+	cJSON *sys = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(sys, "vendor", read_sys_property("/sys/devices/virtual/dmi/id/sys_vendor"));
+
+	JSON_ADD_ITEM_TO_OBJECT(dmi, "bios", bios);
+	JSON_ADD_ITEM_TO_OBJECT(dmi, "board", board);
+	JSON_ADD_ITEM_TO_OBJECT(dmi, "product", product);
+	JSON_ADD_ITEM_TO_OBJECT(dmi, "sys", sys);
+	JSON_ADD_ITEM_TO_OBJECT(host, "dmi", dmi);
 
 	// All okay
 	return 0;

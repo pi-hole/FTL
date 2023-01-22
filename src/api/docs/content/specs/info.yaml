@@ -369,11 +369,6 @@ components:
         host:
           type: object
           properties:
-            model:
-              type: string
-              description: Device model (if available, `null` otherwise)
-              example: "Raspberry Pi Model 4B"
-              nullable: true
             uname:
               type: object
               properties:
@@ -395,6 +390,66 @@ components:
                 version:
                   type: string
                   example: "#58-Ubuntu SMP Thu Oct 13 08:03:55 UTC 2022"
+            model:
+              type: string
+              description: Device model (if available, `null` otherwise)
+              example: "Raspberry Pi Model 4B"
+              nullable: true
+            dmi:
+              type: object
+              properties:
+                bios:
+                  type: object
+                  properties:
+                    vendor:
+                      type: string
+                      description: BIOS vendor (if available, `null` otherwise)
+                      example: "American Megatrends Inc."
+                      nullable: true
+                board:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Board name (if available, `null` otherwise)
+                      example: "Raspberry Pi 4 Model B Rev 1.4"
+                      nullable: true
+                    vendor:
+                      type: string
+                      description: Board vendor (if available, `null` otherwise)
+                      example: "Raspberry Pi Foundation"
+                      nullable: true
+                    version:
+                      type: string
+                      description: Board version (if available, `null` otherwise)
+                      example: "0x14"
+                      nullable: true
+                product:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Product name (if available, `null` otherwise)
+                      example: "Raspberry Pi 4 Model B Rev 1.4"
+                      nullable: true
+                    version:
+                      type: string
+                      description: Product version (if available, `null` otherwise)
+                      example: "0x14"
+                      nullable: true
+                    family:
+                      type: string
+                      description: Product family (if available, `null` otherwise)
+                      example: "Raspberry Pi 4 Model B Rev 1.4"
+                      nullable: true
+                sys:
+                  type: object
+                  properties:
+                    vendor:
+                      type: string
+                      description: System vendor (if available, `null` otherwise)
+                      example: "Raspberry Pi Foundation"
+                      nullable: true
     ftl:
       type: object
       properties:
