@@ -98,6 +98,7 @@ struct enum_options {
 // - test/pihole.toml: Add the new item to the test config file
 struct config {
 	struct {
+		struct conf_item upstreams;
 		struct conf_item CNAMEdeepInspect;
 		struct conf_item blockESNI;
 		struct conf_item EDNS0ECS;
@@ -108,6 +109,18 @@ struct config {
 		struct conf_item replyWhenBusy;
 		struct conf_item blockTTL;
 		struct conf_item hosts;
+		struct conf_item domain;
+		struct conf_item domain_needed;
+		struct conf_item expand_hosts;
+		struct conf_item bogus_priv;
+		struct conf_item dnssec;
+		struct conf_item interface;
+		struct conf_item host_record;
+		struct conf_item listening_mode;
+		struct conf_item cache_size;
+		struct conf_item query_logging;
+		struct conf_item cnames;
+		struct conf_item port;
 		struct {
 			struct conf_item active;
 			struct conf_item mode;
@@ -134,39 +147,25 @@ struct config {
 			struct conf_item count;
 			struct conf_item interval;
 		} rateLimit;
-	} dns;
 
-	struct {
-		struct conf_item upstreams;
-		struct conf_item domain;
-		struct conf_item domain_needed;
-		struct conf_item expand_hosts;
-		struct conf_item bogus_priv;
-		struct conf_item dnssec;
-		struct conf_item interface;
-		struct conf_item host_record;
-		struct conf_item listening_mode;
-		struct conf_item cache_size;
-		struct conf_item logging;
-		struct conf_item cnames;
-		struct conf_item port;
 		struct {
 			struct conf_item active;
 			struct conf_item cidr;
 			struct conf_item target;
 			struct conf_item domain;
 		} rev_server;
-		struct {
-			struct conf_item active;
-			struct conf_item start;
-			struct conf_item end;
-			struct conf_item router;
-			struct conf_item leasetime;
-			struct conf_item ipv6;
-			struct conf_item rapid_commit;
-			struct conf_item hosts;
-		} dhcp;
-	} dnsmasq;
+	} dns;
+
+	struct {
+		struct conf_item active;
+		struct conf_item start;
+		struct conf_item end;
+		struct conf_item router;
+		struct conf_item leasetime;
+		struct conf_item ipv6;
+		struct conf_item rapid_commit;
+		struct conf_item hosts;
+	} dhcp;
 
 	struct {
 		struct conf_item resolveIPv4;
@@ -188,15 +187,6 @@ struct config {
 	} database;
 
 	struct {
-		struct conf_item localAPIauth;
-		struct conf_item prettyJSON;
-		struct conf_item sessionTimeout;
-		struct conf_item pwhash;
-		struct conf_item exclude_clients;
-		struct conf_item exclude_domains;
-	} api;
-
-	struct {
 		struct conf_item domain;
 		struct conf_item acl;
 		struct conf_item port;
@@ -208,7 +198,19 @@ struct config {
 			struct conf_item boxed;
 			struct conf_item theme;
 		} interface;
-	} http;
+		struct {
+			struct conf_item localAPIauth;
+			struct conf_item prettyJSON;
+			struct conf_item sessionTimeout;
+			struct conf_item pwhash;
+			struct conf_item exclude_clients;
+			struct conf_item exclude_domains;
+			struct {
+				struct conf_item limit;
+				struct conf_item unit;
+			} temp;
+		} api;
+	} webserver;
 
 	struct {
 		struct conf_item pid;
@@ -225,14 +227,10 @@ struct config {
 	} files;
 
 	struct {
-		struct conf_item nice;
-		struct conf_item delay_startup;
-		struct conf_item addr2line;
 		struct conf_item privacylevel;
-		struct {
-			struct conf_item limit;
-			struct conf_item unit;
-		} temp;
+		struct conf_item delay_startup;
+		struct conf_item nice;
+		struct conf_item addr2line;
 		struct {
 			struct conf_item load;
 			struct conf_item shmem;

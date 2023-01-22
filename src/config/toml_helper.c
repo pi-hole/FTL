@@ -243,22 +243,20 @@ void print_toml_allowed_values(cJSON *allowed_values, FILE *fp, const unsigned i
 			{
 				// Frame item name in "..."
 				const size_t buflen = strlen(item->valuestring) + 3u;
-				char *itemname = calloc(buflen, sizeof(char));
+				char itemname[buflen];
 				itemname[0] = '"';
 				strncpy(itemname+1, item->valuestring, buflen);
 				itemname[buflen-2] = '"';
 				// Print item name
 				print_comment(fp, itemname, "  - ", 85, indent);
-				free(itemname);
 			}
 			else if(item->valueint < 100)
 			{
 				// Interger value
-				char *itemname = calloc(3, sizeof(char));
-				snprintf(itemname, 3, "%d", item->valueint);
+				char itemname[3];
+				snprintf(itemname, sizeof(itemname), "%d", item->valueint);
 				// Print item name
 				print_comment(fp, itemname, "  - ", 85, indent);
-				free(itemname);
 			}
 			// Print item description
 			print_comment(fp, description->valuestring, "      ", 85, indent);

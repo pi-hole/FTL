@@ -31,13 +31,13 @@ static void reportDebugConfig(void);
 
 bool readFTLtoml(const bool verbose)
 {
-	// Initialize config with default values
-	initConfig();
-
 	// Parse lines in the config file
 	toml_table_t *conf = parseTOML();
 	if(!conf)
 		return false;
+
+	// Initialize config with default values
+	initConfig();
 
 	// Try to read debug config. This is done before the full config
 	// parsing to allow for debug output further down

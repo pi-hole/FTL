@@ -47,7 +47,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	const char *local_uri = req_info->local_uri_raw + 1u;
 
 	// Build full path of PHP script on our machine
-	const size_t webroot_len = strlen(config.http.paths.webroot.v.s);
+	const size_t webroot_len = strlen(config.webserver.paths.webroot.v.s);
 	const size_t local_uri_len = strlen(local_uri); // +1 to skip the initial '/'
 	size_t buffer_len = webroot_len + local_uri_len + 2;
 
@@ -60,7 +60,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	}
 
 	char full_path[buffer_len];
-	memcpy(full_path, config.http.paths.webroot.v.s, webroot_len);
+	memcpy(full_path, config.webserver.paths.webroot.v.s, webroot_len);
 	full_path[webroot_len] = '/';
 	memcpy(full_path + webroot_len + 1u, local_uri, local_uri_len);
 	full_path[webroot_len + local_uri_len + 1u] = '\0';
@@ -198,11 +198,11 @@ void init_ph7(void)
 
 	// Prepare include paths
 	// /var/www/html/admin (may be different due to user configuration)
-	const size_t webroot_len = strlen(config.http.paths.webroot.v.s);
-	const size_t webhome_len = strlen(config.http.paths.webhome.v.s);
+	const size_t webroot_len = strlen(config.webserver.paths.webroot.v.s);
+	const size_t webhome_len = strlen(config.webserver.paths.webhome.v.s);
 	webroot_with_home = calloc(webroot_len + webhome_len + 1u, sizeof(char));
-	strcpy(webroot_with_home, config.http.paths.webroot.v.s);
-	strcpy(webroot_with_home + webroot_len, config.http.paths.webhome.v.s);
+	strcpy(webroot_with_home, config.webserver.paths.webroot.v.s);
+	strcpy(webroot_with_home + webroot_len, config.webserver.paths.webhome.v.s);
 	webroot_with_home[webroot_len + webhome_len] = '\0';
 
 	// /var/www/html/admin/scripts/pi-hole/php (may be different due to user configuration)

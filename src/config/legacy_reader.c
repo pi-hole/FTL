@@ -262,7 +262,7 @@ const char *readFTLlegacy(void)
 	parseBool(buffer, &config.dns.blockESNI.v.b);
 
 	// WEBROOT
-	config.http.paths.webroot.v.s = getPath(fp, "WEBROOT", config.http.paths.webroot.v.s);
+	config.webserver.paths.webroot.v.s = getPath(fp, "WEBROOT", config.webserver.paths.webroot.v.s);
 
 	// WEBPORT
 	// On which port should FTL's API be listening?
@@ -271,12 +271,12 @@ const char *readFTLlegacy(void)
 
 	value = 0;
 	if(buffer != NULL && strlen(buffer) > 0)
-		config.http.port.v.s = strdup(buffer);
+		config.webserver.port.v.s = strdup(buffer);
 
 	// WEBHOME
 	// From which sub-directory is the web interface served from?
 	// Defaults to: /admin/ (both slashes are needed!)
-	config.http.paths.webhome.v.s = getPath(fp, "WEBHOME", config.http.paths.webhome.v.s);
+	config.webserver.paths.webhome.v.s = getPath(fp, "WEBHOME", config.webserver.paths.webhome.v.s);
 
 	// WEBACL
 	// Default: allow all access
@@ -300,12 +300,12 @@ const char *readFTLlegacy(void)
 	//
 	buffer = parseFTLconf(fp, "WEBACL");
 	if(buffer != NULL)
-		config.http.acl.v.s = strdup(buffer);
+		config.webserver.acl.v.s = strdup(buffer);
 
 	// API_AUTH_FOR_LOCALHOST
 	// defaults to: true
 	buffer = parseFTLconf(fp, "API_AUTH_FOR_LOCALHOST");
-	parseBool(buffer, &config.api.localAPIauth.v.b);
+	parseBool(buffer, &config.webserver.api.localAPIauth.v.b);
 
 	// API_SESSION_TIMEOUT
 	// How long should a session be considered valid after login?
@@ -314,12 +314,12 @@ const char *readFTLlegacy(void)
 
 	value = 0;
 	if(buffer != NULL && sscanf(buffer, "%i", &value) && value > 0)
-		config.api.sessionTimeout.v.ui = value;
+		config.webserver.api.sessionTimeout.v.ui = value;
 
 	// API_PRETTY_JSON
 	// defaults to: false
 	buffer = parseFTLconf(fp, "API_PRETTY_JSON");
-	parseBool(buffer, &config.api.prettyJSON.v.b);
+	parseBool(buffer, &config.webserver.api.prettyJSON.v.b);
 
 	// API_ERROR_LOG
 	config.files.ph7_error.v.s = getPath(fp, "API_ERROR_LOG", config.files.ph7_error.v.s);
@@ -384,7 +384,7 @@ const char *readFTLlegacy(void)
 		config.resolver.refreshNames.v.refresh_hostnames = REFRESH_IPV4_ONLY;
 
 	// WEBDOMAIN
-	config.http.domain.v.s = getPath(fp, "WEBDOMAIN", config.http.domain.v.s);
+	config.webserver.domain.v.s = getPath(fp, "WEBDOMAIN", config.webserver.domain.v.s);
 
 	// RATE_LIMIT
 	// defaults to: 1000 queries / 60 seconds

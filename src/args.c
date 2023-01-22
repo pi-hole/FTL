@@ -197,7 +197,7 @@ void parse_args(int argc, char* argv[])
 			// file, we use the input file name without ".gz"
 			// appended
 			outfile = calloc(strlen(infile)-2, sizeof(char));
-			strncpy(outfile, infile, strlen(infile)-3);
+			memcpy(outfile, infile, strlen(infile)-3);
 		}
 		else
 		{
@@ -225,35 +225,6 @@ void parse_args(int argc, char* argv[])
 
 		// Return exit code
 		exit(success ? EXIT_SUCCESS : EXIT_FAILURE);
-	}
-
-	// Deompression feature
-	if((argc == 3 || argc == 4) && strcmp(argv[1], "--uncompress") == 0)
-	{
-		// Enable stdout printing
-		cli_mode = true;
-		log_ctrl(false, true);
-
-		// Get input and output file names
-		const char *infile = argv[2];
-		char *outfile = NULL;
-		if(argc == 4)
-		{
-			outfile = argv[3];
-		}
-		else if(strEndsWith(infile, ".gz"))
-		{
-			// If no output file is given, we use the input file name without ".gz" appended
-			outfile = calloc(strlen(infile)-2, sizeof(char));
-			strncpy(outfile, infile, strlen(infile)-3);
-		}
-		else
-		{
-			log_err("Cannot determine output file name from %s (not ending in \".gz\")", infile);
-			exit(EXIT_FAILURE);
-		}
-		// Compress file
-		exit(inflate_file(infile, outfile, true) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Set config option through CLI

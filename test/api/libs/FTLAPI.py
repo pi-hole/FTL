@@ -67,7 +67,7 @@ class FTLAPI():
 					# Iterate over all lines
 					for line in f:
 						# Find the line with the password hash
-						if line.startswith("  pwhash = "):
+						if line.startswith("    pwhash = "):
 							# Remove quotes and whitespace
 							line = line.split("=")[1].split("\"")
 							if len(line) > 2:

@@ -26,7 +26,7 @@ char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN] = { 0 };
 // This string needs to be freed after using it
 char *json_formatter(const cJSON *object)
 {
-	if(config.api.prettyJSON.v.b)
+	if(config.webserver.api.prettyJSON.v.b)
 	{
 		/* Examplary output:
 		{

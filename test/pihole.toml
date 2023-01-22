@@ -3,105 +3,109 @@
 # Do not edit the file while FTL is
 # running or your changes may be overwritten
 #
-# Last update: 2023-01-11 20:53:00
+# Last updated on 2023-01-23 14:51:44
+# by FTL v5.20.1-552-g5184ed28
 
 [dns]
-  # Should FTL walk CNAME paths?
+  # Array of upstream DNS servers used by Pi-hole
+  # Example: [ "8.8.8.8", "127.0.0.1#5353", "docker-resolver" ]
+  #
+  # Possible values are:
+  #     array of IP addresses and/or hostnames, optionally with a port (#...)
+  upstreams = [
+    "127.0.0.1#5555"
+  ] ### CHANGED, default = [ ]
+
+  # Use this option to control deep CNAME inspection. Disabling it might be beneficial
+  # for very low-end devices
   CNAMEdeepInspect = true
 
-  # Should _esni. subdomains be blocked by default?
+  # Should _esni. subdomains be blocked by default? Encrypted Server Name Indication
+  # (ESNI) is certainly a good step into the right direction to enhance privacy on the
+  # web. It prevents on-path observers, including ISPs, coffee shop owners and
+  # firewalls, from intercepting the TLS Server Name Indication (SNI) extension by
+  # encrypting it. This prevents the SNI from being used to determine which websites
+  # users are visiting.
+  # ESNI will obviously cause issues for pixelserv-tls which will be unable to generate
+  # matching certificates on-the-fly when it cannot read the SNI. Cloudflare and Firefox
+  # are already enabling ESNI. According to the IEFT draft (link above), we can easily
+  # restore piselserv-tls's operation by replying NXDOMAIN to _esni. subdomains of
+  # blocked domains as this mimics a "not configured for this domain" behavior.
   blockESNI = true
 
-  # Should FTL analyze possible ECS information to obtain client IPs hidden behind NATs?
+  # Should we overwrite the query source when client information is provided through
+  # EDNS0 client subnet (ECS) information? This allows Pi-hole to obtain client IPs even
+  # if they are hidden behind the NAT of a router. This feature has been requested and
+  # discussed on Discourse where further information how to use it can be found:
+  # https://discourse.pi-hole.net/t/support-for-add-subnet-option-from-dnsmasq-ecs-edns0-client-subnet/35940
   EDNS0ECS = true
 
   # Should FTL hide queries made by localhost?
   ignoreLocalhost = false
 
-  # Should FTL should internally generated DNSSEC queries?
+  # Should FTL should analyze and show internally generated DNSSEC queries?
   showDNSSEC = true
 
   # Should FTL analyze *only* A and AAAA queries?
   analyzeOnlyAandAAAA = false
 
-  # Should FTL return "pi.hole" as name for PTR requests to local IP addresses?
-  # Possible values are: [ "NONE", "HOSTNAME", "HOSTNAMEFQDN", "PI.HOLE" ]
+  # Controls whether and how FTL will reply with for address for which a local interface
+  # exists.
+  #
+  # Possible values are:
+  #   - "NONE"
+  #       Pi-hole will not respond automatically on PTR requests to local interface
+  #       addresses. Ensure pi.hole and/or hostname records exist elsewhere.
+  #   - "HOSTNAME"
+  #       Pi-hole will not respond automatically on PTR requests to local interface
+  #       addresses. Ensure pi.hole and/or hostname records exist elsewhere.
+  #   - "HOSTNAMEFQDN"
+  #       Serve the machine's global hostname as fully qualified domain by adding the
+  #       local suffix. If no local suffix has been defined, FTL appends the local
+  #       domain .no_fqdn_available. In this case you should either add
+  #       domain=whatever.com to a custom config file inside /etc/dnsmasq.d/ (to set
+  #       whatever.com as local domain) or use domain=# which will try to derive the
+  #       local domain from /etc/resolv.conf (or whatever is set with resolv-file, when
+  #       multiple search directives exist, the first one is used).
+  #   - "PI.HOLE"
+  #       Respond with "pi.hole".
   piholePTR = "PI.HOLE"
 
   # How should FTL handle queries when the gravity database is not available?
-  # Possible values are: [ "BLOCK", "ALLOW", "REFUSE", "DROP" ]
+  #
+  # Possible values are:
+  #   - "BLOCK"
+  #       Block all queries when the database is busy.
+  #   - "ALLOW"
+  #       Allow all queries when the database is busy.
+  #   - "REFUSE"
+  #       Refuse all queries which arrive while the database is busy.
+  #   - "DROP"
+  #       Just drop the queries, i.e., never reply to them at all. Despite "REFUSE"
+  #       sounding similar to "DROP", it turned out that many clients will just
+  #       immediately retry, causing up to several thousands of queries per second. This
+  #       does not happen in "DROP" mode.
   replyWhenBusy = "ALLOW"
 
-  # TTL for blocked queries [seconds]
+  # FTL's internal TTL to be handed out for blocked queries in seconds. This settings
+  # allows users to select a value different from the dnsmasq config option local-ttl.
+  # This is useful in context of locally used hostnames that are known to stay constant
+  # over long times (printers, etc.).
+  # Note that large values may render whitelisting ineffective due to client-side
+  # caching of blocked queries.
   blockTTL = 2
 
-  # Custom DNS records
+  # Array of custom DNS records
   # Example: hosts = [ "127.0.0.1 mylocal", "192.168.0.1 therouter" ]
-  # Possible values are: Array of custom DNS records each one in HOSTS form: "IP
-  #                      HOSTNAME"
+  #
+  # Possible values are:
+  #     Array of custom DNS records each one in HOSTS form: "IP HOSTNAME"
   hosts = [   ]
 
-  [dns.blocking]
-    # Should FTL block queries?
-    active = true
-
-    # How should FTL reply to blocked queries?
-    # Possible values are: [ "NULL", "IP-NODATA-AAAA", "IP", "NXDOMAIN", "NODATA" ]
-    mode = "NULL"
-
-  [dns.specialDomains]
-    # Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?
-    mozillaCanary = true
-
-    # Should FTL handle the iCloud privacy relay domains specifically and always return
-    # NXDOMAIN?
-    iCloudPrivateRelay = true
-
-    [dns.reply.host]
-      # Use a specific IPv4 address for the Pi-hole host?
-      overwrite_v4 = true ### CHANGED, default = false
-
-      # Use a specific IPv6 address for the Pi-hole host?
-      overwrite_v6 = true ### CHANGED, default = false
-
-      # Custom IPv4 address for the Pi-hole host
-      # Possible values are: <valid IPv4 address> or empty string ("")
-      IPv4 = "10.100.0.10" ### CHANGED, default = "0.0.0.0"
-
-      # Custom IPv6 address for the Pi-hole host
-      # Possible values are: <valid IPv6 address> or empty string ("")
-      IPv6 = "fe80::10" ### CHANGED, default = "::"
-
-    [dns.reply.blocking]
-      # Use a specific IPv4 address in IP blocking mode?
-      overwrite_v4 = true ### CHANGED, default = false
-
-      # Use a specific IPv6 address in IP blocking mode?
-      overwrite_v6 = true ### CHANGED, default = false
-
-      # Custom IPv4 address for IP blocking mode
-      # Possible values are: <valid IPv4 address> or empty string ("")
-      IPv4 = "10.100.0.11" ### CHANGED, default = "0.0.0.0"
-
-      # Custom IPv6 address for IP blocking mode
-      # Possible values are: <valid IPv6 address> or empty string ("")
-      IPv6 = "fe80::11" ### CHANGED, default = "::"
-
-  [dns.rateLimit]
-    # How many queries are permitted...
-    count = 0 ### CHANGED, default = 1000
-
-    # ... in the set interval before rate-limiting?
-    interval = 0 ### CHANGED, default = 60
-
-[dnsmasq]
-  # Array of upstream DNS servers used by Pi-hole
-  # Possible values are: array of IP addresses and/or hostnames, optionally with a port,
-  #                      e.g. [ "8.8.8.8", "127.0.0.1#5353", "docker-resolver" ]
-  upstreams = [ "127.0.0.1#5555" ] ### CHANGED, default = [  ]
-
   # The DNS domain used by your Pi-hole
-  # Possible values are: <any valid domain>
+  #
+  # Possible values are:
+  #     <any valid domain>
   domain = "lan"
 
   # If set, A and AAAA queries for plain names, without dots or domain parts, are never
@@ -117,99 +121,269 @@
   # rather than being forwarded upstream?
   bogus_priv = true
 
-  # Validate DNS replies and cache DNSSEC data
+  # Validate DNS replies using DNSSEC?
   dnssec = true
 
   # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)
-  # Possible values are: a valid interface name
+  #
+  # Possible values are:
+  #     a valid interface name
   interface = ""
 
   # Add A, AAAA and PTR records to the DNS. This adds one or more names to the DNS with
   # associated IPv4 (A) and IPv6 (AAAA) records
-  # Possible values are: <name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]
+  #
+  # Possible values are:
+  #     <name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]
   host_record = ""
 
   # Pi-hole interface listening modes
-  # Possible values are: [ "LOCAL", "ALL", "SINGLE", "BIND" ]
+  #
+  # Possible values are:
+  #   - "LOCAL"
+  #       Allow only local requests. This setting accepts DNS queries only from hosts
+  #       whose address is on a local subnet, i.e., a subnet for which an interface
+  #       exists on the server. It is intended to be set as a default on installation,
+  #       to allow unconfigured installations to be useful but also safe from being used
+  #       for DNS amplification attacks if (accidentally) running public.
+  #   - "SINGLE"
+  #       Permit all origins, accept only on the specified interface. Respond only to
+  #       queries arriving on the specified interface. The loopback (lo) interface is
+  #       automatically added to the list of interfaces to use when this option is used.
+  #       Make sure your Pi-hole is properly firewalled!
+  #   - "BIND"
+  #       By default, FTL binds the wildcard address. If this is not what you want, you
+  #       can use this option as it forces FTL to really bind only the interfaces it is
+  #       listening on. Note that this may result in issues when the interface may go
+  #       down (cable unplugged, etc.). About the only time when this is useful is when
+  #       running another nameserver on the same port on the same machine. This may also
+  #       happen if you run a virtualization API such as libvirt. When this option is
+  #       used, IP alias interface labels (e.g. enp2s0:0) are checked rather than
+  #       interface names.
+  #   - "ALL"
+  #       Permit all origins, accept on all interfaces. Make sure your Pi-hole is
+  #       properly firewalled! This truly allows any traffic to be replied to and is a
+  #       dangerous thing to do as your Pi-hole could become an open resolver. You
+  #       should always ask yourself if the first option doesn't work for you as well.
   listening_mode = "LOCAL"
 
   # Cache size of the DNS server. Note that expiring cache entries naturally make room
   # for new insertions over time. Setting this number too high will have an adverse
   # effect as not only more space is needed, but also lookup speed gets degraded in the
-  # 100,000+ range
-  cache_size = 10000
+  # 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.
+  cache_size = 2000
 
   # Log DNS queries and replies to pihole.log
-  logging = true
+  query_logging = true
 
   # List of CNAME records which indicate that <cname> is really <target>. If the <TTL> is
   # given, it overwrites the value of local-ttl
-  # Possible values are: Array of static leases each on in one of the following forms:
-  #                      "<cname>,<target>[,<TTL>]"
+  #
+  # Possible values are:
+  #     Array of static leases each on in one of the following forms:
+  #     "<cname>,<target>[,<TTL>]"
   cnames = [   ]
 
   # Port used by the DNS server
   port = 53
 
-  [dnsmasq.rev_server]
+  [dns.blocking]
+    # Should FTL block queries?
+    active = true
+
+    # How should FTL reply to blocked queries?
+    #
+    # Possible values are:
+    #   - "NULL"
+    #       In NULL mode, which is both the default and recommended mode for Pi-hole
+    #       FTLDNS, blocked queries will be answered with the "unspecified address"
+    #       (0.0.0.0 or ::). The "unspecified address" is a reserved IP address specified
+    #       by RFC 3513 - Internet Protocol Version 6 (IPv6) Addressing Architecture,
+    #       section 2.5.2.
+    #   - "IP-NODATA-AAAA"
+    #       In IP-NODATA-AAAA mode, blocked queries will be answered with the local IPv4
+    #       addresses of your Pi-hole. Blocked AAAA queries will be answered with
+    #       NODATA-IPV6 and clients will only try to reach your Pi-hole over its static
+    #       IPv4 address.
+    #   - "IP"
+    #       In IP mode, blocked queries will be answered with the local IP addresses of
+    #       your Pi-hole.
+    #   - "NXDOMAIN"
+    #       In NXDOMAIN mode, blocked queries will be answered with an empty response
+    #       (i.e., there won't be an answer section) and status NXDOMAIN. A NXDOMAIN
+    #       response should indicate that there is no such domain to the client making the
+    #       query.
+    #   - "NODATA"
+    #       In NODATA mode, blocked queries will be answered with an empty response (no
+    #       answer section) and status NODATA. A NODATA response indicates that the domain
+    #       exists, but there is no record for the requested query type.
+    mode = "NULL"
+
+  [dns.specialDomains]
+    # Should Pi-hole always replies with NXDOMAIN to A and AAAA queries of
+    # use-application-dns.net to disable Firefox automatic DNS-over-HTTP? This is
+    # following the recommendation on
+    # https://support.mozilla.org/en-US/kb/configuring-networks-disable-dns-over-https
+    mozillaCanary = true
+
+    # Should Pi-hole always replies with NXDOMAIN to A and AAAA queries of mask.icloud.com
+    # and mask-h2.icloud.com to disable Apple's iCloud Private Relay to prevent Apple
+    # devices from bypassing Pi-hole? This is following the recommendation on
+    # https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay
+    iCloudPrivateRelay = true
+
+    [dns.reply.host]
+      # Use a specific IPv4 address for the Pi-hole host? By default, FTL determines the
+      # address of the interface a query arrived on and uses this address for replying to A
+      # queries with the most suitable address for the requesting client. This setting can
+      # be used to use a fixed, rather than the dynamically obtained, address when Pi-hole
+      # responds to the following names: [ "pi.hole", "<the device's hostname>",
+      # "pi.hole.<local domain>", "<the device's hostname>.<local domain>" ]
+      overwrite_v4 = true ### CHANGED, default = false
+
+      # Use a specific IPv6 address for the Pi-hole host? See description for the IPv4
+      # variant above for further details.
+      overwrite_v6 = true ### CHANGED, default = false
+
+      # Custom IPv4 address for the Pi-hole host
+      #
+      # Possible values are:
+      #     <valid IPv4 address> or empty string ("")
+      IPv4 = "10.100.0.10" ### CHANGED, default = "0.0.0.0"
+
+      # Custom IPv6 address for the Pi-hole host
+      #
+      # Possible values are:
+      #     <valid IPv6 address> or empty string ("")
+      IPv6 = "fe80::10" ### CHANGED, default = "::"
+
+    [dns.reply.blocking]
+      # Use a specific IPv4 address in IP blocking mode? By default, FTL determines the
+      # address of the interface a query arrived on and uses this address for replying to A
+      # queries with the most suitable address for the requesting client. This setting can
+      # be used to use a fixed, rather than the dynamically obtained, address when Pi-hole
+      # responds in the following cases: IP blocking mode is used and this query is to be
+      # blocked, regular expressions with the ;reply=IP regex extension.
+      overwrite_v4 = true ### CHANGED, default = false
+
+      # Use a specific IPv6 address in IP blocking mode? See description for the IPv4 variant
+      # above for further details.
+      overwrite_v6 = true ### CHANGED, default = false
+
+      # Custom IPv4 address for IP blocking mode
+      #
+      # Possible values are:
+      #     <valid IPv4 address> or empty string ("")
+      IPv4 = "10.100.0.11" ### CHANGED, default = "0.0.0.0"
+
+      # Custom IPv6 address for IP blocking mode
+      #
+      # Possible values are:
+      #     <valid IPv6 address> or empty string ("")
+      IPv6 = "fe80::11" ### CHANGED, default = "::"
+
+  [dns.rateLimit]
+    # Rate-limited queries are answered with a REFUSED reply and not further processed by
+    # FTL.
+    #The default settings for FTL's rate-limiting are to permit no more than 1000 queries
+    # in 60 seconds. Both numbers can be customized independently. It is important to note
+    # that rate-limiting is happening on a per-client basis. Other clients can continue to
+    # use FTL while rate-limited clients are short-circuited at the same time.
+    # For this setting, both numbers, the maximum number of queries within a given time,
+    # and the length of the time interval (seconds) have to be specified. For instance, if
+    # you want to set a rate limit of 1 query per hour, the option should look like
+    # RATE_LIMIT=1/3600. The time interval is relative to when FTL has finished starting
+    # (start of the daemon + possible delay by DELAY_STARTUP) then it will advance in
+    # steps of the rate-limiting interval. If a client reaches the maximum number of
+    # queries it will be blocked until the end of the current interval. This will be
+    # logged to /var/log/pihole/FTL.log, e.g. Rate-limiting 10.0.1.39 for at least 44
+    # seconds. If the client continues to send queries while being blocked already and
+    # this number of queries during the blocking exceeds the limit the client will
+    # continue to be blocked until the end of the next interval (FTL.log will contain
+    # lines like Still rate-limiting 10.0.1.39 as it made additional 5007 queries). As
+    # soon as the client requests less than the set limit, it will be unblocked (Ending
+    # rate-limitation of 10.0.1.39).
+    # Rate-limiting may be disabled altogether by setting both values to zero (this
+    # results in the same behavior as before FTL v5.7).
+    # How many queries are permitted...
+    count = 0 ### CHANGED, default = 1000
+
+    # ... in the set interval before rate-limiting?
+    interval = 0 ### CHANGED, default = 60
+
+  [dns.rev_server]
     # Is the reverse server (former also called "conditional forwarding") feature enabled?
     active = false
 
     # Address range for the reverse server feature in CIDR notation. If the prefix length
     # is omitted, either 32 (IPv4) or 128 (IPv6) are substitutet (exact address match).
     # This is almost certainly not what you want here.
-    # Possible values are: <ip-address>[/<prefix-len>], e.g., "192.168.0.0/24" for the
-    #                      range 192.168.0.1 - 192.168.0.255
+    #
+    # Possible values are:
+    #     <ip-address>[/<prefix-len>], e.g., "192.168.0.0/24" for the range 192.168.0.1 -
+    #     192.168.0.255
     cidr = ""
 
     # Target server tp be used for the reverse server feature
-    # Possible values are: <server>[#<port>], e.g., "192.168.0.1"
+    #
+    # Possible values are:
+    #     <server>[#<port>], e.g., "192.168.0.1"
     target = ""
 
     # Domain used for the reverse server feature
-    # Possible values are: <valid domain>, typically set to the same value as
-    #                      dnsmasq.domain
+    #
+    # Possible values are:
+    #     <valid domain>, typically set to the same value as dns.domain
     domain = ""
 
-  [dnsmasq.dhcp]
-    # Is the embedded DHCP server enabled?
-    active = false
+[dhcp]
+  # Is the embedded DHCP server enabled?
+  active = false
 
-    # Start address of the DHCP address pool
-    # Possible values are: <ip-addr>, e.g., "192.168.0.10"
-    start = ""
+  # Start address of the DHCP address pool
+  #
+  # Possible values are:
+  #     <ip-addr>, e.g., "192.168.0.10"
+  start = ""
 
-    # End address of the DHCP address pool
-    # Possible values are: <ip-addr>, e.g., "192.168.0.250"
-    end = ""
+  # End address of the DHCP address pool
+  #
+  # Possible values are:
+  #     <ip-addr>, e.g., "192.168.0.250"
+  end = ""
 
-    # Address of the gateway to be used (typicaly the address of your router in a home
-    # installation)
-    # Possible values are: <ip-addr>, e.g., "192.168.0.1"
-    router = ""
+  # Address of the gateway to be used (typicaly the address of your router in a home
+  # installation)
+  #
+  # Possible values are:
+  #     <ip-addr>, e.g., "192.168.0.1"
+  router = ""
 
-    # If the lease time is given, then leases will be given for that length of time. If not
-    # given, the default lease time is one hour for IPv4 and one day for IPv6.
-    # Possible values are: The lease time can be in seconds, or minutes (e.g., "45m") or
-    #                      hours (e.g., "1h") or days (like "2d") or even weeks ("1w").
-    #                      You may also use "infinite" as string but be aware of the
-    #                      drawbacks
-    leasetime = ""
+  # If the lease time is given, then leases will be given for that length of time. If not
+  # given, the default lease time is one hour for IPv4 and one day for IPv6.
+  #
+  # Possible values are:
+  #     The lease time can be in seconds, or minutes (e.g., "45m") or hours (e.g., "1h")
+  #     or days (like "2d") or even weeks ("1w"). You may also use "infinite" as string
+  #     but be aware of the drawbacks
+  leasetime = ""
 
-    # Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that
-    # IPv6 works a whole lot different than IPv4)
-    ipv6 = false
+  # Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that
+  # IPv6 works a whole lot different than IPv4)
+  ipv6 = false
 
-    # Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if
-    # either the server is the only server for the subnet to avoid conflicts
-    rapid_commit = false
+  # Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if
+  # either the server is the only server for the subnet to avoid conflicts
+  rapid_commit = false
 
-    # Per host parameters for the DHCP server. This allows a machine with a particular
-    # hardware address to be always allocated the same hostname, IP address and lease time
-    # or to specify static DHCP leases
-    # Possible values are: Array of static leases each on in one of the following forms:
-    #                      "[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]"
-    hosts = [  ]
+  # Per host parameters for the DHCP server. This allows a machine with a particular
+  # hardware address to be always allocated the same hostname, IP address and lease time
+  # or to specify static DHCP leases
+  #
+  # Possible values are:
+  #     Array of static leases each on in one of the following forms:
+  #     "[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]"
+  hosts = [   ]
 
 [resolver]
   # Should FTL try to resolve IPv4 addresses to hostnames?
@@ -218,11 +392,34 @@
   # Should FTL try to resolve IPv6 addresses to hostnames?
   resolveIPv6 = false ### CHANGED, default = true
 
-  # Try to obtain client names from the network table?
+  # Control whether FTL should use the fallback option to try to obtain client names from
+  # checking the network table. This behavior can be disabled with this option.
+  #Assume an IPv6 client without a host names. However, the network table knows - though
+  # the client's MAC address - that this is the same device where we have a host name
+  # for another IP address (e.g., a DHCP server managed IPv4 address). In this case, we
+  # use the host name associated to the other address as this is the same device.
   networkNames = false ### CHANGED, default = true
 
-  # How (and if) hourly PTR lookups should be made
-  # Possible values are: [ "IPV4_ONLY", "ALL", "UNKNOWN", "NONE" ]
+  # With this option, you can change how (and if) hourly PTR requests are made to check
+  # for changes in client and upstream server hostnames.
+  #
+  # Possible values are:
+  #   - "IPV4_ONLY"
+  #       Do hourly PTR lookups only for IPv4 addresses. This is the new default since
+  #       Pi-hole FTL v5.3.2. It should resolve issues with more and more very
+  #       short-lived PE IPv6 addresses coming up in a lot of networks.
+  #   - "ALL"
+  #       Do hourly PTR lookups for all addresses. This was the default until FTL
+  #       v5.3(.1). It has been replaced as it can create a lot of PTR queries for those
+  #       with many IPv6 addresses in their networks.
+  #   - "UNKNOWN"
+  #       Only resolve unknown hostnames. Already existing hostnames are never refreshed,
+  #       i.e., there will be no PTR queries made for clients where hostnames are known.
+  #       This also means that known hostnames will not be updated once known.
+  #   - "NONE"
+  #       Don't do any hourly PTR lookups. This means we look host names up exactly once
+  #       (when we first see a client) and never again. You may miss future changes of
+  #       host names.
   refreshNames = "NONE" ### CHANGED, default = "IPV4_ONLY"
 
 [database]
@@ -244,205 +441,331 @@
   DBinterval = 60
 
   [database.network]
-    # Should FTL anaylze the local ARP cache?
+    # Should FTL anaylze the local ARP cache? When disabled, client identification and the
+    # network table will stop working reliably.
     parseARPcache = true
 
-    # How long should IP addresses be kept in the network_addresses table [days]?
+    # How long should IP addresses be kept in the network_addresses table [days]? IP
+    # addresses (and associated host names) older than the specified number of days are
+    # removed to avoid dead entries in the network overview table.
     expire = 365
 
-[api]
-  # Does local clients need to authenticate to access the API?
-  localAPIauth = true
-
-  # Should FTL prettify the API output?
-  prettyJSON = false
-
-  # How long should a session be considered valid after login [seconds]?
-  sessionTimeout = 300
-
-  # API password hash
-  # Possible values are: <valid Pi-hole password hash>
-  pwhash = ""
-
-  # Array of clients to be excluded from certain API responses
-  # Possible values are: array of IP addresses and/or hostnames, e.g. [ "192.168.2.56",
-  #                      "fe80::341", "localhost" ]
-  exclude_clients = [ "1.2.3.4" ] ### CHANGED, default = [  ]
-
-  # Array of domains to be excluded from certain API responses
-  # Possible values are: array of IP addresses and/or hostnames, e.g. [ "google.de",
-  #                      "pi-hole.net" ]
-  exclude_domains = [  ]
-
-[http]
+[webserver]
   # On which domain is the web interface served?
-  # Possible values are: <valid domain>
+  #
+  # Possible values are:
+  #     <valid domain>
   domain = "pi.hole"
 
-  # Webserver access control list
-  # Possible values are: <valid ACL>
+  # Webserver access control list (ACL) allowing for restrictions to be put on the list
+  # of IP addresses which have access to the web server. The ACL is a comma separated
+  # list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus
+  # sign means allow, where a minus sign means deny. If a subnet mask is omitted, such
+  # as -1.2.3.4, this means to deny only that single IP address. If this value is not
+  # set (empty string), all accesses are allowed. Otherwise, the default setting is to
+  # deny all accesses. On each request the full list is traversed, and the last (!)
+  # match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.
+  #
+  # Example 1: acl = "+127.0.0.1,+[::1]"
+  # ---> deny all access, except from 127.0.0.1 and ::1,
+  # Example 2: acl = "+192.168.0.0/16"
+  # ---> deny all accesses, except from the 192.168.0.0/16 subnet,
+  # Example 3: acl = "+[::]/0" ---> allow only IPv6 access.
+  #
+  # Possible values are:
+  #     <valid ACL>
   acl = ""
 
   # Ports to be used by the webserver
-  # Possible values are: comma-separated list of <[ip_address:]port>
+  #
+  # Possible values are:
+  #     comma-separated list of <[ip_address:]port>
   port = "8080,[::]:8080"
 
-  [http.paths]
+  [webserver.paths]
     # Server root on the host
-    # Possible values are: <valid path>
+    #
+    # Possible values are:
+    #     <valid path>
     webroot = "/var/www/html"
 
     # Sub-directory of the root containing the web interface
-    # Possible values are: <valid subpath>, both slashes are needed!
+    #
+    # Possible values are:
+    #     <valid subpath>, both slashes are needed!
     webhome = "/admin/"
 
-  [http.interface]
+  [webserver.interface]
     # Should the web interface use the boxed layout?
     boxed = true
 
     # Theme used by the Pi-hole web interface
-    # Possible values are: <valid themename>
+    #
+    # Possible values are:
+    #     <valid themename>
     theme = "default"
 
+  [webserver.api]
+    # Does local clients need to authenticate to access the API?
+    localAPIauth = true
+
+    # Should FTL prettify the API output (add extra spaces, newlines and indentation)?
+    prettyJSON = false
+
+    # How long should a session be considered valid after login [seconds]?
+    sessionTimeout = 300
+
+    # API password hash
+    #
+    # Possible values are:
+    #     <valid Pi-hole password hash>
+    pwhash = ""
+
+    # Array of clients to be excluded from certain API responses
+    # Example: [ "192.168.2.56", "fe80::341", "localhost" ]
+    #
+    # Possible values are:
+    #     array of IP addresses and/or hostnames
+    exclude_clients = [
+      "1.2.3.4"
+    ] ### CHANGED, default = [ ]
+
+    # Array of domains to be excluded from certain API responses
+    # Example: [ "google.de", "pi-hole.net" ]
+    #
+    # Possible values are:
+    #     array of IP addresses and/or hostnames
+    exclude_domains = [     ]
+
+    [webserver.api.temp]
+      # Which upper temperature limit should be used by Pi-hole? Temperatures above this
+      # limit will be shown as "hot". The number specified here is in the unit defined below
+      limit = 60.000000
+
+      # Which temperature unit should be used for temperatures processed by FTL?
+      #
+      # Possible values are:
+      #   - "C"
+      #       Celsius
+      #   - "F"
+      #       Fahrenheit
+      #   - "K"
+      #       Kelvin
+      unit = "C"
+
 [files]
-  # The location of FTL's PID file
-  # Possible values are: <any writable file>
+  # The file which contains the PID of FTL's main process.
+  #
+  # Possible values are:
+  #     <any writable file>
   pid = "/run/pihole-FTL.pid"
 
   # The location of FTL's long-term database
-  # Possible values are: <any FTL database>
+  #
+  # Possible values are:
+  #     <any FTL database>
   database = "/etc/pihole/pihole-FTL.db"
 
   # The location of Pi-hole's gravity database
-  # Possible values are: <any Pi-hole gravity database>
+  #
+  # Possible values are:
+  #     <any Pi-hole gravity database>
   gravity = "/etc/pihole/gravity.db"
 
   # The database containing MAC -> Vendor information for the network table
-  # Possible values are: <any Pi-hole macvendor database>
+  #
+  # Possible values are:
+  #     <any Pi-hole macvendor database>
   macvendor = "/etc/pihole/macvendor.db"
 
   # The config file of Pi-hole
-  # Possible values are: <any Pi-hole setupVars file>
+  #
+  # Possible values are:
+  #     <any Pi-hole setupVars file>
   setupVars = "/etc/pihole/setupVars.conf"
 
   # The log file used by the webserver
-  # Possible values are: <any writable file>
+  #
+  # Possible values are:
+  #     <any writable file>
   http_info = "/var/log/pihole/HTTP_info.log"
 
   # The log file used by the dynamic interpreter PH7
-  # Possible values are: <any writable file>
+  #
+  # Possible values are:
+  #     <any writable file>
   ph7_error = "/var/log/pihole/PH7.log"
 
   [files.log]
     # The location of FTL's log file
-    # Possible values are: <any writable file>
+    #
+    # Possible values are:
+    #     <any writable file>
     ftl = "/var/log/pihole/FTL.log"
 
     # The log file used by the embedded dnsmasq DNS server
-    # Possible values are: <any writable file>
+    #
+    # Possible values are:
+    #     <any writable file>
     dnsmasq = "/var/log/pihole/pihole.log"
 
 [misc]
-  # Set niceness of pihole-FTL (can be disabled by setting to -999)
-  nice = -999 ### CHANGED, default = -10
-
-  # Should FTL try to call addr2line when generating backtraces?
-  delay_startup = 0
-
-  # The log file used by the dynamic interpreter PH7
-  addr2line = true
-
-  # Privacy level
+  # Using privacy levels you can specify which level of detail you want to see in your
+  # Pi-hole statistics.
+  #
+  # Possible values are:
+  #   - 0
+  #       Doesn't hide anything, all statistics are available.
+  #   - 1
+  #       Hide domains. This setting disables Top Domains and Top Ads
+  #   - 2
+  #       Hide domains and clients. This setting disables Top Domains, Top Ads, Top
+  #       Clients and Clients over time.
+  #   - 3
+  #       Anonymize everything. This setting disabled almost any statistics and query
+  #       analysis. There will be no long-term database logging and no Query Log. You
+  #       will also loose most regex features.
   privacylevel = 0
 
-  [misc.temp]
-    # Which upper temperature limit should be used by Pi-hole? Temperatures above this
-    # limit will be shown as "hot". The number specified here is in the unit defined below
-    limit = 60.000000
+  # During startup, in some configurations, network interfaces appear only late during
+  # system startup and are not ready when FTL tries to bind to them. Therefore, you may
+  # want FTL to wait a given amount of time before trying to start the DNS revolver.
+  # This setting takes any integer value between 0 and 300 seconds. To prevent delayed
+  # startup while the system is already running and FTL is restarted, the delay only
+  # takes place within the first 180 seconds (hard-coded) after booting.
+  delay_startup = 0
 
-    # Which temperature unit should be used for temperatures processed by FTL?
-    # Possible values are: [ "C", "F", "K" ]
-    unit = "C"
+  # Set niceness of pihole-FTL. Defaults to -10 and can be disabled altogether by setting
+  # a value of -999. The nice value is an attribute that can be used to influence the
+  # CPU scheduler to favor or disfavor a process in scheduling decisions. The range of
+  # the nice value varies across UNIX systems. On modern Linux, the range is -20 (high
+  # priority = not very nice to other processes) to +19 (low priority).
+  nice = -999 ### CHANGED, default = -10
+
+  # Should FTL translate its own stack addresses into code lines during the bug
+  # backtrace? This improves the analysis of crashed significantly. It is recommended to
+  # leave the option enabled. This option should only be disabled when addr2line is
+  # known to not be working correctly on the machine because, in this case, the
+  # malfunctioning addr2line can prevent from generating any backtrace at all.
+  addr2line = true
 
   [misc.check]
-    # Should FTL check the 15 min average of CPU load and complain if the load is larger
-    # than the number of available CPU cores?
+    # Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you
+    # should run Pi-hole on a server that is otherwise extremely busy as queuing on the
+    # system can lead to unnecessary delays in DNS operation as the system becomes less
+    # and less usable as the system load increases because all resources are permanently
+    # in use. To account for this, FTL regularly checks the system load. To bring this to
+    # your attention, FTL warns about excessive load when the 15 minute system load
+    # average exceeds the number of cores.
+    # This check can be disabled with this setting.
     load = false ### CHANGED, default = true
 
-    # Limit above which FTL should complain about disk shortage for checked files [percent]
+    # FTL stores history in shared memory to allow inter-process communication with forked
+    # dedicated TCP workers. If FTL runs out of memory, it cannot continue to work as
+    # queries cannot be analyzed any further. Hence, FTL checks if enough shared memory is
+    # available on your system and warns you if this is not the case.
+    # By default, FTL warns if the shared-memory usage exceeds 90%. You can set any
+    # integer limit between 0 to 100 (interpreted as percentages) where 0 means that
+    # checking of shared-memory usage is disabled.
     shmem = 0 ### CHANGED, default = 90
 
-    # Limit above which FTL should complain about a shared-memory shortage [percent]
+    # FTL stores its long-term history in a database file on disk. Furthermore, FTL stores
+    # log files. By default, FTL warns if usage of the disk holding any crucial file
+    # exceeds 90%. You can set any integer limit between 0 to 100 (interpreted as
+    # percentages) where 0 means that checking of disk usage is disabled.
     disk = 0 ### CHANGED, default = 90
 
 [debug]
-  # Enable extra logging of database actions
+  # Print debugging information about database actions. This prints performed SQL
+  # statements as well as some general information such as the time it took to store the
+  # queries and how many have been saved to the database.
   database = true ### CHANGED, default = false
 
-  # Enable extra logging of detected interfaces
+  # Prints a list of the detected interfaces on the startup of pihole-FTL. Also, prints
+  # whether these interfaces are IPv4 or IPv6 interfaces.
   networking = true ### CHANGED, default = false
 
-  # Enable extra logging of shared memory lock actions
+  # Print information about shared memory locks. Messages will be generated when waiting,
+  # obtaining, and releasing a lock.
   locks = true ### CHANGED, default = false
 
-  # Print extensive query information
+  # Print extensive query information (domains, types, replies, etc.). This has always
+  # been part of the legacy debug mode of pihole-FTL.
   queries = true ### CHANGED, default = false
 
-  # Print flags of queries received by the DNS hooks
+  # Print flags of queries received by the DNS hooks. Only effective when DEBUG_QUERIES
+  # is enabled as well.
   flags = true ### CHANGED, default = false
 
-  # Print information about shared memory buffers
+  # Print information about shared memory buffers. Messages are either about creating or
+  # enlarging shmem objects or string injections.
   shmem = true ### CHANGED, default = false
 
-  # Print information about garbage collection
+  # Print information about garbage collection (GC): What is to be removed, how many have
+  # been removed and how long did GC take.
   gc = true ### CHANGED, default = false
 
-  # Print information about ARP table processing
+  # Print information about ARP table processing: How long did parsing take, whether read
+  # MAC addresses are valid, and if the macvendor.db file exists.
   arp = true ### CHANGED, default = false
 
-  # Enable extra logging of regex matching details
+  # Controls if FTLDNS should print extended details about regex matching into FTL.log.
   regex = true ### CHANGED, default = false
 
-  # Enable extra logging of API activities
+  # Print extra debugging information during telnet API calls. Currently only used to
+  # send extra information when getting all queries.
   api = true ### CHANGED, default = false
 
-  # Print information about overTime memory operations
+  # Print information about overTime memory operations, such as initializing or moving
+  # overTime slots.
   overtime = true ### CHANGED, default = false
 
-  # Enable extra logging of query status changes
+  # Print information about status changes for individual queries. This can be useful to
+  # identify unexpected unknown queries.
   status = true ### CHANGED, default = false
 
-  # Print information about capabilities granted to the pihole-FTL process
+  # Print information about capabilities granted to the pihole-FTL process. The current
+  # capabilities are printed on receipt of SIGHUP, i.e., the current set of capabilities
+  # can be queried without restarting pihole-FTL (by setting DEBUG_CAPS=true and
+  # thereafter sending killall -HUP pihole-FTL).
   caps = true ### CHANGED, default = false
 
   # Print information about DNSSEC activity
   dnssec = true ### CHANGED, default = false
 
-  # Print vector operation details
+  # FTL uses dynamically allocated vectors for various tasks. This config option enables
+  # extensive debugging information such as information about allocation, referencing,
+  # deletion, and appending.
   vectors = true ### CHANGED, default = false
 
-  # Extensive information about hostname resolution like which DNS servers are used
+  # Extensive information about hostname resolution like which DNS servers are used in
+  # the first and second hostname resolving tries (only affecting internally generated
+  # PTR queries).
   resolver = true ### CHANGED, default = false
 
-  # Print EDNS(0) debugging information
+  # Print debugging information about received EDNS(0) data.
   edns0 = true ### CHANGED, default = false
 
-  # Enable extra client detail logging
+  # Log various important client events such as change of interface (e.g., client
+  # switching from WiFi to wired or VPN connection), as well as extensive reporting
+  # about how clients were assigned to its groups.
   clients = true ### CHANGED, default = false
 
-  # Print aliasclient details
+  # Log information related to alias-client processing.
   aliasclients = true ### CHANGED, default = false
 
-  # Log information about processed internal events
+  # Log information regarding FTL's embedded event handling queue.
   events = true ### CHANGED, default = false
 
-  # Enable logging of script helper activity
+  # Log information about script helpers, e.g., due to dhcp-script.
   helper = true ### CHANGED, default = false
 
   # Print config parsing details
   config = true ### CHANGED, default = false
 
-  # Special debug flag that may be used for debugging specific issues
+  # Temporary flag that may print additional information. This debug flag is meant to be
+  # used whenever needed for temporary investigations. The logged content may change
+  # without further notice at any time.
   extra = true ### CHANGED, default = false
 
   # Reserved debug flag

@@ -1164,12 +1164,13 @@
 }
 
 @test "Pi-hole uses dns.reply.blocking.IPv4/6 for blocked domain" {
-  run bash -c 'grep "mode = \"" /etc/pihole/pihole.toml'
+  run bash -c 'grep "mode = \"NULL\"" /etc/pihole/pihole.toml'
   [[ "${lines[0]}" == '    mode = "NULL"' ]]
-  run bash -c 'curl -X PATCH http://127.0.0.1:8080/api/config -d "@test/api/json/blocking_mode_IP.json"'
+  run bash -c './pihole-FTL --config dns.blocking.mode IP'
+  printf "setting config: %s\n" "${lines[@]}"
   run bash -c "kill -HUP $(cat /run/pihole-FTL.pid)"
   sleep 2
-  run bash -c 'grep "mode = \"" /etc/pihole/pihole.toml'
+  run bash -c 'grep "mode = \"IP\"" /etc/pihole/pihole.toml'
   [[ "${lines[0]}" == '    mode = "IP" ### CHANGED, default = "NULL"' ]]
   run bash -c "dig A denied.ftl +short @127.0.0.1"
   printf "A: %s\n" "${lines[@]}"

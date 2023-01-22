@@ -141,7 +141,7 @@ static void get_conf_temp_limit_from_setupVars(void)
 	if(sscanf(temp_limit, "%lf", &lim) == 1)
 	{
 		// Parameter present in setupVars.conf
-		config.misc.temp.limit.v.d = lim;
+		config.webserver.api.temp.limit.v.d = lim;
 		set = true;
 	}
 
@@ -152,7 +152,7 @@ static void get_conf_temp_limit_from_setupVars(void)
 	{
 		// Parameter present in setupVars.conf
 		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_LIMIT -> Setting %s to %f",
-		          config.misc.temp.limit.k, config.misc.temp.limit.v.d);
+		          config.webserver.api.temp.limit.k, config.webserver.api.temp.limit.v.d);
 	}
 	else
 	{
@@ -180,14 +180,14 @@ static void get_conf_weblayout_from_setupVars(void)
 	// is disabled. This is consistent with the code in AdminLTE when writing
 	// this code
 	if(web_layout != NULL && strcasecmp(web_layout, "boxed") != 0)
-		config.http.interface.boxed.v.b = false;
+		config.webserver.interface.boxed.v.b = false;
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
 
 	// Parameter present in setupVars.conf
 	log_debug(DEBUG_CONFIG, "setupVars.conf:WEBUIBOXEDLAYOUT -> Setting %s to %s",
-	         config.http.interface.boxed.k,config.http.interface.boxed.v.b ? "true" : "false");
+	         config.webserver.interface.boxed.k,config.webserver.interface.boxed.v.b ? "true" : "false");
 }
 
 static void get_conf_listening_mode_from_setupVars(void)
@@ -210,7 +210,7 @@ static void get_conf_listening_mode_from_setupVars(void)
 	if(listening_mode_enum != -1)
 	{
 		set = true;
-		config.dnsmasq.listening_mode.v.listening_mode = listening_mode_enum;
+		config.dns.listening_mode.v.listening_mode = listening_mode_enum;
 	}
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
@@ -220,7 +220,7 @@ static void get_conf_listening_mode_from_setupVars(void)
 	{
 		// Parameter present in setupVars.conf
 		log_debug(DEBUG_CONFIG, "setupVars.conf:DNSMASQ_LISTENING -> Setting %s to %s",
-		          config.dnsmasq.listening_mode.k, get_listening_mode_str(config.dnsmasq.listening_mode.v.listening_mode));
+		          config.dns.listening_mode.k, get_listening_mode_str(config.dns.listening_mode.v.listening_mode));
 	}
 	else
 	{
@@ -232,62 +232,62 @@ static void get_conf_listening_mode_from_setupVars(void)
 void importsetupVarsConf(void)
 {
 	// Try to obtain password hash from setupVars.conf
-	get_conf_string_from_setupVars("WEBPASSWORD", &config.api.pwhash);
+	get_conf_string_from_setupVars("WEBPASSWORD", &config.webserver.api.pwhash);
 
 	// Try to obtain blocking active boolean
 	get_conf_bool_from_setupVars("BLOCKING_ENABLED", &config.dns.blocking.active);
 
 	// Get clients which the user doesn't want to see
-	get_conf_string_array_from_setupVars("API_EXCLUDE_CLIENTS", &config.api.exclude_clients);
+	get_conf_string_array_from_setupVars("API_EXCLUDE_CLIENTS", &config.webserver.api.exclude_clients);
 
 	// Get domains which the user doesn't want to see
-	get_conf_string_array_from_setupVars("API_EXCLUDE_DOMAINS", &config.api.exclude_domains);
+	get_conf_string_array_from_setupVars("API_EXCLUDE_DOMAINS", &config.webserver.api.exclude_domains);
 
 	// Try to obtain temperature hot value
 	get_conf_temp_limit_from_setupVars();
 
 	// Try to obtain password hash from setupVars.conf
-	get_conf_string_from_setupVars("TEMPERATURE_UNIT", &config.misc.temp.unit);
+	get_conf_string_from_setupVars("TEMPERATURE_UNIT", &config.webserver.api.temp.unit);
 
 	// Try to obtain web layout
 	get_conf_weblayout_from_setupVars();
 
 	// Try to obtain theme string
-	get_conf_string_from_setupVars("WEBTHEME", &config.http.interface.theme);
+	get_conf_string_from_setupVars("WEBTHEME", &config.webserver.interface.theme);
 
 	// Try to obtain list of upstream servers
-	get_conf_upstream_servers_from_setupVars(&config.dnsmasq.upstreams);
+	get_conf_upstream_servers_from_setupVars(&config.dns.upstreams);
 
 	// Try to get Pi-hole domain
-	get_conf_string_from_setupVars("PIHOLE_DOMAIN", &config.dnsmasq.domain);
+	get_conf_string_from_setupVars("PIHOLE_DOMAIN", &config.dns.domain);
 
 	// Try to get bool properties (the first two are intentionally set from the same key)
-	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dnsmasq.domain_needed);
-	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dnsmasq.expand_hosts);
-	get_conf_bool_from_setupVars("DNS_BOGUS_PRIV", &config.dnsmasq.bogus_priv);
-	get_conf_bool_from_setupVars("DNSSEC", &config.dnsmasq.dnssec);
-	get_conf_string_from_setupVars("PIHOLE_INTERFACE", &config.dnsmasq.interface);
-	get_conf_string_from_setupVars("HOSTRECORD", &config.dnsmasq.host_record);
+	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.domain_needed);
+	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.expand_hosts);
+	get_conf_bool_from_setupVars("DNS_BOGUS_PRIV", &config.dns.bogus_priv);
+	get_conf_bool_from_setupVars("DNSSEC", &config.dns.dnssec);
+	get_conf_string_from_setupVars("PIHOLE_INTERFACE", &config.dns.interface);
+	get_conf_string_from_setupVars("HOSTRECORD", &config.dns.host_record);
 
 	// Try to obtain listening mode
 	get_conf_listening_mode_from_setupVars();
 
 	// Try to obtain REV_SERVER settings
-	get_conf_bool_from_setupVars("REV_SERVER", &config.dnsmasq.rev_server.active);
-	get_conf_string_from_setupVars("REV_SERVER_CIDR", &config.dnsmasq.rev_server.cidr);
-	get_conf_string_from_setupVars("REV_SERVER_TARGET", &config.dnsmasq.rev_server.target);
-	get_conf_string_from_setupVars("REV_SERVER_DOMAIN", &config.dnsmasq.rev_server.domain);
+	get_conf_bool_from_setupVars("REV_SERVER", &config.dns.rev_server.active);
+	get_conf_string_from_setupVars("REV_SERVER_CIDR", &config.dns.rev_server.cidr);
+	get_conf_string_from_setupVars("REV_SERVER_TARGET", &config.dns.rev_server.target);
+	get_conf_string_from_setupVars("REV_SERVER_DOMAIN", &config.dns.rev_server.domain);
 
 	// Try to obtain DHCP settings
-	get_conf_bool_from_setupVars("DHCP_ACTIVE", &config.dnsmasq.dhcp.active);
-	get_conf_string_from_setupVars("DHCP_START", &config.dnsmasq.dhcp.start);
-	get_conf_string_from_setupVars("DHCP_END", &config.dnsmasq.dhcp.end);
-	get_conf_string_from_setupVars("DHCP_ROUTER", &config.dnsmasq.dhcp.router);
-	get_conf_string_from_setupVars("DHCP_LEASETIME", &config.dnsmasq.dhcp.leasetime);
-	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dnsmasq.dhcp.ipv6);
-	get_conf_bool_from_setupVars("DHCP_rapid_commit", &config.dnsmasq.dhcp.rapid_commit);
+	get_conf_bool_from_setupVars("DHCP_ACTIVE", &config.dhcp.active);
+	get_conf_string_from_setupVars("DHCP_START", &config.dhcp.start);
+	get_conf_string_from_setupVars("DHCP_END", &config.dhcp.end);
+	get_conf_string_from_setupVars("DHCP_ROUTER", &config.dhcp.router);
+	get_conf_string_from_setupVars("DHCP_LEASETIME", &config.dhcp.leasetime);
+	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dhcp.ipv6);
+	get_conf_bool_from_setupVars("DHCP_rapid_commit", &config.dhcp.rapid_commit);
 
-	get_conf_bool_from_setupVars("QUERY_LOGGING", &config.dnsmasq.logging);
+	get_conf_bool_from_setupVars("QUERY_LOGGING", &config.dns.query_logging);
 }
 
 char* __attribute__((pure)) find_equals(char *s)

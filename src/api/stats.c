@@ -184,7 +184,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 	clearSetupVarsArray();
 
 	// Get domains which the user doesn't want to see
-	unsigned int exclude_domains = cJSON_GetArraySize(config.api.exclude_domains.v.json);
+	unsigned int exclude_domains = cJSON_GetArraySize(config.webserver.api.exclude_domains.v.json);
 
 	int n = 0;
 	cJSON *top_domains = JSON_NEW_ARRAY();
@@ -204,7 +204,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 			bool skip_domain = false;
 			for(unsigned int j = 0; j < exclude_domains; j++)
 			{
-				cJSON *item = cJSON_GetArrayItem(config.api.exclude_domains.v.json, j);
+				cJSON *item = cJSON_GetArrayItem(config.webserver.api.exclude_domains.v.json, j);
 				if(strcmp(getstr(domain->domainpos), item->valuestring) == 0)
 				{
 					skip_domain = true;
@@ -314,7 +314,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 	qsort(temparray, counters->clients, sizeof(int[2]), cmpdesc);
 
 	// Get clients which the user doesn't want to see
-	unsigned int exclude_clients = cJSON_GetArraySize(config.api.exclude_clients.v.json);
+	unsigned int exclude_clients = cJSON_GetArraySize(config.webserver.api.exclude_clients.v.json);
 
 	int n = 0;
 	cJSON *top_clients = JSON_NEW_ARRAY();
@@ -332,7 +332,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 		bool skip_domain = false;
 		for(unsigned int j = 0; j < exclude_clients; j++)
 		{
-			cJSON *item = cJSON_GetArrayItem(config.api.exclude_clients.v.json, j);
+			cJSON *item = cJSON_GetArrayItem(config.webserver.api.exclude_clients.v.json, j);
 			if(strcmp(getstr(client->ippos), item->valuestring) == 0 ||
 			   strcmp(getstr(client->namepos), item->valuestring) == 0)
 			{

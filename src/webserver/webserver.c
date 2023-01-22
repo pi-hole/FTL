@@ -73,9 +73,9 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	}
 
 	// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
-	if(host != NULL && strncmp(host, config.http.domain.v.s, host_len) == 0)
+	if(host != NULL && strncmp(host, config.webserver.domain.v.s, host_len) == 0)
 	{
-		mg_send_http_redirect(conn, config.http.paths.webhome.v.s, 308);
+		mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
 		return 1;
 	}
 
@@ -100,7 +100,7 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 
 void http_init(void)
 {
-	logg_web(FIFO_CIVETWEB, "Initializing HTTP server on port %s", config.http.port.v.s);
+	logg_web(FIFO_CIVETWEB, "Initializing HTTP server on port %s", config.webserver.port.v.s);
 
 	/* Initialize the library */
 	unsigned int features = MG_FEATURES_FILES |
@@ -139,8 +139,8 @@ void http_init(void)
 	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
 	const char *options[] = {
 		// All passed strings are duplicated internally. See also comment below.
-		"document_root", config.http.paths.webroot.v.s,
-		"listening_ports", config.http.port.v.s,
+		"document_root", config.webserver.paths.webroot.v.s,
+		"listening_ports", config.webserver.port.v.s,
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
@@ -157,13 +157,13 @@ void http_init(void)
 	};
 
 	// Add access control list if configured (last two options)
-	if(strlen(config.http.acl.v.s) > 0)
+	if(strlen(config.webserver.acl.v.s) > 0)
 	{
 		options[(sizeof(options)/sizeof(*options)) - 3] = "access_control_list";
 		// Note: The string is duplicated by CivetWeb, so it doesn't matter if
 		//       the original string is freed (config changes) after mg_start()
 		//       returns below.
-		options[(sizeof(options)/sizeof(*options)) - 2] = config.http.acl.v.s;
+		options[(sizeof(options)/sizeof(*options)) - 2] = config.webserver.acl.v.s;
 	}
 
 	// Configure logging handlers
@@ -176,7 +176,7 @@ void http_init(void)
 	{
 		log_err("Start of webserver failed!. Web interface will not be available!");
 		log_err("       Check webroot %s and listening ports %s",
-		        config.http.paths.webroot.v.s, config.http.port.v.s);
+		        config.webserver.paths.webroot.v.s, config.webserver.port.v.s);
 		return;
 	}
 

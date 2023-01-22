@@ -12,6 +12,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+// le32toh and friends
+#include <endian.h>
 #include "miniz.h"
 #include "compression.h"
 #include "log.h"

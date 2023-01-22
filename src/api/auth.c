@@ -87,12 +87,12 @@ int check_client_auth(struct ftl_conn *api)
 {
 	// Is the user requesting from localhost?
 	// This may be allowed without authentication depending on the configuration
-	if(!config.api.localAPIauth.v.b && (strcmp(api->request->remote_addr, LOCALHOSTv4) == 0 ||
+	if(!config.webserver.api.localAPIauth.v.b && (strcmp(api->request->remote_addr, LOCALHOSTv4) == 0 ||
 	                                     strcmp(api->request->remote_addr, LOCALHOSTv6) == 0))
 		return API_AUTH_LOCALHOST;
 
 	// Check if there is a password hash
-	if(strlen(config.api.pwhash.v.s) == 0u)
+	if(strlen(config.webserver.api.pwhash.v.s) == 0u)
 		return API_AUTH_EMPTYPASS;
 
 	// Does the client provide a session cookie?
@@ -186,12 +186,12 @@ int check_client_auth(struct ftl_conn *api)
 
 		// Update timestamp of this client to extend
 		// the validity of their API authentication
-		auth_data[user_id].valid_until = now + config.api.sessionTimeout.v.ui;
+		auth_data[user_id].valid_until = now + config.webserver.api.sessionTimeout.v.ui;
 
 		// Update user cookie
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 		            FTL_SET_COOKIE,
-		            auth_data[user_id].sid, config.api.sessionTimeout.v.ui) < 0)
+		            auth_data[user_id].sid, config.webserver.api.sessionTimeout.v.ui) < 0)
 		{
 			return send_json_error(api, 500, "internal_error", "Internal server error", NULL);
 		}
@@ -373,8 +373,8 @@ static void generateResponse(const unsigned int idx)
 
 	// Get and add password hash from setupVars.conf
 	sha256_update(&ctx,
-	              strlen(config.api.pwhash.v.s),
-	              (uint8_t*)config.api.pwhash.v.s);
+	              strlen(config.webserver.api.pwhash.v.s),
+	              (uint8_t*)config.webserver.api.pwhash.v.s);
 
 	sha256_digest(&ctx, SHA256_DIGEST_SIZE, raw_response);
 	sha256_hex(raw_response, challenges[idx].response);
@@ -404,7 +404,7 @@ int api_auth(struct ftl_conn *api)
 	// Check HTTP method
 	const time_t now = time(NULL);
 
-	const bool empty_password = strlen(config.api.pwhash.v.s) == 0u;
+	const bool empty_password = strlen(config.webserver.api.pwhash.v.s) == 0u;
 
 	int user_id = API_AUTH_UNAUTHORIZED;
 
@@ -492,7 +492,7 @@ int api_auth(struct ftl_conn *api)
 				if(!auth_data[i].used)
 				{
 					auth_data[i].used = true;
-					auth_data[i].valid_until = now + config.api.sessionTimeout.v.ui;
+					auth_data[i].valid_until = now + config.webserver.api.sessionTimeout.v.ui;
 					strncpy(auth_data[i].remote_addr, api->request->remote_addr, sizeof(auth_data[i].remote_addr));
 					auth_data[i].remote_addr[sizeof(auth_data[i].remote_addr)-1] = '\0';
 					generateSID(auth_data[i].sid);
@@ -518,7 +518,7 @@ int api_auth(struct ftl_conn *api)
 		}
 		else
 		{
-			log_debug(DEBUG_API, "API: Response incorrect. Response=%s, FTL=%s", response, config.api.pwhash.v.s);
+			log_debug(DEBUG_API, "API: Response incorrect. Response=%s, FTL=%s", response, config.webserver.api.pwhash.v.s);
 		}
 
 		// Free allocated memory

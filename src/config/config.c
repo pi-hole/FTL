@@ -112,7 +112,7 @@ bool __attribute__ ((pure)) check_paths_equal(char **paths1, char **paths2, unsi
 		if(i > 0 && paths1[i] == NULL && paths2[i] == NULL)
 		{
 			// Exact match so far and we reached the end, e.g.
-			// config.dnsmasq.upstreams.(null) <-> config.dnsmasq.upstreams.(null)
+			// config.dns.upstreams.(null) <-> config.dns.upstreams.(null)
 			return true;
 		}
 
@@ -259,29 +259,41 @@ void free_config(struct config *conf)
 void initConfig(void)
 {
 	// struct dns
+	config.dns.upstreams.k = "dns.upstreams";
+	config.dns.upstreams.h = "Array of upstream DNS servers used by Pi-hole\n Example: [ \"8.8.8.8\", \"127.0.0.1#5353\", \"docker-resolver\" ]";
+	config.dns.upstreams.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames, optionally with a port (#...)");
+	config.dns.upstreams.t = CONF_JSON_STRING_ARRAY;
+	config.dns.upstreams.d.json = cJSON_CreateArray();
+	config.dns.upstreams.f = FLAG_RESTART_DNSMASQ;
+
 	config.dns.CNAMEdeepInspect.k = "dns.CNAMEdeepInspect";
 	config.dns.CNAMEdeepInspect.h = "Use this option to control deep CNAME inspection. Disabling it might be beneficial for very low-end devices";
 	config.dns.CNAMEdeepInspect.t = CONF_BOOL;
+	config.dns.CNAMEdeepInspect.f = FLAG_ADVANCED_SETTING;
 	config.dns.CNAMEdeepInspect.d.b = true;
 
 	config.dns.blockESNI.k = "dns.blockESNI";
 	config.dns.blockESNI.h = "Should _esni. subdomains be blocked by default? Encrypted Server Name Indication (ESNI) is certainly a good step into the right direction to enhance privacy on the web. It prevents on-path observers, including ISPs, coffee shop owners and firewalls, from intercepting the TLS Server Name Indication (SNI) extension by encrypting it. This prevents the SNI from being used to determine which websites users are visiting.\n ESNI will obviously cause issues for pixelserv-tls which will be unable to generate matching certificates on-the-fly when it cannot read the SNI. Cloudflare and Firefox are already enabling ESNI. According to the IEFT draft (link above), we can easily restore piselserv-tls's operation by replying NXDOMAIN to _esni. subdomains of blocked domains as this mimics a \"not configured for this domain\" behavior.";
 	config.dns.blockESNI.t = CONF_BOOL;
+	config.dns.blockESNI.f = FLAG_ADVANCED_SETTING;
 	config.dns.blockESNI.d.b = true;
 
 	config.dns.EDNS0ECS.k = "dns.EDNS0ECS";
 	config.dns.EDNS0ECS.h = "Should we overwrite the query source when client information is provided through EDNS0 client subnet (ECS) information? This allows Pi-hole to obtain client IPs even if they are hidden behind the NAT of a router. This feature has been requested and discussed on Discourse where further information how to use it can be found: https://discourse.pi-hole.net/t/support-for-add-subnet-option-from-dnsmasq-ecs-edns0-client-subnet/35940";
 	config.dns.EDNS0ECS.t = CONF_BOOL;
+	config.dns.EDNS0ECS.f = FLAG_ADVANCED_SETTING;
 	config.dns.EDNS0ECS.d.b = true;
 
 	config.dns.ignoreLocalhost.k = "dns.ignoreLocalhost";
 	config.dns.ignoreLocalhost.h = "Should FTL hide queries made by localhost?";
 	config.dns.ignoreLocalhost.t = CONF_BOOL;
+	config.dns.ignoreLocalhost.f = FLAG_ADVANCED_SETTING;
 	config.dns.ignoreLocalhost.d.b = false;
 
 	config.dns.showDNSSEC.k = "dns.showDNSSEC";
 	config.dns.showDNSSEC.h = "Should FTL should analyze and show internally generated DNSSEC queries?";
 	config.dns.showDNSSEC.t = CONF_BOOL;
+	config.dns.showDNSSEC.f = FLAG_ADVANCED_SETTING;
 	config.dns.showDNSSEC.d.b = true;
 
 	config.dns.analyzeOnlyAandAAAA.k = "dns.analyzeOnlyAandAAAA";
@@ -329,6 +341,92 @@ void initConfig(void)
 	config.dns.hosts.a = cJSON_CreateStringReference("Array of custom DNS records each one in HOSTS form: \"IP HOSTNAME\"");
 	config.dns.hosts.t = CONF_JSON_STRING_ARRAY;
 	config.dns.hosts.d.json = cJSON_CreateArray();
+
+	config.dns.domain.k = "dns.domain";
+	config.dns.domain.h = "The DNS domain used by your Pi-hole";
+	config.dns.domain.a = cJSON_CreateStringReference("<any valid domain>");
+	config.dns.domain.t = CONF_STRING;
+	config.dns.domain.d.s = (char*)"lan";
+	config.dns.domain.f = FLAG_RESTART_DNSMASQ;
+
+	config.dns.domain_needed.k = "dns.domain_needed";
+	config.dns.domain_needed.h = "If set, A and AAAA queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
+	config.dns.domain_needed.t = CONF_BOOL;
+	config.dns.domain_needed.d.b = false;
+	config.dns.domain_needed.f = FLAG_RESTART_DNSMASQ;
+
+	config.dns.expand_hosts.k = "dns.expand_hosts";
+	config.dns.expand_hosts.h = "If set, the domain is added to simple names (without a period) in /etc/hosts in the same way as for DHCP-derived names";
+	config.dns.expand_hosts.t = CONF_BOOL;
+	config.dns.expand_hosts.d.b = false;
+	config.dns.expand_hosts.f = FLAG_RESTART_DNSMASQ;
+
+	config.dns.bogus_priv.k = "dns.bogus_priv";
+	config.dns.bogus_priv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
+	config.dns.bogus_priv.t = CONF_BOOL;
+	config.dns.bogus_priv.d.b = true;
+	config.dns.bogus_priv.f = FLAG_RESTART_DNSMASQ;
+
+	config.dns.dnssec.k = "dns.dnssec";
+	config.dns.dnssec.h = "Validate DNS replies using DNSSEC?";
+	config.dns.dnssec.t = CONF_BOOL;
+	config.dns.dnssec.d.b = true;
+	config.dns.dnssec.f = FLAG_RESTART_DNSMASQ;
+
+	config.dns.interface.k = "dns.interface";
+	config.dns.interface.h = "Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)";
+	config.dns.interface.a = cJSON_CreateStringReference("a valid interface name");
+	config.dns.interface.t = CONF_STRING;
+	config.dns.interface.d.s = (char*)"";
+	config.dns.interface.f = FLAG_RESTART_DNSMASQ;
+
+	config.dns.host_record.k = "dns.host_record";
+	config.dns.host_record.h = "Add A, AAAA and PTR records to the DNS. This adds one or more names to the DNS with associated IPv4 (A) and IPv6 (AAAA) records";
+	config.dns.host_record.a = cJSON_CreateStringReference("<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]");
+	config.dns.host_record.t = CONF_STRING;
+	config.dns.host_record.d.s = (char*)"";
+	config.dns.host_record.f = FLAG_RESTART_DNSMASQ;
+
+	config.dns.listening_mode.k = "dns.listening_mode";
+	config.dns.listening_mode.h = "Pi-hole interface listening modes";
+	{
+		struct enum_options listening_mode[] =
+		{
+			{ "LOCAL", "Allow only local requests. This setting accepts DNS queries only from hosts whose address is on a local subnet, i.e., a subnet for which an interface exists on the server. It is intended to be set as a default on installation, to allow unconfigured installations to be useful but also safe from being used for DNS amplification attacks if (accidentally) running public." },
+			{ "SINGLE", "Permit all origins, accept only on the specified interface. Respond only to queries arriving on the specified interface. The loopback (lo) interface is automatically added to the list of interfaces to use when this option is used. Make sure your Pi-hole is properly firewalled!" },
+			{ "BIND", "By default, FTL binds the wildcard address. If this is not what you want, you can use this option as it forces FTL to really bind only the interfaces it is listening on. Note that this may result in issues when the interface may go down (cable unplugged, etc.). About the only time when this is useful is when running another nameserver on the same port on the same machine. This may also happen if you run a virtualization API such as libvirt. When this option is used, IP alias interface labels (e.g. enp2s0:0) are checked rather than interface names." },
+			{ "ALL", "Permit all origins, accept on all interfaces. Make sure your Pi-hole is properly firewalled! This truly allows any traffic to be replied to and is a dangerous thing to do as your Pi-hole could become an open resolver. You should always ask yourself if the first option doesn't work for you as well." }
+		};
+		CONFIG_ADD_ENUM_OPTIONS(config.dns.listening_mode.a, listening_mode);
+	}
+	config.dns.listening_mode.t = CONF_ENUM_LISTENING_MODE;
+	config.dns.listening_mode.d.listening_mode = LISTEN_LOCAL;
+	config.dns.listening_mode.f = FLAG_RESTART_DNSMASQ;
+
+	config.dns.cache_size.k = "dns.cache_size";
+	config.dns.cache_size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
+	config.dns.cache_size.t = CONF_UINT;
+	config.dns.cache_size.d.ui = 2000u;
+	config.dns.cache_size.f = FLAG_RESTART_DNSMASQ;
+
+	config.dns.query_logging.k = "dns.query_logging";
+	config.dns.query_logging.h = "Log DNS queries and replies to pihole.log";
+	config.dns.query_logging.t = CONF_BOOL;
+	config.dns.query_logging.d.b = true;
+	config.dns.query_logging.f = FLAG_RESTART_DNSMASQ;
+
+	config.dns.cnames.k = "dns.cnames";
+	config.dns.cnames.h = "List of CNAME records which indicate that <cname> is really <target>. If the <TTL> is given, it overwrites the value of local-ttl";
+	config.dns.cnames.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"<cname>,<target>[,<TTL>]\"");
+	config.dns.cnames.t = CONF_JSON_STRING_ARRAY;
+	config.dns.cnames.d.json = cJSON_CreateArray();
+	config.dns.cnames.f = FLAG_RESTART_DNSMASQ;
+
+	config.dns.port.k = "dns.port";
+	config.dns.port.h = "Port used by the DNS server";
+	config.dns.port.t = CONF_UINT16;
+	config.dns.port.d.ui = 53u;
+	config.dns.port.f = FLAG_RESTART_DNSMASQ;
 
 	// sub-struct dns.blocking
 	config.dns.blocking.active.k = "dns.blocking.active";
@@ -420,182 +518,87 @@ void initConfig(void)
 	config.dns.reply.blocking.v6.t = CONF_STRUCT_IN6_ADDR;
 	memset(&config.dns.reply.blocking.v6.d.in6_addr, 0, sizeof(struct in6_addr));
 
-
-	// struct dnsmasq
-	config.dnsmasq.upstreams.k = "dnsmasq.upstreams";
-	config.dnsmasq.upstreams.h = "Array of upstream DNS servers used by Pi-hole\n Example: [ \"8.8.8.8\", \"127.0.0.1#5353\", \"docker-resolver\" ]";
-	config.dnsmasq.upstreams.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames, optionally with a port (#...)");
-	config.dnsmasq.upstreams.t = CONF_JSON_STRING_ARRAY;
-	config.dnsmasq.upstreams.d.json = cJSON_CreateArray();
-	config.dnsmasq.upstreams.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.domain.k = "dnsmasq.domain";
-	config.dnsmasq.domain.h = "The DNS domain used by your Pi-hole";
-	config.dnsmasq.domain.a = cJSON_CreateStringReference("<any valid domain>");
-	config.dnsmasq.domain.t = CONF_STRING;
-	config.dnsmasq.domain.d.s = (char*)"lan";
-	config.dnsmasq.domain.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.domain_needed.k = "dnsmasq.domain_needed";
-	config.dnsmasq.domain_needed.h = "If set, A and AAAA queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
-	config.dnsmasq.domain_needed.t = CONF_BOOL;
-	config.dnsmasq.domain_needed.d.b = false;
-	config.dnsmasq.domain_needed.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.expand_hosts.k = "dnsmasq.expand_hosts";
-	config.dnsmasq.expand_hosts.h = "If set, the domain is added to simple names (without a period) in /etc/hosts in the same way as for DHCP-derived names";
-	config.dnsmasq.expand_hosts.t = CONF_BOOL;
-	config.dnsmasq.expand_hosts.d.b = false;
-	config.dnsmasq.expand_hosts.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.bogus_priv.k = "dnsmasq.bogus_priv";
-	config.dnsmasq.bogus_priv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
-	config.dnsmasq.bogus_priv.t = CONF_BOOL;
-	config.dnsmasq.bogus_priv.d.b = true;
-	config.dnsmasq.bogus_priv.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.dnssec.k = "dnsmasq.dnssec";
-	config.dnsmasq.dnssec.h = "Validate DNS replies using DNSSEC?";
-	config.dnsmasq.dnssec.t = CONF_BOOL;
-	config.dnsmasq.dnssec.d.b = true;
-	config.dnsmasq.dnssec.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.interface.k = "dnsmasq.interface";
-	config.dnsmasq.interface.h = "Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)";
-	config.dnsmasq.interface.a = cJSON_CreateStringReference("a valid interface name");
-	config.dnsmasq.interface.t = CONF_STRING;
-	config.dnsmasq.interface.d.s = (char*)"";
-	config.dnsmasq.interface.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.host_record.k = "dnsmasq.host_record";
-	config.dnsmasq.host_record.h = "Add A, AAAA and PTR records to the DNS. This adds one or more names to the DNS with associated IPv4 (A) and IPv6 (AAAA) records";
-	config.dnsmasq.host_record.a = cJSON_CreateStringReference("<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]");
-	config.dnsmasq.host_record.t = CONF_STRING;
-	config.dnsmasq.host_record.d.s = (char*)"";
-	config.dnsmasq.host_record.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.listening_mode.k = "dnsmasq.listening_mode";
-	config.dnsmasq.listening_mode.h = "Pi-hole interface listening modes";
-	{
-		struct enum_options listening_mode[] =
-		{
-			{ "LOCAL", "Allow only local requests. This setting accepts DNS queries only from hosts whose address is on a local subnet, i.e., a subnet for which an interface exists on the server. It is intended to be set as a default on installation, to allow unconfigured installations to be useful but also safe from being used for DNS amplification attacks if (accidentally) running public." },
-			{ "SINGLE", "Permit all origins, accept only on the specified interface. Respond only to queries arriving on the specified interface. The loopback (lo) interface is automatically added to the list of interfaces to use when this option is used. Make sure your Pi-hole is properly firewalled!" },
-			{ "BIND", "By default, FTL binds the wildcard address. If this is not what you want, you can use this option as it forces FTL to really bind only the interfaces it is listening on. Note that this may result in issues when the interface may go down (cable unplugged, etc.). About the only time when this is useful is when running another nameserver on the same port on the same machine. This may also happen if you run a virtualization API such as libvirt. When this option is used, IP alias interface labels (e.g. enp2s0:0) are checked rather than interface names." },
-			{ "ALL", "Permit all origins, accept on all interfaces. Make sure your Pi-hole is properly firewalled! This truly allows any traffic to be replied to and is a dangerous thing to do as your Pi-hole could become an open resolver. You should always ask yourself if the first option doesn't work for you as well." }
-		};
-		CONFIG_ADD_ENUM_OPTIONS(config.dnsmasq.listening_mode.a, listening_mode);
-	}
-	config.dnsmasq.listening_mode.t = CONF_ENUM_LISTENING_MODE;
-	config.dnsmasq.listening_mode.d.listening_mode = LISTEN_LOCAL;
-	config.dnsmasq.listening_mode.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.cache_size.k = "dnsmasq.cache_size";
-	config.dnsmasq.cache_size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
-	config.dnsmasq.cache_size.t = CONF_UINT;
-	config.dnsmasq.cache_size.d.ui = 2000u;
-	config.dnsmasq.cache_size.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.logging.k = "dnsmasq.logging";
-	config.dnsmasq.logging.h = "Log DNS queries and replies to pihole.log";
-	config.dnsmasq.logging.t = CONF_BOOL;
-	config.dnsmasq.logging.d.b = true;
-	config.dnsmasq.logging.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.cnames.k = "dnsmasq.cnames";
-	config.dnsmasq.cnames.h = "List of CNAME records which indicate that <cname> is really <target>. If the <TTL> is given, it overwrites the value of local-ttl";
-	config.dnsmasq.cnames.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"<cname>,<target>[,<TTL>]\"");
-	config.dnsmasq.cnames.t = CONF_JSON_STRING_ARRAY;
-	config.dnsmasq.cnames.d.json = cJSON_CreateArray();
-	config.dnsmasq.cnames.f = FLAG_RESTART_DNSMASQ;
-
-	config.dnsmasq.port.k = "dnsmasq.port";
-	config.dnsmasq.port.h = "Port used by the DNS server";
-	config.dnsmasq.port.t = CONF_UINT16;
-	config.dnsmasq.port.d.ui = 53u;
-	config.dnsmasq.port.f = FLAG_RESTART_DNSMASQ;
-
 	// sub-struct rev_server
-	config.dnsmasq.rev_server.active.k = "dnsmasq.rev_server.active";
-	config.dnsmasq.rev_server.active.h = "Is the reverse server (former also called \"conditional forwarding\") feature enabled?";
-	config.dnsmasq.rev_server.active.t = CONF_BOOL;
-	config.dnsmasq.rev_server.active.d.b = false;
-	config.dnsmasq.rev_server.active.f = FLAG_RESTART_DNSMASQ;
+	config.dns.rev_server.active.k = "dns.rev_server.active";
+	config.dns.rev_server.active.h = "Is the reverse server (former also called \"conditional forwarding\") feature enabled?";
+	config.dns.rev_server.active.t = CONF_BOOL;
+	config.dns.rev_server.active.d.b = false;
+	config.dns.rev_server.active.f = FLAG_RESTART_DNSMASQ;
 
-	config.dnsmasq.rev_server.cidr.k = "dnsmasq.rev_server.cidr";
-	config.dnsmasq.rev_server.cidr.h = "Address range for the reverse server feature in CIDR notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are substitutet (exact address match). This is almost certainly not what you want here.";
-	config.dnsmasq.rev_server.cidr.a = cJSON_CreateStringReference("<ip-address>[/<prefix-len>], e.g., \"192.168.0.0/24\" for the range 192.168.0.1 - 192.168.0.255");
-	config.dnsmasq.rev_server.cidr.t = CONF_STRING;
-	config.dnsmasq.rev_server.cidr.d.s = (char*)"";
-	config.dnsmasq.rev_server.cidr.f = FLAG_RESTART_DNSMASQ;
+	config.dns.rev_server.cidr.k = "dns.rev_server.cidr";
+	config.dns.rev_server.cidr.h = "Address range for the reverse server feature in CIDR notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are substitutet (exact address match). This is almost certainly not what you want here.";
+	config.dns.rev_server.cidr.a = cJSON_CreateStringReference("<ip-address>[/<prefix-len>], e.g., \"192.168.0.0/24\" for the range 192.168.0.1 - 192.168.0.255");
+	config.dns.rev_server.cidr.t = CONF_STRING;
+	config.dns.rev_server.cidr.d.s = (char*)"";
+	config.dns.rev_server.cidr.f = FLAG_RESTART_DNSMASQ;
 
-	config.dnsmasq.rev_server.target.k = "dnsmasq.rev_server.target";
-	config.dnsmasq.rev_server.target.h = "Target server tp be used for the reverse server feature";
-	config.dnsmasq.rev_server.target.a = cJSON_CreateStringReference("<server>[#<port>], e.g., \"192.168.0.1\"");
-	config.dnsmasq.rev_server.target.t = CONF_STRING;
-	config.dnsmasq.rev_server.target.d.s = (char*)"";
-	config.dnsmasq.rev_server.target.f = FLAG_RESTART_DNSMASQ;
+	config.dns.rev_server.target.k = "dns.rev_server.target";
+	config.dns.rev_server.target.h = "Target server tp be used for the reverse server feature";
+	config.dns.rev_server.target.a = cJSON_CreateStringReference("<server>[#<port>], e.g., \"192.168.0.1\"");
+	config.dns.rev_server.target.t = CONF_STRING;
+	config.dns.rev_server.target.d.s = (char*)"";
+	config.dns.rev_server.target.f = FLAG_RESTART_DNSMASQ;
 
-	config.dnsmasq.rev_server.domain.k = "dnsmasq.rev_server.domain";
-	config.dnsmasq.rev_server.domain.h = "Domain used for the reverse server feature";
-	config.dnsmasq.rev_server.domain.a = cJSON_CreateStringReference("<valid domain>, typically set to the same value as dnsmasq.domain");
-	config.dnsmasq.rev_server.domain.t = CONF_STRING;
-	config.dnsmasq.rev_server.domain.d.s = (char*)"";
-	config.dnsmasq.rev_server.domain.f = FLAG_RESTART_DNSMASQ;
+	config.dns.rev_server.domain.k = "dns.rev_server.domain";
+	config.dns.rev_server.domain.h = "Domain used for the reverse server feature";
+	config.dns.rev_server.domain.a = cJSON_CreateStringReference("<valid domain>, typically set to the same value as dns.domain");
+	config.dns.rev_server.domain.t = CONF_STRING;
+	config.dns.rev_server.domain.d.s = (char*)"";
+	config.dns.rev_server.domain.f = FLAG_RESTART_DNSMASQ;
 
 	// sub-struct dhcp
-	config.dnsmasq.dhcp.active.k = "dnsmasq.dhcp.active";
-	config.dnsmasq.dhcp.active.h = "Is the embedded DHCP server enabled?";
-	config.dnsmasq.dhcp.active.t = CONF_BOOL;
-	config.dnsmasq.dhcp.active.d.b = false;
-	config.dnsmasq.dhcp.active.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.active.k = "dhcp.active";
+	config.dhcp.active.h = "Is the embedded DHCP server enabled?";
+	config.dhcp.active.t = CONF_BOOL;
+	config.dhcp.active.d.b = false;
+	config.dhcp.active.f = FLAG_RESTART_DNSMASQ;
 
-	config.dnsmasq.dhcp.start.k = "dnsmasq.dhcp.start";
-	config.dnsmasq.dhcp.start.h = "Start address of the DHCP address pool";
-	config.dnsmasq.dhcp.start.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.10\"");
-	config.dnsmasq.dhcp.start.t = CONF_STRING;
-	config.dnsmasq.dhcp.start.d.s = (char*)"";
-	config.dnsmasq.dhcp.start.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.start.k = "dhcp.start";
+	config.dhcp.start.h = "Start address of the DHCP address pool";
+	config.dhcp.start.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.10\"");
+	config.dhcp.start.t = CONF_STRING;
+	config.dhcp.start.d.s = (char*)"";
+	config.dhcp.start.f = FLAG_RESTART_DNSMASQ;
 
-	config.dnsmasq.dhcp.end.k = "dnsmasq.dhcp.end";
-	config.dnsmasq.dhcp.end.h = "End address of the DHCP address pool";
-	config.dnsmasq.dhcp.end.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.250\"");
-	config.dnsmasq.dhcp.end.t = CONF_STRING;
-	config.dnsmasq.dhcp.end.d.s = (char*)"";
-	config.dnsmasq.dhcp.end.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.end.k = "dhcp.end";
+	config.dhcp.end.h = "End address of the DHCP address pool";
+	config.dhcp.end.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.250\"");
+	config.dhcp.end.t = CONF_STRING;
+	config.dhcp.end.d.s = (char*)"";
+	config.dhcp.end.f = FLAG_RESTART_DNSMASQ;
 
-	config.dnsmasq.dhcp.router.k = "dnsmasq.dhcp.router";
-	config.dnsmasq.dhcp.router.h = "Address of the gateway to be used (typicaly the address of your router in a home installation)";
-	config.dnsmasq.dhcp.router.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.1\"");
-	config.dnsmasq.dhcp.router.t = CONF_STRING;
-	config.dnsmasq.dhcp.router.d.s = (char*)"";
-	config.dnsmasq.dhcp.router.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.router.k = "dhcp.router";
+	config.dhcp.router.h = "Address of the gateway to be used (typicaly the address of your router in a home installation)";
+	config.dhcp.router.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.1\"");
+	config.dhcp.router.t = CONF_STRING;
+	config.dhcp.router.d.s = (char*)"";
+	config.dhcp.router.f = FLAG_RESTART_DNSMASQ;
 
-	config.dnsmasq.dhcp.leasetime.k = "dnsmasq.dhcp.leasetime";
-	config.dnsmasq.dhcp.leasetime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
-	config.dnsmasq.dhcp.leasetime.a = cJSON_CreateStringReference("The lease time can be in seconds, or minutes (e.g., \"45m\") or hours (e.g., \"1h\") or days (like \"2d\") or even weeks (\"1w\"). You may also use \"infinite\" as string but be aware of the drawbacks");
-	config.dnsmasq.dhcp.leasetime.t = CONF_STRING;
-	config.dnsmasq.dhcp.leasetime.d.s = (char*)"";
-	config.dnsmasq.dhcp.leasetime.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.leasetime.k = "dhcp.leasetime";
+	config.dhcp.leasetime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
+	config.dhcp.leasetime.a = cJSON_CreateStringReference("The lease time can be in seconds, or minutes (e.g., \"45m\") or hours (e.g., \"1h\") or days (like \"2d\") or even weeks (\"1w\"). You may also use \"infinite\" as string but be aware of the drawbacks");
+	config.dhcp.leasetime.t = CONF_STRING;
+	config.dhcp.leasetime.d.s = (char*)"";
+	config.dhcp.leasetime.f = FLAG_RESTART_DNSMASQ;
 
-	config.dnsmasq.dhcp.ipv6.k = "dnsmasq.dhcp.ipv6";
-	config.dnsmasq.dhcp.ipv6.h = "Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that IPv6 works a whole lot different than IPv4)";
-	config.dnsmasq.dhcp.ipv6.t = CONF_BOOL;
-	config.dnsmasq.dhcp.ipv6.d.b = false;
-	config.dnsmasq.dhcp.ipv6.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.ipv6.k = "dhcp.ipv6";
+	config.dhcp.ipv6.h = "Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that IPv6 works a whole lot different than IPv4)";
+	config.dhcp.ipv6.t = CONF_BOOL;
+	config.dhcp.ipv6.d.b = false;
+	config.dhcp.ipv6.f = FLAG_RESTART_DNSMASQ;
 
-	config.dnsmasq.dhcp.rapid_commit.k = "dnsmasq.dhcp.rapid_commit";
-	config.dnsmasq.dhcp.rapid_commit.h = "Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if either the server is the only server for the subnet to avoid conflicts";
-	config.dnsmasq.dhcp.rapid_commit.t = CONF_BOOL;
-	config.dnsmasq.dhcp.rapid_commit.d.b = false;
-	config.dnsmasq.dhcp.rapid_commit.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.rapid_commit.k = "dhcp.rapid_commit";
+	config.dhcp.rapid_commit.h = "Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if either the server is the only server for the subnet to avoid conflicts";
+	config.dhcp.rapid_commit.t = CONF_BOOL;
+	config.dhcp.rapid_commit.d.b = false;
+	config.dhcp.rapid_commit.f = FLAG_RESTART_DNSMASQ;
 
-	config.dnsmasq.dhcp.hosts.k = "dnsmasq.dhcp.hosts";
-	config.dnsmasq.dhcp.hosts.h = "Per host parameters for the DHCP server. This allows a machine with a particular hardware address to be always allocated the same hostname, IP address and lease time or to specify static DHCP leases";
-	config.dnsmasq.dhcp.hosts.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]\"");
-	config.dnsmasq.dhcp.hosts.t = CONF_JSON_STRING_ARRAY;
-	config.dnsmasq.dhcp.hosts.d.json = cJSON_CreateArray();
-	config.dnsmasq.dhcp.hosts.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.hosts.k = "dhcp.hosts";
+	config.dhcp.hosts.h = "Per host parameters for the DHCP server. This allows a machine with a particular hardware address to be always allocated the same hostname, IP address and lease time or to specify static DHCP leases";
+	config.dhcp.hosts.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]\"");
+	config.dhcp.hosts.t = CONF_JSON_STRING_ARRAY;
+	config.dhcp.hosts.d.json = cJSON_CreateArray();
+	config.dhcp.hosts.f = FLAG_RESTART_DNSMASQ;
 
 
 	// struct resolver
@@ -668,84 +671,103 @@ void initConfig(void)
 	config.database.network.expire.d.ui = config.database.maxDBdays.d.ui;
 
 
-	// struct api
-	config.api.localAPIauth.k = "api.localAPIauth";
-	config.api.localAPIauth.h = "Does local clients need to authenticate to access the API?";
-	config.api.localAPIauth.t = CONF_BOOL;
-	config.api.localAPIauth.d.b = true;
-
-	config.api.prettyJSON.k = "api.prettyJSON";
-	config.api.prettyJSON.h = "Should FTL prettify the API output (add extra spaces, newlines and indentation)?";
-	config.api.prettyJSON.t = CONF_BOOL;
-	config.api.prettyJSON.d.b = false;
-
-	config.api.sessionTimeout.k = "api.sessionTimeout";
-	config.api.sessionTimeout.h = "How long should a session be considered valid after login [seconds]?";
-	config.api.sessionTimeout.t = CONF_UINT;
-	config.api.sessionTimeout.d.ui = 300;
-
-	config.api.pwhash.k = "api.pwhash";
-	config.api.pwhash.h = "API password hash";
-	config.api.pwhash.a = cJSON_CreateStringReference("<valid Pi-hole password hash>");
-	config.api.pwhash.t = CONF_STRING;
-	config.api.pwhash.d.s = (char*)"";
-
-	config.api.exclude_clients.k = "api.exclude_clients";
-	config.api.exclude_clients.h = "Array of clients to be excluded from certain API responses\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
-	config.api.exclude_clients.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
-	config.api.exclude_clients.t = CONF_JSON_STRING_ARRAY;
-	config.api.exclude_clients.d.json = cJSON_CreateArray();
-
-	config.api.exclude_domains.k = "api.exclude_domains";
-	config.api.exclude_domains.h = "Array of domains to be excluded from certain API responses\n Example: [ \"google.de\", \"pi-hole.net\" ]";
-	config.api.exclude_domains.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
-	config.api.exclude_domains.t = CONF_JSON_STRING_ARRAY;
-	config.api.exclude_domains.d.json = cJSON_CreateArray();
-
-
 	// struct http
-	config.http.domain.k = "http.domain";
-	config.http.domain.h = "On which domain is the web interface served?";
-	config.http.domain.a = cJSON_CreateStringReference("<valid domain>");
-	config.http.domain.t = CONF_STRING;
-	config.http.domain.d.s = (char*)"pi.hole";
+	config.webserver.domain.k = "webserver.domain";
+	config.webserver.domain.h = "On which domain is the web interface served?";
+	config.webserver.domain.a = cJSON_CreateStringReference("<valid domain>");
+	config.webserver.domain.t = CONF_STRING;
+	config.webserver.domain.d.s = (char*)"pi.hole";
 
-	config.http.acl.k = "http.acl";
-	config.http.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny. If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: acl = \"+127.0.0.1,+[::1]\"\n ---> deny all access, except from 127.0.0.1 and ::1,\n Example 2: acl = \"+192.168.0.0/16\"\n ---> deny all accesses, except from the 192.168.0.0/16 subnet,\n Example 3: acl = \"+[::]/0\" ---> allow only IPv6 access.";
-	config.http.acl.a = cJSON_CreateStringReference("<valid ACL>");
-	config.http.acl.t = CONF_STRING;
-	config.http.acl.d.s = (char*)"";
+	config.webserver.acl.k = "webserver.acl";
+	config.webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny. If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: acl = \"+127.0.0.1,+[::1]\"\n ---> deny all access, except from 127.0.0.1 and ::1,\n Example 2: acl = \"+192.168.0.0/16\"\n ---> deny all accesses, except from the 192.168.0.0/16 subnet,\n Example 3: acl = \"+[::]/0\" ---> allow only IPv6 access.";
+	config.webserver.acl.a = cJSON_CreateStringReference("<valid ACL>");
+	config.webserver.acl.t = CONF_STRING;
+	config.webserver.acl.d.s = (char*)"";
 
-	config.http.port.k = "http.port";
-	config.http.port.h = "Ports to be used by the webserver";
-	config.http.port.a = cJSON_CreateStringReference("comma-separated list of <[ip_address:]port>");
-	config.http.port.t = CONF_STRING;
-	config.http.port.d.s = (char*)"8080,[::]:8080";
+	config.webserver.port.k = "webserver.port";
+	config.webserver.port.h = "Ports to be used by the webserver";
+	config.webserver.port.a = cJSON_CreateStringReference("comma-separated list of <[ip_address:]port>");
+	config.webserver.port.t = CONF_STRING;
+	config.webserver.port.d.s = (char*)"8080,[::]:8080";
 
 	// sub-struct paths
-	config.http.paths.webroot.k = "http.paths.webroot";
-	config.http.paths.webroot.h = "Server root on the host";
-	config.http.paths.webroot.a = cJSON_CreateStringReference("<valid path>");
-	config.http.paths.webroot.t = CONF_STRING;
-	config.http.paths.webroot.d.s = (char*)"/var/www/html";
+	config.webserver.paths.webroot.k = "webserver.paths.webroot";
+	config.webserver.paths.webroot.h = "Server root on the host";
+	config.webserver.paths.webroot.a = cJSON_CreateStringReference("<valid path>");
+	config.webserver.paths.webroot.t = CONF_STRING;
+	config.webserver.paths.webroot.d.s = (char*)"/var/www/html";
 
-	config.http.paths.webhome.k = "http.paths.webhome";
-	config.http.paths.webhome.h = "Sub-directory of the root containing the web interface";
-	config.http.paths.webhome.a = cJSON_CreateStringReference("<valid subpath>, both slashes are needed!");
-	config.http.paths.webhome.t = CONF_STRING;
-	config.http.paths.webhome.d.s = (char*)"/admin/";
+	config.webserver.paths.webhome.k = "webserver.paths.webhome";
+	config.webserver.paths.webhome.h = "Sub-directory of the root containing the web interface";
+	config.webserver.paths.webhome.a = cJSON_CreateStringReference("<valid subpath>, both slashes are needed!");
+	config.webserver.paths.webhome.t = CONF_STRING;
+	config.webserver.paths.webhome.d.s = (char*)"/admin/";
 
 	// sub-struct interface
-	config.http.interface.boxed.k = "http.interface.boxed";
-	config.http.interface.boxed.h = "Should the web interface use the boxed layout?";
-	config.http.interface.boxed.t = CONF_BOOL;
-	config.http.interface.boxed.d.b = true;
+	config.webserver.interface.boxed.k = "webserver.interface.boxed";
+	config.webserver.interface.boxed.h = "Should the web interface use the boxed layout?";
+	config.webserver.interface.boxed.t = CONF_BOOL;
+	config.webserver.interface.boxed.d.b = true;
 
-	config.http.interface.theme.k = "http.interface.theme";
-	config.http.interface.theme.h = "Theme used by the Pi-hole web interface";
-	config.http.interface.theme.a = cJSON_CreateStringReference("<valid themename>");
-	config.http.interface.theme.t = CONF_STRING;
-	config.http.interface.theme.d.s = (char*)"default";
+	config.webserver.interface.theme.k = "webserver.interface.theme";
+	config.webserver.interface.theme.h = "Theme used by the Pi-hole web interface";
+	config.webserver.interface.theme.a = cJSON_CreateStringReference("<valid themename>");
+	config.webserver.interface.theme.t = CONF_STRING;
+	config.webserver.interface.theme.d.s = (char*)"default";
+
+	// sub-struct api
+	config.webserver.api.localAPIauth.k = "webserver.api.localAPIauth";
+	config.webserver.api.localAPIauth.h = "Does local clients need to authenticate to access the API?";
+	config.webserver.api.localAPIauth.t = CONF_BOOL;
+	config.webserver.api.localAPIauth.d.b = true;
+
+	config.webserver.api.prettyJSON.k = "webserver.api.prettyJSON";
+	config.webserver.api.prettyJSON.h = "Should FTL prettify the API output (add extra spaces, newlines and indentation)?";
+	config.webserver.api.prettyJSON.t = CONF_BOOL;
+	config.webserver.api.prettyJSON.d.b = false;
+
+	config.webserver.api.sessionTimeout.k = "webserver.api.sessionTimeout";
+	config.webserver.api.sessionTimeout.h = "How long should a session be considered valid after login [seconds]?";
+	config.webserver.api.sessionTimeout.t = CONF_UINT;
+	config.webserver.api.sessionTimeout.d.ui = 300;
+
+	config.webserver.api.pwhash.k = "webserver.api.pwhash";
+	config.webserver.api.pwhash.h = "API password hash";
+	config.webserver.api.pwhash.a = cJSON_CreateStringReference("<valid Pi-hole password hash>");
+	config.webserver.api.pwhash.t = CONF_STRING;
+	config.webserver.api.pwhash.d.s = (char*)"";
+
+	config.webserver.api.exclude_clients.k = "webserver.api.exclude_clients";
+	config.webserver.api.exclude_clients.h = "Array of clients to be excluded from certain API responses\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
+	config.webserver.api.exclude_clients.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
+	config.webserver.api.exclude_clients.t = CONF_JSON_STRING_ARRAY;
+	config.webserver.api.exclude_clients.d.json = cJSON_CreateArray();
+
+	config.webserver.api.exclude_domains.k = "webserver.api.exclude_domains";
+	config.webserver.api.exclude_domains.h = "Array of domains to be excluded from certain API responses\n Example: [ \"google.de\", \"pi-hole.net\" ]";
+	config.webserver.api.exclude_domains.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
+	config.webserver.api.exclude_domains.t = CONF_JSON_STRING_ARRAY;
+	config.webserver.api.exclude_domains.d.json = cJSON_CreateArray();
+
+	// sub-struct webserver.api.temp
+	config.webserver.api.temp.limit.k = "webserver.api.temp.limit";
+	config.webserver.api.temp.limit.h = "Which upper temperature limit should be used by Pi-hole? Temperatures above this limit will be shown as \"hot\". The number specified here is in the unit defined below";
+	config.webserver.api.temp.limit.t = CONF_DOUBLE;
+	config.webserver.api.temp.limit.d.d = 60.0; // °C
+
+	config.webserver.api.temp.unit.k = "webserver.api.temp.unit";
+	config.webserver.api.temp.unit.h = "Which temperature unit should be used for temperatures processed by FTL?";
+	{
+		struct enum_options temp_unit[] =
+		{
+			{ "C", "Celsius" },
+			{ "F", "Fahrenheit" },
+			{ "K", "Kelvin" },
+		};
+		CONFIG_ADD_ENUM_OPTIONS(config.webserver.api.temp.unit.a, temp_unit);
+	}
+	config.webserver.api.temp.unit.t = CONF_STRING;
+	config.webserver.api.temp.unit.d.s = (char*)"C";
 
 
 	// struct files
@@ -802,16 +824,6 @@ void initConfig(void)
 
 
 	// struct misc
-	config.misc.nice.k = "misc.nice";
-	config.misc.nice.h = "Set niceness of pihole-FTL. Defaults to -10 and can be disabled altogether by setting a value of -999. The nice value is an attribute that can be used to influence the CPU scheduler to favor or disfavor a process in scheduling decisions. The range of the nice value varies across UNIX systems. On modern Linux, the range is -20 (high priority = not very nice to other processes) to +19 (low priority).";
-	config.misc.nice.t = CONF_INT;
-	config.misc.nice.d.i = -10;
-
-	config.misc.addr2line.k = "misc.addr2line";
-	config.misc.addr2line.h = "Should FTL translate its own stack addresses into code lines during the bug backtrace? This improves the analysis of crashed significantly. It is recommended to leave the option enabled. This option should only be disabled when addr2line is known to not be working correctly on the machine because, in this case, the malfunctioning addr2line can prevent from generating any backtrace at all.";
-	config.misc.addr2line.t = CONF_BOOL;
-	config.misc.addr2line.d.b = true;
-
 	config.misc.privacylevel.k = "misc.privacylevel";
 	config.misc.privacylevel.h = "Using privacy levels you can specify which level of detail you want to see in your Pi-hole statistics.";
 	{
@@ -832,25 +844,15 @@ void initConfig(void)
 	config.misc.delay_startup.t = CONF_UINT;
 	config.misc.delay_startup.d.ui = 0;
 
-	// sub-struct misc.temp
-	config.misc.temp.limit.k = "misc.temp.limit";
-	config.misc.temp.limit.h = "Which upper temperature limit should be used by Pi-hole? Temperatures above this limit will be shown as \"hot\". The number specified here is in the unit defined below";
-	config.misc.temp.limit.t = CONF_DOUBLE;
-	config.misc.temp.limit.d.d = 60.0; // °C
+	config.misc.nice.k = "misc.nice";
+	config.misc.nice.h = "Set niceness of pihole-FTL. Defaults to -10 and can be disabled altogether by setting a value of -999. The nice value is an attribute that can be used to influence the CPU scheduler to favor or disfavor a process in scheduling decisions. The range of the nice value varies across UNIX systems. On modern Linux, the range is -20 (high priority = not very nice to other processes) to +19 (low priority).";
+	config.misc.nice.t = CONF_INT;
+	config.misc.nice.d.i = -10;
 
-	config.misc.temp.unit.k = "misc.temp.unit";
-	config.misc.temp.unit.h = "Which temperature unit should be used for temperatures processed by FTL?";
-	{
-		struct enum_options temp_unit[] =
-		{
-			{ "C", "Celsius" },
-			{ "F", "Fahrenheit" },
-			{ "K", "Kelvin" },
-		};
-		CONFIG_ADD_ENUM_OPTIONS(config.misc.temp.unit.a, temp_unit);
-	}
-	config.misc.temp.unit.t = CONF_STRING;
-	config.misc.temp.unit.d.s = (char*)"C";
+	config.misc.addr2line.k = "misc.addr2line";
+	config.misc.addr2line.h = "Should FTL translate its own stack addresses into code lines during the bug backtrace? This improves the analysis of crashed significantly. It is recommended to leave the option enabled. This option should only be disabled when addr2line is known to not be working correctly on the machine because, in this case, the malfunctioning addr2line can prevent from generating any backtrace at all.";
+	config.misc.addr2line.t = CONF_BOOL;
+	config.misc.addr2line.d.b = true;
 
 	// sub-struct misc.check
 	config.misc.check.load.k = "misc.check.load";

@@ -31,11 +31,10 @@ static struct {
 } config_topics[] =
 {
 	{ "dns", "DNS server settings" },
-	{ "dnsmasq", "dnsmasq settings" },
+	{ "dhcp", "DHCP server settings" },
 	{ "resolver", "Resolver settings" },
 	{ "database", "Database settings" },
-	{ "api", "API settings" },
-	{ "http", "HTTP settings" },
+	{ "webserver", "Webserver and API settings" },
 	{ "files", "File locations" },
 	{ "misc", "Miscellaneous settings" },
 	{ "debug", "Debug settings" }
@@ -410,7 +409,7 @@ static int api_config_get(struct ftl_conn *api)
 			// Check equality of paths up to the requested level (if any)
 			// Examples:
 			//  requested was /config/dnsmasq -> skip all entries that do not start in dnsmasq.
-			//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dnsmasq.dhcp
+			//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dhcp
 			//  etc.
 			if(!check_paths_equal(conf_item->p, requested_path, min_level - 1))
 				continue;
@@ -427,14 +426,22 @@ static int api_config_get(struct ftl_conn *api)
 		// Create the config item leaf object
 		if(detailed)
 		{
+			// Create the config item leaf object
 			cJSON *leaf = JSON_NEW_OBJECT();
+
+			// Add description
 			JSON_REF_STR_IN_OBJECT(leaf, "description", conf_item->h);
+
+			// Add allowed properties (if applicable)
 			if(conf_item->a != NULL)
 				JSON_ADD_ITEM_TO_OBJECT(leaf, "allowed", conf_item->a);
 			else
 				JSON_ADD_NULL_TO_OBJECT(leaf, "allowed");
+
+			// Add config item type
 			JSON_REF_STR_IN_OBJECT(leaf, "type", get_conf_type_str(conf_item->t));
-			// Create the config item leaf object
+
+			// Add current value
 			cJSON *val = addJSONvalue(conf_item->t, &conf_item->v);
 			if(val == NULL)
 			{
@@ -442,6 +449,9 @@ static int api_config_get(struct ftl_conn *api)
 					conf_item->k, conf_item->t);
 				continue;
 			}
+			JSON_ADD_ITEM_TO_OBJECT(leaf, "value", val);
+
+			// Add default value
 			cJSON *dval = addJSONvalue(conf_item->t, &conf_item->d);
 			if(dval == NULL)
 			{
@@ -449,8 +459,15 @@ static int api_config_get(struct ftl_conn *api)
 					conf_item->k, conf_item->t);
 				continue;
 			}
-			JSON_ADD_ITEM_TO_OBJECT(leaf, "value", val);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "default", dval);
+
+			// Add config item flags
+			cJSON *flags = JSON_NEW_OBJECT();
+			JSON_ADD_BOOL_TO_OBJECT(flags, "restart_dnsmasq", conf_item->f & FLAG_RESTART_DNSMASQ);
+			JSON_ADD_BOOL_TO_OBJECT(flags, "advanced", conf_item->f & FLAG_ADVANCED_SETTING);
+			JSON_ADD_ITEM_TO_OBJECT(leaf, "flags", flags);
+
+			// Attach leave object to tree of objects
 			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level - 1], leaf);
 		}
 		else
@@ -601,9 +618,9 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 	const char *hint = NULL, *message = NULL;
 	if(api->method == HTTP_PUT)
-		hint = "Use, e.g., PUT /config/dnsmasq/upstreams/127.0.0.1 to add \"127.0.0.1\" to config.dnsmasq.upstreams";
+		hint = "Use, e.g., PUT /config/dnsmasq/upstreams/127.0.0.1 to add \"127.0.0.1\" to config.dns.upstreams";
 	else
-		hint = "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dnsmasq.upstreams";
+		hint = "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams";
 
 	if(min_level < 2)
 	{
@@ -620,7 +637,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	char *new_item = requested_path[min_level - 1];
 
 	// Convert path to items, e.g.,
-	// dnsmasq/dhcp/active -> dnsmasq.dhcp.active
+	// dnsmasq/dhcp/active -> dhcp.active
 	//char *item = strdup(api->item);
 	//replace_char(item, '/', '.');
 
@@ -645,7 +662,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		// Check equality of paths up to the requested level (if any)
 		// Examples:
 		//  requested was /config/dnsmasq -> skip all entries that do not start in dnsmasq.
-		//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dnsmasq.dhcp
+		//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dhcp
 		//  etc.
 		if(!check_paths_equal(conf_item->p, requested_path, max(min_level - 2, level - 1)))
 			continue;

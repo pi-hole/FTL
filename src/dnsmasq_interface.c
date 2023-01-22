@@ -1740,6 +1740,9 @@ void FTL_dnsmasq_reload(void)
 	if(config.debug.caps.v.b)
 		check_capabilities();
 
+	// Re-read configuration (incl. rewriting)
+	readFTLconf(true);
+
 	// Report blocking mode
 	log_info("Blocking status is %s", config.dns.blocking.active.v.b ? "enabled" : "disabled");
 
@@ -3300,7 +3303,7 @@ int check_struct_sizes(void)
 	// sizeof(struct conf_item) is 72 on x86_64 and 52 on x86_32
 	// number of config elements: CONFIG_ELEMENTS
 	result += check_one_struct("struct conf_item", sizeof(struct conf_item), 72, 52);
-	result += check_one_struct("struct config", sizeof(struct config), 8280, 5880);
+	result += check_one_struct("struct config", sizeof(struct config), 8280, 5980);
 	result += check_one_struct("queriesData", sizeof(queriesData), 72, 64);
 	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 628);
 	result += check_one_struct("clientsData", sizeof(clientsData), 672, 652);

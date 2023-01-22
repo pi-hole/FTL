@@ -203,6 +203,10 @@ components:
             dns:
               type: object
               properties:
+                upstreams:
+                  type: array
+                  items:
+                    type: string
                 CNAMEdeepInspect:
                   type: boolean
                 blockESNI:
@@ -225,6 +229,43 @@ components:
                   type: array
                   items:
                     type: string
+                domain:
+                  type: string
+                domain_needed:
+                  type: boolean
+                expand_hosts:
+                  type: boolean
+                bogus_priv:
+                  type: boolean
+                dnssec:
+                  type: boolean
+                interface:
+                  type: string
+                host_record:
+                  type: string
+                listening_mode:
+                  type: string
+                cache_size:
+                  type: integer
+                query_logging:
+                  type: boolean
+                cnames:
+                  type: array
+                  items:
+                    type: string
+                port:
+                  type: integer
+                rev_server:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    cidr:
+                      type: string
+                    target:
+                      type: string
+                    domain:
+                      type: string
                 blocking:
                   type: object
                   properties:
@@ -271,71 +312,27 @@ components:
                       type: integer
                     interval:
                       type: integer
-            dnsmasq:
+            dhcp:
               type: object
               properties:
-                upstreams:
+                active:
+                  type: boolean
+                start:
+                  type: string
+                end:
+                  type: string
+                router:
+                  type: string
+                leasetime:
+                  type: string
+                ipv6:
+                  type: boolean
+                rapid_commit:
+                  type: boolean
+                hosts:
                   type: array
                   items:
                     type: string
-                domain:
-                  type: string
-                domain_needed:
-                  type: boolean
-                expand_hosts:
-                  type: boolean
-                bogus_priv:
-                  type: boolean
-                dnssec:
-                  type: boolean
-                interface:
-                  type: string
-                host_record:
-                  type: string
-                listening_mode:
-                  type: string
-                cache_size:
-                  type: integer
-                logging:
-                  type: boolean
-                cnames:
-                  type: array
-                  items:
-                    type: string
-                port:
-                  type: integer
-                rev_server:
-                  type: object
-                  properties:
-                    active:
-                      type: boolean
-                    cidr:
-                      type: string
-                    target:
-                      type: string
-                    domain:
-                      type: string
-                dhcp:
-                  type: object
-                  properties:
-                    active:
-                      type: boolean
-                    start:
-                      type: string
-                    end:
-                      type: string
-                    router:
-                      type: string
-                    leasetime:
-                      type: string
-                    ipv6:
-                      type: boolean
-                    rapid_commit:
-                      type: boolean
-                    hosts:
-                      type: array
-                      items:
-                        type: string
             resolver:
               type: object
               properties:
@@ -367,26 +364,7 @@ components:
                       type: boolean
                     expire:
                       type: integer
-            api:
-              type: object
-              properties:
-                localAPIauth:
-                  type: boolean
-                prettyJSON:
-                  type: boolean
-                sessionTimeout:
-                  type: integer
-                pwhash:
-                  type: string
-                exclude_clients:
-                  type: array
-                  items:
-                    type: string
-                exclude_domains:
-                  type: array
-                  items:
-                    type: string
-            http:
+            webserver:
               type: object
               properties:
                 domain:
@@ -409,6 +387,32 @@ components:
                       type: boolean
                     theme:
                       type: string
+                api:
+                  type: object
+                  properties:
+                    localAPIauth:
+                      type: boolean
+                    prettyJSON:
+                      type: boolean
+                    sessionTimeout:
+                      type: integer
+                    pwhash:
+                      type: string
+                    exclude_clients:
+                      type: array
+                      items:
+                        type: string
+                    exclude_domains:
+                      type: array
+                      items:
+                        type: string
+                    temp:
+                      type: object
+                      properties:
+                        limit:
+                          type: number
+                        unit:
+                          type: string
             files:
               type: object
               properties:
@@ -444,13 +448,6 @@ components:
                   type: boolean
                 privacylevel:
                   type: integer
-                temp:
-                  type: object
-                  properties:
-                    limit:
-                      type: number
-                    unit:
-                      type: string
                 check:
                   type: object
                   properties:
@@ -553,6 +550,7 @@ components:
       value:
         config:
           dns:
+            upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
             CNAMEdeepInspect: true
             blockESNI: true
             EDNS0ECS: true
@@ -564,6 +562,25 @@ components:
             blockTTL: 2
             hosts:
               - "192.168.2.123 mymusicbox"
+            domain: "lan"
+            domain_needed: true
+            expand_hosts: true
+            bogus_priv: true
+            dnssec: true
+            interface: "eth0"
+            host_record: ""
+            listening_mode: "local"
+            cache_size: 10000
+            query_logging: true
+            cnames:
+              - "*.example.com,default.example.com"
+              - "hourly.yetanother.com,yetanother.com,3600"
+            port: 53
+            rev_server:
+              active: false
+              cidr: "192.168.0.0/24"
+              target: "192.168.0.1"
+              domain: "lan"
             blocking:
               active: true
               mode: 'NULL'
@@ -584,38 +601,17 @@ components:
             rateLimit:
               count: 0
               interval: 0
-          dnsmasq:
-            upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
-            domain: "lan"
-            domain_needed: true
-            expand_hosts: true
-            bogus_priv: true
-            dnssec: true
-            interface: "eth0"
-            host_record: ""
-            listening_mode: "local"
-            cache_size: 10000
-            logging: true
-            cnames:
-              - "*.example.com,default.example.com"
-              - "hourly.yetanother.com,yetanother.com,3600"
-            port: 53
-            rev_server:
-              active: false
-              cidr: "192.168.0.0/24"
-              target: "192.168.0.1"
-              domain: "lan"
-            dhcp:
-              active: false
-              start: "192.168.0.10"
-              end: "192.168.0.250"
-              router: "192.168.0.1"
-              leasetime: "24h"
-              ipv6: true
-              rapid_commit: true
-              hosts:
-                - "11:22:33:44:55:66,192.168.1.123"
-                - "11:22:33:44:55:67,192.168.1.124,hostname"
+          dhcp:
+            active: false
+            start: "192.168.0.10"
+            end: "192.168.0.250"
+            router: "192.168.0.1"
+            leasetime: "24h"
+            ipv6: true
+            rapid_commit: true
+            hosts:
+              - "11:22:33:44:55:66,192.168.1.123"
+              - "11:22:33:44:55:67,192.168.1.124,hostname"
           resolver:
             resolveIPv4: true
             resolveIPv6: true
@@ -630,14 +626,7 @@ components:
             network:
               parseARPcache: true
               expire: 365
-          api:
-            localAPIauth: false
-            prettyJSON: false
-            sessionTimeout: 300
-            pwhash: ''
-            exclude_clients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
-            exclude_domains: [ 'google.de', 'pi-hole.net' ]
-          http:
+          webserver:
             domain: pi.hole
             acl: "+0.0.0.0/0,::/0"
             port: 8080,[::]:8080
@@ -647,6 +636,16 @@ components:
             interface:
               boxed: true
               theme: "default-darker"
+            api:
+              localAPIauth: false
+              prettyJSON: false
+              sessionTimeout: 300
+              pwhash: ''
+              exclude_clients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
+              exclude_domains: [ 'google.de', 'pi-hole.net' ]
+              temp:
+                limit: 60.0
+                unit: "C"
           files:
             pid: "/run/pihole-FTL.pid"
             database: "/etc/pihole/pihole-FTL.db"
@@ -663,9 +662,6 @@ components:
             delay_startup: 10
             addr2line: true
             privacylevel: 0
-            temp:
-              limit: 60.0
-              unit: "C"
             check:
               load: true
               shmem: 90
@@ -750,7 +746,7 @@ components:
             error:
               key: "bad_request"
               message: "Invalid path depth"
-              hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dnsmasq.upstreams"
+              hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
         item_not_found:
           summary: Item to be deleted does not exist
           value:
