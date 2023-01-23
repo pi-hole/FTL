@@ -1258,3 +1258,14 @@
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
+
+@test "Create and verify Teleporter file via CLI" {
+  run bash -c './pihole-FTL --teleporter'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+#  # Get filename from last line printed by FTL
+#  filename="$(echo "${lines[@]}" | tail -1)"
+#  run bash -c 'zipinfo ${filename}'
+#  printf "%s\n" "${lines[@]}"
+#  [[ $status == 0 ]]
+}

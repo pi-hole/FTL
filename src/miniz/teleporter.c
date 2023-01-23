@@ -11,8 +11,12 @@
 #include "FTL.h"
 #include "miniz/teleporter.h"
 #include "config/config.h"
+// hostname()
+#include "daemon.h"
+// get_timestr(), TIMESTR_SIZE
+#include "log.h"
 
-const char *generate_teleporter_zip(mz_zip_archive *zip, void *ptr, size_t *size)
+const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], void *ptr, size_t *size)
 {
 	// Initialize ZIP archive
 	memset(zip, 0, sizeof(*zip));
@@ -39,6 +43,10 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, void *ptr, size_t *size
 		return "Failed to finalize heap ZIP archive!";
 	}
 
+	char timestr[TIMESTR_SIZE] = "";
+	get_timestr(timestr, time(NULL), false, true);
+	snprintf(filename, 128, "pi-hole_%s_teleporter_%s.zip", hostname(), timestr);
+
 	// Everything worked well
 	return NULL;
 }
@@ -46,4 +54,43 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, void *ptr, size_t *size
 bool free_teleporter_zip(mz_zip_archive *zip)
 {
 	return mz_zip_writer_end(zip);
+}
+
+bool write_teleporter_zip_to_disk(void)
+{
+	// Generate in-memory ZIP file
+	mz_zip_archive zip = { 0 };
+	void *ptr = NULL;
+	size_t size = 0u;
+	char filename[128] = "";
+	const char *error = generate_teleporter_zip(&zip, filename, &ptr, &size);
+	if(error != NULL)
+	{
+		log_err("Failed to create Teleporter ZIP file: %s", error);
+		return false;
+	}
+
+	// Write file to disk
+	FILE *fp = fopen(filename, "w");
+	if(fp == NULL)
+	{
+		log_err("Failed to open %s for writing: %s", filename, strerror(errno));
+		free_teleporter_zip(&zip);
+		return false;
+	}
+	if(fwrite(ptr, 1, size, fp) != size)
+	{
+		log_err("Failed to write %zu bytes to %s: %s", size, filename, strerror(errno));
+		free_teleporter_zip(&zip);
+		return false;
+	}
+	fclose(fp);
+
+	// Free allocated ZIP memory
+	free_teleporter_zip(&zip);
+
+	/* Output filename on successful creation */
+	log_info("%s", filename);
+
+	return true;
 }

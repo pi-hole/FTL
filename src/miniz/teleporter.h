@@ -11,7 +11,8 @@
 #define TELEPORTER_H
 
 #include "miniz/miniz.h"
-const char *generate_teleporter_zip(mz_zip_archive *zip, void *ptr, size_t *size);
+const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], void *ptr, size_t *size);
 bool free_teleporter_zip(mz_zip_archive *zip);
+bool write_teleporter_zip_to_disk(void);
 
 #endif // TELEPORTER_H

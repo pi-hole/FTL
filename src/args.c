@@ -44,6 +44,8 @@
 #include "config/config.h"
 // compression functions
 #include "miniz/compression.h"
+// teleporter functions
+#include "miniz/teleporter.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -243,6 +245,15 @@ void parse_args(int argc, char* argv[])
 			printf("Example: %s --config dns.blockESNI true\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
+	}
+
+	// Set config option through CLI
+	if(argc == 2 && strcmp(argv[1], "--teleporter") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		readFTLconf(false);
+		exit(write_teleporter_zip_to_disk() ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// start from 1, as argv[0] is the executable name
