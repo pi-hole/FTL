@@ -250,8 +250,10 @@ bool compare_config_item(const struct conf_item *conf_item1, const struct conf_i
 			return memcmp(&conf_item1->v, &conf_item2->v, sizeof(conf_item1->v)) == 0;
 		case CONF_STRING:
 		case CONF_STRING_ALLOCATED:
+			// Compare strings
 			return strcmp(conf_item1->v.s, conf_item2->v.s) == 0;
 		case CONF_JSON_STRING_ARRAY:
+			// Compare JSON object/array
 			return cJSON_Compare(conf_item1->v.json, conf_item2->v.json, true);
 	}
 	return false;

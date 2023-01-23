@@ -559,7 +559,7 @@ static int api_config_patch(struct ftl_conn *api)
 		struct conf_item *conf_item = get_conf_item(&config, i);
 
 		// Skip processing if value didn't change compared to current value
-		if(!compare_config_item(copy_item, conf_item))
+		if(compare_config_item(copy_item, conf_item))
 		{
 			log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
 			continue;
