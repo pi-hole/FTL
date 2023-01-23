@@ -299,6 +299,7 @@ void initConfig(void)
 	config.dns.analyzeOnlyAandAAAA.k = "dns.analyzeOnlyAandAAAA";
 	config.dns.analyzeOnlyAandAAAA.h = "Should FTL analyze *only* A and AAAA queries?";
 	config.dns.analyzeOnlyAandAAAA.t = CONF_BOOL;
+	config.dns.analyzeOnlyAandAAAA.f = FLAG_ADVANCED_SETTING;
 	config.dns.analyzeOnlyAandAAAA.d.b = false;
 
 	config.dns.piholePTR.k = "dns.piholePTR";
@@ -314,6 +315,7 @@ void initConfig(void)
 		CONFIG_ADD_ENUM_OPTIONS(config.dns.piholePTR.a, piholePTR);
 	}
 	config.dns.piholePTR.t = CONF_ENUM_PTR_TYPE;
+	config.dns.piholePTR.f = FLAG_ADVANCED_SETTING;
 	config.dns.piholePTR.d.ptr_type = PTR_PIHOLE;
 
 	config.dns.replyWhenBusy.k = "dns.replyWhenBusy";
@@ -329,63 +331,66 @@ void initConfig(void)
 		CONFIG_ADD_ENUM_OPTIONS(config.dns.replyWhenBusy.a, replyWhenBusy);
 	}
 	config.dns.replyWhenBusy.t = CONF_ENUM_BUSY_TYPE;
+	config.dns.replyWhenBusy.f = FLAG_ADVANCED_SETTING;
 	config.dns.replyWhenBusy.d.busy_reply = BUSY_ALLOW;
 
 	config.dns.blockTTL.k = "dns.blockTTL";
 	config.dns.blockTTL.h = "FTL's internal TTL to be handed out for blocked queries in seconds. This settings allows users to select a value different from the dnsmasq config option local-ttl. This is useful in context of locally used hostnames that are known to stay constant over long times (printers, etc.).\n Note that large values may render whitelisting ineffective due to client-side caching of blocked queries.";
 	config.dns.blockTTL.t = CONF_UINT;
+	config.dns.blockTTL.f = FLAG_ADVANCED_SETTING;
 	config.dns.blockTTL.d.ui = 2;
 
 	config.dns.hosts.k = "dns.hosts";
 	config.dns.hosts.h = "Array of custom DNS records\n Example: hosts = [ \"127.0.0.1 mylocal\", \"192.168.0.1 therouter\" ]";
 	config.dns.hosts.a = cJSON_CreateStringReference("Array of custom DNS records each one in HOSTS form: \"IP HOSTNAME\"");
 	config.dns.hosts.t = CONF_JSON_STRING_ARRAY;
+	config.dns.hosts.f = FLAG_ADVANCED_SETTING;
 	config.dns.hosts.d.json = cJSON_CreateArray();
 
 	config.dns.domain.k = "dns.domain";
 	config.dns.domain.h = "The DNS domain used by your Pi-hole";
 	config.dns.domain.a = cJSON_CreateStringReference("<any valid domain>");
 	config.dns.domain.t = CONF_STRING;
+	config.dns.domain.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	config.dns.domain.d.s = (char*)"lan";
-	config.dns.domain.f = FLAG_RESTART_DNSMASQ;
 
 	config.dns.domain_needed.k = "dns.domain_needed";
 	config.dns.domain_needed.h = "If set, A and AAAA queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
 	config.dns.domain_needed.t = CONF_BOOL;
+	config.dns.domain_needed.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	config.dns.domain_needed.d.b = false;
-	config.dns.domain_needed.f = FLAG_RESTART_DNSMASQ;
 
 	config.dns.expand_hosts.k = "dns.expand_hosts";
 	config.dns.expand_hosts.h = "If set, the domain is added to simple names (without a period) in /etc/hosts in the same way as for DHCP-derived names";
 	config.dns.expand_hosts.t = CONF_BOOL;
+	config.dns.expand_hosts.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	config.dns.expand_hosts.d.b = false;
-	config.dns.expand_hosts.f = FLAG_RESTART_DNSMASQ;
 
 	config.dns.bogus_priv.k = "dns.bogus_priv";
 	config.dns.bogus_priv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
 	config.dns.bogus_priv.t = CONF_BOOL;
+	config.dns.bogus_priv.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	config.dns.bogus_priv.d.b = true;
-	config.dns.bogus_priv.f = FLAG_RESTART_DNSMASQ;
 
 	config.dns.dnssec.k = "dns.dnssec";
 	config.dns.dnssec.h = "Validate DNS replies using DNSSEC?";
 	config.dns.dnssec.t = CONF_BOOL;
-	config.dns.dnssec.d.b = true;
 	config.dns.dnssec.f = FLAG_RESTART_DNSMASQ;
+	config.dns.dnssec.d.b = true;
 
 	config.dns.interface.k = "dns.interface";
 	config.dns.interface.h = "Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)";
 	config.dns.interface.a = cJSON_CreateStringReference("a valid interface name");
 	config.dns.interface.t = CONF_STRING;
+	config.dns.interface.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	config.dns.interface.d.s = (char*)"";
-	config.dns.interface.f = FLAG_RESTART_DNSMASQ;
 
 	config.dns.host_record.k = "dns.host_record";
 	config.dns.host_record.h = "Add A, AAAA and PTR records to the DNS. This adds one or more names to the DNS with associated IPv4 (A) and IPv6 (AAAA) records";
 	config.dns.host_record.a = cJSON_CreateStringReference("<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]");
 	config.dns.host_record.t = CONF_STRING;
+	config.dns.host_record.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	config.dns.host_record.d.s = (char*)"";
-	config.dns.host_record.f = FLAG_RESTART_DNSMASQ;
 
 	config.dns.listening_mode.k = "dns.listening_mode";
 	config.dns.listening_mode.h = "Pi-hole interface listening modes";
@@ -400,33 +405,33 @@ void initConfig(void)
 		CONFIG_ADD_ENUM_OPTIONS(config.dns.listening_mode.a, listening_mode);
 	}
 	config.dns.listening_mode.t = CONF_ENUM_LISTENING_MODE;
-	config.dns.listening_mode.d.listening_mode = LISTEN_LOCAL;
 	config.dns.listening_mode.f = FLAG_RESTART_DNSMASQ;
+	config.dns.listening_mode.d.listening_mode = LISTEN_LOCAL;
 
 	config.dns.cache_size.k = "dns.cache_size";
 	config.dns.cache_size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
 	config.dns.cache_size.t = CONF_UINT;
-	config.dns.cache_size.d.ui = 2000u;
 	config.dns.cache_size.f = FLAG_RESTART_DNSMASQ;
+	config.dns.cache_size.d.ui = 2000u;
 
 	config.dns.query_logging.k = "dns.query_logging";
 	config.dns.query_logging.h = "Log DNS queries and replies to pihole.log";
 	config.dns.query_logging.t = CONF_BOOL;
-	config.dns.query_logging.d.b = true;
 	config.dns.query_logging.f = FLAG_RESTART_DNSMASQ;
+	config.dns.query_logging.d.b = true;
 
 	config.dns.cnames.k = "dns.cnames";
 	config.dns.cnames.h = "List of CNAME records which indicate that <cname> is really <target>. If the <TTL> is given, it overwrites the value of local-ttl";
 	config.dns.cnames.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"<cname>,<target>[,<TTL>]\"");
 	config.dns.cnames.t = CONF_JSON_STRING_ARRAY;
+	config.dns.cnames.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	config.dns.cnames.d.json = cJSON_CreateArray();
-	config.dns.cnames.f = FLAG_RESTART_DNSMASQ;
 
 	config.dns.port.k = "dns.port";
 	config.dns.port.h = "Port used by the DNS server";
 	config.dns.port.t = CONF_UINT16;
+	config.dns.port.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	config.dns.port.d.ui = 53u;
-	config.dns.port.f = FLAG_RESTART_DNSMASQ;
 
 	// sub-struct dns.blocking
 	config.dns.blocking.active.k = "dns.blocking.active";
@@ -477,45 +482,53 @@ void initConfig(void)
 	config.dns.reply.host.overwrite_v4.k = "dns.reply.host.overwrite_v4";
 	config.dns.reply.host.overwrite_v4.h = "Use a specific IPv4 address for the Pi-hole host? By default, FTL determines the address of the interface a query arrived on and uses this address for replying to A queries with the most suitable address for the requesting client. This setting can be used to use a fixed, rather than the dynamically obtained, address when Pi-hole responds to the following names: [ \"pi.hole\", \"<the device's hostname>\", \"pi.hole.<local domain>\", \"<the device's hostname>.<local domain>\" ]";
 	config.dns.reply.host.overwrite_v4.t = CONF_BOOL;
+	config.dns.reply.host.overwrite_v4.f = FLAG_ADVANCED_SETTING;
 	config.dns.reply.host.overwrite_v4.d.b = false;
 
 	config.dns.reply.host.v4.k = "dns.reply.host.IPv4";
 	config.dns.reply.host.v4.h = "Custom IPv4 address for the Pi-hole host";
 	config.dns.reply.host.v4.a = cJSON_CreateStringReference("<valid IPv4 address> or empty string (\"\")");
 	config.dns.reply.host.v4.t = CONF_STRUCT_IN_ADDR;
+	config.dns.reply.host.v4.f = FLAG_ADVANCED_SETTING;
 	memset(&config.dns.reply.host.v4.d.in_addr, 0, sizeof(struct in_addr));
 
 	config.dns.reply.host.overwrite_v6.k = "dns.reply.host.overwrite_v6";
 	config.dns.reply.host.overwrite_v6.h = "Use a specific IPv6 address for the Pi-hole host? See description for the IPv4 variant above for further details.";
 	config.dns.reply.host.overwrite_v6.t = CONF_BOOL;
+	config.dns.reply.host.overwrite_v6.f = FLAG_ADVANCED_SETTING;
 	config.dns.reply.host.overwrite_v6.d.b = false;
 
 	config.dns.reply.host.v6.k = "dns.reply.host.IPv6";
 	config.dns.reply.host.v6.h = "Custom IPv6 address for the Pi-hole host";
 	config.dns.reply.host.v6.a = cJSON_CreateStringReference("<valid IPv6 address> or empty string (\"\")");
 	config.dns.reply.host.v6.t = CONF_STRUCT_IN6_ADDR;
+	config.dns.reply.host.v6.f = FLAG_ADVANCED_SETTING;
 	memset(&config.dns.reply.host.v6.d.in6_addr, 0, sizeof(struct in6_addr));
 
 	config.dns.reply.blocking.overwrite_v4.k = "dns.reply.blocking.overwrite_v4";
 	config.dns.reply.blocking.overwrite_v4.h = "Use a specific IPv4 address in IP blocking mode? By default, FTL determines the address of the interface a query arrived on and uses this address for replying to A queries with the most suitable address for the requesting client. This setting can be used to use a fixed, rather than the dynamically obtained, address when Pi-hole responds in the following cases: IP blocking mode is used and this query is to be blocked, regular expressions with the ;reply=IP regex extension.";
 	config.dns.reply.blocking.overwrite_v4.t = CONF_BOOL;
+	config.dns.reply.blocking.overwrite_v4.f = FLAG_ADVANCED_SETTING;
 	config.dns.reply.blocking.overwrite_v4.d.b = false;
 
 	config.dns.reply.blocking.v4.k = "dns.reply.blocking.IPv4";
 	config.dns.reply.blocking.v4.h = "Custom IPv4 address for IP blocking mode";
 	config.dns.reply.blocking.v4.a = cJSON_CreateStringReference("<valid IPv4 address> or empty string (\"\")");
 	config.dns.reply.blocking.v4.t = CONF_STRUCT_IN_ADDR;
+	config.dns.reply.blocking.v4.f = FLAG_ADVANCED_SETTING;
 	memset(&config.dns.reply.blocking.v4.d.in_addr, 0, sizeof(struct in_addr));
 
 	config.dns.reply.blocking.overwrite_v6.k = "dns.reply.blocking.overwrite_v6";
 	config.dns.reply.blocking.overwrite_v6.h = "Use a specific IPv6 address in IP blocking mode? See description for the IPv4 variant above for further details.";
 	config.dns.reply.blocking.overwrite_v6.t = CONF_BOOL;
+	config.dns.reply.blocking.overwrite_v6.f = FLAG_ADVANCED_SETTING;
 	config.dns.reply.blocking.overwrite_v6.d.b = false;
 
 	config.dns.reply.blocking.v6.k = "dns.reply.blocking.IPv6";
 	config.dns.reply.blocking.v6.h = "Custom IPv6 address for IP blocking mode";
 	config.dns.reply.blocking.v6.a = cJSON_CreateStringReference("<valid IPv6 address> or empty string (\"\")");
 	config.dns.reply.blocking.v6.t = CONF_STRUCT_IN6_ADDR;
+	config.dns.reply.blocking.v6.f = FLAG_ADVANCED_SETTING;
 	memset(&config.dns.reply.blocking.v6.d.in6_addr, 0, sizeof(struct in6_addr));
 
 	// sub-struct rev_server
@@ -550,55 +563,55 @@ void initConfig(void)
 	config.dhcp.active.k = "dhcp.active";
 	config.dhcp.active.h = "Is the embedded DHCP server enabled?";
 	config.dhcp.active.t = CONF_BOOL;
-	config.dhcp.active.d.b = false;
 	config.dhcp.active.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.active.d.b = false;
 
 	config.dhcp.start.k = "dhcp.start";
 	config.dhcp.start.h = "Start address of the DHCP address pool";
 	config.dhcp.start.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.10\"");
 	config.dhcp.start.t = CONF_STRING;
-	config.dhcp.start.d.s = (char*)"";
 	config.dhcp.start.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.start.d.s = (char*)"";
 
 	config.dhcp.end.k = "dhcp.end";
 	config.dhcp.end.h = "End address of the DHCP address pool";
 	config.dhcp.end.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.250\"");
 	config.dhcp.end.t = CONF_STRING;
-	config.dhcp.end.d.s = (char*)"";
 	config.dhcp.end.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.end.d.s = (char*)"";
 
 	config.dhcp.router.k = "dhcp.router";
 	config.dhcp.router.h = "Address of the gateway to be used (typicaly the address of your router in a home installation)";
 	config.dhcp.router.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.1\"");
 	config.dhcp.router.t = CONF_STRING;
-	config.dhcp.router.d.s = (char*)"";
 	config.dhcp.router.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.router.d.s = (char*)"";
 
 	config.dhcp.leasetime.k = "dhcp.leasetime";
 	config.dhcp.leasetime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
 	config.dhcp.leasetime.a = cJSON_CreateStringReference("The lease time can be in seconds, or minutes (e.g., \"45m\") or hours (e.g., \"1h\") or days (like \"2d\") or even weeks (\"1w\"). You may also use \"infinite\" as string but be aware of the drawbacks");
 	config.dhcp.leasetime.t = CONF_STRING;
+	config.dhcp.leasetime.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	config.dhcp.leasetime.d.s = (char*)"";
-	config.dhcp.leasetime.f = FLAG_RESTART_DNSMASQ;
 
 	config.dhcp.ipv6.k = "dhcp.ipv6";
 	config.dhcp.ipv6.h = "Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that IPv6 works a whole lot different than IPv4)";
 	config.dhcp.ipv6.t = CONF_BOOL;
-	config.dhcp.ipv6.d.b = false;
 	config.dhcp.ipv6.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.ipv6.d.b = false;
 
 	config.dhcp.rapid_commit.k = "dhcp.rapid_commit";
 	config.dhcp.rapid_commit.h = "Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if either the server is the only server for the subnet to avoid conflicts";
 	config.dhcp.rapid_commit.t = CONF_BOOL;
-	config.dhcp.rapid_commit.d.b = false;
 	config.dhcp.rapid_commit.f = FLAG_RESTART_DNSMASQ;
+	config.dhcp.rapid_commit.d.b = false;
 
 	config.dhcp.hosts.k = "dhcp.hosts";
 	config.dhcp.hosts.h = "Per host parameters for the DHCP server. This allows a machine with a particular hardware address to be always allocated the same hostname, IP address and lease time or to specify static DHCP leases";
 	config.dhcp.hosts.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]\"");
 	config.dhcp.hosts.t = CONF_JSON_STRING_ARRAY;
+	config.dhcp.hosts.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	config.dhcp.hosts.d.json = cJSON_CreateArray();
-	config.dhcp.hosts.f = FLAG_RESTART_DNSMASQ;
 
 
 	// struct resolver
@@ -615,6 +628,7 @@ void initConfig(void)
 	config.resolver.networkNames.k = "resolver.networkNames";
 	config.resolver.networkNames.h = "Control whether FTL should use the fallback option to try to obtain client names from checking the network table. This behavior can be disabled with this option.\nAssume an IPv6 client without a host names. However, the network table knows - though the client's MAC address - that this is the same device where we have a host name for another IP address (e.g., a DHCP server managed IPv4 address). In this case, we use the host name associated to the other address as this is the same device.";
 	config.resolver.networkNames.t = CONF_BOOL;
+	config.resolver.networkNames.f = FLAG_ADVANCED_SETTING;
 	config.resolver.networkNames.d.b = true;
 
 	config.resolver.refreshNames.k = "resolver.refreshNames";
@@ -630,6 +644,7 @@ void initConfig(void)
 		CONFIG_ADD_ENUM_OPTIONS(config.resolver.refreshNames.a, refreshNames);
 	}
 	config.resolver.refreshNames.t = CONF_ENUM_REFRESH_HOSTNAMES;
+	config.resolver.refreshNames.f = FLAG_ADVANCED_SETTING;
 	config.resolver.refreshNames.d.refresh_hostnames = REFRESH_IPV4_ONLY;
 
 
@@ -663,11 +678,13 @@ void initConfig(void)
 	config.database.network.parseARPcache.k = "database.network.parseARPcache";
 	config.database.network.parseARPcache.h = "Should FTL anaylze the local ARP cache? When disabled, client identification and the network table will stop working reliably.";
 	config.database.network.parseARPcache.t = CONF_BOOL;
+	config.database.network.parseARPcache.f = FLAG_ADVANCED_SETTING;
 	config.database.network.parseARPcache.d.b = true;
 
 	config.database.network.expire.k = "database.network.expire";
 	config.database.network.expire.h = "How long should IP addresses be kept in the network_addresses table [days]? IP addresses (and associated host names) older than the specified number of days are removed to avoid dead entries in the network overview table.";
 	config.database.network.expire.t = CONF_UINT;
+	config.database.network.expire.f = FLAG_ADVANCED_SETTING;
 	config.database.network.expire.d.ui = config.database.maxDBdays.d.ui;
 
 
@@ -681,11 +698,12 @@ void initConfig(void)
 	config.webserver.acl.k = "webserver.acl";
 	config.webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny. If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: acl = \"+127.0.0.1,+[::1]\"\n ---> deny all access, except from 127.0.0.1 and ::1,\n Example 2: acl = \"+192.168.0.0/16\"\n ---> deny all accesses, except from the 192.168.0.0/16 subnet,\n Example 3: acl = \"+[::]/0\" ---> allow only IPv6 access.";
 	config.webserver.acl.a = cJSON_CreateStringReference("<valid ACL>");
+	config.webserver.acl.f = FLAG_ADVANCED_SETTING;
 	config.webserver.acl.t = CONF_STRING;
 	config.webserver.acl.d.s = (char*)"";
 
 	config.webserver.port.k = "webserver.port";
-	config.webserver.port.h = "Ports to be used by the webserver";
+	config.webserver.port.h = "Ports to be used by the webserver. Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:8080\" can be used to listen to IPv6 connections to port 8080. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:8080\" for the IPv6 loopback interface. [::]:80 will bind to port 80 IPv6 only.\n In order to use port 8080 for all interfaces, both IPv4 and IPv6, use either the configuration \"8080,[::]:8080\" (create one socket for IPv4 and one for IPv6 only), or \"+8080\" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+8080\" does not work for your environment, you need to use \"8080,[::]:8080\".";
 	config.webserver.port.a = cJSON_CreateStringReference("comma-separated list of <[ip_address:]port>");
 	config.webserver.port.t = CONF_STRING;
 	config.webserver.port.d.s = (char*)"8080,[::]:8080";
@@ -695,12 +713,14 @@ void initConfig(void)
 	config.webserver.paths.webroot.h = "Server root on the host";
 	config.webserver.paths.webroot.a = cJSON_CreateStringReference("<valid path>");
 	config.webserver.paths.webroot.t = CONF_STRING;
+	config.webserver.paths.webroot.f = FLAG_ADVANCED_SETTING;
 	config.webserver.paths.webroot.d.s = (char*)"/var/www/html";
 
 	config.webserver.paths.webhome.k = "webserver.paths.webhome";
 	config.webserver.paths.webhome.h = "Sub-directory of the root containing the web interface";
 	config.webserver.paths.webhome.a = cJSON_CreateStringReference("<valid subpath>, both slashes are needed!");
 	config.webserver.paths.webhome.t = CONF_STRING;
+	config.webserver.paths.webhome.f = FLAG_ADVANCED_SETTING;
 	config.webserver.paths.webhome.d.s = (char*)"/admin/";
 
 	// sub-struct interface
@@ -724,6 +744,7 @@ void initConfig(void)
 	config.webserver.api.prettyJSON.k = "webserver.api.prettyJSON";
 	config.webserver.api.prettyJSON.h = "Should FTL prettify the API output (add extra spaces, newlines and indentation)?";
 	config.webserver.api.prettyJSON.t = CONF_BOOL;
+	config.webserver.api.prettyJSON.f = FLAG_ADVANCED_SETTING;
 	config.webserver.api.prettyJSON.d.b = false;
 
 	config.webserver.api.sessionTimeout.k = "webserver.api.sessionTimeout";
@@ -775,42 +796,49 @@ void initConfig(void)
 	config.files.pid.h = "The file which contains the PID of FTL's main process.";
 	config.files.pid.a = cJSON_CreateStringReference("<any writable file>");
 	config.files.pid.t = CONF_STRING;
+	config.files.pid.f = FLAG_ADVANCED_SETTING;
 	config.files.pid.d.s = (char*)"/run/pihole-FTL.pid";
 
 	config.files.database.k = "files.database";
 	config.files.database.h = "The location of FTL's long-term database";
 	config.files.database.a = cJSON_CreateStringReference("<any FTL database>");
 	config.files.database.t = CONF_STRING;
+	config.files.database.f = FLAG_ADVANCED_SETTING;
 	config.files.database.d.s = (char*)"/etc/pihole/pihole-FTL.db";
 
 	config.files.gravity.k = "files.gravity";
 	config.files.gravity.h = "The location of Pi-hole's gravity database";
 	config.files.gravity.a = cJSON_CreateStringReference("<any Pi-hole gravity database>");
 	config.files.gravity.t = CONF_STRING;
+	config.files.gravity.f = FLAG_ADVANCED_SETTING;
 	config.files.gravity.d.s = (char*)"/etc/pihole/gravity.db";
 
 	config.files.macvendor.k = "files.macvendor";
 	config.files.macvendor.h = "The database containing MAC -> Vendor information for the network table";
 	config.files.macvendor.a = cJSON_CreateStringReference("<any Pi-hole macvendor database>");
 	config.files.macvendor.t = CONF_STRING;
+	config.files.macvendor.f = FLAG_ADVANCED_SETTING;
 	config.files.macvendor.d.s = (char*)"/etc/pihole/macvendor.db";
 
 	config.files.setupVars.k = "files.setupVars";
 	config.files.setupVars.h = "The config file of Pi-hole";
 	config.files.setupVars.a = cJSON_CreateStringReference("<any Pi-hole setupVars file>");
 	config.files.setupVars.t = CONF_STRING;
+	config.files.setupVars.f = FLAG_ADVANCED_SETTING;
 	config.files.setupVars.d.s = (char*)"/etc/pihole/setupVars.conf";
 
 	config.files.http_info.k = "files.http_info";
 	config.files.http_info.h = "The log file used by the webserver";
 	config.files.http_info.a = cJSON_CreateStringReference("<any writable file>");
 	config.files.http_info.t = CONF_STRING;
+	config.files.http_info.f = FLAG_ADVANCED_SETTING;
 	config.files.http_info.d.s = (char*)"/var/log/pihole/HTTP_info.log";
 
 	config.files.ph7_error.k = "files.ph7_error";
 	config.files.ph7_error.h = "The log file used by the dynamic interpreter PH7";
 	config.files.ph7_error.a = cJSON_CreateStringReference("<any writable file>");
 	config.files.ph7_error.t = CONF_STRING;
+	config.files.ph7_error.f = FLAG_ADVANCED_SETTING;
 	config.files.ph7_error.d.s = (char*)"/var/log/pihole/PH7.log";
 
 	// sub-struct files.log
@@ -820,6 +848,7 @@ void initConfig(void)
 	config.files.log.dnsmasq.h = "The log file used by the embedded dnsmasq DNS server";
 	config.files.log.dnsmasq.a = cJSON_CreateStringReference("<any writable file>");
 	config.files.log.dnsmasq.t = CONF_STRING;
+	config.files.log.dnsmasq.f = FLAG_ADVANCED_SETTING;
 	config.files.log.dnsmasq.d.s = (char*)"/var/log/pihole/pihole.log";
 
 
@@ -847,11 +876,13 @@ void initConfig(void)
 	config.misc.nice.k = "misc.nice";
 	config.misc.nice.h = "Set niceness of pihole-FTL. Defaults to -10 and can be disabled altogether by setting a value of -999. The nice value is an attribute that can be used to influence the CPU scheduler to favor or disfavor a process in scheduling decisions. The range of the nice value varies across UNIX systems. On modern Linux, the range is -20 (high priority = not very nice to other processes) to +19 (low priority).";
 	config.misc.nice.t = CONF_INT;
+	config.misc.nice.f = FLAG_ADVANCED_SETTING;
 	config.misc.nice.d.i = -10;
 
 	config.misc.addr2line.k = "misc.addr2line";
 	config.misc.addr2line.h = "Should FTL translate its own stack addresses into code lines during the bug backtrace? This improves the analysis of crashed significantly. It is recommended to leave the option enabled. This option should only be disabled when addr2line is known to not be working correctly on the machine because, in this case, the malfunctioning addr2line can prevent from generating any backtrace at all.";
 	config.misc.addr2line.t = CONF_BOOL;
+	config.misc.addr2line.f = FLAG_ADVANCED_SETTING;
 	config.misc.addr2line.d.b = true;
 
 	// sub-struct misc.check
@@ -875,121 +906,145 @@ void initConfig(void)
 	config.debug.database.k = "debug.database";
 	config.debug.database.h = "Print debugging information about database actions. This prints performed SQL statements as well as some general information such as the time it took to store the queries and how many have been saved to the database.";
 	config.debug.database.t = CONF_BOOL;
+	config.debug.database.f = FLAG_ADVANCED_SETTING;
 	config.debug.database.d.b = false;
 
 	config.debug.networking.k = "debug.networking";
 	config.debug.networking.h = "Prints a list of the detected interfaces on the startup of pihole-FTL. Also, prints whether these interfaces are IPv4 or IPv6 interfaces.";
 	config.debug.networking.t = CONF_BOOL;
+	config.debug.networking.f = FLAG_ADVANCED_SETTING;
 	config.debug.networking.d.b = false;
 
 	config.debug.locks.k = "debug.locks";
 	config.debug.locks.h = "Print information about shared memory locks. Messages will be generated when waiting, obtaining, and releasing a lock.";
 	config.debug.locks.t = CONF_BOOL;
+	config.debug.locks.f = FLAG_ADVANCED_SETTING;
 	config.debug.locks.d.b = false;
 
 	config.debug.queries.k = "debug.queries";
 	config.debug.queries.h = "Print extensive query information (domains, types, replies, etc.). This has always been part of the legacy debug mode of pihole-FTL.";
 	config.debug.queries.t = CONF_BOOL;
+	config.debug.queries.f = FLAG_ADVANCED_SETTING;
 	config.debug.queries.d.b = false;
 
 	config.debug.flags.k = "debug.flags";
 	config.debug.flags.h = "Print flags of queries received by the DNS hooks. Only effective when DEBUG_QUERIES is enabled as well.";
 	config.debug.flags.t = CONF_BOOL;
+	config.debug.flags.f = FLAG_ADVANCED_SETTING;
 	config.debug.flags.d.b = false;
 
 	config.debug.shmem.k = "debug.shmem";
 	config.debug.shmem.h = "Print information about shared memory buffers. Messages are either about creating or enlarging shmem objects or string injections.";
 	config.debug.shmem.t = CONF_BOOL;
+	config.debug.shmem.f = FLAG_ADVANCED_SETTING;
 	config.debug.shmem.d.b = false;
 
 	config.debug.gc.k = "debug.gc";
 	config.debug.gc.h = "Print information about garbage collection (GC): What is to be removed, how many have been removed and how long did GC take.";
 	config.debug.gc.t = CONF_BOOL;
+	config.debug.gc.f = FLAG_ADVANCED_SETTING;
 	config.debug.gc.d.b = false;
 
 	config.debug.arp.k = "debug.arp";
 	config.debug.arp.h = "Print information about ARP table processing: How long did parsing take, whether read MAC addresses are valid, and if the macvendor.db file exists.";
 	config.debug.arp.t = CONF_BOOL;
+	config.debug.arp.f = FLAG_ADVANCED_SETTING;
 	config.debug.arp.d.b = false;
 
 	config.debug.regex.k = "debug.regex";
 	config.debug.regex.h = "Controls if FTLDNS should print extended details about regex matching into FTL.log.";
 	config.debug.regex.t = CONF_BOOL;
+	config.debug.regex.f = FLAG_ADVANCED_SETTING;
 	config.debug.regex.d.b = false;
 
 	config.debug.api.k = "debug.api";
 	config.debug.api.h = "Print extra debugging information during telnet API calls. Currently only used to send extra information when getting all queries.";
 	config.debug.api.t = CONF_BOOL;
+	config.debug.api.f = FLAG_ADVANCED_SETTING;
 	config.debug.api.d.b = false;
 
 	config.debug.overtime.k = "debug.overtime";
 	config.debug.overtime.h = "Print information about overTime memory operations, such as initializing or moving overTime slots.";
 	config.debug.overtime.t = CONF_BOOL;
+	config.debug.overtime.f = FLAG_ADVANCED_SETTING;
 	config.debug.overtime.d.b = false;
 
 	config.debug.status.k = "debug.status";
 	config.debug.status.h = "Print information about status changes for individual queries. This can be useful to identify unexpected unknown queries.";
 	config.debug.status.t = CONF_BOOL;
+	config.debug.status.f = FLAG_ADVANCED_SETTING;
 	config.debug.status.d.b = false;
 
 	config.debug.caps.k = "debug.caps";
 	config.debug.caps.h = "Print information about capabilities granted to the pihole-FTL process. The current capabilities are printed on receipt of SIGHUP, i.e., the current set of capabilities can be queried without restarting pihole-FTL (by setting DEBUG_CAPS=true and thereafter sending killall -HUP pihole-FTL).";
 	config.debug.caps.t = CONF_BOOL;
+	config.debug.caps.f = FLAG_ADVANCED_SETTING;
 	config.debug.caps.d.b = false;
 
 	config.debug.dnssec.k = "debug.dnssec";
 	config.debug.dnssec.h = "Print information about DNSSEC activity";
 	config.debug.dnssec.t = CONF_BOOL;
+	config.debug.dnssec.f = FLAG_ADVANCED_SETTING;
 	config.debug.dnssec.d.b = false;
 
 	config.debug.vectors.k = "debug.vectors";
 	config.debug.vectors.h = "FTL uses dynamically allocated vectors for various tasks. This config option enables extensive debugging information such as information about allocation, referencing, deletion, and appending.";
 	config.debug.vectors.t = CONF_BOOL;
+	config.debug.vectors.f = FLAG_ADVANCED_SETTING;
 	config.debug.vectors.d.b = false;
 
 	config.debug.resolver.k = "debug.resolver";
 	config.debug.resolver.h = "Extensive information about hostname resolution like which DNS servers are used in the first and second hostname resolving tries (only affecting internally generated PTR queries).";
 	config.debug.resolver.t = CONF_BOOL;
+	config.debug.resolver.f = FLAG_ADVANCED_SETTING;
 	config.debug.resolver.d.b = false;
 
 	config.debug.edns0.k = "debug.edns0";
 	config.debug.edns0.h = "Print debugging information about received EDNS(0) data.";
 	config.debug.edns0.t = CONF_BOOL;
+	config.debug.edns0.f = FLAG_ADVANCED_SETTING;
 	config.debug.edns0.d.b = false;
 
 	config.debug.clients.k = "debug.clients";
 	config.debug.clients.h = "Log various important client events such as change of interface (e.g., client switching from WiFi to wired or VPN connection), as well as extensive reporting about how clients were assigned to its groups.";
 	config.debug.clients.t = CONF_BOOL;
+	config.debug.clients.f = FLAG_ADVANCED_SETTING;
 	config.debug.clients.d.b = false;
 
 	config.debug.aliasclients.k = "debug.aliasclients";
 	config.debug.aliasclients.h = "Log information related to alias-client processing.";
 	config.debug.aliasclients.t = CONF_BOOL;
+	config.debug.aliasclients.f = FLAG_ADVANCED_SETTING;
 	config.debug.aliasclients.d.b = false;
 
 	config.debug.events.k = "debug.events";
 	config.debug.events.h = "Log information regarding FTL's embedded event handling queue.";
 	config.debug.events.t = CONF_BOOL;
+	config.debug.events.f = FLAG_ADVANCED_SETTING;
 	config.debug.events.d.b = false;
 
 	config.debug.helper.k = "debug.helper";
 	config.debug.helper.h = "Log information about script helpers, e.g., due to dhcp-script.";
 	config.debug.helper.t = CONF_BOOL;
+	config.debug.helper.f = FLAG_ADVANCED_SETTING;
 	config.debug.helper.d.b = false;
 
 	config.debug.config.k = "debug.config";
 	config.debug.config.h = "Print config parsing details";
 	config.debug.config.t = CONF_BOOL;
+	config.debug.config.f = FLAG_ADVANCED_SETTING;
 	config.debug.config.d.b = false;
 
 	config.debug.extra.k = "debug.extra";
 	config.debug.extra.h = "Temporary flag that may print additional information. This debug flag is meant to be used whenever needed for temporary investigations. The logged content may change without further notice at any time.";
 	config.debug.extra.t = CONF_BOOL;
+	config.debug.extra.f = FLAG_ADVANCED_SETTING;
 	config.debug.extra.d.b = false;
 
 	config.debug.reserved.k = "debug.reserved";
 	config.debug.reserved.h = "Reserved debug flag";
 	config.debug.reserved.t = CONF_BOOL;
+	config.debug.reserved.f = FLAG_ADVANCED_SETTING;
 	config.debug.reserved.d.b = false;
 
 	// Post-processing:
@@ -1096,6 +1151,7 @@ bool getLogFilePath(void)
 	config.files.log.ftl.h = "The location of FTL's log file";
 	config.files.log.ftl.a = cJSON_CreateStringReference("<any writable file>");
 	config.files.log.ftl.t = CONF_STRING;
+	config.files.log.ftl.f = FLAG_ADVANCED_SETTING;
 	config.files.log.ftl.d.s = (char*)"/var/log/pihole/FTL.log";
 	config.files.log.ftl.v.s = config.files.log.ftl.d.s;
 
