@@ -183,8 +183,8 @@ void *GC_thread(void *val)
 			if(config.debug.gc.v.b)
 			{
 				timer_start(GC_TIMER);
-				char timestring[84] = "";
-				get_timestr(timestring, mintime, false);
+				char timestring[TIMESTR_SIZE] = "";
+				get_timestr(timestring, mintime, false, false);
 				log_info("GC starting, mintime: %s (%llu)", timestring, (long long)mintime);
 			}
 

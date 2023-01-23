@@ -22,6 +22,7 @@ set(sources
         queries.c
         stats_database.c
         stats.c
+        teleporter.c
         )
 
 add_library(api OBJECT ${sources})

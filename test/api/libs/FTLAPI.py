@@ -95,7 +95,7 @@ class FTLAPI():
 		self.session = response["session"]
 
 	# Query the FTL API (GET) and return the response
-	def GET(self, uri: str, params: List[str] = []):
+	def GET(self, uri: str, params: List[str] = [], expected_mimetype: str = "application/json"):
 		self.errors = []
 		try:
 			# Add parameters to the URI (if any)
@@ -113,7 +113,10 @@ class FTLAPI():
 			with requests.get(url = self.api_url + uri, json = data) as response:
 				if self.verbose:
 					print(json.dumps(response.json(), indent=4))
-				return response.json()
+				if expected_mimetype == "application/json":
+					return response.json()
+				else:
+					return response.content
 		except Exception as e:
 			self.errors.append("Exception when GETing from FTL: " + str(e))
 			return None

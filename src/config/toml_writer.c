@@ -37,8 +37,8 @@ bool writeFTLtoml(const bool verbose)
 	fputs("# This file is managed by pihole-FTL\n#\n", fp);
 	fputs("# Do not edit the file while FTL is\n", fp);
 	fputs("# running or your changes may be overwritten\n#\n", fp);
-	char timestring[84] = "";
-	get_timestr(timestring, time(NULL), false);
+	char timestring[TIMESTR_SIZE] = "";
+	get_timestr(timestring, time(NULL), false, false);
 	fputs("# Last updated on ", fp);
 	fputs(timestring, fp);
 	fputs("\n# by FTL ", fp);

@@ -63,7 +63,7 @@ static bool get_process_ppid(const pid_t pid, pid_t *ppid)
 	return true;
 }
 
-static bool get_process_creation_time(const pid_t pid, char timestr[84])
+static bool get_process_creation_time(const pid_t pid, char timestr[TIMESTR_SIZE])
 {
 	// Try to open comm file
 	char filename[sizeof("/proc/%u/task/%u/comm") + sizeof(int)*3 * 2];
@@ -71,7 +71,7 @@ static bool get_process_creation_time(const pid_t pid, char timestr[84])
 	struct stat st;
 	if(stat(filename, &st) < 0)
 		return false;
-	get_timestr(timestr, st.st_ctim.tv_sec, false);
+	get_timestr(timestr, st.st_ctim.tv_sec, false, false);
 
 	return true;
 }
@@ -128,7 +128,7 @@ bool check_running_FTL(void)
 		if(!get_process_name(ppid, ppid_name))
 			continue;
 
-		char timestr[84] = { 0 };
+		char timestr[TIMESTR_SIZE] = { 0 };
 		get_process_creation_time(pid, timestr);
 
 		// If this is the first process we log, add a header

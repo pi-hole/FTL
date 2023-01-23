@@ -82,4 +82,7 @@ int api_auth(struct ftl_conn *api);
 // Documentation methods
 int api_docs(struct ftl_conn *api);
 
+// Teleporter methods
+int api_teleporter(struct ftl_conn *api);
+
 #endif // ROUTES_H

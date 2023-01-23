@@ -13,6 +13,8 @@ set(sources
         compression.h
         miniz.c
         miniz.h
+        teleporter.c
+        teleporter.h
         )
 
 add_library(miniz OBJECT ${sources})

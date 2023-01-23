@@ -7,12 +7,11 @@
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
-#ifndef COMPRESSION_H
-#define COMPRESSION_H
+#ifndef TELEPORTER_H
+#define TELEPORTER_H
 
-#include <stdbool.h>
+#include "miniz/miniz.h"
+const char *generate_teleporter_zip(mz_zip_archive *zip, void *ptr, size_t *size);
+bool free_teleporter_zip(mz_zip_archive *zip);
 
-bool deflate_file(const char *in, const char *out, bool verbose);
-bool inflate_file(const char *infile, const char *outfile, bool verbose);
-
-#endif // COMPRESSION_H
+#endif // TELEPORTER_H

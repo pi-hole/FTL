@@ -184,8 +184,8 @@ char *get_dnsmasq_line(const unsigned int lineno)
 static void write_config_header(FILE *fp, const char *description)
 {
 	const time_t now = time(NULL);
-	char timestring[84] = "";
-	get_timestr(timestring, now, false);
+	char timestring[TIMESTR_SIZE] = "";
+	get_timestr(timestring, now, false, false);
 	fputs("# Pi-hole: A black hole for Internet advertisements\n", fp);
 	fprintf(fp, "# (c) %u Pi-hole, LLC (https://pi-hole.net)\n", get_year(now));
 	fputs("# Network-wide ad blocking via your own hardware.\n", fp);

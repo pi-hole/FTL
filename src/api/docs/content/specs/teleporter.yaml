@@ -1,0 +1,25 @@
+openapi: 3.0.2
+components:
+  paths:
+    teleporter:
+      get:
+        summary: Export Pi-hole settings
+        tags:
+          - "Pi-hole configuration"
+        operationId: "get_teleporter"
+        description: |
+          Request an archived copy of your Pi-hole's current configuration
+        responses:
+          '200':
+            description: OK
+            content:
+              application/zip:
+                schema:
+                  type: string
+                  format: binary
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'

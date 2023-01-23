@@ -100,10 +100,17 @@ double double_time(void)
 
 // The size of 84 bytes has been carefully selected for all possible timestamps
 // to always fit into the available space without buffer overflows
-void get_timestr(char * const timestring, const time_t timein, const bool millis)
+void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible)
 {
 	struct tm tm;
 	localtime_r(&timein, &tm);
+	char space = ' ';
+	char colon = ':';
+	if(uri_compatible)
+	{
+		space = '_';
+		colon = '-';
+	}
 
 	if(millis)
 	{
@@ -111,15 +118,15 @@ void get_timestr(char * const timestring, const time_t timein, const bool millis
 		gettimeofday(&tv, NULL);
 		const int millisec = tv.tv_usec/1000;
 
-		sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d.%03i",
-		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-		        tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
+		sprintf(timestring,"%d-%02d-%02d%c%02d%c%02d%c%02d.%03i",
+		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, millisec);
 	}
 	else
 	{
-		sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d",
-		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-		        tm.tm_hour, tm.tm_min, tm.tm_sec);
+		sprintf(timestring,"%d-%02d-%02d%c%02d%c%02d%c%02d",
+		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec);
 	}
 }
 
@@ -254,7 +261,7 @@ void debugstr(const enum debug_flag flag, const char **name)
 
 void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
 {
-	char timestring[84] = "";
+	char timestring[TIMESTR_SIZE] = "";
 	va_list args;
 
 	// We have been explicitly asked to not print anything to the log
@@ -262,7 +269,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 		return;
 
 	// Get human-readable time
-	get_timestr(timestring, time(NULL), true);
+	get_timestr(timestring, time(NULL), true, false);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
@@ -372,7 +379,7 @@ static FILE * __attribute__((malloc, warn_unused_result)) open_web_log(const enu
 
 void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum fifo_logs which, const char *format, ...)
 {
-	char timestring[84] = "";
+	char timestring[TIMESTR_SIZE] = "";
 	const time_t now = time(NULL);
 	va_list args;
 
@@ -384,7 +391,7 @@ void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum fifo_logs which, 
 	add_to_fifo_buffer(which, buffer, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
 	// Get human-readable time
-	get_timestr(timestring, now, true);
+	get_timestr(timestring, now, true, false);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file

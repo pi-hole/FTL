@@ -9,6 +9,8 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
+import io
+import zipfile
 from libs.openAPI import openApi
 import urllib.request, urllib.parse
 from libs.FTLAPI import FTLAPI
@@ -58,10 +60,20 @@ class ResponseVerifyer():
 			return self.errors
 
 		# Get YAML response schema and examples (if applicable)
-		if 'content' in self.openapi.paths[endpoint][method]['responses'][str(rcode)]:
-			jsonData = self.openapi.paths[endpoint][method]['responses'][str(rcode)]['content']['application/json']
-			YAMLresponseSchema = jsonData['schema']
-			YAMLresponseExamples = jsonData['examples'] if 'examples' in jsonData else None
+		expected_mimetype = True
+		response_rcode = self.openapi.paths[endpoint][method]['responses'][str(rcode)]
+		if 'content' in response_rcode:
+			content = response_rcode['content']
+			if 'application/json' in content:
+				expected_mimetype = 'application/json'
+				jsonData = content[expected_mimetype]
+				YAMLresponseSchema = jsonData['schema']
+				YAMLresponseExamples = jsonData['examples'] if 'examples' in jsonData else None
+			elif 'application/zip' in content:
+				expected_mimetype = 'application/zip'
+				jsonData = content[expected_mimetype]
+				YAMLresponseSchema = None
+				YAMLresponseExamples = None
 		else:
 			# No response defined
 			return self.errors
@@ -80,40 +92,62 @@ class ResponseVerifyer():
 				FTLparameters.append(param['name'] + "=" + urllib.parse.quote_plus(str(param['example'])))
 
 		# Get FTL response
-		FTLresponse = self.ftl.GET("/api" + endpoint, FTLparameters)
+		FTLresponse = self.ftl.GET("/api" + endpoint, FTLparameters, expected_mimetype)
 		if FTLresponse is None:
 			return self.ftl.errors
 
 		self.YAMLresponse = {}
-		# Check if the response is an object. If so, we have to check it
-		# recursively
-		if 'type' in YAMLresponseSchema and YAMLresponseSchema['type'] == 'object':
-			# Loop over all properties of the object
-			for prop in YAMLresponseSchema['properties']:
-				self.verify_property(YAMLresponseSchema['properties'], YAMLresponseExamples, FTLresponse, [prop])
+		# Checking depends on the expected mimetype
+		if expected_mimetype == "application/json":
+			# Check if the response is an object. If so, we have to check it
+			# recursively
+			if 'type' in YAMLresponseSchema and YAMLresponseSchema['type'] == 'object':
+				# Loop over all properties of the object
+				for prop in YAMLresponseSchema['properties']:
+					self.verify_property(YAMLresponseSchema['properties'], YAMLresponseExamples, FTLresponse, [prop])
 
-		# Check if the response is a gather-all object. If so, we have
-		# to check all objects in the array individually
-		elif 'allOf' in YAMLresponseSchema and len(YAMLresponseSchema['allOf']) > 0:
-			for i in range(len(YAMLresponseSchema['allOf'])):
-				for prop in YAMLresponseSchema['allOf'][i]['properties']:
-					self.verify_property(YAMLresponseSchema['allOf'][i]['properties'], YAMLresponseExamples, FTLresponse, [prop])
+			# Check if the response is a gather-all object. If so, we have
+			# to check all objects in the array individually
+			elif 'allOf' in YAMLresponseSchema and len(YAMLresponseSchema['allOf']) > 0:
+				for i in range(len(YAMLresponseSchema['allOf'])):
+					for prop in YAMLresponseSchema['allOf'][i]['properties']:
+						self.verify_property(YAMLresponseSchema['allOf'][i]['properties'], YAMLresponseExamples, FTLresponse, [prop])
 
-		# If neither of the above is true, thie definition is invalid
+			# If neither of the above is true, thie definition is invalid
+			else:
+				self.errors.append("Top-level response should be either an object or a non-empty allOf/anyOf/oneOf")
+
+			# Finally, we check if there are extra properties in the FTL response
+			# that are not defined in the API specs
+
+			# Flatten the FTL response
+			FTLflat = self.flatten_dict(FTLresponse)
+			YAMLflat = self.YAMLresponse
+
+			# Check for properties in FTL that are not in the API specs
+			for property in FTLflat.keys():
+				if property not in YAMLflat.keys():
+					self.errors.append("Property '" + property + "' missing in the API specs")
+
+		elif expected_mimetype == "application/zip":
+			file_like_object = io.BytesIO(FTLresponse)
+			with zipfile.ZipFile(file_like_object) as zipfile_obj:
+				# Read all the files in the archive and check their CRC’s and
+				# file headers. Returns the name of the first bad file, or else
+				# returns None.
+				bad_filename = zipfile_obj.testzip()
+				if bad_filename is not None:
+					self.errors.append("File " + bad_filename + " in received archive is corrupt.")
+				# Try to read pihole.toml and see if it starts with the expected
+				# header block
+				try:
+					pihole_toml = zipfile_obj.read("pihole.toml")
+					if not pihole_toml.startswith(b"# This file is managed by pihole-FTL"):
+						self.errors.append("Received ZIP file starts with wrong header")
+				except Exception as err:
+					self.errors.append("Error during ZIP analysis: " + str(err))
 		else:
-			self.errors.append("Top-level response should be either an object or a non-empty allOf/anyOf/oneOf")
-
-		# Finally, we check if there are extra properties in the FTL response
-		# that are not defined in the API specs
-
-		# Flatten the FTL response
-		FTLflat = self.flatten_dict(FTLresponse)
-		YAMLflat = self.YAMLresponse
-
-		# Check for properties in FTL that are not in the API specs
-		for property in FTLflat.keys():
-			if property not in YAMLflat.keys():
-				self.errors.append("Property '" + property + "' missing in the API specs")
+			self.errors.append("Checker script does not know how to check for mimetype \"" + expected_mimetype + "\"")
 
 		# Return all errors
 		return self.errors

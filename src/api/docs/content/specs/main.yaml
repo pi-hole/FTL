@@ -194,6 +194,9 @@ paths:
   /network/interfaces:
     $ref: 'network.yaml#/components/paths/interfaces'
 
+  /teleporter:
+    $ref: 'teleporter.yaml#/components/paths/teleporter'
+
 components:
   securitySchemes:
     sidHeader:
