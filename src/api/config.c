@@ -499,10 +499,16 @@ static int api_config_patch(struct ftl_conn *api)
 	// Is there a payload with valid JSON data?
 	if (api->payload.json == NULL)
 	{
-		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "Invalid request body data (no valid JSON)",
-		                       NULL);
+		if (api->payload.json_error == NULL)
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "No request body data",
+			                       NULL);
+		else
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid request body data (no valid JSON), error before hint",
+			                       api->payload.json_error);
 	}
 
 	// Is there a "config" object at the root of the received JSON payload?

@@ -415,4 +415,5 @@ void read_and_parse_payload(struct ftl_conn *api)
 
 	// Try to parse possibly existing JSON payload
 	api->payload.json = cJSON_Parse(api->payload.raw);
+	api->payload.json_error = cJSON_GetErrorPtr();
 }

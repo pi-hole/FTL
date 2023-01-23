@@ -185,6 +185,12 @@ void duplicate_config(struct config *conf)
 		// Copy constant/static fields
 		memcpy(copy_item, conf_item, sizeof(*conf_item));
 
+		// Duplicate allowed values (if defined)
+		// Note: This is no necessary as we simply leave the allowed values
+		// object living forever and merely copy the pointer to its heap living
+		// space around (it is never freed)
+		// if(conf_item->a != NULL) copy_item->a = cJSON_Duplicate(conf_item->a, true);
+
 		// Make a type-dependent copy of the value
 		switch(conf_item->t)
 		{
@@ -224,6 +230,12 @@ void free_config(struct config *conf)
 	{
 		// Get pointer to memory location of this conf_item (copy)
 		struct conf_item *copy_item = get_conf_item(conf, i);
+
+		// Free allowed values (if defined)
+		// Note: This is no necessary as we simply leave the allowed values
+		// object living forever and merely copy the pointer to its heap living
+		// space around (it is never freed)
+		// if(conf->a != NULL) cJSON_Delete(conf->a);
 
 		// Make a type-dependent copy of the value
 		switch(copy_item->t)

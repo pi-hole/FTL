@@ -90,7 +90,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		http_method(conn),
 		NULL,
 		NULL,
-		{ false, NULL, NULL, 0u },
+		{ false, NULL, NULL, NULL, 0u },
 		{ false },
 		{ false, 0 }
 	};

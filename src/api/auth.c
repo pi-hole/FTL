@@ -422,14 +422,18 @@ int api_auth(struct ftl_conn *api)
 	if(api->method == HTTP_POST)
 	{
 		// Try to extract response from payload
-		if(api->payload.json == NULL)
+		if (api->payload.json == NULL)
 		{
-			const char *message = "No valid JSON payload found";
-			log_debug(DEBUG_API, "API auth error: %s", message);
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       message,
-			                       NULL);
+			if (api->payload.json_error == NULL)
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "No request body data",
+				                       NULL);
+			else
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid request body data (no valid JSON), error before hint",
+				                       api->payload.json_error);
 		}
 
 		// Check if response is available

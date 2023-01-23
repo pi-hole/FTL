@@ -243,6 +243,11 @@ static bool readStringvalue(struct conf_item *conf_item, const char *value)
 			// Free previously allocated JSON array
 			cJSON_free(conf_item->v.json);
 			cJSON *elem = cJSON_Parse(value);
+			if(elem == NULL)
+			{
+				log_err("Config setting %s is invalid: not valid JSON, error before: %s", conf_item->k, cJSON_GetErrorPtr());
+				return false;
+			}
 			if(!cJSON_IsArray(elem))
 			{
 				log_err("Config setting %s is invalid: not a valid string array (example: [ \"a\", \"b\", \"c\" ])", conf_item->k);

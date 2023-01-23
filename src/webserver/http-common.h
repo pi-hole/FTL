@@ -48,6 +48,7 @@ struct ftl_conn {
 		bool avail;
 		char *raw;
 		cJSON *json;
+		const char* json_error;
 		long unsigned int size;
 	} payload;
 	struct {
