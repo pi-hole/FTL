@@ -23,11 +23,11 @@
 
 
 // Read a TOML value from a table depending on its type
-static bool readStringvalue(struct conf_item *conf_item, const char *value)
+static bool readStringValue(struct conf_item *conf_item, const char *value)
 {
 	if(conf_item == NULL || value == NULL)
 	{
-		log_debug(DEBUG_CONFIG, "readStringvalue(%p, %p) called with invalid arguments, skipping",
+		log_debug(DEBUG_CONFIG, "readStringValue(%p, %p) called with invalid arguments, skipping",
 		          conf_item, value);
 		return false;
 	}
@@ -240,8 +240,6 @@ static bool readStringvalue(struct conf_item *conf_item, const char *value)
 		}
 		case CONF_JSON_STRING_ARRAY:
 		{
-			// Free previously allocated JSON array
-			cJSON_free(conf_item->v.json);
 			cJSON *elem = cJSON_Parse(value);
 			if(elem == NULL)
 			{
@@ -265,7 +263,9 @@ static bool readStringvalue(struct conf_item *conf_item, const char *value)
 				}
 			}
 			// If we reach this point, all elements are valid
-			conf_item->v.json = cJSON_Duplicate(elem, true);
+			// Free previously allocated JSON array and replace with new
+			cJSON_free(conf_item->v.json);
+			conf_item->v.json = elem;
 			break;
 		}
 	}
@@ -279,59 +279,83 @@ bool set_config_from_CLI(const char *key, const char *value)
 	struct config conf_copy;
 	duplicate_config(&conf_copy);
 	struct conf_item *conf_item = NULL;
+	struct conf_item *copy_item = NULL;
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
-		// Get pointer to memory location of this conf_item
+		// Get pointer to (copied) memory location of this conf_item
 		struct conf_item *item = get_conf_item(&conf_copy, i);
 
 		if(strcmp(item->k, key) != 0)
 			continue;
 
 		// This is the config option we are looking for
-		conf_item = item;
+		copy_item = item;
+
+		// Also get pointer to memory location of this conf_item
+		conf_item = get_conf_item(&config, i);
+
+		// Break early
 		break;
 	}
 
 	// Check if we found the config option
-	if(conf_item == NULL)
+	if(copy_item == NULL)
 	{
 		log_err("Unknown config option: %s", key);
 		return false;
 	}
 
 	// Parse value
-	if(!readStringvalue(conf_item, value))
+	if(!readStringValue(copy_item, value))
 		return false;
 
-	// Is this a dnsmasq option we need to check?
-	if(conf_item->f & FLAG_RESTART_DNSMASQ)
+	// Check if value changed compared to current value
+	if(!compare_config_item(copy_item, conf_item))
 	{
-		char errbuf[ERRBUF_SIZE] = { 0 };
-		if(!write_dnsmasq_config(&conf_copy, true, errbuf))
+		// Config item changed
+
+		// Is this a dnsmasq option we need to check?
+		if(conf_item->f & FLAG_RESTART_DNSMASQ)
 		{
-			return false;
+			char errbuf[ERRBUF_SIZE] = { 0 };
+			if(!write_dnsmasq_config(&conf_copy, true, errbuf))
+			{
+				// Test failed
+				log_debug(DEBUG_CONFIG, "Config item %s: dnsmasq config test failed", conf_item->k);
+				return false;
+			}
 		}
+		else if(conf_item == &config.dns.hosts)
+		{
+			// We need to rewrite the custom.list file but do not need to
+			// restart dnsmasq. If dnsmasq is going to be restarted anyway,
+			// this is not necessary as the file will be rewritten during
+			// the restart
+			write_custom_list();
+		}
+
+		// Install new configuration
+		// Backup old config struct (so we can free it)
+		struct config old_conf;
+		memcpy(&old_conf, &config, sizeof(struct config));
+		// Replace old config struct by changed one
+		memcpy(&config, &conf_copy, sizeof(struct config));
+		// Free old backup struct
+		free_config(&old_conf);
+
+		// Print value
+		writeTOMLvalue(stdout, -1, copy_item->t, &copy_item->v);
 	}
-	else if(conf_item == &conf_copy.dns.hosts)
+	else
 	{
-		// We need to rewrite the custom.list file but do not need to
-		// restart dnsmasq. If dnsmasq is going to be restarted anyway,
-		// this is not necessary as the file will be rewritten during
-		// the restart
-		write_custom_list();
+		// No change
+		log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
+		free_config(&conf_copy);
+
+		// Print value
+		writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
 	}
 
-	// Install new configuration
-	// Backup old config struct (so we can free it)
-	struct config old_conf;
-	memcpy(&old_conf, &config, sizeof(struct config));
-	// Replace old config struct by changed one
-	memcpy(&config, &conf_copy, sizeof(struct config));
-	// Free old backup struct
-	free_config(&old_conf);
-
-	// Print value
-	writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
 	putchar('\n');
 	writeFTLtoml(false);
 	return true;

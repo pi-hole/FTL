@@ -522,37 +522,51 @@ static int api_config_patch(struct ftl_conn *api)
 	}
 
 	// Read all known config items
+	bool config_changed = false;
 	bool dnsmasq_changed = false;
 	bool rewrite_custom_list = false;
 	struct config conf_copy;
 	duplicate_config(&conf_copy);
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
-		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(&conf_copy, i);
+		// Get pointer to memory location of this conf_item (copy)
+		struct conf_item *copy_item = get_conf_item(&conf_copy, i);
 
 		// Get path depth
-		unsigned int level = config_path_depth(conf_item->p);
+		unsigned int level = config_path_depth(copy_item->p);
 
 		cJSON *elem = conf;
 		// Parse tree of properties and get the individual JSON elements
 		for(unsigned int j = 0; j < level; j++)
-			elem = cJSON_GetObjectItem(elem, conf_item->p[j]);
+			elem = cJSON_GetObjectItem(elem, copy_item->p[j]);
 
 		// Check if this element is present - it doesn't have to be!
 		if(elem == NULL)
 		{
-			log_debug(DEBUG_CONFIG, "%s not in JSON payload", conf_item->k);
+			log_debug(DEBUG_CONFIG, "%s not in JSON payload", copy_item->k);
 			continue;
 		}
 
 		// Try to set value and report error on failure
-		const char *response = getJSONvalue(conf_item, elem);
+		const char *response = getJSONvalue(copy_item, elem);
 		if(response != NULL)
 		{
-			log_err("/api/config: %s invalid: %s", conf_item->k, response);
+			log_err("/api/config: %s invalid: %s", copy_item->k, response);
 			continue;
 		}
+
+		// Get pointer to memory location of this conf_item (global)
+		struct conf_item *conf_item = get_conf_item(&config, i);
+
+		// Skip processing if value didn't change compared to current value
+		if(!compare_config_item(copy_item, conf_item))
+		{
+			log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
+			continue;
+		}
+
+		// Memorize that at least one config item actually changed
+		config_changed = true;
 
 		// If we reach this point, a valid setting was found and changed
 		// Check if this item requires a config-rewrite + restart of dnsmasq
@@ -564,45 +578,54 @@ static int api_config_patch(struct ftl_conn *api)
 			rewrite_custom_list = true;
 	}
 
-	// Request restart of FTL
-	if(dnsmasq_changed)
+	// Process new config only when at least one value changed
+	if(config_changed)
 	{
-		char errbuf[ERRBUF_SIZE] = { 0 };
-		if(write_dnsmasq_config(&conf_copy, true, errbuf))
-			api->ftl.restart = true;
-		else
+		// Request restart of FTL
+		if(dnsmasq_changed)
 		{
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "Invalid configuration",
-			                       errbuf);
+			char errbuf[ERRBUF_SIZE] = { 0 };
+			if(write_dnsmasq_config(&conf_copy, true, errbuf))
+				api->ftl.restart = true;
+			else
+			{
+				return send_json_error(api, 400,
+									"bad_request",
+									"Invalid configuration",
+									errbuf);
+			}
 		}
+		else if(rewrite_custom_list)
+		{
+			// We need to rewrite the custom.list file but do not need to
+			// restart dnsmasq. If dnsmasq is going to be restarted anyway,
+			// this is not necessary as the file will be rewritten during
+			// the restart
+			write_custom_list();
+		}
+
+		// Install new configuration
+		lock_shm();
+		// Backup old config struct (so we can free it)
+		struct config old_conf;
+		memcpy(&old_conf, &config, sizeof(struct config));
+		// Replace old config struct by changed one
+		memcpy(&config, &conf_copy, sizeof(struct config));
+		// Free old backup struct
+		free_config(&old_conf);
+		unlock_shm();
+
+		// Store changed configuration to disk
+		writeFTLtoml(true);
+
+		// Reload debug levels
+		set_debug_flags();
 	}
-	else if(rewrite_custom_list)
+	else
 	{
-		// We need to rewrite the custom.list file but do not need to
-		// restart dnsmasq. If dnsmasq is going to be restarted anyway,
-		// this is not necessary as the file will be rewritten during
-		// the restart
-		write_custom_list();
+		// Nothing changed, merely release copied config memory
+		free_config(&conf_copy);
 	}
-
-	// Install new configuration
-	lock_shm();
-	// Backup old config struct (so we can free it)
-	struct config old_conf;
-	memcpy(&old_conf, &config, sizeof(struct config));
-	// Replace old config struct by changed one
-	memcpy(&config, &conf_copy, sizeof(struct config));
-	// Free old backup struct
-	free_config(&old_conf);
-	unlock_shm();
-
-	// Store changed configuration to disk
-	writeFTLtoml(true);
-
-	// Reload debug levels
-	set_debug_flags();
 
 	// Return full config after possible changes above
 	return api_config_get(api);
@@ -740,6 +763,8 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Error 404 if not found
 	if(!found || message != NULL)
 	{
+		// For any other error, a more specific message will have been added
+		// above
 		if(!message)
 			message = "No item specified";
 		return send_json_error(api, 400,

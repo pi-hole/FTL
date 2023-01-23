@@ -284,6 +284,7 @@ struct conf_item *get_debug_item(const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
 void duplicate_config(struct config *conf);
 void free_config(struct config *conf);
+bool compare_config_item(const struct conf_item *conf_item1, const struct conf_item *conf_item2);
 char **gen_config_path(const char *pathin, const char delim);
 void free_config_path(char **paths);
 bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __attribute__ ((pure));

@@ -222,6 +222,42 @@ void duplicate_config(struct config *conf)
 	}
 }
 
+// True = Identical, False = Different
+bool compare_config_item(const struct conf_item *conf_item1, const struct conf_item *conf_item2)
+{
+	if(conf_item1->t != conf_item2->t)
+		return false;
+
+	// Make a type-dependent copy of the value
+	switch(conf_item1->t)
+	{
+		case CONF_BOOL:
+		case CONF_INT:
+		case CONF_UINT:
+		case CONF_UINT16:
+		case CONF_LONG:
+		case CONF_ULONG:
+		case CONF_DOUBLE:
+		case CONF_ENUM_PTR_TYPE:
+		case CONF_ENUM_BUSY_TYPE:
+		case CONF_ENUM_BLOCKING_MODE:
+		case CONF_ENUM_REFRESH_HOSTNAMES:
+		case CONF_ENUM_PRIVACY_LEVEL:
+		case CONF_ENUM_LISTENING_MODE:
+		case CONF_STRUCT_IN_ADDR:
+		case CONF_STRUCT_IN6_ADDR:
+			// Compare entire union
+			return memcmp(&conf_item1->v, &conf_item2->v, sizeof(conf_item1->v)) == 0;
+		case CONF_STRING:
+		case CONF_STRING_ALLOCATED:
+			return strcmp(conf_item1->v.s, conf_item2->v.s) == 0;
+		case CONF_JSON_STRING_ARRAY:
+			return cJSON_Compare(conf_item1->v.json, conf_item2->v.json, true);
+	}
+	return false;
+}
+
+
 void free_config(struct config *conf)
 {
 	// Post-processing:
