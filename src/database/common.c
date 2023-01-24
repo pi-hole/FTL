@@ -230,7 +230,16 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 	// Note: pArg is NULL and not used
 	// See https://sqlite.org/rescode.html#extrc for details
 	// concerning the return codes returned here
-	log_err("SQLite3 message: %s (%d)", zMsg, iErrCode);
+	if(strncmp(zMsg, "file renamed while open: ", sizeof("file renamed while open: ")-1) == 0)
+	{
+		// This happens when gravity.db is replaced while FTL is running
+		// We can safely ignore this warning
+		return;
+	}
+	if(iErrCode == SQLITE_WARNING)
+		log_warn("SQLite3 message: %s (%d)", zMsg, iErrCode);
+	else
+		log_err("SQLite3 message: %s (%d)", zMsg, iErrCode);
 }
 
 void db_init(void)

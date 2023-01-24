@@ -48,6 +48,8 @@ tags:
     description: Methods used to configure your Pi-hole
   - name: "Network information"
     description: Methods used to gather advanced information about your network
+  - name: "Actions"
+    description: Methods used to trigger certain actions on your Pi-hole
 
 paths:
   /auth:
@@ -196,6 +198,9 @@ paths:
 
   /teleporter:
     $ref: 'teleporter.yaml#/components/paths/teleporter'
+
+  /action/gravity:
+    $ref: 'action.yaml#/components/paths/gravity'
 
 components:
   securitySchemes:

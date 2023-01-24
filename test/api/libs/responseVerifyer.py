@@ -20,6 +20,7 @@ class ResponseVerifyer():
 
 	# Translate between OpenAPI and Python types
 	YAML_TYPES = { "string": [str], "integer": [int], "number": [int, float], "boolean": [bool], "array": [list] }
+	TELEPORTER_FILES = ["etc/pihole/gravity.db", "etc/pihole/pihole.toml", "etc/pihole/pihole-FTL.db", "etc/hosts"]
 
 	def __init__(self, ftl: FTLAPI, openapi: openApi):
 		self.ftl = ftl
@@ -141,9 +142,13 @@ class ResponseVerifyer():
 				# Try to read pihole.toml and see if it starts with the expected
 				# header block
 				try:
-					pihole_toml = zipfile_obj.read("pihole.toml")
+					# Check if all expected files are present
+					for expected_file in self.TELEPORTER_FILES:
+						if expected_file not in zipfile_obj.namelist():
+							self.errors.append("File " + expected_file + " is missing in received archive.")
+					pihole_toml = zipfile_obj.read("etc/pihole/pihole.toml")
 					if not pihole_toml.startswith(b"# This file is managed by pihole-FTL"):
-						self.errors.append("Received ZIP file starts with wrong header")
+						self.errors.append("Received ZIP file's pihole.toml starts with wrong header")
 				except Exception as err:
 					self.errors.append("Error during ZIP analysis: " + str(err))
 		else:

@@ -9,6 +9,8 @@
 # Please see LICENSE file for your rights under this license.
 
 set(sources
+        action.c
+        api_helper.h
         api.h
         api.c
         auth.c

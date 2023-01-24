@@ -18,6 +18,7 @@ set(sources
         hex/external/highlight-default.min.css
         hex/external/geraintluff-sha256.min.js
         hex/images/logo.svg
+        hex/specs/action.yaml
         hex/specs/auth.yaml
         hex/specs/clients.yaml
         hex/specs/common.yaml

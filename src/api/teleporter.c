@@ -38,6 +38,9 @@ static int api_teleporter_GET(struct ftl_conn *api)
 	// Send 200 OK with appropriate headers
 	mg_send_http_ok(api->conn, "application/zip", size);
 
+	// Clear extra headers
+	pi_hole_extra_headers[0] = '\0';
+
 	// Send raw (binary) ZIP content
 	mg_write(api->conn, ptr, size);
 

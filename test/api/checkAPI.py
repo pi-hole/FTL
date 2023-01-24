@@ -50,6 +50,11 @@ if __name__ == "__main__":
 	# matches the OpenAPI specs.
 	print("Verifying the individual endpoint properties...")
 	for path in openapi.endpoints["get"]:
+		# We do not check the action endpoints as they'd trigger
+		# possibly unwanted action such as restarting FTL, running
+		# gravity, stutting down the system, etc.
+		if path.startswith("/api/action"):
+			continue
 		verifyer = ResponseVerifyer(ftl, openapi)
 		errors = verifyer.verify_endpoint(path)
 		if len(errors) == 0:
