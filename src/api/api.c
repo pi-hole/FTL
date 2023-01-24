@@ -78,8 +78,10 @@ static struct {
 	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { false, 0             }, true,  HTTP_GET },
 	{ "/api/network/devices",                   "",                           api_network_devices,                   { false, 0             }, true,  HTTP_GET },
 	{ "/api/endpoints",                         "",                           api_endpoints,                         { false, 0             }, true,  HTTP_GET },
-	{ "/api/teleporter",                        "",                           api_teleporter,                        { false, 0             }, true, HTTP_GET | HTTP_POST },
-	{ "/api/action/gravity",                    "",                           api_action_gravity,                    { false, 0             }, true,  HTTP_GET },
+	{ "/api/teleporter",                        "",                           api_teleporter,                        { false, 0             }, true,  HTTP_GET | HTTP_POST },
+	{ "/api/action/gravity",                    "",                           api_action_gravity,                    { false, 0             }, true,  HTTP_POST },
+	{ "/api/action/reboot",                     "",                           api_action_reboot,                     { false, 0             }, true,  HTTP_POST },
+	{ "/api/action/poweroff",                   "",                           api_action_poweroff,                   { false, 0             }, true,  HTTP_POST },
 	{ "/api/docs",                              "",                           api_docs,                              { false, 0             }, false, HTTP_GET },
 };
 

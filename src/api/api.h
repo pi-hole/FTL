@@ -87,5 +87,7 @@ int api_teleporter(struct ftl_conn *api);
 
 // Action methods
 int api_action_gravity(struct ftl_conn *api);
+int api_action_poweroff(struct ftl_conn *api);
+int api_action_reboot(struct ftl_conn *api);
 
 #endif // ROUTES_H

@@ -202,6 +202,12 @@ paths:
   /action/gravity:
     $ref: 'action.yaml#/components/paths/gravity'
 
+  /action/reboot:
+    $ref: 'action.yaml#/components/paths/reboot'
+
+  /action/poweroff:
+    $ref: 'action.yaml#/components/paths/poweroff'
+
 components:
   securitySchemes:
     sidHeader:

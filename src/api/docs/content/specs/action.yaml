@@ -2,7 +2,7 @@ openapi: 3.0.2
 components:
   paths:
     gravity:
-      get:
+      post:
         summary: Run gravity
         tags:
           - Actions
@@ -57,6 +57,40 @@ components:
                          [✓] TCP (IPv6)
 
                       [✓] Pi-hole blocking is enabled
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    reboot:
+      post:
+        summary: Reboot the system
+        tags:
+          - Actions
+        operationId: "action_reboot"
+        description: |
+          Reboots the system Pi-hole is running on. Note that this should be done as a last-resort only as it will forcefully interrupt all currently running processes.
+        responses:
+          '200':
+            description: OK
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    poweroff:
+      post:
+        summary: Poweroff the system
+        tags:
+          - Actions
+        operationId: "action_poweroff"
+        description: |
+          Halts and powers off the system Pi-hole is running on. Note that this should be done as a last-resort only as it will forcefully interrupt all currently running processes.
+        responses:
+          '200':
+            description: OK
           '401':
             description: Unauthorized
             content:

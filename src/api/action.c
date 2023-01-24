@@ -14,6 +14,9 @@
 #include "api/api.h"
 // wait()
 #include <sys/wait.h>
+// reboot()
+#include <sys/reboot.h>
+#include <unistd.h>
 
 static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[])
 {
@@ -104,4 +107,30 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 int api_action_gravity(struct ftl_conn *api)
 {
 	return run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL });
+}
+
+int api_action_poweroff(struct ftl_conn *api)
+{
+	// Sync filesystems and power off
+	sync();
+	// Needs capabiliy CAP_SYS_BOOT
+	if(reboot(RB_POWER_OFF) != 0)
+		return send_json_error(api, 500,
+		                       "server_error",
+		                       "Cannot power off the system, power off has been cancelled",
+		                       strerror(errno));
+	return 200;
+}
+
+int api_action_reboot(struct ftl_conn *api)
+{
+	// Sync filesystems and reboot
+	sync();
+	// Needs capabiliy CAP_SYS_BOOT
+	if(reboot(RB_AUTOBOOT) != 0)
+		return send_json_error(api, 500,
+		                       "server_error",
+		                       "Cannot reboot the system, reboot has been cancelled",
+		                       strerror(errno));
+	return 200;
 }
