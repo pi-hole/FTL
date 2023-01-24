@@ -19,6 +19,100 @@
 #include "files.h"
 // DIR, dirent, opendir(), readdir(), closedir()
 #include <dirent.h>
+// sqlite3
+#include "database/sqlite3.h"
+
+// Tables to copy from the gravity database to the Teleporter database
+static const char *gravity_tables[] = {
+	"info",
+	"group",
+	"adlist",
+	"adlist_by_group",
+	"domainlist",
+	"domainlist_by_group",
+	"client",
+	"client_by_group",
+	"domain_audit"
+};
+
+// Create a reduced gravity database in memory and return a memory pointer to it
+static bool create_teleporter_gravity(void **buffer, size_t *size)
+{
+	// Open in-memory sqlite3 database
+	sqlite3 *db;
+	if(sqlite3_open_v2(":memory:", &db, SQLITE_OPEN_READWRITE, NULL) != SQLITE_OK)
+	{
+		log_warn("Failed to open in-memory database: %s", sqlite3_errmsg(db));
+		return false;
+	}
+	// Attach the FTL database to the in-memory database
+	char *err = NULL;
+	char attach_stmt[128] = "";
+
+	snprintf(attach_stmt, sizeof(attach_stmt), "ATTACH DATABASE '%s' AS \"gravity\";", config.files.gravity.v.s);
+
+	if(sqlite3_exec(db, attach_stmt, NULL, NULL, &err) != SQLITE_OK)
+	{
+		log_warn("Failed to attach FTL database to in-memory database: %s", err);
+		sqlite3_free(err);
+		sqlite3_close(db);
+		return "Failed to attach FTL database to in-memory database!";
+	}
+
+	// Loop over the tables and copy them to the in-memory database
+	for(unsigned int i = 0; i < ArraySize(gravity_tables); i++)
+	{
+		char *err = NULL;
+		char create_stmt[128] = "";
+
+		// Create in-memory table copy
+		snprintf(create_stmt, sizeof(create_stmt), "CREATE TABLE \"%s\" AS SELECT * FROM gravity.\"%s\";", gravity_tables[i], gravity_tables[i]);
+		if(sqlite3_exec(db, create_stmt, NULL, NULL, &err) != SQLITE_OK)
+		{
+			log_warn("Failed to create %s in in-memory database: %s", gravity_tables[i], err);
+			sqlite3_free(err);
+			sqlite3_close(db);
+			return false;
+		}
+	}
+
+	// Detach the FTL database from the in-memory database
+	if(sqlite3_exec(db, "DETACH DATABASE 'gravity';", NULL, NULL, &err) != SQLITE_OK)
+	{
+		log_warn("Failed to detach FTL database from in-memory database: %s", err);
+		sqlite3_free(err);
+		sqlite3_close(db);
+		return false;
+	}
+
+	// Serialize the in-memory database to a buffer
+	// The sqlite3_serialize(D,S,P,F) interface returns a pointer to memory that
+	// is a serialization of the S database on database connection D. If P is
+	// not a NULL pointer, then the size of the database in bytes is written
+	// into *P.
+	// For an ordinary on-disk database file, the serialization is just a copy
+	// of the disk file. For an in-memory database or a "TEMP" database, the
+	// serialization is the same sequence of bytes which would be written to
+	// disk if that database where backed up to disk.
+	// The usual case is that sqlite3_serialize() copies the serialization of
+	// the database into memory obtained from sqlite3_malloc64() and returns a
+	// pointer to that memory. The caller is responsible for freeing the
+	// returned value to avoid a memory leak.
+	sqlite3_int64 isize = 0;
+	*buffer = sqlite3_serialize(db, "main", &isize, 0);
+	*size = isize;
+	if(*buffer == NULL)
+	{
+		log_warn("Failed to serialize in-memory database to buffer: %s", sqlite3_errmsg(db));
+		sqlite3_close(db);
+		return false;
+	}
+
+	// Close the in-memory database
+	sqlite3_close(db);
+
+	return true;
+}
 
 const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], void *ptr, size_t *size)
 {
@@ -87,6 +181,29 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 			}
 			closedir(dir);
 		}
+	}
+
+	// Add (a reduced version of) the gravity database to the ZIP archive
+	void *dbbuf = NULL;
+	size_t dbsize = 0u;
+	if(create_teleporter_gravity(&dbbuf, &dbsize))
+	{
+		// Add gravity database to ZIP archive
+		file_comment = "Pi-hole's gravity database";
+		file_path = "/etc/pihole/gravity.db";
+		if(!mz_zip_writer_add_mem(zip, file_path+1, dbbuf, dbsize, MZ_BEST_COMPRESSION))
+		{
+			sqlite3_free(dbbuf);
+			mz_zip_writer_end(zip);
+			return "Failed to add gravity.db to heap ZIP archive!";
+		}
+
+		sqlite3_free(dbbuf);
+	}
+	else
+	{
+		mz_zip_writer_end(zip);
+		return "Failed to create gravity.db for heap ZIP archive!";
 	}
 
 	// Get the heap data so we can send it to the requesting client
