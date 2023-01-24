@@ -15,6 +15,10 @@
 #include "daemon.h"
 // get_timestr(), TIMESTR_SIZE
 #include "log.h"
+// directory_exists()
+#include "files.h"
+// DIR, dirent, opendir(), readdir(), closedir()
+#include <dirent.h>
 
 const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], void *ptr, size_t *size)
 {
@@ -30,10 +34,59 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 
 	// Add pihole.toml to the ZIP archive
 	const char *file_comment = "Pi-hole's configuration";
-	if(!mz_zip_writer_add_file(zip, "pihole.toml", GLOBALTOMLPATH, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
+	const char *file_path = GLOBALTOMLPATH;
+	if(!mz_zip_writer_add_file(zip, file_path+1, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
 	{
 		mz_zip_writer_end(zip);
 		return "Failed to add "GLOBALTOMLPATH" to heap ZIP archive!";
+	}
+
+	// Add /etc/hosts to the ZIP archive
+	file_comment = "System's HOSTS file";
+	file_path = "/etc/hosts";
+	if(!mz_zip_writer_add_file(zip, file_path+1, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
+	{
+		mz_zip_writer_end(zip);
+		return "Failed to add /etc/hosts to heap ZIP archive!";
+	}
+
+	// Add /etc/pihole/dhcp.lease to the ZIP archive if it exists
+	file_comment = "DHCP leases file";
+	file_path = "/etc/pihole/dhcp.leases";
+	if(file_exists(file_path) && !mz_zip_writer_add_file(zip, file_path+1, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
+	{
+		mz_zip_writer_end(zip);
+		return "Failed to add /etc/hosts to heap ZIP archive!";
+	}
+
+	const char *directory = "/etc/dnsmasq.d";
+	if(directory_exists(directory))
+	{
+		// Loop over all files and add them to the ZIP archive
+		DIR *dir;
+		struct dirent *ent;
+		if((dir = opendir(directory)) != NULL)
+		{
+			// Loop over all files in the directory
+			while((ent = readdir(dir)) != NULL)
+			{
+				// Skip "." and ".."
+				if(strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+					continue;
+
+				// Construct full path to file
+				char fullpath[128] = "";
+				snprintf(fullpath, 128, "%s/%s", directory, ent->d_name);
+
+				// Add file to ZIP archive
+				file_comment = "dnsmasq configuration file";
+				file_path = fullpath;
+
+				if(!mz_zip_writer_add_file(zip, file_path+1, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
+					continue;
+			}
+			closedir(dir);
+		}
 	}
 
 	// Get the heap data so we can send it to the requesting client
