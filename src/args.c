@@ -683,6 +683,10 @@ void parse_args(int argc, char* argv[])
 			printf("      %s--compress%s:   use the %sinfile%s and append %s.gz%s at the end\n", green, normal, cyan, normal, cyan, normal);
 			printf("      %s--uncompress%s: use the %sinfile%s and remove %s.gz%s at the end\n\n", green, normal, cyan, normal, cyan, normal);
 
+			printf("%sTeleporter:%s\n", yellow, normal);
+			printf("\t%s--teleporter%s        Create a Teleporter archive in the\n", green, normal);
+			printf("\t                    current directory and print its name\n\n");
+
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
