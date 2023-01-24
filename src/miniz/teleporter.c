@@ -35,8 +35,17 @@ static const char *gravity_tables[] = {
 	"domain_audit"
 };
 
-// Create a reduced gravity database in memory and return a memory pointer to it
-static bool create_teleporter_gravity(void **buffer, size_t *size)
+// Tables to copy from the FTL database to the Teleporter database
+static const char *ftl_tables[] = {
+	"message",
+	"aliasclient",
+	"network",
+	"network_addresses"
+};
+
+// Create database in memory, copy selected tables to it, serialize and return a memory pointer to it
+static bool create_teleporter_database(const char *filename, const char **tables, const unsigned int num_tables,
+                                       void **buffer, size_t *size)
 {
 	// Open in-memory sqlite3 database
 	sqlite3 *db;
@@ -49,27 +58,27 @@ static bool create_teleporter_gravity(void **buffer, size_t *size)
 	char *err = NULL;
 	char attach_stmt[128] = "";
 
-	snprintf(attach_stmt, sizeof(attach_stmt), "ATTACH DATABASE '%s' AS \"gravity\";", config.files.gravity.v.s);
+	snprintf(attach_stmt, sizeof(attach_stmt), "ATTACH DATABASE '%s' AS \"disk\";", filename);
 
 	if(sqlite3_exec(db, attach_stmt, NULL, NULL, &err) != SQLITE_OK)
 	{
-		log_warn("Failed to attach FTL database to in-memory database: %s", err);
+		log_warn("Failed to attach database \"%s\" to in-memory database: %s", filename, err);
 		sqlite3_free(err);
 		sqlite3_close(db);
-		return "Failed to attach FTL database to in-memory database!";
+		return false;
 	}
 
 	// Loop over the tables and copy them to the in-memory database
-	for(unsigned int i = 0; i < ArraySize(gravity_tables); i++)
+	for(unsigned int i = 0; i < num_tables; i++)
 	{
 		char *err = NULL;
 		char create_stmt[128] = "";
 
 		// Create in-memory table copy
-		snprintf(create_stmt, sizeof(create_stmt), "CREATE TABLE \"%s\" AS SELECT * FROM gravity.\"%s\";", gravity_tables[i], gravity_tables[i]);
+		snprintf(create_stmt, sizeof(create_stmt), "CREATE TABLE \"%s\" AS SELECT * FROM disk.\"%s\";", tables[i], tables[i]);
 		if(sqlite3_exec(db, create_stmt, NULL, NULL, &err) != SQLITE_OK)
 		{
-			log_warn("Failed to create %s in in-memory database: %s", gravity_tables[i], err);
+			log_warn("Failed to create %s in in-memory database: %s", tables[i], err);
 			sqlite3_free(err);
 			sqlite3_close(db);
 			return false;
@@ -77,7 +86,7 @@ static bool create_teleporter_gravity(void **buffer, size_t *size)
 	}
 
 	// Detach the FTL database from the in-memory database
-	if(sqlite3_exec(db, "DETACH DATABASE 'gravity';", NULL, NULL, &err) != SQLITE_OK)
+	if(sqlite3_exec(db, "DETACH DATABASE 'disk';", NULL, NULL, &err) != SQLITE_OK)
 	{
 		log_warn("Failed to detach FTL database from in-memory database: %s", err);
 		sqlite3_free(err);
@@ -186,24 +195,46 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	// Add (a reduced version of) the gravity database to the ZIP archive
 	void *dbbuf = NULL;
 	size_t dbsize = 0u;
-	if(create_teleporter_gravity(&dbbuf, &dbsize))
+	if(create_teleporter_database(config.files.gravity.v.s, gravity_tables, ArraySize(gravity_tables), &dbbuf, &dbsize))
 	{
 		// Add gravity database to ZIP archive
 		file_comment = "Pi-hole's gravity database";
-		file_path = "/etc/pihole/gravity.db";
-		if(!mz_zip_writer_add_mem(zip, file_path+1, dbbuf, dbsize, MZ_BEST_COMPRESSION))
+		file_path = config.files.gravity.v.s;
+		if(file_path[0] == '/')
+			file_path++;
+		if(!mz_zip_writer_add_mem(zip, file_path, dbbuf, dbsize, MZ_BEST_COMPRESSION))
 		{
 			sqlite3_free(dbbuf);
 			mz_zip_writer_end(zip);
-			return "Failed to add gravity.db to heap ZIP archive!";
+			return "Failed to add gravity database to heap ZIP archive!";
 		}
-
 		sqlite3_free(dbbuf);
 	}
 	else
 	{
 		mz_zip_writer_end(zip);
-		return "Failed to create gravity.db for heap ZIP archive!";
+		return "Failed to create gravity database for heap ZIP archive!";
+	}
+
+	if(create_teleporter_database(config.files.database.v.s, ftl_tables, ArraySize(ftl_tables), &dbbuf, &dbsize))
+	{
+		// Add FTL database to ZIP archive
+		file_comment = "Pi-hole's FTL database";
+		file_path = config.files.database.v.s;
+		if(file_path[0] == '/')
+			file_path++;
+		if(!mz_zip_writer_add_mem(zip, file_path, dbbuf, dbsize, MZ_BEST_COMPRESSION))
+		{
+			sqlite3_free(dbbuf);
+			mz_zip_writer_end(zip);
+			return "Failed to add FTL database to heap ZIP archive!";
+		}
+		sqlite3_free(dbbuf);
+	}
+	else
+	{
+		mz_zip_writer_end(zip);
+		return "Failed to create FTL database for heap ZIP archive!";
 	}
 
 	// Get the heap data so we can send it to the requesting client
