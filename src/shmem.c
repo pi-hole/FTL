@@ -89,7 +89,6 @@ static SharedMemory *sharedMemories[] = { &shm_lock,
                                           &shm_dns_cache,
                                           &shm_per_client_regex,
                                           &shm_fifo_log };
-#define NUM_SHMEM (sizeof(sharedMemories)/sizeof(SharedMemory*))
 
 // Variable size array structs
 static queriesData *queries = NULL;
@@ -399,11 +398,13 @@ static void remap_shm(void)
 // Obtain SHMEM lock
 void _lock_shm(const char *func, const int line, const char *file)
 {
-	log_debug(DEBUG_LOCKS, "Waiting for SHM lock in %s() (%s:%i)", func, file, line);
-	log_debug(DEBUG_LOCKS, "SHM lock: %p", shmLock);
-
+	// There is no need to lock if we are the only thread
+	// (e.g., when running pihole-FTL --config a.b.c def)
 	if(shmLock == NULL)
 		return;
+
+	log_debug(DEBUG_LOCKS, "Waiting for SHM lock in %s() (%s:%i)", func, file, line);
+	log_debug(DEBUG_LOCKS, "SHM lock: %p", shmLock);
 
 	int result = pthread_mutex_lock(&shmLock->lock.outer);
 
@@ -457,14 +458,16 @@ void _lock_shm(const char *func, const int line, const char *file)
 // Release SHM lock
 void _unlock_shm(const char* func, const int line, const char * file)
 {
+	// There is no need to unlock if we are the only thread
+	// (e.g., when running pihole-FTL --config a.b.c def)
+	if(shmLock == NULL)
+		return;
+
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
 		log_err("Tried to unlock but lock is owned by %li/%li",
 		        (long int)shmLock->owner.pid, (long int)shmLock->owner.tid);
 	}
-
-	if(shmLock == NULL)
-		return;
 
 	// Unlock mutex
 	int result = pthread_mutex_unlock(&shmLock->lock.inner);
@@ -617,7 +620,7 @@ bool init_shmem()
 // CHOWN all shared memory objects to supplied user/group
 void chown_all_shmem(struct passwd *ent_pw)
 {
-	for(unsigned int i = 0; i < NUM_SHMEM; i++)
+	for(unsigned int i = 0; i < ArraySize(sharedMemories); i++)
 		chown_shmem(sharedMemories[i], ent_pw);
 }
 
@@ -633,7 +636,7 @@ void destroy_shmem(void)
 	shmLock = NULL;
 
 	// Then, we delete the shared memory objects
-	for(unsigned int i = 0; i < NUM_SHMEM; i++)
+	for(unsigned int i = 0; i < ArraySize(sharedMemories); i++)
 		delete_shm(sharedMemories[i]);
 }
 

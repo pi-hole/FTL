@@ -525,33 +525,33 @@ static int api_config_patch(struct ftl_conn *api)
 	bool config_changed = false;
 	bool dnsmasq_changed = false;
 	bool rewrite_custom_list = false;
-	struct config conf_copy;
-	duplicate_config(&conf_copy);
+	struct config newconf;
+	duplicate_config(&newconf, &config);
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item (copy)
-		struct conf_item *copy_item = get_conf_item(&conf_copy, i);
+		struct conf_item *new_item = get_conf_item(&newconf, i);
 
 		// Get path depth
-		unsigned int level = config_path_depth(copy_item->p);
+		unsigned int level = config_path_depth(new_item->p);
 
 		cJSON *elem = conf;
 		// Parse tree of properties and get the individual JSON elements
 		for(unsigned int j = 0; j < level; j++)
-			elem = cJSON_GetObjectItem(elem, copy_item->p[j]);
+			elem = cJSON_GetObjectItem(elem, new_item->p[j]);
 
 		// Check if this element is present - it doesn't have to be!
 		if(elem == NULL)
 		{
-			log_debug(DEBUG_CONFIG, "%s not in JSON payload", copy_item->k);
+			log_debug(DEBUG_CONFIG, "%s not in JSON payload", new_item->k);
 			continue;
 		}
 
 		// Try to set value and report error on failure
-		const char *response = getJSONvalue(copy_item, elem);
+		const char *response = getJSONvalue(new_item, elem);
 		if(response != NULL)
 		{
-			log_err("/api/config: %s invalid: %s", copy_item->k, response);
+			log_err("/api/config: %s invalid: %s", new_item->k, response);
 			continue;
 		}
 
@@ -559,7 +559,7 @@ static int api_config_patch(struct ftl_conn *api)
 		struct conf_item *conf_item = get_conf_item(&config, i);
 
 		// Skip processing if value didn't change compared to current value
-		if(compare_config_item(copy_item, conf_item))
+		if(compare_config_item(new_item, conf_item))
 		{
 			log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
 			continue;
@@ -574,7 +574,7 @@ static int api_config_patch(struct ftl_conn *api)
 			dnsmasq_changed = true;
 
 		// Check if this item requires a rewrite of the custom.list file
-		if(conf_item == &conf_copy.dns.hosts)
+		if(conf_item == &newconf.dns.hosts)
 			rewrite_custom_list = true;
 	}
 
@@ -585,7 +585,7 @@ static int api_config_patch(struct ftl_conn *api)
 		if(dnsmasq_changed)
 		{
 			char errbuf[ERRBUF_SIZE] = { 0 };
-			if(write_dnsmasq_config(&conf_copy, true, errbuf))
+			if(write_dnsmasq_config(&newconf, true, errbuf))
 				api->ftl.restart = true;
 			else
 			{
@@ -605,15 +605,7 @@ static int api_config_patch(struct ftl_conn *api)
 		}
 
 		// Install new configuration
-		lock_shm();
-		// Backup old config struct (so we can free it)
-		struct config old_conf;
-		memcpy(&old_conf, &config, sizeof(struct config));
-		// Replace old config struct by changed one
-		memcpy(&config, &conf_copy, sizeof(struct config));
-		// Free old backup struct
-		free_config(&old_conf);
-		unlock_shm();
+		replace_config(&newconf);
 
 		// Store changed configuration to disk
 		writeFTLtoml(true);
@@ -624,7 +616,7 @@ static int api_config_patch(struct ftl_conn *api)
 	else
 	{
 		// Nothing changed, merely release copied config memory
-		free_config(&conf_copy);
+		free_config(&newconf);
 	}
 
 	// Return full config after possible changes above
@@ -663,7 +655,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		                       hint);
 	}
 
-	char *new_item = requested_path[min_level - 1];
+	char *new_item_str = requested_path[min_level - 1];
 
 	// Convert path to items, e.g.,
 	// dnsmasq/dhcp/active -> dhcp.active
@@ -674,26 +666,26 @@ static int api_config_put_delete(struct ftl_conn *api)
 	bool dnsmasq_changed = false;
 	bool rewrite_custom_list = false;
 	bool found = false;
-	struct config conf_copy;
-	duplicate_config(&conf_copy);
+	struct config newconf;
+	duplicate_config(&newconf, &config);
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(&conf_copy, i);
+		struct conf_item *new_item = get_conf_item(&newconf, i);
 
 		// We support PUT only for adding to string arrays
-		if(conf_item->t != CONF_JSON_STRING_ARRAY)
+		if(new_item->t != CONF_JSON_STRING_ARRAY)
 			continue;
 
 		// Get path depth
-		const unsigned int level = config_path_depth(conf_item->p);
+		const unsigned int level = config_path_depth(new_item->p);
 
 		// Check equality of paths up to the requested level (if any)
 		// Examples:
 		//  requested was /config/dnsmasq -> skip all entries that do not start in dnsmasq.
 		//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dhcp
 		//  etc.
-		if(!check_paths_equal(conf_item->p, requested_path, max(min_level - 2, level - 1)))
+		if(!check_paths_equal(new_item->p, requested_path, max(min_level - 2, level - 1)))
 			continue;
 
 		// Check if this is a property where we want to add an item
@@ -702,11 +694,11 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 		// Check if this entry does already exist in the array
 		int idx = 0;
-		for(; idx < cJSON_GetArraySize(conf_item->v.json); idx++)
+		for(; idx < cJSON_GetArraySize(new_item->v.json); idx++)
 		{
-			cJSON *elem = cJSON_GetArrayItem(conf_item->v.json, idx);
+			cJSON *elem = cJSON_GetArrayItem(new_item->v.json, idx);
 			if(elem != NULL && elem->valuestring != NULL &&
-				strcmp(elem->valuestring, new_item) == 0)
+				strcmp(elem->valuestring, new_item_str) == 0)
 			{
 				found = true;
 				break;
@@ -725,7 +717,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 			else
 			{
 				// Add new item to array
-				JSON_COPY_STR_TO_ARRAY(conf_item->v.json, new_item);
+				JSON_COPY_STR_TO_ARRAY(new_item->v.json, new_item);
 				found = true;
 			}
 		}
@@ -734,7 +726,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 			if(found)
 			{
 				// Remove item from array
-				cJSON_DeleteItemFromArray(conf_item->v.json, idx);
+				cJSON_DeleteItemFromArray(new_item->v.json, idx);
 			}
 			else
 			{
@@ -747,11 +739,11 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 		// If we reach this point, a valid setting was found and changed
 		// Check if this item requires a config-rewrite + restart of dnsmasq
-		if(conf_item->f & FLAG_RESTART_DNSMASQ)
+		if(new_item->f & FLAG_RESTART_DNSMASQ)
 			dnsmasq_changed = true;
 
 		// Check if this item requires a rewrite of the custom.list file
-		if(conf_item == &conf_copy.dns.hosts)
+		if(new_item == &newconf.dns.hosts)
 			rewrite_custom_list = true;
 		break;
 	}
@@ -779,7 +771,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	{
 		char errbuf[ERRBUF_SIZE] = { 0 };
 		// Request restart of FTL
-		if(write_dnsmasq_config(&conf_copy, true, errbuf))
+		if(write_dnsmasq_config(&newconf, true, errbuf))
 			api->ftl.restart = true;
 		else
 		{
@@ -800,15 +792,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	}
 
 	// Install new configuration
-	lock_shm();
-	// Backup old config struct (so we can free it)
-	struct config old_conf;
-	memcpy(&old_conf, &config, sizeof(struct config));
-	// Replace old config struct by changed one
-	memcpy(&config, &conf_copy, sizeof(struct config));
-	// Free old backup struct
-	free_config(&old_conf);
-	unlock_shm();
+	replace_config(&newconf);
 
 	// Store changed configuration to disk
 	writeFTLtoml(true);
@@ -840,7 +824,7 @@ int api_config(struct ftl_conn *api)
 int api_config_topics(struct ftl_conn *api)
 {
 	cJSON *topics = JSON_NEW_ARRAY();
-	for(unsigned int i = 0; i < sizeof(config_topics)/sizeof(*config_topics); i++)
+	for(unsigned int i = 0; i < ArraySize(config_topics); i++)
 	{
 		cJSON *topic = JSON_NEW_OBJECT();
 		JSON_REF_STR_IN_OBJECT(topic, "name", config_topics[i].name);
@@ -857,7 +841,7 @@ int api_config_topics(struct ftl_conn *api)
 int api_config_server(struct ftl_conn *api)
 {
 	cJSON *servers = JSON_NEW_ARRAY();
-	for(unsigned int i = 0; i < sizeof(dns_server)/sizeof(*dns_server); i++)
+	for(unsigned int i = 0; i < ArraySize(dns_server); i++)
 	{
 		cJSON *server = JSON_NEW_OBJECT();
 		JSON_REF_STR_IN_OBJECT(server, "name", dns_server[i].name);

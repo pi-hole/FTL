@@ -701,7 +701,7 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 
 	// Process pihole-FTL.conf to get gravity.db path
 	// Do not overwrite the file after reading it
-	readFTLconf(false);
+	readFTLconf(&config, false);
 
 	// Disable all debugging output if not explicitly in debug mode (CLI argument "d")
 	if(!debug_mode)

@@ -1165,13 +1165,18 @@
 
 @test "Pi-hole uses dns.reply.blocking.IPv4/6 for blocked domain" {
   run bash -c 'grep "mode = \"NULL\"" /etc/pihole/pihole.toml'
+  printf "grep output: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == '    mode = "NULL"' ]]
   run bash -c './pihole-FTL --config dns.blocking.mode IP'
   printf "setting config: %s\n" "${lines[@]}"
+  run bash -c 'grep "mode = \"IP" /etc/pihole/pihole.toml'
+  printf "grep output (before reload): %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == *'mode = "IP" ### CHANGED, default = "NULL"' ]]
   run bash -c "kill -HUP $(cat /run/pihole-FTL.pid)"
-  sleep 2
-  run bash -c 'grep "mode = \"IP\"" /etc/pihole/pihole.toml'
-  [[ "${lines[0]}" == '    mode = "IP" ### CHANGED, default = "NULL"' ]]
+  sleep 1
+  run bash -c 'grep "mode = \"IP" /etc/pihole/pihole.toml'
+  printf "grep output (after reload): %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == *'mode = "IP" ### CHANGED, default = "NULL"' ]]
   run bash -c "dig A denied.ftl +short @127.0.0.1"
   printf "A: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.11" ]]
@@ -1225,12 +1230,12 @@
   printf "Compression output:\n"
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  [[ ${lines[0]} == "Compressed test/pihole-FTL.db.sql ("* ]]
+  [[ ${lines[0]} == "Compressed test/pihole-FTL.db.sql (2.0KB) to test/pihole-FTL.db.sql.gz (689.0B), 66.0% size reduction" ]]
   printf "Uncompress (FTL) output:\n"
   run bash -c './pihole-FTL gzip test/pihole-FTL.db.sql.gz test/pihole-FTL.db.sql.1'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  [[ ${lines[0]} == "Uncompressed test/pihole-FTL.db.sql.gz ("* ]]
+  [[ ${lines[0]} == "Uncompressed test/pihole-FTL.db.sql.gz (677.0B) to test/pihole-FTL.db.sql.1 (2.0KB), 199.3% size increase" ]]
   printf "Uncompress (gzip) output:\n"
   run bash -c 'gzip -dkc test/pihole-FTL.db.sql.gz > test/pihole-FTL.db.sql.2'
   printf "%s\n" "${lines[@]}"

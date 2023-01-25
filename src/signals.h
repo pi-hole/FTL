@@ -24,6 +24,7 @@ extern volatile sig_atomic_t want_to_reimport_aliasclients;
 extern volatile sig_atomic_t want_to_reload_lists;
 
 extern volatile sig_atomic_t thread_cancellable[THREADS_MAX];
+extern volatile sig_atomic_t thread_running[THREADS_MAX];
 extern const char *thread_names[THREADS_MAX];
 
 #endif //SIGNALS_H

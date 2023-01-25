@@ -27,7 +27,7 @@
 // dirname()
 #include <libgen.h>
 // compression functions
-#include "miniz/compression.h"
+#include "compression/gzip.h"
 
 #define BACKUP_DIR "/etc/pihole/config_backups"
 

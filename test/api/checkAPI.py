@@ -58,9 +58,9 @@ if __name__ == "__main__":
 		verifyer = ResponseVerifyer(ftl, openapi)
 		errors = verifyer.verify_endpoint(path)
 		if len(errors) == 0:
-			print("  " + path + ": OK")
+			print("  " + path + " (" + verifyer.auth_method + " auth): OK")
 		else:
-			print("  " + path + ":")
+			print("  " + path + " (" + verifyer.auth_method + " auth):")
 			for error in errors:
 				print("  - " + error)
 			errs[2] += len(errors)
@@ -79,6 +79,5 @@ if __name__ == "__main__":
 		exit(1)
 
 	# If there are no errors, exit with success
-	# (this is important for the CI)
 	print("Everything okay!")
 	exit(0)

@@ -35,6 +35,7 @@ enum http_method {
 
 struct api_options {
 	bool domains :1;
+	bool parse_json :1;
 	enum fifo_logs which;
 };
 

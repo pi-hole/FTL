@@ -122,6 +122,7 @@ void *GC_thread(void *val)
 {
 	// Set thread name
 	thread_names[GC] = "housekeeper";
+	thread_running[GC] = true;
 	prctl(PR_SET_NAME, thread_names[GC], 0, 0, 0);
 
 	// Remember when we last ran the actions
@@ -255,7 +256,7 @@ void *GC_thread(void *val)
 						break;
 				}
 
-				// Update reply counters
+				// Update reply countersthread_running[GC] = false;
 				counters->reply[query->reply]--;
 
 				// Update type counters
@@ -322,5 +323,6 @@ void *GC_thread(void *val)
 	}
 
 	log_info("Terminating GC thread");
+	thread_running[GC] = false;
 	return NULL;
 }

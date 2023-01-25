@@ -9,13 +9,9 @@
 # Please see LICENSE file for your rights under this license.
 
 set(sources
-        compression.c
-        compression.h
         miniz.c
         miniz.h
-        teleporter.c
-        teleporter.h
-        )
+)
 
 add_library(miniz OBJECT ${sources})
 target_compile_options(miniz PRIVATE)

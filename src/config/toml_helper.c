@@ -578,7 +578,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		case CONF_JSON_STRING_ARRAY:
 		{
 			// Free previously allocated JSON array
-			cJSON_free(conf_item->v.json);
+			cJSON_Delete(conf_item->v.json);
 			conf_item->v.json = cJSON_CreateArray();
 			// Parse TOML array and generate a JSON array
 			const toml_array_t *array = toml_array_in(toml, key);

@@ -697,7 +697,7 @@ int run_dhcp_discover(void)
 	// Disable terminal output during config config file parsing
 	log_ctrl(false, false);
 	// Process pihole-FTL.conf to get gravity.db
-	readFTLconf(false);
+	readFTLconf(&config, false);
 	// Only print to terminal, disable log file
 	log_ctrl(false, true);
 

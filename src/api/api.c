@@ -31,58 +31,59 @@ static struct {
 	bool require_auth;
 	enum http_method methods;
 } api_request[] = {
-	// URI                                      ARGUMENTS                     FUNCTION                               OPTIONS                   AUTH   ALLOWED METHODS
+	// URI                                      ARGUMENTS                     FUNCTION                               OPTIONS                          AUTH   ALLOWED METHODS
+	//                                                                                                               domains  json   fifo
 	// Note: The order of appearance matters here, more specific URIs have to
 	// appear *before* less specific URIs: 1. "/a/b/c", 2. "/a/b", 3. "/a"
-	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { false, 0             }, true,  HTTP_GET | HTTP_POST },
-	{ "/api/dns/cache",                         "",                           api_dns_cache,                         { false, 0             }, true,  HTTP_GET },
-	{ "/api/clients",                           "/{client}",                  api_list,                              { false, 0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
-	{ "/api/domains",                           "/{type}/{kind}/{domain}",    api_list,                              { false, 0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
-	{ "/api/groups",                            "/{name}",                    api_list,                              { false, 0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
-	{ "/api/lists",                             "/{list}",                    api_list,                              { false, 0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
-	{ "/api/info/client",                       "",                           api_info_client,                       { false, 0             }, false, HTTP_GET },
-	{ "/api/info/system",                       "",                           api_info_system,                       { false, 0             }, true,  HTTP_GET },
-	{ "/api/info/database",                     "",                           api_info_database,                     { false, 0             }, true,  HTTP_GET },
-	{ "/api/info/sensors",                      "",                           api_info_sensors,                      { false, 0             }, true,  HTTP_GET },
-	{ "/api/info/host",                         "",                           api_info_host,                         { false, 0             }, true,  HTTP_GET },
-	{ "/api/info/ftl",                          "",                           api_info_ftl,                          { false, 0             }, true,  HTTP_GET },
-	{ "/api/info/version",                      "",                           api_info_version,                      { false, 0             }, true,  HTTP_GET },
-	{ "/api/logs/dnsmasq",                      "",                           api_logs,                              { false, FIFO_DNSMASQ  }, true,  HTTP_GET },
-	{ "/api/logs/ftl",                          "",                           api_logs,                              { false, FIFO_FTL      }, true,  HTTP_GET },
-	{ "/api/logs/http",                         "",                           api_logs,                              { false, FIFO_CIVETWEB }, true,  HTTP_GET },
-	{ "/api/logs/ph7",                          "",                           api_logs,                              { false, FIFO_PH7      }, true,  HTTP_GET },
-	{ "/api/history/clients",                   "",                           api_history_clients,                   { false, 0             }, true,  HTTP_GET },
-	{ "/api/history/database/clients",          "",                           api_history_database_clients,          { false, 0             }, true,  HTTP_GET },
-	{ "/api/history/database",                  "",                           api_history_database,                  { false, 0             }, true,  HTTP_GET },
-	{ "/api/history",                           "",                           api_history,                           { false, 0             }, true,  HTTP_GET },
-	{ "/api/queries/suggestions",               "",                           api_queries_suggestions,               { false, 0             }, true,  HTTP_GET },
-	{ "/api/queries",                           "",                           api_queries,                           { false, 0             }, true,  HTTP_GET },
-	{ "/api/stats/summary",                     "",                           api_stats_summary,                     { false, 0             }, true,  HTTP_GET },
-	{ "/api/stats/query_types",                 "",                           api_stats_query_types,                 { false, 0             }, true,  HTTP_GET },
-	{ "/api/stats/upstreams",                   "",                           api_stats_upstreams,                   { false, 0             }, true,  HTTP_GET },
-	{ "/api/stats/top_domains",                 "",                           api_stats_top_domains,                 { false, 0             }, true,  HTTP_GET },
-	{ "/api/stats/top_clients",                 "",                           api_stats_top_clients,                 { false, 0             }, true,  HTTP_GET },
-	{ "/api/stats/recent_blocked",              "",                           api_stats_recentblocked,               { false, 0             }, true,  HTTP_GET },
-	{ "/api/stats/database/top_domains",        "",                           api_stats_database_top_items,          { true,  0             }, true,  HTTP_GET },
-	{ "/api/stats/database/top_clients",        "",                           api_stats_database_top_items,          { false, 0             }, true,  HTTP_GET },
-	{ "/api/stats/database/summary",            "",                           api_stats_database_summary,            { false, 0             }, true,  HTTP_GET },
-	{ "/api/stats/database/query_types",        "",                           api_stats_database_query_types,        { false, 0             }, true,  HTTP_GET },
-	{ "/api/stats/database/upstreams",          "",                           api_stats_database_upstreams,          { false, 0             }, true,  HTTP_GET },
-	{ "/api/auth",                              "",                           api_auth,                              { false, 0             }, false, HTTP_GET | HTTP_POST | HTTP_DELETE },
-	{ "/api/config/_topics",                    "",                           api_config_topics,                     { false, 0             }, true,  HTTP_GET },
-	{ "/api/config/_server",                    "",                           api_config_server,                     { false, 0             }, true,  HTTP_GET },
-	{ "/api/config",                            "",                           api_config,                            { false, 0             }, true,  HTTP_GET | HTTP_PATCH },
-	{ "/api/config",                            "/{element}",                 api_config,                            { false, 0             }, true,  HTTP_GET | HTTP_PATCH },
-	{ "/api/config",                            "/{element}/{value}",         api_config,                            { false, 0             }, true,  HTTP_DELETE | HTTP_PUT },
-	{ "/api/network/gateway",                   "",                           api_network_gateway,                   { false, 0             }, true,  HTTP_GET },
-	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { false, 0             }, true,  HTTP_GET },
-	{ "/api/network/devices",                   "",                           api_network_devices,                   { false, 0             }, true,  HTTP_GET },
-	{ "/api/endpoints",                         "",                           api_endpoints,                         { false, 0             }, true,  HTTP_GET },
-	{ "/api/teleporter",                        "",                           api_teleporter,                        { false, 0             }, true,  HTTP_GET | HTTP_POST },
-	{ "/api/action/gravity",                    "",                           api_action_gravity,                    { false, 0             }, true,  HTTP_POST },
-	{ "/api/action/reboot",                     "",                           api_action_reboot,                     { false, 0             }, true,  HTTP_POST },
-	{ "/api/action/poweroff",                   "",                           api_action_poweroff,                   { false, 0             }, true,  HTTP_POST },
-	{ "/api/docs",                              "",                           api_docs,                              { false, 0             }, false, HTTP_GET },
+	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { false, true,  0             }, true,  HTTP_GET | HTTP_POST },
+	{ "/api/dns/cache",                         "",                           api_dns_cache,                         { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/clients",                           "/{client}",                  api_list,                              { false, true,  0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
+	{ "/api/domains",                           "/{type}/{kind}/{domain}",    api_list,                              { false, true,  0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
+	{ "/api/groups",                            "/{name}",                    api_list,                              { false, true,  0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
+	{ "/api/lists",                             "/{list}",                    api_list,                              { false, true,  0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
+	{ "/api/info/client",                       "",                           api_info_client,                       { false, true,  0             }, false, HTTP_GET },
+	{ "/api/info/system",                       "",                           api_info_system,                       { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/info/database",                     "",                           api_info_database,                     { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/info/sensors",                      "",                           api_info_sensors,                      { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/info/host",                         "",                           api_info_host,                         { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/info/ftl",                          "",                           api_info_ftl,                          { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/info/version",                      "",                           api_info_version,                      { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/logs/dnsmasq",                      "",                           api_logs,                              { false, true,  FIFO_DNSMASQ  }, true,  HTTP_GET },
+	{ "/api/logs/ftl",                          "",                           api_logs,                              { false, true,  FIFO_FTL      }, true,  HTTP_GET },
+	{ "/api/logs/http",                         "",                           api_logs,                              { false, true,  FIFO_CIVETWEB }, true,  HTTP_GET },
+	{ "/api/logs/ph7",                          "",                           api_logs,                              { false, true,  FIFO_PH7      }, true,  HTTP_GET },
+	{ "/api/history/clients",                   "",                           api_history_clients,                   { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/history/database/clients",          "",                           api_history_database_clients,          { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/history/database",                  "",                           api_history_database,                  { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/history",                           "",                           api_history,                           { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/queries/suggestions",               "",                           api_queries_suggestions,               { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/queries",                           "",                           api_queries,                           { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/stats/summary",                     "",                           api_stats_summary,                     { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/stats/query_types",                 "",                           api_stats_query_types,                 { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/stats/upstreams",                   "",                           api_stats_upstreams,                   { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/stats/top_domains",                 "",                           api_stats_top_domains,                 { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/stats/top_clients",                 "",                           api_stats_top_clients,                 { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/stats/recent_blocked",              "",                           api_stats_recentblocked,               { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/stats/database/top_domains",        "",                           api_stats_database_top_items,          { true,  true,  0             }, true,  HTTP_GET },
+	{ "/api/stats/database/top_clients",        "",                           api_stats_database_top_items,          { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/stats/database/summary",            "",                           api_stats_database_summary,            { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/stats/database/query_types",        "",                           api_stats_database_query_types,        { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/stats/database/upstreams",          "",                           api_stats_database_upstreams,          { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/auth",                              "",                           api_auth,                              { false, true,  0             }, false, HTTP_GET | HTTP_POST | HTTP_DELETE },
+	{ "/api/config/_topics",                    "",                           api_config_topics,                     { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/config/_server",                    "",                           api_config_server,                     { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/config",                            "",                           api_config,                            { false, true,  0             }, true,  HTTP_GET | HTTP_PATCH },
+	{ "/api/config",                            "/{element}",                 api_config,                            { false, true,  0             }, true,  HTTP_GET | HTTP_PATCH },
+	{ "/api/config",                            "/{element}/{value}",         api_config,                            { false, true,  0             }, true,  HTTP_DELETE | HTTP_PUT },
+	{ "/api/network/gateway",                   "",                           api_network_gateway,                   { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/network/devices",                   "",                           api_network_devices,                   { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/endpoints",                         "",                           api_endpoints,                         { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/teleporter",                        "",                           api_teleporter,                        { false, false, 0             }, true,  HTTP_GET | HTTP_POST },
+	{ "/api/action/gravity",                    "",                           api_action_gravity,                    { false, true,  0             }, true,  HTTP_POST },
+	{ "/api/action/reboot",                     "",                           api_action_reboot,                     { false, true,  0             }, true,  HTTP_POST },
+	{ "/api/action/poweroff",                   "",                           api_action_poweroff,                   { false, true,  0             }, true,  HTTP_POST },
+	{ "/api/docs",                              "",                           api_docs,                              { false, true,  0             }, false, HTTP_GET },
 };
 
 int api_handler(struct mg_connection *conn, void *ignored)
@@ -96,21 +97,8 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		NULL,
 		{ false, NULL, NULL, NULL, 0u },
 		{ false },
-		{ false, 0 }
+		{ false, false, 0 }
 	};
-
-	// Allocate memory for the payload
-	api.payload.raw = calloc(MAX_PAYLOAD_BYTES, sizeof(char));
-	if(!api.payload.raw)
-	{
-		log_crit("Cannot handle API request %s %s: %s",
-		         api.request->request_method,
-		         api.request->local_uri_raw,
-		         strerror(ENOMEM));
-	}
-
-	// Read and try to parse payload
-	read_and_parse_payload(&api);
 
 	log_debug(DEBUG_API, "Requested API URI: %s %s ? %s",
 	          api.request->request_method,
@@ -122,7 +110,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	// Loop over all API endpoints and check if the requested URI matches
 	bool unauthorized = false;
 	enum http_method allowed_methods = 0;
-	for(unsigned int i = 0; i < sizeof(api_request)/sizeof(api_request[0]); i++)
+	for(unsigned int i = 0; i < ArraySize(api_request); i++)
 	{
 		// Check if the requested method is allowed
 		if(!(api_request[i].methods & api.method) && api.method != HTTP_OPTIONS)
@@ -141,6 +129,22 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			{
 				allowed_methods |= api_request[i].methods;
 				continue;
+			}
+
+			if(api_request[i].opts.parse_json)
+			{
+				// Allocate memory for the payload
+				api.payload.raw = calloc(MAX_PAYLOAD_BYTES, sizeof(char));
+				if(!api.payload.raw)
+				{
+					log_crit("Cannot handle API request %s %s: %s",
+							api.request->request_method,
+							api.request->local_uri_raw,
+							strerror(ENOMEM));
+				}
+
+				// Read and try to parse payload
+				read_and_parse_payload(&api);
 			}
 
 			// Verify requesting client is allowed to see this ressource
@@ -172,9 +176,12 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		api.payload.json = NULL;
 	}
 
-	// Free raw payload bytes (always allocated)
-	free(api.payload.raw);
-	api.payload.raw = NULL;
+	// Free raw payload bytes
+	if(api.payload.raw != NULL)
+	{
+		free(api.payload.raw);
+		api.payload.raw = NULL;
+	}
 
 	// Check if we need to return with unauthorized payload
 	if(unauthorized)
@@ -240,7 +247,7 @@ static int api_endpoints(struct ftl_conn *api)
 	cJSON *delete = JSON_NEW_ARRAY();
 
 	// Add endpoints to JSON array
-	for(unsigned int i = 0; i < sizeof(api_request)/sizeof(api_request[0]); i++)
+	for(unsigned int i = 0; i < ArraySize(api_request); i++)
 	{
 		for(enum http_method method = HTTP_GET; method <= HTTP_DELETE; method <<= 1)
 		{

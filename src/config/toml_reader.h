@@ -10,7 +10,10 @@
 #ifndef TOML_READER_H
 #define TOML_READER_H
 
-bool readFTLtoml(const bool verbose);
+#include "config/config.h"
+#include "tomlc99/toml.h"
+
+bool readFTLtoml(struct config *conf, toml_table_t *toml, const bool verbose);
 bool getLogFilePathTOML(void);
 
 #endif //TOML_READER_H

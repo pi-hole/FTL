@@ -216,7 +216,7 @@ mg_handle_form_request(struct mg_connection *conn,
 		if (0 != strcmp(conn->request_info.request_method, "GET")) {
 			/* No body data, but not a GET request.
 			 * This is not a valid form request. */
-			return -1;
+			return -2;
 		}
 
 		/* GET request: form data is in the query string. */
@@ -226,7 +226,7 @@ mg_handle_form_request(struct mg_connection *conn,
 		data = conn->request_info.query_string;
 		if (!data) {
 			/* No query string. */
-			return -1;
+			return -3;
 		}
 
 		/* Split data in a=1&b=xy&c=3&c=4 ... */
@@ -400,7 +400,7 @@ mg_handle_form_request(struct mg_connection *conn,
 				r = mg_read(conn, buf + (size_t)buf_fill, to_read);
 				if ((r < 0) || ((r == 0) && all_data_read)) {
 					/* read error */
-					return -1;
+					return -4;
 				}
 				if (r == 0) {
 					/* TODO: Create a function to get "all_data_read" from
@@ -538,7 +538,7 @@ mg_handle_form_request(struct mg_connection *conn,
 								mg_fclose(&fstore.access);
 								remove_bad_file(conn, path);
 							}
-							return -1;
+							return -5;
 #endif /* NO_FILESYSTEMS */
 						}
 						if (r == 0) {
@@ -620,7 +620,7 @@ mg_handle_form_request(struct mg_connection *conn,
 		/* There has to be a BOUNDARY definition in the Content-Type header */
 		if (mg_strncasecmp(content_type + bl, "BOUNDARY=", 9)) {
 			/* Malformed request */
-			return -1;
+			return -6;
 		}
 
 		/* Copy boundary string to variable "boundary" */
@@ -633,7 +633,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			                "%s: Cannot allocate memory for boundary [%lu]",
 			                __func__,
 			                (unsigned long)bl);
-			return -1;
+			return -7;
 		}
 		memcpy(boundary, fbeg, bl);
 		boundary[bl] = 0;
@@ -645,7 +645,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			if ((!hbuf) || (*hbuf != '"')) {
 				/* Malformed request */
 				mg_free(boundary);
-				return -1;
+				return -8;
 			}
 			*hbuf = 0;
 			memmove(boundary, boundary + 1, bl);
@@ -666,13 +666,13 @@ mg_handle_form_request(struct mg_connection *conn,
 			 * Requests with long boundaries are not RFC compliant, maybe they
 			 * are intended attacks to interfere with this algorithm. */
 			mg_free(boundary);
-			return -1;
+			return -9;
 		}
 		if (bl < 4) {
 			/* Sanity check:  A boundary string of less than 4 bytes makes
 			 * no sense either. */
 			mg_free(boundary);
-			return -1;
+			return -10;
 		}
 
 		for (part_no = 0;; part_no++) {
@@ -687,7 +687,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			if ((r < 0) || ((r == 0) && all_data_read)) {
 				/* read error */
 				mg_free(boundary);
-				return -1;
+				return -11;
 			}
 			if (r == 0) {
 				all_data_read = (buf_fill == 0);
@@ -698,7 +698,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			if (buf_fill < 1) {
 				/* No data */
 				mg_free(boundary);
-				return -1;
+				return -12;
 			}
 
 			if (part_no == 0) {
@@ -716,12 +716,12 @@ mg_handle_form_request(struct mg_connection *conn,
 			if (buf[0] != '-' || buf[1] != '-') {
 				/* Malformed request */
 				mg_free(boundary);
-				return -1;
+				return -13;
 			}
 			if (0 != strncmp(buf + 2, boundary, bl)) {
 				/* Malformed request */
 				mg_free(boundary);
-				return -1;
+				return -14;
 			}
 			if (buf[bl + 2] != '\r' || buf[bl + 3] != '\n') {
 				/* Every part must end with \r\n, if there is another part.
@@ -730,7 +730,7 @@ mg_handle_form_request(struct mg_connection *conn,
 				    || (strncmp(buf + bl + 2, "--\r\n", 4))) {
 					/* Malformed request */
 					mg_free(boundary);
-					return -1;
+					return -15;
 				}
 				/* End of the request */
 				break;
@@ -742,7 +742,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			if (!hend) {
 				/* Malformed request */
 				mg_free(boundary);
-				return -1;
+				return -16;
 			}
 
 			part_header.num_headers =
@@ -750,7 +750,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			if ((hend + 2) != hbuf) {
 				/* Malformed request */
 				mg_free(boundary);
-				return -1;
+				return -17;
 			}
 
 			/* Skip \r\n\r\n */
@@ -764,7 +764,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			if (!content_disp) {
 				/* Malformed request */
 				mg_free(boundary);
-				return -1;
+				return -18;
 			}
 
 			/* Get the mandatory name="..." part of the Content-Disposition
@@ -788,7 +788,7 @@ mg_handle_form_request(struct mg_connection *conn,
 				if (!nend) {
 					/* Malformed request */
 					mg_free(boundary);
-					return -1;
+					return -19;
 				}
 			} else {
 				/* name= without quotes is also allowed */
@@ -800,7 +800,7 @@ mg_handle_form_request(struct mg_connection *conn,
 				if (!nbeg) {
 					/* Malformed request */
 					mg_free(boundary);
-					return -1;
+					return -20;
 				}
 				nbeg += 5;
 
@@ -835,7 +835,7 @@ mg_handle_form_request(struct mg_connection *conn,
 					/* Malformed request (the filename field is optional, but if
 					 * it exists, it needs to be terminated correctly). */
 					mg_free(boundary);
-					return -1;
+					return -21;
 				}
 
 				/* TODO: check Content-Type */
@@ -868,7 +868,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			if (!(((ptrdiff_t)fbeg > (ptrdiff_t)nend)
 			      || ((ptrdiff_t)nbeg > (ptrdiff_t)fend))) {
 				mg_free(boundary);
-				return -1;
+				return -22;
 			}
 
 			/* Call callback for new field */
@@ -917,7 +917,7 @@ mg_handle_form_request(struct mg_connection *conn,
 					/* Not enough data stored. */
 					/* Incomplete request. */
 					mg_free(boundary);
-					return -1;
+					return -23;
 				}
 
 				/* Subtract the boundary length, to deal with
@@ -980,7 +980,7 @@ mg_handle_form_request(struct mg_connection *conn,
 					}
 #endif /* NO_FILESYSTEMS */
 					mg_free(boundary);
-					return -1;
+					return -24;
 				}
 				/* r==0 already handled, all_data_read is false here */
 
@@ -1076,7 +1076,7 @@ mg_handle_form_request(struct mg_connection *conn,
 	}
 
 	/* Unknown Content-Type */
-	return -1;
+	return -25;
 }
 
 /* End of handle_form.inl */

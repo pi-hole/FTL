@@ -258,13 +258,13 @@ static bool readStringValue(struct conf_item *conf_item, const char *value)
 				if(!cJSON_IsString(item))
 				{
 					log_err("Config setting %s is invalid: element with index %d is not a string", conf_item->k, i);
-					cJSON_free(elem);
+					cJSON_Delete(elem);
 					return false;
 				}
 			}
 			// If we reach this point, all elements are valid
 			// Free previously allocated JSON array and replace with new
-			cJSON_free(conf_item->v.json);
+			cJSON_Delete(conf_item->v.json);
 			conf_item->v.json = elem;
 			break;
 		}
@@ -276,20 +276,20 @@ static bool readStringValue(struct conf_item *conf_item, const char *value)
 bool set_config_from_CLI(const char *key, const char *value)
 {
 	// Identify config option
-	struct config conf_copy;
-	duplicate_config(&conf_copy);
+	struct config newconf;
+	duplicate_config(&newconf, &config);
 	struct conf_item *conf_item = NULL;
-	struct conf_item *copy_item = NULL;
+	struct conf_item *new_item = NULL;
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to (copied) memory location of this conf_item
-		struct conf_item *item = get_conf_item(&conf_copy, i);
+		struct conf_item *item = get_conf_item(&newconf, i);
 
 		if(strcmp(item->k, key) != 0)
 			continue;
 
 		// This is the config option we are looking for
-		copy_item = item;
+		new_item = item;
 
 		// Also get pointer to memory location of this conf_item
 		conf_item = get_conf_item(&config, i);
@@ -299,18 +299,18 @@ bool set_config_from_CLI(const char *key, const char *value)
 	}
 
 	// Check if we found the config option
-	if(copy_item == NULL)
+	if(new_item == NULL)
 	{
 		log_err("Unknown config option: %s", key);
 		return false;
 	}
 
 	// Parse value
-	if(!readStringValue(copy_item, value))
+	if(!readStringValue(new_item, value))
 		return false;
 
 	// Check if value changed compared to current value
-	if(!compare_config_item(copy_item, conf_item))
+	if(!compare_config_item(new_item, conf_item))
 	{
 		// Config item changed
 
@@ -318,7 +318,7 @@ bool set_config_from_CLI(const char *key, const char *value)
 		if(conf_item->f & FLAG_RESTART_DNSMASQ)
 		{
 			char errbuf[ERRBUF_SIZE] = { 0 };
-			if(!write_dnsmasq_config(&conf_copy, true, errbuf))
+			if(!write_dnsmasq_config(&newconf, true, errbuf))
 			{
 				// Test failed
 				log_debug(DEBUG_CONFIG, "Config item %s: dnsmasq config test failed", conf_item->k);
@@ -335,22 +335,16 @@ bool set_config_from_CLI(const char *key, const char *value)
 		}
 
 		// Install new configuration
-		// Backup old config struct (so we can free it)
-		struct config old_conf;
-		memcpy(&old_conf, &config, sizeof(struct config));
-		// Replace old config struct by changed one
-		memcpy(&config, &conf_copy, sizeof(struct config));
-		// Free old backup struct
-		free_config(&old_conf);
+		replace_config(&newconf);
 
 		// Print value
-		writeTOMLvalue(stdout, -1, copy_item->t, &copy_item->v);
+		writeTOMLvalue(stdout, -1, new_item->t, &new_item->v);
 	}
 	else
 	{
 		// No change
 		log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
-		free_config(&conf_copy);
+		free_config(&newconf);
 
 		// Print value
 		writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);

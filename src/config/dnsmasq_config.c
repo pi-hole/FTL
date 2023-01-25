@@ -401,7 +401,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	{
 		fputs("# DHCP server setting\n", pihole_conf);
 		fputs("dhcp-authoritative\n", pihole_conf);
-		fputs("dhcp-leasefile=/etc/pihole/dhcp.leases\n", pihole_conf);
+		fputs("dhcp-leasefile="DHCPLEASESFILE"\n", pihole_conf);
 		fprintf(pihole_conf, "dhcp-range=%s,%s,%s\n",
 		        conf->dhcp.start.v.s,
 				conf->dhcp.end.v.s,

@@ -159,11 +159,11 @@ void http_init(void)
 	// Add access control list if configured (last two options)
 	if(strlen(config.webserver.acl.v.s) > 0)
 	{
-		options[(sizeof(options)/sizeof(*options)) - 3] = "access_control_list";
+		options[ArraySize(options) - 3] = "access_control_list";
 		// Note: The string is duplicated by CivetWeb, so it doesn't matter if
 		//       the original string is freed (config changes) after mg_start()
 		//       returns below.
-		options[(sizeof(options)/sizeof(*options)) - 2] = config.webserver.acl.v.s;
+		options[ArraySize(options) - 2] = config.webserver.acl.v.s;
 	}
 
 	// Configure logging handlers

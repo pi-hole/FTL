@@ -33,7 +33,8 @@ static volatile pid_t mpid = -1;
 static time_t FTLstarttime = 0;
 volatile int exit_code = EXIT_SUCCESS;
 
-volatile sig_atomic_t thread_cancellable[THREADS_MAX] = { true };
+volatile sig_atomic_t thread_cancellable[THREADS_MAX] = { false };
+volatile sig_atomic_t thread_running[THREADS_MAX] = { false };
 const char *thread_names[THREADS_MAX] = { "" };
 
 // Return the (null-terminated) name of the calling thread
@@ -321,7 +322,7 @@ void handle_signals(void)
 	struct sigaction old_action;
 
 	const int signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE };
-	for(unsigned int i = 0; i < sizeof(signals)/sizeof(signals[0]); i++)
+	for(unsigned int i = 0; i < ArraySize(signals); i++)
 	{
 		// Catch this signal
 		sigaction (signals[i], NULL, &old_action);

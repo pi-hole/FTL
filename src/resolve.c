@@ -603,6 +603,7 @@ void *DNSclient_thread(void *val)
 {
 	// Set thread name
 	thread_names[DNSclient] = "DNS client";
+	thread_running[DNSclient] = true;
 	prctl(PR_SET_NAME, thread_names[DNSclient], 0, 0, 0);
 
 	// Initial delay until we first try to resolve anything
@@ -662,5 +663,6 @@ void *DNSclient_thread(void *val)
 	}
 
 	log_info("Terminating resolver thread");
+	thread_running[DNSclient] = false;
 	return NULL;
 }

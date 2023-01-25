@@ -10,10 +10,11 @@
 # Please see LICENSE file for your rights under this license.
 
 import io
+import random
 import zipfile
 from libs.openAPI import openApi
 import urllib.request, urllib.parse
-from libs.FTLAPI import FTLAPI
+from libs.FTLAPI import FTLAPI, AuthenticationMethods
 from collections.abc import MutableMapping
 
 class ResponseVerifyer():
@@ -21,6 +22,8 @@ class ResponseVerifyer():
 	# Translate between OpenAPI and Python types
 	YAML_TYPES = { "string": [str], "integer": [int], "number": [int, float], "boolean": [bool], "array": [list] }
 	TELEPORTER_FILES = ["etc/pihole/gravity.db", "etc/pihole/pihole.toml", "etc/pihole/pihole-FTL.db", "etc/hosts"]
+
+	auth_method = "?"
 
 	def __init__(self, ftl: FTLAPI, openapi: openApi):
 		self.ftl = ftl
@@ -62,6 +65,10 @@ class ResponseVerifyer():
 
 		# Get YAML response schema and examples (if applicable)
 		expected_mimetype = True
+		# Assign random authentication method so we can test them all
+		authentication_method = random.choice([a for a in AuthenticationMethods])
+		self.auth_method = authentication_method.name
+		# Check if the expected response is defined in the API specs
 		response_rcode = self.openapi.paths[endpoint][method]['responses'][str(rcode)]
 		if 'content' in response_rcode:
 			content = response_rcode['content']
@@ -73,6 +80,8 @@ class ResponseVerifyer():
 			elif 'application/zip' in content:
 				expected_mimetype = 'application/zip'
 				jsonData = content[expected_mimetype]
+				# Thie endpoint requires HEADER authentication
+				authentication_method = AuthenticationMethods.HEADER
 				YAMLresponseSchema = None
 				YAMLresponseExamples = None
 		else:
@@ -93,7 +102,7 @@ class ResponseVerifyer():
 				FTLparameters.append(param['name'] + "=" + urllib.parse.quote_plus(str(param['example'])))
 
 		# Get FTL response
-		FTLresponse = self.ftl.GET("/api" + endpoint, FTLparameters, expected_mimetype)
+		FTLresponse = self.ftl.GET("/api" + endpoint, FTLparameters, expected_mimetype, authentication_method)
 		if FTLresponse is None:
 			return self.ftl.errors
 

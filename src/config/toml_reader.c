@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "toml_reader.h"
-#include "config.h"
 #include "setupVars.h"
 #include "log.h"
 // getprio(), setprio()
@@ -20,7 +19,6 @@
 // INT_MAX
 #include <limits.h>
 
-#include "tomlc99/toml.h"
 #include "../datastructure.h"
 // openFTLtoml()
 #include "toml_helper.h"
@@ -29,30 +27,37 @@
 static toml_table_t *parseTOML(void);
 static void reportDebugConfig(void);
 
-bool readFTLtoml(const bool verbose)
+bool readFTLtoml(struct config *conf, toml_table_t *toml, const bool verbose)
 {
-	// Parse lines in the config file
-	toml_table_t *conf = parseTOML();
-	if(!conf)
-		return false;
+	// Parse lines in the config file if we did not receive a pointer to a TOML
+	// table (e.g. from an imported Teleporter file)
+	bool external = true;
+	if(toml == NULL)
+	{
+		external = false;
+		toml = parseTOML();
+		if(!toml)
+			return false;
 
-	// Initialize config with default values
-	initConfig();
+		// Initialize config with default values
+		initConfig(conf);
+	}
 
 	// Try to read debug config. This is done before the full config
 	// parsing to allow for debug output further down
-	toml_table_t *conf_debug = toml_table_in(conf, "debug");
+	toml_table_t *conf_debug = toml_table_in(toml, "debug");
 	if(conf_debug)
 		readTOMLvalue(&config.debug.config, "config", conf_debug);
 	set_debug_flags();
 
-	log_debug(DEBUG_CONFIG, "Reading TOML config file: full config");
+	log_debug(DEBUG_CONFIG, "Reading %s TOML config file: full config",
+	          external ? "external" : "default");
 
 	// Read all known config items
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(&config, i);
+		struct conf_item *conf_item = get_conf_item(conf, i);
 
 		// Get config path depth
 		unsigned int level = config_path_depth(conf_item->p);
@@ -63,7 +68,7 @@ bool readFTLtoml(const bool verbose)
 		for(unsigned int j = 0; j < level-1; j++)
 		{
 			// Get table at this level
-			table[j] = toml_table_in(j > 0 ? table[j-1] : conf, conf_item->p[j]);
+			table[j] = toml_table_in(j > 0 ? table[j-1] : toml, conf_item->p[j]);
 			if(!table[j])
 			{
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST", conf_item->k);
@@ -86,7 +91,7 @@ bool readFTLtoml(const bool verbose)
 		reportDebugConfig();
 
 	// Free memory allocated by the TOML parser and return success
-	toml_free(conf);
+	toml_free(toml);
 	return true;
 }
 

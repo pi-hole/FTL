@@ -69,7 +69,7 @@ int main (int argc, char *argv[])
 	// Process pihole.toml configuration file
 	// The file is rewritten after parsing to ensure that all
 	// settings are present and have a valid value
-	readFTLconf(true);
+	readFTLconf(&config, true);
 
 	// Set process priority
 	set_nice();
@@ -132,6 +132,8 @@ int main (int argc, char *argv[])
 
 	// Start the resolver
 	startup = false;
+	// Stop writing to STDOUT
+	log_ctrl(true, false);
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
 	log_info("Shutting down... // exit code %d", exit_code);

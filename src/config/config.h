@@ -276,19 +276,21 @@ extern struct config config;
 
 // Defined in config.c
 void set_all_debug(const bool status);
-void initConfig(void);
-void readFTLconf(const bool rewrite);
+void initConfig(struct config *conf);
+void readFTLconf(struct config *conf, const bool rewrite);
 bool getLogFilePath(void);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
 struct conf_item *get_debug_item(const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
-void duplicate_config(struct config *conf);
+void duplicate_config(struct config *dst, struct config *src);
 void free_config(struct config *conf);
 bool compare_config_item(const struct conf_item *conf_item1, const struct conf_item *conf_item2);
 char **gen_config_path(const char *pathin, const char delim);
 void free_config_path(char **paths);
 bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __attribute__ ((pure));
 const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const));
+void replace_config(struct config *newconf);
+void reread_config(void);
 
 // Defined in toml_reader.c
 bool getPrivacyLevel(void);
@@ -301,7 +303,7 @@ void set_blockingstatus(bool enabled);
 // Add enum items with descriptions
 #define CONFIG_ADD_ENUM_OPTIONS(json, opts)({ \
 	json = cJSON_CreateArray(); \
-	for(unsigned int i = 0; i < sizeof(opts)/sizeof(*opts); i++) \
+	for(unsigned int i = 0; i < ArraySize(opts); i++) \
 	{ \
 		cJSON *jopt = cJSON_CreateObject(); \
 		if(opts[i].item[0] >= '0' && opts[i].item[0] <= '9') \
@@ -327,7 +329,7 @@ void set_blockingstatus(bool enabled);
 				cJSON_AddItemToArray(array, cJSON_Duplicate(item, true)); \
 		} \
 		output = cJSON_PrintUnformatted(array); \
-		cJSON_free(array); \
+		cJSON_Delete(array); \
 	} \
 	else if(cJSON_IsString(json)) \
 	{ \

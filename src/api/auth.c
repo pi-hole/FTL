@@ -142,7 +142,8 @@ int check_client_auth(struct ftl_conn *api)
 	{
 		const char *sid_header = NULL;
 		// Try to extract SID from header
-		if((sid_header = mg_get_header(api->conn, "sid")) != NULL)
+		if((sid_header = mg_get_header(api->conn, "sid")) != NULL ||
+		   (sid_header = mg_get_header(api->conn, "X-FTL-SID")) != NULL)
 		{
 			// Copy SID string
 			strncpy(sid, sid_header, SID_SIZE - 1u);

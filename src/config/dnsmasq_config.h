@@ -27,5 +27,6 @@ bool write_custom_list(void);
 #define DNSMASQ_STATIC_LEASES "/etc/pihole/04-pihole-static-dhcp.conf"
 #define DNSMASQ_CNAMES "/etc/pihole/05-pihole-custom-cname.conf"
 #define DNSMASQ_CUSTOM_LIST "/etc/pihole/custom.list"
+#define DHCPLEASESFILE "/etc/pihole/dhcp.leases"
 
 #endif //DNSMASQ_CONFIG_H

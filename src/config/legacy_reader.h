@@ -10,7 +10,9 @@
 #ifndef LEGACY_READER_H
 #define LEGACY_READER_H
 
-bool getLogFilePathLegacy(FILE *fp);
-const char *readFTLlegacy(void);
+#include "config/config.h"
+
+bool getLogFilePathLegacy(struct config *conf, FILE *fp);
+const char *readFTLlegacy(struct config *conf);
 
 #endif //LEGACY_READER_H

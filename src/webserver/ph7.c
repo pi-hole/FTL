@@ -8,17 +8,19 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
+// ArraySize()
+#include "FTL.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 // strncpy()
 #include <string.h>
-#include "../log.h"
-#include "../ph7/ph7.h"
-#include "../civetweb/civetweb.h"
+#include "log.h"
+#include "ph7/ph7.h"
+#include "civetweb/civetweb.h"
 #include "ph7.h"
 // struct config.http
-#include "../config/config.h"
+#include "config/config.h"
 // mmap
 #include <sys/mman.h>
 // stat
@@ -130,7 +132,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	ph7_vm_config(pVm, PH7_VM_CONFIG_IMPORT_PATH, webroot_with_home_and_scripts);
 
 	// Register Pi-hole's PH7 extensions (defined in subdirectory "ph7_ext/")
-	for(unsigned int i = 0; i < sizeof(aFunc)/sizeof(aFunc[0]); i++ )
+	for(unsigned int i = 0; i < ArraySize(aFunc); i++ )
 	{
 		rc = ph7_create_function(pVm, aFunc[i].zName, aFunc[i].xProc, NULL /* NULL: No private data */);
 		if( rc != PH7_OK ){

@@ -43,9 +43,9 @@
 #include "config/cli.h"
 #include "config/config.h"
 // compression functions
-#include "miniz/compression.h"
+#include "compression/gzip.h"
 // teleporter functions
-#include "miniz/teleporter.h"
+#include "compression/teleporter.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -234,7 +234,8 @@ void parse_args(int argc, char* argv[])
 	{
 		// Enable stdout printing
 		cli_mode = true;
-		readFTLconf(false);
+		log_ctrl(false, true);
+		readFTLconf(&config, false);
 		if(argc == 3)
 			exit(get_config_from_CLI(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
 		else if(argc == 4)
@@ -252,7 +253,8 @@ void parse_args(int argc, char* argv[])
 	{
 		// Enable stdout printing
 		cli_mode = true;
-		readFTLconf(false);
+		log_ctrl(false, true);
+		readFTLconf(&config, false);
 		exit(write_teleporter_zip_to_disk() ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 

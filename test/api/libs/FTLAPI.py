@@ -9,6 +9,7 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
+from enum import Enum
 import requests
 from typing import List
 import json
@@ -24,6 +25,11 @@ session = requests.post(url, data = {"response": response}).json()
 valid = session["session"]["valid"] # True / False
 sid = session["session"]["sid"] # SID string if succesful, null otherwise
 """
+
+class AuthenticationMethods(Enum):
+	HEADER = 1
+	BODY = 2
+	COOKIE = 3
 
 # Class to query the FTL API
 class FTLAPI():
@@ -95,7 +101,7 @@ class FTLAPI():
 		self.session = response["session"]
 
 	# Query the FTL API (GET) and return the response
-	def GET(self, uri: str, params: List[str] = [], expected_mimetype: str = "application/json"):
+	def GET(self, uri: str, params: List[str] = [], expected_mimetype: str = "application/json", authenticate: AuthenticationMethods = AuthenticationMethods.BODY):
 		self.errors = []
 		try:
 			# Add parameters to the URI (if any)
@@ -104,13 +110,20 @@ class FTLAPI():
 
 			# Add session ID to the request (if any)
 			data = None
+			headers = None
+			cookies = None
 			if self.session is not None and 'sid' in self.session:
-				data = {"sid": self.session['sid'] }
+				if authenticate == AuthenticationMethods.HEADER:
+					headers = {"X-FTL-SID": self.session['sid']}
+				elif authenticate == AuthenticationMethods.BODY:
+					data = {"sid": self.session['sid'] }
+				elif authenticate == AuthenticationMethods.COOKIE:
+					cookies = {"sid": self.session['sid'] }
 
 			# Query the API
 			if self.verbose:
 				print("GET " + self.api_url + uri + " with data: " + json.dumps(data))
-			with requests.get(url = self.api_url + uri, json = data) as response:
+			with requests.get(url = self.api_url + uri, json = data, headers=headers, cookies=cookies) as response:
 				if self.verbose:
 					print(json.dumps(response.json(), indent=4))
 				if expected_mimetype == "application/json":

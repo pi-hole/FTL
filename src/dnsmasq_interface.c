@@ -56,6 +56,8 @@
 #include "struct_size.h"
 // query_to_database()
 #include "database/query-table.h"
+// reread_config()
+#include "config/config.h"
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
@@ -188,9 +190,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 	// Debug logging
 	if(*ede != EDE_UNSET)
-		log_debug(DEBUG_FLAGS, "Preparing reply for \"%s\", EDE: %s (%d)", name, edestr(*ede), *ede);
+		log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\", EDE: %s (%d)", name, edestr(*ede), *ede);
 	else
-		log_debug(DEBUG_FLAGS, "Preparing reply for \"%s\", EDE: N/A", name);
+		log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\", EDE: N/A", name);
 
 	// Get question type
 	int qtype, flags = 0;
@@ -218,7 +220,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
-		log_debug(DEBUG_FLAGS, "Forced DNS reply to NXDOMAIN");
+		log_debug(DEBUG_QUERIES, "Forced DNS reply to NXDOMAIN");
 	}
 	else if(force_next_DNS_reply == REPLY_NODATA)
 	{
@@ -227,7 +229,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
-		log_debug(DEBUG_FLAGS, "Forced DNS reply to NODATA");
+		log_debug(DEBUG_QUERIES, "Forced DNS reply to NODATA");
 	}
 	else if(force_next_DNS_reply == REPLY_REFUSED)
 	{
@@ -237,7 +239,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
-		log_debug(DEBUG_FLAGS, "Forced DNS reply to REFUSED");
+		log_debug(DEBUG_QUERIES, "Forced DNS reply to REFUSED");
 
 		// Set EDE code to blocked
 		*ede = EDE_BLOCKED;
@@ -252,7 +254,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
-		log_debug(DEBUG_FLAGS, "Forced DNS reply to IP");
+		log_debug(DEBUG_QUERIES, "Forced DNS reply to IP");
 	}
 	else if(force_next_DNS_reply == REPLY_NONE)
 	{
@@ -260,7 +262,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
-		log_debug(DEBUG_FLAGS, "Forced DNS reply to NONE - dropping this query");
+		log_debug(DEBUG_QUERIES, "Forced DNS reply to NONE - dropping this query");
 
 		return 0;
 	}
@@ -272,7 +274,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			// If we block in NXDOMAIN mode, we set flags to NXDOMAIN
 			// (NEG will be added after setup_reply() below)
 			flags = F_NXDOMAIN;
-			log_debug(DEBUG_FLAGS, "Configured blocking mode is NXDOMAIN");
+			log_debug(DEBUG_QUERIES, "Configured blocking mode is NXDOMAIN");
 		}
 		else if(config.dns.blocking.mode.v.blocking_mode == MODE_NODATA ||
 				(config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA && (flags & F_IPV6)))
@@ -280,7 +282,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			// If we block in NODATA mode or NODATA for AAAA queries, we apply
 			// the NOERROR response flag. This ensures we're sending an empty response
 			flags = F_NOERR;
-			log_debug(DEBUG_FLAGS, "Configured blocking mode is NODATA%s",
+			log_debug(DEBUG_QUERIES, "Configured blocking mode is NODATA%s",
 				     config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ? "-IPv6" : "");
 		}
 	}
@@ -295,7 +297,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		last_regex_idx = -1;
 
 		// Debug logging
-		log_debug(DEBUG_FLAGS, "Regex match is %sredirected", redirecting ? "" : "NOT ");
+		log_debug(DEBUG_QUERIES, "Regex match is %sredirected", redirecting ? "" : "NOT ");
 	}
 
 	// Debug logging
@@ -1723,10 +1725,13 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	unlock_shm();
 }
 
+static unsigned int reload = 0u;
 void FTL_dnsmasq_reload(void)
 {
 	// This function is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and re-reading the lists
+	if(reload++ > 0)
+		log_info("Received SIGHUP, flushing chache and re-reading config");
 
 	// Gravity database updates
 	// - (Re-)open gravity database connection
@@ -1740,8 +1745,10 @@ void FTL_dnsmasq_reload(void)
 	if(config.debug.caps.v.b)
 		check_capabilities();
 
-	// Re-read configuration (incl. rewriting)
-	readFTLconf(true);
+	// Re-read pihole.toml (incl. rewriting) on every but the first reload
+	// (which is happening right after the start of dnsmasq)
+	if(reload > 1)
+		reread_config();
 
 	// Report blocking mode
 	log_info("Blocking status is %s", config.dns.blocking.active.v.b ? "enabled" : "disabled");
@@ -2551,7 +2558,7 @@ void print_flags(const unsigned int flags)
 		return;
 
 	char *flagstr = calloc(sizeof(flagnames) + 1, sizeof(char));
-	for (unsigned int i = 0; i < (sizeof(flagnames) / sizeof(*flagnames)); i++)
+	for (unsigned int i = 0; i < ArraySize(flagnames); i++)
 		if (flags & (1u << i))
 			strcat(flagstr, flagnames[i]);
 	log_debug(DEBUG_FLAGS, "     Flags: %s", flagstr);

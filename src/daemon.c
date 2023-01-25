@@ -242,6 +242,10 @@ static void terminate_threads(void)
 	log_info("Waiting for threads to join");
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
+		// Skip threads that have never been started or which are already stopped
+		if(!thread_running[i])
+			continue;
+
 		// Cancel thread if it is idle
 		if(thread_cancellable[i])
 		{
@@ -326,7 +330,7 @@ void cleanup(const int ret)
 	// Remove shared memory objects
 	// Important: This invalidated all objects such as
 	//            counters-> ... etc.
-	// This should be the last action when cleaning up
+	// This should be the last action when c
 	destroy_shmem();
 
 	char buffer[42] = { 0 };
