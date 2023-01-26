@@ -100,10 +100,11 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		{ false, false, 0 }
 	};
 
-	log_debug(DEBUG_API, "Requested API URI: %s %s ? %s",
+	log_debug(DEBUG_API, "Requested API URI: %s %s ? %s (Content-Type %s)",
 	          api.request->request_method,
 	          api.request->local_uri_raw,
-	          api.request->query_string);
+	          api.request->query_string,
+	          mg_get_header(conn, "Content-Type"));
 
 	int ret = 0;
 

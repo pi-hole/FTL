@@ -10,6 +10,7 @@
 # Please see LICENSE file for your rights under this license.
 
 from enum import Enum
+import random
 import requests
 from typing import List
 import json
@@ -27,12 +28,16 @@ sid = session["session"]["sid"] # SID string if succesful, null otherwise
 """
 
 class AuthenticationMethods(Enum):
+	RANDOM = 0
 	HEADER = 1
 	BODY = 2
 	COOKIE = 3
 
 # Class to query the FTL API
 class FTLAPI():
+
+	auth_method = "?"
+
 	def __init__(self, api_url: str):
 		self.api_url = api_url
 		self.endpoints = {
@@ -90,7 +95,10 @@ class FTLAPI():
 			# Generate password hash
 			pwhash = sha256(password.encode("ascii")).hexdigest()
 			pwhash = sha256(pwhash.encode("ascii")).hexdigest()
-		print("Using password hash: \"" + pwhash + "\"")
+		print("Using password hash: " + pwhash)
+
+		if len(pwhash) != 64:
+			raise Exception("Invalid length of password hash")
 
 		# Get the challenge from FTL
 		challenge = response["challenge"].encode("ascii")
@@ -100,6 +108,31 @@ class FTLAPI():
 			raise Exception("FTL returned invalid challenge item")
 		self.session = response["session"]
 
+
+	def get_jsondata_headers_cookies(self, authenticate: AuthenticationMethods):
+		# Add session ID to the request (if any)
+		json_data = None
+		headers = None
+		cookies = None
+		if self.session is not None and 'sid' in self.session:
+			# Pick a random authentication method if requested
+			# Try again if the method comes out as random again
+			while authenticate == AuthenticationMethods.RANDOM:
+				authenticate = random.choice(list(AuthenticationMethods))
+
+			# Add the session ID to the request
+			if authenticate == AuthenticationMethods.HEADER:
+				headers = {"X-FTL-SID": self.session['sid']}
+			elif authenticate == AuthenticationMethods.BODY:
+				json_data = {"sid": self.session['sid'] }
+			elif authenticate == AuthenticationMethods.COOKIE:
+				cookies = {"sid": self.session['sid'] }
+
+			self.auth_method = authenticate.name
+
+		return json_data, headers, cookies
+
+
 	# Query the FTL API (GET) and return the response
 	def GET(self, uri: str, params: List[str] = [], expected_mimetype: str = "application/json", authenticate: AuthenticationMethods = AuthenticationMethods.BODY):
 		self.errors = []
@@ -108,22 +141,14 @@ class FTLAPI():
 			if len(params) > 0:
 				uri = uri + "?" + "&".join(params)
 
-			# Add session ID to the request (if any)
-			data = None
-			headers = None
-			cookies = None
-			if self.session is not None and 'sid' in self.session:
-				if authenticate == AuthenticationMethods.HEADER:
-					headers = {"X-FTL-SID": self.session['sid']}
-				elif authenticate == AuthenticationMethods.BODY:
-					data = {"sid": self.session['sid'] }
-				elif authenticate == AuthenticationMethods.COOKIE:
-					cookies = {"sid": self.session['sid'] }
+			# Get json_data, headers and cookies
+			json_data, headers, cookies = self.get_jsondata_headers_cookies(authenticate)
+
+			if self.verbose:
+				print("GET " + self.api_url + uri + " with json_data: " + json.dumps(json_data))
 
 			# Query the API
-			if self.verbose:
-				print("GET " + self.api_url + uri + " with data: " + json.dumps(data))
-			with requests.get(url = self.api_url + uri, json = data, headers=headers, cookies=cookies) as response:
+			with requests.get(url = self.api_url + uri, json = json_data, headers=headers, cookies=cookies) as response:
 				if self.verbose:
 					print(json.dumps(response.json(), indent=4))
 				if expected_mimetype == "application/json":
@@ -134,19 +159,26 @@ class FTLAPI():
 			self.errors.append("Exception when GETing from FTL: " + str(e))
 			return None
 
+
 	# Query the FTL API (POST) and return the response
-	def POST(self, uri: str, data: dict = {}):
+	def POST(self, uri: str, json_data: dict = {}, authenticate: AuthenticationMethods = AuthenticationMethods.HEADER, files = None):
 		self.errors = []
 		try:
+			# Get json_data, headers and cookies
+			_, headers, cookies = self.get_jsondata_headers_cookies(authenticate)
+
 			if self.verbose:
-				print("POST " + self.api_url + uri + " with data: " + json.dumps(data))
-			with requests.post(url = self.api_url + uri, json = data) as response:
+				print("POST " + self.api_url + uri + " with json_data: " + json.dumps(json_data))
+
+			# Query the API
+			with requests.post(url = self.api_url + uri, json = json_data, files = files, headers=headers, cookies=cookies) as response:
 				if self.verbose:
 					print(json.dumps(response.json(), indent=4))
 				return response.json()
 		except Exception as e:
 			self.errors.append("Exception when POSTing to FTL: " + str(e))
 			return None
+
 
 	# Query the endpoints from FTL for comparison with the OpenAPI specs
 	def get_endpoints(self):

@@ -49,6 +49,7 @@ if __name__ == "__main__":
 	# and have the same response format. Also verify that the examples
 	# matches the OpenAPI specs.
 	print("Verifying the individual endpoint properties...")
+	teleporter = None
 	for path in openapi.endpoints["get"]:
 		# We do not check the action endpoints as they'd trigger
 		# possibly unwanted action such as restarting FTL, running
@@ -57,14 +58,29 @@ if __name__ == "__main__":
 			continue
 		verifyer = ResponseVerifyer(ftl, openapi)
 		errors = verifyer.verify_endpoint(path)
+		if verifyer.teleporter_archive is not None:
+			teleporter = verifyer.teleporter_archive
 		if len(errors) == 0:
-			print("  " + path + " (" + verifyer.auth_method + " auth): OK")
+			print("  GET " + path + " (" + verifyer.auth_method + " auth): OK")
 		else:
-			print("  " + path + " (" + verifyer.auth_method + " auth):")
+			print("  GET " + path + " (" + verifyer.auth_method + " auth):")
 			for error in errors:
 				print("  - " + error)
 			errs[2] += len(errors)
 	print("")
+
+	# Verify FTL Teleporter import
+	print("Verifying FTL Teleporter import...")
+	verifyer = ResponseVerifyer(ftl, openapi)
+	errors = verifyer.verify_teleporter_zip(teleporter)
+	if len(errors) == 0:
+		print("  POST /api/teleporter: OK")
+	else:
+		print("  Errors:")
+		for error in errors:
+			print("  - " + error)
+		errs[2] += len(errors)
+
 
 	# Print the number error (if any)
 	if errs[0] > 0:

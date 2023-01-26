@@ -10,6 +10,7 @@
 # Please see LICENSE file for your rights under this license.
 
 import io
+import pprint
 import random
 import zipfile
 from libs.openAPI import openApi
@@ -21,9 +22,11 @@ class ResponseVerifyer():
 
 	# Translate between OpenAPI and Python types
 	YAML_TYPES = { "string": [str], "integer": [int], "number": [int, float], "boolean": [bool], "array": [list] }
-	TELEPORTER_FILES = ["etc/pihole/gravity.db", "etc/pihole/pihole.toml", "etc/pihole/pihole-FTL.db", "etc/hosts"]
+	TELEPORTER_FILES_EXPORT = ["etc/pihole/gravity.db", "etc/pihole/pihole.toml", "etc/pihole/pihole-FTL.db", "etc/hosts"]
+	TELEPORTER_FILES_IMPORT = ['etc/pihole/pihole.toml', 'etc/pihole/dhcp.leases', 'etc/pihole/gravity.db']
 
 	auth_method = "?"
+	teleporter_archive = None
 
 	def __init__(self, ftl: FTLAPI, openapi: openApi):
 		self.ftl = ftl
@@ -67,7 +70,6 @@ class ResponseVerifyer():
 		expected_mimetype = True
 		# Assign random authentication method so we can test them all
 		authentication_method = random.choice([a for a in AuthenticationMethods])
-		self.auth_method = authentication_method.name
 		# Check if the expected response is defined in the API specs
 		response_rcode = self.openapi.paths[endpoint][method]['responses'][str(rcode)]
 		if 'content' in response_rcode:
@@ -103,6 +105,7 @@ class ResponseVerifyer():
 
 		# Get FTL response
 		FTLresponse = self.ftl.GET("/api" + endpoint, FTLparameters, expected_mimetype, authentication_method)
+		self.auth_method = self.ftl.auth_method
 		if FTLresponse is None:
 			return self.ftl.errors
 
@@ -152,7 +155,7 @@ class ResponseVerifyer():
 				# header block
 				try:
 					# Check if all expected files are present
-					for expected_file in self.TELEPORTER_FILES:
+					for expected_file in self.TELEPORTER_FILES_EXPORT:
 						if expected_file not in zipfile_obj.namelist():
 							self.errors.append("File " + expected_file + " is missing in received archive.")
 					pihole_toml = zipfile_obj.read("etc/pihole/pihole.toml")
@@ -160,10 +163,37 @@ class ResponseVerifyer():
 						self.errors.append("Received ZIP file's pihole.toml starts with wrong header")
 				except Exception as err:
 					self.errors.append("Error during ZIP analysis: " + str(err))
+
+				# Store Teleporter archive for later use
+				self.teleporter_archive = FTLresponse
 		else:
 			self.errors.append("Checker script does not know how to check for mimetype \"" + expected_mimetype + "\"")
 
 		# Return all errors
+		return self.errors
+
+
+	def verify_teleporter_zip(self, teleporter_archive: bytes):
+		# Send the zip file to the FTL API
+		if teleporter_archive is None:
+			self.errors.append("No Teleporter archive available for verification")
+			return self.errors
+
+		# Send the archive to the FTL API
+		FTLresponse = self.ftl.POST("/api/teleporter", None, AuthenticationMethods.HEADER, {"file": ('teleporter.zip', teleporter_archive, 'application/zip')})
+
+		#Compare the response with the expected response
+		if FTLresponse is None:
+			self.errors.append("No response from FTL API")
+			return self.errors
+		if 'files' not in FTLresponse:
+			self.errors.append("Missing 'files' key in FTL response")
+			return self.errors
+		# Compare FTLresponse['files'] with self.TELEPORTER_FILES_IMPORT
+		for expected_file in self.TELEPORTER_FILES_IMPORT:
+			if expected_file not in FTLresponse['files']:
+				self.errors.append("File " + expected_file + " is missing in FTL response")
+
 		return self.errors
 
 

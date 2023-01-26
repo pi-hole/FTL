@@ -83,7 +83,7 @@ static int field_found(const char *key,
 		is_file = true;
 		return MG_FORM_FIELD_STORAGE_GET;
 	}
-	else if(strcasecmp(key, "import") == 0)
+	else if(strcasecmp(key, "sid") == 0)
 	{
 		is_sid = true;
 		return MG_FORM_FIELD_STORAGE_GET;
