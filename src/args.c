@@ -43,9 +43,9 @@
 #include "config/cli.h"
 #include "config/config.h"
 // compression functions
-#include "compression/gzip.h"
+#include "zip/gzip.h"
 // teleporter functions
-#include "compression/teleporter.h"
+#include "zip/teleporter.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);

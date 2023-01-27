@@ -9,7 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "compression/teleporter.h"
+#include "zip/teleporter.h"
 #include "config/config.h"
 // hostname()
 #include "daemon.h"

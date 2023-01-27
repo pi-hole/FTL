@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "webserver/http-common.h"
 #include "webserver/json_macros.h"
-#include "compression/teleporter.h"
+#include "zip/teleporter.h"
 #include "api/api.h"
 // ERRBUF_SIZE
 #include "config/dnsmasq_config.h"

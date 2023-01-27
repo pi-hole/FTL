@@ -10,7 +10,7 @@
 #ifndef TELEPORTER_H
 #define TELEPORTER_H
 
-#include "compression/miniz/miniz.h"
+#include "zip/miniz/miniz.h"
 #include "webserver/cJSON/cJSON.h"
 
 const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], void *ptr, size_t *size);

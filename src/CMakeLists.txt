@@ -180,7 +180,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:civetweb>
         $<TARGET_OBJECTS:cJSON>
         $<TARGET_OBJECTS:miniz>
-        $<TARGET_OBJECTS:compression>
+        $<TARGET_OBJECTS:zip>
         $<TARGET_OBJECTS:ph7>
         $<TARGET_OBJECTS:database>
         $<TARGET_OBJECTS:dnsmasq>
@@ -258,7 +258,7 @@ install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW
 
 add_subdirectory(api)
 add_subdirectory(webserver)
-add_subdirectory(compression)
+add_subdirectory(zip)
 add_subdirectory(database)
 add_subdirectory(dnsmasq)
 add_subdirectory(lua)
