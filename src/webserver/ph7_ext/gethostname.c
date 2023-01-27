@@ -8,7 +8,7 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../../ph7/ph7.h"
+#include "webserver/ph7/ph7.h"
 #include "extensions.h"
 #include <string.h>
 #include <unistd.h>

@@ -39,7 +39,7 @@
 // cJSON_Version()
 #include "webserver/cJSON/cJSON.h"
 // ph7_lib_version()
-#include "ph7/ph7.h"
+#include "webserver/ph7/ph7.h"
 #include "config/cli.h"
 #include "config/config.h"
 // compression functions
