@@ -24,7 +24,7 @@
 // type FILE
 #include <stdio.h>
 // type cJSON
-#include "cJSON/cJSON.h"
+#include "webserver/cJSON/cJSON.h"
 
 #define GLOBALTOMLPATH "/etc/pihole/pihole.toml"
 

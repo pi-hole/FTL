@@ -37,7 +37,7 @@
 // mg_version()
 #include "webserver/civetweb/civetweb.h"
 // cJSON_Version()
-#include "cJSON/cJSON.h"
+#include "webserver/cJSON/cJSON.h"
 // ph7_lib_version()
 #include "ph7/ph7.h"
 #include "config/cli.h"

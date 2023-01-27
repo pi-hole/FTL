@@ -8,7 +8,7 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "cJSON/cJSON.h"
+#include "webserver/cJSON/cJSON.h"
 // logging routines
 #include "log.h"
 

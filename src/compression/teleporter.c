@@ -34,7 +34,7 @@
 // rotate_file()
 #include "files.h"
 // cJSON
-#include "cJSON/cJSON.h"
+#include "webserver/cJSON/cJSON.h"
 // set_event()
 #include "events.h"
 

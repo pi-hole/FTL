@@ -19,7 +19,7 @@
 // struct config
 #include "config/config.h"
 // JSON array functions
-#include "cJSON/cJSON.h"
+#include "webserver/cJSON/cJSON.h"
 // directory_exists()
 #include "files.h"
 // trim_whitespace()

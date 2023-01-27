@@ -12,7 +12,7 @@
 
 // External components
 #include "civetweb/civetweb.h"
-#include "cJSON/cJSON.h"
+#include "webserver/cJSON/cJSON.h"
 // enum fifo_logs
 #include "enums.h"
 
