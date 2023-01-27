@@ -10,11 +10,11 @@
 #ifndef API_DOCS_H
 #define API_DOCS_H
 
-#include "../../FTL.h"
-#include "../../civetweb/civetweb.h"
-#include "../../webserver/http-common.h"
-#include "../../webserver/json_macros.h"
-#include "../api.h"
+#include "FTL.h"
+#include "webserver/civetweb/civetweb.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
+#include "api/api.h"
 
 static const char index_html[] = {
 #include "hex/index.html"

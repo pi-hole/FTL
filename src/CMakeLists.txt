@@ -258,7 +258,6 @@ install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW
 
 add_subdirectory(api)
 add_subdirectory(webserver)
-add_subdirectory(civetweb)
 add_subdirectory(compression)
 add_subdirectory(cJSON)
 add_subdirectory(ph7)

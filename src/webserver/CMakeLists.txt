@@ -24,3 +24,4 @@ target_compile_options(webserver PRIVATE ${EXTRAWARN})
 target_include_directories(webserver PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
 add_subdirectory(ph7_ext)
+add_subdirectory(civetweb)

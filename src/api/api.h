@@ -11,10 +11,10 @@
 #define ROUTES_H
 
 // struct mg_connection
-#include "../civetweb/civetweb.h"
+#include "webserver/civetweb/civetweb.h"
 // type cJSON
-#include "../cJSON/cJSON.h"
-#include "../webserver/http-common.h"
+#include "cJSON/cJSON.h"
+#include "webserver/http-common.h"
 
 // API router
 int api_handler(struct mg_connection *conn, void *ignored);

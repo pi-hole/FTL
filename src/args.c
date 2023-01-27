@@ -35,7 +35,7 @@
 // run_dhcp_discover()
 #include "dhcp-discover.h"
 // mg_version()
-#include "civetweb/civetweb.h"
+#include "webserver/civetweb/civetweb.h"
 // cJSON_Version()
 #include "cJSON/cJSON.h"
 // ph7_lib_version()
