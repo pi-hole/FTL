@@ -568,7 +568,7 @@ const char *read_teleporter_zip(char *buffer, const size_t buflen, char * const 
 		}
 
 		log_debug(DEBUG_CONFIG, "Processing file %d (%s) in ZIP archive (%zu/%zu bytes, comment: \"%s\", timestamp: %lu)",
-		          i, file_stat.m_filename, file_stat.m_comp_size, file_stat.m_uncomp_size,
+		          i, file_stat.m_filename, (size_t)file_stat.m_comp_size, (size_t)file_stat.m_uncomp_size,
 		          file_stat.m_comment, (unsigned long)file_stat.m_time);
 
 		// Process file
