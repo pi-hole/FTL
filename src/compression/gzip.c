@@ -480,9 +480,10 @@ static int mz_uncompress2_raw(unsigned char *pDest, mz_ulong *pDest_len, const u
 	memset(&stream, 0, sizeof(stream));
 
 	/* In case mz_ulong is 64-bits (argh I hate longs). */
+#if defined __x86_64__
 	if ((mz_uint64)(*pSource_len | *pDest_len) > 0xFFFFFFFFU)
 		return MZ_PARAM_ERROR;
-
+#endif
 	stream.next_in = pSource;
 	stream.avail_in = (mz_uint32)*pSource_len;
 	stream.next_out = pDest;
