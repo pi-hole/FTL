@@ -19,3 +19,5 @@ add_library(compression OBJECT ${sources})
 target_compile_options(compression PRIVATE)
 target_compile_options(compression PRIVATE ${EXTRAWARN})
 target_include_directories(compression PRIVATE ${PROJECT_SOURCE_DIR}/src)
+
+add_subdirectory(miniz)
