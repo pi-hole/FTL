@@ -203,7 +203,7 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 					// Get next token
 					token = strtok_r(NULL, ",", &saveptr2);
 				}
-				if(regex[index].ext.query_type != 0)
+				if(regex[index].ext.query_type != 0 && config.debug & DEBUG_REGEX)
 				{
 					logg("    Hint: This regex matches only specific query types:");
 					for(int i = TYPE_A; i < TYPE_MAX; i++)
