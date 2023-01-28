@@ -159,15 +159,32 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 		// Analyze FTL-specific parts
 		while((part = strtok_r(NULL, FTL_REGEX_SEP, &saveptr)) != NULL)
 		{
-			char extra[17] = { 0 };
-			// options ";querytype=!AAAA" and ";querytype=AAAA"
-			if(sscanf(part, "querytype=%16s", extra))
+			char extra[64] = { 0 };
+			// options like
+			// - ";querytype=A" (only match type A queries)
+			// - ";querytype=!AAAA" (match everything but AAAA queries)
+			// - ";querytype=A,AAAA" (match only A and AAAA queries)
+			// - ";querytype=!A,AAAA" (match everything but A and AAAA queries)
+			if(sscanf(part, "querytype=%63s", extra))
 			{
 				// Warn if specified more than one querytype option
 				if(regex[index].ext.query_type != 0)
 					logg_regex_warning(regextype[regexid],
 					                   "Overwriting previous querytype setting",
 					                   dbidx, regexin);
+
+				// Check if the first letter is a "!"
+				// This means that the query type matching is inverted
+				bool inverted = false;
+				if(extra[0] == '!')
+				{
+					// Set inverted mode (will be applied
+					// after parsing all query types)
+					inverted = true;
+
+					// Remove the "!" from the string
+					memmove(extra, extra+1, strlen(extra));
+				}
 
 				// Split input string into individual query types
 				char *saveptr2 = NULL;
@@ -181,12 +198,6 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 						if(strcasecmp(token, querytypes[type]) == 0)
 						{
 							regex[index].ext.query_type ^= 1 << type;
-							break;
-						}
-						// Check for INVERTED querytype
-						else if(token[0] == '!' && strcasecmp(token + 1u, querytypes[type]) == 0)
-						{
-							regex[index].ext.query_type ^= ~(1 << type);
 							break;
 						}
 					}
@@ -203,6 +214,11 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 					// Get next token
 					token = strtok_r(NULL, ",", &saveptr2);
 				}
+
+				// Invert query types if requested
+				if(inverted)
+					regex[index].ext.query_type = ~regex[index].ext.query_type;
+
 				if(regex[index].ext.query_type != 0 && config.debug & DEBUG_REGEX)
 				{
 					logg("    Hint: This regex matches only specific query types:");

@@ -208,9 +208,11 @@ INSERT INTO domainlist VALUES(11,3,'^regex-REPLYv6$;reply=fe80::1234',1,15599288
 INSERT INTO domainlist VALUES(12,3,'^regex-REPLYv46$;reply=1.2.3.4;reply=fe80::1234',1,1559928803,1559928803,'');
 INSERT INTO domainlist VALUES(13,3,'^regex-A$;querytype=A',1,1559928803,1559928803,'');
 INSERT INTO domainlist VALUES(14,3,'^regex-notA$;querytype=!A',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(15,3,'^regex-multiple.ftl$;querytype=ANY,HTTPS,SVCB;reply=refused',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(16,3,'^regex-notMultiple.ftl$;querytype=!ANY,HTTPS,SVCB;reply=refused',1,1559928803,1559928803,'');
 
 /* Other special domains */
-INSERT INTO domainlist VALUES(15,1,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
+INSERT INTO domainlist VALUES(17,1,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
 
 INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list',1559928803,2000,2,1);
 

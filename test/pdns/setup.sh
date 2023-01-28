@@ -98,9 +98,19 @@ pdnsutil add-record ftl. mx MX "50 ns1.ftl."
 
 # SVCB + HTTPS
 pdnsutil add-record ftl. svcb SVCB '1 port="80"'
+pdnsutil add-record ftl. regex-multiple SVCB '1 port="80"'
+pdnsutil add-record ftl. regex-notMultiple SVCB '1 port="80"'
 
 # HTTPS
 pdnsutil add-record ftl. https HTTPS '1 . alpn="h3,h2"'
+pdnsutil add-record ftl. regex-multiple HTTPS '1 . alpn="h3,h2"'
+pdnsutil add-record ftl. regex-notMultiple HTTPS '1 . alpn="h3,h2"'
+
+# ANY
+pdnsutil add-record ftl. regex-multiple A 192.168.3.12
+pdnsutil add-record ftl. regex-multiple AAAA fe80::3f41
+pdnsutil add-record ftl. regex-notMultiple A 192.168.3.12
+pdnsutil add-record ftl. regex-notMultiple AAAA fe80::3f41
 
 # Create reverse lookup zone
 pdnsutil create-zone arpa ns1.ftl
