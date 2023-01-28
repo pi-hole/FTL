@@ -106,8 +106,7 @@ void http_init(void)
 	unsigned int features = MG_FEATURES_FILES |
 //	                        MG_FEATURES_CGI |
 	                        MG_FEATURES_IPV6 |
-	                        MG_FEATURES_CACHE |
-	                        MG_FEATURES_STATS;
+	                        MG_FEATURES_CACHE;
 
 	if(mg_init_library(features) == 0)
 	{
