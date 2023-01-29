@@ -57,38 +57,107 @@ set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
 set(WARN_FLAGS "-Wall -Wextra -Wno-unused-parameter")
 
 # Extra warning flags we apply only to the FTL part of the code (used not for foreign code such as dnsmasq and SQLite3)
-# -Werror: Halt on any warnings, useful for enforcing clean code without any warnings (we use it only for our code part)
-# -Waddress: Warn about suspicious uses of memory addresses
-# -Wlogical-op: Warn about suspicious uses of logical operators in expressions
-# -Wmissing-field-initializers: Warn if a structure's initializer has some fields missing
-# -Woverlength-strings: Warn about string constants that are longer than the "minimum maximum length specified in the C standard
-# -Wformat: Check calls to printf and scanf, etc., to make sure that the arguments supplied have types appropriate to the format string specified, and that the conversions specified in the format string make sense.
-# -Wformat-nonliteral: If -Wformat is specified, also warn if the format string is not a string literal and so cannot be checked, unless the format function takes its format arguments as a va_list.
-# -Wuninitialized: Warn if an automatic variable is used without first being initialized
-# -Wswitch-enum: Warn whenever a switch statement has an index of enumerated type and lacks a case for one or more of the named codes of that enumeration.
-# -Wshadow: Warn whenever a local variable or type declaration shadows another variable, parameter, type, class member, or whenever a built-in function is shadowed.
-# -Wfloat-equal: Warn if floating-point values are used in equality comparisons
-# -Wpointer-arith: Warn about anything that depends on the "size of" a function type or of "void".  GNU C assigns these types a size of 1
-# -Wundef: Warn if an undefined identifier is evaluated in an "#if" directive
-# -Wbad-function-cast: Warn when a function call is cast to a non-matching type
-# -Wwrite-strings: When compiling C, give string constants the type "const char[length]" so that copying the address of one into a non-"const" "char *" pointer produces a warning
-# -Wparentheses: Warn if parentheses are omitted in certain contexts, such as when there is an assignment in a context where a truth value is expected, or when operators are nested whose precedence people often get confused about
-# -Wlogical-op: Warn about suspicious uses of logical operators in expressions
-# -Wstrict-prototypes: Warn if a function is declared or defined without specifying the argument types
-# -Wmissing-prototypes: Warn if a global function is defined without a previous prototype declaration
-# -Wredundant-decls: Warn if anything is declared more than once in the same scope
-# -Winline: Warn if a function that is declared as inline cannot be inlined
+set(EXTRAWARN_GCC6 "-Werror \
+                    -Waddress \
+                    -Wlogical-op \
+                    -Wmissing-field-initializers \
+                    -Woverlength-strings \
+                    -Wformat=2 \
+                    -Wformat-signedness \
+                    -Wuninitialized \
+                    -Wnull-dereference \
+                    -Wshift-overflow=2 \
+                    -Wunused-const-variable=2 \
+                    -Wstrict-aliasing \
+                    -Warray-bounds=2 \
+                    -Wno-aggressive-loop-optimizations \
+                    -Wswitch-enum \
+                    -Wshadow \
+                    -Wfloat-equal \
+                    -Wbad-function-cast \
+                    -Wwrite-strings \
+                    -Wparentheses \
+                    -Wlogical-op \
+                    -Wstrict-prototypes \
+                    -Wmissing-prototypes \
+                    -Wredundant-decls \
+                    -Wmissing-field-initializers \
+                    -Wnormalized=nfkc \
+                    -Woverride-init \
+                    -Wpacked \
+                    -Winline \
+                    -Wpacked \
+                    -Wredundant-decls \
+                    -Wnested-externs \
+                    -Wvla \
+                    -Wvector-operation-performance \
+                    -Wvolatile-register-var \
+                    -Wdisabled-optimization \
+                    -Wpointer-sign \
+                    -Wstack-protector \
+                    -Woverlength-strings")
+
+# Extra warnings flags available only in GCC 7 and higher
+if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 7 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 7)
+    set(EXTRAWARN_GCC7 "-Wformat-overflow=2 \
+                        -Wformat-truncation=2 \
+                        -Wstringop-overflow=4 \
+                        -Walloc-zero \
+                        -Wint-in-bool-context")
+else()
+    set(EXTRAWARN_GCC7 "")
+endif()
+
+# Extra warnings flags available only in GCC 8 and higher
 if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 8 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 8)
-    # -Wduplicated-cond: Warn about duplicated conditions in an if-else-if chain
-    # -Wduplicated-branches: Warn when an if-else has identical branches
-    # -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
-    # -Wlogical-not-parentheses: Warn about logical not used on the left hand side operand of a comparison
-    set(EXTRAWARN_GCC8 "-Wduplicated-cond -Wduplicated-branches -Wcast-align=strict -Wlogical-not-parentheses -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=malloc -Wsuggest-attribute=format -Wsuggest-attribute=cold")
+    set(EXTRAWARN_GCC8 "-Wduplicated-cond \
+                        -Wduplicated-branches \
+                        -Wcast-align=strict \
+                        -Wlogical-not-parentheses \
+                        -Wmultistatement-macros \
+                        -Wmissing-attributes \
+                        -Wsuggest-attribute=pure \
+                        -Wsuggest-attribute=const \
+                        -Wsuggest-attribute=malloc \
+                        -Wsuggest-attribute=format \
+                        -Wsuggest-attribute=cold")
 else()
     set(EXTRAWARN_GCC8 "")
 endif()
-set(EXTRAWARN "-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum -Wshadow -Wfloat-equal -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline ${EXTRAWARN_GCC8}")
+
+# Extra warnings flags available only in GCC 9 and higher
+# The only new warning -Wabsolute-value is implied by -Wextra
+
+# Extra warnings flags available only in GCC 10 and higher
+# The new option -Wstring-compare is implied by -Wextra
+# The new option -Wzero-length-bounds is implied by -Warray-bounds
+
+# Extra warnings flags available only in GCC 11 and higher
+# All new options are implied by either -Wall or -Wextra \
+
+# Extra warnings flags available only in GCC 12 and higher
+if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 12 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 12)
+set(EXTRAWARN_GCC12 "-Wbidi-chars \
+                     -Warray-compare")
+else()
+set(EXTRAWARN_GCC12 "")
+endif()
+
+# Extra warnings flags available only in GCC 13 and higher
+if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 13 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 13)
+set(EXTRAWARN_GCC13 "-Wenum-int-mismatch")
+else()
+set(EXTRAWARN_GCC13 "")
+endif()
+
+set(EXTRAWARN "${EXTRAWARN_GCC6} \
+               ${EXTRAWARN_GCC7} \
+               ${EXTRAWARN_GCC8} \
+               ${EXTRAWARN_GCC12} \
+               ${EXTRAWARN_GCC13}")
 separate_arguments(EXTRAWARN)
+
+# -Wxor-used-as-pow
 
 # Do we want to compile a statically linked musl executable?
 if(STATIC STREQUAL "true")

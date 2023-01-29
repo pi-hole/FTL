@@ -342,9 +342,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		        forced_ip)
 		{
 			if(hostname && config.dns.reply.host.overwrite_v4.v.b)
-				memcpy(&addr, &config.dns.reply.host.v4.v.in_addr, sizeof(addr));
+				memcpy(&addr, &config.dns.reply.host.v4.v.in_addr, sizeof(config.dns.reply.host.v4.v.in_addr));
 			else if(!hostname && config.dns.reply.blocking.overwrite_v4.v.b)
-				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(addr));
+				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(config.dns.reply.blocking.v4.v.in_addr));
 			else
 				memcpy(&addr, &next_iface.addr4, sizeof(addr));
 		}
@@ -377,9 +377,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		        forced_ip)
 		{
 			if(hostname && config.dns.reply.host.overwrite_v6.v.b)
-				memcpy(&addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(addr));
+				memcpy(&addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(config.dns.reply.host.v6.v.in6_addr));
 			else if(!hostname && config.dns.reply.blocking.overwrite_v6.v.b)
-				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(addr));
+				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(config.dns.reply.blocking.v6.v.in6_addr));
 			else
 				memcpy(&addr, &next_iface.addr6, sizeof(addr));
 		}
@@ -2772,13 +2772,13 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		// we're actually dropping root (user/group my be set to root)
 		if(ent_pw != NULL && ent_pw->pw_uid != 0)
 		{
-			log_info("FTL is going to drop from root to user %s (UID %d)",
-			     ent_pw->pw_name, (int)ent_pw->pw_uid);
+			log_info("FTL is going to drop from root to user %s (UID %u)",
+			     ent_pw->pw_name, ent_pw->pw_uid);
 			if(chown(config.files.log.ftl.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-				log_warn("Setting ownership (%i:%i) of %s failed: %s (%i)",
+				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
 				ent_pw->pw_uid, ent_pw->pw_gid, config.files.log.ftl.v.s, strerror(errno), errno);
 			if(chown(config.files.database.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-				log_warn("Setting ownership (%i:%i) of %s failed: %s (%i)",
+				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
 				ent_pw->pw_uid, ent_pw->pw_gid, config.files.database.v.s, strerror(errno), errno);
 			chown_all_shmem(ent_pw);
 		}

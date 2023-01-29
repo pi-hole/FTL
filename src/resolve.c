@@ -118,8 +118,8 @@ static void print_used_resolvers(const char *message)
 		char nsname[INET6_ADDRSTRLEN];
 		inet_ntop(family, addr, nsname, INET6_ADDRSTRLEN);
 
-		log_debug(DEBUG_RESOLVER, " %s %u: %s:%d (IPv%i)", i < MAXNS ? "   " : "EXT",
-		          j, nsname, port, family == AF_INET ? 4 : 6);
+		log_debug(DEBUG_RESOLVER, " %s %d: %s:%hu (IPv%u)", i < MAXNS ? "   " : "EXT",
+		          j, nsname, port, family == AF_INET ? 4u : 6u);
 	}
 }
 

@@ -26,7 +26,7 @@
 
 // Private prototypes
 static char *getMACVendor(const char *hwaddr) __attribute__ ((malloc));
-enum arp_status { CLIENT_NOT_HANDLED, CLIENT_ARP_COMPLETE, CLIENT_ARP_INCOMPLETE };
+enum arp_status { CLIENT_NOT_HANDLED, CLIENT_ARP_COMPLETE, CLIENT_ARP_INCOMPLETE } __attribute__ ((packed));
 
 bool create_network_table(sqlite3 *db)
 {
@@ -420,7 +420,7 @@ static int update_netDB_numQueries(sqlite3 *db, const int dbID, const int numQue
 		return SQLITE_OK;
 
 	const int ret = dbquery(db, "UPDATE network "
-	                            "SET numQueries = numQueries + %u "
+	                            "SET numQueries = numQueries + %i "
 	                            "WHERE id = %i;",
 	                            numQueries, dbID);
 
@@ -520,19 +520,19 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, time_t now, time
 	if(rc != SQLITE_OK)
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\") - SQL error prepare (%i): %s",
-		        hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
+		        hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
 		return rc;
 	}
 
 	log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments ?1-?5 = (\"%s\",%lu,%lu,%u,\"%s\")",
-		     querystr, hwaddr, now, lastQuery, numQueriesARP, macVendor);
+		     querystr, hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor);
 
 	// Bind hwaddr to prepared statement (1st argument)
 	if((rc = sqlite3_bind_text(query_stmt, 1, hwaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind hwaddr (error %d): %s",
-		        hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
+		        hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
 		sqlite3_reset(query_stmt);
 		checkFTLDBrc(rc);
 		return rc;
@@ -542,7 +542,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, time_t now, time
 	if((rc = sqlite3_bind_int(query_stmt, 2, now)) != SQLITE_OK)
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind now (error %d): %s",
-		        hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
+		        hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
 		sqlite3_reset(query_stmt);
 		checkFTLDBrc(rc);
 		return rc;
@@ -552,7 +552,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, time_t now, time
 	if((rc = sqlite3_bind_int(query_stmt, 3, lastQuery)) != SQLITE_OK)
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind lastQuery (error %d): %s",
-		        hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
+		        hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
 		sqlite3_reset(query_stmt);
 		checkFTLDBrc(rc);
 		return rc;
@@ -562,7 +562,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, time_t now, time
 	if((rc = sqlite3_bind_int(query_stmt, 4, numQueriesARP)) != SQLITE_OK)
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind numQueriesARP (error %d): %s",
-		        hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
+		        hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
 		sqlite3_reset(query_stmt);
 		checkFTLDBrc(rc);
 		return rc;
@@ -572,7 +572,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, time_t now, time
 	if((rc = sqlite3_bind_text(query_stmt, 5, macVendor, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind macVendor (error %d): %s",
-		        hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
+		        hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
 		sqlite3_reset(query_stmt);
 		checkFTLDBrc(rc);
 		return rc;
@@ -582,7 +582,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, time_t now, time
 	if ((rc = sqlite3_step(query_stmt)) != SQLITE_DONE)
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to step (error %d): %s",
-		        hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
+		        hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
 		sqlite3_reset(query_stmt);
 		checkFTLDBrc(rc);
 		return rc;
@@ -592,7 +592,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, time_t now, time
 	if ((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to finalize (error %d): %s",
-		        hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
+		        hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
 		sqlite3_reset(query_stmt);
 		checkFTLDBrc(rc);
 		return rc;
@@ -1263,7 +1263,7 @@ void parse_neighbor_cache(sqlite3* db)
 	lock_shm();
 	const int clients = counters->clients;
 	unlock_shm();
-	enum arp_status client_status[clients];
+	enum arp_status *client_status = calloc(clients, sizeof(enum arp_status));
 	for(int i = 0; i < clients; i++)
 	{
 		client_status[i] = CLIENT_NOT_HANDLED;
@@ -1493,17 +1493,26 @@ void parse_neighbor_cache(sqlite3* db)
 	if(rc != SQLITE_OK)
 	{
 		log_err("Database error in ARP cache processing loop");
+		free(client_status);
 		return;
 	}
 
 	// Check thread cancellation
 	if(killed)
+	{
+		free(client_status);
 		return;
+	}
 
 	// Loop over all clients known to FTL and ensure we add them all to the
 	// database
 	if(!add_FTL_clients_to_network_table(db, client_status, now, &additional_entries))
+	{
+		free(client_status);
 		return;
+	}
+	free(client_status);
+	client_status = NULL;
 
 	// Check thread cancellation
 	if(killed)
@@ -1545,7 +1554,7 @@ void parse_neighbor_cache(sqlite3* db)
 	}
 
 	// Debug logging
-	log_debug(DEBUG_ARP, "ARP table processing (%i entries from ARP, %i from FTL's cache) took %.1f ms",
+	log_debug(DEBUG_ARP, "ARP table processing (%u entries from ARP, %u from FTL's cache) took %.1f ms",
 	          entries, additional_entries, timer_elapsed_msec(ARP_TIMER));
 }
 

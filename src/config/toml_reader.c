@@ -256,7 +256,7 @@ static void reportDebugConfig(void)
 		// at 1
 		debugstr(debug_flag, &name);
 		// Calculate number of spaces to nicely align output
-		unsigned int spaces = 20 - strlen(name);
+		int spaces = 20 - strlen(name);
 		// Print debug flag
 		// We skip the first 6 characters of the flags as they are always "DEBUG_"
 		log_debug(DEBUG_ANY, "* %s:%*s %s  *", name+6, spaces, "", debug_flags[debug_flag] ? "YES" : "NO ");

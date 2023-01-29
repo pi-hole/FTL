@@ -61,7 +61,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 		buffer_len += 11; // strlen("/index.php")
 	}
 
-	char full_path[buffer_len];
+	char *full_path = calloc(buffer_len, sizeof(char));
 	memcpy(full_path, config.webserver.paths.webroot.v.s, webroot_len);
 	full_path[webroot_len] = '/';
 	memcpy(full_path + webroot_len + 1u, local_uri, local_uri_len);
@@ -87,12 +87,14 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 		if( rc == PH7_IO_ERR )
 		{
 			logg_web(FIFO_PH7, "%s: IO error while opening the target file", full_path);
+			free(full_path);
 			// Fall back to HTTP server to handle the 404 event
 			return 0;
 		}
 		else if( rc == PH7_VM_ERR )
 		{
 			logg_web(FIFO_PH7, "%s: VM initialization error", full_path);
+			free(full_path);
 			// Mark file as processed - this prevents the HTTP server
 			// from printing the raw PHP source code to the user
 			return 1;
@@ -100,6 +102,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 		else
 		{
 			logg_web(FIFO_PH7, "%s: Compile error (%d)", full_path, rc);
+			free(full_path);
 
 			mg_printf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
 			          "PHP compilation error, check %s for further details.",
@@ -146,10 +149,14 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	if( rc != PH7_OK )
 	{
 		logg_web(FIFO_PH7, "%s: VM execution error", full_path);
+		free(full_path);
 		// Mark file as processed - this prevents the HTTP server
 		// from printing the raw PHP source code to the user
 		return 1;
 	}
+
+	free(full_path);
+	full_path = NULL;
 
 	// Extract and send the output (if any)
 	const void *pOut = NULL;
@@ -175,7 +182,7 @@ static int PH7_error_report(const void *pOutput, unsigned int nOutputLen,
 	// Log error message, strip trailing newline character if any
 	if(((const char*)pOutput)[nOutputLen-1] == '\n')
 		nOutputLen--;
-	logg_web(FIFO_PH7, "%.*s", nOutputLen, (const char*)pOutput);
+	logg_web(FIFO_PH7, "%.*s", (int)nOutputLen, (const char*)pOutput);
 	return PH7_OK;
 }
 

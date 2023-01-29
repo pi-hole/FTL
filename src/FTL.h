@@ -105,7 +105,7 @@
 
 // After how much time does a valid API session expire? [seconds]
 // Default: 300 (five minutes)
-#define API_SESSION_EXPIRE 300
+#define API_SESSION_EXPIRE 300u
 
 // How many authenticated API clients are allowed simultaneously? [.]
 #define API_MAX_CLIENTS 16

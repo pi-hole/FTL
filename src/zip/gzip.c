@@ -426,7 +426,6 @@ bool deflate_file(const char *infilename, const char *outfilename, bool verbose)
 	if(!success)
 	{
 		log_warn("Failed to compress %s", infilename);
-		free(buffer_uncompressed);
 		if(buffer_compressed)
 			free(buffer_compressed);
 		fclose(outfile);
@@ -438,7 +437,6 @@ bool deflate_file(const char *infilename, const char *outfilename, bool verbose)
 	{
 		log_warn("Failed to write %lu bytes to %s", (unsigned long)size_compressed, outfilename);
 		fclose(outfile);
-		free(buffer_uncompressed);
 		free(buffer_compressed);
 		return false;
 	}

@@ -233,9 +233,9 @@ static int api_teleporter_POST(struct ftl_conn *api)
 	const char *error = read_teleporter_zip(data.zip_data, data.zip_size, hint, json_files);
 	if(error != NULL)
 	{
-		char msg[strlen(error) + strlen(hint) + 4];
-		memset(msg, 0, sizeof(msg));
-		strncpy(msg, error, sizeof(msg));
+		const size_t msglen = strlen(error) + strlen(hint) + 4;
+		char *msg = calloc(msglen, sizeof(char));
+		strncpy(msg, error, msglen);
 		if(strlen(hint) > 0)
 		{
 			// Concatenate error message and hint into a single string
@@ -243,10 +243,10 @@ static int api_teleporter_POST(struct ftl_conn *api)
 			strcat(msg, hint);
 		}
 		free_upload_data(&data);
-		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "Invalid ZIP archive",
-		                       msg);
+		return send_json_error_free(api, 400,
+		                            "bad_request",
+		                            "Invalid ZIP archive",
+		                            msg, true);
 	}
 
 	// Free allocated memory

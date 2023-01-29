@@ -56,7 +56,7 @@ static void reset_rate_limiting(void)
 			// Check if we want to continue rate limiting
 			if(client->rate_limit > config.dns.rateLimit.count.v.ui)
 			{
-				log_info("Still rate-limiting %s as it made additional %d queries", clientIP, client->rate_limit);
+				log_info("Still rate-limiting %s as it made additional %u queries", clientIP, client->rate_limit);
 			}
 			// or if rate-limiting ends for this client now
 			else
@@ -186,7 +186,7 @@ void *GC_thread(void *val)
 				timer_start(GC_TIMER);
 				char timestring[TIMESTR_SIZE] = "";
 				get_timestr(timestring, mintime, false, false);
-				log_info("GC starting, mintime: %s (%llu)", timestring, (long long)mintime);
+				log_info("GC starting, mintime: %s (%lu)", timestring, (unsigned long)mintime);
 			}
 
 			// Process all queries

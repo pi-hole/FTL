@@ -1307,7 +1307,7 @@ bool in_auditlist(const char *domain)
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,
                                        const unsigned char type, const char* table)
 {
-	log_debug(DEBUG_REGEX, "Getting regex client groups for client with ID %i", client->id);
+	log_debug(DEBUG_REGEX, "Getting regex client groups for client with ID %u", client->id);
 
 	char *querystr = NULL;
 	if(!client->flags.found_group && !get_client_groupids(client))

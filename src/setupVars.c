@@ -84,7 +84,7 @@ static void get_conf_string_array_from_setupVars(const char *key, struct conf_it
 			cJSON *item = cJSON_CreateString(setupVarsArray[i]);
 			cJSON_AddItemToArray(conf_item->v.json, item);
 
-			log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s[%d] = %s\n",
+			log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s[%u] = %s\n",
 			          key, conf_item->k, i, item->valuestring);
 		}
 	}
@@ -100,8 +100,8 @@ static void get_conf_upstream_servers_from_setupVars(struct conf_item *conf_item
 	for(unsigned int j = 0; j < MAX_SERVERS; j++)
 	{
 		// Get clients which the user doesn't want to see
-		char server_key[strlen("PIHOLE_DNS_XX") + 1];
-		sprintf(server_key, "PIHOLE_DNS_%d", j);
+		char server_key[sizeof("PIHOLE_DNS_XX") + 1];
+		sprintf(server_key, "PIHOLE_DNS_%u", j);
 		// Get value from setupVars.conf (if present)
 		const char *value = read_setupVarsconf(server_key);
 
@@ -112,7 +112,7 @@ static void get_conf_upstream_servers_from_setupVars(struct conf_item *conf_item
 			cJSON *item = cJSON_CreateString(value);
 			cJSON_AddItemToArray(conf_item->v.json, item);
 
-			log_debug(DEBUG_CONFIG, "setupVars.conf:PIHOLE_DNS_%d -> Setting %s[%d] = %s\n",
+			log_debug(DEBUG_CONFIG, "setupVars.conf:PIHOLE_DNS_%u -> Setting %s[%u] = %s\n",
 			          j, conf_item->k, j, item->valuestring);
 		}
 

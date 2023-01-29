@@ -257,7 +257,7 @@ static bool readStringValue(struct conf_item *conf_item, const char *value)
 				const cJSON *item = cJSON_GetArrayItem(elem, i);
 				if(!cJSON_IsString(item))
 				{
-					log_err("Config setting %s is invalid: element with index %d is not a string", conf_item->k, i);
+					log_err("Config setting %s is invalid: element with index %u is not a string", conf_item->k, i);
 					cJSON_Delete(elem);
 					return false;
 				}

@@ -124,8 +124,7 @@ int api_history_clients(struct ftl_conn *api)
 	// Get clients which the user doesn't want to see
 	// if skipclient[i] == true then this client should be hidden from
 	// returned data. We initialize it with false
-	bool skipclient[counters->clients];
-	memset(skipclient, false, counters->clients*sizeof(bool));
+	bool *skipclient = calloc(counters->clients, sizeof(bool));
 
 	unsigned int exclude_clients = cJSON_GetArraySize(config.webserver.api.exclude_clients.v.json);
 	if(exclude_clients > 0)
@@ -210,6 +209,9 @@ int api_history_clients(struct ftl_conn *api)
 		JSON_ADD_ITEM_TO_ARRAY(clients, item);
 	}
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
+
+	// Free memory
+	free(skipclient);
 
 	JSON_SEND_OBJECT_UNLOCK(json);
 }

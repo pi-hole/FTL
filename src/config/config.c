@@ -152,7 +152,7 @@ struct conf_item *get_debug_item(const enum debug_flag debug)
 	// Sanity check
 	if(debug > DEBUG_MAX-1)
 	{
-		log_err("Debug config item with index %u requested but we have only %u debug elements", debug, DEBUG_MAX-1);
+		log_err("Debug config item with index %u requested but we have only %i debug elements", debug, DEBUG_MAX-1);
 		return NULL;
 	}
 

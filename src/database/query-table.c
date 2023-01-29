@@ -387,7 +387,7 @@ bool import_queries_from_disk(void)
 	if(!detach_disk_database(NULL))
 		return false;
 
-	log_info("Imported %d queries from the on-disk database (it has %d rows)", mem_db_num, disk_db_num);
+	log_info("Imported %u queries from the on-disk database (it has %u rows)", mem_db_num, disk_db_num);
 
 	return okay;
 }
@@ -446,7 +446,7 @@ bool export_queries_to_disk(bool final)
 		        sqlite3_errstr(rc));
 
 	// Get number of queries actually inserted by the INSERT INTO ... SELECT * FROM ...
-	const int insertions = sqlite3_changes(memdb);
+	const unsigned int insertions = sqlite3_changes(memdb);
 
 	// Finalize statement
 	sqlite3_reset(stmt);
@@ -502,7 +502,7 @@ bool export_queries_to_disk(bool final)
 		}
 	}
 
-	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms, last SQLite ID %li)",
+	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms, last SQLite ID %lu)",
 	          insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER), last_disk_db_idx);
 
 	return okay;
@@ -551,7 +551,7 @@ bool add_additional_info_column(sqlite3 *db)
 	SQL_bool(db, "ALTER TABLE queries ADD COLUMN additional_info TEXT;");
 
 	// Update the database version to 7
-	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES (%u, 7);", DB_VERSION);
+	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES (%d, 7);", DB_VERSION);
 
 	return true;
 }
@@ -1350,7 +1350,7 @@ bool queries_to_database(void)
 		{
 			// Store database index for this query (in case we need to
 			// update it later on)
-			query->db = ++last_mem_db_idx;
+			query->db = (int64_t)++last_mem_db_idx;
 
 			// Total counter information (delta computation)
 			new_total++;
@@ -1379,7 +1379,7 @@ bool queries_to_database(void)
 
 	if(config.debug.database.v.b && updated + added > 0)
 	{
-		log_debug(DEBUG_DATABASE, "In-memory database: Added %d new, updated %d known queries", added, updated);
+		log_debug(DEBUG_DATABASE, "In-memory database: Added %u new, updated %u known queries", added, updated);
 		log_in_memory_usage();
 	}
 

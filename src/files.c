@@ -38,7 +38,7 @@ bool chmod_file(const char *filename, const mode_t mode)
 {
 	if(chmod(filename, mode) < 0)
 	{
-		log_warn("chmod(%s, %d): chmod() failed: %s",
+		log_warn("chmod(%s, %u): chmod() failed: %s",
 		         filename, mode, strerror(errno));
 		return false;
 	}
@@ -46,7 +46,7 @@ bool chmod_file(const char *filename, const mode_t mode)
 	struct stat st;
 	if(stat(filename, &st) < 0)
 	{
-		log_warn("chmod(%s, %d): stat() failed: %s",
+		log_warn("chmod(%s, %u): stat() failed: %s",
 		         filename, mode, strerror(errno));
 		return false;
 	}
@@ -55,7 +55,7 @@ bool chmod_file(const char *filename, const mode_t mode)
 	// 0x1FF = 0b111_111_111 corresponding to the three-digit octal mode number
 	if((st.st_mode & 0x1FF) != mode)
 	{
-		log_warn("chmod(%s, %d): Verification failed, %d != %d",
+		log_warn("chmod(%s, %u): Verification failed, %u != %u",
 		         filename, mode, st.st_mode, mode);
 		return false;
 	}
@@ -143,7 +143,8 @@ void ls_dir(const char* path)
 	}
 
 	// Stack space for full path (directory + "/" + filename + terminating \0)
-	char full_path[strlen(path)+NAME_MAX+2];
+	const size_t full_path_len = strlen(path) + NAME_MAX + 2;
+	char *full_path = calloc(full_path_len, sizeof(char));
 
 	log_info("------ Listing content of directory %s ------", path);
 	log_info("File Mode User:Group      Size  Filename");
@@ -156,7 +157,7 @@ void ls_dir(const char* path)
 		const char *filename = dircontent->d_name;
 
 		// Construct full path
-		snprintf(full_path, sizeof(full_path), "%s/%s", path, filename);
+		snprintf(full_path, full_path_len, "%s/%s", path, filename);
 
 		struct stat st;
 		// Use stat to get file size, permissions, and ownership
@@ -172,7 +173,7 @@ void ls_dir(const char* path)
 		if ((pwd = getpwuid(st.st_uid)) != NULL)
 			snprintf(user, sizeof(user), "%s", pwd->pw_name);
 		else
-			snprintf(user, sizeof(user), "%d", st.st_uid);
+			snprintf(user, sizeof(user), "%u", st.st_uid);
 
 		struct group *grp;
 		char usergroup[256];
@@ -180,7 +181,7 @@ void ls_dir(const char* path)
 		if ((grp = getgrgid(st.st_gid)) != NULL)
 			snprintf(usergroup, sizeof(usergroup), "%s:%s", user, grp->gr_name);
 		else
-			snprintf(usergroup, sizeof(usergroup), "%s:%d", user, st.st_gid);
+			snprintf(usergroup, sizeof(usergroup), "%s:%u", user, st.st_gid);
 
 		char permissions[10];
 		get_permission_string(permissions, &st);
@@ -194,6 +195,10 @@ void ls_dir(const char* path)
 	}
 
 	log_info("---------------------------------------------------");
+
+	// Free memory
+	free(full_path);
+	full_path = NULL;
 
 	// Close directory stream
 	closedir(dirp);
@@ -295,20 +300,22 @@ void rotate_files(const char *path)
 		const char *filename = basename(fname);
 		// extra 6 bytes is enough space for up to 999 rotations ("/", ".", "\0", "999")
 		const size_t buflen = strlen(filename) + MAX(strlen(BACKUP_DIR), strlen(path)) + 6;
-		char old_path[buflen];
+		char *old_path = calloc(buflen, sizeof(char));
 		if(i == 1)
 			snprintf(old_path, buflen, "%s", path);
 		else
 			snprintf(old_path, buflen, BACKUP_DIR"/%s.%u", filename, i-1);
-		char new_path[buflen];
+		char *new_path = calloc(buflen, sizeof(char));
 		snprintf(new_path, buflen, BACKUP_DIR"/%s.%u", filename, i);
 		free(fname);
 
-		char old_path_compressed[strlen(old_path) + 4];
-		snprintf(old_path_compressed, sizeof(old_path_compressed), "%s.gz", old_path);
+		size_t old_path_len = strlen(old_path) + 4;
+		char *old_path_compressed = calloc(old_path_len, sizeof(char));
+		snprintf(old_path_compressed, old_path_len, "%s.gz", old_path);
 
-		char new_path_compressed[strlen(new_path) + 4];
-		snprintf(new_path_compressed, sizeof(new_path_compressed), "%s.gz", new_path);
+		size_t new_path_len = strlen(new_path) + 4;
+		char *new_path_compressed = calloc(new_path_len, sizeof(char));
+		snprintf(new_path_compressed, new_path_len, "%s.gz", new_path);
 
 		if(file_exists(old_path))
 		{
@@ -349,9 +356,15 @@ void rotate_files(const char *path)
 			{
 				// Log success if debug is enabled
 				log_debug(DEBUG_CONFIG, "Rotated %s -> %s",
-				          new_path_compressed, new_path);
+				          old_path_compressed, new_path_compressed);
 			}
 		}
+
+		// Free memory
+		free(old_path);
+		free(new_path);
+		free(old_path_compressed);
+		free(new_path_compressed);
 	}
 }
 

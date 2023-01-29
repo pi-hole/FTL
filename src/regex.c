@@ -139,7 +139,7 @@ unsigned int __attribute__((pure)) get_num_regex(const enum regex_type regexid)
 bool compile_regex(const char *regexin, regexData *regex, char **message)
 {
 	// Extract possible Pi-hole extensions
-	char rgxbuf[strlen(regexin) + 1u];
+	char *rgxbuf = calloc(strlen(regexin) + 1u, sizeof(char));
 	// Parse special FTL syntax if present
 	if(strstr(regexin, FTL_REGEX_SEP) != NULL)
 	{
@@ -147,7 +147,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 		// Extract regular expression pattern in front of FTL-specific syntax
 		char *saveptr = NULL;
 		char *part = strtok_r(buf, FTL_REGEX_SEP, &saveptr);
-		strncpy(rgxbuf, part, sizeof(rgxbuf));
+		strncpy(rgxbuf, part, strlen(regexin));
 
 		// Analyze FTL-specific parts
 		while((part = strtok_r(NULL, FTL_REGEX_SEP, &saveptr)) != NULL)
@@ -161,6 +161,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				{
 					*message = strdup("Overwriting previous querytype setting (multiple \"querytype=...\" found)");
 					free(buf);
+					free(rgxbuf);
 					return false;
 				}
 
@@ -189,6 +190,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 					if(asprintf(message, "Unknown querytype \"%s\"", extra) < 1)
 						log_err("Memory allocation failed in compile_regex()");
 					free(buf);
+					free(rgxbuf);
 					return false;
 				}
 
@@ -258,6 +260,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 					if(asprintf(message, "Unknown reply type \"%s\"", extra) < 1)
 						log_err("Memory allocation failed in compile_regex()");
 					free(buf);
+					free(rgxbuf);
 					return false;
 				}
 
@@ -270,6 +273,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				if(asprintf(message, "Invalid regex option \"%s\"", part) < 1)
 					log_err("Memory allocation failed in compile_regex()");
 				free(buf);
+				free(rgxbuf);
 				return false;
 			}
 		}
@@ -290,6 +294,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 		(void) regerror (errcode, &regex->regex, regex_msg, sizeof(regex_msg));
 		*message = strdup(regex_msg);
 		regex->available = false;
+		free(rgxbuf);
 		return false;
 	}
 
@@ -297,6 +302,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 	regex->string = strdup(regexin);
 	regex->available = true;
 
+	free(rgxbuf);
 	return true;
 }
 
@@ -507,7 +513,7 @@ void free_regex(void)
 		if(regex == NULL)
 			continue;
 
-		log_debug(DEBUG_DATABASE, "Going to free %i entries in %s regex struct",
+		log_debug(DEBUG_DATABASE, "Going to free %u entries in %s regex struct",
 		          oldcount, regextype[regexid]);
 
 		// Loop over entries with this regex type
@@ -609,7 +615,7 @@ static void read_regex_table(const enum regex_type regexid)
 		// since we counted its entries
 		if(num_regex[regexid] >= (unsigned int)count)
 		{
-			log_warn("read_regex_table(%s) exiting early to avoid overflow (%d/%d).",
+			log_warn("read_regex_table(%s) exiting early to avoid overflow (%u/%d).",
 			         regextype[regexid], num_regex[regexid], count);
 			break;
 		}
@@ -624,7 +630,7 @@ static void read_regex_table(const enum regex_type regexid)
 			continue;
 
 		// Debug logging
-		log_debug(DEBUG_REGEX, "Compiling %s regex %i (DB ID %i): %s",
+		log_debug(DEBUG_REGEX, "Compiling %s regex %u (DB ID %i): %s",
 		          regextype[regexid], num_regex[regexid], rowid, regex_string);
 
 		const int index = num_regex[regexid]++;
@@ -649,7 +655,7 @@ static void read_regex_table(const enum regex_type regexid)
 	gravityDB_finalizeTable();
 
 	// Debug logging
-	log_debug(DEBUG_DATABASE, "Read %i %s regex entries",
+	log_debug(DEBUG_DATABASE, "Read %u %s regex entries",
 	          num_regex[regexid],
 	          regextype[regexid]);
 }
@@ -686,7 +692,7 @@ void read_regex_from_database(void)
 	}
 
 	// Print message to FTL's log after reloading regex filters
-	log_info("Compiled %i allow and %i deny regex for %i client%s in %.1f msec",
+	log_info("Compiled %u allow and %u deny regex for %i client%s in %.1f msec",
 	         num_regex[REGEX_ALLOW], num_regex[REGEX_DENY],
 	         counters->clients, counters->clients > 1 ? "s" : "",
 	         timer_elapsed_msec(REGEX_TIMER));
@@ -719,7 +725,7 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		read_regex_table(REGEX_DENY);
 		read_regex_table(REGEX_ALLOW);
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
-		log_info("    Compiled %i deny and %i allow regex in %.3f msec\n",
+		log_info("    Compiled %u deny and %u allow regex in %.3f msec\n",
 		     num_regex[REGEX_DENY], num_regex[REGEX_ALLOW],
 		     timer_elapsed_msec(REGEX_TIMER));
 

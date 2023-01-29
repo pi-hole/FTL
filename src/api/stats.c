@@ -113,8 +113,14 @@ int api_stats_summary(struct ftl_conn *api)
 
 int api_stats_top_domains(struct ftl_conn *api)
 {
-	int temparray[counters->domains][2], count = 10;
+	int count = 10;
 	bool audit = false;
+	int *temparray = calloc(2*counters->domains, sizeof(int*));
+	if(temparray == NULL)
+	{
+		log_err("Memory allocation failed in %s()", __FUNCTION__);
+		return 0;
+	}
 
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
@@ -127,6 +133,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *top_domains = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(json, "top_domains", top_domains);
+		free(temparray);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -155,12 +162,12 @@ int api_stats_top_domains(struct ftl_conn *api)
 		if(domain == NULL)
 			continue;
 
-		temparray[domainID][0] = domainID;
+		temparray[2*domainID + 0] = domainID;
 		if(blocked)
-			temparray[domainID][1] = domain->blockedcount;
+			temparray[2*domainID + 1] = domain->blockedcount;
 		else
 			// Count only permitted queries
-			temparray[domainID][1] = (domain->count - domain->blockedcount);
+			temparray[2*domainID + 1] = (domain->count - domain->blockedcount);
 	}
 
 	// Sort temporary array
@@ -191,7 +198,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 	for(int i = 0; i < counters->domains; i++)
 	{
 		// Get sorted index
-		const int domainID = temparray[i][0];
+		const int domainID = temparray[2*i + 0];
 		// Get domain pointer
 		const domainsData* domain = getDomain(domainID, true);
 		if(domain == NULL)
@@ -249,6 +256,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 		if(n == count)
 			break;
 	}
+	free(temparray);
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "domains", top_domains);
@@ -262,8 +270,14 @@ int api_stats_top_domains(struct ftl_conn *api)
 
 int api_stats_top_clients(struct ftl_conn *api)
 {
-	int temparray[counters->clients][2], count = 10;
+	int count = 10;
 	bool includezeroclients = false;
+	int *temparray = calloc(2*counters->clients, sizeof(int*));
+	if(temparray == NULL)
+	{
+		log_err("Memory allocation failed in api_stats_top_clients()");
+		return 0;
+	}
 
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
@@ -276,6 +290,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *top_clients = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(json, "top_clients", top_clients);
+		free(temparray);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -305,9 +320,9 @@ int api_stats_top_clients(struct ftl_conn *api)
 		if(client == NULL || (!client->flags.aliasclient && client->aliasclient_id >= 0))
 			continue;
 
-		temparray[clientID][0] = clientID;
+		temparray[2*clientID + 0] = clientID;
 		// Use either blocked or total count based on request string
-		temparray[clientID][1] = blocked ? client->blockedcount : client->count;
+		temparray[2*clientID + 1] = blocked ? client->blockedcount : client->count;
 	}
 
 	// Sort temporary array
@@ -321,8 +336,8 @@ int api_stats_top_clients(struct ftl_conn *api)
 	for(int i=0; i < counters->clients; i++)
 	{
 		// Get sorted indices and counter values (may be either total or blocked count)
-		const int clientID = temparray[i][0];
-		const int client_count = temparray[i][1];
+		const int clientID = temparray[2*i + 0];
+		const int client_count = temparray[2*i + 1];
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
 		if(client == NULL)
@@ -367,6 +382,8 @@ int api_stats_top_clients(struct ftl_conn *api)
 		if(n == count)
 			break;
 	}
+	// Free temporary array
+	free(temparray);
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", top_clients);
@@ -382,7 +399,12 @@ int api_stats_upstreams(struct ftl_conn *api)
 {
 	const int forwarded = get_forwarded_count();
 	unsigned int totalcount = 0;
-	int temparray[forwarded][2];
+	int *temparray = calloc(2*forwarded, sizeof(int*));
+	if(temparray == NULL)
+	{
+		log_err("Memory allocation failed in api_stats_upstreams()");
+		return 0;
+	}
 
 	// Lock shared memory
 	lock_shm();
@@ -394,12 +416,12 @@ int api_stats_upstreams(struct ftl_conn *api)
 		if(upstream == NULL)
 			continue;
 
-		temparray[upstreamID][0] = upstreamID;
+		temparray[2*upstreamID + 0] = upstreamID;
 
 		unsigned int count = 0;
 		for(unsigned i = 0; i < ArraySize(upstream->overTime); i++)
 			count += upstream->overTime[i];
-		temparray[upstreamID][1] = count;
+		temparray[2*upstreamID + 1] = count;
 		totalcount += count;
 	}
 
@@ -433,7 +455,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 		{
 			// Regular upstream destionation
 			// Get sorted indices
-			const int upstreamID = temparray[i][0];
+			const int upstreamID = temparray[2*i + 0];
 
 			// Get upstream pointer
 			const upstreamsData *upstream = getUpstream(upstreamID, true);
@@ -479,6 +501,9 @@ int api_stats_upstreams(struct ftl_conn *api)
 			JSON_ADD_ITEM_TO_ARRAY(upstreams, upstream);
 		}
 	}
+
+	// Free temporary array
+	free(temparray);
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "upstreams", upstreams);

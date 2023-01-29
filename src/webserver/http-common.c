@@ -78,6 +78,13 @@ int send_json_error(struct ftl_conn *api, const int code,
                     const char *key, const char* message,
                     const char *hint)
 {
+	return send_json_error_free(api, code, key, message, (char*)hint, false);
+}
+
+int send_json_error_free(struct ftl_conn *api, const int code,
+                         const char *key, const char* message,
+                         char *hint, bool free_hint)
+{
 	if(hint)
 		log_warn("API: %s (%s)", message, hint);
 	else
@@ -86,7 +93,9 @@ int send_json_error(struct ftl_conn *api, const int code,
 	cJSON *error = JSON_NEW_OBJECT();
 	JSON_REF_STR_IN_OBJECT(error, "key", key);
 	JSON_REF_STR_IN_OBJECT(error, "message", message);
-	JSON_REF_STR_IN_OBJECT(error, "hint", hint);
+	JSON_COPY_STR_TO_OBJECT(error, "hint", hint);
+	if(free_hint)
+		free(hint);
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "error", error);

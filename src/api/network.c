@@ -24,8 +24,9 @@
 static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 {
 	// Get IPv4 default route gateway and associated interface
-	long dest_r = 0, gw_r = 0;
-	int flags = 0, metric = 0, minmetric = __INT_MAX__;
+	unsigned long dest_r = 0, gw_r = 0;
+	unsigned int flags = 0u;
+	int metric = 0, minmetric = __INT_MAX__;
 	char iface_r[IF_NAMESIZE] = { 0 };
 	char buf[1024] = { 0 };
 
@@ -55,7 +56,7 @@ static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 				*gw = gw_r;
 				strcpy(iface, iface_r);
 
-				log_debug(DEBUG_API, "Reading interfaces: flags: %i, addr: %s, iface: %s, metric: %i, minmetric: %i",
+				log_debug(DEBUG_API, "Reading interfaces: flags: %u, addr: %s, iface: %s, metric: %i, minmetric: %i",
 				          flags, inet_ntoa(*(struct in_addr *) gw), iface, metric, minmetric);
 			}
 		}
@@ -119,7 +120,7 @@ int api_network_interfaces(struct ftl_conn *api)
 	while ((dp = readdir(dfd)) != NULL)
 	{
 		// Skip "." and ".."
-		if(!dp->d_name || strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
+		if(strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
 			continue;
 
 		// Create new interface record
@@ -255,8 +256,10 @@ int api_network_interfaces(struct ftl_conn *api)
 		}
 
 		// Sum up transmitted and received bytes
-		tx_sum += tx_bytes;
-		rx_sum += rx_bytes;
+		if(tx_bytes > 0)
+			tx_sum += tx_bytes;
+		if(rx_bytes > 0)
+			rx_sum += rx_bytes;
 
 		// Add interface to array
 		JSON_ADD_ITEM_TO_ARRAY(interfaces, iface);

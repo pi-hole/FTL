@@ -426,7 +426,7 @@ void FTL_log_helper(const unsigned char n, ...)
 
 	// Extract all variable arguments
 	va_list args;
-	char *arg[n];
+	char **arg = calloc(n, sizeof(char*));
 	va_start(args, n);
 	for(unsigned char i = 0; i < n; i++)
 	{
@@ -460,6 +460,7 @@ void FTL_log_helper(const unsigned char n, ...)
 	for(unsigned char i = 0; i < n; i++)
 		if(arg[i] != NULL)
 			free(arg[i]);
+	free(arg);
 }
 
 void format_memory_size(char prefix[2], const unsigned long long int bytes,
@@ -669,7 +670,7 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 					*dst++ = '0';
 					break;
 				default:
-					sprintf(dst, "0x%X", *src);
+					sprintf(dst, "0x%X", *(unsigned char*)src);
 					dst += 4;
 			}
 

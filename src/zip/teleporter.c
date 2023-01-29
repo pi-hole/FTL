@@ -533,7 +533,7 @@ const char *read_teleporter_zip(char *buffer, const size_t buflen, char * const 
 		mz_zip_archive_file_stat file_stat;
 		if(!mz_zip_reader_file_stat(&zip, i, &file_stat))
 		{
-			log_warn("Failed to get file information for file %d in ZIP archive: %s",
+			log_warn("Failed to get file information for file %u in ZIP archive: %s",
 			         i, mz_zip_get_error_string(mz_zip_get_last_error(&zip)));
 			continue;
 		}
@@ -555,19 +555,19 @@ const char *read_teleporter_zip(char *buffer, const size_t buflen, char * const 
 		void *ptr = malloc(file_stat.m_uncomp_size);
 		if(ptr == NULL)
 		{
-			log_warn("Failed to allocate memory for file %d (%s) in ZIP archive: %s",
+			log_warn("Failed to allocate memory for file %u (%s) in ZIP archive: %s",
 			         i, file_stat.m_filename, mz_zip_get_error_string(mz_zip_get_last_error(&zip)));
 			continue;
 		}
 		if(!mz_zip_reader_extract_to_mem(&zip, i, ptr, file_stat.m_uncomp_size, 0))
 		{
-			log_warn("Failed to read file %d (%s) in ZIP archive: %s",
+			log_warn("Failed to read file %u (%s) in ZIP archive: %s",
 			         i, file_stat.m_filename, mz_zip_get_error_string(mz_zip_get_last_error(&zip)));
 			free(ptr);
 			continue;
 		}
 
-		log_debug(DEBUG_CONFIG, "Processing file %d (%s) in ZIP archive (%zu/%zu bytes, comment: \"%s\", timestamp: %lu)",
+		log_debug(DEBUG_CONFIG, "Processing file %u (%s) in ZIP archive (%zu/%zu bytes, comment: \"%s\", timestamp: %lu)",
 		          i, file_stat.m_filename, (size_t)file_stat.m_comp_size, (size_t)file_stat.m_uncomp_size,
 		          file_stat.m_comment, (unsigned long)file_stat.m_time);
 

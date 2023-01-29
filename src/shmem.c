@@ -177,7 +177,7 @@ static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
 {
 	// Open shared memory object
 	const int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
-	log_debug(DEBUG_SHMEM, "Changing %s (%d) to %d:%d", sharedMemory->name, fd, ent_pw->pw_uid, ent_pw->pw_gid);
+	log_debug(DEBUG_SHMEM, "Changing %s (%d) to %u:%u", sharedMemory->name, fd, ent_pw->pw_uid, ent_pw->pw_gid);
 	if(fd == -1)
 	{
 		log_crit("chown_shmem(): Failed to open shared memory object \"%s\": %s",
@@ -186,7 +186,7 @@ static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
 	}
 	if(fchown(fd, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 	{
-		log_warn("chown_shmem(%d, %d, %d): failed for %s: %s (%d)",
+		log_warn("chown_shmem(%d, %u, %u): failed for %s: %s (%d)",
 		         fd, ent_pw->pw_uid, ent_pw->pw_gid, sharedMemory->name,
 		         strerror(errno), errno);
 		return false;
@@ -1028,7 +1028,7 @@ bool get_per_client_regex(const int clientID, const int regexID)
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		log_err("get_per_client_regex(%d, %d): Out of bounds (%d > %d * %d, shm_per_client_regex.size = %zd)!",
+		log_err("get_per_client_regex(%d, %d): Out of bounds (%u > %d * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID,
 		        id, counters->clients, num_regex_tot, maxval);
 		return false;
@@ -1043,7 +1043,7 @@ void set_per_client_regex(const int clientID, const int regexID, const bool valu
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		log_err("set_per_client_regex(%d, %d, %s): Out of bounds (%d > %d * %d, shm_per_client_regex.size = %zd)!",
+		log_err("set_per_client_regex(%d, %d, %s): Out of bounds (%u > %d * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID, value ? "true" : "false",
 		        id, counters->clients, num_regex_tot, maxval);
 		return;

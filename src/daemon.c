@@ -207,7 +207,7 @@ void delay_startup(void)
 	}
 
 	// Sleep if requested by DELAY_STARTUP
-	log_info("Sleeping for %d seconds as requested by configuration ...", config.misc.delay_startup.v.ui);
+	log_info("Sleeping for %u seconds as requested by configuration ...", config.misc.delay_startup.v.ui);
 	if(sleep(config.misc.delay_startup.v.ui) != 0)
 	{
 		log_crit("Sleeping was interrupted by an external signal");
@@ -356,7 +356,7 @@ void calc_cpu_usage(void)
 		return;
 	}
 	// Percentage of CPU time spent executing instructions
-	cpu_usage = 100.0f * (clk - last_clock) / CLOCKS_PER_SEC;
+	cpu_usage = 100.0f * ((float)clk - (float)last_clock) / CLOCKS_PER_SEC;
 	last_clock = clk;
 }
 

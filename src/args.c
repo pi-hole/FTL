@@ -321,7 +321,7 @@ void parse_args(int argc, char* argv[])
 		if(argc == 3 && strcmp(argv[1], "dnsmasq-test-file") == 0)
 		{
 			const char *arg[3];
-			char filename[strlen(argv[2])+strlen("--conf-file=")+1];
+			char *filename = calloc(strlen(argv[2])+strlen("--conf-file=")+1, sizeof(char));
 			arg[0] = "";
 			sprintf(filename, "--conf-file=%s", argv[2]);
 			arg[1] = filename;

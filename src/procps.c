@@ -221,9 +221,9 @@ bool parse_proc_meminfo(struct proc_meminfo *mem)
 		sscanf(line, "MemTotal: %lu kB", &mem->total);
 		sscanf(line, "MemFree: %lu kB", &mem->mfree);
 		sscanf(line, "MemAvailable: %lu kB", &mem->avail);
-		sscanf(line, "Cached: %lu kB", &page_cached);
-		sscanf(line, "Buffers: %lu kB", &buffers);
-		sscanf(line, "SReclaimable: %lu kB", &slab_reclaimable);
+		sscanf(line, "Cached: %ld kB", &page_cached);
+		sscanf(line, "Buffers: %ld kB", &buffers);
+		sscanf(line, "SReclaimable: %ld kB", &slab_reclaimable);
 	}
 	fclose(meminfo);
 

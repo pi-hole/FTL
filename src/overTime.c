@@ -31,7 +31,7 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 	{
 		char timestr[20];
 		strftime(timestr, 20, "%Y-%m-%d %H:%M:%S", localtime(&timestamp));
-		log_debug(DEBUG_OVERTIME, "initSlot(%u, %llu): Zeroing overTime slot at %s", index, (long long)timestamp, timestr);
+		log_debug(DEBUG_OVERTIME, "initSlot(%u, %lu): Zeroing overTime slot at %s", index, (unsigned long)timestamp, timestr);
 	}
 
 	// Initialize overTime entry
@@ -87,8 +87,8 @@ void initOverTime(void)
 		char first[20], last[20];
 		strftime(first, 20, "%Y-%m-%d %H:%M:%S", localtime(&oldest));
 		strftime(last, 20, "%Y-%m-%d %H:%M:%S", localtime(&newest));
-		log_debug(DEBUG_OVERTIME, "initOverTime(): Initializing %i slots from %s (%llu) to %s (%llu)",
-		          OVERTIME_SLOTS, first, (long long)oldest, last, (long long)newest);
+		log_debug(DEBUG_OVERTIME, "initOverTime(): Initializing %i slots from %s (%lu) to %s (%lu)",
+		          OVERTIME_SLOTS, first, (unsigned long)oldest, last, (unsigned long)newest);
 	}
 
 	// Iterate over overTime
@@ -138,10 +138,10 @@ unsigned int _getOverTimeID(time_t timestamp, const char *file, const int line)
 			char lastTimestampStr[TIMESTR_SIZE] = "";
 			get_timestr(lastTimestampStr, lastTimestamp, false, false);
 
-			log_warn("Found database entries in the future (%s (%llu), last timestamp for importing: %s (%llu)). "
+			log_warn("Found database entries in the future (%s (%lu), last timestamp for importing: %s (%lu)). "
 			         "Your over-time statistics may be incorrect (found in %s:%d)",
-			         timestampStr, (long long)timestamp,
-			         lastTimestampStr, (long long)lastTimestamp,
+			         timestampStr, (unsigned long)timestamp,
+			         lastTimestampStr, (unsigned long)lastTimestamp,
 			         short_path(file), line);
 			warned_about_hwclock = true;
 		}
@@ -150,7 +150,7 @@ unsigned int _getOverTimeID(time_t timestamp, const char *file, const int line)
 	}
 
 	// Debug output
-	log_debug(DEBUG_OVERTIME, "getOverTimeID(%llu): %i", (long long)timestamp, id);
+	log_debug(DEBUG_OVERTIME, "getOverTimeID(%lu): %i", (unsigned long)timestamp, id);
 
 	return (unsigned int) id;
 }
@@ -173,8 +173,8 @@ void moveOverTimeMemory(const time_t mintime)
 	// The number of slots which will be moved (not garbage collected)
 	const unsigned int remainingSlots = OVERTIME_SLOTS - moveOverTime;
 
-	log_debug(DEBUG_OVERTIME, "moveOverTimeMemory(): IS: %llu, SHOULD: %llu, MOVING: %u",
-	          (long long)oldestOverTimeIS, (long long)oldestOverTimeSHOULD, moveOverTime);
+	log_debug(DEBUG_OVERTIME, "moveOverTimeMemory(): IS: %lu, SHOULD: %lu, MOVING: %u",
+	          (unsigned long)oldestOverTimeIS, (unsigned long)oldestOverTimeSHOULD, moveOverTime);
 
 	// Check if the move over amount is valid. This prevents errors if the
 	// function is called before GC is necessary.

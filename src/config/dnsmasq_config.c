@@ -557,7 +557,7 @@ bool read_legacy_dhcp_static_config(void)
 		cJSON *item = cJSON_CreateString(value);
 		cJSON_AddItemToArray(config.dhcp.hosts.v.json, item);
 
-		log_debug(DEBUG_CONFIG, DNSMASQ_STATIC_LEASES": Setting %s[%d] = %s\n",
+		log_debug(DEBUG_CONFIG, DNSMASQ_STATIC_LEASES": Setting %s[%u] = %s\n",
 		          config.dhcp.hosts.k, j++, item->valuestring);
 	}
 
@@ -620,7 +620,7 @@ bool read_legacy_cnames_config(void)
 		cJSON *item = cJSON_CreateString(value);
 		cJSON_AddItemToArray(config.dns.cnames.v.json, item);
 
-		log_debug(DEBUG_CONFIG, DNSMASQ_CNAMES": Setting %s[%d] = %s\n",
+		log_debug(DEBUG_CONFIG, DNSMASQ_CNAMES": Setting %s[%u] = %s\n",
 		          config.dns.cnames.k, j++, item->valuestring);
 	}
 

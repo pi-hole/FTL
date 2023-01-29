@@ -88,7 +88,7 @@ static void printTOMLstring(FILE *fp, const char *s)
 	fprintf(fp, "\"");
 	for ( ; len; len--, s++)
 	{
-		int ch = *s;
+		unsigned char ch = *s;
 		if (isprint(ch) && ch != '"' && ch != '\\')
 		{
 			putc(ch, fp);
@@ -243,12 +243,17 @@ void print_toml_allowed_values(cJSON *allowed_values, FILE *fp, const unsigned i
 			{
 				// Frame item name in "..."
 				const size_t buflen = strlen(item->valuestring) + 3u;
-				char itemname[buflen];
+				char *itemname = calloc(buflen, sizeof(char));
+				// Leading "
 				itemname[0] = '"';
-				strncpy(itemname+1, item->valuestring, buflen);
+				// Copy string (we already know that the string
+				// length is buflen - 3u)
+				strncpy(itemname + 1, item->valuestring, buflen - 3u);
+				// Trailing "
 				itemname[buflen-2] = '"';
 				// Print item name
 				print_comment(fp, itemname, "  - ", 85, indent);
+				free(itemname);
 			}
 			else if(item->valueint < 100)
 			{
@@ -591,7 +596,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 					const toml_datum_t d = toml_string_at(array, i);
 					if(!d.ok)
 					{
-						log_debug(DEBUG_CONFIG, "%s is an invalid array (found at index %d)", conf_item->k, i);
+						log_debug(DEBUG_CONFIG, "%s is an invalid array (found at index %u)", conf_item->k, i);
 						break;
 					}
 					// Add string to our JSON array

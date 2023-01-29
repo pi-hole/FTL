@@ -156,7 +156,7 @@ const char *readFTLlegacy(struct config *conf)
 		// - larger than 0.1min (6sec), and
 		// - smaller than 1440.0min (once a day)
 		if(fvalue >= 0.1f && fvalue <= 1440.0f)
-			conf->database.DBinterval.v.ui = (int)(fvalue * 60);
+			conf->database.DBinterval.v.ui = (unsigned int)(fvalue * 60);
 
 	// DBFILE
 	// defaults to: "/etc/pihole/pihole-FTL.db"
@@ -552,12 +552,13 @@ const char *readFTLlegacy(struct config *conf)
 	// CHECK_SHMEM
 	// Limit above which FTL should complain about a shared-memory shortage
 	// defaults to: 90%
+	unsigned int uvalue = 0;
 	conf->misc.check.shmem.v.ui = 90;
 	buffer = parseFTLconf(fp, "CHECK_SHMEM");
 
-	if(buffer != NULL && sscanf(buffer, "%i", &ivalue) &&
-	   ivalue >= 0 && ivalue <= 100)
-		conf->misc.check.shmem.v.ui = ivalue;
+	if(buffer != NULL && sscanf(buffer, "%u", &uvalue) &&
+	   uvalue <= 100)
+		conf->misc.check.shmem.v.ui = uvalue;
 
 	// CHECK_DISK
 	// Limit above which FTL should complain about disk shortage for checked files
@@ -565,9 +566,9 @@ const char *readFTLlegacy(struct config *conf)
 	conf->misc.check.disk.v.ui = 90;
 	buffer = parseFTLconf(fp, "CHECK_DISK");
 
-	if(buffer != NULL && sscanf(buffer, "%i", &ivalue) &&
-	   ivalue >= 0 && ivalue <= 100)
-			conf->misc.check.disk.v.ui = ivalue;
+	if(buffer != NULL && sscanf(buffer, "%u", &uvalue) &&
+	   uvalue <= 100)
+			conf->misc.check.disk.v.ui = uvalue;
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes

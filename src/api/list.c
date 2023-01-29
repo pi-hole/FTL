@@ -78,19 +78,23 @@ static int api_list_read(struct ftl_conn *api,
 		// Groups don't have the groups property
 		if(listtype != GRAVITY_GROUPS)
 		{
-			if(table.group_ids != NULL) {
+			if(table.group_ids != NULL)
+			{
 				// Black magic at work here: We build a JSON array from
 				// the group_concat result delivered from the database,
 				// parse it as valid array and append it as row to the
 				// data
-				char group_ids_str[strlen(table.group_ids)+3u];
+				char *group_ids_str = calloc(strlen(table.group_ids)+3u, sizeof(char));
 				group_ids_str[0] = '[';
 				strcpy(group_ids_str+1u , table.group_ids);
 				group_ids_str[sizeof(group_ids_str)-2u] = ']';
 				group_ids_str[sizeof(group_ids_str)-1u] = '\0';
 				cJSON * group_ids = cJSON_Parse(group_ids_str);
+				free(group_ids_str);
 				JSON_ADD_ITEM_TO_OBJECT(row, "groups", group_ids);
-			} else {
+			}
+			else
+			{
 				// Empty group set
 				cJSON *group_ids = JSON_NEW_ARRAY();
 				JSON_ADD_ITEM_TO_OBJECT(row, "groups", group_ids);

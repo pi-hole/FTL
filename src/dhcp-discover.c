@@ -324,9 +324,10 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 				// We may need to escape this, buffer size: 4
 				// chars per control character plus room for
 				// possible "(empty)"
-				char buffer[4*optlen + 9];
+				char *buffer = calloc(4*optlen + 9, sizeof(char));
 				binbuf_to_escaped_C_literal(&offer_packet->options[x], optlen, buffer, sizeof(buffer));
 				printf("%s: \"%s\"\n", opttab[i].name, buffer);
+				free(buffer);
 			}
 			else if(opttab[i].size & OT_TIME)
 			{
@@ -380,8 +381,8 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 							printf("Message type: DHCPINFORM (8)\n");
 							break;
 						default:
-							printf("Message type: UNKNOWN (%u)\n",
-							       offer_packet->options[x]);
+							printf("Message type: UNKNOWN (%hhu)\n",
+							       (unsigned char)offer_packet->options[x]);
 							break;
 					}
 				}
@@ -411,9 +412,10 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 				// We may need to escape this, buffer size: 4
 				// chars per control character plus room for
 				// possible "(empty)"
-				char buffer[4*optlen + 9];
+				char *buffer = calloc(4*optlen + 9, sizeof(char));
 				binbuf_to_escaped_C_literal(&offer_packet->options[x], optlen, buffer, sizeof(buffer));
 				printf("wpad-server: \"%s\"\n", buffer);
+				free(buffer);
 			}
 			else if(opttype == 158) // DHCPv4 PCP Option (RFC 7291)
 			{                       // https://tools.ietf.org/html/rfc7291#section-4
@@ -462,13 +464,13 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 					if(cidr == 0)
 					{
 						// default route (0.0.0.0/0)
-						printf("     %d: default via %d.%d.%d.%d\n", i,
+						printf("     %u: uefault via %u.%u.%u.%u\n", i,
 						     router[0], router[1], router[2], router[3]);
 					}
 					else
 					{
 						// specific route
-						printf("     %d: %d.%d.%d.%d/%d via %d.%d.%d.%d\n", i,
+						printf("     %u: %u.%u.%u.%u/%u via %u.%u.%u.%u\n", i,
 						     addr[0], addr[1], addr[2], addr[3], cidr,
 						     router[0], router[1], router[2], router[3]);
 					}
@@ -612,9 +614,10 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		if(offer_packet.sname[0] != 0)
 		{
 			size_t len = strlen(offer_packet.sname);
-			char buffer[4*len + 9];
+			char *buffer = calloc(4*len + 9, sizeof(char));
 			binbuf_to_escaped_C_literal(offer_packet.sname, len, buffer, sizeof(buffer));
 			printf("%s\n", buffer);
+			free(buffer);
 		}
 		else
 			printf("(empty)\n");
@@ -623,9 +626,10 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		if(offer_packet.file[0] != 0)
 		{
 			size_t len = strlen(offer_packet.file);
-			char buffer[4*len + 9];
+			char *buffer = calloc(4*len + 9, sizeof(char));
 			binbuf_to_escaped_C_literal(offer_packet.file, len, buffer, sizeof(buffer));
 			printf("%s\n", buffer);
+			free(buffer);
 		}
 		else
 			printf("(empty)\n");
@@ -665,8 +669,8 @@ static void *dhcp_discover_iface(void *args)
 	get_hardware_address(dhcp_socket, iface, mac);
 
 	// Generate pseudo-random transaction ID
-	srand(time(NULL));
-	const uint32_t xid = random();
+	srand((unsigned int)time(NULL));
+	const uint32_t xid = (uint32_t)random();
 
 	if(strcmp(iface, "lo") == 0)
 	{

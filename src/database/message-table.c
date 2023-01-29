@@ -267,7 +267,7 @@ static bool add_message(const enum message_type type,
 		// Bind message to prepared statement
 		if(rc != SQLITE_OK)
 		{
-			log_err("add_message(type=%u, message=%s) - Failed to bind argument %u (type %u): %s",
+			log_err("add_message(type=%u, message=%s) - Failed to bind argument %d (type %u): %s",
 			        type, message, 3 + j, datatype, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
@@ -339,7 +339,7 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 void logg_hostname_warning(const char *ip, const char *name, const unsigned int pos)
 {
 	// Log to FTL.log
-	log_warn("Host name of client \"%s\" => \"%s\" contains (at least) one invalid character at position %d",
+	log_warn("Host name of client \"%s\" => \"%s\" contains (at least) one invalid character at position %u",
 	         ip, name, pos);
 
 	// Log to database

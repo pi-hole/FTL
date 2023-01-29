@@ -101,7 +101,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 	// This upstream server is not known
 	// Store ID
 	const int upstreamID = counters->upstreams;
-	log_debug(DEBUG_ANY, "New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
+	log_debug(DEBUG_ANY, "New upstream server: %s:%u (%i/%i)", upstreamString, port, upstreamID, counters->upstreams_MAX);
 
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, false);
@@ -698,7 +698,7 @@ const char * __attribute__ ((const)) get_refresh_hostnames_str(const enum refres
 	}
 }
 
-int __attribute__ ((const)) get_refresh_hostnames_val(const char *refresh_hostnames)
+int __attribute__ ((pure)) get_refresh_hostnames_val(const char *refresh_hostnames)
 {
 	if(strcasecmp(refresh_hostnames, "ALL") == 0)
 		return REFRESH_ALL;
@@ -733,7 +733,7 @@ const char * __attribute__ ((const)) get_blocking_mode_str(const enum blocking_m
 	}
 }
 
-int __attribute__ ((const)) get_blocking_mode_val(const char *blocking_mode)
+int __attribute__ ((pure)) get_blocking_mode_val(const char *blocking_mode)
 {
 	if(strcasecmp(blocking_mode, "IP") == 0)
 		return MODE_IP;
@@ -944,7 +944,7 @@ const char * __attribute__ ((const)) get_ptr_type_str(const enum ptr_type pihole
 	return NULL;
 }
 
-int __attribute__ ((const)) get_ptr_type_val(const char *piholePTR)
+int __attribute__ ((pure)) get_ptr_type_val(const char *piholePTR)
 {
 	if(strcasecmp(piholePTR, "pi.hole") == 0)
 		return PTR_PIHOLE;
@@ -976,7 +976,7 @@ const char * __attribute__ ((const)) get_busy_reply_str(const enum busy_reply re
 	return NULL;
 }
 
-int __attribute__ ((const)) get_busy_reply_val(const char *replyWhenBusy)
+int __attribute__ ((pure)) get_busy_reply_val(const char *replyWhenBusy)
 {
 	if(strcasecmp(replyWhenBusy, "BLOCK") == 0)
 		return BUSY_BLOCK;
@@ -1007,7 +1007,7 @@ const char * __attribute__ ((const)) get_listening_mode_str(const enum listening
 	return NULL;
 }
 
-int __attribute__ ((const)) get_listening_mode_val(const char *listening_mode)
+int __attribute__ ((pure)) get_listening_mode_val(const char *listening_mode)
 {
 	if(strcasecmp(listening_mode, "LOCAL") == 0)
 		return LISTEN_LOCAL;

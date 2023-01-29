@@ -54,12 +54,12 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 	// Debug logging
 	if(config.debug.edns0.v.b)
 	{
-		char payload[3*plen+1];
-		memset(payload, 0, sizeof(payload));
+		char *payload = calloc(3*plen+1, sizeof(char));
 		for(unsigned int i = 0; i < plen; i++)
 			sprintf(&payload[3*i], "%02X ", pheader[i]);
 		log_debug(DEBUG_EDNS0, "EDNS(0) pheader: %s (%lu bytes)",
 		          payload, (long unsigned int)plen);
+		free(payload);
 	}
 
 	// Working pointer
@@ -222,7 +222,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			   !(family == 2 && source_netmask == 128))
 			{
 				log_debug(DEBUG_EDNS0, "EDNS(0) CLIENT SUBNET: %s/%u found (IPv%u)",
-				          ipaddr, source_netmask, family == 1 ? 4 : 6);
+				          ipaddr, source_netmask, family == 1 ? 4u : 6u);
 				continue;
 			}
 
@@ -236,13 +236,13 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			   (family == 2 && IN6_IS_ADDR_LOOPBACK(&addr.addr6)))
 			{
 				log_debug(DEBUG_EDNS0, "EDNS(0) CLIENT SUBNET: Skipped %s/%u (IPv%u loopback address)",
-				          ipaddr, source_netmask, family == 1 ? 4 : 6);
+				          ipaddr, source_netmask, family == 1 ? 4u : 6u);
 			}
 			else
 			{
 				edns->client_set = true;
 				log_debug(DEBUG_EDNS0, "EDNS(0) CLIENT SUBNET: %s/%u - OK (IPv%u)",
-				          ipaddr, source_netmask, family == 1 ? 4 : 6);
+				          ipaddr, source_netmask, family == 1 ? 4u : 6u);
 			}
 		}
 		else if(code == EDNS0_COOKIE && optlen == 8)
@@ -270,7 +270,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			memcpy(client_cookie, p, 8);
 
 			unsigned short server_cookie_len = optlen - 8;
-			unsigned char server_cookie[server_cookie_len];
+			unsigned char *server_cookie = calloc(server_cookie_len, sizeof(unsigned char));
 			memcpy(server_cookie, p + 8u, server_cookie_len);
 			if(config.debug.edns0.v.b)
 			{
@@ -278,13 +278,15 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				char *pp = pretty_client_cookie;
 				for(unsigned int j = 0; j < 8; j++)
 					pp += sprintf(pp, "%02X", client_cookie[j]);
-				char pretty_server_cookie[server_cookie_len*2 + 1u]; // server: variable length
+				char *pretty_server_cookie = calloc(server_cookie_len*2 + 1u, sizeof(char)); // server: variable length
 				pp = pretty_server_cookie;
 				for(unsigned int j = 0; j < server_cookie_len; j++)
 					pp += sprintf(pp, "%02X", server_cookie[j]);
 				log_debug(DEBUG_EDNS0, "EDNS(0) COOKIE (client + server): %s (client), %s (server, %u bytes)",
 				     pretty_client_cookie, pretty_server_cookie, server_cookie_len);
+				free(pretty_server_cookie);
 			}
+			free(server_cookie);
 
 			// Advance working pointer
 			p += optlen;
@@ -306,12 +308,12 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			memcpy(edns->mac_text, p, 17);
 			edns->mac_text[17] = '\0';
 			if(sscanf(edns->mac_text, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-			          &edns->mac_byte[0],
-			          &edns->mac_byte[1],
-			          &edns->mac_byte[2],
-			          &edns->mac_byte[3],
-			          &edns->mac_byte[4],
-			          &edns->mac_byte[5]) == 6)
+			          (unsigned char*)&edns->mac_byte[0],
+			          (unsigned char*)&edns->mac_byte[1],
+			          (unsigned char*)&edns->mac_byte[2],
+			          (unsigned char*)&edns->mac_byte[3],
+			          (unsigned char*)&edns->mac_byte[4],
+			          (unsigned char*)&edns->mac_byte[5]) == 6)
 			{
 				edns->mac_set = true;
 				log_debug(DEBUG_EDNS0, "EDNS(0) MAC address (TEXT format): %s", edns->mac_text);
@@ -335,19 +337,21 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		else if(code == EDNS0_CPE_ID && optlen < 256)
 		{
 			// EDNS(0) CPE-ID, 256 byte arbitrary limit
-			unsigned char payload[optlen + 1u]; // variable length
+			unsigned char *payload = calloc(optlen + 1u, sizeof(unsigned char));
 			memcpy(payload, p, optlen);
 			payload[optlen] = '\0';
 			if(config.debug.edns0.v.b)
 			{
-				char pretty_payload[optlen*5 + 1u];
+				char *pretty_payload = calloc(optlen*5 + 1u, sizeof(char));
 				char *pp = pretty_payload;
 				for(unsigned int j = 0; j < optlen; j++)
 					pp += sprintf(pp, "0x%02X ", payload[j]);
 				pretty_payload[optlen*5 - 1] = '\0'; // Truncate away the trailing whitespace
 				log_debug(DEBUG_EDNS0, "EDNS(0) CPE-ID (payload size %u): \"%s\" (%s)",
 				     optlen, payload, pretty_payload);
+				free(pretty_payload);
 			}
+			free(payload);
 
 			// Advance working pointer
 			p += optlen;
