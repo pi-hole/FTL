@@ -51,7 +51,14 @@
               </div>
             </div>
             <!-- content at the bottom -->
-            <div slot="footer" style="margin:0; padding:16px 36px; background-color:#2d87e2; color:#fff; text-align:center;"> 
+            <div slot="footer" style="margin:0; padding:16px 36px; background-color:#2d87e2; color:#fff; text-align:center;">
+                <button class='btn' onclick="document.getElementById('thedoc').setAttribute('theme', 'dark')" >Dark Theme</button>
+                <button class='btn' onclick="document.getElementById('thedoc').setAttribute('theme', 'light')" >Light Theme</button>
+                <br>
+                <button class='btn' onclick="document.getElementById('thedoc').setAttribute('font-size', 'default')" >Default Font</button>
+                <button class='btn' onclick="document.getElementById('thedoc').setAttribute('font-size', 'large')" >Large Font</button>
+                <button class='btn' onclick="document.getElementById('thedoc').setAttribute('font-size', 'largest')" >Largest Font</button>
+                <br>
                 <button class='btn large' onclick="setStyle('view')" >Default</button>
                 <button class='btn large' onclick="setStyle('read')" >Reader</button>
                 <button class='btn large' onclick="setStyle('focused')" >Focused reader</button>

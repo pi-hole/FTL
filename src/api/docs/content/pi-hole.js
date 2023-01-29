@@ -124,3 +124,12 @@ function setStyle(style) {
 	docEl.setAttribute('render-style', style);
 	docEl.setAttribute('allow-search', style !== 'view');
 }
+document.addEventListener('DOMContentLoaded', (event) => {
+	let docEl = document.getElementById("thedoc");
+
+	docEl.addEventListener('after-try', (e) => {
+		if(e.detail.response.error.key === 'unauthorized') {
+			loginFAIL();
+		}
+	});
+});
