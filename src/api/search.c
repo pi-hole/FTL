@@ -126,8 +126,8 @@ int api_search(struct ftl_conn *api)
 	}
 
 	// Search through all exact domains
-	cJSON *domainlist = JSON_NEW_ARRAY();
-	ret = search_table(api, GRAVITY_DOMAINLIST_ALL_EXACT, NULL, N, partial, domainlist);
+	cJSON *domains = JSON_NEW_ARRAY();
+	ret = search_table(api, GRAVITY_DOMAINLIST_ALL_EXACT, NULL, N, partial, domains);
 	if(ret != 200)
 		return ret;
 
@@ -163,12 +163,14 @@ int api_search(struct ftl_conn *api)
 	// Free intermediate JSON objects containing list of regex IDs
 	cJSON_Delete(regex_ids);
 
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "domains", domainlist);
-	JSON_ADD_ITEM_TO_OBJECT(json, "gravity", gravity);
+	cJSON *search = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(search, "domains", domains);
+	JSON_ADD_ITEM_TO_OBJECT(search, "gravity", gravity);
 	cJSON *regex = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(regex, "allow", allow);
 	JSON_ADD_ITEM_TO_OBJECT(regex, "deny", deny);
-	JSON_ADD_ITEM_TO_OBJECT(json, "regex", regex);
+	JSON_ADD_ITEM_TO_OBJECT(search, "regex", regex);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "search", search);
 	JSON_SEND_OBJECT(json);
 }
