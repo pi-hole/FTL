@@ -22,6 +22,7 @@ set(sources
         list.c
         logs.c
         queries.c
+        search.c
         stats_database.c
         stats.c
         teleporter.c

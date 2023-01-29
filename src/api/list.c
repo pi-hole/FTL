@@ -24,7 +24,7 @@ static int api_list_read(struct ftl_conn *api,
                          const char *item)
 {
 	const char *sql_msg = NULL;
-	if(!gravityDB_readTable(listtype, item, &sql_msg))
+	if(!gravityDB_readTable(listtype, item, &sql_msg, true, NULL))
 	{
 		return send_json_error(api, 400, // 400 Bad Request
 		                       "database_error",
@@ -84,11 +84,12 @@ static int api_list_read(struct ftl_conn *api,
 				// the group_concat result delivered from the database,
 				// parse it as valid array and append it as row to the
 				// data
-				char *group_ids_str = calloc(strlen(table.group_ids)+3u, sizeof(char));
+				const size_t buflen = strlen(table.group_ids)+3u;
+				char *group_ids_str = calloc(buflen, sizeof(char));
 				group_ids_str[0] = '[';
 				strcpy(group_ids_str+1u , table.group_ids);
-				group_ids_str[sizeof(group_ids_str)-2u] = ']';
-				group_ids_str[sizeof(group_ids_str)-1u] = '\0';
+				group_ids_str[buflen-2u] = ']';
+				group_ids_str[buflen-1u] = '\0';
 				cJSON * group_ids = cJSON_Parse(group_ids_str);
 				free(group_ids_str);
 				JSON_ADD_ITEM_TO_OBJECT(row, "groups", group_ids);
@@ -234,12 +235,13 @@ static int api_list_write(struct ftl_conn *api,
 				}
 				break;
 
-			// Aggregate types are not handled by this routine
+			// Aggregate types (and gravity) are not handled by this routine
 			case GRAVITY_DOMAINLIST_ALL_ALL:
 			case GRAVITY_DOMAINLIST_ALL_EXACT:
 			case GRAVITY_DOMAINLIST_ALL_REGEX:
 			case GRAVITY_DOMAINLIST_ALLOW_ALL:
 			case GRAVITY_DOMAINLIST_DENY_ALL:
+			case GRAVITY_GRAVITY:
 				return 400;
 		}
 	}

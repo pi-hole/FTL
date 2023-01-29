@@ -208,6 +208,9 @@ paths:
   /action/poweroff:
     $ref: 'action.yaml#/components/paths/poweroff'
 
+  /search/{domain}:
+    $ref: 'search.yaml#/components/paths/search'
+
 components:
   securitySchemes:
     sidHeader:

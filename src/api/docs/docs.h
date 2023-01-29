@@ -115,6 +115,15 @@ static const unsigned char specs_logs_yaml[] = {
 static const unsigned char specs_endpoints_yaml[] = {
 #include "hex/specs/endpoints.yaml"
 };
+
+static const unsigned char specs_teleporter_yaml[] = {
+#include "hex/specs/teleporter.yaml"
+};
+
+static const unsigned char specs_search_yaml[] = {
+#include "hex/specs/search.yaml"
+};
+
 struct {
     const char *path;
     const char *mime_type;
@@ -133,20 +142,22 @@ struct {
     {"images/logo.svg", "image/svg+xml", (const char*)images_logo_svg, sizeof(images_logo_svg)},
     {"specs/auth.yaml", "text/plain", (const char*)specs_auth_yaml, sizeof(specs_auth_yaml)},
     {"specs/clients.yaml", "text/plain", (const char*)specs_clients_yaml, sizeof(specs_clients_yaml)},
+    {"specs/config.yaml", "text/plain", (const char*)specs_config_yaml, sizeof(specs_config_yaml)},
     {"specs/common.yaml", "text/plain", (const char*)specs_common_yaml, sizeof(specs_common_yaml)},
     {"specs/dns.yaml", "text/plain", (const char*)specs_dns_yaml, sizeof(specs_dns_yaml)},
     {"specs/domains.yaml", "text/plain", (const char*)specs_domains_yaml, sizeof(specs_domains_yaml)},
-    {"specs/info.yaml", "text/plain", (const char*)specs_info_yaml, sizeof(specs_info_yaml)},
+    {"specs/endpoints.yaml", "text/plain", (const char*)specs_endpoints_yaml, sizeof(specs_endpoints_yaml)},
     {"specs/groups.yaml", "text/plain", (const char*)specs_groups_yaml, sizeof(specs_groups_yaml)},
     {"specs/history.yaml", "text/plain", (const char*)specs_history_yaml, sizeof(specs_history_yaml)},
+    {"specs/info.yaml", "text/plain", (const char*)specs_info_yaml, sizeof(specs_info_yaml)},
     {"specs/lists.yaml", "text/plain", (const char*)specs_lists_yaml, sizeof(specs_lists_yaml)},
-    {"specs/main.yaml", "text/plain", (const char*)specs_main_yaml, sizeof(specs_main_yaml)},
-    {"specs/queries.yaml", "text/plain", (const char*)specs_queries_yaml, sizeof(specs_queries_yaml)},
-    {"specs/stats.yaml", "text/plain", (const char*)specs_stats_yaml, sizeof(specs_stats_yaml)},
-    {"specs/config.yaml", "text/plain", (const char*)specs_config_yaml, sizeof(specs_config_yaml)},
-    {"specs/network.yaml", "text/plain", (const char*)specs_network_yaml, sizeof(specs_network_yaml)},
     {"specs/logs.yaml", "text/plain", (const char*)specs_logs_yaml, sizeof(specs_logs_yaml)},
-    {"specs/endpoints.yaml", "text/plain", (const char*)specs_endpoints_yaml, sizeof(specs_endpoints_yaml)},
+    {"specs/main.yaml", "text/plain", (const char*)specs_main_yaml, sizeof(specs_main_yaml)},
+    {"specs/network.yaml", "text/plain", (const char*)specs_network_yaml, sizeof(specs_network_yaml)},
+    {"specs/queries.yaml", "text/plain", (const char*)specs_queries_yaml, sizeof(specs_queries_yaml)},
+    {"specs/search.yaml", "text/plain", (const char*)specs_search_yaml, sizeof(specs_search_yaml)},
+    {"specs/stats.yaml", "text/plain", (const char*)specs_stats_yaml, sizeof(specs_stats_yaml)},
+    {"specs/teleporter.yaml", "text/plain", (const char*)specs_teleporter_yaml, sizeof(specs_teleporter_yaml)},
 };
 
 #endif // API_DOCS_H

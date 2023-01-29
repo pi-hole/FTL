@@ -1390,6 +1390,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		case GRAVITY_GROUPS:
 		case GRAVITY_ADLISTS:
 		case GRAVITY_CLIENTS:
+		case GRAVITY_GRAVITY:
 			break;
 
 		// Aggregate types are not handled by this routine
@@ -1636,6 +1637,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 		case GRAVITY_GROUPS:
 		case GRAVITY_ADLISTS:
 		case GRAVITY_CLIENTS:
+		case GRAVITY_GRAVITY:
 			// No type required for these tables
 			break;
 
@@ -1791,7 +1793,9 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 }
 
 static sqlite3_stmt* read_stmt = NULL;
-bool gravityDB_readTable(const enum gravity_list_type listtype, const char *item, const char **message)
+bool gravityDB_readTable(const enum gravity_list_type listtype,
+                         const char *item, const char **message,
+                         const bool exact, const char *ids)
 {
 	if(gravity_db == NULL)
 	{
@@ -1833,65 +1837,139 @@ bool gravityDB_readTable(const enum gravity_list_type listtype, const char *item
 		case GRAVITY_GROUPS:
 		case GRAVITY_ADLISTS:
 		case GRAVITY_CLIENTS:
+		case GRAVITY_GRAVITY:
 			// No type required for these tables
 			break;
 	}
 
-	// Build query statement. We have to do it this way
-	// as binding a sequence of int via a prepared
-	// statement isn't possible in SQLite3
-	char querystr[256];
-	const char *extra = "";
+	// Build query statement
+	const size_t buflen = 512u + (ids != NULL ? strlen(ids) : 0u);
+	char *querystr = calloc(buflen, sizeof(char));
+	char *like_name = (char*)item;
+	if(!exact && item != NULL && item[0] != '\0')
+	{
+		// Build LIKE string (% + item + %)
+		like_name = calloc(strlen(item)+3, sizeof(char));
+		if(like_name == NULL)
+		{
+			log_err("Failed to allocate memory for like_name");
+			*message = "Failed to allocate memory for like_name";
+			return false;
+		}
+		sprintf(like_name, "%%%s%%", item);
+	}
+	const char *filter = "";
 	if(listtype == GRAVITY_GROUPS)
 	{
 		if(item != NULL && item[0] != '\0')
-			extra = " WHERE name = :item;";
-		sprintf(querystr, "SELECT id,name,enabled,date_added,date_modified,description AS comment FROM \"group\"%s;", extra);
+		{
+			if(exact)
+				filter = " WHERE name = :item";
+			else
+				filter = " WHERE name LIKE :item";
+		}
+		snprintf(querystr, buflen, "SELECT id,name,enabled,date_added,date_modified,description AS comment FROM \"group\"%s;", filter);
 	}
 	else if(listtype == GRAVITY_ADLISTS)
 	{
 		if(item != NULL && item[0] != '\0')
-			extra = " WHERE address = :item;";
-		sprintf(querystr, "SELECT id,address,enabled,date_added,date_modified,comment,"
-		                         "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids,"
-		                         "date_updated,number,invalid_domains,status "
-		                         "FROM adlist a%s;", extra);
+		{
+			if(exact)
+				filter = " WHERE address = :item";
+			else
+				filter = " WHERE address LIKE :item";
+		}
+		snprintf(querystr, buflen, "SELECT id,address,enabled,date_added,date_modified,comment,"
+		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids,"
+		                                     "date_updated,number,invalid_domains,status "
+		                                     "FROM adlist a%s;", filter);
 	}
 	else if(listtype == GRAVITY_CLIENTS)
 	{
 		if(item != NULL && item[0] != '\0')
-			extra = " WHERE ip = :item;";
-		sprintf(querystr, "SELECT id,ip AS client,date_added,date_modified,comment,"
-		                         "(SELECT GROUP_CONCAT(group_id) FROM client_by_group g WHERE g.client_id = c.id) AS group_ids "
-		                         "FROM client c%s;", extra);
+		{
+			if(exact)
+				filter = " WHERE ip = :item";
+			else
+				filter = " WHERE ip LIKE :item";
+		}
+		snprintf(querystr, buflen, "SELECT id,ip AS client,date_added,date_modified,comment,"
+		                                     "(SELECT GROUP_CONCAT(group_id) FROM client_by_group g WHERE g.client_id = c.id) AS group_ids "
+		                                     "FROM client c%s;", filter);
+	}
+	else if(listtype == GRAVITY_GRAVITY)
+	{
+		if(item != NULL && item[0] != '\0')
+		{
+			if(exact)
+				filter = " WHERE g.domain = :item";
+			else
+				filter = " WHERE g.domain LIKE :item";
+		}
+		snprintf(querystr, buflen, "SELECT domain,a.id,a.address,a.enabled,a.date_added,a.date_modified,a.comment,"
+		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group ag WHERE ag.adlist_id = g.adlist_id) AS group_ids "
+		                                     "FROM gravity g JOIN adlist a ON a.id = g.adlist_id %s;", filter);
 	}
 	else // domainlist
 	{
 		if(item != NULL && item[0] != '\0')
-			extra = " AND domain = :item;";
-		sprintf(querystr, "SELECT id,type,domain,enabled,date_added,date_modified,comment,"
-		                         "(SELECT GROUP_CONCAT(group_id) FROM domainlist_by_group g WHERE g.domainlist_id = d.id) AS group_ids "
-		                         "FROM domainlist d WHERE d.type IN (%s)%s;", type, extra);
+		{
+			if(exact)
+				filter = " AND domain = :item";
+			else
+				filter = " AND domain LIKE :item";
+		}
+
+		snprintf(querystr, buflen, "SELECT id,domain,date_added,date_modified,comment,"
+		                                     "(SELECT GROUP_CONCAT(group_id) FROM domainlist_by_group g WHERE g.domainlist_id = d.id) AS group_ids "
+		                                     "FROM domainlist d WHERE d.type IN (%s)%s;", type, filter);
+
+		// Append id array filter to query string
+		// We have to do it this way as binding a sequence of int via a prepared
+		// statement isn't possible in SQLite3
+		if(ids != NULL)
+			snprintf(querystr+strlen(querystr), buflen-strlen(querystr), " AND id IN (%s)", ids);
 	}
 
 	// Prepare SQLite statement
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK ){
 		*message = sqlite3_errmsg(gravity_db);
-		log_err("gravityDB_readTable(%d => (%s)) - SQL error prepare (%i): %s",
-		        listtype, type, rc, *message);
+		log_err("gravityDB_readTable(%d => (%s)) - SQL error prepare (%i): %s => %s",
+		        listtype, type, rc, querystr, *message);
+		if(!exact)
+			free(like_name);
+		free(querystr);
 		return false;
 	}
 
 	// Bind item to prepared statement (if requested)
 	int idx = sqlite3_bind_parameter_index(read_stmt, ":item");
-	if(idx > 0 && (rc = sqlite3_bind_text(read_stmt, idx, item, -1, SQLITE_STATIC)) != SQLITE_OK)
+	if(idx > 0 && (rc = sqlite3_bind_text(read_stmt, idx, like_name, -1, SQLITE_TRANSIENT)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_readTable(%d => (%s), %s): Failed to bind item (error %d) - %s",
-		        listtype, type, item, rc, *message);
+		        listtype, type, like_name, rc, *message);
 		sqlite3_reset(read_stmt);
 		sqlite3_finalize(read_stmt);
+		if(!exact)
+			free(like_name);
+		free(querystr);
+		return false;
+	}
+
+	// Bind ids to prepared statement (if requested)
+	idx = sqlite3_bind_parameter_index(read_stmt, ":ids");
+	if(idx > 0 && (rc = sqlite3_bind_text(read_stmt, idx, ids, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_readTable(%d => (%s), %s): Failed to bind ids (error %d) - %s",
+		        listtype, type, like_name, rc, *message);
+		sqlite3_reset(read_stmt);
+		sqlite3_finalize(read_stmt);
+		if(!exact)
+			free(like_name);
+		free(querystr);
 		return false;
 	}
 
@@ -1899,8 +1977,14 @@ bool gravityDB_readTable(const enum gravity_list_type listtype, const char *item
 	if(config.debug.api.v.b)
 	{
 		log_debug(DEBUG_API, "SQL: %s", querystr);
-		log_debug(DEBUG_API, "     :item = \"%s\"", item);
+		log_debug(DEBUG_API, "     :item = \"%s\"", like_name);
+		log_debug(DEBUG_API, "     :ids = \"%s\"", ids);
 	}
+
+	// Free memory
+	free(querystr);
+	if(!exact)
+		free(like_name);
 
 	return true;
 }
@@ -1970,6 +2054,9 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 
 			else if(strcasecmp(cname, "group_ids") == 0)
 				row->group_ids = (char*)sqlite3_column_text(read_stmt, c);
+
+			else if(strcasecmp(cname, "address") == 0)
+				row->address = (char*)sqlite3_column_text(read_stmt, c);
 
 			else if(strcasecmp(cname, "name") == 0)
 				row->name = (char*)sqlite3_column_text(read_stmt, c);

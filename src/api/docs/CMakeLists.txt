@@ -21,20 +21,22 @@ set(sources
         hex/specs/action.yaml
         hex/specs/auth.yaml
         hex/specs/clients.yaml
+        hex/specs/config.yaml
         hex/specs/common.yaml
         hex/specs/dns.yaml
         hex/specs/domains.yaml
+        hex/specs/endpoints.yaml
         hex/specs/groups.yaml
         hex/specs/history.yaml
-        hex/specs/lists.yaml
-        hex/specs/main.yaml
-        hex/specs/queries.yaml
-        hex/specs/stats.yaml
         hex/specs/info.yaml
-        hex/specs/config.yaml
-        hex/specs/network.yaml
+        hex/specs/lists.yaml
         hex/specs/logs.yaml
-        hex/specs/endpoints.yaml
+        hex/specs/main.yaml
+        hex/specs/network.yaml
+        hex/specs/queries.yaml
+        hex/specs/search.yaml
+        hex/specs/stats.yaml
+        hex/specs/teleporter.yaml
         docs.c
         )
 

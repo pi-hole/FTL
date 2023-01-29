@@ -60,7 +60,8 @@ bool in_auditlist(const char *domain);
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,
                                        const unsigned char type, const char* table);
 
-bool gravityDB_readTable(const enum gravity_list_type listtype, const char *filter, const char **message);
+bool gravityDB_readTable(const enum gravity_list_type listtype, const char *filter,
+                         const char **message, const bool exact, const char *ids);
 bool gravityDB_readTableGetRow(tablerow *row, const char **message);
 void gravityDB_readTableFinalize(void);
 bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,

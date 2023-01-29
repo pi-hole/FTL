@@ -39,6 +39,7 @@ static struct {
 	{ "/api/dns/cache",                         "",                           api_dns_cache,                         { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/clients",                           "/{client}",                  api_list,                              { false, true,  0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/domains",                           "/{type}/{kind}/{domain}",    api_list,                              { false, true,  0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
+	{ "/api/search",                            "/{domain}",                  api_search,                            { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/groups",                            "/{name}",                    api_list,                              { false, true,  0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/lists",                             "/{list}",                    api_list,                              { false, true,  0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/info/client",                       "",                           api_info_client,                       { false, true,  0             }, false, HTTP_GET },

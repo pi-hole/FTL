@@ -12,6 +12,7 @@
 
 // clientsData type
 #include "datastructure.h"
+#include "webserver/cJSON/cJSON.h"
 
 extern const char *regextype[];
 
@@ -52,6 +53,7 @@ void reload_per_client_regex(clientsData *client);
 void read_regex_from_database(void);
 bool regex_get_redirect(const int regexID, struct in_addr *addr4, struct in6_addr *addr6);
 void free_regex(void);
+bool check_all_regex(const char *domainin, cJSON *json);
 
 int regex_test(const bool debug_mode, const bool quiet, const char *domainin, const char *regexin);
 

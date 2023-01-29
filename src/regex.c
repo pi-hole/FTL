@@ -307,7 +307,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 }
 
 static int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
-                       const enum regex_type regexid, const bool regextest)
+                       const enum regex_type regexid, const bool regextest, cJSON *json)
 {
 	int match_idx = -1;
 #ifdef USE_TRE_REGEX
@@ -404,29 +404,29 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 				{
 					// CLI provided regular expression
 					log_info("    %s%s%s matches",
-					cli_bold(), regex[index].string, cli_normal());
+					cli_bold(), regex->string, cli_normal());
 				}
 				else if(regextest && regexid == REGEX_DENY)
 				{
 					// Database-sourced regular expression
 					log_info("    %s%s%s matches (regex blacklist, DB ID %i)",
-					cli_bold(), regex[index].string, cli_normal(),
-					regex[index].database_id);
+					cli_bold(), regex->string, cli_normal(),
+					regex->database_id);
 				}
 				else if(regextest && regexid == REGEX_ALLOW)
 				{
 					// Database-sourced regular expression
 					log_info("    %s%s%s matches (regex whitelist, DB ID %i)",
-					cli_bold(), regex[index].string, cli_normal(),
-					regex[index].database_id);
+					cli_bold(), regex->string, cli_normal(),
+					regex->database_id);
 				}
 
 				// Check query type filtering
-				if(regex[index].ext.query_type != 0)
+				if(regex->ext.query_type != 0)
 				{
-					const char *typestr = get_query_type_str(regex[index].ext.query_type, NULL, NULL);
+					const char *typestr = get_query_type_str(regex->ext.query_type, NULL, NULL);
 					log_info("    Hint: This regex %s type %s queries",
-					         regex[index].ext.query_type_inverted ? "does not match" : "matches only",
+					         regex->ext.query_type_inverted ? "does not match" : "matches only",
 					         typestr);
 				}
 
@@ -439,10 +439,15 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 				// Check special reply type
 				if(regex[index].ext.reply != REPLY_UNKNOWN)
 				{
-					const char *replystr = get_query_reply_str(regex[index].ext.reply);
+					const char *replystr = get_query_reply_str(regex->ext.reply);
 					log_info("    Hint: This regex forces reply type %s", replystr);
 				}
 
+			}
+			else if(json != NULL)
+			{
+				// Add match to JSON array
+				cJSON_AddItemToArray(json, cJSON_CreateNumber(regex->database_id));
 			}
 			else
 			{
@@ -470,7 +475,7 @@ bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, c
 	// optimization as the database lookup will most likely hit (a) more domains
 	// and (b) will be faster (given a sufficiently large number of regex
 	// whitelisting filters).
-	const int regex_id = match_regex(domain, dns_cache, clientID, regexid, false);
+	const int regex_id = match_regex(domain, dns_cache, clientID, regexid, false, NULL);
 	if(regex_id != -1)
 	{
 		// We found a match
@@ -732,13 +737,13 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		// Check user-provided domain against all loaded regular deny expressions
 		log_info("%s Checking domain against deny regex...", cli_info());
 		timer_start(REGEX_TIMER);
-		int matchidx1 = match_regex(domainin, NULL, -1, REGEX_DENY, true);
+		int matchidx1 = match_regex(domainin, NULL, -1, REGEX_DENY, true, NULL);
 		log_info("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against all loaded regular allow expressions
 		log_info("%s Checking domain against allow regex...", cli_info());
 		timer_start(REGEX_TIMER);
-		int matchidx2 = match_regex(domainin, NULL, -1, REGEX_ALLOW, true);
+		int matchidx2 = match_regex(domainin, NULL, -1, REGEX_ALLOW, true, NULL);
 		log_info("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 		matchidx = MAX(matchidx1, matchidx2);
 
@@ -767,7 +772,7 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		// Check user-provided domain against user-provided regular expression
 		log_info("Checking domain \"%s\"...", domainin);
 		timer_start(REGEX_TIMER);
-		matchidx = match_regex(domainin, NULL, -1, REGEX_CLI, true);
+		matchidx = match_regex(domainin, NULL, -1, REGEX_CLI, true, NULL);
 		if(matchidx == -1)
 			log_info("    NO MATCH!");
 		log_info("   Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
@@ -775,6 +780,24 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 
 	// Return status 0 = MATCH, 1 = ERROR, 2 = NO MATCH
 	return matchidx > -1 ? EXIT_SUCCESS : 2;
+}
+
+bool check_all_regex(const char *domainin, cJSON *json)
+{
+	// Check user-provided domain against all loaded regular expressions
+	// (deny, allow, and CLI regex)
+	cJSON *deny = cJSON_CreateArray();
+	int matchidx1 = match_regex(domainin, NULL, -1, REGEX_DENY, false, deny);
+	cJSON *allow = cJSON_CreateArray();
+	int matchidx2 = match_regex(domainin, NULL, -1, REGEX_ALLOW, false, allow);
+	int matchidx = MAX(matchidx1, matchidx2);
+
+	// Add deny and allow regex matches to JSON object
+	cJSON_AddItemToObject(json, "deny", deny);
+	cJSON_AddItemToObject(json, "allow", allow);
+
+	// Return true if domain matches any regular expression
+	return matchidx > -1;
 }
 
 // Get internal ID of regex with this database ID

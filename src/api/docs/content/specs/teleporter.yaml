@@ -96,6 +96,6 @@ components:
   examples:
     teleporter:
       value:
-        teleporter:
-          - a
-          - b
+        processed:
+          - etc/pihole/pihole.toml
+          - etc/pihole/gravity.db
