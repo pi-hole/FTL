@@ -422,6 +422,20 @@ components:
                   type: integer
                   description: Type BLOB replies
                   example: 0
+        clients:
+          type: object
+          properties:
+            total:
+              type: integer
+              description: Total number of clients seen by FTL
+              example: 22
+        gravity:
+          type: object
+          properties:
+            domains_being_blocked:
+              type: integer
+              description: Number of domain on your Pi-hole's gravity list
+              example: 104756
     upstreams:
       type: object
       properties:

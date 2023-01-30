@@ -64,25 +64,6 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	const size_t local_uri_len = strlen(local_uri); // +1 to skip the initial '/'
 	size_t buffer_len = webroot_len + local_uri_len + 2;
 
-	// Check if we can serve an index.php file when the user is looking for a directory
-	bool append_index = false;
-	if(local_uri[local_uri_len - 1u] == '/')
-	{
-		append_index = true;
-		buffer_len += 11; // strlen("/index.php")
-	}
-
-	char *full_path = calloc(buffer_len, sizeof(char));
-	memcpy(full_path, config.webserver.paths.webroot.v.s, webroot_len);
-	full_path[webroot_len] = '/';
-	memcpy(full_path + webroot_len + 1u, local_uri, local_uri_len);
-	full_path[webroot_len + local_uri_len + 1u] = '\0';
-	if(append_index)
-	{
-		strcpy(full_path + webroot_len + local_uri_len, "/index.php");
-		full_path[webroot_len + local_uri_len + 11u] = '\0';
-	}
-
 	// Append "login.php" to webhome string
 	const size_t login_uri_len = strlen(config.webserver.paths.webhome.v.s);
 	char *login_uri = calloc(login_uri_len + 10, sizeof(char));
@@ -103,7 +84,6 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 		{
 			// User is not authenticated, redirect to login page
 			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin.php\r\n\r\n", config.webserver.paths.webhome.v.s);
-			free(full_path);
 			free(login_uri);
 			return 302;
 		}
@@ -116,7 +96,6 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 		{
 			// User is already authenticated, redirect to index page
 			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %sindex.php\r\n\r\n", config.webserver.paths.webhome.v.s);
-			free(full_path);
 			free(login_uri);
 			return 302;
 		}
@@ -124,6 +103,26 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 
 	// Free memory
 	free(login_uri);
+
+	// Check if we can serve an index.php file when the user is looking for a directory
+	bool append_index = false;
+	if(local_uri[local_uri_len - 1u] == '/')
+	{
+		append_index = true;
+		buffer_len += 11; // strlen("/index.php")
+	}
+
+	// Build full path of PHP script on our machine
+	char *full_path = calloc(buffer_len, sizeof(char));
+	memcpy(full_path, config.webserver.paths.webroot.v.s, webroot_len);
+	full_path[webroot_len] = '/';
+	memcpy(full_path + webroot_len + 1u, local_uri, local_uri_len);
+	full_path[webroot_len + local_uri_len + 1u] = '\0';
+	if(append_index)
+	{
+		strcpy(full_path + webroot_len + local_uri_len, "/index.php");
+		full_path[webroot_len + local_uri_len + 11u] = '\0';
+	}
 
 	// Check if the file exists
 	if(!file_exists(full_path))

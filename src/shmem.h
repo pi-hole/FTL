@@ -46,7 +46,6 @@ typedef struct {
 	int reply_CNAME;
 	int reply_IP;
 	int reply_domain;
-	int gravity;
 	int dns_cache_size;
 	int dns_cache_MAX;
 	int per_client_regex_MAX;

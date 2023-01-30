@@ -106,8 +106,16 @@ int api_stats_summary(struct ftl_conn *api)
 		JSON_ADD_NUMBER_TO_OBJECT(replies, get_query_reply_str(reply), counters->reply[reply]);
 	JSON_ADD_ITEM_TO_OBJECT(queries, "replies", replies);
 
+	cJSON *clients = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(clients, "total", counters->clients);
+
+	cJSON *gravity = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(gravity, "domains_being_blocked", counters->database.gravity);
+
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
+	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
+	JSON_ADD_ITEM_TO_OBJECT(json, "gravity", gravity);
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
 
