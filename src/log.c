@@ -247,6 +247,9 @@ void debugstr(const enum debug_flag flag, const char **name)
 		case DEBUG_CONFIG:
 			*name = "DEBUG_CONFIG";
 			return;
+		case DEBUG_INOTIFY:
+			*name = "DEBUG_INOTIFY";
+			return;
 		case DEBUG_RESERVED:
 			*name = "DEBUG_RESERVED";
 			return;

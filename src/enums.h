@@ -154,6 +154,7 @@ enum debug_flag {
 	DEBUG_EVENTS,
 	DEBUG_HELPER,
 	DEBUG_CONFIG,
+	DEBUG_INOTIFY,
 	DEBUG_EXTRA,
 	DEBUG_RESERVED,
 	DEBUG_MAX
@@ -240,6 +241,7 @@ enum thread_types {
 	DB,
 	GC,
 	DNSclient,
+	CONF_READER,
 	THREADS_MAX
 } __attribute__ ((packed));
 

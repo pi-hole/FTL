@@ -1091,6 +1091,12 @@ void initConfig(struct config *conf)
 	conf->debug.config.f = FLAG_ADVANCED_SETTING;
 	conf->debug.config.d.b = false;
 
+	conf->debug.inotify.k = "debug.inotify";
+	conf->debug.inotify.h = "Debug monitoring of /etc/pihole filesystem events";
+	conf->debug.inotify.t = CONF_BOOL;
+	conf->debug.inotify.f = FLAG_ADVANCED_SETTING;
+	conf->debug.inotify.d.b = false;
+
 	conf->debug.extra.k = "debug.extra";
 	conf->debug.extra.h = "Temporary flag that may print additional information. This debug flag is meant to be used whenever needed for temporary investigations. The logged content may change without further notice at any time.";
 	conf->debug.extra.t = CONF_BOOL;

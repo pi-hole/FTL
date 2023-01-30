@@ -45,7 +45,7 @@ components:
                     example: "blockeddomain.com"
                   comment:
                     type: string
-                    description: Optional comment (may be `null`)
+                    description: Optional comment
                     nullable: true
                     example: "I needed to block this because of XYZ"
                   enabled:
@@ -84,7 +84,7 @@ components:
                     example: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
                   comment:
                     type: string
-                    description: Optional comment of the adlist (may be `null`)
+                    description: Optional comment of the adlist
                     nullable: true
                     example: "I needed to block this because of XYZ"
                   enabled:
@@ -122,7 +122,7 @@ components:
                         example: "^something[0-9*];querytype=A"
                       comment:
                         type: string
-                        description: Optional comment (may be `null`)
+                        description: Optional comment
                         nullable: true
                         example: "I want to allow anything starting in something0 (but also all other digits) when it is an A query"
                       enabled:
@@ -157,7 +157,7 @@ components:
                         example: ".;querytype=ANY"
                       comment:
                         type: string
-                        description: Optional comment (may be `null`)
+                        description: Optional comment
                         nullable: true
                         example: "Blocking all ANY queries"
                       enabled:

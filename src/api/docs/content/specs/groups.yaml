@@ -175,7 +175,7 @@ components:
       type: object
       properties:
         comment:
-          description: User-provided free-text comment for this group (may be `null` if not specified)
+          description: User-provided free-text comment for this group
           type: string
           nullable: true
           default: null

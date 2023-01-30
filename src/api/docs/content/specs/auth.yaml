@@ -130,7 +130,7 @@ components:
               description: Valid session indicator (client is authenticated)
             sid:
               type: string
-              description: Session ID (may be `null`)
+              description: Session ID
               nullable: true
             validity:
               type: integer

@@ -17,14 +17,21 @@
 #include "toml_helper.h"
 // get_blocking_mode_str()
 #include "datastructure.h"
+// watch_config()
+#include "config/inotify.h"
 
 bool writeFTLtoml(const bool verbose)
 {
+	// Stop watching for changes in the config file
+	watch_config(false);
+
 	// Try to open global config file
 	FILE *fp;
 	if((fp = openFTLtoml("w")) == NULL)
 	{
 		log_warn("Cannot write to FTL config file, content not updated");
+		// Restart watching for changes in the config file
+		watch_config(true);
 		return false;
 	}
 
@@ -103,6 +110,9 @@ bool writeFTLtoml(const bool verbose)
 
 	// Close file and release exclusive lock
 	closeFTLtoml(fp);
+
+	// Restart watching for changes in the config file
+	watch_config(true);
 
 	return true;
 }

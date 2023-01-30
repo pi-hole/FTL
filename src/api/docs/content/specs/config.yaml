@@ -504,6 +504,8 @@ components:
                   type: boolean
                 config:
                   type: boolean
+                inotify:
+                  type: boolean
                 extra:
                   type: boolean
                 reserved:
@@ -689,6 +691,7 @@ components:
             events: false
             helper: false
             config: false
+            inotify: false
             extra: false
             reserved: false
     config_one:

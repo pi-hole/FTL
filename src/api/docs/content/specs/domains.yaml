@@ -248,7 +248,7 @@ components:
       type: object
       properties:
         comment:
-          description: User-provided free-text comment for this domain (may be `null` if not specified)
+          description: User-provided free-text comment for this domain
           type: string
           nullable: true
           default: null

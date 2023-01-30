@@ -16,7 +16,7 @@ components:
               description: "Human-readable error message"
             hint:
               type: string
-              description: "Further details (may be `null`)"
+              description: "Further details"
               nullable: true
     unauthorized:
       type: object

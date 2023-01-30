@@ -167,25 +167,25 @@ components:
                 description: Queried domain
               cname:
                 type: string
-                description: Domain blocked during deep CNAME inspection (may be `null`)
+                description: Domain blocked during deep CNAME inspection
                 nullable: true
               status:
                 type: string
-                description: Query status (may be `null`)
+                description: Query status
                 nullable: true
               client:
                 type: string
                 description: Requesting client (may be an IP address or a hostname)
               dnssec:
                 type: string
-                description: DNSSEC status (may be `null`)
+                description: DNSSEC status
                 nullable: true
               reply:
                 type: object
                 properties:
                   type:
                     type: string
-                    description: Reply type (may be `null`)
+                    description: Reply type
                     nullable: true
                   time:
                     type: number
@@ -198,7 +198,7 @@ components:
                 description: ID of blocking regex (`-1` if N/A)
               upstream:
                 type: string
-                description: IP or name + port of upstream server (may be `null`)
+                description: IP or name + port of upstream server
                 nullable: true
               dbid:
                 type: integer

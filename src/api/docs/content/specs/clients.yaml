@@ -181,7 +181,7 @@ components:
       type: object
       properties:
         comment:
-          description: User-provided free-text comment for this client (may be `null` if not specified)
+          description: User-provided free-text comment for this client
           type: string
           nullable: true
           default: null

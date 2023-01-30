@@ -160,7 +160,7 @@ components:
               name:
                 type: string
                 nullable: true
-                description: Client name (may be `null`)
+                description: Client name
               ip:
                 type: string
                 description: Client IP address

@@ -264,6 +264,7 @@ struct config {
 		struct conf_item events;
 		struct conf_item helper;
 		struct conf_item config;
+		struct conf_item inotify;
 		struct conf_item extra;
 		struct conf_item reserved;
 	} debug;
