@@ -33,6 +33,12 @@
 // flush_message_table()
 #include "database/message-table.h"
 
+#if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
+#pragma message "Minimum GLIBC version: " xstr(__GLIBC__) "." xstr(__GLIBC_MINOR__)
+#else
+#pragma message "Minimum GLIBC version: unknown, assuming this is a MUSL build"
+#endif
+
 char *username;
 bool needGC = false;
 bool needDBGC = false;

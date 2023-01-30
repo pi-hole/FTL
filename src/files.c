@@ -281,22 +281,67 @@ static char *trim(char *str)
 	return start;
 }
 
-// Credits: https://stackoverflow.com/a/2180157, modified
+// Credits: https://stackoverflow.com/a/2180157 (modified) for the fallback solution
 static int copy_file(const char *source, const char *destination)
 {
-	int input, output;
-	if ((input = open(source, O_RDONLY)) == -1)
+// Check glibc >= 2.27 for copy_file_range()
+#if __GLIBC__ > 2 ||  (__GLIBC__ == 2 && (__GLIBC_MINOR__ >= 27 ))
+	int fd_in, fd_out;
+	struct stat stat;
+	size_t len;
+	ssize_t ret;
+
+	fd_in = open(source, O_RDONLY);
+	if (fd_in == -1)
 	{
 		log_warn("copy_file(): Failed to open \"%s\" read-only: %s", source, strerror(errno));
 		return -1;
 	}
-	if ((output = creat(destination, 0660)) == -1)
+
+	if (fstat(fd_in, &stat) == -1) {
+		perror("fstat");
+		exit(EXIT_FAILURE);
+	}
+
+	len = stat.st_size;
+
+	fd_out = open(destination, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+	if (fd_out == -1)
 	{
 		log_warn("copy_file(): Failed to open \"%s\" for writing: %s", destination, strerror(errno));
-		close(input);
+		close(fd_in);
 		return -1;
 	}
 
+	do {
+		ret = copy_file_range(fd_in, NULL, fd_out, NULL, len, 0);
+		if (ret == -1) {
+			log_warn("copy_file(): Failed to copy file after %zu of %zu bytes: %s", (size_t)stat.st_size - len, (size_t)stat.st_size, strerror(errno));
+			close(fd_in);
+			close(fd_out);
+			return -1;
+		}
+
+		len -= ret;
+	} while (len > 0 && ret > 0);
+
+	close(fd_in);
+	close(fd_out);
+
+	return 0;
+#else
+	int input, output;
+	if ((input = open(source, O_RDONLY)) == -1)
+	{
+			log_warn("copy_file(): Failed to open \"%s\" read-only: %s", source, strerror(errno));
+			return -1;
+	}
+	if ((output = creat(destination, 0660)) == -1)
+	{
+			log_warn("copy_file(): Failed to open \"%s\" for writing: %s", destination, strerror(errno));
+			close(input);
+			return -1;
+	}
 	// Use sendfile (kernel-space copying as fallback)
 	off_t bytesCopied = 0;
 	struct stat fileinfo = {0};
@@ -304,13 +349,15 @@ static int copy_file(const char *source, const char *destination)
 	errno = 0;
 	const int result = sendfile(output, input, &bytesCopied, fileinfo.st_size);
 	if(result == -1)
-		log_warn("copy_file(): Failed to copy \"%s\" to \"%s\": %s", source, destination, strerror(errno));
-
+			log_warn("copy_file(): Failed to copy \"%s\" to \"%s\": %s", source, destination, strerror(errno));
 	close(input);
 	close(output);
 
 	return result;
+#endif
 }
+
+
 
 // Rotate files in a directory
 void rotate_files(const char *path)
