@@ -712,46 +712,54 @@ bool write_custom_list(void)
 	rotate_files(DNSMASQ_CUSTOM_LIST);
 
 	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST" for writing");
-	FILE *pihole_conf = fopen(DNSMASQ_CUSTOM_LIST, "w");
+	FILE *custom_list = fopen(DNSMASQ_CUSTOM_LIST, "w");
 	// Return early if opening failed
-	if(!pihole_conf)
+	if(!custom_list)
 	{
 		log_err("Cannot open "DNSMASQ_CUSTOM_LIST" for writing, unable to update custom.list: %s", strerror(errno));
 		return false;
 	}
 
 	// Lock file, may block if the file is currently opened
-	if(flock(fileno(pihole_conf), LOCK_EX) != 0)
+	if(flock(fileno(custom_list), LOCK_EX) != 0)
 	{
 		log_err("Cannot open "DNSMASQ_CUSTOM_LIST" in exclusive mode: %s", strerror(errno));
-		fclose(pihole_conf);
+		fclose(custom_list);
 		return false;
 	}
 
-	write_config_header(pihole_conf, "Custom DNS entries (HOSTS file)");
+	write_config_header(custom_list, "Custom DNS entries (HOSTS file)");
+	fputc('\n', custom_list);
 
-	if(cJSON_GetArraySize(config.dns.hosts.v.json) > 0)
+	const int N = cJSON_GetArraySize(config.dns.hosts.v.json);
+	if(N > 0)
 	{
-		const int n = cJSON_GetArraySize(config.dns.hosts.v.json);
-		for(int i = 0; i < n; i++)
+		for(int i = 0; i < N; i++)
 		{
 			cJSON *entry = cJSON_GetArrayItem(config.dns.hosts.v.json, i);
 			if(entry != NULL && cJSON_IsString(entry))
-				fprintf(pihole_conf, "%s\n", entry->valuestring);
+				fprintf(custom_list, "%s\n", entry->valuestring);
 		}
-		fputs("\n", pihole_conf);
+		fputc('\n', custom_list);
 	}
 
+	if(N == 1)
+		fprintf(custom_list, "\n# There is %d entry in this file\n", N);
+	else if(N > 1)
+		fprintf(custom_list, "\n# There are %d entries in this file\n", N);
+	else if(N == 0)
+		fputs("\n# There are currently no entries in this file\n", custom_list);
+
 	// Unlock file
-	if(flock(fileno(pihole_conf), LOCK_UN) != 0)
+	if(flock(fileno(custom_list), LOCK_UN) != 0)
 	{
 		log_err("Cannot release lock on custom.list: %s", strerror(errno));
-		fclose(pihole_conf);
+		fclose(custom_list);
 		return false;
 	}
 
 	// Close file
-	if(fclose(pihole_conf) != 0)
+	if(fclose(custom_list) != 0)
 	{
 		log_err("Cannot close custom.list: %s", strerror(errno));
 		return false;
