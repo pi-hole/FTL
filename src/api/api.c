@@ -49,6 +49,8 @@ static struct {
 	{ "/api/info/host",                         "",                           api_info_host,                         { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/info/ftl",                          "",                           api_info_ftl,                          { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/info/version",                      "",                           api_info_version,                      { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/info/messages",                     "/{message_id}",              api_info_messages,                     { false, true,  0             }, true,  HTTP_DELETE },
+	{ "/api/info/messages",                     "",                           api_info_messages,                     { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/logs/dnsmasq",                      "",                           api_logs,                              { false, true,  FIFO_DNSMASQ  }, true,  HTTP_GET },
 	{ "/api/logs/ftl",                          "",                           api_logs,                              { false, true,  FIFO_FTL      }, true,  HTTP_GET },
 	{ "/api/logs/http",                         "",                           api_logs,                              { false, true,  FIFO_CIVETWEB }, true,  HTTP_GET },

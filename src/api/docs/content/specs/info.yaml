@@ -168,6 +168,44 @@ components:
               application/json:
                 schema:
                   $ref: 'info.yaml#/components/schemas/version'
+    messages:
+      get:
+        summary: Get Pi-hole diagnosis messages
+        tags:
+          - "FTL information"
+        operationId: "get_messages"
+        description: |
+          Request Pi-hole diagnosis messages
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'info.yaml#/components/schemas/messages'
+      delete:
+        summary: Delete Pi-hole diagnosis message
+        tags:
+          - "FTL information"
+        operationId: "delete_message"
+        parameters:
+          - $ref: 'info.yaml#/components/parameters/message_id'
+        description: |
+          *Note:* There will be no content on success.
+        responses:
+          '204':
+            description: Item deleted
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/bad_request'
+                examples:
+                  uri_error:
+                    $ref: 'info.yaml#/components/examples/errors/messages/uri_error'
+                  bad_request:
+                    $ref: 'info.yaml#/components/examples/errors/messages/bad_request'
   schemas:
     client:
       remote_addr:
@@ -703,7 +741,52 @@ components:
                   nullable: true
                   description: Remote (Docker Hub) Pi-hole Docker image version (`null` if not running in Docker)
                   example: "v6.1"
+    messages:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                description: ID of message
+                example: 3
+              timestamp:
+                type: number
+                description: Unix timestamp of message
+                example: 123456789.123
+              type:
+                type: string
+                description: Message type
+                example: "SUBNET"
+              plain:
+                type: string
+                description: Plain message
+                example: "Rate-limiting 192.168.2.42 for at least 5 seconds"
+              html:
+                type: string
+                description: HTML-formatted message
+                example: "Client <code>192.168.2.42</code> has been rate-limited for at least 5 seconds (current limit: 1000 queries per 60 seconds)"
 
+  examples:
+    errors:
+      messages:
+        uri_error:
+          summary: ID of message to delete is missing
+          value:
+            error:
+              key: "uri_error"
+              message: "Specify ID of message to delete in path"
+              hint: "/api/info/messages"
+        bad_request:
+          summary: ID of message to delete is invalid
+          value:
+            error:
+              key: "bad_request"
+              message: "Invalid ID in path"
+              hint: "/api/info/messages/486741168746857468758478"
 
   parameters:
     logs:
@@ -716,3 +799,11 @@ components:
             type: integer
           required: false
           example: 219
+    message_id:
+      in: query
+      description: ID of the message to be deleted
+      name: id
+      schema:
+        type: integer
+      required: true
+      example: 512

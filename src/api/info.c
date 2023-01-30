@@ -43,6 +43,11 @@
 // prase_line()
 #include "files.h"
 
+// get_messages()
+#include "database/message-table.h"
+// LONG_MIN, LONG_MAX
+#include <limits.h>
+
 #define VERSIONS_FILE "/etc/pihole/versions"
 
 int api_info_client(struct ftl_conn *api)
@@ -618,4 +623,97 @@ int api_info_version(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "version", version);
 	JSON_SEND_OBJECT(json);
+}
+
+static int api_info_messages_GET(struct ftl_conn *api)
+{
+	// Get a private copy of the messages array
+	cJSON *messages = get_messages();
+
+	// Filtering based on GET parameters?
+	bool filter_dnsmasq_warnings = false;
+	if(api->request->query_string != NULL)
+	{
+		get_bool_var(api->request->query_string, "filter_dnsmasq_warnings", &filter_dnsmasq_warnings);
+	}
+
+	// Filter messages if requested
+	if(filter_dnsmasq_warnings)
+	{
+		// Create new array
+		cJSON *filtered = cJSON_CreateArray();
+
+		// Loop over all messages
+		for(int i = 0; i < cJSON_GetArraySize(messages); i++)
+		{
+			// Get message
+			cJSON *message = cJSON_GetArrayItem(messages, i);
+			if(message == NULL)
+				continue;
+
+			// Get type
+			cJSON *type = cJSON_GetObjectItem(message, "type");
+			if(type == NULL)
+				continue;
+
+			// Skip if it is a DNSMASQ_WARN message
+			if(strcmp(type->valuestring, "DNSMASQ_WARN") == 0)
+				continue;
+
+			// else: Add a copy to the filtered array
+			cJSON_AddItemToArray(filtered, cJSON_Duplicate(message, true));
+		}
+
+		// Free old array and replace with filtered one
+		cJSON_Delete(messages);
+		messages = filtered;
+	}
+
+	// Create object, add the array and send them
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "messages", messages);
+	JSON_SEND_OBJECT(json);
+}
+
+static int api_info_messages_DELETE(struct ftl_conn *api)
+{
+	// Check if we have an ID
+	errno = 0;
+	if(api->item == NULL)
+	{
+		// Send error reply
+		return send_json_error(api, 400, // 400 Bad Request
+		                       "uri_error",
+		                       "Specify ID of message to delete in path",
+		                       api->action_path);
+	}
+
+	// Parse ID
+	errno = 0;
+	const long id = strtol(api->item, NULL, 10);;
+	if(errno != 0 ||id == LONG_MIN || id == LONG_MAX || id < 0)
+	{
+		// Send error reply
+		return send_json_error(api, 400, // 400 Bad Request
+		                       "bad_request",
+		                       "Invalid ID in path",
+		                       api->action_path);
+	}
+
+	// Delete message with this ID from the database
+	delete_message(id);
+
+	// Send empty reply with code 204 No Content
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_SEND_OBJECT_CODE(json, 204);
+}
+
+int api_info_messages(struct ftl_conn *api)
+{
+	if(api->method == HTTP_GET)
+		return api_info_messages_GET(api);
+	else if(api->method == HTTP_DELETE)
+		return api_info_messages_DELETE(api);
+	else
+		return send_json_error(api, 405, "method_not_allowed", "Method not allowed", NULL);
 }

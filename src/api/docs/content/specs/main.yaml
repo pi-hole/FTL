@@ -157,6 +157,9 @@ paths:
   /info/version:
     $ref: 'info.yaml#/components/paths/version'
 
+  /info/messages:
+    $ref: 'info.yaml#/components/paths/messages'
+
   /logs/dnsmasq:
     $ref: 'logs.yaml#/components/paths/logs/dnsmasq'
 

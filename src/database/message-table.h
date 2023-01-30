@@ -11,8 +11,11 @@
 #define MESSAGETABLE_H
 
 #include "sqlite3.h"
+#include "webserver/cJSON/cJSON.h"
 
+cJSON *get_messages(void) __attribute__((pure));
 bool create_message_table(sqlite3 *db);
+bool delete_message(const long id);
 bool flush_message_table(void);
 void logg_regex_warning(const char *type, const char *warning, const int dbindex, const char *regex);
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,
