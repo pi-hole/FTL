@@ -28,6 +28,9 @@
 #include <libgen.h>
 // compression functions
 #include "zip/gzip.h"
+// sendfile()
+#include <fcntl.h>
+#include <sys/sendfile.h>
 
 #define BACKUP_DIR "/etc/pihole/config_backups"
 
@@ -278,6 +281,37 @@ static char *trim(char *str)
 	return start;
 }
 
+// Credits: https://stackoverflow.com/a/2180157, modified
+static int copy_file(const char *source, const char *destination)
+{
+	int input, output;
+	if ((input = open(source, O_RDONLY)) == -1)
+	{
+		log_warn("copy_file(): Failed to open \"%s\" read-only: %s", source, strerror(errno));
+		return -1;
+	}
+	if ((output = creat(destination, 0660)) == -1)
+	{
+		log_warn("copy_file(): Failed to open \"%s\" for writing: %s", destination, strerror(errno));
+		close(input);
+		return -1;
+	}
+
+	// Use sendfile (kernel-space copying as fallback)
+	off_t bytesCopied = 0;
+	struct stat fileinfo = {0};
+	fstat(input, &fileinfo);
+	errno = 0;
+	const int result = sendfile(output, input, &bytesCopied, fileinfo.st_size);
+	if(result == -1)
+		log_warn("copy_file(): Failed to copy \"%s\" to \"%s\": %s", source, destination, strerror(errno));
+
+	close(input);
+	close(output);
+
+	return result;
+}
+
 // Rotate files in a directory
 void rotate_files(const char *path)
 {
@@ -292,7 +326,10 @@ void rotate_files(const char *path)
 	if(!directory_exists(BACKUP_DIR))
 		mkdir(BACKUP_DIR, S_IRWXU | S_IRWXG); // mode 0770
 
-	// Rename all files to one number higher
+	// Rename all files to one number higher, except for the original file
+	// The original file is *copied* to the backup directory to avoid possible
+	// issues with file permissions if the new config cannot be written after
+	// the old file has already been moved away
 	for(unsigned int i = MAX_ROTATIONS; i > 0; i--)
 	{
 		// Construct old and new paths
@@ -319,10 +356,27 @@ void rotate_files(const char *path)
 
 		if(file_exists(old_path))
 		{
-			// Rename file
-			if(rename(old_path, new_path) < 0)
+			// Copy file to backup directory
+			if(i == 1)
 			{
-				log_warn("Rotation %s -> %s failed: %s",
+				// Copy file to backup directory
+				log_debug(DEBUG_CONFIG, "Copying %s -> %s", old_path, new_path);
+				if(copy_file(old_path, new_path) < 0)
+				{
+					log_warn("Rotation %s -(COPY)> %s failed",
+					         old_path, new_path);
+				}
+				else
+				{
+					// Log success if debug is enabled
+					log_debug(DEBUG_CONFIG, "Copied %s -> %s",
+					          old_path, new_path);
+				}
+			}
+			// Rename file to backup directory
+			else if(rename(old_path, new_path) < 0)
+			{
+				log_warn("Rotation %s -(MOVE)> %s failed: %s",
 				         old_path, new_path, strerror(errno));
 			}
 			else
@@ -349,7 +403,7 @@ void rotate_files(const char *path)
 			// Rename file
 			if(rename(old_path_compressed, new_path_compressed) < 0)
 			{
-				log_warn("Rotation %s -> %s failed: %s",
+				log_warn("Rotation %s -(MOVE)> %s failed: %s",
 				         old_path_compressed, new_path_compressed, strerror(errno));
 			}
 			else
