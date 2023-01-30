@@ -28,6 +28,12 @@
 #include <sys/stat.h>
 // open
 #include <fcntl.h>
+// file_exist()
+#include "files.h"
+// struct ftl_conn
+#include "webserver/http-common.h"
+// check_client_auth()
+#include "api/api.h"
 
 // Pi-hole PH7 extensions
 #define PH7_CORE
@@ -70,6 +76,46 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	{
 		strcpy(full_path + webroot_len + local_uri_len, "/index.php");
 		full_path[webroot_len + local_uri_len + 11u] = '\0';
+	}
+
+	// Append "login.php" to webhome string
+	const size_t login_uri_len = strlen(config.webserver.paths.webhome.v.s);
+	char *login_uri = calloc(login_uri_len + 10, sizeof(char));
+	memcpy(login_uri, config.webserver.paths.webhome.v.s, login_uri_len);
+	strcpy(login_uri + login_uri_len, "login.php");
+	login_uri[login_uri_len + 10u] = '\0';
+
+	// Remove initial slash from login_uri
+	if(login_uri[0] == '/')
+		memmove(login_uri, login_uri + 1, login_uri_len + 9);
+
+	// Every page except admin/login.php requires authentication
+	if(strcmp(local_uri, login_uri) != 0)
+	{
+		// Build minimal api struct to check authentication
+		struct ftl_conn api = { 0 };
+		api.conn = conn;
+		api.request = req_info;
+		// Check if the user is authenticated
+		if(check_client_auth(&api) == API_AUTH_UNAUTHORIZED)
+		{
+			// User is not authenticated, redirect to login page
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin.php\r\n\r\n", config.webserver.paths.webhome.v.s);
+			free(full_path);
+			free(login_uri);
+			return 302;
+		}
+	}
+
+	// Free memory
+	free(login_uri);
+
+	// Check if the file exists
+	if(!file_exists(full_path))
+	{
+		// File does not exist, fall back to HTTP server to handle the 404 event
+		free(full_path);
+		return 0;
 	}
 
 	// Compile PHP script into byte-code

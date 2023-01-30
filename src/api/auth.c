@@ -88,7 +88,7 @@ int check_client_auth(struct ftl_conn *api)
 	// Is the user requesting from localhost?
 	// This may be allowed without authentication depending on the configuration
 	if(!config.webserver.api.localAPIauth.v.b && (strcmp(api->request->remote_addr, LOCALHOSTv4) == 0 ||
-	                                     strcmp(api->request->remote_addr, LOCALHOSTv6) == 0))
+	                                              strcmp(api->request->remote_addr, LOCALHOSTv6) == 0))
 		return API_AUTH_LOCALHOST;
 
 	// Check if there is a password hash
