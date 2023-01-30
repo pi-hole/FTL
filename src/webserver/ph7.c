@@ -54,6 +54,11 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
 	const char *local_uri = req_info->local_uri_raw + 1u;
 
+	// Build minimal api struct to check authentication
+	struct ftl_conn api = { 0 };
+	api.conn = conn;
+	api.request = req_info;
+
 	// Build full path of PHP script on our machine
 	const size_t webroot_len = strlen(config.webserver.paths.webroot.v.s);
 	const size_t local_uri_len = strlen(local_uri); // +1 to skip the initial '/'
@@ -92,15 +97,25 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	// Every page except admin/login.php requires authentication
 	if(strcmp(local_uri, login_uri) != 0)
 	{
-		// Build minimal api struct to check authentication
-		struct ftl_conn api = { 0 };
-		api.conn = conn;
-		api.request = req_info;
+		// This is not the login page - check if the user is authenticated
 		// Check if the user is authenticated
 		if(check_client_auth(&api) == API_AUTH_UNAUTHORIZED)
 		{
 			// User is not authenticated, redirect to login page
 			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin.php\r\n\r\n", config.webserver.paths.webhome.v.s);
+			free(full_path);
+			free(login_uri);
+			return 302;
+		}
+	}
+	else
+	{
+		// This is the login page - check if the user is already authenticated
+		// Check if the user is authenticated
+		if(check_client_auth(&api) != API_AUTH_UNAUTHORIZED)
+		{
+			// User is already authenticated, redirect to index page
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %sindex.php\r\n\r\n", config.webserver.paths.webhome.v.s);
 			free(full_path);
 			free(login_uri);
 			return 302;
