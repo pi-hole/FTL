@@ -17,8 +17,6 @@
 // set_blockingmode_timer()
 #include "timers.h"
 #include "shmem.h"
-// getCacheInformation()
-#include "cache_info.h"
 // config struct
 #include "config/config.h"
 
@@ -125,29 +123,4 @@ int api_dns_blocking(struct ftl_conn *api)
 	{
 		return send_json_error(api, 405, "method_not_allowed", "Method not allowed", NULL);
 	}
-}
-
-int api_dns_cache(struct ftl_conn *api)
-{
-	struct cache_info ci = { 0 };
-	get_dnsmasq_cache_info(&ci);
-	cJSON *cache = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "size", ci.cache_size);
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "inserted", ci.cache_inserted);
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "evicted", ci.cache_live_freed);
-	cJSON *valid = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "ipv4", ci.valid.ipv4);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "ipv6", ci.valid.ipv6);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "cname", ci.valid.cname);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "srv", ci.valid.srv);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "ds", ci.valid.ds);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "dnskey", ci.valid.dnskey);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "other", ci.valid.other);
-	JSON_ADD_ITEM_TO_OBJECT(cache, "valid", valid);
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "expired", ci.expired);
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "immortal", ci.immortal);
-
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "cache", cache);
-	JSON_SEND_OBJECT(json);
 }

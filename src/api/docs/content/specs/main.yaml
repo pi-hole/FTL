@@ -109,9 +109,6 @@ paths:
   /dns/blocking:
     $ref: 'dns.yaml#/components/paths/blocking'
 
-  /dns/cache:
-    $ref: 'dns.yaml#/components/paths/cache'
-
   /domains/{type}/{kind}/{domain}:
     $ref: 'domains.yaml#/components/paths/type_kind_domain'
 
@@ -159,6 +156,9 @@ paths:
 
   /info/messages:
     $ref: 'info.yaml#/components/paths/messages'
+
+  /info/cache:
+    $ref: 'info.yaml#/components/paths/cache'
 
   /logs/dnsmasq:
     $ref: 'logs.yaml#/components/paths/logs/dnsmasq'

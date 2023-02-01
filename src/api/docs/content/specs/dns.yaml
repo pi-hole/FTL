@@ -65,31 +65,6 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
-    cache:
-      get:
-        summary: Get cache info
-        tags:
-          - Metrics
-        operationId: "get_cacheinfo"
-        description: |
-          This API hook returns live information about the DNS cache usage.
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: 'dns.yaml#/components/schemas/cache'
-                examples:
-                  cache:
-                    $ref: 'dns.yaml#/components/examples/cache'
-          '401':
-            description: Unauthorized
-            content:
-              application/json:
-                schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
-
   schemas:
     blocking:
       type: object
@@ -107,53 +82,6 @@ components:
           nullable: true
           example: 15
 
-    cache:
-      type: object
-      properties:
-        cache:
-          type: object
-          description: Cache information
-          properties:
-            size:
-              type: integer
-              description: Cache size
-            inserted:
-              type: integer
-              description: Number of inserted entries
-            evicted:
-              type: integer
-              description: Number of evicted entries
-            expired:
-              type: integer
-              description: Number of expired entries
-            immortal:
-              type: integer
-              description: Number of immortal entries
-            valid:
-              type: object
-              description: Number of valid entries
-              properties:
-                ipv4:
-                  type: integer
-                  description: Number of valid IPv4 entries
-                ipv6:
-                  type: integer
-                  description: Number of valid IPv6 entries
-                cname:
-                  type: integer
-                  description: Number of valid CNAME entries
-                srv:
-                  type: integer
-                  description: Number of valid SRV entries
-                ds:
-                  type: integer
-                  description: Number of valid DS entries
-                dnskey:
-                  type: integer
-                  description: Number of valid DNSKEY entries
-                other:
-                  type: integer
-                  description: Number of valid other entries
     errors:
       item_missing:
         type: object
@@ -195,21 +123,3 @@ components:
                 nullable: true
                 description: "Additional data (if available)"
                 example: null
-  examples:
-    cache:
-      summary: Cache info
-      value:
-        cache:
-          size: 10000
-          inserted: 4060
-          evicted: 0
-          expired: 0
-          immortal: 0
-          valid:
-            ipv4: 212
-            ipv6: 61
-            cname: 14
-            srv: 0
-            ds: 60
-            dnskey: 35
-            other: 14

@@ -25,8 +25,8 @@ struct cache_info {
   int cache_inserted;
   // <valid> are cache entries with positive remaining TTL
   struct valid {
-    int ipv4;
-    int ipv6;
+    int a;
+    int aaaa;
     int cname;
     int srv;
     int ds;

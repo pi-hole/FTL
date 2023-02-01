@@ -1780,9 +1780,9 @@ void get_dnsmasq_cache_info(struct cache_info *ci)
       if(cache->ttd >= now || cache->flags & F_IMMORTAL)
       {
 	if (cache->flags & F_IPV4)
-	  ci->valid.ipv4++;
+	  ci->valid.a++;
 	else if (cache->flags & F_IPV6)
-	  ci->valid.ipv6++;
+	  ci->valid.aaaa++;
 	else if (cache->flags & F_CNAME)
 	  ci->valid.cname++;
 	else if (cache->flags & F_SRV)
