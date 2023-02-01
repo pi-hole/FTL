@@ -156,6 +156,9 @@ components:
           items:
             type: object
             properties:
+              id:
+                type: integer
+                description: Query ID in the long-term database
               time:
                 type: number
                 description: Timestamp
@@ -174,8 +177,15 @@ components:
                 description: Query status
                 nullable: true
               client:
-                type: string
-                description: Requesting client (may be an IP address or a hostname)
+                type: object
+                properties:
+                  ip:
+                    type: string
+                    description: Requesting client's IP address
+                  name:
+                    type: string
+                    description: Requesting client's hostname (if available)
+                    nullable: true
               dnssec:
                 type: string
                 description: DNSSEC status
@@ -200,16 +210,15 @@ components:
                 type: string
                 description: IP or name + port of upstream server
                 nullable: true
-              dbid:
-                type: integer
-                description: Query ID in the long-term database
           example:
             - time: 1581907991.539157
               type: "A"
               domain: "community.stoplight.io"
               cname: null
               status: "FORWARDED"
-              client: "desktop.lan"
+              client:
+                ip: "192.168.0.14"
+                name: "desktop.lan"
               dnssec: "INSECURE"
               reply:
                 type: "IP"
@@ -222,7 +231,9 @@ components:
               domain: "api.github.com"
               cname: null
               status: "FORWARDED"
-              client: "localhost"
+              client:
+                ip: "127.0.0.1"
+                name: "localhost"
               dnssec: "UNKNOWN"
               reply:
                 type: "IP"
@@ -259,9 +270,14 @@ components:
               items:
                 type: string
               example: ["pi-hole.net","amazon.com"]
-            client:
+            client_ip:
               type: array
-              description: Array of suggested clients
+              description: Array of suggested client IP addresses
+              items:
+                type: string
+            client_name:
+              type: array
+              description: Array of suggested client names
               items:
                 type: string
             upstream:
