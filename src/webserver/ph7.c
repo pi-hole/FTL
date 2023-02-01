@@ -83,7 +83,8 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 		if(check_client_auth(&api) == API_AUTH_UNAUTHORIZED)
 		{
 			// User is not authenticated, redirect to login page
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin.php\r\n\r\n", config.webserver.paths.webhome.v.s);
+			log_debug(DEBUG_API, "Authentication required, redirecting to %slogin.php?target=/%s", config.webserver.paths.webhome.v.s, local_uri);
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin.php?target=/%s\r\n\r\n", config.webserver.paths.webhome.v.s, local_uri);
 			free(login_uri);
 			return 302;
 		}
