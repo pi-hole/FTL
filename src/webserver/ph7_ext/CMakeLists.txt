@@ -10,6 +10,7 @@
 
 set(sources
         extensions.h
+        fileversion.c
         gethostname.c
         )
 

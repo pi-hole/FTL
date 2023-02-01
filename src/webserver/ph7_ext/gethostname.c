@@ -27,9 +27,7 @@ int gethostname_impl(ph7_context *pCtx, int argc, ph7_value **argv)
 	// Get host name
 	char name[256];
 	if(gethostname(name, sizeof(name)) != 0)
-	{
 		strcpy(name, "N/A");
-	}
 
 	ph7_result_string(pCtx, name, strlen(name));
 
