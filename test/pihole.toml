@@ -512,8 +512,17 @@
     # Theme used by the Pi-hole web interface
     #
     # Possible values are:
-    #     <valid themename>
-    theme = "default"
+    #   - "default-auto"
+    #       Pi-hole default theme (light/dark, default)
+    #   - "default-light"
+    #       Pi-hole day theme (light)
+    #   - "default-dark"
+    #       Pi-hole midnight theme (dark)
+    #   - "default-darker"
+    #       Pi-hole deep-midnight theme (dark)
+    #   - "lcars"
+    #       Star Trek LCARS theme (dark)
+    theme = "default-auto"
 
   [webserver.api]
     # Does local clients need to authenticate to access the API?

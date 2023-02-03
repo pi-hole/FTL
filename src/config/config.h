@@ -44,6 +44,7 @@ union conf_value {
 	enum privacy_level privacy_level;           // enum privacy_level value
 	enum debug_flag debug_flag;                 // enum debug_flag value
 	enum listening_mode listening_mode;         // enum listening_mode value
+	enum web_theme web_theme;                   // enum web_theme value
 	struct in_addr in_addr;                     // struct in_addr value
 	struct in6_addr in6_addr;                   // struct in6_addr value
 	cJSON *json;                                // cJSON * value
@@ -65,6 +66,7 @@ enum conf_type {
 	CONF_ENUM_REFRESH_HOSTNAMES,
 	CONF_ENUM_PRIVACY_LEVEL,
 	CONF_ENUM_LISTENING_MODE,
+	CONF_ENUM_WEB_THEME,
 	CONF_STRUCT_IN_ADDR,
 	CONF_STRUCT_IN6_ADDR,
 	// We could theoretically use a more generic type, however, we want this

@@ -432,7 +432,7 @@ bool export_queries_to_disk(bool final)
 	// This prevents queries from the last 30 seconds from being stored
 	// immediately on-disk to give them some time to complete before finally
 	// exported. We do not limit anything when storing during termination.
-	if((rc = sqlite3_bind_int64(stmt, 2, time)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 2, time)) != SQLITE_OK)
 	{
 		log_err("export_queries_to_disk(): Failed to bind time: %s", sqlite3_errstr(rc));
 		return false;
@@ -442,8 +442,11 @@ bool export_queries_to_disk(bool final)
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 		okay = true;
 	else
-		log_err("export_queries_to_disk(): Failed to export queries: %s",
-		        sqlite3_errstr(rc));
+	{
+		log_err("export_queries_to_disk(): Failed to export queries: %s", sqlite3_errstr(rc));
+		log_info("    SQL query was: \"%s\"", querystr);
+		log_info("    with parameters: id = %lu, timestamp = %f", last_disk_db_idx, time);
+	}
 
 	// Get number of queries actually inserted by the INSERT INTO ... SELECT * FROM ...
 	const unsigned int insertions = sqlite3_changes(memdb);

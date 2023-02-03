@@ -12,6 +12,7 @@ set(sources
         extensions.h
         fileversion.c
         gethostname.c
+        webtheme.c
         )
 
 add_library(ph7_ext OBJECT ${sources})

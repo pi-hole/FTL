@@ -118,6 +118,8 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 			return cJSON_CreateStringReference(get_refresh_hostnames_str(val->refresh_hostnames));
 		case CONF_ENUM_LISTENING_MODE:
 			return cJSON_CreateStringReference(get_listening_mode_str(val->listening_mode));
+		case CONF_ENUM_WEB_THEME:
+			return cJSON_CreateStringReference(get_web_theme_str(val->web_theme));
 		case CONF_STRUCT_IN_ADDR:
 		{
 			char addr4[INET_ADDRSTRLEN] = { 0 };
@@ -308,6 +310,19 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 			// Set item
 			conf_item->v.listening_mode = listening_mode;
 			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.listening_mode);
+			break;
+		}
+		case CONF_ENUM_WEB_THEME:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int web_theme = get_web_theme_val(elem->valuestring);
+			if(web_theme == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.web_theme = web_theme;
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.web_theme);
 			break;
 		}
 		case CONF_ENUM_PRIVACY_LEVEL:

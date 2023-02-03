@@ -158,6 +158,8 @@ const char *get_busy_reply_str(const enum busy_reply replyWhenBusy) __attribute_
 int get_busy_reply_val(const char *replyWhenBusy) __attribute__ ((pure));
 const char * get_listening_mode_str(const enum listening_mode listening_mode) __attribute__ ((const));
 int get_listening_mode_val(const char *listening_mode) __attribute__ ((pure));
+const char * __attribute__ ((const)) get_web_theme_str(const enum web_theme web_theme);
+int __attribute__ ((pure)) get_web_theme_val(const char *web_theme);
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)

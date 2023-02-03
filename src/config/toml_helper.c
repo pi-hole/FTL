@@ -323,6 +323,9 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 		case CONF_ENUM_LISTENING_MODE:
 			printTOMLstring(fp, get_listening_mode_str(v->listening_mode));
 			break;
+		case CONF_ENUM_WEB_THEME:
+			printTOMLstring(fp, get_web_theme_str(v->web_theme));
+			break;
 		case CONF_STRUCT_IN_ADDR:
 		{
 			char addr4[INET_ADDRSTRLEN] = { 0 };
@@ -547,13 +550,29 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type string", conf_item->k);
 			break;
 		}
+		case CONF_ENUM_WEB_THEME:
+		{
+			const toml_datum_t val = toml_string_in(toml, key);
+			if(val.ok)
+			{
+				const int web_theme = get_web_theme_val(val.u.s);
+				free(val.u.s);
+				if(web_theme != -1)
+					conf_item->v.web_theme = web_theme;
+				else
+					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
+			}
+			else
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type string", conf_item->k);
+			break;
+		}
 		case CONF_ENUM_PRIVACY_LEVEL:
 		{
 			const toml_datum_t val = toml_int_in(toml, key);
 			if(val.ok && val.u.i >= PRIVACY_SHOW_ALL && val.u.i <= PRIVACY_MAXIMUM)
 				conf_item->v.i = val.u.i;
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is invalid", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is invalid (not of type integer or outside allowed bounds)", conf_item->k);
 			break;
 		}
 		case CONF_STRUCT_IN_ADDR:

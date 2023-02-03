@@ -13,6 +13,7 @@
 // Function prototypes
 int gethostname_impl(ph7_context *pCtx, int argc, ph7_value **argv);
 int fileversion_impl(ph7_context *pCtx, int argc, ph7_value **argv);
+int webtheme_impl(ph7_context *pCtx, int argc, ph7_value **argv);
 
 #ifdef PH7_CORE // Include this section only in ../ph7.c
 // Container for the foreign functions defined above.
@@ -23,7 +24,8 @@ static const struct foreign_func {
 	int (*xProc)(ph7_context *, int, ph7_value **); /* Pointer to the C function performing the computation*/
 }aFunc[] = {
 	{"gethostname", gethostname_impl},
-	{"fileversion", fileversion_impl}
+	{"fileversion", fileversion_impl},
+	{"webtheme", webtheme_impl}
 };
 #endif // PH7_CORE
 #endif // PH7_EXT_H

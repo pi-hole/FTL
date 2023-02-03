@@ -1021,3 +1021,38 @@ int __attribute__ ((pure)) get_listening_mode_val(const char *listening_mode)
 	// Invalid value
 	return -1;
 }
+
+const char * __attribute__ ((const)) get_web_theme_str(const enum web_theme web_theme)
+{
+	switch(web_theme)
+	{
+		case THEME_DEFAULT_AUTO:
+			return "default-auto";
+		case THEME_DEFAULT_LIGHT:
+			return "default-light";
+		case THEME_DEFAULT_DARK:
+			return "default-dark";
+		case THEME_DEFAULT_DARKER:
+			return "default-darker";
+		case THEME_LCARS:
+			return "lcars";
+	}
+	return NULL;
+}
+
+int __attribute__ ((pure)) get_web_theme_val(const char *web_theme)
+{
+	if(strcasecmp(web_theme, "default-auto") == 0)
+		return THEME_DEFAULT_AUTO;
+	else if(strcasecmp(web_theme, "default-light") == 0)
+		return THEME_DEFAULT_LIGHT;
+	else if(strcasecmp(web_theme, "default-dark") == 0)
+		return THEME_DEFAULT_DARK;
+	else if(strcasecmp(web_theme, "default-darker") == 0)
+		return THEME_DEFAULT_DARKER;
+	else if(strcasecmp(web_theme, "lcars") == 0)
+		return THEME_LCARS;
+
+	// Invalid value
+	return -1;
+}

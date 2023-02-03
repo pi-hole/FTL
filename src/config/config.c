@@ -207,6 +207,7 @@ void duplicate_config(struct config *dst, struct config *src)
 			case CONF_ENUM_REFRESH_HOSTNAMES:
 			case CONF_ENUM_PRIVACY_LEVEL:
 			case CONF_ENUM_LISTENING_MODE:
+			case CONF_ENUM_WEB_THEME:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
 				// Nothing to do, the memcpy above has already covered this
@@ -243,6 +244,7 @@ bool compare_config_item(const struct conf_item *conf_item1, const struct conf_i
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 		case CONF_ENUM_PRIVACY_LEVEL:
 		case CONF_ENUM_LISTENING_MODE:
+		case CONF_ENUM_WEB_THEME:
 		case CONF_STRUCT_IN_ADDR:
 		case CONF_STRUCT_IN6_ADDR:
 			// Compare entire union
@@ -291,6 +293,7 @@ void free_config(struct config *conf)
 			case CONF_ENUM_REFRESH_HOSTNAMES:
 			case CONF_ENUM_PRIVACY_LEVEL:
 			case CONF_ENUM_LISTENING_MODE:
+			case CONF_ENUM_WEB_THEME:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
 				// Nothing to do
@@ -788,9 +791,19 @@ void initConfig(struct config *conf)
 
 	conf->webserver.interface.theme.k = "webserver.interface.theme";
 	conf->webserver.interface.theme.h = "Theme used by the Pi-hole web interface";
-	conf->webserver.interface.theme.a = cJSON_CreateStringReference("<valid themename>");
-	conf->webserver.interface.theme.t = CONF_STRING;
-	conf->webserver.interface.theme.d.s = (char*)"default";
+	{
+		struct enum_options themes[] =
+		{
+			{ "default-auto", "Pi-hole default theme (light/dark, default)" },
+			{ "default-light", "Pi-hole day theme (light)" },
+			{ "default-dark", "Pi-hole midnight theme (dark)" },
+			{ "default-darker", "Pi-hole deep-midnight theme (dark)" },
+			{ "lcars", "Star Trek LCARS theme (dark)" }
+		};
+		CONFIG_ADD_ENUM_OPTIONS(conf->webserver.interface.theme.a, themes);
+	}
+	conf->webserver.interface.theme.t = CONF_ENUM_WEB_THEME;
+	conf->webserver.interface.theme.d.web_theme = THEME_DEFAULT_AUTO;
 
 	// sub-struct api
 	conf->webserver.api.localAPIauth.k = "webserver.api.localAPIauth";
@@ -1262,6 +1275,7 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 		case CONF_ENUM_BLOCKING_MODE:
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 		case CONF_ENUM_LISTENING_MODE:
+		case CONF_ENUM_WEB_THEME:
 			return "enum (string)";
 		case CONF_STRUCT_IN_ADDR:
 			return "IPv4 address";

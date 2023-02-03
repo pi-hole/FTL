@@ -293,4 +293,12 @@ enum fifo_logs {
 	FIFO_MAX
 } __attribute__ ((packed));
 
+enum web_theme {
+	THEME_DEFAULT_AUTO = 0,
+	THEME_DEFAULT_LIGHT,
+	THEME_DEFAULT_DARK,
+	THEME_DEFAULT_DARKER,
+	THEME_LCARS
+} __attribute__ ((packed));
+
 #endif // ENUMS_H
