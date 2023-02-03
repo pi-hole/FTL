@@ -15,7 +15,9 @@
 
 const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], void *ptr, size_t *size);
 bool free_teleporter_zip(mz_zip_archive *zip);
-bool write_teleporter_zip_to_disk(void);
 const char *read_teleporter_zip(char *buffer, const size_t buflen, char *hint, cJSON *json_files);
+
+bool write_teleporter_zip_to_disk(void);
+bool read_teleporter_zip_from_disk(const char *filename);
 
 #endif // TELEPORTER_H

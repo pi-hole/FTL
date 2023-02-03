@@ -676,3 +676,60 @@ bool write_teleporter_zip_to_disk(void)
 
 	return true;
 }
+
+#define MAX_TELEPORTER_ZIP_SIZE (size_t)(128*1024*1024) // 128 MiB
+
+bool read_teleporter_zip_from_disk(const char *filename)
+{
+	// Open ZIP archive
+	FILE *fp = fopen(filename, "r");
+	if(fp == NULL)
+	{
+		log_err("Failed to open %s for reading: %s",
+		        filename, strerror(errno));
+		return false;
+	}
+
+	// Get ZIP archive size
+	fseek(fp, 0, SEEK_END);
+	const size_t size = (size_t)ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	if(size > MAX_TELEPORTER_ZIP_SIZE)
+	{
+		log_err("ZIP archive %s is too large (%zu bytes, max. %zu bytes)",
+		        filename, size, MAX_TELEPORTER_ZIP_SIZE);
+		fclose(fp);
+		return false;
+	}
+
+	// Read ZIP archive to memory
+	void *ptr = calloc(size, sizeof(char));
+	if(fread(ptr, 1, size, fp) != size)
+	{
+		log_err("Failed to read %zu bytes from %s: %s",
+		        size, filename, strerror(errno));
+		fclose(fp);
+		return false;
+	}
+	fclose(fp);
+
+	// Process ZIP archive
+	char hint[ERRBUF_SIZE] = "";
+	cJSON *imported_files = cJSON_CreateArray();
+	const char *error = read_teleporter_zip(ptr, size, hint, imported_files);
+
+	if(error != NULL)
+	{
+		log_err("Failed to read Teleporter ZIP file: %s", error);
+		log_err("Hint: %s", hint);
+		cJSON_Delete(imported_files);
+		free(ptr);
+		return false;
+	}
+
+	// Output imported files
+	for(cJSON *file = imported_files->child; file != NULL; file = file->next)
+		log_info("Imported %s", file->valuestring);
+
+	return true;
+}

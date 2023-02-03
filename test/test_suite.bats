@@ -1307,13 +1307,20 @@
   [[ $status == 0 ]]
 }
 
-@test "Create and verify Teleporter file via CLI" {
+@test "Create, verify and re-import Teleporter file via CLI" {
   run bash -c './pihole-FTL --teleporter'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
-#  # Get filename from last line printed by FTL
-#  filename="$(echo "${lines[@]}" | tail -1)"
+  # Get filename from last line printed by FTL
+  filename="${lines[-1]}"
 #  run bash -c 'zipinfo ${filename}'
 #  printf "%s\n" "${lines[@]}"
 #  [[ $status == 0 ]]
+  run bash -c "./pihole-FTL --teleporter ${filename}"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[-3]}" == "Imported etc/pihole/pihole.toml" ]]
+  [[ "${lines[-2]}" == "Imported etc/pihole/dhcp.leases" ]]
+  [[ "${lines[-1]}" == "Imported etc/pihole/gravity.db" ]]
+  [[ $status == 0 ]]
+  run bash -c "rm ${filename}"
 }

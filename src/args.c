@@ -248,7 +248,7 @@ void parse_args(int argc, char* argv[])
 		}
 	}
 
-	// Set config option through CLI
+	// Create teleporter archive through CLI
 	if(argc == 2 && strcmp(argv[1], "--teleporter") == 0)
 	{
 		// Enable stdout printing
@@ -256,6 +256,16 @@ void parse_args(int argc, char* argv[])
 		log_ctrl(false, true);
 		readFTLconf(&config, false);
 		exit(write_teleporter_zip_to_disk() ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Import teleporter archive through CLI
+	if(argc == 3 && strcmp(argv[1], "--teleporter") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		readFTLconf(&config, false);
+		exit(read_teleporter_zip_from_disk(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// start from 1, as argv[0] is the executable name
@@ -687,7 +697,8 @@ void parse_args(int argc, char* argv[])
 
 			printf("%sTeleporter:%s\n", yellow, normal);
 			printf("\t%s--teleporter%s        Create a Teleporter archive in the\n", green, normal);
-			printf("\t                    current directory and print its name\n\n");
+			printf("\t                    current directory and print its name\n");
+			printf("\t%s--teleporter%s file%s   Import the Teleporter archive %sfile%s\n\n", green, cyan, normal, cyan, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
