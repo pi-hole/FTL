@@ -482,6 +482,16 @@
   #     comma-separated list of <[ip_address:]port>
   port = "8080,[::]:8080"
 
+  # Session timeout in seconds. If a session is inactive for more than this time, it will
+  # be terminated. Sessions are continuously refreshed by the web interface, preventing
+  # sessions from timing out while the web interface is open.
+  # This option may also be used to make logins persistent for long times, e.g. 86400
+  # seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that
+  # the total number of concurrent sessions is limited so setting this value too high
+  # may result in users being rejected and unable to log in if there are already too
+  # many sessions active.
+  sessionTimeout = 300
+
   [webserver.paths]
     # Server root on the host
     #
@@ -511,9 +521,6 @@
 
     # Should FTL prettify the API output (add extra spaces, newlines and indentation)?
     prettyJSON = false
-
-    # How long should a session be considered valid after login [seconds]?
-    sessionTimeout = 300
 
     # API password hash
     #

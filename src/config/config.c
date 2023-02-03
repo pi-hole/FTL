@@ -510,7 +510,7 @@ void initConfig(struct config *conf)
 
 	// sub-struct dns.rate_limit
 	conf->dns.rateLimit.count.k = "dns.rateLimit.count";
-	conf->dns.rateLimit.count.h = "Rate-limited queries are answered with a REFUSED reply and not further processed by FTL.\nThe default settings for FTL's rate-limiting are to permit no more than 1000 queries in 60 seconds. Both numbers can be customized independently. It is important to note that rate-limiting is happening on a per-client basis. Other clients can continue to use FTL while rate-limited clients are short-circuited at the same time.\n For this setting, both numbers, the maximum number of queries within a given time, and the length of the time interval (seconds) have to be specified. For instance, if you want to set a rate limit of 1 query per hour, the option should look like RATE_LIMIT=1/3600. The time interval is relative to when FTL has finished starting (start of the daemon + possible delay by DELAY_STARTUP) then it will advance in steps of the rate-limiting interval. If a client reaches the maximum number of queries it will be blocked until the end of the current interval. This will be logged to /var/log/pihole/FTL.log, e.g. Rate-limiting 10.0.1.39 for at least 44 seconds. If the client continues to send queries while being blocked already and this number of queries during the blocking exceeds the limit the client will continue to be blocked until the end of the next interval (FTL.log will contain lines like Still rate-limiting 10.0.1.39 as it made additional 5007 queries). As soon as the client requests less than the set limit, it will be unblocked (Ending rate-limitation of 10.0.1.39).\n Rate-limiting may be disabled altogether by setting both values to zero (this results in the same behavior as before FTL v5.7).\n How many queries are permitted...";
+	conf->dns.rateLimit.count.h = "Rate-limited queries are answered with a REFUSED reply and not further processed by FTL.\n The default settings for FTL's rate-limiting are to permit no more than 1000 queries in 60 seconds. Both numbers can be customized independently. It is important to note that rate-limiting is happening on a per-client basis. Other clients can continue to use FTL while rate-limited clients are short-circuited at the same time.\n For this setting, both numbers, the maximum number of queries within a given time, and the length of the time interval (seconds) have to be specified. For instance, if you want to set a rate limit of 1 query per hour, the option should look like RATE_LIMIT=1/3600. The time interval is relative to when FTL has finished starting (start of the daemon + possible delay by DELAY_STARTUP) then it will advance in steps of the rate-limiting interval. If a client reaches the maximum number of queries it will be blocked until the end of the current interval. This will be logged to /var/log/pihole/FTL.log, e.g. Rate-limiting 10.0.1.39 for at least 44 seconds. If the client continues to send queries while being blocked already and this number of queries during the blocking exceeds the limit the client will continue to be blocked until the end of the next interval (FTL.log will contain lines like Still rate-limiting 10.0.1.39 as it made additional 5007 queries). As soon as the client requests less than the set limit, it will be unblocked (Ending rate-limitation of 10.0.1.39).\n Rate-limiting may be disabled altogether by setting both values to zero (this results in the same behavior as before FTL v5.7).\n How many queries are permitted...";
 	conf->dns.rateLimit.count.t = CONF_UINT;
 	conf->dns.rateLimit.count.d.ui = 1000;
 
@@ -678,7 +678,7 @@ void initConfig(struct config *conf)
 	conf->resolver.resolveIPv4.d.b = true;
 
 	conf->resolver.networkNames.k = "resolver.networkNames";
-	conf->resolver.networkNames.h = "Control whether FTL should use the fallback option to try to obtain client names from checking the network table. This behavior can be disabled with this option.\nAssume an IPv6 client without a host names. However, the network table knows - though the client's MAC address - that this is the same device where we have a host name for another IP address (e.g., a DHCP server managed IPv4 address). In this case, we use the host name associated to the other address as this is the same device.";
+	conf->resolver.networkNames.h = "Control whether FTL should use the fallback option to try to obtain client names from checking the network table. This behavior can be disabled with this option.\n Assume an IPv6 client without a host names. However, the network table knows - though the client's MAC address - that this is the same device where we have a host name for another IP address (e.g., a DHCP server managed IPv4 address). In this case, we use the host name associated to the other address as this is the same device.";
 	conf->resolver.networkNames.t = CONF_BOOL;
 	conf->resolver.networkNames.f = FLAG_ADVANCED_SETTING;
 	conf->resolver.networkNames.d.b = true;
@@ -760,6 +760,11 @@ void initConfig(struct config *conf)
 	conf->webserver.port.t = CONF_STRING;
 	conf->webserver.port.d.s = (char*)"8080,[::]:8080";
 
+	conf->webserver.sessionTimeout.k = "webserver.sessionTimeout";
+	conf->webserver.sessionTimeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
+	conf->webserver.sessionTimeout.t = CONF_UINT;
+	conf->webserver.sessionTimeout.d.ui = 300u;
+
 	// sub-struct paths
 	conf->webserver.paths.webroot.k = "webserver.paths.webroot";
 	conf->webserver.paths.webroot.h = "Server root on the host";
@@ -798,11 +803,6 @@ void initConfig(struct config *conf)
 	conf->webserver.api.prettyJSON.t = CONF_BOOL;
 	conf->webserver.api.prettyJSON.f = FLAG_ADVANCED_SETTING;
 	conf->webserver.api.prettyJSON.d.b = false;
-
-	conf->webserver.api.sessionTimeout.k = "webserver.api.sessionTimeout";
-	conf->webserver.api.sessionTimeout.h = "How long should a session be considered valid after login [seconds]?";
-	conf->webserver.api.sessionTimeout.t = CONF_UINT;
-	conf->webserver.api.sessionTimeout.d.ui = 300;
 
 	conf->webserver.api.pwhash.k = "webserver.api.pwhash";
 	conf->webserver.api.pwhash.h = "API password hash";

@@ -190,6 +190,7 @@ struct config {
 		struct conf_item domain;
 		struct conf_item acl;
 		struct conf_item port;
+		struct conf_item sessionTimeout;
 		struct {
 			struct conf_item webroot;
 			struct conf_item webhome;
@@ -201,7 +202,6 @@ struct config {
 		struct {
 			struct conf_item localAPIauth;
 			struct conf_item prettyJSON;
-			struct conf_item sessionTimeout;
 			struct conf_item pwhash;
 			struct conf_item exclude_clients;
 			struct conf_item exclude_domains;

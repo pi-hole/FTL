@@ -373,6 +373,8 @@ components:
                   type: string
                 port:
                   type: string
+                sessionTimeout:
+                  type: integer
                 paths:
                   type: object
                   properties:
@@ -394,8 +396,6 @@ components:
                       type: boolean
                     prettyJSON:
                       type: boolean
-                    sessionTimeout:
-                      type: integer
                     pwhash:
                       type: string
                     exclude_clients:
@@ -632,6 +632,7 @@ components:
             domain: pi.hole
             acl: "+0.0.0.0/0,::/0"
             port: 8080,[::]:8080
+            sessionTimeout: 300
             paths:
               webroot: "/var/www/html"
               webhome: "/admin/"
@@ -641,7 +642,6 @@ components:
             api:
               localAPIauth: false
               prettyJSON: false
-              sessionTimeout: 300
               pwhash: ''
               exclude_clients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
               exclude_domains: [ 'google.de', 'pi-hole.net' ]
