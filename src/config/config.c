@@ -29,17 +29,13 @@ static bool config_initialized = false;
 
 void set_all_debug(const bool status)
 {
-	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	for(unsigned int i = 0; i < DEBUG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(&config, i);
-
-		// Skip config entries whose path's are not starting in "debug."
-		if(strcmp("debug", conf_item->p[0]) != 0)
-			continue;
+		struct conf_item *debug_item = get_debug_item(i);
 
 		// Set status
-		conf_item->v.b = status;
+		debug_item->v.b = status;
 	}
 
 	// Update debug flags
@@ -1152,6 +1148,9 @@ void initConfig(struct config *conf)
 
 void readFTLconf(struct config *conf, const bool rewrite)
 {
+	// Initialize config with default values
+	initConfig(conf);
+
 	// First try to read TOML config file
 	if(readFTLtoml(conf, NULL, rewrite))
 	{

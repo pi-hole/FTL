@@ -38,9 +38,6 @@ bool readFTLtoml(struct config *conf, toml_table_t *toml, const bool verbose)
 		toml = parseTOML();
 		if(!toml)
 			return false;
-
-		// Initialize config with default values
-		initConfig(conf);
 	}
 
 	// Try to read debug config. This is done before the full config
