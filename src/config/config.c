@@ -410,23 +410,23 @@ void initConfig(struct config *conf)
 	conf->dns.domain.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	conf->dns.domain.d.s = (char*)"lan";
 
-	conf->dns.domain_needed.k = "dns.domain_needed";
-	conf->dns.domain_needed.h = "If set, A and AAAA queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
-	conf->dns.domain_needed.t = CONF_BOOL;
-	conf->dns.domain_needed.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
-	conf->dns.domain_needed.d.b = false;
+	conf->dns.domainNeeded.k = "dns.domainNeeded";
+	conf->dns.domainNeeded.h = "If set, A and AAAA queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
+	conf->dns.domainNeeded.t = CONF_BOOL;
+	conf->dns.domainNeeded.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.domainNeeded.d.b = false;
 
-	conf->dns.expand_hosts.k = "dns.expand_hosts";
-	conf->dns.expand_hosts.h = "If set, the domain is added to simple names (without a period) in /etc/hosts in the same way as for DHCP-derived names";
-	conf->dns.expand_hosts.t = CONF_BOOL;
-	conf->dns.expand_hosts.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
-	conf->dns.expand_hosts.d.b = false;
+	conf->dns.expandHosts.k = "dns.expandHosts";
+	conf->dns.expandHosts.h = "If set, the domain is added to simple names (without a period) in /etc/hosts in the same way as for DHCP-derived names";
+	conf->dns.expandHosts.t = CONF_BOOL;
+	conf->dns.expandHosts.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.expandHosts.d.b = false;
 
-	conf->dns.bogus_priv.k = "dns.bogus_priv";
-	conf->dns.bogus_priv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
-	conf->dns.bogus_priv.t = CONF_BOOL;
-	conf->dns.bogus_priv.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
-	conf->dns.bogus_priv.d.b = true;
+	conf->dns.bogusPriv.k = "dns.bogusPriv";
+	conf->dns.bogusPriv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
+	conf->dns.bogusPriv.t = CONF_BOOL;
+	conf->dns.bogusPriv.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.bogusPriv.d.b = true;
 
 	conf->dns.dnssec.k = "dns.dnssec";
 	conf->dns.dnssec.h = "Validate DNS replies using DNSSEC?";
@@ -441,34 +441,34 @@ void initConfig(struct config *conf)
 	conf->dns.interface.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	conf->dns.interface.d.s = (char*)"";
 
-	conf->dns.host_record.k = "dns.host_record";
-	conf->dns.host_record.h = "Add A, AAAA and PTR records to the DNS. This adds one or more names to the DNS with associated IPv4 (A) and IPv6 (AAAA) records";
-	conf->dns.host_record.a = cJSON_CreateStringReference("<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]");
-	conf->dns.host_record.t = CONF_STRING;
-	conf->dns.host_record.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
-	conf->dns.host_record.d.s = (char*)"";
+	conf->dns.hostRecord.k = "dns.hostRecord";
+	conf->dns.hostRecord.h = "Add A, AAAA and PTR records to the DNS. This adds one or more names to the DNS with associated IPv4 (A) and IPv6 (AAAA) records";
+	conf->dns.hostRecord.a = cJSON_CreateStringReference("<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]");
+	conf->dns.hostRecord.t = CONF_STRING;
+	conf->dns.hostRecord.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.hostRecord.d.s = (char*)"";
 
-	conf->dns.listening_mode.k = "dns.listening_mode";
-	conf->dns.listening_mode.h = "Pi-hole interface listening modes";
+	conf->dns.listeningMode.k = "dns.listeningMode";
+	conf->dns.listeningMode.h = "Pi-hole interface listening modes";
 	{
-		struct enum_options listening_mode[] =
+		struct enum_options listeningMode[] =
 		{
 			{ "LOCAL", "Allow only local requests. This setting accepts DNS queries only from hosts whose address is on a local subnet, i.e., a subnet for which an interface exists on the server. It is intended to be set as a default on installation, to allow unconfigured installations to be useful but also safe from being used for DNS amplification attacks if (accidentally) running public." },
 			{ "SINGLE", "Permit all origins, accept only on the specified interface. Respond only to queries arriving on the specified interface. The loopback (lo) interface is automatically added to the list of interfaces to use when this option is used. Make sure your Pi-hole is properly firewalled!" },
 			{ "BIND", "By default, FTL binds the wildcard address. If this is not what you want, you can use this option as it forces FTL to really bind only the interfaces it is listening on. Note that this may result in issues when the interface may go down (cable unplugged, etc.). About the only time when this is useful is when running another nameserver on the same port on the same machine. This may also happen if you run a virtualization API such as libvirt. When this option is used, IP alias interface labels (e.g. enp2s0:0) are checked rather than interface names." },
 			{ "ALL", "Permit all origins, accept on all interfaces. Make sure your Pi-hole is properly firewalled! This truly allows any traffic to be replied to and is a dangerous thing to do as your Pi-hole could become an open resolver. You should always ask yourself if the first option doesn't work for you as well." }
 		};
-		CONFIG_ADD_ENUM_OPTIONS(conf->dns.listening_mode.a, listening_mode);
+		CONFIG_ADD_ENUM_OPTIONS(conf->dns.listeningMode.a, listeningMode);
 	}
-	conf->dns.listening_mode.t = CONF_ENUM_LISTENING_MODE;
-	conf->dns.listening_mode.f = FLAG_RESTART_DNSMASQ;
-	conf->dns.listening_mode.d.listening_mode = LISTEN_LOCAL;
+	conf->dns.listeningMode.t = CONF_ENUM_LISTENING_MODE;
+	conf->dns.listeningMode.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.listeningMode.d.listeningMode = LISTEN_LOCAL;
 
-	conf->dns.cache_size.k = "dns.cache_size";
-	conf->dns.cache_size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
-	conf->dns.cache_size.t = CONF_UINT;
-	conf->dns.cache_size.f = FLAG_RESTART_DNSMASQ;
-	conf->dns.cache_size.d.ui = 2000u;
+	conf->dns.cacheSize.k = "dns.cacheSize";
+	conf->dns.cacheSize.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
+	conf->dns.cacheSize.t = CONF_UINT;
+	conf->dns.cacheSize.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.cacheSize.d.ui = 2000u;
 
 	conf->dns.query_logging.k = "dns.query_logging";
 	conf->dns.query_logging.h = "Log DNS queries and replies to pihole.log";

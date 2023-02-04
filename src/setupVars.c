@@ -190,12 +190,12 @@ static void get_conf_weblayout_from_setupVars(void)
 	         config.webserver.interface.boxed.k,config.webserver.interface.boxed.v.b ? "true" : "false");
 }
 
-static void get_conf_listening_mode_from_setupVars(void)
+static void get_conf_listeningMode_from_setupVars(void)
 {
 	// Try to obtain listening mode
-	const char *listening_mode = read_setupVarsconf("DNSMASQ_LISTENING");
+	const char *listeningMode = read_setupVarsconf("DNSMASQ_LISTENING");
 
-	if(listening_mode == NULL)
+	if(listeningMode == NULL)
 	{
 		// Do not change default value, this value is not set in setupVars.conf
 		log_debug(DEBUG_CONFIG, "setupVars.conf:DNSMASQ_LISTENING -> Not set");
@@ -206,11 +206,11 @@ static void get_conf_listening_mode_from_setupVars(void)
 	}
 
 	bool set = false;
-	int listening_mode_enum = get_listening_mode_val(listening_mode);
-	if(listening_mode_enum != -1)
+	int listeningMode_enum = get_listeningMode_val(listeningMode);
+	if(listeningMode_enum != -1)
 	{
 		set = true;
-		config.dns.listening_mode.v.listening_mode = listening_mode_enum;
+		config.dns.listeningMode.v.listeningMode = listeningMode_enum;
 	}
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
@@ -220,7 +220,7 @@ static void get_conf_listening_mode_from_setupVars(void)
 	{
 		// Parameter present in setupVars.conf
 		log_debug(DEBUG_CONFIG, "setupVars.conf:DNSMASQ_LISTENING -> Setting %s to %s",
-		          config.dns.listening_mode.k, get_listening_mode_str(config.dns.listening_mode.v.listening_mode));
+		          config.dns.listeningMode.k, get_listeningMode_str(config.dns.listeningMode.v.listeningMode));
 	}
 	else
 	{
@@ -262,15 +262,15 @@ void importsetupVarsConf(void)
 	get_conf_string_from_setupVars("PIHOLE_DOMAIN", &config.dns.domain);
 
 	// Try to get bool properties (the first two are intentionally set from the same key)
-	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.domain_needed);
-	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.expand_hosts);
-	get_conf_bool_from_setupVars("DNS_BOGUS_PRIV", &config.dns.bogus_priv);
+	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.domainNeeded);
+	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.expandHosts);
+	get_conf_bool_from_setupVars("DNS_bogusPriv", &config.dns.bogusPriv);
 	get_conf_bool_from_setupVars("DNSSEC", &config.dns.dnssec);
 	get_conf_string_from_setupVars("PIHOLE_INTERFACE", &config.dns.interface);
-	get_conf_string_from_setupVars("HOSTRECORD", &config.dns.host_record);
+	get_conf_string_from_setupVars("HOSTRECORD", &config.dns.hostRecord);
 
 	// Try to obtain listening mode
-	get_conf_listening_mode_from_setupVars();
+	get_conf_listeningMode_from_setupVars();
 
 	// Try to obtain REV_SERVER settings
 	get_conf_bool_from_setupVars("REV_SERVER", &config.dns.rev_server.active);

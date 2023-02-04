@@ -27,17 +27,18 @@
 
 static struct {
 	const char *name;
+	const char *title;
 	const char *description;
 } config_topics[] =
 {
-	{ "dns", "DNS server settings" },
-	{ "dhcp", "DHCP server settings" },
-	{ "resolver", "Resolver settings" },
-	{ "database", "Database settings" },
-	{ "webserver", "Webserver and API settings" },
-	{ "files", "File locations" },
-	{ "misc", "Miscellaneous settings" },
-	{ "debug", "Debug settings" }
+	{ "dns", "DNS", "DNS server settings" },
+	{ "dhcp", "DHCP", "DHCP server settings" },
+	{ "resolver", "Resolver", "Resolver settings" },
+	{ "database", "Database", "Database settings" },
+	{ "webserver", "HTTP/API", "Webserver and API settings" },
+	{ "files", "Files", "File locations" },
+	{ "misc", "Misc", "Miscellaneous settings" },
+	{ "debug", "Debug", "Debug settings" }
 };
 
 static struct {
@@ -117,7 +118,7 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 			return cJSON_CreateStringReference(get_refresh_hostnames_str(val->refresh_hostnames));
 		case CONF_ENUM_LISTENING_MODE:
-			return cJSON_CreateStringReference(get_listening_mode_str(val->listening_mode));
+			return cJSON_CreateStringReference(get_listeningMode_str(val->listeningMode));
 		case CONF_ENUM_WEB_THEME:
 			return cJSON_CreateStringReference(get_web_theme_str(val->web_theme));
 		case CONF_STRUCT_IN_ADDR:
@@ -304,12 +305,12 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 			// Check type
 			if(!cJSON_IsString(elem))
 				return "not of type string";
-			const int listening_mode = get_listening_mode_val(elem->valuestring);
-			if(listening_mode == -1)
+			const int listeningMode = get_listeningMode_val(elem->valuestring);
+			if(listeningMode == -1)
 				return "invalid option";
 			// Set item
-			conf_item->v.listening_mode = listening_mode;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.listening_mode);
+			conf_item->v.listeningMode = listeningMode;
+			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.listeningMode);
 			break;
 		}
 		case CONF_ENUM_WEB_THEME:
@@ -449,12 +450,18 @@ static int api_config_get(struct ftl_conn *api)
 
 			// Add allowed properties (if applicable)
 			if(conf_item->a != NULL)
-				JSON_ADD_ITEM_TO_OBJECT(leaf, "allowed", conf_item->a);
+			{
+				// We have to duplicate the array here as it is
+				// otherwise freed when the config item has been returned
+				cJSON *allowed = cJSON_Duplicate(conf_item->a, true);
+				JSON_ADD_ITEM_TO_OBJECT(leaf, "allowed", allowed);
+			}
 			else
 				JSON_ADD_NULL_TO_OBJECT(leaf, "allowed");
 
 			// Add config item type
-			JSON_REF_STR_IN_OBJECT(leaf, "type", get_conf_type_str(conf_item->t));
+			const char *typestr = get_conf_type_str(conf_item->t);
+			JSON_REF_STR_IN_OBJECT(leaf, "type", typestr);
 
 			// Add current value
 			cJSON *val = addJSONvalue(conf_item->t, &conf_item->v);
@@ -475,6 +482,8 @@ static int api_config_get(struct ftl_conn *api)
 				continue;
 			}
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "default", dval);
+			const bool modified = memcmp(&conf_item->v, &conf_item->d, sizeof(union conf_value)) != 0;
+			JSON_ADD_BOOL_TO_OBJECT(leaf, "modified", modified);
 
 			// Add config item flags
 			cJSON *flags = JSON_NEW_OBJECT();
@@ -503,8 +512,48 @@ static int api_config_get(struct ftl_conn *api)
 	if(requested_path != NULL)
 		free_config_path(requested_path);
 
-	// Build and return JSON response
 	cJSON *json = JSON_NEW_OBJECT();
+
+	// Add topics and DNS server suggestions if in detailed mode
+	if(detailed)
+	{
+		cJSON *topics = JSON_NEW_ARRAY();
+		for(unsigned int i = 0; i < ArraySize(config_topics); i++)
+		{
+			cJSON *topic = JSON_NEW_OBJECT();
+			JSON_REF_STR_IN_OBJECT(topic, "name", config_topics[i].name);
+			JSON_REF_STR_IN_OBJECT(topic, "title", config_topics[i].title);
+			JSON_REF_STR_IN_OBJECT(topic, "description", config_topics[i].description);
+			JSON_ADD_ITEM_TO_ARRAY(topics, topic);
+		}
+		JSON_ADD_ITEM_TO_OBJECT(json, "topics", topics);
+
+		cJSON *servers = JSON_NEW_ARRAY();
+		for(unsigned int i = 0; i < ArraySize(dns_server); i++)
+		{
+			cJSON *server = JSON_NEW_OBJECT();
+			JSON_REF_STR_IN_OBJECT(server, "name", dns_server[i].name);
+
+			cJSON *v4 = JSON_NEW_ARRAY();
+			if(dns_server[i].v4.addr1 != NULL)
+				JSON_REF_STR_IN_ARRAY(v4, dns_server[i].v4.addr1);
+			if(dns_server[i].v4.addr2 != NULL)
+				JSON_REF_STR_IN_ARRAY(v4, dns_server[i].v4.addr2);
+			JSON_ADD_ITEM_TO_OBJECT(server, "v4", v4);
+
+			cJSON *v6 = JSON_NEW_ARRAY();
+			if(dns_server[i].v6.addr1 != NULL)
+				JSON_REF_STR_IN_ARRAY(v6, dns_server[i].v6.addr1);
+			if(dns_server[i].v6.addr2 != NULL)
+				JSON_REF_STR_IN_ARRAY(v6, dns_server[i].v6.addr2);
+			JSON_ADD_ITEM_TO_OBJECT(server, "v6", v6);
+
+			JSON_ADD_ITEM_TO_ARRAY(servers, server);
+		}
+		JSON_ADD_ITEM_TO_OBJECT(json, "dns_servers", servers);
+	}
+
+	// Build and return JSON response
 	JSON_ADD_ITEM_TO_OBJECT(json, "config", config_j);
 	JSON_SEND_OBJECT(json);
 }
@@ -834,52 +883,4 @@ int api_config(struct ftl_conn *api)
 		return api_config_put_delete(api);
 
 	return 0;
-}
-
-int api_config_topics(struct ftl_conn *api)
-{
-	cJSON *topics = JSON_NEW_ARRAY();
-	for(unsigned int i = 0; i < ArraySize(config_topics); i++)
-	{
-		cJSON *topic = JSON_NEW_OBJECT();
-		JSON_REF_STR_IN_OBJECT(topic, "name", config_topics[i].name);
-		JSON_REF_STR_IN_OBJECT(topic, "description", config_topics[i].description);
-		JSON_ADD_ITEM_TO_ARRAY(topics, topic);
-	}
-
-	// Build and return JSON response
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "topics", topics);
-	JSON_SEND_OBJECT(json);
-}
-
-int api_config_server(struct ftl_conn *api)
-{
-	cJSON *servers = JSON_NEW_ARRAY();
-	for(unsigned int i = 0; i < ArraySize(dns_server); i++)
-	{
-		cJSON *server = JSON_NEW_OBJECT();
-		JSON_REF_STR_IN_OBJECT(server, "name", dns_server[i].name);
-
-		cJSON *v4 = JSON_NEW_ARRAY();
-		if(dns_server[i].v4.addr1 != NULL)
-			JSON_REF_STR_IN_ARRAY(v4, dns_server[i].v4.addr1);
-		if(dns_server[i].v4.addr2 != NULL)
-			JSON_REF_STR_IN_ARRAY(v4, dns_server[i].v4.addr2);
-		JSON_ADD_ITEM_TO_OBJECT(server, "v4", v4);
-
-		cJSON *v6 = JSON_NEW_ARRAY();
-		if(dns_server[i].v6.addr1 != NULL)
-			JSON_REF_STR_IN_ARRAY(v6, dns_server[i].v6.addr1);
-		if(dns_server[i].v6.addr2 != NULL)
-			JSON_REF_STR_IN_ARRAY(v6, dns_server[i].v6.addr2);
-		JSON_ADD_ITEM_TO_OBJECT(server, "v6", v6);
-
-		JSON_ADD_ITEM_TO_ARRAY(servers, server);
-	}
-
-	// Build and return JSON response
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "server", servers);
-	JSON_SEND_OBJECT(json);
 }

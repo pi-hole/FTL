@@ -110,16 +110,16 @@
 
   # If set, A and AAAA queries for plain names, without dots or domain parts, are never
   # forwarded to upstream nameservers
-  domain_needed = false
+  domainNeeded = false
 
   # If set, the domain is added to simple names (without a period) in /etc/hosts in the
   # same way as for DHCP-derived names
-  expand_hosts = false
+  expandHosts = false
 
   # Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are
   # not found in /etc/hosts or the DHCP leases file be answered with "no such domain"
   # rather than being forwarded upstream?
-  bogus_priv = true
+  bogusPriv = true
 
   # Validate DNS replies using DNSSEC?
   dnssec = true
@@ -135,7 +135,7 @@
   #
   # Possible values are:
   #     <name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]
-  host_record = ""
+  hostRecord = ""
 
   # Pi-hole interface listening modes
   #
@@ -165,13 +165,13 @@
   #       properly firewalled! This truly allows any traffic to be replied to and is a
   #       dangerous thing to do as your Pi-hole could become an open resolver. You
   #       should always ask yourself if the first option doesn't work for you as well.
-  listening_mode = "LOCAL"
+  listeningMode = "LOCAL"
 
   # Cache size of the DNS server. Note that expiring cache entries naturally make room
   # for new insertions over time. Setting this number too high will have an adverse
   # effect as not only more space is needed, but also lookup speed gets degraded in the
   # 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.
-  cache_size = 2000
+  cacheSize = 2000
 
   # Log DNS queries and replies to pihole.log
   query_logging = true

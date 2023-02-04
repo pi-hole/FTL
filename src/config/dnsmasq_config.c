@@ -254,7 +254,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 	fputs("# Set the size of dnsmasq's cache. The default is 150 names. Setting the cache\n", pihole_conf);
 	fputs("# size to zero disables caching. Note: huge cache size impacts performance\n", pihole_conf);
-	fprintf(pihole_conf, "cache-size=%u\n", conf->dns.cache_size.v.ui);
+	fprintf(pihole_conf, "cache-size=%u\n", conf->dns.cacheSize.v.ui);
 	fputs("\n", pihole_conf);
 
 	fputs("# Return answers to DNS queries from /etc/hosts and interface-name and\n", pihole_conf);
@@ -288,7 +288,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("\n", pihole_conf);
 	}
 
-	if(conf->dns.bogus_priv.v.b)
+	if(conf->dns.bogusPriv.v.b)
 	{
 		fputs("# Bogus private reverse lookups. All reverse lookups for private IP\n", pihole_conf);
 		fputs("# ranges (ie 192.168.x.x, etc) which are not found in /etc/hosts or the\n", pihole_conf);
@@ -297,7 +297,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("\n", pihole_conf);
 	}
 
-	if(conf->dns.domain_needed.v.b)
+	if(conf->dns.domainNeeded.v.b)
 	{
 		fputs("# Add the domain to simple names (without a period) in /etc/hosts in\n", pihole_conf);
 		fputs("# the same way as for DHCP-derived names\n", pihole_conf);
@@ -305,7 +305,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("\n", pihole_conf);
 	}
 
-	if(conf->dns.expand_hosts.v.b)
+	if(conf->dns.expandHosts.v.b)
 	{
 		fputs("# Never forward A or AAAA queries for plain names, without dots or\n", pihole_conf);
 		fputs("# domain parts, to upstream nameservers\n", pihole_conf);
@@ -332,7 +332,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		// ticked, we add `local=/domain/` to signal that this domain is purely
 		// local and FTL may answer queries from /etc/hosts or DHCP but should
 		// never forward queries on that domain to any upstream servers
-		if(conf->dns.domain_needed.v.b)
+		if(conf->dns.domainNeeded.v.b)
 		{
 			fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
 			fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
@@ -343,10 +343,10 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		}
 	}
 
-	if(strlen(conf->dns.host_record.v.s) > 0)
+	if(strlen(conf->dns.hostRecord.v.s) > 0)
 	{
 		fputs("# Add A, AAAA and PTR records to the DNS\n", pihole_conf);
-		fprintf(pihole_conf, "host-record=%s\n", conf->dns.host_record.v.s);
+		fprintf(pihole_conf, "host-record=%s\n", conf->dns.hostRecord.v.s);
 	}
 
 	const char *interface = conf->dns.interface.v.s;
@@ -354,7 +354,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	if(strlen(interface) == 0)
 		interface = "eth0";
 
-	switch(conf->dns.listening_mode.v.listening_mode)
+	switch(conf->dns.listeningMode.v.listeningMode)
 	{
 		case LISTEN_LOCAL:
 			fputs("# Only respond to queries from devices that are at most one hop away (local devices)\n",
@@ -391,7 +391,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 
 		// Forward unqualified names to the target only when the "never forward
 		// non-FQDN" option is NOT ticked
-		if(!conf->dns.domain_needed.v.b)
+		if(!conf->dns.domainNeeded.v.b)
 			fprintf(pihole_conf, "server=//%s\n",
 			        conf->dns.rev_server.target.v.s);
 		fputs("\n", pihole_conf);

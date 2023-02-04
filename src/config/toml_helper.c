@@ -321,7 +321,7 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 			printTOMLstring(fp, get_refresh_hostnames_str(v->refresh_hostnames));
 			break;
 		case CONF_ENUM_LISTENING_MODE:
-			printTOMLstring(fp, get_listening_mode_str(v->listening_mode));
+			printTOMLstring(fp, get_listeningMode_str(v->listeningMode));
 			break;
 		case CONF_ENUM_WEB_THEME:
 			printTOMLstring(fp, get_web_theme_str(v->web_theme));
@@ -539,10 +539,10 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			const toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
-				const int listening_mode = get_listening_mode_val(val.u.s);
+				const int listeningMode = get_listeningMode_val(val.u.s);
 				free(val.u.s);
-				if(listening_mode != -1)
-					conf_item->v.listening_mode = listening_mode;
+				if(listeningMode != -1)
+					conf_item->v.listeningMode = listeningMode;
 				else
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}

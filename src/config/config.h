@@ -32,7 +32,7 @@ union conf_value {
 	bool b;                                     // boolean value
 	int i;                                      // integer value
 	unsigned int ui;                            // unsigned int value
-	uint16_t u16;                                // 16 bit unsigned int value
+	uint16_t u16;                               // 16 bit unsigned int value
 	long l;                                     // long value
 	unsigned long ul;                           // unsigned long value
 	double d;                                   // double value
@@ -43,7 +43,7 @@ union conf_value {
 	enum refresh_hostnames refresh_hostnames;   // enum refresh_hostnames value
 	enum privacy_level privacy_level;           // enum privacy_level value
 	enum debug_flag debug_flag;                 // enum debug_flag value
-	enum listening_mode listening_mode;         // enum listening_mode value
+	enum listening_mode listeningMode;          // enum listening_mode value
 	enum web_theme web_theme;                   // enum web_theme value
 	struct in_addr in_addr;                     // struct in_addr value
 	struct in6_addr in6_addr;                   // struct in6_addr value
@@ -112,14 +112,14 @@ struct config {
 		struct conf_item blockTTL;
 		struct conf_item hosts;
 		struct conf_item domain;
-		struct conf_item domain_needed;
-		struct conf_item expand_hosts;
-		struct conf_item bogus_priv;
+		struct conf_item domainNeeded;
+		struct conf_item expandHosts;
+		struct conf_item bogusPriv;
 		struct conf_item dnssec;
 		struct conf_item interface;
-		struct conf_item host_record;
-		struct conf_item listening_mode;
-		struct conf_item cache_size;
+		struct conf_item hostRecord;
+		struct conf_item listeningMode;
+		struct conf_item cacheSize;
 		struct conf_item query_logging;
 		struct conf_item cnames;
 		struct conf_item port;

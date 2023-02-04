@@ -189,9 +189,9 @@ static bool readStringValue(struct conf_item *conf_item, const char *value)
 		}
 		case CONF_ENUM_LISTENING_MODE:
 		{
-			const int listening_mode = get_listening_mode_val(value);
-			if(listening_mode != -1)
-				conf_item->v.listening_mode = listening_mode;
+			const int listeningMode = get_listeningMode_val(value);
+			if(listeningMode != -1)
+				conf_item->v.listeningMode = listeningMode;
 			else
 			{
 				char *allowed = NULL;

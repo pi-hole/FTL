@@ -991,9 +991,9 @@ int __attribute__ ((pure)) get_busy_reply_val(const char *replyWhenBusy)
 	return -1;
 }
 
-const char * __attribute__ ((const)) get_listening_mode_str(const enum listening_mode listening_mode)
+const char * __attribute__ ((const)) get_listeningMode_str(const enum listening_mode listeningMode)
 {
-	switch(listening_mode)
+	switch(listeningMode)
 	{
 		case LISTEN_LOCAL:
 			return "LOCAL";
@@ -1007,15 +1007,15 @@ const char * __attribute__ ((const)) get_listening_mode_str(const enum listening
 	return NULL;
 }
 
-int __attribute__ ((pure)) get_listening_mode_val(const char *listening_mode)
+int __attribute__ ((pure)) get_listeningMode_val(const char *listeningMode)
 {
-	if(strcasecmp(listening_mode, "LOCAL") == 0)
+	if(strcasecmp(listeningMode, "LOCAL") == 0)
 		return LISTEN_LOCAL;
-	else if(strcasecmp(listening_mode, "ALL") == 0)
+	else if(strcasecmp(listeningMode, "ALL") == 0)
 		return LISTEN_ALL;
-	else if(strcasecmp(listening_mode, "SINGLE") == 0)
+	else if(strcasecmp(listeningMode, "SINGLE") == 0)
 		return LISTEN_SINGLE;
-	else if(strcasecmp(listening_mode, "BIND") == 0)
+	else if(strcasecmp(listeningMode, "BIND") == 0)
 		return LISTEN_BIND;
 
 	// Invalid value

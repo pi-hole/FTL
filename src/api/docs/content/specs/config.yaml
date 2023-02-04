@@ -145,54 +145,7 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
-    topics:
-      get:
-        summary: Get configuration topics
-        tags:
-          - "Pi-hole Configuration"
-        operationId: "get_config_topics"
-        description: |
-          This API hook returns categories that may be used to group configuration options.
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: 'config.yaml#/components/schemas/topics'
-                examples:
-                  topics:
-                    $ref: 'config.yaml#/components/examples/topics'
-          '401':
-            description: Unauthorized
-            content:
-              application/json:
-                schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
-    server:
-      get:
-        summary: Get DNS server suggestions
-        tags:
-          - "Pi-hole Configuration"
-        operationId: "get_config_server_suggestions"
-        description: |
-          This API hook returns a list of DNS servers known to be compatible with Pi-hole.
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: 'config.yaml#/components/schemas/server'
-                examples:
-                  server:
-                    $ref: 'config.yaml#/components/examples/server'
-          '401':
-            description: Unauthorized
-            content:
-              application/json:
-                schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+
   schemas:
     config:
       type: object
@@ -231,21 +184,21 @@ components:
                     type: string
                 domain:
                   type: string
-                domain_needed:
+                domainNeeded:
                   type: boolean
-                expand_hosts:
+                expandHosts:
                   type: boolean
-                bogus_priv:
+                bogusPriv:
                   type: boolean
                 dnssec:
                   type: boolean
                 interface:
                   type: string
-                host_record:
+                hostRecord:
                   type: string
-                listening_mode:
+                listeningMode:
                   type: string
-                cache_size:
+                cacheSize:
                   type: integer
                 query_logging:
                   type: boolean
@@ -521,6 +474,9 @@ components:
               name:
                 type: string
                 description: The name of the topic
+              title:
+                type: string
+                description: The tab title of the topic
               description:
                 type: string
                 description: A human-readable description of the topic
@@ -565,14 +521,14 @@ components:
             hosts:
               - "192.168.2.123 mymusicbox"
             domain: "lan"
-            domain_needed: true
-            expand_hosts: true
-            bogus_priv: true
+            domainNeeded: true
+            expandHosts: true
+            bogusPriv: true
             dnssec: true
             interface: "eth0"
-            host_record: ""
-            listening_mode: "local"
-            cache_size: 10000
+            hostRecord: ""
+            listeningMode: "local"
+            cacheSize: 10000
             query_logging: true
             cnames:
               - "*.example.com,default.example.com"
@@ -713,24 +669,12 @@ components:
       summary: All topics
       value:
         topics:
-          - name: DNS
+          - name: dns
+            title: DNS
             description: DNS settings
-          - name: dnsmasq
-            description: dnsmasq settings
-          - name: Resolver
-            description: Resolver settings
-          - name: Database
-            description: Database settings
-          - name: API
-            description: API settings
-          - name: HTTP
-            description: HTTP settings
-          - name: Files
-            description: File locations
-          - name: Miscellaneous
-            description: Miscellaneous settings
-          - name: Debug
-            description: Debug settings
+          - name: dhcp
+            title: DHCP
+            description: DHCP settings
     server:
       summary: Several servers being suggested
       value:
