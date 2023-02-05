@@ -499,7 +499,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 
 	// Rotate old config files
-	rotate_files(DNSMASQ_PH_CONFIG);
+	rotate_files(DNSMASQ_PH_CONFIG, NULL);
 
 	log_debug(DEBUG_CONFIG, "Installing "DNSMASQ_TEMP_CONF" to "DNSMASQ_PH_CONFIG);
 	if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
@@ -709,7 +709,7 @@ bool read_legacy_custom_hosts_config(void)
 bool write_custom_list(void)
 {
 	// Rotate old hosts files
-	rotate_files(DNSMASQ_CUSTOM_LIST);
+	rotate_files(DNSMASQ_CUSTOM_LIST, NULL);
 
 	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST" for writing");
 	FILE *custom_list = fopen(DNSMASQ_CUSTOM_LIST, "w");

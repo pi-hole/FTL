@@ -26,7 +26,7 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	// Rotate config file, no rotation is done when the file is opened for
 	// reading (mode == "r")
 	if(mode[0] != 'r')
-		rotate_files(GLOBALTOMLPATH);
+		rotate_files(GLOBALTOMLPATH, NULL);
 
 	// No readable local file found, try global file
 	fp = fopen(GLOBALTOMLPATH, mode);

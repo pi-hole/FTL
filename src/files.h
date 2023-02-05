@@ -25,7 +25,7 @@ void ls_dir(const char* path);
 unsigned int get_path_usage(const char *path, char buffer[64]);
 unsigned int get_filepath_usage(const char *file, char buffer[64]);
 bool directory_exists(const char *path);
-void rotate_files(const char *path);
+void rotate_files(const char *path, char **first_file);
 
 int parse_line(char *line, char **key, char **value);
 

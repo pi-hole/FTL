@@ -5,7 +5,7 @@ components:
       get:
         summary: Get currently active DHCP leases
         tags:
-          - "FTL information"
+          - "DHCP"
         operationId: "get_dhcp"
         description: |
           This API hook returns the currently active DHCP leases.
@@ -16,6 +16,35 @@ components:
               application/json:
                 schema:
                   $ref: 'dhcp.yaml#/components/schemas/leases'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    leases_ip:
+      parameters:
+        - $ref: 'dhcp.yaml#/components/parameters/ip'
+      delete:
+        summary: Remove DHCP lease
+        tags:
+          - "DHCP"
+        operationId: "delete_dhcp"
+        description: |
+          This API hook removes a currently active DHCP lease.
+          *Note:* There will be no content on success.
+        responses:
+          '204':
+            description: Item deleted
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/bad_request'
+                examples:
+                  item_missing:
+                    $ref: 'dhcp.yaml#/components/examples/errors/uri_error/item_missing'
           '401':
             description: Unauthorized
             content:
@@ -52,3 +81,22 @@ components:
                 type: string
                 description: Client ID
                 example: "00:00:00:00:00:00"
+  examples:
+    errors:
+      uri_error:
+        item_missing:
+          summary: DHCP lease to be deleted not specified accurately enough
+          value:
+            error:
+              key: "uri_error"
+              message: "No ip in URI"
+              hint: null
+  parameters:
+    ip:
+      in: path
+      name: ip
+      schema:
+        type: string
+      required: true
+      description: IP address of lease to be modified
+      example: 192.168.2.222

@@ -360,7 +360,7 @@ static int copy_file(const char *source, const char *destination)
 
 
 // Rotate files in a directory
-void rotate_files(const char *path)
+void rotate_files(const char *path, char **first_file)
 {
 	// Check if file exists. If not, we don't need to rotate anything here
 	if(!file_exists(path))
@@ -392,6 +392,11 @@ void rotate_files(const char *path)
 		char *new_path = calloc(buflen, sizeof(char));
 		snprintf(new_path, buflen, BACKUP_DIR"/%s.%u", filename, i);
 		free(fname);
+
+		// If this is the first file, export the path to the caller (if
+		// requested)
+		if(i == 1 && first_file != NULL)
+			*first_file = strdup(new_path);
 
 		size_t old_path_len = strlen(old_path) + 4;
 		char *old_path_compressed = calloc(old_path_len, sizeof(char));

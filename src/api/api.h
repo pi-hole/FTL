@@ -93,6 +93,7 @@ int api_action_reboot(struct ftl_conn *api);
 int api_search(struct ftl_conn *api);
 
 // DHCP methods
-int api_dhcp_leases(struct ftl_conn *api);
+int api_dhcp_leases_GET(struct ftl_conn *api);
+int api_dhcp_leases_DELETE(struct ftl_conn *api);
 
 #endif // ROUTES_H

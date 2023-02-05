@@ -34,6 +34,8 @@ tags:
     description: Methods used to get usage data from your Pi-hole
   - name: "DNS control"
     description: Methods used to control the behavior of your Pi-hole
+  - name: "DHCP server control"
+    description: Methods used to control the DHCP server of your Pi-hole
   - name: "Group management"
     description: Methods used to manage groups on your Pi-hole
   - name: "Domain management"
@@ -207,6 +209,9 @@ paths:
 
   /dhcp/leases:
     $ref: 'dhcp.yaml#/components/paths/leases'
+
+  /dhcp/leases/{ip}:
+    $ref: 'dhcp.yaml#/components/paths/leases_ip'
 
   /search/{domain}:
     $ref: 'search.yaml#/components/paths/search'

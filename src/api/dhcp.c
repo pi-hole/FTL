@@ -13,8 +13,10 @@
 #include "webserver/json_macros.h"
 #include "api.h"
 #include "config/dnsmasq_config.h"
+// rotate_files()
+#include "files.h"
 
-int api_dhcp_leases(struct ftl_conn *api)
+int api_dhcp_leases_GET(struct ftl_conn *api)
 {
 	// Get DHCP leases
 	cJSON *leases = JSON_NEW_ARRAY();
@@ -68,4 +70,31 @@ int api_dhcp_leases(struct ftl_conn *api)
 	fclose(fp);
 
 	JSON_SEND_OBJECT(json);
+}
+
+// defined in dnsmasq_interface.c
+extern bool FTL_unlink_DHCP_lease(const char *ipaddr);
+
+// Delete DHCP leases
+int api_dhcp_leases_DELETE(struct ftl_conn *api)
+{
+	// Validate input (must be a valid IPv4 address)
+	struct sockaddr_in sa;
+	if(api->item == NULL || strlen(api->item) == 0 || inet_pton(AF_INET, api->item, &(sa.sin_addr)) == 0)
+	{
+		// Send empty reply with code 204 No Content
+		return send_json_error(api,
+		                       400,
+				       "bad_request",
+		                       "The provided IPv4 address is invalid",
+				       api->item);
+	}
+
+	// Delete lease
+	log_debug(DEBUG_API, "Deleting DHCP lease for address %s", api->item);
+	FTL_unlink_DHCP_lease(api->item);
+
+	// Send empty reply with code 204 No Content
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_SEND_OBJECT_CODE(json, 204);
 }

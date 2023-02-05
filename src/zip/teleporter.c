@@ -320,7 +320,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 
 	// Write new pihole.toml to disk, the dnsmaq config was already written above
 	// Also write the custom list to disk
-	rotate_files(GLOBALTOMLPATH);
+	rotate_files(GLOBALTOMLPATH, NULL);
 	writeFTLtoml(true);
 	write_custom_list();
 
@@ -336,7 +336,7 @@ static const char *import_dhcp_leases(void *ptr, size_t size, char * const hint)
 	// Nevertheless, we rotate the current dhcp.leases file to keep a backup of the previous version
 
 	// Rotate current dhcp.leases file
-	rotate_files(DHCPLEASESFILE);
+	rotate_files(DHCPLEASESFILE, NULL);
 
 	// Write new dhcp.leases file to disk
 	FILE *fp = fopen(DHCPLEASESFILE, "w");
