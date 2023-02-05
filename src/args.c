@@ -234,8 +234,10 @@ void parse_args(int argc, char* argv[])
 	{
 		// Enable stdout printing
 		cli_mode = true;
-		log_ctrl(false, true);
+		log_ctrl(false, false);
 		readFTLconf(&config, false);
+		log_ctrl(false, true);
+		set_all_debug(false);
 		if(argc == 3)
 			exit(get_config_from_CLI(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
 		else if(argc == 4)
