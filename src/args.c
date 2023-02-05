@@ -239,9 +239,11 @@ void parse_args(int argc, char* argv[])
 		log_ctrl(false, true);
 		set_all_debug(false);
 		if(argc == 3)
-			exit(get_config_from_CLI(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
+			exit(get_config_from_CLI(argv[2], false));
+		else if(argc == 4 && strcmp(argv[2], "-q") == 0)
+			exit(get_config_from_CLI(argv[3], true));
 		else if(argc == 4)
-			exit(set_config_from_CLI(argv[2], argv[3]) ? EXIT_SUCCESS : EXIT_FAILURE);
+			exit(set_config_from_CLI(argv[2], argv[3]));
 		else
 		{
 			printf("Usage: %s --config <config item key> [<value>]\n", argv[0]);

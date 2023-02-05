@@ -10,7 +10,7 @@
 #ifndef CONFIG_CLI_H
 #define CONFIG_CLI_H
 
-bool set_config_from_CLI(const char *key, const char *value);
-bool get_config_from_CLI(const char *key);
+int set_config_from_CLI(const char *key, const char *value);
+int get_config_from_CLI(const char *key, const bool quiet);
 
 #endif //CONFIG_CLI_H

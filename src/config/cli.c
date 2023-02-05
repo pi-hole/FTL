@@ -288,7 +288,7 @@ static bool readStringValue(struct conf_item *conf_item, const char *value)
 	return true;
 }
 
-bool set_config_from_CLI(const char *key, const char *value)
+int set_config_from_CLI(const char *key, const char *value)
 {
 	// Identify config option
 	struct config newconf;
@@ -317,7 +317,7 @@ bool set_config_from_CLI(const char *key, const char *value)
 	if(new_item == NULL)
 	{
 		log_err("Unknown config option: %s", key);
-		return false;
+		return 2;
 	}
 
 	// Parse value
@@ -337,7 +337,7 @@ bool set_config_from_CLI(const char *key, const char *value)
 			{
 				// Test failed
 				log_debug(DEBUG_CONFIG, "Config item %s: dnsmasq config test failed", conf_item->k);
-				return false;
+				return 3;
 			}
 		}
 		else if(conf_item == &config.dns.hosts)
@@ -367,10 +367,10 @@ bool set_config_from_CLI(const char *key, const char *value)
 
 	putchar('\n');
 	writeFTLtoml(false);
-	return true;
+	return EXIT_SUCCESS;
 }
 
-bool get_config_from_CLI(const char *key)
+int get_config_from_CLI(const char *key, const bool quiet)
 {
 	// Identify config option
 	struct conf_item *conf_item = NULL;
@@ -391,12 +391,17 @@ bool get_config_from_CLI(const char *key)
 	if(conf_item == NULL)
 	{
 		log_err("Unknown config option: %s", key);
-		return false;
+		return 2;
 	}
+
+	// Use return status if this is a boolean value
+	// and we are in quiet mode
+	if(quiet && conf_item->t == CONF_BOOL)
+		return conf_item->v.b ? EXIT_SUCCESS : EXIT_FAILURE;
 
 	// Print value
 	writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
 	putchar('\n');
 
-	return true;
+	return EXIT_SUCCESS;
 }
