@@ -223,13 +223,10 @@ void duplicate_config(struct config *dst, struct config *src)
 }
 
 // True = Identical, False = Different
-bool compare_config_item(const struct conf_item *conf_item1, const struct conf_item *conf_item2)
+bool compare_config_item(const enum conf_type t, const union conf_value *val1, const union conf_value *val2)
 {
-	if(conf_item1->t != conf_item2->t)
-		return false;
-
 	// Make a type-dependent copy of the value
-	switch(conf_item1->t)
+	switch(t)
 	{
 		case CONF_BOOL:
 		case CONF_INT:
@@ -248,14 +245,14 @@ bool compare_config_item(const struct conf_item *conf_item1, const struct conf_i
 		case CONF_STRUCT_IN_ADDR:
 		case CONF_STRUCT_IN6_ADDR:
 			// Compare entire union
-			return memcmp(&conf_item1->v, &conf_item2->v, sizeof(conf_item1->v)) == 0;
+			return memcmp(val1, val2, sizeof(*val1)) == 0;
 		case CONF_STRING:
 		case CONF_STRING_ALLOCATED:
 			// Compare strings
-			return strcmp(conf_item1->v.s, conf_item2->v.s) == 0;
+			return strcmp(val1->s, val2->s) == 0;
 		case CONF_JSON_STRING_ARRAY:
 			// Compare JSON object/array
-			return cJSON_Compare(conf_item1->v.json, conf_item2->v.json, true);
+			return cJSON_Compare(val1->json, val2->json, true);
 	}
 	return false;
 }
@@ -461,27 +458,27 @@ void initConfig(struct config *conf)
 		CONFIG_ADD_ENUM_OPTIONS(conf->dns.listeningMode.a, listeningMode);
 	}
 	conf->dns.listeningMode.t = CONF_ENUM_LISTENING_MODE;
-	conf->dns.listeningMode.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.listeningMode.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	conf->dns.listeningMode.d.listeningMode = LISTEN_LOCAL;
 
 	conf->dns.cacheSize.k = "dns.cacheSize";
 	conf->dns.cacheSize.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
 	conf->dns.cacheSize.t = CONF_UINT;
-	conf->dns.cacheSize.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.cacheSize.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	conf->dns.cacheSize.d.ui = 2000u;
 
-	conf->dns.query_logging.k = "dns.query_logging";
-	conf->dns.query_logging.h = "Log DNS queries and replies to pihole.log";
-	conf->dns.query_logging.t = CONF_BOOL;
-	conf->dns.query_logging.f = FLAG_RESTART_DNSMASQ;
-	conf->dns.query_logging.d.b = true;
+	conf->dns.queryLogging.k = "dns.queryLogging";
+	conf->dns.queryLogging.h = "Log DNS queries and replies to pihole.log";
+	conf->dns.queryLogging.t = CONF_BOOL;
+	conf->dns.queryLogging.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.queryLogging.d.b = true;
 
-	conf->dns.cnames.k = "dns.cnames";
-	conf->dns.cnames.h = "List of CNAME records which indicate that <cname> is really <target>. If the <TTL> is given, it overwrites the value of local-ttl";
-	conf->dns.cnames.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"<cname>,<target>[,<TTL>]\"");
-	conf->dns.cnames.t = CONF_JSON_STRING_ARRAY;
-	conf->dns.cnames.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
-	conf->dns.cnames.d.json = cJSON_CreateArray();
+	conf->dns.cnameRecords.k = "dns.cnameRecords";
+	conf->dns.cnameRecords.h = "List of CNAME records which indicate that <cname> is really <target>. If the <TTL> is given, it overwrites the value of local-ttl";
+	conf->dns.cnameRecords.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"<cname>,<target>[,<TTL>]\"");
+	conf->dns.cnameRecords.t = CONF_JSON_STRING_ARRAY;
+	conf->dns.cnameRecords.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.cnameRecords.d.json = cJSON_CreateArray();
 
 	conf->dns.port.k = "dns.port";
 	conf->dns.port.h = "Port used by the DNS server";
@@ -586,33 +583,33 @@ void initConfig(struct config *conf)
 	conf->dns.reply.blocking.v6.f = FLAG_ADVANCED_SETTING;
 	memset(&conf->dns.reply.blocking.v6.d.in6_addr, 0, sizeof(struct in6_addr));
 
-	// sub-struct rev_server
-	conf->dns.rev_server.active.k = "dns.rev_server.active";
-	conf->dns.rev_server.active.h = "Is the reverse server (former also called \"conditional forwarding\") feature enabled?";
-	conf->dns.rev_server.active.t = CONF_BOOL;
-	conf->dns.rev_server.active.d.b = false;
-	conf->dns.rev_server.active.f = FLAG_RESTART_DNSMASQ;
+	// sub-struct revServer
+	conf->dns.revServer.active.k = "dns.revServer.active";
+	conf->dns.revServer.active.h = "Is the reverse server (former also called \"conditional forwarding\") feature enabled?";
+	conf->dns.revServer.active.t = CONF_BOOL;
+	conf->dns.revServer.active.d.b = false;
+	conf->dns.revServer.active.f = FLAG_RESTART_DNSMASQ;
 
-	conf->dns.rev_server.cidr.k = "dns.rev_server.cidr";
-	conf->dns.rev_server.cidr.h = "Address range for the reverse server feature in CIDR notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are substitutet (exact address match). This is almost certainly not what you want here.";
-	conf->dns.rev_server.cidr.a = cJSON_CreateStringReference("<ip-address>[/<prefix-len>], e.g., \"192.168.0.0/24\" for the range 192.168.0.1 - 192.168.0.255");
-	conf->dns.rev_server.cidr.t = CONF_STRING;
-	conf->dns.rev_server.cidr.d.s = (char*)"";
-	conf->dns.rev_server.cidr.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.revServer.cidr.k = "dns.revServer.cidr";
+	conf->dns.revServer.cidr.h = "Address range for the reverse server feature in CIDR notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are substitutet (exact address match). This is almost certainly not what you want here.";
+	conf->dns.revServer.cidr.a = cJSON_CreateStringReference("<ip-address>[/<prefix-len>], e.g., \"192.168.0.0/24\" for the range 192.168.0.1 - 192.168.0.255");
+	conf->dns.revServer.cidr.t = CONF_STRING;
+	conf->dns.revServer.cidr.d.s = (char*)"";
+	conf->dns.revServer.cidr.f = FLAG_RESTART_DNSMASQ;
 
-	conf->dns.rev_server.target.k = "dns.rev_server.target";
-	conf->dns.rev_server.target.h = "Target server tp be used for the reverse server feature";
-	conf->dns.rev_server.target.a = cJSON_CreateStringReference("<server>[#<port>], e.g., \"192.168.0.1\"");
-	conf->dns.rev_server.target.t = CONF_STRING;
-	conf->dns.rev_server.target.d.s = (char*)"";
-	conf->dns.rev_server.target.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.revServer.target.k = "dns.revServer.target";
+	conf->dns.revServer.target.h = "Target server tp be used for the reverse server feature";
+	conf->dns.revServer.target.a = cJSON_CreateStringReference("<server>[#<port>], e.g., \"192.168.0.1\"");
+	conf->dns.revServer.target.t = CONF_STRING;
+	conf->dns.revServer.target.d.s = (char*)"";
+	conf->dns.revServer.target.f = FLAG_RESTART_DNSMASQ;
 
-	conf->dns.rev_server.domain.k = "dns.rev_server.domain";
-	conf->dns.rev_server.domain.h = "Domain used for the reverse server feature";
-	conf->dns.rev_server.domain.a = cJSON_CreateStringReference("<valid domain>, typically set to the same value as dns.domain");
-	conf->dns.rev_server.domain.t = CONF_STRING;
-	conf->dns.rev_server.domain.d.s = (char*)"";
-	conf->dns.rev_server.domain.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.revServer.domain.k = "dns.revServer.domain";
+	conf->dns.revServer.domain.h = "Domain used for the reverse server feature";
+	conf->dns.revServer.domain.a = cJSON_CreateStringReference("<valid domain>, typically set to the same value as dns.domain");
+	conf->dns.revServer.domain.t = CONF_STRING;
+	conf->dns.revServer.domain.d.s = (char*)"";
+	conf->dns.revServer.domain.f = FLAG_RESTART_DNSMASQ;
 
 	// sub-struct dhcp
 	conf->dhcp.active.k = "dhcp.active";
@@ -642,12 +639,12 @@ void initConfig(struct config *conf)
 	conf->dhcp.router.f = FLAG_RESTART_DNSMASQ;
 	conf->dhcp.router.d.s = (char*)"";
 
-	conf->dhcp.leasetime.k = "dhcp.leasetime";
-	conf->dhcp.leasetime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
-	conf->dhcp.leasetime.a = cJSON_CreateStringReference("The lease time can be in seconds, or minutes (e.g., \"45m\") or hours (e.g., \"1h\") or days (like \"2d\") or even weeks (\"1w\"). You may also use \"infinite\" as string but be aware of the drawbacks");
-	conf->dhcp.leasetime.t = CONF_STRING;
-	conf->dhcp.leasetime.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
-	conf->dhcp.leasetime.d.s = (char*)"";
+	conf->dhcp.leaseTime.k = "dhcp.leaseTime";
+	conf->dhcp.leaseTime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
+	conf->dhcp.leaseTime.a = cJSON_CreateStringReference("The lease time can be in seconds, or minutes (e.g., \"45m\") or hours (e.g., \"1h\") or days (like \"2d\") or even weeks (\"1w\"). You may also use \"infinite\" as string but be aware of the drawbacks");
+	conf->dhcp.leaseTime.t = CONF_STRING;
+	conf->dhcp.leaseTime.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dhcp.leaseTime.d.s = (char*)"";
 
 	conf->dhcp.ipv6.k = "dhcp.ipv6";
 	conf->dhcp.ipv6.h = "Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that IPv6 works a whole lot different than IPv4)";
@@ -655,11 +652,11 @@ void initConfig(struct config *conf)
 	conf->dhcp.ipv6.f = FLAG_RESTART_DNSMASQ;
 	conf->dhcp.ipv6.d.b = false;
 
-	conf->dhcp.rapid_commit.k = "dhcp.rapid_commit";
-	conf->dhcp.rapid_commit.h = "Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if either the server is the only server for the subnet to avoid conflicts";
-	conf->dhcp.rapid_commit.t = CONF_BOOL;
-	conf->dhcp.rapid_commit.f = FLAG_RESTART_DNSMASQ;
-	conf->dhcp.rapid_commit.d.b = false;
+	conf->dhcp.rapidCommit.k = "dhcp.rapidCommit";
+	conf->dhcp.rapidCommit.h = "Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if either the server is the only server for the subnet to avoid conflicts";
+	conf->dhcp.rapidCommit.t = CONF_BOOL;
+	conf->dhcp.rapidCommit.f = FLAG_RESTART_DNSMASQ;
+	conf->dhcp.rapidCommit.d.b = false;
 
 	conf->dhcp.hosts.k = "dhcp.hosts";
 	conf->dhcp.hosts.h = "Per host parameters for the DHCP server. This allows a machine with a particular hardware address to be always allocated the same hostname, IP address and lease time or to specify static DHCP leases";
@@ -823,17 +820,17 @@ void initConfig(struct config *conf)
 	conf->webserver.api.pwhash.t = CONF_STRING;
 	conf->webserver.api.pwhash.d.s = (char*)"";
 
-	conf->webserver.api.exclude_clients.k = "webserver.api.exclude_clients";
-	conf->webserver.api.exclude_clients.h = "Array of clients to be excluded from certain API responses\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
-	conf->webserver.api.exclude_clients.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
-	conf->webserver.api.exclude_clients.t = CONF_JSON_STRING_ARRAY;
-	conf->webserver.api.exclude_clients.d.json = cJSON_CreateArray();
+	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
+	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
+	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
+	conf->webserver.api.excludeClients.t = CONF_JSON_STRING_ARRAY;
+	conf->webserver.api.excludeClients.d.json = cJSON_CreateArray();
 
-	conf->webserver.api.exclude_domains.k = "webserver.api.exclude_domains";
-	conf->webserver.api.exclude_domains.h = "Array of domains to be excluded from certain API responses\n Example: [ \"google.de\", \"pi-hole.net\" ]";
-	conf->webserver.api.exclude_domains.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
-	conf->webserver.api.exclude_domains.t = CONF_JSON_STRING_ARRAY;
-	conf->webserver.api.exclude_domains.d.json = cJSON_CreateArray();
+	conf->webserver.api.excludeDomains.k = "webserver.api.excludeDomains";
+	conf->webserver.api.excludeDomains.h = "Array of domains to be excluded from certain API responses\n Example: [ \"google.de\", \"pi-hole.net\" ]";
+	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
+	conf->webserver.api.excludeDomains.t = CONF_JSON_STRING_ARRAY;
+	conf->webserver.api.excludeDomains.d.json = cJSON_CreateArray();
 
 	// sub-struct webserver.api.temp
 	conf->webserver.api.temp.limit.k = "webserver.api.temp.limit";

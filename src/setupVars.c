@@ -238,10 +238,10 @@ void importsetupVarsConf(void)
 	get_conf_bool_from_setupVars("BLOCKING_ENABLED", &config.dns.blocking.active);
 
 	// Get clients which the user doesn't want to see
-	get_conf_string_array_from_setupVars("API_EXCLUDE_CLIENTS", &config.webserver.api.exclude_clients);
+	get_conf_string_array_from_setupVars("API_EXCLUDE_CLIENTS", &config.webserver.api.excludeClients);
 
 	// Get domains which the user doesn't want to see
-	get_conf_string_array_from_setupVars("API_EXCLUDE_DOMAINS", &config.webserver.api.exclude_domains);
+	get_conf_string_array_from_setupVars("API_EXCLUDE_DOMAINS", &config.webserver.api.excludeDomains);
 
 	// Try to obtain temperature hot value
 	get_conf_temp_limit_from_setupVars();
@@ -273,21 +273,21 @@ void importsetupVarsConf(void)
 	get_conf_listeningMode_from_setupVars();
 
 	// Try to obtain REV_SERVER settings
-	get_conf_bool_from_setupVars("REV_SERVER", &config.dns.rev_server.active);
-	get_conf_string_from_setupVars("REV_SERVER_CIDR", &config.dns.rev_server.cidr);
-	get_conf_string_from_setupVars("REV_SERVER_TARGET", &config.dns.rev_server.target);
-	get_conf_string_from_setupVars("REV_SERVER_DOMAIN", &config.dns.rev_server.domain);
+	get_conf_bool_from_setupVars("REV_SERVER", &config.dns.revServer.active);
+	get_conf_string_from_setupVars("REV_SERVER_CIDR", &config.dns.revServer.cidr);
+	get_conf_string_from_setupVars("REV_SERVER_TARGET", &config.dns.revServer.target);
+	get_conf_string_from_setupVars("REV_SERVER_DOMAIN", &config.dns.revServer.domain);
 
 	// Try to obtain DHCP settings
 	get_conf_bool_from_setupVars("DHCP_ACTIVE", &config.dhcp.active);
 	get_conf_string_from_setupVars("DHCP_START", &config.dhcp.start);
 	get_conf_string_from_setupVars("DHCP_END", &config.dhcp.end);
 	get_conf_string_from_setupVars("DHCP_ROUTER", &config.dhcp.router);
-	get_conf_string_from_setupVars("DHCP_LEASETIME", &config.dhcp.leasetime);
+	get_conf_string_from_setupVars("DHCP_LEASETIME", &config.dhcp.leaseTime);
 	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dhcp.ipv6);
-	get_conf_bool_from_setupVars("DHCP_rapid_commit", &config.dhcp.rapid_commit);
+	get_conf_bool_from_setupVars("DHCP_RAPID_COMMIT", &config.dhcp.rapidCommit);
 
-	get_conf_bool_from_setupVars("QUERY_LOGGING", &config.dns.query_logging);
+	get_conf_bool_from_setupVars("queryLogging", &config.dns.queryLogging);
 }
 
 char* __attribute__((pure)) find_equals(char *s)

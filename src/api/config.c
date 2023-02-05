@@ -482,7 +482,7 @@ static int api_config_get(struct ftl_conn *api)
 				continue;
 			}
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "default", dval);
-			const bool modified = memcmp(&conf_item->v, &conf_item->d, sizeof(union conf_value)) != 0;
+			const bool modified = !compare_config_item(conf_item->t, &conf_item->v, &conf_item->d);
 			JSON_ADD_BOOL_TO_OBJECT(leaf, "modified", modified);
 
 			// Add config item flags
@@ -623,7 +623,7 @@ static int api_config_patch(struct ftl_conn *api)
 		struct conf_item *conf_item = get_conf_item(&config, i);
 
 		// Skip processing if value didn't change compared to current value
-		if(compare_config_item(new_item, conf_item))
+		if(compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
 		{
 			log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
 			continue;

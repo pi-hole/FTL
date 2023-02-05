@@ -174,7 +174,7 @@
   cacheSize = 2000
 
   # Log DNS queries and replies to pihole.log
-  query_logging = true
+  queryLogging = true
 
   # List of CNAME records which indicate that <cname> is really <target>. If the <TTL> is
   # given, it overwrites the value of local-ttl
@@ -182,7 +182,7 @@
   # Possible values are:
   #     Array of static leases each on in one of the following forms:
   #     "<cname>,<target>[,<TTL>]"
-  cnames = [   ]
+  cnameRecords = [   ]
 
   # Port used by the DNS server
   port = 53
@@ -311,7 +311,7 @@
     # ... in the set interval before rate-limiting?
     interval = 0 ### CHANGED, default = 60
 
-  [dns.rev_server]
+  [dns.revServer]
     # Is the reverse server (former also called "conditional forwarding") feature enabled?
     active = false
 
@@ -366,7 +366,7 @@
   #     The lease time can be in seconds, or minutes (e.g., "45m") or hours (e.g., "1h")
   #     or days (like "2d") or even weeks ("1w"). You may also use "infinite" as string
   #     but be aware of the drawbacks
-  leasetime = ""
+  leaseTime = ""
 
   # Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that
   # IPv6 works a whole lot different than IPv4)
@@ -374,7 +374,7 @@
 
   # Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if
   # either the server is the only server for the subnet to avoid conflicts
-  rapid_commit = false
+  rapidCommit = false
 
   # Per host parameters for the DHCP server. This allows a machine with a particular
   # hardware address to be always allocated the same hostname, IP address and lease time
@@ -542,7 +542,7 @@
     #
     # Possible values are:
     #     array of IP addresses and/or hostnames
-    exclude_clients = [
+    excludeClients = [
       "1.2.3.4"
     ] ### CHANGED, default = [ ]
 
@@ -551,7 +551,7 @@
     #
     # Possible values are:
     #     array of IP addresses and/or hostnames
-    exclude_domains = [     ]
+    excludeDomains = [     ]
 
     [webserver.api.temp]
       # Which upper temperature limit should be used by Pi-hole? Temperatures above this

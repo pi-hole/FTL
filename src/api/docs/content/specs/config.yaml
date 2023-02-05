@@ -200,7 +200,7 @@ components:
                   type: string
                 cacheSize:
                   type: integer
-                query_logging:
+                queryLogging:
                   type: boolean
                 cnames:
                   type: array
@@ -208,7 +208,7 @@ components:
                     type: string
                 port:
                   type: integer
-                rev_server:
+                revServer:
                   type: object
                   properties:
                     active:
@@ -276,11 +276,11 @@ components:
                   type: string
                 router:
                   type: string
-                leasetime:
+                leaseTime:
                   type: string
                 ipv6:
                   type: boolean
-                rapid_commit:
+                rapidCommit:
                   type: boolean
                 hosts:
                   type: array
@@ -351,11 +351,11 @@ components:
                       type: boolean
                     pwhash:
                       type: string
-                    exclude_clients:
+                    excludeClients:
                       type: array
                       items:
                         type: string
-                    exclude_domains:
+                    excludeDomains:
                       type: array
                       items:
                         type: string
@@ -529,12 +529,12 @@ components:
             hostRecord: ""
             listeningMode: "local"
             cacheSize: 10000
-            query_logging: true
+            queryLogging: true
             cnames:
               - "*.example.com,default.example.com"
               - "hourly.yetanother.com,yetanother.com,3600"
             port: 53
-            rev_server:
+            revServer:
               active: false
               cidr: "192.168.0.0/24"
               target: "192.168.0.1"
@@ -564,9 +564,9 @@ components:
             start: "192.168.0.10"
             end: "192.168.0.250"
             router: "192.168.0.1"
-            leasetime: "24h"
+            leaseTime: "24h"
             ipv6: true
-            rapid_commit: true
+            rapidCommit: true
             hosts:
               - "11:22:33:44:55:66,192.168.1.123"
               - "11:22:33:44:55:67,192.168.1.124,hostname"
@@ -599,8 +599,8 @@ components:
               localAPIauth: false
               prettyJSON: false
               pwhash: ''
-              exclude_clients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
-              exclude_domains: [ 'google.de', 'pi-hole.net' ]
+              excludeClients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
+              excludeDomains: [ 'google.de', 'pi-hole.net' ]
               temp:
                 limit: 60.0
                 unit: "C"

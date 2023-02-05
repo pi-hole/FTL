@@ -266,7 +266,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	fputs("localise-queries\n", pihole_conf);
 	fputs("\n", pihole_conf);
 
-	if(conf->dns.query_logging.v.b)
+	if(conf->dns.queryLogging.v.b)
 	{
 		fputs("# Enable query logging\n", pihole_conf);
 		fputs("log-queries\n", pihole_conf);
@@ -377,23 +377,23 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 	fputs("\n", pihole_conf);
 
-	if(conf->dns.rev_server.active.v.b)
+	if(conf->dns.revServer.active.v.b)
 	{
 		fputs("# Reverse server setting\n", pihole_conf);
 		fprintf(pihole_conf, "rev-server=%s,%s\n",
-		        conf->dns.rev_server.cidr.v.s, conf->dns.rev_server.target.v.s);
+		        conf->dns.revServer.cidr.v.s, conf->dns.revServer.target.v.s);
 
 		// If we have a reverse domain, we forward all queries to this domain to
 		// the same destination
-		if(strlen(conf->dns.rev_server.domain.v.s) > 0)
+		if(strlen(conf->dns.revServer.domain.v.s) > 0)
 			fprintf(pihole_conf, "server=/%s/%s\n",
-			        conf->dns.rev_server.domain.v.s, conf->dns.rev_server.target.v.s);
+			        conf->dns.revServer.domain.v.s, conf->dns.revServer.target.v.s);
 
 		// Forward unqualified names to the target only when the "never forward
 		// non-FQDN" option is NOT ticked
 		if(!conf->dns.domainNeeded.v.b)
 			fprintf(pihole_conf, "server=//%s\n",
-			        conf->dns.rev_server.target.v.s);
+			        conf->dns.revServer.target.v.s);
 		fputs("\n", pihole_conf);
 	}
 
@@ -405,11 +405,11 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fprintf(pihole_conf, "dhcp-range=%s,%s,%s\n",
 		        conf->dhcp.start.v.s,
 				conf->dhcp.end.v.s,
-				conf->dhcp.leasetime.v.s);
+				conf->dhcp.leaseTime.v.s);
 		fprintf(pihole_conf, "dhcp-option=option:router,%s\n",
 		        conf->dhcp.router.v.s);
 
-		if(conf->dhcp.rapid_commit.v.b)
+		if(conf->dhcp.rapidCommit.v.b)
 			fputs("dhcp-rapid-commit\n", pihole_conf);
 
 		if(conf->dhcp.ipv6.v.b)
@@ -432,13 +432,13 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		}
 	}
 
-	if(cJSON_GetArraySize(conf->dns.cnames.v.json) > 0)
+	if(cJSON_GetArraySize(conf->dns.cnameRecords.v.json) > 0)
 	{
 		fputs("# User-defined custom CNAMEs\n", pihole_conf);
-		const int n = cJSON_GetArraySize(conf->dns.cnames.v.json);
+		const int n = cJSON_GetArraySize(conf->dns.cnameRecords.v.json);
 		for(int i = 0; i < n; i++)
 		{
-			cJSON *server = cJSON_GetArrayItem(conf->dns.cnames.v.json, i);
+			cJSON *server = cJSON_GetArrayItem(conf->dns.cnameRecords.v.json, i);
 			if(server != NULL && cJSON_IsString(server))
 				fprintf(pihole_conf, "cname=%s\n", server->valuestring);
 		}
@@ -616,12 +616,12 @@ bool read_legacy_cnames_config(void)
 		// modifies the string inplace
 		trim_whitespace(value);
 
-		// Add entry to config.dns.cnames
+		// Add entry to config.dns.cnameRecords
 		cJSON *item = cJSON_CreateString(value);
-		cJSON_AddItemToArray(config.dns.cnames.v.json, item);
+		cJSON_AddItemToArray(config.dns.cnameRecords.v.json, item);
 
 		log_debug(DEBUG_CONFIG, DNSMASQ_CNAMES": Setting %s[%u] = %s\n",
-		          config.dns.cnames.k, j++, item->valuestring);
+		          config.dns.cnameRecords.k, j++, item->valuestring);
 	}
 
 	// Free allocated memory

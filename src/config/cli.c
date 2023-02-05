@@ -325,7 +325,7 @@ bool set_config_from_CLI(const char *key, const char *value)
 		return false;
 
 	// Check if value changed compared to current value
-	if(!compare_config_item(new_item, conf_item))
+	if(!compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
 	{
 		// Config item changed
 

@@ -120,8 +120,8 @@ struct config {
 		struct conf_item hostRecord;
 		struct conf_item listeningMode;
 		struct conf_item cacheSize;
-		struct conf_item query_logging;
-		struct conf_item cnames;
+		struct conf_item queryLogging;
+		struct conf_item cnameRecords;
 		struct conf_item port;
 		struct {
 			struct conf_item active;
@@ -155,7 +155,7 @@ struct config {
 			struct conf_item cidr;
 			struct conf_item target;
 			struct conf_item domain;
-		} rev_server;
+		} revServer;
 	} dns;
 
 	struct {
@@ -163,9 +163,9 @@ struct config {
 		struct conf_item start;
 		struct conf_item end;
 		struct conf_item router;
-		struct conf_item leasetime;
+		struct conf_item leaseTime;
 		struct conf_item ipv6;
-		struct conf_item rapid_commit;
+		struct conf_item rapidCommit;
 		struct conf_item hosts;
 	} dhcp;
 
@@ -205,8 +205,8 @@ struct config {
 			struct conf_item localAPIauth;
 			struct conf_item prettyJSON;
 			struct conf_item pwhash;
-			struct conf_item exclude_clients;
-			struct conf_item exclude_domains;
+			struct conf_item excludeClients;
+			struct conf_item excludeDomains;
 			struct {
 				struct conf_item limit;
 				struct conf_item unit;
@@ -287,7 +287,7 @@ struct conf_item *get_debug_item(const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
 void duplicate_config(struct config *dst, struct config *src);
 void free_config(struct config *conf);
-bool compare_config_item(const struct conf_item *conf_item1, const struct conf_item *conf_item2);
+bool compare_config_item(const enum conf_type t, const union conf_value *val1, const union conf_value *val2);
 char **gen_config_path(const char *pathin, const char delim);
 void free_config_path(char **paths);
 bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __attribute__ ((pure));

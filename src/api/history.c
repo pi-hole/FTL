@@ -126,8 +126,8 @@ int api_history_clients(struct ftl_conn *api)
 	// returned data. We initialize it with false
 	bool *skipclient = calloc(counters->clients, sizeof(bool));
 
-	unsigned int exclude_clients = cJSON_GetArraySize(config.webserver.api.exclude_clients.v.json);
-	if(exclude_clients > 0)
+	unsigned int excludeClients = cJSON_GetArraySize(config.webserver.api.excludeClients.v.json);
+	if(excludeClients > 0)
 	{
 		for(int clientID = 0; clientID < counters->clients; clientID++)
 		{
@@ -136,9 +136,9 @@ int api_history_clients(struct ftl_conn *api)
 			if(client == NULL)
 				continue;
 			// Check if this client should be skipped
-			for(unsigned int i = 0; i < exclude_clients; i++)
+			for(unsigned int i = 0; i < excludeClients; i++)
 			{
-				cJSON *item = cJSON_GetArrayItem(config.webserver.api.exclude_clients.v.json, i);
+				cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeClients.v.json, i);
 				if(strcmp(getstr(client->ippos), item->valuestring) == 0 ||
 				   strcmp(getstr(client->namepos), item->valuestring) == 0)
 					skipclient[clientID] = true;
