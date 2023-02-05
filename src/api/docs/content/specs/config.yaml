@@ -349,6 +349,10 @@ components:
                       type: boolean
                     prettyJSON:
                       type: boolean
+                    password:
+                      description: |
+                        *Note:* Special write-only property used to change the password via the API.
+                      type: string
                     pwhash:
                       type: string
                     excludeClients:
@@ -598,6 +602,7 @@ components:
             api:
               localAPIauth: false
               prettyJSON: false
+              password: "********"
               pwhash: ''
               excludeClients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
               excludeDomains: [ 'google.de', 'pi-hole.net' ]
