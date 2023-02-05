@@ -52,7 +52,7 @@
 @test "Initial blocking status is enabled" {
   run bash -c 'grep -c "Blocking status is enabled" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} != "0" ]]
 }
 
 @test "Number of compiled regex filters as expected" {

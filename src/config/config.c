@@ -201,6 +201,7 @@ void duplicate_config(struct config *dst, struct config *src)
 			case CONF_ULONG:
 			case CONF_DOUBLE:
 			case CONF_STRING:
+			case CONF_PASSWORD: // This is a pseudo-type, it is read-only and cannot be read
 			case CONF_ENUM_PTR_TYPE:
 			case CONF_ENUM_BUSY_TYPE:
 			case CONF_ENUM_BLOCKING_MODE:
@@ -253,6 +254,10 @@ bool compare_config_item(const enum conf_type t, const union conf_value *val1, c
 		case CONF_JSON_STRING_ARRAY:
 			// Compare JSON object/array
 			return cJSON_Compare(val1->json, val2->json, true);
+		case CONF_PASSWORD:
+			// This is a pseudo item, we assume it has always been changed when
+			// it is specified
+			return false;
 	}
 	return false;
 }
@@ -284,6 +289,7 @@ void free_config(struct config *conf)
 			case CONF_ULONG:
 			case CONF_DOUBLE:
 			case CONF_STRING:
+			case CONF_PASSWORD: // This is a pseudo item, it cannot be freed
 			case CONF_ENUM_PTR_TYPE:
 			case CONF_ENUM_BUSY_TYPE:
 			case CONF_ENUM_BLOCKING_MODE:
@@ -820,6 +826,13 @@ void initConfig(struct config *conf)
 	conf->webserver.api.pwhash.t = CONF_STRING;
 	conf->webserver.api.pwhash.d.s = (char*)"";
 
+	conf->webserver.api.password.k = "webserver.api.password";
+	conf->webserver.api.password.h = "Pi-hole web interface and API password. When set to something different than \""PASSWORD_VALUE"\", this porperty will compute the corresponding password hash to set webserver.api.pwhash";
+	conf->webserver.api.password.a = cJSON_CreateStringReference("<valid Pi-hole password>");
+	conf->webserver.api.password.t = CONF_PASSWORD;
+	conf->webserver.api.password.f = FLAG_WRITE_ONLY;
+	conf->webserver.api.password.d.s = (char*)"";
+
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
 	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
 	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
@@ -1280,6 +1293,8 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 			return "IPv6 address";
 		case CONF_JSON_STRING_ARRAY:
 			return "string array";
+		case CONF_PASSWORD:
+			return "password (write-only string)";
 		default:
 			return "unknown";
 	}

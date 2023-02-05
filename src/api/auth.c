@@ -572,3 +572,30 @@ int api_auth(struct ftl_conn *api)
 		JSON_SEND_OBJECT(json);
 	}
 }
+
+char * __attribute__((malloc)) hash_password(const char *password)
+{
+	char response[2 * SHA256_DIGEST_SIZE + 1] = { 0 };
+	uint8_t raw_response[SHA256_DIGEST_SIZE];
+	struct sha256_ctx ctx;
+
+	// Hash password a first time
+	sha256_init(&ctx);
+	sha256_update(&ctx,
+	              strlen(password),
+	              (uint8_t*)password);
+
+	sha256_digest(&ctx, SHA256_DIGEST_SIZE, raw_response);
+	sha256_hex(raw_response, response);
+
+	// Hash password a second time
+	sha256_init(&ctx);
+	sha256_update(&ctx,
+	              strlen(response),
+	              (uint8_t*)response);
+
+	sha256_digest(&ctx, SHA256_DIGEST_SIZE, raw_response);
+	sha256_hex(raw_response, response);
+
+	return strdup(response);
+}

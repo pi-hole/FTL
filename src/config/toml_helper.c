@@ -378,6 +378,11 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 			fputc(']', fp);
 			break;
 		}
+		case CONF_PASSWORD:
+		{
+			printTOMLstring(fp, PASSWORD_VALUE);
+			break;
+		}
 	}
 }
 
@@ -627,6 +632,10 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST", conf_item->k);
 			break;
+		}
+		case CONF_PASSWORD:
+		{
+			// This is ignored, it is only a pseudo-element with no real content
 		}
 	}
 }

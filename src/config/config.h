@@ -28,6 +28,9 @@
 
 #define GLOBALTOMLPATH "/etc/pihole/pihole.toml"
 
+// This static string represents an unchanged password
+#define PASSWORD_VALUE "********"
+
 union conf_value {
 	bool b;                                     // boolean value
 	int i;                                      // integer value
@@ -59,6 +62,7 @@ enum conf_type {
 	CONF_ULONG,
 	CONF_DOUBLE,
 	CONF_STRING,
+	CONF_PASSWORD,
 	CONF_STRING_ALLOCATED,
 	CONF_ENUM_PTR_TYPE,
 	CONF_ENUM_BUSY_TYPE,
@@ -78,6 +82,8 @@ enum conf_type {
 
 #define FLAG_RESTART_DNSMASQ    (1 << 0)
 #define FLAG_ADVANCED_SETTING   (1 << 1)
+#define FLAG_WRITE_ONLY         (1 << 2)
+
 struct conf_item {
 	const char *k;        // item Key
 	char **p;             // item Path
@@ -205,6 +211,7 @@ struct config {
 			struct conf_item localAPIauth;
 			struct conf_item prettyJSON;
 			struct conf_item pwhash;
+			struct conf_item password; // This is a write-only item
 			struct conf_item excludeClients;
 			struct conf_item excludeDomains;
 			struct {

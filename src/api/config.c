@@ -139,6 +139,11 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 			// after returning the reply
 			return cJSON_Duplicate(val->json, true);
 		}
+		case CONF_PASSWORD:
+		{
+			// This is a pseudo-element
+			return cJSON_CreateStringReference(PASSWORD_VALUE);
+		}
 		default:
 			return NULL;
 	}
@@ -245,6 +250,29 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				free(conf_item->v.s);
 			// Set item
 			conf_item->v.s = strdup(elem->valuestring);
+			log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
+			break;
+		}
+		case CONF_PASSWORD:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			if(strcmp(conf_item->k, PASSWORD_VALUE) == 0)
+			{
+				// Check if password is unchanged (default value set by PASSWORD_VALUE)
+				log_debug(DEBUG_CONFIG, "Not setting %s to \"%s\" (password unchanged)", conf_item->k, conf_item->v.s);
+				break;
+			}
+			// Get password hash as allocated string
+			char *pwhash = hash_password(elem->valuestring);
+			// Get pointer to pwhash instead
+			conf_item--;
+			// Free previously allocated memory (if applicable)
+			if(conf_item->t == CONF_STRING_ALLOCATED)
+				free(conf_item->v.s);
+			// Set item
+			conf_item->v.s = pwhash;
 			log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
 			break;
 		}

@@ -127,6 +127,20 @@ static bool readStringValue(struct conf_item *conf_item, const char *value)
 			conf_item->t = CONF_STRING_ALLOCATED;
 			break;
 		}
+		case CONF_PASSWORD:
+		{
+			// Get password hash as allocated string
+			char *pwhash = hash_password(value);
+			// Get pointer to pwhash instead
+			log_info("Pointer to conf_item: %p = %s", conf_item, conf_item->k);
+			conf_item--;
+			log_info("Pointer to conf_item: %p = %s", conf_item, conf_item->k);
+			if(conf_item->t == CONF_STRING_ALLOCATED)
+					free(conf_item->v.s);
+			conf_item->v.s = pwhash;
+			conf_item->t = CONF_STRING_ALLOCATED;
+			break;
+		}
 		case CONF_ENUM_PTR_TYPE:
 		{
 			const int ptr_type = get_ptr_type_val(value);
