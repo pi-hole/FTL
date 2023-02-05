@@ -395,6 +395,7 @@ components:
                       items:
                         type: number
                       example: [4.903157711029053, 5.415853023529053, 5.562337398529053]
+
     sensors:
       type: object
       properties:
@@ -414,18 +415,19 @@ components:
               value:
                 type: number
                 description: Sensor value
-              hot_limit:
-                type: number
-                description: Limit defined in FTL's config beyond which the CPU should be considered hot
-              unit:
-                type: string
-                description: Sensor value unit
           example:
             - name: "Composite"
               path: "hwmon0/temp1"
               value: 30.4
-              hot_limit: 60.0
-              unit: "C"
+        hot_limit:
+          type: number
+          description: Limit defined in FTL's config beyond which the CPU should be considered hot
+          example: 60.0
+        unit:
+          type: string
+          description: Sensor value unit
+          example: "C"
+
     host:
       type: object
       properties:

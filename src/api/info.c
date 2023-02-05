@@ -51,6 +51,9 @@
 // getCacheInformation()
 #include "cache_info.h"
 
+// glob_t
+#include <glob.h>
+
 #define VERSIONS_FILE "/etc/pihole/versions"
 
 int api_info_client(struct ftl_conn *api)
@@ -150,71 +153,6 @@ int api_info_database(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-static int read_temp_sensor(struct ftl_conn *api,
-                            const char *label_path,
-                            const char *value_path,
-                            const char *short_path,
-                            cJSON *object)
-{
-	// Check if sensor is available
-	if(file_exists(value_path) == false)
-		return 0;
-
-	// Open files
-	FILE *f_value = fopen(value_path, "r");
-	if(f_value != NULL)
-	{
-		int raw_temp = 0;
-		char label[1024];
-		if(fscanf(f_value, "%d", &raw_temp) == 1)
-		{
-			FILE *f_label = NULL;
-			if(file_exists(label_path))
-				f_label = fopen(label_path, "r");
-
-			cJSON *item = JSON_NEW_OBJECT();
-			if(f_label && fgets(label, sizeof(label)-1, f_label))
-			{
-				// Remove newline if present
-				char *p = strchr(label, '\n');
-				if (p != NULL) *p = '\0';
-				JSON_COPY_STR_TO_OBJECT(item, "name", label);
-			}
-			else
-			{
-				JSON_ADD_NULL_TO_OBJECT(item, "name");
-			}
-			JSON_COPY_STR_TO_OBJECT(item, "path", short_path);
-
-			if(f_label != NULL)
-				fclose(f_label);
-
-			// Compute actual temperature
-			double temp = raw_temp < 1000 ? raw_temp : 1e-3*raw_temp;
-			const char *unit = "C";
-			if(config.webserver.api.temp.unit.v.s[0] == 'F')
-			{
-				temp = 1.8*temp + 32; // Convert °Celsius to °Fahrenheit
-				unit = "F";
-			}
-			else if(config.webserver.api.temp.unit.v.s[0] == 'K')
-			{
-				temp += 273.15; // Convert °Celsius to Kelvin
-				unit = "K";
-			}
-			JSON_ADD_NUMBER_TO_OBJECT(item, "value", temp);
-			JSON_ADD_NUMBER_TO_OBJECT(item, "hot_limit", config.webserver.api.temp.limit.v.d);
-			JSON_REF_STR_IN_OBJECT(item, "unit", unit);
-			JSON_ADD_ITEM_TO_ARRAY(object, item);
-		}
-	}
-	if(f_value != NULL)
-		fclose(f_value);
-
-	// All okay
-	return 0;
-}
-
 static int get_system_obj(struct ftl_conn *api, cJSON *system)
 {
 	const int nprocs = get_nprocs();
@@ -298,33 +236,134 @@ static int get_system_obj(struct ftl_conn *api, cJSON *system)
 	return 0;
 }
 
-static int get_sensors_arr(struct ftl_conn *api, cJSON *sensors)
+static int read_temp_sensor(struct ftl_conn *api,
+                            const char *label_path,
+                            const char *value_path,
+                            const char *short_path,
+                            cJSON *object)
 {
-	// Source available temperatures, we try to read as many
-	// temperature sensors as there are cores on this system
-	char label_path[256], value_path[256], fallback_label[64];
-	const int nprocs = get_nprocs();
-	int ret;
-	for(int i = 0; i < nprocs; i++)
-	{
-		// Try /sys/class/thermal/thermal_zoneX/{type,temp}
-		sprintf(label_path, "/sys/class/thermal/thermal_zone%d/type", i);
-		sprintf(value_path, "/sys/class/thermal/thermal_zone%d/temp", i);
-		sprintf(fallback_label, "thermal_zone%d/temp", i);
-		ret = read_temp_sensor(api, label_path, value_path, fallback_label, sensors);
-		// Error handling
-		if(ret != 0)
-			return ret;
+	// Check if sensor is available
+	if(file_exists(value_path) == false)
+		return 0;
 
-		// Try /sys/class/hwmon/hwmon0X/tempX_{label,input}
-		sprintf(label_path, "/sys/class/hwmon/hwmon0/temp%d_label", i);
-		sprintf(value_path, "/sys/class/hwmon/hwmon0/temp%d_input", i);
-		sprintf(fallback_label, "hwmon0/temp%d", i);
-		ret = read_temp_sensor(api, label_path, value_path, fallback_label, sensors);
-		// Error handling
+	// Open files
+	FILE *f_value = fopen(value_path, "r");
+	if(f_value != NULL)
+	{
+		int raw_temp = 0;
+		char label[1024];
+		if(fscanf(f_value, "%d", &raw_temp) == 1)
+		{
+			FILE *f_label = NULL;
+			if(file_exists(label_path))
+				f_label = fopen(label_path, "r");
+
+			cJSON *item = JSON_NEW_OBJECT();
+			if(f_label && fgets(label, sizeof(label)-1, f_label))
+			{
+				// Remove newline if present
+				char *p = strchr(label, '\n');
+				if (p != NULL) *p = '\0';
+				JSON_COPY_STR_TO_OBJECT(item, "name", label);
+			}
+			else
+			{
+				JSON_ADD_NULL_TO_OBJECT(item, "name");
+			}
+			JSON_COPY_STR_TO_OBJECT(item, "path", short_path);
+
+			if(f_label != NULL)
+				fclose(f_label);
+
+			// Compute actual temperature, many sensors give their values in milli °Celsius
+			// see, e.g., https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-thermal
+			double temp = raw_temp < 1000 ? raw_temp : 1e-3*raw_temp;
+			if(config.webserver.api.temp.unit.v.s[0] == 'F')
+				temp = 1.8*temp + 32; // Convert °Celsius to °Fahrenheit
+			else if(config.webserver.api.temp.unit.v.s[0] == 'K')
+				temp += 273.15; // Convert °Celsius to Kelvin
+			JSON_ADD_NUMBER_TO_OBJECT(item, "value", temp);
+			JSON_ADD_ITEM_TO_ARRAY(object, item);
+		}
+	}
+	if(f_value != NULL)
+		fclose(f_value);
+
+	// All okay
+	return 0;
+}
+
+// Get the temperature from sensor files using a glob pattern
+static int sensor_temp_from_glob(struct ftl_conn *api, cJSON *sensors, const char *globstr, const char *item_string, const char *label_string)
+{
+	glob_t globbuf = { 0 };
+	int ret = glob(globstr, 0, NULL, &globbuf);
+	if(ret != 0)
+		return 0;
+
+	// Iterate over all files matching the glob
+	for(size_t i = 0; i < globbuf.gl_pathc; i++)
+	{
+		char *value_path = globbuf.gl_pathv[i];
+		char *label_path = NULL;
+
+		// Replace <item> with <label> if we have a label (label_string != NULL)
+		if(label_string != NULL)
+		{
+			label_path = strdup(value_path);
+			if(label_path == NULL)
+				return -1;
+			char *p = strstr(label_path, item_string);
+			if(p == NULL)
+			{
+				free(label_path);
+				continue;
+			}
+			strcpy(p, label_string);
+		}
+
+		// Read the sensor
+		ret = read_temp_sensor(api, label_path, value_path, value_path, sensors);
+		if(label_path != NULL)
+			free(label_path);
 		if(ret != 0)
 			return ret;
 	}
+
+	// Free the glob buffer
+	globfree(&globbuf);
+
+	// All okay
+	return 0;
+}
+
+static int get_sensors_arr(struct ftl_conn *api, cJSON *sensors)
+{
+	int ret;
+	// Source available temperatures, we try to read temperature sensors from
+	// different locations. We try to read the sensor label from the label file
+	// and the sensor value from the value file. If the label file does not
+	// exist, we use the value file as label.
+
+	// Thermal zone sensors
+	// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-thermal
+	ret = sensor_temp_from_glob(api, sensors, "/sys/class/thermal/thermal_zone*/temp", "type", "temp");
+	if(ret != 0)
+		return ret;
+
+	// Hwmon sensors
+	// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-hwmon
+	ret = sensor_temp_from_glob(api, sensors, "/sys/class/hwmon/hwmon*/temp*_input", "input", "label");
+	if(ret != 0)
+		return ret;
+
+	// Intel core temperature sensors
+	// see https://github.com/pi-hole/AdminLTE/issues/2520
+	// documentation: https://www.kernel.org/doc/html/latest/hwmon/coretemp.html
+	// but see also here: https://github.com/torvalds/linux/blob/fae30e3/drivers/hwmon/coretemp.c#L505-L510
+	ret = sensor_temp_from_glob(api, sensors, "/sys/devices/platform/coretemp.*/hwmon/hwmon*/temp*_input", "input", "label");
+	if(ret != 0)
+		return ret;
 
 	// All okay
 	return 0;
@@ -506,8 +545,19 @@ int api_info_sensors(struct ftl_conn *api)
 	int ret = get_sensors_arr(api, sensors);
 	if (ret != 0)
 		return ret;
-
 	JSON_ADD_ITEM_TO_OBJECT(json, "sensors", sensors);
+
+	// Add hot limit
+	JSON_ADD_NUMBER_TO_OBJECT(json, "hot_limit", config.webserver.api.temp.limit.v.d);
+
+	// Add unit
+	const char *unit = "C";
+	if(config.webserver.api.temp.unit.v.s[0] == 'F')
+		unit = "F";
+	else if(config.webserver.api.temp.unit.v.s[0] == 'K')
+		unit = "K";
+	JSON_REF_STR_IN_OBJECT(json, "unit", unit);
+
 	JSON_SEND_OBJECT(json);
 }
 
