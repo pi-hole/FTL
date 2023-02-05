@@ -81,6 +81,7 @@ static struct {
 	{ "/api/network/devices",                   "",                           api_network_devices,                   { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/endpoints",                         "",                           api_endpoints,                         { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/teleporter",                        "",                           api_teleporter,                        { false, false, 0             }, true,  HTTP_GET | HTTP_POST },
+	{ "/api/dhcp/leases",                       "",                           api_dhcp_leases,                       { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/action/gravity",                    "",                           api_action_gravity,                    { false, true,  0             }, true,  HTTP_POST },
 	{ "/api/action/reboot",                     "",                           api_action_reboot,                     { false, true,  0             }, true,  HTTP_POST },
 	{ "/api/action/poweroff",                   "",                           api_action_poweroff,                   { false, true,  0             }, true,  HTTP_POST },

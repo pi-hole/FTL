@@ -205,6 +205,9 @@ paths:
   /action/poweroff:
     $ref: 'action.yaml#/components/paths/poweroff'
 
+  /dhcp/leases:
+    $ref: 'dhcp.yaml#/components/paths/leases'
+
   /search/{domain}:
     $ref: 'search.yaml#/components/paths/search'
 

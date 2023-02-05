@@ -202,7 +202,7 @@ components:
                   type: integer
                 queryLogging:
                   type: boolean
-                cnames:
+                cnameRecords:
                   type: array
                   items:
                     type: string
@@ -530,7 +530,7 @@ components:
             listeningMode: "local"
             cacheSize: 10000
             queryLogging: true
-            cnames:
+            cnameRecords:
               - "*.example.com,default.example.com"
               - "hourly.yetanother.com,yetanother.com,3600"
             port: 53

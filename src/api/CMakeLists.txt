@@ -14,8 +14,9 @@ set(sources
         api.h
         api.c
         auth.c
-        dns.c
         config.c
+        dhcp.c
+        dns.c
         network.c
         history.c
         info.c

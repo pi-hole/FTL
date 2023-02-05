@@ -23,6 +23,7 @@ set(sources
         hex/specs/clients.yaml
         hex/specs/config.yaml
         hex/specs/common.yaml
+        hex/specs/dhcp.yaml
         hex/specs/dns.yaml
         hex/specs/domains.yaml
         hex/specs/endpoints.yaml
