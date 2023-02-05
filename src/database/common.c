@@ -8,24 +8,26 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "common.h"
-#include "network-table.h"
-#include "message-table.h"
-#include "../shmem.h"
+#include "FTL.h"
+#include "database/common.h"
+#include "database/network-table.h"
+#include "database/message-table.h"
+#include "shmem.h"
 // struct config
-#include "../config/config.h"
+#include "config/config.h"
 // logging routines
-#include "../log.h"
-#include "../timers.h"
+#include "log.h"
+#include "timers.h"
 // file_exists()
-#include "../files.h"
-#include "sqlite3-ext.h"
+#include "files.h"
+#include "database/sqlite3-ext.h"
 // import_aliasclients()
-#include "aliasclients.h"
+#include "database/aliasclients.h"
 // CREATE_QUERIES_TABLE
 // add_additional_info_column()
-#include "query-table.h"
+#include "database/query-table.h"
+// set_event()
+#include "events.h"
 
 bool DBdeleteoldqueries = false;
 static bool DBerror = false;

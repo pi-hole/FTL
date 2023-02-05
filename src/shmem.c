@@ -1056,7 +1056,7 @@ static inline bool check_range(int ID, int MAXID, const char* type, const char *
 	// Check bounds
 	if(ID < 0 || ID > MAXID)
 	{
-		if(debug_any)
+		if(debug_flags[DEBUG_ANY])
 		{
 			log_err("Trying to access %s ID %i, but maximum is %i", type, ID, MAXID);
 			log_err("found in %s() (%s:%i)", func, short_path(file), line);
@@ -1073,7 +1073,7 @@ static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, con
 	// Check magic only if requested (skipped for new entries which are uninitialized)
 	if(checkMagic && magic != MAGICBYTE)
 	{
-		if(debug_any)
+		if(debug_flags[DEBUG_ANY])
 		{
 			log_err("Trying to access %s ID %i, but magic byte is %x", type, ID, magic);
 			log_err("found in %s() (%s:%i)", func, short_path(file), line);
@@ -1094,7 +1094,7 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char *func,
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
-		if(debug_any)
+		if(debug_flags[DEBUG_ANY])
 		{
 			log_err("Tried to obtain query pointer without lock in %s() (%s:%i)!",
 			        func, short_path(file), line);
@@ -1119,7 +1119,7 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char *fun
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
-		if(debug_any)
+		if(debug_flags[DEBUG_ANY])
 		{
 			log_err("Tried to obtain client pointer without lock in %s() (%s:%i)!",
 			        func, short_path(file), line);
@@ -1144,7 +1144,7 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *fun
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
-		if(debug_any)
+		if(debug_flags[DEBUG_ANY])
 		{
 			log_err("Tried to obtain domain pointer without lock in %s() (%s:%i)!",
 			        func, short_path(file), line);
@@ -1169,7 +1169,7 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
-		if(debug_any)
+		if(debug_flags[DEBUG_ANY])
 		{
 			log_err("Tried to obtain upstream pointer without lock in %s() (%s:%i)!",
 			        func, short_path(file), line);
@@ -1194,7 +1194,7 @@ DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char *f
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
-		if(debug_any)
+		if(debug_flags[DEBUG_ANY])
 		{
 			log_err("Tried to obtain cache pointer without lock in %s() (%s:%i)!",
 			        func, short_path(file), line);

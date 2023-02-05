@@ -233,7 +233,6 @@ static inline const char *show_client_string(const char *hwaddr, const char *hos
 	return ip;
 }
 
-
 // Get associated groups for this client (if defined)
 static bool get_client_groupids(clientsData* client)
 {
@@ -2355,4 +2354,67 @@ void check_inaccessible_adlists(void)
 
 	// Finalize statement
 	sqlite3_finalize(query_stmt);
+}
+
+static sqlite3_int64 last_updated = -1;
+bool gravity_updated(void)
+{
+	bool changed = false;
+	sqlite3 *db = NULL;
+	sqlite3_stmt *query_stmt = NULL;
+
+	// Open database
+	int rc = sqlite3_open_v2(config.files.gravity.v.s, &db, SQLITE_OPEN_READONLY, NULL);
+	if(db == NULL)
+	{
+		log_err("gravity_updated(): %s - SQL error open: %s", config.files.gravity.v.s, sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Get *updated* timestamp from gravity database
+	const char *querystr = "SELECT value FROM info WHERE property = 'updated';";
+	rc = sqlite3_prepare_v2(db, querystr, -1, &query_stmt, NULL);
+	if(rc != SQLITE_OK){
+		// Ignore SQLITE_BUSY errors, as this is not a critical error
+		// We will just try again later
+		if(rc != SQLITE_BUSY)
+			log_warn("gravity_updated(): %s - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
+		sqlite3_close(db);
+		return false;
+	}
+
+	// Perform query
+	rc = sqlite3_step(query_stmt);
+	if(rc != SQLITE_ROW)
+	{
+		log_err("gravity_updated(): %s - SQL error step: %s", querystr, sqlite3_errstr(rc));
+		sqlite3_finalize(query_stmt);
+		sqlite3_close(db);
+		return false;
+	}
+
+	// Get timestamp from database
+	const sqlite3_int64 updated = sqlite3_column_int64(query_stmt, 0);
+
+	// Check if timestamp has changed
+	if(last_updated == -1)
+	{
+		// First run, set last_updated
+		last_updated = updated;
+	}
+	else if(last_updated < updated)
+	{
+		// Gravity database has been updated
+		last_updated = updated;
+		changed = true;
+		log_info("Gravity database has been updated, reloading now");
+	}
+
+	// Finalize statement
+	sqlite3_finalize(query_stmt);
+
+	// Close database
+	sqlite3_close(db);
+
+	return changed;
 }

@@ -9,25 +9,27 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "database-thread.h"
-#include "common.h"
+#include "database/database-thread.h"
+#include "database/common.h"
 // [un]lock_shm();
 #include "shmem.h"
 // parse_neighbor_cache()
-#include "network-table.h"
+#include "database/network-table.h"
 // export_queries_to_disk()
-#include "query-table.h"
+#include "database/query-table.h"
 #include "config/config.h"
 #include "log.h"
 #include "timers.h"
 // global variable killed
 #include "signals.h"
 // reimport_aliasclients()
-#include "aliasclients.h"
+#include "database/aliasclients.h"
 // Eventqueue routines
 #include "events.h"
 // get_FTL_db_filesize()
 #include "files.h"
+// gravity_updated()
+#include "database/gravity-db.h"
 
 #define TIME_T "%li"
 
@@ -136,6 +138,13 @@ void *DB_thread(void *val)
 		// Intermediate cancellation-point
 		if(killed)
 			break;
+
+		// Check if we need to reload gravity
+		if(gravity_updated())
+		{
+			// Reload gravity
+			set_event(RELOAD_GRAVITY);
+		}
 
 		// Parse ARP cache if requested
 		if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))

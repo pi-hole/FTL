@@ -37,7 +37,6 @@
 #define CONFIG_CENTER(fp, width, fmt, ...)  \
     FPRINTF_CENTER(fp, width, "#", fmt  , "#\n", __VA_ARGS__)
 
-extern bool debug_any;
 extern bool debug_flags[DEBUG_MAX];
 
 void set_debug_flags(void);
@@ -66,7 +65,7 @@ void dnsmasq_diagnosis_warning(char *message);
 #define log_notice(format, ...) _FTL_log(LOG_NOTICE, 0, format, ## __VA_ARGS__)
 #define log_info(format, ...) _FTL_log(LOG_INFO, 0, format, ## __VA_ARGS__)
 #define log_debug(flag, format, ...)({ \
-	if((flag == DEBUG_ANY && debug_any) || (flag < DEBUG_MAX && debug_flags[flag])) \
+	if(flag > -1 && flag < DEBUG_MAX && debug_flags[flag]) \
 		_FTL_log(LOG_DEBUG, flag, format, ## __VA_ARGS__); \
 })
 void _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...) __attribute__ ((format (gnu_printf, 3, 4)));

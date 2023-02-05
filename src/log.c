@@ -27,7 +27,6 @@
 
 static bool print_log = true, print_stdout = true;
 static const char *process = "";
-bool debug_any = false;
 bool debug_flags[DEBUG_MAX] = { false };
 
 // Set debug flags from config struct to global debug_flags array
@@ -36,7 +35,6 @@ bool debug_flags[DEBUG_MAX] = { false };
 void set_debug_flags(void)
 {
 	// Reset debug flags
-	debug_any = false;
 	memset(debug_flags, false, sizeof(debug_flags));
 
 	// Loop over all debug options and check if at least one is enabled
@@ -47,7 +45,7 @@ void set_debug_flags(void)
 		{
 			// Add offset of 1 as the first element is "ANY"
 			debug_flags[i + 1] = true;
-			debug_any = true;
+			debug_flags[DEBUG_ANY] = true;
 		}
 	}
 }

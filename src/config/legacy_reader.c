@@ -837,7 +837,7 @@ static void readDebugingSettingsLegacy(FILE *fp)
 	// Parse debug options
 	set_debug_flags();
 
-	if(debug_any)
+	if(debug_flags[DEBUG_ANY])
 	{
 		// Enable debug logging in dnsmasq (only effective before starting the resolver)
 		argv_dnsmasq[2] = "--log-debug";
