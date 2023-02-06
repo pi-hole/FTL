@@ -250,26 +250,29 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 }
 
 // Get the filesystem where the given path is located
-// Credits: https://stackoverflow.com/a/40660348/2087442
-struct fstab *get_filesystem_details(const char *path) {
+struct mntent *get_filesystem_details(const char *path)
+{
 	/* stat the file in question */
 	struct stat path_stat;
 	stat(path, &path_stat);
 
 	/* iterate through the list of devices */
-	struct fstab *fs = NULL;
-	while( (fs = getfsent()) )
+	FILE *aFile = setmntent("/proc/mounts", "r");
+	struct mntent *ent;
+	while((ent = getmntent(aFile)) != NULL)
 	{
 		/* stat the mount point */
 		struct stat dev_stat;
-		stat(fs->fs_file, &dev_stat);
+		stat(ent->mnt_dir, &dev_stat);
 
 		/* check if our file and the mount point are on the same device */
 		if( dev_stat.st_dev == path_stat.st_dev )
 			break;
 	}
 
-	return fs;
+	endmntent(aFile);
+
+	return ent;
 }
 
 // Credits: https://stackoverflow.com/a/55410469

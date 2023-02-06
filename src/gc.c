@@ -276,6 +276,18 @@ static void runGC(const time_t now, time_t *lastGCrun)
 	DBdeleteoldqueries = true;
 }
 
+static bool check_files_on_same_device(const char *path1, const char *path2)
+{
+	struct stat s1, s2;
+	if(stat(path1, &s1) != 0 || stat(path2, &s2) != 0)
+	{
+		log_warn("check_files_on_same_device(): stat() failed: %s", strerror(errno));
+		return false;
+	}
+
+	return s1.st_dev == s2.st_dev;
+}
+
 void *GC_thread(void *val)
 {
 	// Set thread name
@@ -291,6 +303,9 @@ void *GC_thread(void *val)
 	// Remember disk usage
 	unsigned int LastLogStorageUsage = 0;
 	unsigned int LastDBStorageUsage = 0;
+
+	bool db_and_log_on_same_dev = false;
+	db_and_log_on_same_dev = check_files_on_same_device(config.files.database.v.s, config.files.log.ftl.v.s);
 
 	// Create inotify watcher for pihole.toml config file
 	watch_config(true);
@@ -319,9 +334,17 @@ void *GC_thread(void *val)
 		// Check available resources
 		if(now - lastResourceCheck >= RCinterval)
 		{
+			// Check load averages
 			check_load();
+
+			// Check disk space of database file
 			LastDBStorageUsage = check_space(config.files.database.v.s, LastDBStorageUsage);
-			LastLogStorageUsage = check_space(config.files.log.ftl.v.s, LastLogStorageUsage);
+
+			// Check disk space of log file only if they are not on
+			// the same file system
+			if(!db_and_log_on_same_dev)
+				LastLogStorageUsage = check_space(config.files.log.ftl.v.s, LastLogStorageUsage);
+
 			lastResourceCheck = now;
 		}
 
