@@ -239,9 +239,9 @@ components:
                     host:
                       type: object
                       properties:
-                        overwrite_v4:
+                        force4:
                           type: boolean
-                        overwrite_v6:
+                        force6:
                           type: boolean
                         IPv4:
                           type: string
@@ -250,9 +250,9 @@ components:
                     blocking:
                       type: object
                       properties:
-                        overwrite_v4:
+                        force4:
                           type: boolean
-                        overwrite_v6:
+                        force6:
                           type: boolean
                         IPv4:
                           type: string
@@ -551,13 +551,13 @@ components:
               iCloudPrivateRelay: true
             reply:
               host:
-                overwrite_v4: false
-                overwrite_v6: false
+                force4: false
+                force6: false
                 IPv4: 0.0.0.0
                 IPv6: "::"
               blocking:
-                overwrite_v4: false
-                overwrite_v6: false
+                force4: false
+                force6: false
                 IPv4: 0.0.0.0
                 IPv6: "::"
             rateLimit:

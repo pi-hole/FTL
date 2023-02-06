@@ -139,15 +139,15 @@ struct config {
 		} specialDomains;
 		struct {
 			struct {
-				struct conf_item overwrite_v4;
-				struct conf_item overwrite_v6;
+				struct conf_item force4;
 				struct conf_item v4;
+				struct conf_item force6;
 				struct conf_item v6;
 			} host;
 			struct {
-				struct conf_item overwrite_v4;
-				struct conf_item overwrite_v6;
+				struct conf_item force4;
 				struct conf_item v4;
+				struct conf_item force6;
 				struct conf_item v6;
 			} blocking;
 		} reply;

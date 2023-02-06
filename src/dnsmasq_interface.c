@@ -341,9 +341,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		        config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ||
 		        forced_ip)
 		{
-			if(hostname && config.dns.reply.host.overwrite_v4.v.b)
+			if(hostname && config.dns.reply.host.force4.v.b)
 				memcpy(&addr, &config.dns.reply.host.v4.v.in_addr, sizeof(config.dns.reply.host.v4.v.in_addr));
-			else if(!hostname && config.dns.reply.blocking.overwrite_v4.v.b)
+			else if(!hostname && config.dns.reply.blocking.force4.v.b)
 				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(config.dns.reply.blocking.v4.v.in_addr));
 			else
 				memcpy(&addr, &next_iface.addr4, sizeof(addr));
@@ -376,9 +376,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
 		        forced_ip)
 		{
-			if(hostname && config.dns.reply.host.overwrite_v6.v.b)
+			if(hostname && config.dns.reply.host.force6.v.b)
 				memcpy(&addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(config.dns.reply.host.v6.v.in6_addr));
-			else if(!hostname && config.dns.reply.blocking.overwrite_v6.v.b)
+			else if(!hostname && config.dns.reply.blocking.force6.v.b)
 				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(config.dns.reply.blocking.v6.v.in6_addr));
 			else
 				memcpy(&addr, &next_iface.addr6, sizeof(addr));
@@ -533,10 +533,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			// virtual interface that has only an IPv4 address
 			if((querytype == TYPE_A &&
 			    !next_iface.haveIPv4 &&
-			    !config.dns.reply.host.overwrite_v4.v.b) ||
+			    !config.dns.reply.host.force4.v.b) ||
 			   (querytype == TYPE_AAAA &&
 			    !next_iface.haveIPv6 &&
-			    !config.dns.reply.host.overwrite_v6.v.b))
+			    !config.dns.reply.host.force6.v.b))
 				force_next_DNS_reply = REPLY_NODATA;
 			else
 				force_next_DNS_reply = REPLY_IP;

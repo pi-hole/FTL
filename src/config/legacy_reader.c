@@ -401,39 +401,39 @@ const char *readFTLlegacy(struct config *conf)
 	// Use a specific IP address instead of automatically detecting the
 	// IPv4 interface address a query arrived on for A hostname queries
 	// defaults to: not set
-	conf->dns.reply.host.overwrite_v4.v.b = false;
+	conf->dns.reply.host.force4.v.b = false;
 	conf->dns.reply.host.v4.v.in_addr.s_addr = 0;
 	buffer = parseFTLconf(fp, "LOCAL_IPV4");
 	if(buffer != NULL && inet_pton(AF_INET, buffer, &conf->dns.reply.host.v4.v.in_addr))
-		conf->dns.reply.host.overwrite_v4.v.b = true;
+		conf->dns.reply.host.force4.v.b = true;
 
 	// LOCAL_IPV6
 	// Use a specific IP address instead of automatically detecting the
 	// IPv6 interface address a query arrived on for AAAA hostname queries
 	// defaults to: not set
-	conf->dns.reply.host.overwrite_v6.v.b = false;
+	conf->dns.reply.host.force6.v.b = false;
 	memset(&conf->dns.reply.host.v6.v.in6_addr, 0, sizeof(conf->dns.reply.host.v6.v.in6_addr));
 	buffer = parseFTLconf(fp, "LOCAL_IPV6");
 	if(buffer != NULL && inet_pton(AF_INET6, buffer, &conf->dns.reply.host.v6.v.in6_addr))
-		conf->dns.reply.host.overwrite_v6.v.b = true;
+		conf->dns.reply.host.force6.v.b = true;
 
 	// BLOCK_IPV4
 	// Use a specific IPv4 address for IP blocking mode replies
 	// defaults to: REPLY_ADDR4 setting
-	conf->dns.reply.blocking.overwrite_v4.v.b = false;
+	conf->dns.reply.blocking.force4.v.b = false;
 	conf->dns.reply.blocking.v4.v.in_addr.s_addr = 0;
 	buffer = parseFTLconf(fp, "BLOCK_IPV4");
 	if(buffer != NULL && inet_pton(AF_INET, buffer, &conf->dns.reply.blocking.v4.v.in_addr))
-		conf->dns.reply.blocking.overwrite_v4.v.b = true;
+		conf->dns.reply.blocking.force4.v.b = true;
 
 	// BLOCK_IPV6
 	// Use a specific IPv6 address for IP blocking mode replies
 	// defaults to: REPLY_ADDR6 setting
-	conf->dns.reply.blocking.overwrite_v6.v.b = false;
+	conf->dns.reply.blocking.force6.v.b = false;
 	memset(&conf->dns.reply.blocking.v6.v.in6_addr, 0, sizeof(conf->dns.reply.host.v6.v.in6_addr));
 	buffer = parseFTLconf(fp, "BLOCK_IPV6");
 	if(buffer != NULL && inet_pton(AF_INET6, buffer, &conf->dns.reply.blocking.v6.v.in6_addr))
-		conf->dns.reply.blocking.overwrite_v6.v.b = true;
+		conf->dns.reply.blocking.force6.v.b = true;
 
 	// REPLY_ADDR4 (deprecated setting)
 	// Use a specific IP address instead of automatically detecting the
@@ -443,15 +443,15 @@ const char *readFTLlegacy(struct config *conf)
 	buffer = parseFTLconf(fp, "REPLY_ADDR4");
 	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr4))
 	{
-		if(conf->dns.reply.host.overwrite_v4.v.b || conf->dns.reply.blocking.overwrite_v4.v.b)
+		if(conf->dns.reply.host.force4.v.b || conf->dns.reply.blocking.force4.v.b)
 		{
 			log_warn("Ignoring REPLY_ADDR4 as LOCAL_IPV4 or BLOCK_IPV4 has been specified.");
 		}
 		else
 		{
-			conf->dns.reply.host.overwrite_v4.v.b = true;
+			conf->dns.reply.host.force4.v.b = true;
 			memcpy(&conf->dns.reply.host.v4.v.in_addr, &reply_addr4, sizeof(reply_addr4));
-			conf->dns.reply.blocking.overwrite_v4.v.b = true;
+			conf->dns.reply.blocking.force4.v.b = true;
 			memcpy(&conf->dns.reply.blocking.v4.v.in_addr, &reply_addr4, sizeof(reply_addr4));
 		}
 	}
@@ -464,15 +464,15 @@ const char *readFTLlegacy(struct config *conf)
 	buffer = parseFTLconf(fp, "REPLY_ADDR6");
 	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr6))
 	{
-		if(conf->dns.reply.host.overwrite_v6.v.b || conf->dns.reply.blocking.overwrite_v6.v.b)
+		if(conf->dns.reply.host.force6.v.b || conf->dns.reply.blocking.force6.v.b)
 		{
 			log_warn("Ignoring REPLY_ADDR6 as LOCAL_IPV6 or BLOCK_IPV6 has been specified.");
 		}
 		else
 		{
-			conf->dns.reply.host.overwrite_v6.v.b = true;
+			conf->dns.reply.host.force6.v.b = true;
 			memcpy(&conf->dns.reply.host.v6.v.in6_addr, &reply_addr6, sizeof(reply_addr6));
-			conf->dns.reply.blocking.overwrite_v6.v.b = true;
+			conf->dns.reply.blocking.force6.v.b = true;
 			memcpy(&conf->dns.reply.blocking.v6.v.in6_addr, &reply_addr6, sizeof(reply_addr6));
 		}
 	}

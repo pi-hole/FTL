@@ -537,11 +537,11 @@ void initConfig(struct config *conf)
 	conf->dns.specialDomains.iCloudPrivateRelay.d.b = true;
 
 	// sub-struct dns.reply_addr
-	conf->dns.reply.host.overwrite_v4.k = "dns.reply.host.overwrite_v4";
-	conf->dns.reply.host.overwrite_v4.h = "Use a specific IPv4 address for the Pi-hole host? By default, FTL determines the address of the interface a query arrived on and uses this address for replying to A queries with the most suitable address for the requesting client. This setting can be used to use a fixed, rather than the dynamically obtained, address when Pi-hole responds to the following names: [ \"pi.hole\", \"<the device's hostname>\", \"pi.hole.<local domain>\", \"<the device's hostname>.<local domain>\" ]";
-	conf->dns.reply.host.overwrite_v4.t = CONF_BOOL;
-	conf->dns.reply.host.overwrite_v4.f = FLAG_ADVANCED_SETTING;
-	conf->dns.reply.host.overwrite_v4.d.b = false;
+	conf->dns.reply.host.force4.k = "dns.reply.host.force4";
+	conf->dns.reply.host.force4.h = "Use a specific IPv4 address for the Pi-hole host? By default, FTL determines the address of the interface a query arrived on and uses this address for replying to A queries with the most suitable address for the requesting client. This setting can be used to use a fixed, rather than the dynamically obtained, address when Pi-hole responds to the following names: [ \"pi.hole\", \"<the device's hostname>\", \"pi.hole.<local domain>\", \"<the device's hostname>.<local domain>\" ]";
+	conf->dns.reply.host.force4.t = CONF_BOOL;
+	conf->dns.reply.host.force4.f = FLAG_ADVANCED_SETTING;
+	conf->dns.reply.host.force4.d.b = false;
 
 	conf->dns.reply.host.v4.k = "dns.reply.host.IPv4";
 	conf->dns.reply.host.v4.h = "Custom IPv4 address for the Pi-hole host";
@@ -550,11 +550,11 @@ void initConfig(struct config *conf)
 	conf->dns.reply.host.v4.f = FLAG_ADVANCED_SETTING;
 	memset(&conf->dns.reply.host.v4.d.in_addr, 0, sizeof(struct in_addr));
 
-	conf->dns.reply.host.overwrite_v6.k = "dns.reply.host.overwrite_v6";
-	conf->dns.reply.host.overwrite_v6.h = "Use a specific IPv6 address for the Pi-hole host? See description for the IPv4 variant above for further details.";
-	conf->dns.reply.host.overwrite_v6.t = CONF_BOOL;
-	conf->dns.reply.host.overwrite_v6.f = FLAG_ADVANCED_SETTING;
-	conf->dns.reply.host.overwrite_v6.d.b = false;
+	conf->dns.reply.host.force6.k = "dns.reply.host.force6";
+	conf->dns.reply.host.force6.h = "Use a specific IPv6 address for the Pi-hole host? See description for the IPv4 variant above for further details.";
+	conf->dns.reply.host.force6.t = CONF_BOOL;
+	conf->dns.reply.host.force6.f = FLAG_ADVANCED_SETTING;
+	conf->dns.reply.host.force6.d.b = false;
 
 	conf->dns.reply.host.v6.k = "dns.reply.host.IPv6";
 	conf->dns.reply.host.v6.h = "Custom IPv6 address for the Pi-hole host";
@@ -563,11 +563,11 @@ void initConfig(struct config *conf)
 	conf->dns.reply.host.v6.f = FLAG_ADVANCED_SETTING;
 	memset(&conf->dns.reply.host.v6.d.in6_addr, 0, sizeof(struct in6_addr));
 
-	conf->dns.reply.blocking.overwrite_v4.k = "dns.reply.blocking.overwrite_v4";
-	conf->dns.reply.blocking.overwrite_v4.h = "Use a specific IPv4 address in IP blocking mode? By default, FTL determines the address of the interface a query arrived on and uses this address for replying to A queries with the most suitable address for the requesting client. This setting can be used to use a fixed, rather than the dynamically obtained, address when Pi-hole responds in the following cases: IP blocking mode is used and this query is to be blocked, regular expressions with the ;reply=IP regex extension.";
-	conf->dns.reply.blocking.overwrite_v4.t = CONF_BOOL;
-	conf->dns.reply.blocking.overwrite_v4.f = FLAG_ADVANCED_SETTING;
-	conf->dns.reply.blocking.overwrite_v4.d.b = false;
+	conf->dns.reply.blocking.force4.k = "dns.reply.blocking.force4";
+	conf->dns.reply.blocking.force4.h = "Use a specific IPv4 address in IP blocking mode? By default, FTL determines the address of the interface a query arrived on and uses this address for replying to A queries with the most suitable address for the requesting client. This setting can be used to use a fixed, rather than the dynamically obtained, address when Pi-hole responds in the following cases: IP blocking mode is used and this query is to be blocked, regular expressions with the ;reply=IP regex extension.";
+	conf->dns.reply.blocking.force4.t = CONF_BOOL;
+	conf->dns.reply.blocking.force4.f = FLAG_ADVANCED_SETTING;
+	conf->dns.reply.blocking.force4.d.b = false;
 
 	conf->dns.reply.blocking.v4.k = "dns.reply.blocking.IPv4";
 	conf->dns.reply.blocking.v4.h = "Custom IPv4 address for IP blocking mode";
@@ -576,11 +576,11 @@ void initConfig(struct config *conf)
 	conf->dns.reply.blocking.v4.f = FLAG_ADVANCED_SETTING;
 	memset(&conf->dns.reply.blocking.v4.d.in_addr, 0, sizeof(struct in_addr));
 
-	conf->dns.reply.blocking.overwrite_v6.k = "dns.reply.blocking.overwrite_v6";
-	conf->dns.reply.blocking.overwrite_v6.h = "Use a specific IPv6 address in IP blocking mode? See description for the IPv4 variant above for further details.";
-	conf->dns.reply.blocking.overwrite_v6.t = CONF_BOOL;
-	conf->dns.reply.blocking.overwrite_v6.f = FLAG_ADVANCED_SETTING;
-	conf->dns.reply.blocking.overwrite_v6.d.b = false;
+	conf->dns.reply.blocking.force6.k = "dns.reply.blocking.force6";
+	conf->dns.reply.blocking.force6.h = "Use a specific IPv6 address in IP blocking mode? See description for the IPv4 variant above for further details.";
+	conf->dns.reply.blocking.force6.t = CONF_BOOL;
+	conf->dns.reply.blocking.force6.f = FLAG_ADVANCED_SETTING;
+	conf->dns.reply.blocking.force6.d.b = false;
 
 	conf->dns.reply.blocking.v6.k = "dns.reply.blocking.IPv6";
 	conf->dns.reply.blocking.v6.h = "Custom IPv6 address for IP blocking mode";
