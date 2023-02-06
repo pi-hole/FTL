@@ -237,10 +237,9 @@ static int get_system_obj(struct ftl_conn *api, cJSON *system)
 }
 
 static int read_temp_sensor(struct ftl_conn *api,
+                            cJSON *object,
                             const char *label_path,
-                            const char *value_path,
-                            const char *short_path,
-                            cJSON *object)
+                            const char *value_path)
 {
 	// Check if sensor is available
 	if(file_exists(value_path) == false)
@@ -252,7 +251,7 @@ static int read_temp_sensor(struct ftl_conn *api,
 	{
 		int raw_temp = 0;
 		char label[1024];
-		if(fscanf(f_value, "%d", &raw_temp) == 1)
+		if(fscanf(f_value, "%i", &raw_temp) == 1 && raw_temp != 0u)
 		{
 			FILE *f_label = NULL;
 			if(file_exists(label_path))
@@ -270,8 +269,6 @@ static int read_temp_sensor(struct ftl_conn *api,
 			{
 				JSON_ADD_NULL_TO_OBJECT(item, "name");
 			}
-			JSON_COPY_STR_TO_OBJECT(item, "path", short_path);
-
 			if(f_label != NULL)
 				fclose(f_label);
 
@@ -283,6 +280,7 @@ static int read_temp_sensor(struct ftl_conn *api,
 			else if(config.webserver.api.temp.unit.v.s[0] == 'K')
 				temp += 273.15; // Convert °Celsius to Kelvin
 			JSON_ADD_NUMBER_TO_OBJECT(item, "value", temp);
+			JSON_COPY_STR_TO_OBJECT(item, "path", value_path);
 			JSON_ADD_ITEM_TO_ARRAY(object, item);
 		}
 	}
@@ -294,7 +292,8 @@ static int read_temp_sensor(struct ftl_conn *api,
 }
 
 // Get the temperature from sensor files using a glob pattern
-static int sensor_temp_from_glob(struct ftl_conn *api, cJSON *sensors, const char *globstr, const char *item_string, const char *label_string)
+static int sensor_temp_from_glob(struct ftl_conn *api, cJSON *sensors, const char *globstr,
+                                 const char *item_string, const char *label_string)
 {
 	glob_t globbuf = { 0 };
 	int ret = glob(globstr, 0, NULL, &globbuf);
@@ -323,7 +322,7 @@ static int sensor_temp_from_glob(struct ftl_conn *api, cJSON *sensors, const cha
 		}
 
 		// Read the sensor
-		ret = read_temp_sensor(api, label_path, value_path, value_path, sensors);
+		ret = read_temp_sensor(api, sensors, label_path, value_path);
 		if(label_path != NULL)
 			free(label_path);
 		if(ret != 0)
@@ -347,7 +346,7 @@ static int get_sensors_arr(struct ftl_conn *api, cJSON *sensors)
 
 	// Thermal zone sensors
 	// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-thermal
-	ret = sensor_temp_from_glob(api, sensors, "/sys/class/thermal/thermal_zone*/temp", "type", "temp");
+	ret = sensor_temp_from_glob(api, sensors, "/sys/class/thermal/thermal_zone*/temp", "temp", "type");
 	if(ret != 0)
 		return ret;
 
