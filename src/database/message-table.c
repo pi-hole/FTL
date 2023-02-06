@@ -8,23 +8,25 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "message-table.h"
-#include "common.h"
+#include "FTL.h"
+#include "database/message-table.h"
+#include "database/common.h"
 // logging routines
-#include "../log.h"
+#include "log.h"
 // get_group_names()
 #include "gravity-db.h"
 // cli_mode
-#include "../args.h"
+#include "args.h"
 // cleanup()
-#include "../daemon.h"
+#include "daemon.h"
 // main_pid()
-#include "../signals.h"
+#include "signals.h"
 // struct config
-#include "../config/config.h"
+#include "config/config.h"
 // get_rate_limit_turnaround()
-#include "../gc.h"
+#include "gc.h"
+// get_filesystem_details()
+#include "files.h"
 
 static cJSON *messages = NULL;
 
@@ -682,7 +684,15 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 	}
 	else if(disk > -1)
 	{
-		ret = snprintf(buf, sizeof(buf), "Disk shortage (%s) ahead: %d%% is used (%s)", path, disk, msg);
+		// Get filesystem details for this path
+		struct fstab *fsdetails = get_filesystem_details(path);
+
+		// Create plain message
+		if(fsdetails != NULL)
+			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: %d%% is used (%s) on filesystem mounted at %s", disk, msg, fsdetails->fs_file);
+		else
+			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: %d%% is used (%s) on partition containing the file %s", disk, msg, path);
+
 		if(ret > sizeof(buf))
 			log_warn("log_resource_shortage(): Buffer too small to hold plain message, warning truncated");
 
@@ -696,9 +706,18 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		cJSON *item = add_plain_message(buf, rowid, DISK_MESSAGE);
 
 		// Create HTML message
-		ret = snprintf(buf, sizeof(buf), "Disk shortage (<code>%s</code>) ahead: <strong>%d%%</strong> is used<br>%s", path, disk, msg);
+		if(fsdetails != NULL)
+			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on filesystem mounted at <code>%s</code>",
+			               disk, msg, fsdetails->fs_file);
+		else
+			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on partition containing the file <code>%s</code>",
+			               disk, msg, path);
 		if(ret > (int)sizeof(buf))
 			log_warn("log_resource_shortage(): Buffer too small to hold HTML message, warning truncated");
+
+		// Rewind fsdetails to the beginning of the list
+		endfsent();
+
 		add_html_message(item, buf);
 	}
 }

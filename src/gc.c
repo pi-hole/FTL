@@ -91,7 +91,7 @@ static int check_space(const char *file, unsigned int LastUsage)
 	// Warn if space usage at the device holding the corresponding file
 	// exceeds the configured threshold and current usage is higher than
 	// usage in the last run (to prevent log spam)
-	perc = get_filepath_usage(file, buffer);
+	perc = get_path_usage(file, buffer);
 	log_debug(DEBUG_GC, "Checking free space at %s: %u%% %s %u%%", file, perc,
 	          perc > config.misc.check.disk.v.ui ? ">" : "<=",
 	          config.misc.check.disk.v.ui);

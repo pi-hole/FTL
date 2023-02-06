@@ -12,6 +12,8 @@
 
 #include <stdbool.h>
 #include <sys/stat.h>
+// getfsent()
+#include <fstab.h>
 
 #define ZIP_ROTATIONS 3
 #define MAX_ROTATIONS 15
@@ -23,7 +25,7 @@ unsigned long long get_FTL_db_filesize(void);
 void get_permission_string(char permissions[10], struct stat *st);
 void ls_dir(const char* path);
 unsigned int get_path_usage(const char *path, char buffer[64]);
-unsigned int get_filepath_usage(const char *file, char buffer[64]);
+struct fstab *get_filesystem_details(const char *path);
 bool directory_exists(const char *path);
 void rotate_files(const char *path, char **first_file);
 

@@ -236,7 +236,7 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 	format_memory_size(prefix_used, used, &formatted_used);
 
 	// Print result into buffer passed to this subroutine
-	snprintf(buffer, 64, "%s: %.1f%sB used, %.1f%sB total", path,
+	snprintf(buffer, 64, "%.1f%sB used, %.1f%sB total",
 	         formatted_used, prefix_used, formatted_size, prefix_size);
 
 	// If size is 0, we return 0% to avoid division by zero below
@@ -249,20 +249,27 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 	return (used*100)/(size + 1);
 }
 
-unsigned int get_filepath_usage(const char *file, char buffer[64])
-{
-	if(file == NULL || strlen(file) == 0)
-		return -1;
+// Get the filesystem where the given path is located
+// Credits: https://stackoverflow.com/a/40660348/2087442
+struct fstab *get_filesystem_details(const char *path) {
+	/* stat the file in question */
+	struct stat path_stat;
+	stat(path, &path_stat);
 
-	// Get path from file, we duplicate the string
-	// here as dirname() modifies the string inplace
-	char path[PATH_MAX] = { 0 };
-	strncpy(path, file, sizeof(path)-1);
-	path[sizeof(path)-1] = '\0';
-	dirname(path);
+	/* iterate through the list of devices */
+	struct fstab *fs = NULL;
+	while( (fs = getfsent()) )
+	{
+		/* stat the mount point */
+		struct stat dev_stat;
+		stat(fs->fs_file, &dev_stat);
 
-	// Get percentage of disk usage at this path
-	return get_path_usage(path, buffer);
+		/* check if our file and the mount point are on the same device */
+		if( dev_stat.st_dev == path_stat.st_dev )
+			break;
+	}
+
+	return fs;
 }
 
 // Credits: https://stackoverflow.com/a/55410469
