@@ -409,16 +409,45 @@ components:
                 type: string
                 nullable: true
                 description: Description of temperature sensor (if available, `null` otherwise)
-              path:
-                type: string
-                description: Short path of temperature sensor
-              value:
-                type: number
-                description: Sensor value
+              temps:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    path:
+                      type: string
+                      description: Short path of temperature sensor
+                    value:
+                      type: number
+                      description: Sensor value
           example:
-            - name: "Composite"
-              path: "hwmon0/temp1"
-              value: 30.4
+            - name: "nvme"
+              path: "hwmon0"
+              temps:
+                - name: "Composite"
+                  value: 38.0
+                  path: "temp1_input"
+            - name: "amdgpu"
+              path: "hwmon1"
+              temps:
+                - name: "edge"
+                  value: 40.0
+                  path: "temp1_input"
+            - name: "nct6793"
+              path: "hwmon2"
+              temps:
+                - name: "SMBUSMASTER 0"
+                  value: 59.5
+                  path: "temp1_input"
+                - name: CPUTIN
+                  value: 40.0
+                  path: "temp2_input"
+            - name: "k10temp"
+              path: "hwmon3"
+              temps:
+                - name: "Tctl"
+                  value: 58.875
+                  path: "temp1_input"
         hot_limit:
           type: number
           description: Limit defined in FTL's config beyond which the CPU should be considered hot
