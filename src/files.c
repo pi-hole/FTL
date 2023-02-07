@@ -497,3 +497,65 @@ int parse_line(char *line, char **key, char **value)
 
 	return 0;
 }
+
+// Get symlink target
+char * __attribute__((malloc)) get_hwmon_target(const char *path)
+{
+	struct stat sb;
+
+	// Get symlink status
+	if(lstat(path, &sb) == -1)
+		return NULL;
+
+	// Check if path is a symlink
+	if(!S_ISLNK(sb.st_mode))
+		return NULL;
+
+	// Allocate buffer
+	off_t bufsize = sb.st_size + 1;
+
+	// Some systems do not set st_size for symlinks
+	// In this case, we use PATH_MAX
+	if(bufsize == 1)
+		bufsize = PATH_MAX;
+
+	// Allocate buffer
+	char *target = calloc(bufsize, sizeof(char));
+	if(target == NULL)
+		return NULL;
+
+	// Read symlink target
+	const ssize_t nbytes = readlink(path, target, bufsize);
+	if(nbytes == -1)
+	{
+		free(target);
+		return NULL;
+	}
+
+	// The link target may be relative to the link's parent directory
+	// It typically looks like, e.g.
+	//
+	//   ../../devices/pci0000:00/0000:00:1f.3/hwmon/hwmon0
+	//
+	// We remove the "../" and "/hwmon/hwmonX" parts so it becomes
+	//
+	//   devices/pci0000:00/0000:00:1f.3
+
+
+	// Strip "../" from beginning of string (if present)
+	while(nbytes >= 3 && strncmp(target, "../", 3) == 0)
+	{
+		memmove(target, target + 3, nbytes - 3);
+		target[nbytes - 3] = '\0';
+	}
+
+	// Strip "/hwmon[...]" from end of string (if present)
+	char *hwmon = strstr(target, "/hwmon");
+	if(hwmon != NULL)
+		*hwmon = '\0';
+
+	// Ensure that the string is null-terminated
+	target[nbytes] = '\0';
+
+	return target;
+}

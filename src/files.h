@@ -31,4 +31,6 @@ void rotate_files(const char *path, char **first_file);
 
 int parse_line(char *line, char **key, char **value);
 
+char *get_hwmon_target(const char *path) __attribute__((malloc));
+
 #endif //FILE_H

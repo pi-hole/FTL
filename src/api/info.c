@@ -243,9 +243,13 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 	// Read label and value file
 	char label_path[1024];
 	char value_path[1024];
+	char crit_path[1024];
+	char max_path[1024];
 	char name[1024];
 	snprintf(label_path, sizeof(label_path), "%s/temp%u_label", path, sensor_id);
 	snprintf(value_path, sizeof(value_path), "%s/temp%u_input", path, sensor_id);
+	snprintf(crit_path, sizeof(crit_path), "%s/temp%u_crit", path, sensor_id);
+	snprintf(max_path, sizeof(max_path), "%s/temp%u_max", path, sensor_id);
 	snprintf(name, sizeof(name), "temp%u", sensor_id);
 
 	// Check if sensor is available
@@ -261,14 +265,15 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 	}
 
 	int raw_temp = 0;
-	char label[1024];
 	if(fscanf(f_value, "%i", &raw_temp) == 1 && raw_temp != 0u)
 	{
+		// Try to read label
 		FILE *f_label = NULL;
 		if(file_exists(label_path))
 			f_label = fopen(label_path, "r");
 
 		cJSON *item = JSON_NEW_OBJECT();
+		char label[1024];
 		if(f_label && fgets(label, sizeof(label)-1, f_label))
 		{
 			// Remove newline if present
@@ -283,15 +288,59 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 		if(f_label != NULL)
 			fclose(f_label);
 
-		// Compute actual temperature, many sensors give their values in milli °Celsius
-		// see, e.g., https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-thermal
-		double temp = raw_temp < 1000 ? raw_temp : 1e-3*raw_temp;
+		// Try to read maximum temperature
+		FILE *f_max = NULL;
+		if(file_exists(max_path))
+			f_max = fopen(max_path, "r");
+
+		int raw_max = 0;
+		bool has_max = false;
+		if(f_max)
+			has_max = fscanf(f_max, "%i", &raw_max) == 1;
+		if(f_max != NULL)
+			fclose(f_max);
+
+		// Try to read maximum temperature
+		FILE *f_crit = NULL;
+		if(file_exists(crit_path))
+			f_crit = fopen(crit_path, "r");
+
+		int raw_crit = 0;
+		bool has_crit = false;
+		if(f_crit)
+			has_crit = fscanf(f_crit, "%i", &raw_crit) == 1;
+		if(f_crit != NULL)
+			fclose(f_crit);
+
+		// Compute actual temperature, the raw unit is millidegree Celsius
+		double temp = 1e-3*raw_temp;
+		double max = 1e-3*raw_max;
+		double crit = 1e-3*raw_crit;
 		if(config.webserver.api.temp.unit.v.s[0] == 'F')
-			temp = 1.8*temp + 32; // Convert °Celsius to °Fahrenheit
+		{
+			// Convert °Celsius to °Fahrenheit
+			temp = 1.8*temp + 32;
+			max = 1.8*max + 32;
+			crit = 1.8*crit + 32;
+		}
 		else if(config.webserver.api.temp.unit.v.s[0] == 'K')
-			temp += 273.15; // Convert °Celsius to Kelvin
+		{
+			// Convert °Celsius to Kelvin
+			temp += 273.15;
+			max += 273.15;
+			crit += 273.15;
+		}
 		JSON_ADD_NUMBER_TO_OBJECT(item, "value", temp);
-		JSON_COPY_STR_TO_OBJECT(item, "path", name);
+		if(has_max)
+			JSON_ADD_NUMBER_TO_OBJECT(item, "max", max);
+		else
+			JSON_ADD_NULL_TO_OBJECT(item, "max");
+		if(has_crit)
+			JSON_ADD_NUMBER_TO_OBJECT(item, "crit", crit);
+		else
+			JSON_ADD_NULL_TO_OBJECT(item, "crit");
+		JSON_COPY_STR_TO_OBJECT(item, "sensor", name);
+
 		JSON_ADD_ITEM_TO_ARRAY(array, item);
 	}
 
@@ -352,6 +401,12 @@ static int get_sensors(struct ftl_conn *api, cJSON *sensors)
 		cJSON *hwmon = JSON_NEW_OBJECT();
 		JSON_COPY_STR_TO_OBJECT(hwmon, "name", name);
 		JSON_COPY_STR_TO_OBJECT(hwmon, "path", monitor_name);
+
+		// Get symlink target
+		char *target = get_hwmon_target(dirpath);
+		JSON_COPY_STR_TO_OBJECT(hwmon, "source", target);
+		free(target);
+
 		cJSON *temps = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(hwmon, "temps", temps);
 		JSON_ADD_ITEM_TO_ARRAY(sensors, hwmon);

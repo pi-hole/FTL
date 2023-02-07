@@ -409,45 +409,92 @@ components:
                 type: string
                 nullable: true
                 description: Description of temperature sensor (if available, `null` otherwise)
+              path:
+                type: string
+                description: Short path of temperature sensor
+              source:
+                type: string
+                description: Path-like device description
               temps:
                 type: array
                 items:
                   type: object
                   properties:
-                    path:
+                    name:
                       type: string
-                      description: Short path of temperature sensor
+                      nullable: true
+                      description: Description of temperature sensor (if available, `null` otherwise)
                     value:
                       type: number
                       description: Sensor value
+                    max:
+                      type: number
+                      nullable: true
+                      description: Maximum sensor value (if available, `null` otherwise)
+                    crit:
+                      type: number
+                      nullable: true
+                      description: Critical sensor value (if available, `null` otherwise)
+                    path:
+                      type: string
+                      description: Short path of temperature sensor
           example:
-            - name: "nvme"
-              path: "hwmon0"
-              temps:
-                - name: "Composite"
-                  value: 38.0
-                  path: "temp1_input"
             - name: "amdgpu"
               path: "hwmon1"
+              source: "devices/pci0000:00/0000:00:08.1/0000:05:00.0"
               temps:
                 - name: "edge"
                   value: 40.0
-                  path: "temp1_input"
+                  max: null
+                  crit: null
+                  path: "temp1"
             - name: "nct6793"
               path: "hwmon2"
+              source: "devices/platform/nct6775.656"
               temps:
                 - name: "SMBUSMASTER 0"
                   value: 59.5
-                  path: "temp1_input"
+                  max: null
+                  crit: null
+                  path: "temp1"
                 - name: CPUTIN
                   value: 40.0
-                  path: "temp2_input"
+                  max: null
+                  crit: null
+                  path: "temp2"
             - name: "k10temp"
               path: "hwmon3"
+              source: "devices/pci0000:00/0000:00:18.3"
               temps:
+                - name: "Tdie"
+                  value: 58.875
+                  max: 70.0
+                  crit: null
+                  path: "temp1"
                 - name: "Tctl"
                   value: 58.875
-                  path: "temp1_input"
+                  max: null
+                  crit: null
+                  path: "temp2"
+            - name: "coretemp"
+              path: "hwmon4"
+              source: "devices/platform/coretemp.0"
+              temps:
+                - name: "Package id 0"
+                  value: 48.0
+                  max: 100.0
+                  crit: 100.0
+                  path: "temp1"
+                - name: "Core 0"
+                  value: 48.0
+                  max: 100.0
+                  crit: 100.0
+                  path: "temp2"
+                - name: "Core 1"
+                  value: 47.0
+                  max: 100.0
+                  crit: 100.0
+                  path: "temp3"
         hot_limit:
           type: number
           description: Limit defined in FTL's config beyond which the CPU should be considered hot
