@@ -689,9 +689,11 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 
 		// Create plain message
 		if(fsdetails != NULL)
-			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: %d%% is used (%s) on filesystem mounted at %s", disk, msg, fsdetails->mnt_dir);
+			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: %d%% is used (%s) on %s filesystem mounted at %s",
+			               disk, msg, fsdetails->mnt_type, fsdetails->mnt_dir);
 		else
-			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: %d%% is used (%s) on partition containing the file %s", disk, msg, path);
+			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: %d%% is used (%s) on partition containing the file %s",
+			               disk, msg, path);
 
 		if(ret > sizeof(buf))
 			log_warn("log_resource_shortage(): Buffer too small to hold plain message, warning truncated");
@@ -707,8 +709,8 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 
 		// Create HTML message
 		if(fsdetails != NULL)
-			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on filesystem mounted at <code>%s</code>",
-			               disk, msg, fsdetails->mnt_dir);
+			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on %s filesystem mounted at <code>%s</code>",
+			               disk, msg, fsdetails->mnt_type, fsdetails->mnt_dir);
 		else
 			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on partition containing the file <code>%s</code>",
 			               disk, msg, path);
