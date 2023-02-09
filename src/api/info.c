@@ -594,17 +594,62 @@ int api_info_host(struct ftl_conn *api)
 
 int api_info_sensors(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJECT();
+	cJSON *sensors = JSON_NEW_OBJECT();
 
 	// Get sensors array
-	cJSON *sensors = JSON_NEW_ARRAY();
-	int ret = get_sensors(api, sensors);
+	cJSON *list = JSON_NEW_ARRAY();
+	int ret = get_sensors(api, list);
 	if (ret != 0)
 		return ret;
-	JSON_ADD_ITEM_TO_OBJECT(json, "sensors", sensors);
+	JSON_ADD_ITEM_TO_OBJECT(sensors, "list", list);
+
+	// Loop over available sensors and try to identify the most suitable CPU temperature sensor
+	int cpu_temp_sensor = -1;
+
+	// Loop over all sensors
+	for(int i = 0; i < cJSON_GetArraySize(list); i++)
+	{
+		// Get sensor object
+		cJSON *sensor = cJSON_GetArrayItem(list, i);
+
+		// Get sensor name
+		cJSON *name = cJSON_GetObjectItemCaseSensitive(sensor, "name");
+		if(!cJSON_IsString(name) || name->valuestring == NULL)
+			continue;
+
+		// AMD CPU temperature sensor
+		if(strcmp(name->valuestring, "k10temp") == 0)
+		{
+			cpu_temp_sensor = i;
+			break;
+		}
+		// Intel CPU temperature sensor
+		else if(strcmp(name->valuestring, "coretemp") == 0)
+		{
+			cpu_temp_sensor = i;
+			break;
+		}
+	}
+
+	// Add CPU temperature sensor
+	if(cpu_temp_sensor >= 0)
+	{
+		cJSON *sensor_group = cJSON_GetArrayItem(list, cpu_temp_sensor);
+		cJSON *sensors_array = cJSON_GetObjectItemCaseSensitive(sensor_group, "temps");
+		cJSON *first_sensor = cJSON_GetArrayItem(sensors_array, 0);
+		cJSON *first_sensor_value = cJSON_GetObjectItemCaseSensitive(first_sensor, "value");
+		if(cJSON_IsNumber(first_sensor_value))
+			JSON_ADD_NUMBER_TO_OBJECT(sensors, "cpu_temp", first_sensor_value->valuedouble);
+		else
+			JSON_ADD_NULL_TO_OBJECT(sensors, "cpu_temp");
+	}
+	else
+	{
+		JSON_ADD_NULL_TO_OBJECT(sensors, "cpu_temp");
+	}
 
 	// Add hot limit
-	JSON_ADD_NUMBER_TO_OBJECT(json, "hot_limit", config.webserver.api.temp.limit.v.d);
+	JSON_ADD_NUMBER_TO_OBJECT(sensors, "hot_limit", config.webserver.api.temp.limit.v.d);
 
 	// Add unit
 	const char *unit = "C";
@@ -612,8 +657,10 @@ int api_info_sensors(struct ftl_conn *api)
 		unit = "F";
 	else if(config.webserver.api.temp.unit.v.s[0] == 'K')
 		unit = "K";
-	JSON_REF_STR_IN_OBJECT(json, "unit", unit);
+	JSON_REF_STR_IN_OBJECT(sensors, "unit", unit);
 
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "sensors", sensors);
 	JSON_SEND_OBJECT(json);
 }
 
