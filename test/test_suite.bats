@@ -58,7 +58,7 @@
 @test "Number of compiled regex filters as expected" {
   run bash -c 'grep "Compiled [0-9]* whitelist" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == *"Compiled 2 whitelist and 9 blacklist regex filters"* ]]
+  [[ ${lines[0]} == *"Compiled 2 whitelist and 11 blacklist regex filters"* ]]
 }
 
 @test "Blacklisted domain is blocked" {
@@ -196,7 +196,7 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "9" ]]
+  [[ ${lines[0]} == "11" ]]
 }
 
 @test "Client 5: Client is recognized by MAC address" {
@@ -228,7 +228,7 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "9" ]]
+  [[ ${lines[0]} == "11" ]]
 }
 
 @test "Client 6: Client is recognized by interface name" {
@@ -266,7 +266,7 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "9" ]]
+  [[ ${lines[0]} == "11" ]]
 }
 
 @test "Normal query (A) is not blocked" {
@@ -998,7 +998,7 @@
   run bash -c './pihole-FTL regex-test "f" g\;querytype=!A\;querytype=A'
   printf "%s\n" "${lines[@]}"
   [[ $status == 2 ]]
-  [[ ${lines[1]} == *"Overwriting previous querytype setting" ]]
+  [[ "${lines[@]}" == *"Overwriting previous querytype setting"* ]]
 }
 
 @test "Regex Test 41: Option \"^;reply=NXDOMAIN\" working as expected" {
@@ -1050,14 +1050,14 @@
   run bash -c './pihole-FTL regex-test "f" f\;querytype=A'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  [[ ${lines[4]} == "    Hint: This regex matches only type A queries" ]]
+  [[ "${lines[@]}" == *"- A"* ]]
 }
 
 @test "Regex Test 48: Option \";querytype=!TXT\" reported on CLI" {
   run bash -c './pihole-FTL regex-test "f" f\;querytype=!TXT'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  [[ ${lines[4]} == "    Hint: This regex does not match type TXT queries" ]]
+  [[ "${lines[@]}" != *"- TXT"* ]]
 }
 
 @test "Regex Test 49: Option \";reply=NXDOMAIN\" reported on CLI" {
@@ -1072,6 +1072,50 @@
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
   [[ ${lines[4]} == "    Hint: This regex is inverted" ]]
+}
+
+@test "Regex Test 51: Option \";querytype=A,HTTPS\" reported on CLI" {
+  run bash -c './pihole-FTL regex-test "f" f\;querytype=A,HTTPS'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ "${lines[@]}" == *"- A"* ]]
+  [[ "${lines[@]}" == *"- HTTPS"* ]]
+}
+
+@test "Regex Test 52: Option \";querytype=ANY,HTTPS,SVCB;reply=refused\" working as expected (ONLY matching ANY, HTTPS or SVCB queries)" {
+  run bash -c 'dig A regex-multiple.ftl @127.0.0.1'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"status: NOERROR"* ]]
+  run bash -c 'dig AAAA regex-multiple.ftl @127.0.0.1'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"status: NOERROR"* ]]
+  run bash -c 'dig SVCB regex-multiple.ftl @127.0.0.1'
+  printf "dig SVCB: %s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"status: REFUSED"* ]]
+  run bash -c 'dig HTTPS regex-multiple.ftl @127.0.0.1'
+  printf "dig HTTPS: %s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"status: REFUSED"* ]]
+  run bash -c 'dig ANY regex-multiple.ftl @127.0.0.1'
+  printf "dig ANY: %s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"status: REFUSED"* ]]
+}
+
+@test "Regex Test 53: Option \";querytype=!ANY,HTTPS,SVCB;reply=refused\" working as expected (NOT matching ANY, HTTPS or SVCB queries)" {
+  run bash -c 'dig A regex-notMultiple.ftl @127.0.0.1'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"status: REFUSED"* ]]
+  run bash -c 'dig AAAA regex-notMultiple.ftl @127.0.0.1'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"status: REFUSED"* ]]
+  run bash -c 'dig SVCB regex-notMultiple.ftl @127.0.0.1'
+  printf "dig SVCB: %s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"status: NOERROR"* ]]
+  run bash -c 'dig HTTPS regex-notMultiple.ftl @127.0.0.1'
+  printf "dig HTTPS: %s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"status: NOERROR"* ]]
+  run bash -c 'dig ANY regex-notMultiple.ftl @127.0.0.1'
+  printf "dig ANY: %s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"status: NOERROR"* ]]
 }
 
 # x86_64-musl is built on busybox which has a slightly different
