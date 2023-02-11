@@ -336,7 +336,7 @@ int set_config_from_CLI(const char *key, const char *value)
 
 	// Parse value
 	if(!readStringValue(new_item, value))
-		return false;
+		return 2;
 
 	// Check if value changed compared to current value
 	if(!compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
