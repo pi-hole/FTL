@@ -129,14 +129,20 @@ static bool readStringValue(struct conf_item *conf_item, const char *value)
 		}
 		case CONF_PASSWORD:
 		{
-			// Get password hash as allocated string
-			char *pwhash = hash_password(value);
-			// Get pointer to pwhash instead
-			log_info("Pointer to conf_item: %p = %s", conf_item, conf_item->k);
+			// Get pointer to pwhash instead of the password by
+			// decrementing the pointer by one. This is safe as we
+			// know that the pwhash is the immediately preceding
+			// item in the struct
 			conf_item--;
-			log_info("Pointer to conf_item: %p = %s", conf_item, conf_item->k);
+
+			// Generate password hash (it'll be an allocated string)
+			char *pwhash = hash_password(value);
+
+			// Free old password hash if it was allocated
 			if(conf_item->t == CONF_STRING_ALLOCATED)
 					free(conf_item->v.s);
+
+			// Store new password hash
 			conf_item->v.s = pwhash;
 			conf_item->t = CONF_STRING_ALLOCATED;
 			break;
