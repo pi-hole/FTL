@@ -206,24 +206,24 @@ components:
                     $ref: 'info.yaml#/components/examples/errors/messages/uri_error'
                   bad_request:
                     $ref: 'info.yaml#/components/examples/errors/messages/bad_request'
-    cache:
+    metrics:
       get:
-        summary: Get cache info
+        summary: Get metrics info
         tags:
           - "FTL information"
-        operationId: "get_cacheinfo"
+        operationId: "get_metricsinfo"
         description: |
-          This API hook returns live information about the DNS cache usage.
+          This API hook returns live information about the DNS and DHCP metrics.
         responses:
           '200':
             description: OK
             content:
               application/json:
                 schema:
-                  $ref: 'info.yaml#/components/schemas/cache'
+                  $ref: 'info.yaml#/components/schemas/metrics'
                 examples:
-                  cache:
-                    $ref: 'info.yaml#/components/examples/cache'
+                  metrics:
+                    $ref: 'info.yaml#/components/examples/metrics'
           '401':
             description: Unauthorized
             content:
@@ -880,71 +880,134 @@ components:
                 type: string
                 description: HTML-formatted message
                 example: "Client <code>192.168.2.42</code> has been rate-limited for at least 5 seconds (current limit: 1000 queries per 60 seconds)"
-    cache:
+    metrics:
       type: object
       properties:
-        cache:
+        metrics:
           type: object
-          description: Cache information
           properties:
-            size:
-              type: integer
-              description: Cache size
-            inserted:
-              type: integer
-              description: Number of inserted entries
-            evicted:
-              type: integer
-              description: Number of evicted entries
-            expired:
-              type: integer
-              description: Number of expired entries
-            immortal:
-              type: integer
-              description: Number of immortal entries
-            optimized:
-              type: integer
-              description: Number of queries answered from stale cache entries
-            local:
-              type: integer
-              description: Number of queries answered locally
-            auth:
-              type: integer
-              description: Number of queries for authoritative zones
-            valid:
+            dns:
               type: object
-              description: Number of valid entries
+              description: DNS metrics
               properties:
-                a:
-                  type: integer
-                  description: Number of valid A (IPv4) entries
-                aaaa:
-                  type: integer
-                  description: Number of valid AAAA (IPv6) entries
-                cname:
-                  type: integer
-                  description: Number of valid CNAME entries
-                srv:
-                  type: integer
-                  description: Number of valid SRV entries
-                ds:
-                  type: integer
-                  description: Number of valid DS entries
-                dnskey:
-                  type: integer
-                  description: Number of valid DNSKEY entries
-                other:
-                  type: integer
-                  description: Number of valid other entries
-            extra:
+                cache:
+                  type: object
+                  description: Cache information
+                  properties:
+                    size:
+                      type: integer
+                      description: Cache size
+                    inserted:
+                      type: integer
+                      description: Number of inserted entries
+                    evicted:
+                      type: integer
+                      description: Number of evicted entries
+                    expired:
+                      type: integer
+                      description: Number of expired entries
+                    immortal:
+                      type: integer
+                      description: Number of immortal entries
+                    content:
+                      type: object
+                      description: Number of valid DNS cache entries
+                      properties:
+                        a:
+                          type: integer
+                          description: Number of valid A (IPv4) entries
+                        aaaa:
+                          type: integer
+                          description: Number of valid AAAA (IPv6) entries
+                        cname:
+                          type: integer
+                          description: Number of valid CNAME entries
+                        srv:
+                          type: integer
+                          description: Number of valid SRV entries
+                        ds:
+                          type: integer
+                          description: Number of valid DS entries
+                        dnskey:
+                          type: integer
+                          description: Number of valid DNSKEY entries
+                        other:
+                          type: integer
+                          description: Number of valid other entries
+                replies:
+                  type: object
+                  properties:
+                    forwarded:
+                      type: integer
+                      description: Number of forwarded queries
+                    unanswered:
+                      type: integer
+                      description: Number of unanswered queries
+                    local:
+                      type: integer
+                      description: Number of queries answered from local cache
+                    optimized:
+                      type: integer
+                      description: Number of queries answered from local cache (stale entries)
+                    auth:
+                      type: integer
+                      description: Number of queries for authoritative zones
+                    sum:
+                      type: integer
+                      description: Total number of queries
+            dhcp:
               type: object
+              description: DHCP metrics
               properties:
-                forwarded:
+                ack:
                   type: integer
-                  description: Number of forwarded queries
-                unanswered:
+                  description: Number of DHCP ACKs
+                nak:
                   type: integer
-                  description: Number of unanswered queries
+                  description: Number of DHCP NAKs
+                decline:
+                  type: integer
+                  description: Number of DHCP declines
+                offer:
+                  type: integer
+                  description: Number of DHCP offers
+                discover:
+                  type: integer
+                  description: Number of DHCP discovers
+                inform:
+                  type: integer
+                  description: Number of DHCP informs
+                request:
+                  type: integer
+                  description: Number of DHCP requests
+                release:
+                  type: integer
+                  description: Number of DHCP releases
+                noanswer:
+                  type: integer
+                  description: Number of DHCP requests without answer
+                bootp:
+                  type: integer
+                  description: Number of BOOTP requests
+                pxe:
+                  type: integer
+                  description: Number of PXE requests
+                leases:
+                  type: object
+                  description: DHCP leases
+                  properties:
+                    allocated_4:
+                      type: integer
+                      description: Number of allocated IPv4 leases
+                    pruned_4:
+                      type: integer
+                      description: Number of pruned IPv4 leases
+                    allocated_6:
+                      type: integer
+                      description: Number of allocated IPv6 leases
+                    pruned_6:
+                      type: integer
+                      description: Number of pruned IPv6 leases
   examples:
     errors:
       messages:
@@ -962,29 +1025,48 @@ components:
               key: "bad_request"
               message: "Invalid ID in path"
               hint: "/api/info/messages/486741168746857468758478"
-    cache:
-      summary: Cache info
+    metrics:
+      summary: Server metrics
       value:
-        cache:
-          size: 10000
-          inserted: 4060
-          evicted: 0
-          expired: 0
-          immortal: 0
-          optimized: 1
-          local: 84
-          auth: 0
-          valid:
-            a: 212
-            aaaa: 61
-            cname: 14
-            srv: 0
-            ds: 60
-            dnskey: 35
-            other: 14
-          extra:
-            forwarded: 46
-            unanswered: 0
+        metrics:
+          dns:
+            cache:
+              size: 10000
+              inserted: 4060
+              evicted: 0
+              expired: 0
+              immortal: 0
+              content:
+                a: 212
+                aaaa: 61
+                cname: 14
+                srv: 0
+                ds: 60
+                dnskey: 35
+                other: 14
+            replies:
+              optimized: 1
+              local: 84
+              auth: 0
+              forwarded: 46
+              unanswered: 0
+          dhcp:
+            ack: 0
+            nak: 0
+            decline: 0
+            offer: 0
+            discover: 0
+            inform: 0
+            request: 0
+            release: 0
+            noanswer: 0
+            bootp: 0
+            pxe: 0
+            leases:
+              allocated_4: 0
+              pruned_4: 0
+              allocated_6: 0
+              pruned_6: 0
 
   parameters:
     logs:

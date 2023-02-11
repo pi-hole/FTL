@@ -54,7 +54,7 @@ int api_info_host(struct ftl_conn *api);
 int api_info_sensors(struct ftl_conn *api);
 int api_info_version(struct ftl_conn *api);
 int api_info_messages(struct ftl_conn *api);
-int api_info_cache(struct ftl_conn *api);
+int api_info_metrics(struct ftl_conn *api);
 
 // Config methods
 int api_config(struct ftl_conn *api);

@@ -203,6 +203,7 @@ set(sources
         log.h
         main.c
         main.h
+        metrics.h
         overTime.c
         overTime.h
         procps.c

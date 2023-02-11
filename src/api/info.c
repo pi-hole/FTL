@@ -48,8 +48,7 @@
 // LONG_MIN, LONG_MAX
 #include <limits.h>
 
-// getCacheInformation()
-#include "cache_info.h"
+#include "metrics.h"
 
 #include <dirent.h>
 
@@ -874,36 +873,69 @@ int api_info_messages(struct ftl_conn *api)
 		return send_json_error(api, 405, "method_not_allowed", "Method not allowed", NULL);
 }
 
-int api_info_cache(struct ftl_conn *api)
+int api_info_metrics(struct ftl_conn *api)
 {
-	struct cache_info ci = { 0 };
-	get_dnsmasq_cache_info(&ci);
+	struct metrics metrics = { 0 };
+	get_dnsmasq_metrics(&metrics);
 	cJSON *cache = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "size", ci.cache_size);
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "inserted", ci.cache_inserted);
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "evicted", ci.cache_live_freed);
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "optimized", ci.stale_answered);
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "local", ci.local_answered);
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "auth", ci.auth_answered);
-	cJSON *valid = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "a", ci.valid.a);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "aaaa", ci.valid.aaaa);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "cname", ci.valid.cname);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "srv", ci.valid.srv);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "ds", ci.valid.ds);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "dnskey", ci.valid.dnskey);
-	JSON_ADD_NUMBER_TO_OBJECT(valid, "other", ci.valid.other);
-	JSON_ADD_ITEM_TO_OBJECT(cache, "valid", valid);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "size", metrics.dns.cache.size);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "inserted", metrics.dns.cache.inserted);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "evicted", metrics.dns.cache.live_freed);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "expired", metrics.dns.cache.expired);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "immortal", metrics.dns.cache.immortal);
 
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "expired", ci.expired);
-	JSON_ADD_NUMBER_TO_OBJECT(cache, "immortal", ci.immortal);
+	cJSON *content = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(content, "a", metrics.dns.cache.content.a);
+	JSON_ADD_NUMBER_TO_OBJECT(content, "aaaa", metrics.dns.cache.content.aaaa);
+	JSON_ADD_NUMBER_TO_OBJECT(content, "cname", metrics.dns.cache.content.cname);
+	JSON_ADD_NUMBER_TO_OBJECT(content, "srv", metrics.dns.cache.content.srv);
+	JSON_ADD_NUMBER_TO_OBJECT(content, "ds", metrics.dns.cache.content.ds);
+	JSON_ADD_NUMBER_TO_OBJECT(content, "dnskey", metrics.dns.cache.content.dnskey);
+	JSON_ADD_NUMBER_TO_OBJECT(content, "other", metrics.dns.cache.content.other);
+	JSON_ADD_ITEM_TO_OBJECT(cache, "content", content);
 
-	cJSON *extra = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(extra, "forwarded", ci.forwarded_queries);
-	JSON_ADD_NUMBER_TO_OBJECT(extra, "unanswered", ci.unanswered_queries);
-	JSON_ADD_ITEM_TO_OBJECT(cache, "extra", extra);
+	cJSON *replies = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(replies, "local", metrics.dns.local_answered);
+	JSON_ADD_NUMBER_TO_OBJECT(replies, "forwarded", metrics.dns.forwarded_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(replies, "optimized", metrics.dns.stale_answered);
+	JSON_ADD_NUMBER_TO_OBJECT(replies, "unanswered", metrics.dns.unanswered_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(replies, "auth", metrics.dns.auth_answered);
+	const int sum = metrics.dns.local_answered
+	              + metrics.dns.forwarded_queries
+	              + metrics.dns.stale_answered
+	              + metrics.dns.unanswered_queries
+	              + metrics.dns.auth_answered;
+	JSON_ADD_NUMBER_TO_OBJECT(replies, "sum", sum);
+
+	cJSON *dhcp = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(dhcp, "ack", metrics.dhcp.ack);
+	JSON_ADD_NUMBER_TO_OBJECT(dhcp, "decline", metrics.dhcp.decline);
+	JSON_ADD_NUMBER_TO_OBJECT(dhcp, "discover", metrics.dhcp.discover);
+	JSON_ADD_NUMBER_TO_OBJECT(dhcp, "inform", metrics.dhcp.inform);
+	JSON_ADD_NUMBER_TO_OBJECT(dhcp, "nak", metrics.dhcp.nak);
+	JSON_ADD_NUMBER_TO_OBJECT(dhcp, "offer", metrics.dhcp.offer);
+	JSON_ADD_NUMBER_TO_OBJECT(dhcp, "release", metrics.dhcp.release);
+	JSON_ADD_NUMBER_TO_OBJECT(dhcp, "request", metrics.dhcp.request);
+	JSON_ADD_NUMBER_TO_OBJECT(dhcp, "noanswer", metrics.dhcp.noanswer);
+	JSON_ADD_NUMBER_TO_OBJECT(dhcp, "bootp", metrics.dhcp.bootp);
+	JSON_ADD_NUMBER_TO_OBJECT(dhcp, "pxe", metrics.dhcp.pxe);
+
+	cJSON *leases = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(leases, "allocated_4", metrics.dhcp.leases.allocated_4);
+	JSON_ADD_NUMBER_TO_OBJECT(leases, "pruned_4", metrics.dhcp.leases.pruned_4);
+	JSON_ADD_NUMBER_TO_OBJECT(leases, "allocated_6", metrics.dhcp.leases.allocated_6);
+	JSON_ADD_NUMBER_TO_OBJECT(leases, "pruned_6", metrics.dhcp.leases.pruned_6);
+	JSON_ADD_ITEM_TO_OBJECT(dhcp, "leases", leases);
+
+	cJSON *dns = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(dns, "cache", cache);
+	JSON_ADD_ITEM_TO_OBJECT(dns, "replies", replies);
 
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "cache", cache);
-	JSON_SEND_OBJECT(json);
+	JSON_ADD_ITEM_TO_OBJECT(json, "dns", dns);
+	JSON_ADD_ITEM_TO_OBJECT(json, "dhcp", dhcp);
+
+	cJSON *json2 = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json2, "metrics", json);
+	JSON_SEND_OBJECT(json2);
 }

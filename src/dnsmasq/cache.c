@@ -1768,44 +1768,60 @@ static char *sanitise(char *name)
 }
 
 /***************** Pi-hole modification *****************/
-void get_dnsmasq_cache_info(struct cache_info *ci)
+void get_dnsmasq_metrics(struct metrics *ci)
 {
-  memset(ci, 0, sizeof(struct cache_info));
-  ci->cache_size = daemon->cachesize;
-  ci->cache_inserted = daemon->metrics[METRIC_DNS_CACHE_INSERTED];
-  ci->cache_live_freed = daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED];
-  ci->local_answered = daemon->metrics[METRIC_DNS_LOCAL_ANSWERED];
-  ci->stale_answered = daemon->metrics[METRIC_DNS_STALE_ANSWERED];
-  ci->auth_answered = daemon->metrics[METRIC_DNS_AUTH_ANSWERED];
-  ci->unanswered_queries = daemon->metrics[METRIC_DNS_UNANSWERED_QUERY];
-  ci->forwarded_queries = daemon->metrics[METRIC_DNS_QUERIES_FORWARDED];
+  memset(ci, 0, sizeof(struct metrics));
+  ci->dns.cache.size = daemon->cachesize;
+  ci->dns.cache.inserted = daemon->metrics[METRIC_DNS_CACHE_INSERTED];
+  ci->dns.cache.live_freed = daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED];
+  ci->dns.local_answered = daemon->metrics[METRIC_DNS_LOCAL_ANSWERED];
+  ci->dns.stale_answered = daemon->metrics[METRIC_DNS_STALE_ANSWERED];
+  ci->dns.auth_answered = daemon->metrics[METRIC_DNS_AUTH_ANSWERED];
+  ci->dns.unanswered_queries = daemon->metrics[METRIC_DNS_UNANSWERED_QUERY];
+  ci->dns.forwarded_queries = daemon->metrics[METRIC_DNS_QUERIES_FORWARDED];
   const time_t now = time(NULL);
   for (int i=0; i < hash_size; i++)
     for (struct crec *cache = hash_table[i]; cache; cache = cache->hash_next)
       if(cache->ttd >= now || cache->flags & F_IMMORTAL)
       {
 	if (cache->flags & F_IPV4)
-	  ci->valid.a++;
+	  ci->dns.cache.content.a++;
 	else if (cache->flags & F_IPV6)
-	  ci->valid.aaaa++;
+	  ci->dns.cache.content.aaaa++;
 	else if (cache->flags & F_CNAME)
-	  ci->valid.cname++;
+	  ci->dns.cache.content.cname++;
 	else if (cache->flags & F_SRV)
-	  ci->valid.srv++;
+	  ci->dns.cache.content.srv++;
 #ifdef HAVE_DNSSEC
 	else if (cache->flags & F_DS)
-	  ci->valid.ds++;
+	  ci->dns.cache.content.ds++;
 	else if (cache->flags & F_DNSKEY)
-	  ci->valid.dnskey++;
+	  ci->dns.cache.content.dnskey++;
 #endif
 	else
-	  ci->valid.other++;
+	  ci->dns.cache.content.other++;
 
 	if(cache->flags & F_IMMORTAL)
-	  ci->immortal++;
+	  ci->dns.cache.immortal++;
       }
       else
-	ci->expired++;
+	ci->dns.cache.expired++;
+
+		ci->dhcp.bootp = daemon->metrics[METRIC_BOOTP];
+		ci->dhcp.pxe = daemon->metrics[METRIC_PXE];
+		ci->dhcp.ack = daemon->metrics[METRIC_DHCPACK];
+		ci->dhcp.decline = daemon->metrics[METRIC_DHCPDECLINE];
+		ci->dhcp.discover = daemon->metrics[METRIC_DHCPDISCOVER];
+		ci->dhcp.inform = daemon->metrics[METRIC_DHCPINFORM];
+		ci->dhcp.nak = daemon->metrics[METRIC_DHCPNAK];
+		ci->dhcp.offer = daemon->metrics[METRIC_DHCPOFFER];
+		ci->dhcp.release = daemon->metrics[METRIC_DHCPRELEASE];
+		ci->dhcp.request = daemon->metrics[METRIC_DHCPREQUEST];
+		ci->dhcp.noanswer = daemon->metrics[METRIC_NOANSWER];
+    ci->dhcp.leases.allocated_4 = daemon->metrics[METRIC_LEASES_ALLOCATED_4];
+    ci->dhcp.leases.pruned_4 = daemon->metrics[METRIC_LEASES_PRUNED_4];
+    ci->dhcp.leases.allocated_6 = daemon->metrics[METRIC_LEASES_ALLOCATED_6];
+    ci->dhcp.leases.pruned_6 = daemon->metrics[METRIC_LEASES_PRUNED_6];
 }
 /********************************************************/
 

@@ -14,7 +14,7 @@
 #include <stdbool.h>
 
 #include "edns0.h"
-#include "cache_info.h"
+#include "metrics.h"
 
 extern unsigned char* pihole_privacylevel;
 enum protocol { TCP, UDP, INTERNAL };

@@ -159,8 +159,8 @@ paths:
   /info/messages:
     $ref: 'info.yaml#/components/paths/messages'
 
-  /info/cache:
-    $ref: 'info.yaml#/components/paths/cache'
+  /info/metrics:
+    $ref: 'info.yaml#/components/paths/metrics'
 
   /logs/dnsmasq:
     $ref: 'logs.yaml#/components/paths/logs/dnsmasq'

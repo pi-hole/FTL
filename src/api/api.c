@@ -50,7 +50,7 @@ static struct {
 	{ "/api/info/version",                      "",                           api_info_version,                      { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/info/messages",                     "/{message_id}",              api_info_messages,                     { false, true,  0             }, true,  HTTP_DELETE },
 	{ "/api/info/messages",                     "",                           api_info_messages,                     { false, true,  0             }, true,  HTTP_GET },
-	{ "/api/info/cache",                        "",                           api_info_cache,                        { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/info/metrics",                      "",                           api_info_metrics,                      { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/logs/dnsmasq",                      "",                           api_logs,                              { false, true,  FIFO_DNSMASQ  }, true,  HTTP_GET },
 	{ "/api/logs/ftl",                          "",                           api_logs,                              { false, true,  FIFO_FTL      }, true,  HTTP_GET },
 	{ "/api/logs/http",                         "",                           api_logs,                              { false, true,  FIFO_CIVETWEB }, true,  HTTP_GET },
