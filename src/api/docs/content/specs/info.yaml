@@ -1050,6 +1050,7 @@ components:
               auth: 0
               forwarded: 46
               unanswered: 0
+              sum: 131
           dhcp:
             ack: 0
             nak: 0

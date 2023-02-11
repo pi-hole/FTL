@@ -114,6 +114,7 @@ typedef struct {
 	int domainID;
 	int clientID;
 	int domainlist_id;
+	char *cname_target;
 } DNSCacheData;
 
 void strtolower(char *str);

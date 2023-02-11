@@ -31,6 +31,8 @@
 #include "database/message-table.h"
 // Eventqueue routines
 #include "events.h"
+// resolve_regex_cnames()
+#include "regex_r.h"
 
 static bool res_initialized = false;
 
@@ -623,6 +625,9 @@ void *DNSclient_thread(void *val)
 			// Try to resolve new upstream destination host names
 			// (onlynew=true)
 			resolveUpstreams(true);
+
+			// Try to resolve regex CNAMEs (if any)
+			resolve_regex_cnames();
 		}
 
 		// Intermediate cancellation-point

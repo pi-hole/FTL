@@ -156,7 +156,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 		// Analyze FTL-specific parts
 		while((part = strtok_r(NULL, FTL_REGEX_SEP, &saveptr)) != NULL)
 		{
-			char extra[64] = { 0 };
+			char extra[256] = { 0 };
 			// options like
 			// - ";querytype=A" (only match type A queries)
 			// - ";querytype=!AAAA" (match everything but AAAA queries)
@@ -243,7 +243,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				log_debug(DEBUG_REGEX, "   This regex will match in inverted mode.");
 			}
 			// options ";reply=NXDOMAIN", etc.
-			else if(sscanf(part, "reply=%16s", extra))
+			else if(sscanf(part, "reply=%255s", extra))
 			{
 				// Test input string against all implemented reply types
 				const char *type = "";
@@ -285,6 +285,36 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				{
 					type = "NONE";
 					regex->ext.reply = REPLY_NONE;
+				}
+				else if(strncasecmp(extra, "CNAME", 4) == 0)
+				{
+					type = "CNAME";
+					regex->ext.reply = REPLY_CNAME;
+					// Check if "CNAME" is followed by a comma and a domain name
+					char *comma = strchr(extra, ',');
+					if(comma != NULL)
+					{
+						// Skip comma
+						comma++;
+
+						// Copy domain name into buffer
+						regex->ext.cname_target = strdup(comma);
+						if(regex->ext.cname_target == NULL)
+						{
+							log_err("Memory allocation failed in compile_regex()");
+							free(buf);
+							free(rgxbuf);
+							return false;
+						}
+					}
+					else
+					{
+						if(asprintf(message, "Missing domain name for CNAME reply") < 1)
+							log_err("Memory allocation failed in compile_regex()");
+						free(buf);
+						free(rgxbuf);
+						return false;
+					}
 				}
 				else
 				{
@@ -418,6 +448,10 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 				// Set special reply type if configured for this regex
 				if(regex->ext.reply != REPLY_UNKNOWN)
 					dns_cache->force_reply = regex->ext.reply;
+
+				// Set CNAME target if configured for this regex
+				if(regex->ext.cname_target != NULL)
+					dns_cache->cname_target = regex->ext.cname_target;
 			}
 
 			// Match, return true
@@ -521,11 +555,78 @@ bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, c
 	return false;
 }
 
+// Resolve CNAME targets for regex entries
+void resolve_regex_cnames(void)
+{
+	// Loop over all regex types
+	for(enum regex_type regexid = REGEX_DENY; regexid < REGEX_MAX; regexid++)
+	{
+		// Get pointer to regex data
+		regexData *regex = get_regex_ptr(regexid);
+
+		// Skip if no regex of this type are available
+		if(regex == NULL)
+			continue;
+
+		// Loop over entries with this regex type
+		for(unsigned int index = 0; index < num_regex[regexid]; index++)
+		{
+			if(!regex[index].available)
+				continue;
+
+			// Check if this regex has a CNAME target
+			if(regex[index].ext.cname_target == NULL)
+				continue;
+
+			log_debug(DEBUG_REGEX, "Resolving CNAME target \"%s\" for regex filter %i",
+			          regex[index].ext.cname_target, regex[index].database_id);
+
+			// Prepare hints for getaddrinfo()
+			struct addrinfo hints;
+			memset(&hints, 0, sizeof(hints));
+			hints.ai_family = AF_INET;
+			hints.ai_socktype = SOCK_STREAM;
+
+			// Resolve CNAME target to IPv4 address using getaddrinfo()
+			struct addrinfo *result;
+			if(getaddrinfo(regex[index].ext.cname_target, NULL, &hints, &result) == 0 && result->ai_family == AF_INET)
+			{
+				regex[index].ext.custom_ip4 = true;
+				struct sockaddr_in *addr_in = (void *)result->ai_addr;
+				memcpy(&regex[index].ext.addr4, &addr_in->sin_addr, sizeof(regex[index].ext.addr4));
+				char buffer[INET_ADDRSTRLEN];
+				log_debug(DEBUG_REGEX, "Resolved CNAME target \"%s\" to IPv4 address %s for regex filter %i",
+				          regex[index].ext.cname_target, inet_ntop(AF_INET, &regex[index].ext.addr4, buffer, INET_ADDRSTRLEN), regex[index].database_id);
+			}
+
+			// Free result
+			freeaddrinfo(result);
+
+			// Prepare hints for getaddrinfo()
+			hints.ai_family = AF_INET6;
+
+			// Resolve CNAME target to IPv6 address using getaddrinfo()
+			if(getaddrinfo(regex[index].ext.cname_target, NULL, &hints, &result) == 0 && result->ai_family == AF_INET6)
+			{
+				regex[index].ext.custom_ip6 = true;
+				struct sockaddr_in6 *addr_in = (void *)(result->ai_addr);
+				memcpy(&regex[index].ext.addr6, &addr_in->sin6_addr, sizeof(regex[index].ext.addr6));
+				char buffer[INET6_ADDRSTRLEN];
+				log_debug(DEBUG_REGEX, "Resolved CNAME target \"%s\" to IPv6 address %s for regex filter %i",
+				          regex[index].ext.cname_target, inet_ntop(AF_INET6, &regex[index].ext.addr6, buffer, INET6_ADDRSTRLEN), regex[index].database_id);
+			}
+
+			// Free result
+			freeaddrinfo(result);
+		}
+	}
+}
+
 void free_regex(void)
 {
 	// Return early if we don't use any regex filters
 	if(allow_regex == NULL &&
-	   deny_regex == NULL &&
+	    deny_regex == NULL &&
 	     cli_regex == NULL)
 	{
 		log_debug(DEBUG_DATABASE, "Not using any regex filters, nothing to free or reset");
@@ -569,6 +670,13 @@ void free_regex(void)
 			{
 				free(regex[index].string);
 				regex[index].string = NULL;
+			}
+
+			// Also free buffered CNAME target (if any)
+			if(regex[index].ext.cname_target != NULL)
+			{
+				free(regex[index].ext.cname_target);
+				regex[index].ext.cname_target = NULL;
 			}
 		}
 

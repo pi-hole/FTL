@@ -34,6 +34,7 @@ typedef struct {
 		bool custom_ip4 :1;
 		bool custom_ip6 :1;
 		enum reply_type reply;
+		char *cname_target;
 		struct in_addr addr4;
 		struct in6_addr addr6;
 		uint32_t query_type;
@@ -53,6 +54,7 @@ void read_regex_from_database(void);
 bool regex_get_redirect(const int regexID, struct in_addr *addr4, struct in6_addr *addr6);
 void free_regex(void);
 bool check_all_regex(const char *domainin, cJSON *json);
+void resolve_regex_cnames(void);
 
 int regex_test(const bool debug_mode, const bool quiet, const char *domainin, const char *regexin);
 

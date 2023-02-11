@@ -85,6 +85,7 @@ static int last_regex_idx = -1;
 static struct ptr_record *pihole_ptr = NULL;
 static char *pihole_suffix = NULL;
 static char *hostname_suffix = NULL;
+static char *cname_target = NULL;
 #define HOSTNAME "Pi-hole hostname"
 
 // Fork-private copy of the interface data the most recent query came from
@@ -298,6 +299,23 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		log_debug(DEBUG_QUERIES, "Regex match is %sredirected", redirecting ? "" : "NOT ");
 	}
 
+	if(force_next_DNS_reply == REPLY_CNAME && cname_target != NULL)
+	{
+		// Set flags to CNAME reply
+		flags = F_CONFIG | F_CNAME;
+
+		// Add A record (if available)
+		if(redirect_addr4.addr4.s_addr != 0)
+			flags |= F_IPV4;
+
+		// Add AAAA record (if available)
+		if(!IN6_IS_ADDR_UNSPECIFIED(&redirect_addr6.addr6))
+			flags |= F_IPV6;
+
+		// Reset DNS reply forcing
+		force_next_DNS_reply = REPLY_UNKNOWN;
+	}
+
 	// Debug logging
 	print_flags(flags);
 
@@ -327,6 +345,21 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	const bool hostname = strcmp(blockingreason, HOSTNAME) == 0;
 
 	int trunc = 0;
+	// Add CNAME answer record if requested
+	if(flags & F_CNAME)
+	{
+		// Debug logging
+		if(config.debug.queries.v.b)
+			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s CNAME %s\"", name, cname_target);
+
+		// Add CNAME resource record
+		header->ancount = htons(ntohs(header->ancount) + 1);
+		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+		                       &p, daemon->local_ttl, NULL,
+		                       T_CNAME, C_IN, (char*)"d", cname_target))
+			log_query(flags, name, NULL, (char*)blockingreason, 0);
+	}
+
 	// Add A answer record if requested
 	if(flags & F_IPV4)
 	{
@@ -1165,6 +1198,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		// Regex may be overwriting reply type for this domain
 		if(dns_cache->force_reply != REPLY_UNKNOWN)
 			force_next_DNS_reply = dns_cache->force_reply;
+		cname_target = dns_cache->cname_target;
 
 		// Store ID of this regex (fork-private)
 		last_regex_idx = dns_cache->domainlist_id;
@@ -3313,10 +3347,10 @@ int check_struct_sizes(void)
 	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 628);
 	result += check_one_struct("clientsData", sizeof(clientsData), 672, 652);
 	result += check_one_struct("domainsData", sizeof(domainsData), 24, 20);
-	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 16, 16);
+	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 24, 20);
 	result += check_one_struct("ednsData", sizeof(ednsData), 72, 72);
 	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24);
-	result += check_one_struct("regexData", sizeof(regexData), 64, 48);
+	result += check_one_struct("regexData", sizeof(regexData), 80, 52);
 	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
 	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 16, 16);
 	result += check_one_struct("countersStruct", sizeof(countersStruct), 292, 292);
