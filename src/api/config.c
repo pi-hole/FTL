@@ -264,8 +264,8 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 				log_debug(DEBUG_CONFIG, "Not setting %s to \"%s\" (password unchanged)", conf_item->k, conf_item->v.s);
 				break;
 			}
-			// Get password hash as allocated string
-			char *pwhash = hash_password(elem->valuestring);
+			// Get password hash as allocated string (an empty string is hashed to an empty string)
+			char *pwhash = strlen(elem->valuestring) > 0 ? hash_password(elem->valuestring) : strdup("");
 			// Get pointer to pwhash instead
 			conf_item--;
 			// Free previously allocated memory (if applicable)
