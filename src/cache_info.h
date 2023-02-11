@@ -23,6 +23,9 @@ struct cache_info {
   // looked up for the longest time is evicted.
   int cache_live_freed;
   int cache_inserted;
+  int local_answered;
+  int stale_answered;
+  int auth_answered;
   // <valid> are cache entries with positive remaining TTL
   struct valid {
     int a;
@@ -37,6 +40,9 @@ struct cache_info {
   int expired;
   // <immortal> cache records never expire (e.g. from /etc/hosts)
   int immortal;
+  // extra properties of the cache
+  int unanswered_queries;
+  int forwarded_queries;
 };
 
 void get_dnsmasq_cache_info(struct cache_info *ci);

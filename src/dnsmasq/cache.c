@@ -1772,8 +1772,13 @@ void get_dnsmasq_cache_info(struct cache_info *ci)
 {
   memset(ci, 0, sizeof(struct cache_info));
   ci->cache_size = daemon->cachesize;
-  ci->cache_live_freed = daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED];
   ci->cache_inserted = daemon->metrics[METRIC_DNS_CACHE_INSERTED];
+  ci->cache_live_freed = daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED];
+  ci->local_answered = daemon->metrics[METRIC_DNS_LOCAL_ANSWERED];
+  ci->stale_answered = daemon->metrics[METRIC_DNS_STALE_ANSWERED];
+  ci->auth_answered = daemon->metrics[METRIC_DNS_AUTH_ANSWERED];
+  ci->unanswered_queries = daemon->metrics[METRIC_DNS_UNANSWERED_QUERY];
+  ci->forwarded_queries = daemon->metrics[METRIC_DNS_QUERIES_FORWARDED];
   const time_t now = time(NULL);
   for (int i=0; i < hash_size; i++)
     for (struct crec *cache = hash_table[i]; cache; cache = cache->hash_next)

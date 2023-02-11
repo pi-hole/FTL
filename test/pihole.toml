@@ -167,12 +167,6 @@
   #       should always ask yourself if the first option doesn't work for you as well.
   listeningMode = "LOCAL"
 
-  # Cache size of the DNS server. Note that expiring cache entries naturally make room
-  # for new insertions over time. Setting this number too high will have an adverse
-  # effect as not only more space is needed, but also lookup speed gets degraded in the
-  # 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.
-  cacheSize = 2000
-
   # Log DNS queries and replies to pihole.log
   queryLogging = true
 
@@ -186,6 +180,24 @@
 
   # Port used by the DNS server
   port = 53
+
+  [dns.cache]
+    # Cache size of the DNS server. Note that expiring cache entries naturally make room
+    # for new insertions over time. Setting this number too high will have an adverse
+    # effect as not only more space is needed, but also lookup speed gets degraded in the
+    # 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.
+    size = 10000
+
+    # Query cache optimizer: If a DNS name exists in the cache, but its time-to-live has
+    # expired only recently, the data will be used anyway (a refreshing from upstream is
+    # triggered). This can improve DNS query delays especially over unreliable Internet
+    # connections. This feature comes at the expense of possibly sometimes returning
+    # out-of-date data and less efficient cache utilisation, since old data cannot be
+    # flushed when its TTL expires, so the cache becomes mostly least-recently-used. To
+    # mitigate issues caused by massively outdated DNS replies, the maximum overaging of
+    # cached records is limited. We strongly recommend staying below 86400 (1 day) with
+    # this option.
+    optimizer = 3600
 
   [dns.blocking]
     # Should FTL block queries?

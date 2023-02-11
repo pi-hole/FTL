@@ -467,12 +467,6 @@ void initConfig(struct config *conf)
 	conf->dns.listeningMode.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	conf->dns.listeningMode.d.listeningMode = LISTEN_LOCAL;
 
-	conf->dns.cacheSize.k = "dns.cacheSize";
-	conf->dns.cacheSize.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
-	conf->dns.cacheSize.t = CONF_UINT;
-	conf->dns.cacheSize.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
-	conf->dns.cacheSize.d.ui = 2000u;
-
 	conf->dns.queryLogging.k = "dns.queryLogging";
 	conf->dns.queryLogging.h = "Log DNS queries and replies to pihole.log";
 	conf->dns.queryLogging.t = CONF_BOOL;
@@ -491,6 +485,19 @@ void initConfig(struct config *conf)
 	conf->dns.port.t = CONF_UINT16;
 	conf->dns.port.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
 	conf->dns.port.d.ui = 53u;
+
+	// sub-struct dns.cache
+	conf->dns.cache.size.k = "dns.cache.size";
+	conf->dns.cache.size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
+	conf->dns.cache.size.t = CONF_UINT;
+	conf->dns.cache.size.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.cache.size.d.ui = 10000u;
+
+	conf->dns.cache.optimizer.k = "dns.cache.optimizer";
+	conf->dns.cache.optimizer.h = "Query cache optimizer: If a DNS name exists in the cache, but its time-to-live has expired only recently, the data will be used anyway (a refreshing from upstream is triggered). This can improve DNS query delays especially over unreliable Internet connections. This feature comes at the expense of possibly sometimes returning out-of-date data and less efficient cache utilisation, since old data cannot be flushed when its TTL expires, so the cache becomes mostly least-recently-used. To mitigate issues caused by massively outdated DNS replies, the maximum overaging of cached records is limited. We strongly recommend staying below 86400 (1 day) with this option.";
+	conf->dns.cache.optimizer.t = CONF_UINT;
+	conf->dns.cache.optimizer.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.cache.optimizer.d.ui = 3600u;
 
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";

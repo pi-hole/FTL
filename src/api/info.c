@@ -882,6 +882,9 @@ int api_info_cache(struct ftl_conn *api)
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "size", ci.cache_size);
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "inserted", ci.cache_inserted);
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "evicted", ci.cache_live_freed);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "optimized", ci.stale_answered);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "local", ci.local_answered);
+	JSON_ADD_NUMBER_TO_OBJECT(cache, "auth", ci.auth_answered);
 	cJSON *valid = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(valid, "a", ci.valid.a);
 	JSON_ADD_NUMBER_TO_OBJECT(valid, "aaaa", ci.valid.aaaa);
@@ -891,8 +894,14 @@ int api_info_cache(struct ftl_conn *api)
 	JSON_ADD_NUMBER_TO_OBJECT(valid, "dnskey", ci.valid.dnskey);
 	JSON_ADD_NUMBER_TO_OBJECT(valid, "other", ci.valid.other);
 	JSON_ADD_ITEM_TO_OBJECT(cache, "valid", valid);
+
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "expired", ci.expired);
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "immortal", ci.immortal);
+
+	cJSON *extra = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(extra, "forwarded", ci.forwarded_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(extra, "unanswered", ci.unanswered_queries);
+	JSON_ADD_ITEM_TO_OBJECT(cache, "extra", extra);
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "cache", cache);

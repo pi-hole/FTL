@@ -102,7 +102,6 @@ struct enum_options {
 
 // When new config items are added, the following places need to be updated:
 // - src/config/config.c: New default item
-// - src/dnsmasq_interface.c: sizeof(struct config) increases (see comment there)
 // - test/pihole.toml: Add the new item to the test config file
 struct config {
 	struct {
@@ -125,10 +124,13 @@ struct config {
 		struct conf_item interface;
 		struct conf_item hostRecord;
 		struct conf_item listeningMode;
-		struct conf_item cacheSize;
 		struct conf_item queryLogging;
 		struct conf_item cnameRecords;
 		struct conf_item port;
+		struct {
+			struct conf_item size;
+			struct conf_item optimizer;
+		} cache;
 		struct {
 			struct conf_item active;
 			struct conf_item mode;

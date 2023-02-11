@@ -31,8 +31,6 @@
 #include "files.h"
 // add_to_fifo_buffer() u.a.
 #include "log.h"
-// Prototype of getCacheInformation()
-#include "api/api.h"
 // global variable daemonmode
 #include "args.h"
 // handle_realtime_signals()
@@ -3307,10 +3305,10 @@ void FTL_dnsmasq_log(const char *payload, const int length)
 int check_struct_sizes(void)
 {
 	int result = 0;
-	// sizeof(struct conf_item) is 72 on x86_64 and 52 on x86_32
-	// number of config elements: CONFIG_ELEMENTS
 	result += check_one_struct("struct conf_item", sizeof(struct conf_item), 72, 52);
-	result += check_one_struct("struct config", sizeof(struct config), 8424, 6084);
+	result += check_one_struct("struct config", sizeof(struct config),
+	                           CONFIG_ELEMENTS*sizeof(struct conf_item),
+	                           CONFIG_ELEMENTS*sizeof(struct conf_item));
 	result += check_one_struct("queriesData", sizeof(queriesData), 72, 64);
 	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 628);
 	result += check_one_struct("clientsData", sizeof(clientsData), 672, 652);

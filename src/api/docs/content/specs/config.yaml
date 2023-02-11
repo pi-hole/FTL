@@ -198,8 +198,6 @@ components:
                   type: string
                 listeningMode:
                   type: string
-                cacheSize:
-                  type: integer
                 queryLogging:
                   type: boolean
                 cnameRecords:
@@ -208,6 +206,13 @@ components:
                     type: string
                 port:
                   type: integer
+                cache:
+                  type: object
+                  properties:
+                    size:
+                      type: integer
+                    optimizer:
+                      type: integer
                 revServer:
                   type: object
                   properties:
@@ -532,12 +537,14 @@ components:
             interface: "eth0"
             hostRecord: ""
             listeningMode: "local"
-            cacheSize: 10000
             queryLogging: true
             cnameRecords:
               - "*.example.com,default.example.com"
               - "hourly.yetanother.com,yetanother.com,3600"
             port: 53
+            cache:
+              size: 10000
+              optimizer: 3600
             revServer:
               active: false
               cidr: "192.168.0.0/24"

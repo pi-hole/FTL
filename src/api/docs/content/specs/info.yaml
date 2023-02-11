@@ -902,6 +902,15 @@ components:
             immortal:
               type: integer
               description: Number of immortal entries
+            optimized:
+              type: integer
+              description: Number of queries answered from stale cache entries
+            local:
+              type: integer
+              description: Number of queries answered locally
+            auth:
+              type: integer
+              description: Number of queries for authoritative zones
             valid:
               type: object
               description: Number of valid entries
@@ -927,6 +936,15 @@ components:
                 other:
                   type: integer
                   description: Number of valid other entries
+            extra:
+              type: object
+              properties:
+                forwarded:
+                  type: integer
+                  description: Number of forwarded queries
+                unanswered:
+                  type: integer
+                  description: Number of unanswered queries
   examples:
     errors:
       messages:
@@ -953,6 +971,9 @@ components:
           evicted: 0
           expired: 0
           immortal: 0
+          optimized: 1
+          local: 84
+          auth: 0
           valid:
             a: 212
             aaaa: 61
@@ -961,6 +982,9 @@ components:
             ds: 60
             dnskey: 35
             other: 14
+          extra:
+            forwarded: 46
+            unanswered: 0
 
   parameters:
     logs:

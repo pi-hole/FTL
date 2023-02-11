@@ -254,7 +254,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 	fputs("# Set the size of dnsmasq's cache. The default is 150 names. Setting the cache\n", pihole_conf);
 	fputs("# size to zero disables caching. Note: huge cache size impacts performance\n", pihole_conf);
-	fprintf(pihole_conf, "cache-size=%u\n", conf->dns.cacheSize.v.ui);
+	fprintf(pihole_conf, "cache-size=%u\n", conf->dns.cache.size.v.ui);
 	fputs("\n", pihole_conf);
 
 	fputs("# Return answers to DNS queries from /etc/hosts and interface-name and\n", pihole_conf);
@@ -347,6 +347,12 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	{
 		fputs("# Add A, AAAA and PTR records to the DNS\n", pihole_conf);
 		fprintf(pihole_conf, "host-record=%s\n", conf->dns.hostRecord.v.s);
+	}
+
+	if(conf->dns.cache.optimizer.v.ui > 0u)
+	{
+		fputs("# Use stale cache entries for a given number of seconds to optimize cache utilization\n", pihole_conf);
+		fprintf(pihole_conf, "use-stale-cache=%u\n", conf->dns.cache.optimizer.v.ui);
 	}
 
 	const char *interface = conf->dns.interface.v.s;
