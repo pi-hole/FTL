@@ -61,7 +61,7 @@ void closeFTLtoml(FILE *fp)
 }
 
 // Print a string to a TOML file, escaping special characters as necessary
-static void printTOMLstring(FILE *fp, const char *s)
+static void printTOMLstring(FILE *fp, const char *s, const bool toml)
 {
 	// Substitute empty string if pointer is NULL
 	if(s == NULL)
@@ -79,13 +79,14 @@ static void printTOMLstring(FILE *fp, const char *s)
 	// print it as is without further escaping
 	if (ok)
 	{
-		fprintf(fp, "\"%s\"", s);
+		if(toml) fprintf(fp, "\"%s\"", s);
+		else fputs(s, fp);
 		return;
 	}
 
 	// Otherwise, we need to escape special characters, this is more work
 	int len = strlen(s);
-	fprintf(fp, "\"");
+	if(toml) fprintf(fp, "\"");
 	for ( ; len; len--, s++)
 	{
 		unsigned char ch = *s;
@@ -107,7 +108,7 @@ static void printTOMLstring(FILE *fp, const char *s)
 			default:   fprintf(fp, "\\0x%02x", ch & 0xff); continue;
 		}
 	}
-	fprintf(fp, "\"");
+	if(toml) fprintf(fp, "\"");
 }
 
 // Indentation (tabs and/or spaces) is allowed but not required, we use it for
@@ -280,6 +281,10 @@ void print_toml_allowed_values(cJSON *allowed_values, FILE *fp, const unsigned i
 // Write a TOML value to a file depending on its type
 void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union conf_value *v)
 {
+	// Check if this is a TOML or CLI output
+	const bool toml = fp != stdout;
+
+	// Print value depending on its type
 	switch(t)
 	{
 		case CONF_BOOL:
@@ -306,38 +311,38 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 			break;
 		case CONF_STRING:
 		case CONF_STRING_ALLOCATED:
-			printTOMLstring(fp, v->s);
+			printTOMLstring(fp, v->s, toml);
 			break;
 		case CONF_ENUM_PTR_TYPE:
-			printTOMLstring(fp, get_ptr_type_str(v->ptr_type));
+			printTOMLstring(fp, get_ptr_type_str(v->ptr_type), toml);
 			break;
 		case CONF_ENUM_BUSY_TYPE:
-			printTOMLstring(fp, get_busy_reply_str(v->busy_reply));
+			printTOMLstring(fp, get_busy_reply_str(v->busy_reply), toml);
 			break;
 		case CONF_ENUM_BLOCKING_MODE:
-			printTOMLstring(fp, get_blocking_mode_str(v->blocking_mode));
+			printTOMLstring(fp, get_blocking_mode_str(v->blocking_mode), toml);
 			break;
 		case CONF_ENUM_REFRESH_HOSTNAMES:
-			printTOMLstring(fp, get_refresh_hostnames_str(v->refresh_hostnames));
+			printTOMLstring(fp, get_refresh_hostnames_str(v->refresh_hostnames), toml);
 			break;
 		case CONF_ENUM_LISTENING_MODE:
-			printTOMLstring(fp, get_listeningMode_str(v->listeningMode));
+			printTOMLstring(fp, get_listeningMode_str(v->listeningMode), toml);
 			break;
 		case CONF_ENUM_WEB_THEME:
-			printTOMLstring(fp, get_web_theme_str(v->web_theme));
+			printTOMLstring(fp, get_web_theme_str(v->web_theme), toml);
 			break;
 		case CONF_STRUCT_IN_ADDR:
 		{
 			char addr4[INET_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET, &v->in_addr, addr4, INET_ADDRSTRLEN);
-			printTOMLstring(fp, addr4);
+			printTOMLstring(fp, addr4, toml);
 			break;
 		}
 		case CONF_STRUCT_IN6_ADDR:
 		{
 			char addr6[INET6_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET6, &v->in6_addr, addr6, INET6_ADDRSTRLEN);
-			printTOMLstring(fp, addr6);
+			printTOMLstring(fp, addr6, toml);
 			break;
 		}
 		case CONF_JSON_STRING_ARRAY:
@@ -360,7 +365,7 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 
 				// Get and print the element
 				cJSON *item = cJSON_GetArrayItem(v->json, i);
-				printTOMLstring(fp, item->valuestring);
+				printTOMLstring(fp, item->valuestring, toml);
 
 				// Add a comma if there is one more element to come
 				if(item->next)
@@ -380,7 +385,7 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 		}
 		case CONF_PASSWORD:
 		{
-			printTOMLstring(fp, PASSWORD_VALUE);
+			printTOMLstring(fp, PASSWORD_VALUE, toml);
 			break;
 		}
 	}
