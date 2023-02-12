@@ -661,9 +661,15 @@ static int api_config_patch(struct ftl_conn *api)
 		config_changed = true;
 
 		// If we reach this point, a valid setting was found and changed
+
 		// Check if this item requires a config-rewrite + restart of dnsmasq
 		if(conf_item->f & FLAG_RESTART_DNSMASQ)
 			dnsmasq_changed = true;
+
+		// Check if this item changed the password, if so, we need to
+		// invalidate all currently active sessions
+		if(conf_item->f & FLAG_INVALIDATE_SESSIONS)
+			delete_all_sessions();
 
 		// Check if this item requires a rewrite of the custom.list file
 		if(conf_item == &newconf.dns.hosts)

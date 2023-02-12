@@ -77,6 +77,7 @@ int api_group(struct ftl_conn *api);
 // Auth method
 int check_client_auth(struct ftl_conn *api);
 int api_auth(struct ftl_conn *api);
+void delete_all_sessions(void);
 
 // Documentation methods
 int api_docs(struct ftl_conn *api);

@@ -831,6 +831,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.pwhash.h = "API password hash";
 	conf->webserver.api.pwhash.a = cJSON_CreateStringReference("<valid Pi-hole password hash>");
 	conf->webserver.api.pwhash.t = CONF_STRING;
+	conf->webserver.api.pwhash.f = FLAG_INVALIDATE_SESSIONS;
 	conf->webserver.api.pwhash.d.s = (char*)"";
 
 	conf->webserver.api.password.k = "webserver.api.password";

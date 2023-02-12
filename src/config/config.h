@@ -80,9 +80,10 @@ enum conf_type {
 
 #define MAX_CONFIG_PATH_DEPTH 6
 
-#define FLAG_RESTART_DNSMASQ    (1 << 0)
-#define FLAG_ADVANCED_SETTING   (1 << 1)
-#define FLAG_WRITE_ONLY         (1 << 2)
+#define FLAG_RESTART_DNSMASQ       (1 << 0)
+#define FLAG_ADVANCED_SETTING      (1 << 1)
+#define FLAG_WRITE_ONLY            (1 << 2)
+#define FLAG_INVALIDATE_SESSIONS   (1 << 3)
 
 struct conf_item {
 	const char *k;        // item Key

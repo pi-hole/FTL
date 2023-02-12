@@ -279,6 +279,12 @@ static void delete_session(const int user_id)
 	memset(auth_data[user_id].remote_addr, 0, sizeof(auth_data[user_id].remote_addr));
 }
 
+void delete_all_sessions(void)
+{
+	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+		delete_session(i);
+}
+
 static int send_api_auth_status(struct ftl_conn *api, const int user_id, const time_t now)
 {
 	if(user_id == API_AUTH_LOCALHOST)
