@@ -57,8 +57,9 @@ static struct {
 	bool used;
 	time_t valid_until;
 	char remote_addr[48]; // Large enough for IPv4 and IPv6 addresses, hard-coded in civetweb.h as mg_request_info.remote_addr
+	char user_agent[128];
 	char sid[SID_SIZE];
-} auth_data[API_MAX_CLIENTS] = {{false, 0, {0}, {0}}};
+} auth_data[API_MAX_CLIENTS] = {{false, 0, {0}, {0}, {0}}};
 
 #define CHALLENGE_SIZE (2*SHA256_DIGEST_SIZE)
 static struct {
@@ -234,6 +235,28 @@ static bool check_response(const char *response, const time_t now)
 	return false;
 }
 
+static int get_all_sessions(struct ftl_conn *api, cJSON *json)
+{
+	const time_t now = time(NULL);
+	cJSON *sessions = JSON_NEW_ARRAY();
+	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+	{
+		if(auth_data[i].used)
+		{
+			cJSON *session = JSON_NEW_OBJECT();
+			JSON_ADD_NUMBER_TO_OBJECT(session, "id", i);
+			JSON_ADD_BOOL_TO_OBJECT(session, "valid", auth_data[i].valid_until >= now);
+			JSON_ADD_NUMBER_TO_OBJECT(session, "last_active", auth_data[i].valid_until - config.webserver.sessionTimeout.v.ui);
+			JSON_ADD_NUMBER_TO_OBJECT(session, "valid_until", auth_data[i].valid_until);
+			JSON_REF_STR_IN_OBJECT(session, "remote_addr", auth_data[i].remote_addr);
+			JSON_REF_STR_IN_OBJECT(session, "user_agent", auth_data[i].user_agent);
+			JSON_ADD_ITEM_TO_ARRAY(sessions, session);
+		}
+	}
+	JSON_ADD_ITEM_TO_OBJECT(json, "sessions", sessions);
+	return 0;
+}
+
 static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_id, const time_t now)
 {
 	// Authentication not needed
@@ -277,6 +300,7 @@ static void delete_session(const int user_id)
 	auth_data[user_id].valid_until = 0;
 	memset(auth_data[user_id].sid, 0, sizeof(auth_data[user_id].sid));
 	memset(auth_data[user_id].remote_addr, 0, sizeof(auth_data[user_id].remote_addr));
+	memset(auth_data[user_id].user_agent, 0, sizeof(auth_data[user_id].user_agent));
 }
 
 void delete_all_sessions(void)
@@ -502,10 +526,26 @@ int api_auth(struct ftl_conn *api)
 				// Found unused authentication slot (might have been freed before)
 				if(!auth_data[i].used)
 				{
+					// Mark as used
 					auth_data[i].used = true;
+					// Set validitiy to now + timeout
 					auth_data[i].valid_until = now + config.webserver.sessionTimeout.v.ui;
+					// Set remote address
 					strncpy(auth_data[i].remote_addr, api->request->remote_addr, sizeof(auth_data[i].remote_addr));
 					auth_data[i].remote_addr[sizeof(auth_data[i].remote_addr)-1] = '\0';
+					// Store user-agent (if available)
+					const char *user_agent = mg_get_header(api->conn, "user-agent");
+					if(user_agent != NULL)
+					{
+						strncpy(auth_data[i].user_agent, user_agent, sizeof(auth_data[i].user_agent));
+						auth_data[i].user_agent[sizeof(auth_data[i].user_agent)-1] = '\0';
+					}
+					else
+					{
+						auth_data[i].user_agent[0] = '\0';
+					}
+
+					// Generate new SID
 					generateSID(auth_data[i].sid);
 
 					user_id = i;
@@ -604,4 +644,12 @@ char * __attribute__((malloc)) hash_password(const char *password)
 	sha256_hex(raw_response, response);
 
 	return strdup(response);
+}
+
+int api_auth_sessions(struct ftl_conn *api)
+{
+	// Get session object
+	cJSON *json = JSON_NEW_OBJECT();
+	get_all_sessions(api, json);
+	JSON_SEND_OBJECT(json);
 }

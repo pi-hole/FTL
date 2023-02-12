@@ -105,6 +105,26 @@ components:
                 examples:
                   login_failed:
                     $ref: 'auth.yaml#/components/examples/login_failed'
+    sessions_list:
+      get:
+        summary: List of all current sessions
+        tags:
+          - Authentication
+        operationId: "get_auth_sessions"
+        description: List of all current sessions including their validity and further information about the client such as the IP address and user agent.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'auth.yaml#/components/schemas/sessions_list'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
 
   schemas:
     session:
@@ -143,6 +163,41 @@ components:
           type: string
           description: Response to previous challenge
           example: abcdef
+    sessions_list:
+      type: object
+      description: List of all current sessions
+      properties:
+        sessions:
+          type: array
+          items:
+            type: object
+            description: Session object
+            properties:
+              id:
+                type: number
+                description: Session ID
+              valid:
+                type: boolean
+                description: Valid session indicator (existing sessions may be invalid due to timeout)
+              last_active:
+                type: integer
+                description: Timestamp of last activity (seconds since epoch)
+              valid_until:
+                type: integer
+                description: Timestamp of session expiration (seconds since epoch)
+              remote_addr:
+                type: string
+                description: IP address of the client
+              user_agent:
+                type: string
+                description: User agent of the client
+          example:
+            - id: 1
+              valid: true
+              last_active: 1580000000
+              valid_until: 1580000300
+              remote_addr: "192.168.0.34"
+              user_agent: "Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0"
 
   errors:
     bad_request:

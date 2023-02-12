@@ -35,6 +35,8 @@ static struct {
 	//                                                                                                               domains  json   fifo
 	// Note: The order of appearance matters here, more specific URIs have to
 	// appear *before* less specific URIs: 1. "/a/b/c", 2. "/a/b", 3. "/a"
+	{ "/api/auth/sessions",                     "",                           api_auth_sessions,                     { false, true,  0             }, true,  HTTP_GET },
+	{ "/api/auth",                              "",                           api_auth,                              { false, true,  0             }, false, HTTP_GET | HTTP_POST | HTTP_DELETE },
 	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { false, true,  0             }, true,  HTTP_GET | HTTP_POST },
 	{ "/api/clients",                           "/{client}",                  api_list,                              { false, true,  0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/domains",                           "/{type}/{kind}/{domain}",    api_list,                              { false, true,  0             }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
@@ -72,7 +74,6 @@ static struct {
 	{ "/api/stats/database/summary",            "",                           api_stats_database_summary,            { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/stats/database/query_types",        "",                           api_stats_database_query_types,        { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/stats/database/upstreams",          "",                           api_stats_database_upstreams,          { false, true,  0             }, true,  HTTP_GET },
-	{ "/api/auth",                              "",                           api_auth,                              { false, true,  0             }, false, HTTP_GET | HTTP_POST | HTTP_DELETE },
 	{ "/api/config",                            "",                           api_config,                            { false, true,  0             }, true,  HTTP_GET | HTTP_PATCH },
 	{ "/api/config",                            "/{element}",                 api_config,                            { false, true,  0             }, true,  HTTP_GET | HTTP_PATCH },
 	{ "/api/config",                            "/{element}/{value}",         api_config,                            { false, true,  0             }, true,  HTTP_DELETE | HTTP_PUT },
