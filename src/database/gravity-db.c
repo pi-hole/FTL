@@ -1290,7 +1290,98 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 	if(stmt == NULL)
 		stmt = gravity_stmt->get(gravity_stmt, client->id);
 
-	return domain_in_list(domain, stmt, "gravity", NULL);
+	// Check if domain is exactly in gravity list
+	const bool exact_match = domain_in_list(domain, stmt, "gravity", NULL);
+	if(config.debug & DEBUG_QUERIES)
+		logg("Checking if \"%s\" is in gravity: %s", domain, exact_match ? "yes" : "no");
+	if(exact_match)
+		return FOUND;
+
+	// Return early if we are not supposed to check for ABP-style regex
+	// matches. This needs to be enabled in the config file as it is
+	// computationally expensive and not needed in most cases (HOSTS lists).
+	if(!config.gravityABP)
+		return NOT_FOUND;
+
+	// Make a copy of the domain we will slowly truncate
+	// while extracting the individual components below
+	char *domainBuf = strdup(domain);
+
+	// Buffer to hold the constructed (sub)domain in ABP format
+	char *abpDomain = calloc(strlen(domain) + 4, sizeof(char));
+	// Prime abp matcher with minimal content
+	strcpy(abpDomain, "||^");
+
+	// Get number of domain parts (equals the number of dots + 1)
+	unsigned int N = 1u;
+	for(const char *p = domain; *p != '\0'; p++)
+		if(*p == '.')
+			N++;
+
+	// Loop over domain parts, building matcher from the TLD
+	// going down into domain and subdomains one by one
+	while(N-- > 0)
+	{
+		// Get domain to the *last* occurence of '.'
+		char *ptr = strrchr(domainBuf, '.');
+
+		// If there are no '.' left in the domain buffer, we use the
+		// remainder which is the left-most domain component
+		if(ptr == NULL)
+			ptr = domainBuf;
+
+		// Get size of this component...
+		const size_t component_size = strlen(ptr);
+		// ... and use it to create a "gap" of the right size in our ABP
+		// format buffer
+		// Insert the domain component into the gap
+		if(ptr[0] == '.')
+		{
+			// If the component starts with a dot, we need
+			// to skip it when copying it into the ABP buffer
+			// Move excluding initial "||" but including final \0 (strlen-2+1 = strlen-1)
+			memmove(abpDomain+2+component_size-1, abpDomain+2, strlen(abpDomain)-1);
+			// Copy component bytes (excl. trailling null-byte)
+			memcpy(abpDomain+2, ptr+1, component_size-1);
+		}
+		else
+		{
+			// Otherwise, we copy the component as-is
+			memmove(abpDomain+2+component_size, abpDomain+2, strlen(abpDomain)-1);
+			// Copy component bytes (excl. trailling null-byte)
+			memcpy(abpDomain+2, ptr, component_size);
+		}
+		// Check if the constructed ABP-style domain is in the gravity list
+		const bool abp_match = domain_in_list(abpDomain, stmt, "gravity", NULL);
+		if(config.debug & DEBUG_QUERIES)
+			logg("Checking if \"%s\" is in gravity: %s", abpDomain, abp_match ? "yes" : "no");
+		if(abp_match)
+		{
+			free(domainBuf);
+			free(abpDomain);
+			return FOUND;
+		}
+		// Truncate the domain buffer to the left of the
+		// last dot, effectively removing the last component
+		const ssize_t truncate_pos = strlen(domainBuf)-component_size;
+		if(truncate_pos < 1)
+			// This was already the last iteration
+			break;
+
+		// Put a null-byte at the truncation position
+		domainBuf[truncate_pos] = '\0';
+
+		// Move the ABP buffer to the right by one byte ...
+		memmove(abpDomain+3, abpDomain+2, strlen(abpDomain));
+		// ... and insert '.' for the next iteration
+		abpDomain[2] = '.';
+	}
+
+	free(domainBuf);
+	free(abpDomain);
+
+	// Domain not found in gravity list
+	return NOT_FOUND;
 }
 
 enum db_result in_blacklist(const char *domain, DNSCacheData *dns_cache, clientsData *client)

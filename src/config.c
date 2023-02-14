@@ -770,6 +770,20 @@ void read_FTLconf(void)
 
 	logg("   CHECK_DISK: Warning if certain disk usage exceeds %d%%", config.check.disk);
 
+	// GRAVITY_ABP_STYLE
+	// Should FTL check for ABP-style domain entries in the gravity database?
+	// This option should only be enabled if you are using ABP-style entries
+	// in your gravity database as it adds a significant overhead to the
+	// database query.
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "GRAVITY_ABP_STYLE");
+	config.gravityABP = read_bool(buffer, false);
+
+	if(config.gravityABP)
+		logg("   GRAVITY_ABP_STYLE: Enabled");
+	else
+		logg("   GRAVITY_ABP_STYLE: Disabled");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
