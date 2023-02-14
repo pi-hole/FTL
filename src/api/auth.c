@@ -209,6 +209,8 @@ int check_client_auth(struct ftl_conn *api)
 	else
 		log_debug(DEBUG_API, "API Authentification: FAIL (SID invalid/expired)");
 
+	api->user_id = user_id;
+
 	return user_id;
 }
 
@@ -239,19 +241,19 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 {
 	const time_t now = time(NULL);
 	cJSON *sessions = JSON_NEW_ARRAY();
-	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+	for(int i = 0; i < API_MAX_CLIENTS; i++)
 	{
-		if(auth_data[i].used)
-		{
-			cJSON *session = JSON_NEW_OBJECT();
-			JSON_ADD_NUMBER_TO_OBJECT(session, "id", i);
-			JSON_ADD_BOOL_TO_OBJECT(session, "valid", auth_data[i].valid_until >= now);
-			JSON_ADD_NUMBER_TO_OBJECT(session, "last_active", auth_data[i].valid_until - config.webserver.sessionTimeout.v.ui);
-			JSON_ADD_NUMBER_TO_OBJECT(session, "valid_until", auth_data[i].valid_until);
-			JSON_REF_STR_IN_OBJECT(session, "remote_addr", auth_data[i].remote_addr);
-			JSON_REF_STR_IN_OBJECT(session, "user_agent", auth_data[i].user_agent);
-			JSON_ADD_ITEM_TO_ARRAY(sessions, session);
-		}
+		if(!auth_data[i].used)
+			continue;
+		cJSON *session = JSON_NEW_OBJECT();
+		JSON_ADD_NUMBER_TO_OBJECT(session, "id", i);
+		JSON_ADD_BOOL_TO_OBJECT(session, "current_session", i == api->user_id);
+		JSON_ADD_BOOL_TO_OBJECT(session, "valid", auth_data[i].valid_until >= now);
+		JSON_ADD_NUMBER_TO_OBJECT(session, "last_active", auth_data[i].valid_until - config.webserver.sessionTimeout.v.ui);
+		JSON_ADD_NUMBER_TO_OBJECT(session, "valid_until", auth_data[i].valid_until);
+		JSON_REF_STR_IN_OBJECT(session, "remote_addr", auth_data[i].remote_addr);
+		JSON_REF_STR_IN_OBJECT(session, "user_agent", auth_data[i].user_agent);
+		JSON_ADD_ITEM_TO_ARRAY(sessions, session);
 	}
 	JSON_ADD_ITEM_TO_OBJECT(json, "sessions", sessions);
 	return 0;
@@ -646,7 +648,7 @@ char * __attribute__((malloc)) hash_password(const char *password)
 	return strdup(response);
 }
 
-int api_auth_sessions(struct ftl_conn *api)
+int api_auth_session(struct ftl_conn *api)
 {
 	// Get session object
 	cJSON *json = JSON_NEW_OBJECT();

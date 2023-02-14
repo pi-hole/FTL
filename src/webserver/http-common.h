@@ -45,6 +45,7 @@ struct ftl_conn {
 	const enum http_method method;
 	char *action_path;
 	const char *item;
+	int user_id;
 	struct {
 		bool avail;
 		char *raw;

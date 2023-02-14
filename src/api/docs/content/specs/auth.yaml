@@ -176,6 +176,9 @@ components:
               id:
                 type: number
                 description: Session ID
+              current_session:
+                type: boolean
+                description: Indicator if this is the current session
               valid:
                 type: boolean
                 description: Valid session indicator (existing sessions may be invalid due to timeout)
