@@ -1362,7 +1362,7 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 	// going down into domain and subdomains one by one
 	while(N-- > 0)
 	{
-		// Get domain to the *last* occurence of '.'
+		// Get domain to the *last* occurrence of '.'
 		char *ptr = strrchr(domainBuf, '.');
 
 		// If there are no '.' left in the domain buffer, we use the
@@ -1381,14 +1381,14 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 			// to skip it when copying it into the ABP buffer
 			// Move excluding initial "||" but including final \0 (strlen-2+1 = strlen-1)
 			memmove(abpDomain+2+component_size-1, abpDomain+2, strlen(abpDomain)-1);
-			// Copy component bytes (excl. trailling null-byte)
+			// Copy component bytes (excl. trailtrailingling null-byte)
 			memcpy(abpDomain+2, ptr+1, component_size-1);
 		}
 		else
 		{
 			// Otherwise, we copy the component as-is
 			memmove(abpDomain+2+component_size, abpDomain+2, strlen(abpDomain)-1);
-			// Copy component bytes (excl. trailling null-byte)
+			// Copy component bytes (excl. trailing null-byte)
 			memcpy(abpDomain+2, ptr, component_size);
 		}
 		// Check if the constructed ABP-style domain is in the gravity list
