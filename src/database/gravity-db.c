@@ -1381,7 +1381,7 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 			// to skip it when copying it into the ABP buffer
 			// Move excluding initial "||" but including final \0 (strlen-2+1 = strlen-1)
 			memmove(abpDomain+2+component_size-1, abpDomain+2, strlen(abpDomain)-1);
-			// Copy component bytes (excl. trailtrailingling null-byte)
+			// Copy component bytes (excl. trailing null-byte)
 			memcpy(abpDomain+2, ptr+1, component_size-1);
 		}
 		else
