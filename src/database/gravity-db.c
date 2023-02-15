@@ -1329,11 +1329,13 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 		stmt = gravity_stmt->get(gravity_stmt, client->id);
 
 	// Check if domain is exactly in gravity list
-	const bool exact_match = domain_in_list(domain, stmt, "gravity", NULL);
+	const enum db_result exact_match = domain_in_list(domain, stmt, "gravity", NULL);
 	if(config.debug & DEBUG_QUERIES)
-		logg("Checking if \"%s\" is in gravity: %s", domain, exact_match ? "yes" : "no");
-	if(exact_match)
-		return FOUND;
+		logg("Checking if \"%s\" is in gravity: %s",
+		     domain, exact_match == FOUND ? "yes" : "no");
+	// Return for anything else than "not found" (e.g. "found" or "list not available")
+	if(exact_match != NOT_FOUND)
+		return exact_match;
 
 	// Return early if we are not supposed to check for ABP-style regex
 	// matches. This needs to be enabled in the config file as it is
@@ -1390,14 +1392,16 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 			memcpy(abpDomain+2, ptr, component_size);
 		}
 		// Check if the constructed ABP-style domain is in the gravity list
-		const bool abp_match = domain_in_list(abpDomain, stmt, "gravity", NULL);
+		const enum db_result abp_match = domain_in_list(abpDomain, stmt, "gravity", NULL);
 		if(config.debug & DEBUG_QUERIES)
-			logg("Checking if \"%s\" is in gravity: %s", abpDomain, abp_match ? "yes" : "no");
-		if(abp_match)
+			logg("Checking if \"%s\" is in gravity: %s",
+			     abpDomain, abp_match == FOUND ? "yes" : "no");
+		// Return for anything else than "not found" (e.g. "found" or "list not available")
+		if(abp_match != NOT_FOUND)
 		{
 			free(domainBuf);
 			free(abpDomain);
-			return FOUND;
+			return abp_match;
 		}
 		// Truncate the domain buffer to the left of the
 		// last dot, effectively removing the last component
