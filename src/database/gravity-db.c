@@ -47,6 +47,7 @@ static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
 static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravityDB_opened = false;
+static bool gravity_abp_format = false;
 
 // Table names corresponding to the enum defined in gravity-db.h
 static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "" };
@@ -93,6 +94,40 @@ void gravityDB_forked(void)
 
 	// Open the database
 	gravityDB_open();
+}
+
+static void gravity_check_ABP_format(void)
+{
+	// Check if we have a valid ABP format
+	// We do this by checking if there are any domains in the gravity table that match the
+	// ABP format. If there are, we remember that we have seen this format.
+
+	// Prepare statement
+	sqlite3_stmt *stmt = NULL;
+	int rc = sqlite3_prepare_v2(gravity_db,
+	                            "SELECT EXISTS(SELECT 1 FROM gravity WHERE domain LIKE '||%^');",
+	                            -1, &stmt, NULL);
+
+	if( rc != SQLITE_OK )
+	{
+		logg("gravity_check_ABP_format() - SQL error prepare: %s", sqlite3_errstr(rc));
+		return;
+	}
+
+	// Execute statement
+	rc = sqlite3_step(stmt);
+	if( rc != SQLITE_ROW )
+	{
+		logg("gravity_check_ABP_format() - SQL error step: %s", sqlite3_errstr(rc));
+		sqlite3_finalize(stmt);
+		return;
+	}
+
+	// Get result
+	gravity_abp_format = sqlite3_column_int(stmt, 0) > 0;
+
+	// Finalize statement
+	sqlite3_finalize(stmt);
 }
 
 // Open gravity database
@@ -193,6 +228,9 @@ bool gravityDB_open(void)
 	{
 		logg("gravityDB_open() - Cannot set busy handler: %s", sqlite3_errstr(rc));
 	}
+
+	// Check if there are any ABP-style entries in the database
+	gravity_check_ABP_format();
 
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Successfully opened gravity.db");
@@ -1300,7 +1338,7 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 	// Return early if we are not supposed to check for ABP-style regex
 	// matches. This needs to be enabled in the config file as it is
 	// computationally expensive and not needed in most cases (HOSTS lists).
-	if(!config.gravityABP)
+	if(!gravity_abp_format)
 		return NOT_FOUND;
 
 	// Make a copy of the domain we will slowly truncate

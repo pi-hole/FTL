@@ -51,7 +51,6 @@ typedef struct {
 	bool edns0_ecs :1;
 	bool show_dnssec :1;
 	bool addr2line :1;
-	bool gravityABP:1;
 	struct {
 		bool mozilla_canary :1;
 		bool icloud_private_relay :1;
