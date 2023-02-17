@@ -232,6 +232,9 @@ void http_init(void)
 
 void http_terminate(void)
 {
+	if(!ctx)
+		return;
+
 	/* Stop the server */
 	mg_stop(ctx);
 

@@ -90,6 +90,13 @@ void *DB_thread(void *val)
 			queries_to_database();
 			unlock_shm();
 			before = now;
+
+			// Check if we need to reload gravity
+			if(gravity_updated())
+			{
+				// Reload gravity
+				set_event(RELOAD_GRAVITY);
+			}
 		}
 
 		// Intermediate cancellation-point
@@ -145,13 +152,6 @@ void *DB_thread(void *val)
 		// Intermediate cancellation-point
 		if(killed)
 			break;
-
-		// Check if we need to reload gravity
-		if(gravity_updated())
-		{
-			// Reload gravity
-			set_event(RELOAD_GRAVITY);
-		}
 
 		// Parse ARP cache if requested
 		if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))

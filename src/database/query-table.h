@@ -107,6 +107,7 @@ const char *index_creation[] = {
 void db_counts(unsigned long *last_idx, unsigned long *mem_num, unsigned long *disk_num);
 bool init_memory_database(void);
 sqlite3 *get_memdb(void) __attribute__((pure));
+void close_memory_database(void);
 bool import_queries_from_disk(void);
 bool attach_disk_database(const char **msg);
 bool detach_disk_database(const char **msg);

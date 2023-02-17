@@ -22,11 +22,14 @@ add_library(civetweb OBJECT ${sources})
 # NO_CGI = no CGI support (we don't need it)
 # NO_SSL_DL NO_SSL = no SSL support (for now)
 # USE_IPV6: add IPv6 support
+# USE_LUA: add Lua support
+# TIMER_RESOLUTION: set timer resolution to 1000ms (default is 10ms) in an attempt to reduce CPU load
 target_compile_definitions(civetweb PRIVATE NO_CGI
                                             NO_DLOPEN
                                             NO_SSL_DL
                                             USE_IPV6
-                                            USE_LUA)
+                                            USE_LUA
+                                            TIMER_RESOLUTION=1000)
 
 if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
     # Enable TLS support in civetweb if mbedTLS is available

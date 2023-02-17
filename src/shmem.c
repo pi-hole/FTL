@@ -96,6 +96,14 @@ static clientsData *clients = NULL;
 static domainsData *domains = NULL;
 static upstreamsData *upstreams = NULL;
 static DNSCacheData *dns_cache = NULL;
+fifologData *fifo_log = NULL;
+
+static void **global_pointers[] = {(void**)&queries,
+                                   (void**)&clients,
+                                   (void**)&domains,
+                                   (void**)&upstreams,
+                                   (void**)&dns_cache,
+                                   (void**)&fifo_log };
 
 typedef struct {
 	struct {
@@ -865,6 +873,17 @@ static void delete_shm(SharedMemory *sharedMemory)
 	// Unmap shared memory (if mmapped)
 	if(sharedMemory->ptr != NULL)
 	{
+		// Unmap global pointers
+		for(unsigned int i = 0; i < ArraySize(global_pointers); i++)
+		{
+			log_debug(DEBUG_SHMEM, "Pointer comparison at pos. %u: %p == %p", i, *global_pointers[i], sharedMemory->ptr);
+			if(*global_pointers[i] == sharedMemory->ptr)
+			{
+				log_debug(DEBUG_SHMEM, "Unmapping global pointer %s at %p", sharedMemory->name, *global_pointers[i]);
+				*global_pointers[i] = NULL;
+				break;
+			}
+		}
 		if(munmap(sharedMemory->ptr, sharedMemory->size) != 0)
 			log_warn("delete_shm(): munmap(%p, %zu) failed: %s",
 			         sharedMemory->ptr, sharedMemory->size, strerror(errno));

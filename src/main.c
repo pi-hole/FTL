@@ -23,8 +23,6 @@
 #include "shmem.h"
 #include "capabilities.h"
 #include "timers.h"
-// http_terminate()
-#include "webserver/webserver.h"
 #include "procps.h"
 // init_memory_database(), import_queries_from_disk()
 #include "database/query-table.h"

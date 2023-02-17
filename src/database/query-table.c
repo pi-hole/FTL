@@ -106,6 +106,25 @@ bool init_memory_database(void)
 	return true;
 }
 
+// Close memory database
+void close_memory_database(void)
+{
+	// Return early if there is no memory database to be closed
+	if(memdb == NULL)
+		return;
+
+	// Close SQLite3 memory database
+	int ret = sqlite3_close(memdb);
+	if(ret != SQLITE_OK)
+		log_err("Finalizing memory database failed: %s",
+		        sqlite3_errstr(ret));
+	else
+		log_debug(DEBUG_DATABASE, "Closed memory database");
+
+	// Set global pointer to NULL
+	memdb = NULL;
+}
+
 sqlite3 *__attribute__((pure)) get_memdb(void)
 {
 	return memdb;
@@ -194,6 +213,8 @@ bool attach_disk_database(const char **message)
 	bool okay = false;
 	sqlite3_stmt *stmt = NULL;
 
+	log_debug(DEBUG_DATABASE, "memdb: ATTACH %s AS disk", config.files.database.v.s);
+
 	// ATTACH database file on-disk
 	rc = sqlite3_prepare_v2(memdb, "ATTACH ? AS disk", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
@@ -227,7 +248,6 @@ bool attach_disk_database(const char **message)
 	}
 
 	// Finalize statement
-	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
 	return okay;
@@ -237,6 +257,8 @@ bool attach_disk_database(const char **message)
 bool detach_disk_database(const char **message)
 {
 	int rc;
+
+	log_debug(DEBUG_DATABASE, "memdb: DETACH disk");
 
 	// Detach database
 	rc = sqlite3_exec(memdb, "DETACH disk", NULL, NULL, NULL);
@@ -289,6 +311,7 @@ int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, const bool d
 		log_err("get_number_of_queries_in_DB(%s): Step error: %s",
 		        tablename, sqlite3_errstr(rc));
 		free(querystr);
+		sqlite3_finalize(stmt);
 		return false;
 	}
 	sqlite3_finalize(stmt);
@@ -334,6 +357,7 @@ bool import_queries_from_disk(void)
 	if((rc = sqlite3_bind_double(stmt, 1, mintime)) != SQLITE_OK)
 	{
 		log_err("import_queries_from_disk(): Failed to bind type mintime: %s", sqlite3_errstr(rc));
+		sqlite3_finalize(stmt);
 		return false;
 	}
 
@@ -345,7 +369,6 @@ bool import_queries_from_disk(void)
 		        sqlite3_errstr(rc));
 
 	// Finalize statement
-	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
 	// Import linking tables and current AUTOINCREMENT values from the disk database
@@ -452,7 +475,6 @@ bool export_queries_to_disk(bool final)
 	const unsigned int insertions = sqlite3_changes(memdb);
 
 	// Finalize statement
-	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
 
@@ -468,7 +490,6 @@ bool export_queries_to_disk(bool final)
 		        sqlite3_errstr(rc));
 
 	// Finalize statement
-	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
 
@@ -547,6 +568,7 @@ bool delete_query_from_db(const sqlite3_int64 id)
 	if((rc = sqlite3_bind_int64(stmt, 1, id)) != SQLITE_OK)
 	{
 		log_err("delete_query_from_db(): Failed to bind type id: %s", sqlite3_errstr(rc));
+		sqlite3_finalize(stmt);
 		return false;
 	}
 
@@ -559,7 +581,6 @@ bool delete_query_from_db(const sqlite3_int64 id)
 
 	mem_db_num -= sqlite3_changes(memdb);
 	// Finalize statement
-	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
 	return okay;
@@ -740,6 +761,7 @@ void DB_read_queries(void)
 	if((rc = sqlite3_bind_double(stmt, 1, mintime)) != SQLITE_OK)
 	{
 		log_err("DB_read_queries() - Failed to bind mintime: %s", sqlite3_errstr(rc));
+		sqlite3_finalize(stmt);
 		return;
 	}
 
@@ -1050,7 +1072,6 @@ void DB_read_queries(void)
 		        sqlite3_errstr(rc));
 
 	// Finalize statement
-	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
 	log_debug(DEBUG_DATABASE, "Last long-term idx is %lu", last_disk_db_idx);
@@ -1074,6 +1095,11 @@ bool queries_to_database(void)
 	sqlite3_stmt *client_stmt = NULL;
 	sqlite3_stmt *forward_stmt = NULL;
 	sqlite3_stmt *addinfo_stmt = NULL;
+	sqlite3_stmt **stmts[] = { &query_stmt,
+	                           &domain_stmt,
+	                           &client_stmt,
+	                           &forward_stmt,
+	                           &addinfo_stmt };
 
 	// Skip, we never store nor count queries recorded while have been in
 	// maximum privacy mode in the database
@@ -1201,9 +1227,12 @@ bool queries_to_database(void)
 		sqlite3_bind_text(domain_stmt, 1, domain, -1, SQLITE_STATIC);
 
 		// Execute prepare domain statement and check if successful
-		if(sqlite3_step(domain_stmt) != SQLITE_DONE)
+		rc = sqlite3_step(domain_stmt);
+		if(rc != SQLITE_DONE)
 		{
 			log_err("Encountered error while trying to store domain");
+			sqlite3_clear_bindings(domain_stmt);
+			sqlite3_reset(domain_stmt);
 			break;
 		}
 		sqlite3_clear_bindings(domain_stmt);
@@ -1218,13 +1247,14 @@ bool queries_to_database(void)
 		sqlite3_bind_text(client_stmt, 2, clientName, -1, SQLITE_STATIC);
 
 		// Execute prepare client statement and check if successful
-		if(sqlite3_step(client_stmt) != SQLITE_DONE)
+		rc = sqlite3_step(client_stmt);
+		sqlite3_clear_bindings(client_stmt);
+		sqlite3_reset(client_stmt);
+		if(rc != SQLITE_DONE)
 		{
 			log_err("Encountered error while trying to store client");
 			break;
 		}
-		sqlite3_clear_bindings(client_stmt);
-		sqlite3_reset(client_stmt);
 
 		// FORWARD
 		if(query->upstreamID > -1)
@@ -1244,13 +1274,14 @@ bool queries_to_database(void)
 					sqlite3_bind_text(forward_stmt, 1, buffer, len, SQLITE_STATIC);
 
 					// Execute prepared forward statement and check if successful
-					if(sqlite3_step(forward_stmt) != SQLITE_DONE)
+					rc = sqlite3_step(forward_stmt);
+					sqlite3_clear_bindings(forward_stmt);
+					sqlite3_reset(forward_stmt);
+					if(rc != SQLITE_DONE)
 					{
 						log_err("Encountered error while trying to store forward");
 						break;
 					}
-					sqlite3_clear_bindings(forward_stmt);
-					sqlite3_reset(forward_stmt);
 				}
 				else
 				{
@@ -1281,13 +1312,14 @@ bool queries_to_database(void)
 			// Execute prepared addinfo statement and check if successful
 			sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_CNAME_DOMAIN);
 			sqlite3_bind_text(addinfo_stmt, 2, cname, len, SQLITE_STATIC);
-			if(sqlite3_step(addinfo_stmt) != SQLITE_DONE)
+			rc = sqlite3_step(addinfo_stmt);
+			sqlite3_clear_bindings(addinfo_stmt);
+			sqlite3_reset(addinfo_stmt);
+			if(rc != SQLITE_DONE)
 			{
 				log_err("Encountered error while trying to store addinfo");
 				break;
 			}
-			sqlite3_clear_bindings(addinfo_stmt);
-			sqlite3_reset(addinfo_stmt);
 		}
 		else if(query->status == QUERY_REGEX)
 		{
@@ -1302,13 +1334,14 @@ bool queries_to_database(void)
 				// Execute prepared addinfo statement and check if successful
 				sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_REGEX_ID);
 				sqlite3_bind_int(addinfo_stmt, 2, cache->domainlist_id);
-				if(sqlite3_step(addinfo_stmt) != SQLITE_DONE)
+				rc = sqlite3_step(addinfo_stmt);
+				sqlite3_clear_bindings(addinfo_stmt);
+				sqlite3_reset(addinfo_stmt);
+				if(rc != SQLITE_DONE)
 				{
 					log_err("Encountered error while trying to store addinfo");
 					break;
 				}
-				sqlite3_clear_bindings(addinfo_stmt);
-				sqlite3_reset(addinfo_stmt);
 			}
 			else
 				sqlite3_bind_null(query_stmt, 9);
@@ -1390,11 +1423,11 @@ bool queries_to_database(void)
 		query->flags.database.changed = false;
 	}
 
-	if((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
+	// Finalize all statements
+	for(unsigned int i = 0; i < ArraySize(stmts); i++)
 	{
-		log_err("Statement finalization failed when trying to store queries to in-memory database: %s",
-		        sqlite3_errstr(rc));
-		return false;
+		sqlite3_finalize(*stmts[i]);
+		*stmts[i] = NULL;
 	}
 
 	if(config.debug.database.v.b && updated + added > 0)

@@ -29,6 +29,10 @@
 #include <sys/resource.h>
 // free_regex()
 #include "regex_r.h"
+// close_memory_database()
+#include "database/query-table.h"
+// http_terminate()
+#include "webserver/webserver.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -326,6 +330,12 @@ void cleanup(const int ret)
 
 	// Free regex filter memory
 	free_regex();
+
+	// Terminate HTTP server (if running)
+	http_terminate();
+
+	// Close memory database
+	close_memory_database();
 
 	// Remove shared memory objects
 	// Important: This invalidated all objects such as

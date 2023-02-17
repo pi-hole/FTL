@@ -17,7 +17,6 @@
 #include "config/config.h"
 
 // fifologData is allocated in shared memory for cross-fork compatibility
-fifologData *fifo_log = NULL;
 int api_logs(struct ftl_conn *api)
 {
 	unsigned int start = 0u;
