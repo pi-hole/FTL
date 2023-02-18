@@ -472,6 +472,8 @@ components:
                   type: boolean
                 reserved:
                   type: boolean
+                all:
+                  type: boolean
     topics:
       type: object
       properties:
@@ -662,6 +664,7 @@ components:
             inotify: false
             extra: false
             reserved: false
+            all: false
     config_one:
       summary: One option
       value:

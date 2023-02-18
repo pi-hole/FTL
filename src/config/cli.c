@@ -25,7 +25,7 @@
 #include "api/api.h"
 
 // Read a TOML value from a table depending on its type
-static bool readStringValue(struct conf_item *conf_item, const char *value)
+static bool readStringValue(struct conf_item *conf_item, const char *value, struct config *newconf)
 {
 	if(conf_item == NULL || value == NULL)
 	{
@@ -41,6 +41,27 @@ static bool readStringValue(struct conf_item *conf_item, const char *value)
 				conf_item->v.b = true;
 			else if(strcasecmp(value, "false") == 0 || strcasecmp(value, "no") == 0)
 				conf_item->v.b = false;
+			else
+			{
+				log_err("Config setting %s is invalid, allowed options are: [ true, false, yes, no ]", conf_item->k);
+				return false;
+			}
+			break;
+		}
+		case CONF_ALL_DEBUG_BOOL:
+		{
+			if(strcasecmp(value, "true") == 0 || strcasecmp(value, "yes") == 0)
+			{
+				set_all_debug(newconf, true);
+				conf_item->v.b = true;
+				set_debug_flags(newconf);
+			}
+			else if(strcasecmp(value, "false") == 0 || strcasecmp(value, "no") == 0)
+			{
+				set_all_debug(newconf, false);
+				conf_item->v.b = false;
+				set_debug_flags(newconf);
+			}
 			else
 			{
 				log_err("Config setting %s is invalid, allowed options are: [ true, false, yes, no ]", conf_item->k);
@@ -343,7 +364,7 @@ int set_config_from_CLI(const char *key, const char *value)
 	}
 
 	// Parse value
-	if(!readStringValue(new_item, value))
+	if(!readStringValue(new_item, value, &newconf))
 		return 2;
 
 	// Check if value changed compared to current value

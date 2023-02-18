@@ -25,7 +25,7 @@
 
 // Private prototypes
 static toml_table_t *parseTOML(void);
-static void reportDebugConfig(void);
+static void reportDebugFlags(void);
 
 bool readFTLtoml(struct config *conf, toml_table_t *toml, const bool verbose)
 {
@@ -44,8 +44,8 @@ bool readFTLtoml(struct config *conf, toml_table_t *toml, const bool verbose)
 	// parsing to allow for debug output further down
 	toml_table_t *conf_debug = toml_table_in(toml, "debug");
 	if(conf_debug)
-		readTOMLvalue(&config.debug.config, "config", conf_debug);
-	set_debug_flags();
+		readTOMLvalue(&config.debug.config, "config", conf_debug, conf);
+	set_debug_flags(&config);
 
 	log_debug(DEBUG_CONFIG, "Reading %s TOML config file: full config",
 	          external ? "external" : "default");
@@ -79,13 +79,13 @@ bool readFTLtoml(struct config *conf, toml_table_t *toml, const bool verbose)
 			continue;
 
 		// Try to parse config item
-		readTOMLvalue(conf_item, conf_item->p[level-1], table[level-2]);
+		readTOMLvalue(conf_item, conf_item->p[level-1], table[level-2], conf);
 	}
 
 	// Report debug config if enabled
-	set_debug_flags();
+	set_debug_flags(&config);
 	if(verbose)
-		reportDebugConfig();
+		reportDebugFlags();
 
 	// Free memory allocated by the TOML parser and return success
 	toml_free(toml);
@@ -238,7 +238,7 @@ bool getLogFilePathTOML(void)
 	return true;
 }
 
-static void reportDebugConfig(void)
+static void reportDebugFlags(void)
 {
 	// Print debug settings
 	log_debug(DEBUG_ANY, "************************");

@@ -796,7 +796,7 @@ static void setDebugOption(FILE* fp, const char* option, enum debug_flag flag)
 	if(buffer == NULL)
 		return;
 
-	struct conf_item *debug = get_debug_item(flag);
+	struct conf_item *debug = get_debug_item(&config, flag);
 
 	// Set bit if value equals "true", clear bit otherwise
 	bool bit = false;
@@ -807,7 +807,7 @@ static void setDebugOption(FILE* fp, const char* option, enum debug_flag flag)
 static void readDebugingSettingsLegacy(FILE *fp)
 {
 	// Set default (no debug instructions set)
-	set_all_debug(false);
+	set_all_debug(&config, false);
 
 	// See if we got a file handle, if not we have to open
 	// the config file ourselves
@@ -835,7 +835,7 @@ static void readDebugingSettingsLegacy(FILE *fp)
 	}
 
 	// Parse debug options
-	set_debug_flags();
+	set_debug_flags(&config);
 
 	if(debug_flags[DEBUG_ANY])
 	{

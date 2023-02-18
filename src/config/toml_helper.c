@@ -288,6 +288,7 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 	switch(t)
 	{
 		case CONF_BOOL:
+		case CONF_ALL_DEBUG_BOOL:
 			fprintf(fp, "%s", v->b ? "true" : "false");
 			break;
 		case CONF_INT:
@@ -392,7 +393,7 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 }
 
 // Read a TOML value from a table depending on its type
-void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *toml)
+void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *toml, struct config *newconf)
 {
 	if(conf_item == NULL || key == NULL || toml == NULL)
 	{
@@ -407,6 +408,15 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			const toml_datum_t val = toml_bool_in(toml, key);
 			if(val.ok)
 				conf_item->v.b = val.u.b;
+			else
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type bool", conf_item->k);
+			break;
+		}
+		case CONF_ALL_DEBUG_BOOL:
+		{
+			const toml_datum_t val = toml_bool_in(toml, key);
+			if(val.ok)
+				set_all_debug(newconf, val.u.b);
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type bool", conf_item->k);
 			break;

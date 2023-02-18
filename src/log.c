@@ -29,25 +29,10 @@ static bool print_log = true, print_stdout = true;
 static const char *process = "";
 bool debug_flags[DEBUG_MAX] = { false };
 
-// Set debug flags from config struct to global debug_flags array
-// This is called whenever the config is reloaded and debug flags may have
-// changed
-void set_debug_flags(void)
+void clear_debug_flags(void)
 {
-	// Reset debug flags
-	memset(debug_flags, false, sizeof(debug_flags));
-
-	// Loop over all debug options and check if at least one is enabled
-	for(unsigned int i = 0; i < DEBUG_ELEMENTS; i++)
-	{
-		struct conf_item *debug_item = get_debug_item(i);
-		if(debug_item->v.b)
-		{
-			// Add offset of 1 as the first element is "ANY"
-			debug_flags[i + 1] = true;
-			debug_flags[DEBUG_ANY] = true;
-		}
-	}
+	for(unsigned int i = 0; i < DEBUG_MAX; i++)
+		debug_flags[i] = false;
 }
 
 void log_ctrl(bool plog, bool pstdout)

@@ -27,19 +27,43 @@
 struct config config = { 0 };
 static bool config_initialized = false;
 
-void set_all_debug(const bool status)
+// Set debug flags from config struct to global debug_flags array
+// This is called whenever the config is reloaded and debug flags may have
+// changed
+void set_debug_flags(struct config *conf)
 {
-	for(unsigned int i = 0; i < DEBUG_ELEMENTS; i++)
+	// Reset debug flags
+	memset(debug_flags, false, sizeof(debug_flags));
+
+	// Loop over all debug options and check if at least one is enabled
+	unsigned int elements_set = 0u;
+	for(unsigned int i = 0; i < DEBUG_ELEMENTS-1; i++)
+	{
+		struct conf_item *debug_item = get_debug_item(conf, i);
+		if(debug_item->v.b)
+		{
+			// Add offset of 1 as the first element is "ANY"
+			debug_flags[i + 1] = true;
+			debug_flags[DEBUG_ANY] = true;
+			elements_set++;
+		}
+	}
+
+	// If all debug flags are set, we set the "ALL" flag. We subtract 1 from
+	// DEBUG_ELEMENTS as the last element is "ALL" itself
+	conf->debug.all.v.b = elements_set == DEBUG_ELEMENTS-1;
+}
+
+void set_all_debug(struct config *conf, const bool status)
+{
+	for(unsigned int i = 0; i < DEBUG_ELEMENTS-1; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *debug_item = get_debug_item(i);
+		struct conf_item *debug_item = get_debug_item(conf, i);
 
 		// Set status
 		debug_item->v.b = status;
 	}
-
-	// Update debug flags
-	set_debug_flags();
 }
 
 // Extract and store key from full path
@@ -143,7 +167,7 @@ struct conf_item *get_conf_item(struct config *conf, const unsigned int n)
 	return (void*)conf + n*sizeof(struct conf_item);
 }
 
-struct conf_item *get_debug_item(const enum debug_flag debug)
+struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug)
 {
 	// Sanity check
 	if(debug > DEBUG_MAX-1)
@@ -153,7 +177,7 @@ struct conf_item *get_debug_item(const enum debug_flag debug)
 	}
 
 	// Return n-th config element
-	return (void*)&config.debug + debug*sizeof(struct conf_item);
+	return (void*)&conf->debug + debug*sizeof(struct conf_item);
 }
 
 unsigned int __attribute__ ((pure)) config_path_depth(char **paths)
@@ -211,6 +235,7 @@ void duplicate_config(struct config *dst, struct config *src)
 			case CONF_ENUM_WEB_THEME:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
+			case CONF_ALL_DEBUG_BOOL:
 				// Nothing to do, the memcpy above has already covered this
 				break;
 			case CONF_STRING_ALLOCATED:
@@ -245,6 +270,7 @@ bool compare_config_item(const enum conf_type t, const union conf_value *val1, c
 		case CONF_ENUM_WEB_THEME:
 		case CONF_STRUCT_IN_ADDR:
 		case CONF_STRUCT_IN6_ADDR:
+		case CONF_ALL_DEBUG_BOOL:
 			// Compare entire union
 			return memcmp(val1, val2, sizeof(*val1)) == 0;
 		case CONF_STRING:
@@ -299,6 +325,7 @@ void free_config(struct config *conf)
 			case CONF_ENUM_WEB_THEME:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
+			case CONF_ALL_DEBUG_BOOL:
 				// Nothing to do
 				break;
 			case CONF_STRING_ALLOCATED:
@@ -1136,6 +1163,12 @@ void initConfig(struct config *conf)
 	conf->debug.reserved.f = FLAG_ADVANCED_SETTING;
 	conf->debug.reserved.d.b = false;
 
+	conf->debug.all.k = "debug.all";
+	conf->debug.all.h = "Set all debug flags at once. This is a convenience option to enable all debug flags at once. Note that this option is not persistent, setting it to true will enable all *remaining* debug flags but unsetting it will disable *all* debug flags.";
+	conf->debug.all.t = CONF_ALL_DEBUG_BOOL;
+	conf->debug.all.f = FLAG_ADVANCED_SETTING;
+	conf->debug.all.d.b = false;
+
 	// Post-processing:
 	// Initialize and verify config data
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -1271,6 +1304,7 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 	switch(type)
 	{
 		case CONF_BOOL:
+		case CONF_ALL_DEBUG_BOOL:
 			return "boolean";
 		case CONF_INT:
 			return "integer";

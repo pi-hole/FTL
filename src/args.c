@@ -237,7 +237,7 @@ void parse_args(int argc, char* argv[])
 		log_ctrl(false, false);
 		readFTLconf(&config, false);
 		log_ctrl(false, true);
-		set_all_debug(false);
+		clear_debug_flags(); // No debug printing wanted
 		if(argc == 3)
 			exit(get_config_from_CLI(argv[2], false));
 		else if(argc == 4 && strcmp(argv[2], "-q") == 0)

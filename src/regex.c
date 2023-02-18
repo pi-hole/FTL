@@ -859,7 +859,7 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 
 	// Disable all debugging output if not explicitly in debug mode (CLI argument "d")
 	if(!debug_mode)
-		set_all_debug(false);
+		clear_debug_flags(); // No debug printing wanted
 	// Re-enable terminal output
 	log_ctrl(false, !quiet);
 

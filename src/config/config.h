@@ -73,9 +73,8 @@ enum conf_type {
 	CONF_ENUM_WEB_THEME,
 	CONF_STRUCT_IN_ADDR,
 	CONF_STRUCT_IN6_ADDR,
-	// We could theoretically use a more generic type, however, we want this
-	// here for strict input checking
-	CONF_JSON_STRING_ARRAY
+	CONF_JSON_STRING_ARRAY,
+	CONF_ALL_DEBUG_BOOL
 } __attribute__ ((packed));
 
 #define MAX_CONFIG_PATH_DEPTH 6
@@ -279,6 +278,8 @@ struct config {
 		struct conf_item inotify;
 		struct conf_item extra;
 		struct conf_item reserved;
+		// all must be the last item in this struct
+		struct conf_item all;
 	} debug;
 };
 
@@ -288,12 +289,13 @@ extern struct config config;
 #define DEBUG_ELEMENTS (sizeof(config.debug)/sizeof(struct conf_item))
 
 // Defined in config.c
-void set_all_debug(const bool status);
+void set_debug_flags(struct config *conf);
+void set_all_debug(struct config *conf, const bool status);
 void initConfig(struct config *conf);
 void readFTLconf(struct config *conf, const bool rewrite);
 bool getLogFilePath(void);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
-struct conf_item *get_debug_item(const enum debug_flag debug);
+struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
 void duplicate_config(struct config *dst, struct config *src);
 void free_config(struct config *conf);

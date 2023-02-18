@@ -92,6 +92,7 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 	switch(conf_type)
 	{
 		case CONF_BOOL:
+		case CONF_ALL_DEBUG_BOOL:
 			return cJSON_CreateBool(val->b);
 		case CONF_INT:
 			return cJSON_CreateNumber(val->i);
@@ -149,7 +150,7 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 	}
 }
 
-static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
+static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct config *newconf)
 {
 	if(conf_item == NULL || elem == NULL)
 	{
@@ -167,6 +168,17 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem)
 			// Set item
 			conf_item->v.b = elem->valueint;
 			log_debug(DEBUG_CONFIG, "Set %s to %s", conf_item->k, conf_item->v.b ? "true" : "false");
+			break;
+		}
+		case CONF_ALL_DEBUG_BOOL:
+		{
+			// Check type
+			if(!cJSON_IsBool(elem))
+				return "not of type bool";
+			// Set item
+			conf_item->v.b = elem->valueint;
+			set_all_debug(newconf, elem->valueint);
+			log_debug(DEBUG_CONFIG, "Set %s to %s (this affects all debug items)", conf_item->k, conf_item->v.b ? "true" : "false");
 			break;
 		}
 		case CONF_INT:
@@ -640,7 +652,7 @@ static int api_config_patch(struct ftl_conn *api)
 		}
 
 		// Try to set value and report error on failure
-		const char *response = getJSONvalue(new_item, elem);
+		const char *response = getJSONvalue(new_item, elem, &newconf);
 		if(response != NULL)
 		{
 			log_err("/api/config: %s invalid: %s", new_item->k, response);
@@ -705,11 +717,11 @@ static int api_config_patch(struct ftl_conn *api)
 		// Install new configuration
 		replace_config(&newconf);
 
+		// Reload debug levels
+		set_debug_flags(&config);
+
 		// Store changed configuration to disk
 		writeFTLtoml(true);
-
-		// Reload debug levels
-		set_debug_flags();
 	}
 	else
 	{
@@ -892,11 +904,11 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Install new configuration
 	replace_config(&newconf);
 
+	// Reload debug levels
+	set_debug_flags(&config);
+
 	// Store changed configuration to disk
 	writeFTLtoml(true);
-
-	// Reload debug levels
-	set_debug_flags();
 
 	return api->method == HTTP_PUT ? 201 : 204; // 201 - Created or 204 - No content
 }
