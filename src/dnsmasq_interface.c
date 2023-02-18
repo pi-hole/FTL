@@ -1763,7 +1763,7 @@ void FTL_dnsmasq_reload(void)
 	// This function is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and re-reading the lists
 	if(reload++ > 0)
-		log_info("Received SIGHUP, flushing chache and re-reading config");
+		log_info("Received SIGHUP, flushing cache and re-reading config");
 
 	// Gravity database updates
 	// - (Re-)open gravity database connection

@@ -44,8 +44,8 @@ bool readFTLtoml(struct config *conf, toml_table_t *toml, const bool verbose)
 	// parsing to allow for debug output further down
 	toml_table_t *conf_debug = toml_table_in(toml, "debug");
 	if(conf_debug)
-		readTOMLvalue(&config.debug.config, "config", conf_debug, conf);
-	set_debug_flags(&config);
+		readTOMLvalue(&conf->debug.config, "config", conf_debug, conf);
+	set_debug_flags(conf);
 
 	log_debug(DEBUG_CONFIG, "Reading %s TOML config file: full config",
 	          external ? "external" : "default");
@@ -83,7 +83,7 @@ bool readFTLtoml(struct config *conf, toml_table_t *toml, const bool verbose)
 	}
 
 	// Report debug config if enabled
-	set_debug_flags(&config);
+	set_debug_flags(conf);
 	if(verbose)
 		reportDebugFlags();
 

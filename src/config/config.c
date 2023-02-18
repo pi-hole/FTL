@@ -56,6 +56,26 @@ void set_debug_flags(struct config *conf)
 
 void set_all_debug(struct config *conf, const bool status)
 {
+	// Loop over all debug options and check if all are enabled
+	unsigned int elements_set = 0u;
+	for(unsigned int i = 0; i < DEBUG_ELEMENTS-1; i++)
+	{
+		struct conf_item *debug_item = get_debug_item(conf, i);
+		if(debug_item->v.b)
+			elements_set++;
+	}
+
+	const bool all_set = elements_set == DEBUG_ELEMENTS-1;
+
+	// If ALL is false and not all debug flags are set, we do not manipulate
+	// the debug flags at all. This is necessary to avoid overwriting inidividual
+	// debug flag settings when the user has set some of them to true and
+	// "ALL" to false.
+	if(status == false && !all_set)
+		return;
+
+	// Loop over all debug options and set them to the desired status
+	// We do not set the last element as this is "ALL" itself
 	for(unsigned int i = 0; i < DEBUG_ELEMENTS-1; i++)
 	{
 		// Get pointer to memory location of this conf_item
