@@ -182,6 +182,9 @@ components:
               valid:
                 type: boolean
                 description: Valid session indicator (existing sessions may be invalid due to timeout)
+              login_at:
+                type: integer
+                description: Timestamp of login (seconds since epoch)
               last_active:
                 type: integer
                 description: Timestamp of last activity (seconds since epoch)
@@ -197,6 +200,7 @@ components:
           example:
             - id: 1
               valid: true
+              login_at: 1580000000
               last_active: 1580000000
               valid_until: 1580000300
               remote_addr: "192.168.0.34"

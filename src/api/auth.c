@@ -55,11 +55,12 @@
 
 static struct {
 	bool used;
+	time_t login_at;
 	time_t valid_until;
 	char remote_addr[48]; // Large enough for IPv4 and IPv6 addresses, hard-coded in civetweb.h as mg_request_info.remote_addr
 	char user_agent[128];
 	char sid[SID_SIZE];
-} auth_data[API_MAX_CLIENTS] = {{false, 0, {0}, {0}, {0}}};
+} auth_data[API_MAX_CLIENTS] = {{false, 0, 0, {0}, {0}, {0}}};
 
 #define CHALLENGE_SIZE (2*SHA256_DIGEST_SIZE)
 static struct {
@@ -249,6 +250,7 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 		JSON_ADD_NUMBER_TO_OBJECT(session, "id", i);
 		JSON_ADD_BOOL_TO_OBJECT(session, "current_session", i == api->user_id);
 		JSON_ADD_BOOL_TO_OBJECT(session, "valid", auth_data[i].valid_until >= now);
+		JSON_ADD_BOOL_TO_OBJECT(session, "login_at", auth_data[i].login_at);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "last_active", auth_data[i].valid_until - config.webserver.sessionTimeout.v.ui);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "valid_until", auth_data[i].valid_until);
 		JSON_REF_STR_IN_OBJECT(session, "remote_addr", auth_data[i].remote_addr);
@@ -531,6 +533,7 @@ int api_auth(struct ftl_conn *api)
 					// Mark as used
 					auth_data[i].used = true;
 					// Set validitiy to now + timeout
+					auth_data[i].login_at = now;
 					auth_data[i].valid_until = now + config.webserver.sessionTimeout.v.ui;
 					// Set remote address
 					strncpy(auth_data[i].remote_addr, api->request->remote_addr, sizeof(auth_data[i].remote_addr));
