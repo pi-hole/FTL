@@ -443,6 +443,12 @@ int api_auth(struct ftl_conn *api)
 
 	int user_id = API_AUTH_UNAUTHORIZED;
 
+	if(api->item != NULL && strlen(api->item) > 0)
+	{
+		// Sub-paths are not allowed
+		return 0;
+	}
+
 	bool reponse_set = false;
 	char response[CHALLENGE_SIZE+1u] = { 0 };
 
