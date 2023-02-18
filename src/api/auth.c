@@ -250,7 +250,7 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 		JSON_ADD_NUMBER_TO_OBJECT(session, "id", i);
 		JSON_ADD_BOOL_TO_OBJECT(session, "current_session", i == api->user_id);
 		JSON_ADD_BOOL_TO_OBJECT(session, "valid", auth_data[i].valid_until >= now);
-		JSON_ADD_BOOL_TO_OBJECT(session, "login_at", auth_data[i].login_at);
+		JSON_ADD_NUMBER_TO_OBJECT(session, "login_at", auth_data[i].login_at);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "last_active", auth_data[i].valid_until - config.webserver.sessionTimeout.v.ui);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "valid_until", auth_data[i].valid_until);
 		JSON_REF_STR_IN_OBJECT(session, "remote_addr", auth_data[i].remote_addr);
@@ -651,7 +651,7 @@ char * __attribute__((malloc)) hash_password(const char *password)
 	return strdup(response);
 }
 
-int api_auth_session(struct ftl_conn *api)
+int api_auth_sessions(struct ftl_conn *api)
 {
 	// Get session object
 	cJSON *json = JSON_NEW_OBJECT();
