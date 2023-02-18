@@ -654,6 +654,10 @@ components:
               type: integer
               description: PID of FTL process
               example: 1234
+            uptime:
+              type: number
+              description: Uptime of FTL in milliseconds
+              example: 123456789
             "%mem":
               type: number
               description: Percentage of total RAM memory used by FTL

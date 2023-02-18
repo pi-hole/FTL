@@ -105,7 +105,7 @@ components:
                 examples:
                   login_failed:
                     $ref: 'auth.yaml#/components/examples/login_failed'
-    sessions_list:
+    session_list:
       get:
         summary: List of all current sessions
         tags:

@@ -182,8 +182,6 @@ components:
                   type: array
                   items:
                     type: string
-                domain:
-                  type: string
                 domainNeeded:
                   type: boolean
                 expandHosts:
@@ -280,6 +278,8 @@ components:
                 end:
                   type: string
                 router:
+                  type: string
+                domain:
                   type: string
                 leaseTime:
                   type: string
@@ -529,7 +529,6 @@ components:
             blockTTL: 2
             hosts:
               - "192.168.2.123 mymusicbox"
-            domain: "lan"
             domainNeeded: true
             expandHosts: true
             bogusPriv: true
@@ -575,6 +574,7 @@ components:
             start: "192.168.0.10"
             end: "192.168.0.250"
             router: "192.168.0.1"
+            domain: "lan"
             leaseTime: "24h"
             ipv6: true
             rapidCommit: true

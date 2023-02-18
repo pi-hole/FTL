@@ -323,10 +323,10 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("\n", pihole_conf);
 	}
 
-	if(strlen(conf->dns.domain.v.s) > 0 && strcasecmp("none", conf->dns.domain.v.s) != 0)
+	if(strlen(conf->dhcp.domain.v.s) > 0 && strcasecmp("none", conf->dhcp.domain.v.s) != 0)
 	{
 		fputs("# DNS domain for the DNS server\n", pihole_conf);
-		fprintf(pihole_conf, "domain=%s\n", conf->dns.domain.v.s);
+		fprintf(pihole_conf, "domain=%s\n", conf->dhcp.domain.v.s);
 		fputs("\n", pihole_conf);
 		// When there is a Pi-hole domain set and "Never forward non-FQDNs" is
 		// ticked, we add `local=/domain/` to signal that this domain is purely
@@ -338,7 +338,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
 			fputs("# is not known from /etc/hosts or DHCP a NXDOMAIN is returned\n", pihole_conf);
 				fprintf(pihole_conf, "local=/%s/\n",
-				        conf->dns.domain.v.s);
+				        conf->dhcp.domain.v.s);
 			fputs("\n", pihole_conf);
 		}
 	}

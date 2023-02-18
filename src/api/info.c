@@ -47,10 +47,13 @@
 #include "database/message-table.h"
 // LONG_MIN, LONG_MAX
 #include <limits.h>
-
 #include "metrics.h"
 
+// DIR
 #include <dirent.h>
+
+// timer_elapsed_msec()
+#include "timers.h"
 
 #define VERSIONS_FILE "/etc/pihole/versions"
 
@@ -537,6 +540,8 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	JSON_ADD_ITEM_TO_OBJECT(ftl, "clients", clients);
 
 	JSON_ADD_NUMBER_TO_OBJECT(ftl, "pid", getpid());
+
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "uptime", timer_elapsed_msec(EXIT_TIMER));
 
 	struct proc_mem pmem = { 0 };
 	struct proc_meminfo mem = { 0 };

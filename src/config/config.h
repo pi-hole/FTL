@@ -117,7 +117,6 @@ struct config {
 		struct conf_item replyWhenBusy;
 		struct conf_item blockTTL;
 		struct conf_item hosts;
-		struct conf_item domain;
 		struct conf_item domainNeeded;
 		struct conf_item expandHosts;
 		struct conf_item bogusPriv;
@@ -172,6 +171,7 @@ struct config {
 		struct conf_item start;
 		struct conf_item end;
 		struct conf_item router;
+		struct conf_item domain;
 		struct conf_item leaseTime;
 		struct conf_item ipv6;
 		struct conf_item rapidCommit;

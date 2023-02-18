@@ -406,13 +406,6 @@ void initConfig(struct config *conf)
 	conf->dns.hosts.f = FLAG_ADVANCED_SETTING;
 	conf->dns.hosts.d.json = cJSON_CreateArray();
 
-	conf->dns.domain.k = "dns.domain";
-	conf->dns.domain.h = "The DNS domain used by your Pi-hole";
-	conf->dns.domain.a = cJSON_CreateStringReference("<any valid domain>");
-	conf->dns.domain.t = CONF_STRING;
-	conf->dns.domain.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
-	conf->dns.domain.d.s = (char*)"lan";
-
 	conf->dns.domainNeeded.k = "dns.domainNeeded";
 	conf->dns.domainNeeded.h = "If set, A and AAAA queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
 	conf->dns.domainNeeded.t = CONF_BOOL;
@@ -619,7 +612,7 @@ void initConfig(struct config *conf)
 
 	conf->dns.revServer.domain.k = "dns.revServer.domain";
 	conf->dns.revServer.domain.h = "Domain used for the reverse server feature";
-	conf->dns.revServer.domain.a = cJSON_CreateStringReference("<valid domain>, typically set to the same value as dns.domain");
+	conf->dns.revServer.domain.a = cJSON_CreateStringReference("<valid domain>, typically set to the same value as dhcp.domain");
 	conf->dns.revServer.domain.t = CONF_STRING;
 	conf->dns.revServer.domain.d.s = (char*)"";
 	conf->dns.revServer.domain.f = FLAG_RESTART_DNSMASQ;
@@ -651,6 +644,13 @@ void initConfig(struct config *conf)
 	conf->dhcp.router.t = CONF_STRING;
 	conf->dhcp.router.f = FLAG_RESTART_DNSMASQ;
 	conf->dhcp.router.d.s = (char*)"";
+
+	conf->dhcp.domain.k = "dhcp.domain";
+	conf->dhcp.domain.h = "The DNS domain used by your Pi-hole";
+	conf->dhcp.domain.a = cJSON_CreateStringReference("<any valid domain>");
+	conf->dhcp.domain.t = CONF_STRING;
+	conf->dhcp.domain.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dhcp.domain.d.s = (char*)"lan";
 
 	conf->dhcp.leaseTime.k = "dhcp.leaseTime";
 	conf->dhcp.leaseTime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
