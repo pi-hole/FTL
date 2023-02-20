@@ -712,6 +712,12 @@ void initConfig(struct config *conf)
 	conf->dhcp.ipv6.f = FLAG_RESTART_DNSMASQ;
 	conf->dhcp.ipv6.d.b = false;
 
+	conf->dhcp.multiDNS.k = "dhcp.multiDNS";
+	conf->dhcp.multiDNS.h = "Advertise DNS server multiple times to clients. Some devices will add their own proprietary DNS servers to the list of DNS servers, which can cause issues with Pi-hole. This option will advertise the Pi-hole DNS server multiple times to clients, which should prevent this from happening.";
+	conf->dhcp.multiDNS.t = CONF_BOOL;
+	conf->dhcp.multiDNS.f = FLAG_RESTART_DNSMASQ;
+	conf->dhcp.multiDNS.d.b = false;
+
 	conf->dhcp.rapidCommit.k = "dhcp.rapidCommit";
 	conf->dhcp.rapidCommit.h = "Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if either the server is the only server for the subnet to avoid conflicts";
 	conf->dhcp.rapidCommit.t = CONF_BOOL;

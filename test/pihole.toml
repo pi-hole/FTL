@@ -388,6 +388,12 @@
   # either the server is the only server for the subnet to avoid conflicts
   rapidCommit = false
 
+  # Advertise DNS server multiple times to clients. Some devices will add their own
+  # proprietary DNS servers to the list of DNS servers, which can cause issues with
+  # Pi-hole. This option will advertise the Pi-hole DNS server multiple times to
+  # clients, which should prevent this from happening.
+  multiDNS = false
+
   # Per host parameters for the DHCP server. This allows a machine with a particular
   # hardware address to be always allocated the same hostname, IP address and lease time
   # or to specify static DHCP leases

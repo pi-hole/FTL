@@ -234,6 +234,11 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 #endif
 	// send the DHCPDISCOVER packet
 	const int bytes = sendto(sock, (char *)&discover_packet, sizeof(discover_packet), 0, (struct sockaddr *)&target,sizeof(target));
+	if (bytes < 0)
+	{
+		printf("Error: Could not send DHCPDISCOVER packet on interface %s (error: %s)\n\n", iface, strerror(errno));
+		return false;
+	}
 #ifdef DEBUG
 	printf("Sent %d bytes\n", bytes);
 #endif
@@ -555,9 +560,6 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 			continue;
 		else
 			responses++;
-
-		if(pthread_mutex_lock(&lock) != 0)
-			return false;
 
 #ifdef DEBUG
 		printf(" DHCPOFFER XID: %lu (0x%X)\n", (unsigned long) ntohl(offer_packet.xid), ntohl(offer_packet.xid));

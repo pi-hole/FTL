@@ -287,6 +287,8 @@ components:
                   type: boolean
                 rapidCommit:
                   type: boolean
+                multiDNS:
+                  type: boolean
                 hosts:
                   type: array
                   items:
@@ -580,6 +582,7 @@ components:
             leaseTime: "24h"
             ipv6: true
             rapidCommit: true
+            multiDNS: true
             hosts:
               - "11:22:33:44:55:66,192.168.1.123"
               - "11:22:33:44:55:67,192.168.1.124,hostname"

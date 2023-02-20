@@ -323,26 +323,6 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("\n", pihole_conf);
 	}
 
-	if(strlen(conf->dhcp.domain.v.s) > 0 && strcasecmp("none", conf->dhcp.domain.v.s) != 0)
-	{
-		fputs("# DNS domain for the DNS server\n", pihole_conf);
-		fprintf(pihole_conf, "domain=%s\n", conf->dhcp.domain.v.s);
-		fputs("\n", pihole_conf);
-		// When there is a Pi-hole domain set and "Never forward non-FQDNs" is
-		// ticked, we add `local=/domain/` to signal that this domain is purely
-		// local and FTL may answer queries from /etc/hosts or DHCP but should
-		// never forward queries on that domain to any upstream servers
-		if(conf->dns.domainNeeded.v.b)
-		{
-			fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
-			fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
-			fputs("# is not known from /etc/hosts or DHCP a NXDOMAIN is returned\n", pihole_conf);
-				fprintf(pihole_conf, "local=/%s/\n",
-				        conf->dhcp.domain.v.s);
-			fputs("\n", pihole_conf);
-		}
-	}
-
 	if(strlen(conf->dns.hostRecord.v.s) > 0)
 	{
 		fputs("# Add A, AAAA and PTR records to the DNS\n", pihole_conf);
@@ -403,6 +383,27 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("\n", pihole_conf);
 	}
 
+	// When there is a Pi-hole domain set and "Never forward non-FQDNs" is
+	// ticked, we add `local=/domain/` to signal that this domain is purely
+	// local and FTL may answer queries from /etc/hosts or DHCP but should
+	// never forward queries on that domain to any upstream servers
+	if(conf->dns.domainNeeded.v.b)
+	{
+		fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
+		fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
+		fputs("# is not known from /etc/hosts or DHCP a NXDOMAIN is returned\n", pihole_conf);
+			fprintf(pihole_conf, "local=/%s/\n",
+				conf->dhcp.domain.v.s);
+		fputs("\n", pihole_conf);
+	}
+
+	if(strlen(conf->dhcp.domain.v.s) > 0 && strcasecmp("none", conf->dhcp.domain.v.s) != 0)
+	{
+		fputs("# DNS domain for the DHCP server\n", pihole_conf);
+		fprintf(pihole_conf, "domain=%s\n", conf->dhcp.domain.v.s);
+		fputs("\n", pihole_conf);
+	}
+
 	if(conf->dhcp.active.v.b)
 	{
 		fputs("# DHCP server setting\n", pihole_conf);
@@ -417,6 +418,22 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 
 		if(conf->dhcp.rapidCommit.v.b)
 			fputs("dhcp-rapid-commit\n", pihole_conf);
+
+		if(conf->dhcp.multiDNS.v.b)
+		{
+			// The address 0.0.0.0 has the special meaning to take
+			// the address of the interface on which the DHCP
+			// request was received. Similarly, :: has the special
+			// meaning to take the global address of the interface
+			// on which the DHCP request was received for IPv6,
+			// whilst [fd00::] is replaced with the ULA, if it
+			// exists, and [fe80::] with the link-local address.
+			fputs("# Advertive the DNS server multiple times to work around\n", pihole_conf);
+			fputs("# issues with some clients adding their own servers if only\n", pihole_conf);
+			fputs("# one DNS server is advertised by the DHCP server.\n", pihole_conf);
+			fputs("dhcp-option=option:dns-server,0.0.0.0,0.0.0.0,0.0.0.0\n", pihole_conf);
+			fputs("dhcp-option=option6:dns-server,[::],[::],[fd00::],[fd00::],[fe80::],[fe80::]\n", pihole_conf);
+		}
 
 		if(conf->dhcp.ipv6.v.b)
 		{
