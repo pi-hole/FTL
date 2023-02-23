@@ -428,16 +428,20 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			// on which the DHCP request was received for IPv6,
 			// whilst [fd00::] is replaced with the ULA, if it
 			// exists, and [fe80::] with the link-local address.
-			fputs("# Advertive the DNS server multiple times to work around\n", pihole_conf);
+			fputs("# Advertise the DNS server multiple times to work around\n", pihole_conf);
 			fputs("# issues with some clients adding their own servers if only\n", pihole_conf);
 			fputs("# one DNS server is advertised by the DHCP server.\n", pihole_conf);
 			fputs("dhcp-option=option:dns-server,0.0.0.0,0.0.0.0,0.0.0.0\n", pihole_conf);
-			fputs("dhcp-option=option6:dns-server,[::],[::],[fd00::],[fd00::],[fe80::],[fe80::]\n", pihole_conf);
 		}
 
 		if(conf->dhcp.ipv6.v.b)
 		{
-			fputs("dhcp-option=option6:dns-server,[::]\n", pihole_conf);
+			// Add dns-server option only if not already done above (dhcp.multiDNS)
+			if(conf->dhcp.multiDNS.v.b)
+				fputs("dhcp-option=option6:dns-server,[::],[::],[fd00::],[fd00::],[fe80::],[fe80::]\n", pihole_conf);
+			else
+				fputs("dhcp-option=option6:dns-server,[::]\n", pihole_conf);
+			fputs("# Enable IPv6 DHCP variant\n", pihole_conf);
 			fprintf(pihole_conf, "dhcp-range=::,constructor:%s,ra-names,ra-stateless,64\n", interface);
 		}
 		fputs("\n", pihole_conf);

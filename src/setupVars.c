@@ -190,6 +190,46 @@ static void get_conf_weblayout_from_setupVars(void)
 	         config.webserver.interface.boxed.k,config.webserver.interface.boxed.v.b ? "true" : "false");
 }
 
+static void get_conf_webtheme_from_setupVars(void)
+{
+	// Try to obtain listening mode
+	const char *listeningMode = read_setupVarsconf("WEBTHEME");
+
+	if(listeningMode == NULL)
+	{
+		// Do not change default value, this value is not set in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:WEBTHEME -> Not set");
+
+		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+		clearSetupVarsArray();
+		return;
+	}
+
+	bool set = false;
+	int web_theme_enum = get_web_theme_val(listeningMode);
+	if(web_theme_enum != -1)
+	{
+		set = true;
+		config.webserver.interface.theme.v.web_theme = web_theme_enum;
+	}
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	if(set)
+	{
+		// Parameter present in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:WEBTHEME -> Setting %s to %s",
+		          config.webserver.interface.theme.k,
+		          get_web_theme_str(config.webserver.interface.theme.v.web_theme));
+	}
+	else
+	{
+		// Parameter not present in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:WEBTHEME -> Not set (found invalid value)");
+	}
+}
+
 static void get_conf_listeningMode_from_setupVars(void)
 {
 	// Try to obtain listening mode
@@ -252,8 +292,8 @@ void importsetupVarsConf(void)
 	// Try to obtain web layout
 	get_conf_weblayout_from_setupVars();
 
-	// Try to obtain theme string
-	get_conf_string_from_setupVars("WEBTHEME", &config.webserver.interface.theme);
+	// Try to obtain web theme
+	get_conf_webtheme_from_setupVars();
 
 	// Try to obtain list of upstream servers
 	get_conf_upstream_servers_from_setupVars(&config.dns.upstreams);

@@ -14,6 +14,7 @@
 #include "api/api.h"
 // struct fifologData
 #include "log.h"
+#include "config/config.h"
 
 // fifologData is allocated in shared memory for cross-fork compatibility
 fifologData *fifo_log = NULL;
@@ -70,6 +71,28 @@ int api_logs(struct ftl_conn *api)
 	}
 	JSON_ADD_ITEM_TO_OBJECT(json, "log", log);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "nextID", fifo_log->logs[api->opts.which].next_id);
+
+	// Add file name
+	const char *logfile = NULL;
+	switch(api->opts.which)
+	{
+		case FIFO_FTL:
+			logfile = config.files.log.ftl.v.s;
+			break;
+		case FIFO_DNSMASQ:
+			logfile = config.files.log.dnsmasq.v.s;
+			break;
+		case FIFO_CIVETWEB:
+			logfile = config.files.log.civetweb.v.s;
+			break;
+		case FIFO_PH7:
+			logfile = config.files.log.ph7.v.s;
+			break;
+		case FIFO_MAX:
+			// This should never happen
+			break;
+	}
+	JSON_REF_STR_IN_OBJECT(json, "file", logfile);
 
 	// Send data
 	JSON_SEND_OBJECT(json);

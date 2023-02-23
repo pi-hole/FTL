@@ -230,11 +230,11 @@ struct config {
 		struct conf_item gravity;
 		struct conf_item macvendor;
 		struct conf_item setupVars;
-		struct conf_item http_info;
-		struct conf_item ph7_error;
 		struct {
 			struct conf_item ftl;
 			struct conf_item dnsmasq;
+			struct conf_item civetweb;
+			struct conf_item ph7;
 		} log;
 	} files;
 

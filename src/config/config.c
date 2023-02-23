@@ -963,19 +963,19 @@ void initConfig(struct config *conf)
 	conf->files.setupVars.f = FLAG_ADVANCED_SETTING;
 	conf->files.setupVars.d.s = (char*)"/etc/pihole/setupVars.conf";
 
-	conf->files.http_info.k = "files.http_info";
-	conf->files.http_info.h = "The log file used by the webserver";
-	conf->files.http_info.a = cJSON_CreateStringReference("<any writable file>");
-	conf->files.http_info.t = CONF_STRING;
-	conf->files.http_info.f = FLAG_ADVANCED_SETTING;
-	conf->files.http_info.d.s = (char*)"/var/log/pihole/HTTP_info.log";
+	conf->files.log.civetweb.k = "files.log.civetweb";
+	conf->files.log.civetweb.h = "The log file used by the webserver";
+	conf->files.log.civetweb.a = cJSON_CreateStringReference("<any writable file>");
+	conf->files.log.civetweb.t = CONF_STRING;
+	conf->files.log.civetweb.f = FLAG_ADVANCED_SETTING;
+	conf->files.log.civetweb.d.s = (char*)"/var/log/pihole/HTTP_info.log";
 
-	conf->files.ph7_error.k = "files.ph7_error";
-	conf->files.ph7_error.h = "The log file used by the dynamic interpreter PH7";
-	conf->files.ph7_error.a = cJSON_CreateStringReference("<any writable file>");
-	conf->files.ph7_error.t = CONF_STRING;
-	conf->files.ph7_error.f = FLAG_ADVANCED_SETTING;
-	conf->files.ph7_error.d.s = (char*)"/var/log/pihole/PH7.log";
+	conf->files.log.ph7.k = "files.log.ph7";
+	conf->files.log.ph7.h = "The log file used by the dynamic interpreter PH7";
+	conf->files.log.ph7.a = cJSON_CreateStringReference("<any writable file>");
+	conf->files.log.ph7.t = CONF_STRING;
+	conf->files.log.ph7.f = FLAG_ADVANCED_SETTING;
+	conf->files.log.ph7.d.s = (char*)"/var/log/pihole/PH7.log";
 
 	// sub-struct files.log
 	// conf->files.log.ftl is set in a separate function

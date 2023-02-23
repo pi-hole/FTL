@@ -390,16 +390,16 @@ components:
                   type: string
                 setupVars:
                   type: string
-                http_info:
-                  type: string
-                ph7_error:
-                  type: string
                 log:
                   type: object
                   properties:
                     ftl:
                       type: string
                     dnsmasq:
+                      type: string
+                    civetweb:
+                      type: string
+                    ph7:
                       type: string
             misc:
               type: object
@@ -627,11 +627,11 @@ components:
             gravity: "/etc/pihole/gravity.db"
             macvendor: "/etc/pihole/macvendor.db"
             setupVars: "/etc/pihole/setupVars.conf"
-            http_info: "/var/log/pihole/HTTP_info.log"
-            ph7_error: "/var/log/pihole/PH7.log"
             log:
               ftl: "/var/log/pihole/FTL.log"
               dnsmasq: "/var/log/pihole/pihole.log"
+              civetweb: "/var/log/pihole/HTTP_info.log"
+              ph7: "/var/log/pihole/PH7.log"
           misc:
             nice: -10
             delay_startup: 10

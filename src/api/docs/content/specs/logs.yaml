@@ -24,9 +24,7 @@ components:
               content:
                 application/json:
                   schema:
-                    allOf:
-                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
-                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/nextID'
+                    $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
             '401':
               description: Unauthorized
               content:
@@ -55,9 +53,7 @@ components:
               content:
                 application/json:
                   schema:
-                    allOf:
-                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
-                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/nextID'
+                    $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
             '401':
               description: Unauthorized
               content:
@@ -86,9 +82,7 @@ components:
               content:
                 application/json:
                   schema:
-                    allOf:
-                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
-                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/nextID'
+                    $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
             '401':
               description: Unauthorized
               content:
@@ -117,9 +111,7 @@ components:
               content:
                 application/json:
                   schema:
-                    allOf:
-                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
-                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/nextID'
+                    $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
             '401':
               description: Unauthorized
               content:
@@ -153,13 +145,15 @@ components:
                   message: "read /etc/hosts - 7 addresses"
                 - timestamp: 1611729969.0
                   message: "query[A] connectivity-check.ubuntu.com from 127.0.0.1"
-        nextID:
-          type: object
-          properties:
             nextID:
               type: integer
-              description: next ID to query if checking for new log lines
+              description: Next ID to query if checking for new log lines
               example: 229
+            file:
+              type: string
+              description: Path to respective log file on disk
+              example: /var/log/pihole/pihole.log
+
   parameters:
     logs:
       dnsmasq:

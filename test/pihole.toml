@@ -618,18 +618,6 @@
   #     <any Pi-hole setupVars file>
   setupVars = "/etc/pihole/setupVars.conf"
 
-  # The log file used by the webserver
-  #
-  # Possible values are:
-  #     <any writable file>
-  http_info = "/var/log/pihole/HTTP_info.log"
-
-  # The log file used by the dynamic interpreter PH7
-  #
-  # Possible values are:
-  #     <any writable file>
-  ph7_error = "/var/log/pihole/PH7.log"
-
   [files.log]
     # The location of FTL's log file
     #
@@ -642,6 +630,18 @@
     # Possible values are:
     #     <any writable file>
     dnsmasq = "/var/log/pihole/pihole.log"
+
+    # The log file used by the webserver
+    #
+    # Possible values are:
+    #     <any writable file>
+    civetweb = "/var/log/pihole/HTTP_info.log"
+
+    # The log file used by the dynamic interpreter PH7
+    #
+    # Possible values are:
+    #     <any writable file>
+    ph7 = "/var/log/pihole/PH7.log"
 
 [misc]
   # Using privacy levels you can specify which level of detail you want to see in your

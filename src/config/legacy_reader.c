@@ -322,10 +322,10 @@ const char *readFTLlegacy(struct config *conf)
 	parseBool(buffer, &conf->webserver.api.prettyJSON.v.b);
 
 	// API_ERROR_LOG
-	conf->files.ph7_error.v.s = getPath(fp, "API_ERROR_LOG", conf->files.ph7_error.v.s);
+	conf->files.log.ph7.v.s = getPath(fp, "API_ERROR_LOG", conf->files.log.ph7.v.s);
 
 	// API_INFO_LOG
-	conf->files.http_info.v.s = getPath(fp, "API_INFO_LOG", conf->files.http_info.v.s);
+	conf->files.log.civetweb.v.s = getPath(fp, "API_INFO_LOG", conf->files.log.civetweb.v.s);
 
 	// NICE
 	// Shall we change the nice of the current process?
