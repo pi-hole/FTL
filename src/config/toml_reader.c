@@ -100,7 +100,7 @@ static toml_table_t *parseTOML(void)
 	if((fp = openFTLtoml("r")) == NULL)
 	{
 		log_warn("No config file available (%s), using defaults",
-		          strerror(errno));
+		         strerror(errno));
 		return NULL;
 	}
 

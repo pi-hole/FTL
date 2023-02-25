@@ -29,7 +29,7 @@ bool writeFTLtoml(const bool verbose)
 	FILE *fp;
 	if((fp = openFTLtoml("w")) == NULL)
 	{
-		log_warn("Cannot write to FTL config file, content not updated");
+		log_warn("Cannot write to FTL config file (%s), content not updated", strerror(errno));
 		// Restart watching for changes in the config file
 		watch_config(true);
 		return false;

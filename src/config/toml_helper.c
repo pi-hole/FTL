@@ -38,11 +38,14 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	// Lock file, may block if the file is currently opened
 	if(flock(fileno(fp), LOCK_EX) != 0)
 	{
+		const int _e = errno;
 		log_err("Cannot open FTL's config file in exclusive mode: %s", strerror(errno));
 		fclose(fp);
+		errno = _e;
 		return NULL;
 	}
 
+	errno = 0;
 	return fp;
 }
 

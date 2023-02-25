@@ -455,6 +455,23 @@ bool export_queries_to_disk(bool final)
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
+
+	// Update last_disk_db_idx
+	// Prepare SQLite3 statement
+	rc = sqlite3_prepare_v2(memdb, "SELECT MAX(id) FROM disk.query_storage;", -1, &stmt, NULL);
+
+	// Perform step
+	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+		last_disk_db_idx = sqlite3_column_int64(stmt, 0);
+	else
+		log_err("Failed to get MAX(id) from query_storage: %s",
+		        sqlite3_errstr(rc));
+
+	// Finalize statement
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+
 	// Export linking tables and current AUTOINCREMENT values to the disk database
 	const char *subtable_names[] = {
 		"domain_by_id",
@@ -1029,7 +1046,7 @@ void DB_read_queries(void)
 	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 		last_disk_db_idx = sqlite3_column_int64(stmt, 0);
 	else
-		log_err("DB_read_queries(): Failed to get MAX(id) from queries: %s",
+		log_err("DB_read_queries(): Failed to get MAX(id) from disk.query_storage: %s",
 		        sqlite3_errstr(rc));
 
 	// Finalize statement
