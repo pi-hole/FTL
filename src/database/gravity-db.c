@@ -32,6 +32,9 @@
 // Definition of struct regexData
 #include "../regex_r.h"
 
+// CHECK_TIME()
+#include "../timers.h"
+
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
 
@@ -230,7 +233,7 @@ bool gravityDB_open(void)
 	}
 
 	// Check if there are any ABP-style entries in the database
-	gravity_check_ABP_format();
+	CHECK_TIME(gravity_check_ABP_format());
 
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Successfully opened gravity.db");
