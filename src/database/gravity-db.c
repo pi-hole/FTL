@@ -102,13 +102,12 @@ void gravityDB_forked(void)
 static void gravity_check_ABP_format(void)
 {
 	// Check if we have a valid ABP format
-	// We do this by checking if there are any domains in the gravity table that match the
-	// ABP format. If there are, we remember that we have seen this format.
+	// We do this by checking the "abp_domains" property in the "info" table
 
 	// Prepare statement
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(gravity_db,
-	                            "SELECT EXISTS(SELECT 1 FROM gravity WHERE domain LIKE '||%^');",
+	                            "SELECT value FROM info WHERE property = 'abp_domains';",
 	                            -1, &stmt, NULL);
 
 	if( rc != SQLITE_OK )
@@ -121,7 +120,8 @@ static void gravity_check_ABP_format(void)
 	rc = sqlite3_step(stmt);
 	if( rc != SQLITE_ROW )
 	{
-		logg("gravity_check_ABP_format() - SQL error step: %s", sqlite3_errstr(rc));
+		// No result
+		gravity_abp_format = false;
 		sqlite3_finalize(stmt);
 		return;
 	}
@@ -234,6 +234,11 @@ bool gravityDB_open(void)
 
 	// Check if there are any ABP-style entries in the database
 	CHECK_TIME(gravity_check_ABP_format());
+	if(gravity_abp_format)
+	{
+		// ABP-style entries are present in the database
+		logg("Using ABP-style entries in gravity database");
+	}
 
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Successfully opened gravity.db");
