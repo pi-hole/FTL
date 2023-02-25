@@ -1678,7 +1678,7 @@ static int sanitise(unsigned char *opt, char *buf)
   for (i = option_len(opt); i > 0; i--)
     {
       char c = *p++;
-      if (isprint((int)c))
+      if (isprint((unsigned char)c))
 	*buf++ = c;
     }
   *buf = 0; /* add terminator */

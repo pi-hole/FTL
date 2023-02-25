@@ -520,7 +520,7 @@ static int print_txt(struct dns_header *header, const size_t qlen, char *name,
       /* make counted string zero-term and sanitise */
       for (i = 0; i < len; i++)
 	{
-	  if (!isprint((int)*(p3+1)))
+	  if (!isprint((unsigned char)*(p3+1)))
 	    break;
 	  *p3 = *(p3+1);
 	  p3++;
