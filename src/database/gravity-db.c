@@ -126,7 +126,7 @@ static void gravity_check_ABP_format(void)
 		return;
 	}
 
-	// Get result
+	// Get result (SQLite3 stores 1 for TRUE, 0 for FALSE)
 	gravity_abp_format = sqlite3_column_int(stmt, 0) > 0;
 
 	// Finalize statement
