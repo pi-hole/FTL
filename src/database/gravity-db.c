@@ -233,7 +233,7 @@ bool gravityDB_open(void)
 	}
 
 	// Check if there are any ABP-style entries in the database
-	CHECK_TIME(gravity_check_ABP_format());
+	gravity_check_ABP_format();
 	if(gravity_abp_format)
 	{
 		// ABP-style entries are present in the database
