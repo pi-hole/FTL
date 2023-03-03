@@ -1163,6 +1163,9 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
 	}
       else
 	{
+	  /* Always reset server as valid here, so we can add the same upstream
+	     server address multiple times for each x.y.z.in-addr.arpa  */
+	  sdetails.valid = 1;
 	  while (parse_server_next(&sdetails))
 	    {
 	      if ((string = parse_server_addr(&sdetails)))
@@ -1248,6 +1251,9 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
 	}
       else
 	{
+	  /* Always reset server as valid here, so we can add the same upstream
+	     server address multiple times for each x.y.z.ip6.arpa  */
+	  sdetails.valid = 1;
 	  while (parse_server_next(&sdetails))
 	    {
 	      if ((string = parse_server_addr(&sdetails)))
