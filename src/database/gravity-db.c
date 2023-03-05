@@ -32,9 +32,6 @@
 // Definition of struct regexData
 #include "../regex_r.h"
 
-// CHECK_TIME()
-#include "../timers.h"
-
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
 
@@ -127,7 +124,7 @@ static void gravity_check_ABP_format(void)
 	}
 
 	// Get result (SQLite3 stores 1 for TRUE, 0 for FALSE)
-	gravity_abp_format = sqlite3_column_int(stmt, 0) > 0;
+	gravity_abp_format = sqlite3_column_int(stmt, 0) != 0;
 
 	// Finalize statement
 	sqlite3_finalize(stmt);
@@ -232,13 +229,9 @@ bool gravityDB_open(void)
 		logg("gravityDB_open() - Cannot set busy handler: %s", sqlite3_errstr(rc));
 	}
 
-	// Check if there are any ABP-style entries in the database
+	// Check (and remember in global variable) if there are any ABP-style
+	// entries in the database
 	gravity_check_ABP_format();
-	if(gravity_abp_format)
-	{
-		// ABP-style entries are present in the database
-		logg("Using ABP-style entries in gravity database");
-	}
 
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Successfully opened gravity.db");
