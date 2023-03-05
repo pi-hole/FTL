@@ -147,6 +147,12 @@ elif [[ "${CI_ARCH}" == "armv8a" ]]; then
   check_CPU_arch "v8"
   check_FP_arch "VFPv3-D16"
 
+elif [[ "${CI_ARCH}" == "riscv64" ]]; then
+
+  check_machine "ELF64" "RISC-V"
+  check_libs "[libm.so.6] [libc.so.6] [ld-linux-riscv64-lp64d.so.1]"
+  check_file "ELF 64-bit LSB pie executable, UCB RISC-V, RVC, double-float ABI, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-riscv64-lp64d.so.1, for GNU/Linux 4.15.0, with debug_info, not stripped"
+
 else
 
   echo "Invalid job ${CI_ARCH}"
