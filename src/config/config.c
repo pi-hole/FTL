@@ -888,11 +888,18 @@ void initConfig(struct config *conf)
 	conf->webserver.api.pwhash.d.s = (char*)"";
 
 	conf->webserver.api.password.k = "webserver.api.password";
-	conf->webserver.api.password.h = "Pi-hole web interface and API password. When set to something different than \""PASSWORD_VALUE"\", this porperty will compute the corresponding password hash to set webserver.api.pwhash";
+	conf->webserver.api.password.h = "Pi-hole web interface and API password. When set to something different than \""PASSWORD_VALUE"\", this property will compute the corresponding password hash to set webserver.api.pwhash";
 	conf->webserver.api.password.a = cJSON_CreateStringReference("<valid Pi-hole password>");
 	conf->webserver.api.password.t = CONF_PASSWORD;
-	conf->webserver.api.password.f = FLAG_WRITE_ONLY;
+	conf->webserver.api.password.f = FLAG_PSEUDO_ITEM;
 	conf->webserver.api.password.d.s = (char*)"";
+
+	conf->webserver.api.totp_secret.k = "webserver.api.totp_secret";
+	conf->webserver.api.totp_secret.h = "Pi-hole 2FA TOTP secret. When set to something different than \"""\", 2FA authentication will be enforced for the API and the web interface. This setting is write-only, you can not read the secret back.";
+	conf->webserver.api.totp_secret.a = cJSON_CreateStringReference("<valid TOTP secret (20 Bytes in Base32 encoding)>");
+	conf->webserver.api.totp_secret.t = CONF_STRING;
+	conf->webserver.api.totp_secret.f = FLAG_WRITE_ONLY | FLAG_INVALIDATE_SESSIONS;
+	conf->webserver.api.totp_secret.d.s = (char*)"";
 
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
 	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";

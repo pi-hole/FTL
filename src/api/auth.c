@@ -268,6 +268,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 	{
 		cJSON *session = JSON_NEW_OBJECT();
 		JSON_ADD_BOOL_TO_OBJECT(session, "valid", true);
+		JSON_ADD_BOOL_TO_OBJECT(session, "totp", strlen(config.webserver.api.totp_secret.v.s) > 0);
 		JSON_ADD_NULL_TO_OBJECT(session, "sid");
 		JSON_ADD_NUMBER_TO_OBJECT(session, "validity", -1);
 		JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
@@ -279,6 +280,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 	{
 		cJSON *session = JSON_NEW_OBJECT();
 		JSON_ADD_BOOL_TO_OBJECT(session, "valid", true);
+		JSON_ADD_BOOL_TO_OBJECT(session, "totp", strlen(config.webserver.api.totp_secret.v.s) > 0);
 		JSON_REF_STR_IN_OBJECT(session, "sid", auth_data[user_id].sid);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "validity", auth_data[user_id].valid_until - now);
 		JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
@@ -288,6 +290,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 	// No valid session
 	cJSON *session = JSON_NEW_OBJECT();
 	JSON_ADD_BOOL_TO_OBJECT(session, "valid", false);
+	JSON_ADD_BOOL_TO_OBJECT(session, "totp", strlen(config.webserver.api.totp_secret.v.s) > 0);
 	JSON_ADD_NULL_TO_OBJECT(session, "sid");
 	JSON_ADD_NUMBER_TO_OBJECT(session, "validity", -1);
 	JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
@@ -522,6 +525,33 @@ int api_auth(struct ftl_conn *api)
 		if(response_correct || empty_password)
 		{
 			// Accepted
+
+			// Check possible 2FA token
+			if(strlen(config.webserver.api.totp_secret.v.s) > 0)
+			{
+				// Get 2FA token from payload
+				cJSON *json_twofa;
+				if((json_twofa = cJSON_GetObjectItemCaseSensitive(api->payload.json, "totp")) == NULL)
+				{
+					const char *message = "No 2FA token found in JSON payload";
+					log_debug(DEBUG_API, "API auth error: %s", message);
+					return send_json_error(api, 400,
+					                       "bad_request",
+					                       message,
+					                       NULL);
+				}
+
+				if(!verifyTOTP(json_twofa->valueint))
+				{
+					// 2FA token is invalid
+					return send_json_error(api, 401,
+					                       "unauthorized",
+					                       "Invalid 2FA token",
+					                       NULL);
+				}
+			}
+
+			// Find unused authentication slot
 			for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
 			{
 				// Expired slow, mark as unused

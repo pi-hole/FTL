@@ -81,8 +81,9 @@ enum conf_type {
 
 #define FLAG_RESTART_DNSMASQ       (1 << 0)
 #define FLAG_ADVANCED_SETTING      (1 << 1)
-#define FLAG_WRITE_ONLY            (1 << 2)
+#define FLAG_PSEUDO_ITEM           (1 << 2)
 #define FLAG_INVALIDATE_SESSIONS   (1 << 3)
+#define FLAG_WRITE_ONLY            (1 << 4)
 
 struct conf_item {
 	const char *k;        // item Key
@@ -214,7 +215,8 @@ struct config {
 			struct conf_item localAPIauth;
 			struct conf_item prettyJSON;
 			struct conf_item pwhash;
-			struct conf_item password; // This is a write-only item
+			struct conf_item password; // This is a pseudo-item
+			struct conf_item totp_secret; // This is a write-only item
 			struct conf_item excludeClients;
 			struct conf_item excludeDomains;
 			struct {

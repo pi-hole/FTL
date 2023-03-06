@@ -511,7 +511,12 @@ static int api_config_get(struct ftl_conn *api)
 					conf_item->k, conf_item->t);
 				continue;
 			}
-			JSON_ADD_ITEM_TO_OBJECT(leaf, "value", val);
+
+			// Special case: write-only values
+			if(conf_item->f & FLAG_WRITE_ONLY)
+				JSON_ADD_ITEM_TO_OBJECT(leaf, "value", val);
+			else
+				JSON_REF_STR_IN_OBJECT(leaf, "value", "<write-only property>");
 
 			// Add default value
 			cJSON *dval = addJSONvalue(conf_item->t, &conf_item->d);

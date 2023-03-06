@@ -362,6 +362,8 @@ components:
                       type: string
                     pwhash:
                       type: string
+                    totp_secret:
+                      type: string
                     excludeClients:
                       type: array
                       items:
@@ -616,6 +618,7 @@ components:
               prettyJSON: false
               password: "********"
               pwhash: ''
+              totp_secret: ''
               excludeClients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
               excludeDomains: [ 'google.de', 'pi-hole.net' ]
               temp:

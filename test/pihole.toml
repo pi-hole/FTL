@@ -555,6 +555,14 @@
     #     <valid Pi-hole password hash>
     pwhash = ""
 
+    # Pi-hole 2FA TOTP secret. When set to something different than "", 2FA authentication
+    # will be enforced for the API and the web interface. This setting is write-only, you
+    # can not read the secret back.
+    #
+    # Possible values are:
+    #     <valid TOTP secret (20 Bytes in Base32 encoding)>
+    totp_secret = ""
+
     # Array of clients to be excluded from certain API responses
     # Example: [ "192.168.2.56", "fe80::341", "localhost" ]
     #

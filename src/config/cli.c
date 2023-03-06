@@ -431,6 +431,10 @@ int get_config_from_CLI(const char *key, const bool quiet)
 		if(strcmp(item->k, key) != 0)
 			continue;
 
+		// Skip write-only options
+		if(item->f & FLAG_WRITE_ONLY)
+			continue;
+
 		// This is the config option we are looking for
 		conf_item = item;
 		break;
@@ -449,7 +453,10 @@ int get_config_from_CLI(const char *key, const bool quiet)
 		return conf_item->v.b ? EXIT_SUCCESS : EXIT_FAILURE;
 
 	// Print value
-	writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
+	if(conf_item-> f & FLAG_WRITE_ONLY)
+		puts("<write-only property>");
+	else
+		writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
 	putchar('\n');
 
 	return EXIT_SUCCESS;

@@ -60,6 +60,9 @@ paths:
   /auth/sessions:
     $ref: 'auth.yaml#/components/paths/session_list'
 
+  /auth/totp:
+    $ref: 'auth.yaml#/components/paths/totp'
+
   /stats/summary:
     $ref: 'stats.yaml#/components/paths/summary'
 

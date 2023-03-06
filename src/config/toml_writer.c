@@ -60,7 +60,7 @@ bool writeFTLtoml(const bool verbose)
 		struct conf_item *conf_item = get_conf_item(&config, i);
 
 		// Skip write-only items
-		if(conf_item->f & FLAG_WRITE_ONLY)
+		if(conf_item->f & FLAG_PSEUDO_ITEM)
 			continue;
 
 		// Get path depth

@@ -46,6 +46,8 @@
 #include "zip/gzip.h"
 // teleporter functions
 #include "zip/teleporter.h"
+// printTOTP()
+#include "api/api.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -251,6 +253,19 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_FAILURE);
 		}
 	}
+
+
+	// Set config option through CLI
+	if(argc == 2 && strcmp(argv[1], "--totp") == 0)
+	{
+		cli_mode = true;
+		log_ctrl(false, false);
+		readFTLconf(&config, false);
+		log_ctrl(false, true);
+		clear_debug_flags(); // No debug printing wanted
+		exit(printTOTP());
+	}
+
 
 	// Create teleporter archive through CLI
 	if(argc == 2 && strcmp(argv[1], "--teleporter") == 0)

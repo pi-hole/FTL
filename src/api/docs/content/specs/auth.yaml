@@ -125,6 +125,26 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    totp:
+      get:
+        summary: Suggest new TOTP credentials
+        tags:
+          - Authentication
+        operationId: "get_auth_totp"
+        description: Suggest new TOTP credentials for two-factor authentication (2FA)
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'auth.yaml#/components/schemas/totp'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
 
   schemas:
     session:
@@ -144,10 +164,14 @@ components:
             - valid
             - sid
             - validity
+            - totp
           properties:
             valid:
               type: boolean
               description: Valid session indicator (client is authenticated)
+            totp:
+              type: boolean
+              description: Whether 2FA (TOTP) is enabled on this Pi-hole
             sid:
               type: string
               description: Session ID
@@ -205,6 +229,33 @@ components:
               valid_until: 1580000300
               remote_addr: "192.168.0.34"
               user_agent: "Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0"
+    totp:
+      type: object
+      description: TOTP secret suggestion
+      properties:
+        totp:
+          type: object
+          properties:
+            type:
+              type: string
+            label:
+              type: string
+            issuer:
+              type: string
+            algorithm:
+              type: string
+            digits:
+              type: integer
+            period:
+              type: integer
+            offset:
+              type: integer
+            secret:
+              type: string
+            codes:
+              type: array
+              items:
+                type: integer
 
   errors:
     bad_request:
@@ -232,6 +283,7 @@ components:
         challenge: null
         session:
           valid: true
+          totp: false
           sid: null
           validity: 300
     no_login_required:
@@ -240,6 +292,7 @@ components:
         challenge: null
         session:
           valid: true
+          totp: false
           sid: null
           validity: -1
     login_required:
@@ -248,6 +301,7 @@ components:
         challenge: "a2926b025bcc8618c632f81cd6cf7c37ee051c08aab74b565fd5126350fcd056"
         session:
           valid: false
+          totp: false
           sid: null
           validity: -1
     login_failed:
@@ -256,6 +310,7 @@ components:
         challenge: null
         session:
           valid: false
+          totp: false
           sid: null
           validity: -1
     errors:
