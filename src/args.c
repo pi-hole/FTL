@@ -722,6 +722,8 @@ void parse_args(int argc, char* argv[])
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
+			printf("\t%s--totp%s              Generate valid TOTP token for 2FA\n", green, normal);
+			printf("\t                    authentication (if enabled)\n");
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);
 		}

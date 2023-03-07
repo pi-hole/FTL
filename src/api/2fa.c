@@ -239,6 +239,11 @@ bool verifyTOTP(const uint32_t incode)
 // Print TOTP code to stdout (for CLI use)
 int printTOTP(void)
 {
+	if(strlen(config.webserver.api.totp_secret.v.s) == 0)
+	{
+		puts("0");
+		return EXIT_SUCCESS;
+	}
 	// Decode base32 secret
 	uint8_t decoded_secret[RFC6238_SECRET_LEN];
 	if(!decode_base32_to_uint8_array(config.webserver.api.totp_secret.v.s, decoded_secret, sizeof(decoded_secret)))
