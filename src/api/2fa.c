@@ -13,7 +13,13 @@
 #include "../webserver/json_macros.h"
 #include "../log.h"
 #include "../config/config.h"
-#include <sys/random.h>
+
+// getrandom() is only available since glibc 2.25
+// https://www.gnu.org/software/gnulib/manual/html_node/sys_002frandom_002eh.html
+#if !defined(__GLIBC__) || __GLIBC_MINOR__ > 24
+#define HAVE_GETRANDOM
+	#include <sys/random.h>
+#endif
 
 // TOTP+HMAC
 #include <nettle/hmac.h>
@@ -265,10 +271,24 @@ int generateTOTP(struct ftl_conn *api)
 {
 	// Generate random secret using the system's random number generator
 	uint8_t random_secret[RFC6238_SECRET_LEN];
+#ifdef HAVE_GETRANDOM
 	if(getrandom(random_secret, sizeof(random_secret), 0) < (ssize_t)sizeof(random_secret))
 	{
 		return send_json_error(api, 500, "internal_error", "Failed to generate random secret", strerror(errno));
 	}
+#else
+	FILE *fp = fopen("/dev/urandom", "r");
+	if(fp == NULL)
+	{
+		return send_json_error(api, 500, "internal_error", "Failed to generate random secret", strerror(errno));
+	}
+	if(fread(random_secret, sizeof(random_secret), 1, fp) != 1)
+	{
+		fclose(fp);
+		return send_json_error(api, 500, "internal_error", "Failed to generate random secret", strerror(errno));
+	}
+	fclose(fp);
+#endif
 
 	// Encode base32 secret
 	const size_t base32_len = sizeof(random_secret)*8/5+1;
