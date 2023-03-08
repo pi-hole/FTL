@@ -335,6 +335,9 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 		case CONF_ENUM_WEB_THEME:
 			printTOMLstring(fp, get_web_theme_str(v->web_theme), toml);
 			break;
+		case CONF_ENUM_TEMP_UNIT:
+			printTOMLstring(fp, get_temp_unit_str(v->temp_unit), toml);
+			break;
 		case CONF_STRUCT_IN_ADDR:
 		{
 			char addr4[INET_ADDRSTRLEN] = { 0 };
@@ -582,6 +585,22 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 				free(val.u.s);
 				if(web_theme != -1)
 					conf_item->v.web_theme = web_theme;
+				else
+					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
+			}
+			else
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not of type string", conf_item->k);
+			break;
+		}
+		case CONF_ENUM_TEMP_UNIT:
+		{
+			const toml_datum_t val = toml_string_in(toml, key);
+			if(val.ok)
+			{
+				const int temp_unit = get_temp_unit_val(val.u.s);
+				free(val.u.s);
+				if(temp_unit != -1)
+					conf_item->v.temp_unit = temp_unit;
 				else
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}

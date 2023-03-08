@@ -318,14 +318,14 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 		double temp = 1e-3*raw_temp;
 		double max = 1e-3*raw_max;
 		double crit = 1e-3*raw_crit;
-		if(config.webserver.api.temp.unit.v.s[0] == 'F')
+		if(config.webserver.api.temp.unit.v.temp_unit == TEMP_UNIT_F)
 		{
 			// Convert °Celsius to °Fahrenheit
 			temp = 1.8*temp + 32;
 			max = 1.8*max + 32;
 			crit = 1.8*crit + 32;
 		}
-		else if(config.webserver.api.temp.unit.v.s[0] == 'K')
+		else if(config.webserver.api.temp.unit.v.temp_unit == TEMP_UNIT_K)
 		{
 			// Convert °Celsius to Kelvin
 			temp += 273.15;
@@ -657,9 +657,9 @@ int api_info_sensors(struct ftl_conn *api)
 
 	// Add unit
 	const char *unit = "C";
-	if(config.webserver.api.temp.unit.v.s[0] == 'F')
+	if(config.webserver.api.temp.unit.v.temp_unit == TEMP_UNIT_F)
 		unit = "F";
-	else if(config.webserver.api.temp.unit.v.s[0] == 'K')
+	else if(config.webserver.api.temp.unit.v.temp_unit == TEMP_UNIT_K)
 		unit = "K";
 	JSON_REF_STR_IN_OBJECT(sensors, "unit", unit);
 

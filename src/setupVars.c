@@ -193,9 +193,9 @@ static void get_conf_weblayout_from_setupVars(void)
 static void get_conf_webtheme_from_setupVars(void)
 {
 	// Try to obtain listening mode
-	const char *listeningMode = read_setupVarsconf("WEBTHEME");
+	const char *webTheme = read_setupVarsconf("WEBTHEME");
 
-	if(listeningMode == NULL)
+	if(webTheme == NULL)
 	{
 		// Do not change default value, this value is not set in setupVars.conf
 		log_debug(DEBUG_CONFIG, "setupVars.conf:WEBTHEME -> Not set");
@@ -206,7 +206,7 @@ static void get_conf_webtheme_from_setupVars(void)
 	}
 
 	bool set = false;
-	int web_theme_enum = get_web_theme_val(listeningMode);
+	int web_theme_enum = get_web_theme_val(webTheme);
 	if(web_theme_enum != -1)
 	{
 		set = true;
@@ -227,6 +227,46 @@ static void get_conf_webtheme_from_setupVars(void)
 	{
 		// Parameter not present in setupVars.conf
 		log_debug(DEBUG_CONFIG, "setupVars.conf:WEBTHEME -> Not set (found invalid value)");
+	}
+}
+
+static void get_conf_temp_unit_from_setupVars(void)
+{
+	// Try to obtain listening mode
+	const char *temp_unit = read_setupVarsconf("TEMPERATURE_UNIT");
+
+	if(temp_unit == NULL)
+	{
+		// Do not change default value, this value is not set in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_UNIT -> Not set");
+
+		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+		clearSetupVarsArray();
+		return;
+	}
+
+	bool set = false;
+	int temp_unit_enum = get_temp_unit_val(temp_unit);
+	if(temp_unit_enum != -1)
+	{
+		set = true;
+		config.webserver.api.temp.unit.v.temp_unit = temp_unit_enum;
+	}
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	if(set)
+	{
+		// Parameter present in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_UNIT -> Setting %s to %s",
+		          config.webserver.interface.theme.k,
+		          get_temp_unit_str(config.webserver.api.temp.unit.v.temp_unit));
+	}
+	else
+	{
+		// Parameter not present in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_UNIT -> Not set (found invalid value)");
 	}
 }
 
@@ -287,7 +327,7 @@ void importsetupVarsConf(void)
 	get_conf_temp_limit_from_setupVars();
 
 	// Try to obtain password hash from setupVars.conf
-	get_conf_string_from_setupVars("TEMPERATURE_UNIT", &config.webserver.api.temp.unit);
+	get_conf_temp_unit_from_setupVars();
 
 	// Try to obtain web layout
 	get_conf_weblayout_from_setupVars();

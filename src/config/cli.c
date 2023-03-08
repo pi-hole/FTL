@@ -272,6 +272,21 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			}
 			break;
 		}
+		case CONF_ENUM_TEMP_UNIT:
+		{
+			const int temp_unit = get_temp_unit_val(value);
+			if(temp_unit != -1)
+				conf_item->v.temp_unit = temp_unit;
+			else
+			{
+				char *allowed = NULL;
+				CONFIG_ITEM_ARRAY(conf_item->a, allowed);
+				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, allowed);
+				free(allowed);
+				return false;
+			}
+			break;
+		}
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };

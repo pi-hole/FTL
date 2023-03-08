@@ -253,6 +253,7 @@ void duplicate_config(struct config *dst, struct config *src)
 			case CONF_ENUM_PRIVACY_LEVEL:
 			case CONF_ENUM_LISTENING_MODE:
 			case CONF_ENUM_WEB_THEME:
+			case CONF_ENUM_TEMP_UNIT:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
 			case CONF_ALL_DEBUG_BOOL:
@@ -288,6 +289,7 @@ bool compare_config_item(const enum conf_type t, const union conf_value *val1, c
 		case CONF_ENUM_PRIVACY_LEVEL:
 		case CONF_ENUM_LISTENING_MODE:
 		case CONF_ENUM_WEB_THEME:
+		case CONF_ENUM_TEMP_UNIT:
 		case CONF_STRUCT_IN_ADDR:
 		case CONF_STRUCT_IN6_ADDR:
 		case CONF_ALL_DEBUG_BOOL:
@@ -343,6 +345,7 @@ void free_config(struct config *conf)
 			case CONF_ENUM_PRIVACY_LEVEL:
 			case CONF_ENUM_LISTENING_MODE:
 			case CONF_ENUM_WEB_THEME:
+			case CONF_ENUM_TEMP_UNIT:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
 			case CONF_ALL_DEBUG_BOOL:
@@ -870,7 +873,7 @@ void initConfig(struct config *conf)
 
 	// sub-struct api
 	conf->webserver.api.localAPIauth.k = "webserver.api.localAPIauth";
-	conf->webserver.api.localAPIauth.h = "Does local clients need to authenticate to access the API?";
+	conf->webserver.api.localAPIauth.h = "Do local clients need to authenticate to access the API?";
 	conf->webserver.api.localAPIauth.t = CONF_BOOL;
 	conf->webserver.api.localAPIauth.d.b = true;
 
@@ -930,8 +933,8 @@ void initConfig(struct config *conf)
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->webserver.api.temp.unit.a, temp_unit);
 	}
-	conf->webserver.api.temp.unit.t = CONF_STRING;
-	conf->webserver.api.temp.unit.d.s = (char*)"C";
+	conf->webserver.api.temp.unit.t = CONF_ENUM_TEMP_UNIT;
+	conf->webserver.api.temp.unit.d.temp_unit = TEMP_UNIT_C;
 
 
 	// struct files
@@ -1361,6 +1364,7 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 		case CONF_ENUM_LISTENING_MODE:
 		case CONF_ENUM_WEB_THEME:
+		case CONF_ENUM_TEMP_UNIT:
 			return "enum (string)";
 		case CONF_STRUCT_IN_ADDR:
 			return "IPv4 address";

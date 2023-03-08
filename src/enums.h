@@ -301,4 +301,10 @@ enum web_theme {
 	THEME_LCARS
 } __attribute__ ((packed));
 
+enum temp_unit {
+	TEMP_UNIT_C = 0,
+	TEMP_UNIT_F,
+	TEMP_UNIT_K
+} __attribute__ ((packed));
+
 #endif // ENUMS_H

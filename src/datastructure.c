@@ -1056,3 +1056,30 @@ int __attribute__ ((pure)) get_web_theme_val(const char *web_theme)
 	// Invalid value
 	return -1;
 }
+
+const char * __attribute__ ((const)) get_temp_unit_str(const enum temp_unit temp_unit)
+{
+	switch(temp_unit)
+	{
+		case TEMP_UNIT_C:
+			return "C";
+		case TEMP_UNIT_F:
+			return "F";
+		case TEMP_UNIT_K:
+			return "K";
+	}
+	return NULL;
+}
+
+int __attribute__ ((pure)) get_temp_unit_val(const char *temp_unit)
+{
+	if(strcasecmp(temp_unit, "C") == 0)
+		return TEMP_UNIT_C;
+	else if(strcasecmp(temp_unit, "F") == 0)
+		return TEMP_UNIT_F;
+	else if(strcasecmp(temp_unit, "K") == 0)
+		return TEMP_UNIT_K;
+
+	// Invalid value
+	return -1;
+}
