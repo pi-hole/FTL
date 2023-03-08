@@ -79,6 +79,7 @@ int check_client_auth(struct ftl_conn *api);
 int api_auth(struct ftl_conn *api);
 void delete_all_sessions(void);
 int api_auth_sessions(struct ftl_conn *api);
+int api_auth_session_delete(struct ftl_conn *api);
 
 // 2FA methods
 bool verifyTOTP(const uint32_t code);

@@ -302,7 +302,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 static void delete_session(const int user_id)
 {
 	// Skip if nothing to be done here
-	if(user_id < 0)
+	if(user_id < 0 || user_id >= API_MAX_CLIENTS)
 		return;
 
 	auth_data[user_id].used = false;
@@ -689,4 +689,27 @@ int api_auth_sessions(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJECT();
 	get_all_sessions(api, json);
 	JSON_SEND_OBJECT(json);
+}
+
+int api_auth_session_delete(struct ftl_conn *api)
+{
+	// Get user ID
+	int uid;
+	if(sscanf(api->item, "%i", &uid) != 1)
+		return send_json_error(api, 400, "bad_request", "Missing or invalid session ID", NULL);
+
+	// Check if session ID is valid
+	if(uid <= API_AUTH_UNAUTHORIZED || uid >= API_MAX_CLIENTS)
+		return send_json_error(api, 400, "bad_request", "Session ID out of bounds", NULL);
+
+	// Check if session is used
+	if(!auth_data[uid].used)
+		return send_json_error(api, 400, "bad_request", "Session ID not in use", NULL);
+
+	// Delete session
+	delete_session(uid);
+
+	// Send empty reply with code 204 No Content
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_SEND_OBJECT_CODE(json, 204);
 }

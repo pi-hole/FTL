@@ -145,6 +145,40 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    session:
+      delete:
+        summary: Delete session by ID
+        tags:
+          - Authentication
+        operationId: "delete_auth_session"
+        description: |
+          Using this endpoint, a session can be deleted by its ID.
+        responses:
+          '204':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+          '400':
+            description: Bad Request
+            content:
+              application/json:
+                schema:
+                  $ref: 'auth.yaml#/components/errors/bad_request'
+                examples:
+                  missing_session_id:
+                    $ref: 'auth.yaml#/components/examples/errors/missing_session_id'
+                  session_id_oob:
+                    $ref: 'auth.yaml#/components/examples/errors/no_response'
+                  session_not_in_use:
+                    $ref: 'auth.yaml#/components/examples/errors/session_not_in_use'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
 
   schemas:
     session:
@@ -334,4 +368,25 @@ components:
           error:
             key: "bad_request"
             message: "Invalid response length"
+            hint: null
+      missing_session_id:
+        summary: Bad request (missing session ID)
+        value:
+          error:
+            key: "bad_request"
+            message: "Missing or invalid session ID"
+            hint: null
+      session_id_oob:
+        summary: Bad request (session ID out of bounds)
+        value:
+          error:
+            key: "bad_request"
+            message: "Session ID out of bounds"
+            hint: null
+      session_not_in_use:
+        summary: Bad request (session not in use)
+        value:
+          error:
+            key: "bad_request"
+            message: "Session ID not in use"
             hint: null
