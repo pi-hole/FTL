@@ -39,6 +39,16 @@ float get_cpu_percentage(void) __attribute__((pure));
 pid_t FTL_gettid(void);
 #define gettid FTL_gettid
 
+// getrandom() is only available since glibc 2.25
+// https://www.gnu.org/software/gnulib/manual/html_node/sys_002frandom_002eh.html
+#if !defined(__GLIBC__) || __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 25)
+#include <sys/random.h>
+#else
+#define getrandom getrandom_fallback
+#endif
+
+ssize_t getrandom_fallback(void *buf, size_t buflen, unsigned int flags);
+
 extern bool resolver_ready;
 
 #endif //DAEMON_H

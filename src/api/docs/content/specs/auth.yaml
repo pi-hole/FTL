@@ -238,7 +238,7 @@ components:
           properties:
             type:
               type: string
-            label:
+            account:
               type: string
             issuer:
               type: string

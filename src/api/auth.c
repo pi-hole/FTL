@@ -18,6 +18,8 @@
 #include "../setupVars.h"
 // (un)lock_shm()
 #include "../shmem.h"
+// getrandom()
+#include "../daemon.h"
 
 // crypto library
 #include <nettle/sha2.h>
@@ -37,8 +39,8 @@
 #endif
 
 // How many bits should the SID use?
-#define SID_BITSIZE 128
-#define SID_SIZE BASE64_ENCODE_RAW_LENGTH(SID_BITSIZE/8) + 1
+#define SID_BITSIZE 160
+#define SID_SIZE BASE64_ENCODE_RAW_LENGTH(SID_BITSIZE/8)
 
 // SameSite=Strict: Defense against some classes of cross-site request forgery
 // (CSRF) attacks. This ensures the session cookie will only be sent in a
@@ -383,13 +385,10 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 static void generateChallenge(const unsigned int idx, const time_t now)
 {
 	uint8_t raw_challenge[SHA256_DIGEST_SIZE];
-	for(unsigned i = 0; i < SHA256_DIGEST_SIZE; i+= 4)
+	if(getrandom(raw_challenge, sizeof(raw_challenge), 0) < 0)
 	{
-		const long rval = random();
-		raw_challenge[i] = rval & 0xFF;
-		raw_challenge[i+1] = (rval >> 8) & 0xFF;
-		raw_challenge[i+2] = (rval >> 16) & 0xFF;
-		raw_challenge[i+3] = (rval >> 24) & 0xFF;
+		log_err("getrandom() failed in generateChallenge()");
+		return;
 	}
 	sha256_hex(raw_challenge, challenges[idx].challenge);
 	challenges[idx].valid_until = now + API_CHALLENGE_TIMEOUT;
@@ -421,13 +420,10 @@ static void generateResponse(const unsigned int idx)
 static void generateSID(char *sid)
 {
 	uint8_t raw_sid[SID_SIZE];
-	for(unsigned i = 0; i < (SID_BITSIZE/8); i+= 4)
+	if(getrandom(raw_sid, sizeof(raw_sid), 0) < 0)
 	{
-		const long rval = random();
-		raw_sid[i] = rval & 0xFF;
-		raw_sid[i+1] = (rval >> 8) & 0xFF;
-		raw_sid[i+2] = (rval >> 16) & 0xFF;
-		raw_sid[i+3] = (rval >> 24) & 0xFF;
+		log_err("getrandom() failed in generateSID()");
+		return;
 	}
 	base64_encode_raw(NETTLE_SIGN sid, SID_BITSIZE/8, raw_sid);
 	sid[SID_SIZE-1] = '\0';

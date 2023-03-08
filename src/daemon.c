@@ -364,3 +364,19 @@ float __attribute__((pure)) get_cpu_percentage(void)
 {
 	return cpu_usage;
 }
+
+ssize_t getrandom_fallback(void *buf, size_t buflen, unsigned int flags)
+{
+	FILE *fp = fopen("/dev/urandom", "r");
+	if(fp == NULL)
+		return -1;
+
+	if(fread(buf, buflen, 1, fp) != 1)
+	{
+		fclose(fp);
+		return -1;
+	}
+	fclose(fp);
+
+	return buflen;
+}
