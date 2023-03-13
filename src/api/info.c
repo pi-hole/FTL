@@ -654,14 +654,12 @@ int api_info_sensors(struct ftl_conn *api)
 		if(!cJSON_IsString(name) || name->valuestring == NULL)
 			continue;
 
-		// AMD CPU temperature sensor
-		if(strcmp(name->valuestring, "k10temp") == 0)
-		{
-			cpu_temp_sensor = i;
-			break;
-		}
-		// Intel CPU temperature sensor
-		else if(strcmp(name->valuestring, "coretemp") == 0)
+		// 1. AMD CPU temperature sensor
+		// 2. Intel CPU temperature sensor
+		// 3. General CPU temperature sensor
+		if(strcmp(name->valuestring, "k10temp") == 0 ||
+		   strcmp(name->valuestring, "coretemp") == 0 ||
+		   strcmp(name->valuestring, "cpu_thermal") == 0)
 		{
 			cpu_temp_sensor = i;
 			break;
