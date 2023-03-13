@@ -433,6 +433,7 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 	snprintf(attach_stmt, sizeof(attach_stmt), "ATTACH DATABASE '%s' AS disk;", destination);
 	if(sqlite3_exec(database, attach_stmt, NULL, NULL, &err) != SQLITE_OK)
 	{
+		strncpy(hint, err, ERRBUF_SIZE);
 		sqlite3_free(err);
 		sqlite3_close(database);
 		return "Failed to attach database file to in-memory SQLite3 database";
@@ -441,6 +442,7 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 	// Disable foreign key checks for import
 	if(sqlite3_exec(database, "PRAGMA foreign_keys = 0;", NULL, NULL, &err) != SQLITE_OK)
 	{
+		strncpy(hint, err, ERRBUF_SIZE);
 		sqlite3_free(err);
 		sqlite3_close(database);
 		return "Failed to disable foreign key checks for import";
@@ -449,6 +451,7 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 	// Start transaction
 	if(sqlite3_exec(database, "BEGIN TRANSACTION;", NULL, NULL, &err) != SQLITE_OK)
 	{
+		strncpy(hint, err, ERRBUF_SIZE);
 		sqlite3_free(err);
 		sqlite3_close(database);
 		return "Failed to start transaction";
@@ -488,6 +491,7 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 	// End transaction
 	if(sqlite3_exec(database, "END TRANSACTION;", NULL, NULL, &err) != SQLITE_OK)
 	{
+		strncpy(hint, err, ERRBUF_SIZE);
 		sqlite3_free(err);
 		sqlite3_close(database);
 		return "Failed to end transaction";
@@ -496,7 +500,7 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 	// Detach the database file from the in-memory database
 	if(sqlite3_exec(database, "DETACH DATABASE disk;", NULL, NULL, &err) != SQLITE_OK)
 	{
-		log_warn("Failed to detach disk database: %s", err);
+		strncpy(hint, err, ERRBUF_SIZE);
 		sqlite3_free(err);
 		sqlite3_close(database);
 		return "Failed to detach database file from in-memory SQLite3 database";
