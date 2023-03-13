@@ -189,6 +189,7 @@ struct myoption {
 #define LOPT_FAST_RETRY    376
 #define LOPT_STALE_CACHE   377
 #define LOPT_NORR          378
+#define LOPT_NO_IDENT      379
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -378,6 +379,7 @@ static const struct myoption opts[] =
     { "port-limit", 1, 0, LOPT_RANDPORT_LIM },
     { "fast-dns-retry", 2, 0, LOPT_FAST_RETRY },
     { "use-stale-cache", 2, 0 , LOPT_STALE_CACHE },
+    { "no-ident", 0, 0, LOPT_NO_IDENT },
     { NULL, 0, 0, 0 }
   };
 
@@ -574,6 +576,7 @@ static struct {
   { LOPT_UMBRELLA, ARG_ONE, "[=<optspec>]", gettext_noop("Send Cisco Umbrella identifiers including remote IP."), NULL },
   { LOPT_QUIET_TFTP, OPT_QUIET_TFTP, NULL, gettext_noop("Do not log routine TFTP."), NULL },
   { LOPT_NORR, OPT_NORR, NULL, gettext_noop("Suppress round-robin ordering of DNS records."), NULL },
+  { LOPT_NO_IDENT, OPT_NO_IDENT, NULL, gettext_noop("Do not add CHAOS TXT records."), NULL },
   { 0, 0, NULL, NULL, NULL }
 }; 
 
@@ -5761,27 +5764,6 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->randport_limit = 1;
   daemon->host_index = SRC_AH;
   
-#ifndef NO_ID
-  add_txt("version.bind", "dnsmasq-" VERSION, 0 );
-  add_txt("authors.bind", "Simon Kelley", 0);
-  add_txt("copyright.bind", COPYRIGHT, 0);
-  add_txt("cachesize.bind", NULL, TXT_STAT_CACHESIZE);
-  add_txt("insertions.bind", NULL, TXT_STAT_INSERTS);
-  add_txt("evictions.bind", NULL, TXT_STAT_EVICTIONS);
-  add_txt("misses.bind", NULL, TXT_STAT_MISSES);
-  add_txt("hits.bind", NULL, TXT_STAT_HITS);
-#ifdef HAVE_AUTH
-  add_txt("auth.bind", NULL, TXT_STAT_AUTH);
-#endif
-  add_txt("servers.bind", NULL, TXT_STAT_SERVERS);
-  /* Pi-hole modification */
-  add_txt("privacylevel.pihole", NULL, TXT_PRIVACYLEVEL);
-  /************************/
-#endif
-  /******** Pi-hole modification ********/
-  add_txt("version.FTL", (char*)get_FTL_version(), 0 );
-  /**************************************/
-  
   /* See comment above make_servers(). Optimises server-read code. */
   mark_servers(0);
   
@@ -5878,6 +5860,31 @@ void read_opts(int argc, char **argv, char *compile_opts)
     }
   else
     one_file(CONFFILE, LOPT_CONF_OPT);
+
+  /* Add TXT records if wanted */
+#ifndef NO_ID
+  if (!option_bool(OPT_NO_IDENT))
+    {
+      add_txt("version.bind", "dnsmasq-" VERSION, 0 );
+      add_txt("authors.bind", "Simon Kelley", 0);
+      add_txt("copyright.bind", COPYRIGHT, 0);
+      add_txt("cachesize.bind", NULL, TXT_STAT_CACHESIZE);
+      add_txt("insertions.bind", NULL, TXT_STAT_INSERTS);
+      add_txt("evictions.bind", NULL, TXT_STAT_EVICTIONS);
+      add_txt("misses.bind", NULL, TXT_STAT_MISSES);
+      add_txt("hits.bind", NULL, TXT_STAT_HITS);
+#ifdef HAVE_AUTH
+      add_txt("auth.bind", NULL, TXT_STAT_AUTH);
+#endif
+      add_txt("servers.bind", NULL, TXT_STAT_SERVERS);
+      /* Pi-hole modification */
+      add_txt("privacylevel.pihole", NULL, TXT_PRIVACYLEVEL);
+      /************************/
+    }
+#endif
+  /******** Pi-hole modification ********/
+  add_txt("version.FTL", (char*)get_FTL_version(), 0 );
+  /**************************************/
 
   /* port might not be known when the address is parsed - fill in here */
   if (daemon->servers)

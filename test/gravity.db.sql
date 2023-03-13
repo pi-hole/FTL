@@ -220,7 +220,9 @@ INSERT INTO gravity VALUES('allowed.ftl',1);
 INSERT INTO gravity VALUES('gravity.ftl',1);
 INSERT INTO gravity VALUES('gravity-aaaa.ftl',1);
 INSERT INTO gravity VALUES('gravity-allowed.ftl',1);
-INSERT INTO info VALUES('gravity_count',4);
+INSERT INTO gravity VALUES('||special.gravity.ftl^',1);
+INSERT INTO info VALUES('gravity_count',5);
+INSERT INTO info VALUES('abp_domains',1);
 INSERT INTO info VALUES('updated',0);
 
 INSERT INTO "group" VALUES(1,0,'Test group',1559928803,1559928803,'A disabled test group');
