@@ -240,29 +240,24 @@ static int get_system_obj(struct ftl_conn *api, cJSON *system)
 static int read_hwmon_sensors(struct ftl_conn *api,
                               cJSON *array,
                               const char *path,
+                              const char *value_path,
                               const unsigned int sensor_id)
 {
 	// Read label and value file
 	char label_path[1024];
-	char value_path[1024];
 	char crit_path[1024];
 	char max_path[1024];
 	char name[1024];
 	snprintf(label_path, sizeof(label_path), "%s/temp%u_label", path, sensor_id);
-	snprintf(value_path, sizeof(value_path), "%s/temp%u_input", path, sensor_id);
 	snprintf(crit_path, sizeof(crit_path), "%s/temp%u_crit", path, sensor_id);
 	snprintf(max_path, sizeof(max_path), "%s/temp%u_max", path, sensor_id);
 	snprintf(name, sizeof(name), "temp%u", sensor_id);
-
-	// Check if sensor is available
-	if(file_exists(value_path) == false)
-		return -1;
 
 	// Open files
 	FILE *f_value = fopen(value_path, "r");
 	if(f_value == NULL)
 	{
-		log_debug(DEBUG_API, "Cannot open %s: %s", value_path, strerror(errno));
+		log_warn("Cannot open %s: %s", value_path, strerror(errno));
 		return -1;
 	}
 
@@ -365,14 +360,25 @@ static int get_sensors(struct ftl_conn *api, cJSON *sensors)
 	// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-hwmon
 
 	// Iterate over content of /sys/class/hwmon
-	for(unsigned int hwmon_id = 1; hwmon_id < 32; hwmon_id++)
+	DIR *hwmon_dir = opendir("/sys/class/hwmon");
+	if(hwmon_dir == NULL)
 	{
+		log_warn("Cannot open /sys/class/hwmon: %s", strerror(errno));
+		return -1;
+	}
+
+	// Iterate over all hwmonX directories
+	struct dirent *dircontent = NULL;
+	while((dircontent = readdir(hwmon_dir)) != NULL)
+	{
+		// Skip all files that do not start with hwmon
+		if(strncmp(dircontent->d_name, "hwmon", 5) != 0)
+			continue;
+
 		// Construct path to /sys/class/hwmon/hwmonX
-		char monitor_name[16];
-		snprintf(monitor_name, sizeof(monitor_name), "hwmon%u", hwmon_id);
 		char dirpath[1024];
 		strncpy(dirpath, "/sys/class/hwmon/", sizeof(dirpath));
-		strncat(dirpath, monitor_name, sizeof(dirpath)-strlen(dirpath)-1);
+		strncat(dirpath, dircontent->d_name, sizeof(dirpath)-strlen(dirpath)-1);
 
 		// Construct path to /sys/class/hwmon/hwmonX/name
 		char namepath[1024];
@@ -384,7 +390,7 @@ static int get_sensors(struct ftl_conn *api, cJSON *sensors)
 		char name[1024] = { 0 };
 
 		// Use directory name as fallback if name file does not exist
-		strncpy(name, monitor_name, sizeof(name));
+		strncpy(name, dircontent->d_name, sizeof(name));
 
 		if(f_name != NULL)
 		{
@@ -402,7 +408,7 @@ static int get_sensors(struct ftl_conn *api, cJSON *sensors)
 		// Create sensor array item
 		cJSON *hwmon = JSON_NEW_OBJECT();
 		JSON_COPY_STR_TO_OBJECT(hwmon, "name", name);
-		JSON_COPY_STR_TO_OBJECT(hwmon, "path", monitor_name);
+		JSON_COPY_STR_TO_OBJECT(hwmon, "path", dircontent->d_name);
 
 		// Get symlink target
 		char *target = get_hwmon_target(dirpath);
@@ -414,14 +420,41 @@ static int get_sensors(struct ftl_conn *api, cJSON *sensors)
 		JSON_ADD_ITEM_TO_ARRAY(sensors, hwmon);
 
 		// Iterate over /sys/class/hwmon/hwmonX/tempY_...
-		for(unsigned int sensor_id = 1; sensor_id < 32; sensor_id++)
+		DIR *sensor_dir = opendir(dirpath);
+		if(sensor_dir == NULL)
 		{
+			log_warn("Cannot open %s: %s", dirpath, strerror(errno));
+			continue;
+		}
+		struct dirent *dircontent_sensor = NULL;
+		while((dircontent_sensor = readdir(sensor_dir)) != NULL)
+		{
+			// Skip all files that do not start with "temp" or end with "_input"
+			if(strncmp(dircontent_sensor->d_name, "temp", 4) != 0)
+				continue;
+			if(strncmp(dircontent_sensor->d_name + strlen(dircontent_sensor->d_name) - 6, "_input", 6) != 0)
+				continue;
+
+			// Extract sensor ID from filename "tempXXX_input"
+			const char *sensor_id_ptr = dircontent_sensor->d_name + 4;
+			const unsigned int sensor_id = atoi(sensor_id_ptr);
+
+			// Construct path to /sys/class/hwmon/hwmonX/tempY_...
+			char value_path[1024];
+			strncpy(value_path, dirpath, sizeof(value_path));
+			strncat(value_path, "/", sizeof(value_path)-strlen(value_path)-1);
+			strncat(value_path, dircontent_sensor->d_name, sizeof(value_path)-strlen(value_path)-1);
+
 			// Read sensor
-			ret = read_hwmon_sensors(api, temps, dirpath, sensor_id);
+			ret = read_hwmon_sensors(api, temps, dirpath, value_path, sensor_id);
 			if(ret != 0)
 				break;
 		}
+		closedir(sensor_dir);
 	}
+
+	// Cloase dir pointer
+	closedir(hwmon_dir);
 
 	// All okay
 	return 0;
