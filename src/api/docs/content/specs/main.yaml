@@ -57,6 +57,9 @@ paths:
   /auth:
     $ref: 'auth.yaml#/components/paths/auth'
 
+  /auth/session/{id}:
+    $ref: 'auth.yaml#/components/paths/session'
+
   /auth/sessions:
     $ref: 'auth.yaml#/components/paths/session_list'
 

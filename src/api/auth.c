@@ -710,6 +710,6 @@ int api_auth_session_delete(struct ftl_conn *api)
 	delete_session(uid);
 
 	// Send empty reply with code 204 No Content
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_SEND_OBJECT_CODE(json, 204);
+	send_http_code(api, "application/json; charset=utf-8", 204, "");
+	return 204;
 }
