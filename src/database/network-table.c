@@ -1197,23 +1197,30 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 	return true;
 }
 
+static bool clean_network_table(sqlite3* db)
+{
+	// Do not clean if disabled
+	if(config.database.network.expire.v.ui == 0)
+		return true;
+
+	// Remove all but the most recent IP addresses not seen for more than a certain time
+	const time_t limit = time(NULL)-24*3600*config.database.network.expire.v.ui;
+	int rc = dbquery(db, "DELETE FROM network_addresses "
+	                     "WHERE lastSeen < %lu;", (unsigned long)limit);
+	if(rc != SQLITE_OK)
+		return false;
+
+	rc = dbquery(db, "UPDATE network_addresses SET name = NULL "
+	                 "WHERE nameUpdated < %lu;", (unsigned long)limit);
+	if(rc != SQLITE_OK)
+		return false;
+
+	return true;
+}
+
 // Parse kernel's neighbor cache
 void parse_neighbor_cache(sqlite3* db)
 {
-	// Try to access the kernel's neighbor cache
-	FILE *arpfp = NULL;
-	const char cmd[] = "ip neigh show";
-	errno = ENOMEM;
-	if((arpfp = popen(cmd, "r")) == NULL)
-	{
-		log_warn("Command \"%s\" failed: %s", cmd, strerror(errno));
-		return;
-	}
-
-	// Start ARP timer
-	if(config.debug.arp.v.b)
-		timer_start(ARP_TIMER);
-
 	// Prepare buffers
 	char *linebuffer = NULL;
 	size_t linebuffersize = 0u;
@@ -1221,6 +1228,13 @@ void parse_neighbor_cache(sqlite3* db)
 	unsigned int entries = 0u, additional_entries = 0u;
 	time_t now = time(NULL);
 
+	// Start ARP timer
+	if(config.debug.arp.v.b)
+		timer_start(ARP_TIMER);
+
+	// Start transaction to speed up database queries, to avoid that the
+	// database is locked by other processes and to allow for a rollback in
+	// case of an error
 	const char sql[] = "BEGIN TRANSACTION IMMEDIATE";
 	int rc = dbquery(db, sql);
 	if(rc != SQLITE_OK)
@@ -1233,30 +1247,12 @@ void parse_neighbor_cache(sqlite3* db)
 
 		// dbquery() above already logs the reason for why the query failed
 		log_warn("%s: Storing devices in network table (\"%s\") failed", text, sql);
-		pclose(arpfp);
 		return;
 	}
 
-	// Remove all but the most recent IP addresses not seen for more than a certain time
-	if(config.database.network.expire.v.ui > 0)
-	{
-		const time_t limit = time(NULL)-24*3600*config.database.network.expire.v.ui;
-		rc = dbquery(db, "DELETE FROM network_addresses "
-		                        "WHERE lastSeen < %lu;", (unsigned long)limit);
-		if(rc != SQLITE_OK)
-		{
-			pclose(arpfp);
-			return;
-		}
-
-		rc = dbquery(db, "UPDATE network_addresses SET name = NULL "
-		                        "WHERE nameUpdated < %lu;", (unsigned long)limit);
-		if(rc != SQLITE_OK)
-		{
-			pclose(arpfp);
-			return;
-		}
-	}
+	// Delete old entries from network table
+	if(!clean_network_table(db))
+		return;
 
 	// Initialize array of status for individual clients used to
 	// remember the status of a client already seen in the neigh cache
@@ -1265,236 +1261,249 @@ void parse_neighbor_cache(sqlite3* db)
 	unlock_shm();
 	enum arp_status *client_status = calloc(clients, sizeof(enum arp_status));
 	for(int i = 0; i < clients; i++)
-	{
 		client_status[i] = CLIENT_NOT_HANDLED;
-	}
 
-	// Read ARP cache line by line
-	while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
+	// Try to access the kernel's neighbor cache
+	if (config.database.network.parseARPcache.v.b)
 	{
-		// Skip if line buffer is invalid
-		if(linebuffer == NULL)
-			continue;
-
-		// Check thread cancellation
-		if(killed)
-			break;
-
-		int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
-		                 ip, iface, hwaddr);
-
-		// Ensure strings are null-terminated in case we hit the max.
-		// length limitation
-		ip[sizeof(ip)-1] = '\0';
-		iface[sizeof(iface)-1] = '\0';
-		hwaddr[sizeof(hwaddr)-1] = '\0';
-
-		// Check if we want to process the line we just read
-		if(num != 3)
+		// Parse ARP cache and add new entries to network table
+		FILE *arpfp = NULL;
+		const char cmd[] = "ip neigh show";
+		errno = ENOMEM;
+		if((arpfp = popen(cmd, "r")) == NULL)
 		{
-			if(num == 2)
-			{
-				// This line is incomplete, remember this to skip
-				// mock-device creation after ARP processing
-				lock_shm();
-				int clientID = findClientID(ip, false, false);
-				unlock_shm();
-				if(clientID >= 0)
-					client_status[clientID] = CLIENT_ARP_INCOMPLETE;
-			}
-
-			// Skip to the next row in the neigh cache rather when
-			// marking as incomplete client
-			continue;
+			log_warn("Command \"%s\" failed: %s", cmd, strerror(errno));
+			return;
 		}
 
-		// Get ID of this device in our network database. If it cannot be
-		// found, then this is a new device. We only use the hardware address
-		// to uniquely identify clients and only use the first returned ID.
-		//
-		// Same MAC, two IPs: Non-deterministic (sequential) DHCP server, we
-		// update the IP address to the last seen one.
-		//
-		// We can run this SELECT inside the currently active transaction as
-		// only the changed to the database are collected for latter
-		// commitment. Read-only access such as this SELECT command will be
-		// executed immediately on the database.
-		int dbID = find_device_by_hwaddr(db, hwaddr);
-
-		if(dbID == DB_FAILED)
+		// Read ARP cache line by line
+		while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
 		{
-			// Get SQLite error code and return early from loop
-			rc = sqlite3_errcode(db);
-			break;
-		}
-
-		// If we reach this point, we can check if this client
-		// is known to pihole-FTL
-		// false = do not create a new record if the client is
-		//         unknown (only DNS requesting clients do this)
-		lock_shm();
-		int clientID = findClientID(ip, false, false);
-
-		// Get hostname of this client if the client is known
-		char *hostname = NULL;
-		bool client_valid = false;
-		time_t lastQuery = 0;
-		unsigned int numQueries = 0;
-
-		// This client is known (by its IP address) to pihole-FTL if
-		// findClientID() returned a non-negative index
-		if(clientID >= 0)
-		{
-			clientsData *client = getClient(clientID, true);
-			if(!client)
+			// Skip if line buffer is invalid
+			if(linebuffer == NULL)
 				continue;
 
-			client_valid = true;
-			hostname = strdup(getstr(client->namepos));
-			lastQuery = client->lastQuery;
-			numQueries = client->numQueriesARP;
-			client_status[clientID] = CLIENT_ARP_COMPLETE;
-		}
-		else
-		{
-			hostname = strdup("");
-		}
-		unlock_shm();
+			// Check thread cancellation
+			if(killed)
+				break;
 
-		// Device not in database, add new entry
-		if(dbID == DB_NODATA)
-		{
-			// Try to obtain vendor from MAC database
-			char *macVendor = getMACVendor(hwaddr);
+			// Analyze line
+			int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
+			                 ip, iface, hwaddr);
 
-			// Check if we recently added a mock-device with the same IP address
-			// and the ARP entry just came a bit delayed (reported by at least one user)
-			dbID = find_recent_device_by_mock_hwaddr(db, ip);
+			// Ensure strings are null-terminated in case we hit the max.
+			// length limitation
+			ip[sizeof(ip)-1] = '\0';
+			iface[sizeof(iface)-1] = '\0';
+			hwaddr[sizeof(hwaddr)-1] = '\0';
 
+			// Check if we want to process the line we just read
+			if(num != 3)
+			{
+				if(num == 2)
+				{
+					// This line is incomplete, remember this to skip
+					// mock-device creation after ARP processing
+					lock_shm();
+					int clientID = findClientID(ip, false, false);
+					unlock_shm();
+					if(clientID >= 0)
+						client_status[clientID] = CLIENT_ARP_INCOMPLETE;
+				}
+
+				// Skip to the next row in the neigh cache rather when
+				// marking as incomplete client
+				continue;
+			}
+
+			// Get ID of this device in our network database. If it cannot be
+			// found, then this is a new device. We only use the hardware address
+			// to uniquely identify clients and only use the first returned ID.
+			//
+			// Same MAC, two IPs: Non-deterministic (sequential) DHCP server, we
+			// update the IP address to the last seen one.
+			//
+			// We can run this SELECT inside the currently active transaction as
+			// only the changed to the database are collected for latter
+			// commitment. Read-only access such as this SELECT command will be
+			// executed immediately on the database.
+			int dbID = find_device_by_hwaddr(db, hwaddr);
+
+			if(dbID == DB_FAILED)
+			{
+				// Get SQLite error code and return early from loop
+				rc = sqlite3_errcode(db);
+				break;
+			}
+
+			// If we reach this point, we can check if this client
+			// is known to pihole-FTL
+			// false = do not create a new record if the client is
+			//         unknown (only DNS requesting clients do this)
+			lock_shm();
+			int clientID = findClientID(ip, false, false);
+
+			// Get hostname of this client if the client is known
+			char *hostname = NULL;
+			bool client_valid = false;
+			time_t lastQuery = 0;
+			unsigned int numQueries = 0;
+
+			// This client is known (by its IP address) to pihole-FTL if
+			// findClientID() returned a non-negative index
+			if(clientID >= 0)
+			{
+				clientsData *client = getClient(clientID, true);
+				if(!client)
+					continue;
+
+				client_valid = true;
+				hostname = strdup(getstr(client->namepos));
+				lastQuery = client->lastQuery;
+				numQueries = client->numQueriesARP;
+				client_status[clientID] = CLIENT_ARP_COMPLETE;
+			}
+			else
+			{
+				hostname = strdup("");
+			}
+			unlock_shm();
+
+			// Device not in database, add new entry
 			if(dbID == DB_NODATA)
 			{
-				// Device not known AND no recent mock-device found ---> create new device record
-				log_debug(DEBUG_ARP, "Network table: Creating new ARP device MAC = %s, IP = %s, hostname = \"%s\", vendor = \"%s\"",
-				          hwaddr, ip, hostname, macVendor);
+				// Try to obtain vendor from MAC database
+				char *macVendor = getMACVendor(hwaddr);
 
-				// Create new record (INSERT)
-				insert_netDB_device(db, hwaddr, now, lastQuery, numQueries, macVendor);
+				// Check if we recently added a mock-device with the same IP address
+				// and the ARP entry just came a bit delayed (reported by at least one user)
+				dbID = find_recent_device_by_mock_hwaddr(db, ip);
+
+				if(dbID == DB_NODATA)
+				{
+					// Device not known AND no recent mock-device found ---> create new device record
+					log_debug(DEBUG_ARP, "Network table: Creating new ARP device MAC = %s, IP = %s, hostname = \"%s\", vendor = \"%s\"",
+					          hwaddr, ip, hostname, macVendor);
+
+					// Create new record (INSERT)
+					insert_netDB_device(db, hwaddr, now, lastQuery, numQueries, macVendor);
+
+					lock_shm();
+					clientsData *client = getClient(clientID, true);
+					if(client != NULL)
+					{
+						// Reacquire client pointer (if may have changed when unlocking above)
+						client = getClient(clientID, true);
+						// Reset client ARP counter (we stored the entry in the database)
+						client->numQueriesARP = 0;
+					}
+					unlock_shm();
+
+					// Obtain ID which was given to this new entry
+					dbID = sqlite3_last_insert_rowid(db);
+
+					// Store hostname in the appropriate network_address record (if available)
+					if(strlen(hostname) > 0)
+					{
+						rc = update_netDB_name(db, ip, hostname);
+						if(rc != SQLITE_OK)
+						{
+							// Free allocated memory
+							free(hostname);
+							free(macVendor);
+							break;
+						}
+					}
+				}
+				else
+				{
+					// Device is ALREADY KNOWN ---> convert mock-device to a "real" one
+					log_debug(DEBUG_ARP, "Network table: Un-mocking ARP device MAC = %s, IP = %s, hostname = \"%s\", vendor = \"%s\"",
+					          hwaddr, ip, hostname, macVendor);
+
+					// Update/replace important device properties
+					unmock_netDB_device(db, hwaddr, macVendor, dbID);
+
+					// Host name, count and last query timestamp will be set in the next
+					// loop iteration for the sake of simplicity
+				}
+
+				// Free allocated memory
+				free(macVendor);
+			}
+			// Device in database AND client known to Pi-hole
+			else if(client_valid)
+			{
+				log_debug(DEBUG_ARP, "Network table: Updating existing ARP device MAC = %s, IP = %s, hostname = \"%s\"",
+				          hwaddr, ip, hostname);
+
+				// Update timestamp of last query if applicable
+				rc = update_netDB_lastQuery(db, dbID, lastQuery);
+				if(rc != SQLITE_OK)
+				{
+					// Free allocated memory
+					free(hostname);
+					break;
+				}
+
+				// Update number of queries if applicable
+				rc = update_netDB_numQueries(db, dbID, numQueries);
+				if(rc != SQLITE_OK)
+				{
+					// Free allocated memory
+					free(hostname);
+					break;
+				}
 
 				lock_shm();
+				// Acquire client pointer
 				clientsData *client = getClient(clientID, true);
 				if(client != NULL)
 				{
-					// Reacquire client pointer (if may have changed when unlocking above)
-					client = getClient(clientID, true);
 					// Reset client ARP counter (we stored the entry in the database)
 					client->numQueriesARP = 0;
 				}
 				unlock_shm();
 
-				// Obtain ID which was given to this new entry
-				dbID = sqlite3_last_insert_rowid(db);
-
-				// Store hostname in the appropriate network_address record (if available)
-				if(strlen(hostname) > 0)
+				// Update hostname if available
+				rc = update_netDB_name(db, ip, hostname);
+				if(rc != SQLITE_OK)
 				{
-					rc = update_netDB_name(db, ip, hostname);
-					if(rc != SQLITE_OK)
-					{
-						// Free allocated memory
-						free(hostname);
-						free(macVendor);
-						break;
-					}
+					// Free allocated memory
+					free(hostname);
+					break;
 				}
 			}
-			else
-			{
-				// Device is ALREADY KNOWN ---> convert mock-device to a "real" one
-				log_debug(DEBUG_ARP, "Network table: Un-mocking ARP device MAC = %s, IP = %s, hostname = \"%s\", vendor = \"%s\"",
-				          hwaddr, ip, hostname, macVendor);
+			// else: Device in database but not known to Pi-hole
 
-				// Update/replace important device properties
-				unmock_netDB_device(db, hwaddr, macVendor, dbID);
+			free(hostname);
+			hostname = NULL;
 
-				// Host name, count and last query timestamp will be set in the next
-				// loop iteration for the sake of simplicity
-			}
+			// Store interface if available
+			rc = update_netDB_interface(db, dbID, iface);
+			if(rc != SQLITE_OK)
+				break;
 
-			// Free allocated memory
-			free(macVendor);
+			// Add unique IP address / mock-MAC pair to network_addresses table
+			rc = add_netDB_network_address(db, dbID, ip);
+			if(rc != SQLITE_OK)
+				break;
+
+			// Count number of processed ARP cache entries
+			entries++;
 		}
-		// Device in database AND client known to Pi-hole
-		else if(client_valid)
+
+		// Close pipe handle and free allocated memory
+		pclose(arpfp);
+		if(linebuffer != NULL)
+			free(linebuffer);
+
+		if(rc != SQLITE_OK)
 		{
-			log_debug(DEBUG_ARP, "Network table: Updating existing ARP device MAC = %s, IP = %s, hostname = \"%s\"",
-			          hwaddr, ip, hostname);
-
-			// Update timestamp of last query if applicable
-			rc = update_netDB_lastQuery(db, dbID, lastQuery);
-			if(rc != SQLITE_OK)
-			{
-				// Free allocated memory
-				free(hostname);
-				break;
-			}
-
-			// Update number of queries if applicable
-			rc = update_netDB_numQueries(db, dbID, numQueries);
-			if(rc != SQLITE_OK)
-			{
-				// Free allocated memory
-				free(hostname);
-				break;
-			}
-
-			lock_shm();
-			// Acquire client pointer
-			clientsData *client = getClient(clientID, true);
-			if(client != NULL)
-			{
-				// Reset client ARP counter (we stored the entry in the database)
-				client->numQueriesARP = 0;
-			}
-			unlock_shm();
-
-			// Update hostname if available
-			rc = update_netDB_name(db, ip, hostname);
-			if(rc != SQLITE_OK)
-			{
-				// Free allocated memory
-				free(hostname);
-				break;
-			}
+			log_err("Database error in ARP cache processing loop");
+			free(client_status);
+			return;
 		}
-		// else: Device in database but not known to Pi-hole
-
-		free(hostname);
-		hostname = NULL;
-
-		// Store interface if available
-		rc = update_netDB_interface(db, dbID, iface);
-		if(rc != SQLITE_OK)
-			break;
-
-		// Add unique IP address / mock-MAC pair to network_addresses table
-		rc = add_netDB_network_address(db, dbID, ip);
-		if(rc != SQLITE_OK)
-			break;
-
-		// Count number of processed ARP cache entries
-		entries++;
-	}
-
-	// Close pipe handle and free allocated memory
-	pclose(arpfp);
-	if(linebuffer != NULL)
-		free(linebuffer);
-
-	if(rc != SQLITE_OK)
-	{
-		log_err("Database error in ARP cache processing loop");
-		free(client_status);
-		return;
 	}
 
 	// Check thread cancellation
@@ -1532,7 +1541,7 @@ void parse_neighbor_cache(sqlite3* db)
 	// (they have been converted to "real" devices), are removed at this point
 	rc = dbquery(db, "DELETE FROM network WHERE id NOT IN "
 	                                           "(SELECT network_id from network_addresses) "
-	                                       "AND hwaddr LIKE 'ip-%%';");
+	                                           "AND hwaddr LIKE 'ip-%%';");
 	if(rc != SQLITE_OK)
 	{
 		log_err("Database error in mock-device cleaning statement");

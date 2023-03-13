@@ -117,9 +117,8 @@ void *DB_thread(void *val)
 				DBCLOSE_OR_BREAK();
 			}
 
-			// Parse neighbor cache (fill network table) if enabled
-			if (config.database.network.parseARPcache.v.b)
-				set_event(PARSE_NEIGHBOR_CACHE);
+			// Parse neighbor cache (fill network table)
+			set_event(PARSE_NEIGHBOR_CACHE);
 		}
 
 		// Intermediate cancellation-point
