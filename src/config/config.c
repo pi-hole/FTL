@@ -783,7 +783,7 @@ void initConfig(struct config *conf)
 	conf->database.maxDBdays.k = "database.maxDBdays";
 	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?";
 	conf->database.maxDBdays.t = CONF_INT;
-	conf->database.maxDBdays.d.i = 365;
+	conf->database.maxDBdays.d.i = (365/4);
 
 	conf->database.maxHistory.k = "database.maxHistory";
 	conf->database.maxHistory.h = "How much history should be imported from the database [seconds]? (max 24*60*60 = 86400)";
