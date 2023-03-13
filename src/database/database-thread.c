@@ -35,8 +35,16 @@
 
 static bool delete_old_queries_in_DB(sqlite3 *db)
 {
+	// Delete old queries from the database but never more than 1% of the
+	// database at once to avoid long blocking times. Check out
+	// https://github.com/pi-hole/FTL/issues/1372 for details.
+	// As deleting database entries happens typically once per minute,
+	// this method could still delete 1440% of the database per day.
+	// Even when the database storing interval is set to 1 hour, this
+	// method would still delete 24% of the database per day so maxDBdays > 4
+	// does still work.
 	const time_t timestamp = time(NULL) - config.database.maxDBdays.v.i * 86400;
-	SQL_bool(db, "DELETE FROM query_storage WHERE timestamp <= "TIME_T, timestamp);
+	SQL_bool(db, "DELETE FROM query_storage WHERE id IN (SELECT id FROM query_storage WHERE timestamp <= "TIME_T" LIMIT (SELECT COUNT(*)/100 FROM query_storage));" , timestamp);
 
 	// Get how many rows have been affected (deleted)
 	const int affected = sqlite3_changes(db);
