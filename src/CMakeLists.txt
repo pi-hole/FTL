@@ -159,10 +159,20 @@ separate_arguments(EXTRAWARN)
 
 # -Wxor-used-as-pow
 
-# Do we want to compile a statically linked musl executable?
-if(STATIC STREQUAL "true")
+# Do we want to compile a statically linked executable?
+if(DEFINED ENV{STATIC})
+    if($ENV{STATIC} STREQUAL "true")
+        set(STATIC true)
+    else()
+        set(STATIC false)
+    endif()
+endif()
+if(STATIC)
+    message(STATUS "Compiling statically linked executable")
     SET(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
     SET(BUILD_SHARED_LIBS OFF)
+else()
+    message(STATUS "Compiling dynamically linked executable")
 endif()
 # -pie -fPIE: (Dynamic) position independent executable
 set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
@@ -261,7 +271,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:tomlc99>
         $<TARGET_OBJECTS:config>
         )
-if(STATIC STREQUAL "true")
+if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
     target_link_libraries(pihole-FTL -static-libgcc -static -pie)
