@@ -5879,12 +5879,10 @@ void read_opts(int argc, char **argv, char *compile_opts)
       add_txt("servers.bind", NULL, TXT_STAT_SERVERS);
       /* Pi-hole modification */
       add_txt("privacylevel.pihole", NULL, TXT_PRIVACYLEVEL);
+      add_txt("version.FTL", (char*)get_FTL_version(), 0 );
       /************************/
     }
 #endif
-  /******** Pi-hole modification ********/
-  add_txt("version.FTL", (char*)get_FTL_version(), 0 );
-  /**************************************/
 
   /* port might not be known when the address is parsed - fill in here */
   if (daemon->servers)
