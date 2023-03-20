@@ -1938,6 +1938,25 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			anscount++;
 		    }
 		}
+	      else if (((flag & F_IPV4) && option_bool(OPT_FILTER_A)) || ((flag & F_IPV6) && option_bool(OPT_FILTER_AAAA)))
+		{
+		  /* We don't have a cached answer and when we get an answer from upstream we're going to
+		     filter it anyway. If we have a cached answer for the domain for another RRtype then
+		     that may be enough to tell us if the answer should be NODATA and save the round trip.
+		     Cached NXDOMAIN has already been handled, so here we look for any record for the domain,
+		     since its existence allows us to return a NODATA answer. Note that we never set the AD flag,
+		     since we didn't authentucate the record. We do set the AA flag since this answer comes from
+		     local config. */
+
+		  if (cache_find_by_name(NULL, name, now, F_IPV4 | F_IPV6 | F_SRV))
+		    {
+		      ans = 1;
+		      sec_data = 0;
+		      
+		      if (!dryrun)
+			log_query(F_NEG | F_CONFIG | flag, name, NULL, NULL, 0);
+		    }
+		}
 	    }
 
 	  if (qtype == T_MX || qtype == T_ANY)
@@ -1948,6 +1967,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  {
 		    ans = found = 1;
 		    sec_data = 0;
+		    
 		    if (!dryrun)
 		      {
 			int offset;
