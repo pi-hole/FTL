@@ -1388,7 +1388,7 @@ void report_addresses(struct dns_header *header, size_t len, u32 mark);
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
 		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader,
-		      int *stale);
+		      int *stale, int *filtered);
 int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name, 
 			     time_t now);
 int check_for_ignored_address(struct dns_header *header, size_t qlen);
@@ -1844,7 +1844,7 @@ void poll_listen(int fd, short event);
 int do_poll(int timeout);
 
 /* rrfilter.c */
-size_t rrfilter(struct dns_header *header, size_t plen, int mode);
+size_t rrfilter(struct dns_header *header, size_t *plen, int mode);
 u16 *rrfilter_desc(int type);
 int expand_workspace(unsigned char ***wkspc, int *szp, int new);
 /* modes. */
