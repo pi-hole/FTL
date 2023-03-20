@@ -15,5 +15,5 @@ jobs:
       name: Spell-Checking
       uses: codespell-project/actions-codespell@master
       with:
-        ignore_words_file: .codespellignore
-        skip: ./src/database/sqlite3.c,./src/database/sqlite3.h,./src/database/shell.c,./src/lua,./src/dnsmasq,./src/tre-regex
+        ignore_words_file: .github/.codespellignore
+        skip: ./src/database/sqlite3.c,./src/database/sqlite3.h,./src/database/shell.c,./src/lua,./src/dnsmasq,./src/tre-regex,./.git,./test/libs
