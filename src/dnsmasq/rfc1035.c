@@ -1432,7 +1432,7 @@ static int cache_validated(const struct crec *crecp)
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
 		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader,
-		      int *stale) 
+		      int *stale, int *filtered) 
 {
   char *name = daemon->namebuff;
   unsigned char *p, *ansp;
@@ -1450,6 +1450,9 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 
   if (stale)
     *stale = 0;
+
+  if (filtered)
+    *filtered = 0;
   
   /* never answer queries with RD unset, to avoid cache snooping. */
   if (ntohs(header->ancount) != 0 ||
@@ -1718,8 +1721,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			  /* don't answer wildcard queries with data not from /etc/hosts or dhcp leases */
 			  if (qtype == T_ANY && !(crecp->flags & (F_HOSTS | F_DHCP)))
 			    continue;
-			  
-			  
+			  			  
 			  if (!(crecp->flags & F_DNSSECOK))
 			    sec_data = 0;
 			  
@@ -1900,6 +1902,9 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    
 			    if (!dryrun)
 			      log_query(F_NEG | F_CONFIG | flag, name, NULL, NULL, 0);
+
+			    if (filtered)
+			      *filtered = 1;
 			  }
 			else if (crecp->flags & F_NEG)
 			  {
@@ -1975,6 +1980,9 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      
 		      if (!dryrun)
 			log_query(F_NEG | F_CONFIG | flag, name, NULL, NULL, 0);
+
+		      if (filtered)
+			*filtered = 1;
 		    }
 		}
 	    }

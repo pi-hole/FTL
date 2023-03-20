@@ -156,41 +156,43 @@ static int check_rrs(unsigned char *p, struct dns_header *header, size_t plen, i
 }
 	
 
-/* mode may be remove EDNS0 or DNSSEC RRs or remove A or AAAA from answer section. */
-size_t rrfilter(struct dns_header *header, size_t plen, int mode)
+/* mode may be remove EDNS0 or DNSSEC RRs or remove A or AAAA from answer section.
+ * returns number of modified records. */
+size_t rrfilter(struct dns_header *header, size_t *plen, int mode)
 {
   static unsigned char **rrs = NULL;
   static int rr_sz = 0;
 
   unsigned char *p = (unsigned char *)(header+1);
-  int i, rdlen, qtype, qclass, rr_found, chop_an, chop_ns, chop_ar;
+  size_t rr_found = 0;
+  int i, rdlen, qtype, qclass, chop_an, chop_ns, chop_ar;
 
   if (ntohs(header->qdcount) != 1 ||
-      !(p = skip_name(p, header, plen, 4)))
-    return plen;
+      !(p = skip_name(p, header, *plen, 4)))
+    return 0;
   
   GETSHORT(qtype, p);
   GETSHORT(qclass, p);
 
   /* First pass, find pointers to start and end of all the records we wish to elide:
      records added for DNSSEC, unless explicitly queried for */
-  for (rr_found = 0, chop_ns = 0, chop_an = 0, chop_ar = 0, i = 0; 
+  for (chop_ns = 0, chop_an = 0, chop_ar = 0, i = 0;
        i < ntohs(header->ancount) + ntohs(header->nscount) + ntohs(header->arcount);
        i++)
     {
       unsigned char *pstart = p;
       int type, class;
 
-      if (!(p = skip_name(p, header, plen, 10)))
-	return plen;
+      if (!(p = skip_name(p, header, *plen, 10)))
+	return rr_found;
       
       GETSHORT(type, p); 
       GETSHORT(class, p);
       p += 4; /* TTL */
       GETSHORT(rdlen, p);
         
-      if (!ADD_RDLEN(header, p, plen, rdlen))
-	return plen;
+      if (!ADD_RDLEN(header, p, *plen, rdlen))
+	return rr_found;
 
       if (mode == RRFILTER_EDNS0) /* EDNS */
 	{
@@ -225,7 +227,7 @@ size_t rrfilter(struct dns_header *header, size_t plen, int mode)
 	}
       
       if (!expand_workspace(&rrs, &rr_sz, rr_found + 1))
-	return plen; 
+	return rr_found;
       
       rrs[rr_found++] = pstart;
       rrs[rr_found++] = p;
@@ -240,7 +242,7 @@ size_t rrfilter(struct dns_header *header, size_t plen, int mode)
   
   /* Nothing to do. */
   if (rr_found == 0)
-    return plen;
+    return rr_found;
 
   /* Second pass, look for pointers in names in the records we're keeping and make sure they don't
      point to records we're going to elide. This is theoretically possible, but unlikely. If
@@ -248,38 +250,38 @@ size_t rrfilter(struct dns_header *header, size_t plen, int mode)
   p = (unsigned char *)(header+1);
   
   /* question first */
-  if (!check_name(&p, header, plen, 0, rrs, rr_found))
-    return plen;
+  if (!check_name(&p, header, *plen, 0, rrs, rr_found))
+    return rr_found;
   p += 4; /* qclass, qtype */
   
   /* Now answers and NS */
-  if (!check_rrs(p, header, plen, 0, rrs, rr_found))
-    return plen;
+  if (!check_rrs(p, header, *plen, 0, rrs, rr_found))
+    return rr_found;
   
   /* Third pass, actually fix up pointers in the records */
   p = (unsigned char *)(header+1);
   
-  check_name(&p, header, plen, 1, rrs, rr_found);
+  check_name(&p, header, *plen, 1, rrs, rr_found);
   p += 4; /* qclass, qtype */
   
-  check_rrs(p, header, plen, 1, rrs, rr_found);
+  check_rrs(p, header, *plen, 1, rrs, rr_found);
 
   /* Fourth pass, elide records */
-  for (p = rrs[0], i = 1; i < rr_found; i += 2)
+  for (p = rrs[0], i = 1; (unsigned)i < rr_found; i += 2)
     {
       unsigned char *start = rrs[i];
-      unsigned char *end = (i != rr_found - 1) ? rrs[i+1] : ((unsigned char *)header) + plen;
+      unsigned char *end = ((unsigned)i != rr_found - 1) ? rrs[i+1] : ((unsigned char *)header) + *plen;
       
       memmove(p, start, end-start);
       p += end-start;
     }
      
-  plen = p - (unsigned char *)header;
+  *plen = p - (unsigned char *)header;
   header->ancount = htons(ntohs(header->ancount) - chop_an);
   header->nscount = htons(ntohs(header->nscount) - chop_ns);
   header->arcount = htons(ntohs(header->arcount) - chop_ar);
 
-  return plen;
+  return rr_found;
 }
 
 /* This is used in the DNSSEC code too, hence it's exported */
