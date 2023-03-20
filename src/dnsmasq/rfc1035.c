@@ -893,7 +893,18 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		    return 2;
 		}
 	      else
-		log_query(flags | F_FORWARD | secflag | F_UPSTREAM, name, &addr, NULL, aqtype);
+		{
+		  int negflag = F_UPSTREAM;
+
+		  /* We're filtering this RRtype. It will be removed from the 
+		     returned packet in process_reply() but gets cached here anyway
+		     and will be filtered again on the way out of the cache. Here,
+		     we just need to alter the logging. */
+		  if (((flags & F_IPV4) && option_bool(OPT_FILTER_A)) || ((flags & F_IPV6) && option_bool(OPT_FILTER_AAAA)))
+		    negflag = F_NEG | F_CONFIG;
+		  
+		  log_query(negflag | flags | F_FORWARD | secflag, name, &addr, NULL, aqtype);
+		}
 	    }
 	  
 	  p1 = endrr;
@@ -1876,8 +1887,21 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			
 			if (!(crecp->flags & F_DNSSECOK))
 			  sec_data = 0;
-			
-			if (crecp->flags & F_NEG)
+
+			if (!(crecp->flags & (F_HOSTS | F_DHCP)))
+			  auth = 0;
+
+			if ((((flag & F_IPV4) && option_bool(OPT_FILTER_A)) || ((flag & F_IPV6) && option_bool(OPT_FILTER_AAAA))) &&
+			    !(crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG | F_NEG)))
+			  {
+			    /* We have a cached answer but we're filtering it. */
+			    ans = 1;
+			    sec_data = 0;
+			    
+			    if (!dryrun)
+			      log_query(F_NEG | F_CONFIG | flag, name, NULL, NULL, 0);
+			  }
+			else if (crecp->flags & F_NEG)
 			  {
 			    ans = 1;
 			    auth = 0;
@@ -1896,9 +1920,6 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 				(crecp->flags & F_HOSTS) &&
 				!is_same_net(crecp->addr.addr4, local_addr, local_netmask))
 			      continue;
-			    
-			    if (!(crecp->flags & (F_HOSTS | F_DHCP)))
-			      auth = 0;
 			    
 			    ans = 1;
 			    if (!dryrun)
@@ -1945,13 +1966,12 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		     that may be enough to tell us if the answer should be NODATA and save the round trip.
 		     Cached NXDOMAIN has already been handled, so here we look for any record for the domain,
 		     since its existence allows us to return a NODATA answer. Note that we never set the AD flag,
-		     since we didn't authentucate the record. We do set the AA flag since this answer comes from
-		     local config. */
+		     since we didn't authentucate the record. */
 
 		  if (cache_find_by_name(NULL, name, now, F_IPV4 | F_IPV6 | F_SRV))
 		    {
 		      ans = 1;
-		      sec_data = 0;
+		      sec_data = auth = 0;
 		      
 		      if (!dryrun)
 			log_query(F_NEG | F_CONFIG | flag, name, NULL, NULL, 0);
