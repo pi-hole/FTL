@@ -334,6 +334,11 @@ union all_addr {
     unsigned short keytag, algo, digest, rcode;
     int ede;
   } log;
+  /* for arbitrary RR record. */
+  struct {
+    struct blockdata *rrdata;
+    u16 rrtype;
+  } rr;
 };
 
 
@@ -507,7 +512,7 @@ struct crec {
 #define F_QUERY     (1u<<19)
 #define F_NOERR     (1u<<20)
 #define F_AUTH      (1u<<21)
-#define F_DNSSEC    (1u<<22)
+#define F_RR        (1u<<22)
 #define F_KEYTAG    (1u<<23)
 #define F_SECSTAT   (1u<<24)
 #define F_NO_RR     (1u<<25)
