@@ -830,16 +830,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	    }
 	}
 
-      /* Before extract_addresses() */
-      if (rcode == NOERROR)
-	{
-	  if (option_bool(OPT_FILTER_A))
-	    n = rrfilter(header, n, RRFILTER_A);
-
-	  if (option_bool(OPT_FILTER_AAAA))
-	    n = rrfilter(header, n, RRFILTER_AAAA);
-	}
-
       switch (extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure, &doctored))
 	{
 	case 1:
@@ -876,6 +866,15 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  break;
 	}
 
+      if (rcode == NOERROR)
+	{
+	  if (option_bool(OPT_FILTER_A))
+	    n = rrfilter(header, n, RRFILTER_A);
+	  
+	  if (option_bool(OPT_FILTER_AAAA))
+	    n = rrfilter(header, n, RRFILTER_AAAA);
+	}
+      
       if (doctored)
 	cache_secure = 0;
     }
