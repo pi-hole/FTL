@@ -555,7 +555,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		}
 #ifdef HAVE_DNSSEC
 	      else
-		log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, daemon->namebuff, &srv->addr,
+		log_query_mysockaddr(F_NOEXTRA | F_NOERR | F_SERVER, daemon->namebuff, &srv->addr,
 				     (forward->flags & FREC_DNSKEY_QUERY) ? "dnssec-retry[DNSKEY]" : "dnssec-retry[DS]", 0);
 #endif
 
@@ -1089,7 +1089,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 #ifdef HAVE_DUMPFILE
 		  dump_packet_udp(DUMP_SEC_QUERY, (void *)header, (size_t)nn, NULL, &server->addr, fd);
 #endif
-		  log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, daemon->keyname, &server->addr,
+		  log_query_mysockaddr(F_NOEXTRA | F_NOERR | F_SERVER, daemon->keyname, &server->addr,
 				       STAT_ISEQUAL(status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
 		  return;
 		}
@@ -2148,7 +2148,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       log_save = daemon->log_display_id;
       daemon->log_display_id = ++daemon->log_id;
       
-      log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, keyname, &server->addr,
+      log_query_mysockaddr(F_NOEXTRA | F_NOERR | F_SERVER, keyname, &server->addr,
 			    STAT_ISEQUAL(status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
             
       new_status = tcp_key_recurse(now, new_status, new_header, m, class, name, keyname, server, have_mark, mark, keycount);
