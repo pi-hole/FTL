@@ -520,7 +520,7 @@ static int print_txt(struct dns_header *header, const size_t qlen, char *name,
       /* make counted string zero-term and sanitise */
       for (i = 0; i < len; i++)
 	{
-	  if (!isprint((int)*(p3+1)))
+	  if (!isprint((unsigned char)*(p3+1)))
 	    break;
 	  *p3 = *(p3+1);
 	  p3++;
@@ -907,9 +907,8 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    {
 	      flags &= ~(F_IPV4 | F_IPV6 | F_SRV);
 	      
-	      /* Can store NXDOMAIN reply to CNAME or ANY query. */
-	      if (qtype == T_CNAME || qtype == T_ANY)
-		insert = 1;
+	      /* Can store NXDOMAIN reply for any qtype. */
+	      insert = 1;
 	    }
 	  
 	  log_query(F_UPSTREAM | F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0), name, NULL, NULL, 0);
@@ -2109,7 +2108,22 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	}
 
       if (!ans)
-	return 0; /* failed to answer a question */
+	{
+	  /* We may know that the domain doesn't exist for any RRtype. */
+	  if ((crecp = cache_find_by_name(NULL, name, now, F_NXDOMAIN)))
+	    {
+	      ans = nxdomain = 1;
+	      auth = 0;
+
+	      if (!(crecp->flags & F_DNSSECOK)) 
+		sec_data = 0;
+	      
+	      if (!dryrun)
+		log_query(F_NXDOMAIN | F_NEG, name, NULL, NULL, 0);
+	    }
+	  else
+	    return 0; /* failed to answer a question */
+	}
     }
   
   if (dryrun)
