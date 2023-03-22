@@ -405,7 +405,7 @@ void tftp_request(struct listener *listen, time_t now)
 	if (*p == '\\')
 	  *p = '/';
 	else if (option_bool(OPT_TFTP_LC))
-	  *p = tolower(*p);
+	  *p = tolower((unsigned char)*p);
 		
       strcpy(daemon->namebuff, "/");
       if (prefix)

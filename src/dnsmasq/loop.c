@@ -92,7 +92,7 @@ int detect_loop(char *query, int type)
     return 0;
 
   for (i = 0; i < 8; i++)
-    if (!isxdigit(query[i]))
+    if (!isxdigit((unsigned char)query[i]))
       return 0;
 
   uid = strtol(query, NULL, 16);

@@ -353,7 +353,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
       put_opt6_short(DHCP6USEMULTI);
       put_opt6_string("Use multicast");
       end_opt6(o1);
-      return 1;
+      goto done;
     }
 
   /* match vendor and user class options */
@@ -1277,12 +1277,14 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
 
     }
 
+  log_tags(tagif, state->xid);
+
+ done:
   /* Fill in the message type. Note that we store the offset,
      not a direct pointer, since the packet memory may have been 
      reallocated. */
   ((unsigned char *)(daemon->outpacket.iov_base))[start_msg] = outmsgtype;
 
-  log_tags(tagif, state->xid);
   log6_opts(0, state->xid, daemon->outpacket.iov_base + start_opts, daemon->outpacket.iov_base + save_counter(-1));
   
   return 1;

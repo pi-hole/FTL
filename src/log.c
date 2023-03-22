@@ -333,13 +333,13 @@ const char __attribute__ ((const)) *get_ordinal_suffix(unsigned int number)
 	// If the tens digit is not equal to 1, then the following table could be used:
 	switch (number % 10)
 	{
-	case 1: // If the units digit is 1: This is written after the number "st"
+	case 1: // If the units digit is 1: This is written after the number "1st"
 		return "st";
-	case 2: // If the units digit is 2: This is written after the number "nd"
+	case 2: // If the units digit is 2: This is written after the number "2nd"
 		return "nd";
-	case 3: // If the units digit is 3: This is written after the number "rd"
+	case 3: // If the units digit is 3: This is written after the number "3rd"
 		return "rd";
-	default: // If the units digit is 0 or 4-9: This is written after the number "th"
+	default: // If the units digit is 0 or 4-9: This is written after the number "9th"
 		return "th";
 	}
 	// For example: 2nd, 7th, 20th, 23rd, 52nd, 135th, 301st BUT 311th (covered above)

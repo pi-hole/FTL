@@ -15,7 +15,7 @@
 
 extern const char *regextype[];
 
-// Use TRE instead of GNU regex library (compiled into FTL itself)
+// Use TRE-Engine instead of GNU/MUSL regex libraries
 #define USE_TRE_REGEX
 
 #ifdef USE_TRE_REGEX

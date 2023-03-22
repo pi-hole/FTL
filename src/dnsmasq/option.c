@@ -1163,6 +1163,9 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
 	}
       else
 	{
+	  /* Always reset server as valid here, so we can add the same upstream
+	     server address multiple times for each x.y.z.in-addr.arpa  */
+	  sdetails.valid = 1;
 	  while (parse_server_next(&sdetails))
 	    {
 	      if ((string = parse_server_addr(&sdetails)))
@@ -1248,6 +1251,9 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
 	}
       else
 	{
+	  /* Always reset server as valid here, so we can add the same upstream
+	     server address multiple times for each x.y.z.ip6.arpa  */
+	  sdetails.valid = 1;
 	  while (parse_server_next(&sdetails))
 	    {
 	      if ((string = parse_server_addr(&sdetails)))
@@ -2755,7 +2761,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		ret_err(gen_err);
 	      
 	      for (p = arg; *p; p++)
-		if (!isxdigit((int)*p))
+		if (!isxdigit((unsigned char)*p))
 		  ret_err(gen_err);
 	      
 	      set_option_bool(OPT_UMBRELLA_DEVID);
@@ -4840,7 +4846,7 @@ err:
 	    new->target = target;
 	    new->ttl = ttl;
 
-	    for (arg += arglen+1; *arg && isspace(*arg); arg++);
+	    for (arg += arglen+1; *arg && isspace((unsigned char)*arg); arg++);
 	  }
       
 	break;
@@ -5231,7 +5237,7 @@ err:
 	unhide_metas(keyhex);
 	/* 4034: "Whitespace is allowed within digits" */
 	for (cp = keyhex; *cp; )
-	  if (isspace(*cp))
+	  if (isspace((unsigned char)*cp))
 	    for (cp1 = cp; *cp1; cp1++)
 	      *cp1 = *(cp1+1);
 	  else
@@ -5319,7 +5325,7 @@ static void read_file(char *file, FILE *f, int hard_opt, int from_script)
 	      memmove(p, p+1, strlen(p+1)+1);
 	    }
 
-	  if (isspace(*p))
+	  if (isspace((unsigned char)*p))
 	    {
 	      *p = ' ';
 	      white = 1;
@@ -5879,12 +5885,10 @@ void read_opts(int argc, char **argv, char *compile_opts)
       add_txt("servers.bind", NULL, TXT_STAT_SERVERS);
       /* Pi-hole modification */
       add_txt("privacylevel.pihole", NULL, TXT_PRIVACYLEVEL);
+      add_txt("version.FTL", (char*)get_FTL_version(), 0 );
       /************************/
     }
 #endif
-  /******** Pi-hole modification ********/
-  add_txt("version.FTL", (char*)get_FTL_version(), 0 );
-  /**************************************/
 
   /* port might not be known when the address is parsed - fill in here */
   if (daemon->servers)
