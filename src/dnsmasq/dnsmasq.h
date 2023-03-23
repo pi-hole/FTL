@@ -282,7 +282,8 @@ struct event_desc {
 #define OPT_STRIP_MAC      70
 #define OPT_NORR           71
 #define OPT_NO_IDENT       72
-#define OPT_LAST           73
+#define OPT_CACHE_RR       73
+#define OPT_LAST           74
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -337,7 +338,7 @@ union all_addr {
   /* for arbitrary RR record. */
   struct {
     struct blockdata *rrdata;
-    u16 rrtype;
+    unsigned short rrtype, datalen;
   } rr;
 };
 
@@ -666,6 +667,11 @@ struct iname {
   union mysockaddr addr;
   int used;
   struct iname *next;
+};
+
+struct rrlist {
+  unsigned short rr;
+  struct rrlist *next;
 };
 
 /* subnet parameters from command line */
@@ -1133,6 +1139,7 @@ extern struct daemon {
   struct naptr *naptr;
   struct txt_record *txt, *rr;
   struct ptr_record *ptr;
+  struct rrlist *cache_rr, filter_rr;
   struct host_record *host_records, *host_records_tail;
   struct cname *cnames;
   struct auth_zone *auth_zones;
@@ -1314,6 +1321,7 @@ struct server_details {
 
 /* cache.c */
 void cache_init(void);
+unsigned short rrtype(char *in);
 void next_uid(struct crec *crecp);
 /********************************************* Pi-hole modification ***********************************************/
 #define log_query(flags,name,addr,arg,type) _log_query(flags, name, addr, arg, type, __FILE__, __LINE__)
@@ -1364,6 +1372,8 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size,
 void blockdata_init(void);
 void blockdata_report(void);
 struct blockdata *blockdata_alloc(char *data, size_t len);
+int blockdata_expand(struct blockdata *block, size_t oldlen,
+		     char *data, size_t newlen);
 void *blockdata_retrieve(struct blockdata *block, size_t len, void *data);
 struct blockdata *blockdata_read(int fd, size_t len);
 void blockdata_write(struct blockdata *block, size_t len, int fd);
@@ -1445,6 +1455,7 @@ void rand_init(void);
 unsigned short rand16(void);
 u32 rand32(void);
 u64 rand64(void);
+int rr_on_list(struct rrlist *list, unsigned short rr);
 int legal_hostname(char *name);
 char *canonicalise(char *in, int *nomem);
 unsigned char *do_rfc1035_name(unsigned char *p, char *sval, char *limit);
@@ -1850,13 +1861,16 @@ int do_poll(int timeout);
 
 /* rrfilter.c */
 size_t rrfilter(struct dns_header *header, size_t *plen, int mode);
-u16 *rrfilter_desc(int type);
+short *rrfilter_desc(int type);
 int expand_workspace(unsigned char ***wkspc, int *szp, int new);
+int to_wire(char *name);
+void from_wire(char *name);
 /* modes. */
 #define RRFILTER_EDNS0   0
 #define RRFILTER_DNSSEC  1
 #define RRFILTER_A       2
 #define RRFILTER_AAAA    3
+
 /* edns0.c */
 unsigned char *find_pseudoheader(struct dns_header *header, size_t plen,
 				   size_t *len, unsigned char **p, int *is_sign, int *is_last);

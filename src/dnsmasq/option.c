@@ -190,6 +190,7 @@ struct myoption {
 #define LOPT_STALE_CACHE   377
 #define LOPT_NORR          378
 #define LOPT_NO_IDENT      379
+#define LOPT_CACHE_RR      380
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -243,6 +244,7 @@ static const struct myoption opts[] =
     { "local-ttl", 1, 0, 'T' },
     { "no-negcache", 0, 0, 'N' },
     { "no-round-robin", 0, 0, LOPT_NORR },
+    { "cache-rr", 1, 0, LOPT_CACHE_RR },
     { "addn-hosts", 1, 0, 'H' },
     { "hostsdir", 1, 0, LOPT_HOST_INOTIFY },
     { "query-port", 1, 0, 'Q' },
@@ -570,13 +572,14 @@ static struct {
   { LOPT_DHCPTTL, ARG_ONE, "<ttl>", gettext_noop("Set TTL in DNS responses with DHCP-derived addresses."), NULL }, 
   { LOPT_REPLY_DELAY, ARG_ONE, "<integer>", gettext_noop("Delay DHCP replies for at least number of seconds."), NULL },
   { LOPT_RAPID_COMMIT, OPT_RAPID_COMMIT, NULL, gettext_noop("Enables DHCPv4 Rapid Commit option."), NULL },
-  { LOPT_DUMPFILE, ARG_ONE, "<path>", gettext_noop("Path to debug packet dump file"), NULL },
-  { LOPT_DUMPMASK, ARG_ONE, "<hex>", gettext_noop("Mask which packets to dump"), NULL },
+  { LOPT_DUMPFILE, ARG_ONE, "<path>", gettext_noop("Path to debug packet dump file."), NULL },
+  { LOPT_DUMPMASK, ARG_ONE, "<hex>", gettext_noop("Mask which packets to dump."), NULL },
   { LOPT_SCRIPT_TIME, OPT_LEASE_RENEW, NULL, gettext_noop("Call dhcp-script when lease expiry changes."), NULL },
   { LOPT_UMBRELLA, ARG_ONE, "[=<optspec>]", gettext_noop("Send Cisco Umbrella identifiers including remote IP."), NULL },
   { LOPT_QUIET_TFTP, OPT_QUIET_TFTP, NULL, gettext_noop("Do not log routine TFTP."), NULL },
   { LOPT_NORR, OPT_NORR, NULL, gettext_noop("Suppress round-robin ordering of DNS records."), NULL },
   { LOPT_NO_IDENT, OPT_NO_IDENT, NULL, gettext_noop("Do not add CHAOS TXT records."), NULL },
+  { LOPT_CACHE_RR, ARG_DUP, "RRtype", gettext_noop("Cache this DNS resource record type."), NULL },
   { 0, 0, NULL, NULL, NULL }
 }; 
 
@@ -3469,6 +3472,27 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    }
 	}
       break;
+
+    case LOPT_CACHE_RR:
+      while (1) {
+	int type;
+	struct rrlist *new;
+	
+	comma = split(arg);
+	if (!atoi_check(arg, &type) && (type = rrtype(arg)) == 0)
+	  ret_err(_("bad RR type"));
+
+	new = opt_malloc(sizeof(struct rrlist));
+	new->rr = type;
+
+	new->next = daemon->cache_rr;
+	daemon->cache_rr = new;
+	
+	if (!comma) break;
+	arg = comma;
+      }
+      break;
+      
             
 #ifdef HAVE_DHCP
     case 'X': /* --dhcp-lease-max */
@@ -5737,10 +5761,15 @@ void read_opts(int argc, char **argv, char *compile_opts)
 {
   size_t argbuf_size = MAXDNAME;
   char *argbuf = opt_malloc(argbuf_size);
-  char *buff = opt_malloc(MAXDNAME);
+  /* Note that both /000 and '.' are allowed within labels. These get
+     represented in presentation format using NAME_ESCAPE as an escape
+     character. In theory, if all the characters in a name were /000 or
+     '.' or NAME_ESCAPE then all would have to be escaped, so the 
+     presentation format would be twice as long as the spec. */
+  char *buff = opt_malloc((MAXDNAME * 2) + 1);
   int option, testmode = 0;
   char *arg, *conffile = NULL;
-      
+  
   opterr = 0;
 
   daemon = opt_malloc(sizeof(struct daemon));

@@ -136,9 +136,9 @@ static int check_rrs(unsigned char *p, struct dns_header *header, size_t plen, i
 	  
 	  if (class == C_IN)
 	    {
-	      u16 *d;
+	      short *d;
  
-	      for (pp = p, d = rrfilter_desc(type); *d != (u16)-1; d++)
+	      for (pp = p, d = rrfilter_desc(type); *d != -1; d++)
 		{
 		  if (*d != 0)
 		    pp += *d;
@@ -285,7 +285,7 @@ size_t rrfilter(struct dns_header *header, size_t *plen, int mode)
 }
 
 /* This is used in the DNSSEC code too, hence it's exported */
-u16 *rrfilter_desc(int type)
+short *rrfilter_desc(int type)
 {
   /* List of RRtypes which include domains in the data.
      0 -> domain
@@ -296,7 +296,7 @@ u16 *rrfilter_desc(int type)
      anything which needs no mangling.
   */
   
-  static u16 rr_desc[] = 
+  static short rr_desc[] = 
     { 
       T_NS, 0, -1, 
       T_MD, 0, -1,
@@ -321,10 +321,10 @@ u16 *rrfilter_desc(int type)
       0, -1 /* wildcard/catchall */
     }; 
   
-  u16 *p = rr_desc;
+  short *p = rr_desc;
   
   while (*p != type && *p != 0)
-    while (*p++ != (u16)-1);
+    while (*p++ != -1);
 
   return p+1;
 }
@@ -351,4 +351,79 @@ int expand_workspace(unsigned char ***wkspc, int *szp, int new)
   *szp = new;
 
   return 1;
+}
+
+/* Convert from presentation format to wire format, in place.
+   Also map UC -> LC.
+   Note that using extract_name to get presentation format
+   then calling to_wire() removes compression and maps case,
+   thus generating names in canonical form.
+   Calling to_wire followed by from_wire is almost an identity,
+   except that the UC remains mapped to LC. 
+
+   Note that both /000 and '.' are allowed within labels. These get
+   represented in presentation format using NAME_ESCAPE as an escape
+   character. In theory, if all the characters in a name were /000 or
+   '.' or NAME_ESCAPE then all would have to be escaped, so the 
+   presentation format would be twice as long as the spec (1024). 
+   The buffers are all declared as 2049 (allowing for the trailing zero) 
+   for this reason.
+*/
+int to_wire(char *name)
+{
+  unsigned char *l, *p, *q, term;
+  int len;
+
+  for (l = (unsigned char*)name; *l != 0; l = p)
+    {
+      for (p = l; *p != '.' && *p != 0; p++)
+	if (*p >= 'A' && *p <= 'Z')
+	  *p = *p - 'A' + 'a';
+	else if (*p == NAME_ESCAPE)
+	  {
+	    for (q = p; *q; q++)
+	      *q = *(q+1);
+	    (*p)--;
+	  }
+      term = *p;
+      
+      if ((len = p - l) != 0)
+	memmove(l+1, l, len);
+      *l = len;
+      
+      p++;
+      
+      if (term == 0)
+	*p = 0;
+    }
+  
+  return l + 1 - (unsigned char *)name;
+}
+
+/* Note: no compression  allowed in input. */
+void from_wire(char *name)
+{
+  unsigned char *l, *p, *last;
+  int len;
+  
+  for (last = (unsigned char *)name; *last != 0; last += *last+1);
+  
+  for (l = (unsigned char *)name; *l != 0; l += len+1)
+    {
+      len = *l;
+      memmove(l, l+1, len);
+      for (p = l; p < l + len; p++)
+	if (*p == '.' || *p == 0 || *p == NAME_ESCAPE)
+	  {
+	    memmove(p+1, p, 1 + last - p);
+	    len++;
+	    *p++ = NAME_ESCAPE; 
+	    (*p)++;
+	  }
+	
+      l[len] = '.';
+    }
+
+  if ((char *)l != name)
+    *(l-1) = 0;
 }

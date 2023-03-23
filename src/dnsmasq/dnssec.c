@@ -24,81 +24,6 @@
 #define SERIAL_LT       -1
 #define SERIAL_GT        1
 
-/* Convert from presentation format to wire format, in place.
-   Also map UC -> LC.
-   Note that using extract_name to get presentation format
-   then calling to_wire() removes compression and maps case,
-   thus generating names in canonical form.
-   Calling to_wire followed by from_wire is almost an identity,
-   except that the UC remains mapped to LC. 
-
-   Note that both /000 and '.' are allowed within labels. These get
-   represented in presentation format using NAME_ESCAPE as an escape
-   character. In theory, if all the characters in a name were /000 or
-   '.' or NAME_ESCAPE then all would have to be escaped, so the 
-   presentation format would be twice as long as the spec (1024). 
-   The buffers are all declared as 2049 (allowing for the trailing zero) 
-   for this reason.
-*/
-static int to_wire(char *name)
-{
-  unsigned char *l, *p, *q, term;
-  int len;
-
-  for (l = (unsigned char*)name; *l != 0; l = p)
-    {
-      for (p = l; *p != '.' && *p != 0; p++)
-	if (*p >= 'A' && *p <= 'Z')
-	  *p = *p - 'A' + 'a';
-	else if (*p == NAME_ESCAPE)
-	  {
-	    for (q = p; *q; q++)
-	      *q = *(q+1);
-	    (*p)--;
-	  }
-      term = *p;
-      
-      if ((len = p - l) != 0)
-	memmove(l+1, l, len);
-      *l = len;
-      
-      p++;
-      
-      if (term == 0)
-	*p = 0;
-    }
-  
-  return l + 1 - (unsigned char *)name;
-}
-
-/* Note: no compression  allowed in input. */
-static void from_wire(char *name)
-{
-  unsigned char *l, *p, *last;
-  int len;
-  
-  for (last = (unsigned char *)name; *last != 0; last += *last+1);
-  
-  for (l = (unsigned char *)name; *l != 0; l += len+1)
-    {
-      len = *l;
-      memmove(l, l+1, len);
-      for (p = l; p < l + len; p++)
-	if (*p == '.' || *p == 0 || *p == NAME_ESCAPE)
-	  {
-	    memmove(p+1, p, 1 + last - p);
-	    len++;
-	    *p++ = NAME_ESCAPE; 
-	    (*p)++;
-	  }
-	
-      l[len] = '.';
-    }
-
-  if ((char *)l != name)
-    *(l-1) = 0;
-}
-
 /* Input in presentation format */
 static int count_labels(char *name)
 {
@@ -225,7 +150,7 @@ static int is_check_date(unsigned long curtime)
    On returning 0, the end has been reached.
 */
 struct rdata_state {
-  u16 *desc;
+  short *desc;
   size_t c;
   unsigned char *end, *ip, *op;
   char *buff;
@@ -246,7 +171,7 @@ static int get_rdata(struct dns_header *header, size_t plen, struct rdata_state 
     {
       d = *(state->desc);
       
-      if (d == (u16)-1)
+      if (d == -1)
 	{
 	  /* all the bytes to the end. */
 	  if ((state->c = state->end - state->ip) != 0)
@@ -294,7 +219,7 @@ static int get_rdata(struct dns_header *header, size_t plen, struct rdata_state 
 
 /* Bubble sort the RRset into the canonical order. */
 
-static int sort_rrset(struct dns_header *header, size_t plen, u16 *rr_desc, int rrsetidx, 
+static int sort_rrset(struct dns_header *header, size_t plen, short *rr_desc, int rrsetidx, 
 		      unsigned char **rrset, char *buff1, char *buff2)
 {
   int swap, i, j;
@@ -331,7 +256,7 @@ static int sort_rrset(struct dns_header *header, size_t plen, u16 *rr_desc, int 
 	     is the identity function and we can compare
 	     the RRs directly. If not we compare the 
 	     canonicalised RRs one byte at a time. */
-	  if (*rr_desc == (u16)-1)	  
+	  if (*rr_desc == -1)	  
 	    {
 	      int rdmin = rdlen1 > rdlen2 ? rdlen2 : rdlen1;
 	      int cmp = memcmp(state1.ip, state2.ip, rdmin);
@@ -524,7 +449,7 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
   unsigned char *p;
   int rdlen, j, name_labels, algo, labels, key_tag;
   struct crec *crecp = NULL;
-  u16 *rr_desc = rrfilter_desc(type);
+  short *rr_desc = rrfilter_desc(type);
   u32 sig_expiration, sig_inception;
   int failflags = DNSSEC_FAIL_NOSIG | DNSSEC_FAIL_NYV | DNSSEC_FAIL_EXP | DNSSEC_FAIL_NOKEYSUP;
   
@@ -671,7 +596,7 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 	     
 	     If canonicalisation is not needed, a simple insertion into the hash works.
 	  */
-	  if (*rr_desc == (u16)-1)
+	  if (*rr_desc == -1)
 	    {
 	      len = htons(rdlen);
 	      hash->update(ctx, 2, (unsigned char *)&len);
