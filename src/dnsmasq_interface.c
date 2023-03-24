@@ -62,7 +62,7 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const queriesData *query, const domainsData *domain);
-static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
+static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const enum query_status new_status);
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, unsigned short port, const int id, const char* file, const int line);
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char* arg, const int id, const char* file, const int line);
 static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char* file, const int line);
