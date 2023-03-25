@@ -34,11 +34,6 @@
 // Number of invalid domains to print before skipping the rest
 #define MAX_INVALID_DOMAINS 5
 
-// Regular expression flags
-// - REG_EXTENDED: Use extended regular expressions
-// - REG_NOSUB: Do not report subexpressions (report only success or fail in regexec)
-#define REG_FLAGS REG_EXTENDED|REG_NOSUB
-
 int gravity_parseList(const char *infile, const char *outfile, const char *adlistID)
 {
 	// Open input file
@@ -65,21 +60,21 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 	// Compile regular expression to validate domains
 	regex_t exact_regex, abp_regex, false_positives_regex;
-	if(regcomp(&exact_regex, VALID_DOMAIN_REXEX, REG_FLAGS) != 0)
+	if(regcomp(&exact_regex, VALID_DOMAIN_REXEX, REG_EXTENDED) != 0)
 	{
 		printf("WARNING: Unable to compile regular expression to validate exact domains\n");
 		fclose(fpin);
 		fclose(fpout);
 		return EXIT_FAILURE;
 	}
-	if(regcomp(&abp_regex, ABP_DOMAIN_REXEX, REG_FLAGS) != 0)
+	if(regcomp(&abp_regex, ABP_DOMAIN_REXEX, REG_EXTENDED) != 0)
 	{
 		printf("WARNING: Unable to compile regular expression to validate ABP-style domains\n");
 		fclose(fpin);
 		fclose(fpout);
 		return EXIT_FAILURE;
 	}
-	if(regcomp(&false_positives_regex, FALSE_POSITIVES, REG_FLAGS) != 0)
+	if(regcomp(&false_positives_regex, FALSE_POSITIVES, REG_EXTENDED | REG_NOSUB) != 0)
 	{
 		printf("WARNING: Unable to compile regular expression to identify false positives\n");
 		fclose(fpin);
@@ -88,8 +83,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	}
 
 	// Generate adlistID tail
-	char adlistIDtail[10];
+	char adlistIDtail[16];
 	snprintf(adlistIDtail, sizeof(adlistIDtail), ",%s\n", adlistID);
+	adlistIDtail[sizeof(adlistIDtail)-1] = '\0';
 
 	// Parse list file line by line
 	char *line = NULL;
@@ -98,6 +94,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	size_t total_read = 0;
 	int last_progress = 0;
 	char *invalid_domains_list[MAX_INVALID_DOMAINS] = { NULL };
+	const char *info = cli_info();
 	unsigned int invalid_domains_list_len = 0;
 	unsigned int exact_domains = 0, abp_domains = 0, invalid_domains = 0;
 	while((read = getline(&line, &len, fpin)) != -1)
@@ -109,29 +106,33 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		if(line[0] == '#')
 			continue;
 
-		// Skip lines with only whitespace
-		if(strspn(line, " \t") == (size_t)read)
-			continue;
-
 		// Remove trailing newline
 		if(line[read-1] == '\n')
 			line[read-1] = '\0';
 
 		// Skip empty lines
-		if(strlen(line) == 0)
+		const int line_len = strlen(line);
+		if(line_len == 0)
 			continue;
 
+		regmatch_t match = { 0 };
 		// Validate line
-		if(regexec(&exact_regex, line, 0, NULL, 0) == 0)
+		if(regexec(&exact_regex, line, 1, &match, 0) == 0 && // <- Regex match
+		   match.rm_so == 0 && match.rm_eo == line_len) // <- Match covers entire line
 		{
-			// Exact match
+			// Exact match found
+			// Write domain to output file ...
 			fputs(line, fpout);
+			// ... and append ,adlistID
 			fputs(adlistIDtail, fpout);
+			// Increment counter
 			exact_domains++;
 		}
-		else if(regexec(&abp_regex, line, 0, NULL, 0) == 0)
+		else if(line[0] == '|' &&
+		        regexec(&abp_regex, line, 1, &match, 0) == 0 &&   // <- Regex match
+		        match.rm_so == 0 && match.rm_eo == line_len) // <- Match covers entire line
 		{
-			// ABP-style match
+			// ABP-style match (see comments above)
 			fputs(line, fpout);
 			fputs(adlistIDtail, fpout);
 			abp_domains++;
@@ -169,7 +170,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			// Print progress if it has changed
 			if(progress > last_progress)
 			{
-				printf("\rParsed %i%%", progress);
+				printf("\r  %s Parsed %i%% of downloaded list", info, progress);
 				fflush(stdout);
 				last_progress = progress;
 			}
@@ -177,12 +178,12 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	}
 
 	// Print summary
-	printf("\n  %s Parsed %u exact domains and %u ABP-style domains (ignored %u non-domain entries)\n", cli_tick(), exact_domains, abp_domains, invalid_domains);
+	printf("\r  %s Parsed %u exact domains and %u ABP-style domains (ignored %u non-domain entries)\n", cli_tick(), exact_domains, abp_domains, invalid_domains);
 	if(invalid_domains_list_len > 0)
 	{
 		printf("      Sample of non-domain entries:\n");
 		for(unsigned int i = 0; i < invalid_domains_list_len; i++)
-			printf("        - \"%s\"\n", invalid_domains_list[i]);
+			printf("        - %s\n", invalid_domains_list[i]);
 	}
 
 	// Free memory
