@@ -130,6 +130,8 @@ set(sources
         FTL.h
         gc.c
         gc.h
+        gravity-tools.c
+        gravity-tools.h
         log.c
         log.h
         main.c
