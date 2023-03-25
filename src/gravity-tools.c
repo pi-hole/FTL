@@ -117,8 +117,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 		regmatch_t match = { 0 };
 		// Validate line
-		if(regexec(&exact_regex, line, 1, &match, 0) == 0 && // <- Regex match
-		   match.rm_so == 0 && match.rm_eo == line_len) // <- Match covers entire line
+		if(line[0] != '|' &&                                 // <- Not an ABP-style match
+		   regexec(&exact_regex, line, 1, &match, 0) == 0 && // <- Regex match
+		   match.rm_so == 0 && match.rm_eo == line_len)      // <- Match covers entire line
 		{
 			// Exact match found
 			// Write domain to output file ...
@@ -128,9 +129,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			// Increment counter
 			exact_domains++;
 		}
-		else if(line[0] == '|' &&
-		        regexec(&abp_regex, line, 1, &match, 0) == 0 &&   // <- Regex match
-		        match.rm_so == 0 && match.rm_eo == line_len) // <- Match covers entire line
+		else if(line[0] == '|' &&                               // <- ABP-style match
+		        regexec(&abp_regex, line, 1, &match, 0) == 0 && // <- Regex match
+		        match.rm_so == 0 && match.rm_eo == line_len)    // <- Match covers entire line
 		{
 			// ABP-style match (see comments above)
 			fputs(line, fpout);
@@ -155,9 +156,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 				// If not found, check if this is a false
 				// positive and add it to the list if it is not
-				if(!found)
-					if(regexec(&false_positives_regex, line, 0, NULL, 0) != 0)
-						invalid_domains_list[invalid_domains_list_len++] = strdup(line);
+				if(!found && regexec(&false_positives_regex, line, 0, NULL, 0) != 0)
+					invalid_domains_list[invalid_domains_list_len++] = strdup(line);
 			}
 			invalid_domains++;
 		}
