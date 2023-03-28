@@ -326,10 +326,6 @@ union all_addr {
     unsigned char algo;
     unsigned char digest; 
   } ds;
-  struct {
-    struct blockdata *target;
-    unsigned short targetlen, srvport, priority, weight;
-  } srv;
   /* for log_query */
   struct {
     unsigned short keytag, algo, digest, rcode;
@@ -513,7 +509,7 @@ struct crec {
 #define F_QUERY     (1u<<19)
 #define F_NOERR     (1u<<20)
 #define F_AUTH      (1u<<21)
-#define F_RR        (1u<<22)
+#define F_DNSSEC    (1u<<22)
 #define F_KEYTAG    (1u<<23)
 #define F_SECSTAT   (1u<<24)
 #define F_NO_RR     (1u<<25)
@@ -521,7 +517,7 @@ struct crec {
 #define F_NOEXTRA   (1u<<27)
 #define F_DOMAINSRV (1u<<28)
 #define F_RCODE     (1u<<29)
-#define F_SRV       (1u<<30)
+#define F_RR        (1u<<30)
 #define F_STALE     (1u<<31)
 
 #define UID_NONE      0
