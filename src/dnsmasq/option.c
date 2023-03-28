@@ -3450,7 +3450,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	break;
       }
 
-    case LOPT_FAST_RETRY:
+    case LOPT_FAST_RETRY: /* --fast-dns-retry */
       daemon->fast_retry_timeout = TIMEOUT;
       
       if (!arg)
@@ -3473,7 +3473,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	}
       break;
 
-    case LOPT_CACHE_RR:
+    case LOPT_CACHE_RR: /* --cache-rr */
       while (1) {
 	int type;
 	struct rrlist *new;
@@ -5188,7 +5188,7 @@ err:
 	break;
       }
 
-    case LOPT_STALE_CACHE:
+    case LOPT_STALE_CACHE: /* --use-stale-cache */
       {
 	int max_expiry = STALE_CACHE_EXPIRY;
 	if (arg)
