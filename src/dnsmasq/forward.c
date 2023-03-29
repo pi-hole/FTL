@@ -862,19 +862,8 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  break;
 	}
 
-      if (rcode == NOERROR)
-	{
-	  size_t modified = 0;
-
-	  if (option_bool(OPT_FILTER_A))
-	    modified = rrfilter(header, &n, RRFILTER_A);
-	  
-	  if (option_bool(OPT_FILTER_AAAA))
-	    modified += rrfilter(header, &n, RRFILTER_AAAA);
-
-	  if (modified > 0)
-	    ede = EDE_FILTERED;
-	}
+      if (rcode == NOERROR && rrfilter(header, &n, RRFILTER_CONF) > 0) 
+	ede = EDE_FILTERED;
       
       if (doctored)
 	cache_secure = 0;

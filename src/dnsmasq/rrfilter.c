@@ -219,10 +219,7 @@ size_t rrfilter(struct dns_header *header, size_t *plen, int mode)
 	  if (class != C_IN)
 	    continue;
 	  
-	  if (mode == RRFILTER_A && type != T_A)
-	    continue;
-
-	  if (mode == RRFILTER_AAAA && type != T_AAAA)
+	  if (!rr_on_list(daemon->filter_rr, type))
 	    continue;
 	}
       
