@@ -191,6 +191,7 @@ struct myoption {
 #define LOPT_NORR          378
 #define LOPT_NO_IDENT      379
 #define LOPT_CACHE_RR      380
+#define LOPT_FILTER_RR     381
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -230,6 +231,7 @@ static const struct myoption opts[] =
     { "filterwin2k", 0, 0, 'f' },
     { "filter-A", 0, 0, LOPT_FILTER_A },
     { "filter-AAAA", 0, 0, LOPT_FILTER_AAAA },
+    { "filter-rr", 1, 0, LOPT_FILTER_RR },
     { "pid-file", 2, 0, 'x' },
     { "strict-order", 0, 0, 'o' },
     { "server", 1, 0, 'S' },
@@ -409,8 +411,9 @@ static struct {
   { 'e', OPT_SELFMX, NULL, gettext_noop("Return self-pointing MX records for local hosts."), NULL },
   { 'E', OPT_EXPAND, NULL, gettext_noop("Expand simple names in /etc/hosts with domain-suffix."), NULL },
   { 'f', OPT_FILTER, NULL, gettext_noop("Don't forward spurious DNS requests from Windows hosts."), NULL },
-  { LOPT_FILTER_A, OPT_FILTER_A, NULL, gettext_noop("Don't include IPv4 addresses in DNS answers."), NULL },
-  { LOPT_FILTER_AAAA, OPT_FILTER_AAAA, NULL, gettext_noop("Don't include IPv6 addresses in DNS answers."), NULL },
+  { LOPT_FILTER_A, ARG_DUP, NULL, gettext_noop("Don't include IPv4 addresses in DNS answers."), NULL },
+  { LOPT_FILTER_AAAA, ARG_DUP, NULL, gettext_noop("Don't include IPv6 addresses in DNS answers."), NULL },
+  { LOPT_FILTER_RR, ARG_DUP, "<RR-type>", gettext_noop("Don't include resource records of the given type in DNS answers."), NULL },
   { 'F', ARG_DUP, "<ipaddr>,...", gettext_noop("Enable DHCP in the range given with lease duration."), NULL },
   { 'g', ARG_ONE, "<groupname>", gettext_noop("Change to this group after startup (defaults to %s)."), CHGRP },
   { 'G', ARG_DUP, "<hostspec>", gettext_noop("Set address or hostname for a specified machine."), NULL },
@@ -579,7 +582,7 @@ static struct {
   { LOPT_QUIET_TFTP, OPT_QUIET_TFTP, NULL, gettext_noop("Do not log routine TFTP."), NULL },
   { LOPT_NORR, OPT_NORR, NULL, gettext_noop("Suppress round-robin ordering of DNS records."), NULL },
   { LOPT_NO_IDENT, OPT_NO_IDENT, NULL, gettext_noop("Do not add CHAOS TXT records."), NULL },
-  { LOPT_CACHE_RR, ARG_DUP, "RRtype", gettext_noop("Cache this DNS resource record type."), NULL },
+  { LOPT_CACHE_RR, ARG_DUP, "<RR-type>", gettext_noop("Cache this DNS resource record type."), NULL },
   { 0, 0, NULL, NULL, NULL }
 }; 
 
@@ -3474,19 +3477,39 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       break;
 
     case LOPT_CACHE_RR: /* --cache-rr */
+    case LOPT_FILTER_RR: /* --filter-rr */
+    case LOPT_FILTER_A: /* --filter-A */
+    case LOPT_FILTER_AAAA: /* --filter-AAAA */
       while (1) {
 	int type;
 	struct rrlist *new;
-	
-	comma = split(arg);
-	if (!atoi_check(arg, &type) && (type = rrtype(arg)) == 0)
-	  ret_err(_("bad RR type"));
 
+	comma = NULL;
+
+	if (option == LOPT_FILTER_A)
+	  type = T_A;
+	else if (option == LOPT_FILTER_AAAA)
+	  type = T_AAAA;
+	else
+	  {
+	    comma = split(arg);
+	    if (!atoi_check(arg, &type) && (type = rrtype(arg)) == 0)
+	      ret_err(_("bad RR type"));
+	  }
+	
 	new = opt_malloc(sizeof(struct rrlist));
 	new->rr = type;
 
-	new->next = daemon->cache_rr;
-	daemon->cache_rr = new;
+	if (option == LOPT_CACHE_RR)
+	  {
+	    new->next = daemon->cache_rr;
+	    daemon->cache_rr = new;
+	  }
+	else
+	  {
+	    new->next = daemon->filter_rr;
+	    daemon->filter_rr = new;
+	  }
 	
 	if (!comma) break;
 	arg = comma;

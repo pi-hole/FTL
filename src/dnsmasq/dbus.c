@@ -825,11 +825,25 @@ DBusHandlerResult message_handler(DBusConnection *connection,
     }
   else if (strcmp(method, "SetFilterA") == 0)
     {
-      reply = dbus_set_bool(message, OPT_FILTER_A, "filter-A");
+      static int done = 0;
+      static struct rrlist list = { T_A, NULL };
+
+      if (!done)
+	{
+	  list.next = daemon->filter_rr;
+	  daemon->filter_rr = &list;
+	}
     }
   else if (strcmp(method, "SetFilterAAAA") == 0)
     {
-      reply = dbus_set_bool(message, OPT_FILTER_AAAA, "filter-AAAA");
+      static int done = 0;
+      static struct rrlist list = { T_AAAA, NULL };
+
+      if (!done)
+	{
+	  list.next = daemon->filter_rr;
+	  daemon->filter_rr = &list;
+	}
     }
   else if (strcmp(method, "SetLocaliseQueriesOption") == 0)
     {

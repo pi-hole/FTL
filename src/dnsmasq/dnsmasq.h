@@ -276,14 +276,12 @@ struct event_desc {
 #define OPT_UMBRELLA_DEVID 64
 #define OPT_CMARK_ALST_EN  65
 #define OPT_QUIET_TFTP     66
-#define OPT_FILTER_A       67
-#define OPT_FILTER_AAAA    68
-#define OPT_STRIP_ECS      69
-#define OPT_STRIP_MAC      70
-#define OPT_NORR           71
-#define OPT_NO_IDENT       72
-#define OPT_CACHE_RR       73
-#define OPT_LAST           74
+#define OPT_STRIP_ECS      67
+#define OPT_STRIP_MAC      68
+#define OPT_NORR           69
+#define OPT_NO_IDENT       70
+#define OPT_CACHE_RR       71
+#define OPT_LAST           72
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -1135,7 +1133,7 @@ extern struct daemon {
   struct naptr *naptr;
   struct txt_record *txt, *rr;
   struct ptr_record *ptr;
-  struct rrlist *cache_rr, filter_rr;
+  struct rrlist *cache_rr, *filter_rr;
   struct host_record *host_records, *host_records_tail;
   struct cname *cnames;
   struct auth_zone *auth_zones;
@@ -1864,8 +1862,7 @@ void from_wire(char *name);
 /* modes. */
 #define RRFILTER_EDNS0   0
 #define RRFILTER_DNSSEC  1
-#define RRFILTER_A       2
-#define RRFILTER_AAAA    3
+#define RRFILTER_CONF    2
 
 /* edns0.c */
 unsigned char *find_pseudoheader(struct dns_header *header, size_t plen,
