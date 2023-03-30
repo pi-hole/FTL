@@ -118,6 +118,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 	// Parse list file line by line
 	char *line = NULL;
+	size_t lineno = 0;
 	size_t len = 0;
 	ssize_t read = 0;
 	size_t total_read = 0;
@@ -129,6 +130,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	{
 		// Update total read bytes
 		total_read += read;
+		lineno++;
 
 		// Skip comments
 		if(line[0] == '#')
@@ -136,18 +138,21 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 		// Remove trailing newline
 		if(line[read-1] == '\n')
-			line[read-1] = '\0';
+			line[--read] = '\0';
+
+		// Remove trailing dot (convert FQDN to domain)
+		if(line[read-1] == '.')
+			line[--read] = '\0';
 
 		// Skip empty lines
-		const int line_len = strlen(line);
-		if(line_len == 0)
+		if(line[0] == '\0')
 			continue;
 
 		regmatch_t match = { 0 };
 		// Validate line
 		if(line[0] != '|' &&                                 // <- Not an ABP-style match
 		   regexec(&exact_regex, line, 1, &match, 0) == 0 && // <- Regex match
-		   match.rm_so == 0 && match.rm_eo == line_len)      // <- Match covers entire line
+		   match.rm_so == 0 && match.rm_eo == read)          // <- Match covers entire line
 		{
 			// Exact match found
 			// Append domain to database using prepared statement
@@ -171,7 +176,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		}
 		else if(line[0] == '|' &&                               // <- ABP-style match
 		        regexec(&abp_regex, line, 1, &match, 0) == 0 && // <- Regex match
-		        match.rm_so == 0 && match.rm_eo == line_len)    // <- Match covers entire line
+		        match.rm_so == 0 && match.rm_eo == read)        // <- Match covers entire line
 		{
 			// ABP-style match (see comments above)
 			// Append pattern to database using prepared statement
@@ -216,8 +221,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			invalid_domains++;
 		}
 
-		// Print progress if the file is large enough
-		if(fsize > PRINT_PROGRESS_THRESHOLD)
+		// Print progress if the file is large enough every 100 lines
+		if(fsize > PRINT_PROGRESS_THRESHOLD && lineno % 100 == 1)
 		{
 			// Calculate progress
 			const int progress = (int)(100.0*total_read/fsize);
@@ -314,9 +319,10 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	printf("\r  %s Parsed %u exact domains and %u ABP-style domains (ignored %u non-domain entries)\n", tick, exact_domains, abp_domains, invalid_domains);
 	if(invalid_domains_list_len > 0)
 	{
-		printf("      Sample of non-domain entries:\n");
+		puts("      Sample of non-domain entries:");
 		for(unsigned int i = 0; i < invalid_domains_list_len; i++)
-			printf("        - %s\n", invalid_domains_list[i]);
+			printf("        - \"%s\"\n", invalid_domains_list[i]);
+		puts("");
 	}
 
 	// Free memory
