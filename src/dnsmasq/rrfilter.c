@@ -167,6 +167,9 @@ size_t rrfilter(struct dns_header *header, size_t *plen, int mode)
   size_t rr_found = 0;
   int i, rdlen, qtype, qclass, chop_an, chop_ns, chop_ar;
 
+  if (mode == RRFILTER_CONF && !daemon->filter_rr)
+    return 0;
+  
   if (ntohs(header->qdcount) != 1 ||
       !(p = skip_name(p, header, *plen, 4)))
     return 0;
