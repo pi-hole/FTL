@@ -17,10 +17,17 @@
 // No need to include uppercase letters, as we convert to lowercase in gravity_ParseFileIntoDomains() already
 // Adapted from https://stackoverflow.com/a/30007882
 // - Added "(?:...)" to form non-capturing groups (slighly faster)
-#define VALID_DOMAIN_REXEX "([a-z0-9]([a-z0-9_-]{0,61}[a-z0-9]){0,1}\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]"
+#define TLD_PATTERN "[a-z0-9][a-z0-9-]{0,61}[a-z0-9]"
+#define SUBDOMAIN_PATTERN "([a-z0-9]([a-z0-9_-]{0,61}[a-z0-9]){0,1}\\.)"
+
+// supported exact style: subdomain.domain.tld
+// SUBDOMAIN_PATTERN is mandatory for exact style, disallowing TLD blocking
+#define VALID_DOMAIN_REXEX SUBDOMAIN_PATTERN"+"TLD_PATTERN
 
 // supported ABP style: ||subdomain.domain.tlp^
-#define ABP_DOMAIN_REXEX "\\|\\|"VALID_DOMAIN_REXEX"\\^"
+// SUBDOMAIN_PATTERN is optional for ABP style, allowing TLD blocking: ||tld^
+// See https://github.com/pi-hole/pi-hole/pull/5240
+#define ABP_DOMAIN_REXEX "\\|\\|"SUBDOMAIN_PATTERN"*"TLD_PATTERN"\\^"
 
 // A list of items of common local hostnames not to report as unusable
 // Some lists (i.e StevenBlack's) contain these as they are supposed to be used as HOST files
