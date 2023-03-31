@@ -107,7 +107,7 @@ bool check_inotify_event(void)
 		if(event->mask & IN_CLOSE_WRITE)
 		{
 			log_debug(DEBUG_INOTIFY, "File written: "WATCHDIR"/%s", event->name);
-			if(event->name != NULL && strcmp(event->name, "pihole.toml") == 0)
+			if(strcmp(event->name, "pihole.toml") == 0)
 				config_changed = true;
 		}
 		else if(event->mask & IN_CREATE)
