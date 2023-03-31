@@ -1279,6 +1279,18 @@
   [[ ${lines[0]} == "true" ]]
 }
 
+@test "Test TLS/SSL server using self-signed certificate" {
+  # -s: silent
+  # -I: HEAD request
+  # --cacert: use this CA certificate to verify the server certificate
+  # --resolve: resolve pi.hole:443 to 127.0.0.1
+  #            we need this line because curl is not using FTL as resolver
+  #            and would otherwise not be able to resolve pi.hole
+  run bash -c 'curl -sI --cacert /etc/pihole/test.crt --resolve pi.hole:443:127.0.0.1 https://pi.hole/'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "HTTP/1.1 "* ]]
+}
+
 @test "Test embedded GZIP compressor" {
   run bash -c './pihole-FTL gzip test/pihole-FTL.db.sql'
   printf "Compression output:\n"

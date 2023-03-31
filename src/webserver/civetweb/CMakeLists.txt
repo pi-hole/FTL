@@ -25,9 +25,20 @@ add_library(civetweb OBJECT ${sources})
 target_compile_definitions(civetweb PRIVATE NO_CGI
                                             NO_DLOPEN
                                             NO_SSL_DL
-                                            NO_SSL
                                             USE_IPV6
                                             USE_LUA)
 
-include_directories(${PROJECT_SOURCE_DIR}/src/lua)
+if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
+    # Enable TLS support in civetweb if mbedTLS is available
+    message(STATUS "Building FTL with TLS support: YES")
+    target_compile_definitions(civetweb PRIVATE USE_MBEDTLS)
+    target_compile_definitions(webserver PRIVATE HAVE_TLS)
+else()
+    # Disable TLS support in civetweb if mbedTLS is not available
+    message(STATUS "Building FTL with TLS support: NO")
+    target_compile_definitions(civetweb PRIVATE NO_SSL)
+endif()
+
+
+include_directories(${PROJECT_SOURCE_DIR}/src/lua /usr/local/include)
 target_include_directories(civetweb PRIVATE ${PROJECT_SOURCE_DIR}/src)

@@ -333,6 +333,8 @@ components:
                   type: string
                 port:
                   type: string
+                tls_cert:
+                  type: string
                 sessionTimeout:
                   type: integer
                 paths:
@@ -606,6 +608,7 @@ components:
             domain: pi.hole
             acl: "+0.0.0.0/0,::/0"
             port: 8080,[::]:8080
+            tls_cert: ""
             sessionTimeout: 300
             paths:
               webroot: "/var/www/html"

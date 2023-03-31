@@ -494,11 +494,45 @@
   #     <valid ACL>
   acl = ""
 
-  # Ports to be used by the webserver
+  # Ports to be used by the webserver.
+  # Comma-separated list of ports to listen on. It is possible to specify an IP address
+  # to bind to. In this case, an IP address and a colon must be prepended to the port
+  # number. For example, to bind to the loopback interface on port 80 (IPv4) and to all
+  # interfaces port 8080 (IPv4), use "127.0.0.1:80,8080". "[::]:8080" can be used to
+  # listen to IPv6 connections to port 8080. IPv6 addresses of network interfaces can be
+  # specified as well, e.g. "[::1]:8080" for the IPv6 loopback interface. [::]:80 will
+  # bind to port 80 IPv6 only.
+  # In order to use port 8080 for all interfaces, both IPv4 and IPv6, use either the
+  # configuration "8080,[::]:8080" (create one socket for IPv4 and one for IPv6 only),
+  # or "+8080" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4
+  # and IPv6 will only work if no network interface is specified. Depending on your
+  # operating system version and IPv6 network environment, some configurations might not
+  # work as expected, so you have to test to find the configuration most suitable for
+  # your needs. In case "+8080" does not work for your environment, you need to use
+  # "8080,[::]:8080".
+  # If the port is TLS/SSL, a letter 's' must be appended, for example, "8080,443s" will
+  # open port 8080 and port 443, and connections on port 443 will be encrypted. For
+  # non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected
+  # ports will redirect all their traffic to the first configured SSL port. For example,
+  # if webserver.port is "8080r,443s", then all HTTP traffic coming at port 8080 will be
+  # redirected to HTTPS port 443.
   #
   # Possible values are:
   #     comma-separated list of <[ip_address:]port>
-  port = "8080,[::]:8080"
+  port = "8080,[::]:8080,443s"
+
+  # Path to the TLS (SSL) certificate file. This option is only required when at least
+  # one of webserver.port is TLS. The file must be in PEM format, and it must have both,
+  # private key and certificate (the *.pem file created must contain a 'CERTIFICATE'
+  # section as well as a 'RSA PRIVATE KEY' section).
+  # The *.pem file can be created using
+  #     cp server.crt server.pem
+  #     cat server.key >> server.pem
+  # if you have these files instead
+  #
+  # Possible values are:
+  #     <valid TLS certificate file (*.pem)>
+  tls_cert = "/etc/pihole/test.pem" ### CHANGED, default = ""
 
   # Session timeout in seconds. If a session is inactive for more than this time, it will
   # be terminated. Sessions are continuously refreshed by the web interface, preventing

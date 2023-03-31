@@ -151,18 +151,32 @@ void http_init(void)
 //		"cgi_interpreter", config.http.php_location,
 //		"cgi_pattern", "**.php$", // ** allows the files to by anywhere inside the web root
 		"index_files", "index.html,index.htm,index.php",
-		NULL, NULL, // Leave two slots for access control list (ACL) at the end
+		NULL, NULL,
+		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
 		NULL
 	};
 
+	// Get index of next free option
+	// Note: The first options are always present, so start at the counting
+	// from the end of the array.
+	unsigned int next_option = ArraySize(options) - 6;
+
+#ifdef HAVE_TLS
+	// Add TLS options if configured
+	if(config.webserver.tls_cert.v.s != NULL && strlen(config.webserver.tls_cert.v.s) > 0)
+	{
+		options[++next_option] = "ssl_certificate";
+		options[++next_option] = config.webserver.tls_cert.v.s;
+	}
+#endif
 	// Add access control list if configured (last two options)
 	if(strlen(config.webserver.acl.v.s) > 0)
 	{
-		options[ArraySize(options) - 3] = "access_control_list";
+		options[++next_option] = "access_control_list";
 		// Note: The string is duplicated by CivetWeb, so it doesn't matter if
 		//       the original string is freed (config changes) after mg_start()
 		//       returns below.
-		options[ArraySize(options) - 2] = config.webserver.acl.v.s;
+		options[++next_option] = config.webserver.acl.v.s;
 	}
 
 	// Configure logging handlers

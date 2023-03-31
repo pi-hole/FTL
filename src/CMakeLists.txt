@@ -330,6 +330,16 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
 endif()
 
+find_library(LIBMBEDCRYPTO NAMES lmbedcrypto${CMAKE_STATIC_LIBRARY_SUFFIX} mbedcrypto)
+find_library(LIBMBEDX509 NAMES lmbedx509${CMAKE_STATIC_LIBRARY_SUFFIX} mbedx509)
+find_library(LIBMBEDTLS NAMES lmbedtls${CMAKE_STATIC_LIBRARY_SUFFIX} mbedtls)
+get_directory_property(MYDEFS COMPILE_DEFINITIONS)
+message(STATUS "Compile definitions: ${MYDEFS}")
+if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
+    # Link against the mbedTLS libraries, the order is important (!)
+    target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO})
+endif()
+
 find_program(SETCAP setcap)
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin

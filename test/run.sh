@@ -46,6 +46,10 @@ rm -rf /etc/pihole/pihole-FTL.db
 ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db < test/pihole-FTL.db.sql
 chown pihole:pihole /etc/pihole/pihole-FTL.db
 
+# Prepare TLS key and certificate
+cp test/test.pem /etc/pihole/test.pem
+cp test/test.crt /etc/pihole/test.crt
+
 # Prepare pihole.toml
 cp test/pihole.toml /etc/pihole/pihole.toml
 chown pihole:pihole /etc/pihole/pihole.toml
