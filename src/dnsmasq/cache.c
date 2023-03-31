@@ -871,7 +871,7 @@ int cache_recv_insert(time_t now, int fd)
 	    return 0;
 	  
 	  if ((flags & F_RR) && !(flags & F_NEG) &&
-	      new_chain->addr.rr.len == -1 && !(addr.rr.u.block.rrdata = blockdata_read(fd, addr.rr.u.block.datalen)))
+	      addr.rr.len == -1 && !(addr.rr.u.block.rrdata = blockdata_read(fd, addr.rr.u.block.datalen)))
 	    return 0;
 #ifdef HAVE_DNSSEC
 	   if (flags & F_DNSKEY)
