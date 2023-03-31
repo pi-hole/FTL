@@ -30,7 +30,7 @@ static void make_non_terminals(struct crec *source);
 static struct crec *really_insert(char *name, union all_addr *addr, unsigned short class,
 				  time_t now,  unsigned long ttl, unsigned int flags);
 static void dump_cache_entry(struct crec *cache, time_t now);
-static char *querystr(char *desc, unsigned short type);
+char *querystr(char *desc, unsigned short type);
 
 /* type->string mapping: this is also used by the name-hash function as a mixing table. */
 /* taken from https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml */
