@@ -21,7 +21,7 @@
 // EDNS(0) Client Subnet [Optional, RFC7871]
 #define EDNS0_ECS EDNS0_OPTION_CLIENT_SUBNET
 
-// EDN(0) COOKIE [Standard, RFC7873]
+// EDNS(0) COOKIE [Standard, RFC7873]
 #define EDNS0_COOKIE 10
 
 // EDNS(0) MAC address [NOT STANDARDIZED]

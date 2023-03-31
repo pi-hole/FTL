@@ -276,13 +276,12 @@ struct event_desc {
 #define OPT_UMBRELLA_DEVID 64
 #define OPT_CMARK_ALST_EN  65
 #define OPT_QUIET_TFTP     66
-#define OPT_FILTER_A       67
-#define OPT_FILTER_AAAA    68
-#define OPT_STRIP_ECS      69
-#define OPT_STRIP_MAC      70
-#define OPT_NORR           71
-#define OPT_NO_IDENT       72
-#define OPT_LAST           73
+#define OPT_STRIP_ECS      67
+#define OPT_STRIP_MAC      68
+#define OPT_NORR           69
+#define OPT_NO_IDENT       70
+#define OPT_CACHE_RR       71
+#define OPT_LAST           72
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -325,15 +324,16 @@ union all_addr {
     unsigned char algo;
     unsigned char digest; 
   } ds;
-  struct {
-    struct blockdata *target;
-    unsigned short targetlen, srvport, priority, weight;
-  } srv;
   /* for log_query */
   struct {
     unsigned short keytag, algo, digest, rcode;
     int ede;
   } log;
+  /* for arbitrary RR record. */
+  struct {
+    struct blockdata *rrdata;
+    unsigned short rrtype, datalen;
+  } rr;
 };
 
 
@@ -515,7 +515,7 @@ struct crec {
 #define F_NOEXTRA   (1u<<27)
 #define F_DOMAINSRV (1u<<28)
 #define F_RCODE     (1u<<29)
-#define F_SRV       (1u<<30)
+#define F_RR        (1u<<30)
 #define F_STALE     (1u<<31)
 
 #define UID_NONE      0
@@ -661,6 +661,11 @@ struct iname {
   union mysockaddr addr;
   int used;
   struct iname *next;
+};
+
+struct rrlist {
+  unsigned short rr;
+  struct rrlist *next;
 };
 
 /* subnet parameters from command line */
@@ -1128,6 +1133,7 @@ extern struct daemon {
   struct naptr *naptr;
   struct txt_record *txt, *rr;
   struct ptr_record *ptr;
+  struct rrlist *cache_rr, *filter_rr;
   struct host_record *host_records, *host_records_tail;
   struct cname *cnames;
   struct auth_zone *auth_zones;
@@ -1309,6 +1315,7 @@ struct server_details {
 
 /* cache.c */
 void cache_init(void);
+unsigned short rrtype(char *in);
 void next_uid(struct crec *crecp);
 /********************************************* Pi-hole modification ***********************************************/
 #define log_query(flags,name,addr,arg,type) _log_query(flags, name, addr, arg, type, __FILE__, __LINE__)
@@ -1346,6 +1353,8 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size,
 void blockdata_init(void);
 void blockdata_report(void);
 struct blockdata *blockdata_alloc(char *data, size_t len);
+int blockdata_expand(struct blockdata *block, size_t oldlen,
+		     char *data, size_t newlen);
 void *blockdata_retrieve(struct blockdata *block, size_t len, void *data);
 struct blockdata *blockdata_read(int fd, size_t len);
 void blockdata_write(struct blockdata *block, size_t len, int fd);
@@ -1375,7 +1384,7 @@ void report_addresses(struct dns_header *header, size_t len, u32 mark);
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
 		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader,
-		      int *stale);
+		      int *stale, int *filtered);
 int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name, 
 			     time_t now);
 int check_for_ignored_address(struct dns_header *header, size_t qlen);
@@ -1427,6 +1436,7 @@ void rand_init(void);
 unsigned short rand16(void);
 u32 rand32(void);
 u64 rand64(void);
+int rr_on_list(struct rrlist *list, unsigned short rr);
 int legal_hostname(char *name);
 char *canonicalise(char *in, int *nomem);
 unsigned char *do_rfc1035_name(unsigned char *p, char *sval, char *limit);
@@ -1831,14 +1841,16 @@ void poll_listen(int fd, short event);
 int do_poll(int timeout);
 
 /* rrfilter.c */
-size_t rrfilter(struct dns_header *header, size_t plen, int mode);
-u16 *rrfilter_desc(int type);
+size_t rrfilter(struct dns_header *header, size_t *plen, int mode);
+short *rrfilter_desc(int type);
 int expand_workspace(unsigned char ***wkspc, int *szp, int new);
+int to_wire(char *name);
+void from_wire(char *name);
 /* modes. */
 #define RRFILTER_EDNS0   0
 #define RRFILTER_DNSSEC  1
-#define RRFILTER_A       2
-#define RRFILTER_AAAA    3
+#define RRFILTER_CONF    2
+
 /* edns0.c */
 unsigned char *find_pseudoheader(struct dns_header *header, size_t plen,
 				   size_t *len, unsigned char **p, int *is_sign, int *is_last);

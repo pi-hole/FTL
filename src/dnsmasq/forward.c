@@ -734,7 +734,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  if (added_pheader)
 	    {
 	      /* client didn't send EDNS0, we added one, strip it off before returning answer. */
-	      n = rrfilter(header, n, RRFILTER_EDNS0);
+	      rrfilter(header, &n, RRFILTER_EDNS0);
 	      pheader = NULL;
 	    }
 	  else
@@ -826,16 +826,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	    }
 	}
 
-      /* Before extract_addresses() */
-      if (rcode == NOERROR)
-	{
-	  if (option_bool(OPT_FILTER_A))
-	    n = rrfilter(header, n, RRFILTER_A);
-
-	  if (option_bool(OPT_FILTER_AAAA))
-	    n = rrfilter(header, n, RRFILTER_AAAA);
-	}
-
       switch (extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure, &doctored))
 	{
 	case 1:
@@ -872,6 +862,9 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  break;
 	}
 
+      if (rcode == NOERROR && rrfilter(header, &n, RRFILTER_CONF) > 0) 
+	ede = EDE_FILTERED;
+      
       if (doctored)
 	cache_secure = 0;
     }
@@ -893,7 +886,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       
       /* If the requestor didn't set the DO bit, don't return DNSSEC info. */
       if (!do_bit)
-	n = rrfilter(header, n, RRFILTER_DNSSEC);
+	rrfilter(header, &n, RRFILTER_DNSSEC);
     }
 #endif
 
@@ -1867,7 +1860,7 @@ void receive_query(struct listener *listen, time_t now)
 #endif
   else
     {
-      int stale;
+      int stale, filtered;
       int ad_reqd = do_bit;
       u16 hb3 = header->hb3, hb4 = header->hb4;
       int fd = listen->fd;
@@ -1907,17 +1900,28 @@ void receive_query(struct listener *listen, time_t now)
       /**********************************************/
       
       m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
-			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale);
+			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale, &filtered);
       
       if (m >= 1)
 	{
-	  if (stale && have_pseudoheader)
+	  if (have_pseudoheader)
 	    {
-	      u16 swap = htons(EDE_STALE);
+	      int ede = EDE_UNSET;
 	      
-	      m = add_pseudoheader(header,  m,  ((unsigned char *) header) + udp_size, daemon->edns_pktsz,
-				   EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	      if (filtered)
+		ede = EDE_FILTERED;
+	      else if (stale)
+		ede = EDE_STALE;
+
+	      if (ede != EDE_UNSET)
+		{
+		  u16 swap = htons(ede);
+		  
+		  m = add_pseudoheader(header,  m,  ((unsigned char *) header) + udp_size, daemon->edns_pktsz,
+				       EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+		}
 	    }
+	  
 #ifdef HAVE_DUMPFILE
 	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
 #endif
@@ -2187,7 +2191,7 @@ unsigned char *tcp_request(int confd, time_t now,
   unsigned char *pheader;
   unsigned int mark = 0;
   int have_mark = 0;
-  int first, last, stale, do_stale = 0;
+  int first, last, filtered, stale, do_stale = 0;
   unsigned int flags = 0;
   u16 hb3, hb4;
     
@@ -2420,7 +2424,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	   else
 	     /* m > 0 if answered from cache */
 	     m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
-				dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale);
+				dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale, &filtered);
 	   
 	  /* Do this by steam now we're not in the select() loop */
 	  check_log_writer(1); 
@@ -2562,13 +2566,23 @@ unsigned char *tcp_request(int confd, time_t now,
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 	    }
 	}
-      else if (stale)
-	 {
-	   u16 swap = htons((u16)EDE_STALE);
-	   
-	   m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
-	 }
-      
+      else
+	{
+	  ede = EDE_UNSET;
+	      
+	  if (filtered)
+	    ede = EDE_FILTERED;
+	  else if (stale)
+	    ede = EDE_STALE;
+	  
+	  if (ede != EDE_UNSET)
+	    {
+	      u16 swap = htons((u16)ede);
+	      
+	      m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	    }
+	}
+	  
       check_log_writer(1);
       
       *length = htons(m);

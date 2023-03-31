@@ -29,6 +29,9 @@ int check_one_struct(const char *struct_name, const size_t found_size, const siz
 #elif defined(__arm__)
 	const size_t expected_size = size32;
 	const char *arch = "arm";
+#elif defined(__riscv) && __riscv_xlen == 64
+	const size_t expected_size = size64;
+	const char *arch = "riscv64";
 #else
 	const size_t expected_size = 0;
 	const char *arch = NULL;

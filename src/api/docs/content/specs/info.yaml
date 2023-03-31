@@ -926,9 +926,6 @@ components:
                         cname:
                           type: integer
                           description: Number of valid CNAME entries
-                        srv:
-                          type: integer
-                          description: Number of valid SRV entries
                         ds:
                           type: integer
                           description: Number of valid DS entries
@@ -1044,7 +1041,6 @@ components:
                 a: 212
                 aaaa: 61
                 cname: 14
-                srv: 0
                 ds: 60
                 dnskey: 35
                 other: 14

@@ -924,7 +924,6 @@ int api_info_metrics(struct ftl_conn *api)
 	JSON_ADD_NUMBER_TO_OBJECT(content, "a", metrics.dns.cache.content.a);
 	JSON_ADD_NUMBER_TO_OBJECT(content, "aaaa", metrics.dns.cache.content.aaaa);
 	JSON_ADD_NUMBER_TO_OBJECT(content, "cname", metrics.dns.cache.content.cname);
-	JSON_ADD_NUMBER_TO_OBJECT(content, "srv", metrics.dns.cache.content.srv);
 	JSON_ADD_NUMBER_TO_OBJECT(content, "ds", metrics.dns.cache.content.ds);
 	JSON_ADD_NUMBER_TO_OBJECT(content, "dnskey", metrics.dns.cache.content.dnskey);
 	JSON_ADD_NUMBER_TO_OBJECT(content, "other", metrics.dns.cache.content.other);

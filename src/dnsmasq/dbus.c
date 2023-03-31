@@ -52,6 +52,12 @@ const char* introspection_xml_template =
 "    <method name=\"SetFilterWin2KOption\">\n"
 "      <arg name=\"filterwin2k\" direction=\"in\" type=\"b\"/>\n"
 "    </method>\n"
+"    <method name=\"SetFilterA\">\n"
+"      <arg name=\"filter-a\" direction=\"in\" type=\"b\"/>\n"
+"    </method>\n"
+"    <method name=\"SetFilterAAAA\">\n"
+"      <arg name=\"filter-aaaa\" direction=\"in\" type=\"b\"/>\n"
+"    </method>\n"
 "    <method name=\"SetLocaliseQueriesOption\">\n"
 "      <arg name=\"localise-queries\" direction=\"in\" type=\"b\"/>\n"
 "    </method>\n"
@@ -816,6 +822,28 @@ DBusHandlerResult message_handler(DBusConnection *connection,
   else if (strcmp(method, "SetFilterWin2KOption") == 0)
     {
       reply = dbus_set_bool(message, OPT_FILTER, "filterwin2k");
+    }
+  else if (strcmp(method, "SetFilterA") == 0)
+    {
+      static int done = 0;
+      static struct rrlist list = { T_A, NULL };
+
+      if (!done)
+	{
+	  list.next = daemon->filter_rr;
+	  daemon->filter_rr = &list;
+	}
+    }
+  else if (strcmp(method, "SetFilterAAAA") == 0)
+    {
+      static int done = 0;
+      static struct rrlist list = { T_AAAA, NULL };
+
+      if (!done)
+	{
+	  list.next = daemon->filter_rr;
+	  daemon->filter_rr = &list;
+	}
     }
   else if (strcmp(method, "SetLocaliseQueriesOption") == 0)
     {

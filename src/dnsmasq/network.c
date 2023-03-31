@@ -361,13 +361,8 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
 		struct in_addr newaddr = addr->in.sin_addr;
 		
 		if (int_name->flags & INP4)
-		  {
-		    if (netmask.s_addr == 0xffffffff)
-		      continue;
-
-		    newaddr.s_addr = (addr->in.sin_addr.s_addr & netmask.s_addr) |
-		      (int_name->proto4.s_addr & ~netmask.s_addr);
-		  }
+		  newaddr.s_addr = (addr->in.sin_addr.s_addr & netmask.s_addr) |
+		    (int_name->proto4.s_addr & ~netmask.s_addr);
 		
 		/* check for duplicates. */
 		for (lp = int_name->addr; lp; lp = lp->next)
@@ -400,10 +395,6 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
 		  {
 		    int i;
 
-		    /* No sense in doing /128. */
-		    if (prefixlen == 128)
-		      continue;
-		    
 		    for (i = 0; i < 16; i++)
 		      {
 			int bits = ((i+1)*8) - prefixlen;

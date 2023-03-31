@@ -178,7 +178,7 @@ size_t add_pseudoheader(struct dns_header *header, size_t plen, unsigned char *l
 	    memcpy(buff, datap, rdlen);	      
 	  
 	  /* now, delete OPT RR */
-	  plen = rrfilter(header, plen, RRFILTER_EDNS0);
+	  rrfilter(header, &plen, RRFILTER_EDNS0);
 	  
 	  /* Now, force addition of a new one */
 	  p = NULL;	  

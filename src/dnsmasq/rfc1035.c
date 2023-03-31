@@ -90,23 +90,14 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 	    if (isExtract)
 	      {
 		unsigned char c = *p;
-#ifdef HAVE_DNSSEC
-		if (option_bool(OPT_DNSSEC_VALID))
+
+		if (c == 0 || c == '.' || c == NAME_ESCAPE)
 		  {
-		    if (c == 0 || c == '.' || c == NAME_ESCAPE)
-		      {
-			*cp++ = NAME_ESCAPE;
-			*cp++ = c+1;
-		      }
-		    else
-		      *cp++ = c; 
+		    *cp++ = NAME_ESCAPE;
+		    *cp++ = c+1;
 		  }
 		else
-#endif
-		if (c != 0 && c != '.')
-		  *cp++ = c;
-		else
-		  return 0;
+		  *cp++ = c; 
 	      }
 	    else 
 	      {
@@ -119,10 +110,9 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 		    cp++;
 		    if (c1 >= 'A' && c1 <= 'Z')
 		      c1 += 'a' - 'A';
-#ifdef HAVE_DNSSEC
-		    if (option_bool(OPT_DNSSEC_VALID) && c1 == NAME_ESCAPE)
+
+		    if (c1 == NAME_ESCAPE)
 		      c1 = (*cp++)-1;
-#endif
 		    
 		    if (c2 >= 'A' && c2 <= 'Z')
 		      c2 += 'a' - 'A';
@@ -503,12 +493,10 @@ static int find_soa(struct dns_header *header, size_t qlen, int *doctored)
 }
 
 /* Print TXT reply to log */
-static int print_txt(struct dns_header *header, const size_t qlen, char *name,
-		     unsigned char *p, const int ardlen, int secflag)
+static int log_txt(char *name, unsigned char *p, const int ardlen, int secflag)
 {
   unsigned char *p1 = p;
-  if (!CHECK_LEN(header, p1, qlen, ardlen))
-    return 0;
+ 
   /* Loop over TXT payload */
   while ((p1 - p) < ardlen)
     {
@@ -527,7 +515,7 @@ static int print_txt(struct dns_header *header, const size_t qlen, char *name,
 	}
 
       *p3 = 0;
-      log_query(secflag | F_FORWARD | F_UPSTREAM, name, NULL, (char*)p1, 0);
+      log_query(secflag | F_FORWARD, name, NULL, (char*)p1, 0);
       /* restore */
       memmove(p1 + 1, p1, i);
       *p1 = len;
@@ -718,8 +706,8 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	  addrlen = IN6ADDRSZ;
 	  flags |= F_IPV6;
 	}
-      else if (qtype == T_SRV)
-	flags |= F_SRV;
+      else if (qtype != T_CNAME && (qtype == T_SRV || rr_on_list(daemon->cache_rr, qtype)))
+	flags |= F_RR;
       else
 	insert = 0; /* NOTE: do not cache data from CNAME queries. */
       
@@ -817,31 +805,70 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 #ifdef HAVE_DNSSEC
 	      if (!option_bool(OPT_DNSSEC_VALID) || aqtype != T_RRSIG)
 #endif
-		log_query(secflag | F_FORWARD | F_UPSTREAM, name, NULL, NULL, aqtype);
+		log_query(secflag | F_FORWARD | F_UPSTREAM | F_RRNAME, name, NULL, NULL, aqtype);
 	    }
 	  else if (!(flags & F_NXDOMAIN))
 	    {
 	      found = 1;
 	      
-	      if (flags & F_SRV)
+	      if (flags & F_RR)
 		{
+		  short desc, *rrdesc = rrfilter_desc(aqtype);
 		  unsigned char *tmp = namep;
 		  
-		  if (!CHECK_LEN(header, p1, qlen, 6))
+		  if (!CHECK_LEN(header, p1, qlen, ardlen))
 		    return 2; /* bad packet */
-		  GETSHORT(addr.srv.priority, p1);
-		  GETSHORT(addr.srv.weight, p1);
-		  GETSHORT(addr.srv.srvport, p1);
-		  if (!extract_name(header, qlen, &p1, name, 1, 0))
-		    return 2;
-		  addr.srv.targetlen = strlen(name) + 1; /* include terminating zero */
-		  if (!(addr.srv.target = blockdata_alloc(name, addr.srv.targetlen)))
+		  addr.rr.rrtype = aqtype;
+		  addr.rr.datalen = 0;
+
+		  /* The RR data may include names, and those names may include
+		     compression, which will be rendered meaningless when
+		     copied into another packet. 
+		     Here we go through a description of the packet type to
+		     find the names, and extract them to a c-string and then
+		     re-encode them to standalone DNS format without compression. */
+		  if (!(addr.rr.rrdata = blockdata_alloc(NULL, 0)))
 		    return 0;
-		  
+		  do
+		    {
+		      desc = *rrdesc++;
+		      
+		      if (desc == -1)
+			{
+			  /* Copy the rest of the RR and end. */
+			  if (!blockdata_expand(addr.rr.rrdata, addr.rr.datalen, (char *)p1, endrr - p1))
+			    return 0;
+			  addr.rr.datalen += endrr - p1;
+			}
+		      else if (desc == 0)
+			{
+			  /* Name, extract it then re-encode. */
+			  int len;
+
+			  if (!extract_name(header, qlen, &p1, name, 1, 0))
+			    return 2;
+
+			  len = to_wire(name);
+			  if (!blockdata_expand(addr.rr.rrdata, addr.rr.datalen, name, len))
+			    return 0;
+			  addr.rr.datalen += len;
+			}
+		      else
+			{
+			  /* desc is length of a block of data to be used as-is */
+			  if (desc > endrr - p1)
+			    desc = endrr - p1;
+			  if (!blockdata_expand(addr.rr.rrdata, addr.rr.datalen, (char *)p1, desc))
+			    return 0;
+			  addr.rr.datalen += desc;
+			  p1 += desc;
+			}
+		    } while (desc != -1);
+
 		  /* we overwrote the original name, so get it back here. */
 		  if (!extract_name(header, qlen, &tmp, name, 1, 0))
 		    return 2;
-		}
+		} 
 	      else if (flags & (F_IPV4 | F_IPV6))
 		{
 		  /* copy address into aligned storage */
@@ -889,11 +916,24 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      
 	      if (aqtype == T_TXT)
 		{
-		  if (!print_txt(header, qlen, name, p1, ardlen, secflag))
-		    return 2;
+		   if (!CHECK_LEN(header, p1, qlen, ardlen))
+		     return 2;
+		   
+		   log_txt(name, p1, ardlen, secflag | F_UPSTREAM);
 		}
 	      else
-		log_query(flags | F_FORWARD | secflag | F_UPSTREAM, name, &addr, NULL, aqtype);
+		{
+		  int negflag = F_UPSTREAM;
+
+		  /* We're filtering this RRtype. It will be removed from the 
+		     returned packet in process_reply() but gets cached here anyway
+		     and will be filtered again on the way out of the cache. Here,
+		     we just need to alter the logging. */
+		  if (rr_on_list(daemon->filter_rr, qtype))
+		    negflag = F_NEG | F_CONFIG;
+		  
+		  log_query(negflag | flags | F_FORWARD | secflag, name, &addr, NULL, aqtype);
+		}
 	    }
 	  
 	  p1 = endrr;
@@ -905,11 +945,10 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	{
 	  if (flags & F_NXDOMAIN)
 	    {
-	      flags &= ~(F_IPV4 | F_IPV6 | F_SRV);
+	      flags &= ~(F_IPV4 | F_IPV6 | F_RR);
 	      
-	      /* Can store NXDOMAIN reply to CNAME or ANY query. */
-	      if (qtype == T_CNAME || qtype == T_ANY)
-		insert = 1;
+	      /* Can store NXDOMAIN reply for any qtype. */
+	      insert = 1;
 	    }
 	  
 	  log_query(F_UPSTREAM | F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0), name, NULL, NULL, 0);
@@ -927,7 +966,10 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      if (ttl == 0)
 		ttl = cttl;
 	      
-	      newc = cache_insert(name, NULL, C_IN, now, ttl, F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0));	
+	      if (flags & F_RR)
+		addr.rr.rrtype = qtype;
+
+	      newc = cache_insert(name, &addr, C_IN, now, ttl, F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0));	
 	      if (newc && cpp)
 		{
 		  next_uid(newc);
@@ -1422,7 +1464,7 @@ static int cache_validated(const struct crec *crecp)
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
 		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader,
-		      int *stale) 
+		      int *stale, int *filtered) 
 {
   char *name = daemon->namebuff;
   unsigned char *p, *ansp;
@@ -1440,6 +1482,9 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 
   if (stale)
     *stale = 0;
+
+  if (filtered)
+    *filtered = 0;
   
   /* never answer queries with RD unset, to avoid cache snooping. */
   if (ntohs(header->ancount) != 0 ||
@@ -1708,8 +1753,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			  /* don't answer wildcard queries with data not from /etc/hosts or dhcp leases */
 			  if (qtype == T_ANY && !(crecp->flags & (F_HOSTS | F_DHCP)))
 			    continue;
-			  
-			  
+			  			  
 			  if (!(crecp->flags & F_DNSSECOK))
 			    sec_data = 0;
 			  
@@ -1877,8 +1921,24 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			
 			if (!(crecp->flags & F_DNSSECOK))
 			  sec_data = 0;
-			
-			if (crecp->flags & F_NEG)
+
+			if (!(crecp->flags & (F_HOSTS | F_DHCP)))
+			  auth = 0;
+
+			if (rr_on_list(daemon->filter_rr, qtype) &&
+			    !(crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG | F_NEG)))
+			  {
+			    /* We have a cached answer but we're filtering it. */
+			    ans = 1;
+			    sec_data = 0;
+			    
+			    if (!dryrun)
+			      log_query(F_NEG | F_CONFIG | flag, name, NULL, NULL, 0);
+			    
+			    if (filtered)
+			      *filtered = 1;
+			  }
+			else if (crecp->flags & F_NEG)
 			  {
 			    ans = 1;
 			    auth = 0;
@@ -1897,9 +1957,6 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 				(crecp->flags & F_HOSTS) &&
 				!is_same_net(crecp->addr.addr4, local_addr, local_netmask))
 			      continue;
-			    
-			    if (!(crecp->flags & (F_HOSTS | F_DHCP)))
-			      auth = 0;
 			    
 			    ans = 1;
 			    if (!dryrun)
@@ -1949,6 +2006,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  {
 		    ans = found = 1;
 		    sec_data = 0;
+		    
 		    if (!dryrun)
 		      {
 			int offset;
@@ -1981,13 +2039,12 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	  	  
 	  if (qtype == T_SRV || qtype == T_ANY)
 	    {
-	      int found = 0;
 	      struct mx_srv_record *move = NULL, **up = &daemon->mxnames;
 
 	      for (rec = daemon->mxnames; rec; rec = rec->next)
 		if (rec->issrv && hostname_isequal(name, rec->name))
 		  {
-		    found = ans = 1;
+		    ans = 1;
 		    sec_data = 0;
 		    if (!dryrun)
 		      {
@@ -2021,60 +2078,6 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  *up = move;
 		  move->next = NULL;
 		}
-
-	      if (!found)
-		{
-		  if ((crecp = cache_find_by_name(NULL, name, now, F_SRV | F_NXDOMAIN | (dryrun ? F_NO_RR : 0))) &&
-		      rd_bit && (!do_bit || (option_bool(OPT_DNSSEC_VALID) && !(crecp->flags & F_DNSSECOK))))
-		    do
-		      {
-			int stale_flag = 0;
-			
-			if (crec_isstale(crecp, now))
-			  {
-			    if (stale)
-			      *stale = 1;
-			    
-			    stale_flag = F_STALE;
-			  }
-			/* don't answer wildcard queries with data not from /etc/hosts or dhcp leases, except for NXDOMAIN */
-			if (qtype == T_ANY && !(crecp->flags & (F_NXDOMAIN)))
-			  break;
-			
-			if (!(crecp->flags & F_DNSSECOK))
-			  sec_data = 0;
-			
-			auth = 0;
-			found = ans = 1;
-			
-			if (crecp->flags & F_NEG)
-			  {
-			    if (crecp->flags & F_NXDOMAIN)
-			      nxdomain = 1;
-			    if (!dryrun)
-			      log_query(stale_flag | crecp->flags, name, NULL, NULL, 0);
-			  }
-			else if (!dryrun)
-			  {
-			    char *target = blockdata_retrieve(crecp->addr.srv.target, crecp->addr.srv.targetlen, NULL);
-			    log_query(stale_flag | crecp->flags, name, NULL, NULL, 0);
-			    
-			    if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
-						    crec_ttl(crecp, now), NULL, T_SRV, C_IN, "sssd",
-						    crecp->addr.srv.priority, crecp->addr.srv.weight, crecp->addr.srv.srvport,
-						    target))
-			      anscount++;
-			  }
-		      } while ((crecp = cache_find_by_name(crecp, name, now, F_SRV)));
-		    }
-	      
-	      if (!found && option_bool(OPT_FILTER) && (qtype == T_SRV || (qtype == T_ANY && strchr(name, '_'))))
-		{
-		  ans = 1;
-		  sec_data = 0;
-		  if (!dryrun)
-		    log_query(F_CONFIG | F_NEG, name, NULL, NULL, 0);
-		}
 	    }
 
 	  if (qtype == T_NAPTR || qtype == T_ANY)
@@ -2106,8 +2109,92 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	      if (!dryrun)
 		log_query(F_CONFIG | F_NEG, name, &addr, NULL, 0);
 	    }
-	}
 
+	  if (!ans)
+	    {
+	       if ((crecp = cache_find_by_name(NULL, name, now, F_RR | F_NXDOMAIN | (dryrun ? F_NO_RR : 0))) &&
+		   rd_bit && (!do_bit || cache_validated(crecp)))
+		 do
+		   {
+		     int flags = crecp->flags;
+
+		     if ((flags & F_NXDOMAIN) || crecp->addr.rr.rrtype == qtype)
+		       {
+			 if (crec_isstale(crecp, now))
+			   {
+			     if (stale)
+			       *stale = 1;
+			     
+			     flags |= F_STALE;
+			   }
+			 
+			 if (!(flags & F_DNSSECOK))
+			   sec_data = 0;
+
+			 if (flags & F_NXDOMAIN)
+			   nxdomain = 1;
+			 else if (rr_on_list(daemon->filter_rr, qtype))
+			   flags |=  F_NEG | F_CONFIG;
+			 
+			 auth = 0;
+			 ans = 1;
+			 
+			 if (!dryrun)
+			   {
+			     char *rrdata = NULL;
+
+			     if (!(flags & F_NEG))
+			       {
+				 rrdata = blockdata_retrieve(crecp->addr.rr.rrdata, crecp->addr.rr.datalen, NULL);
+			     
+				 if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
+							 crec_ttl(crecp, now), NULL, qtype, C_IN, "t",
+							 crecp->addr.rr.datalen, rrdata))
+				   anscount++;
+			       }
+			     
+			     /* log after cache insertion as log_txt mangles rrdata */
+			     if (qtype == T_TXT && !(crecp->flags & F_NEG))
+			       log_txt(name, (unsigned char *)rrdata, crecp->addr.rr.datalen, crecp->flags & F_DNSSECOK);
+			     else
+			       log_query(flags, name, &crecp->addr, NULL, 0);
+			   }
+		       }
+		   } while ((crecp = cache_find_by_name(crecp, name, now, F_RR)));
+	    }
+	  
+	  if (!ans && option_bool(OPT_FILTER) && (qtype == T_SRV || (qtype == T_ANY && strchr(name, '_'))))
+	    {
+	      ans = 1;
+	      sec_data = 0;
+	      if (!dryrun)
+		log_query(F_CONFIG | F_NEG, name, NULL, NULL, 0);
+	    }
+	  
+	  
+	  if (!ans && rr_on_list(daemon->filter_rr, qtype))
+	    {
+	      /* We don't have a cached answer and when we get an answer from upstream we're going to
+		 filter it anyway. If we have a cached answer for the domain for another RRtype then
+		 that may be enough to tell us if the answer should be NODATA and save the round trip.
+		 Cached NXDOMAIN has already been handled, so here we look for any record for the domain,
+		 since its existence allows us to return a NODATA answer. Note that we never set the AD flag,
+		 since we didn't authenticate the record. */
+	      
+	      if (cache_find_by_name(NULL, name, now, F_IPV4 | F_IPV6 | F_RR | F_CNAME))
+		{
+		  ans = 1;
+		  sec_data = auth = 0;
+		  
+		  if (!dryrun)
+		    log_query(F_NEG | F_CONFIG | flag, name, NULL, NULL, 0);
+		  
+		  if (filtered)
+		    *filtered = 1;
+		}
+	    }
+	}
+      
       if (!ans)
 	return 0; /* failed to answer a question */
     }

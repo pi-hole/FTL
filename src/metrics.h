@@ -38,7 +38,6 @@ struct metrics
 				int a;
 				int aaaa;
 				int cname;
-				int srv;
 				int ds;
 				int dnskey;
 				int other;

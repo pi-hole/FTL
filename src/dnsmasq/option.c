@@ -190,6 +190,8 @@ struct myoption {
 #define LOPT_STALE_CACHE   377
 #define LOPT_NORR          378
 #define LOPT_NO_IDENT      379
+#define LOPT_CACHE_RR      380
+#define LOPT_FILTER_RR     381
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -229,6 +231,7 @@ static const struct myoption opts[] =
     { "filterwin2k", 0, 0, 'f' },
     { "filter-A", 0, 0, LOPT_FILTER_A },
     { "filter-AAAA", 0, 0, LOPT_FILTER_AAAA },
+    { "filter-rr", 1, 0, LOPT_FILTER_RR },
     { "pid-file", 2, 0, 'x' },
     { "strict-order", 0, 0, 'o' },
     { "server", 1, 0, 'S' },
@@ -243,6 +246,7 @@ static const struct myoption opts[] =
     { "local-ttl", 1, 0, 'T' },
     { "no-negcache", 0, 0, 'N' },
     { "no-round-robin", 0, 0, LOPT_NORR },
+    { "cache-rr", 1, 0, LOPT_CACHE_RR },
     { "addn-hosts", 1, 0, 'H' },
     { "hostsdir", 1, 0, LOPT_HOST_INOTIFY },
     { "query-port", 1, 0, 'Q' },
@@ -407,8 +411,9 @@ static struct {
   { 'e', OPT_SELFMX, NULL, gettext_noop("Return self-pointing MX records for local hosts."), NULL },
   { 'E', OPT_EXPAND, NULL, gettext_noop("Expand simple names in /etc/hosts with domain-suffix."), NULL },
   { 'f', OPT_FILTER, NULL, gettext_noop("Don't forward spurious DNS requests from Windows hosts."), NULL },
-  { LOPT_FILTER_A, OPT_FILTER_A, NULL, gettext_noop("Don't include IPv4 addresses in DNS answers."), NULL },
-  { LOPT_FILTER_AAAA, OPT_FILTER_AAAA, NULL, gettext_noop("Don't include IPv6 addresses in DNS answers."), NULL },
+  { LOPT_FILTER_A, ARG_DUP, NULL, gettext_noop("Don't include IPv4 addresses in DNS answers."), NULL },
+  { LOPT_FILTER_AAAA, ARG_DUP, NULL, gettext_noop("Don't include IPv6 addresses in DNS answers."), NULL },
+  { LOPT_FILTER_RR, ARG_DUP, "<RR-type>", gettext_noop("Don't include resource records of the given type in DNS answers."), NULL },
   { 'F', ARG_DUP, "<ipaddr>,...", gettext_noop("Enable DHCP in the range given with lease duration."), NULL },
   { 'g', ARG_ONE, "<groupname>", gettext_noop("Change to this group after startup (defaults to %s)."), CHGRP },
   { 'G', ARG_DUP, "<hostspec>", gettext_noop("Set address or hostname for a specified machine."), NULL },
@@ -570,13 +575,14 @@ static struct {
   { LOPT_DHCPTTL, ARG_ONE, "<ttl>", gettext_noop("Set TTL in DNS responses with DHCP-derived addresses."), NULL }, 
   { LOPT_REPLY_DELAY, ARG_ONE, "<integer>", gettext_noop("Delay DHCP replies for at least number of seconds."), NULL },
   { LOPT_RAPID_COMMIT, OPT_RAPID_COMMIT, NULL, gettext_noop("Enables DHCPv4 Rapid Commit option."), NULL },
-  { LOPT_DUMPFILE, ARG_ONE, "<path>", gettext_noop("Path to debug packet dump file"), NULL },
-  { LOPT_DUMPMASK, ARG_ONE, "<hex>", gettext_noop("Mask which packets to dump"), NULL },
+  { LOPT_DUMPFILE, ARG_ONE, "<path>", gettext_noop("Path to debug packet dump file."), NULL },
+  { LOPT_DUMPMASK, ARG_ONE, "<hex>", gettext_noop("Mask which packets to dump."), NULL },
   { LOPT_SCRIPT_TIME, OPT_LEASE_RENEW, NULL, gettext_noop("Call dhcp-script when lease expiry changes."), NULL },
   { LOPT_UMBRELLA, ARG_ONE, "[=<optspec>]", gettext_noop("Send Cisco Umbrella identifiers including remote IP."), NULL },
   { LOPT_QUIET_TFTP, OPT_QUIET_TFTP, NULL, gettext_noop("Do not log routine TFTP."), NULL },
   { LOPT_NORR, OPT_NORR, NULL, gettext_noop("Suppress round-robin ordering of DNS records."), NULL },
   { LOPT_NO_IDENT, OPT_NO_IDENT, NULL, gettext_noop("Do not add CHAOS TXT records."), NULL },
+  { LOPT_CACHE_RR, ARG_DUP, "<RR-type>", gettext_noop("Cache this DNS resource record type."), NULL },
   { 0, 0, NULL, NULL, NULL }
 }; 
 
@@ -1163,6 +1169,9 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
 	}
       else
 	{
+	  /* Always reset server as valid here, so we can add the same upstream
+	     server address multiple times for each x.y.z.in-addr.arpa  */
+	  sdetails.valid = 1;
 	  while (parse_server_next(&sdetails))
 	    {
 	      if ((string = parse_server_addr(&sdetails)))
@@ -1248,6 +1257,9 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
 	}
       else
 	{
+	  /* Always reset server as valid here, so we can add the same upstream
+	     server address multiple times for each x.y.z.ip6.arpa  */
+	  sdetails.valid = 1;
 	  while (parse_server_next(&sdetails))
 	    {
 	      if ((string = parse_server_addr(&sdetails)))
@@ -3441,7 +3453,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	break;
       }
 
-    case LOPT_FAST_RETRY:
+    case LOPT_FAST_RETRY: /* --fast-dns-retry */
       daemon->fast_retry_timeout = TIMEOUT;
       
       if (!arg)
@@ -3463,6 +3475,47 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    }
 	}
       break;
+
+    case LOPT_CACHE_RR: /* --cache-rr */
+    case LOPT_FILTER_RR: /* --filter-rr */
+    case LOPT_FILTER_A: /* --filter-A */
+    case LOPT_FILTER_AAAA: /* --filter-AAAA */
+      while (1) {
+	int type;
+	struct rrlist *new;
+
+	comma = NULL;
+
+	if (option == LOPT_FILTER_A)
+	  type = T_A;
+	else if (option == LOPT_FILTER_AAAA)
+	  type = T_AAAA;
+	else
+	  {
+	    comma = split(arg);
+	    if (!atoi_check(arg, &type) && (type = rrtype(arg)) == 0)
+	      ret_err(_("bad RR type"));
+	  }
+	
+	new = opt_malloc(sizeof(struct rrlist));
+	new->rr = type;
+
+	if (option == LOPT_CACHE_RR)
+	  {
+	    new->next = daemon->cache_rr;
+	    daemon->cache_rr = new;
+	  }
+	else
+	  {
+	    new->next = daemon->filter_rr;
+	    daemon->filter_rr = new;
+	  }
+	
+	if (!comma) break;
+	arg = comma;
+      }
+      break;
+      
             
 #ifdef HAVE_DHCP
     case 'X': /* --dhcp-lease-max */
@@ -5158,7 +5211,7 @@ err:
 	break;
       }
 
-    case LOPT_STALE_CACHE:
+    case LOPT_STALE_CACHE: /* --use-stale-cache */
       {
 	int max_expiry = STALE_CACHE_EXPIRY;
 	if (arg)
@@ -5731,10 +5784,15 @@ void read_opts(int argc, char **argv, char *compile_opts)
 {
   size_t argbuf_size = MAXDNAME;
   char *argbuf = opt_malloc(argbuf_size);
-  char *buff = opt_malloc(MAXDNAME);
+  /* Note that both /000 and '.' are allowed within labels. These get
+     represented in presentation format using NAME_ESCAPE as an escape
+     character. In theory, if all the characters in a name were /000 or
+     '.' or NAME_ESCAPE then all would have to be escaped, so the 
+     presentation format would be twice as long as the spec. */
+  char *buff = opt_malloc((MAXDNAME * 2) + 1);
   int option, testmode = 0;
   char *arg, *conffile = NULL;
-      
+  
   opterr = 0;
 
   daemon = opt_malloc(sizeof(struct daemon));
@@ -5879,12 +5937,10 @@ void read_opts(int argc, char **argv, char *compile_opts)
       add_txt("servers.bind", NULL, TXT_STAT_SERVERS);
       /* Pi-hole modification */
       add_txt("privacylevel.pihole", NULL, TXT_PRIVACYLEVEL);
+      add_txt("version.FTL", (char*)get_FTL_version(), 0 );
       /************************/
     }
 #endif
-  /******** Pi-hole modification ********/
-  add_txt("version.FTL", (char*)get_FTL_version(), 0 );
-  /**************************************/
 
   /* port might not be known when the address is parsed - fill in here */
   if (daemon->servers)
