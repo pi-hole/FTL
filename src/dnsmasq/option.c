@@ -2572,179 +2572,182 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
     case 's':         /* --domain */
     case LOPT_SYNTH:  /* --synth-domain */
-      if (strcmp (arg, "#") == 0)
-	set_option_bool(OPT_RESOLV_DOMAIN);
-      else
-	{
-	  char *d, *d_raw = arg;
-	  comma = split(arg);
-	  if (!(d = canonicalise_opt(d_raw)))
-	    ret_err(gen_err);
-	  else
-	    {
-	      free(d); /* allocate this again below. */
-	      if (comma)
-		{
-		  struct cond_domain *new = opt_malloc(sizeof(struct cond_domain));
-		  char *netpart;
-		  
-		  new->prefix = NULL;
-		  new->indexed = 0;
-		  new->prefixlen = 0;
-		  
-		  unhide_metas(comma);
-		  if ((netpart = split_chr(comma, '/')))
-		    {
-		      int msize;
-
-		      arg = split(netpart);
-		      if (!atoi_check(netpart, &msize))
-			ret_err_free(gen_err, new);
-		      else if (inet_pton(AF_INET, comma, &new->start))
-			{
-			  int mask;
-
-			  if (msize > 32)
-			     ret_err_free(_("bad prefix length"), new);
+      {
+	char *d, *d_raw = arg;
+	comma = split(arg);
+	if (!(d = canonicalise_opt(d_raw)))
+	  ret_err(gen_err);
+	else
+	  {
+	    free(d); /* allocate this again below. */
+	    if (comma)
+	      {
+		struct cond_domain *new = opt_malloc(sizeof(struct cond_domain));
+		char *netpart;
+		
+		new->prefix = NULL;
+		new->indexed = 0;
+		new->prefixlen = 0;
+		
+		unhide_metas(comma);
+		if ((netpart = split_chr(comma, '/')))
+		  {
+		    int msize;
+		    
+		    arg = split(netpart);
+		    if (!atoi_check(netpart, &msize))
+		      ret_err_free(gen_err, new);
+		    else if (inet_pton(AF_INET, comma, &new->start))
+		      {
+			int mask;
+			
+			if (msize > 32)
+			  ret_err_free(_("bad prefix length"), new);
+			
+			mask = (1 << (32 - msize)) - 1;
+			new->is6 = 0; 			  
+			new->start.s_addr = ntohl(htonl(new->start.s_addr) & ~mask);
+			new->end.s_addr = new->start.s_addr | htonl(mask);
+			if (arg)
+			  {
+			    if (option != 's')
+			      {
+				if (!(new->prefix = canonicalise_opt(arg)) ||
+				    strlen(new->prefix) > MAXLABEL - INET_ADDRSTRLEN)
+				  ret_err_free(_("bad prefix"), new);
+			      }
+			    else if (strcmp(arg, "local") != 0)
+			      ret_err_free(gen_err, new);
+			    else
+			      {
+				/* local=/xxx.yyy.zzz.in-addr.arpa/ */
+				domain_rev4(0, NULL, &new->start, msize);
+				
+				/* local=/<domain>/ */
+				/* d_raw can't failed to canonicalise here, checked above. */
+				add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, d_raw, NULL);
+			      }
+			  }
+		      }
+		    else if (inet_pton(AF_INET6, comma, &new->start6))
+		      {
+			u64 mask, addrpart = addr6part(&new->start6);
+			
+			if (msize > 128)
+			  ret_err_free(_("bad prefix length"), new);
+			
+			mask = (1LLU << (128 - msize)) - 1LLU;
+			
+			new->is6 = 1;
+			new->prefixlen = msize;
+			
+			/* prefix==64 overflows the mask calculation above */
+			if (msize <= 64)
+			  mask = (u64)-1LL;
 			  
-			  mask = (1 << (32 - msize)) - 1;
-			  new->is6 = 0; 			  
-			  new->start.s_addr = ntohl(htonl(new->start.s_addr) & ~mask);
-			  new->end.s_addr = new->start.s_addr | htonl(mask);
-			  if (arg)
-			    {
-			      if (option != 's')
-				{
-				  if (!(new->prefix = canonicalise_opt(arg)) ||
-				      strlen(new->prefix) > MAXLABEL - INET_ADDRSTRLEN)
-				    ret_err_free(_("bad prefix"), new);
-				}
-			      else if (strcmp(arg, "local") != 0)
-				ret_err_free(gen_err, new);
-			      else
-				{
-				  /* local=/xxx.yyy.zzz.in-addr.arpa/ */
-				  domain_rev4(0, NULL, &new->start, msize);
-				 				  
-				  /* local=/<domain>/ */
-				  /* d_raw can't failed to canonicalise here, checked above. */
-				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, d_raw, NULL);
-				}
-			    }
-			}
-		      else if (inet_pton(AF_INET6, comma, &new->start6))
-			{
-			  u64 mask, addrpart = addr6part(&new->start6);
-
-			  if (msize > 128)
-			    ret_err_free(_("bad prefix length"), new);
-
-			  mask = (1LLU << (128 - msize)) - 1LLU;
-
-			  new->is6 = 1;
-			  new->prefixlen = msize;
-			  
-			  /* prefix==64 overflows the mask calculation above */
-			  if (msize <= 64)
-			    mask = (u64)-1LL;
-			  
-			  new->end6 = new->start6;
-			  setaddr6part(&new->start6, addrpart & ~mask);
-			  setaddr6part(&new->end6, addrpart | mask);
-			  
-			  if (arg)
-			    {
-			      if (option != 's')
-				{
-				  if (!(new->prefix = canonicalise_opt(arg)) ||
-				      strlen(new->prefix) > MAXLABEL - INET6_ADDRSTRLEN)
-				    ret_err_free(_("bad prefix"), new);
-				}	
-			      else if (strcmp(arg, "local") != 0)
-				ret_err_free(gen_err, new);
-			      else 
-				{
-				  /* generate the equivalent of
-				     local=/xxx.yyy.zzz.ip6.arpa/ */
-				  domain_rev6(0, NULL, &new->start6, msize);
-				  
-				  /* local=/<domain>/ */
-				  /* d_raw can't failed to canonicalise here, checked above. */
-				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, d_raw, NULL);
-				}
-			    }
-			}
-		      else
-			ret_err_free(gen_err, new);
-		    }
-		  else
-		    {
-		      char *prefstr;
-		      arg = split(comma);
-		      prefstr = split(arg);
-
-		      if (inet_pton(AF_INET, comma, &new->start))
-			{
-			  new->is6 = 0;
-			  if (!arg)
-			    new->end.s_addr = new->start.s_addr;
-			  else if (!inet_pton(AF_INET, arg, &new->end))
-			    ret_err_free(gen_err, new);
-			}
-		      else if (inet_pton(AF_INET6, comma, &new->start6))
-			{
-			  new->is6 = 1;
-			  if (!arg)
-			    memcpy(&new->end6, &new->start6, IN6ADDRSZ);
-			  else if (!inet_pton(AF_INET6, arg, &new->end6))
-			    ret_err_free(gen_err, new);
-			}
-		      else if (option == 's')
-			{
-			  /* subnet from interface. */
-			  new->interface = opt_string_alloc(comma);
-			  new->al = NULL;
-			}
-		      else
-			ret_err_free(gen_err, new);
-		      
-		      if (option != 's' && prefstr)
-			{
-			  if (!(new->prefix = canonicalise_opt(prefstr)) ||
-			      strlen(new->prefix) > MAXLABEL - INET_ADDRSTRLEN)
-			    ret_err_free(_("bad prefix"), new);
-			}
-		    }
-
-		  new->domain = canonicalise_opt(d_raw);
-		  if (option  == 's')
-		    {
-		      new->next = daemon->cond_domain;
-		      daemon->cond_domain = new;
-		    }
-		  else
-		    {
-		      char *star;
-		      if (new->prefix &&
-			  (star = strrchr(new->prefix, '*'))
-			  && *(star+1) == 0)
-			{
-			  *star = 0;
-			  new->indexed = 1;
-			  if (new->is6 && new->prefixlen < 64)
-			    ret_err_free(_("prefix length too small"), new);
-			}
-		      new->next = daemon->synth_domains;
-		      daemon->synth_domains = new;
-		    }
-		}
-	      else if (option == 's')
-		daemon->domain_suffix = canonicalise_opt(d_raw);
-	      else 
-		ret_err(gen_err);
-	    }
-	}
-      break;
+			new->end6 = new->start6;
+			setaddr6part(&new->start6, addrpart & ~mask);
+			setaddr6part(&new->end6, addrpart | mask);
+			
+			if (arg)
+			  {
+			    if (option != 's')
+			      {
+				if (!(new->prefix = canonicalise_opt(arg)) ||
+				    strlen(new->prefix) > MAXLABEL - INET6_ADDRSTRLEN)
+				  ret_err_free(_("bad prefix"), new);
+			      }	
+			    else if (strcmp(arg, "local") != 0)
+			      ret_err_free(gen_err, new);
+			    else 
+			      {
+				/* generate the equivalent of
+				   local=/xxx.yyy.zzz.ip6.arpa/ */
+				domain_rev6(0, NULL, &new->start6, msize);
+				
+				/* local=/<domain>/ */
+				/* d_raw can't failed to canonicalise here, checked above. */
+				add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, d_raw, NULL);
+			      }
+			  }
+		      }
+		    else
+		      ret_err_free(gen_err, new);
+		  }
+		else
+		  {
+		    char *prefstr;
+		    arg = split(comma);
+		    prefstr = split(arg);
+		    
+		    if (inet_pton(AF_INET, comma, &new->start))
+		      {
+			new->is6 = 0;
+			if (!arg)
+			  new->end.s_addr = new->start.s_addr;
+			else if (!inet_pton(AF_INET, arg, &new->end))
+			  ret_err_free(gen_err, new);
+		      }
+		    else if (inet_pton(AF_INET6, comma, &new->start6))
+		      {
+			new->is6 = 1;
+			if (!arg)
+			  memcpy(&new->end6, &new->start6, IN6ADDRSZ);
+			else if (!inet_pton(AF_INET6, arg, &new->end6))
+			  ret_err_free(gen_err, new);
+		      }
+		    else if (option == 's')
+		      {
+			/* subnet from interface. */
+			new->interface = opt_string_alloc(comma);
+			new->al = NULL;
+		      }
+		    else
+		      ret_err_free(gen_err, new);
+		    
+		    if (option != 's' && prefstr)
+		      {
+			if (!(new->prefix = canonicalise_opt(prefstr)) ||
+			    strlen(new->prefix) > MAXLABEL - INET_ADDRSTRLEN)
+			  ret_err_free(_("bad prefix"), new);
+		      }
+		  }
+		
+		new->domain = canonicalise_opt(d_raw);
+		if (option  == 's')
+		  {
+		    new->next = daemon->cond_domain;
+		    daemon->cond_domain = new;
+		  }
+		else
+		  {
+		    char *star;
+		    if (new->prefix &&
+			(star = strrchr(new->prefix, '*'))
+			&& *(star+1) == 0)
+		      {
+			*star = 0;
+			new->indexed = 1;
+			if (new->is6 && new->prefixlen < 64)
+			  ret_err_free(_("prefix length too small"), new);
+		      }
+		    new->next = daemon->synth_domains;
+		    daemon->synth_domains = new;
+		  }
+	      }
+	    else if (option == 's')
+	      {
+		if (strcmp (arg, "#") == 0)
+		  set_option_bool(OPT_RESOLV_DOMAIN);
+		else
+		  daemon->domain_suffix = canonicalise_opt(d_raw);
+	      }
+	    else 
+	      ret_err(gen_err);
+	  }
+	
+	break;
+      }
       
     case LOPT_CPE_ID: /* --add-dns-client */
       if (arg)
