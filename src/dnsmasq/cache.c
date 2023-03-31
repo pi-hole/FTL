@@ -1876,8 +1876,6 @@ void get_dnsmasq_cache_info(struct cache_info *ci)
 	  ci->valid.ipv6++;
 	else if (cache->flags & F_CNAME)
 	  ci->valid.cname++;
-	else if (cache->flags & F_SRV)
-	  ci->valid.srv++;
 #ifdef HAVE_DNSSEC
 	else if (cache->flags & F_DS)
 	  ci->valid.ds++;

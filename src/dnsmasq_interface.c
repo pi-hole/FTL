@@ -2904,13 +2904,12 @@ void getCacheInformation(const int sock)
 {
 	struct cache_info ci;
 	get_dnsmasq_cache_info(&ci);
-	ssend(sock, "cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\nipv4: %i\nipv6: %i\nsrv: %i\ncname: %i\nds: %i\ndnskey: %i\nother: %i\nexpired: %i\nimmortal: %i\n",
+	ssend(sock, "cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\nipv4: %i\nipv6: %i\nsrv: 0\ncname: %i\nds: %i\ndnskey: %i\nother: %i\nexpired: %i\nimmortal: %i\n",
 	            daemon->cachesize,
 	            daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED],
 	            daemon->metrics[METRIC_DNS_CACHE_INSERTED],
 	            ci.valid.ipv4,
 	            ci.valid.ipv6,
-	            ci.valid.srv,
 	            ci.valid.cname,
 	            ci.valid.ds,
 	            ci.valid.dnskey,
