@@ -276,8 +276,8 @@ static void cache_blockdata_free(struct crec *crecp)
 {
   if (!(crecp->flags & F_NEG))
     {
-      if (crecp->flags & F_RR)
-	blockdata_free(crecp->addr.rr.rrdata);
+      if (crecp->flags & F_RR && crecp->addr.rr.len == -1)
+	blockdata_free(crecp->addr.rr.u.block.rrdata);
 #ifdef HAVE_DNSSEC
       else if (crecp->flags & F_DNSKEY)
 	blockdata_free(crecp->addr.key.keydata);
@@ -796,8 +796,8 @@ void cache_end_insert(void)
 	      if (flags & F_RR)
 		{
 		  /* A negative RR entry is possible and has no data, obviously. */
-		  if (!(flags & F_NEG))
-		    blockdata_write(new_chain->addr.rr.rrdata, new_chain->addr.rr.datalen, daemon->pipe_to_parent);
+		  if (!(flags & F_NEG) && new_chain->addr.rr.len == -1)
+		    blockdata_write(new_chain->addr.rr.u.block.rrdata, new_chain->addr.rr.u.block.datalen, daemon->pipe_to_parent);
 		}
 #ifdef HAVE_DNSSEC
 	      if (flags & F_DNSKEY)
@@ -870,7 +870,8 @@ int cache_recv_insert(time_t now, int fd)
 	  if (!read_write(fd, (unsigned char *)&addr, sizeof(addr), 1))
 	    return 0;
 	  
-	  if ((flags & F_RR) && !(flags & F_NEG) && !(addr.rr.rrdata = blockdata_read(fd, addr.rr.datalen)))
+	  if ((flags & F_RR) && !(flags & F_NEG) &&
+	      new_chain->addr.rr.len == -1 && !(addr.rr.u.block.rrdata = blockdata_read(fd, addr.rr.u.block.datalen)))
 	    return 0;
 #ifdef HAVE_DNSSEC
 	   if (flags & F_DNSKEY)
