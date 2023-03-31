@@ -96,7 +96,7 @@ static struct {
 static union mysockaddr last_server = {{ 0 }};
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
-const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE", "F_SRV", "F_STALE" };
+const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_RR ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE", "F_SRV", "F_STALE" };
 
 void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
 {
@@ -123,7 +123,7 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 	else if(flags & F_RCODE && name && strcasecmp(name, "error") == 0)
 		// upstream sent something different than NOERROR or NXDOMAIN
 		FTL_upstream_error(addr, flags, id, path, line);
-	else if(flags & F_NOEXTRA && flags & F_DNSSEC)
+	else if(flags & F_NOEXTRA && flags & F_NOERR)
 	{
 		// This is a new DNSSEC query (dnssec-query[DS])
 		if(!config.show_dnssec)
