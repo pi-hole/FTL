@@ -1325,7 +1325,6 @@ struct cache_info {
     int ipv4;
     int ipv6;
     int cname;
-    int srv;
     int ds;
     int dnskey;
     int other;
