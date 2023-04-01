@@ -146,6 +146,21 @@ unsigned short rrtype(char *in)
   return 0;
 }
 
+/* Pi-hole function: return name of RR type */
+const char *rrtype_name(unsigned short type)
+{
+  unsigned int i;
+
+  if(type == 0)
+    return "OTHER";
+
+  for (i = 0; i < (sizeof(typestr)/sizeof(typestr[0])); i++)
+    if (typestr[i].type == type)
+      return typestr[i].name;
+
+  return NULL;
+}
+
 void next_uid(struct crec *crecp)
 {
   static unsigned int uid = 0;
@@ -1865,7 +1880,16 @@ static void dump_cache_entry(struct crec *cache, time_t now)
 /***************** Pi-hole modification *****************/
 void get_dnsmasq_metrics(struct metrics *ci)
 {
+  // Prepare the metrics struct
   memset(ci, 0, sizeof(struct metrics));
+	ci->dns.cache.content[RRTYPE_OTHER].type = 0;
+	ci->dns.cache.content[RRTYPE_A].type = T_A;  // A
+	ci->dns.cache.content[RRTYPE_AAAA].type = T_AAAA; // AAAA
+	ci->dns.cache.content[RRTYPE_CNAME].type = T_CNAME;  // CNAME
+	ci->dns.cache.content[RRTYPE_DS].type = T_DS; // DNSKEY
+	ci->dns.cache.content[RRTYPE_DNSKEY].type = T_DNSKEY; // DNSKEY
+
+  // General DNS cache metrics
   ci->dns.cache.size = daemon->cachesize;
   ci->dns.cache.inserted = daemon->metrics[METRIC_DNS_CACHE_INSERTED];
   ci->dns.cache.live_freed = daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED];
@@ -1874,30 +1898,44 @@ void get_dnsmasq_metrics(struct metrics *ci)
   ci->dns.auth_answered = daemon->metrics[METRIC_DNS_AUTH_ANSWERED];
   ci->dns.unanswered_queries = daemon->metrics[METRIC_DNS_UNANSWERED_QUERY];
   ci->dns.forwarded_queries = daemon->metrics[METRIC_DNS_QUERIES_FORWARDED];
+
+  // DNS cache content metrics
   const time_t now = time(NULL);
   for (int i=0; i < hash_size; i++)
     for (struct crec *cache = hash_table[i]; cache; cache = cache->hash_next)
       if(cache->ttd >= now || cache->flags & F_IMMORTAL)
       {
 	if (cache->flags & F_IPV4)
-	  ci->dns.cache.content.a++;
+	  ci->dns.cache.content[RRTYPE_A].count++;
 	else if (cache->flags & F_IPV6)
-	  ci->dns.cache.content.aaaa++;
+	  ci->dns.cache.content[RRTYPE_AAAA].count++;
 	else if (cache->flags & F_CNAME)
-	  ci->dns.cache.content.cname++;
+	  ci->dns.cache.content[RRTYPE_CNAME].count++;
 #ifdef HAVE_DNSSEC
 	else if (cache->flags & F_DS)
-	  ci->dns.cache.content.ds++;
+	  ci->dns.cache.content[RRTYPE_DS].count++;
 	else if (cache->flags & F_DNSKEY)
-	  ci->dns.cache.content.dnskey++;
+	  ci->dns.cache.content[RRTYPE_DNSKEY].count++;
 #endif
+	else if(cache->flags & F_RR)
+	{
+	  // Find the first empty slot or the slot with the same type
+	  for(unsigned int i = RRTYPE_MAX; i < RRTYPES; i++)
+	  {
+	    if(ci->dns.cache.content[i].type == cache->addr.rr.rrtype || ci->dns.cache.content[i].type == 0)
+	    {
+	      ci->dns.cache.content[i].type = cache->addr.rr.rrtype;
+	      ci->dns.cache.content[i].count++;
+	      break;
+	    }
+	  }
+	}
 	else
-	  ci->dns.cache.content.other++;
-	  // cache->flags & F_RR --> cache->addr.rr.rrtype
-	  // Needs (USHRT_MAX*sizeof(int)) bytes of memory
+	  ci->dns.cache.content[RRTYPE_OTHER].count++;
 
 	if(cache->flags & F_IMMORTAL)
 	  ci->dns.cache.immortal++;
+
       }
       else
 	ci->dns.cache.expired++;

@@ -10,6 +10,20 @@
 #ifndef METRICS_H
 #define METRICS_H
 
+// defined in src/dnsmasq/cache.c
+const char *rrtype_name(unsigned short type);
+
+enum rrtype_array {
+	RRTYPE_OTHER = 0,
+	RRTYPE_A,
+	RRTYPE_AAAA,
+	RRTYPE_CNAME,
+	RRTYPE_DS,
+	RRTYPE_DNSKEY,
+	RRTYPE_MAX
+};
+
+#define RRTYPES RRTYPE_MAX+10
 struct metrics
 {
 	struct dns
@@ -33,15 +47,10 @@ struct metrics
 			// <immortal> cache records never expire (e.g. from /etc/hosts)
 			int immortal;
 			// <content> are cache entries with positive remaining TTL
-			struct content
-			{
-				int a;
-				int aaaa;
-				int cname;
-				int ds;
-				int dnskey;
-				int other;
-			} content;
+			struct content {
+				uint16_t type;
+				int count;
+			} content[RRTYPES];
 		} cache;
 		int local_answered;
 		int forwarded_queries;

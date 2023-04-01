@@ -920,13 +920,20 @@ int api_info_metrics(struct ftl_conn *api)
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "expired", metrics.dns.cache.expired);
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "immortal", metrics.dns.cache.immortal);
 
-	cJSON *content = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(content, "a", metrics.dns.cache.content.a);
-	JSON_ADD_NUMBER_TO_OBJECT(content, "aaaa", metrics.dns.cache.content.aaaa);
-	JSON_ADD_NUMBER_TO_OBJECT(content, "cname", metrics.dns.cache.content.cname);
-	JSON_ADD_NUMBER_TO_OBJECT(content, "ds", metrics.dns.cache.content.ds);
-	JSON_ADD_NUMBER_TO_OBJECT(content, "dnskey", metrics.dns.cache.content.dnskey);
-	JSON_ADD_NUMBER_TO_OBJECT(content, "other", metrics.dns.cache.content.other);
+	cJSON *content = JSON_NEW_ARRAY();
+	for(unsigned int i = 0; i < RRTYPES; i++)
+	{
+		// Skip empty entries
+		if(metrics.dns.cache.content[i].count == 0)
+			continue;
+
+		// Add this entry to the array
+		cJSON *obj = JSON_NEW_OBJECT();
+		JSON_ADD_NUMBER_TO_OBJECT(obj, "type", metrics.dns.cache.content[i].type);
+		JSON_REF_STR_IN_OBJECT(obj, "name", rrtype_name(metrics.dns.cache.content[i].type));
+		JSON_ADD_NUMBER_TO_OBJECT(obj, "count", metrics.dns.cache.content[i].count);
+		JSON_ADD_ITEM_TO_ARRAY(content, obj);
+	}
 	JSON_ADD_ITEM_TO_OBJECT(cache, "content", content);
 
 	cJSON *replies = JSON_NEW_OBJECT();

@@ -914,27 +914,20 @@ components:
                       type: integer
                       description: Number of immortal entries
                     content:
-                      type: object
-                      description: Number of valid DNS cache entries
-                      properties:
-                        a:
-                          type: integer
-                          description: Number of valid A (IPv4) entries
-                        aaaa:
-                          type: integer
-                          description: Number of valid AAAA (IPv6) entries
-                        cname:
-                          type: integer
-                          description: Number of valid CNAME entries
-                        ds:
-                          type: integer
-                          description: Number of valid DS entries
-                        dnskey:
-                          type: integer
-                          description: Number of valid DNSKEY entries
-                        other:
-                          type: integer
-                          description: Number of valid other entries
+                      type: array
+                      description: Array of valid DNS cache entries
+                      items:
+                        type: object
+                        properties:
+                          type:
+                            type: integer
+                            description: RR type of cache entry
+                          name:
+                            type: string
+                            description: RR name of cache entry
+                          count:
+                            type: string
+                            description: Number of cache entries for this RR type
                 replies:
                   type: object
                   properties:
@@ -1038,12 +1031,24 @@ components:
               expired: 0
               immortal: 0
               content:
-                a: 212
-                aaaa: 61
-                cname: 14
-                ds: 60
-                dnskey: 35
-                other: 14
+                - type: 0
+                  name: "OTHER"
+                  count: 0
+                - type: 1
+                  name: "A"
+                  count: 17
+                - type: 28
+                  name: "AAAA"
+                  count: 5
+                - type: 5
+                  name: "CNAME"
+                  count: 2
+                - type: 43
+                  name: "DS"
+                  count: 15
+                - type: 48
+                  name: "DNSKEY"
+                  count: 16
             replies:
               optimized: 1
               local: 84
