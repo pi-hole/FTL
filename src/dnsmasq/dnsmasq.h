@@ -329,21 +329,23 @@ union all_addr {
     unsigned short keytag, algo, digest, rcode;
     int ede;
   } log;
-  /* for arbitrary RR record. */
+  /* for arbitrary RR record stored in block */
   struct {
-#define RR_IMDATALEN 13 /* 16 - sizeof(short) - sizeof (char) */
     unsigned short rrtype;
-    char len; /* -1 for blockdata */
-    union {
-      char data[RR_IMDATALEN];
-      struct {
-	unsigned short datalen;
-	struct blockdata *rrdata;
-      } block;
-    } u;
-  } rr;
+    unsigned short datalen; 
+    struct blockdata *rrdata;
+  } rrblock;
+  /* for arbitrary RR record small enough to go in addr.
+     NOTE: rrblock and rrdata are discriminated by the F_KEYTAG bit
+     in the cache flags. */
+  struct datablock {
+    unsigned short rrtype;
+    unsigned char datalen;
+    char data[];
+  } rrdata;
 };
 
+#define RR_IMDATALEN (sizeof(union all_addr) - offsetof(struct datablock, data))
 
 struct bogus_addr {
   int is6, prefix;
