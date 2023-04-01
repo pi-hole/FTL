@@ -353,11 +353,11 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		        forced_ip)
 		{
 			if(hostname && config.reply_addr.own_host.overwrite_v4)
-				memcpy(&addr, &config.reply_addr.own_host.v4, sizeof(addr));
+				memcpy(&addr, &config.reply_addr.own_host.v4, sizeof(config.reply_addr.own_host.v4));
 			else if(!hostname && config.reply_addr.ip_blocking.overwrite_v4)
-				memcpy(&addr, &config.reply_addr.ip_blocking.v4, sizeof(addr));
+				memcpy(&addr, &config.reply_addr.ip_blocking.v4, sizeof(config.reply_addr.ip_blocking.v4));
 			else
-				memcpy(&addr, &next_iface.addr4, sizeof(addr));
+				memcpy(&addr, &next_iface.addr4, sizeof(next_iface.addr4));
 		}
 
 		// Debug logging
@@ -388,11 +388,11 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		        forced_ip)
 		{
 			if(hostname && config.reply_addr.own_host.overwrite_v6)
-				memcpy(&addr, &config.reply_addr.own_host.v6, sizeof(addr));
+				memcpy(&addr, &config.reply_addr.own_host.v6, sizeof(config.reply_addr.own_host.v6));
 			else if(!hostname && config.reply_addr.ip_blocking.overwrite_v6)
-				memcpy(&addr, &config.reply_addr.ip_blocking.v6, sizeof(addr));
+				memcpy(&addr, &config.reply_addr.ip_blocking.v6, sizeof(config.reply_addr.ip_blocking.v6));
 			else
-				memcpy(&addr, &next_iface.addr6, sizeof(addr));
+				memcpy(&addr, &next_iface.addr6, sizeof(config.reply_addr.ip_blocking.v6));
 		}
 
 		// Debug logging
