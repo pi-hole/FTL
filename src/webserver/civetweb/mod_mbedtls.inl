@@ -1,11 +1,19 @@
 #if defined(USE_MBEDTLS) // USE_MBEDTLS used with NO_SSL
 
-#include "mbedtls/certs.h"
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/debug.h"
 #include "mbedtls/entropy.h"
 #include "mbedtls/error.h"
+
+#if MBEDTLS_VERSION_NUMBER >= 0x03000000
+// The file include/mbedtls/net.h was removed in v3.0.0 because its only
+// function was to include mbedtls/net_sockets.h which now should be included
+// directly.
+#include "mbedtls/net_sockets.h"
+#else
 #include "mbedtls/net.h"
+#endif
+
 #include "mbedtls/pk.h"
 #include "mbedtls/platform.h"
 #include "mbedtls/ssl.h"
@@ -49,13 +57,13 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	mbedtls_ssl_config *conf;
 	int rc;
 
-	log_debug(DEBUG_API, "Initializing SSL 1");
 	if (ctx == NULL || crt == NULL) {
+		log_err("Invalid parameter passed to mbed_sslctx_init(%p, %p)", ctx, crt);
 		return -1;
 	}
-	log_debug(DEBUG_API, "Initializing SSL 2");
 
 	DEBUG_TRACE("%s", "Initializing MbedTLS SSL");
+	log_info("Initializing MbedTLS SSL");
 	mbedtls_entropy_init(&ctx->entropy);
 
 	conf = &ctx->conf;
@@ -87,36 +95,41 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	                           &ctx->entropy,
 	                           (unsigned char *)"CivetWeb",
 	                           strlen("CivetWeb"));
-	log_debug(DEBUG_API, "Initializing SSL 3");
 	if (rc != 0) {
-	log_debug(DEBUG_API, "Initializing SSL 3!");
+		log_err("TLS random seed failed (%i)", rc);
 		DEBUG_TRACE("TLS random seed failed (%i)", rc);
 		return -1;
 	}
 
+#if MBEDTLS_VERSION_NUMBER >= 0x03000000
+	// mbedtls_pk_parse_keyfile() has changed in mbedTLS 3.0. You now need
+	// to pass a properly seeded, cryptographically secure RNG when calling
+	// these functions. It is used for blinding, a countermeasure against
+	// side-channel attacks.
+	// https://github.com/Mbed-TLS/mbedtls/blob/development/docs/3.0-migration-guide.md#some-functions-gained-an-rng-parameter
+	rc = mbedtls_pk_parse_keyfile(&ctx->pkey, crt, NULL, mbedtls_ctr_drbg_random, &ctx->ctr);
+#else
 	rc = mbedtls_pk_parse_keyfile(&ctx->pkey, crt, NULL);
-	log_debug(DEBUG_API, "Initializing SSL 4: %s", crt);
+#endif
 	if (rc != 0) {
-	log_debug(DEBUG_API, "Initializing SSL 4!");
+		log_err("TLS parse key file failed (%i)", rc);
 		DEBUG_TRACE("TLS parse key file failed (%i)", rc);
 		return -1;
 	}
 
-	log_debug(DEBUG_API, "Initializing SSL 5");
 	rc = mbedtls_x509_crt_parse_file(&ctx->cert, crt);
 	if (rc != 0) {
-	log_debug(DEBUG_API, "Initializing SSL 5!");
+		log_err("TLS parse crt file failed (%i)", rc);
 		DEBUG_TRACE("TLS parse crt file failed (%i)", rc);
 		return -1;
 	}
 
-	log_debug(DEBUG_API, "Initializing SSL 6");
 	rc = mbedtls_ssl_config_defaults(conf,
 	                                 MBEDTLS_SSL_IS_SERVER,
 	                                 MBEDTLS_SSL_TRANSPORT_STREAM,
 	                                 MBEDTLS_SSL_PRESET_DEFAULT);
 	if (rc != 0) {
-	log_debug(DEBUG_API, "Initializing SSL 6!");
+		log_err("TLS set defaults failed (%i)", rc);
 		DEBUG_TRACE("TLS set defaults failed (%i)", rc);
 		return -1;
 	}
@@ -128,10 +141,9 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	mbedtls_ssl_conf_ca_chain(conf, NULL, NULL);
 
 	/* Configure server cert and key */
-	log_debug(DEBUG_API, "Initializing SSL 7");
 	rc = mbedtls_ssl_conf_own_cert(conf, &ctx->cert, &ctx->pkey);
 	if (rc != 0) {
-	log_debug(DEBUG_API, "Initializing SSL 7!");
+		log_err("TLS cannot set certificate and private key (%i)", rc);
 		DEBUG_TRACE("TLS cannot set certificate and private key (%i)", rc);
 		return -1;
 	}

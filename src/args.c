@@ -19,6 +19,10 @@
 #  define NETTLE_VERSION_MINOR 0
 #endif
 
+#ifdef HAVE_MBEDTLS
+#include <mbedtls/version.h>
+#endif
+
 #include "FTL.h"
 #include "args.h"
 #include "version.h"
@@ -505,7 +509,12 @@ void parse_args(int argc, char* argv[])
 			printf("\n");
 			printf("****************************** %s%sCivetWeb%s *****************************\n",
 			       yellow, bold, normal);
+#ifdef MBEDTLS_VERSION_STRING_FULL
+			printf("Version:         %s%s%s%s with %smbed TLS %s%s"MBEDTLS_VERSION_STRING"%s\n",
+			       green, bold, mg_version(), normal, yellow, green, bold, normal);
+#else
 			printf("Version:         %s%s%s%s\n", green, bold, mg_version(), normal);
+#endif
 			printf("Features:        ");
 			if(mg_check_feature(MG_FEATURES_FILES))
 				printf("Files: %sYes%s, ", green, normal);
