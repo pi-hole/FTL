@@ -380,7 +380,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			else if(!hostname && config.dns.reply.blocking.force4.v.b)
 				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(config.dns.reply.blocking.v4.v.in_addr));
 			else
-				memcpy(&addr, &next_iface.addr4, sizeof(addr));
+				memcpy(&addr, &next_iface.addr4, sizeof(next_iface.addr4));
 		}
 
 		// Debug logging
@@ -415,7 +415,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			else if(!hostname && config.dns.reply.blocking.force6.v.b)
 				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(config.dns.reply.blocking.v6.v.in6_addr));
 			else
-				memcpy(&addr, &next_iface.addr6, sizeof(addr));
+				memcpy(&addr, &next_iface.addr6, sizeof(next_iface.addr6));
 		}
 
 		// Debug logging

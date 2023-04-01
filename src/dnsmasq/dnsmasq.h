@@ -331,8 +331,16 @@ union all_addr {
   } log;
   /* for arbitrary RR record. */
   struct {
-    struct blockdata *rrdata;
-    unsigned short rrtype, datalen;
+#define RR_IMDATALEN 13 /* 16 - sizeof(short) - sizeof (char) */
+    unsigned short rrtype;
+    char len; /* -1 for blockdata */
+    union {
+      char data[RR_IMDATALEN];
+      struct {
+	unsigned short datalen;
+	struct blockdata *rrdata;
+      } block;
+    } u;
   } rr;
 };
 
