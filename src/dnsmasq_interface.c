@@ -347,17 +347,17 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Overwrite with IP address if requested
 		if(redirecting)
-			memcpy(&addr, &redirect_addr4, sizeof(addr));
+			memcpy(&addr.addr4, &redirect_addr4, sizeof(addr.addr4));
 		else if(config.blockingmode == MODE_IP ||
 		        config.blockingmode == MODE_IP_NODATA_AAAA ||
 		        forced_ip)
 		{
 			if(hostname && config.reply_addr.own_host.overwrite_v4)
-				memcpy(&addr, &config.reply_addr.own_host.v4, sizeof(config.reply_addr.own_host.v4));
+				memcpy(&addr.addr4, &config.reply_addr.own_host.v4, sizeof(addr.addr4));
 			else if(!hostname && config.reply_addr.ip_blocking.overwrite_v4)
-				memcpy(&addr, &config.reply_addr.ip_blocking.v4, sizeof(config.reply_addr.ip_blocking.v4));
+				memcpy(&addr.addr4, &config.reply_addr.ip_blocking.v4, sizeof(addr.addr4));
 			else
-				memcpy(&addr, &next_iface.addr4, sizeof(next_iface.addr4));
+				memcpy(&addr.addr4, &next_iface.addr4, sizeof(addr.addr4));
 		}
 
 		// Debug logging
@@ -383,16 +383,16 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Overwrite with IP address if requested
 		if(redirecting)
-			memcpy(&addr, &redirect_addr6, sizeof(addr));
+			memcpy(&addr.addr6, &redirect_addr6, sizeof(addr.addr6));
 		else if(config.blockingmode == MODE_IP ||
 		        forced_ip)
 		{
 			if(hostname && config.reply_addr.own_host.overwrite_v6)
-				memcpy(&addr, &config.reply_addr.own_host.v6, sizeof(config.reply_addr.own_host.v6));
+				memcpy(&addr.addr6, &config.reply_addr.own_host.v6, sizeof(addr.addr6));
 			else if(!hostname && config.reply_addr.ip_blocking.overwrite_v6)
-				memcpy(&addr, &config.reply_addr.ip_blocking.v6, sizeof(config.reply_addr.ip_blocking.v6));
+				memcpy(&addr.addr6, &config.reply_addr.ip_blocking.v6, sizeof(addr.addr6));
 			else
-				memcpy(&addr, &next_iface.addr6, sizeof(config.reply_addr.ip_blocking.v6));
+				memcpy(&addr.addr6, &next_iface.addr6, sizeof(addr.addr6));
 		}
 
 		// Debug logging
