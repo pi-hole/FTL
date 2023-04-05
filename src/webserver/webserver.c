@@ -20,6 +20,8 @@
 #include "ph7.h"
 // get_nprocs()
 #include <sys/sysinfo.h>
+// file_readable()
+#include "../files.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
@@ -163,10 +165,19 @@ void http_init(void)
 
 #ifdef HAVE_TLS
 	// Add TLS options if configured
-	if(config.webserver.tls_cert.v.s != NULL && strlen(config.webserver.tls_cert.v.s) > 0)
+	if(config.webserver.tls_cert.v.s != NULL &&
+	   strlen(config.webserver.tls_cert.v.s) > 0)
 	{
-		options[++next_option] = "ssl_certificate";
-		options[++next_option] = config.webserver.tls_cert.v.s;
+		if(file_readable(config.webserver.tls_cert.v.s))
+		{
+			options[++next_option] = "ssl_certificate";
+			options[++next_option] = config.webserver.tls_cert.v.s;
+		}
+		else
+		{
+			log_err("Webserver TLS certificate %s not found or not readable!",
+			        config.webserver.tls_cert.v.s);
+		}
 	}
 #endif
 	// Add access control list if configured (last two options)

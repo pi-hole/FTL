@@ -80,8 +80,17 @@ bool file_exists(const char *filename)
 		return false;
 	}
 
-	// Check if this is a directory
+	// Check if this is a regular file
 	return S_ISREG(stats.st_mode);
+}
+
+/**
+ * Function to check whether a file exists and is readable or not.
+ */
+bool file_readable(const char *filename)
+{
+	// Check if file exists and is readable
+	return access(filename, R_OK) == 0;
 }
 
 /**
