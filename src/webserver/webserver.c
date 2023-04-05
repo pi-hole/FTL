@@ -22,6 +22,8 @@
 #include <sys/sysinfo.h>
 // file_readable()
 #include "../files.h"
+// generate_certificate()
+#include "x509.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
@@ -110,6 +112,10 @@ void http_init(void)
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
 
+#ifdef HAVE_TLS
+	features |= MG_FEATURES_TLS;
+#endif
+
 	if(mg_init_library(features) == 0)
 	{
 		logg_web(FIFO_CIVETWEB, "Initializing HTTP library failed!");
@@ -168,6 +174,14 @@ void http_init(void)
 	if(config.webserver.tls_cert.v.s != NULL &&
 	   strlen(config.webserver.tls_cert.v.s) > 0)
 	{
+		// Try to generate certificate if not present
+		if(!file_readable(config.webserver.tls_cert.v.s) &&
+		   !generate_certificate(config.webserver.tls_cert.v.s, false))
+		{
+			log_err("Generation of SSL/TLS certificate %s failed!",
+			        config.webserver.tls_cert.v.s);
+		}
+
 		if(file_readable(config.webserver.tls_cert.v.s))
 		{
 			options[++next_option] = "ssl_certificate";
@@ -175,7 +189,7 @@ void http_init(void)
 		}
 		else
 		{
-			log_err("Webserver TLS certificate %s not found or not readable!",
+			log_err("Webserver SSL/TLS certificate %s not found or not readable!",
 			        config.webserver.tls_cert.v.s);
 		}
 	}

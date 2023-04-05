@@ -832,9 +832,9 @@ void initConfig(struct config *conf)
 	conf->webserver.tls_cert.k = "webserver.tls_cert";
 	conf->webserver.tls_cert.h = "Path to the TLS (SSL) certificate file. This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
 	conf->webserver.tls_cert.a = cJSON_CreateStringReference("<valid TLS certificate file (*.pem)>");
-	conf->webserver.tls_cert.f = FLAG_ADVANCED_SETTING;
+	conf->webserver.tls_cert.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_DNSMASQ;
 	conf->webserver.tls_cert.t = CONF_STRING;
-	conf->webserver.tls_cert.d.s = (char*)"";
+	conf->webserver.tls_cert.d.s = (char*)"/etc/pihole/tls.pem";
 
 	conf->webserver.sessionTimeout.k = "webserver.sessionTimeout";
 	conf->webserver.sessionTimeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
