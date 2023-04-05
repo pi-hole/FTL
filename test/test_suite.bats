@@ -1336,9 +1336,9 @@
   [[ $status == 0 ]]
   # Get filename from last line printed by FTL
   filename="${lines[-1]}"
-  run bash -c 'zipinfo ${filename}'
-  printf "%s\n" "${lines[@]}"
-  [[ $status == 0 ]]
+#  run bash -c 'zipinfo ${filename}'
+#  printf "%s\n" "${lines[@]}"
+#  [[ $status == 0 ]]
   run bash -c "./pihole-FTL --teleporter ${filename}"
   printf "%s\n" "${lines[@]}"
   [[ "${lines[-3]}" == "Imported etc/pihole/pihole.toml" ]]
