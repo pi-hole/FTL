@@ -3062,8 +3062,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		    else
 		      flags &= ~SERV_FOR_NODOTS;
 		    
-		    /* address=/#/ matches the same as without domain */
-		    if (option == 'A' && cur_domain[0] == '#' && cur_domain[1] == 0)
+		    /* address=/#/ matches the same as without domain, as does server=/#/.... for consistency. */
+		    if (cur_domain[0] == '#' && cur_domain[1] == 0)
 		      cur_domain[0] = 0;
 		  }
 		
