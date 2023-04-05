@@ -16,6 +16,8 @@ set(sources
         ph7.c
         ph7.h
         json_macros.h
+        x509.c
+        x509.h
         )
 
 add_library(webserver OBJECT ${sources})

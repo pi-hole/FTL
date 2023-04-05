@@ -52,6 +52,8 @@
 #include "zip/teleporter.h"
 // printTOTP()
 #include "api/api.h"
+// generate_certificate()
+#include "webserver/x509.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -289,6 +291,22 @@ void parse_args(int argc, char* argv[])
 		log_ctrl(false, true);
 		readFTLconf(&config, false);
 		exit(read_teleporter_zip_from_disk(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	if(argc > 1 && strcmp(argv[1], "--gen-x509") == 0)
+	{
+		if(argc != 3 && argc != 4)
+		{
+			printf("Usage: %s --gen-x509 <output file> [rsa]\n", argv[0]);
+			printf("Example: %s --gen-x509 /etc/pihole/tls.pem\n", argv[0]);
+			printf("     or: %s --gen-x509 /etc/pihole/tls.pem rsa\n", argv[0]);
+			exit(EXIT_FAILURE);
+		}
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		const bool rsa = argc == 4 && strcasecmp(argv[3], "rsa") == 0;
+		exit(generate_certificate(argv[2], rsa) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// start from 1, as argv[0] is the executable name
@@ -727,6 +745,13 @@ void parse_args(int argc, char* argv[])
 			printf("\t%s--teleporter%s        Create a Teleporter archive in the\n", green, normal);
 			printf("\t                    current directory and print its name\n");
 			printf("\t%s--teleporter%s file%s   Import the Teleporter archive %sfile%s\n\n", green, cyan, normal, cyan, normal);
+
+			printf("%sTLS X.509 certificate generator:%s\n", yellow, normal);
+			printf("    Generate a self-signed certificate suitable for SSL/TLS\n\n");
+			printf("    By default, this new certificate is based on the elliptic\n");
+			printf("    curve secp521r1. If the optional flag %s[rsa]%s is specified,\n", purple, normal);
+			printf("    an RSA (4096 bit) key will be generated instead.\n\n");
+			printf("    Usage: %spihole-FTL --gen-x509 %s<outfile> %s[rsa]%s\n\n", green, yellow, purple, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);

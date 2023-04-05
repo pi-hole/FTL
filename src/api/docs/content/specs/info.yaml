@@ -926,7 +926,7 @@ components:
                             type: string
                             description: RR name of cache entry
                           count:
-                            type: string
+                            type: integer
                             description: Number of cache entries for this RR type
                 replies:
                   type: object
