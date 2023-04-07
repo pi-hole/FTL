@@ -372,18 +372,35 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 			// Advance working pointer
 			p += optlen;
 		}
-		else if(code == EDNS0_OPTION_EDE && optlen == 2)
+		else if(code == EDNS0_OPTION_EDE && optlen >= 2)
 		{
 			// EDNS(0) EDE
 			// https://datatracker.ietf.org/doc/rfc8914/
-
+			//
+			//                                                1   1   1   1   1   1
+			//        0   1   2   3   4   5   6   7   8   9   0   1   2   3   4   5
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//   0: |                            OPTION-CODE                        |
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//   2: |                           OPTION-LENGTH                       |
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//   4: | INFO-CODE                                                     |
+			edns.ede = ntohs(((int)p[1] << 8) | p[0]);
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//   6: / EXTRA-TEXT ...                                                /
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//
 			// The INFO-CODE from the EDE EDNS option is used to
 			// serve as an index into the "Extended DNS Error" IANA
 			// registry, the initial values for which are defined in
 			// this document. The value of the INFO-CODE is encoded
 			// as a two-octet unsigned integer in network byte
 			// order.
-			edns.ede = ntohs(((int)p[1] << 8) | p[0]);
+			//
+			// The EXTRA-TEXT from the EDE EDNS option is ignored by
+			// FTL
+
+			// Debug output
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0) EDE: %s (code %d)", edestr(edns.ede), edns.ede);
 

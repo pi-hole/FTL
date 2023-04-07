@@ -2021,7 +2021,8 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	if(edns != NULL && edns->ede != EDE_UNSET)
 	{
 		query->ede = edns->ede;
-		log_debug(DEBUG_QUERIES, "     EDE: %s (%d)", edestr(edns->ede), edns->ede);
+		if(config.debug & DEBUG_QUERIES)
+			logg("     EDE: %s (%d)", edestr(edns->ede), edns->ede);
 	}
 
 	// Update upstream server (if applicable)
@@ -2501,7 +2502,7 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 		if(edns != NULL && edns->ede != EDE_UNSET)
 		{
 			query->ede = edns->ede;
-			log_debug(DEBUG_QUERIES, "     EDE: %s (%d)", edestr(edns->ede), edns->ede);
+			logg("     EDE: %s (%d)", edestr(edns->ede), edns->ede);
 		}
 	}
 	if(option_bool(OPT_DNSSEC_PROXY) && edns->ede >= EDE_DNSSEC_BOGUS && edns->ede <= EDE_NO_NSEC)
