@@ -372,6 +372,21 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 			// Advance working pointer
 			p += optlen;
 		}
+		else if(code == EDNS0_OPTION_EDE && optlen == 2)
+		{
+			// EDNS(0) EDE
+			// https://datatracker.ietf.org/doc/rfc8914/
+
+			// The INFO-CODE from the EDE EDNS option is used to
+			// serve as an index into the "Extended DNS Error" IANA
+			// registry, the initial values for which are defined in 
+			edns.ede = ntohs(((int)p[1] << 8) | p[0]);
+			if(config.debug & DEBUG_EDNS0)
+				logg("EDNS(0) EDE: %s (code %d)", edestr(edns.ede), edns.ede);
+
+			// Advance working pointer
+			p += optlen;
+		}
 		else
 		{
 			if(config.debug & DEBUG_EDNS0)
