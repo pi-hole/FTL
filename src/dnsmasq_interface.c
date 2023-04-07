@@ -128,8 +128,6 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 		if(!config.show_dnssec)
 			return;
 
-		const ednsData edns = { 0 };
-
 		// Type is overloaded with port since 2d65d55, so we have to
 		// derive the real query type from the arg string
 		unsigned short qtype = type;
@@ -158,7 +156,7 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 			arg = (char*)"dnssec-unknown";
 		}
 
-		_FTL_new_query(flags, name, NULL, arg, qtype, id, &edns, INTERNAL, file, line);
+		_FTL_new_query(flags, name, NULL, arg, qtype, id, INTERNAL, file, line);
 		// forwarded upstream (type is used to store the upstream port)
 		FTL_forwarded(flags, name, addr, type, id, path, line);
 	}
@@ -464,7 +462,7 @@ static bool is_pihole_domain(const char *domain)
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     union mysockaddr *addr, char *arg,
                     const unsigned short qtype, const int id,
-                    const ednsData *edns, const enum protocol proto,
+                    const enum protocol proto,
                     const char* file, const int line)
 {
 	// Create new query in data structure
@@ -596,6 +594,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	in_port_t clientPort = daemon->port;
 	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
+	ednsData *edns = getEDNS();
 	if(config.edns0_ecs && edns && edns->client_set)
 	{
 		// Use ECS provided client
@@ -3345,7 +3344,7 @@ int check_struct_sizes(void)
 	result += check_one_struct("clientsData", sizeof(clientsData), 672, 648);
 	result += check_one_struct("domainsData", sizeof(domainsData), 24, 20);
 	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 16, 16);
-	result += check_one_struct("ednsData", sizeof(ednsData), 72, 72);
+	result += check_one_struct("ednsData", sizeof(ednsData), 76, 76);
 	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24);
 	result += check_one_struct("regexData", sizeof(regexData), 64, 48);
 	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
