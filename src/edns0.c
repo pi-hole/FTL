@@ -166,7 +166,7 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 
 	// Reset EDNS(0) data
 	memset(&edns, 0, sizeof(ednsData));
-	edns.ede = -1;
+	edns.ede = EDE_UNSET;
 	edns.valid = true;
 
 	size_t offset; // The header is 11 bytes before the beginning of OPTION-DATA
@@ -379,7 +379,10 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 
 			// The INFO-CODE from the EDE EDNS option is used to
 			// serve as an index into the "Extended DNS Error" IANA
-			// registry, the initial values for which are defined in 
+			// registry, the initial values for which are defined in
+			// this document. The value of the INFO-CODE is encoded
+			// as a two-octet unsigned integer in network byte
+			// order.
 			edns.ede = ntohs(((int)p[1] << 8) | p[0]);
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0) EDE: %s (code %d)", edestr(edns.ede), edns.ede);

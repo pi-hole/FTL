@@ -76,6 +76,7 @@ static char *get_ptrname(struct in_addr *addr);
 static const char *check_dnsmasq_name(const char *name);
 
 // Static blocking metadata
+static bool adbit = false;
 static const char *blockingreason = "";
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static int last_regex_idx = -1;
@@ -2016,6 +2017,12 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		if(config.debug & DEBUG_QUERIES)
 			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
+	ednsData *edns = getEDNS();
+	if(edns != NULL && edns->ede != EDE_UNSET)
+	{
+		query->ede = edns->ede;
+		log_debug(DEBUG_QUERIES, "     EDE: %s (%d)", edestr(edns->ede), edns->ede);
+	}
 
 	// Update upstream server (if applicable)
 	if(!cached)
@@ -2180,6 +2187,13 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	else if(config.debug & DEBUG_FLAGS)
 	{
 		logg("***** Unknown upstream REPLY");
+	}
+
+	if(query && option_bool(OPT_DNSSEC_PROXY))
+	{
+		// DNSSEC proxy mode is enabled. Interpret AD flag
+		// and set DNSSEC status accordingly
+		query_set_dnssec(query, adbit ? DNSSEC_SECURE : DNSSEC_INSECURE);
 	}
 
 	unlock_shm();
@@ -2438,6 +2452,9 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 			break;
 	}
 
+	// Get EDNS data (if available)
+	ednsData *edns = getEDNS();
+
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 	{
@@ -2480,8 +2497,20 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 
 		if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
 			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
-	}
 
+		if(edns != NULL && edns->ede != EDE_UNSET)
+		{
+			query->ede = edns->ede;
+			log_debug(DEBUG_QUERIES, "     EDE: %s (%d)", edestr(edns->ede), edns->ede);
+		}
+	}
+	if(option_bool(OPT_DNSSEC_PROXY) && edns->ede >= EDE_DNSSEC_BOGUS && edns->ede <= EDE_NO_NSEC)
+	{
+		// DNSSEC proxy mode is enabled and we received a DNSSEC status
+		// from the upstream server. We need to update the DNSSEC status
+		// of the corresponding query.
+		query_set_dnssec(query, DNSSEC_BOGUS);
+	}
 	// Set query reply
 	query_set_reply(0, reply, addr, query, response);
 
@@ -2560,6 +2589,9 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	if(!(header4 & 0x80) && rcode == NXDOMAIN)
 		// RA bit is not set and rcode is NXDOMAIN
 		FTL_mark_externally_blocked(id, file, line);
+
+	// Check if AD bit is set in DNS header
+	adbit = header4 & HB4_AD;
 
 	// Store server which sent this reply
 	if(server)
@@ -3300,7 +3332,7 @@ const char *get_edestr(const int ede)
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line)
 {
 	// Return early if DNSSEC validation is disabled
-	if(!option_bool(OPT_DNSSEC_VALID))
+	if(!option_bool(OPT_DNSSEC_VALID) && !option_bool(OPT_DNSSEC_PROXY))
 		return;
 
 	if(config.debug & DEBUG_DNSSEC)
