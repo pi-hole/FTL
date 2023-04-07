@@ -41,14 +41,26 @@
 // dnsmasq option: --add-cpe-id=...
 #define EDNS0_CPE_ID EDNS0_OPTION_NOMCPEID
 
-void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, ednsData *edns)
-{
-	int is_sign;
-	size_t plen;
-	unsigned char *pheader, *sizep;
+static ednsData edns = { 0 };
 
-	// Extract additional record A.K.A. pseudoheader
-	if (!(pheader = find_pseudoheader(header, n, &plen, &sizep, &is_sign, NULL)))
+ednsData *getEDNS(void)
+{
+	if(edns.valid)
+	{
+		// Return pointer to ednsData structure and reset it for the
+		// next query
+		edns.valid = false;
+		return &edns;
+	}
+
+	// No valid EDNS data available
+	return NULL;
+}
+
+void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
+{
+	// Return early if we have no pseudoheader (a.k.a. additional records)
+	if (!pheader)
 		return;
 
 	// Debug logging
@@ -157,6 +169,11 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 	if(edns0_version != 0x00)
 		return;
 
+	// Reset EDNS(0) data
+	memset(&edns, 0, sizeof(ednsData));
+	edns.ede = -1;
+	edns.valid = true;
+
 	size_t offset; // The header is 11 bytes before the beginning of OPTION-DATA
 	while ((offset = (p - pheader - 11u)) < rdlen && rdlen < UINT16_MAX)
 	{
@@ -227,8 +244,8 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			}
 
 			// Copy data to edns struct
-			strncpy(edns->client, ipaddr, ADDRSTRLEN);
-			edns->client[ADDRSTRLEN-1] = '\0';
+			strncpy(edns.client, ipaddr, ADDRSTRLEN);
+			edns.client[ADDRSTRLEN-1] = '\0';
 
 			// Only set the address as useful when it is not the
 			// loopback address of the distant machine (127.0.0.0/8 or ::1)
@@ -240,7 +257,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			}
 			else
 			{
-				edns->client_set = true;
+				edns.client_set = true;
 				log_debug(DEBUG_EDNS0, "EDNS(0) CLIENT SUBNET: %s/%u - OK (IPv%u)",
 				          ipaddr, source_netmask, family == 1 ? 4u : 6u);
 			}
@@ -294,10 +311,10 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		else if(code == EDNS0_MAC_ADDR_BYTE && optlen == 6)
 		{
 			// EDNS(0) MAC address (BYTE format)
-			memcpy(edns->mac_byte, p, sizeof(edns->mac_byte));
-			print_mac(edns->mac_text, (unsigned char*)edns->mac_byte, sizeof(edns->mac_byte));
-			edns->mac_set = true;
-			log_debug(DEBUG_EDNS0, "EDNS(0) MAC address (BYTE format): %s", edns->mac_text);
+			memcpy(edns.mac_byte, p, sizeof(edns.mac_byte));
+			print_mac(edns.mac_text, (unsigned char*)edns.mac_byte, sizeof(edns.mac_byte));
+			edns.mac_set = true;
+			log_debug(DEBUG_EDNS0, "EDNS(0) MAC address (BYTE format): %s", edns.mac_text);
 
 			// Advance working pointer
 			p += 6;
@@ -305,18 +322,18 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		else if(code == EDNS0_MAC_ADDR_TEXT && optlen == 17)
 		{
 			// EDNS(0) MAC address (TEXT format)
-			memcpy(edns->mac_text, p, 17);
-			edns->mac_text[17] = '\0';
-			if(sscanf(edns->mac_text, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-			          (unsigned char*)&edns->mac_byte[0],
-			          (unsigned char*)&edns->mac_byte[1],
-			          (unsigned char*)&edns->mac_byte[2],
-			          (unsigned char*)&edns->mac_byte[3],
-			          (unsigned char*)&edns->mac_byte[4],
-			          (unsigned char*)&edns->mac_byte[5]) == 6)
+			memcpy(edns.mac_text, p, 17);
+			edns.mac_text[17] = '\0';
+			if(sscanf(edns.mac_text, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+			          (unsigned char*)&edns.mac_byte[0],
+			          (unsigned char*)&edns.mac_byte[1],
+			          (unsigned char*)&edns.mac_byte[2],
+			          (unsigned char*)&edns.mac_byte[3],
+			          (unsigned char*)&edns.mac_byte[4],
+			          (unsigned char*)&edns.mac_byte[5]) == 6)
 			{
-				edns->mac_set = true;
-				log_debug(DEBUG_EDNS0, "EDNS(0) MAC address (TEXT format): %s", edns->mac_text);
+				edns.mac_set = true;
+				log_debug(DEBUG_EDNS0, "EDNS(0) MAC address (TEXT format): %s", edns.mac_text);
 			}
 			else
 			{
@@ -358,7 +375,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		}
 		else
 		{
-			log_debug(DEBUG_EDNS0, "EDNS(0):n option %u with length %u", code, optlen);
+			log_debug(DEBUG_EDNS0, "EDNS(0): Unknown option %u with length %u", code, optlen);
 			// Not implemented, skip this record
 
 			// Advance working pointer
