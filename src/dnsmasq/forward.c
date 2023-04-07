@@ -782,8 +782,8 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       union all_addr a;
       a.log.rcode = rcode;
       a.log.ede = ede;
-      log_query(F_UPSTREAM | F_RCODE, "error", &a, NULL, 0);
       FTL_parse_pseudoheaders(pheader, (size_t)plen);
+      log_query(F_UPSTREAM | F_RCODE, "error", &a, NULL, 0);
 
       return resize_packet(header, n, pheader, plen);
     }
