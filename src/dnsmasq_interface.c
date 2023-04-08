@@ -757,10 +757,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	counters->reply[REPLY_UNKNOWN]++;
 	// Store DNSSEC result for this domain
 	query->dnssec = DNSSEC_UNKNOWN;
-	// Every domain is insecure in the beginning. It can get secure or bogus
-	// only if validation reveals this. If DNSSEC validation is not used, the
-	// original status (DNSSEC_UNKNOWN) is not changed.
-	query_set_dnssec(query, DNSSEC_INSECURE);
 	query->CNAME_domainID = -1;
 	// This query is not yet known ad forwarded or blocked
 	query->flags.blocked = false;
@@ -2498,7 +2494,10 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 		}
 
 		if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
+		{
+			query->ede = addr->log.ede;
 			log_debug(DEBUG_QUERIES, "     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
+		}
 
 		if(edns != NULL && edns->ede != EDE_UNSET)
 		{
