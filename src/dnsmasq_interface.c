@@ -2506,11 +2506,13 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 			log_debug(DEBUG_QUERIES, "     EDE: %s (%d)", edestr(edns->ede), edns->ede);
 		}
 	}
-	if(option_bool(OPT_DNSSEC_PROXY) && edns->ede >= EDE_DNSSEC_BOGUS && edns->ede <= EDE_NO_NSEC)
+	// Check EDNS EDE for DNSSEC status in DNSSEC proxy mode
+	if(option_bool(OPT_DNSSEC_PROXY) &&
+	   edns && edns->ede >= EDE_DNSSEC_BOGUS && edns->ede <= EDE_NO_NSEC)
 	{
-		// DNSSEC proxy mode is enabled and we received a DNSSEC status
-		// from the upstream server. We need to update the DNSSEC status
-		// of the corresponding query.
+		// DNSSEC proxy mode is enabled and we received a valid DNSSEC
+		// status from the upstream server through ENDS EDE. We need to
+		// update the DNSSEC status of the corresponding query.
 		query_set_dnssec(query, DNSSEC_BOGUS);
 	}
 	// Set query reply
