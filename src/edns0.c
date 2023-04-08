@@ -61,7 +61,11 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 {
 	// Return early if we have no pseudoheader (a.k.a. additional records)
 	if (!pheader)
+	{
+		if(config.debug & DEBUG_EDNS0)
+			logg("EDNS(0) pheader is NULL");
 		return;
+	}
 
 	// Debug logging
 	if(config.debug & DEBUG_EDNS0)

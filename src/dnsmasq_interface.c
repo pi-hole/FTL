@@ -2497,7 +2497,10 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 		}
 
 		if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
+		{
+			query->ede = addr->log.ede;
 			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
+		}
 
 		if(edns != NULL && edns->ede != EDE_UNSET)
 		{
