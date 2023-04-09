@@ -2085,6 +2085,10 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Save reply type and update individual reply counters
 		query_set_reply(flags, 0, addr, query, response);
 
+		// Set DNSSEC status to INSECURE if it is still unknown
+		if(query->dnssec == DNSSEC_UNKNOWN)
+			query_set_dnssec(query, DNSSEC_INSECURE);
+
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
 
@@ -2134,6 +2138,12 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 				// to store NODATA for this query
 				reply_flags = F_NEG;
 			}
+		}
+		else
+		{
+			// Set DNSSEC status to INSECURE if it is still unknown
+			if(query->dnssec == DNSSEC_UNKNOWN)
+				query_set_dnssec(query, DNSSEC_INSECURE);
 		}
 
 		// Save reply type and update individual reply counters
