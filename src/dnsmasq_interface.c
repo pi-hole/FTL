@@ -743,10 +743,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	counters->reply[REPLY_UNKNOWN]++;
 	// Store DNSSEC result for this domain
 	query->dnssec = DNSSEC_UNSPECIFIED;
-	// Every domain is insecure in the beginning. It can get secure or bogus
-	// only if validation reveals this. If DNSSEC validation is not used, the
-	// original status (DNSSEC_UNSPECIFIED) is not changed.
-	query_set_dnssec(query, DNSSEC_INSECURE);
 	query->CNAME_domainID = -1;
 	// This query is not yet known ad forwarded or blocked
 	query->flags.blocked = false;
