@@ -2178,6 +2178,10 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		//   name = google-public-dns-a.google.com
 		// Hence, isExactMatch is always false
 
+		// Set DNSSEC status to INSECURE if it is still unknown
+		if(query->dnssec == DNSSEC_UNKNOWN)
+			query_set_dnssec(query, DNSSEC_INSECURE);
+
 		// Save reply type and update individual reply counters
 		query_set_reply(flags, 0, addr, query, response);
 
