@@ -76,6 +76,7 @@ static char *get_ptrname(struct in_addr *addr);
 static const char *check_dnsmasq_name(const char *name);
 
 // Static blocking metadata
+static bool adbit = false;
 static const char *blockingreason = "";
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static int last_regex_idx = -1;
@@ -128,8 +129,6 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 		if(!config.show_dnssec)
 			return;
 
-		const ednsData edns = { 0 };
-
 		// Type is overloaded with port since 2d65d55, so we have to
 		// derive the real query type from the arg string
 		unsigned short qtype = type;
@@ -158,7 +157,7 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 			arg = (char*)"dnssec-unknown";
 		}
 
-		_FTL_new_query(flags, name, NULL, arg, qtype, id, &edns, INTERNAL, file, line);
+		_FTL_new_query(flags, name, NULL, arg, qtype, id, INTERNAL, file, line);
 		// forwarded upstream (type is used to store the upstream port)
 		FTL_forwarded(flags, name, addr, type, id, path, line);
 	}
@@ -464,7 +463,7 @@ static bool is_pihole_domain(const char *domain)
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     union mysockaddr *addr, char *arg,
                     const unsigned short qtype, const int id,
-                    const ednsData *edns, const enum protocol proto,
+                    const enum protocol proto,
                     const char* file, const int line)
 {
 	// Create new query in data structure
@@ -596,6 +595,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	in_port_t clientPort = daemon->port;
 	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
+	ednsData *edns = getEDNS();
 	if(config.edns0_ecs && edns && edns->client_set)
 	{
 		// Use ECS provided client
@@ -743,10 +743,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	counters->reply[REPLY_UNKNOWN]++;
 	// Store DNSSEC result for this domain
 	query->dnssec = DNSSEC_UNSPECIFIED;
-	// Every domain is insecure in the beginning. It can get secure or bogus
-	// only if validation reveals this. If DNSSEC validation is not used, the
-	// original status (DNSSEC_UNSPECIFIED) is not changed.
-	query_set_dnssec(query, DNSSEC_INSECURE);
 	query->CNAME_domainID = -1;
 	// This query is not yet known ad forwarded or blocked
 	query->flags.blocked = false;
@@ -2017,6 +2013,13 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		if(config.debug & DEBUG_QUERIES)
 			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
+	ednsData *edns = getEDNS();
+	if(edns != NULL && edns->ede != EDE_UNSET)
+	{
+		query->ede = edns->ede;
+		if(config.debug & DEBUG_QUERIES)
+			logg("     EDE: %s (%d)", edestr(edns->ede), edns->ede);
+	}
 
 	// Update upstream server (if applicable)
 	if(!cached)
@@ -2102,6 +2105,10 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Save reply type and update individual reply counters
 		query_set_reply(flags, 0, addr, query, response);
 
+		// Set DNSSEC status to INSECURE if it is still unknown
+		if(query->dnssec == DNSSEC_UNSPECIFIED)
+			query_set_dnssec(query, DNSSEC_INSECURE);
+
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
 	}
@@ -2141,6 +2148,12 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 				reply_flags = F_NEG;
 			}
 		}
+		else
+		{
+			// Set DNSSEC status to INSECURE if it is still unknown
+			if(query->dnssec == DNSSEC_UNSPECIFIED)
+				query_set_dnssec(query, DNSSEC_INSECURE);
+		}
 
 		// Save reply type and update individual reply counters
 		query_set_reply(reply_flags, 0, addr, query, response);
@@ -2171,6 +2184,10 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		//   name = google-public-dns-a.google.com
 		// Hence, isExactMatch is always false
 
+		// Set DNSSEC status to INSECURE if it is still unknown
+		if(query->dnssec == DNSSEC_UNSPECIFIED)
+			query_set_dnssec(query, DNSSEC_INSECURE);
+
 		// Save reply type and update individual reply counters
 		query_set_reply(flags, 0, addr, query, response);
 	}
@@ -2181,6 +2198,13 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	else if(config.debug & DEBUG_FLAGS)
 	{
 		logg("***** Unknown upstream REPLY");
+	}
+
+	if(query && option_bool(OPT_DNSSEC_PROXY))
+	{
+		// DNSSEC proxy mode is enabled. Interpret AD flag
+		// and set DNSSEC status accordingly
+		query_set_dnssec(query, adbit ? DNSSEC_SECURE : DNSSEC_INSECURE);
 	}
 
 	unlock_shm();
@@ -2439,6 +2463,9 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 			break;
 	}
 
+	// Get EDNS data (if available)
+	ednsData *edns = getEDNS();
+
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 	{
@@ -2480,9 +2507,26 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 		}
 
 		if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
+		{
+			query->ede = addr->log.ede;
 			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
-	}
+		}
 
+		if(edns != NULL && edns->ede != EDE_UNSET)
+		{
+			query->ede = edns->ede;
+			logg("     EDE: %s (%d)", edestr(edns->ede), edns->ede);
+		}
+	}
+	// Check EDNS EDE for DNSSEC status in DNSSEC proxy mode
+	if(option_bool(OPT_DNSSEC_PROXY) &&
+	   edns && edns->ede >= EDE_DNSSEC_BOGUS && edns->ede <= EDE_NO_NSEC)
+	{
+		// DNSSEC proxy mode is enabled and we received a valid DNSSEC
+		// status from the upstream server through ENDS EDE. We need to
+		// update the DNSSEC status of the corresponding query.
+		query_set_dnssec(query, DNSSEC_BOGUS);
+	}
 	// Set query reply
 	query_set_reply(0, reply, addr, query, response);
 
@@ -2561,6 +2605,9 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	if(!(header4 & 0x80) && rcode == NXDOMAIN)
 		// RA bit is not set and rcode is NXDOMAIN
 		FTL_mark_externally_blocked(id, file, line);
+
+	// Check if AD bit is set in DNS header
+	adbit = header4 & HB4_AD;
 
 	// Store server which sent this reply
 	if(server)
@@ -3301,7 +3348,7 @@ const char *get_edestr(const int ede)
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line)
 {
 	// Return early if DNSSEC validation is disabled
-	if(!option_bool(OPT_DNSSEC_VALID))
+	if(!option_bool(OPT_DNSSEC_VALID) && !option_bool(OPT_DNSSEC_PROXY))
 		return;
 
 	if(config.debug & DEBUG_DNSSEC)
@@ -3345,7 +3392,7 @@ int check_struct_sizes(void)
 	result += check_one_struct("clientsData", sizeof(clientsData), 672, 648);
 	result += check_one_struct("domainsData", sizeof(domainsData), 24, 20);
 	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 16, 16);
-	result += check_one_struct("ednsData", sizeof(ednsData), 72, 72);
+	result += check_one_struct("ednsData", sizeof(ednsData), 76, 76);
 	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24);
 	result += check_one_struct("regexData", sizeof(regexData), 64, 48);
 	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
