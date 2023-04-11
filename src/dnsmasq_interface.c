@@ -3380,8 +3380,8 @@ int check_struct_sizes(void)
 	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 628);
 	result += check_one_struct("clientsData", sizeof(clientsData), 672, 652);
 	result += check_one_struct("domainsData", sizeof(domainsData), 24, 20);
-	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 16, 16);
-	result += check_one_struct("ednsData", sizeof(ednsData), 72, 72);
+	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 24, 20);
+	result += check_one_struct("ednsData", sizeof(ednsData), 76, 76);
 	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24);
 	result += check_one_struct("regexData", sizeof(regexData), 80, 52);
 	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
