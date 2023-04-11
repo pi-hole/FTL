@@ -1031,19 +1031,19 @@
   printf "%s\n" "${log}"
 
   # Start actual test
-  run bash -c "grep -c \"EDNS(0) CLIENT SUBNET: 192.168.1.1/32\"" <<< "${log}"
+  run bash -c "grep -c \"EDNS0: CLIENT SUBNET: 192.168.1.1/32\"" <<< "${log}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"EDNS(0) COOKIE (client-only): 1122334455667788\"" <<< "${log}"
+  run bash -c "grep -c \"EDNS0: COOKIE (client-only): 1122334455667788\"" <<< "${log}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"EDNS(0) MAC address (BYTE format): 00:01:02:03:04:05\"" <<< "${log}"
+  run bash -c "grep -c \"EDNS0: MAC address (BYTE format): 00:01:02:03:04:05\"" <<< "${log}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"EDNS(0) MAC address (TEXT format): AA:BB:CC:DD:EE:FF\"" <<< "${log}"
+  run bash -c "grep -c \"EDNS0: MAC address (TEXT format): AA:BB:CC:DD:EE:FF\"" <<< "${log}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"EDNS(0) CPE-ID (payload size 6): \\\"ABCDEF\\\" (0x41 0x42 0x43 0x44 0x45 0x46)\"" <<< "${log}"
+  run bash -c "grep -c \"EDNS0: CPE-ID (payload size 6): \\\"ABCDEF\\\" (0x41 0x42 0x43 0x44 0x45 0x46)\"" <<< "${log}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
@@ -1114,7 +1114,7 @@
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"EDNS(0) CLIENT SUBNET: Skipped 127.0.0.1/32 (IPv4 loopback address)"* ]]
+  [[ "${lines[@]}" == *"EDNS0: CLIENT SUBNET: Skipped 127.0.0.1/32 (IPv4 loopback address)"* ]]
 }
 
 @test "EDNS(0) ECS skipped for loopback address (IPv6)" {
@@ -1133,7 +1133,7 @@
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"EDNS(0) CLIENT SUBNET: Skipped ::1/128 (IPv6 loopback address)"* ]]
+  [[ "${lines[@]}" == *"EDNS0: CLIENT SUBNET: Skipped ::1/128 (IPv6 loopback address)"* ]]
 }
 
 @test "Embedded SQLite3 shell available and functional" {
