@@ -359,22 +359,26 @@ static int
 lsp_connect(lua_State *L)
 {
 	int num_args = lua_gettop(L);
-	char ebuf[100];
+	struct mg_error_data error;
+	char ebuf[128];
 	SOCKET sock;
 	union usa sa;
 	int ok;
+
+	memset(&error, 0, sizeof(error));
+	error.text = ebuf;
+	error.text_buffer_size = sizeof(ebuf);
 
 	if ((num_args == 3) && lua_isstring(L, 1) && lua_isnumber(L, 2)
 	    && lua_isnumber(L, 3)) {
 
 		const char *host = lua_tostring(L, 1);
-		const int port = lua_tointeger(L, 2);
-		const int is_ssl = lua_tointeger(L, 3);
+		const int port = (int)lua_tointeger(L, 2);
+		const int is_ssl = (int)lua_tointeger(L, 3);
 
-		ok = connect_socket(
-		    NULL, host, port, is_ssl, ebuf, sizeof(ebuf), &sock, &sa);
+		ok = connect_socket(NULL, host, port, is_ssl, &error, &sock, &sa);
 		if (!ok) {
-			return luaL_error(L, ebuf);
+			return luaL_error(L, error.text);
 		} else {
 			set_blocking_mode(sock);
 			lua_newtable(L);
@@ -942,7 +946,7 @@ lsp_include(lua_State *L)
 
 			} else if ((*path_type == 'r') || (*path_type == 'f')) {
 				/* "relative" = file name is relative to the
-				 * currect document */
+				 * current document */
 				(void)mg_snprintf(
 				    conn,
 				    &truncated,
@@ -1266,7 +1270,7 @@ lsp_split_form_urlencoded(lua_State *L)
 	/* Get input (const string) */
 	in = lua_tolstring(L, 1, &len);
 
-	/* Create a modifyable copy */
+	/* Create a modifiable copy */
 	buf = (char *)mg_malloc_ctx(len + 1, ctx);
 	if (buf == NULL) {
 		return luaL_error(L, "out of memory in invalid split_form_data() call");
@@ -1506,7 +1510,6 @@ lsp_base64_encode(lua_State *L)
 	int num_args = lua_gettop(L);
 	const char *text;
 	size_t text_len;
-	char *dst;
 	struct mg_context *ctx;
 
 	lua_pushlightuserdata(L, (void *)&lua_regkey_ctx);
@@ -1516,9 +1519,14 @@ lsp_base64_encode(lua_State *L)
 	if (num_args == 1) {
 		text = lua_tolstring(L, 1, &text_len);
 		if (text) {
-			dst = (char *)mg_malloc_ctx(text_len * 8 / 6 + 4, ctx);
+			/* Base 64 encodes 8 bits into 6 */
+			size_t dst_len = text_len * 8 / 6 + 4;
+			char *dst = (char *)mg_malloc_ctx(dst_len, ctx);
 			if (dst) {
-				base64_encode((const unsigned char *)text, (int)text_len, dst);
+				mg_base64_encode((const unsigned char *)text,
+				                 (int)text_len,
+				                 dst,
+				                 &dst_len);
 				lua_pushstring(L, dst);
 				mg_free(dst);
 			} else {
@@ -1543,7 +1551,7 @@ lsp_base64_decode(lua_State *L)
 	const char *text;
 	size_t text_len, dst_len;
 	int ret;
-	char *dst;
+	unsigned char *dst;
 	struct mg_context *ctx;
 
 	lua_pushlightuserdata(L, (void *)&lua_regkey_ctx);
@@ -1553,18 +1561,15 @@ lsp_base64_decode(lua_State *L)
 	if (num_args == 1) {
 		text = lua_tolstring(L, 1, &text_len);
 		if (text) {
-			dst = (char *)mg_malloc_ctx(text_len, ctx);
+			dst = (unsigned char *)mg_malloc_ctx(text_len, ctx);
 			if (dst) {
-				ret = base64_decode((const unsigned char *)text,
-				                    (int)text_len,
-				                    dst,
-				                    &dst_len);
+				ret = mg_base64_decode(text, (int)text_len, dst, &dst_len);
 				if (ret != -1) {
 					mg_free(dst);
 					return luaL_error(
 					    L, "illegal character in lsp_base64_decode() call");
 				} else {
-					lua_pushlstring(L, dst, dst_len);
+					lua_pushlstring(L, (char *)dst, dst_len);
 					mg_free(dst);
 				}
 			} else {
@@ -1619,10 +1624,10 @@ lsp_random(lua_State *L)
 		/* The civetweb internal random number generator will generate
 		 * a 64 bit random number. */
 		uint64_t r = get_random();
-		/* Lua "number" is a IEEE 754 double precission float:
+		/* Lua "number" is a IEEE 754 double precision float:
 		 * https://en.wikipedia.org/wiki/Double-precision_floating-point_format
 		 * Thus, mask with 2^53-1 to get an integer with the maximum
-		 * precission available. */
+		 * precision available. */
 		r &= ((((uint64_t)1) << 53) - 1);
 		lua_pushnumber(L, (double)r);
 		return 1;
@@ -2480,7 +2485,7 @@ enum {
 	LUA_ENV_TYPE_LUA_SERVER_PAGE = 0, /* page.lp */
 	LUA_ENV_TYPE_PLAIN_LUA_PAGE = 1,  /* script.lua */
 	LUA_ENV_TYPE_LUA_WEBSOCKET = 2,   /* websock.lua */
-	LUA_ENV_TYPE_BACKGROUND = 9 /* Lua backgrond script or exec from cmdline */
+	LUA_ENV_TYPE_BACKGROUND = 9 /* Lua background script or exec from cmdline */
 };
 
 
@@ -2643,13 +2648,12 @@ static void *
 lua_allocator(void *ud, void *ptr, size_t osize, size_t nsize)
 {
 	(void)osize; /* not used */
-
+	struct mg_context *ctx = (struct mg_context *)ud;
 	if (nsize == 0) {
 		mg_free(ptr);
 		return NULL;
 	}
-
-	return mg_realloc_ctx(ptr, nsize, (struct mg_context *)ud);
+	return mg_realloc_ctx(ptr, nsize, ctx);
 }
 
 
@@ -2665,7 +2669,6 @@ civetweb_open_lua_libs(lua_State *L)
 		extern void luaL_openlibs(lua_State *);
 		luaL_openlibs(L);
 	}
-
 #if defined(USE_LUA_SQLITE3)
 	{
 		extern int luaopen_lsqlite3(lua_State *);
@@ -2676,7 +2679,6 @@ civetweb_open_lua_libs(lua_State *L)
 	{
 		extern int luaopen_LuaXML_lib(lua_State *);
 		luaopen_LuaXML_lib(L);
-		// lua_pushvalue(L, -1); to copy value
 		lua_setglobal(L, "xml");
 	}
 #endif
@@ -2684,6 +2686,18 @@ civetweb_open_lua_libs(lua_State *L)
 	{
 		extern int luaopen_lfs(lua_State *);
 		luaopen_lfs(L);
+	}
+#endif
+#if defined(USE_LUA_STRUCT)
+	{
+		int luaopen_struct(lua_State * L);
+		luaopen_struct(L);
+	}
+#endif
+#if defined(USE_LUA_SHARED_MEMORY)
+	{
+		extern int luaopen_lsh(lua_State *);
+		luaopen_lsh(L);
 	}
 #endif
 }
@@ -2706,7 +2720,7 @@ lsp_mg_gc(lua_State *L)
 
 	lua_pushlightuserdata(L, (void *)&lua_regkey_environment_type);
 	lua_gettable(L, LUA_REGISTRYINDEX);
-	context_flags = lua_tointeger(L, -1);
+	context_flags = (int)lua_tointeger(L, -1);
 
 	if (ctx != NULL) {
 		if (ctx->callbacks.exit_lua != NULL) {
@@ -2784,6 +2798,12 @@ prepare_lua_environment(struct mg_context *ctx,
 	const char *debug_params = NULL;
 
 	int lua_context_flags = lua_env_type;
+
+	DEBUG_TRACE("Lua environment type %i: %p, connection %p, script %s",
+	            lua_env_type,
+	            L,
+	            conn,
+	            script_name);
 
 	civetweb_open_lua_libs(L);
 
@@ -3042,6 +3062,7 @@ mg_exec_lua_script(struct mg_connection *conn,
 		} else {
 			lua_pcall(L, 0, 0, -2);
 		}
+		DEBUG_TRACE("Close Lua environment %p", L);
 		lua_close(L);
 	}
 }
@@ -3201,10 +3222,13 @@ handle_lsp_request(struct mg_connection *conn,
 
 cleanup_handle_lsp_request:
 
-	if (L != NULL && ls == NULL)
+	if (L != NULL && ls == NULL) {
+		DEBUG_TRACE("Close Lua environment %p", L);
 		lua_close(L);
-	if (p != NULL)
+	}
+	if (p != NULL) {
 		munmap(p, filep->stat.size);
+	}
 	(void)mg_fclose(&filep->access);
 
 	return error;
@@ -3500,6 +3524,7 @@ mg_lua_context_script_prepare(const char *file_name,
 		            "Error loading file %s: %s\n",
 		            file_name,
 		            lua_err_txt);
+		DEBUG_TRACE("Close Lua environment %p", L);
 		lua_close(L);
 		return 0;
 	}
@@ -3536,6 +3561,7 @@ mg_lua_context_script_run(lua_State *L,
 		            "Error running file %s: %s\n",
 		            file_name,
 		            lua_err_txt);
+		DEBUG_TRACE("Close Lua environment %p", L);
 		lua_close(L);
 		return 0;
 	}
@@ -3552,6 +3578,7 @@ mg_lua_context_script_run(lua_State *L,
 			            ebuf_len,
 			            "Script %s returned false\n",
 			            file_name);
+			DEBUG_TRACE("Close Lua environment %p", L);
 			lua_close(L);
 			return 0;
 		}
@@ -3581,6 +3608,8 @@ lua_ctx_exit(struct mg_context *ctx)
 
 	mg_lock_context(ctx);
 	while (*shared_websock_list) {
+		DEBUG_TRACE("Close Lua environment %p",
+		            (*shared_websock_list)->ws.state);
 		lua_close((*shared_websock_list)->ws.state);
 		mg_free((*shared_websock_list)->ws.script);
 
@@ -3614,6 +3643,7 @@ run_lua(const char *file_name)
 		} else {
 			func_ret = EXIT_SUCCESS;
 		}
+		DEBUG_TRACE("Close Lua environment %p", L);
 		lua_close(L);
 	} else {
 		fprintf(stderr, "%s\n", ebuf);
@@ -3634,7 +3664,7 @@ lua_init_optional_libraries(void)
 	lua_shared_init();
 
 /* UUID library */
-#if !defined(_WIN32) && !defined(NO_DLOPEN)
+#if !defined(_WIN32)
 	lib_handle_uuid = dlopen("libuuid.so", RTLD_LAZY);
 	pf_uuid_generate.p =
 	    (lib_handle_uuid ? dlsym(lib_handle_uuid, "uuid_generate") : 0);
@@ -3648,7 +3678,7 @@ static void
 lua_exit_optional_libraries(void)
 {
 /* UUID library */
-#if !defined(_WIN32) && !defined(NO_DLOPEN)
+#if !defined(_WIN32)
 	if (lib_handle_uuid) {
 		dlclose(lib_handle_uuid);
 	}

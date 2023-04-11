@@ -58,12 +58,10 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	int rc;
 
 	if (ctx == NULL || crt == NULL) {
-		log_err("Invalid parameter passed to mbed_sslctx_init(%p, %p)", ctx, crt);
 		return -1;
 	}
 
 	DEBUG_TRACE("%s", "Initializing MbedTLS SSL");
-	log_info("Initializing MbedTLS SSL");
 	mbedtls_entropy_init(&ctx->entropy);
 
 	conf = &ctx->conf;
@@ -96,7 +94,6 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	                           (unsigned char *)"CivetWeb",
 	                           strlen("CivetWeb"));
 	if (rc != 0) {
-		log_err("TLS random seed failed (%i)", rc);
 		DEBUG_TRACE("TLS random seed failed (%i)", rc);
 		return -1;
 	}
@@ -107,19 +104,18 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	// these functions. It is used for blinding, a countermeasure against
 	// side-channel attacks.
 	// https://github.com/Mbed-TLS/mbedtls/blob/development/docs/3.0-migration-guide.md#some-functions-gained-an-rng-parameter
-	rc = mbedtls_pk_parse_keyfile(&ctx->pkey, crt, NULL, mbedtls_ctr_drbg_random, &ctx->ctr);
+	rc = mbedtls_pk_parse_keyfile(
+	    &ctx->pkey, crt, NULL, mbedtls_ctr_drbg_random, &ctx->ctr);
 #else
 	rc = mbedtls_pk_parse_keyfile(&ctx->pkey, crt, NULL);
 #endif
 	if (rc != 0) {
-		log_err("TLS parse key file failed (%i)", rc);
 		DEBUG_TRACE("TLS parse key file failed (%i)", rc);
 		return -1;
 	}
 
 	rc = mbedtls_x509_crt_parse_file(&ctx->cert, crt);
 	if (rc != 0) {
-		log_err("TLS parse crt file failed (%i)", rc);
 		DEBUG_TRACE("TLS parse crt file failed (%i)", rc);
 		return -1;
 	}
@@ -129,7 +125,6 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	                                 MBEDTLS_SSL_TRANSPORT_STREAM,
 	                                 MBEDTLS_SSL_PRESET_DEFAULT);
 	if (rc != 0) {
-		log_err("TLS set defaults failed (%i)", rc);
 		DEBUG_TRACE("TLS set defaults failed (%i)", rc);
 		return -1;
 	}
@@ -143,7 +138,6 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	/* Configure server cert and key */
 	rc = mbedtls_ssl_conf_own_cert(conf, &ctx->cert, &ctx->pkey);
 	if (rc != 0) {
-		log_err("TLS cannot set certificate and private key (%i)", rc);
 		DEBUG_TRACE("TLS cannot set certificate and private key (%i)", rc);
 		return -1;
 	}
