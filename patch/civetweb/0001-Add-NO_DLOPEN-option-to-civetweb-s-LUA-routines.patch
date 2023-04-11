@@ -5,13 +5,13 @@ Subject: [PATCH] Add NO_DLOPEN option to civetweb's LUA routines
 
 Signed-off-by: DL6ER <dl6er@dl6er.de>
 ---
- src/civetweb/mod_lua.inl | 4 ++--
+ src/webserver/civetweb/mod_lua.inl | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
-diff --git a/src/civetweb/mod_lua.inl b/src/civetweb/mod_lua.inl
+diff --git a/src/webserver/civetweb/mod_lua.inl b/src/webserver/civetweb/mod_lua.inl
 index 5cc94318..59c4f2b3 100644
---- a/src/civetweb/mod_lua.inl
-+++ b/src/civetweb/mod_lua.inl
+--- a/src/webserver/civetweb/mod_lua.inl
++++ b/src/webserver/civetweb/mod_lua.inl
 @@ -3634,7 +3634,7 @@ lua_init_optional_libraries(void)
  	lua_shared_init();
  

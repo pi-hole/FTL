@@ -4142,6 +4142,14 @@ send_additional_header(struct mg_connection *conn)
 	if (header && header[0]) {
 		mg_response_header_add_lines(conn, header);
 	}
+
+	/*************** Pi-hole modification ****************/
+	if (pi_hole_extra_headers[0] != '\0') {
+		mg_response_header_add_lines(conn, pi_hole_extra_headers);
+		// Invalidate extra headers after having sent them to avoid repetitions
+		pi_hole_extra_headers[0] = '\0';
+	}
+	/*****************************************************/
 }
 
 
@@ -4557,6 +4565,48 @@ mg_send_http_error_impl(struct mg_connection *conn,
 	return 0;
 }
 
+
+/************************************** Pi-hole method **************************************/
+CIVETWEB_API int
+my_send_http_error_headers(struct mg_connection *conn,
+                           int status, const char* mime_type,
+                           long long content_length)
+{
+	if ((mime_type == NULL) || (*mime_type == 0)) {
+		/* No content type defined: default to text/html */
+		mime_type = "text/html";
+	}
+
+	mg_response_header_start(conn, status);
+	send_no_cache_header(conn);
+	send_additional_header(conn);
+	mg_response_header_add(conn, "Content-Type", mime_type, -1);
+	if (content_length < 0) {
+		/* Size not known. Use chunked encoding (HTTP/1.x) */
+		if (conn->protocol_type == PROTOCOL_TYPE_HTTP1) {
+			/* Only HTTP/1.x defines "chunked" encoding, HTTP/2 does not*/
+			mg_response_header_add(conn, "Transfer-Encoding", "chunked", -1);
+		}
+	} else {
+		char len[32];
+		int trunc = 0;
+		mg_snprintf(conn,
+		            &trunc,
+		            len,
+		            sizeof(len),
+		            "%" UINT64_FMT,
+		            (uint64_t)content_length);
+		if (!trunc) {
+			/* Since 32 bytes is enough to hold any 64 bit decimal number,
+			 * !trunc is always true */
+			mg_response_header_add(conn, "Content-Length", len, -1);
+		}
+	}
+	mg_response_header_send(conn);
+
+	return 0;
+}
+/********************************************************************************************/
 
 CIVETWEB_API int
 mg_send_http_error(struct mg_connection *conn, int status, const char *fmt, ...)
@@ -10922,6 +10972,10 @@ parse_http_request(char *buf, int len, struct mg_request_info *ri)
 	ri->remote_user = ri->request_method = ri->request_uri = ri->http_version =
 	    NULL;
 	ri->num_headers = 0;
+
+	/******************** Pi-hole modification ********************/
+	strncpy(ri->raw_http_head, buf, sizeof(ri->raw_http_head));
+	/**************************************************************/
 
 	/* RFC says that all initial whitespaces should be ignored */
 	/* This included all leading \r and \n (isspace) */

@@ -5,14 +5,14 @@ Subject: [PATCH] Add Pi-hole specific method to send HTTP headers
 
 Signed-off-by: DL6ER <dl6er@dl6er.de>
 ---
- src/civetweb/civetweb.c | 53 +++++++++++++++++++++++++++++++++++++++++
- src/civetweb/civetweb.h | 11 +++++++++
+ src/webserver/civetweb/civetweb.c | 53 +++++++++++++++++++++++++++++++++++++++++
+ src/webserver/civetweb/civetweb.h | 11 +++++++++
  2 files changed, 64 insertions(+)
 
-diff --git a/src/civetweb/civetweb.c b/src/civetweb/civetweb.c
+diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
 index 81f642be..ed360a76 100644
---- a/src/civetweb/civetweb.c
-+++ b/src/civetweb/civetweb.c
+--- a/src/webserver/civetweb/civetweb.c
++++ b/src/webserver/civetweb/civetweb.c
 @@ -4135,6 +4135,14 @@ send_additional_header(struct mg_connection *conn)
  	if (header && header[0]) {
  		mg_response_header_add_lines(conn, header);
@@ -28,14 +28,15 @@ index 81f642be..ed360a76 100644
  }
  
  
-@@ -4530,6 +4538,47 @@ mg_send_http_error_impl(struct mg_connection *conn,
+@@ -4530,6 +4538,48 @@ mg_send_http_error_impl(struct mg_connection *conn,
  }
  
  
 +/************************************** Pi-hole method **************************************/
-+int my_send_http_error_headers(struct mg_connection *conn,
-+                               int status, const char* mime_type,
-+                               long long content_length)
++CIVETWEB_API int
++my_send_http_error_headers(struct mg_connection *conn,
++                           int status, const char* mime_type,
++                           long long content_length)
 +{
 +	if ((mime_type == NULL) || (*mime_type == 0)) {
 +		/* No content type defined: default to text/html */
@@ -73,7 +74,7 @@ index 81f642be..ed360a76 100644
 +}
 +/********************************************************************************************/
 +
- int
+ CIVETWEB_API int
  mg_send_http_error(struct mg_connection *conn, int status, const char *fmt, ...)
  {
 @@ -10649,6 +10649,10 @@ parse_http_request(char *buf, int len, struct mg_request_info *ri)
@@ -87,10 +88,10 @@ index 81f642be..ed360a76 100644
  	/* RFC says that all initial whitespaces should be ignored */
  	/* This included all leading \r and \n (isspace) */
  	/* See table: http://www.cplusplus.com/reference/cctype/ */
-diff --git a/src/civetweb/civetweb.h b/src/civetweb/civetweb.h
+diff --git a/src/webserver/civetweb/civetweb.h b/src/webserver/civetweb/civetweb.h
 index 7ea45fb2..f879ff3e 100644
---- a/src/civetweb/civetweb.h
-+++ b/src/civetweb/civetweb.h
+--- a/src/webserver/civetweb/civetweb.h
++++ b/src/webserver/civetweb/civetweb.h
 @@ -186,6 +186,8 @@ struct mg_request_info {
  
  	const char *acceptedWebSocketSubprotocol; /* websocket subprotocol,
