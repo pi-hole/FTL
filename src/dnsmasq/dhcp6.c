@@ -159,7 +159,8 @@ void dhcp6_packet(time_t now)
 	  return;
       
       for (tmp = daemon->dhcp_except; tmp; tmp = tmp->next)
-	if (tmp->name && wildcard_match(tmp->name, ifr.ifr_name))
+	if (tmp->name && (tmp->flags & INAME_6) &&
+	    wildcard_match(tmp->name, ifr.ifr_name))
 	  return;
       
       parm.current = NULL;

@@ -557,7 +557,7 @@ char *whichdevice(void)
       return NULL;
 
   for (found = NULL, iface = daemon->interfaces; iface; iface = iface->next)
-    if (iface->dhcp_ok)
+    if (iface->dhcp4_ok || iface->dhcp6_ok)
       {
 	if (!found)
 	  found = iface;

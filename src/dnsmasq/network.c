@@ -246,7 +246,8 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
   int loopback;
   struct ifreq ifr;
   int tftp_ok = !!option_bool(OPT_TFTP);
-  int dhcp_ok = 1;
+  int dhcp4_ok = 1;
+  int dhcp6_ok = 1;
   int auth_dns = 0;
   int is_label = 0;
 #if defined(HAVE_DHCP) || defined(HAVE_TFTP)
@@ -262,7 +263,7 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
   loopback = ifr.ifr_flags & IFF_LOOPBACK;
   
   if (loopback)
-    dhcp_ok = 0;
+    dhcp4_ok = dhcp6_ok = 0;
   
   if (!label)
     label = ifr.ifr_name;
@@ -534,14 +535,17 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
   if (auth_dns)
     {
       tftp_ok = 0;
-      dhcp_ok = 0;
+      dhcp4_ok = dhcp6_ok = 0;
     }
   else
     for (tmp = daemon->dhcp_except; tmp; tmp = tmp->next)
       if (tmp->name && wildcard_match(tmp->name, ifr.ifr_name))
 	{
 	  tftp_ok = 0;
-	  dhcp_ok = 0;
+	  if (tmp->flags & INAME_4)
+	    dhcp4_ok = 0;
+	  if (tmp->flags & INAME_6)
+	    dhcp6_ok = 0;
 	}
 #endif
  
@@ -568,7 +572,8 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
       iface->addr = *addr;
       iface->netmask = netmask;
       iface->tftp_ok = tftp_ok;
-      iface->dhcp_ok = dhcp_ok;
+      iface->dhcp4_ok = dhcp4_ok;
+      iface->dhcp6_ok = dhcp6_ok;
       iface->dns_auth = auth_dns;
       iface->mtu = mtu;
       iface->dad = !!(iface_flags & IFACE_TENTATIVE);
@@ -1315,7 +1320,7 @@ void join_multicast(int dienow)
   struct irec *iface, *tmp;
 
   for (iface = daemon->interfaces; iface; iface = iface->next)
-    if (iface->addr.sa.sa_family == AF_INET6 && iface->dhcp_ok && !iface->multicast_done)
+    if (iface->addr.sa.sa_family == AF_INET6 && iface->dhcp6_ok && !iface->multicast_done)
       {
 	/* There's an irec per address but we only want to join for multicast 
 	   once per interface. Weed out duplicates. */

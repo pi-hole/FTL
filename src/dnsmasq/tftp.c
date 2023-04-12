@@ -228,7 +228,8 @@ void tftp_request(struct listener *listen, time_t now)
 #ifdef HAVE_DHCP      
 	  /* allowed interfaces are the same as for DHCP */
 	  for (tmp = daemon->dhcp_except; tmp; tmp = tmp->next)
-	    if (tmp->name && wildcard_match(tmp->name, name))
+	    if (tmp->name && (tmp->flags & (INAME_4 | INAME_6) == (INAME_4 | INAME_6)) &&
+		wildcard_match(tmp->name, name))
 	      return;
 #endif
 	}
