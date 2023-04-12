@@ -386,7 +386,7 @@ int main_dnsmasq (int argc, char **argv)
       
       if (!option_bool(OPT_CLEVERBIND))
 	for (if_tmp = daemon->if_names; if_tmp; if_tmp = if_tmp->next)
-	  if (if_tmp->name && !if_tmp->used)
+	  if (if_tmp->name && !(if_tmp->flags & INAME_USED))
 	    die(_("unknown interface %s"), if_tmp->name, EC_BADNET);
 
 #if defined(HAVE_LINUX_NETWORK) && defined(HAVE_DHCP)
@@ -944,7 +944,7 @@ int main_dnsmasq (int argc, char **argv)
   
   if (!option_bool(OPT_NOWILD)) 
     for (if_tmp = daemon->if_names; if_tmp; if_tmp = if_tmp->next)
-      if (if_tmp->name && !if_tmp->used)
+      if (if_tmp->name && !(if_tmp->flags & INAME_USED))
 	my_syslog(LOG_WARNING, _("warning: interface %s does not currently exist"), if_tmp->name);
    
   if (daemon->port != 0 && option_bool(OPT_NO_RESOLV))

@@ -553,7 +553,7 @@ char *whichdevice(void)
     return NULL;
   
   for (if_tmp = daemon->if_names; if_tmp; if_tmp = if_tmp->next)
-    if (if_tmp->name && (!if_tmp->used || strchr(if_tmp->name, '*')))
+    if (if_tmp->name && (!(if_tmp->flags & INAME_USED) || strchr(if_tmp->name, '*')))
       return NULL;
 
   for (found = NULL, iface = daemon->interfaces; iface; iface = iface->next)

@@ -2837,7 +2837,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	/* new->name may be NULL if someone does
 	   "interface=" to disable all interfaces except loop. */
 	new->name = opt_string_alloc(arg);
-	new->used = 0;
+	new->flags = 0;
 	arg = comma;
       } while (arg);
       break;
@@ -2947,7 +2947,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	else
 	  ret_err_free(gen_err, new);
 
-	new->used = 0;
+	new->flags = 0;
 	if (option == 'a')
 	  {
 	    new->next = daemon->if_addrs;

@@ -125,7 +125,10 @@ int iface_check(int family, union all_addr *addr, char *name, int *auth)
 
       for (tmp = daemon->if_names; tmp; tmp = tmp->next)
 	if (tmp->name && wildcard_match(tmp->name, name))
-	  ret = tmp->used = 1;
+	  {
+	    tmp->flags |= INAME_USED;
+	    ret = 1;
+	  }
 	        
       if (addr)
 	for (tmp = daemon->if_addrs; tmp; tmp = tmp->next)
@@ -133,11 +136,17 @@ int iface_check(int family, union all_addr *addr, char *name, int *auth)
 	    {
 	      if (family == AF_INET &&
 		  tmp->addr.in.sin_addr.s_addr == addr->addr4.s_addr)
-		ret = match_addr = tmp->used = 1;
+		{
+		  tmp->flags |= INAME_USED;
+		  ret = match_addr = 1;
+		}
 	      else if (family == AF_INET6 &&
 		       IN6_ARE_ADDR_EQUAL(&tmp->addr.in6.sin6_addr, 
 					  &addr->addr6))
-		ret = match_addr = tmp->used = 1;
+		{
+		  tmp->flags |= INAME_USED;
+		  ret = match_addr = 1;
+		}
 	    }          
     }
   
@@ -503,7 +512,7 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
 	  if ((lo->name = whine_malloc(strlen(ifr.ifr_name)+1)))
 	    {
 	      strcpy(lo->name, ifr.ifr_name);
-	      lo->used = 1;
+	      lo->flags |= INAME_USED;
 	      lo->next = daemon->if_names;
 	      daemon->if_names = lo;
 	    }
@@ -1215,7 +1224,7 @@ void create_bound_listeners(int dienow)
      (no netmask) and some MTU login the tftp code. */
 
   for (if_tmp = daemon->if_addrs; if_tmp; if_tmp = if_tmp->next)
-    if (!if_tmp->used && 
+    if (!(if_tmp->flags & INAME_USED) && 
 	(new = create_listeners(&if_tmp->addr, !!option_bool(OPT_TFTP), dienow)))
       {
 	new->next = daemon->listeners;
