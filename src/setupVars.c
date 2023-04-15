@@ -364,6 +364,18 @@ void importsetupVarsConf(void)
 	get_conf_string_from_setupVars("DHCP_END", &config.dhcp.end);
 	get_conf_string_from_setupVars("DHCP_ROUTER", &config.dhcp.router);
 	get_conf_string_from_setupVars("DHCP_LEASETIME", &config.dhcp.leaseTime);
+
+	// If the DHCP lease time is set to "24", it is interpreted as "24h".
+	// This is some relic from the past that may still be present in some
+	// setups
+	if(strcmp(config.dhcp.leaseTime.v.s, "24") == 0)
+	{
+		if(config.dhcp.leaseTime.t == CONF_STRING_ALLOCATED)
+			free(config.dhcp.leaseTime.v.s);
+		config.dhcp.leaseTime.v.s = strdup("24h");
+		config.dhcp.leaseTime.t = CONF_STRING_ALLOCATED;
+	}
+
 	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dhcp.ipv6);
 	get_conf_bool_from_setupVars("DHCP_RAPID_COMMIT", &config.dhcp.rapidCommit);
 
