@@ -958,14 +958,14 @@ void set_dbus_listeners(void)
       {
 	unsigned int flags = dbus_watch_get_flags(w->watch);
 	int fd = dbus_watch_get_unix_fd(w->watch);
+	int poll_flags = POLLERR;
 	
 	if (flags & DBUS_WATCH_READABLE)
-	  poll_listen(fd, POLLIN);
-	
+	  poll_flags |= POLLIN;
 	if (flags & DBUS_WATCH_WRITABLE)
-	  poll_listen(fd, POLLOUT);
+	  poll_flags |= POLLOUT;
 	
-	poll_listen(fd, POLLERR);
+	poll_listen(fd, poll_flags);
       }
 }
 
@@ -979,14 +979,13 @@ static int check_dbus_watches()
       {
 	unsigned int flags = 0;
 	int fd = dbus_watch_get_unix_fd(w->watch);
-	
-	if (poll_check(fd, POLLIN))
+	int poll_flags = poll_check(fd, POLLIN|POLLOUT|POLLERR);
+
+	if ((poll_flags & POLLIN) != 0)
 	  flags |= DBUS_WATCH_READABLE;
-	
-	if (poll_check(fd, POLLOUT))
+	if ((poll_flags & POLLOUT) != 0)
 	  flags |= DBUS_WATCH_WRITABLE;
-	
-	if (poll_check(fd, POLLERR))
+	if ((poll_flags & POLLERR) != 0)
 	  flags |= DBUS_WATCH_ERROR;
 
 	if (flags != 0)
