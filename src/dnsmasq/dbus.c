@@ -106,6 +106,7 @@ const char* introspection_xml_template =
 "</node>\n";
 
 static char *introspection_xml = NULL;
+static int watches_modified = 0;
 
 struct watch {
   DBusWatch *watch;      
@@ -127,6 +128,7 @@ static dbus_bool_t add_watch(DBusWatch *watch, void *data)
   w->watch = watch;
   w->next = daemon->watches;
   daemon->watches = w;
+  watches_modified++;
 
   (void)data; /* no warning */
   return TRUE;
@@ -134,7 +136,7 @@ static dbus_bool_t add_watch(DBusWatch *watch, void *data)
 
 static void remove_watch(DBusWatch *watch, void *data)
 {
-  struct watch **up, *w, *tmp;  
+  struct watch **up, *w, *tmp;
   
   for (up = &(daemon->watches), w = daemon->watches; w; w = tmp)
     {
@@ -143,6 +145,7 @@ static void remove_watch(DBusWatch *watch, void *data)
 	{
 	  *up = tmp;
 	  free(w);
+	  watches_modified++;
 	}
       else
 	up = &(w->next);
@@ -966,11 +969,11 @@ void set_dbus_listeners(void)
       }
 }
 
-void check_dbus_listeners()
+static int check_dbus_watches()
 {
-  DBusConnection *connection = (DBusConnection *)daemon->dbus;
   struct watch *w;
 
+  watches_modified = 0;
   for (w = daemon->watches; w; w = w->next)
     if (dbus_watch_get_enabled(w->watch))
       {
@@ -987,8 +990,21 @@ void check_dbus_listeners()
 	  flags |= DBUS_WATCH_ERROR;
 
 	if (flags != 0)
-	  dbus_watch_handle(w->watch, flags);
+	  {
+	    dbus_watch_handle(w->watch, flags);
+	    if (watches_modified)
+	      return 0;
+	  }
       }
+
+  return 1;
+}
+
+void check_dbus_listeners()
+{
+  DBusConnection *connection = (DBusConnection *)daemon->dbus;
+
+  while (!check_dbus_watches()) ;
 
   if (connection)
     {
