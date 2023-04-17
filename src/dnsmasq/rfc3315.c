@@ -457,6 +457,8 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
 	    state->tags = &mac_opt->netid;
 	  }
     }
+  else if (option_bool(OPT_LOG_OPTS))
+    my_syslog(MS_DHCP | LOG_INFO, _("%u cannot determine client MAC address"), state->xid);
   
   if ((opt = opt6_find(state->packet_options, state->end, OPTION6_FQDN, 1)))
     {
