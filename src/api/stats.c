@@ -252,7 +252,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 			domain_count = domain->count - domain->blockedcount;
 			n++;
 		}
-		if(count > -1)
+		if(domain_count > -1)
 		{
 			cJSON *domain_item = JSON_NEW_OBJECT();
 			JSON_REF_STR_IN_OBJECT(domain_item, "domain", getstr(domain->domainpos));
@@ -261,7 +261,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 		}
 
 		// Only count entries that are actually sent and return when we have send enough data
-		if(n == count)
+		if(n >= count)
 			break;
 	}
 	free(temparray);
