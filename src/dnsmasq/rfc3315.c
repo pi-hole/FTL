@@ -333,12 +333,29 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
   else if (msg_type != DHCP6IREQ)
     return 0;
 
-  /* server-id must match except for SOLICIT, CONFIRM and REBIND messages */
-  if (msg_type != DHCP6SOLICIT && msg_type != DHCP6CONFIRM && msg_type != DHCP6IREQ && msg_type != DHCP6REBIND &&
-      (!(opt = opt6_find(state->packet_options, state->end, OPTION6_SERVER_ID, 1)) ||
-       opt6_len(opt) != daemon->duid_len ||
-       memcmp(opt6_ptr(opt, 0), daemon->duid, daemon->duid_len) != 0))
-    return 0;
+  /* server-id must match except for SOLICIT, CONFIRM and REBIND messages, which MUST NOT
+     have a server-id.  3315 para 15.x */
+  opt = opt6_find(state->packet_options, state->end, OPTION6_SERVER_ID, 1);
+
+  if (msg_type == DHCP6SOLICIT || msg_type == DHCP6CONFIRM || msg_type == DHCP6REBIND)
+    {
+      if (opt)
+	return 0;
+    }
+  else if (msg_type == DHCP6IREQ)
+    {
+      /* If server-id provided, it must match. */
+      if (opt && (opt6_len(opt) != daemon->duid_len ||
+		  memcmp(opt6_ptr(opt, 0), daemon->duid, daemon->duid_len) != 0))
+	return 0;
+    }
+  else
+    {
+      /* Everything else MUST have a server-id that matches ours. */
+      if (!opt || opt6_len(opt) != daemon->duid_len ||
+	  memcmp(opt6_ptr(opt, 0), daemon->duid, daemon->duid_len) != 0)
+	return 0;
+    }
   
   o = new_opt6(OPTION6_SERVER_ID);
   put_opt6(daemon->duid, daemon->duid_len);
@@ -1105,6 +1122,11 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
       
     case DHCP6IREQ:
       {
+	/* 3315 para 15.12 */
+	if (opt6_find(state->packet_options, state->end, OPTION6_IA_NA, 1) ||
+	    opt6_find(state->packet_options, state->end, OPTION6_IA_TA, 1))
+	  return 0;
+	
 	/* We can't discriminate contexts based on address, as we don't know it.
 	   If there is only one possible context, we can use its tags */
 	if (state->context && state->context->netid.net && !state->context->current)
