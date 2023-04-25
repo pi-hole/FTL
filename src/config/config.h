@@ -191,7 +191,6 @@ struct config {
 	struct {
 		struct conf_item DBimport;
 		struct conf_item DBexport;
-		struct conf_item maxHistory;
 		struct conf_item maxDBdays;
 		struct conf_item DBinterval;
 		struct {
@@ -222,6 +221,7 @@ struct config {
 			struct conf_item totp_secret; // This is a write-only item
 			struct conf_item excludeClients;
 			struct conf_item excludeDomains;
+			struct conf_item maxHistory;
 			struct {
 				struct conf_item limit;
 				struct conf_item unit;

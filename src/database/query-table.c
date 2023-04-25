@@ -331,7 +331,7 @@ bool import_queries_from_disk(void)
 	// Get time stamp 24 hours (or what was configured) in the past
 	bool okay = false;
 	const double now = double_time();
-	const double mintime = now - config.database.maxHistory.v.ui;
+	const double mintime = now - config.webserver.api.maxHistory.v.ui;
 	const char *querystr = "INSERT INTO query_storage SELECT * FROM disk.query_storage WHERE timestamp >= ?";
 
 	// Attach disk database
@@ -732,7 +732,7 @@ void DB_read_queries(void)
 	// Prepare request
 	// Get time stamp 24 hours in the past
 	const double now = double_time();
-	const double mintime = now - config.database.maxHistory.v.ui;
+	const double mintime = now - config.webserver.api.maxHistory.v.ui;
 	const char *querystr = "SELECT id,"\
 	                              "timestamp,"\
 	                              "type,"\

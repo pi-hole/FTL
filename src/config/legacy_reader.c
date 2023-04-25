@@ -186,7 +186,7 @@ const char *readFTLlegacy(struct config *conf)
 	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
 	{
 		if(fvalue >= 0.0f && fvalue <= 1.0f*MAXLOGAGE)
-			conf->database.maxHistory.v.ui = (int)(fvalue * 3600);
+			conf->webserver.api.maxHistory.v.ui = (int)(fvalue * 3600);
 	}
 
 	// PRIVACYLEVEL

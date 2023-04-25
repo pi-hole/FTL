@@ -785,11 +785,6 @@ void initConfig(struct config *conf)
 	conf->database.maxDBdays.t = CONF_INT;
 	conf->database.maxDBdays.d.i = (365/4);
 
-	conf->database.maxHistory.k = "database.maxHistory";
-	conf->database.maxHistory.h = "How much history should be imported from the database [seconds]? (max 24*60*60 = 86400)";
-	conf->database.maxHistory.t = CONF_UINT;
-	conf->database.maxHistory.d.ui = MAXLOGAGE*3600;
-
 	conf->database.DBinterval.k = "database.DBinterval";
 	conf->database.DBinterval.h = "How often do we store queries in FTL's database [seconds]?";
 	conf->database.DBinterval.t = CONF_UINT;
@@ -922,6 +917,11 @@ void initConfig(struct config *conf)
 	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
 	conf->webserver.api.excludeDomains.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeDomains.d.json = cJSON_CreateArray();
+
+	conf->webserver.api.maxHistory.k = "webserver.api.maxHistory";
+	conf->webserver.api.maxHistory.h = "How much history should be imported from the database and returned by the API [seconds]? (max 24*60*60 = 86400)";
+	conf->webserver.api.maxHistory.t = CONF_UINT;
+	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
 
 	// sub-struct webserver.api.temp
 	conf->webserver.api.temp.limit.k = "webserver.api.temp.limit";

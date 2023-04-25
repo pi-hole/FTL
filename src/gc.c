@@ -130,8 +130,8 @@ static void runGC(const time_t now, time_t *lastGCrun)
 	// Requests should not be processed/answered when data is about to change
 	lock_shm();
 
-	// Get minimum timestamp to keep (this can be set with MAXLOGAGE)
-	time_t mintime = (now - GCdelay) - config.database.maxHistory.v.ui;
+	// Get minimum timestamp to keep
+	time_t mintime = (now - GCdelay) - config.webserver.api.maxHistory.v.ui;
 
 	// Align the start time of this GC run to the GCinterval. This will also align with the
 	// oldest overTime interval after GC is done.
