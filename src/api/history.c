@@ -25,14 +25,15 @@
 
 int api_history(struct ftl_conn *api)
 {
-	int from = 0, until = OVERTIME_SLOTS;
+	unsigned int from = 0, until = OVERTIME_SLOTS;
+	const time_t now = time(NULL);
 	bool found = false;
 
 	lock_shm();
 	time_t mintime = overTime[0].timestamp;
 
 	// Start with the first non-empty overTime slot
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
+	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) &&
 		   overTime[slot].timestamp >= mintime)
@@ -43,10 +44,12 @@ int api_history(struct ftl_conn *api)
 		}
 	}
 
-	// End with last non-empty overTime slot
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
+	// End with last non-empty overTime slot or the last slot that is not
+	// older than the maximum history to be sent
+	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
-		if(overTime[slot].timestamp >= time(NULL))
+		if(overTime[slot].timestamp >= now ||
+		   overTime[slot].timestamp - now > config.webserver.api.maxHistory.v.ui)
 		{
 			until = slot;
 			break;
@@ -66,7 +69,7 @@ int api_history(struct ftl_conn *api)
 	// Minimum structure is
 	// {"history":[]}
 	cJSON *history = JSON_NEW_ARRAY();
-	for(int slot = from; slot < until; slot++)
+	for(unsigned int slot = from; slot < until; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
@@ -83,23 +86,26 @@ int api_history(struct ftl_conn *api)
 
 int api_history_clients(struct ftl_conn *api)
 {
-	int sendit = -1, until = OVERTIME_SLOTS;
+	int sendit = false;
+	unsigned int from = 0, until = OVERTIME_SLOTS;
+	const time_t now = time(NULL);
 
 	lock_shm();
 
 	// Find minimum ID to send
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
+	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) &&
 		   overTime[slot].timestamp >= overTime[0].timestamp)
 		{
-			sendit = slot;
+			sendit = true;
+			from = slot;
 			break;
 		}
 	}
 
 	// Exit before processing any data if requested via config setting
-	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS || sendit < 0)
+	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS || !sendit)
 	{
 		// Minimum structure is
 		// {"history":[], "clients":[]}
@@ -111,10 +117,12 @@ int api_history_clients(struct ftl_conn *api)
 		JSON_SEND_OBJECT_UNLOCK(json);
 	}
 
-	// Find minimum ID to send
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
+	// End with last non-empty overTime slot or the last slot that is not
+	// older than the maximum history to be sent
+	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
-		if(overTime[slot].timestamp >= time(NULL))
+		if(overTime[slot].timestamp >= now ||
+		   overTime[slot].timestamp - now > config.webserver.api.maxHistory.v.ui)
 		{
 			until = slot;
 			break;
@@ -147,7 +155,7 @@ int api_history_clients(struct ftl_conn *api)
 	}
 
 	// Also skip alias-clients
-	for(int clientID=0; clientID < counters->clients; clientID++)
+	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
@@ -159,7 +167,7 @@ int api_history_clients(struct ftl_conn *api)
 
 	cJSON *history = JSON_NEW_ARRAY();
 	// Main return loop
-	for(int slot = sendit; slot < until; slot++)
+	for(unsigned int slot = from; slot < until; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
