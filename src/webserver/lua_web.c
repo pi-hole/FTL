@@ -101,31 +101,9 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		// Check if the user is authenticated
 		if(check_client_auth(&api) != API_AUTH_UNAUTHORIZED)
 		{
-			// User is already authenticated
-			char target[256] = { 0 };
-			char decoded_target[256] = { 0 };
-			if(req_info->query_string != NULL && GET_VAR("target", target, req_info->query_string) > 0)
-			{
-				// Redirect to target page
-				const int len = mg_url_decode(target, strlen(target), decoded_target, sizeof(decoded_target) - 1u, false);
-				// mg_url_decode() returns the length of the decoded
-				// string, if -1 is returned, the buffer is too small
-				if(len < 0)
-				{
-					log_warn("Error decoding target string: %s", target);
-					memcpy(decoded_target, target, sizeof(decoded_target));
-				}
-			}
-			else
-			{
-				// Redirect to index page
-				strncpy(decoded_target, config.webserver.paths.webhome.v.s, sizeof(target) - 10);
-				strcat(decoded_target, "index.lp");
-			}
-
 			// User is already authenticated, redirect to index page
-			log_web("User is already authenticated, redirect to %s", decoded_target);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s\r\n\r\n", decoded_target);
+			log_web("User is already authenticated, redirecting to %sindex.lp", config.webserver.paths.webhome.v.s);
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %sindex.lp\r\n\r\n", config.webserver.paths.webhome.v.s);
 			return 302;
 		}
 	}

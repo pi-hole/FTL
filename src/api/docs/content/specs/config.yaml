@@ -401,7 +401,7 @@ components:
                       type: string
                     dnsmasq:
                       type: string
-                    civetweb:
+                    webserver:
                       type: string
             misc:
               type: object
@@ -634,7 +634,7 @@ components:
             log:
               ftl: "/var/log/pihole/FTL.log"
               dnsmasq: "/var/log/pihole/pihole.log"
-              civetweb: "/var/log/pihole/HTTP_info.log"
+              webserver: "/var/log/pihole/webserver.log"
           misc:
             nice: -10
             delay_startup: 10
