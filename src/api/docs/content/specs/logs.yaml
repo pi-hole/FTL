@@ -60,12 +60,12 @@ components:
                 application/json:
                   schema:
                     $ref: 'common.yaml#/components/errors/unauthorized'
-      http:
+      webserver:
         get:
           summary: Get DNS log content
           tags:
             - "FTL information"
-          operationId: "get_http_log"
+          operationId: "get_webserver_log"
           description: |
             This API hook returns content from the log of the embedded CivetWeb HTTP server.
 

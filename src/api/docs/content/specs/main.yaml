@@ -177,8 +177,8 @@ paths:
   /logs/ftl:
     $ref: 'logs.yaml#/components/paths/logs/ftl'
 
-  /logs/http:
-    $ref: 'logs.yaml#/components/paths/logs/http'
+  /logs/webserver:
+    $ref: 'logs.yaml#/components/paths/logs/webserver'
 
   /endpoints:
     $ref: 'endpoints.yaml#/components/paths/endpoints'
