@@ -87,7 +87,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
-	logg_web(FIFO_CIVETWEB, "HTTP: %s", message);
+	log_web("HTTP: %s", message);
 	return 1;
 }
 
@@ -97,7 +97,7 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 	if(!config.debug.api.v.b)
 		return 1;
 
-	logg_web(FIFO_CIVETWEB, "ACCESS: %s", message);
+	log_web("ACCESS: %s", message);
 
 	return 1;
 }
@@ -128,7 +128,7 @@ static int request_handler(struct mg_connection *conn, void *cbdata)
 		if(check_client_auth(&api) == API_AUTH_UNAUTHORIZED)
 		{
 			// User is not authenticated, redirect to login page
-			logg_web(FIFO_CIVETWEB, "Authentication required, redirecting to %slogin.lp?target=/%s (%s vs. %s)", config.webserver.paths.webhome.v.s, local_uri, local_uri, login_uri);
+			log_web("Authentication required, redirecting to %slogin.lp?target=/%s (%s vs. %s)", config.webserver.paths.webhome.v.s, local_uri, local_uri, login_uri);
 			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin.lp?target=/%s\r\n\r\n", config.webserver.paths.webhome.v.s, local_uri);
 			return 302;
 		}
@@ -140,7 +140,7 @@ static int request_handler(struct mg_connection *conn, void *cbdata)
 		if(check_client_auth(&api) != API_AUTH_UNAUTHORIZED)
 		{
 			// User is already authenticated, redirect to index page
-			logg_web(FIFO_CIVETWEB, "User is already authenticated, redirect to %sindex.lp", config.webserver.paths.webhome.v.s);
+			log_web("User is already authenticated, redirect to %sindex.lp", config.webserver.paths.webhome.v.s);
 			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %sindex.lp\r\n\r\n", config.webserver.paths.webhome.v.s);
 			return 302;
 		}
@@ -153,7 +153,7 @@ static int request_handler(struct mg_connection *conn, void *cbdata)
 
 void http_init(void)
 {
-	logg_web(FIFO_CIVETWEB, "Initializing HTTP server on port %s", config.webserver.port.v.s);
+	log_web("Initializing HTTP server on port %s", config.webserver.port.v.s);
 
 	/* Initialize the library */
 	unsigned int features = MG_FEATURES_FILES |
@@ -166,7 +166,7 @@ void http_init(void)
 
 	if(mg_init_library(features) == 0)
 	{
-		logg_web(FIFO_CIVETWEB, "Initializing HTTP library failed!");
+		log_web("Initializing HTTP library failed!");
 		return;
 	}
 
@@ -286,7 +286,7 @@ void http_init(void)
 	if(login_uri[0] == '/')
 		memmove(login_uri, login_uri + 1, login_uri_len + 9);
 
-	logg_web(FIFO_CIVETWEB, "Login URI: %s", login_uri);
+	log_web("Login URI: %s", login_uri);
 }
 
 void http_terminate(void)

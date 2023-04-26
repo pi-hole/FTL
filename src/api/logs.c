@@ -81,7 +81,7 @@ int api_logs(struct ftl_conn *api)
 		case FIFO_DNSMASQ:
 			logfile = config.files.log.dnsmasq.v.s;
 			break;
-		case FIFO_CIVETWEB:
+		case FIFO_WEBSERVER:
 			logfile = config.files.log.webserver.v.s;
 			break;
 		case FIFO_MAX:

@@ -288,7 +288,7 @@ enum listening_mode {
 enum fifo_logs {
 	FIFO_FTL = 1,
 	FIFO_DNSMASQ,
-	FIFO_CIVETWEB,
+	FIFO_WEBSERVER,
 	FIFO_MAX
 } __attribute__ ((packed));
 

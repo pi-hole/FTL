@@ -57,7 +57,7 @@ static struct {
 	{ "/api/info/metrics",                      "",                           api_info_metrics,                      { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/logs/dnsmasq",                      "",                           api_logs,                              { false, true,  FIFO_DNSMASQ  }, true,  HTTP_GET },
 	{ "/api/logs/ftl",                          "",                           api_logs,                              { false, true,  FIFO_FTL      }, true,  HTTP_GET },
-	{ "/api/logs/http",                         "",                           api_logs,                              { false, true,  FIFO_CIVETWEB }, true,  HTTP_GET },
+	{ "/api/logs/http",                         "",                           api_logs,                              { false, true,  FIFO_WEBSERVER }, true,  HTTP_GET },
 	{ "/api/history/clients",                   "",                           api_history_clients,                   { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/history/database/clients",          "",                           api_history_database_clients,          { false, true,  0             }, true,  HTTP_GET },
 	{ "/api/history/database",                  "",                           api_history_database,                  { false, true,  0             }, true,  HTTP_GET },

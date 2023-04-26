@@ -340,27 +340,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	}
 }
 
-static FILE * __attribute__((malloc, warn_unused_result)) open_web_log(const enum fifo_logs which)
-{
-	// Open the log file in append/create mode
-	char *file = NULL;
-	switch (which)
-	{
-		case FIFO_CIVETWEB:
-			file = config.files.log.webserver.v.s;
-			break;
-		case FIFO_FTL:
-		case FIFO_DNSMASQ:
-		case FIFO_MAX:
-		default:
-			log_err("Invalid logging requested");
-			return NULL;
-	}
-
-	return fopen(file, "a+");
-}
-
-void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum fifo_logs which, const char *format, ...)
+void __attribute__ ((format (gnu_printf, 1, 2))) log_web(const char *format, ...)
 {
 	char timestring[TIMESTR_SIZE] = "";
 	const time_t now = time(NULL);
@@ -371,7 +351,7 @@ void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum fifo_logs which, 
 	va_start(args, format);
 	const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
 	va_end(args);
-	add_to_fifo_buffer(which, buffer, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
+	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
 	// Get human-readable time
 	get_timestr(timestring, now, true, false);
@@ -381,7 +361,7 @@ void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum fifo_logs which, 
 	const long pid = (long)getpid();
 
 	// Open web log file
-	FILE *weblog = open_web_log(which);
+	FILE *weblog = fopen(config.files.log.webserver.v.s, "a+");
 
 	// Write to web log file
 	if(weblog != NULL)
