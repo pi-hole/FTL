@@ -14,6 +14,12 @@
 #include "lauxlib.h"
 // get_FTL_version()
 #include "../log.h"
+// config struct
+#include "../config/config.h"
+// file_exists
+#include "../files.h"
+// get_web_theme_str
+#include "../datastructure.h"
 #include <readline/history.h>
 #include <wordexp.h>
 #include "scripts/scripts.h"
@@ -85,11 +91,110 @@ int run_luac(const int argc, char **argv)
 // pihole.ftl_version()
 static int pihole_ftl_version(lua_State *L) {
 	lua_pushstring(L, get_FTL_version());
-	return 1;
+	return 1; // number of results
+}
+
+// pihole.hostname()
+static int pihole_hostname(lua_State *L) {
+	// Get host name
+	char name[256];
+	if(gethostname(name, sizeof(name)) != 0)
+		strcpy(name, "N/A");
+	lua_pushstring(L, name);
+	return 1; // number of results
+}
+
+static const char *get_abspath(char fullfilename[1024], const char *filename)
+{
+	size_t fullfilename_len = 1023;
+	if(config.webserver.paths.webroot.v.s != NULL)
+	{
+		strncpy(fullfilename, config.webserver.paths.webroot.v.s, fullfilename_len);
+		fullfilename_len -= strlen(config.webserver.paths.webroot.v.s);
+	}
+	if(config.webserver.paths.webhome.v.s != NULL)
+	{
+		strncat(fullfilename, config.webserver.paths.webhome.v.s, fullfilename_len);
+		fullfilename_len -= strlen(config.webserver.paths.webhome.v.s);
+	}
+	strncat(fullfilename, filename, fullfilename_len);
+
+	return fullfilename;
+}
+
+// pihole.fileversion(<filename:str>)
+// Avoid browser caching old versions of a file, using the last modification time
+//   Receive the file URL (without "/admin/");
+//   Return the string containin URL + "?v=xxx", where xxx is the last modified time of the file.
+static int pihole_fileversion(lua_State *L) {
+	// Get filename (first argument to LUA function)
+	const char *filename = luaL_checkstring(L, 1);
+
+	// Construct full filename if webroot/webhome are available
+	char abspath[1024] = { 0 };
+	get_abspath(abspath, filename);
+
+	// Check if file exists
+	if(!file_exists(abspath))
+	{
+		// File does not exist, return filename.
+		log_warn("Requested file \"%s\" does not exist",
+		         abspath);
+		lua_pushstring(L, filename);
+		return 1; // number of results
+	}
+
+	// Get last modification time
+	struct stat filestat;
+	if (stat(abspath, &filestat) == -1)
+	{
+		log_warn("Could not get file modification time for \"%s\": %s",
+		         abspath, strerror(errno));
+		lua_pushstring(L, filename);
+		return 1; // number of results
+	}
+
+	// Return filename + modification time
+	lua_pushfstring(L, "%s?v=%d", filename, filestat.st_mtime);
+	return 1; // number of results
+}
+
+// pihole.webtheme()
+static int pihole_webtheme(lua_State *L) {
+	// Get name of currently set webtheme
+	const char *name = get_web_theme_str(config.webserver.interface.theme.v.web_theme);
+	lua_pushstring(L, name);
+	return 1; // number of results
+}
+
+// pihole.include(<filename:str>)
+static int pihole_include(lua_State *L) {
+	// Get filename (first argument to LUA function)
+	const char *filename = luaL_checkstring(L, 1);
+
+	// Construct full filename if webroot/webhome are available
+	char abspath[1024] = { 0 };
+	get_abspath(abspath, filename);
+
+	// Load and execute file
+	luaL_dofile(L, abspath);
+
+	return 0; // number of results
+}
+
+// pihole.boxed_layout()
+static int pihole_boxedlayout(lua_State *L) {
+	lua_pushboolean(L, config.webserver.interface.boxed.v.b);
+	return 1; // number of results
 }
 
 static const luaL_Reg piholelib[] = {
 	{"ftl_version", pihole_ftl_version},
+	{"hostname", pihole_hostname},
+	{"fileversion", pihole_fileversion},
+	{"webtheme", pihole_webtheme},
+	{"include", pihole_include},
+	{"boxedlayout", pihole_boxedlayout},
 	{NULL, NULL}
 };
 
