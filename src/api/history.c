@@ -49,7 +49,7 @@ int api_history(struct ftl_conn *api)
 	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		if(overTime[slot].timestamp >= now ||
-		   overTime[slot].timestamp - now > config.webserver.api.maxHistory.v.ui)
+		   overTime[slot].timestamp - now > (time_t)config.webserver.api.maxHistory.v.ui)
 		{
 			until = slot;
 			break;
@@ -122,7 +122,7 @@ int api_history_clients(struct ftl_conn *api)
 	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		if(overTime[slot].timestamp >= now ||
-		   overTime[slot].timestamp - now > config.webserver.api.maxHistory.v.ui)
+		   overTime[slot].timestamp - now > (time_t)config.webserver.api.maxHistory.v.ui)
 		{
 			until = slot;
 			break;
