@@ -29,10 +29,6 @@ void allocate_lua(void)
 	memcpy(login_uri, config.webserver.paths.webhome.v.s, login_uri_len);
 	strcpy(login_uri + login_uri_len, "login.lp");
 	login_uri[login_uri_len + 10u] = '\0';
-
-	// Remove initial slash from login_uri
-	if(login_uri[0] == '/')
-		memmove(login_uri, login_uri + 1, login_uri_len + 9);
 }
 
 void free_lua(void)
@@ -61,7 +57,6 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 
 	/* Handler may access the request info using mg_get_request_info */
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
-	const char *local_uri = req_info->local_uri_raw + 1u;
 
 	// Build minimal api struct to check authentication
 	struct ftl_conn api = { 0 };
@@ -69,15 +64,34 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	api.request = req_info;
 
 	// Every page except admin/login.lp requires authentication
-	if(strcmp(local_uri, login_uri) != 0)
+	if(strcmp(req_info->local_uri_raw, login_uri) != 0)
 	{
 		// This is not the login page - check if the user is authenticated
 		// Check if the user is authenticated
 		if(check_client_auth(&api) == API_AUTH_UNAUTHORIZED)
 		{
+			// Append query string to target
+			char *target = NULL;
+			if(req_info->query_string != NULL)
+			{
+				target = calloc(strlen(req_info->local_uri_raw) + strlen(req_info->query_string) + 2u, sizeof(char));
+				strcpy(target, req_info->local_uri_raw);
+				strcat(target, "?");
+				strcat(target, req_info->query_string);
+			}
+			else
+			{
+				target = strdup(req_info->local_uri_raw);
+			}
+			// Encode target string
+			const size_t encoded_target_len = strlen(target) * 3u + 1u;
+			char *encoded_target = calloc(encoded_target_len, sizeof(char));
+			mg_url_encode(target, encoded_target, encoded_target_len);
+
 			// User is not authenticated, redirect to login page
-			log_web("Authentication required, redirecting to %slogin.lp?target=/%s", config.webserver.paths.webhome.v.s, local_uri);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin.lp?target=/%s\r\n\r\n", config.webserver.paths.webhome.v.s, local_uri);
+			log_web("Authentication required, redirecting to %slogin.lp?target=%s", config.webserver.paths.webhome.v.s, encoded_target);
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin.lp?target=%s\r\n\r\n", config.webserver.paths.webhome.v.s, encoded_target);
+			free(target);
 			return 302;
 		}
 	}
@@ -89,19 +103,29 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		{
 			// User is already authenticated
 			char target[256] = { 0 };
-			if(GET_VAR("target", target, req_info->query_string) > 0)
+			char decoded_target[256] = { 0 };
+			if(req_info->query_string != NULL && GET_VAR("target", target, req_info->query_string) > 0)
 			{
 				// Redirect to target page
+				const int len = mg_url_decode(target, strlen(target), decoded_target, sizeof(decoded_target) - 1u, false);
+				// mg_url_decode() returns the length of the decoded
+				// string, if -1 is returned, the buffer is too small
+				if(len < 0)
+				{
+					log_warn("Error decoding target string: %s", target);
+					memcpy(decoded_target, target, sizeof(decoded_target));
+				}
 			}
 			else
 			{
 				// Redirect to index page
-				strncpy(target, config.webserver.paths.webhome.v.s, sizeof(target) - 10);
-				strcat(target, "index.lp");
+				strncpy(decoded_target, config.webserver.paths.webhome.v.s, sizeof(target) - 10);
+				strcat(decoded_target, "index.lp");
 			}
+
 			// User is already authenticated, redirect to index page
-			log_web("User is already authenticated, redirect to %s", target);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s\r\n\r\n", target);
+			log_web("User is already authenticated, redirect to %s", decoded_target);
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s\r\n\r\n", decoded_target);
 			return 302;
 		}
 	}
