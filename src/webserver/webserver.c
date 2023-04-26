@@ -22,6 +22,8 @@
 #include "../files.h"
 // generate_certificate()
 #include "x509.h"
+// luaL_dostring()
+#include "../lua/lauxlib.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
@@ -87,7 +89,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
-	log_web("HTTP: %s", message);
+	log_web("%s", message);
 	return 1;
 }
 
@@ -128,7 +130,7 @@ static int request_handler(struct mg_connection *conn, void *cbdata)
 		if(check_client_auth(&api) == API_AUTH_UNAUTHORIZED)
 		{
 			// User is not authenticated, redirect to login page
-			log_web("Authentication required, redirecting to %slogin.lp?target=/%s (%s vs. %s)", config.webserver.paths.webhome.v.s, local_uri, local_uri, login_uri);
+			log_web("Authentication required, redirecting to %slogin.lp?target=/%s", config.webserver.paths.webhome.v.s, local_uri);
 			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin.lp?target=/%s\r\n\r\n", config.webserver.paths.webhome.v.s, local_uri);
 			return 302;
 		}
@@ -139,9 +141,21 @@ static int request_handler(struct mg_connection *conn, void *cbdata)
 		// Check if the user is authenticated
 		if(check_client_auth(&api) != API_AUTH_UNAUTHORIZED)
 		{
+			// User is already authenticated
+			char target[256] = { 0 };
+			if(GET_VAR("target", target, req_info->query_string) > 0)
+			{
+				// Redirect to target page
+			}
+			else
+			{
+				// Redirect to index page
+				strncpy(target, config.webserver.paths.webhome.v.s, sizeof(target) - 10);
+				strcat(target, "index.lp");
+			}
 			// User is already authenticated, redirect to index page
-			log_web("User is already authenticated, redirect to %sindex.lp", config.webserver.paths.webhome.v.s);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %sindex.lp\r\n\r\n", config.webserver.paths.webhome.v.s);
+			log_web("User is already authenticated, redirect to %s", target);
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s\r\n\r\n", target);
 			return 302;
 		}
 	}
@@ -150,6 +164,15 @@ static int request_handler(struct mg_connection *conn, void *cbdata)
 	return 0;
 }
 
+static void init_lua(const struct mg_connection *conn, void *L, unsigned context_flags)
+{
+	// Set onerror handler to print errors to the log
+	if(luaL_dostring(L, "mg.onerror = function(e) mg.cry('Error at ' .. e) end") != LUA_OK)
+	{
+		log_err("Error setting Lua onerror handler: %s", lua_tostring(L, -1));
+		lua_pop(L, 1);
+	}
+}
 
 void http_init(void)
 {
@@ -254,6 +277,7 @@ void http_init(void)
 	struct mg_callbacks callbacks = { NULL };
 	callbacks.log_message = log_http_message;
 	callbacks.log_access  = log_http_access;
+	callbacks.init_lua    = init_lua;
 
 	/* Start the server */
 	if((ctx = mg_start(&callbacks, NULL, options)) == NULL)
@@ -285,8 +309,6 @@ void http_init(void)
 	// Remove initial slash from login_uri
 	if(login_uri[0] == '/')
 		memmove(login_uri, login_uri + 1, login_uri_len + 9);
-
-	log_web("Login URI: %s", login_uri);
 }
 
 void http_terminate(void)
