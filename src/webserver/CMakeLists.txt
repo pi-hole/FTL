@@ -11,9 +11,11 @@
 set(sources
         http-common.c
         http-common.h
+        json_macros.h
+        lua_web.c
+        lua_web.h
         webserver.c
         webserver.h
-        json_macros.h
         x509.c
         x509.h
         )
