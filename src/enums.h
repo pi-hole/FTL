@@ -289,7 +289,6 @@ enum fifo_logs {
 	FIFO_FTL = 1,
 	FIFO_DNSMASQ,
 	FIFO_CIVETWEB,
-	FIFO_PH7,
 	FIFO_MAX
 } __attribute__ ((packed));
 

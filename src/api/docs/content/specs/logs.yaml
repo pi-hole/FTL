@@ -89,35 +89,6 @@ components:
                 application/json:
                   schema:
                     $ref: 'common.yaml#/components/errors/unauthorized'
-      ph7:
-        get:
-          summary: Get DNS log content
-          tags:
-            - "FTL information"
-          operationId: "get_ph7_log"
-          description: |
-            This API hook returns content from the log of the embedded PH7 engine.
-
-            Every successful request will return a `nextID`.
-            This ID can be used on the next request to only get lines which were added *after* the last request.
-            This makes periodic polling for new log lines easy as no check for duplicated log lines is necessary.
-            The expected behavior for an immediate re-request of a log line with the same ID is an empty response.
-            As soon as the next message arrived, this will be included in your request and `nextID` is incremented by one.
-          parameters:
-            - $ref: 'logs.yaml#/components/parameters/logs/dnsmasq/nextID'
-          responses:
-            '200':
-              description: OK
-              content:
-                application/json:
-                  schema:
-                    $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
-            '401':
-              description: Unauthorized
-              content:
-                application/json:
-                  schema:
-                    $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     logs:
       dnsmasq:

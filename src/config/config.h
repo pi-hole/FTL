@@ -238,8 +238,7 @@ struct config {
 		struct {
 			struct conf_item ftl;
 			struct conf_item dnsmasq;
-			struct conf_item civetweb;
-			struct conf_item ph7;
+			struct conf_item webserver;
 		} log;
 	} files;
 

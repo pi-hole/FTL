@@ -42,8 +42,6 @@
 #include "webserver/civetweb/civetweb.h"
 // cJSON_Version()
 #include "webserver/cJSON/cJSON.h"
-// ph7_lib_version()
-#include "webserver/ph7/ph7.h"
 #include "config/cli.h"
 #include "config/config.h"
 // compression functions
@@ -587,9 +585,6 @@ void parse_args(int argc, char* argv[])
 			       yellow, bold, normal);
 			printf("Version:         %s%s%s%s\n", green, bold, cJSON_Version(), normal);
 			printf("\n");
-			printf("****************************** %s%sPH7%s **********************************\n",
-			       yellow, bold, normal);
-			printf("Version:         %s%s%s%s\n", green, bold, ph7_lib_version(), normal);
 			exit(EXIT_SUCCESS);
 		}
 

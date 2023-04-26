@@ -403,8 +403,6 @@ components:
                       type: string
                     civetweb:
                       type: string
-                    ph7:
-                      type: string
             misc:
               type: object
               properties:
@@ -637,7 +635,6 @@ components:
               ftl: "/var/log/pihole/FTL.log"
               dnsmasq: "/var/log/pihole/pihole.log"
               civetweb: "/var/log/pihole/HTTP_info.log"
-              ph7: "/var/log/pihole/PH7.log"
           misc:
             nice: -10
             delay_startup: 10

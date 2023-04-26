@@ -180,9 +180,6 @@ paths:
   /logs/http:
     $ref: 'logs.yaml#/components/paths/logs/http'
 
-  /logs/ph7:
-    $ref: 'logs.yaml#/components/paths/logs/ph7'
-
   /endpoints:
     $ref: 'endpoints.yaml#/components/paths/endpoints'
 

@@ -13,8 +13,6 @@ set(sources
         http-common.h
         webserver.c
         webserver.h
-        ph7.c
-        ph7.h
         json_macros.h
         x509.c
         x509.h
@@ -25,7 +23,5 @@ add_dependencies(webserver gen_version)
 target_compile_options(webserver PRIVATE ${EXTRAWARN})
 target_include_directories(webserver PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
-add_subdirectory(ph7_ext)
 add_subdirectory(civetweb)
 add_subdirectory(cJSON)
-add_subdirectory(ph7)

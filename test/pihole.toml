@@ -677,13 +677,7 @@
     #
     # Possible values are:
     #     <any writable file>
-    civetweb = "/var/log/pihole/HTTP_info.log"
-
-    # The log file used by the dynamic interpreter PH7
-    #
-    # Possible values are:
-    #     <any writable file>
-    ph7 = "/var/log/pihole/PH7.log"
+    webserver = "/var/log/pihole/webserver.log"
 
 [misc]
   # Using privacy levels you can specify which level of detail you want to see in your

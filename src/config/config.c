@@ -980,19 +980,12 @@ void initConfig(struct config *conf)
 	conf->files.setupVars.f = FLAG_ADVANCED_SETTING;
 	conf->files.setupVars.d.s = (char*)"/etc/pihole/setupVars.conf";
 
-	conf->files.log.civetweb.k = "files.log.civetweb";
-	conf->files.log.civetweb.h = "The log file used by the webserver";
-	conf->files.log.civetweb.a = cJSON_CreateStringReference("<any writable file>");
-	conf->files.log.civetweb.t = CONF_STRING;
-	conf->files.log.civetweb.f = FLAG_ADVANCED_SETTING;
-	conf->files.log.civetweb.d.s = (char*)"/var/log/pihole/HTTP_info.log";
-
-	conf->files.log.ph7.k = "files.log.ph7";
-	conf->files.log.ph7.h = "The log file used by the dynamic interpreter PH7";
-	conf->files.log.ph7.a = cJSON_CreateStringReference("<any writable file>");
-	conf->files.log.ph7.t = CONF_STRING;
-	conf->files.log.ph7.f = FLAG_ADVANCED_SETTING;
-	conf->files.log.ph7.d.s = (char*)"/var/log/pihole/PH7.log";
+	conf->files.log.webserver.k = "files.log.webserver";
+	conf->files.log.webserver.h = "The log file used by the webserver";
+	conf->files.log.webserver.a = cJSON_CreateStringReference("<any writable file>");
+	conf->files.log.webserver.t = CONF_STRING;
+	conf->files.log.webserver.f = FLAG_ADVANCED_SETTING;
+	conf->files.log.webserver.d.s = (char*)"/var/log/pihole/webserver.log";
 
 	// sub-struct files.log
 	// conf->files.log.ftl is set in a separate function

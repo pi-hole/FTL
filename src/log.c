@@ -347,10 +347,7 @@ static FILE * __attribute__((malloc, warn_unused_result)) open_web_log(const enu
 	switch (which)
 	{
 		case FIFO_CIVETWEB:
-			file = config.files.log.civetweb.v.s;
-			break;
-		case FIFO_PH7:
-			file = config.files.log.ph7.v.s;
+			file = config.files.log.webserver.v.s;
 			break;
 		case FIFO_FTL:
 		case FIFO_DNSMASQ:

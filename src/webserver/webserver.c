@@ -16,8 +16,6 @@
 #include "../config/config.h"
 #include "../log.h"
 #include "webserver.h"
-// ph7_handler
-#include "ph7.h"
 // get_nprocs()
 #include <sys/sysinfo.h>
 // file_readable()
@@ -159,7 +157,6 @@ void http_init(void)
 
 	/* Initialize the library */
 	unsigned int features = MG_FEATURES_FILES |
-//	                        MG_FEATURES_CGI |
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
 
@@ -207,9 +204,7 @@ void http_init(void)
 		                     "X-Xss-Protection: 1; mode=block\r\n"
 		                     "X-Content-Type-Options: nosniff\r\n"
 		                     "Referrer-Policy: same-origin",
-//		"cgi_interpreter", config.http.php_location,
-//		"cgi_pattern", "**.php$", // ** allows the files to by anywhere inside the web root
-		"index_files", "index.html,index.htm,index.php,index.lp",
+		"index_files", "index.html,index.htm,index.lp",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
 		NULL
@@ -275,13 +270,11 @@ void http_init(void)
 	// Register / -> /admin redirect handler
 	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
 
-	// Initialize PH7 engine and register PHP request handler
-//	init_ph7();
-//	mg_set_request_handler(ctx, "**/$", ph7_handler, NULL);
-//	mg_set_request_handler(ctx, "**.php$", ph7_handler, NULL);
+	// Register / and *.lp handler
 	mg_set_request_handler(ctx, "**/$", request_handler, NULL);
 	mg_set_request_handler(ctx, "**.lp$", request_handler, NULL);
 
+	// Build login URI string (webhome + login.lp)
 	// Append "login.lp" to webhome string
 	const size_t login_uri_len = strlen(config.webserver.paths.webhome.v.s);
 	login_uri = calloc(login_uri_len + 10, sizeof(char));
@@ -306,9 +299,6 @@ void http_terminate(void)
 
 	/* Un-initialize the library */
 	mg_exit_library();
-
-	/* Un-initialize PH7 */
-	//ph7_terminate();
 
 	// Free login_uri
 	if(login_uri != NULL)

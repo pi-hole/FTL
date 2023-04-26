@@ -256,12 +256,10 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:api>
         $<TARGET_OBJECTS:api_docs>
         $<TARGET_OBJECTS:webserver>
-        $<TARGET_OBJECTS:ph7_ext>
         $<TARGET_OBJECTS:civetweb>
         $<TARGET_OBJECTS:cJSON>
         $<TARGET_OBJECTS:miniz>
         $<TARGET_OBJECTS:zip>
-        $<TARGET_OBJECTS:ph7>
         $<TARGET_OBJECTS:database>
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
