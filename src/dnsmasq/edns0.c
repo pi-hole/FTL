@@ -191,16 +191,13 @@ size_t add_pseudoheader(struct dns_header *header, size_t plen, unsigned char *l
       if (!(p = skip_questions(header, plen)) ||
 	  !(p = skip_section(p, 
 			     ntohs(header->ancount) + ntohs(header->nscount) + ntohs(header->arcount), 
-			     header, plen)))
-      {
-	free(buff);
-	return plen;
-      }
-      if (p + 11 > limit)
-      {
-        free(buff);
-        return plen; /* Too big */
-      }
+			     header, plen)) ||
+	  p + 11 > limit)
+	{
+	  free(buff);
+	  return plen; /* bad packet */
+	}
+      
       *p++ = 0; /* empty name */
       PUTSHORT(T_OPT, p);
       PUTSHORT(udp_sz, p); /* max packet length, 512 if not given in EDNS0 header */
