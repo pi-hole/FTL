@@ -375,11 +375,11 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		        forced_ip)
 		{
 			if(hostname && config.dns.reply.host.force4.v.b)
-				memcpy(&addr, &config.dns.reply.host.v4.v.in_addr, sizeof(config.dns.reply.host.v4.v.in_addr));
+				memcpy(&addr, &config.dns.reply.host.v4.v.in_addr, sizeof(addr.addr4));
 			else if(!hostname && config.dns.reply.blocking.force4.v.b)
-				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(config.dns.reply.blocking.v4.v.in_addr));
+				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(addr.addr4));
 			else
-				memcpy(&addr, &next_iface.addr4, sizeof(next_iface.addr4));
+				memcpy(&addr, &next_iface.addr4, sizeof(addr.addr4));
 		}
 
 		// Debug logging
@@ -410,11 +410,11 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		        forced_ip)
 		{
 			if(hostname && config.dns.reply.host.force6.v.b)
-				memcpy(&addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(config.dns.reply.host.v6.v.in6_addr));
+				memcpy(&addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(addr.addr6));
 			else if(!hostname && config.dns.reply.blocking.force6.v.b)
-				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(config.dns.reply.blocking.v6.v.in6_addr));
+				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(addr.addr6));
 			else
-				memcpy(&addr, &next_iface.addr6, sizeof(next_iface.addr6));
+				memcpy(&addr, &next_iface.addr6, sizeof(addr.addr6));
 		}
 
 		// Debug logging
@@ -2678,8 +2678,14 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 			new_reply = REPLY_SERVFAIL;
 		}
 	}
-	else if(flags & F_KEYTAG)
+	else if(flags & F_KEYTAG && flags & F_NOEXTRA)
+	{
+		// Since 451bd35ad62c1444b3ef1d204ab606c0098b2fd9, F_KEYTAG is
+		// overloaded to discriminate cache records between an arbitrary
+		// RR stored entirely in the addr union and one which has a
+		// point to block storage
 		new_reply = REPLY_DNSSEC;
+	}
 	else if(force_next_DNS_reply == REPLY_NONE)
 	{
 		new_reply = REPLY_NONE;

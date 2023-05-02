@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
  
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#define COPYRIGHT "Copyright (c) 2000-2022 Simon Kelley"
+#define COPYRIGHT "Copyright (c) 2000-2023 Simon Kelley"
 
 /* We do defines that influence behavior of stdio.h, so complain
    if included too early. */
@@ -329,21 +329,23 @@ union all_addr {
     unsigned short keytag, algo, digest, rcode;
     int ede;
   } log;
-  /* for arbitrary RR record. */
+  /* for arbitrary RR record stored in block */
   struct {
-#define RR_IMDATALEN 13 /* 16 - sizeof(short) - sizeof (char) */
     unsigned short rrtype;
-    char len; /* -1 for blockdata */
-    union {
-      char data[RR_IMDATALEN];
-      struct {
-	unsigned short datalen;
-	struct blockdata *rrdata;
-      } block;
-    } u;
-  } rr;
+    unsigned short datalen; 
+    struct blockdata *rrdata;
+  } rrblock;
+  /* for arbitrary RR record small enough to go in addr.
+     NOTE: rrblock and rrdata are discriminated by the F_KEYTAG bit
+     in the cache flags. */
+  struct datablock {
+    unsigned short rrtype;
+    unsigned char datalen;
+    char data[];
+  } rrdata;
 };
 
+#define RR_IMDATALEN (sizeof(union all_addr) - offsetof(struct datablock, data))
 
 struct bogus_addr {
   int is6, prefix;
@@ -648,7 +650,8 @@ struct allowlist {
 struct irec {
   union mysockaddr addr;
   struct in_addr netmask; /* only valid for IPv4 */
-  int tftp_ok, dhcp_ok, mtu, done, warned, dad, dns_auth, index, multicast_done, found, label;
+  int tftp_ok, dhcp4_ok, dhcp6_ok, mtu, done, warned, dad;
+  int dns_auth, index, multicast_done, found, label;
   char *name; 
   /* Pi-hole modification */
   char *slabel;
@@ -667,9 +670,13 @@ struct listener {
 struct iname {
   char *name;
   union mysockaddr addr;
-  int used;
+  int flags;
   struct iname *next;
 };
+
+#define  INAME_USED  1
+#define  INAME_4     2
+#define  INAME_6     4
 
 struct rrlist {
   unsigned short rr;

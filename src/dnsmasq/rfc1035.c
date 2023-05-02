@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -819,20 +819,20 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		  if (!CHECK_LEN(header, p1, qlen, ardlen))
 		    return 2; /* bad packet */
 		  
-		  addr.rr.rrtype = aqtype;
-
 		  /* If the data has no names and is small enough, store it in
 		     the crec address field rather than allocate a block. */
-		  if (*rrdesc == -1 && ardlen <= RR_IMDATALEN)
+		  if (*rrdesc == -1 && ardlen <= (int)RR_IMDATALEN)
 		    {
-		      addr.rr.len = (char)ardlen;
-		      if (ardlen != 0)
-			memcpy(addr.rr.u.data, p1, ardlen);
+		       addr.rrdata.rrtype = aqtype;
+		       addr.rrdata.datalen = (char)ardlen;
+		       if (ardlen != 0)
+			 memcpy(addr.rrdata.data, p1, ardlen);
 		    }
 		  else
 		    {
-		      addr.rr.len = -1;
-		      addr.rr.u.block.datalen = 0;
+		      addr.rrblock.rrtype = aqtype;
+		      addr.rrblock.datalen = 0;
+		      flags |= F_KEYTAG; /* discriminates between rrdata and rrblock */
 		      
 		      /* The RR data may include names, and those names may include
 			 compression, which will be rendered meaningless when
@@ -840,7 +840,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			 Here we go through a description of the packet type to
 			 find the names, and extract them to a c-string and then
 			 re-encode them to standalone DNS format without compression. */
-		      if (!(addr.rr.u.block.rrdata = blockdata_alloc(NULL, 0)))
+		      if (!(addr.rrblock.rrdata = blockdata_alloc(NULL, 0)))
 			return 0;
 		      do
 			{
@@ -849,9 +849,9 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			  if (desc == -1)
 			    {
 			      /* Copy the rest of the RR and end. */
-			      if (!blockdata_expand(addr.rr.u.block.rrdata, addr.rr.u.block.datalen, (char *)p1, endrr - p1))
+			      if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, (char *)p1, endrr - p1))
 				return 0;
-			      addr.rr.u.block.datalen += endrr - p1;
+			      addr.rrblock.datalen += endrr - p1;
 			    }
 			  else if (desc == 0)
 			    {
@@ -862,18 +862,18 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 				return 2;
 			      
 			      len = to_wire(name);
-			      if (!blockdata_expand(addr.rr.u.block.rrdata, addr.rr.u.block.datalen, name, len))
+			      if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, name, len))
 				return 0;
-			      addr.rr.u.block.datalen += len;
+			      addr.rrblock.datalen += len;
 			    }
 			  else
 			    {
 			      /* desc is length of a block of data to be used as-is */
 			      if (desc > endrr - p1)
 				desc = endrr - p1;
-			      if (!blockdata_expand(addr.rr.u.block.rrdata, addr.rr.u.block.datalen, (char *)p1, desc))
+			      if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, (char *)p1, desc))
 				return 0;
-			      addr.rr.u.block.datalen += desc;
+			      addr.rrblock.datalen += desc;
 			      p1 += desc;
 			    }
 			} while (desc != -1);
@@ -981,7 +981,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		ttl = cttl;
 	      
 	      if (flags & F_RR)
-		addr.rr.rrtype = qtype;
+		addr.rrdata.rrtype = qtype;
 
 	      newc = cache_insert(name, &addr, C_IN, now, ttl, F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0));	
 	      if (newc && cpp)
@@ -2131,8 +2131,14 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		 do
 		   {
 		     int flags = crecp->flags;
+		     unsigned short rrtype;
+		     
+		      if (flags & F_KEYTAG)
+			rrtype = crecp->addr.rrblock.rrtype;
+		      else
+			rrtype = crecp->addr.rrdata.rrtype;
 
-		     if ((flags & F_NXDOMAIN) || crecp->addr.rr.rrtype == qtype)
+		      if ((flags & F_NXDOMAIN) || rrtype == qtype)
 		       {
 			 if (crec_isstale(crecp, now))
 			   {
@@ -2155,23 +2161,28 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			 
 			 if (!dryrun)
 			   {
-			     char *rrdata = crecp->addr.rr.u.data;
-			     unsigned short rrlen = crecp->addr.rr.len;
-			     
+			     char *rrdata = NULL;
+			     unsigned short rrlen = 0;
+
 			     if (!(flags & F_NEG))
 			       {
-				 if (crecp->addr.rr.len == -1)
+				 if (flags & F_KEYTAG)
 				   {
-				     rrlen = crecp->addr.rr.u.block.datalen;
-				     rrdata = blockdata_retrieve(crecp->addr.rr.u.block.rrdata, crecp->addr.rr.u.block.datalen, NULL);
+				     rrlen = crecp->addr.rrblock.datalen;
+				     rrdata = blockdata_retrieve(crecp->addr.rrblock.rrdata, crecp->addr.rrblock.datalen, NULL);
 				   }
-				 
-				 if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
-							 crec_ttl(crecp, now), NULL, qtype, C_IN, "t",
-							 rrlen, rrdata))
-				   anscount++;
+				 else
+				   {
+				     rrlen = crecp->addr.rrdata.datalen;
+				     rrdata = crecp->addr.rrdata.data;
+				   }
 			       }
 			     
+			     if (!(flags & F_NEG) && add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
+									 crec_ttl(crecp, now), NULL, qtype, C_IN, "t",
+									 rrlen, rrdata))
+			       anscount++;
+			     			     
 			     /* log after cache insertion as log_txt mangles rrdata */
 			     if (qtype == T_TXT && !(crecp->flags & F_NEG))
 			       log_txt(name, (unsigned char *)rrdata, rrlen, crecp->flags & F_DNSSECOK);

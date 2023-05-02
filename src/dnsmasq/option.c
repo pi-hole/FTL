@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -192,6 +192,8 @@ struct myoption {
 #define LOPT_NO_IDENT      379
 #define LOPT_CACHE_RR      380
 #define LOPT_FILTER_RR     381
+#define LOPT_NO_DHCP6      382
+#define LOPT_NO_DHCP4      383
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -252,6 +254,8 @@ static const struct myoption opts[] =
     { "query-port", 1, 0, 'Q' },
     { "except-interface", 1, 0, 'I' },
     { "no-dhcp-interface", 1, 0, '2' },
+    { "no-dhcpv4-interface", 1, 0, LOPT_NO_DHCP4 },
+    { "no-dhcpv6-interface", 1, 0, LOPT_NO_DHCP6 },
     { "domain-needed", 0, 0, 'D' },
     { "dhcp-lease-max", 1, 0, 'X' },
     { "bind-interfaces", 0, 0, 'z' },
@@ -482,6 +486,8 @@ static struct {
   { '1', ARG_ONE, "[=<busname>]", gettext_noop("Enable the DBus interface for setting upstream servers, etc."), NULL },
   { LOPT_UBUS, ARG_ONE, "[=<busname>]", gettext_noop("Enable the UBus interface."), NULL },
   { '2', ARG_DUP, "<interface>", gettext_noop("Do not provide DHCP on this interface, only provide DNS."), NULL },
+  { LOPT_NO_DHCP6, ARG_DUP, "<interface>", gettext_noop("Do not provide DHCPv6 on this interface."), NULL },
+  { LOPT_NO_DHCP4, ARG_DUP, "<interface>", gettext_noop("Do not provide DHCPv4 on this interface."), NULL },
   { '3', ARG_DUP, "[=tag:<tag>]...", gettext_noop("Enable dynamic address allocation for bootp."), NULL },
   { '4', ARG_DUP, "set:<tag>,<mac address>", gettext_noop("Map MAC address (with wildcards) to option set."), NULL },
   { LOPT_BRIDGE, ARG_DUP, "<iface>,<alias>..", gettext_noop("Treat DHCP requests on aliases as arriving from interface."), NULL },
@@ -2837,7 +2843,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	/* new->name may be NULL if someone does
 	   "interface=" to disable all interfaces except loop. */
 	new->name = opt_string_alloc(arg);
-	new->used = 0;
+	new->flags = 0;
 	arg = comma;
       } while (arg);
       break;
@@ -2850,10 +2856,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
     case 'I':  /* --except-interface */
     case '2':  /* --no-dhcp-interface */
+    case LOPT_NO_DHCP6: /* --no-dhcpv6-interface */
+    case LOPT_NO_DHCP4: /* --no-dhcpv4-interface */
       do {
 	struct iname *new = opt_malloc(sizeof(struct iname));
 	comma = split(arg);
 	new->name = opt_string_alloc(arg);
+	new->flags = INAME_4 | INAME_6;
 	if (option == 'I')
 	  {
 	    new->next = daemon->if_except;
@@ -2866,6 +2875,10 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  }
 	else
 	  {
+	    if (option == LOPT_NO_DHCP6)
+	      new->flags &= ~INAME_4;
+	    if (option == LOPT_NO_DHCP4)
+	      new->flags &= ~INAME_6;
 	    new->next = daemon->dhcp_except;
 	    daemon->dhcp_except = new;
 	  }
@@ -2947,7 +2960,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	else
 	  ret_err_free(gen_err, new);
 
-	new->used = 0;
+	new->flags = 0;
 	if (option == 'a')
 	  {
 	    new->next = daemon->if_addrs;
@@ -3062,8 +3075,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		    else
 		      flags &= ~SERV_FOR_NODOTS;
 		    
-		    /* address=/#/ matches the same as without domain */
-		    if (option == 'A' && cur_domain[0] == '#' && cur_domain[1] == 0)
+		    /* address=/#/ matches the same as without domain, as does server=/#/.... for consistency. */
+		    if (cur_domain[0] == '#' && cur_domain[1] == 0)
 		      cur_domain[0] = 0;
 		  }
 		

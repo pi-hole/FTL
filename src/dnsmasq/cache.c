@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -291,8 +291,8 @@ static void cache_blockdata_free(struct crec *crecp)
 {
   if (!(crecp->flags & F_NEG))
     {
-      if (crecp->flags & F_RR && crecp->addr.rr.len == -1)
-	blockdata_free(crecp->addr.rr.u.block.rrdata);
+      if ((crecp->flags & F_RR) && (crecp->flags & F_KEYTAG))
+	blockdata_free(crecp->addr.rrblock.rrdata);
 #ifdef HAVE_DNSSEC
       else if (crecp->flags & F_DNSKEY)
 	blockdata_free(crecp->addr.key.keydata);
@@ -485,10 +485,20 @@ static struct crec *cache_scan_free(char *name, union all_addr *addr, unsigned s
 	{
 	  if ((crecp->flags & F_FORWARD) && hostname_isequal(cache_get_name(crecp), name))
 	    {
+	      int rrmatch = 0;
+	      if (crecp->flags & flags & F_RR)
+		{
+		  unsigned short rrc = (crecp->flags & F_KEYTAG) ? crecp->addr.rrblock.rrtype : crecp->addr.rrdata.rrtype;
+		  unsigned short rra = (flags & F_KEYTAG) ? addr->rrblock.rrtype : addr->rrdata.rrtype;
+
+		  if (rrc == rra)
+		    rrmatch = 1;
+		}
+
 	      /* Don't delete DNSSEC in favour of a CNAME, they can co-exist */
-	      if ((flags & crecp->flags & (F_IPV4 | F_IPV6 | F_RR | F_NXDOMAIN)) || 
+	      if ((flags & crecp->flags & (F_IPV4 | F_IPV6 | F_NXDOMAIN)) || 
 		  (((crecp->flags | flags) & F_CNAME) && !(crecp->flags & (F_DNSKEY | F_DS))) ||
-		  ((crecp->flags & flags & F_RR) && addr->rr.rrtype == crecp->addr.rr.rrtype))
+		  rrmatch)
 		{
 		  if (crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG))
 		    return crecp;
@@ -806,28 +816,30 @@ void cache_end_insert(void)
 	      read_write(daemon->pipe_to_parent, (unsigned  char *)&flags, sizeof(flags), 0);
 
 	      if (flags & (F_IPV4 | F_IPV6 | F_DNSKEY | F_DS | F_RR))
-		read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr, sizeof(new_chain->addr), 0);
+		{
+		  read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr, sizeof(new_chain->addr), 0);
 
-	      if (flags & F_RR)
-		{
-		  /* A negative RR entry is possible and has no data, obviously. */
-		  if (!(flags & F_NEG) && new_chain->addr.rr.len == -1)
-		    blockdata_write(new_chain->addr.rr.u.block.rrdata, new_chain->addr.rr.u.block.datalen, daemon->pipe_to_parent);
-		}
+		  if (flags & F_RR)
+		    {
+		      /* A negative RR entry is possible and has no data, obviously. */
+		      if (!(flags & F_NEG) && (flags & F_KEYTAG))
+			blockdata_write(new_chain->addr.rrblock.rrdata, new_chain->addr.rrblock.datalen, daemon->pipe_to_parent);
+		    }
 #ifdef HAVE_DNSSEC
-	      if (flags & F_DNSKEY)
-		{
-		  read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
-		  blockdata_write(new_chain->addr.key.keydata, new_chain->addr.key.keylen, daemon->pipe_to_parent);
-		}
-	      else if (flags & F_DS)
-		{
-		  read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
-		  /* A negative DS entry is possible and has no data, obviously. */
-		  if (!(flags & F_NEG))
-		    blockdata_write(new_chain->addr.ds.keydata, new_chain->addr.ds.keylen, daemon->pipe_to_parent);
-		}
+		  if (flags & F_DNSKEY)
+		    {
+		      read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
+		      blockdata_write(new_chain->addr.key.keydata, new_chain->addr.key.keylen, daemon->pipe_to_parent);
+		    }
+		  else if (flags & F_DS)
+		    {
+		      read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
+		      /* A negative DS entry is possible and has no data, obviously. */
+		      if (!(flags & F_NEG))
+			blockdata_write(new_chain->addr.ds.keydata, new_chain->addr.ds.keylen, daemon->pipe_to_parent);
+		    }
 #endif
+		}
 	    }
 	}
       
@@ -878,34 +890,7 @@ int cache_recv_insert(time_t now, int fd)
 
       ttl = difftime(ttd, now);
       
-      if (flags & (F_IPV4 | F_IPV6 | F_DNSKEY | F_DS | F_RR))
-	{
-	  unsigned short class = C_IN;
-	  
-	  if (!read_write(fd, (unsigned char *)&addr, sizeof(addr), 1))
-	    return 0;
-	  
-	  if ((flags & F_RR) && !(flags & F_NEG) &&
-	      addr.rr.len == -1 && !(addr.rr.u.block.rrdata = blockdata_read(fd, addr.rr.u.block.datalen)))
-	    return 0;
-#ifdef HAVE_DNSSEC
-	   if (flags & F_DNSKEY)
-	     {
-	       if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
-		   !(addr.key.keydata = blockdata_read(fd, addr.key.keylen)))
-		 return 0;
-	     }
-	   else  if (flags & F_DS)
-	     {
-	        if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
-		    (!(flags & F_NEG) && !(addr.key.keydata = blockdata_read(fd, addr.key.keylen))))
-		  return 0;
-	     }
-#endif
-	       
-	  crecp = really_insert(daemon->namebuff, &addr, class, now, ttl, flags);
-	}
-      else if (flags & F_CNAME)
+      if (flags & F_CNAME)
 	{
 	  struct crec *newc = really_insert(daemon->namebuff, NULL, C_IN, now, ttl, flags);
 	  /* This relies on the fact that the target of a CNAME immediately precedes
@@ -913,17 +898,47 @@ int cache_recv_insert(time_t now, int fd)
 	     the order reversal on the new_chain. */
 	  if (newc)
 	    {
-	       newc->addr.cname.is_name_ptr = 0;
-	       
-	       if (!crecp)
-		 newc->addr.cname.target.cache = NULL;
-	       else
+	      newc->addr.cname.is_name_ptr = 0;
+	      
+	      if (!crecp)
+		newc->addr.cname.target.cache = NULL;
+	      else
 		{
 		  next_uid(crecp);
 		  newc->addr.cname.target.cache = crecp;
 		  newc->addr.cname.uid = crecp->uid;
 		}
 	    }
+	}
+      else
+	{
+	  unsigned short class = C_IN;
+
+	  if (flags & (F_IPV4 | F_IPV6 | F_DNSKEY | F_DS | F_RR))
+	    {
+	      if (!read_write(fd, (unsigned char *)&addr, sizeof(addr), 1))
+		return 0;
+	      
+	      if ((flags & F_RR) && !(flags & F_NEG) && (flags & F_KEYTAG)
+		  && !(addr.rrblock.rrdata = blockdata_read(fd, addr.rrblock.datalen)))
+		return 0;
+#ifdef HAVE_DNSSEC
+	      if (flags & F_DNSKEY)
+		{
+		  if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
+		      !(addr.key.keydata = blockdata_read(fd, addr.key.keylen)))
+		    return 0;
+		}
+	      else  if (flags & F_DS)
+		{
+		  if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
+		      (!(flags & F_NEG) && !(addr.key.keydata = blockdata_read(fd, addr.key.keylen))))
+		    return 0;
+		}
+#endif
+	    }
+	  
+	  crecp = really_insert(daemon->namebuff, &addr, class, now, ttl, flags);
 	}
     }
 }
@@ -1818,7 +1833,12 @@ static void dump_cache_entry(struct crec *cache, time_t now)
   if ((cache->flags & F_CNAME) && !is_outdated_cname_pointer(cache))
     a = sanitise(cache_get_cname_target(cache));
   else if (cache->flags & F_RR)
-    sprintf(a, "%s", querystr(NULL, cache->addr.rr.rrtype));
+    {
+      if (cache->flags & F_KEYTAG)
+	sprintf(a, "%s", querystr(NULL, cache->addr.rrblock.rrtype));
+      else
+	sprintf(a, "%s", querystr(NULL, cache->addr.rrdata.rrtype));
+    }
 #ifdef HAVE_DNSSEC
   else if (cache->flags & F_DS)
     {
@@ -1922,9 +1942,10 @@ void get_dnsmasq_metrics(struct metrics *ci)
 	  // Find the first empty slot or the slot with the same type
 	  for(unsigned int i = RRTYPE_MAX; i < RRTYPES; i++)
 	  {
-	    if(ci->dns.cache.content[i].type == cache->addr.rr.rrtype || ci->dns.cache.content[i].type == 0)
+      unsigned short type = (cache->flags & F_KEYTAG) ? cache->addr.rrblock.rrtype : cache->addr.rrdata.rrtype;
+	    if(ci->dns.cache.content[i].type == type || ci->dns.cache.content[i].type == 0)
 	    {
-	      ci->dns.cache.content[i].type = cache->addr.rr.rrtype;
+	      ci->dns.cache.content[i].type = type;
 	      ci->dns.cache.content[i].count++;
 	      break;
 	    }
@@ -2160,7 +2181,14 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     {
       dest = daemon->addrbuff;
 
-      if (flags & F_KEYTAG)
+       if (flags & F_RR)
+	 {
+	   if (flags & F_KEYTAG)
+	     dest = querystr(NULL, addr->rrblock.rrtype);
+	   else
+	     dest = querystr(NULL, addr->rrdata.rrtype);
+	 }
+       else if (flags & F_KEYTAG)
 	sprintf(daemon->addrbuff, arg, addr->log.keytag, addr->log.algo, addr->log.digest);
       else if (flags & F_RCODE)
 	{
@@ -2191,8 +2219,6 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
 	      sprintf(portstring, "#%u", type);
 	    }
 	}
-      else if (flags & F_RR)
-	dest = querystr(NULL, addr->rr.rrtype);
       else
 	dest = arg;
     }

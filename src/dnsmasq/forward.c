@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1865,8 +1865,12 @@ void receive_query(struct listener *listen, time_t now)
     {
       int stale, filtered;
       int ad_reqd = do_bit;
-      u16 hb3 = header->hb3, hb4 = header->hb4;
       int fd = listen->fd;
+      struct blockdata *saved_question = NULL;
+      
+      /* In case answer is stale */
+      if (daemon->cache_max_expiry != 0)
+	saved_question = blockdata_alloc((char *) header, (size_t)n);
       
       /* RFC 6840 5.7 */
       if (header->hb4 & HB4_AD)
@@ -1910,7 +1914,6 @@ void receive_query(struct listener *listen, time_t now)
 	  if (have_pseudoheader)
 	    {
 	      int ede = EDE_UNSET;
-	      
 	      if (filtered)
 		ede = EDE_FILTERED;
 	      else if (stale)
@@ -1939,29 +1942,22 @@ void receive_query(struct listener *listen, time_t now)
 	    daemon->metrics[METRIC_DNS_STALE_ANSWERED]++;
 	}
       
-      if (m == 0 || stale)
+      if (stale && saved_question)
 	{
-	  if (m != 0)
-	    {
-	      size_t plen;
-	      
-	      /* We answered with stale cache data, so forward the query anyway to
-		 refresh that. Restore the query from the answer packet. */
-	      pheader = find_pseudoheader(header, (size_t)m, &plen, NULL, NULL, NULL);
-	      
-	      header->hb3 = hb3;
-	      header->hb4 = hb4;
-	      header->ancount = htons(0);
-	      header->nscount = htons(0);
-	      header->arcount = htons(0);
-
-	      m = resize_packet(header, m, pheader, plen);
-
-	      /* We've already answered the client, so don't send it the answer 
-		 when it comes back. */
-	      fd = -1;
-	    }
+	  /* We answered with stale cache data, so forward the query anyway to
+	     refresh that. Restore saved query. */
+	  blockdata_retrieve(saved_question, (size_t)n, header);
+	  m = 0;
 	  
+	  /* We've already answered the client, so don't send it the answer 
+	     when it comes back. */
+	  fd = -1;
+	}
+      
+      blockdata_free(saved_question);
+
+      if (m == 0)
+	{
 	  if (forward_query(fd, &source_addr, &dst_addr, if_index,
 			    header, (size_t)n,  ((char *) header) + udp_size, now, NULL, ad_reqd, do_bit, 0))
 	    daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
@@ -2166,7 +2162,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 unsigned char *tcp_request(int confd, time_t now,
 			   union mysockaddr *local_addr, struct in_addr netmask, int auth_dns)
 {
-  size_t size = 0;
+  size_t size = 0, saved_size = 0;
   int norebind;
 #ifdef HAVE_CONNTRACK
   int is_single_query = 0, allowed = 1;
@@ -2177,6 +2173,7 @@ unsigned char *tcp_request(int confd, time_t now,
   int checking_disabled, do_bit, added_pheader = 0, have_pseudoheader = 0;
   int cacheable, no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
   size_t m;
+  struct blockdata *saved_question = NULL;
   unsigned short qtype;
   unsigned int gotname;
   /* Max TCP packet + slop + size */
@@ -2196,7 +2193,6 @@ unsigned char *tcp_request(int confd, time_t now,
   int have_mark = 0;
   int first, last, filtered, stale, do_stale = 0;
   unsigned int flags = 0;
-  u16 hb3, hb4;
     
   /************ Pi-hole modification ************/
   bool piholeblocked = false;
@@ -2255,35 +2251,25 @@ unsigned char *tcp_request(int confd, time_t now,
     {
       int ede = EDE_UNSET;
 
-      if (query_count == TCP_MAX_QUERIES)
-	return packet;
-
       if (do_stale)
 	{
-	  size_t plen;
-
 	  /* We answered the last query with stale data. Now try and get fresh data.
-	     Restore query from answer. */
-	  pheader = find_pseudoheader(header, m, &plen, NULL, NULL, NULL);
-	  
-	  header->hb3 = hb3;
-	  header->hb4 = hb4;
-	  header->ancount = htons(0);
-	  header->nscount = htons(0);
-	  header->arcount = htons(0);
-	  
-	  size = resize_packet(header, m, pheader, plen);
+	     Restore saved query */
+	  if (!saved_question)
+	    break;
+
+	  blockdata_retrieve(saved_question, (size_t)saved_size, header);
+	  size = saved_size;
 	}
       else
 	{
+	  if (query_count == TCP_MAX_QUERIES)
+	    return packet;
+
 	  if (!read_write(confd, &c1, 1, 1) || !read_write(confd, &c2, 1, 1) ||
 	      !(size = c1 << 8 | c2) ||
 	      !read_write(confd, payload, size, 1))
 	    return packet;
-	  
-	  /* for stale-answer processing. */
-	  hb3 = header->hb3;
-	  hb4 = header->hb4;
 	}
       
       if (size < (int)sizeof(struct dns_header))
@@ -2305,7 +2291,6 @@ unsigned char *tcp_request(int confd, time_t now,
 	no_cache_dnssec = 1;
 
       //********************** Pi-hole modification **********************//
-      unsigned char *pheader = NULL;
       pheader = find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL);
       FTL_parse_pseudoheaders(pheader, (size_t)size);
       //******************************************************************//
@@ -2425,10 +2410,20 @@ unsigned char *tcp_request(int confd, time_t now,
 	   if (do_stale)
 	     m = 0;
 	   else
-	     /* m > 0 if answered from cache */
-	     m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
-				dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale, &filtered);
-	   
+	     {
+	       if (daemon->cache_max_expiry != 0)
+		 {
+		   if (saved_question)
+		     blockdata_free(saved_question);
+		   
+		   saved_question = blockdata_alloc((char *) header, (size_t)size);
+		   saved_size = size;
+		 }
+	       
+	       /* m > 0 if answered from cache */
+	       m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
+				  dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale, &filtered);
+	     }
 	  /* Do this by steam now we're not in the select() loop */
 	  check_log_writer(1); 
 	  
@@ -2569,10 +2564,10 @@ unsigned char *tcp_request(int confd, time_t now,
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 	    }
 	}
-      else
+      else if (have_pseudoheader)
 	{
 	  ede = EDE_UNSET;
-	      
+	  
 	  if (filtered)
 	    ede = EDE_FILTERED;
 	  else if (stale)
@@ -2619,6 +2614,9 @@ unsigned char *tcp_request(int confd, time_t now,
       close(confd);
     }
 
+  if (saved_question)
+    blockdata_free(saved_question);
+  
   return packet;
 }
 
