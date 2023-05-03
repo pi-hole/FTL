@@ -28,17 +28,6 @@
 // get_filesystem_details()
 #include "files.h"
 
-static cJSON *messages = NULL;
-
-// Return a copy of the message table JSON object
-cJSON * __attribute__((pure)) get_messages(void)
-{
-	if(messages)
-		return cJSON_Duplicate(messages, true);
-	else
-		return cJSON_CreateArray();
-}
-
 static const char *get_message_type_str(const enum message_type type)
 {
 	switch(type)
@@ -63,10 +52,40 @@ static const char *get_message_type_str(const enum message_type type)
 			return "DISK";
 		case INACCESSIBLE_ADLIST_MESSAGE:
 			return "ADLIST";
+		case DISK_MESSAGE_EXTENDED:
+			return "DISK_EXTENDED";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
 	}
+}
+
+static enum message_type get_message_type_from_string(const char *typestr)
+{
+	if (strcmp(typestr, "REGEX") == 0)
+		return REGEX_MESSAGE;
+	else if (strcmp(typestr, "SUBNET") == 0)
+		return SUBNET_MESSAGE;
+	else if (strcmp(typestr, "HOSTNAME") == 0)
+		return HOSTNAME_MESSAGE;
+	else if (strcmp(typestr, "DNSMASQ_CONFIG") == 0)
+		return DNSMASQ_CONFIG_MESSAGE;
+	else if (strcmp(typestr, "RATE_LIMIT") == 0)
+		return RATE_LIMIT_MESSAGE;
+	else if (strcmp(typestr, "DNSMASQ_WARN") == 0)
+		return DNSMASQ_WARN_MESSAGE;
+	else if (strcmp(typestr, "LOAD") == 0)
+		return LOAD_MESSAGE;
+	else if (strcmp(typestr, "SHMEM") == 0)
+		return SHMEM_MESSAGE;
+	else if (strcmp(typestr, "DISK") == 0)
+		return DISK_MESSAGE;
+	else if (strcmp(typestr, "ADLIST") == 0)
+		return INACCESSIBLE_ADLIST_MESSAGE;
+	else if (strcmp(typestr, "DISK_EXTENDED") == 0)
+		return DISK_MESSAGE_EXTENDED;
+	else
+		return MAX_MESSAGE;
 }
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
@@ -102,7 +121,7 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 		{	// RATE_LIMIT_MESSAGE: The message column contains the IP address of the client in question
 			SQLITE_INTEGER, // Configured maximum number of queries
 			SQLITE_INTEGER, // Configured rate-limiting interval [seconds]
-			SQLITE_NULL, // Not used
+			SQLITE_INTEGER, // Turnaround time [seconds]
 			SQLITE_NULL, // Not used
 			SQLITE_NULL  // Not used
 		},
@@ -141,6 +160,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
 		},
+		{
+			// DISK_MESSAGE_EXTENDED: The message column contains the corresponding path
+			SQLITE_INTEGER, // Percentage currently used
+			SQLITE_TEXT, // Human-readable details about memory/disk usage
+			SQLITE_TEXT, // File system type
+			SQLITE_TEXT, // Directory mounted on
+			SQLITE_NULL // not used
+		}
 	};
 // Create message table in the database
 bool create_message_table(sqlite3 *db)
@@ -169,12 +196,6 @@ bool create_message_table(sqlite3 *db)
 // Flush message table
 bool flush_message_table(void)
 {
-	// Free memory allocated for messages
-	if(messages != NULL)
-	{
-		cJSON_Delete(messages);
-		messages = NULL;
-	}
 	// Return early if database is known to be broken
 	if(FTLDBerror())
 		return false;
@@ -199,17 +220,6 @@ bool flush_message_table(void)
 static int add_message(const enum message_type type,
                        const char *message, const int count,...)
 {
-	// Allocate memory for messages if not already done
-	if(messages == NULL)
-	{
-		messages = cJSON_CreateArray();
-		if(messages == NULL)
-		{
-			log_err("add_message() - Failed to create JSON array");
-			return -1;
-		}
-	}
-
 	int rowid = -1;
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -361,30 +371,6 @@ end_of_add_message: // Close database connection
 
 bool delete_message(const long id)
 {
-	// Find message with this ID in our JSON messages array
-	for(int i = 0; i < cJSON_GetArraySize(messages); i++)
-	{
-		// Get message
-		cJSON *message = cJSON_GetArrayItem(messages, i);
-		if(message == NULL)
-			continue;
-
-		// Get ID
-		cJSON *jid = cJSON_GetObjectItem(message, "id");
-		if(jid == NULL)
-			continue;
-
-		// Check if this is the message we want to delete
-		log_debug(DEBUG_API, "Checking message with ID %i", jid->valueint);
-		if(jid->valueint == id)
-		{
-			// Delete message from array
-			log_debug(DEBUG_API, "Deleting message with ID %li from array", id);
-			cJSON_DeleteItemFromArray(messages, i);
-			break;
-		}
-	}
-
 	// Return early if database is known to be broken
 	if(FTLDBerror())
 		return false;
@@ -417,44 +403,491 @@ bool delete_message(const long id)
 	return true;
 }
 
-static cJSON *add_plain_message(const char *message, const int rowid, const enum message_type type)
+static void format_regex_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *type, const char *regex, const char *warning, const int dbindex)
 {
-	// Create JSON object
-	cJSON *item = cJSON_CreateObject();
-	if(item == NULL)
-		return item;
+	if(snprintf(plain, sizeof_plain, "Invalid regex %s filter \"%s\": %s",
+	            type, regex, warning) > sizeof_plain)
+		log_warn("format_regex_message(): Buffer too small to hold plain message, warning truncated");
 
-	// Add ID
-	cJSON_AddNumberToObject(item, "id", rowid);
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
 
-	// Add timestamp
-	cJSON_AddNumberToObject(item, "timestamp", double_time());
+	char *escaped_regex = escape_html(regex);
+	char *escaped_warning = escape_html(warning);
 
-	// Add message type
-	cJSON *typestr = cJSON_CreateStringReference(get_message_type_str(type));
-	if(typestr == NULL)
-		return item;
-	cJSON_AddItemToObject(item, "type", typestr);
+	if(snprintf(html, sizeof_html, "Encountered an error when processing <a href=\"groups-domains.lp?domainid=%d\">regex %s filter with ID %d</a>: <pre>%s</pre>Error message: <pre>%s</pre>",
+	            dbindex, type, dbindex, escaped_regex, escaped_warning))
+		log_warn("format_regex_message(): Buffer too small to hold HTML message, warning truncated");
 
-	// Add the plain message
-	cJSON *string = cJSON_CreateString(message);
-	if(string == NULL)
-		return item;
-	cJSON_AddItemToObject(item, "plain", string);
-
-	// Add item to messages array
-	cJSON_AddItemToArray(messages, item);
-
-	return item;
+	if(escaped_regex != NULL)
+		free(escaped_regex);
+	if(escaped_warning != NULL)
+		free(escaped_warning);
 }
 
-static bool add_html_message(cJSON *item, const char *message)
+static void format_subnet_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *ip, const int matching_count, const char *names, const char *matching_ids, const char *chosen_match_text, const int chosen_match_id)
 {
-	// Add the HTML message
-	cJSON *string = cJSON_CreateString(message);
-	if(string == NULL)
+	if(snprintf(plain, sizeof_plain, "Client %s is managed by %i groups (IDs %s), all describing the same subnet. "
+	            "FTL chose the most recent entry %s (ID %i) to obtain the group configuration for this client.",
+	            ip, matching_count, matching_ids,
+	            chosen_match_text, chosen_match_id) > sizeof_plain)
+		log_warn("format_subnet_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_ip = escape_html(ip);
+	char *escaped_ids = escape_html(matching_ids);
+	char *escaped_names = escape_html(names);
+
+	if(snprintf(html, sizeof_html, "Client <code>%s</code> is managed by %i groups (IDs [%s]), all describing the same subnet:<pre>%s</pre>"
+	            "FTL chose the most recent entry (ID %i) to obtain the group configuration for this client.",
+	            escaped_ip, matching_count, escaped_ids, escaped_names, chosen_match_id) > sizeof_html)
+		log_warn("format_subnet_message(): Buffer too small to hold HTML message, warning truncated");
+
+	if(escaped_ip != NULL)
+		free(escaped_ip);
+	if(escaped_ids != NULL)
+		free(escaped_ids);
+	if(escaped_names != NULL)
+		free(escaped_names);
+}
+
+static void format_hostname_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *ip, const char *name, const int pos)
+{
+	if(snprintf(plain, sizeof_plain, "Host name of client \"%s\" => \"%s\" contains (at least) one invalid character at position %i",
+			ip, name, pos) > sizeof_plain)
+		log_warn("format_hostname_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_ip = escape_html(ip);
+	char *escaped_name = escape_html(name);
+
+	if(snprintf(html, sizeof_html, "Host name of client <code>%s</code> => <code>%s</code> contains (at least) one invalid character at position %i",
+			escaped_ip, escaped_name, pos) > sizeof_html)
+		log_warn("format_hostname_message(): Buffer too small to hold HTML message, warning truncated");
+
+	if(escaped_ip != NULL)
+		free(escaped_ip);
+	if(escaped_name != NULL)
+		free(escaped_name);
+}
+
+static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
+{
+	if(snprintf(plain, sizeof_plain, "Error in dnsmasq configuration: %s", message) > sizeof_plain)
+		log_warn("format_dnsmasq_config_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_message = escape_html(message);
+
+	if(snprintf(html, sizeof_html, "FTL failed to start due to %s.", escaped_message) > sizeof_html)
+		log_warn("format_dnsmasq_config_message(): Buffer too small to hold HTML message, warning truncated");
+
+	if(escaped_message != NULL)
+		free(escaped_message);
+}
+
+static void format_rate_limit_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *clientIP, const unsigned int count, const unsigned int interval, const time_t turnaround)
+{
+	if(snprintf(plain, sizeof_plain, "Rate-limiting %s for at least %ld second%s",
+			clientIP, turnaround, turnaround == 1 ? "" : "s") > sizeof_plain)
+		log_warn("format_rate_limit_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_clientIP = escape_html(clientIP);
+
+	if(snprintf(html, sizeof_html, "Client <code>%s</code> has been rate-limited for at least %ld second%s (current limit: %u queries per %u seconds)",
+			escaped_clientIP, turnaround, turnaround == 1 ? "" : "s", count, interval) > sizeof_html)
+		log_warn("format_rate_limit_message(): Buffer too small to hold HTML message, warning truncated");
+
+	if(escaped_clientIP != NULL)
+		free(escaped_clientIP);
+}
+
+static void format_dnsmasq_warn_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
+{
+	if(snprintf(plain, sizeof_plain, "WARNING in dnsmasq core: %s", message) > sizeof_plain)
+		log_warn("format_dnsmasq_warn_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	if(snprintf(html, sizeof_html, "Warning in <code>dnsmasq</code> core:<pre>%s</pre>Check out <a href=\"https://docs.pi-hole.net/ftldns/dnsmasq_warn/\" target=\"_blank\">our documentation</a> for further information.", message) > sizeof_html)
+		log_warn("format_dnsmasq_warn_message(): Buffer too small to hold HTML message, warning truncated");
+}
+
+static void format_load_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const double load, const int nprocs)
+{
+	if(snprintf(plain, sizeof_plain, "Long-term load (15min avg) larger than number of processors: %.1f > %d",
+	            load, nprocs) > sizeof_plain)
+		log_warn("format_load_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	if(snprintf(html, sizeof_html, "Long-term load (15min avg) larger than number of processors: <strong>%.1f &gt; %d</strong><br>This may slow down DNS resolution and can cause bottlenecks.",
+	            load, nprocs) > sizeof_html)
+		log_warn("format_load_message(): Buffer too small to hold HTML message, warning truncated");
+}
+
+static void format_shmem_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *path, int shmem, const char *msg)
+{
+	if(snprintf(plain, sizeof_plain, "Shared memory shortage (%s) ahead: %d%% is used (%s)",
+	            path, shmem, msg) > sizeof_plain)
+		log_warn("format_messages(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_path = escape_html(path);
+	char *escaped_msg = escape_html(msg);
+
+	if(snprintf(html, sizeof_html, "Shared memory shortage (<code>%s</code>) ahead: <strong>%d%%</strong> is used<br>%s",
+	            escaped_path, shmem, escaped_msg) > sizeof_html)
+		log_warn("log_resource_shortage(): Buffer too small to hold HTML message, warning truncated");
+
+	if(escaped_path != NULL)
+		free(escaped_path);
+	if(escaped_msg != NULL)
+		free(escaped_msg);
+}
+
+static void format_disk_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                const char *path, const int disk, const char *msg)
+{
+	if(snprintf(plain, sizeof_plain, "Disk shortage ahead: %d%% is used (%s) on partition containing the file %s",
+	            disk, msg, path) > sizeof_plain)
+		log_warn("format_disk_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_path = escape_html(path);
+	char *escaped_msg = escape_html(msg);
+
+
+	if(snprintf(html, sizeof_html, "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on partition containing the file <code>%s</code>",
+	            disk, escaped_msg, escaped_path) > sizeof_html)
+		log_warn("format_disk_message(): Buffer too small to hold HTML message, warning truncated");
+}
+
+static void format_disk_message_extended(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                         const int disk, const char *msg, const char *mnt_type, const char *mnt_dir)
+{
+	if(snprintf(plain, sizeof_plain, "Disk shortage ahead: %d%% is used (%s) on %s filesystem mounted at %s",
+	            disk, msg, mnt_type, mnt_dir) > sizeof_plain)
+		log_warn("format_disk_message_extended(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_mnt_type = escape_html(mnt_type);
+	char *escaped_mnt_dir = escape_html(mnt_dir);
+	char *escaped_msg = escape_html(msg);
+
+	if(snprintf(html, sizeof_html, "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on %s filesystem mounted at <code>%s</code>",
+	            disk, escaped_msg, escaped_mnt_type, escaped_mnt_dir) > sizeof_html)
+		log_warn("format_disk_message_extended(): Buffer too small to hold HTML message, warning truncated");
+
+	if(escaped_mnt_type != NULL)
+		free(escaped_mnt_type);
+	if(escaped_mnt_dir != NULL)
+		free(escaped_mnt_dir);
+	if(escaped_msg != NULL)
+		free(escaped_msg);
+}
+
+static void format_inaccessible_adlist_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                               const char *address, int dbindex)
+{
+	if(snprintf(plain, sizeof_plain, "Adlist with ID %d (%s) was inaccessible during last gravity run",
+	        dbindex, address) > sizeof_plain)
+		log_warn("format_inaccessible_adlist_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_address = escape_html(address);
+
+	if(snprintf(html, sizeof_html, "<a href=\"groups-adlists.lp?adlist=%i\">Adlist with ID <strong>%d</strong> (<code>%s</code>)</a> was inaccessible during last gravity run",
+	            dbindex, dbindex, escaped_address) > sizeof_html)
+		log_warn("format_inaccessible_adlist_message(): Buffer too small to hold HTML message, warning truncated");
+
+	if(escaped_address != NULL)
+		free(escaped_address);
+}
+
+int count_messages(const bool filter_dnsmasq_warnings)
+{
+	int count = 0;
+
+	if(FTLDBerror())
+		return count;
+
+	sqlite3 *db;
+	// Open database connection
+	if((db = dbopen(false)) == NULL)
+	{
+		log_err("count_messages() - Failed to open DB");
+		return count;
+	}
+
+	// Get message
+	sqlite3_stmt* stmt = NULL;
+	const char *querystr = filter_dnsmasq_warnings ?  "SELECT COUNT(*) FROM message WHERE type != 'DNSMASQ_WARN'" : "SELECT COUNT(*) FROM message";
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		log_err("count_messages() - SQL error prepare SELECT: %s",
+		        sqlite3_errstr(rc));
+		goto end_of_count_messages;
+	}
+
+	// Execute and finalize
+	rc = sqlite3_step(stmt);
+	if( rc != SQLITE_ROW ){
+		log_err("count_messages() - SQL error step SELECT: %s",
+		        sqlite3_errstr(rc));
+		goto end_of_count_messages;
+	}
+
+	// Get count
+	count = sqlite3_column_int(stmt, 0);
+
+end_of_count_messages: // Close database connection
+	sqlite3_finalize(stmt);
+	dbclose(&db);
+
+	return count;
+}
+
+bool format_messages(cJSON *array)
+{
+	if(FTLDBerror())
 		return false;
-	return cJSON_AddItemToObject(item, "html", string);
+
+	sqlite3 *db;
+	// Open database connection
+	if((db = dbopen(false)) == NULL)
+	{
+		log_err("format_messages() - Failed to open DB");
+		return false;
+	}
+
+	// Get message
+	sqlite3_stmt* stmt = NULL;
+	const char *querystr = "SELECT id,timestamp,type,message,blob1,blob2,blob3,blob4,blob5 FROM message";
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		log_err("format_messages() - SQL error prepare SELECT: %s",
+		        sqlite3_errstr(rc));
+		goto end_of_format_message;
+	}
+
+	// Execute and finalize
+	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	{
+		// Create JSON object
+		cJSON *item = cJSON_CreateObject();
+		if(item == NULL)
+			break;
+
+		// Add ID
+		cJSON_AddNumberToObject(item, "id", sqlite3_column_int(stmt, 0));
+
+		// Add timestamp
+		cJSON_AddNumberToObject(item, "timestamp", sqlite3_column_double(stmt, 1));
+
+		// Get message type
+		const char *mtypestr = (const char*)sqlite3_column_text(stmt, 2);
+
+		// Add message type
+		cJSON_AddStringToObject(item, "type", mtypestr);
+
+		// Generate messages
+		char plain[1024] = { 0 }, html[2048] = { 0 };
+		const int mtype = get_message_type_from_string(mtypestr);
+		switch(mtype)
+		{
+			case REGEX_MESSAGE:
+			{
+				const char *warning = (const char*)sqlite3_column_text(stmt, 3);
+				const char *type = (const char*)sqlite3_column_text(stmt, 4);
+				const char *regex = (const char*)sqlite3_column_text(stmt, 5);
+				const int dbindex = sqlite3_column_int(stmt, 6);
+
+				format_regex_message(plain, sizeof(plain), html, sizeof(html),
+				                     type, regex, warning, dbindex);
+
+				break;
+			}
+
+			case SUBNET_MESSAGE:
+			{
+				const char *ip = (const char*)sqlite3_column_text(stmt, 3);
+				const int matching_count = sqlite3_column_int(stmt, 4);
+				const char *names = (const char*)sqlite3_column_text(stmt, 5);
+				const char *matching_ids = (const char*)sqlite3_column_text(stmt, 6);
+				const char *chosen_match_text = (const char*)sqlite3_column_text(stmt, 7);
+				const int chosen_match_id = sqlite3_column_int(stmt, 8);
+
+				format_subnet_message(plain, sizeof(plain), html, sizeof(html),
+				                      ip, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
+
+				break;
+			}
+
+			case HOSTNAME_MESSAGE:
+			{
+				const char *ip = (const char*)sqlite3_column_text(stmt, 3);
+				const char *name = (const char*)sqlite3_column_text(stmt, 4);
+				const int pos = sqlite3_column_int(stmt, 6);
+
+				format_hostname_message(plain, sizeof(plain), html, sizeof(html),
+				                        ip, name, pos);
+
+				break;
+			}
+
+			case DNSMASQ_CONFIG_MESSAGE:
+			{
+				const char *message = (const char*)sqlite3_column_text(stmt, 3);
+
+				format_dnsmasq_config_message(plain, sizeof(plain), html, sizeof(html),
+				                              message);
+
+				break;
+			}
+
+			case RATE_LIMIT_MESSAGE:
+			{
+				const char *clientIP = (const char*)sqlite3_column_text(stmt, 3);
+				const unsigned int count = sqlite3_column_int(stmt, 4);
+				const unsigned int interval = sqlite3_column_int(stmt, 5);
+				const time_t turnaround = sqlite3_column_int(stmt, 6);
+
+				format_rate_limit_message(plain, sizeof(plain), html, sizeof(html),
+				                          clientIP, count, interval, turnaround);
+
+				break;
+			}
+
+			case DNSMASQ_WARN_MESSAGE:
+			{
+				const char *message = (const char*)sqlite3_column_text(stmt, 3);
+
+				format_dnsmasq_warn_message(plain, sizeof(plain), html, sizeof(html),
+				                            message);
+
+				break;
+			}
+
+			case LOAD_MESSAGE:
+			{
+				const double load = sqlite3_column_double(stmt, 4);
+				const int nprocs = sqlite3_column_int(stmt, 5);
+
+				format_load_message(plain, sizeof(plain), html, sizeof(html),
+				                    load, nprocs);
+
+				break;
+			}
+
+			case SHMEM_MESSAGE:
+			{
+				const char *path = (const char*)sqlite3_column_text(stmt, 3);
+				const int shmem = sqlite3_column_int(stmt, 4);
+				const char *msg = (const char*)sqlite3_column_text(stmt, 5);
+
+				format_shmem_message(plain, sizeof(plain), html, sizeof(html),
+				                     path, shmem, msg);
+
+				break;
+
+			}
+
+			case DISK_MESSAGE:
+			{
+				const char *path = (const char*)sqlite3_column_text(stmt, 3);
+				const int disk = sqlite3_column_int(stmt, 4);
+				const char *msg = (const char*)sqlite3_column_text(stmt, 5);
+
+				format_disk_message(plain, sizeof(plain), html, sizeof(html),
+				                    path, disk, msg);
+
+				break;
+			}
+
+			case DISK_MESSAGE_EXTENDED:
+			{
+				const int disk = sqlite3_column_int(stmt, 4);
+				const char *msg = (const char*)sqlite3_column_text(stmt, 5);
+				const char *mnt_type = (const char*)sqlite3_column_text(stmt, 6);
+				const char *mnt_dir = (const char*)sqlite3_column_text(stmt, 7);
+
+				format_disk_message_extended(plain, sizeof(plain), html, sizeof(html),
+				                             disk, msg, mnt_type, mnt_dir);
+
+				break;
+			}
+
+			case INACCESSIBLE_ADLIST_MESSAGE:
+			{
+				const char *address = (const char*)sqlite3_column_text(stmt, 3);
+				const int dbindex = sqlite3_column_int(stmt, 4);
+
+				format_inaccessible_adlist_message(plain, sizeof(plain), html, sizeof(html),
+				                                   address, dbindex);
+
+				break;
+			}
+		}
+
+		// Add the plain message
+		cJSON *pstring = cJSON_CreateString(plain);
+		if(pstring == NULL)
+			return item;
+		cJSON_AddItemToObject(item, "plain", pstring);
+
+		// Add the HTML message
+		cJSON *hstring = cJSON_CreateString(html);
+		if(hstring == NULL)
+			return item;
+		cJSON_AddItemToObject(item, "html", hstring);
+
+		// Add the message to the array
+		cJSON_AddItemToArray(array, item);
+	}
+
+	if(rc != SQLITE_DONE)
+	{
+		log_err("format_messages() - SQL error step SELECT: %s",
+			sqlite3_errstr(rc));
+		goto end_of_format_message;
+	}
+
+end_of_format_message: // Close database connection
+	sqlite3_finalize(stmt);
+	dbclose(&db);
+
+	return true;
 }
 
 void logg_regex_warning(const char *type, const char *warning, const int dbindex, const char *regex)
@@ -469,76 +902,50 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 		return;
 
 	// Create message
-	size_t ret;
 	char buf[2048];
-	ret = snprintf(buf, sizeof(buf), "Invalid regex %s filter \"%s\": %s",
-	               type, regex, warning);
-	if(ret > sizeof(buf))
-		log_warn("logg_regex_warning(): Buffer too small to hold plain message, warning truncated");
+	format_regex_message(buf, sizeof(buf), NULL, 0, type, regex, warning, dbindex);
 
 	// Log to FTL.log
 	log_warn("%s", buf);
 
 	// Log to database only if not in CLI mode
-	if(!cli_mode)
-	{
-		// Add to database
-		const int rowid = add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
+	if(cli_mode)
+		return;
 
-		// Add to plain_messages
-		cJSON *item = add_plain_message(buf, rowid, REGEX_MESSAGE);
-
-		// Create HTML message
-		ret = snprintf(buf, sizeof(buf), "Encountered an error when processing <a href=\"groups-domains.php?domainid=%d\">regex %s filter with ID %d</a>: <pre>%s</pre>Error message: <pre>%s</pre>",
-		               dbindex, type, dbindex, regex, warning);
-		if(ret > sizeof(buf))
-			log_warn("logg_regex_warning(): Buffer too small to hold HTML message, warning truncated");
-		add_html_message(item, buf);
-	}
+	// Add to database
+	const int rowid = add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
+	if(rowid == -1)
+		log_err("logg_regex_warning(): Failed to add message to database");
 }
 
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,
                          const int matching_bits, const char *chosen_match_text,
                          const int chosen_match_id)
 {
+	char *names = get_client_names_from_ids(matching_ids);
+
 	// Create message
-	size_t ret;
 	char buf[2048];
-	ret = snprintf(buf, sizeof(buf), "Client %s is managed by %i groups (IDs %s), all describing /%i subnets. "
-	               "FTL chose the most recent entry %s (ID %i) for this client.",
-	               ip, matching_count, matching_ids, matching_bits,
-	               chosen_match_text, chosen_match_id);
-	if(ret > sizeof(buf))
-		log_warn("logg_regex_warning(): Buffer too small to hold plain message, warning truncated");
+	format_subnet_message(buf, sizeof(buf), NULL, 0, ip, matching_count, names, matching_ids,
+	                      chosen_match_text, chosen_match_id);
 
 	// Log to FTL.log
 	log_warn("%s", buf);
 
 	// Log to database
-	char *names = get_client_names_from_ids(matching_ids);
 	const int rowid = add_message(SUBNET_MESSAGE, ip, 5, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
 
-	// Add to plain_messages
-	cJSON *item = add_plain_message(buf, rowid, SUBNET_MESSAGE);
+	if(rowid == -1)
+		log_err("logg_subnet_warning(): Failed to add message to database");
 
-	// Create HTML message
-	ret = snprintf(buf, sizeof(buf), "Client <code>%s</code> is managed by %i groups (IDs [%s]), all describing /%i subnets:<pre>%s</pre>FTL chose the most recent entry (ID %i) to obtain the group configuration for this client.",
-	               ip, matching_count, matching_ids, matching_bits, names, chosen_match_id);
-	if(ret > sizeof(buf))
-		log_warn("logg_regex_warning(): Buffer too small to hold HTML message, warning truncated");
-	add_html_message(item, buf);
 	free(names);
 }
 
 void logg_hostname_warning(const char *ip, const char *name, const unsigned int pos)
 {
 	// Create message
-	size_t ret;
 	char buf[2048];
-	ret = snprintf(buf, sizeof(buf), "Host name of client \"%s\" => \"%s\" contains (at least) one invalid character at position %u",
-	               ip, name, pos);
-	if(ret > sizeof(buf))
-		log_warn("logg_hostname_warning(): Buffer too small to hold plain message, warning truncated");
+	format_hostname_message(buf, sizeof(buf), NULL, 0, ip, name, pos);
 
 	// Log to FTL.log
 	log_warn("%s", buf);
@@ -546,19 +953,15 @@ void logg_hostname_warning(const char *ip, const char *name, const unsigned int 
 	// Log to database
 	const int rowid = add_message(HOSTNAME_MESSAGE, ip, 2, name, (const int)pos);
 
-	// Add to plain and HTML_messages
-	cJSON *item = add_plain_message(buf, rowid, HOSTNAME_MESSAGE);
-	add_html_message(item, buf);
+	if(rowid == -1)
+		log_err("logg_hostname_warning(): Failed to add message to database");
 }
 
 void logg_fatal_dnsmasq_message(const char *message)
 {
 	// Create message
-	size_t ret;
 	char buf[2048];
-	ret = snprintf(buf, sizeof(buf), "Error in dnsmasq core: %s", message);
-	if(ret > sizeof(buf))
-		log_warn("logg_fatal_dnsmasq_message(): Buffer too small to hold plain message, warning truncated");
+	format_dnsmasq_config_message(buf, sizeof(buf), NULL, 0, message);
 
 	// Log to FTL.log
 	log_crit("%s", buf);
@@ -566,14 +969,8 @@ void logg_fatal_dnsmasq_message(const char *message)
 	// Log to database
 	const int rowid = add_message(DNSMASQ_CONFIG_MESSAGE, message, 0);
 
-	// Add to plain message
-	cJSON *item = add_plain_message(buf, rowid, DNSMASQ_CONFIG_MESSAGE);
-
-	// Create HTML message
-	ret = snprintf(buf, sizeof(buf), "FTL failed to start due to %s.", message);
-	if(ret > sizeof(buf))
-		log_warn("logg_fatal_dnsmasq_message(): Buffer too small to hold HTML message, warning truncated");
-	add_html_message(item, buf);
+	if(rowid == -1)
+		log_err("logg_fatal_dnsmasq_message(): Failed to add message to database");
 
 	// FTL will die after this point, so we should make sure to clean up behind
 	// ourselves
@@ -585,38 +982,24 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 	const time_t turnaround = get_rate_limit_turnaround(rate_limit_count);
 
 	// Create message
-	size_t ret;
 	char buf[2048];
-	ret = snprintf(buf, sizeof(buf), "Rate-limiting %s for at least %ld second%s",
-	               clientIP, turnaround, turnaround == 1 ? "" : "s");
-	if(ret > sizeof(buf))
-		log_warn("logg_rate_limit_message(): Buffer too small to hold plain message, warning truncated");
+	format_rate_limit_message(buf, sizeof(buf), NULL, 0, clientIP, config.dns.rateLimit.count.v.ui, config.dns.rateLimit.interval.v.ui, turnaround);
 
 	// Log to FTL.log
 	log_info("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(RATE_LIMIT_MESSAGE, clientIP, 2, config.dns.rateLimit.count.v.ui, config.dns.rateLimit.interval.v.ui);
+	const int rowid = add_message(RATE_LIMIT_MESSAGE, clientIP, 3, config.dns.rateLimit.count.v.ui, config.dns.rateLimit.interval.v.ui, turnaround);
 
-	// Add to plain message
-	cJSON *item = add_plain_message(buf, rowid, RATE_LIMIT_MESSAGE);
-
-	// Create HTML message
-	ret = snprintf(buf, sizeof(buf), "Client <code>%s</code> has been rate-limited for at least %ld second%s (current limit: %u queries per %u seconds)",
-	               clientIP, turnaround, turnaround == 1 ? "" : "s", config.dns.rateLimit.count.v.ui, config.dns.rateLimit.interval.v.ui);
-	if(ret > sizeof(buf))
-		log_warn("logg_rate_limit_message(): Buffer too small to hold HTML message, warning truncated");
-	add_html_message(item, buf);
+	if(rowid == -1)
+		log_err("logg_rate_limit_message(): Failed to add message to database");
 }
 
 void logg_warn_dnsmasq_message(char *message)
 {
 	// Create message
-	size_t ret;
 	char buf[2048];
-	ret = snprintf(buf, sizeof(buf), "WARNING in dnsmasq core: %s", message);
-	if(ret > sizeof(buf))
-		log_warn("logg_warn_dnsmasq_message(): Buffer too small to hold plain message, warning truncated");
+	format_dnsmasq_warn_message(buf, sizeof(buf), NULL, 0, message);
 
 	// Log to FTL.log
 	log_warn("%s", buf);
@@ -624,27 +1007,18 @@ void logg_warn_dnsmasq_message(char *message)
 	// Log to database
 	const int rowid = add_message(DNSMASQ_WARN_MESSAGE, message, 0);
 
-	// Add to plain message
-	cJSON *item = add_plain_message(buf, rowid, DNSMASQ_WARN_MESSAGE);
-
-	// Create HTML message
-	ret = snprintf(buf, sizeof(buf), "Warning in <code>dnsmasq</code> core:<pre>%s</pre>Check out <a href=\"https://docs.pi-hole.net/ftldns/dnsmasq_warn/\" target=\"_blank\">our documentation</a> for further information.", message);
-	if(ret > (int)sizeof(buf))
-		log_warn("logg_warn_dnsmasq_message(): Buffer too small to hold HTML message, warning truncated");
-	add_html_message(item, buf);
+	if(rowid == -1)
+		log_err("logg_warn_dnsmasq_message(): Failed to add message to database");
 }
 
 void log_resource_shortage(const double load, const int nprocs, const int shmem, const int disk, const char *path, const char *msg)
 {
 	// Create message
-	size_t ret;
 	char buf[2048];
 
 	if(load > 0.0)
 	{
-		ret = snprintf(buf, sizeof(buf), "Long-term load (15min avg) larger than number of processors: %.1f > %d", load, nprocs);
-		if(ret > sizeof(buf))
-			log_warn("log_resource_shortage(): Buffer too small to hold plain message, warning truncated");
+		format_load_message(buf, sizeof(buf), NULL, 0, load, nprocs);
 
 		// Log to FTL.log
 		log_warn("%s", buf);
@@ -652,20 +1026,12 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		// Log to database
 		const int rowid = add_message(LOAD_MESSAGE, "excessive load", 2, load, nprocs);
 
-		// Add to plain message
-		cJSON *item = add_plain_message(buf, rowid, LOAD_MESSAGE);
-
-		// Create HTML message
-		ret = snprintf(buf, sizeof(buf), "Long-term load (15min avg) larger than number of processors: <strong>%.1f &gt; %d</strong><br>This may slow down DNS resolution and can cause bottlenecks.", load, nprocs);
-		if(ret > (int)sizeof(buf))
-			log_warn("log_resource_shortage(): Buffer too small to hold HTML message, warning truncated");
-		add_html_message(item, buf);
+		if(rowid == -1)
+			log_err("log_resource_shortage(): Failed to add message to database");
 	}
 	else if(shmem > -1)
 	{
-		ret = snprintf(buf, sizeof(buf), "RAM shortage (%s) ahead: %d%% is used (%s)", path, shmem, msg);
-		if(ret > sizeof(buf))
-			log_warn("log_resource_shortage(): Buffer too small to hold plain message, warning truncated");
+		format_shmem_message(buf, sizeof(buf), NULL, 0, path, shmem, msg);
 
 		// Log to FTL.log
 		log_warn("%s", buf);
@@ -673,14 +1039,8 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		// Log to database
 		const int rowid = add_message(SHMEM_MESSAGE, path, 2, shmem, msg);
 
-		// Add to plain message
-		cJSON *item = add_plain_message(buf, rowid, SHMEM_MESSAGE);
-
-		// Create HTML message
-		ret = snprintf(buf, sizeof(buf), "RAM shortage (<code>%s</code>) ahead: <strong>%d%%</strong> is used<br>%s", path, shmem, msg);
-		if(ret > (int)sizeof(buf))
-			log_warn("log_resource_shortage(): Buffer too small to hold HTML message, warning truncated");
-		add_html_message(item, buf);
+		if(rowid == -1)
+			log_err("log_resource_shortage(): Failed to add message to database");
 	}
 	else if(disk > -1)
 	{
@@ -689,46 +1049,28 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 
 		// Create plain message
 		if(fsdetails != NULL)
-			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: %d%% is used (%s) on %s filesystem mounted at %s",
-			               disk, msg, fsdetails->mnt_type, fsdetails->mnt_dir);
+			format_disk_message_extended(buf, sizeof(buf), NULL, 0, disk, msg, fsdetails->mnt_type, fsdetails->mnt_dir);
 		else
-			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: %d%% is used (%s) on partition containing the file %s",
-			               disk, msg, path);
-
-		if(ret > sizeof(buf))
-			log_warn("log_resource_shortage(): Buffer too small to hold plain message, warning truncated");
+			format_disk_message(buf, sizeof(buf), NULL, 0, path, disk, msg);
 
 		// Log to FTL.log
 		log_warn("%s", buf);
 
 		// Log to database
-		const int rowid = add_message(DISK_MESSAGE, path, 2, disk, msg);
+		const int rowid = fsdetails != NULL ?
+			add_message(DISK_MESSAGE_EXTENDED, path, 4, disk, fsdetails->mnt_type, fsdetails->mnt_dir) :
+			add_message(DISK_MESSAGE, path, 2, disk, msg);
 
-		// Add to plain message
-		cJSON *item = add_plain_message(buf, rowid, DISK_MESSAGE);
-
-		// Create HTML message
-		if(fsdetails != NULL)
-			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on %s filesystem mounted at <code>%s</code>",
-			               disk, msg, fsdetails->mnt_type, fsdetails->mnt_dir);
-		else
-			ret = snprintf(buf, sizeof(buf), "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on partition containing the file <code>%s</code>",
-			               disk, msg, path);
-		if(ret > (int)sizeof(buf))
-			log_warn("log_resource_shortage(): Buffer too small to hold HTML message, warning truncated");
-
-		add_html_message(item, buf);
+		if(rowid == -1)
+			log_err("log_resource_shortage(): Failed to add message to database");
 	}
 }
 
 void logg_inaccessible_adlist(const int dbindex, const char *address)
 {
 	// Create message
-	size_t ret;
 	char buf[2048];
-	ret = snprintf(buf, sizeof(buf), "Adlist with ID %d (%s) was inaccessible during last gravity run", dbindex, address);
-	if(ret > sizeof(buf))
-		log_warn("logg_inaccessible_adlist(): Buffer too small to hold plain message, warning truncated");
+	format_inaccessible_adlist_message(buf, sizeof(buf), NULL, 0, address, dbindex);
 
 	// Log to FTL.log
 	log_warn("%s", buf);
@@ -736,12 +1078,6 @@ void logg_inaccessible_adlist(const int dbindex, const char *address)
 	// Log to database
 	const int rowid = add_message(INACCESSIBLE_ADLIST_MESSAGE, address, 1, dbindex);
 
-	// Add to plain message
-	cJSON *item = add_plain_message(buf, rowid, INACCESSIBLE_ADLIST_MESSAGE);
-
-	// Create HTML message
-	ret = snprintf(buf, sizeof(buf), "<a href=\"groups-adlists.php?adlist=%i\">Adlist with ID <strong>%d</strong> (<code>%s</code>)</a> was inaccessible during last gravity run", dbindex, dbindex, address);
-	if(ret > (int)sizeof(buf))
-		log_warn("logg_inaccessible_adlist(): Buffer too small to hold HTML message, warning truncated");
-	add_html_message(item, buf);
+	if(rowid == -1)
+		log_err("logg_inaccessible_adlist(): Failed to add message to database");
 }

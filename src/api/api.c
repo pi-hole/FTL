@@ -52,6 +52,7 @@ static struct {
 	{ "/api/info/host",                         "",                           api_info_host,                         { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/info/ftl",                          "",                           api_info_ftl,                          { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/info/version",                      "",                           api_info_version,                      { false, true,  0               }, true,  HTTP_GET },
+	{ "/api/info/messages/count",               "",                           api_info_messages_count,               { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/info/messages",                     "/{message_id}",              api_info_messages,                     { false, true,  0               }, true,  HTTP_DELETE },
 	{ "/api/info/messages",                     "",                           api_info_messages,                     { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/info/metrics",                      "",                           api_info_metrics,                      { false, true,  0               }, true,  HTTP_GET },

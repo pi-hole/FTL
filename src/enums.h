@@ -263,6 +263,7 @@ enum message_type {
 	SHMEM_MESSAGE,
 	DISK_MESSAGE,
 	INACCESSIBLE_ADLIST_MESSAGE,
+	DISK_MESSAGE_EXTENDED,
 	MAX_MESSAGE,
 } __attribute__ ((packed));
 

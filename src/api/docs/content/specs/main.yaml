@@ -168,6 +168,9 @@ paths:
   /info/messages:
     $ref: 'info.yaml#/components/paths/messages'
 
+  /info/messages/count:
+    $ref: 'info.yaml#/components/paths/messages_count'
+
   /info/metrics:
     $ref: 'info.yaml#/components/paths/metrics'
 

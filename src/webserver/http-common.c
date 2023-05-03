@@ -426,3 +426,50 @@ void read_and_parse_payload(struct ftl_conn *api)
 	api->payload.json = cJSON_Parse(api->payload.raw);
 	api->payload.json_error = cJSON_GetErrorPtr();
 }
+
+// Escape a string to mask HTML special characters, the resulting string is
+// always allocated and must be freed
+// See https://www.w3.org/International/questions/qa-escapes#use
+char *__attribute__((malloc)) escape_html(const char *string)
+{
+	// Allocate memory for escaped string
+	char *escaped = calloc(strlen(string) * 6 + 1, sizeof(char));
+	if(!escaped)
+		return NULL;
+
+	// Iterate over string and escape special characters
+	char *ptr = escaped;
+	for(const char *c = string; *c != '\0'; c++)
+	{
+		switch(*c)
+		{
+			case '&':
+				strcpy(ptr, "&amp;");
+				ptr += 5;
+				break;
+			case '<':
+				strcpy(ptr, "&lt;");
+				ptr += 4;
+				break;
+			case '>':
+				strcpy(ptr, "&gt;");
+				ptr += 4;
+				break;
+			case '"':
+				strcpy(ptr, "&quot;");
+				ptr += 6;
+				break;
+			case '\'':
+				strcpy(ptr, "&apos;");
+				ptr += 6;
+				break;
+			default:
+				*ptr = *c;
+				ptr++;
+				break;
+		}
+	}
+	*ptr = '\0';
+
+	return escaped;
+}

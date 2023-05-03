@@ -816,16 +816,41 @@ int api_info_version(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-static int api_info_messages_GET(struct ftl_conn *api)
+int api_info_messages_count(struct ftl_conn *api)
 {
-	// Get a private copy of the messages array
-	cJSON *messages = get_messages();
-
 	// Filtering based on GET parameters?
 	bool filter_dnsmasq_warnings = false;
 	if(api->request->query_string != NULL)
 	{
 		get_bool_var(api->request->query_string, "filter_dnsmasq_warnings", &filter_dnsmasq_warnings);
+	}
+
+	// Send reply
+	cJSON *json = JSON_NEW_OBJECT();
+	cJSON_AddNumberToObject(json, "count", count_messages(filter_dnsmasq_warnings));
+	JSON_SEND_OBJECT(json);
+	return 0;
+}
+
+static int api_info_messages_GET(struct ftl_conn *api)
+{
+	// Filtering based on GET parameters?
+	bool filter_dnsmasq_warnings = false;
+	if(api->request->query_string != NULL)
+	{
+		get_bool_var(api->request->query_string, "filter_dnsmasq_warnings", &filter_dnsmasq_warnings);
+	}
+
+	// Create messages array
+	cJSON *messages = cJSON_CreateArray();
+	if(!format_messages(messages))
+	{
+		// Send error reply
+		cJSON_Delete(messages);
+		return send_json_error(api, 500, // 500 Internal Server Error
+		                       "internal_error",
+		                       "An internal error occurred while formatting the messages array.",
+		                       NULL);
 	}
 
 	// Filter messages if requested

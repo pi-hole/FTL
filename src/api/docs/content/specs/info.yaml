@@ -183,6 +183,21 @@ components:
               application/json:
                 schema:
                   $ref: 'info.yaml#/components/schemas/messages'
+    messages_count:
+      get:
+        summary: Get count of Pi-hole diagnosis messages
+        tags:
+          - "FTL information"
+        operationId: "get_messages_count"
+        description: |
+          Request number of Pi-hole diagnosis messages
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'info.yaml#/components/schemas/count'
       delete:
         summary: Delete Pi-hole diagnosis message
         tags:
@@ -1002,6 +1017,13 @@ components:
                     pruned_6:
                       type: integer
                       description: Number of pruned IPv6 leases
+    count:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Number of items
+          example: 42
   examples:
     errors:
       messages:
