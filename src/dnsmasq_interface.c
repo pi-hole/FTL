@@ -1855,6 +1855,8 @@ static void update_upstream(queriesData *query, const int id)
 				          id, oldaddr, oldport, ip, port);
 			}
 		}
+
+		// Update upstream server ID
 		query->upstreamID = upstreamID;
 	}
 }
@@ -2001,6 +2003,10 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	// Update upstream server (if applicable)
 	if(!cached)
 		update_upstream(query, id);
+
+	// Reset last_server to avoid possibly changing the upstream server
+	// again in the next query
+	memset(&last_server, 0, sizeof(last_server));
 
 	// Save response time
 	// Skipped internally if already computed
@@ -2518,6 +2524,9 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 	// Mark query for updating in the database
 	query->flags.database.changed = true;
 
+	// Reset last_server
+	memset(&last_server, 0, sizeof(last_server));
+
 	// Unlock shared memory
 	unlock_shm();
 }
@@ -2609,7 +2618,7 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 			char ip[ADDRSTRLEN+1] = { 0 };
 			in_port_t port = 0;
 			mysockaddr_extract_ip_port(&last_server, ip, &port);
-			log_debug(DEBUG_EXTRA, "Got forward address: %s#%u", ip, port);
+			log_debug(DEBUG_EXTRA, "Got forward address: %s#%u (%s:%i)", ip, port, short_path(file), line);
 		}
 	}
 	else
