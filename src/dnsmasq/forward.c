@@ -1163,6 +1163,8 @@ void reply_query(int fd, time_t now)
 
   server = daemon->serverarray[c];
 
+  FTL_header_analysis(header->hb4, RCODE(header), server, daemon->log_display_id);
+
   if (RCODE(header) != REFUSED)
     daemon->serverarray[first]->last_server = c;
   else if (daemon->serverarray[first]->last_server == c)
