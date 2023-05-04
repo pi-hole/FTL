@@ -369,7 +369,7 @@ end_of_add_message: // Close database connection
 	return rowid;
 }
 
-bool delete_message(const long id)
+bool delete_message(cJSON *ids)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -379,7 +379,7 @@ bool delete_message(const long id)
 	// Open database connection
 	if((db = dbopen(false)) == NULL)
 	{
-		log_err("delete_message(%li) - Failed to open DB", id);
+		log_err("delete_message() - Failed to open DB");
 		return false;
 	}
 
@@ -389,11 +389,23 @@ bool delete_message(const long id)
 		log_err("SQL error (%i): %s", sqlite3_errcode(db), sqlite3_errmsg(db));
 		return false;
 	}
-	sqlite3_bind_int(res, 1, id);
-	if(sqlite3_step(res) != SQLITE_DONE)
+
+	// Loop over id in ids array
+	cJSON *id = NULL;
+	cJSON_ArrayForEach(id, ids)
 	{
-		log_err("SQL error (%i): %s", sqlite3_errcode(db), sqlite3_errmsg(db));
-		return false;
+		// Bind id to prepared statement
+		const int idval = cJSON_GetNumberValue(id);
+		sqlite3_bind_int(res, 1, idval);
+
+		// Execute and finalize
+		if(sqlite3_step(res) != SQLITE_DONE)
+		{
+			log_err("SQL error (%i): %s", sqlite3_errcode(db), sqlite3_errmsg(db));
+			return false;
+		}
+		sqlite3_reset(res);
+		sqlite3_clear_bindings(res);
 	}
 	sqlite3_finalize(res);
 

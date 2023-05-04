@@ -183,6 +183,29 @@ components:
               application/json:
                 schema:
                   $ref: 'info.yaml#/components/schemas/messages'
+      delete:
+        summary: Delete Pi-hole diagnosis message
+        tags:
+          - "FTL information"
+        operationId: "delete_message"
+        parameters:
+          - $ref: 'info.yaml#/components/parameters/message_id'
+        description: |
+          *Note:* There will be no content on success. You may specify multiple IDs to delete multiple messages at once (comma-separated in the path like `1,2,3`)
+        responses:
+          '204':
+            description: Item deleted
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/bad_request'
+                examples:
+                  uri_error:
+                    $ref: 'info.yaml#/components/examples/errors/messages/uri_error'
+                  bad_request:
+                    $ref: 'info.yaml#/components/examples/errors/messages/bad_request'
     messages_count:
       get:
         summary: Get count of Pi-hole diagnosis messages
@@ -198,29 +221,6 @@ components:
               application/json:
                 schema:
                   $ref: 'info.yaml#/components/schemas/count'
-      delete:
-        summary: Delete Pi-hole diagnosis message
-        tags:
-          - "FTL information"
-        operationId: "delete_message"
-        parameters:
-          - $ref: 'info.yaml#/components/parameters/message_id'
-        description: |
-          *Note:* There will be no content on success.
-        responses:
-          '204':
-            description: Item deleted
-          '400':
-            description: Bad request
-            content:
-              application/json:
-                schema:
-                  $ref: 'common.yaml#/components/errors/bad_request'
-                examples:
-                  uri_error:
-                    $ref: 'info.yaml#/components/examples/errors/messages/uri_error'
-                  bad_request:
-                    $ref: 'info.yaml#/components/examples/errors/messages/bad_request'
     metrics:
       get:
         summary: Get metrics info

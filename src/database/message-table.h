@@ -16,7 +16,7 @@
 int count_messages(const bool filter_dnsmasq_warnings);
 bool format_messages(cJSON *array);
 bool create_message_table(sqlite3 *db);
-bool delete_message(const long id);
+bool delete_message(cJSON *ids);
 bool flush_message_table(void);
 void logg_regex_warning(const char *type, const char *warning, const int dbindex, const char *regex);
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,

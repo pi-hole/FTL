@@ -904,20 +904,38 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 		                       api->action_path);
 	}
 
-	// Parse ID
-	errno = 0;
-	const long id = strtol(api->item, NULL, 10);;
-	if(errno != 0 ||id == LONG_MIN || id == LONG_MAX || id < 0)
+	// Split ID at commas and validate every ID as a number
+	cJSON *ids = cJSON_CreateArray();
+	char *id = strdup(api->item);
+	char *saveptr = NULL;
+	char *token = strtok_r(id, ",", &saveptr);
+	while(token != NULL)
 	{
-		// Send error reply
-		return send_json_error(api, 400, // 400 Bad Request
-		                       "bad_request",
-		                       "Invalid ID in path",
-		                       api->action_path);
+		// Validate ID
+		char *endptr = NULL;
+		long int idval = strtol(token, &endptr, 10);
+		if(errno != 0 || endptr == token || *endptr != '\0' || idval < 0)
+		{
+			// Send error reply
+			free(id);
+			return send_json_error(api, 400, // 400 Bad Request
+			                       "uri_error",
+			                       "Invalid ID in path",
+			                       api->action_path);
+		}
+
+		cJSON_AddNumberToObject(ids, "id", idval);
+
+		// Get next token
+		token = strtok_r(NULL, ",", &saveptr);
 	}
 
 	// Delete message with this ID from the database
-	delete_message(id);
+	delete_message(ids);
+
+	// Free memory
+	free(id);
+	cJSON_free(ids);
 
 	// Send empty reply with code 204 No Content
 	cJSON *json = JSON_NEW_OBJECT();
