@@ -837,9 +837,6 @@ static char *parse_FTLconf(FILE *fp, const char *key)
 	// Go to beginning of file
 	fseek(fp, 0L, SEEK_SET);
 
-	if(config.debug & DEBUG_EXTRA)
-		logg("initial: conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
-
 	// Set size to zero if conflinebuffer is not available here
 	// This causes getline() to allocate memory for the buffer itself
 	if(conflinebuffer == NULL && size != 0)
@@ -848,11 +845,6 @@ static char *parse_FTLconf(FILE *fp, const char *key)
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{
-		if(config.debug & DEBUG_EXTRA)
-		{
-			logg("conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
-			logg("  while reading line \"%s\" looking for \"%s\"", conflinebuffer, keystr);
-		}
 		// Check if memory allocation failed
 		if(conflinebuffer == NULL)
 			break;

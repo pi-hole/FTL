@@ -2089,7 +2089,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
   unsigned char *packet = NULL;
   struct dns_header *new_header = NULL;
   
-  FTL_header_analysis(header->hb4, 0, server, daemon->log_display_id);
+  FTL_header_analysis(header->hb4, RCODE(header), server, daemon->log_display_id);
 
   while (1)
     {

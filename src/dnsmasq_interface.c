@@ -2614,7 +2614,12 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	{
 		memcpy(&last_server, &server->addr, sizeof(last_server));
 		if(config.debug & DEBUG_EXTRA)
-			logg("Got forward address: YES");
+		{
+			char ip[ADDRSTRLEN+1] = { 0 };
+			in_port_t port = 0;
+			mysockaddr_extract_ip_port(&last_server, ip, &port);
+			logg("Got forward address: %s#%u (%s:%i)", ip, port, short_path(file), line);
+		}
 	}
 	else
 	{
