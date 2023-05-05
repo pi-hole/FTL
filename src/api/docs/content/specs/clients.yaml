@@ -97,6 +97,27 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    suggestions:
+      get:
+        summary: Get client suggestions
+        tags:
+          - "Client management"
+        operationId: "get_client_suggestions"
+        description: |
+          Returns a list of unconfigured clients that have been seen by Pi-hole.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'clients.yaml#/components/schemas/suggestions'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
     direct:
       post:
         summary: Add new client
@@ -170,6 +191,32 @@ components:
         allOf:
           - $ref: 'clients.yaml#/components/schemas/comment'
           - $ref: 'clients.yaml#/components/schemas/groups'
+    suggestions:
+      type: object
+      properties:
+        clients:
+          type: array
+          items:
+            type: object
+            properties:
+              hwaddr:
+                type: string
+                example: "12:34:56:78:9A:BC"
+              macVendor:
+                type: string
+                nullable: true
+                example: "Espressif Inc."
+              lastQuery:
+                type: integer
+                example: 1683305917
+              addresses:
+                type: string
+                description: Comma-separated list of IP addresses
+                example: "127.0.0.1,::1"
+              names:
+                type: string
+                description: Comma-separated list of hostnames
+                example: "localhost"
     client:
       type: object
       properties:

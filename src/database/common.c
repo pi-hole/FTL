@@ -79,7 +79,7 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 	if(db) *db = NULL;
 }
 
-sqlite3* _dbopen(bool create, const char *func, const int line, const char *file)
+sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const int line, const char *file)
 {
 	// Silently return NULL if the database is known to be broken
 	if(FTLDBerror())
@@ -88,8 +88,8 @@ sqlite3* _dbopen(bool create, const char *func, const int line, const char *file
 	// Try to open database
 	log_debug(DEBUG_DATABASE, "Opening FTL database in %s() (%s:%i)", func, file, line);
 
-	int flags = SQLITE_OPEN_READWRITE;
-	if(create)
+	int flags = readonly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE;
+	if(create && !readonly)
 		flags |= SQLITE_OPEN_CREATE;
 
 	sqlite3 *db = NULL;
@@ -200,7 +200,7 @@ static bool create_counter_table(sqlite3* db)
 
 static bool db_create(void)
 {
-	sqlite3 *db = dbopen(true);
+	sqlite3 *db = dbopen(false, true);
 	if(db == NULL)
 		return false;
 
@@ -272,7 +272,7 @@ void db_init(void)
 	chmod_file(config.files.database.v.s, mode);
 
 	// Open database
-	sqlite3 *db = dbopen(false);
+	sqlite3 *db = dbopen(false, false);
 
 	// Return if database access failed
 	if(!db)
@@ -428,7 +428,7 @@ void db_init(void)
 
 		// Reopen database after low-level schema editing to reload the schema
 		dbclose(&db);
-		if(!(db = dbopen(false)))
+		if(!(db = dbopen(false, false)))
 			return;
 
 		// Get updated version
@@ -449,7 +449,7 @@ void db_init(void)
 
 		// Reopen database after low-level schema editing to reload the schema
 		dbclose(&db);
-		if(!(db = dbopen(false)))
+		if(!(db = dbopen(false, false)))
 			return;
 
 		// Get updated version

@@ -202,7 +202,7 @@ bool flush_message_table(void)
 
 	sqlite3 *db;
 	// Open database connection
-	if((db = dbopen(false)) == NULL)
+	if((db = dbopen(false, false)) == NULL)
 	{
 		log_err("flush_message_table() - Failed to open DB");
 		return false;
@@ -227,7 +227,7 @@ static int add_message(const enum message_type type,
 
 	sqlite3 *db;
 	// Open database connection
-	if((db = dbopen(false)) == NULL)
+	if((db = dbopen(false, false)) == NULL)
 	{
 		log_err("add_message() - Failed to open DB");
 		return rowid;
@@ -377,7 +377,7 @@ bool delete_message(cJSON *ids)
 
 	sqlite3 *db;
 	// Open database connection
-	if((db = dbopen(false)) == NULL)
+	if((db = dbopen(false, false)) == NULL)
 	{
 		log_err("delete_message() - Failed to open DB");
 		return false;
@@ -656,7 +656,7 @@ int count_messages(const bool filter_dnsmasq_warnings)
 
 	sqlite3 *db;
 	// Open database connection
-	if((db = dbopen(false)) == NULL)
+	if((db = dbopen(false, false)) == NULL)
 	{
 		log_err("count_messages() - Failed to open DB");
 		return count;
@@ -697,7 +697,7 @@ bool format_messages(cJSON *array)
 
 	sqlite3 *db;
 	// Open database connection
-	if((db = dbopen(false)) == NULL)
+	if((db = dbopen(false, false)) == NULL)
 	{
 		log_err("format_messages() - Failed to open DB");
 		return false;

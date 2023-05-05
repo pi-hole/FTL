@@ -43,7 +43,7 @@ int api_history_database(struct ftl_conn *api)
 	}
 
 	// Open the database
-	sqlite3 *db = dbopen(false);
+	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -210,7 +210,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	}
 
 	// Open the database
-	sqlite3 *db = dbopen(false);
+	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -383,7 +383,7 @@ int api_stats_database_summary(struct ftl_conn *api)
 	}
 
 	// Open the database
-	sqlite3 *db = dbopen(false);
+	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -457,7 +457,7 @@ int api_history_database_clients(struct ftl_conn *api)
 	}
 
 	// Open the database
-	sqlite3 *db = dbopen(false);
+	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -677,7 +677,7 @@ int api_stats_database_query_types(struct ftl_conn *api)
 	}
 
 	// Open the database
-	sqlite3 *db = dbopen(false);
+	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -725,7 +725,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	}
 
 	// Open the database
-	sqlite3 *db = dbopen(false);
+	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 		return send_json_error(api, 500,
 		                       "internal_error",

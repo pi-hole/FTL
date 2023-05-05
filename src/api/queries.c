@@ -21,7 +21,7 @@
 // get_memdb()
 #include "database/query-table.h"
 
-// dbopen(), dbclose()
+// dbopen(false, ), dbclose()
 #include "database/common.h"
 
 static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *querystr, const int max_count)

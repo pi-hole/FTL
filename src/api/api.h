@@ -67,6 +67,7 @@ int api_logs(struct ftl_conn *api);
 int api_network_gateway(struct ftl_conn *api);
 int api_network_interfaces(struct ftl_conn *api);
 int api_network_devices(struct ftl_conn *api);
+int api_client_suggestions(struct ftl_conn *api);
 
 // DNS methods
 int api_dns_blocking(struct ftl_conn *api);

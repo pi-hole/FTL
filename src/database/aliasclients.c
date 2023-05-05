@@ -223,7 +223,7 @@ void reset_aliasclient(sqlite3 *db, clientsData *client)
 	bool db_opened = false;
 	if(db == NULL)
 	{
-		if((db = dbopen(false)) == NULL)
+		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("Failed to open database in reimport_aliasclients()");
 			return;
@@ -300,7 +300,7 @@ void reimport_aliasclients(sqlite3 *db)
 	bool db_opened = false;
 	if(db == NULL)
 	{
-		if((db = dbopen(false)) == NULL)
+		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("Failed to open database in reimport_aliasclients()");
 			return;

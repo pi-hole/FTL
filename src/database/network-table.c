@@ -1808,7 +1808,7 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3* db, const char *ipaddr)
 	bool db_opened = false;
 	if(db == NULL)
 	{
-		if((db = dbopen(false)) == NULL)
+		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("getMACfromIP(\"%s\") - Failed to open DB", ipaddr);
 			return NULL;
@@ -1894,7 +1894,7 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr)
 	bool db_opened = false;
 	if(db == NULL)
 	{
-		if((db = dbopen(false)) == NULL)
+		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("getAliasclientIDfromIP(\"%s\") - Failed to open DB", ipaddr);
 			return DB_FAILED;
@@ -1983,7 +1983,7 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	bool db_opened = false;
 	if(db == NULL)
 	{
-		if((db = dbopen(false)) == NULL)
+		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("getNameFromIP(\"%s\") - Failed to open DB", ipaddr);
 			return NULL;
@@ -2123,7 +2123,7 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	bool db_opened = false;
 	if(db == NULL)
 	{
-		if((db = dbopen(false)) == NULL)
+		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("getIfaceFromIP(\"%s\") - Failed to open DB", ipaddr);
 			return NULL;

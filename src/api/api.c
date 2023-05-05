@@ -40,6 +40,7 @@ static struct {
 	{ "/api/auth/totp",                         "",                           generateTOTP,                          { false, true,  0               }, false, HTTP_GET },
 	{ "/api/auth",                              "",                           api_auth,                              { false, true,  0               }, false, HTTP_GET | HTTP_POST | HTTP_DELETE },
 	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { false, true,  0               }, true,  HTTP_GET | HTTP_POST },
+	{ "/api/clients/_suggestions",              "",                           api_client_suggestions,                { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/clients",                           "/{client}",                  api_list,                              { false, true,  0               }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/domains",                           "/{type}/{kind}/{domain}",    api_list,                              { false, true,  0               }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/search",                            "/{domain}",                  api_search,                            { false, true,  0               }, true,  HTTP_GET },

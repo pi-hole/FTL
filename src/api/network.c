@@ -18,8 +18,12 @@
 #include <dirent.h>
 // networkrecord
 #include "database/network-table.h"
-// dbopen()
+// dbopen(false, )
 #include "database/common.h"
+// attach_database()
+#include "database/query-table.h"
+// config struct
+#include "config/config.h"
 
 static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 {
@@ -322,7 +326,7 @@ int api_network_devices(struct ftl_conn *api)
 
 	// Open pihole-FTL.db database file
 	sqlite3_stmt *device_stmt = NULL, *ip_stmt = NULL;
-	sqlite3 *db = dbopen(false);
+	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 	{
 		log_warn("Failed to open database in networkTable_readDevices()");
@@ -413,3 +417,105 @@ int api_network_devices(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(json, "devices", devices);
 	JSON_SEND_OBJECT(json);
 }
+
+int api_client_suggestions(struct ftl_conn *api)
+{
+	// Get client suggestions
+	if(api->method != HTTP_GET)
+	{
+		// This results in error 404
+		return 0;
+	}
+
+	// Does the user request a custom number of addresses per device to be included?
+	unsigned int count = 50;
+	get_uint_var(api->request->query_string, "count", &count);
+
+	bool ipv4_only = true;
+	get_bool_var(api->request->query_string, "ipv4_only", &ipv4_only);
+
+	// Open pihole-FTL.db database file connection
+	sqlite3 *db = dbopen(true, false);
+
+	// Attach gravity database
+	const char *message = "";
+	if(!attach_database(db, &message, config.files.gravity.v.s, "g"))
+	{
+		log_err("Failed to attach gravity database: %s", message);
+		dbclose(&db);
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not attach gravity database",
+		                       message);
+	}
+
+	// Prepare SQL statement
+	sqlite3_stmt *stmt = NULL;
+	const char *sql = "SELECT n.hwaddr,n.macVendor,n.lastQuery,"
+	                  "(SELECT GROUP_CONCAT(DISTINCT na.ip) "
+	                    "FROM network_addresses na "
+	                      "WHERE na.network_id = n.id),"
+	                  "(SELECT GROUP_CONCAT(DISTINCT na.name) "
+	                    "FROM network_addresses na "
+	                      "WHERE na.network_id = n.id) "
+	                  "FROM network n "
+	                  "ORDER BY lastQuery DESC LIMIT ?";
+
+	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
+	{
+		log_err("Failed to prepare SQL statement: %s", sqlite3_errmsg(db));
+		dbclose(&db);
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not prepare SQL statement",
+		                       sqlite3_errmsg(db));
+	}
+
+	// Bind parameters
+	if(sqlite3_bind_int(stmt, 1, count) != SQLITE_OK)
+	{
+		log_err("Failed to bind parameter: %s", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		dbclose(&db);
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not bind parameter",
+		                       sqlite3_errmsg(db));
+	}
+
+	// Execute SQL statement
+	cJSON *clients = JSON_NEW_ARRAY();
+	while(sqlite3_step(stmt) == SQLITE_ROW)
+	{
+		cJSON *client = JSON_NEW_OBJECT();
+		JSON_COPY_STR_TO_OBJECT(client, "hwaddr", sqlite3_column_text(stmt, 0));
+		JSON_COPY_STR_TO_OBJECT(client, "macVendor", sqlite3_column_text(stmt, 1));
+		JSON_ADD_NUMBER_TO_OBJECT(client, "lastQuery", sqlite3_column_int(stmt, 2));
+		JSON_COPY_STR_TO_OBJECT(client, "addresses", sqlite3_column_text(stmt, 3));
+		JSON_COPY_STR_TO_OBJECT(client, "names", sqlite3_column_text(stmt, 4));
+		JSON_ADD_ITEM_TO_ARRAY(clients, client);
+	}
+
+	// Finalize query
+	sqlite3_finalize(stmt);
+
+	// Detach gravity database
+	if(!detach_database(db, &message, "g"))
+	{
+		log_err("Failed to detach gravity database: %s", message);
+		dbclose(&db);
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not detach gravity database",
+		                       message);
+	}
+
+	// Close database connection
+	dbclose(&db);
+
+	// Return data to user
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
+	JSON_SEND_OBJECT(json);
+}
+

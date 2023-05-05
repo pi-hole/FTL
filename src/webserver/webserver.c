@@ -66,23 +66,29 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 		}
 	}
 
+	// Get requested URI
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	const char *uri = request->local_uri_raw;
+
 	// API debug logging
 	if(config.debug.api.v.b)
 	{
 		log_debug(DEBUG_API, "Host header: \"%s\", extracted host: \"%.*s\"", host, (int)host_len, host);
 
-		// Get requested URI
-		const struct mg_request_info *request = mg_get_request_info(conn);
-		const char *uri = request->local_uri_raw;
-
 		log_debug(DEBUG_API, "URI: %s", uri);
 	}
 
-	// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
+	// Check if the requested host is the configured (defaulting to pi.hole)
+	// Do not redirect if the host is anything else, e.g. localhost or a
+	// blocked domain in IP blocking mode
 	if(host != NULL && strncmp(host, config.webserver.domain.v.s, host_len) == 0)
 	{
-		mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
-		return 1;
+		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
+		if(strcmp(uri, "/") == 0)
+		{
+			mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
+			return 1;
+		}
 	}
 
 	// else: Not redirecting
@@ -229,6 +235,7 @@ void http_init(void)
 	// Register / and *.lp handler
 	mg_set_request_handler(ctx, "**/$", request_handler, NULL);
 	mg_set_request_handler(ctx, "**.lp$", request_handler, NULL);
+	mg_set_request_handler(ctx, "*/api/**", request_handler, NULL);
 
 	// Prepare prerequesites for Lua
 	allocate_lua();

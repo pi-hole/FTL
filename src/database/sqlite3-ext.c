@@ -180,6 +180,38 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	sqlite3_result_int(context, match ? cidr : 0);
 }
 
+// Identify IPv6 addresses
+static void isIPv6_impl(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
+	// Exactly one argument should be submitted to this routine
+	if(argc != 1)
+	{
+		sqlite3_result_error(context, "Passed an invalid number of arguments", -1);
+		return;
+	}
+
+	// Return NO MATCH if invoked with non-TEXT argument
+	if (sqlite3_value_type(argv[0]) != SQLITE_TEXT)
+	{
+		sqlite3_result_error(context, "Invoked isIPv6() with non-text argument", -1);
+		return;
+	}
+
+	const char *input = (const char*)sqlite3_value_text(argv[0]);
+	if(input == NULL)
+	{
+		sqlite3_result_error(context, "Invoked isIPv6() with NULL argument", -1);
+		return;
+	}
+
+	struct in6_addr addr;
+	if(inet_pton(AF_INET6, input, &addr) == 1)
+		sqlite3_result_int(context, 1);
+
+	// Not an IPv6 address
+	sqlite3_result_int(context, 0);
+}
+
 int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const struct sqlite3_api_routines *pApi)
 {
 	(void)pzErrMsg;  /* Unused parameter */
@@ -193,6 +225,18 @@ int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const str
 	if(rc != SQLITE_OK)
 	{
 		log_err("Error while initializing the SQLite3 extension subnet_match: %s",
+		        sqlite3_errstr(rc));
+	}
+
+	// Register new sqlite function isIPv6 taking 1 argument in UTF8 format.
+	// The function is deterministic in the sense of always returning the same output for the same input.
+	// We define a scalar function here so the last two pointers are NULL.
+	rc = sqlite3_create_function(db, "isIPv6", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL,
+	                                 isIPv6_impl, NULL, NULL);
+
+	if(rc != SQLITE_OK)
+	{
+		log_err("Error while initializing the SQLite3 extension isIPv6: %s",
 		        sqlite3_errstr(rc));
 	}
 

@@ -57,7 +57,7 @@ static bool delete_old_queries_in_DB(sqlite3 *db)
 	return true;
 }
 
-#define DBOPEN_OR_AGAIN() { if(!db) db = dbopen(false); if(!db) { thread_sleepms(DB, 5000); continue; } }
+#define DBOPEN_OR_AGAIN() { if(!db) db = dbopen(false, false); if(!db) { thread_sleepms(DB, 5000); continue; } }
 #define BREAK_IF_KILLED() { if(killed) break; }
 #define DBCLOSE_OR_BREAK() { dbclose(&db); BREAK_IF_KILLED(); }
 

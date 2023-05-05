@@ -41,6 +41,7 @@ components:
           Items may be updated by replacing them. `{name}` is required.
 
           Ensure to send all the required parameters (such as `comment`) to ensure these properties are retained.
+          By specifying a different `name`, the group with the former name as specified in the URI will be renamed.
           The read-only fields `id` and `date_added` are preserved, `date_modified` is automatically updated on success.
         requestBody:
           description: Callback payload
@@ -157,6 +158,7 @@ components:
                 - $ref: 'groups.yaml#/components/schemas/readonly'
       put:
         allOf:
+          - $ref: 'groups.yaml#/components/schemas/name'
           - $ref: 'groups.yaml#/components/schemas/comment'
           - $ref: 'groups.yaml#/components/schemas/enabled'
       post:

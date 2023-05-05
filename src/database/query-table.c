@@ -209,26 +209,44 @@ static void log_in_memory_usage(void)
 // Attach disk database to in-memory database
 bool attach_disk_database(const char **message)
 {
+	return attach_database(memdb, message, config.files.database.v.s, "disk");
+}
+
+// Attach database using specified path and alias
+bool attach_database(sqlite3* db, const char **message, const char *path, const char *alias)
+{
 	int rc;
 	bool okay = false;
 	sqlite3_stmt *stmt = NULL;
 
-	log_debug(DEBUG_DATABASE, "memdb: ATTACH %s AS disk", config.files.database.v.s);
+	log_debug(DEBUG_DATABASE, "ATTACH %s AS %s", path, alias);
 
 	// ATTACH database file on-disk
-	rc = sqlite3_prepare_v2(memdb, "ATTACH ? AS disk", -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, "ATTACH ? AS ?", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		if( rc != SQLITE_BUSY )
-			log_err("attach_disk_database(): Prepare error: %s", sqlite3_errstr(rc));
+			log_err("attach_database(): Prepare error: %s", sqlite3_errstr(rc));
 		if(message != NULL)
 			*message = sqlite3_errstr(rc);
 		return false;
 	}
-	// Bind path to prepared index
-	if((rc = sqlite3_bind_text(stmt, 1, config.files.database.v.s, -1, SQLITE_STATIC)) != SQLITE_OK)
+
+	// Bind path to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, path, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		log_err("attach_disk_database(): Failed to bind path: %s",
+		log_err("attach_database(): Failed to bind path: %s",
+		        sqlite3_errstr(rc));
+		if(message != NULL)
+			*message = sqlite3_errstr(rc);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Bind alias to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 2, alias, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		log_err("attach_database(): Failed to bind alias: %s",
 		        sqlite3_errstr(rc));
 		if(message != NULL)
 			*message = sqlite3_errstr(rc);
@@ -241,7 +259,7 @@ bool attach_disk_database(const char **message)
 		okay = true;
 	else
 	{
-		log_err("attach_disk_database(): Failed to attach database: %s",
+		log_err("attach_database(): Failed to attach database: %s",
 		        sqlite3_errstr(rc));
 		if(message != NULL)
 			*message = sqlite3_errstr(rc);
@@ -256,22 +274,55 @@ bool attach_disk_database(const char **message)
 // Detach disk database to in-memory database
 bool detach_disk_database(const char **message)
 {
+	return detach_database(memdb, message, "disk");
+}
+
+// Detach a previously attached database by its alias
+bool detach_database(sqlite3* db, const char **message, const char *alias)
+{
 	int rc;
+	bool okay = false;
+	sqlite3_stmt *stmt = NULL;
 
-	log_debug(DEBUG_DATABASE, "memdb: DETACH disk");
+	log_debug(DEBUG_DATABASE, "DETACH %s", alias);
 
-	// Detach database
-	rc = sqlite3_exec(memdb, "DETACH disk", NULL, NULL, NULL);
-	if( rc != SQLITE_OK ){
-		log_err("detach_disk_database() failed: %s",
-		        sqlite3_errstr(rc));
+	// DETACH database file on-disk
+	rc = sqlite3_prepare_v2(db, "DETACH ?", -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			log_err("detach_database(): Prepare error: %s", sqlite3_errstr(rc));
 		if(message != NULL)
 			*message = sqlite3_errstr(rc);
-		sqlite3_close(memdb);
 		return false;
 	}
 
-	return true;
+	// Bind alias to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, alias, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		log_err("detach_database(): Failed to bind alias: %s",
+		        sqlite3_errstr(rc));
+		if(message != NULL)
+			*message = sqlite3_errstr(rc);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Perform step
+	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+		okay = true;
+	else
+	{
+		log_err("detach_database(): Failed to detach database: %s",
+		        sqlite3_errstr(rc));
+		if(message != NULL)
+			*message = sqlite3_errstr(rc);
+	}
+
+	// Finalize statement
+	sqlite3_finalize(stmt);
+
+	return okay;
 }
 
 // Get number of queries either in the temp or in the on-diks database
@@ -534,7 +585,7 @@ bool export_queries_to_disk(bool final)
 
 	if(insertions > 0)
 	{
-		sqlite3 *db = dbopen(false);
+		sqlite3 *db = dbopen(false, false);
 		if(db != NULL)
 		{
 			db_set_FTL_property_double(db, DB_LASTTIMESTAMP, new_last_timestamp);

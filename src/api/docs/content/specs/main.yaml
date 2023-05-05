@@ -138,6 +138,9 @@ paths:
   /clients:
     $ref: 'clients.yaml#/components/paths/direct'
 
+  /clients/_suggestions:
+    $ref: 'clients.yaml#/components/paths/suggestions'
+
   /lists/{list}:
     $ref: 'lists.yaml#/components/paths/list'
 

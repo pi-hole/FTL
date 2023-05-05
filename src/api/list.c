@@ -173,7 +173,7 @@ static int api_list_write(struct ftl_conn *api,
 
 	if(api->method == HTTP_POST)
 	{
-		// Extract domain/name/client/address from payload whe using POST, all
+		// Extract domain/name/client/address from payload when using POST, all
 		// others specify it as URI-component
 		cJSON *json_domain, *json_name, *json_address, *json_client;
 		switch(listtype)
@@ -274,6 +274,12 @@ static int api_list_write(struct ftl_conn *api,
 		row.enabled = cJSON_IsTrue(json_enabled);
 	else
 		row.enabled = true; // Default value
+
+	cJSON *json_name = cJSON_GetObjectItemCaseSensitive(api->payload.json, "name");
+	if(cJSON_IsString(json_name) && strlen(json_name->valuestring) > 0)
+		row.name = json_name->valuestring;
+	else
+		row.name = NULL; // Default value
 
 	bool okay = true;
 	char *regex_msg = NULL;
