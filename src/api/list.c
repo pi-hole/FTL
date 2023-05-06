@@ -503,7 +503,7 @@ int api_list(struct ftl_conn *api)
 		return send_json_error(api, 400,
 		                       "uri_error",
 		                       "Invalid request: Specify list to modify more precisely",
-		                       NULL);
+		                       api->request->local_uri_raw);
 	}
 	else
 	{
