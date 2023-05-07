@@ -1577,10 +1577,14 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 				           "WHERE name = :item";
 			}
 		else if(listtype == GRAVITY_ADLISTS)
-			querystr = "REPLACE INTO adlist (address,enabled,comment,id,date_added) "
+			querystr = "REPLACE INTO adlist (address,enabled,comment,id,date_added,date_updated,number,invalid_domains,status) "
 			           "VALUES (:item,:enabled,:comment,"
 			                   "(SELECT id FROM adlist WHERE address = :item),"
-			                   "(SELECT date_added FROM adlist WHERE address = :item));";
+			                   "(SELECT date_added FROM adlist WHERE address = :item),"
+			                   "(SELECT date_updated FROM adlist WHERE address = :item),"
+			                   "(SELECT number FROM adlist WHERE address = :item),"
+			                   "(SELECT invalid_domains FROM adlist WHERE address = :item),"
+			                   "(SELECT status FROM adlist WHERE address = :item));";
 		else if(listtype == GRAVITY_CLIENTS)
 			querystr = "REPLACE INTO client (ip,comment,id,date_added) "
 			           "VALUES (:item,:comment,"
