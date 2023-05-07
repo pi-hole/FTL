@@ -21,6 +21,7 @@ components:
                     - $ref: 'info.yaml#/components/schemas/client/http_version'
                     - $ref: 'info.yaml#/components/schemas/client/method'
                     - $ref: 'info.yaml#/components/schemas/client/headers'
+                    - $ref: 'common.yaml#/components/schemas/took'
     logs:
       dns:
         get:
@@ -47,12 +48,15 @@ components:
                     allOf:
                       - $ref: 'info.yaml#/components/schemas/logs/dns/log'
                       - $ref: 'info.yaml#/components/schemas/logs/dns/nextID'
+                      - $ref: 'common.yaml#/components/schemas/took'
             '401':
               description: Unauthorized
               content:
                 application/json:
                   schema:
-                    $ref: 'common.yaml#/components/errors/unauthorized'
+                    allOf:
+                      - $ref: 'common.yaml#/components/errors/unauthorized'
+                      - $ref: 'common.yaml#/components/schemas/took'
     system:
       get:
         summary: Get info about various system parameters
@@ -67,13 +71,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'info.yaml#/components/schemas/system'
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/system'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     host:
       get:
         summary: Get info about various host parameters
@@ -88,13 +96,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'info.yaml#/components/schemas/host'
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/host'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     ftl:
       get:
         summary: Get info about various ftl parameters
@@ -109,13 +121,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'info.yaml#/components/schemas/ftl'
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/ftl'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     sensors:
       get:
         summary: Get info about various sensors
@@ -130,13 +146,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'info.yaml#/components/schemas/sensors'
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/sensors'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     database:
       get:
         summary: Get info about long-term database
@@ -153,6 +173,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'info.yaml#/components/schemas/database'
+                    - $ref: 'common.yaml#/components/schemas/took'
     version:
       get:
         summary: Get Pi-hole version
@@ -167,7 +188,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'info.yaml#/components/schemas/version'
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/version'
+                    - $ref: 'common.yaml#/components/schemas/took'
     messages:
       get:
         summary: Get Pi-hole diagnosis messages
@@ -182,7 +205,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'info.yaml#/components/schemas/messages'
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/messages'
+                    - $ref: 'common.yaml#/components/schemas/took'
       delete:
         summary: Delete Pi-hole diagnosis message
         tags:
@@ -200,7 +225,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/bad_request'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   uri_error:
                     $ref: 'info.yaml#/components/examples/errors/messages/uri_error'
@@ -220,7 +247,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'info.yaml#/components/schemas/count'
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/count'
+                    - $ref: 'common.yaml#/components/schemas/took'
     metrics:
       get:
         summary: Get metrics info
@@ -235,7 +264,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'info.yaml#/components/schemas/metrics'
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/metrics'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   metrics:
                     $ref: 'info.yaml#/components/examples/metrics'
@@ -244,7 +275,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
 
   schemas:
     client:

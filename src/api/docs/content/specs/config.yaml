@@ -17,7 +17,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'config.yaml#/components/schemas/config'
+                  allOf:
+                    - $ref: 'config.yaml#/components/schemas/config'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   config:
                     $ref: 'config.yaml#/components/examples/config'
@@ -26,7 +28,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
       patch:
         summary: Change configuration of your Pi-hole
         tags:
@@ -39,7 +43,9 @@ components:
           content:
             application/json:
               schema:
-                $ref: 'config.yaml#/components/schemas/config'
+                allOf:
+                  - $ref: 'config.yaml#/components/schemas/config'
+                  - $ref: 'common.yaml#/components/schemas/took'
               examples:
                 config_one:
                   $ref: 'config.yaml#/components/examples/config_one'
@@ -53,7 +59,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'config.yaml#/components/schemas/config'
+                  allOf:
+                    - $ref: 'config.yaml#/components/schemas/config'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   config:
                     $ref: 'config.yaml#/components/examples/config'
@@ -62,7 +70,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     config_elem:
       get:
         summary: Get specific part of current configuration of your Pi-hole
@@ -83,7 +93,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     config_elem_value:
       put:
         summary: Add config array item
@@ -103,7 +115,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/bad_request'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   invalid_path_depth:
                     $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
@@ -114,7 +128,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
       delete:
         summary: Delete config array item
         tags:
@@ -133,7 +149,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/bad_request'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   invalid_path_depth:
                     $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
@@ -144,7 +162,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
 
   schemas:
     config:

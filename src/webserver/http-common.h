@@ -46,6 +46,7 @@ struct ftl_conn {
 	char *action_path;
 	const char *item;
 	int user_id;
+	double now;
 	struct {
 		bool avail;
 		char *raw;

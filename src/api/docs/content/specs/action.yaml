@@ -74,12 +74,18 @@ components:
         responses:
           '200':
             description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     poweroff:
       post:
         summary: Poweroff the system
@@ -91,9 +97,15 @@ components:
         responses:
           '200':
             description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'

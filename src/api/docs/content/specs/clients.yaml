@@ -22,7 +22,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'clients.yaml#/components/schemas/clients/get'
+                  allOf:
+                    - $ref: 'clients.yaml#/components/schemas/clients/get'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   clients:
                     $ref: 'clients.yaml#/components/examples/clients'
@@ -31,7 +33,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
       put:
         summary: Replace client
         tags:
@@ -47,20 +51,26 @@ components:
           content:
             application/json:
               schema:
-                $ref: 'clients.yaml#/components/schemas/clients/put'
+                allOf:
+                  - $ref: 'clients.yaml#/components/schemas/clients/put'
+                  - $ref: 'common.yaml#/components/schemas/took'
         responses:
           '201':
             description: Created item
             content:
               application/json:
                 schema:
-                  $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
+                  allOf:
+                    - $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
+                    - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/bad_request'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   item_missing:
                     $ref: 'clients.yaml#/components/examples/errors/uri_error/item_missing'
@@ -71,7 +81,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
       delete:
         summary: Delete client
         tags:
@@ -87,7 +99,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/bad_request'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   item_missing:
                     $ref: 'clients.yaml#/components/examples/errors/uri_error/item_missing'
@@ -96,7 +110,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     suggestions:
       get:
         summary: Get client suggestions
@@ -111,13 +127,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'clients.yaml#/components/schemas/suggestions'
+                  allOf:
+                    - $ref: 'clients.yaml#/components/schemas/suggestions'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     direct:
       post:
         summary: Add new client
@@ -141,14 +161,18 @@ components:
           content:
             'application/json':
               schema:
-                $ref: 'clients.yaml#/components/schemas/clients/post'
+                allOf:
+                  - $ref: 'clients.yaml#/components/schemas/clients/post'
+                  - $ref: 'common.yaml#/components/schemas/took'
         responses:
           '201':
             description: Created item
             content:
               application/json:
                 schema:
-                  $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
+                  allOf:
+                    - $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
+                    - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
                 $ref: 'common.yaml#/components/headers/Location'
@@ -157,7 +181,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/bad_request'
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/took'
+                    - $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
                   no_payload:
                     $ref: 'clients.yaml#/components/examples/errors/bad_request/no_payload'
@@ -168,7 +194,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/took'
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     clients:
       get:

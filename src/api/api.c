@@ -104,6 +104,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		NULL,
 		NULL,
 		API_AUTH_UNAUTHORIZED,
+		double_time(),
 		{ false, NULL, NULL, NULL, 0u },
 		{ false },
 		{ false, false, 0 }

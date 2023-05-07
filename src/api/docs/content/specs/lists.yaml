@@ -22,7 +22,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'lists.yaml#/components/schemas/lists/get'
+                  allOf:
+                    - $ref: 'lists.yaml#/components/schemas/lists/get'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   lists:
                     $ref: 'lists.yaml#/components/examples/lists'
@@ -31,7 +33,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
       put:
         summary: Replace list
         tags:
@@ -54,13 +58,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'lists.yaml#/components/schemas/lists/get' # identical to GET
+                  allOf:
+                    - $ref: 'lists.yaml#/components/schemas/lists/get' # identical to GET
+                    - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/bad_request'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   item_missing:
                     $ref: 'lists.yaml#/components/examples/errors/uri_error/item_missing'
@@ -71,7 +79,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
       delete:
         summary: Delete list
         tags:
@@ -87,7 +97,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/bad_request'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   item_missing:
                     $ref: 'lists.yaml#/components/examples/errors/uri_error/item_missing'
@@ -96,7 +108,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     direct:
       post:
         summary: Add new list
@@ -127,7 +141,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'lists.yaml#/components/schemas/lists/get'
+                  allOf:
+                    - $ref: 'lists.yaml#/components/schemas/lists/get'
+                    - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
                 $ref: 'common.yaml#/components/headers/Location'
@@ -136,7 +152,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/bad_request'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   no_payload:
                     $ref: 'lists.yaml#/components/examples/errors/bad_request/no_payload'
@@ -147,7 +165,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     lists:
       get:

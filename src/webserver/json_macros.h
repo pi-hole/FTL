@@ -166,6 +166,7 @@
 #define JSON_DELETE(object) cJSON_Delete(object)
 
 #define JSON_SEND_OBJECT(object)({ \
+	cJSON_AddNumberToObject(object, "took", double_time() - api->now);\
 	char *json_string = json_formatter(object); \
 	if(json_string == NULL) \
 	{ \
@@ -181,6 +182,7 @@
 })
 
 #define JSON_SEND_OBJECT_UNLOCK(object)({ \
+	cJSON_AddNumberToObject(object, "took", double_time() - api->now);\
 	char *json_string = json_formatter(object); \
 	if(json_string == NULL) \
 	{ \
@@ -198,6 +200,7 @@
 })
 
 #define JSON_SEND_OBJECT_CODE(object, code)({ \
+	cJSON_AddNumberToObject(object, "took", double_time() - api->now);\
 	char *json_string = json_formatter(object); \
 	if(json_string == NULL) \
 	{ \

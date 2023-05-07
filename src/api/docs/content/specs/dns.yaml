@@ -22,6 +22,7 @@ components:
                   allOf:
                     - $ref: 'dns.yaml#/components/schemas/blocking'
                     - $ref: 'dns.yaml#/components/schemas/timer'
+                    - $ref: 'common.yaml#/components/schemas/took'
       post:
         summary: Change current blocking status
         tags:
@@ -42,6 +43,7 @@ components:
                 allOf:
                   - $ref: 'dns.yaml#/components/schemas/blocking'
                   - $ref: 'dns.yaml#/components/schemas/timer'
+                  - $ref: 'common.yaml#/components/schemas/took'
         responses:
           '200':
             description: OK
@@ -51,20 +53,25 @@ components:
                   allOf:
                     - $ref: 'dns.yaml#/components/schemas/blocking'
                     - $ref: 'dns.yaml#/components/schemas/timer'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
               application/json:
                 schema:
-                  oneOf:
-                  - $ref: 'dns.yaml#/components/schemas/errors/no_payload'
-                  - $ref: 'dns.yaml#/components/schemas/errors/item_missing'
+                  allOf:
+                    - oneOf:
+                      - $ref: 'dns.yaml#/components/schemas/errors/no_payload'
+                      - $ref: 'dns.yaml#/components/schemas/errors/item_missing'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     blocking:
       type: object

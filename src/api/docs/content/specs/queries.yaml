@@ -116,13 +116,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'queries.yaml#/components/schemas/queries'
+                  allOf:
+                    - $ref: 'queries.yaml#/components/schemas/queries'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
 
     suggestions:
       get:
@@ -138,13 +142,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'queries.yaml#/components/schemas/suggestions'
+                  allOf:
+                    - $ref: 'queries.yaml#/components/schemas/suggestions'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
 
   schemas:
     queries:

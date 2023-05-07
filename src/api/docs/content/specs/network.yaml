@@ -16,13 +16,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'network.yaml#/components/schemas/gateway'
+                  allOf:
+                    - $ref: 'network.yaml#/components/schemas/gateway'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     interfaces:
       get:
         summary: Get info about the interfaces of your Pi-hole
@@ -37,13 +41,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'network.yaml#/components/schemas/interfaces'
+                  allOf:
+                    - $ref: 'network.yaml#/components/schemas/interfaces'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     devices:
       get:
         summary: Get info about the devices in your local network as seen by your Pi-hole
@@ -61,13 +69,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'network.yaml#/components/schemas/devices'
+                  allOf:
+                    - $ref: 'network.yaml#/components/schemas/devices'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     devices_id:
       delete:
         summary: Delete a device from the network table
@@ -86,7 +98,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     gateway:
       type: object

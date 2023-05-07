@@ -990,7 +990,7 @@
 @test "HTTP server responds with JSON error 404 to unknown API path" {
   run bash -c 'curl -s 127.0.0.1:8080/api/undefined'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "{\"error\":{\"key\":\"not_found\",\"message\":\"Not found\",\"hint\":\"/api/undefined\"}}" ]]
+  [[ ${lines[0]} == '{"error":{"key":"not_found","message":"Not found","hint":"/api/undefined"},"took":'*'}' ]]
 }
 
 @test "HTTP server responds with normal error 404 to path outside /admin" {
@@ -1242,7 +1242,7 @@
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1:8080/api/auth'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '{"challenge":null,"session":{"valid":true,"totp":false,"sid":null,"validity":-1}}' ]]
+  [[ ${lines[0]} == '{"challenge":null,"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"took":'*'}' ]]
 }
 
 @test "API authorization (with password): FTL challenges us" {

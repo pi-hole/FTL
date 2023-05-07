@@ -23,7 +23,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
       post:
         summary: Import Pi-hole settings
         tags:
@@ -46,7 +48,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'teleporter.yaml#/components/schemas/teleporter/post'
+                  allOf:
+                    - $ref: 'teleporter.yaml#/components/schemas/teleporter/post'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   teleporter:
                     $ref: 'teleporter.yaml#/components/examples/teleporter'
@@ -55,13 +59,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'teleporter.yaml#/components/errors/invalid_zip'
+                  allOf:
+                    - $ref: 'teleporter.yaml#/components/errors/invalid_zip'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     teleporter:
       post:

@@ -1,5 +1,13 @@
 openapi: 3.0.2
 components:
+  schemas:
+    took:
+      type: object
+      properties:
+        took:
+          type: number
+          description: Time in seconds it took to process the request
+          example: 0.003
   errors:
     bad_request:
       type: object

@@ -19,7 +19,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'auth.yaml#/components/schemas/session'
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/session'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   login_okay:
                     $ref: 'auth.yaml#/components/examples/login_okay'
@@ -46,7 +48,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'auth.yaml#/components/schemas/session'
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/session'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   login_okay:
                     $ref: 'auth.yaml#/components/examples/login_okay'
@@ -57,7 +61,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'auth.yaml#/components/errors/bad_request'
+                  allOf:
+                    - $ref: 'auth.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   no_payload:
                     $ref: 'auth.yaml#/components/examples/errors/no_payload'
@@ -70,7 +76,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
       delete:
         summary: Delete session
         tags:
@@ -86,7 +94,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'auth.yaml#/components/schemas/session'
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/session'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   no_login_required:
                     $ref: 'auth.yaml#/components/examples/no_login_required'
@@ -95,13 +105,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '410':
             description: Gone
             content:
               application/json:
                 schema:
-                  $ref: 'auth.yaml#/components/schemas/session'
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/session'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   login_failed:
                     $ref: 'auth.yaml#/components/examples/login_failed'
@@ -118,13 +132,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'auth.yaml#/components/schemas/sessions_list'
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/sessions_list'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     totp:
       get:
         summary: Suggest new TOTP credentials
@@ -138,13 +156,17 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'auth.yaml#/components/schemas/totp'
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/totp'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     session:
       delete:
         summary: Delete session by ID
@@ -163,7 +185,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'auth.yaml#/components/errors/bad_request'
+                  allOf:
+                    - $ref: 'auth.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   missing_session_id:
                     $ref: 'auth.yaml#/components/examples/errors/missing_session_id'
@@ -176,7 +200,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
 
   schemas:
     session:

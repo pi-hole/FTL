@@ -24,13 +24,17 @@ components:
               content:
                 application/json:
                   schema:
-                    $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
+                    allOf:
+                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
+                      - $ref: 'common.yaml#/components/schemas/took'
             '401':
               description: Unauthorized
               content:
                 application/json:
                   schema:
-                    $ref: 'common.yaml#/components/errors/unauthorized'
+                    allOf:
+                      - $ref: 'common.yaml#/components/errors/unauthorized'
+                      - $ref: 'common.yaml#/components/schemas/took'
       ftl:
         get:
           summary: Get DNS log content
@@ -53,13 +57,17 @@ components:
               content:
                 application/json:
                   schema:
-                    $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
+                    allOf:
+                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
+                      - $ref: 'common.yaml#/components/schemas/took'
             '401':
               description: Unauthorized
               content:
                 application/json:
                   schema:
-                    $ref: 'common.yaml#/components/errors/unauthorized'
+                    allOf:
+                      - $ref: 'common.yaml#/components/errors/unauthorized'
+                      - $ref: 'common.yaml#/components/schemas/took'
       webserver:
         get:
           summary: Get DNS log content
@@ -82,13 +90,17 @@ components:
               content:
                 application/json:
                   schema:
-                    $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
+                    allOf:
+                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
+                      - $ref: 'common.yaml#/components/schemas/took'
             '401':
               description: Unauthorized
               content:
                 application/json:
                   schema:
-                    $ref: 'common.yaml#/components/errors/unauthorized'
+                    allOf:
+                      - $ref: 'common.yaml#/components/errors/unauthorized'
+                      - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     logs:
       dnsmasq:
