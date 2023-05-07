@@ -2060,7 +2060,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			else
 				filter = " WHERE g.domain LIKE :item";
 		}
-		snprintf(querystr, buflen, "SELECT domain,a.id,a.address,a.enabled,a.date_added,a.date_modified,a.comment,"
+		snprintf(querystr, buflen, "SELECT domain,a.id,a.address,a.enabled,a.date_added,a.date_modified,a.comment,a.date_updated,a.number,a.invalid_domains,a.status,"
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group ag WHERE ag.adlist_id = g.adlist_id) AS group_ids "
 		                                     "FROM gravity g JOIN adlist a ON a.id = g.adlist_id %s;", filter);
 	}

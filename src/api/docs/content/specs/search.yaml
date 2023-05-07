@@ -121,6 +121,22 @@ components:
                     type: integer
                     description: Unix timestamp of last adlist modification
                     example: 1664624500
+                  date_updated:
+                    type: integer
+                    description: Unix timestamp of last local update of this list
+                    example: 1664624500
+                  number:
+                    type: integer
+                    description: Number of domains in the adlist
+                    example: 7
+                  invalid_domains:
+                    type: integer
+                    description: Number of invalid domains in the adlist
+                    example: 0
+                  status:
+                    type: integer
+                    description: Status of the adlist
+                    example: 1
                   groups:
                     type: array
                     description: Array of IDs corresponding to associated groups

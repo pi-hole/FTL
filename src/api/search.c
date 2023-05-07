@@ -62,6 +62,15 @@ static int search_table(struct ftl_conn *api,
 		JSON_ADD_NUMBER_TO_OBJECT(row, "date_added", table.date_added);
 		JSON_ADD_NUMBER_TO_OBJECT(row, "date_modified", table.date_modified);
 
+		if(listtype == GRAVITY_GRAVITY)
+		{
+			// Add gravity specific parameters
+			JSON_ADD_NUMBER_TO_OBJECT(row, "date_updated", table.date_updated);
+			JSON_ADD_NUMBER_TO_OBJECT(row, "number", table.number);
+			JSON_ADD_NUMBER_TO_OBJECT(row, "invalid_domains", table.invalid_domains);
+			JSON_ADD_NUMBER_TO_OBJECT(row, "status", table.status);
+		}
+
 		if(table.group_ids != NULL)
 		{
 			// Black magic at work here: We build a JSON array from
@@ -142,10 +151,6 @@ int api_search(struct ftl_conn *api)
 	check_all_regex(api->item, regex_ids);
 	cJSON *deny_ids = cJSON_GetObjectItem(regex_ids, "deny");
 	cJSON *allow_ids = cJSON_GetObjectItem(regex_ids, "allow");
-
-	log_info("Result: %s", cJSON_PrintUnformatted(regex_ids));
-	log_info("Found %d deny regex filters", cJSON_GetArraySize(deny_ids));
-	log_info("Found %d allow regex filters", cJSON_GetArraySize(allow_ids));
 
 	// Get allow regex filters
 	if(cJSON_GetArraySize(allow_ids) > 0)
