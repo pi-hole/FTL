@@ -164,7 +164,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			}
 
 			// Call the API function and get the return code
-			log_debug(DEBUG_API, "Sending to %s", api_request[i].uri);
+			log_debug(DEBUG_API, "Processing %s %s in %s",
+			          api.request->request_method,
+			          api.request->local_uri_raw,
+			          api_request[i].uri);
 			ret = api_request[i].func(&api);
 			log_debug(DEBUG_API, "Done");
 			break;

@@ -92,10 +92,16 @@ void *timer(void *val)
 	{
 		if(timer_delay > 0)
 		{
+			log_debug(DEBUG_EXTRA, "Pi-hole will be %s in %d seconds...",
+			          timer_target_status ? "enabled" : "disabled", timer_delay);
+
 			timer_delay--;
 		}
 		else if(timer_delay == 0)
 		{
+			log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
+			          timer_target_status ? "enabled" : "disabled");
+
 			set_blockingstatus(timer_target_status);
 			timer_delay = -1;
 		}

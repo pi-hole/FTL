@@ -88,6 +88,8 @@ static int set_blocking(struct ftl_conn *api)
 
 		// Delete a possibly running timer
 		set_blockingmode_timer(-1, true);
+
+		log_debug(DEBUG_API, "No change in blocking mode, resetting timer");
 	}
 	else
 	{
@@ -96,6 +98,8 @@ static int set_blocking(struct ftl_conn *api)
 
 		// Start timer (-1 disables all running timers)
 		set_blockingmode_timer(timer, !target_status);
+
+		log_debug(DEBUG_API, "%sd Pi-hole, timer set to %d seconds", target_status ? "Enable" : "Disable", timer);
 	}
 
 	// Return GET property as result of POST/PUT/PATCH action

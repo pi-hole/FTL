@@ -75,8 +75,6 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	api.conn = conn;
 	api.request = req_info;
 
-	log_info("Webserver: %s %s vs. %s", req_info->request_method, req_info->local_uri_raw, admin_api_uri);
-
 	// Check if the request is for the API under /admin/api
 	// (it is posted at /api)
 	if(strncmp(req_info->local_uri_raw, admin_api_uri, strlen(admin_api_uri)) == 0)

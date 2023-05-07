@@ -2829,7 +2829,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// Start database thread if database is used
 	if(pthread_create( &threads[DB], &attr, DB_thread, NULL ) != 0)
 	{
-		log_crit("Unable to open database thread. Exiting...");
+		log_crit("Unable to creeate database thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
@@ -2837,7 +2837,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// collection needs to be done
 	if(pthread_create( &threads[GC], &attr, GC_thread, NULL ) != 0)
 	{
-		log_crit("Unable to open GC thread. Exiting...");
+		log_crit("Unable to create GC thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
@@ -2846,7 +2846,15 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// (e.g. on CI builds), the thread is never started)
 	if(resolve_names() && pthread_create( &threads[DNSclient], &attr, DNSclient_thread, NULL ) != 0)
 	{
-		log_crit("Unable to open DNS client thread. Exiting...");
+		log_crit("Unable to create DNS client thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
+	// Start thread that checks various timers, e.g., for automatic changing
+	// blocking mode (enabled/disabled for a given amount of time)
+	if(pthread_create( &threads[TIMER], &attr, timer, NULL ) != 0)
+	{
+		log_crit("Unable to create timer thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 

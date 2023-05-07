@@ -205,7 +205,7 @@ int check_client_auth(struct ftl_conn *api)
 		{
 			char timestr[128];
 			get_timestr(timestr, auth_data[user_id].valid_until, false, false);
-			log_debug(DEBUG_API, "Recognized known user: user_id %i valid_until: %s remote_addr %s",
+			log_debug(DEBUG_API, "Recognized known user: user_id %i, valid_until: %s, remote_addr %s",
 				user_id, timestr, auth_data[user_id].remote_addr);
 		}
 	}
