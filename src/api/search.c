@@ -143,22 +143,28 @@ int api_search(struct ftl_conn *api)
 	cJSON *deny_ids = cJSON_GetObjectItem(regex_ids, "deny");
 	cJSON *allow_ids = cJSON_GetObjectItem(regex_ids, "allow");
 
-	cJSON *allow = JSON_NEW_ARRAY();
-	// Get allow regex filters
-	char *allow_list = cJSON_PrintUnformatted(allow_ids);
-	ret = search_table(api, GRAVITY_DOMAINLIST_ALLOW_REGEX, allow_list, N, false, allow);
-	free(allow_list);
-	allow_list = NULL;
-	if(ret != 200)
-		return ret;
+	log_info("Result: %s", cJSON_PrintUnformatted(regex_ids));
+	log_info("Found %d deny regex filters", cJSON_GetArraySize(deny_ids));
+	log_info("Found %d allow regex filters", cJSON_GetArraySize(allow_ids));
 
-	cJSON *deny = JSON_NEW_ARRAY();
-	char *deny_list = cJSON_PrintUnformatted(deny_ids);
-	ret = search_table(api, GRAVITY_DOMAINLIST_DENY_REGEX, deny_list, N, false, deny);
-	free(deny_list);
-	deny_list = NULL;
-	if(ret != 200)
-		return ret;
+	// Get allow regex filters
+	if(cJSON_GetArraySize(allow_ids) > 0)
+	{
+		char *allow_list = cJSON_PrintUnformatted(allow_ids);
+		ret = search_table(api, GRAVITY_DOMAINLIST_ALLOW_REGEX, allow_list, N, false, domains);
+		free(allow_list);
+		if(ret != 200)
+			return ret;
+	}
+
+	if(cJSON_GetArraySize(deny_ids) > 0)
+	{
+		char *deny_list = cJSON_PrintUnformatted(deny_ids);
+		ret = search_table(api, GRAVITY_DOMAINLIST_DENY_REGEX, deny_list, N, false, domains);
+		free(deny_list);
+		if(ret != 200)
+			return ret;
+	}
 
 	// Free intermediate JSON objects containing list of regex IDs
 	cJSON_Delete(regex_ids);
@@ -166,10 +172,6 @@ int api_search(struct ftl_conn *api)
 	cJSON *search = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(search, "domains", domains);
 	JSON_ADD_ITEM_TO_OBJECT(search, "gravity", gravity);
-	cJSON *regex = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(regex, "allow", allow);
-	JSON_ADD_ITEM_TO_OBJECT(regex, "deny", deny);
-	JSON_ADD_ITEM_TO_OBJECT(search, "regex", regex);
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "search", search);
 	JSON_SEND_OBJECT(json);

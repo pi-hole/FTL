@@ -52,6 +52,20 @@ components:
                     type: boolean
                     description: Whether this entry is enabled
                     example: true
+                  type:
+                    description: String specifying domain type
+                    type: string
+                    enum:
+                      - "allow"
+                      - "deny"
+                    example: "allow"
+                  kind:
+                    description: String specifying domain kind
+                    type: string
+                    enum:
+                      - "exact"
+                      - "regex"
+                    example: "exact"
                   id:
                     type: integer
                     description: Database ID
@@ -109,79 +123,6 @@ components:
                     items:
                       type: integer
                     example: [0,1,2]
-            regex:
-              type: object
-              properties:
-                allow:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      domain:
-                        type: string
-                        example: "^something[0-9*];querytype=A"
-                      comment:
-                        type: string
-                        description: Optional comment
-                        nullable: true
-                        example: "I want to allow anything starting in something0 (but also all other digits) when it is an A query"
-                      enabled:
-                        type: boolean
-                        description: Whether this entry is enabled
-                        example: true
-                      id:
-                        type: integer
-                        description: Database ID
-                        example: 7
-                      date_added:
-                        type: integer
-                        description: Unix timestamp of addition
-                        example: 1664624500
-                      date_modified:
-                        type: integer
-                        description: Unix timestamp of last modification
-                        example: 1664624500
-                      groups:
-                        type: array
-                        description: Array of IDs corresponding to associated groups
-                        items:
-                          type: integer
-                        example: [0,1,2]
-                deny:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      domain:
-                        type: string
-                        example: ".;querytype=ANY"
-                      comment:
-                        type: string
-                        description: Optional comment
-                        nullable: true
-                        example: "Blocking all ANY queries"
-                      enabled:
-                        type: boolean
-                        description: Whether this entry is enabled
-                        example: true
-                      id:
-                        type: integer
-                        description: Database ID
-                        example: 7
-                      date_added:
-                        type: integer
-                        description: Unix timestamp of addition
-                        example: 1664624500
-                      date_modified:
-                        type: integer
-                        description: Unix timestamp of last modification
-                        example: 1664624500
-                      groups:
-                        type: array
-                        description: Array of IDs corresponding to associated groups
-                        items:
-                          type: integer
-                        example: [0,1,2]
   parameters:
     domain:
       name: domain
