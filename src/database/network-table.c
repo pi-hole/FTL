@@ -2314,3 +2314,82 @@ void networkTable_readIPsFinalize(sqlite3_stmt *read_stmt)
 	// Finalize statement
 	sqlite3_finalize(read_stmt);
 }
+
+bool networkTable_deleteDevice(sqlite3 *db, const int id, const char **message)
+{
+	// First step: Delete all associated IPs of this device
+	// Prepare SQLite statement
+	const char *querystr = "DELETE FROM network_addresses WHERE network_id = ?;";
+	sqlite3_stmt *stmt;
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		*message = sqlite3_errstr(rc);
+		log_err("networkTable_deleteDevice(%i) - SQL error prepare (%i): %s",
+		        id, rc, *message);
+		return false;
+	}
+
+	// Bind id to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 1, id)) != SQLITE_OK)
+	{
+		*message = sqlite3_errstr(rc);
+		log_err("networkTable_deleteDevice(%i): Failed to bind id (error %d) - %s",
+		        id, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Execute statement
+	rc = sqlite3_step(stmt);
+	if(rc != SQLITE_DONE)
+	{
+		*message = sqlite3_errstr(rc);
+		log_err("networkTable_deleteDevice(%i) - SQL error step (%i): %s",
+		        id, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Finalize statement
+	sqlite3_finalize(stmt);
+
+	// Second step: Delete the device itself
+	querystr = "DELETE FROM network WHERE id = ?;";
+	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		*message = sqlite3_errstr(rc);
+		log_err("networkTable_deleteDevice(%i) - SQL error prepare (%i): %s",
+		        id, rc, *message);
+		return false;
+	}
+
+	// Bind id to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 1, id)) != SQLITE_OK)
+	{
+		*message = sqlite3_errstr(rc);
+		log_err("networkTable_deleteDevice(%i): Failed to bind id (error %d) - %s",
+		        id, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Execute statement
+	rc = sqlite3_step(stmt);
+	if(rc != SQLITE_DONE)
+	{
+		*message = sqlite3_errstr(rc);
+		log_err("networkTable_deleteDevice(%i) - SQL error step (%i): %s",
+		        id, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Finalize statement
+	sqlite3_finalize(stmt);
+
+	return true;
+}

@@ -128,7 +128,8 @@ document.addEventListener('DOMContentLoaded', (event) => {
 	let docEl = document.getElementById("thedoc");
 
 	docEl.addEventListener('after-try', (e) => {
-		if(e.detail.response.error.key === 'unauthorized') {
+		console.log(e.detail.response);
+		if(e.detail.response.status === 401) {
 			loginFAIL();
 		}
 	});

@@ -201,6 +201,9 @@ paths:
   /network/devices:
     $ref: 'network.yaml#/components/paths/devices'
 
+  /network/devices/{id}:
+    $ref: 'network.yaml#/components/paths/devices_id'
+
   /network/gateway:
     $ref: 'network.yaml#/components/paths/gateway'
 

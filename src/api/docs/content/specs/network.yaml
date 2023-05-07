@@ -68,6 +68,25 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
+    devices_id:
+      delete:
+        summary: Delete a device from the network table
+        tags:
+          - "Network information"
+        operationId: "delete_device"
+        description: |
+          This API hook deletes a device from the network table. This will also remove all associated IP addresses and hostnames.
+        parameters:
+          - $ref: 'network.yaml#/components/parameters/devices/device_id'
+        responses:
+          '204':
+            description: No Content (deleted)
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     gateway:
       type: object
@@ -244,3 +263,11 @@ components:
           type: integer
         required: false
         example: 3
+      device_id:
+        in: path
+        description: Device ID
+        name: id
+        schema:
+          type: integer
+        required: true
+        example: 1

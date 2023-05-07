@@ -83,6 +83,7 @@ static struct {
 	{ "/api/network/gateway",                   "",                           api_network_gateway,                   { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/network/devices",                   "",                           api_network_devices,                   { false, true,  0               }, true,  HTTP_GET },
+	{ "/api/network/devices",                   "/{device_id}",               api_network_devices,                   { false, true,  0               }, true,  HTTP_DELETE },
 	{ "/api/endpoints",                         "",                           api_endpoints,                         { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/teleporter",                        "",                           api_teleporter,                        { false, false, 0               }, true,  HTTP_GET | HTTP_POST },
 	{ "/api/dhcp/leases",                       "",                           api_dhcp_leases_GET,                   { false, true,  0               }, true,  HTTP_GET },

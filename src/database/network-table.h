@@ -50,4 +50,6 @@ bool networkTable_readIPs(sqlite3 *db, sqlite3_stmt **read_stmt, const int id, c
 bool networkTable_readIPsGetRecord(sqlite3_stmt *read_stmt, network_addresses_record *network_addresses, const char **message);
 void networkTable_readIPsFinalize(sqlite3_stmt *read_stmt);
 
+bool networkTable_deleteDevice(sqlite3 *db, const int id, const char **message);
+
 #endif //NETWORKTABLE_H

@@ -314,19 +314,19 @@ int api_network_interfaces(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_network_devices(struct ftl_conn *api)
+static int api_network_devices_GET(struct ftl_conn *api)
 {
 	// Does the user request a custom number of devices to be included?
 	unsigned int device_count = 10;
-	get_uint_var(api->request->query_string, "device_count", &device_count);
+	get_uint_var(api->request->query_string, "max_devices", &device_count);
 
 	// Does the user request a custom number of addresses per device to be included?
 	unsigned int address_count = 3;
-	get_uint_var(api->request->query_string, "address_count", &address_count);
+	get_uint_var(api->request->query_string, "max_addresses", &address_count);
 
 	// Open pihole-FTL.db database file
 	sqlite3_stmt *device_stmt = NULL, *ip_stmt = NULL;
-	sqlite3 *db = dbopen(false, false);
+	sqlite3 *db = dbopen(true, false);
 	if(db == NULL)
 	{
 		log_warn("Failed to open database in networkTable_readDevices()");
@@ -348,7 +348,7 @@ int api_network_devices(struct ftl_conn *api)
 	network_record network;
 	unsigned int device_counter = 0;
 	while(networkTable_readDevicesGetRecord(device_stmt, &network, &sql_msg) &&
-	      ++device_counter > device_count)
+	      device_counter++ < device_count)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(item, "id", network.id);
@@ -367,7 +367,7 @@ int api_network_devices(struct ftl_conn *api)
 			network_addresses_record network_address;
 			unsigned int address_counter = 0;
 			while(networkTable_readIPsGetRecord(ip_stmt, &network_address, &sql_msg) &&
-			      ++address_counter > address_count)
+			      address_counter++ < address_count)
 			{
 				cJSON *ip = JSON_NEW_OBJECT();
 				JSON_COPY_STR_TO_OBJECT(ip, "ip", network_address.ip);
@@ -416,6 +416,64 @@ int api_network_devices(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "devices", devices);
 	JSON_SEND_OBJECT(json);
+}
+
+static int api_network_devices_DELETE(struct ftl_conn *api)
+{
+	// Get device ID
+	int device_id = 0;
+	if(sscanf(api->item, "%i", &device_id) != 1)
+	{
+		return send_json_error(api, 400,
+		                       "invalid_request",
+		                       "Missing or invalid {id} parameter",
+		                       NULL);
+	}
+
+	// Open pihole-FTL.db database file
+	sqlite3 *db = dbopen(false, false);
+	if(db == NULL)
+	{
+		log_warn("Failed to open database in networkTable_readDevices()");
+		return false;
+	}
+
+	// Delete row from network table by ID
+	const char *sql_msg = NULL;
+	if(!networkTable_deleteDevice(db, device_id, &sql_msg))
+	{
+		// Add SQL message (may be NULL = not available)
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not delete network details from database table",
+		                       sql_msg);
+	}
+
+	// Close database
+	dbclose(&db);
+
+	// Send empty reply with code 204 No Content
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_SEND_OBJECT_CODE(json, 204);
+}
+
+int api_network_devices(struct ftl_conn *api)
+{
+	if(api->method == HTTP_GET)
+	{
+		return api_network_devices_GET(api);
+	}
+	else if(api->method == HTTP_DELETE)
+	{
+		return api_network_devices_DELETE(api);
+	}
+	else
+	{
+		return send_json_error(api, 405,
+		                       "method_not_allowed",
+		                       "Method not allowed",
+		                       NULL);
+	}
 }
 
 int api_client_suggestions(struct ftl_conn *api)
