@@ -86,9 +86,9 @@ static int check_space(const char *file, int LastUsage)
 	// exceeds the configured threshold and current usage is higher than
 	// usage in the last run (to prevent log spam)
 	perc = get_filepath_usage(file, buffer);
-	if(perc > config.check.disk && perc > LastUsage )
+	if(perc > config.check.disk && perc > LastUsage && perc <= 100.0)
 		log_resource_shortage(-1.0, 0, -1, perc, file, buffer);
-	
+
 	return perc;
 }
 
