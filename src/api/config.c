@@ -25,6 +25,8 @@
 // shm_lock()
 #include "shmem.h"
 
+#define WRITE_ONLY_TEXT "<write-only property>"
+
 static struct {
 	const char *name;
 	const char *title;
@@ -272,10 +274,10 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Check type
 			if(!cJSON_IsString(elem))
 				return "not of type string";
-			if(strcmp(conf_item->k, PASSWORD_VALUE) == 0)
+			if(strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
 			{
 				// Check if password is unchanged (default value set by PASSWORD_VALUE)
-				log_debug(DEBUG_CONFIG, "Not setting %s to \"%s\" (password unchanged)", conf_item->k, conf_item->v.s);
+				log_debug(DEBUG_CONFIG, "Not setting %s (password unchanged)", conf_item->k);
 				break;
 			}
 			// Get password hash as allocated string (an empty string is hashed to an empty string)
@@ -428,6 +430,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				const cJSON *item = cJSON_GetArrayItem(elem, i);
 				if(!cJSON_IsString(item))
 					return "array has invalid elements";
+				log_debug(DEBUG_CONFIG, "%s[%u] = \"%s\"", conf_item->k, i, item->valuestring);
 			}
 			// If we reach this point, all elements are valid
 			conf_item->v.json = cJSON_Duplicate(elem, true);
@@ -518,20 +521,21 @@ static int api_config_get(struct ftl_conn *api)
 			const char *typestr = get_conf_type_str(conf_item->t);
 			JSON_REF_STR_IN_OBJECT(leaf, "type", typestr);
 
-			// Add current value
-			cJSON *val = addJSONvalue(conf_item->t, &conf_item->v);
-			if(val == NULL)
-			{
-				log_warn("Cannot format config item type %s of type %i",
-					conf_item->k, conf_item->t);
-				continue;
-			}
-
 			// Special case: write-only values
 			if(conf_item->f & FLAG_WRITE_ONLY)
-				JSON_REF_STR_IN_OBJECT(leaf, "value", "<write-only property>");
+				JSON_REF_STR_IN_OBJECT(leaf, "value", WRITE_ONLY_TEXT);
 			else
+			{
+				// Add current value
+				cJSON *val = addJSONvalue(conf_item->t, &conf_item->v);
+				if(val == NULL)
+				{
+					log_warn("Cannot format config item type %s of type %i",
+						conf_item->k, conf_item->t);
+					continue;
+				}
 				JSON_ADD_ITEM_TO_OBJECT(leaf, "value", val);
+			}
 
 			// Add default value
 			cJSON *dval = addJSONvalue(conf_item->t, &conf_item->d);
@@ -556,15 +560,21 @@ static int api_config_get(struct ftl_conn *api)
 		}
 		else
 		{
-			// Create the config item leaf object
-			cJSON *leaf = addJSONvalue(conf_item->t, &conf_item->v);
-			if(leaf == NULL)
+			// Special case: write-only values
+			if(conf_item->f & FLAG_WRITE_ONLY)
+				JSON_REF_STR_IN_OBJECT(parent, conf_item->p[level - 1], WRITE_ONLY_TEXT);
+			else
 			{
-				log_warn("Cannot format config item type %s of type %i",
-					conf_item->k, conf_item->t);
-				continue;
+				// Create the config item leaf object
+				cJSON *leaf = addJSONvalue(conf_item->t, &conf_item->v);
+				if(leaf == NULL)
+				{
+					log_warn("Cannot format config item type %s of type %i",
+						conf_item->k, conf_item->t);
+					continue;
+				}
+				JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level - 1], leaf);
 			}
-			JSON_ADD_ITEM_TO_OBJECT(parent, conf_item->p[level - 1], leaf);
 		}
 	}
 
@@ -671,6 +681,14 @@ static int api_config_patch(struct ftl_conn *api)
 			continue;
 		}
 
+		// Check if this is a write-only config item with the placeholder value
+		if(new_item->f & FLAG_WRITE_ONLY && cJSON_IsString(elem) &&
+		   strcmp(elem->valuestring, WRITE_ONLY_TEXT) == 0)
+		{
+			log_debug(DEBUG_CONFIG, "%s is write-only with place-holder, skipping", new_item->k);
+			continue;
+		}
+
 		// Try to set value and report error on failure
 		const char *response = getJSONvalue(new_item, elem, &newconf);
 		if(response != NULL)
@@ -688,6 +706,7 @@ static int api_config_patch(struct ftl_conn *api)
 			log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
 			continue;
 		}
+		log_debug(DEBUG_CONFIG, "Config item %s: Changed <-------------", conf_item->k);
 
 		// Memorize that at least one config item actually changed
 		config_changed = true;
@@ -720,9 +739,9 @@ static int api_config_patch(struct ftl_conn *api)
 			else
 			{
 				return send_json_error(api, 400,
-									"bad_request",
-									"Invalid configuration",
-									errbuf);
+				                       "bad_request",
+				                       "Invalid configuration",
+				                       errbuf);
 			}
 		}
 		else if(rewrite_custom_list)
@@ -747,6 +766,7 @@ static int api_config_patch(struct ftl_conn *api)
 	{
 		// Nothing changed, merely release copied config memory
 		free_config(&newconf);
+		log_info("No config changes detected");
 	}
 
 	// Return full config after possible changes above

@@ -305,7 +305,7 @@ bool compare_config_item(const enum conf_type t, const union conf_value *val1, c
 		case CONF_PASSWORD:
 			// This is a pseudo item, we assume it has always been changed when
 			// it is specified
-			return false;
+			return strcmp(val2->s, PASSWORD_VALUE) != 0;
 	}
 	return false;
 }
