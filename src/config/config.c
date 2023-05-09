@@ -453,7 +453,7 @@ void initConfig(struct config *conf)
 	conf->dns.hosts.h = "Array of custom DNS records\n Example: hosts = [ \"127.0.0.1 mylocal\", \"192.168.0.1 therouter\" ]";
 	conf->dns.hosts.a = cJSON_CreateStringReference("Array of custom DNS records each one in HOSTS form: \"IP HOSTNAME\"");
 	conf->dns.hosts.t = CONF_JSON_STRING_ARRAY;
-	conf->dns.hosts.f = FLAG_ADVANCED_SETTING;
+	conf->dns.hosts.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_DNSMASQ;
 	conf->dns.hosts.d.json = cJSON_CreateArray();
 
 	conf->dns.domainNeeded.k = "dns.domainNeeded";

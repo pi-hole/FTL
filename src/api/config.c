@@ -658,7 +658,6 @@ static int api_config_patch(struct ftl_conn *api)
 	// Read all known config items
 	bool config_changed = false;
 	bool dnsmasq_changed = false;
-	bool rewrite_custom_list = false;
 	struct config newconf;
 	duplicate_config(&newconf, &config);
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -721,10 +720,6 @@ static int api_config_patch(struct ftl_conn *api)
 		// invalidate all currently active sessions
 		if(conf_item->f & FLAG_INVALIDATE_SESSIONS)
 			delete_all_sessions();
-
-		// Check if this item requires a rewrite of the custom.list file
-		if(conf_item == &newconf.dns.hosts)
-			rewrite_custom_list = true;
 	}
 
 	// Process new config only when at least one value changed
@@ -743,14 +738,6 @@ static int api_config_patch(struct ftl_conn *api)
 				                       "Invalid configuration",
 				                       errbuf);
 			}
-		}
-		else if(rewrite_custom_list)
-		{
-			// We need to rewrite the custom.list file but do not need to
-			// restart dnsmasq. If dnsmasq is going to be restarted anyway,
-			// this is not necessary as the file will be rewritten during
-			// the restart
-			write_custom_list();
 		}
 
 		// Install new configuration
@@ -809,7 +796,6 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 	// Read all known config items
 	bool dnsmasq_changed = false;
-	bool rewrite_custom_list = false;
 	bool found = false;
 	struct config newconf;
 	duplicate_config(&newconf, &config);
@@ -862,7 +848,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 			else
 			{
 				// Add new item to array
-				JSON_COPY_STR_TO_ARRAY(new_item->v.json, new_item);
+				JSON_COPY_STR_TO_ARRAY(new_item->v.json, new_item_str);
 				found = true;
 			}
 		}
@@ -887,9 +873,6 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(new_item->f & FLAG_RESTART_DNSMASQ)
 			dnsmasq_changed = true;
 
-		// Check if this item requires a rewrite of the custom.list file
-		if(new_item == &newconf.dns.hosts)
-			rewrite_custom_list = true;
 		break;
 	}
 
@@ -926,14 +909,6 @@ static int api_config_put_delete(struct ftl_conn *api)
 			                       "Invalid configuration",
 			                       errbuf);
 		}
-	}
-	else if(rewrite_custom_list)
-	{
-		// We need to rewrite the custom.list file but do not need to
-		// restart dnsmasq. If dnsmasq is going to be restarted anyway,
-		// this is not necessary as the file will be rewritten during
-		// the restart
-		write_custom_list();
 	}
 
 	// Install new configuration
