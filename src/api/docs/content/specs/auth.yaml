@@ -264,6 +264,9 @@ components:
               valid:
                 type: boolean
                 description: Valid session indicator (existing sessions may be invalid due to timeout)
+              tls:
+                type: boolean
+                description: Indicator if TLS (end-to-end encryption) is used for this session
               login_at:
                 type: integer
                 description: Timestamp of login (seconds since epoch)
