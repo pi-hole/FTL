@@ -1345,7 +1345,6 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 		case CONF_INT:
 			return "integer";
 		case CONF_UINT: // fall through
-		case CONF_ENUM_PRIVACY_LEVEL:
 			return "unsigned integer";
 		case CONF_UINT16:
 			return "unsigned integer (16 bit)";
@@ -1366,6 +1365,8 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 		case CONF_ENUM_WEB_THEME:
 		case CONF_ENUM_TEMP_UNIT:
 			return "enum (string)";
+		case CONF_ENUM_PRIVACY_LEVEL:
+			return "enum (unsigned integer)";
 		case CONF_STRUCT_IN_ADDR:
 			return "IPv4 address";
 		case CONF_STRUCT_IN6_ADDR:
