@@ -1902,12 +1902,12 @@ void get_dnsmasq_metrics(struct metrics *ci)
 {
   // Prepare the metrics struct
   memset(ci, 0, sizeof(struct metrics));
-	ci->dns.cache.content[RRTYPE_OTHER].type = 0;
-	ci->dns.cache.content[RRTYPE_A].type = T_A;  // A
-	ci->dns.cache.content[RRTYPE_AAAA].type = T_AAAA; // AAAA
-	ci->dns.cache.content[RRTYPE_CNAME].type = T_CNAME;  // CNAME
-	ci->dns.cache.content[RRTYPE_DS].type = T_DS; // DNSKEY
-	ci->dns.cache.content[RRTYPE_DNSKEY].type = T_DNSKEY; // DNSKEY
+  ci->dns.cache.content[RRTYPE_OTHER].type = 0;
+  ci->dns.cache.content[RRTYPE_A].type = T_A;  // A
+  ci->dns.cache.content[RRTYPE_AAAA].type = T_AAAA; // AAAA
+  ci->dns.cache.content[RRTYPE_CNAME].type = T_CNAME;  // CNAME
+  ci->dns.cache.content[RRTYPE_DS].type = T_DS; // DNSKEY
+  ci->dns.cache.content[RRTYPE_DNSKEY].type = T_DNSKEY; // DNSKEY
 
   // General DNS cache metrics
   ci->dns.cache.size = daemon->cachesize;
@@ -1923,43 +1923,43 @@ void get_dnsmasq_metrics(struct metrics *ci)
   const time_t now = time(NULL);
   for (int i=0; i < hash_size; i++)
     for (struct crec *cache = hash_table[i]; cache; cache = cache->hash_next)
-      if(cache->ttd >= now || cache->flags & F_IMMORTAL)
       {
+	const unsigned int expired = cache->ttd < now && !(cache->flags & F_IMMORTAL) ? CACHE_STALE : CACHE_VALID;
 	if (cache->flags & F_IPV4)
-	  ci->dns.cache.content[RRTYPE_A].count++;
+	  ci->dns.cache.content[RRTYPE_A].count[expired]++;
 	else if (cache->flags & F_IPV6)
-	  ci->dns.cache.content[RRTYPE_AAAA].count++;
+	  ci->dns.cache.content[RRTYPE_AAAA].count[expired]++;
 	else if (cache->flags & F_CNAME)
-	  ci->dns.cache.content[RRTYPE_CNAME].count++;
+	  ci->dns.cache.content[RRTYPE_CNAME].count[expired]++;
 #ifdef HAVE_DNSSEC
 	else if (cache->flags & F_DS)
-	  ci->dns.cache.content[RRTYPE_DS].count++;
+	  ci->dns.cache.content[RRTYPE_DS].count[expired]++;
 	else if (cache->flags & F_DNSKEY)
-	  ci->dns.cache.content[RRTYPE_DNSKEY].count++;
+	  ci->dns.cache.content[RRTYPE_DNSKEY].count[expired]++;
 #endif
 	else if(cache->flags & F_RR)
 	{
 	  // Find the first empty slot or the slot with the same type
 	  for(unsigned int i = RRTYPE_MAX; i < RRTYPES; i++)
 	  {
-      unsigned short type = (cache->flags & F_KEYTAG) ? cache->addr.rrblock.rrtype : cache->addr.rrdata.rrtype;
+	    unsigned short type = (cache->flags & F_KEYTAG) ? cache->addr.rrblock.rrtype : cache->addr.rrdata.rrtype;
 	    if(ci->dns.cache.content[i].type == type || ci->dns.cache.content[i].type == 0)
 	    {
 	      ci->dns.cache.content[i].type = type;
-	      ci->dns.cache.content[i].count++;
+	      ci->dns.cache.content[i].count[expired]++;
 	      break;
 	    }
 	  }
 	}
 	else
-	  ci->dns.cache.content[RRTYPE_OTHER].count++;
+	  ci->dns.cache.content[RRTYPE_OTHER].count[expired]++;
 
 	if(cache->flags & F_IMMORTAL)
 	  ci->dns.cache.immortal++;
 
+	if(expired)
+	  ci->dns.cache.expired++;
       }
-      else
-	ci->dns.cache.expired++;
 
     ci->dhcp.bootp = daemon->metrics[METRIC_BOOTP];
     ci->dhcp.pxe = daemon->metrics[METRIC_PXE];

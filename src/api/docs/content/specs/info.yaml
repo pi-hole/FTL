@@ -974,8 +974,15 @@ components:
                             type: string
                             description: RR name of cache entry
                           count:
-                            type: integer
+                            type: object
                             description: Number of cache entries for this RR type
+                            properties:
+                              valid:
+                                type: integer
+                                description: Number of valid cache entries
+                              stale:
+                                type: integer
+                                description: Number of stale cache entries
                 replies:
                   type: object
                   properties:
@@ -1088,22 +1095,34 @@ components:
               content:
                 - type: 0
                   name: "OTHER"
-                  count: 0
+                  count:
+                    valid: 0
+                    stale: 0
                 - type: 1
                   name: "A"
-                  count: 17
+                  count:
+                    valid: 14
+                    stale: 3
                 - type: 28
                   name: "AAAA"
-                  count: 5
+                  count:
+                    valid: 12
+                    stale: 1
                 - type: 5
                   name: "CNAME"
-                  count: 2
+                  count:
+                    valid: 5
+                    stale: 3
                 - type: 43
                   name: "DS"
-                  count: 15
+                  count:
+                    valid: 34
+                    stale: 21
                 - type: 48
                   name: "DNSKEY"
-                  count: 16
+                  count:
+                    valid: 1
+                    stale: 0
             replies:
               optimized: 1
               local: 84

@@ -967,14 +967,18 @@ int api_info_metrics(struct ftl_conn *api)
 	for(unsigned int i = 0; i < RRTYPES; i++)
 	{
 		// Skip empty entries
-		if(metrics.dns.cache.content[i].count == 0)
+		if(metrics.dns.cache.content[i].count[CACHE_VALID] == 0 &&
+		   metrics.dns.cache.content[i].count[CACHE_STALE] == 0)
 			continue;
 
 		// Add this entry to the array
 		cJSON *obj = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(obj, "type", metrics.dns.cache.content[i].type);
 		JSON_REF_STR_IN_OBJECT(obj, "name", rrtype_name(metrics.dns.cache.content[i].type));
-		JSON_ADD_NUMBER_TO_OBJECT(obj, "count", metrics.dns.cache.content[i].count);
+		cJSON *count = JSON_NEW_OBJECT();
+		JSON_ADD_NUMBER_TO_OBJECT(count, "valid", metrics.dns.cache.content[i].count[CACHE_VALID]);
+		JSON_ADD_NUMBER_TO_OBJECT(count, "stale", metrics.dns.cache.content[i].count[CACHE_STALE]);
+		JSON_ADD_ITEM_TO_OBJECT(obj, "count", count);
 		JSON_ADD_ITEM_TO_ARRAY(content, obj);
 	}
 	JSON_ADD_ITEM_TO_OBJECT(cache, "content", content);

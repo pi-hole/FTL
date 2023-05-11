@@ -23,6 +23,12 @@ enum rrtype_array {
 	RRTYPE_MAX
 };
 
+enum cache_live {
+	CACHE_VALID = 0,
+	CACHE_STALE,
+	CACHE_LIVE_MAX
+};
+
 #define RRTYPES RRTYPE_MAX+10
 struct metrics
 {
@@ -49,7 +55,7 @@ struct metrics
 			// <content> are cache entries with positive remaining TTL
 			struct content {
 				uint16_t type;
-				int count;
+				int count[CACHE_LIVE_MAX]; // 0 = valid, 1 = stale
 			} content[RRTYPES];
 		} cache;
 		int local_answered;
