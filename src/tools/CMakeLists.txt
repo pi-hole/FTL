@@ -9,6 +9,8 @@
 # Please see LICENSE file for your rights under this license.
 
 set(tools_sources
+        arp-scan.c
+        arp-scan.h
         dhcp-discover.c
         dhcp-discover.h
         )

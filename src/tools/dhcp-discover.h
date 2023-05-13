@@ -12,5 +12,6 @@
 #define DHCP_DISCOVER_H
 
 int run_dhcp_discover(void);
+int get_hardware_address(const int sock, const char *iname, unsigned char *mac);
 
 #endif // DHCP_DISCOVER_H
