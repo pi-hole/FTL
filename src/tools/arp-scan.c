@@ -66,7 +66,7 @@ struct arp_result {
 };
 
 // Sends multiple ARP who-has request on interface ifindex, using source mac src_mac and source ip src_ip.
-// Interates over all IP addresses in the range of dst_ip/cidr.
+// Iterates over all IP addresses in the range of dst_ip/cidr.
 static int send_arps(const int fd, const int ifindex, const char *iface, const unsigned char *src_mac,
                      struct in_addr *src_ip, struct in_addr dst_ip, const int dst_cidr)
 {
@@ -409,10 +409,8 @@ static void *arp_scan_iface(void *args)
 			putc('\n', stdout);
 		}
 
-		// Print warning if multiple MAC addresses replied
-		if(j > 1)
-			printf("WARNING: Multiple MAC addresses replied as %s\n", ipstr);
-		if(multiple_replies)
+		// Print warning if we received multiple replies
+		if(j > 1 || multiple_replies)
 			printf("WARNING: Received multiple replies for %s\n", ipstr);
 	}
 	putc('\n', stdout);
