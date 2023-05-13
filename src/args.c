@@ -33,7 +33,7 @@
 // LUA dependencies
 #include "lua/ftl_lua.h"
 // run_dhcp_discover()
-#include "dhcp-discover.h"
+#include "tools/dhcp-discover.h"
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
 
