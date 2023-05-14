@@ -181,6 +181,40 @@ static int create_arp_socket(const int ifindex, const char *iface)
 	return arp_socket;
 }
 
+static void add_result(const char *iface, struct in_addr *rcv_ip, struct in_addr *dst_ip, unsigned char *sender_mac,
+                       struct arp_result *result, const size_t result_len, const unsigned int scan_id)
+{
+
+	// Check if we have already found this IP address
+	uint32_t i = ntohl(rcv_ip->s_addr) - ntohl(dst_ip->s_addr);
+	if(i >= result_len)
+	{
+		printf("Received IP address %s out of range\n", inet_ntoa(*rcv_ip));
+		return;
+	}
+
+	// Save MAC address
+	unsigned int j = 0;
+	for(; j < MAX_MACS; j++)
+	{
+		// Check if received MAC is already stored in result[i].device[j].mac
+		if(memcmp(result[i].device[j].mac, sender_mac, MAC_LENGTH) == 0)
+		{
+			break;
+		}
+		// Check if result[i].device[j].mac is all-zero
+		if(memcmp(result[i].device[j].mac, "\x00\x00\x00\x00\x00\x00", MAC_LENGTH) == 0)
+		{
+			// Copy MAC address to result[i].device[j].mac
+			memcpy(result[i].device[j].mac, sender_mac, MAC_LENGTH);
+			break;
+		}
+	}
+
+	// Memorize that we have received a reply for this IP address
+	result[i].device[j].replied[scan_id]++;
+}
+
 // Read all ARP responses
 static ssize_t read_arp(const int fd, const char *iface, struct in_addr *dst_ip,
                         struct arp_result *result, const size_t result_len, const unsigned int scan_id)
@@ -237,40 +271,11 @@ static ssize_t read_arp(const int fd, const char *iface, struct in_addr *dst_ip,
 		     arp_resp->sender_mac[4],
 		     arp_resp->sender_mac[5]);
 #endif
-
-		// Check if we have already found this IP address
-		uint32_t i = ntohl(sender_a.s_addr) - ntohl(dst_ip->s_addr);
-		if(i >= result_len)
-		{
-			printf("Received IP address %s out of range\n", inet_ntoa(sender_a));
-			continue;
-		}
-
-		// Save MAC address
-		unsigned int j = 0;
-		for(; j < MAX_MACS; j++)
-		{
-			// Check if received MAC is already stored in result[i].device[j].mac
-			if(memcmp(result[i].device[j].mac, arp_resp->sender_mac, MAC_LENGTH) == 0)
-			{
-				break;
-			}
-			// Check if result[i].device[j].mac is all-zero
-			if(memcmp(result[i].device[j].mac, "\x00\x00\x00\x00\x00\x00", MAC_LENGTH) == 0)
-			{
-				// Copy MAC address to result[i].device[j].mac
-				memcpy(result[i].device[j].mac, arp_resp->sender_mac, sizeof(arp_resp->sender_mac));
-				break;
-			}
-		}
-
-		// Memorize that we have received a reply for this IP address
-		result[i].device[j].replied[scan_id]++;
+		add_result(iface, &sender_a, dst_ip, arp_resp->sender_mac, result, result_len, scan_id);
 	}
 
 	return ret;
 }
-
 
 // Convert netmask to CIDR
 static int netmask_to_cidr(struct in_addr *addr)
@@ -360,15 +365,23 @@ static void *arp_scan_iface(void *args)
 	if(pthread_mutex_lock(&lock) != 0)
 		return NULL;
 
+	// Exit early if there are no results
 	if(replies == 0)
 	{
 		printf("No devices found on interface %s (%s/%i)\n", iface, ipstr, cidr);
 		goto arp_scan_iface_end;
 	}
 
-	// Print results
+	// If there is at least one result, print header
 	printf("ARP scan on interface %s (%s/%i) finished\n", iface, ipstr, cidr);
 	printf("%-20s %-16s %-17s  Reply matrix\n", "IP address", "Interface", "MAC address");
+
+	// Add our own IP address to the results so IP conflicts can be detected
+	// (our own IP address is not included in the ARP scan)
+	for(unsigned int i = 0; i < NUM_SCANS; i++)
+		add_result(iface, &src_addr.sin_addr, &dst_addr, mac, result, arp_result_len, i);
+
+	// Print results
 	for(unsigned int i = 0; i < arp_result_len; i++)
 	{
 		unsigned int j = 0, replied_devices = 0;
