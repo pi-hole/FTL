@@ -193,7 +193,9 @@ static int pmain(lua_State* L)
  return 0;
 }
 
-int main(int argc, char* argv[])
+/******* Pi-hole modification ********/
+int luac_main(int argc, char* argv[])
+/*************************************/
 {
  lua_State* L;
  int i=doargs(argc,argv);
