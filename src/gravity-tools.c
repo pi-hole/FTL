@@ -16,7 +16,7 @@
 // Define valid domain patterns
 // No need to include uppercase letters, as we convert to lowercase in gravity_ParseFileIntoDomains() already
 // Adapted from https://stackoverflow.com/a/30007882
-// - Added "(?:...)" to form non-capturing groups (slighly faster)
+// - Added "(?:...)" to form non-capturing groups (slightly faster)
 #define TLD_PATTERN "[a-z0-9][a-z0-9-]{0,61}[a-z0-9]"
 #define SUBDOMAIN_PATTERN "([a-z0-9]([a-z0-9_-]{0,61}[a-z0-9]){0,1}\\.)"
 
