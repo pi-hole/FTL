@@ -25,8 +25,14 @@
 // This is also the limit for interfaces
 // we scan for DHCP activity.
 #define MAXTHREADS 32
+
+// How many MAC addresses do we store per IP address?
 #define MAX_MACS 3
+
+// How many ARP requests do we send per IP address?
 #define NUM_SCANS 10
+
+// How long do we wait for ARP replies in each scan [seconds]?
 #define ARP_TIMEOUT 1
 
 // Global lock used by all threads
@@ -34,6 +40,7 @@ static pthread_mutex_t lock;
 static bool arp_verbose = false;
 static bool arp_all = false;
 
+// Protocol definitions
 #define PROTO_ARP 0x0806
 #define ETH2_HEADER_LEN 14
 #define HW_TYPE 1
@@ -43,10 +50,9 @@ static bool arp_all = false;
 #define ARP_REPLY 0x02
 #define BUF_SIZE 60
 
-#pragma pack(push, 1)
-
 // ARP header struct
 // See https://en.wikipedia.org/wiki/Address_Resolution_Protocol#Packet_structure
+#pragma pack(push, 1)
 struct arp_header {
 	unsigned short hardware_type;
 	unsigned short protocol_type;
@@ -284,6 +290,21 @@ static int netmask_to_cidr(struct in_addr *addr)
 	return __builtin_popcount(addr->s_addr);
 }
 
+static const char *get_hostname(const struct in_addr *addr)
+{
+	// Get hostname
+	struct hostent *he = gethostbyaddr(&addr->s_addr, sizeof(addr->s_addr), AF_INET);
+	if(he == NULL)
+		return "N/A";
+
+	// Allow at most 24 characters for the hostname
+	static char hostname[25] = { 0 };
+	strncpy(hostname, he->h_name, 24);
+
+	// Return hostname
+	return hostname;
+}
+
 static void *arp_scan_iface(void *args)
 {
 	// Get interface details
@@ -374,7 +395,7 @@ static void *arp_scan_iface(void *args)
 
 	// If there is at least one result, print header
 	printf("ARP scan on interface %s (%s/%i) finished\n", iface, ipstr, cidr);
-	printf("%-20s %-16s %-17s  Reply matrix\n", "IP address", "Interface", "MAC address");
+	printf("%-16s %-10s %-24s %-17s  Reply matrix\n", "IP address", "Interface", "Hostname", "MAC address");
 
 	// Add our own IP address to the results so IP conflicts can be detected
 	// (our own IP address is not included in the ARP scan)
@@ -412,8 +433,8 @@ static void *arp_scan_iface(void *args)
 				break;
 
 			// Print MAC address
-			printf("%-20s %-16s %02x:%02x:%02x:%02x:%02x:%02x ",
-			       ipstr, iface,
+			printf("%-16s %-10s %-24s %02x:%02x:%02x:%02x:%02x:%02x ",
+			       ipstr, iface, get_hostname(&ip),
 			       result[i].device[j].mac[0],
 			       result[i].device[j].mac[1],
 			       result[i].device[j].mac[2],
@@ -422,9 +443,8 @@ static void *arp_scan_iface(void *args)
 			       result[i].device[j].mac[5]);
 
 			for(unsigned int k = 0; k < NUM_SCANS; k++)
-			{
 				printf(" %s", result[i].device[j].replied[k] > 0 ? "X" : "-");
-			}
+
 			putc('\n', stdout);
 		}
 
