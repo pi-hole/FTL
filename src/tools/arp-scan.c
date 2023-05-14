@@ -61,8 +61,10 @@ struct arp_header {
 #pragma pack(pop)
 
 struct arp_result {
-	unsigned int replied[NUM_SCANS];
-	unsigned char mac[MAX_MACS][MAC_LENGTH];
+	struct device {
+		unsigned int replied[NUM_SCANS];
+		unsigned char mac[MAC_LENGTH];
+	} device[MAX_MACS];
 };
 
 // Sends multiple ARP who-has request on interface ifindex, using source mac src_mac and source ip src_ip.
@@ -244,29 +246,31 @@ static ssize_t read_arp(const int fd, const char *iface, struct in_addr *dst_ip,
 			continue;
 		}
 
-		// Memorize that we have received a reply for this IP address
-		result[i].replied[scan_id]++;
-
 		// Save MAC address
-		for(unsigned int j = 0; j < MAX_MACS; j++)
+		unsigned int j = 0;
+		for(; j < MAX_MACS; j++)
 		{
-			// Check if received MAC is already stored in result[i].mac[j]
-			if(memcmp(result[i].mac[j], arp_resp->sender_mac, MAC_LENGTH) == 0)
+			// Check if received MAC is already stored in result[i].device[j].mac
+			if(memcmp(result[i].device[j].mac, arp_resp->sender_mac, MAC_LENGTH) == 0)
 			{
 				break;
 			}
-			// Check if result[i].mac[j] is all-zero
-			if(memcmp(result[i].mac[j], "\x00\x00\x00\x00\x00\x00", MAC_LENGTH) == 0)
+			// Check if result[i].device[j].mac is all-zero
+			if(memcmp(result[i].device[j].mac, "\x00\x00\x00\x00\x00\x00", MAC_LENGTH) == 0)
 			{
-				// Copy MAC address to result[i].mac[j]
-				memcpy(result[i].mac[j], arp_resp->sender_mac, sizeof(arp_resp->sender_mac));
+				// Copy MAC address to result[i].device[j].mac
+				memcpy(result[i].device[j].mac, arp_resp->sender_mac, sizeof(arp_resp->sender_mac));
 				break;
 			}
 		}
+
+		// Memorize that we have received a reply for this IP address
+		result[i].device[j].replied[scan_id]++;
 	}
 
 	return ret;
 }
+
 
 // Convert netmask to CIDR
 static int netmask_to_cidr(struct in_addr *addr)
@@ -349,8 +353,9 @@ static void *arp_scan_iface(void *args)
 	// Check if there are any results
 	unsigned int replies = 0;
 	for(unsigned int i = 0; i < arp_result_len; i++)
-		for(unsigned int j = 0; j < NUM_SCANS; j++)
-			replies += result[i].replied[j];
+		for(unsigned int j = 0; j < MAX_MACS; j++)
+			for(unsigned int k = 0; k < NUM_SCANS; k++)
+				replies += result[i].device[j].replied[k];
 
 	if(pthread_mutex_lock(&lock) != 0)
 		return NULL;
@@ -366,51 +371,52 @@ static void *arp_scan_iface(void *args)
 	printf("%-20s %-16s %-17s  Reply matrix\n", "IP address", "Interface", "MAC address");
 	for(unsigned int i = 0; i < arp_result_len; i++)
 	{
-		// Check if IP address replied
-		bool replied = false, multiple_replies = false;
-		for(unsigned int j = 0; j < NUM_SCANS; j++)
-		{
-			if(result[i].replied[j] > 0)
-			{
-				replied = true;
-				multiple_replies |= result[i].replied[j] > 1;
-			}
-		}
-		if(!replied)
-			continue;
-
-		// Convert IP address to string
-		struct in_addr ip = { 0 };
-		ip.s_addr = htonl(ntohl(dst_addr.s_addr) + i);
-		inet_ntop(AF_INET, &ip, ipstr, INET_ADDRSTRLEN);
+		unsigned int j = 0, replied_devices = 0;
+		bool multiple_replies = false;
 
 		// Print MAC addresses
-		unsigned int j = 0;
 		for(j = 0; j < MAX_MACS; j++)
 		{
+			// Check if IP address replied
+			bool replied = false;
+			for(unsigned int k = 0; k < NUM_SCANS; k++)
+			{
+				replied |= result[i].device[j].replied[k] > 0;
+				multiple_replies |= result[i].device[j].replied[k] > 1;
+			}
+			if(!replied)
+				continue;
+
+			// Check if IP address replied multiple times from different MAC address
+			replied_devices++;
+
+			// Convert IP address to string
+			struct in_addr ip = { 0 };
+			ip.s_addr = htonl(ntohl(dst_addr.s_addr) + i);
+			inet_ntop(AF_INET, &ip, ipstr, INET_ADDRSTRLEN);
 			// Check if result[i].mac[j] is all-zero
-			if(memcmp(result[i].mac[j], "\x00\x00\x00\x00\x00\x00", 6) == 0)
+			if(memcmp(result[i].device[j].mac, "\x00\x00\x00\x00\x00\x00", 6) == 0)
 				break;
 
 			// Print MAC address
 			printf("%-20s %-16s %02x:%02x:%02x:%02x:%02x:%02x ",
 			       ipstr, iface,
-			       result[i].mac[j][0],
-			       result[i].mac[j][1],
-			       result[i].mac[j][2],
-			       result[i].mac[j][3],
-			       result[i].mac[j][4],
-			       result[i].mac[j][5]);
+			       result[i].device[j].mac[0],
+			       result[i].device[j].mac[1],
+			       result[i].device[j].mac[2],
+			       result[i].device[j].mac[3],
+			       result[i].device[j].mac[4],
+			       result[i].device[j].mac[5]);
 
 			for(unsigned int k = 0; k < NUM_SCANS; k++)
 			{
-				printf(" %s", result[i].replied[k] > 0 ? "X" : "-");
+				printf(" %s", result[i].device[j].replied[k] > 0 ? "X" : "-");
 			}
 			putc('\n', stdout);
 		}
 
 		// Print warning if we received multiple replies
-		if(j > 1 || multiple_replies)
+		if(replied_devices > 1 || multiple_replies)
 			printf("WARNING: Received multiple replies for %s\n", ipstr);
 	}
 	putc('\n', stdout);
