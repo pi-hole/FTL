@@ -29,6 +29,9 @@
 // See https://github.com/pi-hole/pi-hole/pull/5240
 #define ABP_DOMAIN_REXEX "\\|\\|"SUBDOMAIN_PATTERN"*"TLD_PATTERN"\\^"
 
+// Detects ABP extended CSS selectors ("##", "#!#", "#@#", "#?#") preceded by a letter
+#define ABP_CSS_SELECTORS "[a-z]#[$?@]{0,1}#"
+
 // A list of items of common local hostnames not to report as unusable
 // Some lists (i.e StevenBlack's) contain these as they are supposed to be used as HOST files
 // but flagging them as unusable causes more confusion than it's worth - so we suppress them from the output
@@ -71,7 +74,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	rewind(fpin);
 
 	// Compile regular expression to validate domains
-	regex_t exact_regex, abp_regex, false_positives_regex;
+	regex_t exact_regex, abp_regex, false_positives_regex, abp_css_regex;
 	if(regcomp(&exact_regex, VALID_DOMAIN_REXEX, REG_EXTENDED) != 0)
 	{
 		printf("\r  %s Unable to compile regular expression to validate exact domains\n", cross);
@@ -89,6 +92,13 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	if(regcomp(&false_positives_regex, FALSE_POSITIVES, REG_EXTENDED | REG_NOSUB) != 0)
 	{
 		printf("\r  %s Unable to compile regular expression to identify false positives\n", cross);
+		fclose(fpin);
+		sqlite3_close(db);
+		return EXIT_FAILURE;
+	}
+	if(regcomp(&abp_css_regex, ABP_CSS_SELECTORS, REG_EXTENDED) != 0)
+	{
+		printf("\r  %s Unable to compile regular expression to validate ABP-style domains\n", cross);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
@@ -139,12 +149,25 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		total_read += read;
 		lineno++;
 
+		// Remove leading whitespace
+		// isspace() matches spaces, tabs, form feeds, line breaks,
+		// carriage returns, and vertical tabs
+		while(isspace(line[0]))
+			line++;
+
 		// Skip comments
-		if(line[0] == '#')
+		// # is used for comments in HOSTS files
+		// ! is used for comments in AdBlock-style files
+		// [ is used for comments in AdGuard-style files and ABP headers
+		if(line[0] == '#' || line[0] == '!' || line[0] == '[')
 			continue;
 
 		// Remove trailing newline
 		if(line[read-1] == '\n')
+			line[--read] = '\0';
+
+		// Remove trailing carriage return (Windows)
+		if(line[read-1] == '\r')
 			line[--read] = '\0';
 
 		// Remove trailing dot (convert FQDN to domain)
@@ -186,6 +209,14 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		        match.rm_so == 0 && match.rm_eo == read)        // <- Match covers entire line
 		{
 			// ABP-style match (see comments above)
+
+			// Skip lines containing ABP extended CSS selectors
+			// ("##", "#!#", "#@#", "#?#") preceded by a letter
+			// See https://github.com/pi-hole/pi-hole/pull/5247 for
+			// further information on why this is necessary
+			if(regexec(&abp_css_regex, line, 1, &match, 0) == 0)
+				continue;
+
 			// Append pattern to database using prepared statement
 			if(sqlite3_bind_text(stmt, 1, line, -1, SQLITE_STATIC) != SQLITE_OK)
 			{
@@ -336,6 +367,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	free(line);
 	regfree(&exact_regex);
 	regfree(&abp_regex);
+	regfree(&false_positives_regex);
+	regfree(&abp_css_regex);
 	for(unsigned int i = 0; i < invalid_domains_list_len; i++)
 		if(invalid_domains_list[i] != NULL)
 			free(invalid_domains_list[i]);
