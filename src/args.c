@@ -126,7 +126,15 @@ static const char __attribute__ ((pure)) *cli_color(const char *color)
 	return is_term() ? color : "";
 }
 
-static inline bool strEndsWith(const char *input, const char *end){
+// Go back to beginning of line and erase to end of line if STDOUT is a terminal
+const char __attribute__ ((pure)) *cli_over(void)
+{
+	// \x1b[K is the ANSI escape sequence for "erase to end of line"
+	return is_term() ? "\r\x1b[K" : "\r";
+}
+
+static inline bool strEndsWith(const char *input, const char *end)
+{
 	return strcmp(input + strlen(input) - strlen(end), end) == 0;
 }
 

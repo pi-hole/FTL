@@ -50,12 +50,13 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	const char *info = cli_info();
 	const char *tick = cli_tick();
 	const char *cross = cli_cross();
+	const char *over = cli_over();
 
 	// Open input file
 	FILE *fpin = fopen(infile, "r");
 	if(fpin == NULL)
 	{
-		printf("\r  %s Unable to open %s for reading\n", cross, infile);
+		printf("%s  %s Unable to open %s for reading\n", over, cross, infile);
 		return EXIT_FAILURE;
 	}
 
@@ -64,7 +65,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	sqlite3_stmt *stmt = NULL;
 	if(sqlite3_open_v2(outfile, &db, SQLITE_OPEN_READWRITE, NULL) != SQLITE_OK)
 	{
-		printf("\r  %s Unable to open database file %s for writing\n", cross, outfile);
+		printf("%s  %s Unable to open database file %s for writing\n", over, cross, outfile);
 		fclose(fpin);
 		return EXIT_FAILURE;
 	}
@@ -77,28 +78,32 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	regex_t exact_regex, abp_regex, false_positives_regex, abp_css_regex;
 	if(regcomp(&exact_regex, VALID_DOMAIN_REXEX, REG_EXTENDED) != 0)
 	{
-		printf("\r  %s Unable to compile regular expression to validate exact domains\n", cross);
+		printf("%s  %s Unable to compile regular expression to validate exact domains\n",
+		       over, cross);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
 	}
 	if(regcomp(&abp_regex, ABP_DOMAIN_REXEX, REG_EXTENDED) != 0)
 	{
-		printf("\r  %s Unable to compile regular expression to validate ABP-style domains\n", cross);
+		printf("%s  %s Unable to compile regular expression to validate ABP-style domains\n",
+		       over, cross);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
 	}
 	if(regcomp(&false_positives_regex, FALSE_POSITIVES, REG_EXTENDED | REG_NOSUB) != 0)
 	{
-		printf("\r  %s Unable to compile regular expression to identify false positives\n", cross);
+		printf("%s  %s Unable to compile regular expression to identify false positives\n",
+		       over, cross);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
 	}
 	if(regcomp(&abp_css_regex, ABP_CSS_SELECTORS, REG_EXTENDED) != 0)
 	{
-		printf("\r  %s Unable to compile regular expression to validate ABP-style domains\n", cross);
+		printf("%s  %s Unable to compile regular expression to validate ABP-style domains\n",
+		       over, cross);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
@@ -107,7 +112,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	// Begin transaction
 	if(sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL) != SQLITE_OK)
 	{
-		printf("\r  %s Unable to begin transaction to insert domains into database file %s\n", cross, outfile);
+		printf("%s  %s Unable to begin transaction to insert domains into database file %s\n",
+		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
@@ -117,7 +123,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	const char *sql = "INSERT INTO gravity (domain, adlist_id) VALUES (?, ?);";
 	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
-		printf("\r  %s Unable to prepare SQL statement to insert domains into database file %s\n", cross, outfile);
+		printf("%s  %s Unable to prepare SQL statement to insert domains into database file %s\n",
+		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
@@ -127,7 +134,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	const int adlistID = atoi(adlistIDstr);
 	if(sqlite3_bind_int(stmt, 2, adlistID) != SQLITE_OK)
 	{
-		printf("\r  %s Unable to bind adlistID to SQL statement to insert domains into database file %s\n", cross, outfile);
+		printf("%s  %s Unable to bind adlistID to SQL statement to insert domains into database file %s\n",
+		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
@@ -188,14 +196,15 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			// Append domain to database using prepared statement
 			if(sqlite3_bind_text(stmt, 1, line, -1, SQLITE_STATIC) != SQLITE_OK)
 			{
-				printf("\r  %s Unable to bind domain to SQL statement to insert domains into database file %s\n", cross, outfile);
+				printf("%s  %s Unable to bind domain to SQL statement to insert domains into database file %s\n",
+				       over, cross, outfile);
 				fclose(fpin);
 				sqlite3_close(db);
 				return EXIT_FAILURE;
 			}
 			if(sqlite3_step(stmt) != SQLITE_DONE)
 			{
-				printf("\r  %s Unable to insert domain into database file %s\n", cross, outfile);
+				printf("%s  %s Unable to insert domain into database file %s\n", over, cross, outfile);
 				fclose(fpin);
 				sqlite3_close(db);
 				return EXIT_FAILURE;
@@ -220,14 +229,15 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			// Append pattern to database using prepared statement
 			if(sqlite3_bind_text(stmt, 1, line, -1, SQLITE_STATIC) != SQLITE_OK)
 			{
-				printf("\r  %s Unable to bind domain to SQL statement to insert domains into database file %s\n", cross, outfile);
+				printf("%s  %s Unable to bind domain to SQL statement to insert domains into database file %s\n",
+				       over, cross, outfile);
 				fclose(fpin);
 				sqlite3_close(db);
 				return EXIT_FAILURE;
 			}
 			if(sqlite3_step(stmt) != SQLITE_DONE)
 			{
-				printf("\r  %s Unable to insert domain into database file %s\n", cross, outfile);
+				printf("%s  %s Unable to insert domain into database file %s\n", over, cross, outfile);
 				fclose(fpin);
 				sqlite3_close(db);
 				return EXIT_FAILURE;
@@ -267,7 +277,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			// Print progress if it has changed
 			if(progress > last_progress)
 			{
-				printf("\r  %s Processed %i%% of downloaded list", info, progress);
+				printf("%s  %s Processed %i%% of downloaded list", over, info, progress);
 				fflush(stdout);
 				last_progress = progress;
 			}
@@ -277,7 +287,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	// Finalize SQL statement
 	if(sqlite3_finalize(stmt) != SQLITE_OK)
 	{
-		printf("\r  %s Unable to finalize SQL statement to insert domains into database file %s\n", cross, outfile);
+		printf("%s  %s Unable to finalize SQL statement to insert domains into database file %s\n",
+		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
@@ -290,7 +301,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		sql = "INSERT OR REPLACE INTO info (property,value) VALUES ('abp_domains',1);";
 		if(sqlite3_exec(db, sql, NULL, NULL, NULL) != SQLITE_OK)
 		{
-			printf("\r  %s Unable to update database properties in database file %s\n", cross, outfile);
+			printf("%s  %s Unable to update database properties in database file %s\n",
+			       over, cross, outfile);
 			fclose(fpin);
 			sqlite3_close(db);
 			return EXIT_FAILURE;
@@ -301,7 +313,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	sql = "UPDATE adlist SET number = ?, invalid_domains = ? WHERE id = ?;";
 	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
-		printf("\r  %s Unable to prepare SQL statement to update adlist properties in database file %s\n", cross, outfile);
+		printf("%s  %s Unable to prepare SQL statement to update adlist properties in database file %s\n",
+		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
@@ -310,35 +323,40 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	// Update date
 	if(sqlite3_bind_int(stmt, 1, exact_domains) != SQLITE_OK)
 	{
-		printf("\r  %s Unable to bind number of domains to SQL statement to update adlist properties in database file %s\n", cross, outfile);
+		printf("%s  %s Unable to bind number of domains to SQL statement to update adlist properties in database file %s\n",
+		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
 	}
 	if(sqlite3_bind_int(stmt, 2, invalid_domains) != SQLITE_OK)
 	{
-		printf("\r  %s Unable to bind number of invalid domains to SQL statement to update adlist properties in database file %s\n", cross, outfile);
+		printf("%s  %s Unable to bind number of invalid domains to SQL statement to update adlist properties in database file %s\n",
+		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
 	}
 	if(sqlite3_bind_int(stmt, 3, adlistID) != SQLITE_OK)
 	{
-		printf("\r  %s Unable to bind adlist ID to SQL statement to update adlist properties in database file %s\n", cross, outfile);
+		printf("%s  %s Unable to bind adlist ID to SQL statement to update adlist properties in database file %s\n",
+		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
 	}
 	if(sqlite3_step(stmt) != SQLITE_DONE)
 	{
-		printf("\r  %s Unable to update adlist properties in database file %s\n", cross, outfile);
+		printf("%s  %s Unable to update adlist properties in database file %s\n",
+		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
 	}
 	if(sqlite3_finalize(stmt) != SQLITE_OK)
 	{
-		printf("\r  %s Unable to finalize SQL statement to update adlist properties in database file %s\n", cross, outfile);
+		printf("%s  %s Unable to finalize SQL statement to update adlist properties in database file %s\n",
+		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
@@ -347,14 +365,16 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	// End transaction
 	if(sqlite3_exec(db, "END TRANSACTION", NULL, NULL, NULL) != SQLITE_OK)
 	{
-		printf("\r  %s Unable to end transaction to insert domains into database file %s (database file may be corrupted)\n", cross, outfile);
+		printf("%s  %s Unable to end transaction to insert domains into database file %s (database file may be corrupted)\n",
+		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
 		return EXIT_FAILURE;
 	}
 
 	// Print summary
-	printf("\r  %s Parsed %u exact domains and %u ABP-style domains (ignored %u non-domain entries)\n", tick, exact_domains, abp_domains, invalid_domains);
+	printf("%s  %s Parsed %u exact domains and %u ABP-style domains (ignored %u non-domain entries)\n",
+	       over, tick, exact_domains, abp_domains, invalid_domains);
 	if(invalid_domains_list_len > 0)
 	{
 		puts("      Sample of non-domain entries:");
