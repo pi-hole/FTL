@@ -178,9 +178,8 @@ void parse_args(int argc, char* argv[])
 	{
 		// Enable stdout printing
 		cli_mode = true;
-		const bool verbose = argc > 2 && strcmp(argv[2], "-v") == 0;
 		const bool arp_all = argc > 2 && strcmp(argv[2], "-a") == 0;
-		exit(run_arp_scan(verbose, arp_all));
+		exit(run_arp_scan(arp_all));
 	}
 
 	// start from 1, as argv[0] is the executable name
@@ -514,9 +513,8 @@ void parse_args(int argc, char* argv[])
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
-			printf("\t%sarp-scan %s[{-v/-a}]%s  Use ARP to scan local network for\n", green, cyan, normal);
+			printf("\t%sarp-scan %s[-a]%s       Use ARP to scan local network for\n", green, cyan, normal);
 			printf("\t                    possible IP conflicts\n");
-			printf("\t                    Append %s-v%s for verbose output mode\n", cyan, normal);
 			printf("\t                    Append %s-a%s to force scan on all\n", cyan, normal);
 			printf("\t                    interfaces\n");
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);

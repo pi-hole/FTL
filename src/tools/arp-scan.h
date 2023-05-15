@@ -11,6 +11,6 @@
 #ifndef ARP_SCAN_H
 #define ARP_SCAN_H
 
-int run_arp_scan(const bool verbose, const bool scan_all);
+int run_arp_scan(const bool scan_all);
 
 #endif // ARP_SCAN_H
