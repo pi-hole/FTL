@@ -406,7 +406,7 @@ static void *arp_scan_iface(void *args)
 	for(unsigned int i = 0; i < arp_result_len; i++)
 	{
 		unsigned int j = 0, replied_devices = 0;
-		bool multiple_replies = false;
+		unsigned int multiple_replies = 0;
 
 		// Print MAC addresses
 		for(j = 0; j < MAX_MACS; j++)
@@ -416,7 +416,7 @@ static void *arp_scan_iface(void *args)
 			for(unsigned int k = 0; k < NUM_SCANS; k++)
 			{
 				replied |= result[i].device[j].replied[k] > 0;
-				multiple_replies |= result[i].device[j].replied[k] > 1;
+				multiple_replies += result[i].device[j].replied[k] > 1;
 			}
 			if(!replied)
 				continue;
@@ -449,8 +449,12 @@ static void *arp_scan_iface(void *args)
 		}
 
 		// Print warning if we received multiple replies
-		if(replied_devices > 1 || multiple_replies)
-			printf("WARNING: Received multiple replies for %s\n", ipstr);
+		if(replied_devices > 1)
+			printf("WARNING: Received replies for %s from %i devices\n",
+			       ipstr, replied_devices);
+		if(multiple_replies > 0)
+			printf("WARNING: Received multiple replies for %s in %i scan%s\n",
+			       ipstr, multiple_replies, multiple_replies > 1 ? "s" : "");
 	}
 	putc('\n', stdout);
 
