@@ -364,9 +364,9 @@ static void *arp_scan_iface(void *args)
 
 	for(unsigned int scan_id = 0; scan_id < NUM_SCANS; scan_id++)
 	{
-#ifdef DEBUG
-		printf("Scanning interface %s (%s/%i) for the %i. time\n", iface, ipstr, cidr, scan_id + 1);
-#endif
+		if(arp_verbose)
+			printf("Still scanning interface %s (%s/%i) %i%%...\n", iface, ipstr, cidr, 100*scan_id/NUM_SCANS);
+
 		// Send ARP requests to all IPs in subnet
 		if(send_arps(arp_socket, ifindex, iface, mac, &src_addr.sin_addr, dst_addr, cidr) != 0)
 			break;
