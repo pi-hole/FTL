@@ -921,7 +921,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class)
 {
   unsigned char *p = (unsigned char *)(header+1);
-  int qtype, qclass, rc, i, neganswer, nons, neg_ttl = 0, found_supported = 0;
+  int qtype, qclass, rc, i, neganswer = 0, nons = 0, servfail = 0, neg_ttl = 0, found_supported = 0;
   int aclass, atype, rdlen, flags;
   unsigned long ttl;
   union all_addr a;
@@ -934,35 +934,43 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
   GETSHORT(qclass, p);
 
   if (qtype != T_DS || qclass != class)
-    rc = STAT_BOGUS;
-  else
-    rc = dnssec_validate_reply(now, header, plen, name, keyname, NULL, 0, &neganswer, &nons, &neg_ttl);
-  
-  if (STAT_ISEQUAL(rc, STAT_INSECURE))
-    {
-      my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
-      log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS - not secure", 0);
-      return STAT_BOGUS | DNSSEC_FAIL_INDET;
-    }
-  
-  p = (unsigned char *)(header+1);
-  if (!extract_name(header, plen, &p, name, 1, 4))
-      return STAT_BOGUS;
+    return STAT_BOGUS;
 
-  p += 4; /* qtype, qclass */
-  
-  /* If the key needed to validate the DS is on the same domain as the DS, we'll
-     loop getting nowhere. Stop that now. This can happen of the DS answer comes
-     from the DS's zone, and not the parent zone. */
-  if (STAT_ISEQUAL(rc, STAT_NEED_KEY) && hostname_isequal(name, keyname))
+  /* A SERVFAIL answer has been seen to a DS query not at start of authority,
+     so treat it as such and continue to search for a DS or proof of no existence
+     further down the tree. */
+  if (RCODE(header) == SERVFAIL)
+    servfail = neganswer = nons = 1;
+  else
     {
-      log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS", 0);
-      return STAT_BOGUS;
+      rc = dnssec_validate_reply(now, header, plen, name, keyname, NULL, 0, &neganswer, &nons, &neg_ttl);
+  
+      if (STAT_ISEQUAL(rc, STAT_INSECURE))
+	{
+	  my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
+	  log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS - not secure", 0);
+	  return STAT_BOGUS | DNSSEC_FAIL_INDET;
+	}
+      
+      p = (unsigned char *)(header+1);
+      if (!extract_name(header, plen, &p, name, 1, 4))
+	return STAT_BOGUS;
+
+      p += 4; /* qtype, qclass */
+      
+      /* If the key needed to validate the DS is on the same domain as the DS, we'll
+	 loop getting nowhere. Stop that now. This can happen of the DS answer comes
+	 from the DS's zone, and not the parent zone. */
+      if (STAT_ISEQUAL(rc, STAT_NEED_KEY) && hostname_isequal(name, keyname))
+	{
+	  log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS", 0);
+	  return STAT_BOGUS;
+	}
+  
+      if (!STAT_ISEQUAL(rc, STAT_SECURE))
+	return rc;
     }
   
-  if (!STAT_ISEQUAL(rc, STAT_SECURE))
-    return rc;
-   
   if (!neganswer)
     {
       cache_start_insert();
@@ -1060,7 +1068,8 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
   cache_end_insert();  
   
   if (neganswer)
-    log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, nons ? "no DS/cut" : "no DS", 0);
+    log_query(F_NOEXTRA | F_UPSTREAM, name, NULL,
+	      servfail ? "SERVFAIL" : (nons ? "no DS/cut" : "no DS"), 0);
       
   return STAT_OK;
 }

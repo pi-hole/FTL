@@ -2142,7 +2142,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       daemon->log_display_id = ++daemon->log_id;
       
       log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, keyname, &server->addr,
-			    STAT_ISEQUAL(status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
+			    STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
             
       new_status = tcp_key_recurse(now, new_status, new_header, m, class, name, keyname, server, have_mark, mark, keycount);
 
