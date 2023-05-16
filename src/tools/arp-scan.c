@@ -94,13 +94,14 @@ struct thread_data {
 	char ipstr[INET_ADDRSTRLEN];
 	unsigned char mac[16];
 	unsigned int num_scans;
+	uint32_t scanned_addresses;
 	char *error;
 };
 
 // Sends multiple ARP who-has request on interface ifindex, using source mac src_mac and source ip src_ip.
 // Iterates over all IP addresses in the range of dst_ip/cidr.
 static int send_arps(const int fd, const int ifindex, const char *iface, const unsigned char *src_mac,
-                     struct in_addr *src_ip, struct in_addr dst_ip, const int dst_cidr)
+                     struct in_addr *src_ip, struct in_addr dst_ip, const int dst_cidr, uint32_t *scanned_addresses)
 {
 	int err = -1;
 	unsigned char buffer[BUF_SIZE];
@@ -168,6 +169,8 @@ static int send_arps(const int fd, const int ifindex, const char *iface, const u
 
 		// Increment IP address
 		dst_ip.s_addr = htonl(ntohl(dst_ip.s_addr) + 1);
+
+		(*scanned_addresses)++;
 	}
 
 	err = 0;
@@ -395,14 +398,16 @@ static void *arp_scan_iface(void *args)
 		//	printf("Still scanning interface %s (%s/%i) %i%%...\n", iface, thread_data->ipstr, thread_data->dst_cidr, 100*scan_id/NUM_SCANS);
 
 		// Send ARP requests to all IPs in subnet
-		if(send_arps(arp_socket, ifindex, iface, thread_data->mac, &thread_data->src_addr.sin_addr, thread_data->dst_addr.sin_addr, thread_data->dst_cidr) != 0)
+		if(send_arps(arp_socket, ifindex, iface, thread_data->mac, &thread_data->src_addr.sin_addr,
+		             thread_data->dst_addr.sin_addr, thread_data->dst_cidr, &thread_data->scanned_addresses) != 0)
 		{
 			thread_data->status = STATUS_ERROR;
 			break;
 		}
 
 		// Read ARP responses
-		if(read_arp(arp_socket, iface, &thread_data->dst_addr.sin_addr, thread_data->result, thread_data->result_size, thread_data->num_scans) != 0)
+		if(read_arp(arp_socket, iface, &thread_data->dst_addr.sin_addr, thread_data->result, thread_data->result_size,
+		            thread_data->num_scans) != 0)
 		{
 			thread_data->status = STATUS_ERROR;
 			break;
@@ -560,13 +565,13 @@ int run_arp_scan(const bool scan_all)
 
 	// Wait for all threads to finish scanning
 	bool all_done = false;
+	unsigned int progress = 0;
 	while(!all_done)
 	{
 		all_done = true;
 		uint64_t num_scans = 0, total_scans = 0;
 		for(unsigned int i = 0; i < tid; i++)
 		{
-			const uint32_t num_addresses = 1 << (32 - thread_data[i].dst_cidr);
 			if(thread_data[i].status == STATUS_INITIALIZING ||
 			   thread_data[i].status == STATUS_SCANNING)
 			{
@@ -577,16 +582,29 @@ int run_arp_scan(const bool scan_all)
 			   thread_data[i].status == STATUS_COMPLETE)
 			{
 				// Also add up scans for completed threads
-				num_scans += thread_data[i].num_scans * num_addresses;
-				total_scans += NUM_SCANS * num_addresses;
+				num_scans += thread_data[i].scanned_addresses;
+				total_scans +=  NUM_SCANS * thread_data[i].result_size;
 			}
 		}
 		if(!all_done)
 		{
-			// Print progress
-			printf("%i%%... ", (int)(100*num_scans/total_scans));
+			// Calculate progress (total number of scans / total number of addresses)
+			// We add 1 to total_scans to avoid division by zero
+			const unsigned int new_progress = 100 * num_scans / (total_scans + 1);
+			if(new_progress > progress)
+			{
+				// Print progress
+				printf(" %i%%", new_progress);
+
+				// Update progress
+				progress = new_progress;
+			}
+
+			putc('.', stdout);
+
 			// Flush stdout
 			fflush(stdout);
+
 			// Sleep for 1 second
 			sleepms(1000);
 		}
