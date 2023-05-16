@@ -16,6 +16,9 @@
 #include "dhcp-discover.h"
 // sleepms()
 #include "timers.h"
+// check_capability()
+#include "capabilities.h"
+#include <linux/capability.h>
 
 #include <linux/if_packet.h>
 #include <linux/if_ether.h>
@@ -184,7 +187,9 @@ static int create_arp_socket(const int ifindex, const char *iface, const char **
 	if(arp_socket < 0)
 	{
 		*error = strerror(errno);
+#ifdef DEBUG
 		printf("Unable to create socket for ARP communications on interface %s: %s\n", iface, *error);
+#endif
 		return -1;
 	}
 
@@ -196,7 +201,9 @@ static int create_arp_socket(const int ifindex, const char *iface, const char **
 	if (bind(arp_socket, (struct sockaddr*) &sll, sizeof(struct sockaddr_ll)) < 0)
 	{
 		*error = strerror(errno);
+#ifdef DEBUG
 		printf("Unable to bind socket for ARP communications on interface %s: %s\n", iface, *error);
+#endif
 		close(arp_socket);
 		return -1;
 	}
@@ -208,7 +215,9 @@ static int create_arp_socket(const int ifindex, const char *iface, const char **
 	if (setsockopt(arp_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
 	{
 		*error = strerror(errno);
+#ifdef DEBUG
 		printf("Unable to set timeout for ARP communications on interface %s: %s\n", iface, *error);
+#endif
 		close(arp_socket);
 		return -1;
 	}
@@ -530,6 +539,13 @@ static void print_results(struct thread_data *thread_data)
 
 int run_arp_scan(const bool scan_all)
 {
+	// Check if we are capable of sending ARP packets
+	if(!check_capability(CAP_NET_RAW))
+	{
+		puts("Error: Insufficient permissions or capabilities (needs CAP_NET_RAW). Try running as root (sudo)");
+		return EXIT_FAILURE;
+	}
+
 	arp_all = scan_all;
 	puts("Discovering IPv4 hosts on the network using the Address Resolution Protocol (ARP)...\n");
 
