@@ -430,6 +430,13 @@ static void print_results(struct thread_data *thread_data)
 		return;
 	}
 
+	if(thread_data->status == STATUS_ERROR)
+	{
+		printf("Error scanning interface %s (%s/%i)\n\n",
+		       thread_data->iface, thread_data->ipstr, thread_data->dst_cidr);
+		return;
+	}
+
 	// Check if there are any results
 	unsigned int replies = 0;
 	for(unsigned int i = 0; i < thread_data->result_size; i++)
@@ -440,7 +447,7 @@ static void print_results(struct thread_data *thread_data)
 	// Exit early if there are no results
 	if(replies == 0)
 	{
-		printf("No devices found on interface %s (%s/%i)\n\n",
+		printf("No devices replied on interface %s (%s/%i)\n\n",
 		       thread_data->iface, thread_data->ipstr, thread_data->dst_cidr);
 		return;
 	}
