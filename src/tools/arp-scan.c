@@ -448,7 +448,7 @@ static void print_results(struct thread_data *thread_data)
 	// If there is at least one result, print header
 	printf("ARP scan on interface %s (%s/%i) finished\n",
 	       thread_data->iface, thread_data->ipstr, thread_data->dst_cidr);
-	printf("%-16s %-10s %-24s %-17s  Reply matrix\n",
+	printf("%-16s %-16s %-24s %-17s  Reply matrix\n",
 	       "IP address", "Interface", "Hostname", "MAC address");
 
 	// Add our own IP address to the results so IP conflicts can be detected
@@ -487,7 +487,7 @@ static void print_results(struct thread_data *thread_data)
 				break;
 
 			// Print MAC address
-			printf("%-16s %-10s %-24s %02x:%02x:%02x:%02x:%02x:%02x ",
+			printf("%-16s %-16s %-24s %02x:%02x:%02x:%02x:%02x:%02x ",
 			       thread_data->ipstr, thread_data->iface,
 			       get_hostname(&ip),
 			       thread_data->result[i].device[j].mac[0],
