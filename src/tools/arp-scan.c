@@ -563,34 +563,35 @@ int run_arp_scan(const bool scan_all)
 	while(!all_done)
 	{
 		all_done = true;
-		unsigned int num_scans = 0, total_scans = 0;
+		uint64_t num_scans = 0, total_scans = 0;
 		for(unsigned int i = 0; i < tid; i++)
 		{
-			if(thread_data[i].status == STATUS_SCANNING)
+			const uint32_t num_addresses = 1 << (32 - thread_data[i].dst_cidr);
+			if(thread_data[i].status == STATUS_INITIALIZING ||
+			   thread_data[i].status == STATUS_SCANNING)
 			{
 				// At least one thread is still scanning
 				all_done = false;
-				num_scans += thread_data[i].num_scans;
-				total_scans += NUM_SCANS;
 			}
-			if(thread_data[i].status == STATUS_COMPLETE)
+			if(thread_data[i].status == STATUS_SCANNING ||
+			   thread_data[i].status == STATUS_COMPLETE)
 			{
 				// Also add up scans for completed threads
-				num_scans += thread_data[i].num_scans;
-				total_scans += NUM_SCANS;
+				num_scans += thread_data[i].num_scans * num_addresses;
+				total_scans += NUM_SCANS * num_addresses;
 			}
 		}
 		if(!all_done)
 		{
 			// Print progress
-			printf("%i%%... ", 100*num_scans/total_scans);
+			printf("%i%%... ", (int)(100*num_scans/total_scans));
 			// Flush stdout
 			fflush(stdout);
 			// Sleep for 1 second
 			sleepms(1000);
 		}
 	}
-	puts("100%%\n\n");
+	puts("100%\n\n");
 
 	// Wait for all threads to join back with us
 	for(unsigned int i = 0; i < tid; i++)
