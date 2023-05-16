@@ -346,10 +346,6 @@ static void *arp_scan_iface(void *args)
 	// Set interface name as thread name
 	prctl(PR_SET_NAME, iface, 0, 0, 0);
 
-	// Get interface IPv4 address
-	memcpy(&thread_data->src_addr, ifa->ifa_addr, sizeof(thread_data->src_addr));
-	inet_ntop(AF_INET, &thread_data->src_addr.sin_addr, thread_data->ipstr, INET_ADDRSTRLEN);
-
 	// Get interface netmask
 	memcpy(&thread_data->mask, ifa->ifa_netmask, sizeof(thread_data->mask));
 
@@ -547,16 +543,24 @@ int run_arp_scan(const bool scan_all)
 		{
 			thread_data[tid].ifa = tmp;
 			thread_data[tid].iface = tmp->ifa_name;
-			// Create thread
-			if(pthread_create(&scanthread[tid], &attr, arp_scan_iface, &thread_data[tid] ) != 0)
-			{
-				printf("Unable to launch thread for interface %s, skipping...\n",
-				       tmp->ifa_name);
-				continue;
-			}
 
-			// Increase thread ID
-			tid++;
+			// Get interface IPv4 address
+			memcpy(&thread_data[tid].src_addr, tmp->ifa_addr, sizeof(thread_data[tid].src_addr));
+			inet_ntop(AF_INET, &thread_data[tid].src_addr.sin_addr, thread_data[tid].ipstr, INET_ADDRSTRLEN);
+
+			// Always skip the loopback interface
+			if(thread_data[tid].src_addr.sin_addr.s_addr != htonl(INADDR_LOOPBACK))
+			{
+				// Create thread
+				if(pthread_create(&scanthread[tid], &attr, arp_scan_iface, &thread_data[tid] ) != 0)
+				{
+					printf("Unable to launch thread for interface %s, skipping...\n",
+						tmp->ifa_name);
+				}
+
+				// Increase thread ID
+				tid++;
+			}
 		}
 
 		// Advance to the next interface
