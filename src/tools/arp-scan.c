@@ -95,12 +95,12 @@ struct thread_data {
 	unsigned char mac[16];
 	unsigned int num_scans;
 	uint32_t scanned_addresses;
-	char *error;
+	const char *error;
 };
 
 // Sends multiple ARP who-has request on interface ifindex, using source mac src_mac and source ip src_ip.
 // Iterates over all IP addresses in the range of dst_ip/cidr.
-static int send_arps(const int fd, const int ifindex, const char *iface, const unsigned char *src_mac,
+static int send_arps(const int fd, const int ifindex, const char *iface, const unsigned char *src_mac, const char **error,
                      struct in_addr *src_ip, struct in_addr dst_ip, const int dst_cidr, uint32_t *scanned_addresses)
 {
 	int err = -1;
@@ -161,9 +161,8 @@ static int send_arps(const int fd, const int ifindex, const char *iface, const u
 		ret = sendto(fd, buffer, 42, 0, (struct sockaddr *) &socket_address, sizeof(socket_address));
 		if (ret == -1)
 		{
-			if(errno != EPROTONOSUPPORT)
-				printf("Unable to send ARP request for %s@%s: %s\n",
-				       inet_ntoa(dst_ip), iface, strerror(errno));
+			err = errno;
+			*error = strerror(err);
 			goto out;
 		}
 
@@ -178,13 +177,14 @@ out:
 	return err;
 }
 
-static int create_arp_socket(const int ifindex, const char *iface)
+static int create_arp_socket(const int ifindex, const char *iface, const char **error)
 {
 	// Create socket for ARP communications
 	const int arp_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
 	if(arp_socket < 0)
 	{
-		printf("Unable to create socket for ARP communications on interface %s: %s\n", iface, strerror(errno));
+		*error = strerror(errno);
+		printf("Unable to create socket for ARP communications on interface %s: %s\n", iface, *error);
 		return -1;
 	}
 
@@ -195,7 +195,8 @@ static int create_arp_socket(const int ifindex, const char *iface)
 	sll.sll_ifindex = ifindex;
 	if (bind(arp_socket, (struct sockaddr*) &sll, sizeof(struct sockaddr_ll)) < 0)
 	{
-		printf("Unable to bind socket for ARP communications on interface %s: %s\n", iface, strerror(errno));
+		*error = strerror(errno);
+		printf("Unable to bind socket for ARP communications on interface %s: %s\n", iface, *error);
 		close(arp_socket);
 		return -1;
 	}
@@ -206,7 +207,8 @@ static int create_arp_socket(const int ifindex, const char *iface)
 	tv.tv_usec = 0;
 	if (setsockopt(arp_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
 	{
-		printf("Unable to set timeout for ARP communications on interface %s: %s\n", iface, strerror(errno));
+		*error = strerror(errno);
+		printf("Unable to set timeout for ARP communications on interface %s: %s\n", iface, *error);
 		close(arp_socket);
 		return -1;
 	}
@@ -249,7 +251,7 @@ static void add_result(const char *iface, struct in_addr *rcv_ip, struct in_addr
 }
 
 // Read all ARP responses
-static ssize_t read_arp(const int fd, const char *iface, struct in_addr *dst_ip,
+static ssize_t read_arp(const int fd, const char *iface, struct in_addr *dst_ip, const char **error,
                         struct arp_result *result, const size_t result_len, const unsigned int scan_id)
 {
 	ssize_t ret = 0;
@@ -269,7 +271,8 @@ static ssize_t read_arp(const int fd, const char *iface, struct in_addr *dst_ip,
 			}
 
 			// Error
-			printf("recvfrom(): %s", strerror(errno));
+			*error = strerror(errno);
+			printf("recvfrom(): %s", *error);
 			break;
 		}
 		struct ethhdr *rcv_resp = (struct ethhdr *) buffer;
@@ -359,15 +362,18 @@ static void *arp_scan_iface(void *args)
 	if(thread_data->dst_cidr < 24 && !arp_all)
 	{
 		thread_data->status = STATUS_SKIPPED_CIDR_MISMATCH;
-		//printf("Skipped interface %s (%s/%i)\n", iface, thread_data->ipstr, thread_data->dst_cidr);
+#ifdef DEBUG
+		printf("Skipped interface %s (%s/%i)\n", iface, thread_data->ipstr, thread_data->dst_cidr);
+#endif
 		pthread_exit(NULL);
 	}
-	//if(arp_verbose)
-	//	printf("Scanning interface %s (%s/%i)...\n", iface, thread_data->ipstr, thread_data->dst_cidr);
+#ifdef DEBUG
+	printf("Scanning interface %s (%s/%i)...\n", iface, thread_data->ipstr, thread_data->dst_cidr);
+#endif
 	thread_data->status = STATUS_SCANNING;
 
 	// Create socket for ARP communications
-	const int arp_socket = create_arp_socket(ifindex, iface);
+	const int arp_socket = create_arp_socket(ifindex, iface, &thread_data->error);
 
 	// Cannot create socket, likely a permission error
 	if(arp_socket < 0)
@@ -390,11 +396,11 @@ static void *arp_scan_iface(void *args)
 
 	for(thread_data->num_scans = 0; thread_data->num_scans < NUM_SCANS; thread_data->num_scans++)
 	{
-		//if(arp_verbose)
-		//	printf("Still scanning interface %s (%s/%i) %i%%...\n", iface, thread_data->ipstr, thread_data->dst_cidr, 100*scan_id/NUM_SCANS);
-
+#ifdef DEBUG
+		printf("Still scanning interface %s (%s/%i) %i%%...\n", iface, thread_data->ipstr, thread_data->dst_cidr, 100*scan_id/NUM_SCANS);
+#endif
 		// Send ARP requests to all IPs in subnet
-		if(send_arps(arp_socket, ifindex, iface, thread_data->mac, &thread_data->src_addr.sin_addr,
+		if(send_arps(arp_socket, ifindex, iface, thread_data->mac, &thread_data->error, &thread_data->src_addr.sin_addr,
 		             thread_data->dst_addr.sin_addr, thread_data->dst_cidr, &thread_data->scanned_addresses) != 0)
 		{
 			thread_data->status = STATUS_ERROR;
@@ -402,8 +408,8 @@ static void *arp_scan_iface(void *args)
 		}
 
 		// Read ARP responses
-		if(read_arp(arp_socket, iface, &thread_data->dst_addr.sin_addr, thread_data->result, thread_data->result_size,
-		            thread_data->num_scans) != 0)
+		if(read_arp(arp_socket, iface, &thread_data->dst_addr.sin_addr, &thread_data->error,
+		            thread_data->result, thread_data->result_size, thread_data->num_scans) != 0)
 		{
 			thread_data->status = STATUS_ERROR;
 			break;
@@ -432,8 +438,9 @@ static void print_results(struct thread_data *thread_data)
 
 	if(thread_data->status == STATUS_ERROR)
 	{
-		printf("Error scanning interface %s (%s/%i)\n\n",
-		       thread_data->iface, thread_data->ipstr, thread_data->dst_cidr);
+		printf("Error scanning interface %s (%s/%i)%s%s\n\n",
+		       thread_data->iface, thread_data->ipstr, thread_data->dst_cidr,
+		       thread_data->error ? ": " : "", thread_data->error ? thread_data->error : "");
 		return;
 	}
 
