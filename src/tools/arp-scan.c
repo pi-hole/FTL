@@ -82,23 +82,23 @@ enum status {
 	STATUS_SCANNING,
 	STATUS_ERROR,
 	STATUS_COMPLETE
-};
+} __attribute__ ((packed));
 
 struct thread_data {
+	char iface[IF_NAMESIZE + 1];
+	char ipstr[INET_ADDRSTRLEN];
+	unsigned char mac[MAC_LENGTH];
+	enum status status;
 	int dst_cidr;
+	unsigned int num_scans;
+	size_t result_size;
+	uint32_t scanned_addresses;
+	const char *error;
+	struct ifaddrs *ifa;
+	struct arp_result *result;
 	struct sockaddr_in src_addr;
 	struct sockaddr_in dst_addr;
 	struct sockaddr_in mask;
-	struct ifaddrs *ifa;
-	const char *iface;
-	struct arp_result *result;
-	size_t result_size;
-	enum status status;
-	char ipstr[INET_ADDRSTRLEN];
-	unsigned char mac[16];
-	unsigned int num_scans;
-	uint32_t scanned_addresses;
-	const char *error;
 };
 
 // Sends multiple ARP who-has request on interface ifindex, using source mac src_mac and source ip src_ip.
@@ -488,11 +488,17 @@ static void print_results(struct thread_data *thread_data)
 		// Print MAC addresses
 		for(j = 0; j < MAX_MACS; j++)
 		{
+			// Check if result[i].mac[j] is all-zero, if so, skip this entry
+			if(memcmp(thread_data->result[i].device[j].mac, "\x00\x00\x00\x00\x00\x00", 6) == 0)
+				break;
+
 			// Check if IP address replied
+			replies = 0u;
 			bool replied = false;
 			for(unsigned int k = 0; k < NUM_SCANS; k++)
 			{
 				replied |= thread_data->result[i].device[j].replied[k] > 0;
+				replies += thread_data->result[i].device[j].replied[k] > 0 ? 1 : 0;
 				multiple_replies += thread_data->result[i].device[j].replied[k] > 1;
 			}
 			if(!replied)
@@ -505,9 +511,6 @@ static void print_results(struct thread_data *thread_data)
 			struct in_addr ip = { 0 };
 			ip.s_addr = htonl(ntohl(thread_data->dst_addr.sin_addr.s_addr) + i);
 			inet_ntop(AF_INET, &ip, thread_data->ipstr, INET_ADDRSTRLEN);
-			// Check if result[i].mac[j] is all-zero
-			if(memcmp(thread_data->result[i].device[j].mac, "\x00\x00\x00\x00\x00\x00", 6) == 0)
-				break;
 
 			// Print MAC address
 			printf("%-16s %-16s %-24s %02x:%02x:%02x:%02x:%02x:%02x ",
@@ -523,7 +526,7 @@ static void print_results(struct thread_data *thread_data)
 			for(unsigned int k = 0; k < NUM_SCANS; k++)
 				printf(" %s", thread_data->result[i].device[j].replied[k] > 0 ? "X" : "-");
 
-			putc('\n', stdout);
+			printf(" (%u%%)\n", replies * 100 / NUM_SCANS);
 		}
 
 		// Print warning if we received multiple replies
@@ -572,7 +575,7 @@ int run_arp_scan(const bool scan_all)
 		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET)
 		{
 			thread_data[tid].ifa = tmp;
-			thread_data[tid].iface = tmp->ifa_name;
+			strncpy(thread_data[tid].iface, tmp->ifa_name, sizeof(thread_data[tid].iface) - 1);
 
 			// Get interface IPv4 address
 			memcpy(&thread_data[tid].src_addr, tmp->ifa_addr, sizeof(thread_data[tid].src_addr));
@@ -643,7 +646,7 @@ int run_arp_scan(const bool scan_all)
 			sleepms(1000);
 		}
 	}
-	puts("100%\n\n");
+	puts("100%\n");
 
 	// Wait for all threads to join back with us
 	for(unsigned int i = 0; i < tid; i++)
