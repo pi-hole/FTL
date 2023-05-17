@@ -40,9 +40,6 @@
 // How long do we wait for ARP replies in each scan [seconds]?
 #define ARP_TIMEOUT 1
 
-// Global constant
-static bool arp_all = false;
-
 // Protocol definitions
 #define PROTO_ARP 0x0806
 #define ETH2_HEADER_LEN 14
@@ -71,7 +68,8 @@ struct arp_header {
 
 struct arp_result {
 	struct device {
-		unsigned int replied[NUM_SCANS];
+		// In extreme mode, we can scan up to 10x more often
+		unsigned int replied[10*NUM_SCANS];
 		unsigned char mac[MAC_LENGTH];
 	} device[MAX_MACS];
 };
@@ -85,12 +83,14 @@ enum status {
 } __attribute__ ((packed));
 
 struct thread_data {
+	bool scan_all :1;
 	char iface[IF_NAMESIZE + 1];
 	char ipstr[INET_ADDRSTRLEN];
 	unsigned char mac[MAC_LENGTH];
 	enum status status;
 	int dst_cidr;
 	unsigned int num_scans;
+	unsigned int total_scans;
 	size_t result_size;
 	uint32_t scanned_addresses;
 	const char *error;
@@ -368,7 +368,7 @@ static void *arp_scan_iface(void *args)
 	const int ifindex = if_nametoindex(iface);
 
 	// Scan only interfaces with CIDR >= 24
-	if(thread_data->dst_cidr < 24 && !arp_all)
+	if(thread_data->dst_cidr < 24 && !thread_data->scan_all)
 	{
 		thread_data->status = STATUS_SKIPPED_CIDR_MISMATCH;
 #ifdef DEBUG
@@ -403,10 +403,10 @@ static void *arp_scan_iface(void *args)
 	struct arp_result *result = calloc(thread_data->result_size, sizeof(struct arp_result));
 	thread_data->result = result;
 
-	for(thread_data->num_scans = 0; thread_data->num_scans < NUM_SCANS; thread_data->num_scans++)
+	for(thread_data->num_scans = 0; thread_data->num_scans < thread_data->total_scans; thread_data->num_scans++)
 	{
 #ifdef DEBUG
-		printf("Still scanning interface %s (%s/%i) %i%%...\n", iface, thread_data->ipstr, thread_data->dst_cidr, 100*scan_id/NUM_SCANS);
+		printf("Still scanning interface %s (%s/%i) %i%%...\n", iface, thread_data->ipstr, thread_data->dst_cidr, 100*scan_id/thread_data->total_scans);
 #endif
 		// Send ARP requests to all IPs in subnet
 		if(send_arps(arp_socket, ifindex, iface, thread_data->mac, &thread_data->error, &thread_data->src_addr.sin_addr,
@@ -440,7 +440,7 @@ static void print_results(struct thread_data *thread_data)
 
 	if(thread_data->status == STATUS_SKIPPED_CIDR_MISMATCH)
 	{
-		printf("Skipped interface %s (%s/%i) because of too large network (use -a to force scanning this interface)\n\n",
+		printf("Skipped interface %s (%s/%i) because of too large network (use -a or -x to force scanning this interface)\n\n",
 		       thread_data->iface, thread_data->ipstr, thread_data->dst_cidr);
 		return;
 	}
@@ -457,7 +457,7 @@ static void print_results(struct thread_data *thread_data)
 	unsigned int replies = 0;
 	for(unsigned int i = 0; i < thread_data->result_size; i++)
 		for(unsigned int j = 0; j < MAX_MACS; j++)
-			for(unsigned int k = 0; k < NUM_SCANS; k++)
+			for(unsigned int k = 0; k < thread_data->total_scans; k++)
 				replies += thread_data->result[i].device[j].replied[k];
 
 	// Exit early if there are no results
@@ -476,7 +476,7 @@ static void print_results(struct thread_data *thread_data)
 
 	// Add our own IP address to the results so IP conflicts can be detected
 	// (our own IP address is not included in the ARP scan)
-	for(unsigned int i = 0; i < NUM_SCANS; i++)
+	for(unsigned int i = 0; i < thread_data->total_scans; i++)
 		add_result(thread_data->iface, &thread_data->src_addr.sin_addr, &thread_data->dst_addr.sin_addr, thread_data->mac, thread_data->result, thread_data->result_size, i);
 
 	// Print results
@@ -495,7 +495,7 @@ static void print_results(struct thread_data *thread_data)
 			// Check if IP address replied
 			replies = 0u;
 			bool replied = false;
-			for(unsigned int k = 0; k < NUM_SCANS; k++)
+			for(unsigned int k = 0; k < thread_data->total_scans; k++)
 			{
 				replied |= thread_data->result[i].device[j].replied[k] > 0;
 				replies += thread_data->result[i].device[j].replied[k] > 0 ? 1 : 0;
@@ -523,10 +523,10 @@ static void print_results(struct thread_data *thread_data)
 			       thread_data->result[i].device[j].mac[4],
 			       thread_data->result[i].device[j].mac[5]);
 
-			for(unsigned int k = 0; k < NUM_SCANS; k++)
+			for(unsigned int k = 0; k < thread_data->total_scans; k++)
 				printf(" %s", thread_data->result[i].device[j].replied[k] > 0 ? "X" : "-");
 
-			printf(" (%u%%)\n", replies * 100 / NUM_SCANS);
+			printf(" (%u%%)\n", replies * 100 / thread_data->total_scans);
 		}
 
 		// Print warning if we received multiple replies
@@ -540,7 +540,7 @@ static void print_results(struct thread_data *thread_data)
 	putc('\n', stdout);
 }
 
-int run_arp_scan(const bool scan_all)
+int run_arp_scan(const bool scan_all, const bool extreme_mode)
 {
 	// Check if we are capable of sending ARP packets
 	if(!check_capability(CAP_NET_RAW))
@@ -549,7 +549,6 @@ int run_arp_scan(const bool scan_all)
 		return EXIT_FAILURE;
 	}
 
-	arp_all = scan_all;
 	puts("Discovering IPv4 hosts on the network using the Address Resolution Protocol (ARP)...\n");
 
 	// Get interface names for available interfaces on this machine
@@ -580,6 +579,9 @@ int run_arp_scan(const bool scan_all)
 			// Get interface IPv4 address
 			memcpy(&thread_data[tid].src_addr, tmp->ifa_addr, sizeof(thread_data[tid].src_addr));
 			inet_ntop(AF_INET, &thread_data[tid].src_addr.sin_addr, thread_data[tid].ipstr, INET_ADDRSTRLEN);
+
+			thread_data[tid].scan_all = scan_all || extreme_mode;
+			thread_data[tid].total_scans = extreme_mode ? 10*NUM_SCANS : NUM_SCANS;
 
 			// Always skip the loopback interface
 			if(thread_data[tid].src_addr.sin_addr.s_addr != htonl(INADDR_LOOPBACK))
@@ -620,7 +622,7 @@ int run_arp_scan(const bool scan_all)
 			{
 				// Also add up scans for completed threads
 				num_scans += thread_data[i].scanned_addresses;
-				total_scans +=  NUM_SCANS * thread_data[i].result_size;
+				total_scans +=  thread_data[i].total_scans * thread_data[i].result_size;
 			}
 		}
 		if(!all_done)

@@ -178,8 +178,9 @@ void parse_args(int argc, char* argv[])
 	{
 		// Enable stdout printing
 		cli_mode = true;
-		const bool arp_all = argc > 2 && strcmp(argv[2], "-a") == 0;
-		exit(run_arp_scan(arp_all));
+		const bool scan_all = argc > 2 && strcmp(argv[2], "-a") == 0;
+		const bool extreme_mode = argc > 2 && strcmp(argv[2], "-x") == 0;
+		exit(run_arp_scan(scan_all, extreme_mode));
 	}
 
 	// start from 1, as argv[0] is the executable name
@@ -513,10 +514,12 @@ void parse_args(int argc, char* argv[])
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
-			printf("\t%sarp-scan %s[-a]%s       Use ARP to scan local network for\n", green, cyan, normal);
+			printf("\t%sarp-scan %s[-a/-x]%s    Use ARP to scan local network for\n", green, cyan, normal);
 			printf("\t                    possible IP conflicts\n");
 			printf("\t                    Append %s-a%s to force scan on all\n", cyan, normal);
 			printf("\t                    interfaces\n");
+			printf("\t                    Append %s-x%s to force scan on all\n", cyan, normal);
+			printf("\t                    interfaces and scan 10x more often\n");
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);
 		}

@@ -11,6 +11,6 @@
 #ifndef ARP_SCAN_H
 #define ARP_SCAN_H
 
-int run_arp_scan(const bool scan_all);
+int run_arp_scan(const bool scan_all, const bool extreme_mode);
 
 #endif // ARP_SCAN_H
