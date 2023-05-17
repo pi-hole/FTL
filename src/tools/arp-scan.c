@@ -471,8 +471,8 @@ static void print_results(struct thread_data *thread_data)
 	// If there is at least one result, print header
 	printf("ARP scan on interface %s (%s/%i) finished\n",
 	       thread_data->iface, thread_data->ipstr, thread_data->dst_cidr);
-	printf("%-16s %-16s %-24s %-17s  Reply matrix\n",
-	       "IP address", "Interface", "Hostname", "MAC address");
+	printf("%-16s %-16s %-24s %-17s  %s\n",
+	       "IP address", "Interface", "Hostname", "MAC address", "Reply rate");
 
 	// Add our own IP address to the results so IP conflicts can be detected
 	// (our own IP address is not included in the ARP scan)
@@ -483,7 +483,6 @@ static void print_results(struct thread_data *thread_data)
 	for(unsigned int i = 0; i < thread_data->result_size; i++)
 	{
 		unsigned int j = 0, replied_devices = 0;
-		unsigned int multiple_replies = 0;
 
 		// Print MAC addresses
 		for(j = 0; j < MAX_MACS; j++)
@@ -495,6 +494,7 @@ static void print_results(struct thread_data *thread_data)
 			// Check if IP address replied
 			replies = 0u;
 			bool replied = false;
+			unsigned int multiple_replies = 0;
 			for(unsigned int k = 0; k < thread_data->total_scans; k++)
 			{
 				replied |= thread_data->result[i].device[j].replied[k] > 0;
@@ -513,7 +513,7 @@ static void print_results(struct thread_data *thread_data)
 			inet_ntop(AF_INET, &ip, thread_data->ipstr, INET_ADDRSTRLEN);
 
 			// Print MAC address
-			printf("%-16s %-16s %-24s %02x:%02x:%02x:%02x:%02x:%02x ",
+			printf("%-16s %-16s %-24s %02x:%02x:%02x:%02x:%02x:%02x  %u %%\n",
 			       thread_data->ipstr, thread_data->iface,
 			       get_hostname(&ip),
 			       thread_data->result[i].device[j].mac[0],
@@ -521,21 +521,29 @@ static void print_results(struct thread_data *thread_data)
 			       thread_data->result[i].device[j].mac[2],
 			       thread_data->result[i].device[j].mac[3],
 			       thread_data->result[i].device[j].mac[4],
-			       thread_data->result[i].device[j].mac[5]);
+			       thread_data->result[i].device[j].mac[5],
+			       replies * 100 / thread_data->total_scans);
 
+#ifdef DEBUG
 			for(unsigned int k = 0; k < thread_data->total_scans; k++)
 				printf(" %s", thread_data->result[i].device[j].replied[k] > 0 ? "X" : "-");
-
-			printf(" (%u%%)\n", replies * 100 / thread_data->total_scans);
+#endif
+		if(multiple_replies > 0)
+			printf("WARNING: Received multiple replies from %02x:%02x:%02x:%02x:%02x:%02x for %s in %i scan%s\n",
+			       thread_data->result[i].device[j].mac[0],
+			       thread_data->result[i].device[j].mac[1],
+			       thread_data->result[i].device[j].mac[2],
+			       thread_data->result[i].device[j].mac[3],
+			       thread_data->result[i].device[j].mac[4],
+			       thread_data->result[i].device[j].mac[5],
+			       thread_data->ipstr,
+			       multiple_replies, multiple_replies > 1 ? "s" : "");
 		}
 
 		// Print warning if we received multiple replies
 		if(replied_devices > 1)
 			printf("WARNING: Received replies for %s from %i devices\n",
 			       thread_data->ipstr, replied_devices);
-		if(multiple_replies > 0)
-			printf("WARNING: Received multiple replies for %s in %i scan%s\n",
-			       thread_data->ipstr, multiple_replies, multiple_replies > 1 ? "s" : "");
 	}
 	putc('\n', stdout);
 }
@@ -633,7 +641,7 @@ int run_arp_scan(const bool scan_all, const bool extreme_mode)
 			if(new_progress > progress)
 			{
 				// Print progress
-				printf(" %i%%", new_progress);
+				printf(" %i%% ", new_progress);
 
 				// Update progress
 				progress = new_progress;
