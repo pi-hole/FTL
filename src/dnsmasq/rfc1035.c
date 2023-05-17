@@ -936,7 +936,10 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    }
 	}
     }
-  
+
+  if (header->hb3 & HB3_TC)
+    log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
+    
   /* Don't put stuff from a truncated packet into the cache.
      Don't cache replies from non-recursive nameservers, since we may get a 
      reply containing a CNAME but not its target, even though the target 

@@ -944,17 +944,24 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
   if (forward->blocking_query)
     return;
   
-  /* Truncated answer can't be validated.
-     If this is an answer to a DNSSEC-generated query, we still
-     need to get the client to retry over TCP, so return
-     an answer with the TC bit set, even if the actual answer fits.
-  */
-  if (header->hb3 & HB3_TC)
-    status = STAT_TRUNCATED;
-
   /* If all replies to a query are REFUSED, give up. */
   if (RCODE(header) == REFUSED)
     status = STAT_ABANDONED;
+  else if (header->hb3 & HB3_TC)
+    {
+      /* Truncated answer can't be validated.
+	 If this is an answer to a DNSSEC-generated query, we still
+	 need to get the client to retry over TCP, so return
+	 an answer with the TC bit set, even if the actual answer fits.
+      */
+      status = STAT_TRUNCATED;
+      if (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY))
+	{
+	  unsigned char *p = (unsigned char *)(header+1);
+	  if  (extract_name(header, plen, &p, daemon->namebuff, 0, 4) == 1)
+	    log_query(F_UPSTREAM | F_NOEXTRA, daemon->namebuff, NULL, "truncated", (forward->flags & FREC_DNSKEY_QUERY) ? T_DNSKEY : T_DS);
+	}
+    }
   
   /* As soon as anything returns BOGUS, we stop and unwind, to do otherwise
      would invite infinite loops, since the answers to DNSKEY and DS queries
@@ -1345,7 +1352,10 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
       no_cache_dnssec = 0;
       
       if (STAT_ISEQUAL(status, STAT_TRUNCATED))
-	header->hb3 |= HB3_TC;
+	{
+	  header->hb3 |= HB3_TC;
+	  log_query(F_SECSTAT, "result", NULL, "TRUNCATED", 0);
+	}
       else
 	{
 	  char *result, *domain = "result";
@@ -1371,7 +1381,7 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 	      if (extract_request(header, n, daemon->namebuff, NULL))
 		domain = daemon->namebuff;
 	    }
-	  
+      
 	  log_query(F_SECSTAT, domain, &a, result, 0);
 	}
     }
