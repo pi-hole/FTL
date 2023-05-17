@@ -2091,9 +2091,10 @@ const char *edestr(int ede)
 /**** P-hole modified: Added file and line and serve log_query via macro defined in dnsmasq.h ****/
 void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, unsigned short type, const char *file, const int line)
 {
-  char *source, *dest = arg;
+  char *source, *dest;
   char *verb = "is";
   char *extra = "";
+  char *gap = " ";
   char portstring[7]; /* space for #<portnum> */
 
   FTL_hook(flags, name, addr, arg, daemon->log_display_id, type, file, line);
@@ -2104,6 +2105,8 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   /* build query type string if requested */
   if (!(flags & (F_SERVER | F_IPSET)) && type > 0)
     arg = querystr(arg, type);
+
+  dest = arg;
 
 #ifdef HAVE_DNSSEC
   if ((flags & F_DNSSECOK) && option_bool(OPT_EXTRALOG))
@@ -2230,18 +2233,21 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   else
     source = "cached";
   
-  if (name && !name[0])
+  if (!name)
+    gap = name = "";
+  else if (!name[0])
     name = ".";
+  
   if (option_bool(OPT_EXTRALOG))
     {
       if (flags & F_NOEXTRA)
-	my_syslog(LOG_INFO, "%u %s %s %s %s%s", daemon->log_display_id, source, name, verb, dest, extra);
+	my_syslog(LOG_INFO, "%u %s %s%s%s %s%s", daemon->log_display_id, source, name, gap, verb, dest, extra);
       else
 	{
 	   int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
-	   my_syslog(LOG_INFO, "%u %s/%u %s %s %s %s%s", daemon->log_display_id, daemon->addrbuff2, port, source, name, verb, dest, extra);
+	   my_syslog(LOG_INFO, "%u %s/%u %s %s%s%s %s%s", daemon->log_display_id, daemon->addrbuff2, port, source, name, gap, verb, dest, extra);
 	}
     }
   else
-    my_syslog(LOG_INFO, "%s %s %s %s%s", source, name, verb, dest, extra);
+    my_syslog(LOG_INFO, "%s %s%s%s %s%s", source, name, gap, verb, dest, extra);
 }
