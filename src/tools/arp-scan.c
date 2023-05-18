@@ -69,10 +69,12 @@ struct arp_header {
 struct arp_result {
 	struct device {
 		// In extreme mode, we can scan up to 10x more often
-		unsigned int replied[10*NUM_SCANS];
+		unsigned char replied[10*NUM_SCANS];
 		unsigned char mac[MAC_LENGTH];
 	} device[MAX_MACS];
 };
+
+const size_t arp_result_size = sizeof(struct arp_result);
 
 enum status {
 	STATUS_INITIALIZING = 0,
