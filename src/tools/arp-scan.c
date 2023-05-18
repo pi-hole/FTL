@@ -68,13 +68,18 @@ struct arp_header {
 
 struct arp_result {
 	struct device {
+		unsigned char replied[NUM_SCANS];
+		unsigned char mac[MAC_LENGTH];
+	} device[MAX_MACS];
+};
+
+struct arp_result_extreme {
+	struct device_extreme {
 		// In extreme mode, we can scan up to 10x more often
 		unsigned char replied[10*NUM_SCANS];
 		unsigned char mac[MAC_LENGTH];
 	} device[MAX_MACS];
 };
-
-const size_t arp_result_size = sizeof(struct arp_result);
 
 enum status {
 	STATUS_INITIALIZING = 0,
@@ -86,6 +91,7 @@ enum status {
 
 struct thread_data {
 	bool scan_all :1;
+	bool extreme :1;
 	char iface[IF_NAMESIZE + 1];
 	char ipstr[INET_ADDRSTRLEN];
 	unsigned char mac[MAC_LENGTH];
@@ -97,7 +103,10 @@ struct thread_data {
 	uint32_t scanned_addresses;
 	const char *error;
 	struct ifaddrs *ifa;
-	struct arp_result *result;
+	union {
+		struct arp_result_extreme *result_extreme;
+		struct arp_result *result;
+	};
 	struct sockaddr_in src_addr;
 	struct sockaddr_in dst_addr;
 	struct sockaddr_in mask;
@@ -105,8 +114,7 @@ struct thread_data {
 
 // Sends multiple ARP who-has request on interface ifindex, using source mac src_mac and source ip src_ip.
 // Iterates over all IP addresses in the range of dst_ip/cidr.
-static int send_arps(const int fd, const int ifindex, const char *iface, const unsigned char *src_mac, const char **error,
-                     struct in_addr *src_ip, struct in_addr dst_ip, const int dst_cidr, uint32_t *scanned_addresses)
+static int send_arps(const int fd, const int ifindex, struct thread_data *thread_data)
 {
 	int err = -1;
 	unsigned char buffer[BUF_SIZE];
@@ -134,9 +142,9 @@ static int send_arps(const int fd, const int ifindex, const char *iface, const u
 	memset(arp_req->target_mac, 0x00, MAC_LENGTH);
 
 	// Source MAC to our own MAC address
-	memcpy(send_req->h_source, src_mac, MAC_LENGTH);
-	memcpy(arp_req->sender_mac, src_mac, MAC_LENGTH);
-	memcpy(socket_address.sll_addr, src_mac, MAC_LENGTH);
+	memcpy(send_req->h_source, thread_data->mac, MAC_LENGTH);
+	memcpy(arp_req->sender_mac, thread_data->mac, MAC_LENGTH);
+	memcpy(socket_address.sll_addr, thread_data->mac, MAC_LENGTH);
 
 	// Protocol type is ARP
 	send_req->h_proto = htons(ETH_P_ARP);
@@ -149,11 +157,12 @@ static int send_arps(const int fd, const int ifindex, const char *iface, const u
 	arp_req->opcode = htons(ARP_REQUEST);
 
 	// Copy IP address to arp_req
-	memcpy(arp_req->sender_ip, &src_ip->s_addr, sizeof(src_ip->s_addr));
+	memcpy(arp_req->sender_ip, &thread_data->src_addr.sin_addr.s_addr, sizeof(thread_data->src_addr.sin_addr.s_addr));
 
 	// Loop over all possible IP addresses in the range dst_ip/cidr
 	// We start at 1 because the first IP address has already been set above
-	for(unsigned int i = 0; i < (1u << (32 - dst_cidr)); i++)
+	struct in_addr dst_ip = thread_data->dst_addr.sin_addr;
+	for(unsigned int i = 0; i < (1u << (32 - thread_data->dst_cidr)); i++)
 	{
 		// Fill in target IP address
 		memcpy(arp_req->target_ip, &dst_ip.s_addr, sizeof(dst_ip.s_addr));
@@ -167,14 +176,14 @@ static int send_arps(const int fd, const int ifindex, const char *iface, const u
 		if (ret == -1)
 		{
 			err = errno;
-			*error = strerror(err);
+			thread_data->error = strerror(err);
 			goto out;
 		}
 
 		// Increment IP address
 		dst_ip.s_addr = htonl(ntohl(dst_ip.s_addr) + 1);
 
-		(*scanned_addresses)++;
+		thread_data->scanned_addresses++;
 	}
 
 	err = 0;
@@ -227,15 +236,16 @@ static int create_arp_socket(const int ifindex, const char *iface, const char **
 	return arp_socket;
 }
 
-static void add_result(const char *iface, struct in_addr *rcv_ip, struct in_addr *dst_ip, unsigned char *sender_mac,
-                       struct arp_result *result, const size_t result_len, const unsigned int scan_id)
+static void add_result(struct in_addr *rcv_ip, unsigned char *sender_mac,
+                       struct thread_data *thread_data, const unsigned int scan_id)
 {
 
 	// Check if we have already found this IP address
-	uint32_t i = ntohl(rcv_ip->s_addr) - ntohl(dst_ip->s_addr);
-	if(i >= result_len)
+	uint32_t i = ntohl(rcv_ip->s_addr) - ntohl(thread_data->dst_addr.sin_addr.s_addr);
+	if(i >= thread_data->result_size)
 	{
-		printf("Received IP address %s out of range for interface %s (%u >= %zu)\n", inet_ntoa(*rcv_ip), iface, i, result_len);
+		printf("Received IP address %s out of range for interface %s (%u >= %zu)\n",
+		       inet_ntoa(*rcv_ip), thread_data->iface, i, thread_data->result_size);
 		return;
 	}
 
@@ -243,27 +253,31 @@ static void add_result(const char *iface, struct in_addr *rcv_ip, struct in_addr
 	unsigned int j = 0;
 	for(; j < MAX_MACS; j++)
 	{
+		unsigned char *mac = thread_data->extreme ?
+		                       thread_data->result_extreme[i].device[j].mac :
+		                       thread_data->result[i].device[j].mac;
 		// Check if received MAC is already stored in result[i].device[j].mac
-		if(memcmp(result[i].device[j].mac, sender_mac, MAC_LENGTH) == 0)
+		if(memcmp(mac, sender_mac, MAC_LENGTH) == 0)
 		{
 			break;
 		}
-		// Check if result[i].device[j].mac is all-zero
-		if(memcmp(result[i].device[j].mac, "\x00\x00\x00\x00\x00\x00", MAC_LENGTH) == 0)
+		// Check if mac is all-zero
+		if(memcmp(mac, "\x00\x00\x00\x00\x00\x00", MAC_LENGTH) == 0)
 		{
-			// Copy MAC address to result[i].device[j].mac
-			memcpy(result[i].device[j].mac, sender_mac, MAC_LENGTH);
+			// Copy MAC address to mac
+			memcpy(mac, sender_mac, MAC_LENGTH);
 			break;
 		}
 	}
 
 	// Memorize that we have received a reply for this IP address
-	result[i].device[j].replied[scan_id]++;
+	thread_data->extreme ?
+	  thread_data->result_extreme[i].device[j].replied[scan_id]++ :
+	  thread_data->result[i].device[j].replied[scan_id]++;
 }
 
 // Read all ARP responses
-static ssize_t read_arp(const int fd, const char *iface, struct in_addr *dst_ip, const char **error,
-                        struct arp_result *result, const size_t result_len, const unsigned int scan_id)
+static ssize_t read_arp(const int fd, struct thread_data *thread_data)
 {
 	ssize_t ret = 0;
 	unsigned char buffer[BUF_SIZE];
@@ -282,8 +296,8 @@ static ssize_t read_arp(const int fd, const char *iface, struct in_addr *dst_ip,
 			}
 
 			// Error
-			*error = strerror(errno);
-			printf("recvfrom(): %s", *error);
+			thread_data->error = strerror(errno);
+			printf("recvfrom(): %s", thread_data->error);
 			break;
 		}
 		struct ethhdr *rcv_resp = (struct ethhdr *) buffer;
@@ -310,7 +324,7 @@ static ssize_t read_arp(const int fd, const char *iface, struct in_addr *dst_ip,
 
 #ifdef DEBUG
 		printf("%-16s %-20s\t%02x:%02x:%02x:%02x:%02x:%02x",
-		     iface, inet_ntoa(sender_a),
+		     thread_data->iface, inet_ntoa(sender_a),
 		     arp_resp->sender_mac[0],
 		     arp_resp->sender_mac[1],
 		     arp_resp->sender_mac[2],
@@ -318,7 +332,7 @@ static ssize_t read_arp(const int fd, const char *iface, struct in_addr *dst_ip,
 		     arp_resp->sender_mac[4],
 		     arp_resp->sender_mac[5]);
 #endif
-		add_result(iface, &sender_a, dst_ip, arp_resp->sender_mac, result, result_len, scan_id);
+		add_result(&sender_a, arp_resp->sender_mac, thread_data, thread_data->num_scans);
 	}
 
 	return ret;
@@ -401,19 +415,35 @@ static void *arp_scan_iface(void *args)
 
 	// Allocate memory for ARP response buffer
 	const size_t arp_result_len = 1 << (32 - thread_data->dst_cidr);
-	struct arp_result *result = calloc(arp_result_len, sizeof(struct arp_result));
-	if(result == NULL)
-	{
-		// Memory allocation failed due to insufficient memory being
-		// available
-		thread_data->status = STATUS_ERROR;
-		thread_data->error = strerror(ENOMEM);
-		pthread_exit(NULL);
-	}
-
-	// Store ARP response buffer in thread_data
 	thread_data->result_size = arp_result_len;
-	thread_data->result = result;
+	if(thread_data->extreme)
+	{
+		// Allocate extreme memory for ARP response buffer
+		struct arp_result_extreme *result = calloc(arp_result_len, sizeof(struct arp_result_extreme));
+		if(result == NULL)
+		{
+			// Memory allocation failed due to insufficient memory being
+			// available
+			thread_data->status = STATUS_ERROR;
+			thread_data->error = strerror(ENOMEM);
+			pthread_exit(NULL);
+		}
+		thread_data->result_extreme = result;
+	}
+	else
+	{
+		// Allocate memory for ARP response buffer
+		struct arp_result *result = calloc(arp_result_len, sizeof(struct arp_result));
+		if(result == NULL)
+		{
+			// Memory allocation failed due to insufficient memory being
+			// available
+			thread_data->status = STATUS_ERROR;
+			thread_data->error = strerror(ENOMEM);
+			pthread_exit(NULL);
+		}
+		thread_data->result = result;
+	}
 
 	for(thread_data->num_scans = 0; thread_data->num_scans < thread_data->total_scans; thread_data->num_scans++)
 	{
@@ -421,16 +451,14 @@ static void *arp_scan_iface(void *args)
 		printf("Still scanning interface %s (%s/%i) %i%%...\n", iface, thread_data->ipstr, thread_data->dst_cidr, 100*scan_id/thread_data->total_scans);
 #endif
 		// Send ARP requests to all IPs in subnet
-		if(send_arps(arp_socket, ifindex, iface, thread_data->mac, &thread_data->error, &thread_data->src_addr.sin_addr,
-		             thread_data->dst_addr.sin_addr, thread_data->dst_cidr, &thread_data->scanned_addresses) != 0)
+		if(send_arps(arp_socket, ifindex, thread_data) != 0)
 		{
 			thread_data->status = STATUS_ERROR;
 			break;
 		}
 
 		// Read ARP responses
-		if(read_arp(arp_socket, iface, &thread_data->dst_addr.sin_addr, &thread_data->error,
-		            thread_data->result, thread_data->result_size, thread_data->num_scans) != 0)
+		if(read_arp(arp_socket, thread_data) != 0)
 		{
 			thread_data->status = STATUS_ERROR;
 			break;
@@ -466,14 +494,29 @@ static void print_results(struct thread_data *thread_data)
 	}
 
 	// Check if there are any results
-	unsigned int replies = 0;
+	bool any_replies = false;
 	for(unsigned int i = 0; i < thread_data->result_size; i++)
 		for(unsigned int j = 0; j < MAX_MACS; j++)
 			for(unsigned int k = 0; k < thread_data->total_scans; k++)
-				replies += thread_data->result[i].device[j].replied[k];
+				if(thread_data->extreme)
+				{
+					if(thread_data->result_extreme[i].device[j].replied[k])
+					{
+						any_replies = true;
+						break;
+					}
+				}
+				else
+				{
+					if(thread_data->result[i].device[j].replied[k])
+					{
+						any_replies = true;
+						break;
+					}
+				}
 
 	// Exit early if there are no results
-	if(replies == 0)
+	if(!any_replies)
 	{
 		printf("No devices replied on interface %s (%s/%i)\n\n",
 		       thread_data->iface, thread_data->ipstr, thread_data->dst_cidr);
@@ -489,7 +532,7 @@ static void print_results(struct thread_data *thread_data)
 	// Add our own IP address to the results so IP conflicts can be detected
 	// (our own IP address is not included in the ARP scan)
 	for(unsigned int i = 0; i < thread_data->total_scans; i++)
-		add_result(thread_data->iface, &thread_data->src_addr.sin_addr, &thread_data->dst_addr.sin_addr, thread_data->mac, thread_data->result, thread_data->result_size, i);
+		add_result(&thread_data->src_addr.sin_addr, thread_data->mac, thread_data, i);
 
 	// Print results
 	for(unsigned int i = 0; i < thread_data->result_size; i++)
@@ -500,18 +543,25 @@ static void print_results(struct thread_data *thread_data)
 		for(j = 0; j < MAX_MACS; j++)
 		{
 			// Check if result[i].mac[j] is all-zero, if so, skip this entry
-			if(memcmp(thread_data->result[i].device[j].mac, "\x00\x00\x00\x00\x00\x00", 6) == 0)
+			unsigned char *mac = thread_data->extreme ?
+			                       thread_data->result_extreme[i].device[j].mac :
+			                       thread_data->result[i].device[j].mac;
+			if(memcmp(mac, "\x00\x00\x00\x00\x00\x00", 6) == 0)
 				break;
 
-			// Check if IP address replied
-			replies = 0u;
 			bool replied = false;
-			unsigned int multiple_replies = 0;
+			unsigned char replies = 0u;
+			unsigned char multiple_replies = 0;
+			const unsigned char *rp = thread_data->extreme ?
+							thread_data->result_extreme[i].device[j].replied :
+							thread_data->result[i].device[j].replied;
+
+			// Check if IP address replied
 			for(unsigned int k = 0; k < thread_data->total_scans; k++)
 			{
-				replied |= thread_data->result[i].device[j].replied[k] > 0;
-				replies += thread_data->result[i].device[j].replied[k] > 0 ? 1 : 0;
-				multiple_replies += thread_data->result[i].device[j].replied[k] > 1;
+				replied |= rp[k] > 0;
+				replies += rp[k] > 0 ? 1 : 0;
+				multiple_replies += rp[k] > 1;
 			}
 			if(!replied)
 				continue;
@@ -528,28 +578,17 @@ static void print_results(struct thread_data *thread_data)
 			printf("%-16s %-16s %-24s %02x:%02x:%02x:%02x:%02x:%02x  %u %%\n",
 			       thread_data->ipstr, thread_data->iface,
 			       get_hostname(&ip),
-			       thread_data->result[i].device[j].mac[0],
-			       thread_data->result[i].device[j].mac[1],
-			       thread_data->result[i].device[j].mac[2],
-			       thread_data->result[i].device[j].mac[3],
-			       thread_data->result[i].device[j].mac[4],
-			       thread_data->result[i].device[j].mac[5],
+			       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
 			       replies * 100 / thread_data->total_scans);
 
 #ifdef DEBUG
 			for(unsigned int k = 0; k < thread_data->total_scans; k++)
-				printf(" %s", thread_data->result[i].device[j].replied[k] > 0 ? "X" : "-");
+				printf(" %s", rp[k] > 0 ? "X" : "-");
 #endif
 		if(multiple_replies > 0)
-			printf("WARNING: Received multiple replies from %02x:%02x:%02x:%02x:%02x:%02x for %s in %i scan%s\n",
-			       thread_data->result[i].device[j].mac[0],
-			       thread_data->result[i].device[j].mac[1],
-			       thread_data->result[i].device[j].mac[2],
-			       thread_data->result[i].device[j].mac[3],
-			       thread_data->result[i].device[j].mac[4],
-			       thread_data->result[i].device[j].mac[5],
-			       thread_data->ipstr,
-			       multiple_replies, multiple_replies > 1 ? "s" : "");
+			printf("INFO: Received multiple replies from %02x:%02x:%02x:%02x:%02x:%02x for %s in %i scan%s\n",
+			       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+			       thread_data->ipstr, multiple_replies, multiple_replies > 1 ? "s" : "");
 		}
 
 		// Print warning if we received multiple replies
@@ -600,6 +639,7 @@ int run_arp_scan(const bool scan_all, const bool extreme_mode)
 			memcpy(&thread_data[tid].src_addr, tmp->ifa_addr, sizeof(thread_data[tid].src_addr));
 			inet_ntop(AF_INET, &thread_data[tid].src_addr.sin_addr, thread_data[tid].ipstr, INET_ADDRSTRLEN);
 
+			thread_data[tid].extreme = extreme_mode;
 			thread_data[tid].scan_all = scan_all || extreme_mode;
 			thread_data[tid].total_scans = extreme_mode ? 10*NUM_SCANS : NUM_SCANS;
 
