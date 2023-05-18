@@ -399,8 +399,18 @@ static void *arp_scan_iface(void *args)
 
 	// Allocate memory for ARP response buffer
 	const size_t arp_result_len = 1 << (32 - thread_data->dst_cidr);
+	struct arp_result *result = calloc(arp_result_len, sizeof(struct arp_result));
+	if(result == NULL)
+	{
+		// Memory allocation failed due to insufficient memory being
+		// available
+		thread_data->status = STATUS_ERROR;
+		thread_data->error = strerror(ENOMEM);
+		pthread_exit(NULL);
+	}
+
+	// Store ARP response buffer in thread_data
 	thread_data->result_size = arp_result_len;
-	struct arp_result *result = calloc(thread_data->result_size, sizeof(struct arp_result));
 	thread_data->result = result;
 
 	for(thread_data->num_scans = 0; thread_data->num_scans < thread_data->total_scans; thread_data->num_scans++)
