@@ -1,16 +1,16 @@
 /* Pi-hole: A black hole for Internet advertisements
-*  (c) 2020 Pi-hole, LLC (https://pi-hole.net)
+*  (c) 2023 Pi-hole, LLC (https://pi-hole.net)
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  DHCP discover prototypes
+*  ARP scanning prototypes
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#ifndef DHCP_DISCOVER_H
-#define DHCP_DISCOVER_H
+#ifndef ARP_SCAN_H
+#define ARP_SCAN_H
 
-int run_dhcp_discover(void);
+int run_arp_scan(const bool scan_all, const bool extreme_mode);
 
-#endif // DHCP_DISCOVER_H
+#endif // ARP_SCAN_H

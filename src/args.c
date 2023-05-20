@@ -32,10 +32,12 @@
 #include "shmem.h"
 // LUA dependencies
 #include "lua/ftl_lua.h"
-// run_dhcp_discover()
-#include "dhcp-discover.h"
 // gravity_parseList()
 #include "gravity-tools.h"
+// run_dhcp_discover()
+#include "tools/dhcp-discover.h"
+// run_arp_scan()
+#include "tools/arp-scan.h"
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
 
@@ -188,6 +190,23 @@ void parse_args(int argc, char* argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	// DHCP discovery mode
+	if(argc > 1 && strcmp(argv[1], "dhcp-discover") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		exit(run_dhcp_discover());
+	}
+
+	// ARP scanning mode
+	if(argc > 1 && strcmp(argv[1], "arp-scan") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		const bool scan_all = argc > 2 && strcmp(argv[2], "-a") == 0;
+		const bool extreme_mode = argc > 2 && strcmp(argv[2], "-x") == 0;
+		exit(run_arp_scan(scan_all, extreme_mode));
+	}
 
 	// start from 1, as argv[0] is the executable name
 	for(int i = 1; i < argc; i++)
@@ -441,14 +460,6 @@ void parse_args(int argc, char* argv[])
 			}
 		}
 
-		// Regex test mode
-		if(strcmp(argv[i], "dhcp-discover") == 0)
-		{
-			// Enable stdout printing
-			cli_mode = true;
-			exit(run_dhcp_discover());
-		}
-
 		// List of implemented arguments
 		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "help") == 0 || strcmp(argv[i], "--help") == 0)
 		{
@@ -521,13 +532,19 @@ void parse_args(int argc, char* argv[])
 
 			printf("%sDebugging and special use:%s\n", yellow, normal);
 			printf("\t%sd%s, %sdebug%s            Enter debugging mode\n", green, normal, green, normal);
-			printf("\t%stest%s                Don't start pihole-FTL but\n", green, normal);
-			printf("\t                    instead quit immediately\n");
+			printf("\t%stest%s                Don't start pihole-FTL but instead\n", green, normal);
+			printf("\t                    quit immediately\n");
 			printf("\t%s-f%s, %sno-daemon%s       Don't go into daemon mode\n\n", green, normal, green, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
+			printf("\t%sarp-scan %s[-a/-x]%s    Use ARP to scan local network for\n", green, cyan, normal);
+			printf("\t                    possible IP conflicts\n");
+			printf("\t                    Append %s-a%s to force scan on all\n", cyan, normal);
+			printf("\t                    interfaces\n");
+			printf("\t                    Append %s-x%s to force scan on all\n", cyan, normal);
+			printf("\t                    interfaces and scan 10x more often\n");
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);
 		}

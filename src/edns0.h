@@ -11,13 +11,16 @@
 #define EDNS0_HEADER
 
 typedef struct {
-	bool client_set;
-	bool mac_set;
+	bool client_set :1;
+	bool mac_set :1;
+	bool valid :1;
 	char client[ADDRSTRLEN];
 	char mac_byte[6];
 	char mac_text[18];
+	int ede;
 } ednsData;
 
-void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, ednsData *edns);
+ednsData *getEDNS(void);
+void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen);
 
 #endif // EDNS0_HEADER
