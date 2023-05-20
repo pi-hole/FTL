@@ -17,6 +17,8 @@
 #include "log.h"
 // read_FTLconf()
 #include "config.h"
+// check_capability()
+#include "capabilities.h"
 
 #include <sys/time.h>
 // SIOCGIFHWADDR
@@ -691,6 +693,14 @@ static void *dhcp_discover_iface(void *args)
 
 int run_dhcp_discover(void)
 {
+	// Check if we are capable of binding to port 67 (DHCP)
+	// DHCP uses normal UDP datagrams, so we cdon't need CAP_NET_RAW
+	if(!check_capability(CAP_NET_BIND_SERVICE))
+	{
+		puts("Error: Insufficient permissions or capabilities (needs CAP_NET_BIND_SERVICE). Try running as root (sudo)");
+		return EXIT_FAILURE;
+	}
+
 	// Disable terminal output during config config file parsing
 	log_ctrl(false, false);
 	// Process pihole-FTL.conf to get gravity.db
