@@ -128,7 +128,7 @@ static int create_dhcp_socket(const char *iname)
 }
 
 // determines hardware address on client machine
-static int get_hardware_address(const int sock, const char *iname, unsigned char *mac)
+int get_hardware_address(const int sock, const char *iname, unsigned char *mac)
 {
 	struct ifreq ifr;
 	strncpy((char *)&ifr.ifr_name, iname, sizeof(ifr.ifr_name)-1);
