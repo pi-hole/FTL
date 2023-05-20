@@ -23,6 +23,7 @@ const char *cli_qst(void) __attribute__ ((const));
 const char *cli_done(void) __attribute__ ((pure));
 const char *cli_bold(void) __attribute__ ((pure));
 const char *cli_normal(void) __attribute__ ((pure));
+const char *cli_over(void) __attribute__ ((pure));
 
 // defined in dnsmasq_interface.c
 int check_struct_sizes(void);

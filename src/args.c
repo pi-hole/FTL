@@ -32,6 +32,8 @@
 #include "shmem.h"
 // LUA dependencies
 #include "lua/ftl_lua.h"
+// gravity_parseList()
+#include "gravity-tools.h"
 // run_dhcp_discover()
 #include "tools/dhcp-discover.h"
 // run_arp_scan()
@@ -126,7 +128,15 @@ static const char __attribute__ ((pure)) *cli_color(const char *color)
 	return is_term() ? color : "";
 }
 
-static inline bool strEndsWith(const char *input, const char *end){
+// Go back to beginning of line and erase to end of line if STDOUT is a terminal
+const char __attribute__ ((pure)) *cli_over(void)
+{
+	// \x1b[K is the ANSI escape sequence for "erase to end of line"
+	return is_term() ? "\r\x1b[K" : "\r";
+}
+
+static inline bool strEndsWith(const char *input, const char *end)
+{
 	return strcmp(input + strlen(input) - strlen(end), end) == 0;
 }
 
@@ -164,6 +174,21 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "sqlite3") ||
 	   (argc > 1 && strEndsWith(argv[1], ".db")))
 			exit(sqlite3_shell_main(argc, argv));
+
+	// If the first argument is "gravity" (e.g., /usr/bin/pihole-FTL gravity),
+	// we offer some specialized gravity tools
+	if(argc > 1 && strcmp(argv[1], "gravity") == 0)
+	{
+		// pihole-FTL gravity parseList <infile> <outfile> <adlistID>
+		if(argc == 6 && strcmp(argv[2], "parseList") == 0)
+		{
+			// Parse the given list and write the result to the given file
+			exit(gravity_parseList(argv[3], argv[4], argv[5]));
+		}
+
+		printf("Incorrect usage of pihole-FTL gravity subcommand\n");
+		exit(EXIT_FAILURE);
+	}
 
 	// DHCP discovery mode
 	if(argc > 1 && strcmp(argv[1], "dhcp-discover") == 0)
