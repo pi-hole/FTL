@@ -13,7 +13,7 @@
 #undef __USE_XOPEN
 #include "FTL.h"
 #include "dhcp-discover.h"
-// logg(), format_time()
+// format_time()
 #include "log.h"
 // read_FTLconf()
 #include "config.h"
@@ -60,6 +60,15 @@
 
 // Global lock used by all threads
 static pthread_mutex_t lock;
+static void __attribute__((format(gnu_printf, 1, 2))) printf_locked(const char *format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	pthread_mutex_lock(&lock);
+	vprintf(format, args);
+	pthread_mutex_unlock(&lock);
+	va_end(args);
+}
 
 extern const struct opttab_t {
   char *name;
@@ -84,17 +93,17 @@ static int create_dhcp_socket(const char *iname)
 	const int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if(sock < 0)
 	{
-		logg("Error: Could not create socket for interface %s!", iname);
+		printf_locked("Error: Could not create socket for interface %s!\n", iname);
 		return -1;
 	}
 
 #ifdef DEBUG
-	logg("DHCP socket: %d", sock);
+	printf_locked("DHCP socket: %d\n", sock);
 #endif
 	// set the reuse address flag so we don't get errors when restarting
 	if(setsockopt(sock,SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(flag))<0)
 	{
-		logg("Error: Could not set reuse address option on DHCP socket (%s)!", iname);
+		printf_locked("Error: Could not set reuse address option on DHCP socket (%s)!\n", iname);
 		close(sock);
 		return -1;
 	}
@@ -102,7 +111,7 @@ static int create_dhcp_socket(const char *iname)
 	// set the broadcast option - we need this to listen to DHCP broadcast messages
 	if(setsockopt(sock, SOL_SOCKET,SO_BROADCAST, (char *)&flag, sizeof flag) < 0)
 	{
-		logg("Error: Could not set broadcast option on DHCP socket (%s)!", iname);
+		printf_locked("Error: Could not set broadcast option on DHCP socket (%s)!\n", iname);
 		close(sock);
 		return -1;
 	}
@@ -111,8 +120,8 @@ static int create_dhcp_socket(const char *iname)
 	strncpy(interface.ifr_ifrn.ifrn_name, iname, IFNAMSIZ-1);
 	if(setsockopt(sock,SOL_SOCKET, SO_BINDTODEVICE, (char *)&interface, sizeof(interface)) < 0)
 	{
-		logg("Error: Could not bind socket to interface %s (%s)\n       ---> Check your privileges (run with sudo)!\n",
-		     iname, strerror(errno));
+		printf_locked("Error: Could not bind socket to interface %s (%s)\n",
+		              iname, strerror(errno));
 		close(sock);
 		return -1;
 	}
@@ -120,8 +129,8 @@ static int create_dhcp_socket(const char *iname)
 	// bind the socket
 	if(bind(sock, (struct sockaddr *)&dhcp_socket, sizeof(dhcp_socket)) < 0)
 	{
-		logg("Error: Could not bind to DHCP socket (interface %s, port %d, %s)\n       ---> Check your privileges (run with sudo)!\n",
-		     iname, DHCP_CLIENT_PORT, strerror(errno));
+		printf_locked("Error: Could not bind to DHCP socket (interface %s, port %d, %s)\n",
+		              iname, DHCP_CLIENT_PORT, strerror(errno));
 		close(sock);
 		return -1;
 	}
@@ -137,16 +146,17 @@ int get_hardware_address(const int sock, const char *iname, unsigned char *mac)
 
 	// try and grab hardware address of requested interface
 	int ret = 0;
-	if((ret = ioctl(sock, SIOCGIFHWADDR, &ifr)) < 0){
-		logg(" Error: Could not get hardware address of interface '%s' (socket %d, error: %s)", iname, sock, strerror(errno));
+	if((ret = ioctl(sock, SIOCGIFHWADDR, &ifr)) < 0)
+	{
+		printf_locked(" Error: Could not get hardware address of interface '%s' (socket %d, error: %s)\n", iname, sock, strerror(errno));
 		return false;
 	}
 	memcpy(&mac[0], &ifr.ifr_hwaddr.sa_data, 6);
 #ifdef DEBUG
-	logg_sameline("Hardware address of this interface: ");
+	printf_locked("Hardware address of this interface: ");
 	for (uint8_t i = 0; i < 6; ++i)
-		logg_sameline("%02x%s", mac[i], i < 5 ? ":" : "");
-	logg(" ");
+		printf_locked("%02x%s", mac[i], i < 5 ? ":" : "");
+	printf_locked("\n");
 #endif
 	return true;
 }
@@ -224,20 +234,30 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	memset(&target.sin_zero, 0, sizeof(target.sin_zero));
 
 #ifdef DEBUG
-	logg("Sending DHCPDISCOVER on interface %s:%s ... ", iface, inet_ntoa(target.sin_addr));
-	logg("DHCPDISCOVER XID: %lu (0x%X)", (unsigned long) ntohl(discover_packet.xid), ntohl(discover_packet.xid));
-	logg("DHCDISCOVER ciaddr:  %s", inet_ntoa(discover_packet.ciaddr));
-	logg("DHCDISCOVER yiaddr:  %s", inet_ntoa(discover_packet.yiaddr));
-	logg("DHCDISCOVER siaddr:  %s", inet_ntoa(discover_packet.siaddr));
-	logg("DHCDISCOVER giaddr:  %s", inet_ntoa(discover_packet.giaddr));
+	printf_locked("Sending DHCPDISCOVER on interface %s:%s ... \n", iface, inet_ntoa(target.sin_addr));
+	printf_locked("DHCPDISCOVER XID: %lu (0x%X)\n", (unsigned long) ntohl(discover_packet.xid), ntohl(discover_packet.xid));
+	printf_locked("DHCDISCOVER ciaddr:  %s\n", inet_ntoa(discover_packet.ciaddr));
+	printf_locked("DHCDISCOVER yiaddr:  %s\n", inet_ntoa(discover_packet.yiaddr));
+	printf_locked("DHCDISCOVER siaddr:  %s\n", inet_ntoa(discover_packet.siaddr));
+	printf_locked("DHCDISCOVER giaddr:  %s\n", inet_ntoa(discover_packet.giaddr));
 #endif
 	// send the DHCPDISCOVER packet
-	const int bytes = sendto(sock, (char *)&discover_packet, sizeof(discover_packet), 0, (struct sockaddr *)&target,sizeof(target));
-#ifdef DEBUG
-	logg("Sent %d bytes", bytes);
-#endif
+	const int bytes = sendto(sock, (char *)&discover_packet, sizeof(discover_packet), 0, (struct sockaddr *)&target, sizeof(target));
+	if(bytes < 0)
+	{
+		// strerror() returns "Required key not available" for ENOKEY
+		// which is not helpful at all so we substitute a more
+		// meaningful error message for ENOKEY, which is returned when
+		// the network is unreachable
+		const char *error = errno == ENOKEY ? "Broadcast is unreachable" : strerror(errno);
+		printf_locked("Error: Could not send DHCPDISCOVER packet on interface %s: %s\n", iface, error);
+		return false;
+	}
 
-	return bytes > 0;
+#ifdef DEBUG
+	printf_locked("Sent %d bytes\n", bytes);
+#endif
+	return true;
 }
 
 #ifdef TEST_OPT_249
@@ -274,7 +294,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 		// Sanity check
 		if(x >= MAX_DHCP_OPTIONS_LENGTH-2)
 		{
-			logg(" OVERFLOWING DHCP OPTION (invalid size)");
+			printf(" OVERFLOWING DHCP OPTION (invalid size)\n");
 			break;
 		}
 
@@ -284,12 +304,12 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 		// get option length
 		const uint8_t optlen = offer_packet->options[x++];
 
-		logg_sameline("   ");
+		printf("   ");
 
 		// Sanity check
 		if(x + optlen > MAX_DHCP_OPTIONS_LENGTH)
 		{
-			logg(" OVERFLOWING DHCP OPTION (invalid size)");
+			printf(" OVERFLOWING DHCP OPTION (invalid size)\n");
 			break;
 		}
 
@@ -309,14 +329,14 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 					struct in_addr addr_list = { 0 };
 					memcpy(&addr_list.s_addr, &offer_packet->options[x+n*4], sizeof(addr_list.s_addr));
 					if(n > 0)
-						logg_sameline("   ");
+						printf("   ");
 
-					logg("%s: %s", opttab[i].name, inet_ntoa(addr_list));
+					printf("%s: %s\n", opttab[i].name, inet_ntoa(addr_list));
 				}
 
 				// Special case: optlen == 0
 				if(optlen == 0)
-					logg("--- end of options ---");
+					printf("--- end of options ---\n");
 			}
 			else if(opttab[i].size & OT_NAME)
 			{
@@ -325,7 +345,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 				// possible "(empty)"
 				char buffer[4*optlen + 9];
 				binbuf_to_escaped_C_literal(&offer_packet->options[x], optlen, buffer, sizeof(buffer));
-				logg("%s: \"%s\"", opttab[i].name, buffer);
+				printf("%s: \"%s\"\n", opttab[i].name, buffer);
 			}
 			else if(opttab[i].size & OT_TIME)
 			{
@@ -340,12 +360,12 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 					optname = "rebinding-time"; // "T2" in dnsmasq-notation
 
 				if(time == 0xFFFFFFFF)
-					logg("%s: Infinite", optname);
+					printf("%s: Infinite\n", optname);
 				else
 				{
 					char buffer[42] = { 0 };
 					format_time(buffer, time, 0.0);
-					logg("%s: %lu (%s)", optname, (unsigned long)time, buffer);
+					printf("%s: %lu (%s)\n", optname, (unsigned long)time, buffer);
 				}
 			}
 			else if(opttab[i].size & OT_DEC)
@@ -355,31 +375,31 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 					switch(offer_packet->options[x])
 					{
 						case 1:
-							logg("Message type: DHCPDISCOVER (1)");
+							printf("Message type: DHCPDISCOVER (1)\n");
 							break;
 						case 2:
-							logg("Message type: DHCPOFFER (2)");
+							printf("Message type: DHCPOFFER (2)\n");
 							break;
 						case 3:
-							logg("Message type: DHCPREQUEST (3)");
+							printf("Message type: DHCPREQUEST (3)\n");
 							break;
 						case 4:
-							logg("Message type: DHCPDECLINE (4)");
+							printf("Message type: DHCPDECLINE (4)\n");
 							break;
 						case 5:
-							logg("Message type: DHCPACK (5)");
+							printf("Message type: DHCPACK (5)\n");
 							break;
 						case 6:
-							logg("Message type: DHCPNAK (6)");
+							printf("Message type: DHCPNAK (6)\n");
 							break;
 						case 7:
-							logg("Message type: DHCPRELEASE (7)");
+							printf("Message type: DHCPRELEASE (7)\n");
 							break;
 						case 8:
-							logg("Message type: DHCPINFORM (8)");
+							printf("Message type: DHCPINFORM (8)\n");
 							break;
 						default:
-							logg("Message type: UNKNOWN (%u)", offer_packet->options[x]);
+							printf("Message type: UNKNOWN (%u)\n", offer_packet->options[x]);
 							break;
 					}
 				}
@@ -394,7 +414,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 							number = ntohs(number);
 						else if(optlen == 4)
 							number = ntohl(number);
-						logg("%s: %u", opttab[i].name, number);
+						printf("%s: %u\n", opttab[i].name, number);
 					}
 				}
 			}
@@ -411,7 +431,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 				// possible "(empty)"
 				char buffer[4*optlen + 9];
 				binbuf_to_escaped_C_literal(&offer_packet->options[x], optlen, buffer, sizeof(buffer));
-				logg("wpad-server: \"%s\"", buffer);
+				printf("wpad-server: \"%s\"\n", buffer);
 			}
 			else if(opttype == 158) // DHCPv4 PCP Option (RFC 7291)
 			{                       // https://tools.ietf.org/html/rfc7291#section-4
@@ -424,9 +444,9 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 						break;
 					memcpy(&addr_list.s_addr, &offer_packet->options[x+n*sizeof(addr_list.s_addr)], sizeof(addr_list.s_addr));
 					if(n > 0)
-						logg_sameline("   ");
+						printf("   ");
 
-					logg("Port Control Protocol (PCP) server: %s", inet_ntoa(addr_list));
+					printf("Port Control Protocol (PCP) server: %s\n", inet_ntoa(addr_list));
 				}
 			}
 			else if((opttype == 121 || opttype == 249) && optlen > 4)
@@ -435,7 +455,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 				// see
 				// - https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dhcpe/f9c19c79-1c7f-4746-b555-0c0fc523f3f9
 				// - https://datatracker.ietf.org/doc/html/rfc3442 (page 3)
-				logg("%s Classless Static Route:", opttype == 121 ? "RFC 3442" : "Microsoft");
+				printf("%s Classless Static Route:", opttype == 121 ? "RFC 3442" : "Microsoft");
 				// Loop over contained routes
 				unsigned int n = 0;
 				for(unsigned int i = 1; n < optlen; i++)
@@ -460,26 +480,26 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 					if(cidr == 0)
 					{
 						// default route (0.0.0.0/0)
-						logg("     %d: default via %d.%d.%d.%d", i,
-						     router[0], router[1], router[2], router[3]);
+						printf("     %d: default via %d.%d.%d.%d", i,
+						              router[0], router[1], router[2], router[3]);
 					}
 					else
 					{
 						// specific route
-						logg("     %d: %d.%d.%d.%d/%d via %d.%d.%d.%d", i,
-						     addr[0], addr[1], addr[2], addr[3], cidr,
-						     router[0], router[1], router[2], router[3]);
+						printf("     %d: %d.%d.%d.%d/%d via %d.%d.%d.%d", i,
+						              addr[0], addr[1], addr[2], addr[3], cidr,
+						              router[0], router[1], router[2], router[3]);
 					}
 				}
 			}
 			else
 			{
-				logg_sameline("Unknown option %d:", opttype);
+				printf("Unknown option %d:", opttype);
 				// Print bytes
 				for(unsigned i = 0; i < optlen; i++)
-					logg_sameline(" %02X", (unsigned char)offer_packet->options[x+i]);
+					printf(" %02X", (unsigned char)offer_packet->options[x+i]);
 				// Add newline when done above
-				logg(" (length %d)", optlen);
+				printf(" (length %d)\n", optlen);
 			}
 		}
 
@@ -488,7 +508,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 	}
 
 	// Add one empty line for readability
-	logg(" ");
+	printf("\n");
 }
 
 // receives a DHCP packet
@@ -514,13 +534,14 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 	address_size = sizeof(struct sockaddr_in);
 	recv_result = recvfrom(sock, (char *)buffer, buffer_size, 0, (struct sockaddr *)address, &address_size);
 
-	logg("* Received %d bytes from %s:%s", recv_result, iface, inet_ntoa(address->sin_addr));
+	printf_locked("\n* Received %d bytes from %s:%s\n", recv_result, iface, inet_ntoa(address->sin_addr));
 #ifdef DEBUG
-	logg("  after waiting for %f seconds", difftime(time(NULL), start_time));
+	printf_locked("  after waiting for %f seconds\n", difftime(time(NULL), start_time));
 #endif
 	// Return on error
-	if(recv_result == -1){
-		logg(" recvfrom() failed on %s, error: %s", iface, strerror(errno));
+	if(recv_result == -1)
+	{
+		printf_locked(" recvfrom() failed on %s, error: %s\n", iface, strerror(errno));
 		return false;
 	}
 
@@ -558,14 +579,14 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 			return false;
 
 #ifdef DEBUG
-		logg(" DHCPOFFER XID: %lu (0x%X)", (unsigned long) ntohl(offer_packet.xid), ntohl(offer_packet.xid));
+		printf(" DHCPOFFER XID: %lu (0x%X)\n", (unsigned long) ntohl(offer_packet.xid), ntohl(offer_packet.xid));
 #endif
 
 		// check packet xid to see if its the same as the one we used in the discover packet
 		if(ntohl(offer_packet.xid) != xid)
 		{
-			logg("  DHCPOFFER XID (%lu) does not match our DHCPDISCOVER XID (%lu) - ignoring packet (not for us)\n",
-			     (unsigned long) ntohl(offer_packet.xid), (unsigned long) xid);
+			printf("  DHCPOFFER XID (%lu) does not match our DHCPDISCOVER XID (%lu) - ignoring packet (not for us)\n",
+			       (unsigned long) ntohl(offer_packet.xid), (unsigned long) xid);
 
 			pthread_mutex_unlock(&lock);
 			continue;
@@ -574,73 +595,73 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		// check hardware address
 		if(memcmp(offer_packet.chaddr, mac, 6) != 0)
 		{
-			logg("  DHCPOFFER hardware address did not match our own - ignoring packet (not for us)");
+			printf("  DHCPOFFER hardware address did not match our own - ignoring packet (not for us)\n");
 
-			logg_sameline("  DHCPREQUEST chaddr: ");
+			printf("  DHCPREQUEST chaddr: ");
 			for(uint8_t x = 0; x < 6; x++)
-				logg_sameline("%02x%s", mac[x], x < 5 ? ":" : "");
-			logg(" (our MAC address)");
+				printf("%02x%s", mac[x], x < 5 ? ":" : "");
+			printf(" (our MAC address)\n");
 
-			logg_sameline("  DHCPOFFER   chaddr: ");
+			printf("  DHCPOFFER   chaddr: ");
 			for(uint8_t x = 0; x < 6; x++)
-				logg_sameline("%02x%s", offer_packet.chaddr[x], x < 5 ? ":" : "");
-			logg(" (response MAC address)");
+				printf("%02x%s", offer_packet.chaddr[x], x < 5 ? ":" : "");
+			printf(" (response MAC address)\n");
 
 			pthread_mutex_unlock(&lock);
 			continue;
 		}
 
-		logg_sameline("  Offered IP address: ");
+		printf("  Offered IP address: ");
 		if(offer_packet.yiaddr.s_addr != 0)
-			logg("%s", inet_ntoa(offer_packet.yiaddr));
+			printf("%s\n", inet_ntoa(offer_packet.yiaddr));
 		else
-			logg("N/A");
+			printf("N/A\n");
 
-		logg_sameline("  Server IP address: ");
+		printf("  Server IP address: ");
 		if(offer_packet.siaddr.s_addr != 0)
-			logg("%s", inet_ntoa(offer_packet.siaddr));
+			printf("%s\n", inet_ntoa(offer_packet.siaddr));
 		else
-			logg("N/A");
+			printf("N/A\n");
 
-		logg_sameline("  Relay-agent IP address: ");
+		printf("  Relay-agent IP address: ");
 		if(offer_packet.giaddr.s_addr != 0)
-			logg("%s", inet_ntoa(offer_packet.giaddr));
+			printf("%s\n", inet_ntoa(offer_packet.giaddr));
 		else
-			logg("N/A");
+			printf("N/A\n");
 
-		logg_sameline("  BOOTP server: ");
+		printf("  BOOTP server: ");
 		if(offer_packet.sname[0] != 0)
 		{
 			size_t len = strlen(offer_packet.sname);
 			char buffer[4*len + 9];
 			binbuf_to_escaped_C_literal(offer_packet.sname, len, buffer, sizeof(buffer));
-			logg("%s", buffer);
+			printf("%s\n", buffer);
 		}
 		else
-			logg("(empty)");
+			printf("(empty)\n");
 
-		logg_sameline("  BOOTP file: ");
+		printf("  BOOTP file: ");
 		if(offer_packet.file[0] != 0)
 		{
 			size_t len = strlen(offer_packet.file);
 			char buffer[4*len + 9];
 			binbuf_to_escaped_C_literal(offer_packet.file, len, buffer, sizeof(buffer));
-			logg("%s", buffer);
+			printf("%s\n", buffer);
 		}
 		else
-			logg("(empty)");
+			printf("(empty)\n");
 
-		logg("  DHCP options:");
+		printf("  DHCP options:\n");
 		print_dhcp_offer(source.sin_addr, &offer_packet);
 		pthread_mutex_unlock(&lock);
 
 		valid_responses++;
 	}
 #ifdef DEBUG
-	logg(" Responses seen while scanning:    %d", responses);
-	logg(" Responses meant for this machine: %d\n", valid_responses);
+	printf(" Responses seen while scanning:    %d\n", responses);
+	printf(" Responses meant for this machine: %d\n\n", valid_responses);
 #endif
-	logg("DHCP packets received on interface %s: %u", iface, valid_responses);
+	printf("DHCP packets received on interface %s: %u\n", iface, valid_responses);
 	return true;
 }
 
@@ -673,18 +694,21 @@ static void *dhcp_discover_iface(void *args)
 		// Send DHCPDISCOVER packet to interface address
 		struct sockaddr_in ifaddr = { 0 };
 		memcpy(&ifaddr, ((struct ifaddrs*)args)->ifa_addr, sizeof(ifaddr));
-		send_dhcp_discover(dhcp_socket, xid, iface, mac, ifaddr.sin_addr.s_addr);
+		if(!send_dhcp_discover(dhcp_socket, xid, iface, mac, ifaddr.sin_addr.s_addr))
+			goto end_dhcp_discover_iface;
 	}
 	else
 	{
 		// Probe distant servers
 		// Send DHCPDISCOVER packet to broadcast address
-		send_dhcp_discover(dhcp_socket, xid, iface, mac, INADDR_BROADCAST);
+		if(!send_dhcp_discover(dhcp_socket, xid, iface, mac, INADDR_BROADCAST))
+			goto end_dhcp_discover_iface;
 	}
 
 	// wait for a DHCPOFFER packet
 	get_dhcp_offer(dhcp_socket, xid, iface, mac);
 
+end_dhcp_discover_iface:
 	// close socket we created
 	close(dhcp_socket);
 
@@ -708,8 +732,8 @@ int run_dhcp_discover(void)
 	// Only print to terminal, disable log file
 	log_ctrl(false, true);
 
-	logg("Scanning all your interfaces for DHCP servers");
-	logg("Timeout: %d seconds\n", DHCPOFFER_TIMEOUT);
+	printf("Scanning all your interfaces for DHCP servers\n");
+	printf("Timeout: %d seconds\n", DHCPOFFER_TIMEOUT);
 
 	// Get interface names for available interfaces on this machine
 	// and launch a thread for each one
@@ -741,8 +765,8 @@ int run_dhcp_discover(void)
 		{
 			if(pthread_create(&scanthread[tid], &attr, dhcp_discover_iface, tmp ) != 0)
 			{
-				logg("Unable to launch thread for interface %s, skipping...",
-				     tmp->ifa_name);
+				printf_locked("Unable to launch thread for interface %s, skipping...",
+				              tmp->ifa_name);
 				continue;
 			}
 
