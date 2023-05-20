@@ -760,8 +760,8 @@ int run_dhcp_discover(void)
 	int tid = 0;
 	while(tmp != NULL && tid < MAXTHREADS)
 	{
-		// Create a thread for interfaces of type AF_PACKET
-		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET)
+		// Create a thread for interfaces of type AF_INET (IPv4)
+		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET)
 		{
 			if(pthread_create(&scanthread[tid], &attr, dhcp_discover_iface, tmp ) != 0)
 			{
