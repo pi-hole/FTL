@@ -575,7 +575,7 @@ static void print_results(struct thread_data *thread_data)
 			inet_ntop(AF_INET, &ip, thread_data->ipstr, INET_ADDRSTRLEN);
 
 			// Print MAC address
-			printf("%-16s %-16s %-24s %02x:%02x:%02x:%02x:%02x:%02x  %u %%\n",
+			printf("%-16s %-16s %-24s %02x:%02x:%02x:%02x:%02x:%02x  %3u %%\n",
 			       thread_data->ipstr, thread_data->iface,
 			       get_hostname(&ip),
 			       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
