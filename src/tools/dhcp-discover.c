@@ -249,7 +249,7 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 		// which is not helpful at all so we substitute a more
 		// meaningful error message for ENOKEY returned by wireguard interfaces
 		// (see https://www.wireguard.com/papers/wireguard.pdf, page 5)
-		const char *error = errno == ENOKEY ? "No such peer" : strerror(errno);
+		const char *error = errno == ENOKEY ? "No route to host (no such peer available)" : strerror(errno);
 		printf_locked("Error: Could not send DHCPDISCOVER packet to %s on interface %s: %s\n",
 		              inet_ntoa(target.sin_addr), iface, error);
 		return false;
@@ -550,7 +550,7 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 }
 
 // waits for a DHCPOFFER message from one or more DHCP servers
-static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface, unsigned char *mac)
+static int get_dhcp_offer(const int sock, const uint32_t xid, const char *iface, unsigned char *mac)
 {
 	dhcp_packet_data offer_packet;
 	struct sockaddr_in source;
@@ -577,7 +577,7 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 #endif
 
 		if(pthread_mutex_lock(&lock) != 0)
-			return false;
+			return -1;
 
 #ifdef DEBUG
 		printf(" DHCPOFFER XID: %lu (0x%X)\n", (unsigned long) ntohl(offer_packet.xid), ntohl(offer_packet.xid));
@@ -662,12 +662,12 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 	printf(" Responses seen while scanning:    %d\n", responses);
 	printf(" Responses meant for this machine: %d\n\n", valid_responses);
 #endif
-	printf("DHCP packets received on interface %s: %u\n", iface, valid_responses);
-	return true;
+	return valid_responses;
 }
 
 static void *dhcp_discover_iface(void *args)
 {
+	int valid_responses = -1;
 	// Get interface details
 	const char *iface = ((struct ifaddrs*)args)->ifa_name;
 
@@ -679,7 +679,7 @@ static void *dhcp_discover_iface(void *args)
 
 	// Cannot create socket, likely a permission error
 	if(dhcp_socket < 0)
-		pthread_exit(NULL);
+		goto end_dhcp_discover_iface;
 
 	// get hardware address of client machine
 	unsigned char mac[MAX_DHCP_CHADDR_LENGTH] = { 0 };
@@ -707,11 +707,15 @@ static void *dhcp_discover_iface(void *args)
 	}
 
 	// wait for a DHCPOFFER packet
-	get_dhcp_offer(dhcp_socket, xid, iface, mac);
+	valid_responses = get_dhcp_offer(dhcp_socket, xid, iface, mac);
 
 end_dhcp_discover_iface:
-	// close socket we created
-	close(dhcp_socket);
+	// Close socket if we created one
+	if(dhcp_socket > 0)
+		close(dhcp_socket);
+
+	if(valid_responses >= 0)
+		printf_locked("DHCP packets received on interface %s: %u\n", iface, valid_responses);
 
 	pthread_exit(NULL);
 }
