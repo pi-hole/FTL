@@ -747,15 +747,13 @@ int run_dhcp_discover(void)
 		// Create a thread for interfaces of type AF_INET (IPv4)
 		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET)
 		{
-			// Skip if interface is down
-			if(!(tmp->ifa_flags & IFF_UP))
-			{
-				tmp = tmp->ifa_next;
-				continue;
-			}
-
-			// Skip if interface is loopback
-			if(tmp->ifa_flags & IFF_LOOPBACK)
+			// Skip if ...
+			// - interface is not up
+			// - broadcast is not supported
+			// - interface is loopback net
+			if(!(tmp->ifa_flags & IFF_UP) ||
+			   !(tmp->ifa_flags & IFF_BROADCAST) ||
+			     tmp->ifa_flags & IFF_LOOPBACK)
 			{
 				tmp = tmp->ifa_next;
 				continue;
