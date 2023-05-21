@@ -632,6 +632,18 @@ int run_arp_scan(const bool scan_all, const bool extreme_mode)
 		// Create a thread for interfaces of type AF_INET
 		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET)
 		{
+			// Skip interface scan if ...
+			// - interface is not up
+			// - ARP is not supported
+			// - interface is loopback net
+			if(!(tmp->ifa_flags & IFF_UP) ||
+			    (tmp->ifa_flags & IFF_NOARP) ||
+			    (tmp->ifa_flags & IFF_LOOPBACK))
+			{
+				tmp = tmp->ifa_next;
+				continue;
+			}
+
 			thread_data[tid].ifa = tmp;
 			strncpy(thread_data[tid].iface, tmp->ifa_name, sizeof(thread_data[tid].iface) - 1);
 

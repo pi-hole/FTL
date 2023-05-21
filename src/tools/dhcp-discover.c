@@ -747,7 +747,7 @@ int run_dhcp_discover(void)
 		// Create a thread for interfaces of type AF_INET (IPv4)
 		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET)
 		{
-			// Skip if ...
+			// Skip interface scan if ...
 			// - interface is not up
 			// - broadcast is not supported
 			// - interface is loopback net
