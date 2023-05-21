@@ -247,10 +247,11 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	{
 		// strerror() returns "Required key not available" for ENOKEY
 		// which is not helpful at all so we substitute a more
-		// meaningful error message for ENOKEY, which is returned when
-		// the network is unreachable
-		const char *error = errno == ENOKEY ? "Broadcast is unreachable" : strerror(errno);
-		printf_locked("Error: Could not send DHCPDISCOVER packet on interface %s: %s\n", iface, error);
+		// meaningful error message for ENOKEY returned by wireguard interfaces
+		// (see https://www.wireguard.com/papers/wireguard.pdf, page 5)
+		const char *error = errno == ENOKEY ? "No such peer" : strerror(errno);
+		printf_locked("Error: Could not send DHCPDISCOVER packet to %s on interface %s: %s\n",
+		              inet_ntoa(target.sin_addr), iface, error);
 		return false;
 	}
 
