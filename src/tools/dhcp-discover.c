@@ -148,7 +148,7 @@ int get_hardware_address(const int sock, const char *iname, unsigned char *mac)
 	int ret = 0;
 	if((ret = ioctl(sock, SIOCGIFHWADDR, &ifr)) < 0)
 	{
-		printf_locked(" Error: Could not get hardware address of interface '%s' (socket %d, error: %s)\n", iname, sock, strerror(errno));
+		printf_locked(" Error: Could not get hardware address of interface %s: %s\n", iname, strerror(errno));
 		return false;
 	}
 	memcpy(&mac[0], &ifr.ifr_hwaddr.sa_data, 6);
@@ -161,80 +161,72 @@ int get_hardware_address(const int sock, const char *iname, unsigned char *mac)
 	return true;
 }
 
-typedef struct dhcp_packet_struct
+struct dhcp_packet_data
 {
-	u_int8_t  op;                   // packet type
-	u_int8_t  htype;                // type of hardware address for this machine (Ethernet, etc)
-	u_int8_t  hlen;                 // length of hardware address (of this machine)
-	u_int8_t  hops;                 // hops
-	u_int32_t xid;                  // random transaction id number - chosen by this machine
-	u_int16_t secs;                 // seconds used in timing
-	u_int16_t flags;                // flags
-	struct in_addr ciaddr;          // IP address of this machine (if we already have one)
-	struct in_addr yiaddr;          // IP address of this machine (offered by the DHCP server)
-	struct in_addr siaddr;          // IP address of DHCP server
-	struct in_addr giaddr;          // IP address of DHCP relay
-	unsigned char chaddr [MAX_DHCP_CHADDR_LENGTH];      // hardware address of this machine
-	char sname [MAX_DHCP_SNAME_LENGTH];    // name of DHCP server
-	char file [MAX_DHCP_FILE_LENGTH];      // boot file name (used for diskless booting?)
-	char options[MAX_DHCP_OPTIONS_LENGTH];  // options
-} dhcp_packet_data;
-
-#define BOOTREQUEST     1
-#define BOOTREPLY       2
+	u_int8_t op;                                    // packet type
+	u_int8_t htype;                                 // type of hardware address for this machine (Ethernet, etc)
+	u_int8_t hlen;                                  // length of hardware address (of this machine)
+	u_int8_t hops;                                  // hops
+	u_int32_t xid;                                  // random transaction id number - chosen by this machine
+	u_int16_t secs;                                 // seconds used in timing
+	u_int16_t flags;                                // flags
+	struct in_addr ciaddr;                          // IP address of this machine (if we already have one)
+	struct in_addr yiaddr;                          // IP address of this machine (offered by the DHCP server)
+	struct in_addr siaddr;                          // IP address of DHCP server
+	struct in_addr giaddr;                          // IP address of DHCP relay
+	unsigned char chaddr [MAX_DHCP_CHADDR_LENGTH];  // hardware address of this machine
+	char sname [MAX_DHCP_SNAME_LENGTH];             // name of DHCP server
+	char file [MAX_DHCP_FILE_LENGTH];               // boot file name (used for diskless booting?)
+	char options[MAX_DHCP_OPTIONS_LENGTH];          // options
+};
 
 // sends a DHCPDISCOVER message to the specified in an attempt to find DHCP servers
-static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *iface, unsigned char *mac, const in_addr_t addr)
+static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *iface, unsigned char *mac)
 {
-	dhcp_packet_data discover_packet;
+	struct dhcp_packet_data discover_packet = { 0 };
 
-	// clear the packet data structure
-	memset(&discover_packet, 0, sizeof(discover_packet));
+	// Boot request flag (backward compatible with BOOTP servers)
+	discover_packet.op = 1; // BOOTREQUEST
 
-	// boot request flag (backward compatible with BOOTP servers)
-	discover_packet.op = BOOTREQUEST;
+	// Hardware address type
+	discover_packet.htype = 1; // ETHERNET_HARDWARE_ADDRESS
 
-	// hardware address type
-	discover_packet.htype = 1; // ETHERNET_HARDWARE_ADDRESS;
-
-	// length of our hardware address
-	discover_packet.hlen = 6; // ETHERNET_HARDWARE_ADDRESS_LENGTH;
+	// Length of our hardware address
+	discover_packet.hlen = 6; // ETHERNET_HARDWARE_ADDRESS_LENGTH
 	discover_packet.hops = 0;
 
-	// transaction id is supposed to be random
+	// Transaction id is supposed to be random
 	discover_packet.xid = htonl(xid);
-	ntohl(discover_packet.xid);
 	discover_packet.secs = 0x00;
 
-	// tell server it should broadcast its response
+	// Tell server it should broadcast its response
 	discover_packet.flags = htons(32768); // DHCP_BROADCAST_FLAG
 
-	// our hardware address
+	// Our hardware address
 	memcpy(discover_packet.chaddr, mac, 6);
 
-	// first four bytes of options field is magic cookie (as per RFC 2132)
+	// First four bytes of options field are the magic cookie (as per RFC 2132)
 	discover_packet.options[0] = '\x63';
 	discover_packet.options[1] = '\x82';
 	discover_packet.options[2] = '\x53';
 	discover_packet.options[3] = '\x63';
 
 	// DHCP message type is embedded in options field
-	discover_packet.options[4] = 53;     // DHCP message type option identifier
-	discover_packet.options[5] = '\x01'; // DHCP message option length in bytes
-	discover_packet.options[6] = 1;      // DHCP message type code for DHCPDISCOVER
+	discover_packet.options[4] = 53; // DHCP message type option identifier
+	discover_packet.options[5] = 1;  // DHCP message option length in bytes
+	discover_packet.options[6] = 1;  // DHCP message type code for DHCPDISCOVER
 
 	// Place end option at the end of the options
 	discover_packet.options[7] = 255;
 
-	// send the DHCPDISCOVER packet to the specified address
-	struct sockaddr_in target;
+	// Send the DHCPDISCOVER packet to the specified address
+	struct sockaddr_in target = { 0 };
 	target.sin_family = AF_INET;
 	target.sin_port = htons(DHCP_SERVER_PORT);
-	target.sin_addr.s_addr = addr;
-	memset(&target.sin_zero, 0, sizeof(target.sin_zero));
+	target.sin_addr.s_addr = INADDR_BROADCAST;
 
 #ifdef DEBUG
-	printf_locked("Sending DHCPDISCOVER on interface %s:%s ... \n", iface, inet_ntoa(target.sin_addr));
+	printf_locked("Sending DHCPDISCOVER on interface %s@%s ... \n", inet_ntoa(target.sin_addr), iface);
 	printf_locked("DHCPDISCOVER XID: %lu (0x%X)\n", (unsigned long) ntohl(discover_packet.xid), ntohl(discover_packet.xid));
 	printf_locked("DHCDISCOVER ciaddr:  %s\n", inet_ntoa(discover_packet.ciaddr));
 	printf_locked("DHCDISCOVER yiaddr:  %s\n", inet_ntoa(discover_packet.yiaddr));
@@ -250,7 +242,7 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 		// meaningful error message for ENOKEY returned by wireguard interfaces
 		// (see https://www.wireguard.com/papers/wireguard.pdf, page 5)
 		const char *error = errno == ENOKEY ? "No route to host (no such peer available)" : strerror(errno);
-		printf_locked("Error: Could not send DHCPDISCOVER packet to %s on interface %s: %s\n",
+		printf_locked("Error: Could not send DHCPDISCOVER to %s@%s: %s\n",
 		              inet_ntoa(target.sin_addr), iface, error);
 		return false;
 	}
@@ -274,7 +266,7 @@ static void gen_249_test_data(dhcp_packet_data *offer_packet)
 #endif
 
 // adds a DHCP OFFER to list in memory
-static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_packet)
+static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *offer_packet)
 {
 	if(offer_packet == NULL)
 		return;
@@ -552,7 +544,7 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 // waits for a DHCPOFFER message from one or more DHCP servers
 static int get_dhcp_offer(const int sock, const uint32_t xid, const char *iface, unsigned char *mac)
 {
-	dhcp_packet_data offer_packet;
+	struct dhcp_packet_data offer_packet;
 	struct sockaddr_in source;
 #ifdef DEBUG
 	unsigned int responses = 0;
@@ -689,22 +681,9 @@ static void *dhcp_discover_iface(void *args)
 	srand(time(NULL));
 	const uint32_t xid = random();
 
-	if(strcmp(iface, "lo") == 0)
-	{
-		// Probe a local server listening on this interface
-		// Send DHCPDISCOVER packet to interface address
-		struct sockaddr_in ifaddr = { 0 };
-		memcpy(&ifaddr, ((struct ifaddrs*)args)->ifa_addr, sizeof(ifaddr));
-		if(!send_dhcp_discover(dhcp_socket, xid, iface, mac, ifaddr.sin_addr.s_addr))
-			goto end_dhcp_discover_iface;
-	}
-	else
-	{
-		// Probe distant servers
-		// Send DHCPDISCOVER packet to broadcast address
-		if(!send_dhcp_discover(dhcp_socket, xid, iface, mac, INADDR_BROADCAST))
-			goto end_dhcp_discover_iface;
-	}
+	// Probe servers on this interface
+	if(!send_dhcp_discover(dhcp_socket, xid, iface, mac))
+		goto end_dhcp_discover_iface;
 
 	// wait for a DHCPOFFER packet
 	valid_responses = get_dhcp_offer(dhcp_socket, xid, iface, mac);
@@ -768,10 +747,26 @@ int run_dhcp_discover(void)
 		// Create a thread for interfaces of type AF_INET (IPv4)
 		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET)
 		{
+			// Skip if interface is down
+			if(!(tmp->ifa_flags & IFF_UP))
+			{
+				tmp = tmp->ifa_next;
+				continue;
+			}
+
+			// Skip if interface is loopback
+			if(tmp->ifa_flags & IFF_LOOPBACK)
+			{
+				tmp = tmp->ifa_next;
+				continue;
+			}
+
+			// Create a probing thread for this interface
 			if(pthread_create(&scanthread[tid], &attr, dhcp_discover_iface, tmp ) != 0)
 			{
 				printf_locked("Unable to launch thread for interface %s, skipping...",
 				              tmp->ifa_name);
+				tmp = tmp->ifa_next;
 				continue;
 			}
 
