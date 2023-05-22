@@ -57,13 +57,16 @@
 
 static struct {
 	bool used;
-	bool tls;
+	struct {
+		bool login;
+		bool mixed;
+	} tls;
 	time_t login_at;
 	time_t valid_until;
 	char remote_addr[48]; // Large enough for IPv4 and IPv6 addresses, hard-coded in civetweb.h as mg_request_info.remote_addr
 	char user_agent[128];
 	char sid[SID_SIZE];
-} auth_data[API_MAX_CLIENTS] = {{false, false, 0, 0, {0}, {0}, {0}}};
+} auth_data[API_MAX_CLIENTS] = {{false, {false, false}, 0, 0, {0}, {0}, {0}}};
 
 #define CHALLENGE_SIZE (2*SHA256_DIGEST_SIZE)
 static struct {
@@ -194,6 +197,9 @@ int check_client_auth(struct ftl_conn *api)
 		// the validity of their API authentication
 		auth_data[user_id].valid_until = now + config.webserver.sessionTimeout.v.ui;
 
+		// Set strict_tls permanently to false if the client connected via HTTP
+		auth_data[user_id].tls.mixed |= api->request->is_ssl != auth_data[user_id].tls.login;
+
 		// Update user cookie
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 		            FTL_SET_COOKIE,
@@ -253,7 +259,10 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 		JSON_ADD_NUMBER_TO_OBJECT(session, "id", i);
 		JSON_ADD_BOOL_TO_OBJECT(session, "current_session", i == api->user_id);
 		JSON_ADD_BOOL_TO_OBJECT(session, "valid", auth_data[i].valid_until >= now);
-		JSON_ADD_BOOL_TO_OBJECT(session, "tls", auth_data[i].tls);
+		cJSON *tls = JSON_NEW_OBJECT();
+		JSON_ADD_BOOL_TO_OBJECT(tls, "login", auth_data[i].tls.login);
+		JSON_ADD_BOOL_TO_OBJECT(tls, "mixed", auth_data[i].tls.mixed);
+		JSON_ADD_ITEM_TO_OBJECT(session, "tls", tls);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "login_at", auth_data[i].login_at);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "last_active", auth_data[i].valid_until - config.webserver.sessionTimeout.v.ui);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "valid_until", auth_data[i].valid_until);
@@ -584,7 +593,8 @@ int api_auth(struct ftl_conn *api)
 						auth_data[i].user_agent[0] = '\0';
 					}
 
-					auth_data[i].tls = api->request->is_ssl;
+					auth_data[i].tls.login = api->request->is_ssl;
+					auth_data[i].tls.mixed = false;
 
 					// Generate new SID
 					generateSID(auth_data[i].sid);

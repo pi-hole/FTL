@@ -265,8 +265,15 @@ components:
                 type: boolean
                 description: Valid session indicator (existing sessions may be invalid due to timeout)
               tls:
-                type: boolean
-                description: Indicator if TLS (end-to-end encryption) is used for this session
+                type: object
+                description: TLS (end-to-end encryption) information
+                properties:
+                  login:
+                    type: boolean
+                    description: Indicator if TLS (end-to-end encryption) has been used during login for this session
+                  mixed:
+                    type: boolean
+                    description: Indicator if TLS (end-to-end encryption) is used only partially for this session
               login_at:
                 type: integer
                 description: Timestamp of login (seconds since epoch)
@@ -284,7 +291,12 @@ components:
                 description: User agent of the client
           example:
             - id: 1
+              current_session: true
               valid: true
+              tls:
+                login: true
+                mixed: false
+              strict_tls: false
               login_at: 1580000000
               last_active: 1580000000
               valid_until: 1580000300
