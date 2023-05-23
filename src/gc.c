@@ -26,7 +26,7 @@
 #include "database/message-table.h"
 // get_nprocs()
 #include <sys/sysinfo.h>
-// get_filepath_usage()
+// get_path_usage()
 #include "files.h"
 // void calc_cpu_usage()
 #include "daemon.h"
@@ -95,7 +95,7 @@ static int check_space(const char *file, unsigned int LastUsage)
 	log_debug(DEBUG_GC, "Checking free space at %s: %u%% %s %u%%", file, perc,
 	          perc > config.misc.check.disk.v.ui ? ">" : "<=",
 	          config.misc.check.disk.v.ui);
-	if(perc > config.misc.check.disk.v.ui && perc > LastUsage )
+	if(perc > config.misc.check.disk.v.ui && perc > LastUsage && perc <= 100.0)
 		log_resource_shortage(-1.0, 0, -1, perc, file, buffer);
 
 	return perc;

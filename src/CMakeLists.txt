@@ -194,8 +194,6 @@ set(sources
         daemon.h
         datastructure.c
         datastructure.h
-        dhcp-discover.c
-        dhcp-discover.h
         dnsmasq_interface.c
         dnsmasq_interface.h
         edns0.c
@@ -208,6 +206,8 @@ set(sources
         FTL.h
         gc.c
         gc.h
+        gravity-tools.c
+        gravity-tools.h
         log.c
         log.h
         main.c
@@ -267,6 +267,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:syscalls>
         $<TARGET_OBJECTS:tomlc99>
         $<TARGET_OBJECTS:config>
+        $<TARGET_OBJECTS:tools>
         )
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -352,3 +353,4 @@ add_subdirectory(lua/scripts)
 add_subdirectory(tre-regex)
 add_subdirectory(syscalls)
 add_subdirectory(config)
+add_subdirectory(tools)
