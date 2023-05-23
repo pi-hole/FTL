@@ -95,7 +95,7 @@ const char** argv_dnsmasq = NULL;
 #define COL_PURPLE	"\x1b[95m" // bright foreground color
 #define COL_CYAN	"\x1b[96m" // bright foreground color
 
-static inline bool __attribute__ ((pure)) is_term(void)
+static bool __attribute__ ((pure)) is_term(void)
 {
 	// test whether STDOUT refers to a terminal
 	return isatty(fileno(stdout)) == 1;
