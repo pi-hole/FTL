@@ -247,26 +247,30 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		}
 		else
 		{
-			// No match - add to list of invalid domains
-			if(invalid_domains_list_len < MAX_INVALID_DOMAINS)
+			// Ignore false positives - they don't count as invalid domains
+			if(regexec(&false_positives_regex, line, 0, NULL, 0) != 0)
 			{
-				// Check if we have this domain already
-				bool found = false;
-				for(unsigned int i = 0; i < invalid_domains_list_len; i++)
+				// No match - add to list of invalid domains
+				if(invalid_domains_list_len < MAX_INVALID_DOMAINS)
 				{
-					if(strcmp(invalid_domains_list[i], line) == 0)
+					// Check if we have this domain already
+					bool found = false;
+					for(unsigned int i = 0; i < invalid_domains_list_len; i++)
 					{
-						found = true;
-						break;
+						if(strcmp(invalid_domains_list[i], line) == 0)
+						{
+							found = true;
+							break;
+						}
 					}
-				}
 
-				// If not found, check if this is a false
-				// positive and add it to the list if it is not
-				if(!found && regexec(&false_positives_regex, line, 0, NULL, 0) != 0)
-					invalid_domains_list[invalid_domains_list_len++] = strdup(line);
+					// If not found, add it to the list
+					if(!found)
+						invalid_domains_list[invalid_domains_list_len++] = strdup(line);
+
+				}
+				invalid_domains++;
 			}
-			invalid_domains++;
 		}
 
 		// Print progress if the file is large enough every 100 lines
