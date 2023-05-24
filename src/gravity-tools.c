@@ -35,7 +35,7 @@
 // A list of items of common local hostnames not to report as unusable
 // Some lists (i.e StevenBlack's) contain these as they are supposed to be used as HOST files
 // but flagging them as unusable causes more confusion than it's worth - so we suppress them from the output
-#define FALSE_POSITIVES "localhost|localhost.localdomain|local|broadcasthost|localhost|ip6-localhost|ip6-loopback|lo0 localhost|ip6-localnet|ip6-mcastprefix|ip6-allnodes|ip6-allrouters|ip6-allhosts"
+#define FALSE_POSITIVES "^(localhost|localhost.localdomain|local|broadcasthost|localhost|ip6-localhost|ip6-loopback|lo0 localhost|ip6-localnet|ip6-mcastprefix|ip6-allnodes|ip6-allrouters|ip6-allhosts)$"
 
 // Print progress for files larger than 10 MB
 // This is to avoid printing progress for small files
