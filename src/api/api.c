@@ -90,6 +90,7 @@ static struct {
 	{ "/api/action/poweroff",                   "",                           api_action_poweroff,                   { false, true,  0               }, true,  HTTP_POST },
 	{ "/api/action/restartdns",                 "",                           api_action_restartDNS,                 { false, true,  0               }, true,  HTTP_POST },
 	{ "/api/action/flush/logs",                 "",                           api_action_flush_logs,                 { false, true,  0               }, true,  HTTP_POST },
+	{ "/api/action/flush/arp",                  "",                           api_action_flush_arp,                  { false, true,  0               }, true,  HTTP_POST },
 	{ "/api/docs",                              "",                           api_docs,                              { false, true,  0               }, false, HTTP_GET },
 };
 

@@ -233,6 +233,9 @@ paths:
   /action/flush/logs:
     $ref: 'action.yaml#/components/paths/flush_logs'
 
+  /action/flush/arp:
+    $ref: 'action.yaml#/components/paths/flush_arp'
+
   /action/reboot:
     $ref: 'action.yaml#/components/paths/reboot'
 

@@ -24,6 +24,7 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr);
 char* __attribute__((malloc)) getNameFromIP(sqlite3 *db, const char* ipaddr);
 char* __attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char* ipaddr);
 void resolveNetworkTableNames(void);
+bool flush_network_table(void);
 
 typedef struct {
 	unsigned int id;

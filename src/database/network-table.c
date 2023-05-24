@@ -1218,6 +1218,26 @@ static bool clean_network_table(sqlite3* db)
 	return true;
 }
 
+bool flush_network_table(void)
+{
+	sqlite3 *db = dbopen(false, false);
+	if(db == NULL)
+		return false;
+
+	// Remove all IP addresses
+	if(dbquery(db, "DELETE FROM network_addresses;") != SQLITE_OK)
+		return false;
+
+	// Remove all devices
+	if(dbquery(db, "DELETE FROM network;") != SQLITE_OK)
+		return false;
+
+	// Close database
+	dbclose(&db);
+
+	return true;
+}
+
 // Parse kernel's neighbor cache
 void parse_neighbor_cache(sqlite3* db)
 {

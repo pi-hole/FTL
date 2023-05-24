@@ -17,9 +17,10 @@
 // reboot()
 #include <sys/reboot.h>
 #include <unistd.h>
-
 // exit_code
 #include "signals.h"
+// flush_network_table()
+#include "database/network-table.h"
 
 static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[])
 {
@@ -170,5 +171,19 @@ int api_action_flush_logs(struct ftl_conn *api)
 		return send_json_error(api, 500,
 		                       "server_error",
 		                       "Cannot flush the logs",
+		                       NULL);
+}
+
+int api_action_flush_arp(struct ftl_conn *api)
+{
+	log_info("Received API request to flush the ARP cache");
+
+	// Flush the ARP cache
+	if(flush_network_table())
+		return send_json_success(api);
+	else
+		return send_json_error(api, 500,
+		                       "server_error",
+		                       "Cannot flush the ARP cache",
 		                       NULL);
 }
