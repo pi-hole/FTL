@@ -583,6 +583,8 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%mem", pmem.VmRSS_percent);
 	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%cpu", get_cpu_percentage());
 
+	JSON_ADD_BOOL_TO_OBJECT(ftl, "allow_destructive", config.webserver.api.allow_destructive.v.b);
+
 	// All okay
 	return 0;
 }

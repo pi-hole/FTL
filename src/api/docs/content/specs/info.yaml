@@ -714,6 +714,10 @@ components:
               type: number
               description: Percentage of total CPU used by FTL
               example: 1.2
+            allow_destructive:
+              type: boolean
+              description: Whether or not FTL is allowed to perform destructive actions
+              example: true
     database:
       type: object
       properties:
