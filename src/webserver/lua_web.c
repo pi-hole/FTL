@@ -8,16 +8,19 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "lua_web.h"
-#include "../api/api.h"
+#include "FTL.h"
+#include "webserver/lua_web.h"
+#include "api/api.h"
 
 // luaL_dostring()
-#include "../lua/lauxlib.h"
+#include "lua/lauxlib.h"
 // struct config
-#include "../config/config.h"
+#include "config/config.h"
 // log_web()
-#include "../log.h"
+#include "log.h"
+
+// directory_exists()
+#include "files.h"
 
 static char *login_uri = NULL, *admin_api_uri = NULL;
 void allocate_lua(void)
@@ -69,11 +72,13 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 
 	/* Handler may access the request info using mg_get_request_info */
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
+	const size_t uri_raw_len = strlen(req_info->local_uri_raw);
 
 	// Build minimal api struct to check authentication
 	struct ftl_conn api = { 0 };
 	api.conn = conn;
 	api.request = req_info;
+	api.now = double_time();
 
 	// Check if the request is for the API under /admin/api
 	// (it is posted at /api)
@@ -92,8 +97,28 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		                            true);
 	}
 
-	// Every page except admin/login.lp requires authentication
-	if(strcmp(req_info->local_uri_raw, login_uri) != 0)
+	// Check if requested path ends with "".lp"
+	const bool lp = (uri_raw_len > 3u && strcmp(req_info->local_uri_raw + uri_raw_len - 3u, ".lp") == 0);
+
+	// Check if last part of the URI contains a dot (is a file)
+	const char *last_dot = strrchr(req_info->local_uri_raw, '.');
+	const char *last_slash = strrchr(req_info->local_uri_raw, '/');
+	const bool no_dot = (last_dot == NULL || last_slash > last_dot);
+
+	// Check if the request is for a LUA page
+	const bool lua = (lp || no_dot);
+
+	// Check if the request is for the login page
+	const bool login = (strcmp(req_info->local_uri_raw, login_uri) == 0);
+
+	if(!lua)
+	{
+		// Not a LUA page - fall back to CivetWeb's default handler
+		return 0;
+	}
+
+	// Every LUA page except admin/login.lp requires authentication
+	if(!login)
 	{
 		// This is not the login page - check if the user is authenticated
 		// Check if the user is authenticated
@@ -103,7 +128,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 			char *target = NULL;
 			if(req_info->query_string != NULL)
 			{
-				target = calloc(strlen(req_info->local_uri_raw) + strlen(req_info->query_string) + 2u, sizeof(char));
+				target = calloc(uri_raw_len + strlen(req_info->query_string) + 2u, sizeof(char));
 				strcpy(target, req_info->local_uri_raw);
 				strcat(target, "?");
 				strcat(target, req_info->query_string);
