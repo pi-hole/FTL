@@ -21,6 +21,7 @@
 #include "signals.h"
 // flush_network_table()
 #include "database/network-table.h"
+#include "config/config.h"
 
 static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[])
 {
@@ -121,38 +122,52 @@ int api_action_gravity(struct ftl_conn *api)
 
 int api_action_poweroff(struct ftl_conn *api)
 {
+	if(!config.webserver.api.allow_destructive.v.b)
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Power off is not allowed",
+		                       "Check setting webserver.api.allow_destructive");
+
 	log_info("Received API request to power off the machine");
 	// Sync filesystems and power off
 	sync();
-#if 0
 	// Needs capabiliy CAP_SYS_BOOT
 	if(reboot(RB_POWER_OFF) != 0)
 		return send_json_error(api, 500,
 		                       "server_error",
 		                       "Cannot power off the system, power off has been cancelled",
 		                       strerror(errno));
-#endif
 	return send_json_success(api);
 }
 
 int api_action_reboot(struct ftl_conn *api)
 {
+	if(!config.webserver.api.allow_destructive.v.b)
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Reboot is not allowed",
+		                       "Check setting webserver.api.allow_destructive");
+
 	log_info("Received API request to reboot the machine");
 	// Sync filesystems and reboot
 	sync();
-#if 0
 	// Needs capabiliy CAP_SYS_BOOT
 	if(reboot(RB_AUTOBOOT) != 0)
 		return send_json_error(api, 500,
 		                       "server_error",
 		                       "Cannot reboot the system, reboot has been cancelled",
 		                       strerror(errno));
-#endif
 	return send_json_success(api);
 }
 
 int api_action_restartDNS(struct ftl_conn *api)
 {
+	if(!config.webserver.api.allow_destructive.v.b)
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Restarting DNS is not allowed",
+		                       "Check setting webserver.api.allow_destructive");
+
 	log_info("Received API request to restart FTL");
 	exit_code = RESTART_FTL_CODE;
 	FTL_terminate = 1;
@@ -162,6 +177,12 @@ int api_action_restartDNS(struct ftl_conn *api)
 
 int api_action_flush_logs(struct ftl_conn *api)
 {
+	if(!config.webserver.api.allow_destructive.v.b)
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Flushing the logs is not allowed",
+		                       "Check setting webserver.api.allow_destructive");
+
 	log_info("Received API request to flush the logs");
 
 	// Flush the logs
@@ -176,14 +197,20 @@ int api_action_flush_logs(struct ftl_conn *api)
 
 int api_action_flush_arp(struct ftl_conn *api)
 {
-	log_info("Received API request to flush the ARP cache");
+	if(!config.webserver.api.allow_destructive.v.b)
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Flushing the ARP tables is not allowed",
+		                       "Check setting webserver.api.allow_destructive");
 
-	// Flush the ARP cache
+	log_info("Received API request to flush the ARP tables");
+
+	// Flush the ARP tables
 	if(flush_network_table())
 		return send_json_success(api);
 	else
 		return send_json_error(api, 500,
 		                       "server_error",
-		                       "Cannot flush the ARP cache",
+		                       "Cannot flush the ARP tables",
 		                       NULL);
 }

@@ -394,6 +394,8 @@ components:
                         type: string
                     maxHistory:
                       type: integer
+                    allow_destructive:
+                      type: boolean
                     temp:
                       type: object
                       properties:
@@ -642,6 +644,7 @@ components:
               excludeClients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
               excludeDomains: [ 'google.de', 'pi-hole.net' ]
               maxHistory: 86400
+              allow_destructive: true
               temp:
                 limit: 60.0
                 unit: "C"

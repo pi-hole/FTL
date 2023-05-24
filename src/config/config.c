@@ -925,6 +925,11 @@ void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.t = CONF_UINT;
 	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
 
+	conf->webserver.api.allow_destructive.k = "webserver.api.allow_destructive";
+	conf->webserver.api.allow_destructive.h = "Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)";
+	conf->webserver.api.allow_destructive.t = CONF_BOOL;
+	conf->webserver.api.allow_destructive.d.b = true;
+
 	// sub-struct webserver.api.temp
 	conf->webserver.api.temp.limit.k = "webserver.api.temp.limit";
 	conf->webserver.api.temp.limit.h = "Which upper temperature limit should be used by Pi-hole? Temperatures above this limit will be shown as \"hot\". The number specified here is in the unit defined below";

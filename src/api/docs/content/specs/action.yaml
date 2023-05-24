@@ -188,3 +188,33 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'action.yaml#/components/errors/forbidden'
+
+  errors:
+    forbidden:
+      description: |
+        The request was valid, but the server is refusing the action.
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "forbidden"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "<Action name> is not allowed"
+            hint:
+              type: string
+              nullable: true
+              description: "No additional data available"
+              example: "Check setting webserver.api.allow_destructive"
