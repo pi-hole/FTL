@@ -18,6 +18,9 @@
 #include <sys/reboot.h>
 #include <unistd.h>
 
+// exit_code
+#include "signals.h"
+
 static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[])
 {
 	// Create a pipe for communication with our child
@@ -101,7 +104,13 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 	// Send final chunk of size 0 showing end of data
 	mg_printf(api->conn, "0\r\n\r\n");
 
-	return code == EXIT_SUCCESS && !crashed ? 200 : 500;
+	if(code == EXIT_SUCCESS && !crashed)
+		return send_json_success(api);
+	else
+		return send_json_error(api, 500,
+		                       "server_error",
+		                       "Gravity failed",
+		                       NULL);
 }
 
 int api_action_gravity(struct ftl_conn *api)
@@ -111,6 +120,7 @@ int api_action_gravity(struct ftl_conn *api)
 
 int api_action_poweroff(struct ftl_conn *api)
 {
+	log_info("Received API request to power off the machine");
 	// Sync filesystems and power off
 	sync();
 	// Needs capabiliy CAP_SYS_BOOT
@@ -119,11 +129,13 @@ int api_action_poweroff(struct ftl_conn *api)
 		                       "server_error",
 		                       "Cannot power off the system, power off has been cancelled",
 		                       strerror(errno));
-	return 200;
+
+	return send_json_success(api);
 }
 
 int api_action_reboot(struct ftl_conn *api)
 {
+	log_info("Received API request to reboot the machine");
 	// Sync filesystems and reboot
 	sync();
 	// Needs capabiliy CAP_SYS_BOOT
@@ -132,5 +144,15 @@ int api_action_reboot(struct ftl_conn *api)
 		                       "server_error",
 		                       "Cannot reboot the system, reboot has been cancelled",
 		                       strerror(errno));
-	return 200;
+
+	return send_json_success(api);
+}
+
+int api_action_restart_FTL(struct ftl_conn *api)
+{
+	log_info("Received API request to restart FTL");
+	exit_code = RESTART_FTL_CODE;
+	FTL_terminate = 1;
+
+	return send_json_success(api);
 }

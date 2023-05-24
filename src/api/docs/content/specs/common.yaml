@@ -8,6 +8,13 @@ components:
           type: number
           description: Time in seconds it took to process the request
           example: 0.003
+    success:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Key indicating the status of the request
+          example: "success"
   errors:
     bad_request:
       type: object

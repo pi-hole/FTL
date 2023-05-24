@@ -56,6 +56,8 @@
 #include "database/query-table.h"
 // reread_config()
 #include "config/config.h"
+// FTL_fork_and_bind_sockets()
+#include "main.h"
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
@@ -104,9 +106,7 @@ static union mysockaddr last_server = {{ 0 }};
 unsigned char* pihole_privacylevel = &config.misc.privacylevel.v.privacy_level;
 const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_DOMAINSRV", "F_RCODE", "F_RR", "F_STALE" };
 
-void FTL_hook(unsigned int flags,
-const char *name,
-union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
+void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
 {
 	// Extract filename from path
 	const char *path = short_path(file);
@@ -2804,7 +2804,7 @@ static void init_pihole_PTR(void)
 	}
 }
 
-void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
+void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 {
 	// Going into daemon mode involves storing the
 	// PID of the generated child process. If FTL
@@ -2844,7 +2844,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// Start thread that will stay in the background until host names needs to
 	// be resolved. If configuration does not ask for never resolving hostnames
 	// (e.g. on CI builds), the thread is never started)
-	if(resolve_names() && pthread_create( &threads[DNSclient], &attr, DNSclient_thread, NULL ) != 0)
+	if(dnsmasq_start &&
+	   resolve_names() &&
+	   pthread_create( &threads[DNSclient], &attr, DNSclient_thread, NULL ) != 0)
 	{
 		log_crit("Unable to create DNS client thread. Exiting...");
 		exit(EXIT_FAILURE);

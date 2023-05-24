@@ -30,8 +30,22 @@ static int get_blocking(struct ftl_conn *api)
 {
 	// Return current status
 	cJSON *json = JSON_NEW_OBJECT();
-	const bool blocking = get_blockingstatus();
-	JSON_ADD_BOOL_TO_OBJECT(json, "blocking", blocking);
+	const enum blocking_status blocking = get_blockingstatus();
+	switch(blocking)
+	{
+		case BLOCKING_ENABLED:
+			JSON_REF_STR_IN_OBJECT(json, "blocking", "enabled");
+			break;
+		case BLOCKING_DISABLED:
+			JSON_REF_STR_IN_OBJECT(json, "blocking", "disabled");
+			break;
+		case DNSMASQ_FAILED:
+			JSON_REF_STR_IN_OBJECT(json, "blocking", "failure");
+			break;
+		case BLOCKING_UNKNOWN:
+			JSON_REF_STR_IN_OBJECT(json, "blocking", "unknown");
+			break;
+	}
 
 	// Get timer information (if applicable)
 	int delay;
@@ -52,6 +66,14 @@ static int get_blocking(struct ftl_conn *api)
 
 static int set_blocking(struct ftl_conn *api)
 {
+	if(get_blockingstatus() == DNSMASQ_FAILED)
+	{
+		return send_json_error(api, 500,
+		                       "dns_failure",
+		                       "DNS resolver is not running",
+		                       NULL);
+	}
+
 	if (api->payload.json == NULL)
 	{
 		if (api->payload.json_error == NULL)
@@ -74,7 +96,7 @@ static int set_blocking(struct ftl_conn *api)
 		                       "No \"blocking\" boolean in body data",
 		                       NULL);
 	}
-	const bool target_status = cJSON_IsTrue(elem);
+	const enum blocking_status target_status = cJSON_IsTrue(elem) ? BLOCKING_ENABLED : BLOCKING_DISABLED;
 
 	// Get (optional) timer
 	int timer = -1;

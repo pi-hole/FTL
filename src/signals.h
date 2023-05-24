@@ -12,6 +12,9 @@
 
 #include "enums.h"
 
+// defined in dnsmasq/dnsmasq.h
+extern volatile char FTL_terminate;
+
 void handle_signals(void);
 void handle_realtime_signals(void);
 pid_t main_pid(void);

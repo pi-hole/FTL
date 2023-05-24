@@ -232,10 +232,8 @@ void http_init(void)
 	// Register / -> /admin redirect handler
 	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
 
-	// Register / and *.lp handler
-	mg_set_request_handler(ctx, "**/$", request_handler, NULL);
-	mg_set_request_handler(ctx, "**.lp$", request_handler, NULL);
-	mg_set_request_handler(ctx, "*/api/**", request_handler, NULL);
+	// Register handler for the rest
+	mg_set_request_handler(ctx, "**", request_handler, NULL);
 
 	// Prepare prerequesites for Lua
 	allocate_lua();

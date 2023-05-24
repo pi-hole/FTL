@@ -41,6 +41,7 @@ char *username;
 bool needGC = false;
 bool needDBGC = false;
 bool startup = true;
+jmp_buf exit_jmp;
 
 int main (int argc, char *argv[])
 {
@@ -138,9 +139,31 @@ int main (int argc, char *argv[])
 	startup = false;
 	// Stop writing to STDOUT
 	log_ctrl(true, false);
-	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
-	log_info("Shutting down... // exit code %d", exit_code);
+	// Call embedded dnsmasq only on the first run
+	// Skip it here if we jump back to this point from die()
+	const int jmpret = setjmp(exit_jmp);
+	if(jmpret == 0)
+		main_dnsmasq(argc_dnsmasq, (char**)argv_dnsmasq);
+	else
+	{
+		// We are jumping back to this point from dnsmasq's die()
+		log_debug(DEBUG_ANY, "Jumped back to main() from dnsmasq/die()");
+		dnsmasq_failed = true;
+
+		if(!resolver_ready)
+		{
+			// If dnsmasq never finished initializing, we need to
+			// launch the threads
+			FTL_fork_and_bind_sockets(NULL, false);
+		}
+
+		// Loop here to keep the webserver running unless requested to restart
+		while(!FTL_terminate)
+			sleepms(100);
+	}
+
+	log_info("Shutting down... // exit code %d // jmpret %d", exit_code, jmpret);
 	// Extra grace time is needed as dnsmasq script-helpers and the API may not
 	// be terminating immediately
 	sleepms(250);

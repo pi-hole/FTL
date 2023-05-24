@@ -983,10 +983,6 @@ void logg_fatal_dnsmasq_message(const char *message)
 
 	if(rowid == -1)
 		log_err("logg_fatal_dnsmasq_message(): Failed to add message to database");
-
-	// FTL will die after this point, so we should make sure to clean up behind
-	// ourselves
-	cleanup(EXIT_FAILURE);
 }
 
 void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit_count)

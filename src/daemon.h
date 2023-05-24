@@ -50,5 +50,6 @@ pid_t FTL_gettid(void);
 ssize_t getrandom_fallback(void *buf, size_t buflen, unsigned int flags);
 
 extern bool resolver_ready;
+extern bool dnsmasq_failed;
 
 #endif //DAEMON_H

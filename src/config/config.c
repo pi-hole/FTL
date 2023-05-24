@@ -23,6 +23,8 @@
 #include "config/dnsmasq_config.h"
 // lock_shm(), unlock_shm()
 #include "shmem.h"
+// dnsmasq_failed
+#include "daemon.h"
 
 struct config config = { 0 };
 static bool config_initialized = false;
@@ -1323,13 +1325,20 @@ bool getLogFilePath(void)
 	return true;
 }
 
-bool __attribute__((pure)) get_blockingstatus(void)
+enum blocking_status __attribute__((pure)) get_blockingstatus(void)
 {
-	return config.dns.blocking.active.v.b;
+	if(dnsmasq_failed)
+		return DNSMASQ_FAILED;
+
+	return config.dns.blocking.active.v.b ? BLOCKING_ENABLED : BLOCKING_DISABLED;
 }
 
 void set_blockingstatus(bool enabled)
 {
+	// If dnsmasq failed to start, we do not allow to change the blocking status
+	if(dnsmasq_failed)
+		return;
+
 	config.dns.blocking.active.v.b = enabled;
 	writeFTLtoml(true);
 	raise(SIGHUP);

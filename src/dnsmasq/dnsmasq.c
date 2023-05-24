@@ -23,9 +23,11 @@
 #if defined(HAVE_IDN) || defined(HAVE_LIBIDN2) || defined(LOCALEDIR)
 #include <locale.h>
 #endif
-#include "../dnsmasq_interface.h"
+#include "dnsmasq_interface.h"
 // killed
-#include "../signals.h"
+#include "signals.h"
+// FTL_fork_and_bind_sockets()
+#include "main.h"
 
 struct daemon *daemon;
 
@@ -702,7 +704,7 @@ int main_dnsmasq (int argc, char **argv)
 	}
     }
 
-    FTL_fork_and_bind_sockets(ent_pw);
+    FTL_fork_and_bind_sockets(ent_pw, true);
   
    log_err = log_start(ent_pw, err_pipe[1]);
 

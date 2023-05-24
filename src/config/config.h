@@ -317,7 +317,7 @@ bool getPrivacyLevel(void);
 bool getBlockingMode(void);
 bool readDebugSettings(void);
 void init_config_mutex(void);
-bool get_blockingstatus(void) __attribute__((pure));
+enum blocking_status get_blockingstatus(void) __attribute__((pure));
 void set_blockingstatus(bool enabled);
 
 // Add enum items with descriptions

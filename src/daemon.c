@@ -36,6 +36,7 @@
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
+bool dnsmasq_failed = false;
 
 void go_daemon(void)
 {

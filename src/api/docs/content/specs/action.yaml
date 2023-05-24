@@ -77,7 +77,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/schemas/took'
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/success'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
@@ -100,7 +102,34 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/schemas/took'
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/success'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    restart:
+      post:
+        summary: Restart pihole-FTL
+        tags:
+          - Actions
+        operationId: "action_restart"
+        description: |
+          Restarts the pihole-FTL service
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/success'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:

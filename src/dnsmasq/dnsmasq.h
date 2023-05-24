@@ -1911,4 +1911,3 @@ int add_update_server(int flags,
 
 // Pi-hole modification
 const char *edestr(int ede);
-extern volatile char FTL_terminate;

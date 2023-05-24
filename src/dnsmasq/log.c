@@ -16,8 +16,9 @@
 
 #include "dnsmasq.h"
 /******* Pi-hole modification *******/
-#include "../log.h"
-#include "../dnsmasq_interface.h"
+#include "log.h"
+#include "dnsmasq_interface.h"
+#include "main.h"
 /************************************/
 
 #ifdef __ANDROID__
@@ -517,7 +518,8 @@ void die(char *message, char *arg1, int exit_code)
 
   /********** Pi-hole modification *************/
   FTL_log_dnsmasq_fatal(message, arg1, errmess);
+
+  // Jump back into main() to exit gracefully
+  longjmp(exit_jmp, exit_code);
   /*********************************************/
-  
-  exit(exit_code);
 }

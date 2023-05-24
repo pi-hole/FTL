@@ -77,9 +77,14 @@ components:
       type: object
       properties:
         blocking:
-          type: boolean
+          type: enum
           description: Blocking status
-          example: true
+          enum:
+            - "enabled"
+            - "disabled"
+            - "failed"
+            - "unknown"
+          example: "enabled"
     timer:
       type: object
       properties:

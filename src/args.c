@@ -408,7 +408,7 @@ void parse_args(int argc, char* argv[])
 			arg[0] = "";
 			arg[1] = "--test";
 			log_ctrl(false, true);
-			exit(main_dnsmasq(2, arg));
+			exit(main_dnsmasq(2, (char**)arg));
 		}
 
 		// Implement dnsmasq's test function, no need to prepare the entire FTL
@@ -423,7 +423,7 @@ void parse_args(int argc, char* argv[])
 			arg[1] = filename;
 			arg[2] = "--test";
 			log_ctrl(false, true);
-			exit(main_dnsmasq(3, arg));
+			exit(main_dnsmasq(3, (char**)arg));
 		}
 
 		// If we find "--" we collect everything behind that for dnsmasq

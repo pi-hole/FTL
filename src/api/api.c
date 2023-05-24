@@ -18,9 +18,6 @@
 // exit_code
 #include "signals.h"
 
-// defined in dnsmasq/dnsmasq.h
-extern volatile char FTL_terminate;
-
 static int api_endpoints(struct ftl_conn *api);
 
 static struct {
@@ -91,6 +88,7 @@ static struct {
 	{ "/api/action/gravity",                    "",                           api_action_gravity,                    { false, true,  0               }, true,  HTTP_POST },
 	{ "/api/action/reboot",                     "",                           api_action_reboot,                     { false, true,  0               }, true,  HTTP_POST },
 	{ "/api/action/poweroff",                   "",                           api_action_poweroff,                   { false, true,  0               }, true,  HTTP_POST },
+	{ "/api/action/restart",                    "",                           api_action_restart_FTL,                { false, true,  0               }, true,  HTTP_POST },
 	{ "/api/docs",                              "",                           api_docs,                              { false, true,  0               }, false, HTTP_GET },
 };
 
