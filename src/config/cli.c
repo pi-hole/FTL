@@ -443,7 +443,8 @@ int get_config_from_CLI(const char *key, const bool quiet)
 		// Get pointer to memory location of this conf_item
 		struct conf_item *item = get_conf_item(&config, i);
 
-		if(strcmp(item->k, key) != 0)
+		// Check if item.k starts with key
+		if(key != NULL && strncmp(item->k, key, strlen(key)) != 0)
 			continue;
 
 		// Skip write-only options
@@ -452,11 +453,21 @@ int get_config_from_CLI(const char *key, const bool quiet)
 
 		// This is the config option we are looking for
 		conf_item = item;
-		break;
+
+		// Print key if this is not an exact match
+		if(key == NULL || strcmp(item->k, key) != 0)
+			printf("%s = ", item->k);
+
+		// Print value
+		if(conf_item-> f & FLAG_WRITE_ONLY)
+			puts("<write-only property>");
+		else
+			writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
+		putchar('\n');
 	}
 
 	// Check if we found the config option
-	if(conf_item == NULL)
+	if(key != NULL && conf_item == NULL)
 	{
 		log_err("Unknown config option: %s", key);
 		return 2;
@@ -466,13 +477,6 @@ int get_config_from_CLI(const char *key, const bool quiet)
 	// and we are in quiet mode
 	if(quiet && conf_item->t == CONF_BOOL)
 		return conf_item->v.b ? EXIT_SUCCESS : EXIT_FAILURE;
-
-	// Print value
-	if(conf_item-> f & FLAG_WRITE_ONLY)
-		puts("<write-only property>");
-	else
-		writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
-	putchar('\n');
 
 	return EXIT_SUCCESS;
 }

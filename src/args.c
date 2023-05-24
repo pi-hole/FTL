@@ -258,7 +258,9 @@ void parse_args(int argc, char* argv[])
 		readFTLconf(&config, false);
 		log_ctrl(false, true);
 		clear_debug_flags(); // No debug printing wanted
-		if(argc == 3)
+		if(argc == 2)
+			exit(get_config_from_CLI(NULL, false));
+		else if(argc == 3)
 			exit(get_config_from_CLI(argv[2], false));
 		else if(argc == 4 && strcmp(argv[2], "-q") == 0)
 			exit(get_config_from_CLI(argv[3], true));
@@ -266,7 +268,7 @@ void parse_args(int argc, char* argv[])
 			exit(set_config_from_CLI(argv[2], argv[3]));
 		else
 		{
-			printf("Usage: %s --config <config item key> [<value>]\n", argv[0]);
+			printf("Usage: %s --config [<config item key>] [<value>]\n", argv[0]);
 			printf("Example: %s --config dns.blockESNI true\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
