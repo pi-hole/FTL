@@ -29,6 +29,8 @@ components:
                     $ref: 'auth.yaml#/components/examples/no_login_required'
                   login_required:
                     $ref: 'auth.yaml#/components/examples/login_required'
+                  dns_failure:
+                    $ref: 'auth.yaml#/components/examples/dns_failure'
       post:
         summary: Submit response for login
         tags:
@@ -237,6 +239,10 @@ components:
             validity:
               type: integer
               description: Remaining lifetime of this session unless refreshed (seconds)
+        dns:
+          type: boolean
+          description: Whether the DNS server is up and running. False only in failed state
+
     response:
       type: object
       description: Response to be sent to the API
@@ -359,6 +365,7 @@ components:
           totp: false
           sid: null
           validity: 300
+        dns: true
     no_login_required:
       summary: No login required for this client
       value:
@@ -368,6 +375,7 @@ components:
           totp: false
           sid: null
           validity: -1
+        dns: true
     login_required:
       summary: Login required
       value:
@@ -377,6 +385,7 @@ components:
           totp: false
           sid: null
           validity: -1
+        dns: true
     login_failed:
       summary: Login failed
       value:
@@ -386,6 +395,17 @@ components:
           totp: false
           sid: null
           validity: -1
+        dns: true
+    dns_failure:
+      summary: DNS server failure
+      value:
+        challenge: "a2926b025bcc8618c632f81cd6cf7c37ee051c08aab74b565fd5126350fcd056"
+        session:
+          valid: false
+          totp: false
+          sid: null
+          validity: -1
+        dns: false
     errors:
       no_payload:
         summary: Bad request (no valid JSON payload)

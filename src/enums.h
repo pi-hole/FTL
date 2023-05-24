@@ -115,7 +115,7 @@ enum query_type {
 enum blocking_status {
 	BLOCKING_DISABLED,
 	BLOCKING_ENABLED,
-	DNSMASQ_FAILED,
+	DNS_FAILED,
 	BLOCKING_UNKNOWN
 } __attribute__ ((packed));
 

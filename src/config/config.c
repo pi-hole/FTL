@@ -1328,7 +1328,7 @@ bool getLogFilePath(void)
 enum blocking_status __attribute__((pure)) get_blockingstatus(void)
 {
 	if(dnsmasq_failed)
-		return DNSMASQ_FAILED;
+		return DNS_FAILED;
 
 	return config.dns.blocking.active.v.b ? BLOCKING_ENABLED : BLOCKING_DISABLED;
 }

@@ -39,7 +39,7 @@ static int get_blocking(struct ftl_conn *api)
 		case BLOCKING_DISABLED:
 			JSON_REF_STR_IN_OBJECT(json, "blocking", "disabled");
 			break;
-		case DNSMASQ_FAILED:
+		case DNS_FAILED:
 			JSON_REF_STR_IN_OBJECT(json, "blocking", "failure");
 			break;
 		case BLOCKING_UNKNOWN:
@@ -66,7 +66,7 @@ static int get_blocking(struct ftl_conn *api)
 
 static int set_blocking(struct ftl_conn *api)
 {
-	if(get_blockingstatus() == DNSMASQ_FAILED)
+	if(get_blockingstatus() == DNS_FAILED)
 	{
 		return send_json_error(api, 500,
 		                       "dns_failure",
