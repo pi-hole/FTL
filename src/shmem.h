@@ -94,8 +94,6 @@ static void delete_shm(SharedMemory *sharedMemory);
 /// Block until a lock can be obtained
 #define lock_shm() _lock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _lock_shm(const char* func, const int line, const char* file);
-#define lock_log() _lock_log(__FUNCTION__, __LINE__, __FILE__)
-void _lock_log(const char* func, const int line, const char* file);
 
 // Return if the current mutex locked the SHM lock
 bool is_our_lock(void);
@@ -108,8 +106,6 @@ void shm_ensure_size(void);
 /// Unlock the lock. Only call this if there is an active lock.
 #define unlock_shm() _unlock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _unlock_shm(const char* func, const int line, const char* file);
-#define unlock_log() _unlock_log(__FUNCTION__, __LINE__, __FILE__)
-void _unlock_log(const char* func, const int line, const char * file);
 
 /// Block until a lock can be obtained
 

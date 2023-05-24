@@ -20,7 +20,7 @@
 #include "signals.h"
 // data getter functions
 #include "datastructure.h"
-// delete_query_from_db()
+// delete_old_queries_from_db()
 #include "database/query-table.h"
 // logg_rate_limit_message()
 #include "database/message-table.h"
@@ -120,29 +120,37 @@ static void check_load(void)
 		log_resource_shortage(load[2], nprocs, -1, -1, NULL, NULL);
 }
 
-static void runGC(const time_t now, time_t *lastGCrun)
+void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 {
 	doGC = false;
 	// Update lastGCrun timer
-	*lastGCrun = now - GCdelay - (now - GCdelay)%GCinterval;
+	if(lastGCrun != NULL)
+		*lastGCrun = now - GCdelay - (now - GCdelay)%GCinterval;
 
 	// Lock FTL's data structure, since it is likely that it will be changed here
 	// Requests should not be processed/answered when data is about to change
-	lock_shm();
+	if(!flush)
+		lock_shm();
 
 	// Get minimum timestamp to keep
-	time_t mintime = (now - GCdelay) - config.webserver.api.maxHistory.v.ui;
+	time_t mintime = now;
+	if(!flush)
+	{
+		// Normal GC run
+		mintime -= GCdelay + config.webserver.api.maxHistory.v.ui;
 
-	// Align the start time of this GC run to the GCinterval. This will also align with the
-	// oldest overTime interval after GC is done.
-	mintime -= mintime % GCinterval;
+		// Align the start time of this GC run to the GCinterval. This will also align with the
+		// oldest overTime interval after GC is done.
+		mintime -= mintime % GCinterval;
+	}
 
 	if(config.debug.gc.v.b)
 	{
 		timer_start(GC_TIMER);
 		char timestring[TIMESTR_SIZE] = "";
 		get_timestr(timestring, mintime, false, false);
-		log_info("GC starting, mintime: %s (%lu)", timestring, (unsigned long)mintime);
+		log_debug(DEBUG_GC, "GC starting, mintime: %s (%lu), counters->queries = %d",
+		          timestring, (unsigned long)mintime, counters->queries);
 	}
 
 	// Process all queries
@@ -230,14 +238,15 @@ static void runGC(const time_t now, time_t *lastGCrun)
 
 		// Count removed queries
 		removed++;
-
-		// Remove query from queries table (temp), we
-		// can release the lock for this action to
-		// prevent blocking the DNS service too long
-		unlock_shm();
-		delete_query_from_db(query->db);
-		lock_shm();
 	}
+
+	// Remove query from queries table (temp), we can release the lock for this
+	// action to prevent blocking the DNS service too long
+	if(!flush)
+		unlock_shm();
+	delete_old_queries_from_db(true, mintime);
+	if(!flush)
+		lock_shm();
 
 	// Only perform memory operations when we actually removed queries
 	if(removed > 0)
@@ -248,7 +257,8 @@ static void runGC(const time_t now, time_t *lastGCrun)
 		//   Before: IIIIIIXXXXFF
 		//   After:  XXXXFFFFFFFF
 		queriesData *dest = getQuery(0, true);
-		queriesData *src = getQuery(removed, true);
+		// Note: we use "removed - 1" here because the ID of the last query is "counters->queries - 1"
+		queriesData *src = getQuery(removed - 1, true);
 		if(dest && src)
 			memmove(dest, src, (counters->queries - removed)*sizeof(queriesData));
 
@@ -267,7 +277,8 @@ static void runGC(const time_t now, time_t *lastGCrun)
 	log_debug(DEBUG_GC, "GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 	// Release thread lock
-	unlock_shm();
+	if(!flush)
+		unlock_shm();
 
 	// After storing data in the database for the next time,
 	// we should scan for old entries, which will then be deleted
@@ -353,7 +364,7 @@ void *GC_thread(void *val)
 			break;
 
 		if(now - GCdelay - lastGCrun >= GCinterval || doGC)
-			runGC(now, &lastGCrun);
+			runGC(now, &lastGCrun, false);
 
 		// Intermediate cancellation-point
 		if(killed)

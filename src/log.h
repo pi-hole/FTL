@@ -91,6 +91,8 @@ const char *short_path(const char *full_path) __attribute__ ((pure));
 
 void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const size_t length);
 
+bool empty_log(void);
+
 typedef struct {
 	struct {
 		unsigned int next_id;

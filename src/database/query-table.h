@@ -115,7 +115,7 @@ bool detach_disk_database(const char **msg);
 bool detach_database(sqlite3* db, const char **message, const char *alias);
 int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, const bool do_attach);
 bool export_queries_to_disk(bool final);
-bool delete_query_from_db(const sqlite3_int64 id);
+bool delete_old_queries_from_db(const bool use_memdb, const double mintime);
 bool add_additional_info_column(sqlite3 *db);
 void DB_read_queries(void);
 bool queries_to_database(void);

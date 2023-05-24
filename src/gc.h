@@ -11,6 +11,7 @@
 #define GC_H
 
 void *GC_thread(void *val);
+void runGC(const time_t now, time_t *lastGCrun, const bool flush);
 time_t get_rate_limit_turnaround(const unsigned int rate_limit_count);
 
 #endif //GC_H

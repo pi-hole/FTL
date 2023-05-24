@@ -123,13 +123,14 @@ int api_action_poweroff(struct ftl_conn *api)
 	log_info("Received API request to power off the machine");
 	// Sync filesystems and power off
 	sync();
+#if 0
 	// Needs capabiliy CAP_SYS_BOOT
 	if(reboot(RB_POWER_OFF) != 0)
 		return send_json_error(api, 500,
 		                       "server_error",
 		                       "Cannot power off the system, power off has been cancelled",
 		                       strerror(errno));
-
+#endif
 	return send_json_success(api);
 }
 
@@ -138,21 +139,36 @@ int api_action_reboot(struct ftl_conn *api)
 	log_info("Received API request to reboot the machine");
 	// Sync filesystems and reboot
 	sync();
+#if 0
 	// Needs capabiliy CAP_SYS_BOOT
 	if(reboot(RB_AUTOBOOT) != 0)
 		return send_json_error(api, 500,
 		                       "server_error",
 		                       "Cannot reboot the system, reboot has been cancelled",
 		                       strerror(errno));
-
+#endif
 	return send_json_success(api);
 }
 
-int api_action_restart_FTL(struct ftl_conn *api)
+int api_action_restartDNS(struct ftl_conn *api)
 {
 	log_info("Received API request to restart FTL");
 	exit_code = RESTART_FTL_CODE;
 	FTL_terminate = 1;
 
 	return send_json_success(api);
+}
+
+int api_action_flush_logs(struct ftl_conn *api)
+{
+	log_info("Received API request to flush the logs");
+
+	// Flush the logs
+	if(empty_log())
+		return send_json_success(api);
+	else
+		return send_json_error(api, 500,
+		                       "server_error",
+		                       "Cannot flush the logs",
+		                       NULL);
 }

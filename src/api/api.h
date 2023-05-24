@@ -98,7 +98,8 @@ int api_teleporter(struct ftl_conn *api);
 int api_action_gravity(struct ftl_conn *api);
 int api_action_poweroff(struct ftl_conn *api);
 int api_action_reboot(struct ftl_conn *api);
-int api_action_restart_FTL(struct ftl_conn *api);
+int api_action_restartDNS(struct ftl_conn *api);
+int api_action_flush_logs(struct ftl_conn *api);
 
 // Search methods
 int api_search(struct ftl_conn *api);

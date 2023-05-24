@@ -26,6 +26,17 @@ servers:
       path:
         description: Path where your Pi-hole's API is hosted
         default: api
+  - url: 'https://{url}:{port}/{path}'
+    variables:
+      url:
+        description: URL or address of your Pi-hole
+        default: pi.hole
+      port:
+        description: Port of your Pi-hole's API (HTTPS)
+        default: "443"
+      path:
+        description: Path where your Pi-hole's API is hosted
+        default: api
 
 tags:
   - name: "Authentication"
@@ -215,6 +226,12 @@ paths:
 
   /action/gravity:
     $ref: 'action.yaml#/components/paths/gravity'
+
+  /action/restartdns:
+    $ref: 'action.yaml#/components/paths/restartdns'
+
+  /action/flush/logs:
+    $ref: 'action.yaml#/components/paths/flush_logs'
 
   /action/reboot:
     $ref: 'action.yaml#/components/paths/reboot'

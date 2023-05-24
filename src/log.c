@@ -24,6 +24,10 @@
 #include "signals.h"
 // logg_fatal_dnsmasq_message()
 #include "database/message-table.h"
+// delete_old_queries_from_db()
+#include "database/query-table.h"
+// runGC()
+#include "gc.h"
 
 static bool print_log = true, print_stdout = true;
 static const char *process = "";
@@ -745,4 +749,42 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const s
 
 	// Set timestamp
 	fifo_log->logs[which].timestamp[idx] = now;
+}
+
+bool empty_log(void)
+{
+	// Lock shared memory
+	lock_shm();
+
+	// Open file in write mode to truncate it
+	FILE *logfile = fopen(config.files.log.dnsmasq.v.s, "w");
+	if(!logfile)
+	{
+		log_err("Could not open log file %s for truncation: %s\n", config.files.log.dnsmasq.v.s, strerror(errno));
+		unlock_shm();
+		return false;
+	}
+	fclose(logfile);
+
+	// Flush dnsmasq FIFO logs
+	if(fifo_log)
+		memset(&fifo_log->logs[FIFO_DNSMASQ], 0, sizeof(fifo_log->logs[FIFO_DNSMASQ]));
+
+	// Clean internal datastructure
+	runGC(time(NULL), NULL, true);
+
+	// Unlock shared memory
+	unlock_shm();
+
+	// Flush last 24 hours of on-disk database
+	const double mintime = double_time() - 86400.0;
+	if(!delete_old_queries_from_db(false, mintime))
+	{
+		log_err("Could not flush on-disk database");
+		return false;
+	}
+
+	log_info("Log has been flushed due to API request");
+
+	return true;
 }

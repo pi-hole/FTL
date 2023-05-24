@@ -113,14 +113,39 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
-    restart:
+    restartdns:
       post:
         summary: Restart pihole-FTL
         tags:
           - Actions
-        operationId: "action_restart"
+        operationId: "action_restartdns"
         description: |
           Restarts the pihole-FTL service
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/success'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    flush_logs:
+      post:
+        summary: Flush the DNS logs
+        tags:
+          - Actions
+        operationId: "action_flushlogs"
+        description: |
+          Flushes the DNS logs. This includes emptying the DNS log file and purging the most recent 24 hours from both the database and FTL's internal memory.
         responses:
           '200':
             description: OK

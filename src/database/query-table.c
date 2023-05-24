@@ -600,25 +600,31 @@ bool export_queries_to_disk(bool final)
 	return okay;
 }
 
-// Delete query with given ID from database. Used by garbage collection
-bool delete_query_from_db(const sqlite3_int64 id)
+// Delete queries older than given timestamp. Used by garbage collection
+bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 {
 	// Get time stamp 24 hours (or what was configured) in the past
 	bool okay = false;
-	const char *querystr = "DELETE FROM query_storage WHERE id = ?";
+	const char *querystr = "DELETE FROM query_storage WHERE timestamp >= ?";
+
+	sqlite3 *db = NULL;
+	if(use_memdb)
+		db = memdb;
+	else
+		db = dbopen(false, false);
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *stmt = NULL;
-	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("delete_query_from_db(): SQL error prepare: %s", sqlite3_errstr(rc));
+		log_err("delete_old_queries_from_db(): SQL error prepare: %s", sqlite3_errstr(rc));
 		return false;
 	}
 
 	// Bind index
-	if((rc = sqlite3_bind_int64(stmt, 1, id)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 1, mintime)) != SQLITE_OK)
 	{
-		log_err("delete_query_from_db(): Failed to bind type id: %s", sqlite3_errstr(rc));
+		log_err("delete_old_queries_from_db(): Failed to bind mintime: %s", sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		return false;
 	}
@@ -627,12 +633,15 @@ bool delete_query_from_db(const sqlite3_int64 id)
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 		okay = true;
 	else
-		log_err("delete_query_from_db(): Failed to delete query with ID %lli: %s",
-		        id, sqlite3_errstr(rc));
+		log_err("delete_old_queries_from_db(): Failed to delete queries with timestamp >= %f: %s",
+		        mintime, sqlite3_errstr(rc));
 
-	mem_db_num -= sqlite3_changes(memdb);
+	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage", false);
 	// Finalize statement
 	sqlite3_finalize(stmt);
+
+	if(!use_memdb)
+		dbclose(&db);
 
 	return okay;
 }
