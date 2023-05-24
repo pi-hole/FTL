@@ -35,7 +35,7 @@
 // A list of items of common local hostnames not to report as unusable
 // Some lists (i.e StevenBlack's) contain these as they are supposed to be used as HOST files
 // but flagging them as unusable causes more confusion than it's worth - so we suppress them from the output
-#define FALSE_POSITIVES "localhost|localhost.localdomain|local|broadcasthost|localhost|ip6-localhost|ip6-loopback|lo0 localhost|ip6-localnet|ip6-mcastprefix|ip6-allnodes|ip6-allrouters|ip6-allhosts"
+#define FALSE_POSITIVES "^(localhost|localhost.localdomain|local|broadcasthost|localhost|ip6-localhost|ip6-loopback|lo0 localhost|ip6-localnet|ip6-mcastprefix|ip6-allnodes|ip6-allrouters|ip6-allhosts)$"
 
 // Print progress for files larger than 10 MB
 // This is to avoid printing progress for small files
@@ -247,26 +247,33 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		}
 		else
 		{
-			// No match - add to list of invalid domains
-			if(invalid_domains_list_len < MAX_INVALID_DOMAINS)
-			{
-				// Check if we have this domain already
-				bool found = false;
-				for(unsigned int i = 0; i < invalid_domains_list_len; i++)
-				{
-					if(strcmp(invalid_domains_list[i], line) == 0)
-					{
-						found = true;
-						break;
-					}
-				}
+			// No match - This is an invalid domain or a false positive
 
-				// If not found, check if this is a false
-				// positive and add it to the list if it is not
-				if(!found && regexec(&false_positives_regex, line, 0, NULL, 0) != 0)
-					invalid_domains_list[invalid_domains_list_len++] = strdup(line);
+			// Ignore false positives - they don't count as invalid domains
+			if(regexec(&false_positives_regex, line, 0, NULL, 0) != 0)
+			{
+				// Add the domain to invalid_domains_list only
+				// if the list contains < MAX_INVALID_DOMAINS
+				if(invalid_domains_list_len < MAX_INVALID_DOMAINS)
+				{
+					// Check if we have this domain already
+					bool found = false;
+					for(unsigned int i = 0; i < invalid_domains_list_len; i++)
+					{
+						if(strcmp(invalid_domains_list[i], line) == 0)
+						{
+							found = true;
+							break;
+						}
+					}
+
+					// If not found, add it to the list
+					if(!found)
+						invalid_domains_list[invalid_domains_list_len++] = strdup(line);
+
+				}
+				invalid_domains++;
 			}
-			invalid_domains++;
 		}
 
 		// Print progress if the file is large enough every 100 lines
