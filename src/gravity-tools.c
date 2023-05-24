@@ -247,10 +247,13 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		}
 		else
 		{
+			// No match - This is an invalid domain or a false positive
+
 			// Ignore false positives - they don't count as invalid domains
 			if(regexec(&false_positives_regex, line, 0, NULL, 0) != 0)
 			{
-				// No match - add to list of invalid domains
+				// Add the domain to invalid_domains_list only
+				// if the list contains < MAX_INVALID_DOMAINS
 				if(invalid_domains_list_len < MAX_INVALID_DOMAINS)
 				{
 					// Check if we have this domain already
