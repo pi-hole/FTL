@@ -77,7 +77,7 @@ components:
       type: object
       properties:
         blocking:
-          type: enum
+          type: string
           description: Blocking status
           enum:
             - "enabled"
