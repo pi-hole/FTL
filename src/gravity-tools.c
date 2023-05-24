@@ -317,7 +317,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	}
 
 	// Update number of domains on this list
-	sql = "UPDATE adlist SET number = ?, invalid_domains = ? WHERE id = ?;";
+	sql = "UPDATE adlist SET number = ?, invalid_domains = ?, date_updated = cast(strftime('%s', 'now') as int) WHERE id = ?;";
 	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
 		printf("%s  %s Unable to prepare SQL statement to update adlist properties in database file %s\n",
