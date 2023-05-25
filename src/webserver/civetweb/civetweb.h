@@ -938,6 +938,10 @@ int my_send_http_error_headers(struct mg_connection *conn,
 void FTL_rewrite_pattern(char *filename, size_t filename_buf_len,
                          const char *root, const char *uri);
 
+#define MG_CONFIG_MBEDTLS_DEBUG 3
+void FTL_mbed_debug(void *user_param, int level, const char *file,
+                    int line, const char *message);
+
 // Buffer used for additional "Set-Cookie" headers
 #define PIHOLE_HEADERS_MAXLEN 1024
 extern char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN];
