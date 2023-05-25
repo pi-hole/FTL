@@ -7754,6 +7754,8 @@ interpret_uri(struct mg_connection *conn, /* in/out: request (must be valid) */
 	mg_snprintf(
 	    conn, &truncated, filename, filename_buf_len - 1, "%s%s", root, uri);
 
+	FTL_rewrite_pattern(filename, filename_buf_len - 1, root, uri);
+
 	if (truncated) {
 		goto interpret_cleanup;
 	}
