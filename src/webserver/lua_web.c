@@ -25,13 +25,13 @@
 static char *login_uri = NULL, *admin_api_uri = NULL;
 void allocate_lua(void)
 {
-	// Build login URI string (webhome + login.lp)
-	// Append "login.lp" to webhome string
+	// Build login URI string (webhome + login)
+	// Append "login" to webhome string
 	const size_t login_uri_len = strlen(config.webserver.paths.webhome.v.s);
-	login_uri = calloc(login_uri_len + 10, sizeof(char));
+	login_uri = calloc(login_uri_len + 7, sizeof(char));
 	memcpy(login_uri, config.webserver.paths.webhome.v.s, login_uri_len);
-	strcpy(login_uri + login_uri_len, "login.lp");
-	login_uri[login_uri_len + 10u] = '\0';
+	strcpy(login_uri + login_uri_len, "login");
+	login_uri[login_uri_len + 7u] = '\0';
 
 	// Build "wrong" API URI string (webhome + api)
 	// Append "api" to webhome string
@@ -97,27 +97,23 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		                            true);
 	}
 
-	// Check if requested path ends with "".lp"
-	const bool lp = (uri_raw_len > 3u && strcmp(req_info->local_uri_raw + uri_raw_len - 3u, ".lp") == 0);
-
 	// Check if last part of the URI contains a dot (is a file)
 	const char *last_dot = strrchr(req_info->local_uri_raw, '.');
 	const char *last_slash = strrchr(req_info->local_uri_raw, '/');
 	const bool no_dot = (last_dot == NULL || last_slash > last_dot);
 
-	// Check if the request is for a LUA page
-	const bool lua = (lp || no_dot);
-
 	// Check if the request is for the login page
 	const bool login = (strcmp(req_info->local_uri_raw, login_uri) == 0);
 
-	if(!lua)
+	// Check if the request is for a LUA page (every *.lp has already been
+	// rewritten at this point to *)
+	if(!no_dot)
 	{
 		// Not a LUA page - fall back to CivetWeb's default handler
 		return 0;
 	}
 
-	// Every LUA page except admin/login.lp requires authentication
+	// Every LUA page except admin/login requires authentication
 	if(!login)
 	{
 		// This is not the login page - check if the user is authenticated
@@ -143,8 +139,8 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 			mg_url_encode(target, encoded_target, encoded_target_len);
 
 			// User is not authenticated, redirect to login page
-			log_web("Authentication required, redirecting to %slogin.lp?target=%s", config.webserver.paths.webhome.v.s, encoded_target);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin.lp?target=%s\r\n\r\n", config.webserver.paths.webhome.v.s, encoded_target);
+			log_web("Authentication required, redirecting to %slogin?target=%s", config.webserver.paths.webhome.v.s, encoded_target);
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin?target=%s\r\n\r\n", config.webserver.paths.webhome.v.s, encoded_target);
 			free(target);
 			return 302;
 		}
@@ -156,8 +152,8 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		if(check_client_auth(&api) != API_AUTH_UNAUTHORIZED)
 		{
 			// User is already authenticated, redirect to index page
-			log_web("User is already authenticated, redirecting to %sindex.lp", config.webserver.paths.webhome.v.s);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %sindex.lp\r\n\r\n", config.webserver.paths.webhome.v.s);
+			log_web("User is already authenticated, redirecting to %s", config.webserver.paths.webhome.v.s);
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s\r\n\r\n", config.webserver.paths.webhome.v.s);
 			return 302;
 		}
 	}

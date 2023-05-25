@@ -95,6 +95,28 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	return 0;
 }
 
+static int redirect_lp_handler(struct mg_connection *conn, void *input)
+{
+	// Get requested URI
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	const char *uri = request->local_uri_raw;
+
+	// Remove the ".lp" from the URI
+	char *pos = strstr(uri, ".lp");
+	char *new_uri = calloc(strlen(uri) - 2, sizeof(char));
+	// Copy everything from before the ".lp?" to the new URI
+	strncpy(new_uri, uri, pos - uri);
+	// Copy everything after ".lp" to the new URI
+	strcat(new_uri, pos + 3);
+
+	// Send a 301 redirect to the new URI
+	log_debug(DEBUG_API, "Redirecting %s ==301==> %s", uri, new_uri);
+	mg_send_http_redirect(conn, new_uri, 301);
+	free(new_uri);
+
+	return 1;
+}
+
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
 	log_web("%s", message);
@@ -233,11 +255,42 @@ void http_init(void)
 	// Register / -> /admin redirect handler
 	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
 
+	// Register **.lp -> ** redirect handler
+	mg_set_request_handler(ctx, "**.lp$", redirect_lp_handler, NULL);
+
 	// Register handler for the rest
 	mg_set_request_handler(ctx, "**", request_handler, NULL);
 
 	// Prepare prerequesites for Lua
 	allocate_lua();
+}
+
+void FTL_rewrite_pattern(char *filename, size_t filename_buf_len,
+                         const char *root, const char *uri)
+{
+	// Construct full path with ".lp" appended
+	const size_t filename_lp_len = strlen(filename) + 3;
+	char *filename_lp = calloc(filename_lp_len, sizeof(char));
+	if(filename_lp == NULL)
+	{
+		log_err("Failed to allocate memory for Lua pattern!");
+		return;
+	}
+	strncpy(filename_lp, filename, filename_lp_len);
+	strncat(filename_lp, ".lp", filename_lp_len);
+
+	// Check if the file exists
+	if(!file_readable(filename_lp))
+	{
+		log_debug(DEBUG_API, "Not rewriting %s ==> %s, no such file",
+		          filename, filename_lp);
+		free(filename_lp);
+		return;
+	}
+
+	log_debug(DEBUG_API, "Rewriting %s ==> %s", filename, filename_lp);
+	strncpy(filename, filename_lp, filename_buf_len);
+	free(filename_lp);
 }
 
 void http_terminate(void)
