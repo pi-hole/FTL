@@ -1242,7 +1242,7 @@
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1:8080/api/auth'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '{"challenge":null,"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"took":'*'}' ]]
+  [[ ${lines[0]} == '{"challenge":null,"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"dns":true,"took":'*'}' ]]
 }
 
 @test "API authorization (with password): FTL challenges us" {

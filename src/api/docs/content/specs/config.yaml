@@ -468,6 +468,8 @@ components:
                   type: boolean
                 api:
                   type: boolean
+                tls:
+                  type: boolean
                 overtime:
                   type: boolean
                 status:
@@ -678,6 +680,7 @@ components:
             arp: false
             regex: false
             api: false
+            tls: false
             overtime: false
             status: false
             caps: false

@@ -269,6 +269,7 @@ struct config {
 		struct conf_item arp;
 		struct conf_item regex;
 		struct conf_item api;
+		struct conf_item tls;
 		struct conf_item overtime;
 		struct conf_item status;
 		struct conf_item caps;

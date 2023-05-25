@@ -1116,6 +1116,12 @@ void initConfig(struct config *conf)
 	conf->debug.api.f = FLAG_ADVANCED_SETTING;
 	conf->debug.api.d.b = false;
 
+	conf->debug.tls.k = "debug.tls";
+	conf->debug.tls.h = "Print extra debugging information about TLS connections. This includes the TLS version, the cipher suite, the certificate chain and much more. This very verbose output should only be used when debugging specific TLS issues and can be helpful, e.g., when a client cannot connect due to an obscure TLS error as modern browsers do not provide much information about the underlying TLS connection and most often give only very generic error messages without much/any underlying technical information.";
+	conf->debug.tls.t = CONF_BOOL;
+	conf->debug.tls.f = FLAG_ADVANCED_SETTING;
+	conf->debug.tls.d.b = false;
+
 	conf->debug.overtime.k = "debug.overtime";
 	conf->debug.overtime.h = "Print information about overTime memory operations, such as initializing or moving overTime slots.";
 	conf->debug.overtime.t = CONF_BOOL;

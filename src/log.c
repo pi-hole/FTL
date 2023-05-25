@@ -195,6 +195,9 @@ void debugstr(const enum debug_flag flag, const char **name)
 		case DEBUG_API:
 			*name = "DEBUG_API";
 			return;
+		case DEBUG_TLS:
+			*name = "DEBUG_TLS";
+			return;
 		case DEBUG_OVERTIME:
 			*name = "DEBUG_OVERTIME";
 			return;

@@ -134,6 +134,30 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 	return 1;
 }
 
+void FTL_mbed_debug(void *user_param, int level, const char *file, int line, const char *message)
+{
+	// Only log when in TLS debugging mode
+	if(!config.debug.tls.v.b)
+		return;
+
+	(void)user_param;
+
+	// Skip initial pointer in message (like 0x7f73000279e0) if present
+	size_t len = strlen(message);
+	if(len > 0 && message[0] == '0' && message[1] == 'x')
+	{
+		message = strstr(message, ": ") + 2;
+		len = strlen(message);
+	}
+
+	// Truncate trailing newline in message if present
+	if(len > 0 && message[len - 1] == '\n')
+		len--;
+
+	// Log the message
+	log_web("mbedTLS(%s:%d, %d): %.*s", file, line, level, (int)len, message);
+}
+
 void http_init(void)
 {
 	log_web("Initializing HTTP server on port %s", config.webserver.port.v.s);
