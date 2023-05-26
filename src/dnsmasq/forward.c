@@ -2055,7 +2055,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  
 	  if (errno == 0)
 	    data_sent = 1;
-	  else if (errno = ETIMEDOUT || errno == EHOSTUNREACH)
+	  else if (errno == ETIMEDOUT || errno == EHOSTUNREACH)
 	    timedout = 1;
 #endif
 	  
