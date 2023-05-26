@@ -293,7 +293,7 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len,
                          const char *root, const char *uri)
 {
 	// Construct full path with ".lp" appended
-	const size_t filename_lp_len = strlen(filename) + 3;
+	const size_t filename_lp_len = strlen(filename) + 4;
 	char *filename_lp = calloc(filename_lp_len, sizeof(char));
 	if(filename_lp == NULL)
 	{
@@ -303,18 +303,34 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len,
 	strncpy(filename_lp, filename, filename_lp_len);
 	strncat(filename_lp, ".lp", filename_lp_len);
 
-	// Check if the file exists
-	if(!file_readable(filename_lp))
+	// Check if the file exists. If so, rewrite the filename
+	if(file_readable(filename_lp))
 	{
-		log_debug(DEBUG_API, "Not rewriting %s ==> %s, no such file",
-		          filename, filename_lp);
+		log_debug(DEBUG_API, "Rewriting %s ==> %s", filename, filename_lp);
+		strncpy(filename, filename_lp, filename_buf_len);
 		free(filename_lp);
 		return;
 	}
 
-	log_debug(DEBUG_API, "Rewriting %s ==> %s", filename, filename_lp);
-	strncpy(filename, filename_lp, filename_buf_len);
+	log_debug(DEBUG_API, "Not rewriting %s ==> %s, no such file",
+	          filename, filename_lp);
+
+	// Change last occurence of "/" to "-" (if any)
+	char *last_slash = strrchr(filename_lp, '/');
+	if(last_slash != NULL)
+	   *last_slash = '-';
+	if(file_readable(filename_lp))
+	{
+		log_debug(DEBUG_API, "Rewriting %s ==> %s", filename, filename_lp);
+		strncpy(filename, filename_lp, filename_buf_len);
+		free(filename_lp);
+		return;
+	}
+
+	log_debug(DEBUG_API, "Not rewriting %s ==> %s, no such file",
+	          filename, filename_lp);
 	free(filename_lp);
+
 }
 
 void http_terminate(void)

@@ -104,22 +104,28 @@ static int pihole_hostname(lua_State *L) {
 	return 1; // number of results
 }
 
-static const char *get_abspath(char fullfilename[1024], const char *filename)
+static void get_abspath(char abs_filename[1024], char rel_filename[1024], const char *filename)
 {
-	size_t fullfilename_len = 1023;
+	size_t abs_filename_len = 1023;
+	size_t rel_filename_len = 1023;
 	if(config.webserver.paths.webroot.v.s != NULL)
 	{
-		strncpy(fullfilename, config.webserver.paths.webroot.v.s, fullfilename_len);
-		fullfilename_len -= strlen(config.webserver.paths.webroot.v.s);
+		strncpy(abs_filename, config.webserver.paths.webroot.v.s, abs_filename_len);
+		abs_filename_len -= strlen(config.webserver.paths.webroot.v.s);
 	}
 	if(config.webserver.paths.webhome.v.s != NULL)
 	{
-		strncat(fullfilename, config.webserver.paths.webhome.v.s, fullfilename_len);
-		fullfilename_len -= strlen(config.webserver.paths.webhome.v.s);
-	}
-	strncat(fullfilename, filename, fullfilename_len);
+		strncat(abs_filename, config.webserver.paths.webhome.v.s, abs_filename_len);
+		abs_filename_len -= strlen(config.webserver.paths.webhome.v.s);
 
-	return fullfilename;
+		if(rel_filename != NULL)
+		{
+			strncpy(rel_filename, config.webserver.paths.webhome.v.s, rel_filename_len);
+			rel_filename_len -= strlen(config.webserver.paths.webhome.v.s);
+			strncat(rel_filename, filename, rel_filename_len);
+		}
+	}
+	strncat(abs_filename, filename, abs_filename_len);
 }
 
 // pihole.fileversion(<filename:str>)
@@ -132,7 +138,8 @@ static int pihole_fileversion(lua_State *L) {
 
 	// Construct full filename if webroot/webhome are available
 	char abspath[1024] = { 0 };
-	get_abspath(abspath, filename);
+	char relpath[1024] = { 0 };
+	get_abspath(abspath, relpath, filename);
 
 	// Check if file exists
 	if(!file_exists(abspath))
@@ -140,7 +147,7 @@ static int pihole_fileversion(lua_State *L) {
 		// File does not exist, return filename.
 		log_warn("Requested file \"%s\" does not exist",
 		         abspath);
-		lua_pushstring(L, filename);
+		lua_pushstring(L, relpath);
 		return 1; // number of results
 	}
 
@@ -150,12 +157,12 @@ static int pihole_fileversion(lua_State *L) {
 	{
 		log_warn("Could not get file modification time for \"%s\": %s",
 		         abspath, strerror(errno));
-		lua_pushstring(L, filename);
+		lua_pushstring(L, relpath);
 		return 1; // number of results
 	}
 
 	// Return filename + modification time
-	lua_pushfstring(L, "%s?v=%d", filename, filestat.st_mtime);
+	lua_pushfstring(L, "%s?v=%d", relpath, filestat.st_mtime);
 	return 1; // number of results
 }
 
@@ -167,6 +174,13 @@ static int pihole_webtheme(lua_State *L) {
 	return 1; // number of results
 }
 
+// pihole.webhome()
+static int pihole_webhome(lua_State *L) {
+	// Get name of currently set webhome
+	lua_pushstring(L, config.webserver.paths.webhome.v.s);
+	return 1; // number of results
+}
+
 // pihole.include(<filename:str>)
 static int pihole_include(lua_State *L) {
 	// Get filename (first argument to LUA function)
@@ -174,7 +188,7 @@ static int pihole_include(lua_State *L) {
 
 	// Construct full filename if webroot/webhome are available
 	char abspath[1024] = { 0 };
-	get_abspath(abspath, filename);
+	get_abspath(abspath, NULL, filename);
 
 	// Load and execute file
 	luaL_dofile(L, abspath);
@@ -193,6 +207,7 @@ static const luaL_Reg piholelib[] = {
 	{"hostname", pihole_hostname},
 	{"fileversion", pihole_fileversion},
 	{"webtheme", pihole_webtheme},
+	{"webhome", pihole_webhome},
 	{"include", pihole_include},
 	{"boxedlayout", pihole_boxedlayout},
 	{NULL, NULL}
