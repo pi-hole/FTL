@@ -186,7 +186,7 @@ int api_action_flush_logs(struct ftl_conn *api)
 	log_info("Received API request to flush the logs");
 
 	// Flush the logs
-	if(empty_log())
+	if(flush_dnsmasq_log())
 		return send_json_success(api);
 	else
 		return send_json_error(api, 500,

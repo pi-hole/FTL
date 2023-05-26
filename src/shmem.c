@@ -508,7 +508,7 @@ bool init_shmem()
 
 	/****************************** shared memory lock ******************************/
 	// Try to create shared memory object
-	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLock));
+	create_shm(SHARED_LOCK_NAME, &shm_lock, sizeof(ShmLock));
 	if(shm_lock.ptr == NULL)
 		return false;
 
@@ -518,7 +518,7 @@ bool init_shmem()
 
 	/****************************** shared counters struct ******************************/
 	// Try to create shared memory object
-	shm_counters = create_shm(SHARED_COUNTERS_NAME, sizeof(countersStruct));
+	create_shm(SHARED_COUNTERS_NAME, &shm_counters, sizeof(countersStruct));
 	if(shm_counters.ptr == NULL)
 		return false;
 
@@ -526,7 +526,7 @@ bool init_shmem()
 
 	/****************************** shared settings struct ******************************/
 	// Try to create shared memory object
-	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings));
+	create_shm(SHARED_SETTINGS_NAME, &shm_settings, sizeof(ShmSettings));
 	if(shm_settings.ptr == NULL)
 		return false;
 
@@ -537,7 +537,7 @@ bool init_shmem()
 
 	/****************************** shared strings buffer ******************************/
 	// Try to create shared memory object
-	shm_strings = create_shm(SHARED_STRINGS_NAME, STRINGS_ALLOC_STEP);
+	create_shm(SHARED_STRINGS_NAME, &shm_strings, STRINGS_ALLOC_STEP);
 	if(shm_strings.ptr == NULL)
 		return false;
 
@@ -550,7 +550,7 @@ bool init_shmem()
 	/****************************** shared domains struct ******************************/
 	size_t size = get_optimal_object_size(sizeof(domainsData), 1);
 	// Try to create shared memory object
-	shm_domains = create_shm(SHARED_DOMAINS_NAME, size*sizeof(domainsData));
+	create_shm(SHARED_DOMAINS_NAME, &shm_domains, size*sizeof(domainsData));
 	if(shm_domains.ptr == NULL)
 		return false;
 
@@ -560,7 +560,7 @@ bool init_shmem()
 	/****************************** shared clients struct ******************************/
 	size = get_optimal_object_size(sizeof(clientsData), 1);
 	// Try to create shared memory object
-	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsData));
+	create_shm(SHARED_CLIENTS_NAME, &shm_clients, size*sizeof(clientsData));
 	if(shm_clients.ptr == NULL)
 		return false;
 
@@ -570,7 +570,7 @@ bool init_shmem()
 	/****************************** shared upstreams struct ******************************/
 	size = get_optimal_object_size(sizeof(upstreamsData), 1);
 	// Try to create shared memory object
-	shm_upstreams = create_shm(SHARED_UPSTREAMS_NAME, size*sizeof(upstreamsData));
+	create_shm(SHARED_UPSTREAMS_NAME, &shm_upstreams, size*sizeof(upstreamsData));
 	if(shm_upstreams.ptr == NULL)
 		return false;
 	upstreams = (upstreamsData*)shm_upstreams.ptr;
@@ -579,7 +579,7 @@ bool init_shmem()
 
 	/****************************** shared queries struct ******************************/
 	// Try to create shared memory object
-	shm_queries = create_shm(SHARED_QUERIES_NAME, pagesize*sizeof(queriesData));
+	create_shm(SHARED_QUERIES_NAME, &shm_queries, pagesize*sizeof(queriesData));
 	if(shm_queries.ptr == NULL)
 		return false;
 	queries = (queriesData*)shm_queries.ptr;
@@ -589,7 +589,7 @@ bool init_shmem()
 	/****************************** shared overTime struct ******************************/
 	size = get_optimal_object_size(sizeof(overTimeData), OVERTIME_SLOTS);
 	// Try to create shared memory object
-	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size*sizeof(overTimeData));
+	create_shm(SHARED_OVERTIME_NAME, &shm_overTime, size*sizeof(overTimeData));
 	if(shm_overTime.ptr == NULL)
 		return false;
 
@@ -599,7 +599,7 @@ bool init_shmem()
 	/****************************** shared DNS cache struct ******************************/
 	size = get_optimal_object_size(sizeof(DNSCacheData), 1);
 	// Try to create shared memory object
-	shm_dns_cache = create_shm(SHARED_DNS_CACHE, size*sizeof(DNSCacheData));
+	create_shm(SHARED_DNS_CACHE, &shm_dns_cache, size*sizeof(DNSCacheData));
 	if(shm_dns_cache.ptr == NULL)
 		return false;
 
@@ -609,7 +609,7 @@ bool init_shmem()
 	/****************************** shared per-client regex buffer ******************************/
 	size = pagesize; // Allocate one pagesize initially. This may be expanded later on
 	// Try to create shared memory object
-	shm_per_client_regex = create_shm(SHARED_PER_CLIENT_REGEX, size);
+	create_shm(SHARED_PER_CLIENT_REGEX, &shm_per_client_regex, size);
 	if(shm_per_client_regex.ptr == NULL)
 		return false;
 
@@ -617,7 +617,7 @@ bool init_shmem()
 
 	/****************************** shared fifo_buffer struct ******************************/
 	// Try to create shared memory object
-	shm_fifo_log = create_shm(SHARED_FIFO_LOG_NAME, sizeof(fifologData));
+	create_shm(SHARED_FIFO_LOG_NAME, &shm_fifo_log, sizeof(fifologData));
 	if(shm_fifo_log.ptr == NULL)
 		return false;
 	fifo_log = (fifologData*)shm_fifo_log.ptr;
@@ -651,10 +651,10 @@ void destroy_shmem(void)
 /// Create shared memory
 ///
 /// \param name the name of the shared memory
+/// \param sharedMemory the shared memory object to fill
 /// \param size the size to allocate
-/// \return a structure with a pointer to the mounted shared memory. The pointer
-/// will always be valid, because if it failed FTL will have exited.
-static SharedMemory create_shm(const char *name, const size_t size)
+/// No return value as the function will exit on failure
+static bool create_shm(const char *name, SharedMemory *sharedMemory, const size_t size)
 {
 	char df[64] = { 0 };
 	const unsigned int percentage = get_dev_shm_usage(df);
@@ -664,11 +664,10 @@ static SharedMemory create_shm(const char *name, const size_t size)
 	if(config.misc.check.shmem.v.ui > 0 && percentage > config.misc.check.shmem.v.ui)
 		log_resource_shortage(-1.0, 0, percentage, -1, SHMEM_PATH, df);
 
-	SharedMemory sharedMemory = {
-		.name = name,
-		.size = size,
-		.ptr = NULL
-	};
+	// Initialize shared memory object
+	sharedMemory->name = name;
+	sharedMemory->size = size;
+	sharedMemory->ptr = NULL;
 
 	// Create the shared memory file in read/write mode with 600 (u+rw) permissions
 	// and the following open flags:
@@ -676,7 +675,7 @@ static SharedMemory create_shm(const char *name, const size_t size)
 	// - O_CREAT: Create the shared memory object if it does not exist.
 	// - O_EXCL: Return an error if a shared memory object with the given name already exists.
 	errno = 0;
-	const int fd = shm_open(sharedMemory.name, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+	const int fd = shm_open(sharedMemory->name, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
 
 	// Check for `shm_open` error
 	if(fd == -1)
@@ -694,7 +693,7 @@ static SharedMemory create_shm(const char *name, const size_t size)
 	if(ret != 0)
 	{
 		log_err("create_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
-		        sharedMemory.name, fd, size, strerror(errno), ret);
+		        sharedMemory->name, fd, size, strerror(errno), ret);
 		exit(EXIT_FAILURE);
 	}
 
@@ -709,7 +708,7 @@ static SharedMemory create_shm(const char *name, const size_t size)
 	if(shm == MAP_FAILED)
 	{
 		log_err("create_shm(): Failed to map shared memory object \"%s\" (%i): %s",
-		        sharedMemory.name, fd, strerror(errno));
+		        sharedMemory->name, fd, strerror(errno));
 		return sharedMemory;
 	}
 
@@ -720,7 +719,7 @@ static SharedMemory create_shm(const char *name, const size_t size)
 	// needed after having called mmap()
 	close(fd);
 
-	sharedMemory.ptr = shm;
+	sharedMemory->ptr = shm;
 	return sharedMemory;
 }
 

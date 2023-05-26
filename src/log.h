@@ -81,17 +81,17 @@ int blocked_queries(void)  __attribute__ ((pure));
 
 const char *short_path(const char *full_path) __attribute__ ((pure));
 
-/* From RFC 3164 */
-#define MAX_MSG_FIFO 1024u
+// How long is each line in the FIFO buffer allowed to be?
+#define MAX_MSG_FIFO 256u
 
 // How many messages do we keep in memory (FIFO message buffer)?
 // This number multiplied by MAX_MSG_FIFO (see above) gives the total buffer size
-// Defaults to 128 [use 128 KB of memory for the log]
-#define LOG_SIZE 128u
+// Defaults to 512 [512 * 256 above = use 128 KB of memory for the log]
+#define LOG_SIZE 515u
 
 void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const size_t length);
 
-bool empty_log(void);
+bool flush_dnsmasq_log(void);
 
 typedef struct {
 	struct {

@@ -736,25 +736,28 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const s
 		idx = LOG_SIZE - 1u;
 	}
 
-	// Copy relevant string into temporary buffer
+	// Copy string
+	// We need to use the pre-allocated buffer in shared memory as we share
+	// this FIFO with forks and friends, so we can't use strdup()
 	size_t copybytes = length < MAX_MSG_FIFO ? length : MAX_MSG_FIFO;
 	memcpy(fifo_log->logs[which].message[idx], payload, copybytes);
 
 	// Zero-terminate buffer, truncate newline if found
 	if(fifo_log->logs[which].message[idx][copybytes - 1u] == '\n')
-	{
 		fifo_log->logs[which].message[idx][copybytes - 1u] = '\0';
-	}
 	else
-	{
 		fifo_log->logs[which].message[idx][copybytes] = '\0';
-	}
+
+	// Replace last three bytes by "..." if we truncated the message
+	if(copybytes == MAX_MSG_FIFO)
+		for(unsigned int i = 0; i < 4; i++)
+			fifo_log->logs[which].message[idx][MAX_MSG_FIFO - 4 + i] = '.';
 
 	// Set timestamp
 	fifo_log->logs[which].timestamp[idx] = now;
 }
 
-bool empty_log(void)
+bool flush_dnsmasq_log(void)
 {
 	// Lock shared memory
 	lock_shm();
