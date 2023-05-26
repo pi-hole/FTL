@@ -2002,7 +2002,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
   
   while (1) 
     {
-      int data_sent = 0;
+      int data_sent = 0, timedout = 0;
       struct server *serv;
       
       if (firstsendto == -1)
@@ -2040,15 +2040,27 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	      serv->tcpfd = -1;
 	      continue;
 	    }
+
+#ifdef TCP_SYNCNT
+	  /* TCP connections by default take ages to time out. 
+	     At least on Linux, we can reduce that to only two attempts
+	     to get a reply. For DNS, that's more sensible. */
+	  mark = 2;
+	  setsockopt(serv->tcpfd, IPPROTO_TCP, TCP_SYNCNT, &mark, sizeof(unsigned int));
+#endif
 	  
 #ifdef MSG_FASTOPEN
 	  server_send(serv, serv->tcpfd, packet, qsize + sizeof(u16), MSG_FASTOPEN);
 	  
 	  if (errno == 0)
 	    data_sent = 1;
+	  else if (errno = ETIMEDOUT || errno == EHOSTUNREACH)
+	    timedout = 1;
 #endif
 	  
-	  if (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1)
+	  /* If fastopen failed due to lack of reply, then there's no point in
+	     trying again in non-FASTOPEN mode. */
+	  if (timedout || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
 	    {
 	      close(serv->tcpfd);
 	      serv->tcpfd = -1;
