@@ -28,10 +28,10 @@ void allocate_lua(void)
 	// Build login URI string (webhome + login)
 	// Append "login" to webhome string
 	const size_t login_uri_len = strlen(config.webserver.paths.webhome.v.s);
-	login_uri = calloc(login_uri_len + 7, sizeof(char));
+	login_uri = calloc(login_uri_len + 6, sizeof(char));
 	memcpy(login_uri, config.webserver.paths.webhome.v.s, login_uri_len);
 	strcpy(login_uri + login_uri_len, "login");
-	login_uri[login_uri_len + 7u] = '\0';
+	login_uri[login_uri_len + 5u] = '\0';
 
 	// Build "wrong" API URI string (webhome + api)
 	// Append "api" to webhome string
@@ -39,7 +39,7 @@ void allocate_lua(void)
 	admin_api_uri = calloc(admin_api_uri_len + 4, sizeof(char));
 	memcpy(admin_api_uri, config.webserver.paths.webhome.v.s, admin_api_uri_len);
 	strcpy(admin_api_uri + admin_api_uri_len, "api");
-	admin_api_uri[admin_api_uri_len + 4u] = '\0';
+	admin_api_uri[admin_api_uri_len + 3u] = '\0';
 }
 
 void free_lua(void)

@@ -263,7 +263,16 @@ int api_queries(struct ftl_conn *api)
 
 		// Upstream filtering?
 		if(GET_STR("upstream", upstreamname, api->request->query_string) > 0)
-			add_querystr_string(api, querystr, "f.forward=", ":upstream", &where);
+		{
+			if(strcmp(upstreamname, "blocklist") == 0)
+				// Pseudo-upstream for blocked queries
+				add_querystr_string(api, querystr, "q.status IN ", get_blocked_statuslist(), &where);
+			else if(strcmp(upstreamname, "cache") == 0)
+				// Pseudo-upstream for cached queries
+				add_querystr_string(api, querystr, "q.status IN ", get_cached_statuslist(), &where);
+			else
+				add_querystr_string(api, querystr, "f.forward=", ":upstream", &where);
+		}
 
 		// Client IP filtering?
 		if(GET_STR("client_ip", clientip, api->request->query_string) > 0)

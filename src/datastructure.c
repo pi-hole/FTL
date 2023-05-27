@@ -780,6 +780,52 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 	}
 }
 
+static char blocked_list[32] = { 0 };
+const char * __attribute__ ((const)) get_blocked_statuslist(void)
+{
+	if(blocked_list[0] != '\0')
+		return blocked_list;
+
+	// Build a list of blocked query statuses
+	unsigned int first = 0;
+	// Open parenthesis
+	blocked_list[0] = '(';
+	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
+		if(is_blocked(status))
+			snprintf(blocked_list + strlen(blocked_list),
+			         sizeof(blocked_list) - strlen(blocked_list),
+			         "%s%d", first++ < 1 ? "" : ",", status);
+
+	// Close parenthesis
+	const size_t len = strlen(blocked_list);
+	blocked_list[len] = ')';
+	blocked_list[len + 1] = '\0';
+	return blocked_list;
+}
+
+static char cached_list[32] = { 0 };
+const char * __attribute__ ((const)) get_cached_statuslist(void)
+{
+	if(cached_list[0] != '\0')
+		return cached_list;
+
+	// Build a list of cached query statuses
+	unsigned int first = 0;
+	// Open parenthesis
+	cached_list[0] = '(';
+	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
+		if(is_cached(status))
+			snprintf(cached_list + strlen(cached_list),
+			         sizeof(cached_list) - strlen(cached_list),
+			         "%s%d", first++ < 1 ? "" : ",", status);
+
+	// Close parenthesis
+	const size_t len = strlen(cached_list);
+	cached_list[len] = ')';
+	cached_list[len + 1] = '\0';
+	return cached_list;
+}
+
 int __attribute__ ((pure)) get_blocked_count(void)
 {
 	int blocked = 0;
