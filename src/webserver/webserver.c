@@ -100,17 +100,24 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 	// Get requested URI
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	const char *uri = request->local_uri_raw;
+	const char *query_string = request->query_string;
+	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
 
 	// Remove the ".lp" from the URI
 	char *pos = strstr(uri, ".lp");
-	char *new_uri = calloc(strlen(uri) - 2, sizeof(char));
-	// Copy everything from before the ".lp?" to the new URI
+	char *new_uri = calloc(strlen(uri) + query_len - 2, sizeof(char));
+	// Copy everything from before the ".lp" to the new URI
 	strncpy(new_uri, uri, pos - uri);
-	// Copy everything after ".lp" to the new URI
-	strcat(new_uri, pos + 3);
+	if(query_len > 0)
+	{
+		// Append query string ".lp" to the new URI if present
+		strcat(new_uri, "?");
+		strcat(new_uri, query_string);
+	}
 
 	// Send a 301 redirect to the new URI
-	log_debug(DEBUG_API, "Redirecting %s ==301==> %s", uri, new_uri);
+	log_debug(DEBUG_API, "Redirecting %s?%s ==301==> %s",
+	          uri, query_string, new_uri);
 	mg_send_http_redirect(conn, new_uri, 301);
 	free(new_uri);
 
@@ -289,8 +296,7 @@ void http_init(void)
 	allocate_lua();
 }
 
-void FTL_rewrite_pattern(char *filename, size_t filename_buf_len,
-                         const char *root, const char *uri)
+void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 {
 	// Construct full path with ".lp" appended
 	const size_t filename_lp_len = strlen(filename) + 4;
@@ -330,7 +336,6 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len,
 	log_debug(DEBUG_API, "Not rewriting %s ==> %s, no such file",
 	          filename, filename_lp);
 	free(filename_lp);
-
 }
 
 void http_terminate(void)

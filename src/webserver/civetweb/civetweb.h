@@ -935,8 +935,7 @@ int my_send_http_error_headers(struct mg_connection *conn,
                                int status, const char* mime_type,
                                long long content_length);
 
-void FTL_rewrite_pattern(char *filename, size_t filename_buf_len,
-                         const char *root, const char *uri);
+void FTL_rewrite_pattern(char *filename, size_t filename_buf_len);
 
 #define MG_CONFIG_MBEDTLS_DEBUG 3
 void FTL_mbed_debug(void *user_param, int level, const char *file,

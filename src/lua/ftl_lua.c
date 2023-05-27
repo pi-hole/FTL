@@ -122,10 +122,11 @@ static void get_abspath(char abs_filename[1024], char rel_filename[1024], const 
 		{
 			strncpy(rel_filename, config.webserver.paths.webhome.v.s, rel_filename_len);
 			rel_filename_len -= strlen(config.webserver.paths.webhome.v.s);
-			strncat(rel_filename, filename, rel_filename_len);
 		}
 	}
 	strncat(abs_filename, filename, abs_filename_len);
+	if(rel_filename != NULL)
+		strncat(rel_filename, filename, rel_filename_len);
 }
 
 // pihole.fileversion(<filename:str>)
