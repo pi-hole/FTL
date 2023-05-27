@@ -29,9 +29,6 @@
 // See https://github.com/pi-hole/pi-hole/pull/5240
 #define ABP_DOMAIN_REXEX "\\|\\|"SUBDOMAIN_PATTERN"*"TLD_PATTERN"\\^"
 
-// Detects ABP extended CSS selectors ("##", "#!#", "#@#", "#?#") preceded by a letter
-#define ABP_CSS_SELECTORS "[a-z]#[$?@]{0,1}#"
-
 // A list of items of common local hostnames not to report as unusable
 // Some lists (i.e StevenBlack's) contain these as they are supposed to be used as HOST files
 // but flagging them as unusable causes more confusion than it's worth - so we suppress them from the output
@@ -75,7 +72,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	rewind(fpin);
 
 	// Compile regular expression to validate domains
-	regex_t exact_regex, abp_regex, false_positives_regex, abp_css_regex;
+	regex_t exact_regex, abp_regex, false_positives_regex;
 	if(regcomp(&exact_regex, VALID_DOMAIN_REXEX, REG_EXTENDED) != 0)
 	{
 		printf("%s  %s Unable to compile regular expression to validate exact domains\n",
@@ -95,14 +92,6 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	if(regcomp(&false_positives_regex, FALSE_POSITIVES, REG_EXTENDED | REG_NOSUB) != 0)
 	{
 		printf("%s  %s Unable to compile regular expression to identify false positives\n",
-		       over, cross);
-		fclose(fpin);
-		sqlite3_close(db);
-		return EXIT_FAILURE;
-	}
-	if(regcomp(&abp_css_regex, ABP_CSS_SELECTORS, REG_EXTENDED) != 0)
-	{
-		printf("%s  %s Unable to compile regular expression to validate ABP-style domains\n",
 		       over, cross);
 		fclose(fpin);
 		sqlite3_close(db);
@@ -368,7 +357,6 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	regfree(&exact_regex);
 	regfree(&abp_regex);
 	regfree(&false_positives_regex);
-	regfree(&abp_css_regex);
 	for(unsigned int i = 0; i < invalid_domains_list_len; i++)
 		if(invalid_domains_list[i] != NULL)
 			free(invalid_domains_list[i]);
