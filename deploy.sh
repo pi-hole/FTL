@@ -42,11 +42,18 @@ for dir in "${path[@]}"; do
         ls -1"
     )"
 
-    # Only try to create the subdir if does not already exist
-    if [[ "${dir_content[*]}" =~ "${dir}" ]]; then
-        echo "Dir: ${old_path}/${dir} already exists"
-    else
-        echo "Creating dir: ${old_path}/${dir}"
+    # Loop over the dir content and check if this exact dir already exists
+    path_exists=0
+    for content in "${dir_content[@]}"; do
+        if [[ "${content}" == "${dir}" ]]; then
+            echo "Dir: ${old_path}/${dir} already exists"
+            path_exists=1
+        fi
+    done
+
+    # If the dir does not exist, create it
+    if [[ "${path_exists}" -eq 0 ]]; then
+        echo "Dir: ${old_path}/${dir} does not exist. Creating it."
         sftp -b - "${USER}"@"${HOST}" <<< "cd ${old_path}
         -mkdir ${dir}"
     fi

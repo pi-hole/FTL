@@ -1356,7 +1356,7 @@
 @test "Embedded SQLite3 shell available and functional" {
   run bash -c './pihole-FTL sqlite3 -help'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "Usage: sqlite3 [OPTIONS] FILENAME [SQL]" ]]
+  [[ ${lines[0]} == "Usage: sqlite3 [OPTIONS] [FILENAME [SQL]]" ]]
 }
 
 @test "Embedded SQLite3 shell is called for .db file" {
