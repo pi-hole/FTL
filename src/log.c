@@ -783,7 +783,7 @@ bool flush_dnsmasq_log(void)
 	unlock_shm();
 
 	// Flush last 24 hours of on-disk database
-	const double mintime = double_time() - 86400.0;
+	const double mintime = double_time();
 	if(!delete_old_queries_from_db(false, mintime))
 	{
 		log_err("Could not flush on-disk database");

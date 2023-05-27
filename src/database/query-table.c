@@ -607,7 +607,7 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 {
 	// Get time stamp 24 hours (or what was configured) in the past
 	bool okay = false;
-	const char *querystr = "DELETE FROM query_storage WHERE timestamp >= ?";
+	const char *querystr = "DELETE FROM query_storage WHERE timestamp <= ?";
 
 	sqlite3 *db = NULL;
 	if(use_memdb)
@@ -639,7 +639,10 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 		        mintime, sqlite3_errstr(rc));
 
 	// Update number of queries in in-memory database
-	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage", false);
+	const int new_num = get_number_of_queries_in_DB(memdb, "query_storage", false);
+	log_debug(DEBUG_GC, "delete_old_queries_from_db(): Deleted %i (%u) queries, new number of queries in memory: %i",
+	          sqlite3_changes(db), (mem_db_num - new_num), new_num);
+	mem_db_num = new_num;
 
 	// Finalize statement
 	sqlite3_finalize(stmt);
