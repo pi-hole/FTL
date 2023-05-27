@@ -781,7 +781,7 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 }
 
 static char blocked_list[32] = { 0 };
-const char * __attribute__ ((const)) get_blocked_statuslist(void)
+const char * __attribute__ ((pure)) get_blocked_statuslist(void)
 {
 	if(blocked_list[0] != '\0')
 		return blocked_list;
@@ -804,7 +804,7 @@ const char * __attribute__ ((const)) get_blocked_statuslist(void)
 }
 
 static char cached_list[32] = { 0 };
-const char * __attribute__ ((const)) get_cached_statuslist(void)
+const char * __attribute__ ((pure)) get_cached_statuslist(void)
 {
 	if(cached_list[0] != '\0')
 		return cached_list;

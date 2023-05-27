@@ -130,8 +130,8 @@ bool isValidIPv6(const char *addr);
 
 bool is_blocked(const enum query_status status) __attribute__ ((const));
 bool is_cached(const enum query_status status) __attribute__ ((const));
-const char *get_blocked_statuslist(void) __attribute__ ((const));
-const char *get_cached_statuslist(void) __attribute__ ((const));
+const char *get_blocked_statuslist(void) __attribute__ ((pure));
+const char *get_cached_statuslist(void) __attribute__ ((pure));
 int get_blocked_count(void) __attribute__ ((pure));
 int get_forwarded_count(void) __attribute__ ((pure));
 int get_cached_count(void) __attribute__ ((pure));
