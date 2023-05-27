@@ -157,34 +157,14 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		total_read += read;
 		lineno++;
 
-		// Remove leading whitespace
-		// isspace() matches spaces, tabs, form feeds, line breaks,
-		// carriage returns, and vertical tabs
-		while(isspace(line[0]))
-			line++;
-
-		// Skip comments
-		// # is used for comments in HOSTS files
-		// ! is used for comments in AdBlock-style files
-		// [ is used for comments in AdGuard-style files and ABP headers
-		if(line[0] == '#' || line[0] == '!' || line[0] == '[')
-			continue;
-
 		// Remove trailing newline
 		if(line[read-1] == '\n')
-			line[--read] = '\0';
-
-		// Remove trailing carriage return (Windows)
-		if(line[read-1] == '\r')
 			line[--read] = '\0';
 
 		// Remove trailing dot (convert FQDN to domain)
 		if(line[read-1] == '.')
 			line[--read] = '\0';
 
-		// Skip empty lines
-		if(line[0] == '\0')
-			continue;
 
 		regmatch_t match = { 0 };
 		// Validate line
@@ -218,13 +198,6 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		        match.rm_so == 0 && match.rm_eo == read)        // <- Match covers entire line
 		{
 			// ABP-style match (see comments above)
-
-			// Skip lines containing ABP extended CSS selectors
-			// ("##", "#!#", "#@#", "#?#") preceded by a letter
-			// See https://github.com/pi-hole/pi-hole/pull/5247 for
-			// further information on why this is necessary
-			if(regexec(&abp_css_regex, line, 1, &match, 0) == 0)
-				continue;
 
 			// Append pattern to database using prepared statement
 			if(sqlite3_bind_text(stmt, 1, line, -1, SQLITE_STATIC) != SQLITE_OK)
