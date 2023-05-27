@@ -165,6 +165,14 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 		; // Ignored
 	else if(flags & F_IPSET)
 		; // Ignored
+	else if(flags == F_UPSTREAM && strcmp(arg, "truncated") == 0)
+		; // Ignored - truncated reply
+		//
+		// flags will by (F_UPSTREAM | F_NOEXTRA) with type being
+		// T_DNSKEY or T_DS when this is a truncated DNSSEC reply
+		//
+		// otherwise, flags will be F_UPSTREAM and the type is not set
+		// (== 0)
 	else
 		FTL_reply(flags, name, addr, arg, id, path, line);
 }
