@@ -543,7 +543,6 @@ bool export_queries_to_disk(bool final)
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
-
 	// Export linking tables and current AUTOINCREMENT values to the disk database
 	const char *subtable_names[] = {
 		"domain_by_id",
@@ -575,6 +574,9 @@ bool export_queries_to_disk(bool final)
 		log_err("export_queries_to_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
 		return false;
 	}
+
+	// Update number of queries in the disk database
+	disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage", false);
 
 	// Detach disk database
 	if(!detach_disk_database(NULL))
@@ -636,7 +638,9 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 		log_err("delete_old_queries_from_db(): Failed to delete queries with timestamp >= %f: %s",
 		        mintime, sqlite3_errstr(rc));
 
+	// Update number of queries in in-memory database
 	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage", false);
+
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
@@ -1489,6 +1493,9 @@ bool queries_to_database(void)
 		sqlite3_finalize(*stmts[i]);
 		*stmts[i] = NULL;
 	}
+
+	// Update number of queries in in-memory database
+	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage", false);
 
 	if(config.debug.database.v.b && updated + added > 0)
 	{
