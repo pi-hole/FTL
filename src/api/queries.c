@@ -253,39 +253,25 @@ int api_queries(struct ftl_conn *api)
 	// Filtering based on GET parameters?
 	if(api->request->query_string != NULL)
 	{
-		char buffer[256] = { 0 };
-
 		// Time filtering?
 		add_querystr_double(api, querystr, "timestamp>=", "from", &where);
 		add_querystr_double(api, querystr, "timestamp<", "until", &where);
 
 		// Domain filtering?
-		if(GET_VAR("domain", buffer, api->request->query_string) > 0)
-		{
-			sscanf(buffer, "%255s", domainname);
+		if(GET_STR("domain", domainname, api->request->query_string) > 0)
 			add_querystr_string(api, querystr, "d.domain=", ":domain", &where);
-		}
 
 		// Upstream filtering?
-		if(GET_VAR("upstream", buffer, api->request->query_string) > 0)
-		{
-			sscanf(buffer, "%255s", upstreamname);
+		if(GET_STR("upstream", upstreamname, api->request->query_string) > 0)
 			add_querystr_string(api, querystr, "f.forward=", ":upstream", &where);
-		}
 
 		// Client IP filtering?
-		if(GET_VAR("client_ip", buffer, api->request->query_string) > 0)
-		{
-			sscanf(buffer, "%255s", clientip);
+		if(GET_STR("client_ip", clientip, api->request->query_string) > 0)
 			add_querystr_string(api, querystr, "c.ip=", ":cip", &where);
-		}
 
 		// Client filtering?
-		if(GET_VAR("client_name", buffer, api->request->query_string) > 0)
-		{
-			sscanf(buffer, "%255s", clientname);
+		if(GET_STR("client_name", clientname, api->request->query_string) > 0)
 			add_querystr_string(api, querystr, "c.name=", ":cname", &where);
-		}
 
 		// DataTables server-side processing protocol
 		// Draw counter: This is used by DataTables to ensure that the
@@ -329,32 +315,20 @@ int api_queries(struct ftl_conn *api)
 		}
 
 		// Query type filtering?
-		if(GET_VAR("type", buffer, api->request->query_string) > 0)
-		{
-			sscanf(buffer, "%31s", typename);
-			add_querystr_string(api, querystr, "type=", ":type", &where);
-		}
+		if(GET_STR("type", typename, api->request->query_string) > 0)
+			add_querystr_string(api, querystr, "q.type=", ":type", &where);
 
 		// Query status filtering?
-		if(GET_VAR("status", buffer, api->request->query_string) > 0)
-		{
-			sscanf(buffer, "%31s", statusname);
-			add_querystr_string(api, querystr, "status=", ":status", &where);
-		}
+		if(GET_STR("status", statusname, api->request->query_string) > 0)
+			add_querystr_string(api, querystr, "q.status=", ":status", &where);
 
 		// Reply type filtering?
-		if(GET_VAR("reply", buffer, api->request->query_string) > 0)
-		{
-			sscanf(buffer, "%31s", replyname);
-			add_querystr_string(api, querystr, "reply=", ":reply", &where);
-		}
+		if(GET_STR("reply", replyname, api->request->query_string) > 0)
+			add_querystr_string(api, querystr, "q.reply_type=", ":reply_type", &where);
 
 		// DNSSEC status filtering?
-		if(GET_VAR("dnssec", buffer, api->request->query_string) > 0)
-		{
-			sscanf(buffer, "%31s", dnssecname);
-			add_querystr_string(api, querystr, "dnssec=", ":dnssec", &where);
-		}
+		if(GET_STR("dnssec", dnssecname, api->request->query_string) > 0)
+			add_querystr_string(api, querystr, "q.dnssec=", ":dnssec", &where);
 	}
 
 	// Get connection to in-memory database
@@ -479,12 +453,12 @@ int api_queries(struct ftl_conn *api)
 		if(idx > 0)
 		{
 			enum query_status status;
-			for(status = QUERY_UNKNOWN; status <QUERY_STATUS_MAX; status++)
+			for(status = QUERY_UNKNOWN; status < QUERY_STATUS_MAX; status++)
 			{
 				if(strcasecmp(statusname, get_query_status_str(status)) == 0)
 					break;
 			}
-			if(status <QUERY_STATUS_MAX)
+			if(status < QUERY_STATUS_MAX)
 			{
 				log_debug(DEBUG_API, "adding :status = %d to query", status);
 				rc = sqlite3_bind_int(read_stmt, idx, status);
@@ -506,18 +480,18 @@ int api_queries(struct ftl_conn *api)
 				                       statusname);
 			}
 		}
-		idx = sqlite3_bind_parameter_index(read_stmt, ":reply");
+		idx = sqlite3_bind_parameter_index(read_stmt, ":reply_type");
 		if(idx > 0)
 		{
 			enum reply_type reply;
-			for(reply = REPLY_UNKNOWN; reply <QUERY_REPLY_MAX; reply++)
+			for(reply = REPLY_UNKNOWN; reply < QUERY_REPLY_MAX; reply++)
 			{
 				if(strcasecmp(replyname, get_query_reply_str(reply)) == 0)
 					break;
 			}
-			if(reply <QUERY_REPLY_MAX)
+			if(reply < QUERY_REPLY_MAX)
 			{
-				log_debug(DEBUG_API, "adding :reply = %d to query", reply);
+				log_debug(DEBUG_API, "adding :reply_type = %d to query", reply);
 				rc = sqlite3_bind_int(read_stmt, idx, reply);
 				if(rc != SQLITE_OK)
 				{

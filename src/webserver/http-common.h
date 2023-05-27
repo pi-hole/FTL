@@ -92,9 +92,11 @@ bool get_int_var_msg(const char *source, const char *var, int *num, const char *
 bool get_int_var(const char *source, const char *var, int *num);
 bool get_double_var_msg(const char *source, const char *var, double *num, const char **msg);
 bool get_double_var(const char *source, const char *var, double *num);
+int get_string_var(const char *source, const char *var, char *dest, size_t dest_len);
 
 // HTTP macros
 #define GET_VAR(variable, destination, source) mg_get_var(source, strlen(source), variable, destination, sizeof(destination))
+#define GET_STR(variable, destination, source) get_string_var(source, variable, destination, sizeof(destination))
 
 // Utils
 enum http_method __attribute__((pure)) http_method(struct mg_connection *conn);

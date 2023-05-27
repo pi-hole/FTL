@@ -164,12 +164,15 @@ static bool get_long_var_msg(const char *source, const char *var, long *num, con
 bool get_ulong_var_msg(const char *source, const char *var, unsigned long *num, const char **msg)
 {
 	char buffer[128] = { 0 };
+	const int ret = GET_VAR(var, buffer, source);
 	if(GET_VAR(var, buffer, source) < 1)
 	{
 		// Parameter not found
 		*msg = NULL;
 		return false;
 	}
+
+	log_info("get_ulong_var_msg: %s (%s) // %d -> %s", source, var, ret, buffer);
 
 	// Try to get the value
 	char *endptr = NULL;
@@ -296,6 +299,39 @@ bool get_double_var(const char *source, const char *var, double *num)
 	if(!source)
 		return false;
 	return get_double_var_msg(source, var, num, &msg);
+}
+
+int get_string_var(const char *source, const char *var, char *dest, size_t dest_len)
+{
+	if(!source)
+		return -1;
+
+	// Allocate a temporary buffer to store the possibly URI-encoded value
+	// of the variable. We use the real destination later to store the
+	// decoded value. The decoded value will always be shorter than the
+	// encoded value, so using the same length is fine.
+	char *tempbuf = calloc(dest_len, sizeof(char));
+	if(!tempbuf)
+	{
+		log_err("get_string_var: Out of memory");
+		return -1;
+	}
+
+	// Extract value of the particular variable
+	int len = mg_get_var(source, strlen(source), var, tempbuf, dest_len);
+
+	// Decode the URI component if needed
+	if(len > 0)
+		len = mg_url_decode(tempbuf, len, dest, dest_len, 0);
+
+	log_info("get_string_var: %s (%s) -> %s -> %s (%d)", source, var, tempbuf, dest, len);
+
+	// Free the temporary buffer, if anything was decoded it's now stored in
+	// dest
+	free(tempbuf);
+
+	// Return the length of the decoded string
+	return len;
 }
 
 const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api)
