@@ -232,26 +232,26 @@ void http_init(void)
 
 #ifdef HAVE_TLS
 	// Add TLS options if configured
-	if(config.webserver.tls_cert.v.s != NULL &&
-	   strlen(config.webserver.tls_cert.v.s) > 0)
+	if(config.webserver.tls.cert.v.s != NULL &&
+	   strlen(config.webserver.tls.cert.v.s) > 0)
 	{
 		// Try to generate certificate if not present
-		if(!file_readable(config.webserver.tls_cert.v.s) &&
-		   !generate_certificate(config.webserver.tls_cert.v.s, false))
+		if(!file_readable(config.webserver.tls.cert.v.s) &&
+		   !generate_certificate(config.webserver.tls.cert.v.s, false))
 		{
 			log_err("Generation of SSL/TLS certificate %s failed!",
-			        config.webserver.tls_cert.v.s);
+			        config.webserver.tls.cert.v.s);
 		}
 
-		if(file_readable(config.webserver.tls_cert.v.s))
+		if(file_readable(config.webserver.tls.cert.v.s))
 		{
 			options[++next_option] = "ssl_certificate";
-			options[++next_option] = config.webserver.tls_cert.v.s;
+			options[++next_option] = config.webserver.tls.cert.v.s;
 		}
 		else
 		{
 			log_err("Webserver SSL/TLS certificate %s not found or not readable!",
-			        config.webserver.tls_cert.v.s);
+			        config.webserver.tls.cert.v.s);
 		}
 	}
 #endif

@@ -204,7 +204,10 @@ struct config {
 		struct conf_item acl;
 		struct conf_item port;
 		struct conf_item sessionTimeout;
-		struct conf_item tls_cert;
+		struct {
+			struct conf_item rev_proxy;
+			struct conf_item cert;
+		} tls;
 		struct {
 			struct conf_item webroot;
 			struct conf_item webhome;

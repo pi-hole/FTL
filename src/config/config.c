@@ -826,12 +826,18 @@ void initConfig(struct config *conf)
 	conf->webserver.port.t = CONF_STRING;
 	conf->webserver.port.d.s = (char*)"8080,[::]:8080";
 
-	conf->webserver.tls_cert.k = "webserver.tls_cert";
-	conf->webserver.tls_cert.h = "Path to the TLS (SSL) certificate file. This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
-	conf->webserver.tls_cert.a = cJSON_CreateStringReference("<valid TLS certificate file (*.pem)>");
-	conf->webserver.tls_cert.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_DNSMASQ;
-	conf->webserver.tls_cert.t = CONF_STRING;
-	conf->webserver.tls_cert.d.s = (char*)"/etc/pihole/tls.pem";
+	conf->webserver.tls.rev_proxy.k = "webserver.tls.rev_proxy";
+	conf->webserver.tls.rev_proxy.h = "Is Pi-hole running behind a reverse proxy? If yes, Pi-hole will not consider HTTP-only connections being insecure. This is useful if you are running Pi-hole in a trusted environment, for example, in a local network, and you are using a reverse proxy to provide TLS encryption, e.g., by using Traefik (docker). If you are using a reverse proxy, you can alternatively set webserver.tls.cert to the path of the TLS certificate file and let Pi-hole handle true end-to-end encryption.";
+	conf->webserver.tls.rev_proxy.f = FLAG_ADVANCED_SETTING;
+	conf->webserver.tls.rev_proxy.t = CONF_BOOL;
+	conf->webserver.tls.rev_proxy.d.b = false;
+
+	conf->webserver.tls.cert.k = "webserver.tls.cert";
+	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
+	conf->webserver.tls.cert.a = cJSON_CreateStringReference("<valid TLS certificate file (*.pem)>");
+	conf->webserver.tls.cert.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_DNSMASQ;
+	conf->webserver.tls.cert.t = CONF_STRING;
+	conf->webserver.tls.cert.d.s = (char*)"/etc/pihole/tls.pem";
 
 	conf->webserver.sessionTimeout.k = "webserver.sessionTimeout";
 	conf->webserver.sessionTimeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";

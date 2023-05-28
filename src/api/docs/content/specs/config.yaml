@@ -351,10 +351,15 @@ components:
                   type: string
                 port:
                   type: string
-                tls_cert:
-                  type: string
                 sessionTimeout:
                   type: integer
+                tls:
+                  type: object
+                  properties:
+                    rev_proxy:
+                      type: boolean
+                    cert:
+                      type: string
                 paths:
                   type: object
                   properties:
@@ -629,8 +634,10 @@ components:
             domain: pi.hole
             acl: "+0.0.0.0/0,::/0"
             port: 8080,[::]:8080
-            tls_cert: ""
             sessionTimeout: 300
+            tls:
+              rev_proxy: false
+              cert: "/etc/pihole/tls.pem"
             paths:
               webroot: "/var/www/html"
               webhome: "/admin/"

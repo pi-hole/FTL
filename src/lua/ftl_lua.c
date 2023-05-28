@@ -228,6 +228,12 @@ static int pihole_needLogin(lua_State *L) {
 	return 1; // number of results
 }
 
+// pihole.rev_proxy()
+static int pihole_rev_proxy(lua_State *L) {
+	lua_pushboolean(L, config.webserver.tls.rev_proxy.v.b);
+	return 1; // number of results
+}
+
 static const luaL_Reg piholelib[] = {
 	{"ftl_version", pihole_ftl_version},
 	{"hostname", pihole_hostname},
@@ -237,6 +243,7 @@ static const luaL_Reg piholelib[] = {
 	{"include", pihole_include},
 	{"boxedlayout", pihole_boxedlayout},
 	{"needLogin", pihole_needLogin},
+	{"rev_proxy", pihole_rev_proxy},
 	{NULL, NULL}
 };
 
