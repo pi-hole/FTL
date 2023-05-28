@@ -383,7 +383,10 @@ int set_config_from_CLI(const char *key, const char *value)
 		return 2;
 
 	// Check if value changed compared to current value
-	if(!compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
+	// Also check if this is the password config item change as this
+	// actually changed pwhash behind the scenes
+	if(!compare_config_item(conf_item->t, &new_item->v, &conf_item->v) ||
+	   new_item == &newconf.webserver.api.password)
 	{
 		// Config item changed
 

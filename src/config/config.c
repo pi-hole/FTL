@@ -898,7 +898,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.password.h = "Pi-hole web interface and API password. When set to something different than \""PASSWORD_VALUE"\", this property will compute the corresponding password hash to set webserver.api.pwhash";
 	conf->webserver.api.password.a = cJSON_CreateStringReference("<valid Pi-hole password>");
 	conf->webserver.api.password.t = CONF_PASSWORD;
-	conf->webserver.api.password.f = FLAG_PSEUDO_ITEM;
+	conf->webserver.api.password.f = FLAG_PSEUDO_ITEM | FLAG_INVALIDATE_SESSIONS;
 	conf->webserver.api.password.d.s = (char*)"";
 
 	conf->webserver.api.totp_secret.k = "webserver.api.totp_secret";
