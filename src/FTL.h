@@ -172,9 +172,6 @@
 #define ftlallocate(fd, offset, len) FTLfallocate(fd, offset, len, __FILE__,  __FUNCTION__,  __LINE__)
 #include "syscalls/syscalls.h"
 
-// defined in api/auth.c
-char *hash_password(const char *password) __attribute__((malloc));
-
 // Preprocessor help functions
 #define str(x) #x
 #define xstr(x) str(x)

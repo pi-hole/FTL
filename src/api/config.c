@@ -24,6 +24,8 @@
 #include "config/dnsmasq_config.h"
 // shm_lock()
 #include "shmem.h"
+// hash_password()
+#include "config/password.h"
 
 #define WRITE_ONLY_TEXT "<write-only property>"
 
@@ -280,16 +282,21 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				log_debug(DEBUG_CONFIG, "Not setting %s (password unchanged)", conf_item->k);
 				break;
 			}
+
 			// Get password hash as allocated string (an empty string is hashed to an empty string)
-			char *pwhash = strlen(elem->valuestring) > 0 ? hash_password(elem->valuestring) : strdup("");
+			char *pwhash = strlen(elem->valuestring) > 0 ? create_password(elem->valuestring) : strdup("");
+
 			// Get pointer to pwhash instead
 			conf_item--;
+
 			// Free previously allocated memory (if applicable)
 			if(conf_item->t == CONF_STRING_ALLOCATED)
 				free(conf_item->v.s);
+
 			// Set item
 			conf_item->v.s = pwhash;
 			log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
+
 			break;
 		}
 		case CONF_ENUM_PTR_TYPE:

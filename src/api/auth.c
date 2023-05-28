@@ -8,18 +8,20 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
-#include "api.h"
-#include "../log.h"
-#include "../config/config.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
+#include "api/api.h"
+#include "log.h"
+#include "config/config.h"
 // get_password_hash()
-#include "../setupVars.h"
+#include "setupVars.h"
 // (un)lock_shm()
-#include "../shmem.h"
+#include "shmem.h"
 // getrandom()
-#include "../daemon.h"
+#include "daemon.h"
+// sha256_raw_to_hex()
+#include "config/password.h"
 
 // crypto library
 #include <nettle/sha2.h>
@@ -74,17 +76,6 @@ static struct {
 	char response[CHALLENGE_SIZE + 1];
 	time_t valid_until;
 } challenges[API_MAX_CHALLENGES] = {{{0}, {0}, 0}};
-
-// Convert RAW data into hex representation
-// Two hexadecimal digits are generated for each input byte.
-static void sha256_hex(uint8_t *data, char *buffer)
-{
-	for (unsigned int i = 0; i < SHA256_DIGEST_SIZE; i++)
-	{
-		sprintf(buffer, "%02x", data[i]);
-		buffer += 2;
-	}
-}
 
 // Can we validate this client?
 // Returns -1 if not authenticated or expired
@@ -402,7 +393,7 @@ static void generateChallenge(const unsigned int idx, const time_t now)
 		log_err("getrandom() failed in generateChallenge()");
 		return;
 	}
-	sha256_hex(raw_challenge, challenges[idx].challenge);
+	sha256_raw_to_hex(raw_challenge, challenges[idx].challenge);
 	challenges[idx].valid_until = now + API_CHALLENGE_TIMEOUT;
 }
 
@@ -426,7 +417,7 @@ static void generateResponse(const unsigned int idx)
 	              (uint8_t*)config.webserver.api.pwhash.v.s);
 
 	sha256_digest(&ctx, SHA256_DIGEST_SIZE, raw_response);
-	sha256_hex(raw_response, challenges[idx].response);
+	sha256_raw_to_hex(raw_response, challenges[idx].response);
 }
 
 static void generateSID(char *sid)
@@ -669,33 +660,6 @@ int api_auth(struct ftl_conn *api)
 		get_session_object(api, json, -1, now);
 		JSON_SEND_OBJECT(json);
 	}
-}
-
-char * __attribute__((malloc)) hash_password(const char *password)
-{
-	char response[2 * SHA256_DIGEST_SIZE + 1] = { 0 };
-	uint8_t raw_response[SHA256_DIGEST_SIZE];
-	struct sha256_ctx ctx;
-
-	// Hash password a first time
-	sha256_init(&ctx);
-	sha256_update(&ctx,
-	              strlen(password),
-	              (uint8_t*)password);
-
-	sha256_digest(&ctx, SHA256_DIGEST_SIZE, raw_response);
-	sha256_hex(raw_response, response);
-
-	// Hash password a second time
-	sha256_init(&ctx);
-	sha256_update(&ctx,
-	              strlen(response),
-	              (uint8_t*)response);
-
-	sha256_digest(&ctx, SHA256_DIGEST_SIZE, raw_response);
-	sha256_hex(raw_response, response);
-
-	return strdup(response);
 }
 
 int api_auth_sessions(struct ftl_conn *api)

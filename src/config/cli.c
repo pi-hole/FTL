@@ -23,6 +23,8 @@
 
 // delete_all_sessions()
 #include "api/api.h"
+// hash_password()
+#include "config/password.h"
 
 // Read a TOML value from a table depending on its type
 static bool readStringValue(struct conf_item *conf_item, const char *value, struct config *newconf)
@@ -159,7 +161,7 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			conf_item--;
 
 			// Get password hash as allocated string (an empty string is hashed to an empty string)
-			char *pwhash = strlen(value) > 0 ? hash_password(value) : strdup("");
+			char *pwhash = strlen(value) > 0 ? create_password(value) : strdup("");
 
 			// Free old password hash if it was allocated
 			if(conf_item->t == CONF_STRING_ALLOCATED)

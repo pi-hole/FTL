@@ -19,6 +19,8 @@ set(sources
         inotify.h
         legacy_reader.c
         legacy_reader.h
+        password.c
+        password.h
         toml_writer.c
         toml_writer.h
         toml_reader.c
