@@ -20,6 +20,6 @@ char* find_equals(const char* s) __attribute__((pure));
 void trim_whitespace(char *string);
 void check_blocking_status(void);
 
-extern unsigned char blockingstatus;
+extern enum blocking_status blockingstatus;
 
 #endif //SETUPVARS_H

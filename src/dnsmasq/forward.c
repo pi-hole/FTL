@@ -723,6 +723,10 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       /* Get extended RCODE. */
       rcode |= sizep[2] << 4;
 
+      // Pi-hole modification: Interpret the pseudoheader before
+      // it might get stripped off below (added_pheader == true)
+      FTL_parse_pseudoheaders(pheader, (size_t)plen);
+
       if (option_bool(OPT_CLIENT_SUBNET) && !check_source(header, plen, pheader, query_source))
 	{
 	  my_syslog(LOG_WARNING, _("discarding DNS reply: subnet option mismatch"));
@@ -783,7 +787,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       a.log.rcode = rcode;
       a.log.ede = ede;
       log_query(F_UPSTREAM | F_RCODE, "error", &a, NULL, 0);
-      
+
       return resize_packet(header, n, pheader, plen);
     }
   
@@ -1165,6 +1169,8 @@ void reply_query(int fd, time_t now)
     return;
 
   server = daemon->serverarray[c];
+
+  FTL_header_analysis(header->hb4, RCODE(header), server, daemon->log_display_id);
 
   if (RCODE(header) != REFUSED)
     daemon->serverarray[first]->last_server = c;
@@ -1750,9 +1756,8 @@ void receive_query(struct listener *listen, time_t now)
     have_mark = get_incoming_mark(&source_addr, &dst_addr, /* istcp: */ 0, &mark);
 #endif
   //********************** Pi-hole modification **********************//
-  ednsData edns = { 0 };
-  if (find_pseudoheader(header, (size_t)n, NULL, &pheader, NULL, NULL))
-    FTL_parse_pseudoheaders(header, n, &source_addr, &edns);
+  pheader = find_pseudoheader(header, (size_t)n, NULL, &pheader, NULL, NULL);
+  FTL_parse_pseudoheaders(pheader, (size_t)n);
   //******************************************************************//
 	  
   if (extract_request(header, (size_t)n, daemon->namebuff, &type))
@@ -1763,7 +1768,7 @@ void receive_query(struct listener *listen, time_t now)
       log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 			   &source_addr, auth_dns ? "auth" : "query", type);
       piholeblocked = FTL_new_query(F_QUERY | F_FORWARD , daemon->namebuff,
-				    &source_addr, auth_dns ? "auth" : "query", type, daemon->log_display_id, &edns, UDP);
+				    &source_addr, auth_dns ? "auth" : "query", type, daemon->log_display_id, UDP);
       
 #ifdef HAVE_CONNTRACK
       is_single_query = 1;
@@ -2086,6 +2091,8 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
   unsigned char *packet = NULL;
   struct dns_header *new_header = NULL;
   
+  FTL_header_analysis(header->hb4, RCODE(header), server, daemon->log_display_id);
+
   while (1)
     {
       size_t m;
@@ -2298,9 +2305,9 @@ unsigned char *tcp_request(int confd, time_t now,
 	no_cache_dnssec = 1;
 
       //********************** Pi-hole modification **********************//
-      ednsData edns = { 0 };
-      if (find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL))
-        FTL_parse_pseudoheaders(header, size, &peer_addr, &edns);
+      unsigned char *pheader = NULL;
+      pheader = find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL);
+      FTL_parse_pseudoheaders(pheader, (size_t)size);
       //******************************************************************//
        
       if ((gotname = extract_request(header, (unsigned int)size, daemon->namebuff, &qtype)))
@@ -2320,7 +2327,7 @@ unsigned char *tcp_request(int confd, time_t now,
 				   &peer_addr, auth_dns ? "auth" : "query", qtype);
 	      
 	      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD, daemon->namebuff,
-					    &peer_addr, auth_dns ? "auth" : "query", qtype, daemon->log_display_id, &edns, TCP);
+					    &peer_addr, auth_dns ? "auth" : "query", qtype, daemon->log_display_id, TCP);
 
 #ifdef HAVE_AUTH
 	      /* find queries for zones we're authoritative for, and answer them directly */
