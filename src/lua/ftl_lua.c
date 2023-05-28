@@ -24,6 +24,8 @@
 #include <wordexp.h>
 #include "scripts/scripts.h"
 
+#include "api/api.h"
+
 int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 {
 	if(argc == 1) // No arguments after this one
@@ -197,9 +199,32 @@ static int pihole_include(lua_State *L) {
 	return 0; // number of results
 }
 
-// pihole.boxed_layout()
+// pihole.boxedlayout()
 static int pihole_boxedlayout(lua_State *L) {
 	lua_pushboolean(L, config.webserver.interface.boxed.v.b);
+	return 1; // number of results
+}
+
+// pihole.needLogin(remote_addr:str)
+static int pihole_needLogin(lua_State *L) {
+	// Get remote_addr (first argument to LUA function)
+	const char *remote_addr = luaL_checkstring(L, 1);
+
+	// Check if password is set
+	const bool has_password = config.webserver.api.pwhash.v.s != NULL &&
+	                          strlen(config.webserver.api.pwhash.v.s) > 0;
+
+	// Check if address is loopback
+	const bool is_loopback = strcmp(remote_addr, LOCALHOSTv4) == 0 ||
+	                         strcmp(remote_addr, LOCALHOSTv6) == 0;
+
+	// Check if local API authentication is enabled
+	const bool localAPIauth = config.webserver.api.localAPIauth.v.b;
+
+	// Check if login is required
+	const bool need_login = has_password || (is_loopback && !localAPIauth);
+
+	lua_pushboolean(L, need_login);
 	return 1; // number of results
 }
 
@@ -211,6 +236,7 @@ static const luaL_Reg piholelib[] = {
 	{"webhome", pihole_webhome},
 	{"include", pihole_include},
 	{"boxedlayout", pihole_boxedlayout},
+	{"needLogin", pihole_needLogin},
 	{NULL, NULL}
 };
 

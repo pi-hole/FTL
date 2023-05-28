@@ -89,8 +89,6 @@ static void sha256_hex(uint8_t *data, char *buffer)
 // Can we validate this client?
 // Returns -1 if not authenticated or expired
 // Returns >= 0 for any valid authentication
-#define LOCALHOSTv4 "127.0.0.1"
-#define LOCALHOSTv6 "::1"
 int check_client_auth(struct ftl_conn *api)
 {
 	// Is the user requesting from localhost?

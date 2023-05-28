@@ -16,6 +16,10 @@
 #include "webserver/cJSON/cJSON.h"
 #include "webserver/http-common.h"
 
+// Commo definitions
+#define LOCALHOSTv4 "127.0.0.1"
+#define LOCALHOSTv6 "::1"
+
 // API router
 int api_handler(struct mg_connection *conn, void *ignored);
 
