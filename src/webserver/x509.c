@@ -126,10 +126,24 @@ bool generate_certificate(const char* certfile, bool rsa)
 		}
 	}
 
+
 	// Create string with random digits for unique serial number
+	// RFC 2459: The serial number is an integer assigned by the CA to each
+	// certificate. It MUST be unique for each certificate issued by a given
+	// CA (i.e., the issuer name and serial number identify a unique
+	// certificate).
+	// We generate a random string of 16 digits, which should be unique enough
+	// for our purposes. We use the same random number generator as for the
+	// key generation to ensure that the serial number is not predictable.
+	// The serial number could be a constant, e.g., 1, but this would allow
+	// only one certificate being issued with a given browser. Any new generated
+	// certificate would be rejected by the browser as it would have the same
+	// serial number as the previous one and uniques is violated.
 	unsigned char serial[16] = { 0 };
-	for(int i = 0; i < 15; i++)
-		serial[i] = '0' + (rand() % 10);
+	mbedtls_ctr_drbg_random(&ctr_drbg, serial, sizeof(serial));
+	for(unsigned int i = 0; i < sizeof(serial) - 1; i++)
+		serial[i] = '0' + (serial[i] % 10);
+	serial[sizeof(serial) - 1] = '\0';
 
 	// Generate certificate
 	log_info("Generating new certificate with serial number %s...", serial);
