@@ -28,20 +28,20 @@ static int generate_private_key_rsa(mbedtls_pk_context *key,
 	int ret;
 	if((ret = mbedtls_pk_setup(key, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA))) != 0)
 	{
-		log_err("mbedtls_pk_setup returned %d", ret);
+		printf("ERROR: mbedtls_pk_setup returned %d\n", ret);
 		return ret;
 	}
 
 	if((ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(*key), mbedtls_ctr_drbg_random,
 	                              ctr_drbg, RSA_KEY_SIZE, 65537)) != 0)
 	{
-		log_err("mbedtls_rsa_gen_key returned %d", ret);
+		printf("ERROR: mbedtls_rsa_gen_key returned %d\n", ret);
 		return ret;
 	}
 
 	// Export key in PEM format
 	if ((ret = mbedtls_pk_write_key_pem(key, key_buffer, BUFFER_SIZE)) != 0) {
-		log_err("mbedtls_pk_write_key_pem returned %d", ret);
+		printf("ERROR: mbedtls_pk_write_key_pem returned %d\n", ret);
 		return ret;
 	}
 
@@ -57,7 +57,7 @@ static int generate_private_key_ec(mbedtls_pk_context *key,
 	// Setup key
 	if((ret = mbedtls_pk_setup(key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY))) != 0)
 	{
-		log_err("mbedtls_pk_setup returned %d", ret);
+		printf("ERROR: mbedtls_pk_setup returned %d\n", ret);
 		return ret;
 	}
 
@@ -65,13 +65,13 @@ static int generate_private_key_ec(mbedtls_pk_context *key,
 	if((ret = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP521R1, mbedtls_pk_ec(*key),
 	                              mbedtls_ctr_drbg_random, ctr_drbg)) != 0)
 	{
-		log_err("mbedtls_ecp_gen_key returned %d", ret);
+		printf("ERROR: mbedtls_ecp_gen_key returned %d\n", ret);
 		return ret;
 	}
 
 	// Export key in PEM format
 	if ((ret = mbedtls_pk_write_key_pem(key, key_buffer, BUFFER_SIZE)) != 0) {
-		log_err("mbedtls_pk_write_key_pem returned %d", ret);
+		printf("ERROR: mbedtls_pk_write_key_pem returned %d\n", ret);
 		return ret;
 	}
 
@@ -97,31 +97,31 @@ bool generate_certificate(const char* certfile, bool rsa)
 	mbedtls_entropy_init(&entropy);
 
 	// Initialize random number generator
-	log_info("Initializing random number generator...");
+	printf("Initializing random number generator...\n");
 	if((ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
 	                                (const unsigned char *) pers, strlen(pers))) != 0)
 	{
-		log_err("mbedtls_ctr_drbg_seed returned %d", ret);
+		printf("ERROR: mbedtls_ctr_drbg_seed returned %d\n", ret);
 		return false;
 	}
 
 	if(rsa)
 	{
 		// Generate RSA key
-		log_info("Generating RSA key...");
+		printf("Generating RSA key...\n");
 		if((ret = generate_private_key_rsa(&key, &ctr_drbg, key_buffer)) != 0)
 		{
-			log_err("generate_private_key returned %d", ret);
+			printf("ERROR: generate_private_key returned %d\n", ret);
 			return false;
 		}
 	}
 	else
 	{
 		// Generate EC key
-		log_info("Generating EC key...");
+		printf("Generating EC key...\n");
 		if((ret = generate_private_key_ec(&key, &ctr_drbg, key_buffer)) != 0)
 		{
-			log_err("generate_private_key_ec returned %d", ret);
+			printf("ERROR: generate_private_key_ec returned %d\n", ret);
 			return false;
 		}
 	}
@@ -146,7 +146,7 @@ bool generate_certificate(const char* certfile, bool rsa)
 	serial[sizeof(serial) - 1] = '\0';
 
 	// Generate certificate
-	log_info("Generating new certificate with serial number %s...", serial);
+	printf("Generating new certificate with serial number %s...\n", serial);
 	mbedtls_x509write_crt_set_version(&crt, MBEDTLS_X509_CRT_VERSION_3);
 
 	mbedtls_x509write_crt_set_serial_raw(&crt, serial, sizeof(serial)-1);
@@ -164,16 +164,16 @@ bool generate_certificate(const char* certfile, bool rsa)
 	if((ret = mbedtls_x509write_crt_pem(&crt, cert_buffer, sizeof(cert_buffer),
 	                                    mbedtls_ctr_drbg_random, &ctr_drbg)) != 0)
 	{
-		log_err("mbedtls_x509write_crt_pem returned %d", ret);
+		printf("ERROR: mbedtls_x509write_crt_pem returned %d\n", ret);
 		return false;
 	}
 
 	// Write private key and certificate to file
 	FILE *f = NULL;
-	log_info("Storing key + certificate in %s ...", certfile);
+	printf("Storing key + certificate in %s ...\n", certfile);
 	if ((f = fopen(certfile, "wb")) == NULL)
 	{
-		log_err("Could not open %s for writing", certfile);
+		printf("ERROR: Could not open %s for writing\n", certfile);
 		return false;
 	}
 
@@ -181,7 +181,7 @@ bool generate_certificate(const char* certfile, bool rsa)
 	olen = strlen((char *) key_buffer);
 	if (fwrite(key_buffer, 1, olen, f) != olen)
 	{
-		log_err("Could not write key to %s", certfile);
+		printf("ERROR: Could not write key to %s\n", certfile);
 		fclose(f);
 		return false;
 	}
@@ -190,13 +190,46 @@ bool generate_certificate(const char* certfile, bool rsa)
 	olen = strlen((char *) cert_buffer);
 	if (fwrite(cert_buffer, 1, olen, f) != olen)
 	{
-		log_err("Could not write certificate to %s", certfile);
+		printf("ERROR: Could not write certificate to %s\n", certfile);
 		fclose(f);
 		return false;
 	}
 
-	// Close file
+	// Close key+cert file
 	fclose(f);
+
+	// Create second file with certificate only
+	char *certfile2 = calloc(strlen(certfile) + 5, sizeof(char));
+	strcpy(certfile2, certfile);
+
+	// If the certificate file name ends with ".pem" or ".key", replace it with ".crt"
+	// Otherwise, append ".crt" to the certificate file name
+	if (strlen(certfile2) > 4 &&
+	     (strcmp(certfile2 + strlen(certfile2) - 4, ".pem") == 0 ||
+	      strcmp(certfile2 + strlen(certfile2) - 4, ".key") == 0))
+		certfile2[strlen(certfile) - 4] = '\0';
+
+	strcat(certfile2, ".crt");
+
+	printf("Storing certificate in %s ...\n", certfile2);
+	if ((f = fopen(certfile2, "wb")) == NULL)
+	{
+		printf("ERROR: Could not open %s for writing\n", certfile2);
+		return false;
+	}
+
+	// Write certificate
+	olen = strlen((char *) cert_buffer);
+	if (fwrite(cert_buffer, 1, olen, f) != olen)
+	{
+		printf("ERROR: Could not write certificate to %s\n", certfile2);
+		fclose(f);
+		return false;
+	}
+
+	// Close cert file
+	fclose(f);
+	free(certfile2);
 
 	// Free ressources
 	mbedtls_x509write_crt_free(&crt);
