@@ -18,15 +18,6 @@ from hashlib import sha256
 
 url = "http://pi.hole/api/auth"
 
-"""
-challenge = requests.get(url).json()["challenge"].encode('ascii')
-response = sha256(challenge + b":" + pwhash).hexdigest().encode("ascii")
-session = requests.post(url, data = {"response": response}).json()
-
-valid = session["session"]["valid"] # True / False
-sid = session["session"]["sid"] # SID string if succesful, null otherwise
-"""
-
 class AuthenticationMethods(Enum):
 	RANDOM = 0
 	HEADER = 1
@@ -38,7 +29,7 @@ class FTLAPI():
 
 	auth_method = "?"
 
-	def __init__(self, api_url: str):
+	def __init__(self, api_url: str, password: str = None):
 		self.api_url = api_url
 		self.endpoints = {
 			"get": [],
@@ -52,60 +43,30 @@ class FTLAPI():
 		self.verbose = False
 
 		# Login to FTL API
-		self.login()
+		self.login(password)
 		if self.session is None or 'valid' not in self.session or not self.session['valid']:
 			raise Exception("Could not login to FTL API")
 
 	def login(self, password: str = None):
-		# Get challenge from FTL
+		# Check if we even need to login
 		response = self.GET("/api/auth")
 
 		# Check if we are already logged in or authentication is not
 		# required
 		if response is None:
 			raise Exception("No response from FTL API")
-		if 'session' in response and response['session']['valid']:
-			if 'session' not in response:
-				raise Exception("FTL returned invalid challenge item")
-			self.session = response["session"]
-			return
-
-		pwhash = None
-		if password is None:
-			# Try to obtain the password hash from pihole.toml
-			try:
-				with open("/etc/pihole/pihole.toml", "r") as f:
-					# Iterate over all lines
-					for line in f:
-						# Find the line with the password hash
-						if line.startswith("    pwhash = "):
-							# Remove quotes and whitespace
-							line = line.split("=")[1].split("\"")
-							if len(line) > 2:
-								pwhash = line[1].strip()
-							break
-			except Exception as e:
-				# Could not read pihole.toml, throw an error
-				raise Exception("Could not read pihole.toml: " + str(e))
-			if pwhash is None:
-				# The password hash was not found in pihole.toml, throw an error
-				raise Exception("No password hash found in pihole.toml")
-
-		else:
-			# Generate password hash
-			pwhash = sha256(password.encode("ascii")).hexdigest()
-			pwhash = sha256(pwhash.encode("ascii")).hexdigest()
-		print("Using password hash: " + pwhash)
-
-		if len(pwhash) != 64:
-			raise Exception("Invalid length of password hash")
-
-		# Get the challenge from FTL
-		challenge = response["challenge"].encode("ascii")
-		response = sha256(challenge + b":" + pwhash.encode("ascii")).hexdigest()
-		response = self.POST("/api/auth", {"response": response})
 		if 'session' not in response:
 			raise Exception("FTL returned invalid challenge item")
+		if 'session' in response and response['session']['valid'] == True:
+			self.session = response["session"]
+			print(response)
+			if password is not None:
+				raise Exception("Password provided but API does not require authentication")
+			return
+
+		response = self.POST("/api/auth", {"password": password})
+		if 'session' not in response:
+			raise Exception("FTL returned invalid response item")
 		self.session = response["session"]
 
 

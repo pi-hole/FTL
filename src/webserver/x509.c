@@ -3,13 +3,13 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  X.509 certificate routines
+*  X.509 certificate and randomness generator routines
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../log.h"
+#include "FTL.h"
+#include "log.h"
 #include "x509.h"
 #include <mbedtls/rsa.h>
 #include <mbedtls/x509.h>
@@ -105,6 +105,7 @@ bool generate_certificate(const char* certfile, bool rsa)
 		return false;
 	}
 
+	// Generate key
 	if(rsa)
 	{
 		// Generate RSA key
@@ -125,7 +126,6 @@ bool generate_certificate(const char* certfile, bool rsa)
 			return false;
 		}
 	}
-
 
 	// Create string with random digits for unique serial number
 	// RFC 2459: The serial number is an integer assigned by the CA to each

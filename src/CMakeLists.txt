@@ -282,9 +282,9 @@ set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
 # for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
-find_library(LIBHOGWEED NAMES libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX} hogweed)
+find_library(LIBHOGWEED NAMES libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX} hogweed HINTS /usr/local/lib64)
 find_library(LIBGMP NAMES libgmp${CMAKE_STATIC_LIBRARY_SUFFIX} gmp)
-find_library(LIBNETTLE NAMES libnettle${CMAKE_STATIC_LIBRARY_SUFFIX} nettle)
+find_library(LIBNETTLE NAMES libnettle${CMAKE_STATIC_LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
 find_library(LIBIDN NAMES libidn${CMAKE_STATIC_LIBRARY_SUFFIX} idn)
 
 target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN})

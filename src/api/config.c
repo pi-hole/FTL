@@ -286,6 +286,15 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Get password hash as allocated string (an empty string is hashed to an empty string)
 			char *pwhash = strlen(elem->valuestring) > 0 ? create_password(elem->valuestring) : strdup("");
 
+			// Verify that the password hash is valid
+			const bool verfied = verify_password(elem->valuestring, pwhash);
+
+			if(!verfied)
+			{
+				free(pwhash);
+				return "Failed to create password hash (verification failed), password remains unchanged";
+			}
+
 			// Get pointer to pwhash instead
 			conf_item--;
 
@@ -707,7 +716,8 @@ static int api_config_patch(struct ftl_conn *api)
 		struct conf_item *conf_item = get_conf_item(&config, i);
 
 		// Skip processing if value didn't change compared to current value
-		if(compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
+		if(compare_config_item(conf_item->t, &new_item->v, &conf_item->v) &&
+		   conf_item->t != CONF_PASSWORD)
 		{
 			log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
 			continue;

@@ -70,13 +70,6 @@ static struct {
 	char sid[SID_SIZE];
 } auth_data[API_MAX_CLIENTS] = {{false, {false, false}, 0, 0, {0}, {0}, {0}}};
 
-#define CHALLENGE_SIZE (2*SHA256_DIGEST_SIZE)
-static struct {
-	char challenge[CHALLENGE_SIZE + 1];
-	char response[CHALLENGE_SIZE + 1];
-	time_t valid_until;
-} challenges[API_MAX_CHALLENGES] = {{{0}, {0}, 0}};
-
 // Can we validate this client?
 // Returns -1 if not authenticated or expired
 // Returns >= 0 for any valid authentication
@@ -88,8 +81,8 @@ int check_client_auth(struct ftl_conn *api)
 	                                              strcmp(api->request->remote_addr, LOCALHOSTv6) == 0))
 		return API_AUTH_LOCALHOST;
 
-	// Check if there is a password hash
-	if(strlen(config.webserver.api.pwhash.v.s) == 0u)
+	// When the pwhash is unset, authentication is disabled
+	if(config.webserver.api.pwhash.v.s[0] == '\0')
 		return API_AUTH_EMPTYPASS;
 
 	// Does the client provide a session cookie?
@@ -213,29 +206,6 @@ int check_client_auth(struct ftl_conn *api)
 	return user_id;
 }
 
-// Check received response
-static bool check_response(const char *response, const time_t now)
-{
-	// Loop over all responses and try to validate response
-	for(unsigned int i = 0; i < API_MAX_CHALLENGES; i++)
-	{
-		// Skip expired entries
-		if(challenges[i].valid_until < now)
-			continue;
-
-		if(strcasecmp(challenges[i].response, response) == 0)
-		{
-			// This challange-response has been used
-			// Invalidate to prevent replay attacks
-			challenges[i].valid_until = 0;
-			return true;
-		}
-	}
-
-	// If transmitted challenge wasn't found -> this is an invalid auth request
-	return false;
-}
-
 static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 {
 	const time_t now = time(NULL);
@@ -328,7 +298,6 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 		log_debug(DEBUG_API, "API Auth status: OK (localhost does not need auth)");
 
 		cJSON *json = JSON_NEW_OBJECT();
-		JSON_ADD_NULL_TO_OBJECT(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
@@ -338,7 +307,6 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 		log_debug(DEBUG_API, "API Auth status: OK (empty password)");
 
 		cJSON *json = JSON_NEW_OBJECT();
-		JSON_ADD_NULL_TO_OBJECT(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
@@ -356,7 +324,6 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 		}
 
 		cJSON *json = JSON_NEW_OBJECT();
-		JSON_ADD_NULL_TO_OBJECT(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
@@ -369,7 +336,6 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 
 		strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
 		cJSON *json = JSON_NEW_OBJECT();
-		JSON_ADD_NULL_TO_OBJECT(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT_CODE(json, 410); // 410 Gone
 	}
@@ -379,45 +345,9 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 
 		strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
 		cJSON *json = JSON_NEW_OBJECT();
-		JSON_ADD_NULL_TO_OBJECT(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT_CODE(json, 401); // 401 Unauthorized
 	}
-}
-
-static void generateChallenge(const unsigned int idx, const time_t now)
-{
-	uint8_t raw_challenge[SHA256_DIGEST_SIZE];
-	if(getrandom(raw_challenge, sizeof(raw_challenge), 0) < 0)
-	{
-		log_err("getrandom() failed in generateChallenge()");
-		return;
-	}
-	sha256_raw_to_hex(raw_challenge, challenges[idx].challenge);
-	challenges[idx].valid_until = now + API_CHALLENGE_TIMEOUT;
-}
-
-static void generateResponse(const unsigned int idx)
-{
-	uint8_t raw_response[SHA256_DIGEST_SIZE];
-	struct sha256_ctx ctx;
-	sha256_init(&ctx);
-
-	// Add challenge in hex representation
-	sha256_update(&ctx,
-	              sizeof(challenges[idx].challenge)-1,
-	              (uint8_t*)challenges[idx].challenge);
-
-	// Add separator
-	sha256_update(&ctx, 1, (uint8_t*)":");
-
-	// Get and add password hash from setupVars.conf
-	sha256_update(&ctx,
-	              strlen(config.webserver.api.pwhash.v.s),
-	              (uint8_t*)config.webserver.api.pwhash.v.s);
-
-	sha256_digest(&ctx, SHA256_DIGEST_SIZE, raw_response);
-	sha256_raw_to_hex(raw_response, challenges[idx].response);
 }
 
 static void generateSID(char *sid)
@@ -433,17 +363,15 @@ static void generateSID(char *sid)
 }
 
 // api/auth
-//  GET: Check authentication and obtain a challenge
+//  GET: Check authentication
 //  POST: Login
 //  DELETE: Logout
 int api_auth(struct ftl_conn *api)
 {
 	// Check HTTP method
+	char *password = NULL;
 	const time_t now = time(NULL);
-
-	const bool empty_password = strlen(config.webserver.api.pwhash.v.s) == 0u;
-
-	int user_id = API_AUTH_UNAUTHORIZED;
+	const bool empty_password = config.webserver.api.pwhash.v.s[0] == '\0';
 
 	if(api->item != NULL && strlen(api->item) > 0)
 	{
@@ -451,17 +379,14 @@ int api_auth(struct ftl_conn *api)
 		return 0;
 	}
 
-	bool reponse_set = false;
-	char response[CHALLENGE_SIZE+1u] = { 0 };
-
 	// Did the client authenticate before and we can validate this?
-	user_id = check_client_auth(api);
+	int user_id = check_client_auth(api);
 
 	// If this is a valid session, we can exit early at this point
 	if(user_id != API_AUTH_UNAUTHORIZED)
 		return send_api_auth_status(api, user_id, now);
 
-	// Login attempt, extract response
+	// Login attempt, check password
 	if(api->method == HTTP_POST)
 	{
 		// Try to extract response from payload
@@ -479,11 +404,11 @@ int api_auth(struct ftl_conn *api)
 				                       api->payload.json_error);
 		}
 
-		// Check if response is available
-		cJSON *json_response;
-		if((json_response = cJSON_GetObjectItemCaseSensitive(api->payload.json, "response")) == NULL)
+		// Check if password is available
+		cJSON *json_password;
+		if((json_password = cJSON_GetObjectItemCaseSensitive(api->payload.json, "password")) == NULL)
 		{
-			const char *message = "No response found in JSON payload";
+			const char *message = "No password found in JSON payload";
 			log_debug(DEBUG_API, "API auth error: %s", message);
 			return send_json_error(api, 400,
 			                       "bad_request",
@@ -491,10 +416,10 @@ int api_auth(struct ftl_conn *api)
 			                       NULL);
 		}
 
-		// Check response length
-		if(strlen(json_response->valuestring) != CHALLENGE_SIZE)
+		// Check password type
+		if(!cJSON_IsString(json_password))
 		{
-			const char *message = "Invalid response length";
+			const char *message = "Field password has to be of type 'string'";
 			log_debug(DEBUG_API, "API auth error: %s", message);
 			return send_json_error(api, 400,
 			                       "bad_request",
@@ -502,10 +427,8 @@ int api_auth(struct ftl_conn *api)
 			                       NULL);
 		}
 
-		// Accept challenge
-		strncpy(response, json_response->valuestring, CHALLENGE_SIZE);
-		// response is already null-terminated
-		reponse_set = true;
+		// password is already null-terminated
+		password = json_password->valuestring;
 	}
 
 	// Logout attempt
@@ -515,151 +438,114 @@ int api_auth(struct ftl_conn *api)
 		return send_api_auth_status(api, user_id, now);
 	}
 
-	// Login attempt and/or auth check
-	if(reponse_set || empty_password)
-	{
-		// - Client tries to authenticate using a challenge response, or
-		// - There no password on this machine
-		const bool response_correct = check_response(response, now);
-		if(response_correct || empty_password)
-		{
-			// Accepted
-
-			// Check possible 2FA token
-			if(strlen(config.webserver.api.totp_secret.v.s) > 0)
-			{
-				// Get 2FA token from payload
-				cJSON *json_twofa;
-				if((json_twofa = cJSON_GetObjectItemCaseSensitive(api->payload.json, "totp")) == NULL)
-				{
-					const char *message = "No 2FA token found in JSON payload";
-					log_debug(DEBUG_API, "API auth error: %s", message);
-					return send_json_error(api, 400,
-					                       "bad_request",
-					                       message,
-					                       NULL);
-				}
-
-				if(!verifyTOTP(json_twofa->valueint))
-				{
-					// 2FA token is invalid
-					return send_json_error(api, 401,
-					                       "unauthorized",
-					                       "Invalid 2FA token",
-					                       NULL);
-				}
-			}
-
-			// Find unused authentication slot
-			for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
-			{
-				// Expired slow, mark as unused
-				if(auth_data[i].used &&
-				   auth_data[i].valid_until < now)
-				{
-					log_debug(DEBUG_API, "API: Session of client %u (%s) expired, freeing...",
-					          i, auth_data[i].remote_addr);
-					delete_session(i);
-				}
-
-				// Found unused authentication slot (might have been freed before)
-				if(!auth_data[i].used)
-				{
-					// Mark as used
-					auth_data[i].used = true;
-					// Set validitiy to now + timeout
-					auth_data[i].login_at = now;
-					auth_data[i].valid_until = now + config.webserver.sessionTimeout.v.ui;
-					// Set remote address
-					strncpy(auth_data[i].remote_addr, api->request->remote_addr, sizeof(auth_data[i].remote_addr));
-					auth_data[i].remote_addr[sizeof(auth_data[i].remote_addr)-1] = '\0';
-					// Store user-agent (if available)
-					const char *user_agent = mg_get_header(api->conn, "user-agent");
-					if(user_agent != NULL)
-					{
-						strncpy(auth_data[i].user_agent, user_agent, sizeof(auth_data[i].user_agent));
-						auth_data[i].user_agent[sizeof(auth_data[i].user_agent)-1] = '\0';
-					}
-					else
-					{
-						auth_data[i].user_agent[0] = '\0';
-					}
-
-					auth_data[i].tls.login = api->request->is_ssl;
-					auth_data[i].tls.mixed = false;
-
-					// Generate new SID
-					generateSID(auth_data[i].sid);
-
-					user_id = i;
-					break;
-				}
-			}
-
-			// Debug logging
-			if(config.debug.api.v.b && user_id > API_AUTH_UNAUTHORIZED)
-			{
-				char timestr[128];
-				get_timestr(timestr, auth_data[user_id].valid_until, false, false);
-				log_debug(DEBUG_API, "API: Registered new user: user_id %i valid_until: %s remote_addr %s (accepted due to %s)",
-				          user_id, timestr, auth_data[user_id].remote_addr,
-				          response_correct ? "correct response" : "empty password");
-			}
-			if(user_id == API_AUTH_UNAUTHORIZED)
-			{
-				log_warn("No free API seats available, not authenticating client");
-			}
-		}
-		else
-		{
-			log_debug(DEBUG_API, "API: Response incorrect. Response=%s, FTL=%s", response, config.webserver.api.pwhash.v.s);
-		}
-
-		// Free allocated memory
+	// If this is not a login attempt, we can exit early at this point
+	if(password == NULL && !empty_password)
 		return send_api_auth_status(api, user_id, now);
+
+	// else: Login attempt
+	// - Client tries to authenticate using a password, or
+	// - There no password on this machine
+	if(empty_password ? true : verify_password(password, config.webserver.api.pwhash.v.s))
+	{
+		// Accepted
+
+		// Zero-out password in memory to avoid leaking it when it is
+		// freed at the end of the current API request
+		if(password != NULL)
+			memset(password, 0, strlen(password));
+
+		// Check possible 2FA token
+		if(strlen(config.webserver.api.totp_secret.v.s) > 0)
+		{
+			// Get 2FA token from payload
+			cJSON *json_totp;
+			if((json_totp = cJSON_GetObjectItemCaseSensitive(api->payload.json, "totp")) == NULL)
+			{
+				const char *message = "No 2FA token found in JSON payload";
+				log_debug(DEBUG_API, "API auth error: %s", message);
+				return send_json_error(api, 400,
+							"bad_request",
+							message,
+							NULL);
+			}
+
+			if(!verifyTOTP(json_totp->valueint))
+			{
+				// 2FA token is invalid
+				return send_json_error(api, 401,
+							"unauthorized",
+							"Invalid 2FA token",
+							NULL);
+			}
+		}
+
+		// Find unused authentication slot
+		for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+		{
+			// Expired slow, mark as unused
+			if(auth_data[i].used &&
+				auth_data[i].valid_until < now)
+			{
+				log_debug(DEBUG_API, "API: Session of client %u (%s) expired, freeing...",
+						i, auth_data[i].remote_addr);
+				delete_session(i);
+			}
+
+			// Found unused authentication slot (might have been freed before)
+			if(!auth_data[i].used)
+			{
+				// Mark as used
+				auth_data[i].used = true;
+				// Set validitiy to now + timeout
+				auth_data[i].login_at = now;
+				auth_data[i].valid_until = now + config.webserver.sessionTimeout.v.ui;
+				// Set remote address
+				strncpy(auth_data[i].remote_addr, api->request->remote_addr, sizeof(auth_data[i].remote_addr));
+				auth_data[i].remote_addr[sizeof(auth_data[i].remote_addr)-1] = '\0';
+				// Store user-agent (if available)
+				const char *user_agent = mg_get_header(api->conn, "user-agent");
+				if(user_agent != NULL)
+				{
+					strncpy(auth_data[i].user_agent, user_agent, sizeof(auth_data[i].user_agent));
+					auth_data[i].user_agent[sizeof(auth_data[i].user_agent)-1] = '\0';
+				}
+				else
+				{
+					auth_data[i].user_agent[0] = '\0';
+				}
+
+				auth_data[i].tls.login = api->request->is_ssl;
+				auth_data[i].tls.mixed = false;
+
+				// Generate new SID
+				generateSID(auth_data[i].sid);
+
+				user_id = i;
+				break;
+			}
+		}
+
+		// Debug logging
+		if(config.debug.api.v.b && user_id > API_AUTH_UNAUTHORIZED)
+		{
+			char timestr[128];
+			get_timestr(timestr, auth_data[user_id].valid_until, false, false);
+			log_debug(DEBUG_API, "API: Registered new user: user_id %i valid_until: %s remote_addr %s (accepted due to %s)",
+					user_id, timestr, auth_data[user_id].remote_addr,
+					empty_password ? "empty password" : "correct response");
+		}
+		if(user_id == API_AUTH_UNAUTHORIZED)
+		{
+			log_warn("No free API seats available, not authenticating client");
+		}
 	}
 	else
 	{
-		// Client wants to get a challenge
-		// Generate a challenge
-		unsigned int i;
-
-		// Get an empty/expired slot
-		for(i = 0; i < API_MAX_CHALLENGES; i++)
-			if(challenges[i].valid_until < now)
-				break;
-
-		// If there are no empty/expired slots, then find the oldest challenge
-		// and replace it
-		if(i == API_MAX_CHALLENGES)
-		{
-			unsigned int minidx = 0;
-			time_t minval = now;
-			for(i = 0; i < API_MAX_CHALLENGES; i++)
-			{
-				if(challenges[i].valid_until < minval)
-				{
-					minval = challenges[i].valid_until;
-					minidx = i;
-				}
-			}
-			i = minidx;
-		}
-
-		// Generate and store new challenge
-		generateChallenge(i, now);
-
-		// Compute and store expected response for this challenge (SHA-256)
-		generateResponse(i);
-
-		log_debug(DEBUG_API, "API: Sending challenge=%s", challenges[i].challenge);
-
-		// Return to user
-		cJSON *json = JSON_NEW_OBJECT();
-		JSON_REF_STR_IN_OBJECT(json, "challenge", challenges[i].challenge);
-		get_session_object(api, json, -1, now);
-		JSON_SEND_OBJECT(json);
+		log_debug(DEBUG_API, "API: Password incorrect: '%s'", password);
 	}
+
+	// Free allocated memory
+	return send_api_auth_status(api, user_id, now);
 }
 
 int api_auth_sessions(struct ftl_conn *api)

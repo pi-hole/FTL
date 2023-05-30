@@ -212,7 +212,7 @@ static int pihole_needLogin(lua_State *L) {
 
 	// Check if password is set
 	const bool has_password = config.webserver.api.pwhash.v.s != NULL &&
-	                          strlen(config.webserver.api.pwhash.v.s) > 0;
+	                          config.webserver.api.pwhash.v.s[0] != '\0';
 
 	// Check if address is loopback
 	const bool is_loopback = strcmp(remote_addr, LOCALHOSTv4) == 0 ||

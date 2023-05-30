@@ -163,6 +163,16 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			// Get password hash as allocated string (an empty string is hashed to an empty string)
 			char *pwhash = strlen(value) > 0 ? create_password(value) : strdup("");
 
+			// Verify that the password hash is valid
+			const bool verfied = verify_password(value, pwhash);
+
+			if(!verfied)
+			{
+				log_err("Failed to create password hash (verification failed), password remains unchanged");
+				free(pwhash);
+				return false;
+			}
+
 			// Free old password hash if it was allocated
 			if(conf_item->t == CONF_STRING_ALLOCATED)
 					free(conf_item->v.s);
@@ -388,7 +398,7 @@ int set_config_from_CLI(const char *key, const char *value)
 	// Also check if this is the password config item change as this
 	// actually changed pwhash behind the scenes
 	if(!compare_config_item(conf_item->t, &new_item->v, &conf_item->v) ||
-	   new_item == &newconf.webserver.api.password)
+	   conf_item->t == CONF_PASSWORD)
 	{
 		// Config item changed
 

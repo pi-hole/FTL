@@ -3,16 +3,12 @@ components:
   paths:
     auth:
       get:
-        summary: Request challenge for login
+        summary: Check if authentication is required
         tags:
           - Authentication
         operationId: "get_auth"
         description: |
-          Request challenge for digest-access challenge-response authentication.
-
           The API may chose to reply with a valid session if no authentation is needed for this server.
-
-          Note that challenges are only valid for a very short time, use them to immediately compute a response. There is no need to get a challenge before users have finished entering their passwords.
         responses:
           '200':
             description: OK
@@ -32,18 +28,18 @@ components:
                   dns_failure:
                     $ref: 'auth.yaml#/components/examples/dns_failure'
       post:
-        summary: Submit response for login
+        summary: Submit password for login
         tags:
           - Authentication
         operationId: "add_auth"
         description: |
-          Submit computed response
+          Login with a password. The password is not stored in the session, and neither when to generating the session token.
         requestBody:
           description: Callback payload
           content:
             'application/json':
               schema:
-                $ref: 'auth.yaml#/components/schemas/response'
+                $ref: 'auth.yaml#/components/schemas/password'
         responses:
           '200':
             description: OK
@@ -69,10 +65,10 @@ components:
                 examples:
                   no_payload:
                     $ref: 'auth.yaml#/components/examples/errors/no_payload'
-                  no_response:
-                    $ref: 'auth.yaml#/components/examples/errors/no_response'
-                  response_inval:
-                    $ref: 'auth.yaml#/components/examples/errors/response_inval'
+                  no_password:
+                    $ref: 'auth.yaml#/components/examples/errors/no_password'
+                  password_inval:
+                    $ref: 'auth.yaml#/components/examples/errors/password_inval'
           '401':
             description: Unauthorized
             content:
@@ -194,7 +190,7 @@ components:
                   missing_session_id:
                     $ref: 'auth.yaml#/components/examples/errors/missing_session_id'
                   session_id_oob:
-                    $ref: 'auth.yaml#/components/examples/errors/no_response'
+                    $ref: 'auth.yaml#/components/examples/errors/no_password'
                   session_not_in_use:
                     $ref: 'auth.yaml#/components/examples/errors/session_not_in_use'
           '401':
@@ -210,13 +206,8 @@ components:
     session:
       type: object
       required:
-        - challenge
         - session
       properties:
-        challenge:
-          type: string
-          description: Challenge to be used for computing response
-          nullable: true
         session:
           type: object
           description: Session object
@@ -243,13 +234,13 @@ components:
           type: boolean
           description: Whether the DNS server is up and running. False only in failed state
 
-    response:
+    password:
       type: object
-      description: Response to be sent to the API
+      description: Password to be sent to the API
       properties:
-        response:
+        password:
           type: string
-          description: Response to previous challenge
+          description: Password to be used for login
           example: abcdef
     sessions_list:
       type: object
@@ -359,7 +350,6 @@ components:
     login_okay:
       summary: Login successful
       value:
-        challenge: null
         session:
           valid: true
           totp: false
@@ -369,7 +359,6 @@ components:
     no_login_required:
       summary: No login required for this client
       value:
-        challenge: null
         session:
           valid: true
           totp: false
@@ -379,7 +368,6 @@ components:
     login_required:
       summary: Login required
       value:
-        challenge: "a2926b025bcc8618c632f81cd6cf7c37ee051c08aab74b565fd5126350fcd056"
         session:
           valid: false
           totp: false
@@ -389,7 +377,6 @@ components:
     login_failed:
       summary: Login failed
       value:
-        challenge: null
         session:
           valid: false
           totp: false
@@ -399,7 +386,6 @@ components:
     dns_failure:
       summary: DNS server failure
       value:
-        challenge: "a2926b025bcc8618c632f81cd6cf7c37ee051c08aab74b565fd5126350fcd056"
         session:
           valid: false
           totp: false
@@ -414,19 +400,19 @@ components:
             key: "bad_request"
             message: "No valid JSON payload found"
             hint: null
-      no_response:
-        summary: Bad request (no response)
+      no_password:
+        summary: Bad request (no password)
         value:
           error:
             key: "bad_request"
-            message: "No response found in JSON payload"
+            message: "No password found in JSON payload"
             hint: null
-      response_inval:
-        summary: Bad request (invalid response)
+      password_inval:
+        summary: Bad request (password is not a string)
         value:
           error:
             key: "bad_request"
-            message: "Invalid response length"
+            message: "Field password has to be of type 'string'"
             hint: null
       missing_session_id:
         summary: Bad request (missing session ID)

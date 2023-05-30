@@ -1242,37 +1242,25 @@
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1:8080/api/auth'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '{"challenge":null,"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"dns":true,"took":'*'}' ]]
+  [[ ${lines[0]} == '{"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"dns":true,"took":'*'}' ]]
 }
 
-@test "API authorization (with password): FTL challenges us" {
+@test "API authorization: Setting password" {
   # Password: ABC
-  run bash -c 'curl -X PATCH http://127.0.0.1:8080/api/config -d "@test/api/json/add_password.json"'
-  run bash -c 'curl -s 127.0.0.1:8080/api/auth | jq ".challenge | length"'
+  run bash -c 'curl -s -X PATCH http://127.0.0.1:8080/api/config/webserver/api/password -d "{\"config\":{\"webserver\":{\"api\":{\"password\":\"ABC\"}}}}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "64" ]]
+  [[ ${lines[0]} == "{\"config\":{\"webserver\":{\"api\":{\"password\":\"********\"}}},\"took\":"*"}" ]]
 }
 
-@test "API authorization (with password): Incorrect response is rejected" {
-  run bash -c 'curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"0123456789012345678901234567890123456789012345678901234567890123\"}" | jq .session.valid'
+@test "API authorization (with password): Incorrect password is rejected if password auth is enabled" {
+  # Password: ABC
+  run bash -c 'curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"password\":\"XXX\"}" | jq .session.valid'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "false" ]]
 }
 
 @test "API authorization (with password): Correct password is accepted" {
-  computeResponse() {
-      local pwhash challenge response
-      pwhash="${1}"
-      challenge="${2}"
-      response=$(echo -n "${challenge}:${pwhash}" | sha256sum | sed 's/\s.*$//')
-      echo "${response}"
-  }
-  pwhash="183c1b634da0078fcf5b0af84bdcbb3e817708c3f22b329be84165f4bad1ae48"
-  challenge="$(curl -s -X GET 127.0.0.1:8080/api/auth | jq --raw-output .challenge)"
-  printf "Challenge: %s\n" "${challenge}"
-  response="$(computeResponse "$pwhash" "$challenge")"
-  printf "Response: %s\n" "${response}"
-  session="$(curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"$response\"}")"
+  session="$(curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"password\":\"ABC\"}")"
   printf "Session: %s\n" "${session}"
   run jq .session.valid <<< "${session}"
   printf "%s\n" "${lines[@]}"
