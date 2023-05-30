@@ -148,7 +148,7 @@ int check_client_auth(struct ftl_conn *api)
 
 	if(!sid_avail)
 	{
-		log_debug(DEBUG_API, "API Authentification: FAIL (no SID provided)");
+		log_debug(DEBUG_API, "API Authentication: FAIL (no SID provided)");
 		return API_AUTH_UNAUTHORIZED;
 	}
 
@@ -170,7 +170,7 @@ int check_client_auth(struct ftl_conn *api)
 	}
 	if(user_id > API_AUTH_UNAUTHORIZED)
 	{
-		// Authentication succesful:
+		// Authentication successful:
 		// - We know this client
 		// - The session is (still) valid
 		// - The IP matches the one we know for this SID
@@ -199,7 +199,7 @@ int check_client_auth(struct ftl_conn *api)
 		}
 	}
 	else
-		log_debug(DEBUG_API, "API Authentification: FAIL (SID invalid/expired)");
+		log_debug(DEBUG_API, "API Authentication: FAIL (SID invalid/expired)");
 
 	api->user_id = user_id;
 

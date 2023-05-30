@@ -32,7 +32,7 @@ static int api_teleporter_GET(struct ftl_conn *api)
 		                       NULL);
 
 	// Add header indicating that this is a file to be downloaded and stored as
-	// teleporter.zip (rather than showing the binary data in teh browser
+	// teleporter.zip (rather than showing the binary data in the browser
 	// window). This client is free to ignore and do whatever it wants with this
 	// data stream.
 	snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),

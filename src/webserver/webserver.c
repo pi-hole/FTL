@@ -60,7 +60,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 			}
 			else
 			{
-				// Host header only contains the host name iteself
+				// Host header only contains the host name itself
 				host_len = strlen(host);
 			}
 		}
@@ -292,7 +292,7 @@ void http_init(void)
 	// Register handler for the rest
 	mg_set_request_handler(ctx, "**", request_handler, NULL);
 
-	// Prepare prerequesites for Lua
+	// Prepare prerequisites for Lua
 	allocate_lua();
 }
 
@@ -321,7 +321,7 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 	log_debug(DEBUG_API, "Not rewriting %s ==> %s, no such file",
 	          filename, filename_lp);
 
-	// Change last occurence of "/" to "-" (if any)
+	// Change last occurrence of "/" to "-" (if any)
 	char *last_slash = strrchr(filename_lp, '/');
 	if(last_slash != NULL)
 	   *last_slash = '-';

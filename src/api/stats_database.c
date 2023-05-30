@@ -192,7 +192,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 
 		// Get blocked queries not only for .../top_blocked
 		// but also for .../top_domains?blocked=true
-		// Note: this may overwrite the blocked propery from the URL
+		// Note: this may overwrite the blocked property from the URL
 		get_bool_var(api->request->query_string, "blocked", &blocked);
 
 		// Does the user request a non-default number of replies?

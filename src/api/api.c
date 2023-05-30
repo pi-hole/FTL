@@ -158,7 +158,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 				read_and_parse_payload(&api);
 			}
 
-			// Verify requesting client is allowed to see this ressource
+			// Verify requesting client is allowed to see this resource
 			if(api_request[i].require_auth && check_client_auth(&api) == API_AUTH_UNAUTHORIZED)
 			{
 				unauthorized = true;

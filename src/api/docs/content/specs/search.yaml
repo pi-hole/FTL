@@ -98,7 +98,7 @@ components:
                     example: "doubleclick.net"
                   address:
                     type: string
-                    description: Address of the adlist this domian was found on
+                    description: Address of the adlist this domain was found on
                     example: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
                   comment:
                     type: string

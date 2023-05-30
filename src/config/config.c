@@ -70,7 +70,7 @@ void set_all_debug(struct config *conf, const bool status)
 	const bool all_set = elements_set == DEBUG_ELEMENTS-1;
 
 	// If ALL is false and not all debug flags are set, we do not manipulate
-	// the debug flags at all. This is necessary to avoid overwriting inidividual
+	// the debug flags at all. This is necessary to avoid overwriting individual
 	// debug flag settings when the user has set some of them to true and
 	// "ALL" to false.
 	if(status == false && !all_set)
@@ -129,7 +129,7 @@ char **gen_config_path(const char *pathin, const char delim)
 		// Advance to next path element
 		pathlen++;
 
-		// Safetly measure: Exit if this path is too deep
+		// Safety measure: Exit if this path is too deep
 		if(pathlen > MAX_CONFIG_PATH_DEPTH-1)
 			break;
 	}
@@ -691,7 +691,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.end.d.s = (char*)"";
 
 	conf->dhcp.router.k = "dhcp.router";
-	conf->dhcp.router.h = "Address of the gateway to be used (typicaly the address of your router in a home installation)";
+	conf->dhcp.router.h = "Address of the gateway to be used (typically the address of your router in a home installation)";
 	conf->dhcp.router.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.1\"");
 	conf->dhcp.router.t = CONF_STRING;
 	conf->dhcp.router.f = FLAG_RESTART_DNSMASQ;
@@ -794,7 +794,7 @@ void initConfig(struct config *conf)
 
 	// sub-struct database.network
 	conf->database.network.parseARPcache.k = "database.network.parseARPcache";
-	conf->database.network.parseARPcache.h = "Should FTL anaylze the local ARP cache? When disabled, client identification and the network table will stop working reliably.";
+	conf->database.network.parseARPcache.h = "Should FTL analyze the local ARP cache? When disabled, client identification and the network table will stop working reliably.";
 	conf->database.network.parseARPcache.t = CONF_BOOL;
 	conf->database.network.parseARPcache.f = FLAG_ADVANCED_SETTING;
 	conf->database.network.parseARPcache.d.b = true;

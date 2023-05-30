@@ -12,7 +12,7 @@
 
 int api_docs(struct ftl_conn *api)
 {
-	// Handle ressource request by redirecting to "/"
+	// Handle resource request by redirecting to "/"
 	if(strcmp(api->request->request_uri, "/api/docs") == 0)
 	{
 		mg_send_http_redirect(api->conn, "/api/docs/", 301);

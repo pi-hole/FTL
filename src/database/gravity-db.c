@@ -1560,7 +1560,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	else
 	{	// Create new or replace existing entry, no error if existing
 		// We have to use a subquery here to avoid violating FOREIGN KEY
-		// contraints (REPLACE recreates (= new ID) entries instead of updating them)
+		// constraints (REPLACE recreates (= new ID) entries instead of updating them)
 		if(listtype == GRAVITY_GROUPS)
 			if(row->name == NULL)
 			{

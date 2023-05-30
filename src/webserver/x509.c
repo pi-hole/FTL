@@ -231,7 +231,7 @@ bool generate_certificate(const char* certfile, bool rsa)
 	fclose(f);
 	free(certfile2);
 
-	// Free ressources
+	// Free resources
 	mbedtls_x509write_crt_free(&crt);
 	mbedtls_pk_free(&key);
 	mbedtls_ctr_drbg_free(&ctr_drbg);
