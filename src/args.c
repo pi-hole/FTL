@@ -766,9 +766,10 @@ void parse_args(int argc, char* argv[])
 			printf("\t%s--list-dhcp6%s        List known DHCPv6 config options\n\n", green, normal);
 
 			printf("%sDebugging and special use:%s\n", yellow, normal);
-			printf("\t%sd%s, %sdebug%s            Enter debugging mode\n", green, normal, green, normal);
-			printf("\t%stest%s                Don't start pihole-FTL but instead\n", green, normal);
-			printf("\t                    quit immediately\n");
+			printf("\t%sd%s, %sdebug%s            Enter debugging mode:\n", green, normal, green, normal);
+			printf("\t							  Don't go into daemon mode + verbose logging");
+			printf("\t%stest%s                    Don't start pihole-FTL but instead\n", green, normal);
+			printf("\t                    		  process everything and quit immediately\n");
 			printf("\t%s-f%s, %sno-daemon%s       Don't go into daemon mode\n\n", green, normal, green, normal);
 
 			printf("%sConfig options:%s\n", yellow, normal);
@@ -812,9 +813,10 @@ void parse_args(int argc, char* argv[])
 			printf("\t                    interfaces\n");
 			printf("\t                    Append %s-x%s to force scan on all\n", cyan, normal);
 			printf("\t                    interfaces and scan 10x more often\n");
-			printf("\t%s--totp%s              Generate valid TOTP token for 2FA\n", green, normal);
+			printf("\t%s--totp%s          Generate valid TOTP token for 2FA\n", green, normal);
 			printf("\t                    authentication (if enabled)\n");
-			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
+			printf("\t%s--%s (options)	  Pass options to internal dnsmasq resolver\n", green, normal);
+			printf("\t%s-h%s, %shelp%s    Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);
 		}
 
