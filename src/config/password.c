@@ -12,8 +12,15 @@
 #include "log.h"
 #include "config/config.h"
 #include "password.h"
-// genrandom()
+// getrandom() is only available since glibc 2.25
+// https://www.gnu.org/software/gnulib/manual/html_node/sys_002frandom_002eh.html
+#if !defined(__GLIBC__) || __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 25)
 #include <sys/random.h>
+#else
+// getrandom_fallback()
+#include "daemon.h"
+#define getrandom getrandom_fallback
+#endif
 
 // Randomness generator
 #include "webserver/x509.h"
