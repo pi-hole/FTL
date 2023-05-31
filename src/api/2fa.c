@@ -224,8 +224,8 @@ bool verifyTOTP(const uint32_t incode)
 		{
 			if(gencode == last_code)
 			{
-				log_warn("2FA code has already been used (%i, %u), please wait %ld seconds",
-				         i, gencode, RFC6238_X - (now % RFC6238_X));
+				log_warn("2FA code has already been used (%i, %u), please wait %lu seconds",
+				         i, gencode, (unsigned long)(RFC6238_X - (now % RFC6238_X)));
 				return false;
 			}
 			log_info("2FA code verified successfully at %i", i);
