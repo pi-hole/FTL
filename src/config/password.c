@@ -12,8 +12,8 @@
 #include "log.h"
 #include "config/config.h"
 #include "password.h"
-// genrandom()
-#include <sys/random.h>
+// genrandom() with fallback
+#include "daemon.h"
 
 // Randomness generator
 #include "webserver/x509.h"

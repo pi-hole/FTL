@@ -29,7 +29,7 @@
   run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"CRIT: Initialization of shared memory failed."* ]]
-  [[ "${lines[@]}" == *"INFO: pihole-FTL is already running!"* ]]
+  [[ "${lines[@]}" == *"INFO: pihole-FTL is already running"* ]]
 }
 
 @test "dnsmasq options as expected" {
@@ -967,12 +967,6 @@
   run bash -c 'grep "Compiled for" /var/log/pihole/FTL.log'
   printf "Output: %s\n\$CC: %s\nVersion: %s\n" "${lines[@]:-not set}" "${CC:-not set}" "${compiler_version:-not set}"
   [[ ${lines[0]} == *"using ${compiler_version}"* ]]
-}
-
-@test "Struct sizes are as expected" {
-  run bash -c './pihole-FTL --check-structs'
-  printf "%s\n" "${lines[@]}"
-  [[ $status == 0 ]]
 }
 
 @test "No errors on setting busy handlers for the databases" {

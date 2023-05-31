@@ -27,7 +27,4 @@ const char *cli_over(void) __attribute__ ((pure));
 
 void test_dnsmasq_options(int argc, const char *argv[]);
 
-// defined in dnsmasq_interface.c
-int check_struct_sizes(void);
-
 #endif //ARGS_H

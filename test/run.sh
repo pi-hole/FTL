@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Only run tests on x86_* targets (where the CI can natively run the binaries)
-if [[ ${CI} == "true" && "${CI_ARCH}" != "x86_"* ]]; then
+# Skip tests on targets not supporting them
+if [[ ${TEST} == "false" ]]; then
   echo "Skipping tests (CI_ARCH: ${CI_ARCH})!"
   exit 0
 fi
