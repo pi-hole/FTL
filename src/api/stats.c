@@ -29,7 +29,7 @@
 // sqrt()
 #include <math.h>
 
-/* qsort comparision function (count field), sort ASC
+/* qsort comparison function (count field), sort ASC
 static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 {
 	const int *elem1 = (int*)a;
@@ -461,7 +461,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 		}
 		else
 		{
-			// Regular upstream destionation
+			// Regular upstream destination
 			// Get sorted indices
 			const int upstreamID = temparray[2*i + 0];
 
@@ -583,7 +583,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 
 			JSON_REF_STR_IN_ARRAY(blocked, domain);
 
-			// Only count when added succesfully
+			// Only count when added successfully
 			found++;
 		}
 

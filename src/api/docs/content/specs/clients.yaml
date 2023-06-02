@@ -150,12 +150,12 @@ components:
           Clients may be described either by their IP addresses (IPv4 and IPv6 are supported),
           IP subnets (CIDR notation, like `192.168.2.0/24`), their MAC addresses (like `12:34:56:78:9A:BC`), by their hostnames (like `localhost`), or by the interface they are connected to (prefaced with a colon, like `:eth0`).</p>
 
-          Note that client recognition by IP addresses (incl. subnet ranges) is prefered over MAC address, host name or interface recognition as the two latter will only be available after some time.
+          Note that client recognition by IP addresses (incl. subnet ranges) is preferred over MAC address, host name or interface recognition as the two latter will only be available after some time.
           Furthermore, MAC address recognition only works for devices at most one networking hop away from your Pi-hole.
 
-          On success, a new ressource is created at `/clients/{client}`.
+          On success, a new resource is created at `/clients/{client}`.
 
-          The `database_error` with message `UNIQUE contraint failed` error indicates that this client already exists.
+          The `database_error` with message `UNIQUE constraint failed` error indicates that this client already exists.
         requestBody:
           description: Callback payload
           content:

@@ -89,7 +89,7 @@ bool init_memory_database(void)
 	}
 
 	// Add indices on all columns of the in-memory database
-	// as well as index on auxilliary tables
+	// as well as index on auxiliary tables
 	for(unsigned int i = 0; i < ArraySize(index_creation); i++)
 	{
 		log_debug(DEBUG_DATABASE, "init_memory_database(): Executing %s", index_creation[i]);
@@ -467,7 +467,7 @@ bool import_queries_from_disk(void)
 }
 
 // Export in-memory queries to disk - either due to periodic dumping (final =
-// false) or because of a sutdown (final = true)
+// false) or because of a shutdown (final = true)
 bool export_queries_to_disk(bool final)
 {
 	bool okay = false;
@@ -1251,7 +1251,7 @@ bool queries_to_database(void)
 			continue;
 
 		// Update max_iter in case we have changes queries very close to
-		// the end of the interation interval
+		// the end of the iteration interval
 		if(min_iter - max_iter < 10)
 			max_iter = max_iter > DB_QUERY_MAX_ITER ? max_iter - DB_QUERY_MAX_ITER : 0;
 

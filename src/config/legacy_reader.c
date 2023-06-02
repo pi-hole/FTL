@@ -284,7 +284,7 @@ const char *readFTLlegacy(struct config *conf)
 	// put on the list of IP addresses which have access to our
 	// web server.
 	// The ACL is a comma separated list of IP subnets, where
-	// each subnet is pre-pended by either a - or a + sign.
+	// each subnet is prepended by either a - or a + sign.
 	// A plus sign means allow, where a minus sign means deny.
 	// If a subnet mask is omitted, such as -1.2.3.4, this means
 	// to deny only that single IP address.

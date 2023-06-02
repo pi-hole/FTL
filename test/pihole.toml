@@ -358,7 +358,7 @@
   #     <ip-addr>, e.g., "192.168.0.250"
   end = ""
 
-  # Address of the gateway to be used (typicaly the address of your router in a home
+  # Address of the gateway to be used (typically the address of your router in a home
   # installation)
   #
   # Possible values are:
@@ -455,7 +455,7 @@
   DBinterval = 60
 
   [database.network]
-    # Should FTL anaylze the local ARP cache? When disabled, client identification and the
+    # Should FTL analyze the local ARP cache? When disabled, client identification and the
     # network table will stop working reliably.
     parseARPcache = true
 

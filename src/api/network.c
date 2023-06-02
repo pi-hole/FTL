@@ -14,7 +14,7 @@
 #include "api/api.h"
 // Routing information and flags
 #include <net/route.h>
-// Interate through directories
+// Iterate through directories
 #include <dirent.h>
 // networkrecord
 #include "database/network-table.h"
@@ -43,7 +43,7 @@ static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 			if(sscanf(buf, "%s %lx %lx %x %*i %*i %i", iface_r, &dest_r, &gw_r, &flags, &metric) != 5)
 				continue;
 
-			// Only anaylze routes which are UP and whose
+			// Only analyze routes which are UP and whose
 			// destinations are a gateway
 			if(!(flags & RTF_UP) || !(flags & RTF_GATEWAY))
 				continue;

@@ -501,7 +501,7 @@ components:
                 example: "localhost"
               port:
                 type: integer
-                description: Upstream destination's destination port (-1 if not applicable, e.g., for the local chace)
+                description: Upstream destination's destination port (-1 if not applicable, e.g., for the local cache)
                 example: 53
               count:
                 type: integer

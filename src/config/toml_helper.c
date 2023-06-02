@@ -261,7 +261,7 @@ void print_toml_allowed_values(cJSON *allowed_values, FILE *fp, const unsigned i
 			}
 			else if(item->valueint < 100)
 			{
-				// Interger value
+				// Integer value
 				char itemname[3];
 				snprintf(itemname, sizeof(itemname), "%d", item->valueint);
 				// Print item name

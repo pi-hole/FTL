@@ -162,9 +162,9 @@ components:
           Both `{type}` and `{kind}` are mandatory for this endpoint.
           The `{domain}` itself is specified in the request body (POST JSON).
 
-          On success, a new ressource is created at `/domains/{type}/{kind}/{domain}`.
+          On success, a new resource is created at `/domains/{type}/{kind}/{domain}`.
 
-          The `database_error` with message `UNIQUE contraint failed` error indicates that the same entry (`domain`, `type`, `kind`) already exists.
+          The `database_error` with message `UNIQUE constraint failed` error indicates that the same entry (`domain`, `type`, `kind`) already exists.
 
           When adding a regular expression, ensure the request body is properly JSON-escaped.
         requestBody:

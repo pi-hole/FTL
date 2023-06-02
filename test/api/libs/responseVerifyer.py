@@ -82,7 +82,7 @@ class ResponseVerifyer():
 			elif 'application/zip' in content:
 				expected_mimetype = 'application/zip'
 				jsonData = content[expected_mimetype]
-				# Thie endpoint requires HEADER authentication
+				# The endpoint requires HEADER authentication
 				authentication_method = AuthenticationMethods.HEADER
 				YAMLresponseSchema = None
 				YAMLresponseExamples = None
@@ -126,7 +126,7 @@ class ResponseVerifyer():
 					for prop in YAMLresponseSchema['allOf'][i]['properties']:
 						self.verify_property(YAMLresponseSchema['allOf'][i]['properties'], YAMLresponseExamples, FTLresponse, [prop])
 
-			# If neither of the above is true, thie definition is invalid
+			# If neither of the above is true, the definition is invalid
 			else:
 				self.errors.append("Top-level response should be either an object or a non-empty allOf/anyOf/oneOf")
 
