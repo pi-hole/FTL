@@ -10975,10 +10975,6 @@ parse_http_request(char *buf, int len, struct mg_request_info *ri)
 	    NULL;
 	ri->num_headers = 0;
 
-	/******************** Pi-hole modification ********************/
-	strncpy(ri->raw_http_head, buf, sizeof(ri->raw_http_head));
-	/**************************************************************/
-
 	/* RFC says that all initial whitespaces should be ignored */
 	/* This included all leading \r and \n (isspace) */
 	/* See table: http://www.cplusplus.com/reference/cctype/ */

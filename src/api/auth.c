@@ -40,8 +40,8 @@
 #define NETTLE_SIGN
 #endif
 
-// How many bits should the SID use?
-#define SID_BITSIZE 160
+// How many bits should the SID and CSRF token use?
+#define SID_BITSIZE 128
 #define SID_SIZE BASE64_ENCODE_RAW_LENGTH(SID_BITSIZE/8)
 
 // SameSite=Strict: Defense against some classes of cross-site request forgery
@@ -68,7 +68,8 @@ static struct {
 	char remote_addr[48]; // Large enough for IPv4 and IPv6 addresses, hard-coded in civetweb.h as mg_request_info.remote_addr
 	char user_agent[128];
 	char sid[SID_SIZE];
-} auth_data[API_MAX_CLIENTS] = {{false, {false, false}, 0, 0, {0}, {0}, {0}}};
+	char csrf[SID_SIZE];
+} auth_data[API_MAX_CLIENTS] = {{false, {false, false}, 0, 0, {0}, {0}, {0}, {0}}};
 
 // Can we validate this client?
 // Returns -1 if not authenticated or expired
@@ -189,6 +190,9 @@ int check_client_auth(struct ftl_conn *api)
 		{
 			return send_json_error(api, 500, "internal_error", "Internal server error", NULL);
 		}
+
+		// Copy CSRF token into request
+		strncpy((char*)api->request->csrf_token, auth_data[user_id].csrf, sizeof(api->request->csrf_token) - 1);
 
 		if(config.debug.api.v.b)
 		{
@@ -517,8 +521,9 @@ int api_auth(struct ftl_conn *api)
 				auth_data[i].tls.login = api->request->is_ssl;
 				auth_data[i].tls.mixed = false;
 
-				// Generate new SID
+				// Generate new SID and CSRF token
 				generateSID(auth_data[i].sid);
+				generateSID(auth_data[i].csrf);
 
 				user_id = i;
 				break;
