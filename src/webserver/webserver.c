@@ -105,7 +105,7 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 
 	// Remove the ".lp" from the URI
 	char *pos = strstr(uri, ".lp");
-	char *new_uri = calloc(strlen(uri) + query_len - 2, sizeof(char));
+	char *new_uri = calloc(strlen(uri) + query_len, sizeof(char));
 	// Copy everything from before the ".lp" to the new URI
 	strncpy(new_uri, uri, pos - uri);
 	if(query_len > 0)
