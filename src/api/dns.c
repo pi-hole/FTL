@@ -48,7 +48,7 @@ static int get_blocking(struct ftl_conn *api)
 	}
 
 	// Get timer information (if applicable)
-	int delay;
+	double delay;
 	bool target_status;
 	get_blockingmode_timer(&delay, &target_status);
 	if(delay > -1)
@@ -99,17 +99,17 @@ static int set_blocking(struct ftl_conn *api)
 	const enum blocking_status target_status = cJSON_IsTrue(elem) ? BLOCKING_ENABLED : BLOCKING_DISABLED;
 
 	// Get (optional) timer
-	int timer = -1;
+	double timer = -1;
 	elem = cJSON_GetObjectItemCaseSensitive(api->payload.json, "timer");
 	if (cJSON_IsNumber(elem) && elem->valuedouble > 0.0)
-		timer = elem->valueint;
+		timer = elem->valuedouble;
 
 	if(target_status == get_blockingstatus())
 	{
 		// The blocking status does not need to be changed
 
 		// Delete a possibly running timer
-		set_blockingmode_timer(-1, true);
+		set_blockingmode_timer(-1.0, true);
 
 		log_debug(DEBUG_API, "No change in blocking mode, resetting timer");
 	}
@@ -121,7 +121,7 @@ static int set_blocking(struct ftl_conn *api)
 		// Start timer (-1 disables all running timers)
 		set_blockingmode_timer(timer, !target_status);
 
-		log_debug(DEBUG_API, "%sd Pi-hole, timer set to %d seconds", target_status ? "Enable" : "Disable", timer);
+		log_debug(DEBUG_API, "%sd Pi-hole, timer set to %f seconds", target_status ? "Enable" : "Disable", timer);
 	}
 
 	// Return GET property as result of POST/PUT/PATCH action

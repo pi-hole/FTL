@@ -133,15 +133,35 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 			{
 				target = strdup(req_info->local_uri_raw);
 			}
+			if(target == NULL)
+			{
+				log_err("Error allocating memory for redirection target");
+				return send_json_error(&api, 500,
+				                       "internal_error",
+				                       "Internal server error",
+				                       "Cannot allocate memory for redirection target");
+			}
+
 			// Encode target string
 			const size_t encoded_target_len = strlen(target) * 3u + 1u;
 			char *encoded_target = calloc(encoded_target_len, sizeof(char));
+			if(encoded_target == NULL)
+			{
+				log_err("Error allocating memory for encoded redirection target");
+				return send_json_error(&api, 500,
+				                       "internal_error",
+				                       "Internal server error",
+				                       "Cannot allocate memory for encoded redirection target");
+			}
+
+			// Encode target string
 			mg_url_encode(target, encoded_target, encoded_target_len);
+			free(target);
 
 			// User is not authenticated, redirect to login page
 			log_web("Authentication required, redirecting to %slogin?target=%s", config.webserver.paths.webhome.v.s, encoded_target);
 			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin?target=%s\r\n\r\n", config.webserver.paths.webhome.v.s, encoded_target);
-			free(target);
+			free(encoded_target);
 			return 302;
 		}
 	}

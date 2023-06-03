@@ -65,47 +65,47 @@ void sleepms(const int milliseconds)
 	select(0, NULL, NULL, NULL, &tv);
 }
 
-static int timer_delay = -1;
+static double timer_delay = -1.0;
 static bool timer_target_status;
 
-void set_blockingmode_timer(int delay, bool target_status)
+void set_blockingmode_timer(double delay, bool target_status)
 {
 	timer_delay = delay;
 	timer_target_status = target_status;
 }
 
-void get_blockingmode_timer(int *delay, bool *target_status)
+void get_blockingmode_timer(double *delay, bool *target_status)
 {
 	*delay = timer_delay;
 	*target_status = timer_target_status;
 }
 
+#define SLEEPING_TIME 0.1 // seconds
 void *timer(void *val)
 {
 	// Set thread name
-	prctl(PR_SET_NAME,"int.timer",0,0,0);
+	prctl(PR_SET_NAME, "int.timer", 0, 0, 0);
 
 	// Save timestamp as we do not want to store immediately
 	// to the database
-	//lastGCrun = time(NULL) - time(NULL)%GCinterval;
 	while(!killed)
 	{
 		if(timer_delay > 0)
 		{
-			log_debug(DEBUG_EXTRA, "Pi-hole will be %s in %d seconds...",
+			log_debug(DEBUG_EXTRA, "Pi-hole will be %s in %.1f seconds...",
 			          timer_target_status ? "enabled" : "disabled", timer_delay);
 
-			timer_delay--;
+			timer_delay -= SLEEPING_TIME;
 		}
-		else if(timer_delay == 0)
+		else if(timer_delay <= 0.0 && timer_delay > -1.0)
 		{
 			log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
 			          timer_target_status ? "enabled" : "disabled");
 
 			set_blockingstatus(timer_target_status);
-			timer_delay = -1;
+			timer_delay = -1.0;
 		}
-		sleepms(1000);
+		sleepms(SLEEPING_TIME * 1000);
 	}
 
 	return NULL;

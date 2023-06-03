@@ -324,7 +324,14 @@ bool verify_password(const char *password, const char* pwhash)
 			return false;
 		char *supplied = balloon_password(password, salt, false);
 		const bool result = memcmp(config_hash, supplied, SHA256_DIGEST_SIZE) == 0;
+
+		// Free allocated memory
 		free(supplied);
+		if(salt != NULL)
+			free(salt);
+		if(config_hash != NULL)
+			free(config_hash);
+
 		return result;
 	}
 	else

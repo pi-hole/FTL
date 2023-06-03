@@ -89,10 +89,10 @@ components:
       type: object
       properties:
         timer:
-          type: integer
+          type: number
           description: Remaining seconds until blocking mode is automatically changed
           nullable: true
-          example: 15
+          example: 15.0
 
     errors:
       item_missing:
