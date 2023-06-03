@@ -224,7 +224,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		counters->reply[query->reply]--;
 
 		// Update type counters
-		if(query->type < TYPE_MAX)
+		if(query->type >= TYPE_A && query->type < TYPE_MAX)
 			counters->querytype[query->type]--;
 
 		// Subtract UNKNOWN from the counters before

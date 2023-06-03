@@ -790,7 +790,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	client->numQueriesARP++;
 
 	// Update counters
-	counters->querytype[querytype-1]++;
+	counters->querytype[querytype]++;
 
 	// Process interface information of client (if available)
 	// Skip interface name length 1 to skip "-". No real interface should

@@ -334,7 +334,7 @@ bool verify_password(const char *password, const char* pwhash)
 		const bool result = strcmp(pwhash, supplied) == 0;
 		free(supplied);
 
-		// Upgrade double-hased password to BALLOON hash
+		// Upgrade double-hashed password to BALLOON hash
 		if(result)
 		{
 			char *new_hash = balloon_password(password, NULL, true);
