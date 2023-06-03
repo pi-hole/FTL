@@ -50,42 +50,29 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-
     needs: smoke-tests
-
-    container: ghcr.io/pi-hole/ftl-build:v1.28-${{ matrix.arch }}
-
+    container: ghcr.io/pi-hole/ftl-build:v2.0
     strategy:
       fail-fast: false
-
       matrix:
         include:
-          - arch: x86_64
-            bin_name: pihole-FTL-linux-x86_64
-          - arch: x86_64
-            arch_extra: _full
-            bin_name: pihole-FTL-linux-x86_64_full
-          - arch: x86_64-musl
-            bin_name: pihole-FTL-musl-linux-x86_64
-          - arch: x86_32
-            bin_name: pihole-FTL-linux-x86_32
-          - arch: armv4t
-            bin_name: pihole-FTL-armv4-linux-gnueabi
-          - arch: armv5te
-            bin_name: pihole-FTL-armv5-linux-gnueabi
-          - arch: armv6hf
-            bin_name:  pihole-FTL-armv6-linux-gnueabihf
-          - arch: armv7hf
-            bin_name: pihole-FTL-armv7-linux-gnueabihf
-          - arch: armv8a
-            bin_name: pihole-FTL-armv8-linux-gnueabihf
-          - arch: aarch64
-            bin_name: pihole-FTL-aarch64-linux-gnu
-          - arch: riscv64
-            bin_name: pihole-FTL-riscv64-linux-gnu
+          - platform: linux/amd64
+            bin_name: pihole-FTL-amd64
+          - platform: linux/386
+            bin_name: pihole-FTL-386
+          - platform: linux/arm/v6
+            bin_name: pi-hole-FTL-armv6
+          - platform: linux/arm/v7
+            bin_name: pi-hole-FTL-armv7
+          - platform: linux/arm64/v8
+            bin_name: pi-hole-FTL-arm64
+          - platform: linux/riscv64
+            bin_name: pi-hole-FTL-riscv64
 
     env:
-      CI_ARCH: ${{ matrix.arch }}${{ matrix.arch_extra }}
+      CI_ARCH: ${{ matrix.platform }}
+      GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
+      GIT_TAG: ${{ needs.smoke-tests.outputs.GIT_TAG }}
 
     steps:
       -
@@ -95,13 +82,22 @@ jobs:
         name: "Fix ownership of repository"
         run: chown -R root .
       -
-        name: "Fix ownership of repository"
-        run: chown -R root .
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      -
+        name: Build and push
+        uses: docker/build-push-action@v3
+        with:
+          # tags: ghcr.io/pi-hole/ftl-build:v2.0
+          platforms: ${{ matrix.platform }}
+          # Always load latest container image
+          pull: true
+          # Do not push anything
+          push: false
+          # Load into daemon for subsequent steps
+          load: true
       -
         name: "Build"
-        env:
-          GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
-          GIT_TAG: ${{ needs.smoke-tests.outputs.GIT_TAG }}
         run: |
           bash build.sh "-DSTATIC=${STATIC}"
       -
@@ -109,8 +105,7 @@ jobs:
         run: |
           bash test/arch_test.sh
       -
-        name: "Test x86_32/64 binaries"
-        if: matrix.arch == 'x86_64' || matrix.arch == 'x86_64-musl' || matrix.arch == 'x86_32'
+        name: "Test binaries"
         run: |
           bash test/run.sh
       -
@@ -127,11 +122,11 @@ jobs:
           path: '${{ matrix.bin_name }}*'
       -
         name: Tar documentation files
-        if: github.event_name != 'pull_request' && matrix.arch == 'x86_64'
+        if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
         run: tar -C src/api/docs/content/ -czvf api-docs.tar.gz .
       -
         name: Upload documentation artifacts for deployoment
-        if: github.event_name != 'pull_request' && matrix.arch == 'x86_64'
+        if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
         uses: actions/upload-artifact@v3.1.1
         with:
           name: tmp-storage

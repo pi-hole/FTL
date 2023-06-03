@@ -510,8 +510,8 @@ static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, c
 
 static void format_rate_limit_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *clientIP, const unsigned int count, const unsigned int interval, const time_t turnaround)
 {
-	if(snprintf(plain, sizeof_plain, "Rate-limiting %s for at least %ld second%s",
-			clientIP, turnaround, turnaround == 1 ? "" : "s") > sizeof_plain)
+	if(snprintf(plain, sizeof_plain, "Rate-limiting %s for at least %lu second%s",
+			clientIP, (unsigned long int)turnaround, turnaround == 1 ? "" : "s") > sizeof_plain)
 		log_warn("format_rate_limit_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -520,8 +520,8 @@ static void format_rate_limit_message(char *plain, const int sizeof_plain, char 
 
 	char *escaped_clientIP = escape_html(clientIP);
 
-	if(snprintf(html, sizeof_html, "Client <code>%s</code> has been rate-limited for at least %ld second%s (current limit: %u queries per %u seconds)",
-			escaped_clientIP, turnaround, turnaround == 1 ? "" : "s", count, interval) > sizeof_html)
+	if(snprintf(html, sizeof_html, "Client <code>%s</code> has been rate-limited for at least %lu second%s (current limit: %u queries per %u seconds)",
+			escaped_clientIP, (unsigned long int)turnaround, turnaround == 1 ? "" : "s", count, interval) > sizeof_html)
 		log_warn("format_rate_limit_message(): Buffer too small to hold HTML message, warning truncated");
 
 	if(escaped_clientIP != NULL)

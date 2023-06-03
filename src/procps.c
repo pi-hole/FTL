@@ -15,10 +15,20 @@
 // getpid()
 #include <unistd.h>
 #include <sys/times.h>
+// config
+#include "config/config.h"
 
 #define PROCESS_NAME   "pihole-FTL"
+#define PROC_PATH_SIZ  32
 
-static bool get_process_name(const pid_t pid, char name[16])
+// This function tries to obtain the process name of a given PID
+// It returns true on success, false otherwise and stores the process name in
+// the given buffer
+// The preferred mechanism is to use /proc/<pid>/exe, but if that fails, we try
+// to parse /proc/<pid>/comm. The latter is not guaranteed to be correct (e.g.
+// processes can easily change it themselves using prctl with PR_SET_NAME), but
+// it is better than nothing.
+static bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
 {
 	if(pid == 0)
 	{
@@ -27,7 +37,25 @@ static bool get_process_name(const pid_t pid, char name[16])
 	}
 
 	// Try to open comm file
-	char filename[sizeof("/proc/%u/task/%u/comm") + sizeof(int)*3 * 2];
+	char filename[sizeof("/proc/%d/exe") + sizeof(int)*3];
+	snprintf(filename, sizeof(filename), "/proc/%d/exe", pid);
+
+	// Read link destination
+	ssize_t len = readlink(filename, name, PROC_PATH_SIZ);
+	if(len > 0)
+	{
+		// If readlink() succeeded, terminate string
+		name[len] = '\0';
+
+		// Strip path from name
+		char *ptr = strrchr(name, '/');
+		if(ptr != NULL)
+			memmove(name, ptr+1, len - (ptr - name));
+
+		return true;
+	}
+
+	// If readlink() failed, try to open comm file
 	snprintf(filename, sizeof(filename), "/proc/%d/comm", pid);
 	FILE *f = fopen(filename, "r");
 	if(f == NULL)
@@ -35,13 +63,20 @@ static bool get_process_name(const pid_t pid, char name[16])
 
 	// Read name from opened file
 	if(fscanf(f, "%15s", name) != 1)
-		false;
+	{
+		fclose(f);
+		return false;
+	}
+
+	// Close file
 	fclose(f);
 
 	return true;
 }
 
-
+// This function tries to obtain the parent process ID of a given PID
+// It returns true on success, false otherwise and stores the parent PID in
+// the given pid_t pointer
 static bool get_process_ppid(const pid_t pid, pid_t *ppid)
 {
 	// Try to open status file
@@ -63,6 +98,9 @@ static bool get_process_ppid(const pid_t pid, pid_t *ppid)
 	return true;
 }
 
+// This function tries to obtain the process creation time of a given PID
+// It returns true on success, false otherwise and stores the creation time in
+// the given buffer
 static bool get_process_creation_time(const pid_t pid, char timestr[TIMESTR_SIZE])
 {
 	// Try to open comm file
@@ -76,13 +114,73 @@ static bool get_process_creation_time(const pid_t pid, char timestr[TIMESTR_SIZE
 	return true;
 }
 
+// This function prints an info message about if another FTL process is already
+// running. It returns true if another FTL process is already running, false
+// otherwise.
 bool check_running_FTL(void)
 {
 	DIR *dirPos;
 	struct dirent *entry;
 	const pid_t ourselves = getpid();
-	bool process_running = false;
+	bool already_running = false;
+	pid_t pid = 0;
 
+	// First we try to read the PID file and compare the PID in there with
+	// our own PID. If the PID file does not exist or does not contain our
+	// PID, we try to find another FTL process by looking at the process
+	// list further down.
+	if(config.files.pid.v.s != NULL)
+	{
+		FILE *pidFile = fopen(config.files.pid.v.s, "r");
+		if(pidFile != NULL)
+		{
+			if(fscanf(pidFile, "%d", &pid) == 1)
+			{
+				if(pid == ourselves)
+				{
+					log_debug(DEBUG_SHMEM, "PID file contains our own PID");
+				}
+				else
+				{
+					// Note: kill(pid, 0) does not send a
+					// signal, but merely checks if the
+					// process exists If the process does
+					// not exist, kill() returns -1 and sets
+					// errno to ESRCH. However, if the
+					// process exists, but security
+					// restrictions tell the system to deny
+					// its existence, we cannot distinguish
+					// between the process not existing and
+					// the process existing but being denied
+					// to us. In that case, our fallback
+					// solution below kicks in and iterates
+					// over /proc instead.
+					already_running = kill(pid, 0) == 0;
+					log_debug(DEBUG_SHMEM, "PID file contains PID %d (%s), we are %d",
+					          pid, already_running ? "running" : "dead", ourselves);
+				}
+			}
+			else
+			{
+				log_debug(DEBUG_SHMEM, "Failed to parse PID in PID file");
+			}
+			fclose(pidFile);
+		}
+		else
+		{
+			log_debug(DEBUG_SHMEM, "Failed to open PID file");
+		}
+	}
+
+	// If already_running is true, we are done
+	if(already_running)
+	{
+		log_info("%s is already running (PID %d)!", PROCESS_NAME, pid);
+		return true;
+	}
+
+	// If the PID file does not contain our own PID, we try to find a running
+	// process with the same name as our own process
 	// Open /proc
 	errno = 0;
 	if ((dirPos = opendir("/proc")) == NULL)
@@ -95,6 +193,7 @@ bool check_running_FTL(void)
 	// This is much more efficient than iterating over all possible PIDs
 	pid_t last_pid = 0;
 	size_t last_len = 0u;
+	log_debug(DEBUG_SHMEM, "Reading /proc/[0-9]*");
 	while ((entry = readdir(dirPos)) != NULL)
 	{
 		// We are only interested in subdirectories of /proc
@@ -105,15 +204,17 @@ bool check_running_FTL(void)
 			continue;
 
 		// Extract PID
-		const pid_t pid = strtol(entry->d_name, NULL, 10);
+		pid = strtol(entry->d_name, NULL, 10);
+
+		// Get process name
+		char name[PROC_PATH_SIZ] = { 0 };
+		if(!get_process_name(pid, name))
+			continue;
+
+		log_debug(DEBUG_SHMEM, "PID: %d -> name: %s%s", pid, name, pid == ourselves ? " (us)" : "");
 
 		// Skip our own process
 		if(pid == ourselves)
-			continue;
-
-		// Get process name
-		char name[16] = { 0 };
-		if(!get_process_name(pid, name))
 			continue;
 
 		// Only process this is this is our own process
@@ -124,27 +225,29 @@ bool check_running_FTL(void)
 		pid_t ppid;
 		if(!get_process_ppid(pid, &ppid))
 			continue;
-		char ppid_name[16] = { 0 };
+		char ppid_name[PROC_PATH_SIZ] = { 0 };
 		if(!get_process_name(ppid, ppid_name))
 			continue;
+
+		log_debug(DEBUG_SHMEM, " └ PPID: %d -> name: %s", ppid, ppid_name);
 
 		char timestr[TIMESTR_SIZE] = { 0 };
 		get_process_creation_time(pid, timestr);
 
 		// If this is the first process we log, add a header
-		if(!process_running)
+		if(!already_running)
 		{
-			process_running = true;
+			already_running = true;
 			log_info("%s is already running!", PROCESS_NAME);
 		}
 
 		if(last_pid != ppid)
 		{
 			// Independent process, may be child of init/systemd
-			log_info("%s (%d) ──> %s (PID %d, started %s)",
+			log_info("%s (PID %d) ──> %s (PID %d, started %s)",
 			         ppid_name, ppid, name, pid, timestr);
 			last_pid = pid;
-			last_len = snprintf(NULL, 0, "%s (%d) ──> ", ppid_name, ppid);
+			last_len = snprintf(NULL, 0, "%s (PID %d) ──> ", ppid_name, ppid);
 		}
 		else
 		{
@@ -154,9 +257,10 @@ bool check_running_FTL(void)
 			         (int)last_len, "", name, pid, timestr);
 		}
 	}
+	log_debug(DEBUG_SHMEM, "Done reading /proc/[0-9]*");
 
 	closedir(dirPos);
-	return process_running;
+	return already_running;
 }
 
 bool read_self_memory_status(struct statm_t *result)

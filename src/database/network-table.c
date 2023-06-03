@@ -399,9 +399,9 @@ static int update_netDB_lastQuery(sqlite3 *db, const int network_id, const time_
 		return SQLITE_OK;
 
 	const int ret = dbquery(db, "UPDATE network "\
-	                            "SET lastQuery = MAX(lastQuery, %ld) "\
+	                            "SET lastQuery = MAX(lastQuery, %lu) "\
 	                            "WHERE id = %i;",
-	                            lastQuery, network_id);
+	                            (unsigned long)lastQuery, network_id);
 
 	return ret;
 }
@@ -519,19 +519,19 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, time_t now, time
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &query_stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
-		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\") - SQL error prepare (%i): %s",
+		log_err("insert_netDB_device(\"%s\", %lu, %lu, %u, \"%s\") - SQL error prepare (%i): %s",
 		        hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
 		return rc;
 	}
 
-	log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments ?1-?5 = (\"%s\",%lu,%lu,%u,\"%s\")",
-		     querystr, hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor);
+	log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments ?1-?5 = (\"%s\", %lu, %lu, %u, \"%s\")",
+		      querystr, hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor);
 
 	// Bind hwaddr to prepared statement (1st argument)
 	if((rc = sqlite3_bind_text(query_stmt, 1, hwaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind hwaddr (error %d): %s",
+		log_err("insert_netDB_device(\"%s\", %lu, %lu, %u, \"%s\"): Failed to bind hwaddr (error %d): %s",
 		        hwaddr, (unsigned long)now, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
 		sqlite3_reset(query_stmt);
 		checkFTLDBrc(rc);

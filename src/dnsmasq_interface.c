@@ -3398,34 +3398,6 @@ void FTL_dnsmasq_log(const char *payload, const int length)
 	unlock_shm();
 }
 
-// Check sizes of all important in-memory objects. This routine returns the number of
-// errors found (i.e., a return value of 0 is what we want and expect)
-int check_struct_sizes(void)
-{
-	int result = 0;
-	result += check_one_struct("struct conf_item", sizeof(struct conf_item), 72, 52);
-	result += check_one_struct("struct config", sizeof(struct config),
-	                           CONFIG_ELEMENTS*sizeof(struct conf_item),
-	                           CONFIG_ELEMENTS*sizeof(struct conf_item));
-	result += check_one_struct("queriesData", sizeof(queriesData), 72, 64);
-	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 640, 628);
-	result += check_one_struct("clientsData", sizeof(clientsData), 672, 652);
-	result += check_one_struct("domainsData", sizeof(domainsData), 24, 20);
-	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 24, 20);
-	result += check_one_struct("ednsData", sizeof(ednsData), 76, 76);
-	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24);
-	result += check_one_struct("regexData", sizeof(regexData), 80, 52);
-	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
-	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 16, 16);
-	result += check_one_struct("countersStruct", sizeof(countersStruct), 292, 292);
-	result += check_one_struct("sqlite3_stmt_vec", sizeof(sqlite3_stmt_vec), 32, 16);
-
-	if(result == 0)
-		printf("All okay\n");
-
-	return result;
-}
-
 static const char *check_dnsmasq_name(const char *name)
 {
 	// Special domain name handling

@@ -39,8 +39,8 @@ void __attribute__((alloc_size(2))) *FTLrealloc(void *ptr_in, const size_t size,
 
 	// Handle other errors than EINTR
 	if(ptr_out == NULL)
-		log_err("Memory reallocation (%p -> %zu) failed in %s() (%s:%i)",
-		        ptr_in, size, func, file, line);
+		log_err("Memory reallocation (-> %zu) failed in %s() (%s:%i)",
+		        size, func, file, line);
 
 	// Restore errno value
 	errno = _errno;
