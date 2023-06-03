@@ -2603,6 +2603,9 @@ prepare_lua_request_info_inner(const struct mg_connection *conn, lua_State *L)
 		reg_string(L, "finger", conn->request_info.client_cert->finger);
 		lua_rawset(L, -3);
 	}
+
+	/* Pi-hole addition */
+	reg_string(L, "csrf_token", conn->request_info.csrf_token);
 }
 
 

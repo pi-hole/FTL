@@ -183,6 +183,8 @@ struct mg_request_info {
 
 	const char *acceptedWebSocketSubprotocol; /* websocket subprotocol,
 	                                           * accepted during handshake */
+	/* Pi-hole modification */
+	char csrf_token[32];
 };
 
 

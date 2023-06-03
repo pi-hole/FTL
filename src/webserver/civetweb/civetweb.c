@@ -17760,6 +17760,9 @@ reset_per_request_attributes(struct mg_connection *conn)
 	}
 	conn->request_info.local_uri = NULL;
 
+	/* Pi-hole addition */
+	memset(conn->request_info.csrf_token, 0, sizeof(conn->request_info.csrf_token));
+
 #if defined(USE_SERVER_STATS)
 	conn->processing_time = 0;
 #endif
