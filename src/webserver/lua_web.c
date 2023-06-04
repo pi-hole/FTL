@@ -114,11 +114,12 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	}
 
 	// Every LUA page except admin/login requires authentication
+	const int authorized = check_client_auth(&api, false) != API_AUTH_UNAUTHORIZED;
 	if(!login)
 	{
 		// This is not the login page - check if the user is authenticated
 		// Check if the user is authenticated
-		if(check_client_auth(&api) == API_AUTH_UNAUTHORIZED)
+		if(!authorized)
 		{
 			// Append query string to target
 			char *target = NULL;
@@ -169,7 +170,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	{
 		// This is the login page - check if the user is already authenticated
 		// Check if the user is authenticated
-		if(check_client_auth(&api) != API_AUTH_UNAUTHORIZED)
+		if(authorized)
 		{
 			// User is already authenticated, redirect to index page
 			log_web("User is already authenticated, redirecting to %s", config.webserver.paths.webhome.v.s);

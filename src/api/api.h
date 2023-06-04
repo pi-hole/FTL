@@ -81,7 +81,7 @@ int api_list(struct ftl_conn *api);
 int api_group(struct ftl_conn *api);
 
 // Auth method
-int check_client_auth(struct ftl_conn *api);
+int check_client_auth(struct ftl_conn *api, const bool is_api);
 int api_auth(struct ftl_conn *api);
 void delete_all_sessions(void);
 int api_auth_sessions(struct ftl_conn *api);

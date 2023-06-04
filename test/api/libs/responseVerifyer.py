@@ -268,7 +268,7 @@ class ResponseVerifyer():
 					# Dive into the example to get to the property we want
 					for p in props:
 						if p not in example:
-							self.errors.append(f"Example {flat_path} does not have an '{p}' item")
+							self.errors.append(f"Example {t} does not have an '{p}' item")
 							return False
 						example = example[p]
 					# Check if the type of the example matches the type we defined in the API specs

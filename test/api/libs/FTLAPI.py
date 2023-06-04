@@ -87,7 +87,9 @@ class FTLAPI():
 			elif authenticate == AuthenticationMethods.BODY:
 				json_data = {"sid": self.session['sid'] }
 			elif authenticate == AuthenticationMethods.COOKIE:
+				# Cookie authentication needs both the session ID and the CSRF header
 				cookies = {"sid": self.session['sid'] }
+				headers = { "X-CSRF-Token": self.session['csrf'] }
 
 			self.auth_method = authenticate.name
 

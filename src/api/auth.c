@@ -74,7 +74,7 @@ static struct {
 // Can we validate this client?
 // Returns -1 if not authenticated or expired
 // Returns >= 0 for any valid authentication
-int check_client_auth(struct ftl_conn *api)
+int check_client_auth(struct ftl_conn *api, const bool is_api)
 {
 	// Is the user requesting from localhost?
 	// This may be allowed without authentication depending on the configuration
@@ -158,6 +158,28 @@ int check_client_auth(struct ftl_conn *api)
 	const time_t now = time(NULL);
 	log_debug(DEBUG_API, "Read sid=\"%s\" from %s", sid, sid_source);
 
+	// If the SID has been sent through a cookie, we require a CSRF token in
+	// the header to be sent along with the request for any API requests
+	char csrf[SID_SIZE];
+	const bool need_csrf = strcmp(sid_source, "cookie") == 0;
+	if(need_csrf && is_api)
+	{
+		const char *csrf_header = NULL;
+		// Try to extract CSRF token from header
+		if((csrf_header = mg_get_header(api->conn, "X-CSRF-TOKEN")) != NULL)
+		{
+			// Copy CSRF string
+			strncpy(csrf, csrf_header, SID_SIZE - 1u);
+			// Zero terminate CSRF string
+			csrf[SID_SIZE-1] = '\0';
+		}
+		else
+		{
+			log_debug(DEBUG_API, "API Authentication: FAIL (Cookie authentication without CSRF token)");
+			return API_AUTH_UNAUTHORIZED;
+		}
+	}
+
 	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
 	{
 		if(auth_data[i].used &&
@@ -165,6 +187,12 @@ int check_client_auth(struct ftl_conn *api)
 		   strcmp(auth_data[i].remote_addr, api->request->remote_addr) == 0 &&
 		   strcmp(auth_data[i].sid, sid) == 0)
 		{
+			if(need_csrf && strcmp(auth_data[i].csrf, csrf) != 0)
+			{
+				log_debug(DEBUG_API, "API Authentication: FAIL (CSRF token mismatch, recevied \"%s\", expected \"%s\")",
+				          csrf, auth_data[i].csrf);
+				return API_AUTH_UNAUTHORIZED;
+			}
 			user_id = i;
 			break;
 		}
@@ -203,7 +231,10 @@ int check_client_auth(struct ftl_conn *api)
 		}
 	}
 	else
+	{
 		log_debug(DEBUG_API, "API Authentication: FAIL (SID invalid/expired)");
+		return API_AUTH_UNAUTHORIZED;
+	}
 
 	api->user_id = user_id;
 
@@ -260,6 +291,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 		JSON_ADD_BOOL_TO_OBJECT(session, "valid", true);
 		JSON_ADD_BOOL_TO_OBJECT(session, "totp", strlen(config.webserver.api.totp_secret.v.s) > 0);
 		JSON_REF_STR_IN_OBJECT(session, "sid", auth_data[user_id].sid);
+		JSON_REF_STR_IN_OBJECT(session, "csrf", auth_data[user_id].csrf);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "validity", auth_data[user_id].valid_until - now);
 		JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
 		JSON_ADD_BOOL_TO_OBJECT(json, "dns", dns);
@@ -384,7 +416,7 @@ int api_auth(struct ftl_conn *api)
 	}
 
 	// Did the client authenticate before and we can validate this?
-	int user_id = check_client_auth(api);
+	int user_id = check_client_auth(api, false);
 
 	// If this is a valid session, we can exit early at this point
 	if(user_id != API_AUTH_UNAUTHORIZED)

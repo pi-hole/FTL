@@ -214,6 +214,7 @@ components:
           required:
             - valid
             - sid
+            - csrf
             - validity
             - totp
           properties:
@@ -226,6 +227,10 @@ components:
             sid:
               type: string
               description: Session ID
+              nullable: true
+            csrf:
+              type: string
+              description: CSRF token
               nullable: true
             validity:
               type: integer
@@ -354,6 +359,7 @@ components:
           valid: true
           totp: false
           sid: null
+          csrf: null
           validity: 300
         dns: true
     no_login_required:
@@ -363,6 +369,7 @@ components:
           valid: true
           totp: false
           sid: null
+          csrf: null
           validity: -1
         dns: true
     login_required:
@@ -372,6 +379,7 @@ components:
           valid: false
           totp: false
           sid: null
+          csrf: null
           validity: -1
         dns: true
     login_failed:
@@ -381,6 +389,7 @@ components:
           valid: false
           totp: false
           sid: null
+          csrf: null
           validity: -1
         dns: true
     dns_failure:
@@ -390,6 +399,7 @@ components:
           valid: false
           totp: false
           sid: null
+          csrf: null
           validity: -1
         dns: false
     errors:
