@@ -133,5 +133,9 @@ umask "$OLDUMASK"
 # Remove copied file
 rm /home/pihole/pihole-FTL
 
+# Stop local powerDNS resolver
+killall pdns_server
+killall pdns_recursor
+
 # Exit with return code of bats tests
 exit $RET
