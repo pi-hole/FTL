@@ -91,6 +91,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	const char *sid_source = "cookie";
 	// Try to extract SID from cookie
 	bool sid_avail = http_get_cookie_str(api, "sid", sid, SID_SIZE);
+	const bool cookie_auth = sid_avail;
 
 	// If not, does the client provide a session ID via GET/POST?
 	if(!sid_avail && api->payload.avail)
@@ -161,8 +162,8 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	// If the SID has been sent through a cookie, we require a CSRF token in
 	// the header to be sent along with the request for any API requests
 	char csrf[SID_SIZE];
-	const bool need_csrf = strcmp(sid_source, "cookie") == 0;
-	if(need_csrf && is_api)
+	const bool need_csrf = cookie_auth && is_api;
+	if(need_csrf)
 	{
 		const char *csrf_header = NULL;
 		// Try to extract CSRF token from header
@@ -189,7 +190,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		{
 			if(need_csrf && strcmp(auth_data[i].csrf, csrf) != 0)
 			{
-				log_debug(DEBUG_API, "API Authentication: FAIL (CSRF token mismatch, recevied \"%s\", expected \"%s\")",
+				log_debug(DEBUG_API, "API Authentication: FAIL (CSRF token mismatch, received \"%s\", expected \"%s\")",
 				          csrf, auth_data[i].csrf);
 				return API_AUTH_UNAUTHORIZED;
 			}
