@@ -146,7 +146,7 @@ static bool create_teleporter_database(const char *filename, const char **tables
 	return true;
 }
 
-const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], void *ptr, size_t *size)
+const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], void **ptr, size_t *size)
 {
 	// Initialize ZIP archive
 	memset(zip, 0, sizeof(*zip));
@@ -265,6 +265,15 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	{
 		mz_zip_writer_end(zip);
 		return "Failed to finalize heap ZIP archive!";
+	}
+
+	// Verify that the ZIP archive is valid
+	mz_zip_error pErr;
+	if(!mz_zip_validate_mem_archive(*ptr, *size, MZ_ZIP_FLAG_VALIDATE_LOCATE_FILE_FLAG, &pErr))
+	{
+		log_err("Failed to validate generated Teleporter ZIP archive: %s",
+		        mz_zip_get_error_string(pErr));
+		return "Failed to validate generated Teleporter ZIP archive!";
 	}
 
 	// Generate filename for ZIP archive (it has both the hostname and the

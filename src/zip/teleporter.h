@@ -13,7 +13,7 @@
 #include "zip/miniz/miniz.h"
 #include "webserver/cJSON/cJSON.h"
 
-const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], void *ptr, size_t *size);
+const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], void **ptr, size_t *size);
 bool free_teleporter_zip(mz_zip_archive *zip);
 const char *read_teleporter_zip(char *buffer, const size_t buflen, char *hint, cJSON *json_files);
 
