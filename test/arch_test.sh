@@ -81,6 +81,18 @@ check_static() {
   echo "Static executable check: OK"
 }
 
+check_minimum_glibc_version() {
+  libc="$(objdump -T ./pihole-FTL | grep GLIBC | sed 's/.*GLIBC_\([.0-9]*\).*/\1/g' | sort -Vu | tail -n1)"
+  if [[ "${libc}" != "${1}" ]]; then
+    echo "Wrong minimum glibc version"
+    echo "   Expected: ${1}"
+    echo "   Found: ${libc}"
+    okay=false
+    return
+  fi
+  echo "Minimum glibc version check: OK (${1})"
+}
+
 if [[ "${CI_ARCH}" == "linux/amd64" ]]; then
 
   check_machine "ELF64" "Advanced Micro Devices X86-64"
@@ -99,21 +111,36 @@ elif [[ "${CI_ARCH}" == "linux/arm/v5" ]]; then
 
   check_machine "ELF32" "ARM"
   check_libs "[libm.so.6] [librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
-  check_file "ELF 32-bit LSB pie executable, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, with debug_info, not stripped"
+  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, not stripped"
 
-  check_CPU_arch "v5TE"
+  check_CPU_arch "v4T"
   check_FP_arch ""
+
+  check_minimum_glibc_version "2.15"
 
 elif [[ "${CI_ARCH}" == "linux/arm/v6" ]]; then
 
   check_machine "ELF32" "ARM"
-  check_static # Binary should not rely on any dynamic interpreter
-  check_libs "" # No dependency on any shared library is intended
-  check_file "ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV), statically linked, with debug_info, not stripped"
 
-  check_CPU_arch "v6KZ"
-  # VFPv3 is backwards compatible with VFPv2
-  check_FP_arch "VFPv3"
+  if [ -f "/etc/debian_version" ]; then
+    # Debian Builder
+    check_libs "[libm.so.6] [librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
+    check_file "ELF 32-bit LSB pie executable, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, with debug_info, not stripped"
+
+    check_CPU_arch "v5TE"
+    check_FP_arch ""
+
+    check_minimum_glibc_version "2.29"
+  else
+    # Alpine Builder
+    check_static # Binary should not rely on any dynamic interpreter
+    check_libs "" # No dependency on any shared library is intended
+    check_file "ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV), statically linked, with debug_info, not stripped"
+
+    check_CPU_arch "v6KZ"
+    # VFPv3 is backwards compatible with VFPv2
+    check_FP_arch "VFPv3"
+  fi
 
 elif [[ "${CI_ARCH}" == "linux/arm/v7" ]]; then
 
@@ -122,8 +149,23 @@ elif [[ "${CI_ARCH}" == "linux/arm/v7" ]]; then
   check_libs "" # No dependency on any shared library is intended
   check_file "ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV), statically linked, with debug_info, not stripped"
 
-  check_CPU_arch "v7"
-  check_FP_arch "VFPv3"
+  if [ -f "/etc/debian_version" ]; then
+    # Debian Builder
+    check_libs "[libm.so.6] [librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-armhf.so.3]" # No dependency on any shared library is intended
+    check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 3.2.0, not stripped"
+
+    check_CPU_arch "v7"
+    check_FP_arch "VFPv3-D16"
+
+    check_minimum_glibc_version "2.13"
+  else
+    check_static # Binary should not rely on any dynamic interpreter
+    check_libs "" # No dependency on any shared library is intended
+    check_file "ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV), statically linked, with debug_info, not stripped"
+
+    check_CPU_arch "v7"
+    check_FP_arch "VFPv3"
+  fi
 
 elif [[ "${CI_ARCH}" == "linux/arm64/v8" || "${CI_ARCH}" == "linux/arm64" ]]; then
 
