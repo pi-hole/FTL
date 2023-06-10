@@ -707,80 +707,82 @@ void parse_args(int argc, char* argv[])
 			printf("%sservice pihole-FTL%s command. These are:\n\n", green, normal);
 
 			printf("%sVersion information:%s\n", yellow, normal);
-			printf("\t%s-v%s, %sversion%s         Return FTL version\n", green, normal, green, normal);
-			printf("\t%s-vv%s                 Return verbose version information\n", green, normal);
-			printf("\t%s-t%s, %stag%s             Return git tag\n", green, normal, green, normal);
-			printf("\t%s-b%s, %sbranch%s          Return git branch\n", green, normal, green, normal);
-			printf("\t%s--hash%s              Return git commit hash\n\n", green, normal);
+			printf("  %s-v%s, %sversion%s         Return FTL version\n", green, normal, green, normal);
+			printf("  %s-vv%s                 Return verbose version information\n", green, normal);
+			printf("  %s-t%s, %stag%s             Return git tag\n", green, normal, green, normal);
+			printf("  %s-b%s, %sbranch%s          Return git branch\n", green, normal, green, normal);
+			printf("  %s--hash%s              Return git commit hash\n\n", green, normal);
 
 			printf("%sRegular expression testing:%s\n", yellow, normal);
-			printf("\t%sregex-test %sstr%s      Test %sstr%s against all regular\n", green, blue, normal, blue, normal);
-			printf("\t                    expressions in the database\n");
-			printf("\t%sregex-test %sstr %srgx%s  Test %sstr%s against regular expression\n", green, blue, cyan, normal, blue, normal);
-			printf("\t                    given by regular expression %srgx%s\n\n", cyan, normal);
+			printf("  %sregex-test %sstr%s      Test %sstr%s against all regular expressions in\n", green, blue, normal, blue, normal);
+			printf("                      the database\n");
+			printf("  %sregex-test %sstr %srgx%s  Test %sstr%s against regular expression given by\n", green, blue, cyan, normal, blue, normal);
+			printf("                      regular expression %srgx%s\n\n", cyan, normal);
 
-			printf("    Example: %spihole-FTL regex-test %ssomebad.domain %sbad%s\n", green, blue, cyan, normal);
-			printf("    to test %ssomebad.domain%s against %sbad%s\n\n", blue, normal, cyan, normal);
+			printf("    Example:\n");
+			printf("      %spihole-FTL regex-test %ssomebad.domain %sbad%s\n", green, blue, cyan, normal);
+			printf("      to test %ssomebad.domain%s against %sbad%s\n\n", blue, normal, cyan, normal);
 			printf("    An optional %s-q%s prevents any output (exit code testing):\n", purple, normal);
-			printf("    %spihole-FTL %s-q%s regex-test %ssomebad.domain %sbad%s\n\n", green, purple, green, blue, cyan, normal);
+			printf("      %spihole-FTL %s-q%s regex-test %ssomebad.domain %sbad%s\n\n", green, purple, green, blue, cyan, normal);
 
 			printf("%sEmbedded Lua engine:%s\n", yellow, normal);
-			printf("\t%s--lua%s, %slua%s          FTL's lua interpreter\n", green, normal, green, normal);
-			printf("\t%s--luac%s, %sluac%s        FTL's lua compiler\n\n", green, normal, green, normal);
+			printf("  %s--lua%s, %slua%s          FTL's lua interpreter\n", green, normal, green, normal);
+			printf("  %s--luac%s, %sluac%s        FTL's lua compiler\n\n", green, normal, green, normal);
 
-			printf("    Usage: %spihole-FTL lua %s[OPTIONS] [SCRIPT [ARGS]]%s\n\n", green, cyan, normal);
-			printf("    Options:\n\n");
-			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
-			printf("      options can be seen by running %spihole-FTL lua --help%s\n", green, normal);
-			printf("    - %s[SCRIPT]%s is the optional name of a Lua script.\n", cyan, normal);
-			printf("      If this script does not exist, an interactive shell is\n");
-			printf("      started instead.\n");
-			printf("    - %s[SCRIPT [ARGS]]%s can be used to pass optional args to\n", cyan, normal);
-			printf("      the script.\n\n");
+			printf("    Usage:\n");
+			printf("      %spihole-FTL lua %s[OPTIONS] [SCRIPT [ARGS]]%s\n\n", green, cyan, normal);
+			printf("    Options:\n");
+			printf("    - %s[OPTIONS]%s is an optional set of options. All available options\n", cyan, normal);
+			printf("      can be seen by running %spihole-FTL lua --help%s\n", green, normal);
+			printf("    - %s[SCRIPT]%s is the optional name of a Lua script. If this script\n", cyan, normal);
+			printf("      does not exist, an interactive shell is started instead.\n");
+			printf("    - %s[SCRIPT [ARGS]]%s can be used to pass optional args to the script.\n\n", cyan, normal);
 
 			printf("%sEmbedded SQLite3 shell:%s\n", yellow, normal);
-			printf("\t%ssql %s[-h]%s, %ssqlite3 %s[-h]%s        FTL's SQLite3 shell\n", green, purple, normal, green, purple, normal);
-			printf("\t%s-h%s starts a special %shuman-readable mode%s\n\n", purple, normal, bold, normal);
+			printf("  %ssql%s, %ssqlite3%s      FTL's SQLite3 shell\n", green, normal, green, normal);
 
-			printf("    Usage: %spihole-FTL sqlite3 %s[-h] %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, purple, cyan, normal);
-			printf("    Options:\n\n");
-			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
-			printf("      options can be found in %spihole-FTL sqlite3 --help%s\n", green, normal);
+			printf("    Usage:\n");
+			printf("      %spihole-FTL sqlite3 %s[-h] %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, purple, cyan, normal);
+			printf("    Options:\n");
+			printf("    - %s[-h]%s starts a special %shuman-readable mode%s\n\n", purple, normal, bold, normal);
+			printf("    - %s[OPTIONS]%s is an optional set of options. All available options\n", cyan, normal);
+			printf("      can be found in %spihole-FTL sqlite3 --help%s\n", green, normal);
 			printf("    - %s[FILENAME]%s is the optional name of an SQLite database.\n", cyan, normal);
-			printf("      A new database is created if the file does not previously\n");
-			printf("      exist. If this argument is omitted, SQLite3 will use a\n");
-			printf("      transient in-memory database instead.\n");
-			printf("    - %s[SQL]%s is an optional SQL statement to be executed. If\n", cyan, normal);
-			printf("      omitted, an interactive shell is started instead.\n\n");
+			printf("      A new database is created if the file does not previously exist.\n");
+			printf("      If this argument is omitted, SQLite3 will use a transient\n");
+			printf("      in-memory database instead.\n");
+			printf("    - %s[SQL]%s is an optional SQL statement to be executed. If omitted,\n", cyan, normal);
+			printf("      an interactive shell is started instead.\n\n");
 
 			printf("%sEmbedded dnsmasq options:%s\n", yellow, normal);
-			printf("\t%sdnsmasq-test%s        Test syntax of dnsmasq's config\n", green, normal);
-			printf("\t%s--list-dhcp4%s        List known DHCPv4 config options\n", green, normal);
-			printf("\t%s--list-dhcp6%s        List known DHCPv6 config options\n\n", green, normal);
+			printf("  %sdnsmasq-test%s        Test syntax of dnsmasq's config\n", green, normal);
+			printf("  %s--list-dhcp4%s        List known DHCPv4 config options\n", green, normal);
+			printf("  %s--list-dhcp6%s        List known DHCPv6 config options\n\n", green, normal);
 
 			printf("%sDebugging and special use:%s\n", yellow, normal);
-			printf("\t%sd%s, %sdebug%s            Enter debugging mode\n", green, normal, green, normal);
-			printf("\t%stest%s                Don't start pihole-FTL but instead\n", green, normal);
-			printf("\t                    quit immediately\n");
-			printf("\t%s-f%s, %sno-daemon%s       Don't go into daemon mode\n\n", green, normal, green, normal);
+			printf("  %sd%s, %sdebug%s            Enter debugging mode\n", green, normal, green, normal);
+			printf("  %stest%s                Don't start pihole-FTL but instead quit\n", green, normal);
+			printf("                      immediately\n");
+			printf("  %s-f%s, %sno-daemon%s       Don't go into daemon mode\n\n", green, normal, green, normal);
 
 			printf("%sConfig options:%s\n", yellow, normal);
-			printf("\t%s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
-			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n\n", green, blue, cyan, normal, cyan, normal, blue, normal);
+			printf("  %s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
+			printf("  %s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n\n", green, blue, cyan, normal, cyan, normal, blue, normal);
 
 			printf("%sEmbedded GZIP un-/compressor:%s\n", yellow, normal);
 			printf("    A simple but fast in-memory gzip compressor\n\n");
-			printf("    Usage: %spihole-FTL --compress %sinfile %s[outfile]%s\n", green, cyan, purple, normal);
-			printf("    Usage: %spihole-FTL --uncompress %sinfile %s[outfile]%s\n\n", green, cyan, purple, normal);
+			printf("    Usage:\n");
+			printf("      %spihole-FTL --compress %sinfile %s[outfile]%s\n", green, cyan, purple, normal);
+			printf("      %spihole-FTL --uncompress %sinfile %s[outfile]%s\n\n", green, cyan, purple, normal);
 			printf("    - %sinfile%s is the file to be compressed.\n", cyan, normal);
 			printf("    - %s[outfile]%s is the optional target. If omitted, FTL will\n", purple, normal);
 			printf("      %s--compress%s:   use the %sinfile%s and append %s.gz%s at the end\n", green, normal, cyan, normal, cyan, normal);
 			printf("      %s--uncompress%s: use the %sinfile%s and remove %s.gz%s at the end\n\n", green, normal, cyan, normal, cyan, normal);
 
 			printf("%sTeleporter:%s\n", yellow, normal);
-			printf("\t%s--teleporter%s        Create a Teleporter archive in the\n", green, normal);
-			printf("\t                    current directory and print its name\n");
-			printf("\t%s--teleporter%s file%s   Import the Teleporter archive %sfile%s\n\n", green, cyan, normal, cyan, normal);
+			printf("  %s--teleporter%s        Create a Teleporter archive in the \n", green, normal);
+			printf("                      current directory and print its name\n");
+			printf("  %s--teleporter%s file%s   Import the Teleporter archive %sfile%s\n\n", green, cyan, normal, cyan, normal);
 
 			printf("%sTLS X.509 certificate generator:%s\n", yellow, normal);
 			printf("    Generate a self-signed certificate suitable for SSL/TLS\n\n");
@@ -790,17 +792,15 @@ void parse_args(int argc, char* argv[])
 			printf("    Usage: %spihole-FTL --gen-x509 %s<outfile> %s[rsa]%s\n\n", green, yellow, purple, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
-			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
-			printf("\t                    network\n");
-			printf("\t%sarp-scan %s[-a/-x]%s    Use ARP to scan local network for\n", green, cyan, normal);
-			printf("\t                    possible IP conflicts\n");
-			printf("\t                    Append %s-a%s to force scan on all\n", cyan, normal);
-			printf("\t                    interfaces\n");
-			printf("\t                    Append %s-x%s to force scan on all\n", cyan, normal);
-			printf("\t                    interfaces and scan 10x more often\n");
-			printf("\t%s--totp%s              Generate valid TOTP token for 2FA\n", green, normal);
-			printf("\t                    authentication (if enabled)\n");
-			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
+			printf("  %sdhcp-discover%s       Discover DHCP servers in the local network\n", green, normal);
+			printf("  %sarp-scan %s[-a/-x]%s    Use ARP to scan local network for possible\n", green, cyan, normal);
+			printf("                      IP conflicts\n");
+			printf("                      Append %s-a%s to force scan on all interfaces\n", cyan, normal);
+			printf("                      Append %s-x%s to force scan on all interfaces\n", cyan, normal);
+			printf("                      and scan 10x more often\n");
+			printf("  %s--totp%s              Generate valid TOTP token for 2FA\n", green, normal);
+			printf("                      authentication (if enabled)\n");
+			printf("  %s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);
 		}
 
