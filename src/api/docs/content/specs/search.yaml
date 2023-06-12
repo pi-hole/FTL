@@ -127,7 +127,7 @@ components:
                     example: 1664624500
                   number:
                     type: integer
-                    description: Number of domains in the adlist
+                    description: Number of entries in the adlist
                     example: 7
                   invalid_domains:
                     type: integer

@@ -290,9 +290,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	}
 
 	// Update date
-	if(sqlite3_bind_int(stmt, 1, exact_domains) != SQLITE_OK)
+	if(sqlite3_bind_int(stmt, 1, exact_domains + abp_domains) != SQLITE_OK)
 	{
-		printf("%s  %s Unable to bind number of domains to SQL statement to update adlist properties in database file %s\n",
+		printf("%s  %s Unable to bind number of entries to SQL statement to update adlist properties in database file %s\n",
 		       over, cross, outfile);
 		fclose(fpin);
 		sqlite3_close(db);
