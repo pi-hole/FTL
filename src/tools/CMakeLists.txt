@@ -13,6 +13,8 @@ set(tools_sources
         arp-scan.h
         dhcp-discover.c
         dhcp-discover.h
+        gravity-parseList.c
+        gravity-parseList.h
         )
 
 add_library(tools OBJECT ${tools_sources})

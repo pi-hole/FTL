@@ -3,12 +3,12 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  Gravity tools collection routines
+*  Gravity parseList routines
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "gravity-tools.h"
+#include "tools/gravity-parseList.h"
 #include "args.h"
 #include <regex.h>
 #include "database/sqlite3.h"
@@ -29,13 +29,10 @@
 // See https://github.com/pi-hole/pi-hole/pull/5240
 #define ABP_DOMAIN_REXEX "\\|\\|"SUBDOMAIN_PATTERN"*"TLD_PATTERN"\\^"
 
-// Detects ABP extended CSS selectors ("##", "#!#", "#@#", "#?#") preceded by a letter
-#define ABP_CSS_SELECTORS "[a-z]#[$?@]{0,1}#"
-
 // A list of items of common local hostnames not to report as unusable
 // Some lists (i.e StevenBlack's) contain these as they are supposed to be used as HOST files
 // but flagging them as unusable causes more confusion than it's worth - so we suppress them from the output
-#define FALSE_POSITIVES "localhost|localhost.localdomain|local|broadcasthost|localhost|ip6-localhost|ip6-loopback|lo0 localhost|ip6-localnet|ip6-mcastprefix|ip6-allnodes|ip6-allrouters|ip6-allhosts"
+#define FALSE_POSITIVES "^(localhost|localhost.localdomain|local|broadcasthost|localhost|ip6-localhost|ip6-loopback|lo0 localhost|ip6-localnet|ip6-mcastprefix|ip6-allnodes|ip6-allrouters|ip6-allhosts)$"
 
 // Print progress for files larger than 10 MB
 // This is to avoid printing progress for small files
@@ -75,7 +72,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	rewind(fpin);
 
 	// Compile regular expression to validate domains
-	regex_t exact_regex, abp_regex, false_positives_regex, abp_css_regex;
+	regex_t exact_regex, abp_regex, false_positives_regex;
 	if(regcomp(&exact_regex, VALID_DOMAIN_REXEX, REG_EXTENDED) != 0)
 	{
 		printf("%s  %s Unable to compile regular expression to validate exact domains\n",
@@ -95,14 +92,6 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	if(regcomp(&false_positives_regex, FALSE_POSITIVES, REG_EXTENDED | REG_NOSUB) != 0)
 	{
 		printf("%s  %s Unable to compile regular expression to identify false positives\n",
-		       over, cross);
-		fclose(fpin);
-		sqlite3_close(db);
-		return EXIT_FAILURE;
-	}
-	if(regcomp(&abp_css_regex, ABP_CSS_SELECTORS, REG_EXTENDED) != 0)
-	{
-		printf("%s  %s Unable to compile regular expression to validate ABP-style domains\n",
 		       over, cross);
 		fclose(fpin);
 		sqlite3_close(db);
@@ -157,34 +146,14 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		total_read += read;
 		lineno++;
 
-		// Remove leading whitespace
-		// isspace() matches spaces, tabs, form feeds, line breaks,
-		// carriage returns, and vertical tabs
-		while(isspace(line[0]))
-			line++;
-
-		// Skip comments
-		// # is used for comments in HOSTS files
-		// ! is used for comments in AdBlock-style files
-		// [ is used for comments in AdGuard-style files and ABP headers
-		if(line[0] == '#' || line[0] == '!' || line[0] == '[')
-			continue;
-
 		// Remove trailing newline
 		if(line[read-1] == '\n')
-			line[--read] = '\0';
-
-		// Remove trailing carriage return (Windows)
-		if(line[read-1] == '\r')
 			line[--read] = '\0';
 
 		// Remove trailing dot (convert FQDN to domain)
 		if(line[read-1] == '.')
 			line[--read] = '\0';
 
-		// Skip empty lines
-		if(line[0] == '\0')
-			continue;
 
 		regmatch_t match = { 0 };
 		// Validate line
@@ -219,13 +188,6 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		{
 			// ABP-style match (see comments above)
 
-			// Skip lines containing ABP extended CSS selectors
-			// ("##", "#!#", "#@#", "#?#") preceded by a letter
-			// See https://github.com/pi-hole/pi-hole/pull/5247 for
-			// further information on why this is necessary
-			if(regexec(&abp_css_regex, line, 1, &match, 0) == 0)
-				continue;
-
 			// Append pattern to database using prepared statement
 			if(sqlite3_bind_text(stmt, 1, line, -1, SQLITE_STATIC) != SQLITE_OK)
 			{
@@ -247,26 +209,33 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		}
 		else
 		{
-			// No match - add to list of invalid domains
-			if(invalid_domains_list_len < MAX_INVALID_DOMAINS)
-			{
-				// Check if we have this domain already
-				bool found = false;
-				for(unsigned int i = 0; i < invalid_domains_list_len; i++)
-				{
-					if(strcmp(invalid_domains_list[i], line) == 0)
-					{
-						found = true;
-						break;
-					}
-				}
+			// No match - This is an invalid domain or a false positive
 
-				// If not found, check if this is a false
-				// positive and add it to the list if it is not
-				if(!found && regexec(&false_positives_regex, line, 0, NULL, 0) != 0)
-					invalid_domains_list[invalid_domains_list_len++] = strdup(line);
+			// Ignore false positives - they don't count as invalid domains
+			if(regexec(&false_positives_regex, line, 0, NULL, 0) != 0)
+			{
+				// Add the domain to invalid_domains_list only
+				// if the list contains < MAX_INVALID_DOMAINS
+				if(invalid_domains_list_len < MAX_INVALID_DOMAINS)
+				{
+					// Check if we have this domain already
+					bool found = false;
+					for(unsigned int i = 0; i < invalid_domains_list_len; i++)
+					{
+						if(strcmp(invalid_domains_list[i], line) == 0)
+						{
+							found = true;
+							break;
+						}
+					}
+
+					// If not found, add it to the list
+					if(!found)
+						invalid_domains_list[invalid_domains_list_len++] = strdup(line);
+
+				}
+				invalid_domains++;
 			}
-			invalid_domains++;
 		}
 
 		// Print progress if the file is large enough every 100 lines
@@ -309,8 +278,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		}
 	}
 
-	// Update number of domains on this list
-	sql = "UPDATE adlist SET number = ?, invalid_domains = ? WHERE id = ?;";
+	// Update number of domains and update timestamp on this list
+	sql = "UPDATE adlist SET number = ?, invalid_domains = ?, date_updated = cast(strftime('%s', 'now') as int) WHERE id = ?;";
 	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
 		printf("%s  %s Unable to prepare SQL statement to update adlist properties in database file %s\n",
@@ -388,7 +357,6 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	regfree(&exact_regex);
 	regfree(&abp_regex);
 	regfree(&false_positives_regex);
-	regfree(&abp_css_regex);
 	for(unsigned int i = 0; i < invalid_domains_list_len; i++)
 		if(invalid_domains_list[i] != NULL)
 			free(invalid_domains_list[i]);

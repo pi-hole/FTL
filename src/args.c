@@ -37,7 +37,7 @@
 // LUA dependencies
 #include "lua/ftl_lua.h"
 // gravity_parseList()
-#include "gravity-tools.h"
+#include "tools/gravity-parseList.h"
 // run_dhcp_discover()
 #include "tools/dhcp-discover.h"
 // mg_version()
