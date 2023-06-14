@@ -577,6 +577,10 @@
     #       Pi-hole midnight theme (dark)
     #   - "default-darker"
     #       Pi-hole deep-midnight theme (dark)
+    #   - "high-contrast"
+    #       High-contrast theme (light)
+    #   - "high-contrast-dark"
+    #       High-contrast theme (dark)
     #   - "lcars"
     #       Star Trek LCARS theme (dark)
     theme = "default-auto"

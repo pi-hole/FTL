@@ -874,6 +874,8 @@ void initConfig(struct config *conf)
 			{ "default-light", "Pi-hole day theme (light)" },
 			{ "default-dark", "Pi-hole midnight theme (dark)" },
 			{ "default-darker", "Pi-hole deep-midnight theme (dark)" },
+			{ "high-contrast", "High Contrast theme (light)" },
+			{ "high-contrast-dark", "High Contrast theme (dark)" },
 			{ "lcars", "Star Trek LCARS theme (dark)" }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->webserver.interface.theme.a, themes);
