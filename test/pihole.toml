@@ -570,7 +570,7 @@
     #
     # Possible values are:
     #   - "default-auto"
-    #       Pi-hole default theme (light/dark, default)
+    #       Pi-hole auto theme (light/dark, default)
     #   - "default-light"
     #       Pi-hole day theme (light)
     #   - "default-dark"
