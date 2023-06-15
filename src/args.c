@@ -331,7 +331,14 @@ void parse_args(int argc, char* argv[])
 		if(argc == 6 && strcmp(argv[2], "parseList") == 0)
 		{
 			// Parse the given list and write the result to the given file
-			exit(gravity_parseList(argv[3], argv[4], argv[5]));
+			exit(gravity_parseList(argv[3], argv[4], argv[5], true));
+		}
+
+		// pihole-FTL gravity checkList <infile>
+		if(argc == 4 && strcmp(argv[2], "checkList") == 0)
+		{
+			// Parse the given list and write the result to the given file
+			exit(gravity_parseList(argv[3], "", "-1", true));
 		}
 
 		printf("Incorrect usage of pihole-FTL gravity subcommand\n");
@@ -783,11 +790,18 @@ void parse_args(int argc, char* argv[])
 			printf("\t%s--teleporter%s file%s   Import the Teleporter archive %sfile%s\n\n", green, cyan, normal, cyan, normal);
 
 			printf("%sTLS X.509 certificate generator:%s\n", yellow, normal);
-			printf("    Generate a self-signed certificate suitable for SSL/TLS\n\n");
+			printf("    Generate a self-signed certificate suitable for SSL/TLS\n");
+			printf("    and store it in %soutfile%s.\n\n", cyan, normal);
 			printf("    By default, this new certificate is based on the elliptic\n");
 			printf("    curve secp521r1. If the optional flag %s[rsa]%s is specified,\n", purple, normal);
 			printf("    an RSA (4096 bit) key will be generated instead.\n\n");
-			printf("    Usage: %spihole-FTL --gen-x509 %s<outfile> %s[rsa]%s\n\n", green, yellow, purple, normal);
+			printf("    Usage: %spihole-FTL --gen-x509 %soutfile %s[rsa]%s\n\n", green, cyan, purple, normal);
+
+			printf("%sGravity tools:%s\n", yellow, normal);
+			printf("    Check domains in a given file for validity using Pi-hole's\n");
+			printf("    gravity filters. The expected input format is one domain\n");
+			printf("    per line (no HOSTS lists, etc.)\n\n");
+			printf("    Usage: %spihole-FTL gravity checkList %sinfile%s\n\n", green, cyan, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);

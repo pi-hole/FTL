@@ -10,4 +10,4 @@
 
 #include "FTL.h"
 
-int gravity_parseList(const char *infile, const char *outfile, const char *adlistID);
+int gravity_parseList(const char *infile, const char *outfile, const char *adlistID, const bool checkOnly);

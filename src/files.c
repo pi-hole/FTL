@@ -267,7 +267,7 @@ struct mntent *get_filesystem_details(const char *path)
 
 	/* iterate through the list of devices */
 	FILE *file = setmntent("/proc/mounts", "r");
-	struct mntent *ent;
+	struct mntent *ent = NULL;
 	while(file != NULL && (ent = getmntent(file)) != NULL)
 	{
 		/* stat the mount point */
