@@ -266,20 +266,20 @@ struct mntent *get_filesystem_details(const char *path)
 	stat(path, &path_stat);
 
 	/* iterate through the list of devices */
-	FILE *aFile = setmntent("/proc/mounts", "r");
+	FILE *file = setmntent("/proc/mounts", "r");
 	struct mntent *ent;
-	while((ent = getmntent(aFile)) != NULL)
+	while(file != NULL && (ent = getmntent(file)) != NULL)
 	{
 		/* stat the mount point */
 		struct stat dev_stat;
 		stat(ent->mnt_dir, &dev_stat);
 
 		/* check if our file and the mount point are on the same device */
-		if( dev_stat.st_dev == path_stat.st_dev )
+		if(dev_stat.st_dev == path_stat.st_dev)
 			break;
 	}
 
-	endmntent(aFile);
+	endmntent(file);
 
 	return ent;
 }
