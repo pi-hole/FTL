@@ -133,6 +133,10 @@ components:
                     type: integer
                     description: Number of invalid domains in the adlist
                     example: 0
+                  abp_entries:
+                    type: integer
+                    description: Number of ABP entries in the adlist
+                    example: 0
                   status:
                     type: integer
                     description: Status of the adlist

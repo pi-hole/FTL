@@ -25,16 +25,17 @@ CREATE TABLE domainlist
 
 CREATE TABLE adlist
 (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, 
-  address TEXT UNIQUE NOT NULL, 
-  enabled BOOLEAN NOT NULL DEFAULT 1, 
-  date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), 
-  date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), 
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  address TEXT UNIQUE NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT 1,
+  date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as int)),
+  date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as int)),
   comment TEXT,
-  date_updated INTEGER, 
-  number INTEGER NOT NULL DEFAULT 0, 
-  invalid_domains INTEGER NOT NULL DEFAULT 0, 
-  status INTEGER NOT NULL DEFAULT 0
+  date_updated INTEGER,
+  number INTEGER NOT NULL DEFAULT 0,
+  invalid_domains INTEGER NOT NULL DEFAULT 0,
+  status INTEGER NOT NULL DEFAULT 0,
+  abp_entries INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE adlist_by_group
@@ -214,7 +215,7 @@ INSERT INTO domainlist VALUES(16,3,'^regex-notMultiple.ftl$;querytype=!ANY,HTTPS
 /* Other special domains */
 INSERT INTO domainlist VALUES(17,1,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
 
-INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list',1559928803,2000,2,1);
+INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list',1559928803,2000,2,1,0);
 
 INSERT INTO gravity VALUES('allowed.ftl',1);
 INSERT INTO gravity VALUES('gravity.ftl',1);

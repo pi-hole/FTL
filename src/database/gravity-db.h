@@ -23,6 +23,7 @@ typedef struct {
 	int type_int;
 	int number;
 	int invalid_domains;
+	int abp_entries;
 	int status;
 	const char *name;
 	const char *domain;

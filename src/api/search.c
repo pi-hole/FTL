@@ -68,6 +68,7 @@ static int search_table(struct ftl_conn *api,
 			JSON_ADD_NUMBER_TO_OBJECT(row, "date_updated", table.date_updated);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "number", table.number);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "invalid_domains", table.invalid_domains);
+			JSON_ADD_NUMBER_TO_OBJECT(row, "abp_entries", table.abp_entries);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "status", table.status);
 		}
 

@@ -279,7 +279,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	}
 
 	// Update number of domains and update timestamp on this list
-	sql = "UPDATE adlist SET number = ?, invalid_domains = ?, date_updated = cast(strftime('%s', 'now') as int) WHERE id = ?;";
+	sql = "UPDATE adlist SET number = ?, invalid_domains = ?, abp_entries = ?, date_updated = cast(strftime('%s', 'now') as int) WHERE id = ?;";
 	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
 		printf("%s  %s Unable to prepare SQL statement to update adlist properties in database file %s\n",
@@ -289,7 +289,6 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		return EXIT_FAILURE;
 	}
 
-	// Update date
 	if(sqlite3_bind_int(stmt, 1, exact_domains + abp_domains) != SQLITE_OK)
 	{
 		printf("%s  %s Unable to bind number of entries to SQL statement to update adlist properties in database file %s\n",
@@ -306,7 +305,15 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		sqlite3_close(db);
 		return EXIT_FAILURE;
 	}
-	if(sqlite3_bind_int(stmt, 3, adlistID) != SQLITE_OK)
+	if(sqlite3_bind_int(stmt, 3, abp_domains) != SQLITE_OK)
+	{
+		printf("%s  %s Unable to bind number of ABP entries to SQL statement to update adlist properties in database file %s\n",
+		       over, cross, outfile);
+		fclose(fpin);
+		sqlite3_close(db);
+		return EXIT_FAILURE;
+	}
+	if(sqlite3_bind_int(stmt, 4, adlistID) != SQLITE_OK)
 	{
 		printf("%s  %s Unable to bind adlist ID to SQL statement to update adlist properties in database file %s\n",
 		       over, cross, outfile);

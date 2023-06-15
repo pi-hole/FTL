@@ -259,6 +259,11 @@ components:
           type: integer
           readOnly: true
           example: 0
+        abp_entries:
+          description: Number of ABP entries on this list
+          type: integer
+          readOnly: true
+          example: 0
         status:
           description: List status
           type: integer
