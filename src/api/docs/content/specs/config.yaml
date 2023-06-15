@@ -441,6 +441,10 @@ components:
                   type: boolean
                 privacylevel:
                   type: integer
+                dnsmasq_lines:
+                  type: array
+                  items:
+                    type: string
                 check:
                   type: object
                   properties:
@@ -672,6 +676,7 @@ components:
             delay_startup: 10
             addr2line: true
             privacylevel: 0
+            dnsmasq_lines: [ ]
             check:
               load: true
               shmem: 90

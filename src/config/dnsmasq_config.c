@@ -509,7 +509,24 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 
 	// Add option for caching all DNS records
 	fputs("# Cache all DNS records\n", pihole_conf);
-	fputs("cache-rr=ANY\n", pihole_conf);
+	fputs("cache-rr=ANY\n\n", pihole_conf);
+
+	// Add additional config lines to disk (if present)
+	if(conf->misc.dnsmasq_lines.v.json != NULL &&
+	   cJSON_GetArraySize(conf->misc.dnsmasq_lines.v.json) > 0)
+	{
+		fputs("#### Additional user configuration - START ####\n", pihole_conf);
+		cJSON *line = NULL;
+		cJSON_ArrayForEach(line, conf->misc.dnsmasq_lines.v.json)
+		{
+			if(line != NULL && cJSON_IsString(line))
+			{
+				fputs(line->valuestring, pihole_conf);
+				fputc('\n', pihole_conf);
+			}
+		}
+		fputs("#### Additional user configuration - END ####\n\n", pihole_conf);
+	}
 
 	// Flush config file to disk
 	fflush(pihole_conf);

@@ -1046,6 +1046,13 @@ void initConfig(struct config *conf)
 	conf->misc.addr2line.f = FLAG_ADVANCED_SETTING;
 	conf->misc.addr2line.d.b = true;
 
+	conf->misc.dnsmasq_lines.k = "misc.dnsmasq_lines";
+	conf->misc.dnsmasq_lines.h = "Additional lines to inject into the generated dnsmasq configuration.\n Warning: This is an advanced setting and should only be used with care. Incorrectly formatted or duplicated lines as well as lines conflicting with the automatic configuration of Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.\n Use this option with extra care.";
+	conf->misc.dnsmasq_lines.a = cJSON_CreateStringReference("array of valid dnsmasq config line options");
+	conf->misc.dnsmasq_lines.t = CONF_JSON_STRING_ARRAY;
+	conf->misc.dnsmasq_lines.f = FLAG_RESTART_DNSMASQ;
+	conf->misc.dnsmasq_lines.d.json = cJSON_CreateArray();
+
 	// sub-struct misc.check
 	conf->misc.check.load.k = "misc.check.load";
 	conf->misc.check.load.h = "Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you should run Pi-hole on a server that is otherwise extremely busy as queuing on the system can lead to unnecessary delays in DNS operation as the system becomes less and less usable as the system load increases because all resources are permanently in use. To account for this, FTL regularly checks the system load. To bring this to your attention, FTL warns about excessive load when the 15 minute system load average exceeds the number of cores.\n This check can be disabled with this setting.";
