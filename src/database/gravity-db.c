@@ -1577,14 +1577,15 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 				           "WHERE name = :item";
 			}
 		else if(listtype == GRAVITY_ADLISTS)
-			querystr = "REPLACE INTO adlist (address,enabled,comment,id,date_added,date_updated,number,invalid_domains,status) "
+			querystr = "REPLACE INTO adlist (address,enabled,comment,id,date_added,date_updated,number,invalid_domains,status,abp_entries) "
 			           "VALUES (:item,:enabled,:comment,"
 			                   "(SELECT id FROM adlist WHERE address = :item),"
 			                   "(SELECT date_added FROM adlist WHERE address = :item),"
 			                   "(SELECT date_updated FROM adlist WHERE address = :item),"
 			                   "(SELECT number FROM adlist WHERE address = :item),"
 			                   "(SELECT invalid_domains FROM adlist WHERE address = :item),"
-			                   "(SELECT status FROM adlist WHERE address = :item));";
+			                   "(SELECT status FROM adlist WHERE address = :item)),"
+			                   "(SELECT abp_entries FROM adlist WHERE address = :item));";
 		else if(listtype == GRAVITY_CLIENTS)
 			querystr = "REPLACE INTO client (ip,comment,id,date_added) "
 			           "VALUES (:item,:comment,"
@@ -2039,7 +2040,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 		}
 		snprintf(querystr, buflen, "SELECT id,address,enabled,date_added,date_modified,comment,"
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids,"
-		                                     "date_updated,number,invalid_domains,status "
+		                                     "date_updated,number,invalid_domains,status,abp_entries "
 		                                     "FROM adlist a%s;", filter);
 	}
 	else if(listtype == GRAVITY_CLIENTS)
@@ -2064,7 +2065,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			else
 				filter = " WHERE g.domain LIKE :item";
 		}
-		snprintf(querystr, buflen, "SELECT domain,a.id,a.address,a.enabled,a.date_added,a.date_modified,a.comment,a.date_updated,a.number,a.invalid_domains,a.status,"
+		snprintf(querystr, buflen, "SELECT domain,a.id,a.address,a.enabled,a.date_added,a.date_modified,a.comment,a.date_updated,a.number,a.invalid_domains,a.status,a.abp_entries,"
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group ag WHERE ag.adlist_id = g.adlist_id) AS group_ids "
 		                                     "FROM gravity g JOIN adlist a ON a.id = g.adlist_id %s;", filter);
 	}
@@ -2233,6 +2234,9 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 
 			else if(strcasecmp(cname, "status") == 0)
 				row->status = sqlite3_column_int(read_stmt, c);
+
+			else if(strcasecmp(cname, "abp_entries") == 0)
+				row->abp_entries = sqlite3_column_int(read_stmt, c);
 
 			else
 				log_err("API: Encountered unknown column %s", cname);
