@@ -75,6 +75,9 @@ static bool valid_hostname(char* name, const char* clientip)
 	return true;
 }
 
+#define NUM_NS4 (sizeof(_res.nsaddr_list) / sizeof(_res.nsaddr_list[0]))
+#define NUM_NS6 (sizeof(_res._u._ext.nsaddrs) / sizeof(_res._u._ext.nsaddrs[0]))
+
 static void print_used_resolvers(const char *message)
 {
 	// Print details only when debugging
@@ -82,19 +85,17 @@ static void print_used_resolvers(const char *message)
 		return;
 
 	log_debug(DEBUG_RESOLVER, "%s", message);
-	const int num_ns4 = (sizeof(_res.nsaddr_list) / sizeof(_res.nsaddr_list[0]));
-	const int num_ns6 = (sizeof(_res._u._ext.nsaddrs) / sizeof(_res._u._ext.nsaddrs[0]));
-	for(int i = 0u; i < num_ns4 + num_ns6; i++)
+	for(unsigned int i = 0u; i < NUM_NS4 + NUM_NS6; i++)
 	{
 		int family;
 		in_port_t port;
 		void *addr = NULL;
-		if(i < num_ns4)
+		if(i < NUM_NS4)
 		{
 			// Regular name servers (IPv4)
-			const int j = i;
+			const unsigned int j = i;
 			// Some of the entries may not be configured
-			if(i > _res.nscount || _res.nsaddr_list[j].sin_family != AF_INET)
+			if(_res.nsaddr_list[j].sin_family != AF_INET)
 				continue;
 
 			// IPv4 name servers
@@ -105,7 +106,7 @@ static void print_used_resolvers(const char *message)
 		else
 		{
 			// Extension name servers (IPv6)
-			const int j = i - num_ns4;
+			const unsigned int j = i - NUM_NS4;
 			// Some of the entries may not be configured
 			if(_res._u._ext.nsaddrs[j] == NULL ||
 			   _res._u._ext.nsaddrs[j]->sin6_family != AF_INET6)
@@ -119,7 +120,7 @@ static void print_used_resolvers(const char *message)
 		char nsname[INET6_ADDRSTRLEN];
 		inet_ntop(family, addr, nsname, INET6_ADDRSTRLEN);
 
-		log_debug(DEBUG_RESOLVER, " %s %d: %s:%hu (IPv%u)", i < MAXNS ? "   " : "EXT",
+		log_debug(DEBUG_RESOLVER, " %s %u: %s:%hu (IPv%u)", i < MAXNS ? "   " : "EXT",
 		          i, nsname, port, family == AF_INET ? 4u : 6u);
 	}
 }
@@ -234,7 +235,7 @@ char *resolveHostname(const char *addr)
 	struct in_addr ns_addr_bck[MAXNS];
 	in_port_t ns_port_bck[MAXNS];
 	int bck_nscount = _res.nscount;
-	for(int i = 0; i < bck_nscount; i++)
+	for(unsigned int i = 0u; i < NUM_NS4; i++)
 	{
 		ns_addr_bck[i] = _res.nsaddr_list[i].sin_addr;
 		ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
@@ -250,12 +251,14 @@ char *resolveHostname(const char *addr)
 
 	// Backup configured name server and invalidate them (IPv6)
 	struct in6_addr ns6_addr_bck[MAXNS];
+	in_port_t ns6_port_bck[MAXNS];
 	int bck_nscount6 = _res._u._ext.nscount6;
-	for(int i = 0; i < bck_nscount6; i++)
+	for(unsigned int i = 0u; i < NUM_NS6; i++)
 	{
 		if(_res._u._ext.nsaddrs[i] == NULL)
 			continue;
 		memcpy(&ns6_addr_bck[i], &_res._u._ext.nsaddrs[i]->sin6_addr, sizeof(struct in6_addr));
+		ns6_port_bck[i] = _res._u._ext.nsaddrs[i]->sin6_port;
 		memcpy(&_res._u._ext.nsaddrs[i]->sin6_addr, &in6addr_any, sizeof(struct in6_addr));
 	}
 
@@ -296,7 +299,7 @@ char *resolveHostname(const char *addr)
 		log_debug(DEBUG_RESOLVER, " ---> \"\" (not found internally: %s", gai_strerror(ret));
 
 	// Restore IPv4 resolvers
-	for(int i = 0; i < bck_nscount; i++)
+	for(unsigned int i = 0u; i < NUM_NS4; i++)
 	{
 		_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
 		_res.nsaddr_list[i].sin_port = ns_port_bck[i];
@@ -304,11 +307,12 @@ char *resolveHostname(const char *addr)
 	_res.nscount = bck_nscount;
 
 	// Restore IPv6 resolvers
-	for(int i = 0; i < bck_nscount6; i++)
+	for(unsigned int i = 0u; i < NUM_NS6; i++)
 	{
 		if(_res._u._ext.nsaddrs[i] == NULL)
 			continue;
 		memcpy(&_res._u._ext.nsaddrs[i]->sin6_addr, &ns6_addr_bck[i], sizeof(struct in6_addr));
+		_res._u._ext.nsaddrs[i]->sin6_port = ns6_port_bck[i];
 	}
 	_res._u._ext.nscount6 = bck_nscount6;
 
