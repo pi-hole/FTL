@@ -82,16 +82,17 @@ static void print_used_resolvers(const char *message)
 		return;
 
 	log_debug(DEBUG_RESOLVER, "%s", message);
-	for(int i = 0u; i < 2*MAXNS; i++)
+	const int num_ns4 = (sizeof(_res.nsaddr_list) / sizeof(_res.nsaddr_list[0]));
+	const int num_ns6 = (sizeof(_res._u._ext.nsaddrs) / sizeof(_res._u._ext.nsaddrs[0]));
+	for(int i = 0u; i < num_ns4 + num_ns6; i++)
 	{
 		int family;
 		in_port_t port;
 		void *addr = NULL;
-		int j = i;
-		if(i < MAXNS)
+		if(i < num_ns4)
 		{
 			// Regular name servers (IPv4)
-
+			const int j = i;
 			// Some of the entries may not be configured
 			if(i > _res.nscount || _res.nsaddr_list[j].sin_family != AF_INET)
 				continue;
@@ -104,7 +105,7 @@ static void print_used_resolvers(const char *message)
 		else
 		{
 			// Extension name servers (IPv6)
-			j = i - MAXNS;
+			const int j = i - num_ns4;
 			// Some of the entries may not be configured
 			if(_res._u._ext.nsaddrs[j] == NULL ||
 			   _res._u._ext.nsaddrs[j]->sin6_family != AF_INET6)
@@ -119,7 +120,7 @@ static void print_used_resolvers(const char *message)
 		inet_ntop(family, addr, nsname, INET6_ADDRSTRLEN);
 
 		log_debug(DEBUG_RESOLVER, " %s %d: %s:%hu (IPv%u)", i < MAXNS ? "   " : "EXT",
-		          j, nsname, port, family == AF_INET ? 4u : 6u);
+		          i, nsname, port, family == AF_INET ? 4u : 6u);
 	}
 }
 
@@ -227,68 +228,99 @@ char *resolveHostname(const char *addr)
 	struct in_addr FTLaddr = { htonl(INADDR_LOOPBACK) };
 	in_port_t FTLport = htons(config.dns.port.v.u16);
 
-	// Set FTL as system resolver only if not already the primary resolver
-	if(_res.nsaddr_list[0].sin_addr.s_addr != FTLaddr.s_addr || _res.nsaddr_list[0].sin_port != FTLport)
+	// Temporarily set FTL as system resolver
+
+	// Backup configured name servers and invalidate them (IPv4)
+	struct in_addr ns_addr_bck[MAXNS];
+	in_port_t ns_port_bck[MAXNS];
+	int bck_nscount = _res.nscount;
+	for(int i = 0; i < bck_nscount; i++)
 	{
-		// Backup configured name servers and invalidate them
-		struct in_addr ns_addr_bck[MAXNS];
-		in_port_t ns_port_bck[MAXNS];
-		for(unsigned int i = 0u; i < MAXNS; i++)
-		{
-			ns_addr_bck[i] = _res.nsaddr_list[i].sin_addr;
-			ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
-			_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
-		}
+		ns_addr_bck[i] = _res.nsaddr_list[i].sin_addr;
+		ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
+		_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
+	}
 
-		// Set FTL at 127.0.0.1 as the only resolver
-		_res.nsaddr_list[0].sin_addr.s_addr = FTLaddr.s_addr;
+	// Set FTL at 127.0.0.1 as the only resolver
+	_res.nsaddr_list[0].sin_addr.s_addr = FTLaddr.s_addr;
+	// Set resolver port
+	_res.nsaddr_list[0].sin_port = FTLport;
+	// Configure resolver to use only one resolver
+	_res.nscount = 1;
+
+	// Backup configured name server and invalidate them (IPv6)
+	struct in6_addr ns6_addr_bck[MAXNS];
+	int bck_nscount6 = _res._u._ext.nscount6;
+	for(int i = 0; i < bck_nscount6; i++)
+	{
+		if(_res._u._ext.nsaddrs[i] == NULL)
+			continue;
+		memcpy(&ns6_addr_bck[i], &_res._u._ext.nsaddrs[i]->sin6_addr, sizeof(struct in6_addr));
+		memcpy(&_res._u._ext.nsaddrs[i]->sin6_addr, &in6addr_any, sizeof(struct in6_addr));
+	}
+
+	// Set FTL as the only resolver only when IPv6 is enabled
+	if(bck_nscount6 > 0)
+	{
+		// Set FTL at ::1 as the only resolver
+		memcpy(&_res._u._ext.nsaddrs[0]->sin6_addr, &in6addr_loopback, sizeof(struct in6_addr));
 		// Set resolver port
-		_res.nsaddr_list[0].sin_port = FTLport;
+		_res._u._ext.nsaddrs[0]->sin6_port = FTLport;
+		// Configure resolver to use only one resolver
+		_res._u._ext.nscount6 = 1;
+	}
 
-		if(config.debug.resolver.v.b)
-			print_used_resolvers("Setting nameservers to:");
+	if(config.debug.resolver.v.b)
+		print_used_resolvers("Set nameservers to:");
 
-		// Try to resolve address
-		char host[NI_MAXHOST] = { 0 };
-		int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
+	// Try to resolve address
+	char host[NI_MAXHOST] = { 0 };
+	int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
 
-		// Check if getnameinfo() returned a host name
-		if(ret == 0)
+	// Check if getnameinfo() returned a host name
+	if(ret == 0)
+	{
+		if(valid_hostname(host, addr))
 		{
-			if(valid_hostname(host, addr))
-			{
-				// Return hostname copied to new memory location
-				hostname = strdup(host);
-			}
-			else
-			{
-				hostname = strdup("[invalid host name]");
-			}
-
-			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found internally)", hostname);
+			// Return hostname copied to new memory location
+			hostname = strdup(host);
 		}
 		else
-			log_debug(DEBUG_RESOLVER, " ---> \"\" (not found internally: %s", gai_strerror(ret));
+		{
+			hostname = strdup("[invalid host name]");
+		}
 
 		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found internally)", hostname);
-
-		// Restore resolvers (without forced FTL)
-		for(unsigned int i = 0u; i < MAXNS; i++)
-		{
-			_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
-			_res.nsaddr_list[i].sin_port = ns_port_bck[i];
-		}
 	}
-	else if(config.debug.resolver.v.b)
-		print_used_resolvers("FTL already primary nameserver:");
+	else
+		log_debug(DEBUG_RESOLVER, " ---> \"\" (not found internally: %s", gai_strerror(ret));
+
+	// Restore IPv4 resolvers
+	for(int i = 0; i < bck_nscount; i++)
+	{
+		_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
+		_res.nsaddr_list[i].sin_port = ns_port_bck[i];
+	}
+	_res.nscount = bck_nscount;
+
+	// Restore IPv6 resolvers
+	for(int i = 0; i < bck_nscount6; i++)
+	{
+		if(_res._u._ext.nsaddrs[i] == NULL)
+			continue;
+		memcpy(&_res._u._ext.nsaddrs[i]->sin6_addr, &ns6_addr_bck[i], sizeof(struct in6_addr));
+	}
+	_res._u._ext.nscount6 = bck_nscount6;
+
+	if(config.debug.resolver.v.b)
+		print_used_resolvers("Restored nameservers to:");
 
 	// If no host name was found before, try again with system-configured
 	// resolvers (necessary for docker and friends)
 	if(hostname == NULL)
 	{
 		// Try to resolve address
-		char host[NI_MAXHOST] = { 0 };
-		int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
+		ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
 
 		// Check if getnameinfo() returned a host name this time
 		// First check for he not being NULL before trying to dereference it
