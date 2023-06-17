@@ -870,6 +870,7 @@ void initConfig(struct config *conf)
 	{
 		struct enum_options themes[] =
 		{
+			// Remember to adjust enum web_theme when adding more themes!
 			{ "default-auto", "Pi-hole auto theme (light/dark, default)" },
 			{ "default-light", "Pi-hole day theme (light)" },
 			{ "default-dark", "Pi-hole midnight theme (dark)" },

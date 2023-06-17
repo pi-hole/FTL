@@ -2172,7 +2172,7 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 
 	if(config.debug.resolver.v.b)
 	{
-		log_debug(DEBUG_RESOLVER, "getDatabaseHostname(): \"%s\" with ? = \"%s\"",
+		log_debug(DEBUG_RESOLVER, "getIfaceFromIP(): \"%s\" with ? = \"%s\"",
 		          querystr, ipaddr);
 	}
 

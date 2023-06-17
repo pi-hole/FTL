@@ -1080,24 +1080,24 @@ const char * __attribute__ ((const)) get_web_theme_str(const enum web_theme web_
 			return "default-dark";
 		case THEME_DEFAULT_DARKER:
 			return "default-darker";
+		case THEME_HIGH_CONTRAST:
+			return "high-contrast";
+		case THEME_HIGH_CONTRAST_DARK:
+			return "high-contrast-dark";
 		case THEME_LCARS:
 			return "lcars";
+		case THEME_MAX:
+			return NULL;
 	}
 	return NULL;
 }
 
 int __attribute__ ((pure)) get_web_theme_val(const char *web_theme)
 {
-	if(strcasecmp(web_theme, "default-auto") == 0)
-		return THEME_DEFAULT_AUTO;
-	else if(strcasecmp(web_theme, "default-light") == 0)
-		return THEME_DEFAULT_LIGHT;
-	else if(strcasecmp(web_theme, "default-dark") == 0)
-		return THEME_DEFAULT_DARK;
-	else if(strcasecmp(web_theme, "default-darker") == 0)
-		return THEME_DEFAULT_DARKER;
-	else if(strcasecmp(web_theme, "lcars") == 0)
-		return THEME_LCARS;
+	// Iterate over all possible theme values
+	for(enum web_theme i = 0; i < THEME_MAX; i++)
+		if(strcasecmp(web_theme, get_web_theme_str(i)) == 0)
+			return i;
 
 	// Invalid value
 	return -1;

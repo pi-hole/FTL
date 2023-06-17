@@ -19,8 +19,6 @@
 #include "log.h"
 // global variable killed
 #include "signals.h"
-// getDatabaseHostname()
-#include "database/network-table.h"
 // struct _res
 #include <resolv.h>
 // resolveNetworkTableNames()
