@@ -361,9 +361,10 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 				// If there are elements and we are indenting,
 				// add a new line
 				fputc('\n', fp);
-//			else
-//				// If there are no elements, do nothing
-//				fputc(' ', fp);
+			else if(elems > 0)
+				// If there some elements but we do not indent
+				// (on CLI output), add space
+				fputc(' ', fp);
 			for(unsigned int i = 0; i < elems; i++)
 			{
 				// Add intendation (if we are indenting)

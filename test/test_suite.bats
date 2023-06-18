@@ -1313,6 +1313,27 @@
   [[ $status == 0 ]]
 }
 
+@test "CLI config output as expected" {
+  # Partial match printing
+  run bash -c './pihole-FTL --config dns.upstream'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "dns.upstreams = [ 127.0.0.1#5555 ]" ]]
+
+  # Exact match printing
+  run bash -c './pihole-FTL --config dns.upstreams'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "[ 127.0.0.1#5555 ]" ]]
+  run bash -c './pihole-FTL --config dns.piholePTR'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "PI.HOLE" ]]
+  run bash -c './pihole-FTL --config dns.hosts'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "[]" ]]
+  run bash -c './pihole-FTL --config webserver.port'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "8080,[::]:8080,443s" ]]
+}
+
 @test "Create, verify and re-import Teleporter file via CLI" {
   run bash -c './pihole-FTL --teleporter'
   printf "%s\n" "${lines[@]}"
