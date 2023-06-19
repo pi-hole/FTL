@@ -54,6 +54,8 @@ typedef int reg_errcode_t;
 #define REG_RIGHT_ASSOC (REG_LITERAL << 1)
 #define REG_UNGREEDY    (REG_RIGHT_ASSOC << 1)
 
+#define REG_USEBYTES    (REG_UNGREEDY << 1)
+
 /* Extra tre_regexec() flags. */
 #define REG_APPROX_MATCHER	 0x1000
 #define REG_BACKTRACKING_MATCHER (REG_APPROX_MATCHER << 1)
@@ -91,7 +93,8 @@ typedef enum {
   REG_BADBR,		/* Invalid content of {} */
   REG_ERANGE,		/* Invalid use of range operator */
   REG_ESPACE,		/* Out of memory.  */
-  REG_BADRPT            /* Invalid use of repetition operators. */
+  REG_BADRPT,		/* Invalid use of repetition operators. */
+  REG_BADMAX,		/* Maximum repetition in {} too large */
 } reg_errcode_t;
 
 /* POSIX tre_regcomp() flags. */
@@ -105,7 +108,6 @@ typedef enum {
 #define REG_LITERAL	(REG_NOSUB << 1)
 #define REG_RIGHT_ASSOC (REG_LITERAL << 1)
 #define REG_UNGREEDY    (REG_RIGHT_ASSOC << 1)
-
 #define REG_USEBYTES    (REG_UNGREEDY << 1)
 
 /* POSIX tre_regexec() flags. */
