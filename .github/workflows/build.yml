@@ -20,7 +20,7 @@ jobs:
       GIT_BRANCH: ${{ steps.variables.outputs.GIT_BRANCH }}
       OUTPUT_DIR: ${{ steps.variables.outputs.OUTPUT_DIR }}
 
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       -
         name: Checkout code
@@ -150,7 +150,7 @@ jobs:
   deploy:
     if: github.event_name != 'pull_request'
     needs: [smoke-tests, build]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       -
         name: Checkout code
