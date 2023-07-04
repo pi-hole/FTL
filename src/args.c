@@ -331,7 +331,7 @@ void parse_args(int argc, char* argv[])
 		if(argc == 6 && strcmp(argv[2], "parseList") == 0)
 		{
 			// Parse the given list and write the result to the given file
-			exit(gravity_parseList(argv[3], argv[4], argv[5], true));
+			exit(gravity_parseList(argv[3], argv[4], argv[5], false));
 		}
 
 		// pihole-FTL gravity checkList <infile>
