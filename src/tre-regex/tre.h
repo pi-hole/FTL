@@ -74,12 +74,20 @@ typedef int reg_errcode_t;
 #define REG_BASIC	0
 #endif /* !REG_BASIC */
 #define REG_RIGHT_ASSOC (REG_LITERAL << 1)
+#ifdef REG_UNGREEDY
+/* We're going to use TRE code, so we need the TRE define (dodge problem in MacOS). */
+#undef REG_UNGREEDY
+#endif
 #define REG_UNGREEDY    (REG_RIGHT_ASSOC << 1)
 
 #define REG_USEBYTES    (REG_UNGREEDY << 1)
 
 /* Extra tre_regexec() flags. */
 #define REG_APPROX_MATCHER	 0x1000
+#ifdef REG_BACKTRACKING_MATCHER
+/* We're going to use TRE code, so we need the TRE define (dodge problem in MacOS). */
+#undef REG_BACKTRACKING_MATCHER
+#endif
 #define REG_BACKTRACKING_MATCHER (REG_APPROX_MATCHER << 1)
 
 #else /* !TRE_USE_SYSTEM_REGEX_H */
