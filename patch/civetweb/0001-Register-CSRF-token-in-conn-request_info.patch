@@ -1,7 +1,7 @@
 From 4890e1c2586d4a74a3925ede8cfeb1805672a42e Mon Sep 17 00:00:00 2001
 From: DL6ER <dl6er@dl6er.de>
 Date: Sat, 3 Jun 2023 20:52:02 +0200
-Subject: [PATCH] Register CSRF token in conn->request_info
+Subject: [PATCH] Register CSRF token and is_authenticated boolean in conn->request_info
 
 Signed-off-by: DL6ER <dl6er@dl6er.de>
 ---
@@ -20,6 +20,7 @@ index 233b342a..f44b17ba 100644
  
 +	/* Pi-hole addition */
 +	memset(conn->request_info.csrf_token, 0, sizeof(conn->request_info.csrf_token));
++	reg_boolean(L, "is_authenticated", conn->request_info.is_authenticated != 0);
 +
  #if defined(USE_SERVER_STATS)
  	conn->processing_time = 0;
@@ -34,6 +35,7 @@ index 5b3d596b..291ef683 100644
  	                                           * accepted during handshake */
 +	/* Pi-hole modification */
 +	char csrf_token[32];
++	int is_authenticated;
  };
  
  

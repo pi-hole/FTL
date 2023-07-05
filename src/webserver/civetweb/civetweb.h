@@ -185,6 +185,7 @@ struct mg_request_info {
 	                                           * accepted during handshake */
 	/* Pi-hole modification */
 	char csrf_token[32];
+	int is_authenticated;
 };
 
 

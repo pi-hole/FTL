@@ -71,6 +71,18 @@ static struct {
 	char csrf[SID_SIZE];
 } auth_data[API_MAX_CLIENTS] = {{false, {false, false}, 0, 0, {0}, {0}, {0}, {0}}};
 
+static void add_request_info(struct ftl_conn *api, const char *csrf)
+{
+	// Copy CSRF token into request
+	if(csrf != NULL)
+		strncpy((char*)api->request->csrf_token, csrf, sizeof(api->request->csrf_token) - 1);
+
+	// Store that this client is authenticated
+	// We use memset() with the size of an int here to avoid a
+	// compiler warning about modifying a variable in a const struct
+	memset((int*)&api->request->is_authenticated, 1, sizeof(api->request->is_authenticated));
+}
+
 // Can we validate this client?
 // Returns -1 if not authenticated or expired
 // Returns >= 0 for any valid authentication
@@ -80,11 +92,17 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	// This may be allowed without authentication depending on the configuration
 	if(!config.webserver.api.localAPIauth.v.b && (strcmp(api->request->remote_addr, LOCALHOSTv4) == 0 ||
 	                                              strcmp(api->request->remote_addr, LOCALHOSTv6) == 0))
+	{
+		add_request_info(api, NULL);
 		return API_AUTH_LOCALHOST;
+	}
 
 	// When the pwhash is unset, authentication is disabled
 	if(config.webserver.api.pwhash.v.s[0] == '\0')
+	{
+		add_request_info(api, NULL);
 		return API_AUTH_EMPTYPASS;
+	}
 
 	// Does the client provide a session cookie?
 	char sid[SID_SIZE];
@@ -220,8 +238,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 			return send_json_error(api, 500, "internal_error", "Internal server error", NULL);
 		}
 
-		// Copy CSRF token into request
-		strncpy((char*)api->request->csrf_token, auth_data[user_id].csrf, sizeof(api->request->csrf_token) - 1);
+		add_request_info(api, auth_data[user_id].csrf);
 
 		if(config.debug.api.v.b)
 		{

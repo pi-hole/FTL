@@ -2606,6 +2606,7 @@ prepare_lua_request_info_inner(const struct mg_connection *conn, lua_State *L)
 
 	/* Pi-hole addition */
 	reg_string(L, "csrf_token", conn->request_info.csrf_token);
+	reg_boolean(L, "is_authenticated", conn->request_info.is_authenticated != 0);
 }
 
 
