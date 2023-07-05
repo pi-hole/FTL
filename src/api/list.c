@@ -114,6 +114,8 @@ static int api_list_read(struct ftl_conn *api,
 		// Properties added in https://github.com/pi-hole/pi-hole/pull/3951
 		if(listtype == GRAVITY_ADLISTS)
 		{
+			const char *adlist_type = table.type_int == ADLIST_BLOCK ? "block" : "allow";
+			JSON_REF_STR_IN_OBJECT(row, "type", adlist_type);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "date_updated", table.date_updated);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "number", table.number);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "invalid_domains", table.invalid_domains);
@@ -176,7 +178,7 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// Extract domain/name/client/address from payload when using POST, all
 		// others specify it as URI-component
-		cJSON *json_domain, *json_name, *json_address, *json_client;
+		cJSON *json_domain, *json_name, *json_address, *json_client, *json_type;
 		switch(listtype)
 		{
 			case GRAVITY_DOMAINLIST_ALLOW_EXACT:
@@ -192,7 +194,7 @@ static int api_list_write(struct ftl_conn *api,
 				{
 					return send_json_error(api, 400,
 					                       "bad_request",
-					                       "Invalid request: No item \"domain\" in payload",
+					                       "Invalid request: No valid item \"domain\" in payload",
 					                       NULL);
 				}
 				break;
@@ -205,7 +207,7 @@ static int api_list_write(struct ftl_conn *api,
 				{
 					return send_json_error(api, 400,
 					                       "bad_request",
-					                       "Invalid request: No item \"name\" in payload",
+					                       "Invalid request: No valid item \"name\" in payload",
 					                       NULL);
 				}
 				break;
@@ -218,7 +220,7 @@ static int api_list_write(struct ftl_conn *api,
 				{
 					return send_json_error(api, 400,
 					                       "bad_request",
-					                       "Invalid request: No item \"client\" in payload",
+					                       "Invalid request: No valid item \"client\" in payload",
 					                       NULL);
 				}
 				break;
@@ -231,7 +233,17 @@ static int api_list_write(struct ftl_conn *api,
 				{
 					return send_json_error(api, 400,
 					                       "bad_request",
-					                       "Invalid request: No item \"address\" in payload",
+					                       "Invalid request: No valid item \"address\" in payload",
+					                       NULL);
+				}
+				json_type = cJSON_GetObjectItemCaseSensitive(api->payload.json, "type");
+				if(cJSON_IsString(json_type) && strlen(json_type->valuestring) > 0)
+					row.type_int = strcasecmp(json_type->valuestring, "block") == 0 ? ADLIST_BLOCK: ADLIST_ALLOW;
+				else
+				{
+					return send_json_error(api, 400,
+					                       "bad_request",
+					                       "Invalid request: No valid item \"type\" in payload",
 					                       NULL);
 				}
 				break;

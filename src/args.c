@@ -325,20 +325,22 @@ void parse_args(int argc, char* argv[])
 
 	// If the first argument is "gravity" (e.g., /usr/bin/pihole-FTL gravity),
 	// we offer some specialized gravity tools
-	if(argc > 1 && strcmp(argv[1], "gravity") == 0)
+	if(argc > 1 && (strcmp(argv[1], "gravity") == 0 || strcmp(argv[1], "antigravity") == 0))
 	{
+		const bool antigravity = strcmp(argv[1], "antigravity") == 0;
+
 		// pihole-FTL gravity parseList <infile> <outfile> <adlistID>
 		if(argc == 6 && strcmp(argv[2], "parseList") == 0)
 		{
 			// Parse the given list and write the result to the given file
-			exit(gravity_parseList(argv[3], argv[4], argv[5], false));
+			exit(gravity_parseList(argv[3], argv[4], argv[5], false, antigravity));
 		}
 
 		// pihole-FTL gravity checkList <infile>
 		if(argc == 4 && strcmp(argv[2], "checkList") == 0)
 		{
 			// Parse the given list and write the result to the given file
-			exit(gravity_parseList(argv[3], "", "-1", true));
+			exit(gravity_parseList(argv[3], "", "-1", true, antigravity));
 		}
 
 		printf("Incorrect usage of pihole-FTL gravity subcommand\n");

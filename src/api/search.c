@@ -65,6 +65,8 @@ static int search_table(struct ftl_conn *api,
 		if(listtype == GRAVITY_GRAVITY)
 		{
 			// Add gravity specific parameters
+			const char *adlist_type = table.type_int == ADLIST_BLOCK ? "block" : "allow";
+			JSON_REF_STR_IN_OBJECT(row, "type", adlist_type);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "date_updated", table.date_updated);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "number", table.number);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "invalid_domains", table.invalid_domains);

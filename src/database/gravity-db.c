@@ -40,6 +40,7 @@
 // gravity database
 sqlite3_stmt_vec *whitelist_stmt = NULL;
 sqlite3_stmt_vec *gravity_stmt = NULL;
+sqlite3_stmt_vec *antigravity_stmt = NULL;
 sqlite3_stmt_vec *blacklist_stmt = NULL;
 
 // Private variables
@@ -91,6 +92,7 @@ void gravityDB_forked(void)
 	whitelist_stmt = NULL;
 	blacklist_stmt = NULL;
 	gravity_stmt = NULL;
+	antigravity_stmt = NULL;
 
 	// Open the database
 	gravityDB_open();
@@ -214,6 +216,8 @@ bool gravityDB_open(void)
 		blacklist_stmt = new_sqlite3_stmt_vec(counters->clients);
 	if(gravity_stmt == NULL)
 		gravity_stmt = new_sqlite3_stmt_vec(counters->clients);
+	if(antigravity_stmt == NULL)
+		antigravity_stmt = new_sqlite3_stmt_vec(counters->clients);
 
 	// Explicitly set busy handler to zero milliseconds
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Setting busy timeout to zero");
@@ -895,6 +899,19 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	gravity_stmt->set(gravity_stmt, client->id, stmt);
 	free(querystr);
 
+	// Prepare antigravity statement
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_antigravity statement for client %s", clientip);
+	querystr = get_client_querystr("vw_antigravity", "domain", getstr(client->groupspos));
+	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("gravityDB_open(\"SELECT(... vw_antigravity ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
+		gravityDB_close();
+		return false;
+	}
+	antigravity_stmt->set(antigravity_stmt, client->id, stmt);
+	free(querystr);
+
 	// Prepare blacklist statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_blacklist statement for client %s", clientip);
 	querystr = get_client_querystr("vw_blacklist", "id", getstr(client->groupspos));
@@ -934,6 +951,12 @@ static inline void gravityDB_finalize_client_statements(clientsData *client)
 		sqlite3_finalize(gravity_stmt->get(gravity_stmt, client->id));
 		gravity_stmt->set(gravity_stmt, client->id, NULL);
 	}
+	if(antigravity_stmt != NULL &&
+	   antigravity_stmt->get(antigravity_stmt, client->id) != NULL)
+	{
+		sqlite3_finalize(antigravity_stmt->get(antigravity_stmt, client->id));
+		antigravity_stmt->set(antigravity_stmt, client->id, NULL);
+	}
 
 	// Unset group found property to trigger a check next time the
 	// client sends a query
@@ -959,6 +982,7 @@ void gravityDB_close(void)
 	free_sqlite3_stmt_vec(&whitelist_stmt);
 	free_sqlite3_stmt_vec(&blacklist_stmt);
 	free_sqlite3_stmt_vec(&gravity_stmt);
+	free_sqlite3_stmt_vec(&antigravity_stmt);
 
 	// Finalize audit list statement
 	sqlite3_finalize(auditlist_stmt);
@@ -1276,35 +1300,41 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 	return domain_in_list(domain, stmt, "whitelist", &dns_cache->domainlist_id);
 }
 
-enum db_result in_gravity(const char *domain, clientsData *client)
+enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
-	if(gravity_stmt == NULL)
+	if(gravity_stmt == NULL || antigravity_stmt == NULL)
 		return LIST_NOT_AVAILABLE;
 
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
 
 	// Get whitelist statement from vector of prepared statements
-	sqlite3_stmt *stmt = gravity_stmt->get(gravity_stmt, client->id);
+	sqlite3_stmt *stmt = antigravity ?
+		antigravity_stmt->get(antigravity_stmt, client->id) :
+		gravity_stmt->get(gravity_stmt, client->id);
 
 	// If client statement is not ready and cannot be initialized (e.g. no access to
 	// the database), we return false (not in gravity list) to prevent an FTL crash
 	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
 	{
-		log_err("Gravity database not available (gravity)");
+		log_err(antigravity ?
+				"Gravity database not available (antigravity)" :
+				"Gravity database not available (gravity)");
 		return LIST_NOT_AVAILABLE;
 	}
 
 	// Update statement if has just been initialized
 	if(stmt == NULL)
-		stmt = gravity_stmt->get(gravity_stmt, client->id);
+		antigravity ?
+			antigravity_stmt->get(antigravity_stmt, client->id) :
+			gravity_stmt->get(gravity_stmt, client->id);
 
 	// Check if domain is exactly in gravity list
 	const enum db_result exact_match = domain_in_list(domain, stmt, "gravity", NULL);
-	log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in gravity: %s",
-	          domain, exact_match == FOUND ? "yes" : "no");
+	log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %sgravity: %s",
+	          domain, antigravity_stmt ? "anti" : "", exact_match == FOUND ? "yes" : "no");
 	// Return for anything else than "not found" (e.g. "found" or "list not available")
 	if(exact_match != NOT_FOUND)
 		return exact_match;
@@ -1365,8 +1395,8 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 		}
 		// Check if the constructed ABP-style domain is in the gravity list
 		const enum db_result abp_match = domain_in_list(abpDomain, stmt, "gravity", NULL);
-		log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in gravity: %s",
-		          abpDomain, abp_match == FOUND ? "yes" : "no");
+		log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %sgravity: %s",
+		          abpDomain, antigravity_stmt ? "anti" : "", abp_match == FOUND ? "yes" : "no");
 		// Return for anything else than "not found" (e.g. "found" or "list not available")
 		if(abp_match != NOT_FOUND)
 		{
@@ -1577,9 +1607,10 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 				           "WHERE name = :item";
 			}
 		else if(listtype == GRAVITY_ADLISTS)
-			querystr = "REPLACE INTO adlist (address,enabled,comment,id,date_added,date_updated,number,invalid_domains,status,abp_entries) "
+			querystr = "REPLACE INTO adlist (address,enabled,comment,id,type,date_added,date_updated,number,invalid_domains,status,abp_entries) "
 			           "VALUES (:item,:enabled,:comment,"
 			                   "(SELECT id FROM adlist WHERE address = :item),"
+			                   "(SELECT type FROM adlist WHERE address = :item),"
 			                   "(SELECT date_added FROM adlist WHERE address = :item),"
 			                   "(SELECT date_updated FROM adlist WHERE address = :item),"
 			                   "(SELECT number FROM adlist WHERE address = :item),"
@@ -2038,7 +2069,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			else
 				filter = " WHERE address LIKE :item";
 		}
-		snprintf(querystr, buflen, "SELECT id,address,enabled,date_added,date_modified,comment,"
+		snprintf(querystr, buflen, "SELECT id,type,address,enabled,date_added,date_modified,comment,"
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids,"
 		                                     "date_updated,number,invalid_domains,status,abp_entries "
 		                                     "FROM adlist a%s;", filter);
@@ -2228,6 +2259,9 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 
 			else if(strcasecmp(cname, "number") == 0)
 				row->number = sqlite3_column_int(read_stmt, c);
+
+			else if(strcasecmp(cname, "type") == 0)
+				row->type_int = sqlite3_column_int(read_stmt, c);
 
 			else if(strcasecmp(cname, "invalid_domains") == 0)
 				row->invalid_domains = sqlite3_column_int(read_stmt, c);

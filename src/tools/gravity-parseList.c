@@ -42,7 +42,8 @@
 // Number of invalid domains to print before skipping the rest
 #define MAX_INVALID_DOMAINS 5
 
-int gravity_parseList(const char *infile, const char *outfile, const char *adlistIDstr, const bool checkOnly)
+int gravity_parseList(const char *infile, const char *outfile, const char *adlistIDstr,
+                      const bool checkOnly, const bool antigravity)
 {
 	const char *info = cli_info();
 	const char *tick = cli_tick();
@@ -112,7 +113,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	}
 
 	// Prepare SQL statement
-	const char *sql = "INSERT INTO gravity (domain, adlist_id) VALUES (?, ?);";
+	const char *sql = antigravity ?
+		"INSERT INTO antigravity (domain, adlist_id) VALUES (?, ?);" :
+		"INSERT INTO gravity (domain, adlist_id) VALUES (?, ?);";
 	if(!checkOnly && sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
 		printf("%s  %s Unable to prepare SQL statement to insert domains into database file %s\n",

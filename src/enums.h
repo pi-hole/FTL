@@ -314,4 +314,9 @@ enum temp_unit {
 	TEMP_UNIT_K
 } __attribute__ ((packed));
 
+enum adlist_type {
+	ADLIST_BLOCK = 0,
+	ADLIST_ALLOW
+} __attribute__ ((packed));
+
 #endif // ENUMS_H
