@@ -1842,105 +1842,52 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
-	const char *querystr = "", *querystr2 = "";
+	const char *querystr[3] = {NULL, NULL, NULL};
 	if(listtype == GRAVITY_GROUPS)
-		querystr = "DELETE FROM \"group\" WHERE name = :argument;";
+		querystr[0] = "DELETE FROM \"group\" WHERE name = :argument;";
 	else if(listtype == GRAVITY_ADLISTS)
 	{
-		// This is actually a two-step deletion to satisfy foreign-key constraints
-		querystr = "DELETE FROM gravity WHERE adlist_id = (SELECT id FROM adlist WHERE address = :argument);";
-		querystr2 = "DELETE FROM adlist WHERE address = :argument;";
+		// This is actually a three-step deletion to satisfy foreign-key constraints
+		querystr[0] = "DELETE FROM gravity WHERE adlist_id = (SELECT id FROM adlist WHERE address = :argument);";
+		querystr[1] = "DELETE FROM antigravity WHERE adlist_id = (SELECT id FROM adlist WHERE address = :argument);";
+		querystr[2] = "DELETE FROM adlist WHERE address = :argument;";
 	}
 	else if(listtype == GRAVITY_CLIENTS)
-		querystr = "DELETE FROM client WHERE ip = :argument;";
+		querystr[0] = "DELETE FROM client WHERE ip = :argument;";
 	else // domainlist
-		querystr = "DELETE FROM domainlist WHERE domain = :argument AND type = :type;";
+		querystr[0] = "DELETE FROM domainlist WHERE domain = :argument AND type = :type;";
 
-	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK )
+	bool okay = true;
+	for(unsigned int i = 0; i < ArraySize(querystr); i++)
 	{
-		*message = sqlite3_errmsg(gravity_db);
-		log_err("gravityDB_delFromTable(%d, %s) - SQL error prepare (%i): %s",
-		        type, argument, rc, *message);
-		return false;
-	}
+		// Finish if no more queries
+		if(querystr[i] == NULL)
+			break;
 
-	// Bind domain to prepared statement (if requested)
-	int arg_idx = sqlite3_bind_parameter_index(stmt, ":argument");
-	if(arg_idx > 0 && (rc = sqlite3_bind_text(stmt, arg_idx, argument, -1, SQLITE_STATIC)) != SQLITE_OK)
-	{
-		*message = sqlite3_errmsg(gravity_db);
-		log_err("gravityDB_delFromTable(%d, %s): Failed to bind argument (error %d) - %s",
-		        type, argument, rc, *message);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		return false;
-	}
-
-	// Bind type to prepared statement (if requested)
-	int type_idx = sqlite3_bind_parameter_index(stmt, ":type");
-	if(type_idx > 0 && (rc = sqlite3_bind_int(stmt, type_idx, type)) != SQLITE_OK)
-	{
-		*message = sqlite3_errmsg(gravity_db);
-		log_err("gravityDB_delFromTable(%d, %s): Failed to bind type (error %d) - %s",
-		        type, argument, rc, *message);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		return false;
-	}
-
-	// Debug output
-	if(config.debug.api.v.b)
-	{
-		log_debug(DEBUG_API, "SQL: %s", querystr);
-		if(arg_idx > 0)
-			log_debug(DEBUG_API, "     :argument = \"%s\"", argument);
-		if(type_idx > 0)
-			log_debug(DEBUG_API, "     :type = \"%i\"", type);
-	}
-
-	// Perform step
-	bool okay = false;
-	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
-	{
-		// Items removed
-		okay = true;
-	}
-	else
-	{
-		*message = sqlite3_errmsg(gravity_db);
-	}
-
-	// Finalize statement
-	sqlite3_reset(stmt);
-	sqlite3_finalize(stmt);
-
-	if(okay && listtype == GRAVITY_ADLISTS)
-	{
 		// We need to perform a second SQL request
-		rc = sqlite3_prepare_v2(gravity_db, querystr2, -1, &stmt, NULL);
+		int rc = sqlite3_prepare_v2(gravity_db, querystr[i], -1, &stmt, NULL);
 		if( rc != SQLITE_OK )
 		{
 			*message = sqlite3_errmsg(gravity_db);
-			log_err("gravityDB_delFromTable(%d, %s) - SQL error prepare 2 (%i): %s",
-			type, argument, rc, *message);
+			log_err("gravityDB_delFromTable(%d, %s) - SQL error prepare %u (%i): %s",
+			type, argument, i, rc, *message);
 			return false;
 		}
 
 		// Bind domain to prepared statement (if requested)
-		arg_idx = sqlite3_bind_parameter_index(stmt, ":argument");
+		const int arg_idx = sqlite3_bind_parameter_index(stmt, ":argument");
 		if(arg_idx > 0 && (rc = sqlite3_bind_text(stmt, arg_idx, argument, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
 			*message = sqlite3_errmsg(gravity_db);
-			log_err("gravityDB_delFromTable(%d, %s): Failed to bind argument (2) (error %d) - %s",
-			type, argument, rc, *message);
+			log_err("gravityDB_delFromTable(%d, %s): Failed to bind argument %u (error %d) - %s",
+			type, argument, i, rc, *message);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
 		}
 
 		// Bind type to prepared statement (if requested)
-		type_idx = sqlite3_bind_parameter_index(stmt, ":type");
+		const int type_idx = sqlite3_bind_parameter_index(stmt, ":type");
 		if(type_idx > 0 && (rc = sqlite3_bind_int(stmt, type_idx, type)) != SQLITE_OK)
 		{
 			*message = sqlite3_errmsg(gravity_db);
@@ -1954,7 +1901,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 		// Debug output
 		if(config.debug.api.v.b)
 		{
-			log_debug(DEBUG_API, "SQL: %s", querystr2);
+			log_debug(DEBUG_API, "SQL: %s", querystr[i]);
 			if(arg_idx > 0)
 				log_debug(DEBUG_API, "     :argument = \"%s\"", argument);
 			if(type_idx > 0)
