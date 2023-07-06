@@ -1,0 +1,189 @@
+openapi: 3.0.2
+components:
+  paths:
+    history:
+      get:
+        summary: Get activity graph data
+        tags:
+          - Metrics
+        operationId: "get_activity_metrics"
+        description: |
+          Request data needed to generate the \"Query over last 24 hours\" graph
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'history.yaml#/components/schemas/total_history'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    database_history:
+      get:
+        summary: Get activity graph data (long-term data)
+        tags:
+          - Metrics
+        operationId: "get_activity_metrics_database"
+        description: |
+          Request long-term data needed to generate the activity graph
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'history.yaml#/components/schemas/total_history'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+    clients:
+      get:
+        summary: Get per-client activity graph data
+        tags:
+          - Metrics
+        operationId: "get_client_metrics"
+        description: |
+          Request data needed to generate the \"Client activity over last 24 hours\" graph
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'history.yaml#/components/schemas/client_history'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    database_clients:
+      get:
+        summary: Get per-client activity graph data (long-term data)
+        tags:
+          - Metrics
+        operationId: "get_client_metrics_database"
+        description: |
+          Request long-term data needed to generate the client activity graph
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'history.yaml#/components/schemas/client_history'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+  schemas:
+    total_history:
+      type: object
+      properties:
+        history:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: number
+                description: Timestamp
+              total:
+                type: integer
+                description: Total number of queries
+              cached:
+                type: integer
+                description: Total number of cached
+              blocked:
+                type: integer
+          example:
+            - timestamp: 1511819900.539157
+              total: 2134
+              cached: 525
+              blocked: 413
+            - timestamp: 1511820500.583821
+              total: 2014
+              cached: 52
+              blocked: 43
+    client_history:
+      type: object
+      properties:
+        history:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: number
+                description: Timestamp
+              data:
+                type: array
+                description: Data corresponding to the individual clients
+                items:
+                  type: integer
+          example:
+            - timestamp: 1511819900.539157
+              data:
+                - 12
+                - 65
+                - 67
+            - timestamp: 1511820500.583821
+              data:
+                - 1
+                - 35
+                - 63
+        clients:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                nullable: true
+                description: Client name
+              ip:
+                type: string
+                description: Client IP address
+          example:
+            - name: localhost
+              ip: "127.0.0.1"
+            - name: ip6-localnet
+              ip: "::1"
+            - name: null
+              ip: "192.168.1.1"

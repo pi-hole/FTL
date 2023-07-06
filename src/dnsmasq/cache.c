@@ -146,6 +146,21 @@ unsigned short rrtype(char *in)
   return 0;
 }
 
+/* Pi-hole function: return name of RR type */
+const char *rrtype_name(unsigned short type)
+{
+  unsigned int i;
+
+  if(type == 0)
+    return "OTHER";
+
+  for (i = 0; i < (sizeof(typestr)/sizeof(typestr[0])); i++)
+    if (typestr[i].type == type)
+      return typestr[i].name;
+
+  return NULL;
+}
+
 void next_uid(struct crec *crecp)
 {
   static unsigned int uid = 0;
@@ -1883,34 +1898,84 @@ static void dump_cache_entry(struct crec *cache, time_t now)
 }
  
 /***************** Pi-hole modification *****************/
-void get_dnsmasq_cache_info(struct cache_info *ci)
+void get_dnsmasq_metrics(struct metrics *ci)
 {
-  memset(ci, 0, sizeof(struct cache_info));
+  // Prepare the metrics struct
+  memset(ci, 0, sizeof(struct metrics));
+  ci->dns.cache.content[RRTYPE_OTHER].type = 0;
+  ci->dns.cache.content[RRTYPE_A].type = T_A;  // A
+  ci->dns.cache.content[RRTYPE_AAAA].type = T_AAAA; // AAAA
+  ci->dns.cache.content[RRTYPE_CNAME].type = T_CNAME;  // CNAME
+  ci->dns.cache.content[RRTYPE_DS].type = T_DS; // DNSKEY
+  ci->dns.cache.content[RRTYPE_DNSKEY].type = T_DNSKEY; // DNSKEY
+
+  // General DNS cache metrics
+  ci->dns.cache.size = daemon->cachesize;
+  ci->dns.cache.inserted = daemon->metrics[METRIC_DNS_CACHE_INSERTED];
+  ci->dns.cache.live_freed = daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED];
+  ci->dns.local_answered = daemon->metrics[METRIC_DNS_LOCAL_ANSWERED];
+  ci->dns.stale_answered = daemon->metrics[METRIC_DNS_STALE_ANSWERED];
+  ci->dns.auth_answered = daemon->metrics[METRIC_DNS_AUTH_ANSWERED];
+  ci->dns.unanswered_queries = daemon->metrics[METRIC_DNS_UNANSWERED_QUERY];
+  ci->dns.forwarded_queries = daemon->metrics[METRIC_DNS_QUERIES_FORWARDED];
+
+  // DNS cache content metrics
   const time_t now = time(NULL);
   for (int i=0; i < hash_size; i++)
     for (struct crec *cache = hash_table[i]; cache; cache = cache->hash_next)
-      if(cache->ttd >= now || cache->flags & F_IMMORTAL)
       {
+	const unsigned int expired = cache->ttd < now && !(cache->flags & F_IMMORTAL) ? CACHE_STALE : CACHE_VALID;
 	if (cache->flags & F_IPV4)
-	  ci->valid.ipv4++;
+	  ci->dns.cache.content[RRTYPE_A].count[expired]++;
 	else if (cache->flags & F_IPV6)
-	  ci->valid.ipv6++;
+	  ci->dns.cache.content[RRTYPE_AAAA].count[expired]++;
 	else if (cache->flags & F_CNAME)
-	  ci->valid.cname++;
+	  ci->dns.cache.content[RRTYPE_CNAME].count[expired]++;
 #ifdef HAVE_DNSSEC
 	else if (cache->flags & F_DS)
-	  ci->valid.ds++;
+	  ci->dns.cache.content[RRTYPE_DS].count[expired]++;
 	else if (cache->flags & F_DNSKEY)
-	  ci->valid.dnskey++;
+	  ci->dns.cache.content[RRTYPE_DNSKEY].count[expired]++;
 #endif
+	else if(cache->flags & F_RR)
+	{
+	  // Find the first empty slot or the slot with the same type
+	  for(unsigned int i = RRTYPE_MAX; i < RRTYPES; i++)
+	  {
+	    unsigned short type = (cache->flags & F_KEYTAG) ? cache->addr.rrblock.rrtype : cache->addr.rrdata.rrtype;
+	    if(ci->dns.cache.content[i].type == type || ci->dns.cache.content[i].type == 0)
+	    {
+	      ci->dns.cache.content[i].type = type;
+	      ci->dns.cache.content[i].count[expired]++;
+	      break;
+	    }
+	  }
+	}
 	else
-	  ci->valid.other++;
+	  ci->dns.cache.content[RRTYPE_OTHER].count[expired]++;
 
 	if(cache->flags & F_IMMORTAL)
-	  ci->immortal++;
+	  ci->dns.cache.immortal++;
+
+	if(expired)
+	  ci->dns.cache.expired++;
       }
-      else
-	ci->expired++;
+
+    ci->dhcp.bootp = daemon->metrics[METRIC_BOOTP];
+    ci->dhcp.pxe = daemon->metrics[METRIC_PXE];
+    ci->dhcp.ack = daemon->metrics[METRIC_DHCPACK];
+    ci->dhcp.decline = daemon->metrics[METRIC_DHCPDECLINE];
+    ci->dhcp.discover = daemon->metrics[METRIC_DHCPDISCOVER];
+    ci->dhcp.inform = daemon->metrics[METRIC_DHCPINFORM];
+    ci->dhcp.nak = daemon->metrics[METRIC_DHCPNAK];
+    ci->dhcp.offer = daemon->metrics[METRIC_DHCPOFFER];
+    ci->dhcp.release = daemon->metrics[METRIC_DHCPRELEASE];
+    ci->dhcp.request = daemon->metrics[METRIC_DHCPREQUEST];
+    ci->dhcp.noanswer = daemon->metrics[METRIC_NOANSWER];
+    ci->dhcp.leases.allocated_4 = daemon->metrics[METRIC_LEASES_ALLOCATED_4];
+    ci->dhcp.leases.pruned_4 = daemon->metrics[METRIC_LEASES_PRUNED_4];
+    ci->dhcp.leases.allocated_6 = daemon->metrics[METRIC_LEASES_ALLOCATED_6];
+    ci->dhcp.leases.pruned_6 = daemon->metrics[METRIC_LEASES_PRUNED_6];
 }
 /********************************************************/
 

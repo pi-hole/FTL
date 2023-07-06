@@ -9,6 +9,7 @@
 # Please see LICENSE file for your rights under this license.
 
 cmake_minimum_required(VERSION 2.8.12)
+
 project(PIHOLE_FTL C)
 
 set(DNSMASQ_VERSION pi-hole-v2.89-9461807)

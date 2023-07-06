@@ -24,15 +24,13 @@
 #include "daemon.h"
 #include "timers.h"
 #include "gc.h"
-#include "api/socket.h"
 #include "regex_r.h"
-#include "config.h"
+#include "config/config.h"
 #include "capabilities.h"
 #include "resolve.h"
 #include "files.h"
+// add_to_fifo_buffer() u.a.
 #include "log.h"
-// Prototype of getCacheInformation()
-#include "api/api.h"
 // global variable daemonmode
 #include "args.h"
 // handle_realtime_signals()
@@ -48,10 +46,18 @@
 #include "api/api_helper.h"
 // logg_rate_limit_message()
 #include "database/message-table.h"
+// http_init()
+#include "webserver/webserver.h"
 // type struct sqlite3_stmt_vec
 #include "vector.h"
 // check_one_struct()
 #include "struct_size.h"
+// query_to_database()
+#include "database/query-table.h"
+// reread_config()
+#include "config/config.h"
+// FTL_fork_and_bind_sockets()
+#include "main.h"
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
@@ -60,7 +66,6 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
                              const struct timeval response, const char *file, const int line);
 #define FTL_check_blocking(queryID, domainID, clientID) _FTL_check_blocking(queryID, domainID, clientID, __FILE__, __LINE__)
 static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line);
-static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const queriesData *query, const domainsData *domain);
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const enum query_status new_status);
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, unsigned short port, const int id, const char* file, const int line);
@@ -81,6 +86,9 @@ static const char *blockingreason = "";
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static int last_regex_idx = -1;
 static struct ptr_record *pihole_ptr = NULL;
+static char *pihole_suffix = NULL;
+static char *hostname_suffix = NULL;
+static char *cname_target = NULL;
 #define HOSTNAME "Pi-hole hostname"
 
 // Fork-private copy of the interface data the most recent query came from
@@ -90,26 +98,21 @@ static struct {
 	char name[IFNAMSIZ];
 	union all_addr addr4;
 	union all_addr addr6;
-} next_iface = {false, false, "", {{0}}, {{0}}};
+} next_iface = {false, false, "", {{ 0 }}, {{ 0 }}};
 
 // Fork-private copy of the server data the most recent reply came from
 static union mysockaddr last_server = {{ 0 }};
 
-unsigned char* pihole_privacylevel = &config.privacylevel;
+unsigned char* pihole_privacylevel = &config.misc.privacylevel.v.privacy_level;
 const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_DOMAINSRV", "F_RCODE", "F_RR", "F_STALE" };
 
-void FTL_hook(unsigned int flags,
-const char *name,
-union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
+void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
 {
 	// Extract filename from path
 	const char *path = short_path(file);
-	if(config.debug & DEBUG_FLAGS)
-	{
-		const char *types = flags & F_RR ? querystr(arg, type) : "?";
-		logg("Processing FTL hook from %s:%d (type: %s, name: \"%s\", id: %i)...", path, line, types, name, id);
-		print_flags(flags);
-	}
+	const char *types = flags & F_RR ? querystr(arg, type) : "?";
+	log_debug(DEBUG_FLAGS, "Processing FTL hook from %s:%d (type: %s, name: \"%s\", id: %i)...", path, line, types, name, id);
+	print_flags(flags);
 
 	// Check domain name received from dnsmasq
 	name = check_dnsmasq_name(name);
@@ -123,13 +126,13 @@ union all_addr *addr, char *arg, int id, unsigned short type, const char* file, 
 	else if(flags == F_SECSTAT)
 		// DNSSEC validation result
 		FTL_dnssec(arg, addr, id, path, line);
-	else if(flags & F_RCODE && name && strcasecmp(name, "error") == 0)
+	else if(flags & F_RCODE && !(flags & F_CONFIG) && name && strcasecmp(name, "error") == 0)
 		// upstream sent something different than NOERROR or NXDOMAIN
 		FTL_upstream_error(addr, flags, id, path, line);
 	else if(flags & F_NOEXTRA && flags & F_DNSSEC)
 	{
 		// This is a new DNSSEC query (dnssec-query[DS])
-		if(!config.show_dnssec)
+		if(!config.dns.showDNSSEC.v.b)
 			return;
 
 		// Type is overloaded with port since 2d65d55, so we have to
@@ -183,8 +186,7 @@ union all_addr *addr, char *arg, int id, unsigned short type, const char* file, 
 // This is inspired by make_local_answer()
 size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede, const char *file, const int line)
 {
-	if(config.debug & DEBUG_FLAGS)
-		logg("FTL_make_answer() called from %s:%d", short_path(file), line);
+	log_debug(DEBUG_FLAGS, "FTL_make_answer() called from %s:%d", short_path(file), line);
 	// Exit early if there are no questions in this query
 	if(ntohs(header->qdcount) == 0)
 		return 0;
@@ -196,13 +198,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		return 0;
 
 	// Debug logging
-	if(config.debug & DEBUG_FLAGS)
-	{
-		if(*ede != EDE_UNSET)
-			logg("Preparing reply for \"%s\", EDE: %s (%d)", name, edestr(*ede), *ede);
-		else
-			logg("Preparing reply for \"%s\", EDE: N/A", name);
-	}
+	if(*ede != EDE_UNSET)
+		log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\", EDE: %s (%d)", name, edestr(*ede), *ede);
+	else
+		log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\", EDE: N/A", name);
 
 	// Get question type
 	int qtype, flags = 0;
@@ -230,8 +229,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
-		if(config.debug & DEBUG_FLAGS)
-			logg("Forced DNS reply to NXDOMAIN");
+		log_debug(DEBUG_QUERIES, "Forced DNS reply to NXDOMAIN");
 	}
 	else if(force_next_DNS_reply == REPLY_NODATA)
 	{
@@ -240,8 +238,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
-		if(config.debug & DEBUG_FLAGS)
-			logg("Forced DNS reply to NODATA");
+		log_debug(DEBUG_QUERIES, "Forced DNS reply to NODATA");
 	}
 	else if(force_next_DNS_reply == REPLY_REFUSED)
 	{
@@ -251,8 +248,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
-		if(config.debug & DEBUG_FLAGS)
-			logg("Forced DNS reply to REFUSED");
+		log_debug(DEBUG_QUERIES, "Forced DNS reply to REFUSED");
 
 		// Set EDE code to blocked
 		*ede = EDE_BLOCKED;
@@ -267,8 +263,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
-		if(config.debug & DEBUG_FLAGS)
-			logg("Forced DNS reply to IP");
+		log_debug(DEBUG_QUERIES, "Forced DNS reply to IP");
 	}
 	else if(force_next_DNS_reply == REPLY_NONE)
 	{
@@ -276,31 +271,28 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
-		if(config.debug & DEBUG_FLAGS)
-			logg("Forced DNS reply to NONE - dropping this query");
+		log_debug(DEBUG_QUERIES, "Forced DNS reply to NONE - dropping this query");
 
 		return 0;
 	}
 	else
 	{
 		// Overwrite flags only if not replying with a forced reply
-		if(config.blockingmode == MODE_NX)
+		if(config.dns.blocking.mode.v.blocking_mode == MODE_NX)
 		{
 			// If we block in NXDOMAIN mode, we set flags to NXDOMAIN
 			// (NEG will be added after setup_reply() below)
 			flags = F_NXDOMAIN;
-			if(config.debug & DEBUG_FLAGS)
-				logg("Configured blocking mode is NXDOMAIN");
+			log_debug(DEBUG_QUERIES, "Configured blocking mode is NXDOMAIN");
 		}
-		else if(config.blockingmode == MODE_NODATA ||
-				(config.blockingmode == MODE_IP_NODATA_AAAA && (flags & F_IPV6)))
+		else if(config.dns.blocking.mode.v.blocking_mode == MODE_NODATA ||
+				(config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA && (flags & F_IPV6)))
 		{
 			// If we block in NODATA mode or NODATA for AAAA queries, we apply
 			// the NOERROR response flag. This ensures we're sending an empty response
 			flags = F_NOERR;
-			if(config.debug & DEBUG_FLAGS)
-				logg("Configured blocking mode is NODATA%s",
-				     config.blockingmode == MODE_IP_NODATA_AAAA ? "-IPv6" : "");
+			log_debug(DEBUG_QUERIES, "Configured blocking mode is NODATA%s",
+				     config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ? "-IPv6" : "");
 		}
 	}
 
@@ -314,13 +306,28 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		last_regex_idx = -1;
 
 		// Debug logging
-		if(config.debug & DEBUG_FLAGS)
-			logg("Regex match is %sredirected", redirecting ? "" : "NOT ");
+		log_debug(DEBUG_QUERIES, "Regex match is %sredirected", redirecting ? "" : "NOT ");
+	}
+
+	if(force_next_DNS_reply == REPLY_CNAME && cname_target != NULL)
+	{
+		// Set flags to CNAME reply
+		flags = F_CONFIG | F_CNAME;
+
+		// Add A record (if available)
+		if(redirect_addr4.addr4.s_addr != 0)
+			flags |= F_IPV4;
+
+		// Add AAAA record (if available)
+		if(!IN6_IS_ADDR_UNSPECIFIED(&redirect_addr6.addr6))
+			flags |= F_IPV6;
+
+		// Reset DNS reply forcing
+		force_next_DNS_reply = REPLY_UNKNOWN;
 	}
 
 	// Debug logging
-	if(config.debug & DEBUG_FLAGS)
-		print_flags(flags);
+	print_flags(flags);
 
 	// Setup reply header
 	setup_reply(header, flags, *ede);
@@ -348,6 +355,21 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	const bool hostname = strcmp(blockingreason, HOSTNAME) == 0;
 
 	int trunc = 0;
+	// Add CNAME answer record if requested
+	if(flags & F_CNAME)
+	{
+		// Debug logging
+		if(config.debug.queries.v.b)
+			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s CNAME %s\"", name, cname_target);
+
+		// Add CNAME resource record
+		header->ancount = htons(ntohs(header->ancount) + 1);
+		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+		                       &p, daemon->local_ttl, NULL,
+		                       T_CNAME, C_IN, (char*)"d", cname_target))
+			log_query(flags, name, NULL, (char*)blockingreason, 0);
+	}
+
 	// Add A answer record if requested
 	if(flags & F_IPV4)
 	{
@@ -355,31 +377,31 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Overwrite with IP address if requested
 		if(redirecting)
-			memcpy(&addr.addr4, &redirect_addr4, sizeof(addr.addr4));
-		else if(config.blockingmode == MODE_IP ||
-		        config.blockingmode == MODE_IP_NODATA_AAAA ||
+			memcpy(&addr, &redirect_addr4, sizeof(addr));
+		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
+		        config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ||
 		        forced_ip)
 		{
-			if(hostname && config.reply_addr.own_host.overwrite_v4)
-				memcpy(&addr.addr4, &config.reply_addr.own_host.v4, sizeof(addr.addr4));
-			else if(!hostname && config.reply_addr.ip_blocking.overwrite_v4)
-				memcpy(&addr.addr4, &config.reply_addr.ip_blocking.v4, sizeof(addr.addr4));
+			if(hostname && config.dns.reply.host.force4.v.b)
+				memcpy(&addr, &config.dns.reply.host.v4.v.in_addr, sizeof(addr.addr4));
+			else if(!hostname && config.dns.reply.blocking.force4.v.b)
+				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(addr.addr4));
 			else
-				memcpy(&addr.addr4, &next_iface.addr4, sizeof(addr.addr4));
+				memcpy(&addr, &next_iface.addr4, sizeof(addr.addr4));
 		}
 
 		// Debug logging
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug.queries.v.b)
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
 			alladdr_extract_ip(&addr, AF_INET, ip);
-			logg("  Adding RR: \"%s A %s\"", name, ip);
+			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s A %s\"", name, ip);
 		}
 
 		// Add A resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
+		                       &p, hostname ? daemon->local_ttl : config.dns.blockTTL.v.ui,
 		                       NULL, T_A, C_IN, (char*)"4", &addr.addr4))
 			log_query(flags & ~F_IPV6, name, &addr, (char*)blockingreason, 0);
 	}
@@ -391,30 +413,30 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Overwrite with IP address if requested
 		if(redirecting)
-			memcpy(&addr.addr6, &redirect_addr6, sizeof(addr.addr6));
-		else if(config.blockingmode == MODE_IP ||
+			memcpy(&addr, &redirect_addr6, sizeof(addr));
+		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
 		        forced_ip)
 		{
-			if(hostname && config.reply_addr.own_host.overwrite_v6)
-				memcpy(&addr.addr6, &config.reply_addr.own_host.v6, sizeof(addr.addr6));
-			else if(!hostname && config.reply_addr.ip_blocking.overwrite_v6)
-				memcpy(&addr.addr6, &config.reply_addr.ip_blocking.v6, sizeof(addr.addr6));
+			if(hostname && config.dns.reply.host.force6.v.b)
+				memcpy(&addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(addr.addr6));
+			else if(!hostname && config.dns.reply.blocking.force6.v.b)
+				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(addr.addr6));
 			else
-				memcpy(&addr.addr6, &next_iface.addr6, sizeof(addr.addr6));
+				memcpy(&addr, &next_iface.addr6, sizeof(addr.addr6));
 		}
 
 		// Debug logging
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug.queries.v.b)
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
 			alladdr_extract_ip(&addr, AF_INET6, ip);
-			logg("  Adding RR: \"%s AAAA %s\"", name, ip);
+			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s AAAA %s\"", name, ip);
 		}
 
 		// Add AAAA resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
+		                       &p, hostname ? daemon->local_ttl : config.dns.blockTTL.v.ui,
 		                       NULL, T_AAAA, C_IN, (char*)"6", &addr.addr6))
 			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
 	}
@@ -447,17 +469,14 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 static bool is_pihole_domain(const char *domain)
 {
-	static char *pihole_suffix = NULL;
 	if(!pihole_suffix && daemon->domain_suffix)
 	{
 		// Build "pi.hole.<local suffix>" domain
 		pihole_suffix = calloc(strlen(daemon->domain_suffix) + 9, sizeof(char));
 		strcpy(pihole_suffix, "pi.hole.");
 		strcat(pihole_suffix, daemon->domain_suffix);
-		if(config.debug & DEBUG_QUERIES)
-			logg("Domain suffix is \"%s\"", daemon->domain_suffix);
+		log_debug(DEBUG_QUERIES, "Domain suffix is \"%s\"", daemon->domain_suffix);
 	}
-	static char *hostname_suffix = NULL;
 	if(!hostname_suffix && daemon->domain_suffix)
 	{
 		// Build "<hostname>.<local suffix>" domain
@@ -480,14 +499,14 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Create new query in data structure
 
 	// Get timestamp
-	const time_t querytimestamp = time(NULL);
+	const double querytimestamp = double_time();
 
 	// Save request time
 	struct timeval request;
 	gettimeofday(&request, 0);
 
 	// Determine query type
-	enum query_types querytype;
+	enum query_type querytype;
 	switch(qtype)
 	{
 		case T_A:
@@ -555,22 +574,21 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			// virtual interface that has only an IPv4 address
 			if((querytype == TYPE_A &&
 			    !next_iface.haveIPv4 &&
-			    !config.reply_addr.own_host.overwrite_v4) ||
+			    !config.dns.reply.host.force4.v.b) ||
 			   (querytype == TYPE_AAAA &&
 			    !next_iface.haveIPv6 &&
-			    !config.reply_addr.own_host.overwrite_v6))
+			    !config.dns.reply.host.force6.v.b))
 				force_next_DNS_reply = REPLY_NODATA;
 			else
 				force_next_DNS_reply = REPLY_IP;
 
 			blockingreason = HOSTNAME;
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("Replying to %s with %s", name,
-				     force_next_DNS_reply == REPLY_IP ?
-				       "interface-local IP address" :
-				       "NODATA due to missing iface address");
-			}
+
+			log_debug(DEBUG_QUERIES, "Replying to %s with %s", name,
+			          force_next_DNS_reply == REPLY_IP ?
+			            "interface-local IP address" :
+			            "NODATA due to missing iface address");
+
 			return true;
 		}
 		else
@@ -582,16 +600,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Check if this is a PTR request for a local interface.
 	// If so, we inject a "pi.hole" reply here
-	if(querytype == TYPE_PTR && config.pihole_ptr != PTR_NONE)
+	if(querytype == TYPE_PTR && config.dns.piholePTR.v.ptr_type != PTR_NONE)
 		check_pihole_PTR((char*)name);
-
-	// Skip AAAA queries if user doesn't want to have them analyzed
-	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
-	{
-		if(config.debug & DEBUG_QUERIES)
-			logg("Not analyzing AAAA query");
-		return false;
-	}
 
 	// Convert domain to lower case
 	char *domainString = strdup(name);
@@ -607,7 +617,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
 	ednsData *edns = getEDNS();
-	if(config.edns0_ecs && edns && edns->client_set)
+	if(config.dns.EDNS0ECS.v.b && edns && edns->client_set)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
@@ -627,7 +637,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Check if user wants to skip queries coming from localhost
-	if(config.ignore_localhost &&
+	if(config.dns.ignoreLocalhost.v.b &&
 	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
 	{
 		free(domainString);
@@ -658,8 +668,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	const char *interface = internal_query ? "-" : next_iface.name;
 
 	// Check rate-limit for this client
-	if(!internal_query && config.rate_limit.count > 0 &&
-	   (++client->rate_limit > config.rate_limit.count  || client->flags.rate_limited))
+	if(!internal_query && config.dns.rateLimit.count.v.ui > 0 &&
+	   (++client->rate_limit > config.dns.rateLimit.count.v.ui  || client->flags.rate_limited))
 	{
 		if(!client->flags.rate_limited)
 		{
@@ -688,14 +698,14 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Log new query if in debug mode
-	if(config.debug & DEBUG_QUERIES)
+	if(config.debug.queries.v.b)
 	{
 		const char *types = querystr(arg, qtype);
-		logg("**** new %sIPv%d %s query \"%s\" from %s/%s#%d (ID %i, FTL %i, %s:%i)",
-		     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
-		     family == AF_INET ? 4 : 6, types, domainString, interface,
-		     internal_query ? "<internal>" : clientIP, clientPort,
-		     id, queryID, short_path(file), line);
+		log_debug(DEBUG_QUERIES, "**** new %sIPv%d %s query \"%s\" from %s/%s#%d (ID %i, FTL %i, %s:%i)",
+		          proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
+		          family == AF_INET ? 4 : 6, types, domainString, interface,
+		          internal_query ? "<internal>" : clientIP, clientPort,
+		          id, queryID, short_path(file), line);
 	}
 
 	// Update overTime
@@ -703,13 +713,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
-	if(config.analyze_only_A_AAAA && querytype != TYPE_A && querytype != TYPE_AAAA)
+	if(config.dns.analyzeOnlyAandAAAA.v.b && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug.queries.v.b)
 		{
 			const char *types = querystr(arg, qtype);
-			logg("Notice: Skipping new query: %s (%i)", types, id);
+			log_debug(DEBUG_QUERIES, "Skipping new query: %s (%i)", types, id);
 		}
 		free(domainString);
 		unlock_shm();
@@ -724,7 +734,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(query == NULL)
 	{
 		// Encountered memory error, skip query
-		logg("WARN: No memory available, skipping query analysis");
+		log_err("No memory available, skipping query analysis");
 		// Free allocated memory
 		free(domainString);
 		// Release thread lock
@@ -745,19 +755,20 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->domainID = domainID;
 	query->clientID = clientID;
 	// Initialize database field, will be set when the query is stored in the long-term DB
-	query->flags.database = false;
+	query->flags.database.stored = false;
+	query->flags.database.changed = true;
 	query->flags.complete = false;
-	query->response = converttimeval(request);
+	query->response = querytimestamp;
 	query->flags.response_calculated = false;
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
 	counters->reply[REPLY_UNKNOWN]++;
 	// Store DNSSEC result for this domain
-	query->dnssec = DNSSEC_UNSPECIFIED;
+	query->dnssec = DNSSEC_UNKNOWN;
 	query->CNAME_domainID = -1;
 	// This query is not yet known ad forwarded or blocked
 	query->flags.blocked = false;
-	query->flags.whitelisted = false;
+	query->flags.allowed = false;
 
 	// Indicator that this query was not forwarded so far
 	query->upstreamID = -1;
@@ -765,10 +776,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Check and apply possible privacy level rules
 	// The currently set privacy level (at the time the query is
 	// generated) is stored in the queries structure
-	query->privacylevel = config.privacylevel;
+	query->privacylevel = config.misc.privacylevel.v.privacy_level;
 
 	// Query extended DNS error
 	query->ede = EDE_UNSET;
+
+	// This query is new and not yet known to the database
+	query->db = -1;
 
 	// Increase DNS queries counter
 	counters->queries++;
@@ -784,7 +798,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	client->numQueriesARP++;
 
 	// Update counters
-	counters->querytype[querytype-1]++;
+	counters->querytype[querytype]++;
 
 	// Process interface information of client (if available)
 	// Skip interface name length 1 to skip "-". No real interface should
@@ -804,11 +818,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			const char *oldiface = getstr(client->ifacepos);
 			if(strcasecmp(oldiface, interface) != 0)
 			{
-				if(config.debug & DEBUG_CLIENTS)
+				if(config.debug.clients.v.b)
 				{
 					const char *clientName = getstr(client->namepos);
-					logg("Client %s (%s) changed interface: %s -> %s",
-					     clientIP, clientName, oldiface, interface);
+					log_debug(DEBUG_CLIENTS, "Client %s (%s) changed interface: %s -> %s",
+					          clientIP, clientName, oldiface, interface);
 				}
 
 				gravityDB_reload_groups(client);
@@ -817,7 +831,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Set client MAC address from EDNS(0) information (if available)
-	if(config.edns0_ecs && edns && edns->mac_set)
+	if(config.dns.EDNS0ECS.v.b && edns && edns->mac_set)
 	{
 		memcpy(client->hwaddr, edns->mac_byte, 6);
 		client->hwlen = 6;
@@ -827,16 +841,16 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client->hwlen < 1)
 	{
 		client->hwlen = find_mac(addr, client->hwaddr, 1, time(NULL));
-		if(config.debug & DEBUG_ARP)
+		if(config.debug.arp.v.b)
 		{
 			if(client->hwlen == 6)
-				logg("find_mac(\"%s\") returned hardware address "
-				     "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
-				     client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
-				     client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
+				log_debug(DEBUG_ARP, "find_mac(\"%s\") returned hardware address "
+				          "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
+				          client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
+				          client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
 			else
-				logg("find_mac(\"%s\") returned %i bytes of data",
-				     clientIP, client->hwlen);
+				log_debug(DEBUG_ARP, "find_mac(\"%s\") returned %i bytes of data",
+				          clientIP, client->hwlen);
 		}
 	}
 
@@ -848,6 +862,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Free allocated memory
 	free(domainString);
+
+	// Store query in database
+	query->flags.database.changed = true;
 
 	// Release thread lock
 	unlock_shm();
@@ -865,8 +882,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	next_iface.haveIPv4 = next_iface.haveIPv6 = false;
 
 	// Debug logging
-	if(config.debug & DEBUG_NETWORKING)
-		logg("Interfaces: Called from %s:%d", short_path(file), line);
+	log_debug(DEBUG_NETWORKING, "Interfaces: Called from %s:%d", short_path(file), line);
 
 	// Use dummy when interface record is not available
 	next_iface.name[0] = '-';
@@ -877,14 +893,15 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	   ((addrfamily == AF_INET && addr->addr4.s_addr != INADDR_ANY) ||
 	    (addrfamily == AF_INET6 && !IN6_IS_ADDR_UNSPECIFIED(&addr->addr6))))
 	{
-		if(config.debug & DEBUG_NETWORKING)
+		if(config.debug.networking.v.b)
 		{
 			char addrstr[INET6_ADDRSTRLEN] = { 0 };
 			if(addrfamily == AF_INET)
 				inet_ntop(AF_INET, &addr->addr4, addrstr, INET6_ADDRSTRLEN);
 			else // if(addrfamily == AF_INET6)
 				inet_ntop(AF_INET6, &addr->addr6, addrstr, INET6_ADDRSTRLEN);
-			logg("Identifying interface (looking for %s):", addrstr);
+
+			log_debug(DEBUG_NETWORKING, "Identifying interface (looking for %s):", addrstr);
 		}
 
 		// Loop over interfaces and try to find match
@@ -894,12 +911,13 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 			const char *iname = iface->slabel ? iface->slabel : iface->name;
 			if(iface->addr.sa.sa_family == AF_INET)
 			{
-				inet_ntop(AF_INET, &iface->addr.in.sin_addr, addrstr, INET6_ADDRSTRLEN);
-				if(config.debug & DEBUG_NETWORKING)
+				if(config.debug.networking.v.b)
 				{
-					logg("  - IPv4 interface %s (%d,%d) is %s",
-					     iname, iface->index, iface->label, addrstr);
+					inet_ntop(AF_INET, &iface->addr.in.sin_addr, addrstr, INET6_ADDRSTRLEN);
+					log_debug(DEBUG_NETWORKING, "  - IPv4 interface %s (%d,%d) is %s",
+					          iname, iface->index, iface->label, addrstr);
 				}
+
 				if(iface->addr.in.sin_addr.s_addr == addr->addr4.s_addr)
 				{
 					// Set receiving interface
@@ -909,12 +927,13 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 			}
 			else if(iface->addr.sa.sa_family == AF_INET6)
 			{
-				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, addrstr, INET6_ADDRSTRLEN);
-				if(config.debug & DEBUG_NETWORKING)
+				if(config.debug.networking.v.b)
 				{
-					logg("  - IPv6 interface %s (%d,%d) is %s",
-					     iname, iface->index, iface->label, addrstr);
+					inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, addrstr, INET6_ADDRSTRLEN);
+					log_debug(DEBUG_NETWORKING, "  - IPv6 interface %s (%d,%d) is %s",
+					          iname, iface->index, iface->label, addrstr);
 				}
+
 				if(IN6_ARE_ADDR_EQUAL(&iface->addr.in6.sin6_addr, &addr->addr6))
 				{
 					// Set receiving interface
@@ -923,29 +942,24 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 				}
 			}
 		}
-		if(config.debug & DEBUG_NETWORKING)
-		{
-			if(recviface)
-				logg("    ^^^ MATCH ^^^");
-			else
-				logg("    --> NO MATCH <--");
-		}
+
+		log_debug(DEBUG_NETWORKING, recviface ?
+		                            "    ^^^^^ MATCH ^^^^^" :
+		                            "    --> NO MATCH <--");
 	}
 
 	// Return early when there is no interface available at this point
 	// This means we didn't get one passed + we didn't find one above
 	if(!recviface)
 	{
-		if(config.debug & DEBUG_NETWORKING)
-			logg("No receiving interface available at this point");
+		log_debug(DEBUG_NETWORKING, "No receiving interface available at this point");
 		return;
 	}
 
 	// Determine addresses of this interface, we have to loop over all interfaces as
 	// recviface will always only contain *either* IPv4 or IPv6 information
 	bool haveGUAv6 = false, haveULAv6 = false;
-	if(config.debug & DEBUG_NETWORKING)
-		logg("Analyzing interfaces:");
+	log_debug(DEBUG_NETWORKING, "Analyzing interfaces:");
 	for (struct irec *iface = daemon->interfaces; iface != NULL; iface = iface->next)
 	{
 		const sa_family_t family = iface->addr.sa.sa_family;
@@ -953,8 +967,8 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		// If this interface has no name, we skip it
 		if(iname == NULL)
 		{
-			if(config.debug & DEBUG_NETWORKING)
-				logg("  - SKIP IPv%d interface (%d,%d): no name",
+			if(config.debug.networking.v.b)
+				log_debug(DEBUG_NETWORKING, "  - SKIP IPv%d interface (%d,%d): no name",
 				     family == AF_INET ? 4 : 6, iface->index, iface->label);
 			continue;
 		}
@@ -962,8 +976,8 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		// Check if this is the interface we want
 		if(iface->index != recviface->index || iface->label != recviface->label)
 		{
-			if(config.debug & DEBUG_NETWORKING)
-				logg("  - SKIP IPv%d interface %s: (%d,%d) != (%d,%d)",
+			if(config.debug.networking.v.b)
+				log_debug(DEBUG_NETWORKING, "  - SKIP IPv%d interface %s: (%d,%d) != (%d,%d)",
 				     family == AF_INET ? 4 : 6, iname, iface->index, iface->label,
 				     recviface->index, recviface->label);
 			continue;
@@ -1015,7 +1029,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		}
 
 		// Debug logging
-		if(config.debug & DEBUG_NETWORKING)
+		if(config.debug.networking.v.b)
 		{
 			char buffer[ADDRSTRLEN+1] = { 0 };
 			if(family == AF_INET)
@@ -1024,17 +1038,16 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, buffer, ADDRSTRLEN);
 
 			const char *type = family == AF_INET6 ? isGUA ? " (GUA)" : isULA ? " (ULA)" : isLL ? " (LL)" : " (other)" : "";
-			logg("  -  OK  IPv%d interface %s: (%d,%d) is %s%s",
-			     family == AF_INET ? 4 : 6, next_iface.name,
-			     iface->index, iface->label, buffer, type);
+			log_debug(DEBUG_NETWORKING, "  -  OK  IPv%d interface %s (%d,%d) is %s%s",
+			          family == AF_INET ? 4 : 6, next_iface.name,
+			          iface->index, iface->label, buffer, type);
 		}
 
 		// Exit loop early if we already have everything we need
 		// (a valid IPv4 address + a valid ULA IPv6 address)
 		if(next_iface.haveIPv4 && haveULAv6)
 		{
-			if(config.debug & DEBUG_NETWORKING)
-				logg("Exiting interface analysis early (have IPv4 + ULAv6)");
+			log_debug(DEBUG_NETWORKING, "Exiting interface analysis early (have IPv4 + ULAv6)");
 			break;
 		}
 	}
@@ -1086,8 +1099,7 @@ static void check_pihole_PTR(char *domain)
 			}
 
 			// Debug logging
-			if(config.debug & DEBUG_QUERIES)
-				logg("Generating PTR response: %s -> %s", pihole_ptr->name, pihole_ptr->ptr);
+			log_debug(DEBUG_QUERIES, "Generating PTR response: %s -> %s", pihole_ptr->name, pihole_ptr->ptr);
 
 			return;
 		}
@@ -1100,11 +1112,8 @@ inline static void set_dnscache_blockingstatus(DNSCacheData * dns_cache, clients
 	// Memorize blocking status DNS cache for the domain/client combination
 	dns_cache->blocking_status = new_status;
 
-	if(config.debug & DEBUG_QUERIES)
-	{
-		const char *clientip = client ? getstr(client->ippos) : "N/A";
-		logg("DNS cache: %s/%s is %s", clientip, domain, blockingreason);
-	}
+	const char *clientip = client ? getstr(client->ippos) : "N/A";
+	log_debug(DEBUG_QUERIES, "DNS cache: %s/%s is %s", clientip, domain, blockingreason);
 }
 
 static bool check_domain_blocked(const char *domain, const int clientID,
@@ -1112,19 +1121,19 @@ static bool check_domain_blocked(const char *domain, const int clientID,
                                  enum query_status *new_status, bool *db_okay)
 {
 	// Return early if this domain is explicitly allowed
-	if(query->flags.whitelisted)
+	if(query->flags.allowed)
 		return false;
 
 	// Check domains against exact blacklist
-	enum db_result blacklist = in_blacklist(domain, dns_cache, client);
+	enum db_result blacklist = in_denylist(domain, dns_cache, client);
 	if(blacklist == FOUND)
 	{
 		// Set new status
-		*new_status = QUERY_BLACKLIST;
-		blockingreason = "exactly blacklisted";
+		*new_status = QUERY_DENYLIST;
+		blockingreason = "exactly denied";
 
-		// Mark domain as exactly blacklisted for this client
-		set_dnscache_blockingstatus(dns_cache, client, BLACKLIST_BLOCKED, domain);
+		// Mark domain as exactly denied for this client
+		set_dnscache_blockingstatus(dns_cache, client, DENYLIST_BLOCKED, domain);
 
 		// We block this domain
 		return true;
@@ -1151,23 +1160,22 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	{
 		*db_okay = false;
 		// Handle reply to this query as configured
-		if(config.reply_when_busy == BUSY_ALLOW)
+		if(config.dns.replyWhenBusy.v.busy_reply == BUSY_ALLOW)
 		{
-			if(config.debug & DEBUG_QUERIES)
-				logg("Allowing query as gravity database is not available");
+			log_debug(DEBUG_QUERIES, "Allowing query as gravity database is not available");
 
 			// Permit this query
 			// As we set db_okay to false, this allowing here does not enter the
 			// DNS cache so this domain will be rechecked on the next query
 			return false;
 		}
-		else if(config.reply_when_busy == BUSY_REFUSE)
+		else if(config.dns.replyWhenBusy.v.busy_reply == BUSY_REFUSE)
 		{
 			blockingreason = "to be refused (gravity database is not available)";
 			force_next_DNS_reply = REPLY_REFUSED;
 			*new_status = QUERY_DBBUSY;
 		}
-		else if(config.reply_when_busy == BUSY_DROP)
+		else if(config.dns.replyWhenBusy.v.busy_reply == BUSY_DROP)
 		{
 			blockingreason = "to be dropped (gravity database is not available)";
 			force_next_DNS_reply = REPLY_NONE;
@@ -1185,11 +1193,11 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 
 	// Check domain against blacklist regex filters
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
-	if(in_regex(domain, dns_cache, client-> id, REGEX_BLACKLIST))
+	if(in_regex(domain, dns_cache, client-> id, REGEX_DENY))
 	{
 		// Set new status
 		*new_status = QUERY_REGEX;
-		blockingreason = "regex blacklisted";
+		blockingreason = "regex denied";
 
 		// Mark domain as regex matched for this client
 		set_dnscache_blockingstatus(dns_cache, client, REGEX_BLOCKED, domain);
@@ -1197,6 +1205,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		// Regex may be overwriting reply type for this domain
 		if(dns_cache->force_reply != REPLY_UNKNOWN)
 			force_next_DNS_reply = dns_cache->force_reply;
+		cname_target = dns_cache->cname_target;
 
 		// Store ID of this regex (fork-private)
 		last_regex_idx = dns_cache->domainlist_id;
@@ -1221,7 +1230,7 @@ static bool special_domain(const queriesData *query, const char *domain)
 	// than NOERROR, such as NXDOMAIN (non-existent domain) or SERVFAIL; or
 	// respond with NOERROR, but return no A or AAAA records.
 	// https://support.mozilla.org/en-US/kb/configuring-networks-disable-dns-over-https
-	if(config.special_domains.mozilla_canary &&
+	if(config.dns.specialDomains.mozillaCanary.v.b &&
 	   strcasecmp(domain, "use-application-dns.net") == 0 &&
 	   (query->type == TYPE_A || query->type == TYPE_AAAA))
 	{
@@ -1245,7 +1254,7 @@ static bool special_domain(const queriesData *query, const char *domain)
 	// > mask.icloud.com
 	// > mask-h2.icloud.com
 	// https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay
-	if(config.special_domains.icloud_private_relay &&
+	if(config.dns.specialDomains.iCloudPrivateRelay.v.b &&
 	   (strcasecmp(domain, "mask.icloud.com") == 0 ||
 	    strcasecmp(domain, "mask-h2.icloud.com") == 0))
 	{
@@ -1260,7 +1269,7 @@ static bool special_domain(const queriesData *query, const char *domain)
 static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line)
 {
 	// Only check blocking conditions when global blocking is enabled
-	if(blockingstatus == BLOCKING_DISABLED)
+	if(get_blockingstatus() == BLOCKING_DISABLED)
 	{
 		return false;
 	}
@@ -1271,7 +1280,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	clientsData *client = getClient(clientID, true);
 	if(query == NULL || domain == NULL || client == NULL)
 	{
-		logg("Error: No memory available, skipping query analysis");
+		log_err("No memory available, skipping query analysis");
 		return false;
 	}
 
@@ -1280,7 +1289,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 	if(dns_cache == NULL)
 	{
-		logg("WARN: No memory available, skipping query analysis");
+		log_err("No memory available, skipping query analysis");
 		return false;
 	}
 
@@ -1293,29 +1302,23 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		case UNKNOWN_BLOCKED:
 			// New domain/client combination.
 			// We have to go through all the tests below
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is not known", domainstr);
-			}
+			log_debug(DEBUG_QUERIES, "%s is not known", domainstr);
 
 			break;
 
-		case BLACKLIST_BLOCKED:
-			// Known as exactly blacklistes, we
+		case DENYLIST_BLOCKED:
+			// Known as exactly denied, we
 			// return this result early, skipping
 			// all the lengthy tests below
-			blockingreason = "exactly blacklisted";
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is known as %s", domainstr, blockingreason);
-			}
+			blockingreason = "exactly denied";
+			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, blockingreason);
 
 			// Do not block if the entire query is to be permitted
 			// as something along the CNAME path hit the whitelist
-			if(!query->flags.whitelisted)
+			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
-				query_blocked(query, domain, client, QUERY_BLACKLIST);
+				query_blocked(query, domain, client, QUERY_DENYLIST);
 				return true;
 			}
 			break;
@@ -1325,14 +1328,11 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// return this result early, skipping
 			// all the lengthy tests below
 			blockingreason = "gravity blocked";
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is known as %s", domainstr, blockingreason);
-			}
+			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, blockingreason);
 
 			// Do not block if the entire query is to be permitted
 			// as sometving along the CNAME path hit the whitelist
-			if(!query->flags.whitelisted)
+			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
 				query_blocked(query, domain, client, QUERY_GRAVITY);
@@ -1345,14 +1345,11 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// return this result early, skipping
 			// all the lengthy tests below
 			blockingreason = "regex blacklisted";
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is known as %s", domainstr, blockingreason);
-			}
+			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, blockingreason);
 
 			// Do not block if the entire query is to be permitted
 			// as sometving along the CNAME path hit the whitelist
-			if(!query->flags.whitelisted)
+			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
 				last_regex_idx = dns_cache->domainlist_id;
@@ -1361,16 +1358,13 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			}
 			break;
 
-		case WHITELISTED:
+		case ALLOWED:
 			// Known as whitelisted, we
 			// return this result early, skipping
 			// all the lengthy tests below
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is known as not to be blocked (whitelisted)", domainstr);
-			}
+			log_debug(DEBUG_QUERIES, "%s is known as not to be blocked (allowed)", domainstr);
 
-			query->flags.whitelisted = true;
+			query->flags.allowed = true;
 
 			return false;
 			break;
@@ -1380,10 +1374,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// return this result early, skipping
 			// all the lengthy tests below
 			blockingreason = "special domain";
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is known as special domain", domainstr);;
-			}
+			log_debug(DEBUG_QUERIES, "%s is known as special domain", domainstr);
 
 			force_next_DNS_reply = dns_cache->force_reply;
 			query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
@@ -1394,10 +1385,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// Known as not blocked, we
 			// return this result early, skipping
 			// all the lengthy tests below
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is known as not to be blocked", domainstr);
-			}
+			log_debug(DEBUG_QUERIES, "%s is known as not to be blocked", domainstr);
 
 			return false;
 			break;
@@ -1414,19 +1402,15 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 
 		// Debug output
-		if(config.debug & DEBUG_QUERIES)
-			logg("Special domain: %s is %s", domainstr, blockingreason);
+		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
 
 		return true;
 	}
 
 	// Skip all checks and continue if we hit already at least one whitelist in the chain
-	if(query->flags.whitelisted)
+	if(query->flags.allowed)
 	{
-		if(config.debug & DEBUG_QUERIES)
-		{
-			logg("Query is permitted as at least one whitelist entry matched");
-		}
+		log_debug(DEBUG_QUERIES, "Query is permitted as at least one whitelist entry matched");
 		return false;
 	}
 
@@ -1437,11 +1421,11 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	const char *blockedDomain = domainstr;
 
 	// Check exact whitelist for match
-	query->flags.whitelisted = in_whitelist(domainstr, dns_cache, client) == FOUND;
+	query->flags.allowed = in_allowlist(domainstr, dns_cache, client) == FOUND;
 
 	// If not found: Check regex whitelist for match
-	if(!query->flags.whitelisted)
-		query->flags.whitelisted = in_regex(domainstr, dns_cache, client->id, REGEX_WHITELIST);
+	if(!query->flags.allowed)
+		query->flags.allowed = in_regex(domainstr, dns_cache, client->id, REGEX_ALLOW);
 
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;
@@ -1450,8 +1434,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled
 	// (defaulting to true)
-	if(config.block_esni &&
-	   !query->flags.whitelisted && blockDomain == NOT_FOUND &&
+	if(config.dns.blockESNI.v.b &&
+	   !query->flags.allowed && blockDomain == NOT_FOUND &&
 	    strlen(domainstr) > 6 && strncasecmp(domainstr, "_esni.", 6u) == 0)
 	{
 		blockDomain = check_domain_blocked(domainstr + 6u, clientID, client, query, dns_cache, &new_status, &db_okay);
@@ -1478,11 +1462,11 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		query_blocked(query, domain, client, new_status);
 
 		// Debug output
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug.queries.v.b)
 		{
-			logg("Blocking %s as %s is %s", domainstr, blockedDomain, blockingreason);
+			log_debug(DEBUG_QUERIES, "Blocking %s as %s is %s", domainstr, blockedDomain, blockingreason);
 			if(force_next_DNS_reply != 0)
-				logg("Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
+				log_debug(DEBUG_QUERIES, "Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
 		}
 	}
 	else if(db_okay)
@@ -1490,13 +1474,12 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		// Explicitly mark as not blocked to skip the entire gravity/blacklist
 		// chain when the same client asks for the same domain in the future.
 		// Store domain as whitelisted if this is the case
-		dns_cache->blocking_status = query->flags.whitelisted ? WHITELISTED : NOT_BLOCKED;
+		dns_cache->blocking_status = query->flags.allowed ? ALLOWED : NOT_BLOCKED;
 
 		// Debug output
-		if(config.debug & DEBUG_QUERIES)
-			// client is guaranteed to be non-NULL above
-			logg("DNS cache: %s/%s is %s", getstr(client->ippos), domainstr,
-			     query->flags.whitelisted ? "whitelisted" : "not blocked");
+		// client is guaranteed to be non-NULL above
+		log_debug(DEBUG_QUERIES, "DNS cache: %s/%s is %s", getstr(client->ippos),
+		          domainstr, query->flags.allowed ? "whitelisted" : "not blocked");
 	}
 
 	free(domainstr);
@@ -1506,14 +1489,12 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file, const int line)
 {
-	if(config.debug & DEBUG_QUERIES)
-		logg("FTL_CNAME called with: src = %s, dst = %s, id = %d", src, dst, id);
+	log_debug(DEBUG_QUERIES, "FTL_CNAME called with: src = %s, dst = %s, id = %d", src, dst, id);
 
 	// Does the user want to skip deep CNAME inspection?
-	if(!config.cname_inspection)
+	if(!config.dns.CNAMEdeepInspect.v.b)
 	{
-		if(config.debug & DEBUG_QUERIES)
-			logg("Skipping analysis as cname inspection is disabled");
+		log_debug(DEBUG_QUERIES, "Skipping analysis as cname inspection is disabled");
 		return false;
 	}
 
@@ -1527,8 +1508,7 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 		// This may happen e.g. if the original query was a PTR query
 		// or "pi.hole" and we ignored them altogether
 		unlock_shm();
-		if(config.debug & DEBUG_QUERIES)
-			logg("Skipping analysis as parent query is not found");
+		log_debug(DEBUG_QUERIES, "Skipping analysis as parent query is not found");
 		return false;
 	}
 
@@ -1539,8 +1519,7 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 	{
 		// Nothing to be done here
 		unlock_shm();
-		if(config.debug & DEBUG_QUERIES)
-			logg("Skipping analysis as parent query is not valid");
+		log_debug(DEBUG_QUERIES, "Skipping analysis as parent query is not valid");
 		return false;
 	}
 
@@ -1610,23 +1589,23 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 
 			// Propagate ID of responsible regex up from the child to the parent domain
 			if(parent_cache != NULL && child_cache != NULL)
-			{
 				child_cache->domainlist_id = parent_cache->domainlist_id;
-			}
 
 			// Set status
 			query_set_status(query, QUERY_REGEX_CNAME);
 		}
-		else if(query->status == QUERY_BLACKLIST)
+		else if(query->status == QUERY_DENYLIST)
 		{
 			// Only set status
-			query_set_status(query, QUERY_BLACKLIST_CNAME);
+			query_set_status(query, QUERY_DENYLIST_CNAME);
 		}
 	}
 
 	// Debug logging for deep CNAME inspection (if enabled)
-	if(config.debug & DEBUG_QUERIES)
-		logg("Query %d: CNAME %s ---> %s", id, src, dst);
+	log_debug(DEBUG_QUERIES, "Query %d: CNAME %s ---> %s", id, src, dst);
+
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 
 	// Return result
 	free(child_domain);
@@ -1638,6 +1617,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
                           unsigned short port, const int id, const char* file, const int line)
 {
 	// Save that this query got forwarded to an upstream server
+	const double now = double_time();
 
 	// Lock shared memory
 	lock_shm();
@@ -1658,7 +1638,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 			                                     + offsetof(struct sockaddr_in, sin_port));
 			upstreamPort = ntohs(*rport);
 			if(upstreamPort != port)
-				logg("ERR: Port mismatch for %s: we derived %d, dnsmasq told us %d", dest, upstreamPort, port);
+				log_err("Port mismatch for %s: we derived %d, dnsmasq told us %d", dest, upstreamPort, port);
 		}
 		else
 		{
@@ -1669,7 +1649,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 			                                     + offsetof(struct sockaddr_in6, sin6_port));
 			upstreamPort = ntohs(*rport);
 			if(upstreamPort != port)
-				logg("ERR: Port mismatch for %s: we derived %d, dnsmasq told us %d", dest, upstreamPort, port);
+				log_err("Port mismatch for %s: we derived %d, dnsmasq told us %d", dest, upstreamPort, port);
 		}
 	}
 
@@ -1678,11 +1658,8 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	strtolower(upstreamIP);
 
 	// Debug logging
-	if(config.debug & DEBUG_QUERIES)
-	{
-		logg("**** forwarded %s to %s#%u (ID %i, %s:%i)",
-		     name, upstreamIP, upstreamPort, id, file, line);
-	}
+	log_debug(DEBUG_QUERIES, "**** forwarded %s to %s#%u (ID %i, %s:%i)",
+	          name, upstreamIP, upstreamPort, id, file, line);
 
 	// Save status and upstreamID in corresponding query identified by dnsmasq's ID
 	const int queryID = findQueryID(id);
@@ -1717,6 +1694,8 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 		upstream->overTime[timeidx]++;
 		// Update lastQuery timestamp
 		upstream->lastQuery = time(NULL);
+		// Count forwarded query
+		upstream->count++;
 	}
 
 	// Proceed only if
@@ -1758,7 +1737,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 			// can go back in time to measure both the initial cache
 			// lookup and the (now starting) time it takes for the
 			// upstream to respond
-			query->response = converttimeval(response) - query->response;
+			query->response = now - query->response;
 			query->flags.response_calculated = false;
 		}
 	}
@@ -1778,30 +1757,20 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	// Release allocated memory
 	free(upstreamIP);
 
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
+
 	// Unlock shared memory
 	unlock_shm();
 }
 
+static unsigned int reload = 0u;
 void FTL_dnsmasq_reload(void)
 {
 	// This function is called by the dnsmasq code on receive of SIGHUP
-	// *before* clearing the cache and rereading the lists
-	logg("Reloading DNS cache");
-	lock_shm();
-
-	// Request reload the privacy level and blocking status
-	set_event(RELOAD_PRIVACY_LEVEL);
-	set_event(RELOAD_BLOCKINGSTATUS);
-
-	// Reread pihole-FTL.conf to see which blocking mode the user wants to use
-	// It is possible to change the blocking mode here as we anyhow clear the
-	// cache and reread all blocking lists
-	// Passing NULL to this function means it has to open the config file on
-	// its own behalf (on initial reading, the config file is already opened)
-	get_blocking_mode(NULL);
-
-	// Reread pihole-FTL.conf to see which debugging flags are set
-	read_debuging_settings(NULL);
+	// *before* clearing the cache and re-reading the lists
+	if(reload++ > 0)
+		log_info("Received SIGHUP, flushing cache and re-reading config");
 
 	// Gravity database updates
 	// - (Re-)open gravity database connection
@@ -1812,10 +1781,16 @@ void FTL_dnsmasq_reload(void)
 	set_event(RELOAD_GRAVITY);
 
 	// Print current set of capabilities if requested via debug flag
-	if(config.debug & DEBUG_CAPS)
+	if(config.debug.caps.v.b)
 		check_capabilities();
 
-	unlock_shm();
+	// Re-read pihole.toml (incl. rewriting) on every but the first reload
+	// (which is happening right after the start of dnsmasq)
+	if(reload > 1)
+		reread_config();
+
+	// Report blocking mode
+	log_info("Blocking status is %s", config.dns.blocking.active.v.b ? "enabled" : "disabled");
 
 	// Set resolver as ready
 	resolver_ready = true;
@@ -1846,14 +1821,14 @@ static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTR
 }
 
 // Compute cache/upstream response time
-static inline void set_response_time(queriesData *query, const struct timeval response)
+static inline void set_response_time(queriesData *query, const double now)
 {
 	// Do this only if this is the first time we set a reply
 	if(query->flags.response_calculated)
 		return;
 
 	// Convert absolute timestamp to relative timestamp
-	query->response = converttimeval(response) - query->response;
+	query->response = now - query->response;
 	query->flags.response_calculated = true;
 }
 
@@ -1877,15 +1852,15 @@ static void update_upstream(queriesData *query, const int id)
 	int upstreamID = findUpstreamID(ip, port);
 	if(upstreamID != query->upstreamID)
 	{
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug.queries.v.b)
 		{
 			upstreamsData *upstream = getUpstream(query->upstreamID, true);
 			if(upstream)
 			{
 				const char *oldaddr = getstr(upstream->ippos);
 				const in_port_t oldport = upstream->port;
-				logg("Query ID %d: Associated upstream changed (was %s#%d) as %s#%d replied earlier",
-					id, oldaddr, oldport, ip, port);
+				log_debug(DEBUG_QUERIES, "Query ID %d: Associated upstream changed (was %s#%d) as %s#%d replied earlier",
+				          id, oldaddr, oldport, ip, port);
 			}
 		}
 
@@ -1897,6 +1872,7 @@ static void update_upstream(queriesData *query, const int id)
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr,
                       const char *arg, const int id, const char* file, const int line)
 {
+	const double now = double_time();
 	// If domain is "pi.hole", we skip this query
 	// We compare case-insensitive here
 	// Hint: name can be NULL, e.g. for NODATA/NXDOMAIN replies
@@ -1919,7 +1895,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	if(queryID < 0)
 	{
 		// This may happen e.g. if the original query was "pi.hole"
-		if(config.debug & DEBUG_QUERIES) logg("FTL_reply(): Query %i has not been found", id);
+		log_debug(DEBUG_QUERIES, "FTL_reply(): Query %i has not been found", id);
 		unlock_shm();
 		return;
 	}
@@ -1937,15 +1913,15 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		{
 			; // Okay
 		}
-		else if(config.debug & DEBUG_FLAGS)
-			logg("***** Unknown cache query");
+		else
+			log_debug(DEBUG_FLAGS, "***** Unknown cache query");
 	}
 
 	// Is this a stale reply?
 	const bool stale = flags & F_STALE;
 
 	// Possible debugging output
-	if(config.debug & DEBUG_QUERIES)
+	if(config.debug.queries.v.b)
 	{
 		// Human-readable answer may be provided by arg
 		// (e.g. for non-cached queries such as SOA)
@@ -1995,18 +1971,18 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 		if(cached || last_server.sa.sa_family == 0)
 			// Log cache or upstream reply from unknown source
-			logg("**** got %s%s reply: %s is %s (ID %i, %s:%i)",
-			     stale ? "stale ": "", cached ? "cache" : "upstream",
-			     dispname, answer, id, file, line);
+			log_debug(DEBUG_QUERIES, "**** got %s%s reply: %s is %s (ID %i, %s:%i)",
+			          stale ? "stale ": "", cached ? "cache" : "upstream",
+			          dispname, answer, id, file, line);
 		else
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
 			in_port_t port = 0;
 			mysockaddr_extract_ip_port(&last_server, ip, &port);
 			// Log server which replied to our request
-			logg("**** got %s%s reply from %s#%d: %s is %s (ID %i, %s:%i)",
-			     stale ? "stale ": "", cached ? "cache" : "upstream",
-			     ip, port, dispname, answer, id, file, line);
+			log_debug(DEBUG_QUERIES, "**** got %s%s reply from %s#%d: %s is %s (ID %i, %s:%i)",
+			          stale ? "stale ": "", cached ? "cache" : "upstream",
+			          ip, port, dispname, answer, id, file, line);
 		}
 	}
 
@@ -2023,15 +1999,13 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != EDE_UNSET)
 	{
 		query->ede = addr->log.ede;
-		if(config.debug & DEBUG_QUERIES)
-			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
+		log_debug(DEBUG_QUERIES, "     EDE (1): %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 	ednsData *edns = getEDNS();
 	if(edns != NULL && edns->ede != EDE_UNSET)
 	{
 		query->ede = edns->ede;
-		if(config.debug & DEBUG_QUERIES)
-			logg("     EDE: %s (%d)", edestr(edns->ede), edns->ede);
+		log_debug(DEBUG_QUERIES, "     EDE (2): %s (%d)", edestr(edns->ede), edns->ede);
 	}
 
 	// Update upstream server (if applicable)
@@ -2044,7 +2018,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 	// Save response time
 	// Skipped internally if already computed
-	set_response_time(query, response);
+	set_response_time(query, now);
 
 	// We only process the first reply further in here
 	// Check if reply type is still UNKNOWN
@@ -2102,6 +2076,9 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
 
+		// Mark query for updating in the database
+		query->flags.database.changed = true;
+
 		unlock_shm();
 		return;
 	}
@@ -2122,15 +2099,22 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Save reply type and update individual reply counters
 		query_set_reply(flags, 0, addr, query, response);
 
-		// Set DNSSEC status to INSECURE if it is still unknown
-		if(query->dnssec == DNSSEC_UNSPECIFIED)
-			query_set_dnssec(query, DNSSEC_INSECURE);
-
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
+
+		// Mark query for updating in the database
+		query->flags.database.changed = true;
 	}
 	else if((flags & (F_FORWARD | F_UPSTREAM)) && isExactMatch)
 	{
+		upstreamsData *upstream = getUpstream(query->upstreamID, true);
+		upstream->responses++;
+
+		// Re-compute upstream average response time and uncertainty
+		upstream->rtime += query->response;
+		const double mean = upstream->rtime / upstream->responses;
+		upstream->rtuncertainty += (mean - query->response)*(mean - query->response);
+
 		// Only proceed if query is not already known
 		// to have been blocked by Quad9
 		if(query->status == QUERY_EXTERNAL_BLOCKED_IP ||
@@ -2165,12 +2149,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 				reply_flags = F_NEG;
 			}
 		}
-		else
-		{
-			// Set DNSSEC status to INSECURE if it is still unknown
-			if(query->dnssec == DNSSEC_UNSPECIFIED)
-				query_set_dnssec(query, DNSSEC_INSECURE);
-		}
 
 		// Save reply type and update individual reply counters
 		query_set_reply(reply_flags, 0, addr, query, response);
@@ -2189,6 +2167,9 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 					query_blocked(query, domain, client, new_status);
 			}
 		}
+
+		// Mark query for updating in the database
+		query->flags.database.changed = true;
 	}
 	else if(flags & F_REVERSE)
 	{
@@ -2201,20 +2182,26 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		//   name = google-public-dns-a.google.com
 		// Hence, isExactMatch is always false
 
-		// Set DNSSEC status to INSECURE if it is still unknown
-		if(query->dnssec == DNSSEC_UNSPECIFIED)
-			query_set_dnssec(query, DNSSEC_INSECURE);
-
 		// Save reply type and update individual reply counters
 		query_set_reply(flags, 0, addr, query, response);
+
+		// Mark query for updating in the database
+		query->flags.database.changed = true;
 	}
 	else if(isExactMatch && !query->flags.complete)
 	{
-		logg("*************************** unknown REPLY ***************************");
+		log_warn("Unknown REPLY");
 	}
-	else if(config.debug & DEBUG_FLAGS)
+	else if(config.debug.flags.v.b)
 	{
-		logg("***** Unknown upstream REPLY");
+		log_warn("Unknown upstream REPLY");
+	}
+
+	if(query && option_bool(OPT_DNSSEC_PROXY))
+	{
+		// DNSSEC proxy mode is enabled. Interpret AD flag
+		// and set DNSSEC status accordingly
+		query_set_dnssec(query, adbit ? DNSSEC_SECURE : DNSSEC_INSECURE);
 	}
 
 	if(query && option_bool(OPT_DNSSEC_PROXY))
@@ -2242,11 +2229,8 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 		// Skip replies which originated locally. Otherwise, we would
 		// count gravity.list blocked queries as externally blocked.
 		// Also: Do not mark responses of PTR requests as externally blocked.
-		if(config.debug & DEBUG_QUERIES)
-		{
-			const char *cause = (flags & F_HOSTS) ? "origin is HOSTS" : "query is PTR";
-			logg("Skipping detection of external blocking IP for ID %i as %s", query->id, cause);
-		}
+		const char *cause = (flags & F_HOSTS) ? "origin is HOSTS" : "query is PTR";
+		log_debug(DEBUG_QUERIES, "Skipping detection of external blocking IP for ID %i as %s", query->id, cause);
 
 		// Return early, do not compare against known blocking page IP addresses below
 		return query->status;
@@ -2261,12 +2245,12 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	// Check for IP block 146.112.61.104 - 146.112.61.110
 	if((flags & F_IPV4) && ipv4Addr >= 0x92703d68 && ipv4Addr <= 0x92703d6e)
 	{
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug.queries.v.b)
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
-			logg("Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
-			     query->id, getstr(domain->domainpos), answer);
+			log_debug(DEBUG_QUERIES, "Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
+			          query->id, getstr(domain->domainpos), answer);
 		}
 
 		// Update status
@@ -2279,12 +2263,12 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	        addr->addr6.s6_addr32[2] == 0xffff0000 &&
 	        ipv6Addr >= 0x92703d68 && ipv6Addr <= 0x92703d6e)
 	{
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug.queries.v.b)
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
-			logg("Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
-			     query->id, getstr(domain->domainpos), answer);
+			log_debug(DEBUG_QUERIES, "Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
+			          query->id, getstr(domain->domainpos), answer);
 		}
 
 		// Update status
@@ -2296,10 +2280,10 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	// nothing is reachable under these addresses
 	else if(flags & F_IPV4 && ipv4Addr == 0)
 	{
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug.queries.v.b)
 		{
-			logg("Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"0.0.0.0\"",
-			     query->id, getstr(domain->domainpos));
+			log_debug(DEBUG_QUERIES, "Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"0.0.0.0\"",
+			          query->id, getstr(domain->domainpos));
 		}
 
 		// Update status
@@ -2311,10 +2295,10 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	        addr->addr6.s6_addr32[2] == 0 &&
 	        addr->addr6.s6_addr32[3] == 0)
 	{
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug.queries.v.b)
 		{
-			logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"::\"",
-			     query->id, getstr(domain->domainpos));
+			log_debug(DEBUG_QUERIES, "Upstream responded with ::, ID %i:\n\t\"%s\" -> \"::\"",
+			          query->id, getstr(domain->domainpos));
 		}
 
 		// Update status
@@ -2340,6 +2324,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 		{
 			const int timeidx = getOverTimeID(query->timestamp);
 			upstream->overTime[timeidx]--;
+			upstream->count--;
 		}
 	}
 	else if(is_blocked(query->status))
@@ -2361,6 +2346,9 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 
 	// Update status
 	query_set_status(query, new_status);
+
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 }
 
 static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id, const char* file, const int line)
@@ -2389,14 +2377,14 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 	}
 
 	// Debug logging
-	if(config.debug & DEBUG_QUERIES)
+	if(config.debug.queries.v.b)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->domainID, true);
 		if(domain != NULL)
-			logg("**** DNSSEC %s is %s (ID %i, %s:%i)", getstr(domain->domainpos), arg, id, file, line);
+			log_debug(DEBUG_QUERIES, "**** DNSSEC %s is %s (ID %i, %s:%i)", getstr(domain->domainpos), arg, id, file, line);
 		if(addr && addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_SECSTAT)
-			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
+			log_debug(DEBUG_QUERIES, "     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 
 	// Store EDE
@@ -2413,7 +2401,10 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 	else if(strcmp(arg, "ABANDONED") == 0)
 		query_set_dnssec(query, DNSSEC_ABANDONED);
 	else
-		logg("***** Ignored unknown DNSSEC status \"%s\"", arg);
+		log_warn("Unknown DNSSEC status \"%s\"", arg);
+
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -2483,8 +2474,14 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 	// Get EDNS data (if available)
 	ednsData *edns = getEDNS();
 
+	if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
+		query->ede = addr->log.ede;
+
+	else if(edns != NULL && edns->ede != EDE_UNSET)
+		query->ede = edns->ede;
+
 	// Debug logging
-	if(config.debug & DEBUG_QUERIES)
+	if(config.debug.queries.v.b)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->domainID, true);
@@ -2499,13 +2496,13 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 		if(flags & F_CONFIG)
 		{
 			// Log local error, typically "nowhere to forward to"
-			logg("**** local error (nowhere to forward to): %s is %s (ID %i, %s:%i)",
+			log_err("**** local error (nowhere to forward to): %s is %s (ID %i, %s:%i)",
 			     domainname, rcodestr, id, file, line);
 		}
 		else if(last_server.sa.sa_family == 0)
 		{
 			// Log error reply from unknown source
-			logg("**** got error reply: %s is %s (ID %i, %s:%i)",
+			log_debug(DEBUG_QUERIES, "**** got error reply: %s is %s (ID %i, %s:%i)",
 			     domainname, rcodestr, id, file, line);
 		}
 		else
@@ -2514,38 +2511,26 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 			in_port_t port = 0;
 			mysockaddr_extract_ip_port(&last_server, ip, &port);
 			// Log server which replied to our request
-			logg("**** got error reply from %s#%d: %s is %s (ID %i, %s:%i)",
+			log_debug(DEBUG_QUERIES, "**** got error reply from %s#%d: %s is %s (ID %i, %s:%i)",
 			     ip, port, domainname, rcodestr, id, file, line);
 		}
 
 		if(query->reply == REPLY_OTHER)
-		{
-			logg("     Unknown rcode = %i", addr->log.rcode);
-		}
+			log_debug(DEBUG_QUERIES, "     Unknown rcode = %i", addr->log.rcode);
 
-		if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
-		{
-			query->ede = addr->log.ede;
-			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
-		}
+
+		if(addr->log.ede != EDE_UNSET)
+			log_debug(DEBUG_QUERIES, "     EDE: %s (1/%d)", edestr(addr->log.ede), addr->log.ede);
 
 		if(edns != NULL && edns->ede != EDE_UNSET)
-		{
-			query->ede = edns->ede;
-			logg("     EDE: %s (%d)", edestr(edns->ede), edns->ede);
-		}
+			log_debug(DEBUG_QUERIES, "     EDE: %s (2/%d)", edestr(edns->ede), edns->ede);
 	}
-	// Check EDNS EDE for DNSSEC status in DNSSEC proxy mode
-	if(option_bool(OPT_DNSSEC_PROXY) &&
-	   edns && edns->ede >= EDE_DNSSEC_BOGUS && edns->ede <= EDE_NO_NSEC)
-	{
-		// DNSSEC proxy mode is enabled and we received a valid DNSSEC
-		// status from the upstream server through ENDS EDE. We need to
-		// update the DNSSEC status of the corresponding query.
-		query_set_dnssec(query, DNSSEC_BOGUS);
-	}
+
 	// Set query reply
 	query_set_reply(0, reply, addr, query, response);
+
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 
 	// Reset last_server
 	memset(&last_server, 0, sizeof(last_server));
@@ -2587,11 +2572,11 @@ static void FTL_mark_externally_blocked(const int id, const char* file, const in
 	}
 
 	// Possible debugging information
-	if(config.debug & DEBUG_QUERIES)
+	if(config.debug.queries.v.b)
 	{
 		// Get domain name (domain cannot be NULL here)
 		const char *domainname = getstr(domain->domainpos);
-		logg("**** %s externally blocked (ID %i, FTL %i, %s:%i)", domainname, id, queryID, file, line);
+		log_debug(DEBUG_QUERIES, "**** %s externally blocked (ID %i, FTL %i, %s:%i)", domainname, id, queryID, file, line);
 	}
 
 	// Get response time
@@ -2605,6 +2590,9 @@ static void FTL_mark_externally_blocked(const int id, const char* file, const in
 
 	// Store reply type as replied with NXDOMAIN
 	query_set_reply(F_NEG | F_NXDOMAIN, 0, NULL, query, response);
+
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -2633,19 +2621,18 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	if(server)
 	{
 		memcpy(&last_server, &server->addr, sizeof(last_server));
-		if(config.debug & DEBUG_EXTRA)
+		if(config.debug.extra.v.b)
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
 			in_port_t port = 0;
 			mysockaddr_extract_ip_port(&last_server, ip, &port);
-			logg("Got forward address: %s#%u (%s:%i)", ip, port, short_path(file), line);
+			log_debug(DEBUG_EXTRA, "Got forward address: %s#%u (%s:%i)", ip, port, short_path(file), line);
 		}
 	}
 	else
 	{
 		memset(&last_server, 0, sizeof(last_server));
-		if(config.debug & DEBUG_EXTRA)
-			logg("Got forward address: NO");
+		log_debug(DEBUG_EXTRA, "Got forward address: NO");
 	}
 }
 
@@ -2655,14 +2642,14 @@ void print_flags(const unsigned int flags)
 	// e.g. "Flags: F_FORWARD F_NEG F_IPV6"
 
 	// Only print flags if corresponding debugging flag is set
-	if(!(config.debug & DEBUG_FLAGS))
+	if(!(config.debug.flags.v.b))
 		return;
 
 	char *flagstr = calloc(sizeof(flagnames) + 1, sizeof(char));
-	for (unsigned int i = 0; i < (sizeof(flagnames) / sizeof(*flagnames)); i++)
+	for (unsigned int i = 0; i < ArraySize(flagnames); i++)
 		if (flags & (1u << i))
 			strcat(flagstr, flagnames[i]);
-	logg("     Flags: %s", flagstr);
+	log_debug(DEBUG_FLAGS, "     Flags: %s", flagstr);
 	free(flagstr);
 }
 
@@ -2672,6 +2659,7 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
                              const char *file, const int line)
 {
 	enum reply_type new_reply = REPLY_UNKNOWN;
+	const double now = double_time();
 	// If reply is set, we use it directly instead of interpreting the flags
 	if(reply != 0)
 	{
@@ -2736,13 +2724,13 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 		new_reply = REPLY_BLOB;
 	}
 
-	if(config.debug & DEBUG_QUERIES)
+	if(config.debug.queries.v.b)
 	{
 		const char *path = short_path(file);
-		logg("Set reply to %s (%d) in %s:%d", get_query_reply_str(new_reply), new_reply, path, line);
+		log_debug(DEBUG_QUERIES, "Set reply to %s (%d) in %s:%d", get_query_reply_str(new_reply), new_reply, path, line);
 		if(query->reply != REPLY_UNKNOWN && query->reply != new_reply)
-			logg("Reply of query %i was %s now changing to %s", query->id,
-			     get_query_reply_str(query->reply), get_query_reply_str(new_reply));
+			log_debug(DEBUG_QUERIES, "Reply of query %i was %s now changing to %s", query->id,
+			          get_query_reply_str(query->reply), get_query_reply_str(new_reply));
 	}
 
 	// Subtract from old reply counter
@@ -2754,99 +2742,52 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 
 	// Save response time
 	// Skipped internally if already computed
-	set_response_time(query, response);
+	set_response_time(query, now);
 }
 
-void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
+static void init_pihole_PTR(void)
 {
-	// Going into daemon mode involves storing the
-	// PID of the generated child process. If FTL
-	// is asked to stay in foreground, we just save
-	// the PID of the current process in the PID file
-	if(daemonmode)
-		go_daemon();
-	else
-		savepid();
-
-	// Handle real-time signals in this process (and its children)
-	// Helper processes are already split from the main instance
-	// so they will not listen to real-time signals
-	handle_realtime_signals();
-
-	// We will use the attributes object later to start all threads in
-	// detached mode
-	pthread_attr_t attr;
-	// Initialize thread attributes object with default attribute values
-	pthread_attr_init(&attr);
-
-	// Start listening on telnet-like interface
-	listen_telnet(TELNETv4);
-	listen_telnet(TELNETv6);
-	listen_telnet(TELNET_SOCK);
-
-	// Start database thread if database is used
-	if(pthread_create( &threads[DB], &attr, DB_thread, NULL ) != 0)
+	char *ptrname = NULL;
+	// Determine name that should be replied to with on Pi-hole PTRs
+	switch (config.dns.piholePTR.v.ptr_type)
 	{
-		logg("Unable to open database thread. Exiting...");
-		exit(EXIT_FAILURE);
-	}
+		default:
+		case PTR_NONE:
+		case PTR_PIHOLE:
+			ptrname = (char*)"pi.hole";
+			break;
 
-	// Start thread that will stay in the background until garbage
-	// collection needs to be done
-	if(pthread_create( &threads[GC], &attr, GC_thread, NULL ) != 0)
-	{
-		logg("Unable to open GC thread. Exiting...");
-		exit(EXIT_FAILURE);
-	}
+		case PTR_HOSTNAME:
+			ptrname = (char*)hostname();
+			break;
 
-	// Start thread that will stay in the background until host names needs to
-	// be resolved. If configuration does not ask for never resolving hostnames
-	// (e.g. on CI builds), the thread is never started)
-	if(resolve_names() && pthread_create( &threads[DNSclient], &attr, DNSclient_thread, NULL ) != 0)
-	{
-		logg("Unable to open DNS client thread. Exiting...");
-		exit(EXIT_FAILURE);
-	}
-
-	// Chown files if FTL started as user root but a dnsmasq config
-	// option states to run as a different user/group (e.g. "nobody")
-	if(getuid() == 0)
-	{
-		// Only print this and change ownership of shmem objects when
-		// we're actually dropping root (user/group my be set to root)
-		if(ent_pw != NULL && ent_pw->pw_uid != 0)
+		case PTR_HOSTNAMEFQDN:
 		{
-			logg("INFO: FTL is going to drop from root to user %s (UID %d)",
-			     ent_pw->pw_name, (int)ent_pw->pw_uid);
-			if(chown(FTLfiles.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-				logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
-				ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.log, strerror(errno), errno);
-			if(chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-				logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
-				ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.FTL_db, strerror(errno), errno);
-			chown_all_shmem(ent_pw);
+			char *suffix = daemon->domain_suffix;
+			// If local suffix is not available, we substitute "no_fqdn_available"
+			// see the comment about PIHOLE_PTR=HOSTNAMEFQDN in the Pi-hole docs
+			// for further details on why this was chosen
+			if(!suffix)
+				suffix = (char*)"no_fqdn_available";
+			ptrname = calloc(strlen(hostname()) + strlen(suffix) + 2, sizeof(char));
+			if(ptrname)
+			{
+				// Build "<hostname>.<local suffix>" domain
+				strcpy(ptrname, hostname());
+				strcat(ptrname, ".");
+				strcat(ptrname, suffix);
+			}
+			else
+			{
+				// Fallback to "<hostname>" on memory error
+				ptrname = (char*)hostname();
+			}
 		}
-		else
-		{
-			logg("INFO: FTL is running as root");
-		}
+			break;
 	}
-	else
-	{
-		uid_t uid;
-		struct passwd *current_user;
-		if ((current_user = getpwuid(uid = geteuid())) != NULL)
-			logg("INFO: FTL is running as user %s (UID %d)",
-			     current_user->pw_name, (int)current_user->pw_uid);
-		else
-			logg("INFO: Failed to obtain information about FTL user");
-	}
-
-	// Obtain DNS port from dnsmasq daemon
-	config.dns_port = daemon->port;
 
 	// Obtain PTR record used for Pi-hole PTR injection (if enabled)
-	if(config.pihole_ptr != PTR_NONE)
+	if(config.dns.piholePTR.v.ptr_type != PTR_NONE)
 	{
 		// Add PTR record for pi.hole, the address will be injected later
 		pihole_ptr = calloc(1, sizeof(struct ptr_record));
@@ -2871,11 +2812,108 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	}
 }
 
+void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
+{
+	// Going into daemon mode involves storing the
+	// PID of the generated child process. If FTL
+	// is asked to stay in foreground, we just save
+	// the PID of the current process in the PID file
+	if(daemonmode)
+		go_daemon();
+	else
+		savepid();
+
+	// Handle real-time signals in this process (and its children)
+	// Helper processes are already split from the main instance
+	// so they will not listen to real-time signals
+	handle_realtime_signals();
+
+	// We will use the attributes object later to start all threads in
+	// detached mode
+	pthread_attr_t attr;
+	// Initialize thread attributes object with default attribute values
+	pthread_attr_init(&attr);
+
+	// Start database thread if database is used
+	if(pthread_create( &threads[DB], &attr, DB_thread, NULL ) != 0)
+	{
+		log_crit("Unable to creeate database thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
+	// Start thread that will stay in the background until garbage
+	// collection needs to be done
+	if(pthread_create( &threads[GC], &attr, GC_thread, NULL ) != 0)
+	{
+		log_crit("Unable to create GC thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
+	// Start thread that will stay in the background until host names needs to
+	// be resolved. If configuration does not ask for never resolving hostnames
+	// (e.g. on CI builds), the thread is never started)
+	if(dnsmasq_start &&
+	   resolve_names() &&
+	   pthread_create( &threads[DNSclient], &attr, DNSclient_thread, NULL ) != 0)
+	{
+		log_crit("Unable to create DNS client thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
+	// Start thread that checks various timers, e.g., for automatic changing
+	// blocking mode (enabled/disabled for a given amount of time)
+	if(pthread_create( &threads[TIMER], &attr, timer, NULL ) != 0)
+	{
+		log_crit("Unable to create timer thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
+	// Chown files if FTL started as user root but a dnsmasq config
+	// option states to run as a different user/group (e.g. "nobody")
+	if(getuid() == 0)
+	{
+		// Only print this and change ownership of shmem objects when
+		// we're actually dropping root (user/group my be set to root)
+		if(ent_pw != NULL && ent_pw->pw_uid != 0)
+		{
+			log_info("FTL is going to drop from root to user %s (UID %u)",
+			     ent_pw->pw_name, ent_pw->pw_uid);
+			if(chown(config.files.log.ftl.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
+				ent_pw->pw_uid, ent_pw->pw_gid, config.files.log.ftl.v.s, strerror(errno), errno);
+			if(chown(config.files.database.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
+				ent_pw->pw_uid, ent_pw->pw_gid, config.files.database.v.s, strerror(errno), errno);
+			chown_all_shmem(ent_pw);
+		}
+		else
+		{
+			log_info("FTL is running as root");
+		}
+	}
+	else
+	{
+		uid_t uid;
+		struct passwd *current_user;
+		if ((current_user = getpwuid(uid = geteuid())) != NULL)
+			log_info("FTL is running as user %s (UID %d)",
+			     current_user->pw_name, (int)current_user->pw_uid);
+		else
+			log_info("Failed to obtain information about FTL user");
+	}
+
+	// Initialize FTL HTTP server
+	http_init();
+
+	// Initialize Pi-hole PTR pointer
+	init_pihole_PTR();
+}
+
 static char *get_ptrname(struct in_addr *addr)
 {
 	static char *ptrname = NULL;
 	// Determine name that should be replied to with on Pi-hole PTRs
-	switch (config.pihole_ptr)
+	switch (config.dns.piholePTR.v.ptr_type)
 	{
 		default:
 		case PTR_NONE:
@@ -2930,45 +2968,13 @@ static char *get_ptrname(struct in_addr *addr)
 	return ptrname;
 }
 
-// int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
-void getCacheInformation(const int sock)
-{
-	struct cache_info ci;
-	get_dnsmasq_cache_info(&ci);
-	ssend(sock, "cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\nipv4: %i\nipv6: %i\nsrv: 0\ncname: %i\nds: %i\ndnskey: %i\nother: %i\nexpired: %i\nimmortal: %i\n",
-	            daemon->cachesize,
-	            daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED],
-	            daemon->metrics[METRIC_DNS_CACHE_INSERTED],
-	            ci.valid.ipv4,
-	            ci.valid.ipv6,
-	            ci.valid.cname,
-	            ci.valid.ds,
-	            ci.valid.dnskey,
-	            ci.valid.other,
-	            ci.expired,
-	            ci.immortal);
-	// <cache-size> is obvious
-	// It means the resolver handled <cache-inserted> names lookups that
-	// needed to be sent to upstream servers and that <cache-live-freed>
-	// was thrown out of the cache before reaching the end of its
-	// time-to-live, to make room for a newer name.
-	// For <cache-live-freed>, smaller is better. New queries are always
-	// cached. If the cache is full with entries which haven't reached
-	// the end of their time-to-live, then the entry which hasn't been
-	// looked up for the longest time is evicted.
-	// <valid> are cache entries with positive remaining TTL
-	// <expired> cache entries (to be removed when space is needed)
-	// <immortal> cache records never expire (e.g. from /etc/hosts)
-}
-
 void FTL_forwarding_retried(const struct server *serv, const int oldID, const int newID, const bool dnssec)
 {
 	// Forwarding to upstream server failed
 
 	if(oldID == newID)
 	{
-		if(config.debug & DEBUG_QUERIES)
-			logg("%d: Ignoring self-retry", oldID);
+		log_debug(DEBUG_QUERIES, "%d: Ignoring self-retry", oldID);
 		return;
 	}
 
@@ -3001,12 +3007,9 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 	const int upstreamID = findUpstreamID(upstreamIP, upstreamPort);
 
 	// Possible debugging information
-	if(config.debug & DEBUG_QUERIES)
-	{
-		logg("**** RETRIED%s query %i as %i to %s#%d",
-		     dnssec ? " DNSSEC" : "", oldID, newID,
-		     upstreamIP, upstreamPort);
-	}
+	log_debug(DEBUG_QUERIES, "**** RETRIED%s query %i as %i to %s#%d",
+	          dnssec ? " DNSSEC" : "", oldID, newID,
+	          upstreamIP, upstreamPort);
 
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, true);
@@ -3042,6 +3045,9 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 				// soon enough at the requestor
 				query_set_status(query, QUERY_RETRIED);
 			}
+
+			// Mark query for updating in the database
+			query->flags.database.changed = true;
 		}
 	}
 
@@ -3049,13 +3055,6 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 	free(upstreamIP);
 	unlock_shm();
 	return;
-}
-
-static unsigned long __attribute__((const)) converttimeval(const struct timeval time)
-{
-	// Convert time from struct timeval into units
-	// of 10*milliseconds
-	return time.tv_sec*10000 + time.tv_usec/100;
 }
 
 unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t qlen)
@@ -3091,10 +3090,10 @@ unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t 
 			flags |= F_IPV4;
 
 		// Debug logging if enabled
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug.queries.v.b)
 		{
 			char *qtype_str = querystr(NULL, qtype);
-			logg("CNAME header: Question was <IN> %s %s", qtype_str, name);
+			log_debug(DEBUG_QUERIES, "CNAME header: Question was <IN> %s %s", qtype_str, name);
 		}
 
 		return flags;
@@ -3102,8 +3101,7 @@ unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t 
 
 	// Fall back to IPv4 (type A) when for the unlikely event that we cannot
 	// find any questions in this header
-	if(config.debug & DEBUG_QUERIES)
-		logg("CNAME header: No valid IN question found in header");
+	log_debug(DEBUG_QUERIES, "CNAME header: No valid IN question found in header");
 
 	return F_IPV4;
 }
@@ -3122,15 +3120,15 @@ void FTL_TCP_worker_terminating(bool finished)
 
 	if(atomic_flag_test_and_set(&worker_already_terminating))
 	{
-		logg("TCP worker already terminating!");
+		log_debug(DEBUG_ANY, "TCP worker already terminating!");
 		return;
 	}
 
 	// Possible debug logging
-	if(config.debug != 0)
+	if(config.debug.queries.v.b)
 	{
 		const char *reason = finished ? "client disconnected" : "timeout";
-		logg("TCP worker terminating (%s)", reason);
+		log_debug(DEBUG_ANY, "TCP worker terminating (%s)", reason);
 	}
 
 	if(main_pid() == getpid())
@@ -3145,6 +3143,7 @@ void FTL_TCP_worker_terminating(bool finished)
 	// still holding a lock.
 	if(!is_our_lock())
 		lock_shm();
+
 	// Close dedicated database connections of this fork
 	gravityDB_close();
 	unlock_shm();
@@ -3165,8 +3164,8 @@ void FTL_TCP_worker_created(const int confd)
 		return;
 	}
 
-	// Print this if any debug setting is enabled
-	if(config.debug != 0)
+	// Print this if debugging is enabled
+	if(config.debug.queries.v.b)
 	{
 		// Get peer IP address (client)
 		char peer_ip[ADDRSTRLEN] = { 0 };
@@ -3197,7 +3196,7 @@ void FTL_TCP_worker_created(const int confd)
 		}
 
 		// Print log
-		logg("TCP worker forked for client %s on interface %s with IP %s", peer_ip, next_iface.name, local_ip);
+		log_debug(DEBUG_ANY, "TCP worker forked for client %s on interface %s with IP %s", peer_ip, next_iface.name, local_ip);
 	}
 
 	if(main_pid() == getpid())
@@ -3209,8 +3208,7 @@ void FTL_TCP_worker_created(const int confd)
 
 	// Reopen gravity database handle in this fork as the main process's
 	// handle isn't valid here
-	if(config.debug != 0)
-		logg("Reopening Gravity database for this fork");
+	log_debug(DEBUG_ANY, "Reopening Gravity database for this fork");
 	gravityDB_forked();
 }
 
@@ -3281,18 +3279,21 @@ void FTL_query_in_progress(const int id)
 	}
 
 	// Debug logging
-	if(config.debug & DEBUG_QUERIES)
+	if(config.debug.queries.v.b)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->domainID, true);
 		if(domain != NULL)
 		{
-			logg("**** query for %s is already in progress (ID %i)", getstr(domain->domainpos), id);
+			log_debug(DEBUG_QUERIES, "**** query for %s is already in progress (ID %i)", getstr(domain->domainpos), id);
 		}
 	}
 
 	// Store status
 	query_set_status(query, QUERY_IN_PROGRESS);
+
+	// Mark query for updating in the database
+	query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -3350,10 +3351,7 @@ void FTL_multiple_replies(const int id, int *firstID)
 	}
 
 	// Debug logging
-	if(config.debug & DEBUG_QUERIES)
-	{
-		logg("**** sending reply %d also to %d", *firstID, queryID);
-	}
+	log_debug(DEBUG_QUERIES, "**** sending reply %d also to %d", *firstID, queryID);
 
 	// Copy relevant information over
 	duplicated_query->reply = source_query->reply;
@@ -3365,6 +3363,9 @@ void FTL_multiple_replies(const int id, int *firstID)
 	// correct status in this case
 	if(source_query->status != QUERY_FORWARDED)
 		query_set_status(duplicated_query, source_query->status);
+
+	// Mark query for updating in the database
+	duplicated_query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -3381,59 +3382,28 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 	if(!option_bool(OPT_DNSSEC_VALID) && !option_bool(OPT_DNSSEC_PROXY))
 		return;
 
-	if(config.debug & DEBUG_DNSSEC)
+	if(config.debug.dnssec.v.b)
 	{
-		const char *status = "unknown";
-		switch(dnssec)
-		{
-			case DNSSEC_UNSPECIFIED:
-				status = "unspecified";
-				break;
-			case DNSSEC_SECURE:
-				status = "SECURE";
-				break;
-			case DNSSEC_INSECURE:
-				status = "INSECURE";
-				break;
-			case DNSSEC_BOGUS:
-				status = "BOGUS";
-				break;
-			case DNSSEC_ABANDONED:
-				status = "ABANDONED";
-				break;
-		}
-
 		const char *path = short_path(file);
-		logg("Setting DNSSEC status to %s in %s:%d", status, path, line);
+		const char *status = get_query_dnssec_str(dnssec);
+		log_debug(DEBUG_DNSSEC, "Setting DNSSEC status to %s in %s:%d", status, path, line);
 	}
 
 	// Set DNSSEC status
 	query->dnssec = dnssec;
 }
 
-// Check sizes of all important in-memory objects. This routine returns the number of
-// errors found (i.e., a return value of 0 is what we want and expect)
-int check_struct_sizes(void)
+// Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
+void FTL_dnsmasq_log(const char *payload, const int length)
 {
-	int result = 0;
-	result += check_one_struct("ConfigStruct", sizeof(ConfigStruct), 112, 104);
-	result += check_one_struct("queriesData", sizeof(queriesData), 56, 44);
-	result += check_one_struct("upstreamsData", sizeof(upstreamsData), 616, 604);
-	result += check_one_struct("clientsData", sizeof(clientsData), 672, 648);
-	result += check_one_struct("domainsData", sizeof(domainsData), 24, 20);
-	result += check_one_struct("DNSCacheData", sizeof(DNSCacheData), 16, 16);
-	result += check_one_struct("ednsData", sizeof(ednsData), 76, 76);
-	result += check_one_struct("overTimeData", sizeof(overTimeData), 32, 24);
-	result += check_one_struct("regexData", sizeof(regexData), 64, 48);
-	result += check_one_struct("SharedMemory", sizeof(SharedMemory), 24, 12);
-	result += check_one_struct("ShmSettings", sizeof(ShmSettings), 16, 16);
-	result += check_one_struct("countersStruct", sizeof(countersStruct), 248, 248);
-	result += check_one_struct("sqlite3_stmt_vec", sizeof(sqlite3_stmt_vec), 32, 16);
+	// Lock SHM
+	lock_shm();
 
-	if(result == 0)
-		printf("All okay\n");
+	// Add to FIFO buffer
+	add_to_fifo_buffer(FIFO_DNSMASQ, payload, length);
 
-	return result;
+	// Unlock SHM
+	unlock_shm();
 }
 
 static const char *check_dnsmasq_name(const char *name)

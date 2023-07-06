@@ -6146,3 +6146,13 @@ void read_opts(int argc, char **argv, char *compile_opts)
       exit(0);
     }
 }  
+
+/******************** Pi-hole extension ********************/
+void reset_usage_indicator(void)
+{
+  for (unsigned int i = 0; usage[i].opt != 0; i++)
+    if(usage[i].rept == ARG_USED_CL ||
+       usage[i].rept == ARG_USED_FILE)
+      usage[i].rept = ARG_ONE;
+}
+/**********************************************************/

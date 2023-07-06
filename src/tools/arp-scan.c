@@ -593,7 +593,7 @@ static void print_results(struct thread_data *thread_data)
 
 		// Print warning if we received multiple replies
 		if(replied_devices > 1)
-			printf("WARNING: Received replies for %s from %i devices\n",
+			printf("WARNING: Received replies for %s from %u devices\n",
 			       thread_data->ipstr, replied_devices);
 	}
 	putc('\n', stdout);
@@ -705,7 +705,7 @@ int run_arp_scan(const bool scan_all, const bool extreme_mode)
 			if(new_progress > progress)
 			{
 				// Print progress
-				printf(" %i%% ", new_progress);
+				printf(" %u%% ", new_progress);
 
 				// Update progress
 				progress = new_progress;

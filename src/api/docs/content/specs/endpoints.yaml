@@ -1,0 +1,61 @@
+openapi: 3.0.2
+components:
+  paths:
+    endpoints:
+      get:
+        summary: Get list of available API endpoints
+        tags:
+          - "FTL information"
+        operationId: "get_endpoints"
+        description: |
+          This API hook returns the list of all available API endpoints.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'endpoints.yaml#/components/schemas/endpoints'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+  schemas:
+    endpoints:
+      type: object
+      properties:
+        endpoints:
+          type: object
+          description: Endpoints
+          properties:
+            get:
+              type: array
+              items:
+                type: string
+              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+            post:
+              type: array
+              items:
+                type: string
+              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+            put:
+              type: array
+              items:
+                type: string
+              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+            patch:
+              type: array
+              items:
+                type: string
+              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+            delete:
+              type: array
+              items:
+                type: string
+              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]

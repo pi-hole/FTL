@@ -1,0 +1,1 @@
+			self.errors.append("Exception when GETing from FTL: " + str(e))

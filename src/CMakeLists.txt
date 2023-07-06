@@ -27,10 +27,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_DEFAULT_FOREIGN_KEYS=1: This macro determines whether enforcement of foreign key constraints is enabled or disabled by default for new database connections.
 # SQLITE_DQS=0: This setting disables the double-quoted string literal misfeature.
 # SQLITE_ENABLE_DBPAGE_VTAB: Enables the SQLITE_DBPAGE virtual table. Warning: writing to the SQLITE_DBPAGE virtual table can very easily cause unrecoverably database corruption.
-# SQLITE_OMIT_DESERIALIZE: This option causes the the sqlite3_serialize() and sqlite3_deserialize() interfaces to be omitted from the build (was the default before 3.36.0)
+# SQLITE_TEMP_STORE=2: Store temporary tables in memory for reduced IO and higher performance (can be overwritten by the user at runtime).
+# SQLITE_USE_URI=1: The advantage of using a URI filename is that query parameters on the URI can be used to control details of the newly created database connection.
 # HAVE_READLINE: Enable readline support to allow easy editing, history and auto-completion
 # SQLITE_DEFAULT_CACHE_SIZE=-16384: Allow up to 16 MiB of cache to be used by SQLite3 (default is 2000 kiB)
-set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_OMIT_DESERIALIZE -DHAVE_READLINE -DSQLITE_DEFAULT_CACHE_SIZE=-16384")
+set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=2 -DSQLITE_USE_URI=1 -DHAVE_READLINE -DSQLITE_DEFAULT_CACHE_SIZE=16384")
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
@@ -55,43 +56,122 @@ set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
 set(WARN_FLAGS "-Wall -Wextra -Wno-unused-parameter")
 
 # Extra warning flags we apply only to the FTL part of the code (used not for foreign code such as dnsmasq and SQLite3)
-# -Werror: Halt on any warnings, useful for enforcing clean code without any warnings (we use it only for our code part)
-# -Waddress: Warn about suspicious uses of memory addresses
-# -Wlogical-op: Warn about suspicious uses of logical operators in expressions
-# -Wmissing-field-initializers: Warn if a structure's initializer has some fields missing
-# -Woverlength-strings: Warn about string constants that are longer than the "minimum maximum length specified in the C standard
-# -Wformat: Check calls to printf and scanf, etc., to make sure that the arguments supplied have types appropriate to the format string specified, and that the conversions specified in the format string make sense.
-# -Wformat-nonliteral: If -Wformat is specified, also warn if the format string is not a string literal and so cannot be checked, unless the format function takes its format arguments as a va_list.
-# -Wuninitialized: Warn if an automatic variable is used without first being initialized
-# -Wswitch-enum: Warn whenever a switch statement has an index of enumerated type and lacks a case for one or more of the named codes of that enumeration.
-# -Wshadow: Warn whenever a local variable or type declaration shadows another variable, parameter, type, class member, or whenever a built-in function is shadowed.
-# -Wfloat-equal: Warn if floating-point values are used in equality comparisons
-# -Wpointer-arith: Warn about anything that depends on the "size of" a function type or of "void".  GNU C assigns these types a size of 1
-# -Wundef: Warn if an undefined identifier is evaluated in an "#if" directive
-# -Wbad-function-cast: Warn when a function call is cast to a non-matching type
-# -Wwrite-strings: When compiling C, give string constants the type "const char[length]" so that copying the address of one into a non-"const" "char *" pointer produces a warning
-# -Wparentheses: Warn if parentheses are omitted in certain contexts, such as when there is an assignment in a context where a truth value is expected, or when operators are nested whose precedence people often get confused about
-# -Wlogical-op: Warn about suspicious uses of logical operators in expressions
-# -Wstrict-prototypes: Warn if a function is declared or defined without specifying the argument types
-# -Wmissing-prototypes: Warn if a global function is defined without a previous prototype declaration
-# -Wredundant-decls: Warn if anything is declared more than once in the same scope
-# -Winline: Warn if a function that is declared as inline cannot be inlined
+set(EXTRAWARN_GCC6 "-Werror \
+                    -Waddress \
+                    -Wlogical-op \
+                    -Wmissing-field-initializers \
+                    -Woverlength-strings \
+                    -Wformat=2 \
+                    -Wformat-signedness \
+                    -Wuninitialized \
+                    -Wnull-dereference \
+                    -Wshift-overflow=2 \
+                    -Wunused-const-variable=2 \
+                    -Wstrict-aliasing \
+                    -Warray-bounds=2 \
+                    -Wno-aggressive-loop-optimizations \
+                    -Wswitch-enum \
+                    -Wshadow \
+                    -Wfloat-equal \
+                    -Wbad-function-cast \
+                    -Wwrite-strings \
+                    -Wparentheses \
+                    -Wlogical-op \
+                    -Wstrict-prototypes \
+                    -Wmissing-prototypes \
+                    -Wredundant-decls \
+                    -Wmissing-field-initializers \
+                    -Wnormalized=nfkc \
+                    -Woverride-init \
+                    -Wpacked \
+                    -Winline \
+                    -Wpacked \
+                    -Wredundant-decls \
+                    -Wnested-externs \
+                    -Wvla \
+                    -Wvector-operation-performance \
+                    -Wvolatile-register-var \
+                    -Wdisabled-optimization \
+                    -Wpointer-sign \
+                    -Wstack-protector \
+                    -Woverlength-strings")
+
+# Extra warnings flags available only in GCC 7 and higher
+if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 7 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 7)
+    set(EXTRAWARN_GCC7 "-Wformat-overflow=2 \
+                        -Wformat-truncation=2 \
+                        -Wstringop-overflow=4 \
+                        -Walloc-zero \
+                        -Wint-in-bool-context")
+else()
+    set(EXTRAWARN_GCC7 "")
+endif()
+
+# Extra warnings flags available only in GCC 8 and higher
 if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 8 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 8)
-    # -Wduplicated-cond: Warn about duplicated conditions in an if-else-if chain
-    # -Wduplicated-branches: Warn when an if-else has identical branches
-    # -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
-    # -Wlogical-not-parentheses: Warn about logical not used on the left hand side operand of a comparison
-    set(EXTRAWARN_GCC8 "-Wduplicated-cond -Wduplicated-branches -Wcast-align=strict -Wlogical-not-parentheses -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=malloc -Wsuggest-attribute=format -Wsuggest-attribute=cold")
+    set(EXTRAWARN_GCC8 "-Wduplicated-cond \
+                        -Wduplicated-branches \
+                        -Wcast-align=strict \
+                        -Wlogical-not-parentheses \
+                        -Wmultistatement-macros \
+                        -Wmissing-attributes \
+                        -Wsuggest-attribute=pure \
+                        -Wsuggest-attribute=const \
+                        -Wsuggest-attribute=malloc \
+                        -Wsuggest-attribute=format \
+                        -Wsuggest-attribute=cold")
 else()
     set(EXTRAWARN_GCC8 "")
 endif()
-set(EXTRAWARN "-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum -Wshadow -Wfloat-equal -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline ${EXTRAWARN_GCC8}")
+
+# Extra warnings flags available only in GCC 9 and higher
+# The only new warning -Wabsolute-value is implied by -Wextra
+
+# Extra warnings flags available only in GCC 10 and higher
+# The new option -Wstring-compare is implied by -Wextra
+# The new option -Wzero-length-bounds is implied by -Warray-bounds
+
+# Extra warnings flags available only in GCC 11 and higher
+# All new options are implied by either -Wall or -Wextra \
+
+# Extra warnings flags available only in GCC 12 and higher
+if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 12 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 12)
+set(EXTRAWARN_GCC12 "-Wbidi-chars \
+                     -Warray-compare")
+else()
+set(EXTRAWARN_GCC12 "")
+endif()
+
+# Extra warnings flags available only in GCC 13 and higher
+if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 13 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 13)
+set(EXTRAWARN_GCC13 "-Wenum-int-mismatch")
+else()
+set(EXTRAWARN_GCC13 "")
+endif()
+
+set(EXTRAWARN "${EXTRAWARN_GCC6} \
+               ${EXTRAWARN_GCC7} \
+               ${EXTRAWARN_GCC8} \
+               ${EXTRAWARN_GCC12} \
+               ${EXTRAWARN_GCC13}")
 separate_arguments(EXTRAWARN)
 
-# Do we want to compile a statically linked musl executable?
-if(STATIC STREQUAL "true")
+# -Wxor-used-as-pow
+
+# Do we want to compile a statically linked executable?
+if(DEFINED ENV{STATIC})
+    if($ENV{STATIC} STREQUAL "true")
+        set(STATIC true)
+    else()
+        set(STATIC false)
+    endif()
+endif()
+if(STATIC)
+    message(STATUS "Compiling statically linked executable")
     SET(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
     SET(BUILD_SHARED_LIBS OFF)
+else()
+    message(STATUS "Compiling dynamically linked executable")
 endif()
 # -pie -fPIE: (Dynamic) position independent executable
 set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
@@ -110,8 +190,6 @@ set(sources
         args.h
         capabilities.c
         capabilities.h
-        config.c
-        config.h
         daemon.c
         daemon.h
         datastructure.c
@@ -132,6 +210,7 @@ set(sources
         log.h
         main.c
         main.h
+        metrics.h
         overTime.c
         overTime.h
         procps.c
@@ -172,15 +251,23 @@ add_dependencies(FTL gen_version)
 add_executable(pihole-FTL
         $<TARGET_OBJECTS:FTL>
         $<TARGET_OBJECTS:api>
+        $<TARGET_OBJECTS:api_docs>
+        $<TARGET_OBJECTS:webserver>
+        $<TARGET_OBJECTS:civetweb>
+        $<TARGET_OBJECTS:cJSON>
+        $<TARGET_OBJECTS:miniz>
+        $<TARGET_OBJECTS:zip>
         $<TARGET_OBJECTS:database>
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
         $<TARGET_OBJECTS:lua>
         $<TARGET_OBJECTS:tre-regex>
         $<TARGET_OBJECTS:syscalls>
+        $<TARGET_OBJECTS:tomlc99>
+        $<TARGET_OBJECTS:config>
         $<TARGET_OBJECTS:tools>
         )
-if(STATIC STREQUAL "true")
+if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
     target_link_libraries(pihole-FTL -static-libgcc -static -pie)
@@ -193,9 +280,9 @@ set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
 # for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
-find_library(LIBHOGWEED NAMES libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX} hogweed)
+find_library(LIBHOGWEED NAMES libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX} hogweed HINTS /usr/local/lib64)
 find_library(LIBGMP NAMES libgmp${CMAKE_STATIC_LIBRARY_SUFFIX} gmp)
-find_library(LIBNETTLE NAMES libnettle${CMAKE_STATIC_LIBRARY_SUFFIX} nettle)
+find_library(LIBNETTLE NAMES libnettle${CMAKE_STATIC_LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
 find_library(LIBIDN NAMES libidn${CMAKE_STATIC_LIBRARY_SUFFIX} idn)
 
 target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN})
@@ -239,6 +326,15 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
 endif()
 
+find_library(LIBMBEDCRYPTO NAMES lmbedcrypto${CMAKE_STATIC_LIBRARY_SUFFIX} mbedcrypto)
+find_library(LIBMBEDX509 NAMES lmbedx509${CMAKE_STATIC_LIBRARY_SUFFIX} mbedx509)
+find_library(LIBMBEDTLS NAMES lmbedtls${CMAKE_STATIC_LIBRARY_SUFFIX} mbedtls)
+if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
+    # Link against the mbedTLS libraries, the order is important (!)
+    target_compile_definitions(FTL PRIVATE HAVE_MBEDTLS)
+    target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO})
+endif()
+
 find_program(SETCAP setcap)
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin
@@ -246,10 +342,13 @@ install(TARGETS pihole-FTL
 install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE+eip \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 
 add_subdirectory(api)
+add_subdirectory(webserver)
+add_subdirectory(zip)
 add_subdirectory(database)
 add_subdirectory(dnsmasq)
 add_subdirectory(lua)
 add_subdirectory(lua/scripts)
 add_subdirectory(tre-regex)
 add_subdirectory(syscalls)
+add_subdirectory(config)
 add_subdirectory(tools)

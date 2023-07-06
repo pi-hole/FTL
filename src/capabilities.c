@@ -14,12 +14,11 @@
 #undef __USE_XOPEN
 #include "FTL.h"
 #include "capabilities.h"
-#include "config.h"
+#include "config/config.h"
 #include "log.h"
 
 static const unsigned int capabilityIDs[]   = { CAP_CHOWN ,  CAP_DAC_OVERRIDE ,  CAP_DAC_READ_SEARCH ,  CAP_FOWNER ,  CAP_FSETID ,  CAP_KILL ,  CAP_SETGID ,  CAP_SETUID ,  CAP_SETPCAP ,  CAP_LINUX_IMMUTABLE ,  CAP_NET_BIND_SERVICE ,  CAP_NET_BROADCAST ,  CAP_NET_ADMIN ,  CAP_NET_RAW ,  CAP_IPC_LOCK ,  CAP_IPC_OWNER ,  CAP_SYS_MODULE ,  CAP_SYS_RAWIO ,  CAP_SYS_CHROOT ,  CAP_SYS_PTRACE ,  CAP_SYS_PACCT ,  CAP_SYS_ADMIN ,  CAP_SYS_BOOT ,  CAP_SYS_NICE ,  CAP_SYS_RESOURCE ,  CAP_SYS_TIME ,  CAP_SYS_TTY_CONFIG ,  CAP_MKNOD ,  CAP_LEASE ,  CAP_AUDIT_WRITE ,  CAP_AUDIT_CONTROL ,  CAP_SETFCAP };
 static const char*        capabilityNames[] = {"CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_DAC_READ_SEARCH", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL", "CAP_SETGID", "CAP_SETUID", "CAP_SETPCAP", "CAP_LINUX_IMMUTABLE", "CAP_NET_BIND_SERVICE", "CAP_NET_BROADCAST", "CAP_NET_ADMIN", "CAP_NET_RAW", "CAP_IPC_LOCK", "CAP_IPC_OWNER", "CAP_SYS_MODULE", "CAP_SYS_RAWIO", "CAP_SYS_CHROOT", "CAP_SYS_PTRACE", "CAP_SYS_PACCT", "CAP_SYS_ADMIN", "CAP_SYS_BOOT", "CAP_SYS_NICE", "CAP_SYS_RESOURCE", "CAP_SYS_TIME", "CAP_SYS_TTY_CONFIG", "CAP_MKNOD", "CAP_LEASE", "CAP_AUDIT_WRITE", "CAP_AUDIT_CONTROL", "CAP_SETFCAP"};
-static const unsigned int numCaps = sizeof(capabilityIDs) / sizeof(*capabilityIDs);
 
 bool check_capability(const unsigned int cap)
 {
@@ -93,53 +92,60 @@ bool check_capabilities(void)
 	data = calloc(sizeof(*data), capsize);
 	capget(hdr, data);
 
-	logg("***************************************");
-	logg("* Linux capability debugging enabled  *");
-	for(unsigned int i = 0u; i < numCaps; i++)
+	log_debug(DEBUG_CAPS, "***************************************");
+	log_debug(DEBUG_CAPS, "* Linux capability debugging enabled  *");
+	for(unsigned int i = 0u; i < ArraySize(capabilityIDs); i++)
 	{
 		const unsigned int capid = capabilityIDs[i];
-		logg("* %-24s (%02u) = %s%s%s *",
+		log_debug(DEBUG_CAPS, "* %-24s (%02u) = %s%s%s *",
 			capabilityNames[capid], capid,
 			((data->permitted   & (1 << capid)) ? "P":"-"),
 			((data->inheritable & (1 << capid)) ? "I":"-"),
 			((data->effective   & (1 << capid)) ? "E":"-"));
 	}
-	logg("***************************************");
+	log_debug(DEBUG_CAPS, "***************************************");
 
 	bool capabilities_okay = true;
 	if (!(data->permitted & (1 << CAP_NET_ADMIN)) ||
 	    !(data->effective & (1 << CAP_NET_ADMIN)))
 	{
 		// Needed for ARP-injection (used when we're the DHCP server)
-		logg("WARNING: Required Linux capability CAP_NET_ADMIN not available");
+		log_warn("Required Linux capability CAP_NET_ADMIN not available");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_NET_RAW)) ||
 	    !(data->effective & (1 << CAP_NET_RAW)))
 	{
 		// Needed for raw socket access (necessary for ICMP)
-		logg("WARNING: Required Linux capability CAP_NET_RAW not available");
+		log_warn("Required Linux capability CAP_NET_RAW not available");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_NET_BIND_SERVICE)) ||
 	    !(data->effective & (1 << CAP_NET_BIND_SERVICE)))
 	{
 		// Necessary for dynamic port binding
-		logg("WARNING: Required Linux capability CAP_NET_BIND_SERVICE not available");
+		log_warn("Required Linux capability CAP_NET_BIND_SERVICE not available");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_SYS_NICE)) ||
 	    !(data->effective & (1 << CAP_SYS_NICE)))
 	{
 		// Necessary for setting higher process priority through nice
-		logg("WARNING: Required Linux capability CAP_SYS_NICE not available");
+		log_warn("Required Linux capability CAP_SYS_NICE not available");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_CHOWN)) ||
 	    !(data->effective & (1 << CAP_CHOWN)))
 	{
 		// Necessary to chown required files that are owned by another user
-		logg("WARNING: Required Linux capability CAP_CHOWN not available");
+		log_warn("Required Linux capability CAP_CHOWN not available");
+		capabilities_okay = false;
+	}
+	if (!(data->permitted & (1 << CAP_SYS_BOOT)) ||
+	    !(data->effective & (1 << CAP_SYS_BOOT)))
+	{
+		// Necessary to reboot/poweroff the system through the API
+		log_warn("Required Linux capability CAP_SYS_BOOT not available");
 		capabilities_okay = false;
 	}
 

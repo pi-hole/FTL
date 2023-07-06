@@ -41,12 +41,26 @@ typedef struct {
 	int clients_MAX;
 	int domains_MAX;
 	int strings_MAX;
-	int gravity;
+	int reply_NODATA;
+	int reply_NXDOMAIN;
+	int reply_CNAME;
+	int reply_IP;
+	int reply_domain;
 	int dns_cache_size;
 	int dns_cache_MAX;
 	int per_client_regex_MAX;
 	unsigned int regex_change;
-	int querytype[TYPE_MAX-1];
+	struct {
+		int gravity;
+		int clients;
+		int groups;
+		int lists;
+		struct {
+			int allowed;
+			int denied;
+		} domains;
+	} database;
+	int querytype[TYPE_MAX];
 	int status[QUERY_STATUS_MAX];
 	int reply[QUERY_REPLY_MAX];
 } countersStruct;
@@ -57,10 +71,10 @@ extern countersStruct *counters;
 /// Create shared memory
 ///
 /// \param name the name of the shared memory
+/// \param sharedMemory the shared memory object to fill
 /// \param size the size to allocate
-/// \return a structure with a pointer to the mounted shared memory. The pointer
-/// will always be valid, because if it failed FTL will have exited.
-static SharedMemory create_shm(const char *name, const size_t size);
+/// No return value as the function will exit on failure
+static bool create_shm(const char *name, SharedMemory *sharedMemory, const size_t size);
 
 /// Reallocate shared memory
 ///
@@ -80,8 +94,6 @@ static void delete_shm(SharedMemory *sharedMemory);
 /// Block until a lock can be obtained
 #define lock_shm() _lock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _lock_shm(const char* func, const int line, const char* file);
-#define lock_log() _lock_log(__FUNCTION__, __LINE__, __FILE__)
-void _lock_log(const char* func, const int line, const char* file);
 
 // Return if the current mutex locked the SHM lock
 bool is_our_lock(void);
@@ -94,8 +106,6 @@ void shm_ensure_size(void);
 /// Unlock the lock. Only call this if there is an active lock.
 #define unlock_shm() _unlock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _unlock_shm(const char* func, const int line, const char* file);
-#define unlock_log() _unlock_log(__FUNCTION__, __LINE__, __FILE__)
-void _unlock_log(const char* func, const int line, const char * file);
 
 /// Block until a lock can be obtained
 

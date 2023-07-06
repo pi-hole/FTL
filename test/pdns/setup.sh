@@ -45,9 +45,9 @@ pdnsutil disable-dnssec ftl
 # Create A records
 pdnsutil add-record ftl. a A 192.168.1.1
 pdnsutil add-record ftl. gravity A 192.168.1.2
-pdnsutil add-record ftl. blacklisted A 192.168.1.3
-pdnsutil add-record ftl. whitelisted A 192.168.1.4
-pdnsutil add-record ftl. gravity-whitelisted A 192.168.1.5
+pdnsutil add-record ftl. denied A 192.168.1.3
+pdnsutil add-record ftl. allowed A 192.168.1.4
+pdnsutil add-record ftl. gravity-allowed A 192.168.1.5
 pdnsutil add-record ftl. regex1 A 192.168.2.1
 pdnsutil add-record ftl. regex2 A 192.168.2.2
 pdnsutil add-record ftl. regex5 A 192.168.2.3

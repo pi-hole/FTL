@@ -34,8 +34,8 @@ ssize_t FTLrecv(int sockfd, void *buf, size_t len, int flags, const char *file, 
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret < 0)
-		logg("WARN: Could not recv() in %s() (%s:%i): %s",
-		     func, file, line, strerror(errno));
+		log_warn("Could not recv() in %s() (%s:%i): %s",
+		         func, file, line, strerror(errno));
 
 	// Restore errno value
 	errno = _errno;

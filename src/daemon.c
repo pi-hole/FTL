@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "daemon.h"
-#include "config.h"
+#include "config/config.h"
 #include "log.h"
 // sleepms()
 #include "timers.h"
@@ -25,10 +25,18 @@
 // sysinfo()
 #include <sys/sysinfo.h>
 #include <errno.h>
+// getprio(), setprio()
+#include <sys/resource.h>
+// free_regex()
+#include "regex_r.h"
+// close_memory_database()
+#include "database/query-table.h"
+// http_terminate()
+#include "webserver/webserver.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
-pthread_t api_threads[MAX_API_THREADS] = { 0 };
 bool resolver_ready = false;
+bool dnsmasq_failed = false;
 
 void go_daemon(void)
 {
@@ -38,7 +46,7 @@ void go_daemon(void)
 	// Indication of fork() failure
 	if (process_id < 0)
 	{
-		logg("fork failed!\n");
+		log_crit("fork failed!");
 		// Return failure in exit status
 		exit(EXIT_FAILURE);
 	}
@@ -47,20 +55,20 @@ void go_daemon(void)
 	if (process_id > 0)
 	{
 		printf("FTL started!\n");
-		// return success in exit status
+		// Return success in exit status
 		exit(EXIT_SUCCESS);
 	}
 
-	//unmask the file mode
+	// Unmask the file mode
 	umask(0);
 
-	//set new session
+	// Set new session to ensure we have no controlling terminal
 	// creates a session and sets the process group ID
 	const pid_t sid = setsid();
 	if(sid < 0)
 	{
 		// Return failure
-		logg("setsid failed!\n");
+		log_crit("setsid failed: %s", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
@@ -78,7 +86,7 @@ void go_daemon(void)
 	// Indication of fork() failure
 	if (process_id < 0)
 	{
-		logg("fork failed!\n");
+		log_crit("fork failed: %s", strerror(errno));
 		// Return failure in exit status
 		exit(EXIT_FAILURE);
 	}
@@ -98,26 +106,32 @@ void go_daemon(void)
 void savepid(void)
 {
 	FILE *f;
+	// Get PID of the current process
 	const pid_t pid = getpid();
-	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
+	// Open file for writing
+	if((f = fopen(config.files.pid.v.s, "w+")) == NULL)
 	{
-		logg("WARNING: Unable to write PID to file.");
-		logg("         Continuing anyway...");
+		// Log error
+		log_warn("Unable to write PID to file: %s", strerror(errno));
 	}
 	else
 	{
+		// Write PID to file
 		fprintf(f, "%i", (int)pid);
 		fclose(f);
 	}
-	logg("PID of FTL process: %i", (int)pid);
+	log_info("PID of FTL process: %i", (int)pid);
 }
 
 static void removepid(void)
 {
+	// Note that this function is not really removing the PID file but
+	// rather emptying it
 	FILE *f;
-	if((f = fopen(FTLfiles.pid, "w")) == NULL)
+	// Open file for writing (emptying it)
+	if((f = fopen(config.files.pid.v.s, "w")) == NULL)
 	{
-		logg("WARNING: Unable to empty PID file");
+		log_warn("Unable to empty PID file: %s", strerror(errno));
 		return;
 	}
 	fclose(f);
@@ -129,13 +143,20 @@ char *getUserName(void)
 	// the getpwuid() function shall search the user database for an entry with a matching uid
 	// the geteuid() function shall return the effective user ID of the calling process - this is used as the search criteria for the getpwuid() function
 	const uid_t euid = geteuid();
+	errno = 0;
 	const struct passwd *pw = getpwuid(euid);
 	if(pw)
 	{
+		// If the user is found, we return the username
 		name = strdup(pw->pw_name);
 	}
 	else
 	{
+		// If there was an error, we log it
+		if(errno != 0)
+			log_warn("getpwuid(%u) failed: %s", euid, strerror(errno));
+
+		// If the user is not found, we return the UID as string
 		if(asprintf(&name, "%u", euid) < 0)
 			return NULL;
 	}
@@ -170,33 +191,35 @@ const char *hostname(void)
 void delay_startup(void)
 {
 	// Exit early if not sleeping
-	if(config.delay_startup == 0u)
+	if(config.misc.delay_startup.v.ui == 0u)
 		return;
 
 	// Get uptime of system
 	struct sysinfo info = { 0 };
 	if(sysinfo(&info) == 0)
 	{
+		// Exit early if system has already been running for a while
 		if(info.uptime > DELAY_UPTIME)
 		{
-			logg("Not sleeping as system has finished booting");
+			log_info("Not sleeping as system has finished booting");
 			return;
 		}
 	}
 	else
 	{
-		logg("Unable to obtain sysinfo: %s (%i)", strerror(errno), errno);
+		// Log error but continue
+		log_err("Unable to obtain sysinfo: %s (%i)", strerror(errno), errno);
 	}
 
 	// Sleep if requested by DELAY_STARTUP
-	logg("Sleeping for %d seconds as requested by configuration ...", config.delay_startup);
-	if(sleep(config.delay_startup) != 0)
+	log_info("Sleeping for %u seconds as requested by configuration ...", config.misc.delay_startup.v.ui);
+	if(sleep(config.misc.delay_startup.v.ui) != 0)
 	{
-		logg("FATAL: Sleeping was interrupted by an external signal");
+		log_crit("Sleeping was interrupted by an external signal");
 		cleanup(EXIT_FAILURE);
 		exit(EXIT_FAILURE);
 	}
-	logg("Done sleeping, continuing startup of resolver...");
+	log_info("Done sleeping, continuing startup of resolver...");
 }
 
 // Is this a fork?
@@ -221,20 +244,26 @@ static void terminate_threads(void)
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
 	// Try to join threads to ensure cancellation has succeeded
-	logg("Waiting for threads to join");
+	log_info("Waiting for threads to join");
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
+		// Skip threads that have never been started or which are already stopped
+		if(!thread_running[i])
+			continue;
+
+		// Cancel thread if it is idle
 		if(thread_cancellable[i])
 		{
-			logg("Thread %s (%d) is idle, terminating it.",
-			     thread_names[i], i);
+			log_info("Thread %s (%d) is idle, terminating it.",
+			         thread_names[i], i);
 			pthread_cancel(threads[i]);
 		}
 
+		// Cancel thread if we cannot set a timeout for joining
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
 		{
-			logg("Thread %s (%d) is busy, cancelling it (cannot set timeout).",
-			     thread_names[i], i);
+			log_info("Thread %s (%d) is busy, cancelling it (cannot set timeout).",
+			         thread_names[i], i);
 			pthread_cancel(threads[i]);
 			continue;
 		}
@@ -242,16 +271,44 @@ static void terminate_threads(void)
 		// Timeout for joining is 2 seconds for each thread
 		ts.tv_sec += 2;
 
+		// Try to join thread and cancel it if it is still busy
 		const int s = pthread_timedjoin_np(threads[i], NULL, &ts);
 		if(s != 0)
 		{
-			logg("Thread %s (%d) is still busy, cancelling it.",
+			log_info("Thread %s (%d) is still busy, cancelling it.",
 			     thread_names[i], i);
 			pthread_cancel(threads[i]);
 			continue;
 		}
 	}
-	logg("All threads joined");
+	log_info("All threads joined");
+}
+
+void set_nice(void)
+{
+	const int which = PRIO_PROCESS;
+	const id_t pid = getpid();
+	const int priority = getpriority(which, pid);
+
+	// config value -999 => do not change niceness
+	if(config.misc.nice.v.i == -999)
+	{
+		// Do not set nice value
+		log_debug(DEBUG_CONFIG, "Not changing process priority.");
+	}
+	else
+	{
+		// Set nice value
+		const int ret = setpriority(which, pid, config.misc.nice.v.i);
+		if(ret == -1)
+			// ERROR EPERM: The calling process attempted to increase its priority
+			// by supplying a negative value but has insufficient privileges.
+			// On Linux, the RLIMIT_NICE resource limit can be used to define a limit to
+			// which an unprivileged process's nice value can be raised. We are not
+			// affected by this limit when pihole-FTL is running with CAP_SYS_NICE
+			log_warn("Cannot set process priority to %d: %s. Process priority remains at %d",
+			         config.misc.nice.v.i, strerror(errno), priority);
+	}
 }
 
 // Clean up on exit
@@ -263,15 +320,6 @@ void cleanup(const int ret)
 		// Terminate threads
 		terminate_threads();
 
-		// Cancel and join possibly still running API worker threads
-		for(unsigned int tid = 0; tid < MAX_API_THREADS; tid++)
-		{
-			// Otherwise, cancel and join the thread
-			logg("Joining API worker thread %d", tid);
-			pthread_cancel(api_threads[tid]);
-			pthread_join(api_threads[tid], NULL);
-		}
-
 		// Close database connection
 		lock_shm();
 		gravityDB_close();
@@ -281,13 +329,65 @@ void cleanup(const int ret)
 	// Remove PID file
 	removepid();
 
+	// Free regex filter memory
+	free_regex();
+
+	// Terminate HTTP server (if running)
+	http_terminate();
+
+	// Close memory database
+	close_memory_database();
+
 	// Remove shared memory objects
 	// Important: This invalidated all objects such as
 	//            counters-> ... etc.
-	// This should be the last action when cleaning up
+	// This should be the last action when c
 	destroy_shmem();
 
 	char buffer[42] = { 0 };
 	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
-	logg("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
+	log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
+}
+
+static clock_t last_clock = -1;
+static float cpu_usage = 0.0f;
+void calc_cpu_usage(void)
+{
+	// Get the current CPU usage
+	const clock_t clk = clock();
+	if(clk == (clock_t)-1)
+	{
+		log_warn("calc_cpu_usage() failed: %s", strerror(errno));
+		return;
+	}
+	if(last_clock == -1)
+	{
+		// Initialize the value and return
+		last_clock = clk;
+		return;
+	}
+	// Percentage of CPU time spent executing instructions
+	cpu_usage = 100.0f * ((float)clk - (float)last_clock) / CLOCKS_PER_SEC;
+	last_clock = clk;
+}
+
+float __attribute__((pure)) get_cpu_percentage(void)
+{
+	return cpu_usage;
+}
+
+ssize_t getrandom_fallback(void *buf, size_t buflen, unsigned int flags)
+{
+	FILE *fp = fopen("/dev/urandom", "r");
+	if(fp == NULL)
+		return -1;
+
+	if(fread(buf, buflen, 1, fp) != 1)
+	{
+		fclose(fp);
+		return -1;
+	}
+	fclose(fp);
+
+	return buflen;
 }

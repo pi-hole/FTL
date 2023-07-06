@@ -11,6 +11,10 @@
 #include "FTL.h"
 #include "timers.h"
 #include "log.h"
+// killed
+#include "signals.h"
+// set_blockingmode()
+#include "config/config.h"
 
 struct timespec t0[NUMTIMERS];
 
@@ -18,7 +22,7 @@ void timer_start(const enum timers i)
 {
 	if(i >= NUMTIMERS)
 	{
-		logg("Code error: Timer %i not defined in timer_start().", i);
+		log_crit("Timer %i not defined in timer_start().", i);
 		exit(EXIT_FAILURE);
 	}
 	clock_gettime(CLOCK_REALTIME, &t0[i]);
@@ -44,7 +48,7 @@ double timer_elapsed_msec(const enum timers i)
 {
 	if(i >= NUMTIMERS)
 	{
-		logg("Code error: Timer %i not defined in timer_elapsed_msec().", i);
+		log_crit("Timer %i not defined in timer_elapsed_msec().", i);
 		exit(EXIT_FAILURE);
 	}
 	struct timespec t1, td;
@@ -59,4 +63,57 @@ void sleepms(const int milliseconds)
 	tv.tv_sec = milliseconds / 1000;
 	tv.tv_usec = (milliseconds % 1000) * 1000;
 	select(0, NULL, NULL, NULL, &tv);
+}
+
+static double timer_delay = -1.0;
+static bool timer_target_status;
+
+void set_blockingmode_timer(double delay, bool target_status)
+{
+	timer_delay = delay;
+	timer_target_status = target_status;
+}
+
+void get_blockingmode_timer(double *delay, bool *target_status)
+{
+	*delay = timer_delay;
+	*target_status = timer_target_status;
+}
+
+#define SLEEPING_TIME 0.1 // seconds
+void *timer(void *val)
+{
+	// Set thread name
+	prctl(PR_SET_NAME, "int.timer", 0, 0, 0);
+
+	// Save timestamp as we do not want to store immediately
+	// to the database
+	while(!killed)
+	{
+		if(timer_delay > 0)
+		{
+			log_debug(DEBUG_EXTRA, "Pi-hole will be %s in %.1f seconds...",
+			          timer_target_status ? "enabled" : "disabled", timer_delay);
+
+			timer_delay -= SLEEPING_TIME;
+		}
+		else if(timer_delay <= 0.0 && timer_delay > -1.0)
+		{
+			log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
+			          timer_target_status ? "enabled" : "disabled");
+
+			set_blockingstatus(timer_target_status);
+			timer_delay = -1.0;
+		}
+		sleepms(SLEEPING_TIME * 1000);
+	}
+
+	return NULL;
+}
+
+unsigned long __attribute__((const)) converttimeval(const struct timeval time)
+{
+	// Convert time from struct timeval into units
+	// of 10*milliseconds
+	return time.tv_sec*10000 + time.tv_usec/100;
 }

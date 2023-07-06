@@ -22,7 +22,7 @@ foreach(INPUT_FILE ${COMPILED_RESOURCES})
     add_custom_command(
         OUTPUT ${INPUT_FILE}.hex
         COMMAND ${RESOURCE_COMPILER} -i < ${IN} > ${OUTPUT_FILE}
-        COMMENT "Compiling ${INPUT_FILE} to binary"
+        COMMENT "Compiling ${INPUT_FILE}"
         VERBATIM)
     list(APPEND COMPILED_RESOURCES ${OUTPUT_FILE})
 endforeach()

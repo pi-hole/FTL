@@ -10,11 +10,28 @@
 #ifndef FILE_H
 #define FILE_H
 
+#include <stdbool.h>
+#include <sys/stat.h>
+// setmntent()
+#include <mntent.h>
+
+#define ZIP_ROTATIONS 3
+#define MAX_ROTATIONS 15
+
 bool chmod_file(const char *filename, const mode_t mode);
 bool file_exists(const char *filename);
+bool file_readable(const char *filename);
+bool get_database_stat(struct stat *st);
 unsigned long long get_FTL_db_filesize(void);
+void get_permission_string(char permissions[10], struct stat *st);
 void ls_dir(const char* path);
-int get_path_usage(const char *path, char buffer[64]);
-int get_filepath_usage(const char *file, char buffer[64]);
+unsigned int get_path_usage(const char *path, char buffer[64]);
+struct mntent *get_filesystem_details(const char *path);
+bool directory_exists(const char *path);
+void rotate_files(const char *path, char **first_file);
+
+int parse_line(char *line, char **key, char **value);
+
+char *get_hwmon_target(const char *path) __attribute__((malloc));
 
 #endif //FILE_H

@@ -3,51 +3,114 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  API commands and MessagePack helpers
+*  API route prototypes
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
-#ifndef API_H
-#define API_H
+#ifndef ROUTES_H
+#define ROUTES_H
+
+// struct mg_connection
+#include "webserver/civetweb/civetweb.h"
+// type cJSON
+#include "webserver/cJSON/cJSON.h"
+#include "webserver/http-common.h"
+
+// Commo definitions
+#define LOCALHOSTv4 "127.0.0.1"
+#define LOCALHOSTv6 "::1"
+
+// API router
+int api_handler(struct mg_connection *conn, void *ignored);
 
 // Statistic methods
-void getStats(const int sock, const bool istelnet);
-void getOverTime(const int sock, const bool istelnet);
-void getTopDomains(const char *client_message, const int sock, const bool istelnet);
-void getTopClients(const char *client_message, const int sock, const bool istelnet);
-void getUpstreamDestinations(const char *client_message, const int sock, const bool istelnet);
-void getQueryTypes(const int sock, const bool istelnet);
-void getAllQueries(const char *client_message, const int sock, const bool istelnet);
-void getRecentBlocked(const char *client_message, const int sock, const bool istelnet);
-void getClientsOverTime(const int sock, const bool istelnet);
-void getClientNames(const int sock, const bool istelnet);
+int api_stats_summary(struct ftl_conn *api);
+int api_stats_query_types(struct ftl_conn *api);
+int api_stats_upstreams(struct ftl_conn *api);
+int api_stats_top_domains(struct ftl_conn *api);
+int api_stats_top_clients(struct ftl_conn *api);
+int api_stats_recentblocked(struct ftl_conn *api);
 
-// FTL methods
-void getClientID(const int sock, const bool istelnet);
-void getVersion(const int sock, const bool istelnet);
-void getDBstats(const int sock, const bool istelnet);
-void getUnknownQueries(const int sock, const bool istelnet);
-void getMAXLOGAGE(const int sock);
-void getGateway(const int sock);
-void getInterfaces(const int sock);
+// History methods
+int api_history(struct ftl_conn *api);
+int api_history_clients(struct ftl_conn *api);
 
-// DNS resolver methods (dnsmasq_interface.c)
-void getCacheInformation(const int sock);
-void getDNSport(const int sock);
+// History methods (database)
+int api_history_database(struct ftl_conn *api);
+int api_history_database_clients(struct ftl_conn *api);
 
-// MessagePack serialization helpers
-void pack_eom(const int sock);
-void pack_bool(const int sock, const bool value);
-void pack_uint8(const int sock, const uint8_t value);
-void pack_uint64(const int sock, const uint64_t value);
-void pack_int32(const int sock, const int32_t value);
-void pack_int64(const int sock, const int64_t value);
-void pack_float(const int sock, const float value);
-bool pack_fixstr(const int sock, const char *string);
-bool pack_str32(const int sock, const char *string);
-void pack_map16_start(const int sock, const uint16_t length);
+// Query methods
+int api_queries(struct ftl_conn *api);
+int api_queries_suggestions(struct ftl_conn *api);
 
-// DHCP lease management
-void delete_lease(const char *client_message, const int sock);
+// Statistics methods (database)
+int api_stats_database_top_items(struct ftl_conn *api);
+int api_stats_database_summary(struct ftl_conn *api);
+int api_stats_database_query_types(struct ftl_conn *api);
+int api_stats_database_upstreams(struct ftl_conn *api);
 
-#endif // API_H
+// Info methods
+int api_info_client(struct ftl_conn *api);
+int api_info_database(struct ftl_conn *api);
+int api_info_system(struct ftl_conn *api);
+int api_info_ftl(struct ftl_conn *api);
+int api_info_host(struct ftl_conn *api);
+int api_info_sensors(struct ftl_conn *api);
+int api_info_version(struct ftl_conn *api);
+int api_info_messages_count(struct ftl_conn *api);
+int api_info_messages(struct ftl_conn *api);
+int api_info_metrics(struct ftl_conn *api);
+
+// Config methods
+int api_config(struct ftl_conn *api);
+
+// Log methods
+int api_logs(struct ftl_conn *api);
+
+// Network methods
+int api_network_gateway(struct ftl_conn *api);
+int api_network_interfaces(struct ftl_conn *api);
+int api_network_devices(struct ftl_conn *api);
+int api_client_suggestions(struct ftl_conn *api);
+
+// DNS methods
+int api_dns_blocking(struct ftl_conn *api);
+
+// List methods
+int api_list(struct ftl_conn *api);
+int api_group(struct ftl_conn *api);
+
+// Auth method
+int check_client_auth(struct ftl_conn *api, const bool is_api);
+int api_auth(struct ftl_conn *api);
+void delete_all_sessions(void);
+int api_auth_sessions(struct ftl_conn *api);
+int api_auth_session_delete(struct ftl_conn *api);
+
+// 2FA methods
+bool verifyTOTP(const uint32_t code);
+int generateTOTP(struct ftl_conn *api);
+int printTOTP(void);
+
+// Documentation methods
+int api_docs(struct ftl_conn *api);
+
+// Teleporter methods
+int api_teleporter(struct ftl_conn *api);
+
+// Action methods
+int api_action_gravity(struct ftl_conn *api);
+int api_action_poweroff(struct ftl_conn *api);
+int api_action_reboot(struct ftl_conn *api);
+int api_action_restartDNS(struct ftl_conn *api);
+int api_action_flush_logs(struct ftl_conn *api);
+int api_action_flush_arp(struct ftl_conn *api);
+
+// Search methods
+int api_search(struct ftl_conn *api);
+
+// DHCP methods
+int api_dhcp_leases_GET(struct ftl_conn *api);
+int api_dhcp_leases_DELETE(struct ftl_conn *api);
+
+#endif // ROUTES_H

@@ -12,7 +12,7 @@
 #include "version.h"
 // is_fork()
 #include "daemon.h"
-#include "config.h"
+#include "config/config.h"
 #include "log.h"
 // global variable username
 #include "main.h"
@@ -24,8 +24,20 @@
 #include "signals.h"
 // logg_fatal_dnsmasq_message()
 #include "database/message-table.h"
+// delete_old_queries_from_db()
+#include "database/query-table.h"
+// runGC()
+#include "gc.h"
 
 static bool print_log = true, print_stdout = true;
+static const char *process = "";
+bool debug_flags[DEBUG_MAX] = { false };
+
+void clear_debug_flags(void)
+{
+	for(unsigned int i = 0; i < DEBUG_MAX; i++)
+		debug_flags[i] = false;
+}
 
 void log_ctrl(bool plog, bool pstdout)
 {
@@ -33,30 +45,59 @@ void log_ctrl(bool plog, bool pstdout)
 	print_stdout = pstdout;
 }
 
-void init_FTL_log(void)
+void init_FTL_log(const char *name)
 {
-	// Obtain log file location
-	getLogFilePath();
-
 	// Open the log file in append/create mode
-	FILE *logfile = fopen(FTLfiles.log, "a+");
-	if((logfile == NULL)){
-		syslog(LOG_ERR, "Opening of FTL\'s log file failed!");
-		printf("FATAL: Opening of FTL log (%s) failed!\n",FTLfiles.log);
-		printf("       Make sure it exists and is writeable by user %s\n", username);
-		// Return failure
-		exit(EXIT_FAILURE);
+	if(config.files.log.ftl.v.s != NULL)
+	{
+		FILE *logfile = NULL;
+		if((logfile = fopen(config.files.log.ftl.v.s, "a+")) == NULL)
+		{
+			syslog(LOG_ERR, "Opening of FTL\'s log file failed, using syslog instead!");
+			printf("ERR: Opening of FTL log (%s) failed!\n",config.files.log.ftl.v.s);
+			config.files.log.ftl.v.s = NULL;
+		}
+
+		// Close log file
+		if(logfile != NULL)
+			fclose(logfile);
 	}
 
-	fclose(logfile);
+	// Store process name (if available), strip path if found
+	if(name != NULL)
+	{
+		if(strrchr(name, '/') != NULL)
+			process = strrchr(name, '/')+1;
+		else
+			process = name;
+	}
+}
+
+// Return time(NULL) but with (up to) nanosecond accuracy
+// The resolution of clock depends on the hardware implementation and cannot be
+// changed by a particular process
+double double_time(void)
+{
+	struct timespec tp;
+	// POSIX.1-2008: "Applications should use the clock_gettime() function instead
+	// of the obsolescent gettimeofday() function"
+	clock_gettime(CLOCK_REALTIME, &tp);
+	return tp.tv_sec + 1e-9*tp.tv_nsec;
 }
 
 // The size of 84 bytes has been carefully selected for all possible timestamps
 // to always fit into the available space without buffer overflows
-void get_timestr(char * const timestring, const time_t timein, const bool millis)
+void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible)
 {
 	struct tm tm;
 	localtime_r(&timein, &tm);
+	char space = ' ';
+	char colon = ':';
+	if(uri_compatible)
+	{
+		space = '_';
+		colon = '-';
+	}
 
 	if(millis)
 	{
@@ -64,32 +105,164 @@ void get_timestr(char * const timestring, const time_t timein, const bool millis
 		gettimeofday(&tv, NULL);
 		const int millisec = tv.tv_usec/1000;
 
-		sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d.%03i",
-		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-		        tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
+		sprintf(timestring,"%d-%02d-%02d%c%02d%c%02d%c%02d.%03i",
+		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, millisec);
 	}
 	else
 	{
-		sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d",
-		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-		        tm.tm_hour, tm.tm_min, tm.tm_sec);
+		sprintf(timestring,"%d-%02d-%02d%c%02d%c%02d%c%02d",
+		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec);
 	}
 }
 
-void _FTL_log(const bool newline, const bool debug, const char *format, ...)
+// Return the current year
+unsigned int get_year(const time_t timein)
 {
-	char timestring[84] = "";
+	struct tm tm;
+	localtime_r(&timein, &tm);
+	return tm.tm_year + 1900;
+}
+
+static const char *priostr(const int priority, const enum debug_flag flag)
+{
+	const char *name;
+	switch (priority)
+	{
+		// system is unusable
+		case LOG_EMERG:
+			return "EMERG";
+		// action must be taken immediately
+		case LOG_ALERT:
+			return "ALERT";
+		// critical conditions
+		case LOG_CRIT:
+			return "CRIT";
+		// error conditions
+		case LOG_ERR:
+			return "ERR";
+		// warning conditions
+		case LOG_WARNING:
+			return "WARNING";
+		// normal but significant condition
+		case LOG_NOTICE:
+			return "NOTICE";
+		// informational
+		case LOG_INFO:
+			return "INFO";
+		// debug-level messages
+		case LOG_DEBUG:
+			debugstr(flag, &name);
+			return name;
+		// invalid option
+		default:
+			return "UNKNOWN";
+	}
+}
+
+void debugstr(const enum debug_flag flag, const char **name)
+{
+	switch (flag)
+	{
+		case DEBUG_DATABASE:
+			*name = "DEBUG_DATABASE";
+			return;
+		case DEBUG_NETWORKING:
+			*name = "DEBUG_NETWORKING";
+			return;
+		case DEBUG_LOCKS:
+			*name = "DEBUG_LOCKS";
+			return;
+		case DEBUG_QUERIES:
+			*name = "DEBUG_QUERIES";
+			return;
+		case DEBUG_FLAGS:
+			*name = "DEBUG_FLAGS";
+			return;
+		case DEBUG_SHMEM:
+			*name = "DEBUG_SHMEM";
+			return;
+		case DEBUG_GC:
+			*name = "DEBUG_GC";
+			return;
+		case DEBUG_ARP:
+			*name = "DEBUG_ARP";
+			return;
+		case DEBUG_REGEX:
+			*name = "DEBUG_REGEX";
+			return;
+		case DEBUG_API:
+			*name = "DEBUG_API";
+			return;
+		case DEBUG_TLS:
+			*name = "DEBUG_TLS";
+			return;
+		case DEBUG_OVERTIME:
+			*name = "DEBUG_OVERTIME";
+			return;
+		case DEBUG_STATUS:
+			*name = "DEBUG_STATUS";
+			return;
+		case DEBUG_CAPS:
+			*name = "DEBUG_CAPS";
+			return;
+		case DEBUG_DNSSEC:
+			*name = "DEBUG_DNSSEC";
+			return;
+		case DEBUG_VECTORS:
+			*name = "DEBUG_VECTORS";
+			return;
+		case DEBUG_RESOLVER:
+			*name = "DEBUG_RESOLVER";
+			return;
+		case DEBUG_EDNS0:
+			*name = "DEBUG_EDNS0";
+			return;
+		case DEBUG_CLIENTS:
+			*name = "DEBUG_CLIENTS";
+			return;
+		case DEBUG_ALIASCLIENTS:
+			*name = "DEBUG_ALIASCLIENTS";
+			return;
+		case DEBUG_EVENTS:
+			*name = "DEBUG_EVENTS";
+			return;
+		case DEBUG_HELPER:
+			*name = "DEBUG_HELPER";
+			return;
+		case DEBUG_EXTRA:
+			*name = "DEBUG_EXTRA";
+			return;
+		case DEBUG_CONFIG:
+			*name = "DEBUG_CONFIG";
+			return;
+		case DEBUG_INOTIFY:
+			*name = "DEBUG_INOTIFY";
+			return;
+		case DEBUG_RESERVED:
+			*name = "DEBUG_RESERVED";
+			return;
+		case DEBUG_MAX:
+			*name = "DEBUG_MAX";
+			return;
+		default:
+			*name = "DEBUG_ANY";
+			return;
+	}
+}
+
+void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
+{
+	char timestring[TIMESTR_SIZE] = "";
 	va_list args;
 
 	// We have been explicitly asked to not print anything to the log
 	if(!print_log && !print_stdout)
 		return;
 
-	// Check if this is something we should print only in debug mode
-	if(debug && !config.debug)
-		return;
-
-	get_timestr(timestring, time(NULL), true);
+	// Get human-readable time
+	get_timestr(timestring, time(NULL), true, false);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
@@ -119,35 +292,98 @@ void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 	{
 		// Only print time/ID string when not in direct user interaction (CLI mode)
 		if(!cli_mode)
-			printf("[%s %s] ", timestring, idstr);
+			printf("%s [%s] %s: ", timestring, idstr, priostr(priority, flag));
 		va_start(args, format);
 		vprintf(format, args);
 		va_end(args);
-		if(newline)
-			printf("\n");
+		printf("\n");
 	}
 
-	if(print_log && FTLfiles.log != NULL)
+	// Print to log file or syslog
+	if(print_log)
 	{
-		// Open log file
-		FILE *logfile = fopen(FTLfiles.log, "a+");
+		// Add line to FIFO buffer
+		char buffer[MAX_MSG_FIFO + 1u];
+		va_start(args, format);
+		const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
+		va_end(args);
+		add_to_fifo_buffer(FIFO_FTL, buffer, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
-		// Write to log file
-		if(logfile != NULL)
+		if(config.files.log.ftl.v.s != NULL)
 		{
-			fprintf(logfile, "[%s %s] ", timestring, idstr);
+			// Open log file
+			FILE *logfile = fopen(config.files.log.ftl.v.s, "a+");
+
+			// Write to log file
+			if(logfile != NULL)
+			{
+				// Prepend message with identification string and priority
+				fprintf(logfile, "%s [%s] %s: ", timestring, idstr, priostr(priority, flag));
+
+				// Log message
+				va_start(args, format);
+				vfprintf(logfile, format, args);
+				va_end(args);
+
+				// Append newline character to the end of the file
+				fputc('\n', logfile);
+
+				// Close file after writing
+				fclose(logfile);
+			}
+			else if(!daemonmode)
+			{
+				printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
+				syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
+			}
+		}
+		else
+		{
+			// Syslog logging
 			va_start(args, format);
-			vfprintf(logfile, format, args);
+			vsyslog(priority, format, args);
 			va_end(args);
-			fputc('\n',logfile);
+		}
+	}
+}
 
-			fclose(logfile);
-		}
-		else if(!daemonmode)
-		{
-			printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
-			syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
-		}
+void __attribute__ ((format (gnu_printf, 1, 2))) log_web(const char *format, ...)
+{
+	char timestring[TIMESTR_SIZE] = "";
+	const time_t now = time(NULL);
+	va_list args;
+
+	// Add line to FIFO buffer
+	char buffer[MAX_MSG_FIFO + 1u];
+	va_start(args, format);
+	const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
+	va_end(args);
+	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
+
+	// Get human-readable time
+	get_timestr(timestring, now, true, false);
+
+	// Get and log PID of current process to avoid ambiguities when more than one
+	// pihole-FTL instance is logging into the same file
+	const long pid = (long)getpid();
+
+	// Open web log file
+	FILE *weblog = fopen(config.files.log.webserver.v.s, "a+");
+
+	// Write to web log file
+	if(weblog != NULL)
+	{
+		fprintf(weblog, "[%s %ld] ", timestring, pid);
+		va_start(args, format);
+		vfprintf(weblog, format, args);
+		va_end(args);
+		fputc('\n',weblog);
+		fclose(weblog);
+	}
+	else if(!daemonmode)
+	{
+		printf("!!! WARNING: Writing to web log file failed!\n");
+		syslog(LOG_ERR, "Writing to web log file failed!");
 	}
 }
 
@@ -155,12 +391,12 @@ void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 void FTL_log_helper(const unsigned char n, ...)
 {
 	// Only log helper debug messages if enabled
-	if(!(config.debug & DEBUG_HELPER))
+	if(!(config.debug.helper.v.b))
 		return;
 
 	// Extract all variable arguments
 	va_list args;
-	char *arg[n];
+	char **arg = calloc(n, sizeof(char*));
 	va_start(args, n);
 	for(unsigned char i = 0; i < n; i++)
 	{
@@ -176,17 +412,17 @@ void FTL_log_helper(const unsigned char n, ...)
 	switch (n)
 	{
 		case 1:
-			logg("Script: Starting helper for action \"%s\"", arg[0]);
+			log_debug(DEBUG_HELPER, "Script: Starting helper for action \"%s\"", arg[0]);
 			break;
 		case 2:
-			logg("Script: FAILED to execute \"%s\": %s", arg[0], arg[1]);
+			log_debug(DEBUG_HELPER, "Script: FAILED to execute \"%s\": %s", arg[0], arg[1]);
 			break;
 		case 5:
-			logg("Script: Executing \"%s\" with arguments: \"%s %s %s %s\"",
-			     arg[0], arg[1], arg[2], arg[3], arg[4]);
+			log_debug(DEBUG_HELPER, "Script: Executing \"%s\" with arguments: \"%s %s %s %s\"",
+			          arg[0], arg[1], arg[2], arg[3], arg[4]);
 			break;
 		default:
-			logg("ERROR: Unsupported number of arguments passed to FTL_log_helper(): %u", n);
+			log_debug(DEBUG_HELPER, "ERROR: Unsupported number of arguments passed to FTL_log_helper(): %u", n);
 			break;
 	}
 
@@ -194,6 +430,7 @@ void FTL_log_helper(const unsigned char n, ...)
 	for(unsigned char i = 0; i < n; i++)
 		if(arg[i] != NULL)
 			free(arg[i]);
+	free(arg);
 }
 
 void format_memory_size(char prefix[2], const unsigned long long int bytes,
@@ -248,6 +485,8 @@ void format_time(char buffer[42], unsigned long seconds, double milliseconds)
 
 void FTL_log_dnsmasq_fatal(const char *format, ...)
 {
+	if(!print_log)
+		return;
 	// Build a complete string from possible multi-part string passed from dnsmasq
 	char message[256] = { 0 };
 	va_list args;
@@ -262,31 +501,31 @@ void FTL_log_dnsmasq_fatal(const char *format, ...)
 
 void log_counter_info(void)
 {
-	logg(" -> Total DNS queries: %i", counters->queries);
-	logg(" -> Cached DNS queries: %i", cached_queries());
-	logg(" -> Forwarded DNS queries: %i", forwarded_queries());
-	logg(" -> Blocked DNS queries: %i", blocked_queries());
-	logg(" -> Unknown DNS queries: %i", counters->status[QUERY_UNKNOWN]);
-	logg(" -> Unique domains: %i", counters->domains);
-	logg(" -> Unique clients: %i", counters->clients);
-	logg(" -> Known forward destinations: %i", counters->upstreams);
+	log_info(" -> Total DNS queries: %i", counters->queries);
+	log_info(" -> Cached DNS queries: %i", get_cached_count());
+	log_info(" -> Forwarded DNS queries: %i", get_forwarded_count());
+	log_info(" -> Blocked DNS queries: %i", get_blocked_count());
+	log_info(" -> Unknown DNS queries: %i", counters->status[QUERY_UNKNOWN]);
+	log_info(" -> Unique domains: %i", counters->domains);
+	log_info(" -> Unique clients: %i", counters->clients);
+	log_info(" -> Known forward destinations: %i", counters->upstreams);
 }
 
 void log_FTL_version(const bool crashreport)
 {
-	logg("FTL branch: %s", GIT_BRANCH);
-	logg("FTL version: %s", get_FTL_version());
-	logg("FTL commit: %s", GIT_HASH);
-	logg("FTL date: %s", GIT_DATE);
+	log_info("FTL branch: %s", GIT_BRANCH);
+	log_info("FTL version: %s", get_FTL_version());
+	log_info("FTL commit: %s", GIT_HASH);
+	log_info("FTL date: %s", GIT_DATE);
 	if(crashreport)
 	{
 		char *username_now = getUserName();
-		logg("FTL user: started as %s, ended as %s", username, username_now);
+		log_info("FTL user: started as %s, ended as %s", username, username_now);
 		free(username_now);
 	}
 	else
-		logg("FTL user: %s", username);
-	logg("Compiled for %s using %s", FTL_ARCH, FTL_CC);
+		log_info("FTL user: %s", username);
+	log_info("Compiled for %s using %s", FTL_ARCH, FTL_CC);
 }
 
 static char *FTLversion = NULL;
@@ -401,7 +640,7 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 					*dst++ = '0';
 					break;
 				default:
-					sprintf(dst, "0x%X", *src);
+					sprintf(dst, "0x%X", *(unsigned char*)src);
 					dst += 4;
 			}
 
@@ -419,6 +658,16 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 	*dst = '\0';
 
 	return src - src_buf;
+}
+
+// Find number of occurrences of a character in a string
+unsigned int __attribute__ ((pure)) countchar(const char *str, const char c)
+{
+	unsigned int count = 0;
+	for(const char *p = str; *p != '\0'; p++)
+		if(*p == c)
+			count++;
+	return count;
 }
 
 int __attribute__ ((pure)) forwarded_queries(void)
@@ -467,4 +716,81 @@ void dnsmasq_diagnosis_warning(char *message)
 {
 	// Crop away any existing initial "warning: "
 	logg_warn_dnsmasq_message(skipStr("warning: ", message));
+}
+
+void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const size_t length)
+{
+	const double now = double_time();
+
+	// Do not try to log when shared memory isn't initialized yet
+	if(!fifo_log)
+		return;
+
+	unsigned int idx = fifo_log->logs[which].next_id++;
+	if(idx >= LOG_SIZE)
+	{
+		// Log is full, move everything one slot forward to make space for a new record at the end
+		// This pruges the oldest message from the list (it is overwritten by the second message)
+		memmove(&fifo_log->logs[which].message[0][0], &fifo_log->logs[which].message[1][0], (LOG_SIZE - 1u) * MAX_MSG_FIFO);
+		memmove(&fifo_log->logs[which].timestamp[0], &fifo_log->logs[which].timestamp[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].timestamp[0]));
+		idx = LOG_SIZE - 1u;
+	}
+
+	// Copy string
+	// We need to use the pre-allocated buffer in shared memory as we share
+	// this FIFO with forks and friends, so we can't use strdup()
+	size_t copybytes = length < MAX_MSG_FIFO ? length : MAX_MSG_FIFO;
+	memcpy(fifo_log->logs[which].message[idx], payload, copybytes);
+
+	// Zero-terminate buffer, truncate newline if found
+	if(fifo_log->logs[which].message[idx][copybytes - 1u] == '\n')
+		fifo_log->logs[which].message[idx][copybytes - 1u] = '\0';
+	else
+		fifo_log->logs[which].message[idx][copybytes] = '\0';
+
+	// Replace last three bytes by "..." if we truncated the message
+	if(copybytes == MAX_MSG_FIFO)
+		for(unsigned int i = 0; i < 4; i++)
+			fifo_log->logs[which].message[idx][MAX_MSG_FIFO - 4 + i] = '.';
+
+	// Set timestamp
+	fifo_log->logs[which].timestamp[idx] = now;
+}
+
+bool flush_dnsmasq_log(void)
+{
+	// Lock shared memory
+	lock_shm();
+
+	// Open file in write mode to truncate it
+	FILE *logfile = fopen(config.files.log.dnsmasq.v.s, "w");
+	if(!logfile)
+	{
+		log_err("Could not open log file %s for truncation: %s\n", config.files.log.dnsmasq.v.s, strerror(errno));
+		unlock_shm();
+		return false;
+	}
+	fclose(logfile);
+
+	// Flush dnsmasq FIFO logs
+	if(fifo_log)
+		memset(&fifo_log->logs[FIFO_DNSMASQ], 0, sizeof(fifo_log->logs[FIFO_DNSMASQ]));
+
+	// Clean internal datastructure
+	runGC(time(NULL), NULL, true);
+
+	// Unlock shared memory
+	unlock_shm();
+
+	// Flush last 24 hours of on-disk database
+	const double mintime = double_time();
+	if(!delete_old_queries_from_db(false, mintime))
+	{
+		log_err("Could not flush on-disk database");
+		return false;
+	}
+
+	log_info("Log has been flushed due to API request");
+
+	return true;
 }

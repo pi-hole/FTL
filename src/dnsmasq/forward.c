@@ -1926,7 +1926,6 @@ void receive_query(struct listener *listen, time_t now)
 	  if (have_pseudoheader)
 	    {
 	      int ede = EDE_UNSET;
-
 	      if (filtered)
 		ede = EDE_FILTERED;
 	      else if (stale)
@@ -2318,7 +2317,6 @@ unsigned char *tcp_request(int confd, time_t now,
 	no_cache_dnssec = 1;
 
       //********************** Pi-hole modification **********************//
-      unsigned char *pheader = NULL;
       pheader = find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL);
       FTL_parse_pseudoheaders(pheader, (size_t)size);
       //******************************************************************//

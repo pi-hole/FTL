@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Only run tests on x86_* targets (where the CI can natively run the binaries)
-if [[ ${CI} == "true" && "${CI_ARCH}" != "x86_"* ]]; then
+# Skip tests on targets not supporting them
+if [[ ${TEST} == "false" ]]; then
   echo "Skipping tests (CI_ARCH: ${CI_ARCH})!"
   exit 0
 fi
@@ -26,8 +26,10 @@ rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole/pihole.lo
 mkdir -p /home/pihole /etc/pihole /run/pihole /var/log/pihole
 echo "" > /var/log/pihole/FTL.log
 echo "" > /var/log/pihole/pihole.log
-touch /run/pihole-FTL.pid dig.log ptr.log
-chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole/pihole.log /var/log/pihole/FTL.log /run/pihole-FTL.pid
+touch /run/pihole-FTL.pid /run/pihole-FTL.port dig.log ptr.log
+touch /var/log/pihole/HTTP_info.log /var/log/pihole/PH7.log /etc/pihole/dhcp.leases
+chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole/pihole.log /var/log/pihole/FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
+chown pihole:pihole /var/log/pihole/HTTP_info.log /var/log/pihole/PH7.log /etc/pihole/dhcp.leases
 
 # Copy binary into a location the new user pihole can access
 cp ./pihole-FTL /home/pihole/pihole-FTL
@@ -44,14 +46,20 @@ rm -rf /etc/pihole/pihole-FTL.db
 ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db < test/pihole-FTL.db.sql
 chown pihole:pihole /etc/pihole/pihole-FTL.db
 
-# Prepare setupVars.conf
-echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
+# Prepare TLS key and certificate
+cp test/test.pem /etc/pihole/test.pem
+cp test/test.crt /etc/pihole/test.crt
 
-# Prepare pihole-FTL.conf
-cp test/pihole-FTL.conf /etc/pihole/pihole-FTL.conf
+# Prepare pihole.toml
+cp test/pihole.toml /etc/pihole/pihole.toml
+chown pihole:pihole /etc/pihole/pihole.toml
 
-# Prepare dnsmasq.conf
-cp test/dnsmasq.conf /etc/dnsmasq.conf
+# Prepare 01-pihole-tests.conf
+mkdir /etc/dnsmasq.d
+cp test/01-pihole-tests.conf /etc/dnsmasq.d/01-pihole-tests.conf
+
+# Prepare versions file (read by /api/version)
+cp test/versions /etc/pihole/versions
 
 # Prepare local powerDNS resolver
 bash test/pdns/setup.sh
@@ -104,9 +112,15 @@ if [[ $RET != 0 ]]; then
   echo ""
   echo -n "ptr.log: "
   curl_to_tricorder ./ptr.log
-  echo ""getallqueries
-  echo -n "getallqueries.log: "
-  curl_to_tricorder ./getallqueries.log
+  echo ""
+  echo -n "HTTP_info.log: "
+  curl_to_tricorder /var/log/pihole/HTTP_info.log
+  echo ""
+  echo -n "PH7.log: "
+  curl_to_tricorder /var/log/pihole/PH7.log
+  echo ""
+  echo -n "pihole.toml: "
+  curl_to_tricorder /etc/pihole/pihole.toml
   echo ""
 fi
 
@@ -118,6 +132,10 @@ umask "$OLDUMASK"
 
 # Remove copied file
 rm /home/pihole/pihole-FTL
+
+# Stop local powerDNS resolver
+killall pdns_server
+killall pdns_recursor
 
 # Exit with return code of bats tests
 exit $RET

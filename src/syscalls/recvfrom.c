@@ -38,8 +38,8 @@ ssize_t FTLrecvfrom(int sockfd, void *buf, size_t len, int flags, struct sockadd
 	// socket that has no data available or we ran into an (expected)
 	// timeout. In that case, do not log a warning
 	if(ret < 0 && errno != EAGAIN)
-		logg("WARN: Could not recvfrom() in %s() (%s:%i): %s",
-		     func, file, line, strerror(errno));
+		log_warn("Could not recvfrom() in %s() (%s:%i): %s",
+		         func, file, line, strerror(errno));
 
 	// Restore errno value
 	errno = _errno;

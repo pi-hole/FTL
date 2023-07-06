@@ -17,7 +17,7 @@ ssize_t FTLwrite(int fd, const void *buf, size_t total, const char *file, const 
 {
 	if(buf == NULL)
 	{
-		logg("ERROR: Trying to write a NULL string in %s() (%s:%i)", func, file, line);
+		log_err("Trying to write a NULL string in %s() (%s:%i)", func, file, line);
 		return 0;
 	}
 
@@ -42,8 +42,8 @@ ssize_t FTLwrite(int fd, const void *buf, size_t total, const char *file, const 
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(written < total)
-		logg("WARN: Could not write() everything in %s() [%s:%i]: %s",
-		     func, file, line, strerror(errno));
+		log_warn("Could not write() everything in %s() [%s:%i]: %s",
+		         func, file, line, strerror(errno));
 
 	// Restore errno value
 	errno = _errno;

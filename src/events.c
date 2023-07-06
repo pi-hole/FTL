@@ -15,8 +15,8 @@
 // atomic_flag_test_and_set()
 #include <stdatomic.h>
 // struct config
-#include "config.h"
-// logg()
+#include "config/config.h"
+// logging
 #include "log.h"
 
 // Private prototypes
@@ -37,12 +37,12 @@ void _set_event(const enum events event, int line, const char *function, const c
 		is_set = true;
 
 	// Possible debug logging
-	if(config.debug & DEBUG_EVENTS)
+	if(config.debug.events.v.b)
 	{
-		logg("Event %s -> %s    called from %s() (%s:%i)",
-		     eventtext(event),
-		     is_set ? "was ALREADY SET" : "now SET",
-		     function, file, line);
+		log_debug(DEBUG_EVENTS, "Event %s -> %s    called from %s() (%s:%i)",
+		          eventtext(event),
+		          is_set ? "was ALREADY SET" : "now SET",
+		          function, file, line);
 	}
 }
 
@@ -68,10 +68,10 @@ bool _get_and_clear_event(const enum events event, int line, const char *functio
 		is_set = true;
 
 	// Possible debug logging only for SET status, to avoid log file flooding with NOT SET messages
-	if(is_set && config.debug & DEBUG_EVENTS)
+	if(is_set && config.debug.events.v.b)
 	{
-		logg("Event %s -> was SET, now CLEARED    called from %s() (%s:%i)",
-		     eventtext(event), function, file, line);
+		log_debug(DEBUG_EVENTS, "Event %s -> was SET, now CLEARED    called from %s() (%s:%i)",
+		          eventtext(event), function, file, line);
 	}
 
 	// Clear eventqueue bit (we set it above) ...
@@ -88,8 +88,6 @@ static const char *eventtext(const enum events event)
 	{
 		case RELOAD_GRAVITY:
 			return "RELOAD_GRAVITY";
-		case RELOAD_PRIVACY_LEVEL:
-			return "RELOAD_PRIVACY_LEVEL";
 		case RERESOLVE_HOSTNAMES:
 			return "RERESOLVE_HOSTNAMES";
 		case RERESOLVE_HOSTNAMES_FORCE:
@@ -100,8 +98,6 @@ static const char *eventtext(const enum events event)
 			return "PARSE_NEIGHBOR_CACHE";
 		case RESOLVE_NEW_HOSTNAMES:
 			return "RESOLVE_NEW_HOSTNAMES";
-		case RELOAD_BLOCKINGSTATUS:
-			return "RELOAD_BLOCKINGSTATUS";
 		case EVENTS_MAX: // fall through
 		default:
 			return "UNKNOWN";

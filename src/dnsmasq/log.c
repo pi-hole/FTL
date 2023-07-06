@@ -15,7 +15,11 @@
 */
 
 #include "dnsmasq.h"
-#include "../log.h"
+/******* Pi-hole modification *******/
+#include "log.h"
+#include "dnsmasq_interface.h"
+#include "main.h"
+/************************************/
 
 #ifdef __ANDROID__
 #  include <android/log.h>
@@ -318,6 +322,14 @@ void my_syslog(int priority, const char *format, ...)
   priority &= LOG_PRIMASK;
 #endif
 
+  /*************************** Pi-hole specific logging **************************/
+  char buffer[MAX_MESSAGE + 1u];
+  va_start(ap, format);
+  len = vsnprintf(buffer, MAX_MESSAGE, format, ap) + 1u; /* include zero-terminator */
+  va_end(ap);
+  FTL_dnsmasq_log(buffer, len > MAX_MESSAGE ? MAX_MESSAGE : len);
+  /*******************************************************************************/
+
   if (echo_stderr) 
     {
       fprintf(stderr, "dnsmasq%s: ", func);
@@ -506,7 +518,8 @@ void die(char *message, char *arg1, int exit_code)
 
   /********** Pi-hole modification *************/
   FTL_log_dnsmasq_fatal(message, arg1, errmess);
+
+  // Jump back into main() to exit gracefully
+  longjmp(exit_jmp, exit_code);
   /*********************************************/
-  
-  exit(exit_code);
 }

@@ -23,15 +23,17 @@
 #if defined(HAVE_IDN) || defined(HAVE_LIBIDN2) || defined(LOCALEDIR)
 #include <locale.h>
 #endif
-#include "../dnsmasq_interface.h"
+#include "dnsmasq_interface.h"
 // killed
-#include "../signals.h"
+#include "signals.h"
+// FTL_fork_and_bind_sockets()
+#include "main.h"
 
 struct daemon *daemon;
 
 static volatile pid_t pid = 0;
 static volatile int pipewrite;
-static char terminate = 0;
+volatile char FTL_terminate = 0;
 
 static void set_dns_listeners(void);
 static void check_dns_listeners(time_t now);
@@ -702,7 +704,7 @@ int main_dnsmasq (int argc, char **argv)
 	}
     }
 
-    FTL_fork_and_bind_sockets(ent_pw);
+    FTL_fork_and_bind_sockets(ent_pw, true);
   
    log_err = log_start(ent_pw, err_pipe[1]);
 
@@ -1061,10 +1063,10 @@ int main_dnsmasq (int argc, char **argv)
 #endif
 
   /*** Pi-hole modification ***/
-  terminate = killed;
+  FTL_terminate = killed;
   /****************************/
   
-  while (!terminate)
+  while (!FTL_terminate)
     {
       int timeout = fast_retry(now);
       
@@ -1647,7 +1649,7 @@ static void async_event(int pipe, time_t now)
 	flush_log();
 	/*** Pi-hole modification ***/
 //	exit(EC_GOOD);
-	terminate = 1;
+	FTL_terminate = 1;
 	/*** Pi-hole modification ***/
       }
 }

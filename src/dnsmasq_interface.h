@@ -1,5 +1,5 @@
 /* Pi-hole: A black hole for Internet advertisements
-*  (c) 2017 Pi-hole, LLC (https://pi-hole.net)
+*  (c) 2021 Pi-hole, LLC (https://pi-hole.net)
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
@@ -14,6 +14,7 @@
 #include <stdbool.h>
 
 #include "edns0.h"
+#include "metrics.h"
 
 extern unsigned char* pihole_privacylevel;
 enum protocol { TCP, UDP, INTERNAL };
@@ -42,7 +43,6 @@ void FTL_query_in_progress(const int id);
 void FTL_multiple_replies(const int id, int *firstID);
 
 void FTL_dnsmasq_reload(void);
-void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
 void FTL_TCP_worker_created(const int confd);
 void FTL_TCP_worker_terminating(bool finished);
 
@@ -50,5 +50,7 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr);
 
 // defined in src/dnsmasq/cache.c
 extern char *querystr(char *desc, unsigned short type);
+
+extern void FTL_dnsmasq_log(const char *payload, const int length);
 
 #endif // DNSMASQ_INTERFACE_H

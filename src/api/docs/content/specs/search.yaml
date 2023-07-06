@@ -1,0 +1,178 @@
+openapi: 3.0.2
+components:
+  paths:
+    search:
+      parameters:
+        - $ref: 'search.yaml#/components/parameters/domain'
+      get:
+        summary: Search domains in Pi-hole's lists
+        tags:
+          - "List management"
+        operationId: "get_search"
+        parameters:
+          - $ref: 'search.yaml#/components/parameters/partial'
+          - $ref: 'search.yaml#/components/parameters/N'
+        description: |
+          Search for domains in Pi-hole's list. The optional parameters `N` and `partial` limit the maximum number of returned records and whether only exact matches or also partial matches should be returned, respectively.
+          There is a hard upper limit of `N` defined in FTL (currently set to 40,000) to ensure that the response is not too large.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'search.yaml#/components/schemas/search'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+  schemas:
+    search:
+      type: object
+      properties:
+        search:
+          type: object
+          properties:
+            domains:
+              type: array
+              items:
+                type: object
+                properties:
+                  domain:
+                    type: string
+                    example: "blockeddomain.com"
+                  comment:
+                    type: string
+                    description: Optional comment
+                    nullable: true
+                    example: "I needed to block this because of XYZ"
+                  enabled:
+                    type: boolean
+                    description: Whether this entry is enabled
+                    example: true
+                  type:
+                    description: String specifying domain type
+                    type: string
+                    enum:
+                      - "allow"
+                      - "deny"
+                    example: "allow"
+                  kind:
+                    description: String specifying domain kind
+                    type: string
+                    enum:
+                      - "exact"
+                      - "regex"
+                    example: "exact"
+                  id:
+                    type: integer
+                    description: Database ID
+                    example: 7
+                  date_added:
+                    type: integer
+                    description: Unix timestamp of addition
+                    example: 1664624500
+                  date_modified:
+                    type: integer
+                    description: Unix timestamp of last modification
+                    example: 1664624500
+                  groups:
+                    type: array
+                    description: Array of IDs corresponding to associated groups
+                    items:
+                      type: integer
+                    example: [0,1,2]
+            gravity:
+              type: array
+              items:
+                type: object
+                properties:
+                  domain:
+                    type: string
+                    example: "doubleclick.net"
+                  address:
+                    type: string
+                    description: Address of the adlist this domain was found on
+                    example: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+                  comment:
+                    type: string
+                    description: Optional comment of the adlist
+                    nullable: true
+                    example: "I needed to block this because of XYZ"
+                  enabled:
+                    type: boolean
+                    description: Whether this adlist is enabled
+                    example: true
+                  id:
+                    type: integer
+                    description: Database ID of the associated adlist
+                    example: 0
+                  date_added:
+                    type: integer
+                    description: Unix timestamp of adlist addition
+                    example: 1664624500
+                  date_modified:
+                    type: integer
+                    description: Unix timestamp of last adlist modification
+                    example: 1664624500
+                  date_updated:
+                    type: integer
+                    description: Unix timestamp of last local update of this list
+                    example: 1664624500
+                  number:
+                    type: integer
+                    description: Number of entries in the adlist
+                    example: 7
+                  invalid_domains:
+                    type: integer
+                    description: Number of invalid domains in the adlist
+                    example: 0
+                  abp_entries:
+                    type: integer
+                    description: Number of ABP entries in the adlist
+                    example: 0
+                  status:
+                    type: integer
+                    description: Status of the adlist
+                    example: 1
+                  groups:
+                    type: array
+                    description: Array of IDs corresponding to associated groups
+                    items:
+                      type: integer
+                    example: [0,1,2]
+  parameters:
+    domain:
+      name: domain
+      in: path
+      description: (Part of) domain to be searched for
+      schema:
+        type: string
+        default: ""
+        example: doubleclick.net
+      required: true
+    partial:
+      name: partial
+      in: query
+      description: Is partial matching requested?
+      required: false
+      schema:
+        type: boolean
+        default: false
+        example: false
+    N:
+      name: N
+      in: query
+      description: Maximum number of results to be returned
+      required: false
+      schema:
+        type: integer
+        default: 20
+        example: 20
+

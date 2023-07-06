@@ -1,0 +1,41 @@
+From 44a0a3a27731bb8577f39743eb034c024be48df2 Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Thu, 25 May 2023 18:02:13 +0200
+Subject: [PATCH] Add FTL URI rewriting changes to CivetWeb
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/webserver/civetweb/civetweb.c | 2 ++
+ src/webserver/civetweb/civetweb.h | 3 +++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
+index 0d293f1f..44f6cf3d 100644
+--- a/src/webserver/civetweb/civetweb.c
++++ b/src/webserver/civetweb/civetweb.c
+@@ -7754,6 +7754,8 @@ interpret_uri(struct mg_connection *conn, /* in/out: request (must be valid) */
+ 	mg_snprintf(
+ 	    conn, &truncated, filename, filename_buf_len - 1, "%s%s", root, uri);
+ 
++	FTL_rewrite_pattern(filename, filename_buf_len - 1, root, uri);
++
+ 	if (truncated) {
+ 		goto interpret_cleanup;
+ 	}
+diff --git a/src/webserver/civetweb/civetweb.h b/src/webserver/civetweb/civetweb.h
+index e71dfedc..2ad76693 100644
+--- a/src/webserver/civetweb/civetweb.h
++++ b/src/webserver/civetweb/civetweb.h
+@@ -935,6 +935,9 @@ int my_send_http_error_headers(struct mg_connection *conn,
+                                int status, const char* mime_type,
+                                long long content_length);
+ 
++void FTL_rewrite_pattern(char *filename, size_t filename_buf_len,
++                         const char *root, const char *uri);
++
+ // Buffer used for additional "Set-Cookie" headers
+ #define PIHOLE_HEADERS_MAXLEN 1024
+ extern char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN];
+-- 
+2.34.1
+

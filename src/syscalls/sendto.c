@@ -36,8 +36,8 @@ ssize_t FTLsendto(int sockfd, void *buf, size_t len, int flags, const struct soc
 	// EINTR = interrupted system call), also ignore EPROTONOSUPPORT (ARP scanning)
 	// and EPERM + ENOKEY (DHCP probing)
 	if(ret < 0 && errno != EPROTONOSUPPORT && errno != EPERM && errno != ENOKEY)
-		logg("WARN: Could not sendto() in %s() (%s:%i): %s",
-		     func, file, line, strerror(errno));
+		log_warn("Could not sendto() in %s() (%s:%i): %s",
+		         func, file, line, strerror(errno));
 
 	// Restore errno value
 	errno = _errno;

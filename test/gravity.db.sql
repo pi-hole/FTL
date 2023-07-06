@@ -25,16 +25,17 @@ CREATE TABLE domainlist
 
 CREATE TABLE adlist
 (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, 
-  address TEXT UNIQUE NOT NULL, 
-  enabled BOOLEAN NOT NULL DEFAULT 1, 
-  date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), 
-  date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), 
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  address TEXT UNIQUE NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT 1,
+  date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as int)),
+  date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as int)),
   comment TEXT,
-  date_updated INTEGER, 
-  number INTEGER NOT NULL DEFAULT 0, 
-  invalid_domains INTEGER NOT NULL DEFAULT 0, 
-  status INTEGER NOT NULL DEFAULT 0
+  date_updated INTEGER,
+  number INTEGER NOT NULL DEFAULT 0,
+  invalid_domains INTEGER NOT NULL DEFAULT 0,
+  status INTEGER NOT NULL DEFAULT 0,
+  abp_entries INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE adlist_by_group
@@ -190,13 +191,13 @@ CREATE TRIGGER tr_client_delete AFTER DELETE ON client
 
 /* ^^^ basic gravity table definition, taken from /advanced/Templates/gravity.db.sql ^^^ */
 /* vvv Test content following vvv */
-INSERT INTO domainlist VALUES(1,0,'whitelisted.ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
+INSERT INTO domainlist VALUES(1,0,'allowed.ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
 INSERT INTO domainlist VALUES(2,0,'regex1.ftl',1,1559928803,1559928803,'');
 INSERT INTO domainlist VALUES(3,2,'regex2',1,1559928803,1559928803,'');
-INSERT INTO domainlist VALUES(4,2,'^gravity-whitelisted',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(4,2,'^gravity-allowed',1,1559928803,1559928803,'');
 
 /* Regular regex */
-INSERT INTO domainlist VALUES(5,1,'blacklisted.ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
+INSERT INTO domainlist VALUES(5,1,'denied.ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
 INSERT INTO domainlist VALUES(6,3,'regex[0-9].ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
 
 /* Regex option testing */
@@ -214,15 +215,16 @@ INSERT INTO domainlist VALUES(16,3,'^regex-notMultiple.ftl$;querytype=!ANY,HTTPS
 /* Other special domains */
 INSERT INTO domainlist VALUES(17,1,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
 
-INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list',1559928803,2000,2,1);
+INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list',1559928803,2000,2,1,0);
 
-INSERT INTO gravity VALUES('whitelisted.ftl',1);
+INSERT INTO gravity VALUES('allowed.ftl',1);
 INSERT INTO gravity VALUES('gravity.ftl',1);
 INSERT INTO gravity VALUES('gravity-aaaa.ftl',1);
-INSERT INTO gravity VALUES('gravity-whitelisted.ftl',1);
+INSERT INTO gravity VALUES('gravity-allowed.ftl',1);
 INSERT INTO gravity VALUES('||special.gravity.ftl^',1);
 INSERT INTO info VALUES('gravity_count',5);
 INSERT INTO info VALUES('abp_domains',1);
+INSERT INTO info VALUES('updated',0);
 
 INSERT INTO "group" VALUES(1,0,'Test group',1559928803,1559928803,'A disabled test group');
 INSERT INTO domainlist_by_group VALUES(15,1);

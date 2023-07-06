@@ -39,8 +39,6 @@
 #include <syslog.h>
 // tolower()
 #include <ctype.h>
-// Unix socket
-#include <sys/un.h>
 // Interfaces
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -48,6 +46,9 @@
 // Define MIN and MAX macros, use them only when x and y are of the same type
 #define MAX(x,y) (((x) > (y)) ? (x) : (y))
 // MIN(x,y) is already defined in dnsmasq.h
+
+// Number of elements in an array
+#define ArraySize(X) (sizeof(X)/sizeof(X[0]))
 
 #define SOCKETBUFFERLEN 1024
 
@@ -102,6 +103,13 @@
 // Default: 1000 (one second)
 #define DATABASE_BUSY_TIMEOUT 1000
 
+// After how much time does a valid API session expire? [seconds]
+// Default: 300 (five minutes)
+#define API_SESSION_EXPIRE 300u
+
+// How many authenticated API clients are allowed simultaneously? [.]
+#define API_MAX_CLIENTS 16
+
 // After how many seconds do we check again if a client can be identified by other means?
 // (e.g., interface, MAC address, hostname)
 // Default: 60 (after one minutee)
@@ -117,6 +125,16 @@
 // This setting control how long after boot we consider a system to be in starting-up mode
 // Default: 180 [seconds]
 #define DELAY_UPTIME 180
+
+// DB_QUERY_MAX_ITER defines how many queries we check periodically for updates to be added
+// to the in-memory database. This value may need to be increased on *very* busy systems.
+// However, there is an algorithm in place that tries to ensure we are not missing queries
+// on systems with > 100 queries per second
+// Default: 100 (per second)
+#define DB_QUERY_MAX_ITER 100
+
+// Special exit code used to signal that FTL wants to restart
+#define RESTART_FTL_CODE 22
 
 // Use out own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crash
@@ -149,7 +167,13 @@
 #include "syscalls/syscalls.h"
 
 // Preprocessor help functions
-#define str(x) # x
+#define str(x) #x
 #define xstr(x) str(x)
+
+// Intentionally ignore result of function declared warn_unused_result
+#define igr(x) {__typeof__(x) __attribute__((unused)) d=(x);}
+
+#define max(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a > _b ? _a : _b; })
+#define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
 #endif // FTL_H

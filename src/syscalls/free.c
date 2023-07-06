@@ -21,7 +21,7 @@ void FTLfree(void *ptr, const char *file, const char *func, const int line)
 	// undefined behavior occurs.  If ptr is NULL, no operation is performed.
 	if(ptr == NULL)
 	{
-		logg("WARN: Trying to free NULL pointer in %s() (%s:%i)", func, file, line);
+		log_warn("Trying to free NULL pointer in %s() (%s:%i)", func, file, line);
 		return;
 	}
 

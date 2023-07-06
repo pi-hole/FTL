@@ -14,9 +14,17 @@
 #include "lauxlib.h"
 // get_FTL_version()
 #include "../log.h"
+// config struct
+#include "../config/config.h"
+// file_exists
+#include "../files.h"
+// get_web_theme_str
+#include "../datastructure.h"
 #include <readline/history.h>
 #include <wordexp.h>
 #include "scripts/scripts.h"
+
+#include "api/api.h"
 
 int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 {
@@ -85,11 +93,157 @@ int run_luac(const int argc, char **argv)
 // pihole.ftl_version()
 static int pihole_ftl_version(lua_State *L) {
 	lua_pushstring(L, get_FTL_version());
-	return 1;
+	return 1; // number of results
+}
+
+// pihole.hostname()
+static int pihole_hostname(lua_State *L) {
+	// Get host name
+	char name[256];
+	if(gethostname(name, sizeof(name)) != 0)
+		strcpy(name, "N/A");
+	lua_pushstring(L, name);
+	return 1; // number of results
+}
+
+static void get_abspath(char abs_filename[1024], char rel_filename[1024], const char *filename)
+{
+	size_t abs_filename_len = 1023;
+	size_t rel_filename_len = 1023;
+	if(config.webserver.paths.webroot.v.s != NULL)
+	{
+		strncpy(abs_filename, config.webserver.paths.webroot.v.s, abs_filename_len);
+		abs_filename_len -= strlen(config.webserver.paths.webroot.v.s);
+	}
+	if(config.webserver.paths.webhome.v.s != NULL)
+	{
+		strncat(abs_filename, config.webserver.paths.webhome.v.s, abs_filename_len);
+		abs_filename_len -= strlen(config.webserver.paths.webhome.v.s);
+
+		if(rel_filename != NULL)
+		{
+			strncpy(rel_filename, config.webserver.paths.webhome.v.s, rel_filename_len);
+			rel_filename_len -= strlen(config.webserver.paths.webhome.v.s);
+		}
+	}
+	strncat(abs_filename, filename, abs_filename_len);
+	if(rel_filename != NULL)
+		strncat(rel_filename, filename, rel_filename_len);
+}
+
+// pihole.fileversion(<filename:str>)
+// Avoid browser caching old versions of a file, using the last modification time
+//   Receive the file URL (without "/admin/");
+//   Return the string containin URL + "?v=xxx", where xxx is the last modified time of the file.
+static int pihole_fileversion(lua_State *L) {
+	// Get filename (first argument to LUA function)
+	const char *filename = luaL_checkstring(L, 1);
+
+	// Construct full filename if webroot/webhome are available
+	char abspath[1024] = { 0 };
+	char relpath[1024] = { 0 };
+	get_abspath(abspath, relpath, filename);
+
+	// Check if file exists
+	if(!file_exists(abspath))
+	{
+		// File does not exist, return filename.
+		log_warn("Requested file \"%s\" does not exist",
+		         abspath);
+		lua_pushstring(L, relpath);
+		return 1; // number of results
+	}
+
+	// Get last modification time
+	struct stat filestat;
+	if (stat(abspath, &filestat) == -1)
+	{
+		log_warn("Could not get file modification time for \"%s\": %s",
+		         abspath, strerror(errno));
+		lua_pushstring(L, relpath);
+		return 1; // number of results
+	}
+
+	// Return filename + modification time
+	lua_pushfstring(L, "%s?v=%d", relpath, filestat.st_mtime);
+	return 1; // number of results
+}
+
+// pihole.webtheme()
+static int pihole_webtheme(lua_State *L) {
+	// Get name of currently set webtheme
+	const char *name = get_web_theme_str(config.webserver.interface.theme.v.web_theme);
+	lua_pushstring(L, name);
+	return 1; // number of results
+}
+
+// pihole.webhome()
+static int pihole_webhome(lua_State *L) {
+	// Get name of currently set webhome
+	lua_pushstring(L, config.webserver.paths.webhome.v.s);
+	return 1; // number of results
+}
+
+// pihole.include(<filename:str>)
+static int pihole_include(lua_State *L) {
+	// Get filename (first argument to LUA function)
+	const char *filename = luaL_checkstring(L, 1);
+
+	// Construct full filename if webroot/webhome are available
+	char abspath[1024] = { 0 };
+	get_abspath(abspath, NULL, filename);
+
+	// Load and execute file
+	luaL_dofile(L, abspath);
+
+	return 0; // number of results
+}
+
+// pihole.boxedlayout()
+static int pihole_boxedlayout(lua_State *L) {
+	lua_pushboolean(L, config.webserver.interface.boxed.v.b);
+	return 1; // number of results
+}
+
+// pihole.needLogin(remote_addr:str)
+static int pihole_needLogin(lua_State *L) {
+	// Get remote_addr (first argument to LUA function)
+	const char *remote_addr = luaL_checkstring(L, 1);
+
+	// Check if password is set
+	const bool has_password = config.webserver.api.pwhash.v.s != NULL &&
+	                          config.webserver.api.pwhash.v.s[0] != '\0';
+
+	// Check if address is loopback
+	const bool is_loopback = strcmp(remote_addr, LOCALHOSTv4) == 0 ||
+	                         strcmp(remote_addr, LOCALHOSTv6) == 0;
+
+	// Check if local API authentication is enabled
+	const bool localAPIauth = config.webserver.api.localAPIauth.v.b;
+
+	// Check if login is required
+	const bool need_login = has_password || (is_loopback && !localAPIauth);
+
+	lua_pushboolean(L, need_login);
+	return 1; // number of results
+}
+
+// pihole.rev_proxy()
+static int pihole_rev_proxy(lua_State *L) {
+	lua_pushboolean(L, config.webserver.tls.rev_proxy.v.b);
+	return 1; // number of results
 }
 
 static const luaL_Reg piholelib[] = {
 	{"ftl_version", pihole_ftl_version},
+	{"hostname", pihole_hostname},
+	{"fileversion", pihole_fileversion},
+	{"webtheme", pihole_webtheme},
+	{"webhome", pihole_webhome},
+	{"include", pihole_include},
+	{"boxedlayout", pihole_boxedlayout},
+	{"needLogin", pihole_needLogin},
+	{"rev_proxy", pihole_rev_proxy},
 	{NULL, NULL}
 };
 

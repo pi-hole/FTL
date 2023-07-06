@@ -13,10 +13,10 @@
 #include "log.h"
 #include "setupVars.h"
 #include "args.h"
-#include "config.h"
+#include "config/config.h"
 #include "database/common.h"
-#include "database/query-table.h"
 #include "main.h"
+// exit_code
 #include "signals.h"
 #include "regex_r.h"
 // init_shmem()
@@ -24,18 +24,26 @@
 #include "capabilities.h"
 #include "timers.h"
 #include "procps.h"
+// init_memory_database(), import_queries_from_disk()
+#include "database/query-table.h"
 // init_overtime()
 #include "overTime.h"
 // flush_message_table()
 #include "database/message-table.h"
 
-char * username;
+#if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
+#pragma message "Minimum GLIBC version: " xstr(__GLIBC__) "." xstr(__GLIBC_MINOR__)
+#else
+#pragma message "Minimum GLIBC version: unknown, assuming this is a MUSL build"
+#endif
+
+char *username;
 bool needGC = false;
 bool needDBGC = false;
 bool startup = true;
-volatile int exit_code = EXIT_SUCCESS;
+jmp_buf exit_jmp;
 
-int main (int argc, char* argv[])
+int main (int argc, char *argv[])
 {
 	// Get user pihole-FTL is running as
 	// We store this in a global variable
@@ -43,29 +51,38 @@ int main (int argc, char* argv[])
 	// it if needed
 	username = getUserName();
 
+	// Obtain log file location
+	getLogFilePath();
+
 	// Parse arguments
 	// We run this also for no direct arguments
 	// to have arg{c,v}_dnsmasq initialized
 	parse_args(argc, argv);
 
+	// Initialize FTL log
+	init_FTL_log(argc > 0 ? argv[0] : NULL);
 	// Try to open FTL log
 	init_config_mutex();
-	init_FTL_log();
 	timer_start(EXIT_TIMER);
-	logg("########## FTL started on %s! ##########", hostname());
+	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
-
-	// Process pihole-FTL.conf
-	read_FTLconf();
 
 	// Catch signals not handled by dnsmasq
 	// We configure real-time signals later (after dnsmasq has forked)
 	handle_signals();
 
+	// Process pihole.toml configuration file
+	// The file is rewritten after parsing to ensure that all
+	// settings are present and have a valid value
+	readFTLconf(&config, true);
+
+	// Set process priority
+	set_nice();
+
 	// Initialize shared memory
 	if(!init_shmem())
 	{
-		logg("Initialization of shared memory failed.");
+		log_crit("Initialization of shared memory failed.");
 		// Check if there is already a running FTL process
 		check_running_FTL();
 		return EXIT_FAILURE;
@@ -74,7 +91,7 @@ int main (int argc, char* argv[])
 	// pihole-FTL should really be run as user "pihole" to not mess up with file permissions
 	// print warning otherwise
 	if(strcmp(username, "pihole") != 0)
-		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
+		log_warn("Starting pihole-FTL as user %s is not recommended", username);
 
 	// Write PID early on so systemd cannot be fooled during DELAY_STARTUP
 	// times. The PID in this file will later be overwritten after forking
@@ -92,45 +109,76 @@ int main (int argc, char* argv[])
 	// Initialize query database (pihole-FTL.db)
 	db_init();
 
+	// Initialize in-memory databases
+	if(!init_memory_database())
+	{
+		log_crit("FATAL: Cannot initialize in-memory database.");
+		return EXIT_FAILURE;
+	}
+
 	// Flush messages stored in the long-term database
 	flush_message_table();
 
 	// Try to import queries from long-term database if available
-	if(config.DBimport)
+	if(config.database.DBimport.v.b)
+	{
+		import_queries_from_disk();
 		DB_read_queries();
+	}
 
 	log_counter_info();
-	check_setupVarsconf();
 
 	// Check for availability of capabilities in debug mode
-	if(config.debug & DEBUG_CAPS)
+	if(config.debug.caps.v.b)
 		check_capabilities();
+
+	// Initialize pseudo-random number generator
+	srand(time(NULL));
 
 	// Start the resolver
 	startup = false;
-	if(config.debug != 0)
-	{
-		for(int i = 0; i < argc_dnsmasq; i++)
-			logg("DEBUG: argv[%i] = \"%s\"", i, argv_dnsmasq[i]);
-	}
-	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
+	// Stop writing to STDOUT
+	log_ctrl(true, false);
 
-	logg("Shutting down...");
-	// Extra grace time is needed as dnsmasq script-helpers may not be
-	// terminating immediately
+	// Call embedded dnsmasq only on the first run
+	// Skip it here if we jump back to this point from die()
+	const int jmpret = setjmp(exit_jmp);
+	if(jmpret == 0)
+		main_dnsmasq(argc_dnsmasq, (char**)argv_dnsmasq);
+	else
+	{
+		// We are jumping back to this point from dnsmasq's die()
+		log_debug(DEBUG_ANY, "Jumped back to main() from dnsmasq/die()");
+		dnsmasq_failed = true;
+
+		if(!resolver_ready)
+		{
+			// If dnsmasq never finished initializing, we need to
+			// launch the threads
+			FTL_fork_and_bind_sockets(NULL, false);
+		}
+
+		// Loop here to keep the webserver running unless requested to restart
+		while(!FTL_terminate)
+			sleepms(100);
+	}
+
+	log_info("Shutting down... // exit code %d // jmpret %d", exit_code, jmpret);
+	// Extra grace time is needed as dnsmasq script-helpers and the API may not
+	// be terminating immediately
 	sleepms(250);
 
 	// Save new queries to database (if database is used)
-	if(config.DBexport)
+	if(config.database.DBexport.v.b)
 	{
-		lock_shm();
-		int saved;
-		if((saved = DB_save_queries(NULL)) > -1)
-			logg("Finished final database update (stored %d queries)", saved);
-		unlock_shm();
+		export_queries_to_disk(true);
+		log_info("Finished final database update");
 	}
 
 	cleanup(exit_code);
+
+	if(exit_code == RESTART_FTL_CODE)
+		execv(argv[0], argv);
 
 	return exit_code;
 }

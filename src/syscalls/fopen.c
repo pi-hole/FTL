@@ -35,8 +35,8 @@ FILE * __attribute__ ((__malloc__)) FTLfopen(const char *pathname, const char *m
 	// EINTR = interrupted system call)
 	// The already_writing counter prevents a possible infinite loop
 	if(file_ptr == NULL && (already_writing++) == 1)
-		logg("WARN: Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
-		     pathname, mode, func, file, line, strerror(errno));
+		log_warn("Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
+		         pathname, mode, func, file, line, strerror(errno));
 
 	// Decrement warning counter
 	already_writing--;

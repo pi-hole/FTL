@@ -1,0 +1,109 @@
+openapi: 3.0.2
+components:
+  paths:
+    teleporter:
+      get:
+        summary: Export Pi-hole settings
+        tags:
+          - "Pi-hole configuration"
+        operationId: "get_teleporter"
+        description: |
+          Request an archived copy of your Pi-hole's current configuration.
+          Authentication via header or cookie is required for the endpoint.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/zip:
+                schema:
+                  type: string
+                  format: binary
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      post:
+        summary: Import Pi-hole settings
+        tags:
+          - "Pi-hole configuration"
+        operationId: "post_teleporter"
+        description: |
+          Upload a Pi-hole Teleporter archive to (partially) restore from it. Note that this will overwrite your current configuration.
+          Authentication via header or cookie is required for the endpoint.
+        requestBody:
+          content:
+            multipart/form-data:
+              schema:
+                properties:
+                  file:
+                    type: string
+                    format: binary
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'teleporter.yaml#/components/schemas/teleporter/post'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  teleporter:
+                    $ref: 'teleporter.yaml#/components/examples/teleporter'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'teleporter.yaml#/components/errors/invalid_zip'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+  schemas:
+    teleporter:
+      post:
+        type: object
+        properties:
+          processed:
+            type: array
+            items:
+              type: string
+  errors:
+    invalid_zip:
+      type: object
+      description: Invalid ZIP archive uploaded
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "invalid_zip"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Invalid ZIP file uploaded"
+            hint:
+              type: string
+              nullable: true
+              description: "No additional data available"
+              example: null
+
+  examples:
+    teleporter:
+      value:
+        processed:
+          - etc/pihole/pihole.toml
+          - etc/pihole/gravity.db

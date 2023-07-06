@@ -1,0 +1,456 @@
+openapi: 3.0.2
+components:
+  paths:
+    auth:
+      get:
+        summary: Check if authentication is required
+        tags:
+          - Authentication
+        operationId: "get_auth"
+        description: |
+          The API may chose to reply with a valid session if no authentication is needed for this server.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/session'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  login_okay:
+                    $ref: 'auth.yaml#/components/examples/login_okay'
+                  no_login_required:
+                    $ref: 'auth.yaml#/components/examples/no_login_required'
+                  login_required:
+                    $ref: 'auth.yaml#/components/examples/login_required'
+                  dns_failure:
+                    $ref: 'auth.yaml#/components/examples/dns_failure'
+      post:
+        summary: Submit password for login
+        tags:
+          - Authentication
+        operationId: "add_auth"
+        description: |
+          Login with a password. The password is not stored in the session, and neither when to generating the session token.
+        requestBody:
+          description: Callback payload
+          content:
+            'application/json':
+              schema:
+                $ref: 'auth.yaml#/components/schemas/password'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/session'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  login_okay:
+                    $ref: 'auth.yaml#/components/examples/login_okay'
+                  no_login_required:
+                    $ref: 'auth.yaml#/components/examples/no_login_required'
+          '400':
+            description: Bad Request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'auth.yaml#/components/examples/errors/no_payload'
+                  no_password:
+                    $ref: 'auth.yaml#/components/examples/errors/no_password'
+                  password_inval:
+                    $ref: 'auth.yaml#/components/examples/errors/password_inval'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      delete:
+        summary: Delete session
+        tags:
+          - Authentication
+        operationId: "delete_groups"
+        description: |
+          A logout attempt without a valid session will result in a `401 Unauthorized` error.
+
+          A session that was not created due to a login cannot be deleted (e.g., empty API password).
+        responses:
+          '200':
+            description: OK (session not deletable)
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/session'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_login_required:
+                    $ref: 'auth.yaml#/components/examples/no_login_required'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '410':
+            description: Gone
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/session'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  login_failed:
+                    $ref: 'auth.yaml#/components/examples/login_failed'
+    session_list:
+      get:
+        summary: List of all current sessions
+        tags:
+          - Authentication
+        operationId: "get_auth_sessions"
+        description: List of all current sessions including their validity and further information about the client such as the IP address and user agent.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/sessions_list'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    totp:
+      get:
+        summary: Suggest new TOTP credentials
+        tags:
+          - Authentication
+        operationId: "get_auth_totp"
+        description: Suggest new TOTP credentials for two-factor authentication (2FA)
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/totp'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    session:
+      delete:
+        summary: Delete session by ID
+        parameters:
+          - $ref: 'auth.yaml#/components/parameters/id'
+        tags:
+          - Authentication
+        operationId: "delete_auth_session"
+        description: |
+          Using this endpoint, a session can be deleted by its ID.
+        responses:
+          '204':
+            description: No Content (deleted)
+          '400':
+            description: Bad Request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  missing_session_id:
+                    $ref: 'auth.yaml#/components/examples/errors/missing_session_id'
+                  session_id_oob:
+                    $ref: 'auth.yaml#/components/examples/errors/no_password'
+                  session_not_in_use:
+                    $ref: 'auth.yaml#/components/examples/errors/session_not_in_use'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+  schemas:
+    session:
+      type: object
+      required:
+        - session
+      properties:
+        session:
+          type: object
+          description: Session object
+          required:
+            - valid
+            - sid
+            - csrf
+            - validity
+            - totp
+          properties:
+            valid:
+              type: boolean
+              description: Valid session indicator (client is authenticated)
+            totp:
+              type: boolean
+              description: Whether 2FA (TOTP) is enabled on this Pi-hole
+            sid:
+              type: string
+              description: Session ID
+              nullable: true
+            csrf:
+              type: string
+              description: CSRF token
+              nullable: true
+            validity:
+              type: integer
+              description: Remaining lifetime of this session unless refreshed (seconds)
+        dns:
+          type: boolean
+          description: Whether the DNS server is up and running. False only in failed state
+
+    password:
+      type: object
+      description: Password to be sent to the API
+      properties:
+        password:
+          type: string
+          description: Password to be used for login
+          example: abcdef
+    sessions_list:
+      type: object
+      description: List of all current sessions
+      properties:
+        sessions:
+          type: array
+          items:
+            type: object
+            description: Session object
+            properties:
+              id:
+                type: number
+                description: Session ID
+              current_session:
+                type: boolean
+                description: Indicator if this is the current session
+              valid:
+                type: boolean
+                description: Valid session indicator (existing sessions may be invalid due to timeout)
+              tls:
+                type: object
+                description: TLS (end-to-end encryption) information
+                properties:
+                  login:
+                    type: boolean
+                    description: Indicator if TLS (end-to-end encryption) has been used during login for this session
+                  mixed:
+                    type: boolean
+                    description: Indicator if TLS (end-to-end encryption) is used only partially for this session
+              login_at:
+                type: integer
+                description: Timestamp of login (seconds since epoch)
+              last_active:
+                type: integer
+                description: Timestamp of last activity (seconds since epoch)
+              valid_until:
+                type: integer
+                description: Timestamp of session expiration (seconds since epoch)
+              remote_addr:
+                type: string
+                description: IP address of the client
+              user_agent:
+                type: string
+                description: User agent of the client
+          example:
+            - id: 1
+              current_session: true
+              valid: true
+              tls:
+                login: true
+                mixed: false
+              strict_tls: false
+              login_at: 1580000000
+              last_active: 1580000000
+              valid_until: 1580000300
+              remote_addr: "192.168.0.34"
+              user_agent: "Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0"
+    totp:
+      type: object
+      description: TOTP secret suggestion
+      properties:
+        totp:
+          type: object
+          properties:
+            type:
+              type: string
+            account:
+              type: string
+            issuer:
+              type: string
+            algorithm:
+              type: string
+            digits:
+              type: integer
+            period:
+              type: integer
+            offset:
+              type: integer
+            secret:
+              type: string
+            codes:
+              type: array
+              items:
+                type: integer
+
+  errors:
+    bad_request:
+      type: object
+      description: Bad request
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+            message:
+              type: string
+              description: "Human-readable error message"
+            hint:
+              type: string
+              description: "Additional data (if available)"
+              nullable: true
+
+  examples:
+    login_okay:
+      summary: Login successful
+      value:
+        session:
+          valid: true
+          totp: false
+          sid: null
+          csrf: null
+          validity: 300
+        dns: true
+    no_login_required:
+      summary: No login required for this client
+      value:
+        session:
+          valid: true
+          totp: false
+          sid: null
+          csrf: null
+          validity: -1
+        dns: true
+    login_required:
+      summary: Login required
+      value:
+        session:
+          valid: false
+          totp: false
+          sid: null
+          csrf: null
+          validity: -1
+        dns: true
+    login_failed:
+      summary: Login failed
+      value:
+        session:
+          valid: false
+          totp: false
+          sid: null
+          csrf: null
+          validity: -1
+        dns: true
+    dns_failure:
+      summary: DNS server failure
+      value:
+        session:
+          valid: false
+          totp: false
+          sid: null
+          csrf: null
+          validity: -1
+        dns: false
+    errors:
+      no_payload:
+        summary: Bad request (no valid JSON payload)
+        value:
+          error:
+            key: "bad_request"
+            message: "No valid JSON payload found"
+            hint: null
+      no_password:
+        summary: Bad request (no password)
+        value:
+          error:
+            key: "bad_request"
+            message: "No password found in JSON payload"
+            hint: null
+      password_inval:
+        summary: Bad request (password is not a string)
+        value:
+          error:
+            key: "bad_request"
+            message: "Field password has to be of type 'string'"
+            hint: null
+      missing_session_id:
+        summary: Bad request (missing session ID)
+        value:
+          error:
+            key: "bad_request"
+            message: "Missing or invalid session ID"
+            hint: null
+      session_id_oob:
+        summary: Bad request (session ID out of bounds)
+        value:
+          error:
+            key: "bad_request"
+            message: "Session ID out of bounds"
+            hint: null
+      session_not_in_use:
+        summary: Bad request (session not in use)
+        value:
+          error:
+            key: "bad_request"
+            message: "Session ID not in use"
+            hint: null
+  parameters:
+    id:
+      in: path
+      name: id
+      schema:
+        type: integer
+      required: true
+      description: Session ID
+      example: 0

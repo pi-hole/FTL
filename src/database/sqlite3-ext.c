@@ -21,10 +21,10 @@
 #include <string.h>
 // free()
 #include <stdlib.h>
-// logg()
+// logging routines
 #include "../log.h"
 // struct config
-#include "../config.h"
+#include "../config/config.h"
 
 // isMAC()
 #include "network-table.h"
@@ -68,8 +68,8 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	if (sqlite3_value_type(argv[0]) != SQLITE_TEXT ||
 	    sqlite3_value_type(argv[1]) != SQLITE_TEXT)
 	{
-		logg("SQL: Invoked subnet_match() with non-text arguments: %d, %d",
-		     sqlite3_value_type(argv[0]), sqlite3_value_type(argv[1]));
+		log_err("SQL: Invoked subnet_match() with non-text arguments: %d, %d",
+		        sqlite3_value_type(argv[0]), sqlite3_value_type(argv[1]));
 		sqlite3_result_int(context, 0);
 		return;
 	}
@@ -134,7 +134,7 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	{
 		//sqlite3_result_error(context, "Passed a malformed IP address (FTL)", -1);
 		// Return non-fatal "NO MATCH" if address is invalid
-		logg("Malformed FTL IP address: %s", addrFTL);
+		log_err("Malformed FTL IP address: %s", addrFTL);
 		sqlite3_result_int(context, 0);
 		return;
 	}
@@ -163,13 +163,13 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	}
 
 	// Possible debug logging
-	if(config.debug & DEBUG_DATABASE)
+	if(config.debug.database.v.b)
 	{
 		char subnet[INET6_ADDRSTRLEN];
 		inet_ntop(isIPv6_FTL ? AF_INET6 : AF_INET, &bitmask, subnet, sizeof(subnet));
-		logg("SQL: Comparing %s vs. %s (subnet %s) - %s",
-		     addrFTL, addrDBcidr, subnet,
-			 match == 1 ? "!! MATCH !!" : "NO MATCH");
+		log_debug(DEBUG_DATABASE, "SQL: Comparing %s vs. %s (subnet %s) - %s",
+		          addrFTL, addrDBcidr, subnet,
+		          match == 1 ? "!! MATCH !!" : "NO MATCH");
 	}
 
 	// Return if we found a match between the two addresses
@@ -178,6 +178,38 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	// so the algorithm can decide which subnet match is the most
 	// exact one and prefer it (e.g., 10.8.1.0/24 beats 10.0.0.0/8)
 	sqlite3_result_int(context, match ? cidr : 0);
+}
+
+// Identify IPv6 addresses
+static void isIPv6_impl(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
+	// Exactly one argument should be submitted to this routine
+	if(argc != 1)
+	{
+		sqlite3_result_error(context, "Passed an invalid number of arguments", -1);
+		return;
+	}
+
+	// Return NO MATCH if invoked with non-TEXT argument
+	if (sqlite3_value_type(argv[0]) != SQLITE_TEXT)
+	{
+		sqlite3_result_error(context, "Invoked isIPv6() with non-text argument", -1);
+		return;
+	}
+
+	const char *input = (const char*)sqlite3_value_text(argv[0]);
+	if(input == NULL)
+	{
+		sqlite3_result_error(context, "Invoked isIPv6() with NULL argument", -1);
+		return;
+	}
+
+	struct in6_addr addr;
+	if(inet_pton(AF_INET6, input, &addr) == 1)
+		sqlite3_result_int(context, 1);
+
+	// Not an IPv6 address
+	sqlite3_result_int(context, 0);
 }
 
 int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const struct sqlite3_api_routines *pApi)
@@ -192,8 +224,20 @@ int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const str
 
 	if(rc != SQLITE_OK)
 	{
-		logg("Error while initializing the SQLite3 extension subnet_match: %s",
-		     sqlite3_errstr(rc));
+		log_err("Error while initializing the SQLite3 extension subnet_match: %s",
+		        sqlite3_errstr(rc));
+	}
+
+	// Register new sqlite function isIPv6 taking 1 argument in UTF8 format.
+	// The function is deterministic in the sense of always returning the same output for the same input.
+	// We define a scalar function here so the last two pointers are NULL.
+	rc = sqlite3_create_function(db, "isIPv6", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL,
+	                                 isIPv6_impl, NULL, NULL);
+
+	if(rc != SQLITE_OK)
+	{
+		log_err("Error while initializing the SQLite3 extension isIPv6: %s",
+		        sqlite3_errstr(rc));
 	}
 
 	return rc;

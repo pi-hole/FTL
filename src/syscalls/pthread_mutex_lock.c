@@ -20,13 +20,11 @@ int FTLpthread_mutex_lock(pthread_mutex_t *__mutex, const char *file, const char
 	ssize_t ret = 0;
 	do
 	{
-		// Reset errno before trying to write
-		errno = 0;
 		ret = pthread_mutex_lock(__mutex);
 	}
 	// Try again if the last accept() call failed due to an interruption by an
 	// incoming signal
-	while(ret < 0 && errno == EINTR);
+	while(ret == EINTR);
 
 	// Backup errno value
 	const int _errno = errno;
@@ -34,8 +32,8 @@ int FTLpthread_mutex_lock(pthread_mutex_t *__mutex, const char *file, const char
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret < 0)
-		logg("WARN: Could not pthread_mutex_lock() in %s() (%s:%i): %s",
-		     func, file, line, strerror(errno));
+		log_warn("Could not pthread_mutex_lock() in %s() (%s:%i): %s",
+		         func, file, line, strerror(errno));
 
 	// Restore errno value
 	errno = _errno;

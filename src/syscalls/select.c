@@ -34,8 +34,8 @@ int FTLselect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, st
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret < 0)
-		logg("WARN: Could not select() in %s() (%s:%i): %s",
-		     func, file, line, strerror(errno));
+		log_warn("Could not select() in %s() (%s:%i): %s",
+		         func, file, line, strerror(errno));
 
 	// Restore errno value
 	errno = _errno;

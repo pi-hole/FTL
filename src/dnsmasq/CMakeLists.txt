@@ -1,3 +1,13 @@
+# Pi-hole: A black hole for Internet advertisements
+# (c) 2020 Pi-hole, LLC (https://pi-hole.net)
+# Network-wide ad blocking via your own hardware.
+#
+# FTL Engine
+# /src/dnsmasq/CMakeList.txt
+#
+# This file is copyright under the latest version of the EUPL.
+# Please see LICENSE file for your rights under this license.
+
 set(sources
         arp.c
         auth.c
@@ -54,5 +64,6 @@ set(sources
 
 add_library(dnsmasq OBJECT ${sources})
 target_compile_definitions(dnsmasq PRIVATE VERSION=\"${DNSMASQ_VERSION}\")
+target_compile_definitions(dnsmasq PRIVATE CONFFILE=\"/etc/pihole/dnsmasq.conf\")
 target_compile_options(dnsmasq PRIVATE -Wno-maybe-uninitialized)
 target_include_directories(dnsmasq PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/lua)

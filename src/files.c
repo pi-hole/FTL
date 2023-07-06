@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "files.h"
-#include "config.h"
+#include "config/config.h"
 #include "setupVars.h"
 #include "log.h"
 
@@ -26,6 +26,13 @@
 #include <sys/statvfs.h>
 // dirname()
 #include <libgen.h>
+// compression functions
+#include "zip/gzip.h"
+// sendfile()
+#include <fcntl.h>
+#include <sys/sendfile.h>
+
+#define BACKUP_DIR "/etc/pihole/config_backups"
 
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
@@ -34,14 +41,16 @@ bool chmod_file(const char *filename, const mode_t mode)
 {
 	if(chmod(filename, mode) < 0)
 	{
-		logg("WARNING: chmod(%s, %d): chmod() failed: %s (%d)", filename, mode, strerror(errno), errno);
+		log_warn("chmod(%s, %u): chmod() failed: %s",
+		         filename, mode, strerror(errno));
 		return false;
 	}
 
 	struct stat st;
 	if(stat(filename, &st) < 0)
 	{
-		logg("WARNING: chmod(%s, %d): stat() failed: %s (%d)", filename, mode, strerror(errno), errno);
+		log_warn("chmod(%s, %u): stat() failed: %s",
+		         filename, mode, strerror(errno));
 		return false;
 	}
 
@@ -49,28 +58,90 @@ bool chmod_file(const char *filename, const mode_t mode)
 	// 0x1FF = 0b111_111_111 corresponding to the three-digit octal mode number
 	if((st.st_mode & 0x1FF) != mode)
 	{
-		logg("WARNING: chmod(%s, %d): Verification failed, %d != %d", filename, mode, st.st_mode, mode);
+		log_warn("chmod(%s, %u): Verification failed, %u != %u",
+		         filename, mode, st.st_mode, mode);
 		return false;
 	}
 
 	return true;
 }
 
+/**
+ * Function to check whether a file exists or not.
+ * It returns true if given path is a file and exists
+ * otherwise returns false.
+ */
 bool file_exists(const char *filename)
 {
-	struct stat st;
-	return stat(filename, &st) == 0;
+	struct stat stats = { 0 };
+	if(stat(filename, &stats) != 0)
+	{
+		// Directory does not exist
+		return false;
+	}
+
+	// Check if this is a regular file
+	return S_ISREG(stats.st_mode);
+}
+
+/**
+ * Function to check whether a file exists and is readable or not.
+ */
+bool file_readable(const char *filename)
+{
+	// Check if file exists and is readable
+	return access(filename, R_OK) == 0;
+}
+
+/**
+ * Function to check whether a directory exists or not.
+ * It returns true if given path is a directory and exists
+ * otherwise returns false.
+ */
+bool directory_exists(const char *path)
+{
+	struct stat stats = { 0 };
+	if(stat(path, &stats) != 0)
+	{
+		// Directory does not exist
+		return false;
+	}
+
+	// Check if this is a directory
+	return S_ISDIR(stats.st_mode);
+}
+
+bool get_database_stat(struct stat *st)
+{
+	if(stat(config.files.database.v.s, st) == 0)
+		return true;
+
+	log_err("Cannot stat %s: %s", config.files.database.v.s, strerror(errno));
+	return false;
 }
 
 unsigned long long get_FTL_db_filesize(void)
 {
 	struct stat st;
-	if(stat(FTLfiles.FTL_db, &st) != 0)
-	{
-		// stat() failed (maybe the DB file does not exist?)
-		return 0;
-	}
-	return st.st_size;
+	if(get_database_stat(&st))
+		return st.st_size;
+	return 0llu;
+}
+
+void get_permission_string(char permissions[10], struct stat *st)
+{
+	// Get human-readable format of permissions as known from ls
+	snprintf(permissions, 10u,
+	         "%s%s%s%s%s%s%s%s%s",
+	         st->st_mode & S_IRUSR ? "r":"-",
+	         st->st_mode & S_IWUSR ? "w":"-",
+	         st->st_mode & S_IXUSR ? "x":"-",
+	         st->st_mode & S_IRGRP ? "r":"-",
+	         st->st_mode & S_IWGRP ? "w":"-",
+	         st->st_mode & S_IXGRP ? "x":"-",
+	         st->st_mode & S_IROTH ? "r":"-",
+	         st->st_mode & S_IWOTH ? "w":"-",
+	         st->st_mode & S_IXOTH ? "x":"-");
 }
 
 void ls_dir(const char* path)
@@ -79,15 +150,16 @@ void ls_dir(const char* path)
 	DIR* dirp = opendir(path);
 	if(dirp == NULL)
 	{
-		logg("opendir(\"%s\") failed with %s (%d)", path, strerror(errno), errno);
+		log_warn("opendir(\"%s\") failed with %s", path, strerror(errno));
 		return;
 	}
 
 	// Stack space for full path (directory + "/" + filename + terminating \0)
-	char full_path[strlen(path)+NAME_MAX+2];
+	const size_t full_path_len = strlen(path) + NAME_MAX + 2;
+	char *full_path = calloc(full_path_len, sizeof(char));
 
-	logg("------ Listing content of directory %s ------", path);
-	logg("File Mode User:Group      Size  Filename");
+	log_info("------ Listing content of directory %s ------", path);
+	log_info("File Mode User:Group      Size  Filename");
 
 	struct dirent *dircontent = NULL;
 	// Walk directory file by file
@@ -97,13 +169,13 @@ void ls_dir(const char* path)
 		const char *filename = dircontent->d_name;
 
 		// Construct full path
-		snprintf(full_path, sizeof(full_path), "%s/%s", path, filename);
+		snprintf(full_path, full_path_len, "%s/%s", path, filename);
 
 		struct stat st;
 		// Use stat to get file size, permissions, and ownership
 		if(stat(full_path, &st) < 0)
 		{
-			logg("%s failed with %s (%d)", filename, strerror(errno), errno);
+			log_warn("stat(\"%s\") failed with %s", filename, strerror(errno));
 			continue;
 		}
 
@@ -113,7 +185,7 @@ void ls_dir(const char* path)
 		if ((pwd = getpwuid(st.st_uid)) != NULL)
 			snprintf(user, sizeof(user), "%s", pwd->pw_name);
 		else
-			snprintf(user, sizeof(user), "%d", st.st_uid);
+			snprintf(user, sizeof(user), "%u", st.st_uid);
 
 		struct group *grp;
 		char usergroup[256];
@@ -121,37 +193,30 @@ void ls_dir(const char* path)
 		if ((grp = getgrgid(st.st_gid)) != NULL)
 			snprintf(usergroup, sizeof(usergroup), "%s:%s", user, grp->gr_name);
 		else
-			snprintf(usergroup, sizeof(usergroup), "%s:%d", user, st.st_gid);
+			snprintf(usergroup, sizeof(usergroup), "%s:%u", user, st.st_gid);
 
 		char permissions[10];
-		// Get human-readable format of permissions as known from ls
-		snprintf(permissions, sizeof(permissions),
-		         "%s%s%s%s%s%s%s%s%s",
-		         st.st_mode & S_IRUSR ? "r":"-",
-		         st.st_mode & S_IWUSR ? "w":"-",
-		         st.st_mode & S_IXUSR ? "x":"-",
-		         st.st_mode & S_IRGRP ? "r":"-",
-		         st.st_mode & S_IWGRP ? "w":"-",
-		         st.st_mode & S_IXGRP ? "x":"-",
-		         st.st_mode & S_IROTH ? "r":"-",
-		         st.st_mode & S_IWOTH ? "w":"-",
-		         st.st_mode & S_IXOTH ? "x":"-");
+		get_permission_string(permissions, &st);
 
 		char prefix[2] = { 0 };
 		double formatted = 0.0;
 		format_memory_size(prefix, (unsigned long long)st.st_size, &formatted);
 
 		// Log output for this file
-		logg("%s %-15s %3.0f%s  %s", permissions, usergroup, formatted, prefix, filename);
+		log_info("%s %-15s %3.0f%s  %s", permissions, usergroup, formatted, prefix, filename);
 	}
 
-	logg("---------------------------------------------------");
+	log_info("---------------------------------------------------");
+
+	// Free memory
+	free(full_path);
+	full_path = NULL;
 
 	// Close directory stream
 	closedir(dirp);
 }
 
-int get_path_usage(const char *path, char buffer[64])
+unsigned int get_path_usage(const char *path, char buffer[64])
 {
 	// Get filesystem information about /dev/shm (typically a tmpfs)
 	struct statvfs f;
@@ -180,26 +245,326 @@ int get_path_usage(const char *path, char buffer[64])
 	format_memory_size(prefix_used, used, &formatted_used);
 
 	// Print result into buffer passed to this subroutine
-	snprintf(buffer, 64, "%s: %.1f%sB used, %.1f%sB total", path,
+	snprintf(buffer, 64, "%.1f%sB used, %.1f%sB total",
 	         formatted_used, prefix_used, formatted_size, prefix_size);
 
-	// Return percentage of used shared memory
-	// Adding 1 avoids FPE if the size turns out to be zero
+	// If size is 0, we return 0% to avoid division by zero below
+	if(size == 0)
+		return 0;
+	// If used is larger than size, we return 100%
+	if(used > size)
+		return 100;
+	// Return percentage of used memory at this path (rounded down)
 	return (used*100)/(size + 1);
 }
 
-int get_filepath_usage(const char *file, char buffer[64])
+// Get the filesystem where the given path is located
+struct mntent *get_filesystem_details(const char *path)
 {
-	if(file == NULL || strlen(file) == 0)
+	/* stat the file in question */
+	struct stat path_stat;
+	stat(path, &path_stat);
+
+	/* iterate through the list of devices */
+	FILE *file = setmntent("/proc/mounts", "r");
+	struct mntent *ent = NULL;
+	while(file != NULL && (ent = getmntent(file)) != NULL)
+	{
+		/* stat the mount point */
+		struct stat dev_stat;
+		stat(ent->mnt_dir, &dev_stat);
+
+		/* check if our file and the mount point are on the same device */
+		if(dev_stat.st_dev == path_stat.st_dev)
+			break;
+	}
+
+	endmntent(file);
+
+	return ent;
+}
+
+// Credits: https://stackoverflow.com/a/55410469
+static char *trim(char *str)
+{
+	char *start = str;
+	char *end = str + strlen(str);
+
+	while(*start && isspace(*start))
+		start++;
+
+	while(end > start && isspace(*(end - 1)))
+		end--;
+
+	*end = '\0';
+	return start;
+}
+
+// Credits: https://stackoverflow.com/a/2180157 (modified) for the fallback solution
+static int copy_file(const char *source, const char *destination)
+{
+// Check glibc >= 2.27 for copy_file_range()
+#if __GLIBC__ > 2 ||  (__GLIBC__ == 2 && (__GLIBC_MINOR__ >= 27 ))
+	int fd_in, fd_out;
+	struct stat stat;
+	size_t len;
+	ssize_t ret;
+
+	fd_in = open(source, O_RDONLY);
+	if (fd_in == -1)
+	{
+		log_warn("copy_file(): Failed to open \"%s\" read-only: %s", source, strerror(errno));
+		return -1;
+	}
+
+	if (fstat(fd_in, &stat) == -1) {
+		perror("fstat");
+		exit(EXIT_FAILURE);
+	}
+
+	len = stat.st_size;
+
+	fd_out = open(destination, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+	if (fd_out == -1)
+	{
+		log_warn("copy_file(): Failed to open \"%s\" for writing: %s", destination, strerror(errno));
+		close(fd_in);
+		return -1;
+	}
+
+	do {
+		ret = copy_file_range(fd_in, NULL, fd_out, NULL, len, 0);
+		if (ret == -1) {
+			log_warn("copy_file(): Failed to copy file after %zu of %zu bytes: %s", (size_t)stat.st_size - len, (size_t)stat.st_size, strerror(errno));
+			close(fd_in);
+			close(fd_out);
+			return -1;
+		}
+
+		len -= ret;
+	} while (len > 0 && ret > 0);
+
+	close(fd_in);
+	close(fd_out);
+
+	return 0;
+#else
+	int input, output;
+	if ((input = open(source, O_RDONLY)) == -1)
+	{
+			log_warn("copy_file(): Failed to open \"%s\" read-only: %s", source, strerror(errno));
+			return -1;
+	}
+	if ((output = creat(destination, 0660)) == -1)
+	{
+			log_warn("copy_file(): Failed to open \"%s\" for writing: %s", destination, strerror(errno));
+			close(input);
+			return -1;
+	}
+	// Use sendfile (kernel-space copying as fallback)
+	off_t bytesCopied = 0;
+	struct stat fileinfo = {0};
+	fstat(input, &fileinfo);
+	errno = 0;
+	const int result = sendfile(output, input, &bytesCopied, fileinfo.st_size);
+	if(result == -1)
+			log_warn("copy_file(): Failed to copy \"%s\" to \"%s\": %s", source, destination, strerror(errno));
+	close(input);
+	close(output);
+
+	return result;
+#endif
+}
+
+
+
+// Rotate files in a directory
+void rotate_files(const char *path, char **first_file)
+{
+	// Check if file exists. If not, we don't need to rotate anything here
+	if(!file_exists(path))
+	{
+		log_debug(DEBUG_CONFIG, "rotate_files(): File \"%s\" does not exist, not rotating", path);
+		return;
+	}
+
+	// Try to create backup directory if it does not exist
+	if(!directory_exists(BACKUP_DIR))
+		mkdir(BACKUP_DIR, S_IRWXU | S_IRWXG); // mode 0770
+
+	// Rename all files to one number higher, except for the original file
+	// The original file is *copied* to the backup directory to avoid possible
+	// issues with file permissions if the new config cannot be written after
+	// the old file has already been moved away
+	for(unsigned int i = MAX_ROTATIONS; i > 0; i--)
+	{
+		// Construct old and new paths
+		char *fname = strdup(path);
+		const char *filename = basename(fname);
+		// extra 6 bytes is enough space for up to 999 rotations ("/", ".", "\0", "999")
+		const size_t buflen = strlen(filename) + MAX(strlen(BACKUP_DIR), strlen(path)) + 6;
+		char *old_path = calloc(buflen, sizeof(char));
+		if(i == 1)
+			snprintf(old_path, buflen, "%s", path);
+		else
+			snprintf(old_path, buflen, BACKUP_DIR"/%s.%u", filename, i-1);
+		char *new_path = calloc(buflen, sizeof(char));
+		snprintf(new_path, buflen, BACKUP_DIR"/%s.%u", filename, i);
+		free(fname);
+
+		// If this is the first file, export the path to the caller (if
+		// requested)
+		if(i == 1 && first_file != NULL)
+			*first_file = strdup(new_path);
+
+		size_t old_path_len = strlen(old_path) + 4;
+		char *old_path_compressed = calloc(old_path_len, sizeof(char));
+		snprintf(old_path_compressed, old_path_len, "%s.gz", old_path);
+
+		size_t new_path_len = strlen(new_path) + 4;
+		char *new_path_compressed = calloc(new_path_len, sizeof(char));
+		snprintf(new_path_compressed, new_path_len, "%s.gz", new_path);
+
+		if(file_exists(old_path))
+		{
+			// Copy file to backup directory
+			if(i == 1)
+			{
+				// Copy file to backup directory
+				log_debug(DEBUG_CONFIG, "Copying %s -> %s", old_path, new_path);
+				if(copy_file(old_path, new_path) < 0)
+				{
+					log_warn("Rotation %s -(COPY)> %s failed",
+					         old_path, new_path);
+				}
+				else
+				{
+					// Log success if debug is enabled
+					log_debug(DEBUG_CONFIG, "Copied %s -> %s",
+					          old_path, new_path);
+				}
+			}
+			// Rename file to backup directory
+			else if(rename(old_path, new_path) < 0)
+			{
+				log_warn("Rotation %s -(MOVE)> %s failed: %s",
+				         old_path, new_path, strerror(errno));
+			}
+			else
+			{
+				// Log success if debug is enabled
+				log_debug(DEBUG_CONFIG, "Rotated %s -> %s",
+				          old_path, new_path);
+			}
+
+			// Compress file if we are rotating a sufficiently old file
+			if(i > ZIP_ROTATIONS)
+			{
+				log_debug(DEBUG_CONFIG, "Compressing %s -> %s",
+				          new_path, new_path_compressed);
+				if(deflate_file(new_path, new_path_compressed, false))
+				{
+					// On success, we remove the uncompressed file
+					remove(new_path);
+				}
+			}
+		}
+		else if(file_exists(old_path_compressed))
+		{
+			// Rename file
+			if(rename(old_path_compressed, new_path_compressed) < 0)
+			{
+				log_warn("Rotation %s -(MOVE)> %s failed: %s",
+				         old_path_compressed, new_path_compressed, strerror(errno));
+			}
+			else
+			{
+				// Log success if debug is enabled
+				log_debug(DEBUG_CONFIG, "Rotated %s -> %s",
+				          old_path_compressed, new_path_compressed);
+			}
+		}
+
+		// Free memory
+		free(old_path);
+		free(new_path);
+		free(old_path_compressed);
+		free(new_path_compressed);
+	}
+}
+
+// Credits: https://stackoverflow.com/a/55410469
+int parse_line(char *line, char **key, char **value)
+{
+	char *ptr = strchr(line, '=');
+	if (ptr == NULL)
 		return -1;
 
-	// Get path from file, we duplicate the string
-	// here as dirname() modifies the string inplace
-	char path[PATH_MAX] = { 0 };
-	strncpy(path, file, sizeof(path)-1);
-	path[sizeof(path)-1] = '\0';
-	dirname(path);
+	*ptr++ = '\0';
+	*key = trim(line);
+	*value = trim(ptr);
 
-	// Get percentage of disk usage at this path
-	return get_path_usage(path, buffer);
+	return 0;
+}
+
+// Get symlink target
+char * __attribute__((malloc)) get_hwmon_target(const char *path)
+{
+	struct stat sb;
+
+	// Get symlink status
+	if(lstat(path, &sb) == -1)
+		return NULL;
+
+	// Check if path is a symlink
+	if(!S_ISLNK(sb.st_mode))
+		return NULL;
+
+	// Allocate buffer
+	off_t bufsize = sb.st_size + 1;
+
+	// Some systems do not set st_size for symlinks
+	// In this case, we use PATH_MAX
+	if(bufsize == 1)
+		bufsize = PATH_MAX;
+
+	// Allocate buffer
+	char *target = calloc(bufsize, sizeof(char));
+	if(target == NULL)
+		return NULL;
+
+	// Read symlink target
+	const ssize_t nbytes = readlink(path, target, bufsize);
+	if(nbytes == -1)
+	{
+		free(target);
+		return NULL;
+	}
+
+	// The link target may be relative to the link's parent directory
+	// It typically looks like, e.g.
+	//
+	//   ../../devices/pci0000:00/0000:00:1f.3/hwmon/hwmon0
+	//
+	// We remove the "../" and "/hwmon/hwmonX" parts so it becomes
+	//
+	//   devices/pci0000:00/0000:00:1f.3
+
+
+	// Strip "../" from beginning of string (if present)
+	while(nbytes >= 3 && strncmp(target, "../", 3) == 0)
+	{
+		memmove(target, target + 3, nbytes - 3);
+		target[nbytes - 3] = '\0';
+	}
+
+	// Strip "/hwmon[...]" from end of string (if present)
+	char *hwmon = strstr(target, "/hwmon");
+	if(hwmon != NULL)
+		*hwmon = '\0';
+
+	// Ensure that the string is null-terminated
+	target[nbytes] = '\0';
+
+	return target;
 }
