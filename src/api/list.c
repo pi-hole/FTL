@@ -238,7 +238,7 @@ static int api_list_write(struct ftl_conn *api,
 				}
 				json_type = cJSON_GetObjectItemCaseSensitive(api->payload.json, "type");
 				if(cJSON_IsString(json_type) && strlen(json_type->valuestring) > 0)
-					row.type_int = strcasecmp(json_type->valuestring, "block") == 0 ? ADLIST_BLOCK: ADLIST_ALLOW;
+					row.type_int = strcasecmp(json_type->valuestring, "allow") == 0 ? ADLIST_ALLOW : ADLIST_BLOCK;
 				else
 				{
 					return send_json_error(api, 400,

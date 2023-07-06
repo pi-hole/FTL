@@ -1576,7 +1576,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		}
 		else if(listtype == GRAVITY_ADLISTS)
 		{
-			querystr = "INSERT INTO adlist (address,enabled,comment) VALUES (:item,:enabled,:comment);";
+			querystr = "INSERT INTO adlist (address,enabled,comment,type) VALUES (:item,:enabled,:comment,:type);";
 		}
 		else if(listtype == GRAVITY_CLIENTS)
 		{
@@ -1607,10 +1607,9 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 				           "WHERE name = :item";
 			}
 		else if(listtype == GRAVITY_ADLISTS)
-			querystr = "REPLACE INTO adlist (address,enabled,comment,id,type,date_added,date_updated,number,invalid_domains,status,abp_entries) "
-			           "VALUES (:item,:enabled,:comment,"
+			querystr = "REPLACE INTO adlist (address,enabled,comment,type,id,date_added,date_updated,number,invalid_domains,status,abp_entries) "
+			           "VALUES (:item,:enabled,:comment,:type,"
 			                   "(SELECT id FROM adlist WHERE address = :item),"
-			                   "(SELECT type FROM adlist WHERE address = :item),"
 			                   "(SELECT date_added FROM adlist WHERE address = :item),"
 			                   "(SELECT date_updated FROM adlist WHERE address = :item),"
 			                   "(SELECT number FROM adlist WHERE address = :item),"
@@ -2199,7 +2198,10 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 
 			else if(strcasecmp(cname, "type") == 0)
 			{
-				switch(sqlite3_column_int(read_stmt, c))
+				// Get raw type
+				row->type_int = sqlite3_column_int(read_stmt, c);
+				// Convert to string (only applicable for domainlist)
+				switch(row->type_int)
 				{
 					case 0:
 						row->type = "allow";
