@@ -48,7 +48,7 @@ static int generate_private_key_rsa(mbedtls_pk_context *key,
 	return 0;
 }
 
-// Generate private EC key (secp521r1)
+// Generate private EC key
 static int generate_private_key_ec(mbedtls_pk_context *key,
                                    mbedtls_ctr_drbg_context *ctr_drbg,
                                    unsigned char key_buffer[])
@@ -61,8 +61,8 @@ static int generate_private_key_ec(mbedtls_pk_context *key,
 		return ret;
 	}
 
-	// Generate key
-	if((ret = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP521R1, mbedtls_pk_ec(*key),
+	// Generate key SECP384R1 key (NIST P-384)
+	if((ret = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP384R1, mbedtls_pk_ec(*key),
 	                              mbedtls_ctr_drbg_random, ctr_drbg)) != 0)
 	{
 		printf("ERROR: mbedtls_ecp_gen_key returned %d\n", ret);
