@@ -1140,24 +1140,26 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	}
 
 	// Check domain against antigravity
-	enum db_result gravity = NOT_FOUND;
 	const enum db_result antigravity = in_gravity(domain, client, true);
-	if(antigravity != FOUND)
+	if(antigravity == FOUND)
 	{
-		// Check domains against gravity domains
-		gravity = in_gravity(domain, client, false);
-		if(gravity == FOUND)
-		{
-			// Set new status
-			*new_status = QUERY_GRAVITY;
-			blockingreason = "gravity blocked";
+		log_debug(DEBUG_QUERIES, "Allowing query due to antigravity match");
+		return false;
+	}
 
-			// Mark domain as gravity blocked for this client
-			set_dnscache_blockingstatus(dns_cache, client, GRAVITY_BLOCKED, domain);
+	// Check domains against gravity domains
+	const enum db_result gravity = in_gravity(domain, client, false);
+	if(gravity == FOUND)
+	{
+		// Set new status
+		*new_status = QUERY_GRAVITY;
+		blockingreason = "gravity blocked";
 
-			// We block this domain
-			return true;
-		}
+		// Mark domain as gravity blocked for this client
+		set_dnscache_blockingstatus(dns_cache, client, GRAVITY_BLOCKED, domain);
+
+		// We block this domain
+		return true;
 	}
 
 	// Check if one of the database lookups returned that the database is
