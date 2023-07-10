@@ -324,8 +324,6 @@ int get_string_var(const char *source, const char *var, char *dest, size_t dest_
 	if(len > 0)
 		len = mg_url_decode(tempbuf, len, dest, dest_len, 0);
 
-	log_info("get_string_var: %s (%s) -> %s -> %s (%d)", source, var, tempbuf, dest, len);
-
 	// Free the temporary buffer, if anything was decoded it's now stored in
 	// dest
 	free(tempbuf);
