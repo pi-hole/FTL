@@ -33,7 +33,7 @@ jobs:
     # trigger "stale" removal immediately when stale issues are commented on
     # we need to explicitly check that the trigger does not run on comment on a PR as
     # https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#issue_comment-on-issues-only-or-pull-requests-only
-    if: ${{ !github.event.issue.pull_request }}
+    if: ${{ !github.event.issue.pull_request && github.event_name != 'schedule' }}
     permissions:
       contents: read #  for actions/checkout
       issues: write #  to edit issues label
