@@ -142,7 +142,7 @@ jobs:
       -
         name: Upload documentation artifacts for deployoment
         if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
-        uses: actions/upload-artifact@v3.1.1
+        uses: actions/upload-artifact@v3.1.2
         with:
           name: tmp-storage
           path: 'api-docs.tar.gz'
