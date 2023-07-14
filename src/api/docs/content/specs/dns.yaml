@@ -8,8 +8,6 @@ components:
         tags:
           - DNS control
         operationId: "get_blocking"
-        security:
-          - sidHeader: []
         description: |
           The property `timer` may contain additional details concerning a temporary en-/disabling.
           It is `null` when no timer is active (the current status is permanent).

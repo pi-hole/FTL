@@ -64,6 +64,8 @@ tags:
   - name: "Actions"
     description: Methods used to trigger certain actions on your Pi-hole
 
+
+
 paths:
   /auth:
     $ref: 'auth.yaml#/components/paths/auth'
@@ -253,8 +255,29 @@ paths:
 
 components:
   securitySchemes:
-    sidHeader:
+    query_sid:
       type: apiKey
+      in: query
       name: sid
-      description: SID used for secured endpoints
+    cookie_sid:
+      type: apiKey
+      in: cookie
+      name: sid
+    header_sid:
+      type: apiKey
       in: header
+      name: sid
+    x_header_sid:
+      type: apiKey
+      in: header
+      name: X-FTL-SID
+    query_password:
+      type: apiKey
+      in: query
+      name: password
+
+security:
+  - query_sid: []
+  - cookie_sid: []
+  - header_sid: []
+  - x_header_sid: []
