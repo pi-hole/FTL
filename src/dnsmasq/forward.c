@@ -937,17 +937,24 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
   if (forward->blocking_query)
     return;
   
-  /* Truncated answer can't be validated.
-     If this is an answer to a DNSSEC-generated query, we still
-     need to get the client to retry over TCP, so return
-     an answer with the TC bit set, even if the actual answer fits.
-  */
-  if (header->hb3 & HB3_TC)
-    status = STAT_TRUNCATED;
-
   /* If all replies to a query are REFUSED, give up. */
   if (RCODE(header) == REFUSED)
     status = STAT_ABANDONED;
+  else if (header->hb3 & HB3_TC)
+    {
+      /* Truncated answer can't be validated.
+	 If this is an answer to a DNSSEC-generated query, we still
+	 need to get the client to retry over TCP, so return
+	 an answer with the TC bit set, even if the actual answer fits.
+      */
+      status = STAT_TRUNCATED;
+      if (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY))
+	{
+	  unsigned char *p = (unsigned char *)(header+1);
+	  if  (extract_name(header, plen, &p, daemon->namebuff, 0, 4) == 1)
+	    log_query(F_UPSTREAM | F_NOEXTRA, daemon->namebuff, NULL, "truncated", (forward->flags & FREC_DNSKEY_QUERY) ? T_DNSKEY : T_DS);
+	}
+    }
   
   /* As soon as anything returns BOGUS, we stop and unwind, to do otherwise
      would invite infinite loops, since the answers to DNSKEY and DS queries
@@ -1338,7 +1345,10 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
       no_cache_dnssec = 0;
       
       if (STAT_ISEQUAL(status, STAT_TRUNCATED))
-	header->hb3 |= HB3_TC;
+	{
+	  header->hb3 |= HB3_TC;
+	  log_query(F_SECSTAT, "result", NULL, "TRUNCATED", 0);
+	}
       else
 	{
 	  char *result, *domain = "result";
@@ -1364,7 +1374,7 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 	      if (extract_request(header, n, daemon->namebuff, NULL))
 		domain = daemon->namebuff;
 	    }
-	  
+      
 	  log_query(F_SECSTAT, domain, &a, result, 0);
 	}
     }
@@ -1992,7 +2002,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
   
   while (1) 
     {
-      int data_sent = 0;
+      int data_sent = 0, timedout = 0;
       struct server *serv;
       
       if (firstsendto == -1)
@@ -2030,15 +2040,27 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	      serv->tcpfd = -1;
 	      continue;
 	    }
+
+#ifdef TCP_SYNCNT
+	  /* TCP connections by default take ages to time out. 
+	     At least on Linux, we can reduce that to only two attempts
+	     to get a reply. For DNS, that's more sensible. */
+	  mark = 2;
+	  setsockopt(serv->tcpfd, IPPROTO_TCP, TCP_SYNCNT, &mark, sizeof(unsigned int));
+#endif
 	  
 #ifdef MSG_FASTOPEN
 	  server_send(serv, serv->tcpfd, packet, qsize + sizeof(u16), MSG_FASTOPEN);
 	  
 	  if (errno == 0)
 	    data_sent = 1;
+	  else if (errno == ETIMEDOUT || errno == EHOSTUNREACH)
+	    timedout = 1;
 #endif
 	  
-	  if (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1)
+	  /* If fastopen failed due to lack of reply, then there's no point in
+	     trying again in non-FASTOPEN mode. */
+	  if (timedout || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
 	    {
 	      close(serv->tcpfd);
 	      serv->tcpfd = -1;
@@ -2141,7 +2163,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       daemon->log_display_id = ++daemon->log_id;
       
       log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, keyname, &server->addr,
-			    STAT_ISEQUAL(status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
+			    STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
             
       new_status = tcp_key_recurse(now, new_status, new_header, m, class, name, keyname, server, have_mark, mark, keycount);
 

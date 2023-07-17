@@ -75,7 +75,7 @@ src/dnsmasq/dnsmasq.c
 src/dnsmasq/dnsmasq.c
 	      my_syslog(LOG_WARNING, _("no servers found in %s, will retry"), latest->name);
 src/dnsmasq/dnssec.c
-      my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
+	  my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
 src/dnsmasq/forward.c
 	  my_syslog(LOG_WARNING, _("discarding DNS reply: subnet option mismatch"));
 src/dnsmasq/forward.c
