@@ -7,26 +7,33 @@
 
 // GET implementation
 async function getData(url = '') {
+	const docEl = document.getElementById('thedoc');
+	const sid = docEl.attributes["api-key-value"].value;
 	const response = await fetch(url, {
 		method: 'GET',
-		headers: {'Content-Type': 'application/json'}
+		headers: {'Content-Type': 'application/json', 'X-FTL-SID': sid}
 	});
 	return response.json();
 }
 
 // DELETE implementation
 async function deleteData(url = '') {
+	const docEl = document.getElementById('thedoc');
+	const sid = docEl.attributes["api-key-value"].value;
 	const response = await fetch(url, {
-		method: 'DELETE'
+		method: 'DELETE',
+		headers: {'X-FTL-SID': sid}
 	});
 	return response;
 }
 
 // POST implementation
 async function postData(url = '', data = {}) {
+	const docEl = document.getElementById('thedoc');
+	const sid = docEl.attributes["api-key-value"].value;
 	const response = await fetch(url, {
 		method: 'POST',
-		headers: {'Content-Type': 'application/json'},
+		headers: {'Content-Type': 'application/json', 'X-FTL-SID': sid},
 		body: JSON.stringify(data)
 	});
 	return response.json();
@@ -55,7 +62,7 @@ function loginFAIL() {
 // Mark logout as OK
 function logoutOk() {
 	const docEl = document.getElementById('thedoc');
-	docEl.setAttribute('api-key-value', '-');
+	docEl.setAttribute('api-key-value', "-");
 	const btn = document.getElementById('loginbtn');
 	btn.classList.remove('green');
 	btn.classList.remove('red');
@@ -67,18 +74,18 @@ function loginout(){
 	const docEl = document.getElementById('thedoc');
 	if(docEl.attributes["api-key-value"].value === '-') {
 		var pw = document.getElementById('loginpw').value;
-    postData('/api/auth', {password: pw})
-    .then(data => {
-      if(data.session.valid === true) {
-        loginOk(data.session.sid);
-      } else {
-        loginFAIL();
-      }
-    })
-    .catch((error) => {
-      loginFAIL();
-      console.error('Error:', error);
-    });
+		postData('/api/auth', {password: pw})
+		.then(data => {
+			if(data.session.valid === true) {
+				loginOk(data.session.sid);
+			} else {
+				loginFAIL();
+			}
+		})
+		.catch((error) => {
+			loginFAIL();
+			console.error('Error:', error);
+		});
 	} else {
 		deleteData('/api/auth')
 		.then(logoutOk())
