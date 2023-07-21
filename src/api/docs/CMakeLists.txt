@@ -16,7 +16,6 @@ set(sources
         hex/external/rapidoc-min.js.map
         hex/external/highlight.min.js
         hex/external/highlight-default.min.css
-        hex/external/geraintluff-sha256.min.js
         hex/images/logo.svg
         hex/specs/action.yaml
         hex/specs/auth.yaml

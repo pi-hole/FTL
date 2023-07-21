@@ -104,15 +104,14 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		return API_AUTH_EMPTYPASS;
 	}
 
-	// Does the client provide a session cookie?
+	// Does the client provide a session ID?
 	char sid[SID_SIZE];
-	const char *sid_source = "cookie";
+	const char *sid_source = "-";
 	// Try to extract SID from cookie
-	bool sid_avail = http_get_cookie_str(api, "sid", sid, SID_SIZE);
-	const bool cookie_auth = sid_avail;
+	bool sid_avail = false;
 
 	// If not, does the client provide a session ID via GET/POST?
-	if(!sid_avail && api->payload.avail)
+	if(api->payload.avail)
 	{
 		// Try to extract SID from form-encoded payload
 		if(GET_VAR("sid", sid, api->payload.raw) > 0)
@@ -164,6 +163,20 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 			// Mark SID as available
 			sid_avail = true;
 		}
+	}
+
+	bool cookie_auth = false;
+	if(!sid_avail)
+	{
+		cookie_auth = http_get_cookie_str(api, "sid", sid, SID_SIZE);
+		if(cookie_auth)
+		{
+			// Mention source of SID
+			sid_source = "cookie";
+			// Mark SID as available
+			sid_avail = true;
+		}
+
 	}
 
 	if(!sid_avail)
