@@ -116,24 +116,49 @@ int send_http_internal_error(struct ftl_conn *api)
 
 bool get_bool_var(const char *source, const char *var, bool *boolean)
 {
-	char buffer[16] = { 0 };
 	if(!source)
 		return false;
-	if(GET_VAR(var, buffer, source) > 0)
+
+	char buffer[16] = { 0 };
+	const int ret = GET_VAR(var, buffer, source);
+	if(ret < 1)
 	{
-		*boolean = (strcasecmp(buffer, "true") == 0);
-		return true;
+		if(ret == -1)
+			return false; // Variable not found
+
+		// else:
+		if(strcasecmp(buffer, "true") == 0)
+		{
+			*boolean = true;
+			return true;
+		}
+		else if(strcasecmp(buffer, "false") == 0)
+		{
+			*boolean = false;
+			return true;
+		}
+		// else: error
+		log_warn("Cannot parse parameter %s in query string \"%s\": \"%s\" is neither \"true\" nor \"false\"", var, source, buffer);
+		return false;
 	}
 	return false;
 }
 
 static bool get_long_var_msg(const char *source, const char *var, long *num, const char **msg)
 {
+	if(!source)
+		return false;
+
 	char buffer[128] = { 0 };
-	if(GET_VAR(var, buffer, source) < 1)
+	const int ret = GET_VAR(var, buffer, source);
+	if(ret < 1)
 	{
-		// Parameter not found
-		*msg = NULL;
+		if(ret == -1)
+			*msg = NULL; // Variable not found
+		else if(ret == -2)
+			*msg = "Internal error: destination buffer too small to hold the decoded value";
+		else // ret == 0
+			*msg = "Parameter empty";
 		return false;
 	}
 
@@ -163,16 +188,21 @@ static bool get_long_var_msg(const char *source, const char *var, long *num, con
 
 bool get_ulong_var_msg(const char *source, const char *var, unsigned long *num, const char **msg)
 {
+	if(!source)
+		return false;
+
 	char buffer[128] = { 0 };
 	const int ret = GET_VAR(var, buffer, source);
-	if(GET_VAR(var, buffer, source) < 1)
+	if(ret < 1)
 	{
-		// Parameter not found
-		*msg = NULL;
+		if(ret == -1)
+			*msg = NULL; // Variable not found
+		else if(ret == -2)
+			*msg = "Internal error: destination buffer too small to hold the decoded value";
+		else // ret == 0
+			*msg = "Parameter empty";
 		return false;
 	}
-
-	log_info("get_ulong_var_msg: %s (%s) // %d -> %s", source, var, ret, buffer);
 
 	// Try to get the value
 	char *endptr = NULL;
@@ -200,6 +230,9 @@ bool get_ulong_var_msg(const char *source, const char *var, unsigned long *num, 
 
 bool get_int_var_msg(const char *source, const char *var, int *num, const char **msg)
 {
+	if(!source)
+		return false;
+
 	long val = 0;
 	if(!get_long_var_msg(source, var, &val, msg))
 		return false;
@@ -222,10 +255,14 @@ bool get_int_var_msg(const char *source, const char *var, int *num, const char *
 
 bool get_int_var(const char *source, const char *var, int *num)
 {
-	const char *msg = NULL;
 	if(!source)
 		return false;
-	return get_int_var_msg(source, var, num, &msg);
+
+	const char *msg = NULL;
+	const bool result = get_int_var_msg(source, var, num, &msg);
+	if(!result)
+		log_warn("Cannot parse integer parameter %s in query string \"%s\": %s", var, source, msg);
+	return result;
 }
 
 bool get_uint_var_msg(const char *source, const char *var, unsigned int *num, const char **msg)
@@ -255,18 +292,27 @@ bool get_uint_var(const char *source, const char *var, unsigned int *num)
 	const char *msg = NULL;
 	if(!source)
 		return false;
-	return get_uint_var_msg(source, var, num, &msg);
+	const bool result = get_uint_var_msg(source, var, num, &msg);
+	if(!result)
+		log_warn("Cannot parse unsigned integer parameter %s in query string \"%s\": %s", var, source, msg);
+	return result;
 }
 
 bool get_double_var_msg(const char *source, const char *var, double *num, const char **msg)
 {
-	char buffer[128] = { 0 };
 	if(!source)
 		return false;
-	if(GET_VAR(var, buffer, source) < 1)
+
+	char buffer[128] = { 0 };
+	const int ret = GET_VAR(var, buffer, source);
+	if(ret < 1)
 	{
-		// Parameter not found
-		*msg = NULL;
+		if(ret == -1)
+			*msg = NULL; // Variable not found
+		else if(ret == -2)
+			*msg = "Internal error: destination buffer too small to hold the decoded value";
+		else // ret == 0
+			*msg = "Parameter empty";
 		return false;
 	}
 
@@ -298,7 +344,10 @@ bool get_double_var(const char *source, const char *var, double *num)
 	const char *msg = NULL;
 	if(!source)
 		return false;
-	return get_double_var_msg(source, var, num, &msg);
+	const bool result = get_double_var_msg(source, var, num, &msg);
+	if(!result)
+		log_warn("Cannot parse double parameter %s in query string \"%s\": %s", var, source, msg);
+	return result;
 }
 
 int get_string_var(const char *source, const char *var, char *dest, size_t dest_len)

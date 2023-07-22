@@ -122,6 +122,9 @@ int api_search(struct ftl_conn *api)
 		get_bool_var(api->request->query_string, "partial", &partial);
 		get_uint_var(api->request->query_string, "N", &N);
 
+		log_debug(DEBUG_API, "Search for %s (partial=%s, N=%u)",
+		          api->item, partial ? "true" : "false", N);
+
 		// Check validity of N
 		if(N > MAX_SEARCH_RESULTS)
 		{
