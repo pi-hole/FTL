@@ -675,6 +675,8 @@ const char * __attribute__ ((const)) get_query_dnssec_str(const enum dnssec_stat
 			return "BOGUS";
 		case DNSSEC_ABANDONED:
 			return "ABANDONED";
+		case DNSSEC_TRUNCATED:
+			return "TRUNCATED";
 		case DNSSEC_MAX:
 		default:
 			return "N/A";
