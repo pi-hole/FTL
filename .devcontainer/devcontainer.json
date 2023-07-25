@@ -7,5 +7,9 @@
     "ms-vscode.cpptools",
     "ms-vscode.cmake-tools",
     "eamodio.gitlens"
+  ],
+  "mounts": [
+    "type=bind,source=/home/${localEnv:USER}/.ssh,target=/root/.ssh,readonly"
   ]
+
 }
