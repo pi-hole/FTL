@@ -558,10 +558,38 @@ int api_queries(struct ftl_conn *api)
 	log_debug(DEBUG_API, "  with cursor: %lu, start: %u, length: %d", cursor, start, length);
 
 	cJSON *queries = JSON_NEW_ARRAY();
-	unsigned int added = 0, records = 0;
+	unsigned int added = 0, recordsCounted = 0;
 	sqlite3_int64 firstID = -1, id = -1;
+	bool skipTheRest = false;
 	while((rc = sqlite3_step(read_stmt)) == SQLITE_ROW)
 	{
+		// Increase number of records from the database
+		recordsCounted++;
+
+		// Skip all records once we have enough (but still count them)
+		if(skipTheRest)
+			continue;
+
+		// Check if we have reached the limit
+		if(added >= (unsigned int)length)
+		{
+			if(api->request->query_string != NULL)
+			{
+				// We are filtering, so we have to continue to
+				// step over the remaining rows to get the
+				// correct number of total records
+				skipTheRest = true;
+				continue;
+			}
+			else
+			{
+				// We are not filtering, so we can stop here
+				// The total number of records is the number
+				// of records in the database
+				break;
+			}
+		}
+
 		// Get ID of query from database
 		id = sqlite3_column_int64(read_stmt, 0); // q.id
 
@@ -569,16 +597,13 @@ int api_queries(struct ftl_conn *api)
 		if(firstID == -1)
 			firstID = id;
 
-		// Increase number of records from the database
-		records++;
-
-		// Serve-side pagination
+		// Server-side pagination
 		if((unsigned long)id > cursor)
 		{
 			// Skip all results with id BEFORE cursor (static tip of table)
 			continue;
 		}
-		else if(start > 0 && start >= records)
+		else if(start > 0 && start >= recordsCounted)
 		{
 			// Skip all results BEFORE start (server-side pagination)
 			continue;
@@ -690,8 +715,9 @@ int api_queries(struct ftl_conn *api)
 	}
 
 	// DataTables specific properties
-	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", disk ? disk_dbnum : mem_dbnum);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", records);
+	const unsigned long recordsTotal = disk ? disk_dbnum : mem_dbnum;
+	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", recordsTotal);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", api->request->query_string != NULL ? recordsCounted : recordsTotal);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "draw", draw);
 
 	// Finalize statements
