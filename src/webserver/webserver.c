@@ -133,6 +133,16 @@ static int redirect_slash_handler(struct mg_connection *conn, void *input)
 	const char *query_string = request->query_string;
 	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
 
+	// Do not redirect if the new URI is the webhome
+	if(strcmp(uri, config.webserver.paths.webhome.v.s) == 0)
+	{
+		log_debug(DEBUG_API, "Not redirecting %s?%s",
+		          uri, query_string);
+
+		// Handle as a normal request
+		return request_handler(conn, input);
+	}
+
 	// Remove the trailing slash from the URI
 	char *new_uri = strdup(uri);
 	new_uri[strlen(new_uri) - 1] = '\0';
@@ -332,16 +342,34 @@ void http_init(void)
 
 void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 {
-	// Construct full path with ".lp" appended
-	const size_t filename_lp_len = strlen(filename) + 4;
-	char *filename_lp = calloc(filename_lp_len, sizeof(char));
-	if(filename_lp == NULL)
+	size_t filename_lp_len = 0;
+	char *filename_lp = NULL;
+	if(filename[strlen(filename) - 1] != '/')
 	{
-		log_err("Failed to allocate memory for Lua pattern!");
-		return;
+		// Construct full path with ".lp" appended if there is no trailing slash
+		filename_lp_len = strlen(filename) + 4;
+		filename_lp = calloc(filename_lp_len, sizeof(char));
+		if(filename_lp == NULL)
+		{
+			log_err("Failed to allocate memory for Lua pattern!");
+			return;
+		}
+		strncpy(filename_lp, filename, filename_lp_len);
+		strncat(filename_lp, ".lp", filename_lp_len);
 	}
-	strncpy(filename_lp, filename, filename_lp_len);
-	strncat(filename_lp, ".lp", filename_lp_len);
+	else
+	{
+		// Handle index pages (dashboard)
+		filename_lp_len = strlen(filename) + 9;
+		filename_lp = calloc(filename_lp_len, sizeof(char));
+		if(filename_lp == NULL)
+		{
+			log_err("Failed to allocate memory for Lua pattern!");
+			return;
+		}
+		strncpy(filename_lp, filename, filename_lp_len);
+		strncat(filename_lp, "index.lp", filename_lp_len);
+	}
 
 	// Check if the file exists. If so, rewrite the filename
 	if(file_readable(filename_lp))
@@ -352,13 +380,10 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 		return;
 	}
 
-	log_debug(DEBUG_API, "Not rewriting %s ==> %s, no such file",
-	          filename, filename_lp);
-
 	// Change last occurrence of "/" to "-" (if any)
 	char *last_slash = strrchr(filename_lp, '/');
 	if(last_slash != NULL)
-	   *last_slash = '-';
+		*last_slash = '-';
 	if(file_readable(filename_lp))
 	{
 		log_debug(DEBUG_API, "Rewriting %s ==> %s", filename, filename_lp);
@@ -366,9 +391,6 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 		free(filename_lp);
 		return;
 	}
-
-	log_debug(DEBUG_API, "Not rewriting %s ==> %s, no such file",
-	          filename, filename_lp);
 	free(filename_lp);
 }
 
