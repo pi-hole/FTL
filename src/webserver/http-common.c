@@ -144,7 +144,7 @@ bool get_bool_var(const char *source, const char *var, bool *boolean)
 	return false;
 }
 
-static bool get_long_var_msg(const char *source, const char *var, long *num, const char **msg)
+static bool get_llong_var_msg(const char *source, const char *var, long long *num, const char **msg)
 {
 	if(!source)
 		return false;
@@ -165,10 +165,10 @@ static bool get_long_var_msg(const char *source, const char *var, long *num, con
 	// Try to get the value
 	char *endptr = NULL;
 	errno = 0;
-	const long val = strtol(buffer, &endptr, 10);
+	const long long val = strtoll(buffer, &endptr, 10);
 
 	// Error checking
-	if ((errno == ERANGE && (val == LONG_MAX || val == LONG_MIN)) ||
+	if ((errno == ERANGE && (val == LLONG_MAX || val == LLONG_MIN)) ||
 	    (errno != 0 && val == 0))
 	{
 		*msg = strerror(errno);
@@ -186,7 +186,7 @@ static bool get_long_var_msg(const char *source, const char *var, long *num, con
 	return true;
 }
 
-bool get_ulong_var_msg(const char *source, const char *var, unsigned long *num, const char **msg)
+bool get_ullong_var_msg(const char *source, const char *var, unsigned long long *num, const char **msg)
 {
 	if(!source)
 		return false;
@@ -207,7 +207,7 @@ bool get_ulong_var_msg(const char *source, const char *var, unsigned long *num, 
 	// Try to get the value
 	char *endptr = NULL;
 	errno = 0;
-	const unsigned long val = strtoul(buffer, &endptr, 10);
+	const unsigned long long val = strtoull(buffer, &endptr, 10);
 
 	// Error checking
 	if ((errno == ERANGE && val == ULONG_MAX) ||
@@ -233,17 +233,17 @@ bool get_int_var_msg(const char *source, const char *var, int *num, const char *
 	if(!source)
 		return false;
 
-	long val = 0;
-	if(!get_long_var_msg(source, var, &val, msg))
+	long long val = 0;
+	if(!get_llong_var_msg(source, var, &val, msg))
 		return false;
 
-	if(val > (long)INT_MAX)
+	if(val > (long long)INT_MAX)
 	{
 		*msg = "Specified integer too large, maximum allowed number is "  xstr(INT_MAX);
 		return false;
 	}
 
-	if(val < (long)INT_MIN)
+	if(val < (long long)INT_MIN)
 	{
 		*msg = "Specified integer too negative, minimum allowed number is "  xstr(INT_MIN);
 		return false;
@@ -267,11 +267,11 @@ bool get_int_var(const char *source, const char *var, int *num)
 
 bool get_uint_var_msg(const char *source, const char *var, unsigned int *num, const char **msg)
 {
-	long val = 0;
-	if(!get_long_var_msg(source, var, &val, msg))
+	long long val = 0;
+	if(!get_llong_var_msg(source, var, &val, msg))
 		return false;
 
-	if(val > (long)UINT_MAX)
+	if(val > (long long)UINT_MAX)
 	{
 		*msg = "Specified integer too large, maximum allowed number is "  xstr(UINT_MAX);
 		return false;

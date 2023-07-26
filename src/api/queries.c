@@ -297,9 +297,9 @@ int api_queries(struct ftl_conn *api)
 		// Does the user request an offset from the cursor?
 		get_uint_var(api->request->query_string, "start", &start);
 
-		unsigned long unum = 0u;
+		unsigned long long unum = 0u;
 		const char *msg = NULL;
-		if(get_ulong_var_msg(api->request->query_string, "cursor", &unum, &msg) ||
+		if(get_ullong_var_msg(api->request->query_string, "cursor", &unum, &msg) ||
 		   msg != NULL)
 		{
 			// Do not start at the most recent, but at an older
