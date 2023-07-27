@@ -178,6 +178,12 @@ int api_search(struct ftl_conn *api)
 	cJSON *search = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(search, "domains", domains);
 	JSON_ADD_ITEM_TO_OBJECT(search, "gravity", gravity);
+	JSON_ADD_NUMBER_TO_OBJECT(search, "total", cJSON_GetArraySize(domains) + cJSON_GetArraySize(gravity));
+	cJSON *parameters = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(parameters, "N", N);
+	JSON_ADD_BOOL_TO_OBJECT(parameters, "partial", partial);
+	JSON_REF_STR_IN_OBJECT(parameters, "searchterm", api->item);
+	JSON_ADD_ITEM_TO_OBJECT(search, "parameters", parameters);
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "search", search);
 	JSON_SEND_OBJECT(json);
