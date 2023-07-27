@@ -147,6 +147,25 @@ components:
                     items:
                       type: integer
                     example: [0,1,2]
+            total:
+              type: integer
+              description: Total number of results
+              example: 2
+            parameters:
+              type: object
+              properties:
+                partial:
+                  type: boolean
+                  description: Whether partial matching was requested
+                  example: false
+                N:
+                  type: integer
+                  description: Maximum number of results to be returned (per type)
+                  example: 20
+                searchterm:
+                  type: string
+                  description: Search term
+                  example: "doubleclick.net"
   parameters:
     domain:
       name: domain

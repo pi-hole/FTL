@@ -121,30 +121,26 @@ bool get_bool_var(const char *source, const char *var, bool *boolean)
 
 	char buffer[16] = { 0 };
 	const int ret = GET_VAR(var, buffer, source);
-	if(ret < 1)
-	{
-		if(ret == -1)
-			return false; // Variable not found
+	if(ret == -1)
+		return false; // Variable not found
 
-		// else:
-		if(strcasecmp(buffer, "true") == 0)
-		{
-			*boolean = true;
-			return true;
-		}
-		else if(strcasecmp(buffer, "false") == 0)
-		{
-			*boolean = false;
-			return true;
-		}
-		// else: error
-		log_warn("Cannot parse parameter %s in query string \"%s\": \"%s\" is neither \"true\" nor \"false\"", var, source, buffer);
-		return false;
+	// else:
+	if(strcasecmp(buffer, "true") == 0)
+	{
+		*boolean = true;
+		return true;
 	}
+	else if(strcasecmp(buffer, "false") == 0)
+	{
+		*boolean = false;
+		return true;
+	}
+	// else: error
+	log_warn("Cannot parse parameter %s in query string \"%s\": \"%s\" is neither \"true\" nor \"false\"", var, source, buffer);
 	return false;
 }
 
-static bool get_llong_var_msg(const char *source, const char *var, long long *num, const char **msg)
+static bool get_int64_var_msg(const char *source, const char *var, int64_t *num, const char **msg)
 {
 	if(!source)
 		return false;
@@ -165,10 +161,13 @@ static bool get_llong_var_msg(const char *source, const char *var, long long *nu
 	// Try to get the value
 	char *endptr = NULL;
 	errno = 0;
-	const long long val = strtoll(buffer, &endptr, 10);
-
+#if __BITS_PER_LONG == 64
+	const int64_t val = strtol(buffer, &endptr, 10);
+#else
+	const int64_t val = strtoll(buffer, &endptr, 10);
+#endif
 	// Error checking
-	if ((errno == ERANGE && (val == LLONG_MAX || val == LLONG_MIN)) ||
+	if ((errno == ERANGE && (val == INT64_MAX || val == INT64_MIN)) ||
 	    (errno != 0 && val == 0))
 	{
 		*msg = strerror(errno);
@@ -186,7 +185,7 @@ static bool get_llong_var_msg(const char *source, const char *var, long long *nu
 	return true;
 }
 
-bool get_ullong_var_msg(const char *source, const char *var, unsigned long long *num, const char **msg)
+bool get_uint64_var_msg(const char *source, const char *var, uint64_t *num, const char **msg)
 {
 	if(!source)
 		return false;
@@ -207,10 +206,14 @@ bool get_ullong_var_msg(const char *source, const char *var, unsigned long long 
 	// Try to get the value
 	char *endptr = NULL;
 	errno = 0;
-	const unsigned long long val = strtoull(buffer, &endptr, 10);
+#if __BITS_PER_LONG == 64
+	const uint64_t val = strtoul(buffer, &endptr, 10);
+#else
+	const uint64_t val = strtoull(buffer, &endptr, 10);
+#endif
 
 	// Error checking
-	if ((errno == ERANGE && val == ULONG_MAX) ||
+	if ((errno == ERANGE && val == UINT64_MAX) ||
 	    (errno != 0 && val == 0))
 	{
 		*msg = strerror(errno);
@@ -233,17 +236,17 @@ bool get_int_var_msg(const char *source, const char *var, int *num, const char *
 	if(!source)
 		return false;
 
-	long long val = 0;
-	if(!get_llong_var_msg(source, var, &val, msg))
+	int64_t val = 0;
+	if(!get_int64_var_msg(source, var, &val, msg))
 		return false;
 
-	if(val > (long long)INT_MAX)
+	if(val > (int64_t)INT_MAX)
 	{
 		*msg = "Specified integer too large, maximum allowed number is "  xstr(INT_MAX);
 		return false;
 	}
 
-	if(val < (long long)INT_MIN)
+	if(val < (int64_t)INT_MIN)
 	{
 		*msg = "Specified integer too negative, minimum allowed number is "  xstr(INT_MIN);
 		return false;
@@ -260,18 +263,20 @@ bool get_int_var(const char *source, const char *var, int *num)
 
 	const char *msg = NULL;
 	const bool result = get_int_var_msg(source, var, num, &msg);
-	if(!result)
+	// We don't log an error here if msg == NULL, because it's perfectly valid
+	// for a parameter to be missing
+	if(!result && msg != NULL)
 		log_warn("Cannot parse integer parameter %s in query string \"%s\": %s", var, source, msg);
 	return result;
 }
 
 bool get_uint_var_msg(const char *source, const char *var, unsigned int *num, const char **msg)
 {
-	long long val = 0;
-	if(!get_llong_var_msg(source, var, &val, msg))
+	int64_t val = 0;
+	if(!get_int64_var_msg(source, var, &val, msg))
 		return false;
 
-	if(val > (long long)UINT_MAX)
+	if(val > (int64_t)UINT_MAX)
 	{
 		*msg = "Specified integer too large, maximum allowed number is "  xstr(UINT_MAX);
 		return false;
@@ -293,7 +298,9 @@ bool get_uint_var(const char *source, const char *var, unsigned int *num)
 	if(!source)
 		return false;
 	const bool result = get_uint_var_msg(source, var, num, &msg);
-	if(!result)
+	// We don't log an error here if msg == NULL, because it's perfectly valid
+	// for a parameter to be missing
+	if(!result && msg != NULL)
 		log_warn("Cannot parse unsigned integer parameter %s in query string \"%s\": %s", var, source, msg);
 	return result;
 }
@@ -345,7 +352,9 @@ bool get_double_var(const char *source, const char *var, double *num)
 	if(!source)
 		return false;
 	const bool result = get_double_var_msg(source, var, num, &msg);
-	if(!result)
+	// We don't log an error here if msg == NULL, because it's perfectly valid
+	// for a parameter to be missing
+	if(!result && msg != NULL)
 		log_warn("Cannot parse double parameter %s in query string \"%s\": %s", var, source, msg);
 	return result;
 }
