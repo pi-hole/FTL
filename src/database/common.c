@@ -471,6 +471,21 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 13 if lower
+	if(dbversion < 13)
+	{
+		// Update to version 13: Add additional column for regex ID
+		log_info("Updating long-term database to version 13");
+		if(!add_query_storage_column_regex_id(db))
+		{
+			log_info("Additional records not generated, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
 	lock_shm();
 	import_aliasclients(db);
 	unlock_shm();
