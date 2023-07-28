@@ -340,41 +340,54 @@ void http_init(void)
 	allocate_lua();
 }
 
+static char *append_to_path(char *path, const char *append)
+{
+	const size_t path_len = strlen(path);
+	const size_t append_len = strlen(append);
+	const size_t total_len = path_len + append_len + 1;
+	char *new_path = calloc(total_len, sizeof(char));
+	if(new_path == NULL)
+	{
+		log_err("Failed to allocate memory for path!");
+		return NULL;
+	}
+	strncpy(new_path, path, total_len);
+	strncat(new_path, append, total_len);
+	return new_path;
+}
+
 void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 {
-	size_t filename_lp_len = 0;
+	const bool trailing_slash = filename[strlen(filename) - 1] == '/';
 	char *filename_lp = NULL;
-	if(filename[strlen(filename) - 1] != '/')
-	{
-		// Construct full path with ".lp" appended if there is no trailing slash
-		filename_lp_len = strlen(filename) + 4;
-		filename_lp = calloc(filename_lp_len, sizeof(char));
-		if(filename_lp == NULL)
-		{
-			log_err("Failed to allocate memory for Lua pattern!");
-			return;
-		}
-		strncpy(filename_lp, filename, filename_lp_len);
-		strncat(filename_lp, ".lp", filename_lp_len);
-	}
-	else
-	{
-		// Handle index pages (dashboard)
-		filename_lp_len = strlen(filename) + 9;
-		filename_lp = calloc(filename_lp_len, sizeof(char));
-		if(filename_lp == NULL)
-		{
-			log_err("Failed to allocate memory for Lua pattern!");
-			return;
-		}
-		strncpy(filename_lp, filename, filename_lp_len);
-		strncat(filename_lp, "index.lp", filename_lp_len);
-	}
 
-	// Check if the file exists. If so, rewrite the filename
-	if(file_readable(filename_lp))
+	// Try index pages first
+	if(trailing_slash)
+		// If there is a trailing slash, append "index.lp"
+		filename_lp = append_to_path(filename, "index.lp");
+	else
+		// If there is no trailing slash, append "/index.lp"
+		filename_lp = append_to_path(filename, "/index.lp");
+
+	// Check if the file exists. If so, rewrite the filename and return
+	if(filename_lp != NULL && file_readable(filename_lp))
 	{
-		log_debug(DEBUG_API, "Rewriting %s ==> %s", filename, filename_lp);
+		log_debug(DEBUG_API, "Rewriting index page: %s ==> %s", filename, filename_lp);
+		strncpy(filename, filename_lp, filename_buf_len);
+		free(filename_lp);
+		return;
+	}
+	free(filename_lp);
+
+	// If there is a trailing slash, we are done
+	if(trailing_slash)
+		return;
+
+	// Try full path with ".lp" appended
+	filename_lp = append_to_path(filename, ".lp");
+	if(filename_lp != NULL && file_readable(filename_lp))
+	{
+		log_debug(DEBUG_API, "Rewriting Lua page: %s ==> %s", filename, filename_lp);
 		strncpy(filename, filename_lp, filename_buf_len);
 		free(filename_lp);
 		return;
@@ -383,13 +396,15 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 	// Change last occurrence of "/" to "-" (if any)
 	char *last_slash = strrchr(filename_lp, '/');
 	if(last_slash != NULL)
-		*last_slash = '-';
-	if(file_readable(filename_lp))
 	{
-		log_debug(DEBUG_API, "Rewriting %s ==> %s", filename, filename_lp);
-		strncpy(filename, filename_lp, filename_buf_len);
-		free(filename_lp);
-		return;
+		*last_slash = '-';
+		if(file_readable(filename_lp))
+		{
+			log_debug(DEBUG_API, "Rewriting Lua page (settings page): %s ==> %s", filename, filename_lp);
+			strncpy(filename, filename_lp, filename_buf_len);
+			free(filename_lp);
+			return;
+		}
 	}
 	free(filename_lp);
 }
