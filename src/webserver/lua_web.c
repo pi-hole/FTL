@@ -105,8 +105,8 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	// Check if the request is for the login page
 	const bool login = (strcmp(req_info->local_uri_raw, login_uri) == 0);
 
-	// Check if the request is for a LUA page (every *.lp has already been
-	// rewritten at this point to *)
+	// Check if the request is for a LUA page (every XYZ.lp has already been
+	// rewritten at this point to XYZ)
 	if(!no_dot)
 	{
 		// Not a LUA page - fall back to CivetWeb's default handler
