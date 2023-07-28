@@ -86,8 +86,6 @@ static struct {
 	{ "/api/dhcp/leases",                       "",                           api_dhcp_leases_GET,                   { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/dhcp/leases",                       "/{hwaddr}/{ip}/{clid}",      api_dhcp_leases_DELETE,                { false, true,  0               }, true,  HTTP_DELETE },
 	{ "/api/action/gravity",                    "",                           api_action_gravity,                    { false, true,  0               }, true,  HTTP_POST },
-	{ "/api/action/reboot",                     "",                           api_action_reboot,                     { false, true,  0               }, true,  HTTP_POST },
-	{ "/api/action/poweroff",                   "",                           api_action_poweroff,                   { false, true,  0               }, true,  HTTP_POST },
 	{ "/api/action/restartdns",                 "",                           api_action_restartDNS,                 { false, true,  0               }, true,  HTTP_POST },
 	{ "/api/action/flush/logs",                 "",                           api_action_flush_logs,                 { false, true,  0               }, true,  HTTP_POST },
 	{ "/api/action/flush/arp",                  "",                           api_action_flush_arp,                  { false, true,  0               }, true,  HTTP_POST },

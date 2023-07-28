@@ -141,13 +141,6 @@ bool check_capabilities(void)
 		log_warn("Required Linux capability CAP_CHOWN not available");
 		capabilities_okay = false;
 	}
-	if (!(data->permitted & (1 << CAP_SYS_BOOT)) ||
-	    !(data->effective & (1 << CAP_SYS_BOOT)))
-	{
-		// Necessary to reboot/poweroff the system through the API
-		log_warn("Required Linux capability CAP_SYS_BOOT not available");
-		capabilities_okay = false;
-	}
 
 	// Free allocated memory
 	free(hdr);
