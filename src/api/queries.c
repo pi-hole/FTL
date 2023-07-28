@@ -367,7 +367,11 @@ int api_queries(struct ftl_conn *api)
 		                       sqlite3_errstr(rc));
 	}
 
-	// Bind items to prepared statement (if GET-filtering)
+	// We use this boolean to memorize if we are filtering at all. It is used
+	// later to decide if we can short-circuit the query counting for
+	// performance reasons.
+	bool filtering = false;
+	// Bind items to prepared statement (if filtering)
 	if(api->request->query_string != NULL)
 	{
 		int idx;
@@ -375,6 +379,7 @@ int api_queries(struct ftl_conn *api)
 		if(idx > 0)
 		{
 			log_debug(DEBUG_API, "adding :domain = \"%s\" to query", domainname);
+			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, domainname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
 				sqlite3_reset(read_stmt);
@@ -389,6 +394,7 @@ int api_queries(struct ftl_conn *api)
 		if(idx > 0)
 		{
 			log_debug(DEBUG_API, "adding :cip = \"%s\" to query", clientip);
+			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, clientip, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
 				sqlite3_reset(read_stmt);
@@ -403,6 +409,7 @@ int api_queries(struct ftl_conn *api)
 		if(idx > 0)
 		{
 			log_debug(DEBUG_API, "adding :cname = \"%s\" to query", clientname);
+			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, clientname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
 				sqlite3_reset(read_stmt);
@@ -417,6 +424,7 @@ int api_queries(struct ftl_conn *api)
 		if(idx > 0)
 		{
 			log_debug(DEBUG_API, "adding :upstream = \"%s\" to query", upstreamname);
+			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, upstreamname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
 				sqlite3_reset(read_stmt);
@@ -439,6 +447,7 @@ int api_queries(struct ftl_conn *api)
 			if(type < TYPE_MAX)
 			{
 				log_debug(DEBUG_API, "adding :type = %d to query", type);
+				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, type);
 				if(rc != SQLITE_OK)
 				{
@@ -470,6 +479,7 @@ int api_queries(struct ftl_conn *api)
 			if(status < QUERY_STATUS_MAX)
 			{
 				log_debug(DEBUG_API, "adding :status = %d to query", status);
+				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, status);
 				if(rc != SQLITE_OK)
 				{
@@ -501,6 +511,7 @@ int api_queries(struct ftl_conn *api)
 			if(reply < QUERY_REPLY_MAX)
 			{
 				log_debug(DEBUG_API, "adding :reply_type = %d to query", reply);
+				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, reply);
 				if(rc != SQLITE_OK)
 				{
@@ -532,6 +543,7 @@ int api_queries(struct ftl_conn *api)
 			if(dnssec < DNSSEC_MAX)
 			{
 				log_debug(DEBUG_API, "adding :dnssec = %d to query", dnssec);
+				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, dnssec);
 				if(rc != SQLITE_OK)
 				{
@@ -573,7 +585,7 @@ int api_queries(struct ftl_conn *api)
 		// Check if we have reached the limit
 		if(added >= (unsigned int)length)
 		{
-			if(api->request->query_string != NULL)
+			if(filtering)
 			{
 				// We are filtering, so we have to continue to
 				// step over the remaining rows to get the
@@ -717,7 +729,7 @@ int api_queries(struct ftl_conn *api)
 	// DataTables specific properties
 	const unsigned long recordsTotal = disk ? disk_dbnum : mem_dbnum;
 	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", recordsTotal);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", api->request->query_string != NULL ? recordsCounted : recordsTotal);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", filtering ? recordsCounted : recordsTotal);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "draw", draw);
 
 	// Finalize statements
