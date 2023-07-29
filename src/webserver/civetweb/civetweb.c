@@ -2062,7 +2062,7 @@ enum {
 static const struct mg_option config_options[] = {
 
     /* Once for each server */
-    {"listening_ports", MG_CONFIG_TYPE_STRING_LIST, "8080"},
+    {"listening_ports", MG_CONFIG_TYPE_STRING_LIST, "80"},
     {"num_threads", MG_CONFIG_TYPE_NUMBER, "50"},
     {"run_as_user", MG_CONFIG_TYPE_STRING, NULL},
     {"tcp_nodelay", MG_CONFIG_TYPE_NUMBER, "0"},
@@ -15536,14 +15536,14 @@ close_all_listening_sockets(struct mg_context *ctx)
 
 
 /* Valid listening port specification is: [ip_address:]port[s]
- * Examples for IPv4: 80, 443s, 127.0.0.1:3128, 192.0.2.3:8080s
+ * Examples for IPv4: 80, 443s, 127.0.0.1:3128, 192.0.2.3:80s
  * Examples for IPv6: [::]:80, [::1]:80,
  *   [2001:0db8:7654:3210:FEDC:BA98:7654:3210]:443s
  *   see https://tools.ietf.org/html/rfc3513#section-2.2
  * In order to bind to both, IPv4 and IPv6, you can either add
- * both ports using 8080,[::]:8080, or the short form +8080.
- * Both forms differ in detail: 8080,[::]:8080 create two sockets,
- * one only accepting IPv4 the other only IPv6. +8080 creates
+ * both ports using 80,[::]:80, or the short form +80.
+ * Both forms differ in detail: 80,[::]:80 create two sockets,
+ * one only accepting IPv4 the other only IPv6. +80 creates
  * one socket accepting IPv4 and IPv6. Depending on the IPv6
  * environment, they might work differently, or might not work
  * at all - it must be tested what options work best in the
@@ -15585,7 +15585,7 @@ parse_port_string(const struct vec *vec, struct socket *so, int *ip_version)
 	                 // to an integer value, but function will not report
 	                 // conversion errors; consider using 'strtol' instead
 	    == 5) {
-		/* Bind to a specific IPv4 address, e.g. 192.168.1.5:8080 */
+		/* Bind to a specific IPv4 address, e.g. 192.168.1.5:80 */
 		so->lsa.sin.sin_addr.s_addr =
 		    htonl((a << 24) | (b << 16) | (c << 8) | d);
 		so->lsa.sin.sin_port = htons((uint16_t)port);
@@ -15734,21 +15734,21 @@ is_ssl_port_used(const char *ports)
 		/* There are several different allowed syntax variants:
 		 * - "80" for a single port using every network interface
 		 * - "localhost:80" for a single port using only localhost
-		 * - "80,localhost:8080" for two ports, one bound to localhost
+		 * - "80,localhost:80" for two ports, one bound to localhost
 		 * - "80,127.0.0.1:8084,[::1]:8086" for three ports, one bound
 		 *   to IPv4 localhost, one to IPv6 localhost
 		 * - "+80" use port 80 for IPv4 and IPv6
 		 * - "+80r,+443s" port 80 (HTTP) is a redirect to port 443 (HTTPS),
 		 *   for both: IPv4 and IPv4
-		 * - "+443s,localhost:8080" port 443 (HTTPS) for every interface,
-		 *   additionally port 8080 bound to localhost connections
+		 * - "+443s,localhost:80" port 443 (HTTPS) for every interface,
+		 *   additionally port 80 bound to localhost connections
 		 *
 		 * If we just look for 's' anywhere in the string, "localhost:80"
 		 * will be detected as SSL (false positive).
 		 * Looking for 's' after a digit may cause false positives in
-		 * "my24service:8080".
+		 * "my24service:80".
 		 * Looking from 's' backward if there are only ':' and numbers
-		 * before will not work for "24service:8080" (non SSL, port 8080)
+		 * before will not work for "24service:80" (non SSL, port 80)
 		 * or "24s" (SSL, port 24).
 		 *
 		 * Remark: Initially hostnames were not allowed to start with a
