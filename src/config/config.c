@@ -29,6 +29,9 @@
 struct config config = { 0 };
 static bool config_initialized = false;
 
+// Private prototypes
+static bool port_in_use(const in_port_t port);
+
 // Set debug flags from config struct to global debug_flags array
 // This is called whenever the config is reloaded and debug flags may have
 // changed
@@ -1325,6 +1328,24 @@ void readFTLconf(struct config *conf, const bool rewrite)
 		rename(GLOBALTOMLPATH, new_name);
 	}
 
+	// Determine default webserver ports
+	// Check if ports 80/TCP and 443/TCP are already in use
+	const in_port_t http_port = port_in_use(80) ? 8080 : 80;
+	const in_port_t https_port = port_in_use(443) ? 8443 : 443;
+
+	// Create a string with the default ports
+	if(http_port == 80 && https_port == 443)
+		conf->webserver.port.v.s = (char*)"80,[::]:80,443s,[::]:443s";
+	else if(http_port == 8080 && https_port == 443)
+		conf->webserver.port.v.s = (char*)"8080,[::]:8080,443s,[::]:443s";
+	else if(http_port == 80 && https_port == 8443)
+		conf->webserver.port.v.s = (char*)"80,[::]:80,8443s,[::]:8443s";
+	else
+		conf->webserver.port.v.s = (char*)"8080,[::]:8080,8443s,[::]:8443s";
+
+	log_info("Initialised webserver ports at %d (HTTP) and %d (HTTPS)",
+	         http_port, https_port);
+
 	// Initialize the TOML config file
 	writeFTLtoml(true);
 	write_dnsmasq_config(conf, false, NULL);
@@ -1464,4 +1485,35 @@ void reread_config(void)
 	// However, we do need to write the custom.list file as this file can change
 	// at any time and is automatically reloaded by dnsmasq
 	write_custom_list();
+}
+
+// Very simple test of a port's availability by trying to bind a TCP socket to
+// it at 0.0.0.0 (this tests only IPv4 availability)
+static bool port_in_use(const in_port_t port)
+{
+	// Create a socket
+	const int sock = socket(AF_INET, SOCK_STREAM, 0);
+	if(sock < 0)
+	{
+		log_err("Unable to create port testing socket: %s", strerror(errno));
+		return false;
+	}
+
+	// Bind the socket to the desired port
+	struct sockaddr_in addr = { 0 };
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(port);
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+	// Try to bind the socket
+	if(bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0 && errno == EADDRINUSE)
+	{
+		// If we cannot bind the socket, the port is in use
+		close(sock);
+		return true;
+	}
+
+	// If we can bind the socket, the port is not in use
+	close(sock);
+	return false;
 }
