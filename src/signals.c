@@ -178,7 +178,7 @@ void generate_backtrace(void) {
 		void *ptr_off = strstr(fname_dl, BINARY_NAME) != NULL ? (void*)(ptr-base_addr) : ptr;
 
 		// Print this stack frame's details
-		log_info("  %02u: %s(%s+0x%lx) [%p -> %p]", i++, fname_dl, sname_dl, offset, ptr, ptr_off);
+		log_info("  %02u: %s(%s+0x%p) [%p -> %p]", i++, fname_dl, sname_dl, (void*)offset, ptr, ptr_off);
 		print_addr2line(fname_dl, ptr_off);
 		print_addr2line(fname_dl, (void*)ip);
 		log_info(" ");
