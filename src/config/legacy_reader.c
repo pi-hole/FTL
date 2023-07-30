@@ -502,12 +502,6 @@ const char *readFTLlegacy(struct config *conf)
 			conf->dns.piholePTR.v.ptr_type = PTR_HOSTNAMEFQDN;
 	}
 
-	// ADDR2LINE
-	// Should FTL try to call addr2line when generating backtraces?
-	// defaults to: true
-	buffer = parseFTLconf(fp, "ADDR2LINE");
-	parseBool(buffer, &conf->misc.addr2line.v.b);
-
 	// REPLY_WHEN_BUSY
 	// How should FTL handle queries when the gravity database is not available?
 	// defaults to: BLOCK

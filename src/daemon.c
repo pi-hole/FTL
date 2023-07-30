@@ -128,6 +128,10 @@ static void removepid(void)
 	// Note that this function is not really removing the PID file but
 	// rather emptying it
 	FILE *f;
+
+	if(config.files.pid.v.s == NULL)
+		return;
+
 	// Open file for writing (emptying it)
 	if((f = fopen(config.files.pid.v.s, "w")) == NULL)
 	{

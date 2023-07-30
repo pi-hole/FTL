@@ -1041,12 +1041,6 @@ void initConfig(struct config *conf)
 	conf->misc.nice.f = FLAG_ADVANCED_SETTING;
 	conf->misc.nice.d.i = -10;
 
-	conf->misc.addr2line.k = "misc.addr2line";
-	conf->misc.addr2line.h = "Should FTL translate its own stack addresses into code lines during the bug backtrace? This improves the analysis of crashed significantly. It is recommended to leave the option enabled. This option should only be disabled when addr2line is known to not be working correctly on the machine because, in this case, the malfunctioning addr2line can prevent from generating any backtrace at all.";
-	conf->misc.addr2line.t = CONF_BOOL;
-	conf->misc.addr2line.f = FLAG_ADVANCED_SETTING;
-	conf->misc.addr2line.d.b = true;
-
 	conf->misc.dnsmasq_lines.k = "misc.dnsmasq_lines";
 	conf->misc.dnsmasq_lines.h = "Additional lines to inject into the generated dnsmasq configuration.\n Warning: This is an advanced setting and should only be used with care. Incorrectly formatted or duplicated lines as well as lines conflicting with the automatic configuration of Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.\n Use this option with extra care.";
 	conf->misc.dnsmasq_lines.a = cJSON_CreateStringReference("array of valid dnsmasq config line options");

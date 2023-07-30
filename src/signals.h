@@ -20,6 +20,7 @@ void handle_realtime_signals(void);
 pid_t main_pid(void);
 void thread_sleepms(const enum thread_types thread, const int milliseconds);
 void generate_backtrace(void);
+void set_bin_name(const char *name);
 
 extern volatile int exit_code;
 extern volatile sig_atomic_t killed;

@@ -22,6 +22,7 @@
 #ifdef HAVE_MBEDTLS
 #include <mbedtls/version.h>
 #endif
+#include <libunwind.h>
 
 #include "FTL.h"
 #include "args.h"
@@ -363,6 +364,16 @@ void parse_args(int argc, char* argv[])
 		exit(run_arp_scan(scan_all, extreme_mode));
 	}
 
+	// Crash (backtrace) test
+	if(argc > 1 && strcmp(argv[1], "crash") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		// Force SEGV_MAPERR (Address not mapped to object)
+		*((int*)0x1555) = 0x15;
+		exit(EXIT_SUCCESS);
+	}
+
 	// start from 1, as argv[0] is the executable name
 	for(int i = 1; i < argc; i++)
 	{
@@ -640,6 +651,10 @@ void parse_args(int argc, char* argv[])
 			printf("****************************** %s%scJSON%s ********************************\n",
 			       yellow, bold, normal);
 			printf("Version:         %s%s%s%s\n", green, bold, cJSON_Version(), normal);
+			printf("\n");
+			printf("**************************** %s%slibunwind%s ******************************\n",
+			       yellow, bold, normal);
+			printf("Version:         %s%s%d.%d.%d%s\n", green, bold, UNW_VERSION_MAJOR, UNW_VERSION_MINOR, UNW_VERSION_EXTRA, normal);
 			printf("\n");
 			exit(EXIT_SUCCESS);
 		}

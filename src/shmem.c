@@ -869,6 +869,10 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 
 static void delete_shm(SharedMemory *sharedMemory)
 {
+	// Return if shared memory object is not initialized
+	if(sharedMemory->name == NULL)
+		return;
+
 	// Unmap shared memory (if mmapped)
 	if(sharedMemory->ptr != NULL)
 	{

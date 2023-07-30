@@ -284,8 +284,9 @@ find_library(LIBHOGWEED NAMES libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX} hogweed H
 find_library(LIBGMP NAMES libgmp${CMAKE_STATIC_LIBRARY_SUFFIX} gmp)
 find_library(LIBNETTLE NAMES libnettle${CMAKE_STATIC_LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
 find_library(LIBIDN NAMES libidn${CMAKE_STATIC_LIBRARY_SUFFIX} idn)
+find_library(LIBUNWIND NAMES libunwind${CMAKE_STATIC_LIBRARY_SUFFIX} unwind)
 
-target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN})
+target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN} ${LIBUNWIND})
 
 if(LUA_DL STREQUAL "true")
     find_library(LIBDL dl)

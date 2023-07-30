@@ -45,6 +45,12 @@ jmp_buf exit_jmp;
 
 int main (int argc, char *argv[])
 {
+	// Start timer
+	timer_start(EXIT_TIMER);
+
+	// Set binary name
+	set_bin_name(argv[0]);
+
 	// Get user pihole-FTL is running as
 	// We store this in a global variable
 	// such that the log routine can access
@@ -53,6 +59,10 @@ int main (int argc, char *argv[])
 
 	// Obtain log file location
 	getLogFilePath();
+
+	// Catch signals not handled by dnsmasq
+	// We configure real-time signals later (after dnsmasq has forked)
+	handle_signals();
 
 	// Parse arguments
 	// We run this also for no direct arguments
@@ -63,13 +73,8 @@ int main (int argc, char *argv[])
 	init_FTL_log(argc > 0 ? argv[0] : NULL);
 	// Try to open FTL log
 	init_config_mutex();
-	timer_start(EXIT_TIMER);
 	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
-
-	// Catch signals not handled by dnsmasq
-	// We configure real-time signals later (after dnsmasq has forked)
-	handle_signals();
 
 	// Process pihole.toml configuration file
 	// The file is rewritten after parsing to ensure that all

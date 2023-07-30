@@ -437,8 +437,6 @@ components:
                   type: integer
                 delay_startup:
                   type: integer
-                addr2line:
-                  type: boolean
                 privacylevel:
                   type: integer
                 dnsmasq_lines:
@@ -674,7 +672,6 @@ components:
           misc:
             nice: -10
             delay_startup: 10
-            addr2line: true
             privacylevel: 0
             dnsmasq_lines: [ ]
             check:

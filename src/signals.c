@@ -9,9 +9,6 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#if defined(__GLIBC__)
-#include <execinfo.h>
-#endif
 #include "signals.h"
 // logging routines
 #include "log.h"
@@ -26,16 +23,29 @@
 // struct config
 #include "config/config.h"
 
+// For backtrace
+#define UNW_LOCAL_ONLY
+#include <libunwind.h>
+#include <dlfcn.h>
+#include <link.h>
+
 #define BINARY_NAME "pihole-FTL"
 
 volatile sig_atomic_t killed = 0;
 static volatile pid_t mpid = -1;
 static time_t FTLstarttime = 0;
+static char bin_name[256] = { 0 };
 volatile int exit_code = EXIT_SUCCESS;
 
 volatile sig_atomic_t thread_cancellable[THREADS_MAX] = { false };
 volatile sig_atomic_t thread_running[THREADS_MAX] = { false };
 const char *thread_names[THREADS_MAX] = { "" };
+
+void set_bin_name(const char *name)
+{
+	strncpy(bin_name, name, sizeof(bin_name)-1);
+	bin_name[sizeof(bin_name)-1] = '\0';
+}
 
 // Return the (null-terminated) name of the calling thread
 // The name is stored in the buffer as well as returned for convenience
@@ -45,8 +55,7 @@ static char * __attribute__ ((nonnull (1))) getthread_name(char buffer[16])
 	return buffer;
 }
 
-#if defined(__GLIBC__)
-static void print_addr2line(const char *symbol, const void *address, const int j, const void *offset)
+static void print_addr2line(const char *symbol, const void *addr)
 {
 	// Only do this analysis for our own binary (skip trying to analyse libc.so, etc.)
 	if(strstr(symbol, BINARY_NAME) == NULL)
@@ -59,16 +68,12 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 	while(symbol[p] != '(' && symbol[p] != ' ' && symbol[p] != '\0')
 		p++;
 
-	// Compute address cleaned by binary offset
-	void *addr = (void*)(address-offset);
-
 	// Invoke addr2line command and get result through pipe
 	char addr2line_cmd[256];
 	snprintf(addr2line_cmd, sizeof(addr2line_cmd), "addr2line %p -e %.*s", addr, p, symbol);
 	FILE *addr2line = NULL;
 	char linebuffer[512];
-	if(config.misc.addr2line.v.b &&
-	   (addr2line = popen(addr2line_cmd, "r")) != NULL &&
+	if((addr2line = popen(addr2line_cmd, "r")) != NULL &&
 	   fgets(linebuffer, sizeof(linebuffer), addr2line) != NULL)
 	{
 		char *pos;
@@ -81,55 +86,103 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 		snprintf(linebuffer, sizeof(linebuffer), "N/A (%p -> %s)", addr, addr2line_cmd);
 	}
 	// Log result
-	log_info("L[%04i]: %s", j, linebuffer);
+	log_info("      %s", linebuffer);
 
 	// Close pipe
 	if(addr2line != NULL)
 		pclose(addr2line);
 }
-#endif
 
-// Log backtrace
-void generate_backtrace(void)
+// Inspired by https://stackoverflow.com/a/8876887
+void *base_addr = NULL;
+static int phdr_callback(struct dl_phdr_info *info, size_t size, void *data)
 {
-// Check GLIBC availability as MUSL does not support live backtrace generation
-#if defined(__GLIBC__)
-	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
-	void *buffer[255];
-	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
-	log_info("Backtrace:");
+	static int once = 0;
 
-	char ** bcktrace = backtrace_symbols(buffer, calls);
-	if(bcktrace == NULL)
+	if (once) return 0;
+	once = 1;
+
+	for (int j = 0; j < info->dlpi_phnum; j++)
 	{
-		log_warn("Unable to obtain backtrace symbols!");
-		return;
+		if (info->dlpi_phdr[j].p_type == PT_LOAD)
+		{
+			base_addr = (void*)(info->dlpi_addr + info->dlpi_phdr[j].p_vaddr);
+			break;
+		}
 	}
+	return 0;
+}
 
-	// Try to compute binary offset from backtrace_symbols result
-	void *offset = NULL;
-	for(int j = 0; j < calls; j++)
+void generate_backtrace(void) {
+	unw_cursor_t cursor; unw_context_t uc;
+	unw_word_t ip, sp;
+
+	log_info(" ");
+
+	// Get the base address of the main executable
+	dl_iterate_phdr(phdr_callback, NULL);
+	log_info("Generating backtrace (base address: %p)...", base_addr);
+
+	// Get unwind context
+	unw_getcontext(&uc);
+	unw_init_local(&cursor, &uc);
+
+	// Skip the first frame (this function)
+	unw_step(&cursor);
+
+	// Iterate over the stack frames
+	unsigned int i = 1;
+	do
 	{
-		void *p1 = NULL, *p2 = NULL;
-		char *pend = NULL;
-		if((pend = strrchr(bcktrace[j], '(')) != NULL &&
-		   strstr(bcktrace[j], BINARY_NAME) != NULL &&
-		   sscanf(pend, "(+%p) [%p]", &p1, &p2) == 2)
-		   offset = (void*)(p2-p1);
-	}
+		// Get the program counter
+		unw_get_reg(&cursor, UNW_REG_IP, &ip);
+		// Get the stack pointer
+		unw_get_reg(&cursor, UNW_REG_SP, &sp);
 
-	for(int j = 0; j < calls; j++)
-	{
-		log_info("B[%04i]: %s", j,
-		     bcktrace != NULL ? bcktrace[j] : "---");
+		// Get the name of the shared object
+		char sname[256];
+		unw_word_t offset;
+		int ret = unw_get_proc_name(&cursor, sname, sizeof(sname), &offset);
+		if (ret && ret != -UNW_ENOMEM)
+		{
+			if (ret != -UNW_EUNSPEC)
+				log_err("unw_get_proc_name: %s [%d]", unw_strerror(ret), ret);
+			strcpy(sname, "?");
+		}
 
-		if(bcktrace != NULL)
-			print_addr2line(bcktrace[j], buffer[j], j, offset);
-	}
-	free(bcktrace);
-#else
-	log_info("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
-#endif
+		// Get the procedure information
+		unw_proc_info_t pip;
+		ret = unw_get_proc_info(&cursor, &pip);
+		if (ret)
+		{
+			log_err("unw_get_proc_info: %s [%d]", unw_strerror(ret), ret);
+			continue;
+		}
+
+		// Get the file name of defining object (binary/library name,
+		// fname_dl) and the name of the nearest symbol (sname_dl)
+		void *ptr = (void *)(pip.start_ip + offset);
+		Dl_info dlinfo;
+		const char *fname_dl = bin_name, *sname_dl = sname;
+		if (dladdr(ptr, &dlinfo))
+		{
+			if(dlinfo.dli_fname && *dlinfo.dli_fname)
+				fname_dl = dlinfo.dli_fname;
+			if(dlinfo.dli_sname && *dlinfo.dli_sname)
+				sname_dl = dlinfo.dli_sname;
+		}
+
+		// Compute the offset of the address from the base address to get
+		// the offset within the PIE binary/library (needed for addr2line)
+		// Note: We only do this for the main binary, not for libraries
+		void *ptr_off = strstr(fname_dl, BINARY_NAME) != NULL ? (void*)(ptr-base_addr) : ptr;
+
+		// Print this stack frame's details
+		log_info("  %02u: %s(%s+0x%lx) [%p -> %p]", i++, fname_dl, sname_dl, offset, ptr, ptr_off);
+		print_addr2line(fname_dl, ptr_off);
+		print_addr2line(fname_dl, (void*)ip);
+		log_info(" ");
+	} while(unw_step(&cursor) > 0);
 }
 
 static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, void *unused)
@@ -246,7 +299,7 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	log_info("Thank you for helping us to improve our FTL engine!");
 
 	// Terminate main process if crash happened in a TCP worker
-	if(mpid != getpid())
+	if(mpid != getpid() && mpid != -1)
 	{
 		// This is a forked process
 		log_info("Asking parent pihole-FTL (PID %i) to shut down", (int)mpid);
