@@ -934,6 +934,13 @@ void initConfig(struct config *conf)
 	conf->webserver.api.excludeDomains.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeDomains.d.json = cJSON_CreateArray();
 
+	conf->webserver.api.excludeRegex.k = "webserver.api.excludeRegex";
+	conf->webserver.api.excludeRegex.h = "Array of regular expressions to be excluded from certain API responses\n Example: [ \"(^|\\.)\\.google\\.de$\", \"\\.pi-hole\\.net$\" ]";
+	conf->webserver.api.excludeRegex.a = cJSON_CreateStringReference("array of regular expressions");
+	conf->webserver.api.excludeRegex.t = CONF_JSON_STRING_ARRAY;
+	conf->webserver.api.excludeRegex.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->webserver.api.excludeRegex.d.json = cJSON_CreateArray();
+
 	conf->webserver.api.maxHistory.k = "webserver.api.maxHistory";
 	conf->webserver.api.maxHistory.h = "How much history should be imported from the database and returned by the API [seconds]? (max 24*60*60 = 86400)";
 	conf->webserver.api.maxHistory.t = CONF_UINT;

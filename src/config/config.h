@@ -224,6 +224,7 @@ struct config {
 			struct conf_item totp_secret; // This is a write-only item
 			struct conf_item excludeClients;
 			struct conf_item excludeDomains;
+			struct conf_item excludeRegex;
 			struct conf_item maxHistory;
 			struct conf_item allow_destructive;
 			struct {

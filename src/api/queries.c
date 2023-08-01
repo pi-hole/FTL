@@ -19,7 +19,7 @@
 #include "database/aliasclients.h"
 // get_memdb()
 #include "database/query-table.h"
-
+#include "regex.h"
 // dbopen(false, ), dbclose()
 #include "database/common.h"
 
@@ -340,6 +340,48 @@ int api_queries(struct ftl_conn *api)
 			add_querystr_string(api, querystr, "q.dnssec=", ":dnssec", &where);
 	}
 
+	// Regex filtering?
+	const size_t regex_filters = cJSON_GetArraySize(config.webserver.api.excludeRegex.v.json);
+	regex_t *regex = NULL;
+	if(regex_filters > 0)
+	{
+		// Allocate memory for regex array
+		regex = calloc(regex_filters, sizeof(regex_t));
+		if(regex == NULL)
+		{
+			return send_json_error(api, 500,
+			                       "internal_error",
+			                       "Internal server error, failed to allocate memory",
+			                       NULL);
+		}
+
+		// Compile regexes
+		for(size_t i = 0; i < regex_filters; i++)
+		{
+			// Iterate over regexes
+			cJSON *filter = NULL;
+			cJSON_ArrayForEach(filter, config.webserver.api.excludeRegex.v.json)
+			{
+				// Skip non-string, invalid and empty values
+				if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
+					continue;
+
+				// Compile regex
+				int rc = regcomp(&regex[i], filter->valuestring, REG_EXTENDED);
+				if(rc != 0)
+				{
+					// Failed to compile regex
+					char errbuf[1024];
+					regerror(rc, &regex[i], errbuf, sizeof(errbuf));
+					return send_json_error(api, 400,
+							"bad_request",
+							"Failed to compile regex",
+							errbuf);
+				}
+			}
+		}
+	}
+
 	// Get connection to in-memory database
 	sqlite3 *db = get_memdb();
 
@@ -596,7 +638,7 @@ int api_queries(struct ftl_conn *api)
 	log_debug(DEBUG_API, "  with cursor: %lu, start: %u, length: %d", cursor, start, length);
 
 	cJSON *queries = JSON_NEW_ARRAY();
-	unsigned int added = 0, recordsCounted = 0;
+	unsigned int added = 0, recordsCounted = 0, regex_skipped = 0;
 	sqlite3_int64 firstID = -1, id = -1;
 	bool skipTheRest = false;
 	while((rc = sqlite3_step(read_stmt)) == SQLITE_ROW)
@@ -608,32 +650,39 @@ int api_queries(struct ftl_conn *api)
 		if(skipTheRest)
 			continue;
 
-		// Check if we have reached the limit
-		if(added >= (unsigned int)length)
-		{
-			if(filtering)
-			{
-				// We are filtering, so we have to continue to
-				// step over the remaining rows to get the
-				// correct number of total records
-				skipTheRest = true;
-				continue;
-			}
-			else
-			{
-				// We are not filtering, so we can stop here
-				// The total number of records is the number
-				// of records in the database
-				break;
-			}
-		}
-
 		// Get ID of query from database
 		id = sqlite3_column_int64(read_stmt, 0); // q.id
 
 		// Set firstID from the first returned value
 		if(firstID == -1)
 			firstID = id;
+
+		// Apply possible regex filters to Query Log domains
+		const char *domain = (const char*)sqlite3_column_text(read_stmt, 4); // d.domain
+		if(regex_filters > 0)
+		{
+			bool match = false;
+			// Iterate over all regex filters
+			for(size_t i = 0; i < regex_filters; i++)
+			{
+				// Check if the domain matches the regex
+				if(regexec(&regex[i], domain, 0, NULL, 0) == 0)
+				{
+					// Domain matches, so we can stop
+					// iterating here
+					match = true;
+					break;
+				}
+			}
+			if(match)
+			{
+				// Domain matches, we skip it and adjust the
+				// counter
+				recordsCounted--;
+				regex_skipped++;
+				continue;
+			}
+		}
 
 		// Server-side pagination
 		if((unsigned long)id > cursor)
@@ -652,7 +701,37 @@ int api_queries(struct ftl_conn *api)
 			// everything.
 			// Skip everything AFTER we added the requested number
 			// of queries if length is > 0.
-			break;
+			continue;
+		}
+
+		// Check if we have reached the limit
+		if(added >= (unsigned int)length)
+		{
+			if(filtering)
+			{
+				// We are filtering, so we have to continue to
+				// step over the remaining rows to get the
+				// correct number of total records
+				if(regex_filters == 0)
+				{
+					skipTheRest = true;
+					continue;
+				}
+			}
+			else
+			{
+				// We are not filtering, so we can stop here
+				// The total number of records is the number
+				// of records in the database
+				if(regex_filters == 0)
+					break;
+				else
+					// We are regex filtering, so we have to
+					// continue to step over the remaining
+					// rows to get the correct number of
+					// total records
+					continue;
+			}
 		}
 
 		// Build item object
@@ -669,7 +748,7 @@ int api_queries(struct ftl_conn *api)
 		JSON_COPY_STR_TO_OBJECT(item, "type", get_query_type_str(query.type, &query, buffer));
 		JSON_REF_STR_IN_OBJECT(item, "status", get_query_status_str(query.status));
 		JSON_REF_STR_IN_OBJECT(item, "dnssec", get_query_dnssec_str(query.dnssec));
-		JSON_COPY_STR_TO_OBJECT(item, "domain", sqlite3_column_text(read_stmt, 4)); // d.domain
+		JSON_COPY_STR_TO_OBJECT(item, "domain", domain);
 
 		if(sqlite3_column_type(read_stmt, 5) == SQLITE_TEXT &&
 		   sqlite3_column_bytes(read_stmt, 5) > 0)
@@ -735,7 +814,8 @@ int api_queries(struct ftl_conn *api)
 
 		added++;
 	}
-	log_debug(DEBUG_API, "Sending %u of %lu in memory and %lu on disk queries", added, mem_dbnum, disk_dbnum);
+	log_debug(DEBUG_API, "Sending %u of %lu in memory and %lu on disk queries (skipped %u because of regex filters)",
+	          added, mem_dbnum, disk_dbnum, regex_skipped);
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
 
@@ -758,7 +838,7 @@ int api_queries(struct ftl_conn *api)
 	// DataTables specific properties
 	const unsigned long recordsTotal = disk ? disk_dbnum : mem_dbnum;
 	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", recordsTotal);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", filtering ? recordsCounted : recordsTotal);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", filtering || regex_filters > 0 ? recordsCounted : recordsTotal);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "draw", draw);
 
 	// Finalize statements
@@ -770,6 +850,12 @@ int api_queries(struct ftl_conn *api)
 		                       "internal_error",
 		                       "Internal server error, cannot detach disk database",
 		                       message);
+	}
+
+	// Free regex memory if allocated
+	if(regex_filters > 0)
+	{
+		free(regex);
 	}
 
 	JSON_SEND_OBJECT(json);

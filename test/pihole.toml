@@ -622,6 +622,13 @@
     #     array of IP addresses and/or hostnames
     excludeDomains = []
 
+    # Array of regular expressions to be excluded from certain API responses
+    # Example: [ "(^|\.)\.google\.de$", "\.pi-hole\.net$" ]
+    #
+    # Possible values are:
+    #     array of regular expressions
+    excludeRegex = []
+
     # How much history should be imported from the database [seconds]? (max 24*60*60 =
     # 86400)
     maxHistory = 86400

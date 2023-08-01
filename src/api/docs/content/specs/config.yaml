@@ -397,6 +397,10 @@ components:
                       type: array
                       items:
                         type: string
+                    excludeRegex:
+                      type: array
+                      items:
+                        type: string
                     maxHistory:
                       type: integer
                     allow_destructive:
@@ -658,6 +662,7 @@ components:
               totp_secret: ''
               excludeClients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
               excludeDomains: [ 'google.de', 'pi-hole.net' ]
+              excludeRegex: [ '\.fishy-domain\.com$' ]
               maxHistory: 86400
               allow_destructive: true
               temp:
