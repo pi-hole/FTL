@@ -24,9 +24,13 @@
 #include "config/config.h"
 
 // For backtrace
+#if defined(USE_UNWIND)
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
 #include <dlfcn.h>
+#elif defined(__GLIBC__)
+#include <execinfo.h>
+#endif
 #include <link.h>
 
 #define BINARY_NAME "pihole-FTL"
@@ -114,6 +118,7 @@ static int phdr_callback(struct dl_phdr_info *info, size_t size, void *data)
 }
 
 void generate_backtrace(void) {
+#ifdef USE_UNWIND
 	unw_cursor_t cursor; unw_context_t uc;
 	unw_word_t ip, sp;
 
@@ -121,7 +126,7 @@ void generate_backtrace(void) {
 
 	// Get the base address of the main executable
 	dl_iterate_phdr(phdr_callback, NULL);
-	log_info("Generating backtrace (base address: %p)...", base_addr);
+	log_info("Generating backtrace (unwinding, base address: %p)...", base_addr);
 
 	// Get unwind context
 	unw_getcontext(&uc);
@@ -183,6 +188,40 @@ void generate_backtrace(void) {
 		print_addr2line(fname_dl, (void*)ip);
 		log_info(" ");
 	} while(unw_step(&cursor) > 0);
+#elif defined(__GLIBC__)
+	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
+	void *buffer[255];
+	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
+	log_info("Generating backtrace (glibc, base address: %p)...", base_addr);
+
+	char ** bcktrace = backtrace_symbols(buffer, calls);
+	if(bcktrace == NULL)
+	{
+		log_warn("Unable to obtain backtrace symbols!");
+		return;
+	}
+
+	dl_iterate_phdr(phdr_callback, NULL);
+
+	// Print backtrace
+	for(int j = 0; j < calls; j++)
+	{
+		log_info("  %02i: %s", j, bcktrace != NULL ? bcktrace[j] : "---");
+
+		if(bcktrace != NULL)
+		{
+			// Compute the offset of the address from the base address to get
+			// the offset within the PIE binary/library (needed for addr2line)
+			// Note: We only do this for the main binary, not for libraries
+			void *ptr_off = strstr(bcktrace[j], BINARY_NAME) != NULL ? (void*)(buffer[j]-base_addr) : buffer[j];
+			print_addr2line(bcktrace[j], ptr_off);
+			print_addr2line(bcktrace[j], buffer[j]);
+		}
+	}
+	free(bcktrace);
+#else
+	log_info("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace/unwinding support, not generating one !!!");
+#endif
 }
 
 static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, void *unused)

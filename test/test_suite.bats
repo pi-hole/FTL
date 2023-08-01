@@ -1357,7 +1357,7 @@
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"-->  FTL crashed!  <--"* ]]
   [[ "${lines[@]}" == *"1: ./pihole-FTL(signal_handler+"* ]]
-  [[ "${lines[@]}" == *"/app/src/signals.c:296"* ]]
+  [[ "${lines[@]}" == *"/app/src/signals.c:337"* ]]
   [[ "${lines[@]}" == *"03: ./pihole-FTL(main+"* ]]
   [[ "${lines[@]}" == *"/app/src/main.c:73"* ]]
   [[ $status == 1 ]]

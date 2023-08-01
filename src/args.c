@@ -22,7 +22,9 @@
 #ifdef HAVE_MBEDTLS
 #include <mbedtls/version.h>
 #endif
+#ifdef USE_UNWIND
 #include <libunwind.h>
+#endif
 
 #include "FTL.h"
 #include "args.h"
@@ -654,7 +656,11 @@ void parse_args(int argc, char* argv[])
 			printf("\n");
 			printf("**************************** %s%slibunwind%s ******************************\n",
 			       yellow, bold, normal);
+#ifdef USE_UNWIND
 			printf("Version:         %s%s%d.%d.%d%s\n", green, bold, UNW_VERSION_MAJOR, UNW_VERSION_MINOR, UNW_VERSION_EXTRA, normal);
+#else
+			printf("Version:         %s%sNot available%s\n", red, yellow, normal);
+#endif
 			printf("\n");
 			exit(EXIT_SUCCESS);
 		}
