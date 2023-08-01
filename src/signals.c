@@ -59,6 +59,7 @@ static char * __attribute__ ((nonnull (1))) getthread_name(char buffer[16])
 	return buffer;
 }
 
+#if defined(USE_UNWIND) || defined(__GLIBC__)
 static void print_addr2line(const char *symbol, const void *addr)
 {
 	// Only do this analysis for our own binary (skip trying to analyse libc.so, etc.)
@@ -116,6 +117,7 @@ static int phdr_callback(struct dl_phdr_info *info, size_t size, void *data)
 	}
 	return 0;
 }
+#endif
 
 void generate_backtrace(void) {
 #ifdef USE_UNWIND

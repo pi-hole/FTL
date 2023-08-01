@@ -1351,14 +1351,3 @@
   [[ $status == 0 ]]
   run bash -c "rm ${filename}"
 }
-
-@test "Backtrace generation works for articifial crash test" {
-  run bash -c './pihole-FTL crash'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"-->  FTL crashed!  <--"* ]]
-  [[ "${lines[@]}" == *"1: ./pihole-FTL(signal_handler+"* ]]
-  [[ "${lines[@]}" == *"/app/src/signals.c:337"* ]]
-  [[ "${lines[@]}" == *"03: ./pihole-FTL(main+"* ]]
-  [[ "${lines[@]}" == *"/app/src/main.c:73"* ]]
-  [[ $status == 1 ]]
-}

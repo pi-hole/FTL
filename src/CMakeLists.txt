@@ -285,7 +285,7 @@ find_library(LIBGMP NAMES libgmp${CMAKE_STATIC_LIBRARY_SUFFIX} gmp)
 find_library(LIBNETTLE NAMES libnettle${CMAKE_STATIC_LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
 find_library(LIBIDN NAMES libidn${CMAKE_STATIC_LIBRARY_SUFFIX} idn)
 find_library(LIBDL NAMES libdl${CMAKE_STATIC_LIBRARY_SUFFIX} dl)
-target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN} ${LIBDL})
+target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN} -ldl ${LIBDL})
 
 find_library(LIBUNWIND NAMES libunwind${CMAKE_STATIC_LIBRARY_SUFFIX} unwind)
 if(LIBUNWIND)
