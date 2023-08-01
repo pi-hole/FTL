@@ -361,6 +361,8 @@ int api_queries(struct ftl_conn *api)
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
+		if(disk)
+			detach_disk_database(NULL);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error, failed to prepare SQL query",
@@ -384,6 +386,8 @@ int api_queries(struct ftl_conn *api)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind domain to SQL query",
@@ -399,6 +403,8 @@ int api_queries(struct ftl_conn *api)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind cip to SQL query",
@@ -414,6 +420,8 @@ int api_queries(struct ftl_conn *api)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind client to SQL query",
@@ -429,6 +437,8 @@ int api_queries(struct ftl_conn *api)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind upstream to SQL query",
@@ -453,6 +463,8 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					if(disk)
+						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind type to SQL query",
@@ -461,6 +473,8 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested type is invalid",
@@ -485,6 +499,8 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					if(disk)
+						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind status to SQL query",
@@ -493,6 +509,8 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested status is invalid",
@@ -517,6 +535,8 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					if(disk)
+						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind reply to SQL query",
@@ -525,6 +545,8 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested reply is invalid",
@@ -549,6 +571,8 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					if(disk)
+						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind dnssec to SQL query",
@@ -557,6 +581,8 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested dnssec is invalid",
