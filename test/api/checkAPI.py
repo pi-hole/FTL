@@ -20,7 +20,7 @@ if __name__ == "__main__":
 		exit(1)
 
 	# Get endpoints from FTL
-	ftl = FTLAPI("http://127.0.0.1:8080", "ABC")
+	ftl = FTLAPI("http://127.0.0.1", "ABC")
 	ftl.get_endpoints()
 
 	errs = [0, 0, 0]

@@ -266,7 +266,7 @@ const char *readFTLlegacy(struct config *conf)
 
 	// WEBPORT
 	// On which port should FTL's API be listening?
-	// defaults to: 8080
+	// defaults to: 80
 	buffer = parseFTLconf(fp, "WEBPORT");
 
 	value = 0;
