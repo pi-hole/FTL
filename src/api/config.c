@@ -251,7 +251,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 		{
 			// Check it is a number
 			if(!cJSON_IsNumber(elem))
-				return "not of type unsigned long";
+				return "not a number";
 			// Set item
 			conf_item->v.d = elem->valuedouble;
 			log_debug(DEBUG_CONFIG, "Set %s to %f", conf_item->k, conf_item->v.d);
