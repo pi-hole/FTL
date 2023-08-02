@@ -110,7 +110,7 @@ elif [[ "${CI_ARCH}" == "linux/386" ]]; then
 elif [[ "${CI_ARCH}" == "linux/arm/v5" ]]; then
 
   check_machine "ELF32" "ARM"
-  check_libs "[libm.so.6] [librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
+  check_libs "[libm.so.6] [librt.so.1] [libdl.so.2] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
   check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, not stripped"
 
   check_CPU_arch "v4T"

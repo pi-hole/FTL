@@ -21,6 +21,8 @@ RUN rm -rf cmake && \
     bash test/arch_test.sh && \
 # Run full test suite
     bash test/run.sh && \
+# Run crash test
+    [[ ./pihole-FTL crash || true ]] && \
 # Move FTL binary to root directory
     cd / &&\
     mv /app/pihole-FTL . && \
