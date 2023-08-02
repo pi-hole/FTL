@@ -124,6 +124,10 @@ static const unsigned char specs_search_yaml[] = {
 #include "hex/specs/search.yaml"
 };
 
+static const unsigned char specs_action_yaml[] = {
+#include "hex/specs/action.yaml"
+};
+
 struct {
     const char *path;
     const char *mime_type;
@@ -158,6 +162,7 @@ struct {
     {"specs/search.yaml", "text/plain", (const char*)specs_search_yaml, sizeof(specs_search_yaml)},
     {"specs/stats.yaml", "text/plain", (const char*)specs_stats_yaml, sizeof(specs_stats_yaml)},
     {"specs/teleporter.yaml", "text/plain", (const char*)specs_teleporter_yaml, sizeof(specs_teleporter_yaml)},
+    {"specs/action.yaml", "text/plain", (const char*)specs_action_yaml, sizeof(specs_action_yaml)},
 };
 
 #endif // API_DOCS_H
