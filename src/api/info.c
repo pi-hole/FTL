@@ -348,7 +348,6 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 	return 0;
 }
 
-#define HWMON "/sys/class/hwmon"
 static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 {
 	int ret;
@@ -361,10 +360,12 @@ static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 	// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-hwmon
 
 	// Iterate over content of /sys/class/hwmon
-	DIR *hwmon_dir = opendir(HWMON);
+	const char *dirname = "/sys/class/hwmon";
+	DIR *hwmon_dir = opendir(dirname);
 	if(hwmon_dir == NULL)
 	{
 		// Nothing to read here, leave array empty
+		log_warn("Cannot open %s: %s", dirname, strerror(errno));
 		return 0;
 	}
 
