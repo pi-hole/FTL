@@ -126,6 +126,10 @@ int main (int argc, char *argv[])
 		DB_read_queries();
 	}
 
+	// Initialize in-memory database starting index
+	update_disk_db_idx();
+
+	// Log some information about the imported queries (if any)
 	log_counter_info();
 
 	// Check for availability of capabilities in debug mode
