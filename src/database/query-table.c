@@ -1131,23 +1131,27 @@ void DB_read_queries(void)
 	sqlite3_finalize(stmt);
 
 	log_info("Imported %i queries from the long-term database", counters->queries);
+}
 
+void update_disk_db_idx(void)
+{
 	// Query the database to get the maximum database ID is important to avoid
 	// starting counting from zero (would result in a UNIQUE constraint violation)
-	querystr = "SELECT MAX(id) FROM disk.query_storage";
+	const char *querystr = "SELECT MAX(id) FROM disk.query_storage";
 
 	// Attach disk database
 	if(!attach_disk_database(NULL))
 		return;
 
 	// Prepare SQLite3 statement
-	rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	sqlite3_stmt *stmt = NULL;
+	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 
 	// Perform step
-	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	if(rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW)
 		last_disk_db_idx = sqlite3_column_int64(stmt, 0);
 	else
-		log_err("DB_read_queries(): Failed to get MAX(id) from disk.query_storage: %s",
+		log_err("update_disk_db_idx(): Failed to get MAX(id) from disk.query_storage: %s",
 		        sqlite3_errstr(rc));
 
 	// Finalize statement
