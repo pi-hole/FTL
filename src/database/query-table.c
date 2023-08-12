@@ -720,7 +720,7 @@ bool add_query_storage_column_regex_id(sqlite3 *db)
 	// Update database version to 13
 	if(!db_set_FTL_property(db, DB_VERSION, 13))
 	{
-		log_err("add_query_storage_columns2(): Failed to update database version!");
+		log_err("add_query_storage_column_regex_id(): Failed to update database version!");
 		return false;
 	}
 
