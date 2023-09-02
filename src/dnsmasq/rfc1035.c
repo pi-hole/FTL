@@ -825,6 +825,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		    {
 		       addr.rrdata.rrtype = aqtype;
 		       addr.rrdata.datalen = (char)ardlen;
+		       flags &= ~F_KEYTAG; /* in case of >1 answer, not all the same. */ 
 		       if (ardlen != 0)
 			 memcpy(addr.rrdata.data, p1, ardlen);
 		    }
