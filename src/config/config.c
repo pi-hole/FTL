@@ -999,6 +999,13 @@ void initConfig(struct config *conf)
 	conf->files.setupVars.f = FLAG_ADVANCED_SETTING;
 	conf->files.setupVars.d.s = (char*)"/etc/pihole/setupVars.conf";
 
+	conf->files.pcap.k = "files.pcap";
+	conf->files.pcap.h = "An optional file containing a pcap capture of the network traffic. This file is used for debugging purposes only. If you don't know what this is, you don't need it.\n Setting this to an empty string disables pcap recording. The file must be writable by the user running FTL (typically pihole). Failure to write to this file will prevent the DNS resolver from starting. The file is appended to if it already exists.";
+	conf->files.pcap.a = cJSON_CreateStringReference("<any writable pcap file>");
+	conf->files.pcap.t = CONF_STRING;
+	conf->files.pcap.f = FLAG_ADVANCED_SETTING;
+	conf->files.pcap.d.s = (char*)"";
+
 	conf->files.log.webserver.k = "files.log.webserver";
 	conf->files.log.webserver.h = "The log file used by the webserver";
 	conf->files.log.webserver.a = cJSON_CreateStringReference("<any writable file>");

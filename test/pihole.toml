@@ -676,6 +676,17 @@
   #     <any Pi-hole setupVars file>
   setupVars = "/etc/pihole/setupVars.conf"
 
+  # An optional file containing a pcap capture of the network traffic. This file is used
+  # for debugging purposes only. If you don't know what this is, you don't need it.
+  # Setting this to an empty string disables pcap recording. The file must be writable
+  # by the user running FTL (typically pihole). Failure to write to this file will
+  # prevent the DNS resolver from starting. The file is appended to if it already
+  # exists.
+  #
+  # Possible values are:
+  #     <any writable pcap file>
+  pcap = ""
+
   [files.log]
     # The location of FTL's log file
     #

@@ -511,6 +511,22 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	fputs("# Cache all DNS records\n", pihole_conf);
 	fputs("cache-rr=ANY\n\n", pihole_conf);
 
+	// Add option for PCAP file recording
+	if(strlen(conf->files.pcap.v.s) > 0)
+	{
+		if(file_writeable(conf->files.pcap.v.s))
+		{
+			fputs("# PCAP network traffic recording\n", pihole_conf);
+			fprintf(pihole_conf, "dumpmask=0xFFFF\n");
+			fprintf(pihole_conf, "dumpfile=%s\n", conf->files.pcap.v.s);
+			fputs("\n", pihole_conf);
+		}
+		else
+		{
+			log_err("Cannot write to %s, disabling PCAP recording", conf->files.pcap.v.s);
+		}
+	}
+
 	// Add additional config lines to disk (if present)
 	if(conf->misc.dnsmasq_lines.v.json != NULL &&
 	   cJSON_GetArraySize(conf->misc.dnsmasq_lines.v.json) > 0)

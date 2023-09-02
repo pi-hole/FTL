@@ -94,6 +94,28 @@ bool file_readable(const char *filename)
 }
 
 /**
+ * Function to check whether a file is writable or not.
+ * This function also returns success when a file does not exist yet but could
+ * be created and written to.
+ */
+bool file_writeable(const char *filename)
+{
+	// Check if file is writable
+	FILE *fp = fopen(filename, "ab");
+	if(fp == NULL)
+	{
+		// File is not writable
+		return false;
+	}
+
+	// Close file
+	fclose(fp);
+
+	// File is writable
+	return true;
+}
+
+/**
  * Function to check whether a directory exists or not.
  * It returns true if given path is a directory and exists
  * otherwise returns false.
