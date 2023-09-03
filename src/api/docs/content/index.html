@@ -7,7 +7,6 @@
         <!--<link href="https://fonts.googleapis.com/css?family=Open+Sans:300,600&display=swap" rel="stylesheet">-->
         <link rel="stylesheet" href="external/highlight-default.min.css">
         <script src="external/highlight.min.js"></script>
-        <script src="external/geraintluff-sha256.min.js"></script>
         <script type='text/javascript' src='external/rapidoc-min.js'></script>
         <script type="text/javascript" src="pi-hole.js"></script>
         <link href='index.css' rel='stylesheet'>
@@ -43,12 +42,12 @@
           api-key-value = "-"
           show-method-in-nav-bar="as-colored-block"
           allow-search = "false">
-            <img slot="logo" style="padding-left: 10px;" src="/admin/images/logo.svg" width="40px" />
+            <img slot="logo" style="padding-left: 10px;" src="images/logo.svg" width="40px" />
             <div slot='header' style="font-weight:700; font-size:32px">
               <div>Pi-hole API Documentation</div>
               <div>
                 <input id='loginpw' type='password' size="4">
-                <button class='btn' id='loginbtn' onclick='login()'>Login</button>
+                <button class='btn' id='loginbtn' onclick='loginout()'>Login</button>
               </div>
             </div>
             <!-- content at the bottom -->

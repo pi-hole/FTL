@@ -28,6 +28,8 @@
 #include "database/query-table.h"
 // set_event()
 #include "events.h"
+// generate_backtrace()
+#include "signals.h"
 
 bool DBdeleteoldqueries = false;
 static bool DBerror = false;
@@ -238,6 +240,11 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 		// We can safely ignore this warning
 		return;
 	}
+
+	// Log backtrace if any debug flag is set
+	if(config.debug.extra.v.b)
+		generate_backtrace();
+
 	if(iErrCode == SQLITE_WARNING)
 		log_warn("SQLite3 message: %s (%d)", zMsg, iErrCode);
 	else

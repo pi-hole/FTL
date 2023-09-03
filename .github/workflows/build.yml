@@ -24,7 +24,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.5.2
+        uses: actions/checkout@v3.6.0
       -
         name: "Calculate required variables"
         id: variables
@@ -88,16 +88,16 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.5.2
+        uses: actions/checkout@v3.6.0
       -
         name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2.5.0
+        uses: docker/setup-buildx-action@v2.9.1
       -
         name: Print directory contents
         run: ls -l
       -
         name: Build and test FTL in ftl-build container (QEMU)
-        uses: docker/build-push-action@v4.0.0
+        uses: docker/build-push-action@v4.1.1
         with:
           # tags: ghcr.io/pi-hole/ftl-build:v2.0
           platforms: ${{ matrix.platform }}
@@ -142,7 +142,7 @@ jobs:
       -
         name: Upload documentation artifacts for deployoment
         if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
-        uses: actions/upload-artifact@v3.1.1
+        uses: actions/upload-artifact@v3.1.2
         with:
           name: tmp-storage
           path: 'api-docs.tar.gz'
@@ -154,7 +154,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.5.2
+        uses: actions/checkout@v3.6.0
       -
         name: Get Binaries and documentation built in previous jobs
         uses: actions/download-artifact@v3.0.2

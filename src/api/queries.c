@@ -297,9 +297,9 @@ int api_queries(struct ftl_conn *api)
 		// Does the user request an offset from the cursor?
 		get_uint_var(api->request->query_string, "start", &start);
 
-		unsigned long unum = 0u;
+		uint64_t unum = 0u;
 		const char *msg = NULL;
-		if(get_ulong_var_msg(api->request->query_string, "cursor", &unum, &msg) ||
+		if(get_uint64_var_msg(api->request->query_string, "cursor", &unum, &msg) ||
 		   msg != NULL)
 		{
 			// Do not start at the most recent, but at an older
@@ -361,13 +361,19 @@ int api_queries(struct ftl_conn *api)
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
+		if(disk)
+			detach_disk_database(NULL);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error, failed to prepare SQL query",
 		                       sqlite3_errstr(rc));
 	}
 
-	// Bind items to prepared statement (if GET-filtering)
+	// We use this boolean to memorize if we are filtering at all. It is used
+	// later to decide if we can short-circuit the query counting for
+	// performance reasons.
+	bool filtering = false;
+	// Bind items to prepared statement (if filtering)
 	if(api->request->query_string != NULL)
 	{
 		int idx;
@@ -375,10 +381,13 @@ int api_queries(struct ftl_conn *api)
 		if(idx > 0)
 		{
 			log_debug(DEBUG_API, "adding :domain = \"%s\" to query", domainname);
+			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, domainname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind domain to SQL query",
@@ -389,10 +398,13 @@ int api_queries(struct ftl_conn *api)
 		if(idx > 0)
 		{
 			log_debug(DEBUG_API, "adding :cip = \"%s\" to query", clientip);
+			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, clientip, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind cip to SQL query",
@@ -403,10 +415,13 @@ int api_queries(struct ftl_conn *api)
 		if(idx > 0)
 		{
 			log_debug(DEBUG_API, "adding :cname = \"%s\" to query", clientname);
+			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, clientname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind client to SQL query",
@@ -417,10 +432,13 @@ int api_queries(struct ftl_conn *api)
 		if(idx > 0)
 		{
 			log_debug(DEBUG_API, "adding :upstream = \"%s\" to query", upstreamname);
+			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, upstreamname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind upstream to SQL query",
@@ -439,11 +457,14 @@ int api_queries(struct ftl_conn *api)
 			if(type < TYPE_MAX)
 			{
 				log_debug(DEBUG_API, "adding :type = %d to query", type);
+				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, type);
 				if(rc != SQLITE_OK)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					if(disk)
+						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind type to SQL query",
@@ -452,6 +473,8 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested type is invalid",
@@ -470,11 +493,14 @@ int api_queries(struct ftl_conn *api)
 			if(status < QUERY_STATUS_MAX)
 			{
 				log_debug(DEBUG_API, "adding :status = %d to query", status);
+				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, status);
 				if(rc != SQLITE_OK)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					if(disk)
+						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind status to SQL query",
@@ -483,6 +509,8 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested status is invalid",
@@ -501,11 +529,14 @@ int api_queries(struct ftl_conn *api)
 			if(reply < QUERY_REPLY_MAX)
 			{
 				log_debug(DEBUG_API, "adding :reply_type = %d to query", reply);
+				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, reply);
 				if(rc != SQLITE_OK)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					if(disk)
+						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind reply to SQL query",
@@ -514,6 +545,8 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested reply is invalid",
@@ -532,11 +565,14 @@ int api_queries(struct ftl_conn *api)
 			if(dnssec < DNSSEC_MAX)
 			{
 				log_debug(DEBUG_API, "adding :dnssec = %d to query", dnssec);
+				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, dnssec);
 				if(rc != SQLITE_OK)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
+					if(disk)
+						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind dnssec to SQL query",
@@ -545,6 +581,8 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				if(disk)
+					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested dnssec is invalid",
@@ -558,10 +596,38 @@ int api_queries(struct ftl_conn *api)
 	log_debug(DEBUG_API, "  with cursor: %lu, start: %u, length: %d", cursor, start, length);
 
 	cJSON *queries = JSON_NEW_ARRAY();
-	unsigned int added = 0, records = 0;
+	unsigned int added = 0, recordsCounted = 0;
 	sqlite3_int64 firstID = -1, id = -1;
+	bool skipTheRest = false;
 	while((rc = sqlite3_step(read_stmt)) == SQLITE_ROW)
 	{
+		// Increase number of records from the database
+		recordsCounted++;
+
+		// Skip all records once we have enough (but still count them)
+		if(skipTheRest)
+			continue;
+
+		// Check if we have reached the limit
+		if(added >= (unsigned int)length)
+		{
+			if(filtering)
+			{
+				// We are filtering, so we have to continue to
+				// step over the remaining rows to get the
+				// correct number of total records
+				skipTheRest = true;
+				continue;
+			}
+			else
+			{
+				// We are not filtering, so we can stop here
+				// The total number of records is the number
+				// of records in the database
+				break;
+			}
+		}
+
 		// Get ID of query from database
 		id = sqlite3_column_int64(read_stmt, 0); // q.id
 
@@ -569,16 +635,13 @@ int api_queries(struct ftl_conn *api)
 		if(firstID == -1)
 			firstID = id;
 
-		// Increase number of records from the database
-		records++;
-
-		// Serve-side pagination
+		// Server-side pagination
 		if((unsigned long)id > cursor)
 		{
 			// Skip all results with id BEFORE cursor (static tip of table)
 			continue;
 		}
-		else if(start > 0 && start >= records)
+		else if(start > 0 && start >= recordsCounted)
 		{
 			// Skip all results BEFORE start (server-side pagination)
 			continue;
@@ -690,8 +753,9 @@ int api_queries(struct ftl_conn *api)
 	}
 
 	// DataTables specific properties
-	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", disk ? disk_dbnum : mem_dbnum);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", records);
+	const unsigned long recordsTotal = disk ? disk_dbnum : mem_dbnum;
+	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", recordsTotal);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", filtering ? recordsCounted : recordsTotal);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "draw", draw);
 
 	// Finalize statements

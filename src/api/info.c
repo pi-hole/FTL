@@ -258,7 +258,7 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 	if(f_value == NULL)
 	{
 		log_warn("Cannot open %s: %s", value_path, strerror(errno));
-		return -1;
+		return 0;
 	}
 
 	int raw_temp = 0;
@@ -348,7 +348,7 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 	return 0;
 }
 
-static int get_sensors(struct ftl_conn *api, cJSON *sensors)
+static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 {
 	int ret;
 	// Source available temperatures, we try to read temperature sensors from
@@ -360,11 +360,13 @@ static int get_sensors(struct ftl_conn *api, cJSON *sensors)
 	// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-hwmon
 
 	// Iterate over content of /sys/class/hwmon
-	DIR *hwmon_dir = opendir("/sys/class/hwmon");
+	const char *dirname = "/sys/class/hwmon";
+	DIR *hwmon_dir = opendir(dirname);
 	if(hwmon_dir == NULL)
 	{
-		log_warn("Cannot open /sys/class/hwmon: %s", strerror(errno));
-		return -1;
+		// Nothing to read here, leave array empty
+		log_warn("Cannot open %s: %s", dirname, strerror(errno));
+		return 0;
 	}
 
 	// Iterate over all hwmonX directories
@@ -637,7 +639,7 @@ int api_info_sensors(struct ftl_conn *api)
 
 	// Get sensors array
 	cJSON *list = JSON_NEW_ARRAY();
-	int ret = get_sensors(api, list);
+	int ret = get_hwmon_sensors(api, list);
 	if (ret != 0)
 		return ret;
 	JSON_ADD_ITEM_TO_OBJECT(sensors, "list", list);

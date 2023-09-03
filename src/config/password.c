@@ -121,6 +121,10 @@ static char * __attribute__((malloc)) balloon_password(const char *password,
                                                        const uint8_t salt[SALT_LEN],
                                                        const bool phc_string)
 {
+	// Parameter check
+	if(password == NULL || salt == NULL)
+		return NULL;
+
 	struct timespec start, end;
 	// Record starting time
 	if(config.debug.api.v.b)
@@ -344,7 +348,7 @@ bool verify_password(const char *password, const char* pwhash)
 		// Upgrade double-hashed password to BALLOON hash
 		if(result)
 		{
-			char *new_hash = balloon_password(password, NULL, true);
+			char *new_hash = create_password(password);
 			if(new_hash != NULL)
 			{
 				log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");

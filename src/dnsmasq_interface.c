@@ -2400,6 +2400,8 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 		query_set_dnssec(query, DNSSEC_BOGUS);
 	else if(strcmp(arg, "ABANDONED") == 0)
 		query_set_dnssec(query, DNSSEC_ABANDONED);
+	else if(strcmp(arg, "TRUNCATED") == 0)
+		query_set_dnssec(query, DNSSEC_TRUNCATED);
 	else
 		log_warn("Unknown DNSSEC status \"%s\"", arg);
 

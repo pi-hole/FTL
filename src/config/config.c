@@ -29,6 +29,9 @@
 struct config config = { 0 };
 static bool config_initialized = false;
 
+// Private prototypes
+static bool port_in_use(const in_port_t port);
+
 // Set debug flags from config struct to global debug_flags array
 // This is called whenever the config is reloaded and debug flags may have
 // changed
@@ -821,10 +824,10 @@ void initConfig(struct config *conf)
 	conf->webserver.acl.d.s = (char*)"";
 
 	conf->webserver.port.k = "webserver.port";
-	conf->webserver.port.h = "Ports to be used by the webserver.\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:8080\" can be used to listen to IPv6 connections to port 8080. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:8080\" for the IPv6 loopback interface. [::]:80 will bind to port 80 IPv6 only.\n In order to use port 8080 for all interfaces, both IPv4 and IPv6, use either the configuration \"8080,[::]:8080\" (create one socket for IPv4 and one for IPv6 only), or \"+8080\" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+8080\" does not work for your environment, you need to use \"8080,[::]:8080\".\n If the port is TLS/SSL, a letter 's' must be appended, for example, \"8080,443s\" will open port 8080 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first configured SSL port. For example, if webserver.port is \"8080r,443s\", then all HTTP traffic coming at port 8080 will be redirected to HTTPS port 443.";
+	conf->webserver.port.h = "Ports to be used by the webserver.\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:80\" can be used to listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:80\" for the IPv6 loopback interface. [::]:80 will bind to port 80 IPv6 only.\n In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the configuration \"80,[::]:80\" (create one socket for IPv4 and one for IPv6 only), or \"+80\" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+80\" does not work for your environment, you need to use \"80,[::]:80\".\n If the port is TLS/SSL, a letter 's' must be appended, for example, \"80,443s\" will open port 80 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first configured SSL port. For example, if webserver.port is \"80r,443s\", then all HTTP traffic coming at port 80 will be redirected to HTTPS port 443.";
 	conf->webserver.port.a = cJSON_CreateStringReference("comma-separated list of <[ip_address:]port>");
 	conf->webserver.port.t = CONF_STRING;
-	conf->webserver.port.d.s = (char*)"8080,[::]:8080";
+	conf->webserver.port.d.s = (char*)"80,[::]:80,443s,[::]:443s";
 
 	conf->webserver.tls.rev_proxy.k = "webserver.tls.rev_proxy";
 	conf->webserver.tls.rev_proxy.h = "Is Pi-hole running behind a reverse proxy? If yes, Pi-hole will not consider HTTP-only connections being insecure. This is useful if you are running Pi-hole in a trusted environment, for example, in a local network, and you are using a reverse proxy to provide TLS encryption, e.g., by using Traefik (docker). If you are using a reverse proxy, you can alternatively set webserver.tls.cert to the path of the TLS certificate file and let Pi-hole handle true end-to-end encryption.";
@@ -1325,6 +1328,24 @@ void readFTLconf(struct config *conf, const bool rewrite)
 		rename(GLOBALTOMLPATH, new_name);
 	}
 
+	// Determine default webserver ports
+	// Check if ports 80/TCP and 443/TCP are already in use
+	const in_port_t http_port = port_in_use(80) ? 8080 : 80;
+	const in_port_t https_port = port_in_use(443) ? 8443 : 443;
+
+	// Create a string with the default ports
+	if(http_port == 80 && https_port == 443)
+		conf->webserver.port.v.s = (char*)"80,[::]:80,443s,[::]:443s";
+	else if(http_port == 8080 && https_port == 443)
+		conf->webserver.port.v.s = (char*)"8080,[::]:8080,443s,[::]:443s";
+	else if(http_port == 80 && https_port == 8443)
+		conf->webserver.port.v.s = (char*)"80,[::]:80,8443s,[::]:8443s";
+	else
+		conf->webserver.port.v.s = (char*)"8080,[::]:8080,8443s,[::]:8443s";
+
+	log_info("Initialised webserver ports at %d (HTTP) and %d (HTTPS)",
+	         http_port, https_port);
+
 	// Initialize the TOML config file
 	writeFTLtoml(true);
 	write_dnsmasq_config(conf, false, NULL);
@@ -1464,4 +1485,35 @@ void reread_config(void)
 	// However, we do need to write the custom.list file as this file can change
 	// at any time and is automatically reloaded by dnsmasq
 	write_custom_list();
+}
+
+// Very simple test of a port's availability by trying to bind a TCP socket to
+// it at 0.0.0.0 (this tests only IPv4 availability)
+static bool port_in_use(const in_port_t port)
+{
+	// Create a socket
+	const int sock = socket(AF_INET, SOCK_STREAM, 0);
+	if(sock < 0)
+	{
+		log_err("Unable to create port testing socket: %s", strerror(errno));
+		return false;
+	}
+
+	// Bind the socket to the desired port
+	struct sockaddr_in addr = { 0 };
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(port);
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+	// Try to bind the socket
+	if(bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0 && errno == EADDRINUSE)
+	{
+		// If we cannot bind the socket, the port is in use
+		close(sock);
+		return true;
+	}
+
+	// If we can bind the socket, the port is not in use
+	close(sock);
+	return false;
 }

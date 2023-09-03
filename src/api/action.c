@@ -120,46 +120,6 @@ int api_action_gravity(struct ftl_conn *api)
 	return run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL });
 }
 
-int api_action_poweroff(struct ftl_conn *api)
-{
-	if(!config.webserver.api.allow_destructive.v.b)
-		return send_json_error(api, 403,
-		                       "forbidden",
-		                       "Power off is not allowed",
-		                       "Check setting webserver.api.allow_destructive");
-
-	log_info("Received API request to power off the machine");
-	// Sync filesystems and power off
-	sync();
-	// Needs capabiliy CAP_SYS_BOOT
-	if(reboot(RB_POWER_OFF) != 0)
-		return send_json_error(api, 500,
-		                       "server_error",
-		                       "Cannot power off the system, power off has been cancelled",
-		                       strerror(errno));
-	return send_json_success(api);
-}
-
-int api_action_reboot(struct ftl_conn *api)
-{
-	if(!config.webserver.api.allow_destructive.v.b)
-		return send_json_error(api, 403,
-		                       "forbidden",
-		                       "Reboot is not allowed",
-		                       "Check setting webserver.api.allow_destructive");
-
-	log_info("Received API request to reboot the machine");
-	// Sync filesystems and reboot
-	sync();
-	// Needs capabiliy CAP_SYS_BOOT
-	if(reboot(RB_AUTOBOOT) != 0)
-		return send_json_error(api, 500,
-		                       "server_error",
-		                       "Cannot reboot the system, reboot has been cancelled",
-		                       strerror(errno));
-	return send_json_success(api);
-}
-
 int api_action_restartDNS(struct ftl_conn *api)
 {
 	if(!config.webserver.api.allow_destructive.v.b)

@@ -26,6 +26,7 @@ enum dnssec_status {
 	DNSSEC_INSECURE,
 	DNSSEC_BOGUS,
 	DNSSEC_ABANDONED,
+	DNSSEC_TRUNCATED,
 	DNSSEC_MAX
 } __attribute__ ((packed));
 

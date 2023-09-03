@@ -982,13 +982,13 @@
 }
 
 @test "HTTP server responds with JSON error 404 to unknown API path" {
-  run bash -c 'curl -s 127.0.0.1:8080/api/undefined'
+  run bash -c 'curl -s 127.0.0.1/api/undefined'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '{"error":{"key":"not_found","message":"Not found","hint":"/api/undefined"},"took":'*'}' ]]
 }
 
 @test "HTTP server responds with normal error 404 to path outside /admin" {
-  run bash -c 'curl -s 127.0.0.1:8080/undefined'
+  run bash -c 'curl -s 127.0.0.1/undefined'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "Error 404: Not Found" ]]
 }
@@ -1234,27 +1234,27 @@
 }
 
 @test "API authorization (without password): No login required" {
-  run bash -c 'curl -s 127.0.0.1:8080/api/auth'
+  run bash -c 'curl -s 127.0.0.1/api/auth'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '{"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"dns":true,"took":'*'}' ]]
 }
 
 @test "API authorization: Setting password" {
   # Password: ABC
-  run bash -c 'curl -s -X PATCH http://127.0.0.1:8080/api/config/webserver/api/password -d "{\"config\":{\"webserver\":{\"api\":{\"password\":\"ABC\"}}}}"'
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config/webserver/api/password -d "{\"config\":{\"webserver\":{\"api\":{\"password\":\"ABC\"}}}}"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "{\"config\":{\"webserver\":{\"api\":{\"password\":\"********\"}}},\"took\":"*"}" ]]
 }
 
 @test "API authorization (with password): Incorrect password is rejected if password auth is enabled" {
   # Password: ABC
-  run bash -c 'curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"password\":\"XXX\"}" | jq .session.valid'
+  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"XXX\"}" | jq .session.valid'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "false" ]]
 }
 
 @test "API authorization (with password): Correct password is accepted" {
-  session="$(curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"password\":\"ABC\"}")"
+  session="$(curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"ABC\"}")"
   printf "Session: %s\n" "${session}"
   run jq .session.valid <<< "${session}"
   printf "%s\n" "${lines[@]}"
@@ -1331,7 +1331,7 @@
   [[ "${lines[0]}" == "[]" ]]
   run bash -c './pihole-FTL --config webserver.port'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "8080,[::]:8080,443s" ]]
+  [[ "${lines[0]}" == "80,[::]:80,443s" ]]
 }
 
 @test "Create, verify and re-import Teleporter file via CLI" {

@@ -14,7 +14,7 @@ components:
           - $ref: 'search.yaml#/components/parameters/N'
         description: |
           Search for domains in Pi-hole's list. The optional parameters `N` and `partial` limit the maximum number of returned records and whether only exact matches or also partial matches should be returned, respectively.
-          There is a hard upper limit of `N` defined in FTL (currently set to 40,000) to ensure that the response is not too large.
+          There is a hard upper limit of `N` defined in FTL (currently set to 10,000) to ensure that the response is not too large.
         responses:
           '200':
             description: OK
@@ -147,6 +147,25 @@ components:
                     items:
                       type: integer
                     example: [0,1,2]
+            total:
+              type: integer
+              description: Total number of results
+              example: 2
+            parameters:
+              type: object
+              properties:
+                partial:
+                  type: boolean
+                  description: Whether partial matching was requested
+                  example: false
+                N:
+                  type: integer
+                  description: Maximum number of results to be returned (per type)
+                  example: 20
+                searchterm:
+                  type: string
+                  description: Search term
+                  example: "doubleclick.net"
   parameters:
     domain:
       name: domain

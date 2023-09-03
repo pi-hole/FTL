@@ -352,6 +352,8 @@ int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, const bool d
 			log_err("get_number_of_queries_in_DB(%s): Prepare error: %s",
 			        tablename, sqlite3_errstr(rc));
 		free(querystr);
+		if(do_attach)
+			detach_disk_database(NULL);
 		return false;
 	}
 	rc = sqlite3_step(stmt);
@@ -363,6 +365,8 @@ int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, const bool d
 		        tablename, sqlite3_errstr(rc));
 		free(querystr);
 		sqlite3_finalize(stmt);
+		if(do_attach)
+			detach_disk_database(NULL);
 		return false;
 	}
 	sqlite3_finalize(stmt);
@@ -394,6 +398,7 @@ bool import_queries_from_disk(void)
 	if((rc = sqlite3_exec(memdb, "BEGIN TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
 	{
 		log_err("import_queries_from_disk(): Cannot start transaction: %s", sqlite3_errstr(rc));
+		detach_disk_database(NULL);
 		return false;
 	}
 
@@ -401,6 +406,7 @@ bool import_queries_from_disk(void)
 	sqlite3_stmt *stmt = NULL;
 	if((rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL)) != SQLITE_OK){
 		log_err("import_queries_from_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
+		detach_disk_database(NULL);
 		return false;
 	}
 
@@ -409,6 +415,7 @@ bool import_queries_from_disk(void)
 	{
 		log_err("import_queries_from_disk(): Failed to bind type mintime: %s", sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
+		detach_disk_database(NULL);
 		return false;
 	}
 
@@ -451,6 +458,7 @@ bool import_queries_from_disk(void)
 	if((rc = sqlite3_exec(memdb, "END TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
 	{
 		log_err("import_queries_from_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
+		detach_disk_database(NULL);
 		return false;
 	}
 
@@ -492,6 +500,7 @@ bool export_queries_to_disk(bool final)
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		log_err("export_queries_to_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
+		detach_disk_database(NULL);
 		return false;
 	}
 
@@ -499,6 +508,7 @@ bool export_queries_to_disk(bool final)
 	if((rc = sqlite3_bind_int64(stmt, 1, last_disk_db_idx)) != SQLITE_OK)
 	{
 		log_err("export_queries_to_disk(): Failed to bind id: %s", sqlite3_errstr(rc));
+		detach_disk_database(NULL);
 		return false;
 	}
 
@@ -509,6 +519,7 @@ bool export_queries_to_disk(bool final)
 	if((rc = sqlite3_bind_double(stmt, 2, time)) != SQLITE_OK)
 	{
 		log_err("export_queries_to_disk(): Failed to bind time: %s", sqlite3_errstr(rc));
+		detach_disk_database(NULL);
 		return false;
 	}
 
@@ -572,6 +583,7 @@ bool export_queries_to_disk(bool final)
 	if((rc = sqlite3_exec(memdb, "END TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
 	{
 		log_err("export_queries_to_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
+		detach_disk_database(NULL);
 		return false;
 	}
 
@@ -1119,23 +1131,27 @@ void DB_read_queries(void)
 	sqlite3_finalize(stmt);
 
 	log_info("Imported %i queries from the long-term database", counters->queries);
+}
 
+void update_disk_db_idx(void)
+{
 	// Query the database to get the maximum database ID is important to avoid
 	// starting counting from zero (would result in a UNIQUE constraint violation)
-	querystr = "SELECT MAX(id) FROM disk.query_storage";
+	const char *querystr = "SELECT MAX(id) FROM disk.query_storage";
 
 	// Attach disk database
 	if(!attach_disk_database(NULL))
 		return;
 
 	// Prepare SQLite3 statement
-	rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	sqlite3_stmt *stmt = NULL;
+	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 
 	// Perform step
-	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	if(rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW)
 		last_disk_db_idx = sqlite3_column_int64(stmt, 0);
 	else
-		log_err("DB_read_queries(): Failed to get MAX(id) from disk.query_storage: %s",
+		log_err("update_disk_db_idx(): Failed to get MAX(id) from disk.query_storage: %s",
 		        sqlite3_errstr(rc));
 
 	// Finalize statement
@@ -1145,7 +1161,6 @@ void DB_read_queries(void)
 
 	if(!detach_disk_database(NULL))
 		return;
-
 
 	// Update indices so that the next call to DB_save_queries() skips the
 	// queries that we just imported from the database

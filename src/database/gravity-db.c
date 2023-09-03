@@ -1584,7 +1584,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			                   "(SELECT date_updated FROM adlist WHERE address = :item),"
 			                   "(SELECT number FROM adlist WHERE address = :item),"
 			                   "(SELECT invalid_domains FROM adlist WHERE address = :item),"
-			                   "(SELECT status FROM adlist WHERE address = :item)),"
+			                   "(SELECT status FROM adlist WHERE address = :item),"
 			                   "(SELECT abp_entries FROM adlist WHERE address = :item));";
 		else if(listtype == GRAVITY_CLIENTS)
 			querystr = "REPLACE INTO client (ip,comment,id,date_added) "

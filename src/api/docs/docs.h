@@ -32,16 +32,12 @@ static const unsigned char rapidoc_min_js[] = {
 #include "hex/external/rapidoc-min.js"
 };
 
-static const unsigned char rapidoc_min_map_js[] = {
+static const unsigned char rapidoc_min_js_map[] = {
 #include "hex/external/rapidoc-min.js.map"
 };
 
 static const unsigned char highlight_default_min_css[] = {
 #include "hex/external/highlight-default.min.css"
-};
-
-static const unsigned char geraintluff_sha256_min_js[] = {
-#include "hex/external/geraintluff-sha256.min.js"
 };
 
 static const unsigned char highlight_min_js[] = {
@@ -128,6 +124,10 @@ static const unsigned char specs_search_yaml[] = {
 #include "hex/specs/search.yaml"
 };
 
+static const unsigned char specs_action_yaml[] = {
+#include "hex/specs/action.yaml"
+};
+
 struct {
     const char *path;
     const char *mime_type;
@@ -139,10 +139,9 @@ struct {
     {"index.css", "text/css", (const char*)index_css, sizeof(index_css)},
     {"pi-hole.js", "application/javascript", (const char*)pi_hole_js, sizeof(pi_hole_js)},
     {"external/rapidoc-min.js", "application/javascript", (const char*)rapidoc_min_js, sizeof(rapidoc_min_js)},
-    {"external/rapidoc-min.map.js", "text/plain", (const char*)rapidoc_min_map_js, sizeof(rapidoc_min_map_js)},
+    {"external/rapidoc-min.js.map", "text/plain", (const char*)rapidoc_min_js_map, sizeof(rapidoc_min_js_map)},
     {"external/highlight-default.min.css", "text/css", (const char*)highlight_default_min_css, sizeof(highlight_default_min_css)},
     {"external/highlight.min.js", "application/javascript", (const char*)highlight_min_js, sizeof(highlight_min_js)},
-    {"external/geraintluff-sha256.min.js", "application/javascript", (const char*)geraintluff_sha256_min_js, sizeof(geraintluff_sha256_min_js)},
     {"images/logo.svg", "image/svg+xml", (const char*)images_logo_svg, sizeof(images_logo_svg)},
     {"specs/auth.yaml", "text/plain", (const char*)specs_auth_yaml, sizeof(specs_auth_yaml)},
     {"specs/clients.yaml", "text/plain", (const char*)specs_clients_yaml, sizeof(specs_clients_yaml)},
@@ -163,6 +162,7 @@ struct {
     {"specs/search.yaml", "text/plain", (const char*)specs_search_yaml, sizeof(specs_search_yaml)},
     {"specs/stats.yaml", "text/plain", (const char*)specs_stats_yaml, sizeof(specs_stats_yaml)},
     {"specs/teleporter.yaml", "text/plain", (const char*)specs_teleporter_yaml, sizeof(specs_teleporter_yaml)},
+    {"specs/action.yaml", "text/plain", (const char*)specs_action_yaml, sizeof(specs_action_yaml)},
 };
 
 #endif // API_DOCS_H
