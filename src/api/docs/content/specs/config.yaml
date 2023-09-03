@@ -421,6 +421,8 @@ components:
                   type: string
                 setupVars:
                   type: string
+                pcap:
+                  type: string
                 log:
                   type: object
                   properties:
@@ -667,6 +669,7 @@ components:
             gravity: "/etc/pihole/gravity.db"
             macvendor: "/etc/pihole/macvendor.db"
             setupVars: "/etc/pihole/setupVars.conf"
+            pcap: ""
             log:
               ftl: "/var/log/pihole/FTL.log"
               dnsmasq: "/var/log/pihole/pihole.log"

@@ -13,8 +13,8 @@ getIPs() {
     if [ -n "${addresses}" ]; then
         while IFS= read -r addr ; do
             # Check if Pi-hole can use itself to block a domain
-            dig_result=$(dig +tries=1 +time=2 -"${protocol}" -x "${addr}" @127.0.0.1 +short)
-            if [[ $addr == "127.0.0.1" && $dig_result == "localhost." ]] || [[ $addr == "::1" &&  $dig_result == "ip6-localhost." ]] || [[ $dig_result == "pi.hole." ]]; then
+            dig_result=$(dig +tries=1 +time=2 -x "${addr}" @127.0.0.1 +short)
+            if [[ $addr == "127.0.0.1" && $dig_result == "localhost." ]] || [[ $addr == "::1" && [[ $dig_result == "localhost." || $dig_result == "ip6-localhost." ]] ]] || [[ $dig_result == "pi.hole." ]]; then
                 echo "${addr} is \"${dig_result}\": OK"
             else
                 # Otherwise, show a failure
