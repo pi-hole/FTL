@@ -21,8 +21,6 @@
 // toml_table_t
 #include "tomlc99/toml.h"
 
-// delete_all_sessions()
-#include "api/api.h"
 // hash_password()
 #include "config/password.h"
 
