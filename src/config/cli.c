@@ -422,12 +422,6 @@ int set_config_from_CLI(const char *key, const char *value)
 			write_custom_list();
 		}
 
-
-		// Check if this item changed the password, if so, we need to
-		// invalidate all currently active sessions
-		if(conf_item->f & FLAG_INVALIDATE_SESSIONS)
-			delete_all_sessions();
-
 		// Install new configuration
 		replace_config(&newconf);
 
