@@ -345,11 +345,8 @@ static void delete_session(const int user_id)
 	if(user_id < 0 || user_id >= API_MAX_CLIENTS)
 		return;
 
-	auth_data[user_id].used = false;
-	auth_data[user_id].valid_until = 0;
-	memset(auth_data[user_id].sid, 0, sizeof(auth_data[user_id].sid));
-	memset(auth_data[user_id].remote_addr, 0, sizeof(auth_data[user_id].remote_addr));
-	memset(auth_data[user_id].user_agent, 0, sizeof(auth_data[user_id].user_agent));
+	// Zero out this session (also sets valid to false == 0)
+	memset(&auth_data[user_id], 0, sizeof(auth_data[user_id]));
 }
 
 void delete_all_sessions(void)
