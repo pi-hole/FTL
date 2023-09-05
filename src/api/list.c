@@ -172,6 +172,7 @@ static int api_list_write(struct ftl_conn *api,
 			                       api->payload.json_error);
 	}
 
+	bool spaces_allowed = false;
 	if(api->method == HTTP_POST)
 	{
 		// Extract domain/name/client/address from payload when using POST, all
@@ -198,6 +199,7 @@ static int api_list_write(struct ftl_conn *api,
 				break;
 
 			case GRAVITY_GROUPS:
+				spaces_allowed = true;
 				json_name = cJSON_GetObjectItemCaseSensitive(api->payload.json, "name");
 				if(cJSON_IsString(json_name) && strlen(json_name->valuestring) > 0)
 					row.item = json_name->valuestring;
@@ -243,7 +245,10 @@ static int api_list_write(struct ftl_conn *api,
 			case GRAVITY_DOMAINLIST_ALLOW_ALL:
 			case GRAVITY_DOMAINLIST_DENY_ALL:
 			case GRAVITY_GRAVITY:
-				return 400;
+				return send_json_error(api, 400, // 400 Bad Request
+				                       "bad_request",
+				                       "Aggregate types (and gravity) are not handled by this routine",
+				                       NULL);
 		}
 	}
 	else
@@ -289,6 +294,17 @@ static int api_list_write(struct ftl_conn *api,
 		// Test validity of this regex
 		regexData regex = { 0 };
 		okay = compile_regex(row.item, &regex, &regex_msg);
+	}
+	else if(!spaces_allowed)
+	{
+		// Check validity: Spaces are not allowed in any domain/URL
+		if(strchr(row.item, ' ') != NULL ||
+		   strchr(row.item, '\t') != NULL ||
+		   strchr(row.item, '\n') != NULL)
+			return send_json_error(api, 400, // 400 Bad Request
+			                       "bad_request",
+			                       "Spaces, newlines and tabs are not allowed in domains and URLs",
+			                       row.item);
 	}
 
 	// Try to add item to table
