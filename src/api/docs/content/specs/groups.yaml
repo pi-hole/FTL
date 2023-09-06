@@ -183,7 +183,7 @@ components:
           - $ref: 'groups.yaml#/components/schemas/enabled'
       post:
         allOf:
-          - $ref: 'groups.yaml#/components/schemas/name'
+          - $ref: 'groups.yaml#/components/schemas/name_maybe_array'
           - $ref: 'groups.yaml#/components/schemas/comment'
           - $ref: 'groups.yaml#/components/schemas/enabled'
     name:
@@ -193,6 +193,19 @@ components:
           description: Group name
           type: string
           example: test_group
+    name_array:
+      type: object
+      properties:
+        name:
+          description: array of grop names
+          type: array
+          items:
+            type: string
+          example: ["test1", "test2", "test3"]
+    name_maybe_array:
+      oneOf:
+        - $ref: 'groups.yaml#/components/schemas/name'
+        - $ref: 'groups.yaml#/components/schemas/name_array'
     comment:
       type: object
       properties:

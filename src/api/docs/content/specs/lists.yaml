@@ -189,7 +189,7 @@ components:
           - $ref: 'lists.yaml#/components/schemas/enabled'
       post:
         allOf:
-          - $ref: 'lists.yaml#/components/schemas/list'
+          - $ref: 'lists.yaml#/components/schemas/list_maybe_array'
           - $ref: 'lists.yaml#/components/schemas/comment'
           - $ref: 'lists.yaml#/components/schemas/groups'
           - $ref: 'lists.yaml#/components/schemas/enabled'
@@ -200,6 +200,19 @@ components:
           description: Address of the list
           type: string
           example: https://hosts-file.net/ad_servers.txt
+    list_array:
+      type: object
+      properties:
+        list:
+          description: array of list addresses
+          type: array
+          items:
+            type: string
+          example: ["https://hosts-file.net/ad_servers.txt"]
+    list_maybe_array:
+      oneOf:
+        - $ref: 'lists.yaml#/components/schemas/list'
+        - $ref: 'lists.yaml#/components/schemas/list_array'
     comment:
       type: object
       properties:

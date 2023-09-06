@@ -177,66 +177,91 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// Extract domain/name/client/address from payload when using POST, all
 		// others specify it as URI-component
-		cJSON *json_domain, *json_name, *json_address, *json_client;
 		switch(listtype)
 		{
 			case GRAVITY_DOMAINLIST_ALLOW_EXACT:
 			case GRAVITY_DOMAINLIST_ALLOW_REGEX:
 			case GRAVITY_DOMAINLIST_DENY_EXACT:
 			case GRAVITY_DOMAINLIST_DENY_REGEX:
-				json_domain = cJSON_GetObjectItemCaseSensitive(api->payload.json, "domain");
+			{
+				cJSON* json_domain = cJSON_GetObjectItemCaseSensitive(api->payload.json, "domain");
 				if(cJSON_IsString(json_domain) && strlen(json_domain->valuestring) > 0)
 				{
-					row.item = json_domain->valuestring;
+					row.items = cJSON_CreateArray();
+					cJSON_AddItemToArray(row.items, json_domain);
 				}
+				else if(cJSON_IsArray(json_domain) && cJSON_GetArraySize(json_domain) > 0)
+					row.items = json_domain;
 				else
 				{
 					return send_json_error(api, 400,
 					                       "bad_request",
-					                       "Invalid request: No item \"domain\" in payload",
+					                       "Invalid request: No valid \"domain\" in payload (must be either string or array)",
 					                       NULL);
 				}
 				break;
+			}
 
 			case GRAVITY_GROUPS:
+			{
 				spaces_allowed = true;
-				json_name = cJSON_GetObjectItemCaseSensitive(api->payload.json, "name");
+				cJSON *json_name = cJSON_GetObjectItemCaseSensitive(api->payload.json, "name");
 				if(cJSON_IsString(json_name) && strlen(json_name->valuestring) > 0)
-					row.item = json_name->valuestring;
+				{
+					row.items = cJSON_CreateArray();
+					cJSON_AddItemToArray(row.items, json_name);
+				}
+				else if(cJSON_IsArray(json_name) && cJSON_GetArraySize(json_name) > 0)
+					row.items = json_name;
 				else
 				{
 					return send_json_error(api, 400,
 					                       "bad_request",
-					                       "Invalid request: No item \"name\" in payload",
+					                       "Invalid request: No valid \"name\" in payload (must be either string or array)",
 					                       NULL);
 				}
 				break;
+			}
 
 			case GRAVITY_CLIENTS:
-				json_client = cJSON_GetObjectItemCaseSensitive(api->payload.json, "client");
+			{
+				cJSON *json_client = cJSON_GetObjectItemCaseSensitive(api->payload.json, "client");
 				if(cJSON_IsString(json_client) && strlen(json_client->valuestring) > 0)
-					row.item = json_client->valuestring;
+				{
+					row.items = cJSON_CreateArray();
+					cJSON_AddItemToArray(row.items, json_client);
+				}
+				else if(cJSON_IsArray(json_client) && cJSON_GetArraySize(json_client) > 0)
+					row.items = json_client;
 				else
 				{
 					return send_json_error(api, 400,
 					                       "bad_request",
-					                       "Invalid request: No item \"client\" in payload",
+					                       "Invalid request: No valid \"client\" in payload (must be either string or array)",
 					                       NULL);
 				}
 				break;
+			}
 
 			case GRAVITY_ADLISTS:
-				json_address = cJSON_GetObjectItemCaseSensitive(api->payload.json, "address");
+			{
+				cJSON *json_address = cJSON_GetObjectItemCaseSensitive(api->payload.json, "address");
 				if(cJSON_IsString(json_address) && strlen(json_address->valuestring) > 0)
-					row.item = json_address->valuestring;
+				{
+					row.items = cJSON_CreateArray();
+					cJSON_AddItemToArray(row.items, json_address);
+				}
+				else if(cJSON_IsArray(json_address) && cJSON_GetArraySize(json_address) > 0)
+					row.items = json_address;
 				else
 				{
 					return send_json_error(api, 400,
 					                       "bad_request",
-					                       "Invalid request: No item \"address\" in payload",
+					                       "Invalid request: No valid \"address\" in payload (must be either string or array)",
 					                       NULL);
 				}
 				break;
+			}
 
 			// Aggregate types (and gravity) are not handled by this routine
 			case GRAVITY_DOMAINLIST_ALL_ALL:
@@ -254,7 +279,8 @@ static int api_list_write(struct ftl_conn *api,
 	else
 	{
 		// PUT = Use URI item
-		row.item = item;
+		row.items = cJSON_CreateArray();
+		cJSON_AddItemToArray(row.items, cJSON_CreateStringReference(item));
 	}
 
 	cJSON *json_comment = cJSON_GetObjectItemCaseSensitive(api->payload.json, "comment");
@@ -293,7 +319,31 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// Test validity of this regex
 		regexData regex = { 0 };
-		okay = compile_regex(row.item, &regex, &regex_msg);
+		if(row.item != NULL)
+		{
+			// A single regex
+			okay = compile_regex(row.item, &regex, &regex_msg);
+		}
+		else
+		{
+			cJSON *it = NULL;
+			cJSON_ArrayForEach(it, row.items)
+			{
+				// If any element isn't a string, break early
+				if(!cJSON_IsString(it))
+				{
+					okay = false;
+					break;
+				}
+
+				// Check every array element for its validity
+				okay = compile_regex(row.item, &regex, &regex_msg);
+
+				// Fail fast if any regex in the passed array is invalid
+				if(!okay)
+					break;
+			}
+		}
 	}
 	else if(!spaces_allowed)
 	{
@@ -301,53 +351,62 @@ static int api_list_write(struct ftl_conn *api,
 		if(strchr(row.item, ' ') != NULL ||
 		   strchr(row.item, '\t') != NULL ||
 		   strchr(row.item, '\n') != NULL)
+		{
+			cJSON_free(row.items);
 			return send_json_error(api, 400, // 400 Bad Request
 			                       "bad_request",
 			                       "Spaces, newlines and tabs are not allowed in domains and URLs",
 			                       row.item);
+		}
 	}
 
-	// Try to add item to table
+	// Try to add item(s) to table
 	const char *sql_msg = NULL;
-	if(okay && (okay = gravityDB_addToTable(listtype, &row, &sql_msg, api->method)))
+	cJSON *elem = NULL;
+	cJSON_ArrayForEach(elem, row.items)
 	{
-		if(listtype != GRAVITY_GROUPS)
+		row.item = elem->valuestring;
+		if(okay && (okay = gravityDB_addToTable(listtype, &row, &sql_msg, api->method)))
 		{
-			cJSON *groups = cJSON_GetObjectItemCaseSensitive(api->payload.json, "groups");
-			if(groups != NULL)
-				okay = gravityDB_edit_groups(listtype, groups, &row, &sql_msg);
+			if(listtype != GRAVITY_GROUPS)
+			{
+				cJSON *groups = cJSON_GetObjectItemCaseSensitive(api->payload.json, "groups");
+				if(groups != NULL)
+					okay = gravityDB_edit_groups(listtype, groups, &row, &sql_msg);
+				else
+					// The groups array is optional, we still succeed if it
+					// is omitted (groups stay as they are)
+					okay = true;
+			}
 			else
-				// The groups array is optional, we still succeed if it
-				// is omitted (groups stay as they are)
+			{
+				// Groups cannot be assigned to groups
 				okay = true;
+			}
 		}
-		else
+		if(!okay)
 		{
-			// Groups cannot be assigned to groups
-			okay = true;
-		}
-	}
-	if(!okay)
-	{
-		// Error adding item, prepare error object
-		const char *errortype = "database_error";
-		const char *errormsg  = "Could not add to gravity database";
-		const char *hint = sql_msg;
-		if (regex_msg != NULL)
-		{
-			// Change error type and message
-			errortype = "regex_error";
-			errormsg = "Regex validation failed";
-			hint = regex_msg;
-		}
+			// Error adding item, prepare error object
+			const char *errortype = "database_error";
+			const char *errormsg  = "Could not add to gravity database";
+			const char *hint = sql_msg;
+			if (regex_msg != NULL)
+			{
+				// Change error type and message
+				errortype = "regex_error";
+				errormsg = "Regex validation failed";
+				hint = regex_msg;
+			}
 
-		// Send error reply
-		return send_json_error(api, 400, // 400 Bad Request
-		                       errortype,
-		                       errormsg,
-		                       hint);
+			// Send error reply
+			cJSON_free(row.items);
+			return send_json_error(api, 400, // 400 Bad Request
+					errortype,
+					errormsg,
+					hint);
+		}
+		// else: everything is okay
 	}
-	// else: everything is okay
 
 	// Inform the resolver that it needs to reload the domainlists
 	set_event(RELOAD_GRAVITY);
@@ -355,6 +414,10 @@ static int api_list_write(struct ftl_conn *api,
 	int response_code = 201; // 201 - Created
 	if(api->method == HTTP_PUT)
 		response_code = 200; // 200 - OK
+
+	// Free allocated memory
+	cJSON_free(row.items);
+
 	// Send GET style reply
 	return api_list_read(api, response_code, listtype, row.item);
 }

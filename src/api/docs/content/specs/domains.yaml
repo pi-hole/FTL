@@ -235,7 +235,7 @@ components:
           - $ref: 'domains.yaml#/components/schemas/enabled'
       post:
         allOf:
-          - $ref: 'domains.yaml#/components/schemas/domain'
+          - $ref: 'domains.yaml#/components/schemas/domain_maybe_array'
           - $ref: 'domains.yaml#/components/schemas/comment'
           - $ref: 'domains.yaml#/components/schemas/groups'
           - $ref: 'domains.yaml#/components/schemas/enabled'
@@ -246,6 +246,19 @@ components:
           description: Domain
           type: string
           example: testdomain.com
+    domain_array:
+      type: object
+      properties:
+        domain:
+          description: array of domains
+          type: array
+          items:
+            type: string
+          example: ["testdomain.com", "otherdomain.de"]
+    domain_maybe_array:
+      oneOf:
+        - $ref: 'domains.yaml#/components/schemas/domain'
+        - $ref: 'domains.yaml#/components/schemas/domain_array'
     type:
       type: object
       properties:

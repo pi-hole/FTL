@@ -212,7 +212,7 @@ components:
                 - $ref: 'clients.yaml#/components/schemas/readonly'
       post:
         allOf:
-          - $ref: 'clients.yaml#/components/schemas/client'
+          - $ref: 'clients.yaml#/components/schemas/client_maybe_array'
           - $ref: 'clients.yaml#/components/schemas/comment'
           - $ref: 'clients.yaml#/components/schemas/groups'
       put:
@@ -252,6 +252,19 @@ components:
           description: client IP / MAC / hostname / interface
           type: string
           example: 127.0.0.1
+    client_array:
+      type: object
+      properties:
+        client:
+          description: array of client IPs / MACs / hostnames / interfaces
+          type: array
+          items:
+            type: string
+          example: ["127.0.0.1", "192.168.2.12"]
+    client_maybe_array:
+      oneOf:
+        - $ref: 'clients.yaml#/components/schemas/client'
+        - $ref: 'clients.yaml#/components/schemas/client_array'
     comment:
       type: object
       properties:
