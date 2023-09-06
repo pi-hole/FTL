@@ -319,44 +319,49 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// Test validity of this regex
 		regexData regex = { 0 };
-		if(row.item != NULL)
+		cJSON *it = NULL;
+		cJSON_ArrayForEach(it, row.items)
 		{
-			// A single regex
-			okay = compile_regex(row.item, &regex, &regex_msg);
-		}
-		else
-		{
-			cJSON *it = NULL;
-			cJSON_ArrayForEach(it, row.items)
+			// If any element isn't a string, break early
+			if(!cJSON_IsString(it))
 			{
-				// If any element isn't a string, break early
-				if(!cJSON_IsString(it))
-				{
-					okay = false;
-					break;
-				}
-
-				// Check every array element for its validity
-				okay = compile_regex(row.item, &regex, &regex_msg);
-
-				// Fail fast if any regex in the passed array is invalid
-				if(!okay)
-					break;
+				okay = false;
+				break;
 			}
+
+			// Check every array element for its validity
+			okay = compile_regex(row.item, &regex, &regex_msg);
+
+			// TODO: The regex needs to be freed here
+
+			// Fail fast if any regex in the passed array is invalid
+			if(!okay)
+				break;
 		}
 	}
 	else if(!spaces_allowed)
 	{
-		// Check validity: Spaces are not allowed in any domain/URL
-		if(strchr(row.item, ' ') != NULL ||
-		   strchr(row.item, '\t') != NULL ||
-		   strchr(row.item, '\n') != NULL)
+		cJSON *it = NULL;
+		cJSON_ArrayForEach(it, row.items)
 		{
-			cJSON_free(row.items);
-			return send_json_error(api, 400, // 400 Bad Request
-			                       "bad_request",
-			                       "Spaces, newlines and tabs are not allowed in domains and URLs",
-			                       row.item);
+			// If any element isn't a string, break early
+			if(!cJSON_IsString(it))
+			{
+				okay = false;
+				break;
+			}
+
+			// Check validity: Spaces are not allowed in any domain/URL
+			if(strchr(it->valuestring, ' ') != NULL ||
+			   strchr(it->valuestring, '\t') != NULL ||
+			   strchr(it->valuestring, '\n') != NULL)
+			{
+				cJSON_free(row.items);
+				return send_json_error(api, 400, // 400 Bad Request
+							"bad_request",
+							"Spaces, newlines and tabs are not allowed in domains and URLs",
+							it->valuestring);
+			}
 		}
 	}
 
