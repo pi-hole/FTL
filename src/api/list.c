@@ -420,11 +420,13 @@ static int api_list_write(struct ftl_conn *api,
 	if(api->method == HTTP_PUT)
 		response_code = 200; // 200 - OK
 
+	// Send GET style reply
+	const int ret = api_list_read(api, response_code, listtype, row.item);
+
 	// Free allocated memory
 	cJSON_free(row.items);
 
-	// Send GET style reply
-	return api_list_read(api, response_code, listtype, row.item);
+	return ret;
 }
 
 static int api_list_remove(struct ftl_conn *api,
