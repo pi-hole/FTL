@@ -173,6 +173,7 @@ static int api_list_write(struct ftl_conn *api,
 	}
 
 	bool spaces_allowed = false;
+	bool allocated_json = false;
 	if(api->method == HTTP_POST)
 	{
 		// Extract domain/name/client/address from payload when using POST, all
@@ -188,7 +189,8 @@ static int api_list_write(struct ftl_conn *api,
 				if(cJSON_IsString(json_domain) && strlen(json_domain->valuestring) > 0)
 				{
 					row.items = cJSON_CreateArray();
-					cJSON_AddItemToArray(row.items, json_domain);
+					cJSON_AddItemToArray(row.items, cJSON_CreateStringReference(json_domain->valuestring));
+					allocated_json = true;
 				}
 				else if(cJSON_IsArray(json_domain) && cJSON_GetArraySize(json_domain) > 0)
 					row.items = json_domain;
@@ -209,7 +211,8 @@ static int api_list_write(struct ftl_conn *api,
 				if(cJSON_IsString(json_name) && strlen(json_name->valuestring) > 0)
 				{
 					row.items = cJSON_CreateArray();
-					cJSON_AddItemToArray(row.items, json_name);
+					cJSON_AddItemToArray(row.items, cJSON_CreateStringReference(json_name->valuestring));
+					allocated_json = true;
 				}
 				else if(cJSON_IsArray(json_name) && cJSON_GetArraySize(json_name) > 0)
 					row.items = json_name;
@@ -229,7 +232,8 @@ static int api_list_write(struct ftl_conn *api,
 				if(cJSON_IsString(json_client) && strlen(json_client->valuestring) > 0)
 				{
 					row.items = cJSON_CreateArray();
-					cJSON_AddItemToArray(row.items, json_client);
+					cJSON_AddItemToArray(row.items, cJSON_CreateStringReference(json_client->valuestring));
+					allocated_json = true;
 				}
 				else if(cJSON_IsArray(json_client) && cJSON_GetArraySize(json_client) > 0)
 					row.items = json_client;
@@ -249,7 +253,8 @@ static int api_list_write(struct ftl_conn *api,
 				if(cJSON_IsString(json_address) && strlen(json_address->valuestring) > 0)
 				{
 					row.items = cJSON_CreateArray();
-					cJSON_AddItemToArray(row.items, json_address);
+					cJSON_AddItemToArray(row.items,  cJSON_CreateStringReference(json_address->valuestring));
+					allocated_json = true;
 				}
 				else if(cJSON_IsArray(json_address) && cJSON_GetArraySize(json_address) > 0)
 					row.items = json_address;
@@ -281,6 +286,7 @@ static int api_list_write(struct ftl_conn *api,
 		// PUT = Use URI item
 		row.items = cJSON_CreateArray();
 		cJSON_AddItemToArray(row.items, cJSON_CreateStringReference(item));
+		allocated_json = true;
 	}
 
 	cJSON *json_comment = cJSON_GetObjectItemCaseSensitive(api->payload.json, "comment");
@@ -424,7 +430,8 @@ static int api_list_write(struct ftl_conn *api,
 	const int ret = api_list_read(api, response_code, listtype, row.item);
 
 	// Free allocated memory
-	cJSON_free(row.items);
+	if(allocated_json)
+		cJSON_free(row.items);
 
 	return ret;
 }
