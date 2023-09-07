@@ -197,7 +197,7 @@ components:
       type: object
       properties:
         name:
-          description: array of grop names
+          description: array of group names
           type: array
           items:
             type: string
