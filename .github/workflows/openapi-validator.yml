@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@v3.6.0
+        uses: actions/checkout@v4.0.0
 
       - name: Set Node.js version
         uses: actions/setup-node@v3
