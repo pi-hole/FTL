@@ -1878,11 +1878,7 @@ void receive_query(struct listener *listen, time_t now)
       int stale, filtered;
       int ad_reqd = do_bit;
       int fd = listen->fd;
-      struct blockdata *saved_question = NULL;
-      
-      /* In case answer is stale */
-      if (daemon->cache_max_expiry != 0)
-	saved_question = blockdata_alloc((char *) header, (size_t)n);
+      struct blockdata *saved_question = blockdata_alloc((char *) header, (size_t)n);
       
       /* RFC 6840 5.7 */
       if (header->hb4 & HB4_AD)
@@ -1954,11 +1950,10 @@ void receive_query(struct listener *listen, time_t now)
 	    daemon->metrics[METRIC_DNS_STALE_ANSWERED]++;
 	}
       
-      if (stale && saved_question)
+      if (stale)
 	{
 	  /* We answered with stale cache data, so forward the query anyway to
-	     refresh that. Restore saved query. */
-	  blockdata_retrieve(saved_question, (size_t)n, header);
+	     refresh that. */
 	  m = 0;
 	  
 	  /* We've already answered the client, so don't send it the answer 
@@ -1966,15 +1961,20 @@ void receive_query(struct listener *listen, time_t now)
 	  fd = -1;
 	}
       
-      blockdata_free(saved_question);
-
-      if (m == 0)
+      if (saved_question)
 	{
-	  if (forward_query(fd, &source_addr, &dst_addr, if_index,
-			    header, (size_t)n,  ((char *) header) + udp_size, now, NULL, ad_reqd, do_bit, 0))
-	    daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
-	  else
-	    daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+	  if (m == 0)
+	    {
+	      blockdata_retrieve(saved_question, (size_t)n, header);
+	      
+	      if (forward_query(fd, &source_addr, &dst_addr, if_index,
+				header, (size_t)n,  ((char *) header) + udp_size, now, NULL, ad_reqd, do_bit, 0))
+		daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
+	      else
+		daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+	    }
+	  
+	  blockdata_free(saved_question);
 	}
     }
 }
@@ -2277,25 +2277,15 @@ unsigned char *tcp_request(int confd, time_t now,
     {
       int ede = EDE_UNSET;
 
-      if (do_stale)
-	{
-	  /* We answered the last query with stale data. Now try and get fresh data.
-	     Restore saved query */
-	  if (!saved_question)
-	    break;
-
-	  blockdata_retrieve(saved_question, (size_t)saved_size, header);
-	  size = saved_size;
-	}
-      else
+      if (!do_stale)
 	{
 	  if (query_count == TCP_MAX_QUERIES)
-	    return packet;
-
+	    break;
+	  
 	  if (!read_write(confd, &c1, 1, 1) || !read_write(confd, &c2, 1, 1) ||
 	      !(size = c1 << 8 | c2) ||
 	      !read_write(confd, payload, size, 1))
-	    return packet;
+	    break;
 	}
       
       if (size < (int)sizeof(struct dns_header))
@@ -2437,14 +2427,11 @@ unsigned char *tcp_request(int confd, time_t now,
 	     m = 0;
 	   else
 	     {
-	       if (daemon->cache_max_expiry != 0)
-		 {
-		   if (saved_question)
-		     blockdata_free(saved_question);
-		   
-		   saved_question = blockdata_alloc((char *) header, (size_t)size);
-		   saved_size = size;
-		 }
+	       if (saved_question)
+		 blockdata_free(saved_question);
+	       
+	       saved_question = blockdata_alloc((char *) header, (size_t)size);
+	       saved_size = size;
 	       
 	       /* m > 0 if answered from cache */
 	       m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
@@ -2453,11 +2440,14 @@ unsigned char *tcp_request(int confd, time_t now,
 	  /* Do this by steam now we're not in the select() loop */
 	  check_log_writer(1); 
 	  
-	  if (m == 0)
+	  if (m == 0 && saved_question)
 	    {
 	      struct server *master;
 	      int start;
 
+	      blockdata_retrieve(saved_question, (size_t)saved_size, header);
+	      size = saved_size;
+	      
 	      if (lookup_domain(daemon->namebuff, gotname, &first, &last))
 		flags = is_local_answer(now, first, daemon->namebuff);
 	      else
@@ -2622,7 +2612,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	break;
       
       /* If we answered with stale data, this process will now try and get fresh data into
-	 the cache then and cannot therefore accept new queries. Close the incoming
+	 the cache and cannot therefore accept new queries. Close the incoming
 	 connection to signal that to the client. Then set do_stale and loop round
 	 once more to try and get fresh data, after which we exit. */
       if (stale)
