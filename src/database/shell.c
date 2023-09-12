@@ -127,8 +127,6 @@ typedef unsigned char u8;
 #endif
 #include <ctype.h>
 #include <stdarg.h>
-// print_FTL_version()
-#include "../log.h"
 
 #if !defined(_WIN32) && !defined(WIN32)
 # include <signal.h>
@@ -27851,7 +27849,7 @@ static void sayAbnormalExit(void){
 #endif
 
 #if SQLITE_SHELL_IS_UTF8
-int SQLITE_CDECL sqlite3_shell_main(int argc, char **argv){
+int SQLITE_CDECL main(int argc, char **argv){
 #else
 int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
   char **argv;
@@ -28414,7 +28412,6 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
       char *zHome;
       char *zHistory;
       int nHistory;
-      print_FTL_version();
       printf(
         "SQLite version %s %.19s\n" /*extra-version-info*/
         "Enter \".help\" for usage hints.\n",
