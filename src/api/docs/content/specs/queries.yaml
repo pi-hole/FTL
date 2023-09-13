@@ -210,7 +210,7 @@ components:
                     description: Time until the response was received (ms, negative if N/A)
               regex_id:
                 type: integer
-                description: ID of blocking regex (`NULL` if N/A)
+                description: ID of regex (`NULL` if N/A)
                 nullable: true
               upstream:
                 type: string

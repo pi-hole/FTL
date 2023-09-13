@@ -1398,10 +1398,14 @@ bool queries_to_database(void)
 			sqlite3_bind_null(query_stmt, 8);
 		}
 
+		// Get cache entry for this query
+		const int cacheID = findCacheID(query->domainID, query->clientID, query->type, false);
+		DNSCacheData *cache = cacheID < 0 ? NULL : getDNSCache(cacheID, true);
+
 		// ADDITIONAL_INFO
 		if(query->status == QUERY_GRAVITY_CNAME ||
-		query->status == QUERY_REGEX_CNAME ||
-		query->status == QUERY_DENYLIST_CNAME)
+		   query->status == QUERY_REGEX_CNAME ||
+		   query->status == QUERY_DENYLIST_CNAME)
 		{
 			// Save domain blocked during deep CNAME inspection
 			const char *cname = getCNAMEDomainString(query);
@@ -1421,33 +1425,22 @@ bool queries_to_database(void)
 				break;
 			}
 		}
-		else if(query->status == QUERY_REGEX)
+		else if(cache != NULL && query->status == QUERY_REGEX)
 		{
 			// Restore regex ID if applicable
-			const int cacheID = findCacheID(query->domainID, query->clientID, query->type, false);
-			DNSCacheData *cache = getDNSCache(cacheID, true);
-			if(cache != NULL)
-			{
-				sqlite3_bind_int(query_stmt, 9, ADDINFO_REGEX_ID);
-				sqlite3_bind_int(query_stmt, 10, cache->domainlist_id);
-				sqlite3_bind_int(query_stmt, 14, cache->domainlist_id);
+			sqlite3_bind_int(query_stmt, 9, ADDINFO_REGEX_ID);
+			sqlite3_bind_int(query_stmt, 10, cache->domainlist_id);
 
-				// Execute prepared addinfo statement and check if successful
-				sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_REGEX_ID);
-				sqlite3_bind_int(addinfo_stmt, 2, cache->domainlist_id);
-				rc = sqlite3_step(addinfo_stmt);
-				sqlite3_clear_bindings(addinfo_stmt);
-				sqlite3_reset(addinfo_stmt);
-				if(rc != SQLITE_DONE)
-				{
-					log_err("Encountered error while trying to store addinfo");
-					break;
-				}
-			}
-			else
+			// Execute prepared addinfo statement and check if successful
+			sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_REGEX_ID);
+			sqlite3_bind_int(addinfo_stmt, 2, cache->domainlist_id);
+			rc = sqlite3_step(addinfo_stmt);
+			sqlite3_clear_bindings(addinfo_stmt);
+			sqlite3_reset(addinfo_stmt);
+			if(rc != SQLITE_DONE)
 			{
-				sqlite3_bind_null(query_stmt, 9);
-				sqlite3_bind_null(query_stmt, 14);
+				log_err("Encountered error while trying to store addinfo");
+				break;
 			}
 		}
 		else
@@ -1455,7 +1448,6 @@ bool queries_to_database(void)
 			// Nothing to add here
 			sqlite3_bind_null(query_stmt, 9);
 			sqlite3_bind_null(query_stmt, 10);
-			sqlite3_bind_null(query_stmt, 14);
 		}
 
 		// REPLY_TYPE
@@ -1472,7 +1464,12 @@ bool queries_to_database(void)
 		// DNSSEC
 		sqlite3_bind_int(query_stmt, 13, query->dnssec);
 
-		// REGEX_ID (already set above)
+		// REGEX_ID
+		if(cache != NULL && cache->domainlist_id > -1)
+			sqlite3_bind_int(query_stmt, 14, cache->domainlist_id);
+		else
+			// Not applicable, setting NULL
+			sqlite3_bind_null(query_stmt, 14);
 
 		// Step and check if successful
 		rc = sqlite3_step(query_stmt);
