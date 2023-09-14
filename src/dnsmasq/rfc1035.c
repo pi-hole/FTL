@@ -1974,7 +1974,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 				(crecp->flags & F_HOSTS) &&
 				!is_same_net(crecp->addr.addr4, local_addr, local_netmask))
 			      continue;
-			    
+
 			    ans = 1;
 			    if (!dryrun)
 			      {
@@ -1993,7 +1993,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 				    break;
 				  }
 				// **********************************************************************************
-				
+
 				if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 							crec_ttl(crecp, now), NULL, type, C_IN, 
 							type == T_A ? "4" : "6", &crecp->addr))
