@@ -292,7 +292,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	{
 		// Terminate FTL indicating failure
 		exit_code = EXIT_FAILURE;
-		kill(0, SIGTERM);
+		raise(SIGTERM);
 	}
 	else if(rtsig == 3)
 	{

@@ -21,8 +21,6 @@
 // toml_table_t
 #include "tomlc99/toml.h"
 
-// delete_all_sessions()
-#include "api/api.h"
 // hash_password()
 #include "config/password.h"
 
@@ -421,12 +419,6 @@ int set_config_from_CLI(const char *key, const char *value)
 			// the restart
 			write_custom_list();
 		}
-
-
-		// Check if this item changed the password, if so, we need to
-		// invalidate all currently active sessions
-		if(conf_item->f & FLAG_INVALIDATE_SESSIONS)
-			delete_all_sessions();
 
 		// Install new configuration
 		replace_config(&newconf);

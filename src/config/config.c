@@ -25,6 +25,8 @@
 #include "shmem.h"
 // dnsmasq_failed
 #include "daemon.h"
+// delete_all_sessions()
+#include "api/api.h"
 
 struct config config = { 0 };
 static bool config_initialized = false;
@@ -1473,6 +1475,17 @@ void reread_config(void)
 	{
 		// Install new configuration
 		log_debug(DEBUG_CONFIG, "Loaded configuration is valid, installing it");
+
+		// Check if the web pwhash has changed. If so, we invalidate
+		// all currently active web interface sessions
+		if(conf_copy.webserver.api.pwhash.v.s != NULL &&
+		   config.webserver.api.pwhash.v.s != NULL &&
+		   strcmp(conf_copy.webserver.api.pwhash.v.s, config.webserver.api.pwhash.v.s) != 0)
+			delete_all_sessions();
+
+		// Replace config struct used by FTL by newly loaded
+		// configuration. This swpas the pointers and frees
+		// the old config structure altogether
 		replace_config(&conf_copy);
 	}
 	else
