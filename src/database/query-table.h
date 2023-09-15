@@ -23,7 +23,7 @@
                                                        "client TEXT NOT NULL, " \
                                                        "forward TEXT );"
 
-#define CREATE_QUERY_STORAGE_TABLE_V12 "CREATE TABLE query_storage ( id INTEGER PRIMARY KEY AUTOINCREMENT, " \
+#define CREATE_QUERY_STORAGE_TABLE_V13 "CREATE TABLE query_storage ( id INTEGER PRIMARY KEY AUTOINCREMENT, " \
                                                               "timestamp INTEGER NOT NULL, " \
                                                               "type INTEGER NOT NULL, " \
                                                               "status INTEGER NOT NULL, " \
@@ -33,9 +33,10 @@
                                                               "additional_info INTEGER, " \
                                                               "reply_type INTEGER, " \
                                                               "reply_time REAL, " \
-                                                              "dnssec INTEGER );"
+                                                              "dnssec INTEGER, " \
+                                                              "regex_id INTEGER );"
 
-#define CREATE_QUERIES_VIEW_V12 "CREATE VIEW queries AS " \
+#define CREATE_QUERIES_VIEW_V13 "CREATE VIEW queries AS " \
                                     "SELECT id, timestamp, type, status, " \
                                       "CASE typeof(domain) " \
                                         "WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain," \
@@ -45,7 +46,7 @@
                                         "WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward," \
                                       "CASE typeof(additional_info) "\
                                         "WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, " \
-                                      "reply_type, reply_time, dnssec FROM query_storage q"
+                                      "reply_type, reply_time, dnssec, regex_id FROM query_storage q"
 
 // Version 1
 #define CREATE_QUERIES_TIMESTAMP_INDEX		"CREATE INDEX idx_queries_timestamp ON queries (timestamp);"
@@ -76,12 +77,12 @@
 
 #ifdef QUERY_TABLE_PRIVATE
 const char *table_creation[] = {
-	CREATE_QUERY_STORAGE_TABLE_V12,
+	CREATE_QUERY_STORAGE_TABLE_V13,
 	CREATE_DOMAINS_BY_ID,
 	CREATE_CLIENTS_BY_ID,
 	CREATE_FORWARD_BY_ID,
 	CREATE_ADDINFO_BY_ID,
-	CREATE_QUERIES_VIEW_V12,
+	CREATE_QUERIES_VIEW_V13,
 };
 const char *index_creation[] = {
 	CREATE_QUERY_STORAGE_ID_INDEX,
@@ -124,5 +125,6 @@ bool queries_to_database(void);
 bool optimize_queries_table(sqlite3 *db);
 bool create_addinfo_table(sqlite3 *db);
 bool add_query_storage_columns(sqlite3 *db);
+bool add_query_storage_column_regex_id(sqlite3 *db);
 
 #endif //QUERY_TABLE_PRIVATE_H

@@ -710,6 +710,38 @@ bool add_query_storage_columns(sqlite3 *db)
 	return true;
 }
 
+bool add_query_storage_column_regex_id(sqlite3 *db)
+{
+	// Start transaction of database update
+	SQL_bool(db, "BEGIN TRANSACTION");
+
+	// Add additional column to the query_storage table
+	SQL_bool(db, "ALTER TABLE query_storage ADD COLUMN regex_id INTEGER");
+
+	// Update VIEW queries
+	SQL_bool(db, "DROP VIEW queries");
+	SQL_bool(db, "CREATE VIEW queries AS "
+	                     "SELECT id, timestamp, type, status, "
+	                       "CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,"
+	                       "CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,"
+	                       "CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,"
+	                       "CASE typeof(additional_info) WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, "
+	                       "reply_type, reply_time, dnssec, regex_id "
+	                       "FROM query_storage q");
+
+	// Update database version to 13
+	if(!db_set_FTL_property(db, DB_VERSION, 13))
+	{
+		log_err("add_query_storage_column_regex_id(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool(db, "COMMIT");
+
+	return true;
+}
+
 bool optimize_queries_table(sqlite3 *db)
 {
 	// Start transaction of database update
@@ -1208,7 +1240,8 @@ bool queries_to_database(void)
 	                                 "(SELECT id FROM addinfo_by_id WHERE type = ?9 AND content = ?10),"
 	                                 "?11," \
 	                                 "?12," \
-	                                 "?13)", -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
+	                                 "?13," \
+	                                 "?14)", -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("queries_to_database(query_storage) - SQL error step: %s", sqlite3_errstr(rc));
@@ -1380,10 +1413,14 @@ bool queries_to_database(void)
 			sqlite3_bind_null(query_stmt, 8);
 		}
 
+		// Get cache entry for this query
+		const int cacheID = findCacheID(query->domainID, query->clientID, query->type, false);
+		DNSCacheData *cache = cacheID < 0 ? NULL : getDNSCache(cacheID, true);
+
 		// ADDITIONAL_INFO
 		if(query->status == QUERY_GRAVITY_CNAME ||
-		query->status == QUERY_REGEX_CNAME ||
-		query->status == QUERY_DENYLIST_CNAME)
+		   query->status == QUERY_REGEX_CNAME ||
+		   query->status == QUERY_DENYLIST_CNAME)
 		{
 			// Save domain blocked during deep CNAME inspection
 			const char *cname = getCNAMEDomainString(query);
@@ -1403,30 +1440,23 @@ bool queries_to_database(void)
 				break;
 			}
 		}
-		else if(query->status == QUERY_REGEX)
+		else if(cache != NULL && query->status == QUERY_REGEX)
 		{
 			// Restore regex ID if applicable
-			const int cacheID = findCacheID(query->domainID, query->clientID, query->type, false);
-			DNSCacheData *cache = getDNSCache(cacheID, true);
-			if(cache != NULL)
-			{
-				sqlite3_bind_int(query_stmt, 9, ADDINFO_REGEX_ID);
-				sqlite3_bind_int(query_stmt, 10, cache->domainlist_id);
+			sqlite3_bind_int(query_stmt, 9, ADDINFO_REGEX_ID);
+			sqlite3_bind_int(query_stmt, 10, cache->domainlist_id);
 
-				// Execute prepared addinfo statement and check if successful
-				sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_REGEX_ID);
-				sqlite3_bind_int(addinfo_stmt, 2, cache->domainlist_id);
-				rc = sqlite3_step(addinfo_stmt);
-				sqlite3_clear_bindings(addinfo_stmt);
-				sqlite3_reset(addinfo_stmt);
-				if(rc != SQLITE_DONE)
-				{
-					log_err("Encountered error while trying to store addinfo");
-					break;
-				}
+			// Execute prepared addinfo statement and check if successful
+			sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_REGEX_ID);
+			sqlite3_bind_int(addinfo_stmt, 2, cache->domainlist_id);
+			rc = sqlite3_step(addinfo_stmt);
+			sqlite3_clear_bindings(addinfo_stmt);
+			sqlite3_reset(addinfo_stmt);
+			if(rc != SQLITE_DONE)
+			{
+				log_err("Encountered error while trying to store addinfo");
+				break;
 			}
-			else
-				sqlite3_bind_null(query_stmt, 9);
 		}
 		else
 		{
@@ -1449,25 +1479,13 @@ bool queries_to_database(void)
 		// DNSSEC
 		sqlite3_bind_int(query_stmt, 13, query->dnssec);
 
-	/*	// TTL
-		sqlite3_bind_int(query_stmt, 14, query->ttl);
-
 		// REGEX_ID
-		if(query->status == QUERY_REGEX)
-		{
-			// Restore regex ID if applicable
-			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
-			DNSCacheData *cache = getDNSCache(cacheID, true);
-			if(cache != NULL)
-				sqlite3_bind_int(query_stmt, 15, cache->deny_regex_id);
-			else
-				sqlite3_bind_null(query_stmt, 15);
-		}
+		if(cache != NULL && cache->domainlist_id > -1)
+			sqlite3_bind_int(query_stmt, 14, cache->domainlist_id);
 		else
-		{
-			sqlite3_bind_null(query_stmt, 15);
-		}
-	*/
+			// Not applicable, setting NULL
+			sqlite3_bind_null(query_stmt, 14);
+
 		// Step and check if successful
 		rc = sqlite3_step(query_stmt);
 		sqlite3_clear_bindings(query_stmt);

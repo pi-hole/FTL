@@ -1193,7 +1193,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 
 	// Check domain against blacklist regex filters
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
-	if(in_regex(domain, dns_cache, client-> id, REGEX_DENY))
+	if(in_regex(domain, dns_cache, client->id, REGEX_DENY))
 	{
 		// Set new status
 		*new_status = QUERY_REGEX;
@@ -1307,8 +1307,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 
 		case DENYLIST_BLOCKED:
-			// Known as exactly denied, we
-			// return this result early, skipping
+			// Known as exactly denied, we return this result early, skipping
 			// all the lengthy tests below
 			blockingreason = "exactly denied";
 			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, blockingreason);
@@ -1324,8 +1323,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 
 		case GRAVITY_BLOCKED:
-			// Known as gravity blocked, we
-			// return this result early, skipping
+			// Known as gravity blocked, we return this result early, skipping
 			// all the lengthy tests below
 			blockingreason = "gravity blocked";
 			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, blockingreason);
@@ -1341,14 +1339,14 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 
 		case REGEX_BLOCKED:
-			// Known as regex blacklisted, we
-			// return this result early, skipping
-			// all the lengthy tests below
-			blockingreason = "regex blacklisted";
-			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, blockingreason);
+			// Known as regex denied, we return this result early, skipping all
+			// the lengthy tests below
+			blockingreason = "regex denied";
+			log_debug(DEBUG_QUERIES, "%s is known as %s (cache regex ID: %i)",
+			          domainstr, blockingreason, dns_cache->domainlist_id);
 
-			// Do not block if the entire query is to be permitted
-			// as sometving along the CNAME path hit the whitelist
+			// Do not block if the entire query is to be permitted as something
+			// along the CNAME path hit the whitelist
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
@@ -1359,9 +1357,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 
 		case ALLOWED:
-			// Known as whitelisted, we
-			// return this result early, skipping
-			// all the lengthy tests below
+			// Known as allowed, we return this result early, skipping all the
+			// lengthy tests below
 			log_debug(DEBUG_QUERIES, "%s is known as not to be blocked (allowed)", domainstr);
 
 			query->flags.allowed = true;
@@ -1370,8 +1367,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 
 		case SPECIAL_DOMAIN:
-			// Known as a special domain, we
-			// return this result early, skipping
+			// Known as a special domain, we return this result early, skipping
 			// all the lengthy tests below
 			blockingreason = "special domain";
 			log_debug(DEBUG_QUERIES, "%s is known as special domain", domainstr);
@@ -1382,9 +1378,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 
 		case NOT_BLOCKED:
-			// Known as not blocked, we
-			// return this result early, skipping
-			// all the lengthy tests below
+			// Known as not blocked, we return this result early, skipping all
+			// the lengthy tests below
 			log_debug(DEBUG_QUERIES, "%s is known as not to be blocked", domainstr);
 
 			return false;
@@ -1464,7 +1459,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		// Debug output
 		if(config.debug.queries.v.b)
 		{
-			log_debug(DEBUG_QUERIES, "Blocking %s as %s is %s", domainstr, blockedDomain, blockingreason);
+			log_debug(DEBUG_QUERIES, "Blocking %s as %s is %s (domainlist ID: %i)",
+			          domainstr, blockedDomain, blockingreason, dns_cache->domainlist_id);
 			if(force_next_DNS_reply != 0)
 				log_debug(DEBUG_QUERIES, "Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
 		}
@@ -1478,8 +1474,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 		// Debug output
 		// client is guaranteed to be non-NULL above
-		log_debug(DEBUG_QUERIES, "DNS cache: %s/%s is %s", getstr(client->ippos),
-		          domainstr, query->flags.allowed ? "whitelisted" : "not blocked");
+		log_debug(DEBUG_QUERIES, "DNS cache: %s/%s is %s (domainlist ID: %i)", getstr(client->ippos),
+		          domainstr, query->flags.allowed ? "whitelisted" : "not blocked", dns_cache->domainlist_id);
 	}
 
 	free(domainstr);
@@ -1494,7 +1490,7 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 	// Does the user want to skip deep CNAME inspection?
 	if(!config.dns.CNAMEdeepInspect.v.b)
 	{
-		log_debug(DEBUG_QUERIES, "Skipping analysis as cname inspection is disabled");
+		log_debug(DEBUG_QUERIES, "Skipping analysis as CNAME inspection is disabled");
 		return false;
 	}
 
@@ -1587,9 +1583,10 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 			DNSCacheData *parent_cache = getDNSCache(parent_cacheID, true);
 			DNSCacheData *child_cache = getDNSCache(child_cacheID, true);
 
-			// Propagate ID of responsible regex up from the child to the parent domain
-			if(parent_cache != NULL && child_cache != NULL)
-				child_cache->domainlist_id = parent_cache->domainlist_id;
+			// Propagate ID of responsible regex up from the child to the parent
+			// domain (but only if set)
+			if(parent_cache != NULL && child_cache != NULL && child_cache->domainlist_id != -1)
+				parent_cache->domainlist_id = child_cache->domainlist_id;
 
 			// Set status
 			query_set_status(query, QUERY_REGEX_CNAME);

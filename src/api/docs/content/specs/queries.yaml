@@ -208,12 +208,10 @@ components:
                   time:
                     type: number
                     description: Time until the response was received (ms, negative if N/A)
-              ttl:
-                type: integer
-                description: Query's Time-To-Live (TTL) value (`-1` if N/A)
               regex_id:
                 type: integer
-                description: ID of blocking regex (`-1` if N/A)
+                description: ID of regex (`NULL` if N/A)
+                nullable: true
               upstream:
                 type: string
                 description: IP or name + port of upstream server
@@ -231,8 +229,7 @@ components:
               reply:
                 type: "IP"
                 time: 19
-              ttl: -1
-              regex_id: -1
+              regex_id: NULL
               upstream: "localhost#5353"
               dbid: 112421354
             - time: 1581907871.583821
@@ -247,8 +244,7 @@ components:
               reply:
                 type: "IP"
                 time: 12.3
-              ttl: 7
-              regex_id: -1
+              regex_id: NULL
               upstream: "localhost#5353"
               dbid: 112421355
         cursor:
