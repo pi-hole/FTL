@@ -7,6 +7,7 @@ on:
   pull_request:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   smoke-tests:
@@ -14,6 +15,7 @@ jobs:
       github.event_name == 'push'
       || github.event_name == 'release'
       || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+      || github.event_name == 'workflow_dispatch'
 
     outputs:
       GIT_TAG: ${{ steps.variables.outputs.GIT_TAG }}
