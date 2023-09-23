@@ -14,6 +14,8 @@
 #include "password.h"
 // genrandom() with fallback
 #include "daemon.h"
+// sleepms()
+#include "timers.h"
 
 // Randomness generator
 #include "webserver/x509.h"
@@ -305,16 +307,39 @@ char * __attribute__((malloc)) create_password(const char *password)
 	return balloon_password(password, salt, true);
 }
 
-bool verify_password(const char *password, const char* pwhash)
+char verify_password(const char *password, const char* pwhash, const bool rate_limiting)
 {
 	// No password supplied
 	if(password == NULL || password[0] == '\0')
-		return false;
+		return PASSWORD_INCORRECT;
 
 	// No password set
 	if(pwhash == NULL || pwhash[0] == '\0')
-		return true;
+		return PASSWORD_CORRECT;
 
+	// Check if there has already been one login attempt within this second
+	static time_t last_password_attempt = 0;
+	static unsigned int num_password_attempts = 0;
+	if(rate_limiting &&
+	   last_password_attempt > 0 &&
+	   last_password_attempt == time(NULL))
+	{
+		// Check if we have reached the maximum number of attempts
+		if(++num_password_attempts > MAX_PASSWORD_ATTEMPTS_PER_SECOND)
+		{
+			// Rate limit reached
+			sleepms(250);
+			return PASSWORD_RATE_LIMITED;
+		}
+	}
+	else
+	{
+		// Reset counter
+		num_password_attempts = 1;
+		last_password_attempt = time(NULL);
+	}
+
+	// Check password hash format
 	if(pwhash[0] == '$')
 	{
 		// Parse PHC string
@@ -323,9 +348,9 @@ bool verify_password(const char *password, const char* pwhash)
 		uint8_t *salt = NULL;
 		uint8_t *config_hash = NULL;
 		if(!parse_PHC_string(pwhash, &s_cost, &t_cost, &salt, &config_hash))
-			return false;
+			return PASSWORD_INCORRECT;
 		if(salt == NULL || config_hash == NULL)
-			return false;
+			return PASSWORD_INCORRECT;
 		char *supplied = balloon_password(password, salt, false);
 		const bool result = memcmp(config_hash, supplied, SHA256_DIGEST_SIZE) == 0;
 
@@ -336,7 +361,7 @@ bool verify_password(const char *password, const char* pwhash)
 		if(config_hash != NULL)
 			free(config_hash);
 
-		return result;
+		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
 	else
 	{
@@ -361,7 +386,7 @@ bool verify_password(const char *password, const char* pwhash)
 			}
 		}
 
-		return result;
+		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
 }
 
