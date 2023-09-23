@@ -461,19 +461,6 @@ int run_performance_test(void)
 	// Record starting time
 	clock_gettime(CLOCK_MONOTONIC, &start);
 
-	// The space parameter s_cost determines how many blocks of working
-	// space the algorithm will require during its computation.  It is
-	// common to set s_cost to a high value in order to increase the cost of
-	// hardware accelerators built by the adversary.
-	// The algorithm will need (s_cost + 1) * digest_size
-	size_t s_t_cost, s_s_cost;
-
-	// The time parameter t_cost determines the number of rounds of
-	// computation that the algorithm will perform. This can be used to
-	// further increase the cost of computation without raising the memory
-	// requirement.
-	size_t t_t_cost, t_s_cost;
-
 	// Test password
 	const uint8_t password[] = "abcdefghijklmnopqrstuvwxyz0123456789!\"§$%&/()=?";
 
@@ -487,8 +474,8 @@ int run_performance_test(void)
 	}
 
 	printf("Running time-performance test:\n");
-	t_t_cost = 1;
-	t_s_cost = 1024;
+	size_t t_t_cost = 1;
+	const size_t t_s_cost = 1024;
 	size_t t_t_costs = 0, t_s_costs = 0;
 	double t_avg_sum = 0.0;
 	while(true)
@@ -505,8 +492,8 @@ int run_performance_test(void)
 	}
 
 	printf("\nRunning space-performance test:\n");
-	s_t_cost = 256;
-	s_s_cost = 1;
+	const size_t s_t_cost = 256;
+	size_t s_s_cost = 1;
 	size_t s_t_costs = 0, s_s_costs = 0;
 	double s_avg_sum = 0.0;
 	while(true)
