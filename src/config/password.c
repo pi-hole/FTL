@@ -364,3 +364,145 @@ bool verify_password(const char *password, const char* pwhash)
 		return result;
 	}
 }
+
+static double sqroot(double square)
+{
+	double root = square / 3.0;
+	if (square <= 0) return 0.0;
+	for (unsigned int i=0; i<32; i++)
+		root = (root + square / root) / 2;
+	return root;
+}
+
+static int performance_test_task(const size_t s_cost, const size_t t_cost, const uint8_t password[], const size_t pwlen, uint8_t salt[SALT_LEN], double *avg_sum, size_t *t_costs, size_t *s_costs)
+{
+		struct timespec start, end, end2;
+		// Scratch buffer scratch is a user allocated working space required by
+		// the algorithm.  To determine the required size of the scratch buffer
+		// use the utility function balloon_itch.  Output of BALLOON algorithm
+		// will be written into the output buffer dst that has to be at least
+		// digest_size bytes long.
+		const size_t scratch_size = balloon_itch(SHA256_DIGEST_SIZE, s_cost);
+		uint8_t *scratch = calloc(scratch_size, sizeof(uint8_t));
+		if(scratch == NULL)
+		{
+			printf("Could not allocate %zu bytes of memory for test!\n", scratch_size);
+			return -1;
+		}
+
+		// Record starting time
+		clock_gettime(CLOCK_MONOTONIC, &start);
+
+		// Compute hash of given password password salted with salt and write
+		// the result into the output buffer dst
+		balloon_sha256(s_cost, t_cost, pwlen, password, SALT_LEN, salt, scratch, scratch);
+
+		// Record end time
+		clock_gettime(CLOCK_MONOTONIC, &end);
+
+		// Compute hash of given password password salted with salt and write
+		// the result into the output buffer dst
+		balloon_sha256(s_cost, t_cost, pwlen, password, SALT_LEN, salt, scratch, scratch);
+
+		// Record end time
+		clock_gettime(CLOCK_MONOTONIC, &end2);
+
+		// Free allocated memory
+		free(scratch);
+
+		// Compute elapsed time
+		const double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+		const double elapsed2 = (end2.tv_sec - end.tv_sec) + (end2.tv_nsec - end.tv_nsec) / 1000000000.0;
+		char prefix[2] = { 0 };
+		double formatted = 0.0;
+		format_memory_size(prefix, (unsigned long long)scratch_size, &formatted);
+		const double avg = (elapsed + elapsed2)/2;
+		*avg_sum += avg;
+		*t_costs += t_cost;
+		*s_costs += s_cost;
+		const double stdev = sqroot(((elapsed - avg)*(elapsed - avg) + (elapsed2 - avg)*(elapsed2 - avg))/2);
+		printf("Balloon with s = %zu, t = %zu took %.1f +/- %.1f milliseconds (scratch buffer %.1f%sB)\n", s_cost, t_cost, 1e3*avg, 1e3*stdev, formatted, prefix);
+
+		// Break if test took longer than two seconds
+		if(elapsed > 2)
+			return 1;
+		return 0;
+}
+
+// Run performance tests until individual test result gets beyond 3 seconds
+int run_performance_test(void)
+{
+	struct timespec start, end;
+	// Record starting time
+	clock_gettime(CLOCK_MONOTONIC, &start);
+
+	// The space parameter s_cost determines how many blocks of working
+	// space the algorithm will require during its computation.  It is
+	// common to set s_cost to a high value in order to increase the cost of
+	// hardware accelerators built by the adversary.
+	// The algorithm will need (s_cost + 1) * digest_size
+	size_t s_t_cost, s_s_cost;
+
+	// The time parameter t_cost determines the number of rounds of
+	// computation that the algorithm will perform. This can be used to
+	// further increase the cost of computation without raising the memory
+	// requirement.
+	size_t t_t_cost, t_s_cost;
+
+	// Test password
+	const uint8_t password[] = "abcdefghijklmnopqrstuvwxyz0123456789!\"§$%&/()=?";
+
+	// Generate a 128 bit random salt
+	// genrandom() returns cryptographically secure random data
+	uint8_t salt[SALT_LEN] = { 0 };
+	if(getrandom(salt, sizeof(salt), 0) < 0)
+	{
+		printf("Could not generate random salt!\n");
+		return EXIT_FAILURE;
+	}
+
+	printf("Running time-performance test:\n");
+	t_t_cost = 1;
+	t_s_cost = 1024;
+	size_t t_t_costs = 0, t_s_costs = 0;
+	double t_avg_sum = 0.0;
+	while(true)
+	{
+		const int ret = performance_test_task(t_s_cost, t_t_cost, password, sizeof(password), salt, &t_avg_sum, &t_t_costs, &t_s_costs);
+
+		if(ret == -1)
+			return EXIT_FAILURE;
+		else if(ret == 1)
+			break;
+
+		// Double time costs
+		t_t_cost *= 2;
+	}
+
+	printf("\nRunning space-performance test:\n");
+	s_t_cost = 256;
+	s_s_cost = 1;
+	size_t s_t_costs = 0, s_s_costs = 0;
+	double s_avg_sum = 0.0;
+	while(true)
+	{
+		const int ret = performance_test_task(s_s_cost, s_t_cost, password, sizeof(password), salt, &s_avg_sum, &s_t_costs, &s_s_costs);
+
+		if(ret == -1)
+			return EXIT_FAILURE;
+		else if(ret == 1)
+			break;
+
+		// Double space costs
+		s_s_cost *= 2;
+	}
+
+	clock_gettime(CLOCK_MONOTONIC, &end);
+	const double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+
+	printf("\nTime-performance index:  %8.1f it/s (s = %zu)\n", 1.0*t_s_costs/t_avg_sum, t_s_cost);
+	printf("Space-performance index: %8.1f it/s (t = %zu)\n", 1.0*s_s_costs/s_avg_sum, s_t_cost);
+	printf("\nTotal test time: %.1f seconds\n\n", elapsed);
+
+	return EXIT_SUCCESS;
+}

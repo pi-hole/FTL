@@ -17,5 +17,6 @@
 void sha256_raw_to_hex(uint8_t *data, char *buffer);
 char *create_password(const char *password) __attribute__((malloc));
 bool verify_password(const char *password, const char *pwhash);
+int run_performance_test(void);
 
 #endif //PASSWORD_H
