@@ -1350,9 +1350,11 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 	char *domainBuf = strdup(domain);
 
 	// Buffer to hold the constructed (sub)domain in ABP format
-	char *abpDomain = calloc(strlen(domain) + 4, sizeof(char));
+	const size_t intro_len = antigravity ? 4 : 2; // "@@||" or "||"
+	// +2 because of trailing "^\0"
+	char *abpDomain = calloc(strlen(domain) + intro_len + 2, sizeof(char));
 	// Prime abp matcher with minimal content
-	strcpy(abpDomain, "||^");
+	strcpy(abpDomain, antigravity ? "@@||^" : "||^");
 
 	// Get number of domain parts (equals the number of dots + 1)
 	unsigned int N = 1u;
@@ -1381,22 +1383,46 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 		{
 			// If the component starts with a dot, we need
 			// to skip it when copying it into the ABP buffer
-			// Move excluding initial "||" but including final \0 (strlen-2+1 = strlen-1)
-			memmove(abpDomain+2+component_size-1, abpDomain+2, strlen(abpDomain)-1);
-			// Copy component bytes (excl. trailing null-byte)
-			memcpy(abpDomain+2, ptr+1, component_size-1);
+			// Move excluding initial "(@@)||" but including final \0 (strlen-intro_len+1 = strlen-1)
+			// Example: We need to insert "defg." into "||abc^:
+			//                111
+			//      0123456789012
+			//      @@||abc^
+			// to:  @@||_____abc^ (_ = space made by memmove), because strlen("defg.") = 5
+			memmove(abpDomain + intro_len + (component_size - 1), abpDomain + intro_len, strlen(abpDomain) - (intro_len - 1));
+			// Copy component bytes, we use component_size - 1
+			// because we exclude the trailing null-byte (we insert
+			// in the middle of the other string)
+			// Example: We need to insert "defg." into "||___abc^:
+			//                111
+			//      0123456789012
+			//      @@||_____abc^
+			// to:  @@||defg.abc^
+			memcpy(abpDomain + intro_len, ptr + 1, component_size - 1);
 		}
 		else
 		{
 			// Otherwise, we copy the component as-is
-			memmove(abpDomain+2+component_size, abpDomain+2, strlen(abpDomain)-1);
+			// Example: We need to insert "abc" into "||^:
+			//                1
+			//      01234567890
+			//      @@||^
+			// to:  @@||___^ (_ = space made by memmove), because strlen("abc") = 3
+			memmove(abpDomain + intro_len + component_size, abpDomain + intro_len, strlen(abpDomain) - (intro_len - 1));
 			// Copy component bytes (excl. trailing null-byte)
-			memcpy(abpDomain+2, ptr, component_size);
+			// Example: We need to insert "abc" into "||___^:
+			//                1
+			//      01234567890
+			//      @@||___^
+			// to:  @@||abc^
+			memcpy(abpDomain + intro_len, ptr, component_size);
 		}
+
 		// Check if the constructed ABP-style domain is in the gravity list
 		const enum db_result abp_match = domain_in_list(abpDomain, stmt, "gravity", NULL);
 		log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %sgravity: %s",
 		          abpDomain, antigravity_stmt ? "anti" : "", abp_match == FOUND ? "yes" : "no");
+
 		// Return for anything else than "not found" (e.g. "found" or "list not available")
 		if(abp_match != NOT_FOUND)
 		{
@@ -1404,6 +1430,7 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 			free(abpDomain);
 			return abp_match;
 		}
+
 		// Truncate the domain buffer to the left of the
 		// last dot, effectively removing the last component
 		const ssize_t truncate_pos = strlen(domainBuf)-component_size;
@@ -1415,9 +1442,9 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 		domainBuf[truncate_pos] = '\0';
 
 		// Move the ABP buffer to the right by one byte ...
-		memmove(abpDomain+3, abpDomain+2, strlen(abpDomain));
+		memmove(abpDomain + intro_len + 1, abpDomain + intro_len, strlen(abpDomain));
 		// ... and insert '.' for the next iteration
-		abpDomain[2] = '.';
+		abpDomain[intro_len] = '.';
 	}
 
 	free(domainBuf);
