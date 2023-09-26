@@ -160,8 +160,6 @@ const char *get_busy_reply_str(const enum busy_reply replyWhenBusy) __attribute_
 int get_busy_reply_val(const char *replyWhenBusy) __attribute__ ((pure));
 const char * get_listeningMode_str(const enum listening_mode listeningMode) __attribute__ ((const));
 int get_listeningMode_val(const char *listeningMode) __attribute__ ((pure));
-const char * __attribute__ ((const)) get_web_theme_str(const enum web_theme web_theme);
-int __attribute__ ((pure)) get_web_theme_val(const char *web_theme);
 const char * __attribute__ ((const)) get_temp_unit_str(const enum temp_unit temp_unit);
 int __attribute__ ((pure)) get_temp_unit_val(const char *temp_unit);
 

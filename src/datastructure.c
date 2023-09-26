@@ -1070,41 +1070,6 @@ int __attribute__ ((pure)) get_listeningMode_val(const char *listeningMode)
 	return -1;
 }
 
-const char * __attribute__ ((const)) get_web_theme_str(const enum web_theme web_theme)
-{
-	switch(web_theme)
-	{
-		case THEME_DEFAULT_AUTO:
-			return "default-auto";
-		case THEME_DEFAULT_LIGHT:
-			return "default-light";
-		case THEME_DEFAULT_DARK:
-			return "default-dark";
-		case THEME_DEFAULT_DARKER:
-			return "default-darker";
-		case THEME_HIGH_CONTRAST:
-			return "high-contrast";
-		case THEME_HIGH_CONTRAST_DARK:
-			return "high-contrast-dark";
-		case THEME_LCARS:
-			return "lcars";
-		case THEME_MAX:
-			return NULL;
-	}
-	return NULL;
-}
-
-int __attribute__ ((pure)) get_web_theme_val(const char *web_theme)
-{
-	// Iterate over all possible theme values
-	for(enum web_theme i = 0; i < THEME_MAX; i++)
-		if(strcasecmp(web_theme, get_web_theme_str(i)) == 0)
-			return i;
-
-	// Invalid value
-	return -1;
-}
-
 const char * __attribute__ ((const)) get_temp_unit_str(const enum temp_unit temp_unit)
 {
 	switch(temp_unit)

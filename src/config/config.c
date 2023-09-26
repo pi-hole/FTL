@@ -873,17 +873,12 @@ void initConfig(struct config *conf)
 	conf->webserver.interface.theme.k = "webserver.interface.theme";
 	conf->webserver.interface.theme.h = "Theme used by the Pi-hole web interface";
 	{
-		struct enum_options themes[] =
+		struct enum_options themes[THEME_MAX];
+		for(unsigned int i = 0; i < THEME_MAX; i++)
 		{
-			// Remember to adjust enum web_theme when adding more themes!
-			{ "default-auto", "Pi-hole auto theme (light/dark, default)" },
-			{ "default-light", "Pi-hole day theme (light)" },
-			{ "default-dark", "Pi-hole midnight theme (dark)" },
-			{ "default-darker", "Pi-hole deep-midnight theme (dark)" },
-			{ "high-contrast", "High Contrast theme (light)" },
-			{ "high-contrast-dark", "High Contrast theme (dark)" },
-			{ "lcars", "Star Trek LCARS theme (dark)" }
-		};
+			themes[i].item = webthemes[i].name;
+			themes[i].description = webthemes[i].description;
+		}
 		CONFIG_ADD_ENUM_OPTIONS(conf->webserver.interface.theme.a, themes);
 	}
 	conf->webserver.interface.theme.t = CONF_ENUM_WEB_THEME;
