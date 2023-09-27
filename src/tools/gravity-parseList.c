@@ -16,7 +16,6 @@
 // Define valid domain patterns
 // No need to include uppercase letters, as we convert to lowercase in gravity_ParseFileIntoDomains() already
 // Adapted from https://stackoverflow.com/a/30007882
-// - Added "(?:...)" to form non-capturing groups (slightly faster)
 #define TLD_PATTERN "[a-z0-9][a-z0-9-]{0,61}[a-z0-9]"
 #define SUBDOMAIN_PATTERN "([a-z0-9_-]{0,63}\\.)"
 
@@ -87,7 +86,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			sqlite3_close(db);
 		return EXIT_FAILURE;
 	}
-	if(regcomp(&abp_regex, antigravity? ANTI_ABP_DOMAIN_REXEX : ABP_DOMAIN_REXEX, REG_EXTENDED) != 0)
+	if(regcomp(&abp_regex, antigravity ? ANTI_ABP_DOMAIN_REXEX : ABP_DOMAIN_REXEX, REG_EXTENDED) != 0)
 	{
 		printf("%s  %s Unable to compile regular expression to validate ABP-style domains\n",
 		       over, cross);
@@ -167,7 +166,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 		regmatch_t match = { 0 };
 		// Validate line
-		if(line[0] != '|' &&                                 // <- Not an ABP-style match
+		if(line[0] != (antigravity ? '@' : '|') &&           // <- Not an ABP-style match
 		   regexec(&exact_regex, line, 1, &match, 0) == 0 && // <- Regex match
 		   match.rm_so == 0 && match.rm_eo == read)          // <- Match covers entire line
 		{
@@ -200,7 +199,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			// Increment counter
 			exact_domains++;
 		}
-		else if(line[0] == '|' &&                               // <- ABP-style match
+		else if(line[0] == (antigravity ? '@' : '|') &&         // <- ABP-style match
 		        regexec(&abp_regex, line, 1, &match, 0) == 0 && // <- Regex match
 		        match.rm_so == 0 && match.rm_eo == read)        // <- Match covers entire line
 		{
