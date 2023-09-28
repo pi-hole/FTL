@@ -178,7 +178,7 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// Extract domain/name/client/address from payload when using POST, all
 		// others specify it as URI-component
-		cJSON *json_domain, *json_name, *json_address, *json_client, *json_type;
+		cJSON *json_domain, *json_name, *json_address, *json_client;
 		switch(listtype)
 		{
 			case GRAVITY_DOMAINLIST_ALLOW_EXACT:
@@ -236,16 +236,6 @@ static int api_list_write(struct ftl_conn *api,
 					                       "Invalid request: No valid item \"address\" in payload",
 					                       NULL);
 				}
-				json_type = cJSON_GetObjectItemCaseSensitive(api->payload.json, "type");
-				if(cJSON_IsString(json_type) && strlen(json_type->valuestring) > 0)
-					row.type_int = strcasecmp(json_type->valuestring, "allow") == 0 ? ADLIST_ALLOW : ADLIST_BLOCK;
-				else
-				{
-					return send_json_error(api, 400,
-					                       "bad_request",
-					                       "Invalid request: No valid item \"type\" in payload",
-					                       NULL);
-				}
 				break;
 
 			// Aggregate types (and gravity) are not handled by this routine
@@ -270,11 +260,29 @@ static int api_list_write(struct ftl_conn *api,
 	else
 		row.comment = NULL; // Default value
 
-	cJSON *json_type = cJSON_GetObjectItemCaseSensitive(api->payload.json, "type");
-	if(cJSON_IsString(json_type) && strlen(json_type->valuestring) > 0)
-		row.type = json_type->valuestring;
+
+	// Check if there is a type field in the payload (only for lists)
+	if(listtype == GRAVITY_ADLISTS)
+	{
+		cJSON *json_type = cJSON_GetObjectItemCaseSensitive(api->payload.json, "type");
+		if(cJSON_IsString(json_type) && strlen(json_type->valuestring) > 0)
+			row.type_int = strcasecmp(json_type->valuestring, "allow") == 0 ? ADLIST_ALLOW : ADLIST_BLOCK;
+		else
+		{
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid request: No valid item \"type\" in payload",
+			                       NULL);
+		}
+	}
 	else
-		row.type = NULL; // Default value
+	{
+		cJSON *json_type = cJSON_GetObjectItemCaseSensitive(api->payload.json, "type");
+		if(cJSON_IsString(json_type) && strlen(json_type->valuestring) > 0)
+			row.type = json_type->valuestring;
+		else
+			row.type = NULL; // Default value
+	}
 
 	cJSON *json_kind = cJSON_GetObjectItemCaseSensitive(api->payload.json, "kind");
 	if(cJSON_IsString(json_kind) && strlen(json_kind->valuestring) > 0)
