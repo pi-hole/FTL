@@ -1315,13 +1315,14 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 		antigravity_stmt->get(antigravity_stmt, client->id) :
 		gravity_stmt->get(gravity_stmt, client->id);
 
+	// Get string for debug logging
+	const char *listname = antigravity ? "antigravity" : "gravity";
+
 	// If client statement is not ready and cannot be initialized (e.g. no access to
 	// the database), we return false (not in gravity list) to prevent an FTL crash
 	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
 	{
-		log_err(antigravity ?
-				"Gravity database not available (antigravity)" :
-				"Gravity database not available (gravity)");
+		log_err("Gravity database not available (%s)", listname);
 		return LIST_NOT_AVAILABLE;
 	}
 
@@ -1332,9 +1333,9 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 			gravity_stmt->get(gravity_stmt, client->id);
 
 	// Check if domain is exactly in gravity list
-	const enum db_result exact_match = domain_in_list(domain, stmt, "gravity", NULL);
-	log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %sgravity: %s",
-	          domain, antigravity_stmt ? "anti" : "", exact_match == FOUND ? "yes" : "no");
+	const enum db_result exact_match = domain_in_list(domain, stmt, listname, NULL);
+	log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %s (exact): %s",
+	          domain, listname, exact_match == FOUND ? "yes" : "no");
 	// Return for anything else than "not found" (e.g. "found" or "list not available")
 	if(exact_match != NOT_FOUND)
 		return exact_match;
@@ -1348,17 +1349,18 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 	// Make a copy of the domain we will slowly truncate
 	// while extracting the individual components below
 	char *domainBuf = strdup(domain);
+	const size_t domainBufLen = strlen(domainBuf);
 
 	// Buffer to hold the constructed (sub)domain in ABP format
-	const size_t intro_len = antigravity ? 4 : 2; // "@@||" or "||"
-	// +2 because of trailing "^\0"
-	char *abpDomain = calloc(strlen(domain) + intro_len + 2, sizeof(char));
+	const char *abp_template = antigravity ? "@@||^" : "||^";
+	const size_t intro_len = strlen(abp_template) - 1; // "@@||" or "||" without the trailing "^"
+	char *abpDomain = calloc(domainBufLen + intro_len + 4, sizeof(char));
 	// Prime abp matcher with minimal content
-	strcpy(abpDomain, antigravity ? "@@||^" : "||^");
+	strcpy(abpDomain, abp_template);
 
 	// Get number of domain parts (equals the number of dots + 1)
 	unsigned int N = 1u;
-	for(const char *p = domain; *p != '\0'; p++)
+	for(const char *p = domainBuf; *p != '\0'; p++)
 		if(*p == '.')
 			N++;
 
@@ -1418,10 +1420,8 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 			memcpy(abpDomain + intro_len, ptr, component_size);
 		}
 
-		// Check if the constructed ABP-style domain is in the gravity list
-		const enum db_result abp_match = domain_in_list(abpDomain, stmt, "gravity", NULL);
-		log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %sgravity: %s",
-		          abpDomain, antigravity_stmt ? "anti" : "", abp_match == FOUND ? "yes" : "no");
+		// Check if the constructed ABP-style domain is in the (anti)gravity list
+		const enum db_result abp_match = domain_in_list(abpDomain, stmt, listname, NULL);
 
 		// Return for anything else than "not found" (e.g. "found" or "list not available")
 		if(abp_match != NOT_FOUND)
@@ -1433,7 +1433,7 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 
 		// Truncate the domain buffer to the left of the
 		// last dot, effectively removing the last component
-		const ssize_t truncate_pos = strlen(domainBuf)-component_size;
+		const ssize_t truncate_pos = strlen(domainBuf) - component_size;
 		if(truncate_pos < 1)
 			// This was already the last iteration
 			break;
