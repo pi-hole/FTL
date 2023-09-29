@@ -1,5 +1,5 @@
 ARG BUILDER="alpine"
-FROM ghcr.io/pi-hole/ftl-build:ftl-build-buildx-${BUILDER} AS builder
+FROM ghcr.io/pi-hole/ftl-build:v2.0-${BUILDER} AS builder
 
 WORKDIR /app
 

@@ -16,7 +16,6 @@
 // Define valid domain patterns
 // No need to include uppercase letters, as we convert to lowercase in gravity_ParseFileIntoDomains() already
 // Adapted from https://stackoverflow.com/a/30007882
-// - Added "(?:...)" to form non-capturing groups (slightly faster)
 #define TLD_PATTERN "[a-z0-9][a-z0-9-]{0,61}[a-z0-9]"
 #define SUBDOMAIN_PATTERN "([a-z0-9_-]{0,63}\\.)"
 
@@ -24,10 +23,14 @@
 // SUBDOMAIN_PATTERN is mandatory for exact style, disallowing TLD blocking
 #define VALID_DOMAIN_REXEX SUBDOMAIN_PATTERN"+"TLD_PATTERN
 
-// supported ABP style: ||subdomain.domain.tlp^
-// SUBDOMAIN_PATTERN is optional for ABP style, allowing TLD blocking: ||tld^
+// supported ABP blocking style: ||subdomain.domain.tlp^
+// SUBDOMAIN_PATTERN is optional for ABP style, providing TLD blocking: ||tld^
 // See https://github.com/pi-hole/pi-hole/pull/5240
 #define ABP_DOMAIN_REXEX "\\|\\|"SUBDOMAIN_PATTERN"*"TLD_PATTERN"\\^"
+
+// supported ABP allowing style: @@||subdomain.domain.tlp^
+// SUBDOMAIN_PATTERN is optional for ABP style, providing TLD allowing: @@||tld^
+#define ANTI_ABP_DOMAIN_REXEX "@@\\|\\|"SUBDOMAIN_PATTERN"*"TLD_PATTERN"\\^"
 
 // A list of items of common local hostnames not to report as unusable
 // Some lists (i.e StevenBlack's) contain these as they are supposed to be used as HOST files
@@ -42,7 +45,8 @@
 // Number of invalid domains to print before skipping the rest
 #define MAX_INVALID_DOMAINS 5
 
-int gravity_parseList(const char *infile, const char *outfile, const char *adlistIDstr, const bool checkOnly)
+int gravity_parseList(const char *infile, const char *outfile, const char *adlistIDstr,
+                      const bool checkOnly, const bool antigravity)
 {
 	const char *info = cli_info();
 	const char *tick = cli_tick();
@@ -82,7 +86,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			sqlite3_close(db);
 		return EXIT_FAILURE;
 	}
-	if(regcomp(&abp_regex, ABP_DOMAIN_REXEX, REG_EXTENDED) != 0)
+	if(regcomp(&abp_regex, antigravity ? ANTI_ABP_DOMAIN_REXEX : ABP_DOMAIN_REXEX, REG_EXTENDED) != 0)
 	{
 		printf("%s  %s Unable to compile regular expression to validate ABP-style domains\n",
 		       over, cross);
@@ -112,7 +116,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	}
 
 	// Prepare SQL statement
-	const char *sql = "INSERT INTO gravity (domain, adlist_id) VALUES (?, ?);";
+	const char *sql = antigravity ?
+		"INSERT INTO antigravity (domain, adlist_id) VALUES (?, ?);" :
+		"INSERT INTO gravity (domain, adlist_id) VALUES (?, ?);";
 	if(!checkOnly && sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
 		printf("%s  %s Unable to prepare SQL statement to insert domains into database file %s\n",
@@ -160,7 +166,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 		regmatch_t match = { 0 };
 		// Validate line
-		if(line[0] != '|' &&                                 // <- Not an ABP-style match
+		if(line[0] != (antigravity ? '@' : '|') &&           // <- Not an ABP-style match
 		   regexec(&exact_regex, line, 1, &match, 0) == 0 && // <- Regex match
 		   match.rm_so == 0 && match.rm_eo == read)          // <- Match covers entire line
 		{
@@ -193,7 +199,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			// Increment counter
 			exact_domains++;
 		}
-		else if(line[0] == '|' &&                               // <- ABP-style match
+		else if(line[0] == (antigravity ? '@' : '|') &&         // <- ABP-style match
 		        regexec(&abp_regex, line, 1, &match, 0) == 0 && // <- Regex match
 		        match.rm_so == 0 && match.rm_eo == read)        // <- Match covers entire line
 		{
@@ -379,8 +385,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 end_of_parseList:
 	// Print summary
-	printf("%s  %s Parsed %u exact domains and %u ABP-style domains (ignored %u non-domain entries)\n",
-	       over, tick, exact_domains, abp_domains, invalid_domains);
+	printf("%s  %s Parsed %u exact domains and %u ABP-style domains (%sing, ignored %u non-domain entries)\n",
+	       over, tick, exact_domains, abp_domains, antigravity ? "allow" : "block", invalid_domains);
 	if(invalid_domains_list_len > 0)
 	{
 		puts("      Sample of non-domain entries:");

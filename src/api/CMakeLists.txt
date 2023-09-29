@@ -28,6 +28,8 @@ set(sources
         stats_database.c
         stats.c
         teleporter.c
+        theme.c
+        theme.h
         )
 
 add_library(api OBJECT ${sources})

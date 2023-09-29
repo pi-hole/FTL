@@ -178,6 +178,7 @@ components:
             items:
               allOf:
                 - $ref: 'lists.yaml#/components/schemas/list'
+                - $ref: 'lists.yaml#/components/schemas/type'
                 - $ref: 'lists.yaml#/components/schemas/comment'
                 - $ref: 'lists.yaml#/components/schemas/groups'
                 - $ref: 'lists.yaml#/components/schemas/enabled'
@@ -185,11 +186,13 @@ components:
       put:
         allOf:
           - $ref: 'lists.yaml#/components/schemas/comment'
+          - $ref: 'lists.yaml#/components/schemas/type'
           - $ref: 'lists.yaml#/components/schemas/groups'
           - $ref: 'lists.yaml#/components/schemas/enabled'
       post:
         allOf:
           - $ref: 'lists.yaml#/components/schemas/list'
+          - $ref: 'lists.yaml#/components/schemas/type'
           - $ref: 'lists.yaml#/components/schemas/comment'
           - $ref: 'lists.yaml#/components/schemas/groups'
           - $ref: 'lists.yaml#/components/schemas/enabled'
@@ -200,6 +203,16 @@ components:
           description: Address of the list
           type: string
           example: https://hosts-file.net/ad_servers.txt
+    type:
+      type: object
+      properties:
+        type:
+          description: Type of list
+          type: string
+          enum:
+            - "allow"
+            - "block"
+          example: "block"
     comment:
       type: object
       properties:
