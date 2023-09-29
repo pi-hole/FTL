@@ -171,10 +171,28 @@ static int pihole_fileversion(lua_State *L) {
 
 // pihole.webtheme()
 static int pihole_webtheme(lua_State *L) {
-	// Get name of currently set webtheme
-	const char *name = get_web_theme_str(config.webserver.interface.theme.v.web_theme);
-	lua_pushstring(L, name);
-	return 1; // number of results
+	// Get currently configured webtheme
+	const struct web_themes this_theme = webthemes[config.webserver.interface.theme.v.web_theme];
+	// Create a Lua table
+	lua_newtable(L);
+
+	// Set table["name"] = this_theme.name (string)
+	lua_pushstring(L, "name");
+	lua_pushstring(L, this_theme.name);
+	lua_settable(L, -3);
+
+	// Set table["dark"] = this_theme.dark (boolean)
+	lua_pushstring(L, "dark");
+	lua_pushboolean(L, this_theme.dark);
+	lua_settable(L, -3);
+
+	// Set table["color"] = this_theme.color (string)
+	lua_pushstring(L, "color");
+	lua_pushstring(L, this_theme.color);
+	lua_settable(L, -3);
+
+	// Return there is one result on the stack
+	return 1;
 }
 
 // pihole.webhome()
