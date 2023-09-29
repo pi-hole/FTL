@@ -94,6 +94,12 @@
   [[ ${lines[0]} == "192.168.1.5" ]]
 }
 
+@test "Gravity + antigravity exact matches are not blocked" {
+  run bash -c "dig antigravity.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "192.168.1.6" ]]
+}
+
 @test "Regex denied match is blocked" {
   run bash -c "dig regex5.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"

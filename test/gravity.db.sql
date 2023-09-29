@@ -26,6 +26,7 @@ CREATE TABLE domainlist
 CREATE TABLE adlist
 (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+	type INTEGER NOT NULL DEFAULT 0,
   address TEXT UNIQUE NOT NULL,
   enabled BOOLEAN NOT NULL DEFAULT 1,
   date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as int)),
@@ -46,6 +47,12 @@ CREATE TABLE adlist_by_group
 );
 
 CREATE TABLE gravity
+(
+	domain TEXT NOT NULL,
+	adlist_id INTEGER NOT NULL REFERENCES adlist (id)
+);
+
+CREATE TABLE antigravity
 (
 	domain TEXT NOT NULL,
 	adlist_id INTEGER NOT NULL REFERENCES adlist (id)
@@ -141,7 +148,14 @@ CREATE VIEW vw_gravity AS SELECT domain, adlist_by_group.group_id AS group_id
     LEFT JOIN adlist_by_group ON adlist_by_group.adlist_id = gravity.adlist_id
     LEFT JOIN adlist ON adlist.id = gravity.adlist_id
     LEFT JOIN "group" ON "group".id = adlist_by_group.group_id
-    WHERE adlist.enabled = 1 AND (adlist_by_group.group_id IS NULL OR "group".enabled = 1);
+    WHERE adlist.enabled = 1 AND (adlist_by_group.group_id IS NULL OR "group".enabled = 1) AND adlist.type = 0;
+
+CREATE VIEW vw_antigravity AS SELECT domain, adlist_by_group.group_id AS group_id
+    FROM antigravity
+    LEFT JOIN adlist_by_group ON adlist_by_group.adlist_id = antigravity.adlist_id
+    LEFT JOIN adlist ON adlist.id = antigravity.adlist_id
+    LEFT JOIN "group" ON "group".id = adlist_by_group.group_id
+    WHERE adlist.enabled = 1 AND (adlist_by_group.group_id IS NULL OR "group".enabled = 1) AND adlist.type = 1;
 
 CREATE VIEW vw_adlist AS SELECT DISTINCT address, id
     FROM adlist
@@ -215,13 +229,18 @@ INSERT INTO domainlist VALUES(16,3,'^regex-notMultiple.ftl$;querytype=!ANY,HTTPS
 /* Other special domains */
 INSERT INTO domainlist VALUES(17,1,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
 
-INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list',1559928803,2000,2,1,0);
+INSERT INTO adlist VALUES(1,0,'https://pi-hole.net/block.txt',1,1559928803,1559928803,'Fake block-list',1559928803,2000,2,1,0);
+INSERT INTO adlist VALUES(2,1,'https://pi-hole.net/allow.txt',1,1559928803,1559928803,'Fake allow-list',1559928803,2000,2,1,0);
 
 INSERT INTO gravity VALUES('allowed.ftl',1);
 INSERT INTO gravity VALUES('gravity.ftl',1);
 INSERT INTO gravity VALUES('gravity-aaaa.ftl',1);
 INSERT INTO gravity VALUES('gravity-allowed.ftl',1);
 INSERT INTO gravity VALUES('||special.gravity.ftl^',1);
+
+INSERT INTO gravity VALUES('antigravity.ftl',1);
+INSERT INTO antigravity VALUES('antigravity.ftl',2);
+
 INSERT INTO info VALUES('gravity_count',5);
 INSERT INTO info VALUES('abp_domains',1);
 INSERT INTO info VALUES('updated',0);

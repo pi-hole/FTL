@@ -25,6 +25,8 @@
 #include <stdio.h>
 // type cJSON
 #include "webserver/cJSON/cJSON.h"
+// enum web_theme
+#include "api/theme.h"
 
 #define GLOBALTOMLPATH "/etc/pihole/pihole.toml"
 

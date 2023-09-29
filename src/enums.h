@@ -297,21 +297,15 @@ enum fifo_logs {
 	FIFO_MAX
 } __attribute__ ((packed));
 
-enum web_theme {
-	THEME_DEFAULT_AUTO = 0,
-	THEME_DEFAULT_LIGHT,
-	THEME_DEFAULT_DARK,
-	THEME_DEFAULT_DARKER,
-	THEME_HIGH_CONTRAST,
-	THEME_HIGH_CONTRAST_DARK,
-	THEME_LCARS,
-	THEME_MAX
-} __attribute__ ((packed));
-
 enum temp_unit {
 	TEMP_UNIT_C = 0,
 	TEMP_UNIT_F,
 	TEMP_UNIT_K
+} __attribute__ ((packed));
+
+enum adlist_type {
+	ADLIST_BLOCK = 0,
+	ADLIST_ALLOW
 } __attribute__ ((packed));
 
 #endif // ENUMS_H

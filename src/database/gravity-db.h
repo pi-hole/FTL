@@ -55,7 +55,7 @@ int gravityDB_count(const enum gravity_tables list);
 void check_inaccessible_adlists(void);
 bool gravity_updated(void);
 
-enum db_result in_gravity(const char *domain, clientsData *client);
+enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity);
 enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
 enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
 bool in_auditlist(const char *domain);
