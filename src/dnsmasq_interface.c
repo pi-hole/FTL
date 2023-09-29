@@ -1125,7 +1125,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		return false;
 
 	// Check domains against exact blacklist
-	enum db_result blacklist = in_denylist(domain, dns_cache, client);
+	const enum db_result blacklist = in_denylist(domain, dns_cache, client);
 	if(blacklist == FOUND)
 	{
 		// Set new status
@@ -1139,8 +1139,16 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		return true;
 	}
 
+	// Check domain against antigravity
+	const enum db_result antigravity = in_gravity(domain, client, true);
+	if(antigravity == FOUND)
+	{
+		log_debug(DEBUG_QUERIES, "Allowing query due to antigravity match");
+		return false;
+	}
+
 	// Check domains against gravity domains
-	enum db_result gravity = in_gravity(domain, client);
+	const enum db_result gravity = in_gravity(domain, client, false);
 	if(gravity == FOUND)
 	{
 		// Set new status
@@ -1151,12 +1159,14 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		set_dnscache_blockingstatus(dns_cache, client, GRAVITY_BLOCKED, domain);
 
 		// We block this domain
-		return FOUND;
+		return true;
 	}
 
 	// Check if one of the database lookups returned that the database is
 	// currently busy
-	if(blacklist == LIST_NOT_AVAILABLE || gravity == LIST_NOT_AVAILABLE)
+	if(blacklist == LIST_NOT_AVAILABLE ||
+	   antigravity == LIST_NOT_AVAILABLE ||
+	   gravity == LIST_NOT_AVAILABLE)
 	{
 		*db_okay = false;
 		// Handle reply to this query as configured
