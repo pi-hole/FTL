@@ -1239,6 +1239,30 @@
   [[ "${lines[0]}" == "fe80::11" ]]
 }
 
+@test "Antigravity domain is not blocked" {
+  run bash -c "dig A antigravity.ftl +short @127.0.0.1"
+  printf "A: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "192.168.1.6" ]]
+}
+
+@test "Antigravity ABP-domain is not blocked" {
+  run bash -c "dig A x.y.z.abp.antigravity.ftl +short @127.0.0.1"
+  printf "A: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "192.168.1.7" ]]
+}
+
+@test "API domain search: Non-existing domain returns expected JSON" {
+  run bash -c 'curl -s 127.0.0.1/api/search/non.existant'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '{"search":{"domains":[],"gravity":[],"total":0,"parameters":{"N":20,"partial":false,"searchterm":"non.existant","debug":false}},"took":'*'}' ]]
+}
+
+@test "API domain search: antigravity.ftl returns expected JSON" {
+  run bash -c 'curl -s 127.0.0.1/api/search/antigravity.ftl'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '{"search":{"domains":[],"gravity":[{"domain":"antigravity.ftl","type":"block","address":"https://pi-hole.net/block.txt","comment":"Fake block-list","enabled":true,"id":1,"date_added":'*',"date_modified":'*',"type":"block","date_updated":'*',"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0,2]},{"domain":"antigravity.ftl","type":"allow","address":"https://pi-hole.net/allow.txt","comment":"Fake allow-list","enabled":true,"id":2,"date_added":'*',"date_modified":'*',"type":"allow","date_updated":'*',"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0]},{"domain":"@@||antigravity.ftl^","type":"allow","address":"https://pi-hole.net/allow.txt","comment":"Fake allow-list","enabled":true,"id":2,"date_added":'*',"date_modified":'*',"type":"allow","date_updated":'*',"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0]}],"total":3,"parameters":{"N":20,"partial":false,"searchterm":"antigravity.ftl","debug":false}},"took":'*'}' ]]
+}
+
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1/api/auth'
   printf "%s\n" "${lines[@]}"

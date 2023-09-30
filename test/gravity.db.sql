@@ -238,10 +238,13 @@ INSERT INTO gravity VALUES('gravity-aaaa.ftl',1);
 INSERT INTO gravity VALUES('gravity-allowed.ftl',1);
 INSERT INTO gravity VALUES('||special.gravity.ftl^',1);
 
+INSERT INTO gravity VALUES('gravity.ftl',1);
 INSERT INTO gravity VALUES('antigravity.ftl',1);
+INSERT INTO gravity VALUES('x.y.z.abp.antigravity',1);
 INSERT INTO antigravity VALUES('antigravity.ftl',2);
+INSERT INTO antigravity VALUES('@@||antigravity.ftl^',2);
 
-INSERT INTO info VALUES('gravity_count',5);
+INSERT INTO info VALUES('gravity_count',8);
 INSERT INTO info VALUES('abp_domains',1);
 INSERT INTO info VALUES('updated',0);
 
