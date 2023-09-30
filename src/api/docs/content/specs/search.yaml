@@ -12,9 +12,11 @@ components:
         parameters:
           - $ref: 'search.yaml#/components/parameters/partial'
           - $ref: 'search.yaml#/components/parameters/N'
+          - $ref: 'search.yaml#/components/parameters/debug'
         description: |
-          Search for domains in Pi-hole's list. The optional parameters `N` and `partial` limit the maximum number of returned records and whether only exact matches or also partial matches should be returned, respectively.
+          Search for domains in Pi-hole's list. The optional parameters `N` and `partial` limit the maximum number of returned records and whether partial matches should be returned, respectively.
           There is a hard upper limit of `N` defined in FTL (currently set to 10,000) to ensure that the response is not too large.
+          ABP matches are not returned when partial matching is requested.
         responses:
           '200':
             description: OK
@@ -98,28 +100,34 @@ components:
                     example: "doubleclick.net"
                   address:
                     type: string
-                    description: Address of the adlist this domain was found on
+                    description: Address of the list this domain was found on
                     example: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
                   comment:
                     type: string
-                    description: Optional comment of the adlist
+                    description: Optional comment of the list
                     nullable: true
                     example: "I needed to block this because of XYZ"
                   enabled:
                     type: boolean
-                    description: Whether this adlist is enabled
+                    description: Whether this list is enabled
                     example: true
                   id:
                     type: integer
-                    description: Database ID of the associated adlist
+                    description: Database ID of the associated list
                     example: 0
+                  type:
+                    type: string
+                    description: String specifying list type
+                    enum:
+                      - "allow"
+                      - "block"
                   date_added:
                     type: integer
-                    description: Unix timestamp of adlist addition
+                    description: Unix timestamp of list addition
                     example: 1664624500
                   date_modified:
                     type: integer
-                    description: Unix timestamp of last adlist modification
+                    description: Unix timestamp of last list modification
                     example: 1664624500
                   date_updated:
                     type: integer
@@ -127,19 +135,19 @@ components:
                     example: 1664624500
                   number:
                     type: integer
-                    description: Number of entries in the adlist
+                    description: Number of entries in the list
                     example: 7
                   invalid_domains:
                     type: integer
-                    description: Number of invalid domains in the adlist
+                    description: Number of invalid domains in the list
                     example: 0
                   abp_entries:
                     type: integer
-                    description: Number of ABP entries in the adlist
+                    description: Number of ABP entries in the list
                     example: 0
                   status:
                     type: integer
-                    description: Status of the adlist
+                    description: Status of the list
                     example: 1
                   groups:
                     type: array
@@ -166,6 +174,10 @@ components:
                   type: string
                   description: Search term
                   example: "doubleclick.net"
+                debug:
+                  type: boolean
+                  description: Whether debug information was requested
+                  example: false
   parameters:
     domain:
       name: domain
@@ -194,4 +206,13 @@ components:
         type: integer
         default: 20
         example: 20
+    debug:
+      name: debug
+      in: query
+      description: Add debug information to the response
+      required: false
+      schema:
+        type: boolean
+        default: false
+        example: false
 

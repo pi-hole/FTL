@@ -1140,15 +1140,16 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	}
 
 	// Check domain against antigravity
-	const enum db_result antigravity = in_gravity(domain, client, true);
+	int domain_id = -1;
+	const enum db_result antigravity = in_gravity(domain, client, true, &domain_id);
 	if(antigravity == FOUND)
 	{
-		log_debug(DEBUG_QUERIES, "Allowing query due to antigravity match");
+		log_debug(DEBUG_QUERIES, "Allowing query due to antigravity match (ID %i)", domain_id);
 		return false;
 	}
 
 	// Check domains against gravity domains
-	const enum db_result gravity = in_gravity(domain, client, false);
+	const enum db_result gravity = in_gravity(domain, client, false, &domain_id);
 	if(gravity == FOUND)
 	{
 		// Set new status

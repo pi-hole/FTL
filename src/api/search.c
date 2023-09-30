@@ -45,7 +45,7 @@ static int search_table(struct ftl_conn *api,
 
 	tablerow table;
 	unsigned int n = 0u;
-	while(gravityDB_readTableGetRow(&table, &sql_msg) && n++ < N)
+	while(gravityDB_readTableGetRow(listtype, &table, &sql_msg) && n++ < N)
 	{
 		cJSON *row = JSON_NEW_OBJECT();
 		JSON_COPY_STR_TO_OBJECT(row, "domain", table.domain);
@@ -62,11 +62,10 @@ static int search_table(struct ftl_conn *api,
 		JSON_ADD_NUMBER_TO_OBJECT(row, "date_added", table.date_added);
 		JSON_ADD_NUMBER_TO_OBJECT(row, "date_modified", table.date_modified);
 
-		if(listtype == GRAVITY_GRAVITY)
+		if(listtype == GRAVITY_GRAVITY || listtype == GRAVITY_ANTIGRAVITY)
 		{
 			// Add gravity specific parameters
-			const char *adlist_type = table.type_int == ADLIST_BLOCK ? "block" : "allow";
-			JSON_REF_STR_IN_OBJECT(row, "type", adlist_type);
+			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "date_updated", table.date_updated);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "number", table.number);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "invalid_domains", table.invalid_domains);
@@ -103,6 +102,45 @@ static int search_table(struct ftl_conn *api,
 	return 200;
 }
 
+static int search_gravity(struct ftl_conn *api, cJSON *array, cJSON **abp_patterns,
+                          const unsigned int N, const bool partial, const bool antigravity)
+{
+	enum gravity_list_type table = antigravity ? GRAVITY_ANTIGRAVITY : GRAVITY_GRAVITY;
+	if(partial)
+	{
+		// Search for partial matches in (anti/)gravity
+		const int ret = search_table(api, table, NULL, N, partial, array);
+		if(ret != 200)
+			return ret;
+	}
+	else
+	{
+		// Search for exact matches in (anti/)gravity
+		int ret = search_table(api, table, NULL, N, false, array);
+		if(ret != 200)
+			return ret;
+
+		// Search for exact matches in (anti/)gravity
+		const char *domain = api->item;
+		*abp_patterns = gen_abp_patterns(domain, antigravity);
+		cJSON *abp_pattern = NULL;
+		cJSON_ArrayForEach(abp_pattern, *abp_patterns)
+		{
+			const char *pattern = cJSON_GetStringValue(abp_pattern);
+			if(pattern == NULL)
+				continue;
+			api->item = pattern;
+			ret = search_table(api, table, NULL, N, partial, array);
+			if(ret != 200)
+				return ret;
+		}
+		// Restore original search term
+		api->item = domain;
+	}
+
+	return 200;
+}
+
 int api_search(struct ftl_conn *api)
 {
 	int ret = 0;
@@ -116,12 +154,13 @@ int api_search(struct ftl_conn *api)
 	}
 
 	// Parse query string parameters
-	bool partial = false;
+	bool partial = false, debug = false;
 	unsigned int N = 20u;
 	if(api->request->query_string != NULL)
 	{
 		// Check if we should perform a partial search
 		get_bool_var(api->request->query_string, "partial", &partial);
+		get_bool_var(api->request->query_string, "debug", &debug);
 		get_uint_var(api->request->query_string, "N", &N);
 
 		// Check validity of N
@@ -145,9 +184,12 @@ int api_search(struct ftl_conn *api)
 
 	// Search through gravity
 	cJSON *gravity = JSON_NEW_ARRAY();
-	ret = search_table(api, GRAVITY_GRAVITY, NULL, N, partial, gravity);
-	if(ret != 200)
-		return ret;
+	cJSON *gravity_patterns = NULL;
+	search_gravity(api, gravity, &gravity_patterns, N, partial, false);
+
+	// Search through antigravity
+	cJSON *antigravity_patterns = NULL;
+	search_gravity(api, gravity, &antigravity_patterns, N, partial, true);
 
 	// Search through all regex filters
 	cJSON *regex_ids = JSON_NEW_OBJECT();
@@ -174,9 +216,6 @@ int api_search(struct ftl_conn *api)
 			return ret;
 	}
 
-	// Free intermediate JSON objects containing list of regex IDs
-	cJSON_Delete(regex_ids);
-
 	cJSON *search = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(search, "domains", domains);
 	JSON_ADD_ITEM_TO_OBJECT(search, "gravity", gravity);
@@ -185,7 +224,28 @@ int api_search(struct ftl_conn *api)
 	JSON_ADD_NUMBER_TO_OBJECT(parameters, "N", N);
 	JSON_ADD_BOOL_TO_OBJECT(parameters, "partial", partial);
 	JSON_REF_STR_IN_OBJECT(parameters, "searchterm", api->item);
+	JSON_ADD_BOOL_TO_OBJECT(parameters, "debug", debug);
 	JSON_ADD_ITEM_TO_OBJECT(search, "parameters", parameters);
+	if(debug)
+	{
+		// Add debug information
+		cJSON *abp_pattern = JSON_NEW_OBJECT();
+		JSON_ADD_ITEM_TO_OBJECT(abp_pattern, "gravity", gravity_patterns);
+		JSON_ADD_ITEM_TO_OBJECT(abp_pattern, "antigravity", antigravity_patterns);
+		cJSON *jdebug = JSON_NEW_OBJECT();
+		JSON_ADD_ITEM_TO_OBJECT(jdebug, "abp_pattern", abp_pattern);
+		JSON_ADD_ITEM_TO_OBJECT(jdebug, "regex_ids", regex_ids);
+		JSON_ADD_ITEM_TO_OBJECT(search, "debug", jdebug);
+	}
+	else
+	{
+		// Free intermediate JSON objects containing ABP patterns
+		cJSON_Delete(gravity_patterns);
+		cJSON_Delete(antigravity_patterns);
+
+		// Free intermediate JSON objects containing list of regex IDs
+		cJSON_Delete(regex_ids);
+	}
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "search", search);
 	JSON_SEND_OBJECT(json);

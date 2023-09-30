@@ -54,7 +54,8 @@ int gravityDB_count(const enum gravity_tables list);
 void check_inaccessible_adlists(void);
 bool gravity_updated(void);
 
-enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity);
+cJSON *gen_abp_patterns(const char *domain, const bool antigravity);
+enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity, int* domain_id);
 enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
 enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
 bool in_auditlist(const char *domain);
@@ -64,7 +65,7 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 
 bool gravityDB_readTable(const enum gravity_list_type listtype, const char *filter,
                          const char **message, const bool exact, const char *ids);
-bool gravityDB_readTableGetRow(tablerow *row, const char **message);
+bool gravityDB_readTableGetRow(const enum gravity_list_type listtype, tablerow *row, const char **message);
 void gravityDB_readTableFinalize(void);
 bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
                           const char **message, const enum http_method method);
