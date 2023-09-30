@@ -223,7 +223,7 @@ int api_search(struct ftl_conn *api)
 	cJSON *parameters = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(parameters, "N", N);
 	JSON_ADD_BOOL_TO_OBJECT(parameters, "partial", partial);
-	JSON_REF_STR_IN_OBJECT(parameters, "searchterm", api->item);
+	JSON_REF_STR_IN_OBJECT(parameters, "domain", api->item);
 	JSON_ADD_BOOL_TO_OBJECT(parameters, "debug", debug);
 	JSON_ADD_ITEM_TO_OBJECT(search, "parameters", parameters);
 	if(debug)

@@ -170,9 +170,9 @@ components:
                   type: integer
                   description: Maximum number of results to be returned (per type)
                   example: 20
-                searchterm:
+                domain:
                   type: string
-                  description: Search term
+                  description: (Part of) domain to be searched for
                   example: "doubleclick.net"
                 debug:
                   type: boolean
