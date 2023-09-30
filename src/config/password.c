@@ -400,7 +400,7 @@ static double sqroot(double square)
 }
 
 static int performance_test_task(const size_t s_cost, const size_t t_cost, const uint8_t password[],
-                                 const size_t pwlen, uint8_t salt[SALT_LEN], const size_t rel,
+                                 const size_t pwlen, uint8_t salt[SALT_LEN],
                                  double *elapsed1, double *elapsed2)
 {
 		struct timespec start, end, end2;
@@ -445,8 +445,8 @@ static int performance_test_task(const size_t s_cost, const size_t t_cost, const
 		format_memory_size(prefix, (unsigned long long)scratch_size, &formatted);
 		const double avg = (*elapsed1 + *elapsed2)/2;
 		const double stdev = sqroot(((*elapsed1 - avg)*(*elapsed1 - avg) + (*elapsed2 - avg)*(*elapsed2 - avg))/2);
-		printf("s = %zu, t = %zu took %.1f +/- %.1f ms (scratch buffer %.1f%sB) -> %.1f\n",
-		       s_cost, t_cost, 1e3*avg, 1e3*stdev, formatted, prefix, 1.0*rel/avg);
+		printf("s = %5zu, t = %5zu took %6.1f +/- %4.1f ms (scratch buffer %6.1f%1sB) -> %.0f\n",
+		       s_cost, t_cost, 1e3*avg, 1e3*stdev, formatted, prefix, 1.0*(s_cost*t_cost)/avg);
 
 		// Break if test took longer than two seconds
 		if(avg > 2)
@@ -482,7 +482,7 @@ int run_performance_test(void)
 	{
 		double elapsed1 = 0.0, elapsed2 = 0.0;
 		const int ret = performance_test_task(t_s_cost, t_t_cost, password, sizeof(password), salt,
-		                                      t_t_cost, &elapsed1, &elapsed2);
+		                                      &elapsed1, &elapsed2);
 
 		if(ret == -1)
 			return EXIT_FAILURE;
@@ -491,8 +491,8 @@ int run_performance_test(void)
 		{
 			// We do not want to include the first test in the
 			// average as the first call is slower
-			cJSON_AddItemToArray(time_test, cJSON_CreateNumber(1.0*t_t_cost/elapsed1));
-			cJSON_AddItemToArray(time_test, cJSON_CreateNumber(1.0*t_t_cost/elapsed2));
+			cJSON_AddItemToArray(time_test, cJSON_CreateNumber(1.0*(t_s_cost*t_t_cost)/elapsed1));
+			cJSON_AddItemToArray(time_test, cJSON_CreateNumber(1.0*(t_s_cost*t_t_cost)/elapsed2));
 		}
 
 		if(ret == 1)
@@ -511,10 +511,10 @@ int run_performance_test(void)
 	{
 		double elapsed1 = 0.0, elapsed2 = 0.0;
 		const int ret = performance_test_task(s_s_cost, s_t_cost, password, sizeof(password), salt,
-		                                      s_s_cost, &elapsed1, &elapsed2);
+		                                      &elapsed1, &elapsed2);
 
-		cJSON_AddItemToArray(space_test, cJSON_CreateNumber(1.0*s_s_cost/elapsed1));
-		cJSON_AddItemToArray(space_test, cJSON_CreateNumber(1.0*s_s_cost/elapsed2));
+		cJSON_AddItemToArray(space_test, cJSON_CreateNumber(1.0*(s_t_cost*s_s_cost)/elapsed1));
+		cJSON_AddItemToArray(space_test, cJSON_CreateNumber(1.0*(s_t_cost*s_s_cost)/elapsed2));
 
 		if(ret == -1)
 			return EXIT_FAILURE;
@@ -564,8 +564,8 @@ int run_performance_test(void)
 	cJSON_Delete(space_test);
 
 	// Print results
-	printf("\nAverage time-performance index:  %8.1f +/- %.1f (s = %zu)\n", t_avg_sum1, t_stdev_sum1, t_s_cost);
-	printf("Average space-performance index: %8.1f +/- %.1f (t = %zu)\n", s_avg_sum1, s_stdev_sum1, s_t_cost);
+	printf("\nAverage time-performance index:  %9.0f +/- %.0f (s = %zu)\n", t_avg_sum1, t_stdev_sum1, t_s_cost);
+	printf("Average space-performance index: %9.0f +/- %.0f (t = %zu)\n", s_avg_sum1, s_stdev_sum1, s_t_cost);
 	printf("\nTotal test time: %.1f seconds\n\n", elapsed);
 
 	return EXIT_SUCCESS;
