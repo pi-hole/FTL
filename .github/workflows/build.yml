@@ -101,7 +101,6 @@ jobs:
         name: Build and test FTL in ftl-build container (QEMU)
         uses: docker/build-push-action@v5.0.0
         with:
-          # tags: ghcr.io/pi-hole/ftl-build:v2.0
           platforms: ${{ matrix.platform }}
           # Always load latest container image
           pull: true
