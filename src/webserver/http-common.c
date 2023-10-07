@@ -28,7 +28,7 @@ char *json_formatter(const cJSON *object)
 {
 	if(config.webserver.api.prettyJSON.v.b)
 	{
-		/* Examplary output:
+		/* Exemplary output:
 		{
 			"queries in database":	70,
 			"database filesize":	49152,

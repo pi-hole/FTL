@@ -2847,7 +2847,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// Start database thread if database is used
 	if(pthread_create( &threads[DB], &attr, DB_thread, NULL ) != 0)
 	{
-		log_crit("Unable to creeate database thread. Exiting...");
+		log_crit("Unable to create database thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
