@@ -162,7 +162,7 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			char *pwhash = strlen(value) > 0 ? create_password(value) : strdup("");
 
 			// Verify that the password hash is valid
-			if(!verify_password(value, pwhash))
+			if(verify_password(value, pwhash, false) != PASSWORD_CORRECT)
 			{
 				log_err("Failed to create password hash (verification failed), password remains unchanged");
 				free(pwhash);

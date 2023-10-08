@@ -14,6 +14,8 @@
 #include "password.h"
 // genrandom() with fallback
 #include "daemon.h"
+// sleepms()
+#include "timers.h"
 
 // Randomness generator
 #include "webserver/x509.h"
@@ -305,16 +307,39 @@ char * __attribute__((malloc)) create_password(const char *password)
 	return balloon_password(password, salt, true);
 }
 
-bool verify_password(const char *password, const char* pwhash)
+char verify_password(const char *password, const char* pwhash, const bool rate_limiting)
 {
 	// No password supplied
 	if(password == NULL || password[0] == '\0')
-		return false;
+		return PASSWORD_INCORRECT;
 
 	// No password set
 	if(pwhash == NULL || pwhash[0] == '\0')
-		return true;
+		return PASSWORD_CORRECT;
 
+	// Check if there has already been one login attempt within this second
+	static time_t last_password_attempt = 0;
+	static unsigned int num_password_attempts = 0;
+	if(rate_limiting &&
+	   last_password_attempt > 0 &&
+	   last_password_attempt == time(NULL))
+	{
+		// Check if we have reached the maximum number of attempts
+		if(++num_password_attempts > MAX_PASSWORD_ATTEMPTS_PER_SECOND)
+		{
+			// Rate limit reached
+			sleepms(250);
+			return PASSWORD_RATE_LIMITED;
+		}
+	}
+	else
+	{
+		// Reset counter
+		num_password_attempts = 1;
+		last_password_attempt = time(NULL);
+	}
+
+	// Check password hash format
 	if(pwhash[0] == '$')
 	{
 		// Parse PHC string
@@ -323,9 +348,9 @@ bool verify_password(const char *password, const char* pwhash)
 		uint8_t *salt = NULL;
 		uint8_t *config_hash = NULL;
 		if(!parse_PHC_string(pwhash, &s_cost, &t_cost, &salt, &config_hash))
-			return false;
+			return PASSWORD_INCORRECT;
 		if(salt == NULL || config_hash == NULL)
-			return false;
+			return PASSWORD_INCORRECT;
 		char *supplied = balloon_password(password, salt, false);
 		const bool result = memcmp(config_hash, supplied, SHA256_DIGEST_SIZE) == 0;
 
@@ -336,7 +361,7 @@ bool verify_password(const char *password, const char* pwhash)
 		if(config_hash != NULL)
 			free(config_hash);
 
-		return result;
+		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
 	else
 	{
@@ -361,6 +386,187 @@ bool verify_password(const char *password, const char* pwhash)
 			}
 		}
 
-		return result;
+		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
+}
+
+static double sqroot(double square)
+{
+	double root = square / 3.0;
+	if (square <= 0) return 0.0;
+	for (unsigned int i=0; i<32; i++)
+		root = (root + square / root) / 2;
+	return root;
+}
+
+static int performance_test_task(const size_t s_cost, const size_t t_cost, const uint8_t password[],
+                                 const size_t pwlen, uint8_t salt[SALT_LEN],
+                                 double *elapsed1, double *elapsed2)
+{
+		struct timespec start, end, end2;
+		// Scratch buffer scratch is a user allocated working space required by
+		// the algorithm.  To determine the required size of the scratch buffer
+		// use the utility function balloon_itch.  Output of BALLOON algorithm
+		// will be written into the output buffer dst that has to be at least
+		// digest_size bytes long.
+		const size_t scratch_size = balloon_itch(SHA256_DIGEST_SIZE, s_cost);
+		uint8_t *scratch = calloc(scratch_size, sizeof(uint8_t));
+		if(scratch == NULL)
+		{
+			printf("Could not allocate %zu bytes of memory for test!\n", scratch_size);
+			return -1;
+		}
+
+		// Record starting time
+		clock_gettime(CLOCK_MONOTONIC, &start);
+
+		// Compute hash of given password password salted with salt and write
+		// the result into the output buffer dst
+		balloon_sha256(s_cost, t_cost, pwlen, password, SALT_LEN, salt, scratch, scratch);
+
+		// Record end time
+		clock_gettime(CLOCK_MONOTONIC, &end);
+
+		// Compute hash of given password password salted with salt and write
+		// the result into the output buffer dst
+		balloon_sha256(s_cost, t_cost, pwlen, password, SALT_LEN, salt, scratch, scratch);
+
+		// Record end time
+		clock_gettime(CLOCK_MONOTONIC, &end2);
+
+		// Free allocated memory
+		free(scratch);
+
+		// Compute elapsed time
+		*elapsed1 = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+		*elapsed2 = (end2.tv_sec - end.tv_sec) + (end2.tv_nsec - end.tv_nsec) / 1000000000.0;
+		char prefix[2] = { 0 };
+		double formatted = 0.0;
+		format_memory_size(prefix, (unsigned long long)scratch_size, &formatted);
+		const double avg = (*elapsed1 + *elapsed2)/2;
+		const double stdev = sqroot(((*elapsed1 - avg)*(*elapsed1 - avg) + (*elapsed2 - avg)*(*elapsed2 - avg))/2);
+		printf("s = %5zu, t = %5zu took %6.1f +/- %4.1f ms (scratch buffer %6.1f%1sB) -> %.0f\n",
+		       s_cost, t_cost, 1e3*avg, 1e3*stdev, formatted, prefix, 1.0*(s_cost*t_cost)/avg);
+
+		// Break if test took longer than two seconds
+		if(avg > 2)
+			return 1;
+		return 0;
+}
+
+// Run performance tests until individual test result gets beyond 3 seconds
+int run_performance_test(void)
+{
+	struct timespec start, end;
+	// Record starting time
+	clock_gettime(CLOCK_MONOTONIC, &start);
+
+	// Test password
+	const uint8_t password[] = "abcdefghijklmnopqrstuvwxyz0123456789!\"§$%&/()=?";
+
+	// Generate a 128 bit random salt
+	// genrandom() returns cryptographically secure random data
+	uint8_t salt[SALT_LEN] = { 0 };
+	if(getrandom(salt, sizeof(salt), 0) < 0)
+	{
+		printf("Could not generate random salt!\n");
+		return EXIT_FAILURE;
+	}
+
+	printf("Running time-performance test:\n");
+	size_t t_t_cost = 16;
+	const size_t t_s_cost = 512;
+	cJSON *time_test = cJSON_CreateArray();
+	unsigned int i = 0;
+	while(true)
+	{
+		double elapsed1 = 0.0, elapsed2 = 0.0;
+		const int ret = performance_test_task(t_s_cost, t_t_cost, password, sizeof(password), salt,
+		                                      &elapsed1, &elapsed2);
+
+		if(ret == -1)
+			return EXIT_FAILURE;
+
+		if(i > 0)
+		{
+			// We do not want to include the first test in the
+			// average as the first call is slower
+			cJSON_AddItemToArray(time_test, cJSON_CreateNumber(1.0*(t_s_cost*t_t_cost)/elapsed1));
+			cJSON_AddItemToArray(time_test, cJSON_CreateNumber(1.0*(t_s_cost*t_t_cost)/elapsed2));
+		}
+
+		if(ret == 1)
+			break;
+
+		// Double time costs
+		t_t_cost *= 2;
+		i++;
+	}
+
+	printf("\nRunning space-performance test:\n");
+	const size_t s_t_cost = 512;
+	size_t s_s_cost = 8;
+	cJSON *space_test = cJSON_CreateArray();
+	while(true)
+	{
+		double elapsed1 = 0.0, elapsed2 = 0.0;
+		const int ret = performance_test_task(s_s_cost, s_t_cost, password, sizeof(password), salt,
+		                                      &elapsed1, &elapsed2);
+
+		cJSON_AddItemToArray(space_test, cJSON_CreateNumber(1.0*(s_t_cost*s_s_cost)/elapsed1));
+		cJSON_AddItemToArray(space_test, cJSON_CreateNumber(1.0*(s_t_cost*s_s_cost)/elapsed2));
+
+		if(ret == -1)
+			return EXIT_FAILURE;
+		else if(ret == 1)
+			break;
+
+		// Double space costs
+		s_s_cost *= 2;
+	}
+
+	clock_gettime(CLOCK_MONOTONIC, &end);
+	const double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+
+	// Compute average time and space costs from data in cJSON arrays
+	cJSON *item = NULL;
+	double t_avg_sum1 = 0.0;
+	cJSON_ArrayForEach(item, time_test)
+	{
+		t_avg_sum1 += item->valuedouble;
+	}
+	t_avg_sum1 /= cJSON_GetArraySize(time_test);
+
+	double s_avg_sum1 = 0.0;
+	cJSON_ArrayForEach(item, space_test)
+	{
+		s_avg_sum1 += item->valuedouble;
+	}
+	s_avg_sum1 /= cJSON_GetArraySize(space_test);
+
+	// Get standard deviations
+	double t_stdev_sum1 = 0.0;
+	cJSON_ArrayForEach(item, time_test)
+	{
+		t_stdev_sum1 += (item->valuedouble - t_avg_sum1)*(item->valuedouble - t_avg_sum1);
+	}
+	t_stdev_sum1 = sqroot(t_stdev_sum1/cJSON_GetArraySize(time_test));
+
+	double s_stdev_sum1 = 0.0;
+	cJSON_ArrayForEach(item, space_test)
+	{
+		s_stdev_sum1 += (item->valuedouble - s_avg_sum1)*(item->valuedouble - s_avg_sum1);
+	}
+	s_stdev_sum1 = sqroot(s_stdev_sum1/cJSON_GetArraySize(space_test));
+
+	// Free allocated memory
+	cJSON_Delete(time_test);
+	cJSON_Delete(space_test);
+
+	// Print results
+	printf("\nAverage time-performance index:  %9.0f +/- %.0f (s = %zu)\n", t_avg_sum1, t_stdev_sum1, t_s_cost);
+	printf("Average space-performance index: %9.0f +/- %.0f (t = %zu)\n", s_avg_sum1, s_stdev_sum1, s_t_cost);
+	printf("\nTotal test time: %.1f seconds\n\n", elapsed);
+
+	return EXIT_SUCCESS;
 }

@@ -79,6 +79,14 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '429':
+            description: Too Many Requests
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/too_many_requests'
+                    - $ref: 'common.yaml#/components/schemas/took'
       delete:
         summary: Delete session
         tags:
