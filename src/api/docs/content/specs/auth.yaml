@@ -374,6 +374,7 @@ components:
           sid: null
           csrf: null
           validity: 300
+        https_port: 443
         dns: true
     no_login_required:
       summary: No login required for this client
@@ -384,6 +385,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+        https_port: 443
         dns: true
     login_required:
       summary: Login required
@@ -394,6 +396,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+        https_port: 443
         dns: true
     login_failed:
       summary: Login failed
@@ -404,6 +407,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+        https_port: 443
         dns: true
     dns_failure:
       summary: DNS server failure
@@ -414,6 +418,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+        https_port: 443
         dns: false
     errors:
       no_payload:
