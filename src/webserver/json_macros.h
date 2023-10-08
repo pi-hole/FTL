@@ -247,3 +247,7 @@
 	return code; \
 })
 */
+
+#define JSON_INCREMENT_NUMBER(number_obj, inc)({ \
+	cJSON_SetNumberHelper(number_obj, number_obj->valuedouble + inc); \
+})

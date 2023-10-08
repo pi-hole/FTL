@@ -183,6 +183,7 @@ components:
                 - $ref: 'lists.yaml#/components/schemas/groups'
                 - $ref: 'lists.yaml#/components/schemas/enabled'
                 - $ref: 'lists.yaml#/components/schemas/readonly'
+                - $ref: 'lists.yaml#/components/schemas/processed'
       put:
         allOf:
           - $ref: 'lists.yaml#/components/schemas/comment'
@@ -295,6 +296,35 @@ components:
           type: integer
           readOnly: true
           example: 2
+    processed:
+      type: object
+      nullable: true
+      description: |
+        This object is only present if the list has been processed (preceding PUT or POST request).
+      properties:
+        success:
+          description: How many domains were successfully added to the database
+          type: integer
+          example: 1
+        failed:
+          description: How many domains could not be added to the database
+          type: integer
+          example: 0
+        errors:
+          description: |
+            Array of errors that occurred during processing.
+          type: array
+          items:
+            type: object
+            properties:
+              item:
+                description: Item that could not be added to the database
+                type: string
+                example: "example.com"
+              error:
+                description: Error message
+                type: string
+                example: "UNIQUE constraint failed: domainlist.domain"
   examples:
     lists:
       value:

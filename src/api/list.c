@@ -21,7 +21,8 @@
 static int api_list_read(struct ftl_conn *api,
                          const int code,
                          const enum gravity_list_type listtype,
-                         const char *item)
+                         const char *item,
+                         cJSON *processed)
 {
 	const char *sql_msg = NULL;
 	if(!gravityDB_readTable(listtype, item, &sql_msg, true, NULL))
@@ -141,6 +142,13 @@ static int api_list_read(struct ftl_conn *api,
 		else // domainlists
 			objname = "domains";
 		JSON_ADD_ITEM_TO_OBJECT(json, objname, rows);
+
+		// Add processed count (if applicable)
+		if(processed != NULL)
+			JSON_ADD_ITEM_TO_OBJECT(json, "processed", processed);
+		else
+			JSON_ADD_NULL_TO_OBJECT(json, "processed");
+
 		JSON_SEND_OBJECT_CODE(json, code);
 	}
 	else
@@ -356,7 +364,7 @@ static int api_list_write(struct ftl_conn *api,
 			}
 
 			// Check every array element for its validity
-			okay = compile_regex(row.item, &regex, &regex_msg);
+			okay = compile_regex(it->valuestring, &regex, &regex_msg);
 
 			// TODO: The regex needs to be freed here
 
@@ -391,13 +399,31 @@ static int api_list_write(struct ftl_conn *api,
 		}
 	}
 
+	// Fail fast if any regex in the passed array is invalid
+	if(!okay)
+	{
+		// Send error reply
+		cJSON_free(row.items);
+		return send_json_error(api, 400, // 400 Bad Request
+		                       "regex_error",
+		                       "Regex validation failed",
+		                       regex_msg);
+	}
+
 	// Try to add item(s) to table
 	const char *sql_msg = NULL;
 	cJSON *elem = NULL;
+	cJSON *processed = JSON_NEW_OBJECT();
+	cJSON *errors = JSON_NEW_ARRAY();
+	cJSON *failed = cJSON_AddNumberToObject(processed, "failed", 0);
+	cJSON *success = cJSON_AddNumberToObject(processed, "success", 0);
+	cJSON_AddItemToObject(processed, "failed", failed);
+	cJSON_AddItemToObject(processed, "success", success);
+	cJSON_AddItemToObject(processed, "errors", errors);
 	cJSON_ArrayForEach(elem, row.items)
 	{
 		row.item = elem->valuestring;
-		if(okay && (okay = gravityDB_addToTable(listtype, &row, &sql_msg, api->method)))
+		if((okay = gravityDB_addToTable(listtype, &row, &sql_msg, api->method)))
 		{
 			if(listtype != GRAVITY_GROUPS)
 			{
@@ -415,28 +441,14 @@ static int api_list_write(struct ftl_conn *api,
 				okay = true;
 			}
 		}
+		JSON_INCREMENT_NUMBER((okay ? success : failed), 1);
 		if(!okay)
 		{
-			// Error adding item, prepare error object
-			const char *errortype = "database_error";
-			const char *errormsg  = "Could not add to gravity database";
-			const char *hint = sql_msg;
-			if (regex_msg != NULL)
-			{
-				// Change error type and message
-				errortype = "regex_error";
-				errormsg = "Regex validation failed";
-				hint = regex_msg;
-			}
-
-			// Send error reply
-			cJSON_free(row.items);
-			return send_json_error(api, 400, // 400 Bad Request
-					errortype,
-					errormsg,
-					hint);
+			cJSON *error = JSON_NEW_OBJECT();
+			JSON_COPY_STR_TO_OBJECT(error, "item", row.item);
+			JSON_COPY_STR_TO_OBJECT(error, "error", sql_msg);
+			cJSON_AddItemToArray(errors, error);
 		}
-		// else: everything is okay
 	}
 
 	// Inform the resolver that it needs to reload the domainlists
@@ -447,7 +459,7 @@ static int api_list_write(struct ftl_conn *api,
 		response_code = 200; // 200 - OK
 
 	// Send GET style reply
-	const int ret = api_list_read(api, response_code, listtype, row.item);
+	const int ret = api_list_read(api, response_code, listtype, row.item, processed);
 
 	// Free allocated memory
 	if(allocated_json)
@@ -554,7 +566,7 @@ int api_list(struct ftl_conn *api)
 		// this for simplicity to ensure nobody else is editing the
 		// lists while we're doing this here
 		lock_shm();
-		const int ret = api_list_read(api, 200, listtype, api->item);
+		const int ret = api_list_read(api, 200, listtype, api->item, NULL);
 		unlock_shm();
 		return ret;
 	}
