@@ -43,9 +43,10 @@ class FTLAPI():
 		self.verbose = False
 
 		# Login to FTL API
-		self.login(password)
-		if self.session is None or 'valid' not in self.session or not self.session['valid']:
-			raise Exception("Could not login to FTL API")
+		if password is not None:
+			self.login(password)
+			if self.session is None or 'valid' not in self.session or not self.session['valid']:
+				raise Exception("Could not login to FTL API")
 
 	def login(self, password: str = None):
 		# Check if we even need to login
@@ -65,6 +66,8 @@ class FTLAPI():
 			return
 
 		response = self.POST("/api/auth", {"password": password})
+		if "error" in response:
+			raise Exception("FTL returned error: " + json.dumps(response["error"]))
 		if 'session' not in response:
 			raise Exception("FTL returned invalid response item")
 		self.session = response["session"]

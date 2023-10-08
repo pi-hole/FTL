@@ -35,7 +35,7 @@ static int api_list_read(struct ftl_conn *api,
 
 	tablerow table;
 	cJSON *rows = JSON_NEW_ARRAY();
-	while(gravityDB_readTableGetRow(&table, &sql_msg))
+	while(gravityDB_readTableGetRow(listtype, &table, &sql_msg))
 	{
 		cJSON *row = JSON_NEW_OBJECT();
 
@@ -115,8 +115,7 @@ static int api_list_read(struct ftl_conn *api,
 		// Properties added in https://github.com/pi-hole/pi-hole/pull/3951
 		if(listtype == GRAVITY_ADLISTS)
 		{
-			const char *adlist_type = table.type_int == ADLIST_BLOCK ? "block" : "allow";
-			JSON_REF_STR_IN_OBJECT(row, "type", adlist_type);
+			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "date_updated", table.date_updated);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "number", table.number);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "invalid_domains", table.invalid_domains);
@@ -285,6 +284,7 @@ static int api_list_write(struct ftl_conn *api,
 			case GRAVITY_DOMAINLIST_ALLOW_ALL:
 			case GRAVITY_DOMAINLIST_DENY_ALL:
 			case GRAVITY_GRAVITY:
+			case GRAVITY_ANTIGRAVITY:
 				return send_json_error(api, 400, // 400 Bad Request
 				                       "bad_request",
 				                       "Aggregate types (and gravity) are not handled by this routine",
