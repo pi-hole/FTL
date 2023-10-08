@@ -303,13 +303,16 @@ components:
         This object is only present if the list has been processed (preceding PUT or POST request).
       properties:
         success:
-          description: How many domains were successfully added to the database
-          type: integer
-          example: 1
-        failed:
-          description: How many domains could not be added to the database
-          type: integer
-          example: 0
+          description: |
+            Array of items that were successfully added to the database.
+          type: array
+          items:
+            type: object
+            properties:
+              item:
+                description: Item that was added to the database
+                type: string
+                example: "example.com"
         errors:
           description: |
             Array of errors that occurred during processing.
@@ -320,7 +323,7 @@ components:
               item:
                 description: Item that could not be added to the database
                 type: string
-                example: "example.com"
+                example: "example2.com"
               error:
                 description: Error message
                 type: string

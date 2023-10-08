@@ -415,11 +415,9 @@ static int api_list_write(struct ftl_conn *api,
 	cJSON *elem = NULL;
 	cJSON *processed = JSON_NEW_OBJECT();
 	cJSON *errors = JSON_NEW_ARRAY();
-	cJSON *failed = cJSON_AddNumberToObject(processed, "failed", 0);
-	cJSON *success = cJSON_AddNumberToObject(processed, "success", 0);
-	cJSON_AddItemToObject(processed, "failed", failed);
-	cJSON_AddItemToObject(processed, "success", success);
+	cJSON *success = JSON_NEW_ARRAY();
 	cJSON_AddItemToObject(processed, "errors", errors);
+	cJSON_AddItemToObject(processed, "success", success);
 	cJSON_ArrayForEach(elem, row.items)
 	{
 		row.item = elem->valuestring;
@@ -441,14 +439,12 @@ static int api_list_write(struct ftl_conn *api,
 				okay = true;
 			}
 		}
-		JSON_INCREMENT_NUMBER((okay ? success : failed), 1);
+
+		cJSON *details = JSON_NEW_OBJECT();
+		JSON_COPY_STR_TO_OBJECT(details, "item", row.item);
 		if(!okay)
-		{
-			cJSON *error = JSON_NEW_OBJECT();
-			JSON_COPY_STR_TO_OBJECT(error, "item", row.item);
-			JSON_COPY_STR_TO_OBJECT(error, "error", sql_msg);
-			cJSON_AddItemToArray(errors, error);
-		}
+			JSON_COPY_STR_TO_OBJECT(details, "error", sql_msg);
+		cJSON_AddItemToArray(okay ? success : errors, details);
 	}
 
 	// Inform the resolver that it needs to reload the domainlists
