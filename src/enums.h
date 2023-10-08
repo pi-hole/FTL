@@ -187,7 +187,8 @@ enum gravity_list_type {
 	GRAVITY_GROUPS,
 	GRAVITY_ADLISTS,
 	GRAVITY_CLIENTS,
-	GRAVITY_GRAVITY
+	GRAVITY_GRAVITY,
+	GRAVITY_ANTIGRAVITY
 } __attribute__ ((packed));
 
 enum gravity_tables {

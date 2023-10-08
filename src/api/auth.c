@@ -509,7 +509,8 @@ int api_auth(struct ftl_conn *api)
 	// else: Login attempt
 	// - Client tries to authenticate using a password, or
 	// - There no password on this machine
-	if(empty_password ? true : verify_password(password, config.webserver.api.pwhash.v.s))
+	const enum password_result result = empty_password ? true : verify_password(password, config.webserver.api.pwhash.v.s, true);
+	if(result == PASSWORD_CORRECT)
 	{
 		// Accepted
 
@@ -603,6 +604,14 @@ int api_auth(struct ftl_conn *api)
 		{
 			log_warn("No free API seats available, not authenticating client");
 		}
+	}
+	else if(result == PASSWORD_RATE_LIMITED)
+	{
+		// Rate limited
+		return send_json_error(api, 429,
+					"too_many_requests",
+					"Too many requests",
+					"login rate limiting");
 	}
 	else
 	{
