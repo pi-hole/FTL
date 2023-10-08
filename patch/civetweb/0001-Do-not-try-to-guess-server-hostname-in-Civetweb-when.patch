@@ -1,0 +1,29 @@
+From e41d902b5b01896360e1235aebabd3eb352158aa Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Sun, 8 Oct 2023 14:31:20 +0200
+Subject: [PATCH] Do not try to guess server hostname in Civetweb when
+ redirecting directory URIs to end with a slash
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/webserver/civetweb/civetweb.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
+index f44b17ba..3df8eab9 100644
+--- a/src/webserver/civetweb/civetweb.c
++++ b/src/webserver/civetweb/civetweb.c
+@@ -15306,7 +15306,9 @@ handle_request(struct mg_connection *conn)
+ 		if (!new_path) {
+ 			mg_send_http_error(conn, 500, "out or memory");
+ 		} else {
+-			mg_get_request_link(conn, new_path, buflen - 1);
++			/* Pi-hole modification */
++			//mg_get_request_link(conn, new_path, buflen - 1);
++			strcpy(new_path, ri->local_uri_raw);
+ 			strcat(new_path, "/");
+ 			if (ri->query_string) {
+ 				/* Append ? and query string */
+-- 
+2.34.1
+
