@@ -245,6 +245,9 @@ components:
             validity:
               type: integer
               description: Remaining lifetime of this session unless refreshed (seconds)
+        https_port:
+          type: integer
+          description: HTTPS port of the Pi-hole webserver (0 if disabled)
         dns:
           type: boolean
           description: Whether the DNS server is up and running. False only in failed state
