@@ -130,6 +130,11 @@ kill "$(pidof pihole-FTL)"
 # Restore umask
 umask "$OLDUMASK"
 
+# Run performance tests
+if ! su pihole -s /bin/sh -c "/home/pihole/pihole-FTL --perf"; then
+  echo "pihole-FTL --perf failed to start"
+fi
+
 # Remove copied file
 rm /home/pihole/pihole-FTL
 

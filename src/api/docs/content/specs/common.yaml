@@ -53,6 +53,26 @@ components:
               nullable: true
               description: "No additional data available"
               example: null
+    too_many_requests:
+      type: object
+      description: "Too many requests (rate limiting)"
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "too_many_requests"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Too many requests"
+            hint:
+              type: string
+              nullable: true
+              description: "No additional data available"
+              example: null
   headers:
     Location:
       description: Location of created resource

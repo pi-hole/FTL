@@ -58,6 +58,8 @@
 #include "tools/dhcp-discover.h"
 // run_arp_scan()
 #include "tools/arp-scan.h"
+// run_performance_test()
+#include "config/password.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -353,6 +355,14 @@ void parse_args(int argc, char* argv[])
 		// Enable stdout printing
 		cli_mode = true;
 		exit(run_dhcp_discover());
+	}
+
+	// Password hashing performance test
+	if(argc > 1 && (strcmp(argv[1], "--perf") == 0 || strcmp(argv[1], "performance") == 0))
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		exit(run_performance_test());
 	}
 
 	// ARP scanning mode
@@ -817,6 +827,8 @@ void parse_args(int argc, char* argv[])
 			printf("\t                    interfaces and scan 10x more often\n");
 			printf("\t%s--totp%s              Generate valid TOTP token for 2FA\n", green, normal);
 			printf("\t                    authentication (if enabled)\n");
+			printf("\t%s--perf%s              Run performance-tests based on the\n", green, normal);
+			printf("\t                    BALLOON password-hashing algorithm\n");
 			printf("\t%s--%s [OPTIONS]%s        Pass OPTIONS to internal dnsmasq resolver\n", green, cyan, normal);
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);
