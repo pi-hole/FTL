@@ -24,6 +24,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'lists.yaml#/components/schemas/lists/get'
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   lists:
@@ -60,6 +61,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'lists.yaml#/components/schemas/lists/get' # identical to GET
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
@@ -143,6 +145,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'lists.yaml#/components/schemas/lists/get'
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -175,6 +178,7 @@ components:
         properties:
           lists:
             type: array
+            description: Array of lists
             items:
               allOf:
                 - $ref: 'lists.yaml#/components/schemas/list'
@@ -183,7 +187,6 @@ components:
                 - $ref: 'lists.yaml#/components/schemas/groups'
                 - $ref: 'lists.yaml#/components/schemas/enabled'
                 - $ref: 'lists.yaml#/components/schemas/readonly'
-                - $ref: 'lists.yaml#/components/schemas/processed'
       put:
         allOf:
           - $ref: 'lists.yaml#/components/schemas/comment'
@@ -296,38 +299,6 @@ components:
           type: integer
           readOnly: true
           example: 2
-    processed:
-      type: object
-      nullable: true
-      description: |
-        This object is only present if the list has been processed (preceding PUT or POST request).
-      properties:
-        success:
-          description: |
-            Array of items that were successfully added to the database.
-          type: array
-          items:
-            type: object
-            properties:
-              item:
-                description: Item that was added to the database
-                type: string
-                example: "example.com"
-        errors:
-          description: |
-            Array of errors that occurred during processing.
-          type: array
-          items:
-            type: object
-            properties:
-              item:
-                description: Item that could not be added to the database
-                type: string
-                example: "example2.com"
-              error:
-                description: Error message
-                type: string
-                example: "UNIQUE constraint failed: domainlist.domain"
   examples:
     lists:
       value:
@@ -348,6 +319,8 @@ components:
             id: 2
             date_added: 1594670974
             date_modified: 1594670974
+        took: 0.012
+        processed: null
     errors:
       uri_error:
         item_missing:

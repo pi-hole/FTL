@@ -42,6 +42,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'domains.yaml#/components/schemas/domains/get'
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   domains:
@@ -85,7 +86,8 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'domains.yaml#/components/schemas/domains/get'
+                    - $ref: 'domains.yaml#/components/schemas/domains/get' # identical to GET
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   domains:
@@ -180,7 +182,8 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'domains.yaml#/components/schemas/domains/get'
+                    - $ref: 'domains.yaml#/components/schemas/domains/get' # identical to GET
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -217,6 +220,7 @@ components:
         properties:
           domains:
             type: array
+            description: Array of domains
             items:
               allOf:
                 - $ref: 'domains.yaml#/components/schemas/domain'
@@ -343,6 +347,8 @@ components:
             id: 305
             date_added: 1611240635
             date_modified: 1611241276
+        took: 0.012
+        processed: null
     errors:
       uri_error:
         list_imprecise:

@@ -15,6 +15,41 @@ components:
           type: string
           description: Key indicating the status of the request
           example: "success"
+    lists_processed:
+      type: object
+      properties:
+        processed:
+          type: object
+          nullable: true
+          description: |
+            Only present in `PUT` and `POST `responses, `null` otherwise.
+          properties:
+            success:
+              description: |
+                Array of items that were successfully added to the database.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Item that was added to the database
+                    type: string
+                    example: "example.com"
+            errors:
+              description: |
+                Array of errors that occurred during processing.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Item that could not be added to the database
+                    type: string
+                    example: "example2.com"
+                  error:
+                    description: Error message
+                    type: string
+                    example: "UNIQUE constraint failed: domainlist.domain"
   errors:
     bad_request:
       type: object

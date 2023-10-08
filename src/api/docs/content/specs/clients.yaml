@@ -24,6 +24,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'clients.yaml#/components/schemas/clients/get'
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   clients:
@@ -62,6 +63,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
@@ -172,6 +174,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -204,6 +207,7 @@ components:
         properties:
           clients:
             type: array
+            description: Array of clients
             items:
               allOf:
                 - $ref: 'clients.yaml#/components/schemas/client'
@@ -325,6 +329,8 @@ components:
             id: 2
             date_added: 1611322675
             date_modified: 1611325497
+        took: 0.012
+        processed: null
     errors:
       uri_error:
         item_missing:

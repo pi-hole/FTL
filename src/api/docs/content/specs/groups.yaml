@@ -24,6 +24,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'groups.yaml#/components/schemas/groups/get'
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   groups:
@@ -61,6 +62,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'groups.yaml#/components/schemas/groups/get' # identical to GET
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
@@ -137,7 +139,8 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'groups.yaml#/components/schemas/groups/get'
+                    - $ref: 'groups.yaml#/components/schemas/groups/get' # identical to GET
+                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -257,6 +260,8 @@ components:
             id: 5
             date_added: 1604871899
             date_modified: 1604871899
+        took: 0.003
+        processed: null
     errors:
       uri_error:
         item_missing:
