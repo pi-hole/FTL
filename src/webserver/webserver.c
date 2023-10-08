@@ -86,6 +86,8 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
 		if(strcmp(uri, "/") == 0)
 		{
+			log_debug(DEBUG_API, "Redirecting / --308--> %s",
+			          config.webserver.paths.webhome.v.s);
 			mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
 			return 1;
 		}
@@ -108,44 +110,6 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 	char *new_uri = calloc(strlen(uri) + query_len, sizeof(char));
 	// Copy everything from before the ".lp" to the new URI
 	strncpy(new_uri, uri, pos - uri);
-
-	// Append query string to the new URI if present
-	if(query_len > 0)
-	{
-		strcat(new_uri, "?");
-		strcat(new_uri, query_string);
-	}
-
-	// Send a 301 redirect to the new URI
-	log_debug(DEBUG_API, "Redirecting %s?%s ==301==> %s",
-	          uri, query_string, new_uri);
-	mg_send_http_redirect(conn, new_uri, 301);
-	free(new_uri);
-
-	return 1;
-}
-
-static int redirect_slash_handler(struct mg_connection *conn, void *input)
-{
-	// Get requested URI
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	const char *uri = request->local_uri_raw;
-	const char *query_string = request->query_string;
-	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
-
-	// Do not redirect if the new URI is the webhome
-	if(strcmp(uri, config.webserver.paths.webhome.v.s) == 0)
-	{
-		log_debug(DEBUG_API, "Not redirecting %s?%s",
-		          uri, query_string);
-
-		// Handle as a normal request
-		return request_handler(conn, input);
-	}
-
-	// Remove the trailing slash from the URI
-	char *new_uri = strdup(uri);
-	new_uri[strlen(new_uri) - 1] = '\0';
 
 	// Append query string to the new URI if present
 	if(query_len > 0)
@@ -329,9 +293,6 @@ void http_init(void)
 
 	// Register **.lp -> ** redirect handler
 	mg_set_request_handler(ctx, "**.lp$", redirect_lp_handler, NULL);
-
-	// Register **/ -> ** redirect handler
-	mg_set_request_handler(ctx, "**/$", redirect_slash_handler, NULL);
 
 	// Register handler for the rest
 	mg_set_request_handler(ctx, "**", request_handler, NULL);
