@@ -42,7 +42,6 @@ components:
                 schema:
                   allOf:
                     - $ref: 'domains.yaml#/components/schemas/domains/get'
-                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   domains:

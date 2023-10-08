@@ -145,8 +145,6 @@ static int api_list_read(struct ftl_conn *api,
 		// Add processed count (if applicable)
 		if(processed != NULL)
 			JSON_ADD_ITEM_TO_OBJECT(json, "processed", processed);
-		else
-			JSON_ADD_NULL_TO_OBJECT(json, "processed");
 
 		JSON_SEND_OBJECT_CODE(json, code);
 	}

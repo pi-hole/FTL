@@ -24,7 +24,6 @@ components:
                 schema:
                   allOf:
                     - $ref: 'lists.yaml#/components/schemas/lists/get'
-                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   lists:

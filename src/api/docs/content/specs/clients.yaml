@@ -24,7 +24,6 @@ components:
                 schema:
                   allOf:
                     - $ref: 'clients.yaml#/components/schemas/clients/get'
-                    - $ref: 'common.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   clients:
@@ -330,7 +329,12 @@ components:
             date_added: 1611322675
             date_modified: 1611325497
         took: 0.012
-        processed: null
+        processed:
+          success:
+            - item: "127.0.0.1"
+          failed:
+            - item: "127.0.0.2"
+              error: "UNIQUE constraint failed: clientlist.client"
     errors:
       uri_error:
         item_missing:
