@@ -608,11 +608,10 @@ int api_auth(struct ftl_conn *api)
 	else if(result == PASSWORD_RATE_LIMITED)
 	{
 		// Rate limited
-		log_debug(DEBUG_API, "API: Login attempt rate-limited");
 		return send_json_error(api, 429,
 					"too_many_requests",
 					"Too many requests",
-					NULL);
+					"login rate limiting");
 	}
 	else
 	{
