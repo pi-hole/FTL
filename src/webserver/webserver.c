@@ -102,14 +102,23 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 	// Get requested URI
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	const char *uri = request->local_uri_raw;
+	const size_t uri_len = strlen(uri);
 	const char *query_string = request->query_string;
 	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
 
-	// Remove the ".lp" from the URI
-	char *pos = strstr(uri, ".lp");
-	char *new_uri = calloc(strlen(uri) + query_len, sizeof(char));
-	// Copy everything from before the ".lp" to the new URI
-	strncpy(new_uri, uri, pos - uri);
+	// We allocate uri_len + query_len - 1 bytes, which is enough for the
+	// new URI. The calculation is as follows:
+	// 1. We are saving three bytes by skipping ".lp" at the end of the URI
+	// 2. We are adding one byte for the trailing '\0'
+	// 3. We are adding query_len bytes for the query string (if present)
+	// 4. We are adding one byte for the '?' between URI and query string
+	//    (if present)
+	// Total bytes required: uri_len - 3 + query_len + 1 + 1
+	char *new_uri = calloc(uri_len + query_len - 1, sizeof(char));
+
+	// Copy everything from before the ".lp" to the new URI to effectively
+	// remove it
+	strncpy(new_uri, uri, uri_len - 3);
 
 	// Append query string to the new URI if present
 	if(query_len > 0)
