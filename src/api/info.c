@@ -49,6 +49,9 @@
 #include <limits.h>
 #include "metrics.h"
 
+// get_https_port()
+#include "webserver/webserver.h"
+
 // DIR
 #include <dirent.h>
 
@@ -1031,4 +1034,16 @@ int api_info_metrics(struct ftl_conn *api)
 	cJSON *json2 = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json2, "metrics", json);
 	JSON_SEND_OBJECT(json2);
+}
+
+int api_info_login(struct ftl_conn *api)
+{
+	cJSON *json = JSON_NEW_OBJECT();
+
+	const bool dns = get_blockingstatus() != DNS_FAILED;
+	JSON_ADD_BOOL_TO_OBJECT(json, "dns", dns);
+
+	JSON_ADD_NUMBER_TO_OBJECT(json, "https_port", get_https_port());
+
+	JSON_SEND_OBJECT(json);
 }

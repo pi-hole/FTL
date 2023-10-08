@@ -26,8 +26,6 @@ components:
                     $ref: 'auth.yaml#/components/examples/no_login_required'
                   login_required:
                     $ref: 'auth.yaml#/components/examples/login_required'
-                  dns_failure:
-                    $ref: 'auth.yaml#/components/examples/dns_failure'
       post:
         summary: Submit password for login
         tags:
@@ -245,12 +243,6 @@ components:
             validity:
               type: integer
               description: Remaining lifetime of this session unless refreshed (seconds)
-        https_port:
-          type: integer
-          description: HTTPS port of the Pi-hole webserver (0 if disabled)
-        dns:
-          type: boolean
-          description: Whether the DNS server is up and running. False only in failed state
 
     password:
       type: object
@@ -374,8 +366,6 @@ components:
           sid: null
           csrf: null
           validity: 300
-        https_port: 443
-        dns: true
     no_login_required:
       summary: No login required for this client
       value:
@@ -385,8 +375,6 @@ components:
           sid: null
           csrf: null
           validity: -1
-        https_port: 443
-        dns: true
     login_required:
       summary: Login required
       value:
@@ -396,8 +384,6 @@ components:
           sid: null
           csrf: null
           validity: -1
-        https_port: 443
-        dns: true
     login_failed:
       summary: Login failed
       value:
@@ -407,19 +393,6 @@ components:
           sid: null
           csrf: null
           validity: -1
-        https_port: 443
-        dns: true
-    dns_failure:
-      summary: DNS server failure
-      value:
-        session:
-          valid: false
-          totp: false
-          sid: null
-          csrf: null
-          validity: -1
-        https_port: 443
-        dns: false
     errors:
       no_payload:
         summary: Bad request (no valid JSON payload)
