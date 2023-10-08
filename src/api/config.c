@@ -287,7 +287,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			char *pwhash = strlen(elem->valuestring) > 0 ? create_password(elem->valuestring) : strdup("");
 
 			// Verify that the password hash is valid
-			const bool verfied = verify_password(elem->valuestring, pwhash);
+			const bool verfied = verify_password(elem->valuestring, pwhash, false) == PASSWORD_CORRECT;
 
 			if(!verfied)
 			{
