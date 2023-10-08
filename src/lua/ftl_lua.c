@@ -26,6 +26,13 @@
 
 #include "api/api.h"
 
+static struct serverports server_ports[MAXPORTS] = { 0 };
+
+void store_server_ports(struct serverports ports[MAXPORTS])
+{
+	memcpy(server_ports, ports, sizeof(server_ports));
+}
+
 int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 {
 	if(argc == 1) // No arguments after this one
@@ -252,6 +259,30 @@ static int pihole_rev_proxy(lua_State *L) {
 	return 1; // number of results
 }
 
+// pihole.https_port()
+// Returns either -1 (no HTTPS port configured or server not started) or the
+// first configured HTTPS port
+static int pihole_https_port(lua_State *L) {
+	// Loop over all configured ports
+	for(unsigned int i = 0; i < MAXPORTS; i++)
+	{
+		// Check if port is configured
+		if(server_ports[i].port == 0)
+			break;
+
+		// Check if port is secure
+		if(!server_ports[i].is_secure)
+			continue;
+
+		// Return port number
+		lua_pushinteger(L, server_ports[i].port);
+		return 1; // number of results
+	}
+
+	lua_pushinteger(L, -1);
+	return 1; // number of results
+}
+
 static const luaL_Reg piholelib[] = {
 	{"ftl_version", pihole_ftl_version},
 	{"hostname", pihole_hostname},
@@ -262,6 +293,7 @@ static const luaL_Reg piholelib[] = {
 	{"boxedlayout", pihole_boxedlayout},
 	{"needLogin", pihole_needLogin},
 	{"rev_proxy", pihole_rev_proxy},
+	{"https_port", pihole_https_port},
 	{NULL, NULL}
 };
 

@@ -10,8 +10,17 @@
 #ifndef FTL_LUA_H
 #define FTL_LUA_H
 
+#include "ftl_lua.h"
 #include "lua.h"
 #include <stdbool.h>
+
+#define MAXPORTS 8
+struct serverports
+{
+	bool is_secure;
+	unsigned char protocol; // 1 = IPv4, 2 = IPv4+IPv6, 3 = IPv6
+	unsigned short port;
+};
 
 #define LUA_HISTORY_FILE "~/.pihole_lua_history"
 
@@ -25,5 +34,7 @@ extern int dolibrary (lua_State *L, char *name);
 
 void print_embedded_scripts(void);
 void ftl_lua_init(lua_State *L);
+
+void store_server_ports(struct serverports ports[MAXPORTS]);
 
 #endif //FTL_LUA_H

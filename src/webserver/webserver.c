@@ -26,9 +26,40 @@
 #include "x509.h"
 // allocate_lua(), free_lua(), init_lua(), request_handler()
 #include "lua_web.h"
+// struct serverports
+#include "lua/ftl_lua.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
+
+static void get_ports(struct serverports server_ports[MAXPORTS])
+{
+	if(ctx == NULL)
+		return;
+
+	// Loop over all listening ports
+	struct mg_server_port mgports[MAXPORTS] = { 0 };
+	if(mg_get_server_ports(ctx, MAXPORTS, mgports) > 0)
+	{
+		// Loop over all ports
+		for(unsigned int i = 0; i < MAXPORTS; i++)
+		{
+			// Stop if no more ports are configured
+			if(mgports[i].protocol == 0)
+				break;
+
+			// Store port information
+			server_ports[i].port = mgports[i].port;
+			server_ports[i].is_secure = mgports[i].is_ssl;
+			server_ports[i].protocol = mgports[i].protocol;
+
+			// Print port information
+			log_debug(DEBUG_API, "Listening on port %d (HTTP%s, IPv%s)",
+			          mgports[i].port, mgports[i].is_ssl ? "S" : "",
+			          mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"));
+		}
+	}
+}
 
 static int redirect_root_handler(struct mg_connection *conn, void *input)
 {
@@ -338,6 +369,11 @@ void http_init(void)
 
 	// Prepare prerequisites for Lua
 	allocate_lua();
+
+	// Store ports for use in the API
+	struct serverports server_ports[MAXPORTS] = { 0 };
+	get_ports(server_ports);
+	store_server_ports(server_ports);
 }
 
 static char *append_to_path(char *path, const char *append)
