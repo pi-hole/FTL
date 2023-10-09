@@ -278,7 +278,7 @@ void http_init(void)
 	{
 		// Try to generate certificate if not present
 		if(!file_readable(config.webserver.tls.cert.v.s) &&
-		   !generate_certificate(config.webserver.tls.cert.v.s, false))
+		   !generate_certificate(config.webserver.tls.cert.v.s, false, config.webserver.domain.v.s))
 		{
 			log_err("Generation of SSL/TLS certificate %s failed!",
 			        config.webserver.tls.cert.v.s);
@@ -288,6 +288,9 @@ void http_init(void)
 		{
 			options[++next_option] = "ssl_certificate";
 			options[++next_option] = config.webserver.tls.cert.v.s;
+
+			log_info("Created SSL/TLS certificate for %s at %s",
+			         config.webserver.domain.v.s, config.webserver.tls.cert.v.s);
 		}
 		else
 		{

@@ -311,18 +311,20 @@ void parse_args(int argc, char* argv[])
 
 	if(argc > 1 && strcmp(argv[1], "--gen-x509") == 0)
 	{
-		if(argc != 3 && argc != 4)
+		if(argc < 3 || argc > 5)
 		{
-			printf("Usage: %s --gen-x509 <output file> [rsa]\n", argv[0]);
-			printf("Example: %s --gen-x509 /etc/pihole/tls.pem\n", argv[0]);
-			printf("     or: %s --gen-x509 /etc/pihole/tls.pem rsa\n", argv[0]);
+			printf("Usage: %s --gen-x509 <output file> [<domain>] [rsa]\n", argv[0]);
+			printf("Example:          %s --gen-x509 /etc/pihole/tls.pem\n", argv[0]);
+			printf(" with domain:     %s --gen-x509 /etc/pihole/tls.pem pi.hole\n", argv[0]);
+			printf(" RSA with domain: %s --gen-x509 /etc/pihole/tls.pem nanopi.lan rsa\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 		// Enable stdout printing
 		cli_mode = true;
 		log_ctrl(false, true);
-		const bool rsa = argc == 4 && strcasecmp(argv[3], "rsa") == 0;
-		exit(generate_certificate(argv[2], rsa) ? EXIT_SUCCESS : EXIT_FAILURE);
+		const char *domain = argc > 3 ? argv[3] : "pi.hole";
+		const bool rsa = argc > 4 && strcasecmp(argv[4], "rsa") == 0;
+		exit(generate_certificate(argv[2], rsa, domain) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// If the first argument is "gravity" (e.g., /usr/bin/pihole-FTL gravity),
