@@ -860,11 +860,18 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			      int len;
 			      
 			      if (!extract_name(header, qlen, &p1, name, 1, 0))
-				return 2;
+				{
+				  blockdata_free(addr.rrblock.rrdata);
+				  return 2;
+				}
 			      
 			      len = to_wire(name);
 			      if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, name, len))
-				return 0;
+				{
+				  blockdata_free(addr.rrblock.rrdata);
+				  return 0;
+				}
+			      
 			      addr.rrblock.datalen += len;
 			    }
 			  else
@@ -872,8 +879,13 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			      /* desc is length of a block of data to be used as-is */
 			      if (desc > endrr - p1)
 				desc = endrr - p1;
+
 			      if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, (char *)p1, desc))
-				return 0;
+				{
+				  blockdata_free(addr.rrblock.rrdata);
+				  return 0;
+				}
+
 			      addr.rrblock.datalen += desc;
 			      p1 += desc;
 			    }
@@ -881,7 +893,10 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		      
 		      /* we overwrote the original name, so get it back here. */
 		      if (!extract_name(header, qlen, &tmp, name, 1, 0))
-			return 2;
+			{
+			  blockdata_free(addr.rrblock.rrdata);
+			  return 2;
+			}
 		    }
 		} 
 	      else if (flags & (F_IPV4 | F_IPV6))
@@ -927,6 +942,10 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		      cpp->addr.cname.uid = newc->uid;
 		    }
 		  cpp = NULL;
+		  
+		  /* cache insert failed, don't leak blockdata. */
+		  if (!newc && (flags & F_RR) && (flags & F_KEYTAG))
+		    blockdata_free(addr.rrblock.rrdata);  
 		}
 	      
 	      if (aqtype == T_TXT)
