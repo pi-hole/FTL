@@ -177,6 +177,52 @@ void FTL_mbed_debug(void *user_param, int level, const char *file, int line, con
 	log_web("mbedTLS(%s:%d, %d): %.*s", file, line, level, (int)len, message);
 }
 
+#define MAXPORTS 8
+static struct serverports
+{
+	bool is_secure;
+	unsigned char protocol; // 1 = IPv4, 2 = IPv4+IPv6, 3 = IPv6
+	in_port_t port;
+} server_ports[MAXPORTS] = { 0 };
+static in_port_t https_port = 0;
+static void get_server_ports(void)
+{
+	if(ctx == NULL)
+		return;
+
+	// Loop over all listening ports
+	struct mg_server_port mgports[MAXPORTS] = { 0 };
+	if(mg_get_server_ports(ctx, MAXPORTS, mgports) > 0)
+	{
+		// Loop over all ports
+		for(unsigned int i = 0; i < MAXPORTS; i++)
+		{
+			// Stop if no more ports are configured
+			if(mgports[i].protocol == 0)
+				break;
+
+			// Store port information
+			server_ports[i].port = mgports[i].port;
+			server_ports[i].is_secure = mgports[i].is_ssl;
+			server_ports[i].protocol = mgports[i].protocol;
+
+			// Store HTTPS port if not already set
+			if(mgports[i].is_ssl && https_port == 0)
+				https_port = mgports[i].port;
+
+			// Print port information
+			log_debug(DEBUG_API, "Listening on port %d (HTTP%s, IPv%s)",
+			          mgports[i].port, mgports[i].is_ssl ? "S" : "",
+			          mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"));
+		}
+	}
+}
+
+in_port_t __attribute__((pure)) get_https_port(void)
+{
+	return https_port;
+}
+
 void http_init(void)
 {
 	log_web("Initializing HTTP server on port %s", config.webserver.port.v.s);
@@ -311,6 +357,9 @@ void http_init(void)
 
 	// Prepare prerequisites for Lua
 	allocate_lua();
+
+	// Get server ports
+	get_server_ports();
 }
 
 static char *append_to_path(char *path, const char *append)

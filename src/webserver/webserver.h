@@ -13,4 +13,6 @@
 void http_init(void);
 void http_terminate(void);
 
+in_port_t get_https_port(void) __attribute__((pure));
+
 #endif // WEBSERVER_H
