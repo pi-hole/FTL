@@ -155,6 +155,7 @@ components:
         tags:
           - Authentication
         operationId: "get_auth_totp"
+        security: []
         description: Suggest new TOTP credentials for two-factor authentication (2FA)
         responses:
           '200':
