@@ -45,6 +45,10 @@ jmp_buf exit_jmp;
 
 int main (int argc, char *argv[])
 {
+	// Catch signals not handled by dnsmasq
+	// We configure real-time signals later (after dnsmasq has forked)
+	handle_signals();
+
 	// Get user pihole-FTL is running as
 	// We store this in a global variable
 	// such that the log routine can access
@@ -66,10 +70,6 @@ int main (int argc, char *argv[])
 	timer_start(EXIT_TIMER);
 	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
-
-	// Catch signals not handled by dnsmasq
-	// We configure real-time signals later (after dnsmasq has forked)
-	handle_signals();
 
 	// Process pihole.toml configuration file
 	// The file is rewritten after parsing to ensure that all

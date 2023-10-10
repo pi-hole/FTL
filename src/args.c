@@ -60,6 +60,9 @@
 #include "tools/arp-scan.h"
 // run_performance_test()
 #include "config/password.h"
+ // backtrace()
+#include "libexecinfo/execinfo.h"
+#include <dlfcn.h>
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -375,6 +378,30 @@ void parse_args(int argc, char* argv[])
 		const bool scan_all = argc > 2 && strcmp(argv[2], "-a") == 0;
 		const bool extreme_mode = argc > 2 && strcmp(argv[2], "-x") == 0;
 		exit(run_arp_scan(scan_all, extreme_mode));
+	}
+
+	// Crash (auto-generated backtrace) test
+	if(argc > 1 && strcmp(argv[1], "crash") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		// Force SEGV_MAPERR (Address not mapped to object)
+		*((int*)0x1555) = 0x15;
+		exit(EXIT_SUCCESS);
+	}
+	// Backtrace test
+	if(argc > 1 && strcmp(argv[1], "backtrace") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		void *sym_ptr = dlsym(RTLD_DEFAULT, "parse_args");
+		printf("main -> %p", sym_ptr);
+		           char *error = dlerror();
+           if (error != NULL) {
+               fprintf(stderr, "%s\n", error);
+           }
+		generate_backtrace();
+		exit(EXIT_SUCCESS);
 	}
 
 	// start from 1, as argv[0] is the executable name

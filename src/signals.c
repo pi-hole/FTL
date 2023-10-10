@@ -9,9 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#if defined(__GLIBC__)
-#include <execinfo.h>
-#endif
+#include "libexecinfo/execinfo.h"
 #include "signals.h"
 // logging routines
 #include "log.h"
@@ -25,6 +23,8 @@
 #include "timers.h"
 // struct config
 #include "config/config.h"
+
+#define _EXECINFO_H 1
 
 #define BINARY_NAME "pihole-FTL"
 
@@ -45,7 +45,6 @@ static char * __attribute__ ((nonnull (1))) getthread_name(char buffer[16])
 	return buffer;
 }
 
-#if defined(__GLIBC__)
 static void print_addr2line(const char *symbol, const void *address, const int j, const void *offset)
 {
 	// Only do this analysis for our own binary (skip trying to analyse libc.so, etc.)
@@ -87,13 +86,10 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 	if(addr2line != NULL)
 		pclose(addr2line);
 }
-#endif
 
 // Log backtrace
 void generate_backtrace(void)
 {
-// Check GLIBC availability as MUSL does not support live backtrace generation
-#if defined(__GLIBC__)
 	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
 	void *buffer[255];
 	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
@@ -127,9 +123,6 @@ void generate_backtrace(void)
 			print_addr2line(bcktrace[j], buffer[j], j, offset);
 	}
 	free(bcktrace);
-#else
-	log_info("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
-#endif
 }
 
 static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, void *unused)

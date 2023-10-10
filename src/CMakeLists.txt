@@ -48,7 +48,7 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 # -Wl,-z,relro: Read-only segments after relocation
 # -fno-common: Emit globals without explicit initializer from `.bss` to `.data`. This causes GCC to reject multiple definitions of global variables. This is the new default from GCC-10 on.
 set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
-set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
+set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer -Wl,--export-dynamic")
 
 # -Wall: This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros. This also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
 # -Wextra: This enables some extra warning flags that are not enabled by -Wall.
@@ -266,6 +266,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:tomlc99>
         $<TARGET_OBJECTS:config>
         $<TARGET_OBJECTS:tools>
+        $<TARGET_OBJECTS:libexecinfo>
         )
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -285,7 +286,7 @@ find_library(LIBGMP NAMES libgmp${CMAKE_STATIC_LIBRARY_SUFFIX} gmp)
 find_library(LIBNETTLE NAMES libnettle${CMAKE_STATIC_LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
 find_library(LIBIDN NAMES libidn${CMAKE_STATIC_LIBRARY_SUFFIX} idn)
 
-target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN})
+target_link_libraries(pihole-FTL rt dl Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN})
 
 if(LUA_DL STREQUAL "true")
     find_library(LIBDL dl)
@@ -352,3 +353,4 @@ add_subdirectory(tre-regex)
 add_subdirectory(syscalls)
 add_subdirectory(config)
 add_subdirectory(tools)
+add_subdirectory(libexecinfo)
