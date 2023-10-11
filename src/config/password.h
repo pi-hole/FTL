@@ -16,6 +16,16 @@
 
 void sha256_raw_to_hex(uint8_t *data, char *buffer);
 char *create_password(const char *password) __attribute__((malloc));
-bool verify_password(const char *password, const char *pwhash);
+char verify_password(const char *password, const char *pwhash, const bool rate_limiting);
+int run_performance_test(void);
+
+enum password_result {
+	PASSWORD_INCORRECT = 0,
+	PASSWORD_CORRECT = 1,
+	PASSWORD_RATE_LIMITED = -1
+} __attribute__((packed));
+
+// The maximum number of password attempts per second
+#define MAX_PASSWORD_ATTEMPTS_PER_SECOND 3
 
 #endif //PASSWORD_H

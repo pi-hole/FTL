@@ -1300,54 +1300,10 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 	return domain_in_list(domain, stmt, "whitelist", &dns_cache->domainlist_id);
 }
 
-enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity)
+cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
 {
-	// If list statement is not ready and cannot be initialized (e.g. no
-	// access to the database), we return false to prevent an FTL crash
-	if(gravity_stmt == NULL || antigravity_stmt == NULL)
-		return LIST_NOT_AVAILABLE;
-
-	// Check if this client needs a rechecking of group membership
-	gravityDB_client_check_again(client);
-
-	// Get whitelist statement from vector of prepared statements
-	sqlite3_stmt *stmt = antigravity ?
-		antigravity_stmt->get(antigravity_stmt, client->id) :
-		gravity_stmt->get(gravity_stmt, client->id);
-
-	// Get string for debug logging
-	const char *listname = antigravity ? "antigravity" : "gravity";
-
-	// If client statement is not ready and cannot be initialized (e.g. no access to
-	// the database), we return false (not in gravity list) to prevent an FTL crash
-	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
-	{
-		log_err("Gravity database not available (%s)", listname);
-		return LIST_NOT_AVAILABLE;
-	}
-
-	// Update statement if has just been initialized
-	if(stmt == NULL)
-		antigravity ?
-			antigravity_stmt->get(antigravity_stmt, client->id) :
-			gravity_stmt->get(gravity_stmt, client->id);
-
-	// Check if domain is exactly in gravity list
-	const enum db_result exact_match = domain_in_list(domain, stmt, listname, NULL);
-	log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %s (exact): %s",
-	          domain, listname, exact_match == FOUND ? "yes" : "no");
-	// Return for anything else than "not found" (e.g. "found" or "list not available")
-	if(exact_match != NOT_FOUND)
-		return exact_match;
-
-	// Return early if we are not supposed to check for ABP-style regex
-	// matches. This needs to be enabled in the config file as it is
-	// computationally expensive and not needed in most cases (HOSTS lists).
-	if(!gravity_abp_format)
-		return NOT_FOUND;
-
-	// Make a copy of the domain we will slowly truncate
-	// while extracting the individual components below
+	// Make a private copy of the domain we will slowly truncate while
+	// extracting the individual components below
 	char *domainBuf = strdup(domain);
 	const size_t domainBufLen = strlen(domainBuf);
 
@@ -1366,6 +1322,7 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 
 	// Loop over domain parts, building matcher from the TLD
 	// going down into domain and subdomains one by one
+	cJSON *patterns = cJSON_CreateArray();
 	while(N-- > 0)
 	{
 		// Get domain to the *last* occurrence of '.'
@@ -1420,16 +1377,8 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 			memcpy(abpDomain + intro_len, ptr, component_size);
 		}
 
-		// Check if the constructed ABP-style domain is in the (anti)gravity list
-		const enum db_result abp_match = domain_in_list(abpDomain, stmt, listname, NULL);
-
-		// Return for anything else than "not found" (e.g. "found" or "list not available")
-		if(abp_match != NOT_FOUND)
-		{
-			free(domainBuf);
-			free(abpDomain);
-			return abp_match;
-		}
+		// Add the current ABP domain to the list of patterns
+		cJSON_AddItemToArray(patterns, cJSON_CreateString(abpDomain));
 
 		// Truncate the domain buffer to the left of the
 		// last dot, effectively removing the last component
@@ -1450,7 +1399,80 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 	free(domainBuf);
 	free(abpDomain);
 
+	return patterns;
+}
+
+enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity, int *domain_id)
+{
+	// If list statement is not ready and cannot be initialized (e.g. no
+	// access to the database), we return false to prevent an FTL crash
+	if(gravity_stmt == NULL || antigravity_stmt == NULL)
+		return LIST_NOT_AVAILABLE;
+
+	// Check if this client needs a rechecking of group membership
+	gravityDB_client_check_again(client);
+
+	// Get whitelist statement from vector of prepared statements
+	sqlite3_stmt *stmt = antigravity ?
+		antigravity_stmt->get(antigravity_stmt, client->id) :
+		gravity_stmt->get(gravity_stmt, client->id);
+
+	// Get string for debug logging
+	const char *listname = antigravity ? "antigravity" : "gravity";
+
+	// If client statement is not ready and cannot be initialized (e.g. no access to
+	// the database), we return false (not in gravity list) to prevent an FTL crash
+	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
+	{
+		log_err("Gravity database not available (%s)", listname);
+		return LIST_NOT_AVAILABLE;
+	}
+
+	// Update statement if has just been initialized
+	if(stmt == NULL)
+		antigravity ?
+			antigravity_stmt->get(antigravity_stmt, client->id) :
+			gravity_stmt->get(gravity_stmt, client->id);
+
+	// Check if domain is exactly in gravity list
+	const enum db_result exact_match = domain_in_list(domain, stmt, listname, domain_id);
+	log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %s (exact): %s",
+	          domain, listname, exact_match == FOUND ? "yes" : "no");
+	// Return for anything else than "not found" (e.g. "found" or "list not available")
+	if(exact_match != NOT_FOUND)
+		return exact_match;
+
+	// Return early if we are not supposed to check for ABP-style regex
+	// matches. This needs to be enabled in the config file as it is
+	// computationally expensive and not needed in most cases (HOSTS lists).
+	if(!gravity_abp_format)
+		return NOT_FOUND;
+
+	// Generate ABP patterns for domain
+	cJSON *abp_patterns = gen_abp_patterns(domain, antigravity);
+	if(abp_patterns == NULL)
+	{
+		log_err("Failed to generate ABP patterns for domain \"%s\"", domain);
+		return LIST_NOT_AVAILABLE;
+	}
+
+	// Check if any of the ABP patterns is in the (anti)gravity list
+	cJSON * abp_pattern = NULL;
+	cJSON_ArrayForEach(abp_pattern, abp_patterns)
+	{
+		const char *pattern = cJSON_GetStringValue(abp_pattern);
+		log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %s (ABP): %s",
+		          pattern, listname, exact_match == FOUND ? "yes" : "no");
+		const enum db_result abp_match = domain_in_list(pattern, stmt, listname, domain_id);
+		if(abp_match == FOUND || abp_match == LIST_NOT_AVAILABLE)
+		{
+			cJSON_Delete(abp_patterns);
+			return FOUND;
+		}
+	}
+
 	// Domain not found in gravity list
+	cJSON_Delete(abp_patterns);
 	return NOT_FOUND;
 }
 
@@ -1574,12 +1596,17 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		case GRAVITY_DOMAINLIST_DENY_REGEX:
 			row->type_int = 3;
 			break;
+		case GRAVITY_GRAVITY:
+			row->type_int = 0;
+			break;
+		case GRAVITY_ANTIGRAVITY:
+			row->type_int = 1;
+			break;
 
 		// Nothing to be done for these tables
 		case GRAVITY_GROUPS:
 		case GRAVITY_ADLISTS:
 		case GRAVITY_CLIENTS:
-		case GRAVITY_GRAVITY:
 			break;
 
 		// Aggregate types are not handled by this routine
@@ -1853,11 +1880,12 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 		case GRAVITY_GROUPS:
 		case GRAVITY_ADLISTS:
 		case GRAVITY_CLIENTS:
-		case GRAVITY_GRAVITY:
 			// No type required for these tables
 			break;
 
 		// Aggregate types cannot be handled by this routine
+		case GRAVITY_GRAVITY:
+		case GRAVITY_ANTIGRAVITY:
 		case GRAVITY_DOMAINLIST_ALLOW_ALL:
 		case GRAVITY_DOMAINLIST_DENY_ALL:
 		case GRAVITY_DOMAINLIST_ALL_EXACT:
@@ -1997,10 +2025,11 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 		case GRAVITY_DOMAINLIST_ALL_ALL:
 			type = "0,1,2,3";
 			break;
+		case GRAVITY_GRAVITY:
+		case GRAVITY_ANTIGRAVITY:
 		case GRAVITY_GROUPS:
 		case GRAVITY_ADLISTS:
 		case GRAVITY_CLIENTS:
-		case GRAVITY_GRAVITY:
 			// No type required for these tables
 			break;
 	}
@@ -2060,7 +2089,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM client_by_group g WHERE g.client_id = c.id) AS group_ids "
 		                                     "FROM client c%s;", filter);
 	}
-	else if(listtype == GRAVITY_GRAVITY)
+	else if(listtype == GRAVITY_GRAVITY || listtype == GRAVITY_ANTIGRAVITY)
 	{
 		if(item != NULL && item[0] != '\0')
 		{
@@ -2069,9 +2098,10 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			else
 				filter = " WHERE g.domain LIKE :item";
 		}
-		snprintf(querystr, buflen, "SELECT domain,a.id,a.address,a.enabled,a.date_added,a.date_modified,a.comment,a.date_updated,a.number,a.invalid_domains,a.status,a.abp_entries,"
+		const char *table = listtype == GRAVITY_GRAVITY ? "gravity" : "antigravity";
+		snprintf(querystr, buflen, "SELECT domain,a.id,a.address,a.enabled,a.date_added,a.date_modified,a.comment,a.date_updated,a.number,a.invalid_domains,a.status,a.abp_entries,a.type,"
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group ag WHERE ag.adlist_id = g.adlist_id) AS group_ids "
-		                                     "FROM gravity g JOIN adlist a ON a.id = g.adlist_id %s;", filter);
+		                                     "FROM %s g JOIN adlist a ON a.id = g.adlist_id %s;", table, filter);
 	}
 	else // domainlist
 	{
@@ -2152,7 +2182,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 	return true;
 }
 
-bool gravityDB_readTableGetRow(tablerow *row, const char **message)
+bool gravityDB_readTableGetRow(const enum gravity_list_type listtype, tablerow *row, const char **message)
 {
 	// Perform step
 	const int rc = sqlite3_step(read_stmt);
@@ -2174,29 +2204,53 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 			{
 				// Get raw type
 				row->type_int = sqlite3_column_int(read_stmt, c);
-				// Convert to string (only applicable for domainlist)
-				switch(row->type_int)
+
+				// Convert to string
+				if(listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
+				   listtype == GRAVITY_DOMAINLIST_DENY_EXACT ||
+				   listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX ||
+				   listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
 				{
-					case 0:
-						row->type = "allow";
-						row->kind = "exact";
-						break;
-					case 1:
-						row->type = "deny";
-						row->kind = "exact";
-						break;
-					case 2:
-						row->type = "allow";
-						row->kind = "regex";
-						break;
-					case 3:
-						row->type = "deny";
-						row->kind = "regex";
-						break;
-					default:
-						row->type = "unknown";
-						row->kind = "unknown";
-						break;
+					switch(row->type_int)
+					{
+						case 0:
+							row->type = "allow";
+							row->kind = "exact";
+							break;
+						case 1:
+							row->type = "deny";
+							row->kind = "exact";
+							break;
+						case 2:
+							row->type = "allow";
+							row->kind = "regex";
+							break;
+						case 3:
+							row->type = "deny";
+							row->kind = "regex";
+							break;
+						default:
+							row->type = "unknown";
+							row->kind = "unknown";
+							break;
+					}
+				}
+				else if(listtype == GRAVITY_ADLISTS ||
+				        listtype == GRAVITY_GRAVITY ||
+				        listtype == GRAVITY_ANTIGRAVITY)
+				{
+					switch(row->type_int)
+					{
+						case 0:
+							row->type = "block";
+							break;
+						case 1:
+							row->type = "allow";
+							break;
+						default:
+							row->type = "unknown";
+							break;
+					}
 				}
 			}
 

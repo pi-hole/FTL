@@ -49,6 +49,7 @@ pdnsutil add-record ftl. denied A 192.168.1.3
 pdnsutil add-record ftl. allowed A 192.168.1.4
 pdnsutil add-record ftl. gravity-allowed A 192.168.1.5
 pdnsutil add-record ftl. antigravity A 192.168.1.6
+pdnsutil add-record ftl. x.y.z.abp.antigravity A 192.168.1.7
 pdnsutil add-record ftl. regex1 A 192.168.2.1
 pdnsutil add-record ftl. regex2 A 192.168.2.2
 pdnsutil add-record ftl. regex5 A 192.168.2.3

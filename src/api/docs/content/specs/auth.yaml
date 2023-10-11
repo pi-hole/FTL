@@ -26,8 +26,6 @@ components:
                     $ref: 'auth.yaml#/components/examples/no_login_required'
                   login_required:
                     $ref: 'auth.yaml#/components/examples/login_required'
-                  dns_failure:
-                    $ref: 'auth.yaml#/components/examples/dns_failure'
       post:
         summary: Submit password for login
         tags:
@@ -78,6 +76,14 @@ components:
                 schema:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '429':
+            description: Too Many Requests
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/too_many_requests'
                     - $ref: 'common.yaml#/components/schemas/took'
       delete:
         summary: Delete session
@@ -149,6 +155,7 @@ components:
         tags:
           - Authentication
         operationId: "get_auth_totp"
+        security: []
         description: Suggest new TOTP credentials for two-factor authentication (2FA)
         responses:
           '200':
@@ -237,9 +244,6 @@ components:
             validity:
               type: integer
               description: Remaining lifetime of this session unless refreshed (seconds)
-        dns:
-          type: boolean
-          description: Whether the DNS server is up and running. False only in failed state
 
     password:
       type: object
@@ -363,7 +367,6 @@ components:
           sid: null
           csrf: null
           validity: 300
-        dns: true
     no_login_required:
       summary: No login required for this client
       value:
@@ -373,7 +376,6 @@ components:
           sid: null
           csrf: null
           validity: -1
-        dns: true
     login_required:
       summary: Login required
       value:
@@ -383,7 +385,6 @@ components:
           sid: null
           csrf: null
           validity: -1
-        dns: true
     login_failed:
       summary: Login failed
       value:
@@ -393,17 +394,6 @@ components:
           sid: null
           csrf: null
           validity: -1
-        dns: true
-    dns_failure:
-      summary: DNS server failure
-      value:
-        session:
-          valid: false
-          totp: false
-          sid: null
-          csrf: null
-          validity: -1
-        dns: false
     errors:
       no_payload:
         summary: Bad request (no valid JSON payload)

@@ -86,6 +86,8 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
 		if(strcmp(uri, "/") == 0)
 		{
+			log_debug(DEBUG_API, "Redirecting / --308--> %s",
+			          config.webserver.paths.webhome.v.s);
 			mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
 			return 1;
 		}
@@ -100,52 +102,23 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 	// Get requested URI
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	const char *uri = request->local_uri_raw;
+	const size_t uri_len = strlen(uri);
 	const char *query_string = request->query_string;
 	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
 
-	// Remove the ".lp" from the URI
-	char *pos = strstr(uri, ".lp");
-	char *new_uri = calloc(strlen(uri) + query_len, sizeof(char));
-	// Copy everything from before the ".lp" to the new URI
-	strncpy(new_uri, uri, pos - uri);
+	// We allocate uri_len + query_len - 1 bytes, which is enough for the
+	// new URI. The calculation is as follows:
+	// 1. We are saving three bytes by skipping ".lp" at the end of the URI
+	// 2. We are adding one byte for the trailing '\0'
+	// 3. We are adding query_len bytes for the query string (if present)
+	// 4. We are adding one byte for the '?' between URI and query string
+	//    (if present)
+	// Total bytes required: uri_len - 3 + query_len + 1 + 1
+	char *new_uri = calloc(uri_len + query_len - 1, sizeof(char));
 
-	// Append query string to the new URI if present
-	if(query_len > 0)
-	{
-		strcat(new_uri, "?");
-		strcat(new_uri, query_string);
-	}
-
-	// Send a 301 redirect to the new URI
-	log_debug(DEBUG_API, "Redirecting %s?%s ==301==> %s",
-	          uri, query_string, new_uri);
-	mg_send_http_redirect(conn, new_uri, 301);
-	free(new_uri);
-
-	return 1;
-}
-
-static int redirect_slash_handler(struct mg_connection *conn, void *input)
-{
-	// Get requested URI
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	const char *uri = request->local_uri_raw;
-	const char *query_string = request->query_string;
-	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
-
-	// Do not redirect if the new URI is the webhome
-	if(strcmp(uri, config.webserver.paths.webhome.v.s) == 0)
-	{
-		log_debug(DEBUG_API, "Not redirecting %s?%s",
-		          uri, query_string);
-
-		// Handle as a normal request
-		return request_handler(conn, input);
-	}
-
-	// Remove the trailing slash from the URI
-	char *new_uri = strdup(uri);
-	new_uri[strlen(new_uri) - 1] = '\0';
+	// Copy everything from before the ".lp" to the new URI to effectively
+	// remove it
+	strncpy(new_uri, uri, uri_len - 3);
 
 	// Append query string to the new URI if present
 	if(query_len > 0)
@@ -202,6 +175,52 @@ void FTL_mbed_debug(void *user_param, int level, const char *file, int line, con
 
 	// Log the message
 	log_web("mbedTLS(%s:%d, %d): %.*s", file, line, level, (int)len, message);
+}
+
+#define MAXPORTS 8
+static struct serverports
+{
+	bool is_secure;
+	unsigned char protocol; // 1 = IPv4, 2 = IPv4+IPv6, 3 = IPv6
+	in_port_t port;
+} server_ports[MAXPORTS] = { 0 };
+static in_port_t https_port = 0;
+static void get_server_ports(void)
+{
+	if(ctx == NULL)
+		return;
+
+	// Loop over all listening ports
+	struct mg_server_port mgports[MAXPORTS] = { 0 };
+	if(mg_get_server_ports(ctx, MAXPORTS, mgports) > 0)
+	{
+		// Loop over all ports
+		for(unsigned int i = 0; i < MAXPORTS; i++)
+		{
+			// Stop if no more ports are configured
+			if(mgports[i].protocol == 0)
+				break;
+
+			// Store port information
+			server_ports[i].port = mgports[i].port;
+			server_ports[i].is_secure = mgports[i].is_ssl;
+			server_ports[i].protocol = mgports[i].protocol;
+
+			// Store HTTPS port if not already set
+			if(mgports[i].is_ssl && https_port == 0)
+				https_port = mgports[i].port;
+
+			// Print port information
+			log_debug(DEBUG_API, "Listening on port %d (HTTP%s, IPv%s)",
+			          mgports[i].port, mgports[i].is_ssl ? "S" : "",
+			          mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"));
+		}
+	}
+}
+
+in_port_t __attribute__((pure)) get_https_port(void)
+{
+	return https_port;
 }
 
 void http_init(void)
@@ -278,7 +297,7 @@ void http_init(void)
 	{
 		// Try to generate certificate if not present
 		if(!file_readable(config.webserver.tls.cert.v.s) &&
-		   !generate_certificate(config.webserver.tls.cert.v.s, false))
+		   !generate_certificate(config.webserver.tls.cert.v.s, false, config.webserver.domain.v.s))
 		{
 			log_err("Generation of SSL/TLS certificate %s failed!",
 			        config.webserver.tls.cert.v.s);
@@ -288,6 +307,9 @@ void http_init(void)
 		{
 			options[++next_option] = "ssl_certificate";
 			options[++next_option] = config.webserver.tls.cert.v.s;
+
+			log_info("Created SSL/TLS certificate for %s at %s",
+			         config.webserver.domain.v.s, config.webserver.tls.cert.v.s);
 		}
 		else
 		{
@@ -330,14 +352,14 @@ void http_init(void)
 	// Register **.lp -> ** redirect handler
 	mg_set_request_handler(ctx, "**.lp$", redirect_lp_handler, NULL);
 
-	// Register **/ -> ** redirect handler
-	mg_set_request_handler(ctx, "**/$", redirect_slash_handler, NULL);
-
 	// Register handler for the rest
 	mg_set_request_handler(ctx, "**", request_handler, NULL);
 
 	// Prepare prerequisites for Lua
 	allocate_lua();
+
+	// Get server ports
+	get_server_ports();
 }
 
 static char *append_to_path(char *path, const char *append)

@@ -15306,7 +15306,9 @@ handle_request(struct mg_connection *conn)
 		if (!new_path) {
 			mg_send_http_error(conn, 500, "out or memory");
 		} else {
-			mg_get_request_link(conn, new_path, buflen - 1);
+			/* Pi-hole modification */
+			//mg_get_request_link(conn, new_path, buflen - 1);
+			strcpy(new_path, ri->local_uri_raw);
 			strcat(new_path, "/");
 			if (ri->query_string) {
 				/* Append ? and query string */

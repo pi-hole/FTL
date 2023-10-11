@@ -58,6 +58,8 @@
 #include "tools/dhcp-discover.h"
 // run_arp_scan()
 #include "tools/arp-scan.h"
+// run_performance_test()
+#include "config/password.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -309,18 +311,20 @@ void parse_args(int argc, char* argv[])
 
 	if(argc > 1 && strcmp(argv[1], "--gen-x509") == 0)
 	{
-		if(argc != 3 && argc != 4)
+		if(argc < 3 || argc > 5)
 		{
-			printf("Usage: %s --gen-x509 <output file> [rsa]\n", argv[0]);
-			printf("Example: %s --gen-x509 /etc/pihole/tls.pem\n", argv[0]);
-			printf("     or: %s --gen-x509 /etc/pihole/tls.pem rsa\n", argv[0]);
+			printf("Usage: %s --gen-x509 <output file> [<domain>] [rsa]\n", argv[0]);
+			printf("Example:          %s --gen-x509 /etc/pihole/tls.pem\n", argv[0]);
+			printf(" with domain:     %s --gen-x509 /etc/pihole/tls.pem pi.hole\n", argv[0]);
+			printf(" RSA with domain: %s --gen-x509 /etc/pihole/tls.pem nanopi.lan rsa\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 		// Enable stdout printing
 		cli_mode = true;
 		log_ctrl(false, true);
-		const bool rsa = argc == 4 && strcasecmp(argv[3], "rsa") == 0;
-		exit(generate_certificate(argv[2], rsa) ? EXIT_SUCCESS : EXIT_FAILURE);
+		const char *domain = argc > 3 ? argv[3] : "pi.hole";
+		const bool rsa = argc > 4 && strcasecmp(argv[4], "rsa") == 0;
+		exit(generate_certificate(argv[2], rsa, domain) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// If the first argument is "gravity" (e.g., /usr/bin/pihole-FTL gravity),
@@ -353,6 +357,14 @@ void parse_args(int argc, char* argv[])
 		// Enable stdout printing
 		cli_mode = true;
 		exit(run_dhcp_discover());
+	}
+
+	// Password hashing performance test
+	if(argc > 1 && (strcmp(argv[1], "--perf") == 0 || strcmp(argv[1], "performance") == 0))
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		exit(run_performance_test());
 	}
 
 	// ARP scanning mode
@@ -817,6 +829,8 @@ void parse_args(int argc, char* argv[])
 			printf("\t                    interfaces and scan 10x more often\n");
 			printf("\t%s--totp%s              Generate valid TOTP token for 2FA\n", green, normal);
 			printf("\t                    authentication (if enabled)\n");
+			printf("\t%s--perf%s              Run performance-tests based on the\n", green, normal);
+			printf("\t                    BALLOON password-hashing algorithm\n");
 			printf("\t%s--%s [OPTIONS]%s        Pass OPTIONS to internal dnsmasq resolver\n", green, cyan, normal);
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);

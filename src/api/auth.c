@@ -302,7 +302,6 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_id, const time_t now)
 {
 	cJSON *session = JSON_NEW_OBJECT();
-	const bool dns = get_blockingstatus() != DNS_FAILED;
 
 	// Authentication not needed
 	if(user_id == API_AUTH_LOCALHOST || user_id == API_AUTH_EMPTYPASS)
@@ -312,7 +311,6 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 		JSON_ADD_NULL_TO_OBJECT(session, "sid");
 		JSON_ADD_NUMBER_TO_OBJECT(session, "validity", -1);
 		JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
-		JSON_ADD_BOOL_TO_OBJECT(json, "dns", dns);
 		return 0;
 	}
 
@@ -325,7 +323,6 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 		JSON_REF_STR_IN_OBJECT(session, "csrf", auth_data[user_id].csrf);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "validity", auth_data[user_id].valid_until - now);
 		JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
-		JSON_ADD_BOOL_TO_OBJECT(json, "dns", dns);
 		return 0;
 	}
 
@@ -335,7 +332,6 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 	JSON_ADD_NULL_TO_OBJECT(session, "sid");
 	JSON_ADD_NUMBER_TO_OBJECT(session, "validity", -1);
 	JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
-	JSON_ADD_BOOL_TO_OBJECT(json, "dns", dns);
 	return 0;
 }
 
@@ -509,7 +505,8 @@ int api_auth(struct ftl_conn *api)
 	// else: Login attempt
 	// - Client tries to authenticate using a password, or
 	// - There no password on this machine
-	if(empty_password ? true : verify_password(password, config.webserver.api.pwhash.v.s))
+	const enum password_result result = empty_password ? true : verify_password(password, config.webserver.api.pwhash.v.s, true);
+	if(result == PASSWORD_CORRECT)
 	{
 		// Accepted
 
@@ -603,6 +600,14 @@ int api_auth(struct ftl_conn *api)
 		{
 			log_warn("No free API seats available, not authenticating client");
 		}
+	}
+	else if(result == PASSWORD_RATE_LIMITED)
+	{
+		// Rate limited
+		return send_json_error(api, 429,
+					"too_many_requests",
+					"Too many requests",
+					"login rate limiting");
 	}
 	else
 	{
