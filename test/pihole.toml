@@ -517,6 +517,9 @@
   # ports will redirect all their traffic to the first configured SSL port. For example,
   # if webserver.port is "80r,443s", then all HTTP traffic coming at port 80 will be
   # redirected to HTTPS port 443.
+  # Make sure the chosen ports are open to receive tcp traffic. For example, if the host
+  # uses a UFW firewall, the command "sudo ufw allow 80/tcp 443/tcp" will open the firewall to
+  # allow communication to the webserver for the default values below.
   #
   # Possible values are:
   #     comma-separated list of <[ip_address:]port>
