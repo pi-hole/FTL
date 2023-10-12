@@ -178,7 +178,6 @@ int api_queries_suggestions(struct ftl_conn *api)
 // JOIN: Only return rows where there is a match in BOTH tables
 // LEFT JOIN: Return all rows from the left table, and the matched rows from the right table
 #define JOINSTR "JOIN client_by_id c ON q.client = c.id JOIN domain_by_id d ON q.domain = d.id LEFT JOIN forward_by_id f ON q.forward = f.id LEFT JOIN addinfo_by_id a ON a.id = q.additional_info"
-#define QUERYSTRORDER "ORDER BY q.id DESC"
 #define QUERYSTRBUFFERLEN 4096
 static void add_querystr_double(struct ftl_conn *api, char *querystr, const char *sql, const char *uripart, bool *where)
 {
@@ -200,10 +199,52 @@ static void add_querystr_string(struct ftl_conn *api, char *querystr, const char
 	snprintf(querystr + strpos, QUERYSTRBUFFERLEN - strpos, " %s (%s%s)", glue, sql, val);
 }
 
-static void querystr_finish(char *querystr)
+static void querystr_finish(char *querystr, const char *sort_col, const char *sort_dir)
 {
+	const char *sort_col_sql = NULL;
+	const char *sort_dir_sql = NULL;
+	if(sort_col[0] != '\0' && sort_dir[0] != '\0')
+	{
+		// Try to parse the sort column ...
+		if(strcasecmp(sort_col, "time") == 0)
+			sort_col_sql = "timestamp";
+		else if(strcasecmp(sort_col, "domain") == 0)
+			sort_col_sql = "d.domain";
+		else if(strcasecmp(sort_col, "client.ip") == 0)
+			sort_col_sql = "c.ip";
+		else if(strcasecmp(sort_col, "client.name") == 0)
+			sort_col_sql = "c.name";
+		else if(strcasecmp(sort_col, "upstream") == 0)
+			sort_col_sql = "f.forward";
+		else if(strcasecmp(sort_col, "type") == 0)
+			sort_col_sql = "q.type";
+		else if(strcasecmp(sort_col, "status") == 0)
+			sort_col_sql = "q.status";
+		else if(strcasecmp(sort_col, "reply") == 0)
+			sort_col_sql = "q.reply_type";
+		else if(strcasecmp(sort_col, "dnssec") == 0)
+			sort_col_sql = "q.dnssec";
+		else if(strcasecmp(sort_col, "regex.id") == 0)
+			sort_col_sql = "regex_id";
+
+		// ... and the sort direction
+		if(strcasecmp(sort_dir, "asc") == 0 || strcasecmp(sort_dir, "ascending") == 0)
+			sort_dir_sql = "ASC";
+		else if(strcasecmp(sort_dir, "desc") == 0 || strcasecmp(sort_dir, "descending") == 0)
+			sort_dir_sql = "DESC";
+	}
+
 	const size_t strpos = strlen(querystr);
-	snprintf(querystr + strpos, QUERYSTRBUFFERLEN - strpos, " %s", QUERYSTRORDER);
+	if(sort_col_sql == NULL || sort_dir_sql == NULL)
+	{
+		// Default sorting: Most recent query first, sorting by ID (which is
+		// the same as timestamp but faster)
+		sort_col_sql = "q.id";
+		sort_dir_sql = "DESC";
+	}
+
+	snprintf(querystr + strpos, QUERYSTRBUFFERLEN - strpos, " ORDER BY %s %s",
+	         sort_col_sql, sort_dir_sql);
 }
 
 int api_queries(struct ftl_conn *api)
@@ -240,6 +281,9 @@ int api_queries(struct ftl_conn *api)
 	char replyname[32] = { 0 };
 	char dnssecname[32] = { 0 };
 
+	char sort_dir[16] = { 0 };
+	char sort_col[16] = { 0 };
+
 	// We start with the most recent query at the beginning (until the cursor is changed)
 	unsigned long cursor, largest_db_index, mem_dbnum, disk_dbnum;
 	db_counts(&largest_db_index, &mem_dbnum, &disk_dbnum);
@@ -250,7 +294,7 @@ int api_queries(struct ftl_conn *api)
 	unsigned int start = 0;
 	bool cursor_set = false, where = false;
 
-	// Filtering based on GET parameters?
+	// Filter-/sorting based on GET parameters?
 	if(api->request->query_string != NULL)
 	{
 		// Time filtering?
@@ -309,6 +353,7 @@ int api_queries(struct ftl_conn *api)
 			{
 				cursor = unum;
 				cursor_set = true;
+				add_querystr_string(api, querystr, "q.id<=", ":cursor", &where);
 			}
 			else
 			{
@@ -338,14 +383,33 @@ int api_queries(struct ftl_conn *api)
 		// DNSSEC status filtering?
 		if(GET_STR("dnssec", dnssecname, api->request->query_string) > 0)
 			add_querystr_string(api, querystr, "q.dnssec=", ":dnssec", &where);
+
+		// Sorting?
+		int sort_column = -1;
+		// Encoded URI string: %5B = [ and %5D = ]
+		if(get_int_var(api->request->query_string, "order%5B0%5D%5Bcolumn%5D", &sort_column) &&
+		   GET_STR("order%5B0%5D%5Bdir%5D", sort_dir, api->request->query_string) > 0)
+		{
+			log_debug(DEBUG_API, "Sorting by column %d (%s)", sort_column, sort_dir);
+
+			char sort_col_id[32] = { 0 };
+			snprintf(sort_col_id, sizeof(sort_col_id), "columns%%5B%d%%5D%%5Bdata%%5D",
+			         sort_column);
+
+			// Encoded URI string: %5B = [ and %5D = ]
+			if(GET_VAR(sort_col_id, sort_col, api->request->query_string) > 0)
+				log_info("Sorting by column %s (%s)", sort_col, sort_dir);
+			else
+				log_warn("Sorting by column %d (%s) requested, but column name not found",
+				         sort_column, sort_dir);
+		}
 	}
 
 	// Get connection to in-memory database
 	sqlite3 *db = get_memdb();
 
 	// Finish preparing query string
-	sqlite3_stmt *read_stmt = NULL;
-	querystr_finish(querystr);
+	querystr_finish(querystr, sort_col, sort_dir);
 
 	// Attach disk database if necessary
 	const char *message = "";
@@ -358,6 +422,7 @@ int api_queries(struct ftl_conn *api)
 	}
 
 	// Prepare SQLite3 statement
+	sqlite3_stmt *read_stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -365,7 +430,7 @@ int api_queries(struct ftl_conn *api)
 			detach_disk_database(NULL);
 		return send_json_error(api, 500,
 		                       "internal_error",
-		                       "Internal server error, failed to prepare SQL query",
+		                       "Internal server error, failed to prepare read SQL query",
 		                       sqlite3_errstr(rc));
 	}
 
@@ -373,7 +438,7 @@ int api_queries(struct ftl_conn *api)
 	// later to decide if we can short-circuit the query counting for
 	// performance reasons.
 	bool filtering = false;
-	// Bind items to prepared statement (if filtering)
+	// Bind items to prepared statement
 	if(api->request->query_string != NULL)
 	{
 		int idx;
@@ -589,6 +654,24 @@ int api_queries(struct ftl_conn *api)
 				                       dnssecname);
 			}
 		}
+		idx = sqlite3_bind_parameter_index(read_stmt, ":cursor");
+		if(idx > 0)
+		{
+			log_debug(DEBUG_API, "adding :cursor = %lu to query", cursor);
+			// Do not set filtering as the cursor is not a filter
+			rc = sqlite3_bind_int64(read_stmt, idx, cursor);
+			if(rc != SQLITE_OK)
+			{
+				sqlite3_reset(read_stmt);
+				sqlite3_finalize(read_stmt);
+				if(disk)
+					detach_disk_database(NULL);
+				return send_json_error(api, 500,
+				                       "internal_error",
+				                       "Internal server error, failed to bind count to SQL query",
+				                       sqlite3_errstr(rc));
+			}
+		}
 	}
 
 	// Debug logging
@@ -597,7 +680,6 @@ int api_queries(struct ftl_conn *api)
 
 	cJSON *queries = JSON_NEW_ARRAY();
 	unsigned int added = 0, recordsCounted = 0;
-	sqlite3_int64 firstID = -1, id = -1;
 	bool skipTheRest = false;
 	while((rc = sqlite3_step(read_stmt)) == SQLITE_ROW)
 	{
@@ -628,20 +710,8 @@ int api_queries(struct ftl_conn *api)
 			}
 		}
 
-		// Get ID of query from database
-		id = sqlite3_column_int64(read_stmt, 0); // q.id
-
-		// Set firstID from the first returned value
-		if(firstID == -1)
-			firstID = id;
-
 		// Server-side pagination
-		if((unsigned long)id > cursor)
-		{
-			// Skip all results with id BEFORE cursor (static tip of table)
-			continue;
-		}
-		else if(start > 0 && start >= recordsCounted)
+		if(start > 0 && start >= recordsCounted)
 		{
 			// Skip all results BEFORE start (server-side pagination)
 			continue;
@@ -659,7 +729,7 @@ int api_queries(struct ftl_conn *api)
 		cJSON *item = JSON_NEW_OBJECT();
 		queriesData query = { 0 };
 		char buffer[20] = { 0 };
-		JSON_ADD_NUMBER_TO_OBJECT(item, "id", id);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "id", sqlite3_column_int64(read_stmt, 0)); // q.id);
 		JSON_ADD_NUMBER_TO_OBJECT(item, "time", sqlite3_column_double(read_stmt, 1)); // timestamp
 		query.type = sqlite3_column_int(read_stmt, 2); // type
 		query.status = sqlite3_column_int(read_stmt, 3); // status
@@ -694,7 +764,7 @@ int api_queries(struct ftl_conn *api)
 
 		// Add regex_id if it exists
 		if(sqlite3_column_type(read_stmt, 13) == SQLITE_INTEGER)
-			JSON_ADD_NUMBER_TO_OBJECT(item, "regex_id", sqlite3_column_int(read_stmt, 13));
+			JSON_ADD_NUMBER_TO_OBJECT(item, "regex_id", sqlite3_column_int(read_stmt, 13)); // regex_id
 		else
 			JSON_ADD_NULL_TO_OBJECT(item, "regex_id");
 
@@ -705,7 +775,7 @@ int api_queries(struct ftl_conn *api)
 			case QUERY_REGEX_CNAME:
 			case QUERY_DENYLIST_CNAME:
 			{
-				cname = sqlite3_column_text(read_stmt, 12);
+				cname = sqlite3_column_text(read_stmt, 12); // a.content
 				break;
 			}
 			case QUERY_UNKNOWN:
@@ -735,7 +805,8 @@ int api_queries(struct ftl_conn *api)
 
 		added++;
 	}
-	log_debug(DEBUG_API, "Sending %u of %lu in memory and %lu on disk queries", added, mem_dbnum, disk_dbnum);
+	log_debug(DEBUG_API, "Sending %u of %lu in memory and %lu on disk queries (counted %u)",
+	          added, mem_dbnum, disk_dbnum, recordsCounted);
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
 
@@ -751,8 +822,8 @@ int api_queries(struct ftl_conn *api)
 		// Send cursor pointing to the firstID of the data obtained in
 		// this query. This ensures we get a static result by skipping
 		// any newer queries.
-		log_debug(DEBUG_API, "Sending cursor %lli (firstID)", (long long int)firstID);
-		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", firstID);
+		log_debug(DEBUG_API, "Sending cursor %lu (firstID)", get_max_db_idx());
+		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", get_max_db_idx());
 	}
 
 	// DataTables specific properties

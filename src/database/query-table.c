@@ -28,6 +28,12 @@ static unsigned int new_total = 0, new_blocked = 0;
 static unsigned long last_mem_db_idx = 0, last_disk_db_idx = 0;
 static unsigned int mem_db_num = 0, disk_db_num = 0;
 
+// Return the maximum ID of the in-memory database
+unsigned long __attribute__((pure)) get_max_db_idx(void)
+{
+	return last_mem_db_idx;
+}
+
 void db_counts(unsigned long *last_idx, unsigned long *mem_num, unsigned long *disk_num)
 {
 	*last_idx = last_mem_db_idx;
