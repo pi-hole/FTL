@@ -2207,9 +2207,14 @@ bool gravityDB_readTableGetRow(const enum gravity_list_type listtype, tablerow *
 
 				// Convert to string
 				if(listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
-				   listtype == GRAVITY_DOMAINLIST_DENY_EXACT ||
 				   listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX ||
-				   listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
+				   listtype == GRAVITY_DOMAINLIST_ALLOW_ALL ||
+				   listtype == GRAVITY_DOMAINLIST_DENY_EXACT ||
+				   listtype == GRAVITY_DOMAINLIST_DENY_REGEX ||
+				   listtype == GRAVITY_DOMAINLIST_DENY_ALL ||
+				   listtype == GRAVITY_DOMAINLIST_ALL_EXACT ||
+				   listtype == GRAVITY_DOMAINLIST_ALL_REGEX ||
+				   listtype == GRAVITY_DOMAINLIST_ALL_ALL)
 				{
 					switch(row->type_int)
 					{
