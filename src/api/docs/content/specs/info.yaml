@@ -6,6 +6,7 @@ components:
         summary: Get information about requesting client
         tags:
           - "FTL information"
+        security: []
         operationId: "get_client"
         description: |
           The property `timer` may contain additional details concerning a temporary en-/disabling.
@@ -277,6 +278,24 @@ components:
                 schema:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    login:
+      get:
+        summary: Login page related information
+        tags:
+          - "FTL information"
+        operationId: "get_logininfo"
+        security: []
+        description: |
+          This API hook returns information used on the login page to possibly display messages/warnings.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/login'
                     - $ref: 'common.yaml#/components/schemas/took'
 
   schemas:
@@ -1068,6 +1087,15 @@ components:
           type: integer
           description: Number of items
           example: 42
+    login:
+      type: object
+      properties:
+        https_port:
+          type: integer
+          description: HTTPS port of the Pi-hole webserver (0 if disabled)
+        dns:
+          type: boolean
+          description: Whether the DNS server is up and running. False only in failed state
   examples:
     errors:
       messages:

@@ -13,6 +13,6 @@
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
 
-bool generate_certificate(const char* certfile, bool rsa);
+bool generate_certificate(const char* certfile, bool rsa, const char *domain);
 
 #endif // X509_H

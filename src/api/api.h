@@ -60,6 +60,7 @@ int api_info_version(struct ftl_conn *api);
 int api_info_messages_count(struct ftl_conn *api);
 int api_info_messages(struct ftl_conn *api);
 int api_info_metrics(struct ftl_conn *api);
+int api_info_login(struct ftl_conn *api);
 
 // Config methods
 int api_config(struct ftl_conn *api);

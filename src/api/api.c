@@ -44,6 +44,7 @@ static struct {
 	{ "/api/groups",                            "/{name}",                    api_list,                              { false, true,  0               }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/lists",                             "/{list}",                    api_list,                              { false, true,  0               }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/info/client",                       "",                           api_info_client,                       { false, true,  0               }, false, HTTP_GET },
+	{ "/api/info/login",                        "",                           api_info_login,                        { false, true,  0               }, false, HTTP_GET },
 	{ "/api/info/system",                       "",                           api_info_system,                       { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/info/database",                     "",                           api_info_database,                     { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/info/sensors",                      "",                           api_info_sensors,                      { false, true,  0               }, true,  HTTP_GET },
