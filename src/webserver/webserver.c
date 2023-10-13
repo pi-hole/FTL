@@ -341,12 +341,24 @@ void http_init(void)
 	callbacks.log_access  = log_http_access;
 	callbacks.init_lua    = init_lua;
 
+	// Prepare error handler
+	struct mg_error_data error = { 0 };
+	char error_buffer[1024] = { 0 };
+	error.text_buffer_size = sizeof(error_buffer);
+	error.text = error_buffer;
+
+	// Prepare initialization data
+	struct mg_init_data init = { 0 };
+	init.callbacks = &callbacks;
+	init.user_data = NULL;
+	init.configuration_options = options;
+
 	/* Start the server */
-	if((ctx = mg_start(&callbacks, NULL, options)) == NULL)
+	if((ctx = mg_start2(&init, &error)) == NULL)
 	{
 		log_err("Start of webserver failed!. Web interface will not be available!");
-		log_err("       Check webroot %s and listening ports %s",
-		        config.webserver.paths.webroot.v.s, config.webserver.port.v.s);
+		log_err("       Error: %s (error code %u.%u)", error.text, error.code, error.code_sub);
+		log_err("       Hint: Check the webserver log at %s", config.files.log.webserver.v.s);
 		return;
 	}
 
