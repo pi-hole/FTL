@@ -886,8 +886,13 @@ void initConfig(struct config *conf)
 	conf->webserver.interface.theme.d.web_theme = THEME_DEFAULT_AUTO;
 
 	// sub-struct api
+	conf->webserver.api.searchAPIauth.k = "webserver.api.searchAPIauth";
+	conf->webserver.api.searchAPIauth.h = "Do local clients need to authenticate to access the search API? This settings allows local clients to use pihole -q ... without authentication. Note that \"local\" in the sense of the option means only 127.0.0.1 and [::1]";
+	conf->webserver.api.searchAPIauth.t = CONF_BOOL;
+	conf->webserver.api.searchAPIauth.d.b = false;
+
 	conf->webserver.api.localAPIauth.k = "webserver.api.localAPIauth";
-	conf->webserver.api.localAPIauth.h = "Do local clients need to authenticate to access the API?";
+	conf->webserver.api.localAPIauth.h = "Do local clients need to authenticate to access the API? This settings allows local clients to use the API without authentication.";
 	conf->webserver.api.localAPIauth.t = CONF_BOOL;
 	conf->webserver.api.localAPIauth.d.b = true;
 
