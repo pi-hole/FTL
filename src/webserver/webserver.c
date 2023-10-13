@@ -358,8 +358,8 @@ void http_init(void)
 	{
 		log_err("Start of webserver failed!. Web interface will not be available!");
 		log_err("       Error: %s (error code %u.%u)", error.text, error.code, error.code_sub);
-		log_err("       Hint: Check webroot %s and listening ports %s",
-		        config.webserver.paths.webroot.v.s, config.webserver.port.v.s);
+		log_err("       Hint: Check webroot %s, listening ports %s, and webserver log %s",
+		        config.webserver.paths.webroot.v.s, config.webserver.port.v.s, config.files.log.webserver.v.s);
 		return;
 	}
 
