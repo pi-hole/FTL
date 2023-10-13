@@ -288,7 +288,8 @@ enum listening_mode {
 	LISTEN_LOCAL,
 	LISTEN_ALL,
 	LISTEN_SINGLE,
-	LISTEN_BIND
+	LISTEN_BIND,
+	LISTEN_NONE
 } __attribute__ ((packed));
 
 enum fifo_logs {

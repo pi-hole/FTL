@@ -159,6 +159,11 @@
   #       properly firewalled! This truly allows any traffic to be replied to and is a
   #       dangerous thing to do as your Pi-hole could become an open resolver. You
   #       should always ask yourself if the first option doesn't work for you as well.
+  #   - "NONE"
+  #       Do not add any configuration concerning the listening mode to the dnsmasq
+  #       configuration file. This is useful if you want to manually configure the
+  #       listening mode in auxiliary configuration files. This option is really meant
+  #       for advanced users only, support for this option may be limited.
   listeningMode = "LOCAL"
 
   # Log DNS queries and replies to pihole.log

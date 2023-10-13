@@ -1051,6 +1051,8 @@ const char * __attribute__ ((const)) get_listeningMode_str(const enum listening_
 			return "SINGLE";
 		case LISTEN_BIND:
 			return "BIND";
+		case LISTEN_NONE:
+			return "NONE";
 	}
 	return NULL;
 }
@@ -1065,6 +1067,8 @@ int __attribute__ ((pure)) get_listeningMode_val(const char *listeningMode)
 		return LISTEN_SINGLE;
 	else if(strcasecmp(listeningMode, "BIND") == 0)
 		return LISTEN_BIND;
+	else if(strcasecmp(listeningMode, "NONE") == 0)
+		return LISTEN_NONE;
 
 	// Invalid value
 	return -1;
