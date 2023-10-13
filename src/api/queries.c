@@ -390,15 +390,13 @@ int api_queries(struct ftl_conn *api)
 		if(get_int_var(api->request->query_string, "order%5B0%5D%5Bcolumn%5D", &sort_column) &&
 		   GET_STR("order%5B0%5D%5Bdir%5D", sort_dir, api->request->query_string) > 0)
 		{
-			log_debug(DEBUG_API, "Sorting by column %d (%s)", sort_column, sort_dir);
-
 			char sort_col_id[32] = { 0 };
 			snprintf(sort_col_id, sizeof(sort_col_id), "columns%%5B%d%%5D%%5Bdata%%5D",
 			         sort_column);
 
 			// Encoded URI string: %5B = [ and %5D = ]
 			if(GET_VAR(sort_col_id, sort_col, api->request->query_string) > 0)
-				log_info("Sorting by column %s (%s)", sort_col, sort_dir);
+				log_debug(DEBUG_API, "Sorting by column %s (%s)", sort_col, sort_dir);
 			else
 				log_warn("Sorting by column %d (%s) requested, but column name not found",
 				         sort_column, sort_dir);
