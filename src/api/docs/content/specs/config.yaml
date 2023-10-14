@@ -379,6 +379,8 @@ components:
                   properties:
                     localAPIauth:
                       type: boolean
+                    searchAPIauth:
+                      type: boolean
                     prettyJSON:
                       type: boolean
                     password:
@@ -652,6 +654,7 @@ components:
               theme: "default-darker"
             api:
               localAPIauth: false
+              searchAPIauth: false
               prettyJSON: false
               password: "********"
               pwhash: ''

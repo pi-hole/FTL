@@ -17,6 +17,7 @@ components:
           Search for domains in Pi-hole's list. The optional parameters `N` and `partial` limit the maximum number of returned records and whether partial matches should be returned, respectively.
           There is a hard upper limit of `N` defined in FTL (currently set to 10,000) to ensure that the response is not too large.
           ABP matches are not returned when partial matching is requested.
+          Depending on the value of the config option webserver.api.searchAPIauth, local clients may not need to authenticate for this endpoint.
         responses:
           '200':
             description: OK

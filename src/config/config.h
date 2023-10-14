@@ -220,6 +220,7 @@ struct config {
 		} interface;
 		struct {
 			struct conf_item localAPIauth;
+			struct conf_item searchAPIauth;
 			struct conf_item prettyJSON;
 			struct conf_item pwhash;
 			struct conf_item password; // This is a pseudo-item
