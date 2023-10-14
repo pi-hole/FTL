@@ -164,15 +164,14 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			if(api_request[i].func == api_search)
 			{
 				// Handle /api/search special as it may be allowed for local users due to webserver.api.searchAPIauth
-				if(config.webserver.api.searchAPIauth.v.b && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
+				if(!config.webserver.api.searchAPIauth.v.b && is_local_api_user(api.request->remote_addr))
 				{
-					// Local users need to authenticate, too
-					unauthorized = true;
-					break;
+					// Local users does not need to authenticate when searchAPIauth is false
+					;
 				}
-				else if(!is_local_api_user(api.request->remote_addr))
+				else if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
 				{
-					// Remote users need to authenticate
+					// Users need to authenticate but authentication failed
 					unauthorized = true;
 					break;
 				}
