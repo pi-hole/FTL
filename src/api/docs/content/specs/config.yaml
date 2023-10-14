@@ -507,6 +507,8 @@ components:
                   type: boolean
                 inotify:
                   type: boolean
+                webserver:
+                  type: boolean
                 extra:
                   type: boolean
                 reserved:
@@ -709,6 +711,7 @@ components:
             helper: false
             config: false
             inotify: false
+            webserver: false
             extra: false
             reserved: false
             all: false

@@ -1224,6 +1224,12 @@ void initConfig(struct config *conf)
 	conf->debug.inotify.f = FLAG_ADVANCED_SETTING;
 	conf->debug.inotify.d.b = false;
 
+	conf->debug.webserver.k = "debug.webserver";
+	conf->debug.webserver.h = "Debug monitoring of the webserver (CivetWeb) events";
+	conf->debug.webserver.t = CONF_BOOL;
+	conf->debug.webserver.f = FLAG_ADVANCED_SETTING;
+	conf->debug.webserver.d.b = false;
+
 	conf->debug.extra.k = "debug.extra";
 	conf->debug.extra.h = "Temporary flag that may print additional information. This debug flag is meant to be used whenever needed for temporary investigations. The logged content may change without further notice at any time.";
 	conf->debug.extra.t = CONF_BOOL;
