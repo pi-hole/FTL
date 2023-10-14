@@ -213,7 +213,7 @@ mbed_ssl_accept(mbedtls_ssl_context **ssl,
 		return -1;
 	}
 
-	DEBUG_TRACE("TLS connection %p accepted, state: %d", ssl, (*ssl)->state);
+	DEBUG_TRACE("TLS connection %p accepted, state: %d", ssl, (*ssl)->MBEDTLS_PRIVATE(state));
 	return 0;
 }
 
@@ -239,7 +239,7 @@ mbed_ssl_handshake(mbedtls_ssl_context *ssl)
 		}
 	}
 
-	DEBUG_TRACE("TLS handshake rc: %d, state: %d", rc, ssl->state);
+	DEBUG_TRACE("TLS handshake rc: %d, state: %d", rc, ssl->MBEDTLS_PRIVATE(state));
 	return rc;
 }
 
