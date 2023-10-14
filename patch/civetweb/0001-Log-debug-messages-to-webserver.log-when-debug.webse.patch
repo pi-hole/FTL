@@ -1,0 +1,54 @@
+From 445aed4fd5ef53a52ac974aa5123ba56b11d8a1f Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Sat, 14 Oct 2023 15:39:21 +0200
+Subject: [PATCH] Log debug messages to webserver.log when debug.webserver is
+ true
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/webserver/civetweb/civetweb.c      | 5 +++--
+ src/webserver/civetweb/mod_mbedtls.inl | 4 ++--
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
+index 3df8eab9..9b0c6308 100644
+--- a/src/webserver/civetweb/civetweb.c
++++ b/src/webserver/civetweb/civetweb.c
+@@ -239,9 +239,10 @@ static void DEBUG_TRACE_FUNC(const char *func,
+ #endif
+ 
+ #else
++#include "log.h"
+ #define DEBUG_TRACE(fmt, ...)                                                  \
+-	do {                                                                       \
+-	} while (0)
++	if(debug_flags[DEBUG_WEBSERVER]) {\
++		log_web("DEBUG: " fmt " (%s:%d)", ##__VA_ARGS__, short_path(__FILE__), __LINE__); }
+ #endif /* DEBUG */
+ #endif /* DEBUG_TRACE */
+ 
+diff --git a/src/webserver/civetweb/mod_mbedtls.inl b/src/webserver/civetweb/mod_mbedtls.inl
+index 00b9280a..6a450ba3 100644
+--- a/src/webserver/civetweb/mod_mbedtls.inl
++++ b/src/webserver/civetweb/mod_mbedtls.inl
+@@ -213,7 +213,7 @@ mbed_ssl_accept(mbedtls_ssl_context **ssl,
+ 		return -1;
+ 	}
+ 
+-	DEBUG_TRACE("TLS connection %p accepted, state: %d", ssl, (*ssl)->state);
++	DEBUG_TRACE("TLS connection %p accepted, state: %d", ssl, (*ssl)->MBEDTLS_PRIVATE(state));
+ 	return 0;
+ }
+ 
+@@ -239,7 +239,7 @@ mbed_ssl_handshake(mbedtls_ssl_context *ssl)
+ 		}
+ 	}
+ 
+-	DEBUG_TRACE("TLS handshake rc: %d, state: %d", rc, ssl->state);
++	DEBUG_TRACE("TLS handshake rc: %d, state: %d", rc, ssl->MBEDTLS_PRIVATE(state));
+ 	return rc;
+ }
+ 
+-- 
+2.34.1
+

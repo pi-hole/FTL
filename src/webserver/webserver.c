@@ -29,6 +29,10 @@
 
 // Server context handle
 static struct mg_context *ctx = NULL;
+static char *error_pages = NULL;
+
+// Private prototypes
+static char *append_to_path(char *path, const char *append);
 
 static int redirect_root_handler(struct mg_connection *conn, void *input)
 {
@@ -242,6 +246,14 @@ void http_init(void)
 		return;
 	}
 
+	// Construct error_pages path
+	error_pages = append_to_path(config.webserver.paths.webroot.v.s, config.webserver.paths.webhome.v.s);
+	if(error_pages == NULL)
+	{
+		log_err("Failed to allocate memory for error_pages path!");
+		return;
+	}
+
 	// Prepare options for HTTP server (NULL-terminated list)
 	// Note about the additional headers:
 	// - "Content-Security-Policy: [...]"
@@ -267,8 +279,8 @@ void http_init(void)
 	char num_threads[3] = { 0 };
 	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
 	const char *options[] = {
-		// All passed strings are duplicated internally. See also comment below.
 		"document_root", config.webserver.paths.webroot.v.s,
+		"error_pages", error_pages,
 		"listening_ports", config.webserver.port.v.s,
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
@@ -463,4 +475,8 @@ void http_terminate(void)
 
 	// Free Lua-related resources
 	free_lua();
+
+	// Free error_pages path
+	if(error_pages != NULL)
+		free(error_pages);
 }

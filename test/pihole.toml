@@ -888,6 +888,9 @@
   # Debug monitoring of /etc/pihole filesystem events
   inotify = true ### CHANGED, default = false
 
+  # Logging of webserver (CivetWeb) debug messages
+  webserver = true ### CHANGED, default = false
+
   # Temporary flag that may print additional information. This debug flag is meant to be
   # used whenever needed for temporary investigations. The logged content may change
   # without further notice at any time.

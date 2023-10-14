@@ -239,9 +239,10 @@ static void DEBUG_TRACE_FUNC(const char *func,
 #endif
 
 #else
+#include "log.h"
 #define DEBUG_TRACE(fmt, ...)                                                  \
-	do {                                                                       \
-	} while (0)
+	if(debug_flags[DEBUG_WEBSERVER]) {\
+		log_web("DEBUG: " fmt " (%s:%d)", ##__VA_ARGS__, short_path(__FILE__), __LINE__); }
 #endif /* DEBUG */
 #endif /* DEBUG_TRACE */
 
