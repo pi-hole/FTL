@@ -42,8 +42,9 @@ static const char *false_positives[] = {
 // Validate domain name
 static inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len)
 {
-	// Domain must not be NULL or empty
-	if(domain == NULL || len == 0)
+	// Domain must not be NULL or empty, and they should not be longer than
+	// 255 characters
+	if(domain == NULL || len == 0 || len > 255)
 		return false;
 
 	// Domain must not start or end with a hyphen or dot
