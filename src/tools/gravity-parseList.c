@@ -82,13 +82,18 @@ static inline bool __attribute__((pure)) valid_domain(const char *domain, const 
 // Validate ABP domain name
 static inline bool __attribute__((pure)) valid_abp_domain(const char *line, const bool antigravity)
 {
+	const size_t len = strlen(line);
 	if(antigravity)
 	{
-		// First four characters must be "@@||"
-		if(strncmp(line, "@@||", 4) != 0)
+
+		// The line must be at least 5 characters long
+		if(len < 5)
 			return false;
 
-		const size_t len = strlen(line);
+		// First four characters must be "@@||"
+		if(line[0] != '@' || line[1] != '@' || line[2] != '|' || line[3] != '|')
+			return false;
+
 		// Last character must be "^"
 		if(line[len-1] != '^')
 			return false;
@@ -98,10 +103,13 @@ static inline bool __attribute__((pure)) valid_abp_domain(const char *line, cons
 	}
 	else
 	{
-		// First two characters must be "||"
-		if(strncmp(line, "||", 2) != 0)
+		// The line must be at least 3 characters long
+		if(len < 3)
 			return false;
-		const size_t len = strlen(line);
+
+		// First two characters must be "||"
+		if(line[0] != '|' || line[1] != '|')
+			return false;
 
 		// Last character must be "^"
 		if(line[len-1] != '^')
