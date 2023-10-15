@@ -2115,7 +2115,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 
 		snprintf(querystr, buflen, "SELECT id,domain,type,enabled,date_added,date_modified,comment,"
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM domainlist_by_group g WHERE g.domainlist_id = d.id) AS group_ids "
-		                                     "FROM domainlist d WHERE d.type IN (%s)%s;", type, filter);
+		                                     "FROM domainlist d WHERE d.type IN (%s)%s", type, filter);
 
 		// Append id array filter to query string
 		// We have to do it this way as binding a sequence of int via a prepared

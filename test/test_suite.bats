@@ -1254,7 +1254,7 @@
 @test "API domain search: Non-existing domain returns expected JSON" {
   run bash -c 'curl -s 127.0.0.1/api/search/non.existent'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '{"search":{"domains":[],"gravity":[],"results":{"domains":{"exact":0,"regex":0},"gravity":{"allow":0,"block":0},"total":0},"parameters":{"N":20,"partial":false,"domain":"non.existent","debug":false}},"took":"took":'*'}' ]]
+  [[ ${lines[0]} == '{"search":{"domains":[],"gravity":[],"results":{"domains":{"exact":0,"regex":0},"gravity":{"allow":0,"block":0},"total":0},"parameters":{"N":20,"partial":false,"domain":"non.existent","debug":false}},"took":'*'}' ]]
 }
 
 @test "API domain search: antigravity.ftl returns expected JSON" {
