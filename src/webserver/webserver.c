@@ -87,7 +87,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	// blocked domain in IP blocking mode
 	if(host != NULL && strncmp(host, config.webserver.domain.v.s, host_len) == 0)
 	{
-		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
+		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
 		if(strcmp(uri, "/") == 0)
 		{
 			log_debug(DEBUG_API, "Redirecting / --308--> %s",
@@ -99,6 +99,23 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 
 	// else: Not redirecting
 	return 0;
+}
+
+static int redirect_admin_handler(struct mg_connection *conn, void *input)
+{
+	if(config.debug.api.v.b)
+	{
+		// Get requested URI
+		const struct mg_request_info *request = mg_get_request_info(conn);
+		const char *uri = request->local_uri_raw;
+
+		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
+		          uri, config.webserver.paths.webhome.v.s);
+	}
+
+	// 308 Permanent Redirect from /admin -> /admin/
+	mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
+	return 1;
 }
 
 static int redirect_lp_handler(struct mg_connection *conn, void *input)
@@ -377,8 +394,22 @@ void http_init(void)
 	// Register API handler
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
-	// Register / -> /admin redirect handler
+	// Register / -> /admin/ redirect handler
 	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
+
+	// Register /admin -> /admin/ redirect handler
+	if(strlen(config.webserver.paths.webhome.v.s) > 1)
+	{
+		// Construct webhome_matcher path
+		char *webhome_matcher = NULL;
+		webhome_matcher = strdup(config.webserver.paths.webhome.v.s);
+		webhome_matcher[strlen(webhome_matcher)-1] = '$';
+		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
+		          webhome_matcher, config.webserver.paths.webhome.v.s);
+		// String is internally duplicated during request configuration
+		mg_set_request_handler(ctx, webhome_matcher, redirect_admin_handler, NULL);
+		free(webhome_matcher);
+	}
 
 	// Register **.lp -> ** redirect handler
 	mg_set_request_handler(ctx, "**.lp$", redirect_lp_handler, NULL);
@@ -478,5 +509,8 @@ void http_terminate(void)
 
 	// Free error_pages path
 	if(error_pages != NULL)
+	{
 		free(error_pages);
+		error_pages = NULL;
+	}
 }
