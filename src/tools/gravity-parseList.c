@@ -95,6 +95,11 @@ static inline bool __attribute__((pure)) valid_domain(const char *domain, const 
 		}
 	}
 
+	// There must be at least two labels (i.e. one dot)
+	// e.g., "example.com" but not "localhost"
+	if(last_dot == 0)
+		return false;
+
 	// TLD length check
 	// The last label must be at least 2 characters long
 	// (len-1) because we start counting from zero
