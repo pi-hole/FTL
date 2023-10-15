@@ -224,25 +224,39 @@ int api_search(struct ftl_conn *api)
 	}
 
 	cJSON *search = JSON_NEW_OBJECT();
+	// .domains.{}
 	JSON_ADD_ITEM_TO_OBJECT(search, "domains", domains);
+	// .gravity.{}
 	JSON_ADD_ITEM_TO_OBJECT(search, "gravity", gravity);
-	JSON_ADD_NUMBER_TO_OBJECT(search, "total", cJSON_GetArraySize(domains) + cJSON_GetArraySize(gravity));
 
+	// .results.{}
 	cJSON *results = JSON_NEW_OBJECT();
+
+	// .results.domains.{}
 	cJSON *jdomains = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(jdomains, "exact", Nexact);
 	JSON_ADD_NUMBER_TO_OBJECT(jdomains, "regex", Nregex);
 	JSON_ADD_ITEM_TO_OBJECT(results, "domains", jdomains);
-	JSON_ADD_NUMBER_TO_OBJECT(results, "gravity", Ngravity);
-	JSON_ADD_NUMBER_TO_OBJECT(results, "antigravity", Nantigravity);
+
+	// .results.gravity.{}
+	cJSON *jgravity = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(jgravity, "allow", Nantigravity);
+	JSON_ADD_NUMBER_TO_OBJECT(jgravity, "block", Ngravity);
+	JSON_ADD_ITEM_TO_OBJECT(results, "gravity", jgravity);
+
+	// .results.total
+	JSON_ADD_NUMBER_TO_OBJECT(results, "total", Nexact+Nregex+Ngravity+Nantigravity);
 	JSON_ADD_ITEM_TO_OBJECT(search, "results", results);
 
+	// .parameters.{}
 	cJSON *parameters = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(parameters, "N", limit);
 	JSON_ADD_BOOL_TO_OBJECT(parameters, "partial", partial);
 	JSON_REF_STR_IN_OBJECT(parameters, "domain", api->item);
 	JSON_ADD_BOOL_TO_OBJECT(parameters, "debug", debug);
 	JSON_ADD_ITEM_TO_OBJECT(search, "parameters", parameters);
+
+	// .debug.{}
 	if(debug)
 	{
 		// Add debug information
