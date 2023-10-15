@@ -53,6 +53,7 @@ static inline bool __attribute__((pure)) valid_domain(const char *domain, const 
 		return false;
 
 	// Loop over line and check for invalid characters
+	unsigned int last_dot = 0;
 	for(unsigned int i = 0; i < len; i++)
 	{
 		// Domain must not contain any character other than [a-zA-Z0-9.-_]
@@ -75,7 +76,30 @@ static inline bool __attribute__((pure)) valid_domain(const char *domain, const 
 			if(domain[i] == '-' && domain[i-1] == '.')
 				return false;
 		}
+
+		// Individual label length check
+		if(domain[i] == '.')
+		{
+			// Label must not be longer than 63 characters
+			// (actually 64 because the dot at the end of the label
+			// is included here)
+			if(i - last_dot > 64)
+				return false;
+
+			// Label must be at least 1 character long
+			// We did already check above to not have two
+			// consecutive dots
+
+			// Update last_dot to this dot
+			last_dot = i;
+		}
 	}
+
+	// TLD length check
+	// The last label must be at least 2 characters long
+	// (len-1) because we start counting from zero
+	if((len - 1) - last_dot < 2)
+		return false;
 
 	return true;
 }
