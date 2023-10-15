@@ -10,32 +10,26 @@
 
 #include "tools/gravity-parseList.h"
 #include "args.h"
-#include <regex.h>
 #include "database/sqlite3.h"
-
-// Define valid domain patterns
-// No need to include uppercase letters, as we convert to lowercase in gravity_ParseFileIntoDomains() already
-// Adapted from https://stackoverflow.com/a/30007882
-#define TLD_PATTERN "[a-z0-9][a-z0-9-]{0,61}[a-z0-9]"
-#define SUBDOMAIN_PATTERN "([a-z0-9_-]{0,63}\\.)"
-
-// supported exact style: subdomain.domain.tld
-// SUBDOMAIN_PATTERN is mandatory for exact style, disallowing TLD blocking
-#define VALID_DOMAIN_REXEX SUBDOMAIN_PATTERN"+"TLD_PATTERN
-
-// supported ABP blocking style: ||subdomain.domain.tlp^
-// SUBDOMAIN_PATTERN is optional for ABP style, providing TLD blocking: ||tld^
-// See https://github.com/pi-hole/pi-hole/pull/5240
-#define ABP_DOMAIN_REXEX "\\|\\|"SUBDOMAIN_PATTERN"*"TLD_PATTERN"\\^"
-
-// supported ABP allowing style: @@||subdomain.domain.tlp^
-// SUBDOMAIN_PATTERN is optional for ABP style, providing TLD allowing: @@||tld^
-#define ANTI_ABP_DOMAIN_REXEX "@@\\|\\|"SUBDOMAIN_PATTERN"*"TLD_PATTERN"\\^"
 
 // A list of items of common local hostnames not to report as unusable
 // Some lists (i.e StevenBlack's) contain these as they are supposed to be used as HOST files
 // but flagging them as unusable causes more confusion than it's worth - so we suppress them from the output
-#define FALSE_POSITIVES "^(localhost|localhost.localdomain|local|broadcasthost|localhost|ip6-localhost|ip6-loopback|lo0 localhost|ip6-localnet|ip6-mcastprefix|ip6-allnodes|ip6-allrouters|ip6-allhosts)$"
+static const char *false_positives[] = {
+	"localhost",
+	"localhost.localdomain",
+	"local",
+	"broadcasthost",
+	"localhost",
+	"ip6-localhost",
+	"ip6-loopback",
+	"lo0 localhost",
+	"ip6-localnet",
+	"ip6-mcastprefix",
+	"ip6-allnodes",
+	"ip6-allrouters",
+	"ip6-allhosts"
+};
 
 // Print progress for files larger than 10 MB
 // This is to avoid printing progress for small files
@@ -44,6 +38,88 @@
 
 // Number of invalid domains to print before skipping the rest
 #define MAX_INVALID_DOMAINS 5
+
+// Validate domain name
+static inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len)
+{
+	// Domain must not be NULL or empty
+	if(domain == NULL || len == 0)
+		return false;
+
+	// Domain must not start or end with a hyphen or dot
+	if(domain[  0  ] == '-' || domain[  0  ] == '.' ||
+	   domain[len-1] == '-' || domain[len-1] == '.')
+		return false;
+
+	// Loop over line and check for invalid characters
+	for(unsigned int i = 0; i < len; i++)
+	{
+		// Domain must not contain any character other than [a-zA-Z0-9.-_]
+		if(domain[i] != '-' && domain[i] != '.' && domain[i] != '_' &&
+		   (domain[i] < 'a' || domain[i] > 'z') &&
+//		   (domain[i] < 'A' || domain[i] > 'Z') && // not needed as all domains are converted to lowercase
+		   (domain[i] < '0' || domain[i] > '9'))
+			return false;
+
+		// Multi-character checks
+		if(i > 0)
+		{
+			// Domain must not contain a hyphen immediately before a
+			// dot or two consecutive dots
+			if(domain[i] == '.' && (domain[i-1] == '-' || domain[i-1] == '.'))
+				return false;
+
+			// Domain must not contain a dot immediately before a
+			// hyphen
+			if(domain[i] == '-' && domain[i-1] == '.')
+				return false;
+		}
+	}
+
+	return true;
+}
+
+// Validate ABP domain name
+static inline bool __attribute__((pure)) valid_abp_domain(const char *line, const bool antigravity)
+{
+	if(antigravity)
+	{
+		// First four characters must be "@@||"
+		if(strncmp(line, "@@||", 4) != 0)
+			return false;
+
+		const size_t len = strlen(line);
+		// Last character must be "^"
+		if(line[len-1] != '^')
+			return false;
+
+		// Domain must be valid
+		return valid_domain(line+4, len-5);
+	}
+	else
+	{
+		// First two characters must be "||"
+		if(strncmp(line, "||", 2) != 0)
+			return false;
+		const size_t len = strlen(line);
+
+		// Last character must be "^"
+		if(line[len-1] != '^')
+			return false;
+
+		// Domain must be valid
+		return valid_domain(line+2, len-3);
+	}
+}
+
+// Check if a line is a false positive
+static inline bool is_false_positive(const char *line)
+{
+	for(unsigned int i = 0; i < sizeof(false_positives)/sizeof(false_positives[0]); i++)
+		if(strcmp(line, false_positives[i]) == 0)
+			return true;
+	return false;
+}
 
 int gravity_parseList(const char *infile, const char *outfile, const char *adlistIDstr,
                       const bool checkOnly, const bool antigravity)
@@ -74,36 +150,6 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	fseek(fpin, 0L, SEEK_END);
 	const size_t fsize = ftell(fpin);
 	rewind(fpin);
-
-	// Compile regular expression to validate domains
-	regex_t exact_regex, abp_regex, false_positives_regex;
-	if(regcomp(&exact_regex, VALID_DOMAIN_REXEX, REG_EXTENDED) != 0)
-	{
-		printf("%s  %s Unable to compile regular expression to validate exact domains\n",
-		       over, cross);
-		fclose(fpin);
-		if(!checkOnly)
-			sqlite3_close(db);
-		return EXIT_FAILURE;
-	}
-	if(regcomp(&abp_regex, antigravity ? ANTI_ABP_DOMAIN_REXEX : ABP_DOMAIN_REXEX, REG_EXTENDED) != 0)
-	{
-		printf("%s  %s Unable to compile regular expression to validate ABP-style domains\n",
-		       over, cross);
-		fclose(fpin);
-		if(!checkOnly)
-			sqlite3_close(db);
-		return EXIT_FAILURE;
-	}
-	if(regcomp(&false_positives_regex, FALSE_POSITIVES, REG_EXTENDED | REG_NOSUB) != 0)
-	{
-		printf("%s  %s Unable to compile regular expression to identify false positives\n",
-		       over, cross);
-		fclose(fpin);
-		if(!checkOnly)
-			sqlite3_close(db);
-		return EXIT_FAILURE;
-	}
 
 	// Begin transaction
 	if(!checkOnly && sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL) != SQLITE_OK)
@@ -144,7 +190,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	size_t lineno = 0;
 	size_t len = 0;
 	ssize_t read = 0;
-	size_t total_read = 0;
+	size_t total_read = 0, last_print = 0;
+	const size_t print_step = fsize / 20; // Print progress every 100/20 = 5%
 	int last_progress = 0;
 	char *invalid_domains_list[MAX_INVALID_DOMAINS] = { NULL };
 	unsigned int invalid_domains_list_len = 0;
@@ -163,12 +210,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		if(line[read-1] == '.')
 			line[--read] = '\0';
 
-
-		regmatch_t match = { 0 };
 		// Validate line
 		if(line[0] != (antigravity ? '@' : '|') &&           // <- Not an ABP-style match
-		   regexec(&exact_regex, line, 1, &match, 0) == 0 && // <- Regex match
-		   match.rm_so == 0 && match.rm_eo == read)          // <- Match covers entire line
+		   valid_domain(line, read))
 		{
 			// Exact match found
 			if(checkOnly)
@@ -200,8 +244,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			exact_domains++;
 		}
 		else if(line[0] == (antigravity ? '@' : '|') &&         // <- ABP-style match
-		        regexec(&abp_regex, line, 1, &match, 0) == 0 && // <- Regex match
-		        match.rm_so == 0 && match.rm_eo == read)        // <- Match covers entire line
+		        valid_abp_domain(line, antigravity))            // <- Valid ABP domain
 		{
 			// ABP-style match (see comments above)
 			if(checkOnly)
@@ -235,7 +278,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			// No match - This is an invalid domain or a false positive
 
 			// Ignore false positives - they don't count as invalid domains
-			if(regexec(&false_positives_regex, line, 0, NULL, 0) != 0)
+			if(!is_false_positive(line))
 			{
 				if(checkOnly)
 				{
@@ -270,8 +313,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 		// Print progress if the file is large enough every 100 lines
 		// This code cannot be reached if checkOnly is true
-		if(fsize > PRINT_PROGRESS_THRESHOLD && lineno % 100 == 1)
+		if(fsize > PRINT_PROGRESS_THRESHOLD && total_read - last_print > print_step)
 		{
+			last_print = total_read;
 			// Calculate progress
 			const int progress = (int)(100.0*total_read/fsize);
 			// Print progress if it has changed
@@ -397,9 +441,6 @@ end_of_parseList:
 
 	// Free memory
 	free(line);
-	regfree(&exact_regex);
-	regfree(&abp_regex);
-	regfree(&false_positives_regex);
 	for(unsigned int i = 0; i < invalid_domains_list_len; i++)
 		if(invalid_domains_list[i] != NULL)
 			free(invalid_domains_list[i]);
