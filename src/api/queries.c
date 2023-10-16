@@ -222,6 +222,8 @@ static void querystr_finish(char *querystr, const char *sort_col, const char *so
 			sort_col_sql = "q.status";
 		else if(strcasecmp(sort_col, "reply") == 0)
 			sort_col_sql = "q.reply_type";
+		else if(strcasecmp(sort_col, "reply.time") == 0)
+			sort_col_sql = "q.reply_time";
 		else if(strcasecmp(sort_col, "dnssec") == 0)
 			sort_col_sql = "q.dnssec";
 		else if(strcasecmp(sort_col, "regex.id") == 0)
