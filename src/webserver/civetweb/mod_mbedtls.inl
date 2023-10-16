@@ -135,7 +135,7 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	rc = mbedtls_ssl_config_defaults(conf,
 	                                 MBEDTLS_SSL_IS_SERVER,
 	                                 MBEDTLS_SSL_TRANSPORT_STREAM,
-	                                 MBEDTLS_SSL_PRESET_SUITEB);
+	                                 MBEDTLS_SSL_PRESET_DEFAULT);
 	if (rc != 0) {
 		DEBUG_TRACE("TLS set defaults failed (%i)", rc);
 		return -1;
