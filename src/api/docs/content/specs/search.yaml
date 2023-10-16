@@ -156,10 +156,6 @@ components:
                     items:
                       type: integer
                     example: [0,1,2]
-            total:
-              type: integer
-              description: Total number of results
-              example: 2
             parameters:
               type: object
               properties:
@@ -179,6 +175,35 @@ components:
                   type: boolean
                   description: Whether debug information was requested
                   example: false
+            results:
+              type: object
+              properties:
+                domains:
+                  type: object
+                  properties:
+                    exact:
+                      type: integer
+                      description: Number of exactly matching domains
+                      example: 1
+                    regex:
+                      type: integer
+                      description: Number of regex matching domains
+                      example: 2
+                gravity:
+                  type: object
+                  properties:
+                    allow:
+                      type: integer
+                      description: Number of allow matches (antigravity)
+                      example: 0
+                    block:
+                      type: integer
+                      description: Number of block matches (gravity)
+                      example: 1
+                total:
+                  type: integer
+                  description: Total number of matches
+                  example: 4
   parameters:
     domain:
       name: domain

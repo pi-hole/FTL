@@ -20,8 +20,8 @@
 
 static int search_table(struct ftl_conn *api,
                         const enum gravity_list_type listtype,
-                        char *ids, const unsigned int N,
-                        const bool partial, cJSON* json)
+                        char *ids, const unsigned int limit,
+                        unsigned int *N, const bool partial, cJSON* json)
 {
 	const char *item = api->item;
 	if(ids != NULL)
@@ -44,9 +44,11 @@ static int search_table(struct ftl_conn *api,
 	}
 
 	tablerow table;
-	unsigned int n = 0u;
-	while(gravityDB_readTableGetRow(listtype, &table, &sql_msg) && n++ < N)
+	while(gravityDB_readTableGetRow(listtype, &table, &sql_msg))
 	{
+		if(++(*N) > limit)
+			continue;
+
 		cJSON *row = JSON_NEW_OBJECT();
 		JSON_COPY_STR_TO_OBJECT(row, "domain", table.domain);
 		if(table.type != NULL)
@@ -103,24 +105,25 @@ static int search_table(struct ftl_conn *api,
 }
 
 static int search_gravity(struct ftl_conn *api, cJSON *array, cJSON **abp_patterns,
-                          const unsigned int N, const bool partial, const bool antigravity)
+                          const unsigned int limit, unsigned int *N, const bool partial,
+                          const bool antigravity)
 {
 	enum gravity_list_type table = antigravity ? GRAVITY_ANTIGRAVITY : GRAVITY_GRAVITY;
 	if(partial)
 	{
 		// Search for partial matches in (anti/)gravity
-		const int ret = search_table(api, table, NULL, N, partial, array);
+		const int ret = search_table(api, table, NULL, limit, N, partial, array);
 		if(ret != 200)
 			return ret;
 	}
 	else
 	{
 		// Search for exact matches in (anti/)gravity
-		int ret = search_table(api, table, NULL, N, false, array);
+		int ret = search_table(api, table, NULL, limit, N, false, array);
 		if(ret != 200)
 			return ret;
 
-		// Search for exact matches in (anti/)gravity
+		// Search for ABP matches in (anti/)gravity
 		const char *domain = api->item;
 		*abp_patterns = gen_abp_patterns(domain, antigravity);
 		cJSON *abp_pattern = NULL;
@@ -130,7 +133,7 @@ static int search_gravity(struct ftl_conn *api, cJSON *array, cJSON **abp_patter
 			if(pattern == NULL)
 				continue;
 			api->item = pattern;
-			ret = search_table(api, table, NULL, N, partial, array);
+			ret = search_table(api, table, NULL, limit, N, partial, array);
 			if(ret != 200)
 				return ret;
 		}
@@ -155,20 +158,20 @@ int api_search(struct ftl_conn *api)
 
 	// Parse query string parameters
 	bool partial = false, debug = false;
-	unsigned int N = 20u;
+	unsigned int limit = 20u;
 	if(api->request->query_string != NULL)
 	{
 		// Check if we should perform a partial search
 		get_bool_var(api->request->query_string, "partial", &partial);
 		get_bool_var(api->request->query_string, "debug", &debug);
-		get_uint_var(api->request->query_string, "N", &N);
+		get_uint_var(api->request->query_string, "N", &limit);
 
-		// Check validity of N
-		if(N > MAX_SEARCH_RESULTS)
+		// Check validity of limit
+		if(limit > MAX_SEARCH_RESULTS)
 		{
 			// Too many results requested
 			char hint[100];
-			sprintf(hint, "Requested %u number of results but hard upper limit is %u", N, MAX_SEARCH_RESULTS);
+			sprintf(hint, "Requested %u number of results but hard upper limit is %u", limit, MAX_SEARCH_RESULTS);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Invalid request: Requested too many results",
@@ -178,18 +181,21 @@ int api_search(struct ftl_conn *api)
 
 	// Search through all exact domains
 	cJSON *domains = JSON_NEW_ARRAY();
-	ret = search_table(api, GRAVITY_DOMAINLIST_ALL_EXACT, NULL, N, partial, domains);
+	unsigned int Nexact = 0u;
+	ret = search_table(api, GRAVITY_DOMAINLIST_ALL_EXACT, NULL, limit, &Nexact, partial, domains);
 	if(ret != 200)
 		return ret;
 
 	// Search through gravity
 	cJSON *gravity = JSON_NEW_ARRAY();
 	cJSON *gravity_patterns = NULL;
-	search_gravity(api, gravity, &gravity_patterns, N, partial, false);
+	unsigned int Ngravity = 0u;
+	search_gravity(api, gravity, &gravity_patterns, limit, &Ngravity, partial, false);
 
 	// Search through antigravity
 	cJSON *antigravity_patterns = NULL;
-	search_gravity(api, gravity, &antigravity_patterns, N, partial, true);
+	unsigned int Nantigravity = 0u;
+	search_gravity(api, gravity, &antigravity_patterns, limit, &Nantigravity, partial, true);
 
 	// Search through all regex filters
 	cJSON *regex_ids = JSON_NEW_OBJECT();
@@ -198,10 +204,11 @@ int api_search(struct ftl_conn *api)
 	cJSON *allow_ids = cJSON_GetObjectItem(regex_ids, "allow");
 
 	// Get allow regex filters
+	unsigned int Nregex = 0u;
 	if(cJSON_GetArraySize(allow_ids) > 0)
 	{
 		char *allow_list = cJSON_PrintUnformatted(allow_ids);
-		ret = search_table(api, GRAVITY_DOMAINLIST_ALLOW_REGEX, allow_list, N, false, domains);
+		ret = search_table(api, GRAVITY_DOMAINLIST_ALLOW_REGEX, allow_list, limit, &Nregex, false, domains);
 		free(allow_list);
 		if(ret != 200)
 			return ret;
@@ -210,22 +217,46 @@ int api_search(struct ftl_conn *api)
 	if(cJSON_GetArraySize(deny_ids) > 0)
 	{
 		char *deny_list = cJSON_PrintUnformatted(deny_ids);
-		ret = search_table(api, GRAVITY_DOMAINLIST_DENY_REGEX, deny_list, N, false, domains);
+		ret = search_table(api, GRAVITY_DOMAINLIST_DENY_REGEX, deny_list, limit, &Nregex, false, domains);
 		free(deny_list);
 		if(ret != 200)
 			return ret;
 	}
 
 	cJSON *search = JSON_NEW_OBJECT();
+	// .domains.{}
 	JSON_ADD_ITEM_TO_OBJECT(search, "domains", domains);
+	// .gravity.{}
 	JSON_ADD_ITEM_TO_OBJECT(search, "gravity", gravity);
-	JSON_ADD_NUMBER_TO_OBJECT(search, "total", cJSON_GetArraySize(domains) + cJSON_GetArraySize(gravity));
+
+	// .results.{}
+	cJSON *results = JSON_NEW_OBJECT();
+
+	// .results.domains.{}
+	cJSON *jdomains = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(jdomains, "exact", Nexact);
+	JSON_ADD_NUMBER_TO_OBJECT(jdomains, "regex", Nregex);
+	JSON_ADD_ITEM_TO_OBJECT(results, "domains", jdomains);
+
+	// .results.gravity.{}
+	cJSON *jgravity = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(jgravity, "allow", Nantigravity);
+	JSON_ADD_NUMBER_TO_OBJECT(jgravity, "block", Ngravity);
+	JSON_ADD_ITEM_TO_OBJECT(results, "gravity", jgravity);
+
+	// .results.total
+	JSON_ADD_NUMBER_TO_OBJECT(results, "total", Nexact+Nregex+Ngravity+Nantigravity);
+	JSON_ADD_ITEM_TO_OBJECT(search, "results", results);
+
+	// .parameters.{}
 	cJSON *parameters = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(parameters, "N", N);
+	JSON_ADD_NUMBER_TO_OBJECT(parameters, "N", limit);
 	JSON_ADD_BOOL_TO_OBJECT(parameters, "partial", partial);
 	JSON_REF_STR_IN_OBJECT(parameters, "domain", api->item);
 	JSON_ADD_BOOL_TO_OBJECT(parameters, "debug", debug);
 	JSON_ADD_ITEM_TO_OBJECT(search, "parameters", parameters);
+
+	// .debug.{}
 	if(debug)
 	{
 		// Add debug information
