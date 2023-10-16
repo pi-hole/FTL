@@ -32,6 +32,7 @@ void allocate_lua(void)
 	memcpy(login_uri, config.webserver.paths.webhome.v.s, login_uri_len);
 	strcpy(login_uri + login_uri_len, "login");
 	login_uri[login_uri_len + 5u] = '\0';
+	log_debug(DEBUG_API, "Login URI: %s", login_uri);
 
 	// Build "wrong" API URI string (webhome + api)
 	// Append "api" to webhome string
@@ -40,6 +41,7 @@ void allocate_lua(void)
 	memcpy(admin_api_uri, config.webserver.paths.webhome.v.s, admin_api_uri_len);
 	strcpy(admin_api_uri + admin_api_uri_len, "api");
 	admin_api_uri[admin_api_uri_len + 3u] = '\0';
+	log_debug(DEBUG_API, "Admin API URI: %s", admin_api_uri);
 }
 
 void free_lua(void)
