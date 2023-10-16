@@ -389,12 +389,18 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 				fputc(' ', fp);
 			for(unsigned int i = 0; i < elems; i++)
 			{
+				// Get the element
+				cJSON *item = cJSON_GetArrayItem(v->json, i);
+
+				// Skip empty elements
+				if(strlen(item->valuestring) == 0)
+					continue;
+
 				// Add intendation (if we are indenting)
 				if(indent > -1)
 					indentTOML(fp, indent + 1);
 
-				// Get and print the element
-				cJSON *item = cJSON_GetArrayItem(v->json, i);
+				// Print the element
 				printTOMLstring(fp, item->valuestring, toml);
 
 				// Add a comma if there is one more element to come
@@ -683,10 +689,14 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 						log_debug(DEBUG_CONFIG, "%s is an invalid array (found at index %u)", conf_item->k, i);
 						break;
 					}
-					// Add string to our JSON array
-					cJSON *item = cJSON_CreateString(d.u.s);
+					// Only import non-empty entries
+					if(strlen(d.u.s) > 0)
+					{
+						// Add string to our JSON array
+						cJSON *item = cJSON_CreateString(d.u.s);
+						cJSON_AddItemToArray(conf_item->v.json, item);
+					}
 					free(d.u.s);
-					cJSON_AddItemToArray(conf_item->v.json, item);
 				}
 			}
 			else
