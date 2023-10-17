@@ -159,6 +159,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	mbedtls_x509write_crt_set_subject_key_identifier(&crt);
 	mbedtls_x509write_crt_set_authority_key_identifier(&crt);
 
+
 	// Set subject name depending on the (optionally) specified domain
 	{
 		char *subject_name = calloc(strlen(domain) + 4, sizeof(char));
@@ -167,6 +168,27 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 		mbedtls_x509write_crt_set_subject_name(&crt, subject_name);
 		free(subject_name);
 	}
+
+
+	// Add "DNS:pi.hole" as subject alternative name (SAN)
+	//
+	// Since RFC 2818 (May 2000), the Common Name (CN) field is ignored
+	// in certificates if the subject alternative name extension is present.
+	//
+	// Furthermore, RFC 3280 (4.2.1.7, 1. paragraph) specifies that
+	// subjectAltName must always be used and that the use of the CN field
+	// should be limited to support legacy implementations.
+	//
+	mbedtls_x509_san_list san_dns = { 0 };
+	san_dns.node.type = MBEDTLS_X509_SAN_DNS_NAME;
+	san_dns.node.san.unstructured_name.p = (unsigned char *) domain;
+	san_dns.node.san.unstructured_name.len = strlen(domain);
+	san_dns.next = NULL; // No more SANs (linked list)
+
+	ret = mbedtls_x509write_crt_set_subject_alternative_name(&crt, &san_dns);
+	if (ret != 0)
+		printf("mbedtls_x509write_crt_set_subject_alternative_name returned %d\n", ret);
+
 
 	// Export certificate in PEM format
 	if((ret = mbedtls_x509write_crt_pem(&crt, cert_buffer, sizeof(cert_buffer),
