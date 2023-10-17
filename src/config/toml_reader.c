@@ -30,11 +30,10 @@ static void reportDebugFlags(void);
 bool readFTLtoml(struct config *conf, toml_table_t *toml, const bool verbose)
 {
 	// Parse lines in the config file if we did not receive a pointer to a TOML
-	// table (e.g. from an imported Teleporter file)
-	bool external = true;
-	if(toml == NULL)
+	// table from an imported Teleporter file
+	bool teleporter = (toml != NULL);
+	if(!teleporter)
 	{
-		external = false;
 		toml = parseTOML();
 		if(!toml)
 			return false;
@@ -42,19 +41,29 @@ bool readFTLtoml(struct config *conf, toml_table_t *toml, const bool verbose)
 
 	// Try to read debug config. This is done before the full config
 	// parsing to allow for debug output further down
-	toml_table_t *conf_debug = toml_table_in(toml, "debug");
-	if(conf_debug)
-		readTOMLvalue(&conf->debug.config, "config", conf_debug, conf);
+	// First try to read env variable, if this fails, read TOML
+	if(teleporter || !readEnvValue(&conf->debug.config, conf))
+	{
+		toml_table_t *conf_debug = toml_table_in(toml, "debug");
+		if(conf_debug)
+			readTOMLvalue(&conf->debug.config, "config", conf_debug, conf);
+	}
 	set_debug_flags(conf);
 
 	log_debug(DEBUG_CONFIG, "Reading %s TOML config file: full config",
-	          external ? "external" : "default");
+	          teleporter ? "teleporter" : "default");
 
 	// Read all known config items
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
 		struct conf_item *conf_item = get_conf_item(conf, i);
+
+		// First try to read this config option from an environment variable
+		// Skip reading environment variables when importing from Teleporter
+		// If this succeeds, skip searching the TOML file for this config item
+		if(!teleporter && readEnvValue(conf_item, conf))
+			continue;
 
 		// Get config path depth
 		unsigned int level = config_path_depth(conf_item->p);

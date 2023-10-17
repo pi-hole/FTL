@@ -1185,7 +1185,7 @@
   [[ ${lines[0]} == "0" ]]
 }
 
-@test "No config errors in pihole.toml" {
+@test "No missing config items in pihole.toml" {
   run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole/FTL.log | grep -c "DOES NOT EXIST"'
@@ -1249,6 +1249,13 @@
   run bash -c "dig A x.y.z.abp.antigravity.ftl +short @127.0.0.1"
   printf "A: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "192.168.1.7" ]]
+}
+
+@test "Environmental variable is favored over config file" {
+  # The config file has -10 but we set FTLCONF_misc_nice="-11"
+  run bash -c 'grep -c "nice = -11" /etc/pihole/pihole.toml'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
 }
 
 @test "API domain search: Non-existing domain returns expected JSON" {
