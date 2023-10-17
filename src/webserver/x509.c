@@ -78,7 +78,7 @@ static int generate_private_key_ec(mbedtls_pk_context *key,
 	return 0;
 }
 
-bool generate_certificate(const char* certfile, bool rsa)
+bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 {
 	int ret;
 	mbedtls_x509write_cert crt;
@@ -153,12 +153,20 @@ bool generate_certificate(const char* certfile, bool rsa)
 	mbedtls_x509write_crt_set_md_alg(&crt, MBEDTLS_MD_SHA256);
 	mbedtls_x509write_crt_set_subject_key(&crt, &key);
 	mbedtls_x509write_crt_set_issuer_key(&crt, &key);
-	mbedtls_x509write_crt_set_subject_name(&crt, "CN=pi.hole");
 	mbedtls_x509write_crt_set_issuer_name(&crt, "CN=pi.hole");
 	mbedtls_x509write_crt_set_validity(&crt, "20010101000000", "20301231235959");
 	mbedtls_x509write_crt_set_basic_constraints(&crt, 0, -1);
 	mbedtls_x509write_crt_set_subject_key_identifier(&crt);
 	mbedtls_x509write_crt_set_authority_key_identifier(&crt);
+
+	// Set subject name depending on the (optionally) specified domain
+	{
+		char *subject_name = calloc(strlen(domain) + 4, sizeof(char));
+		strcpy(subject_name, "CN=");
+		strcat(subject_name, domain);
+		mbedtls_x509write_crt_set_subject_name(&crt, subject_name);
+		free(subject_name);
+	}
 
 	// Export certificate in PEM format
 	if((ret = mbedtls_x509write_crt_pem(&crt, cert_buffer, sizeof(cert_buffer),

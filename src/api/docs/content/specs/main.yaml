@@ -190,6 +190,9 @@ paths:
   /info/metrics:
     $ref: 'info.yaml#/components/paths/metrics'
 
+  /info/login:
+    $ref: 'info.yaml#/components/paths/login'
+
   /logs/dnsmasq:
     $ref: 'logs.yaml#/components/paths/logs/dnsmasq'
 

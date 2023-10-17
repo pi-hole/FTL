@@ -239,9 +239,10 @@ static void DEBUG_TRACE_FUNC(const char *func,
 #endif
 
 #else
+#include "log.h"
 #define DEBUG_TRACE(fmt, ...)                                                  \
-	do {                                                                       \
-	} while (0)
+	if(debug_flags[DEBUG_WEBSERVER]) {\
+		log_web("DEBUG: " fmt " (%s:%d)", ##__VA_ARGS__, short_path(__FILE__), __LINE__); }
 #endif /* DEBUG */
 #endif /* DEBUG_TRACE */
 
@@ -15306,7 +15307,9 @@ handle_request(struct mg_connection *conn)
 		if (!new_path) {
 			mg_send_http_error(conn, 500, "out or memory");
 		} else {
-			mg_get_request_link(conn, new_path, buflen - 1);
+			/* Pi-hole modification */
+			//mg_get_request_link(conn, new_path, buflen - 1);
+			strcpy(new_path, ri->local_uri_raw);
 			strcat(new_path, "/");
 			if (ri->query_string) {
 				/* Append ? and query string */

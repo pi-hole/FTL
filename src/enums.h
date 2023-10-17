@@ -158,6 +158,7 @@ enum debug_flag {
 	DEBUG_HELPER,
 	DEBUG_CONFIG,
 	DEBUG_INOTIFY,
+	DEBUG_WEBSERVER,
 	DEBUG_EXTRA,
 	DEBUG_RESERVED,
 	DEBUG_MAX
@@ -288,7 +289,8 @@ enum listening_mode {
 	LISTEN_LOCAL,
 	LISTEN_ALL,
 	LISTEN_SINGLE,
-	LISTEN_BIND
+	LISTEN_BIND,
+	LISTEN_NONE
 } __attribute__ ((packed));
 
 enum fifo_logs {

@@ -360,6 +360,9 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			fprintf(pihole_conf, "interface=%s\n", interface);
 			fputs("bind-interfaces\n", pihole_conf);
 			break;
+		case LISTEN_NONE:
+			fputs("# No interface configuration applied, make sure to cover this yourself\n", pihole_conf);
+			break;
 	}
 	fputs("\n", pihole_conf);
 

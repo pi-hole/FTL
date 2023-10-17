@@ -17,6 +17,8 @@
 #include "shmem.h"
 // exit_code
 #include "signals.h"
+// struct config
+#include "config/config.h"
 
 static int api_endpoints(struct ftl_conn *api);
 
@@ -44,6 +46,7 @@ static struct {
 	{ "/api/groups",                            "/{name}",                    api_list,                              { false, true,  0               }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/lists",                             "/{list}",                    api_list,                              { false, true,  0               }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/info/client",                       "",                           api_info_client,                       { false, true,  0               }, false, HTTP_GET },
+	{ "/api/info/login",                        "",                           api_info_login,                        { false, true,  0               }, false, HTTP_GET },
 	{ "/api/info/system",                       "",                           api_info_system,                       { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/info/database",                     "",                           api_info_database,                     { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/info/sensors",                      "",                           api_info_sensors,                      { false, true,  0               }, true,  HTTP_GET },
@@ -108,7 +111,8 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		{ false, false, 0 }
 	};
 
-	log_debug(DEBUG_API, "Requested API URI: %s %s ? %s (Content-Type %s)",
+	log_debug(DEBUG_API, "Requested API URI: %s -> %s %s ? %s (Content-Type %s)",
+	          api.request->remote_addr,
 	          api.request->request_method,
 	          api.request->local_uri_raw,
 	          api.request->query_string,
@@ -157,7 +161,22 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			}
 
 			// Verify requesting client is allowed to see this resource
-			if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
+			if(api_request[i].func == api_search)
+			{
+				// Handle /api/search special as it may be allowed for local users due to webserver.api.searchAPIauth
+				if(!config.webserver.api.searchAPIauth.v.b && is_local_api_user(api.request->remote_addr))
+				{
+					// Local users does not need to authenticate when searchAPIauth is false
+					;
+				}
+				else if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
+				{
+					// Users need to authenticate but authentication failed
+					unauthorized = true;
+					break;
+				}
+			}
+			else if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
 			{
 				unauthorized = true;
 				break;

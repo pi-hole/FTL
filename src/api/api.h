@@ -16,7 +16,7 @@
 #include "webserver/cJSON/cJSON.h"
 #include "webserver/http-common.h"
 
-// Commo definitions
+// Common definitions
 #define LOCALHOSTv4 "127.0.0.1"
 #define LOCALHOSTv6 "::1"
 
@@ -60,6 +60,7 @@ int api_info_version(struct ftl_conn *api);
 int api_info_messages_count(struct ftl_conn *api);
 int api_info_messages(struct ftl_conn *api);
 int api_info_metrics(struct ftl_conn *api);
+int api_info_login(struct ftl_conn *api);
 
 // Config methods
 int api_config(struct ftl_conn *api);
@@ -86,6 +87,7 @@ int api_auth(struct ftl_conn *api);
 void delete_all_sessions(void);
 int api_auth_sessions(struct ftl_conn *api);
 int api_auth_session_delete(struct ftl_conn *api);
+bool is_local_api_user(const char *remote_addr) __attribute__((pure));
 
 // 2FA methods
 bool verifyTOTP(const uint32_t code);

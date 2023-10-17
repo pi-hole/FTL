@@ -509,7 +509,8 @@ void initConfig(struct config *conf)
 			{ "LOCAL", "Allow only local requests. This setting accepts DNS queries only from hosts whose address is on a local subnet, i.e., a subnet for which an interface exists on the server. It is intended to be set as a default on installation, to allow unconfigured installations to be useful but also safe from being used for DNS amplification attacks if (accidentally) running public." },
 			{ "SINGLE", "Permit all origins, accept only on the specified interface. Respond only to queries arriving on the specified interface. The loopback (lo) interface is automatically added to the list of interfaces to use when this option is used. Make sure your Pi-hole is properly firewalled!" },
 			{ "BIND", "By default, FTL binds the wildcard address. If this is not what you want, you can use this option as it forces FTL to really bind only the interfaces it is listening on. Note that this may result in issues when the interface may go down (cable unplugged, etc.). About the only time when this is useful is when running another nameserver on the same port on the same machine. This may also happen if you run a virtualization API such as libvirt. When this option is used, IP alias interface labels (e.g. enp2s0:0) are checked rather than interface names." },
-			{ "ALL", "Permit all origins, accept on all interfaces. Make sure your Pi-hole is properly firewalled! This truly allows any traffic to be replied to and is a dangerous thing to do as your Pi-hole could become an open resolver. You should always ask yourself if the first option doesn't work for you as well." }
+			{ "ALL", "Permit all origins, accept on all interfaces. Make sure your Pi-hole is properly firewalled! This truly allows any traffic to be replied to and is a dangerous thing to do as your Pi-hole could become an open resolver. You should always ask yourself if the first option doesn't work for you as well." },
+			{ "NONE", "Do not add any configuration concerning the listening mode to the dnsmasq configuration file. This is useful if you want to manually configure the listening mode in auxiliary configuration files. This option is really meant for advanced users only, support for this option may be limited." }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->dns.listeningMode.a, listeningMode);
 	}
@@ -885,8 +886,13 @@ void initConfig(struct config *conf)
 	conf->webserver.interface.theme.d.web_theme = THEME_DEFAULT_AUTO;
 
 	// sub-struct api
+	conf->webserver.api.searchAPIauth.k = "webserver.api.searchAPIauth";
+	conf->webserver.api.searchAPIauth.h = "Do local clients need to authenticate to access the search API? This settings allows local clients to use pihole -q ... without authentication. Note that \"local\" in the sense of the option means only 127.0.0.1 and [::1]";
+	conf->webserver.api.searchAPIauth.t = CONF_BOOL;
+	conf->webserver.api.searchAPIauth.d.b = false;
+
 	conf->webserver.api.localAPIauth.k = "webserver.api.localAPIauth";
-	conf->webserver.api.localAPIauth.h = "Do local clients need to authenticate to access the API?";
+	conf->webserver.api.localAPIauth.h = "Do local clients need to authenticate to access the API? This settings allows local clients to use the API without authentication.";
 	conf->webserver.api.localAPIauth.t = CONF_BOOL;
 	conf->webserver.api.localAPIauth.d.b = true;
 
@@ -1229,6 +1235,12 @@ void initConfig(struct config *conf)
 	conf->debug.inotify.t = CONF_BOOL;
 	conf->debug.inotify.f = FLAG_ADVANCED_SETTING;
 	conf->debug.inotify.d.b = false;
+
+	conf->debug.webserver.k = "debug.webserver";
+	conf->debug.webserver.h = "Debug monitoring of the webserver (CivetWeb) events";
+	conf->debug.webserver.t = CONF_BOOL;
+	conf->debug.webserver.f = FLAG_ADVANCED_SETTING;
+	conf->debug.webserver.d.b = false;
 
 	conf->debug.extra.k = "debug.extra";
 	conf->debug.extra.h = "Temporary flag that may print additional information. This debug flag is meant to be used whenever needed for temporary investigations. The logged content may change without further notice at any time.";
