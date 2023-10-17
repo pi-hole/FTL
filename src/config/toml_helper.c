@@ -751,9 +751,9 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 	{
 		case CONF_BOOL:
 		{
-			if(strcasecmp(envkey, "true") == 0 || strcasecmp(envkey, "yes") == 0)
+			if(strcasecmp(envvar, "true") == 0 || strcasecmp(envvar, "yes") == 0)
 				conf_item->v.b = true;
-			else if(strcasecmp(envkey, "false") == 0 || strcasecmp(envkey, "no") == 0)
+			else if(strcasecmp(envvar, "false") == 0 || strcasecmp(envvar, "no") == 0)
 				conf_item->v.b = false;
 			else
 				log_warn("ENV %s is not of type bool", envkey);
@@ -761,9 +761,9 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 		}
 		case CONF_ALL_DEBUG_BOOL:
 		{
-			if(strcasecmp(envkey, "true") == 0 || strcasecmp(envkey, "yes") == 0)
+			if(strcasecmp(envvar, "true") == 0 || strcasecmp(envvar, "yes") == 0)
 				set_all_debug(newconf, true);
-			else if(strcasecmp(envkey, "false") == 0 || strcasecmp(envkey, "no") == 0)
+			else if(strcasecmp(envvar, "false") == 0 || strcasecmp(envvar, "no") == 0)
 				set_all_debug(newconf, false);
 			else
 				log_warn("ENV %s is not of type bool", envkey);
