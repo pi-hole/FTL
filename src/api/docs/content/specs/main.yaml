@@ -15,17 +15,6 @@ info:
     Most (but not all) endpoints require authentication.
     API endpoints requiring authentication will fail with code `401 Unauthorized` when used outside a valid session.
 servers:
-  - url: 'http://{url}:{port}/{path}'
-    variables:
-      url:
-        description: URL or address of your Pi-hole
-        default: pi.hole
-      port:
-        description: Port of your Pi-hole's API
-        default: "8080"
-      path:
-        description: Path where your Pi-hole's API is hosted
-        default: api
   - url: 'https://{url}:{port}/{path}'
     variables:
       url:
@@ -34,6 +23,17 @@ servers:
       port:
         description: Port of your Pi-hole's API (HTTPS)
         default: "443"
+      path:
+        description: Path where your Pi-hole's API is hosted
+        default: api
+  - url: 'http://{url}:{port}/{path}'
+    variables:
+      url:
+        description: URL or address of your Pi-hole
+        default: pi.hole
+      port:
+        description: Port of your Pi-hole's API
+        default: "80"
       path:
         description: Path where your Pi-hole's API is hosted
         default: api

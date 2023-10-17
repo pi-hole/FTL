@@ -17,6 +17,7 @@ components:
           Search for domains in Pi-hole's list. The optional parameters `N` and `partial` limit the maximum number of returned records and whether partial matches should be returned, respectively.
           There is a hard upper limit of `N` defined in FTL (currently set to 10,000) to ensure that the response is not too large.
           ABP matches are not returned when partial matching is requested.
+          Depending on the value of the config option webserver.api.searchAPIauth, local clients may not need to authenticate for this endpoint.
         responses:
           '200':
             description: OK
@@ -155,10 +156,6 @@ components:
                     items:
                       type: integer
                     example: [0,1,2]
-            total:
-              type: integer
-              description: Total number of results
-              example: 2
             parameters:
               type: object
               properties:
@@ -178,6 +175,35 @@ components:
                   type: boolean
                   description: Whether debug information was requested
                   example: false
+            results:
+              type: object
+              properties:
+                domains:
+                  type: object
+                  properties:
+                    exact:
+                      type: integer
+                      description: Number of exactly matching domains
+                      example: 1
+                    regex:
+                      type: integer
+                      description: Number of regex matching domains
+                      example: 2
+                gravity:
+                  type: object
+                  properties:
+                    allow:
+                      type: integer
+                      description: Number of allow matches (antigravity)
+                      example: 0
+                    block:
+                      type: integer
+                      description: Number of block matches (gravity)
+                      example: 1
+                total:
+                  type: integer
+                  description: Total number of matches
+                  example: 4
   parameters:
     domain:
       name: domain
