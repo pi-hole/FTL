@@ -220,6 +220,7 @@ struct config {
 		} interface;
 		struct {
 			struct conf_item localAPIauth;
+			struct conf_item searchAPIauth;
 			struct conf_item prettyJSON;
 			struct conf_item pwhash;
 			struct conf_item password; // This is a pseudo-item
@@ -290,6 +291,7 @@ struct config {
 		struct conf_item helper;
 		struct conf_item config;
 		struct conf_item inotify;
+		struct conf_item webserver;
 		struct conf_item extra;
 		struct conf_item reserved;
 		// all must be the last item in this struct

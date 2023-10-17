@@ -594,6 +594,11 @@
     # Does local clients need to authenticate to access the API?
     localAPIauth = true
 
+    # Do local clients need to authenticate to access the search API? This settings allows
+    # local clients to use pihole -q ... without authentication. Note that "local" in the
+    # sense of the option means only 127.0.0.1 and [::1]
+    searchAPIauth = false
+
     # Should FTL prettify the API output (add extra spaces, newlines and indentation)?
     prettyJSON = false
 
@@ -882,6 +887,9 @@
 
   # Debug monitoring of /etc/pihole filesystem events
   inotify = true ### CHANGED, default = false
+
+  # Logging of webserver (CivetWeb) debug messages
+  webserver = true ### CHANGED, default = false
 
   # Temporary flag that may print additional information. This debug flag is meant to be
   # used whenever needed for temporary investigations. The logged content may change

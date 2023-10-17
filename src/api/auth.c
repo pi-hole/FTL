@@ -83,6 +83,13 @@ static void add_request_info(struct ftl_conn *api, const char *csrf)
 	memset((int*)&api->request->is_authenticated, 1, sizeof(api->request->is_authenticated));
 }
 
+// Is this client connecting from localhost?
+bool __attribute__((pure)) is_local_api_user(const char *remote_addr)
+{
+	return strcmp(remote_addr, LOCALHOSTv4) == 0 ||
+	       strcmp(remote_addr, LOCALHOSTv6) == 0;
+}
+
 // Can we validate this client?
 // Returns -1 if not authenticated or expired
 // Returns >= 0 for any valid authentication
@@ -90,8 +97,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 {
 	// Is the user requesting from localhost?
 	// This may be allowed without authentication depending on the configuration
-	if(!config.webserver.api.localAPIauth.v.b && (strcmp(api->request->remote_addr, LOCALHOSTv4) == 0 ||
-	                                              strcmp(api->request->remote_addr, LOCALHOSTv6) == 0))
+	if(!config.webserver.api.localAPIauth.v.b && is_local_api_user(api->request->remote_addr))
 	{
 		add_request_info(api, NULL);
 		return API_AUTH_LOCALHOST;

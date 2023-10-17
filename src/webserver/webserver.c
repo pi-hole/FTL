@@ -29,6 +29,10 @@
 
 // Server context handle
 static struct mg_context *ctx = NULL;
+static char *error_pages = NULL;
+
+// Private prototypes
+static char *append_to_path(char *path, const char *append);
 
 static int redirect_root_handler(struct mg_connection *conn, void *input)
 {
@@ -83,7 +87,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	// blocked domain in IP blocking mode
 	if(host != NULL && strncmp(host, config.webserver.domain.v.s, host_len) == 0)
 	{
-		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
+		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
 		if(strcmp(uri, "/") == 0)
 		{
 			log_debug(DEBUG_API, "Redirecting / --308--> %s",
@@ -95,6 +99,23 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 
 	// else: Not redirecting
 	return 0;
+}
+
+static int redirect_admin_handler(struct mg_connection *conn, void *input)
+{
+	if(config.debug.api.v.b)
+	{
+		// Get requested URI
+		const struct mg_request_info *request = mg_get_request_info(conn);
+		const char *uri = request->local_uri_raw;
+
+		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
+		          uri, config.webserver.paths.webhome.v.s);
+	}
+
+	// 308 Permanent Redirect from /admin -> /admin/
+	mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
+	return 1;
 }
 
 static int redirect_lp_handler(struct mg_connection *conn, void *input)
@@ -242,6 +263,14 @@ void http_init(void)
 		return;
 	}
 
+	// Construct error_pages path
+	error_pages = append_to_path(config.webserver.paths.webroot.v.s, config.webserver.paths.webhome.v.s);
+	if(error_pages == NULL)
+	{
+		log_err("Failed to allocate memory for error_pages path!");
+		return;
+	}
+
 	// Prepare options for HTTP server (NULL-terminated list)
 	// Note about the additional headers:
 	// - "Content-Security-Policy: [...]"
@@ -267,8 +296,8 @@ void http_init(void)
 	char num_threads[3] = { 0 };
 	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
 	const char *options[] = {
-		// All passed strings are duplicated internally. See also comment below.
 		"document_root", config.webserver.paths.webroot.v.s,
+		"error_pages", error_pages,
 		"listening_ports", config.webserver.port.v.s,
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
@@ -341,20 +370,46 @@ void http_init(void)
 	callbacks.log_access  = log_http_access;
 	callbacks.init_lua    = init_lua;
 
+	// Prepare error handler
+	struct mg_error_data error = { 0 };
+	char error_buffer[1024] = { 0 };
+	error.text_buffer_size = sizeof(error_buffer);
+	error.text = error_buffer;
+
+	// Prepare initialization data
+	struct mg_init_data init = { 0 };
+	init.callbacks = &callbacks;
+	init.user_data = NULL;
+	init.configuration_options = options;
+
 	/* Start the server */
-	if((ctx = mg_start(&callbacks, NULL, options)) == NULL)
+	if((ctx = mg_start2(&init, &error)) == NULL)
 	{
 		log_err("Start of webserver failed!. Web interface will not be available!");
-		log_err("       Check webroot %s and listening ports %s",
-		        config.webserver.paths.webroot.v.s, config.webserver.port.v.s);
+		log_err("       Error: %s (error code %u.%u)", error.text, error.code, error.code_sub);
+		log_err("       Hint: Check the webserver log at %s", config.files.log.webserver.v.s);
 		return;
 	}
 
 	// Register API handler
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
-	// Register / -> /admin redirect handler
+	// Register / -> /admin/ redirect handler
 	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
+
+	// Register /admin -> /admin/ redirect handler
+	if(strlen(config.webserver.paths.webhome.v.s) > 1)
+	{
+		// Construct webhome_matcher path
+		char *webhome_matcher = NULL;
+		webhome_matcher = strdup(config.webserver.paths.webhome.v.s);
+		webhome_matcher[strlen(webhome_matcher)-1] = '$';
+		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
+		          webhome_matcher, config.webserver.paths.webhome.v.s);
+		// String is internally duplicated during request configuration
+		mg_set_request_handler(ctx, webhome_matcher, redirect_admin_handler, NULL);
+		free(webhome_matcher);
+	}
 
 	// Register **.lp -> ** redirect handler
 	mg_set_request_handler(ctx, "**.lp$", redirect_lp_handler, NULL);
@@ -451,4 +506,11 @@ void http_terminate(void)
 
 	// Free Lua-related resources
 	free_lua();
+
+	// Free error_pages path
+	if(error_pages != NULL)
+	{
+		free(error_pages);
+		error_pages = NULL;
+	}
 }

@@ -240,6 +240,9 @@ void debugstr(const enum debug_flag flag, const char **name)
 		case DEBUG_INOTIFY:
 			*name = "DEBUG_INOTIFY";
 			return;
+		case DEBUG_WEBSERVER:
+			*name = "DEBUG_WEBSERVER";
+			return;
 		case DEBUG_RESERVED:
 			*name = "DEBUG_RESERVED";
 			return;
