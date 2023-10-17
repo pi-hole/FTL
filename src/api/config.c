@@ -337,10 +337,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type string";
 			const int blocking_mode = get_blocking_mode_val(elem->valuestring);
 			if(blocking_mode == -1)
-			{
-				log_warn("Blocking mode \"%s\" is invalid", elem->valuestring);
 				return "invalid option";
-			}
 			// Set item
 			conf_item->v.blocking_mode = blocking_mode;
 			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.blocking_mode);
@@ -401,13 +398,18 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 		case CONF_ENUM_PRIVACY_LEVEL:
 		{
 			// Check type
-			if(!cJSON_IsNumber(elem))
+			int value;
+			if(cJSON_IsNumber(elem))
+				value = elem->valueint;
+			else if(cJSON_IsString(elem) && sscanf(elem->valuestring, "%i", &value) == 1)
+				; // value imported into variable
+			else
 				return "not of type integer";
 			// Check allowed interval
-			if(elem->valuedouble < PRIVACY_SHOW_ALL || elem->valuedouble > PRIVACY_MAXIMUM)
+			if(value < PRIVACY_SHOW_ALL || value > PRIVACY_MAXIMUM)
 				return "not within valid range";
 			// Set item
-			conf_item->v.i = elem->valueint;
+			conf_item->v.i = value;
 			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.i);
 			break;
 		}
