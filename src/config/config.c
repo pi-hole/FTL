@@ -423,10 +423,10 @@ void initConfig(struct config *conf)
 	{
 		struct enum_options piholePTR[] =
 		{
-			{ "NONE", "Pi-hole will not respond automatically on PTR requests to local interface addresses. Ensure pi.hole and/or hostname records exist elsewhere." },
-			{ "HOSTNAME", "Pi-hole will not respond automatically on PTR requests to local interface addresses. Ensure pi.hole and/or hostname records exist elsewhere." },
-			{ "HOSTNAMEFQDN", "Serve the machine's global hostname as fully qualified domain by adding the local suffix. If no local suffix has been defined, FTL appends the local domain .no_fqdn_available. In this case you should either add domain=whatever.com to a custom config file inside /etc/dnsmasq.d/ (to set whatever.com as local domain) or use domain=# which will try to derive the local domain from /etc/resolv.conf (or whatever is set with resolv-file, when multiple search directives exist, the first one is used)." },
-			{ "PI.HOLE", "Respond with \"pi.hole\"." }
+			{ get_ptr_type_str(PTR_NONE), "Pi-hole will not respond automatically on PTR requests to local interface addresses. Ensure pi.hole and/or hostname records exist elsewhere." },
+			{ get_ptr_type_str(PTR_HOSTNAME), "Pi-hole will not respond automatically on PTR requests to local interface addresses. Ensure pi.hole and/or hostname records exist elsewhere." },
+			{ get_ptr_type_str(PTR_HOSTNAMEFQDN), "Serve the machine's global hostname as fully qualified domain by adding the local suffix. If no local suffix has been defined, FTL appends the local domain .no_fqdn_available. In this case you should either add domain=whatever.com to a custom config file inside /etc/dnsmasq.d/ (to set whatever.com as local domain) or use domain=# which will try to derive the local domain from /etc/resolv.conf (or whatever is set with resolv-file, when multiple search directives exist, the first one is used)." },
+			{ get_ptr_type_str(PTR_PIHOLE), "Respond with \"pi.hole\"." }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->dns.piholePTR.a, piholePTR);
 	}
@@ -439,10 +439,10 @@ void initConfig(struct config *conf)
 	{
 		struct enum_options replyWhenBusy[] =
 		{
-			{ "BLOCK", "Block all queries when the database is busy." },
-			{ "ALLOW", "Allow all queries when the database is busy." },
-			{ "REFUSE", "Refuse all queries which arrive while the database is busy." },
-			{ "DROP", "Just drop the queries, i.e., never reply to them at all. Despite \"REFUSE\" sounding similar to \"DROP\", it turned out that many clients will just immediately retry, causing up to several thousands of queries per second. This does not happen in \"DROP\" mode." }
+			{ get_busy_reply_str(BUSY_BLOCK), "Block all queries when the database is busy." },
+			{ get_busy_reply_str(BUSY_ALLOW), "Allow all queries when the database is busy." },
+			{ get_busy_reply_str(BUSY_REFUSE), "Refuse all queries which arrive while the database is busy." },
+			{ get_busy_reply_str(BUSY_DROP), "Just drop the queries, i.e., never reply to them at all. Despite \"REFUSE\" sounding similar to \"DROP\", it turned out that many clients will just immediately retry, causing up to several thousands of queries per second. This does not happen in \"DROP\" mode." }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->dns.replyWhenBusy.a, replyWhenBusy);
 	}
@@ -506,11 +506,11 @@ void initConfig(struct config *conf)
 	{
 		struct enum_options listeningMode[] =
 		{
-			{ "LOCAL", "Allow only local requests. This setting accepts DNS queries only from hosts whose address is on a local subnet, i.e., a subnet for which an interface exists on the server. It is intended to be set as a default on installation, to allow unconfigured installations to be useful but also safe from being used for DNS amplification attacks if (accidentally) running public." },
-			{ "SINGLE", "Permit all origins, accept only on the specified interface. Respond only to queries arriving on the specified interface. The loopback (lo) interface is automatically added to the list of interfaces to use when this option is used. Make sure your Pi-hole is properly firewalled!" },
-			{ "BIND", "By default, FTL binds the wildcard address. If this is not what you want, you can use this option as it forces FTL to really bind only the interfaces it is listening on. Note that this may result in issues when the interface may go down (cable unplugged, etc.). About the only time when this is useful is when running another nameserver on the same port on the same machine. This may also happen if you run a virtualization API such as libvirt. When this option is used, IP alias interface labels (e.g. enp2s0:0) are checked rather than interface names." },
-			{ "ALL", "Permit all origins, accept on all interfaces. Make sure your Pi-hole is properly firewalled! This truly allows any traffic to be replied to and is a dangerous thing to do as your Pi-hole could become an open resolver. You should always ask yourself if the first option doesn't work for you as well." },
-			{ "NONE", "Do not add any configuration concerning the listening mode to the dnsmasq configuration file. This is useful if you want to manually configure the listening mode in auxiliary configuration files. This option is really meant for advanced users only, support for this option may be limited." }
+			{ get_listeningMode_str(LISTEN_LOCAL), "Allow only local requests. This setting accepts DNS queries only from hosts whose address is on a local subnet, i.e., a subnet for which an interface exists on the server. It is intended to be set as a default on installation, to allow unconfigured installations to be useful but also safe from being used for DNS amplification attacks if (accidentally) running public." },
+			{ get_listeningMode_str(LISTEN_SINGLE), "Permit all origins, accept only on the specified interface. Respond only to queries arriving on the specified interface. The loopback (lo) interface is automatically added to the list of interfaces to use when this option is used. Make sure your Pi-hole is properly firewalled!" },
+			{ get_listeningMode_str(LISTEN_BIND), "By default, FTL binds the wildcard address. If this is not what you want, you can use this option as it forces FTL to really bind only the interfaces it is listening on. Note that this may result in issues when the interface may go down (cable unplugged, etc.). About the only time when this is useful is when running another nameserver on the same port on the same machine. This may also happen if you run a virtualization API such as libvirt. When this option is used, IP alias interface labels (e.g. enp2s0:0) are checked rather than interface names." },
+			{ get_listeningMode_str(LISTEN_ALL), "Permit all origins, accept on all interfaces. Make sure your Pi-hole is properly firewalled! This truly allows any traffic to be replied to and is a dangerous thing to do as your Pi-hole could become an open resolver. You should always ask yourself if the first option doesn't work for you as well." },
+			{ get_listeningMode_str(LISTEN_NONE), "Do not add any configuration concerning the listening mode to the dnsmasq configuration file. This is useful if you want to manually configure the listening mode in auxiliary configuration files. This option is really meant for advanced users only, support for this option may be limited." }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->dns.listeningMode.a, listeningMode);
 	}
@@ -561,11 +561,11 @@ void initConfig(struct config *conf)
 	{
 		struct enum_options blockingmode[] =
 		{
-			{ "NULL", "In NULL mode, which is both the default and recommended mode for Pi-hole FTLDNS, blocked queries will be answered with the \"unspecified address\" (0.0.0.0 or ::). The \"unspecified address\" is a reserved IP address specified by RFC 3513 - Internet Protocol Version 6 (IPv6) Addressing Architecture, section 2.5.2." },
-			{ "IP-NODATA-AAAA", "In IP-NODATA-AAAA mode, blocked queries will be answered with the local IPv4 addresses of your Pi-hole. Blocked AAAA queries will be answered with NODATA-IPV6 and clients will only try to reach your Pi-hole over its static IPv4 address." },
-			{ "IP", "In IP mode, blocked queries will be answered with the local IP addresses of your Pi-hole." },
-			{ "NXDOMAIN", "In NXDOMAIN mode, blocked queries will be answered with an empty response (i.e., there won't be an answer section) and status NXDOMAIN. A NXDOMAIN response should indicate that there is no such domain to the client making the query." },
-			{ "NODATA", "In NODATA mode, blocked queries will be answered with an empty response (no answer section) and status NODATA. A NODATA response indicates that the domain exists, but there is no record for the requested query type." }
+			{ get_blocking_mode_str(MODE_NULL), "In NULL mode, which is both the default and recommended mode for Pi-hole FTLDNS, blocked queries will be answered with the \"unspecified address\" (0.0.0.0 or ::). The \"unspecified address\" is a reserved IP address specified by RFC 3513 - Internet Protocol Version 6 (IPv6) Addressing Architecture, section 2.5.2." },
+			{ get_blocking_mode_str(MODE_IP_NODATA_AAAA), "In IP-NODATA-AAAA mode, blocked queries will be answered with the local IPv4 addresses of your Pi-hole. Blocked AAAA queries will be answered with NODATA-IPV6 and clients will only try to reach your Pi-hole over its static IPv4 address." },
+			{ get_blocking_mode_str(MODE_IP), "In IP mode, blocked queries will be answered with the local IP addresses of your Pi-hole." },
+			{ get_blocking_mode_str(MODE_NX), "In NXDOMAIN mode, blocked queries will be answered with an empty response (i.e., there won't be an answer section) and status NXDOMAIN. A NXDOMAIN response should indicate that there is no such domain to the client making the query." },
+			{ get_blocking_mode_str(MODE_NODATA), "In NODATA mode, blocked queries will be answered with an empty response (no answer section) and status NODATA. A NODATA response indicates that the domain exists, but there is no record for the requested query type." }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->dns.blocking.mode.a, blockingmode);
 	}
@@ -765,10 +765,10 @@ void initConfig(struct config *conf)
 	{
 		struct enum_options refreshNames[] =
 		{
-			{ "IPV4_ONLY", "Do hourly PTR lookups only for IPv4 addresses. This is the new default since Pi-hole FTL v5.3.2. It should resolve issues with more and more very short-lived PE IPv6 addresses coming up in a lot of networks." },
-			{ "ALL", "Do hourly PTR lookups for all addresses. This was the default until FTL v5.3(.1). It has been replaced as it can create a lot of PTR queries for those with many IPv6 addresses in their networks." },
-			{ "UNKNOWN", "Only resolve unknown hostnames. Already existing hostnames are never refreshed, i.e., there will be no PTR queries made for clients where hostnames are known. This also means that known hostnames will not be updated once known." },
-			{ "NONE", "Don't do any hourly PTR lookups. This means we look host names up exactly once (when we first see a client) and never again. You may miss future changes of host names." }
+			{ get_refresh_hostnames_str(REFRESH_IPV4_ONLY), "Do hourly PTR lookups only for IPv4 addresses. This is the new default since Pi-hole FTL v5.3.2. It should resolve issues with more and more very short-lived PE IPv6 addresses coming up in a lot of networks." },
+			{ get_refresh_hostnames_str(REFRESH_ALL), "Do hourly PTR lookups for all addresses. This was the default until FTL v5.3(.1). It has been replaced as it can create a lot of PTR queries for those with many IPv6 addresses in their networks." },
+			{ get_refresh_hostnames_str(REFRESH_UNKNOWN), "Only resolve unknown hostnames. Already existing hostnames are never refreshed, i.e., there will be no PTR queries made for clients where hostnames are known. This also means that known hostnames will not be updated once known." },
+			{ get_refresh_hostnames_str(REFRESH_NONE), "Don't do any hourly PTR lookups. This means we look host names up exactly once (when we first see a client) and never again. You may miss future changes of host names." }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->resolver.refreshNames.a, refreshNames);
 	}
