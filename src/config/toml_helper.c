@@ -18,6 +18,8 @@
 #include <sys/file.h>
 // rotate_files()
 #include "files.h"
+//set_and_check_password()
+#include "config/password.h"
 
 // Open the TOML file for reading or writing
 FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode)
@@ -714,6 +716,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		case CONF_PASSWORD:
 		{
 			// This is ignored, it is only a pseudo-element with no real content
+			break;
 		}
 	}
 }
@@ -950,7 +953,11 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 		}
 		case CONF_PASSWORD:
 		{
-			// This is ignored, it is only a pseudo-element with no real content
+			if(!set_and_check_password(conf_item, envvar))
+			{
+				log_warn("ENV %s is invalid", envkey);
+				break;
+			}
 		}
 	}
 

@@ -68,8 +68,10 @@ bash test/pdns/setup.sh
 OLDUMASK=$(umask)
 umask 0022
 
-# Start FTL
+# Set exemplary config value by environment variable
 export FTLCONF_misc_nice="-11"
+
+# Start FTL
 if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
   echo "pihole-FTL failed to start"
   exit 1
