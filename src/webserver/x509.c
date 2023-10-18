@@ -179,13 +179,26 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	// subjectAltName must always be used and that the use of the CN field
 	// should be limited to support legacy implementations.
 	//
-	mbedtls_x509_san_list san_dns = { 0 };
-	san_dns.node.type = MBEDTLS_X509_SAN_DNS_NAME;
-	san_dns.node.san.unstructured_name.p = (unsigned char *) domain;
-	san_dns.node.san.unstructured_name.len = strlen(domain);
-	san_dns.next = NULL; // No more SANs (linked list)
+	mbedtls_x509_san_list san_dns_pihole = { 0 };
+	san_dns_pihole.node.type = MBEDTLS_X509_SAN_DNS_NAME;
+	san_dns_pihole.node.san.unstructured_name.p = (unsigned char *) "pi.hole";
+	san_dns_pihole.node.san.unstructured_name.len = 7; // strlen("pi.hole")
+	san_dns_pihole.next = NULL; // No further element
 
-	ret = mbedtls_x509write_crt_set_subject_alternative_name(&crt, &san_dns);
+	// Furthermore, add "pi.hole" when a custom domain is used to make the
+	// certificate more universal
+	mbedtls_x509_san_list san_dns_domain = { 0 };
+	if(strcasecmp(domain, "pi.hole") != 0)
+	{
+		san_dns_domain.node.type = MBEDTLS_X509_SAN_DNS_NAME;
+		san_dns_domain.node.san.unstructured_name.p = (unsigned char *) domain;
+		san_dns_domain.node.san.unstructured_name.len = strlen(domain);
+		san_dns_domain.next = NULL; // No more SANs (linked list)
+
+		san_dns_pihole.next = &san_dns_domain; // Link this domain
+	}
+
+	ret = mbedtls_x509write_crt_set_subject_alternative_name(&crt, &san_dns_pihole);
 	if (ret != 0)
 		printf("mbedtls_x509write_crt_set_subject_alternative_name returned %d\n", ret);
 
