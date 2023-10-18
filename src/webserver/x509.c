@@ -185,7 +185,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	san_dns_pihole.node.san.unstructured_name.len = 7; // strlen("pi.hole")
 	san_dns_pihole.next = NULL; // No further element
 
-	// Furthermore, add "pi.hole" when a custom domain is used to make the
+	// Furthermore, add the domain when a custom domain is used to make the
 	// certificate more universal
 	mbedtls_x509_san_list san_dns_domain = { 0 };
 	if(strcasecmp(domain, "pi.hole") != 0)
