@@ -249,6 +249,25 @@ static void querystr_finish(char *querystr, const char *sort_col, const char *so
 	         sort_col_sql, sort_dir_sql);
 }
 
+// This function modifies the passed string inline
+static bool is_wildcard(char *string)
+{
+	// Check if wildcards are requested
+	bool wildcard = false;
+	const size_t stringlen = strlen(string);
+	for(unsigned int i = 0u; i < stringlen; i++)
+	{
+		if(string[i] == '*')
+		{
+			// Replace "*" by SQLite3 wildcard character "%" and
+			// memorize we actually want to do wildcard matching
+			string[i] = '%';
+			wildcard = true;
+		}
+	}
+	return wildcard;
+}
+
 int api_queries(struct ftl_conn *api)
 {
 	// Exit before processing any data if requested via config setting
@@ -305,7 +324,12 @@ int api_queries(struct ftl_conn *api)
 
 		// Domain filtering?
 		if(GET_STR("domain", domainname, api->request->query_string) > 0)
-			add_querystr_string(api, querystr, "d.domain=", ":domain", &where);
+		{
+			if(is_wildcard(domainname))
+				add_querystr_string(api, querystr, "d.domain LIKE", ":domain", &where);
+			else
+				add_querystr_string(api, querystr, "d.domain=", ":domain", &where);
+		}
 
 		// Upstream filtering?
 		if(GET_STR("upstream", upstreamname, api->request->query_string) > 0)
@@ -317,16 +341,31 @@ int api_queries(struct ftl_conn *api)
 				// Pseudo-upstream for cached queries
 				add_querystr_string(api, querystr, "q.status IN ", get_cached_statuslist(), &where);
 			else
-				add_querystr_string(api, querystr, "f.forward=", ":upstream", &where);
+			{
+				if(is_wildcard(upstreamname))
+					add_querystr_string(api, querystr, "f.forward LIKE", ":upstream", &where);
+				else
+					add_querystr_string(api, querystr, "f.forward=", ":upstream", &where);
+			}
 		}
 
 		// Client IP filtering?
 		if(GET_STR("client_ip", clientip, api->request->query_string) > 0)
-			add_querystr_string(api, querystr, "c.ip=", ":cip", &where);
+		{
+			if(is_wildcard(clientip))
+				add_querystr_string(api, querystr, "c.ip LIKE", ":cip", &where);
+			else
+				add_querystr_string(api, querystr, "c.ip=", ":cip", &where);
+		}
 
 		// Client filtering?
 		if(GET_STR("client_name", clientname, api->request->query_string) > 0)
-			add_querystr_string(api, querystr, "c.name=", ":cname", &where);
+		{
+			if(is_wildcard(clientname))
+				add_querystr_string(api, querystr, "c.name LIKE", ":cname", &where);
+			else
+				add_querystr_string(api, querystr, "c.name=", ":cname", &where);
+		}
 
 		// DataTables server-side processing protocol
 		// Draw counter: This is used by DataTables to ensure that the
