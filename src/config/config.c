@@ -1029,11 +1029,11 @@ void initConfig(struct config *conf)
 
 	// struct misc
 	conf->misc.privacylevel.k = "misc.privacylevel";
-	conf->misc.privacylevel.h = "Using privacy levels you can specify which level of detail you want to see in your Pi-hole statistics.";
+	conf->misc.privacylevel.h = "Using privacy levels you can specify which level of detail you want to see in your Pi-hole statistics. Changing this setting will trigger a restart of FTL";
 	{
 		struct enum_options privacylevel[] =
 		{
-			{ "0", "Doesn't hide anything, all statistics are available." },
+			{ "0", "Don't hide anything, all statistics are available." },
 			{ "1", "Hide domains. This setting disables Top Domains and Top Ads" },
 			{ "2", "Hide domains and clients. This setting disables Top Domains, Top Ads, Top Clients and Clients over time." },
 			{ "3", "Anonymize everything. This setting disabled almost any statistics and query analysis. There will be no long-term database logging and no Query Log. You will also loose most regex features." }
@@ -1041,6 +1041,7 @@ void initConfig(struct config *conf)
 		CONFIG_ADD_ENUM_OPTIONS(conf->misc.privacylevel.a, privacylevel);
 	}
 	conf->misc.privacylevel.t = CONF_ENUM_PRIVACY_LEVEL;
+	conf->misc.privacylevel.f = FLAG_RESTART_DNSMASQ;
 	conf->misc.privacylevel.d.privacy_level = PRIVACY_SHOW_ALL;
 
 	conf->misc.delay_startup.k = "misc.delay_startup";
