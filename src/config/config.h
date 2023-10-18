@@ -83,7 +83,7 @@ enum conf_type {
 
 #define MAX_CONFIG_PATH_DEPTH 6
 
-#define FLAG_RESTART_DNSMASQ       (1 << 0)
+#define FLAG_RESTART_FTL       (1 << 0)
 #define FLAG_ADVANCED_SETTING      (1 << 1)
 #define FLAG_PSEUDO_ITEM           (1 << 2)
 #define FLAG_INVALIDATE_SESSIONS   (1 << 3)

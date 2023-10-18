@@ -565,7 +565,7 @@ static int api_config_get(struct ftl_conn *api)
 
 			// Add config item flags
 			cJSON *flags = JSON_NEW_OBJECT();
-			JSON_ADD_BOOL_TO_OBJECT(flags, "restart_dnsmasq", conf_item->f & FLAG_RESTART_DNSMASQ);
+			JSON_ADD_BOOL_TO_OBJECT(flags, "restart_dnsmasq", conf_item->f & FLAG_RESTART_FTL);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "advanced", conf_item->f & FLAG_ADVANCED_SETTING);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "flags", flags);
 
@@ -728,7 +728,7 @@ static int api_config_patch(struct ftl_conn *api)
 		// If we reach this point, a valid setting was found and changed
 
 		// Check if this item requires a config-rewrite + restart of dnsmasq
-		if(conf_item->f & FLAG_RESTART_DNSMASQ)
+		if(conf_item->f & FLAG_RESTART_FTL)
 			dnsmasq_changed = true;
 
 		// Check if this item changed the password, if so, we need to
@@ -885,7 +885,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 		// If we reach this point, a valid setting was found and changed
 		// Check if this item requires a config-rewrite + restart of dnsmasq
-		if(new_item->f & FLAG_RESTART_DNSMASQ)
+		if(new_item->f & FLAG_RESTART_FTL)
 			dnsmasq_changed = true;
 
 		break;
