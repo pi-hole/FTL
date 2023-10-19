@@ -27,6 +27,8 @@
 #include "daemon.h"
 // delete_all_sessions()
 #include "api/api.h"
+// exit_code
+#include "signals.h"
 
 struct config config = { 0 };
 static bool config_initialized = false;
@@ -1041,7 +1043,6 @@ void initConfig(struct config *conf)
 		CONFIG_ADD_ENUM_OPTIONS(conf->misc.privacylevel.a, privacylevel);
 	}
 	conf->misc.privacylevel.t = CONF_ENUM_PRIVACY_LEVEL;
-	conf->misc.privacylevel.f = FLAG_RESTART_FTL;
 	conf->misc.privacylevel.d.privacy_level = PRIVACY_SHOW_ALL;
 
 	conf->misc.delay_startup.k = "misc.delay_startup";
@@ -1301,7 +1302,7 @@ void readFTLconf(struct config *conf, const bool rewrite)
 	initConfig(conf);
 
 	// First try to read TOML config file
-	if(readFTLtoml(conf, NULL, rewrite))
+	if(readFTLtoml(NULL, conf, NULL, rewrite, NULL))
 	{
 		// If successful, we write the config file back to disk
 		// to ensure that all options are present and comments
@@ -1479,7 +1480,8 @@ void reread_config(void)
 	duplicate_config(&conf_copy, &config);
 
 	// Read TOML config file
-	if(readFTLtoml(&conf_copy, NULL, true))
+	bool restart = false;
+	if(readFTLtoml(&config, &conf_copy, NULL, true, &restart))
 	{
 		// Install new configuration
 		log_debug(DEBUG_CONFIG, "Loaded configuration is valid, installing it");
@@ -1491,8 +1493,16 @@ void reread_config(void)
 		   strcmp(conf_copy.webserver.api.pwhash.v.s, config.webserver.api.pwhash.v.s) != 0)
 			delete_all_sessions();
 
+		// Check if privacy level was reduced. If so, we need to restart FTL
+		if(conf_copy.misc.privacylevel.v.privacy_level < config.misc.privacylevel.v.privacy_level)
+		{
+			log_info("Privacy level was reduced, restarting FTL");
+			// We need to restart FTL
+			restart = true;
+		}
+
 		// Replace config struct used by FTL by newly loaded
-		// configuration. This swpas the pointers and frees
+		// configuration. This swaps the pointers and frees
 		// the old config structure altogether
 		replace_config(&conf_copy);
 	}
@@ -1513,6 +1523,13 @@ void reread_config(void)
 	// However, we do need to write the custom.list file as this file can change
 	// at any time and is automatically reloaded by dnsmasq
 	write_custom_list();
+
+	// If we need to restart FTL, we do so now
+	if(restart)
+	{
+		exit_code = RESTART_FTL_CODE;
+		FTL_terminate = 1;
+	}
 }
 
 // Very simple test of a port's availability by trying to bind a TCP socket to

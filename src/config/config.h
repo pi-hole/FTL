@@ -324,8 +324,6 @@ void replace_config(struct config *newconf);
 void reread_config(void);
 
 // Defined in toml_reader.c
-bool getPrivacyLevel(void);
-bool getBlockingMode(void);
 bool readDebugSettings(void);
 void init_config_mutex(void);
 enum blocking_status get_blockingstatus(void) __attribute__((pure));

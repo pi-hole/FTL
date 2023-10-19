@@ -731,6 +731,11 @@ static int api_config_patch(struct ftl_conn *api)
 		if(conf_item->f & FLAG_RESTART_FTL)
 			dnsmasq_changed = true;
 
+		// If the privacy level was decreased, we need to restart
+		if(new_item == &newconf.misc.privacylevel &&
+		   new_item->v.privacy_level < conf_item->v.privacy_level)
+			api->ftl.restart = true;
+
 		// Check if this item changed the password, if so, we need to
 		// invalidate all currently active sessions
 		if(conf_item->f & FLAG_INVALIDATE_SESSIONS)
