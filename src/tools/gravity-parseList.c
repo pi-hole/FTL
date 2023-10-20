@@ -47,13 +47,8 @@ static inline bool __attribute__((pure)) valid_domain(const char *domain, const 
 	if(domain == NULL || len == 0 || len > 255)
 		return false;
 
-	// Domain must not start or end with a hyphen or dot
-	if(domain[  0  ] == '-' || domain[  0  ] == '.' ||
-	   domain[len-1] == '-' || domain[len-1] == '.')
-		return false;
-
 	// Loop over line and check for invalid characters
-	unsigned int last_dot = 0;
+	int last_dot = -1;
 	for(unsigned int i = 0; i < len; i++)
 	{
 		// Domain must not contain any character other than [a-zA-Z0-9.-_]
@@ -63,23 +58,14 @@ static inline bool __attribute__((pure)) valid_domain(const char *domain, const 
 		   (domain[i] < '0' || domain[i] > '9'))
 			return false;
 
-		// Multi-character checks
-		if(i > 0)
-		{
-			// Domain must not contain a hyphen immediately before a
-			// dot or two consecutive dots
-			if(domain[i] == '.' && (domain[i-1] == '-' || domain[i-1] == '.'))
-				return false;
-
-			// Domain must not contain a dot immediately before a
-			// hyphen
-			if(domain[i] == '-' && domain[i-1] == '.')
-				return false;
-		}
-
 		// Individual label length check
 		if(domain[i] == '.')
 		{
+			// Label must be longer than 0 characters, i.e., two consecutive
+			// dots are not allowed
+			if(i - last_dot == 1)
+				return false;
+
 			// Label must not be longer than 63 characters
 			// (actually 64 because the dot at the end of the label
 			// is included here)
@@ -95,9 +81,15 @@ static inline bool __attribute__((pure)) valid_domain(const char *domain, const 
 		}
 	}
 
+	// TLD checks
+
 	// There must be at least two labels (i.e. one dot)
 	// e.g., "example.com" but not "localhost"
-	if(last_dot == 0)
+	if(last_dot == -1)
+		return false;
+
+	// TLD must not start or end with a hyphen
+	if(domain[last_dot + 1] == '-' || domain[len - 1] == '-')
 		return false;
 
 	// TLD length check
