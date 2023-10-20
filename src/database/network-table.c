@@ -746,8 +746,8 @@ static int update_netDB_interface(sqlite3 *db, const int network_id, const char 
 }
 
 // Loop over all clients known to FTL and ensure we add them all to the database
-static bool add_FTL_clients_to_network_table(sqlite3 *db, enum arp_status *client_status, time_t now,
-                                             unsigned int *additional_entries)
+static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status *client_status,
+                                             const int clients, time_t now, unsigned int *additional_entries)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -755,7 +755,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, enum arp_status *clien
 
 	int rc = SQLITE_OK;
 	char hwaddr[128];
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(int clientID = 0; clientID < clients; clientID++)
 	{
 		// Check thread cancellation
 		if(killed)
@@ -1327,7 +1327,7 @@ void parse_neighbor_cache(sqlite3* db)
 					lock_shm();
 					int clientID = findClientID(ip, false, false);
 					unlock_shm();
-					if(clientID >= 0)
+					if(clientID >= 0 && clientID < clients)
 						client_status[clientID] = CLIENT_ARP_INCOMPLETE;
 				}
 
@@ -1371,7 +1371,7 @@ void parse_neighbor_cache(sqlite3* db)
 
 			// This client is known (by its IP address) to pihole-FTL if
 			// findClientID() returned a non-negative index
-			if(clientID >= 0)
+			if(clientID >= 0 && clientID < clients)
 			{
 				clientsData *client = getClient(clientID, true);
 				if(!client)
@@ -1535,7 +1535,7 @@ void parse_neighbor_cache(sqlite3* db)
 
 	// Loop over all clients known to FTL and ensure we add them all to the
 	// database
-	if(!add_FTL_clients_to_network_table(db, client_status, now, &additional_entries))
+	if(!add_FTL_clients_to_network_table(db, client_status, clients, now, &additional_entries))
 	{
 		free(client_status);
 		return;
