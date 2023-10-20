@@ -570,3 +570,30 @@ int run_performance_test(void)
 
 	return EXIT_SUCCESS;
 }
+
+bool set_and_check_password(struct conf_item *conf_item, const char *password)
+{
+	// Get password hash as allocated string (an empty string is hashed to an empty string)
+	char *pwhash = strlen(password) > 0 ? create_password(password) : strdup("");
+
+	// Verify that the password hash is valid
+	if(verify_password(password, pwhash, false) != PASSWORD_CORRECT)
+	{
+		free(pwhash);
+		log_warn("Failed to create password hash (verification failed), password remains unchanged");
+		return false;
+	}
+
+	// Get pointer to pwhash instead
+	conf_item--;
+
+	// Free previously allocated memory (if applicable)
+	if(conf_item->t == CONF_STRING_ALLOCATED)
+		free(conf_item->v.s);
+
+	// Set item
+	conf_item->v.s = pwhash;
+	log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
+
+	return true;
+}
