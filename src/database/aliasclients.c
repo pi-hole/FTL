@@ -22,6 +22,9 @@
 
 bool create_aliasclients_table(sqlite3 *db)
 {
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// Create aliasclient table in the database
 	SQL_bool(db, "CREATE TABLE aliasclient (id INTEGER PRIMARY KEY NOT NULL, " \
 	                                       "name TEXT NOT NULL, " \
@@ -36,6 +39,9 @@ bool create_aliasclients_table(sqlite3 *db)
 		log_err("create_aliasclients_table(): Failed to update database version!");
 		return false;
 	}
+
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }

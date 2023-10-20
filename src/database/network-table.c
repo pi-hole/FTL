@@ -34,6 +34,9 @@ bool create_network_table(sqlite3 *db)
 	if(FTLDBerror())
 		return false;
 
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// Create network table in the database
 	SQL_bool(db, "CREATE TABLE network ( id INTEGER PRIMARY KEY NOT NULL, " \
 	                                    "ip TEXT NOT NULL, " \
@@ -51,6 +54,9 @@ bool create_network_table(sqlite3 *db)
 		log_warn("create_network_table(): Failed to update database version!");
 		return false;
 	}
+
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }
@@ -1609,6 +1615,9 @@ bool unify_hwaddr(sqlite3 *db)
 	                        "HAVING MAX(lastQuery) "
 	                        "AND cnt > 1;";
 
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// Perform SQL query
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
@@ -1661,6 +1670,9 @@ bool unify_hwaddr(sqlite3 *db)
 	// Update database version to 4
 	if(!db_set_FTL_property(db, DB_VERSION, 4))
 		return false;
+
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }

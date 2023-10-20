@@ -166,6 +166,9 @@ int dbquery(sqlite3* db, const char *format, ...)
 
 static bool create_counter_table(sqlite3* db)
 {
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// Create FTL table in the database (holds properties like database version, etc.)
 	SQL_bool(db, "CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );");
 
@@ -196,6 +199,8 @@ static bool create_counter_table(sqlite3* db)
 		log_err("create_counter_table(): Failed to update database version!");
 		return false;
 	}
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }
