@@ -31,25 +31,35 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
                  toml_table_t *toml, const bool verbose, bool *restart)
 {
 	// Parse lines in the config file if we did not receive a pointer to a TOML
-	// table (e.g. from an imported Teleporter file)
-	bool external = true;
-	if(toml == NULL)
+	// table from an imported Teleporter file
+	bool teleporter = (toml != NULL);
+	if(!teleporter)
 	{
-		external = false;
 		toml = parseTOML();
 		if(!toml)
 			return false;
 	}
 
+	// Check if we are in Adam mode
+	// (only read the env vars)
+	const char *envvar = getenv("FTLCONF_ENV_ONLY");
+	const bool adam_mode = (envvar != NULL &&
+	                          (strcmp(envvar, "true") == 0 ||
+	                           strcmp(envvar, "yes") == 0));
+
 	// Try to read debug config. This is done before the full config
 	// parsing to allow for debug output further down
-	toml_table_t *conf_debug = toml_table_in(toml, "debug");
-	if(conf_debug)
-		readTOMLvalue(&newconf->debug.config, "config", conf_debug, newconf);
+	// First try to read env variable, if this fails, read TOML
+	if((teleporter || !readEnvValue(&newconf->debug.config, newconf)) && !adam_mode)
+	{
+		toml_table_t *conf_debug = toml_table_in(toml, "debug");
+		if(conf_debug)
+			readTOMLvalue(&newconf->debug.config, "config", conf_debug, newconf);
+	}
 	set_debug_flags(newconf);
 
 	log_debug(DEBUG_CONFIG, "Reading %s TOML config file: full config",
-	          external ? "external" : "default");
+	          teleporter ? "teleporter" : "default");
 
 	// Read all known config items
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -58,6 +68,16 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		// oldconf can be NULL when reading a Teleporter file
 		struct conf_item *old_conf_item = oldconf != NULL ? get_conf_item(oldconf, i) : NULL;
 		struct conf_item *new_conf_item = get_conf_item(newconf, i);
+
+		// First try to read this config option from an environment variable
+		// Skip reading environment variables when importing from Teleporter
+		// If this succeeds, skip searching the TOML file for this config item
+		if(!teleporter && readEnvValue(new_conf_item, newconf))
+			continue;
+
+		// Do not read TOML file when in Adam mode
+		if(adam_mode)
+			continue;
 
 		// Get config path depth
 		unsigned int level = config_path_depth(new_conf_item->p);

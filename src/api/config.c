@@ -27,8 +27,6 @@
 // hash_password()
 #include "config/password.h"
 
-#define WRITE_ONLY_TEXT "<write-only property>"
-
 static struct {
 	const char *name;
 	const char *title;
@@ -283,26 +281,8 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				break;
 			}
 
-			// Get password hash as allocated string (an empty string is hashed to an empty string)
-			char *pwhash = strlen(elem->valuestring) > 0 ? create_password(elem->valuestring) : strdup("");
-
-			// Verify that the password hash is valid
-			if(verify_password(elem->valuestring, pwhash, false) != PASSWORD_CORRECT)
-			{
-				free(pwhash);
+			if(!set_and_check_password(conf_item, elem->valuestring))
 				return "Failed to create password hash (verification failed), password remains unchanged";
-			}
-
-			// Get pointer to pwhash instead
-			conf_item--;
-
-			// Free previously allocated memory (if applicable)
-			if(conf_item->t == CONF_STRING_ALLOCATED)
-				free(conf_item->v.s);
-
-			// Set item
-			conf_item->v.s = pwhash;
-			log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
 
 			break;
 		}
@@ -400,13 +380,18 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 		case CONF_ENUM_PRIVACY_LEVEL:
 		{
 			// Check type
-			if(!cJSON_IsNumber(elem))
+			int value;
+			if(cJSON_IsNumber(elem))
+				value = elem->valueint;
+			else if(cJSON_IsString(elem) && sscanf(elem->valuestring, "%i", &value) == 1)
+				; // value imported into variable
+			else
 				return "not of type integer";
 			// Check allowed interval
-			if(elem->valuedouble < PRIVACY_SHOW_ALL || elem->valuedouble > PRIVACY_MAXIMUM)
+			if(value < PRIVACY_SHOW_ALL || value > PRIVACY_MAXIMUM)
 				return "not within valid range";
 			// Set item
-			conf_item->v.i = elem->valueint;
+			conf_item->v.i = value;
 			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.i);
 			break;
 		}
@@ -537,7 +522,7 @@ static int api_config_get(struct ftl_conn *api)
 
 			// Special case: write-only values
 			if(conf_item->f & FLAG_WRITE_ONLY)
-				JSON_REF_STR_IN_OBJECT(leaf, "value", WRITE_ONLY_TEXT);
+				JSON_REF_STR_IN_OBJECT(leaf, "value", PASSWORD_VALUE);
 			else
 			{
 				// Add current value
@@ -576,7 +561,7 @@ static int api_config_get(struct ftl_conn *api)
 		{
 			// Special case: write-only values
 			if(conf_item->f & FLAG_WRITE_ONLY)
-				JSON_REF_STR_IN_OBJECT(parent, conf_item->p[level - 1], WRITE_ONLY_TEXT);
+				JSON_REF_STR_IN_OBJECT(parent, conf_item->p[level - 1], PASSWORD_VALUE);
 			else
 			{
 				// Create the config item leaf object
@@ -696,7 +681,7 @@ static int api_config_patch(struct ftl_conn *api)
 
 		// Check if this is a write-only config item with the placeholder value
 		if(new_item->f & FLAG_WRITE_ONLY && cJSON_IsString(elem) &&
-		   strcmp(elem->valuestring, WRITE_ONLY_TEXT) == 0)
+		   strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
 		{
 			log_debug(DEBUG_CONFIG, "%s is write-only with place-holder, skipping", new_item->k);
 			continue;
@@ -714,8 +699,8 @@ static int api_config_patch(struct ftl_conn *api)
 		struct conf_item *conf_item = get_conf_item(&config, i);
 
 		// Skip processing if value didn't change compared to current value
-		if(compare_config_item(conf_item->t, &new_item->v, &conf_item->v) &&
-		   conf_item->t != CONF_PASSWORD)
+		if((conf_item->t != CONF_PASSWORD && compare_config_item(conf_item->t, &new_item->v, &conf_item->v)) ||
+		   (conf_item->t == CONF_PASSWORD && strcmp(elem->valuestring, PASSWORD_VALUE) == 0))
 		{
 			log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
 			continue;
