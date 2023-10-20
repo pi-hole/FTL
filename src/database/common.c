@@ -498,6 +498,21 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 14 if lower
+	if(dbversion < 14)
+	{
+		// Update to version 14: Add additional column for the ftl table
+		log_info("Updating long-term database to version 14");
+		if(!add_ftl_table_description(db))
+		{
+			log_info("FTL table description cannot be added, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
 	lock_shm();
 	import_aliasclients(db);
 	unlock_shm();

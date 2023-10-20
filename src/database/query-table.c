@@ -758,6 +758,32 @@ bool add_query_storage_column_regex_id(sqlite3 *db)
 	return true;
 }
 
+bool add_ftl_table_description(sqlite3 *db)
+{
+	// Start transaction of database update
+	SQL_bool(db, "BEGIN TRANSACTION");
+
+	// Add additional column to the ftl table
+	SQL_bool(db, "ALTER TABLE ftl ADD COLUMN description TEXT");
+
+	// Update ftl table
+	SQL_bool(db, "UPDATE ftl SET description = 'Database version' WHERE id = %d", DB_VERSION);
+	SQL_bool(db, "UPDATE ftl SET description = 'Unix timestamp of the latest stored query' WHERE id = %d", DB_LASTTIMESTAMP);
+	SQL_bool(db, "UPDATE ftl SET description = 'Unix timestamp of the database creation' WHERE id = %d", DB_FIRSTCOUNTERTIMESTAMP);
+
+	// Update database version to 14
+	if(!db_set_FTL_property(db, DB_VERSION, 14))
+	{
+		log_err("add_query_storage_column_regex_id(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool(db, "COMMIT");
+
+	return true;
+}
+
 bool optimize_queries_table(sqlite3 *db)
 {
 	// Start transaction of database update
