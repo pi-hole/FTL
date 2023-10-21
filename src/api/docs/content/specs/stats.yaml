@@ -469,6 +469,10 @@ components:
         clients:
           type: object
           properties:
+            active:
+              type: integer
+              description: Number of active clients (seen in the last 24 hours)
+              example: 10
             total:
               type: integer
               description: Total number of clients seen by FTL
