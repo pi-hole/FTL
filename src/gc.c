@@ -375,7 +375,7 @@ void *GC_thread(void *val)
 		{
 			// Reload config
 			log_info("Reloading config due to pihole.toml change");
-			raise(SIGHUP);
+			reread_config();
 		}
 
 		thread_sleepms(GC, 1000);

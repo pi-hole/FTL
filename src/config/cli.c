@@ -399,7 +399,7 @@ int set_config_from_CLI(const char *key, const char *value)
 		// Config item changed
 
 		// Is this a dnsmasq option we need to check?
-		if(conf_item->f & FLAG_RESTART_DNSMASQ)
+		if(conf_item->f & FLAG_RESTART_FTL)
 		{
 			char errbuf[ERRBUF_SIZE] = { 0 };
 			if(!write_dnsmasq_config(&newconf, true, errbuf))

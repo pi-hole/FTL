@@ -27,6 +27,8 @@
 #include "daemon.h"
 // delete_all_sessions()
 #include "api/api.h"
+// exit_code
+#include "signals.h"
 
 struct config config = { 0 };
 static bool config_initialized = false;
@@ -380,7 +382,7 @@ void initConfig(struct config *conf)
 	conf->dns.upstreams.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames, optionally with a port (#...)");
 	conf->dns.upstreams.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.upstreams.d.json = cJSON_CreateArray();
-	conf->dns.upstreams.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.upstreams.f = FLAG_RESTART_FTL;
 
 	conf->dns.CNAMEdeepInspect.k = "dns.CNAMEdeepInspect";
 	conf->dns.CNAMEdeepInspect.h = "Use this option to control deep CNAME inspection. Disabling it might be beneficial for very low-end devices";
@@ -460,45 +462,45 @@ void initConfig(struct config *conf)
 	conf->dns.hosts.h = "Array of custom DNS records\n Example: hosts = [ \"127.0.0.1 mylocal\", \"192.168.0.1 therouter\" ]";
 	conf->dns.hosts.a = cJSON_CreateStringReference("Array of custom DNS records each one in HOSTS form: \"IP HOSTNAME\"");
 	conf->dns.hosts.t = CONF_JSON_STRING_ARRAY;
-	conf->dns.hosts.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_DNSMASQ;
+	conf->dns.hosts.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->dns.hosts.d.json = cJSON_CreateArray();
 
 	conf->dns.domainNeeded.k = "dns.domainNeeded";
 	conf->dns.domainNeeded.h = "If set, A and AAAA queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
 	conf->dns.domainNeeded.t = CONF_BOOL;
-	conf->dns.domainNeeded.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.domainNeeded.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.domainNeeded.d.b = false;
 
 	conf->dns.expandHosts.k = "dns.expandHosts";
 	conf->dns.expandHosts.h = "If set, the domain is added to simple names (without a period) in /etc/hosts in the same way as for DHCP-derived names";
 	conf->dns.expandHosts.t = CONF_BOOL;
-	conf->dns.expandHosts.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.expandHosts.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.expandHosts.d.b = false;
 
 	conf->dns.bogusPriv.k = "dns.bogusPriv";
 	conf->dns.bogusPriv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
 	conf->dns.bogusPriv.t = CONF_BOOL;
-	conf->dns.bogusPriv.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.bogusPriv.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.bogusPriv.d.b = true;
 
 	conf->dns.dnssec.k = "dns.dnssec";
 	conf->dns.dnssec.h = "Validate DNS replies using DNSSEC?";
 	conf->dns.dnssec.t = CONF_BOOL;
-	conf->dns.dnssec.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.dnssec.f = FLAG_RESTART_FTL;
 	conf->dns.dnssec.d.b = true;
 
 	conf->dns.interface.k = "dns.interface";
 	conf->dns.interface.h = "Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)";
 	conf->dns.interface.a = cJSON_CreateStringReference("a valid interface name");
 	conf->dns.interface.t = CONF_STRING;
-	conf->dns.interface.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.interface.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.interface.d.s = (char*)"";
 
 	conf->dns.hostRecord.k = "dns.hostRecord";
 	conf->dns.hostRecord.h = "Add A, AAAA and PTR records to the DNS. This adds one or more names to the DNS with associated IPv4 (A) and IPv6 (AAAA) records";
 	conf->dns.hostRecord.a = cJSON_CreateStringReference("<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]");
 	conf->dns.hostRecord.t = CONF_STRING;
-	conf->dns.hostRecord.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.hostRecord.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.hostRecord.d.s = (char*)"";
 
 	conf->dns.listeningMode.k = "dns.listeningMode";
@@ -515,39 +517,39 @@ void initConfig(struct config *conf)
 		CONFIG_ADD_ENUM_OPTIONS(conf->dns.listeningMode.a, listeningMode);
 	}
 	conf->dns.listeningMode.t = CONF_ENUM_LISTENING_MODE;
-	conf->dns.listeningMode.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.listeningMode.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.listeningMode.d.listeningMode = LISTEN_LOCAL;
 
 	conf->dns.queryLogging.k = "dns.queryLogging";
 	conf->dns.queryLogging.h = "Log DNS queries and replies to pihole.log";
 	conf->dns.queryLogging.t = CONF_BOOL;
-	conf->dns.queryLogging.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.queryLogging.f = FLAG_RESTART_FTL;
 	conf->dns.queryLogging.d.b = true;
 
 	conf->dns.cnameRecords.k = "dns.cnameRecords";
 	conf->dns.cnameRecords.h = "List of CNAME records which indicate that <cname> is really <target>. If the <TTL> is given, it overwrites the value of local-ttl";
 	conf->dns.cnameRecords.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"<cname>,<target>[,<TTL>]\"");
 	conf->dns.cnameRecords.t = CONF_JSON_STRING_ARRAY;
-	conf->dns.cnameRecords.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.cnameRecords.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.cnameRecords.d.json = cJSON_CreateArray();
 
 	conf->dns.port.k = "dns.port";
 	conf->dns.port.h = "Port used by the DNS server";
 	conf->dns.port.t = CONF_UINT16;
-	conf->dns.port.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.port.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.port.d.ui = 53u;
 
 	// sub-struct dns.cache
 	conf->dns.cache.size.k = "dns.cache.size";
 	conf->dns.cache.size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
 	conf->dns.cache.size.t = CONF_UINT;
-	conf->dns.cache.size.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.cache.size.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.cache.size.d.ui = 10000u;
 
 	conf->dns.cache.optimizer.k = "dns.cache.optimizer";
 	conf->dns.cache.optimizer.h = "Query cache optimizer: If a DNS name exists in the cache, but its time-to-live has expired only recently, the data will be used anyway (a refreshing from upstream is triggered). This can improve DNS query delays especially over unreliable Internet connections. This feature comes at the expense of possibly sometimes returning out-of-date data and less efficient cache utilisation, since old data cannot be flushed when its TTL expires, so the cache becomes mostly least-recently-used. To mitigate issues caused by massively outdated DNS replies, the maximum overaging of cached records is limited. We strongly recommend staying below 86400 (1 day) with this option.";
 	conf->dns.cache.optimizer.t = CONF_UINT;
-	conf->dns.cache.optimizer.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dns.cache.optimizer.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.cache.optimizer.d.ui = 3600u;
 
 	// sub-struct dns.blocking
@@ -652,94 +654,94 @@ void initConfig(struct config *conf)
 	conf->dns.revServer.active.h = "Is the reverse server (former also called \"conditional forwarding\") feature enabled?";
 	conf->dns.revServer.active.t = CONF_BOOL;
 	conf->dns.revServer.active.d.b = false;
-	conf->dns.revServer.active.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.revServer.active.f = FLAG_RESTART_FTL;
 
 	conf->dns.revServer.cidr.k = "dns.revServer.cidr";
 	conf->dns.revServer.cidr.h = "Address range for the reverse server feature in CIDR notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are substitutet (exact address match). This is almost certainly not what you want here.";
 	conf->dns.revServer.cidr.a = cJSON_CreateStringReference("<ip-address>[/<prefix-len>], e.g., \"192.168.0.0/24\" for the range 192.168.0.1 - 192.168.0.255");
 	conf->dns.revServer.cidr.t = CONF_STRING;
 	conf->dns.revServer.cidr.d.s = (char*)"";
-	conf->dns.revServer.cidr.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.revServer.cidr.f = FLAG_RESTART_FTL;
 
 	conf->dns.revServer.target.k = "dns.revServer.target";
 	conf->dns.revServer.target.h = "Target server tp be used for the reverse server feature";
 	conf->dns.revServer.target.a = cJSON_CreateStringReference("<server>[#<port>], e.g., \"192.168.0.1\"");
 	conf->dns.revServer.target.t = CONF_STRING;
 	conf->dns.revServer.target.d.s = (char*)"";
-	conf->dns.revServer.target.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.revServer.target.f = FLAG_RESTART_FTL;
 
 	conf->dns.revServer.domain.k = "dns.revServer.domain";
 	conf->dns.revServer.domain.h = "Domain used for the reverse server feature";
 	conf->dns.revServer.domain.a = cJSON_CreateStringReference("<valid domain>, typically set to the same value as dhcp.domain");
 	conf->dns.revServer.domain.t = CONF_STRING;
 	conf->dns.revServer.domain.d.s = (char*)"";
-	conf->dns.revServer.domain.f = FLAG_RESTART_DNSMASQ;
+	conf->dns.revServer.domain.f = FLAG_RESTART_FTL;
 
 	// sub-struct dhcp
 	conf->dhcp.active.k = "dhcp.active";
 	conf->dhcp.active.h = "Is the embedded DHCP server enabled?";
 	conf->dhcp.active.t = CONF_BOOL;
-	conf->dhcp.active.f = FLAG_RESTART_DNSMASQ;
+	conf->dhcp.active.f = FLAG_RESTART_FTL;
 	conf->dhcp.active.d.b = false;
 
 	conf->dhcp.start.k = "dhcp.start";
 	conf->dhcp.start.h = "Start address of the DHCP address pool";
 	conf->dhcp.start.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.10\"");
 	conf->dhcp.start.t = CONF_STRING;
-	conf->dhcp.start.f = FLAG_RESTART_DNSMASQ;
+	conf->dhcp.start.f = FLAG_RESTART_FTL;
 	conf->dhcp.start.d.s = (char*)"";
 
 	conf->dhcp.end.k = "dhcp.end";
 	conf->dhcp.end.h = "End address of the DHCP address pool";
 	conf->dhcp.end.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.250\"");
 	conf->dhcp.end.t = CONF_STRING;
-	conf->dhcp.end.f = FLAG_RESTART_DNSMASQ;
+	conf->dhcp.end.f = FLAG_RESTART_FTL;
 	conf->dhcp.end.d.s = (char*)"";
 
 	conf->dhcp.router.k = "dhcp.router";
 	conf->dhcp.router.h = "Address of the gateway to be used (typically the address of your router in a home installation)";
 	conf->dhcp.router.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.1\"");
 	conf->dhcp.router.t = CONF_STRING;
-	conf->dhcp.router.f = FLAG_RESTART_DNSMASQ;
+	conf->dhcp.router.f = FLAG_RESTART_FTL;
 	conf->dhcp.router.d.s = (char*)"";
 
 	conf->dhcp.domain.k = "dhcp.domain";
 	conf->dhcp.domain.h = "The DNS domain used by your Pi-hole";
 	conf->dhcp.domain.a = cJSON_CreateStringReference("<any valid domain>");
 	conf->dhcp.domain.t = CONF_STRING;
-	conf->dhcp.domain.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dhcp.domain.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dhcp.domain.d.s = (char*)"lan";
 
 	conf->dhcp.leaseTime.k = "dhcp.leaseTime";
 	conf->dhcp.leaseTime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
 	conf->dhcp.leaseTime.a = cJSON_CreateStringReference("The lease time can be in seconds, or minutes (e.g., \"45m\") or hours (e.g., \"1h\") or days (like \"2d\") or even weeks (\"1w\"). You may also use \"infinite\" as string but be aware of the drawbacks");
 	conf->dhcp.leaseTime.t = CONF_STRING;
-	conf->dhcp.leaseTime.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dhcp.leaseTime.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dhcp.leaseTime.d.s = (char*)"";
 
 	conf->dhcp.ipv6.k = "dhcp.ipv6";
 	conf->dhcp.ipv6.h = "Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that IPv6 works a whole lot different than IPv4)";
 	conf->dhcp.ipv6.t = CONF_BOOL;
-	conf->dhcp.ipv6.f = FLAG_RESTART_DNSMASQ;
+	conf->dhcp.ipv6.f = FLAG_RESTART_FTL;
 	conf->dhcp.ipv6.d.b = false;
 
 	conf->dhcp.multiDNS.k = "dhcp.multiDNS";
 	conf->dhcp.multiDNS.h = "Advertise DNS server multiple times to clients. Some devices will add their own proprietary DNS servers to the list of DNS servers, which can cause issues with Pi-hole. This option will advertise the Pi-hole DNS server multiple times to clients, which should prevent this from happening.";
 	conf->dhcp.multiDNS.t = CONF_BOOL;
-	conf->dhcp.multiDNS.f = FLAG_RESTART_DNSMASQ;
+	conf->dhcp.multiDNS.f = FLAG_RESTART_FTL;
 	conf->dhcp.multiDNS.d.b = false;
 
 	conf->dhcp.rapidCommit.k = "dhcp.rapidCommit";
 	conf->dhcp.rapidCommit.h = "Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if either the server is the only server for the subnet to avoid conflicts";
 	conf->dhcp.rapidCommit.t = CONF_BOOL;
-	conf->dhcp.rapidCommit.f = FLAG_RESTART_DNSMASQ;
+	conf->dhcp.rapidCommit.f = FLAG_RESTART_FTL;
 	conf->dhcp.rapidCommit.d.b = false;
 
 	conf->dhcp.hosts.k = "dhcp.hosts";
 	conf->dhcp.hosts.h = "Per host parameters for the DHCP server. This allows a machine with a particular hardware address to be always allocated the same hostname, IP address and lease time or to specify static DHCP leases";
 	conf->dhcp.hosts.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]\"");
 	conf->dhcp.hosts.t = CONF_JSON_STRING_ARRAY;
-	conf->dhcp.hosts.f = FLAG_RESTART_DNSMASQ | FLAG_ADVANCED_SETTING;
+	conf->dhcp.hosts.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dhcp.hosts.d.json = cJSON_CreateArray();
 
 
@@ -841,7 +843,7 @@ void initConfig(struct config *conf)
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
 	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
 	conf->webserver.tls.cert.a = cJSON_CreateStringReference("<valid TLS certificate file (*.pem)>");
-	conf->webserver.tls.cert.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_DNSMASQ;
+	conf->webserver.tls.cert.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.tls.cert.t = CONF_STRING;
 	conf->webserver.tls.cert.d.s = (char*)"/etc/pihole/tls.pem";
 
@@ -1029,11 +1031,11 @@ void initConfig(struct config *conf)
 
 	// struct misc
 	conf->misc.privacylevel.k = "misc.privacylevel";
-	conf->misc.privacylevel.h = "Using privacy levels you can specify which level of detail you want to see in your Pi-hole statistics.";
+	conf->misc.privacylevel.h = "Using privacy levels you can specify which level of detail you want to see in your Pi-hole statistics. Changing this setting will trigger a restart of FTL";
 	{
 		struct enum_options privacylevel[] =
 		{
-			{ "0", "Doesn't hide anything, all statistics are available." },
+			{ "0", "Don't hide anything, all statistics are available." },
 			{ "1", "Hide domains. This setting disables Top Domains and Top Ads" },
 			{ "2", "Hide domains and clients. This setting disables Top Domains, Top Ads, Top Clients and Clients over time." },
 			{ "3", "Anonymize everything. This setting disabled almost any statistics and query analysis. There will be no long-term database logging and no Query Log. You will also loose most regex features." }
@@ -1064,7 +1066,7 @@ void initConfig(struct config *conf)
 	conf->misc.dnsmasq_lines.h = "Additional lines to inject into the generated dnsmasq configuration.\n Warning: This is an advanced setting and should only be used with care. Incorrectly formatted or duplicated lines as well as lines conflicting with the automatic configuration of Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.\n Use this option with extra care.";
 	conf->misc.dnsmasq_lines.a = cJSON_CreateStringReference("array of valid dnsmasq config line options");
 	conf->misc.dnsmasq_lines.t = CONF_JSON_STRING_ARRAY;
-	conf->misc.dnsmasq_lines.f = FLAG_RESTART_DNSMASQ;
+	conf->misc.dnsmasq_lines.f = FLAG_RESTART_FTL;
 	conf->misc.dnsmasq_lines.d.json = cJSON_CreateArray();
 
 	// sub-struct misc.check
@@ -1300,7 +1302,7 @@ void readFTLconf(struct config *conf, const bool rewrite)
 	initConfig(conf);
 
 	// First try to read TOML config file
-	if(readFTLtoml(conf, NULL, rewrite))
+	if(readFTLtoml(NULL, conf, NULL, rewrite, NULL))
 	{
 		// If successful, we write the config file back to disk
 		// to ensure that all options are present and comments
@@ -1478,7 +1480,8 @@ void reread_config(void)
 	duplicate_config(&conf_copy, &config);
 
 	// Read TOML config file
-	if(readFTLtoml(&conf_copy, NULL, true))
+	bool restart = false;
+	if(readFTLtoml(&config, &conf_copy, NULL, true, &restart))
 	{
 		// Install new configuration
 		log_debug(DEBUG_CONFIG, "Loaded configuration is valid, installing it");
@@ -1490,8 +1493,16 @@ void reread_config(void)
 		   strcmp(conf_copy.webserver.api.pwhash.v.s, config.webserver.api.pwhash.v.s) != 0)
 			delete_all_sessions();
 
+		// Check if privacy level was reduced. If so, we need to restart FTL
+		if(conf_copy.misc.privacylevel.v.privacy_level < config.misc.privacylevel.v.privacy_level)
+		{
+			log_info("Privacy level was reduced, restarting FTL");
+			// We need to restart FTL
+			restart = true;
+		}
+
 		// Replace config struct used by FTL by newly loaded
-		// configuration. This swpas the pointers and frees
+		// configuration. This swaps the pointers and frees
 		// the old config structure altogether
 		replace_config(&conf_copy);
 	}
@@ -1512,6 +1523,15 @@ void reread_config(void)
 	// However, we do need to write the custom.list file as this file can change
 	// at any time and is automatically reloaded by dnsmasq
 	write_custom_list();
+
+	// If we need to restart FTL, we do so now
+	if(restart)
+	{
+		log_info("Restarting FTL due to pihole.toml change");
+		exit_code = RESTART_FTL_CODE;
+		// Send SIGTERM to FTL
+		kill(main_pid(), SIGTERM);
+	}
 }
 
 // Very simple test of a port's availability by trying to bind a TCP socket to
