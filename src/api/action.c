@@ -130,7 +130,8 @@ int api_action_restartDNS(struct ftl_conn *api)
 
 	log_info("Received API request to restart FTL");
 	exit_code = RESTART_FTL_CODE;
-	FTL_terminate = 1;
+	// Send SIGTERM to FTL
+	kill(main_pid(), SIGTERM);
 
 	return send_json_success(api);
 }

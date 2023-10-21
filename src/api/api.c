@@ -263,7 +263,8 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	if(api.ftl.restart)
 	{
 		exit_code = RESTART_FTL_CODE;
-		FTL_terminate = 1;
+		// Send SIGTERM to FTL
+		kill(main_pid(), SIGTERM);
 	}
 
 	return ret;

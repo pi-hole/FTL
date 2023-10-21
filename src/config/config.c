@@ -1528,7 +1528,8 @@ void reread_config(void)
 	if(restart)
 	{
 		exit_code = RESTART_FTL_CODE;
-		FTL_terminate = 1;
+		// Send SIGTERM to FTL
+		kill(main_pid(), SIGTERM);
 	}
 }
 
