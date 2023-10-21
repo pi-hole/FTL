@@ -1527,6 +1527,7 @@ void reread_config(void)
 	// If we need to restart FTL, we do so now
 	if(restart)
 	{
+		log_info("Restarting FTL due to pihole.toml change");
 		exit_code = RESTART_FTL_CODE;
 		// Send SIGTERM to FTL
 		kill(main_pid(), SIGTERM);

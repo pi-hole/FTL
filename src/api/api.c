@@ -262,6 +262,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	// Restart FTL if requested
 	if(api.ftl.restart)
 	{
+		log_info("Restarting FTL due to API config change");
 		exit_code = RESTART_FTL_CODE;
 		// Send SIGTERM to FTL
 		kill(main_pid(), SIGTERM);
