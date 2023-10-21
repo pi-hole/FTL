@@ -172,6 +172,9 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 // Create message table in the database
 bool create_message_table(sqlite3 *db)
 {
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// The blob fields can hold arbitrary data. Their type is specified through the type.
 	SQL_bool(db, "CREATE TABLE message ( id INTEGER PRIMARY KEY AUTOINCREMENT, "
 	                                    "timestamp INTEGER NOT NULL, "
@@ -189,6 +192,9 @@ bool create_message_table(sqlite3 *db)
 		log_err("create_message_table(): Failed to update database version!");
 		return false;
 	}
+
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }
