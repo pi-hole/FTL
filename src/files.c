@@ -398,7 +398,33 @@ static int copy_file(const char *source, const char *destination)
 #endif
 }
 
+// Change ownership of file to pihole user
+static bool chown_pihole(const char *path)
+{
+	// Get pihole user's uid and gid
+	struct passwd *pwd = getpwnam("pihole");
+	if(pwd == NULL)
+	{
+		log_warn("chown_pihole(): Failed to get pihole user's uid: %s", strerror(errno));
+		return false;
+	}
+	struct group *grp = getgrnam("pihole");
+	if(grp == NULL)
+	{
+		log_warn("chown_pihole(): Failed to get pihole user's gid: %s", strerror(errno));
+		return false;
+	}
 
+	// Change ownership of file to pihole user
+	if(chown(path, pwd->pw_uid, grp->gr_gid) < 0)
+	{
+		log_warn("chown_pihole(): Failed to change ownership of \"%s\" to %u:%u: %s",
+		         path, pwd->pw_uid, grp->gr_gid, strerror(errno));
+		return false;
+	}
+
+	return true;
+}
 
 // Rotate files in a directory
 void rotate_files(const char *path, char **first_file)
@@ -479,6 +505,9 @@ void rotate_files(const char *path, char **first_file)
 				          old_path, new_path);
 			}
 
+			// Change ownership of file to pihole user
+			chown_pihole(new_path);
+
 			// Compress file if we are rotating a sufficiently old file
 			if(i > ZIP_ROTATIONS)
 			{
@@ -489,6 +518,9 @@ void rotate_files(const char *path, char **first_file)
 					// On success, we remove the uncompressed file
 					remove(new_path);
 				}
+
+				// Change ownership of file to pihole user
+				chown_pihole(new_path_compressed);
 			}
 		}
 		else if(file_exists(old_path_compressed))
@@ -505,6 +537,9 @@ void rotate_files(const char *path, char **first_file)
 				log_debug(DEBUG_CONFIG, "Rotated %s -> %s",
 				          old_path_compressed, new_path_compressed);
 			}
+
+			// Change ownership of file to pihole user
+			chown_pihole(new_path_compressed);
 		}
 
 		// Free memory
