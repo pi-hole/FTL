@@ -275,6 +275,10 @@ bool restore_db_sessions(struct session *sessions)
 	}
 
 	// Delete all sessions from database after restoring them
+	// We use secure_delete to make sure the sessions are really gone
+	// In this mode, SQLite overwrites the deleted content with zeros
+	// (https://www.sqlite.org/pragma.html#pragma_secure_delete)
+	SQL_bool(db, "PRAGMA secure_delete = ON;");
 	SQL_bool(db, "DELETE FROM session;");
 
 	// Close database connection
