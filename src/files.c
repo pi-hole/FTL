@@ -418,8 +418,8 @@ static bool chown_pihole(const char *path)
 	// Change ownership of file to pihole user
 	if(chown(path, pwd->pw_uid, grp->gr_gid) < 0)
 	{
-		log_warn("chown_pihole(): Failed to change ownership of \"%s\" to pihole user: %s",
-		         path, strerror(errno));
+		log_warn("chown_pihole(): Failed to change ownership of \"%s\" to %u:%u: %s",
+		         path, pwd->pw_uid, grp->gr_gid, strerror(errno));
 		return false;
 	}
 
