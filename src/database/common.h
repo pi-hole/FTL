@@ -10,6 +10,9 @@
 #ifndef DATABASE_COMMON_H
 #define DATABASE_COMMON_H
 
+// logging routines
+#include "log.h"
+
 #include "sqlite3.h"
 
 // Database table "ftl"

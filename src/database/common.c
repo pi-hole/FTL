@@ -15,8 +15,6 @@
 #include "shmem.h"
 // struct config
 #include "config/config.h"
-// logging routines
-#include "log.h"
 #include "timers.h"
 // file_exists()
 #include "files.h"
@@ -30,6 +28,8 @@
 #include "events.h"
 // generate_backtrace()
 #include "signals.h"
+// create_session_table()
+#include "database/session-table.h"
 
 bool DBdeleteoldqueries = false;
 static bool DBerror = false;
@@ -506,6 +506,21 @@ void db_init(void)
 		if(!add_ftl_table_description(db))
 		{
 			log_info("FTL table description cannot be added, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 15 if lower
+	if(dbversion < 15)
+	{
+		// Update to version 15: Add session table
+		log_info("Updating long-term database to version 15");
+		if(!create_session_table(db))
+		{
+			log_info("Session table cannot be created, database not available");
 			dbclose(&db);
 			return;
 		}

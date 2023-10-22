@@ -422,6 +422,9 @@ void http_init(void)
 
 	// Get server ports
 	get_server_ports();
+
+	// Restore sessions from database
+	init_api();
 }
 
 static char *append_to_path(char *path, const char *append)

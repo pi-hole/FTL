@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "api/auth.h"
 #include "webserver/http-common.h"
 #include "webserver/json_macros.h"
 #include "api/api.h"
@@ -22,54 +23,11 @@
 #include "daemon.h"
 // sha256_raw_to_hex()
 #include "config/password.h"
+// database session functions
+#include "database/session-table.h"
 
-// crypto library
-#include <nettle/sha2.h>
-#include <nettle/base64.h>
-#include <nettle/version.h>
 
-// On 2017-08-27 (after v3.3, before v3.4), nettle changed the type of
-// destination from uint_8t* to char* in all base64 and base16 functions
-// (armor-signedness branch). This is a breaking change as this is a change in
-// signedness causing issues when compiling FTL against older versions of
-// nettle. We create this constant here to have a conversion if necessary.
-// See https://github.com/gnutls/nettle/commit/f2da403135e2b2f641cf0f8219ad5b72083b7dfd
-#if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR < 4
-#define NETTLE_SIGN (uint8_t*)
-#else
-#define NETTLE_SIGN
-#endif
-
-// How many bits should the SID and CSRF token use?
-#define SID_BITSIZE 128
-#define SID_SIZE BASE64_ENCODE_RAW_LENGTH(SID_BITSIZE/8)
-
-// SameSite=Strict: Defense against some classes of cross-site request forgery
-// (CSRF) attacks. This ensures the session cookie will only be sent in a
-// first-party (i.e., Pi-hole) context and NOT be sent along with requests
-// initiated by third party websites.
-//
-// HttpOnly: the cookie cannot be accessed through client side script (if the
-// browser supports this flag). As a result, even if a cross-site scripting
-// (XSS) flaw exists, and a user accidentally accesses a link that exploits this
-// flaw, the browser (primarily Internet Explorer) will not reveal the cookie to
-// a third party.
-#define FTL_SET_COOKIE "Set-Cookie: sid=%s; SameSite=Strict; Path=/; Max-Age=%u; HttpOnly\r\n"
-#define FTL_DELETE_COOKIE "Set-Cookie: sid=deleted; SameSite=Strict; Path=/; Max-Age=-1\r\n"
-
-static struct {
-	bool used;
-	struct {
-		bool login;
-		bool mixed;
-	} tls;
-	time_t login_at;
-	time_t valid_until;
-	char remote_addr[48]; // Large enough for IPv4 and IPv6 addresses, hard-coded in civetweb.h as mg_request_info.remote_addr
-	char user_agent[128];
-	char sid[SID_SIZE];
-	char csrf[SID_SIZE];
-} auth_data[API_MAX_CLIENTS] = {{false, {false, false}, 0, 0, {0}, {0}, {0}, {0}}};
+static struct session auth_data[API_MAX_CLIENTS] = {{false, {false, false}, 0, 0, {0}, {0}, {0}, {0}}};
 
 static void add_request_info(struct ftl_conn *api, const char *csrf)
 {
@@ -81,6 +39,12 @@ static void add_request_info(struct ftl_conn *api, const char *csrf)
 	// We use memset() with the size of an int here to avoid a
 	// compiler warning about modifying a variable in a const struct
 	memset((int*)&api->request->is_authenticated, 1, sizeof(api->request->is_authenticated));
+}
+
+void init_api(void)
+{
+	// Restore sessions from database
+	restore_db_sessions(auth_data);
 }
 
 // Is this client connecting from localhost?
@@ -257,8 +221,13 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 			return send_json_error(api, 500, "internal_error", "Internal server error", NULL);
 		}
 
+		// Add CSRF token to request
 		add_request_info(api, auth_data[user_id].csrf);
 
+		// Store session in database
+		update_db_session(&auth_data[user_id]);
+
+		// Debug logging
 		if(config.debug.api.v.b)
 		{
 			char timestr[128];
@@ -347,14 +316,20 @@ static void delete_session(const int user_id)
 	if(user_id < 0 || user_id >= API_MAX_CLIENTS)
 		return;
 
+	// Delete session from database
+	del_db_session(&auth_data[user_id]);
+
 	// Zero out this session (also sets valid to false == 0)
 	memset(&auth_data[user_id], 0, sizeof(auth_data[user_id]));
 }
 
 void delete_all_sessions(void)
 {
-	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
-		delete_session(i);
+	// Delete all sessions from database
+	delete_all_sessions();
+
+	// Zero out all sessions without looping
+	memset(auth_data, 0, sizeof(auth_data));
 }
 
 static int send_api_auth_status(struct ftl_conn *api, const int user_id, const time_t now)
@@ -587,6 +562,9 @@ int api_auth(struct ftl_conn *api)
 				// Generate new SID and CSRF token
 				generateSID(auth_data[i].sid);
 				generateSID(auth_data[i].csrf);
+
+				// Store session in database
+				add_db_session(&auth_data[i]);
 
 				user_id = i;
 				break;
