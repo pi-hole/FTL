@@ -106,7 +106,21 @@ int api_stats_summary(struct ftl_conn *api)
 		JSON_ADD_NUMBER_TO_OBJECT(replies, get_query_reply_str(reply), counters->reply[reply]);
 	JSON_ADD_ITEM_TO_OBJECT(queries, "replies", replies);
 
+	// Count clients that have been active within the most recent 24 hours
+	unsigned int activeclients = 0;
+	for(int clientID=0; clientID < counters->clients; clientID++)
+	{
+		// Get client pointer
+		const clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
+		if(client->count > 0)
+			activeclients++;
+	}
+
 	cJSON *clients = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(clients, "active", activeclients);
 	JSON_ADD_NUMBER_TO_OBJECT(clients, "total", counters->clients);
 
 	cJSON *gravity = JSON_NEW_OBJECT();
