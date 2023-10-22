@@ -11,6 +11,7 @@
 #include "FTL.h"
 #include "database/session-table.h"
 #include "database/common.h"
+#include "config/config.h"
 
 bool create_session_table(sqlite3 *db)
 {
@@ -44,6 +45,12 @@ bool create_session_table(sqlite3 *db)
 // Add session to database
 bool add_db_session(struct session *sess)
 {
+	if(!config.webserver.session.restore.v.b)
+	{
+		log_debug(DEBUG_API, "Session restore is disabled, not adding session to database");
+		return true;
+	}
+
 	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 	{
@@ -143,6 +150,9 @@ bool add_db_session(struct session *sess)
 // Update valid_until of session in database (by sid)
 bool update_db_session(struct session *sess)
 {
+	if(!config.webserver.session.restore.v.b)
+		return true;
+
 	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 	{
@@ -207,6 +217,12 @@ bool update_db_session(struct session *sess)
 // Restore all sessions found in the database
 bool restore_db_sessions(struct session *sessions)
 {
+	if(!config.webserver.session.restore.v.b)
+	{
+		log_debug(DEBUG_API, "Session restore is disabled, not restoring sessions from database");
+		return true;
+	}
+
 	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 	{
@@ -302,6 +318,9 @@ bool restore_db_sessions(struct session *sessions)
 // Delete session from database (by sid)
 bool del_db_session(struct session *sess)
 {
+	if(!config.webserver.session.restore.v.b)
+		return true;
+
 	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 	{
@@ -351,6 +370,9 @@ bool del_db_session(struct session *sess)
 
 bool del_all_db_sessions(void)
 {
+	if(!config.webserver.session.restore.v.b)
+		return true;
+
 	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 	{

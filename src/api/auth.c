@@ -208,7 +208,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 
 		// Update timestamp of this client to extend
 		// the validity of their API authentication
-		auth_data[user_id].valid_until = now + config.webserver.sessionTimeout.v.ui;
+		auth_data[user_id].valid_until = now + config.webserver.session.timeout.v.ui;
 
 		// Set strict_tls permanently to false if the client connected via HTTP
 		auth_data[user_id].tls.mixed |= api->request->is_ssl != auth_data[user_id].tls.login;
@@ -216,7 +216,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		// Update user cookie
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 		            FTL_SET_COOKIE,
-		            auth_data[user_id].sid, config.webserver.sessionTimeout.v.ui) < 0)
+		            auth_data[user_id].sid, config.webserver.session.timeout.v.ui) < 0)
 		{
 			return send_json_error(api, 500, "internal_error", "Internal server error", NULL);
 		}
@@ -264,7 +264,7 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 		JSON_ADD_BOOL_TO_OBJECT(tls, "mixed", auth_data[i].tls.mixed);
 		JSON_ADD_ITEM_TO_OBJECT(session, "tls", tls);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "login_at", auth_data[i].login_at);
-		JSON_ADD_NUMBER_TO_OBJECT(session, "last_active", auth_data[i].valid_until - config.webserver.sessionTimeout.v.ui);
+		JSON_ADD_NUMBER_TO_OBJECT(session, "last_active", auth_data[i].valid_until - config.webserver.session.timeout.v.ui);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "valid_until", auth_data[i].valid_until);
 		JSON_REF_STR_IN_OBJECT(session, "remote_addr", auth_data[i].remote_addr);
 		JSON_REF_STR_IN_OBJECT(session, "user_agent", auth_data[i].user_agent);
@@ -326,7 +326,7 @@ static void delete_session(const int user_id)
 void delete_all_sessions(void)
 {
 	// Delete all sessions from database
-	delete_all_sessions();
+	del_all_db_sessions();
 
 	// Zero out all sessions without looping
 	memset(auth_data, 0, sizeof(auth_data));
@@ -359,7 +359,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 		// Ten minutes validity
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 		            FTL_SET_COOKIE,
-		            auth_data[user_id].sid, config.webserver.sessionTimeout.d.ui) < 0)
+		            auth_data[user_id].sid, config.webserver.session.timeout.d.ui) < 0)
 		{
 			return send_json_error(api, 500, "internal_error", "Internal server error", NULL);
 		}
@@ -540,7 +540,7 @@ int api_auth(struct ftl_conn *api)
 				auth_data[i].used = true;
 				// Set validitiy to now + timeout
 				auth_data[i].login_at = now;
-				auth_data[i].valid_until = now + config.webserver.sessionTimeout.v.ui;
+				auth_data[i].valid_until = now + config.webserver.session.timeout.v.ui;
 				// Set remote address
 				strncpy(auth_data[i].remote_addr, api->request->remote_addr, sizeof(auth_data[i].remote_addr));
 				auth_data[i].remote_addr[sizeof(auth_data[i].remote_addr)-1] = '\0';
