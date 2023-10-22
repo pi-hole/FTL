@@ -42,19 +42,19 @@ bool create_session_table(sqlite3 *db)
 	return true;
 }
 
-// Add session to database
-bool add_db_session(struct session *sess)
+// Store all session in database
+bool backup_db_sessions(struct session *sessions)
 {
 	if(!config.webserver.session.restore.v.b)
 	{
-		log_debug(DEBUG_API, "Session restore is disabled, not adding session to database");
+		log_debug(DEBUG_API, "Session restore is disabled, not adding sessions to database");
 		return true;
 	}
 
 	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 	{
-		log_warn("Failed to open database in add_db_session()");
+		log_warn("Failed to open database in backup_db_sessions()");
 		return false;
 	}
 
@@ -62,151 +62,116 @@ bool add_db_session(struct session *sess)
 	sqlite3_stmt *stmt = NULL;
 	if(sqlite3_prepare_v2(db, "INSERT INTO session (login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed) VALUES (?, ?, ?, ?, ?, ?, ?, ?);", -1, &stmt, 0) != SQLITE_OK)
 	{
-		log_err("SQL error in add_db_session(): %s (%d)",
+		log_err("SQL error in backup_db_sessions(): %s (%d)",
 		        sqlite3_errmsg(db), sqlite3_errcode(db));
 		return false;
 	}
 
-	// Bind values to statement
-	// 1: login_at
-	if(sqlite3_bind_int64(stmt, 1, sess->login_at) != SQLITE_OK)
+	unsigned int api_sessions = 0;
+	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
 	{
-		log_err("Cannot bind login_at = %ld in add_db_session(): %s (%d)",
-		        (long int)sess->login_at, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-	// 2: valid_until
-	if(sqlite3_bind_int64(stmt, 2, sess->valid_until) != SQLITE_OK)
-	{
-		log_err("Cannot bind valid_until = %ld in add_db_session(): %s (%d)",
-		        (long int)sess->valid_until, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-	// 3: remote_addr
-	if(sqlite3_bind_text(stmt, 3, sess->remote_addr, -1, SQLITE_STATIC) != SQLITE_OK)
-	{
-		log_err("Cannot bind remote_addr = %s in add_db_session(): %s (%d)",
-		        sess->remote_addr, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-	// 4: user_agent
-	if(sqlite3_bind_text(stmt, 4, sess->user_agent, -1, SQLITE_STATIC) != SQLITE_OK)
-	{
-		log_err("Cannot bind user_agent = %s in add_db_session(): %s (%d)",
-		        sess->user_agent, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-	// 5: sid
-	if(sqlite3_bind_text(stmt, 5, sess->sid, -1, SQLITE_STATIC) != SQLITE_OK)
-	{
-		log_err("Cannot bind sid = %s in add_db_session(): %s (%d)",
-		        sess->sid, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-	// 6: csrf
-	if(sqlite3_bind_text(stmt, 6, sess->csrf, -1, SQLITE_STATIC) != SQLITE_OK)
-	{
-		log_err("Cannot bind csrf = %s in add_db_session(): %s (%d)",
-		        sess->csrf, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-	// 7: tls_login
-	if(sqlite3_bind_int(stmt, 7, sess->tls.login ? 1 : 0) != SQLITE_OK)
-	{
-		log_err("Cannot bind tls_login = %d in add_db_session(): %s (%d)",
-		        sess->tls.login ? 1 : 0, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-	// 8: tls_mixed
-	if(sqlite3_bind_int(stmt, 8, sess->tls.mixed ? 1: 0) != SQLITE_OK)
-	{
-		log_err("Cannot bind tls_mixed = %d in add_db_session(): %s (%d)",
-		        sess->tls.mixed ? 1 : 0, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
+		// Get session
+		struct session *sess = &sessions[i];
 
-	// Execute statement
-	if(sqlite3_step(stmt) != SQLITE_DONE)
-	{
-		log_err("SQL error in add_db_session(): %s (%d)",
-		        sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
+		// Skip unused sessions
+		if(!sess->used)
+			continue;
+
+		// Bind values to statement
+		// 1: login_at
+		if(sqlite3_bind_int64(stmt, 1, sess->login_at) != SQLITE_OK)
+		{
+			log_err("Cannot bind login_at = %ld in backup_db_sessions(): %s (%d)",
+					(long int)sess->login_at, sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
+		// 2: valid_until
+		if(sqlite3_bind_int64(stmt, 2, sess->valid_until) != SQLITE_OK)
+		{
+			log_err("Cannot bind valid_until = %ld in backup_db_sessions(): %s (%d)",
+					(long int)sess->valid_until, sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
+		// 3: remote_addr
+		if(sqlite3_bind_text(stmt, 3, sess->remote_addr, -1, SQLITE_STATIC) != SQLITE_OK)
+		{
+			log_err("Cannot bind remote_addr = %s in backup_db_sessions(): %s (%d)",
+					sess->remote_addr, sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
+		// 4: user_agent
+		if(sqlite3_bind_text(stmt, 4, sess->user_agent, -1, SQLITE_STATIC) != SQLITE_OK)
+		{
+			log_err("Cannot bind user_agent = %s in backup_db_sessions(): %s (%d)",
+					sess->user_agent, sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
+		// 5: sid
+		if(sqlite3_bind_text(stmt, 5, sess->sid, -1, SQLITE_STATIC) != SQLITE_OK)
+		{
+			log_err("Cannot bind sid = %s in backup_db_sessions(): %s (%d)",
+					sess->sid, sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
+		// 6: csrf
+		if(sqlite3_bind_text(stmt, 6, sess->csrf, -1, SQLITE_STATIC) != SQLITE_OK)
+		{
+			log_err("Cannot bind csrf = %s in backup_db_sessions(): %s (%d)",
+					sess->csrf, sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
+		// 7: tls_login
+		if(sqlite3_bind_int(stmt, 7, sess->tls.login ? 1 : 0) != SQLITE_OK)
+		{
+			log_err("Cannot bind tls_login = %d in backup_db_sessions(): %s (%d)",
+					sess->tls.login ? 1 : 0, sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
+		// 8: tls_mixed
+		if(sqlite3_bind_int(stmt, 8, sess->tls.mixed ? 1: 0) != SQLITE_OK)
+		{
+			log_err("Cannot bind tls_mixed = %d in backup_db_sessions(): %s (%d)",
+					sess->tls.mixed ? 1 : 0, sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
+
+		// Execute statement
+		if(sqlite3_step(stmt) != SQLITE_DONE)
+		{
+			log_err("SQL error in backup_db_sessions(): %s (%d)",
+					sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
+
+		// Clear bindings
+		if(sqlite3_clear_bindings(stmt) != SQLITE_OK)
+		{
+			log_err("SQL error in backup_db_sessions(): %s (%d)",
+					sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
+
+		// Reset statement
+		if(sqlite3_reset(stmt) != SQLITE_OK)
+		{
+			log_err("SQL error in backup_db_sessions(): %s (%d)",
+					sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
+
+		api_sessions++;
 	}
 
 	// Finalize statement
 	if(sqlite3_finalize(stmt) != SQLITE_OK)
 	{
-		log_err("SQL error in add_db_session(): %s (%d)",
+		log_err("SQL error in backup_db_sessions(): %s (%d)",
 		        sqlite3_errmsg(db), sqlite3_errcode(db));
 		return false;
 	}
 
-	// Close database connection
-	dbclose(&db);
-
-	return true;
-}
-
-// Update valid_until of session in database (by sid)
-bool update_db_session(struct session *sess)
-{
-	if(!config.webserver.session.restore.v.b)
-		return true;
-
-	sqlite3 *db = dbopen(false, false);
-	if(db == NULL)
-	{
-		log_warn("Failed to open database in update_db_session()");
-		return false;
-	}
-
-	// Update session in database
-	sqlite3_stmt *stmt = NULL;
-	if(sqlite3_prepare_v2(db, "UPDATE session SET valid_until = ?, tls_mixed = ? WHERE sid = ?;", -1, &stmt, 0) != SQLITE_OK)
-	{
-		log_err("SQL error in update_db_session(): %s (%d)",
-		        sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-
-	// Bind values to statement
-	// 1: valid_until
-	if(sqlite3_bind_int64(stmt, 1, sess->valid_until) != SQLITE_OK)
-	{
-		log_err("Cannot bind valid_until = %ld in update_db_session(): %s (%d)",
-		        (long int)sess->valid_until, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-	// 2: tls_mixed
-	if(sqlite3_bind_int(stmt, 2, sess->tls.mixed ? 1 : 0) != SQLITE_OK)
-	{
-		log_err("Cannot bind tls_mixed = %d in update_db_session(): %s (%d)",
-		        sess->tls.mixed ? 1 : 0, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-	// 3: sid
-	if(sqlite3_bind_text(stmt, 3, sess->sid, -1, SQLITE_STATIC) != SQLITE_OK)
-	{
-		log_err("Cannot bind sid = %s in update_db_session(): %s (%d)",
-		        sess->sid, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-
-	// Execute statement
-	if(sqlite3_step(stmt) != SQLITE_DONE)
-	{
-		log_err("SQL error in update_db_session(): %s (%d)",
-		        sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-
-	// Finalize statement
-	if(sqlite3_finalize(stmt) != SQLITE_OK)
-	{
-		log_err("SQL error in update_db_session(): %s (%d)",
-		        sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
+	log_info("Stored %u API session%s in the database",
+	         api_sessions, api_sessions == 1 ? "" : "s");
 
 	// Close database connection
 	dbclose(&db);
@@ -309,78 +274,7 @@ bool restore_db_sessions(struct session *sessions)
 		return false;
 	}
 
-	// Close database connection
-	dbclose(&db);
-
-	return true;
-}
-
-// Delete session from database (by sid)
-bool del_db_session(struct session *sess)
-{
-	if(!config.webserver.session.restore.v.b)
-		return true;
-
-	sqlite3 *db = dbopen(false, false);
-	if(db == NULL)
-	{
-		log_warn("Failed to open database in del_db_session()");
-		return false;
-	}
-
-	// Delete session from database
-	sqlite3_stmt *stmt = NULL;
-	if(sqlite3_prepare_v2(db, "DELETE FROM session WHERE sid = ?;", -1, &stmt, 0) != SQLITE_OK)
-	{
-		log_err("SQL error in del_db_session(): %s (%d)",
-		        sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-
-	// Bind values to statement
-	// 1: sid
-	if(sqlite3_bind_text(stmt, 1, sess->sid, -1, SQLITE_STATIC) != SQLITE_OK)
-	{
-		log_err("Cannot bind sid = %s in del_db_session(): %s (%d)",
-		        sess->sid, sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-
-	// Execute statement
-	if(sqlite3_step(stmt) != SQLITE_DONE)
-	{
-		log_err("SQL error in del_db_session(): %s (%d)",
-		        sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-
-	// Finalize statement
-	if(sqlite3_finalize(stmt) != SQLITE_OK)
-	{
-		log_err("SQL error in del_db_session(): %s (%d)",
-		        sqlite3_errmsg(db), sqlite3_errcode(db));
-		return false;
-	}
-
-	// Close database connection
-	dbclose(&db);
-
-	return true;
-}
-
-bool del_all_db_sessions(void)
-{
-	if(!config.webserver.session.restore.v.b)
-		return true;
-
-	sqlite3 *db = dbopen(false, false);
-	if(db == NULL)
-	{
-		log_warn("Failed to open database in del_all_db_sessions()");
-		return false;
-	}
-
-	// Delete all sessions from database
+	// Delete all sessions from database after restoring them
 	SQL_bool(db, "DELETE FROM session;");
 
 	// Close database connection

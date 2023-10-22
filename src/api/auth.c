@@ -47,6 +47,12 @@ void init_api(void)
 	restore_db_sessions(auth_data);
 }
 
+void free_api(void)
+{
+	// Store sessions in database
+	backup_db_sessions(auth_data);
+}
+
 // Is this client connecting from localhost?
 bool __attribute__((pure)) is_local_api_user(const char *remote_addr)
 {
@@ -224,9 +230,6 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		// Add CSRF token to request
 		add_request_info(api, auth_data[user_id].csrf);
 
-		// Store session in database
-		update_db_session(&auth_data[user_id]);
-
 		// Debug logging
 		if(config.debug.api.v.b)
 		{
@@ -316,18 +319,12 @@ static void delete_session(const int user_id)
 	if(user_id < 0 || user_id >= API_MAX_CLIENTS)
 		return;
 
-	// Delete session from database
-	del_db_session(&auth_data[user_id]);
-
 	// Zero out this session (also sets valid to false == 0)
 	memset(&auth_data[user_id], 0, sizeof(auth_data[user_id]));
 }
 
 void delete_all_sessions(void)
 {
-	// Delete all sessions from database
-	del_all_db_sessions();
-
 	// Zero out all sessions without looping
 	memset(auth_data, 0, sizeof(auth_data));
 }
@@ -562,9 +559,6 @@ int api_auth(struct ftl_conn *api)
 				// Generate new SID and CSRF token
 				generateSID(auth_data[i].sid);
 				generateSID(auth_data[i].csrf);
-
-				// Store session in database
-				add_db_session(&auth_data[i]);
 
 				user_id = i;
 				break;

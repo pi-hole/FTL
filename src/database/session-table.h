@@ -15,10 +15,7 @@
 #include "api/auth.h"
 
 bool create_session_table(sqlite3 *db);
-bool add_db_session(struct session *sess);
-bool update_db_session(struct session *sess);
+bool backup_db_sessions(struct session *sessions);
 bool restore_db_sessions(struct session *sessions);
-bool del_db_session(struct session *sess);
-bool del_all_db_sessions(void);
 
 #endif // SESSION_TABLE_PRIVATE_H
