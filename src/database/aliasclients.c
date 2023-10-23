@@ -195,7 +195,7 @@ static int get_aliasclient_ID(sqlite3 *db, const clientsData *client)
 		const clientsData *alias_client = getClient(aliasclientID, true);
 
 		// Skip clients that are not alias-clients
-		if(!alias_client->flags.aliasclient)
+		if(alias_client == NULL || !alias_client->flags.aliasclient)
 			continue;
 
 		// Compare MAC address of the current client to the

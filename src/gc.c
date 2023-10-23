@@ -39,6 +39,150 @@
 
 bool doGC = false;
 
+// Recycle old clients and domains in our internal data structure
+// This has the side-effect of recycling intermediate domains
+// seen during CNAME inspection, too, as they are never referenced
+// by any query (only head and tail of the CNAME chain are)
+static void recycle(void)
+{
+	bool *client_used = calloc(counters->clients, sizeof(bool));
+	bool *domain_used = calloc(counters->domains, sizeof(bool));
+	bool *upstreams_used = calloc(counters->upstreams, sizeof(bool));
+	if(client_used == NULL || domain_used == NULL || upstreams_used == NULL)
+	{
+		log_err("Cannot allocate memory for recycling");
+		return;
+	}
+
+	// Find list of client and domain IDs no active query is referencing anymore
+	// and recycle them
+	for(int queryID = 0; queryID < counters->queries; queryID++)
+	{
+		queriesData* query = getQuery(queryID, true);
+		if(query == NULL)
+			continue;
+
+		// Mark client and domain as used
+		client_used[query->clientID] = true;
+		domain_used[query->domainID] = true;
+
+		// Mark upstream as used (if any)
+		if(query->upstreamID > -1)
+			upstreams_used[query->upstreamID] = true;
+
+		// Mark CNAME domain as used (if any)
+		if(query->CNAME_domainID >= 0)
+			domain_used[query->CNAME_domainID] = true;
+	}
+
+	// Recycle clients
+	unsigned int clients_recycled = 0;
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		if(client_used[clientID])
+			continue;
+
+		clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
+		log_debug(DEBUG_GC, "Recycling client %s (ID %d, lastQuery at %.3f)",
+		          getstr(client->ippos), clientID, client->lastQuery);
+
+		// Wipe client's memory
+		memset(client, 0, sizeof(clientsData));
+
+		clients_recycled++;
+	}
+
+	// Recycle domains
+	unsigned int domains_recycled = 0;
+	for(int domainID = 0; domainID < counters->domains; domainID++)
+	{
+		if(domain_used[domainID])
+			continue;
+
+		domainsData* domain = getDomain(domainID, true);
+		if(domain == NULL)
+			continue;
+
+		log_debug(DEBUG_GC, "Recycling domain %s (ID %d, lastQuery at %.3f)",
+		          getstr(domain->domainpos), domainID, domain->lastQuery);
+
+		// Wipe domain's memory
+		memset(domain, 0, sizeof(domainsData));
+
+		domains_recycled++;
+	}
+
+	// Recycle cache records
+	unsigned int cache_recycled = 0;
+	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	{
+		DNSCacheData *cache = getDNSCache(cacheID, true);
+		if(cache == NULL)
+			continue;
+
+		// Skip cache entries that are still in use
+		if(cache->magic != 0x00)
+			continue;
+
+		log_debug(DEBUG_GC, "Recycling cache entry with ID %d", cacheID);
+
+		// Wipe cache entry's memory
+		memset(cache, 0, sizeof(DNSCacheData));
+
+		cache_recycled++;
+	}
+
+	// Free memory
+	free(client_used);
+	free(domain_used);
+	free(upstreams_used);
+
+	// Scan number of recycled clients and domains if in debug mode
+	if(config.debug.gc.v.b)
+	{
+		unsigned int free_domains = 0, free_clients = 0, free_cache = 0;
+		for(int clientID = 0; clientID < counters->clients; clientID++)
+		{
+			// Do not check magic to avoid skipping recycled clients
+			clientsData *client = getClient(clientID, false);
+			if(client == NULL)
+				continue;
+			if(client->magic == 0x00)
+				free_clients++;
+		}
+		for(int domainID = 0; domainID < counters->domains; domainID++)
+		{
+			// Do not check magic to avoid skipping recycled domains
+			domainsData *domain = getDomain(domainID, false);
+			if(domain == NULL)
+				continue;
+			if(domain->magic == 0x00)
+				free_domains++;
+		}
+		for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+		{
+			// Do not check magic to avoid skipping recycled cache entries
+			DNSCacheData *cache = getDNSCache(cacheID, false);
+			if(cache == NULL)
+				continue;
+			if(cache->magic == 0x00)
+				free_cache++;
+		}
+
+		log_debug(DEBUG_GC, "Recycler result: %u clients, %u domains and %u cache records are free",
+		          free_clients, free_domains, free_cache);
+
+		log_debug(DEBUG_GC, "Recycled additional %u/%d (max %d) clients, %u/%d (max %d) domains, and %u/%d (max %d) cache records (scanned %d queries)",
+		          clients_recycled, counters->clients, counters->clients_MAX,
+		          domains_recycled, counters->domains, counters->domains_MAX,
+		          cache_recycled, counters->dns_cache_size, counters->dns_cache_MAX,
+		          counters->queries);
+	}
+}
+
 // Subtract rate-limitation count from individual client counters
 // As long as client->rate_limit is still larger than the allowed
 // maximum count, the rate-limitation will just continue
@@ -270,6 +414,9 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		if(tail)
 			memset(tail, 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
 	}
+
+	// Recycle old clients and domains
+	recycle();
 
 	// Determine if overTime memory needs to get moved
 	moveOverTimeMemory(mintime);

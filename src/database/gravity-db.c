@@ -320,7 +320,7 @@ static bool get_client_groupids(clientsData* client)
 		        ip, sqlite3_errstr(rc));
 		sqlite3_reset(table_stmt);
 		sqlite3_finalize(table_stmt);
-		return NULL;
+		return false;
 	}
 
 	// Perform query

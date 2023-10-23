@@ -1093,6 +1093,10 @@ void DB_read_queries(void)
 		// Update overTime data structure with the new client
 		change_clientcount(client, 0, 0, timeidx, 1);
 
+		// Get domain pointer
+		domainsData *domain = getDomain(domainID, true);
+		domain->lastQuery = queryTimeStamp;
+
 		// Increase DNS queries counter
 		counters->queries++;
 
@@ -1152,7 +1156,6 @@ void DB_read_queries(void)
 			case QUERY_SPECIAL_DOMAIN: // Blocked by special domain handling
 				query->flags.blocked = true;
 				// Get domain pointer
-				domainsData *domain = getDomain(domainID, true);
 				domain->blockedcount++;
 				change_clientcount(client, 0, 1, -1, 0);
 				break;

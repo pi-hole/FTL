@@ -273,7 +273,7 @@ bool strcmp_escaped(const char *a, const char *b)
 }
 
 
-size_t addstr(const char *input)
+size_t _addstr(const char *input, const char *func, const int line, const char *file)
 {
 	if(input == NULL)
 	{
@@ -308,11 +308,26 @@ size_t addstr(const char *input)
 	char *str = str_escape(input, &N);
 
 	if(N > 0)
-		log_info("INFO: FTL replaced %u invalid characters with ~ in the query \"%s\"", N, str);
+		log_info("FTL replaced %u invalid characters with ~ in the query \"%s\"", N, str);
+
+	// Search buffer for existence of exact same string
+	char *str_pos = memmem(shm_strings.ptr, shmSettings->next_str_pos, str, len);
+	if(str_pos != NULL)
+	{
+		log_debug(DEBUG_SHMEM, "Reusing existing string \"%s\" at position %zd in %s() (%s:%i)",
+		          str, str_pos - (char*)shm_strings.ptr, func, short_path(file), line);
+
+		// If the string already exists, we can free the memory allocated
+		// for the escaped string
+		free(str);
+
+		// Return position of existing string
+		return (str_pos - (char*)shm_strings.ptr);
+	}
 
 	// Debugging output
-	log_debug(DEBUG_SHMEM, "Adding \"%s\" (len %zu) to buffer. next_str_pos is %u",
-	          str, len, shmSettings->next_str_pos);
+	log_debug(DEBUG_SHMEM, "Adding \"%s\" (len %zu) to buffer in %s() (%s:%i), next_str_pos is %u",
+	          str, len, func, short_path(file), line, shmSettings->next_str_pos);
 
 	// Copy the C string pointed by str into the shared string buffer
 	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len);
@@ -1121,11 +1136,20 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char *func,
 		return NULL;
 	}
 
-	if(check_range(queryID, counters->queries_MAX, "query", func, line, file) &&
-	   check_magic(queryID, checkMagic, queries[queryID].magic, "query", func, line, file))
-		return &queries[queryID];
-	else
+	// Check allowed range
+	if(!check_range(queryID, counters->queries_MAX, "query", func, line, file))
 		return NULL;
+
+	// May have been recycled, do not return recycled queries if we are checking
+	// the magic byte
+	if(checkMagic && queries[queryID].magic == 0x00)
+		return NULL;
+
+	// Check magic byte
+	if(check_magic(queryID, checkMagic, queries[queryID].magic, "query", func, line, file))
+		return &queries[queryID];
+
+	return NULL;
 }
 
 clientsData* _getClient(int clientID, bool checkMagic, int line, const char *func, const char *file)
@@ -1146,11 +1170,20 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char *fun
 		return NULL;
 	}
 
-	if(check_range(clientID, counters->clients_MAX, "client", func, line, file) &&
-	   check_magic(clientID, checkMagic, clients[clientID].magic, "client", func, line, file))
-		return &clients[clientID];
-	else
+	// Check allowed range
+	if(!check_range(clientID, counters->clients_MAX, "client", func, line, file))
 		return NULL;
+
+	// May have been recycled, do not return recycled clients if we are checking
+	// the magic byte
+	if(checkMagic && clients[clientID].magic == 0x00)
+		return NULL;
+
+	// Check magic byte
+	if(check_magic(clientID, checkMagic, clients[clientID].magic, "client", func, line, file))
+		return &clients[clientID];
+
+	return NULL;
 }
 
 domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *func, const char *file)
@@ -1171,11 +1204,20 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *fun
 		return NULL;
 	}
 
-	if(check_range(domainID, counters->domains_MAX, "domain", func, line, file) &&
-	   check_magic(domainID, checkMagic, domains[domainID].magic, "domain", func, line, file))
-		return &domains[domainID];
-	else
+	// Check allowed range
+	if(!check_range(domainID, counters->domains_MAX, "domain", func, line, file))
 		return NULL;
+
+	// May have been recycled, do not return recycled domains if we are checking
+	// the magic byte
+	if(checkMagic && domains[domainID].magic == 0x00)
+		return NULL;
+
+	// Check magic byte
+	if(check_magic(domainID, checkMagic, domains[domainID].magic, "domain", func, line, file))
+		return &domains[domainID];
+
+	return NULL;
 }
 
 upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char *func, const char *file)
@@ -1196,11 +1238,20 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 		return NULL;
 	}
 
-	if(check_range(upstreamID, counters->upstreams_MAX, "upstream", func, line, file) &&
-	   check_magic(upstreamID, checkMagic, upstreams[upstreamID].magic, "upstream", func, line, file))
-		return &upstreams[upstreamID];
-	else
+	// Check allowed range
+	if(!check_range(upstreamID, counters->upstreams_MAX, "upstream", func, line, file))
 		return NULL;
+
+	// May have been recycled, do not return recycled upstreams if we are checking
+	// the magic byte
+	if(checkMagic && upstreams[upstreamID].magic == 0x00)
+		return NULL;
+
+	// Check magic byte
+	if(check_magic(upstreamID, checkMagic, upstreams[upstreamID].magic, "upstream", func, line, file))
+		return &upstreams[upstreamID];
+
+	return NULL;
 }
 
 DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char *func, const char *file)
@@ -1221,9 +1272,18 @@ DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char *f
 		return NULL;
 	}
 
-	if(check_range(cacheID, counters->dns_cache_MAX, "dns_cache", func, line, file) &&
-	   check_magic(cacheID, checkMagic, dns_cache[cacheID].magic, "dns_cache", func, line, file))
-		return &dns_cache[cacheID];
-	else
+	// Check allowed range
+	if(!check_range(cacheID, counters->dns_cache_MAX, "dns_cache", func, line, file))
 		return NULL;
+
+	// May have been recycled, do not return recycled upstreams if we are checking
+	// the magic byte
+	if(checkMagic && dns_cache[cacheID].magic == 0x00)
+		return NULL;
+
+	// Check magic byte
+	if(check_magic(cacheID, checkMagic, dns_cache[cacheID].magic, "dns_cache", func, line, file))
+		return &dns_cache[cacheID];
+
+	return NULL;
 }

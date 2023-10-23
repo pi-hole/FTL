@@ -568,7 +568,7 @@ static void resolveUpstreams(const bool onlynew)
 		upstreamsData* upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 		{
-			log_warn("Unable to get upstream pointer with ID %i in resolveUpstreams(), skipping...", upstreamID);
+			// This is not a fatal error, as the upstream may have been recycled
 			skipped++;
 			unlock_shm();
 			continue;

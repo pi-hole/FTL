@@ -111,7 +111,8 @@ void _unlock_shm(const char* func, const int line, const char* file);
 
 bool init_shmem(void);
 void destroy_shmem(void);
-size_t addstr(const char *str);
+#define addstr(str) _addstr(str, __FUNCTION__, __LINE__, __FILE__)
+size_t _addstr(const char *str, const char *func, const int line, const char *file);
 #define getstr(pos) _getstr(pos, __FUNCTION__, __LINE__, __FILE__)
 const char *_getstr(const size_t pos, const char *func, const int line, const char *file);
 

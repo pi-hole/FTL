@@ -1700,10 +1700,6 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 		// Update overTime counts
 		const int timeidx = getOverTimeID(query->timestamp);
 		upstream->overTime[timeidx]++;
-		// Update lastQuery timestamp
-		upstream->lastQuery = time(NULL);
-		// Count forwarded query
-		upstream->count++;
 	}
 
 	// Proceed only if
