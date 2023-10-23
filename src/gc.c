@@ -172,14 +172,13 @@ static void recycle(void)
 				free_cache++;
 		}
 
-		log_debug(DEBUG_GC, "Recycler result: %u clients, %u domains and %u cache records are free",
-		          free_clients, free_domains, free_cache);
+		log_debug(DEBUG_GC, "Recycler summary: %u/%d (max %d) clients, %u/%d (max %d) domains and %u/%d (max %d) cache records are free",
+		          free_clients, counters->clients, counters->clients_MAX,
+		          free_domains, counters->domains, counters->domains_MAX,
+			  free_cache, counters->dns_cache_size, counters->dns_cache_MAX);
 
-		log_debug(DEBUG_GC, "Recycled additional %u/%d (max %d) clients, %u/%d (max %d) domains, and %u/%d (max %d) cache records (scanned %d queries)",
-		          clients_recycled, counters->clients, counters->clients_MAX,
-		          domains_recycled, counters->domains, counters->domains_MAX,
-		          cache_recycled, counters->dns_cache_size, counters->dns_cache_MAX,
-		          counters->queries);
+		log_debug(DEBUG_GC, "Recycled additional %u clients, %u domains, and %u cache records (scanned %d queries)",
+		          clients_recycled, domains_recycled, cache_recycled, counters->queries);
 	}
 }
 
