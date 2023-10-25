@@ -925,7 +925,10 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Store changed configuration to disk
 	writeFTLtoml(true);
 
-	return api->method == HTTP_PUT ? 201 : 204; // 201 - Created or 204 - No content
+	// Send empty reply with matching HTTP status code
+	// 201 - Created or 204 - No content
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_SEND_OBJECT_CODE(json, api->method == HTTP_PUT ? 201 : 204);
 }
 
 // Endpoint /api/config router
