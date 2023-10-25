@@ -15,47 +15,6 @@ components:
           type: string
           description: Key indicating the status of the request
           example: "success"
-    lists_processed:
-      type: object
-      properties:
-        processed:
-          type: object
-          nullable: true
-          description: |
-            Object containing the number of items that were successfully
-            added to the database and the number of items that could not be
-            added to the database.
-          properties:
-            success:
-              description: |
-                Array of items that were successfully added to the database.
-              type: array
-              items:
-                type: object
-                properties:
-                  item:
-                    description: Item that was added to the database
-                    type: string
-            errors:
-              description: |
-                Array of errors that occurred during processing.
-              type: array
-              items:
-                type: object
-                properties:
-                  item:
-                    description: Item that could not be added to the database
-                    type: string
-                  error:
-                    description: Error message
-                    type: string
-          example:
-            success:
-              - item: "example.com"
-              - item: "example3.com"
-            errors:
-              - item: "example2.com"
-                error: "UNIQUE constraint failed: domainlist.domain"
   errors:
     bad_request:
       type: object

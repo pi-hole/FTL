@@ -61,7 +61,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'groups.yaml#/components/schemas/groups/get' # identical to GET
-                    - $ref: 'common.yaml#/components/schemas/lists_processed'
+                    - $ref: 'groups.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
@@ -139,7 +139,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'groups.yaml#/components/schemas/groups/get' # identical to GET
-                    - $ref: 'common.yaml#/components/schemas/lists_processed'
+                    - $ref: 'groups.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -243,6 +243,47 @@ components:
           type: integer
           readOnly: true
           example: 1611239099
+    lists_processed:
+      type: object
+      properties:
+        processed:
+          type: object
+          nullable: true
+          description: |
+            Object containing the number of groups that were successfully
+            added to the database and the number of groups that could not be
+            added to the database.
+          properties:
+            success:
+              description: |
+                Array of groups that were successfully added to the database.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Group that was added to the database
+                    type: string
+            errors:
+              description: |
+                Array of errors that occurred during processing.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Group that could not be added to the database
+                    type: string
+                  error:
+                    description: Error message
+                    type: string
+          example:
+            success:
+              - item: "Home-Automation"
+              - item: "Children"
+            errors:
+              - item: "Garden"
+                error: "UNIQUE constraint failed: group.name"
   examples:
     groups:
       value:

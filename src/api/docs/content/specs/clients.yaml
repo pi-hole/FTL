@@ -62,7 +62,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
-                    - $ref: 'common.yaml#/components/schemas/lists_processed'
+                    - $ref: 'clients.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
@@ -173,7 +173,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
-                    - $ref: 'common.yaml#/components/schemas/lists_processed'
+                    - $ref: 'clients.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -312,6 +312,47 @@ components:
           type: integer
           readOnly: true
           example: 1611239099
+    lists_processed:
+      type: object
+      properties:
+        processed:
+          type: object
+          nullable: true
+          description: |
+            Object containing the number of clients that were successfully
+            added to the database and the number of clients that could not be
+            added to the database.
+          properties:
+            success:
+              description: |
+                Array of clients that were successfully added to the database.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Client that was added to the database
+                    type: string
+            errors:
+              description: |
+                Array of errors that occurred during processing.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Client that could not be added to the database
+                    type: string
+                  error:
+                    description: Error message
+                    type: string
+          example:
+            success:
+              - item: "127.0.0.1"
+              - item: "::1"
+            errors:
+              - item: "192.168.2.5"
+                error: "UNIQUE constraint failed: client.ip"
   examples:
     clients:
       value:
