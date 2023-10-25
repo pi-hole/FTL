@@ -364,7 +364,12 @@ static int api_list_write(struct ftl_conn *api,
 			// Check every array element for its validity
 			okay = compile_regex(it->valuestring, &regex, &regex_msg);
 
-			// TODO: The regex needs to be freed here
+			// Free regex after successful compilation
+			if(regex.available)
+			{
+				regfree(&regex.regex);
+				free(regex.string);
+			}
 
 			// Fail fast if any regex in the passed array is invalid
 			if(!okay)
