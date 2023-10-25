@@ -66,7 +66,6 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 
 		// Redirect STDERR into our pipe
 		dup2(pipefd[1], STDERR_FILENO);
-		dup2(pipefd[1], STDOUT_FILENO);
 
 		// Call dnsmasq's option parser
 		test_dnsmasq_options(3, argv);
@@ -99,6 +98,10 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 				// Strip newline character (if present)
 				if(errbuf[strlen(errbuf)-1] == '\n')
 					errbuf[strlen(errbuf)-1] = '\0';
+				// Replace any possible internal newline characters by spaces
+				char *ptr = errbuf;
+				while((ptr = strchr(ptr, '\n')) != NULL)
+					*ptr = ' ';
 				log_debug(DEBUG_CONFIG, "dnsmasq pipe: %s", errbuf);
 			}
 		}
@@ -106,8 +109,12 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 		// Wait until child has exited to get its return code
 		int status;
 		waitpid(cpid, &status, 0);
-		code = WEXITSTATUS(status);
 
+		// Get return code if child exited normally
+		if(WIFEXITED(status))
+			code = WEXITSTATUS(status);
+
+		// Check if child crashed
 		if(WIFSIGNALED(status))
 		{
 			crashed = true;

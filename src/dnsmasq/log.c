@@ -517,6 +517,9 @@ void die(char *message, char *arg1, int exit_code)
   flush_log();
 
   /********** Pi-hole modification *************/
+  if(only_testing)
+    exit(exit_code);
+
   FTL_log_dnsmasq_fatal(message, arg1, errmess);
 
   // Jump back into main() to exit gracefully
