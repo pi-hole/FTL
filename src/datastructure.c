@@ -926,19 +926,27 @@ static const char* __attribute__ ((const)) query_status_str(const enum query_sta
 	return NULL;
 }
 
-void _query_set_status(queriesData *query, const enum query_status new_status, const char *func, const int line, const char *file)
+void _query_set_status(queriesData *query, const enum query_status new_status, const bool init,
+                       const char *func, const int line, const char *file)
 {
 	// Debug logging
 	if(config.debug.status.v.b)
 	{
-		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str(query->status) : "INVALID";
-		if(query->status == new_status)
+		if(init)
 		{
+			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str(new_status) : "INVALID";
+			log_debug(DEBUG_STATUS, "Query %i: status initialized: %s (%d) in %s() (%s:%i)",
+			          query->id, newstr, new_status, func, short_path(file), line);
+		}
+		else if(query->status == new_status)
+		{
+			const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str(query->status) : "INVALID";
 			log_debug(DEBUG_STATUS, "Query %i: status unchanged: %s (%d) in %s() (%s:%i)",
 			          query->id, oldstr, query->status, func, short_path(file), line);
 		}
 		else
 		{
+			const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str(query->status) : "INVALID";
 			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str(new_status) : "INVALID";
 			log_debug(DEBUG_STATUS, "Query %i: status changed: %s (%d) -> %s (%d) in %s() (%s:%i)",
 			          query->id, oldstr, query->status, newstr, new_status, func, short_path(file), line);
@@ -949,30 +957,36 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	if(new_status >= QUERY_STATUS_MAX)
 		return;
 
-	// Update counters
-	if(query->status != new_status)
+	const enum query_status old_status = query->status;
+	if(old_status == new_status && !init)
 	{
-		counters->status[query->status]--;
-		counters->status[new_status]++;
-
-		const int timeidx = getOverTimeID(query->timestamp);
-		if(is_blocked(query->status))
-			overTime[timeidx].blocked--;
-		if(is_blocked(new_status))
-			overTime[timeidx].blocked++;
-
-		if(query->status == QUERY_CACHE)
-			overTime[timeidx].cached--;
-		if(new_status == QUERY_CACHE)
-			overTime[timeidx].cached++;
-
-		if(query->status == QUERY_FORWARDED)
-			overTime[timeidx].forwarded--;
-		if(new_status == QUERY_FORWARDED)
-			overTime[timeidx].forwarded++;
+		// Nothing to do
+		return;
 	}
 
-	// Update status
+	// else: update global counters, ...
+	if(!init)
+		counters->status[old_status]--;
+	counters->status[new_status]++;
+
+	// ... update overTime counters, ...
+	const int timeidx = getOverTimeID(query->timestamp);
+	if(is_blocked(old_status) && !init)
+		overTime[timeidx].blocked--;
+	if(is_blocked(new_status))
+		overTime[timeidx].blocked++;
+
+	if(old_status == QUERY_CACHE && !init)
+		overTime[timeidx].cached--;
+	if(new_status == QUERY_CACHE)
+		overTime[timeidx].cached++;
+
+	if(old_status == QUERY_FORWARDED && !init)
+		overTime[timeidx].forwarded--;
+	if(new_status == QUERY_FORWARDED)
+		overTime[timeidx].forwarded++;
+
+	// ... and set new status
 	query->status = new_status;
 }
 

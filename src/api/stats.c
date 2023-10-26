@@ -100,6 +100,10 @@ int api_stats_summary(struct ftl_conn *api)
 		return ret;
 	JSON_ADD_ITEM_TO_OBJECT(queries, "types", types);
 
+	cJSON *statuses = JSON_NEW_OBJECT();
+	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
+		JSON_ADD_NUMBER_TO_OBJECT(statuses, get_query_status_str(status), counters->status[status]);
+	JSON_ADD_ITEM_TO_OBJECT(queries, "status", statuses);
 
 	cJSON *replies = JSON_NEW_OBJECT();
 	for(enum reply_type reply = 0; reply <QUERY_REPLY_MAX; reply++)

@@ -8,19 +8,19 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 #define QUERY_TABLE_PRIVATE
-#include "query-table.h"
-#include "sqlite3.h"
-#include "../log.h"
-#include "../config/config.h"
-#include "../enums.h"
-#include "../config/config.h"
+#include "database/query-table.h"
+#include "database/sqlite3.h"
+#include "log.h"
+#include "config/config.h"
+#include "enums.h"
+#include "config/config.h"
 // counters
-#include "../shmem.h"
-#include "../overTime.h"
-#include "common.h"
-#include "../timers.h"
+#include "shmem.h"
+#include "overTime.h"
+#include "database/common.h"
+#include "timers.h"
 
 static sqlite3 *memdb = NULL;
 static double new_last_timestamp = 0;
@@ -1059,6 +1059,7 @@ void DB_read_queries(void)
 			query->type = TYPE_OTHER;
 			query->qtype = type - 100;
 		}
+		counters->querytype[query->type]++;
 
 		// Status is set below
 		query->domainID = domainID;
@@ -1084,13 +1085,9 @@ void DB_read_queries(void)
 		clientsData *client = getClient(clientID, true);
 		client->lastQuery = queryTimeStamp;
 
-		// Handle type counters
-		if(type >= TYPE_A && type < TYPE_MAX)
-			counters->querytype[type]++;
-
 		// Update overTime data
 		overTime[timeidx].total++;
-		// Update overTime data structure with the new client
+		// Update client's overTime data structure
 		change_clientcount(client, 0, 0, timeidx, 1);
 
 		// Increase DNS queries counter
@@ -1126,12 +1123,8 @@ void DB_read_queries(void)
 				cache->domainlist_id = sqlite3_column_int(stmt, 7);
 		}
 
-		// Increment status counters, we first have to add one to the count of
-		// unknown queries because query_set_status() will subtract from there
-		// when setting a different status
-		if(status != QUERY_UNKNOWN)
-			counters->status[QUERY_UNKNOWN]++;
-		query_set_status(query, status);
+		// Increment status counters
+		query_set_status_init(query, status);
 
 		// Do further processing based on the query status we read from the database
 		switch(status)

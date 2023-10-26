@@ -406,6 +406,82 @@ components:
                   type: integer
                   description: Queries of remaining types
                   example: 845
+            status:
+              type: object
+              description: Number of individual queries (by status)
+              properties:
+                UNKNOWN:
+                  type: integer
+                  description: Type UNKNOWN queries
+                  example: 3
+                GRAVITY:
+                  type: integer
+                  description: Type GRAVITY queries
+                  example: 72
+                FORWARDED:
+                  type: integer
+                  description: Type FORWARDED queries
+                  example: 533
+                CACHE:
+                  type: integer
+                  description: Type CACHE queries
+                  example: 32
+                REGEX:
+                  type: integer
+                  description: Type REGEX queries
+                  example: 84
+                DENYLIST:
+                  type: integer
+                  description: Type DENYLIST queries
+                  example: 31
+                EXTERNAL_BLOCKED_IP:
+                  type: integer
+                  description: Type EXTERNAL_BLOCKED_IP queries
+                  example: 0
+                EXTERNAL_BLOCKED_NULL:
+                  type: integer
+                  description: Type EXTERNAL_BLOCKED_NULL queries
+                  example: 0
+                EXTERNAL_BLOCKED_NXRA:
+                  type: integer
+                  description: Type EXTERNAL_BLOCKED_NXRA queries
+                  example: 0
+                GRAVITY_CNAME:
+                  type: integer
+                  description: Type GRAVITY_CNAME queries
+                  example: 0
+                REGEX_CNAME:
+                  type: integer
+                  description: Type REGEX_CNAME queries
+                  example: 0
+                DENYLIST_CNAME:
+                  type: integer
+                  description: Type DENYLIST_CNAME queries
+                  example: 0
+                RETRIED:
+                  type: integer
+                  description: Type RETRIED queries
+                  example: 0
+                RETRIED_DNSSEC:
+                  type: integer
+                  description: Type RETRIED_DNSSEC queries
+                  example: 0
+                IN_PROGRESS:
+                  type: integer
+                  description: Type IN_PROGRESS queries
+                  example: 0
+                DBBUSY:
+                  type: integer
+                  description: Type DBBUSY queries
+                  example: 0
+                SPECIAL_DOMAIN:
+                  type: integer
+                  description: Type SPECIAL_DOMAIN queries
+                  example: 0
+                CACHE_STALE:
+                  type: integer
+                  description: Type CACHE_STALE queries
+                  example: 0
             replies:
               type: object
               description: Number of individual replies
