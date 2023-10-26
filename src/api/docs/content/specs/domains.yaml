@@ -85,7 +85,8 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'domains.yaml#/components/schemas/domains/get'
+                    - $ref: 'domains.yaml#/components/schemas/domains/get' # identical to GET
+                    - $ref: 'domains.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   domains:
@@ -180,7 +181,8 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'domains.yaml#/components/schemas/domains/get'
+                    - $ref: 'domains.yaml#/components/schemas/domains/get' # identical to GET
+                    - $ref: 'domains.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -217,6 +219,7 @@ components:
         properties:
           domains:
             type: array
+            description: Array of domains
             items:
               allOf:
                 - $ref: 'domains.yaml#/components/schemas/domain'
@@ -235,7 +238,7 @@ components:
           - $ref: 'domains.yaml#/components/schemas/enabled'
       post:
         allOf:
-          - $ref: 'domains.yaml#/components/schemas/domain'
+          - $ref: 'domains.yaml#/components/schemas/domain_maybe_array'
           - $ref: 'domains.yaml#/components/schemas/comment'
           - $ref: 'domains.yaml#/components/schemas/groups'
           - $ref: 'domains.yaml#/components/schemas/enabled'
@@ -246,6 +249,19 @@ components:
           description: Domain
           type: string
           example: testdomain.com
+    domain_array:
+      type: object
+      properties:
+        domain:
+          description: array of domains
+          type: array
+          items:
+            type: string
+          example: ["testdomain.com", "otherdomain.de"]
+    domain_maybe_array:
+      oneOf:
+        - $ref: 'domains.yaml#/components/schemas/domain'
+        - $ref: 'domains.yaml#/components/schemas/domain_array'
     type:
       type: object
       properties:
@@ -305,6 +321,47 @@ components:
           description: Unix timestamp of last domain modification
           type: integer
           readOnly: true
+    lists_processed:
+      type: object
+      properties:
+        processed:
+          type: object
+          nullable: true
+          description: |
+            Object containing the number of domains that were successfully
+            added to the database and the number of domains that could not be
+            added to the database.
+          properties:
+            success:
+              description: |
+                Array of domains that were successfully added to the database.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Domain that was added to the database
+                    type: string
+            errors:
+              description: |
+                Array of errors that occurred during processing.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Domain that could not be added to the database
+                    type: string
+                  error:
+                    description: Error message
+                    type: string
+          example:
+            success:
+              - item: "example.com"
+              - item: "example3.com"
+            errors:
+              - item: "example2.com"
+                error: "UNIQUE constraint failed: domainlist.domain"
   examples:
     domains:
       summary: Example domains
@@ -330,6 +387,8 @@ components:
             id: 305
             date_added: 1611240635
             date_modified: 1611241276
+        took: 0.012
+        processed: null
     errors:
       uri_error:
         list_imprecise:

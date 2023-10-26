@@ -34,6 +34,7 @@ typedef struct {
 	const char *group_ids;
 	const char *client;
 	const char *item;
+	cJSON *items;
 	long id;
 	time_t date_added;
 	time_t date_modified;
