@@ -721,6 +721,38 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 	}
 }
 
+// Retrieve the value of an environment variable in a case-insensitive way
+// The first matching environment variable is returned
+const char * __attribute__((pure)) getenv_case_insensitive(const char *key)
+{
+	// Check if this is a valid key
+	if(key == NULL || strlen(key) == 0)
+		return NULL;
+
+	// Get the length of the key
+	const size_t keylen = strlen(key);
+
+	// Loop over all environment variables
+	for(char **env = environ; *env != NULL; ++env)
+	{
+		// Check if this is a valid environment variable
+		if(*env == NULL || strlen(*env) == 0)
+			continue;
+
+		// Check if this environment variable starts with the given key
+		if(strncasecmp(*env, key, keylen) == 0)
+		{
+			// Check if this is the environment variable we are
+			// looking for, i.e. it has a '=' after the key
+			if((*env)[keylen] == '=')
+				return &((*env)[keylen+1]);
+		}
+	}
+
+	// Return NULL if we did not find anything
+	return NULL;
+}
+
 #define FTLCONF_PREFIX "FTLCONF_"
 bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 {
@@ -738,7 +770,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			envkey[i] = '_';
 
 	// First check if a environmental variable with the given key exists
-	const char *envvar = getenv(envkey);
+	const char *envvar = getenv_case_insensitive(envkey);
 
 	// Return early if this environment variable does not exist
 	if(envvar == NULL)

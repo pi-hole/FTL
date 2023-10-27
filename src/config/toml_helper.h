@@ -23,6 +23,7 @@ void print_comment(FILE *fp, const char *str, const char *intro, const unsigned 
 void print_toml_allowed_values(cJSON *allowed_values, FILE *fp, const unsigned int width, const unsigned int indent);
 void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union conf_value *v);
 void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *toml, struct config *newconf);
+const char *getenv_case_insensitive(const char *key) __attribute__((pure));
 bool readEnvValue(struct conf_item *conf_item, struct config *newconf);
 
 #endif //CONFIG_WRITER_H

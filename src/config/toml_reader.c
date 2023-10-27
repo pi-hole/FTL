@@ -42,7 +42,7 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 
 	// Check if we are in Adam mode
 	// (only read the env vars)
-	const char *envvar = getenv("FTLCONF_ENV_ONLY");
+	const char *envvar = getenv_case_insensitive("FTLCONF_ENV_ONLY");
 	const bool adam_mode = (envvar != NULL &&
 	                          (strcmp(envvar, "true") == 0 ||
 	                           strcmp(envvar, "yes") == 0));
