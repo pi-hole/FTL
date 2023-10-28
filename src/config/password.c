@@ -309,13 +309,13 @@ char * __attribute__((malloc)) create_password(const char *password)
 
 char verify_password(const char *password, const char* pwhash, const bool rate_limiting)
 {
-	// No password supplied
-	if(password == NULL || password[0] == '\0')
-		return PASSWORD_INCORRECT;
-
 	// No password set
 	if(pwhash == NULL || pwhash[0] == '\0')
 		return PASSWORD_CORRECT;
+
+	// No password supplied
+	if(password == NULL || password[0] == '\0')
+		return PASSWORD_INCORRECT;
 
 	// Check if there has already been one login attempt within this second
 	static time_t last_password_attempt = 0;
