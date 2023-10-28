@@ -20,12 +20,23 @@ components:
                     - $ref: 'auth.yaml#/components/schemas/session'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
-                  login_okay:
-                    $ref: 'auth.yaml#/components/examples/login_okay'
+                  auth_okay:
+                    $ref: 'auth.yaml#/components/examples/auth_okay'
                   no_login_required:
                     $ref: 'auth.yaml#/components/examples/no_login_required'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/session'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
                   login_required:
                     $ref: 'auth.yaml#/components/examples/login_required'
+                  login_required_2fa:
+                    $ref: 'auth.yaml#/components/examples/login_required_2fa'
       post:
         summary: Submit password for login
         tags:
@@ -358,14 +369,23 @@ components:
               nullable: true
 
   examples:
-    login_okay:
-      summary: Login successful
+    auth_okay:
+      summary: Authentication valid
       value:
         session:
           valid: true
           totp: false
           sid: null
           csrf: null
+          validity: 300
+    login_okay:
+      summary: Login successful
+      value:
+        session:
+          valid: true
+          totp: false
+          sid: "vFA+EP4MQ5JJvJg+3Q2Jnw="
+          csrf: "Ux87YTIiMOf/GKCefVIOMw="
           validity: 300
     no_login_required:
       summary: No login required for this client
@@ -377,11 +397,20 @@ components:
           csrf: null
           validity: -1
     login_required:
-      summary: Login required
+      summary: Login required, 2FA disabled
       value:
         session:
           valid: false
           totp: false
+          sid: null
+          csrf: null
+          validity: -1
+    login_required_2fa:
+      summary: Login required, 2FA enabled
+      value:
+        session:
+          valid: false
+          totp: true
           sid: null
           csrf: null
           validity: -1
