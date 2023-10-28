@@ -847,10 +847,15 @@ void initConfig(struct config *conf)
 	conf->webserver.tls.cert.t = CONF_STRING;
 	conf->webserver.tls.cert.d.s = (char*)"/etc/pihole/tls.pem";
 
-	conf->webserver.sessionTimeout.k = "webserver.sessionTimeout";
-	conf->webserver.sessionTimeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
-	conf->webserver.sessionTimeout.t = CONF_UINT;
-	conf->webserver.sessionTimeout.d.ui = 300u;
+	conf->webserver.session.timeout.k = "webserver.session.timeout";
+	conf->webserver.session.timeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
+	conf->webserver.session.timeout.t = CONF_UINT;
+	conf->webserver.session.timeout.d.ui = 300u;
+
+	conf->webserver.session.restore.k = "webserver.session.restore";
+	conf->webserver.session.restore.h = "Should Pi-hole backup and restore sessions from the database? This is useful if you want to keep your sessions after a restart of the web interface.";
+	conf->webserver.session.restore.t = CONF_BOOL;
+	conf->webserver.session.restore.d.b = true;
 
 	// sub-struct paths
 	conf->webserver.paths.webroot.k = "webserver.paths.webroot";

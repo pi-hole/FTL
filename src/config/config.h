@@ -109,6 +109,7 @@ struct enum_options {
 // When new config items are added, the following places need to be updated:
 // - src/config/config.c: New default item
 // - test/pihole.toml: Add the new item to the test config file
+// - api/docs/content/specs/config.yml: Add the new item to the API documentation
 struct config {
 	struct {
 		struct conf_item upstreams;
@@ -206,7 +207,10 @@ struct config {
 		struct conf_item domain;
 		struct conf_item acl;
 		struct conf_item port;
-		struct conf_item sessionTimeout;
+		struct {
+			struct conf_item timeout;
+			struct conf_item restore;
+		} session;
 		struct {
 			struct conf_item rev_proxy;
 			struct conf_item cert;

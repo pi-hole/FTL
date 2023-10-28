@@ -351,8 +351,13 @@ components:
                   type: string
                 port:
                   type: string
-                sessionTimeout:
-                  type: integer
+                session:
+                  type: object
+                  properties:
+                    timeout:
+                      type: integer
+                    restore:
+                      type: boolean
                 tls:
                   type: object
                   properties:
@@ -644,7 +649,9 @@ components:
             domain: pi.hole
             acl: "+0.0.0.0/0,::/0"
             port: 80,[::]:80
-            sessionTimeout: 300
+            session:
+              timeout: 300
+              restore: true
             tls:
               rev_proxy: false
               cert: "/etc/pihole/tls.pem"

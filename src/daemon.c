@@ -33,6 +33,8 @@
 #include "database/query-table.h"
 // http_terminate()
 #include "webserver/webserver.h"
+// free_api()
+#include "api/api.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -331,6 +333,9 @@ void cleanup(const int ret)
 
 	// Free regex filter memory
 	free_regex();
+
+	// Terminate API
+	free_api();
 
 	// Terminate HTTP server (if running)
 	http_terminate();
