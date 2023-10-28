@@ -83,11 +83,12 @@ enum conf_type {
 
 #define MAX_CONFIG_PATH_DEPTH 6
 
-#define FLAG_RESTART_FTL       (1 << 0)
+#define FLAG_RESTART_FTL           (1 << 0)
 #define FLAG_ADVANCED_SETTING      (1 << 1)
 #define FLAG_PSEUDO_ITEM           (1 << 2)
 #define FLAG_INVALIDATE_SESSIONS   (1 << 3)
 #define FLAG_WRITE_ONLY            (1 << 4)
+#define FLAG_ENV_VAR     (1 << 5)
 
 struct conf_item {
 	const char *k;        // item Key

@@ -1253,9 +1253,23 @@
 
 @test "Environmental variable is favored over config file" {
   # The config file has -10 but we set FTLCONF_misc_nice="-11"
-  run bash -c 'grep -c "nice = -11" /etc/pihole/pihole.toml'
+  run bash -c 'grep -B1 "nice = -11" /etc/pihole/pihole.toml'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == "  # >>> This config is overwritten by an environmental variable <<<" ]]
+  [[ ${lines[1]} == "  nice = -11 ### CHANGED, default = -10" ]]
+}
+
+@test "Changing a config option set forced by ENVVAR is not possible via the CLI" {
+  run bash -c './pihole-FTL --config misc.nice -12'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Config option misc.nice is read-only (set via environmental variable)" ]]
+  [[ $status == 5 ]]
+}
+
+@test "Changing a config option set forced by ENVVAR is not possible via the API" {
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config/misc/nice -d "{\"config\":{\"misc\":{\"nice\":-12}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '{"error":{"key":"bad_request","message":"Config items set via environment variables cannot be changed via the API","hint":"misc.nice"},"took":'*'}' ]]
 }
 
 @test "API domain search: Non-existing domain returns expected JSON" {

@@ -88,6 +88,10 @@ bool writeFTLtoml(const bool verbose)
 			print_toml_allowed_values(conf_item->a, fp, 85, level-1);
 		}
 
+		// Print info if this value is overwritten by an env var
+		if(conf_item->f & FLAG_ENV_VAR)
+			print_comment(fp, ">>> This config is overwritten by an environmental variable <<<", "", 85, level-1);
+
 		// Write value
 		indentTOML(fp, level-1);
 		fprintf(fp, "%s = ", conf_item->p[level-1]);

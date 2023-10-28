@@ -73,7 +73,10 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		// Skip reading environment variables when importing from Teleporter
 		// If this succeeds, skip searching the TOML file for this config item
 		if(!teleporter && readEnvValue(new_conf_item, newconf))
+		{
+			new_conf_item->f |= FLAG_ENV_VAR;
 			continue;
+		}
 
 		// Do not read TOML file when in Adam mode
 		if(adam_mode)
