@@ -843,6 +843,20 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(min_level != level + 1)
 			continue;
 
+		// Error when this config item is read-only due to an
+		// environment variable forcing its value
+		if(new_item->f & FLAG_ENV_VAR)
+		{
+			char *key = strdup(new_item->k);
+			free_config(&newconf);
+			if(requested_path != NULL)
+				free_config_path(requested_path);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "Config items set via environment variables cannot be changed via the API",
+			                            key, true);
+		}
+
 		// Check if this entry does already exist in the array
 		int idx = 0;
 		for(; idx < cJSON_GetArraySize(new_item->v.json); idx++)
