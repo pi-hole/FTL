@@ -3222,11 +3222,17 @@ void FTL_TCP_worker_created(const int confd)
 	gravityDB_forked();
 }
 
-bool FTL_unlink_DHCP_lease(const char *ipaddr)
+bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint)
 {
 	struct dhcp_lease *lease;
 	union all_addr addr;
 	const time_t now = dnsmasq_time();
+
+	if(!daemon->dhcp)
+	{
+		*hint = "DHCP is not enabled";
+		return false;
+	}
 
 	// Try to extract IP address
 	if (inet_pton(AF_INET, ipaddr, &addr.addr4) > 0)
@@ -3241,6 +3247,8 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 #endif
 	else
 	{
+		// Invalid IP address
+		*hint = "invalid target address (neither IPv4 nor IPv6)";
 		return false;
 	}
 
@@ -3256,6 +3264,11 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 		// when unlinking the lease above actually changed something
 		// (variable lease.c:dns_dirty is used here)
 		lease_update_dns(0);
+	}
+	else
+	{
+		*hint = "no lease found for this address";
+		return false;
 	}
 
 	// Return success

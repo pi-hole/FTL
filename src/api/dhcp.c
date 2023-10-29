@@ -73,7 +73,7 @@ int api_dhcp_leases_GET(struct ftl_conn *api)
 }
 
 // defined in dnsmasq_interface.c
-extern bool FTL_unlink_DHCP_lease(const char *ipaddr);
+extern bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint);
 
 // Delete DHCP leases
 int api_dhcp_leases_DELETE(struct ftl_conn *api)
@@ -92,7 +92,17 @@ int api_dhcp_leases_DELETE(struct ftl_conn *api)
 
 	// Delete lease
 	log_debug(DEBUG_API, "Deleting DHCP lease for address %s", api->item);
-	FTL_unlink_DHCP_lease(api->item);
+
+	const char *hint = NULL;
+	if(!FTL_unlink_DHCP_lease(api->item, &hint))
+	{
+		// Send empty reply with code 400 Bad Request
+		return send_json_error(api,
+		                       400,
+		                       "bad_request",
+		                       "Failed to delete DHCP lease",
+		                       hint != NULL ? hint : api->item);
+	}
 
 	// Send empty reply with code 204 No Content
 	cJSON *json = JSON_NEW_OBJECT();

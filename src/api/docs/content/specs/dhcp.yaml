@@ -36,6 +36,7 @@ components:
         operationId: "delete_dhcp"
         description: |
           This API hook removes a currently active DHCP lease.
+          Managing DHCP leases is only possible when the DHCP server is enabled.
           *Note:* There will be no content on success.
         responses:
           '204':
