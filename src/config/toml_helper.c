@@ -932,8 +932,9 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			// Free previously allocated JSON array
 			cJSON_Delete(conf_item->v.json);
 			conf_item->v.json = cJSON_CreateArray();
-			// Parse envvar array and generate a JSON array
-			const char delim[] =",;";
+			// Parse envvar array and generate a JSON array (env var
+			// arrays are ;-delimited)
+			const char delim[] =";";
 			const char *elem = strtok(envvar_copy, delim);
 			while(elem != NULL)
 			{
