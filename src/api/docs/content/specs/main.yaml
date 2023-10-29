@@ -79,6 +79,9 @@ paths:
   /auth/totp:
     $ref: 'auth.yaml#/components/paths/totp'
 
+  /auth/app:
+    $ref: 'auth.yaml#/components/paths/app'
+
   /stats/summary:
     $ref: 'stats.yaml#/components/paths/summary'
 

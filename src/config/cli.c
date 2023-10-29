@@ -14,13 +14,10 @@
 #include "config/toml_helper.h"
 #include "config/toml_writer.h"
 #include "config/dnsmasq_config.h"
-
 #include "log.h"
 #include "datastructure.h"
-
 // toml_table_t
 #include "tomlc99/toml.h"
-
 // hash_password()
 #include "config/password.h"
 

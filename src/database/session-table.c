@@ -42,6 +42,27 @@ bool create_session_table(sqlite3 *db)
 	return true;
 }
 
+bool add_session_app_column(sqlite3 *db)
+{
+	// Start transaction of database update
+	SQL_bool(db, "BEGIN TRANSACTION;");
+
+	// Create session table
+	SQL_bool(db, "ALTER TABLE session ADD COLUMN app BOOL;");
+
+	// Update database version to 16
+	if(!db_set_FTL_property(db, DB_VERSION, 16))
+	{
+		log_err("add_session_app_column(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool(db, "COMMIT");
+
+	return true;
+}
+
 // Store all session in database
 bool backup_db_sessions(struct session *sessions)
 {
@@ -60,7 +81,7 @@ bool backup_db_sessions(struct session *sessions)
 
 	// Insert session into database
 	sqlite3_stmt *stmt = NULL;
-	if(sqlite3_prepare_v2(db, "INSERT INTO session (login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed) VALUES (?, ?, ?, ?, ?, ?, ?, ?);", -1, &stmt, 0) != SQLITE_OK)
+	if(sqlite3_prepare_v2(db, "INSERT INTO session (login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed, app) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);", -1, &stmt, 0) != SQLITE_OK)
 	{
 		log_err("SQL error in backup_db_sessions(): %s (%d)",
 		        sqlite3_errmsg(db), sqlite3_errcode(db));
@@ -134,6 +155,13 @@ bool backup_db_sessions(struct session *sessions)
 					sess->tls.mixed ? 1 : 0, sqlite3_errmsg(db), sqlite3_errcode(db));
 			return false;
 		}
+		// 9: app
+		if(sqlite3_bind_int(stmt, 8, sess->app ? 1: 0) != SQLITE_OK)
+		{
+			log_err("Cannot bind app = %d in backup_db_sessions(): %s (%d)",
+					sess->app ? 1 : 0, sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
 
 		// Execute statement
 		if(sqlite3_step(stmt) != SQLITE_DONE)
@@ -200,7 +228,7 @@ bool restore_db_sessions(struct session *sessions)
 
 	// Get all sessions from database
 	sqlite3_stmt *stmt = NULL;
-	if(sqlite3_prepare_v2(db, "SELECT login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed FROM session;", -1, &stmt, 0) != SQLITE_OK)
+	if(sqlite3_prepare_v2(db, "SELECT login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed, app FROM session;", -1, &stmt, 0) != SQLITE_OK)
 	{
 		log_err("SQL error in restore_db_sessions(): %s (%d)",
 		        sqlite3_errmsg(db), sqlite3_errcode(db));
@@ -258,6 +286,9 @@ bool restore_db_sessions(struct session *sessions)
 
 		// 8: tls_mixed
 		sess->tls.mixed = sqlite3_column_int(stmt, 7) == 1 ? true : false;
+
+		// 8: app
+		sess->app = sqlite3_column_int(stmt, 8) == 1 ? true : false;
 
 		// Mark session as used
 		sess->used = true;

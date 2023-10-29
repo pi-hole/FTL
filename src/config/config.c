@@ -930,6 +930,13 @@ void initConfig(struct config *conf)
 	conf->webserver.api.totp_secret.f = FLAG_WRITE_ONLY | FLAG_INVALIDATE_SESSIONS;
 	conf->webserver.api.totp_secret.d.s = (char*)"";
 
+	conf->webserver.api.app_pwhash.k = "webserver.api.app_pwhash";
+	conf->webserver.api.app_pwhash.h = "Pi-hole application password.\n After you turn on two-factor (2FA) verification and set up an Authenticator app, you may run into issues if you use apps or other services that don't support two-step verification. In this case, you can create and use an app password to sign in. An app password is a long, randomly generated password that can be used instead of your regular password + TOTP token when signing in to the API. The app password can be generated through the API and will be shown only once. You can revoke the app password at any time. If you revoke the app password, be sure to generate a new one and update your app with the new password.";
+	conf->webserver.api.app_pwhash.a = cJSON_CreateStringReference("<valid Pi-hole password hash>");
+	conf->webserver.api.app_pwhash.t = CONF_STRING;
+	conf->webserver.api.app_pwhash.f = FLAG_INVALIDATE_SESSIONS;
+	conf->webserver.api.app_pwhash.d.s = (char*)"";
+
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
 	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
 	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");

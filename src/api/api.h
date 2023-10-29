@@ -95,6 +95,7 @@ bool is_local_api_user(const char *remote_addr) __attribute__((pure));
 bool verifyTOTP(const uint32_t code);
 int generateTOTP(struct ftl_conn *api);
 int printTOTP(void);
+int generateAppPw(struct ftl_conn *api);
 
 // Documentation methods
 int api_docs(struct ftl_conn *api);

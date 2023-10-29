@@ -26,8 +26,7 @@
 // database session functions
 #include "database/session-table.h"
 
-
-static struct session auth_data[API_MAX_CLIENTS] = {{false, {false, false}, 0, 0, {0}, {0}, {0}, {0}}};
+static struct session auth_data[API_MAX_CLIENTS] = {{false, false, {false, false}, 0, 0, {0}, {0}, {0}, {0}}};
 
 static void add_request_info(struct ftl_conn *api, const char *csrf)
 {
@@ -271,6 +270,7 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 		JSON_ADD_NUMBER_TO_OBJECT(session, "valid_until", auth_data[i].valid_until);
 		JSON_REF_STR_IN_OBJECT(session, "remote_addr", auth_data[i].remote_addr);
 		JSON_REF_STR_IN_OBJECT(session, "user_agent", auth_data[i].user_agent);
+		JSON_ADD_BOOL_TO_OBJECT(session, "app", auth_data[i].app);
 		JSON_ADD_ITEM_TO_ARRAY(sessions, session);
 	}
 	JSON_ADD_ITEM_TO_OBJECT(json, "sessions", sessions);
@@ -417,13 +417,6 @@ int api_auth(struct ftl_conn *api)
 		return 0;
 	}
 
-	// Did the client authenticate before and we can validate this?
-	int user_id = check_client_auth(api, false);
-
-	// If this is a valid session, we can exit early at this point
-	if(user_id != API_AUTH_UNAUTHORIZED)
-		return send_api_auth_status(api, user_id, now);
-
 	// Login attempt, check password
 	if(api->method == HTTP_POST)
 	{
@@ -469,6 +462,13 @@ int api_auth(struct ftl_conn *api)
 		password = json_password->valuestring;
 	}
 
+	// Did the client authenticate before and we can validate this?
+	int user_id = check_client_auth(api, false);
+
+	// If this is a valid session, we can exit early at this point if no password is supplied
+	if(user_id != API_AUTH_UNAUTHORIZED && (password == NULL || strlen(password) == 0))
+		return send_api_auth_status(api, user_id, now);
+
 	// Logout attempt
 	if(api->method == HTTP_DELETE)
 	{
@@ -483,8 +483,16 @@ int api_auth(struct ftl_conn *api)
 	// else: Login attempt
 	// - Client tries to authenticate using a password, or
 	// - There no password on this machine
-	const enum password_result result = empty_password ? true : verify_password(password, config.webserver.api.pwhash.v.s, true);
-	if(result == PASSWORD_CORRECT)
+	enum password_result result = PASSWORD_INCORRECT;
+	
+	// If there is no password (or empty), check if there is any password at all
+	log_info("Password: \"%s\"", password);
+	if(empty_password && (password == NULL || strlen(password) == 0))
+		result = PASSWORD_CORRECT;
+	else
+		result = verify_login(password);
+
+	if(result == PASSWORD_CORRECT || result == APPPASSWORD_CORRECT)
 	{
 		// Accepted
 
@@ -494,7 +502,8 @@ int api_auth(struct ftl_conn *api)
 			memset(password, 0, strlen(password));
 
 		// Check possible 2FA token
-		if(strlen(config.webserver.api.totp_secret.v.s) > 0)
+		// Successful login with empty password does not require 2FA
+		if(strlen(config.webserver.api.totp_secret.v.s) > 0 && result != APPPASSWORD_CORRECT)
 		{
 			// Get 2FA token from payload
 			cJSON *json_totp;
@@ -555,6 +564,7 @@ int api_auth(struct ftl_conn *api)
 
 				auth_data[i].tls.login = api->request->is_ssl;
 				auth_data[i].tls.mixed = false;
+				auth_data[i].app = result == APPPASSWORD_CORRECT;
 
 				// Generate new SID and CSRF token
 				generateSID(auth_data[i].sid);

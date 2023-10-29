@@ -36,7 +36,8 @@ static struct {
 	// appear *before* less specific URIs: 1. "/a/b/c", 2. "/a/b", 3. "/a"
 	{ "/api/auth/sessions",                     "",                           api_auth_sessions,                     { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/auth/session",                      "/{id}",                      api_auth_session_delete,               { false, true,  0               }, true,  HTTP_DELETE },
-	{ "/api/auth/totp",                         "",                           generateTOTP,                          { false, true,  0               }, false, HTTP_GET },
+	{ "/api/auth/app",                          "",                           generateAppPw,                         { false, true,  0               }, true,  HTTP_GET },
+	{ "/api/auth/totp",                         "",                           generateTOTP,                          { false, true,  0               }, true,  HTTP_GET },
 	{ "/api/auth",                              "",                           api_auth,                              { false, true,  0               }, false, HTTP_GET | HTTP_POST | HTTP_DELETE },
 	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { false, true,  0               }, true,  HTTP_GET | HTTP_POST },
 	{ "/api/clients/_suggestions",              "",                           api_client_suggestions,                { false, true,  0               }, true,  HTTP_GET },

@@ -307,7 +307,27 @@ char * __attribute__((malloc)) create_password(const char *password)
 	return balloon_password(password, salt, true);
 }
 
-char verify_password(const char *password, const char* pwhash, const bool rate_limiting)
+enum password_result verify_login(const char *password)
+{
+	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
+	if(pw == PASSWORD_CORRECT)
+		log_debug(DEBUG_API, "Password correct");
+	else
+		log_debug(DEBUG_API, "Password incorrect");
+
+	// Check if an application password is set and if it matches
+	if(pw == PASSWORD_INCORRECT &&
+	   strlen(config.webserver.api.app_pwhash.v.s) > 0 &&
+	   verify_password(password, config.webserver.api.app_pwhash.v.s, true) == PASSWORD_CORRECT)
+	{
+		log_debug(DEBUG_API, "App password correct");
+		return APPPASSWORD_CORRECT;
+	}
+	// Return result
+	return pw;
+}
+
+enum password_result verify_password(const char *password, const char *pwhash, const bool rate_limiting)
 {
 	// No password set
 	if(pwhash == NULL || pwhash[0] == '\0')
@@ -361,6 +381,10 @@ char verify_password(const char *password, const char* pwhash, const bool rate_l
 		if(config_hash != NULL)
 			free(config_hash);
 
+		// Successful logins do not count against rate-limiting
+		if(result)
+			num_password_attempts--;
+
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
 	else
@@ -385,6 +409,10 @@ char verify_password(const char *password, const char* pwhash, const bool rate_l
 				free(new_hash);
 			}
 		}
+
+		// Successful logins do not count against rate-limiting
+		if(result)
+			num_password_attempts--;
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
@@ -594,6 +622,43 @@ bool set_and_check_password(struct conf_item *conf_item, const char *password)
 	// Set item
 	conf_item->v.s = pwhash;
 	log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
+
+	return true;
+}
+
+bool generate_app_password(char **password, char **pwhash)
+{
+	// Generate a 128 bit random salt
+	// genrandom() returns cryptographically secure random data
+	uint8_t salt[SALT_LEN] = { 0 };
+	if(getrandom(salt, sizeof(salt), 0) < 0)
+	{
+		log_err("getrandom() failed in generate_app_password()");
+		return false;
+	}
+
+	// Generate a 256 bit random password
+	uint8_t password_raw[256/8] = { 0 };
+	if(getrandom(password_raw, sizeof(password_raw), 0) < 0)
+	{
+		log_err("getrandom() failed in generate_app_password()");
+		return false;
+	}
+
+	// Encode password as base64
+	*password = base64_encode(password_raw, sizeof(password_raw));
+
+	// Generate balloon PHC-encoded password hash
+	*pwhash = balloon_password(*password, salt, true);
+
+	// Verify that the password hash is valid
+	if(verify_password(*password, *pwhash, false) != PASSWORD_CORRECT)
+	{
+		free(password);
+		free(pwhash);
+		log_warn("Failed to create password hash (verification failed), app password not available");
+		return false;
+	}
 
 	return true;
 }

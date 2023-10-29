@@ -50,6 +50,7 @@
 
 struct session {
 	bool used;
+	bool app;
 	struct {
 		bool login;
 		bool mixed;

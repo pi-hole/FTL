@@ -18,10 +18,11 @@
 #include "args.h"
 // INT_MAX
 #include <limits.h>
-
-#include "../datastructure.h"
+#include "datastructure.h"
 // openFTLtoml()
-#include "toml_helper.h"
+#include "config/toml_helper.h"
+// delete_all_sessions()
+#include "api/api.h"
 
 // Private prototypes
 static toml_table_t *parseTOML(void);
@@ -114,6 +115,11 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 			log_debug(DEBUG_CONFIG, "%s CHANGED", new_conf_item->k);
 			if(new_conf_item->f & FLAG_RESTART_FTL && restart != NULL)
 				*restart = true;
+
+			// Check if this item changed the password, if so, we need to
+			// invalidate all currently active sessions
+			if(new_conf_item->f & FLAG_INVALIDATE_SESSIONS)
+				delete_all_sessions();
 		}
 	}
 
