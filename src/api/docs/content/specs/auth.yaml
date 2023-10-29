@@ -166,7 +166,6 @@ components:
         tags:
           - Authentication
         operationId: "get_auth_totp"
-        security: []
         description: Suggest new TOTP credentials for two-factor authentication (2FA)
         responses:
           '200':
@@ -213,6 +212,31 @@ components:
                     $ref: 'auth.yaml#/components/examples/errors/no_password'
                   session_not_in_use:
                     $ref: 'auth.yaml#/components/examples/errors/session_not_in_use'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    app:
+      get:
+        summary: Create new application password
+        tags:
+          - Authentication
+        operationId: "add_app"
+        description: |
+          Create a new application password. The generated password is shown only once and cannot be retrieved later so make sure to store it in a safe place. The application password can be used to authenticate against the API instead of the regular password. It does not require 2FA verification. Generating a new application password will invalidate all currently active sessions.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/app'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
@@ -348,6 +372,20 @@ components:
               type: array
               items:
                 type: integer
+    app:
+      type: object
+      description: Application password
+      properties:
+        app:
+          type: object
+          properties:
+            password:
+              type: string
+            hash:
+              type: string
+          example:
+            password: "7ua0rHPZixX6B3bTa5o4Dv08iyEIm/2q9qgLrF9MNVw="
+            hash: "$BALLOON-SHA256$v=1$s=1024,t=32$4ERwJD4XucRP4PcDHNLiAg==$kSy0Eou8RUVtK2UTbc5MCpItV8YC3VRuoGhoENxSQ2I="
 
   errors:
     bad_request:

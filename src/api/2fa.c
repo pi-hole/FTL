@@ -8,13 +8,15 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "api.h"
-#include "../webserver/json_macros.h"
-#include "../log.h"
-#include "../config/config.h"
+#include "FTL.h"
+#include "api/api.h"
+#include "webserver/json_macros.h"
+#include "log.h"
+#include "config/config.h"
 // getrandom()
-#include "../daemon.h"
+#include "daemon.h"
+// generate_app_password()
+#include "config/password.h"
 
 // TOTP+HMAC
 #include <nettle/hmac.h>
@@ -303,6 +305,34 @@ int generateTOTP(struct ftl_conn *api)
 	// Send JSON response
 	cJSON *json = cJSON_CreateObject();
 	JSON_ADD_ITEM_TO_OBJECT(json, "totp", tjson);
+	JSON_SEND_OBJECT(json);
+}
+
+int generateAppPw(struct ftl_conn *api)
+{
+	// Generate and set app password
+	char *password = NULL, *pwhash = NULL;
+	if(!generate_app_password(&password, &pwhash))
+	{
+		return send_json_error(api,
+		                       500,
+		                       "internal_error",
+		                       "Failed to generate app password",
+		                       "Check FTL.log for details");
+	}
+
+	// Create JSON object
+	cJSON *tjson = cJSON_CreateObject();
+	JSON_COPY_STR_TO_OBJECT(tjson, "password", password);
+	JSON_COPY_STR_TO_OBJECT(tjson, "hash", pwhash);
+	free(password);
+	password = NULL;
+	free(pwhash);
+	pwhash = NULL;
+
+	// Send JSON response
+	cJSON *json = cJSON_CreateObject();
+	JSON_ADD_ITEM_TO_OBJECT(json, "app", tjson);
 	JSON_SEND_OBJECT(json);
 }
 

@@ -396,6 +396,8 @@ components:
                       type: string
                     totp_secret:
                       type: string
+                    app_pwhash:
+                      type: string
                     excludeClients:
                       type: array
                       items:
@@ -668,6 +670,7 @@ components:
               password: "********"
               pwhash: ''
               totp_secret: ''
+              app_pwhash: ''
               excludeClients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
               excludeDomains: [ 'google.de', 'pi-hole.net' ]
               maxHistory: 86400

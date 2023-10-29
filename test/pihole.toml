@@ -621,6 +621,20 @@
     #     <valid TOTP secret (20 Bytes in Base32 encoding)>
     totp_secret = ""
 
+    # Pi-hole application password.
+    # After you turn on two-factor (2FA) verification and set up an Authenticator app, you
+    # may run into issues if you use apps or other services that don't support two-step
+    # verification. In this case, you can create and use an app password to sign in. An
+    # app password is a long, randomly generated password that can be used instead of your
+    # regular password + TOTP token when signing in to the API. The app password can be
+    # generated through the API and will be shown only once. You can revoke the app
+    # password at any time. If you revoke the app password, be sure to generate a new one
+    # and update your app with the new password.
+    #
+    # Possible values are:
+    #     <valid Pi-hole password hash>
+    app_pwhash = ""
+
     # Array of clients to be excluded from certain API responses
     # Example: [ "192.168.2.56", "fe80::341", "localhost" ]
     #

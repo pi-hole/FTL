@@ -15,6 +15,7 @@
 #include "api/auth.h"
 
 bool create_session_table(sqlite3 *db);
+bool add_session_app_column(sqlite3 *db);
 bool backup_db_sessions(struct session *sessions);
 bool restore_db_sessions(struct session *sessions);
 

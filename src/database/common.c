@@ -528,6 +528,21 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 16 if lower
+	if(dbversion < 16)
+	{
+		// Update to version 16: Add app column to session table
+		log_info("Updating long-term database to version 16");
+		if(!add_session_app_column(db))
+		{
+			log_info("Session table cannot be updated, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
 	lock_shm();
 	import_aliasclients(db);
 	unlock_shm();
