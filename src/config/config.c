@@ -1003,7 +1003,7 @@ void initConfig(struct config *conf)
 	conf->files.macvendor.d.s = (char*)"/etc/pihole/macvendor.db";
 
 	conf->files.setupVars.k = "files.setupVars";
-	conf->files.setupVars.h = "The config file of Pi-hole";
+	conf->files.setupVars.h = "The old config file of Pi-hole used before v6.0";
 	conf->files.setupVars.a = cJSON_CreateStringReference("<any Pi-hole setupVars file>");
 	conf->files.setupVars.t = CONF_STRING;
 	conf->files.setupVars.f = FLAG_ADVANCED_SETTING;
