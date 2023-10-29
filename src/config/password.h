@@ -15,6 +15,8 @@
 #include <unistd.h>
 
 void sha256_raw_to_hex(uint8_t *data, char *buffer);
+char * __attribute__((malloc)) base64_encode(const uint8_t *data, const size_t length);
+uint8_t * __attribute__((malloc)) base64_decode(const char *data, size_t *length);
 char *create_password(const char *password) __attribute__((malloc));
 enum password_result verify_login(const char *password);
 enum password_result verify_password(const char *password, const char *pwhash, const bool rate_limiting);
@@ -30,6 +32,6 @@ enum password_result {
 } __attribute__((packed));
 
 // The maximum number of password attempts per second
-#define MAX_PASSWORD_ATTEMPTS_PER_SECOND 3
+#define MAX_PASSWORD_ATTEMPTS_PER_SECOND 6
 
 #endif //PASSWORD_H

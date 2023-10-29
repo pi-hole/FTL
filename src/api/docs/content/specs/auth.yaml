@@ -9,7 +9,7 @@ components:
         operationId: "get_auth"
         security: []
         description: |
-          The API may chose to reply with a valid session if no authentication is needed for this server.
+          The API may chose to reply with a valid session if no authentication is needed for this server. It is possible to initiate a session using HTTP Basic Auth (username: `pi-hole`).
         responses:
           '200':
             description: OK

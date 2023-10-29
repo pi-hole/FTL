@@ -25,6 +25,8 @@
 #include "config/password.h"
 // database session functions
 #include "database/session-table.h"
+// base64_decode()
+#include "config/password.h"
 
 static struct session auth_data[API_MAX_CLIENTS] = {{false, false, {false, false}, 0, 0, {0}, {0}, {0}, {0}}};
 
@@ -400,6 +402,47 @@ static void generateSID(char *sid)
 	sid[SID_SIZE-1] = '\0';
 }
 
+static char *basic_auth(struct ftl_conn *api)
+{
+	const char *auth_header = mg_get_header(api->conn, "Authorization");
+	if(auth_header == NULL)
+		return NULL;
+
+	// Check if this is a Basic Auth header
+	if(strncmp(auth_header, "Basic ", 6) != 0)
+		return NULL;
+
+	// Decode Base64
+	size_t length = 0;
+	char *decoded = (char*)base64_decode(auth_header + 6, &length);
+	if(decoded == NULL)
+		return NULL;
+
+	// Extract username and password
+	char *username = decoded;
+	char *password = strchr(decoded, ':');
+	if(password == NULL)
+	{
+		free(decoded);
+		return NULL;
+	}
+	*password = '\0';
+	password++;
+
+	// Check if username is correct
+	if(strcmp(username, "pi-hole") != 0)
+	{
+		free(decoded);
+		return NULL;
+	}
+
+	char *password_copy = strdup(password);
+	free(decoded);
+
+	// Return copy of password
+	return password_copy;
+}
+
 // api/auth
 //  GET: Check authentication
 //  POST: Login
@@ -416,6 +459,9 @@ int api_auth(struct ftl_conn *api)
 		// Sub-paths are not allowed
 		return 0;
 	}
+
+	// Did the client authenticate before and we can validate this?
+	int user_id = check_client_auth(api, false);
 
 	// Login attempt, check password
 	if(api->method == HTTP_POST)
@@ -462,8 +508,9 @@ int api_auth(struct ftl_conn *api)
 		password = json_password->valuestring;
 	}
 
-	// Did the client authenticate before and we can validate this?
-	int user_id = check_client_auth(api, false);
+	// If there is no password, check if user provided a password via HTTP Basic Auth
+	if(password == NULL || strlen(password) == 0)
+		password = basic_auth(api);
 
 	// If this is a valid session, we can exit early at this point if no password is supplied
 	if(user_id != API_AUTH_UNAUTHORIZED && (password == NULL || strlen(password) == 0))
@@ -484,7 +531,7 @@ int api_auth(struct ftl_conn *api)
 	// - Client tries to authenticate using a password, or
 	// - There no password on this machine
 	enum password_result result = PASSWORD_INCORRECT;
-	
+
 	// If there is no password (or empty), check if there is any password at all
 	log_info("Password: \"%s\"", password);
 	if(empty_password && (password == NULL || strlen(password) == 0))

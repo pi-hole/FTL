@@ -77,7 +77,7 @@ static char * __attribute__((malloc)) double_sha256_password(const char *passwor
 	return strdup(response);
 }
 
-static char * __attribute__((malloc)) base64_encode(const uint8_t *data, const size_t length)
+char * __attribute__((malloc)) base64_encode(const uint8_t *data, const size_t length)
 {
 	// Base64 encoding requires 4 bytes for every 3 bytes of input, plus
 	// additional bytes for padding. The output buffer must be large enough
@@ -94,7 +94,7 @@ static char * __attribute__((malloc)) base64_encode(const uint8_t *data, const s
 	return encoded;
 }
 
-static uint8_t * __attribute__((malloc)) base64_decode(const char *data, size_t *length)
+uint8_t * __attribute__((malloc)) base64_decode(const char *data, size_t *length)
 {
 	// Base64 decoding requires 3 bytes for every 4 bytes of input, plus
 	// additional bytes for padding. The output buffer must be large enough

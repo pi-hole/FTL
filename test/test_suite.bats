@@ -1337,6 +1337,18 @@
   [[ ${lines[0]} == "true" ]]
 }
 
+@test "API authorization (HTTP Basic Auth): Incorrect password is rejected if password auth is enabled" {
+  run bash -c 'curl -s -u pi-hole:XXX 127.0.0.1/api/auth | jq .session.valid'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'false' ]]
+}
+
+@test "API authorization (HTTP Basic Auth): Correct password is accepted" {
+  run bash -c 'curl -s -u pi-hole:ABC 127.0.0.1/api/auth | jq .session.valid'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'true' ]]
+}
+
 @test "Test TLS/SSL server using self-signed certificate" {
   # -s: silent
   # -I: HEAD request
