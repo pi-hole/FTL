@@ -37,25 +37,118 @@ components:
             get:
               type: array
               items:
-                type: string
-              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+                type: object
+                properties:
+                  uri:
+                    type: string
+                    description: URI
+                  parameters:
+                    type: string
+                    description: Parameters
+              example:
+                - uri: "/api/dns/blocking"
+                  parameters: ''
+                - uri: "/api/dns/cache"
+                  parameters: ''
+                - uri: "/api/dns/port"
+                  parameters: ''
+                - uri: "/api/domains"
+                  parameters: ''
+                - uri: "/api/groups"
+                  parameters: ''
+                - uri: "/api/lists"
+                  parameters: ''
             post:
               type: array
               items:
-                type: string
-              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+                type: object
+                properties:
+                  uri:
+                    type: string
+                    description: URI
+                  parameters:
+                    type: string
+                    description: Parameters
+              example:
+                - uri: "/api/dns/blocking"
+                  parameters: ''
+                - uri: "/api/dns/cache"
+                  parameters: ''
+                - uri: "/api/dns/port"
+                  parameters: ''
+                - uri: "/api/domains"
+                  parameters: ''
+                - uri: "/api/groups"
+                  parameters: ''
+                - uri: "/api/lists"
+                  parameters: ''
             put:
               type: array
               items:
-                type: string
-              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+                type: object
+                properties:
+                  uri:
+                    type: string
+                    description: URI
+                  parameters:
+                    type: string
+                    description: Parameters
+              example:
+                - uri: "/api/dns/blocking"
+                  parameters: ''
+                - uri: "/api/dns/cache"
+                  parameters: ''
+                - uri: "/api/dns/port"
+                  parameters: ''
+                - uri: "/api/domains"
+                  parameters: ''
+                - uri: "/api/groups"
+                  parameters: ''
+                - uri: "/api/lists"
+                  parameters: ''
             patch:
               type: array
               items:
-                type: string
-              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+                properties:
+                  uri:
+                    type: string
+                    description: URI
+                  parameters:
+                    type: string
+                    description: Parameters
+              example:
+                - uri: "/api/dns/blocking"
+                  parameters: ''
+                - uri: "/api/dns/cache"
+                  parameters: ''
+                - uri: "/api/dns/port"
+                  parameters: ''
+                - uri: "/api/domains"
+                  parameters: ''
+                - uri: "/api/groups"
+                  parameters: ''
+                - uri: "/api/lists"
+                  parameters: ''
             delete:
               type: array
               items:
-                type: string
-              example: ["/api/dns/blocking", "/api/dns/cache", "/api/dns/port", "/api/domains", "/api/groups", "/api/lists"]
+                properties:
+                  uri:
+                    type: string
+                    description: URI
+                  parameters:
+                    type: string
+                    description: Parameters
+              example:
+                - uri: "/api/dns/blocking"
+                  parameters: ''
+                - uri: "/api/dns/cache"
+                  parameters: ''
+                - uri: "/api/dns/port"
+                  parameters: ''
+                - uri: "/api/domains"
+                  parameters: ''
+                - uri: "/api/groups"
+                  parameters: ''
+                - uri: "/api/lists"
+                  parameters: ''
