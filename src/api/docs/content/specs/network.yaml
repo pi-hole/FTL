@@ -237,7 +237,8 @@ components:
                 example: 585462
               macVendor:
                 type: string
-                description: Vendor name associated with the device's MAC address
+                nullable: true
+                description: Vendor name associated with the device's MAC address (if available)
                 example: "Digital Data Communications Asia Co.,Ltd"
               ips:
                 type: array
