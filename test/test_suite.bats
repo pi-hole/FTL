@@ -1297,6 +1297,30 @@
   [[ ${lines[1]} == "  nice = -11 ### CHANGED, default = -10" ]]
 }
 
+@test "Correct number of environmental variables is logged" {
+  run bash -c 'grep -q "3 FTLCONF environment variables found (1 used, 1 invalid, 1 ignored)" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Correct environmental variable is logged" {
+  run bash -c 'grep -q "FTLCONF_misc_nice is used" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Invalid environmental variable is logged" {
+  run bash -c 'grep -q "FTLCONF_debug_api is invalid, using default" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Unknown environmental variable is logged, a useful alternative is suggested" {
+  run bash -c 'grep -q "FTLCONF_dns_upstrrr is unknown and ignored, did you mean FTLCONF_dns_upstreams" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
 @test "Changing a config option set forced by ENVVAR is not possible via the CLI" {
   run bash -c './pihole-FTL --config misc.nice -12'
   printf "%s\n" "${lines[@]}"
