@@ -126,6 +126,9 @@ components:
                 type: string
                 nullable: true
                 description: Interface name
+              default:
+                type: boolean
+                description: If the interface is the default gateway
               carrier:
                 type: boolean
                 description: If the interface is connected
@@ -234,7 +237,8 @@ components:
                 example: 585462
               macVendor:
                 type: string
-                description: Vendor name associated with the device's MAC address
+                nullable: true
+                description: Vendor name associated with the device's MAC address (if available)
                 example: "Digital Data Communications Asia Co.,Ltd"
               ips:
                 type: array
@@ -248,6 +252,7 @@ components:
                     name:
                       type: string
                       description: Associated hostname (can be null)
+                      nullable: true
                       example: ubuntu-server
                     lastSeen:
                       type: integer

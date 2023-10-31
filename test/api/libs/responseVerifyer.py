@@ -139,8 +139,8 @@ class ResponseVerifyer():
 
 			# Check for properties in FTL that are not in the API specs
 			for property in FTLflat.keys():
-				if property not in YAMLflat.keys():
-					self.errors.append("Property '" + property + "' missing in the API specs")
+				if property not in YAMLflat.keys() and len([p.startswith(property + ".") for p in YAMLflat.keys()]) == 0:
+					self.errors.append("Property '" + property + "' missing in the API specs (have " + ",".join(YAMLflat.keys()) + ")")
 
 		elif expected_mimetype == "application/zip":
 			file_like_object = io.BytesIO(FTLresponse)
@@ -214,7 +214,7 @@ class ResponseVerifyer():
 		all_okay = True
 
 		# Build flat path of this property
-		flat_path = ".".join(props)
+		flat_path = ".".join([str(p) for p in props])
 
 		# Check if the property is defined in the API specs
 		if props[-1] not in YAMLprops:
@@ -235,6 +235,43 @@ class ResponseVerifyer():
 				# ... and check them recursively
 				if not self.verify_property(YAMLprop['properties'], YAMLexamples, FTLprop, props + [prop]):
 					all_okay = False
+		elif YAMLprop['type'] == 'array':
+			# Check if the FTL response is an array
+			if type(FTLprop) is not list:
+				self.errors.append("FTL's response is not an array in " + flat_path)
+				return False
+			# Check if the FTL response has the same number of items as the
+			# YAML examples
+			elif YAMLexamples is not None:
+				for t in YAMLexamples:
+					if 'value' not in YAMLexamples[t]:
+						self.errors.append(f"Example {flat_path} does not have a 'value' property")
+						return False
+					example = YAMLexamples[t]['value']
+					# Dive into the example to get to the property we want
+					example_part = example
+					for p in props:
+						if p not in example_part:
+							self.errors.append(f"Example {t} is missing '{flat_path}'")
+							return False
+						example_part = example_part[p]
+			# Loop over all items in the array ...
+			for i in range(len(FTLprop)):
+				# ... and check them recursively if they are objects
+				if not type(FTLprop[i]) is dict:
+					if 'properties' in YAMLprop['items']:
+						self.errors.append(flat_path + " is an array, but the API specs define it as an array of objects")
+						return False
+					else:
+						# Simple array and declared as such, no need for further recursion
+						continue
+				if 'properties' not in YAMLprop['items'] and type(FTLprop[i]) is dict:
+					self.errors.append(flat_path + " is an array of objects, but the API specs define it as a simple array")
+					return False
+
+				for j in FTLprop[i]:
+					if not self.verify_property(YAMLprop['items']['properties'], YAMLexamples, FTLprop[i], props + [i, str(j)]):
+						all_okay = False
 		else:
 			# Check this property
 
@@ -266,11 +303,18 @@ class ResponseVerifyer():
 						return False
 					example = YAMLexamples[t]['value']
 					# Dive into the example to get to the property we want
+					skip_this = False
 					for p in props:
-						if p not in example:
+						if type(example) == dict and p not in example:
 							self.errors.append(f"Example {t} does not have an '{p}' item")
 							return False
+						if type(example) == list and p >= len(example):
+							# We're out of bounds, so we can't check this example
+							skip_this = True
+							break
 						example = example[p]
+					if skip_this:
+						continue
 					# Check if the type of the example matches the type we defined in the API specs
 					example_type = type(example)
 					self.YAMLresponse[flat_path].append(example)

@@ -317,6 +317,9 @@ components:
                   mixed:
                     type: boolean
                     description: Indicator if TLS (end-to-end encryption) is used only partially for this session
+              app:
+                type: boolean
+                description: Indicator if this session was initiated using an application password
               login_at:
                 type: integer
                 description: Timestamp of login (seconds since epoch)
@@ -339,7 +342,7 @@ components:
               tls:
                 login: true
                 mixed: false
-              strict_tls: false
+              app: false
               login_at: 1580000000
               last_active: 1580000000
               valid_until: 1580000300

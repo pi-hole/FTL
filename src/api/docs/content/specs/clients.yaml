@@ -246,8 +246,9 @@ components:
                 example: "127.0.0.1,::1"
               names:
                 type: string
-                description: Comma-separated list of hostnames
-                example: "localhost"
+                nullable: true
+                description: Comma-separated list of hostnames (if available)
+                example: "localhost,ip6-localhost"
     client:
       type: object
       properties:
@@ -284,6 +285,7 @@ components:
           description: hostname (only available when {client} is an IP address)
           type: string
           readOnly: true
+          nullable: true
           example: localhost
     groups:
       type: object

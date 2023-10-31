@@ -505,7 +505,7 @@ components:
                           type: number
                           nullable: true
                           description: Critical sensor value (if available, `null` otherwise)
-                        path:
+                        sensor:
                           type: string
                           description: Short path of temperature sensor
               example:
