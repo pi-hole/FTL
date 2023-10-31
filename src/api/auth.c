@@ -484,9 +484,8 @@ int api_auth(struct ftl_conn *api)
 	// - Client tries to authenticate using a password, or
 	// - There no password on this machine
 	enum password_result result = PASSWORD_INCORRECT;
-	
+
 	// If there is no password (or empty), check if there is any password at all
-	log_info("Password: \"%s\"", password);
 	if(empty_password && (password == NULL || strlen(password) == 0))
 		result = PASSWORD_CORRECT;
 	else
