@@ -1286,6 +1286,12 @@
   [[ ${lines[0]} == '{"search":{"domains":[],"gravity":[{"domain":"antigravity.ftl","type":"block","address":"https://pi-hole.net/block.txt","comment":"Fake block-list","enabled":true,"id":1,"date_added":1559928803,"date_modified":1559928803,"type":"block","date_updated":1559928803,"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0,2]},{"domain":"antigravity.ftl","type":"allow","address":"https://pi-hole.net/allow.txt","comment":"Fake allow-list","enabled":true,"id":2,"date_added":1559928803,"date_modified":1559928803,"type":"allow","date_updated":1559928803,"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0]},{"domain":"@@||antigravity.ftl^","type":"allow","address":"https://pi-hole.net/allow.txt","comment":"Fake allow-list","enabled":true,"id":2,"date_added":1559928803,"date_modified":1559928803,"type":"allow","date_updated":1559928803,"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0]}],"results":{"domains":{"exact":0,"regex":0},"gravity":{"allow":2,"block":1},"total":3},"parameters":{"N":20,"partial":false,"domain":"antigravity.ftl","debug":false}},"took":'*'}' ]]
 }
 
+@test "API domain search: Internationalized/partially capital domain returns expected lowercase punycode domain" {
+  run bash -c 'curl -s 127.0.0.1/api/search/äBC.com?debug=true | jq .search.debug.punycode'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '"xn--bc-uia.com"' ]]
+}
+
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1/api/auth'
   printf "%s\n" "${lines[@]}"
