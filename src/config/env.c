@@ -15,6 +15,8 @@
 #include "datastructure.h"
 //set_and_check_password()
 #include "config/password.h"
+// cli_tick()
+#include "args.h"
 
 struct env_item
 {
@@ -53,6 +55,38 @@ void getEnvVars(void)
 	}
 }
 
+void printFTLenv(void)
+{
+	// Nothing to print if no env vars are used
+	if(env_list == NULL)
+		return;
+
+	// Count number of used and unused env vars
+	unsigned int used = 0, unused = 0;
+	for(struct env_item *item = env_list; item != NULL; item = item->next)
+	{
+		if(item->used)
+			used++;
+		else
+			unused++;
+	}
+
+	log_info("%u FTLCONF environment variable%s found (%u used, %u unused)",
+	         used + unused, used + unused == 1 ? "" : "s", used, unused);
+
+	// Iterate over all known FTLCONF environment variables
+	for(struct env_item *item = env_list; item != NULL; item = item->next)
+	{
+		if(item->used)
+		{
+			log_info("%s %s", cli_tick(), item->key);
+			continue;
+		}
+		// else: print warning
+		log_warn("%s %s is unknown", cli_cross(), item->key);
+	}
+}
+
 static char *getFTLenv(const char *key)
 {
 	// Iterate over all known FTLCONF environment variables
@@ -85,31 +119,15 @@ void freeEnvVars(void)
 
 bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 {
-	// Allocate memory for config key + prefix (sizeof includes the trailing '\0')
-	const size_t envkey_size = strlen(conf_item->k) + sizeof(FTLCONF_PREFIX);
-	char *envkey = calloc(envkey_size, sizeof(char));
-
-	// Build env key to look for
-	strcpy(envkey, FTLCONF_PREFIX);
-	strcat(envkey, conf_item->k);
-
-	// Replace all "." by "_" as this is the convention used in v5.x and earlier
-	for(unsigned int i = 0; i < envkey_size - 1; i++)
-		if(envkey[i] == '.')
-			envkey[i] = '_';
-
 	// First check if a environmental variable with the given key exists by
 	// iterating over the list of FTLCONF_ variables
-	char *envvar = getFTLenv(envkey);
+	char *envvar = getFTLenv(conf_item->e);
 
 	// Return early if this environment variable does not exist
 	if(envvar == NULL)
-	{
-		free(envkey);
 		return false;
-	}
 
-	log_debug(DEBUG_CONFIG, "ENV %s = %s", envkey, envvar);
+	log_debug(DEBUG_CONFIG, "ENV %s = %s", conf_item->e, envvar);
 
 	switch(conf_item->t)
 	{
@@ -120,7 +138,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			else if(strcasecmp(envvar, "false") == 0 || strcasecmp(envvar, "no") == 0)
 				conf_item->v.b = false;
 			else
-				log_warn("ENV %s is not of type bool", envkey);
+				log_warn("ENV %s is not of type bool", conf_item->e);
 			break;
 		}
 		case CONF_ALL_DEBUG_BOOL:
@@ -130,7 +148,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			else if(strcasecmp(envvar, "false") == 0 || strcasecmp(envvar, "no") == 0)
 				set_all_debug(newconf, false);
 			else
-				log_warn("ENV %s is not of type bool", envkey);
+				log_warn("ENV %s is not of type bool", conf_item->e);
 			break;
 		}
 		case CONF_INT:
@@ -139,7 +157,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(sscanf(envvar, "%i", &val) == 1)
 				conf_item->v.i = val;
 			else
-				log_warn("ENV %s is not of type integer", envkey);
+				log_warn("ENV %s is not of type integer", conf_item->e);
 			break;
 		}
 		case CONF_UINT:
@@ -148,7 +166,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(sscanf(envvar, "%u", &val) == 1)
 				conf_item->v.ui = val;
 			else
-				log_warn("ENV %s is not of type unsigned integer", envkey);
+				log_warn("ENV %s is not of type unsigned integer", conf_item->e);
 			break;
 		}
 		case CONF_UINT16:
@@ -157,7 +175,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(sscanf(envvar, "%u", &val) == 1 && val <= UINT16_MAX)
 				conf_item->v.ui = val;
 			else
-				log_warn("ENV %s is not of type unsigned integer (16 bit)", envkey);
+				log_warn("ENV %s is not of type unsigned integer (16 bit)", conf_item->e);
 			break;
 		}
 		case CONF_LONG:
@@ -166,7 +184,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(sscanf(envvar, "%li", &val) == 1)
 				conf_item->v.l = val;
 			else
-				log_warn("ENV %s is not of type long", envkey);
+				log_warn("ENV %s is not of type long", conf_item->e);
 			break;
 		}
 		case CONF_ULONG:
@@ -175,7 +193,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(sscanf(envvar, "%lu", &val) == 1)
 				conf_item->v.ul = val;
 			else
-				log_warn("ENV %s is not of type unsigned long", envkey);
+				log_warn("ENV %s is not of type unsigned long", conf_item->e);
 			break;
 		}
 		case CONF_DOUBLE:
@@ -184,7 +202,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(sscanf(envvar, "%lf", &val) == 1)
 				conf_item->v.d = val;
 			else
-				log_warn("ENV %s is not of type double", envkey);
+				log_warn("ENV %s is not of type double", conf_item->e);
 			break;
 		}
 		case CONF_STRING:
@@ -202,7 +220,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(ptr_type != -1)
 				conf_item->v.ptr_type = ptr_type;
 			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
+				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
 			break;
 		}
 		case CONF_ENUM_BUSY_TYPE:
@@ -211,7 +229,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(busy_reply != -1)
 				conf_item->v.busy_reply = busy_reply;
 			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
+				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
 			break;
 		}
 		case CONF_ENUM_BLOCKING_MODE:
@@ -220,7 +238,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(blocking_mode != -1)
 				conf_item->v.blocking_mode = blocking_mode;
 			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
+				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
 			break;
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
@@ -229,7 +247,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(refresh_hostnames != -1)
 				conf_item->v.refresh_hostnames = refresh_hostnames;
 			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
+				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
 			break;
 		}
 		case CONF_ENUM_LISTENING_MODE:
@@ -238,7 +256,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(listeningMode != -1)
 				conf_item->v.listeningMode = listeningMode;
 			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
+				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
 			break;
 		}
 		case CONF_ENUM_WEB_THEME:
@@ -247,7 +265,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(web_theme != -1)
 				conf_item->v.web_theme = web_theme;
 			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
+				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
 			break;
 		}
 		case CONF_ENUM_TEMP_UNIT:
@@ -256,7 +274,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(temp_unit != -1)
 				conf_item->v.temp_unit = temp_unit;
 			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
+				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
 			break;
 		}
 		case CONF_ENUM_PRIVACY_LEVEL:
@@ -265,7 +283,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(sscanf(envvar, "%i", &val) == 1 && val >= PRIVACY_SHOW_ALL && val <= PRIVACY_MAXIMUM)
 				conf_item->v.i = val;
 			else
-				log_warn("ENV %s is invalid (not of type integer or outside allowed bounds)", envkey);
+				log_warn("ENV %s is invalid (not of type integer or outside allowed bounds)", conf_item->e);
 			break;
 		}
 		case CONF_STRUCT_IN_ADDR:
@@ -279,7 +297,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			else if(inet_pton(AF_INET, envvar, &addr4))
 				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
 			else
-				log_warn("ENV %s is invalid (not of type IPv4 address)", envkey);
+				log_warn("ENV %s is invalid (not of type IPv4 address)", conf_item->e);
 			break;
 		}
 		case CONF_STRUCT_IN6_ADDR:
@@ -293,7 +311,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			else if(inet_pton(AF_INET6, envvar, &addr6))
 				memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 			else
-				log_warn("ENV %s is invalid (not of type IPv6 address)", envkey);
+				log_warn("ENV %s is invalid (not of type IPv6 address)", conf_item->e);
 			break;
 		}
 		case CONF_JSON_STRING_ARRAY:
@@ -327,13 +345,11 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 		{
 			if(!set_and_check_password(conf_item, envvar))
 			{
-				log_warn("ENV %s is invalid", envkey);
+				log_warn("ENV %s is invalid", conf_item->e);
 				break;
 			}
 		}
 	}
 
-	// Free allocated env var name
-	free(envkey);
 	return true;
 }

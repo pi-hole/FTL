@@ -98,6 +98,7 @@ enum conf_type {
 struct conf_item {
 	const char *k;        // item Key
 	char **p;             // item Path
+	char *e;              // item Environment variable
 	const char *h;        // Help text / description
 	cJSON *a;             // JSON array or object of Allowed values (where applicable)
 	enum conf_type t;     // variable Type

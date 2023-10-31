@@ -131,6 +131,9 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 	if(verbose)
 		reportDebugFlags();
 
+	// Print FTL environment variables (if used)
+	printFTLenv();
+
 	// Free memory allocated by the TOML parser and return success
 	toml_free(toml);
 	return true;
