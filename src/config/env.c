@@ -17,7 +17,8 @@
 #include "config/password.h"
 // cli_tick()
 #include "args.h"
-
+// suggest_closest()
+#include "config/levenshtein.h"
 struct env_item
 {
 	bool used;
@@ -27,6 +28,7 @@ struct env_item
 };
 
 static struct env_item *env_list = NULL;
+static const char *env_keys[sizeof(config) / sizeof(struct conf_item)] = { NULL };
 
 void getEnvVars(void)
 {
@@ -53,6 +55,14 @@ void getEnvVars(void)
 			env_list = new_item;
 		}
 	}
+
+	// Add all config item env keys to the list
+	for(unsigned int i = 0; i < sizeof(env_keys) / sizeof(*env_keys); i++)
+	{
+		struct conf_item *conf_item = get_conf_item(&config, i);
+		env_keys[i] = conf_item->e;
+	}
+
 }
 
 void printFTLenv(void)
@@ -61,18 +71,18 @@ void printFTLenv(void)
 	if(env_list == NULL)
 		return;
 
-	// Count number of used and unused env vars
-	unsigned int used = 0, unused = 0;
+	// Count number of used and ignored env vars
+	unsigned int used = 0, ignored = 0;
 	for(struct env_item *item = env_list; item != NULL; item = item->next)
 	{
 		if(item->used)
 			used++;
 		else
-			unused++;
+			ignored++;
 	}
 
-	log_info("%u FTLCONF environment variable%s found (%u used, %u unused)",
-	         used + unused, used + unused == 1 ? "" : "s", used, unused);
+	log_info("%u FTLCONF environment variable%s found (%u used, %u ignored)",
+	         used + ignored, used + ignored == 1 ? "" : "s", used, ignored);
 
 	// Iterate over all known FTLCONF environment variables
 	for(struct env_item *item = env_list; item != NULL; item = item->next)
@@ -83,7 +93,8 @@ void printFTLenv(void)
 			continue;
 		}
 		// else: print warning
-		log_warn("%s %s is unknown", cli_cross(), item->key);
+		const char *closest_match = suggest_closest(env_keys, sizeof(env_keys) / sizeof(*env_keys), item->key);
+		log_warn("%s %s is unknown, did you mean %s ?", cli_cross(), item->key, closest_match);
 	}
 }
 
