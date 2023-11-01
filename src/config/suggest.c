@@ -228,9 +228,28 @@ static unsigned int __attribute__((pure)) suggest_bitap(const char *strings[], s
 	return found;
 }
 
+// Find string from list that starts with the given string
+static const char *__attribute__((pure)) startswith(const char *strings[], size_t nstrings,
+                                                    const char *string, const size_t string_len)
+{
+	// Loop over all strings
+	for (size_t i = 0; i < nstrings; ++i)
+	{
+		// Get the current string
+		const char *current = strings[i];
+
+		// If the current string starts with the given string, return it
+		if(strncasecmp(current, string, string_len) == 0)
+			return current;
+	}
+
+	// Return NULL if no match was found
+	return NULL;
+}
+
 // Try to find up to two matches using the Bitap algorithm and one using the
 // Levenshtein distance
-#define MAX_MATCHES 3
+#define MAX_MATCHES 6
 static char **__attribute__((pure)) suggest_closest(const char *strings[], size_t nstrings,
                                              const char *string, const size_t string_len,
                                              unsigned int *N)
@@ -238,8 +257,11 @@ static char **__attribute__((pure)) suggest_closest(const char *strings[], size_
 	// Allocate memory for MAX_MATCHES matches
 	char** matches = calloc(MAX_MATCHES, sizeof(char*));
 
-	// Try to find (MAX_MATCHES - 1) matches using the Bitap algorithm
-	*N = suggest_bitap(strings, nstrings, string, string_len, matches, MAX_MATCHES - 1);
+	// Try to find (MAX_MATCHES - 2) matches using the Bitap algorithm
+	*N = suggest_bitap(strings, nstrings, string, string_len, matches, MAX_MATCHES - 2);
+
+	// Try to find a match that starts with the given string
+	matches[(*N)++] = (char*)startswith(strings, nstrings, string, string_len);
 
 	// Try to find a last match using the Levenshtein distance
 	matches[(*N)++] = (char*)suggest_levenshtein(strings, nstrings, string, string_len);
