@@ -3,7 +3,7 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  Levenshtein distance prototypes
+*  String suggestion prototypes
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
@@ -14,6 +14,7 @@
 // union conf_value
 #include "config.h"
 
-const char *suggest_closest(const char *strings[], size_t nstrings, const char *string) __attribute__((pure));
+char **suggest_closest(const char *strings[], size_t nstrings,
+                       const char *string, unsigned int *N) __attribute__((pure));
 
 #endif //LEVENSHTEIN_H

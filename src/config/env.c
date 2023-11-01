@@ -18,7 +18,7 @@
 // cli_tick()
 #include "args.h"
 // suggest_closest()
-#include "config/levenshtein.h"
+#include "config/suggest.h"
 struct env_item
 {
 	bool used;
@@ -101,8 +101,14 @@ void printFTLenv(void)
 			continue;
 		}
 		// else: print warning
-		const char *closest_match = suggest_closest(env_keys, sizeof(env_keys) / sizeof(*env_keys), item->key);
-		log_info("%s %s is unknown and ignored, did you mean %s ?", cli_qst(), item->key, closest_match);
+		unsigned int N = 0;
+		char **matches = suggest_closest(env_keys, sizeof(env_keys) / sizeof(*env_keys), item->key, &N);
+
+		// Print the closest matches
+		log_info("%s %s is unknown and ignored, did you mean any of these?", cli_qst(), item->key);
+		for(size_t i = 0; i < N; ++i)
+			log_info(" - %s", matches[i]);
+		free(matches);
 	}
 }
 
