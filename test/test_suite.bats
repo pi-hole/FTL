@@ -1316,9 +1316,21 @@
 }
 
 @test "Unknown environmental variable is logged, a useful alternative is suggested" {
-  run bash -c 'grep -q "FTLCONF_dns_upstrrr is unknown" /var/log/pihole/FTL.log'
+  run bash -c 'grep -A1 "FTLCONF_dns_upstrrr is unknown" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ $status == 0 ]]
+  [[ ${lines[0]} == *"WARNING: [?] FTLCONF_dns_upstrrr is unknown, did you mean any of these?" ]]
+  [[ ${lines[1]} == *"WARNING:     - FTLCONF_dns_upstreams" ]]
+}
+
+@test "CLI complains about unknown config key and offers a suggestion" {
+  run bash -c './pihole-FTL --config dbg.all'
+  [[ ${lines[0]} == "Unknown config option dbg.all, did you mean:" ]]
+  [[ ${lines[1]} == " - debug.all" ]]
+  [[ $status == 4 ]]
+  run bash -c './pihole-FTL --config misc.privacyLLL'
+  [[ ${lines[0]} == "Unknown config option misc.privacyLLL, did you mean:" ]]
+  [[ ${lines[1]} == " - misc.privacylevel" ]]
+  [[ $status == 4 ]]
 }
 
 @test "Changing a config option set forced by ENVVAR is not possible via the CLI" {
