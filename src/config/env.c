@@ -95,9 +95,9 @@ void printFTLenv(void)
 		if(item->used)
 		{
 			if(item->valid)
-				log_info("%s %s is used", cli_tick(), item->key);
+				log_info("   %s %s is used", cli_tick(), item->key);
 			else
-				log_info("%s %s is invalid, using default", cli_cross(), item->key);
+				log_err("  %s %s is invalid, using default", cli_cross(), item->key);
 			continue;
 		}
 		// else: print warning
@@ -105,9 +105,10 @@ void printFTLenv(void)
 		char **matches = suggest_closest(env_keys, sizeof(env_keys) / sizeof(*env_keys), item->key, &N);
 
 		// Print the closest matches
-		log_info("%s %s is unknown and ignored, did you mean any of these?", cli_qst(), item->key);
+		log_warn("%s %s is unknown, did you mean any of these?", cli_qst(), item->key);
 		for(size_t i = 0; i < N; ++i)
-			log_info(" - %s", matches[i]);
+			if(matches[i] != NULL)
+				log_warn("    - %s", matches[i]);
 		free(matches);
 	}
 }

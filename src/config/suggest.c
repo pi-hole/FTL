@@ -280,6 +280,24 @@ char **__attribute__((pure)) suggest_closest(const char *strings[], size_t nstri
 	// Try to find a last match using the Levenshtein distance
 	matches[(*N)++] = (char*)suggest_levenshtein(strings, nstrings, string);
 
+	// Loop over matches and remove duplicates
+	for(unsigned int i = 0; i < *N; ++i)
+	{
+		// Skip if there is no match here
+		if(matches[i] == NULL)
+			continue;
+
+		// Loop over all matches after the current one
+		for(unsigned int j = i + 1; j < *N; ++j)
+		{
+			// If the current match is a duplicate, set it to NULL
+			if(matches[j] != NULL && strcmp(matches[i], matches[j]) == 0)
+			{
+				matches[j] = NULL;
+			}
+		}
+	}
+
 	// Return the list of matches
 	return matches;
 }

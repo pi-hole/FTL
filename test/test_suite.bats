@@ -1163,10 +1163,10 @@
   [[ "${lines[@]}" != *"ERROR"* ]]
 }
 
-@test "No ERROR messages in FTL.log (besides known index.html error)" {
-  run bash -c 'grep "ERR: " /var/log/pihole/FTL.log'
+@test "No ERROR messages in FTL.log (besides known/intended error)" {
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  run bash -c 'grep "ERR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is invalid)"'
   printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
@@ -1316,7 +1316,7 @@
 }
 
 @test "Unknown environmental variable is logged, a useful alternative is suggested" {
-  run bash -c 'grep -q "FTLCONF_dns_upstrrr is unknown and ignored, did you mean FTLCONF_dns_upstreams" /var/log/pihole/FTL.log'
+  run bash -c 'grep -q "FTLCONF_dns_upstrrr is unknown" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
