@@ -25,6 +25,8 @@ struct env_item
 	bool valid;
 	char *key;
 	char *value;
+	const char *error;
+	const char *allowed;
 	struct env_item *next;
 };
 
@@ -52,6 +54,8 @@ void getEnvVars(void)
 			new_item->used = false;
 			new_item->key = strdup(key);
 			new_item->value = strdup(value);
+			new_item->error = NULL;
+			new_item->allowed = NULL;
 			new_item->next = env_list;
 			env_list = new_item;
 		}
@@ -97,7 +101,18 @@ void printFTLenv(void)
 			if(item->valid)
 				log_info("   %s %s is used", cli_tick(), item->key);
 			else
-				log_err("  %s %s is invalid, using default", cli_cross(), item->key);
+			{
+				if(item->error != NULL && item->allowed == NULL)
+					log_err("  %s %s is invalid (%s)",
+					        cli_cross(), item->key, item->error);
+				else if(item->error != NULL && item->allowed != NULL)
+					log_err("  %s %s is invalid (%s, allowed options are: %s)",
+					        cli_cross(), item->key, item->error, item->allowed);
+				else
+					log_err("  %s %s is invalid",
+					        cli_cross(), item->key);
+			}
+
 			continue;
 		}
 		// else: print warning
@@ -175,7 +190,8 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is not of type bool", conf_item->e);
+				item->error = "not of type bool";
+				log_warn("ENV %s is %s", conf_item->e, item->error);
 				item->valid = false;
 			}
 			break;
@@ -194,7 +210,8 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is not of type bool", conf_item->e);
+				item->error = "not of type bool";
+				log_warn("ENV %s is %s", conf_item->e, item->error);
 				item->valid = false;
 			}
 			break;
@@ -209,7 +226,8 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is not of type integer", conf_item->e);
+				item->error = "not of type integer";
+				log_warn("ENV %s is %s", conf_item->e, item->error);
 				item->valid = false;
 			}
 			break;
@@ -224,7 +242,8 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is not of type unsigned integer", conf_item->e);
+				item->error = "not of type unsigned integer";
+				log_warn("ENV %s is %s", conf_item->e, item->error);
 				item->valid = false;
 			}
 			break;
@@ -239,7 +258,8 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is not of type unsigned integer (16 bit)", conf_item->e);
+				item->error = "not of type unsigned integer (16 bit";
+				log_warn("ENV %s is %s)", conf_item->e, item->error);
 				item->valid = false;
 			}
 			break;
@@ -254,7 +274,8 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is not of type long", conf_item->e);
+				item->error = "not of type long";
+				log_warn("ENV %s is %s", conf_item->e, item->error);
 				item->valid = false;
 			}
 			break;
@@ -269,7 +290,8 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is not of type unsigned long", conf_item->e);
+				item->error = "not of type unsigned long";
+				log_warn("ENV %s is %s", conf_item->e, item->error);
 				item->valid = false;
 			}
 			break;
@@ -284,7 +306,8 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is not of type double", conf_item->e);
+				item->error = "not of type double";
+				log_warn("ENV %s is %s", conf_item->e, item->error);
 				item->valid = false;
 			}
 			break;
@@ -309,7 +332,10 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+				item->error = "not an allowed option";
+				item->allowed = conf_item->h;
+				log_warn("ENV %s is %s, allowed options are: %s",
+				         conf_item->e, item->error, item->allowed);
 				item->valid = false;
 			}
 			break;
@@ -324,7 +350,11 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+
+				item->error = "not an allowed option";
+				item->allowed = conf_item->h;
+				log_warn("ENV %s is %s, allowed options are: %s",
+				         conf_item->e, item->error, item->allowed);
 				item->valid = false;
 			}
 			break;
@@ -339,7 +369,11 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+
+				item->error = "not an allowed option";
+				item->allowed = conf_item->h;
+				log_warn("ENV %s is %s, allowed options are: %s",
+				         conf_item->e, item->error, item->allowed);
 				item->valid = false;
 			}
 			break;
@@ -354,7 +388,11 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+
+				item->error = "not an allowed option";
+				item->allowed = conf_item->h;
+				log_warn("ENV %s is %s, allowed options are: %s",
+				         conf_item->e, item->error, item->allowed);
 				item->valid = false;
 			}
 			break;
@@ -369,7 +407,11 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+
+				item->error = "not an allowed option";
+				item->allowed = conf_item->h;
+				log_warn("ENV %s is %s, allowed options are: %s",
+				         conf_item->e, item->error, item->allowed);
 				item->valid = false;
 			}
 			break;
@@ -384,7 +426,11 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+
+				item->error = "not an allowed option";
+				item->allowed = conf_item->h;
+				log_warn("ENV %s is %s, allowed options are: %s",
+				         conf_item->e, item->error, item->allowed);
 				item->valid = false;
 			}
 			break;
@@ -399,7 +445,11 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+
+				item->error = "not an allowed option";
+				item->allowed = conf_item->h;
+				log_warn("ENV %s is %s, allowed options are: %s",
+				         conf_item->e, item->error, item->allowed);
 				item->valid = false;
 			}
 			break;
@@ -414,7 +464,8 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is invalid (not of type integer or outside allowed bounds)", conf_item->e);
+				item->error = "not of type integer or outside allowed bounds";
+				log_warn("ENV %s is %s", conf_item->e, item->error);
 				item->valid = false;
 			}
 			break;
@@ -434,7 +485,8 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is invalid (not of type IPv4 address)", conf_item->e);
+				item->error = "not of type IPv4 address";
+				log_warn("ENV %s is %s", conf_item->e, item->error);
 				item->valid = false;
 			}
 			break;
@@ -454,7 +506,8 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			else
 			{
-				log_warn("ENV %s is invalid (not of type IPv6 address)", conf_item->e);
+				item->error = "not of type IPv6 address";
+				log_warn("ENV %s is %s", conf_item->e, item->error);
 				item->valid = false;
 			}
 			break;
