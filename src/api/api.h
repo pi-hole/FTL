@@ -105,8 +105,6 @@ int api_teleporter(struct ftl_conn *api);
 
 // Action methods
 int api_action_gravity(struct ftl_conn *api);
-int api_action_poweroff(struct ftl_conn *api);
-int api_action_reboot(struct ftl_conn *api);
 int api_action_restartDNS(struct ftl_conn *api);
 int api_action_flush_logs(struct ftl_conn *api);
 int api_action_flush_arp(struct ftl_conn *api);

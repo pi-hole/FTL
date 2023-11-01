@@ -244,12 +244,6 @@ paths:
   /action/flush/arp:
     $ref: 'action.yaml#/components/paths/flush_arp'
 
-  /action/reboot:
-    $ref: 'action.yaml#/components/paths/reboot'
-
-  /action/poweroff:
-    $ref: 'action.yaml#/components/paths/poweroff'
-
   /dhcp/leases:
     $ref: 'dhcp.yaml#/components/paths/leases'
 
