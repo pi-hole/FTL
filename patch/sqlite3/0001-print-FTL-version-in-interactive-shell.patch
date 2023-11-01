@@ -25,6 +25,6 @@ index 6280ebf6..a5e82f70 100644
        char *zHistory;
        int nHistory;
 +      print_FTL_version();
-       printf(
-         "SQLite version %s %.19s\n" /*extra-version-info*/
-         "Enter \".help\" for usage hints.\n",
+ #if SHELL_WIN_UTF8_OPT
+       switch( console_utf8_in+2*console_utf8_out ){
+       default: case 0: break;
