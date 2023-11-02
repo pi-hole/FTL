@@ -48,7 +48,7 @@ if __name__ == "__main__":
 	# Check if endpoints that are in both FTL and OpenAPI specs match
 	# and have the same response format. Also verify that the examples
 	# matches the OpenAPI specs.
-	print("Verifying the individual endpoint properties...")
+	print("Verifying the individual OpenAPI endpoint properties...")
 	teleporter = None
 	for path in openapi.endpoints["get"]:
 		# We do not check the action endpoints as they'd trigger
@@ -56,18 +56,31 @@ if __name__ == "__main__":
 		# gravity, stutting down the system, etc.
 		if path.startswith("/api/action"):
 			continue
-		verifyer = ResponseVerifyer(ftl, openapi)
-		errors = verifyer.verify_endpoint(path)
-		if verifyer.teleporter_archive is not None:
-			teleporter = verifyer.teleporter_archive
-		if len(errors) == 0:
-			print("  GET " + path + " (" + verifyer.auth_method + " auth): OK")
-		else:
-			print("  GET " + path + " (" + verifyer.auth_method + " auth):")
-			for error in errors:
-				print("  - " + error)
-			errs[2] += len(errors)
+		with ResponseVerifyer(ftl, openapi) as verifyer:
+			errors = verifyer.verify_endpoint(path)
+			if verifyer.teleporter_archive is not None:
+				teleporter = verifyer.teleporter_archive
+			if len(errors) == 0:
+				print("  GET " + path + " (" + verifyer.auth_method + " auth): OK")
+			else:
+				print("  GET " + path + " (" + verifyer.auth_method + " auth):")
+				for error in errors:
+					print("  - " + error)
+				errs[2] += len(errors)
 	print("")
+
+	# Verify that all the endpoint defined by GET /api/endpoints are documented
+	# and that there are no undocumented endpoints
+	print("Verifying the /api/endpoints endpoint...")
+	verifyer = ResponseVerifyer(ftl, openapi)
+	errors = verifyer.verify_endpoints()
+	if len(errors) == 0:
+		print("  GET /api/endpoints: OK")
+	else:
+		print("  Errors:")
+		for error in errors:
+			print("  - " + error)
+		errs[2] += len(errors)
 
 	# Verify FTL Teleporter import
 	print("Verifying FTL Teleporter import...")

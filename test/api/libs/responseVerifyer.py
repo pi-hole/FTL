@@ -34,6 +34,14 @@ class ResponseVerifyer():
 		self.errors = []
 
 
+	def __enter__(self):
+		return self
+
+
+	def __exit__(self, exc_type, exc_value, traceback):
+		return
+
+
 	def flatten_dict(self, d: MutableMapping, parent_key: str = '', sep: str ='.') -> MutableMapping:
 		items = []
 		# Iterate over all items in the dictionary
@@ -67,7 +75,7 @@ class ResponseVerifyer():
 			return self.errors
 
 		# Get YAML response schema and examples (if applicable)
-		expected_mimetype = True
+		expected_mimetype = None
 		# Assign random authentication method so we can test them all
 		authentication_method = random.choice([a for a in AuthenticationMethods])
 		# Check if the expected response is defined in the API specs
@@ -84,6 +92,11 @@ class ResponseVerifyer():
 				jsonData = content[expected_mimetype]
 				# The endpoint requires HEADER authentication
 				authentication_method = AuthenticationMethods.HEADER
+				YAMLresponseSchema = None
+				YAMLresponseExamples = None
+			elif 'text/html' in content:
+				expected_mimetype = 'text/html'
+				jsonData = content[expected_mimetype]
 				YAMLresponseSchema = None
 				YAMLresponseExamples = None
 		else:
@@ -166,6 +179,17 @@ class ResponseVerifyer():
 
 				# Store Teleporter archive for later use
 				self.teleporter_archive = FTLresponse
+		elif expected_mimetype == "text/html":
+			# Decode the response if it is bytes
+			if type(FTLresponse) is bytes:
+				FTLresponse = FTLresponse.decode("utf-8")
+			elif type(FTLresponse) is not str:
+				self.errors.append("FTL's response is neither bytes nor string")
+			# Check if the document starts with either "<!DOCTYPE html>" or
+			# "<html>" (case-insensitive)
+			r = FTLresponse.lower()
+			if not r.startswith("<!doctype html>") and not r.startswith("<html>"):
+				self.errors.append("FTL's response does not start with <!DOCTYPE html> or <html>")
 		else:
 			self.errors.append("Checker script does not know how to check for mimetype \"" + expected_mimetype + "\"")
 
@@ -328,3 +352,53 @@ class ResponseVerifyer():
 				self.errors.append(f"FTL's reply ({str(ftl_type)}) does not match defined type ({yaml_type}) in {flat_path}")
 				return False
 		return all_okay
+
+
+	def verify_endpoints(self):
+		# Get FTL response
+		authentication_method = random.choice([a for a in AuthenticationMethods])
+		FTLresponse = self.ftl.GET("/api/endpoints", authenticate = authentication_method)
+		if FTLresponse is None:
+			self.errors.append("No response from FTL API")
+			return self.errors
+
+		# Construct full URI to check (this is what we specify in OpenAPI specs)
+		for method in FTLresponse['endpoints']:
+			for endpoint in FTLresponse['endpoints'][method]:
+				endpoint["full_uri"] = endpoint["uri"] + endpoint["parameters"] # type: str
+				# If the endpoint starts with /api, remove this part (it is not
+				# part of the YAML specs)
+				if endpoint["full_uri"].startswith("/api"):
+					endpoint["full_uri"] = endpoint["full_uri"][4:]
+
+		# Do the same for the specified endpoints in the OpenAPI specs
+		openapi = {}
+		for endpoint in self.openapi.paths:
+			openapi[endpoint] = {}
+			for method in self.openapi.paths[endpoint]:
+				if method not in self.openapi.METHODS:
+					# Skip keys like "parameters" and "summary"
+					continue
+				#if "parameters" in self.openapi.paths[endpoint][method]:
+				#	# Construct full URI to check (this is what we specify in OpenAPI specs)
+				#	for param in self.openapi.paths[endpoint][method]["parameters"]:
+				#		if param["in"] == "query":
+				#			endpoint += "?" + param["name"] + "=" + urllib.parse.quote_plus(str(param["example"]))
+				openapi[endpoint][method] = endpoint
+
+		# Check if FTL reports endpoints not defined in the API specs
+		for method in FTLresponse['endpoints']:
+			for endpoint in FTLresponse['endpoints'][method]:
+				m = method.upper() # type: str
+				if endpoint["full_uri"] not in self.openapi.paths or method not in self.openapi.paths[endpoint["full_uri"]]:
+					self.errors.append("Endpoint " + m + " " + endpoint["full_uri"] + " not found in the OpenAPI specs")
+
+		# Check if all endpoints defined in the API specs are also defined in FTL
+		for endpoint in openapi:
+			for method in openapi[endpoint]:
+				full_uris = [ep["full_uri"] for ep in FTLresponse['endpoints'][method]] # type: list[str]
+				if endpoint not in full_uris:
+					m = method.upper() # type: str
+					self.errors.append("Endpoint " + m + " " + endpoint + " not found in FTL endpoints")
+
+		return self.errors
