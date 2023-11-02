@@ -187,6 +187,9 @@ paths:
   /info/messages:
     $ref: 'info.yaml#/components/paths/messages'
 
+  /info/messages/{message_id}:
+    $ref: 'info.yaml#/components/paths/messages_with_id'
+
   /info/messages/count:
     $ref: 'info.yaml#/components/paths/messages_count'
 
@@ -220,7 +223,7 @@ paths:
   /network/devices:
     $ref: 'network.yaml#/components/paths/devices'
 
-  /network/devices/{id}:
+  /network/devices/{device_id}:
     $ref: 'network.yaml#/components/paths/devices_id'
 
   /network/gateway:
@@ -258,6 +261,9 @@ paths:
 
   /search/{domain}:
     $ref: 'search.yaml#/components/paths/search'
+
+  /docs:
+    $ref: 'docs.yaml#/components/paths/docs'
 
 components:
   securitySchemes:

@@ -68,6 +68,10 @@ static const unsigned char specs_dns_yaml[] = {
 #include "hex/specs/dns.yaml"
 };
 
+static const unsigned char specs_docs_yaml[] = {
+#include "hex/specs/docs.yaml"
+};
+
 static const unsigned char specs_domains_yaml[] = {
 #include "hex/specs/domains.yaml"
 };
@@ -150,6 +154,7 @@ struct {
     {"specs/dhcp.yaml", "text/plain", (const char*)specs_dhcp_yaml, sizeof(specs_dhcp_yaml)},
     {"specs/dns.yaml", "text/plain", (const char*)specs_dns_yaml, sizeof(specs_dns_yaml)},
     {"specs/domains.yaml", "text/plain", (const char*)specs_domains_yaml, sizeof(specs_domains_yaml)},
+    {"specs/docs.yaml", "text/plain", (const char*)specs_docs_yaml, sizeof(specs_docs_yaml)},
     {"specs/endpoints.yaml", "text/plain", (const char*)specs_endpoints_yaml, sizeof(specs_endpoints_yaml)},
     {"specs/groups.yaml", "text/plain", (const char*)specs_groups_yaml, sizeof(specs_groups_yaml)},
     {"specs/history.yaml", "text/plain", (const char*)specs_history_yaml, sizeof(specs_history_yaml)},
