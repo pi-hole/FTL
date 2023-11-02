@@ -71,29 +71,30 @@ if __name__ == "__main__":
 
 	# Verify that all the endpoint defined by GET /api/endpoints are documented
 	# and that there are no undocumented endpoints
-	print("Verifying the /api/endpoints endpoint...")
-	verifyer = ResponseVerifyer(ftl, openapi)
-	errors = verifyer.verify_endpoints()
-	if len(errors) == 0:
-		print("  GET /api/endpoints: OK")
-	else:
-		print("  Errors:")
-		for error in errors:
-			print("  - " + error)
-		errs[2] += len(errors)
+	print("Comparing all endpoints defined in FTL against the OpenAPI specs...")
+	with ResponseVerifyer(ftl, openapi) as verifyer:
+		errors, checked = verifyer.verify_endpoints()
+		if len(errors) == 0:
+			print("  OK (" + str(checked) + " endpoints checked)")
+		else:
+			print("  Errors (" + str(checked) + " endpoints checked):")
+			for error in errors:
+				print("  - " + error)
+			errs[2] += len(errors)
+	print("")
 
 	# Verify FTL Teleporter import
 	print("Verifying FTL Teleporter import...")
-	verifyer = ResponseVerifyer(ftl, openapi)
-	errors = verifyer.verify_teleporter_zip(teleporter)
-	if len(errors) == 0:
-		print("  POST /api/teleporter: OK")
-	else:
-		print("  Errors:")
-		for error in errors:
-			print("  - " + error)
-		errs[2] += len(errors)
-
+	with ResponseVerifyer(ftl, openapi) as verifyer:
+		errors = verifyer.verify_teleporter_zip(teleporter)
+		if len(errors) == 0:
+			print("  POST /api/teleporter: OK")
+		else:
+			print("  Errors:")
+			for error in errors:
+				print("  - " + error)
+			errs[2] += len(errors)
+		print("")
 
 	# Print the number error (if any)
 	if errs[0] > 0:

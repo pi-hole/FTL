@@ -355,6 +355,8 @@ class ResponseVerifyer():
 
 
 	def verify_endpoints(self):
+		checked_ftl = 0
+		checked_openapi = 0
 		# Get FTL response
 		authentication_method = random.choice([a for a in AuthenticationMethods])
 		FTLresponse = self.ftl.GET("/api/endpoints", authenticate = authentication_method)
@@ -379,17 +381,13 @@ class ResponseVerifyer():
 				if method not in self.openapi.METHODS:
 					# Skip keys like "parameters" and "summary"
 					continue
-				#if "parameters" in self.openapi.paths[endpoint][method]:
-				#	# Construct full URI to check (this is what we specify in OpenAPI specs)
-				#	for param in self.openapi.paths[endpoint][method]["parameters"]:
-				#		if param["in"] == "query":
-				#			endpoint += "?" + param["name"] + "=" + urllib.parse.quote_plus(str(param["example"]))
 				openapi[endpoint][method] = endpoint
 
 		# Check if FTL reports endpoints not defined in the API specs
 		for method in FTLresponse['endpoints']:
 			for endpoint in FTLresponse['endpoints'][method]:
 				m = method.upper() # type: str
+				checked_ftl += 1
 				if endpoint["full_uri"] not in self.openapi.paths or method not in self.openapi.paths[endpoint["full_uri"]]:
 					self.errors.append("Endpoint " + m + " " + endpoint["full_uri"] + " not found in the OpenAPI specs")
 
@@ -397,8 +395,14 @@ class ResponseVerifyer():
 		for endpoint in openapi:
 			for method in openapi[endpoint]:
 				full_uris = [ep["full_uri"] for ep in FTLresponse['endpoints'][method]] # type: list[str]
+				checked_openapi += 1
 				if endpoint not in full_uris:
 					m = method.upper() # type: str
 					self.errors.append("Endpoint " + m + " " + endpoint + " not found in FTL endpoints")
 
-		return self.errors
+		# Check if the number of endpoints checked is the same
+		if checked_ftl != checked_openapi:
+			self.errors.append("Number of endpoints checked does not match (FTL " + str(checked_ftl) + " vs. OpenAPI " + str(checked_openapi) + ")")
+
+		checked = max(checked_ftl, checked_openapi)
+		return self.errors, checked

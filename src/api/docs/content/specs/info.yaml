@@ -1193,9 +1193,9 @@ components:
           required: false
           example: 219
     message_id:
-      in: query
+      in: path
       description: ID of the message to be deleted
-      name: id
+      name: message_id
       schema:
         type: integer
       required: true
