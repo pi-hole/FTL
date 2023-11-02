@@ -389,7 +389,7 @@ class ResponseVerifyer():
 				m = method.upper() # type: str
 				checked_ftl += 1
 				if endpoint["full_uri"] not in self.openapi.paths or method not in self.openapi.paths[endpoint["full_uri"]]:
-					self.errors.append("Endpoint " + m + " " + endpoint["full_uri"] + " not found in the OpenAPI specs")
+					self.errors.append("Endpoint " + m + " " + endpoint["full_uri"] + " specified in FTL's /api/endpoints not found in OpenAPI specs")
 
 		# Check if all endpoints defined in the API specs are also defined in FTL
 		for endpoint in openapi:
@@ -398,7 +398,7 @@ class ResponseVerifyer():
 				checked_openapi += 1
 				if endpoint not in full_uris:
 					m = method.upper() # type: str
-					self.errors.append("Endpoint " + m + " " + endpoint + " not found in FTL endpoints")
+					self.errors.append("Endpoint " + m + " " + endpoint + " specified in OpenAPI specs not found in FTL's /api/endpoints")
 
 		# Check if the number of endpoints checked is the same
 		if checked_ftl != checked_openapi:
