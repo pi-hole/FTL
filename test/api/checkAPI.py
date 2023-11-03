@@ -69,7 +69,7 @@ if __name__ == "__main__":
 				errs[2] += len(errors)
 	print("")
 
-	# Verify that all the endpoint defined by GET /api/endpoints are documented
+	# Verify that all the endpoint defined by /api/endpoints are documented
 	# and that there are no undocumented endpoints
 	print("Comparing all endpoints defined in FTL against the OpenAPI specs...")
 	with ResponseVerifyer(ftl, openapi) as verifyer:
