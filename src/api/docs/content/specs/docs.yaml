@@ -19,4 +19,11 @@ components:
                 schema:
                   description: HTML document
                   type: string
-                  format: binary
+                  example: |
+                    <!DOCTYPE html>
+                    <html lang="en">
+                    <head>
+                      <meta charset="utf-8">
+                      <title>API Documentation</title>
+                    </body>
+                    </html>
