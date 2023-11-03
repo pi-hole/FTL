@@ -285,7 +285,7 @@ components:
       device_id:
         in: path
         description: Device ID
-        name: id
+        name: device_id
         schema:
           type: integer
         required: true

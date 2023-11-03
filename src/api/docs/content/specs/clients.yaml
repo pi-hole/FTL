@@ -232,6 +232,7 @@ components:
             properties:
               hwaddr:
                 type: string
+                nullable: true
                 example: "12:34:56:78:9A:BC"
               macVendor:
                 type: string
@@ -242,6 +243,7 @@ components:
                 example: 1683305917
               addresses:
                 type: string
+                nullable: true
                 description: Comma-separated list of IP addresses
                 example: "127.0.0.1,::1"
               names:

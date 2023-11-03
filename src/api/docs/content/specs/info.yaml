@@ -209,6 +209,7 @@ components:
                   allOf:
                     - $ref: 'info.yaml#/components/schemas/messages'
                     - $ref: 'common.yaml#/components/schemas/took'
+    messages_with_id:
       delete:
         summary: Delete Pi-hole diagnosis message
         tags:
@@ -1192,9 +1193,9 @@ components:
           required: false
           example: 219
     message_id:
-      in: query
+      in: path
       description: ID of the message to be deleted
-      name: id
+      name: message_id
       schema:
         type: integer
       required: true
