@@ -1253,6 +1253,26 @@
   [[ "${lines[0]}" == "192.168.1.7" ]]
 }
 
+@test "Custom DNS records: Multiple domains per line are accepted" {
+  run bash -c "dig A abc-custom.com +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "1.1.1.1" ]]
+  run bash -c "dig A def-custom.de +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "1.1.1.1" ]]
+}
+
+@test "Custom DNS records: International domains are converted to IDNA form" {
+  # äste.com ---> xn--ste-pla.com
+  run bash -c "dig A xn--ste-pla.com +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "2.2.2.2" ]]
+  # steä.com -> xn--ste-sla.com
+  run bash -c "dig A xn--ste-sla.com +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "2.2.2.2" ]]
+}
+
 @test "Environmental variable is favored over config file" {
   # The config file has -10 but we set FTLCONF_misc_nice="-11"
   run bash -c 'grep -B1 "nice = -11" /etc/pihole/pihole.toml'
@@ -1410,7 +1430,7 @@
   [[ "${lines[0]}" == "PI.HOLE" ]]
   run bash -c './pihole-FTL --config dns.hosts'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "[]" ]]
+  [[ "${lines[0]}" == "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]" ]]
   run bash -c './pihole-FTL --config webserver.port'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[0]}" == "80,[::]:80,443s" ]]

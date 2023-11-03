@@ -45,6 +45,9 @@ jmp_buf exit_jmp;
 
 int main (int argc, char *argv[])
 {
+	// Initialize locale (needed for libidn)
+	init_locale();
+
 	// Get user pihole-FTL is running as
 	// We store this in a global variable
 	// such that the log routine can access
