@@ -41,15 +41,17 @@ bool writeFTLtoml(const bool verbose)
 		log_info("Writing config file");
 
 	// Write header
-	fputs("# This file is managed by pihole-FTL\n#\n", fp);
-	fputs("# Do not edit the file while FTL is\n", fp);
-	fputs("# running or your changes may be overwritten\n#\n", fp);
+	fprintf(fp, "# Pi-hole configuration file (%s)\n", get_FTL_version());
+#ifdef TOML_UTF8
+	fputs("# Encoding: UTF-8\n", fp);
+#else
+	fputs("# Encoding: ASCII + UCS\n", fp);
+#endif
+	fputs("# This file is managed by pihole-FTL\n", fp);
 	char timestring[TIMESTR_SIZE] = "";
 	get_timestr(timestring, time(NULL), false, false);
 	fputs("# Last updated on ", fp);
 	fputs(timestring, fp);
-	fputs("\n# by FTL ", fp);
-	fputs(get_FTL_version(), fp);
 	fputs("\n\n", fp);
 
 	// Iterate over configuration and store it into the file

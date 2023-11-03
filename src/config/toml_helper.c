@@ -123,17 +123,51 @@ static void printTOMLstring(FILE *fp, const char *s, const bool toml)
 			continue;
 		}
 
-		// Escape special characters
+		// Escape special characters with simple escape sequences
 		switch (ch) {
-			case 0x08: fprintf(fp, "\\b"); continue;
-			case 0x09: fprintf(fp, "\\t"); continue;
-			case 0x0a: fprintf(fp, "\\n"); continue;
-			case 0x0c: fprintf(fp, "\\f"); continue;
-			case 0x0d: fprintf(fp, "\\r"); continue;
-			case '"':  fprintf(fp, "\\\""); continue;
-			case '\\': fprintf(fp, "\\\\"); continue;
-			default:   fprintf(fp, "\\0x%02x", ch & 0xff); continue;
+			case '\b': fputs("\\b", fp); continue;
+			case '\t': fputs("\\t", fp); continue;
+			case '\n': fputs("\\n", fp); continue;
+			case '\f': fputs("\\f", fp); continue;
+			case '\r': fputs("\\r", fp); continue;
+			case '"':  fputs("\\\"", fp); continue;
+			case '\\': fputs("\\\\", fp); continue;
 		}
+
+#ifndef TOML_UTF8
+		// The Universal Coded Character Set (UCS, Unicode) is a
+		// standard set of characters defined by the international
+		// standard ISO/IEC 10646, Information technology — Universal
+		// Coded Character Set (UCS) (plus amendments to that standard),
+		// which is the basis of many character encodings, improving as
+		// characters from previously unrepresented typing systems are
+		// added.
+		// The following code converts a UTF-8 character to UCS and
+		// prints it as \UXXXXXXXX
+		int64_t ucs;
+		int bytes = toml_utf8_to_ucs(s, len, &ucs);
+		if(bytes > 0)
+		{
+			// Print 4-byte UCS as \UXXXXXXXX
+			fprintf(fp, "\\U%08X", (uint32_t)ucs);
+			// Advance string pointer
+			s += bytes - 1;
+			// Decrease remaining string length
+			len -= bytes - 1;
+			continue;
+		}
+#else
+		// Escape all other control characters as short 2-byte
+		// UCS sequences
+		if(iscntrl(ch))
+		{
+			fprintf(fp, "\\u%04X", ch);
+			continue;
+		}
+
+		// Print remaining characters as is
+		putc(ch, fp);
+#endif
 	}
 	if(toml) fprintf(fp, "\"");
 }
