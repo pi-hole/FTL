@@ -693,8 +693,23 @@ static int api_config_patch(struct ftl_conn *api)
 		const char *response = getJSONvalue(new_item, elem, &newconf);
 		if(response != NULL)
 		{
-			log_err("/api/config: %s invalid: %s", new_item->k, response);
-			continue;
+			char *hint = calloc(strlen(new_item->k) + strlen(response) + 3, sizeof(char));
+			if(hint == NULL)
+			{
+				free_config(&newconf);
+				return send_json_error(api, 500,
+				                       "internal_error",
+				                       "Failed to allocate memory for hint",
+				                       NULL);
+			}
+			strcpy(hint, new_item->k);
+			strcat(hint, ": ");
+			strcat(hint, response);
+			free_config(&newconf);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "Config item is invalid",
+			                            hint, true);
 		}
 
 		// Get pointer to memory location of this conf_item (global)
