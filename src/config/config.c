@@ -847,10 +847,15 @@ void initConfig(struct config *conf)
 	conf->webserver.tls.cert.t = CONF_STRING;
 	conf->webserver.tls.cert.d.s = (char*)"/etc/pihole/tls.pem";
 
-	conf->webserver.sessionTimeout.k = "webserver.sessionTimeout";
-	conf->webserver.sessionTimeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
-	conf->webserver.sessionTimeout.t = CONF_UINT;
-	conf->webserver.sessionTimeout.d.ui = 300u;
+	conf->webserver.session.timeout.k = "webserver.session.timeout";
+	conf->webserver.session.timeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
+	conf->webserver.session.timeout.t = CONF_UINT;
+	conf->webserver.session.timeout.d.ui = 300u;
+
+	conf->webserver.session.restore.k = "webserver.session.restore";
+	conf->webserver.session.restore.h = "Should Pi-hole backup and restore sessions from the database? This is useful if you want to keep your sessions after a restart of the web interface.";
+	conf->webserver.session.restore.t = CONF_BOOL;
+	conf->webserver.session.restore.d.b = true;
 
 	// sub-struct paths
 	conf->webserver.paths.webroot.k = "webserver.paths.webroot";
@@ -925,6 +930,13 @@ void initConfig(struct config *conf)
 	conf->webserver.api.totp_secret.f = FLAG_WRITE_ONLY | FLAG_INVALIDATE_SESSIONS;
 	conf->webserver.api.totp_secret.d.s = (char*)"";
 
+	conf->webserver.api.app_pwhash.k = "webserver.api.app_pwhash";
+	conf->webserver.api.app_pwhash.h = "Pi-hole application password.\n After you turn on two-factor (2FA) verification and set up an Authenticator app, you may run into issues if you use apps or other services that don't support two-step verification. In this case, you can create and use an app password to sign in. An app password is a long, randomly generated password that can be used instead of your regular password + TOTP token when signing in to the API. The app password can be generated through the API and will be shown only once. You can revoke the app password at any time. If you revoke the app password, be sure to generate a new one and update your app with the new password.";
+	conf->webserver.api.app_pwhash.a = cJSON_CreateStringReference("<valid Pi-hole password hash>");
+	conf->webserver.api.app_pwhash.t = CONF_STRING;
+	conf->webserver.api.app_pwhash.f = FLAG_INVALIDATE_SESSIONS;
+	conf->webserver.api.app_pwhash.d.s = (char*)"";
+
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
 	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
 	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
@@ -998,7 +1010,7 @@ void initConfig(struct config *conf)
 	conf->files.macvendor.d.s = (char*)"/etc/pihole/macvendor.db";
 
 	conf->files.setupVars.k = "files.setupVars";
-	conf->files.setupVars.h = "The config file of Pi-hole";
+	conf->files.setupVars.h = "The old config file of Pi-hole used before v6.0";
 	conf->files.setupVars.a = cJSON_CreateStringReference("<any Pi-hole setupVars file>");
 	conf->files.setupVars.t = CONF_STRING;
 	conf->files.setupVars.f = FLAG_ADVANCED_SETTING;
@@ -1352,17 +1364,30 @@ void readFTLconf(struct config *conf, const bool rewrite)
 	const in_port_t https_port = port_in_use(443) ? 8443 : 443;
 
 	// Create a string with the default ports
-	if(http_port == 80 && https_port == 443)
-		conf->webserver.port.v.s = (char*)"80,[::]:80,443s,[::]:443s";
-	else if(http_port == 8080 && https_port == 443)
-		conf->webserver.port.v.s = (char*)"8080,[::]:8080,443s,[::]:443s";
-	else if(http_port == 80 && https_port == 8443)
-		conf->webserver.port.v.s = (char*)"80,[::]:80,8443s,[::]:8443s";
-	else
-		conf->webserver.port.v.s = (char*)"8080,[::]:8080,8443s,[::]:8443s";
+	// Allocate memory for the string
+	char *ports = calloc(32, sizeof(char));
+	if(ports == NULL)
+	{
+		log_err("Unable to allocate memory for default ports string");
+		return;
+	}
+	// Create the string
+	snprintf(ports, 32, "%d,%ds", http_port, https_port);
 
-	log_info("Initialised webserver ports at %d (HTTP) and %d (HTTPS)",
-	         http_port, https_port);
+	// Append IPv6 ports if IPv6 is enabled
+	const bool have_ipv6 = ipv6_enabled();
+	if(have_ipv6)
+		snprintf(ports + strlen(ports), 32 - strlen(ports),
+		         ",[::]:%d,[::]:%ds", http_port, https_port);
+
+	// Set default values for webserver ports
+	if(conf->webserver.port.t == CONF_STRING_ALLOCATED)
+		free(conf->webserver.port.v.s);
+	conf->webserver.port.v.s = ports;
+	conf->webserver.port.t = CONF_STRING_ALLOCATED;
+
+	log_info("Initialised webserver ports at %d (HTTP) and %d (HTTPS), IPv6 support is %s",
+	         http_port, https_port, have_ipv6 ? "enabled" : "disabled");
 
 	// Initialize the TOML config file
 	writeFTLtoml(true);

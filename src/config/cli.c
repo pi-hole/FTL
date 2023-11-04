@@ -14,13 +14,10 @@
 #include "config/toml_helper.h"
 #include "config/toml_writer.h"
 #include "config/dnsmasq_config.h"
-
 #include "log.h"
 #include "datastructure.h"
-
 // toml_table_t
 #include "tomlc99/toml.h"
-
 // hash_password()
 #include "config/password.h"
 
@@ -369,6 +366,13 @@ int set_config_from_CLI(const char *key, const char *value)
 		if(strcmp(item->k, key) != 0)
 			continue;
 
+		if(item->f & FLAG_ENV_VAR)
+		{
+			log_err("Config option %s is read-only (set via environmental variable)", key);
+			free_config(&newconf);
+			return 5;
+		}
+
 		// This is the config option we are looking for
 		new_item = item;
 
@@ -383,12 +387,16 @@ int set_config_from_CLI(const char *key, const char *value)
 	if(new_item == NULL)
 	{
 		log_err("Unknown config option: %s", key);
-		return 2;
+		free_config(&newconf);
+		return 4;
 	}
 
 	// Parse value
 	if(!readStringValue(new_item, value, &newconf))
+	{
+		free_config(&newconf);
 		return 2;
+	}
 
 	// Check if value changed compared to current value
 	// Also check if this is the password config item change as this
@@ -406,6 +414,7 @@ int set_config_from_CLI(const char *key, const char *value)
 			{
 				// Test failed
 				log_debug(DEBUG_CONFIG, "Config item %s: dnsmasq config test failed", conf_item->k);
+				free_config(&newconf);
 				return 3;
 			}
 		}

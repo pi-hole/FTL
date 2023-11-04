@@ -314,7 +314,7 @@ const char *readFTLlegacy(struct config *conf)
 
 	value = 0;
 	if(buffer != NULL && sscanf(buffer, "%i", &value) && value > 0)
-		conf->webserver.sessionTimeout.v.ui = value;
+		conf->webserver.session.timeout.v.ui = value;
 
 	// API_PRETTY_JSON
 	// defaults to: false

@@ -20,12 +20,23 @@ components:
                     - $ref: 'auth.yaml#/components/schemas/session'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
-                  login_okay:
-                    $ref: 'auth.yaml#/components/examples/login_okay'
+                  auth_okay:
+                    $ref: 'auth.yaml#/components/examples/auth_okay'
                   no_login_required:
                     $ref: 'auth.yaml#/components/examples/no_login_required'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/session'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
                   login_required:
                     $ref: 'auth.yaml#/components/examples/login_required'
+                  login_required_2fa:
+                    $ref: 'auth.yaml#/components/examples/login_required_2fa'
       post:
         summary: Submit password for login
         tags:
@@ -155,7 +166,6 @@ components:
         tags:
           - Authentication
         operationId: "get_auth_totp"
-        security: []
         description: Suggest new TOTP credentials for two-factor authentication (2FA)
         responses:
           '200':
@@ -202,6 +212,31 @@ components:
                     $ref: 'auth.yaml#/components/examples/errors/no_password'
                   session_not_in_use:
                     $ref: 'auth.yaml#/components/examples/errors/session_not_in_use'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    app:
+      get:
+        summary: Create new application password
+        tags:
+          - Authentication
+        operationId: "add_app"
+        description: |
+          Create a new application password. The generated password is shown only once and cannot be retrieved later so make sure to store it in a safe place. The application password can be used to authenticate against the API instead of the regular password. It does not require 2FA verification. Generating a new application password will invalidate all currently active sessions.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/app'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
@@ -282,6 +317,9 @@ components:
                   mixed:
                     type: boolean
                     description: Indicator if TLS (end-to-end encryption) is used only partially for this session
+              app:
+                type: boolean
+                description: Indicator if this session was initiated using an application password
               login_at:
                 type: integer
                 description: Timestamp of login (seconds since epoch)
@@ -304,7 +342,7 @@ components:
               tls:
                 login: true
                 mixed: false
-              strict_tls: false
+              app: false
               login_at: 1580000000
               last_active: 1580000000
               valid_until: 1580000300
@@ -337,6 +375,20 @@ components:
               type: array
               items:
                 type: integer
+    app:
+      type: object
+      description: Application password
+      properties:
+        app:
+          type: object
+          properties:
+            password:
+              type: string
+            hash:
+              type: string
+          example:
+            password: "7ua0rHPZixX6B3bTa5o4Dv08iyEIm/2q9qgLrF9MNVw="
+            hash: "$BALLOON-SHA256$v=1$s=1024,t=32$4ERwJD4XucRP4PcDHNLiAg==$kSy0Eou8RUVtK2UTbc5MCpItV8YC3VRuoGhoENxSQ2I="
 
   errors:
     bad_request:
@@ -358,14 +410,23 @@ components:
               nullable: true
 
   examples:
-    login_okay:
-      summary: Login successful
+    auth_okay:
+      summary: Authentication valid
       value:
         session:
           valid: true
           totp: false
           sid: null
           csrf: null
+          validity: 300
+    login_okay:
+      summary: Login successful
+      value:
+        session:
+          valid: true
+          totp: false
+          sid: "vFA+EP4MQ5JJvJg+3Q2Jnw="
+          csrf: "Ux87YTIiMOf/GKCefVIOMw="
           validity: 300
     no_login_required:
       summary: No login required for this client
@@ -377,11 +438,20 @@ components:
           csrf: null
           validity: -1
     login_required:
-      summary: Login required
+      summary: Login required, 2FA disabled
       value:
         session:
           valid: false
           totp: false
+          sid: null
+          csrf: null
+          validity: -1
+    login_required_2fa:
+      summary: Login required, 2FA enabled
+      value:
+        session:
+          valid: false
+          totp: true
           sid: null
           csrf: null
           validity: -1

@@ -171,7 +171,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type bool";
 			// Set item
 			conf_item->v.b = elem->valueint;
-			log_debug(DEBUG_CONFIG, "Set %s to %s", conf_item->k, conf_item->v.b ? "true" : "false");
+			log_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, conf_item->v.b ? "true" : "false");
 			break;
 		}
 		case CONF_ALL_DEBUG_BOOL:
@@ -182,7 +182,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Set item
 			conf_item->v.b = elem->valueint;
 			set_all_debug(newconf, elem->valueint);
-			log_debug(DEBUG_CONFIG, "Set %s to %s (this affects all debug items)", conf_item->k, conf_item->v.b ? "true" : "false");
+			log_debug(DEBUG_CONFIG, "%s = %s (this affects all debug items)", conf_item->k, conf_item->v.b ? "true" : "false");
 			break;
 		}
 		case CONF_INT:
@@ -194,7 +194,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type integer";
 			// Set item
 			conf_item->v.i = elem->valueint;
-			log_debug(DEBUG_CONFIG, "Set %s to %i", conf_item->k, conf_item->v.i);
+			log_debug(DEBUG_CONFIG, "%s = %i", conf_item->k, conf_item->v.i);
 			break;
 		}
 		case CONF_UINT:
@@ -206,7 +206,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type unsigned integer";
 			// Set item
 			conf_item->v.ui = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "Set %s to %u", conf_item->k, conf_item->v.ui);
+			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.ui);
 			break;
 		}
 		case CONF_UINT16:
@@ -218,7 +218,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type unsigned integer (16bit)";
 			// Set item
 			conf_item->v.ui = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "Set %s to %u", conf_item->k, conf_item->v.ui);
+			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.ui);
 			break;
 		}
 		case CONF_LONG:
@@ -230,7 +230,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type long";
 			// Set item
 			conf_item->v.l = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "Set %s to %li", conf_item->k, conf_item->v.l);
+			log_debug(DEBUG_CONFIG, "%s = %li", conf_item->k, conf_item->v.l);
 			break;
 		}
 		case CONF_ULONG:
@@ -242,7 +242,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type unsigned long";
 			// Set item
 			conf_item->v.ul = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "Set %s to %lu", conf_item->k, conf_item->v.ul);
+			log_debug(DEBUG_CONFIG, "%s = %lu", conf_item->k, conf_item->v.ul);
 			break;
 		}
 		case CONF_DOUBLE:
@@ -252,7 +252,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not a number";
 			// Set item
 			conf_item->v.d = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "Set %s to %f", conf_item->k, conf_item->v.d);
+			log_debug(DEBUG_CONFIG, "%s = %f", conf_item->k, conf_item->v.d);
 			break;
 		}
 		case CONF_STRING:
@@ -266,7 +266,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				free(conf_item->v.s);
 			// Set item
 			conf_item->v.s = strdup(elem->valuestring);
-			log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
+			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, conf_item->v.s);
 			break;
 		}
 		case CONF_PASSWORD:
@@ -296,7 +296,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.ptr_type = ptr_type;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.ptr_type);
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.ptr_type);
 			break;
 		}
 		case CONF_ENUM_BUSY_TYPE:
@@ -309,7 +309,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.busy_reply = busy_reply;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.busy_reply);
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.busy_reply);
 			break;
 		}
 		case CONF_ENUM_BLOCKING_MODE:
@@ -322,7 +322,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.blocking_mode = blocking_mode;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.blocking_mode);
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.blocking_mode);
 			break;
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
@@ -335,7 +335,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.refresh_hostnames = refresh_hostnames;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.refresh_hostnames );
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.refresh_hostnames );
 			break;
 		}
 		case CONF_ENUM_LISTENING_MODE:
@@ -348,7 +348,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.listeningMode = listeningMode;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.listeningMode);
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.listeningMode);
 			break;
 		}
 		case CONF_ENUM_WEB_THEME:
@@ -361,7 +361,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.web_theme = web_theme;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.web_theme);
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.web_theme);
 			break;
 		}
 		case CONF_ENUM_TEMP_UNIT:
@@ -374,7 +374,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.temp_unit = temp_unit;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.temp_unit);
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.temp_unit);
 			break;
 		}
 		case CONF_ENUM_PRIVACY_LEVEL:
@@ -392,7 +392,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not within valid range";
 			// Set item
 			conf_item->v.i = value;
-			log_debug(DEBUG_CONFIG, "Set %s to %d", conf_item->k, conf_item->v.i);
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.i);
 			break;
 		}
 		case CONF_STRUCT_IN_ADDR:
@@ -404,7 +404,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not a valid IPv4 address";
 			// Set item
 			memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
-			log_debug(DEBUG_CONFIG, "Set %s to %s", conf_item->k, elem->valuestring);
+			log_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, elem->valuestring);
 			break;
 		}
 		case CONF_STRUCT_IN6_ADDR:
@@ -416,7 +416,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not a valid IPv6 address";
 			// Set item
 			memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
-			log_debug(DEBUG_CONFIG, "Set %s to %s", conf_item->k, elem->valuestring);
+			log_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, elem->valuestring);
 			break;
 		}
 		case CONF_JSON_STRING_ARRAY:
@@ -552,6 +552,8 @@ static int api_config_get(struct ftl_conn *api)
 			cJSON *flags = JSON_NEW_OBJECT();
 			JSON_ADD_BOOL_TO_OBJECT(flags, "restart_dnsmasq", conf_item->f & FLAG_RESTART_FTL);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "advanced", conf_item->f & FLAG_ADVANCED_SETTING);
+			JSON_ADD_BOOL_TO_OBJECT(flags, "session_reset", conf_item->f & FLAG_INVALIDATE_SESSIONS);
+			JSON_ADD_BOOL_TO_OBJECT(flags, "env_var", conf_item->f & FLAG_ENV_VAR);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "flags", flags);
 
 			// Attach leave object to tree of objects
@@ -698,6 +700,18 @@ static int api_config_patch(struct ftl_conn *api)
 		// Get pointer to memory location of this conf_item (global)
 		struct conf_item *conf_item = get_conf_item(&config, i);
 
+		// Config items that are set via environment variables cannot be changed
+		// via the API
+		if(new_item->f & FLAG_ENV_VAR && !compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
+		{
+			char *key = strdup(new_item->k);
+			free_config(&newconf);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "Config items set via environment variables cannot be changed via the API",
+			                            key, true);
+		}
+
 		// Skip processing if value didn't change compared to current value
 		if((conf_item->t != CONF_PASSWORD && compare_config_item(conf_item->t, &new_item->v, &conf_item->v)) ||
 		   (conf_item->t == CONF_PASSWORD && strcmp(elem->valuestring, PASSWORD_VALUE) == 0))
@@ -738,6 +752,7 @@ static int api_config_patch(struct ftl_conn *api)
 				api->ftl.restart = true;
 			else
 			{
+				free_config(&newconf);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Invalid configuration",
@@ -827,6 +842,20 @@ static int api_config_put_delete(struct ftl_conn *api)
 		// Check if this is a property where we want to add an item
 		if(min_level != level + 1)
 			continue;
+
+		// Error when this config item is read-only due to an
+		// environment variable forcing its value
+		if(new_item->f & FLAG_ENV_VAR)
+		{
+			char *key = strdup(new_item->k);
+			free_config(&newconf);
+			if(requested_path != NULL)
+				free_config_path(requested_path);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "Config items set via environment variables cannot be changed via the API",
+			                            key, true);
+		}
 
 		// Check if this entry does already exist in the array
 		int idx = 0;
@@ -925,7 +954,10 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Store changed configuration to disk
 	writeFTLtoml(true);
 
-	return api->method == HTTP_PUT ? 201 : 204; // 201 - Created or 204 - No content
+	// Send empty reply with matching HTTP status code
+	// 201 - Created or 204 - No content
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_SEND_OBJECT_CODE(json, api->method == HTTP_PUT ? 201 : 204);
 }
 
 // Endpoint /api/config router

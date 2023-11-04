@@ -15,7 +15,7 @@ import json
 class openApi():
 
 	# List of methods we want to extract
-	METHODS = ["get", "post", "put", "delete"]
+	METHODS = ["get", "post", "put", "patch", "delete"]
 
 	def __init__(self, base_path: str, api_root: str = "/api") -> None:
 		# Store arguments

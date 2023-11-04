@@ -924,17 +924,18 @@ void DB_read_queries(void)
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
+		const sqlite3_int64 dbID = sqlite3_column_int64(stmt, 0);
 		const double queryTimeStamp = sqlite3_column_double(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			sqlite3_int64 dbID = sqlite3_column_int64(stmt, 0);
-			log_warn("Database: TIMESTAMP of query should be larger than 01/01/2017 but is %f (DB ID %lli)", queryTimeStamp, dbID);
+			log_warn("Database: TIMESTAMP of query should be larger than 01/01/2017 but is %f (DB ID %lli)",
+			         queryTimeStamp, dbID);
 			continue;
 		}
 		if(queryTimeStamp > now)
 		{
-			log_debug(DEBUG_DATABASE, "Skipping query logged in the future (%lli)", (long long)queryTimeStamp);
+			log_debug(DEBUG_DATABASE, "Skipping query logged in the future (%f > %f)", queryTimeStamp, now);
 			continue;
 		}
 
@@ -959,14 +960,16 @@ void DB_read_queries(void)
 		const char *domainname = (const char *)sqlite3_column_text(stmt, 4);
 		if(domainname == NULL)
 		{
-			log_warn("Database: DOMAIN should never be NULL, %lli", (long long)queryTimeStamp);
+			log_warn("Database: DOMAIN should never be NULL, ID = %lld, timestamp = %f",
+			         dbID, queryTimeStamp);
 			continue;
 		}
 
 		const char *clientIP = (const char *)sqlite3_column_text(stmt, 5);
 		if(clientIP == NULL)
 		{
-			log_warn("Database: CLIENT should never be NULL, %lli", (long long)queryTimeStamp);
+			log_warn("Database: CLIENT should never be NULL, ID = %lld, timestamp = %f",
+			         dbID, queryTimeStamp);
 			continue;
 		}
 
@@ -980,8 +983,8 @@ void DB_read_queries(void)
 		const int reply_int = sqlite3_column_int(stmt, 8);
 		if(reply_int < REPLY_UNKNOWN || reply_int >= QUERY_REPLY_MAX)
 		{
-			log_warn("Database: REPLY should be within [%i,%i] but is %i",
-			         REPLY_UNKNOWN, QUERY_REPLY_MAX-1, reply_int);
+			log_warn("Database: REPLY should be within [%i,%i] but is %i, ID = %lld, timestamp = %f",
+			         REPLY_UNKNOWN, QUERY_REPLY_MAX-1, reply_int, dbID, queryTimeStamp);
 			continue;
 		}
 		const enum reply_type reply = reply_int;
@@ -989,8 +992,8 @@ void DB_read_queries(void)
 		const int dnssec_int = sqlite3_column_int(stmt, 10);
 		if(dnssec_int < DNSSEC_UNKNOWN || dnssec_int >= DNSSEC_MAX)
 		{
-			log_warn("Database: REPLY should be within [%i,%i] but is %i",
-			         DNSSEC_UNKNOWN, DNSSEC_MAX-1, dnssec_int);
+			log_warn("Database: REPLY should be within [%i,%i] but is %i, ID = %lld, timestamp = %f",
+			         DNSSEC_UNKNOWN, DNSSEC_MAX-1, dnssec_int, dbID, queryTimeStamp);
 			continue;
 		}
 		const enum dnssec_status dnssec = dnssec_int;
@@ -1024,7 +1027,8 @@ void DB_read_queries(void)
 			reply_time_avail = true;
 			if(reply_time < 0.0)
 			{
-				log_warn("REPLY_TIME value %f is invalid, %lli", reply_time, (long long)queryTimeStamp);
+				log_warn("REPLY_TIME value %f is invalid, ID = %lld, timestamp = %f",
+				         reply_time, dbID, queryTimeStamp);
 				continue;
 			}
 		}
@@ -1049,7 +1053,8 @@ void DB_read_queries(void)
 			else
 			{
 				// Invalid query type
-				log_warn("Query type %d is invalid.", type);
+				log_warn("Query type %d is invalid, ID = %lld, timestamp = %f",
+				         type, dbID, queryTimeStamp);
 				continue;
 			}
 		}
@@ -1181,7 +1186,8 @@ void DB_read_queries(void)
 
 			case QUERY_STATUS_MAX:
 			default:
-				log_warn("Found unknown status %i in long term database!", status);
+				log_warn("Found unknown status %i in long term database, ID = %lld, timestamp = %f",
+				         status, dbID, queryTimeStamp);
 				break;
 		}
 

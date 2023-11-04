@@ -33,6 +33,8 @@
 #include "database/query-table.h"
 // http_terminate()
 #include "webserver/webserver.h"
+// free_api()
+#include "api/api.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -332,6 +334,9 @@ void cleanup(const int ret)
 	// Free regex filter memory
 	free_regex();
 
+	// Terminate API
+	free_api();
+
 	// Terminate HTTP server (if running)
 	http_terminate();
 
@@ -390,4 +395,52 @@ ssize_t getrandom_fallback(void *buf, size_t buflen, unsigned int flags)
 	fclose(fp);
 
 	return buflen;
+}
+
+bool ipv6_enabled(void)
+{
+	// First we check a few virtual system files to see if IPv6 is disabled
+	const char *files[] = {
+		"/sys/module/ipv6/parameters/disable", // GRUB - ipv6.disable=1
+		"/proc/sys/net/ipv6/conf/all/disable_ipv6", // sysctl.conf - net.ipv6.conf.all.disable_ipv6=1
+		"/proc/sys/net/ipv6/conf/default/disable_ipv6", // sysctl.conf - net.ipv6.conf.all.disable_ipv6=1
+		NULL
+	};
+
+	// Loop over the files
+	for(int i = 0; files[i] != NULL; i++)
+	{
+		// Open file for reading
+		FILE *f = fopen(files[i], "r");
+		if(f == NULL)
+			continue;
+
+		// Read first character
+		const int c = fgetc(f);
+		fclose(f);
+		// If the first character is a 1, then IPv6 is disabled
+		if(c == '1')
+			return false;
+	}
+
+	// If the file does not exist or if it does not contain a 1, then we check
+	// if /proc/net/if_inet6 has any IPv6-capable interfaces
+	// Since Linux 2.6.25 (April 2008), files in /proc/net are a symlink to
+	// /proc/self/net and provide information about the network devices and
+	// interfaces for the network namespace of which the process is a member
+	FILE *f = fopen("/proc/net/if_inet6", "r");
+
+	if(f != NULL)
+	{
+		// If the file exists, we check if it is empty
+		const int c = fgetc(f);
+		fclose(f);
+		// If the file is empty, then there are no IPv6-capable interfaces
+		if(c == EOF)
+			return false;
+	}
+
+	// else: IPv6 is not obviously disabled and there is at least one
+	// IPv6-capable interface
+	return true;
 }

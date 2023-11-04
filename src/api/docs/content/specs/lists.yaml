@@ -60,6 +60,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'lists.yaml#/components/schemas/lists/get' # identical to GET
+                    - $ref: 'lists.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
@@ -143,6 +144,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'lists.yaml#/components/schemas/lists/get'
+                    - $ref: 'lists.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -175,6 +177,7 @@ components:
         properties:
           lists:
             type: array
+            description: Array of lists
             items:
               allOf:
                 - $ref: 'lists.yaml#/components/schemas/list'
@@ -191,7 +194,7 @@ components:
           - $ref: 'lists.yaml#/components/schemas/enabled'
       post:
         allOf:
-          - $ref: 'lists.yaml#/components/schemas/list'
+          - $ref: 'lists.yaml#/components/schemas/list_maybe_array'
           - $ref: 'lists.yaml#/components/schemas/type'
           - $ref: 'lists.yaml#/components/schemas/comment'
           - $ref: 'lists.yaml#/components/schemas/groups'
@@ -203,6 +206,19 @@ components:
           description: Address of the list
           type: string
           example: https://hosts-file.net/ad_servers.txt
+    list_array:
+      type: object
+      properties:
+        list:
+          description: array of list addresses
+          type: array
+          items:
+            type: string
+          example: ["https://hosts-file.net/ad_servers.txt"]
+    list_maybe_array:
+      oneOf:
+        - $ref: 'lists.yaml#/components/schemas/list'
+        - $ref: 'lists.yaml#/components/schemas/list_array'
     type:
       type: object
       properties:
@@ -282,6 +298,47 @@ components:
           type: integer
           readOnly: true
           example: 2
+    lists_processed:
+      type: object
+      properties:
+        processed:
+          type: object
+          nullable: true
+          description: |
+            Object containing the number of lists that were successfully
+            added to the database and the number of lists that could not be
+            added to the database.
+          properties:
+            success:
+              description: |
+                Array of lists that were successfully added to the database.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: List that was added to the database
+                    type: string
+            errors:
+              description: |
+                Array of errors that occurred during processing.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: List that could not be added to the database
+                    type: string
+                  error:
+                    description: Error message
+                    type: string
+          example:
+            success:
+              - item: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+              - item: "https://mirror1.malwaredomains.com/files/justdomains"
+            errors:
+              - item: "https://raw.githubusercontent.com/abc/def/master/hosts"
+                error: "UNIQUE constraint failed: adlist.address"
   examples:
     lists:
       value:
@@ -302,6 +359,8 @@ components:
             id: 2
             date_added: 1594670974
             date_modified: 1594670974
+        took: 0.012
+        processed: null
     errors:
       uri_error:
         item_missing:

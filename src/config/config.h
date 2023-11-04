@@ -83,11 +83,12 @@ enum conf_type {
 
 #define MAX_CONFIG_PATH_DEPTH 6
 
-#define FLAG_RESTART_FTL       (1 << 0)
+#define FLAG_RESTART_FTL           (1 << 0)
 #define FLAG_ADVANCED_SETTING      (1 << 1)
 #define FLAG_PSEUDO_ITEM           (1 << 2)
 #define FLAG_INVALIDATE_SESSIONS   (1 << 3)
 #define FLAG_WRITE_ONLY            (1 << 4)
+#define FLAG_ENV_VAR     (1 << 5)
 
 struct conf_item {
 	const char *k;        // item Key
@@ -108,6 +109,7 @@ struct enum_options {
 // When new config items are added, the following places need to be updated:
 // - src/config/config.c: New default item
 // - test/pihole.toml: Add the new item to the test config file
+// - api/docs/content/specs/config.yml: Add the new item to the API documentation
 struct config {
 	struct {
 		struct conf_item upstreams;
@@ -205,7 +207,10 @@ struct config {
 		struct conf_item domain;
 		struct conf_item acl;
 		struct conf_item port;
-		struct conf_item sessionTimeout;
+		struct {
+			struct conf_item timeout;
+			struct conf_item restore;
+		} session;
 		struct {
 			struct conf_item rev_proxy;
 			struct conf_item cert;
@@ -225,6 +230,7 @@ struct config {
 			struct conf_item pwhash;
 			struct conf_item password; // This is a pseudo-item
 			struct conf_item totp_secret; // This is a write-only item
+			struct conf_item app_pwhash;
 			struct conf_item excludeClients;
 			struct conf_item excludeDomains;
 			struct conf_item maxHistory;

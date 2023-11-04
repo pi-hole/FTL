@@ -82,6 +82,8 @@ int api_list(struct ftl_conn *api);
 int api_group(struct ftl_conn *api);
 
 // Auth method
+void init_api(void);
+void free_api(void);
 int check_client_auth(struct ftl_conn *api, const bool is_api);
 int api_auth(struct ftl_conn *api);
 void delete_all_sessions(void);
@@ -93,6 +95,7 @@ bool is_local_api_user(const char *remote_addr) __attribute__((pure));
 bool verifyTOTP(const uint32_t code);
 int generateTOTP(struct ftl_conn *api);
 int printTOTP(void);
+int generateAppPw(struct ftl_conn *api);
 
 // Documentation methods
 int api_docs(struct ftl_conn *api);
@@ -102,8 +105,6 @@ int api_teleporter(struct ftl_conn *api);
 
 // Action methods
 int api_action_gravity(struct ftl_conn *api);
-int api_action_poweroff(struct ftl_conn *api);
-int api_action_reboot(struct ftl_conn *api);
 int api_action_restartDNS(struct ftl_conn *api);
 int api_action_flush_logs(struct ftl_conn *api);
 int api_action_flush_arp(struct ftl_conn *api);

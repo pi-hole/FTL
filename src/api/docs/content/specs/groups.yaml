@@ -61,6 +61,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'groups.yaml#/components/schemas/groups/get' # identical to GET
+                    - $ref: 'groups.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
@@ -137,7 +138,8 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'groups.yaml#/components/schemas/groups/get'
+                    - $ref: 'groups.yaml#/components/schemas/groups/get' # identical to GET
+                    - $ref: 'groups.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -183,7 +185,7 @@ components:
           - $ref: 'groups.yaml#/components/schemas/enabled'
       post:
         allOf:
-          - $ref: 'groups.yaml#/components/schemas/name'
+          - $ref: 'groups.yaml#/components/schemas/name_maybe_array'
           - $ref: 'groups.yaml#/components/schemas/comment'
           - $ref: 'groups.yaml#/components/schemas/enabled'
     name:
@@ -193,6 +195,19 @@ components:
           description: Group name
           type: string
           example: test_group
+    name_array:
+      type: object
+      properties:
+        name:
+          description: array of group names
+          type: array
+          items:
+            type: string
+          example: ["test1", "test2", "test3"]
+    name_maybe_array:
+      oneOf:
+        - $ref: 'groups.yaml#/components/schemas/name'
+        - $ref: 'groups.yaml#/components/schemas/name_array'
     comment:
       type: object
       properties:
@@ -228,6 +243,47 @@ components:
           type: integer
           readOnly: true
           example: 1611239099
+    lists_processed:
+      type: object
+      properties:
+        processed:
+          type: object
+          nullable: true
+          description: |
+            Object containing the number of groups that were successfully
+            added to the database and the number of groups that could not be
+            added to the database.
+          properties:
+            success:
+              description: |
+                Array of groups that were successfully added to the database.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Group that was added to the database
+                    type: string
+            errors:
+              description: |
+                Array of errors that occurred during processing.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Group that could not be added to the database
+                    type: string
+                  error:
+                    description: Error message
+                    type: string
+          example:
+            success:
+              - item: "Home-Automation"
+              - item: "Children"
+            errors:
+              - item: "Garden"
+                error: "UNIQUE constraint failed: group.name"
   examples:
     groups:
       value:
@@ -244,6 +300,8 @@ components:
             id: 5
             date_added: 1604871899
             date_modified: 1604871899
+        took: 0.003
+        processed: null
     errors:
       uri_error:
         item_missing:

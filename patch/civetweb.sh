@@ -9,5 +9,6 @@ patch -p1 < patch/civetweb/0001-Add-mbedTLS-debug-logging-hook.patch
 patch -p1 < patch/civetweb/0001-Register-CSRF-token-in-conn-request_info.patch
 patch -p1 < patch/civetweb/0001-Do-not-try-to-guess-server-hostname-in-Civetweb-when.patch
 patch -p1 < patch/civetweb/0001-Log-debug-messages-to-webserver.log-when-debug.webse.patch
+patch -p1 < patch/civetweb/0001-Allow-extended-ASCII-characters-in-URIs.patch
 
 echo "ALL PATCHES APPLIED OKAY"

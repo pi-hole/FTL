@@ -15,6 +15,7 @@ set(sources
         api.h
         api.c
         auth.c
+        auth.h
         config.c
         dhcp.c
         dns.c

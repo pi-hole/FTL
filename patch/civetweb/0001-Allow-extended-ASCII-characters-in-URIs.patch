@@ -1,0 +1,35 @@
+From ebb27741b10ed2eac51ac356708800ae96cdd17a Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Tue, 31 Oct 2023 08:35:31 +0100
+Subject: [PATCH] Allow extended ASCII characters in URIs
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/webserver/civetweb/civetweb.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
+index 9b0c6308..5320c4d4 100644
+--- a/src/webserver/civetweb/civetweb.c
++++ b/src/webserver/civetweb/civetweb.c
+@@ -10734,7 +10734,7 @@ skip_to_end_of_word_and_terminate(char **ppw, int eol)
+ {
+ 	/* Forward until a space is found - use isgraph here */
+ 	/* See http://www.cplusplus.com/reference/cctype/ */
+-	while (isgraph((unsigned char)**ppw)) {
++	while ((unsigned char)**ppw > 127 || isgraph((unsigned char)**ppw)) {
+ 		(*ppw)++;
+ 	}
+ 
+@@ -18473,7 +18473,7 @@ get_uri_type(const char *uri)
+ 	 * and % encoded symbols.
+ 	 */
+ 	for (i = 0; uri[i] != 0; i++) {
+-		if (uri[i] < 33) {
++		if ((unsigned char)uri[i] < 33) {
+ 			/* control characters and spaces are invalid */
+ 			return 0;
+ 		}
+-- 
+2.34.1
+

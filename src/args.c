@@ -862,12 +862,18 @@ void parse_args(int argc, char* argv[])
 
 // defined in src/dnsmasq/option.c
 extern void reset_usage_indicator(void);
+// defined in src/log.h
+bool only_testing = false;
 void test_dnsmasq_options(int argc, const char *argv[])
 {
 	// Reset getopt before calling read_opts
 	optind = 0;
+
+	// Signal we don't want to jump back to FTL's main()
+	// but die after configuration parsing
+	only_testing = true;
+
 	// Call dnsmasq's option parser
 	reset_usage_indicator();
-	// Call read_opts
 	read_opts(argc, (char**)argv, NULL);
 }

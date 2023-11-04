@@ -1643,43 +1643,28 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	}
 	else
 	{	// Create new or replace existing entry, no error if existing
-		// We have to use a subquery here to avoid violating FOREIGN KEY
-		// constraints (REPLACE recreates (= new ID) entries instead of updating them)
+		// We UPSERT here to avoid violating FOREIGN KEY constraints
 		if(listtype == GRAVITY_GROUPS)
 			if(row->name == NULL)
 			{
 				// Name is not to be changed
-				querystr = "REPLACE INTO \"group\" (name,enabled,description,id,date_added) "
-				           "VALUES (:item,:enabled,:comment,"
-				                   "(SELECT id FROM \"group\" WHERE name = :item),"
-				                   "(SELECT date_added FROM \"group\" WHERE name = :item));";
+				querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:description) "
+				           "ON CONFLICT(name) DO UPDATE SET enabled = :enabled, description = :description;";
 			}
 			else
 			{
-				querystr = "UPDATE \"group\" SET "
-				             "name = :name, enabled = :enabled, description = :comment "
+				querystr = "UPDATE \"group\" SET name = :name, enabled = :enabled, description = :comment "
 				           "WHERE name = :item";
 			}
 		else if(listtype == GRAVITY_ADLISTS)
-			querystr = "REPLACE INTO adlist (address,enabled,comment,type,id,date_added,date_updated,number,invalid_domains,status,abp_entries) "
-			           "VALUES (:item,:enabled,:comment,:type,"
-			                   "(SELECT id FROM adlist WHERE address = :item),"
-			                   "(SELECT date_added FROM adlist WHERE address = :item),"
-			                   "(SELECT date_updated FROM adlist WHERE address = :item),"
-			                   "(SELECT number FROM adlist WHERE address = :item),"
-			                   "(SELECT invalid_domains FROM adlist WHERE address = :item),"
-			                   "(SELECT status FROM adlist WHERE address = :item),"
-			                   "(SELECT abp_entries FROM adlist WHERE address = :item));";
+			querystr = "INSERT INTO adlist (address,enabled,comment,type) VALUES (:item,:enabled,:comment,:type) "\
+			           "ON CONFLICT(address) DO UPDATE SET enabled = :enabled, comment = :comment, type = :type;";
 		else if(listtype == GRAVITY_CLIENTS)
-			querystr = "REPLACE INTO client (ip,comment,id,date_added) "
-			           "VALUES (:item,:comment,"
-			                   "(SELECT id FROM client WHERE ip = :item),"
-			                   "(SELECT date_added FROM client WHERE ip = :item));";
+			querystr = "INSERT INTO client (ip,comment) VALUES (:item,:comment) "\
+			           "ON CONFLICT(ip) DO UPDATE SET comment = :comment;";
 		else // domainlist
-			querystr = "REPLACE INTO domainlist (domain,type,enabled,comment,id,date_added) "
-			           "VALUES (:item,:type,:enabled,:comment,"
-			                   "(SELECT id FROM domainlist WHERE domain = :item AND type = :oldtype),"
-			                   "(SELECT date_added FROM domainlist WHERE domain = :item AND type = :oldtype));";
+			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:type,:enabled,:comment) "\
+			           "ON CONFLICT(domain) DO UPDATE SET type = :type, enabled = :enabled, comment = :comment;";
 	}
 
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);

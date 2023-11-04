@@ -38,6 +38,7 @@
     FPRINTF_CENTER(fp, width, "#", fmt  , "#\n", __VA_ARGS__)
 
 extern bool debug_flags[DEBUG_MAX];
+extern bool only_testing;
 
 void clear_debug_flags(void);
 void init_FTL_log(const char *name);
