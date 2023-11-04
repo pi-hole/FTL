@@ -419,11 +419,13 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# DHCP server setting\n", pihole_conf);
 		fputs("dhcp-authoritative\n", pihole_conf);
 		fputs("dhcp-leasefile="DHCPLEASESFILE"\n", pihole_conf);
-		fprintf(pihole_conf, "dhcp-range=%s,%s,%s\n",
+		fprintf(pihole_conf, "dhcp-range=%s,%s",
 		        conf->dhcp.start.v.s,
-				conf->dhcp.end.v.s,
-				conf->dhcp.leaseTime.v.s);
-		fprintf(pihole_conf, "dhcp-option=option:router,%s\n",
+		        conf->dhcp.end.v.s);
+		// Lease time is optional, only add it if it is set
+		if(strlen(conf->dhcp.leaseTime.v.s) > 0)
+			fprintf(pihole_conf, ",%s", conf->dhcp.leaseTime.v.s);
+		fprintf(pihole_conf, "\ndhcp-option=option:router,%s\n",
 		        conf->dhcp.router.v.s);
 
 		if(conf->dhcp.rapidCommit.v.b)
