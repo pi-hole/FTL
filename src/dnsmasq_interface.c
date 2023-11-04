@@ -746,12 +746,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->magic = MAGICBYTE;
 	query->timestamp = querytimestamp;
 	query->type = querytype;
+	counters->querytype[querytype]++;
 	query->qtype = qtype;
 	query->id = id; // Has to be set before calling query_set_status()
 
 	// This query is unknown as long as no reply has been found and analyzed
-	counters->status[QUERY_UNKNOWN]++;
-	query_set_status(query, QUERY_UNKNOWN);
+	query_set_status_init(query, QUERY_UNKNOWN);
 	query->domainID = domainID;
 	query->clientID = clientID;
 	// Initialize database field, will be set when the query is stored in the long-term DB
@@ -796,9 +796,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Set lastQuery timer and add one query for network table
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
-
-	// Update counters
-	counters->querytype[querytype]++;
 
 	// Process interface information of client (if available)
 	// Skip interface name length 1 to skip "-". No real interface should
@@ -2524,7 +2521,6 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 		if(query->reply == REPLY_OTHER)
 			log_debug(DEBUG_QUERIES, "     Unknown rcode = %i", addr->log.rcode);
 
-
 		if(addr->log.ede != EDE_UNSET)
 			log_debug(DEBUG_QUERIES, "     EDE: %s (1/%d)", edestr(addr->log.ede), addr->log.ede);
 
@@ -3360,7 +3356,10 @@ void FTL_multiple_replies(const int id, int *firstID)
 	log_debug(DEBUG_QUERIES, "**** sending reply %d also to %d", *firstID, queryID);
 
 	// Copy relevant information over
+	counters->reply[duplicated_query->reply]--;
 	duplicated_query->reply = source_query->reply;
+	counters->reply[duplicated_query->reply]++;
+
 	duplicated_query->dnssec = source_query->dnssec;
 	duplicated_query->flags.complete = true;
 	duplicated_query->CNAME_domainID = source_query->CNAME_domainID;

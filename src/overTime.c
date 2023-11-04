@@ -190,15 +190,6 @@ void moveOverTimeMemory(const time_t mintime)
 		&overTime[moveOverTime],
 		remainingSlots*sizeof(*overTime));
 
-	// Correct time indices of queries. This is necessary because we just moved the slot this index points to
-	for(int queryID = 0; queryID < counters->queries; queryID++)
-	{
-		// Get query pointer
-		queriesData* query = getQuery(queryID, true);
-		if(query == NULL)
-			continue;
-	}
-
 	// Move client-specific overTime memory
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{

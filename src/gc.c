@@ -332,7 +332,6 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 			case QUERY_RETRIED: // (fall through)
 			case QUERY_RETRIED_DNSSEC:
 				// Forwarded to an upstream DNS server
-				// Adjusting counters is done below in moveOverTimeMemory()
 				break;
 			case QUERY_CACHE:
 			case QUERY_CACHE_STALE:
@@ -349,7 +348,6 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 			case QUERY_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
 			case QUERY_DBBUSY: // Blocked because gravity database was busy
 			case QUERY_SPECIAL_DOMAIN: // Blocked by special domain handling
-				//counters->blocked--;
 				overTime[timeidx].blocked--;
 				if(domain != NULL)
 					domain->blockedcount--;
@@ -363,16 +361,15 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 				break;
 		}
 
-		// Update reply countersthread_running[GC] = false;
+		// Update reply counters
 		counters->reply[query->reply]--;
 
 		// Update type counters
-		if(query->type >= TYPE_A && query->type < TYPE_MAX)
-			counters->querytype[query->type]--;
+		counters->querytype[query->type]--;
 
 		// Subtract UNKNOWN from the counters before
-		// setting the status if different. This ensure
-		// we are not counting them at all.
+		// setting the status if different.
+		// Minus one here and plus one below = net zero
 		if(query->status != QUERY_UNKNOWN)
 			counters->status[QUERY_UNKNOWN]--;
 

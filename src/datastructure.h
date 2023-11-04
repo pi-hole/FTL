@@ -138,8 +138,9 @@ const char *get_cached_statuslist(void) __attribute__ ((pure));
 int get_blocked_count(void) __attribute__ ((pure));
 int get_forwarded_count(void) __attribute__ ((pure));
 int get_cached_count(void) __attribute__ ((pure));
-#define query_set_status(query, new_status) _query_set_status(query, new_status, __FUNCTION__, __LINE__, __FILE__)
-void _query_set_status(queriesData *query, const enum query_status new_status, const char *func, const int line, const char *file);
+#define query_set_status(query, new_status) _query_set_status(query, new_status, false, __FUNCTION__, __LINE__, __FILE__)
+#define query_set_status_init(query, new_status) _query_set_status(query, new_status, true, __FUNCTION__, __LINE__, __FILE__)
+void _query_set_status(queriesData *query, const enum query_status new_status, const bool init, const char *func, const int line, const char *file);
 
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);
