@@ -903,6 +903,12 @@ void initConfig(struct config *conf)
 	conf->webserver.api.localAPIauth.t = CONF_BOOL;
 	conf->webserver.api.localAPIauth.d.b = true;
 
+	conf->webserver.api.max_sessions.k = "webserver.api.max_sessions";
+	conf->webserver.api.max_sessions.h = "Number of concurrent sessions allowed for the API. If the number of sessions exceeds this value, no new sessions will be allowed until the number of sessions drops due to session expiration or logout. Note that the number of concurrent sessions is irrelevant if authentication is disabled as no sessions are used in this case.";
+	conf->webserver.api.max_sessions.t = CONF_UINT16;
+	conf->webserver.api.max_sessions.d.u16 = 16;
+	conf->webserver.api.max_sessions.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
+
 	conf->webserver.api.prettyJSON.k = "webserver.api.prettyJSON";
 	conf->webserver.api.prettyJSON.h = "Should FTL prettify the API output (add extra spaces, newlines and indentation)?";
 	conf->webserver.api.prettyJSON.t = CONF_BOOL;

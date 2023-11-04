@@ -604,6 +604,12 @@
     # sense of the option means only 127.0.0.1 and [::1]
     searchAPIauth = false
 
+    # Number of concurrent sessions allowed for the API. If the number of sessions exceeds
+    # this value, no new sessions will be allowed until the number of sessions drops due
+    # to session expiration or logout. Note that the number of concurrent sessions is
+    # irrelevant if authentication is disabled as no sessions are used in this case.
+    max_sessions = 16
+
     # Should FTL prettify the API output (add extra spaces, newlines and indentation)?
     prettyJSON = false
 

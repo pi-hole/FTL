@@ -26,7 +26,7 @@
 // database session functions
 #include "database/session-table.h"
 
-static struct session auth_data[API_MAX_CLIENTS] = {{false, false, {false, false}, 0, 0, {0}, {0}, {0}, {0}}};
+static struct session *auth_data = NULL;
 
 static void add_request_info(struct ftl_conn *api, const char *csrf)
 {
@@ -43,6 +43,12 @@ static void add_request_info(struct ftl_conn *api, const char *csrf)
 void init_api(void)
 {
 	// Restore sessions from database
+	auth_data = calloc(config.webserver.api.max_sessions.v.u16, sizeof(struct session));
+	if(auth_data == NULL)
+	{
+		log_crit("Could not allocate memory for API sessions, check config value of webserver.api.max_sessions");
+		exit(EXIT_FAILURE);
+	}
 	restore_db_sessions(auth_data);
 }
 
@@ -50,6 +56,8 @@ void free_api(void)
 {
 	// Store sessions in database
 	backup_db_sessions(auth_data);
+	free(auth_data);
+	auth_data = NULL;
 }
 
 // Is this client connecting from localhost?
@@ -187,7 +195,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		}
 	}
 
-	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+	for(unsigned int i = 0; i < config.webserver.api.max_sessions.v.u16; i++)
 	{
 		if(auth_data[i].used &&
 		   auth_data[i].valid_until >= now &&
@@ -253,7 +261,7 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 {
 	const time_t now = time(NULL);
 	cJSON *sessions = JSON_NEW_ARRAY();
-	for(int i = 0; i < API_MAX_CLIENTS; i++)
+	for(int i = 0; i < config.webserver.api.max_sessions.v.u16; i++)
 	{
 		if(!auth_data[i].used)
 			continue;
@@ -316,7 +324,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 static void delete_session(const int user_id)
 {
 	// Skip if nothing to be done here
-	if(user_id < 0 || user_id >= API_MAX_CLIENTS)
+	if(user_id < 0 || user_id >= config.webserver.api.max_sessions.v.u16)
 		return;
 
 	// Zero out this session (also sets valid to false == 0)
@@ -326,7 +334,7 @@ static void delete_session(const int user_id)
 void delete_all_sessions(void)
 {
 	// Zero out all sessions without looping
-	memset(auth_data, 0, sizeof(auth_data));
+	memset(auth_data, 0, config.webserver.api.max_sessions.v.u16*sizeof(*auth_data));
 }
 
 static int send_api_auth_status(struct ftl_conn *api, const int user_id, const time_t now)
@@ -527,7 +535,7 @@ int api_auth(struct ftl_conn *api)
 		}
 
 		// Find unused authentication slot
-		for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+		for(unsigned int i = 0; i < config.webserver.api.max_sessions.v.u16; i++)
 		{
 			// Expired slow, mark as unused
 			if(auth_data[i].used &&
@@ -621,7 +629,7 @@ int api_auth_session_delete(struct ftl_conn *api)
 		return send_json_error(api, 400, "bad_request", "Missing or invalid session ID", NULL);
 
 	// Check if session ID is valid
-	if(uid <= API_AUTH_UNAUTHORIZED || uid >= API_MAX_CLIENTS)
+	if(uid <= API_AUTH_UNAUTHORIZED || uid >= config.webserver.api.max_sessions.v.u16)
 		return send_json_error(api, 400, "bad_request", "Session ID out of bounds", NULL);
 
 	// Check if session is used

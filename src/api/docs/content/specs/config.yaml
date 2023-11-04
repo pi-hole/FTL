@@ -386,6 +386,8 @@ components:
                       type: boolean
                     searchAPIauth:
                       type: boolean
+                    max_sessions:
+                      type: integer
                     prettyJSON:
                       type: boolean
                     password:
@@ -666,6 +668,7 @@ components:
             api:
               localAPIauth: false
               searchAPIauth: false
+              max_sessions: 16
               prettyJSON: false
               password: "********"
               pwhash: ''

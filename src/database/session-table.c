@@ -89,7 +89,7 @@ bool backup_db_sessions(struct session *sessions)
 	}
 
 	unsigned int api_sessions = 0;
-	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+	for(unsigned int i = 0; i < config.webserver.api.max_sessions.v.u16; i++)
 	{
 		// Get session
 		struct session *sess = &sessions[i];
@@ -237,7 +237,7 @@ bool restore_db_sessions(struct session *sessions)
 
 	// Iterate over all still valid sessions
 	unsigned int i = 0;
-	while(sqlite3_step(stmt) == SQLITE_ROW && i++ < API_MAX_CLIENTS)
+	while(sqlite3_step(stmt) == SQLITE_ROW && i++ < config.webserver.api.max_sessions.v.u16)
 	{
 		// Allocate memory for new session
 		struct session *sess = &sessions[i];
