@@ -152,8 +152,8 @@ class ResponseVerifyer():
 
 			# Check for properties in FTL that are not in the API specs
 			for property in FTLflat.keys():
-				if property not in YAMLflat.keys() and len([p.startswith(property + ".") for p in YAMLflat.keys()]) == 0:
-					self.errors.append("Property '" + property + "' missing in the API specs (have " + ",".join(YAMLflat.keys()) + ")")
+				if property not in YAMLflat.keys():
+					self.errors.append("Property '" + property + "' missing in the API specs")
 
 		elif expected_mimetype == "application/zip":
 			file_like_object = io.BytesIO(FTLresponse)
@@ -296,6 +296,9 @@ class ResponseVerifyer():
 				for j in FTLprop[i]:
 					if not self.verify_property(YAMLprop['items']['properties'], YAMLexamples, FTLprop[i], props + [i, str(j)]):
 						all_okay = False
+
+			# Add this property to the YAML response
+			self.YAMLresponse[flat_path] = []
 		else:
 			# Check this property
 
