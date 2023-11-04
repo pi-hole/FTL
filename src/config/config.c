@@ -950,7 +950,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.excludeDomains.d.json = cJSON_CreateArray();
 
 	conf->webserver.api.excludeRegex.k = "webserver.api.excludeRegex";
-	conf->webserver.api.excludeRegex.h = "Array of regular expressions to be excluded from certain API responses\n Example: [ \"(^|\\.)\\.google\\.de$\", \"\\.pi-hole\\.net$\" ]";
+	conf->webserver.api.excludeRegex.h = "Array of regular expressions to be excluded from certain API responses. Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n Example: [ \"(^|\\\\.)\\\\.google\\\\.de$\", \"\\\\.pi-hole\\\\.net$\" ]";
 	conf->webserver.api.excludeRegex.a = cJSON_CreateStringReference("array of regular expressions");
 	conf->webserver.api.excludeRegex.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeRegex.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
