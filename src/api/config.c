@@ -26,6 +26,8 @@
 #include "shmem.h"
 // hash_password()
 #include "config/password.h"
+// main_pid()
+#include "signals.h"
 
 static struct {
 	const char *name;
@@ -659,6 +661,7 @@ static int api_config_patch(struct ftl_conn *api)
 	// Read all known config items
 	bool config_changed = false;
 	bool dnsmasq_changed = false;
+	bool rewrite_hosts = false;
 	struct config newconf;
 	duplicate_config(&newconf, &config);
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -730,6 +733,10 @@ static int api_config_patch(struct ftl_conn *api)
 		if(conf_item->f & FLAG_RESTART_FTL)
 			dnsmasq_changed = true;
 
+		// Check if this item requires rewriting the HOSTS file
+		if(conf_item == &config.dns.hosts)
+			rewrite_hosts = true;
+
 		// If the privacy level was decreased, we need to restart
 		if(new_item == &newconf.misc.privacylevel &&
 		   new_item->v.privacy_level < conf_item->v.privacy_level)
@@ -768,6 +775,14 @@ static int api_config_patch(struct ftl_conn *api)
 
 		// Store changed configuration to disk
 		writeFTLtoml(true);
+
+		// Rewrite HOSTS file if required
+		if(rewrite_hosts)
+		{
+			write_custom_list();
+			// Reload HOSTS file
+			kill(main_pid(), SIGHUP);
+		}
 	}
 	else
 	{
@@ -816,6 +831,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 	// Read all known config items
 	bool dnsmasq_changed = false;
+	bool rewrite_hosts = false;
 	bool found = false;
 	struct config newconf;
 	duplicate_config(&newconf, &config);
@@ -907,6 +923,10 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(new_item->f & FLAG_RESTART_FTL)
 			dnsmasq_changed = true;
 
+		// Check if this item requires rewriting the HOSTS file
+		if(new_item == &newconf.dns.hosts)
+			rewrite_hosts = true;
+
 		break;
 	}
 
@@ -953,6 +973,14 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 	// Store changed configuration to disk
 	writeFTLtoml(true);
+
+	// Rewrite HOSTS file if required
+	if(rewrite_hosts)
+	{
+		write_custom_list();
+		// Reload HOSTS file
+		kill(main_pid(), SIGHUP);
+	}
 
 	// Send empty reply with matching HTTP status code
 	// 201 - Created or 204 - No content
