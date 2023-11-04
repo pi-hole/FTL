@@ -42,6 +42,7 @@ static void async_event(int pipe, time_t now);
 static void fatal_event(struct event_desc *ev, char *msg);
 static int read_event(int fd, struct event_desc *evp, char **msg);
 static void poll_resolv(int force, int do_reload, time_t now);
+static void tcp_init(void);
 
 int main_dnsmasq (int argc, char **argv)
 {
@@ -421,6 +422,8 @@ int main_dnsmasq (int argc, char **argv)
 	daemon->numrrand = max_fd/3;
       /* safe_malloc returns zero'd memory */
       daemon->randomsocks = safe_malloc(daemon->numrrand * sizeof(struct randfd));
+
+      tcp_init();
     }
 
 #ifdef HAVE_INOTIFY
@@ -1051,7 +1054,7 @@ int main_dnsmasq (int argc, char **argv)
   pid = getpid();
 
   daemon->pipe_to_parent = -1;
-  for (i = 0; i < MAX_PROCS; i++)
+  for (i = 0; i < daemon->max_procs; i++)
     daemon->tcp_pipes[i] = -1;
   
 #ifdef HAVE_INOTIFY
@@ -1539,7 +1542,7 @@ static void async_event(int pipe, time_t now)
 		break;
 	    }      
 	  else 
-	    for (i = 0 ; i < MAX_PROCS; i++)
+	    for (i = 0 ; i < daemon->max_procs; i++)
 	      if (daemon->tcp_pids[i] == p)
 		daemon->tcp_pids[i] = 0;
 	break;
@@ -1604,7 +1607,7 @@ static void async_event(int pipe, time_t now)
 	
       case EVENT_TERM:
 	/* Knock all our children on the head. */
-	for (i = 0; i < MAX_PROCS; i++)
+	for (i = 0; i < daemon->max_procs; i++)
 	  if (daemon->tcp_pids[i] != 0)
 	    kill(daemon->tcp_pids[i], SIGALRM);
 	
@@ -1786,7 +1789,7 @@ static void set_dns_listeners(void)
     poll_listen(rfl->rfd->fd, POLLIN);
   
   /* check to see if we have free tcp process slots. */
-  for (i = MAX_PROCS - 1; i >= 0; i--)
+  for (i = daemon->max_procs - 1; i >= 0; i--)
     if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
       break;
 
@@ -1810,7 +1813,7 @@ static void set_dns_listeners(void)
     }
   
   if (!option_bool(OPT_DEBUG))
-    for (i = 0; i < MAX_PROCS; i++)
+    for (i = 0; i < daemon->max_procs; i++)
       if (daemon->tcp_pipes[i] != -1)
 	poll_listen(daemon->tcp_pipes[i], POLLIN);
 }
@@ -1845,7 +1848,7 @@ static void check_dns_listeners(time_t now)
      to free the process slot. Once the child process has gone, poll()
      returns POLLHUP, not POLLIN, so have to check for both here. */
   if (!option_bool(OPT_DEBUG))
-    for (i = 0; i < MAX_PROCS; i++)
+    for (i = 0; i < daemon->max_procs; i++)
       if (daemon->tcp_pipes[i] != -1 &&
 	  poll_check(daemon->tcp_pipes[i], POLLIN | POLLHUP) &&
 	  !cache_recv_insert(now, daemon->tcp_pipes[i]))
@@ -1870,7 +1873,7 @@ static void check_dns_listeners(time_t now)
 	 at least one a poll() time, that we still do.
 	 There may be more waiting connections after
 	 poll() returns then free process slots. */
-      for (i = MAX_PROCS - 1; i >= 0; i--)
+      for (i = daemon->max_procs - 1; i >= 0; i--)
 	if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
 	  break;
 
@@ -2232,3 +2235,9 @@ void print_dnsmasq_version(const char *yellow, const char *green, const char *bo
   printf(_("Features:        %s\n\n"), compile_opts);
 }
 /**************************************************************************************/
+
+void tcp_init(void)
+{
+  daemon->tcp_pids = safe_malloc(daemon->max_procs*sizeof(pid_t));
+  daemon->tcp_pipes = safe_malloc(daemon->max_procs*sizeof(int));
+}

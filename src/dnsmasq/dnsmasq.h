@@ -1257,8 +1257,8 @@ extern struct daemon {
   struct server *srv_save; /* Used for resend on DoD */
   size_t packet_len;       /*      "        "        */
   int    fd_save;          /*      "        "        */
-  pid_t tcp_pids[MAX_PROCS];
-  int tcp_pipes[MAX_PROCS];
+  pid_t *tcp_pids;
+  int *tcp_pipes;
   int pipe_to_parent;
   int numrrand;
   struct randfd *randomsocks;
@@ -1318,6 +1318,7 @@ extern struct daemon {
   /* file for packet dumps. */
   int dumpfd;
 #endif
+  int max_procs;
 } *daemon;
 
 struct server_details {
