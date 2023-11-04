@@ -178,7 +178,9 @@
   # Possible values are:
   #     Array of static leases each on in one of the following forms:
   #     "<cname>,<target>[,<TTL>]"
-  cnameRecords = []
+  cnameRecords = [
+    "brücke.com,äste.com,2",
+  ]
 
   # Port used by the DNS server
   port = 53

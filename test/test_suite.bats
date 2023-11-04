@@ -1273,6 +1273,15 @@
   [[ "${lines[0]}" == "2.2.2.2" ]]
 }
 
+@test "Local CNAME records: International domains are converted to IDNA form" {
+  # brücke.com ---> xn--brcke-lva.com
+  run bash -c "dig A xn--brcke-lva.com +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  # xn--ste-pla.com ---> äste.com
+  [[ "${lines[0]}" == "xn--ste-pla.com." ]]
+  [[ "${lines[1]}" == "2.2.2.2" ]]
+}
+
 @test "Environmental variable is favored over config file" {
   # The config file has -10 but we set FTLCONF_misc_nice="-11"
   run bash -c 'grep -B1 "nice = -11" /etc/pihole/pihole.toml'
