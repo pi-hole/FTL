@@ -376,6 +376,17 @@
   #     <any valid domain>
   domain = "lan"
 
+  # The netmask used by your Pi-hole. For directly connected networks (i.e., networks on
+  # which the machine running Pi-hole has an interface) the netmask is optional and may
+  # be set to "0.0.0.0": it will then be determined from the interface configuration
+  # itself. For networks which receive DHCP service via a relay agent, we cannot
+  # determine the netmask itself, so it should explicitly be specified, otherwise
+  # Pi-hole guesses based on the class (A, B or C) of the network address.
+  #
+  # Possible values are:
+  #     <any valid netmask>, e.g., "255.255.255.0" or "0.0.0.0" for auto-discovery
+  netmask = "0.0.0.0"
+
   # If the lease time is given, then leases will be given for that length of time. If not
   # given, the default lease time is one hour for IPv4 and one day for IPv6.
   #

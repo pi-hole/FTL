@@ -88,7 +88,7 @@ enum conf_type {
 #define FLAG_PSEUDO_ITEM           (1 << 2)
 #define FLAG_INVALIDATE_SESSIONS   (1 << 3)
 #define FLAG_WRITE_ONLY            (1 << 4)
-#define FLAG_ENV_VAR     (1 << 5)
+#define FLAG_ENV_VAR               (1 << 5)
 
 struct conf_item {
 	const char *k;        // item Key
@@ -178,6 +178,7 @@ struct config {
 		struct conf_item end;
 		struct conf_item router;
 		struct conf_item domain;
+		struct conf_item netmask;
 		struct conf_item leaseTime;
 		struct conf_item ipv6;
 		struct conf_item rapidCommit;
