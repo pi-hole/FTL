@@ -92,7 +92,7 @@ void dhcp6_packet(time_t now)
   struct iface_param parm;
   struct cmsghdr *cmptr;
   struct msghdr msg;
-  int if_index = 0;
+  uint32_t if_index = 0;
   union {
     struct cmsghdr align; /* this ensures alignment */
     char control6[CMSG_SPACE(sizeof(struct in6_pktinfo))];
