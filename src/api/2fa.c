@@ -282,7 +282,7 @@ int generateTOTP(struct ftl_conn *api)
 	// Create JSON object
 	cJSON *tjson = cJSON_CreateObject();
 	JSON_REF_STR_IN_OBJECT(tjson, "type", "totp");
-	JSON_REF_STR_IN_OBJECT(tjson, "account", "pi.hole");
+	JSON_REF_STR_IN_OBJECT(tjson, "account", config.webserver.domain.v.s);
 	JSON_REF_STR_IN_OBJECT(tjson, "issuer", "Pi-hole%20API");
 	JSON_REF_STR_IN_OBJECT(tjson, "algorithm", "SHA1");
 	JSON_ADD_NUMBER_TO_OBJECT(tjson, "digits", RFC6238_DIGITS);
