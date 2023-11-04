@@ -18,6 +18,10 @@ src/dnsmasq/cache.c
 		host_name, daemon->addrbuff,
 		record_source(fail_crec->uid), daemon->namebuff);
 src/dnsmasq/dhcp6.c
+	  my_syslog(MS_DHCP | LOG_WARNING,
+		    _("Working around kernel bug: faulty source address scope for VRF slave %s"),
+		    ifr.ifr_name);
+src/dnsmasq/dhcp6.c
 		    my_syslog(MS_DHCP | LOG_WARNING,
 			      _("unknown interface %s in bridge-interface"),
 			      bridge->iface);

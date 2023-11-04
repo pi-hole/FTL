@@ -673,11 +673,21 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 
 bool add_additional_info_column(sqlite3 *db)
 {
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// Add column additinal_info to queries table
 	SQL_bool(db, "ALTER TABLE queries ADD COLUMN additional_info TEXT;");
 
 	// Update the database version to 7
-	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES (%d, 7);", DB_VERSION);
+	if(!db_set_FTL_property(db, DB_VERSION, 7))
+	{
+		log_err("add_additional_info_column(): Failed to update database version!");
+		return false;
+	}
+
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }
@@ -737,6 +747,32 @@ bool add_query_storage_column_regex_id(sqlite3 *db)
 
 	// Update database version to 13
 	if(!db_set_FTL_property(db, DB_VERSION, 13))
+	{
+		log_err("add_query_storage_column_regex_id(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool(db, "COMMIT");
+
+	return true;
+}
+
+bool add_ftl_table_description(sqlite3 *db)
+{
+	// Start transaction of database update
+	SQL_bool(db, "BEGIN TRANSACTION");
+
+	// Add additional column to the ftl table
+	SQL_bool(db, "ALTER TABLE ftl ADD COLUMN description TEXT");
+
+	// Update ftl table
+	SQL_bool(db, "UPDATE ftl SET description = 'Database version' WHERE id = %d", DB_VERSION);
+	SQL_bool(db, "UPDATE ftl SET description = 'Unix timestamp of the latest stored query' WHERE id = %d", DB_LASTTIMESTAMP);
+	SQL_bool(db, "UPDATE ftl SET description = 'Unix timestamp of the database creation' WHERE id = %d", DB_FIRSTCOUNTERTIMESTAMP);
+
+	// Update database version to 14
+	if(!db_set_FTL_property(db, DB_VERSION, 14))
 	{
 		log_err("add_query_storage_column_regex_id(): Failed to update database version!");
 		return false;
@@ -888,17 +924,18 @@ void DB_read_queries(void)
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
+		const sqlite3_int64 dbID = sqlite3_column_int64(stmt, 0);
 		const double queryTimeStamp = sqlite3_column_double(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			sqlite3_int64 dbID = sqlite3_column_int64(stmt, 0);
-			log_warn("Database: TIMESTAMP of query should be larger than 01/01/2017 but is %f (DB ID %lli)", queryTimeStamp, dbID);
+			log_warn("Database: TIMESTAMP of query should be larger than 01/01/2017 but is %f (DB ID %lli)",
+			         queryTimeStamp, dbID);
 			continue;
 		}
 		if(queryTimeStamp > now)
 		{
-			log_debug(DEBUG_DATABASE, "Skipping query logged in the future (%lli)", (long long)queryTimeStamp);
+			log_debug(DEBUG_DATABASE, "Skipping query logged in the future (%f > %f)", queryTimeStamp, now);
 			continue;
 		}
 
@@ -923,14 +960,16 @@ void DB_read_queries(void)
 		const char *domainname = (const char *)sqlite3_column_text(stmt, 4);
 		if(domainname == NULL)
 		{
-			log_warn("Database: DOMAIN should never be NULL, %lli", (long long)queryTimeStamp);
+			log_warn("Database: DOMAIN should never be NULL, ID = %lld, timestamp = %f",
+			         dbID, queryTimeStamp);
 			continue;
 		}
 
 		const char *clientIP = (const char *)sqlite3_column_text(stmt, 5);
 		if(clientIP == NULL)
 		{
-			log_warn("Database: CLIENT should never be NULL, %lli", (long long)queryTimeStamp);
+			log_warn("Database: CLIENT should never be NULL, ID = %lld, timestamp = %f",
+			         dbID, queryTimeStamp);
 			continue;
 		}
 
@@ -944,8 +983,8 @@ void DB_read_queries(void)
 		const int reply_int = sqlite3_column_int(stmt, 8);
 		if(reply_int < REPLY_UNKNOWN || reply_int >= QUERY_REPLY_MAX)
 		{
-			log_warn("Database: REPLY should be within [%i,%i] but is %i",
-			         REPLY_UNKNOWN, QUERY_REPLY_MAX-1, reply_int);
+			log_warn("Database: REPLY should be within [%i,%i] but is %i, ID = %lld, timestamp = %f",
+			         REPLY_UNKNOWN, QUERY_REPLY_MAX-1, reply_int, dbID, queryTimeStamp);
 			continue;
 		}
 		const enum reply_type reply = reply_int;
@@ -953,8 +992,8 @@ void DB_read_queries(void)
 		const int dnssec_int = sqlite3_column_int(stmt, 10);
 		if(dnssec_int < DNSSEC_UNKNOWN || dnssec_int >= DNSSEC_MAX)
 		{
-			log_warn("Database: REPLY should be within [%i,%i] but is %i",
-			         DNSSEC_UNKNOWN, DNSSEC_MAX-1, dnssec_int);
+			log_warn("Database: REPLY should be within [%i,%i] but is %i, ID = %lld, timestamp = %f",
+			         DNSSEC_UNKNOWN, DNSSEC_MAX-1, dnssec_int, dbID, queryTimeStamp);
 			continue;
 		}
 		const enum dnssec_status dnssec = dnssec_int;
@@ -988,7 +1027,8 @@ void DB_read_queries(void)
 			reply_time_avail = true;
 			if(reply_time < 0.0)
 			{
-				log_warn("REPLY_TIME value %f is invalid, %lli", reply_time, (long long)queryTimeStamp);
+				log_warn("REPLY_TIME value %f is invalid, ID = %lld, timestamp = %f",
+				         reply_time, dbID, queryTimeStamp);
 				continue;
 			}
 		}
@@ -1013,7 +1053,8 @@ void DB_read_queries(void)
 			else
 			{
 				// Invalid query type
-				log_warn("Query type %d is invalid.", type);
+				log_warn("Query type %d is invalid, ID = %lld, timestamp = %f",
+				         type, dbID, queryTimeStamp);
 				continue;
 			}
 		}
@@ -1149,7 +1190,8 @@ void DB_read_queries(void)
 
 			case QUERY_STATUS_MAX:
 			default:
-				log_warn("Found unknown status %i in long term database!", status);
+				log_warn("Found unknown status %i in long term database, ID = %lld, timestamp = %f",
+				         status, dbID, queryTimeStamp);
 				break;
 		}
 

@@ -27,6 +27,8 @@ components:
           This can be changed by supplying the parameter `cursor`.
           Each result of this API callback contains a `cursor` pointing the beginning of the next `n` queries chunk.
           This provides a very fast and lightweight server-side pagination implementation.
+
+          If wildcards are supported for a parameter, you may specify `*` at any position in the parameter to match any number of characters.
         parameters:
           - in: query
             name: from
@@ -61,19 +63,25 @@ components:
               type: integer
           - in: query
             name: domain
-            description: Filter by specific domain
+            description: Filter by specific domain (wildcards supported)
             required: false
             schema:
               type: string
           - in: query
-            name: client
-            description: Filter by specific client
+            name: client_ip
+            description: Filter by specific client IP address (wildcards supported)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: client_name
+            description: Filter by specific client hostname (wildcards supported)
             required: false
             schema:
               type: string
           - in: query
             name: upstream
-            description: Filter by specific upstream
+            description: Filter by specific upstream (wildcards supported)
             required: false
             schema:
               type: string

@@ -62,6 +62,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
+                    - $ref: 'clients.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
@@ -172,6 +173,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'clients.yaml#/components/schemas/clients/get' # identical to GET
+                    - $ref: 'clients.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -204,6 +206,7 @@ components:
         properties:
           clients:
             type: array
+            description: Array of clients
             items:
               allOf:
                 - $ref: 'clients.yaml#/components/schemas/client'
@@ -212,7 +215,7 @@ components:
                 - $ref: 'clients.yaml#/components/schemas/readonly'
       post:
         allOf:
-          - $ref: 'clients.yaml#/components/schemas/client'
+          - $ref: 'clients.yaml#/components/schemas/client_maybe_array'
           - $ref: 'clients.yaml#/components/schemas/comment'
           - $ref: 'clients.yaml#/components/schemas/groups'
       put:
@@ -229,6 +232,7 @@ components:
             properties:
               hwaddr:
                 type: string
+                nullable: true
                 example: "12:34:56:78:9A:BC"
               macVendor:
                 type: string
@@ -239,12 +243,14 @@ components:
                 example: 1683305917
               addresses:
                 type: string
+                nullable: true
                 description: Comma-separated list of IP addresses
                 example: "127.0.0.1,::1"
               names:
                 type: string
-                description: Comma-separated list of hostnames
-                example: "localhost"
+                nullable: true
+                description: Comma-separated list of hostnames (if available)
+                example: "localhost,ip6-localhost"
     client:
       type: object
       properties:
@@ -252,6 +258,19 @@ components:
           description: client IP / MAC / hostname / interface
           type: string
           example: 127.0.0.1
+    client_array:
+      type: object
+      properties:
+        client:
+          description: array of client IPs / MACs / hostnames / interfaces
+          type: array
+          items:
+            type: string
+          example: ["127.0.0.1", "192.168.2.12"]
+    client_maybe_array:
+      oneOf:
+        - $ref: 'clients.yaml#/components/schemas/client'
+        - $ref: 'clients.yaml#/components/schemas/client_array'
     comment:
       type: object
       properties:
@@ -268,6 +287,7 @@ components:
           description: hostname (only available when {client} is an IP address)
           type: string
           readOnly: true
+          nullable: true
           example: localhost
     groups:
       type: object
@@ -296,6 +316,47 @@ components:
           type: integer
           readOnly: true
           example: 1611239099
+    lists_processed:
+      type: object
+      properties:
+        processed:
+          type: object
+          nullable: true
+          description: |
+            Object containing the number of clients that were successfully
+            added to the database and the number of clients that could not be
+            added to the database.
+          properties:
+            success:
+              description: |
+                Array of clients that were successfully added to the database.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Client that was added to the database
+                    type: string
+            errors:
+              description: |
+                Array of errors that occurred during processing.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Client that could not be added to the database
+                    type: string
+                  error:
+                    description: Error message
+                    type: string
+          example:
+            success:
+              - item: "127.0.0.1"
+              - item: "::1"
+            errors:
+              - item: "192.168.2.5"
+                error: "UNIQUE constraint failed: client.ip"
   examples:
     clients:
       value:
@@ -312,6 +373,13 @@ components:
             id: 2
             date_added: 1611322675
             date_modified: 1611325497
+        took: 0.012
+        processed:
+          success:
+            - item: "127.0.0.1"
+          failed:
+            - item: "127.0.0.2"
+              error: "UNIQUE constraint failed: clientlist.client"
     errors:
       uri_error:
         item_missing:

@@ -15,8 +15,6 @@
 #include "shmem.h"
 // struct config
 #include "config/config.h"
-// logging routines
-#include "log.h"
 #include "timers.h"
 // file_exists()
 #include "files.h"
@@ -30,6 +28,8 @@
 #include "events.h"
 // generate_backtrace()
 #include "signals.h"
+// create_session_table()
+#include "database/session-table.h"
 
 bool DBdeleteoldqueries = false;
 static bool DBerror = false;
@@ -166,6 +166,9 @@ int dbquery(sqlite3* db, const char *format, ...)
 
 static bool create_counter_table(sqlite3* db)
 {
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// Create FTL table in the database (holds properties like database version, etc.)
 	SQL_bool(db, "CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );");
 
@@ -196,6 +199,8 @@ static bool create_counter_table(sqlite3* db)
 		log_err("create_counter_table(): Failed to update database version!");
 		return false;
 	}
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }
@@ -493,6 +498,51 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 14 if lower
+	if(dbversion < 14)
+	{
+		// Update to version 14: Add additional column for the ftl table
+		log_info("Updating long-term database to version 14");
+		if(!add_ftl_table_description(db))
+		{
+			log_info("FTL table description cannot be added, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 15 if lower
+	if(dbversion < 15)
+	{
+		// Update to version 15: Add session table
+		log_info("Updating long-term database to version 15");
+		if(!create_session_table(db))
+		{
+			log_info("Session table cannot be created, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 16 if lower
+	if(dbversion < 16)
+	{
+		// Update to version 16: Add app column to session table
+		log_info("Updating long-term database to version 16");
+		if(!add_session_app_column(db))
+		{
+			log_info("Session table cannot be updated, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
 	lock_shm();
 	import_aliasclients(db);
 	unlock_shm();
@@ -552,8 +602,12 @@ double db_get_FTL_property_double(sqlite3 *db, const enum ftl_table_props ID)
 
 bool db_set_FTL_property(sqlite3 *db, const enum ftl_table_props ID, const int value)
 {
-	// return dbquery(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %ld );", ID, value) == SQLITE_OK;
-	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %d );", ID, value);
+	// Use UPSERT (https://sqlite.org/lang_upsert.html)
+	// UPSERT is a clause added to INSERT that causes the INSERT to behave
+	// as an UPDATE or a no-op if the INSERT would violate a uniqueness
+	// constraint. UPSERT is not standard SQL. UPSERT in SQLite follows the
+	// syntax established by PostgreSQL, with generalizations. 
+	SQL_bool(db, "INSERT INTO ftl (id, value) VALUES ( %u, %d ) ON CONFLICT (id) DO UPDATE SET value=%d;", ID, value, value);
 	return true;
 }
 

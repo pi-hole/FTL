@@ -51,7 +51,7 @@ static const char *get_message_type_str(const enum message_type type)
 		case DISK_MESSAGE:
 			return "DISK";
 		case INACCESSIBLE_ADLIST_MESSAGE:
-			return "ADLIST";
+			return "LIST";
 		case DISK_MESSAGE_EXTENDED:
 			return "DISK_EXTENDED";
 		case MAX_MESSAGE:
@@ -80,7 +80,7 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return SHMEM_MESSAGE;
 	else if (strcmp(typestr, "DISK") == 0)
 		return DISK_MESSAGE;
-	else if (strcmp(typestr, "ADLIST") == 0)
+	else if (strcmp(typestr, "LIST") == 0)
 		return INACCESSIBLE_ADLIST_MESSAGE;
 	else if (strcmp(typestr, "DISK_EXTENDED") == 0)
 		return DISK_MESSAGE_EXTENDED;
@@ -172,6 +172,9 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 // Create message table in the database
 bool create_message_table(sqlite3 *db)
 {
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// The blob fields can hold arbitrary data. Their type is specified through the type.
 	SQL_bool(db, "CREATE TABLE message ( id INTEGER PRIMARY KEY AUTOINCREMENT, "
 	                                    "timestamp INTEGER NOT NULL, "
@@ -189,6 +192,9 @@ bool create_message_table(sqlite3 *db)
 		log_err("create_message_table(): Failed to update database version!");
 		return false;
 	}
+
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }
@@ -629,7 +635,7 @@ static void format_disk_message_extended(char *plain, const int sizeof_plain, ch
 static void format_inaccessible_adlist_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
                                                const char *address, int dbindex)
 {
-	if(snprintf(plain, sizeof_plain, "Adlist with ID %d (%s) was inaccessible during last gravity run",
+	if(snprintf(plain, sizeof_plain, "List with ID %d (%s) was inaccessible during last gravity run",
 	        dbindex, address) > sizeof_plain)
 		log_warn("format_inaccessible_adlist_message(): Buffer too small to hold plain message, warning truncated");
 
@@ -639,7 +645,7 @@ static void format_inaccessible_adlist_message(char *plain, const int sizeof_pla
 
 	char *escaped_address = escape_html(address);
 
-	if(snprintf(html, sizeof_html, "<a href=\"groups-adlists.lp?adlist=%i\">Adlist with ID <strong>%d</strong> (<code>%s</code>)</a> was inaccessible during last gravity run",
+	if(snprintf(html, sizeof_html, "<a href=\"groups-adlists.lp?adlist=%i\">List with ID <strong>%d</strong> (<code>%s</code>)</a> was inaccessible during last gravity run",
 	            dbindex, dbindex, escaped_address) > sizeof_html)
 		log_warn("format_inaccessible_adlist_message(): Buffer too small to hold HTML message, warning truncated");
 

@@ -107,9 +107,6 @@
 // Default: 300 (five minutes)
 #define API_SESSION_EXPIRE 300u
 
-// How many authenticated API clients are allowed simultaneously? [.]
-#define API_MAX_CLIENTS 16
-
 // After how many seconds do we check again if a client can be identified by other means?
 // (e.g., interface, MAC address, hostname)
 // Default: 60 (after one minutee)

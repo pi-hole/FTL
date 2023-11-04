@@ -26,7 +26,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v4.1.0
+        uses: actions/checkout@v4.1.1
       -
         name: "Calculate required variables"
         id: variables
@@ -59,28 +59,16 @@ jobs:
         include:
           - platform: linux/amd64
             bin_name: pihole-FTL-amd64
-            builder: alpine
           - platform: linux/386
             bin_name: pihole-FTL-386
-            builder: alpine
-          - platform: linux/arm/v5
-            bin_name: pihole-FTL-armv4
-            builder: debian
-          - platform: linux/arm/v6
-            bin_name: pihole-FTL-armv5
-            builder: debian
           - platform: linux/arm/v6
             bin_name: pihole-FTL-armv6
-            builder: alpine
           - platform: linux/arm/v7
             bin_name: pihole-FTL-armv7
-            builder: alpine
           - platform: linux/arm64/v8
             bin_name: pihole-FTL-arm64
-            builder: alpine
           - platform: linux/riscv64
             bin_name: pihole-FTL-riscv64
-            builder: alpine
 
     env:
       CI_ARCH: ${{ matrix.platform }}
@@ -90,7 +78,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v4.1.0
+        uses: actions/checkout@v4.1.1
       -
         name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3.0.0
@@ -99,23 +87,23 @@ jobs:
         run: ls -l
       -
         name: Build and test FTL in ftl-build container (QEMU)
-        uses: docker/build-push-action@v5.0.0
+        uses: Wandalen/wretry.action@v1.3.0
         with:
-          platforms: ${{ matrix.platform }}
-          # Always load latest container image
-          pull: true
-          # Do not push anything
-          push: false
-          context: .
-          target: result
-          file: .github/Dockerfile
-          outputs: |
-            type=tar,dest=build.tar
-          build-args: |
-            "BUILDER=${{ matrix.builder }}"
-            "CI_ARCH=${{ matrix.platform }}"
-            "GIT_BRANCH=${{ needs.smoke-tests.outputs.GIT_BRANCH }}"
-            "GIT_TAG=${{ needs.smoke-tests.outputs.GIT_TAG }}"
+          attempt_limit: 3
+          action: docker/build-push-action@v5.0.0
+          with: |
+            platforms: ${{ matrix.platform }}
+            pull: true
+            push: false
+            context: .
+            target: result
+            file: .github/Dockerfile
+            outputs: |
+              type=tar,dest=build.tar
+            build-args: |
+              "CI_ARCH=${{ matrix.platform }}"
+              "GIT_BRANCH=${{ needs.smoke-tests.outputs.GIT_BRANCH }}"
+              "GIT_TAG=${{ needs.smoke-tests.outputs.GIT_TAG }}"
       -
         name: List files in current directory
         run: ls -l
@@ -155,7 +143,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v4.1.0
+        uses: actions/checkout@v4.1.1
       -
         name: Get Binaries and documentation built in previous jobs
         uses: actions/download-artifact@v3.0.2

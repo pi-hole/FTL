@@ -5738,11 +5738,11 @@ static void clear_dynamic_conf(void)
     }
 }
 
-static void clear_dynamic_opt(void)
+static void clear_dhcp_opt(struct dhcp_opt **dhcp_opts)
 {
   struct dhcp_opt *opts, *cp, **up;
 
-  for (up = &daemon->dhcp_opts, opts = daemon->dhcp_opts; opts; opts = cp)
+  for (up = dhcp_opts, opts = *dhcp_opts; opts; opts = cp)
     {
       cp = opts->next;
       
@@ -5754,6 +5754,14 @@ static void clear_dynamic_opt(void)
       else
 	up = &opts->next;
     }
+}
+
+static void clear_dynamic_opt(void)
+{
+  clear_dhcp_opt(&daemon->dhcp_opts);
+#ifdef HAVE_DHCP6
+  clear_dhcp_opt(&daemon->dhcp_opts6);
+#endif
 }
 
 void reread_dhcp(void)

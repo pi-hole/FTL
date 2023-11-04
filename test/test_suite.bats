@@ -448,12 +448,12 @@
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"query_storage\" (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER, additional_info INTEGER, reply_type INTEGER, reply_time REAL, dnssec INTEGER, regex_id INTEGER);"* ]]
   [[ "${lines[@]}" == *"CREATE INDEX idx_queries_timestamps ON \"query_storage\" (timestamp);"* ]]
-  [[ "${lines[@]}" == *"CREATE TABLE ftl (id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL);"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE ftl (id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL, description TEXT);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE counters (id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network\" (id INTEGER PRIMARY KEY NOT NULL, hwaddr TEXT UNIQUE NOT NULL, interface TEXT NOT NULL, firstSeen INTEGER NOT NULL, lastQuery INTEGER NOT NULL, numQueries INTEGER NOT NULL, macVendor TEXT, aliasclient_id INTEGER);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network_addresses\" (network_id INTEGER NOT NULL, ip TEXT UNIQUE NOT NULL, lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), name TEXT, nameUpdated INTEGER, FOREIGN KEY(network_id) REFERENCES network(id));"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE aliasclient (id INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, comment TEXT);"* ]]
-  [[ "${lines[@]}" == *"INSERT INTO ftl VALUES(0,13);"* ]] # Expecting FTL database version 13
+  [[ "${lines[@]}" == *"INSERT INTO ftl VALUES(0,16,'Database version');"* ]]
   # vvv This has been added in version 10 vvv
   [[ "${lines[@]}" == *"CREATE VIEW queries AS SELECT id, timestamp, type, status, CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,CASE typeof(additional_info) WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, reply_type, reply_time, dnssec, regex_id FROM query_storage q;"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE domain_by_id (id INTEGER PRIMARY KEY, domain TEXT NOT NULL);"* ]]
@@ -464,6 +464,8 @@
   # vvv This has been added in version 11 vvv
   [[ "${lines[@]}" == *"CREATE TABLE addinfo_by_id (id INTEGER PRIMARY KEY, type INTEGER NOT NULL, content NOT NULL);"* ]]
   [[ "${lines[@]}" == *"CREATE UNIQUE INDEX addinfo_by_id_idx ON addinfo_by_id(type,content);"* ]]
+  # vvv This has been added in version 15 vvv
+  [[ "${lines[@]}" == *"CREATE TABLE session (id INTEGER PRIMARY KEY, login_at TIMESTAMP NOT NULL, valid_until TIMESTAMP NOT NULL, remote_addr TEXT NOT NULL, user_agent TEXT, sid TEXT NOT NULL, csrf TEXT NOT NULL, tls_login BOOL, tls_mixed BOOL, app BOOL);"* ]]
 }
 
 @test "Ownership, permissions and type of pihole-FTL.db correct" {
@@ -517,16 +519,16 @@
 @test "Compiled deny regex as expected" {
   run bash -c 'grep -c "Compiling deny regex 0 (DB ID 6): regex\[0-9\].ftl" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "2" ]]
+  [[ ${lines[0]} == "1" ]]
 }
 
 @test "Compiled allow regex as expected" {
   run bash -c 'grep -c "Compiling allow regex 0 (DB ID 3): regex2" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "2" ]]
+  [[ ${lines[0]} == "1" ]]
   run bash -c 'grep -c "Compiling allow regex 1 (DB ID 4): ^gravity-allowed" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "2" ]]
+  [[ ${lines[0]} == "1" ]]
 }
 
 @test "Regex Test 1: \"regex7.ftl\" vs. [database regex]: MATCH" {
@@ -1185,7 +1187,7 @@
   [[ ${lines[0]} == "0" ]]
 }
 
-@test "No config errors in pihole.toml" {
+@test "No missing config items in pihole.toml" {
   run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole/FTL.log | grep -c "DOES NOT EXIST"'
@@ -1251,6 +1253,27 @@
   [[ "${lines[0]}" == "192.168.1.7" ]]
 }
 
+@test "Environmental variable is favored over config file" {
+  # The config file has -10 but we set FTLCONF_misc_nice="-11"
+  run bash -c 'grep -B1 "nice = -11" /etc/pihole/pihole.toml'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "  # >>> This config is overwritten by an environmental variable <<<" ]]
+  [[ ${lines[1]} == "  nice = -11 ### CHANGED, default = -10" ]]
+}
+
+@test "Changing a config option set forced by ENVVAR is not possible via the CLI" {
+  run bash -c './pihole-FTL --config misc.nice -12'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Config option misc.nice is read-only (set via environmental variable)" ]]
+  [[ $status == 5 ]]
+}
+
+@test "Changing a config option set forced by ENVVAR is not possible via the API" {
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config/misc/nice -d "{\"config\":{\"misc\":{\"nice\":-12}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '{"error":{"key":"bad_request","message":"Config items set via environment variables cannot be changed via the API","hint":"misc.nice"},"took":'*'}' ]]
+}
+
 @test "API domain search: Non-existing domain returns expected JSON" {
   run bash -c 'curl -s 127.0.0.1/api/search/non.existent'
   printf "%s\n" "${lines[@]}"
@@ -1263,10 +1286,39 @@
   [[ ${lines[0]} == '{"search":{"domains":[],"gravity":[{"domain":"antigravity.ftl","type":"block","address":"https://pi-hole.net/block.txt","comment":"Fake block-list","enabled":true,"id":1,"date_added":1559928803,"date_modified":1559928803,"type":"block","date_updated":1559928803,"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0,2]},{"domain":"antigravity.ftl","type":"allow","address":"https://pi-hole.net/allow.txt","comment":"Fake allow-list","enabled":true,"id":2,"date_added":1559928803,"date_modified":1559928803,"type":"allow","date_updated":1559928803,"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0]},{"domain":"@@||antigravity.ftl^","type":"allow","address":"https://pi-hole.net/allow.txt","comment":"Fake allow-list","enabled":true,"id":2,"date_added":1559928803,"date_modified":1559928803,"type":"allow","date_updated":1559928803,"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0]}],"results":{"domains":{"exact":0,"regex":0},"gravity":{"allow":2,"block":1},"total":3},"parameters":{"N":20,"partial":false,"domain":"antigravity.ftl","debug":false}},"took":'*'}' ]]
 }
 
+@test "API domain search: Internationalized/partially capital domain returns expected lowercase punycode domain" {
+  run bash -c 'curl -s 127.0.0.1/api/search/äBC.com?debug=true | jq .search.debug.punycode'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '"xn--bc-uia.com"' ]]
+}
+
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1/api/auth'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '{"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"took":'*'}' ]]
+}
+
+@test "Create, set, and use application password" {
+  run bash -c 'curl -s 127.0.0.1/api/auth/app'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '{"app":{"password":"'*'","hash":"'*'"},"took":'*'}' ]]
+
+  # Extract password and hash from response
+  password="$(echo ${lines[0]} | jq .app.password)"
+  pwhash="$(echo ${lines[0]} | jq .app.hash)"
+
+  printf "password: %s\n" "${password}"
+  printf "pwhash: %s\n" "${pwhash}"
+
+  # Set app password hash
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config/webserver/api/app_pwhash -d  "{\"config\":{\"webserver\":{\"api\":{\"app_pwhash\":${0}}}}}"' "${pwhash}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"config\":{\"webserver\":{\"api\":{\"app_pwhash\":${pwhash}}}},\"took\":"*"}" ]]
+
+  # Login using app password is successful
+  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":${0}}" | jq .session.valid' "${password}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "true" ]]
 }
 
 @test "API authorization: Setting password" {

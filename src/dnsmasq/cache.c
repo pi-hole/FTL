@@ -645,8 +645,8 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
   if (insert_error)
     return NULL;
 
-  /* we don't cache zero-TTL records. */
-  if (ttl == 0)
+  /* we don't cache zero-TTL records unless we're doing stale-caching. */
+  if (daemon->cache_max_expiry == 0 && ttl == 0)
     {
       insert_error = 1;
       return NULL;

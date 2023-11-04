@@ -48,7 +48,7 @@ if __name__ == "__main__":
 	# Check if endpoints that are in both FTL and OpenAPI specs match
 	# and have the same response format. Also verify that the examples
 	# matches the OpenAPI specs.
-	print("Verifying the individual endpoint properties...")
+	print("Verifying the individual OpenAPI endpoint properties...")
 	teleporter = None
 	for path in openapi.endpoints["get"]:
 		# We do not check the action endpoints as they'd trigger
@@ -56,14 +56,28 @@ if __name__ == "__main__":
 		# gravity, stutting down the system, etc.
 		if path.startswith("/api/action"):
 			continue
-		verifyer = ResponseVerifyer(ftl, openapi)
-		errors = verifyer.verify_endpoint(path)
-		if verifyer.teleporter_archive is not None:
-			teleporter = verifyer.teleporter_archive
+		with ResponseVerifyer(ftl, openapi) as verifyer:
+			errors = verifyer.verify_endpoint(path)
+			if verifyer.teleporter_archive is not None:
+				teleporter = verifyer.teleporter_archive
+			if len(errors) == 0:
+				print("  GET " + path + " (" + verifyer.auth_method + " auth): OK")
+			else:
+				print("  GET " + path + " (" + verifyer.auth_method + " auth):")
+				for error in errors:
+					print("  - " + error)
+				errs[2] += len(errors)
+	print("")
+
+	# Verify that all the endpoint defined by /api/endpoints are documented
+	# and that there are no undocumented endpoints
+	print("Comparing all endpoints defined in FTL against the OpenAPI specs...")
+	with ResponseVerifyer(ftl, openapi) as verifyer:
+		errors, checked = verifyer.verify_endpoints()
 		if len(errors) == 0:
-			print("  GET " + path + " (" + verifyer.auth_method + " auth): OK")
+			print("  OK (" + str(checked) + " endpoints checked)")
 		else:
-			print("  GET " + path + " (" + verifyer.auth_method + " auth):")
+			print("  Errors (" + str(checked) + " endpoints checked):")
 			for error in errors:
 				print("  - " + error)
 			errs[2] += len(errors)
@@ -71,16 +85,16 @@ if __name__ == "__main__":
 
 	# Verify FTL Teleporter import
 	print("Verifying FTL Teleporter import...")
-	verifyer = ResponseVerifyer(ftl, openapi)
-	errors = verifyer.verify_teleporter_zip(teleporter)
-	if len(errors) == 0:
-		print("  POST /api/teleporter: OK")
-	else:
-		print("  Errors:")
-		for error in errors:
-			print("  - " + error)
-		errs[2] += len(errors)
-
+	with ResponseVerifyer(ftl, openapi) as verifyer:
+		errors = verifyer.verify_teleporter_zip(teleporter)
+		if len(errors) == 0:
+			print("  POST /api/teleporter: OK")
+		else:
+			print("  Errors:")
+			for error in errors:
+				print("  - " + error)
+			errs[2] += len(errors)
+		print("")
 
 	# Print the number error (if any)
 	if errs[0] > 0:

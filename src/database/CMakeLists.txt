@@ -33,6 +33,8 @@ set(database_sources
         network-table.h
         query-table.c
         query-table.h
+        session-table.c
+        session-table.h
         sqlite3.h
         sqlite3-ext.c
         sqlite3-ext.h

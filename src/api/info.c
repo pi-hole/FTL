@@ -194,7 +194,7 @@ static int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// "cached", which was fine ten years ago, but is pretty much guaranteed
 	// to be wrong today."
 	JSON_ADD_NUMBER_TO_OBJECT(ram, "available", mem.avail);
-	JSON_ADD_NUMBER_TO_OBJECT(ram, "%used", 100.0*mem.used/mem.total);
+	JSON_ADD_NUMBER_TO_OBJECT(ram, "%used", mem.total > 0 ? 100.0*mem.used/mem.total : 0);
 	JSON_ADD_ITEM_TO_OBJECT(memory, "ram", ram);
 
 	cJSON *swap = JSON_NEW_OBJECT();
@@ -206,7 +206,7 @@ static int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// Used swap space
 	const float used_swap = (info.totalswap - info.freeswap) * info.mem_unit / 1024;
 	JSON_ADD_NUMBER_TO_OBJECT(swap, "used", used_swap);
-	JSON_ADD_NUMBER_TO_OBJECT(swap, "%used", 100.0*used_swap/total_swap);
+	JSON_ADD_NUMBER_TO_OBJECT(swap, "%used", total_swap > 0 ? 100.0*used_swap/total_swap : 0);
 	JSON_ADD_ITEM_TO_OBJECT(memory, "swap", swap);
 	JSON_ADD_ITEM_TO_OBJECT(system, "memory", memory);
 

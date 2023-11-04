@@ -179,17 +179,6 @@ int api_queries_suggestions(struct ftl_conn *api)
 // LEFT JOIN: Return all rows from the left table, and the matched rows from the right table
 #define JOINSTR "JOIN client_by_id c ON q.client = c.id JOIN domain_by_id d ON q.domain = d.id LEFT JOIN forward_by_id f ON q.forward = f.id LEFT JOIN addinfo_by_id a ON a.id = q.additional_info"
 #define QUERYSTRBUFFERLEN 4096
-static void add_querystr_double(struct ftl_conn *api, char *querystr, const char *sql, const char *uripart, bool *where)
-{
-	double val;
-	if(!get_double_var(api->request->query_string, uripart, &val))
-		return;
-
-	const size_t strpos = strlen(querystr);
-	const char *glue = *where ? "AND" : "WHERE";
-	*where = true;
-	snprintf(querystr + strpos, QUERYSTRBUFFERLEN - strpos, " %s %s%f", glue, sql, val);
-}
 
 static void add_querystr_string(struct ftl_conn *api, char *querystr, const char *sql, const char *val, bool *where)
 {
@@ -249,6 +238,25 @@ static void querystr_finish(char *querystr, const char *sort_col, const char *so
 	         sort_col_sql, sort_dir_sql);
 }
 
+// This function modifies the passed string inline
+static bool is_wildcard(char *string)
+{
+	// Check if wildcards are requested
+	bool wildcard = false;
+	const size_t stringlen = strlen(string);
+	for(unsigned int i = 0u; i < stringlen; i++)
+	{
+		if(string[i] == '*')
+		{
+			// Replace "*" by SQLite3 wildcard character "%" and
+			// memorize we actually want to do wildcard matching
+			string[i] = '%';
+			wildcard = true;
+		}
+	}
+	return wildcard;
+}
+
 int api_queries(struct ftl_conn *api)
 {
 	// Exit before processing any data if requested via config setting
@@ -295,17 +303,27 @@ int api_queries(struct ftl_conn *api)
 	int length = 100;
 	unsigned int start = 0;
 	bool cursor_set = false, where = false;
+	double timestamp_from = 0.0, timestamp_until = 0.0;
 
 	// Filter-/sorting based on GET parameters?
 	if(api->request->query_string != NULL)
 	{
-		// Time filtering?
-		add_querystr_double(api, querystr, "timestamp>=", "from", &where);
-		add_querystr_double(api, querystr, "timestamp<", "until", &where);
+		// Time filtering FROM (inclusive)
+		if(get_double_var(api->request->query_string, "from", &timestamp_from))
+			add_querystr_string(api, querystr, "timestamp>=", ":tsfrom", &where);
+
+		// Time filtering UNTIL (exclusive)
+		if(get_double_var(api->request->query_string, "until", &timestamp_until))
+			add_querystr_string(api, querystr, "timestamp<", ":tsuntil", &where);
 
 		// Domain filtering?
 		if(GET_STR("domain", domainname, api->request->query_string) > 0)
-			add_querystr_string(api, querystr, "d.domain=", ":domain", &where);
+		{
+			if(is_wildcard(domainname))
+				add_querystr_string(api, querystr, "d.domain LIKE", ":domain", &where);
+			else
+				add_querystr_string(api, querystr, "d.domain=", ":domain", &where);
+		}
 
 		// Upstream filtering?
 		if(GET_STR("upstream", upstreamname, api->request->query_string) > 0)
@@ -317,16 +335,31 @@ int api_queries(struct ftl_conn *api)
 				// Pseudo-upstream for cached queries
 				add_querystr_string(api, querystr, "q.status IN ", get_cached_statuslist(), &where);
 			else
-				add_querystr_string(api, querystr, "f.forward=", ":upstream", &where);
+			{
+				if(is_wildcard(upstreamname))
+					add_querystr_string(api, querystr, "f.forward LIKE", ":upstream", &where);
+				else
+					add_querystr_string(api, querystr, "f.forward=", ":upstream", &where);
+			}
 		}
 
 		// Client IP filtering?
 		if(GET_STR("client_ip", clientip, api->request->query_string) > 0)
-			add_querystr_string(api, querystr, "c.ip=", ":cip", &where);
+		{
+			if(is_wildcard(clientip))
+				add_querystr_string(api, querystr, "c.ip LIKE", ":cip", &where);
+			else
+				add_querystr_string(api, querystr, "c.ip=", ":cip", &where);
+		}
 
 		// Client filtering?
 		if(GET_STR("client_name", clientname, api->request->query_string) > 0)
-			add_querystr_string(api, querystr, "c.name=", ":cname", &where);
+		{
+			if(is_wildcard(clientname))
+				add_querystr_string(api, querystr, "c.name LIKE", ":cname", &where);
+			else
+				add_querystr_string(api, querystr, "c.name=", ":cname", &where);
+		}
 
 		// DataTables server-side processing protocol
 		// Draw counter: This is used by DataTables to ensure that the
@@ -484,6 +517,40 @@ int api_queries(struct ftl_conn *api)
 	if(api->request->query_string != NULL)
 	{
 		int idx;
+		idx = sqlite3_bind_parameter_index(read_stmt, ":tsfrom");
+		if(idx > 0)
+		{
+			log_debug(DEBUG_API, "adding :tsfrom = %lf to query", timestamp_from);
+			filtering = true;
+			if((rc = sqlite3_bind_double(read_stmt, idx, timestamp_from)) != SQLITE_OK)
+			{
+				sqlite3_reset(read_stmt);
+				sqlite3_finalize(read_stmt);
+				if(disk)
+					detach_disk_database(NULL);
+				return send_json_error(api, 500,
+				                       "internal_error",
+				                       "Internal server error, failed to bind timestamp:from to SQL query",
+				                       sqlite3_errstr(rc));
+			}
+		}
+		idx = sqlite3_bind_parameter_index(read_stmt, ":tsuntil");
+		if(idx > 0)
+		{
+			log_debug(DEBUG_API, "adding :tsuntil = %lf to query", timestamp_until);
+			filtering = true;
+			if((rc = sqlite3_bind_double(read_stmt, idx, timestamp_until)) != SQLITE_OK)
+			{
+				sqlite3_reset(read_stmt);
+				sqlite3_finalize(read_stmt);
+				if(disk)
+					detach_disk_database(NULL);
+				return send_json_error(api, 500,
+				                       "internal_error",
+				                       "Internal server error, failed to bind timestamp:until to SQL query",
+				                       sqlite3_errstr(rc));
+			}
+		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":domain");
 		if(idx > 0)
 		{

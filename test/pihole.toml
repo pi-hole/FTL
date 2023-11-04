@@ -522,15 +522,20 @@
   #     comma-separated list of <[ip_address:]port>
   port = "80,[::]:80,443s"
 
-  # Session timeout in seconds. If a session is inactive for more than this time, it will
-  # be terminated. Sessions are continuously refreshed by the web interface, preventing
-  # sessions from timing out while the web interface is open.
-  # This option may also be used to make logins persistent for long times, e.g. 86400
-  # seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that
-  # the total number of concurrent sessions is limited so setting this value too high
-  # may result in users being rejected and unable to log in if there are already too
-  # many sessions active.
-  sessionTimeout = 300
+  [webserver.session]
+    # Session timeout in seconds. If a session is inactive for more than this time, it will
+    # be terminated. Sessions are continuously refreshed by the web interface, preventing
+    # sessions from timing out while the web interface is open.
+    # This option may also be used to make logins persistent for long times, e.g. 86400
+    # seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that
+    # the total number of concurrent sessions is limited so setting this value too high
+    # may result in users being rejected and unable to log in if there are already too
+    # many sessions active.
+    timeout = 300
+
+    # Should Pi-hole backup and restore sessions from the database? This is useful if you
+    # want to keep your sessions after a restart of the web interface.
+    restore = true
 
   [webserver.tls]
     # Is Pi-hole running behind a reverse proxy? If yes, Pi-hole will not consider
@@ -615,6 +620,20 @@
     # Possible values are:
     #     <valid TOTP secret (20 Bytes in Base32 encoding)>
     totp_secret = ""
+
+    # Pi-hole application password.
+    # After you turn on two-factor (2FA) verification and set up an Authenticator app, you
+    # may run into issues if you use apps or other services that don't support two-step
+    # verification. In this case, you can create and use an app password to sign in. An
+    # app password is a long, randomly generated password that can be used instead of your
+    # regular password + TOTP token when signing in to the API. The app password can be
+    # generated through the API and will be shown only once. You can revoke the app
+    # password at any time. If you revoke the app password, be sure to generate a new one
+    # and update your app with the new password.
+    #
+    # Possible values are:
+    #     <valid Pi-hole password hash>
+    app_pwhash = ""
 
     # Array of clients to be excluded from certain API responses
     # Example: [ "192.168.2.56", "fe80::341", "localhost" ]

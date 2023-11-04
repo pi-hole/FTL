@@ -127,5 +127,6 @@ bool optimize_queries_table(sqlite3 *db);
 bool create_addinfo_table(sqlite3 *db);
 bool add_query_storage_columns(sqlite3 *db);
 bool add_query_storage_column_regex_id(sqlite3 *db);
+bool add_ftl_table_description(sqlite3 *db);
 
 #endif //QUERY_TABLE_PRIVATE_H

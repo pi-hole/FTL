@@ -47,13 +47,8 @@ static inline bool __attribute__((pure)) valid_domain(const char *domain, const 
 	if(domain == NULL || len == 0 || len > 255)
 		return false;
 
-	// Domain must not start or end with a hyphen or dot
-	if(domain[  0  ] == '-' || domain[  0  ] == '.' ||
-	   domain[len-1] == '-' || domain[len-1] == '.')
-		return false;
-
 	// Loop over line and check for invalid characters
-	unsigned int last_dot = 0;
+	int last_dot = -1;
 	for(unsigned int i = 0; i < len; i++)
 	{
 		// Domain must not contain any character other than [a-zA-Z0-9.-_]
@@ -63,23 +58,14 @@ static inline bool __attribute__((pure)) valid_domain(const char *domain, const 
 		   (domain[i] < '0' || domain[i] > '9'))
 			return false;
 
-		// Multi-character checks
-		if(i > 0)
-		{
-			// Domain must not contain a hyphen immediately before a
-			// dot or two consecutive dots
-			if(domain[i] == '.' && (domain[i-1] == '-' || domain[i-1] == '.'))
-				return false;
-
-			// Domain must not contain a dot immediately before a
-			// hyphen
-			if(domain[i] == '-' && domain[i-1] == '.')
-				return false;
-		}
-
 		// Individual label length check
 		if(domain[i] == '.')
 		{
+			// Label must be longer than 0 characters, i.e., two consecutive
+			// dots are not allowed
+			if(i - last_dot == 1)
+				return false;
+
 			// Label must not be longer than 63 characters
 			// (actually 64 because the dot at the end of the label
 			// is included here)
@@ -95,9 +81,15 @@ static inline bool __attribute__((pure)) valid_domain(const char *domain, const 
 		}
 	}
 
+	// TLD checks
+
 	// There must be at least two labels (i.e. one dot)
 	// e.g., "example.com" but not "localhost"
-	if(last_dot == 0)
+	if(last_dot == -1)
+		return false;
+
+	// TLD must not start or end with a hyphen
+	if(domain[last_dot + 1] == '-' || domain[len - 1] == '-')
 		return false;
 
 	// TLD length check
@@ -175,7 +167,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		return EXIT_FAILURE;
 	}
 
-	// Open output file
+	// Open output file (database)
 	sqlite3 *db = NULL;
 	sqlite3_stmt *stmt = NULL;
 	if(!checkOnly && sqlite3_open_v2(outfile, &db, SQLITE_OPEN_READWRITE, NULL) != SQLITE_OK)
@@ -184,6 +176,43 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		fclose(fpin);
 		return EXIT_FAILURE;
 	}
+
+	// Disable journaling
+	// Journaling is used to prevent database corruption in case of a power
+	// loss or operating system crash. However, this is not needed for the
+	// gravity database the database is created from scratch at every run
+	// of pihole -g.
+	// The OFF journaling mode disables the rollback journal completely. No
+	// rollback journal is ever created and hence there is never a rollback
+	// journal to delete.
+	if(!checkOnly && sqlite3_exec(db, "PRAGMA journal_mode = OFF;", NULL, NULL, NULL) != SQLITE_OK)
+	{
+		printf("%s  %s Unable to disable journaling in database file %s\n", over, cross, outfile);
+		fclose(fpin);
+		sqlite3_close(db);
+		return EXIT_FAILURE;
+	}
+
+	// Disable synchronous mode
+	// With synchronous OFF (0), SQLite continues without syncing as soon as
+	// it has handed data off to the operating system. If the application
+	// running SQLite crashes, the data will be safe, but the database might
+	// become corrupted if the operating system crashes or the computer
+	// loses power before that data has been written to the disk surface. On
+	// the other hand, commits can be orders of magnitude faster with
+	// synchronous OFF.
+	// See https://www.sqlite.org/pragma.html#pragma_synchronous
+	// If a power loss (or operating system crash) happens, the database
+	// created here will never be swapped into action and is discarded at
+	// the next run of pihole -g.
+	if(!checkOnly && sqlite3_exec(db, "PRAGMA synchronous = OFF;", NULL, NULL, NULL) != SQLITE_OK)
+	{
+		printf("%s  %s Unable to disable synchronous mode in database file %s\n", over, cross, outfile);
+		fclose(fpin);
+		sqlite3_close(db);
+		return EXIT_FAILURE;
+	}
+
 	// Get size of input file
 	fseek(fpin, 0L, SEEK_END);
 	const size_t fsize = ftell(fpin);

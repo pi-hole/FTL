@@ -34,6 +34,9 @@ bool create_network_table(sqlite3 *db)
 	if(FTLDBerror())
 		return false;
 
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// Create network table in the database
 	SQL_bool(db, "CREATE TABLE network ( id INTEGER PRIMARY KEY NOT NULL, " \
 	                                    "ip TEXT NOT NULL, " \
@@ -51,6 +54,9 @@ bool create_network_table(sqlite3 *db)
 		log_warn("create_network_table(): Failed to update database version!");
 		return false;
 	}
+
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }
@@ -746,8 +752,8 @@ static int update_netDB_interface(sqlite3 *db, const int network_id, const char 
 }
 
 // Loop over all clients known to FTL and ensure we add them all to the database
-static bool add_FTL_clients_to_network_table(sqlite3 *db, enum arp_status *client_status, time_t now,
-                                             unsigned int *additional_entries)
+static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status *client_status,
+                                             const int clients, time_t now, unsigned int *additional_entries)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -755,7 +761,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, enum arp_status *clien
 
 	int rc = SQLITE_OK;
 	char hwaddr[128];
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(int clientID = 0; clientID < clients; clientID++)
 	{
 		// Check thread cancellation
 		if(killed)
@@ -1327,7 +1333,7 @@ void parse_neighbor_cache(sqlite3* db)
 					lock_shm();
 					int clientID = findClientID(ip, false, false);
 					unlock_shm();
-					if(clientID >= 0)
+					if(clientID >= 0 && clientID < clients)
 						client_status[clientID] = CLIENT_ARP_INCOMPLETE;
 				}
 
@@ -1371,7 +1377,7 @@ void parse_neighbor_cache(sqlite3* db)
 
 			// This client is known (by its IP address) to pihole-FTL if
 			// findClientID() returned a non-negative index
-			if(clientID >= 0)
+			if(clientID >= 0 && clientID < clients)
 			{
 				clientsData *client = getClient(clientID, true);
 				if(!client)
@@ -1535,7 +1541,7 @@ void parse_neighbor_cache(sqlite3* db)
 
 	// Loop over all clients known to FTL and ensure we add them all to the
 	// database
-	if(!add_FTL_clients_to_network_table(db, client_status, now, &additional_entries))
+	if(!add_FTL_clients_to_network_table(db, client_status, clients, now, &additional_entries))
 	{
 		free(client_status);
 		return;
@@ -1609,6 +1615,9 @@ bool unify_hwaddr(sqlite3 *db)
 	                        "HAVING MAX(lastQuery) "
 	                        "AND cnt > 1;";
 
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// Perform SQL query
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
@@ -1661,6 +1670,9 @@ bool unify_hwaddr(sqlite3 *db)
 	// Update database version to 4
 	if(!db_set_FTL_property(db, DB_VERSION, 4))
 		return false;
+
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }
