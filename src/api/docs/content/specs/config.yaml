@@ -268,8 +268,10 @@ components:
                           type: boolean
                         IPv4:
                           type: string
+                          x-format: ipv4
                         IPv6:
                           type: string
+                          x-format: ipv6
                     blocking:
                       type: object
                       properties:
@@ -279,8 +281,10 @@ components:
                           type: boolean
                         IPv4:
                           type: string
+                          x-format: ipv4
                         IPv6:
                           type: string
+                          x-format: ipv6
                 rateLimit:
                   type: object
                   properties:
@@ -295,12 +299,16 @@ components:
                   type: boolean
                 start:
                   type: string
+                  x-format: ipv4
                 end:
                   type: string
+                  x-format: ipv4
                 router:
                   type: string
+                  x-format: ipv4
                 netmask:
                   type: string
+                  x-format: ipv4
                 domain:
                   type: string
                 leaseTime:

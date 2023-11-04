@@ -419,9 +419,12 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# DHCP server setting\n", pihole_conf);
 		fputs("dhcp-authoritative\n", pihole_conf);
 		fputs("dhcp-leasefile="DHCPLEASESFILE"\n", pihole_conf);
-		char start[INET_ADDRSTRLEN] = { 0 }, end[INET_ADDRSTRLEN] = { 0 };
+		char start[INET_ADDRSTRLEN] = { 0 },
+		     end[INET_ADDRSTRLEN] = { 0 },
+		     router[INET_ADDRSTRLEN] = { 0 };
 		inet_ntop(AF_INET, &conf->dhcp.start.v.in_addr, start, INET_ADDRSTRLEN);
 		inet_ntop(AF_INET, &conf->dhcp.end.v.in_addr, end, INET_ADDRSTRLEN);
+		inet_ntop(AF_INET, &conf->dhcp.router.v.in_addr, router, INET_ADDRSTRLEN);
 		fprintf(pihole_conf, "dhcp-range=%s,%s", start, end);
 		// Net mask is optional, only add if it is not 0.0.0.0
 		const struct in_addr inaddr_empty = {0};
@@ -429,13 +432,12 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		{
 			char netmask[INET_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET, &conf->dhcp.netmask.v.in_addr, netmask, INET_ADDRSTRLEN);
-			fprintf(pihole_conf, ",%s", conf->dhcp.netmask.v.s);
+			fprintf(pihole_conf, ",%s", netmask);
 		}
 		// Lease time is optional, only add it if it is set
 		if(strlen(conf->dhcp.leaseTime.v.s) > 0)
 			fprintf(pihole_conf, ",%s", conf->dhcp.leaseTime.v.s);
-		fprintf(pihole_conf, "\ndhcp-option=option:router,%s\n",
-		        conf->dhcp.router.v.s);
+		fprintf(pihole_conf, "\ndhcp-option=option:router,%s\n", router);
 
 		if(conf->dhcp.rapidCommit.v.b)
 			fputs("dhcp-rapid-commit\n", pihole_conf);

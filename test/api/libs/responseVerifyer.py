@@ -10,7 +10,7 @@
 # Please see LICENSE file for your rights under this license.
 
 import io
-import pprint
+import ipaddress
 import random
 import zipfile
 from libs.openAPI import openApi
@@ -221,8 +221,32 @@ class ResponseVerifyer():
 		return self.errors
 
 
+	# Check if a string is a valid IPv4 address
+	def valid_ipv4(self, addr: str) -> bool:
+		octets = addr.split(".") # type: list[str]
+		if len(octets) != 4:
+			return False
+		for octet in octets:
+			if not octet.isdigit():
+				return False
+			if int(octet) < 0 or int(octet) > 255:
+				return False
+		return True
+
+
+	# Check if a string is a valid IPv6 address
+	def valid_ipv6(self, addr: str) -> bool:
+		# Split the address into parts
+		parts = addr.split(":") # type: list[str]
+		# Check if the address is a valid IPv6 address
+		if len(parts) != 8:
+			return False
+
+
 	# Verify a single property's type
-	def verify_type(self, prop_type: any, yaml_type: str, yaml_nullable: bool):
+	def verify_type(self, prop: any, yaml_type: str, yaml_nullable: bool, yaml_format: str = None):
+		# Get the type of the property
+		prop_type = type(prop)
 		# None is an acceptable reply when this is specified in the API specs
 		if prop_type is type(None) and yaml_nullable:
 			return True
@@ -230,6 +254,14 @@ class ResponseVerifyer():
 		if yaml_type not in self.YAML_TYPES:
 			self.errors.append("Property type \"" + yaml_type + "\" is not valid in OpenAPI specs")
 			return False
+		if yaml_format is not None:
+			# Check if the format is correct
+			if yaml_format == "ipv4" and not type(ipaddress.ip_address(prop)) is ipaddress.IPv4Address:
+				self.errors.append("Property \"" + str(prop) + "\" is not a valid IPv4 address")
+				return False
+			elif yaml_format == "ipv6" and not type(ipaddress.ip_address(prop)) is ipaddress.IPv6Address:
+				self.errors.append("Property \"" + str(prop) + "\" is not a valid IPv6 address")
+				return False
 		return prop_type in self.YAML_TYPES[yaml_type]
 
 
@@ -306,17 +338,19 @@ class ResponseVerifyer():
 			# if not defined as string, integer, etc.)
 			yaml_nullable = 'nullable' in YAMLprop and YAMLprop['nullable'] == True
 
+			# Get format of this property (if defined)
+			yaml_format = YAMLprop['format'] if 'format' in YAMLprop else YAMLprop['x-format'] if 'x-format' in YAMLprop else None
+
 			# Add this property to the YAML response
 			self.YAMLresponse[flat_path] = []
 
 			# Check type of YAML example (if defined)
 			if 'example' in YAMLprop:
-				example_type = type(YAMLprop['example'])
 				# Check if the type of the example matches the
 				# type we defined in the API specs
 				self.YAMLresponse[flat_path].append(YAMLprop['example'])
-				if not self.verify_type(example_type, yaml_type, yaml_nullable):
-					self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + ("True" if yaml_nullable else "False") + ")")
+				if not self.verify_type(YAMLprop['example'], yaml_type, yaml_nullable, yaml_format):
+					self.errors.append(f"API example ({str(type(YAMLprop['example']))}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + ("True" if yaml_nullable else "False") + ")")
 					return False
 
 			# Check type of externally defined YAML examples (next to schema)
@@ -340,16 +374,14 @@ class ResponseVerifyer():
 					if skip_this:
 						continue
 					# Check if the type of the example matches the type we defined in the API specs
-					example_type = type(example)
 					self.YAMLresponse[flat_path].append(example)
-					if not self.verify_type(example_type, yaml_type, yaml_nullable):
-						self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + ("True" if yaml_nullable else "False") + ")")
+					if not self.verify_type(example, yaml_type, yaml_nullable, yaml_format):
+						self.errors.append(f"API example ({str(type(example))}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + ("True" if yaml_nullable else "False") + ")")
 						return False
 
 			# Compare type of FTL's reply against what we defined in the API specs
-			ftl_type = type(FTLprop)
-			if not self.verify_type(ftl_type, yaml_type, yaml_nullable):
-				self.errors.append(f"FTL's reply ({str(ftl_type)}) does not match defined type ({yaml_type}) in {flat_path}")
+			if not self.verify_type(FTLprop, yaml_type, yaml_nullable, yaml_format):
+				self.errors.append(f"FTL's reply ({str(type(FTLprop))}) does not match defined type ({yaml_type}) in {flat_path}")
 				return False
 		return all_okay
 
