@@ -1664,7 +1664,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			           "ON CONFLICT(ip) DO UPDATE SET comment = :comment;";
 		else // domainlist
 			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:type,:enabled,:comment) "\
-			           "ON CONFLICT(domain) DO UPDATE SET type = :type, enabled = :enabled, comment = :comment;";
+			           "ON CONFLICT(domain,type) DO UPDATE SET type = :type, enabled = :enabled, comment = :comment;";
 	}
 
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
