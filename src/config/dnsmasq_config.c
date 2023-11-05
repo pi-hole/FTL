@@ -207,11 +207,12 @@ static void write_config_header(FILE *fp, const char *description)
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY CHANGES MADE TO THIS FILE WILL BE LOST WHEN THE CONFIGURATION CHANGES");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "IF YOU WISH TO CHANGE ANY OF THESE VALUES, CHANGE THEM IN");
-	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "etc/pihole/pihole.toml");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "/etc/pihole/pihole.toml");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "and restart pihole-FTL");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY OTHER CHANGES SHOULD BE MADE IN A SEPARATE CONFIG FILE");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "WITHIN /etc/dnsmasq.d/yourname.conf");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "(make sure misc.etc_dnsmasq_d is set to true in /etc/pihole/pihole.toml)");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "Last updated: %s", timestring);
 	CONFIG_CENTER(fp, HEADER_WIDTH, "by FTL version %s", get_FTL_version());
@@ -508,11 +509,11 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	fputs("server=/bind/\n", pihole_conf);
 	fputs("server=/onion/\n", pihole_conf);
 
-	if(directory_exists("/etc/dnsmasq.d"))
+	if(directory_exists("/etc/dnsmasq.d") && conf->misc.etc_dnsmasq_d.v.b)
 	{
-		// Load possible additional user scripts from /etc/dnsmasq.d if
-		// the directory exists (it may not, e.g., in a container)
-		fputs("# Load possible additional user scripts\n", pihole_conf);
+		// Load additional user scripts from /etc/dnsmasq.d if the
+		// directory exists (it may not, e.g., in a container)
+		fputs("# Load additional user scripts\n", pihole_conf);
 		fputs("conf-dir=/etc/dnsmasq.d\n", pihole_conf);
 		fputs("\n", pihole_conf);
 	}

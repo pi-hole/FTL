@@ -261,6 +261,7 @@ struct config {
 		struct conf_item delay_startup;
 		struct conf_item nice;
 		struct conf_item addr2line;
+		struct conf_item etc_dnsmasq_d;
 		struct conf_item dnsmasq_lines;
 		struct {
 			struct conf_item load;

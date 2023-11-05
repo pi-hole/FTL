@@ -450,6 +450,8 @@ components:
                   type: integer
                 addr2line:
                   type: boolean
+                etc_dnsmasq_d:
+                  type: boolean
                 privacylevel:
                   type: integer
                 dnsmasq_lines:
@@ -694,6 +696,7 @@ components:
             delay_startup: 10
             addr2line: true
             privacylevel: 0
+            etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
             check:
               load: true

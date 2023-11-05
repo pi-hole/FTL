@@ -1074,6 +1074,12 @@ void initConfig(struct config *conf)
 	conf->misc.addr2line.f = FLAG_ADVANCED_SETTING;
 	conf->misc.addr2line.d.b = true;
 
+	conf->misc.etc_dnsmasq_d.k = "misc.etc_dnsmasq_d";
+	conf->misc.etc_dnsmasq_d.h = "Should FTL load additional dnsmasq configuration files from /etc/dnsmasq.d/?";
+	conf->misc.etc_dnsmasq_d.t = CONF_BOOL;
+	conf->misc.etc_dnsmasq_d.f = FLAG_ADVANCED_SETTING;
+	conf->misc.etc_dnsmasq_d.d.b = false;
+
 	conf->misc.dnsmasq_lines.k = "misc.dnsmasq_lines";
 	conf->misc.dnsmasq_lines.h = "Additional lines to inject into the generated dnsmasq configuration.\n Warning: This is an advanced setting and should only be used with care. Incorrectly formatted or duplicated lines as well as lines conflicting with the automatic configuration of Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.\n Use this option with extra care.";
 	conf->misc.dnsmasq_lines.a = cJSON_CreateStringReference("array of valid dnsmasq config line options");
