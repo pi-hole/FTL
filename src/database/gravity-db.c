@@ -1672,7 +1672,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s) - SQL error prepare (%i): %s",
-		        row->type_int, row->domain, rc, *message);
+		        row->type_int, row->item, rc, *message);
 		return false;
 	}
 
@@ -1694,7 +1694,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind name (error %d) - %s",
-		        row->type_int, row->name, rc, *message);
+		        row->type_int, row->item, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1706,7 +1706,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind type (error %d) - %s",
-		        row->type_int, row->domain, rc, *message);
+		        row->type_int, row->item, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1727,7 +1727,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			// Error, one is not meaningful without the other
 			*message = "Field type missing from request";
 			log_err("gravityDB_addToTable(%d, %s): type missing",
-			        row->type_int, row->domain);
+			        row->type_int, row->item);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
@@ -1737,7 +1737,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			// Error, one is not meaningful without the other
 			*message = "Field oldkind missing from request";
 			log_err("gravityDB_addToTable(%d, %s): Oldkind missing",
-			        row->type_int, row->domain);
+			        row->type_int, row->item);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
@@ -1760,7 +1760,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			{
 				*message = "Cannot interpret type/kind";
 				log_err("gravityDB_addToTable(%d, %s): Failed to identify type=\"%s\", kind=\"%s\"",
-				        row->type_int, row->domain, row->type, row->kind);
+				        row->type_int, row->item, row->type, row->kind);
 				sqlite3_reset(stmt);
 				sqlite3_finalize(stmt);
 				return false;
@@ -1772,7 +1772,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		{
 			*message = sqlite3_errmsg(gravity_db);
 			log_err("gravityDB_addToTable(%d, %s): Failed to bind oldtype (error %d) - %s",
-			        row->type_int, row->domain, rc, *message);
+			        row->type_int, row->item, rc, *message);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
@@ -1785,7 +1785,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind enabled (error %d) - %s",
-		        row->type_int, row->domain, rc, *message);
+		        row->type_int, row->item, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1797,7 +1797,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind comment (error %d) - %s",
-		        row->type_int, row->domain, rc, *message);
+		        row->type_int, row->item, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
