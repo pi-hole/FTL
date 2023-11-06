@@ -593,16 +593,22 @@ int api_auth(struct ftl_conn *api)
 		}
 		if(user_id == API_AUTH_UNAUTHORIZED)
 		{
-			log_warn("No free API seats available, not authenticating client");
+			log_warn("No free API seats available (webserver.api.max_sessions = %u), not authenticating client",
+			         config.webserver.api.max_sessions.v.u16);
+
+			return send_json_error(api, 429,
+			                       "too_many_requests",
+			                       "Too many requests",
+			                       "no free API seats available");
 		}
 	}
 	else if(result == PASSWORD_RATE_LIMITED)
 	{
 		// Rate limited
 		return send_json_error(api, 429,
-					"too_many_requests",
-					"Too many requests",
-					"login rate limiting");
+		                       "too_many_requests",
+		                       "Too many requests",
+		                       "login rate limiting");
 	}
 	else
 	{

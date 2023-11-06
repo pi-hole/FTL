@@ -96,6 +96,11 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/too_many_requests'
                     - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  rate_limit:
+                    $ref: 'auth.yaml#/components/examples/errors/rate_limit'
+                  no_seats:
+                    $ref: 'auth.yaml#/components/examples/errors/no_seats'
       delete:
         summary: Delete session
         tags:
@@ -507,6 +512,20 @@ components:
             key: "bad_request"
             message: "Session ID not in use"
             hint: null
+      rate_limit:
+        summary: Rate limit exceeded
+        value:
+          error:
+            key: "too_many_requests"
+            message: "Too many requests"
+            hint: "login rate limiting"
+      no_seats:
+        summary: No free API seats available
+        value:
+          error:
+            key: "too_many_requests"
+            message: "Too many requests"
+            hint: "no free API seats available"
   parameters:
     id:
       in: path
