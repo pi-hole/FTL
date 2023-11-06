@@ -524,13 +524,22 @@ int api_auth(struct ftl_conn *api)
 							NULL);
 			}
 
-			if(!verifyTOTP(json_totp->valueint))
+			enum totp_status totp = verifyTOTP(json_totp->valueint);
+			if(totp == TOTP_REUSED)
+			{
+				// 2FA token has been reused
+				return send_json_error(api, 401,
+				                       "unauthorized",
+				                       "Reused 2FA token",
+				                       "wait for new token");
+			}
+			else if(totp != TOTP_CORRECT)
 			{
 				// 2FA token is invalid
 				return send_json_error(api, 401,
-							"unauthorized",
-							"Invalid 2FA token",
-							NULL);
+				                       "unauthorized",
+				                       "Invalid 2FA token",
+				                       NULL);
 			}
 		}
 
@@ -597,18 +606,18 @@ int api_auth(struct ftl_conn *api)
 			         config.webserver.api.max_sessions.v.u16);
 
 			return send_json_error(api, 429,
-			                       "too_many_requests",
-			                       "Too many requests",
-			                       "no free API seats available");
+			                       "api_seats_exceeded",
+			                       "API seats exceeded",
+			                       "increase webserver.api.max_sessions");
 		}
 	}
 	else if(result == PASSWORD_RATE_LIMITED)
 	{
 		// Rate limited
 		return send_json_error(api, 429,
-		                       "too_many_requests",
-		                       "Too many requests",
-		                       "login rate limiting");
+		                       "rate_limiting",
+		                       "Rate-limiting login attempts",
+		                       NULL);
 	}
 	else
 	{
