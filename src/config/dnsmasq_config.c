@@ -595,7 +595,6 @@ bool read_legacy_dhcp_static_config(void)
 {
 	// Check if file exists, if not, there is nothing to do
 	const char *path = DNSMASQ_STATIC_LEASES;
-	const char *target = DNSMASQ_STATIC_LEASES".bck";
 	if(!file_exists(path))
 		return true;
 
@@ -645,11 +644,6 @@ bool read_legacy_dhcp_static_config(void)
 		return false;
 	}
 
-	// Move file to backup location
-	log_info("Moving %s to %s", path, target);
-	if(rename(path, target) != 0)
-		log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
-
 	return true;
 }
 
@@ -658,7 +652,6 @@ bool read_legacy_cnames_config(void)
 {
 	// Check if file exists, if not, there is nothing to do
 	const char *path = DNSMASQ_CNAMES;
-	const char *target = DNSMASQ_CNAMES".bck";
 	if(!file_exists(path))
 		return true;
 
@@ -707,11 +700,6 @@ bool read_legacy_cnames_config(void)
 		log_err("Cannot close %s: %s", path, strerror(errno));
 		return false;
 	}
-
-	// Move file to backup location
-	log_info("Moving %s to %s", path, target);
-	if(rename(path, target) != 0)
-		log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
 
 	return true;
 }
