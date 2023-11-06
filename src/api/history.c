@@ -25,51 +25,11 @@
 
 int api_history(struct ftl_conn *api)
 {
-	unsigned int from = 0, until = OVERTIME_SLOTS;
-	const time_t now = time(NULL);
-	bool found = false;
-
 	lock_shm();
-	time_t mintime = overTime[0].timestamp;
 
-	// Start with the first non-empty overTime slot
-	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) &&
-		   overTime[slot].timestamp >= mintime)
-		{
-			from = slot;
-			found = true;
-			break;
-		}
-	}
-
-	// End with last non-empty overTime slot or the last slot that is not
-	// older than the maximum history to be sent
-	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if(overTime[slot].timestamp >= now ||
-		   overTime[slot].timestamp - now > (time_t)config.webserver.api.maxHistory.v.ui)
-		{
-			until = slot;
-			break;
-		}
-	}
-
-	// If there is no data to be sent, we send back an empty array
-	// and thereby return early
-	if(!found)
-	{
-		cJSON *json = JSON_NEW_ARRAY();
-		cJSON *item = JSON_NEW_OBJECT();
-		JSON_ADD_ITEM_TO_ARRAY(json, item);
-		JSON_SEND_OBJECT_UNLOCK(json);
-	}
-
-	// Minimum structure is
-	// {"history":[]}
+	// Loop over all overTime slots and add them to the array
 	cJSON *history = JSON_NEW_ARRAY();
-	for(unsigned int slot = from; slot < until; slot++)
+	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
@@ -79,6 +39,8 @@ int api_history(struct ftl_conn *api)
 		JSON_ADD_ITEM_TO_ARRAY(history, item);
 	}
 
+	// Minimum structure is
+	// {"history":[]}
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 	JSON_SEND_OBJECT_UNLOCK(json);
