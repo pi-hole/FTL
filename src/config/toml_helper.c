@@ -20,9 +20,11 @@
 #include "files.h"
 //set_and_check_password()
 #include "config/password.h"
+// PATH_MAX
+#include <limits.h>
 
 // Open the TOML file for reading or writing
-FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode)
+FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode, const unsigned int version)
 {
 	FILE *fp;
 	// Rotate config file, no rotation is done when the file is opened for
@@ -30,8 +32,30 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	if(mode[0] != 'r')
 		rotate_files(GLOBALTOMLPATH, NULL);
 
-	// No readable local file found, try global file
-	fp = fopen(GLOBALTOMLPATH, mode);
+	// This should not happen, install a safeguard anyway to unveil
+	// possible future coding issues early on
+	if(mode[0] == 'w' && version != 0)
+	{
+		log_crit("Writing to version != 0 is not supported in openFTLtoml(%s,%u)",
+		         mode, version);
+		exit(EXIT_FAILURE);
+	}
+
+	// Build filename based on version
+	char filename[PATH_MAX] = { 0 };
+	if(version == 0)
+	{
+		// Use global config file
+		strncpy(filename, GLOBALTOMLPATH, sizeof(filename));
+	}
+	else
+	{
+		// Use rotated config file
+		snprintf(filename, sizeof(filename), BACKUP_DIR"/pihole.toml.%u", version);
+	}
+
+	// Try to open config file
+	fp = fopen(filename, mode);
 
 	// Return early if opening failed
 	if(!fp)
@@ -41,7 +65,8 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	if(flock(fileno(fp), LOCK_EX) != 0)
 	{
 		const int _e = errno;
-		log_err("Cannot open FTL's config file in exclusive mode: %s", strerror(errno));
+		log_err("Cannot open config file %s in exclusive mode: %s",
+		        filename, strerror(errno));
 		fclose(fp);
 		errno = _e;
 		return NULL;

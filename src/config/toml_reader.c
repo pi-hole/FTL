@@ -25,18 +25,19 @@
 #include "api/api.h"
 
 // Private prototypes
-static toml_table_t *parseTOML(void);
+static toml_table_t *parseTOML(const unsigned int version);
 static void reportDebugFlags(void);
 
 bool readFTLtoml(struct config *oldconf, struct config *newconf,
-                 toml_table_t *toml, const bool verbose, bool *restart)
+                 toml_table_t *toml, const bool verbose, bool *restart,
+                 const unsigned int version)
 {
 	// Parse lines in the config file if we did not receive a pointer to a TOML
 	// table from an imported Teleporter file
 	bool teleporter = (toml != NULL);
 	if(!teleporter)
 	{
-		toml = parseTOML();
+		toml = parseTOML(version);
 		if(!toml)
 			return false;
 	}
@@ -134,11 +135,11 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 }
 
 // Parse TOML config file
-static toml_table_t *parseTOML(void)
+static toml_table_t *parseTOML(const unsigned int version)
 {
 	// Try to open default config file. Use fallback if not found
 	FILE *fp;
-	if((fp = openFTLtoml("r")) == NULL)
+	if((fp = openFTLtoml("r", version)) == NULL)
 	{
 		log_warn("No config file available (%s), using defaults",
 		         strerror(errno));
@@ -167,7 +168,7 @@ bool getLogFilePathTOML(void)
 {
 	log_debug(DEBUG_CONFIG, "Reading TOML config file: log file path");
 
-	toml_table_t *conf = parseTOML();
+	toml_table_t *conf = parseTOML(0);
 	if(!conf)
 		return false;
 

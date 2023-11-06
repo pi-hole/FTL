@@ -32,8 +32,6 @@
 #include <fcntl.h>
 #include <sys/sendfile.h>
 
-#define BACKUP_DIR "/etc/pihole/config_backups"
-
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
 // octal number representing the bit pattern for the new mode bits
@@ -509,7 +507,7 @@ void rotate_files(const char *path, char **first_file)
 			chown_pihole(new_path);
 
 			// Compress file if we are rotating a sufficiently old file
-			if(i > ZIP_ROTATIONS)
+			if(i > PLAIN_ROTATIONS)
 			{
 				log_debug(DEBUG_CONFIG, "Compressing %s -> %s",
 				          new_path, new_path_compressed);

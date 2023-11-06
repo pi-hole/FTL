@@ -27,7 +27,7 @@ bool writeFTLtoml(const bool verbose)
 
 	// Try to open global config file
 	FILE *fp;
-	if((fp = openFTLtoml("w")) == NULL)
+	if((fp = openFTLtoml("w", 0)) == NULL)
 	{
 		log_warn("Cannot write to FTL config file (%s), content not updated", strerror(errno));
 		// Restart watching for changes in the config file
