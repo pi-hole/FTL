@@ -206,6 +206,8 @@ components:
                   type: boolean
                 expandHosts:
                   type: boolean
+                domain:
+                  type: string
                 bogusPriv:
                   type: boolean
                 dnssec:
@@ -583,6 +585,7 @@ components:
               - "192.168.2.123 mymusicbox"
             domainNeeded: true
             expandHosts: true
+            domain: "lan"
             bogusPriv: true
             dnssec: true
             interface: "eth0"

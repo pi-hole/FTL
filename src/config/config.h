@@ -125,6 +125,7 @@ struct config {
 		struct conf_item hosts;
 		struct conf_item domainNeeded;
 		struct conf_item expandHosts;
+		struct conf_item domain;
 		struct conf_item bogusPriv;
 		struct conf_item dnssec;
 		struct conf_item interface;
