@@ -138,7 +138,7 @@ static toml_table_t *parseTOML(void)
 {
 	// Try to open default config file. Use fallback if not found
 	FILE *fp;
-	if((fp = openFTLtoml("r")) == NULL)
+	if((fp = openFTLtoml(GLOBALTOMLPATH, "r")) == NULL)
 	{
 		log_warn("No config file available (%s), using defaults",
 		         strerror(errno));

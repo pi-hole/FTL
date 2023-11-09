@@ -19,26 +19,18 @@
 #include "datastructure.h"
 // watch_config()
 #include "config/inotify.h"
+// files_different()
+#include "files.h"
 
 bool writeFTLtoml(const bool verbose)
 {
-	// Stop watching for changes in the config file
-	watch_config(false);
-
-	// Try to open global config file
+	// Try to open a temporary config file for writing
 	FILE *fp;
-	if((fp = openFTLtoml("w")) == NULL)
+	if((fp = openFTLtoml(GLOBALTOMLPATH".tmp", "w")) == NULL)
 	{
 		log_warn("Cannot write to FTL config file (%s), content not updated", strerror(errno));
-		// Restart watching for changes in the config file
-		watch_config(true);
 		return false;
 	}
-
-	// Log that we are (re-)writing the config file if either in verbose or
-	// debug mode
-	if(verbose || config.debug.config.v.b)
-		log_info("Writing config file");
 
 	// Write header
 	fputs("# This file is managed by pihole-FTL\n#\n", fp);
@@ -119,8 +111,48 @@ bool writeFTLtoml(const bool verbose)
 	// Close file and release exclusive lock
 	closeFTLtoml(fp);
 
-	// Restart watching for changes in the config file
-	watch_config(true);
+	// Move temporary file to the final location if it is different
+	// We skip the first 8 lines as they contain the header and will always
+	// be different
+	if(files_different(GLOBALTOMLPATH".tmp", GLOBALTOMLPATH, 8))
+	{
+		// Stop watching for changes in the config file
+		watch_config(false);
+
+		// Rotate config file
+		rotate_files(GLOBALTOMLPATH, NULL);
+
+		// Move file
+		if(rename(GLOBALTOMLPATH".tmp", GLOBALTOMLPATH) != 0)
+		{
+			log_warn("Cannot move temporary config file to final location (%s), content not updated", strerror(errno));
+			// Restart watching for changes in the config file
+			watch_config(true);
+			return false;
+		}
+
+		// Restart watching for changes in the config file
+		watch_config(true);
+
+		// Log that we have written the config file if either in verbose or
+		// debug mode
+		if(verbose || config.debug.config.v.b)
+			log_info("Config file written to %s", GLOBALTOMLPATH);
+	}
+	else
+	{
+		// Remove temporary file
+		if(unlink(GLOBALTOMLPATH".tmp") != 0)
+		{
+			log_warn("Cannot remove temporary config file (%s), content not updated", strerror(errno));
+			return false;
+		}
+
+		// Log that we have written the config file if either in verbose or
+		// debug mode
+		if(verbose || config.debug.config.v.b)
+			log_info("Config file unchanged");
+	}
 
 	return true;
 }

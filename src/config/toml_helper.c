@@ -22,16 +22,10 @@
 #include "config/password.h"
 
 // Open the TOML file for reading or writing
-FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode)
+FILE * __attribute((malloc)) __attribute((nonnull(1,2))) openFTLtoml(const char *path, const char *mode)
 {
-	FILE *fp;
-	// Rotate config file, no rotation is done when the file is opened for
-	// reading (mode == "r")
-	if(mode[0] != 'r')
-		rotate_files(GLOBALTOMLPATH, NULL);
-
-	// No readable local file found, try global file
-	fp = fopen(GLOBALTOMLPATH, mode);
+	// Try to open file in requested mode
+	FILE *fp = fopen(path, mode);
 
 	// Return early if opening failed
 	if(!fp)

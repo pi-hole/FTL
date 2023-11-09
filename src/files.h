@@ -30,6 +30,7 @@ unsigned int get_path_usage(const char *path, char buffer[64]);
 struct mntent *get_filesystem_details(const char *path);
 bool directory_exists(const char *path);
 void rotate_files(const char *path, char **first_file);
+bool files_different(const char *pathA, const char* pathB, unsigned int from);
 
 int parse_line(char *line, char **key, char **value);
 
