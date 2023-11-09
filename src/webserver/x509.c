@@ -324,7 +324,7 @@ enum cert_check read_certificate(const char* certfile, const char *domain, const
 	rc = mbedtls_x509_crt_parse_file(&crt, certfile);
 	if (rc != 0)
 	{
-		log_err("Cannt parse certificate: Error code %d\n", rc);
+		log_err("Cannot parse certificate: Error code %d\n", rc);
 		return CERT_CANNOT_PARSE_CERT;
 	}
 
@@ -472,8 +472,8 @@ next_san:
 	else if(pk_type == MBEDTLS_PK_ECKEY)
 	{
 		mbedtls_ecp_keypair *ec = mbedtls_pk_ec(key);
-		mbedtls_ecp_curve_type ect = mbedtls_ecp_get_type(&ec->private_grp);
-		switch (ect)
+		mbedtls_ecp_curve_type ec_type = mbedtls_ecp_get_type(&ec->private_grp);
+		switch (ec_type)
 		{
 			case MBEDTLS_ECP_TYPE_NONE:
 				puts("  Curve type: Unknown");
