@@ -149,7 +149,7 @@ bool writeFTLtoml(const bool verbose)
 		}
 
 		// Log that the config file has not changed if in debug mode
-		log_debug(DEBUG_CONFIG, "Config file unchanged");
+		log_debug(DEBUG_CONFIG, "pihole.toml unchanged");
 	}
 
 	return true;

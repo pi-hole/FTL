@@ -1445,3 +1445,24 @@
   [[ $status == 0 ]]
   run bash -c "rm ${filename}"
 }
+
+@test "Expected number of config file rotations" {
+  run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "3" ]]
+  run bash -c 'grep -c "DEBUG_CONFIG: pihole.toml unchanged" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "3" ]]
+  run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c 'grep -c "DEBUG_CONFIG: dnsmasq.conf unchanged" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "2" ]]
+  run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/custom.list" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c 'grep -c "DEBUG_CONFIG: custom.list unchanged" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "3" ]]
+}

@@ -586,16 +586,16 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		// Rotate old config files
 		rotate_files(DNSMASQ_PH_CONFIG, NULL);
 
-		log_debug(DEBUG_CONFIG, "Installing "DNSMASQ_TEMP_CONF" to "DNSMASQ_PH_CONFIG);
 		if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
 		{
 			log_err("Cannot install dnsmasq config file: %s", strerror(errno));
 			return false;
 		}
+		log_debug(DEBUG_CONFIG, "Config file written to "DNSMASQ_PH_CONFIG);
 	}
 	else
 	{
-		log_debug(DEBUG_CONFIG, "dnsmasq config file unchanged");
+		log_debug(DEBUG_CONFIG, "dnsmasq.conf unchanged");
 		// Remove temporary config file
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{
@@ -858,12 +858,12 @@ bool write_custom_list(void)
 		// Rotate old hosts files
 		rotate_files(DNSMASQ_CUSTOM_LIST, NULL);
 
-		log_debug(DEBUG_CONFIG, "Installing "DNSMASQ_CUSTOM_LIST".tmp to "DNSMASQ_CUSTOM_LIST);
 		if(rename(DNSMASQ_CUSTOM_LIST".tmp", DNSMASQ_CUSTOM_LIST) != 0)
 		{
 			log_err("Cannot install custom.list: %s", strerror(errno));
 			return false;
 		}
+		log_debug(DEBUG_CONFIG, "HOSTS file written to "DNSMASQ_CUSTOM_LIST);
 	}
 	else
 	{
