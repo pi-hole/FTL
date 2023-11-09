@@ -311,4 +311,13 @@ enum adlist_type {
 	ADLIST_ALLOW
 } __attribute__ ((packed));
 
+enum cert_check {
+	CERT_FILE_NOT_FOUND,
+	CERT_CANNOT_PARSE_CERT,
+	CERT_CANNOT_PARSE_KEY,
+	CERT_DOMAIN_MISMATCH,
+	CERT_DOMAIN_MATCH,
+	CERT_OKAY
+} __attribute__ ((packed));
+
 #endif // ENUMS_H
