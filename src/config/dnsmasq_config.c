@@ -565,6 +565,13 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		return false;
 	}
 
+	// Close file
+	if(fclose(pihole_conf) != 0)
+	{
+		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
+		return false;
+	}
+
 	log_debug(DEBUG_CONFIG, "Testing "DNSMASQ_TEMP_CONF);
 	if(test_config && !test_dnsmasq_config(errbuf))
 	{
@@ -572,21 +579,29 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		return false;
 	}
 
-	// Rotate old config files
-	rotate_files(DNSMASQ_PH_CONFIG, NULL);
-
-	log_debug(DEBUG_CONFIG, "Installing "DNSMASQ_TEMP_CONF" to "DNSMASQ_PH_CONFIG);
-	if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
+	// Check if the new config file is different from the old one
+	// Skip the first 24 lines as they contain the header
+	if(files_different(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG, 24))
 	{
-		log_err("Cannot install dnsmasq config file: %s", strerror(errno));
-		return false;
+		// Rotate old config files
+		rotate_files(DNSMASQ_PH_CONFIG, NULL);
+
+		log_debug(DEBUG_CONFIG, "Installing "DNSMASQ_TEMP_CONF" to "DNSMASQ_PH_CONFIG);
+		if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
+		{
+			log_err("Cannot install dnsmasq config file: %s", strerror(errno));
+			return false;
+		}
 	}
-
-	// Close file
-	if(fclose(pihole_conf) != 0)
+	else
 	{
-		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
-		return false;
+		log_debug(DEBUG_CONFIG, "dnsmasq config file unchanged");
+		// Remove temporary config file
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+		{
+			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			return false;
+		}
 	}
 	return true;
 }
