@@ -359,8 +359,16 @@ next_san:
 
 		// Also check against the common name (CN) field
 		char subject[MBEDTLS_X509_MAX_DN_NAME_SIZE];
-		if(mbedtls_x509_dn_gets(subject, sizeof(subject), &crt.subject) > 0 && strcasecmp(domain, subject) == 0)
-			found = true;
+		if(mbedtls_x509_dn_gets(subject, sizeof(subject), &crt.subject) > 0)
+		{
+			// Check subject == "CN=<domain>"
+			if(strlen(subject) > 3 && strncasecmp(subject, "CN=", 3) == 0 && strcasecmp(domain, subject + 3) == 0)
+				found = true;
+			// Check subject == "<domain>"
+			else if(strcasecmp(domain, subject) == 0)
+				found = true;
+		}
+
 
 		// Free resources
 		mbedtls_x509_crt_free(&crt);
