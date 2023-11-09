@@ -54,6 +54,8 @@ static const char *get_message_type_str(const enum message_type type)
 			return "LIST";
 		case DISK_MESSAGE_EXTENDED:
 			return "DISK_EXTENDED";
+		case CERTIFICATE_DOMAIN_MISMATCH_MESSAGE:
+			return "CERTIFICATE_DOMAIN_MISMATCH";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
@@ -84,6 +86,8 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return INACCESSIBLE_ADLIST_MESSAGE;
 	else if (strcmp(typestr, "DISK_EXTENDED") == 0)
 		return DISK_MESSAGE_EXTENDED;
+	else if (strcmp(typestr, "CERTIFICATE_DOMAIN_MISMATCH") == 0)
+		return CERTIFICATE_DOMAIN_MISMATCH_MESSAGE;
 	else
 		return MAX_MESSAGE;
 }
@@ -653,6 +657,28 @@ static void format_inaccessible_adlist_message(char *plain, const int sizeof_pla
 		free(escaped_address);
 }
 
+static void format_certificate_domain_mismatch(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                               const char *certfile, const char*domain)
+{
+	if(snprintf(plain, sizeof_plain, "SSL/TLS certificate %s does not match domain %s!", certfile, domain) > sizeof_plain)
+		log_warn("format_certificate_domain_mismatch(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_certfile = escape_html(certfile);
+	char *escaped_domain = escape_html(domain);
+
+	if(snprintf(html, sizeof_html, "SSL/TLS certificate %s does not match domain <strong>%s</strong>!", escaped_certfile, escaped_domain) > sizeof_html)
+		log_warn("format_certificate_domain_mismatch(): Buffer too small to hold HTML message, warning truncated");
+
+	if(escaped_certfile != NULL)
+		free(escaped_certfile);
+	if(escaped_domain != NULL)
+		free(escaped_domain);
+}
+
 int count_messages(const bool filter_dnsmasq_warnings)
 {
 	int count = 0;
@@ -876,6 +902,17 @@ bool format_messages(cJSON *array)
 
 				break;
 			}
+
+			case CERTIFICATE_DOMAIN_MISMATCH_MESSAGE:
+			{
+				const char *certfile = (const char*)sqlite3_column_text(stmt, 3);
+				const char *domain = (const char*)sqlite3_column_text(stmt, 4);
+
+				format_certificate_domain_mismatch(plain, sizeof(plain), html, sizeof(html),
+				                                   certfile, domain);
+
+				break;
+			}
 		}
 
 		// Add the plain message
@@ -1094,4 +1131,20 @@ void logg_inaccessible_adlist(const int dbindex, const char *address)
 
 	if(rowid == -1)
 		log_err("logg_inaccessible_adlist(): Failed to add message to database");
+}
+
+void log_certificate_domain_mismatch(const char *certfile, const char *domain)
+{
+	// Create message
+	char buf[2048];
+	format_certificate_domain_mismatch(buf, sizeof(buf), NULL, 0, certfile, domain);
+
+	// Log to FTL.log
+	log_warn("%s", buf);
+
+	// Log to database
+	const int rowid = add_message(CERTIFICATE_DOMAIN_MISMATCH_MESSAGE, certfile, 1, domain);
+
+	if(rowid == -1)
+		log_err("log_certificate_domain_mismatch(): Failed to add message to database");
 }
