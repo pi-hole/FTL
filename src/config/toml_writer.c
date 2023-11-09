@@ -148,10 +148,8 @@ bool writeFTLtoml(const bool verbose)
 			return false;
 		}
 
-		// Log that we have written the config file if either in verbose or
-		// debug mode
-		if(verbose || config.debug.config.v.b)
-			log_info("Config file unchanged");
+		// Log that the config file has not changed if in debug mode
+		log_debug(DEBUG_CONFIG, "Config file unchanged");
 	}
 
 	return true;
