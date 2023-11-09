@@ -1292,6 +1292,18 @@
   [[ ${lines[0]} == '"xn--bc-uia.com"' ]]
 }
 
+@test "API history: Returns full 24 hours even if only a few queries are made" {
+  run bash -c 'curl -s 127.0.0.1/api/history | jq ".history | length"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "145" ]]
+}
+
+@test "API history/clients: Returns full 24 hours even if only a few queries are made" {
+  run bash -c 'curl -s 127.0.0.1/api/history/clients | jq ".history | length"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "145" ]]
+}
+
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1/api/auth'
   printf "%s\n" "${lines[@]}"
