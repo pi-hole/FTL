@@ -797,11 +797,8 @@ bool read_legacy_custom_hosts_config(void)
 
 bool write_custom_list(void)
 {
-	// Rotate old hosts files
-	rotate_files(DNSMASQ_CUSTOM_LIST, NULL);
-
-	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST" for writing");
-	FILE *custom_list = fopen(DNSMASQ_CUSTOM_LIST, "w");
+	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST".tmp for writing");
+	FILE *custom_list = fopen(DNSMASQ_CUSTOM_LIST".tmp", "w");
 	// Return early if opening failed
 	if(!custom_list)
 	{
@@ -853,5 +850,31 @@ bool write_custom_list(void)
 		log_err("Cannot close custom.list: %s", strerror(errno));
 		return false;
 	}
+
+	// Check if the new config file is different from the old one
+	// Skip the first 24 lines as they contain the header
+	if(files_different(DNSMASQ_CUSTOM_LIST".tmp", DNSMASQ_CUSTOM_LIST, 24))
+	{
+		// Rotate old hosts files
+		rotate_files(DNSMASQ_CUSTOM_LIST, NULL);
+
+		log_debug(DEBUG_CONFIG, "Installing "DNSMASQ_CUSTOM_LIST".tmp to "DNSMASQ_CUSTOM_LIST);
+		if(rename(DNSMASQ_CUSTOM_LIST".tmp", DNSMASQ_CUSTOM_LIST) != 0)
+		{
+			log_err("Cannot install custom.list: %s", strerror(errno));
+			return false;
+		}
+	}
+	else
+	{
+		log_debug(DEBUG_CONFIG, "custom.list unchanged");
+		// Remove temporary config file
+		if(remove(DNSMASQ_CUSTOM_LIST".tmp") != 0)
+		{
+			log_err("Cannot remove temporary custom.list: %s", strerror(errno));
+			return false;
+		}
+	}
+
 	return true;
 }
