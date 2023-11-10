@@ -524,6 +524,10 @@ void read_and_parse_payload(struct ftl_conn *api)
 // See https://www.w3.org/International/questions/qa-escapes#use
 char *__attribute__((malloc)) escape_html(const char *string)
 {
+	// If the string is NULL, return NULL
+	if(string == NULL)
+		return NULL;
+
 	// Allocate memory for escaped string
 	char *escaped = calloc(strlen(string) * 6 + 1, sizeof(char));
 	if(!escaped)
