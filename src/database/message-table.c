@@ -171,6 +171,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_TEXT, // File system type
 			SQLITE_TEXT, // Directory mounted on
 			SQLITE_NULL // not used
+		},
+		{
+			// CERTIFICATE_DOMAIN_MISMATCH_MESSAGE: The message column contains the certificate file
+			SQLITE_TEXT, // domain
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
 		}
 	};
 // Create message table in the database
