@@ -345,6 +345,8 @@ static int add_message(const enum message_type type,
 
 			case SQLITE_NULL: /* Fall through */
 			default:
+				log_warn("add_message(type=%s, message=%s) - Excess property, binding NULL",
+				         get_message_type_str(type), message);
 				rc = sqlite3_bind_null(stmt, 3 + j);
 				break;
 		}
