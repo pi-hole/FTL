@@ -230,7 +230,8 @@ enum totp_status verifyTOTP(const uint32_t incode)
 				         i, gencode, (unsigned long)(RFC6238_X - (now % RFC6238_X)));
 				return TOTP_REUSED;
 			}
-			log_info("2FA code verified successfully at %i", i);
+			const char *which = i == -1 ? "previous" : i == 0 ? "current" : "next";
+			log_debug(DEBUG_API, "2FA code from %s time step is valid", which);
 			last_code = gencode;
 			return TOTP_CORRECT;
 		}
