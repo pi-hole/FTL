@@ -1663,7 +1663,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			querystr = "INSERT INTO client (ip,comment) VALUES (:item,:comment) "\
 			           "ON CONFLICT(ip) DO UPDATE SET comment = :comment;";
 		else // domainlist
-			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:type,:enabled,:comment) "\
+			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:oldtype,:enabled,:comment) "\
 			           "ON CONFLICT(domain,type) DO UPDATE SET type = :type, enabled = :enabled, comment = :comment;";
 	}
 
@@ -1745,7 +1745,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		else
 		{
 			if(strcasecmp("allow", row->type) == 0 &&
-			strcasecmp("exact", row->kind) == 0)
+			   strcasecmp("exact", row->kind) == 0)
 				oldtype = 0;
 			else if(strcasecmp("deny", row->type) == 0 &&
 					strcasecmp("exact", row->kind) == 0)
