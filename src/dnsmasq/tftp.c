@@ -585,8 +585,13 @@ static struct tftp_file *check_tftp_fileperm(ssize_t *len, char *prefix, char *c
 
 void check_tftp_listeners(time_t now)
 {
+  struct listener *listener;
   struct tftp_transfer *transfer, *tmp, **up;
   
+  for (listener = daemon->listeners; listener; listener = listener->next)
+    if (listener->tftpfd != -1 && poll_check(listener->tftpfd, POLLIN))
+      tftp_request(listener, now);
+    
   /* In single port mode, all packets come via port 69 and tftp_request() */
   if (!option_bool(OPT_SINGLE_PORT))
     for (transfer = daemon->tftp_trans; transfer; transfer = transfer->next)
