@@ -145,6 +145,17 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 		serial[i] = '0' + (serial[i] % 10);
 	serial[sizeof(serial) - 1] = '\0';
 
+	// Create validity period
+	// Use YYYYMMDDHHMMSS as required by RFC 5280
+	const time_t now = time(NULL);
+	struct tm tms = { 0 };
+	struct tm *tm = localtime_r(&now, &tms);
+	char not_before[16] = { 0 };
+	char not_after[16] = { 0 };
+	strftime(not_before, sizeof(not_before), "%Y%m%d%H%M%S", tm);
+	tm->tm_year += 30; // 30 years from now
+	strftime(not_after, sizeof(not_after), "%Y%m%d%H%M%S", tm);
+
 	// Generate certificate
 	printf("Generating new certificate with serial number %s...\n", serial);
 	mbedtls_x509write_crt_set_version(&crt, MBEDTLS_X509_CRT_VERSION_3);
@@ -154,7 +165,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	mbedtls_x509write_crt_set_subject_key(&crt, &key);
 	mbedtls_x509write_crt_set_issuer_key(&crt, &key);
 	mbedtls_x509write_crt_set_issuer_name(&crt, "CN=pi.hole");
-	mbedtls_x509write_crt_set_validity(&crt, "20010101000000", "20301231235959");
+	mbedtls_x509write_crt_set_validity(&crt, not_before, not_after);
 	mbedtls_x509write_crt_set_basic_constraints(&crt, 0, -1);
 	mbedtls_x509write_crt_set_subject_key_identifier(&crt);
 	mbedtls_x509write_crt_set_authority_key_identifier(&crt);
