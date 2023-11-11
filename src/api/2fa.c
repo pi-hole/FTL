@@ -198,7 +198,7 @@ static bool encode_uint8_t_array_to_base32(const uint8_t *in, const size_t in_le
 }
 
 static uint32_t last_code = 0;
-bool verifyTOTP(const uint32_t incode)
+enum totp_status verifyTOTP(const uint32_t incode)
 {
 	// Decode base32 secret
 	uint8_t decoded_secret[RFC6238_SECRET_LEN];
@@ -228,15 +228,16 @@ bool verifyTOTP(const uint32_t incode)
 			{
 				log_warn("2FA code has already been used (%i, %u), please wait %lu seconds",
 				         i, gencode, (unsigned long)(RFC6238_X - (now % RFC6238_X)));
-				return false;
+				return TOTP_REUSED;
 			}
-			log_info("2FA code verified successfully at %i", i);
+			const char *which = i == -1 ? "previous" : i == 0 ? "current" : "next";
+			log_debug(DEBUG_API, "2FA code from %s time step is valid", which);
 			last_code = gencode;
-			return true;
+			return TOTP_CORRECT;
 		}
 	}
 
-	return false;
+	return TOTP_INVALID;
 }
 
 // Print TOTP code to stdout (for CLI use)
