@@ -148,7 +148,8 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	// Create validity period
 	// Use YYYYMMDDHHMMSS as required by RFC 5280
 	const time_t now = time(NULL);
-	struct tm *tm = localtime(&now);
+	struct tm tms = { 0 };
+	struct tm *tm = localtime_r(&now, &tms);
 	char not_before[16] = { 0 };
 	char not_after[16] = { 0 };
 	strftime(not_before, sizeof(not_before), "%Y%m%d%H%M%S", tm);
