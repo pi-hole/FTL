@@ -1077,7 +1077,7 @@ void initConfig(struct config *conf)
 	conf->misc.etc_dnsmasq_d.k = "misc.etc_dnsmasq_d";
 	conf->misc.etc_dnsmasq_d.h = "Should FTL load additional dnsmasq configuration files from /etc/dnsmasq.d/?";
 	conf->misc.etc_dnsmasq_d.t = CONF_BOOL;
-	conf->misc.etc_dnsmasq_d.f = FLAG_ADVANCED_SETTING;
+	conf->misc.etc_dnsmasq_d.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->misc.etc_dnsmasq_d.d.b = false;
 
 	conf->misc.dnsmasq_lines.k = "misc.dnsmasq_lines";
