@@ -781,6 +781,9 @@
   # malfunctioning addr2line can prevent from generating any backtrace at all.
   addr2line = true
 
+  # Should FTL load additional dnsmasq configuration files from /etc/dnsmasq.d/?
+  etc_dnsmasq_d = true ### CHANGED, default = false
+
   # Additional lines to inject into the generated dnsmasq configuration. Warning: This is
   # an advanced setting and should only be used with care. Incorrectly formatted or
   # duplicated lines as well as lines conflicting with the automatic configuration of
