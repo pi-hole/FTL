@@ -824,13 +824,14 @@ void initConfig(struct config *conf)
 	conf->webserver.acl.k = "webserver.acl";
 	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny. If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: acl = \"+127.0.0.1,+[::1]\"\n ---> deny all access, except from 127.0.0.1 and ::1,\n Example 2: acl = \"+192.168.0.0/16\"\n ---> deny all accesses, except from the 192.168.0.0/16 subnet,\n Example 3: acl = \"+[::]/0\" ---> allow only IPv6 access.";
 	conf->webserver.acl.a = cJSON_CreateStringReference("<valid ACL>");
-	conf->webserver.acl.f = FLAG_ADVANCED_SETTING;
+	conf->webserver.acl.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.acl.t = CONF_STRING;
 	conf->webserver.acl.d.s = (char*)"";
 
 	conf->webserver.port.k = "webserver.port";
 	conf->webserver.port.h = "Ports to be used by the webserver.\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:80\" can be used to listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:80\" for the IPv6 loopback interface. [::]:80 will bind to port 80 IPv6 only.\n In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the configuration \"80,[::]:80\" (create one socket for IPv4 and one for IPv6 only), or \"+80\" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+80\" does not work for your environment, you need to use \"80,[::]:80\".\n If the port is TLS/SSL, a letter 's' must be appended, for example, \"80,443s\" will open port 80 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first configured SSL port. For example, if webserver.port is \"80r,443s\", then all HTTP traffic coming at port 80 will be redirected to HTTPS port 443.";
 	conf->webserver.port.a = cJSON_CreateStringReference("comma-separated list of <[ip_address:]port>");
+	conf->webserver.port.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.port.t = CONF_STRING;
 	conf->webserver.port.d.s = (char*)"80,[::]:80,443s,[::]:443s";
 
@@ -862,14 +863,14 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.webroot.h = "Server root on the host";
 	conf->webserver.paths.webroot.a = cJSON_CreateStringReference("<valid path>");
 	conf->webserver.paths.webroot.t = CONF_STRING;
-	conf->webserver.paths.webroot.f = FLAG_ADVANCED_SETTING;
+	conf->webserver.paths.webroot.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.paths.webroot.d.s = (char*)"/var/www/html";
 
 	conf->webserver.paths.webhome.k = "webserver.paths.webhome";
 	conf->webserver.paths.webhome.h = "Sub-directory of the root containing the web interface";
 	conf->webserver.paths.webhome.a = cJSON_CreateStringReference("<valid subpath>, both slashes are needed!");
 	conf->webserver.paths.webhome.t = CONF_STRING;
-	conf->webserver.paths.webhome.f = FLAG_ADVANCED_SETTING;
+	conf->webserver.paths.webhome.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.paths.webhome.d.s = (char*)"/admin/";
 
 	// sub-struct interface
@@ -991,7 +992,7 @@ void initConfig(struct config *conf)
 	conf->files.pid.h = "The file which contains the PID of FTL's main process.";
 	conf->files.pid.a = cJSON_CreateStringReference("<any writable file>");
 	conf->files.pid.t = CONF_STRING;
-	conf->files.pid.f = FLAG_ADVANCED_SETTING;
+	conf->files.pid.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.pid.d.s = (char*)"/run/pihole-FTL.pid";
 
 	conf->files.database.k = "files.database";
@@ -1005,7 +1006,7 @@ void initConfig(struct config *conf)
 	conf->files.gravity.h = "The location of Pi-hole's gravity database";
 	conf->files.gravity.a = cJSON_CreateStringReference("<any Pi-hole gravity database>");
 	conf->files.gravity.t = CONF_STRING;
-	conf->files.gravity.f = FLAG_ADVANCED_SETTING;
+	conf->files.gravity.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.gravity.d.s = (char*)"/etc/pihole/gravity.db";
 
 	conf->files.macvendor.k = "files.macvendor";
@@ -1026,14 +1027,14 @@ void initConfig(struct config *conf)
 	conf->files.pcap.h = "An optional file containing a pcap capture of the network traffic. This file is used for debugging purposes only. If you don't know what this is, you don't need it.\n Setting this to an empty string disables pcap recording. The file must be writable by the user running FTL (typically pihole). Failure to write to this file will prevent the DNS resolver from starting. The file is appended to if it already exists.";
 	conf->files.pcap.a = cJSON_CreateStringReference("<any writable pcap file>");
 	conf->files.pcap.t = CONF_STRING;
-	conf->files.pcap.f = FLAG_ADVANCED_SETTING;
+	conf->files.pcap.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.pcap.d.s = (char*)"";
 
 	conf->files.log.webserver.k = "files.log.webserver";
 	conf->files.log.webserver.h = "The log file used by the webserver";
 	conf->files.log.webserver.a = cJSON_CreateStringReference("<any writable file>");
 	conf->files.log.webserver.t = CONF_STRING;
-	conf->files.log.webserver.f = FLAG_ADVANCED_SETTING;
+	conf->files.log.webserver.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.log.webserver.d.s = (char*)"/var/log/pihole/webserver.log";
 
 	// sub-struct files.log
@@ -1043,7 +1044,7 @@ void initConfig(struct config *conf)
 	conf->files.log.dnsmasq.h = "The log file used by the embedded dnsmasq DNS server";
 	conf->files.log.dnsmasq.a = cJSON_CreateStringReference("<any writable file>");
 	conf->files.log.dnsmasq.t = CONF_STRING;
-	conf->files.log.dnsmasq.f = FLAG_ADVANCED_SETTING;
+	conf->files.log.dnsmasq.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.log.dnsmasq.d.s = (char*)"/var/log/pihole/pihole.log";
 
 
@@ -1071,7 +1072,7 @@ void initConfig(struct config *conf)
 	conf->misc.nice.k = "misc.nice";
 	conf->misc.nice.h = "Set niceness of pihole-FTL. Defaults to -10 and can be disabled altogether by setting a value of -999. The nice value is an attribute that can be used to influence the CPU scheduler to favor or disfavor a process in scheduling decisions. The range of the nice value varies across UNIX systems. On modern Linux, the range is -20 (high priority = not very nice to other processes) to +19 (low priority).";
 	conf->misc.nice.t = CONF_INT;
-	conf->misc.nice.f = FLAG_ADVANCED_SETTING;
+	conf->misc.nice.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->misc.nice.d.i = -10;
 
 	conf->misc.addr2line.k = "misc.addr2line";
@@ -1090,7 +1091,7 @@ void initConfig(struct config *conf)
 	conf->misc.dnsmasq_lines.h = "Additional lines to inject into the generated dnsmasq configuration.\n Warning: This is an advanced setting and should only be used with care. Incorrectly formatted or duplicated lines as well as lines conflicting with the automatic configuration of Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.\n Use this option with extra care.";
 	conf->misc.dnsmasq_lines.a = cJSON_CreateStringReference("array of valid dnsmasq config line options");
 	conf->misc.dnsmasq_lines.t = CONF_JSON_STRING_ARRAY;
-	conf->misc.dnsmasq_lines.f = FLAG_RESTART_FTL;
+	conf->misc.dnsmasq_lines.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->misc.dnsmasq_lines.d.json = cJSON_CreateArray();
 
 	// sub-struct misc.check
