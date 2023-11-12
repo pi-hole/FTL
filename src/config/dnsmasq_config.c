@@ -248,6 +248,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	fputs("\n", pihole_conf);
 	fputs("# DNS port to be used\n", pihole_conf);
 	fprintf(pihole_conf, "port=%u\n", conf->dns.port.v.u16);
+	fputs("\n", pihole_conf);
 	if(cJSON_GetArraySize(conf->dns.upstreams.v.json) > 0)
 	{
 		fputs("# List of upstream DNS server\n", pihole_conf);
@@ -279,12 +280,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# Enable query logging\n", pihole_conf);
 		fputs("log-queries\n", pihole_conf);
 		fputs("log-async\n", pihole_conf);
+		fputs("\n", pihole_conf);
 	}
 	else
 	{
 		fputs("# Disable query logging\n", pihole_conf);
 		fputs("#log-queries\n", pihole_conf);
 		fputs("#log-async\n", pihole_conf);
+		fputs("\n", pihole_conf);
 	}
 
 	if(strlen(conf->files.log.dnsmasq.v.s) > 0)
@@ -335,12 +338,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	{
 		fputs("# Add A, AAAA and PTR records to the DNS\n", pihole_conf);
 		fprintf(pihole_conf, "host-record=%s\n", conf->dns.hostRecord.v.s);
+		fputs("\n", pihole_conf);
 	}
 
 	if(conf->dns.cache.optimizer.v.ui > 0u)
 	{
 		fputs("# Use stale cache entries for a given number of seconds to optimize cache utilization\n", pihole_conf);
 		fprintf(pihole_conf, "use-stale-cache=%u\n", conf->dns.cache.optimizer.v.ui);
+		fputs("\n", pihole_conf);
 	}
 
 	const char *interface = conf->dns.interface.v.s;
@@ -508,6 +513,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	fputs("# We do not include the \".local\" rule ourselves, see https://github.com/pi-hole/pi-hole/pull/4282#discussion_r689112972\n", pihole_conf);
 	fputs("server=/bind/\n", pihole_conf);
 	fputs("server=/onion/\n", pihole_conf);
+	fputs("\n", pihole_conf);
 
 	if(directory_exists("/etc/dnsmasq.d") && conf->misc.etc_dnsmasq_d.v.b)
 	{
@@ -520,7 +526,8 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 
 	// Add option for caching all DNS records
 	fputs("# Cache all DNS records\n", pihole_conf);
-	fputs("cache-rr=ANY\n\n", pihole_conf);
+	fputs("cache-rr=ANY\n", pihole_conf);
+	fputs("\n", pihole_conf);
 
 	// Add option for PCAP file recording
 	if(strlen(conf->files.pcap.v.s) > 0)
