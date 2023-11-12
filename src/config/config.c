@@ -528,7 +528,7 @@ void initConfig(struct config *conf)
 
 	conf->dns.cnameRecords.k = "dns.cnameRecords";
 	conf->dns.cnameRecords.h = "List of CNAME records which indicate that <cname> is really <target>. If the <TTL> is given, it overwrites the value of local-ttl";
-	conf->dns.cnameRecords.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"<cname>,<target>[,<TTL>]\"");
+	conf->dns.cnameRecords.a = cJSON_CreateStringReference("Array of CNAMEs each on in one of the following forms: \"<cname>,<target>[,<TTL>]\"");
 	conf->dns.cnameRecords.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.cnameRecords.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.cnameRecords.d.json = cJSON_CreateArray();
