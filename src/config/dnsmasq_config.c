@@ -509,7 +509,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	fputs("# Pi-hole implements this via the dnsmasq option \"bogus-priv\" above\n", pihole_conf);
 	fputs("# (if enabled!) as this option also covers IPv6.\n", pihole_conf);
 	fputs("\n", pihole_conf);
-	fputs("# OpenWRT furthermore blocks    bind, local, onion    domains\n", pihole_conf);
+	fputs("# OpenWRT furthermore blocks bind, local, onion domains\n", pihole_conf);
 	fputs("# see https://git.openwrt.org/?p=openwrt/openwrt.git;a=blob_plain;f=package/network/services/dnsmasq/files/rfc6761.conf;hb=HEAD\n", pihole_conf);
 	fputs("# and https://www.iana.org/assignments/special-use-domain-names/special-use-domain-names.xhtml\n", pihole_conf);
 	fputs("# We do not include the \".local\" rule ourselves, see https://github.com/pi-hole/pi-hole/pull/4282#discussion_r689112972\n", pihole_conf);
