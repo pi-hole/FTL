@@ -441,18 +441,21 @@ unsigned int cache_remove_uid(const unsigned int uid)
 {
   int i;
   unsigned int removed = 0;
-  struct crec *crecp, **up;
+  struct crec *crecp, *tmp, **up;
 
   for (i = 0; i < hash_size; i++)
-    for (crecp = hash_table[i], up = &hash_table[i]; crecp; crecp = crecp->hash_next)
-      if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) && crecp->uid == uid)
-	{
-	  *up = crecp->hash_next;
-	  free(crecp);
-	  removed++;
-	}
-      else
-	up = &crecp->hash_next;
+    for (crecp = hash_table[i], up = &hash_table[i]; crecp; crecp = tmp)
+      {
+	tmp = crecp->hash_next;
+	if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) && crecp->uid == uid)
+	  {
+	    *up = tmp;
+	    free(crecp);
+	    removed++;
+	  }
+	else
+	  up = &crecp->hash_next;
+      }
   
   return removed;
 }
