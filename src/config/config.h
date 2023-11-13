@@ -88,7 +88,7 @@ enum conf_type {
 #define FLAG_PSEUDO_ITEM           (1 << 2)
 #define FLAG_INVALIDATE_SESSIONS   (1 << 3)
 #define FLAG_WRITE_ONLY            (1 << 4)
-#define FLAG_ENV_VAR     (1 << 5)
+#define FLAG_ENV_VAR               (1 << 5)
 
 struct conf_item {
 	const char *k;        // item Key
@@ -125,6 +125,7 @@ struct config {
 		struct conf_item hosts;
 		struct conf_item domainNeeded;
 		struct conf_item expandHosts;
+		struct conf_item domain;
 		struct conf_item bogusPriv;
 		struct conf_item dnssec;
 		struct conf_item interface;
@@ -226,6 +227,7 @@ struct config {
 		struct {
 			struct conf_item localAPIauth;
 			struct conf_item searchAPIauth;
+			struct conf_item max_sessions;
 			struct conf_item prettyJSON;
 			struct conf_item pwhash;
 			struct conf_item password; // This is a pseudo-item
@@ -261,6 +263,7 @@ struct config {
 		struct conf_item delay_startup;
 		struct conf_item nice;
 		struct conf_item addr2line;
+		struct conf_item etc_dnsmasq_d;
 		struct conf_item dnsmasq_lines;
 		struct {
 			struct conf_item load;

@@ -244,9 +244,11 @@ int api_search(struct ftl_conn *api)
 		char *allow_list = cJSON_PrintUnformatted(allow_ids);
 		ret = search_table(api,punycode, GRAVITY_DOMAINLIST_ALLOW_REGEX, allow_list, limit, &Nregex, false, domains);
 		free(allow_list);
-		free(punycode);
 		if(ret != 200)
+		{
+			free(punycode);
 			return ret;
+		}
 	}
 
 	if(cJSON_GetArraySize(deny_ids) > 0)
@@ -254,9 +256,11 @@ int api_search(struct ftl_conn *api)
 		char *deny_list = cJSON_PrintUnformatted(deny_ids);
 		ret = search_table(api, punycode, GRAVITY_DOMAINLIST_DENY_REGEX, deny_list, limit, &Nregex, false, domains);
 		free(deny_list);
-		free(punycode);
 		if(ret != 200)
+		{
+			free(punycode);
 			return ret;
+		}
 	}
 
 	cJSON *search = JSON_NEW_OBJECT();

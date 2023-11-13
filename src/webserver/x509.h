@@ -13,6 +13,9 @@
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
 
+#include "enums.h"
+
 bool generate_certificate(const char* certfile, bool rsa, const char *domain);
+enum cert_check read_certificate(const char* certfile, const char *domain, const bool private_key);
 
 #endif // X509_H
