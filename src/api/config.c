@@ -778,11 +778,7 @@ static int api_config_patch(struct ftl_conn *api)
 
 		// Rewrite HOSTS file if required
 		if(rewrite_hosts)
-		{
 			write_custom_list();
-			// Reload HOSTS file
-			kill(main_pid(), SIGHUP);
-		}
 	}
 	else
 	{
@@ -976,11 +972,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 	// Rewrite HOSTS file if required
 	if(rewrite_hosts)
-	{
 		write_custom_list();
-		// Reload HOSTS file
-		kill(main_pid(), SIGHUP);
-	}
 
 	// Send empty reply with matching HTTP status code
 	// 201 - Created or 204 - No content
