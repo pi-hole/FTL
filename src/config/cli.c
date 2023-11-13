@@ -441,10 +441,8 @@ int set_config_from_CLI(const char *key, const char *value)
 		}
 		else if(conf_item == &config.dns.hosts)
 		{
-			// We need to rewrite the custom.list file but do not need to
-			// restart dnsmasq. If dnsmasq is going to be restarted anyway,
-			// this is not necessary as the file will be rewritten during
-			// the restart
+			// We need to rewrite the custom.list file but do not
+			// need to restart dnsmasq
 			write_custom_list();
 		}
 

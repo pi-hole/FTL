@@ -241,7 +241,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 
 	write_config_header(pihole_conf, "Dnsmasq config for Pi-hole's FTLDNS");
 	fputs("addn-hosts=/etc/pihole/local.list\n", pihole_conf);
-	fputs("addn-hosts="DNSMASQ_CUSTOM_LIST"\n", pihole_conf);
+	fputs("hostsdir="DNSMASQ_HOSTSDIR"\n", pihole_conf);
 	fputs("\n", pihole_conf);
 	fputs("# Don't read /etc/resolv.conf. Get upstream servers only from the configuration\n", pihole_conf);
 	fputs("no-resolv\n", pihole_conf);
@@ -727,8 +727,8 @@ bool read_legacy_cnames_config(void)
 bool read_legacy_custom_hosts_config(void)
 {
 	// Check if file exists, if not, there is nothing to do
-	const char *path = DNSMASQ_CUSTOM_LIST;
-	const char *target = DNSMASQ_CUSTOM_LIST".bck";
+	const char *path = DNSMASQ_CUSTOM_LIST_LEGACY;
+	const char *target = DNSMASQ_CUSTOM_LIST_LEGACY".bck";
 	if(!file_exists(path))
 		return true;
 
@@ -790,8 +790,16 @@ bool read_legacy_custom_hosts_config(void)
 
 bool write_custom_list(void)
 {
-	// Rotate old hosts files
-	rotate_files(DNSMASQ_CUSTOM_LIST, NULL);
+	// Ensure that the directory exists
+	if(!directory_exists(DNSMASQ_HOSTSDIR))
+	{
+		log_debug(DEBUG_CONFIG, "Creating directory "DNSMASQ_HOSTSDIR);
+		if(mkdir(DNSMASQ_HOSTSDIR, 0755) != 0)
+		{
+			log_err("Cannot create directory "DNSMASQ_HOSTSDIR": %s", strerror(errno));
+			return false;
+		}
+	}
 
 	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST" for writing");
 	FILE *custom_list = fopen(DNSMASQ_CUSTOM_LIST, "w");
