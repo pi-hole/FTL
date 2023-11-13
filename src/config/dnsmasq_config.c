@@ -804,6 +804,17 @@ bool read_legacy_custom_hosts_config(void)
 
 bool write_custom_list(void)
 {
+	// Ensure that the directory exists
+	if(!directory_exists(DNSMASQ_HOSTSDIR))
+	{
+		log_debug(DEBUG_CONFIG, "Creating directory "DNSMASQ_HOSTSDIR);
+		if(mkdir(DNSMASQ_HOSTSDIR, 0755) != 0)
+		{
+			log_err("Cannot create directory "DNSMASQ_HOSTSDIR": %s", strerror(errno));
+			return false;
+		}
+	}
+
 	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST_LEGACY".tmp for writing");
 	FILE *custom_list = fopen(DNSMASQ_CUSTOM_LIST_LEGACY".tmp", "w");
 	// Return early if opening failed
