@@ -477,6 +477,13 @@ void initConfig(struct config *conf)
 	conf->dns.expandHosts.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.expandHosts.d.b = false;
 
+	conf->dns.domain.k = "dns.domain";
+	conf->dns.domain.h = "The DNS domain used by your Pi-hole to expand hosts and for DHCP.\n\n Only if DHCP is enabled below: For DHCP, this has two effects; firstly it causes the DHCP server to return the domain to any hosts which request it, and secondly it sets the domain which it is legal for DHCP-configured hosts to claim. The intention is to constrain hostnames so that an untrusted host on the LAN cannot advertise its name via DHCP as e.g. \"google.com\" and capture traffic not meant for it. If no domain suffix is specified, then any DHCP hostname with a domain part (ie with a period) will be disallowed and logged. If a domain is specified, then hostnames with a domain part are allowed, provided the domain part matches the suffix. In addition, when a suffix is set then hostnames without a domain part have the suffix added as an optional domain part. For instance, we can set domain=mylab.com and have a machine whose DHCP hostname is \"laptop\". The IP address for that machine is available both as \"laptop\" and \"laptop.mylab.com\".\n\n You can disable setting a domain by setting this option to an empty string.";
+	conf->dns.domain.a = cJSON_CreateStringReference("<any valid domain>");
+	conf->dns.domain.t = CONF_STRING;
+	conf->dns.domain.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
+	conf->dns.domain.d.s = (char*)"lan";
+
 	conf->dns.bogusPriv.k = "dns.bogusPriv";
 	conf->dns.bogusPriv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
 	conf->dns.bogusPriv.t = CONF_BOOL;
@@ -706,7 +713,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.router.d.s = (char*)"";
 
 	conf->dhcp.domain.k = "dhcp.domain";
-	conf->dhcp.domain.h = "The DNS domain used by your Pi-hole";
+	conf->dhcp.domain.h = "The DNS domain used by your Pi-hole (*** DEPRECATED ***)\n This setting is deprecated and will be removed in a future version. Please use dns.domain instead. Setting it to any non-default value will overwrite the value of dns.domain if it is still set to its default value.";
 	conf->dhcp.domain.a = cJSON_CreateStringReference("<any valid domain>");
 	conf->dhcp.domain.t = CONF_STRING;
 	conf->dhcp.domain.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;

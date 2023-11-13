@@ -408,16 +408,18 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
 		fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
 		fputs("# is not known from /etc/hosts or DHCP a NXDOMAIN is returned\n", pihole_conf);
-			fprintf(pihole_conf, "local=/%s/\n",
-				conf->dhcp.domain.v.s);
-		fputs("\n", pihole_conf);
+		if(strlen(conf->dns.domain.v.s))
+			fprintf(pihole_conf, "local=/%s/\n\n", conf->dns.domain.v.s);
+		else
+			fputs("\n", pihole_conf);
 	}
 
-	if(strlen(conf->dhcp.domain.v.s) > 0 && strcasecmp("none", conf->dhcp.domain.v.s) != 0)
+	// Add domain to DNS server. It will also be used for DHCP if the DHCP
+	// server is enabled below
+	if(strlen(conf->dns.domain.v.s) > 0)
 	{
-		fputs("# DNS domain for the DHCP server\n", pihole_conf);
-		fprintf(pihole_conf, "domain=%s\n", conf->dhcp.domain.v.s);
-		fputs("\n", pihole_conf);
+		fputs("# DNS domain for both the DNS and DHCP server\n", pihole_conf);
+		fprintf(pihole_conf, "domain=%s\n\n", conf->dns.domain.v.s);
 	}
 
 	if(conf->dhcp.active.v.b)
