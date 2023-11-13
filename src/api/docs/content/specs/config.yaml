@@ -303,6 +303,8 @@ components:
                   type: string
                 domain:
                   type: string
+                  description: |
+                    *Note:* This setting is deprecated and will be removed in a future release. Use dns.domain instead.
                 leaseTime:
                   type: string
                 ipv6:
