@@ -206,6 +206,8 @@ components:
                   type: boolean
                 expandHosts:
                   type: boolean
+                domain:
+                  type: string
                 bogusPriv:
                   type: boolean
                 dnssec:
@@ -301,6 +303,8 @@ components:
                   type: string
                 domain:
                   type: string
+                  description: |
+                    *Note:* This setting is deprecated and will be removed in a future release. Use dns.domain instead.
                 leaseTime:
                   type: string
                 ipv6:
@@ -386,6 +390,8 @@ components:
                       type: boolean
                     searchAPIauth:
                       type: boolean
+                    max_sessions:
+                      type: integer
                     prettyJSON:
                       type: boolean
                     password:
@@ -449,6 +455,8 @@ components:
                 delay_startup:
                   type: integer
                 addr2line:
+                  type: boolean
+                etc_dnsmasq_d:
                   type: boolean
                 privacylevel:
                   type: integer
@@ -583,6 +591,7 @@ components:
               - "192.168.2.123 mymusicbox"
             domainNeeded: true
             expandHosts: true
+            domain: "lan"
             bogusPriv: true
             dnssec: true
             interface: "eth0"
@@ -666,6 +675,7 @@ components:
             api:
               localAPIauth: false
               searchAPIauth: false
+              max_sessions: 16
               prettyJSON: false
               password: "********"
               pwhash: ''
@@ -694,6 +704,7 @@ components:
             delay_startup: 10
             addr2line: true
             privacylevel: 0
+            etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
             check:
               load: true

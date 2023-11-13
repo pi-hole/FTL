@@ -309,6 +309,7 @@ void parse_args(int argc, char* argv[])
 		exit(read_teleporter_zip_from_disk(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
+	// Generate X.509 certificate
 	if(argc > 1 && strcmp(argv[1], "--gen-x509") == 0)
 	{
 		if(argc < 3 || argc > 5)
@@ -325,6 +326,55 @@ void parse_args(int argc, char* argv[])
 		const char *domain = argc > 3 ? argv[3] : "pi.hole";
 		const bool rsa = argc > 4 && strcasecmp(argv[4], "rsa") == 0;
 		exit(generate_certificate(argv[2], rsa, domain) ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Parse X.509 certificate
+	if(argc > 1 &&
+	  (strcmp(argv[1], "--read-x509") == 0 ||
+	   strcmp(argv[1], "--read-x509-key") == 0))
+	{
+		if(argc < 2 || argc > 4)
+		{
+			printf("Usage: %s %s [<input file>] [<domain>]\n", argv[0], argv[1]);
+			printf("Example: %s %s /etc/pihole/tls.pem\n", argv[0], argv[1]);
+			printf(" with domain: %s %s /etc/pihole/tls.pem pi.hole\n", argv[0], argv[1]);
+			exit(EXIT_FAILURE);
+		}
+
+		// Option parsing
+		// Should we report on the private key?
+		const bool private_key = strcmp(argv[1], "--read-x509-key") == 0;
+		// If no certificate file is given, we use the one from the config
+		const char *certfile = NULL;
+		if(argc == 2)
+		{
+			readFTLconf(&config, false);
+			certfile = config.webserver.tls.cert.v.s;
+		}
+		else
+			certfile = argv[2];
+
+		// If no domain is given, we only check the certificate
+		const char *domain = argc > 3 ? argv[3] : NULL;
+
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+
+		enum cert_check result = read_certificate(certfile, domain, private_key);
+
+		if(argc < 4)
+			exit(result == CERT_OKAY ? EXIT_SUCCESS : EXIT_FAILURE);
+		else if(result == CERT_DOMAIN_MATCH)
+		{
+			printf("Certificate matches domain %s\n", argv[3]);
+			exit(EXIT_SUCCESS);
+		}
+		else
+		{
+			printf("Certificate does not match domain %s\n", argv[3]);
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	// If the first argument is "gravity" (e.g., /usr/bin/pihole-FTL gravity),
@@ -811,6 +861,16 @@ void parse_args(int argc, char* argv[])
 			printf("    curve secp521r1. If the optional flag %s[rsa]%s is specified,\n", purple, normal);
 			printf("    an RSA (4096 bit) key will be generated instead.\n\n");
 			printf("    Usage: %spihole-FTL --gen-x509 %soutfile %s[rsa]%s\n\n", green, cyan, purple, normal);
+
+			printf("%sTLS X.509 certificate parser:%s\n", yellow, normal);
+			printf("    Parse the given X.509 certificate and optionally check if\n");
+			printf("    it matches a given domain. If no domain is given, only a\n");
+			printf("    human-readable output string is printed.\n\n");
+			printf("    If no certificate file is given, the one from the config\n");
+			printf("    is used (if applicable). If --read-x509-key is used, details\n");
+			printf("    about the private key are printed as well.\n\n");
+			printf("    Usage: %spihole-FTL --read-x509 %s[certfile] %s[domain]%s\n", green, cyan, purple, normal);
+			printf("    Usage: %spihole-FTL --read-x509-key %s[certfile] %s[domain]%s\n\n", green, cyan, purple, normal);
 
 			printf("%sGravity tools:%s\n", yellow, normal);
 			printf("    Check domains in a given file for validity using Pi-hole's\n");

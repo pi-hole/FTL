@@ -22,6 +22,25 @@
 // files_different()
 #include "files.h"
 
+static void migrate_config(void)
+{
+	// Migrating dhcp.domain -> dns.domain
+	if(strcmp(config.dns.domain.v.s, config.dns.domain.d.s) == 0)
+	{
+		// If the domain is the same as the default, check if the dhcp domain
+		// is different from the default. If so, migrate it
+		if(strcmp(config.dhcp.domain.v.s, config.dhcp.domain.d.s) != 0)
+		{
+			// Migrate dhcp.domain -> dns.domain
+			log_info("Migrating dhcp.domain = \"%s\" -> dns.domain", config.dhcp.domain.v.s);
+			if(config.dns.domain.t == CONF_STRING_ALLOCATED)
+				free(config.dns.domain.v.s);
+			config.dns.domain.v.s = strdup(config.dhcp.domain.v.s);
+			config.dns.domain.t = CONF_STRING_ALLOCATED;
+		}
+	}
+}
+
 bool writeFTLtoml(const bool verbose)
 {
 	// Try to open a temporary config file for writing
@@ -43,6 +62,9 @@ bool writeFTLtoml(const bool verbose)
 	fputs("\n# by FTL ", fp);
 	fputs(get_FTL_version(), fp);
 	fputs("\n\n", fp);
+
+	// Perform possible config migration
+	migrate_config();
 
 	// Iterate over configuration and store it into the file
 	char *last_path = (char*)"";
