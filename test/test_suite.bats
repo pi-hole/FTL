@@ -1325,7 +1325,7 @@
   # Set app password hash
   run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config/webserver/api/app_pwhash -d  "{\"config\":{\"webserver\":{\"api\":{\"app_pwhash\":${0}}}}}"' "${pwhash}"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "{\"config\":{\"webserver\":{\"api\":{\"app_pwhash\":${pwhash}}}},\"took\":"*"}" ]]
+  [[ ${lines[0]} == "{\"config\":{\"webserver\":{\"api\":{\"app_pwhash\":${pwhash}}}},\"startup_time\":"*",\"took\":"*"}" ]]
 
   # Login using app password is successful
   run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":${0}}" | jq .session.valid' "${password}"
@@ -1337,7 +1337,7 @@
   # Password: ABC
   run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config/webserver/api/password -d "{\"config\":{\"webserver\":{\"api\":{\"password\":\"ABC\"}}}}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "{\"config\":{\"webserver\":{\"api\":{\"password\":\"********\"}}},\"took\":"*"}" ]]
+  [[ ${lines[0]} == "{\"config\":{\"webserver\":{\"api\":{\"password\":\"********\"}}},\"startup_time\":"*",\"took\":"*"}" ]]
 }
 
 @test "API authorization (with password): Incorrect password is rejected if password auth is enabled" {

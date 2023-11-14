@@ -40,6 +40,8 @@ pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
 bool dnsmasq_failed = false;
 
+static void fix_startup_time(const double correction);
+
 void go_daemon(void)
 {
 	// Create child process
@@ -221,6 +223,7 @@ void delay_startup(void)
 		cleanup(EXIT_FAILURE);
 		exit(EXIT_FAILURE);
 	}
+	fix_startup_time(config.misc.delay_startup.v.ui);
 	log_info("Done sleeping, continuing startup of resolver...");
 }
 
@@ -443,4 +446,23 @@ bool ipv6_enabled(void)
 	// else: IPv6 is not obviously disabled and there is at least one
 	// IPv6-capable interface
 	return true;
+}
+
+static double startup_time = 0.0;
+// Get the time it took to start FTL
+double __attribute__((pure)) get_startup_time(void)
+{
+	return startup_time;
+}
+// Fix the startup time by subtracting the given correction
+static void fix_startup_time(const double correction)
+{
+	startup_time -= correction;
+}
+// Store the startup time
+void store_startup_time(void)
+{
+	// We add the measured time to the variable to account for possibly
+	// applied corrections above
+	startup_time += 1e-3*timer_elapsed_msec(EXIT_TIMER);
 }

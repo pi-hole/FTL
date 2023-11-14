@@ -24,6 +24,8 @@ void set_nice(void);
 void calc_cpu_usage(void);
 float get_cpu_percentage(void) __attribute__((pure));
 bool ipv6_enabled(void);
+double get_startup_time(void) __attribute__((pure));
+void store_startup_time(void);
 
 #include <sys/syscall.h>
 #include <unistd.h>

@@ -28,6 +28,8 @@
 #include "config/password.h"
 // main_pid()
 #include "signals.h"
+// get_startup_time()
+#include "daemon.h"
 
 static struct {
 	const char *name;
@@ -628,6 +630,7 @@ static int api_config_get(struct ftl_conn *api)
 
 	// Build and return JSON response
 	JSON_ADD_ITEM_TO_OBJECT(json, "config", config_j);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "startup_time", get_startup_time());
 	JSON_SEND_OBJECT(json);
 }
 

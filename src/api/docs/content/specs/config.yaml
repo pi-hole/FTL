@@ -170,6 +170,10 @@ components:
     config:
       type: object
       properties:
+        startup_time:
+          type: number
+          description: |
+            Seconds it took to start FTL
         config:
           type: object
           properties:
@@ -575,6 +579,7 @@ components:
     config:
       summary: The entire configuration
       value:
+        startup_time: 0.2551
         config:
           dns:
             upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]

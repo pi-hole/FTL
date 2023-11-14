@@ -2917,6 +2917,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 
 	// Initialize Pi-hole PTR pointer
 	init_pihole_PTR();
+
+	// Memorize startup-time
+	store_startup_time();
 }
 
 static char *get_ptrname(struct in_addr *addr)
