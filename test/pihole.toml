@@ -100,7 +100,10 @@
   #
   # Possible values are:
   #     Array of custom DNS records each one in HOSTS form: "IP HOSTNAME"
-  hosts = []
+  hosts = [
+    "1.1.1.1 abc-custom.com def-custom.de",
+    "2.2.2.2 äste.com steä.com"
+  ] ### CHANGED, default = []
 
   # If set, A and AAAA queries for plain names, without dots or domain parts, are never
   # forwarded to upstream nameservers
@@ -196,7 +199,9 @@
   # Possible values are:
   #     Array of static leases each on in one of the following forms:
   #     "<cname>,<target>[,<TTL>]"
-  cnameRecords = []
+  cnameRecords = [
+    "brücke.com,äste.com,2",
+  ]
 
   # Port used by the DNS server
   port = 53

@@ -172,7 +172,7 @@ class ResponseVerifyer():
 						if expected_file not in zipfile_obj.namelist():
 							self.errors.append("File " + expected_file + " is missing in received archive.")
 					pihole_toml = zipfile_obj.read("etc/pihole/pihole.toml")
-					if not pihole_toml.startswith(b"# This file is managed by pihole-FTL"):
+					if not pihole_toml.startswith(b"# Pi-hole configuration file (v"):
 						self.errors.append("Received ZIP file's pihole.toml starts with wrong header")
 				except Exception as err:
 					self.errors.append("Error during ZIP analysis: " + str(err))
