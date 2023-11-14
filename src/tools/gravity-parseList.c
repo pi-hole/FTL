@@ -40,7 +40,7 @@ static const char *false_positives[] = {
 #define MAX_INVALID_DOMAINS 5
 
 // Validate domain name
-static inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len)
+static inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len, const bool abp)
 {
 	// Domain must not be NULL or empty, and they should not be longer than
 	// 255 characters
@@ -84,8 +84,10 @@ static inline bool __attribute__((pure)) valid_domain(const char *domain, const 
 	// TLD checks
 
 	// There must be at least two labels (i.e. one dot)
-	// e.g., "example.com" but not "localhost"
-	if(last_dot == -1)
+	// e.g., "example.com" but not "localhost" for exact domain
+	// We do not enforce this for ABP domains
+	// (see https://github.com/pi-hole/pi-hole/pull/5240)
+	if(last_dot == -1 && !abp)
 		return false;
 
 	// TLD must not start or end with a hyphen
@@ -121,7 +123,7 @@ static inline bool __attribute__((pure)) valid_abp_domain(const char *line, cons
 			return false;
 
 		// Domain must be valid
-		return valid_domain(line+4, len-5);
+		return valid_domain(line+4, len-5, true);
 	}
 	else
 	{
@@ -138,7 +140,7 @@ static inline bool __attribute__((pure)) valid_abp_domain(const char *line, cons
 			return false;
 
 		// Domain must be valid
-		return valid_domain(line+2, len-3);
+		return valid_domain(line+2, len-3, true);
 	}
 }
 
@@ -279,7 +281,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 		// Validate line
 		if(line[0] != (antigravity ? '@' : '|') &&           // <- Not an ABP-style match
-		   valid_domain(line, read))
+		   valid_domain(line, read, false))
 		{
 			// Exact match found
 			if(checkOnly)
