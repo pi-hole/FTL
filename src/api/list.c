@@ -393,7 +393,8 @@ static int api_list_write(struct ftl_conn *api,
 			   strchr(it->valuestring, '\t') != NULL ||
 			   strchr(it->valuestring, '\n') != NULL)
 			{
-				cJSON_free(row.items);
+				if(allocated_json)
+					cJSON_free(row.items);
 				return send_json_error(api, 400, // 400 Bad Request
 							"bad_request",
 							"Spaces, newlines and tabs are not allowed in domains and URLs",
@@ -406,11 +407,12 @@ static int api_list_write(struct ftl_conn *api,
 	if(!okay)
 	{
 		// Send error reply
-		cJSON_free(row.items);
-		return send_json_error(api, 400, // 400 Bad Request
-		                       "regex_error",
-		                       "Regex validation failed",
-		                       regex_msg);
+		if(allocated_json)
+			cJSON_free(row.items);
+		return send_json_error_free(api, 400, // 400 Bad Request
+		                            "regex_error",
+		                            "Regex validation failed",
+		                            regex_msg, true);
 	}
 
 	// Try to add item(s) to table
