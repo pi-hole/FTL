@@ -223,6 +223,9 @@ class ResponseVerifyer():
 
 	# Check if a string is a valid IPv4 address
 	def valid_ipv4(self, addr: str) -> bool:
+		# Empty string is valid (0.0.0.0)
+		if len(addr) == 0:
+			return True
 		try:
 			if type(ipaddress.ip_address(addr)) is ipaddress.IPv4Address:
 				return True
@@ -232,6 +235,9 @@ class ResponseVerifyer():
 
 	# Check if a string is a valid IPv6 address
 	def valid_ipv6(self, addr: str) -> bool:
+		# Empty string is valid (::)
+		if len(addr) == 0:
+			return True
 		try:
 			if type(ipaddress.ip_address(addr)) is ipaddress.IPv6Address:
 				return True
@@ -253,10 +259,10 @@ class ResponseVerifyer():
 			return False
 		if yaml_format is not None:
 			# Check if the format is correct
-			if yaml_format == "ipv4" and not type(ipaddress.ip_address(prop)) is ipaddress.IPv4Address:
+			if yaml_format == "ipv4" and not self.valid_ipv4(prop):
 				self.errors.append("Property \"" + str(prop) + "\" is not a valid IPv4 address")
 				return False
-			elif yaml_format == "ipv6" and not type(ipaddress.ip_address(prop)) is ipaddress.IPv6Address:
+			elif yaml_format == "ipv6" and not self.valid_ipv6(prop):
 				self.errors.append("Property \"" + str(prop) + "\" is not a valid IPv6 address")
 				return False
 		return prop_type in self.YAML_TYPES[yaml_type]

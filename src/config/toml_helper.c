@@ -364,6 +364,13 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 			break;
 		case CONF_STRUCT_IN_ADDR:
 		{
+			// Special case: 0.0.0.0 -> return empty string
+			if(v->in_addr.s_addr == INADDR_ANY)
+			{
+				printTOMLstring(fp, "", toml);
+				break;
+			}
+			// else: normal address
 			char addr4[INET_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET, &v->in_addr, addr4, INET_ADDRSTRLEN);
 			printTOMLstring(fp, addr4, toml);
@@ -371,6 +378,13 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 		}
 		case CONF_STRUCT_IN6_ADDR:
 		{
+			// Special case: :: -> return empty string
+			if(memcmp(&v->in6_addr, &in6addr_any, sizeof(in6addr_any)) == 0)
+			{
+				printTOMLstring(fp, "", toml);
+				break;
+			}
+			// else: normal address
 			char addr6[INET6_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET6, &v->in6_addr, addr6, INET6_ADDRSTRLEN);
 			printTOMLstring(fp, addr6, toml);
@@ -654,7 +668,12 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			const toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
-				if(inet_pton(AF_INET, val.u.s, &addr4))
+				if(strlen(val.u.s) == 0)
+				{
+					// Special case: empty string -> 0.0.0.0
+					conf_item->v.in_addr.s_addr = INADDR_ANY;
+				}
+				else if(inet_pton(AF_INET, val.u.s, &addr4))
 					memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
 				else
 					log_warn("Config %s is invalid (not of type IPv4 address)", conf_item->k);
@@ -670,7 +689,12 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			const toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
-				if(inet_pton(AF_INET6, val.u.s, &addr6))
+				if(strlen(val.u.s) == 0)
+				{
+					// Special case: empty string -> ::
+					memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+				}
+				else if(inet_pton(AF_INET6, val.u.s, &addr6))
 					memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 				else
 					log_warn("Config %s is invalid (not of type IPv6 address)", conf_item->k);
@@ -910,7 +934,12 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };
-			if(inet_pton(AF_INET, envvar, &addr4))
+			if(strlen(envvar) == 0)
+			{
+				// Special case: empty string -> 0.0.0.0
+				conf_item->v.in_addr.s_addr = INADDR_ANY;
+			}
+			else if(inet_pton(AF_INET, envvar, &addr4))
 				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
 			else
 				log_warn("ENV %s is invalid (not of type IPv4 address)", envkey);
@@ -919,7 +948,12 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 		case CONF_STRUCT_IN6_ADDR:
 		{
 			struct in6_addr addr6 = { 0 };
-			if(inet_pton(AF_INET6, envvar, &addr6))
+			if(strlen(envvar) == 0)
+			{
+				// Special case: empty string -> ::
+				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+			}
+			else if(inet_pton(AF_INET6, envvar, &addr6))
 				memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 			else
 				log_warn("ENV %s is invalid (not of type IPv6 address)", envkey);

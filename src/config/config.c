@@ -686,21 +686,21 @@ void initConfig(struct config *conf)
 
 	conf->dhcp.start.k = "dhcp.start";
 	conf->dhcp.start.h = "Start address of the DHCP address pool";
-	conf->dhcp.start.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.10\"");
+	conf->dhcp.start.a = cJSON_CreateStringReference("<valid IPv4 address> or empty string (\"\"), e.g., \"192.168.0.10\"");
 	conf->dhcp.start.t = CONF_STRUCT_IN_ADDR;
 	conf->dhcp.start.f = FLAG_RESTART_FTL;
 	memset(&conf->dhcp.start.d.in_addr, 0, sizeof(struct in_addr));
 
 	conf->dhcp.end.k = "dhcp.end";
 	conf->dhcp.end.h = "End address of the DHCP address pool";
-	conf->dhcp.end.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.250\"");
+	conf->dhcp.end.a = cJSON_CreateStringReference("<valid IPv4 address> or empty string (\"\"), e.g., \"192.168.0.250\"");
 	conf->dhcp.end.t = CONF_STRUCT_IN_ADDR;
 	conf->dhcp.end.f = FLAG_RESTART_FTL;
 	memset(&conf->dhcp.end.d.in_addr, 0, sizeof(struct in_addr));
 
 	conf->dhcp.router.k = "dhcp.router";
 	conf->dhcp.router.h = "Address of the gateway to be used (typically the address of your router in a home installation)";
-	conf->dhcp.router.a = cJSON_CreateStringReference("<ip-addr>, e.g., \"192.168.0.1\"");
+	conf->dhcp.router.a = cJSON_CreateStringReference("<valid IPv4 address> or empty string (\"\"), e.g., \"192.168.0.1\"");
 	conf->dhcp.router.t = CONF_STRUCT_IN_ADDR;
 	conf->dhcp.router.f = FLAG_RESTART_FTL;
 	memset(&conf->dhcp.router.d.in_addr, 0, sizeof(struct in_addr));
@@ -713,8 +713,8 @@ void initConfig(struct config *conf)
 	conf->dhcp.domain.d.s = (char*)"lan";
 
 	conf->dhcp.netmask.k = "dhcp.netmask";
-	conf->dhcp.netmask.h = "The netmask used by your Pi-hole. For directly connected networks (i.e., networks on which the machine running Pi-hole has an interface) the netmask is optional and may be set to \"0.0.0.0\": it will then be determined from the interface configuration itself. For networks which receive DHCP service via a relay agent, we cannot determine the netmask itself, so it should explicitly be specified, otherwise Pi-hole guesses based on the class (A, B or C) of the network address.";
-	conf->dhcp.netmask.a = cJSON_CreateStringReference("<any valid netmask>, e.g., \"255.255.255.0\" or \"0.0.0.0\" for auto-discovery");
+	conf->dhcp.netmask.h = "The netmask used by your Pi-hole. For directly connected networks (i.e., networks on which the machine running Pi-hole has an interface) the netmask is optional and may be set to an empty string (\"\"): it will then be determined from the interface configuration itself. For networks which receive DHCP service via a relay agent, we cannot determine the netmask itself, so it should explicitly be specified, otherwise Pi-hole guesses based on the class (A, B or C) of the network address.";
+	conf->dhcp.netmask.a = cJSON_CreateStringReference("<any valid netmask> (e.g., \"255.255.255.0\") or empty string (\"\") for auto-discovery");
 	conf->dhcp.netmask.t = CONF_STRUCT_IN_ADDR;
 	conf->dhcp.netmask.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	memset(&conf->dhcp.netmask.d.in_addr, 0, sizeof(struct in_addr));
