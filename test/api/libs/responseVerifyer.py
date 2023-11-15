@@ -223,24 +223,21 @@ class ResponseVerifyer():
 
 	# Check if a string is a valid IPv4 address
 	def valid_ipv4(self, addr: str) -> bool:
-		octets = addr.split(".") # type: list[str]
-		if len(octets) != 4:
-			return False
-		for octet in octets:
-			if not octet.isdigit():
-				return False
-			if int(octet) < 0 or int(octet) > 255:
-				return False
-		return True
-
+		try:
+			if type(ipaddress.ip_address(addr)) is ipaddress.IPv4Address:
+				return True
+		except ValueError:
+			pass
+		return False
 
 	# Check if a string is a valid IPv6 address
 	def valid_ipv6(self, addr: str) -> bool:
-		# Split the address into parts
-		parts = addr.split(":") # type: list[str]
-		# Check if the address is a valid IPv6 address
-		if len(parts) != 8:
-			return False
+		try:
+			if type(ipaddress.ip_address(addr)) is ipaddress.IPv6Address:
+				return True
+		except ValueError:
+			pass
+		return False
 
 
 	# Verify a single property's type
