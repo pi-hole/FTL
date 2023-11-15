@@ -221,6 +221,73 @@ static void write_config_header(FILE *fp, const char *description)
 
 bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
 {
+	// Early config checks
+	if(conf->dhcp.active.v.b)
+	{
+		// Check if the addresses are valid
+		// The addresses should neither be 0.0.0.0 nor 255.255.255.255
+		if((ntohl(conf->dhcp.start.v.in_addr.s_addr) == 0) ||
+		   (ntohl(conf->dhcp.start.v.in_addr.s_addr) == 0xFFFFFFFF))
+		{
+			strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.end.v.in_addr.s_addr) == 0) ||
+		   (ntohl(conf->dhcp.end.v.in_addr.s_addr) == 0xFFFFFFFF))
+		{
+			strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.router.v.in_addr.s_addr) == 0) ||
+		   (ntohl(conf->dhcp.router.v.in_addr.s_addr) == 0xFFFFFFFF))
+		{
+			strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		// The addresses should neither end in .0 or .255 in the last octet
+		if((ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0 ||
+		   (ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		{
+			strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0 ||
+		   (ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		{
+			strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0 ||
+		   (ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		{
+			strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+
+		// Check if the DHCP range is valid (start needs to be smaller than end)
+		if(ntohl(conf->dhcp.start.v.in_addr.s_addr) >= ntohl(conf->dhcp.end.v.in_addr.s_addr))
+		{
+			strncpy(errbuf, "DHCP range start address is larger than or equal to the end address", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+
+		// Check if the router address is within the DHCP range
+		if(ntohl(conf->dhcp.router.v.in_addr.s_addr) >= ntohl(conf->dhcp.start.v.in_addr.s_addr) &&
+		   ntohl(conf->dhcp.router.v.in_addr.s_addr) <= ntohl(conf->dhcp.end.v.in_addr.s_addr))
+		{
+			strncpy(errbuf, "DHCP router address should not be within DHCP range", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+	}
+
 	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_TEMP_CONF" for writing");
 	FILE *pihole_conf = fopen(DNSMASQ_TEMP_CONF, "w");
 	// Return early if opening failed
