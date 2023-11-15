@@ -688,3 +688,40 @@ bool files_different(const char *pathA, const char* pathB, unsigned int from)
 
 	return different;
 }
+
+// Create SHA256 checksum of a file
+bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE])
+{
+	// Open file
+	FILE *fp = fopen(path, "rb");
+	if(fp == NULL)
+	{
+		log_warn("sha256_file(): Failed to open \"%s\" for reading: %s", path, strerror(errno));
+		return false;
+	}
+
+	// Initialize SHA2-256 context
+	struct sha256_ctx ctx;
+	sha256_init(&ctx);
+
+	// Read file in chunks of <pagesize> bytes
+	const size_t pagesize = getpagesize();
+	unsigned char *buf = calloc(pagesize, sizeof(char));
+	size_t len;
+	while((len = fread(buf, sizeof(char), pagesize, fp)) > 0)
+	{
+		// Update SHA256 context
+		sha256_update(&ctx, len, buf);
+	}
+
+	// Finalize SHA256 context
+	sha256_digest(&ctx, SHA256_DIGEST_SIZE, checksum);
+
+	// Close file
+	fclose(fp);
+
+	// Free memory
+	free(buf);
+
+	return true;
+}
