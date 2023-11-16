@@ -655,6 +655,13 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		return false;
 	}
 
+	// Close file
+	if(fclose(pihole_conf) != 0)
+	{
+		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
+		return false;
+	}
+
 	log_debug(DEBUG_CONFIG, "Testing "DNSMASQ_TEMP_CONF);
 	if(test_config && !test_dnsmasq_config(errbuf))
 	{
@@ -662,18 +669,26 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		return false;
 	}
 
-	log_debug(DEBUG_CONFIG, "Installing "DNSMASQ_TEMP_CONF" to "DNSMASQ_PH_CONFIG);
-	if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
+	// Check if the new config file is different from the old one
+	// Skip the first 24 lines as they contain the header
+	if(files_different(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG, 24))
 	{
-		log_err("Cannot install dnsmasq config file: %s", strerror(errno));
-		return false;
+		if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
+		{
+			log_err("Cannot install dnsmasq config file: %s", strerror(errno));
+			return false;
+		}
+		log_debug(DEBUG_CONFIG, "Config file written to "DNSMASQ_PH_CONFIG);
 	}
-
-	// Close file
-	if(fclose(pihole_conf) != 0)
+	else
 	{
-		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
-		return false;
+		log_debug(DEBUG_CONFIG, "dnsmasq.conf unchanged");
+		// Remove temporary config file
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+		{
+			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			return false;
+		}
 	}
 	return true;
 }
@@ -880,19 +895,19 @@ bool write_custom_list(void)
 		}
 	}
 
-	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST" for writing");
-	FILE *custom_list = fopen(DNSMASQ_CUSTOM_LIST, "w");
+	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST_LEGACY".tmp for writing");
+	FILE *custom_list = fopen(DNSMASQ_CUSTOM_LIST_LEGACY".tmp", "w");
 	// Return early if opening failed
 	if(!custom_list)
 	{
-		log_err("Cannot open "DNSMASQ_CUSTOM_LIST" for writing, unable to update custom.list: %s", strerror(errno));
+		log_err("Cannot open "DNSMASQ_CUSTOM_LIST_LEGACY".tmp for writing, unable to update custom.list: %s", strerror(errno));
 		return false;
 	}
 
 	// Lock file, may block if the file is currently opened
 	if(flock(fileno(custom_list), LOCK_EX) != 0)
 	{
-		log_err("Cannot open "DNSMASQ_CUSTOM_LIST" in exclusive mode: %s", strerror(errno));
+		log_err("Cannot open "DNSMASQ_CUSTOM_LIST_LEGACY".tmp in exclusive mode: %s", strerror(errno));
 		fclose(custom_list);
 		return false;
 	}
@@ -933,5 +948,28 @@ bool write_custom_list(void)
 		log_err("Cannot close custom.list: %s", strerror(errno));
 		return false;
 	}
+
+	// Check if the new config file is different from the old one
+	// Skip the first 24 lines as they contain the header
+	if(files_different(DNSMASQ_CUSTOM_LIST_LEGACY".tmp", DNSMASQ_CUSTOM_LIST, 24))
+	{
+		if(rename(DNSMASQ_CUSTOM_LIST_LEGACY".tmp", DNSMASQ_CUSTOM_LIST) != 0)
+		{
+			log_err("Cannot install custom.list: %s", strerror(errno));
+			return false;
+		}
+		log_debug(DEBUG_CONFIG, "HOSTS file written to "DNSMASQ_CUSTOM_LIST);
+	}
+	else
+	{
+		log_debug(DEBUG_CONFIG, "custom.list unchanged");
+		// Remove temporary config file
+		if(remove(DNSMASQ_CUSTOM_LIST_LEGACY".tmp") != 0)
+		{
+			log_err("Cannot remove temporary custom.list: %s", strerror(errno));
+			return false;
+		}
+	}
+
 	return true;
 }
