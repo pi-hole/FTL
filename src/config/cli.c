@@ -297,7 +297,12 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };
-			if(inet_pton(AF_INET, value, &addr4))
+			if(strlen(value) == 0)
+			{
+				// Special case: empty string -> 0.0.0.0
+				conf_item->v.in_addr.s_addr = INADDR_ANY;
+			}
+			else if(inet_pton(AF_INET, value, &addr4))
 				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
 			else
 			{
@@ -309,7 +314,12 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 		case CONF_STRUCT_IN6_ADDR:
 		{
 			struct in6_addr addr6 = { 0 };
-			if(inet_pton(AF_INET6, value, &addr6))
+			if(strlen(value) == 0)
+			{
+				// Special case: empty string -> ::
+				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+			}
+			else if(inet_pton(AF_INET6, value, &addr6))
 				memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 			else
 			{

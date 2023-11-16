@@ -222,6 +222,73 @@ static void write_config_header(FILE *fp, const char *description)
 
 bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
 {
+	// Early config checks
+	if(conf->dhcp.active.v.b)
+	{
+		// Check if the addresses are valid
+		// The addresses should neither be 0.0.0.0 nor 255.255.255.255
+		if((ntohl(conf->dhcp.start.v.in_addr.s_addr) == 0) ||
+		   (ntohl(conf->dhcp.start.v.in_addr.s_addr) == 0xFFFFFFFF))
+		{
+			strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.end.v.in_addr.s_addr) == 0) ||
+		   (ntohl(conf->dhcp.end.v.in_addr.s_addr) == 0xFFFFFFFF))
+		{
+			strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.router.v.in_addr.s_addr) == 0) ||
+		   (ntohl(conf->dhcp.router.v.in_addr.s_addr) == 0xFFFFFFFF))
+		{
+			strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		// The addresses should neither end in .0 or .255 in the last octet
+		if((ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0 ||
+		   (ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		{
+			strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0 ||
+		   (ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		{
+			strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0 ||
+		   (ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		{
+			strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+
+		// Check if the DHCP range is valid (start needs to be smaller than end)
+		if(ntohl(conf->dhcp.start.v.in_addr.s_addr) >= ntohl(conf->dhcp.end.v.in_addr.s_addr))
+		{
+			strncpy(errbuf, "DHCP range start address is larger than or equal to the end address", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+
+		// Check if the router address is within the DHCP range
+		if(ntohl(conf->dhcp.router.v.in_addr.s_addr) >= ntohl(conf->dhcp.start.v.in_addr.s_addr) &&
+		   ntohl(conf->dhcp.router.v.in_addr.s_addr) <= ntohl(conf->dhcp.end.v.in_addr.s_addr))
+		{
+			strncpy(errbuf, "DHCP router address should not be within DHCP range", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+	}
+
 	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_TEMP_CONF" for writing");
 	FILE *pihole_conf = fopen(DNSMASQ_TEMP_CONF, "w");
 	// Return early if opening failed
@@ -427,12 +494,25 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# DHCP server setting\n", pihole_conf);
 		fputs("dhcp-authoritative\n", pihole_conf);
 		fputs("dhcp-leasefile="DHCPLEASESFILE"\n", pihole_conf);
-		fprintf(pihole_conf, "dhcp-range=%s,%s,%s\n",
-		        conf->dhcp.start.v.s,
-				conf->dhcp.end.v.s,
-				conf->dhcp.leaseTime.v.s);
-		fprintf(pihole_conf, "dhcp-option=option:router,%s\n",
-		        conf->dhcp.router.v.s);
+		char start[INET_ADDRSTRLEN] = { 0 },
+		     end[INET_ADDRSTRLEN] = { 0 },
+		     router[INET_ADDRSTRLEN] = { 0 };
+		inet_ntop(AF_INET, &conf->dhcp.start.v.in_addr, start, INET_ADDRSTRLEN);
+		inet_ntop(AF_INET, &conf->dhcp.end.v.in_addr, end, INET_ADDRSTRLEN);
+		inet_ntop(AF_INET, &conf->dhcp.router.v.in_addr, router, INET_ADDRSTRLEN);
+		fprintf(pihole_conf, "dhcp-range=%s,%s", start, end);
+		// Net mask is optional, only add if it is not 0.0.0.0
+		const struct in_addr inaddr_empty = {0};
+		if(memcmp(&conf->dhcp.netmask.v.in_addr, &inaddr_empty, sizeof(inaddr_empty)) != 0)
+		{
+			char netmask[INET_ADDRSTRLEN] = { 0 };
+			inet_ntop(AF_INET, &conf->dhcp.netmask.v.in_addr, netmask, INET_ADDRSTRLEN);
+			fprintf(pihole_conf, ",%s", netmask);
+		}
+		// Lease time is optional, only add it if it is set
+		if(strlen(conf->dhcp.leaseTime.v.s) > 0)
+			fprintf(pihole_conf, ",%s", conf->dhcp.leaseTime.v.s);
+		fprintf(pihole_conf, "\ndhcp-option=option:router,%s\n", router);
 
 		if(conf->dhcp.rapidCommit.v.b)
 			fputs("dhcp-rapid-commit\n", pihole_conf);

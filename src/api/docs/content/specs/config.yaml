@@ -270,8 +270,10 @@ components:
                           type: boolean
                         IPv4:
                           type: string
+                          x-format: ipv4
                         IPv6:
                           type: string
+                          x-format: ipv6
                     blocking:
                       type: object
                       properties:
@@ -281,8 +283,10 @@ components:
                           type: boolean
                         IPv4:
                           type: string
+                          x-format: ipv4
                         IPv6:
                           type: string
+                          x-format: ipv6
                 rateLimit:
                   type: object
                   properties:
@@ -297,10 +301,16 @@ components:
                   type: boolean
                 start:
                   type: string
+                  x-format: ipv4
                 end:
                   type: string
+                  x-format: ipv4
                 router:
                   type: string
+                  x-format: ipv4
+                netmask:
+                  type: string
+                  x-format: ipv4
                 domain:
                   type: string
                   description: |
@@ -636,6 +646,7 @@ components:
             end: "192.168.0.250"
             router: "192.168.0.1"
             domain: "lan"
+            netmask: "0.0.0.0"
             leaseTime: "24h"
             ipv6: true
             rapidCommit: true

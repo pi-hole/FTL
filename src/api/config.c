@@ -130,12 +130,22 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 			return cJSON_CreateStringReference(get_temp_unit_str(val->temp_unit));
 		case CONF_STRUCT_IN_ADDR:
 		{
+			// Special case 0.0.0.0 -> return empty string
+			if(val->in_addr.s_addr == INADDR_ANY)
+				return cJSON_CreateStringReference("");
+
+			// else: normal address
 			char addr4[INET_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET, &val->in_addr, addr4, INET_ADDRSTRLEN);
 			return cJSON_CreateString(addr4); // Performs a copy
 		}
 		case CONF_STRUCT_IN6_ADDR:
 		{
+			// Special case :: -> return empty string
+			if(memcmp(&val->in6_addr, &in6addr_any, sizeof(in6addr_any)) == 0)
+				return cJSON_CreateStringReference("");
+
+			// else: normal address
 			char addr6[INET6_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET6, &val->in6_addr, addr6, INET6_ADDRSTRLEN);
 			return cJSON_CreateString(addr6); // Performs a copy
@@ -402,11 +412,19 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			struct in_addr addr4 = { 0 };
 			if(!cJSON_IsString(elem))
 				return "not of type string";
-			if(!inet_pton(AF_INET, elem->valuestring, &addr4))
+			if(strlen(elem->valuestring) == 0)
+			{
+				// Special case: empty string -> 0.0.0.0
+				conf_item->v.in_addr.s_addr = INADDR_ANY;
+			}
+			else if(inet_pton(AF_INET, elem->valuestring, &addr4))
+			{
+				// Set item
+				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
+			}
+			else
 				return "not a valid IPv4 address";
-			// Set item
-			memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
-			log_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, elem->valuestring);
+			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
 			break;
 		}
 		case CONF_STRUCT_IN6_ADDR:
@@ -414,11 +432,16 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			struct in6_addr addr6 = { 0 };
 			if(!cJSON_IsString(elem))
 				return "not of type string";
-			if(!inet_pton(AF_INET6, elem->valuestring, &addr6))
+			if(strlen(elem->valuestring) == 0)
+			{
+				// Special case: empty string -> ::
+				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+			}
+			else if(!inet_pton(AF_INET6, elem->valuestring, &addr6))
 				return "not a valid IPv6 address";
 			// Set item
 			memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
-			log_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, elem->valuestring);
+			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
 			break;
 		}
 		case CONF_JSON_STRING_ARRAY:
@@ -696,8 +719,23 @@ static int api_config_patch(struct ftl_conn *api)
 		const char *response = getJSONvalue(new_item, elem, &newconf);
 		if(response != NULL)
 		{
-			log_err("/api/config: %s invalid: %s", new_item->k, response);
-			continue;
+			char *hint = calloc(strlen(new_item->k) + strlen(response) + 3, sizeof(char));
+			if(hint == NULL)
+			{
+				free_config(&newconf);
+				return send_json_error(api, 500,
+				                       "internal_error",
+				                       "Failed to allocate memory for hint",
+				                       NULL);
+			}
+			strcpy(hint, new_item->k);
+			strcat(hint, ": ");
+			strcat(hint, response);
+			free_config(&newconf);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "Config item is invalid",
+			                            hint, true);
 		}
 
 		// Get pointer to memory location of this conf_item (global)

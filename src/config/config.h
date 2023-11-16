@@ -184,6 +184,7 @@ struct config {
 		struct conf_item end;
 		struct conf_item router;
 		struct conf_item domain;
+		struct conf_item netmask;
 		struct conf_item leaseTime;
 		struct conf_item ipv6;
 		struct conf_item rapidCommit;
