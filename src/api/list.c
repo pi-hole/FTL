@@ -398,9 +398,9 @@ static int api_list_write(struct ftl_conn *api,
 				if(allocated_json)
 					cJSON_free(row.items);
 				return send_json_error(api, 400, // 400 Bad Request
-							"bad_request",
-							"Spaces, newlines and tabs are not allowed in domains and URLs",
-							it->valuestring);
+				                       "bad_request",
+				                       "Spaces, newlines and tabs are not allowed in domains and URLs",
+				                       it->valuestring);
 			}
 
 			// Validate domains
