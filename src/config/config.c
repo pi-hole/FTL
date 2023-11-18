@@ -1346,7 +1346,7 @@ void readFTLconf(struct config *conf, const bool rewrite)
 	// the most recent one and going back in time until we find a valid config
 	for(unsigned int i = 0; i < PLAIN_ROTATIONS; i++)
 	{
-		if(readFTLtoml(NULL, conf, NULL, rewrite, NULL, 0))
+		if(readFTLtoml(NULL, conf, NULL, rewrite, NULL, i))
 		{
 			// If successful, we write the config file back to disk
 			// to ensure that all options are present and comments
