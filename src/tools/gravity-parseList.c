@@ -40,7 +40,7 @@ static const char *false_positives[] = {
 #define MAX_INVALID_DOMAINS 5
 
 // Validate domain name
-static inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len, const bool abp)
+inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len, const bool abp)
 {
 	// Domain must not be NULL or empty, and they should not be longer than
 	// 255 characters

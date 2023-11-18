@@ -17,6 +17,8 @@
 #include "shmem.h"
 // getNameFromIP()
 #include "database/network-table.h"
+// valid_domain()
+#include "tools/gravity-parseList.h"
 
 static int api_list_read(struct ftl_conn *api,
                          const int code,
@@ -399,6 +401,19 @@ static int api_list_write(struct ftl_conn *api,
 							"bad_request",
 							"Spaces, newlines and tabs are not allowed in domains and URLs",
 							it->valuestring);
+			}
+
+			// Validate domains
+			if((listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
+			    listtype == GRAVITY_DOMAINLIST_DENY_EXACT) &&
+			   !valid_domain(it->valuestring, strlen(it->valuestring), false))
+			{
+				if(allocated_json)
+					cJSON_free(row.items);
+				return send_json_error(api, 400, // 400 Bad Request
+				                       "bad_request",
+				                       "Invalid domain",
+				                       it->valuestring);
 			}
 		}
 	}
