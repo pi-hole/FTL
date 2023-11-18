@@ -85,7 +85,7 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 
 	// There must be at least two labels (i.e. one dot)
 	// e.g., "example.com" but not "localhost" for exact domain
-	// We do not enforce this for ABP domains
+	// We do not enforce this for ABP domains and domainlist input
 	// (see https://github.com/pi-hole/pi-hole/pull/5240)
 	if(last_dot == -1 && fqdn_only)
 		return false;
