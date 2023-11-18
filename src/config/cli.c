@@ -20,6 +20,8 @@
 #include "tomlc99/toml.h"
 // hash_password()
 #include "config/password.h"
+// check_capability()
+#include "capabilities.h"
 
 // Read a TOML value from a table depending on its type
 static bool readStringValue(struct conf_item *conf_item, const char *value, struct config *newconf)
@@ -295,7 +297,12 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };
-			if(inet_pton(AF_INET, value, &addr4))
+			if(strlen(value) == 0)
+			{
+				// Special case: empty string -> 0.0.0.0
+				conf_item->v.in_addr.s_addr = INADDR_ANY;
+			}
+			else if(inet_pton(AF_INET, value, &addr4))
 				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
 			else
 			{
@@ -307,7 +314,12 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 		case CONF_STRUCT_IN6_ADDR:
 		{
 			struct in6_addr addr6 = { 0 };
-			if(inet_pton(AF_INET6, value, &addr6))
+			if(strlen(value) == 0)
+			{
+				// Special case: empty string -> ::
+				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+			}
+			else if(inet_pton(AF_INET6, value, &addr6))
 				memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 			else
 			{
@@ -353,6 +365,25 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 
 int set_config_from_CLI(const char *key, const char *value)
 {
+	// Check if we are either
+	// - root, or
+	// - pihole with CAP_CHOWN capability on the pihole-FTL binary
+	const uid_t euid = geteuid();
+	const struct passwd *current_user = getpwuid(euid);
+	const bool is_root = euid == 0;
+	const bool is_pihole = current_user != NULL && strcmp(current_user->pw_name, "pihole") == 0;
+	const bool have_chown_cap = check_capability(CAP_CHOWN);
+	if(!is_root && !(is_pihole && have_chown_cap))
+	{
+		if(is_pihole)
+			printf("Permission error: CAP_CHOWN is missing on the binary\n");
+		else
+			printf("Permission error: User %s is not allowed to edit Pi-hole's config\n", current_user->pw_name);
+
+		printf("Please run this command using sudo\n\n");
+		return EXIT_FAILURE;
+	}
+
 	// Identify config option
 	struct config newconf;
 	duplicate_config(&newconf, &config);
@@ -420,10 +451,8 @@ int set_config_from_CLI(const char *key, const char *value)
 		}
 		else if(conf_item == &config.dns.hosts)
 		{
-			// We need to rewrite the custom.list file but do not need to
-			// restart dnsmasq. If dnsmasq is going to be restarted anyway,
-			// this is not necessary as the file will be rewritten during
-			// the restart
+			// We need to rewrite the custom.list file but do not
+			// need to restart dnsmasq
 			write_custom_list();
 		}
 

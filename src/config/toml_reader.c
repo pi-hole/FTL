@@ -141,7 +141,7 @@ static toml_table_t *parseTOML(const unsigned int version)
 	FILE *fp;
 	if((fp = openFTLtoml("r", version)) == NULL)
 	{
-		log_warn("No config file available (%s), using defaults",
+		log_info("No config file available (%s), using defaults",
 		         strerror(errno));
 		return NULL;
 	}

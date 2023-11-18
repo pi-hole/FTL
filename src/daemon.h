@@ -24,6 +24,7 @@ void set_nice(void);
 void calc_cpu_usage(void);
 float get_cpu_percentage(void) __attribute__((pure));
 bool ipv6_enabled(void);
+void init_locale(void);
 
 #include <sys/syscall.h>
 #include <unistd.h>

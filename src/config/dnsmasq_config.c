@@ -207,11 +207,12 @@ static void write_config_header(FILE *fp, const char *description)
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY CHANGES MADE TO THIS FILE WILL BE LOST WHEN THE CONFIGURATION CHANGES");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "IF YOU WISH TO CHANGE ANY OF THESE VALUES, CHANGE THEM IN");
-	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "etc/pihole/pihole.toml");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "/etc/pihole/pihole.toml");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "and restart pihole-FTL");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY OTHER CHANGES SHOULD BE MADE IN A SEPARATE CONFIG FILE");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "WITHIN /etc/dnsmasq.d/yourname.conf");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "(make sure misc.etc_dnsmasq_d is set to true in /etc/pihole/pihole.toml)");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "Last updated: %s", timestring);
 	CONFIG_CENTER(fp, HEADER_WIDTH, "by FTL version %s", get_FTL_version());
@@ -221,6 +222,73 @@ static void write_config_header(FILE *fp, const char *description)
 
 bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
 {
+	// Early config checks
+	if(conf->dhcp.active.v.b)
+	{
+		// Check if the addresses are valid
+		// The addresses should neither be 0.0.0.0 nor 255.255.255.255
+		if((ntohl(conf->dhcp.start.v.in_addr.s_addr) == 0) ||
+		   (ntohl(conf->dhcp.start.v.in_addr.s_addr) == 0xFFFFFFFF))
+		{
+			strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.end.v.in_addr.s_addr) == 0) ||
+		   (ntohl(conf->dhcp.end.v.in_addr.s_addr) == 0xFFFFFFFF))
+		{
+			strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.router.v.in_addr.s_addr) == 0) ||
+		   (ntohl(conf->dhcp.router.v.in_addr.s_addr) == 0xFFFFFFFF))
+		{
+			strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		// The addresses should neither end in .0 or .255 in the last octet
+		if((ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0 ||
+		   (ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		{
+			strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0 ||
+		   (ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		{
+			strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		if((ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0 ||
+		   (ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		{
+			strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+
+		// Check if the DHCP range is valid (start needs to be smaller than end)
+		if(ntohl(conf->dhcp.start.v.in_addr.s_addr) >= ntohl(conf->dhcp.end.v.in_addr.s_addr))
+		{
+			strncpy(errbuf, "DHCP range start address is larger than or equal to the end address", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+
+		// Check if the router address is within the DHCP range
+		if(ntohl(conf->dhcp.router.v.in_addr.s_addr) >= ntohl(conf->dhcp.start.v.in_addr.s_addr) &&
+		   ntohl(conf->dhcp.router.v.in_addr.s_addr) <= ntohl(conf->dhcp.end.v.in_addr.s_addr))
+		{
+			strncpy(errbuf, "DHCP router address should not be within DHCP range", ERRBUF_SIZE);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+	}
+
 	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_TEMP_CONF" for writing");
 	FILE *pihole_conf = fopen(DNSMASQ_TEMP_CONF, "w");
 	// Return early if opening failed
@@ -240,13 +308,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 
 	write_config_header(pihole_conf, "Dnsmasq config for Pi-hole's FTLDNS");
 	fputs("addn-hosts=/etc/pihole/local.list\n", pihole_conf);
-	fputs("addn-hosts="DNSMASQ_CUSTOM_LIST"\n", pihole_conf);
+	fputs("hostsdir="DNSMASQ_HOSTSDIR"\n", pihole_conf);
 	fputs("\n", pihole_conf);
 	fputs("# Don't read /etc/resolv.conf. Get upstream servers only from the configuration\n", pihole_conf);
 	fputs("no-resolv\n", pihole_conf);
 	fputs("\n", pihole_conf);
 	fputs("# DNS port to be used\n", pihole_conf);
 	fprintf(pihole_conf, "port=%u\n", conf->dns.port.v.u16);
+	fputs("\n", pihole_conf);
 	if(cJSON_GetArraySize(conf->dns.upstreams.v.json) > 0)
 	{
 		fputs("# List of upstream DNS server\n", pihole_conf);
@@ -278,12 +347,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# Enable query logging\n", pihole_conf);
 		fputs("log-queries\n", pihole_conf);
 		fputs("log-async\n", pihole_conf);
+		fputs("\n", pihole_conf);
 	}
 	else
 	{
 		fputs("# Disable query logging\n", pihole_conf);
 		fputs("#log-queries\n", pihole_conf);
 		fputs("#log-async\n", pihole_conf);
+		fputs("\n", pihole_conf);
 	}
 
 	if(strlen(conf->files.log.dnsmasq.v.s) > 0)
@@ -334,12 +405,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	{
 		fputs("# Add A, AAAA and PTR records to the DNS\n", pihole_conf);
 		fprintf(pihole_conf, "host-record=%s\n", conf->dns.hostRecord.v.s);
+		fputs("\n", pihole_conf);
 	}
 
 	if(conf->dns.cache.optimizer.v.ui > 0u)
 	{
 		fputs("# Use stale cache entries for a given number of seconds to optimize cache utilization\n", pihole_conf);
 		fprintf(pihole_conf, "use-stale-cache=%u\n", conf->dns.cache.optimizer.v.ui);
+		fputs("\n", pihole_conf);
 	}
 
 	const char *interface = conf->dns.interface.v.s;
@@ -402,16 +475,18 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
 		fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
 		fputs("# is not known from /etc/hosts or DHCP a NXDOMAIN is returned\n", pihole_conf);
-			fprintf(pihole_conf, "local=/%s/\n",
-				conf->dhcp.domain.v.s);
-		fputs("\n", pihole_conf);
+		if(strlen(conf->dns.domain.v.s))
+			fprintf(pihole_conf, "local=/%s/\n\n", conf->dns.domain.v.s);
+		else
+			fputs("\n", pihole_conf);
 	}
 
-	if(strlen(conf->dhcp.domain.v.s) > 0 && strcasecmp("none", conf->dhcp.domain.v.s) != 0)
+	// Add domain to DNS server. It will also be used for DHCP if the DHCP
+	// server is enabled below
+	if(strlen(conf->dns.domain.v.s) > 0)
 	{
-		fputs("# DNS domain for the DHCP server\n", pihole_conf);
-		fprintf(pihole_conf, "domain=%s\n", conf->dhcp.domain.v.s);
-		fputs("\n", pihole_conf);
+		fputs("# DNS domain for both the DNS and DHCP server\n", pihole_conf);
+		fprintf(pihole_conf, "domain=%s\n\n", conf->dns.domain.v.s);
 	}
 
 	if(conf->dhcp.active.v.b)
@@ -419,12 +494,25 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# DHCP server setting\n", pihole_conf);
 		fputs("dhcp-authoritative\n", pihole_conf);
 		fputs("dhcp-leasefile="DHCPLEASESFILE"\n", pihole_conf);
-		fprintf(pihole_conf, "dhcp-range=%s,%s,%s\n",
-		        conf->dhcp.start.v.s,
-				conf->dhcp.end.v.s,
-				conf->dhcp.leaseTime.v.s);
-		fprintf(pihole_conf, "dhcp-option=option:router,%s\n",
-		        conf->dhcp.router.v.s);
+		char start[INET_ADDRSTRLEN] = { 0 },
+		     end[INET_ADDRSTRLEN] = { 0 },
+		     router[INET_ADDRSTRLEN] = { 0 };
+		inet_ntop(AF_INET, &conf->dhcp.start.v.in_addr, start, INET_ADDRSTRLEN);
+		inet_ntop(AF_INET, &conf->dhcp.end.v.in_addr, end, INET_ADDRSTRLEN);
+		inet_ntop(AF_INET, &conf->dhcp.router.v.in_addr, router, INET_ADDRSTRLEN);
+		fprintf(pihole_conf, "dhcp-range=%s,%s", start, end);
+		// Net mask is optional, only add if it is not 0.0.0.0
+		const struct in_addr inaddr_empty = {0};
+		if(memcmp(&conf->dhcp.netmask.v.in_addr, &inaddr_empty, sizeof(inaddr_empty)) != 0)
+		{
+			char netmask[INET_ADDRSTRLEN] = { 0 };
+			inet_ntop(AF_INET, &conf->dhcp.netmask.v.in_addr, netmask, INET_ADDRSTRLEN);
+			fprintf(pihole_conf, ",%s", netmask);
+		}
+		// Lease time is optional, only add it if it is set
+		if(strlen(conf->dhcp.leaseTime.v.s) > 0)
+			fprintf(pihole_conf, ",%s", conf->dhcp.leaseTime.v.s);
+		fprintf(pihole_conf, "\ndhcp-option=option:router,%s\n", router);
 
 		if(conf->dhcp.rapidCommit.v.b)
 			fputs("dhcp-rapid-commit\n", pihole_conf);
@@ -501,25 +589,27 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	fputs("# Pi-hole implements this via the dnsmasq option \"bogus-priv\" above\n", pihole_conf);
 	fputs("# (if enabled!) as this option also covers IPv6.\n", pihole_conf);
 	fputs("\n", pihole_conf);
-	fputs("# OpenWRT furthermore blocks    bind, local, onion    domains\n", pihole_conf);
+	fputs("# OpenWRT furthermore blocks bind, local, onion domains\n", pihole_conf);
 	fputs("# see https://git.openwrt.org/?p=openwrt/openwrt.git;a=blob_plain;f=package/network/services/dnsmasq/files/rfc6761.conf;hb=HEAD\n", pihole_conf);
 	fputs("# and https://www.iana.org/assignments/special-use-domain-names/special-use-domain-names.xhtml\n", pihole_conf);
 	fputs("# We do not include the \".local\" rule ourselves, see https://github.com/pi-hole/pi-hole/pull/4282#discussion_r689112972\n", pihole_conf);
 	fputs("server=/bind/\n", pihole_conf);
 	fputs("server=/onion/\n", pihole_conf);
+	fputs("\n", pihole_conf);
 
-	if(directory_exists("/etc/dnsmasq.d"))
+	if(directory_exists("/etc/dnsmasq.d") && conf->misc.etc_dnsmasq_d.v.b)
 	{
-		// Load possible additional user scripts from /etc/dnsmasq.d if
-		// the directory exists (it may not, e.g., in a container)
-		fputs("# Load possible additional user scripts\n", pihole_conf);
+		// Load additional user scripts from /etc/dnsmasq.d if the
+		// directory exists (it may not, e.g., in a container)
+		fputs("# Load additional user scripts\n", pihole_conf);
 		fputs("conf-dir=/etc/dnsmasq.d\n", pihole_conf);
 		fputs("\n", pihole_conf);
 	}
 
 	// Add option for caching all DNS records
 	fputs("# Cache all DNS records\n", pihole_conf);
-	fputs("cache-rr=ANY\n\n", pihole_conf);
+	fputs("cache-rr=ANY\n", pihole_conf);
+	fputs("\n", pihole_conf);
 
 	// Add option for PCAP file recording
 	if(strlen(conf->files.pcap.v.s) > 0)
@@ -565,6 +655,13 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		return false;
 	}
 
+	// Close file
+	if(fclose(pihole_conf) != 0)
+	{
+		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
+		return false;
+	}
+
 	log_debug(DEBUG_CONFIG, "Testing "DNSMASQ_TEMP_CONF);
 	if(test_config && !test_dnsmasq_config(errbuf))
 	{
@@ -572,21 +669,26 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		return false;
 	}
 
-	// Rotate old config files
-	rotate_files(DNSMASQ_PH_CONFIG, NULL);
-
-	log_debug(DEBUG_CONFIG, "Installing "DNSMASQ_TEMP_CONF" to "DNSMASQ_PH_CONFIG);
-	if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
+	// Check if the new config file is different from the old one
+	// Skip the first 24 lines as they contain the header
+	if(files_different(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG, 24))
 	{
-		log_err("Cannot install dnsmasq config file: %s", strerror(errno));
-		return false;
+		if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
+		{
+			log_err("Cannot install dnsmasq config file: %s", strerror(errno));
+			return false;
+		}
+		log_debug(DEBUG_CONFIG, "Config file written to "DNSMASQ_PH_CONFIG);
 	}
-
-	// Close file
-	if(fclose(pihole_conf) != 0)
+	else
 	{
-		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
-		return false;
+		log_debug(DEBUG_CONFIG, "dnsmasq.conf unchanged");
+		// Remove temporary config file
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+		{
+			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			return false;
+		}
 	}
 	return true;
 }
@@ -719,8 +821,8 @@ bool read_legacy_cnames_config(void)
 bool read_legacy_custom_hosts_config(void)
 {
 	// Check if file exists, if not, there is nothing to do
-	const char *path = DNSMASQ_CUSTOM_LIST;
-	const char *target = DNSMASQ_CUSTOM_LIST".bck";
+	const char *path = DNSMASQ_CUSTOM_LIST_LEGACY;
+	const char *target = DNSMASQ_CUSTOM_LIST_LEGACY".bck";
 	if(!file_exists(path))
 		return true;
 
@@ -782,22 +884,30 @@ bool read_legacy_custom_hosts_config(void)
 
 bool write_custom_list(void)
 {
-	// Rotate old hosts files
-	rotate_files(DNSMASQ_CUSTOM_LIST, NULL);
+	// Ensure that the directory exists
+	if(!directory_exists(DNSMASQ_HOSTSDIR))
+	{
+		log_debug(DEBUG_CONFIG, "Creating directory "DNSMASQ_HOSTSDIR);
+		if(mkdir(DNSMASQ_HOSTSDIR, 0755) != 0)
+		{
+			log_err("Cannot create directory "DNSMASQ_HOSTSDIR": %s", strerror(errno));
+			return false;
+		}
+	}
 
-	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST" for writing");
-	FILE *custom_list = fopen(DNSMASQ_CUSTOM_LIST, "w");
+	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_CUSTOM_LIST_LEGACY".tmp for writing");
+	FILE *custom_list = fopen(DNSMASQ_CUSTOM_LIST_LEGACY".tmp", "w");
 	// Return early if opening failed
 	if(!custom_list)
 	{
-		log_err("Cannot open "DNSMASQ_CUSTOM_LIST" for writing, unable to update custom.list: %s", strerror(errno));
+		log_err("Cannot open "DNSMASQ_CUSTOM_LIST_LEGACY".tmp for writing, unable to update custom.list: %s", strerror(errno));
 		return false;
 	}
 
 	// Lock file, may block if the file is currently opened
 	if(flock(fileno(custom_list), LOCK_EX) != 0)
 	{
-		log_err("Cannot open "DNSMASQ_CUSTOM_LIST" in exclusive mode: %s", strerror(errno));
+		log_err("Cannot open "DNSMASQ_CUSTOM_LIST_LEGACY".tmp in exclusive mode: %s", strerror(errno));
 		fclose(custom_list);
 		return false;
 	}
@@ -838,5 +948,28 @@ bool write_custom_list(void)
 		log_err("Cannot close custom.list: %s", strerror(errno));
 		return false;
 	}
+
+	// Check if the new config file is different from the old one
+	// Skip the first 24 lines as they contain the header
+	if(files_different(DNSMASQ_CUSTOM_LIST_LEGACY".tmp", DNSMASQ_CUSTOM_LIST, 24))
+	{
+		if(rename(DNSMASQ_CUSTOM_LIST_LEGACY".tmp", DNSMASQ_CUSTOM_LIST) != 0)
+		{
+			log_err("Cannot install custom.list: %s", strerror(errno));
+			return false;
+		}
+		log_debug(DEBUG_CONFIG, "HOSTS file written to "DNSMASQ_CUSTOM_LIST);
+	}
+	else
+	{
+		log_debug(DEBUG_CONFIG, "custom.list unchanged");
+		// Remove temporary config file
+		if(remove(DNSMASQ_CUSTOM_LIST_LEGACY".tmp") != 0)
+		{
+			log_err("Cannot remove temporary custom.list: %s", strerror(errno));
+			return false;
+		}
+	}
+
 	return true;
 }

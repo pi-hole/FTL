@@ -623,3 +623,66 @@ char * __attribute__((malloc)) get_hwmon_target(const char *path)
 
 	return target;
 }
+
+// Returns true if the files have different contents
+// from specifies from which line number the files should be compared
+bool files_different(const char *pathA, const char* pathB, unsigned int from)
+{
+	// Check if both files exist
+	if(!file_exists(pathA) || !file_exists(pathB))
+		return true;
+
+	// Check if both files are identical
+	if(strcmp(pathA, pathB) == 0)
+		return false;
+
+	// Open both files
+	FILE *fpA = fopen(pathA, "r");
+	if(fpA == NULL)
+	{
+		log_warn("files_different(): Failed to open \"%s\" for reading: %s", pathA, strerror(errno));
+		return true;
+	}
+	FILE *fpB = fopen(pathB, "r");
+	if(fpB == NULL)
+	{
+		log_warn("files_different(): Failed to open \"%s\" for reading: %s", pathB, strerror(errno));
+		fclose(fpA);
+		return true;
+	}
+
+	// Compare both files line by line
+	char *lineA = NULL;
+	size_t lenA = 0;
+	ssize_t readA;
+	char *lineB = NULL;
+	size_t lenB = 0;
+	ssize_t readB;
+	bool different = false;
+	while((readA = getline(&lineA, &lenA, fpA)) != -1 &&
+	      (readB = getline(&lineB, &lenB, fpB)) != -1)
+	{
+		// Skip lines until we reach the requested line number
+		if(from > 0)
+		{
+			from--;
+			continue;
+		}
+		// Compare lines
+		if(strcmp(lineA, lineB) != 0)
+		{
+			different = true;
+			break;
+		}
+	}
+
+	// Free memory
+	free(lineA);
+	free(lineB);
+
+	// Close files
+	fclose(fpA);
+	fclose(fpB);
+
+	return different;
+}

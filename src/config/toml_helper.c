@@ -47,6 +47,10 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	{
 		// Use global config file
 		strncpy(filename, GLOBALTOMLPATH, sizeof(filename));
+
+		// Append ".tmp" if we are writing
+		if(mode[0] == 'w')
+			strncat(filename, ".tmp", sizeof(filename));
 	}
 	else
 	{
@@ -148,17 +152,51 @@ static void printTOMLstring(FILE *fp, const char *s, const bool toml)
 			continue;
 		}
 
-		// Escape special characters
+		// Escape special characters with simple escape sequences
 		switch (ch) {
-			case 0x08: fprintf(fp, "\\b"); continue;
-			case 0x09: fprintf(fp, "\\t"); continue;
-			case 0x0a: fprintf(fp, "\\n"); continue;
-			case 0x0c: fprintf(fp, "\\f"); continue;
-			case 0x0d: fprintf(fp, "\\r"); continue;
-			case '"':  fprintf(fp, "\\\""); continue;
-			case '\\': fprintf(fp, "\\\\"); continue;
-			default:   fprintf(fp, "\\0x%02x", ch & 0xff); continue;
+			case '\b': fputs("\\b", fp); continue;
+			case '\t': fputs("\\t", fp); continue;
+			case '\n': fputs("\\n", fp); continue;
+			case '\f': fputs("\\f", fp); continue;
+			case '\r': fputs("\\r", fp); continue;
+			case '"':  fputs("\\\"", fp); continue;
+			case '\\': fputs("\\\\", fp); continue;
 		}
+
+#ifndef TOML_UTF8
+		// The Universal Coded Character Set (UCS, Unicode) is a
+		// standard set of characters defined by the international
+		// standard ISO/IEC 10646, Information technology — Universal
+		// Coded Character Set (UCS) (plus amendments to that standard),
+		// which is the basis of many character encodings, improving as
+		// characters from previously unrepresented typing systems are
+		// added.
+		// The following code converts a UTF-8 character to UCS and
+		// prints it as \UXXXXXXXX
+		int64_t ucs;
+		int bytes = toml_utf8_to_ucs(s, len, &ucs);
+		if(bytes > 0)
+		{
+			// Print 4-byte UCS as \UXXXXXXXX
+			fprintf(fp, "\\U%08X", (uint32_t)ucs);
+			// Advance string pointer
+			s += bytes - 1;
+			// Decrease remaining string length
+			len -= bytes - 1;
+			continue;
+		}
+#else
+		// Escape all other control characters as short 2-byte
+		// UCS sequences
+		if(iscntrl(ch))
+		{
+			fprintf(fp, "\\u%04X", ch);
+			continue;
+		}
+
+		// Print remaining characters as is
+		putc(ch, fp);
+#endif
 	}
 	if(toml) fprintf(fp, "\"");
 }
@@ -389,6 +427,13 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 			break;
 		case CONF_STRUCT_IN_ADDR:
 		{
+			// Special case: 0.0.0.0 -> return empty string
+			if(v->in_addr.s_addr == INADDR_ANY)
+			{
+				printTOMLstring(fp, "", toml);
+				break;
+			}
+			// else: normal address
 			char addr4[INET_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET, &v->in_addr, addr4, INET_ADDRSTRLEN);
 			printTOMLstring(fp, addr4, toml);
@@ -396,6 +441,13 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 		}
 		case CONF_STRUCT_IN6_ADDR:
 		{
+			// Special case: :: -> return empty string
+			if(memcmp(&v->in6_addr, &in6addr_any, sizeof(in6addr_any)) == 0)
+			{
+				printTOMLstring(fp, "", toml);
+				break;
+			}
+			// else: normal address
 			char addr6[INET6_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET6, &v->in6_addr, addr6, INET6_ADDRSTRLEN);
 			printTOMLstring(fp, addr6, toml);
@@ -679,7 +731,12 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			const toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
-				if(inet_pton(AF_INET, val.u.s, &addr4))
+				if(strlen(val.u.s) == 0)
+				{
+					// Special case: empty string -> 0.0.0.0
+					conf_item->v.in_addr.s_addr = INADDR_ANY;
+				}
+				else if(inet_pton(AF_INET, val.u.s, &addr4))
 					memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
 				else
 					log_warn("Config %s is invalid (not of type IPv4 address)", conf_item->k);
@@ -695,7 +752,12 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			const toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
-				if(inet_pton(AF_INET6, val.u.s, &addr6))
+				if(strlen(val.u.s) == 0)
+				{
+					// Special case: empty string -> ::
+					memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+				}
+				else if(inet_pton(AF_INET6, val.u.s, &addr6))
 					memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 				else
 					log_warn("Config %s is invalid (not of type IPv6 address)", conf_item->k);
@@ -935,7 +997,12 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };
-			if(inet_pton(AF_INET, envvar, &addr4))
+			if(strlen(envvar) == 0)
+			{
+				// Special case: empty string -> 0.0.0.0
+				conf_item->v.in_addr.s_addr = INADDR_ANY;
+			}
+			else if(inet_pton(AF_INET, envvar, &addr4))
 				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
 			else
 				log_warn("ENV %s is invalid (not of type IPv4 address)", envkey);
@@ -944,7 +1011,12 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 		case CONF_STRUCT_IN6_ADDR:
 		{
 			struct in6_addr addr6 = { 0 };
-			if(inet_pton(AF_INET6, envvar, &addr6))
+			if(strlen(envvar) == 0)
+			{
+				// Special case: empty string -> ::
+				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+			}
+			else if(inet_pton(AF_INET6, envvar, &addr6))
 				memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 			else
 				log_warn("ENV %s is invalid (not of type IPv6 address)", envkey);

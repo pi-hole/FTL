@@ -10,7 +10,7 @@
 # Please see LICENSE file for your rights under this license.
 
 import io
-import pprint
+import ipaddress
 import random
 import zipfile
 from libs.openAPI import openApi
@@ -152,8 +152,8 @@ class ResponseVerifyer():
 
 			# Check for properties in FTL that are not in the API specs
 			for property in FTLflat.keys():
-				if property not in YAMLflat.keys() and len([p.startswith(property + ".") for p in YAMLflat.keys()]) == 0:
-					self.errors.append("Property '" + property + "' missing in the API specs (have " + ",".join(YAMLflat.keys()) + ")")
+				if property not in YAMLflat.keys():
+					self.errors.append("Property '" + property + "' missing in the API specs")
 
 		elif expected_mimetype == "application/zip":
 			file_like_object = io.BytesIO(FTLresponse)
@@ -172,7 +172,7 @@ class ResponseVerifyer():
 						if expected_file not in zipfile_obj.namelist():
 							self.errors.append("File " + expected_file + " is missing in received archive.")
 					pihole_toml = zipfile_obj.read("etc/pihole/pihole.toml")
-					if not pihole_toml.startswith(b"# This file is managed by pihole-FTL"):
+					if not pihole_toml.startswith(b"# Pi-hole configuration file (v"):
 						self.errors.append("Received ZIP file's pihole.toml starts with wrong header")
 				except Exception as err:
 					self.errors.append("Error during ZIP analysis: " + str(err))
@@ -221,8 +221,35 @@ class ResponseVerifyer():
 		return self.errors
 
 
+	# Check if a string is a valid IPv4 address
+	def valid_ipv4(self, addr: str) -> bool:
+		# Empty string is valid (0.0.0.0)
+		if len(addr) == 0:
+			return True
+		try:
+			if type(ipaddress.ip_address(addr)) is ipaddress.IPv4Address:
+				return True
+		except ValueError:
+			pass
+		return False
+
+	# Check if a string is a valid IPv6 address
+	def valid_ipv6(self, addr: str) -> bool:
+		# Empty string is valid (::)
+		if len(addr) == 0:
+			return True
+		try:
+			if type(ipaddress.ip_address(addr)) is ipaddress.IPv6Address:
+				return True
+		except ValueError:
+			pass
+		return False
+
+
 	# Verify a single property's type
-	def verify_type(self, prop_type: any, yaml_type: str, yaml_nullable: bool):
+	def verify_type(self, prop: any, yaml_type: str, yaml_nullable: bool, yaml_format: str = None):
+		# Get the type of the property
+		prop_type = type(prop)
 		# None is an acceptable reply when this is specified in the API specs
 		if prop_type is type(None) and yaml_nullable:
 			return True
@@ -230,6 +257,14 @@ class ResponseVerifyer():
 		if yaml_type not in self.YAML_TYPES:
 			self.errors.append("Property type \"" + yaml_type + "\" is not valid in OpenAPI specs")
 			return False
+		if yaml_format is not None:
+			# Check if the format is correct
+			if yaml_format == "ipv4" and not self.valid_ipv4(prop):
+				self.errors.append("Property \"" + str(prop) + "\" is not a valid IPv4 address")
+				return False
+			elif yaml_format == "ipv6" and not self.valid_ipv6(prop):
+				self.errors.append("Property \"" + str(prop) + "\" is not a valid IPv6 address")
+				return False
 		return prop_type in self.YAML_TYPES[yaml_type]
 
 
@@ -296,6 +331,9 @@ class ResponseVerifyer():
 				for j in FTLprop[i]:
 					if not self.verify_property(YAMLprop['items']['properties'], YAMLexamples, FTLprop[i], props + [i, str(j)]):
 						all_okay = False
+
+			# Add this property to the YAML response
+			self.YAMLresponse[flat_path] = []
 		else:
 			# Check this property
 
@@ -306,17 +344,19 @@ class ResponseVerifyer():
 			# if not defined as string, integer, etc.)
 			yaml_nullable = 'nullable' in YAMLprop and YAMLprop['nullable'] == True
 
+			# Get format of this property (if defined)
+			yaml_format = YAMLprop['format'] if 'format' in YAMLprop else YAMLprop['x-format'] if 'x-format' in YAMLprop else None
+
 			# Add this property to the YAML response
 			self.YAMLresponse[flat_path] = []
 
 			# Check type of YAML example (if defined)
 			if 'example' in YAMLprop:
-				example_type = type(YAMLprop['example'])
 				# Check if the type of the example matches the
 				# type we defined in the API specs
 				self.YAMLresponse[flat_path].append(YAMLprop['example'])
-				if not self.verify_type(example_type, yaml_type, yaml_nullable):
-					self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + ("True" if yaml_nullable else "False") + ")")
+				if not self.verify_type(YAMLprop['example'], yaml_type, yaml_nullable, yaml_format):
+					self.errors.append(f"API example ({str(type(YAMLprop['example']))}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + ("True" if yaml_nullable else "False") + ")")
 					return False
 
 			# Check type of externally defined YAML examples (next to schema)
@@ -340,16 +380,14 @@ class ResponseVerifyer():
 					if skip_this:
 						continue
 					# Check if the type of the example matches the type we defined in the API specs
-					example_type = type(example)
 					self.YAMLresponse[flat_path].append(example)
-					if not self.verify_type(example_type, yaml_type, yaml_nullable):
-						self.errors.append(f"API example ({str(example_type)}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + ("True" if yaml_nullable else "False") + ")")
+					if not self.verify_type(example, yaml_type, yaml_nullable, yaml_format):
+						self.errors.append(f"API example ({str(type(example))}) does not match defined type ({yaml_type}) in {flat_path} (nullable: " + ("True" if yaml_nullable else "False") + ")")
 						return False
 
 			# Compare type of FTL's reply against what we defined in the API specs
-			ftl_type = type(FTLprop)
-			if not self.verify_type(ftl_type, yaml_type, yaml_nullable):
-				self.errors.append(f"FTL's reply ({str(ftl_type)}) does not match defined type ({yaml_type}) in {flat_path}")
+			if not self.verify_type(FTLprop, yaml_type, yaml_nullable, yaml_format):
+				self.errors.append(f"FTL's reply ({str(type(FTLprop))}) does not match defined type ({yaml_type}) in {flat_path}")
 				return False
 		return all_okay
 
