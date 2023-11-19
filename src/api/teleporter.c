@@ -213,8 +213,32 @@ static int api_teleporter_POST(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Process what we received
-	return process_received_zip(api, &data);
+	// Check if we received something that claims to be a ZIP archive
+	// - filename
+	//   - shoud be at least 12 characters long,
+	//   - should start in "pi-hole_",
+	//   - have "_teleporter_" in the middle, and
+	//   - end in ".zip"
+	// - the data itself
+	//   - should be at least 40 bytes long
+	//   - start with 0x04034b50 (local file header signature, see https://pkware.cachefly.net/webdocs/APPNOTE/APPNOTE-6.3.9.TXT)
+	if(strlen(data.filename) >= 12 &&
+	   strncmp(data.filename, "pi-hole_", 8) == 0 &&
+	   strstr(data.filename, "_teleporter_") != NULL &&
+	   strcmp(data.filename + strlen(data.filename) - 4, ".zip") == 0 &&
+	   data.filesize >= 40 &&
+	   memcmp(data.data, "\x50\x4b\x03\x04", 4) == 0)
+	{
+		return process_received_zip(api, &data);
+	}
+	else
+	{
+		free_upload_data(&data);
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Invalid file",
+		                       "The uploaded file does not appear to be a valid Pi-hole Teleporter archive");
+	}
 }
 
 static int process_received_zip(struct ftl_conn *api, struct upload_data *data)
