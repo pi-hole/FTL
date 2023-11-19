@@ -16,7 +16,7 @@
 // ERRBUF_SIZE
 #include "config/dnsmasq_config.h"
 
-#define MAXZIPSIZE (50u*1024*1024)
+#define MAXFILESIZE (50u*1024*1024)
 
 static int api_teleporter_GET(struct ftl_conn *api)
 {
@@ -58,9 +58,9 @@ static int api_teleporter_GET(struct ftl_conn *api)
 struct upload_data {
 	bool too_large;
 	char *sid;
-	char *zip_data;
-	char *zip_filename;
-	size_t zip_size;
+	char *data;
+	char *filename;
+	size_t filesize;
 };
 
 // Callback function for CivetWeb to determine which fields we want to receive
@@ -79,7 +79,7 @@ static int field_found(const char *key,
 	is_sid = false;
 	if(strcasecmp(key, "file") == 0 && filename && *filename)
 	{
-		data->zip_filename = strdup(filename);
+		data->filename = strdup(filename);
 		is_file = true;
 		return MG_FORM_FIELD_STORAGE_GET;
 	}
@@ -103,21 +103,21 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 
 	if(is_file)
 	{
-		if(data->zip_size + valuelen > MAXZIPSIZE)
+		if(data->filesize + valuelen > MAXFILESIZE)
 		{
-			log_warn("Uploaded Teleporter ZIP archive is too large (limit is %u bytes)",
-			         MAXZIPSIZE);
+			log_warn("Uploaded Teleporter file is too large (limit is %u bytes)",
+			         MAXFILESIZE);
 			data->too_large = true;
 			return MG_FORM_FIELD_HANDLE_ABORT;
 		}
-		// Allocate memory for the raw ZIP archive data
-		data->zip_data = realloc(data->zip_data, data->zip_size + valuelen);
-		// Copy the raw ZIP archive data
-		memcpy(data->zip_data + data->zip_size, value, valuelen);
-		// Store the size of the ZIP archive raw data
-		data->zip_size += valuelen;
-		log_debug(DEBUG_API, "Received ZIP archive (%zu bytes, buffer is now %zu bytes)",
-		          valuelen, data->zip_size);
+		// Allocate memory for the raw file data
+		data->data = realloc(data->data, data->filesize + valuelen);
+		// Copy the raw file data
+		memcpy(data->data + data->filesize, value, valuelen);
+		// Store the size of the file raw data
+		data->filesize += valuelen;
+		log_debug(DEBUG_API, "Received file (%zu bytes, buffer is now %zu bytes)",
+		          valuelen, data->filesize);
 	}
 	else if(is_sid)
 	{
@@ -143,23 +143,26 @@ static int field_stored(const char *path, long long file_size, void *user_data)
 static int free_upload_data(struct upload_data *data)
 {
 	// Free allocated memory
-	if(data->zip_filename)
+	if(data->filename)
 	{
-		free(data->zip_filename);
-		data->zip_filename = NULL;
+		free(data->filename);
+		data->filename = NULL;
 	}
 	if(data->sid)
 	{
 		free(data->sid);
 		data->sid = NULL;
 	}
-	if(data->zip_data)
+	if(data->data)
 	{
-		free(data->zip_data);
-		data->zip_data = NULL;
+		free(data->data);
+		data->data = NULL;
 	}
 	return 0;
 }
+
+// Private function prototypes
+static int process_received_zip(struct ftl_conn *api, struct upload_data *data);
 
 static int api_teleporter_POST(struct ftl_conn *api)
 {
@@ -170,7 +173,7 @@ static int api_teleporter_POST(struct ftl_conn *api)
 
 	// Disallow large ZIP archives (> 50 MB) to prevent DoS attacks.
 	// Typically, the ZIP archive size should be around 30-100 kB.
-	if(req_info->content_length > MAXZIPSIZE)
+	if(req_info->content_length > MAXFILESIZE)
 	{
 		free_upload_data(&data);
 		return send_json_error(api, 400,
@@ -191,7 +194,7 @@ static int api_teleporter_POST(struct ftl_conn *api)
 	}
 
 	// Check if we received something we consider being a file
-	if(data.zip_data == NULL || data.zip_size == 0)
+	if(data.data == NULL || data.filesize == 0)
 	{
 		free_upload_data(&data);
 		return send_json_error(api, 400,
@@ -209,28 +212,17 @@ static int api_teleporter_POST(struct ftl_conn *api)
 		                       "ZIP archive too large",
 		                       NULL);
 	}
-/*
-	// Set the payload to the SID we received (if available)
-	if(data.sid != NULL)
-	{
-		const size_t bufsize = strlen(data.sid) + 5;
-		api->payload.raw = calloc(bufsize, sizeof(char));
-		strncpy(api->payload.raw, "sid=", 5);
-		strncat(api->payload.raw, data.sid, bufsize - 4);
-	}
 
-	// Check if the client is authorized to use this API endpoint
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
-		free_upload_data(&data);
-		return send_json_unauthorized(api);
-	}
-*/
 	// Process what we received
+	return process_received_zip(api, &data);
+}
+
+static int process_received_zip(struct ftl_conn *api, struct upload_data *data)
+{
 	char hint[ERRBUF_SIZE];
 	memset(hint, 0, sizeof(hint));
 	cJSON *json_files = JSON_NEW_ARRAY();
-	const char *error = read_teleporter_zip(data.zip_data, data.zip_size, hint, json_files);
+	const char *error = read_teleporter_zip(data->data, data->filesize, hint, json_files);
 	if(error != NULL)
 	{
 		const size_t msglen = strlen(error) + strlen(hint) + 4;
@@ -242,7 +234,7 @@ static int api_teleporter_POST(struct ftl_conn *api)
 			strcat(msg, ": ");
 			strcat(msg, hint);
 		}
-		free_upload_data(&data);
+		free_upload_data(data);
 		return send_json_error_free(api, 400,
 		                            "bad_request",
 		                            "Invalid ZIP archive",
@@ -250,7 +242,7 @@ static int api_teleporter_POST(struct ftl_conn *api)
 	}
 
 	// Free allocated memory
-	free_upload_data(&data);
+	free_upload_data(data);
 
 	// Send response
 	cJSON *json = JSON_NEW_OBJECT();
