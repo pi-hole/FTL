@@ -20,6 +20,8 @@
 // valid_domain()
 #include "tools/gravity-parseList.h"
 
+#include <idna.h>
+
 static int api_list_read(struct ftl_conn *api,
                          const int code,
                          const enum gravity_list_type listtype,
@@ -403,17 +405,42 @@ static int api_list_write(struct ftl_conn *api,
 				                       it->valuestring);
 			}
 
-			// Validate domains
-			if((listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
-			    listtype == GRAVITY_DOMAINLIST_DENY_EXACT) &&
-			   !valid_domain(it->valuestring, strlen(it->valuestring), false))
+			if(listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
+			   listtype == GRAVITY_DOMAINLIST_DENY_EXACT)
 			{
-				if(allocated_json)
-					cJSON_free(row.items);
-				return send_json_error(api, 400, // 400 Bad Request
-				                       "bad_request",
-				                       "Invalid domain",
-				                       it->valuestring);
+				char *punycode = NULL;
+				const Idna_rc rc = idna_to_ascii_lz(it->valuestring, &punycode, 0);
+				if (rc != IDNA_SUCCESS)
+				{
+					// Invalid domain name
+					return send_json_error(api, 400,
+					                       "bad_request",
+					                       "Invalid request: Invalid domain name",
+					                       idna_strerror(rc));
+				}
+				// Convert punycode domain to lowercase
+				for(unsigned int i = 0u; i < strlen(punycode); i++)
+					punycode[i] = tolower(punycode[i]);
+
+				// Validate punycode domain
+				// This will reject domains like äöü{{{.com
+				// which convert to xn--{{{-pla4gpb.com
+				if(!valid_domain(punycode, strlen(punycode), false))
+				{
+					if(allocated_json)
+						cJSON_free(row.items);
+					return send_json_error(api, 400, // 400 Bad Request
+							"bad_request",
+							"Invalid domain",
+							it->valuestring);
+				}
+
+				// Replace domain with punycode version
+				if(!(it->type & cJSON_IsReference))
+					free(it->valuestring);
+				it->valuestring = punycode;
+				// Remove reference flag
+				it->type &= ~cJSON_IsReference;
 			}
 		}
 	}
