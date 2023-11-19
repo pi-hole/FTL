@@ -15,6 +15,10 @@
 #include "api/api.h"
 // ERRBUF_SIZE
 #include "config/dnsmasq_config.h"
+// inflate_buffer()
+#include "zip/gzip.h"
+// find_file_in_tar()
+#include "zip/tar.h"
 
 #define MAXFILESIZE (50u*1024*1024)
 
@@ -58,7 +62,7 @@ static int api_teleporter_GET(struct ftl_conn *api)
 struct upload_data {
 	bool too_large;
 	char *sid;
-	char *data;
+	uint8_t *data;
 	char *filename;
 	size_t filesize;
 };
@@ -163,6 +167,7 @@ static int free_upload_data(struct upload_data *data)
 
 // Private function prototypes
 static int process_received_zip(struct ftl_conn *api, struct upload_data *data);
+static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *data);
 
 static int api_teleporter_POST(struct ftl_conn *api)
 {
@@ -231,14 +236,31 @@ static int api_teleporter_POST(struct ftl_conn *api)
 	{
 		return process_received_zip(api, &data);
 	}
-	else
+	// Check if we received something that claims to be a TAR.GZ archive
+	// - filename
+	//   - shoud be at least 12 characters long,
+	//   - should start in "pi-hole-",
+	//   - have "-teleporter_" in the middle, and
+	//   - end in ".tar.gz"
+	// - the data itself
+	//   - should be at least 40 bytes long
+	//   - start with 0x8b1f (local file header signature, see https://www.ietf.org/rfc/rfc1952.txt)
+	else if(strlen(data.filename) >= 12 &&
+	        strncmp(data.filename, "pi-hole-", 8) == 0 &&
+	        strstr(data.filename, "-teleporter_") != NULL &&
+	        strcmp(data.filename + strlen(data.filename) - 7, ".tar.gz") == 0 &&
+	        data.filesize >= 40 &&
+	        memcmp(data.data, "\x1f\x8b", 2) == 0)
 	{
-		free_upload_data(&data);
-		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "Invalid file",
-		                       "The uploaded file does not appear to be a valid Pi-hole Teleporter archive");
+		return process_received_tar_gz(api, &data);
 	}
+
+	// else: invalid file
+	free_upload_data(&data);
+	return send_json_error(api, 400,
+	                       "bad_request",
+	                       "Invalid file",
+	                       "The uploaded file does not appear to be a valid Pi-hole Teleporter archive");
 }
 
 static int process_received_zip(struct ftl_conn *api, struct upload_data *data)
@@ -263,6 +285,42 @@ static int process_received_zip(struct ftl_conn *api, struct upload_data *data)
 		                            "bad_request",
 		                            "Invalid ZIP archive",
 		                            msg, true);
+	}
+
+	// Free allocated memory
+	free_upload_data(data);
+
+	// Send response
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "files", json_files);
+	JSON_SEND_OBJECT(json);
+}
+
+static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *data)
+{
+	// Try to decompress the received data
+	uint8_t *archive = NULL;
+	mz_ulong archive_size = 0u;
+	if(!inflate_buffer(data->data, data->filesize, &archive, &archive_size))
+	{
+		free_upload_data(data);
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Invalid GZIP archive",
+		                       "The uploaded file does not appear to be a valid gzip archive - decompression failed");
+	}
+
+	// Check if the decompressed data is a valid TAR archive
+	cJSON *json_files = list_files_in_tar(archive, archive_size);
+
+	// Print all files in the TAR archive
+	cJSON *file = NULL;
+	cJSON_ArrayForEach(file, json_files)
+	{
+		cJSON *name = cJSON_GetObjectItemCaseSensitive(file, "name");
+		cJSON *size = cJSON_GetObjectItemCaseSensitive(file, "size");
+		log_info("Found file in TAR archive: \"%s\" (%d bytes)",
+		          name->valuestring, size->valueint);
 	}
 
 	// Free allocated memory
