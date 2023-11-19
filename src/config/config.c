@@ -1344,7 +1344,7 @@ void readFTLconf(struct config *conf, const bool rewrite)
 	// If we cannot parse /etc/pihole.toml (due to missing or invalid syntax),
 	// we try to read the rotated files in /etc/pihole/config_backup starting at
 	// the most recent one and going back in time until we find a valid config
-	for(unsigned int i = 0; i < PLAIN_ROTATIONS; i++)
+	for(unsigned int i = 0; i < MAX_ROTATIONS; i++)
 	{
 		if(readFTLtoml(NULL, conf, NULL, rewrite, NULL, i))
 		{

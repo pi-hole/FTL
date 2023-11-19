@@ -26,8 +26,6 @@
 #include <sys/statvfs.h>
 // dirname()
 #include <libgen.h>
-// compression functions
-#include "zip/gzip.h"
 // sendfile()
 #include <fcntl.h>
 #include <sys/sendfile.h>
@@ -463,14 +461,6 @@ void rotate_files(const char *path, char **first_file)
 		if(i == 1 && first_file != NULL)
 			*first_file = strdup(new_path);
 
-		size_t old_path_len = strlen(old_path) + 4;
-		char *old_path_compressed = calloc(old_path_len, sizeof(char));
-		snprintf(old_path_compressed, old_path_len, "%s.gz", old_path);
-
-		size_t new_path_len = strlen(new_path) + 4;
-		char *new_path_compressed = calloc(new_path_len, sizeof(char));
-		snprintf(new_path_compressed, new_path_len, "%s.gz", new_path);
-
 		if(file_exists(old_path))
 		{
 			// Copy file to backup directory
@@ -505,46 +495,11 @@ void rotate_files(const char *path, char **first_file)
 
 			// Change ownership of file to pihole user
 			chown_pihole(new_path);
-
-			// Compress file if we are rotating a sufficiently old file
-			if(i > PLAIN_ROTATIONS)
-			{
-				log_debug(DEBUG_CONFIG, "Compressing %s -> %s",
-				          new_path, new_path_compressed);
-				if(deflate_file(new_path, new_path_compressed, false))
-				{
-					// On success, we remove the uncompressed file
-					remove(new_path);
-				}
-
-				// Change ownership of file to pihole user
-				chown_pihole(new_path_compressed);
-			}
-		}
-		else if(file_exists(old_path_compressed))
-		{
-			// Rename file
-			if(rename(old_path_compressed, new_path_compressed) < 0)
-			{
-				log_warn("Rotation %s -(MOVE)> %s failed: %s",
-				         old_path_compressed, new_path_compressed, strerror(errno));
-			}
-			else
-			{
-				// Log success if debug is enabled
-				log_debug(DEBUG_CONFIG, "Rotated %s -> %s",
-				          old_path_compressed, new_path_compressed);
-			}
-
-			// Change ownership of file to pihole user
-			chown_pihole(new_path_compressed);
 		}
 
 		// Free memory
 		free(old_path);
 		free(new_path);
-		free(old_path_compressed);
-		free(new_path_compressed);
 	}
 }
 

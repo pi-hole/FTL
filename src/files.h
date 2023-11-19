@@ -15,7 +15,6 @@
 // setmntent()
 #include <mntent.h>
 
-#define PLAIN_ROTATIONS 3
 #define MAX_ROTATIONS 15
 #define BACKUP_DIR "/etc/pihole/config_backups"
 
