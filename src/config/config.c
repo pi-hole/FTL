@@ -833,6 +833,7 @@ void initConfig(struct config *conf)
 	conf->webserver.domain.h = "On which domain is the web interface served?";
 	conf->webserver.domain.a = cJSON_CreateStringReference("<valid domain>");
 	conf->webserver.domain.t = CONF_STRING;
+	conf->webserver.domain.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.domain.d.s = (char*)"pi.hole";
 
 	conf->webserver.acl.k = "webserver.acl";
