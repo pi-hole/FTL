@@ -32,7 +32,7 @@ static const char MAGIC_CONST[] = "ustar"; // Modern GNU tar's magic const */
  * @param fileSize Pointer to a size_t variable to store the file size in
  * @return Pointer to the file data or NULL if not found
  */
-const uint8_t *find_file_in_tar(const uint8_t *tarData, const size_t tarSize,
+const char *find_file_in_tar(const uint8_t *tarData, const size_t tarSize,
                                 const char *fileName, size_t *fileSize)
 {
 	bool found = false;
@@ -76,7 +76,7 @@ const uint8_t *find_file_in_tar(const uint8_t *tarData, const size_t tarSize,
 
 	// File found in TAR - return pointer to file data and set fileSize
 	*fileSize = size;
-	return tarData + p + TAR_BLOCK_SIZE;
+	return tar + p + TAR_BLOCK_SIZE;
 }
 
 /**

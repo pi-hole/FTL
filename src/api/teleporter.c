@@ -323,6 +323,26 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		          name->valuestring, size->valueint);
 	}
 
+	// Parse adlist.json
+	size_t fileSize = 0u;
+	const char *adlist_json = find_file_in_tar(archive, archive_size, "adlist.json", &fileSize);
+	if(adlist_json != NULL)
+	{
+		cJSON *adlists = cJSON_ParseWithLength(adlist_json, fileSize);
+		if(adlists != NULL)
+		{
+			cJSON *adlist = NULL;
+			cJSON_ArrayForEach(adlist, adlists)
+			{
+				cJSON *address = cJSON_GetObjectItemCaseSensitive(adlist, "address");
+				cJSON *comment = cJSON_GetObjectItemCaseSensitive(adlist, "comment");
+				log_info("Found adlist in TAR archive: \"%s\" (%s)",
+				         address->valuestring, comment->valuestring);
+			}
+			cJSON_Delete(adlists);
+		}
+	}
+
 	// Free allocated memory
 	free_upload_data(data);
 
