@@ -74,10 +74,18 @@ static int api_list_read(struct ftl_conn *api,
 		}
 		else // domainlists
 		{
+			char *unicode = NULL;
+			const Idna_rc rc = idna_to_unicode_lzlz(table.domain, &unicode, 0);
 			JSON_COPY_STR_TO_OBJECT(row, "domain", table.domain);
+			if(rc == IDNA_SUCCESS)
+				JSON_COPY_STR_TO_OBJECT(row, "unicode", unicode);
+			else
+				JSON_COPY_STR_TO_OBJECT(row, "unicode", table.domain);
 			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
 			JSON_REF_STR_IN_OBJECT(row, "kind", table.kind);
 			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+			if(unicode != NULL)
+				free(unicode);
 		}
 
 		// Groups don't have the groups property
