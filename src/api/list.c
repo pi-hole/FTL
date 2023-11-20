@@ -524,7 +524,7 @@ int api_list(struct ftl_conn *api)
 	}
 	else if((api->item = startsWith("/api/domains/allow", api)) != NULL)
 	{
-			listtype = GRAVITY_DOMAINLIST_ALLOW_ALL;
+		listtype = GRAVITY_DOMAINLIST_ALLOW_ALL;
 	}
 	else if((api->item = startsWith("/api/domains/deny/exact", api)) != NULL)
 	{

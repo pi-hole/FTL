@@ -13,7 +13,7 @@
 #include "FTL.h"
 #include "webserver/cJSON/cJSON.h"
 
-const char *find_file_in_tar(const uint8_t *tar, const size_t tarSize, const char *fileName, size_t *fileSize);
-cJSON *list_files_in_tar(const uint8_t *tarData, const size_t tarSize);
+const char *find_file_in_tar(const uint8_t *tar, const size_t tarSize, const char *fileName, size_t *fileSize) __attribute__((nonnull (1,3,4)));
+cJSON *list_files_in_tar(const uint8_t *tarData, const size_t tarSize) __attribute__((nonnull (1)));
 
 #endif // TAR_H

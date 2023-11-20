@@ -32,8 +32,8 @@ static const char MAGIC_CONST[] = "ustar"; // Modern GNU tar's magic const */
  * @param fileSize Pointer to a size_t variable to store the file size in
  * @return Pointer to the file data or NULL if not found
  */
-const char *find_file_in_tar(const uint8_t *tarData, const size_t tarSize,
-                                const char *fileName, size_t *fileSize)
+const char * __attribute__((nonnull (1,3,4))) find_file_in_tar(const uint8_t *tarData, const size_t tarSize,
+                                                               const char *fileName, size_t *fileSize)
 {
 	bool found = false;
 	size_t size, p = 0, newOffset = 0;
@@ -85,7 +85,7 @@ const char *find_file_in_tar(const uint8_t *tarData, const size_t tarSize,
  * @param tarSize Size of the TAR archive in memory in bytes
  * @return Pointer to a cJSON array containing all file names with file size
  */
-cJSON *list_files_in_tar(const uint8_t *tarData, const size_t tarSize)
+cJSON * __attribute__((nonnull (1))) list_files_in_tar(const uint8_t *tarData, const size_t tarSize)
 {
 	cJSON *files = cJSON_CreateArray();
 	size_t size, p = 0, newOffset = 0;
