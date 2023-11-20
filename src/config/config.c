@@ -1304,18 +1304,7 @@ void initConfig(struct config *conf)
 
 		// Initialize config value with default one for all *except* the log file path
 		if(conf_item != &conf->files.log.ftl)
-		{
-			if(conf_item->t == CONF_JSON_STRING_ARRAY)
-				// JSON objects really need to be duplicated as the config
-				// structure stores only a pointer to memory somewhere else
-				conf_item->v.json = cJSON_Duplicate(conf_item->d.json, true);
-			else if(conf_item->t == CONF_STRING_ALLOCATED)
-				// Allocated string: Make our own copy
-				conf_item->v.s = strdup(conf_item->d.s);
-			else
-				// Ordinary value: Simply copy the union over
-				memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->d));
-		}
+			reset_config(conf_item);
 
 		// Parse and split paths
 		conf_item->p = gen_config_path(conf_item->k, '.');
@@ -1340,6 +1329,41 @@ void initConfig(struct config *conf)
 			log_err("Config option %s has NULL default string!", conf_item->k);
 			continue;
 		}
+
+		// Verify we have no default JSON pointers to NULL
+		if(conf_item->t == CONF_JSON_STRING_ARRAY && conf_item->d.json == NULL)
+		{
+			log_err("Config option %s has NULL default JSON array!", conf_item->k);
+			continue;
+		}
+	}
+}
+
+void reset_config(struct conf_item *conf_item)
+{
+	if(conf_item->t == CONF_JSON_STRING_ARRAY)
+	{
+		// Free allocated memory (if any)
+		if(conf_item->v.json != NULL)
+			cJSON_Delete(conf_item->v.json);
+
+		// JSON objects really need to be duplicated as the config
+		// structure stores only a pointer to memory somewhere else
+		conf_item->v.json = cJSON_Duplicate(conf_item->d.json, true);
+	}
+	else if(conf_item->t == CONF_STRING_ALLOCATED)
+	{
+		// Free allocated memory (if any)
+		if(conf_item->v.s != NULL)
+			free(conf_item->v.s);
+
+		// Allocated string: Make our own copy
+		conf_item->v.s = strdup(conf_item->d.s);
+	}
+	else
+	{
+		// Ordinary value: Simply copy the union over
+		memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->d));
 	}
 }
 

@@ -323,6 +323,7 @@ extern struct config config;
 void set_debug_flags(struct config *conf);
 void set_all_debug(struct config *conf, const bool status);
 void initConfig(struct config *conf);
+void reset_config(struct conf_item *conf_item);
 void readFTLconf(struct config *conf, const bool rewrite);
 bool getLogFilePath(void);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
