@@ -313,13 +313,13 @@ static struct teleporter_files {
 		.filename = "blacklist.exact.json",
 		.table_name = "domainlist",
 		.listtype = 1, // GRAVITY_DOMAINLIST_DENY_EXACT
-		.num_columns = 6,
+		.num_columns = 7,
 		.columns = { "id", "domain", "enabled", "date_added", "date_modified", "comment", "type" }
 	},{
 		.filename = "blacklist.regex.json",
 		.table_name = "domainlist",
 		.listtype = 3, // GRAVITY_DOMAINLIST_DENY_REGEX
-		.num_columns = 6,
+		.num_columns = 7,
 		.columns = { "id", "domain", "enabled", "date_added", "date_modified", "comment", "type" }
 	},{
 		.filename = "client.json",
@@ -349,13 +349,13 @@ static struct teleporter_files {
 		.filename = "whitelist.exact.json",
 		.table_name = "domainlist",
 		.listtype = 0, // GRAVITY_DOMAINLIST_ALLOW_EXACT
-		.num_columns = 6,
+		.num_columns = 7,
 		.columns = { "id", "domain", "enabled", "date_added", "date_modified", "comment", "type" }
 	},{
 		.filename = "whitelist.regex.json",
 		.table_name = "domainlist",
 		.listtype = 2, // GRAVITY_DOMAINLIST_ALLOW_REGEX
-		.num_columns = 6,
+		.num_columns = 7,
 		.columns = { "id", "domain", "enabled", "date_added", "date_modified", "comment", "type" }
 	}
 };
@@ -371,11 +371,6 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 
 	// Check if the JSON array is empty, if so, we can return early
 	const int num_entries = cJSON_GetArraySize(json);
-	if(num_entries == 0)
-	{
-		log_info("import_json_table(%s): JSON array is empty", file->filename);
-		return true;
-	}
 
 	// Check if all the JSON entries contain all the expected columns
 	cJSON *json_object = NULL;
@@ -437,6 +432,7 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 	if(file->listtype < 0)
 	{
 		// Delete all entries in the table
+		log_debug(DEBUG_API, "import_json_table(%s): Deleting all entries from table \"%s\"", file->filename, file->table_name);
 		if(dbquery(db, "DELETE FROM \"%s\";", file->table_name) != SQLITE_OK)
 		{
 			log_err("import_json_table(%s): Unable to delete entries from table \"%s\": %s",
@@ -448,6 +444,7 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 	else
 	{
 		// Delete all entries in the table of the same type
+		log_debug(DEBUG_API, "import_json_table(%s): Deleting all entries from table \"%s\" of type %d", file->filename, file->table_name, file->listtype);
 		if(dbquery(db, "DELETE FROM \"%s\" WHERE type = %d;", file->table_name, file->listtype) != SQLITE_OK)
 		{
 			log_err("import_json_table(%s): Unable to delete entries from table \"%s\": %s",
@@ -540,9 +537,20 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 					return false;
 				}
 			}
+			else if(cJSON_IsNull(json_value))
+			{
+				// Bind NULL value
+				if(sqlite3_bind_null(stmt, i + 1) != SQLITE_OK)
+				{
+					log_err("Unable to bind NULL value to SQL statement: %s", sqlite3_errmsg(db));
+					sqlite3_finalize(stmt);
+					sqlite3_close(db);
+					return false;
+				}
+			}
 			else
 			{
-				log_err("Unable to bind value to SQL statement: %s", sqlite3_errmsg(db));
+				log_err("Unable to bind value to SQL statement: type = %X", (unsigned int)json_value->type & 0xFF);
 				sqlite3_finalize(stmt);
 				sqlite3_close(db);
 				return false;
@@ -604,12 +612,11 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		                       "The uploaded file does not appear to be a valid gzip archive - decompression failed");
 	}
 
-	// Check if the decompressed data is a valid TAR archive
-	cJSON *json_files = list_files_in_tar(archive, archive_size);
-
 	// Print all files in the TAR archive if in debug mode
 	if(config.debug.api.v.b)
 	{
+		cJSON *json_files = list_files_in_tar(archive, archive_size);
+
 		cJSON *file = NULL;
 		cJSON_ArrayForEach(file, json_files)
 		{
@@ -661,6 +668,8 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		if(file != NULL && fileSize > 0u)
 		{
 			// Write file to disk
+			log_debug(DEBUG_API, "Writing file \"%s\" (%zu bytes) to \"%s\"",
+			          extract_files[i].archive_name, fileSize, extract_files[i].destination);
 			FILE *fp = fopen(extract_files[i].destination, "wb");
 			if(fp == NULL)
 			{

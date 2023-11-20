@@ -118,7 +118,6 @@ cJSON * __attribute__((nonnull (1))) list_files_in_tar(const uint8_t *tarData, c
 			newOffset += TAR_BLOCK_SIZE;
 
 		// Add file name to cJSON array
-		log_info("Found file '%s' with size %zu", name, size);
 		cJSON *file = cJSON_CreateObject();
 		cJSON_AddItemToObject(file, "name", cJSON_CreateString(name));
 		cJSON_AddItemToObject(file, "size", cJSON_CreateNumber(size));
