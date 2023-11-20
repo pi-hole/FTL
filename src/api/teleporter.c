@@ -223,17 +223,11 @@ static int api_teleporter_POST(struct ftl_conn *api)
 	}
 
 	// Check if we received something that claims to be a ZIP archive
-	// - filename
-	//   - should be at least 12 characters long,
-	//   - should start in "pi-hole_",
-	//   - have "_teleporter_" in the middle, and
-	//   - end in ".zip"
+	// - filename should end in ".zip"
 	// - the data itself
 	//   - should be at least 40 bytes long
 	//   - start with 0x04034b50 (local file header signature, see https://pkware.cachefly.net/webdocs/APPNOTE/APPNOTE-6.3.9.TXT)
-	if(strlen(data.filename) >= 12 &&
-	   strncmp(data.filename, "pi-hole_", 8) == 0 &&
-	   strstr(data.filename, "_teleporter_") != NULL &&
+	if(strlen(data.filename) > 4 &&
 	   strcmp(data.filename + strlen(data.filename) - 4, ".zip") == 0 &&
 	   data.filesize >= 40 &&
 	   memcmp(data.data, "\x50\x4b\x03\x04", 4) == 0)
@@ -241,17 +235,11 @@ static int api_teleporter_POST(struct ftl_conn *api)
 		return process_received_zip(api, &data);
 	}
 	// Check if we received something that claims to be a TAR.GZ archive
-	// - filename
-	//   - should be at least 12 characters long,
-	//   - should start in "pi-hole-",
-	//   - have "-teleporter_" in the middle, and
-	//   - end in ".tar.gz"
+	// - filename should end in ".tar.gz"
 	// - the data itself
 	//   - should be at least 40 bytes long
 	//   - start with 0x8b1f (local file header signature, see https://www.ietf.org/rfc/rfc1952.txt)
-	else if(strlen(data.filename) >= 12 &&
-	        strncmp(data.filename, "pi-hole-", 8) == 0 &&
-	        strstr(data.filename, "-teleporter_") != NULL &&
+	else if(strlen(data.filename) > 7 &&
 	        strcmp(data.filename + strlen(data.filename) - 7, ".tar.gz") == 0 &&
 	        data.filesize >= 40 &&
 	        memcmp(data.data, "\x1f\x8b", 2) == 0)
