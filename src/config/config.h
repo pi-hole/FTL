@@ -38,6 +38,9 @@
 // characters will be replaced by their UTF-8 escape sequences (UCS-2)
 #define TOML_UTF8
 
+// Location of the legacy (pre-v6.0) config file
+#define GLOBALCONFFILE_LEGACY "/etc/pihole/pihole-FTL.conf"
+
 union conf_value {
 	bool b;                                     // boolean value
 	int i;                                      // integer value

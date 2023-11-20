@@ -224,7 +224,7 @@ static int api_teleporter_POST(struct ftl_conn *api)
 
 	// Check if we received something that claims to be a ZIP archive
 	// - filename
-	//   - shoud be at least 12 characters long,
+	//   - should be at least 12 characters long,
 	//   - should start in "pi-hole_",
 	//   - have "_teleporter_" in the middle, and
 	//   - end in ".zip"
@@ -242,7 +242,7 @@ static int api_teleporter_POST(struct ftl_conn *api)
 	}
 	// Check if we received something that claims to be a TAR.GZ archive
 	// - filename
-	//   - shoud be at least 12 characters long,
+	//   - should be at least 12 characters long,
 	//   - should start in "pi-hole-",
 	//   - have "-teleporter_" in the middle, and
 	//   - end in ".tar.gz"
@@ -634,27 +634,73 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	}
 
 	// Parse JSON files in the TAR archive
+	cJSON *imported_files = JSON_NEW_ARRAY();
 	for(size_t i = 0; i < sizeof(teleporter_v5_files) / sizeof(struct teleporter_files); i++)
 	{
 		size_t fileSize = 0u;
 		cJSON *json = NULL;
 		const char *file = find_file_in_tar(archive, archive_size, teleporter_v5_files[i].filename, &fileSize);
 		if(file != NULL && fileSize > 0u && (json = cJSON_ParseWithLength(file, fileSize)) != NULL)
-			import_json_table(json, &teleporter_v5_files[i]);
+			if(import_json_table(json, &teleporter_v5_files[i]))
+				JSON_COPY_STR_TO_ARRAY(imported_files, teleporter_v5_files[i].filename);
 	}
 
-	// Further files to process if present:
-	// custom.list
-	// dhcp.leases
-	// pihole-FTL.conf
-	// setupVars.conf
+	// Temporarily write further files to to disk so we can import them on restart
+	struct {
+		const char *archive_name;
+		const char *destination;
+	} extract_files[] = {
+		{
+			.archive_name = "custom.list",
+			.destination = DNSMASQ_CUSTOM_LIST_LEGACY
+		},{
+			.archive_name = "dhcp.leases",
+			.destination = DHCPLEASESFILE
+		},{
+			.archive_name = "pihole-FTL.conf",
+			.destination = GLOBALCONFFILE_LEGACY
+		},{
+			.archive_name = "setupVars.conf",
+			.destination = config.files.setupVars.v.s
+		}
+	};
+	for(size_t i = 0; i < sizeof(extract_files) / sizeof(*extract_files); i++)
+	{
+		size_t fileSize = 0u;
+		const char *file = find_file_in_tar(archive, archive_size, extract_files[i].archive_name, &fileSize);
+		if(file != NULL && fileSize > 0u)
+		{
+			// Write file to disk
+			FILE *fp = fopen(extract_files[i].destination, "wb");
+			if(fp == NULL)
+			{
+				log_err("Unable to open file \"%s\" for writing: %s", extract_files[i].destination, strerror(errno));
+				continue;
+			}
+			if(fwrite(file, fileSize, 1, fp) != 1)
+			{
+				log_err("Unable to write file \"%s\": %s", extract_files[i].destination, strerror(errno));
+				fclose(fp);
+				continue;
+			}
+			fclose(fp);
+			JSON_COPY_STR_TO_ARRAY(imported_files, extract_files[i].destination);
+		}
+	}
+
+	// Remove pihole.toml to prevent it from being imported on restart
+	if(remove(GLOBALTOMLPATH) != 0)
+		log_err("Unable to remove file \"%s\": %s", GLOBALTOMLPATH, strerror(errno));
 
 	// Free allocated memory
 	free_upload_data(data);
 
+	// Signal FTL we want to restart for re-import
+	api->ftl.restart = true;
+
 	// Send response
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "files", json_files);
+	JSON_ADD_ITEM_TO_OBJECT(json, "files", imported_files);
 	JSON_SEND_OBJECT(json);
 }
 

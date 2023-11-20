@@ -43,7 +43,7 @@ static FILE * __attribute__((nonnull(1), malloc, warn_unused_result)) openFTLcon
 		return fp;
 
 	// Local file not present, try system file
-	*path = "/etc/pihole/pihole-FTL.conf";
+	*path = GLOBALCONFFILE_LEGACY;
 	fp = fopen(*path, "r");
 
 	return fp;
