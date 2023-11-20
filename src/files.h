@@ -17,6 +17,7 @@
 
 #define ZIP_ROTATIONS 3
 #define MAX_ROTATIONS 15
+#define BACKUP_DIR "/etc/pihole/config_backups"
 
 bool chmod_file(const char *filename, const mode_t mode);
 bool file_exists(const char *filename);

@@ -23,6 +23,8 @@
 #include "database/sqlite3.h"
 // dbquery()
 #include "database/common.h"
+// MAX_ROTATIONS
+#include "files.h"
 
 #define MAXFILESIZE (50u*1024*1024)
 
@@ -679,6 +681,22 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	// Remove pihole.toml to prevent it from being imported on restart
 	if(remove(GLOBALTOMLPATH) != 0)
 		log_err("Unable to remove file \"%s\": %s", GLOBALTOMLPATH, strerror(errno));
+
+	// Remove all rotated pihole.toml files to avoid automatic config
+	// restore on restart
+	for(unsigned int i = MAX_ROTATIONS; i > 0; i--)
+	{
+		const char *fname = GLOBALTOMLPATH;
+		const char *filename = basename(fname);
+		// extra 6 bytes is enough space for up to 999 rotations ("/", ".", "\0", "999")
+		const size_t buflen = strlen(filename) + strlen(BACKUP_DIR) + 6;
+		char *path = calloc(buflen, sizeof(char));
+		snprintf(path, buflen, BACKUP_DIR"/%s.%u", filename, i);
+
+		// Remove file (if it exists)
+		if(remove(path) != 0 && errno != ENOENT)
+			log_err("Unable to remove file \"%s\": %s", path, strerror(errno));
+	}
 
 	// Free allocated memory
 	free_upload_data(data);
