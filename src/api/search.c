@@ -185,8 +185,11 @@ int api_search(struct ftl_conn *api)
 	// idn2_to_ascii_lz() convert domain name in the locale’s encoding to an
 	// ASCII string. The domain name may contain several labels, separated
 	// by dots. The output buffer must be deallocated by the caller.
+	// Used flags:
+	// - IDN2_NFC_INPUT: Input is in Unicode Normalization Form C (NFC)
+	// - IDN2_NONTRANSITIONAL: Use Unicode TR46 non-transitional processing
 	char *punycode = NULL;
-	const int rc = idn2_to_ascii_lz(domain, &punycode, IDN2_NONTRANSITIONAL);
+	const int rc = idn2_to_ascii_lz(domain, &punycode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
 	if (rc != IDN2_OK)
 	{
 		// Invalid domain name

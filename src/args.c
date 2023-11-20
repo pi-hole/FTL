@@ -436,6 +436,7 @@ void parse_args(int argc, char* argv[])
 		cli_mode = true;
 		if(argc == 3)
 		{
+			// Convert unicode domain to punycode
 			char *punycode = NULL;
 			const int rc = idn2_to_ascii_lz(argv[2], &punycode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
 			if (rc != IDN2_OK)
@@ -455,6 +456,7 @@ void parse_args(int argc, char* argv[])
 		}
 		else if(argc == 4 && (strcmp(argv[2], "-d") == 0 || strcmp(argv[2], "--decode") == 0))
 		{
+			// Convert punycode domain to unicode
 			char *unicode = NULL;
 			const int rc = idn2_to_unicode_lzlz(argv[3], &unicode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
 			if (rc != IDN2_OK)
@@ -469,7 +471,7 @@ void parse_args(int argc, char* argv[])
 		}
 		else
 		{
-			printf("Usage: %s idn2 <domain>\n", argv[0]);
+			printf("Usage: %s idn2 [--decode] <domain>\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}

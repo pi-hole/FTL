@@ -416,7 +416,7 @@ static int api_list_write(struct ftl_conn *api,
 			   listtype == GRAVITY_DOMAINLIST_DENY_EXACT)
 			{
 				char *punycode = NULL;
-				const int rc = idn2_to_ascii_lz(it->valuestring, &punycode, IDN2_NONTRANSITIONAL);
+				const int rc = idn2_to_ascii_lz(it->valuestring, &punycode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
 				if (rc != IDN2_OK)
 				{
 					// Invalid domain name
