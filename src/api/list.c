@@ -17,6 +17,10 @@
 #include "shmem.h"
 // getNameFromIP()
 #include "database/network-table.h"
+// valid_domain()
+#include "tools/gravity-parseList.h"
+
+#include <idna.h>
 
 static int api_list_read(struct ftl_conn *api,
                          const int code,
@@ -70,10 +74,18 @@ static int api_list_read(struct ftl_conn *api,
 		}
 		else // domainlists
 		{
+			char *unicode = NULL;
+			const Idna_rc rc = idna_to_unicode_lzlz(table.domain, &unicode, 0);
 			JSON_COPY_STR_TO_OBJECT(row, "domain", table.domain);
+			if(rc == IDNA_SUCCESS)
+				JSON_COPY_STR_TO_OBJECT(row, "unicode", unicode);
+			else
+				JSON_COPY_STR_TO_OBJECT(row, "unicode", table.domain);
 			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
 			JSON_REF_STR_IN_OBJECT(row, "kind", table.kind);
 			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+			if(unicode != NULL)
+				free(unicode);
 		}
 
 		// Groups don't have the groups property
@@ -396,9 +408,47 @@ static int api_list_write(struct ftl_conn *api,
 				if(allocated_json)
 					cJSON_free(row.items);
 				return send_json_error(api, 400, // 400 Bad Request
+				                       "bad_request",
+				                       "Spaces, newlines and tabs are not allowed in domains and URLs",
+				                       it->valuestring);
+			}
+
+			if(listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
+			   listtype == GRAVITY_DOMAINLIST_DENY_EXACT)
+			{
+				char *punycode = NULL;
+				const Idna_rc rc = idna_to_ascii_lz(it->valuestring, &punycode, 0);
+				if (rc != IDNA_SUCCESS)
+				{
+					// Invalid domain name
+					return send_json_error(api, 400,
+					                       "bad_request",
+					                       "Invalid request: Invalid domain name",
+					                       idna_strerror(rc));
+				}
+				// Convert punycode domain to lowercase
+				for(unsigned int i = 0u; i < strlen(punycode); i++)
+					punycode[i] = tolower(punycode[i]);
+
+				// Validate punycode domain
+				// This will reject domains like äöü{{{.com
+				// which convert to xn--{{{-pla4gpb.com
+				if(!valid_domain(punycode, strlen(punycode), false))
+				{
+					if(allocated_json)
+						cJSON_free(row.items);
+					return send_json_error(api, 400, // 400 Bad Request
 							"bad_request",
-							"Spaces, newlines and tabs are not allowed in domains and URLs",
+							"Invalid domain",
 							it->valuestring);
+				}
+
+				// Replace domain with punycode version
+				if(!(it->type & cJSON_IsReference))
+					free(it->valuestring);
+				it->valuestring = punycode;
+				// Remove reference flag
+				it->type &= ~cJSON_IsReference;
 			}
 		}
 	}

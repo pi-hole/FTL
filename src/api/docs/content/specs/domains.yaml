@@ -223,6 +223,7 @@ components:
             items:
               allOf:
                 - $ref: 'domains.yaml#/components/schemas/domain'
+                - $ref: 'domains.yaml#/components/schemas/unicode'
                 - $ref: 'domains.yaml#/components/schemas/type'
                 - $ref: 'domains.yaml#/components/schemas/kind'
                 - $ref: 'domains.yaml#/components/schemas/comment'
@@ -249,6 +250,13 @@ components:
           description: Domain
           type: string
           example: testdomain.com
+    unicode:
+      type: object
+      properties:
+        unicode:
+          description: Unicode domain (may be different from `domain` if punycode-encoding is used)
+          type: string
+          example: "äbc.com"
     domain_array:
       type: object
       properties:
@@ -368,6 +376,7 @@ components:
       value:
         domains:
           - domain: "allowed.com"
+            unicode: "allowed.com"
             type: allow
             kind: exact
             comment: null
@@ -377,7 +386,8 @@ components:
             id: 299
             date_added: 1611239095
             date_modified: 1612163756
-          - domain: "allowed2.comm"
+          - domain: "xn--4ca.com"
+            unicode: "ä.com"
             type: allow
             kind: regex
             comment: "Some text"
