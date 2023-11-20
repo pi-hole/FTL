@@ -1333,6 +1333,13 @@ void initConfig(struct config *conf)
 			log_err("Config option %s has no type!", conf_item->k);
 			continue;
 		}
+
+		// Verify we have no default string pointers to NULL
+		if((conf_item->t == CONF_STRING || conf_item->t == CONF_STRING_ALLOCATED) && conf_item->d.s == NULL)
+		{
+			log_err("Config option %s has NULL default string!", conf_item->k);
+			continue;
+		}
 	}
 }
 
