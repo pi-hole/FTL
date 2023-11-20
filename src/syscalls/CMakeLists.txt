@@ -25,6 +25,7 @@ set(sources
         snprintf.c
         sprintf.c
         strdup.c
+        string.c
         syscalls.h
         vasprintf.c
         vfprintf.c
