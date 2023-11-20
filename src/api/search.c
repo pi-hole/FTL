@@ -15,7 +15,7 @@
 #include "database/gravity-db.h"
 // match_regex()
 #include "regex_r.h"
-#include <idna.h>
+#include <idn2.h>
 
 #define MAX_SEARCH_RESULTS 10000u
 
@@ -182,18 +182,18 @@ int api_search(struct ftl_conn *api)
 	// use characters drawn from a large repertoire (Unicode), but IDNA
 	// allows the non-ASCII characters to be represented using only the
 	// ASCII characters already allowed in so-called host names today.
-	// idna_to_ascii_lz() convert domain name in the locale’s encoding to an
+	// idn2_to_ascii_lz() convert domain name in the locale’s encoding to an
 	// ASCII string. The domain name may contain several labels, separated
 	// by dots. The output buffer must be deallocated by the caller.
 	char *punycode = NULL;
-	const Idna_rc rc = idna_to_ascii_lz(domain, &punycode, 0);
-	if (rc != IDNA_SUCCESS)
+	const int rc = idn2_to_ascii_lz(domain, &punycode, IDN2_NONTRANSITIONAL);
+	if (rc != IDN2_OK)
 	{
 		// Invalid domain name
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "Invalid request: Invalid domain name",
-		                       idna_strerror(rc));
+		                       idn2_strerror(rc));
 	}
 
 	// Convert punycode domain to lowercase
