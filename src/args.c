@@ -60,6 +60,8 @@
 #include "tools/arp-scan.h"
 // run_performance_test()
 #include "config/password.h"
+// idn2_to_ascii_lz()
+#include <idn2.h>
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -425,6 +427,51 @@ void parse_args(int argc, char* argv[])
 		const bool scan_all = argc > 2 && strcmp(argv[2], "-a") == 0;
 		const bool extreme_mode = argc > 2 && strcmp(argv[2], "-x") == 0;
 		exit(run_arp_scan(scan_all, extreme_mode));
+	}
+
+	// IDN2 conversion mode
+	if(argc > 1 && strcmp(argv[1], "idn2") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		if(argc == 3)
+		{
+			char *punycode = NULL;
+			const int rc = idn2_to_ascii_lz(argv[2], &punycode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+			if (rc != IDN2_OK)
+			{
+				// Invalid domain name
+				printf("Invalid domain name: %s\n", argv[2]);
+				exit(EXIT_FAILURE);
+			}
+
+			// Convert punycode domain to lowercase
+			for(unsigned int i = 0u; i < strlen(punycode); i++)
+				punycode[i] = tolower(punycode[i]);
+
+			printf("%s\n", punycode);
+			exit(EXIT_SUCCESS);
+
+		}
+		else if(argc == 4 && (strcmp(argv[2], "-d") == 0 || strcmp(argv[2], "--decode") == 0))
+		{
+			char *unicode = NULL;
+			const int rc = idn2_to_unicode_lzlz(argv[3], &unicode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+			if (rc != IDN2_OK)
+			{
+				// Invalid domain name
+				printf("Invalid domain name: %s\n", argv[3]);
+				exit(EXIT_FAILURE);
+			}
+
+			printf("%s\n", unicode);
+			exit(EXIT_SUCCESS);
+		}
+		else
+		{
+			printf("Usage: %s idn2 <domain>\n", argv[0]);
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	// start from 1, as argv[0] is the executable name
@@ -877,6 +924,12 @@ void parse_args(int argc, char* argv[])
 			printf("    gravity filters. The expected input format is one domain\n");
 			printf("    per line (no HOSTS lists, etc.)\n\n");
 			printf("    Usage: %spihole-FTL gravity checkList %sinfile%s\n\n", green, cyan, normal);
+
+			printf("%sIDN2 conversion:%s\n", yellow, normal);
+			printf("    Convert a given internationalized domain name (IDN) to\n");
+			printf("    punycode or vice versa.\n\n");
+			printf("    Encoding: %spihole-FTL idn2 %sdomain%s\n", green, cyan, normal);
+			printf("    Decoding: %spihole-FTL idn2 -d %spunycode%s\n\n", green, cyan, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
