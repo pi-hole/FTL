@@ -19,8 +19,7 @@
 #include "database/network-table.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
-
-#include <idna.h>
+#include <idn2.h>
 
 static int api_list_read(struct ftl_conn *api,
                          const int code,
@@ -75,9 +74,9 @@ static int api_list_read(struct ftl_conn *api,
 		else // domainlists
 		{
 			char *unicode = NULL;
-			const Idna_rc rc = idna_to_unicode_lzlz(table.domain, &unicode, 0);
+			const int rc = idn2_to_unicode_lzlz(table.domain, &unicode, IDN2_NONTRANSITIONAL);
 			JSON_COPY_STR_TO_OBJECT(row, "domain", table.domain);
-			if(rc == IDNA_SUCCESS)
+			if(rc == IDN2_OK)
 				JSON_COPY_STR_TO_OBJECT(row, "unicode", unicode);
 			else
 				JSON_COPY_STR_TO_OBJECT(row, "unicode", table.domain);
@@ -417,14 +416,14 @@ static int api_list_write(struct ftl_conn *api,
 			   listtype == GRAVITY_DOMAINLIST_DENY_EXACT)
 			{
 				char *punycode = NULL;
-				const Idna_rc rc = idna_to_ascii_lz(it->valuestring, &punycode, 0);
-				if (rc != IDNA_SUCCESS)
+				const int rc = idn2_to_ascii_lz(it->valuestring, &punycode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+				if (rc != IDN2_OK)
 				{
 					// Invalid domain name
 					return send_json_error(api, 400,
 					                       "bad_request",
 					                       "Invalid request: Invalid domain name",
-					                       idna_strerror(rc));
+					                       idn2_strerror(rc));
 				}
 				// Convert punycode domain to lowercase
 				for(unsigned int i = 0u; i < strlen(punycode); i++)
