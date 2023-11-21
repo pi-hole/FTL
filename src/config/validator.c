@@ -10,6 +10,8 @@
 
 #include "validator.h"
 #include "log.h"
+// valid_domain()
+#include "tools/gravity-parseList.h"
 
 // Validate the dns.hosts array
 // Each entry needs to be a string in form "IP HOSTNAME"
@@ -228,6 +230,33 @@ bool validate_ip_port(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 			free(str);
 			return false;
 		}
+	}
+
+	free(str);
+	return true;
+}
+
+// Validate domain
+bool validate_domain(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if it's a valid domain
+	char *str = strdup(val->s);
+	char *tmp = str;
+	char *domain = strsep(&tmp, " ");
+
+	if(!domain || !*domain)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid domain (\"%s\")", str);
+		free(str);
+		return false;
+	}
+
+	// Check if domain is valid
+	if(!valid_domain(domain, strlen(domain), false))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid domain (\"%s\")", domain);
+		free(str);
+		return false;
 	}
 
 	free(str);

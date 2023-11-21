@@ -486,6 +486,7 @@ void initConfig(struct config *conf)
 	conf->dns.domain.t = CONF_STRING;
 	conf->dns.domain.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.domain.d.s = (char*)"lan";
+	conf->dns.domain.c = validate_domain;
 
 	conf->dns.bogusPriv.k = "dns.bogusPriv";
 	conf->dns.bogusPriv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
@@ -689,6 +690,7 @@ void initConfig(struct config *conf)
 	conf->dns.revServer.domain.t = CONF_STRING;
 	conf->dns.revServer.domain.d.s = (char*)"";
 	conf->dns.revServer.domain.f = FLAG_RESTART_FTL;
+	conf->dns.revServer.domain.c = validate_domain;
 
 	// sub-struct dhcp
 	conf->dhcp.active.k = "dhcp.active";
@@ -724,6 +726,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.domain.t = CONF_STRING;
 	conf->dhcp.domain.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dhcp.domain.d.s = (char*)"lan";
+	conf->dhcp.domain.c = validate_domain;
 
 	conf->dhcp.netmask.k = "dhcp.netmask";
 	conf->dhcp.netmask.h = "The netmask used by your Pi-hole. For directly connected networks (i.e., networks on which the machine running Pi-hole has an interface) the netmask is optional and may be set to an empty string (\"\"): it will then be determined from the interface configuration itself. For networks which receive DHCP service via a relay agent, we cannot determine the netmask itself, so it should explicitly be specified, otherwise Pi-hole guesses based on the class (A, B or C) of the network address.";
@@ -841,6 +844,7 @@ void initConfig(struct config *conf)
 	conf->webserver.domain.t = CONF_STRING;
 	conf->webserver.domain.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.domain.d.s = (char*)"pi.hole";
+	conf->webserver.domain.c = validate_domain;
 
 	conf->webserver.acl.k = "webserver.acl";
 	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny. If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: acl = \"+127.0.0.1,+[::1]\"\n ---> deny all access, except from 127.0.0.1 and ::1,\n Example 2: acl = \"+192.168.0.0/16\"\n ---> deny all accesses, except from the 192.168.0.0/16 subnet,\n Example 3: acl = \"+[::]/0\" ---> allow only IPv6 access.";
