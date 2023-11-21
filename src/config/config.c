@@ -681,6 +681,7 @@ void initConfig(struct config *conf)
 	conf->dns.revServer.target.t = CONF_STRING;
 	conf->dns.revServer.target.d.s = (char*)"";
 	conf->dns.revServer.target.f = FLAG_RESTART_FTL;
+	conf->dns.revServer.target.c = validate_ip_port;
 
 	conf->dns.revServer.domain.k = "dns.revServer.domain";
 	conf->dns.revServer.domain.h = "Domain used for the reverse server feature";

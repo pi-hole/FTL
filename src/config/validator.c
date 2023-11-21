@@ -184,3 +184,52 @@ bool validate_cidr(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 	free(str);
 	return true;
 }
+
+// Validate IP address optionally followed by a port (separator is "#")
+bool validate_ip_port(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if it's a valid IP
+	char *str = strdup(val->s);
+	char *tmp = str;
+	char *ip = strsep(&tmp, "#");
+	char *port = strsep(&tmp, "#");
+
+	if(!ip || !*ip)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid IP (\"%s\")", str);
+		free(str);
+		return false;
+	}
+
+	// Check if IP is valid
+	struct in_addr addr;
+	struct in6_addr addr6;
+	int ip4 = 0, ip6 = 0;
+	if((ip4 = inet_pton(AF_INET, ip, &addr) != 1) && (ip6 = inet_pton(AF_INET6, ip, &addr6)) != 1)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid IPv4 nor IPv6 address (\"%s\")", ip);
+		free(str);
+		return false;
+	}
+
+	// Check if port is valid
+	if(port)
+	{
+		if(strlen(port) == 0)
+		{
+			strncat(err, "Empty port value", VALIDATOR_ERRBUF_LEN);
+			free(str);
+			return false;
+		}
+		int port_int = atoi(port);
+		if(port_int < 0 || port_int > 65535)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid port (\"%s\")", port);
+			free(str);
+			return false;
+		}
+	}
+
+	free(str);
+	return true;
+}
