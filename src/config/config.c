@@ -1361,6 +1361,8 @@ void readFTLconf(struct config *conf, const bool rewrite)
 		}
 	}
 
+	log_info("No config file nor backup available, using defaults");
+
 	// If no previous config file could be read, we are likely either running
 	// for the first time or we are upgrading from a version prior to v6.0
 	// In this case, we try to read the legacy config files

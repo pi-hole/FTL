@@ -60,8 +60,8 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 	}
 	set_debug_flags(newconf);
 
-	log_debug(DEBUG_CONFIG, "Reading %s TOML config file: full config",
-	          teleporter ? "teleporter" : "default");
+	log_debug(DEBUG_CONFIG, "Reading %s TOML config file",
+	          teleporter ? "teleporter" : version == 0 ? "default" : "backup");
 
 	// Read all known config items
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -140,11 +140,7 @@ static toml_table_t *parseTOML(const unsigned int version)
 	// Try to open default config file. Use fallback if not found
 	FILE *fp;
 	if((fp = openFTLtoml("r", version)) == NULL)
-	{
-		log_info("No config file available (%s), using defaults",
-		         strerror(errno));
 		return NULL;
-	}
 
 	// Parse lines in the config file
 	char errbuf[200];

@@ -63,7 +63,11 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 
 	// Return early if opening failed
 	if(!fp)
+	{
+		log_info("Config %sfile %s not available: %s",
+		         version > 0 ? "backup " : "", filename, strerror(errno));
 		return NULL;
+	}
 
 	// Lock file, may block if the file is currently opened
 	if(flock(fileno(fp), LOCK_EX) != 0)
@@ -75,6 +79,10 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 		errno = _e;
 		return NULL;
 	}
+
+	// Log if we are using a backup file
+	if(version > 0)
+		log_info("Using config backup %s", filename);
 
 	errno = 0;
 	return fp;
