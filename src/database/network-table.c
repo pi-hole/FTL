@@ -2151,7 +2151,7 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 	if(FTLDBerror())
 		return NULL;
 
-	log_info("Looking up host name for %s", client);
+	log_debug(DEBUG_DATABASE,"Looking up host name for %s", client);
 
 	// Open pihole-FTL.db database file
 	sqlite3 *db = NULL;
@@ -2161,7 +2161,6 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 		return NULL;
 	}
 
-	// Nothing found for the same device
 	// Check for a host name associated with the given client as MAC address
 	// COLLATE NOCASE: Case-insensitive comparison
 	const char *querystr = "SELECT name FROM network_addresses "
