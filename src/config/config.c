@@ -872,6 +872,7 @@ void initConfig(struct config *conf)
 	conf->webserver.tls.cert.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.tls.cert.t = CONF_STRING;
 	conf->webserver.tls.cert.d.s = (char*)"/etc/pihole/tls.pem";
+	conf->webserver.tls.cert.c = validate_filepath;
 
 	conf->webserver.session.timeout.k = "webserver.session.timeout";
 	conf->webserver.session.timeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
@@ -890,6 +891,7 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.webroot.t = CONF_STRING;
 	conf->webserver.paths.webroot.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.paths.webroot.d.s = (char*)"/var/www/html";
+	conf->webserver.paths.webroot.c = validate_filepath;
 
 	conf->webserver.paths.webhome.k = "webserver.paths.webhome";
 	conf->webserver.paths.webhome.h = "Sub-directory of the root containing the web interface";
@@ -897,6 +899,7 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.webhome.t = CONF_STRING;
 	conf->webserver.paths.webhome.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.paths.webhome.d.s = (char*)"/admin/";
+	conf->webserver.paths.webhome.c = validate_filepath;
 
 	// sub-struct interface
 	conf->webserver.interface.boxed.k = "webserver.interface.boxed";
@@ -1019,6 +1022,7 @@ void initConfig(struct config *conf)
 	conf->files.pid.t = CONF_STRING;
 	conf->files.pid.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.pid.d.s = (char*)"/run/pihole-FTL.pid";
+	conf->files.pid.c = validate_filepath;
 
 	conf->files.database.k = "files.database";
 	conf->files.database.h = "The location of FTL's long-term database";
@@ -1026,6 +1030,7 @@ void initConfig(struct config *conf)
 	conf->files.database.t = CONF_STRING;
 	conf->files.database.f = FLAG_ADVANCED_SETTING;
 	conf->files.database.d.s = (char*)"/etc/pihole/pihole-FTL.db";
+	conf->files.database.c = validate_filepath;
 
 	conf->files.gravity.k = "files.gravity";
 	conf->files.gravity.h = "The location of Pi-hole's gravity database";
@@ -1033,6 +1038,7 @@ void initConfig(struct config *conf)
 	conf->files.gravity.t = CONF_STRING;
 	conf->files.gravity.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.gravity.d.s = (char*)"/etc/pihole/gravity.db";
+	conf->files.gravity.c = validate_filepath;
 
 	conf->files.macvendor.k = "files.macvendor";
 	conf->files.macvendor.h = "The database containing MAC -> Vendor information for the network table";
@@ -1040,6 +1046,7 @@ void initConfig(struct config *conf)
 	conf->files.macvendor.t = CONF_STRING;
 	conf->files.macvendor.f = FLAG_ADVANCED_SETTING;
 	conf->files.macvendor.d.s = (char*)"/etc/pihole/macvendor.db";
+	conf->files.macvendor.c = validate_filepath;
 
 	conf->files.setupVars.k = "files.setupVars";
 	conf->files.setupVars.h = "The old config file of Pi-hole used before v6.0";
@@ -1047,6 +1054,7 @@ void initConfig(struct config *conf)
 	conf->files.setupVars.t = CONF_STRING;
 	conf->files.setupVars.f = FLAG_ADVANCED_SETTING;
 	conf->files.setupVars.d.s = (char*)"/etc/pihole/setupVars.conf";
+	conf->files.setupVars.c = validate_filepath;
 
 	conf->files.pcap.k = "files.pcap";
 	conf->files.pcap.h = "An optional file containing a pcap capture of the network traffic. This file is used for debugging purposes only. If you don't know what this is, you don't need it.\n Setting this to an empty string disables pcap recording. The file must be writable by the user running FTL (typically pihole). Failure to write to this file will prevent the DNS resolver from starting. The file is appended to if it already exists.";
@@ -1054,6 +1062,10 @@ void initConfig(struct config *conf)
 	conf->files.pcap.t = CONF_STRING;
 	conf->files.pcap.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.pcap.d.s = (char*)"";
+	conf->files.pcap.c = validate_filepath_empty;
+
+	// sub-struct files.log
+	// conf->files.log.ftl is set in a separate function
 
 	conf->files.log.webserver.k = "files.log.webserver";
 	conf->files.log.webserver.h = "The log file used by the webserver";
@@ -1061,9 +1073,7 @@ void initConfig(struct config *conf)
 	conf->files.log.webserver.t = CONF_STRING;
 	conf->files.log.webserver.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.log.webserver.d.s = (char*)"/var/log/pihole/webserver.log";
-
-	// sub-struct files.log
-	// conf->files.log.ftl is set in a separate function
+	conf->files.log.webserver.c = validate_filepath;
 
 	conf->files.log.dnsmasq.k = "files.log.dnsmasq";
 	conf->files.log.dnsmasq.h = "The log file used by the embedded dnsmasq DNS server";
@@ -1071,6 +1081,7 @@ void initConfig(struct config *conf)
 	conf->files.log.dnsmasq.t = CONF_STRING;
 	conf->files.log.dnsmasq.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.log.dnsmasq.d.s = (char*)"/var/log/pihole/pihole.log";
+	conf->files.log.dnsmasq.c = validate_filepath;
 
 
 	// struct misc

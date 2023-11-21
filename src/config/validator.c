@@ -262,3 +262,30 @@ bool validate_domain(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 	free(str);
 	return true;
 }
+
+// Validate file path
+bool validate_filepath(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if the path contains only valid characters
+	for(unsigned int i = 0; i < strlen(val->s); i++)
+	{
+		if(!isalnum(val->s[i]) && val->s[i] != '/' && val->s[i] != '.' && val->s[i] != '-' && val->s[i] != '_' && val->s[i] != ' ')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid file path (\"%s\")", val->s);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// Validate file path (empty allowed)
+bool validate_filepath_empty(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Empty paths are allowed, e.g., to disable a feature like PCAP
+	if(strlen(val->s) == 0)
+		return true;
+
+	// else:
+	return validate_filepath(val, err);
+}
