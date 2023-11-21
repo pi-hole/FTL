@@ -401,7 +401,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.host.force4.v.b = false;
 	conf->dns.reply.host.v4.v.in_addr.s_addr = 0;
 	buffer = parseFTLconf(fp, "LOCAL_IPV4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &conf->dns.reply.host.v4.v.in_addr))
+	if(buffer != NULL && strlen(buffer) > 0 && inet_pton(AF_INET, buffer, &conf->dns.reply.host.v4.v.in_addr))
 		conf->dns.reply.host.force4.v.b = true;
 
 	// LOCAL_IPV6
@@ -411,7 +411,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.host.force6.v.b = false;
 	memset(&conf->dns.reply.host.v6.v.in6_addr, 0, sizeof(conf->dns.reply.host.v6.v.in6_addr));
 	buffer = parseFTLconf(fp, "LOCAL_IPV6");
-	if(buffer != NULL && inet_pton(AF_INET6, buffer, &conf->dns.reply.host.v6.v.in6_addr))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET6, buffer, &conf->dns.reply.host.v6.v.in6_addr))
 		conf->dns.reply.host.force6.v.b = true;
 
 	// BLOCK_IPV4
@@ -420,7 +420,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.blocking.force4.v.b = false;
 	conf->dns.reply.blocking.v4.v.in_addr.s_addr = 0;
 	buffer = parseFTLconf(fp, "BLOCK_IPV4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &conf->dns.reply.blocking.v4.v.in_addr))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET, buffer, &conf->dns.reply.blocking.v4.v.in_addr))
 		conf->dns.reply.blocking.force4.v.b = true;
 
 	// BLOCK_IPV6
@@ -429,7 +429,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.blocking.force6.v.b = false;
 	memset(&conf->dns.reply.blocking.v6.v.in6_addr, 0, sizeof(conf->dns.reply.host.v6.v.in6_addr));
 	buffer = parseFTLconf(fp, "BLOCK_IPV6");
-	if(buffer != NULL && inet_pton(AF_INET6, buffer, &conf->dns.reply.blocking.v6.v.in6_addr))
+	if(buffer != NULL &&  strlen(buffer) > 0 && inet_pton(AF_INET6, buffer, &conf->dns.reply.blocking.v6.v.in6_addr))
 		conf->dns.reply.blocking.force6.v.b = true;
 
 	// REPLY_ADDR4 (deprecated setting)
@@ -438,7 +438,7 @@ const char *readFTLlegacy(struct config *conf)
 	// defaults to: not set
 	struct in_addr reply_addr4;
 	buffer = parseFTLconf(fp, "REPLY_ADDR4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr4))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET, buffer, &reply_addr4))
 	{
 		if(conf->dns.reply.host.force4.v.b || conf->dns.reply.blocking.force4.v.b)
 		{
@@ -459,7 +459,7 @@ const char *readFTLlegacy(struct config *conf)
 	// defaults to: not set
 	struct in6_addr reply_addr6;
 	buffer = parseFTLconf(fp, "REPLY_ADDR6");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr6))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET, buffer, &reply_addr6))
 	{
 		if(conf->dns.reply.host.force6.v.b || conf->dns.reply.blocking.force6.v.b)
 		{

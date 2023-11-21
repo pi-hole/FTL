@@ -259,8 +259,8 @@ static char* get_client_querystr(const char *table, const char *column, const ch
 }
 
 // Determine whether to show IP or hardware address
-static inline const char *show_client_string(const char *hwaddr, const char *hostname,
-                                             const char *ip)
+static const char *show_client_string(const char *hwaddr, const char *hostname,
+                                      const char *ip)
 {
 	if(hostname != NULL && strlen(hostname) > 0)
 	{
