@@ -673,6 +673,7 @@ void initConfig(struct config *conf)
 	conf->dns.revServer.cidr.t = CONF_STRING;
 	conf->dns.revServer.cidr.d.s = (char*)"";
 	conf->dns.revServer.cidr.f = FLAG_RESTART_FTL;
+	conf->dns.revServer.cidr.c = validate_cidr;
 
 	conf->dns.revServer.target.k = "dns.revServer.target";
 	conf->dns.revServer.target.h = "Target server tp be used for the reverse server feature";

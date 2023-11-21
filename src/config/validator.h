@@ -16,5 +16,6 @@
 
 bool validate_dns_hosts(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_dns_cnames(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_cidr(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN]);
 
 #endif // CONFIG_VALIDATOR_H

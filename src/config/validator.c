@@ -129,3 +129,58 @@ bool validate_dns_cnames(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 
 	return true;
 }
+
+// Validate IPs in CIDR notation
+bool validate_cidr(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if it's a valid CIDR
+	char *str = strdup(val->s);
+	char *tmp = str;
+	char *ip = strsep(&tmp, "/");
+	char *cidr = strsep(&tmp, "/");
+
+	if(!ip || !*ip)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid IP (\"%s\")", str);
+		free(str);
+		return false;
+	}
+
+	// Check if IP is valid
+	struct in_addr addr;
+	struct in6_addr addr6;
+	int ip4 = 0, ip6 = 0;
+	if((ip4 = inet_pton(AF_INET, ip, &addr) != 1) && (ip6 = inet_pton(AF_INET6, ip, &addr6)) != 1)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid IPv4 nor IPv6 address (\"%s\")", ip);
+		free(str);
+		return false;
+	}
+
+	// Check if CIDR is valid
+	if(cidr)
+	{
+		if(strlen(cidr) == 0)
+		{
+			strncat(err, "Empty CIDR value", VALIDATOR_ERRBUF_LEN);
+			free(str);
+			return false;
+		}
+		int cidr_int = atoi(cidr);
+		if(ip4 && (cidr_int < 0 || cidr_int > 32))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid IPv4 CIDR (\"%s\")", cidr);
+			free(str);
+			return false;
+		}
+		else if(ip6 && (cidr_int < 0 || cidr_int > 128))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid IPv6 CIDR (\"%s\")", cidr);
+			free(str);
+			return false;
+		}
+	}
+
+	free(str);
+	return true;
+}
