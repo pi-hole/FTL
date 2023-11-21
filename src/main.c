@@ -185,7 +185,7 @@ int main (int argc, char *argv[])
 	cleanup(exit_code);
 
 	if(exit_code == RESTART_FTL_CODE)
-		execv(argv[0], argv);
+		execvp(argv[0], argv);
 
 	return exit_code;
 }

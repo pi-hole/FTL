@@ -97,6 +97,7 @@ enum conf_type {
 #define FLAG_INVALIDATE_SESSIONS   (1 << 3)
 #define FLAG_WRITE_ONLY            (1 << 4)
 #define FLAG_ENV_VAR               (1 << 5)
+#define FLAG_CONF_IMPORTED         (1 << 6)
 
 struct conf_item {
 	const char *k;        // item Key

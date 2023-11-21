@@ -687,6 +687,16 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		}
 	}
 
+	// Append WEB_PORTS to setupVars.conf
+	FILE *fp = fopen(config.files.setupVars.v.s, "a");
+	if(fp == NULL)
+		log_err("Unable to open file \"%s\" for appending: %s", config.files.setupVars.v.s, strerror(errno));
+	else
+	{
+		fprintf(fp, "WEB_PORT=%s\n", config.webserver.port.v.s);
+		fclose(fp);
+	}
+
 	// Remove pihole.toml to prevent it from being imported on restart
 	if(remove(GLOBALTOMLPATH) != 0)
 		log_err("Unable to remove file \"%s\": %s", GLOBALTOMLPATH, strerror(errno));

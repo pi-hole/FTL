@@ -35,6 +35,7 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 		free(conf_item->v.s);
 	conf_item->v.s = strdup(setupVarsValue);
 	conf_item->t = CONF_STRING_ALLOCATED;
+	conf_item->f |= FLAG_CONF_IMPORTED;
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
@@ -380,6 +381,9 @@ void importsetupVarsConf(void)
 	get_conf_bool_from_setupVars("DHCP_RAPID_COMMIT", &config.dhcp.rapidCommit);
 
 	get_conf_bool_from_setupVars("queryLogging", &config.dns.queryLogging);
+
+	// Ports may be temporarily stored when importing a legacy Teleporter v5 file
+	get_conf_string_from_setupVars("WEB_PORTS", &config.webserver.port);
 }
 
 char* __attribute__((pure)) find_equals(char *s)
