@@ -113,9 +113,12 @@ const char *readFTLlegacy(struct config *conf)
 	const char *path = NULL;
 	FILE *fp = openFTLconf(&path);
 	if(fp == NULL)
+	{
+		log_warn("No readable FTL config file found, using default settings");
 		return NULL;
+	}
 
-	log_notice("Reading legacy config file");
+	log_info("Reading legacy config files from %s", path);
 
 	// MAXDBDAYS
 	// defaults to: 365 days

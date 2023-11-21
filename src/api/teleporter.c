@@ -668,8 +668,8 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		if(file != NULL && fileSize > 0u)
 		{
 			// Write file to disk
-			log_debug(DEBUG_API, "Writing file \"%s\" (%zu bytes) to \"%s\"",
-			          extract_files[i].archive_name, fileSize, extract_files[i].destination);
+			log_info("Writing file \"%s\" (%zu bytes) to \"%s\"",
+			         extract_files[i].archive_name, fileSize, extract_files[i].destination);
 			FILE *fp = fopen(extract_files[i].destination, "wb");
 			if(fp == NULL)
 			{
@@ -693,7 +693,7 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		log_err("Unable to open file \"%s\" for appending: %s", config.files.setupVars.v.s, strerror(errno));
 	else
 	{
-		fprintf(fp, "WEB_PORT=%s\n", config.webserver.port.v.s);
+		fprintf(fp, "WEB_PORTS=%s\n", config.webserver.port.v.s);
 		fclose(fp);
 	}
 
