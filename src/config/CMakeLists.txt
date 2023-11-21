@@ -27,6 +27,8 @@ set(sources
         toml_reader.h
         toml_helper.c
         toml_helper.h
+        validator.c
+        validator.h
         )
 
 add_library(config OBJECT ${sources})

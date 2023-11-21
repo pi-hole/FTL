@@ -767,6 +767,20 @@ static int api_config_patch(struct ftl_conn *api)
 
 		// If we reach this point, a valid setting was found and changed
 
+		// Validate new value (if validation function is defined)
+		if(conf_item->c != NULL)
+		{
+			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+			if(!conf_item->c(&new_item->v, errbuf))
+			{
+				free_config(&newconf);
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid value",
+				                       errbuf);
+			}
+		}
+
 		// Check if this item requires a config-rewrite + restart of dnsmasq
 		if(conf_item->f & FLAG_RESTART_FTL)
 			dnsmasq_changed = true;
@@ -953,6 +967,21 @@ static int api_config_put_delete(struct ftl_conn *api)
 		}
 
 		// If we reach this point, a valid setting was found and changed
+
+		// Validate new value on PUT (if validation function is defined)
+		if(new_item->c != NULL && api->method == HTTP_PUT)
+		{
+			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+			if(!new_item->c(&new_item->v, errbuf))
+			{
+				free_config(&newconf);
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid value",
+				                       errbuf);
+			}
+		}
+
 		// Check if this item requires a config-rewrite + restart of dnsmasq
 		if(new_item->f & FLAG_RESTART_FTL)
 			dnsmasq_changed = true;

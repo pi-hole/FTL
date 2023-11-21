@@ -29,6 +29,8 @@
 #include "api/api.h"
 // exit_code
 #include "signals.h"
+// validation functions
+#include "config/validator.h"
 
 struct config config = { 0 };
 static bool config_initialized = false;
@@ -464,6 +466,7 @@ void initConfig(struct config *conf)
 	conf->dns.hosts.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.hosts.f = FLAG_ADVANCED_SETTING;
 	conf->dns.hosts.d.json = cJSON_CreateArray();
+	conf->dns.hosts.c = validate_dns_hosts;
 
 	conf->dns.domainNeeded.k = "dns.domainNeeded";
 	conf->dns.domainNeeded.h = "If set, A and AAAA queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
@@ -539,6 +542,7 @@ void initConfig(struct config *conf)
 	conf->dns.cnameRecords.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.cnameRecords.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
 	conf->dns.cnameRecords.d.json = cJSON_CreateArray();
+	conf->dns.cnameRecords.c = validate_dns_cnames;
 
 	conf->dns.port.k = "dns.port";
 	conf->dns.port.h = "Port used by the DNS server";

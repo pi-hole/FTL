@@ -38,6 +38,9 @@
 // characters will be replaced by their UTF-8 escape sequences (UCS-2)
 #define TOML_UTF8
 
+// Size of the buffer used to report possible errors during config validation
+#define VALIDATOR_ERRBUF_LEN 256
+
 union conf_value {
 	bool b;                                     // boolean value
 	int i;                                      // integer value
@@ -104,6 +107,7 @@ struct conf_item {
 	uint8_t f;            // additional Flags
 	union conf_value v;   // current Value
 	union conf_value d;   // Default value
+	bool (*c)(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN]); // Function pointer to validate the value
 };
 
 struct enum_options {
