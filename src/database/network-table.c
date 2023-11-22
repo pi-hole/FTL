@@ -760,7 +760,7 @@ static int update_netDB_interface(sqlite3 *db, const int network_id, const char 
 
 // Loop over all clients known to FTL and ensure we add them all to the database
 static bool add_FTL_clients_to_network_table(sqlite3 *db, enum arp_status *client_status, time_t now,
-                                             unsigned int *additional_entries)
+                                             unsigned int *additional_entries, int num_clients)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -768,7 +768,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, enum arp_status *clien
 
 	int rc = SQLITE_OK;
 	char hwaddr[128];
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(int clientID = 0; clientID < num_clients; clientID++)
 	{
 		// Check thread cancellation
 		if(killed)
@@ -1536,7 +1536,7 @@ void parse_neighbor_cache(sqlite3* db)
 
 	// Loop over all clients known to FTL and ensure we add them all to the
 	// database
-	if(!add_FTL_clients_to_network_table(db, client_status, now, &additional_entries))
+	if(!add_FTL_clients_to_network_table(db, client_status, now, &additional_entries, clients))
 		return;
 
 	// Check thread cancellation
