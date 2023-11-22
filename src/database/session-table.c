@@ -198,8 +198,8 @@ bool backup_db_sessions(struct session *sessions, const uint16_t max_sessions)
 		return false;
 	}
 
-	log_info("Stored %u/%u API session%s in the database",
-	         api_sessions, max_sessions, max_sessions == 1 ? "" : "s");
+	log_info("Stored %u API session%s in the database",
+	         api_sessions, api_sessions == 1 ? "" : "s");
 
 	// Close database connection
 	dbclose(&db);
