@@ -31,7 +31,8 @@ bool validate_dns_hosts(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 		// Check if it's a string
 		if(!cJSON_IsString(item))
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not a string", i, get_ordinal_suffix(i));
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not a string",
+			         i, get_ordinal_suffix(i));
 			return false;
 		}
 
@@ -40,10 +41,12 @@ bool validate_dns_hosts(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 		char *tmp = str;
 		char *ip = strsep(&tmp, " ");
 		char *host = strsep(&tmp, " ");
+		char *tail = strsep(&tmp, " ");
 
-		if(!ip || !host || !*ip || !*host)
+		if(!ip || !host || !*ip || !*host || tail)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not in the form \"IP HOSTNAME\" (\"%s\")", i, get_ordinal_suffix(i), str);
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not in the form \"IP HOSTNAME\" (\"%s\")",
+			         i, get_ordinal_suffix(i), item->valuestring);
 			free(str);
 			return false;
 		}
@@ -53,7 +56,8 @@ bool validate_dns_hosts(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 		struct in6_addr addr6;
 		if(inet_pton(AF_INET, ip, &addr) != 1 && inet_pton(AF_INET6, ip, &addr6) != 1)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is neither a valid IPv4 nor IPv6 address (\"%s\")", i, get_ordinal_suffix(i), ip);
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is neither a valid IPv4 nor IPv6 address (\"%s\")",
+			         i, get_ordinal_suffix(i), ip);
 			free(str);
 			return false;
 		}
@@ -61,7 +65,8 @@ bool validate_dns_hosts(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 		// Check if hostname is valid
 		if(strlen(host) < 1 || strlen(host) > 128)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not a valid hostname (\"%s\")", i, get_ordinal_suffix(i), host);
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not a valid hostname (\"%s\")",
+			         i, get_ordinal_suffix(i), host);
 			free(str);
 			return false;
 		}
@@ -140,10 +145,12 @@ bool validate_cidr(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 	char *tmp = str;
 	char *ip = strsep(&tmp, "/");
 	char *cidr = strsep(&tmp, "/");
+	char *tail = strsep(&tmp, "/");
 
-	if(!ip || !*ip)
+	// Check if there is an IP and no tail
+	if(!ip || !*ip || tail)
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid IP (\"%s\")", str);
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid IP in CIDR notation (\"%s\")", val->s);
 		free(str);
 		return false;
 	}
@@ -195,10 +202,12 @@ bool validate_ip_port(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 	char *tmp = str;
 	char *ip = strsep(&tmp, "#");
 	char *port = strsep(&tmp, "#");
+	char *tail = strsep(&tmp, "#");
 
-	if(!ip || !*ip)
+	// Check if there is an IP and no tail
+	if(!ip || !*ip || tail)
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid IP (\"%s\")", str);
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid IP (\"%s\")", val->s);
 		free(str);
 		return false;
 	}
@@ -239,27 +248,13 @@ bool validate_ip_port(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 // Validate domain
 bool validate_domain(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 {
-	// Check if it's a valid domain
-	char *str = strdup(val->s);
-	char *tmp = str;
-	char *domain = strsep(&tmp, " ");
-
-	if(!domain || !*domain)
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid domain (\"%s\")", str);
-		free(str);
-		return false;
-	}
-
 	// Check if domain is valid
-	if(!valid_domain(domain, strlen(domain), false))
+	if(!valid_domain(val->s, strlen(val->s), false))
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid domain (\"%s\")", domain);
-		free(str);
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "Not a valid domain (\"%s\")", val->s);
 		return false;
 	}
 
-	free(str);
 	return true;
 }
 
