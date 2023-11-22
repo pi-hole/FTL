@@ -489,21 +489,17 @@
   [[ ${lines[0]} == "The Pi-hole FTL engine - "* ]]
 }
 
-#@test "No WARNING messages in FTL.log (besides known capability issues)" {
-#  run bash -c 'grep "WARNING" /var/log/pihole/FTL.log'
-#  printf "%s\n" "${lines[@]}"
-#  run bash -c 'grep "WARNING" /var/log/pihole/FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN"'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[0]} == "0" ]]
-#}
+@test "No WARNING messages in FTL.log (besides known capability issues)" {
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|(Cannot set process priority)"'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == "" ]]
+}
 
-#@test "No FATAL messages in FTL.log (besides error due to starting FTL more than once)" {
-#  run bash -c 'grep "FATAL" /var/log/pihole/FTL.log'
-#  printf "%s\n" "${lines[@]}"
-#  run bash -c 'grep "FATAL:" /var/log/pihole/FTL.log | grep -c -v "FATAL: create_shm(): Failed to create shared memory object \"FTL-lock\": File exists"'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[0]} == "0" ]]
-#}
+@test "No CRIT messages in FTL.log (besides error due to starting FTL more than once)" {
+  run bash -c 'grep "CRIT:" /var/log/pihole/FTL.log | grep -v "CRIT: Initialization of shared memory failed"'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == "" ]]
+}
 
 @test "No \"database not available\" messages in FTL.log" {
   run bash -c 'grep -c "database not available" /var/log/pihole/FTL.log'
@@ -1548,7 +1544,7 @@
   [[ "${lines[0]}" == "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]" ]]
   run bash -c './pihole-FTL --config webserver.port'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "80,[::]:80,443s" ]]
+  [[ "${lines[0]}" == "80,[::]:80,443s,[::]:443s" ]]
 }
 
 @test "Create, verify and re-import Teleporter file via CLI" {

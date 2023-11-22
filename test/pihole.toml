@@ -560,7 +560,7 @@
   #
   # Possible values are:
   #     comma-separated list of <[ip_address:]port>
-  port = "80,[::]:80,443s"
+  port = "80,[::]:80,443s,[::]:443s"
 
   [webserver.session]
     # Session timeout in seconds. If a session is inactive for more than this time, it will
