@@ -1367,7 +1367,7 @@ void reset_config(struct conf_item *conf_item)
 	}
 }
 
-void readFTLconf(struct config *conf, const bool rewrite)
+bool readFTLconf(struct config *conf, const bool rewrite)
 {
 	// Initialize config with default values
 	initConfig(conf);
@@ -1384,7 +1384,7 @@ void readFTLconf(struct config *conf, const bool rewrite)
 			write_dnsmasq_config(conf, false, NULL);
 			write_custom_list();
 		}
-		return;
+		return true;
 	}
 
 	// On error, try to read legacy (pre-v6.0) config file. If successful,
@@ -1428,7 +1428,7 @@ void readFTLconf(struct config *conf, const bool rewrite)
 	if(ports == NULL)
 	{
 		log_err("Unable to allocate memory for default ports string");
-		return;
+		return false;
 	}
 	// Create the string
 	snprintf(ports, 32, "%d,%ds", http_port, https_port);
@@ -1452,6 +1452,8 @@ void readFTLconf(struct config *conf, const bool rewrite)
 	writeFTLtoml(true);
 	write_dnsmasq_config(conf, false, NULL);
 	write_custom_list();
+
+	return false;
 }
 
 bool getLogFilePath(void)
