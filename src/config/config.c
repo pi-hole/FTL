@@ -1453,7 +1453,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	write_dnsmasq_config(conf, false, NULL);
 	write_custom_list();
 
-	return true;
+	return false;
 }
 
 bool getLogFilePath(void)
