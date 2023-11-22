@@ -26,12 +26,6 @@
 // Open the TOML file for reading or writing
 FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode, const unsigned int version)
 {
-	FILE *fp;
-	// Rotate config file, no rotation is done when the file is opened for
-	// reading (mode == "r")
-	if(mode[0] != 'r')
-		rotate_files(GLOBALTOMLPATH, NULL);
-
 	// This should not happen, install a safeguard anyway to unveil
 	// possible future coding issues early on
 	if(mode[0] == 'w' && version != 0)
@@ -59,7 +53,7 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	}
 
 	// Try to open config file
-	fp = fopen(filename, mode);
+	FILE *fp = fopen(filename, mode);
 
 	// Return early if opening failed
 	if(!fp)
