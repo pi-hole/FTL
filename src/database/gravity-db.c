@@ -259,8 +259,8 @@ static char* get_client_querystr(const char *table, const char *column, const ch
 }
 
 // Determine whether to show IP or hardware address
-static inline const char *show_client_string(const char *hwaddr, const char *hostname,
-                                             const char *ip)
+static const char *show_client_string(const char *hwaddr, const char *hostname,
+                                      const char *ip)
 {
 	if(hostname != NULL && strlen(hostname) > 0)
 	{
@@ -1626,7 +1626,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		// The item is the item for all POST requests
 		if(listtype == GRAVITY_GROUPS)
 		{
-			querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:description);";
+			querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:comment);";
 		}
 		else if(listtype == GRAVITY_ADLISTS)
 		{
@@ -1648,8 +1648,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			if(row->name == NULL)
 			{
 				// Name is not to be changed
-				querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:description) "
-				           "ON CONFLICT(name) DO UPDATE SET enabled = :enabled, description = :description;";
+				querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:comment) "
+				           "ON CONFLICT(name) DO UPDATE SET enabled = :enabled, description = :comment;";
 			}
 			else
 			{

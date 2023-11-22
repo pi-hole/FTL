@@ -198,8 +198,8 @@ bool backup_db_sessions(struct session *sessions, const uint16_t max_sessions)
 		return false;
 	}
 
-	log_info("Stored %u/%u API session%s in the database",
-	         api_sessions, max_sessions, max_sessions == 1 ? "" : "s");
+	log_info("Stored %u API session%s in the database",
+	         api_sessions, api_sessions == 1 ? "" : "s");
 
 	// Close database connection
 	dbclose(&db);
@@ -296,8 +296,8 @@ bool restore_db_sessions(struct session *sessions, const uint16_t max_sessions)
 		i++;
 	}
 
-	log_info("Restored %u/%u API session%s from the database",
-	         i, max_sessions, max_sessions == 1 ? "" : "s");
+	log_info("Restored %u API session%s from the database",
+	         i, i == 1 ? "" : "s");
 
 	// Finalize statement
 	if(sqlite3_finalize(stmt) != SQLITE_OK)

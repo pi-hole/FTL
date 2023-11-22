@@ -35,11 +35,7 @@
 @test "dnsmasq options as expected" {
   run bash -c './pihole-FTL -vv | grep "cryptohash"'
   printf "%s\n" "${lines[@]}"
-  if [[ "${CI_ARCH}" == "x86_64_full" ]]; then
-    [[ ${lines[0]} == "Features:        IPv6 GNU-getopt DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP conntrack ipset nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
-  else
-    [[ ${lines[0]} == "Features:        IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
-  fi
+  [[ ${lines[0]} == "Features:        IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN2 DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
   [[ ${lines[1]} == "" ]]
 }
 
@@ -1258,7 +1254,7 @@
   [[ "${lines[0]}" == "1.1.1.1" ]]
 }
 
-@test "Custom DNS records: International domains are converted to IDNA form" {
+@test "Custom DNS records: International domains are converted to IDN form" {
   # äste.com ---> xn--ste-pla.com
   run bash -c "dig A xn--ste-pla.com +short @127.0.0.1"
   printf "%s\n" "${lines[@]}"
@@ -1269,13 +1265,28 @@
   [[ "${lines[0]}" == "2.2.2.2" ]]
 }
 
-@test "Local CNAME records: International domains are converted to IDNA form" {
+@test "Local CNAME records: International domains are converted to IDN form" {
   # brücke.com ---> xn--brcke-lva.com
   run bash -c "dig A xn--brcke-lva.com +short @127.0.0.1"
   printf "%s\n" "${lines[@]}"
   # xn--ste-pla.com ---> äste.com
   [[ "${lines[0]}" == "xn--ste-pla.com." ]]
   [[ "${lines[1]}" == "2.2.2.2" ]]
+}
+
+@test "IDN2 CLI interface correctly encodes/decodes domain according to IDNA2008 + TR46" {
+  run bash -c './pihole-FTL idn2 äste.com'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "xn--ste-pla.com" ]]
+  run bash -c './pihole-FTL idn2 -d xn--ste-pla.com'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "äste.com" ]]
+  run bash -c './pihole-FTL idn2 ß.de'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "xn--zca.de" ]]
+  run bash -c './pihole-FTL idn2 -d xn--zca.de'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "ß.de" ]]
 }
 
 @test "Environmental variable is favored over config file" {
@@ -1560,7 +1571,7 @@
   [[ ${lines[0]} == "3" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: pihole.toml unchanged" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "3" ]]
+  [[ ${lines[0]} == "4" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
@@ -1572,5 +1583,5 @@
   [[ ${lines[0]} == "1" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: custom.list unchanged" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "3" ]]
+  [[ ${lines[0]} == "4" ]]
 }

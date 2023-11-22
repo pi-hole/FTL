@@ -833,6 +833,7 @@ void initConfig(struct config *conf)
 	conf->webserver.domain.h = "On which domain is the web interface served?";
 	conf->webserver.domain.a = cJSON_CreateStringReference("<valid domain>");
 	conf->webserver.domain.t = CONF_STRING;
+	conf->webserver.domain.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.domain.d.s = (char*)"pi.hole";
 
 	conf->webserver.acl.k = "webserver.acl";
@@ -1303,18 +1304,7 @@ void initConfig(struct config *conf)
 
 		// Initialize config value with default one for all *except* the log file path
 		if(conf_item != &conf->files.log.ftl)
-		{
-			if(conf_item->t == CONF_JSON_STRING_ARRAY)
-				// JSON objects really need to be duplicated as the config
-				// structure stores only a pointer to memory somewhere else
-				conf_item->v.json = cJSON_Duplicate(conf_item->d.json, true);
-			else if(conf_item->t == CONF_STRING_ALLOCATED)
-				// Allocated string: Make our own copy
-				conf_item->v.s = strdup(conf_item->d.s);
-			else
-				// Ordinary value: Simply copy the union over
-				memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->d));
-		}
+			reset_config(conf_item);
 
 		// Parse and split paths
 		conf_item->p = gen_config_path(conf_item->k, '.');
@@ -1332,10 +1322,52 @@ void initConfig(struct config *conf)
 			log_err("Config option %s has no type!", conf_item->k);
 			continue;
 		}
+
+		// Verify we have no default string pointers to NULL
+		if((conf_item->t == CONF_STRING || conf_item->t == CONF_STRING_ALLOCATED) && conf_item->d.s == NULL)
+		{
+			log_err("Config option %s has NULL default string!", conf_item->k);
+			continue;
+		}
+
+		// Verify we have no default JSON pointers to NULL
+		if(conf_item->t == CONF_JSON_STRING_ARRAY && conf_item->d.json == NULL)
+		{
+			log_err("Config option %s has NULL default JSON array!", conf_item->k);
+			continue;
+		}
 	}
 }
 
-void readFTLconf(struct config *conf, const bool rewrite)
+void reset_config(struct conf_item *conf_item)
+{
+	if(conf_item->t == CONF_JSON_STRING_ARRAY)
+	{
+		// Free allocated memory (if any)
+		if(conf_item->v.json != NULL)
+			cJSON_Delete(conf_item->v.json);
+
+		// JSON objects really need to be duplicated as the config
+		// structure stores only a pointer to memory somewhere else
+		conf_item->v.json = cJSON_Duplicate(conf_item->d.json, true);
+	}
+	else if(conf_item->t == CONF_STRING_ALLOCATED)
+	{
+		// Free allocated memory (if any)
+		if(conf_item->v.s != NULL)
+			free(conf_item->v.s);
+
+		// Allocated string: Make our own copy
+		conf_item->v.s = strdup(conf_item->d.s);
+	}
+	else
+	{
+		// Ordinary value: Simply copy the union over
+		memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->d));
+	}
+}
+
+bool readFTLconf(struct config *conf, const bool rewrite)
 {
 	// Initialize config with default values
 	initConfig(conf);
@@ -1357,7 +1389,7 @@ void readFTLconf(struct config *conf, const bool rewrite)
 				write_dnsmasq_config(conf, false, NULL);
 				write_custom_list();
 			}
-			return;
+			return true;
 		}
 	}
 
@@ -1405,7 +1437,7 @@ void readFTLconf(struct config *conf, const bool rewrite)
 	if(ports == NULL)
 	{
 		log_err("Unable to allocate memory for default ports string");
-		return;
+		return false;
 	}
 	// Create the string
 	snprintf(ports, 32, "%d,%ds", http_port, https_port);
@@ -1429,6 +1461,8 @@ void readFTLconf(struct config *conf, const bool rewrite)
 	writeFTLtoml(true);
 	write_dnsmasq_config(conf, false, NULL);
 	write_custom_list();
+
+	return false;
 }
 
 bool getLogFilePath(void)

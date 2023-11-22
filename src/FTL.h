@@ -161,6 +161,22 @@
 #define pthread_mutex_lock(mutex) FTLpthread_mutex_lock(mutex, __FILE__,  __FUNCTION__,  __LINE__)
 #define fopen(pathname, mode) FTLfopen(pathname, mode, __FILE__,  __FUNCTION__,  __LINE__)
 #define ftlallocate(fd, offset, len) FTLfallocate(fd, offset, len, __FILE__,  __FUNCTION__,  __LINE__)
+#define strlen(str) FTLstrlen(str, __FILE__,  __FUNCTION__,  __LINE__)
+#define strnlen(str, maxlen) FTLstrnlen(str, maxlen, __FILE__,  __FUNCTION__,  __LINE__)
+#define strcpy(dest, src) FTLstrcpy(dest, src, __FILE__,  __FUNCTION__,  __LINE__)
+#define strncpy(dest, src, n) FTLstrncpy(dest, src, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define memset(s, c, n) FTLmemset(s, c, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define memcpy(dest, src, n) FTLmemcpy(dest, src, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define memmove(dest, src, n) FTLmemmove(dest, src, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define strstr(haystack, needle) FTLstrstr(haystack, needle, __FILE__,  __FUNCTION__,  __LINE__)
+#define strcmp(s1, s2) FTLstrcmp(s1, s2, __FILE__,  __FUNCTION__,  __LINE__)
+#define strncmp(s1, s2, n) FTLstrncmp(s1, s2, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define strcasecmp(s1, s2) FTLstrcasecmp(s1, s2, __FILE__,  __FUNCTION__,  __LINE__)
+#define strncasecmp(s1, s2, n) FTLstrncasecmp(s1, s2, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define strcat(dest, src) FTLstrcat(dest, src, __FILE__,  __FUNCTION__,  __LINE__)
+#define strncat(dest, src, n) FTLstrncat(dest, src, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define memcmp(s1, s2, n) FTLmemcmp(s1, s2, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define memmem(haystack, haystacklen, needle, needlelen) FTLmemmem(haystack, haystacklen, needle, needlelen, __FILE__,  __FUNCTION__,  __LINE__)
 #include "syscalls/syscalls.h"
 
 // Preprocessor help functions

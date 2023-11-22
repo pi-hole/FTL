@@ -316,26 +316,26 @@ enum cert_check read_certificate(const char* certfile, const char *domain, const
 	mbedtls_entropy_init(&entropy);
 	mbedtls_ctr_drbg_init(&ctr_drbg);
 
-	printf("Reading certificate from %s ...\n\n", certfile);
+	log_info("Reading certificate from %s ...", certfile);
 
 	// Check if the file exists and is readable
 	if(access(certfile, R_OK) != 0)
 	{
-		log_err("Could not read certificate file: %s\n", strerror(errno));
+		log_err("Could not read certificate file: %s", strerror(errno));
 		return CERT_FILE_NOT_FOUND;
 	}
 
 	int rc = mbedtls_pk_parse_keyfile(&key, certfile, NULL, mbedtls_ctr_drbg_random, &ctr_drbg);
 	if (rc != 0)
 	{
-		log_err("Cannot parse key: Error code %d\n", rc);
+		log_err("Cannot parse key: Error code %d", rc);
 		return CERT_CANNOT_PARSE_KEY;
 	}
 
 	rc = mbedtls_x509_crt_parse_file(&crt, certfile);
 	if (rc != 0)
 	{
-		log_err("Cannot parse certificate: Error code %d\n", rc);
+		log_err("Cannot parse certificate: Error code %d", rc);
 		return CERT_CANNOT_PARSE_CERT;
 	}
 
