@@ -304,13 +304,13 @@ void http_init(void)
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
+		"authentication_domain", config.webserver.domain.v.s,
 		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
 		                     "X-Frame-Options: DENY\r\n"
 		                     "X-XSS-Protection: 0\r\n"
 		                     "X-Content-Type-Options: nosniff\r\n"
 		                     "Referrer-Policy: strict-origin-when-cross-origin",
 		"index_files", "index.html,index.htm,index.lp",
-		"enable_auth_domain_check", "no",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
 		NULL

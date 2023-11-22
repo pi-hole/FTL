@@ -77,7 +77,8 @@ int main (int argc, char *argv[])
 	// Process pihole.toml configuration file
 	// The file is rewritten after parsing to ensure that all
 	// settings are present and have a valid value
-	readFTLconf(&config, true);
+	if(readFTLconf(&config, true))
+		log_info("Parsed config file "GLOBALTOMLPATH" successfully");
 
 	// Set process priority
 	set_nice();

@@ -11,3 +11,4 @@
 #include "FTL.h"
 
 int gravity_parseList(const char *infile, const char *outfile, const char *adlistID, const bool checkOnly, const bool antigravity);
+bool __attribute__((pure)) valid_domain(const char *domain, const size_t len, const bool fqdn_only);

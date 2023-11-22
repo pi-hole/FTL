@@ -19,6 +19,13 @@ char ** setupVarsArray = NULL;
 
 static void get_conf_string_from_setupVars(const char *key, struct conf_item *conf_item)
 {
+	// Verify we are allowed to use this function
+	if(conf_item->t != CONF_STRING && conf_item->t != CONF_STRING_ALLOCATED)
+	{
+		log_err("get_conf_string_from_setupVars(%s) failed: conf_item->t is neither CONF_STRING nor CONF_STRING_ALLOCATED", key);
+		return;
+	}
+
 	const char *setupVarsValue = read_setupVarsconf(key);
 	if(setupVarsValue == NULL)
 	{
@@ -44,8 +51,50 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 	log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s to %s", key, conf_item->k, conf_item->v.s);
 }
 
+static void get_conf_ipv4_from_setupVars(const char *key, struct conf_item *conf_item)
+{
+	// Verify we are allowed to use this function
+	if(conf_item->t != CONF_STRUCT_IN_ADDR)
+	{
+		log_err("get_conf_ipv4_from_setupVars(%s) failed: conf_item->t != CONF_STRUCT_IN_ADDR", key);
+		return;
+	}
+
+	const char *setupVarsValue = read_setupVarsconf(key);
+	if(setupVarsValue == NULL)
+	{
+		// Do not change default value, this value is not set in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Not set", key);
+
+		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+		clearSetupVarsArray();
+		return;
+	}
+
+	if(strlen(setupVarsValue) == 0)
+		memset(&conf_item->v.in_addr, 0, sizeof(struct in_addr));
+	else if(inet_pton(AF_INET, setupVarsValue, &conf_item->v.in_addr) != 1)
+	{
+		log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Invalid IPv4 address: %s", key, setupVarsValue);
+		memset(&conf_item->v.in_addr, 0, sizeof(struct in_addr));
+	}
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	// Parameter present in setupVars.conf
+	log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s to %s", key, conf_item->k, inet_ntoa(conf_item->v.in_addr));
+}
+
 static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf_item)
 {
+	// Verify we are allowed to use this function
+	if(conf_item->t != CONF_BOOL)
+	{
+		log_err("get_conf_bool_from_setupVars(%s) failed: conf_item->t != CONF_BOOL", key);
+		return;
+	}
+
 	const char *boolean = read_setupVarsconf(key);
 
 	if(boolean == NULL)
@@ -73,6 +122,13 @@ static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf
 
 static void get_conf_string_array_from_setupVars(const char *key, struct conf_item *conf_item)
 {
+	// Verify we are allowed to use this function
+	if(conf_item->t != CONF_JSON_STRING_ARRAY)
+	{
+		log_err("get_conf_string_array_from_setupVars(%s) failed: conf_item->t != CONF_JSON_STRING_ARRAY", key);
+		return;
+	}
+
 	// Get clients which the user doesn't want to see
 	const char *array = read_setupVarsconf(key);
 
@@ -96,6 +152,13 @@ static void get_conf_string_array_from_setupVars(const char *key, struct conf_it
 
 static void get_conf_upstream_servers_from_setupVars(struct conf_item *conf_item)
 {
+	// Verify we are allowed to use this function
+	if(conf_item->t != CONF_JSON_STRING_ARRAY)
+	{
+		log_err("get_conf_upstream_servers_from_setupVars() failed: conf_item->t != CONF_JSON_STRING_ARRAY");
+		return;
+	}
+
 	// Try to import up to 50 servers...
 	#define MAX_SERVERS 50
 	for(unsigned int j = 0; j < MAX_SERVERS; j++)
@@ -363,9 +426,9 @@ void importsetupVarsConf(void)
 
 	// Try to obtain DHCP settings
 	get_conf_bool_from_setupVars("DHCP_ACTIVE", &config.dhcp.active);
-	get_conf_string_from_setupVars("DHCP_START", &config.dhcp.start);
-	get_conf_string_from_setupVars("DHCP_END", &config.dhcp.end);
-	get_conf_string_from_setupVars("DHCP_ROUTER", &config.dhcp.router);
+	get_conf_ipv4_from_setupVars("DHCP_START", &config.dhcp.start);
+	get_conf_ipv4_from_setupVars("DHCP_END", &config.dhcp.end);
+	get_conf_ipv4_from_setupVars("DHCP_ROUTER", &config.dhcp.router);
 	get_conf_string_from_setupVars("DHCP_LEASETIME", &config.dhcp.leaseTime);
 
 	// If the DHCP lease time is set to "24", it is interpreted as "24h".
