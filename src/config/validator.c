@@ -40,12 +40,10 @@ bool validate_dns_hosts(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 		char *str = strdup(item->valuestring);
 		char *tmp = str;
 		char *ip = strsep(&tmp, " ");
-		char *host = strsep(&tmp, " ");
-		char *tail = strsep(&tmp, " ");
 
-		if(!ip || !host || !*ip || !*host || tail)
+		if(!ip || !*ip)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not in the form \"IP HOSTNAME\" (\"%s\")",
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element does not have an IP address (\"%s\")",
 			         i, get_ordinal_suffix(i), item->valuestring);
 			free(str);
 			return false;
@@ -62,11 +60,28 @@ bool validate_dns_hosts(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 			return false;
 		}
 
-		// Check if hostname is valid
-		if(strlen(host) < 1 || strlen(host) > 128)
+		// Check if all hostnames are valid
+		// The HOSTS format allows any number of space-separated
+		// hostnames to come after the IP address
+		unsigned int hosts = 0;
+		char *host = NULL;
+		while((host = strsep(&tmp, " ")) != NULL)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not a valid hostname (\"%s\")",
-			         i, get_ordinal_suffix(i), host);
+			if(!valid_domain(host, strlen(host), false))
+			{
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element has an invalid hostname (\"%s\")",
+				         i, get_ordinal_suffix(i), host);
+				free(str);
+				return false;
+			}
+			hosts++;
+		}
+
+		// Check if there is at least one hostname in this record
+		if(hosts < 1)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element does not have at least one hostname (\"%s\")",
+			         i, get_ordinal_suffix(i), item->valuestring);
 			free(str);
 			return false;
 		}
