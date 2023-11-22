@@ -58,9 +58,11 @@ static int api_list_read(struct ftl_conn *api,
 			char *name = NULL;
 			if(table.client != NULL)
 			{
-				// Try to obtain hostname if this is a valid IP address
+				// Try to obtain hostname
 				if(isValidIPv4(table.client) || isValidIPv6(table.client))
 					name = getNameFromIP(NULL, table.client);
+				else if(isMAC(table.client))
+					name = getNameFromMAC(table.client);
 			}
 
 			JSON_COPY_STR_TO_OBJECT(row, "client", table.client);
