@@ -106,18 +106,38 @@ bool check_inotify_event(void)
 		// Check if this is the event we are looking for
 		if(event->mask & IN_CLOSE_WRITE)
 		{
+			// File opened for writing was closed
 			log_debug(DEBUG_INOTIFY, "File written: "WATCHDIR"/%s", event->name);
 			if(strcmp(event->name, "pihole.toml") == 0)
 				config_changed = true;
 		}
 		else if(event->mask & IN_CREATE)
+		{
+			// File was created
 			log_debug(DEBUG_INOTIFY, "File created: "WATCHDIR"/%s", event->name);
-		else if(event->mask & IN_MOVE)
-			log_debug(DEBUG_INOTIFY, "File moved: "WATCHDIR"/%s", event->name);
+		}
+		else if(event->mask & IN_MOVED_FROM)
+		{
+			// File was moved (source)
+			log_debug(DEBUG_INOTIFY, "File moved from: "WATCHDIR"/%s", event->name);
+		}
+		else if(event->mask & IN_MOVED_TO)
+		{
+			// File was moved (target)
+			log_debug(DEBUG_INOTIFY, "File moved to: "WATCHDIR"/%s", event->name);
+			if(strcmp(event->name, "pihole.toml") == 0)
+				config_changed = true;
+		}
 		else if(event->mask & IN_DELETE)
+		{
+			// File was deleted
 			log_debug(DEBUG_INOTIFY, "File deleted: "WATCHDIR"/%s", event->name);
+		}
 		else if(event->mask & IN_IGNORED)
+		{
+			// Watch descriptor was removed
 			log_warn("Inotify watch descriptor for "WATCHDIR" was removed (directory deleted or unmounted?)");
+		}
 		else
 			log_debug(DEBUG_INOTIFY, "Unknown event (%X) on watched file: "WATCHDIR"/%s", event->mask, event->name);
 	}
