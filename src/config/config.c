@@ -29,6 +29,8 @@
 #include "api/api.h"
 // exit_code
 #include "signals.h"
+// getEnvVars()
+#include "config/env.h"
 
 struct config config = { 0 };
 static bool config_initialized = false;
@@ -1372,7 +1374,10 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// Initialize config with default values
 	initConfig(conf);
 
-	// First try to read TOML config file
+	// First, read the environment
+	getEnvVars();
+
+	// Try to read TOML config file
 	// If we cannot parse /etc/pihole.toml (due to missing or invalid syntax),
 	// we try to read the rotated files in /etc/pihole/config_backup starting at
 	// the most recent one and going back in time until we find a valid config

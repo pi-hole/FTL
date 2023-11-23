@@ -16,6 +16,73 @@
 //set_and_check_password()
 #include "config/password.h"
 
+struct env_item
+{
+	bool used;
+	char *key;
+	char *value;
+	struct env_item *next;
+};
+
+static struct env_item *env_list = NULL;
+
+void getEnvVars(void)
+{
+	// Read environment variables only once
+	if(env_list != NULL)
+		return;
+
+	// Get all environment variables
+	for(char **env = environ; *env != NULL; env++)
+	{
+		// Check if this is a FTLCONF_ variable
+		if(strncmp(*env, FTLCONF_PREFIX, sizeof(FTLCONF_PREFIX) - 1) == 0)
+		{
+			// Split key and value
+			char *key = strtok(*env, "=");
+			char *value = strtok(NULL, "=");
+
+			// Add to list
+			struct env_item *new_item = calloc(1, sizeof(struct env_item));
+			new_item->used = false;
+			new_item->key = strdup(key);
+			new_item->value = strdup(value);
+			new_item->next = env_list;
+			env_list = new_item;
+		}
+	}
+}
+
+static char *getFTLenv(const char *key)
+{
+	// Iterate over all known FTLCONF environment variables
+	for(struct env_item *item = env_list; item != NULL; item = item->next)
+	{
+		// Check if this is the requested key
+		if(strcmp(item->key, key) == 0)
+		{
+			item->used = true;
+			return item->value;
+		}
+	}
+
+	// Return NULL if the key was not found
+	return NULL;
+}
+
+void freeEnvVars(void)
+{
+	// Free all environment variables
+	while(env_list != NULL)
+	{
+		struct env_item *next = env_list->next;
+		free(env_list->key);
+		free(env_list->value);
+		free(env_list);
+		env_list = next;
+	}
+}
+
 bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 {
 	// Allocate memory for config key + prefix (sizeof includes the trailing '\0')
@@ -31,8 +98,9 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 		if(envkey[i] == '.')
 			envkey[i] = '_';
 
-	// First check if a environmental variable with the given key exists
-	const char *envvar = getenv(envkey);
+	// First check if a environmental variable with the given key exists by
+	// iterating over the list of FTLCONF_ variables
+	char *envvar = getFTLenv(envkey);
 
 	// Return early if this environment variable does not exist
 	if(envvar == NULL)
@@ -41,7 +109,7 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 		return false;
 	}
 
-	log_debug(DEBUG_CONFIG, "ENV %s = \"%s\"", envkey, envvar);
+	log_debug(DEBUG_CONFIG, "ENV %s = %s", envkey, envvar);
 
 	switch(conf_item->t)
 	{

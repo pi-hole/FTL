@@ -18,6 +18,8 @@
 
 #define FTLCONF_PREFIX "FTLCONF_"
 
+void getEnvVars(void);
+void freeEnvVars(void);
 bool readEnvValue(struct conf_item *conf_item, struct config *newconf);
 
 #endif //CONFIG_ENV_H
