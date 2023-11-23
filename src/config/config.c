@@ -1376,22 +1376,31 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	initConfig(conf);
 
 	// First try to read TOML config file
-	if(readFTLtoml(NULL, conf, NULL, rewrite, NULL))
+	// If we cannot parse /etc/pihole.toml (due to missing or invalid syntax),
+	// we try to read the rotated files in /etc/pihole/config_backup starting at
+	// the most recent one and going back in time until we find a valid config
+	for(unsigned int i = 0; i < MAX_ROTATIONS; i++)
 	{
-		// If successful, we write the config file back to disk
-		// to ensure that all options are present and comments
-		// about options deviating from the default are present
-		if(rewrite)
+		if(readFTLtoml(NULL, conf, NULL, rewrite, NULL, i))
 		{
-			writeFTLtoml(true);
-			write_dnsmasq_config(conf, false, NULL);
-			write_custom_list();
+			// If successful, we write the config file back to disk
+			// to ensure that all options are present and comments
+			// about options deviating from the default are present
+			if(rewrite)
+			{
+				writeFTLtoml(true);
+				write_dnsmasq_config(conf, false, NULL);
+				write_custom_list();
+			}
+			return true;
 		}
-		return true;
 	}
 
-	// On error, try to read legacy (pre-v6.0) config file. If successful,
-	// we move the legacy config file out of our way
+	log_info("No config file nor backup available, using defaults");
+
+	// If no previous config file could be read, we are likely either running
+	// for the first time or we are upgrading from a version prior to v6.0
+	// In this case, we try to read the legacy config files
 	const char *path = "";
 	if((path = readFTLlegacy(conf)) != NULL)
 	{
@@ -1587,7 +1596,7 @@ void reread_config(void)
 
 	// Read TOML config file
 	bool restart = false;
-	if(readFTLtoml(&config, &conf_copy, NULL, true, &restart))
+	if(readFTLtoml(&config, &conf_copy, NULL, true, &restart, 0))
 	{
 		// Install new configuration
 		log_debug(DEBUG_CONFIG, "Loaded configuration is valid, installing it");
@@ -1615,7 +1624,7 @@ void reread_config(void)
 	else
 	{
 		// New configuration is invalid, restore old one
-		log_debug(DEBUG_CONFIG, "Loaded configuration is invalid, restoring old one");
+		log_debug(DEBUG_CONFIG, "Modified config file is invalid, discarding and overwriting with current configuration");
 		free_config(&conf_copy);
 	}
 

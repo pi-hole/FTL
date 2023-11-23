@@ -48,7 +48,7 @@ bool writeFTLtoml(const bool verbose)
 {
 	// Try to open a temporary config file for writing
 	FILE *fp;
-	if((fp = openFTLtoml(GLOBALTOMLPATH".tmp", "w")) == NULL)
+	if((fp = openFTLtoml("w", 0)) == NULL)
 	{
 		log_warn("Cannot write to FTL config file (%s), content not updated", strerror(errno));
 		return false;
