@@ -22,6 +22,7 @@
 struct env_item
 {
 	bool used;
+	bool valid;
 	char *key;
 	char *value;
 	struct env_item *next;
@@ -72,43 +73,47 @@ void printFTLenv(void)
 		return;
 
 	// Count number of used and ignored env vars
-	unsigned int used = 0, ignored = 0;
+	unsigned int used = 0, invalid = 0, ignored = 0;
 	for(struct env_item *item = env_list; item != NULL; item = item->next)
 	{
 		if(item->used)
-			used++;
+			if(item->valid)
+				used++;
+			else
+				invalid++;
 		else
 			ignored++;
 	}
 
-	log_info("%u FTLCONF environment variable%s found (%u used, %u ignored)",
-	         used + ignored, used + ignored == 1 ? "" : "s", used, ignored);
+	const unsigned int sum = used + invalid + ignored;
+	log_info("%u FTLCONF environment variable%s found (%u used, %u invalid, %u ignored)",
+	         sum, sum == 1 ? "" : "s", used, invalid, ignored);
 
 	// Iterate over all known FTLCONF environment variables
 	for(struct env_item *item = env_list; item != NULL; item = item->next)
 	{
 		if(item->used)
 		{
-			log_info("%s %s", cli_tick(), item->key);
+			if(item->valid)
+				log_info("%s %s is used", cli_tick(), item->key);
+			else
+				log_info("%s %s is invalid, using default", cli_cross(), item->key);
 			continue;
 		}
 		// else: print warning
 		const char *closest_match = suggest_closest(env_keys, sizeof(env_keys) / sizeof(*env_keys), item->key);
-		log_warn("%s %s is unknown, did you mean %s ?", cli_cross(), item->key, closest_match);
+		log_info("%s %s is unknown and ignored, did you mean %s ?", cli_qst(), item->key, closest_match);
 	}
 }
 
-static char *getFTLenv(const char *key)
+static struct env_item *__attribute__((pure)) getFTLenv(const char *key)
 {
 	// Iterate over all known FTLCONF environment variables
 	for(struct env_item *item = env_list; item != NULL; item = item->next)
 	{
 		// Check if this is the requested key
 		if(strcmp(item->key, key) == 0)
-		{
-			item->used = true;
-			return item->value;
-		}
+			return item;
 	}
 
 	// Return NULL if the key was not found
@@ -132,11 +137,18 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 {
 	// First check if a environmental variable with the given key exists by
 	// iterating over the list of FTLCONF_ variables
-	char *envvar = getFTLenv(conf_item->e);
+	struct env_item *item = getFTLenv(conf_item->e);
 
 	// Return early if this environment variable does not exist
-	if(envvar == NULL)
+	if(item == NULL)
 		return false;
+
+
+	// Mark this environment variable as used
+	item->used = true;
+
+	// else: We found an environment variable with the given key
+	const char *envvar = item != NULL ? item->value : NULL;
 
 	log_debug(DEBUG_CONFIG, "ENV %s = %s", conf_item->e, envvar);
 
@@ -145,75 +157,129 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 		case CONF_BOOL:
 		{
 			if(strcasecmp(envvar, "true") == 0 || strcasecmp(envvar, "yes") == 0)
+			{
 				conf_item->v.b = true;
+				item->valid = true;
+			}
 			else if(strcasecmp(envvar, "false") == 0 || strcasecmp(envvar, "no") == 0)
+			{
 				conf_item->v.b = false;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is not of type bool", conf_item->e);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_ALL_DEBUG_BOOL:
 		{
 			if(strcasecmp(envvar, "true") == 0 || strcasecmp(envvar, "yes") == 0)
+			{
 				set_all_debug(newconf, true);
+				item->valid = true;
+			}
 			else if(strcasecmp(envvar, "false") == 0 || strcasecmp(envvar, "no") == 0)
+			{
 				set_all_debug(newconf, false);
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is not of type bool", conf_item->e);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_INT:
 		{
 			int val = 0;
 			if(sscanf(envvar, "%i", &val) == 1)
+			{
 				conf_item->v.i = val;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is not of type integer", conf_item->e);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_UINT:
 		{
 			unsigned int val = 0;
 			if(sscanf(envvar, "%u", &val) == 1)
+			{
 				conf_item->v.ui = val;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is not of type unsigned integer", conf_item->e);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_UINT16:
 		{
 			unsigned int val = 0;
 			if(sscanf(envvar, "%u", &val) == 1 && val <= UINT16_MAX)
+			{
 				conf_item->v.ui = val;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is not of type unsigned integer (16 bit)", conf_item->e);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_LONG:
 		{
 			long val = 0;
 			if(sscanf(envvar, "%li", &val) == 1)
+			{
 				conf_item->v.l = val;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is not of type long", conf_item->e);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_ULONG:
 		{
 			unsigned long val = 0;
 			if(sscanf(envvar, "%lu", &val) == 1)
+			{
 				conf_item->v.ul = val;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is not of type unsigned long", conf_item->e);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_DOUBLE:
 		{
 			double val = 0;
 			if(sscanf(envvar, "%lf", &val) == 1)
+			{
 				conf_item->v.d = val;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is not of type double", conf_item->e);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_STRING:
@@ -223,78 +289,127 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 				free(conf_item->v.s);
 			conf_item->v.s = strdup(envvar);
 			conf_item->t = CONF_STRING_ALLOCATED;
+			item->valid = true;
 			break;
 		}
 		case CONF_ENUM_PTR_TYPE:
 		{
 			const int ptr_type = get_ptr_type_val(envvar);
 			if(ptr_type != -1)
+			{
 				conf_item->v.ptr_type = ptr_type;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_ENUM_BUSY_TYPE:
 		{
 			const int busy_reply = get_busy_reply_val(envvar);
 			if(busy_reply != -1)
+			{
 				conf_item->v.busy_reply = busy_reply;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_ENUM_BLOCKING_MODE:
 		{
 			const int blocking_mode = get_blocking_mode_val(envvar);
 			if(blocking_mode != -1)
+			{
 				conf_item->v.blocking_mode = blocking_mode;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 		{
 			const int refresh_hostnames = get_refresh_hostnames_val(envvar);
 			if(refresh_hostnames != -1)
+			{
 				conf_item->v.refresh_hostnames = refresh_hostnames;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_ENUM_LISTENING_MODE:
 		{
 			const int listeningMode = get_listeningMode_val(envvar);
 			if(listeningMode != -1)
+			{
 				conf_item->v.listeningMode = listeningMode;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_ENUM_WEB_THEME:
 		{
 			const int web_theme = get_web_theme_val(envvar);
 			if(web_theme != -1)
+			{
 				conf_item->v.web_theme = web_theme;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_ENUM_TEMP_UNIT:
 		{
 			const int temp_unit = get_temp_unit_val(envvar);
 			if(temp_unit != -1)
+			{
 				conf_item->v.temp_unit = temp_unit;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is invalid, allowed options are: %s", conf_item->e, conf_item->h);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_ENUM_PRIVACY_LEVEL:
 		{
 			int val = 0;
 			if(sscanf(envvar, "%i", &val) == 1 && val >= PRIVACY_SHOW_ALL && val <= PRIVACY_MAXIMUM)
+			{
 				conf_item->v.i = val;
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is invalid (not of type integer or outside allowed bounds)", conf_item->e);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_STRUCT_IN_ADDR:
@@ -306,9 +421,15 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 				conf_item->v.in_addr.s_addr = INADDR_ANY;
 			}
 			else if(inet_pton(AF_INET, envvar, &addr4))
+			{
 				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is invalid (not of type IPv4 address)", conf_item->e);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_STRUCT_IN6_ADDR:
@@ -320,9 +441,15 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
 			}
 			else if(inet_pton(AF_INET6, envvar, &addr6))
+			{
 				memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
+				item->valid = true;
+			}
 			else
+			{
 				log_warn("ENV %s is invalid (not of type IPv6 address)", conf_item->e);
+				item->valid = false;
+			}
 			break;
 		}
 		case CONF_JSON_STRING_ARRAY:
@@ -342,14 +469,15 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 				if(strlen(elem) > 0)
 				{
 					// Add string to our JSON array
-					cJSON *item = cJSON_CreateString(elem);
-					cJSON_AddItemToArray(conf_item->v.json, item);
+					cJSON *citem = cJSON_CreateString(elem);
+					cJSON_AddItemToArray(conf_item->v.json, citem);
 				}
 
 				// Search for the next element
 				elem = strtok(NULL, delim);
 			}
 			free(envvar_copy);
+			item->valid = true;
 			break;
 		}
 		case CONF_PASSWORD:
@@ -357,8 +485,11 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			if(!set_and_check_password(conf_item, envvar))
 			{
 				log_warn("ENV %s is invalid", conf_item->e);
+				item->valid = false;
 				break;
 			}
+			item->valid = true;
+			break;
 		}
 	}
 
