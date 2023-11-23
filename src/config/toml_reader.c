@@ -23,6 +23,8 @@
 #include "config/toml_helper.h"
 // delete_all_sessions()
 #include "api/api.h"
+// readEnvValue()
+#include "config/env.h"
 
 // Private prototypes
 static toml_table_t *parseTOML(const unsigned int version);

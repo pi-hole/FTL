@@ -15,6 +15,8 @@ set(sources
         config.h
         dnsmasq_config.c
         dnsmasq_config.h
+        env.c
+        env.h
         inotify.c
         inotify.h
         legacy_reader.c
