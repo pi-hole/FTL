@@ -293,7 +293,6 @@ int api_stats_top_domains(struct ftl_conn *api)
 int api_stats_top_clients(struct ftl_conn *api)
 {
 	int count = 10;
-	bool includezeroclients = false;
 	int *temparray = calloc(2*counters->clients, sizeof(int*));
 	if(temparray == NULL)
 	{
@@ -325,9 +324,6 @@ int api_stats_top_clients(struct ftl_conn *api)
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
 		get_int_var(api->request->query_string, "count", &count);
-
-		// Show also clients which have not been active recently?
-		get_bool_var(api->request->query_string, "withzero", &includezeroclients);
 	}
 
 	// Lock shared memory
@@ -388,10 +384,9 @@ int api_stats_top_clients(struct ftl_conn *api)
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = getstr(client->namepos);
 
-		// Return this client if either
-		// - "withzero" option is set, and/or
-		// - the client made at least one query within the most recent 24 hours
-		if(includezeroclients || client_count > 0)
+		// Return this client if the client made at least one query
+		// within the most recent 24 hours
+		if(client_count > 0)
 		{
 			cJSON *client_item = JSON_NEW_OBJECT();
 			JSON_REF_STR_IN_OBJECT(client_item, "name", client_name);
