@@ -22,6 +22,8 @@
 #include "config/password.h"
 // check_capability()
 #include "capabilities.h"
+// suggest_closest_conf_key()
+#include "config/suggest.h"
 
 // Read a TOML value from a table depending on its type
 static bool readStringValue(struct conf_item *conf_item, const char *value, struct config *newconf)
@@ -417,7 +419,13 @@ int set_config_from_CLI(const char *key, const char *value)
 	// Check if we found the config option
 	if(new_item == NULL)
 	{
-		log_err("Unknown config option: %s", key);
+		unsigned int N = 0;
+		char **matches = suggest_closest_conf_key(false, key, &N);
+		log_err("Unknown config option %s, did you mean:", key);
+		for(unsigned int i = 0; i < N; i++)
+			log_err(" - %s", matches[i]);
+		free(matches);
+
 		free_config(&newconf);
 		return 4;
 	}
@@ -512,8 +520,14 @@ int get_config_from_CLI(const char *key, const bool quiet)
 	// Check if we found the config option
 	if(key != NULL && conf_item == NULL)
 	{
-		log_err("Unknown config option: %s", key);
-		return 2;
+		unsigned int N = 0;
+		char **matches = suggest_closest_conf_key(false, key, &N);
+		log_err("Unknown config option %s, did you mean:", key);
+		for(unsigned int i = 0; i < N; i++)
+			log_err(" - %s", matches[i]);
+		free(matches);
+
+		return 4;
 	}
 
 	// Use return status if this is a boolean value

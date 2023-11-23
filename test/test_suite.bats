@@ -1310,7 +1310,7 @@
 }
 
 @test "Invalid environmental variable is logged" {
-  run bash -c 'grep -q "FTLCONF_debug_api is invalid, using default" /var/log/pihole/FTL.log'
+  run bash -c 'grep -q "FTLCONF_debug_api is invalid" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }

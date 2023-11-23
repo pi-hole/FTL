@@ -31,7 +31,6 @@ struct env_item
 };
 
 static struct env_item *env_list = NULL;
-static const char *env_keys[sizeof(config) / sizeof(struct conf_item)] = { NULL };
 
 void getEnvVars(void)
 {
@@ -59,13 +58,6 @@ void getEnvVars(void)
 			new_item->next = env_list;
 			env_list = new_item;
 		}
-	}
-
-	// Add all config item env keys to the list
-	for(unsigned int i = 0; i < sizeof(env_keys) / sizeof(*env_keys); i++)
-	{
-		struct conf_item *conf_item = get_conf_item(&config, i);
-		env_keys[i] = conf_item->e;
 	}
 
 }
@@ -117,13 +109,12 @@ void printFTLenv(void)
 		}
 		// else: print warning
 		unsigned int N = 0;
-		char **matches = suggest_closest(env_keys, sizeof(env_keys) / sizeof(*env_keys), item->key, &N);
+		char **matches = suggest_closest_conf_key(true, item->key, &N);
 
 		// Print the closest matches
 		log_warn("%s %s is unknown, did you mean any of these?", cli_qst(), item->key);
 		for(size_t i = 0; i < N; ++i)
-			if(matches[i] != NULL)
-				log_warn("    - %s", matches[i]);
+			log_warn("    - %s", matches[i]);
 		free(matches);
 	}
 }

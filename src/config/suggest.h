@@ -14,7 +14,6 @@
 // union conf_value
 #include "config.h"
 
-char **suggest_closest(const char *strings[], size_t nstrings,
-                       const char *string, unsigned int *N) __attribute__((pure));
+char **suggest_closest_conf_key(const bool env, const char *string, unsigned int *N);
 
 #endif //LEVENSHTEIN_H

@@ -104,83 +104,58 @@ static size_t levenshtein_distance(const char *s1, const size_t len1, const char
 // behavior we need.
 //
 // This implementation is based on https://en.wikipedia.org/wiki/Bitap_algorithm
-static const char *bitap_fuzzy_bitwise_search(const char *text, const char *pattern, unsigned int k)
+static const char *__attribute__((pure)) bitap_bitwise_search(const char *text, const char *pattern,
+                                                              const size_t pattern_len, unsigned int k)
 {
-	const size_t m = strlen(pattern);
-	const char *result = NULL;
+	// The bit array R is used to keep track of the current state of the
+	// search.
+	unsigned long R = ~1;
+
+	// The pattern bitmask pattern_mask is used to represent the pattern
+	// string in a bitwise format. We use a size of 256 because our alphabet
+	// is all values of an unsigned char (0-255).
 	unsigned long pattern_mask[256];
-	unsigned long *R;
 
 	// Sanity checks
 	if (pattern[0] == '\0')
 		return text;
-	if (m > 31)
-		return "The pattern is too long!";
 
-	// Initialize the bit array R
-	// To perform fuzzy string searching using the bitap algorithm, it is
-	// necessary to extend the bit array R into a second dimension. Instead
-	// of having a single array R that changes over the length of the text,
-	// we now have k distinct arrays R1..k. Array Ri holds a representation
-	// of the prefixes of pattern that match any suffix of the current
-	// string with i or fewer errors. In this context, an "error" may be an
-	// insertion, deletion, or substitution; see Levenshtein distance for
-	// more information on these operations.
-	R = calloc(k + 1, sizeof(*R));
-	for (unsigned int i = 0; i <= k; ++i)
-		R[i] = ~1;
+	if (pattern_len > 31)
+		return NULL;
 
 	// Initialize the pattern bitmasks
-	for (unsigned int i = 0; i < sizeof(pattern_mask)/sizeof(*pattern_mask); ++i)
+	// First sets all bits in the bitmask to 1, ...
+	for (unsigned int i = 0; i < sizeof(pattern_mask) / sizeof(*pattern_mask); ++i)
 		pattern_mask[i] = ~0;
-	for (unsigned int i = 0; i < m; ++i)
+	// ... and then set the corresponding bit in the bitmask to 0 for each
+	// character in the pattern
+	for (unsigned int i = 0; i < pattern_len; ++i)
 		pattern_mask[(unsigned char)pattern[i]] &= ~(1UL << i);
 
-	// Iterate over all characters in the text
-	for (unsigned int i = 0; text[i] != '\0'; ++i)
-	{
-		// Update the bit arrays
-		// R[d] = (R[d] | pattern_mask[text[i]]) << 1;
-		unsigned long old_Rd1 = R[0];
-		R[0] |= pattern_mask[(unsigned char)text[i]];
-		R[0] <<= 1;
-		for (unsigned int d = 1; d <= k; ++d)
-		{
-			unsigned long tmp = R[d];
-			// This algorithm only pays attention to substitutions,
-			// not to insertions or deletions – in other words, a
-			// Hamming distance of k.
-			R[d] = (old_Rd1 & (R[d] | pattern_mask[(unsigned char)text[i]])) << 1;
-			old_Rd1 = tmp;
-		}
+	// Loop over all characters in the text
+	for (unsigned int i = 0; text[i] != '\0'; ++i) {
+		// Update the bit array R based on the pattern bitmask
+		R |= pattern_mask[(unsigned char)text[i]];
+		// Shift R one bit to the left
+		R <<= 1;
 
-		// If the last bit of R[k] is 0, we found a match
-		if (0 == (R[k] & (1UL << m)))
-		{
-			result = (text+i - m) + 1;
-			break;
-		}
+		// If the bit at the position corresponding to the pattern
+		// length in `R` is 0, an approximate match of the pattern has
+		// been found. Return the pointer to the start of this match
+		if ((R & (1UL << pattern_len)) == 0)
+			return (text + i - pattern_len) + 1;
 	}
 
-	// Free the memory we allocated
-	free(R);
-
-	// Return the result
-	return result;
+	// No match was found with the given allowed number of errors (k)
+	return NULL;
 }
 
 // Returns the the closest matching string using the Levenshtein distance
-static const char *__attribute__((pure)) suggest_levenshtein(const char *strings[], size_t nstrings, const char *string)
+static const char *__attribute__((pure)) suggest_levenshtein(const char *strings[], size_t nstrings,
+                                                             const char *string, const size_t string_len)
 {
 	size_t mindist = 0;
 	ssize_t minidx = -1;
-
-	// Convert the string to lowercase
-	// Skip the first 8 characters (i.e., "FTLCONF_")
-	char *lower_string = strdup(string);
-	const size_t m = strlen(lower_string);
-	for(size_t i = 8; i < strlen(lower_string); ++i)
-		lower_string[i] = tolower(lower_string[i]);
 
 	// The Levenshtein distance is at most the length of the longer string
 	for(size_t i = 0; i < nstrings; ++i)
@@ -196,7 +171,7 @@ static const char *__attribute__((pure)) suggest_levenshtein(const char *strings
 		// Calculate the Levenshtein distance between the current string
 		// (out of nstrings) and the string we are checking against
 		const char *current = strings[i];
-		size_t dist = levenshtein_distance(current, strlen(current), lower_string, m);
+		size_t dist = levenshtein_distance(current, strlen(current), string, string_len);
 
 		// If the distance is smaller than the smallest minimum we found
 		// so far, update the minimum and the index of the closest match
@@ -206,9 +181,6 @@ static const char *__attribute__((pure)) suggest_levenshtein(const char *strings
 			minidx = i;
 		}
 	}
-
-	// Free the memory we allocated
-	free(lower_string);
 
 	// Return NULL if no match was found (this can only happen if no
 	// strings were given)
@@ -220,20 +192,14 @@ static const char *__attribute__((pure)) suggest_levenshtein(const char *strings
 }
 
 // Returns the the closest matching string using fuzzy searching
-static unsigned int __attribute__((pure)) suggest_bitap(const char *strings[], size_t nstrings, const char *string,
+static unsigned int __attribute__((pure)) suggest_bitap(const char *strings[], size_t nstrings,
+                                                        const char *string, const size_t string_len,
                                                         char **results, unsigned int num_results)
 {
-	// Convert the string to lowercase
-	// Skip the first 8 characters (i.e., "FTLCONF_")
-	char *lower_string = strdup(string);
-	const size_t m = strlen(lower_string);
-	for(size_t i = 8; i < strlen(lower_string); ++i)
-		lower_string[i] = tolower(lower_string[i]);
-
 	unsigned int found = 0;
 
 	// Try to find a match with at most j errors
-	for(unsigned int j = 0; j < m; j++)
+	for(unsigned int j = 0; j < string_len; j++)
 	{
 		// Iterate over all strings and try to find a match
 		for(unsigned int i = 0; i < nstrings; ++i)
@@ -242,7 +208,7 @@ static unsigned int __attribute__((pure)) suggest_bitap(const char *strings[], s
 			const char *current = strings[i];
 
 			// Use the Bitap algorithm to find a match
-			const char *result = bitap_fuzzy_bitwise_search(current, lower_string, j);
+			const char *result = bitap_bitwise_search(current, string, string_len, j);
 
 			// If we found a match, add it to the list of results
 			if(result != NULL)
@@ -258,9 +224,6 @@ static unsigned int __attribute__((pure)) suggest_bitap(const char *strings[], s
 			break;
 	}
 
-	// Free the memory we allocated
-	free(lower_string);
-
 	// Return the number of matches we found
 	return found;
 }
@@ -268,17 +231,18 @@ static unsigned int __attribute__((pure)) suggest_bitap(const char *strings[], s
 // Try to find up to two matches using the Bitap algorithm and one using the
 // Levenshtein distance
 #define MAX_MATCHES 3
-char **__attribute__((pure)) suggest_closest(const char *strings[], size_t nstrings,
-                                             const char *string, unsigned int *N)
+static char **__attribute__((pure)) suggest_closest(const char *strings[], size_t nstrings,
+                                             const char *string, const size_t string_len,
+                                             unsigned int *N)
 {
 	// Allocate memory for MAX_MATCHES matches
 	char** matches = calloc(MAX_MATCHES, sizeof(char*));
 
 	// Try to find (MAX_MATCHES - 1) matches using the Bitap algorithm
-	*N = suggest_bitap(strings, nstrings, string, matches, MAX_MATCHES - 1);
+	*N = suggest_bitap(strings, nstrings, string, string_len, matches, MAX_MATCHES - 1);
 
 	// Try to find a last match using the Levenshtein distance
-	matches[(*N)++] = (char*)suggest_levenshtein(strings, nstrings, string);
+	matches[(*N)++] = (char*)suggest_levenshtein(strings, nstrings, string, string_len);
 
 	// Loop over matches and remove duplicates
 	for(unsigned int i = 0; i < *N; ++i)
@@ -290,7 +254,7 @@ char **__attribute__((pure)) suggest_closest(const char *strings[], size_t nstri
 		// Loop over all matches after the current one
 		for(unsigned int j = i + 1; j < *N; ++j)
 		{
-			// If the current match is a duplicate, set it to NULL
+			// Set all duplicates to NULL
 			if(matches[j] != NULL && strcmp(matches[i], matches[j]) == 0)
 			{
 				matches[j] = NULL;
@@ -298,6 +262,37 @@ char **__attribute__((pure)) suggest_closest(const char *strings[], size_t nstri
 		}
 	}
 
+	// Remove NULL entries from the list of matches
+	unsigned int j = 0;
+	for(unsigned int i = 0; i < *N; ++i)
+	{
+		// If the i-th element is not NULL, the i-th element is assigned
+		// to the j-th position in the array, and j is incremented by 1.
+		// This effectively moves non-NULL elements towards the front of
+		// the array.
+		if(matches[i] != NULL)
+			matches[j++] = matches[i];
+	}
+	// Update the number of matches to the number of non-NULL elements
+	*N = j;
+
 	// Return the list of matches
 	return matches;
+}
+
+char **suggest_closest_conf_key(const bool env, const char *string, unsigned int *N)
+{
+	// Collect all config item keys in a static list
+	const char *conf_keys[CONFIG_ELEMENTS] = { NULL };
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		struct conf_item *conf_item = get_conf_item(&config, i);
+		if(!conf_item)
+			continue;
+		// Use either the environment key or the config key
+		conf_keys[i] = env ? conf_item->e : conf_item->k;
+	}
+
+	// Return the list of closest matches
+	return suggest_closest(conf_keys, CONFIG_ELEMENTS, string, strlen(string), N);
 }
