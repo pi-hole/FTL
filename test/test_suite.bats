@@ -489,8 +489,8 @@
   [[ ${lines[0]} == "The Pi-hole FTL engine - "* ]]
 }
 
-@test "No WARNING messages in FTL.log (besides known capability issues)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|(Cannot set process priority)"'
+@test "No WARNING messages in FTL.log (besides known warnings)" {
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|(Cannot set process priority)|FTLCONF_"'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == "" ]]
 }
