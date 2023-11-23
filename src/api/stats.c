@@ -366,18 +366,18 @@ int api_stats_top_clients(struct ftl_conn *api)
 			continue;
 
 		// Skip this client if there is a filter on it
-		bool skip_domain = false;
+		bool skip_client = false;
 		for(unsigned int j = 0; j < excludeClients; j++)
 		{
 			cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeClients.v.json, j);
 			if(strcmp(getstr(client->ippos), item->valuestring) == 0 ||
 			   strcmp(getstr(client->namepos), item->valuestring) == 0)
 			{
-				skip_domain = true;
+				skip_client = true;
 				break;
 			}
 		}
-		if(skip_domain)
+		if(skip_client)
 			continue;
 
 		// Hidden client, probably due to privacy level. Skip this in the top lists
@@ -391,7 +391,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 		// Return this client if either
 		// - "withzero" option is set, and/or
 		// - the client made at least one query within the most recent 24 hours
-		if(includezeroclients || count > 0)
+		if(includezeroclients || client_count > 0)
 		{
 			cJSON *client_item = JSON_NEW_OBJECT();
 			JSON_REF_STR_IN_OBJECT(client_item, "name", client_name);
