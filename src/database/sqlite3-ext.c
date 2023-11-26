@@ -29,32 +29,6 @@
 // isMAC()
 #include "network-table.h"
 
-// Counting number of occurrences of a specific char in a string
-static size_t __attribute__ ((pure)) count_char(const char *haystack, const char needle)
-{
-	size_t count = 0u;
-	while(*haystack)
-		if (*haystack++ == needle)
-			++count;
-	return count;
-}
-
-// Identify MAC addresses using a set of suitable criteria
-static bool __attribute__ ((pure)) isMAC(const char *input)
-{
-	if(input != NULL &&                // Valid input
-	   strlen(input) == 17u &&         // MAC addresses are always 17 chars long (6 bytes + 5 colons)
-	   count_char(input, ':') == 5u && // MAC addresses always have 5 colons
-	   strstr(input, "::") == NULL)    // No double-colons (IPv6 address abbreviation)
-	   {
-		// This is a MAC address of the form AA:BB:CC:DD:EE:FF
-		return true;
-	   }
-
-	// Not a MAC address
-	return false;
-}
-
 static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
 	// Exactly two arguments should be submitted to this routine
