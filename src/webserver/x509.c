@@ -294,6 +294,23 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	return true;
 }
 
+static bool check_wildcard_domain(char *san, const size_t san_len, const char *domain)
+{
+	// Also check if the SAN is a wildcard domain and if the domain
+	// matches the wildcard (e.g. "*.pi-hole.net" and "abc.pi-hole.net")
+	const bool is_wild = san_len > 2 && san[0] == '*' && san[1] == '.';
+	if(!is_wild)
+		return false;
+
+	// The domain must be at least as long as the wildcard domain
+	if(strlen(domain) < san_len - 1)
+		return false;
+
+	// Check if the domain ends with the wildcard domain
+	const char *wild_domain = domain + strlen(domain) - san_len + 2;
+	return strcasecmp(wild_domain, san + 2) == 0;
+}
+
 // This function reads a X.509 certificate from a file and prints a
 // human-readable representation of the certificate to stdout. If a domain is
 // specified, we only check if this domain is present in the certificate.
@@ -363,6 +380,14 @@ enum cert_check read_certificate(const char* certfile, const char *domain, const
 				found = true;
 				break;
 			}
+
+			// Also check if the SAN is a wildcard domain and if the domain
+			// matches the wildcard
+			if(check_wildcard_domain((char*)san.san.unstructured_name.p, san.san.unstructured_name.len, domain))
+			{
+				found = true;
+				break;
+			}
 next_san:
 			// Go to next SAN
 			sans = sans->next;
@@ -377,6 +402,10 @@ next_san:
 				found = true;
 			// Check subject == "<domain>"
 			else if(strcasecmp(domain, subject) == 0)
+				found = true;
+			// Also check if the subject is a wildcard domain and if the domain
+			// matches the wildcard
+			else if(check_wildcard_domain(subject, strlen(subject), domain))
 				found = true;
 		}
 
