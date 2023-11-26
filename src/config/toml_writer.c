@@ -22,6 +22,9 @@
 // files_different()
 #include "files.h"
 
+// defined in config/config.c
+extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
+
 static void migrate_config(void)
 {
 	// Migrating dhcp.domain -> dns.domain
@@ -193,6 +196,9 @@ bool writeFTLtoml(const bool verbose)
 		// Log that the config file has not changed if in debug mode
 		log_debug(DEBUG_CONFIG, "pihole.toml unchanged");
 	}
+
+	if(!sha256sum(GLOBALTOMLPATH, last_checksum))
+		log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
 
 	return true;
 }

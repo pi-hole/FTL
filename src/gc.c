@@ -374,7 +374,6 @@ void *GC_thread(void *val)
 		if(check_inotify_event())
 		{
 			// Reload config
-			log_info("Reloading config due to pihole.toml change");
 			reread_config();
 		}
 

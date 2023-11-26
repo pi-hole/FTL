@@ -1556,6 +1556,12 @@
   [[ $status == 0 ]]
 }
 
+@test "SHA256 checksum working" {
+  run bash -c './pihole-FTL sha256sum test/test.pem'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "eae293f0c30369935a7457a789658bedebf92d544e7526bc43aa07883a597fa9  test/test.pem" ]]
+}
+
 @test "API validation" {
   run python3 test/api/checkAPI.py
   printf "%s\n" "${lines[@]}"
@@ -1607,7 +1613,7 @@
   [[ ${lines[0]} == "3" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: pihole.toml unchanged" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "4" ]]
+  [[ ${lines[0]} == "3" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
@@ -1619,5 +1625,5 @@
   [[ ${lines[0]} == "1" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: custom.list unchanged" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "4" ]]
+  [[ ${lines[0]} == "3" ]]
 }
