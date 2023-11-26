@@ -29,9 +29,12 @@
 #include "api/api.h"
 // exit_code
 #include "signals.h"
+// sha256sum()
+#include "files.h"
 
 struct config config = { 0 };
 static bool config_initialized = false;
+uint8_t last_checksum[SHA256_DIGEST_SIZE] = { 0 };
 
 // Private prototypes
 static bool port_in_use(const in_port_t port);
@@ -1571,6 +1574,23 @@ void replace_config(struct config *newconf)
 
 void reread_config(void)
 {
+
+	// Create checksum of config file
+	uint8_t checksum[SHA256_DIGEST_SIZE];
+	if(!sha256sum(GLOBALTOMLPATH, checksum))
+	{
+		log_err("Unable to create checksum of %s, not re-reading config file", GLOBALTOMLPATH);
+		return;
+	}
+
+	// Compare checksums
+	if(memcmp(checksum, last_checksum, SHA256_DIGEST_SIZE) == 0)
+	{
+		log_debug(DEBUG_CONFIG, "Checksum of %s has not changed, not re-reading config file", GLOBALTOMLPATH);
+		return;
+	}
+
+	log_info("Reloading config due to pihole.toml change");
 	struct config conf_copy;
 	duplicate_config(&conf_copy, &config);
 
