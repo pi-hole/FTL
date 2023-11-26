@@ -163,7 +163,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 	// /api/stats/top_domains?blocked=true
 	if(api->request->query_string != NULL)
 	{
-		// Should blocked clients be shown?
+		// Should blocked domains be shown?
 		get_bool_var(api->request->query_string, "blocked", &blocked);
 
 		// Does the user request a non-default number of replies?
@@ -229,7 +229,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 		// Skip this domain if there is a filter on it (but only if not in audit mode)
 		if(!audit)
 		{
-			// Check if this client should be skipped
+			// Check if this domain should be skipped
 			bool skip_domain = false;
 			for(unsigned int j = 0; j < excludeDomains; j++)
 			{
