@@ -63,7 +63,6 @@ typedef struct {
 	int count;
 	int failed;
 	unsigned int responses;
-	int overTime[OVERTIME_SLOTS];
 	size_t ippos;
 	size_t namepos;
 	double rtime;

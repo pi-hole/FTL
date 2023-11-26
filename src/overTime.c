@@ -53,18 +53,6 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 			client->overTime[index] = 0;
 		}
 	}
-
-	// Zero overTime counter for all known upstream destinations
-	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
-	{
-		// Get client pointer
-		upstreamsData* upstream = getUpstream(upstreamID, true);
-		if(upstream != NULL)
-		{
-			// Set overTime data to zero
-			upstream->overTime[index] = 0;
-		}
-	}
 }
 
 void initOverTime(void)
@@ -200,22 +188,6 @@ void moveOverTimeMemory(const time_t mintime)
 		memmove(&(client->overTime[0]),
 		        &(client->overTime[moveOverTime]),
 		        remainingSlots*sizeof(*client->overTime));
-	}
-
-	// Process upstream data
-	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
-	{
-		upstreamsData *upstream = getUpstream(upstreamID, true);
-		if(!upstream)
-			continue;
-
-		// Adjust upstream's queries counter
-		upstream->count -= upstream->overTime[0];
-
-		// Move upstream-specific overTime memory
-		memmove(&(upstream->overTime[0]),
-		        &(upstream->overTime[moveOverTime]),
-		        remainingSlots*sizeof(*upstream->overTime));
 	}
 
 	// Iterate over new overTime region and initialize it

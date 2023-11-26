@@ -1693,11 +1693,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 
 	upstreamsData *upstream = getUpstream(upstreamID, true);
 	if(upstream != NULL)
-	{
-		// Update overTime counts
-		const int timeidx = getOverTimeID(query->timestamp);
-		upstream->overTime[timeidx]++;
-	}
+		upstream->count++;
 
 	// Proceed only if
 	// - current query has not been marked as replied to so far
@@ -2322,11 +2318,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 		// Get forward pointer
 		upstreamsData* upstream = getUpstream(query->upstreamID, true);
 		if(upstream != NULL)
-		{
-			const int timeidx = getOverTimeID(query->timestamp);
-			upstream->overTime[timeidx]--;
 			upstream->count--;
-		}
 	}
 	else if(is_blocked(query->status))
 	{
