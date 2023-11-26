@@ -297,8 +297,8 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	}
 
 	// Process all queries
-	int removed = 0;
-	for(long int i=0; i < counters->queries; i++)
+	unsigned int removed = 0;
+	for(long int i = 0; i < counters->queries; i++)
 	{
 		queriesData* query = getQuery(i, true);
 		if(query == NULL)
@@ -308,19 +308,25 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		if(query->timestamp > mintime)
 			break;
 
-		// Adjust client counter (total and overTime)
-		clientsData* client = getClient(query->clientID, true);
+		// Adjust overTime counter
 		const int timeidx = getOverTimeID(query->timestamp);
 		overTime[timeidx].total--;
+
+		// Adjust client counter (total and overTime)
+		clientsData* client = getClient(query->clientID, true);
 		if(client != NULL)
 			change_clientcount(client, -1, 0, timeidx, -1);
 
 		// Adjust domain counter (no overTime information)
-		domainsData* domain = getDomain(query->domainID, true);
+		domainsData *domain = getDomain(query->domainID, true);
 		if(domain != NULL)
 			domain->count--;
 
-		// Get upstream pointer
+		// Adjust upstream counter (no overTime information)
+		upstreamsData *upstream = getUpstream(query->upstreamID, true);
+		if(upstream != NULL)
+			// Adjust upstream counter
+			upstream->count--;
 
 		// Change other counters according to status of this query
 		switch(query->status)
@@ -354,24 +360,29 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 				if(client != NULL)
 					change_clientcount(client, 0, -1, -1, 0);
 				break;
-			case QUERY_IN_PROGRESS: // Don't have to do anything here
+			case QUERY_IN_PROGRESS: // fall through
 			case QUERY_STATUS_MAX: // fall through
 			default:
-				/* That cannot happen */
+				// Don't have to do anything here
 				break;
 		}
 
 		// Update reply counters
 		counters->reply[query->reply]--;
+		log_debug(DEBUG_GC, "GC: reply type %d removed (GC), new count = %d", query->reply, counters->reply[query->reply]);
 
 		// Update type counters
 		counters->querytype[query->type]--;
+		log_debug(DEBUG_GC, "GC: query type %d removed (GC), new count = %d", query->type, counters->querytype[query->type]);
 
 		// Subtract UNKNOWN from the counters before
 		// setting the status if different.
 		// Minus one here and plus one below = net zero
 		if(query->status != QUERY_UNKNOWN)
+		{
 			counters->status[QUERY_UNKNOWN]--;
+			log_debug(DEBUG_GC, "GC: status %d removed (GC), new count = %d", QUERY_UNKNOWN, counters->status[QUERY_UNKNOWN]);
+		}
 
 		// Set query again to UNKNOWN to reset the counters
 		query_set_status(query, QUERY_UNKNOWN);
@@ -417,7 +428,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	// Determine if overTime memory needs to get moved
 	moveOverTimeMemory(mintime);
 
-	log_debug(DEBUG_GC, "GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
+	log_debug(DEBUG_GC, "GC removed %u queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 	// Release thread lock
 	if(!flush)

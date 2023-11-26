@@ -1037,8 +1037,12 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 
 	// else: update global counters, ...
 	if(!init)
+	{
 		counters->status[old_status]--;
+		log_debug(DEBUG_GC, "GC: status %d removed (!init), new count = %d", QUERY_UNKNOWN, counters->status[QUERY_UNKNOWN]);
+	}
 	counters->status[new_status]++;
+	log_debug(DEBUG_GC, "GC: status %d set, new count = %d", new_status, counters->status[new_status]);
 
 	// ... update overTime counters, ...
 	const int timeidx = getOverTimeID(query->timestamp);

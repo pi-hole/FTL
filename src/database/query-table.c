@@ -1065,6 +1065,7 @@ void DB_read_queries(void)
 			query->qtype = type - 100;
 		}
 		counters->querytype[query->type]++;
+		log_debug(DEBUG_GC, "GC: query type %d set (database), new count = %d", query->type, counters->querytype[query->type]);
 
 		// Status is set below
 		query->domainID = domainID;
@@ -1076,6 +1077,7 @@ void DB_read_queries(void)
 		query->dnssec = dnssec;
 		query->reply = reply;
 		counters->reply[query->reply]++;
+		log_debug(DEBUG_GC, "GC: reply type %d set (database), new count = %d", query->reply, counters->reply[query->reply]);
 		query->response = reply_time;
 		query->CNAME_domainID = -1;
 		// Initialize flags
