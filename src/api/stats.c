@@ -163,7 +163,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 	// /api/stats/top_domains?blocked=true
 	if(api->request->query_string != NULL)
 	{
-		// Should blocked clients be shown?
+		// Should blocked domains be shown?
 		get_bool_var(api->request->query_string, "blocked", &blocked);
 
 		// Does the user request a non-default number of replies?
@@ -229,7 +229,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 		// Skip this domain if there is a filter on it (but only if not in audit mode)
 		if(!audit)
 		{
-			// Check if this client should be skipped
+			// Check if this domain should be skipped
 			bool skip_domain = false;
 			for(unsigned int j = 0; j < excludeDomains; j++)
 			{
@@ -293,7 +293,6 @@ int api_stats_top_domains(struct ftl_conn *api)
 int api_stats_top_clients(struct ftl_conn *api)
 {
 	int count = 10;
-	bool includezeroclients = false;
 	int *temparray = calloc(2*counters->clients, sizeof(int*));
 	if(temparray == NULL)
 	{
@@ -325,9 +324,6 @@ int api_stats_top_clients(struct ftl_conn *api)
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
 		get_int_var(api->request->query_string, "count", &count);
-
-		// Show also clients which have not been active recently?
-		get_bool_var(api->request->query_string, "withzero", &includezeroclients);
 	}
 
 	// Lock shared memory
@@ -366,18 +362,18 @@ int api_stats_top_clients(struct ftl_conn *api)
 			continue;
 
 		// Skip this client if there is a filter on it
-		bool skip_domain = false;
+		bool skip_client = false;
 		for(unsigned int j = 0; j < excludeClients; j++)
 		{
 			cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeClients.v.json, j);
 			if(strcmp(getstr(client->ippos), item->valuestring) == 0 ||
 			   strcmp(getstr(client->namepos), item->valuestring) == 0)
 			{
-				skip_domain = true;
+				skip_client = true;
 				break;
 			}
 		}
-		if(skip_domain)
+		if(skip_client)
 			continue;
 
 		// Hidden client, probably due to privacy level. Skip this in the top lists
@@ -388,10 +384,9 @@ int api_stats_top_clients(struct ftl_conn *api)
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = getstr(client->namepos);
 
-		// Return this client if either
-		// - "withzero" option is set, and/or
-		// - the client made at least one query within the most recent 24 hours
-		if(includezeroclients || count > 0)
+		// Return this client if the client made at least one query
+		// within the most recent 24 hours
+		if(client_count > 0)
 		{
 			cJSON *client_item = JSON_NEW_OBJECT();
 			JSON_REF_STR_IN_OBJECT(client_item, "name", client_name);
