@@ -26,13 +26,9 @@
 #include <sys/statvfs.h>
 // dirname()
 #include <libgen.h>
-// compression functions
-#include "zip/gzip.h"
 // sendfile()
 #include <fcntl.h>
 #include <sys/sendfile.h>
-
-#define BACKUP_DIR "/etc/pihole/config_backups"
 
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
@@ -465,14 +461,6 @@ void rotate_files(const char *path, char **first_file)
 		if(i == 1 && first_file != NULL)
 			*first_file = strdup(new_path);
 
-		size_t old_path_len = strlen(old_path) + 4;
-		char *old_path_compressed = calloc(old_path_len, sizeof(char));
-		snprintf(old_path_compressed, old_path_len, "%s.gz", old_path);
-
-		size_t new_path_len = strlen(new_path) + 4;
-		char *new_path_compressed = calloc(new_path_len, sizeof(char));
-		snprintf(new_path_compressed, new_path_len, "%s.gz", new_path);
-
 		if(file_exists(old_path))
 		{
 			// Copy file to backup directory
@@ -507,46 +495,11 @@ void rotate_files(const char *path, char **first_file)
 
 			// Change ownership of file to pihole user
 			chown_pihole(new_path);
-
-			// Compress file if we are rotating a sufficiently old file
-			if(i > ZIP_ROTATIONS)
-			{
-				log_debug(DEBUG_CONFIG, "Compressing %s -> %s",
-				          new_path, new_path_compressed);
-				if(deflate_file(new_path, new_path_compressed, false))
-				{
-					// On success, we remove the uncompressed file
-					remove(new_path);
-				}
-
-				// Change ownership of file to pihole user
-				chown_pihole(new_path_compressed);
-			}
-		}
-		else if(file_exists(old_path_compressed))
-		{
-			// Rename file
-			if(rename(old_path_compressed, new_path_compressed) < 0)
-			{
-				log_warn("Rotation %s -(MOVE)> %s failed: %s",
-				         old_path_compressed, new_path_compressed, strerror(errno));
-			}
-			else
-			{
-				// Log success if debug is enabled
-				log_debug(DEBUG_CONFIG, "Rotated %s -> %s",
-				          old_path_compressed, new_path_compressed);
-			}
-
-			// Change ownership of file to pihole user
-			chown_pihole(new_path_compressed);
 		}
 
 		// Free memory
 		free(old_path);
 		free(new_path);
-		free(old_path_compressed);
-		free(new_path_compressed);
 	}
 }
 
@@ -624,4 +577,67 @@ char * __attribute__((malloc)) get_hwmon_target(const char *path)
 	target[nbytes] = '\0';
 
 	return target;
+}
+
+// Returns true if the files have different contents
+// from specifies from which line number the files should be compared
+bool files_different(const char *pathA, const char* pathB, unsigned int from)
+{
+	// Check if both files exist
+	if(!file_exists(pathA) || !file_exists(pathB))
+		return true;
+
+	// Check if both files are identical
+	if(strcmp(pathA, pathB) == 0)
+		return false;
+
+	// Open both files
+	FILE *fpA = fopen(pathA, "r");
+	if(fpA == NULL)
+	{
+		log_warn("files_different(): Failed to open \"%s\" for reading: %s", pathA, strerror(errno));
+		return true;
+	}
+	FILE *fpB = fopen(pathB, "r");
+	if(fpB == NULL)
+	{
+		log_warn("files_different(): Failed to open \"%s\" for reading: %s", pathB, strerror(errno));
+		fclose(fpA);
+		return true;
+	}
+
+	// Compare both files line by line
+	char *lineA = NULL;
+	size_t lenA = 0;
+	ssize_t readA;
+	char *lineB = NULL;
+	size_t lenB = 0;
+	ssize_t readB;
+	bool different = false;
+	while((readA = getline(&lineA, &lenA, fpA)) != -1 &&
+	      (readB = getline(&lineB, &lenB, fpB)) != -1)
+	{
+		// Skip lines until we reach the requested line number
+		if(from > 0)
+		{
+			from--;
+			continue;
+		}
+		// Compare lines
+		if(strcmp(lineA, lineB) != 0)
+		{
+			different = true;
+			break;
+		}
+	}
+
+	// Free memory
+	free(lineA);
+	free(lineB);
+
+	// Close files
+	fclose(fpA);
+	fclose(fpB);
+
+	return different;
 }

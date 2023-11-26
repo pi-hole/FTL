@@ -85,7 +85,7 @@ int send_json_error_free(struct ftl_conn *api, const int code,
                          const char *key, const char* message,
                          char *hint, bool free_hint)
 {
-	if(hint)
+	if(hint != NULL)
 		log_warn("API: %s (%s)", message, hint);
 	else
 		log_warn("API: %s", message);
@@ -94,7 +94,7 @@ int send_json_error_free(struct ftl_conn *api, const int code,
 	JSON_REF_STR_IN_OBJECT(error, "key", key);
 	JSON_REF_STR_IN_OBJECT(error, "message", message);
 	JSON_COPY_STR_TO_OBJECT(error, "hint", hint);
-	if(free_hint)
+	if(free_hint && hint != NULL)
 		free(hint);
 
 	cJSON *json = JSON_NEW_OBJECT();
@@ -524,6 +524,10 @@ void read_and_parse_payload(struct ftl_conn *api)
 // See https://www.w3.org/International/questions/qa-escapes#use
 char *__attribute__((malloc)) escape_html(const char *string)
 {
+	// If the string is NULL, return NULL
+	if(string == NULL)
+		return NULL;
+
 	// Allocate memory for escaped string
 	char *escaped = calloc(strlen(string) * 6 + 1, sizeof(char));
 	if(!escaped)

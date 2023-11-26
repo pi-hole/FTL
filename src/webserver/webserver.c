@@ -8,24 +8,26 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "webserver.h"
+#include "FTL.h"
+#include "webserver/webserver.h"
 // api_handler()
-#include "../api/api.h"
+#include "api/api.h"
 // send_http()
 #include "http-common.h"
 // struct config
-#include "../config/config.h"
+#include "config/config.h"
 // log_web()
-#include "../log.h"
+#include "log.h"
 // get_nprocs()
 #include <sys/sysinfo.h>
 // file_readable()
-#include "../files.h"
+#include "files.h"
 // generate_certificate()
-#include "x509.h"
+#include "webserver/x509.h"
 // allocate_lua(), free_lua(), init_lua(), request_handler()
-#include "lua_web.h"
+#include "webserver/lua_web.h"
+// log_certificate_domain_mismatch()
+#include "database/message-table.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
@@ -302,13 +304,13 @@ void http_init(void)
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
+		"authentication_domain", config.webserver.domain.v.s,
 		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
 		                     "X-Frame-Options: DENY\r\n"
 		                     "X-XSS-Protection: 0\r\n"
 		                     "X-Content-Type-Options: nosniff\r\n"
 		                     "Referrer-Policy: strict-origin-when-cross-origin",
 		"index_files", "index.html,index.htm,index.lp",
-		"enable_auth_domain_check", "no",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
 		NULL
@@ -341,6 +343,10 @@ void http_init(void)
 
 		if(file_readable(config.webserver.tls.cert.v.s))
 		{
+			if(read_certificate(config.webserver.tls.cert.v.s, config.webserver.domain.v.s, false) != CERT_DOMAIN_MATCH)
+			{
+				log_certificate_domain_mismatch(config.webserver.tls.cert.v.s, config.webserver.domain.v.s);
+			}
 			options[++next_option] = "ssl_certificate";
 			options[++next_option] = config.webserver.tls.cert.v.s;
 

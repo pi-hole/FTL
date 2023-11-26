@@ -25,51 +25,11 @@
 
 int api_history(struct ftl_conn *api)
 {
-	unsigned int from = 0, until = OVERTIME_SLOTS;
-	const time_t now = time(NULL);
-	bool found = false;
-
 	lock_shm();
-	time_t mintime = overTime[0].timestamp;
 
-	// Start with the first non-empty overTime slot
-	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) &&
-		   overTime[slot].timestamp >= mintime)
-		{
-			from = slot;
-			found = true;
-			break;
-		}
-	}
-
-	// End with last non-empty overTime slot or the last slot that is not
-	// older than the maximum history to be sent
-	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if(overTime[slot].timestamp >= now ||
-		   overTime[slot].timestamp - now > (time_t)config.webserver.api.maxHistory.v.ui)
-		{
-			until = slot;
-			break;
-		}
-	}
-
-	// If there is no data to be sent, we send back an empty array
-	// and thereby return early
-	if(!found)
-	{
-		cJSON *json = JSON_NEW_ARRAY();
-		cJSON *item = JSON_NEW_OBJECT();
-		JSON_ADD_ITEM_TO_ARRAY(json, item);
-		JSON_SEND_OBJECT_UNLOCK(json);
-	}
-
-	// Minimum structure is
-	// {"history":[]}
+	// Loop over all overTime slots and add them to the array
 	cJSON *history = JSON_NEW_ARRAY();
-	for(unsigned int slot = from; slot < until; slot++)
+	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
@@ -79,33 +39,22 @@ int api_history(struct ftl_conn *api)
 		JSON_ADD_ITEM_TO_ARRAY(history, item);
 	}
 
+	// Unlock already here to avoid keeping the lock during JSON generation
+	// This is safe because we don't access any shared memory after this
+	// point. All numbers in the JSON are copied
+	unlock_shm();
+
+	// Minimum structure is
+	// {"history":[]}
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
-	JSON_SEND_OBJECT_UNLOCK(json);
+	JSON_SEND_OBJECT(json);
 }
 
 int api_history_clients(struct ftl_conn *api)
 {
-	int sendit = false;
-	unsigned int from = 0, until = OVERTIME_SLOTS;
-	const time_t now = time(NULL);
-
-	lock_shm();
-
-	// Find minimum ID to send
-	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) &&
-		   overTime[slot].timestamp >= overTime[0].timestamp)
-		{
-			sendit = true;
-			from = slot;
-			break;
-		}
-	}
-
 	// Exit before processing any data if requested via config setting
-	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS || !sendit)
+	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Minimum structure is
 		// {"history":[], "clients":[]}
@@ -117,17 +66,7 @@ int api_history_clients(struct ftl_conn *api)
 		JSON_SEND_OBJECT_UNLOCK(json);
 	}
 
-	// End with last non-empty overTime slot or the last slot that is not
-	// older than the maximum history to be sent
-	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if(overTime[slot].timestamp >= now ||
-		   overTime[slot].timestamp - now > (time_t)config.webserver.api.maxHistory.v.ui)
-		{
-			until = slot;
-			break;
-		}
-	}
+	lock_shm();
 
 	// Get clients which the user doesn't want to see
 	// if skipclient[i] == true then this client should be hidden from
@@ -154,7 +93,7 @@ int api_history_clients(struct ftl_conn *api)
 		}
 	}
 
-	// Also skip alias-clients
+	// Also skip clients included in others (in alias-clients)
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
@@ -165,9 +104,9 @@ int api_history_clients(struct ftl_conn *api)
 			skipclient[clientID] = true;
 	}
 
-	cJSON *history = JSON_NEW_ARRAY();
 	// Main return loop
-	for(unsigned int slot = from; slot < until; slot++)
+	cJSON *history = JSON_NEW_ARRAY();
+	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
@@ -196,8 +135,8 @@ int api_history_clients(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 
-	cJSON *clients = JSON_NEW_ARRAY();
 	// Loop over clients to generate output to be sent to the client
+	cJSON *clients = JSON_NEW_ARRAY();
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		if(skipclient[clientID])
@@ -216,10 +155,16 @@ int api_history_clients(struct ftl_conn *api)
 		JSON_REF_STR_IN_OBJECT(item, "ip", client_ip);
 		JSON_ADD_ITEM_TO_ARRAY(clients, item);
 	}
-	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
+
+	// Unlock already here to avoid keeping the lock during JSON generation
+	// This is safe because we don't access any shared memory after this
+	// point and all strings in the JSON are references to idempotent shared
+	// memory and can, thus, be accessed at any time without locking
+	unlock_shm();
 
 	// Free memory
 	free(skipclient);
 
-	JSON_SEND_OBJECT_UNLOCK(json);
+	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
+	JSON_SEND_OBJECT(json);
 }

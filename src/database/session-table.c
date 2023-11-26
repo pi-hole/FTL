@@ -64,7 +64,7 @@ bool add_session_app_column(sqlite3 *db)
 }
 
 // Store all session in database
-bool backup_db_sessions(struct session *sessions)
+bool backup_db_sessions(struct session *sessions, const uint16_t max_sessions)
 {
 	if(!config.webserver.session.restore.v.b)
 	{
@@ -89,7 +89,7 @@ bool backup_db_sessions(struct session *sessions)
 	}
 
 	unsigned int api_sessions = 0;
-	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+	for(unsigned int i = 0; i < max_sessions; i++)
 	{
 		// Get session
 		struct session *sess = &sessions[i];
@@ -208,7 +208,7 @@ bool backup_db_sessions(struct session *sessions)
 }
 
 // Restore all sessions found in the database
-bool restore_db_sessions(struct session *sessions)
+bool restore_db_sessions(struct session *sessions, const uint16_t max_sessions)
 {
 	if(!config.webserver.session.restore.v.b)
 	{
@@ -237,7 +237,7 @@ bool restore_db_sessions(struct session *sessions)
 
 	// Iterate over all still valid sessions
 	unsigned int i = 0;
-	while(sqlite3_step(stmt) == SQLITE_ROW && i++ < API_MAX_CLIENTS)
+	while(sqlite3_step(stmt) == SQLITE_ROW && i < max_sessions)
 	{
 		// Allocate memory for new session
 		struct session *sess = &sessions[i];
@@ -292,6 +292,8 @@ bool restore_db_sessions(struct session *sessions)
 
 		// Mark session as used
 		sess->used = true;
+
+		i++;
 	}
 
 	log_info("Restored %u API session%s from the database",

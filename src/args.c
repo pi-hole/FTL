@@ -60,6 +60,8 @@
 #include "tools/arp-scan.h"
 // run_performance_test()
 #include "config/password.h"
+// idn2_to_ascii_lz()
+#include <idn2.h>
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -309,6 +311,7 @@ void parse_args(int argc, char* argv[])
 		exit(read_teleporter_zip_from_disk(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
+	// Generate X.509 certificate
 	if(argc > 1 && strcmp(argv[1], "--gen-x509") == 0)
 	{
 		if(argc < 3 || argc > 5)
@@ -325,6 +328,55 @@ void parse_args(int argc, char* argv[])
 		const char *domain = argc > 3 ? argv[3] : "pi.hole";
 		const bool rsa = argc > 4 && strcasecmp(argv[4], "rsa") == 0;
 		exit(generate_certificate(argv[2], rsa, domain) ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Parse X.509 certificate
+	if(argc > 1 &&
+	  (strcmp(argv[1], "--read-x509") == 0 ||
+	   strcmp(argv[1], "--read-x509-key") == 0))
+	{
+		if(argc < 2 || argc > 4)
+		{
+			printf("Usage: %s %s [<input file>] [<domain>]\n", argv[0], argv[1]);
+			printf("Example: %s %s /etc/pihole/tls.pem\n", argv[0], argv[1]);
+			printf(" with domain: %s %s /etc/pihole/tls.pem pi.hole\n", argv[0], argv[1]);
+			exit(EXIT_FAILURE);
+		}
+
+		// Option parsing
+		// Should we report on the private key?
+		const bool private_key = strcmp(argv[1], "--read-x509-key") == 0;
+		// If no certificate file is given, we use the one from the config
+		const char *certfile = NULL;
+		if(argc == 2)
+		{
+			readFTLconf(&config, false);
+			certfile = config.webserver.tls.cert.v.s;
+		}
+		else
+			certfile = argv[2];
+
+		// If no domain is given, we only check the certificate
+		const char *domain = argc > 3 ? argv[3] : NULL;
+
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+
+		enum cert_check result = read_certificate(certfile, domain, private_key);
+
+		if(argc < 4)
+			exit(result == CERT_OKAY ? EXIT_SUCCESS : EXIT_FAILURE);
+		else if(result == CERT_DOMAIN_MATCH)
+		{
+			printf("Certificate matches domain %s\n", argv[3]);
+			exit(EXIT_SUCCESS);
+		}
+		else
+		{
+			printf("Certificate does not match domain %s\n", argv[3]);
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	// If the first argument is "gravity" (e.g., /usr/bin/pihole-FTL gravity),
@@ -375,6 +427,53 @@ void parse_args(int argc, char* argv[])
 		const bool scan_all = argc > 2 && strcmp(argv[2], "-a") == 0;
 		const bool extreme_mode = argc > 2 && strcmp(argv[2], "-x") == 0;
 		exit(run_arp_scan(scan_all, extreme_mode));
+	}
+
+	// IDN2 conversion mode
+	if(argc > 1 && strcmp(argv[1], "idn2") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		if(argc == 3)
+		{
+			// Convert unicode domain to punycode
+			char *punycode = NULL;
+			const int rc = idn2_to_ascii_lz(argv[2], &punycode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+			if (rc != IDN2_OK)
+			{
+				// Invalid domain name
+				printf("Invalid domain name: %s\n", argv[2]);
+				exit(EXIT_FAILURE);
+			}
+
+			// Convert punycode domain to lowercase
+			for(unsigned int i = 0u; i < strlen(punycode); i++)
+				punycode[i] = tolower(punycode[i]);
+
+			printf("%s\n", punycode);
+			exit(EXIT_SUCCESS);
+
+		}
+		else if(argc == 4 && (strcmp(argv[2], "-d") == 0 || strcmp(argv[2], "--decode") == 0))
+		{
+			// Convert punycode domain to unicode
+			char *unicode = NULL;
+			const int rc = idn2_to_unicode_lzlz(argv[3], &unicode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+			if (rc != IDN2_OK)
+			{
+				// Invalid domain name
+				printf("Invalid domain name: %s\n", argv[3]);
+				exit(EXIT_FAILURE);
+			}
+
+			printf("%s\n", unicode);
+			exit(EXIT_SUCCESS);
+		}
+		else
+		{
+			printf("Usage: %s idn2 [--decode] <domain>\n", argv[0]);
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	// start from 1, as argv[0] is the executable name
@@ -812,11 +911,27 @@ void parse_args(int argc, char* argv[])
 			printf("    an RSA (4096 bit) key will be generated instead.\n\n");
 			printf("    Usage: %spihole-FTL --gen-x509 %soutfile %s[rsa]%s\n\n", green, cyan, purple, normal);
 
+			printf("%sTLS X.509 certificate parser:%s\n", yellow, normal);
+			printf("    Parse the given X.509 certificate and optionally check if\n");
+			printf("    it matches a given domain. If no domain is given, only a\n");
+			printf("    human-readable output string is printed.\n\n");
+			printf("    If no certificate file is given, the one from the config\n");
+			printf("    is used (if applicable). If --read-x509-key is used, details\n");
+			printf("    about the private key are printed as well.\n\n");
+			printf("    Usage: %spihole-FTL --read-x509 %s[certfile] %s[domain]%s\n", green, cyan, purple, normal);
+			printf("    Usage: %spihole-FTL --read-x509-key %s[certfile] %s[domain]%s\n\n", green, cyan, purple, normal);
+
 			printf("%sGravity tools:%s\n", yellow, normal);
 			printf("    Check domains in a given file for validity using Pi-hole's\n");
 			printf("    gravity filters. The expected input format is one domain\n");
 			printf("    per line (no HOSTS lists, etc.)\n\n");
 			printf("    Usage: %spihole-FTL gravity checkList %sinfile%s\n\n", green, cyan, normal);
+
+			printf("%sIDN2 conversion:%s\n", yellow, normal);
+			printf("    Convert a given internationalized domain name (IDN) to\n");
+			printf("    punycode or vice versa.\n\n");
+			printf("    Encoding: %spihole-FTL idn2 %sdomain%s\n", green, cyan, normal);
+			printf("    Decoding: %spihole-FTL idn2 -d %spunycode%s\n\n", green, cyan, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);

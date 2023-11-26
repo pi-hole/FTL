@@ -25,6 +25,6 @@ index 6280ebf6..a5e82f70 100644
        char *zHistory;
        int nHistory;
 +      print_FTL_version();
- #if SHELL_WIN_UTF8_OPT
-       switch( console_utf8_in+2*console_utf8_out ){
-       default: case 0: break;
+ #if CIO_WIN_WC_XLATE
+ # define SHELL_CIO_CHAR_SET (stdout_is_console? " (UTF-16 console I/O)" : "")
+ #else

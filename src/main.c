@@ -45,6 +45,9 @@ jmp_buf exit_jmp;
 
 int main (int argc, char *argv[])
 {
+	// Initialize locale (needed for libidn)
+	init_locale();
+
 	// Get user pihole-FTL is running as
 	// We store this in a global variable
 	// such that the log routine can access
@@ -74,7 +77,8 @@ int main (int argc, char *argv[])
 	// Process pihole.toml configuration file
 	// The file is rewritten after parsing to ensure that all
 	// settings are present and have a valid value
-	readFTLconf(&config, true);
+	if(readFTLconf(&config, true))
+		log_info("Parsed config file "GLOBALTOMLPATH" successfully");
 
 	// Set process priority
 	set_nice();

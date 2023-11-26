@@ -259,8 +259,8 @@ static char* get_client_querystr(const char *table, const char *column, const ch
 }
 
 // Determine whether to show IP or hardware address
-static inline const char *show_client_string(const char *hwaddr, const char *hostname,
-                                             const char *ip)
+static const char *show_client_string(const char *hwaddr, const char *hostname,
+                                      const char *ip)
 {
 	if(hostname != NULL && strlen(hostname) > 0)
 	{
@@ -1626,7 +1626,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		// The item is the item for all POST requests
 		if(listtype == GRAVITY_GROUPS)
 		{
-			querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:description);";
+			querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:comment);";
 		}
 		else if(listtype == GRAVITY_ADLISTS)
 		{
@@ -1648,8 +1648,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			if(row->name == NULL)
 			{
 				// Name is not to be changed
-				querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:description) "
-				           "ON CONFLICT(name) DO UPDATE SET enabled = :enabled, description = :description;";
+				querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:comment) "
+				           "ON CONFLICT(name) DO UPDATE SET enabled = :enabled, description = :comment;";
 			}
 			else
 			{
@@ -1663,8 +1663,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			querystr = "INSERT INTO client (ip,comment) VALUES (:item,:comment) "\
 			           "ON CONFLICT(ip) DO UPDATE SET comment = :comment;";
 		else // domainlist
-			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:type,:enabled,:comment) "\
-			           "ON CONFLICT(domain) DO UPDATE SET type = :type, enabled = :enabled, comment = :comment;";
+			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:oldtype,:enabled,:comment) "\
+			           "ON CONFLICT(domain,type) DO UPDATE SET type = :type, enabled = :enabled, comment = :comment;";
 	}
 
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
@@ -1672,7 +1672,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s) - SQL error prepare (%i): %s",
-		        row->type_int, row->domain, rc, *message);
+		        row->type_int, row->item, rc, *message);
 		return false;
 	}
 
@@ -1694,7 +1694,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind name (error %d) - %s",
-		        row->type_int, row->name, rc, *message);
+		        row->type_int, row->item, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1706,7 +1706,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind type (error %d) - %s",
-		        row->type_int, row->domain, rc, *message);
+		        row->type_int, row->item, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1727,7 +1727,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			// Error, one is not meaningful without the other
 			*message = "Field type missing from request";
 			log_err("gravityDB_addToTable(%d, %s): type missing",
-			        row->type_int, row->domain);
+			        row->type_int, row->item);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
@@ -1737,7 +1737,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			// Error, one is not meaningful without the other
 			*message = "Field oldkind missing from request";
 			log_err("gravityDB_addToTable(%d, %s): Oldkind missing",
-			        row->type_int, row->domain);
+			        row->type_int, row->item);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
@@ -1745,7 +1745,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		else
 		{
 			if(strcasecmp("allow", row->type) == 0 &&
-			strcasecmp("exact", row->kind) == 0)
+			   strcasecmp("exact", row->kind) == 0)
 				oldtype = 0;
 			else if(strcasecmp("deny", row->type) == 0 &&
 					strcasecmp("exact", row->kind) == 0)
@@ -1760,7 +1760,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			{
 				*message = "Cannot interpret type/kind";
 				log_err("gravityDB_addToTable(%d, %s): Failed to identify type=\"%s\", kind=\"%s\"",
-				        row->type_int, row->domain, row->type, row->kind);
+				        row->type_int, row->item, row->type, row->kind);
 				sqlite3_reset(stmt);
 				sqlite3_finalize(stmt);
 				return false;
@@ -1772,7 +1772,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		{
 			*message = sqlite3_errmsg(gravity_db);
 			log_err("gravityDB_addToTable(%d, %s): Failed to bind oldtype (error %d) - %s",
-			        row->type_int, row->domain, rc, *message);
+			        row->type_int, row->item, rc, *message);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
@@ -1785,7 +1785,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind enabled (error %d) - %s",
-		        row->type_int, row->domain, rc, *message);
+		        row->type_int, row->item, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1797,7 +1797,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind comment (error %d) - %s",
-		        row->type_int, row->domain, rc, *message);
+		        row->type_int, row->item, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;

@@ -35,6 +35,8 @@
 #include "webserver/webserver.h"
 // free_api()
 #include "api/api.h"
+// setlocale()
+#include <locale.h>
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -443,4 +445,17 @@ bool ipv6_enabled(void)
 	// else: IPv6 is not obviously disabled and there is at least one
 	// IPv6-capable interface
 	return true;
+}
+
+void init_locale(void)
+{
+	// Set locale to system default, needed for libidn to work properly
+	// Without this, libidn will not be able to convert UTF-8 to ASCII
+	// (error message "Character encoding conversion error")
+	setlocale(LC_ALL, "");
+
+	// Set locale for numeric values to C to ensure that we always use
+	// the dot as decimal separator (even if the system locale uses a
+	// comma, e.g., in German)
+	setlocale(LC_NUMERIC, "C");
 }

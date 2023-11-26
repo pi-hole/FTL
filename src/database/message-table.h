@@ -28,5 +28,6 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 void logg_warn_dnsmasq_message(char *message);
 void log_resource_shortage(const double load, const int nprocs, const int shmem, const int disk, const char *path, const char *msg);
 void logg_inaccessible_adlist(const int dbindex, const char *address);
+void log_certificate_domain_mismatch(const char *certfile, const char *domain);
 
 #endif //MESSAGETABLE_H

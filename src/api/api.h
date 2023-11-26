@@ -92,7 +92,12 @@ int api_auth_session_delete(struct ftl_conn *api);
 bool is_local_api_user(const char *remote_addr) __attribute__((pure));
 
 // 2FA methods
-bool verifyTOTP(const uint32_t code);
+enum totp_status {
+	TOTP_INVALID,
+	TOTP_CORRECT,
+	TOTP_REUSED,
+} __attribute__ ((packed));
+enum totp_status verifyTOTP(const uint32_t code);
 int generateTOTP(struct ftl_conn *api);
 int printTOTP(void);
 int generateAppPw(struct ftl_conn *api);

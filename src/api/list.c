@@ -17,6 +17,9 @@
 #include "shmem.h"
 // getNameFromIP()
 #include "database/network-table.h"
+// valid_domain()
+#include "tools/gravity-parseList.h"
+#include <idn2.h>
 
 static int api_list_read(struct ftl_conn *api,
                          const int code,
@@ -55,9 +58,11 @@ static int api_list_read(struct ftl_conn *api,
 			char *name = NULL;
 			if(table.client != NULL)
 			{
-				// Try to obtain hostname if this is a valid IP address
+				// Try to obtain hostname
 				if(isValidIPv4(table.client) || isValidIPv6(table.client))
 					name = getNameFromIP(NULL, table.client);
+				else if(isMAC(table.client))
+					name = getNameFromMAC(table.client);
 			}
 
 			JSON_COPY_STR_TO_OBJECT(row, "client", table.client);
@@ -70,10 +75,18 @@ static int api_list_read(struct ftl_conn *api,
 		}
 		else // domainlists
 		{
+			char *unicode = NULL;
+			const int rc = idn2_to_unicode_lzlz(table.domain, &unicode, IDN2_NONTRANSITIONAL);
 			JSON_COPY_STR_TO_OBJECT(row, "domain", table.domain);
+			if(rc == IDN2_OK)
+				JSON_COPY_STR_TO_OBJECT(row, "unicode", unicode);
+			else
+				JSON_COPY_STR_TO_OBJECT(row, "unicode", table.domain);
 			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
 			JSON_REF_STR_IN_OBJECT(row, "kind", table.kind);
 			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+			if(unicode != NULL)
+				free(unicode);
 		}
 
 		// Groups don't have the groups property
@@ -393,11 +406,50 @@ static int api_list_write(struct ftl_conn *api,
 			   strchr(it->valuestring, '\t') != NULL ||
 			   strchr(it->valuestring, '\n') != NULL)
 			{
-				cJSON_free(row.items);
+				if(allocated_json)
+					cJSON_free(row.items);
 				return send_json_error(api, 400, // 400 Bad Request
+				                       "bad_request",
+				                       "Spaces, newlines and tabs are not allowed in domains and URLs",
+				                       it->valuestring);
+			}
+
+			if(listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
+			   listtype == GRAVITY_DOMAINLIST_DENY_EXACT)
+			{
+				char *punycode = NULL;
+				const int rc = idn2_to_ascii_lz(it->valuestring, &punycode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+				if (rc != IDN2_OK)
+				{
+					// Invalid domain name
+					return send_json_error(api, 400,
+					                       "bad_request",
+					                       "Invalid request: Invalid domain name",
+					                       idn2_strerror(rc));
+				}
+				// Convert punycode domain to lowercase
+				for(unsigned int i = 0u; i < strlen(punycode); i++)
+					punycode[i] = tolower(punycode[i]);
+
+				// Validate punycode domain
+				// This will reject domains like äöü{{{.com
+				// which convert to xn--{{{-pla4gpb.com
+				if(!valid_domain(punycode, strlen(punycode), false))
+				{
+					if(allocated_json)
+						cJSON_free(row.items);
+					return send_json_error(api, 400, // 400 Bad Request
 							"bad_request",
-							"Spaces, newlines and tabs are not allowed in domains and URLs",
+							"Invalid domain",
 							it->valuestring);
+				}
+
+				// Replace domain with punycode version
+				if(!(it->type & cJSON_IsReference))
+					free(it->valuestring);
+				it->valuestring = punycode;
+				// Remove reference flag
+				it->type &= ~cJSON_IsReference;
 			}
 		}
 	}
@@ -406,11 +458,12 @@ static int api_list_write(struct ftl_conn *api,
 	if(!okay)
 	{
 		// Send error reply
-		cJSON_free(row.items);
-		return send_json_error(api, 400, // 400 Bad Request
-		                       "regex_error",
-		                       "Regex validation failed",
-		                       regex_msg);
+		if(allocated_json)
+			cJSON_free(row.items);
+		return send_json_error_free(api, 400, // 400 Bad Request
+		                            "regex_error",
+		                            "Regex validation failed",
+		                            regex_msg, true);
 	}
 
 	// Try to add item(s) to table
