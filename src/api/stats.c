@@ -445,12 +445,8 @@ int api_stats_upstreams(struct ftl_conn *api)
 			continue;
 
 		temparray[2*upstreamID + 0] = upstreamID;
-
-		unsigned int count = 0;
-		for(unsigned i = 0; i < ArraySize(upstream->overTime); i++)
-			count += upstream->overTime[i];
-		temparray[2*upstreamID + 1] = count;
-		totalcount += count;
+		temparray[2*upstreamID + 1] = upstream->count;
+		totalcount += upstream->count;
 	}
 
 	// Sort temporary array in descending order
