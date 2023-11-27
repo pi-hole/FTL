@@ -294,21 +294,24 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	return true;
 }
 
-static bool check_wildcard_domain(char *san, const size_t san_len, const char *domain)
+static bool check_wildcard_domain(const char *domain, char *san, const size_t san_len)
 {
 	// Also check if the SAN is a wildcard domain and if the domain
 	// matches the wildcard (e.g. "*.pi-hole.net" and "abc.pi-hole.net")
-	const bool is_wild = san_len > 2 && san[0] == '*' && san[1] == '.';
+	const bool is_wild = san_len > 1 && san[0] == '*';
 	if(!is_wild)
 		return false;
 
 	// The domain must be at least as long as the wildcard domain
-	if(strlen(domain) < san_len - 1)
+	const size_t domain_len = strlen(domain);
+	if(domain_len < san_len - 1)
 		return false;
 
 	// Check if the domain ends with the wildcard domain
-	const char *wild_domain = domain + strlen(domain) - san_len + 2;
-	return strcasecmp(wild_domain, san + 2) == 0;
+	// Attention: The SAN is not NUL-terminated, so we need to
+	//            use the length field
+	const char *wild_domain = domain + domain_len - san_len + 1;
+	return strncasecmp(wild_domain, san + 1, san_len) == 0;
 }
 
 // This function reads a X.509 certificate from a file and prints a
@@ -375,20 +378,27 @@ enum cert_check read_certificate(const char* certfile, const char *domain, const
 				goto next_san;
 
 			// Check if the SAN matches the domain
+			// Attention: The SAN is not NUL-terminated, so we need to
+			//            use the length field
 			if(strncasecmp(domain, (char*)san.san.unstructured_name.p, san.san.unstructured_name.len) == 0)
 			{
 				found = true;
+				mbedtls_x509_free_subject_alt_name(&san);
 				break;
 			}
 
 			// Also check if the SAN is a wildcard domain and if the domain
 			// matches the wildcard
-			if(check_wildcard_domain((char*)san.san.unstructured_name.p, san.san.unstructured_name.len, domain))
+			if(check_wildcard_domain(domain, (char*)san.san.unstructured_name.p, san.san.unstructured_name.len))
 			{
 				found = true;
+				mbedtls_x509_free_subject_alt_name(&san);
 				break;
 			}
 next_san:
+			// Free resources
+			mbedtls_x509_free_subject_alt_name(&san);
+
 			// Go to next SAN
 			sans = sans->next;
 		}
@@ -405,7 +415,7 @@ next_san:
 				found = true;
 			// Also check if the subject is a wildcard domain and if the domain
 			// matches the wildcard
-			else if(check_wildcard_domain(subject, strlen(subject), domain))
+			else if(check_wildcard_domain(domain, subject, strlen(subject)))
 				found = true;
 		}
 
