@@ -405,17 +405,24 @@ next_san:
 
 		// Also check against the common name (CN) field
 		char subject[MBEDTLS_X509_MAX_DN_NAME_SIZE];
-		if(mbedtls_x509_dn_gets(subject, sizeof(subject), &crt.subject) > 0)
+		const size_t subject_len = mbedtls_x509_dn_gets(subject, sizeof(subject), &crt.subject);
+		if(subject_len > 0)
 		{
-			// Check subject == "CN=<domain>"
-			if(strlen(subject) > 3 && strncasecmp(subject, "CN=", 3) == 0 && strcasecmp(domain, subject + 3) == 0)
-				found = true;
+			if(subject_len > 3 && strncasecmp(subject, "CN=", 3) == 0)
+			{
+				// Check subject + 3 == "CN=" to skip the "CN=" prefix
+				if(strncasecmp(domain, subject + 3, subject_len) == 0)
+					found = true;
+				// Also check if the subject is a wildcard domain
+				else if(check_wildcard_domain(domain, subject + 3, subject_len - 3))
+					found = true;
+			}
 			// Check subject == "<domain>"
 			else if(strcasecmp(domain, subject) == 0)
 				found = true;
 			// Also check if the subject is a wildcard domain and if the domain
 			// matches the wildcard
-			else if(check_wildcard_domain(domain, subject, strlen(subject)))
+			else if(check_wildcard_domain(domain, subject, subject_len))
 				found = true;
 		}
 
