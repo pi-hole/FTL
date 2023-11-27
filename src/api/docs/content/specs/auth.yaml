@@ -44,7 +44,7 @@ components:
         operationId: "add_auth"
         security: []
         description: |
-          Authenticate using a password. The password isn't stored in the session or used to create the session token. Instead, the session token is produced using a cryptographically secure random number generator. A CSRF token is utilized to guard against CSRF attacks and is necessary when using Cookie-based authentication. However, it's not needed with other authentication methods.
+          Authenticate using a password. The password isn't stored in the session nor used to create the session token. Instead, the session token is produced using a cryptographically secure random number generator. A CSRF token is utilized to guard against CSRF attacks and is necessary when using Cookie-based authentication. However, it's not needed with other authentication methods.
 
           Both the Session ID (SID) and CSRF token remain valid for the session's duration. The session can be extended before its expiration by performing any authenticated action. By default, the session lasts for 5 minutes. It can be invalidated by either logging out or deleting the session. Additionally, the session becomes invalid when the password is altered or a new application password is created.
 
