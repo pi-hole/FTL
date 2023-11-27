@@ -104,9 +104,8 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 }
 
 // Validate ABP domain name
-static inline bool __attribute__((pure)) valid_abp_domain(const char *line, const bool antigravity)
+static inline bool __attribute__((pure)) valid_abp_domain(const char *line, const size_t len, const bool antigravity)
 {
-	const size_t len = strlen(line);
 	if(antigravity)
 	{
 
@@ -263,6 +262,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	const size_t print_step = fsize / 20; // Print progress every 100/20 = 5%
 	int last_progress = 0;
 	char *invalid_domains_list[MAX_INVALID_DOMAINS] = { NULL };
+	ssize_t invalid_domains_list_lengths[MAX_INVALID_DOMAINS] = { -1 };
 	unsigned int invalid_domains_list_len = 0;
 	unsigned int exact_domains = 0, abp_domains = 0, invalid_domains = 0;
 	while((read = getline(&line, &len, fpin)) != -1)
@@ -313,7 +313,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			exact_domains++;
 		}
 		else if(line[0] == (antigravity ? '@' : '|') &&         // <- ABP-style match
-		        valid_abp_domain(line, antigravity))            // <- Valid ABP domain
+		        valid_abp_domain(line, read, antigravity))      // <- Valid ABP domain
 		{
 			// ABP-style match (see comments above)
 			if(checkOnly)
@@ -364,7 +364,12 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 					bool found = false;
 					for(unsigned int i = 0; i < invalid_domains_list_len; i++)
 					{
-						if(strcmp(invalid_domains_list[i], line) == 0)
+						// Do not compare against unset entries
+						if(invalid_domains_list[i] == NULL || invalid_domains_list_lengths[i] == -1)
+							break;
+
+						// Compare against the current domain
+						if(memcmp(invalid_domains_list[i], line, min(read, invalid_domains_list_lengths[i])) == 0)
 						{
 							found = true;
 							break;
@@ -373,7 +378,20 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 					// If not found, add it to the list
 					if(!found)
-						invalid_domains_list[invalid_domains_list_len++] = strdup(line);
+					{
+						invalid_domains_list[invalid_domains_list_len] = calloc(read + 1, sizeof(char));
+						if(invalid_domains_list[invalid_domains_list_len] == NULL)
+						{
+							printf("%s  %s Unable to allocate memory for invalid domains list\n", over, cross);
+							fclose(fpin);
+							sqlite3_close(db);
+							return EXIT_FAILURE;
+						}
+						memcpy(invalid_domains_list[invalid_domains_list_len], line, read);
+						invalid_domains_list[invalid_domains_list_len][read] = '\0';
+						invalid_domains_list_lengths[invalid_domains_list_len] = read;
+						invalid_domains_list_len++;
+					}
 
 				}
 				invalid_domains++;
@@ -504,7 +522,20 @@ end_of_parseList:
 	{
 		puts("      Sample of non-domain entries:");
 		for(unsigned int i = 0; i < invalid_domains_list_len; i++)
-			printf("        - \"%s\"\n", invalid_domains_list[i]);
+		{
+			// Print indentation
+			printf("        - ");
+			// Print domain (escape non-printable characters)
+			for(ssize_t j = 0; j < invalid_domains_list_lengths[i]; j++)
+				if(isgraph(invalid_domains_list[i][j]))
+					putchar(invalid_domains_list[i][j]);
+				else
+					// Escape non-printable characters
+					printf("\\x%02x", (unsigned char)invalid_domains_list[i][j]);
+			// Print newline
+			puts("");
+		}
+		// Print final newline
 		puts("");
 	}
 
