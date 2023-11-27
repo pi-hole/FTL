@@ -152,6 +152,17 @@ static inline bool is_false_positive(const char *line)
 	return false;
 }
 
+// Print domain (escape non-printable characters)
+static void print_escaped(const char *str, const ssize_t len)
+{
+	for(ssize_t j = 0; j < len; j++)
+		if(isgraph(str[j]))
+			putchar(str[j]);
+		else
+			// Escape non-printable characters
+			printf("\\x%02x", (unsigned char)str[j]);
+}
+
 int gravity_parseList(const char *infile, const char *outfile, const char *adlistIDstr,
                       const bool checkOnly, const bool antigravity)
 {
@@ -353,7 +364,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 				{
 					// Increment counter
 					invalid_domains++;
-					printf("%s  %s Invalid domain on line %zu: %s\n", over, cross, lineno, line);
+					printf("%s  %s Invalid domain on line %zu: ", over, cross, lineno);
+					print_escaped(line, read);
+					puts("");
 					continue;
 				}
 				// Add the domain to invalid_domains_list only
@@ -525,13 +538,7 @@ end_of_parseList:
 		{
 			// Print indentation
 			printf("        - ");
-			// Print domain (escape non-printable characters)
-			for(ssize_t j = 0; j < invalid_domains_list_lengths[i]; j++)
-				if(isgraph(invalid_domains_list[i][j]))
-					putchar(invalid_domains_list[i][j]);
-				else
-					// Escape non-printable characters
-					printf("\\x%02x", (unsigned char)invalid_domains_list[i][j]);
+			print_escaped(invalid_domains_list[i], invalid_domains_list_lengths[i]);
 			// Print newline
 			puts("");
 		}
