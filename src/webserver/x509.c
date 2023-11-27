@@ -383,6 +383,7 @@ enum cert_check read_certificate(const char* certfile, const char *domain, const
 			if(strncasecmp(domain, (char*)san.san.unstructured_name.p, san.san.unstructured_name.len) == 0)
 			{
 				found = true;
+				// Free resources
 				mbedtls_x509_free_subject_alt_name(&san);
 				break;
 			}
@@ -392,6 +393,7 @@ enum cert_check read_certificate(const char* certfile, const char *domain, const
 			if(check_wildcard_domain(domain, (char*)san.san.unstructured_name.p, san.san.unstructured_name.len))
 			{
 				found = true;
+				// Free resources
 				mbedtls_x509_free_subject_alt_name(&san);
 				break;
 			}
@@ -408,10 +410,11 @@ next_san:
 		const size_t subject_len = mbedtls_x509_dn_gets(subject, sizeof(subject), &crt.subject);
 		if(subject_len > 0)
 		{
+			// Check subjects prefixed with "CN="
 			if(subject_len > 3 && strncasecmp(subject, "CN=", 3) == 0)
 			{
-				// Check subject + 3 == "CN=" to skip the "CN=" prefix
-				if(strncasecmp(domain, subject + 3, subject_len) == 0)
+				// Check subject + 3 to skip the prefix
+				if(strncasecmp(domain, subject + 3, subject_len - 3) == 0)
 					found = true;
 				// Also check if the subject is a wildcard domain
 				else if(check_wildcard_domain(domain, subject + 3, subject_len - 3))
