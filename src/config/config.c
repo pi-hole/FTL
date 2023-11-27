@@ -557,10 +557,10 @@ void initConfig(struct config *conf)
 	conf->dns.cache.size.d.ui = 10000u;
 
 	conf->dns.cache.optimizer.k = "dns.cache.optimizer";
-	conf->dns.cache.optimizer.h = "Query cache optimizer: If a DNS name exists in the cache, but its time-to-live has expired only recently, the data will be used anyway (a refreshing from upstream is triggered). This can improve DNS query delays especially over unreliable Internet connections. This feature comes at the expense of possibly sometimes returning out-of-date data and less efficient cache utilisation, since old data cannot be flushed when its TTL expires, so the cache becomes mostly least-recently-used. To mitigate issues caused by massively outdated DNS replies, the maximum overaging of cached records is limited. We strongly recommend staying below 86400 (1 day) with this option.";
-	conf->dns.cache.optimizer.t = CONF_UINT;
+	conf->dns.cache.optimizer.h = "Query cache optimizer: If a DNS name exists in the cache, but its time-to-live has expired only recently, the data will be used anyway (a refreshing from upstream is triggered). This can improve DNS query delays especially over unreliable Internet connections. This feature comes at the expense of possibly sometimes returning out-of-date data and less efficient cache utilization, since old data cannot be flushed when its TTL expires, so the cache becomes mostly least-recently-used. To mitigate issues caused by massively outdated DNS replies, the maximum overaging of cached records is limited. We strongly recommend staying below 86400 (1 day) with this option.\n Setting the TTL excess time to zero will serve stale cache data regardless how long it has expired. This is not recommended as it may lead to stale data being served for a long time. Setting this option to any negative value will disable this feature altogether.";
+	conf->dns.cache.optimizer.t = CONF_INT;
 	conf->dns.cache.optimizer.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
-	conf->dns.cache.optimizer.d.ui = 3600u;
+	conf->dns.cache.optimizer.d.i = 3600u;
 
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
