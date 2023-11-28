@@ -694,7 +694,7 @@
     # Example: [ "google.de", "pi-hole.net" ]
     #
     # Possible values are:
-    #     array of IP addresses and/or hostnames
+    #     array of domains
     excludeDomains = []
 
     # How much history should be imported from the database [seconds]? (max 24*60*60 =
