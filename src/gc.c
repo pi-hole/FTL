@@ -369,11 +369,11 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 		// Update reply counters
 		counters->reply[query->reply]--;
-		log_debug(DEBUG_GC, "GC: reply type %d removed (GC), new count = %d", query->reply, counters->reply[query->reply]);
+		log_debug(DEBUG_GC, "reply type %d removed (GC), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
 
 		// Update type counters
 		counters->querytype[query->type]--;
-		log_debug(DEBUG_GC, "GC: query type %d removed (GC), new count = %d", query->type, counters->querytype[query->type]);
+		log_debug(DEBUG_GC, "query type %d removed (GC), ID = %d, new count = %d", query->type, query->id, counters->querytype[query->type]);
 
 		// Subtract UNKNOWN from the counters before
 		// setting the status if different.
@@ -381,7 +381,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		if(query->status != QUERY_UNKNOWN)
 		{
 			counters->status[QUERY_UNKNOWN]--;
-			log_debug(DEBUG_GC, "GC: status %d removed (GC), new count = %d", QUERY_UNKNOWN, counters->status[QUERY_UNKNOWN]);
+			log_debug(DEBUG_GC, "status %d removed (GC), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
 		}
 
 		// Set query again to UNKNOWN to reset the counters
@@ -404,19 +404,42 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	{
 		// Move memory forward to keep only what we want
 		// Note: for overlapping memory blocks, memmove() is a safer approach than memcpy()
-		// Example: (I = now invalid, X = still valid queries, F = free space)
-		//   Before: IIIIIIXXXXFF
-		//   After:  XXXXFFFFFFFF
+		//
+		//  ┌──────────────────────┐
+		//  │ Example: removed = 5 │▒
+		//  │                      │▒
+		//  │ query with ID = 6    │▒
+		//  │ is moved to ID = 0,  │▒
+		//  │ 7 ─> 1, 8 ─> 2, etc. │▒
+		//  │                      │▒
+		//  │ ID:         111111   │▒
+		//  │   0123456789012345   │▒
+		//  │                      │▒
+		//  │   ......QQQQ------   │▒
+		//  │         vvvv         │▒
+		//  │   ┌─────┘│││         │▒
+		//  │   │┌─────┘││         │▒
+		//  │   ││┌─────┘│         │▒
+		//  │   │││┌─────┘         │▒
+		//  │   vvvv               │▒
+		//  │   QQQQ------------   │▒
+		//  └──────────────────────┘▒
+		//    ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+		//
+		// Legend: . = removed queries, Q = valid queries, - = free space
+		//
+		// We move the memory block starting at the first valid query (index 5) to the
+		// beginning of the memory block, overwriting the invalid queries (index 0-4).
+		// The remaining memory (index 5-15) is then zeroed out by memset() below.
 		queriesData *dest = getQuery(0, true);
-		// Note: we use "removed - 1" here because the ID of the last query is "counters->queries - 1"
-		queriesData *src = getQuery(removed - 1, true);
-		if(dest && src)
+		queriesData *src = getQuery(removed, true);
+		if(dest != NULL && src != NULL)
 			memmove(dest, src, (counters->queries - removed)*sizeof(queriesData));
 
 		// Update queries counter
 		counters->queries -= removed;
 
-		// ensure remaining memory is zeroed out (marked as "F" in the above example)
+		// Ensure remaining memory is zeroed out (marked as "F" in the above example)
 		queriesData *tail = getQuery(counters->queries, true);
 		if(tail)
 			memset(tail, 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
