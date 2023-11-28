@@ -688,8 +688,8 @@ void initConfig(struct config *conf)
 	conf->dns.revServer.target.c = validate_ip_port;
 
 	conf->dns.revServer.domain.k = "dns.revServer.domain";
-	conf->dns.revServer.domain.h = "Domain used for the reverse server feature";
-	conf->dns.revServer.domain.a = cJSON_CreateStringReference("<valid domain>, typically set to the same value as dhcp.domain");
+	conf->dns.revServer.domain.h = "Domain used for the reverse server feature (e.g., \"fritz.box\")";
+	conf->dns.revServer.domain.a = cJSON_CreateStringReference("<valid domain>");
 	conf->dns.revServer.domain.t = CONF_STRING;
 	conf->dns.revServer.domain.d.s = (char*)"";
 	conf->dns.revServer.domain.f = FLAG_RESTART_FTL;
@@ -722,14 +722,6 @@ void initConfig(struct config *conf)
 	conf->dhcp.router.t = CONF_STRUCT_IN_ADDR;
 	conf->dhcp.router.f = FLAG_RESTART_FTL;
 	memset(&conf->dhcp.router.d.in_addr, 0, sizeof(struct in_addr));
-
-	conf->dhcp.domain.k = "dhcp.domain";
-	conf->dhcp.domain.h = "The DNS domain used by your Pi-hole (*** DEPRECATED ***)\n This setting is deprecated and will be removed in a future version. Please use dns.domain instead. Setting it to any non-default value will overwrite the value of dns.domain if it is still set to its default value.";
-	conf->dhcp.domain.a = cJSON_CreateStringReference("<any valid domain>");
-	conf->dhcp.domain.t = CONF_STRING;
-	conf->dhcp.domain.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
-	conf->dhcp.domain.d.s = (char*)"lan";
-	conf->dhcp.domain.c = validate_domain;
 
 	conf->dhcp.netmask.k = "dhcp.netmask";
 	conf->dhcp.netmask.h = "The netmask used by your Pi-hole. For directly connected networks (i.e., networks on which the machine running Pi-hole has an interface) the netmask is optional and may be set to an empty string (\"\"): it will then be determined from the interface configuration itself. For networks which receive DHCP service via a relay agent, we cannot determine the netmask itself, so it should explicitly be specified, otherwise Pi-hole guesses based on the class (A, B or C) of the network address.";
@@ -880,7 +872,7 @@ void initConfig(struct config *conf)
 	conf->webserver.session.timeout.k = "webserver.session.timeout";
 	conf->webserver.session.timeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
 	conf->webserver.session.timeout.t = CONF_UINT;
-	conf->webserver.session.timeout.d.ui = 300u;
+	conf->webserver.session.timeout.d.ui = 1800u;
 
 	conf->webserver.session.restore.k = "webserver.session.restore";
 	conf->webserver.session.restore.h = "Should Pi-hole backup and restore sessions from the database? This is useful if you want to keep your sessions after a restart of the web interface.";
@@ -983,7 +975,7 @@ void initConfig(struct config *conf)
 
 	conf->webserver.api.excludeDomains.k = "webserver.api.excludeDomains";
 	conf->webserver.api.excludeDomains.h = "Array of domains to be excluded from certain API responses\n Example: [ \"google.de\", \"pi-hole.net\" ]";
-	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
+	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of domains");
 	conf->webserver.api.excludeDomains.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeDomains.d.json = cJSON_CreateArray();
 
