@@ -970,7 +970,7 @@ void initConfig(struct config *conf)
 
 	conf->webserver.api.excludeDomains.k = "webserver.api.excludeDomains";
 	conf->webserver.api.excludeDomains.h = "Array of domains to be excluded from certain API responses\n Example: [ \"google.de\", \"pi-hole.net\" ]";
-	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
+	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of domains");
 	conf->webserver.api.excludeDomains.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeDomains.d.json = cJSON_CreateArray();
 
