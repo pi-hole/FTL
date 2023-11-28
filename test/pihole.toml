@@ -370,7 +370,7 @@
     # Domain used for the reverse server feature
     #
     # Possible values are:
-    #     <valid domain>, typically set to the same value as dhcp.domain
+    #     <valid domain> (e.g., "fritz.box")
     domain = ""
 
 [dhcp]
@@ -395,15 +395,6 @@
   # Possible values are:
   #     <ip-addr>, e.g., "192.168.0.1"
   router = ""
-
-  # The DNS domain used by your Pi-hole (*** DEPRECATED ***)
-  # This setting is deprecated and will be removed in a future version. Please use
-  # dns.domain instead. Setting it to any non-default value will overwrite the value of
-  # dns.domain if it is still set to its default value.
-  #
-  # Possible values are:
-  #     <any valid domain>
-  domain = "lan"
 
   # The netmask used by your Pi-hole. For directly connected networks (i.e., networks on
   # which the machine running Pi-hole has an interface) the netmask is optional and may
