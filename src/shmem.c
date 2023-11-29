@@ -206,73 +206,6 @@ static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
 	return true;
 }
 
-// A function that duplicates a string and replaces all characters "s" by "r"
-static char *__attribute__ ((malloc)) str_replace(const char *input,
-                                                  const char s,
-                                                  const char r,
-                                                  unsigned int *N)
-{
-	// Duplicate string
-	char *copy = strdup(input);
-	if(!copy)
-		return NULL;
-
-	// Woring pointer
-	char *ix = copy;
-	// Loop over string until there are no further "s" chars in the string
-	while((ix = strchr(ix, s)) != NULL)
-	{
-		*ix++ = r;
-		(*N)++;
-	}
-
-	return copy;
-}
-
-char *__attribute__ ((malloc)) str_escape(const char *input, unsigned int *N)
-{
-	// If no escaping is done, this routine returns the original pointer
-	// and N stays 0
-	*N = 0;
-	if(strchr(input, ' ') != NULL)
-	{
-		// Replace any spaces by ~ if we find them in the domain name
-		// This is necessary as our telnet API uses space delimiters
-		return str_replace(input, ' ', '~', N);
-	}
-
-	return strdup(input);
-}
-
-bool strcmp_escaped(const char *a, const char *b)
-{
-	unsigned int Na, Nb;
-
-	// Input check
-	if(a == NULL || b == NULL)
-		return false;
-
-	// Escape both inputs
-	char *aa = str_escape(a, &Na);
-	char *bb = str_escape(b, &Nb);
-
-	// Check for memory errors
-	if(!aa || !bb)
-	{
-		if(aa) free(aa);
-		if(bb) free(bb);
-		return false;
-	}
-
-	const char result = strcasecmp(aa, bb) == 0;
-
-	free(aa);
-	free(bb);
-
-	return result;
-}
-
-
 size_t _addstr(const char *input, const char *func, const int line, const char *file)
 {
 	if(input == NULL)
@@ -304,22 +237,12 @@ size_t _addstr(const char *input, const char *func, const int line, const char *
 		len = avail_mem;
 	}
 
-	unsigned int N = 0;
-	char *str = str_escape(input, &N);
-
-	if(N > 0)
-		log_info("FTL replaced %u invalid characters with ~ in the query \"%s\"", N, str);
-
 	// Search buffer for existence of exact same string
-	char *str_pos = memmem(shm_strings.ptr, shmSettings->next_str_pos, str, len);
+	char *str_pos = memmem(shm_strings.ptr, shmSettings->next_str_pos, input, len);
 	if(str_pos != NULL)
 	{
-		log_debug(DEBUG_SHMEM, "Reusing existing string \"%s\" at position %zd in %s() (%s:%i)",
-		          str, str_pos - (char*)shm_strings.ptr, func, short_path(file), line);
-
-		// If the string already exists, we can free the memory allocated
-		// for the escaped string
-		free(str);
+		log_debug(DEBUG_SHMEM, "Reusing existing string \"%s\" at %zd in %s() (%s:%i)",
+		          input, str_pos - (char*)shm_strings.ptr, func, short_path(file), line);
 
 		// Return position of existing string
 		return (str_pos - (char*)shm_strings.ptr);
@@ -327,11 +250,10 @@ size_t _addstr(const char *input, const char *func, const int line, const char *
 
 	// Debugging output
 	log_debug(DEBUG_SHMEM, "Adding \"%s\" (len %zu) to buffer in %s() (%s:%i), next_str_pos is %u",
-	          str, len, func, short_path(file), line, shmSettings->next_str_pos);
+	          input, len, func, short_path(file), line, shmSettings->next_str_pos);
 
-	// Copy the C string pointed by str into the shared string buffer
-	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len);
-	free(str);
+	// Copy the C string pointed by input into the shared string buffer
+	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], input, len);
 
 	// Increment string length counter
 	shmSettings->next_str_pos += len;

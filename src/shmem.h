@@ -117,17 +117,6 @@ size_t _addstr(const char *str, const char *func, const int line, const char *fi
 const char *_getstr(const size_t pos, const char *func, const int line, const char *file);
 
 /**
- * Escapes a string by replacing special characters, such as spaces
- * The input string is always duplicated, ensure to free it after use
- */
-char *str_escape(const char *input, unsigned int *N) __attribute__ ((malloc));
-
-/**
- * Compare two strings. Escape them if needed
- */
-bool strcmp_escaped(const char *a, const char *b);
-
-/**
  * Create a new overTime client shared memory block.
  * This also updates `overTimeClientData`.
  */
