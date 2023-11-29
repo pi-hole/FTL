@@ -378,11 +378,8 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		// Subtract UNKNOWN from the counters before
 		// setting the status if different.
 		// Minus one here and plus one below = net zero
-		if(query->status != QUERY_UNKNOWN)
-		{
-			counters->status[QUERY_UNKNOWN]--;
-			log_debug(DEBUG_GC, "status %d removed (GC), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
-		}
+		counters->status[QUERY_UNKNOWN]--;
+		log_debug(DEBUG_GC, "status %d removed (GC), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
 
 		// Set query again to UNKNOWN to reset the counters
 		query_set_status(query, QUERY_UNKNOWN);
