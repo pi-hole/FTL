@@ -127,6 +127,10 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 // Private prototypes
 static void *enlarge_shmem_struct(const char type);
 
+// Calculate and format the memory usage of the shared memory segment used by
+// FTL
+// The function returns the percentage of used memory. A human-readable string
+// is stored in the buffer passed to this function.
 static int get_dev_shm_usage(char buffer[64])
 {
 	char buffer2[64] = { 0 };
@@ -206,6 +210,10 @@ static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
 	return true;
 }
 
+// Add string to our shared memory buffer
+// This function checks if the string already exists in the buffer and returns
+// the position of the existing string if it does. Otherwise, it adds the
+// string to the buffer and returns the position of the newly added string.
 size_t _addstr(const char *input, const char *func, const int line, const char *file)
 {
 	if(input == NULL)
@@ -262,6 +270,7 @@ size_t _addstr(const char *input, const char *func, const int line, const char *
 	return (shmSettings->next_str_pos - len);
 }
 
+// Get string from shared memory buffer
 const char *_getstr(const size_t pos, const char *func, const int line, const char *file)
 {
 	// Only access the string memory if this memory region has already been set
@@ -274,7 +283,7 @@ const char *_getstr(const size_t pos, const char *func, const int line, const ch
 	}
 }
 
-/// Create a mutex for shared memory
+// Create a mutex for shared memory
 static void create_mutex(pthread_mutex_t *lock) {
 	log_debug(DEBUG_SHMEM, "Creating SHM mutex lock");
 	pthread_mutexattr_t lock_attr = {};
@@ -312,9 +321,9 @@ static void create_mutex(pthread_mutex_t *lock) {
 	pthread_mutexattr_destroy(&lock_attr);
 }
 
+// Remap shared object pointers which might have changed
 static void remap_shm(void)
 {
-	// Remap shared object pointers which might have changed
 	realloc_shm(&shm_queries, counters->queries_MAX, sizeof(queriesData), false);
 	queries = (queriesData*)shm_queries.ptr;
 
