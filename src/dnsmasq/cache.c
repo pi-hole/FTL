@@ -15,7 +15,6 @@
 */
 
 #include "dnsmasq.h"
-#include "../dnsmasq_interface.h"
 #include "webserver/webserver.h"
 
 static struct crec *cache_head = NULL, *cache_tail = NULL, **hash_table = NULL;
@@ -1743,9 +1742,6 @@ int cache_make_stat(struct txt_record *t)
 #endif
 
     /* Pi-hole modification */
-    case TXT_PRIVACYLEVEL:
-      sprintf(buff+1, "%d", *pihole_privacylevel);
-      break;
     case TXT_API_DOMAIN:
     {
       t->len = get_api_string(&buff, true);
