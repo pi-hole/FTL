@@ -3428,3 +3428,9 @@ static const char *check_dnsmasq_name(const char *name)
 	// else
 	return name;
 }
+
+void get_dnsmasq_metrics_obj(cJSON *json)
+{
+	for (unsigned int i = 0; i < __METRIC_MAX; i++)
+		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
+}

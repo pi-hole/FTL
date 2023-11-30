@@ -108,7 +108,7 @@ src/dnsmasq/lease.c
 src/dnsmasq/log.c
 		  my_syslog(LOG_WARNING, _("overflow: %d log entries lost"), e);
 src/dnsmasq/network.c
-	my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
+	    my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
 src/dnsmasq/network.c
 		my_syslog(LOG_WARNING, 
 			  _("LOUD WARNING: listening on %s may accept requests via interfaces other than %s"),
