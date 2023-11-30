@@ -57,7 +57,7 @@
 #define GCinterval 600
 
 // Delay applied to the garbage collecting [seconds]
-// Default: -60 (one minute before a full hour)
+// Default: -60 (one minute before the end of the interval set above)
 #define GCdelay (-60)
 
 // How many client connection do we accept at once?
