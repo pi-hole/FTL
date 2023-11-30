@@ -2084,7 +2084,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 	// else: This is a reply from upstream
 	// Check if this domain matches exactly
-	const bool isExactMatch = strcmp(name, getstr(domain->domainpos));
+	const bool isExactMatch = name != NULL && strcasecmp(name, getstr(domain->domainpos)) == 0;
 
 	if((flags & F_CONFIG) && isExactMatch && !query->flags.complete)
 	{
