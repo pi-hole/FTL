@@ -5859,6 +5859,7 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->randport_limit = 1;
   daemon->host_index = SRC_AH;
   daemon->max_procs = MAX_PROCS;
+  daemon->max_procs_used = 0;
   
   /* See comment above make_servers(). Optimises server-read code. */
   mark_servers(0);

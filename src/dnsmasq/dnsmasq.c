@@ -1553,7 +1553,12 @@ static void async_event(int pipe, time_t now)
 	  else if (daemon->port != 0)
 	    for (i = 0 ; i < daemon->max_procs; i++)
 	      if (daemon->tcp_pids[i] == p)
-		daemon->tcp_pids[i] = 0;
+		{
+		  daemon->tcp_pids[i] = 0;
+		  /* tcp_pipes == -1 && tcp_pids == 0 required to free slot */
+		  if (daemon->tcp_pipes[i] == -1)
+		    daemon->metrics[METRIC_TCP_CONNECTIONS]--;
+		}
 	break;
 	
 #if defined(HAVE_SCRIPT)	
@@ -1869,6 +1874,9 @@ static void check_dns_listeners(time_t now)
 	{
 	  close(daemon->tcp_pipes[i]);
 	  daemon->tcp_pipes[i] = -1;	
+	  /* tcp_pipes == -1 && tcp_pids == 0 required to free slot */
+	  if (daemon->tcp_pids[i] == 0)
+	    daemon->metrics[METRIC_TCP_CONNECTIONS]--;
 	}
 	
   for (listener = daemon->listeners; listener; listener = listener->next)
@@ -1998,6 +2006,9 @@ static void check_dns_listeners(time_t now)
 		  /* i holds index of free slot */
 		  daemon->tcp_pids[i] = p;
 		  daemon->tcp_pipes[i] = pipefd[0];
+		  daemon->metrics[METRIC_TCP_CONNECTIONS]++;
+		  if (daemon->metrics[METRIC_TCP_CONNECTIONS] > daemon->max_procs_used)
+		    daemon->max_procs_used = daemon->metrics[METRIC_TCP_CONNECTIONS];
 		}
 	      close(confd);
 

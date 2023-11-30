@@ -39,6 +39,7 @@ const char * metric_names[] = {
     "leases_pruned_4",
     "leases_allocated_6",
     "leases_pruned_6",
+    "tcp_connections",
 };
 
 const char* get_metric_name(int i) {

@@ -1319,6 +1319,7 @@ extern struct daemon {
   int dumpfd;
 #endif
   int max_procs;
+  uint max_procs_used;
 } *daemon;
 
 struct server_details {

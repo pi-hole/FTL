@@ -1999,7 +1999,12 @@ void dump_cache(time_t now)
 #endif
 
   blockdata_report();
-
+  my_syslog(LOG_INFO, _("child processes for TCP requests: in use %zu, highest since last SIGUSR1 %zu, max allowed %zu."),
+	    daemon->metrics[METRIC_TCP_CONNECTIONS],
+	    daemon->max_procs_used,
+	    daemon->max_procs);
+  daemon->max_procs_used = daemon->metrics[METRIC_TCP_CONNECTIONS];
+  
   /* sum counts from different records for same server */
   for (serv = daemon->servers; serv; serv = serv->next)
     serv->flags &= ~SERV_MARK;
