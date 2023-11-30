@@ -132,6 +132,10 @@ components:
               type: integer
               description: Next ID to query if checking for new log lines
               example: 229
+            pid:
+              type: integer
+              description: Process ID of FTL. When this changes, FTL was restarted and nextID should be reset to 0.
+              example: 2258
             file:
               type: string
               description: Path to respective log file on disk

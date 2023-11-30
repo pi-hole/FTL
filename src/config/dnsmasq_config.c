@@ -408,10 +408,11 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("\n", pihole_conf);
 	}
 
-	if(conf->dns.cache.optimizer.v.ui > 0u)
+	if(conf->dns.cache.optimizer.v.i > -1)
 	{
 		fputs("# Use stale cache entries for a given number of seconds to optimize cache utilization\n", pihole_conf);
-		fprintf(pihole_conf, "use-stale-cache=%u\n", conf->dns.cache.optimizer.v.ui);
+		fputs("# Setting the time to zero will serve stale cache data regardless how long it has expired.\n", pihole_conf);
+		fprintf(pihole_conf, "use-stale-cache=%i\n", conf->dns.cache.optimizer.v.i);
 		fputs("\n", pihole_conf);
 	}
 

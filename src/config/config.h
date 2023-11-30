@@ -183,7 +183,6 @@ struct config {
 		struct conf_item start;
 		struct conf_item end;
 		struct conf_item router;
-		struct conf_item domain;
 		struct conf_item netmask;
 		struct conf_item leaseTime;
 		struct conf_item ipv6;
@@ -324,7 +323,7 @@ void set_debug_flags(struct config *conf);
 void set_all_debug(struct config *conf, const bool status);
 void initConfig(struct config *conf);
 void reset_config(struct conf_item *conf_item);
-void readFTLconf(struct config *conf, const bool rewrite);
+bool readFTLconf(struct config *conf, const bool rewrite);
 bool getLogFilePath(void);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug);

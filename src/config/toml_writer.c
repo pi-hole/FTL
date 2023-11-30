@@ -22,30 +22,14 @@
 // files_different()
 #include "files.h"
 
-static void migrate_config(void)
-{
-	// Migrating dhcp.domain -> dns.domain
-	if(strcmp(config.dns.domain.v.s, config.dns.domain.d.s) == 0)
-	{
-		// If the domain is the same as the default, check if the dhcp domain
-		// is different from the default. If so, migrate it
-		if(strcmp(config.dhcp.domain.v.s, config.dhcp.domain.d.s) != 0)
-		{
-			// Migrate dhcp.domain -> dns.domain
-			log_info("Migrating dhcp.domain = \"%s\" -> dns.domain", config.dhcp.domain.v.s);
-			if(config.dns.domain.t == CONF_STRING_ALLOCATED)
-				free(config.dns.domain.v.s);
-			config.dns.domain.v.s = strdup(config.dhcp.domain.v.s);
-			config.dns.domain.t = CONF_STRING_ALLOCATED;
-		}
-	}
-}
+// defined in config/config.c
+extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
 
 bool writeFTLtoml(const bool verbose)
 {
 	// Try to open a temporary config file for writing
 	FILE *fp;
-	if((fp = openFTLtoml(GLOBALTOMLPATH".tmp", "w")) == NULL)
+	if((fp = openFTLtoml("w", 0)) == NULL)
 	{
 		log_warn("Cannot write to FTL config file (%s), content not updated", strerror(errno));
 		return false;
@@ -64,9 +48,6 @@ bool writeFTLtoml(const bool verbose)
 	fputs("# Last updated on ", fp);
 	fputs(timestring, fp);
 	fputs("\n\n", fp);
-
-	// Perform possible config migration
-	migrate_config();
 
 	// Iterate over configuration and store it into the file
 	char *last_path = (char*)"";
@@ -175,6 +156,9 @@ bool writeFTLtoml(const bool verbose)
 		// Log that the config file has not changed if in debug mode
 		log_debug(DEBUG_CONFIG, "pihole.toml unchanged");
 	}
+
+	if(!sha256sum(GLOBALTOMLPATH, last_checksum))
+		log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
 
 	return true;
 }
