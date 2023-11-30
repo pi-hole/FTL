@@ -10,6 +10,8 @@
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
 
+#include <stdbool.h>
+
 void http_init(void);
 void http_terminate(void);
 

@@ -5960,7 +5960,6 @@ void read_opts(int argc, char **argv, char *compile_opts)
 #endif
       add_txt("servers.bind", NULL, TXT_STAT_SERVERS);
       /* Pi-hole modification */
-      add_txt("privacylevel.pihole", NULL, TXT_PRIVACYLEVEL);
       add_txt("version.ftl", (char*)get_FTL_version(), 0 );
       add_txt("api.ftl", NULL, TXT_API_DOMAIN);
       add_txt("domain.api.ftl", NULL, TXT_API_DOMAIN);
