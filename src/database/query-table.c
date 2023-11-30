@@ -8,19 +8,19 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 #define QUERY_TABLE_PRIVATE
-#include "query-table.h"
-#include "sqlite3.h"
-#include "../log.h"
-#include "../config/config.h"
-#include "../enums.h"
-#include "../config/config.h"
+#include "database/query-table.h"
+#include "database/sqlite3.h"
+#include "log.h"
+#include "config/config.h"
+#include "enums.h"
+#include "config/config.h"
 // counters
-#include "../shmem.h"
-#include "../overTime.h"
-#include "common.h"
-#include "../timers.h"
+#include "shmem.h"
+#include "overTime.h"
+#include "database/common.h"
+#include "timers.h"
 
 static sqlite3 *memdb = NULL;
 static double new_last_timestamp = 0;
@@ -1064,17 +1064,20 @@ void DB_read_queries(void)
 			query->type = TYPE_OTHER;
 			query->qtype = type - 100;
 		}
+		counters->querytype[query->type]++;
+		log_debug(DEBUG_GC, "query type %d set (database), ID = %d, new count = %d", query->type, counters->queries, counters->querytype[query->type]);
 
 		// Status is set below
 		query->domainID = domainID;
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
-		query->id = 0;
+		query->id = counters->queries;
 		query->response = 0;
 		query->flags.response_calculated = reply_time_avail;
 		query->dnssec = dnssec;
 		query->reply = reply;
 		counters->reply[query->reply]++;
+		log_debug(DEBUG_GC, "reply type %d set (database), ID = %d, new count = %d", query->reply, counters->queries, counters->reply[query->reply]);
 		query->response = reply_time;
 		query->CNAME_domainID = -1;
 		// Initialize flags
@@ -1089,14 +1092,14 @@ void DB_read_queries(void)
 		clientsData *client = getClient(clientID, true);
 		client->lastQuery = queryTimeStamp;
 
-		// Handle type counters
-		if(type >= TYPE_A && type < TYPE_MAX)
-			counters->querytype[type]++;
-
 		// Update overTime data
 		overTime[timeidx].total++;
-		// Update overTime data structure with the new client
+		// Update client's overTime data structure
 		change_clientcount(client, 0, 0, timeidx, 1);
+
+		// Get domain pointer
+		domainsData *domain = getDomain(domainID, true);
+		domain->lastQuery = queryTimeStamp;
 
 		// Increase DNS queries counter
 		counters->queries++;
@@ -1131,12 +1134,8 @@ void DB_read_queries(void)
 				cache->domainlist_id = sqlite3_column_int(stmt, 7);
 		}
 
-		// Increment status counters, we first have to add one to the count of
-		// unknown queries because query_set_status() will subtract from there
-		// when setting a different status
-		if(status != QUERY_UNKNOWN)
-			counters->status[QUERY_UNKNOWN]++;
-		query_set_status(query, status);
+		// Increment status counters
+		query_set_status_init(query, status);
 
 		// Do further processing based on the query status we read from the database
 		switch(status)
@@ -1157,7 +1156,6 @@ void DB_read_queries(void)
 			case QUERY_SPECIAL_DOMAIN: // Blocked by special domain handling
 				query->flags.blocked = true;
 				// Get domain pointer
-				domainsData *domain = getDomain(domainID, true);
 				domain->blockedcount++;
 				change_clientcount(client, 0, 1, -1, 0);
 				break;
@@ -1172,7 +1170,6 @@ void DB_read_queries(void)
 					upstreamsData *upstream = getUpstream(upstreamID, true);
 					if(upstream != NULL)
 					{
-						upstream->overTime[timeidx]++;
 						upstream->lastQuery = queryTimeStamp;
 						upstream->count++;
 					}

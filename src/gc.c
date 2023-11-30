@@ -39,6 +39,149 @@
 
 bool doGC = false;
 
+// Recycle old clients and domains in our internal data structure
+// This has the side-effect of recycling intermediate domains
+// seen during CNAME inspection, too, as they are never referenced
+// by any query (only head and tail of the CNAME chain are)
+static void recycle(void)
+{
+	bool *client_used = calloc(counters->clients, sizeof(bool));
+	bool *domain_used = calloc(counters->domains, sizeof(bool));
+	bool *upstreams_used = calloc(counters->upstreams, sizeof(bool));
+	if(client_used == NULL || domain_used == NULL || upstreams_used == NULL)
+	{
+		log_err("Cannot allocate memory for recycling");
+		return;
+	}
+
+	// Find list of client and domain IDs no active query is referencing anymore
+	// and recycle them
+	for(int queryID = 0; queryID < counters->queries; queryID++)
+	{
+		queriesData* query = getQuery(queryID, true);
+		if(query == NULL)
+			continue;
+
+		// Mark client and domain as used
+		client_used[query->clientID] = true;
+		domain_used[query->domainID] = true;
+
+		// Mark upstream as used (if any)
+		if(query->upstreamID > -1)
+			upstreams_used[query->upstreamID] = true;
+
+		// Mark CNAME domain as used (if any)
+		if(query->CNAME_domainID >= 0)
+			domain_used[query->CNAME_domainID] = true;
+	}
+
+	// Recycle clients
+	unsigned int clients_recycled = 0;
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		if(client_used[clientID])
+			continue;
+
+		clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
+		log_debug(DEBUG_GC, "Recycling client %s (ID %d, lastQuery at %.3f)",
+		          getstr(client->ippos), clientID, client->lastQuery);
+
+		// Wipe client's memory
+		memset(client, 0, sizeof(clientsData));
+
+		clients_recycled++;
+	}
+
+	// Recycle domains
+	unsigned int domains_recycled = 0;
+	for(int domainID = 0; domainID < counters->domains; domainID++)
+	{
+		if(domain_used[domainID])
+			continue;
+
+		domainsData* domain = getDomain(domainID, true);
+		if(domain == NULL)
+			continue;
+
+		log_debug(DEBUG_GC, "Recycling domain %s (ID %d, lastQuery at %.3f)",
+		          getstr(domain->domainpos), domainID, domain->lastQuery);
+
+		// Wipe domain's memory
+		memset(domain, 0, sizeof(domainsData));
+
+		domains_recycled++;
+	}
+
+	// Recycle cache records
+	unsigned int cache_recycled = 0;
+	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	{
+		DNSCacheData *cache = getDNSCache(cacheID, true);
+		if(cache == NULL)
+			continue;
+
+		// Skip cache entries that are still in use
+		if(cache->magic != 0x00)
+			continue;
+
+		log_debug(DEBUG_GC, "Recycling cache entry with ID %d", cacheID);
+
+		// Wipe cache entry's memory
+		memset(cache, 0, sizeof(DNSCacheData));
+
+		cache_recycled++;
+	}
+
+	// Free memory
+	free(client_used);
+	free(domain_used);
+	free(upstreams_used);
+
+	// Scan number of recycled clients and domains if in debug mode
+	if(config.debug.gc.v.b)
+	{
+		unsigned int free_domains = 0, free_clients = 0, free_cache = 0;
+		for(int clientID = 0; clientID < counters->clients; clientID++)
+		{
+			// Do not check magic to avoid skipping recycled clients
+			clientsData *client = getClient(clientID, false);
+			if(client == NULL)
+				continue;
+			if(client->magic == 0x00)
+				free_clients++;
+		}
+		for(int domainID = 0; domainID < counters->domains; domainID++)
+		{
+			// Do not check magic to avoid skipping recycled domains
+			domainsData *domain = getDomain(domainID, false);
+			if(domain == NULL)
+				continue;
+			if(domain->magic == 0x00)
+				free_domains++;
+		}
+		for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+		{
+			// Do not check magic to avoid skipping recycled cache entries
+			DNSCacheData *cache = getDNSCache(cacheID, false);
+			if(cache == NULL)
+				continue;
+			if(cache->magic == 0x00)
+				free_cache++;
+		}
+
+		log_debug(DEBUG_GC, "Recycler summary: %u/%d (max %d) clients, %u/%d (max %d) domains and %u/%d (max %d) cache records are free",
+		          free_clients, counters->clients, counters->clients_MAX,
+		          free_domains, counters->domains, counters->domains_MAX,
+			  free_cache, counters->dns_cache_size, counters->dns_cache_MAX);
+
+		log_debug(DEBUG_GC, "Recycled additional %u clients, %u domains, and %u cache records (scanned %d queries)",
+		          clients_recycled, domains_recycled, cache_recycled, counters->queries);
+	}
+}
+
 // Subtract rate-limitation count from individual client counters
 // As long as client->rate_limit is still larger than the allowed
 // maximum count, the rate-limitation will just continue
@@ -154,8 +297,8 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	}
 
 	// Process all queries
-	int removed = 0;
-	for(long int i=0; i < counters->queries; i++)
+	unsigned int removed = 0;
+	for(long int i = 0; i < counters->queries; i++)
 	{
 		queriesData* query = getQuery(i, true);
 		if(query == NULL)
@@ -165,19 +308,25 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		if(query->timestamp > mintime)
 			break;
 
-		// Adjust client counter (total and overTime)
-		clientsData* client = getClient(query->clientID, true);
+		// Adjust overTime counter
 		const int timeidx = getOverTimeID(query->timestamp);
 		overTime[timeidx].total--;
+
+		// Adjust client counter (total and overTime)
+		clientsData* client = getClient(query->clientID, true);
 		if(client != NULL)
 			change_clientcount(client, -1, 0, timeidx, -1);
 
 		// Adjust domain counter (no overTime information)
-		domainsData* domain = getDomain(query->domainID, true);
+		domainsData *domain = getDomain(query->domainID, true);
 		if(domain != NULL)
 			domain->count--;
 
-		// Get upstream pointer
+		// Adjust upstream counter (no overTime information)
+		upstreamsData *upstream = getUpstream(query->upstreamID, true);
+		if(upstream != NULL)
+			// Adjust upstream counter
+			upstream->count--;
 
 		// Change other counters according to status of this query
 		switch(query->status)
@@ -189,7 +338,6 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 			case QUERY_RETRIED: // (fall through)
 			case QUERY_RETRIED_DNSSEC:
 				// Forwarded to an upstream DNS server
-				// Adjusting counters is done below in moveOverTimeMemory()
 				break;
 			case QUERY_CACHE:
 			case QUERY_CACHE_STALE:
@@ -206,32 +354,32 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 			case QUERY_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
 			case QUERY_DBBUSY: // Blocked because gravity database was busy
 			case QUERY_SPECIAL_DOMAIN: // Blocked by special domain handling
-				//counters->blocked--;
 				overTime[timeidx].blocked--;
 				if(domain != NULL)
 					domain->blockedcount--;
 				if(client != NULL)
 					change_clientcount(client, 0, -1, -1, 0);
 				break;
-			case QUERY_IN_PROGRESS: // Don't have to do anything here
+			case QUERY_IN_PROGRESS: // fall through
 			case QUERY_STATUS_MAX: // fall through
 			default:
-				/* That cannot happen */
+				// Don't have to do anything here
 				break;
 		}
 
-		// Update reply countersthread_running[GC] = false;
+		// Update reply counters
 		counters->reply[query->reply]--;
+		log_debug(DEBUG_GC, "reply type %d removed (GC), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
 
 		// Update type counters
-		if(query->type >= TYPE_A && query->type < TYPE_MAX)
-			counters->querytype[query->type]--;
+		counters->querytype[query->type]--;
+		log_debug(DEBUG_GC, "query type %d removed (GC), ID = %d, new count = %d", query->type, query->id, counters->querytype[query->type]);
 
 		// Subtract UNKNOWN from the counters before
-		// setting the status if different. This ensure
-		// we are not counting them at all.
-		if(query->status != QUERY_UNKNOWN)
-			counters->status[QUERY_UNKNOWN]--;
+		// setting the status if different.
+		// Minus one here and plus one below = net zero
+		counters->status[QUERY_UNKNOWN]--;
+		log_debug(DEBUG_GC, "status %d removed (GC), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
 
 		// Set query again to UNKNOWN to reset the counters
 		query_set_status(query, QUERY_UNKNOWN);
@@ -253,28 +401,54 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	{
 		// Move memory forward to keep only what we want
 		// Note: for overlapping memory blocks, memmove() is a safer approach than memcpy()
-		// Example: (I = now invalid, X = still valid queries, F = free space)
-		//   Before: IIIIIIXXXXFF
-		//   After:  XXXXFFFFFFFF
+		//
+		//  ┌──────────────────────┐
+		//  │ Example: removed = 5 │▒
+		//  │                      │▒
+		//  │ query with ID = 6    │▒
+		//  │ is moved to ID = 0,  │▒
+		//  │ 7 ─> 1, 8 ─> 2, etc. │▒
+		//  │                      │▒
+		//  │ ID:         111111   │▒
+		//  │   0123456789012345   │▒
+		//  │                      │▒
+		//  │   ......QQQQ------   │▒
+		//  │         vvvv         │▒
+		//  │   ┌─────┘│││         │▒
+		//  │   │┌─────┘││         │▒
+		//  │   ││┌─────┘│         │▒
+		//  │   │││┌─────┘         │▒
+		//  │   vvvv               │▒
+		//  │   QQQQ------------   │▒
+		//  └──────────────────────┘▒
+		//    ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+		//
+		// Legend: . = removed queries, Q = valid queries, - = free space
+		//
+		// We move the memory block starting at the first valid query (index 5) to the
+		// beginning of the memory block, overwriting the invalid queries (index 0-4).
+		// The remaining memory (index 5-15) is then zeroed out by memset() below.
 		queriesData *dest = getQuery(0, true);
-		// Note: we use "removed - 1" here because the ID of the last query is "counters->queries - 1"
-		queriesData *src = getQuery(removed - 1, true);
-		if(dest && src)
+		queriesData *src = getQuery(removed, true);
+		if(dest != NULL && src != NULL)
 			memmove(dest, src, (counters->queries - removed)*sizeof(queriesData));
 
 		// Update queries counter
 		counters->queries -= removed;
 
-		// ensure remaining memory is zeroed out (marked as "F" in the above example)
+		// Ensure remaining memory is zeroed out (marked as "F" in the above example)
 		queriesData *tail = getQuery(counters->queries, true);
 		if(tail)
 			memset(tail, 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
 	}
 
+	// Recycle old clients and domains
+	recycle();
+
 	// Determine if overTime memory needs to get moved
 	moveOverTimeMemory(mintime);
 
-	log_debug(DEBUG_GC, "GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
+	log_debug(DEBUG_GC, "GC removed %u queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 	// Release thread lock
 	if(!flush)
