@@ -204,6 +204,7 @@ void FTL_mbed_debug(void *user_param, int level, const char *file, int line, con
 static struct serverports
 {
 	bool is_secure;
+	bool is_redirect;
 	unsigned char protocol; // 1 = IPv4, 2 = IPv4+IPv6, 3 = IPv6
 	in_port_t port;
 } server_ports[MAXPORTS] = { 0 };
@@ -227,6 +228,7 @@ static void get_server_ports(void)
 			// Store port information
 			server_ports[i].port = mgports[i].port;
 			server_ports[i].is_secure = mgports[i].is_ssl;
+			server_ports[i].is_redirect = mgports[i].is_redirect;
 			server_ports[i].protocol = mgports[i].protocol;
 
 			// Store HTTPS port if not already set
@@ -244,6 +246,97 @@ static void get_server_ports(void)
 in_port_t __attribute__((pure)) get_https_port(void)
 {
 	return https_port;
+}
+
+unsigned short get_api_string(char **buf, const bool domain)
+{
+	// Initialize buffer to empty string
+	size_t len = 0;
+	// First byte has the length of the first string
+	**buf = 0;
+	const char *domain_str = domain ? config.webserver.domain.v.s : "localhost";
+	size_t api_str_size = strlen(domain_str) + 20;
+
+	// Check if the string is too long for the TXT record
+	if(api_str_size > 255)
+	{
+		log_err("API URL too long for TXT record!");
+		return 0;
+	}
+
+	// TXT record format:
+	//
+	// 0                 length of first string (unsigned char n)
+	// 1 to (n+1)        first string
+	// (n+2)             length of second string (unsigned char m)
+	// (n+3) to (n+m+3)  second string
+	// ...
+	// This is repeated for every port, so the total length is
+	// (n+1) + (n+m+3) + (n+m+3) + ...
+	//
+	// This is implemented in the loop below
+
+	// Loop over all ports
+	for(unsigned int i = 0; i < MAXPORTS; i++)
+	{
+		// Skip ports that are not configured or redirected
+		if(server_ports[i].port == 0 || server_ports[i].is_redirect)
+			continue;
+
+		// Reallocate additional memory for every port
+		if((*buf = realloc(*buf, (i+1)*api_str_size)) == NULL)
+		{
+			log_err("Failed to reallocate API URL buffer!");
+			return 0;
+		}
+		const size_t bufsz = (i+1)*api_str_size;
+
+		// Append API URL to buffer
+		// We add this at buffer + 1 because the first byte is the
+		// length of the string, which we don't know yet
+		char *api_str = calloc(api_str_size, sizeof(char));
+		const ssize_t this_len = snprintf(api_str, bufsz - len - 1, "http%s://%s:%d/api/",
+		                                  server_ports[i].is_secure ? "s" : "",
+		                                  domain_str, server_ports[i].port);
+		// Check if snprintf() failed
+		if(this_len < 0)
+		{
+			log_err("Failed to append API URL to buffer: %s", strerror(errno));
+			return 0;
+		}
+
+		// Check if snprintf() truncated the string (this should never
+		// happen as we allocate enough memory for the domain to fit)
+		if((size_t)this_len >= bufsz - len - 1)
+		{
+			log_err("API URL buffer too small!");
+			return 0;
+		}
+
+		// Check if this string is already present in the buffer
+		if(memmem(*buf, len, api_str, this_len) != NULL)
+		{
+			// This string is already present, so skip it
+			free(api_str);
+			log_debug(DEBUG_API, "Skipping duplicate API URL: %s", api_str);
+			continue;
+		}
+
+		// Append string to buffer (one byte after the current end of
+		// the buffer to leave space for the length byte)
+		strcpy(*buf + len + 1, api_str);
+		free(api_str);
+
+		// Set first byte to the length of the string (see breakdown
+		// above)
+		(*buf)[len] = (unsigned char)this_len;
+
+		// Increase total length
+		len += this_len + 1;
+	}
+
+	// Return total length
+	return (unsigned short)len;
 }
 
 void http_init(void)
