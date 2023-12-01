@@ -86,6 +86,11 @@ static void recycle(void)
 		if(client == NULL)
 			continue;
 
+		// Never recycle aliasclients (they are not counted above but
+		// are only indirectly referenced by other clients)
+		if(client->flags.aliasclient)
+			continue;
+
 		log_debug(DEBUG_GC, "Recycling client %s (ID %d, lastQuery at %.3f)",
 		          getstr(client->ippos), clientID, client->lastQuery);
 
