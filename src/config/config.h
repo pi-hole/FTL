@@ -270,6 +270,7 @@ struct config {
 		struct conf_item addr2line;
 		struct conf_item etc_dnsmasq_d;
 		struct conf_item dnsmasq_lines;
+		struct conf_item extraLogging;
 		struct {
 			struct conf_item load;
 			struct conf_item shmem;

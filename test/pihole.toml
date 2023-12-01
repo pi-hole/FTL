@@ -822,6 +822,14 @@
   # Use this option with extra care.
   dnsmasq_lines = []
 
+  # Log additional information about queries and replies to pihole.log
+  # When this setting is enabled, the log has extra information at the start of each
+  # line. This consists of a serial number which ties together the log lines associated
+  # with an individual query, and the IP address of the requestor. This setting is only
+  # effective if dns.queryLogging is enabled, too. This option is only useful for
+  # debugging and is not recommended for normal use.
+  extraLogging = false
+
   [misc.check]
     # Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you
     # should run Pi-hole on a server that is otherwise extremely busy as queuing on the

@@ -470,6 +470,8 @@ components:
                   type: array
                   items:
                     type: string
+                extraLogging:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -712,6 +714,7 @@ components:
             privacylevel: 0
             etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
+            extraLogging: false
             check:
               load: true
               shmem: 90
