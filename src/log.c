@@ -274,6 +274,8 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	const int mpid = main_pid(); // Get the process ID of the main FTL process
 	const int tid = gettid(); // Get the thread ID of the calling process
 
+	const char *prio = priostr(priority, flag);
+
 	// There are four cases we have to differentiate here:
 	if(pid == tid)
 		if(is_fork(mpid, pid))
@@ -295,7 +297,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	{
 		// Only print time/ID string when not in direct user interaction (CLI mode)
 		if(!cli_mode)
-			printf("%s [%s] %s: ", timestring, idstr, priostr(priority, flag));
+			printf("%s [%s] %s: ", timestring, idstr, prio);
 		va_start(args, format);
 		vprintf(format, args);
 		va_end(args);
@@ -310,7 +312,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 		va_start(args, format);
 		const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
 		va_end(args);
-		add_to_fifo_buffer(FIFO_FTL, buffer, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
+		add_to_fifo_buffer(FIFO_FTL, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
 		if(config.files.log.ftl.v.s != NULL)
 		{
@@ -321,7 +323,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 			if(logfile != NULL)
 			{
 				// Prepend message with identification string and priority
-				fprintf(logfile, "%s [%s] %s: ", timestring, idstr, priostr(priority, flag));
+				fprintf(logfile, "%s [%s] %s: ", timestring, idstr, prio);
 
 				// Log message
 				va_start(args, format);
@@ -361,7 +363,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) log_web(const char *format, ...
 	va_start(args, format);
 	const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
 	va_end(args);
-	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
+	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, NULL, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
 	// Get human-readable time
 	get_timestr(timestring, now, true, false);
@@ -721,7 +723,7 @@ void dnsmasq_diagnosis_warning(char *message)
 	logg_warn_dnsmasq_message(skipStr("warning: ", message));
 }
 
-void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const size_t length)
+void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const char *prio, const size_t length)
 {
 	const double now = double_time();
 
@@ -735,6 +737,7 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const s
 		// Log is full, move everything one slot forward to make space for a new record at the end
 		// This pruges the oldest message from the list (it is overwritten by the second message)
 		memmove(&fifo_log->logs[which].message[0][0], &fifo_log->logs[which].message[1][0], (LOG_SIZE - 1u) * MAX_MSG_FIFO);
+		memmove(&fifo_log->logs[which].prio[0], &fifo_log->logs[which].prio[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].prio[0]));
 		memmove(&fifo_log->logs[which].timestamp[0], &fifo_log->logs[which].timestamp[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].timestamp[0]));
 		idx = LOG_SIZE - 1u;
 	}
@@ -758,6 +761,9 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const s
 
 	// Set timestamp
 	fifo_log->logs[which].timestamp[idx] = now;
+
+	// Set prio (if available)
+	fifo_log->logs[which].prio[idx] = prio;
 }
 
 bool flush_dnsmasq_log(void)

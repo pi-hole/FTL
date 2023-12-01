@@ -68,6 +68,7 @@ int api_logs(struct ftl_conn *api)
 		cJSON *entry = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(entry, "timestamp", fifo_log->logs[api->opts.which].timestamp[i]);
 		JSON_REF_STR_IN_OBJECT(entry, "message", fifo_log->logs[api->opts.which].message[i]);
+		JSON_REF_STR_IN_OBJECT(entry, "prio", fifo_log->logs[api->opts.which].prio[i]);
 		JSON_ADD_ITEM_TO_ARRAY(log, entry);
 	}
 	JSON_ADD_ITEM_TO_OBJECT(json, "log", log);

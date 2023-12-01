@@ -90,7 +90,7 @@ const char *short_path(const char *full_path) __attribute__ ((pure));
 // Defaults to 512 [512 * 256 above = use 128 KB of memory for the log]
 #define LOG_SIZE 515u
 
-void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const size_t length);
+void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const char *prio, const size_t length);
 
 bool flush_dnsmasq_log(void);
 
@@ -99,6 +99,7 @@ typedef struct {
 		unsigned int next_id;
 		double timestamp[LOG_SIZE];
 		char message[LOG_SIZE][MAX_MSG_FIFO];
+		const char *prio[LOG_SIZE];
 	} logs[FIFO_MAX];
 } fifologData;
 
