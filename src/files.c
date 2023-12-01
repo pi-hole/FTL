@@ -607,28 +607,51 @@ bool files_different(const char *pathA, const char* pathB, unsigned int from)
 	}
 
 	// Compare both files line by line
-	char *lineA = NULL;
-	size_t lenA = 0;
-	ssize_t readA;
-	char *lineB = NULL;
-	size_t lenB = 0;
-	ssize_t readB;
+	char *lineA = NULL, *lineB = NULL;
+	size_t lenA = 0, lenB = 0;
+	ssize_t readA = 0, readB = 0;
 	bool different = false;
-	while((readA = getline(&lineA, &lenA, fpA)) != -1 &&
-	      (readB = getline(&lineB, &lenB, fpB)) != -1)
+	unsigned int lineno = 0;
+	while(true)
 	{
+		// Read lines from both files
+		readA = getline(&lineA, &lenA, fpA);
+		readB = getline(&lineB, &lenB, fpB);
+
+		// Check if we reached the end of any of the files
+		if(readA < 0 || readB < 0)
+			break;
+
 		// Skip lines until we reach the requested line number
-		if(from > 0)
-		{
-			from--;
+		if(from > ++lineno)
 			continue;
-		}
+
+		// Remove possible trailing newline characters
+		if(lineA[readA - 1] == '\n')
+			lineA[readA - 1] = '\0';
+		if(lineB[readB - 1] == '\n')
+			lineB[readB - 1] = '\0';
+
 		// Compare lines
 		if(strcmp(lineA, lineB) != 0)
 		{
 			different = true;
+			log_debug(DEBUG_CONFIG, "Files %s and %s differ at line %u",
+			          pathA, pathB, lineno);
+			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : lineA);
+			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : lineB);
 			break;
 		}
+	}
+
+	// Check if one file has more lines than the other
+	if(!different && readA != readB)
+	{
+		different = true;
+		log_debug(DEBUG_CONFIG, "Files %s and %s differ at the final line %u",
+		          pathA, pathB, lineno);
+		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : lineA);
+		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : lineB);
 	}
 
 	// Free memory
@@ -638,6 +661,11 @@ bool files_different(const char *pathA, const char* pathB, unsigned int from)
 	// Close files
 	fclose(fpA);
 	fclose(fpB);
+
+	// Log result (if not already done above)
+	if(!different)
+		log_debug(DEBUG_CONFIG, "Files %s and %s are identical (skipped the first %u line%s)",
+		          pathA, pathB, from, from == 1 ? "" : "s");
 
 	return different;
 }
