@@ -730,6 +730,13 @@
   #     <any Pi-hole gravity database>
   gravity = "/etc/pihole/gravity.db"
 
+  # A temporary directory where Pi-hole can store files during gravity updates. This
+  # directory must be writable by the user running gravity (typically pihole).
+  #
+  # Possible values are:
+  #     <any world-writable writable directory>
+  gravity_tmp = "/tmp"
+
   # The database containing MAC -> Vendor information for the network table
   #
   # Possible values are:
