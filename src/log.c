@@ -125,9 +125,8 @@ unsigned int get_year(const time_t timein)
 	return tm.tm_year + 1900;
 }
 
-static const char *priostr(const int priority, const enum debug_flag flag)
+static const char * __attribute__((const)) priostr(const int priority, const enum debug_flag flag)
 {
-	const char *name;
 	switch (priority)
 	{
 		// system is unusable
@@ -153,105 +152,75 @@ static const char *priostr(const int priority, const enum debug_flag flag)
 			return "INFO";
 		// debug-level messages
 		case LOG_DEBUG:
-			debugstr(flag, &name);
-			return name;
+			return debugstr(flag);
 		// invalid option
 		default:
 			return "UNKNOWN";
 	}
 }
 
-void debugstr(const enum debug_flag flag, const char **name)
+const char *debugstr(const enum debug_flag flag)
 {
 	switch (flag)
 	{
 		case DEBUG_DATABASE:
-			*name = "DEBUG_DATABASE";
-			return;
+			return "DEBUG_DATABASE";
 		case DEBUG_NETWORKING:
-			*name = "DEBUG_NETWORKING";
-			return;
+			return "DEBUG_NETWORKING";
 		case DEBUG_LOCKS:
-			*name = "DEBUG_LOCKS";
-			return;
+			return "DEBUG_LOCKS";
 		case DEBUG_QUERIES:
-			*name = "DEBUG_QUERIES";
-			return;
+			return "DEBUG_QUERIES";
 		case DEBUG_FLAGS:
-			*name = "DEBUG_FLAGS";
-			return;
+			return "DEBUG_FLAGS";
 		case DEBUG_SHMEM:
-			*name = "DEBUG_SHMEM";
-			return;
+			return "DEBUG_SHMEM";
 		case DEBUG_GC:
-			*name = "DEBUG_GC";
-			return;
+			return "DEBUG_GC";
 		case DEBUG_ARP:
-			*name = "DEBUG_ARP";
-			return;
+			return "DEBUG_ARP";
 		case DEBUG_REGEX:
-			*name = "DEBUG_REGEX";
-			return;
+			return "DEBUG_REGEX";
 		case DEBUG_API:
-			*name = "DEBUG_API";
-			return;
+			return "DEBUG_API";
 		case DEBUG_TLS:
-			*name = "DEBUG_TLS";
-			return;
+			return "DEBUG_TLS";
 		case DEBUG_OVERTIME:
-			*name = "DEBUG_OVERTIME";
-			return;
+			return "DEBUG_OVERTIME";
 		case DEBUG_STATUS:
-			*name = "DEBUG_STATUS";
-			return;
+			return "DEBUG_STATUS";
 		case DEBUG_CAPS:
-			*name = "DEBUG_CAPS";
-			return;
+			return "DEBUG_CAPS";
 		case DEBUG_DNSSEC:
-			*name = "DEBUG_DNSSEC";
-			return;
+			return "DEBUG_DNSSEC";
 		case DEBUG_VECTORS:
-			*name = "DEBUG_VECTORS";
-			return;
+			return "DEBUG_VECTORS";
 		case DEBUG_RESOLVER:
-			*name = "DEBUG_RESOLVER";
-			return;
+			return "DEBUG_RESOLVER";
 		case DEBUG_EDNS0:
-			*name = "DEBUG_EDNS0";
-			return;
+			return "DEBUG_EDNS0";
 		case DEBUG_CLIENTS:
-			*name = "DEBUG_CLIENTS";
-			return;
+			return "DEBUG_CLIENTS";
 		case DEBUG_ALIASCLIENTS:
-			*name = "DEBUG_ALIASCLIENTS";
-			return;
+			return "DEBUG_ALIASCLIENTS";
 		case DEBUG_EVENTS:
-			*name = "DEBUG_EVENTS";
-			return;
+			return "DEBUG_EVENTS";
 		case DEBUG_HELPER:
-			*name = "DEBUG_HELPER";
-			return;
+			return "DEBUG_HELPER";
 		case DEBUG_EXTRA:
-			*name = "DEBUG_EXTRA";
-			return;
+			return "DEBUG_EXTRA";
 		case DEBUG_CONFIG:
-			*name = "DEBUG_CONFIG";
-			return;
+			return "DEBUG_CONFIG";
 		case DEBUG_INOTIFY:
-			*name = "DEBUG_INOTIFY";
-			return;
+			return "DEBUG_INOTIFY";
 		case DEBUG_WEBSERVER:
-			*name = "DEBUG_WEBSERVER";
-			return;
+			return "DEBUG_WEBSERVER";
 		case DEBUG_RESERVED:
-			*name = "DEBUG_RESERVED";
-			return;
+			return "DEBUG_RESERVED";
 		case DEBUG_MAX:
-			*name = "DEBUG_MAX";
-			return;
+			return "DEBUG_MAX";
 		default:
-			*name = "DEBUG_ANY";
-			return;
+			return "DEBUG_ANY";
 	}
 }
 

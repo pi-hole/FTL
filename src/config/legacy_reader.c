@@ -824,12 +824,7 @@ static void readDebugingSettingsLegacy(FILE *fp)
 	setDebugOption(fp, "DEBUG_ALL", ~(enum debug_flag)0);
 
 	for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
-	{
-		// DEBUG_DATABASE
-		const char *name;
-		debugstr(flag, &name);
-		setDebugOption(fp, name, flag);
-	}
+		setDebugOption(fp, debugstr(flag), flag);
 
 	// Parse debug options
 	set_debug_flags(&config);
