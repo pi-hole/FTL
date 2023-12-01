@@ -28,6 +28,48 @@
 static toml_table_t *parseTOML(const unsigned int version);
 static void reportDebugFlags(void);
 
+// Migrate config from old to new, returns true if a restart is required
+static bool migrate_config(toml_table_t *toml, struct config *newconf)
+{
+	bool restart = false;
+	toml_table_t *dns = toml_table_in(toml, "dns");
+	if(dns)
+	{
+		toml_table_t *revServer = toml_table_in(dns, "revServer");
+		if(revServer)
+		{
+			// Read old config
+			toml_datum_t active = toml_bool_in(revServer, "active");
+			toml_datum_t cidr = toml_string_in(revServer, "cidr");
+			toml_datum_t target = toml_string_in(revServer, "target");
+			toml_datum_t domain = toml_string_in(revServer, "domain");
+
+			// Necessary condition: all values must exist and CIDR and target must not be empty
+			if(active.ok && cidr.ok && target.ok && domain.ok && strlen(cidr.u.s) > 0 && strlen(target.u.s))
+			{
+				// Build comma-separated string of all values
+				char *old = calloc((active.u.b ? 4 : 5) + strlen(cidr.u.s) + strlen(target.u.s) + strlen(domain.u.s) + 4, sizeof(char));
+				if(old)
+				{
+					// Add to new config
+					sprintf(old, "%s,%s,%s,%s", active.u.s ? "true" : "false", cidr.u.s, target.u.s, domain.u.s);
+					log_debug(DEBUG_CONFIG, "Config setting dns.revServer MIGRATED: %s", old);
+					cJSON_AddItemToArray(newconf->dns.revServers.v.json, cJSON_CreateString(old));
+					restart = true;
+				}
+			}
+			else
+				log_warn("Config setting dns.revServer INVALID - ignoring: %s %s %s %s", active.ok ? active.u.s : "NULL", cidr.ok ? cidr.u.s : "NULL", target.ok ? target.u.s : "NULL", domain.ok ? domain.u.s : "NULL");
+		}
+		else
+			log_info("dns.revServer DOES NOT EXIST");
+	}
+	else
+		log_info("dns DOES NOT EXIST");
+
+	return restart;
+}
+
 bool readFTLtoml(struct config *oldconf, struct config *newconf,
                  toml_table_t *toml, const bool verbose, bool *restart,
                  const unsigned int version)
@@ -123,6 +165,10 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 				delete_all_sessions();
 		}
 	}
+
+	// Migrate config from old to new
+	if(migrate_config(toml, newconf) && restart != NULL)
+		*restart = true;
 
 	// Report debug config if enabled
 	set_debug_flags(newconf);

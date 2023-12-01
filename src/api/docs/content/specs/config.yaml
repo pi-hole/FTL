@@ -233,17 +233,10 @@ components:
                       type: integer
                     optimizer:
                       type: integer
-                revServer:
-                  type: object
-                  properties:
-                    active:
-                      type: boolean
-                    cidr:
-                      type: string
-                    target:
-                      type: string
-                    domain:
-                      type: string
+                revServers:
+                  type: array
+                  items:
+                    type: string
                 blocking:
                   type: object
                   properties:
@@ -611,11 +604,8 @@ components:
             cache:
               size: 10000
               optimizer: 3600
-            revServer:
-              active: false
-              cidr: "192.168.0.0/24"
-              target: "192.168.0.1"
-              domain: "lan"
+            revServers:
+              - "true,192.168.0.0/24,192.168.0.1,lan"
             blocking:
               active: true
               mode: 'NULL'

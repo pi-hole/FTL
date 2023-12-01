@@ -584,6 +584,12 @@ void initConfig(struct config *conf)
 	conf->dns.blocking.mode.t = CONF_ENUM_BLOCKING_MODE;
 	conf->dns.blocking.mode.d.blocking_mode = MODE_NULL;
 
+	conf->dns.revServers.k = "dns.revServers";
+	conf->dns.revServers.h = "Reverse server (former also called \"conditional forwarding\") feature\n Array of reverse servers each one in one of the following forms: \"<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>\"\n\n Individual components:\n\n <enabled>: either \"true\" or \"false\"\n\n <ip-address>[/<prefix-len>]: Address range for the reverse server feature in CIDR notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are substituted (exact address match). This is almost certainly not what you want here.\n Example: \"192.168.0.0/24\" for the range 192.168.0.1 - 192.168.0.255\n\n <server>[#<port>]: Target server to be used for the reverse server feature\n Example: \"192.168.0.1#53\"\n\n <domain>: Domain used for the reverse server feature (e.g., \"fritz.box\")\n Example: \"fritz.box\"\n\n A valid line could look like this: \"true,192.168.0.0/24,192.168.0.1,fritz.box\"";
+	conf->dns.revServers.t = CONF_JSON_STRING_ARRAY;
+	conf->dns.revServers.d.json = cJSON_CreateArray();
+	conf->dns.revServers.f = FLAG_RESTART_FTL;
+
 	// sub-struct dns.rate_limit
 	conf->dns.rateLimit.count.k = "dns.rateLimit.count";
 	conf->dns.rateLimit.count.h = "Rate-limited queries are answered with a REFUSED reply and not further processed by FTL.\n The default settings for FTL's rate-limiting are to permit no more than 1000 queries in 60 seconds. Both numbers can be customized independently. It is important to note that rate-limiting is happening on a per-client basis. Other clients can continue to use FTL while rate-limited clients are short-circuited at the same time.\n For this setting, both numbers, the maximum number of queries within a given time, and the length of the time interval (seconds) have to be specified. For instance, if you want to set a rate limit of 1 query per hour, the option should look like RATE_LIMIT=1/3600. The time interval is relative to when FTL has finished starting (start of the daemon + possible delay by DELAY_STARTUP) then it will advance in steps of the rate-limiting interval. If a client reaches the maximum number of queries it will be blocked until the end of the current interval. This will be logged to /var/log/pihole/FTL.log, e.g. Rate-limiting 10.0.1.39 for at least 44 seconds. If the client continues to send queries while being blocked already and this number of queries during the blocking exceeds the limit the client will continue to be blocked until the end of the next interval (FTL.log will contain lines like Still rate-limiting 10.0.1.39 as it made additional 5007 queries). As soon as the client requests less than the set limit, it will be unblocked (Ending rate-limitation of 10.0.1.39).\n Rate-limiting may be disabled altogether by setting both values to zero (this results in the same behavior as before FTL v5.7).\n How many queries are permitted...";
@@ -658,34 +664,6 @@ void initConfig(struct config *conf)
 	conf->dns.reply.blocking.v6.t = CONF_STRUCT_IN6_ADDR;
 	conf->dns.reply.blocking.v6.f = FLAG_ADVANCED_SETTING;
 	memset(&conf->dns.reply.blocking.v6.d.in6_addr, 0, sizeof(struct in6_addr));
-
-	// sub-struct revServer
-	conf->dns.revServer.active.k = "dns.revServer.active";
-	conf->dns.revServer.active.h = "Is the reverse server (former also called \"conditional forwarding\") feature enabled?";
-	conf->dns.revServer.active.t = CONF_BOOL;
-	conf->dns.revServer.active.d.b = false;
-	conf->dns.revServer.active.f = FLAG_RESTART_FTL;
-
-	conf->dns.revServer.cidr.k = "dns.revServer.cidr";
-	conf->dns.revServer.cidr.h = "Address range for the reverse server feature in CIDR notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are substitutet (exact address match). This is almost certainly not what you want here.";
-	conf->dns.revServer.cidr.a = cJSON_CreateStringReference("<ip-address>[/<prefix-len>], e.g., \"192.168.0.0/24\" for the range 192.168.0.1 - 192.168.0.255");
-	conf->dns.revServer.cidr.t = CONF_STRING;
-	conf->dns.revServer.cidr.d.s = (char*)"";
-	conf->dns.revServer.cidr.f = FLAG_RESTART_FTL;
-
-	conf->dns.revServer.target.k = "dns.revServer.target";
-	conf->dns.revServer.target.h = "Target server tp be used for the reverse server feature";
-	conf->dns.revServer.target.a = cJSON_CreateStringReference("<server>[#<port>], e.g., \"192.168.0.1\"");
-	conf->dns.revServer.target.t = CONF_STRING;
-	conf->dns.revServer.target.d.s = (char*)"";
-	conf->dns.revServer.target.f = FLAG_RESTART_FTL;
-
-	conf->dns.revServer.domain.k = "dns.revServer.domain";
-	conf->dns.revServer.domain.h = "Domain used for the reverse server feature (e.g., \"fritz.box\")";
-	conf->dns.revServer.domain.a = cJSON_CreateStringReference("<valid domain>");
-	conf->dns.revServer.domain.t = CONF_STRING;
-	conf->dns.revServer.domain.d.s = (char*)"";
-	conf->dns.revServer.domain.f = FLAG_RESTART_FTL;
 
 	// sub-struct dhcp
 	conf->dhcp.active.k = "dhcp.active";

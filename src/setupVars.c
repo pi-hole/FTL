@@ -119,6 +119,83 @@ static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf
 	          key, conf_item->k, conf_item->v.b ? "true" : "false");
 }
 
+static void get_revServer_from_setupVars(void)
+{
+	bool active = false;
+	char *cidr = NULL;
+	char *target = NULL;
+	char *domain = NULL;
+	const char *active_str = read_setupVarsconf("REV_SERVER");
+	if(active_str == NULL)
+	{
+		// Do not change default value, this value is not set in setupVars.conf
+		log_debug(DEBUG_CONFIG, "setupVars.conf:REV_SERVER -> Not set");
+
+		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+		clearSetupVarsArray();
+		return;
+	}
+	else
+	{
+		// Parameter present in setupVars.conf
+		active = getSetupVarsBool(active_str);
+	}
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	char *cidr_str = read_setupVarsconf("REV_SERVER_CIDR");
+	if(cidr_str != NULL)
+	{
+		cidr = strdup(cidr_str);
+		trim_whitespace(cidr);
+	}
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	char *target_str = read_setupVarsconf("REV_SERVER_TARGET");
+	if(target_str != NULL)
+	{
+		target = strdup(target_str);
+		trim_whitespace(target);
+	}
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	char *domain_str = read_setupVarsconf("REV_SERVER_DOMAIN");
+	if(domain_str != NULL)
+	{
+		domain = strdup(domain_str);
+		trim_whitespace(domain);
+	}
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	if(active && cidr != NULL && target != NULL && domain != NULL)
+	{
+		// Build comma-separated string of all values
+		char *old = calloc(strlen(active_str) + strlen(cidr) + strlen(target) + strlen(domain) + 4, sizeof(char));
+		if(old)
+		{
+			// Add to new config
+			sprintf(old, "%s,%s,%s,%s", active_str, cidr, target, domain);
+			cJSON_AddItemToArray(config.dns.revServers.v.json, cJSON_CreateString(old));
+			free(old);
+		}
+	}
+
+	// Free memory
+	if(cidr != NULL)
+		free(cidr);
+	if(target != NULL)
+		free(target);
+	if(domain != NULL)
+		free(domain);
+}
+
 static void get_conf_string_array_from_setupVars(const char *key, struct conf_item *conf_item)
 {
 	// Verify we are allowed to use this function
@@ -416,10 +493,7 @@ void importsetupVarsConf(void)
 	get_conf_listeningMode_from_setupVars();
 
 	// Try to obtain REV_SERVER settings
-	get_conf_bool_from_setupVars("REV_SERVER", &config.dns.revServer.active);
-	get_conf_string_from_setupVars("REV_SERVER_CIDR", &config.dns.revServer.cidr);
-	get_conf_string_from_setupVars("REV_SERVER_TARGET", &config.dns.revServer.target);
-	get_conf_string_from_setupVars("REV_SERVER_DOMAIN", &config.dns.revServer.domain);
+	get_revServer_from_setupVars();
 
 	// Try to obtain DHCP settings
 	get_conf_bool_from_setupVars("DHCP_ACTIVE", &config.dhcp.active);
