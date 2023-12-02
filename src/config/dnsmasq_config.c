@@ -346,7 +346,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	{
 		fputs("# Enable query logging\n", pihole_conf);
 		if(conf->misc.extraLogging.v.b)
-			fputs("#log-queries=extra\n", pihole_conf);
+			fputs("log-queries=extra\n", pihole_conf);
 		else
 			fputs("log-queries\n", pihole_conf);
 		fputs("log-async\n", pihole_conf);
