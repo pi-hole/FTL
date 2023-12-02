@@ -119,6 +119,10 @@ components:
                   message:
                     type: string
                     description: Log line content
+                  prio:
+                    type: string
+                    nullable: true
+                    description: Log line priority (if available)
               example:
                 - timestamp: 1611729969.0
                   message: "started, version pi-hole-2.84 cachesize 10000"
