@@ -380,6 +380,13 @@ int main_dnsmasq (int argc, char **argv)
   
   if (!enumerate_interfaces(1) || !enumerate_interfaces(0))
     die(_("failed to find list of interfaces: %s"), NULL, EC_MISC);
+
+#ifdef HAVE_DHCP
+  /* Determine lease FQDNs after enumerate_interfaces() call, since it needs
+     to call get_domain and that's only valid for some domain configs once we
+     have interface addresses. */
+  lease_calc_fqdns();
+#endif
   
   if (option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND)) 
     {

@@ -1616,6 +1616,7 @@ void lease_update_from_configs(void);
 int do_script_run(time_t now);
 void rerun_scripts(void);
 void lease_find_interfaces(time_t now);
+void lease_calc_fqdns(void);
 #ifdef HAVE_SCRIPT
 void lease_add_extradata(struct dhcp_lease *lease, unsigned char *data, 
 			 unsigned int len, int delim);
