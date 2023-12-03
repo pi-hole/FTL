@@ -1226,6 +1226,10 @@ int check_for_local_domain(char *name, time_t now)
   if (cache_find_non_terminal(name, now))
     return 1;
 
+  if (is_name_synthetic(F_IPV4, name, NULL) ||
+      is_name_synthetic(F_IPV6, name, NULL))
+    return 1;
+
   return 0;
 }
 
