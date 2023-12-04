@@ -60,7 +60,7 @@ void db_counts(unsigned long *last_idx, unsigned long *mem_num, unsigned long *d
 bool init_memory_database(void)
 {
 	int rc;
-	const char *uri = "file:memdb?mode=memory&cache=shared";
+	const char *uri = "file:memdb?mode=memory";
 
 	// Try to open in-memory database
 	rc = sqlite3_open_v2(uri, &memdb, SQLITE_OPEN_READWRITE, NULL);
@@ -77,6 +77,21 @@ bool init_memory_database(void)
 	{
 		log_err("init_memory_database(): Step error while trying to set busy timeout (%d ms): %s",
 		        DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
+		sqlite3_close(memdb);
+		return false;
+	}
+
+	// Change journal mode to WAL
+	// - WAL is significantly faster in most scenarios.
+	// - WAL provides more concurrency as readers do not block writers and a
+	//   writer does not block readers. Reading and writing can proceed
+	//   concurrently.
+	// - Disk I/O operations tends to be more sequential using WAL.
+	rc = sqlite3_exec(memdb, "PRAGMA journal_mode=WAL", NULL, NULL, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("init_memory_database(): Step error while trying to set journal mode: %s",
+		        sqlite3_errstr(rc));
 		sqlite3_close(memdb);
 		return false;
 	}
