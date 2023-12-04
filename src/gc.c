@@ -493,6 +493,7 @@ void *GC_thread(void *val)
 	time_t lastGCrun = time(NULL) - time(NULL)%GCinterval;
 	lastRateLimitCleaner = time(NULL);
 	time_t lastResourceCheck = 0;
+	time_t lastCPUcheck = 0;
 
 	// Remember disk usage
 	unsigned int LastLogStorageUsage = 0;
@@ -523,8 +524,11 @@ void *GC_thread(void *val)
 
 		// Calculate average CPU usage
 		// This is done once every ten seconds to get averaged values
-		if(now - lastResourceCheck >= CPU_AVERAGE_INTERVAL)
+		if(now - lastCPUcheck >= CPU_AVERAGE_INTERVAL)
+		{
+			lastCPUcheck = now;
 			calc_cpu_usage(CPU_AVERAGE_INTERVAL);
+		}
 
 		// Check available resources
 		if(now - lastResourceCheck >= RCinterval)
