@@ -96,7 +96,10 @@ static void print_used_resolvers(const char *message)
 			const unsigned int j = i;
 			// Some of the entries may not be configured
 			if(_res.nsaddr_list[j].sin_family != AF_INET)
+			{
+				log_debug(DEBUG_RESOLVER, "Skipping unused NS4 %u => %i", i, _res.nsaddr_list[j].sin_family);
 				continue;
+			}
 
 			// IPv4 name servers
 			addr = &_res.nsaddr_list[j].sin_addr;
@@ -110,7 +113,10 @@ static void print_used_resolvers(const char *message)
 			// Some of the entries may not be configured
 			if(_res._u._ext.nsaddrs[j] == NULL ||
 			   _res._u._ext.nsaddrs[j]->sin6_family != AF_INET6)
+			{
+				log_debug(DEBUG_RESOLVER, "Skipping unused NS6 %u => %i", i, _res.nsaddr_list[j].sin_family);
 				continue;
+			}
 			addr = &_res._u._ext.nsaddrs[j]->sin6_addr;
 			port = ntohs(_res._u._ext.nsaddrs[j]->sin6_port);
 			family = _res._u._ext.nsaddrs[j]->sin6_family;
@@ -234,11 +240,13 @@ char *resolveHostname(const char *addr)
 	// Backup configured name servers and invalidate them (IPv4)
 	struct in_addr ns_addr_bck[MAXNS];
 	in_port_t ns_port_bck[MAXNS];
+	sa_family_t ns_family_bck[MAXNS];
 	int bck_nscount = _res.nscount;
 	for(unsigned int i = 0u; i < NUM_NS4; i++)
 	{
 		ns_addr_bck[i] = _res.nsaddr_list[i].sin_addr;
 		ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
+		ns_family_bck[i] = _res.nsaddr_list[i].sin_family;
 		_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
 	}
 
@@ -246,12 +254,15 @@ char *resolveHostname(const char *addr)
 	_res.nsaddr_list[0].sin_addr.s_addr = FTLaddr.s_addr;
 	// Set resolver port
 	_res.nsaddr_list[0].sin_port = FTLport;
+	// Explicitly set the address family to IPv4
+	_res.nsaddr_list[0].sin_family = AF_INET;
 	// Configure resolver to use only one resolver
 	_res.nscount = 1;
 
 	// Backup configured name server and invalidate them (IPv6)
 	struct in6_addr ns6_addr_bck[MAXNS];
 	in_port_t ns6_port_bck[MAXNS];
+	sa_family_t ns6_family_bck[MAXNS];
 	int bck_nscount6 = _res._u._ext.nscount6;
 	for(unsigned int i = 0u; i < NUM_NS6; i++)
 	{
@@ -260,6 +271,7 @@ char *resolveHostname(const char *addr)
 		memcpy(&ns6_addr_bck[i], &_res._u._ext.nsaddrs[i]->sin6_addr, sizeof(struct in6_addr));
 		ns6_port_bck[i] = _res._u._ext.nsaddrs[i]->sin6_port;
 		memcpy(&_res._u._ext.nsaddrs[i]->sin6_addr, &in6addr_any, sizeof(struct in6_addr));
+		ns6_family_bck[i] = _res._u._ext.nsaddrs[i]->sin6_family;
 	}
 
 	// Set FTL as the only resolver only when IPv6 is enabled
@@ -269,6 +281,8 @@ char *resolveHostname(const char *addr)
 		memcpy(&_res._u._ext.nsaddrs[0]->sin6_addr, &in6addr_loopback, sizeof(struct in6_addr));
 		// Set resolver port
 		_res._u._ext.nsaddrs[0]->sin6_port = FTLport;
+		// Explicitly set the address family to IPv6
+		_res._u._ext.nsaddrs[0]->sin6_family = AF_INET6;
 		// Configure resolver to use only one resolver
 		_res._u._ext.nscount6 = 1;
 	}
@@ -303,6 +317,7 @@ char *resolveHostname(const char *addr)
 	{
 		_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
 		_res.nsaddr_list[i].sin_port = ns_port_bck[i];
+		_res.nsaddr_list[i].sin_family = ns_family_bck[i];
 	}
 	_res.nscount = bck_nscount;
 
@@ -313,6 +328,7 @@ char *resolveHostname(const char *addr)
 			continue;
 		memcpy(&_res._u._ext.nsaddrs[i]->sin6_addr, &ns6_addr_bck[i], sizeof(struct in6_addr));
 		_res._u._ext.nsaddrs[i]->sin6_port = ns6_port_bck[i];
+		_res._u._ext.nsaddrs[i]->sin6_family = ns6_family_bck[i];
 	}
 	_res._u._ext.nscount6 = bck_nscount6;
 
