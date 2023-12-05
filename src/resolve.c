@@ -235,6 +235,13 @@ char *resolveHostname(const char *addr)
 	struct in_addr FTLaddr = { htonl(INADDR_LOOPBACK) };
 	in_port_t FTLport = htons(config.dns.port.v.u16);
 
+	// Warn if no system resolvers are configured
+	if(_res.nscount == 0 && _res._u._ext.nscount6 == 0)
+	{
+		log_warn("No system resolvers found, trying to use FTL at %s#%hu as resolver",
+		         inet_ntoa(FTLaddr), FTLport);
+	}
+
 	// Temporarily set FTL as system resolver
 
 	// Backup configured name servers and invalidate them (IPv4)
