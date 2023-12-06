@@ -732,7 +732,7 @@ components:
               example: 0.1
             "%cpu":
               type: number
-              description: Percentage of total CPU used by FTL
+              description: Percentage of total CPU used by FTL (ten seconds average)
               example: 1.2
             allow_destructive:
               type: boolean
