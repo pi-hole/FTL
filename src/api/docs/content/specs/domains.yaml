@@ -212,6 +212,64 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+    batchDelete:
+      summary: Delete multiple domains
+      post:
+        summary: Delete multiple domains
+        tags:
+          - "Domain management"
+        operationId: "batchDelete_domains"
+        description: |
+          *Note:* There will be no content on success.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    item:
+                      type: string
+                      description: Domain to delete
+                      example: "example.com"
+                    type:
+                      type: string
+                      description: Type of domain to delete
+                      enum:
+                        - "allow"
+                        - "deny"
+                      example: "allow"
+                    kind:
+                      type: string
+                      description: Kind of domain to delete
+                      enum:
+                        - "exact"
+                        - "regex"
+                      example: "exact"
+        responses:
+          '204':
+            description: Items deleted
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     domains:
       get:

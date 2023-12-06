@@ -149,7 +149,7 @@ components:
           Creates a new client in the `clients` object. The `{client}` itself is specified in the request body (POST JSON).
 
           Clients may be described either by their IP addresses (IPv4 and IPv6 are supported),
-          IP subnets (CIDR notation, like `192.168.2.0/24`), their MAC addresses (like `12:34:56:78:9A:BC`), by their hostnames (like `localhost`), or by the interface they are connected to (prefaced with a colon, like `:eth0`).</p>
+          IP subnets (CIDR notation, like `192.168.2.0/24`), their MAC addresses (like `12:34:56:78:9A:BC`), by their hostnames (like `localhost`), or by the interface they are connected to (prefaced with a colon, like `:eth0`).
 
           Note that client recognition by IP addresses (incl. subnet ranges) is preferred over MAC address, host name or interface recognition as the two latter will only be available after some time.
           Furthermore, MAC address recognition only works for devices at most one networking hop away from your Pi-hole.
@@ -199,6 +199,59 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/schemas/took'
                     - $ref: 'common.yaml#/components/errors/unauthorized'
+    batchDelete:
+      post:
+        summary: Delete multiple clients
+        tags:
+          - "Client management"
+        operationId: "batchDelete_clients"
+        description: |
+          Deletes multiple clients in the `clients` object. The `{client}`s themselves are specified in the request body (POST JSON).
+
+          Clients may be described either by their IP addresses (IPv4 and IPv6 are supported),
+          IP subnets (CIDR notation, like `192.168.2.0/24`), their MAC addresses (like `12:34:56:78:9A:BC`), by their hostnames (like `localhost`), or by the interface they are connected to (prefaced with a colon, like `:eth0`).</p>
+
+          *Note:* There will be no content on success.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    item:
+                      type: string
+                      description: client IP / MAC / hostname / interface
+                example:
+                  - "item": "192.168.2.5"
+                  - "item": "::1"
+                  - "item": "12:34:56:78:9A:BC"
+                  - "item": "localhost"
+                  - "item": ":eth0"
+        responses:
+          '204':
+            description: Items deleted
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'clients.yaml#/components/examples/errors/bad_request/no_payload'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     clients:
       get:
