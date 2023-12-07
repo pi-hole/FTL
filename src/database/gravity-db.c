@@ -46,7 +46,6 @@ sqlite3_stmt_vec *blacklist_stmt = NULL;
 // Private variables
 static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
-static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravityDB_opened = false;
 static bool gravity_abp_format = false;
 
@@ -170,35 +169,6 @@ bool gravityDB_open(void)
 	{
 		log_err("gravityDB_open(PRAGMA temp_store) - SQL error (%i): %s", rc, zErrMsg);
 		sqlite3_free(zErrMsg);
-		gravityDB_close();
-		return false;
-	}
-
-	// Prepare audit statement
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing audit query");
-
-	// We support adding audit domains with a wildcard character (*)
-	// Example 1: google.de
-	//            matches only google.de
-	// Example 2: *.google.de
-	//            matches all subdomains of google.de
-	//            BUT NOT google.de itself
-	// Example 3: *google.de
-	//            matches 'google.de' and all of its subdomains but
-	//            also other domains ending in google.de, like
-	//            abcgoogle.de
-	rc = sqlite3_prepare_v3(gravity_db,
-	        "SELECT domain, "
-	          "CASE WHEN substr(domain, 1, 1) = '*' " // Does the database string start in '*' ?
-	            "THEN '*' || substr(:input, - length(domain) + 1) " // If so: Crop the input domain and prepend '*'
-	            "ELSE :input " // If not: Use input domain directly for comparison
-	          "END matcher "
-	        "FROM domain_audit WHERE matcher = domain" // Match where (modified) domain equals the database domain
-	        ";", -1, SQLITE_PREPARE_PERSISTENT, &auditlist_stmt, NULL);
-
-	if( rc != SQLITE_OK )
-	{
-		log_err("gravityDB_open(\"SELECT EXISTS(... domain_audit ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
@@ -983,10 +953,6 @@ void gravityDB_close(void)
 	free_sqlite3_stmt_vec(&gravity_stmt);
 	free_sqlite3_stmt_vec(&antigravity_stmt);
 
-	// Finalize audit list statement
-	sqlite3_finalize(auditlist_stmt);
-	auditlist_stmt = NULL;
-
 	// Close table
 	sqlite3_close(gravity_db);
 	gravity_db = NULL;
@@ -1187,7 +1153,7 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 	// Bind domain to prepared statement
 	// SQLITE_STATIC: Use the string without first duplicating it internally.
 	// We can do this as domain has dynamic scope that exceeds that of the binding.
-	// We need to bind the domain only once even to the prepared audit statement as:
+	// We need to bind the domain only once:
 	//     When the same named SQL parameter is used more than once, second and
 	//     subsequent occurrences have the same index as the first occurrence.
 	//     (https://www.sqlite.org/c3ref/bind_blob.html)
@@ -1501,17 +1467,6 @@ enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsD
 		stmt = blacklist_stmt->get(blacklist_stmt, client->id);
 
 	return domain_in_list(domain, stmt, "blacklist", &dns_cache->domainlist_id);
-}
-
-bool in_auditlist(const char *domain)
-{
-	// If audit list statement is not ready and cannot be initialized (e.g. no access
-	// to the database), we return false (not in audit list) to prevent an FTL crash
-	if(auditlist_stmt == NULL)
-		return false;
-
-	// We check the domain_audit table for the given domain
-	return domain_in_list(domain, auditlist_stmt, "auditlist", NULL) == FOUND;
 }
 
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,

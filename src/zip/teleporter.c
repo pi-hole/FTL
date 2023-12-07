@@ -48,8 +48,7 @@ static const char *gravity_tables[] = {
 	"domainlist",
 	"domainlist_by_group",
 	"client",
-	"client_by_group",
-	"domain_audit"
+	"client_by_group"
 };
 
 // Tables to copy from the FTL database to the Teleporter database
