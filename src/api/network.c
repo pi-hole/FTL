@@ -31,15 +31,15 @@ static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 	unsigned long dest_r = 0, gw_r = 0;
 	unsigned int flags = 0u;
 	int metric = 0, minmetric = __INT_MAX__;
-	char iface_r[IF_NAMESIZE] = { 0 };
-	char buf[1024] = { 0 };
 
 	FILE *file;
 	if((file = fopen("/proc/net/route", "r")))
 	{
 		// Parse /proc/net/route - the kernel's IPv4 routing table
+		char buf[1024] = { 0 };
 		while(fgets(buf, sizeof(buf), file))
 		{
+			char iface_r[IF_NAMESIZE] = { 0 };
 			if(sscanf(buf, "%15s %lx %lx %x %*i %*i %i", iface_r, &dest_r, &gw_r, &flags, &metric) != 5)
 				continue;
 
