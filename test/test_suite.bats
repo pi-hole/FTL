@@ -428,6 +428,18 @@
   [[ ${lines[@]} == *"status: SERVFAIL"* ]]
 }
 
+@test "Special domain: NXDOMAIN is returned" {
+  run bash -c "dig A mask.icloud.com @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: NXDOMAIN"* ]]
+}
+
+@test "Special domain: Record is returned when explicitly allowed" {
+  run bash -c "dig A mask.icloud.com -b 127.0.0.2 @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: NOERROR"* ]]
+}
+
 @test "ABP-style matching working as expected" {
   run bash -c "dig A special.gravity.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
