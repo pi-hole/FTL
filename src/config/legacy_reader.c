@@ -580,8 +580,8 @@ const char *readFTLlegacy(struct config *conf)
 	// Release memory
 	releaseConfigMemory();
 
-	if(fp != NULL)
-		fclose(fp);
+	// Close file
+	fclose(fp);
 
 	return path;
 }
