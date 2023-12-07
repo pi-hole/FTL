@@ -242,7 +242,7 @@ static void get_conf_weblayout_from_setupVars(void)
 	// If the property is set to false and different than "boxed", the property
 	// is disabled. This is consistent with the code in AdminLTE when writing
 	// this code
-	if(web_layout != NULL && strcasecmp(web_layout, "boxed") != 0)
+	if(strcasecmp(web_layout, "boxed") != 0)
 		config.webserver.interface.boxed.v.b = false;
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
