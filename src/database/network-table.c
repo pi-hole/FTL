@@ -1250,7 +1250,6 @@ void parse_neighbor_cache(sqlite3* db)
 	// Prepare buffers
 	char *linebuffer = NULL;
 	size_t linebuffersize = 0u;
-	char ip[128], hwaddr[128], iface[128];
 	unsigned int entries = 0u, additional_entries = 0u;
 	time_t now = time(NULL);
 
@@ -1314,6 +1313,7 @@ void parse_neighbor_cache(sqlite3* db)
 				break;
 
 			// Analyze line
+			char ip[128], hwaddr[128], iface[128];
 			int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
 			                 ip, iface, hwaddr);
 
