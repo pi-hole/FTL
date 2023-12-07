@@ -154,6 +154,11 @@ set(EXTRAWARN "${EXTRAWARN_GCC6} \
                ${EXTRAWARN_GCC8} \
                ${EXTRAWARN_GCC12} \
                ${EXTRAWARN_GCC13}")
+
+# Remove extra spaces from EXTRAWARN
+string(REGEX REPLACE " +" " " EXTRAWARN "${EXTRAWARN}")
+
+# Separate EXTRAWARN into a list of arguments
 separate_arguments(EXTRAWARN)
 
 # -Wxor-used-as-pow
