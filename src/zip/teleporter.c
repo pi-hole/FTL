@@ -190,10 +190,10 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	{
 		// Loop over all files and add them to the ZIP archive
 		DIR *dir;
-		struct dirent *ent;
 		if((dir = opendir(directory)) != NULL)
 		{
 			// Loop over all files in the directory
+			struct dirent *ent;
 			while((ent = readdir(dir)) != NULL)
 			{
 				// Skip "." and ".."
@@ -677,6 +677,7 @@ bool write_teleporter_zip_to_disk(void)
 	{
 		log_err("Failed to write %zu bytes to %s: %s", size, filename, strerror(errno));
 		free_teleporter_zip(&zip);
+		fclose(fp);
 		return false;
 	}
 	fclose(fp);
@@ -722,6 +723,7 @@ bool read_teleporter_zip_from_disk(const char *filename)
 		log_err("Failed to read %zu bytes from %s: %s",
 		        size, filename, strerror(errno));
 		fclose(fp);
+		free(ptr);
 		return false;
 	}
 	fclose(fp);
