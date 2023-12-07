@@ -398,7 +398,7 @@ static bool get_client_groupids(clientsData* client)
 		{
 			log_debug(DEBUG_CLIENTS, "--> No result.");
 		}
-		else if(hwaddr != NULL && strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
+		else if(strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
 		{
 			free(hwaddr);
 			hwaddr = NULL;
@@ -406,7 +406,7 @@ static bool get_client_groupids(clientsData* client)
 			log_debug(DEBUG_CLIENTS, "Skipping mock-device hardware address lookup");
 		}
 		// Set MAC address from database information if available and the MAC address is not already set
-		else if(hwaddr != NULL && client->hwlen != 6)
+		else if(client->hwlen != 6)
 		{
 			// Proper MAC parsing
 			unsigned char data[6];
@@ -425,9 +425,8 @@ static bool get_client_groupids(clientsData* client)
 		// MAC address fallback: Try to synthesize MAC address from internal buffer
 		if(hwaddr == NULL && client->hwlen == 6)
 		{
-			const size_t strlen = sizeof("AA:BB:CC:DD:EE:FF");
-			hwaddr = calloc(18, strlen);
-			snprintf(hwaddr, strlen, "%02X:%02X:%02X:%02X:%02X:%02X",
+			hwaddr = calloc(18, sizeof(char)); // 18 == sizeof("AA:BB:CC:DD:EE:FF")
+			snprintf(hwaddr, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
 			         client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
 			         client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
 
