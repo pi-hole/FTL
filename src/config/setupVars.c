@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "log.h"
 #include "config/config.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "datastructure.h"
 
 unsigned int setupVarsElements = 0;

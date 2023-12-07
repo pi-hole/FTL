@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "files.h"
 #include "config/config.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 
 // opendir(), readdir()

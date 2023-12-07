@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "toml_reader.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 // getprio(), setprio()
 #include <sys/resource.h>

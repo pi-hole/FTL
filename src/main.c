@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "daemon.h"
 #include "log.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "args.h"
 #include "config/config.h"
 #include "database/common.h"

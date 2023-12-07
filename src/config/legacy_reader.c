@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "legacy_reader.h"
 #include "config.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 // nice()
 #include <unistd.h>

@@ -12,7 +12,7 @@
 #include "config/config.h"
 #include "config/toml_reader.h"
 #include "config/toml_writer.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 #include "log.h"
 // readFTLlegacy()
