@@ -40,7 +40,7 @@ static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 		// Parse /proc/net/route - the kernel's IPv4 routing table
 		while(fgets(buf, sizeof(buf), file))
 		{
-			if(sscanf(buf, "%s %lx %lx %x %*i %*i %i", iface_r, &dest_r, &gw_r, &flags, &metric) != 5)
+			if(sscanf(buf, "%15s %lx %lx %x %*i %*i %i", iface_r, &dest_r, &gw_r, &flags, &metric) != 5)
 				continue;
 
 			// Only analyze routes which are UP and whose

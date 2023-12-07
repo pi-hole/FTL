@@ -279,7 +279,7 @@ int api_queries(struct ftl_conn *api)
 
 	// Start building database query string
 	char querystr[QUERYSTRBUFFERLEN] = { 0 };
-	sprintf(querystr, "%s FROM %s q %s", QUERYSTR, disk ? "disk.query_storage" : "query_storage", JOINSTR);
+	snprintf(querystr, QUERYSTRBUFFERLEN, "%s FROM %s q %s", QUERYSTR, disk ? "disk.query_storage" : "query_storage", JOINSTR);
 	int draw = 0;
 
 	char domainname[512] = { 0 };
