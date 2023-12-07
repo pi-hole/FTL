@@ -110,7 +110,7 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 {
 	// Extract filename from path
 	const char *path = short_path(file);
-	const char *types = flags & F_RR ? querystr(arg, type) : "?";
+	const char *types = (flags & F_RR) ? querystr(arg, type) : "?";
 	log_debug(DEBUG_FLAGS, "Processing FTL hook from %s:%d (type: %s, name: \"%s\", id: %i)...", path, line, types, name, id);
 	print_flags(flags);
 
