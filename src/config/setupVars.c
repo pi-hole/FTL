@@ -443,6 +443,7 @@ void importsetupVarsConf(void)
 	get_conf_bool_from_setupVars("DHCP_RAPID_COMMIT", &config.dhcp.rapidCommit);
 
 	get_conf_bool_from_setupVars("queryLogging", &config.dns.queryLogging);
+	get_conf_string_from_setupVars("GRAVITY_TMPDIR", &config.files.gravity_tmp);
 }
 
 char* __attribute__((pure)) find_equals(char *s)
