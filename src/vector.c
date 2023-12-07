@@ -19,6 +19,14 @@ sqlite3_stmt_vec *new_sqlite3_stmt_vec(unsigned int initial_size)
 	log_debug(DEBUG_VECTORS, "Initializing new sqlite3_stmt* vector with size %u", initial_size);
 
 	sqlite3_stmt_vec *v = calloc(1, sizeof(sqlite3_stmt_vec));
+	if(v == NULL)
+	{
+		log_err("Memory allocation failed in new_sqlite3_stmt_vec(%u)",
+		        initial_size);
+		return NULL;
+	}
+
+	// Initialize vector
 	v->capacity = initial_size;
 	// Calloc ensures they are all set to zero which is the default state
 	v->items = calloc(initial_size, sizeof(sqlite3_stmt *) * initial_size);
