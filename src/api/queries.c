@@ -758,7 +758,8 @@ int api_queries(struct ftl_conn *api)
 			continue;
 
 		// Check if we have reached the limit
-		if(added >= (unsigned int)length)
+		// Length may be set to -1 to indicate we want everything.
+		if(length > 0 && added >= (unsigned int)length)
 		{
 			if(filtering)
 			{
@@ -785,8 +786,6 @@ int api_queries(struct ftl_conn *api)
 		}
 		else if(length > 0 && added >= (unsigned int)length)
 		{
-			// Length may be set to -1 to indicate we want
-			// everything.
 			// Skip everything AFTER we added the requested number
 			// of queries if length is > 0.
 			break;
