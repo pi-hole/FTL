@@ -352,7 +352,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		return 0;
 
 	// Are we replying to pi.hole / <hostname> / pi.hole.<local> / <hostname>.<local> ?
-	const bool hostname = strcmp(blockingreason, HOSTNAME) == 0;
+	const bool hostn = strcmp(blockingreason, HOSTNAME) == 0;
 
 	int trunc = 0;
 	// Add CNAME answer record if requested
@@ -382,9 +382,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		        config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ||
 		        forced_ip)
 		{
-			if(hostname && config.dns.reply.host.force4.v.b)
+			if(hostn && config.dns.reply.host.force4.v.b)
 				memcpy(&addr, &config.dns.reply.host.v4.v.in_addr, sizeof(addr.addr4));
-			else if(!hostname && config.dns.reply.blocking.force4.v.b)
+			else if(!hostn && config.dns.reply.blocking.force4.v.b)
 				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(addr.addr4));
 			else
 				memcpy(&addr, &next_iface.addr4, sizeof(addr.addr4));
@@ -401,7 +401,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Add A resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, hostname ? daemon->local_ttl : config.dns.blockTTL.v.ui,
+		                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
 		                       NULL, T_A, C_IN, (char*)"4", &addr.addr4))
 			log_query(flags & ~F_IPV6, name, &addr, (char*)blockingreason, 0);
 	}
@@ -417,9 +417,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
 		        forced_ip)
 		{
-			if(hostname && config.dns.reply.host.force6.v.b)
+			if(hostn && config.dns.reply.host.force6.v.b)
 				memcpy(&addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(addr.addr6));
-			else if(!hostname && config.dns.reply.blocking.force6.v.b)
+			else if(!hostn && config.dns.reply.blocking.force6.v.b)
 				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(addr.addr6));
 			else
 				memcpy(&addr, &next_iface.addr6, sizeof(addr.addr6));
@@ -436,7 +436,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Add AAAA resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, hostname ? daemon->local_ttl : config.dns.blockTTL.v.ui,
+		                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
 		                       NULL, T_AAAA, C_IN, (char*)"6", &addr.addr6))
 			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
 	}
