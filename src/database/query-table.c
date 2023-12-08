@@ -22,7 +22,7 @@
 #include "database/common.h"
 #include "timers.h"
 
-static sqlite3 *memdb = NULL;
+static sqlite3 *_memdb = NULL;
 static double new_last_timestamp = 0;
 static unsigned int new_total = 0, new_blocked = 0;
 static unsigned long last_mem_db_idx = 0, last_disk_db_idx = 0;
@@ -60,10 +60,8 @@ void db_counts(unsigned long *last_idx, unsigned long *mem_num, unsigned long *d
 bool init_memory_database(void)
 {
 	int rc;
-	const char *uri = "file:memdb?mode=memory";
-
 	// Try to open in-memory database
-	rc = sqlite3_open_v2(uri, &memdb, SQLITE_OPEN_READWRITE, NULL);
+	rc = sqlite3_open_v2(":memory:", &_memdb, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("init_memory_database(): Step error while trying to open database: %s",
@@ -72,27 +70,12 @@ bool init_memory_database(void)
 	}
 
 	// Explicitly set busy handler to value defined in FTL.h
-	rc = sqlite3_busy_timeout(memdb, DATABASE_BUSY_TIMEOUT);
+	rc = sqlite3_busy_timeout(_memdb, DATABASE_BUSY_TIMEOUT);
 	if( rc != SQLITE_OK )
 	{
 		log_err("init_memory_database(): Step error while trying to set busy timeout (%d ms): %s",
 		        DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
-		sqlite3_close(memdb);
-		return false;
-	}
-
-	// Change journal mode to WAL
-	// - WAL is significantly faster in most scenarios.
-	// - WAL provides more concurrency as readers do not block writers and a
-	//   writer does not block readers. Reading and writing can proceed
-	//   concurrently.
-	// - Disk I/O operations tends to be more sequential using WAL.
-	rc = sqlite3_exec(memdb, "PRAGMA journal_mode=WAL", NULL, NULL, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(): Step error while trying to set journal mode: %s",
-		        sqlite3_errstr(rc));
-		sqlite3_close(memdb);
+		sqlite3_close(_memdb);
 		return false;
 	}
 
@@ -100,11 +83,11 @@ bool init_memory_database(void)
 	for(unsigned int i = 0; i < ArraySize(table_creation); i++)
 	{
 		log_debug(DEBUG_DATABASE, "init_memory_database(): Executing %s", table_creation[i]);
-		rc = sqlite3_exec(memdb, table_creation[i], NULL, NULL, NULL);
+		rc = sqlite3_exec(_memdb, table_creation[i], NULL, NULL, NULL);
 		if( rc != SQLITE_OK ){
 			log_err("init_memory_database(\"%s\") failed: %s",
 				table_creation[i], sqlite3_errstr(rc));
-			sqlite3_close(memdb);
+			sqlite3_close(_memdb);
 			return false;
 		}
 	}
@@ -114,18 +97,132 @@ bool init_memory_database(void)
 	for(unsigned int i = 0; i < ArraySize(index_creation); i++)
 	{
 		log_debug(DEBUG_DATABASE, "init_memory_database(): Executing %s", index_creation[i]);
-		rc = sqlite3_exec(memdb, index_creation[i], NULL, NULL, NULL);
+		rc = sqlite3_exec(_memdb, index_creation[i], NULL, NULL, NULL);
 		if( rc != SQLITE_OK ){
 			log_err("init_memory_database(\"%s\") failed: %s",
 			        index_creation[i], sqlite3_errstr(rc));
-			sqlite3_close(memdb);
+			sqlite3_close(_memdb);
 			return false;
 		}
 	}
 
 	// Attach disk database
-	if(!attach_database(memdb, NULL, config.files.database.v.s, "disk"))
+	if(!attach_database(_memdb, NULL, config.files.database.v.s, "disk"))
 		return false;
+/*
+	// Change journal mode to WAL
+	// - WAL is significantly faster in most scenarios.
+	// - WAL provides more concurrency as readers do not block writers and a
+	//   writer does not block readers. Reading and writing can proceed
+	//   concurrently.
+	// - Disk I/O operations tends to be more sequential using WAL.
+	rc = sqlite3_exec(_memdb, "PRAGMA disk.journal_mode=WAL", NULL, NULL, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("init_memory_database(): Step error while trying to set journal mode: %s",
+		        sqlite3_errstr(rc));
+		sqlite3_close(_memdb);
+		return false;
+	}
+*/
+/*
+	// Change synchronous mode to NORMAL
+	// - NORMAL is the fastest synchronous mode
+	// - NORMAL still provides full ACID (atomicity, consistency, isolation,
+	//   and durability) properties.
+	rc = sqlite3_exec(_memdb, "PRAGMA disk.synchronous=NORMAL", NULL, NULL, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("init_memory_database(): Step error while trying to set synchronous mode: %s",
+		        sqlite3_errstr(rc));
+		sqlite3_close(_memdb);
+		return false;
+	}
+*/
+	// Get result of PRAGMA journal_mode
+	const unsigned char *journal_mode = NULL;
+	sqlite3_stmt *stmt = NULL;
+	rc = sqlite3_prepare_v2(_memdb, "PRAGMA journal_mode", -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			log_err("init_memory_database(PRAGMA journal_mode): Prepare error: %s",
+			        sqlite3_errstr(rc));
+		return false;
+	}
+	rc = sqlite3_step(stmt);
+	if( rc == SQLITE_ROW )
+		journal_mode = sqlite3_column_text(stmt, 0);
+	else
+	{
+		log_err("init_memory_database(PRAGMA journal_mode): Step error: %s",
+		        sqlite3_errstr(rc));
+		return false;
+	}
+	log_info("Using %s journal mode for memory database", journal_mode);
+	sqlite3_finalize(stmt);
+
+	// Get result of PRAGMA journal_mode
+	rc = sqlite3_prepare_v2(_memdb, "PRAGMA disk.journal_mode", -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			log_err("init_memory_database(PRAGMA journal_mode): Prepare error: %s",
+			        sqlite3_errstr(rc));
+		return false;
+	}
+	rc = sqlite3_step(stmt);
+	if( rc == SQLITE_ROW )
+		journal_mode = sqlite3_column_text(stmt, 0);
+	else
+	{
+		log_err("init_memory_database(PRAGMA journal_mode): Step error: %s",
+		        sqlite3_errstr(rc));
+		return false;
+	}
+	log_info("Using %s journal mode for disk database", journal_mode);
+	sqlite3_finalize(stmt);
+
+	// Get result of PRAGMA synchronous
+	const unsigned char *synchronous = NULL;
+	rc = sqlite3_prepare_v2(_memdb, "PRAGMA synchronous", -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			log_err("init_memory_database(PRAGMA synchronous): Prepare error: %s",
+			        sqlite3_errstr(rc));
+		return false;
+	}
+	rc = sqlite3_step(stmt);
+	if( rc == SQLITE_ROW )
+		synchronous = sqlite3_column_text(stmt, 0);
+	else
+	{
+		log_err("init_memory_database(PRAGMA synchronous): Step error: %s",
+		        sqlite3_errstr(rc));
+		return false;
+	}
+	log_info("Using %s synchronous mode for in-memory database", synchronous);
+	sqlite3_finalize(stmt);
+	rc = sqlite3_prepare_v2(_memdb, "PRAGMA disk.synchronous", -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			log_err("init_memory_database(PRAGMA synchronous): Prepare error: %s",
+			        sqlite3_errstr(rc));
+		return false;
+	}
+	rc = sqlite3_step(stmt);
+	if( rc == SQLITE_ROW )
+		synchronous = sqlite3_column_text(stmt, 0);
+	else
+	{
+		log_err("init_memory_database(PRAGMA synchronous): Step error: %s",
+		        sqlite3_errstr(rc));
+		return false;
+	}
+	log_info("Using %s synchronous mode for disk database", synchronous);
+	sqlite3_finalize(stmt);
 
 	// Everything went well
 	return true;
@@ -135,11 +232,15 @@ bool init_memory_database(void)
 void close_memory_database(void)
 {
 	// Return early if there is no memory database to be closed
-	if(memdb == NULL)
+	if(_memdb == NULL)
 		return;
 
+	// Detach disk database
+	if(!detach_database(_memdb, NULL, "disk"))
+		log_err("close_memory_database(): Failed to detach disk database");
+
 	// Close SQLite3 memory database
-	int ret = sqlite3_close(memdb);
+	int ret = sqlite3_close(_memdb);
 	if(ret != SQLITE_OK)
 		log_err("Finalizing memory database failed: %s",
 		        sqlite3_errstr(ret));
@@ -147,12 +248,13 @@ void close_memory_database(void)
 		log_debug(DEBUG_DATABASE, "Closed memory database");
 
 	// Set global pointer to NULL
-	memdb = NULL;
+	_memdb = NULL;
 }
 
 sqlite3 *__attribute__((pure)) get_memdb(void)
 {
-	return memdb;
+	log_debug(DEBUG_DATABASE, "Accessing in-memory database");
+	return _memdb;
 }
 
 // Get memory usage and size of in-memory tables
@@ -221,6 +323,7 @@ static void log_in_memory_usage(void)
 
 	size_t memsize = 0;
 	int queries = 0;
+	sqlite3 *memdb = get_memdb();
 	if(get_memdb_size(memdb, &memsize, &queries))
 	{
 		char prefix[2] = { 0 };
@@ -353,7 +456,7 @@ int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename)
 
 	// The database pointer may be NULL, meaning we want the memdb
 	if(db == NULL)
-		db = memdb;
+		db = get_memdb();
 
 	// PRAGMA page_size
 	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
@@ -394,6 +497,7 @@ bool import_queries_from_disk(void)
 
 	// Begin transaction
 	int rc;
+	sqlite3 *memdb = get_memdb();
 	if((rc = sqlite3_exec(memdb, "BEGIN TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
 	{
 		log_err("import_queries_from_disk(): Cannot start transaction: %s", sqlite3_errstr(rc));
@@ -402,6 +506,7 @@ bool import_queries_from_disk(void)
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *stmt = NULL;
+	log_debug(DEBUG_DATABASE, "Accessing in-memory database");
 	if((rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL)) != SQLITE_OK){
 		log_err("import_queries_from_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
 		return false;
@@ -481,10 +586,12 @@ bool export_queries_to_disk(bool final)
 	timer_start(DATABASE_WRITE_TIMER);
 
 	// Start transaction
+	sqlite3 *memdb = get_memdb();
 	SQL_bool(memdb, "BEGIN TRANSACTION");
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *stmt = NULL;
+	log_debug(DEBUG_DATABASE, "Accessing in-memory database");
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		log_err("export_queries_to_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
@@ -527,6 +634,7 @@ bool export_queries_to_disk(bool final)
 
 	// Update last_disk_db_idx
 	// Prepare SQLite3 statement
+	log_debug(DEBUG_DATABASE, "Accessing in-memory database");
 	rc = sqlite3_prepare_v2(memdb, "SELECT MAX(id) FROM disk.query_storage;", -1, &stmt, NULL);
 
 	// Perform step
@@ -603,7 +711,7 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 
 	sqlite3 *db = NULL;
 	if(use_memdb)
-		db = memdb;
+		db = get_memdb();
 	else
 		db = dbopen(false, false);
 
@@ -631,6 +739,7 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 		        mintime, sqlite3_errstr(rc));
 
 	// Update number of queries in in-memory database
+	sqlite3 *memdb = get_memdb();
 	const int new_num = get_number_of_queries_in_DB(memdb, "query_storage");
 	log_debug(DEBUG_GC, "delete_old_queries_from_db(): Deleted %i (%u) queries, new number of queries in memory: %i",
 	          sqlite3_changes(db), (mem_db_num - new_num), new_num);
@@ -877,6 +986,7 @@ void DB_read_queries(void)
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *stmt = NULL;
+	sqlite3 *memdb = get_memdb();
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -1192,6 +1302,7 @@ void update_disk_db_idx(void)
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *stmt = NULL;
+	sqlite3 *memdb = get_memdb();
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 
 	// Perform step
@@ -1241,6 +1352,7 @@ bool queries_to_database(void)
 	}
 
 	// Start preparing query
+	sqlite3 *memdb = get_memdb();
 	rc = sqlite3_prepare_v3(memdb, "REPLACE INTO query_storage VALUES "\
 	                                "(?1," \
 	                                 "?2," \

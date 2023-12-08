@@ -34,8 +34,8 @@ static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *
 		                       "Could not read from in-memory database",
 		                       NULL);
 	}
-	sqlite3_stmt *stmt;
 
+	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -438,15 +438,22 @@ int api_queries(struct ftl_conn *api)
 		}
 	}
 
-	// Get connection to in-memory database
-	sqlite3 *db = get_memdb();
-
 	// Finish preparing query string
 	querystr_finish(querystr, sort_col, sort_dir);
 
+	// Get connection to in-memory database
+	sqlite3 *memdb = get_memdb();
+	if(memdb == NULL)
+	{
+		return send_json_error(api, 500, // 500 Internal error
+		                       "database_error",
+		                       "Could not read from in-memory database",
+		                       NULL);
+	}
+
 	// Prepare SQLite3 statement
 	sqlite3_stmt *read_stmt = NULL;
-	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
+	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		return send_json_error(api, 500,
