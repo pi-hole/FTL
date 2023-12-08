@@ -490,7 +490,7 @@ int get_config_from_CLI(const char *key, const bool quiet)
 		// Get pointer to memory location of this conf_item
 		struct conf_item *item = get_conf_item(&config, i);
 
-		// Check if item.k starts with key
+		// Check if item.k is identical with key
 		if(strcmp(item->k, key) == 0)
 		{
 			exactMatch = true;

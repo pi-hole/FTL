@@ -1022,7 +1022,7 @@ void initConfig(struct config *conf)
 
 	conf->files.gravity_tmp.k = "files.gravity_tmp";
 	conf->files.gravity_tmp.h = "A temporary directory where Pi-hole can store files during gravity updates. This directory must be writable by the user running gravity (typically pihole).";
-	conf->files.gravity_tmp.a = cJSON_CreateStringReference("<any world-writable writable directory>");
+	conf->files.gravity_tmp.a = cJSON_CreateStringReference("<any existing world-writable writable directory>");
 	conf->files.gravity_tmp.t = CONF_STRING;
 	conf->files.gravity_tmp.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.gravity_tmp.d.s = (char*)"/tmp";
