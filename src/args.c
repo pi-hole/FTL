@@ -258,7 +258,7 @@ void parse_args(int argc, char* argv[])
 				argv2[2] = (char*)"-init";
 				argv2[3] = (char*)"/dev/null";
 				// i = "sqlite3"
-				// i+1 = "-h"
+				// i+1 = "-ni"
 				for(int j = 0; j < argc - i - 2; j++)
 					argv2[4 + j] = argv[i + 2 + j];
 				exit(sqlite3_shell_main(argc2, argv2));
