@@ -478,8 +478,8 @@ static int performance_test_task(const size_t s_cost, const size_t t_cost, const
 		printf("s = %5zu, t = %5zu took %6.1f +/- %4.1f ms (scratch buffer %6.1f%1sB) -> %.0f\n",
 		       s_cost, t_cost, 1e3*avg, 1e3*stdev, formatted, prefix, 1.0*(s_cost*t_cost)/avg);
 
-		// Break if test took longer than two seconds
-		if(avg > 2)
+		// Break if test took longer than half a second
+		if(avg > 0.5)
 			return 1;
 		return 0;
 }
