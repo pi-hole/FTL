@@ -224,8 +224,6 @@ set(sources
         regex_r.h
         resolve.c
         resolve.h
-        setupVars.c
-        setupVars.h
         shmem.c
         shmem.h
         signals.c

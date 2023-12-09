@@ -23,7 +23,7 @@
 // directory_exists()
 #include "files.h"
 // trim_whitespace()
-#include "setupVars.h"
+#include "config/setupVars.h"
 // run_dnsmasq_main()
 #include "args.h"
 // optind

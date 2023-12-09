@@ -91,7 +91,7 @@ static char * __attribute__((malloc)) base64_encode(const uint8_t *data, const s
 	out_len = base64_encode_update(&ctx, encoded, length, data);
 	out_len += base64_encode_final(&ctx, encoded + out_len);
 
-	// Lenght check
+	// Length check
 	if(out_len > BASE64_ENCODE_LENGTH(length) + BASE64_ENCODE_FINAL_LENGTH)
 		log_warn("Base64 encoding may have failed: Output buffer too small? (%zu > %zu)",
 		         out_len, BASE64_ENCODE_LENGTH(length) + BASE64_ENCODE_FINAL_LENGTH);

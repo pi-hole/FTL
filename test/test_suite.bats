@@ -1169,6 +1169,18 @@
   [[ ${lines[0]} == "Pi-hole FTL"* ]]
 }
 
+@test "Embedded SQLite3 shell ignores .sqliterc \"-ni\"" {
+  # Install .sqliterc file at current home directory
+  cp test/sqliterc ~/.sqliterc
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/gravity.db \"SELECT value FROM info WHERE property = 'abp_domains';\""
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != "1" ]]
+  run bash -c "./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db \"SELECT value FROM info WHERE property = 'abp_domains';\""
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  rm ~/.sqliterc
+}
+
 @test "Embedded LUA engine is called for .lua file" {
   echo 'print("Hello from LUA")' > abc.lua
   run bash -c './pihole-FTL abc.lua'
