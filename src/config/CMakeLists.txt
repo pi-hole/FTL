@@ -25,6 +25,8 @@ set(sources
         password.h
         suggest.c
         suggest.h
+        setupVars.c
+        setupVars.h
         toml_writer.c
         toml_writer.h
         toml_reader.c

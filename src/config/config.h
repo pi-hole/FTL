@@ -184,7 +184,6 @@ struct config {
 		struct conf_item start;
 		struct conf_item end;
 		struct conf_item router;
-		struct conf_item domain;
 		struct conf_item netmask;
 		struct conf_item leaseTime;
 		struct conf_item ipv6;
@@ -255,6 +254,7 @@ struct config {
 		struct conf_item pid;
 		struct conf_item database;
 		struct conf_item gravity;
+		struct conf_item gravity_tmp;
 		struct conf_item macvendor;
 		struct conf_item setupVars;
 		struct conf_item pcap;
@@ -272,6 +272,7 @@ struct config {
 		struct conf_item addr2line;
 		struct conf_item etc_dnsmasq_d;
 		struct conf_item dnsmasq_lines;
+		struct conf_item extraLogging;
 		struct {
 			struct conf_item load;
 			struct conf_item shmem;

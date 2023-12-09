@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "toml_reader.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 // getprio(), setprio()
 #include <sys/resource.h>
@@ -211,11 +211,10 @@ static void reportDebugFlags(void)
 	// Read all known debug config items
 	for(unsigned int debug_flag = 1; debug_flag < DEBUG_ELEMENTS; debug_flag++)
 	{
-		const char *name;
 		// Get name of debug flag
 		// We do not need to add an offset as this loop starts counting
 		// at 1
-		debugstr(debug_flag, &name);
+		const char *name = debugstr(debug_flag);
 		// Calculate number of spaces to nicely align output
 		int spaces = 20 - strlen(name);
 		// Print debug flag

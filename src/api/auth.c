@@ -16,7 +16,7 @@
 #include "log.h"
 #include "config/config.h"
 // get_password_hash()
-#include "setupVars.h"
+#include "config/setupVars.h"
 // (un)lock_shm()
 #include "shmem.h"
 // getrandom()

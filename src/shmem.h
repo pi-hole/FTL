@@ -111,20 +111,10 @@ void _unlock_shm(const char* func, const int line, const char* file);
 
 bool init_shmem(void);
 void destroy_shmem(void);
-size_t addstr(const char *str);
+#define addstr(str) _addstr(str, __FUNCTION__, __LINE__, __FILE__)
+size_t _addstr(const char *str, const char *func, const int line, const char *file);
 #define getstr(pos) _getstr(pos, __FUNCTION__, __LINE__, __FILE__)
 const char *_getstr(const size_t pos, const char *func, const int line, const char *file);
-
-/**
- * Escapes a string by replacing special characters, such as spaces
- * The input string is always duplicated, ensure to free it after use
- */
-char *str_escape(const char *input, unsigned int *N) __attribute__ ((malloc));
-
-/**
- * Compare two strings. Escape them if needed
- */
-bool strcmp_escaped(const char *a, const char *b);
 
 /**
  * Create a new overTime client shared memory block.

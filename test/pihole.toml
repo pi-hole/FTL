@@ -370,7 +370,7 @@
     # Domain used for the reverse server feature
     #
     # Possible values are:
-    #     <valid domain>, typically set to the same value as dhcp.domain
+    #     <valid domain> (e.g., "fritz.box")
     domain = ""
 
 [dhcp]
@@ -395,15 +395,6 @@
   # Possible values are:
   #     <ip-addr>, e.g., "192.168.0.1"
   router = ""
-
-  # The DNS domain used by your Pi-hole (*** DEPRECATED ***)
-  # This setting is deprecated and will be removed in a future version. Please use
-  # dns.domain instead. Setting it to any non-default value will overwrite the value of
-  # dns.domain if it is still set to its default value.
-  #
-  # Possible values are:
-  #     <any valid domain>
-  domain = "lan"
 
   # The netmask used by your Pi-hole. For directly connected networks (i.e., networks on
   # which the machine running Pi-hole has an interface) the netmask is optional and may
@@ -539,14 +530,14 @@
   # Comma-separated list of ports to listen on. It is possible to specify an IP address
   # to bind to. In this case, an IP address and a colon must be prepended to the port
   # number. For example, to bind to the loopback interface on port 80 (IPv4) and to all
-  # interfaces port 80 (IPv4), use "127.0.0.1:80,80". "[::]:808 can be used to
+  # interfaces port 8080 (IPv4), use "127.0.0.1:80,8080". "[::]:80" can be used to
   # listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be
-  # specified as well, e.g. "[::1]:80 for the IPv6 loopback interface. [::]:80 will
+  # specified as well, e.g. "[::1]:80" for the IPv6 loopback interface. [::]:80 will
   # bind to port 80 IPv6 only.
   # In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the
-  # configuration "80,[::]:80" (create one socket for IPv4 and one for IPv6 only),
-  # or "+80" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4
-  # and IPv6 will only work if no network interface is specified. Depending on your
+  # configuration "80,[::]:80" (create one socket for IPv4 and one for IPv6 only), or
+  # "+80" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and
+  # IPv6 will only work if no network interface is specified. Depending on your
   # operating system version and IPv6 network environment, some configurations might not
   # work as expected, so you have to test to find the configuration most suitable for
   # your needs. In case "+80" does not work for your environment, you need to use
@@ -556,7 +547,8 @@
   # non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected
   # ports will redirect all their traffic to the first configured SSL port. For example,
   # if webserver.port is "80r,443s", then all HTTP traffic coming at port 80 will be
-  # redirected to HTTPS port 443.
+  # redirected to HTTPS port 443. If this value is not set (empty string), the web
+  # server will not be started and, hence, the API will not be available.
   #
   # Possible values are:
   #     comma-separated list of <[ip_address:]port>
@@ -694,7 +686,7 @@
     # Example: [ "google.de", "pi-hole.net" ]
     #
     # Possible values are:
-    #     array of IP addresses and/or hostnames
+    #     array of domains
     excludeDomains = []
 
     # How much history should be imported from the database [seconds]? (max 24*60*60 =
@@ -738,6 +730,13 @@
   # Possible values are:
   #     <any Pi-hole gravity database>
   gravity = "/etc/pihole/gravity.db"
+
+  # A temporary directory where Pi-hole can store files during gravity updates. This
+  # directory must be writable by the user running gravity (typically pihole).
+  #
+  # Possible values are:
+  #     <any world-writable writable directory>
+  gravity_tmp = "/tmp"
 
   # The database containing MAC -> Vendor information for the network table
   #
@@ -830,6 +829,14 @@
   # Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.
   # Use this option with extra care.
   dnsmasq_lines = []
+
+  # Log additional information about queries and replies to pihole.log
+  # When this setting is enabled, the log has extra information at the start of each
+  # line. This consists of a serial number which ties together the log lines associated
+  # with an individual query, and the IP address of the requestor. This setting is only
+  # effective if dns.queryLogging is enabled, too. This option is only useful for
+  # debugging and is not recommended for normal use.
+  extraLogging = false
 
   [misc.check]
     # Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you

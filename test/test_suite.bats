@@ -904,6 +904,26 @@
   [[ "${lines[@]}" == *"status: NOERROR"* ]]
 }
 
+@test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
+  run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[0]} == '"http://pi.hole:80/api/" "https://pi.hole:443/api/"' ]]
+}
+
+@test "API addresses reported correctly by CHAOS TXT local.api.ftl" {
+  run bash -c 'dig CHAOS TXT local.api.ftl +short @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[0]} == '"http://localhost:80/api/" "https://localhost:443/api/"' ]]
+}
+
+@test "API addresses reported by CHAOS TXT api.ftl identical to domain.api.ftl" {
+  run bash -c 'dig CHAOS TXT api.ftl +short @127.0.0.1'
+  api="${lines[0]}"
+  run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
+  domain_api="${lines[0]}"
+  [[ "${api}" == "${domain_api}" ]]
+}
+
 # x86_64-musl is built on busybox which has a slightly different
 # variant of ls displaying three, instead of one, spaces between the
 # user and group names.

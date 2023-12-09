@@ -311,10 +311,6 @@ components:
                 netmask:
                   type: string
                   x-format: ipv4
-                domain:
-                  type: string
-                  description: |
-                    *Note:* This setting is deprecated and will be removed in a future release. Use dns.domain instead.
                 leaseTime:
                   type: string
                 ipv6:
@@ -442,6 +438,8 @@ components:
                   type: string
                 gravity:
                   type: string
+                gravity_tmp:
+                  type: string
                 macvendor:
                   type: string
                 setupVars:
@@ -474,6 +472,8 @@ components:
                   type: array
                   items:
                     type: string
+                extraLogging:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -645,7 +645,6 @@ components:
             start: "192.168.0.10"
             end: "192.168.0.250"
             router: "192.168.0.1"
-            domain: "lan"
             netmask: "0.0.0.0"
             leaseTime: "24h"
             ipv6: true
@@ -703,6 +702,7 @@ components:
             pid: "/run/pihole-FTL.pid"
             database: "/etc/pihole/pihole-FTL.db"
             gravity: "/etc/pihole/gravity.db"
+            gravity_tmp: "/tmp"
             macvendor: "/etc/pihole/macvendor.db"
             setupVars: "/etc/pihole/setupVars.conf"
             pcap: ""
@@ -717,6 +717,7 @@ components:
             privacylevel: 0
             etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
+            extraLogging: false
             check:
               load: true
               shmem: 90
