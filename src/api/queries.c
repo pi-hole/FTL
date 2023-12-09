@@ -215,7 +215,7 @@ static void querystr_finish(char *querystr, const char *sort_col, const char *so
 			sort_col_sql = "q.reply_time";
 		else if(strcasecmp(sort_col, "dnssec") == 0)
 			sort_col_sql = "q.dnssec";
-		else if(strcasecmp(sort_col, "regex.id") == 0)
+		else if(strcasecmp(sort_col, "regex_id") == 0)
 			sort_col_sql = "regex_id";
 
 		// ... and the sort direction

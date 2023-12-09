@@ -20,7 +20,7 @@
 #include "database/database-thread.h"
 #include "datastructure.h"
 #include "database/gravity-db.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "daemon.h"
 #include "timers.h"
 #include "gc.h"
@@ -3403,7 +3403,7 @@ void FTL_dnsmasq_log(const char *payload, const int length)
 	lock_shm();
 
 	// Add to FIFO buffer
-	add_to_fifo_buffer(FIFO_DNSMASQ, payload, length);
+	add_to_fifo_buffer(FIFO_DNSMASQ, payload, NULL, length);
 
 	// Unlock SHM
 	unlock_shm();

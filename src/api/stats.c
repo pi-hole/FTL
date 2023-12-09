@@ -15,7 +15,7 @@
 #include "../shmem.h"
 #include "../datastructure.h"
 // read_setupVarsconf()
-#include "../setupVars.h"
+#include "../config/setupVars.h"
 // logging routines
 #include "../log.h"
 // config struct
