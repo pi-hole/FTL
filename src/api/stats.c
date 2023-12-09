@@ -139,16 +139,6 @@ int api_stats_summary(struct ftl_conn *api)
 
 int api_stats_top_domains(struct ftl_conn *api)
 {
-	int count = 10;
-	bool audit = false;
-	const int domains = counters->domains;
-	int *temparray = calloc(2*domains, sizeof(int*));
-	if(temparray == NULL)
-	{
-		log_err("Memory allocation failed in %s()", __FUNCTION__);
-		return 0;
-	}
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
 	{
@@ -160,8 +150,21 @@ int api_stats_top_domains(struct ftl_conn *api)
 		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *top_domains = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(json, "top_domains", top_domains);
-		free(temparray);
 		JSON_SEND_OBJECT(json);
+	}
+
+	// Lock shared memory
+	lock_shm();
+
+	// Allocate memory
+	int count = 10;
+	bool audit = false;
+	const int domains = counters->domains;
+	int *temparray = calloc(2*domains, sizeof(int*));
+	if(temparray == NULL)
+	{
+		log_err("Memory allocation failed in %s()", __FUNCTION__);
+		return 0;
 	}
 
 	bool blocked = false; // Can be overwritten by query string
@@ -179,10 +182,8 @@ int api_stats_top_domains(struct ftl_conn *api)
 		get_bool_var(api->request->query_string, "audit", &audit);
 	}
 
-	// Lock shared memory
-	lock_shm();
-
-	for(int domainID=0; domainID < domains; domainID++)
+	unsigned int added_domains = 0u;
+	for(int domainID = 0; domainID < domains; domainID++)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(domainID, true);
@@ -195,10 +196,12 @@ int api_stats_top_domains(struct ftl_conn *api)
 		else
 			// Count only permitted queries
 			temparray[2*domainID + 1] = (domain->count - domain->blockedcount);
+
+		added_domains++;
 	}
 
 	// Sort temporary array
-	qsort(temparray, domains, sizeof(int[2]), cmpdesc);
+	qsort(temparray, added_domains, sizeof(int[2]), cmpdesc);
 
 	// Get filter
 	const char* filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
@@ -222,7 +225,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 
 	int n = 0;
 	cJSON *top_domains = JSON_NEW_ARRAY();
-	for(int i = 0; i < domains; i++)
+	for(unsigned int i = 0; i < added_domains; i++)
 	{
 		// Get sorted index
 		const int domainID = temparray[2*i + 0];
