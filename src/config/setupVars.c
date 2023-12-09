@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "log.h"
 #include "config/config.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "datastructure.h"
 
 unsigned int setupVarsElements = 0;
@@ -446,6 +446,8 @@ void importsetupVarsConf(void)
 	get_conf_bool_from_setupVars("DHCP_RAPID_COMMIT", &config.dhcp.rapidCommit);
 
 	get_conf_bool_from_setupVars("queryLogging", &config.dns.queryLogging);
+
+	get_conf_string_from_setupVars("GRAVITY_TMPDIR", &config.files.gravity_tmp);
 
 	// Ports may be temporarily stored when importing a legacy Teleporter v5 file
 	get_conf_string_from_setupVars("WEB_PORTS", &config.webserver.port);

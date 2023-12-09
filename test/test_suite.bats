@@ -489,21 +489,17 @@
   [[ ${lines[0]} == "The Pi-hole FTL engine - "* ]]
 }
 
-#@test "No WARNING messages in FTL.log (besides known capability issues)" {
-#  run bash -c 'grep "WARNING" /var/log/pihole/FTL.log'
-#  printf "%s\n" "${lines[@]}"
-#  run bash -c 'grep "WARNING" /var/log/pihole/FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN"'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[0]} == "0" ]]
-#}
+@test "No WARNING messages in FTL.log (besides known capability issues)" {
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|(Cannot set process priority)"'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == "" ]]
+}
 
-#@test "No FATAL messages in FTL.log (besides error due to starting FTL more than once)" {
-#  run bash -c 'grep "FATAL" /var/log/pihole/FTL.log'
-#  printf "%s\n" "${lines[@]}"
-#  run bash -c 'grep "FATAL:" /var/log/pihole/FTL.log | grep -c -v "FATAL: create_shm(): Failed to create shared memory object \"FTL-lock\": File exists"'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[0]} == "0" ]]
-#}
+@test "No CRIT messages in FTL.log (besides error due to starting FTL more than once)" {
+  run bash -c 'grep "CRIT:" /var/log/pihole/FTL.log | grep -v "CRIT: Initialization of shared memory failed"'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == "" ]]
+}
 
 @test "No \"database not available\" messages in FTL.log" {
   run bash -c 'grep -c "database not available" /var/log/pihole/FTL.log'
@@ -906,6 +902,26 @@
   run bash -c 'dig ANY regex-notMultiple.ftl @127.0.0.1'
   printf "dig ANY: %s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"status: NOERROR"* ]]
+}
+
+@test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
+  run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[0]} == '"http://pi.hole:80/api/" "https://pi.hole:443/api/"' ]]
+}
+
+@test "API addresses reported correctly by CHAOS TXT local.api.ftl" {
+  run bash -c 'dig CHAOS TXT local.api.ftl +short @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[0]} == '"http://localhost:80/api/" "https://localhost:443/api/"' ]]
+}
+
+@test "API addresses reported by CHAOS TXT api.ftl identical to domain.api.ftl" {
+  run bash -c 'dig CHAOS TXT api.ftl +short @127.0.0.1'
+  api="${lines[0]}"
+  run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
+  domain_api="${lines[0]}"
+  [[ "${api}" == "${domain_api}" ]]
 }
 
 # x86_64-musl is built on busybox which has a slightly different
@@ -1524,6 +1540,12 @@
   [[ $status == 0 ]]
 }
 
+@test "SHA256 checksum working" {
+  run bash -c './pihole-FTL sha256sum test/test.pem'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "eae293f0c30369935a7457a789658bedebf92d544e7526bc43aa07883a597fa9  test/test.pem" ]]
+}
+
 @test "API validation" {
   run python3 test/api/checkAPI.py
   printf "%s\n" "${lines[@]}"
@@ -1548,7 +1570,7 @@
   [[ "${lines[0]}" == "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]" ]]
   run bash -c './pihole-FTL --config webserver.port'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "80,[::]:80,443s" ]]
+  [[ "${lines[0]}" == "80,[::]:80,443s,[::]:443s" ]]
 }
 
 @test "Create, verify and re-import Teleporter file via CLI" {
@@ -1575,7 +1597,7 @@
   [[ ${lines[0]} == "3" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: pihole.toml unchanged" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "4" ]]
+  [[ ${lines[0]} == "3" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
@@ -1587,5 +1609,5 @@
   [[ ${lines[0]} == "1" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: custom.list unchanged" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "4" ]]
+  [[ ${lines[0]} == "3" ]]
 }

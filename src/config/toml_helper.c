@@ -20,26 +20,63 @@
 #include "files.h"
 //set_and_check_password()
 #include "config/password.h"
+// PATH_MAX
+#include <limits.h>
 
 // Open the TOML file for reading or writing
-FILE * __attribute((malloc)) __attribute((nonnull(1,2))) openFTLtoml(const char *path, const char *mode)
+FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode, const unsigned int version)
 {
-	// Try to open file in requested mode
-	FILE *fp = fopen(path, mode);
+	// This should not happen, install a safeguard anyway to unveil
+	// possible future coding issues early on
+	if(mode[0] == 'w' && version != 0)
+	{
+		log_crit("Writing to version != 0 is not supported in openFTLtoml(%s,%u)",
+		         mode, version);
+		exit(EXIT_FAILURE);
+	}
+
+	// Build filename based on version
+	char filename[PATH_MAX] = { 0 };
+	if(version == 0)
+	{
+		// Use global config file
+		strncpy(filename, GLOBALTOMLPATH, sizeof(filename));
+
+		// Append ".tmp" if we are writing
+		if(mode[0] == 'w')
+			strncat(filename, ".tmp", sizeof(filename));
+	}
+	else
+	{
+		// Use rotated config file
+		snprintf(filename, sizeof(filename), BACKUP_DIR"/pihole.toml.%u", version);
+	}
+
+	// Try to open config file
+	FILE *fp = fopen(filename, mode);
 
 	// Return early if opening failed
 	if(!fp)
+	{
+		log_info("Config %sfile %s not available: %s",
+		         version > 0 ? "backup " : "", filename, strerror(errno));
 		return NULL;
+	}
 
 	// Lock file, may block if the file is currently opened
 	if(flock(fileno(fp), LOCK_EX) != 0)
 	{
 		const int _e = errno;
-		log_err("Cannot open FTL's config file in exclusive mode: %s", strerror(errno));
+		log_err("Cannot open config file %s in exclusive mode: %s",
+		        filename, strerror(errno));
 		fclose(fp);
 		errno = _e;
 		return NULL;
 	}
+
+	// Log if we are using a backup file
+	if(version > 0)
+		log_info("Using config backup %s", filename);
 
 	errno = 0;
 	return fp;

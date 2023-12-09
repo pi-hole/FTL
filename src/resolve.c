@@ -442,9 +442,9 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		clientsData* client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			log_warn("Unable to get client pointer (1) with ID %i in resolveClients(), skipping...", clientID);
-			skipped++;
+			// Client has been recycled, skip it
 			unlock_shm();
+			skipped++;
 			continue;
 		}
 
@@ -452,6 +452,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		if(client->flags.aliasclient)
 		{
 			unlock_shm();
+			skipped++;
 			continue;
 		}
 
@@ -467,6 +468,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			          getstr(ippos), getstr(oldnamepos), (int)(now - client->lastQuery));
 
 			unlock_shm();
+			skipped++;
 			continue;
 		}
 
@@ -568,7 +570,7 @@ static void resolveUpstreams(const bool onlynew)
 		upstreamsData* upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 		{
-			log_warn("Unable to get upstream pointer with ID %i in resolveUpstreams(), skipping...", upstreamID);
+			// This is not a fatal error, as the upstream may have been recycled
 			skipped++;
 			unlock_shm();
 			continue;

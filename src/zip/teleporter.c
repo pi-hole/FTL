@@ -312,7 +312,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// a temporary config struct (teleporter_config)
 	struct config teleporter_config = { 0 };
 	duplicate_config(&teleporter_config, &config);
-	if(!readFTLtoml(NULL, &teleporter_config, toml, true, NULL))
+	if(!readFTLtoml(NULL, &teleporter_config, toml, true, NULL, 0))
 		return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
 
 	// Test dnsmasq config in the imported configuration

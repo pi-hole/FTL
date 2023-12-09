@@ -127,6 +127,10 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 // Private prototypes
 static void *enlarge_shmem_struct(const char type);
 
+// Calculate and format the memory usage of the shared memory segment used by
+// FTL
+// The function returns the percentage of used memory. A human-readable string
+// is stored in the buffer passed to this function.
 static int get_dev_shm_usage(char buffer[64])
 {
 	char buffer2[64] = { 0 };
@@ -206,74 +210,11 @@ static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
 	return true;
 }
 
-// A function that duplicates a string and replaces all characters "s" by "r"
-static char *__attribute__ ((malloc)) str_replace(const char *input,
-                                                  const char s,
-                                                  const char r,
-                                                  unsigned int *N)
-{
-	// Duplicate string
-	char *copy = strdup(input);
-	if(!copy)
-		return NULL;
-
-	// Woring pointer
-	char *ix = copy;
-	// Loop over string until there are no further "s" chars in the string
-	while((ix = strchr(ix, s)) != NULL)
-	{
-		*ix++ = r;
-		(*N)++;
-	}
-
-	return copy;
-}
-
-char *__attribute__ ((malloc)) str_escape(const char *input, unsigned int *N)
-{
-	// If no escaping is done, this routine returns the original pointer
-	// and N stays 0
-	*N = 0;
-	if(strchr(input, ' ') != NULL)
-	{
-		// Replace any spaces by ~ if we find them in the domain name
-		// This is necessary as our telnet API uses space delimiters
-		return str_replace(input, ' ', '~', N);
-	}
-
-	return strdup(input);
-}
-
-bool strcmp_escaped(const char *a, const char *b)
-{
-	unsigned int Na, Nb;
-
-	// Input check
-	if(a == NULL || b == NULL)
-		return false;
-
-	// Escape both inputs
-	char *aa = str_escape(a, &Na);
-	char *bb = str_escape(b, &Nb);
-
-	// Check for memory errors
-	if(!aa || !bb)
-	{
-		if(aa) free(aa);
-		if(bb) free(bb);
-		return false;
-	}
-
-	const char result = strcasecmp(aa, bb) == 0;
-
-	free(aa);
-	free(bb);
-
-	return result;
-}
-
-
-size_t addstr(const char *input)
+// Add string to our shared memory buffer
+// This function checks if the string already exists in the buffer and returns
+// the position of the existing string if it does. Otherwise, it adds the
+// string to the buffer and returns the position of the newly added string.
+size_t _addstr(const char *input, const char *func, const int line, const char *file)
 {
 	if(input == NULL)
 	{
@@ -304,19 +245,23 @@ size_t addstr(const char *input)
 		len = avail_mem;
 	}
 
-	unsigned int N = 0;
-	char *str = str_escape(input, &N);
+	// Search buffer for existence of exact same string
+	char *str_pos = memmem(shm_strings.ptr, shmSettings->next_str_pos, input, len);
+	if(str_pos != NULL)
+	{
+		log_debug(DEBUG_SHMEM, "Reusing existing string \"%s\" at %zd in %s() (%s:%i)",
+		          input, str_pos - (char*)shm_strings.ptr, func, short_path(file), line);
 
-	if(N > 0)
-		log_info("INFO: FTL replaced %u invalid characters with ~ in the query \"%s\"", N, str);
+		// Return position of existing string
+		return (str_pos - (char*)shm_strings.ptr);
+	}
 
 	// Debugging output
-	log_debug(DEBUG_SHMEM, "Adding \"%s\" (len %zu) to buffer. next_str_pos is %u",
-	          str, len, shmSettings->next_str_pos);
+	log_debug(DEBUG_SHMEM, "Adding \"%s\" (len %zu) to buffer in %s() (%s:%i), next_str_pos is %u",
+	          input, len, func, short_path(file), line, shmSettings->next_str_pos);
 
-	// Copy the C string pointed by str into the shared string buffer
-	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len);
-	free(str);
+	// Copy the C string pointed by input into the shared string buffer
+	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], input, len);
 
 	// Increment string length counter
 	shmSettings->next_str_pos += len;
@@ -325,6 +270,7 @@ size_t addstr(const char *input)
 	return (shmSettings->next_str_pos - len);
 }
 
+// Get string from shared memory buffer
 const char *_getstr(const size_t pos, const char *func, const int line, const char *file)
 {
 	// Only access the string memory if this memory region has already been set
@@ -337,7 +283,7 @@ const char *_getstr(const size_t pos, const char *func, const int line, const ch
 	}
 }
 
-/// Create a mutex for shared memory
+// Create a mutex for shared memory
 static void create_mutex(pthread_mutex_t *lock) {
 	log_debug(DEBUG_SHMEM, "Creating SHM mutex lock");
 	pthread_mutexattr_t lock_attr = {};
@@ -375,9 +321,9 @@ static void create_mutex(pthread_mutex_t *lock) {
 	pthread_mutexattr_destroy(&lock_attr);
 }
 
+// Remap shared object pointers which might have changed
 static void remap_shm(void)
 {
-	// Remap shared object pointers which might have changed
 	realloc_shm(&shm_queries, counters->queries_MAX, sizeof(queriesData), false);
 	queries = (queriesData*)shm_queries.ptr;
 
@@ -1121,11 +1067,20 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char *func,
 		return NULL;
 	}
 
-	if(check_range(queryID, counters->queries_MAX, "query", func, line, file) &&
-	   check_magic(queryID, checkMagic, queries[queryID].magic, "query", func, line, file))
-		return &queries[queryID];
-	else
+	// Check allowed range
+	if(!check_range(queryID, counters->queries_MAX, "query", func, line, file))
 		return NULL;
+
+	// May have been recycled, do not return recycled queries if we are checking
+	// the magic byte
+	if(checkMagic && queries[queryID].magic == 0x00)
+		return NULL;
+
+	// Check magic byte
+	if(check_magic(queryID, checkMagic, queries[queryID].magic, "query", func, line, file))
+		return &queries[queryID];
+
+	return NULL;
 }
 
 clientsData* _getClient(int clientID, bool checkMagic, int line, const char *func, const char *file)
@@ -1146,11 +1101,20 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char *fun
 		return NULL;
 	}
 
-	if(check_range(clientID, counters->clients_MAX, "client", func, line, file) &&
-	   check_magic(clientID, checkMagic, clients[clientID].magic, "client", func, line, file))
-		return &clients[clientID];
-	else
+	// Check allowed range
+	if(!check_range(clientID, counters->clients_MAX, "client", func, line, file))
 		return NULL;
+
+	// May have been recycled, do not return recycled clients if we are checking
+	// the magic byte
+	if(checkMagic && clients[clientID].magic == 0x00)
+		return NULL;
+
+	// Check magic byte
+	if(check_magic(clientID, checkMagic, clients[clientID].magic, "client", func, line, file))
+		return &clients[clientID];
+
+	return NULL;
 }
 
 domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *func, const char *file)
@@ -1171,11 +1135,20 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *fun
 		return NULL;
 	}
 
-	if(check_range(domainID, counters->domains_MAX, "domain", func, line, file) &&
-	   check_magic(domainID, checkMagic, domains[domainID].magic, "domain", func, line, file))
-		return &domains[domainID];
-	else
+	// Check allowed range
+	if(!check_range(domainID, counters->domains_MAX, "domain", func, line, file))
 		return NULL;
+
+	// May have been recycled, do not return recycled domains if we are checking
+	// the magic byte
+	if(checkMagic && domains[domainID].magic == 0x00)
+		return NULL;
+
+	// Check magic byte
+	if(check_magic(domainID, checkMagic, domains[domainID].magic, "domain", func, line, file))
+		return &domains[domainID];
+
+	return NULL;
 }
 
 upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char *func, const char *file)
@@ -1196,11 +1169,20 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 		return NULL;
 	}
 
-	if(check_range(upstreamID, counters->upstreams_MAX, "upstream", func, line, file) &&
-	   check_magic(upstreamID, checkMagic, upstreams[upstreamID].magic, "upstream", func, line, file))
-		return &upstreams[upstreamID];
-	else
+	// Check allowed range
+	if(!check_range(upstreamID, counters->upstreams_MAX, "upstream", func, line, file))
 		return NULL;
+
+	// May have been recycled, do not return recycled upstreams if we are checking
+	// the magic byte
+	if(checkMagic && upstreams[upstreamID].magic == 0x00)
+		return NULL;
+
+	// Check magic byte
+	if(check_magic(upstreamID, checkMagic, upstreams[upstreamID].magic, "upstream", func, line, file))
+		return &upstreams[upstreamID];
+
+	return NULL;
 }
 
 DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char *func, const char *file)
@@ -1221,9 +1203,18 @@ DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char *f
 		return NULL;
 	}
 
-	if(check_range(cacheID, counters->dns_cache_MAX, "dns_cache", func, line, file) &&
-	   check_magic(cacheID, checkMagic, dns_cache[cacheID].magic, "dns_cache", func, line, file))
-		return &dns_cache[cacheID];
-	else
+	// Check allowed range
+	if(!check_range(cacheID, counters->dns_cache_MAX, "dns_cache", func, line, file))
 		return NULL;
+
+	// May have been recycled, do not return recycled upstreams if we are checking
+	// the magic byte
+	if(checkMagic && dns_cache[cacheID].magic == 0x00)
+		return NULL;
+
+	// Check magic byte
+	if(check_magic(cacheID, checkMagic, dns_cache[cacheID].magic, "dns_cache", func, line, file))
+		return &dns_cache[cacheID];
+
+	return NULL;
 }

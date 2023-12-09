@@ -12,7 +12,7 @@
 #include "config/config.h"
 #include "config/toml_reader.h"
 #include "config/toml_writer.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 #include "log.h"
 // readFTLlegacy()
@@ -29,9 +29,12 @@
 #include "api/api.h"
 // exit_code
 #include "signals.h"
+// sha256sum()
+#include "files.h"
 
 struct config config = { 0 };
 static bool config_initialized = false;
+uint8_t last_checksum[SHA256_DIGEST_SIZE] = { 0 };
 
 // Private prototypes
 static bool port_in_use(const in_port_t port);
@@ -554,10 +557,10 @@ void initConfig(struct config *conf)
 	conf->dns.cache.size.d.ui = 10000u;
 
 	conf->dns.cache.optimizer.k = "dns.cache.optimizer";
-	conf->dns.cache.optimizer.h = "Query cache optimizer: If a DNS name exists in the cache, but its time-to-live has expired only recently, the data will be used anyway (a refreshing from upstream is triggered). This can improve DNS query delays especially over unreliable Internet connections. This feature comes at the expense of possibly sometimes returning out-of-date data and less efficient cache utilisation, since old data cannot be flushed when its TTL expires, so the cache becomes mostly least-recently-used. To mitigate issues caused by massively outdated DNS replies, the maximum overaging of cached records is limited. We strongly recommend staying below 86400 (1 day) with this option.";
-	conf->dns.cache.optimizer.t = CONF_UINT;
+	conf->dns.cache.optimizer.h = "Query cache optimizer: If a DNS name exists in the cache, but its time-to-live has expired only recently, the data will be used anyway (a refreshing from upstream is triggered). This can improve DNS query delays especially over unreliable Internet connections. This feature comes at the expense of possibly sometimes returning out-of-date data and less efficient cache utilization, since old data cannot be flushed when its TTL expires, so the cache becomes mostly least-recently-used. To mitigate issues caused by massively outdated DNS replies, the maximum overaging of cached records is limited. We strongly recommend staying below 86400 (1 day) with this option.\n Setting the TTL excess time to zero will serve stale cache data regardless how long it has expired. This is not recommended as it may lead to stale data being served for a long time. Setting this option to any negative value will disable this feature altogether.";
+	conf->dns.cache.optimizer.t = CONF_INT;
 	conf->dns.cache.optimizer.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
-	conf->dns.cache.optimizer.d.ui = 3600u;
+	conf->dns.cache.optimizer.d.i = 3600u;
 
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
@@ -678,8 +681,8 @@ void initConfig(struct config *conf)
 	conf->dns.revServer.target.f = FLAG_RESTART_FTL;
 
 	conf->dns.revServer.domain.k = "dns.revServer.domain";
-	conf->dns.revServer.domain.h = "Domain used for the reverse server feature";
-	conf->dns.revServer.domain.a = cJSON_CreateStringReference("<valid domain>, typically set to the same value as dhcp.domain");
+	conf->dns.revServer.domain.h = "Domain used for the reverse server feature (e.g., \"fritz.box\")";
+	conf->dns.revServer.domain.a = cJSON_CreateStringReference("<valid domain>");
 	conf->dns.revServer.domain.t = CONF_STRING;
 	conf->dns.revServer.domain.d.s = (char*)"";
 	conf->dns.revServer.domain.f = FLAG_RESTART_FTL;
@@ -711,13 +714,6 @@ void initConfig(struct config *conf)
 	conf->dhcp.router.t = CONF_STRUCT_IN_ADDR;
 	conf->dhcp.router.f = FLAG_RESTART_FTL;
 	memset(&conf->dhcp.router.d.in_addr, 0, sizeof(struct in_addr));
-
-	conf->dhcp.domain.k = "dhcp.domain";
-	conf->dhcp.domain.h = "The DNS domain used by your Pi-hole (*** DEPRECATED ***)\n This setting is deprecated and will be removed in a future version. Please use dns.domain instead. Setting it to any non-default value will overwrite the value of dns.domain if it is still set to its default value.";
-	conf->dhcp.domain.a = cJSON_CreateStringReference("<any valid domain>");
-	conf->dhcp.domain.t = CONF_STRING;
-	conf->dhcp.domain.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
-	conf->dhcp.domain.d.s = (char*)"lan";
 
 	conf->dhcp.netmask.k = "dhcp.netmask";
 	conf->dhcp.netmask.h = "The netmask used by your Pi-hole. For directly connected networks (i.e., networks on which the machine running Pi-hole has an interface) the netmask is optional and may be set to an empty string (\"\"): it will then be determined from the interface configuration itself. For networks which receive DHCP service via a relay agent, we cannot determine the netmask itself, so it should explicitly be specified, otherwise Pi-hole guesses based on the class (A, B or C) of the network address.";
@@ -844,7 +840,7 @@ void initConfig(struct config *conf)
 	conf->webserver.acl.d.s = (char*)"";
 
 	conf->webserver.port.k = "webserver.port";
-	conf->webserver.port.h = "Ports to be used by the webserver.\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:80\" can be used to listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:80\" for the IPv6 loopback interface. [::]:80 will bind to port 80 IPv6 only.\n In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the configuration \"80,[::]:80\" (create one socket for IPv4 and one for IPv6 only), or \"+80\" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+80\" does not work for your environment, you need to use \"80,[::]:80\".\n If the port is TLS/SSL, a letter 's' must be appended, for example, \"80,443s\" will open port 80 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first configured SSL port. For example, if webserver.port is \"80r,443s\", then all HTTP traffic coming at port 80 will be redirected to HTTPS port 443.";
+	conf->webserver.port.h = "Ports to be used by the webserver.\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:80\" can be used to listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:80\" for the IPv6 loopback interface. [::]:80 will bind to port 80 IPv6 only.\n In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the configuration \"80,[::]:80\" (create one socket for IPv4 and one for IPv6 only), or \"+80\" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+80\" does not work for your environment, you need to use \"80,[::]:80\".\n If the port is TLS/SSL, a letter 's' must be appended, for example, \"80,443s\" will open port 80 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first configured SSL port. For example, if webserver.port is \"80r,443s\", then all HTTP traffic coming at port 80 will be redirected to HTTPS port 443. If this value is not set (empty string), the web server will not be started and, hence, the API will not be available.";
 	conf->webserver.port.a = cJSON_CreateStringReference("comma-separated list of <[ip_address:]port>");
 	conf->webserver.port.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.port.t = CONF_STRING;
@@ -866,7 +862,7 @@ void initConfig(struct config *conf)
 	conf->webserver.session.timeout.k = "webserver.session.timeout";
 	conf->webserver.session.timeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
 	conf->webserver.session.timeout.t = CONF_UINT;
-	conf->webserver.session.timeout.d.ui = 300u;
+	conf->webserver.session.timeout.d.ui = 1800u;
 
 	conf->webserver.session.restore.k = "webserver.session.restore";
 	conf->webserver.session.restore.h = "Should Pi-hole backup and restore sessions from the database? This is useful if you want to keep your sessions after a restart of the web interface.";
@@ -967,7 +963,7 @@ void initConfig(struct config *conf)
 
 	conf->webserver.api.excludeDomains.k = "webserver.api.excludeDomains";
 	conf->webserver.api.excludeDomains.h = "Array of domains to be excluded from certain API responses\n Example: [ \"google.de\", \"pi-hole.net\" ]";
-	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
+	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of domains");
 	conf->webserver.api.excludeDomains.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeDomains.d.json = cJSON_CreateArray();
 
@@ -1023,6 +1019,13 @@ void initConfig(struct config *conf)
 	conf->files.gravity.t = CONF_STRING;
 	conf->files.gravity.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.gravity.d.s = (char*)"/etc/pihole/gravity.db";
+
+	conf->files.gravity_tmp.k = "files.gravity_tmp";
+	conf->files.gravity_tmp.h = "A temporary directory where Pi-hole can store files during gravity updates. This directory must be writable by the user running gravity (typically pihole).";
+	conf->files.gravity_tmp.a = cJSON_CreateStringReference("<any existing world-writable writable directory>");
+	conf->files.gravity_tmp.t = CONF_STRING;
+	conf->files.gravity_tmp.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
+	conf->files.gravity_tmp.d.s = (char*)"/tmp";
 
 	conf->files.macvendor.k = "files.macvendor";
 	conf->files.macvendor.h = "The database containing MAC -> Vendor information for the network table";
@@ -1108,6 +1111,12 @@ void initConfig(struct config *conf)
 	conf->misc.dnsmasq_lines.t = CONF_JSON_STRING_ARRAY;
 	conf->misc.dnsmasq_lines.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->misc.dnsmasq_lines.d.json = cJSON_CreateArray();
+
+	conf->misc.extraLogging.k = "misc.extraLogging";
+	conf->misc.extraLogging.h = "Log additional information about queries and replies to pihole.log\n When this setting is enabled, the log has extra information at the start of each line. This consists of a serial number which ties together the log lines associated with an individual query, and the IP address of the requestor. This setting is only effective if dns.queryLogging is enabled, too. This option is only useful for debugging and is not recommended for normal use.";
+	conf->misc.extraLogging.t = CONF_BOOL;
+	conf->misc.extraLogging.f = FLAG_RESTART_FTL;
+	conf->misc.extraLogging.d.b = false;
 
 	// sub-struct misc.check
 	conf->misc.check.load.k = "misc.check.load";
@@ -1373,22 +1382,31 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	initConfig(conf);
 
 	// First try to read TOML config file
-	if(readFTLtoml(NULL, conf, NULL, rewrite, NULL))
+	// If we cannot parse /etc/pihole.toml (due to missing or invalid syntax),
+	// we try to read the rotated files in /etc/pihole/config_backup starting at
+	// the most recent one and going back in time until we find a valid config
+	for(unsigned int i = 0; i < MAX_ROTATIONS; i++)
 	{
-		// If successful, we write the config file back to disk
-		// to ensure that all options are present and comments
-		// about options deviating from the default are present
-		if(rewrite)
+		if(readFTLtoml(NULL, conf, NULL, rewrite, NULL, i))
 		{
-			writeFTLtoml(true);
-			write_dnsmasq_config(conf, false, NULL);
-			write_custom_list();
+			// If successful, we write the config file back to disk
+			// to ensure that all options are present and comments
+			// about options deviating from the default are present
+			if(rewrite)
+			{
+				writeFTLtoml(true);
+				write_dnsmasq_config(conf, false, NULL);
+				write_custom_list();
+			}
+			return true;
 		}
-		return true;
 	}
 
-	// On error, try to read legacy (pre-v6.0) config file. If successful,
-	// we move the legacy config file out of our way
+	log_info("No config file nor backup available, using defaults");
+
+	// If no previous config file could be read, we are likely either running
+	// for the first time or we are upgrading from a version prior to v6.0
+	// In this case, we try to read the legacy config files
 	const char *path = "";
 	if((path = readFTLlegacy(conf)) != NULL)
 	{
@@ -1565,12 +1583,29 @@ void replace_config(struct config *newconf)
 
 void reread_config(void)
 {
+
+	// Create checksum of config file
+	uint8_t checksum[SHA256_DIGEST_SIZE];
+	if(!sha256sum(GLOBALTOMLPATH, checksum))
+	{
+		log_err("Unable to create checksum of %s, not re-reading config file", GLOBALTOMLPATH);
+		return;
+	}
+
+	// Compare checksums
+	if(memcmp(checksum, last_checksum, SHA256_DIGEST_SIZE) == 0)
+	{
+		log_debug(DEBUG_CONFIG, "Checksum of %s has not changed, not re-reading config file", GLOBALTOMLPATH);
+		return;
+	}
+
+	log_info("Reloading config due to pihole.toml change");
 	struct config conf_copy;
 	duplicate_config(&conf_copy, &config);
 
 	// Read TOML config file
 	bool restart = false;
-	if(readFTLtoml(&config, &conf_copy, NULL, true, &restart))
+	if(readFTLtoml(&config, &conf_copy, NULL, true, &restart, 0))
 	{
 		// Install new configuration
 		log_debug(DEBUG_CONFIG, "Loaded configuration is valid, installing it");
@@ -1598,7 +1633,7 @@ void reread_config(void)
 	else
 	{
 		// New configuration is invalid, restore old one
-		log_debug(DEBUG_CONFIG, "Loaded configuration is invalid, restoring old one");
+		log_debug(DEBUG_CONFIG, "Modified config file is invalid, discarding and overwriting with current configuration");
 		free_config(&conf_copy);
 	}
 
