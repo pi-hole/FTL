@@ -253,6 +253,7 @@ struct config {
 		struct conf_item pid;
 		struct conf_item database;
 		struct conf_item gravity;
+		struct conf_item gravity_tmp;
 		struct conf_item macvendor;
 		struct conf_item setupVars;
 		struct conf_item pcap;

@@ -37,6 +37,10 @@
 // default: 300 seconds
 #define RCinterval 300
 
+// CPU usage calculation interval
+// default: 10 seconds
+#define CPU_AVERAGE_INTERVAL 10
+
 bool doGC = false;
 
 // Recycle old clients and domains in our internal data structure
@@ -489,6 +493,7 @@ void *GC_thread(void *val)
 	time_t lastGCrun = time(NULL) - time(NULL)%GCinterval;
 	lastRateLimitCleaner = time(NULL);
 	time_t lastResourceCheck = 0;
+	time_t lastCPUcheck = 0;
 
 	// Remember disk usage
 	unsigned int LastLogStorageUsage = 0;
@@ -518,8 +523,12 @@ void *GC_thread(void *val)
 			break;
 
 		// Calculate average CPU usage
-		// This is done every second to get averaged values
-		calc_cpu_usage();
+		// This is done once every ten seconds to get averaged values
+		if(now - lastCPUcheck >= CPU_AVERAGE_INTERVAL)
+		{
+			lastCPUcheck = now;
+			calc_cpu_usage(CPU_AVERAGE_INTERVAL);
+		}
 
 		// Check available resources
 		if(now - lastResourceCheck >= RCinterval)

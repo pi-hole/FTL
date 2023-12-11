@@ -15,7 +15,7 @@
 // sysinfo()
 #include <sys/sysinfo.h>
 // get_blockingstatus()
-#include "setupVars.h"
+#include "config/setupVars.h"
 // counters
 #include "shmem.h"
 // get_FTL_db_filesize()
