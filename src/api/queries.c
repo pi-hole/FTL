@@ -279,7 +279,7 @@ int api_queries(struct ftl_conn *api)
 
 	// Start building database query string
 	char querystr[QUERYSTRBUFFERLEN] = { 0 };
-	sprintf(querystr, "%s FROM %s q %s", QUERYSTR, disk ? "disk.query_storage" : "query_storage", JOINSTR);
+	snprintf(querystr, QUERYSTRBUFFERLEN, "%s FROM %s q %s", QUERYSTR, disk ? "disk.query_storage" : "query_storage", JOINSTR);
 	int draw = 0;
 
 	char domainname[512] = { 0 };
@@ -758,7 +758,8 @@ int api_queries(struct ftl_conn *api)
 			continue;
 
 		// Check if we have reached the limit
-		if(added >= (unsigned int)length)
+		// Length may be set to -1 to indicate we want everything.
+		if(length > 0 && added >= (unsigned int)length)
 		{
 			if(filtering)
 			{
@@ -785,8 +786,6 @@ int api_queries(struct ftl_conn *api)
 		}
 		else if(length > 0 && added >= (unsigned int)length)
 		{
-			// Length may be set to -1 to indicate we want
-			// everything.
 			// Skip everything AFTER we added the requested number
 			// of queries if length is > 0.
 			break;

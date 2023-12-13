@@ -146,7 +146,7 @@ bool __attribute__((pure)) resolve_this_name(const char *ipaddr)
 char *resolveHostname(const char *addr)
 {
 	// Get host name
-	char *hostname = NULL;
+	char *hostn = NULL;
 
 	// Check if we want to resolve host names
 	if(!resolve_this_name(addr))
@@ -163,18 +163,18 @@ char *resolveHostname(const char *addr)
 	// if so, return "hidden" as hostname
 	if(strcmp(addr, "0.0.0.0") == 0)
 	{
-		hostname = strdup("hidden");
-		log_debug(DEBUG_RESOLVER, "---> \"%s\" (privacy settings)", hostname);
-		return hostname;
+		hostn = strdup("hidden");
+		log_debug(DEBUG_RESOLVER, "---> \"%s\" (privacy settings)", hostn);
+		return hostn;
 	}
 
 	// Check if this is the internal client
 	// if so, return "hidden" as hostname
 	if(strcmp(addr, "::") == 0)
 	{
-		hostname = strdup("pi.hole");
-		log_debug(DEBUG_RESOLVER, "---> \"%s\" (special)", hostname);
-		return hostname;
+		hostn = strdup("pi.hole");
+		log_debug(DEBUG_RESOLVER, "---> \"%s\" (special)", hostn);
+		return hostn;
 	}
 
 	// Check if we want to resolve host names
@@ -286,14 +286,14 @@ char *resolveHostname(const char *addr)
 		if(valid_hostname(host, addr))
 		{
 			// Return hostname copied to new memory location
-			hostname = strdup(host);
+			hostn = strdup(host);
 		}
 		else
 		{
-			hostname = strdup("[invalid host name]");
+			hostn = strdup("[invalid host name]");
 		}
 
-		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found internally)", hostname);
+		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found internally)", hostn);
 	}
 	else
 		log_debug(DEBUG_RESOLVER, " ---> \"\" (not found internally: %s", gai_strerror(ret));
@@ -321,7 +321,7 @@ char *resolveHostname(const char *addr)
 
 	// If no host name was found before, try again with system-configured
 	// resolvers (necessary for docker and friends)
-	if(hostname == NULL)
+	if(hostn == NULL)
 	{
 		// Try to resolve address
 		ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
@@ -333,19 +333,19 @@ char *resolveHostname(const char *addr)
 			if(valid_hostname(host, addr))
 			{
 				// Return hostname copied to new memory location
-				hostname = strdup(host);
+				hostn = strdup(host);
 			}
 			else
 			{
-				hostname = strdup("[invalid host name]");
+				hostn = strdup("[invalid host name]");
 			}
 
-			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found externally)", hostname);
+			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found externally)", hostn);
 		}
 		else
 		{
 			// No hostname found (empty PTR)
-			hostname = strdup("");
+			hostn = strdup("");
 
 			if(config.debug.resolver.v.b)
 			log_debug(DEBUG_RESOLVER, " ---> \"\" (not found externally: %s)", gai_strerror(ret));
@@ -353,7 +353,7 @@ char *resolveHostname(const char *addr)
 	}
 
 	// Return result
-	return hostname;
+	return hostn;
 }
 
 // Resolve upstream destination host names

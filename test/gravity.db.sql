@@ -66,13 +66,6 @@ CREATE TABLE info
 
 INSERT INTO "info" VALUES('version','12');
 
-CREATE TABLE domain_audit
-(
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	domain TEXT UNIQUE NOT NULL,
-	date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int))
-);
-
 CREATE TABLE domainlist_by_group
 (
 	domainlist_id INTEGER NOT NULL REFERENCES domainlist (id),
@@ -250,8 +243,6 @@ INSERT INTO info VALUES('updated',0);
 
 INSERT INTO "group" VALUES(1,0,'Test group',1559928803,1559928803,'A disabled test group');
 INSERT INTO domainlist_by_group VALUES(15,1);
-
-INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
 
 INSERT INTO client (id,ip) VALUES(1,'127.0.0.1');
 

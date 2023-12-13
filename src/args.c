@@ -337,7 +337,7 @@ void parse_args(int argc, char* argv[])
 	  (strcmp(argv[1], "--read-x509") == 0 ||
 	   strcmp(argv[1], "--read-x509-key") == 0))
 	{
-		if(argc < 2 || argc > 4)
+		if(argc > 4)
 		{
 			printf("Usage: %s %s [<input file>] [<domain>]\n", argv[0], argv[1]);
 			printf("Example: %s %s /etc/pihole/tls.pem\n", argv[0], argv[1]);
