@@ -1396,28 +1396,14 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 	}
 
-	// Not in FTL's cache. Check if this is a special domain
-	if(special_domain(query, domainstr))
-	{
-		// Set DNS cache properties
-		dns_cache->blocking_status = SPECIAL_DOMAIN;
-		dns_cache->force_reply = force_next_DNS_reply;
-
-		// Adjust counters
-		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
-
-		// Debug output
-		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
-
-		return true;
-	}
-
 	// Skip all checks and continue if we hit already at least one whitelist in the chain
 	if(query->flags.allowed)
 	{
 		log_debug(DEBUG_QUERIES, "Query is permitted as at least one whitelist entry matched");
 		return false;
 	}
+
+	// when we reach this point: the query is not in FTL's cache (for this client)
 
 	// Make a local copy of the domain string. The string memory may get
 	// reorganized in the following. We cannot expect domainstr to remain
@@ -1431,6 +1417,22 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// If not found: Check regex whitelist for match
 	if(!query->flags.allowed)
 		query->flags.allowed = in_regex(domainstr, dns_cache, client->id, REGEX_ALLOW);
+
+	// Check if this is a special domain
+	if(!query->flags.allowed && special_domain(query, domainstr))
+	{
+		// Set DNS cache properties
+		dns_cache->blocking_status = SPECIAL_DOMAIN;
+		dns_cache->force_reply = force_next_DNS_reply;
+
+		// Adjust counters
+		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
+
+		// Debug output
+		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
+
+		return true;
+	}
 
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;
