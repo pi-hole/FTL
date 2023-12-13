@@ -1392,8 +1392,33 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 	}
 
-	// Not in FTL's cache. Check if this is a special domain
-	if(special_domain(query, domainstr))
+	// Skip all checks and continue if we hit already at least one whitelist in the chain
+	if(query->flags.whitelisted)
+	{
+		if(config.debug & DEBUG_QUERIES)
+		{
+			logg("Query is permitted as at least one whitelist entry matched");
+		}
+		return false;
+	}
+
+	// when we reach this point: the query is not in FTL's cache (for this client)
+
+	// Make a local copy of the domain string. The string memory may get
+	// reorganized in the following. We cannot expect domainstr to remain
+	// valid for all time.
+	domainstr = strdup(domainstr);
+	const char *blockedDomain = domainstr;
+
+	// Check exact whitelist for match
+	query->flags.whitelisted = in_whitelist(domainstr, dns_cache, client) == FOUND;
+
+	// If not found: Check regex whitelist for match
+	if(!query->flags.whitelisted)
+		query->flags.whitelisted = in_regex(domainstr, dns_cache, client->id, REGEX_WHITELIST);
+
+	// Check if this is a special domain
+	if(!query->flags.whitelisted && special_domain(query, domainstr))
 	{
 		// Set DNS cache properties
 		dns_cache->blocking_status = SPECIAL_DOMAIN;
@@ -1408,29 +1433,6 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 		return true;
 	}
-
-	// Skip all checks and continue if we hit already at least one whitelist in the chain
-	if(query->flags.whitelisted)
-	{
-		if(config.debug & DEBUG_QUERIES)
-		{
-			logg("Query is permitted as at least one whitelist entry matched");
-		}
-		return false;
-	}
-
-	// Make a local copy of the domain string. The string memory may get
-	// reorganized in the following. We cannot expect domainstr to remain
-	// valid for all time.
-	domainstr = strdup(domainstr);
-	const char *blockedDomain = domainstr;
-
-	// Check exact whitelist for match
-	query->flags.whitelisted = in_whitelist(domainstr, dns_cache, client) == FOUND;
-
-	// If not found: Check regex whitelist for match
-	if(!query->flags.whitelisted)
-		query->flags.whitelisted = in_regex(domainstr, dns_cache, client->id, REGEX_WHITELIST);
 
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;
