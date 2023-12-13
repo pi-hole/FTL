@@ -29,7 +29,7 @@ static bool deflate_buffer(const unsigned char *buffer_uncompressed, const mz_ul
 	// space for the GZIP header and footer
 	*size_compressed = compressBound(size_uncompressed) + 14;
 	*buffer_compressed = malloc(*size_compressed);
-	if(buffer_compressed == NULL)
+	if(*buffer_compressed == NULL)
 	{
 		log_warn("Failed to allocate %lu bytes of memory", (unsigned long)*size_compressed);
 		return false;
@@ -308,6 +308,7 @@ bool inflate_file(const char *infilename, const char *outfilename, bool verbose)
 	if(outfile == NULL)
 	{
 		log_warn("Failed to open %s: %s", outfilename, strerror(errno));
+		fclose(infile);
 		return false;
 	}
 
@@ -322,12 +323,15 @@ bool inflate_file(const char *infilename, const char *outfilename, bool verbose)
 	{
 		log_warn("Failed to allocate %lu bytes of memory", (unsigned long)size_compressed);
 		fclose(infile);
+		fclose(outfile);
 		return false;
 	}
 	if(fread(buffer_compressed, 1, size_compressed, infile) != size_compressed)
 	{
 		log_warn("Failed to read %lu bytes from %s", (unsigned long)size_compressed, infilename);
 		fclose(infile);
+		fclose(outfile);
+		free(buffer_compressed);
 		return false;
 	}
 	fclose(infile);
@@ -389,6 +393,7 @@ bool deflate_file(const char *infilename, const char *outfilename, bool verbose)
 	if(outfile == NULL)
 	{
 		log_warn("Failed to open %s for writing: %s", outfilename, strerror(errno));
+		fclose(infile);
 		return false;
 	}
 
@@ -403,12 +408,14 @@ bool deflate_file(const char *infilename, const char *outfilename, bool verbose)
 	{
 		log_warn("Failed to allocate %lu bytes of memory", (unsigned long)size_uncompressed);
 		fclose(infile);
+		fclose(outfile);
 		return false;
 	}
 	if(fread(buffer_uncompressed, 1, size_uncompressed, infile) != size_uncompressed)
 	{
 		log_warn("Failed to read %lu bytes from %s", (unsigned long)size_uncompressed, infilename);
 		fclose(infile);
+		fclose(outfile);
 		free(buffer_uncompressed);
 		return false;
 	}

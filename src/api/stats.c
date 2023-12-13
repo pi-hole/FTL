@@ -20,8 +20,6 @@
 #include "../log.h"
 // config struct
 #include "../config/config.h"
-// in_auditlist()
-#include "../database/gravity-db.h"
 // overTime data
 #include "../overTime.h"
 // enum REGEX
@@ -140,7 +138,6 @@ int api_stats_summary(struct ftl_conn *api)
 int api_stats_top_domains(struct ftl_conn *api)
 {
 	int count = 10;
-	bool audit = false;
 	const int domains = counters->domains;
 	int *temparray = calloc(2*domains, sizeof(int*));
 	if(temparray == NULL)
@@ -174,9 +171,6 @@ int api_stats_top_domains(struct ftl_conn *api)
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
 		get_int_var(api->request->query_string, "count", &count);
-
-		// Apply Audit Log filtering?
-		get_bool_var(api->request->query_string, "audit", &audit);
 	}
 
 	// Lock shared memory
@@ -231,30 +225,19 @@ int api_stats_top_domains(struct ftl_conn *api)
 		if(domain == NULL)
 			continue;
 
-		// Skip this domain if there is a filter on it (but only if not in audit mode)
-		if(!audit)
+		// Skip this domain if there is a filter on it
+		bool skip_domain = false;
+		for(unsigned int j = 0; j < excludeDomains; j++)
 		{
-			// Check if this domain should be skipped
-			bool skip_domain = false;
-			for(unsigned int j = 0; j < excludeDomains; j++)
+			cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeDomains.v.json, j);
+			if(strcmp(getstr(domain->domainpos), item->valuestring) == 0)
 			{
-				cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeDomains.v.json, j);
-				if(strcmp(getstr(domain->domainpos), item->valuestring) == 0)
-				{
-					skip_domain = true;
-					break;
-				}
+				skip_domain = true;
+				break;
 			}
-			if(skip_domain)
-				continue;
 		}
-
-		// Skip this domain if already audited
-		if(audit && in_auditlist(getstr(domain->domainpos)) > 0)
-		{
-			log_debug(DEBUG_API, "API: %s has been audited.", getstr(domain->domainpos));
+		if(skip_domain)
 			continue;
-		}
 
 		// Hidden domain, probably due to privacy level. Skip this in the top lists
 		if(strcmp(getstr(domain->domainpos), HIDDEN_DOMAIN) == 0)
@@ -288,9 +271,9 @@ int api_stats_top_domains(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "domains", top_domains);
 
-	const int blocked_queries = get_blocked_count();
+	const int blocked_count = get_blocked_count();
 	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_count);
 
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
@@ -411,8 +394,8 @@ int api_stats_top_clients(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", top_clients);
 
-	const int blocked_queries = get_blocked_count();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
+	const int blocked_count = get_blocked_count();
+	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_count);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
@@ -526,8 +509,8 @@ int api_stats_upstreams(struct ftl_conn *api)
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "upstreams", top_upstreams);
-	const int forwarded_queries = get_forwarded_count();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "forwarded_queries", forwarded_queries);
+	const int forwarded_count = get_forwarded_count();
+	JSON_ADD_NUMBER_TO_OBJECT(json, "forwarded_queries", forwarded_count);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
 	JSON_SEND_OBJECT_UNLOCK(json);
 }

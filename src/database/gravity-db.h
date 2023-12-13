@@ -59,7 +59,6 @@ cJSON *gen_abp_patterns(const char *domain, const bool antigravity);
 enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity, int* domain_id);
 enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
 enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
-bool in_auditlist(const char *domain);
 
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,
                                        const unsigned char type, const char* table);

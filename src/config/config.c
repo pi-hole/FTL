@@ -198,7 +198,7 @@ struct conf_item *get_conf_item(struct config *conf, const unsigned int n)
 	}
 
 	// Return n-th config element
-	return (void*)conf + n*sizeof(struct conf_item);
+	return (struct conf_item *)conf + n;
 }
 
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug)
@@ -211,7 +211,7 @@ struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debu
 	}
 
 	// Return n-th config element
-	return (void*)&conf->debug + debug*sizeof(struct conf_item);
+	return (struct conf_item *)&conf->debug + debug;
 }
 
 unsigned int __attribute__ ((pure)) config_path_depth(char **paths)

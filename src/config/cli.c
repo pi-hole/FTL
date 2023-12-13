@@ -562,7 +562,7 @@ int get_config_from_CLI(const char *key, const bool quiet)
 
 	// Use return status if this is a boolean value
 	// and we are in quiet mode
-	if(quiet && conf_item->t == CONF_BOOL)
+	if(quiet && conf_item != NULL && conf_item->t == CONF_BOOL)
 		return conf_item->v.b ? OKAY : FAIL;
 
 	return OKAY;

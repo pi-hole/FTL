@@ -664,9 +664,11 @@ int api_info_sensors(struct ftl_conn *api)
 		// 1. AMD CPU temperature sensor
 		// 2. Intel CPU temperature sensor
 		// 3. General CPU temperature sensor
+		// 4. General SoC temperature sensor (https://discourse.pi-hole.net/t/temperature-value-not-shown/66883)
 		if(strcmp(name->valuestring, "k10temp") == 0 ||
 		   strcmp(name->valuestring, "coretemp") == 0 ||
-		   strcmp(name->valuestring, "cpu_thermal") == 0)
+		   strcmp(name->valuestring, "cpu_thermal") == 0 ||
+		   strcmp(name->valuestring, "soc_thermal") == 0)
 		{
 			cpu_temp_sensor = i;
 			break;
