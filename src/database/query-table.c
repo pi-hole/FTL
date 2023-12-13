@@ -61,6 +61,8 @@ bool init_memory_database(void)
 {
 	int rc;
 	// Try to open in-memory database
+	// The :memory: database always has synchronous=OFF since the content of
+	// it is ephemeral and is not expected to survive a power outage.
 	rc = sqlite3_open_v2(":memory:", &_memdb, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -109,7 +111,7 @@ bool init_memory_database(void)
 	// Attach disk database
 	if(!attach_database(_memdb, NULL, config.files.database.v.s, "disk"))
 		return false;
-/*
+
 	// Change journal mode to WAL
 	// - WAL is significantly faster in most scenarios.
 	// - WAL provides more concurrency as readers do not block writers and a
@@ -124,12 +126,22 @@ bool init_memory_database(void)
 		sqlite3_close(_memdb);
 		return false;
 	}
-*/
-/*
+
 	// Change synchronous mode to NORMAL
-	// - NORMAL is the fastest synchronous mode
-	// - NORMAL still provides full ACID (atomicity, consistency, isolation,
-	//   and durability) properties.
+	// When synchronous is NORMAL (1), the SQLite database engine will still
+	// sync at the most critical moments, but less often than in FULL mode.
+	// There is a very small (though non-zero) chance that a power failure
+	// at just the wrong time could corrupt the database in
+	// journal_mode=DELETE on an older filesystem. WAL mode is safe from
+	// corruption with synchronous=NORMAL, and probably DELETE mode is safe
+	// too on modern filesystems. WAL mode is always consistent with
+	// synchronous=NORMAL, but WAL mode does lose durability. A transaction
+	// committed in WAL mode with synchronous=NORMAL might roll back
+	// following a power loss or system crash. Transactions are durable
+	// across application crashes regardless of the synchronous setting or
+	// journal mode. The synchronous=NORMAL setting is a good choice for
+	// most applications running in WAL mode.
+	// https://www.sqlite.org/pragma.html#pragma_synchronous
 	rc = sqlite3_exec(_memdb, "PRAGMA disk.synchronous=NORMAL", NULL, NULL, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -138,7 +150,7 @@ bool init_memory_database(void)
 		sqlite3_close(_memdb);
 		return false;
 	}
-*/
+
 	// Get result of PRAGMA journal_mode
 	const unsigned char *journal_mode = NULL;
 	sqlite3_stmt *stmt = NULL;
