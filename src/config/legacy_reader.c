@@ -337,6 +337,10 @@ const char *readFTLlegacy(struct config *conf)
 	// 2.0) had the range -infinity..15.
 	buffer = parseFTLconf(fp, "NICE");
 
+	value = 0;
+	if(buffer != NULL && sscanf(buffer, "%i", &value) && value >= -20 && value <= 19)
+		conf->misc.nice.v.i = value;
+
 	// MAXNETAGE
 	// IP addresses (and associated host names) older than the specified number
 	// of days are removed to avoid dead entries in the network overview table
@@ -576,8 +580,8 @@ const char *readFTLlegacy(struct config *conf)
 	// Release memory
 	releaseConfigMemory();
 
-	if(fp != NULL)
-		fclose(fp);
+	// Close file
+	fclose(fp);
 
 	return path;
 }

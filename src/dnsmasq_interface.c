@@ -110,7 +110,7 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 {
 	// Extract filename from path
 	const char *path = short_path(file);
-	const char *types = flags & F_RR ? querystr(arg, type) : "?";
+	const char *types = (flags & F_RR) ? querystr(arg, type) : "?";
 	log_debug(DEBUG_FLAGS, "Processing FTL hook from %s:%d (type: %s, name: \"%s\", id: %i)...", path, line, types, name, id);
 	print_flags(flags);
 
@@ -352,7 +352,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		return 0;
 
 	// Are we replying to pi.hole / <hostname> / pi.hole.<local> / <hostname>.<local> ?
-	const bool hostname = strcmp(blockingreason, HOSTNAME) == 0;
+	const bool hostn = strcmp(blockingreason, HOSTNAME) == 0;
 
 	int trunc = 0;
 	// Add CNAME answer record if requested
@@ -382,9 +382,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		        config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ||
 		        forced_ip)
 		{
-			if(hostname && config.dns.reply.host.force4.v.b)
+			if(hostn && config.dns.reply.host.force4.v.b)
 				memcpy(&addr, &config.dns.reply.host.v4.v.in_addr, sizeof(addr.addr4));
-			else if(!hostname && config.dns.reply.blocking.force4.v.b)
+			else if(!hostn && config.dns.reply.blocking.force4.v.b)
 				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(addr.addr4));
 			else
 				memcpy(&addr, &next_iface.addr4, sizeof(addr.addr4));
@@ -401,7 +401,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Add A resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, hostname ? daemon->local_ttl : config.dns.blockTTL.v.ui,
+		                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
 		                       NULL, T_A, C_IN, (char*)"4", &addr.addr4))
 			log_query(flags & ~F_IPV6, name, &addr, (char*)blockingreason, 0);
 	}
@@ -417,9 +417,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
 		        forced_ip)
 		{
-			if(hostname && config.dns.reply.host.force6.v.b)
+			if(hostn && config.dns.reply.host.force6.v.b)
 				memcpy(&addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(addr.addr6));
-			else if(!hostname && config.dns.reply.blocking.force6.v.b)
+			else if(!hostn && config.dns.reply.blocking.force6.v.b)
 				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(addr.addr6));
 			else
 				memcpy(&addr, &next_iface.addr6, sizeof(addr.addr6));
@@ -436,7 +436,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Add AAAA resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, hostname ? daemon->local_ttl : config.dns.blockTTL.v.ui,
+		                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
 		                       NULL, T_AAAA, C_IN, (char*)"6", &addr.addr6))
 			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
 	}
@@ -1396,28 +1396,14 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 	}
 
-	// Not in FTL's cache. Check if this is a special domain
-	if(special_domain(query, domainstr))
-	{
-		// Set DNS cache properties
-		dns_cache->blocking_status = SPECIAL_DOMAIN;
-		dns_cache->force_reply = force_next_DNS_reply;
-
-		// Adjust counters
-		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
-
-		// Debug output
-		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
-
-		return true;
-	}
-
 	// Skip all checks and continue if we hit already at least one whitelist in the chain
 	if(query->flags.allowed)
 	{
 		log_debug(DEBUG_QUERIES, "Query is permitted as at least one whitelist entry matched");
 		return false;
 	}
+
+	// when we reach this point: the query is not in FTL's cache (for this client)
 
 	// Make a local copy of the domain string. The string memory may get
 	// reorganized in the following. We cannot expect domainstr to remain
@@ -1431,6 +1417,22 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// If not found: Check regex whitelist for match
 	if(!query->flags.allowed)
 		query->flags.allowed = in_regex(domainstr, dns_cache, client->id, REGEX_ALLOW);
+
+	// Check if this is a special domain
+	if(!query->flags.allowed && special_domain(query, domainstr))
+	{
+		// Set DNS cache properties
+		dns_cache->blocking_status = SPECIAL_DOMAIN;
+		dns_cache->force_reply = force_next_DNS_reply;
+
+		// Adjust counters
+		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
+
+		// Debug output
+		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
+
+		return true;
+	}
 
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;

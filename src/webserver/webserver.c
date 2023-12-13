@@ -577,7 +577,14 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 
 	// Try full path with ".lp" appended
 	filename_lp = append_to_path(filename, ".lp");
-	if(filename_lp != NULL && file_readable(filename_lp))
+	if(filename_lp == NULL)
+	{
+		//Failed to allocate memory for filename!");
+		return;
+	}
+
+	// Check if the file exists. If so, rewrite the filename and return
+	if(file_readable(filename_lp))
 	{
 		log_debug(DEBUG_API, "Rewriting Lua page: %s ==> %s", filename, filename_lp);
 		strncpy(filename, filename_lp, filename_buf_len);
