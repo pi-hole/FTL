@@ -507,12 +507,12 @@ void parse_args(int argc, char* argv[])
 		// Need to get dns.port and the resolver settings
 		readFTLconf(&config, false);
 
-		char *name = resolveHostname(argv[2]);
+		char *name = resolveHostname(argv[2], true);
 		if(name == NULL)
 			exit(EXIT_FAILURE);
 
 		// Print result
-		printf("%s -> %s\n", argv[2], name);
+		printf("%s\n", name);
 		free(name);
 		exit(EXIT_SUCCESS);
 	}

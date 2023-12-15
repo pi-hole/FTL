@@ -1570,6 +1570,15 @@
   [[ ${lines[0]} == "eae293f0c30369935a7457a789658bedebf92d544e7526bc43aa07883a597fa9  test/test.pem" ]]
 }
 
+@test "Internal IP -> name resolution works" {
+  run bash -c "./pihole-FTL ptr 127.0.0.1 | tail -n1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "localhost" ]]
+  run bash -c "./pihole-FTL ptr ::1 | tail -n1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "localhost" ]]
+}
+
 @test "API validation" {
   run python3 test/api/checkAPI.py
   printf "%s\n" "${lines[@]}"

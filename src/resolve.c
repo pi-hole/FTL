@@ -43,7 +43,7 @@ struct DNS_HEADER
 
 	bool rd :1; // recursion desired
 	bool tc :1; // truncated message
-	bool aa :1; // authoritive answer
+	bool aa :1; // authoritative answer
 	uint8_t opcode :4; // purpose of message
 	bool qr :1; // query/response flag
 
@@ -349,13 +349,13 @@ static void __attribute__((nonnull(1,3))) name_toDNS(unsigned char *dns, const s
 	*dns++='\0';
 }
 
-char *__attribute__((malloc)) resolveHostname(const char *addr)
+char *__attribute__((malloc)) resolveHostname(const char *addr, const bool force)
 {
 	// Get host name
 	char *hostn = NULL;
 
 	// Check if we want to resolve host names
-	if(!resolve_this_name(addr))
+	if(!force && !resolve_this_name(addr))
 	{
 		log_debug(DEBUG_RESOLVER, "Configured to not resolve host name for %s", addr);
 
@@ -381,15 +381,6 @@ char *__attribute__((malloc)) resolveHostname(const char *addr)
 		hostn = strdup("pi.hole");
 		log_debug(DEBUG_RESOLVER, "---> \"%s\" (special)", hostn);
 		return hostn;
-	}
-
-	// Check if we want to resolve host names
-	if(!resolve_this_name(addr))
-	{
-		log_debug(DEBUG_RESOLVER, "Configured to not resolve host name for %s", addr);
-
-		// Return an empty host name
-		return strdup("");
 	}
 
 	// Test if we want to resolve an IPv6 address
@@ -510,7 +501,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
-	char *newname = resolveHostname(ipaddr);
+	char *newname = resolveHostname(ipaddr, false);
 
 	// If no hostname was found, try to obtain hostname from the network table
 	// This may be disabled due to a user setting

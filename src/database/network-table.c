@@ -19,7 +19,7 @@
 #include "../datastructure.h"
 // struct config
 #include "../config/config.h"
-// resolveHostname()
+// resolve_this_name()
 #include "../resolve.h"
 // killed
 #include "../signals.h"
