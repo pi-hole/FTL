@@ -32,7 +32,56 @@
 // resolve_regex_cnames()
 #include "regex_r.h"
 
-static bool res_initialized = false;
+// Function Prototypes
+static void name_toDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen) __attribute__((nonnull(1,3)));
+static unsigned char *name_fromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count) __attribute__((malloc)) __attribute__((nonnull(1,2,3)));
+
+// DNS header structure
+struct DNS_HEADER
+{
+	uint16_t id; // identification number
+
+	bool rd :1; // recursion desired
+	bool tc :1; // truncated message
+	bool aa :1; // authoritive answer
+	uint8_t opcode :4; // purpose of message
+	bool qr :1; // query/response flag
+
+	uint8_t rcode :4; // response code
+	bool cd :1; // checking disabled
+	bool ad :1; // authenticated data
+	bool z :1; // its z! reserved
+	bool ra :1; // recursion available
+
+	uint16_t q_count; // number of question entries
+	uint16_t ans_count; // number of answer entries
+	uint16_t auth_count; // number of authority entries
+	uint16_t add_count; // number of resource entries
+} __attribute__((packed));
+
+// Constant sized fields of query structure
+struct QUESTION
+{
+	uint16_t qtype;
+	uint16_t qclass;
+};
+
+// Constant sized fields of the resource record structure
+struct R_DATA
+{
+	uint16_t type;
+	uint16_t class;
+	uint32_t ttl; // RFC 1035 defines it as positive values of a signed 32bit number
+	uint16_t data_len;
+} __attribute__((packed));
+
+// Pointers to resource record contents
+struct RES_RECORD
+{
+	unsigned char *name;
+	struct R_DATA *resource;
+	uint8_t *rdata;
+};
 
 // Validate given hostname
 static bool valid_hostname(char* name, const char* clientip)
@@ -75,56 +124,6 @@ static bool valid_hostname(char* name, const char* clientip)
 	return true;
 }
 
-#define NUM_NS4 (sizeof(_res.nsaddr_list) / sizeof(_res.nsaddr_list[0]))
-#define NUM_NS6 (sizeof(_res._u._ext.nsaddrs) / sizeof(_res._u._ext.nsaddrs[0]))
-
-static void print_used_resolvers(const char *message)
-{
-	// Print details only when debugging
-	if(!(config.debug.resolver.v.b))
-		return;
-
-	log_debug(DEBUG_RESOLVER, "%s", message);
-	for(unsigned int i = 0u; i < NUM_NS4 + NUM_NS6; i++)
-	{
-		int family;
-		in_port_t port;
-		void *addr = NULL;
-		if(i < NUM_NS4)
-		{
-			// Regular name servers (IPv4)
-			const unsigned int j = i;
-			// Some of the entries may not be configured
-			if(_res.nsaddr_list[j].sin_family != AF_INET)
-				continue;
-
-			// IPv4 name servers
-			addr = &_res.nsaddr_list[j].sin_addr;
-			port = ntohs(_res.nsaddr_list[j].sin_port);
-			family = _res.nsaddr_list[j].sin_family;
-		}
-		else
-		{
-			// Extension name servers (IPv6)
-			const unsigned int j = i - NUM_NS4;
-			// Some of the entries may not be configured
-			if(_res._u._ext.nsaddrs[j] == NULL ||
-			   _res._u._ext.nsaddrs[j]->sin6_family != AF_INET6)
-				continue;
-			addr = &_res._u._ext.nsaddrs[j]->sin6_addr;
-			port = ntohs(_res._u._ext.nsaddrs[j]->sin6_port);
-			family = _res._u._ext.nsaddrs[j]->sin6_family;
-		}
-
-		// Convert nameserver information to human-readable form
-		char nsname[INET6_ADDRSTRLEN];
-		inet_ntop(family, addr, nsname, INET6_ADDRSTRLEN);
-
-		log_debug(DEBUG_RESOLVER, " %s %u: %s:%hu (IPv%u)", i < MAXNS ? "   " : "EXT",
-		          i, nsname, port, family == AF_INET ? 4u : 6u);
-	}
-}
-
 // Return if we want to resolve address to names at all
 // (may be disabled due to config settings)
 bool __attribute__((pure)) resolve_names(void)
@@ -143,7 +142,214 @@ bool __attribute__((pure)) resolve_this_name(const char *ipaddr)
 	return true;
 }
 
-char *resolveHostname(const char *addr)
+// Perform a name lookup by sending a packet to ourselves
+static char *__attribute__((malloc)) ngethostbyname(const char *host, const char *ipaddr)
+{
+	uint8_t buf[1024] = { 0 };
+	uint8_t *qname = NULL, *reader = NULL;
+	struct RES_RECORD answers[20] = { 0 }; // buffer for DNS replies
+	struct DNS_HEADER *dns = NULL;
+	struct QUESTION *qinfo = NULL;
+
+	// Set the DNS structure to standard queries
+	dns = (struct DNS_HEADER *)&buf;
+	dns->id = (unsigned short) htons(random()); // random query ID
+	dns->qr = 0; // This is a query
+	dns->opcode = 0; // This is a standard query
+	dns->aa = 0; // Not Authoritative
+	dns->tc = 0; // This message is not truncated
+	dns->rd = 1; // Recursion Desired
+	dns->ra = 0; // Recursion not available!
+	dns->z = 0; // Reserved
+	dns->ad = 0; // This is not an authenticated answer
+	dns->cd = 0; // Checking Disabled
+	dns->rcode = 0; // Response code
+	dns->q_count = htons(1); // 1 question
+	dns->ans_count = 0; // No answers
+	dns->auth_count = 0; // No authority
+	dns->add_count = 0; // No additional
+
+	// Point to the query portion
+	qname = &buf[sizeof(struct DNS_HEADER)];
+
+	// Make a copy of the hostname with two extra bytes for the length and
+	// the final dot, copy the hostname into it and convert to convert to
+	// DNS format
+	const size_t hnamelen = strlen(host) + 2;
+	char *hname = calloc(hnamelen, sizeof(char));
+	if(hname == NULL)
+	{
+		log_err("Unable to allocate memory for hname");
+		return strdup("");
+	}
+	strncpy(hname, host, hnamelen);
+	strncat(hname, ".", hnamelen - strlen(hname));
+	hname[hnamelen - 1] = '\0';
+
+	name_toDNS(qname, sizeof(buf) - sizeof(struct DNS_HEADER), hname, hnamelen);
+	free(hname);
+	qinfo = (void*)&buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1)];
+
+	qinfo->qtype = htons(T_PTR); // Type of the query, A, MX, CNAME, NS etc
+	qinfo->qclass = htons(1); // IN
+
+	// UDP packet for DNS queries
+	const int s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	struct sockaddr_in dest = { 0 };
+	dest.sin_family = AF_INET; // IPv4
+	dest.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
+	dest.sin_port = htons(config.dns.port.v.u16); // Configured DNS port
+
+	const size_t questionlen = sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1) + sizeof(struct QUESTION);
+	if(sendto(s, buf, questionlen, 0, (struct sockaddr*)&dest, sizeof(dest)) < 0)
+	{
+		perror("sendto failed");
+		close(s);
+		return strdup("");
+	}
+
+	// Receive the answer
+	socklen_t addrlen = sizeof(dest);
+	if(recvfrom (s, buf, sizeof(buf), 0, (struct sockaddr*)&dest, &addrlen) < 0)
+	{
+		perror("recvfrom failed");
+		close(s);
+		return strdup("");
+	}
+
+	// Close socket
+	close(s);
+
+	// Parse the reply
+	dns = (struct DNS_HEADER*) buf;
+	// Move ahead of the dns header and the query field
+	reader = &buf[questionlen];
+
+	// Start reading answers
+	uint16_t stop = 0;
+	char *name = NULL;
+	for(uint16_t i = 0; i < ntohs(dns->ans_count); i++)
+	{
+		answers[i].name = name_fromDNS(reader, buf, &stop);
+		reader = reader + stop;
+
+		answers[i].resource = (struct R_DATA*)(reader);
+		reader = reader + sizeof(struct R_DATA);
+
+		// We only care about PTR answers and ignore all others
+		if(ntohs(answers[i].resource->type) != T_PTR)
+			continue;
+
+		// Read the answer and convert from network to host representation
+		answers[i].rdata = name_fromDNS(reader, buf, &stop);
+		reader = reader + stop;
+
+		name = (char *)answers[i].rdata;
+		log_debug(DEBUG_RESOLVER, "Resolving %s (PTR \"%s\"): %u = \"%s\"",
+		          ipaddr, answers[i].name, i, answers[i].rdata);
+
+		// We break out of the loop if this is a valid hostname
+		if(valid_hostname(name, ipaddr))
+		{
+			break;
+		}
+		else
+		{
+			// Discard this answer: free memory and set name to NULL
+			free(name);
+			name = NULL;
+		}
+	}
+
+	if(name != NULL)
+	{
+		// We have a valid hostname, return it
+		// This is allocated memory
+		return name;
+	}
+	else
+	{
+		// No valid hostname found, return empty string
+		return strdup("");
+	}
+}
+
+// Convert hostname from network to host representation
+// 3www6google3com -> www.google.com
+static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count)
+{
+	unsigned char *name = calloc(MAXHOSTNAMELEN, sizeof(char));
+	unsigned int p = 0, jumped = 0, offset = 0;
+
+	*count = 1;
+
+	// Parse DNS label string encoding (e.g, 3www6google3com)
+	while(*reader!=  0)
+	{
+		if(*reader >= 192)
+		{
+			offset = (*reader)*256 + *(reader + 1) - 49152; // 49152 = 11000000 00000000
+			reader = buffer + offset - 1;
+			jumped = 1; // We have jumped to another location so counting won't go up
+		}
+		else
+			name[p++] = *reader;
+		reader = reader + 1;
+
+		if(jumped == 0)
+			*count = *count + 1; // If we haven't jumped to another location then we can count up
+	}
+
+	// Terminate string
+	name[p] = '\0';
+
+	// Number of steps we actually moved forward in the packet
+	if(jumped == 1)
+		*count += 1;
+
+	// now convert 3www6google3com0 to www.google.com
+	unsigned int i = 0;
+	for(; i < strlen((const char*)name); i++)
+	{
+		p=name[i];
+		for(unsigned j = 0; j < p; j++)
+		{
+			name[i]=name[i+1];
+			i=i+1;
+		}
+		name[i]='.';
+	}
+
+	// Strip off the trailing dot
+	name[i-1] = '\0';
+	return name;
+}
+
+// Convert hostname from host to network representation
+// www.google.com -> 3www6google3com
+static void __attribute__((nonnull(1,3))) name_toDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen)
+{
+	unsigned int lock = 0;
+
+	// Iterate over hostname characters
+	for(unsigned int i = 0 ; i < strlen((char*)host); i++)
+	{
+		// If we encounter a dot, write the number of characters since the last dot
+		// and then write the characters themselves
+		if(host[i] == '.')
+		{
+			*dns++ = i - lock;
+			for(;lock < i; lock++)
+				*dns++ = host[lock];
+			lock++;
+		}
+	}
+
+	// Terminate the string at the end
+	*dns++='\0';
+}
+
+char *__attribute__((malloc)) resolveHostname(const char *addr)
 {
 	// Get host name
 	char *hostn = NULL;
@@ -193,6 +399,7 @@ char *resolveHostname(const char *addr)
 
 	// Convert address into binary form
 	struct sockaddr_storage ss = { 0 };
+	char *inaddr = NULL;
 	if(IPv6)
 	{
 		// Get binary form of IPv6 address
@@ -202,6 +409,47 @@ char *resolveHostname(const char *addr)
 			log_warn("Invalid IPv6 address when trying to resolve hostname: %s", addr);
 			return strdup("");
 		}
+
+		// Need extra space for ".ip6.arpa" suffix
+		// The 1.2.3.4... string is 63 + terminating \0 = 64 bytes long
+		inaddr = calloc(64 + 10, sizeof(char));
+		if(inaddr == NULL)
+		{
+			log_err("Unable to allocate memory for reverse lookup");
+			return strdup("");
+		}
+
+		// Convert IPv6 address to reverse lookup format
+		//                       b a 9 8 7 6 5   4       |<--       ::      -->| 0       1 2 3 4
+		// 4321:0::4:567:89ab -> b.a.9.8.7.6.5.0.4.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.1.2.3.4
+		for(int i = 0; i < 32; i++)
+		{
+			// Get current nibble
+			uint8_t nibble = ((uint8_t *)&(((struct sockaddr_in6 *)&ss)->sin6_addr))[i/2];
+
+			// Get lower nibble for even i, upper nibble for odd i
+			if(i % 2 == 0)
+				nibble = nibble >> 4;
+
+			// Mask out upper nibble
+			nibble = nibble & 0x0F;
+
+			// Convert to ASCII
+			char c = '0' + nibble;
+			if(c > '9')
+				c = 'a' + nibble - 10;
+
+			// Prepend to string
+			inaddr[62-2*i] = c;
+
+			// Add dot after (actually: before) every nibble except
+			// the last one
+			if(i != 31)
+				inaddr[62-2*i-1] = '.';
+		}
+
+		// Add suffix
+		strcat(inaddr, ".ip6.arpa");
 	}
 	else
 	{
@@ -212,148 +460,28 @@ char *resolveHostname(const char *addr)
 			log_warn("Invalid IPv4 address when trying to resolve hostname: %s", addr);
 			return strdup("");
 		}
-	}
 
-	// Initialize resolver subroutines if trying to resolve for the first time
-	// res_init() reads resolv.conf to get the default domain name and name server
-	// address(es). If no server is given, the local host is tried. If no domain
-	// is given, that associated with the local host is used.
-	if(!res_initialized)
-	{
-		res_init();
-		res_initialized = true;
-	}
-
-	// INADDR_LOOPBACK is in host byte order, however, in_addr has to be in
-	// network byte order, convert it here if necessary
-	struct in_addr FTLaddr = { htonl(INADDR_LOOPBACK) };
-	in_port_t FTLport = htons(config.dns.port.v.u16);
-
-	// Temporarily set FTL as system resolver
-
-	// Backup configured name servers and invalidate them (IPv4)
-	struct in_addr ns_addr_bck[MAXNS];
-	in_port_t ns_port_bck[MAXNS];
-	int bck_nscount = _res.nscount;
-	for(unsigned int i = 0u; i < NUM_NS4; i++)
-	{
-		ns_addr_bck[i] = _res.nsaddr_list[i].sin_addr;
-		ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
-		_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
-	}
-
-	// Set FTL at 127.0.0.1 as the only resolver
-	_res.nsaddr_list[0].sin_addr.s_addr = FTLaddr.s_addr;
-	// Set resolver port
-	_res.nsaddr_list[0].sin_port = FTLport;
-	// Configure resolver to use only one resolver
-	_res.nscount = 1;
-
-	// Backup configured name server and invalidate them (IPv6)
-	struct in6_addr ns6_addr_bck[MAXNS];
-	in_port_t ns6_port_bck[MAXNS];
-	int bck_nscount6 = _res._u._ext.nscount6;
-	for(unsigned int i = 0u; i < NUM_NS6; i++)
-	{
-		if(_res._u._ext.nsaddrs[i] == NULL)
-			continue;
-		memcpy(&ns6_addr_bck[i], &_res._u._ext.nsaddrs[i]->sin6_addr, sizeof(struct in6_addr));
-		ns6_port_bck[i] = _res._u._ext.nsaddrs[i]->sin6_port;
-		memcpy(&_res._u._ext.nsaddrs[i]->sin6_addr, &in6addr_any, sizeof(struct in6_addr));
-	}
-
-	// Set FTL as the only resolver only when IPv6 is enabled
-	if(bck_nscount6 > 0)
-	{
-		// Set FTL at ::1 as the only resolver
-		memcpy(&_res._u._ext.nsaddrs[0]->sin6_addr, &in6addr_loopback, sizeof(struct in6_addr));
-		// Set resolver port
-		_res._u._ext.nsaddrs[0]->sin6_port = FTLport;
-		// Configure resolver to use only one resolver
-		_res._u._ext.nscount6 = 1;
-	}
-
-	if(config.debug.resolver.v.b)
-		print_used_resolvers("Set nameservers to:");
-
-	// Try to resolve address
-	char host[NI_MAXHOST] = { 0 };
-	int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
-
-	// Check if getnameinfo() returned a host name
-	if(ret == 0)
-	{
-		if(valid_hostname(host, addr))
+		// Need extra space for ".in-addr.arpa" suffix
+		inaddr = calloc(INET_ADDRSTRLEN + 14, sizeof(char));
+		if(inaddr == NULL)
 		{
-			// Return hostname copied to new memory location
-			hostn = strdup(host);
-		}
-		else
-		{
-			hostn = strdup("[invalid host name]");
+			log_err("Unable to allocate memory for reverse lookup");
+			return strdup("");
 		}
 
-		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found internally)", hostn);
-	}
-	else
-		log_debug(DEBUG_RESOLVER, " ---> \"\" (not found internally: %s", gai_strerror(ret));
-
-	// Restore IPv4 resolvers
-	for(unsigned int i = 0u; i < NUM_NS4; i++)
-	{
-		_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
-		_res.nsaddr_list[i].sin_port = ns_port_bck[i];
-	}
-	_res.nscount = bck_nscount;
-
-	// Restore IPv6 resolvers
-	for(unsigned int i = 0u; i < NUM_NS6; i++)
-	{
-		if(_res._u._ext.nsaddrs[i] == NULL)
-			continue;
-		memcpy(&_res._u._ext.nsaddrs[i]->sin6_addr, &ns6_addr_bck[i], sizeof(struct in6_addr));
-		_res._u._ext.nsaddrs[i]->sin6_port = ns6_port_bck[i];
-	}
-	_res._u._ext.nscount6 = bck_nscount6;
-
-	if(config.debug.resolver.v.b)
-		print_used_resolvers("Restored nameservers to:");
-
-	// If no host name was found before, try again with system-configured
-	// resolvers (necessary for docker and friends)
-	if(hostn == NULL)
-	{
-		// Try to resolve address
-		ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
-
-		// Check if getnameinfo() returned a host name this time
-		// First check for he not being NULL before trying to dereference it
-		if(ret == 0)
-		{
-			if(valid_hostname(host, addr))
-			{
-				// Return hostname copied to new memory location
-				hostn = strdup(host);
-			}
-			else
-			{
-				hostn = strdup("[invalid host name]");
-			}
-
-			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found externally)", hostn);
-		}
-		else
-		{
-			// No hostname found (empty PTR)
-			hostn = strdup("");
-
-			if(config.debug.resolver.v.b)
-			log_debug(DEBUG_RESOLVER, " ---> \"\" (not found externally: %s)", gai_strerror(ret));
-		}
+		// Convert IPv4 address to reverse lookup format
+		// 12.34.56.78 -> 78.56.34.12.in-addr.arpa
+		snprintf(inaddr, INET_ADDRSTRLEN + 14, "%d.%d.%d.%d.in-addr.arpa",
+		        (int)((uint8_t *)&(((struct sockaddr_in *)&ss)->sin_addr))[3],
+		        (int)((uint8_t *)&(((struct sockaddr_in *)&ss)->sin_addr))[2],
+		        (int)((uint8_t *)&(((struct sockaddr_in *)&ss)->sin_addr))[1],
+		        (int)((uint8_t *)&(((struct sockaddr_in *)&ss)->sin_addr))[0]);
 	}
 
-	// Return result
-	return hostn;
+	// Get host name by making a reverse lookup to ourselves (server at 127.0.0.1 with port 53)
+	// We implement a minimalistic resolver here as we cannot rely on the system resolver using whatever
+	// nameserver we configured in /etc/resolv.conf
+	return ngethostbyname(inaddr, addr);
 }
 
 // Resolve upstream destination host names
