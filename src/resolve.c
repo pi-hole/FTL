@@ -287,27 +287,60 @@ static char *__attribute__((malloc)) ngethostbyname(const char *host, const char
 }
 
 // Convert hostname from network to host representation
+// This routine supports DNS compression pointers
 // 3www6google3com -> www.google.com
 static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count)
 {
 	unsigned char *name = calloc(MAXHOSTNAMELEN, sizeof(char));
-	unsigned int p = 0, jumped = 0, offset;
+	unsigned int p = 0, jumped = 0;
 
 	// Initialize count
 	*count = 1;
 
 	// Parse DNS label string encoding (e.g, 3www6google3com)
-	while(*reader!=  0)
+	//
+	// In its text format, a domain name is a sequence of dot-separated
+	// "labels". The dot separators are not used in binary DNS messages.
+	// Instead, each label is preceded by a byte containing its length, and
+	// the name is terminated by a zero-length label representing the root
+	// zone.
+	while(*reader != 0)
 	{
-		// Check for too long host names
-		if(*reader >= 192)
+		if(*reader >= 0xC0)
 		{
-			offset = (*reader)*256 + *(reader + 1) - 49152; // 49152 = 11000000 00000000
+			// RFC 1035, Section 4.1.4: Message compression
+			//
+			// A label can be up to 63 bytes long; if the length
+			// byte is 64 (0x40) or greater, it has a special
+			// meaning. Values between 0x40 and 0xBF have no purpose
+			// except to cause painful memories for those involved
+			// in DNS extensions in the late 1990s.
+			//
+			// However, if the length byte is 0xC0 or greater, the
+			// length byte and the next byte form a "compression
+			// pointer". A DNS name compression pointer allows DNS
+			// messages to reuse parent domains. The lower 14 bits
+			// are an offset into the DNS message where the
+			// remaining suffix of the name previously occurred.
+			//
+			//  +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+			//  | 1  1|                OFFSET                   |
+			//  +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+			//
+			// The first two bits are ones.  This allows a pointer
+			// to be distinguished from a label, since the label
+			// must begin with two zero bits because labels are
+			// restricted to 63 octets or less. See the referenced
+			// RFC for more details.
+			const unsigned int offset = ((*reader - 0xC0) << 8) + *(reader + 1);
 			reader = buffer + offset - 1;
 			jumped = 1; // We have jumped to another location so counting won't go up
 		}
 		else
+			// Copy character to name
 			name[p++] = *reader;
+
+		// Increment read pointer
 		reader = reader + 1;
 
 		if(jumped == 0)
@@ -321,17 +354,17 @@ static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fro
 	if(jumped == 1)
 		*count += 1;
 
-	// now convert 3www6google3com0 to www.google.com
+	// Now convert 3www6google3com0 to www.google.com
 	unsigned int i = 0;
 	for(; i < strlen((const char*)name); i++)
 	{
-		p=name[i];
+		p = name[i];
 		for(unsigned j = 0; j < p; j++)
 		{
-			name[i]=name[i+1];
-			i=i+1;
+			name[i] = name[i + 1];
+			i = i + 1;
 		}
-		name[i]='.';
+		name[i] = '.';
 	}
 
 	// Strip off the trailing dot
@@ -341,6 +374,8 @@ static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fro
 
 // Convert hostname from host to network representation
 // www.google.com -> 3www6google3com
+// We do not use DNS compression pointers here as we do not know if the DNS
+// server we are talking to supports them
 static void __attribute__((nonnull(1,3))) name_toDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen)
 {
 	unsigned int lock = 0;
