@@ -31,10 +31,18 @@
 #include "events.h"
 // resolve_regex_cnames()
 #include "regex_r.h"
+// statis_assert()
+#include <assert.h>
 
 // Function Prototypes
 static void name_toDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen) __attribute__((nonnull(1,3)));
 static unsigned char *name_fromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count) __attribute__((malloc)) __attribute__((nonnull(1,2,3)));
+
+// Avoid "error: packed attribute causes inefficient alignment for ..." on ARM32
+// builds due to the use of __attribute__((packed)) in the following structs
+// Their correct size is ensured for each by static_assert() below
+_Pragma("GCC diagnostic push")
+_Pragma("GCC diagnostic ignored \"-Wattributes\"")
 
 // DNS header structure
 struct DNS_HEADER
@@ -58,6 +66,7 @@ struct DNS_HEADER
 	uint16_t auth_count; // number of authority entries
 	uint16_t add_count; // number of resource entries
 } __attribute__((packed));
+static_assert(sizeof(struct DNS_HEADER) == 12);
 
 // Constant sized fields of query structure
 struct QUESTION
@@ -65,15 +74,18 @@ struct QUESTION
 	uint16_t qtype;
 	uint16_t qclass;
 };
+static_assert(sizeof(struct QUESTION) == 4);
 
 // Constant sized fields of the resource record structure
 struct R_DATA
 {
 	uint16_t type;
 	uint16_t class;
-	uint32_t ttl; // RFC 1035 defines it as positive values of a signed 32bit number
+	uint32_t ttl; // RFC 1035 defines the TTL field as "positive values of a signed 32bit number"
 	uint16_t data_len;
 } __attribute__((packed));
+static_assert(sizeof(struct R_DATA) == 10);
+_Pragma("GCC diagnostic pop")
 
 // Pointers to resource record contents
 struct RES_RECORD
@@ -279,13 +291,15 @@ static char *__attribute__((malloc)) ngethostbyname(const char *host, const char
 static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count)
 {
 	unsigned char *name = calloc(MAXHOSTNAMELEN, sizeof(char));
-	unsigned int p = 0, jumped = 0, offset = 0;
+	unsigned int p = 0, jumped = 0, offset;
 
+	// Initialize count
 	*count = 1;
 
 	// Parse DNS label string encoding (e.g, 3www6google3com)
 	while(*reader!=  0)
 	{
+		// Check for too long host names
 		if(*reader >= 192)
 		{
 			offset = (*reader)*256 + *(reader + 1) - 49152; // 49152 = 11000000 00000000
