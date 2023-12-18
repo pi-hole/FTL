@@ -51,6 +51,7 @@ int api_history(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
+#define DEFAULT_MAX_CLIENTS 20
 int api_history_clients(struct ftl_conn *api)
 {
 	// Exit before processing any data if requested via config setting
@@ -66,13 +67,32 @@ int api_history_clients(struct ftl_conn *api)
 		JSON_SEND_OBJECT_UNLOCK(json);
 	}
 
+	// Get number of clients to return´
+	unsigned int Nc = min(counters->clients, DEFAULT_MAX_CLIENTS);
+	if(api->request->query_string != NULL)
+	{
+		// Does the user request a non-default number of clients
+		get_uint_var(api->request->query_string, "N", &Nc);
+	}
+
+	// Lock shared memory
 	lock_shm();
 
 	// Get clients which the user doesn't want to see
 	// if skipclient[i] == true then this client should be hidden from
 	// returned data. We initialize it with false
 	bool *skipclient = calloc(counters->clients, sizeof(bool));
+	int *temparray = calloc(2*counters->clients, sizeof(int));
+	if(skipclient == NULL || temparray == NULL)
+	{
+		unlock_shm();
+		return send_json_error(api, 500, "internal_error",
+		                       "Failed to allocate memory for client history", NULL);
+	}
 
+	// Check if the user wants to exclude any clients, this code path is
+	// only taken if the user has configured the web interface to exclude
+	// clients (it will most often be skipped)
 	unsigned int excludeClients = cJSON_GetArraySize(config.webserver.api.excludeClients.v.json);
 	if(excludeClients > 0)
 	{
@@ -93,16 +113,36 @@ int api_history_clients(struct ftl_conn *api)
 		}
 	}
 
-	// Also skip clients included in others (in alias-clients)
+	// Skip clients included in others (in alias-clients)
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
 		if(client == NULL)
 			continue;
+
+		// Check if this client should be skipped
 		if(!client->flags.aliasclient && client->aliasclient_id > -1)
 			skipclient[clientID] = true;
 	}
+
+	// Get MAX_CLIENTS clients with the highest number of queries
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		// Get client pointer
+		const clientsData* client = getClient(clientID, true);
+
+		// Skip invalid clients and also those managed by alias clients
+		if(client == NULL || skipclient[clientID])
+			continue;
+
+		// Store clientID and number of queries in temporary array
+		temparray[2*clientID + 0] = clientID;
+		temparray[2*clientID + 1] = client->count;
+	}
+
+	// Sort temporary array
+	qsort(temparray, counters->clients, sizeof(int[2]), cmpdesc);
 
 	// Main return loop
 	cJSON *history = JSON_NEW_ARRAY();
@@ -113,21 +153,17 @@ int api_history_clients(struct ftl_conn *api)
 
 		// Loop over clients to generate output to be sent to the client
 		cJSON *data = JSON_NEW_ARRAY();
-		for(int clientID = 0; clientID < counters->clients; clientID++)
+		for(unsigned int id = 0; id < Nc; id++)
 		{
-			if(skipclient[clientID])
-				continue;
-
 			// Get client pointer
+			const int clientID = temparray[2*id + 0];
 			const clientsData* client = getClient(clientID, true);
 
-			// Skip invalid clients and also those managed by alias clients
-			if(client == NULL || client->aliasclient_id >= 0)
+			// Skip invalid (recycled) clients
+			if(client == NULL)
 				continue;
 
-			const int thisclient = client->overTime[slot];
-
-			JSON_ADD_NUMBER_TO_ARRAY(data, thisclient);
+			JSON_ADD_NUMBER_TO_ARRAY(data, client->overTime[slot]);
 		}
 		JSON_ADD_ITEM_TO_OBJECT(item, "data", data);
 		JSON_ADD_ITEM_TO_ARRAY(history, item);
@@ -137,22 +173,25 @@ int api_history_clients(struct ftl_conn *api)
 
 	// Loop over clients to generate output to be sent to the client
 	cJSON *clients = JSON_NEW_ARRAY();
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int id = 0; id < Nc; id++)
 	{
-		if(skipclient[clientID])
-			continue;
-
 		// Get client pointer
+		const int clientID = temparray[2*id + 0];
 		const clientsData* client = getClient(clientID, true);
+
+		// Skip invalid (recycled) clients
 		if(client == NULL)
 			continue;
 
+		// Get client name and IP address
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = client->namepos != 0 ? getstr(client->namepos) : NULL;
 
+		// Create JSON object for this client
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_REF_STR_IN_OBJECT(item, "name", client_name);
 		JSON_REF_STR_IN_OBJECT(item, "ip", client_ip);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "total", client->count);
 		JSON_ADD_ITEM_TO_ARRAY(clients, item);
 	}
 
@@ -164,6 +203,7 @@ int api_history_clients(struct ftl_conn *api)
 
 	// Free memory
 	free(skipclient);
+	free(temparray);
 
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
 	JSON_SEND_OBJECT(json);

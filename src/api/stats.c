@@ -42,7 +42,7 @@ static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 } */
 
 // qsort subroutine, sort DESC
-static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
+int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 {
 	const int *elem1 = (int*)a;
 	const int *elem2 = (int*)b;
@@ -139,7 +139,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 {
 	int count = 10;
 	const int domains = counters->domains;
-	int *temparray = calloc(2*domains, sizeof(int*));
+	int *temparray = calloc(2*domains, sizeof(int));
 	if(temparray == NULL)
 	{
 		log_err("Memory allocation failed in %s()", __FUNCTION__);
@@ -282,7 +282,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 {
 	int count = 10;
 	const int clients = counters->clients;
-	int *temparray = calloc(2*clients, sizeof(int*));
+	int *temparray = calloc(2*clients, sizeof(int));
 	if(temparray == NULL)
 	{
 		log_err("Memory allocation failed in api_stats_top_clients()");

@@ -63,6 +63,8 @@ components:
         operationId: "get_client_metrics"
         description: |
           Request data needed to generate the \"Client activity over last 24 hours\" graph
+        parameters:
+          - $ref: 'history.yaml#/components/parameters/clients/N'
         responses:
           '200':
             description: OK
@@ -180,10 +182,26 @@ components:
               ip:
                 type: string
                 description: Client IP address
+              total:
+                type: integer
+                description: Total number of queries
           example:
             - name: localhost
               ip: "127.0.0.1"
+              total: 13428
             - name: ip6-localnet
               ip: "::1"
+              total: 2100
             - name: null
               ip: "192.168.1.1"
+              total: 254
+  parameters:
+    clients:
+      N:
+        in: query
+        description: Maximum number of clients to return
+        name: N
+        schema:
+          type: integer
+        required: false
+        example: 20
