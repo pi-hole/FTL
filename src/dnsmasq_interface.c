@@ -2935,10 +2935,16 @@ static char *get_ptrname(struct in_addr *addr)
 				suffix = get_domain(*addr);
 			else
 				suffix = daemon->domain_suffix;
+
+			// If local suffix is not available, we try to obtain the domain from
+			// the kernel similar to how we do it for the hostname
+			if(!suffix)
+				suffix = (char*)domainname();
+
 			// If local suffix is not available, we substitute "no_fqdn_available"
 			// see the comment about PIHOLE_PTR=HOSTNAMEFQDN in the Pi-hole docs
 			// for further details on why this was chosen
-			if(!suffix)
+			if(!suffix || suffix[0] == '\0')
 				suffix = (char*)"no_fqdn_available";
 
 			// Get enough space for domain building

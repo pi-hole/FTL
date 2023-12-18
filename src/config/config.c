@@ -429,8 +429,8 @@ void initConfig(struct config *conf)
 		struct enum_options piholePTR[] =
 		{
 			{ get_ptr_type_str(PTR_NONE), "Pi-hole will not respond automatically on PTR requests to local interface addresses. Ensure pi.hole and/or hostname records exist elsewhere." },
-			{ get_ptr_type_str(PTR_HOSTNAME), "Pi-hole will not respond automatically on PTR requests to local interface addresses. Ensure pi.hole and/or hostname records exist elsewhere." },
-			{ get_ptr_type_str(PTR_HOSTNAMEFQDN), "Serve the machine's global hostname as fully qualified domain by adding the local suffix. If no local suffix has been defined, FTL appends the local domain .no_fqdn_available. In this case you should either add domain=whatever.com to a custom config file inside /etc/dnsmasq.d/ (to set whatever.com as local domain) or use domain=# which will try to derive the local domain from /etc/resolv.conf (or whatever is set with resolv-file, when multiple search directives exist, the first one is used)." },
+			{ get_ptr_type_str(PTR_HOSTNAME), "Serve the machine's hostname. The hostname is queried from the kernel through uname(2)->nodename. If the machine has multiple network interfaces, it can also have multiple nodenames. In this case, it is unspecified and up to the kernel which one will be returned. On Linux, the returned string is what has been set using sethostname(2) which is typically what has been set in /etc/hostname." },
+			{ get_ptr_type_str(PTR_HOSTNAMEFQDN), "Serve the machine's hostname (see limitations above) as fully qualified domain by adding the local domain. If no local domain has been defined (config option dns.domain), FTL tries to query the domain name from the kernel using getdomainname(2). If this fails, FTL appends \".no_fqdn_available\" to the hostname." },
 			{ get_ptr_type_str(PTR_PIHOLE), "Respond with \"pi.hole\"." }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->dns.piholePTR.a, piholePTR);

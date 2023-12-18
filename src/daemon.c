@@ -178,18 +178,37 @@ char *getUserName(void)
 //     hyphen.
 #define HOSTNAMESIZE 256
 static char nodename[HOSTNAMESIZE] = { 0 };
+static char dname[HOSTNAMESIZE] = { 0 };
+
+// Returns the hostname of the system
 const char *hostname(void)
 {
 	// Ask kernel for node name if not known
 	// This is equivalent to "uname -n"
+	//
+	// According to man gethostname(2), this is exactly the same as calling
+	// getdomainname() just with one step less
 	if(nodename[0] == '\0')
 	{
 		struct utsname buf;
 		if(uname(&buf) == 0)
+		{
 			strncpy(nodename, buf.nodename, HOSTNAMESIZE);
-		nodename[HOSTNAMESIZE-1] = '\0';
+			strncpy(dname, buf.domainname, HOSTNAMESIZE);
+		}
+		nodename[HOSTNAMESIZE - 1] = '\0';
+		dname[HOSTNAMESIZE - 1] = '\0';
 	}
 	return nodename;
+}
+
+// Returns the domain name of the system
+const char *domainname(void)
+{
+	if(dname[0] == '\0')
+		hostname();
+
+	return dname;
 }
 
 void delay_startup(void)
