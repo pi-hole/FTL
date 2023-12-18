@@ -199,7 +199,7 @@ components:
     clients:
       N:
         in: query
-        description: Maximum number of clients to return
+        description: Maximum number of clients to return, setting this to 0 will return all clients
         name: N
         schema:
           type: integer

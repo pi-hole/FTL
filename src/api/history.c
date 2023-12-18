@@ -73,6 +73,12 @@ int api_history_clients(struct ftl_conn *api)
 	{
 		// Does the user request a non-default number of clients
 		get_uint_var(api->request->query_string, "N", &Nc);
+
+		// Limit the number of clients to return to the number of
+		// clients to avoid possible overflows for very large N
+		// Also allow N=0 to return all clients
+		if((int)Nc > counters->clients || Nc == 0)
+			Nc = counters->clients;
 	}
 
 	// Lock shared memory
