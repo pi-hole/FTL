@@ -138,8 +138,8 @@ int api_history_clients(struct ftl_conn *api)
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
 
-		// Skip invalid clients and also those managed by alias clients
-		if(client == NULL || skipclient[clientID])
+		// Skip invalid clients
+		if(client == NULL)
 			continue;
 
 		// Store clientID and number of queries in temporary array
@@ -152,6 +152,7 @@ int api_history_clients(struct ftl_conn *api)
 
 	// Main return loop
 	cJSON *history = JSON_NEW_ARRAY();
+	int others_total = 0;
 	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
@@ -159,7 +160,8 @@ int api_history_clients(struct ftl_conn *api)
 
 		// Loop over clients to generate output to be sent to the client
 		cJSON *data = JSON_NEW_ARRAY();
-		for(unsigned int id = 0; id < Nc; id++)
+		int others = 0;
+		for(int id = 0; id < counters->clients; id++)
 		{
 			// Get client pointer
 			const int clientID = temparray[2*id + 0];
@@ -169,8 +171,20 @@ int api_history_clients(struct ftl_conn *api)
 			if(client == NULL)
 				continue;
 
+			// Skip clients which should be hidden and add them to the "others" counter.
+			// Also skip clients when we reached the maximum number of clients to return
+			if(skipclient[clientID] || id >= (int)Nc)
+			{
+				others += client->overTime[slot];
+				continue;
+			}
+
 			JSON_ADD_NUMBER_TO_ARRAY(data, client->overTime[slot]);
 		}
+		// Add others as last element in the array
+		others_total += others;
+		JSON_ADD_NUMBER_TO_ARRAY(data, others);
+
 		JSON_ADD_ITEM_TO_OBJECT(item, "data", data);
 		JSON_ADD_ITEM_TO_ARRAY(history, item);
 	}
@@ -179,7 +193,7 @@ int api_history_clients(struct ftl_conn *api)
 
 	// Loop over clients to generate output to be sent to the client
 	cJSON *clients = JSON_NEW_ARRAY();
-	for(unsigned int id = 0; id < Nc; id++)
+	for(int id = 0; id < counters->clients; id++)
 	{
 		// Get client pointer
 		const int clientID = temparray[2*id + 0];
@@ -187,6 +201,11 @@ int api_history_clients(struct ftl_conn *api)
 
 		// Skip invalid (recycled) clients
 		if(client == NULL)
+			continue;
+
+		// Skip clients which should be hidden. Also skip clients when
+		// we reached the maximum number of clients to return
+		if(skipclient[clientID] || id >= (int)Nc)
 			continue;
 
 		// Get client name and IP address
@@ -200,6 +219,13 @@ int api_history_clients(struct ftl_conn *api)
 		JSON_ADD_NUMBER_TO_OBJECT(item, "total", client->count);
 		JSON_ADD_ITEM_TO_ARRAY(clients, item);
 	}
+
+	// Add "others" client
+	cJSON *item = JSON_NEW_OBJECT();
+	JSON_REF_STR_IN_OBJECT(item, "name", "other clients");
+	JSON_REF_STR_IN_OBJECT(item, "ip", "0.0.0.0");
+	JSON_ADD_NUMBER_TO_OBJECT(item, "total", others_total);
+	JSON_ADD_ITEM_TO_ARRAY(clients, item);
 
 	// Unlock already here to avoid keeping the lock during JSON generation
 	// This is safe because we don't access any shared memory after this
