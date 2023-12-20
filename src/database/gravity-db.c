@@ -1792,8 +1792,9 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	return okay;
 }
 
-bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, const char **message)
+bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message)
 {
+	// Return early if database is not available
 	if(gravity_db == NULL)
 	{
 		*message = "Database not available";
@@ -2004,6 +2005,9 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 
 			break;
 		}
+
+		// Add number of deleted rows
+		*deleted += sqlite3_changes(gravity_db);
 	}
 
 	// Drop temporary table

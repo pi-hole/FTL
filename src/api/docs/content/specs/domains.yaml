@@ -128,6 +128,8 @@ components:
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Item not found
           '400':
             description: Bad request
             content:

@@ -118,21 +118,23 @@ components:
           - Authentication
         operationId: "delete_groups"
         description: |
-          A logout attempt without a valid session will result in a `401 Unauthorized` error.
+          This endpoint can be used to delete the current session. It will
+          invalidate the session token and the CSRF token. The session can be
+          extended before its expiration by performing any authenticated action.
+          By default, the session lasts for 5 minutes. It can be invalidated by
+          either logging out or deleting the session. Additionally, the session
+          becomes invalid when the password is altered or a new application
+          password is created.
 
-          A session that was not created due to a login cannot be deleted (e.g., empty API password).
+          You can also delete a session by its ID using the `DELETE /auth/session/{id}` endpoint.
+
+          Note that you cannot delete the current session if you have not
+          authenticated (e.g., no password has been set on your Pi-hole).
         responses:
-          '200':
-            description: OK (session not deletable)
-            content:
-              application/json:
-                schema:
-                  allOf:
-                    - $ref: 'auth.yaml#/components/schemas/session'
-                    - $ref: 'common.yaml#/components/schemas/took'
-                examples:
-                  no_login_required:
-                    $ref: 'auth.yaml#/components/examples/no_login_required'
+          '204':
+            description: No Content (deleted)
+          '404':
+            description: Not Found (no session active)
           '401':
             description: Unauthorized
             content:
@@ -141,17 +143,6 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
-          '410':
-            description: Gone
-            content:
-              application/json:
-                schema:
-                  allOf:
-                    - $ref: 'auth.yaml#/components/schemas/session'
-                    - $ref: 'common.yaml#/components/schemas/took'
-                examples:
-                  login_failed:
-                    $ref: 'auth.yaml#/components/examples/login_failed'
     session_list:
       get:
         summary: List of all current sessions
@@ -213,6 +204,8 @@ components:
         responses:
           '204':
             description: No Content (deleted)
+          '404':
+            description: Not Found (session not found)
           '400':
             description: Bad Request
             content:
