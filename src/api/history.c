@@ -51,7 +51,7 @@ int api_history(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-#define DEFAULT_MAX_CLIENTS 20
+#define DEFAULT_MAX_CLIENTS 10
 int api_history_clients(struct ftl_conn *api)
 {
 	// Exit before processing any data if requested via config setting
