@@ -51,10 +51,8 @@ static void recycle(void)
 {
 	bool *client_used = calloc(counters->clients, sizeof(bool));
 	bool *domain_used = calloc(counters->domains, sizeof(bool));
-	bool *upstreams_used = calloc(counters->upstreams, sizeof(bool));
 	bool *cache_used = calloc(counters->dns_cache_size, sizeof(bool));
-	if(client_used == NULL || domain_used == NULL ||
-	   upstreams_used == NULL || cache_used == NULL)
+	if(client_used == NULL || domain_used == NULL || cache_used == NULL)
 	{
 		log_err("Cannot allocate memory for recycling");
 		return;
@@ -71,10 +69,6 @@ static void recycle(void)
 		// Mark client and domain as used
 		client_used[query->clientID] = true;
 		domain_used[query->domainID] = true;
-
-		// Mark upstream as used (if any)
-		if(query->upstreamID > -1)
-			upstreams_used[query->upstreamID] = true;
 
 		// Mark CNAME domain as used (if any)
 		if(query->CNAME_domainID > -1)
@@ -152,7 +146,6 @@ static void recycle(void)
 	// Free memory
 	free(client_used);
 	free(domain_used);
-	free(upstreams_used);
 	free(cache_used);
 
 	// Scan number of recycled clients and domains if in debug mode
