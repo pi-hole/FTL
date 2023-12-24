@@ -384,17 +384,17 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 		// Update reply counters
 		counters->reply[query->reply]--;
-		log_debug(DEBUG_GC, "reply type %d removed (GC), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
+		log_debug(DEBUG_STATUS, "reply type %d removed (GC), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
 
 		// Update type counters
 		counters->querytype[query->type]--;
-		log_debug(DEBUG_GC, "query type %d removed (GC), ID = %d, new count = %d", query->type, query->id, counters->querytype[query->type]);
+		log_debug(DEBUG_STATUS, "query type %d removed (GC), ID = %d, new count = %d", query->type, query->id, counters->querytype[query->type]);
 
 		// Subtract UNKNOWN from the counters before
 		// setting the status if different.
 		// Minus one here and plus one below = net zero
 		counters->status[QUERY_UNKNOWN]--;
-		log_debug(DEBUG_GC, "status %d removed (GC), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
+		log_debug(DEBUG_STATUS, "status %d removed (GC), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
 
 		// Set query again to UNKNOWN to reset the counters
 		query_set_status(query, QUERY_UNKNOWN);

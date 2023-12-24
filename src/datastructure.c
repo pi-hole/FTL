@@ -1032,10 +1032,10 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	if(!init)
 	{
 		counters->status[old_status]--;
-		log_debug(DEBUG_GC, "status %d removed (!init), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
+		log_debug(DEBUG_STATUS, "status %d removed (!init), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
 	}
 	counters->status[new_status]++;
-	log_debug(DEBUG_GC, "status %d set, ID = %d, new count = %d", new_status, query->id, counters->status[new_status]);
+	log_debug(DEBUG_STATUS, "status %d set, ID = %d, new count = %d", new_status, query->id, counters->status[new_status]);
 
 	// ... update overTime counters, ...
 	const int timeidx = getOverTimeID(query->timestamp);
