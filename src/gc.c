@@ -77,11 +77,11 @@ static void recycle(void)
 			upstreams_used[query->upstreamID] = true;
 
 		// Mark CNAME domain as used (if any)
-		if(query->CNAME_domainID >= 0)
+		if(query->CNAME_domainID > -1)
 			domain_used[query->CNAME_domainID] = true;
 
 		// Mark cache entry as used (if any)
-		if(query->cacheID >= 0)
+		if(query->cacheID > -1)
 			cache_used[query->cacheID] = true;
 	}
 

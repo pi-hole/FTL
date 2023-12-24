@@ -426,6 +426,9 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 		return -1;
 	}
 
+	log_debug(DEBUG_GC, "New cache entry: domainID %d, clientID %d, query_type %d (ID %d)",
+	          domainID, clientID, query_type, cacheID);
+
 	// Initialize cache entry
 	dns_cache->magic = MAGICBYTE;
 	dns_cache->blocking_status = UNKNOWN_BLOCKED;
@@ -554,7 +557,15 @@ void FTL_reset_per_client_domain_data(void)
 	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
 
 	// Set entire DNS cache to zero
-	memset(getDNSCache(0, false), 0, sizeof(DNSCacheData) * counters->dns_cache_size);
+	DNSCacheData *first_cache = getDNSCache(0, false);
+	if(first_cache == NULL)
+	{
+		log_err("Encountered serious memory error in FTL_reset_per_client_domain_data()");
+		return;
+	}
+
+	// else: Set entire DNS cache to zero
+	memset(first_cache, 0, sizeof(DNSCacheData) * counters->dns_cache_size);
 }
 
 // Reloads all domainlists and performs a few extra tasks such as cleaning the
