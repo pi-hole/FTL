@@ -52,7 +52,9 @@ static void recycle(void)
 	bool *client_used = calloc(counters->clients, sizeof(bool));
 	bool *domain_used = calloc(counters->domains, sizeof(bool));
 	bool *upstreams_used = calloc(counters->upstreams, sizeof(bool));
-	if(client_used == NULL || domain_used == NULL || upstreams_used == NULL)
+	bool *cache_used = calloc(counters->dns_cache_size, sizeof(bool));
+	if(client_used == NULL || domain_used == NULL ||
+	   upstreams_used == NULL || cache_used == NULL)
 	{
 		log_err("Cannot allocate memory for recycling");
 		return;
@@ -77,6 +79,10 @@ static void recycle(void)
 		// Mark CNAME domain as used (if any)
 		if(query->CNAME_domainID >= 0)
 			domain_used[query->CNAME_domainID] = true;
+
+		// Mark cache entry as used (if any)
+		if(query->cacheID >= 0)
+			cache_used[query->cacheID] = true;
 	}
 
 	// Recycle clients
@@ -128,12 +134,11 @@ static void recycle(void)
 	unsigned int cache_recycled = 0;
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
-		DNSCacheData *cache = getDNSCache(cacheID, true);
-		if(cache == NULL)
+		if(cache_used[cacheID])
 			continue;
 
-		// Skip cache entries that are still in use
-		if(cache->magic != 0x00)
+		DNSCacheData *cache = getDNSCache(cacheID, true);
+		if(cache == NULL)
 			continue;
 
 		log_debug(DEBUG_GC, "Recycling cache entry with ID %d", cacheID);
@@ -148,6 +153,7 @@ static void recycle(void)
 	free(client_used);
 	free(domain_used);
 	free(upstreams_used);
+	free(cache_used);
 
 	// Scan number of recycled clients and domains if in debug mode
 	if(config.debug.gc.v.b)

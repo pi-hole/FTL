@@ -783,6 +783,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Query extended DNS error
 	query->ede = EDE_UNSET;
 
+	// Initialize cache ID, may be reusing an existing one if this
+	// (domain,client,type) tuple was already seen before
+	query->cacheID = findCacheID(domainID, clientID, querytype, true);
+
 	// This query is new and not yet known to the database
 	query->db = -1;
 
@@ -1295,8 +1299,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	}
 
 	// Get cache pointer
-	unsigned int cacheID = findCacheID(domainID, clientID, query->type, true);
-	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+	DNSCacheData *dns_cache = getDNSCache(query->cacheID, true);
 	if(dns_cache == NULL)
 	{
 		log_err("No memory available, skipping query analysis");
@@ -1588,7 +1591,7 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 		else if(query->status == QUERY_REGEX)
 		{
 			// Get parent and child DNS cache entries
-			const int parent_cacheID = findCacheID(parent_domainID, clientID, query->type, false);
+			const int parent_cacheID = query->cacheID;
 			const int child_cacheID = findCacheID(child_domainID, clientID, query->type, false);
 
 			// Get cache pointers

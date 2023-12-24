@@ -369,7 +369,7 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		}
 }
 
-static int get_next_cacheID(void)
+static int get_next_free_cacheID(void)
 {
 	// Compare content of cache against known cache IP addresses
 	for(int cacheID=0; cacheID < counters->dns_cache_size; cacheID++)
@@ -415,7 +415,7 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 		return -1;
 
 	// Get ID of new cache entry
-	const int cacheID = get_next_cacheID();
+	const int cacheID = get_next_free_cacheID();
 
 	// Get client pointer
 	DNSCacheData* dns_cache = _getDNSCache(cacheID, false, line, func, file);
@@ -553,15 +553,8 @@ void FTL_reset_per_client_domain_data(void)
 {
 	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
 
-	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
-	{
-		// Reset all blocking yes/no fields for all domains and clients
-		// This forces a reprocessing of all available filters for any
-		// given domain and client the next time they are seen
-		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-		if(dns_cache != NULL)
-			dns_cache->blocking_status = UNKNOWN_BLOCKED;
-	}
+	// Set entire DNS cache to zero
+	memset(getDNSCache(0, false), 0, sizeof(DNSCacheData) * counters->dns_cache_size);
 }
 
 // Reloads all domainlists and performs a few extra tasks such as cleaning the
