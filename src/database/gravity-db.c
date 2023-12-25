@@ -857,7 +857,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 
 	// Prepare gravity statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
-	querystr = get_client_querystr("vw_gravity", "domain", getstr(client->groupspos));
+	querystr = get_client_querystr("vw_gravity", "adlist_id", getstr(client->groupspos));
 	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -870,7 +870,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 
 	// Prepare antigravity statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_antigravity statement for client %s", clientip);
-	querystr = get_client_querystr("vw_antigravity", "domain", getstr(client->groupspos));
+	querystr = get_client_querystr("vw_antigravity", "adlist_id", getstr(client->groupspos));
 	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{

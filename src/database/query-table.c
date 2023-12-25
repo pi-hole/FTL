@@ -1508,7 +1508,7 @@ bool queries_to_database(void)
 				break;
 			}
 		}
-		else if(cache != NULL && cache->list_id > -1)
+		else if(cache != NULL && cache->list_id != -1)
 		{
 			// Restore regex ID if applicable
 			sqlite3_bind_int(query_stmt, 9, ADDINFO_LIST_ID);
@@ -1548,7 +1548,7 @@ bool queries_to_database(void)
 		sqlite3_bind_int(query_stmt, 13, query->dnssec);
 
 		// LIST_ID
-		if(cache != NULL && cache->list_id > -1)
+		if(cache != NULL && cache->list_id != -1)
 			sqlite3_bind_int(query_stmt, 14, cache->list_id);
 		else
 			// Not applicable, setting NULL

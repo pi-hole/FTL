@@ -1146,7 +1146,12 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		log_debug(DEBUG_QUERIES, "Allowing query due to antigravity match (list ID %i)", list_id);
 
 		// Store ID of the matching antigravity list
-		dns_cache->list_id = list_id;
+		// positive values (incl. 0) are used for domainlists
+		// -1 means "not set"
+		// -2 is gravity list 0
+		// -3 is gravity list 1
+		// ...
+		dns_cache->list_id = -1 * (list_id + 2);
 
 		return false;
 	}
@@ -1165,7 +1170,8 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		log_debug(DEBUG_QUERIES, "Blocking query due to gravity match (list ID %i)", list_id);
 
 		// Store ID of the matching gravity list
-		dns_cache->list_id = list_id;
+		// see remarks above for the list_id values
+		dns_cache->list_id = -1 * (list_id + 2);
 
 		// We block this domain
 		return true;
