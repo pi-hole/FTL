@@ -1299,7 +1299,13 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	}
 
 	// Get cache pointer
-	DNSCacheData *dns_cache = getDNSCache(query->cacheID, true);
+	// When this function is called with a different domain than the one
+	// already stored in the query, we have to re-lookup the cache ID.
+	// This can happen when a CNAME chain is followed and analyzed
+	const int cacheID = query->domainID == domainID && query->clientID == clientID ?
+	                    query->cacheID :
+	                    findCacheID(domainID, clientID, query->type, true);
+	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 	if(dns_cache == NULL)
 	{
 		log_err("No memory available, skipping query analysis");
