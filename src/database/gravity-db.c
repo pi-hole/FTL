@@ -1262,7 +1262,7 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
 	// whitelisted.
-	return domain_in_list(domain, stmt, "whitelist", &dns_cache->domainlist_id);
+	return domain_in_list(domain, stmt, "whitelist", &dns_cache->list_id);
 }
 
 cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
@@ -1466,7 +1466,7 @@ enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsD
 	if(stmt == NULL)
 		stmt = blacklist_stmt->get(blacklist_stmt, client->id);
 
-	return domain_in_list(domain, stmt, "blacklist", &dns_cache->domainlist_id);
+	return domain_in_list(domain, stmt, "blacklist", &dns_cache->list_id);
 }
 
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,

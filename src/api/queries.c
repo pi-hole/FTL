@@ -174,7 +174,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-#define QUERYSTR "SELECT q.id,timestamp,q.type,status,d.domain,f.forward,additional_info,reply_type,reply_time,dnssec,c.ip,c.name,a.content,regex_id"
+#define QUERYSTR "SELECT q.id,timestamp,q.type,status,d.domain,f.forward,additional_info,reply_type,reply_time,dnssec,c.ip,c.name,a.content,list_id"
 // JOIN: Only return rows where there is a match in BOTH tables
 // LEFT JOIN: Return all rows from the left table, and the matched rows from the right table
 #define JOINSTR "JOIN client_by_id c ON q.client = c.id JOIN domain_by_id d ON q.domain = d.id LEFT JOIN forward_by_id f ON q.forward = f.id LEFT JOIN addinfo_by_id a ON a.id = q.additional_info"
@@ -215,8 +215,8 @@ static void querystr_finish(char *querystr, const char *sort_col, const char *so
 			sort_col_sql = "q.reply_time";
 		else if(strcasecmp(sort_col, "dnssec") == 0)
 			sort_col_sql = "q.dnssec";
-		else if(strcasecmp(sort_col, "regex_id") == 0)
-			sort_col_sql = "regex_id";
+		else if(strcasecmp(sort_col, "list_id") == 0)
+			sort_col_sql = "list_id";
 
 		// ... and the sort direction
 		if(strcasecmp(sort_dir, "asc") == 0 || strcasecmp(sort_dir, "ascending") == 0)
@@ -828,11 +828,11 @@ int api_queries(struct ftl_conn *api)
 			JSON_ADD_NULL_TO_OBJECT(client, "name");
 		JSON_ADD_ITEM_TO_OBJECT(item, "client", client);
 
-		// Add regex_id if it exists
+		// Add list_id if it exists
 		if(sqlite3_column_type(read_stmt, 13) == SQLITE_INTEGER)
-			JSON_ADD_NUMBER_TO_OBJECT(item, "regex_id", sqlite3_column_int(read_stmt, 13)); // regex_id
+			JSON_ADD_NUMBER_TO_OBJECT(item, "list_id", sqlite3_column_int(read_stmt, 13)); // list_id
 		else
-			JSON_ADD_NULL_TO_OBJECT(item, "regex_id");
+			JSON_ADD_NULL_TO_OBJECT(item, "list_id");
 
 		const unsigned char *cname = NULL;
 		switch(query.status)

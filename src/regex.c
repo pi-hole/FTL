@@ -548,7 +548,7 @@ bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, c
 	if(regex_id != -1)
 	{
 		// We found a match
-		dns_cache->domainlist_id = regex_id;
+		dns_cache->list_id = regex_id;
 		return true;
 	}
 

@@ -112,7 +112,7 @@ typedef struct {
 	enum query_type query_type;
 	int domainID;
 	int clientID;
-	int domainlist_id;
+	int list_id;
 	char *cname_target;
 } DNSCacheData;
 

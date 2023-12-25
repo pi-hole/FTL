@@ -784,6 +784,29 @@ bool add_ftl_table_description(sqlite3 *db)
 	return true;
 }
 
+bool rename_query_storage_column_regex_id(sqlite3 *db)
+{
+	// Start transaction of database update
+	SQL_bool(db, "BEGIN TRANSACTION");
+
+	// Rename column regex_id to list_id
+	SQL_bool(db, "ALTER TABLE query_storage RENAME COLUMN regex_id TO list_id;");
+
+	// The VIEW queries is automatically updated by SQLite3
+
+	// Update database version to 17
+	if(!db_set_FTL_property(db, DB_VERSION, 17))
+	{
+		log_err("rename_query_storage_column_regex_id(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool(db, "COMMIT");
+
+	return true;
+}
+
 bool optimize_queries_table(sqlite3 *db)
 {
 	// Start transaction of database update
@@ -1131,7 +1154,7 @@ void DB_read_queries(void)
 			//  a) we have a cache entry
 			//  b) the value of additional_info is not NULL (0 bytes storage size)
 			if(cache != NULL && sqlite3_column_bytes(stmt, 7) != 0)
-				cache->domainlist_id = sqlite3_column_int(stmt, 7);
+				cache->list_id = sqlite3_column_int(stmt, 7);
 		}
 
 		// Increment status counters
@@ -1485,15 +1508,15 @@ bool queries_to_database(void)
 				break;
 			}
 		}
-		else if(cache != NULL && query->status == QUERY_REGEX)
+		else if(cache != NULL && cache->list_id > -1)
 		{
 			// Restore regex ID if applicable
-			sqlite3_bind_int(query_stmt, 9, ADDINFO_REGEX_ID);
-			sqlite3_bind_int(query_stmt, 10, cache->domainlist_id);
+			sqlite3_bind_int(query_stmt, 9, ADDINFO_LIST_ID);
+			sqlite3_bind_int(query_stmt, 10, cache->list_id);
 
 			// Execute prepared addinfo statement and check if successful
-			sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_REGEX_ID);
-			sqlite3_bind_int(addinfo_stmt, 2, cache->domainlist_id);
+			sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_LIST_ID);
+			sqlite3_bind_int(addinfo_stmt, 2, cache->list_id);
 			rc = sqlite3_step(addinfo_stmt);
 			sqlite3_clear_bindings(addinfo_stmt);
 			sqlite3_reset(addinfo_stmt);
@@ -1524,9 +1547,9 @@ bool queries_to_database(void)
 		// DNSSEC
 		sqlite3_bind_int(query_stmt, 13, query->dnssec);
 
-		// REGEX_ID
-		if(cache != NULL && cache->domainlist_id > -1)
-			sqlite3_bind_int(query_stmt, 14, cache->domainlist_id);
+		// LIST_ID
+		if(cache != NULL && cache->list_id > -1)
+			sqlite3_bind_int(query_stmt, 14, cache->list_id);
 		else
 			// Not applicable, setting NULL
 			sqlite3_bind_null(query_stmt, 14);

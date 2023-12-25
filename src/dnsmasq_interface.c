@@ -1139,16 +1139,20 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	}
 
 	// Check domain against antigravity
-	int domain_id = -1;
-	const enum db_result antigravity = in_gravity(domain, client, true, &domain_id);
+	int list_id = -1;
+	const enum db_result antigravity = in_gravity(domain, client, true, &list_id);
 	if(antigravity == FOUND)
 	{
-		log_debug(DEBUG_QUERIES, "Allowing query due to antigravity match (ID %i)", domain_id);
+		log_debug(DEBUG_QUERIES, "Allowing query due to antigravity match (list ID %i)", list_id);
+
+		// Store ID of the matching antigravity list
+		dns_cache->list_id = list_id;
+
 		return false;
 	}
 
 	// Check domains against gravity domains
-	const enum db_result gravity = in_gravity(domain, client, false, &domain_id);
+	const enum db_result gravity = in_gravity(domain, client, false, &list_id);
 	if(gravity == FOUND)
 	{
 		// Set new status
@@ -1157,6 +1161,11 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 
 		// Mark domain as gravity blocked for this client
 		set_dnscache_blockingstatus(dns_cache, client, GRAVITY_BLOCKED, domain);
+
+		log_debug(DEBUG_QUERIES, "Blocking query due to gravity match (list ID %i)", list_id);
+
+		// Store ID of the matching gravity list
+		dns_cache->list_id = list_id;
 
 		// We block this domain
 		return true;
@@ -1218,7 +1227,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		cname_target = dns_cache->cname_target;
 
 		// Store ID of this regex (fork-private)
-		last_regex_idx = dns_cache->domainlist_id;
+		last_regex_idx = dns_cache->list_id;
 
 		// We block this domain
 		return true;
@@ -1353,14 +1362,14 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// the lengthy tests below
 			blockingreason = "regex denied";
 			log_debug(DEBUG_QUERIES, "%s is known as %s (cache regex ID: %i)",
-			          domainstr, blockingreason, dns_cache->domainlist_id);
+			          domainstr, blockingreason, dns_cache->list_id);
 
 			// Do not block if the entire query is to be permitted as something
 			// along the CNAME path hit the whitelist
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
-				last_regex_idx = dns_cache->domainlist_id;
+				last_regex_idx = dns_cache->list_id;
 				query_blocked(query, domain, client, QUERY_REGEX);
 				return true;
 			}
@@ -1472,7 +1481,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		if(config.debug.queries.v.b)
 		{
 			log_debug(DEBUG_QUERIES, "Blocking %s as %s is %s (domainlist ID: %i)",
-			          domainstr, blockedDomain, blockingreason, dns_cache->domainlist_id);
+			          domainstr, blockedDomain, blockingreason, dns_cache->list_id);
 			if(force_next_DNS_reply != 0)
 				log_debug(DEBUG_QUERIES, "Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
 		}
@@ -1487,7 +1496,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		// Debug output
 		// client is guaranteed to be non-NULL above
 		log_debug(DEBUG_QUERIES, "DNS cache: %s/%s is %s (domainlist ID: %i)", getstr(client->ippos),
-		          domainstr, query->flags.allowed ? "whitelisted" : "not blocked", dns_cache->domainlist_id);
+		          domainstr, query->flags.allowed ? "whitelisted" : "not blocked", dns_cache->list_id);
 	}
 
 	free(domainstr);
@@ -1597,8 +1606,8 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 
 			// Propagate ID of responsible regex up from the child to the parent
 			// domain (but only if set)
-			if(parent_cache != NULL && child_cache != NULL && child_cache->domainlist_id != -1)
-				parent_cache->domainlist_id = child_cache->domainlist_id;
+			if(parent_cache != NULL && child_cache != NULL && child_cache->list_id != -1)
+				parent_cache->list_id = child_cache->list_id;
 
 			// Set status
 			query_set_status(query, QUERY_REGEX_CNAME);
