@@ -1244,6 +1244,11 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
 
+	// Check again as the client may have been reloaded if this is a TCP
+	// worker
+	if(whitelist_stmt == NULL)
+		return LIST_NOT_AVAILABLE;
+
 	// Get whitelist statement from vector of prepared statements if available
 	sqlite3_stmt *stmt = whitelist_stmt->get(whitelist_stmt, client->id);
 
@@ -1377,6 +1382,11 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
 
+	// Check again as the client may have been reloaded if this is a TCP
+	// worker
+	if(gravity_stmt == NULL || antigravity_stmt == NULL)
+		return LIST_NOT_AVAILABLE;
+
 	// Get whitelist statement from vector of prepared statements
 	sqlite3_stmt *stmt = antigravity ?
 		antigravity_stmt->get(antigravity_stmt, client->id) :
@@ -1450,6 +1460,11 @@ enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsD
 
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
+
+	// Check again as the client may have been reloaded if this is a TCP
+	// worker
+	if(blacklist_stmt == NULL)
+		return LIST_NOT_AVAILABLE;
 
 	// Get whitelist statement from vector of prepared statements
 	sqlite3_stmt *stmt = blacklist_stmt->get(blacklist_stmt, client->id);
