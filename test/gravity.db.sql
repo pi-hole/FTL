@@ -64,7 +64,7 @@ CREATE TABLE info
 	value TEXT NOT NULL
 );
 
-INSERT INTO "info" VALUES('version','12');
+INSERT INTO "info" VALUES('version','19');
 
 CREATE TABLE domainlist_by_group
 (
@@ -180,17 +180,17 @@ CREATE TRIGGER tr_group_zero AFTER DELETE ON "group"
       INSERT OR IGNORE INTO "group" (id,enabled,name) VALUES (0,1,'Default');
     END;
 
-CREATE TRIGGER tr_domainlist_delete AFTER DELETE ON domainlist
+CREATE TRIGGER tr_domainlist_delete BEFORE DELETE ON domainlist
     BEGIN
       DELETE FROM domainlist_by_group WHERE domainlist_id = OLD.id;
     END;
 
-CREATE TRIGGER tr_adlist_delete AFTER DELETE ON adlist
+CREATE TRIGGER tr_adlist_delete BEFORE DELETE ON adlist
     BEGIN
       DELETE FROM adlist_by_group WHERE adlist_id = OLD.id;
     END;
 
-CREATE TRIGGER tr_client_delete AFTER DELETE ON client
+CREATE TRIGGER tr_client_delete BEFORE DELETE ON client
     BEGIN
       DELETE FROM client_by_group WHERE client_id = OLD.id;
     END;
