@@ -430,6 +430,7 @@ static int explore_rrset(struct dns_header *header, size_t plen, int class, int 
    STAT_SECURE_WILDCARD if it validates and is the result of wildcard expansion.
    (In this case *wildcard_out points to the "body" of the wildcard within name.) 
    STAT_BOGUS    signature is wrong, bad packet.
+   STAT_ABANDONED validation abandoned do to excess resource usage.
    STAT_NEED_KEY need DNSKEY to complete validation (name is returned in keyname)
    STAT_NEED_DS  need DS to complete validation (name is returned in keyname)
 
@@ -447,7 +448,7 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 			  int algo_in, int keytag_in, unsigned long *ttl_out)
 {
   unsigned char *p;
-  int rdlen, j, name_labels, algo, labels, key_tag;
+  int rdlen, j, name_labels, algo, labels, key_tag, sig_fail_cnt;
   struct crec *crecp = NULL;
   short *rr_desc = rrfilter_desc(type);
   u32 sig_expiration, sig_inception;
@@ -467,7 +468,7 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
   rrsetidx = sort_rrset(header, plen, rr_desc, rrsetidx, rrset, daemon->workspacename, keyname);
          
   /* Now try all the sigs to try and find one which validates */
-  for (j = 0; j <sigidx; j++)
+  for (sig_fail_cnt = 0, j = 0; j <sigidx; j++)
     {
       unsigned char *psav, *sig, *digest;
       int i, wire_len, sig_len;
@@ -664,9 +665,22 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 	  for (; crecp; crecp = cache_find_by_name(crecp, keyname, now, F_DNSKEY))
 	    if (crecp->addr.key.algo == algo && 
 		crecp->addr.key.keytag == key_tag &&
-		crecp->uid == (unsigned int)class &&
-		verify(crecp->addr.key.keydata, crecp->addr.key.keylen, sig, sig_len, digest, hash->digest_size, algo))
-	      return (labels < name_labels) ? STAT_SECURE_WILDCARD : STAT_SECURE;
+		crecp->uid == (unsigned int)class)
+	      {
+		if (verify(crecp->addr.key.keydata, crecp->addr.key.keylen, sig, sig_len, digest, hash->digest_size, algo))
+		  return (labels < name_labels) ? STAT_SECURE_WILDCARD : STAT_SECURE;
+		
+		/* An attacker can waste a lot of our CPU by setting up a giant DNSKEY RRSET full of failing
+		   keys, all of which we have to try. Since many failing keys is not likely for
+		   a legitimate domain, set a limit on how many can fail. */
+		sig_fail_cnt++;
+		
+		if (sig_fail_cnt > 10) /* TODO */
+		  {
+		    my_syslog(LOG_ERR, "sig_fail_cnt");
+		    return STAT_ABANDONED;
+		  }
+	      }
 	}
     }
 
@@ -681,6 +695,7 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
          STAT_OK        Done, key(s) in cache.
 	 STAT_BOGUS     No DNSKEYs found, which  can be validated with DS,
 	                or self-sign for DNSKEY RRset is not valid, bad packet.
+	 STAT_ABANDONED resource exhaustion.
 	 STAT_NEED_DS   DS records to validate a key not found, name in keyname 
 	 STAT_NEED_KEY  DNSKEY records to validate a key not found, name in keyname 
 */
@@ -688,7 +703,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 {
   unsigned char *psave, *p = (unsigned char *)(header+1);
   struct crec *crecp, *recp1;
-  int rc, j, qtype, qclass, rdlen, flags, algo, valid, keytag;
+  int rc, j, qtype, qclass, rdlen, flags, algo, valid, keytag, ds_fail_cnt, key_fail_cnt;
   unsigned long ttl, sig_ttl;
   struct blockdata *key;
   union all_addr a;
@@ -713,7 +728,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
     }
   
   /* NOTE, we need to find ONE DNSKEY which matches the DS */
-  for (valid = 0, j = ntohs(header->ancount); j != 0 && !valid; j--) 
+  for (key_fail_cnt = 0, valid = 0, j = ntohs(header->ancount); j != 0 && !valid; j--) 
     {
       /* Ensure we have type, class  TTL and length */
       if (!(rc = extract_name(header, plen, &p, name, 0, 10)))
@@ -762,7 +777,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
       if (!key)
 	continue;
       
-      for (recp1 = crecp; recp1; recp1 = cache_find_by_name(recp1, name, now, F_DS))
+      for (ds_fail_cnt = 0, recp1 = crecp; recp1; recp1 = cache_find_by_name(recp1, name, now, F_DS))
 	{
 	  void *ctx;
 	  unsigned char *digest, *ds_digest;
@@ -771,7 +786,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 	  int wire_len;
 	  
 	  if (recp1->addr.ds.algo == algo && 
-	      recp1->addr.ds.keytag == keytag &&
+	      recp1->addr.ds.keytag == keytag && 
 	      recp1->uid == (unsigned int)class)
 	    {
 	      failflags &= ~DNSSEC_FAIL_NOKEY;
@@ -796,30 +811,54 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 	      
 	      if (!(recp1->flags & F_NEG) &&
 		  recp1->addr.ds.keylen == (int)hash->digest_size &&
-		  (ds_digest = blockdata_retrieve(recp1->addr.ds.keydata, recp1->addr.ds.keylen, NULL)) &&
-		  memcmp(ds_digest, digest, recp1->addr.ds.keylen) == 0 &&
-		  explore_rrset(header, plen, class, T_DNSKEY, name, keyname, &sigcnt, &rrcnt) &&
-		  rrcnt != 0)
+		  (ds_digest = blockdata_retrieve(recp1->addr.ds.keydata, recp1->addr.ds.keylen, NULL)))
 		{
-		  if (sigcnt == 0)
-		    continue;
-		  else
-		    failflags &= ~DNSSEC_FAIL_NOSIG;
-		  
-		  rc = validate_rrset(now, header, plen, class, T_DNSKEY, sigcnt, rrcnt, name, keyname, 
-				      NULL, key, rdlen - 4, algo, keytag, &sig_ttl);
-
-		  failflags &= rc;
-		  
-		  if (STAT_ISEQUAL(rc, STAT_SECURE))
+		  if (memcmp(ds_digest, digest, recp1->addr.ds.keylen) != 0)
 		    {
-		      valid = 1;
-		      break;
+		      /* limit CPU exhaustion attack from large DS x KEY cross-product. */
+		      ds_fail_cnt++;
+
+		      if (ds_fail_cnt > 5) /* TODO */
+			{
+			  my_syslog(LOG_ERR, "ds_fail_cnt");
+			  return STAT_ABANDONED;
+			}
+		    }
+		  else if (explore_rrset(header, plen, class, T_DNSKEY, name, keyname, &sigcnt, &rrcnt) &&
+			   rrcnt != 0)
+		    {
+		      if (sigcnt == 0)
+			continue;
+		      else
+			failflags &= ~DNSSEC_FAIL_NOSIG;
+		      
+		      rc = validate_rrset(now, header, plen, class, T_DNSKEY, sigcnt, rrcnt, name, keyname, 
+					  NULL, key, rdlen - 4, algo, keytag, &sig_ttl);
+		      
+		      if (STAT_ISEQUAL(rc, STAT_ABANDONED))
+			return STAT_ABANDONED;
+
+		      failflags &= rc;
+		      
+		      if (STAT_ISEQUAL(rc, STAT_SECURE))
+			{
+			  valid = 1;
+			  break;
+			}
 		    }
 		}
 	    }
 	}
       blockdata_free(key);
+
+      /* limit CPU exhaustion attack from large DS x KEY cross-product. */
+      key_fail_cnt++;
+      
+      if (key_fail_cnt > 15) /* TODO */
+	{
+	  my_syslog(LOG_ERR, "key_fail_cnt");
+	  return STAT_ABANDONED;
+	}
     }
 
   if (valid)
@@ -916,6 +955,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
    STAT_BOGUS       no DS in reply or not signed, fails validation, bad packet.
    STAT_NEED_KEY    DNSKEY records to validate a DS not found, name in keyname
    STAT_NEED_DS     DS record needed.
+   STAT_ABANDONED   resource exhaustion.
 */
 
 int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class)
@@ -1798,6 +1838,7 @@ static int zone_status(char *name, int class, char *keyname, time_t now)
    STAT_BOGUS    signature is wrong, bad packet, no validation where there should be.
    STAT_NEED_KEY need DNSKEY to complete validation (name is returned in keyname, class in *class)
    STAT_NEED_DS  need DS to complete validation (name is returned in keyname)
+   STAT_ABANDONED resource exhaustion.
 
    daemon->rr_status points to a char array which corressponds to the RRs in the 
    answer and auth sections. This is set to >1 for each RR which is validated, and 0 for any which aren't.
@@ -1984,7 +2025,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 		  rc = validate_rrset(now, header, plen, class1, type1, sigcnt,
 				      rrcnt, name, keyname, &wildname, NULL, 0, 0, 0, &sig_ttl);
 		  
-		  if (STAT_ISEQUAL(rc, STAT_BOGUS) || STAT_ISEQUAL(rc, STAT_NEED_KEY) || STAT_ISEQUAL(rc, STAT_NEED_DS))
+		  if (STAT_ISEQUAL(rc, STAT_BOGUS) || STAT_ISEQUAL(rc, STAT_NEED_KEY) || STAT_ISEQUAL(rc, STAT_NEED_DS) || STAT_ISEQUAL(rc, STAT_ABANDONED))
 		    {
 		      if (class)
 			*class = class1; /* Class for DS or DNSKEY */

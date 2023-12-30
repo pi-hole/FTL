@@ -974,11 +974,15 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	status = dnssec_validate_reply(now, header, plen, daemon->namebuff, daemon->keyname, &forward->class, 
 				       !option_bool(OPT_DNSSEC_IGN_NS) && (forward->sentto->flags & SERV_DO_DNSSEC),
 				       NULL, NULL, NULL);
-#ifdef HAVE_DUMPFILE
-      if (STAT_ISEQUAL(status, STAT_BOGUS))
-	dump_packet_udp((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_BOGUS : DUMP_BOGUS,
-			header, (size_t)plen, &forward->sentto->addr, NULL, -daemon->port);
-#endif
+
+      if (STAT_ISEQUAL(status, STAT_ABANDONED))
+	{
+	  /* Log the actual validation that made us barf. */
+	  unsigned char *p = (unsigned char *)(header+1);
+	  if  (extract_name(header, plen, &p, daemon->namebuff, 0, 4) == 1)
+	    my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
+		      daemon->namebuff[0] ? daemon->namebuff : ".");
+	}
     }
   
   /* Can't validate, as we're missing key data. Put this
@@ -1109,6 +1113,12 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
       status = STAT_ABANDONED;
     }
 
+#ifdef HAVE_DUMPFILE
+  if (STAT_ISEQUAL(status, STAT_BOGUS) || STAT_ISEQUAL(status, STAT_ABANDONED))
+    dump_packet_udp((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_BOGUS : DUMP_BOGUS,
+		    header, (size_t)plen, &forward->sentto->addr, NULL, -daemon->port);
+#endif
+  
   /* Validated original answer, all done. */
   if (!forward->dependent)
     return_reply(now, forward, header, plen, status);
@@ -1117,7 +1127,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
       /* validated subsidiary query/queries, (and cached result)
 	 pop that and return to the previous query/queries we were working on. */
       struct frec *prev, *nxt = forward->dependent;
-      
+
       free_frec(forward);
       
       while ((prev = nxt))
@@ -2137,6 +2147,15 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 					   !option_bool(OPT_DNSSEC_IGN_NS) && (server->flags & SERV_DO_DNSSEC),
 					   NULL, NULL, NULL);
       
+      if (STAT_ISEQUAL(new_status, STAT_ABANDONED))
+	{
+	  /* Log the actual validation that made us barf. */
+	  unsigned char *p = (unsigned char *)(header+1);
+	  if  (extract_name(header, n, &p, daemon->namebuff, 0, 4) == 1)
+	    my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
+		      daemon->namebuff[0] ? daemon->namebuff : ".");
+	}
+
       if (!STAT_ISEQUAL(new_status, STAT_NEED_DS) && !STAT_ISEQUAL(new_status, STAT_NEED_KEY))
 	break;
 
