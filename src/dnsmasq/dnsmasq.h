@@ -763,6 +763,8 @@ struct dyndir {
 #define DNSSEC_FAIL_NONSEC      0x0040 /* No NSEC */
 #define DNSSEC_FAIL_NODSSUP     0x0080 /* no supported DS algo. */
 #define DNSSEC_FAIL_NOKEY       0x0100 /* no DNSKEY */
+#define DNSSEC_FAIL_NSEC3_ITERS 0x0200 /* too many iterations in NSEC3 */
+#define DNSSEC_FAIL_BADPACKET   0x0400 /* bad packet */
 
 #define STAT_ISEQUAL(a, b)  (((a) & 0xffff0000) == (b))
 
