@@ -953,6 +953,22 @@ void gravityDB_close(void)
 	free_sqlite3_stmt_vec(&gravity_stmt);
 	free_sqlite3_stmt_vec(&antigravity_stmt);
 
+	// Run PRAMGMA optimize to optimize database file
+	// It is recommended to run this command on a regular basis
+	// when closing the database connection
+	// See https://www.sqlite.org/pragma.html#pragma_optimize
+	// We set a small value of analysis_limit=1000 to ensure the
+	// command returns quickly (it limits the number of rows
+	// analyzed by the query planner to 1000)
+	const char *querystr = "PRAGMA analysis_limit = 1000;";
+	int rc = sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+	if(rc != SQLITE_OK)
+		log_err("gravityDB_close(\"%s\") - SQL error: %s", querystr, sqlite3_errstr(rc));
+	querystr = "PRAGMA optimize;";
+	rc = sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+	if(rc != SQLITE_OK)
+		log_err("gravityDB_close(\"%s\") - SQL error: %s", querystr, sqlite3_errstr(rc));
+
 	// Close table
 	sqlite3_close(gravity_db);
 	gravity_db = NULL;

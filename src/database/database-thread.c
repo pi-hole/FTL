@@ -56,6 +56,14 @@ static bool delete_old_queries_in_DB(sqlite3 *db)
 	return true;
 }
 
+static bool optimize_database(sqlite3 *db)
+{
+	// Optimize the database by running PRAGMA optimize
+	SQL_bool(db, "PRAGMA optimize;");
+
+	return true;
+}
+
 #define DBOPEN_OR_AGAIN() { if(!db) db = dbopen(false, false); if(!db) { thread_sleepms(DB, 5000); continue; } }
 #define BREAK_IF_KILLED() { if(killed) break; }
 #define DBCLOSE_OR_BREAK() { dbclose(&db); BREAK_IF_KILLED(); }
@@ -71,6 +79,10 @@ void *DB_thread(void *val)
 	// to the database
 	time_t before = time(NULL);
 	time_t lastDBsave = before - before%config.database.DBinterval.v.ui;
+
+	// Other timestamps
+	time_t lastOptimize = before;
+	time_t lastMACVendor = before;
 
 	// This thread runs until shutdown of the process. We keep this thread
 	// running when pihole-FTL.db is corrupted because reloading of privacy
@@ -139,9 +151,21 @@ void *DB_thread(void *val)
 		if(killed)
 			break;
 
+		// Optimize database every 24 hours
+		if(now - lastOptimize >= 86400)
+		{
+			DBOPEN_OR_AGAIN();
+			optimize_database(db);
+			DBCLOSE_OR_BREAK();
+		}
+
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
 		// Update MAC vendor strings once a month (the MAC vendor
 		// database is not updated very often)
-		if(now % 2592000L == 0)
+		if(now  - lastMACVendor >= 2592000)
 		{
 			DBOPEN_OR_AGAIN();
 			updateMACVendorRecords(db);
