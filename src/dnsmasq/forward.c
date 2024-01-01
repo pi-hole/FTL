@@ -17,6 +17,8 @@
 #include "dnsmasq.h"
 #include "../dnsmasq_interface.h"
 
+static int vchwm = 0; /* TODO */
+
 static struct frec *get_new_frec(time_t now, struct server *serv, int force);
 static struct frec *lookup_frec(unsigned short id, int fd, void *hash, int *firstp, int *lastp);
 static struct frec *lookup_frec_by_query(void *hash, unsigned int flags, unsigned int flagmask);
@@ -345,6 +347,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	forward->flags |= FREC_AD_QUESTION;
 #ifdef HAVE_DNSSEC
       forward->work_counter = DNSSEC_WORK;
+      forward->validate_counter = 0;
       if (do_bit)
 	forward->flags |= FREC_DO_QUESTION;
 #endif
@@ -936,6 +939,8 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 static void dnssec_validate(struct frec *forward, struct dns_header *header,
 			    ssize_t plen, int status, time_t now)
 {
+  struct frec *orig;
+
   daemon->log_display_id = forward->frec_src.log_id;
   
   /* We've had a reply already, which we're validating. Ignore this duplicate */
@@ -960,6 +965,9 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	    log_query(F_UPSTREAM | F_NOEXTRA, daemon->namebuff, NULL, "truncated", (forward->flags & FREC_DNSKEY_QUERY) ? T_DNSKEY : T_DS);
 	}
     }
+
+  /* Find the original query that started it all.... */
+  for (orig = forward; orig->dependent; orig = orig->dependent);
   
   /* As soon as anything returns BOGUS, we stop and unwind, to do otherwise
      would invite infinite loops, since the answers to DNSKEY and DS queries
@@ -967,13 +975,13 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
   if (!STAT_ISEQUAL(status, STAT_BOGUS) && !STAT_ISEQUAL(status, STAT_TRUNCATED) && !STAT_ISEQUAL(status, STAT_ABANDONED))
     {
       if (forward->flags & FREC_DNSKEY_QUERY)
-	status = dnssec_validate_by_ds(now, header, plen, daemon->namebuff, daemon->keyname, forward->class);
+	status = dnssec_validate_by_ds(now, header, plen, daemon->namebuff, daemon->keyname, forward->class, &orig->validate_counter);
       else if (forward->flags & FREC_DS_QUERY)
-	status = dnssec_validate_ds(now, header, plen, daemon->namebuff, daemon->keyname, forward->class);
+	status = dnssec_validate_ds(now, header, plen, daemon->namebuff, daemon->keyname, forward->class, &orig->validate_counter);
       else
 	status = dnssec_validate_reply(now, header, plen, daemon->namebuff, daemon->keyname, &forward->class, 
 				       !option_bool(OPT_DNSSEC_IGN_NS) && (forward->sentto->flags & SERV_DO_DNSSEC),
-				       NULL, NULL, NULL);
+				       NULL, NULL, NULL, &orig->validate_counter);
 
       if (STAT_ISEQUAL(status, STAT_ABANDONED))
 	{
@@ -1030,14 +1038,10 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	  else
 	    {
 	      struct server *server;
-	      struct frec *orig;
 	      void *hash;
 	      size_t nn;
 	      int serverind, fd;
 	      struct randfd_list *rfds = NULL;
-	      
-	      /* Find the original query that started it all.... */
-	      for (orig = forward; orig->dependent; orig = orig->dependent);
 	      
 	      /* Make sure we don't expire and free the orig frec during the
 		 allocation of a new one: third arg of get_new_frec() does that. */
@@ -1393,6 +1397,11 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 	  log_query(F_SECSTAT, domain, &a, result, 0);
 	}
     }
+
+  if (forward->validate_counter > vchwm)
+   vchwm = forward->validate_counter;
+  if (extract_request(header, n, daemon->namebuff, NULL))
+    my_syslog(LOG_INFO, "Validate_counter %s is %d, HWM is %d", daemon->namebuff, forward->validate_counter, vchwm); /* TODO */  
 #endif
   
   if (option_bool(OPT_NO_REBIND))
@@ -2122,7 +2131,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 /* Recurse down the key hierarchy */
 static int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n, 
 			   int class, char *name, char *keyname, struct server *server, 
-			   int have_mark, unsigned int mark, int *keycount)
+			   int have_mark, unsigned int mark, int *keycount, int *validatecount)
 {
   int first, last, start, new_status;
   unsigned char *packet = NULL;
@@ -2139,13 +2148,13 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       if (--(*keycount) == 0)
 	new_status = STAT_ABANDONED;
       else if (STAT_ISEQUAL(status, STAT_NEED_KEY))
-	new_status = dnssec_validate_by_ds(now, header, n, name, keyname, class);
+	new_status = dnssec_validate_by_ds(now, header, n, name, keyname, class, validatecount);
       else if (STAT_ISEQUAL(status, STAT_NEED_DS))
-	new_status = dnssec_validate_ds(now, header, n, name, keyname, class);
+	new_status = dnssec_validate_ds(now, header, n, name, keyname, class, validatecount);
       else 
 	new_status = dnssec_validate_reply(now, header, n, name, keyname, &class,
 					   !option_bool(OPT_DNSSEC_IGN_NS) && (server->flags & SERV_DO_DNSSEC),
-					   NULL, NULL, NULL);
+					   NULL, NULL, NULL, validatecount);
       
       if (STAT_ISEQUAL(new_status, STAT_ABANDONED))
 	{
@@ -2189,7 +2198,8 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, keyname, &server->addr,
 			    STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
             
-      new_status = tcp_key_recurse(now, new_status, new_header, m, class, name, keyname, server, have_mark, mark, keycount);
+      new_status = tcp_key_recurse(now, new_status, new_header, m, class, name, keyname, server,
+				   have_mark, mark, keycount, validatecount);
 
       daemon->log_display_id = log_save;
       
@@ -2533,8 +2543,9 @@ unsigned char *tcp_request(int confd, time_t now,
 		  if (option_bool(OPT_DNSSEC_VALID) && !checking_disabled && (master->flags & SERV_DO_DNSSEC))
 		    {
 		      int keycount = DNSSEC_WORK; /* Limit to number of DNSSEC questions, to catch loops and avoid filling cache. */
+		      int validatecount = 0;      /* How many validations we did */
 		      int status = tcp_key_recurse(now, STAT_OK, header, m, 0, daemon->namebuff, daemon->keyname, 
-						   serv, have_mark, mark, &keycount);
+						   serv, have_mark, mark, &keycount, &validatecount);
 		      char *result, *domain = "result";
 		      
 		      union all_addr a;
@@ -2560,6 +2571,11 @@ unsigned char *tcp_request(int confd, time_t now,
 			}
 		      
 		      log_query(F_SECSTAT, domain, &a, result, 0);
+		    
+		      if (validatecount > vchwm)
+			vchwm = validatecount;
+		       if (extract_request(header, m, daemon->namebuff, NULL))
+			 my_syslog(LOG_INFO, "Validate_counter %s is %d, HWM is %d", daemon->namebuff, validatecount, vchwm); /* TODO */
 		    }
 #endif
 		  

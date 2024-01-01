@@ -802,7 +802,7 @@ struct frec {
   struct blockdata *stash; /* Saved reply, whilst we validate */
   size_t stash_len;
 #ifdef HAVE_DNSSEC 
-  int class, work_counter;
+  int class, work_counter, validate_counter;
   struct frec *dependent; /* Query awaiting internally-generated DNSKEY or DS query */
   struct frec *next_dependent; /* list of above. */
   struct frec *blocking_query; /* Query which is blocking us. */
@@ -1427,10 +1427,12 @@ int in_zone(struct auth_zone *zone, char *name, char **cut);
 /* dnssec.c */
 #ifdef HAVE_DNSSEC
 size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char *name, int class, int type, int edns_pktsz);
-int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class);
-int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class);
+int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, char *name,
+			  char *keyname, int class, int *validate_count);
+int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name,
+		       char *keyname, int class, int *validate_count);
 int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int *class,
-			  int check_unsigned, int *neganswer, int *nons, int *nsec_ttl);
+			  int check_unsigned, int *neganswer, int *nons, int *nsec_ttl, int *validate_count);
 int dnskey_keytag(int alg, int flags, unsigned char *key, int keylen);
 size_t filter_rrsigs(struct dns_header *header, size_t plen);
 int setup_timestamp(void);
