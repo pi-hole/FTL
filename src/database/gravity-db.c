@@ -2007,8 +2007,8 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 	else if(listtype == GRAVITY_ADLISTS)
 	{
 		// This is actually a three-step deletion to satisfy foreign-key constraints
-		querystrs[0] = "DELETE FROM gravity WHERE adlist_id = (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable));";
-		querystrs[1] = "DELETE FROM antigravity WHERE adlist_id = (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable));";
+		querystrs[0] = "DELETE FROM gravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable));";
+		querystrs[1] = "DELETE FROM antigravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable));";
 		querystrs[2] = "DELETE FROM adlist WHERE address IN (SELECT item FROM deltable);";
 	}
 	else if(listtype == GRAVITY_CLIENTS)
@@ -2021,7 +2021,6 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		querystrs[3] = "DELETE FROM domainlist WHERE domain IN (SELECT item FROM deltable WHERE type = 3) AND type = 3;";
 	}
 
-	bool okay = true;
 	for(unsigned int i = 0; i < ArraySize(querystrs); i++)
 	{
 		// Finish if no more queries
@@ -2035,7 +2034,6 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 			*message = sqlite3_errmsg(gravity_db);
 			log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 			        listtype, querystrs[i], *message);
-			okay = false;
 
 			// Rollback transaction
 			querystr = "ROLLBACK TRANSACTION;";
@@ -2047,7 +2045,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 				        listtype, *message);
 			}
 
-			break;
+			return false;
 		}
 	}
 
@@ -2059,7 +2057,6 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 		        listtype, querystr, *message);
-		okay = false;
 
 		// Rollback transaction
 		querystr = "ROLLBACK TRANSACTION;";
@@ -2070,6 +2067,8 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 			log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 			        listtype, querystr, *message);
 		}
+
+		return false;
 	}
 
 	// Commit transaction
@@ -2080,7 +2079,6 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 		        listtype, querystr, *message);
-		okay = false;
 
 		// Rollback transaction
 		querystr = "ROLLBACK TRANSACTION;";
@@ -2091,9 +2089,11 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 			log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 			        listtype, querystr, *message);
 		}
+
+		return false;
 	}
 
-	return okay;
+	return true;
 }
 
 static sqlite3_stmt* read_stmt = NULL;
