@@ -1282,7 +1282,7 @@ static int prove_non_existence_nsec(struct dns_header *header, size_t plen, unsi
 	      p +=  p[1];
 	    }
 	  
-	  return 1;
+	  return 0;
 	}
       else if (rc == -1)
 	{
