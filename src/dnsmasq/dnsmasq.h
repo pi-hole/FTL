@@ -765,6 +765,7 @@ struct dyndir {
 #define DNSSEC_FAIL_NOKEY       0x0100 /* no DNSKEY */
 #define DNSSEC_FAIL_NSEC3_ITERS 0x0200 /* too many iterations in NSEC3 */
 #define DNSSEC_FAIL_BADPACKET   0x0400 /* bad packet */
+#define DNSSEC_FAIL_WORK        0x0800 /* too much crypto */
 
 #define STAT_ISEQUAL(a, b)  (((a) & 0xffff0000) == (b))
 
@@ -1248,6 +1249,7 @@ extern struct daemon {
   int rr_status_sz;
   int dnssec_no_time_check;
   int back_to_the_future;
+  int limit_key_fail, limit_ds_fail, limit_sig_fail, limit_crypto, limit_work, limit_nsec3_iters;
 #endif
   struct frec *frec_list;
   struct frec_src *free_frec_src;

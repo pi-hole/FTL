@@ -24,6 +24,7 @@ const char * metric_names[] = {
     "dns_local_answered",
     "dns_stale_answered",
     "dns_unanswered",
+    "max_crypto_use",
     "bootp",
     "pxe",
     "dhcp_ack",

@@ -17,8 +17,6 @@
 #include "dnsmasq.h"
 #include "../dnsmasq_interface.h"
 
-static int vchwm = 0; /* TODO */
-
 static struct frec *get_new_frec(time_t now, struct server *serv, int force);
 static struct frec *lookup_frec(unsigned short id, int fd, void *hash, int *firstp, int *lastp);
 static struct frec *lookup_frec_by_query(void *hash, unsigned int flags, unsigned int flagmask);
@@ -346,8 +344,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (ad_reqd)
 	forward->flags |= FREC_AD_QUESTION;
 #ifdef HAVE_DNSSEC
-      forward->work_counter = DNSSEC_WORK;
-      forward->validate_counter = 0;
+      forward->work_counter = daemon->limit_work;
+      forward->validate_counter = daemon->limit_crypto; 
       if (do_bit)
 	forward->flags |= FREC_DO_QUESTION;
 #endif
@@ -1398,10 +1396,10 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 	}
     }
 
-  if (forward->validate_counter > vchwm)
-   vchwm = forward->validate_counter;
+  if ((daemon->limit_crypto - forward->validate_counter) > daemon->metrics[METRIC_CRYTO_HWM])
+    daemon->metrics[METRIC_CRYTO_HWM] = daemon->limit_crypto - forward->validate_counter;
   if (extract_request(header, n, daemon->namebuff, NULL))
-    my_syslog(LOG_INFO, "Validate_counter %s is %d, HWM is %d", daemon->namebuff, forward->validate_counter, vchwm); /* TODO */  
+    my_syslog(LOG_INFO, "Validate_counter %s is %d", daemon->namebuff, daemon->limit_crypto - forward->validate_counter); /* TODO */  
 #endif
   
   if (option_bool(OPT_NO_REBIND))
@@ -2542,8 +2540,8 @@ unsigned char *tcp_request(int confd, time_t now,
 #ifdef HAVE_DNSSEC
 		  if (option_bool(OPT_DNSSEC_VALID) && !checking_disabled && (master->flags & SERV_DO_DNSSEC))
 		    {
-		      int keycount = DNSSEC_WORK; /* Limit to number of DNSSEC questions, to catch loops and avoid filling cache. */
-		      int validatecount = 0;      /* How many validations we did */
+		      int keycount = daemon->limit_work; /* Limit to number of DNSSEC questions, to catch loops and avoid filling cache. */
+		      int validatecount = daemon->limit_crypto; 
 		      int status = tcp_key_recurse(now, STAT_OK, header, m, 0, daemon->namebuff, daemon->keyname, 
 						   serv, have_mark, mark, &keycount, &validatecount);
 		      char *result, *domain = "result";
@@ -2572,10 +2570,10 @@ unsigned char *tcp_request(int confd, time_t now,
 		      
 		      log_query(F_SECSTAT, domain, &a, result, 0);
 		    
-		      if (validatecount > vchwm)
-			vchwm = validatecount;
+		      if ((daemon->limit_crypto - validatecount) > daemon->metrics[METRIC_CRYTO_HWM])
+			daemon->metrics[METRIC_CRYTO_HWM] = daemon->limit_crypto - validatecount;
 		       if (extract_request(header, m, daemon->namebuff, NULL))
-			 my_syslog(LOG_INFO, "Validate_counter %s is %d, HWM is %d", daemon->namebuff, validatecount, vchwm); /* TODO */
+			 my_syslog(LOG_INFO, "Validate_counter %s is %d", daemon->namebuff, daemon->limit_crypto - validatecount); /* TODO */
 		    }
 #endif
 		  

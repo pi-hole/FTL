@@ -851,6 +851,12 @@ void cache_end_insert(void)
   if (daemon->pipe_to_parent != -1)
     {
       ssize_t m = -1;
+
+#ifdef HAVE_DNSSEC
+      /* Sneak out possibly updated crypto HWM. */
+      m = -1 - daemon->metrics[METRIC_CRYTO_HWM];
+#endif
+
       read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
     }
       
@@ -876,8 +882,13 @@ int cache_recv_insert(time_t now, int fd)
       if (!read_write(fd, (unsigned char *)&m, sizeof(m), 1))
 	return 0;
       
-      if (m == -1)
+      if (m < 0)
 	{
+#ifdef HAVE_DNSSEC
+	  /* Sneak in possibly updated crypto HWM. */
+	  if ((-m - 1) > daemon->metrics[METRIC_CRYTO_HWM])
+	    daemon->metrics[METRIC_CRYTO_HWM] = -m - 1;
+#endif
 	  cache_end_insert();
 	  return 1;
 	}
@@ -2008,6 +2019,9 @@ void dump_cache(time_t now)
     my_syslog(LOG_INFO, _("queries answered from stale cache %u"), daemon->metrics[METRIC_DNS_STALE_ANSWERED]);
 #ifdef HAVE_AUTH
   my_syslog(LOG_INFO, _("queries for authoritative zones %u"), daemon->metrics[METRIC_DNS_AUTH_ANSWERED]);
+#endif
+#ifdef HAVE_DNSSEC
+  my_syslog(LOG_INFO, _("DNSSEC per-query crypto HWM %u"), daemon->metrics[METRIC_CRYTO_HWM]);
 #endif
 
   blockdata_report();
