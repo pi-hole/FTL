@@ -5873,7 +5873,14 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->randport_limit = 1;
   daemon->host_index = SRC_AH;
   daemon->max_procs = MAX_PROCS;
-  daemon->max_procs_used = 0;
+#ifdef HAVE_DNSSEC
+  daemon->limit_key_fail = LIMIT_KEY_FAIL;
+  daemon->limit_ds_fail = LIMIT_DS_FAIL;
+  daemon->limit_sig_fail = LIMIT_SIG_FAIL;
+  daemon->limit_crypto = LIMIT_CRYPTO;
+  daemon->limit_work = DNSSEC_WORK;
+  daemon->limit_nsec3_iters = LIMIT_NSEC3_ITERS;
+#endif
   
   /* See comment above make_servers(). Optimises server-read code. */
   mark_servers(0);

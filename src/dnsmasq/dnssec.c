@@ -424,6 +424,17 @@ static int explore_rrset(struct dns_header *header, size_t plen, int class, int 
   return 1;
 }
 
+int dec_counter(int *counter, char *message)
+{
+  if ((*counter)-- == 0)
+    {
+      my_syslog(LOG_WARNING, "limit exceeded: %s", message ? message : "crypto work");
+      return 1;
+    }
+
+  return 0;
+}
+
 /* Validate a single RRset (class, type, name) in the supplied DNS reply 
    Return code:
    STAT_SECURE   if it validates.
@@ -468,7 +479,7 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
   rrsetidx = sort_rrset(header, plen, rr_desc, rrsetidx, rrset, daemon->workspacename, keyname);
          
   /* Now try all the sigs to try and find one which validates */
-  for (sig_fail_cnt = 0, j = 0; j <sigidx; j++)
+  for (sig_fail_cnt = daemon->limit_sig_fail, j = 0; j <sigidx; j++)
     {
       unsigned char *psav, *sig, *digest;
       int i, wire_len, sig_len;
@@ -656,10 +667,13 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
       if (key)
 	{
 	  if (algo_in == algo && keytag_in == key_tag)
-	    (*validate_counter)++;
-
-	  if (verify(key, keylen, sig, sig_len, digest, hash->digest_size, algo))
-	    return STAT_SECURE;
+	    {
+	      if (dec_counter(validate_counter, NULL))
+		return STAT_ABANDONED;
+	     	      
+	      if (verify(key, keylen, sig, sig_len, digest, hash->digest_size, algo))
+		return STAT_SECURE;
+	    }
 	}
       else
 	{
@@ -669,21 +683,17 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 		crecp->addr.key.keytag == key_tag &&
 		crecp->uid == (unsigned int)class)
 	      {
-		(*validate_counter)++;
-
+		if (dec_counter(validate_counter, NULL))
+		  return STAT_ABANDONED;
+		
 		 if (verify(crecp->addr.key.keydata, crecp->addr.key.keylen, sig, sig_len, digest, hash->digest_size, algo))
 		  return (labels < name_labels) ? STAT_SECURE_WILDCARD : STAT_SECURE;
 		
 		/* An attacker can waste a lot of our CPU by setting up a giant DNSKEY RRSET full of failing
 		   keys, all of which we have to try. Since many failing keys is not likely for
 		   a legitimate domain, set a limit on how many can fail. */
-		sig_fail_cnt++;
-		
-		if (sig_fail_cnt > 10) /* TODO */
-		  {
-		    my_syslog(LOG_ERR, "sig_fail_cnt");
-		    return STAT_ABANDONED;
-		  }
+		 if (dec_counter(&sig_fail_cnt, "SIG fail"))
+		   return STAT_ABANDONED;
 	      }
 	}
     }
@@ -733,7 +743,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
     }
   
   /* NOTE, we need to find ONE DNSKEY which matches the DS */
-  for (key_fail_cnt = 0, valid = 0, j = ntohs(header->ancount); j != 0 && !valid; j--) 
+  for (key_fail_cnt = daemon->limit_key_fail, valid = 0, j = ntohs(header->ancount); j != 0 && !valid; j--) 
     {
       /* Ensure we have type, class  TTL and length */
       if (!(rc = extract_name(header, plen, &p, name, 0, 10)))
@@ -781,8 +791,8 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
       /* No zone key flag or malloc failure */
       if (!key)
 	continue;
-      
-      for (ds_fail_cnt = 0, recp1 = crecp; recp1; recp1 = cache_find_by_name(recp1, name, now, F_DS))
+
+      for (ds_fail_cnt = daemon->limit_ds_fail, recp1 = crecp; recp1; recp1 = cache_find_by_name(recp1, name, now, F_DS))
 	{
 	  void *ctx;
 	  unsigned char *digest, *ds_digest;
@@ -801,6 +811,10 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 	      else
 		failflags &= ~DNSSEC_FAIL_NODSSUP;
 
+	      /* computing a hash is a unit of crypto work. */
+	      if (dec_counter(validate_counter, NULL))
+		return STAT_ABANDONED;
+	      
 	      if (!hash_init(hash, &ctx, &digest))
 		continue;
 	      
@@ -811,7 +825,6 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 	      hash->update(ctx, (unsigned int)wire_len, (unsigned char *)name);
 	      hash->update(ctx, (unsigned int)rdlen, psave);
 	      hash->digest(ctx, hash->digest_size, digest);
-	      (*validate_counter)++; /* computing a hash is a unit of crypto work. */
 	      
 	      from_wire(name);
 	      
@@ -822,13 +835,8 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 		  if (memcmp(ds_digest, digest, recp1->addr.ds.keylen) != 0)
 		    {
 		      /* limit CPU exhaustion attack from large DS x KEY cross-product. */
-		      ds_fail_cnt++;
-
-		      if (ds_fail_cnt > 5) /* TODO */
-			{
-			  my_syslog(LOG_ERR, "ds_fail_cnt");
-			  return STAT_ABANDONED;
-			}
+		      if (dec_counter(&ds_fail_cnt, "DS fail"))
+			return STAT_ABANDONED;
 		    }
 		  else if (explore_rrset(header, plen, class, T_DNSKEY, name, keyname, &sigcnt, &rrcnt) &&
 			   rrcnt != 0)
@@ -858,13 +866,8 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
       blockdata_free(key);
 
       /* limit CPU exhaustion attack from large DS x KEY cross-product. */
-      key_fail_cnt++;
-      
-      if (key_fail_cnt > 15) /* TODO */
-	{
-	  my_syslog(LOG_ERR, "key_fail_cnt");
-	  return STAT_ABANDONED;
-	}
+      if (dec_counter(&key_fail_cnt, "KEY fail"))
+	return STAT_ABANDONED;
     }
 
   if (valid)
@@ -1511,7 +1514,7 @@ static int prove_non_existence_nsec3(struct dns_header *header, size_t plen, uns
 
   GETSHORT (iterations, p);
   /* Upper-bound iterations, to avoid DoS. RFC 9276 refers. */
-  if (iterations > 150)
+  if (iterations > daemon->limit_nsec3_iters)
     return DNSSEC_FAIL_NSEC3_ITERS;
   
   salt_len = *p++;
@@ -1558,7 +1561,9 @@ static int prove_non_existence_nsec3(struct dns_header *header, size_t plen, uns
       nsecs[i] = nsec3p;
     }
 
-  (*validate_counter)++;
+  if (dec_counter(validate_counter, NULL))
+    return DNSSEC_FAIL_WORK;
+
   if ((digest_len = hash_name(name, &digest, hash, salt, salt_len, iterations)) == 0)
     return DNSSEC_FAIL_NONSEC;
   
@@ -1578,7 +1583,9 @@ static int prove_non_existence_nsec3(struct dns_header *header, size_t plen, uns
       if (wildname && hostname_isequal(closest_encloser, wildname))
 	break;
 
-      (*validate_counter)++;
+      if (dec_counter(validate_counter, NULL))
+	return DNSSEC_FAIL_WORK;
+      
       if ((digest_len = hash_name(closest_encloser, &digest, hash, salt, salt_len, iterations)) == 0)
 	return DNSSEC_FAIL_NONSEC;
       
@@ -1607,7 +1614,9 @@ static int prove_non_existence_nsec3(struct dns_header *header, size_t plen, uns
     return DNSSEC_FAIL_NONSEC;
   
   /* Look for NSEC3 that proves the non-existence of the next-closest encloser */
-  (*validate_counter)++;
+  if (dec_counter(validate_counter, NULL))
+    return DNSSEC_FAIL_WORK;
+  
   if ((digest_len = hash_name(next_closest, &digest, hash, salt, salt_len, iterations)) == 0)
     return DNSSEC_FAIL_NONSEC;
 
@@ -1623,7 +1632,9 @@ static int prove_non_existence_nsec3(struct dns_header *header, size_t plen, uns
       wildcard--;
       *wildcard = '*';
       
-      (*validate_counter)++;
+      if (dec_counter(validate_counter, NULL))
+	return DNSSEC_FAIL_WORK;
+      
       if ((digest_len = hash_name(wildcard, &digest, hash, salt, salt_len, iterations)) == 0)
 	return DNSSEC_FAIL_NONSEC;
       
@@ -2074,7 +2085,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 		     we'll return BOGUS then. */
 		  if (STAT_ISEQUAL(rc, STAT_SECURE_WILDCARD) &&
 		      ((rc_nsec = prove_non_existence(header, plen, keyname, name, type1, class1, wildname, NULL, NULL, validate_counter))) != 0)
-		    return STAT_BOGUS | rc_nsec;
+		    return  (rc_nsec & DNSSEC_FAIL_WORK) ? STAT_ABANDONED : (STAT_BOGUS | rc_nsec);
 
 		  rc = STAT_SECURE;
 		}
@@ -2101,6 +2112,9 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	   the answer is in an unsigned zone, or there's a NSEC records. */
 	if ((rc_nsec = prove_non_existence(header, plen, keyname, name, qtype, qclass, NULL, nons, nsec_ttl, validate_counter)) != 0)
 	  {
+	    if (rc_nsec & DNSSEC_FAIL_WORK)
+	      return STAT_ABANDONED;
+
 	    /* Empty DS without NSECS */
 	    if (qtype == T_DS)
 	      return STAT_BOGUS | rc_nsec;
