@@ -133,7 +133,7 @@ jobs:
         if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
         uses: actions/upload-artifact@v4.0.0
         with:
-          name: api-docs
+          name: pihole-api-docs
           path: 'api-docs.tar.gz'
 
   deploy:
