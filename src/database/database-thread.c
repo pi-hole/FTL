@@ -56,10 +56,23 @@ static bool delete_old_queries_in_DB(sqlite3 *db)
 	return true;
 }
 
-static bool optimize_database(sqlite3 *db)
+static bool analyze_database(sqlite3 *db)
 {
-	// Optimize the database by running PRAGMA optimize
-	SQL_bool(db, "PRAGMA optimize;");
+	// Optimize the database by running ANALYZE
+	// The ANALYZE command gathers statistics about tables and indices and
+	// stores the collected information in internal tables of the database
+	// where the query optimizer can access the information and use it to
+	// help make better query planning choices.
+
+	// Measure time
+	struct timespec start, end;
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	SQL_bool(db, "ANALYZE;");
+	clock_gettime(CLOCK_MONOTONIC, &end);
+
+	// Print final message
+	log_info("Optimized database in %.3f seconds",
+	         (double)(end.tv_sec - start.tv_sec) + 1e-9*(end.tv_nsec - start.tv_nsec));
 
 	return true;
 }
@@ -81,7 +94,7 @@ void *DB_thread(void *val)
 	time_t lastDBsave = before - before%config.database.DBinterval.v.ui;
 
 	// Other timestamps
-	time_t lastOptimize = before;
+	time_t lastAnalyze = before;
 	time_t lastMACVendor = before;
 
 	// This thread runs until shutdown of the process. We keep this thread
@@ -151,11 +164,12 @@ void *DB_thread(void *val)
 		if(killed)
 			break;
 
-		// Optimize database every 24 hours
-		if(now - lastOptimize >= 86400)
+		// Optimize database once per week
+		if(now - lastAnalyze >= 604800)
 		{
 			DBOPEN_OR_AGAIN();
-			optimize_database(db);
+			analyze_database(db);
+			lastAnalyze = now;
 			DBCLOSE_OR_BREAK();
 		}
 
@@ -169,6 +183,7 @@ void *DB_thread(void *val)
 		{
 			DBOPEN_OR_AGAIN();
 			updateMACVendorRecords(db);
+			lastMACVendor = now;
 			DBCLOSE_OR_BREAK();
 		}
 
