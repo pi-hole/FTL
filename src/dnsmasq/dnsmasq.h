@@ -1249,7 +1249,7 @@ extern struct daemon {
   int rr_status_sz;
   int dnssec_no_time_check;
   int back_to_the_future;
-  int limit_key_fail, limit_ds_fail, limit_sig_fail, limit_crypto, limit_work, limit_nsec3_iters;
+  int limit_sig_fail, limit_crypto, limit_work, limit_nsec3_iters;
 #endif
   struct frec *frec_list;
   struct frec_src *free_frec_src;

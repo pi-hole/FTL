@@ -5874,8 +5874,6 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->host_index = SRC_AH;
   daemon->max_procs = MAX_PROCS;
 #ifdef HAVE_DNSSEC
-  daemon->limit_key_fail = LIMIT_KEY_FAIL;
-  daemon->limit_ds_fail = LIMIT_DS_FAIL;
   daemon->limit_sig_fail = LIMIT_SIG_FAIL;
   daemon->limit_crypto = LIMIT_CRYPTO;
   daemon->limit_work = DNSSEC_WORK;

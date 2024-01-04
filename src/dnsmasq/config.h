@@ -23,10 +23,8 @@
 #define SAFE_PKTSZ 1232 /* "go anywhere" UDP packet size, see https://dnsflagday.net/2020/ */
 #define KEYBLOCK_LEN 40 /* choose to minimise fragmentation when storing DNSSEC keys */
 #define DNSSEC_WORK 50 /* Max number of queries to validate one question */
-#define LIMIT_KEY_FAIL 15 /* Number of keys that can fail DS validate in one an answer. */
-#define LIMIT_DS_FAIL 5   /* Number of DS records that can fail to validate a key in one answer */
-#define LIMIT_SIG_FAIL 10 /* Number of signature that can fail to validate in one answer */
-#define LIMIT_CRYPTO 40   /* max no. of crypto operations to validate one a query. */
+#define LIMIT_SIG_FAIL 20 /* Number of signature that can fail to validate in one answer */
+#define LIMIT_CRYPTO 200 /* max no. of crypto operations to validate one a query. */
 #define LIMIT_NSEC3_ITERS 150 /* Max. number if iterations allow in NSEC3 record. */
 #define TIMEOUT 10     /* drop UDP queries after TIMEOUT seconds */
 #define SMALL_PORT_RANGE 30 /* If DNS port range is smaller than this, use different allocation. */
