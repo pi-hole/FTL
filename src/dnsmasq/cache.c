@@ -2116,6 +2116,11 @@ const char *edestr(int ede)
     case EDE_NO_AUTH:                     return "no reachable authority";
     case EDE_NETERR:                      return "network error";
     case EDE_INVALID_DATA:                return "invalid data";
+    case EDE_SIG_E_B_V:                   return "signature expired before valid";
+    case EDE_TOO_EARLY:                   return "too early";
+    case EDE_UNS_NS3_ITER:                return "unsupported NSEC3 iterations value";
+    case EDE_UNABLE_POLICY:               return "uanble to conform to policy";
+    case EDE_SYNTHESIZED:                 return "synthesized";
     default:                              return "unknown";
     }
 }
