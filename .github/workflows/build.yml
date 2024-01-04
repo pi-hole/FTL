@@ -133,7 +133,7 @@ jobs:
         if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
         uses: actions/upload-artifact@v4.0.0
         with:
-          name: api-docs
+          name: pihole-api-docs
           path: 'api-docs.tar.gz'
 
   deploy:
@@ -149,18 +149,14 @@ jobs:
         uses: actions/download-artifact@v4.1.0
         id: download
         with:
-          path: download/
+          path: ftl_builds/
+          pattern: pihole-*
+          merge-multiple: true
       -
         name: Display structure of downloaded files
         run: ls -R
         working-directory: ${{steps.download.outputs.download-path}}
       
-      - 
-        name: Copy all artifacts from sub-directories to ftl_builds/
-        run: |
-          mkdir ftl_builds/
-          cp ${{steps.download.outputs.download-path}}/**/* ftl_builds/
-
       -
         name: Install SSH Key
         uses: benoitchantre/setup-ssh-authentication-action@1.0.1
