@@ -1396,10 +1396,8 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 	}
     }
 
-  if ((daemon->limit_crypto - forward->validate_counter) > daemon->metrics[METRIC_CRYTO_HWM])
+  if ((daemon->limit_crypto - forward->validate_counter) > (int)daemon->metrics[METRIC_CRYTO_HWM])
     daemon->metrics[METRIC_CRYTO_HWM] = daemon->limit_crypto - forward->validate_counter;
-  if (extract_request(header, n, daemon->namebuff, NULL))
-    my_syslog(LOG_INFO, "Validate_counter %s is %d", daemon->namebuff, daemon->limit_crypto - forward->validate_counter); /* TODO */  
 #endif
   
   if (option_bool(OPT_NO_REBIND))
@@ -2570,10 +2568,8 @@ unsigned char *tcp_request(int confd, time_t now,
 		      
 		      log_query(F_SECSTAT, domain, &a, result, 0);
 		    
-		      if ((daemon->limit_crypto - validatecount) > daemon->metrics[METRIC_CRYTO_HWM])
+		      if ((daemon->limit_crypto - validatecount) > (int)daemon->metrics[METRIC_CRYTO_HWM])
 			daemon->metrics[METRIC_CRYTO_HWM] = daemon->limit_crypto - validatecount;
-		       if (extract_request(header, m, daemon->namebuff, NULL))
-			 my_syslog(LOG_INFO, "Validate_counter %s is %d", daemon->namebuff, daemon->limit_crypto - validatecount); /* TODO */
 		    }
 #endif
 		  
