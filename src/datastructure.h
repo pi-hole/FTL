@@ -30,6 +30,7 @@ typedef struct {
 	int domainID;
 	int clientID;
 	int upstreamID;
+	int cacheID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int CNAME_domainID; // only valid if query has a CNAME blocking status
 	int ede;
