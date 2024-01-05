@@ -137,10 +137,10 @@ int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, 
 	return upstreamID;
 }
 
-static int get_next_domainID(void)
+static int get_next_free_domainID(void)
 {
 	// Compare content of domain against known domain IP addresses
-	for(int domainID=0; domainID < counters->domains; domainID++)
+	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
 		domainsData* domain = getDomain(domainID, false);
@@ -188,7 +188,7 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 
 	// If we did not return until here, then this domain is not known
 	// Store ID
-	const int domainID = get_next_domainID();
+	const int domainID = get_next_free_domainID();
 
 	// Get domain pointer
 	domainsData* domain = _getDomain(domainID, false, line, func, file);
@@ -218,10 +218,10 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 	return domainID;
 }
 
-static int get_next_clientID(void)
+static int get_next_free_clientID(void)
 {
 	// Compare content of client against known client IP addresses
-	for(int clientID=0; clientID < counters->clients; clientID++)
+	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
 		clientsData* client = getClient(clientID, false);
@@ -271,7 +271,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 
 	// If we did not return until here, then this client is definitely new
 	// Store ID
-	const int clientID = get_next_clientID();
+	const int clientID = get_next_free_clientID();
 
 	// Get client pointer
 	clientsData* client = _getClient(clientID, false, line, func, file);
@@ -369,10 +369,10 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		}
 }
 
-static int get_next_cacheID(void)
+static int get_next_free_cacheID(void)
 {
 	// Compare content of cache against known cache IP addresses
-	for(int cacheID=0; cacheID < counters->dns_cache_size; cacheID++)
+	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Get cache pointer
 		DNSCacheData* cache = getDNSCache(cacheID, false);
@@ -415,7 +415,7 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 		return -1;
 
 	// Get ID of new cache entry
-	const int cacheID = get_next_cacheID();
+	const int cacheID = get_next_free_cacheID();
 
 	// Get client pointer
 	DNSCacheData* dns_cache = _getDNSCache(cacheID, false, line, func, file);
@@ -425,6 +425,9 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 		log_err("Encountered serious memory error in findCacheID()");
 		return -1;
 	}
+
+	log_debug(DEBUG_GC, "New cache entry: domainID %d, clientID %d, query_type %d (ID %d)",
+	          domainID, clientID, query_type, cacheID);
 
 	// Initialize cache entry
 	dns_cache->magic = MAGICBYTE;
@@ -555,12 +558,17 @@ void FTL_reset_per_client_domain_data(void)
 
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
-		// Reset all blocking yes/no fields for all domains and clients
-		// This forces a reprocessing of all available filters for any
-		// given domain and client the next time they are seen
-		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-		if(dns_cache != NULL)
-			dns_cache->blocking_status = UNKNOWN_BLOCKED;
+		// Get cache pointer
+		DNSCacheData* dns_cache = getDNSCache(cacheID, true);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(dns_cache == NULL)
+			continue;
+
+		// Reset blocking status
+		dns_cache->blocking_status = UNKNOWN_BLOCKED;
+		// Reset domainlist ID
+		dns_cache->domainlist_id = -1;
 	}
 }
 
@@ -1039,10 +1047,10 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	if(!init)
 	{
 		counters->status[old_status]--;
-		log_debug(DEBUG_GC, "status %d removed (!init), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
+		log_debug(DEBUG_STATUS, "status %d removed (!init), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
 	}
 	counters->status[new_status]++;
-	log_debug(DEBUG_GC, "status %d set, ID = %d, new count = %d", new_status, query->id, counters->status[new_status]);
+	log_debug(DEBUG_STATUS, "status %d set, ID = %d, new count = %d", new_status, query->id, counters->status[new_status]);
 
 	// ... update overTime counters, ...
 	const int timeidx = getOverTimeID(query->timestamp);

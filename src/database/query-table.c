@@ -1052,19 +1052,20 @@ void DB_read_queries(void)
 			query->qtype = type - 100;
 		}
 		counters->querytype[query->type]++;
-		log_debug(DEBUG_GC, "query type %d set (database), ID = %d, new count = %d", query->type, counters->queries, counters->querytype[query->type]);
+		log_debug(DEBUG_STATUS, "query type %d set (database), ID = %d, new count = %d", query->type, counters->queries, counters->querytype[query->type]);
 
 		// Status is set below
 		query->domainID = domainID;
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
+		query->cacheID = findCacheID(domainID, clientID, query->type, true);
 		query->id = counters->queries;
 		query->response = 0;
 		query->flags.response_calculated = reply_time_avail;
 		query->dnssec = dnssec;
 		query->reply = reply;
 		counters->reply[query->reply]++;
-		log_debug(DEBUG_GC, "reply type %d set (database), ID = %d, new count = %d", query->reply, counters->queries, counters->reply[query->reply]);
+		log_debug(DEBUG_STATUS, "reply type %d set (database), ID = %d, new count = %d", query->reply, counters->queries, counters->reply[query->reply]);
 		query->response = reply_time;
 		query->CNAME_domainID = -1;
 		// Initialize flags
@@ -1112,8 +1113,7 @@ void DB_read_queries(void)
 			// Set ID of the domainlist entry that was the reason for permitting/blocking this query
 			// We assume the value in this field is said ID when it is not a CNAME-related domain
 			// (checked above) and the value of additional_info is not NULL (0 bytes storage size)
-			const int cacheID = findCacheID(query->domainID, query->clientID, query->type, true);
-			DNSCacheData *cache = getDNSCache(cacheID, true);
+			DNSCacheData *cache = getDNSCache(query->cacheID, true);
 			// Only load if
 			//  a) we have a cache entry
 			//  b) the value of additional_info is not NULL (0 bytes storage size)
@@ -1441,8 +1441,8 @@ bool queries_to_database(void)
 		}
 
 		// Get cache entry for this query
-		const int cacheID = findCacheID(query->domainID, query->clientID, query->type, false);
-		DNSCacheData *cache = cacheID < 0 ? NULL : getDNSCache(cacheID, true);
+		const int cacheID = query->cacheID >= 0 ? query->cacheID : findCacheID(query->domainID, query->clientID, query->type, false);
+		DNSCacheData *cache = getDNSCache(cacheID, true);
 
 		// ADDITIONAL_INFO
 		if(query->status == QUERY_GRAVITY_CNAME ||
