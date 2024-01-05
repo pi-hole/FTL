@@ -918,7 +918,10 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 			   a.key.flags = flags;
 			   
 			   if (!cache_insert(name, &a, class, now, ttl, F_FORWARD | F_DNSKEY | F_DNSSECOK))
-			     return STAT_BOGUS;
+			     {
+			       blockdata_free(key);
+			       return STAT_BOGUS;
+			     }
 			   
 			   a.log.keytag = keytag;
 			   a.log.algo = algo;
@@ -1019,6 +1022,8 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
       
       for (i = 0; i < ntohs(header->ancount); i++)
 	{
+	  unsigned char *psave;
+
 	  if (!(rc = extract_name(header, plen, &p, name, 0, 10)))
 	    return STAT_BOGUS; /* bad packet */
 	  
@@ -1029,15 +1034,16 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 	  
 	  if (!CHECK_LEN(header, p, plen, rdlen))
 	    return STAT_BOGUS; /* bad packet */
+
+	  psave = p;
 	  
 	  if (aclass == class && atype == T_DS && rc == 1)
 	    { 
 	      int algo, digest, keytag;
-	      unsigned char *psave = p;
 	      struct blockdata *key;
 	   
-	      if (rdlen < 4)
-		return STAT_BOGUS; /* bad packet */
+	      if (rdlen < 5)
+		return STAT_BOGUS; /* min 1 byte digest! */
 	      
 	      GETSHORT(keytag, p);
 	      algo = *p++;
@@ -1073,12 +1079,9 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 		      found_supported = 1;
 		    } 
 		}
-	      
-	      p = psave;
 	    }
-
-	  if (!ADD_RDLEN(header, p, plen, rdlen))
-	    return STAT_BOGUS; /* bad packet */
+	  
+	  p = psave + rdlen;
 	}
 
       cache_end_insert();
@@ -1201,11 +1204,11 @@ static int prove_non_existence_nsec(struct dns_header *header, size_t plen, unsi
 
       p = nsecs[i];
       if (!extract_name(header, plen, &p, workspace1, 1, 10))
-	return 0;
+	return DNSSEC_FAIL_BADPACKET;
       p += 8; /* class, type, TTL */
       GETSHORT(rdlen, p);
       psave = p;
-      if (!extract_name(header, plen, &p, workspace2, 1, 10))
+      if (!extract_name(header, plen, &p, workspace2, 1, 0))
 	return DNSSEC_FAIL_BADPACKET;
 
       /* If NSEC comes from wildcard expansion, use original wildcard
@@ -1239,7 +1242,8 @@ static int prove_non_existence_nsec(struct dns_header *header, size_t plen, unsi
 	  /* NSEC with the same name as the RR we're testing, check
 	     that the type in question doesn't appear in the type map */
 	  rdlen -= p - psave;
-	  /* rdlen is now length of type map, and p points to it */
+	  /* rdlen is now length of type map, and p points to it 
+	     packet checked to be as long as rdlen implies in prove_non_existence() */
 	  
 	  /* If we can prove that there's no NS record, return that information. */
 	  if (nons && rdlen >= 2 && p[0] == 0 && (p[2] & (0x80 >> T_NS)) != 0)
@@ -1368,23 +1372,23 @@ static int check_nsec3_coverage(struct dns_header *header, size_t plen, int dige
   for (i = 0; i < nsec_count; i++)
     if ((p = nsecs[i]))
       {
-       	if (!extract_name(header, plen, &p, workspace1, 1, 0) ||
+       	if (!extract_name(header, plen, &p, workspace1, 1, 10) ||
 	    !(base32_len = base32_decode(workspace1, (unsigned char *)workspace2)))
 	  return 0;
 	
 	p += 8; /* class, type, TTL */
 	GETSHORT(rdlen, p);
+
 	psave = p;
+
+	/* packet checked to be as long as implied by rdlen, salt_len and hash_len in prove_non_existence() */
 	p++; /* algo */
 	flags = *p++; /* flags */
 	p += 2; /* iterations */
 	salt_len = *p++; /* salt_len */
 	p += salt_len; /* salt */
 	hash_len = *p++; /* p now points to next hashed name */
-	
-	if (!CHECK_LEN(header, p, plen, hash_len))
-	  return 0;
-	
+		
 	if (digest_len == base32_len && hash_len == base32_len)
 	  {
 	    int rc = memcmp(workspace2, digest, digest_len);
@@ -1392,7 +1396,8 @@ static int check_nsec3_coverage(struct dns_header *header, size_t plen, int dige
 	    if (rc == 0)
 	      {
 		/* We found an NSEC3 whose hashed name exactly matches the query, so
-		   we just need to check the type map. p points to the RR data for the record. */
+		   we just need to check the type map. p points to the RR data for the record.
+		   Note we have packet length up to rdlen bytes checked. */
 		
 		int offset = (type & 0xff) >> 3;
 		int mask = 0x80 >> (type & 0x07);
@@ -1400,15 +1405,12 @@ static int check_nsec3_coverage(struct dns_header *header, size_t plen, int dige
 		p += hash_len; /* skip next-domain hash */
 		rdlen -= p - psave;
 
-		if (!CHECK_LEN(header, p, plen, rdlen))
-		  return 0;
-		
 		if (rdlen >= 2 && p[0] == 0)
 		  {
 		    /* If we can prove that there's no NS record, return that information. */
 		    if (nons && (p[2] & (0x80 >> T_NS)) != 0)
 		      *nons = 0;
-		
+		    
 		    /* A CNAME answer would also be valid, so if there's a CNAME is should 
 		       have been returned. */
 		    if ((p[2] & (0x80 >> T_CNAME)) != 0)
@@ -1511,9 +1513,7 @@ static int prove_non_existence_nsec3(struct dns_header *header, size_t plen, uns
   
   salt_len = *p++;
   salt = p;
-  if (!CHECK_LEN(header, salt, plen, salt_len))
-    return DNSSEC_FAIL_BADPACKET; /* bad packet */
-    
+      
   /* Now prune so we only have NSEC3 records with same iterations, salt and algo */
   for (i = 0; i < nsec_count; i++)
     {
@@ -1543,9 +1543,6 @@ static int prove_non_existence_nsec3(struct dns_header *header, size_t plen, uns
       if (salt_len != *p++)
 	continue;
       
-      if (!CHECK_LEN(header, p, plen, salt_len))
-	return DNSSEC_FAIL_BADPACKET; /* bad packet */
-
       if (memcmp(p, salt, salt_len) != 0)
 	continue;
 
@@ -1666,7 +1663,10 @@ static int prove_non_existence(struct dns_header *header, size_t plen, char *key
       GETSHORT(class, p);
       GETLONG(ttl, p);
       GETSHORT(rdlen, p);
-
+ 
+      if (!CHECK_LEN(header, p, plen, rdlen))
+	return DNSSEC_FAIL_BADPACKET;
+      
       if (class == qclass && (type == T_NSEC || type == T_NSEC3))
 	{
 	  if (nsec_ttl)
@@ -1705,22 +1705,25 @@ static int prove_non_existence(struct dns_header *header, size_t plen, char *key
 	      
 	      for (j = ntohs(header->nscount); j != 0; j--)
 		{
+		  unsigned char *psav;
+
 		  if (!(res = extract_name(header, plen, &p1, daemon->workspacename, 0, 10)))
 		    return DNSSEC_FAIL_BADPACKET;
-
+		  
 		   GETSHORT(type1, p1); 
 		   GETSHORT(class1, p1);
 		   p1 += 4; /* TTL */
 		   GETSHORT(rdlen1, p1);
 
+		   psav = p1;
+		   
 		   if (!CHECK_LEN(header, p1, plen, rdlen1))
 		     return DNSSEC_FAIL_BADPACKET;
 		   
 		   if (res == 1 && class1 == qclass && type1 == T_RRSIG)
 		     {
 		       int type_covered;
-		       unsigned char *psav = p1;
-		       
+		   		       
 		       if (rdlen1 < 18)
 			 return DNSSEC_FAIL_BADPACKET; /* bad packet */
 
@@ -1735,24 +1738,47 @@ static int prove_non_existence(struct dns_header *header, size_t plen, char *key
 			     rrsig_labels[nsecs_found] = p1;
 			   else if (*rrsig_labels[nsecs_found] != *p1) /* algo */
 			     return DNSSEC_FAIL_NONSEC;
-			   }
-		       p1 = psav;
+			 }
 		     }
 		   
-		   if (!ADD_RDLEN(header, p1, plen, rdlen1))
-		     return DNSSEC_FAIL_BADPACKET;
+		   p1 = psav + rdlen1;
 		}
 
 	      /* Must have found at least one sig. */
 	      if (!rrsig_labels[nsecs_found])
 		return DNSSEC_FAIL_NONSEC;
 	    }
+	  else if (type == T_NSEC3)
+	    {
+	      /* Decode the packet structure enough to check that rdlen is big enough
+		 to contain everything other than the type bitmap.
+		 (packet checked to be long enough to contain rdlen above)
+		 We don't need to do any further length checks in check_nes3_coverage()
+		 or prove_non_existence_nsec3() */
+	      
+	      int salt_len, hash_len;
+	      unsigned char *psav = p;
+	      
+	      if (rdlen < 5)
+		return DNSSEC_FAIL_BADPACKET;
+	      
+	      p += 4; /* algo, flags, iterations */
+	      salt_len = *p++; /* salt_len */
+	      if (rdlen < (6 + salt_len)) 
+		return DNSSEC_FAIL_BADPACKET; /* check up to hash_length */
+
+	      p += salt_len; /* salt */
+	      hash_len = *p++; 
+	      if (rdlen < (6 + salt_len + hash_len))
+		return DNSSEC_FAIL_BADPACKET; /* check to end of next hashed name */
+
+	      p = psav;
+	    }
 
 	  nsecset[nsecs_found++] = pstart;   
 	}
       
-      if (!ADD_RDLEN(header, p, plen, rdlen))
-	return DNSSEC_FAIL_BADPACKET;
+      p += rdlen;
     }
   
   if (type_found == T_NSEC)
