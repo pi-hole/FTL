@@ -724,7 +724,8 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
   union all_addr a;
   int failflags = DNSSEC_FAIL_NODSSUP | DNSSEC_FAIL_NOZONE;
   char valid_digest[255];
-  static unsigned char *cached_digest[255];
+  static unsigned char **cached_digest;
+  static size_t cached_digest_size = 0;
 
   if (ntohs(header->qdcount) != 1 || RCODE(header) != NOERROR || !extract_name(header, plen, &p, name, 1, 4))
     return STAT_BOGUS | DNSSEC_FAIL_NOKEY;
@@ -839,14 +840,35 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 	      hash->digest(ctx, hash->digest_size, digest);
 	      
 	      from_wire(name);
-	      
-	      if (!cached_digest[recp1->addr.ds.digest])
-		cached_digest[recp1->addr.ds.digest] = whine_malloc(recp1->addr.ds.keylen);
-	      
-	      if (cached_digest[recp1->addr.ds.digest])
+
+	      if (recp1->addr.ds.digest >= cached_digest_size)
 		{
-		  memcpy(cached_digest[recp1->addr.ds.digest], digest, recp1->addr.ds.keylen);
-		  valid_digest[recp1->addr.ds.digest] = 1;
+		  unsigned char **new;
+		
+		  /* whine_malloc zeros memory */
+		  if ((new = whine_malloc((recp1->addr.ds.digest + 5) * sizeof(unsigned char *))))
+		    {
+		      if (cached_digest_size != 0)
+			{
+			  memcpy(new, cached_digest, cached_digest_size * sizeof(unsigned char *));
+			  free(cached_digest);
+			}
+		      
+		      cached_digest_size = recp1->addr.ds.digest + 5;
+		      cached_digest = new;
+		    }
+		}
+		    
+	      if (recp1->addr.ds.digest < cached_digest_size)
+		{
+		  if (!cached_digest[recp1->addr.ds.digest])
+		    cached_digest[recp1->addr.ds.digest] = whine_malloc(recp1->addr.ds.keylen);
+	      
+		  if (cached_digest[recp1->addr.ds.digest])
+		    {
+		      memcpy(cached_digest[recp1->addr.ds.digest], digest, recp1->addr.ds.keylen);
+		      valid_digest[recp1->addr.ds.digest] = 1;
+		    }
 		}
 	    }
 	  
