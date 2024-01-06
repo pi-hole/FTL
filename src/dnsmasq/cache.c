@@ -852,12 +852,17 @@ void cache_end_insert(void)
     {
       ssize_t m = -1;
 
-#ifdef HAVE_DNSSEC
-      /* Sneak out possibly updated crypto HWM. */
-      m = -1 - daemon->metrics[METRIC_CRYTO_HWM];
-#endif
-
       read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
+
+#ifdef HAVE_DNSSEC
+      /* Sneak out possibly updated crypto HWM values. */
+      m = daemon->metrics[METRIC_CRYPTO_HWM];
+      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
+      m = daemon->metrics[METRIC_SIG_FAIL_HWM];
+      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
+      m = daemon->metrics[METRIC_WORK_HWM];
+      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
+#endif
     }
       
   new_chain = NULL;
@@ -876,18 +881,28 @@ int cache_recv_insert(time_t now, int fd)
   
   cache_start_insert();
   
-  while(1)
+  while (1)
     {
  
       if (!read_write(fd, (unsigned char *)&m, sizeof(m), 1))
 	return 0;
       
-      if (m < 0)
+      if (m == -1)
 	{
 #ifdef HAVE_DNSSEC
 	  /* Sneak in possibly updated crypto HWM. */
-	  if ((-m - 1) > daemon->metrics[METRIC_CRYTO_HWM])
-	    daemon->metrics[METRIC_CRYTO_HWM] = -m - 1;
+	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), 1))
+	    return 0;
+	  if (m > daemon->metrics[METRIC_CRYPTO_HWM])
+	    daemon->metrics[METRIC_CRYPTO_HWM] = m;
+	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), 1))
+	    return 0;
+	  if (m > daemon->metrics[METRIC_SIG_FAIL_HWM])
+	    daemon->metrics[METRIC_SIG_FAIL_HWM] = m;
+	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), 1))
+	    return 0;
+	  if (m > daemon->metrics[METRIC_WORK_HWM])
+	    daemon->metrics[METRIC_WORK_HWM] = m;
 #endif
 	  cache_end_insert();
 	  return 1;
@@ -2021,7 +2036,9 @@ void dump_cache(time_t now)
   my_syslog(LOG_INFO, _("queries for authoritative zones %u"), daemon->metrics[METRIC_DNS_AUTH_ANSWERED]);
 #endif
 #ifdef HAVE_DNSSEC
-  my_syslog(LOG_INFO, _("DNSSEC per-query crypto HWM %u"), daemon->metrics[METRIC_CRYTO_HWM]);
+  my_syslog(LOG_INFO, _("DNSSEC per-query subqueries HWM %u"), daemon->metrics[METRIC_WORK_HWM]);
+  my_syslog(LOG_INFO, _("DNSSEC per-query crypto work HWM %u"), daemon->metrics[METRIC_CRYPTO_HWM]);
+  my_syslog(LOG_INFO, _("DNSSEC per-RRSet signature fails HWM %u"), daemon->metrics[METRIC_SIG_FAIL_HWM]);
 #endif
 
   blockdata_report();
