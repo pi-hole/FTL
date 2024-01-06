@@ -93,9 +93,16 @@ void *DB_thread(void *val)
 	time_t before = time(NULL);
 	time_t lastDBsave = before - before%config.database.DBinterval.v.ui;
 
-	// Other timestamps
-	time_t lastAnalyze = before;
-	time_t lastMACVendor = before;
+	// Other timestamps, made independent from the exact time FTL was
+	// started
+	time_t lastAnalyze = before - before % DATABASE_ANALYZE_INTERVAL;
+	time_t lastMACVendor = before - before % DATABASE_MACVENDOR_INTERVAL;
+
+	// Add some randomness (up to ome hour) to these timestamps to avoid
+	// them running at the same time. This is not a security feature, so
+	// using rand() is fine.
+	lastAnalyze += rand() % 3600;
+	lastMACVendor += rand() % 3600;
 
 	// This thread runs until shutdown of the process. We keep this thread
 	// running when pihole-FTL.db is corrupted because reloading of privacy
@@ -165,7 +172,7 @@ void *DB_thread(void *val)
 			break;
 
 		// Optimize database once per week
-		if(now - lastAnalyze >= 604800)
+		if(now - lastAnalyze >= DATABASE_ANALYZE_INTERVAL)
 		{
 			DBOPEN_OR_AGAIN();
 			analyze_database(db);
@@ -179,7 +186,7 @@ void *DB_thread(void *val)
 
 		// Update MAC vendor strings once a month (the MAC vendor
 		// database is not updated very often)
-		if(now  - lastMACVendor >= 2592000)
+		if(now  - lastMACVendor >= DATABASE_MACVENDOR_INTERVAL)
 		{
 			DBOPEN_OR_AGAIN();
 			updateMACVendorRecords(db);
