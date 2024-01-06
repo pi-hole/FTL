@@ -13,6 +13,11 @@ updates:
   pull-request-branch-name:
       # Separate sections of the branch name with a hyphen
       separator: "-"
+  groups:
+    github_action-dependencies:
+      patterns:
+        - "*"
+
 # As above, but for development-v6
 - package-ecosystem: github-actions
   directory: "/"
@@ -27,3 +32,8 @@ updates:
   pull-request-branch-name:
       # Separate sections of the branch name with a hyphen
       separator: "-"
+  groups:
+    github_action-dependencies:
+      patterns:
+        - "*"
+
