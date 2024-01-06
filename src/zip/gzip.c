@@ -14,7 +14,6 @@
 #include <string.h>
 // le32toh and friends
 #include <endian.h>
-#include "miniz/miniz.h"
 #include "gzip.h"
 #include "log.h"
 
@@ -103,8 +102,8 @@ static bool deflate_buffer(const unsigned char *buffer_uncompressed, const mz_ul
 	return true;
 }
 
-static bool inflate_buffer(unsigned char *buffer_compressed, mz_ulong size_compressed,
-                           unsigned char **buffer_uncompressed, mz_ulong *size_uncompressed)
+bool inflate_buffer(unsigned char *buffer_compressed, mz_ulong size_compressed,
+                    unsigned char **buffer_uncompressed, mz_ulong *size_uncompressed)
 {
 	// Check GZIP header (magic byte 1F 8B and compression algorithm deflate 08)
 	if(buffer_compressed[0] != 0x1F || buffer_compressed[1] != 0x8B)

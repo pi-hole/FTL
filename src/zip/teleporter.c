@@ -523,7 +523,7 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 	return NULL;
 }
 
-const char *read_teleporter_zip(char *buffer, const size_t buflen, char * const hint, cJSON *imported_files)
+const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * const hint, cJSON *imported_files)
 {
 	// Initialize ZIP archive
 	mz_zip_archive zip = { 0 };

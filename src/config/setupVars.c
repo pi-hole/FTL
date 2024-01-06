@@ -42,6 +42,7 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 		free(conf_item->v.s);
 	conf_item->v.s = strdup(setupVarsValue);
 	conf_item->t = CONF_STRING_ALLOCATED;
+	conf_item->f |= FLAG_CONF_IMPORTED;
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
@@ -374,6 +375,8 @@ static void get_conf_listeningMode_from_setupVars(void)
 
 void importsetupVarsConf(void)
 {
+	log_info("Migrating config from %s", config.files.setupVars.v.s);
+
 	// Try to obtain password hash from setupVars.conf
 	get_conf_string_from_setupVars("WEBPASSWORD", &config.webserver.api.pwhash);
 
@@ -443,7 +446,26 @@ void importsetupVarsConf(void)
 	get_conf_bool_from_setupVars("DHCP_RAPID_COMMIT", &config.dhcp.rapidCommit);
 
 	get_conf_bool_from_setupVars("queryLogging", &config.dns.queryLogging);
+
 	get_conf_string_from_setupVars("GRAVITY_TMPDIR", &config.files.gravity_tmp);
+
+	// Ports may be temporarily stored when importing a legacy Teleporter v5 file
+	get_conf_string_from_setupVars("WEB_PORTS", &config.webserver.port);
+
+	// Move the setupVars.conf file to setupVars.conf.old
+	char *old_setupVars = calloc(strlen(config.files.setupVars.v.s) + 5, sizeof(char));
+	if(old_setupVars == NULL)
+	{
+		log_warn("Could not allocate memory for old_setupVars");
+		return;
+	}
+	strcpy(old_setupVars, config.files.setupVars.v.s);
+	strcat(old_setupVars, ".old");
+	if(rename(config.files.setupVars.v.s, old_setupVars) != 0)
+		log_warn("Could not move %s to %s", config.files.setupVars.v.s, old_setupVars);
+	else
+		log_info("Moved %s to %s", config.files.setupVars.v.s, old_setupVars);
+	free(old_setupVars);
 }
 
 char* __attribute__((pure)) find_equals(char *s)
