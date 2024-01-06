@@ -170,6 +170,56 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+    batchDelete:
+      post:
+        summary: Delete lists
+        tags:
+          - "List management"
+        operationId: "batchDelete_lists"
+        description: |
+          Deletes multiple lists in the `lists` object. The `{list}`s themselves are specified in the request body (POST JSON).
+
+          On success, a new resource is created at `/lists/{list}`.
+
+          The `database_error` with message `UNIQUE constraint failed` error indicates that this list already exists.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                $ref: 'lists.yaml#/components/schemas/lists/post'
+        responses:
+          '201':
+            description: Created item
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'lists.yaml#/components/schemas/lists/get'
+                    - $ref: 'lists.yaml#/components/schemas/lists_processed'
+                    - $ref: 'common.yaml#/components/schemas/took'
+            headers:
+              Location:
+                $ref: 'common.yaml#/components/headers/Location'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'lists.yaml#/components/examples/errors/bad_request/no_payload'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     lists:
       get:

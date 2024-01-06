@@ -41,6 +41,9 @@
 // Size of the buffer used to report possible errors during config validation
 #define VALIDATOR_ERRBUF_LEN 256
 
+// Location of the legacy (pre-v6.0) config file
+#define GLOBALCONFFILE_LEGACY "/etc/pihole/pihole-FTL.conf"
+
 union conf_value {
 	bool b;                                     // boolean value
 	int i;                                      // integer value
@@ -97,6 +100,7 @@ enum conf_type {
 #define FLAG_INVALIDATE_SESSIONS   (1 << 3)
 #define FLAG_WRITE_ONLY            (1 << 4)
 #define FLAG_ENV_VAR               (1 << 5)
+#define FLAG_CONF_IMPORTED         (1 << 6)
 
 struct conf_item {
 	const char *k;        // item Key
@@ -257,6 +261,7 @@ struct config {
 		struct conf_item pid;
 		struct conf_item database;
 		struct conf_item gravity;
+		struct conf_item gravity_tmp;
 		struct conf_item macvendor;
 		struct conf_item setupVars;
 		struct conf_item pcap;
@@ -274,6 +279,7 @@ struct config {
 		struct conf_item addr2line;
 		struct conf_item etc_dnsmasq_d;
 		struct conf_item dnsmasq_lines;
+		struct conf_item extraLogging;
 		struct {
 			struct conf_item load;
 			struct conf_item shmem;

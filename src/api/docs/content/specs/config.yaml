@@ -438,6 +438,8 @@ components:
                   type: string
                 gravity:
                   type: string
+                gravity_tmp:
+                  type: string
                 macvendor:
                   type: string
                 setupVars:
@@ -470,6 +472,8 @@ components:
                   type: array
                   items:
                     type: string
+                extraLogging:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -698,6 +702,7 @@ components:
             pid: "/run/pihole-FTL.pid"
             database: "/etc/pihole/pihole-FTL.db"
             gravity: "/etc/pihole/gravity.db"
+            gravity_tmp: "/tmp"
             macvendor: "/etc/pihole/macvendor.db"
             setupVars: "/etc/pihole/setupVars.conf"
             pcap: ""
@@ -712,6 +717,7 @@ components:
             privacylevel: 0
             etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
+            extraLogging: false
             check:
               load: true
               shmem: 90

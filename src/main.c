@@ -11,10 +11,9 @@
 #include "FTL.h"
 #include "daemon.h"
 #include "log.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "args.h"
 #include "config/config.h"
-#include "database/common.h"
 #include "main.h"
 // exit_code
 #include "signals.h"
@@ -24,12 +23,10 @@
 #include "capabilities.h"
 #include "timers.h"
 #include "procps.h"
-// init_memory_database(), import_queries_from_disk()
-#include "database/query-table.h"
 // init_overtime()
 #include "overTime.h"
-// flush_message_table()
-#include "database/message-table.h"
+// export_queries_to_disk()
+#include "database/query-table.h"
 
 #if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
 #pragma message "Minimum GLIBC version: " xstr(__GLIBC__) "." xstr(__GLIBC_MINOR__)
@@ -110,32 +107,6 @@ int main (int argc, char *argv[])
 	// Initialize overTime datastructure
 	initOverTime();
 
-	// Initialize query database (pihole-FTL.db)
-	db_init();
-
-	// Initialize in-memory databases
-	if(!init_memory_database())
-	{
-		log_crit("FATAL: Cannot initialize in-memory database.");
-		return EXIT_FAILURE;
-	}
-
-	// Flush messages stored in the long-term database
-	flush_message_table();
-
-	// Try to import queries from long-term database if available
-	if(config.database.DBimport.v.b)
-	{
-		import_queries_from_disk();
-		DB_read_queries();
-	}
-
-	// Initialize in-memory database starting index
-	update_disk_db_idx();
-
-	// Log some information about the imported queries (if any)
-	log_counter_info();
-
 	// Check for availability of capabilities in debug mode
 	if(config.debug.caps.v.b)
 		check_capabilities();
@@ -186,7 +157,7 @@ int main (int argc, char *argv[])
 	cleanup(exit_code);
 
 	if(exit_code == RESTART_FTL_CODE)
-		execv(argv[0], argv);
+		execvp(argv[0], argv);
 
 	return exit_code;
 }

@@ -19,7 +19,7 @@
 // config struct
 #include "../config/config.h"
 // read_setupVarsconf()
-#include "../setupVars.h"
+#include "../config/setupVars.h"
 // get_aliasclient_list()
 #include "../database/aliasclients.h"
 

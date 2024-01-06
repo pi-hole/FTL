@@ -428,6 +428,18 @@
   [[ ${lines[@]} == *"status: SERVFAIL"* ]]
 }
 
+@test "Special domain: NXDOMAIN is returned" {
+  run bash -c "dig A mask.icloud.com @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: NXDOMAIN"* ]]
+}
+
+@test "Special domain: Record is returned when explicitly allowed" {
+  run bash -c "dig A mask.icloud.com -b 127.0.0.2 @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: NOERROR"* ]]
+}
+
 @test "ABP-style matching working as expected" {
   run bash -c "dig A special.gravity.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
@@ -904,6 +916,26 @@
   [[ "${lines[@]}" == *"status: NOERROR"* ]]
 }
 
+@test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
+  run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[0]} == '"http://pi.hole:80/api/" "https://pi.hole:443/api/"' ]]
+}
+
+@test "API addresses reported correctly by CHAOS TXT local.api.ftl" {
+  run bash -c 'dig CHAOS TXT local.api.ftl +short @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[0]} == '"http://localhost:80/api/" "https://localhost:443/api/"' ]]
+}
+
+@test "API addresses reported by CHAOS TXT api.ftl identical to domain.api.ftl" {
+  run bash -c 'dig CHAOS TXT api.ftl +short @127.0.0.1'
+  api="${lines[0]}"
+  run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
+  domain_api="${lines[0]}"
+  [[ "${api}" == "${domain_api}" ]]
+}
+
 # x86_64-musl is built on busybox which has a slightly different
 # variant of ls displaying three, instead of one, spaces between the
 # user and group names.
@@ -1147,6 +1179,18 @@
   run bash -c "echo -e '.quit\n' | ./pihole-FTL sqlite3 -interactive"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "Pi-hole FTL"* ]]
+}
+
+@test "Embedded SQLite3 shell ignores .sqliterc \"-ni\"" {
+  # Install .sqliterc file at current home directory
+  cp test/sqliterc ~/.sqliterc
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/gravity.db \"SELECT value FROM info WHERE property = 'abp_domains';\""
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != "1" ]]
+  run bash -c "./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db \"SELECT value FROM info WHERE property = 'abp_domains';\""
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  rm ~/.sqliterc
 }
 
 @test "Embedded LUA engine is called for .lua file" {

@@ -12,7 +12,7 @@
 #include "config/config.h"
 #include "config/toml_reader.h"
 #include "config/toml_writer.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 #include "log.h"
 // readFTLlegacy()
@@ -198,7 +198,7 @@ struct conf_item *get_conf_item(struct config *conf, const unsigned int n)
 	}
 
 	// Return n-th config element
-	return (void*)conf + n*sizeof(struct conf_item);
+	return (struct conf_item *)conf + n;
 }
 
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug)
@@ -211,7 +211,7 @@ struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debu
 	}
 
 	// Return n-th config element
-	return (void*)&conf->debug + debug*sizeof(struct conf_item);
+	return (struct conf_item *)&conf->debug + debug;
 }
 
 unsigned int __attribute__ ((pure)) config_path_depth(char **paths)
@@ -562,10 +562,10 @@ void initConfig(struct config *conf)
 	conf->dns.cache.size.d.ui = 10000u;
 
 	conf->dns.cache.optimizer.k = "dns.cache.optimizer";
-	conf->dns.cache.optimizer.h = "Query cache optimizer: If a DNS name exists in the cache, but its time-to-live has expired only recently, the data will be used anyway (a refreshing from upstream is triggered). This can improve DNS query delays especially over unreliable Internet connections. This feature comes at the expense of possibly sometimes returning out-of-date data and less efficient cache utilisation, since old data cannot be flushed when its TTL expires, so the cache becomes mostly least-recently-used. To mitigate issues caused by massively outdated DNS replies, the maximum overaging of cached records is limited. We strongly recommend staying below 86400 (1 day) with this option.";
-	conf->dns.cache.optimizer.t = CONF_UINT;
+	conf->dns.cache.optimizer.h = "Query cache optimizer: If a DNS name exists in the cache, but its time-to-live has expired only recently, the data will be used anyway (a refreshing from upstream is triggered). This can improve DNS query delays especially over unreliable Internet connections. This feature comes at the expense of possibly sometimes returning out-of-date data and less efficient cache utilization, since old data cannot be flushed when its TTL expires, so the cache becomes mostly least-recently-used. To mitigate issues caused by massively outdated DNS replies, the maximum overaging of cached records is limited. We strongly recommend staying below 86400 (1 day) with this option.\n Setting the TTL excess time to zero will serve stale cache data regardless how long it has expired. This is not recommended as it may lead to stale data being served for a long time. Setting this option to any negative value will disable this feature altogether.";
+	conf->dns.cache.optimizer.t = CONF_INT;
 	conf->dns.cache.optimizer.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
-	conf->dns.cache.optimizer.d.ui = 3600u;
+	conf->dns.cache.optimizer.d.i = 3600u;
 
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
@@ -849,7 +849,7 @@ void initConfig(struct config *conf)
 	conf->webserver.acl.d.s = (char*)"";
 
 	conf->webserver.port.k = "webserver.port";
-	conf->webserver.port.h = "Ports to be used by the webserver.\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:80\" can be used to listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:80\" for the IPv6 loopback interface. [::]:80 will bind to port 80 IPv6 only.\n In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the configuration \"80,[::]:80\" (create one socket for IPv4 and one for IPv6 only), or \"+80\" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+80\" does not work for your environment, you need to use \"80,[::]:80\".\n If the port is TLS/SSL, a letter 's' must be appended, for example, \"80,443s\" will open port 80 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first configured SSL port. For example, if webserver.port is \"80r,443s\", then all HTTP traffic coming at port 80 will be redirected to HTTPS port 443.";
+	conf->webserver.port.h = "Ports to be used by the webserver.\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:80\" can be used to listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:80\" for the IPv6 loopback interface. [::]:80 will bind to port 80 IPv6 only.\n In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the configuration \"80,[::]:80\" (create one socket for IPv4 and one for IPv6 only), or \"+80\" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+80\" does not work for your environment, you need to use \"80,[::]:80\".\n If the port is TLS/SSL, a letter 's' must be appended, for example, \"80,443s\" will open port 80 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first configured SSL port. For example, if webserver.port is \"80r,443s\", then all HTTP traffic coming at port 80 will be redirected to HTTPS port 443. If this value is not set (empty string), the web server will not be started and, hence, the API will not be available.";
 	conf->webserver.port.a = cJSON_CreateStringReference("comma-separated list of <[ip_address:]port>");
 	conf->webserver.port.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->webserver.port.t = CONF_STRING;
@@ -1035,6 +1035,13 @@ void initConfig(struct config *conf)
 	conf->files.gravity.d.s = (char*)"/etc/pihole/gravity.db";
 	conf->files.gravity.c = validate_filepath;
 
+	conf->files.gravity_tmp.k = "files.gravity_tmp";
+	conf->files.gravity_tmp.h = "A temporary directory where Pi-hole can store files during gravity updates. This directory must be writable by the user running gravity (typically pihole).";
+	conf->files.gravity_tmp.a = cJSON_CreateStringReference("<any existing world-writable writable directory>");
+	conf->files.gravity_tmp.t = CONF_STRING;
+	conf->files.gravity_tmp.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
+	conf->files.gravity_tmp.d.s = (char*)"/tmp";
+
 	conf->files.macvendor.k = "files.macvendor";
 	conf->files.macvendor.h = "The database containing MAC -> Vendor information for the network table";
 	conf->files.macvendor.a = cJSON_CreateStringReference("<any Pi-hole macvendor database>");
@@ -1124,6 +1131,12 @@ void initConfig(struct config *conf)
 	conf->misc.dnsmasq_lines.t = CONF_JSON_STRING_ARRAY;
 	conf->misc.dnsmasq_lines.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->misc.dnsmasq_lines.d.json = cJSON_CreateArray();
+
+	conf->misc.extraLogging.k = "misc.extraLogging";
+	conf->misc.extraLogging.h = "Log additional information about queries and replies to pihole.log\n When this setting is enabled, the log has extra information at the start of each line. This consists of a serial number which ties together the log lines associated with an individual query, and the IP address of the requestor. This setting is only effective if dns.queryLogging is enabled, too. This option is only useful for debugging and is not recommended for normal use.";
+	conf->misc.extraLogging.t = CONF_BOOL;
+	conf->misc.extraLogging.f = FLAG_RESTART_FTL;
+	conf->misc.extraLogging.d.b = false;
 
 	// sub-struct misc.check
 	conf->misc.check.load.k = "misc.check.load";
@@ -1442,36 +1455,39 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 		rename(GLOBALTOMLPATH, new_name);
 	}
 
-	// Determine default webserver ports
-	// Check if ports 80/TCP and 443/TCP are already in use
-	const in_port_t http_port = port_in_use(80) ? 8080 : 80;
-	const in_port_t https_port = port_in_use(443) ? 8443 : 443;
-
-	// Create a string with the default ports
-	// Allocate memory for the string
-	char *ports = calloc(32, sizeof(char));
-	if(ports == NULL)
+	// Determine default webserver ports if not imported from setupVars.conf
+	if(!(config.webserver.port.f & FLAG_CONF_IMPORTED))
 	{
-		log_err("Unable to allocate memory for default ports string");
-		return false;
+		// Check if ports 80/TCP and 443/TCP are already in use
+		const in_port_t http_port = port_in_use(80) ? 8080 : 80;
+		const in_port_t https_port = port_in_use(443) ? 8443 : 443;
+
+		// Create a string with the default ports
+		// Allocate memory for the string
+		char *ports = calloc(32, sizeof(char));
+		if(ports == NULL)
+		{
+			log_err("Unable to allocate memory for default ports string");
+			return false;
+		}
+		// Create the string
+		snprintf(ports, 32, "%d,%ds", http_port, https_port);
+
+		// Append IPv6 ports if IPv6 is enabled
+		const bool have_ipv6 = ipv6_enabled();
+		if(have_ipv6)
+			snprintf(ports + strlen(ports), 32 - strlen(ports),
+				",[::]:%d,[::]:%ds", http_port, https_port);
+
+		// Set default values for webserver ports
+		if(conf->webserver.port.t == CONF_STRING_ALLOCATED)
+			free(conf->webserver.port.v.s);
+		conf->webserver.port.v.s = ports;
+		conf->webserver.port.t = CONF_STRING_ALLOCATED;
+
+		log_info("Initialised webserver ports at %d (HTTP) and %d (HTTPS), IPv6 support is %s",
+			http_port, https_port, have_ipv6 ? "enabled" : "disabled");
 	}
-	// Create the string
-	snprintf(ports, 32, "%d,%ds", http_port, https_port);
-
-	// Append IPv6 ports if IPv6 is enabled
-	const bool have_ipv6 = ipv6_enabled();
-	if(have_ipv6)
-		snprintf(ports + strlen(ports), 32 - strlen(ports),
-		         ",[::]:%d,[::]:%ds", http_port, https_port);
-
-	// Set default values for webserver ports
-	if(conf->webserver.port.t == CONF_STRING_ALLOCATED)
-		free(conf->webserver.port.v.s);
-	conf->webserver.port.v.s = ports;
-	conf->webserver.port.t = CONF_STRING_ALLOCATED;
-
-	log_info("Initialised webserver ports at %d (HTTP) and %d (HTTPS), IPv6 support is %s",
-	         http_port, https_port, have_ipv6 ? "enabled" : "disabled");
 
 	// Initialize the TOML config file
 	writeFTLtoml(true);

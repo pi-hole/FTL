@@ -91,6 +91,11 @@ static char * __attribute__((malloc)) base64_encode(const uint8_t *data, const s
 	out_len = base64_encode_update(&ctx, encoded, length, data);
 	out_len += base64_encode_final(&ctx, encoded + out_len);
 
+	// Length check
+	if(out_len > BASE64_ENCODE_LENGTH(length) + BASE64_ENCODE_FINAL_LENGTH)
+		log_warn("Base64 encoding may have failed: Output buffer too small? (%zu > %zu)",
+		         out_len, BASE64_ENCODE_LENGTH(length) + BASE64_ENCODE_FINAL_LENGTH);
+
 	return encoded;
 }
 
@@ -259,7 +264,7 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 	// Decode salt and hash
 	size_t salt_len = 0;
 	*salt = base64_decode(salt_base64, &salt_len);
-	if(salt == NULL)
+	if(*salt == NULL)
 	{
 		// Error
 		log_err("Error while decoding salt: %s", strerror(errno));
@@ -275,7 +280,7 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 
 	size_t hash_len = 0;
 	*hash = base64_decode(hash_base64, &hash_len);
-	if(hash == NULL)
+	if(*hash == NULL)
 	{
 		// Error
 		log_err("Error while decoding hash: %s", strerror(errno));
@@ -376,10 +381,8 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 
 		// Free allocated memory
 		free(supplied);
-		if(salt != NULL)
-			free(salt);
-		if(config_hash != NULL)
-			free(config_hash);
+		free(salt);
+		free(config_hash);
 
 		// Successful logins do not count against rate-limiting
 		if(result)
@@ -408,11 +411,10 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 				writeFTLtoml(true);
 				free(new_hash);
 			}
-		}
 
-		// Successful logins do not count against rate-limiting
-		if(result)
+			// Successful logins do not count against rate-limiting
 			num_password_attempts--;
+		}
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
@@ -476,8 +478,8 @@ static int performance_test_task(const size_t s_cost, const size_t t_cost, const
 		printf("s = %5zu, t = %5zu took %6.1f +/- %4.1f ms (scratch buffer %6.1f%1sB) -> %.0f\n",
 		       s_cost, t_cost, 1e3*avg, 1e3*stdev, formatted, prefix, 1.0*(s_cost*t_cost)/avg);
 
-		// Break if test took longer than two seconds
-		if(avg > 2)
+		// Break if test took longer than half a second
+		if(avg > 0.5)
 			return 1;
 		return 0;
 }

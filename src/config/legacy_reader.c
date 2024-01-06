@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "legacy_reader.h"
 #include "config.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 // nice()
 #include <unistd.h>
@@ -43,7 +43,7 @@ static FILE * __attribute__((nonnull(1), malloc, warn_unused_result)) openFTLcon
 		return fp;
 
 	// Local file not present, try system file
-	*path = "/etc/pihole/pihole-FTL.conf";
+	*path = GLOBALCONFFILE_LEGACY;
 	fp = fopen(*path, "r");
 
 	return fp;
@@ -113,9 +113,12 @@ const char *readFTLlegacy(struct config *conf)
 	const char *path = NULL;
 	FILE *fp = openFTLconf(&path);
 	if(fp == NULL)
+	{
+		log_warn("No readable FTL config file found, using default settings");
 		return NULL;
+	}
 
-	log_notice("Reading legacy config file");
+	log_info("Reading legacy config files from %s", path);
 
 	// MAXDBDAYS
 	// defaults to: 365 days
@@ -336,6 +339,10 @@ const char *readFTLlegacy(struct config *conf)
 	// systems, the range is -20..20. Very early Linux kernels (Before Linux
 	// 2.0) had the range -infinity..15.
 	buffer = parseFTLconf(fp, "NICE");
+
+	value = 0;
+	if(buffer != NULL && sscanf(buffer, "%i", &value) && value >= -20 && value <= 19)
+		conf->misc.nice.v.i = value;
 
 	// MAXNETAGE
 	// IP addresses (and associated host names) older than the specified number
@@ -576,8 +583,8 @@ const char *readFTLlegacy(struct config *conf)
 	// Release memory
 	releaseConfigMemory();
 
-	if(fp != NULL)
-		fclose(fp);
+	// Close file
+	fclose(fp);
 
 	return path;
 }
@@ -824,12 +831,7 @@ static void readDebugingSettingsLegacy(FILE *fp)
 	setDebugOption(fp, "DEBUG_ALL", ~(enum debug_flag)0);
 
 	for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
-	{
-		// DEBUG_DATABASE
-		const char *name;
-		debugstr(flag, &name);
-		setDebugOption(fp, name, flag);
-	}
+		setDebugOption(fp, debugstr(flag), flag);
 
 	// Parse debug options
 	set_debug_flags(&config);

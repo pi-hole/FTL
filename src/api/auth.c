@@ -16,7 +16,7 @@
 #include "log.h"
 #include "config/config.h"
 // get_password_hash()
-#include "setupVars.h"
+#include "config/setupVars.h"
 // (un)lock_shm()
 #include "shmem.h"
 // getrandom()
@@ -202,7 +202,6 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	{
 		if(auth_data[i].used &&
 		   auth_data[i].valid_until >= now &&
-		   strcmp(auth_data[i].remote_addr, api->request->remote_addr) == 0 &&
 		   strcmp(auth_data[i].sid, sid) == 0)
 		{
 			if(need_csrf && strcmp(auth_data[i].csrf, csrf) != 0)
@@ -217,10 +216,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	}
 	if(user_id > API_AUTH_UNAUTHORIZED)
 	{
-		// Authentication successful:
-		// - We know this client
-		// - The session is (still) valid
-		// - The IP matches the one we know for this SID
+		// Authentication successful: valid session
 
 		// Update timestamp of this client to extend
 		// the validity of their API authentication
@@ -245,8 +241,8 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		{
 			char timestr[128];
 			get_timestr(timestr, auth_data[user_id].valid_until, false, false);
-			log_debug(DEBUG_API, "Recognized known user: user_id %i, valid_until: %s, remote_addr %s",
-				user_id, timestr, auth_data[user_id].remote_addr);
+			log_debug(DEBUG_API, "Recognized known user: user_id %i, valid_until: %s, remote_addr %s (%s at login)",
+			          user_id, timestr, api->request->remote_addr, auth_data[user_id].remote_addr);
 		}
 	}
 	else
