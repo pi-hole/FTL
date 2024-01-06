@@ -2832,6 +2832,29 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	else
 		savepid();
 
+	// Initialize query database (pihole-FTL.db)
+	db_init();
+
+	// Initialize in-memory databases
+	if(!init_memory_database())
+		log_crit("Cannot initialize in-memory database.");
+
+	// Flush messages stored in the long-term database
+	flush_message_table();
+
+	// Try to import queries from long-term database if available
+	if(config.database.DBimport.v.b)
+	{
+		import_queries_from_disk();
+		DB_read_queries();
+	}
+
+	// Initialize in-memory database starting index
+	update_disk_db_idx();
+
+	// Log some information about the imported queries (if any)
+	log_counter_info();
+
 	// Handle real-time signals in this process (and its children)
 	// Helper processes are already split from the main instance
 	// so they will not listen to real-time signals

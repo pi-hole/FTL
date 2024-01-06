@@ -251,9 +251,15 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 		generate_backtrace();
 
 	if(iErrCode == SQLITE_WARNING)
-		log_warn("SQLite3 message: %s (%d)", zMsg, iErrCode);
+		log_warn("SQLite3: %s (%d)", zMsg, iErrCode);
+	else if(iErrCode == SQLITE_NOTICE || iErrCode == SQLITE_SCHEMA)
+		// SQLITE_SCHEMA is returned when the database schema has changed
+		// This is not necessarily an error, as sqlite3_step() will re-prepare
+		// the statement and try again. If it cannot, it will return an error
+		// and this will be handled over there.
+		log_debug(DEBUG_ANY, "SQLite3: %s (%d)", zMsg, iErrCode);
 	else
-		log_err("SQLite3 message: %s (%d)", zMsg, iErrCode);
+		log_err("SQLite3: %s (%d)", zMsg, iErrCode);
 }
 
 void db_init(void)
