@@ -428,7 +428,7 @@ int dec_counter(int *counter, char *message)
 {
   if ((*counter)-- == 0)
     {
-      my_syslog(LOG_WARNING, "limit exceeded: %s", message ? message : "crypto work");
+      my_syslog(LOG_WARNING, "limit exceeded: %s", message ? message : _("per-query crypto work"));
       return 1;
     }
 
@@ -686,14 +686,16 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 		if (dec_counter(validate_counter, NULL))
 		  return STAT_ABANDONED;
 		
-		 if (verify(crecp->addr.key.keydata, crecp->addr.key.keylen, sig, sig_len, digest, hash->digest_size, algo))
+		if (verify(crecp->addr.key.keydata, crecp->addr.key.keylen, sig, sig_len, digest, hash->digest_size, algo))
 		  return (labels < name_labels) ? STAT_SECURE_WILDCARD : STAT_SECURE;
 		
 		/* An attacker can waste a lot of our CPU by setting up a giant DNSKEY RRSET full of failing
 		   keys, all of which we have to try. Since many failing keys is not likely for
 		   a legitimate domain, set a limit on how many can fail. */
-		 if (dec_counter(&sig_fail_cnt, "SIG fail"))
-		   return STAT_ABANDONED;
+		if ((daemon->limit_sig_fail - (sig_fail_cnt + 1)) > (int)daemon->metrics[METRIC_SIG_FAIL_HWM])
+		  daemon->metrics[METRIC_SIG_FAIL_HWM] = daemon->limit_sig_fail - (sig_fail_cnt + 1);
+		if (dec_counter(&sig_fail_cnt, _("per-RRSet signature fails")))
+		  return STAT_ABANDONED;
 	      }
 	}
     }

@@ -938,6 +938,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 			    ssize_t plen, int status, time_t now)
 {
   struct frec *orig;
+  int log_resource = 0;
 
   daemon->log_display_id = forward->frec_src.log_id;
   
@@ -980,16 +981,10 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	status = dnssec_validate_reply(now, header, plen, daemon->namebuff, daemon->keyname, &forward->class, 
 				       !option_bool(OPT_DNSSEC_IGN_NS) && (forward->sentto->flags & SERV_DO_DNSSEC),
 				       NULL, NULL, NULL, &orig->validate_counter);
-
-      if (STAT_ISEQUAL(status, STAT_ABANDONED))
-	{
-	  /* Log the actual validation that made us barf. */
-	  unsigned char *p = (unsigned char *)(header+1);
-	  if  (extract_name(header, plen, &p, daemon->namebuff, 0, 4) == 1)
-	    my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
-		      daemon->namebuff[0] ? daemon->namebuff : ".");
-	}
     }
+
+  if (STAT_ISEQUAL(status, STAT_ABANDONED))
+    log_resource = 1;
   
   /* Can't validate, as we're missing key data. Put this
      answer aside, whilst we get that. */     
@@ -1033,6 +1028,11 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  return;
 		}
 	    }
+	  else if (orig->work_counter-- == 0)
+	    {
+	      my_syslog(LOG_WARNING, _("limit exceeded: per-query subqueries"));
+	      log_resource = 1;
+	    }
 	  else
 	    {
 	      struct server *server;
@@ -1049,7 +1049,6 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 					      daemon->keyname, forward->class,
 					      STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz)) && 
 		  (hash = hash_questions(header, nn, daemon->namebuff)) &&
-		  --orig->work_counter != 0 &&
 		  (fd = allocate_rfd(&rfds, server)) != -1 &&
 		  (new = get_new_frec(now, server, 1)))
 		{
@@ -1115,6 +1114,15 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
       status = STAT_ABANDONED;
     }
 
+  if (log_resource)
+    {
+      /* Log the actual validation that made us barf. */
+      unsigned char *p = (unsigned char *)(header+1);
+      if  (extract_name(header, plen, &p, daemon->namebuff, 0, 4) == 1)
+	my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
+		  daemon->namebuff[0] ? daemon->namebuff : ".");
+    }
+  
 #ifdef HAVE_DUMPFILE
   if (STAT_ISEQUAL(status, STAT_BOGUS) || STAT_ISEQUAL(status, STAT_ABANDONED))
     dump_packet_udp((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_BOGUS : DUMP_BOGUS,
@@ -1396,8 +1404,11 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 	}
     }
 
-  if ((daemon->limit_crypto - forward->validate_counter) > (int)daemon->metrics[METRIC_CRYTO_HWM])
-    daemon->metrics[METRIC_CRYTO_HWM] = daemon->limit_crypto - forward->validate_counter;
+  if ((daemon->limit_crypto - forward->validate_counter) > (int)daemon->metrics[METRIC_CRYPTO_HWM])
+    daemon->metrics[METRIC_CRYPTO_HWM] = daemon->limit_crypto - forward->validate_counter;
+
+  if ((daemon->limit_work - forward->work_counter) > (int)daemon->metrics[METRIC_WORK_HWM])
+    daemon->metrics[METRIC_WORK_HWM] = daemon->limit_work - forward->work_counter;
 #endif
   
   if (option_bool(OPT_NO_REBIND))
@@ -2141,9 +2152,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       int log_save;
             
       /* limit the amount of work we do, to avoid cycling forever on loops in the DNS */
-      if (--(*keycount) == 0)
-	new_status = STAT_ABANDONED;
-      else if (STAT_ISEQUAL(status, STAT_NEED_KEY))
+      if (STAT_ISEQUAL(status, STAT_NEED_KEY))
 	new_status = dnssec_validate_by_ds(now, header, n, name, keyname, class, validatecount);
       else if (STAT_ISEQUAL(status, STAT_NEED_DS))
 	new_status = dnssec_validate_ds(now, header, n, name, keyname, class, validatecount);
@@ -2152,6 +2161,15 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 					   !option_bool(OPT_DNSSEC_IGN_NS) && (server->flags & SERV_DO_DNSSEC),
 					   NULL, NULL, NULL, validatecount);
       
+      if (!STAT_ISEQUAL(new_status, STAT_NEED_DS) && !STAT_ISEQUAL(new_status, STAT_NEED_KEY) && !STAT_ISEQUAL(new_status, STAT_ABANDONED))
+	break;
+      
+      if ((*keycount)-- == 0)
+	{
+	  my_syslog(LOG_WARNING, _("limit exceeded: per-query subqueries"));
+	  new_status = STAT_ABANDONED;
+	}
+      
       if (STAT_ISEQUAL(new_status, STAT_ABANDONED))
 	{
 	  /* Log the actual validation that made us barf. */
@@ -2159,11 +2177,9 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 	  if  (extract_name(header, n, &p, daemon->namebuff, 0, 4) == 1)
 	    my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
 		      daemon->namebuff[0] ? daemon->namebuff : ".");
+	  break;
 	}
-
-      if (!STAT_ISEQUAL(new_status, STAT_NEED_DS) && !STAT_ISEQUAL(new_status, STAT_NEED_KEY))
-	break;
-
+      
       /* Can't validate because we need a key/DS whose name now in keyname.
 	 Make query for same, and recurse to validate */
       if (!packet)
@@ -2177,7 +2193,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 	  new_status = STAT_ABANDONED;
 	  break;
 	}
-
+      
       m = dnssec_generate_query(new_header, ((unsigned char *) new_header) + 65536, keyname, class, 
 				STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz);
       
@@ -2192,11 +2208,11 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       daemon->log_display_id = ++daemon->log_id;
       
       log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, keyname, &server->addr,
-			    STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
-            
+			   STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
+      
       new_status = tcp_key_recurse(now, new_status, new_header, m, class, name, keyname, server,
 				   have_mark, mark, keycount, validatecount);
-
+      
       daemon->log_display_id = log_save;
       
       if (!STAT_ISEQUAL(new_status, STAT_OK))
@@ -2568,8 +2584,11 @@ unsigned char *tcp_request(int confd, time_t now,
 		      
 		      log_query(F_SECSTAT, domain, &a, result, 0);
 		    
-		      if ((daemon->limit_crypto - validatecount) > (int)daemon->metrics[METRIC_CRYTO_HWM])
-			daemon->metrics[METRIC_CRYTO_HWM] = daemon->limit_crypto - validatecount;
+		      if ((daemon->limit_crypto - validatecount) > (int)daemon->metrics[METRIC_CRYPTO_HWM])
+			daemon->metrics[METRIC_CRYPTO_HWM] = daemon->limit_crypto - validatecount;
+
+		      if ((daemon->limit_work - keycount) > (int)daemon->metrics[METRIC_WORK_HWM])
+			daemon->metrics[METRIC_WORK_HWM] = daemon->limit_work - keycount;
 		    }
 #endif
 		  
