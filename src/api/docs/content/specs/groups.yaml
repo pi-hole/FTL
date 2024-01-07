@@ -235,13 +235,14 @@ components:
             type: array
             items:
               allOf:
-                - $ref: 'groups.yaml#/components/schemas/name'
+                - $ref: 'groups.yaml#/components/schemas/name_object'
                 - $ref: 'groups.yaml#/components/schemas/comment'
                 - $ref: 'groups.yaml#/components/schemas/enabled'
                 - $ref: 'groups.yaml#/components/schemas/readonly'
       put:
         allOf:
-          - $ref: 'groups.yaml#/components/schemas/name'
+          # Can rename group
+          - $ref: 'groups.yaml#/components/schemas/name_object'
           - $ref: 'groups.yaml#/components/schemas/comment'
           - $ref: 'groups.yaml#/components/schemas/enabled'
       post:
@@ -250,25 +251,27 @@ components:
           - $ref: 'groups.yaml#/components/schemas/comment'
           - $ref: 'groups.yaml#/components/schemas/enabled'
     name:
-      type: object
-      properties:
-        name:
-          description: Group name
-          type: string
-          example: test_group
+      description: Group name
+      type: string
+      example: test_group
     name_array:
+      description: array of group names
+      type: array
+      items:
+        type: string
+      example: ["test1", "test2", "test3"]
+    name_maybe_array:
       type: object
       properties:
         name:
-          description: array of group names
-          type: array
-          items:
-            type: string
-          example: ["test1", "test2", "test3"]
-    name_maybe_array:
-      oneOf:
-        - $ref: 'groups.yaml#/components/schemas/name'
-        - $ref: 'groups.yaml#/components/schemas/name_array'
+          oneOf:
+            - $ref: 'groups.yaml#/components/schemas/name'
+            - $ref: 'groups.yaml#/components/schemas/name_array'
+    name_object:
+      type: object
+      properties:
+        name:
+          $ref: 'groups.yaml#/components/schemas/name'
     comment:
       type: object
       properties:

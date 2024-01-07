@@ -280,7 +280,7 @@ components:
             description: Array of domains
             items:
               allOf:
-                - $ref: 'domains.yaml#/components/schemas/domain'
+                - $ref: 'domains.yaml#/components/schemas/domain_object'
                 - $ref: 'domains.yaml#/components/schemas/unicode'
                 - $ref: 'domains.yaml#/components/schemas/type'
                 - $ref: 'domains.yaml#/components/schemas/kind'
@@ -302,12 +302,9 @@ components:
           - $ref: 'domains.yaml#/components/schemas/groups'
           - $ref: 'domains.yaml#/components/schemas/enabled'
     domain:
-      type: object
-      properties:
-        domain:
-          description: Domain
-          type: string
-          example: testdomain.com
+      description: Domain
+      type: string
+      example: testdomain.com
     unicode:
       type: object
       properties:
@@ -316,18 +313,23 @@ components:
           type: string
           example: "äbc.com"
     domain_array:
+      description: array of domains
+      type: array
+      items:
+        type: string
+      example: ["testdomain.com", "otherdomain.de"]
+    domain_maybe_array:
       type: object
       properties:
         domain:
-          description: array of domains
-          type: array
-          items:
-            type: string
-          example: ["testdomain.com", "otherdomain.de"]
-    domain_maybe_array:
-      oneOf:
-        - $ref: 'domains.yaml#/components/schemas/domain'
-        - $ref: 'domains.yaml#/components/schemas/domain_array'
+          oneOf:
+            - $ref: 'domains.yaml#/components/schemas/domain'
+            - $ref: 'domains.yaml#/components/schemas/domain_array'
+    domain_object:
+      type: object
+      properties:
+        domain:
+          $ref: 'domains.yaml#/components/schemas/domain'
     type:
       type: object
       properties:
