@@ -3263,6 +3263,7 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 #endif
 	else
 	{
+		// Invalid IP address or no lease found
 		return false;
 	}
 
