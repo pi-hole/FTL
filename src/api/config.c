@@ -294,7 +294,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			}
 
 			if(!set_and_check_password(conf_item, elem->valuestring))
-				return "Failed to create password hash (verification failed), password remains unchanged";
+				return "password hash verification failed";
 
 			break;
 		}
