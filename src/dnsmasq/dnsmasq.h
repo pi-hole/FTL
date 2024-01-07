@@ -840,6 +840,12 @@ struct frec {
 #define LEASE_HAVE_HWADDR  128  /* Have set hwaddress */
 #define LEASE_EXP_CHANGED  256  /* Lease expiry time changed */
 
+#define LIMIT_SIG_FAIL    0
+#define LIMIT_CRYPTO      1
+#define LIMIT_WORK        2
+#define LIMIT_NSEC3_ITERS 3
+#define LIMIT_MAX         4
+
 struct dhcp_lease {
   int clid_len;          /* length of client identifier */
   unsigned char *clid;   /* clientid */
@@ -1249,7 +1255,7 @@ extern struct daemon {
   int rr_status_sz;
   int dnssec_no_time_check;
   int back_to_the_future;
-  int limit_sig_fail, limit_crypto, limit_work, limit_nsec3_iters;
+  int limit[LIMIT_MAX];
 #endif
   struct frec *frec_list;
   struct frec_src *free_frec_src;

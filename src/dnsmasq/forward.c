@@ -344,8 +344,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (ad_reqd)
 	forward->flags |= FREC_AD_QUESTION;
 #ifdef HAVE_DNSSEC
-      forward->work_counter = daemon->limit_work;
-      forward->validate_counter = daemon->limit_crypto; 
+      forward->work_counter = daemon->limit[LIMIT_WORK];
+      forward->validate_counter = daemon->limit[LIMIT_CRYPTO]; 
       if (do_bit)
 	forward->flags |= FREC_DO_QUESTION;
 #endif
@@ -1404,11 +1404,11 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 	}
     }
 
-  if ((daemon->limit_crypto - forward->validate_counter) > (int)daemon->metrics[METRIC_CRYPTO_HWM])
-    daemon->metrics[METRIC_CRYPTO_HWM] = daemon->limit_crypto - forward->validate_counter;
+  if ((daemon->limit[LIMIT_CRYPTO] - forward->validate_counter) > (int)daemon->metrics[METRIC_CRYPTO_HWM])
+    daemon->metrics[METRIC_CRYPTO_HWM] = daemon->limit[LIMIT_CRYPTO] - forward->validate_counter;
 
-  if ((daemon->limit_work - forward->work_counter) > (int)daemon->metrics[METRIC_WORK_HWM])
-    daemon->metrics[METRIC_WORK_HWM] = daemon->limit_work - forward->work_counter;
+  if ((daemon->limit[LIMIT_WORK] - forward->work_counter) > (int)daemon->metrics[METRIC_WORK_HWM])
+    daemon->metrics[METRIC_WORK_HWM] = daemon->limit[LIMIT_WORK] - forward->work_counter;
 #endif
   
   if (option_bool(OPT_NO_REBIND))
@@ -2554,8 +2554,8 @@ unsigned char *tcp_request(int confd, time_t now,
 #ifdef HAVE_DNSSEC
 		  if (option_bool(OPT_DNSSEC_VALID) && !checking_disabled && (master->flags & SERV_DO_DNSSEC))
 		    {
-		      int keycount = daemon->limit_work; /* Limit to number of DNSSEC questions, to catch loops and avoid filling cache. */
-		      int validatecount = daemon->limit_crypto; 
+		      int keycount = daemon->limit[LIMIT_WORK]; /* Limit to number of DNSSEC questions, to catch loops and avoid filling cache. */
+		      int validatecount = daemon->limit[LIMIT_CRYPTO]; 
 		      int status = tcp_key_recurse(now, STAT_OK, header, m, 0, daemon->namebuff, daemon->keyname, 
 						   serv, have_mark, mark, &keycount, &validatecount);
 		      char *result, *domain = "result";
@@ -2584,11 +2584,11 @@ unsigned char *tcp_request(int confd, time_t now,
 		      
 		      log_query(F_SECSTAT, domain, &a, result, 0);
 		    
-		      if ((daemon->limit_crypto - validatecount) > (int)daemon->metrics[METRIC_CRYPTO_HWM])
-			daemon->metrics[METRIC_CRYPTO_HWM] = daemon->limit_crypto - validatecount;
+		      if ((daemon->limit[LIMIT_CRYPTO] - validatecount) > (int)daemon->metrics[METRIC_CRYPTO_HWM])
+			daemon->metrics[METRIC_CRYPTO_HWM] = daemon->limit[LIMIT_CRYPTO] - validatecount;
 
-		      if ((daemon->limit_work - keycount) > (int)daemon->metrics[METRIC_WORK_HWM])
-			daemon->metrics[METRIC_WORK_HWM] = daemon->limit_work - keycount;
+		      if ((daemon->limit[LIMIT_WORK] - keycount) > (int)daemon->metrics[METRIC_WORK_HWM])
+			daemon->metrics[METRIC_WORK_HWM] = daemon->limit[LIMIT_WORK] - keycount;
 		    }
 #endif
 		  

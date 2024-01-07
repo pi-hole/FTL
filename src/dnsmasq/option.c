@@ -195,6 +195,7 @@ struct myoption {
 #define LOPT_NO_DHCP6      382
 #define LOPT_NO_DHCP4      383
 #define LOPT_MAX_PROCS     384
+#define LOPT_DNSSEC_LIMITS 385
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -368,6 +369,7 @@ static const struct myoption opts[] =
     { "dnssec-check-unsigned", 2, 0, LOPT_DNSSEC_CHECK },
     { "dnssec-no-timecheck", 0, 0, LOPT_DNSSEC_TIME },
     { "dnssec-timestamp", 1, 0, LOPT_DNSSEC_STAMP },
+    { "dnssec-limits", 1, 0, LOPT_DNSSEC_LIMITS },
     { "dhcp-relay", 1, 0, LOPT_RELAY },
     { "ra-param", 1, 0, LOPT_RA_PARAM },
     { "quiet-dhcp", 0, 0, LOPT_QUIET_DHCP },
@@ -572,6 +574,7 @@ static struct {
   { LOPT_DNSSEC_CHECK, ARG_DUP, NULL, gettext_noop("Ensure answers without DNSSEC are in unsigned zones."), NULL },
   { LOPT_DNSSEC_TIME, OPT_DNSSEC_TIME, NULL, gettext_noop("Don't check DNSSEC signature timestamps until first cache-reload"), NULL },
   { LOPT_DNSSEC_STAMP, ARG_ONE, "<path>", gettext_noop("Timestamp file to verify system clock for DNSSEC"), NULL },
+  { LOPT_DNSSEC_LIMITS, ARG_ONE, "<limit>,..", gettext_noop("Set resource limits for DNSSEC validation"), NULL },
   { LOPT_RA_PARAM, ARG_DUP, "<iface>,[mtu:<value>|<interface>|off,][<prio>,]<intval>[,<lifetime>]", gettext_noop("Set MTU, priority, resend-interval and router-lifetime"), NULL },
   { LOPT_QUIET_DHCP, OPT_QUIET_DHCP, NULL, gettext_noop("Do not log routine DHCP."), NULL },
   { LOPT_QUIET_DHCP6, OPT_QUIET_DHCP6, NULL, gettext_noop("Do not log routine DHCPv6."), NULL },
@@ -5262,6 +5265,24 @@ err:
       }
 
 #ifdef HAVE_DNSSEC
+    case LOPT_DNSSEC_LIMITS:
+      {
+	int lim, val;
+
+	for (lim = LIMIT_SIG_FAIL; arg && lim < LIMIT_MAX ;  lim++, arg = comma)
+	  {
+	    comma = split(arg);
+
+	    if (!atoi_check(arg, &val))
+	      ret_err(gen_err);
+
+	    if (val != 0)
+	      daemon->limit[lim] = val;
+	  }
+	
+	break;
+      }
+      
     case LOPT_DNSSEC_STAMP: /* --dnssec-timestamp */
       daemon->timestamp_file = opt_string_alloc(arg); 
       break;
@@ -5874,10 +5895,10 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->host_index = SRC_AH;
   daemon->max_procs = MAX_PROCS;
 #ifdef HAVE_DNSSEC
-  daemon->limit_sig_fail = LIMIT_SIG_FAIL;
-  daemon->limit_crypto = LIMIT_CRYPTO;
-  daemon->limit_work = DNSSEC_WORK;
-  daemon->limit_nsec3_iters = LIMIT_NSEC3_ITERS;
+  daemon->limit[LIMIT_SIG_FAIL] = DNSSEC_LIMIT_SIG_FAIL;
+  daemon->limit[LIMIT_CRYPTO] = DNSSEC_LIMIT_CRYPTO;
+  daemon->limit[LIMIT_WORK] = DNSSEC_LIMIT_WORK;
+  daemon->limit[LIMIT_NSEC3_ITERS] = DNSSEC_LIMIT_NSEC3_ITERS;
 #endif
   
   /* See comment above make_servers(). Optimises server-read code. */
