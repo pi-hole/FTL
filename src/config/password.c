@@ -328,6 +328,7 @@ enum password_result verify_login(const char *password)
 		log_debug(DEBUG_API, "App password correct");
 		return APPPASSWORD_CORRECT;
 	}
+
 	// Return result
 	return pw;
 }
@@ -336,7 +337,7 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 {
 	// No password set
 	if(pwhash == NULL || pwhash[0] == '\0')
-		return PASSWORD_CORRECT;
+		return NO_PASSWORD_SET;
 
 	// No password supplied
 	if(password == NULL || password[0] == '\0')

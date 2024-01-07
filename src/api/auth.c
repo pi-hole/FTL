@@ -648,6 +648,11 @@ int api_auth(struct ftl_conn *api)
 		                       "Rate-limiting login attempts",
 		                       NULL);
 	}
+	else if(result == NO_PASSWORD_SET)
+	{
+		// No password set
+		log_debug(DEBUG_API, "API: Trying to auth with password but none set: '%s'", password);
+	}
 	else
 	{
 		log_debug(DEBUG_API, "API: Password incorrect: '%s'", password);
