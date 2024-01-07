@@ -8,22 +8,22 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
-#include "api.h"
-#include "../shmem.h"
-#include "../datastructure.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
+#include "api/api.h"
+#include "shmem.h"
+#include "datastructure.h"
 // read_setupVarsconf()
-#include "../config/setupVars.h"
+#include "config/setupVars.h"
 // logging routines
-#include "../log.h"
+#include "log.h"
 // config struct
-#include "../config/config.h"
+#include "config/config.h"
 // overTime data
-#include "../overTime.h"
+#include "overTime.h"
 // enum REGEX
-#include "../regex_r.h"
+#include "regex_r.h"
 // sqrt()
 #include <math.h>
 
@@ -137,15 +137,6 @@ int api_stats_summary(struct ftl_conn *api)
 
 int api_stats_top_domains(struct ftl_conn *api)
 {
-	int count = 10;
-	const int domains = counters->domains;
-	int *temparray = calloc(2*domains, sizeof(int*));
-	if(temparray == NULL)
-	{
-		log_err("Memory allocation failed in %s()", __FUNCTION__);
-		return 0;
-	}
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
 	{
@@ -157,11 +148,23 @@ int api_stats_top_domains(struct ftl_conn *api)
 		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *top_domains = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(json, "top_domains", top_domains);
-		free(temparray);
 		JSON_SEND_OBJECT(json);
 	}
 
+	// Lock shared memory
+	lock_shm();
+
+	// Allocate memory
+	const int domains = counters->domains;
+	int *temparray = calloc(2*domains, sizeof(int));
+	if(temparray == NULL)
+	{
+		log_err("Memory allocation failed in %s()", __FUNCTION__);
+		return 0;
+	}
+
 	bool blocked = false; // Can be overwritten by query string
+	int count = 10;
 	// /api/stats/top_domains?blocked=true
 	if(api->request->query_string != NULL)
 	{
@@ -173,10 +176,8 @@ int api_stats_top_domains(struct ftl_conn *api)
 		get_int_var(api->request->query_string, "count", &count);
 	}
 
-	// Lock shared memory
-	lock_shm();
-
-	for(int domainID=0; domainID < domains; domainID++)
+	unsigned int added_domains = 0u;
+	for(int domainID = 0; domainID < domains; domainID++)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(domainID, true);
@@ -189,10 +190,12 @@ int api_stats_top_domains(struct ftl_conn *api)
 		else
 			// Count only permitted queries
 			temparray[2*domainID + 1] = (domain->count - domain->blockedcount);
+
+		added_domains++;
 	}
 
 	// Sort temporary array
-	qsort(temparray, domains, sizeof(int[2]), cmpdesc);
+	qsort(temparray, added_domains, sizeof(int[2]), cmpdesc);
 
 	// Get filter
 	const char* filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
@@ -216,7 +219,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 
 	int n = 0;
 	cJSON *top_domains = JSON_NEW_ARRAY();
-	for(int i = 0; i < domains; i++)
+	for(unsigned int i = 0; i < added_domains; i++)
 	{
 		// Get sorted index
 		const int domainID = temparray[2*i + 0];
@@ -282,7 +285,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 {
 	int count = 10;
 	const int clients = counters->clients;
-	int *temparray = calloc(2*clients, sizeof(int*));
+	int *temparray = calloc(2*clients, sizeof(int));
 	if(temparray == NULL)
 	{
 		log_err("Memory allocation failed in api_stats_top_clients()");
@@ -405,7 +408,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 {
 	unsigned int totalcount = 0;
 	const int upstreams = counters->upstreams;
-	int *temparray = calloc(2*upstreams, sizeof(int*));
+	int *temparray = calloc(2*upstreams, sizeof(int));
 	if(temparray == NULL)
 	{
 		log_err("Memory allocation failed in api_stats_upstreams()");
