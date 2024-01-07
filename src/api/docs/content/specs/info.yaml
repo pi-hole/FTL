@@ -222,10 +222,6 @@ components:
         responses:
           '204':
             description: Item deleted
-            content:
-              application/json:
-                schema:
-                  $ref: 'common.yaml#/components/schemas/took'
           '404':
             description: Not found
             content:
