@@ -97,6 +97,20 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/schemas/took'
+          '404':
+            description: Not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:

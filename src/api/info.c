@@ -951,7 +951,7 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 	// - 204 No Content (if any items were deleted)
 	// - 404 Not Found (if no items were deleted)
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_SEND_OBJECT_CODE(json, deleted > 0u ? 204 : 404);
+	JSON_SEND_OBJECT_CODE(json, deleted > 0 ? 204 : 404);
 }
 
 int api_info_messages(struct ftl_conn *api)
