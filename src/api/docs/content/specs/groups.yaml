@@ -63,6 +63,9 @@ components:
                     - $ref: 'groups.yaml#/components/schemas/groups/get' # identical to GET
                     - $ref: 'groups.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
+            headers:
+              Location:
+                $ref: 'common.yaml#/components/headers/Location'
           '400':
             description: Bad request
             content:
@@ -94,8 +97,16 @@ components:
         responses:
           '204':
             description: Item deleted
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '404':
             description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -195,18 +206,18 @@ components:
                   - "item": "test1"
                   - "item": "test2"
         responses:
-          '201':
-            description: Created item
+          '204':
+            description: Items deleted
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: 'groups.yaml#/components/schemas/groups/get' # identical to GET
-                    - $ref: 'groups.yaml#/components/schemas/lists_processed'
-                    - $ref: 'common.yaml#/components/schemas/took'
-            headers:
-              Location:
-                $ref: 'common.yaml#/components/headers/Location'
+                  $ref: 'common.yaml#/components/schemas/took'
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
