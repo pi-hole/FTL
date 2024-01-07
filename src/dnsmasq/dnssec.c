@@ -479,7 +479,7 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
   rrsetidx = sort_rrset(header, plen, rr_desc, rrsetidx, rrset, daemon->workspacename, keyname);
          
   /* Now try all the sigs to try and find one which validates */
-  for (sig_fail_cnt = daemon->limit_sig_fail, j = 0; j <sigidx; j++)
+  for (sig_fail_cnt = daemon->limit[LIMIT_SIG_FAIL], j = 0; j <sigidx; j++)
     {
       unsigned char *psav, *sig, *digest;
       int i, wire_len, sig_len;
@@ -692,8 +692,8 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 		/* An attacker can waste a lot of our CPU by setting up a giant DNSKEY RRSET full of failing
 		   keys, all of which we have to try. Since many failing keys is not likely for
 		   a legitimate domain, set a limit on how many can fail. */
-		if ((daemon->limit_sig_fail - (sig_fail_cnt + 1)) > (int)daemon->metrics[METRIC_SIG_FAIL_HWM])
-		  daemon->metrics[METRIC_SIG_FAIL_HWM] = daemon->limit_sig_fail - (sig_fail_cnt + 1);
+		if ((daemon->limit[LIMIT_SIG_FAIL] - (sig_fail_cnt + 1)) > (int)daemon->metrics[METRIC_SIG_FAIL_HWM])
+		  daemon->metrics[METRIC_SIG_FAIL_HWM] = daemon->limit[LIMIT_SIG_FAIL] - (sig_fail_cnt + 1);
 		if (dec_counter(&sig_fail_cnt, _("per-RRSet signature fails")))
 		  return STAT_ABANDONED;
 	      }
@@ -1532,7 +1532,7 @@ static int prove_non_existence_nsec3(struct dns_header *header, size_t plen, uns
 
   GETSHORT (iterations, p);
   /* Upper-bound iterations, to avoid DoS. RFC 9276 refers. */
-  if (iterations > daemon->limit_nsec3_iters)
+  if (iterations > daemon->limit[LIMIT_NSEC3_ITERS])
     return DNSSEC_FAIL_NSEC3_ITERS;
   
   salt_len = *p++;
