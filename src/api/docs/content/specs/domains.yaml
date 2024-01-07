@@ -212,6 +212,64 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+    batchDelete:
+      summary: Delete multiple domains
+      post:
+        summary: Delete multiple domains
+        tags:
+          - "Domain management"
+        operationId: "batchDelete_domains"
+        description: |
+          *Note:* There will be no content on success.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    item:
+                      type: string
+                      description: Domain to delete
+                      example: "example.com"
+                    type:
+                      type: string
+                      description: Type of domain to delete
+                      enum:
+                        - "allow"
+                        - "deny"
+                      example: "allow"
+                    kind:
+                      type: string
+                      description: Kind of domain to delete
+                      enum:
+                        - "exact"
+                        - "regex"
+                      example: "exact"
+        responses:
+          '204':
+            description: Items deleted
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     domains:
       get:
@@ -222,7 +280,8 @@ components:
             description: Array of domains
             items:
               allOf:
-                - $ref: 'domains.yaml#/components/schemas/domain'
+                - $ref: 'domains.yaml#/components/schemas/domain_object'
+                - $ref: 'domains.yaml#/components/schemas/unicode'
                 - $ref: 'domains.yaml#/components/schemas/type'
                 - $ref: 'domains.yaml#/components/schemas/kind'
                 - $ref: 'domains.yaml#/components/schemas/comment'
@@ -243,25 +302,34 @@ components:
           - $ref: 'domains.yaml#/components/schemas/groups'
           - $ref: 'domains.yaml#/components/schemas/enabled'
     domain:
+      description: Domain
+      type: string
+      example: testdomain.com
+    unicode:
       type: object
       properties:
-        domain:
-          description: Domain
+        unicode:
+          description: Unicode domain (may be different from `domain` if punycode-encoding is used)
           type: string
-          example: testdomain.com
+          example: "äbc.com"
     domain_array:
+      description: array of domains
+      type: array
+      items:
+        type: string
+      example: ["testdomain.com", "otherdomain.de"]
+    domain_maybe_array:
       type: object
       properties:
         domain:
-          description: array of domains
-          type: array
-          items:
-            type: string
-          example: ["testdomain.com", "otherdomain.de"]
-    domain_maybe_array:
-      oneOf:
-        - $ref: 'domains.yaml#/components/schemas/domain'
-        - $ref: 'domains.yaml#/components/schemas/domain_array'
+          oneOf:
+            - $ref: 'domains.yaml#/components/schemas/domain'
+            - $ref: 'domains.yaml#/components/schemas/domain_array'
+    domain_object:
+      type: object
+      properties:
+        domain:
+          $ref: 'domains.yaml#/components/schemas/domain'
     type:
       type: object
       properties:
@@ -368,6 +436,7 @@ components:
       value:
         domains:
           - domain: "allowed.com"
+            unicode: "allowed.com"
             type: allow
             kind: exact
             comment: null
@@ -377,7 +446,8 @@ components:
             id: 299
             date_added: 1611239095
             date_modified: 1612163756
-          - domain: "allowed2.comm"
+          - domain: "xn--4ca.com"
+            unicode: "ä.com"
             type: allow
             kind: regex
             comment: "Some text"

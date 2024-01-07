@@ -15,7 +15,7 @@
 // sysinfo()
 #include <sys/sysinfo.h>
 // get_blockingstatus()
-#include "setupVars.h"
+#include "config/setupVars.h"
 // counters
 #include "shmem.h"
 // get_FTL_db_filesize()
@@ -147,7 +147,7 @@ int api_info_database(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(json, "owner", owner);
 
 	// Add number of queries in on-disk database
-	const int queries_in_database = get_number_of_queries_in_DB(NULL, "query_storage", true);
+	const int queries_in_database = get_number_of_queries_in_DB(NULL, "query_storage");
 	JSON_ADD_NUMBER_TO_OBJECT(json, "queries", queries_in_database);
 
 	// Add SQLite library version
@@ -664,9 +664,11 @@ int api_info_sensors(struct ftl_conn *api)
 		// 1. AMD CPU temperature sensor
 		// 2. Intel CPU temperature sensor
 		// 3. General CPU temperature sensor
+		// 4. General SoC temperature sensor (https://discourse.pi-hole.net/t/temperature-value-not-shown/66883)
 		if(strcmp(name->valuestring, "k10temp") == 0 ||
 		   strcmp(name->valuestring, "coretemp") == 0 ||
-		   strcmp(name->valuestring, "cpu_thermal") == 0)
+		   strcmp(name->valuestring, "cpu_thermal") == 0 ||
+		   strcmp(name->valuestring, "soc_thermal") == 0)
 		{
 			cpu_temp_sensor = i;
 			break;

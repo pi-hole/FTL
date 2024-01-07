@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "files.h"
 #include "config/config.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 
 // opendir(), readdir()
@@ -26,13 +26,9 @@
 #include <sys/statvfs.h>
 // dirname()
 #include <libgen.h>
-// compression functions
-#include "zip/gzip.h"
 // sendfile()
 #include <fcntl.h>
 #include <sys/sendfile.h>
-
-#define BACKUP_DIR "/etc/pihole/config_backups"
 
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
@@ -465,14 +461,6 @@ void rotate_files(const char *path, char **first_file)
 		if(i == 1 && first_file != NULL)
 			*first_file = strdup(new_path);
 
-		size_t old_path_len = strlen(old_path) + 4;
-		char *old_path_compressed = calloc(old_path_len, sizeof(char));
-		snprintf(old_path_compressed, old_path_len, "%s.gz", old_path);
-
-		size_t new_path_len = strlen(new_path) + 4;
-		char *new_path_compressed = calloc(new_path_len, sizeof(char));
-		snprintf(new_path_compressed, new_path_len, "%s.gz", new_path);
-
 		if(file_exists(old_path))
 		{
 			// Copy file to backup directory
@@ -507,46 +495,11 @@ void rotate_files(const char *path, char **first_file)
 
 			// Change ownership of file to pihole user
 			chown_pihole(new_path);
-
-			// Compress file if we are rotating a sufficiently old file
-			if(i > ZIP_ROTATIONS)
-			{
-				log_debug(DEBUG_CONFIG, "Compressing %s -> %s",
-				          new_path, new_path_compressed);
-				if(deflate_file(new_path, new_path_compressed, false))
-				{
-					// On success, we remove the uncompressed file
-					remove(new_path);
-				}
-
-				// Change ownership of file to pihole user
-				chown_pihole(new_path_compressed);
-			}
-		}
-		else if(file_exists(old_path_compressed))
-		{
-			// Rename file
-			if(rename(old_path_compressed, new_path_compressed) < 0)
-			{
-				log_warn("Rotation %s -(MOVE)> %s failed: %s",
-				         old_path_compressed, new_path_compressed, strerror(errno));
-			}
-			else
-			{
-				// Log success if debug is enabled
-				log_debug(DEBUG_CONFIG, "Rotated %s -> %s",
-				          old_path_compressed, new_path_compressed);
-			}
-
-			// Change ownership of file to pihole user
-			chown_pihole(new_path_compressed);
 		}
 
 		// Free memory
 		free(old_path);
 		free(new_path);
-		free(old_path_compressed);
-		free(new_path_compressed);
 	}
 }
 
@@ -624,4 +577,132 @@ char * __attribute__((malloc)) get_hwmon_target(const char *path)
 	target[nbytes] = '\0';
 
 	return target;
+}
+
+// Returns true if the files have different contents
+// from specifies from which line number the files should be compared
+bool files_different(const char *pathA, const char* pathB, unsigned int from)
+{
+	// Check if both files exist
+	if(!file_exists(pathA) || !file_exists(pathB))
+		return true;
+
+	// Check if both files are identical
+	if(strcmp(pathA, pathB) == 0)
+		return false;
+
+	// Open both files
+	FILE *fpA = fopen(pathA, "r");
+	if(fpA == NULL)
+	{
+		log_warn("files_different(): Failed to open \"%s\" for reading: %s", pathA, strerror(errno));
+		return true;
+	}
+	FILE *fpB = fopen(pathB, "r");
+	if(fpB == NULL)
+	{
+		log_warn("files_different(): Failed to open \"%s\" for reading: %s", pathB, strerror(errno));
+		fclose(fpA);
+		return true;
+	}
+
+	// Compare both files line by line
+	char *lineA = NULL, *lineB = NULL;
+	size_t lenA = 0, lenB = 0;
+	ssize_t readA = 0, readB = 0;
+	bool different = false;
+	unsigned int lineno = 0;
+	while(true)
+	{
+		// Read lines from both files
+		readA = getline(&lineA, &lenA, fpA);
+		readB = getline(&lineB, &lenB, fpB);
+
+		// Check if we reached the end of any of the files
+		if(readA < 0 || readB < 0)
+			break;
+
+		// Skip lines until we reach the requested line number
+		if(from > ++lineno)
+			continue;
+
+		// Remove possible trailing newline characters
+		if(lineA[readA - 1] == '\n')
+			lineA[readA - 1] = '\0';
+		if(lineB[readB - 1] == '\n')
+			lineB[readB - 1] = '\0';
+
+		// Compare lines
+		if(strcmp(lineA, lineB) != 0)
+		{
+			different = true;
+			log_debug(DEBUG_CONFIG, "Files %s and %s differ at line %u",
+			          pathA, pathB, lineno);
+			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : lineA);
+			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : lineB);
+			break;
+		}
+	}
+
+	// Check if one file has more lines than the other
+	if(!different && readA != readB)
+	{
+		different = true;
+		log_debug(DEBUG_CONFIG, "Files %s and %s differ at the final line %u",
+		          pathA, pathB, lineno);
+		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : lineA);
+		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : lineB);
+	}
+
+	// Free memory
+	free(lineA);
+	free(lineB);
+
+	// Close files
+	fclose(fpA);
+	fclose(fpB);
+
+	// Log result (if not already done above)
+	if(!different)
+		log_debug(DEBUG_CONFIG, "Files %s and %s are identical (skipped the first %u line%s)",
+		          pathA, pathB, from, from == 1 ? "" : "s");
+
+	return different;
+}
+
+// Create SHA256 checksum of a file
+bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE])
+{
+	// Open file
+	FILE *fp = fopen(path, "rb");
+	if(fp == NULL)
+	{
+		log_warn("sha256_file(): Failed to open \"%s\" for reading: %s", path, strerror(errno));
+		return false;
+	}
+
+	// Initialize SHA2-256 context
+	struct sha256_ctx ctx;
+	sha256_init(&ctx);
+
+	// Read file in chunks of <pagesize> bytes
+	const size_t pagesize = getpagesize();
+	unsigned char *buf = calloc(pagesize, sizeof(char));
+	size_t len;
+	while((len = fread(buf, sizeof(char), pagesize, fp)) > 0)
+	{
+		// Update SHA256 context
+		sha256_update(&ctx, len, buf);
+	}
+
+	// Finalize SHA256 context
+	sha256_digest(&ctx, SHA256_DIGEST_SIZE, checksum);
+
+	// Close file
+	fclose(fp);
+
+	// Free memory
+	free(buf);
+
+	return true;
 }

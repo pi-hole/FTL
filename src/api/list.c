@@ -17,6 +17,9 @@
 #include "shmem.h"
 // getNameFromIP()
 #include "database/network-table.h"
+// valid_domain()
+#include "tools/gravity-parseList.h"
+#include <idn2.h>
 
 static int api_list_read(struct ftl_conn *api,
                          const int code,
@@ -55,9 +58,11 @@ static int api_list_read(struct ftl_conn *api,
 			char *name = NULL;
 			if(table.client != NULL)
 			{
-				// Try to obtain hostname if this is a valid IP address
+				// Try to obtain hostname
 				if(isValidIPv4(table.client) || isValidIPv6(table.client))
 					name = getNameFromIP(NULL, table.client);
+				else if(isMAC(table.client))
+					name = getNameFromMAC(table.client);
 			}
 
 			JSON_COPY_STR_TO_OBJECT(row, "client", table.client);
@@ -70,10 +75,18 @@ static int api_list_read(struct ftl_conn *api,
 		}
 		else // domainlists
 		{
+			char *unicode = NULL;
+			const int rc = idn2_to_unicode_lzlz(table.domain, &unicode, IDN2_NONTRANSITIONAL);
 			JSON_COPY_STR_TO_OBJECT(row, "domain", table.domain);
+			if(rc == IDN2_OK)
+				JSON_COPY_STR_TO_OBJECT(row, "unicode", unicode);
+			else
+				JSON_COPY_STR_TO_OBJECT(row, "unicode", table.domain);
 			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
 			JSON_REF_STR_IN_OBJECT(row, "kind", table.kind);
 			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+			if(unicode != NULL)
+				free(unicode);
 		}
 
 		// Groups don't have the groups property
@@ -393,11 +406,50 @@ static int api_list_write(struct ftl_conn *api,
 			   strchr(it->valuestring, '\t') != NULL ||
 			   strchr(it->valuestring, '\n') != NULL)
 			{
-				cJSON_free(row.items);
+				if(allocated_json)
+					cJSON_free(row.items);
 				return send_json_error(api, 400, // 400 Bad Request
+				                       "bad_request",
+				                       "Spaces, newlines and tabs are not allowed in domains and URLs",
+				                       it->valuestring);
+			}
+
+			if(listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
+			   listtype == GRAVITY_DOMAINLIST_DENY_EXACT)
+			{
+				char *punycode = NULL;
+				const int rc = idn2_to_ascii_lz(it->valuestring, &punycode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+				if (rc != IDN2_OK)
+				{
+					// Invalid domain name
+					return send_json_error(api, 400,
+					                       "bad_request",
+					                       "Invalid request: Invalid domain name",
+					                       idn2_strerror(rc));
+				}
+				// Convert punycode domain to lowercase
+				for(unsigned int i = 0u; i < strlen(punycode); i++)
+					punycode[i] = tolower(punycode[i]);
+
+				// Validate punycode domain
+				// This will reject domains like äöü{{{.com
+				// which convert to xn--{{{-pla4gpb.com
+				if(!valid_domain(punycode, strlen(punycode), false))
+				{
+					if(allocated_json)
+						cJSON_free(row.items);
+					return send_json_error(api, 400, // 400 Bad Request
 							"bad_request",
-							"Spaces, newlines and tabs are not allowed in domains and URLs",
+							"Invalid domain",
 							it->valuestring);
+				}
+
+				// Replace domain with punycode version
+				if(!(it->type & cJSON_IsReference))
+					free(it->valuestring);
+				it->valuestring = punycode;
+				// Remove reference flag
+				it->type &= ~cJSON_IsReference;
 			}
 		}
 	}
@@ -406,11 +458,12 @@ static int api_list_write(struct ftl_conn *api,
 	if(!okay)
 	{
 		// Send error reply
-		cJSON_free(row.items);
-		return send_json_error(api, 400, // 400 Bad Request
-		                       "regex_error",
-		                       "Regex validation failed",
-		                       regex_msg);
+		if(allocated_json)
+			cJSON_free(row.items);
+		return send_json_error_free(api, 400, // 400 Bad Request
+		                            "regex_error",
+		                            "Regex validation failed",
+		                            regex_msg, true);
 	}
 
 	// Try to add item(s) to table
@@ -450,12 +503,26 @@ static int api_list_write(struct ftl_conn *api,
 		cJSON_AddItemToArray(okay ? success : errors, details);
 	}
 
-	// Inform the resolver that it needs to reload the domainlists
+	// Inform the resolver that it needs to reload gravity
 	set_event(RELOAD_GRAVITY);
 
 	int response_code = 201; // 201 - Created
 	if(api->method == HTTP_PUT)
 		response_code = 200; // 200 - OK
+
+	// Add "Location" header to response
+	if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers), "Location: %s/%s", api->action_path, row.item) >= (int)sizeof(pi_hole_extra_headers))
+	{
+		// This may happen for *extremely* long URLs but is not issue in
+		// itself. Merely add a warning to the log file
+		log_warn("Could not add Location header to response: URL too long");
+
+		// Truncate location by replacing the last characters with "...\0"
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-4] = '.';
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-3] = '.';
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-2] = '.';
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-1] = '\0';
+	}
 
 	// Send GET style reply
 	const int ret = api_list_read(api, response_code, listtype, row.item, processed);
@@ -472,10 +539,180 @@ static int api_list_remove(struct ftl_conn *api,
                            const char *item)
 {
 	const char *sql_msg = NULL;
-	if(gravityDB_delFromTable(listtype, item, &sql_msg))
+	cJSON *array = api->payload.json;
+	bool allocated_json = false;
+
+	// If this is not a :batchDelete call, then the item is specified in the
+	// URI, not in the payload. Create a JSON array with the item and use
+	// that instead
+	const bool isBatchDelete = api->opts.flags & API_BATCHDELETE;
+
+	// If this is a domain callback, we need to translate type/kind into an
+	// integer for use in the database
+	if(listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
+	   listtype == GRAVITY_DOMAINLIST_DENY_EXACT ||
+	   listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX ||
+	   listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
 	{
-		// Inform the resolver that it needs to reload the domainlists
+		int type = -1;
+		switch (listtype)
+		{
+			case GRAVITY_DOMAINLIST_ALLOW_EXACT:
+				type = 0;
+				break;
+			case GRAVITY_DOMAINLIST_DENY_EXACT:
+				type = 1;
+				break;
+			case GRAVITY_DOMAINLIST_ALLOW_REGEX:
+				type = 2;
+				break;
+			case GRAVITY_DOMAINLIST_DENY_REGEX:
+				type = 3;
+			case GRAVITY_GROUPS:
+			case GRAVITY_ADLISTS:
+			case GRAVITY_CLIENTS:
+				// No type required for these tables
+				break;
+			// Aggregate types cannot be handled by this routine
+			case GRAVITY_GRAVITY:
+			case GRAVITY_ANTIGRAVITY:
+			case GRAVITY_DOMAINLIST_ALLOW_ALL:
+			case GRAVITY_DOMAINLIST_DENY_ALL:
+			case GRAVITY_DOMAINLIST_ALL_EXACT:
+			case GRAVITY_DOMAINLIST_ALL_REGEX:
+			case GRAVITY_DOMAINLIST_ALL_ALL:
+			default:
+				return false;
+		}
+
+		// Create new JSON array with the item and type:
+		// array = [{"item": "example.com", "type": 0}]
+		array = cJSON_CreateArray();
+		cJSON *obj = cJSON_CreateObject();
+		cJSON_AddItemToObject(obj, "item", cJSON_CreateStringReference(item));
+		cJSON_AddItemToObject(obj, "type", cJSON_CreateNumber(type));
+		cJSON_AddItemToArray(array, obj);
+		allocated_json = true;
+	}
+	else if(isBatchDelete && listtype == GRAVITY_DOMAINLIST_ALL_ALL)
+	{
+		// Loop over all items and parse type/kind for each item
+		cJSON *it = NULL;
+		cJSON_ArrayForEach(it, array)
+		{
+			if(!cJSON_IsObject(it))
+			{
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid request: Batch delete requires an array of objects",
+				                       NULL);
+			}
+
+			// Check if item is a string
+			cJSON *json_item = cJSON_GetObjectItemCaseSensitive(it, "item");
+			if(!cJSON_IsString(json_item))
+			{
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid request: Batch delete requires an array of objects with \"item\" as string",
+				                       NULL);
+			}
+
+			// Check if type and kind are both present and strings
+			cJSON *json_type = cJSON_GetObjectItemCaseSensitive(it, "type");
+			cJSON *json_kind = cJSON_GetObjectItemCaseSensitive(it, "kind");
+			if(!cJSON_IsString(json_type) || !cJSON_IsString(json_kind))
+			{
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid request: Batch delete requires an array of objects with \"type\" and \"kind\" as string",
+				                       NULL);
+			}
+
+			// Parse type and kind
+			// 0 = allow exact
+			// 1 = deny exact
+			// 2 = allow regex
+			// 3 = deny regex
+			int type = -1;
+			if(strcasecmp(json_type->valuestring, "allow") == 0)
+			{
+				if(strcasecmp(json_kind->valuestring, "exact") == 0)
+					type = 0;
+				else if(strcasecmp(json_kind->valuestring, "regex") == 0)
+					type = 2;
+			}
+			else if(strcasecmp(json_type->valuestring, "deny") == 0)
+			{
+				if(strcasecmp(json_kind->valuestring, "exact") == 0)
+					type = 1;
+				else if(strcasecmp(json_kind->valuestring, "regex") == 0)
+					type = 3;
+			}
+
+			// Check if type/kind combination is valid
+			if(type == -1)
+			{
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid request: Batch delete requires an valid combination of \"type\" and \"kind\" for each object",
+				                       NULL);
+			}
+
+			// Replace type/kind with integer type
+			// array = [{"item": "example.com", "type": 0}]
+			cJSON_DeleteItemFromObject(it, "type");
+			cJSON_DeleteItemFromObject(it, "kind");
+			cJSON_AddNumberToObject(it, "type", type);
+		}
+	}
+	else if(!isBatchDelete)
+	{
+		// Create array with object (used for clients, groups, lists)
+		// array = [{"item": <item>}]
+		array = cJSON_CreateArray();
+		cJSON *obj = cJSON_CreateObject();
+		cJSON_AddItemToObject(obj, "item", cJSON_CreateStringReference(item));
+		cJSON_AddItemToArray(array, obj);
+		allocated_json = true;
+	}
+
+	// Verify that the payload is an array of objects each containing an
+	// item
+	if(isBatchDelete)
+	{
+		cJSON *it = NULL;
+		cJSON_ArrayForEach(it, array)
+		{
+			if(!cJSON_IsObject(it))
+			{
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid request: Batch delete requires an array of objects",
+				                       NULL);
+			}
+
+			// Check if item is a string
+			cJSON *json_item = cJSON_GetObjectItemCaseSensitive(it, "item");
+			if(!cJSON_IsString(json_item))
+			{
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid request: Batch delete requires an array of objects with \"item\" as string",
+				                       NULL);
+			}
+		}
+	}
+
+	// From here on, we can assume the JSON payload is valid
+	if(gravityDB_delFromTable(listtype, array, &sql_msg))
+	{
+		// Inform the resolver that it needs to reload gravity
 		set_event(RELOAD_GRAVITY);
+
+		// Free memory allocated above
+		if(allocated_json)
+			cJSON_free(array);
 
 		// Send empty reply with code 204 No Content
 		cJSON *json = JSON_NEW_OBJECT();
@@ -483,10 +720,14 @@ static int api_list_remove(struct ftl_conn *api,
 	}
 	else
 	{
+		// Free memory allocated above
+		if(allocated_json)
+			cJSON_free(array);
+
 		// Send error reply
 		return send_json_error(api, 400,
 		                       "database_error",
-		                       "Could not remove domain from database table",
+		                       "Could not remove entries from table",
 		                       sql_msg);
 	}
 }
@@ -495,20 +736,39 @@ int api_list(struct ftl_conn *api)
 {
 	enum gravity_list_type listtype;
 	bool can_modify = false;
+	bool batchDelete = false;
 	if((api->item = startsWith("/api/groups", api)) != NULL)
 	{
 		listtype = GRAVITY_GROUPS;
 		can_modify = true;
+	}
+	else if((api->item = startsWith("/api/groups:batchDelete", api)) != NULL)
+	{
+		listtype = GRAVITY_GROUPS;
+		can_modify = true;
+		batchDelete = true;
 	}
 	else if((api->item = startsWith("/api/lists", api)) != NULL)
 	{
 		listtype = GRAVITY_ADLISTS;
 		can_modify = true;
 	}
+	else if((api->item = startsWith("/api/lists:batchDelete", api)) != NULL)
+	{
+		listtype = GRAVITY_ADLISTS;
+		can_modify = true;
+		batchDelete = true;
+	}
 	else if((api->item = startsWith("/api/clients", api)) != NULL)
 	{
 		listtype = GRAVITY_CLIENTS;
 		can_modify = true;
+	}
+	else if((api->item = startsWith("/api/clients:batchDelete", api)) != NULL)
+	{
+		listtype = GRAVITY_CLIENTS;
+		can_modify = true;
+		batchDelete = true;
 	}
 	else if((api->item = startsWith("/api/domains/allow/exact", api)) != NULL)
 	{
@@ -522,7 +782,7 @@ int api_list(struct ftl_conn *api)
 	}
 	else if((api->item = startsWith("/api/domains/allow", api)) != NULL)
 	{
-			listtype = GRAVITY_DOMAINLIST_ALLOW_ALL;
+		listtype = GRAVITY_DOMAINLIST_ALLOW_ALL;
 	}
 	else if((api->item = startsWith("/api/domains/deny/exact", api)) != NULL)
 	{
@@ -549,6 +809,12 @@ int api_list(struct ftl_conn *api)
 	else if((api->item = startsWith("/api/domains", api)) != NULL)
 	{
 		listtype = GRAVITY_DOMAINLIST_ALL_ALL;
+	}
+	else if((api->item = startsWith("/api/domains:batchDelete", api)) != NULL)
+	{
+		listtype = GRAVITY_DOMAINLIST_ALL_ALL;
+		can_modify = true;
+		batchDelete = true;
 	}
 	else
 	{
@@ -590,7 +856,7 @@ int api_list(struct ftl_conn *api)
 			return ret;
 		}
 	}
-	else if(can_modify && api->method == HTTP_POST)
+	else if(can_modify && api->method == HTTP_POST && !batchDelete)
 	{
 		// Add item to list identified by payload
 		if(api->item != NULL && strlen(api->item) != 0)
@@ -598,7 +864,7 @@ int api_list(struct ftl_conn *api)
 			return send_json_error(api, 400,
 			                       "uri_error",
 			                       "Invalid request: Specify item in payload, not as URI parameter",
-			                       NULL);
+			                       api->item);
 		}
 		else
 		{
@@ -611,7 +877,7 @@ int api_list(struct ftl_conn *api)
 			return ret;
 		}
 	}
-	else if(can_modify && api->method == HTTP_DELETE)
+	else if(can_modify && (api->method == HTTP_DELETE || (api->method == HTTP_POST && batchDelete)))
 	{
 		// Delete item from list
 		// We would not actually need the SHM lock here, however, we do

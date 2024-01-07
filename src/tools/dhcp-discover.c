@@ -659,8 +659,8 @@ static void get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		       cli_bold(), iface, cli_normal(), valid_responses, responses);
 
 #ifdef DEBUG
-	printf(" Responses seen while scanning:    %d\n", responses);
-	printf(" Responses meant for this machine: %d\n\n", valid_responses);
+	printf(" Responses seen while scanning:    %u\n", responses);
+	printf(" Responses meant for this machine: %u\n\n", valid_responses);
 #endif
 }
 

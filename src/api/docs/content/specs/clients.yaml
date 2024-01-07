@@ -149,7 +149,7 @@ components:
           Creates a new client in the `clients` object. The `{client}` itself is specified in the request body (POST JSON).
 
           Clients may be described either by their IP addresses (IPv4 and IPv6 are supported),
-          IP subnets (CIDR notation, like `192.168.2.0/24`), their MAC addresses (like `12:34:56:78:9A:BC`), by their hostnames (like `localhost`), or by the interface they are connected to (prefaced with a colon, like `:eth0`).</p>
+          IP subnets (CIDR notation, like `192.168.2.0/24`), their MAC addresses (like `12:34:56:78:9A:BC`), by their hostnames (like `localhost`), or by the interface they are connected to (prefaced with a colon, like `:eth0`).
 
           Note that client recognition by IP addresses (incl. subnet ranges) is preferred over MAC address, host name or interface recognition as the two latter will only be available after some time.
           Furthermore, MAC address recognition only works for devices at most one networking hop away from your Pi-hole.
@@ -199,6 +199,59 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/schemas/took'
                     - $ref: 'common.yaml#/components/errors/unauthorized'
+    batchDelete:
+      post:
+        summary: Delete multiple clients
+        tags:
+          - "Client management"
+        operationId: "batchDelete_clients"
+        description: |
+          Deletes multiple clients in the `clients` object. The `{client}`s themselves are specified in the request body (POST JSON).
+
+          Clients may be described either by their IP addresses (IPv4 and IPv6 are supported),
+          IP subnets (CIDR notation, like `192.168.2.0/24`), their MAC addresses (like `12:34:56:78:9A:BC`), by their hostnames (like `localhost`), or by the interface they are connected to (prefaced with a colon, like `:eth0`).</p>
+
+          *Note:* There will be no content on success.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    item:
+                      type: string
+                      description: client IP / MAC / hostname / interface
+                example:
+                  - "item": "192.168.2.5"
+                  - "item": "::1"
+                  - "item": "12:34:56:78:9A:BC"
+                  - "item": "localhost"
+                  - "item": ":eth0"
+        responses:
+          '204':
+            description: Items deleted
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'clients.yaml#/components/examples/errors/bad_request/no_payload'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     clients:
       get:
@@ -209,7 +262,7 @@ components:
             description: Array of clients
             items:
               allOf:
-                - $ref: 'clients.yaml#/components/schemas/client'
+                - $ref: 'clients.yaml#/components/schemas/client_object'
                 - $ref: 'clients.yaml#/components/schemas/comment'
                 - $ref: 'clients.yaml#/components/schemas/groups'
                 - $ref: 'clients.yaml#/components/schemas/readonly'
@@ -252,25 +305,27 @@ components:
                 description: Comma-separated list of hostnames (if available)
                 example: "localhost,ip6-localhost"
     client:
-      type: object
-      properties:
-        client:
-          description: client IP / MAC / hostname / interface
-          type: string
-          example: 127.0.0.1
+      description: client IP / MAC / hostname / interface
+      type: string
+      example: 127.0.0.1
     client_array:
+      description: array of client IPs / MACs / hostnames / interfaces
+      type: array
+      items:
+        type: string
+      example: ["127.0.0.1", "192.168.2.12"]
+    client_maybe_array:
       type: object
       properties:
         client:
-          description: array of client IPs / MACs / hostnames / interfaces
-          type: array
-          items:
-            type: string
-          example: ["127.0.0.1", "192.168.2.12"]
-    client_maybe_array:
-      oneOf:
-        - $ref: 'clients.yaml#/components/schemas/client'
-        - $ref: 'clients.yaml#/components/schemas/client_array'
+          oneOf:
+            - $ref: 'clients.yaml#/components/schemas/client'
+            - $ref: 'clients.yaml#/components/schemas/client_array'
+    client_object:
+      type: object
+      properties:
+        client:
+          $ref: 'clients.yaml#/components/schemas/client'
     comment:
       type: object
       properties:

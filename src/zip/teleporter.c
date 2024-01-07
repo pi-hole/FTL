@@ -48,8 +48,7 @@ static const char *gravity_tables[] = {
 	"domainlist",
 	"domainlist_by_group",
 	"client",
-	"client_by_group",
-	"domain_audit"
+	"client_by_group"
 };
 
 // Tables to copy from the FTL database to the Teleporter database
@@ -190,10 +189,10 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	{
 		// Loop over all files and add them to the ZIP archive
 		DIR *dir;
-		struct dirent *ent;
 		if((dir = opendir(directory)) != NULL)
 		{
 			// Loop over all files in the directory
+			struct dirent *ent;
 			while((ent = readdir(dir)) != NULL)
 			{
 				// Skip "." and ".."
@@ -312,7 +311,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// a temporary config struct (teleporter_config)
 	struct config teleporter_config = { 0 };
 	duplicate_config(&teleporter_config, &config);
-	if(!readFTLtoml(NULL, &teleporter_config, toml, true, NULL))
+	if(!readFTLtoml(NULL, &teleporter_config, toml, true, NULL, 0))
 		return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
 
 	// Test dnsmasq config in the imported configuration
@@ -524,7 +523,7 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 	return NULL;
 }
 
-const char *read_teleporter_zip(char *buffer, const size_t buflen, char * const hint, cJSON *imported_files)
+const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * const hint, cJSON *imported_files)
 {
 	// Initialize ZIP archive
 	mz_zip_archive zip = { 0 };
@@ -677,6 +676,7 @@ bool write_teleporter_zip_to_disk(void)
 	{
 		log_err("Failed to write %zu bytes to %s: %s", size, filename, strerror(errno));
 		free_teleporter_zip(&zip);
+		fclose(fp);
 		return false;
 	}
 	fclose(fp);
@@ -722,6 +722,7 @@ bool read_teleporter_zip_from_disk(const char *filename)
 		log_err("Failed to read %zu bytes from %s: %s",
 		        size, filename, strerror(errno));
 		fclose(fp);
+		free(ptr);
 		return false;
 	}
 	fclose(fp);

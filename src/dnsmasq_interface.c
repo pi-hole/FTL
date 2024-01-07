@@ -20,7 +20,7 @@
 #include "database/database-thread.h"
 #include "datastructure.h"
 #include "database/gravity-db.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "daemon.h"
 #include "timers.h"
 #include "gc.h"
@@ -110,7 +110,7 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 {
 	// Extract filename from path
 	const char *path = short_path(file);
-	const char *types = flags & F_RR ? querystr(arg, type) : "?";
+	const char *types = (flags & F_RR) ? querystr(arg, type) : "?";
 	log_debug(DEBUG_FLAGS, "Processing FTL hook from %s:%d (type: %s, name: \"%s\", id: %i)...", path, line, types, name, id);
 	print_flags(flags);
 
@@ -352,7 +352,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		return 0;
 
 	// Are we replying to pi.hole / <hostname> / pi.hole.<local> / <hostname>.<local> ?
-	const bool hostname = strcmp(blockingreason, HOSTNAME) == 0;
+	const bool hostn = strcmp(blockingreason, HOSTNAME) == 0;
 
 	int trunc = 0;
 	// Add CNAME answer record if requested
@@ -382,9 +382,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		        config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ||
 		        forced_ip)
 		{
-			if(hostname && config.dns.reply.host.force4.v.b)
+			if(hostn && config.dns.reply.host.force4.v.b)
 				memcpy(&addr, &config.dns.reply.host.v4.v.in_addr, sizeof(addr.addr4));
-			else if(!hostname && config.dns.reply.blocking.force4.v.b)
+			else if(!hostn && config.dns.reply.blocking.force4.v.b)
 				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(addr.addr4));
 			else
 				memcpy(&addr, &next_iface.addr4, sizeof(addr.addr4));
@@ -401,7 +401,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Add A resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, hostname ? daemon->local_ttl : config.dns.blockTTL.v.ui,
+		                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
 		                       NULL, T_A, C_IN, (char*)"4", &addr.addr4))
 			log_query(flags & ~F_IPV6, name, &addr, (char*)blockingreason, 0);
 	}
@@ -417,9 +417,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
 		        forced_ip)
 		{
-			if(hostname && config.dns.reply.host.force6.v.b)
+			if(hostn && config.dns.reply.host.force6.v.b)
 				memcpy(&addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(addr.addr6));
-			else if(!hostname && config.dns.reply.blocking.force6.v.b)
+			else if(!hostn && config.dns.reply.blocking.force6.v.b)
 				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(addr.addr6));
 			else
 				memcpy(&addr, &next_iface.addr6, sizeof(addr.addr6));
@@ -436,7 +436,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Add AAAA resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, hostname ? daemon->local_ttl : config.dns.blockTTL.v.ui,
+		                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
 		                       NULL, T_AAAA, C_IN, (char*)"6", &addr.addr6))
 			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
 	}
@@ -746,12 +746,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->magic = MAGICBYTE;
 	query->timestamp = querytimestamp;
 	query->type = querytype;
+	counters->querytype[querytype]++;
+	log_debug(DEBUG_STATUS, "query type %d set (new query), ID = %d, new count = %d", query->type, id, counters->querytype[query->type]);
 	query->qtype = qtype;
 	query->id = id; // Has to be set before calling query_set_status()
 
 	// This query is unknown as long as no reply has been found and analyzed
-	counters->status[QUERY_UNKNOWN]++;
-	query_set_status(query, QUERY_UNKNOWN);
+	query_set_status_init(query, QUERY_UNKNOWN);
 	query->domainID = domainID;
 	query->clientID = clientID;
 	// Initialize database field, will be set when the query is stored in the long-term DB
@@ -763,6 +764,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
 	counters->reply[REPLY_UNKNOWN]++;
+	log_debug(DEBUG_STATUS, "reply type %d set (new query), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
 	// Store DNSSEC result for this domain
 	query->dnssec = DNSSEC_UNKNOWN;
 	query->CNAME_domainID = -1;
@@ -781,6 +783,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Query extended DNS error
 	query->ede = EDE_UNSET;
 
+	// Initialize cache ID, may be reusing an existing one if this
+	// (domain,client,type) tuple was already seen before
+	query->cacheID = findCacheID(domainID, clientID, querytype, true);
+
 	// This query is new and not yet known to the database
 	query->db = -1;
 
@@ -796,9 +802,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Set lastQuery timer and add one query for network table
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
-
-	// Update counters
-	counters->querytype[querytype]++;
 
 	// Process interface information of client (if available)
 	// Skip interface name length 1 to skip "-". No real interface should
@@ -1296,7 +1299,12 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	}
 
 	// Get cache pointer
-	unsigned int cacheID = findCacheID(domainID, clientID, query->type, true);
+	// When this function is called with a different domain than the one
+	// already stored in the query, we have to re-lookup the cache ID.
+	// This can happen when a CNAME chain is followed and analyzed
+	const int cacheID = query->domainID == domainID && query->clientID == clientID ?
+	                    query->cacheID :
+	                    findCacheID(domainID, clientID, query->type, true);
 	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 	if(dns_cache == NULL)
 	{
@@ -1397,28 +1405,14 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 	}
 
-	// Not in FTL's cache. Check if this is a special domain
-	if(special_domain(query, domainstr))
-	{
-		// Set DNS cache properties
-		dns_cache->blocking_status = SPECIAL_DOMAIN;
-		dns_cache->force_reply = force_next_DNS_reply;
-
-		// Adjust counters
-		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
-
-		// Debug output
-		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
-
-		return true;
-	}
-
 	// Skip all checks and continue if we hit already at least one whitelist in the chain
 	if(query->flags.allowed)
 	{
 		log_debug(DEBUG_QUERIES, "Query is permitted as at least one whitelist entry matched");
 		return false;
 	}
+
+	// when we reach this point: the query is not in FTL's cache (for this client)
 
 	// Make a local copy of the domain string. The string memory may get
 	// reorganized in the following. We cannot expect domainstr to remain
@@ -1432,6 +1426,22 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// If not found: Check regex whitelist for match
 	if(!query->flags.allowed)
 		query->flags.allowed = in_regex(domainstr, dns_cache, client->id, REGEX_ALLOW);
+
+	// Check if this is a special domain
+	if(!query->flags.allowed && special_domain(query, domainstr))
+	{
+		// Set DNS cache properties
+		dns_cache->blocking_status = SPECIAL_DOMAIN;
+		dns_cache->force_reply = force_next_DNS_reply;
+
+		// Adjust counters
+		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
+
+		// Debug output
+		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
+
+		return true;
+	}
 
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;
@@ -1587,7 +1597,7 @@ bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file
 		else if(query->status == QUERY_REGEX)
 		{
 			// Get parent and child DNS cache entries
-			const int parent_cacheID = findCacheID(parent_domainID, clientID, query->type, false);
+			const int parent_cacheID = query->cacheID;
 			const int child_cacheID = findCacheID(child_domainID, clientID, query->type, false);
 
 			// Get cache pointers
@@ -1696,15 +1706,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 
 	upstreamsData *upstream = getUpstream(upstreamID, true);
 	if(upstream != NULL)
-	{
-		// Update overTime counts
-		const int timeidx = getOverTimeID(query->timestamp);
-		upstream->overTime[timeidx]++;
-		// Update lastQuery timestamp
-		upstream->lastQuery = time(NULL);
-		// Count forwarded query
 		upstream->count++;
-	}
 
 	// Proceed only if
 	// - current query has not been marked as replied to so far
@@ -2093,7 +2095,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 	// else: This is a reply from upstream
 	// Check if this domain matches exactly
-	const bool isExactMatch = strcmp_escaped(name, getstr(domain->domainpos));
+	const bool isExactMatch = name != NULL && strcasecmp(name, getstr(domain->domainpos)) == 0;
 
 	if((flags & F_CONFIG) && isExactMatch && !query->flags.complete)
 	{
@@ -2329,11 +2331,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 		// Get forward pointer
 		upstreamsData* upstream = getUpstream(query->upstreamID, true);
 		if(upstream != NULL)
-		{
-			const int timeidx = getOverTimeID(query->timestamp);
-			upstream->overTime[timeidx]--;
 			upstream->count--;
-		}
 	}
 	else if(is_blocked(query->status))
 	{
@@ -2527,7 +2525,6 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 
 		if(query->reply == REPLY_OTHER)
 			log_debug(DEBUG_QUERIES, "     Unknown rcode = %i", addr->log.rcode);
-
 
 		if(addr->log.ede != EDE_UNSET)
 			log_debug(DEBUG_QUERIES, "     EDE: %s (1/%d)", edestr(addr->log.ede), addr->log.ede);
@@ -2745,10 +2742,12 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 
 	// Subtract from old reply counter
 	counters->reply[query->reply]--;
+	log_debug(DEBUG_STATUS, "reply type %d removed (set_reply), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
 	// Add to new reply counter
 	counters->reply[new_reply]++;
 	// Store reply type
 	query->reply = new_reply;
+	log_debug(DEBUG_STATUS, "reply type %d added (set_reply), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
 
 	// Save response time
 	// Skipped internally if already computed
@@ -2832,6 +2831,29 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		go_daemon();
 	else
 		savepid();
+
+	// Initialize query database (pihole-FTL.db)
+	db_init();
+
+	// Initialize in-memory databases
+	if(!init_memory_database())
+		log_crit("Cannot initialize in-memory database.");
+
+	// Flush messages stored in the long-term database
+	flush_message_table();
+
+	// Try to import queries from long-term database if available
+	if(config.database.DBimport.v.b)
+	{
+		import_queries_from_disk();
+		DB_read_queries();
+	}
+
+	// Initialize in-memory database starting index
+	update_disk_db_idx();
+
+	// Log some information about the imported queries (if any)
+	log_counter_info();
 
 	// Handle real-time signals in this process (and its children)
 	// Helper processes are already split from the main instance
@@ -3364,7 +3386,12 @@ void FTL_multiple_replies(const int id, int *firstID)
 	log_debug(DEBUG_QUERIES, "**** sending reply %d also to %d", *firstID, queryID);
 
 	// Copy relevant information over
+	counters->reply[duplicated_query->reply]--;
+	log_debug(DEBUG_STATUS, "duplicated_query reply type %d removed, ID = %d, new count = %d", duplicated_query->reply, duplicated_query->id, counters->reply[duplicated_query->reply]);
 	duplicated_query->reply = source_query->reply;
+	counters->reply[duplicated_query->reply]++;
+	log_debug(DEBUG_STATUS, "duplicated_query reply type %d set, ID = %d, new count = %d", duplicated_query->reply, duplicated_query->id, counters->reply[duplicated_query->reply]);
+
 	duplicated_query->dnssec = source_query->dnssec;
 	duplicated_query->flags.complete = true;
 	duplicated_query->CNAME_domainID = source_query->CNAME_domainID;
@@ -3410,7 +3437,7 @@ void FTL_dnsmasq_log(const char *payload, const int length)
 	lock_shm();
 
 	// Add to FIFO buffer
-	add_to_fifo_buffer(FIFO_DNSMASQ, payload, length);
+	add_to_fifo_buffer(FIFO_DNSMASQ, payload, NULL, length);
 
 	// Unlock SHM
 	unlock_shm();

@@ -33,6 +33,14 @@
 // This static string represents an unchanged password
 #define PASSWORD_VALUE "********"
 
+// Remove the following line to disable the use of UTF-8 in the config file
+// As consequence, the config file will be written in ASCII and all non-ASCII
+// characters will be replaced by their UTF-8 escape sequences (UCS-2)
+#define TOML_UTF8
+
+// Location of the legacy (pre-v6.0) config file
+#define GLOBALCONFFILE_LEGACY "/etc/pihole/pihole-FTL.conf"
+
 union conf_value {
 	bool b;                                     // boolean value
 	int i;                                      // integer value
@@ -88,7 +96,8 @@ enum conf_type {
 #define FLAG_PSEUDO_ITEM           (1 << 2)
 #define FLAG_INVALIDATE_SESSIONS   (1 << 3)
 #define FLAG_WRITE_ONLY            (1 << 4)
-#define FLAG_ENV_VAR     (1 << 5)
+#define FLAG_ENV_VAR               (1 << 5)
+#define FLAG_CONF_IMPORTED         (1 << 6)
 
 struct conf_item {
 	const char *k;        // item Key
@@ -125,6 +134,7 @@ struct config {
 		struct conf_item hosts;
 		struct conf_item domainNeeded;
 		struct conf_item expandHosts;
+		struct conf_item domain;
 		struct conf_item bogusPriv;
 		struct conf_item dnssec;
 		struct conf_item interface;
@@ -177,7 +187,7 @@ struct config {
 		struct conf_item start;
 		struct conf_item end;
 		struct conf_item router;
-		struct conf_item domain;
+		struct conf_item netmask;
 		struct conf_item leaseTime;
 		struct conf_item ipv6;
 		struct conf_item rapidCommit;
@@ -226,6 +236,7 @@ struct config {
 		struct {
 			struct conf_item localAPIauth;
 			struct conf_item searchAPIauth;
+			struct conf_item max_sessions;
 			struct conf_item prettyJSON;
 			struct conf_item pwhash;
 			struct conf_item password; // This is a pseudo-item
@@ -247,6 +258,7 @@ struct config {
 		struct conf_item pid;
 		struct conf_item database;
 		struct conf_item gravity;
+		struct conf_item gravity_tmp;
 		struct conf_item macvendor;
 		struct conf_item setupVars;
 		struct conf_item pcap;
@@ -262,7 +274,9 @@ struct config {
 		struct conf_item delay_startup;
 		struct conf_item nice;
 		struct conf_item addr2line;
+		struct conf_item etc_dnsmasq_d;
 		struct conf_item dnsmasq_lines;
+		struct conf_item extraLogging;
 		struct {
 			struct conf_item load;
 			struct conf_item shmem;
@@ -315,7 +329,8 @@ extern struct config config;
 void set_debug_flags(struct config *conf);
 void set_all_debug(struct config *conf, const bool status);
 void initConfig(struct config *conf);
-void readFTLconf(struct config *conf, const bool rewrite);
+void reset_config(struct conf_item *conf_item);
+bool readFTLconf(struct config *conf, const bool rewrite);
 bool getLogFilePath(void);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug);

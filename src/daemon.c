@@ -35,6 +35,8 @@
 #include "webserver/webserver.h"
 // free_api()
 #include "api/api.h"
+// setlocale()
+#include <locale.h>
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -354,26 +356,31 @@ void cleanup(const int ret)
 	log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
 }
 
-static clock_t last_clock = -1;
+static float last_clock = 0.0f;
 static float cpu_usage = 0.0f;
-void calc_cpu_usage(void)
+void calc_cpu_usage(const unsigned int interval)
 {
-	// Get the current CPU usage
-	const clock_t clk = clock();
-	if(clk == (clock_t)-1)
+	// Get the current resource usage
+	// RUSAGE_SELF means here "the calling process" which is the sum of all
+	// resources used by all threads in the process
+	struct rusage usage = { 0 };
+	if(getrusage(RUSAGE_SELF, &usage) != 0)
 	{
-		log_warn("calc_cpu_usage() failed: %s", strerror(errno));
+		log_err("Unable to obtain CPU usage: %s (%i)", strerror(errno), errno);
 		return;
 	}
-	if(last_clock == -1)
-	{
-		// Initialize the value and return
-		last_clock = clk;
-		return;
-	}
-	// Percentage of CPU time spent executing instructions
-	cpu_usage = 100.0f * ((float)clk - (float)last_clock) / CLOCKS_PER_SEC;
-	last_clock = clk;
+
+	// Calculate the CPU usage: it is the total time spent in user mode and
+	// kernel mode by this process since the total time since the last call
+	// to this function. 100% means one core is fully used, 200% means two
+	// cores are fully used, etc.
+	const float this_clock = usage.ru_utime.tv_sec + usage.ru_stime.tv_sec + 1e-6 * (usage.ru_utime.tv_usec + usage.ru_stime.tv_usec);
+
+	// Calculate the CPU usage in this interval
+	cpu_usage = 100.0 * (this_clock - last_clock) / interval;
+
+	// Store the current time for the next call to this function
+	last_clock = this_clock;
 }
 
 float __attribute__((pure)) get_cpu_percentage(void)
@@ -443,4 +450,17 @@ bool ipv6_enabled(void)
 	// else: IPv6 is not obviously disabled and there is at least one
 	// IPv6-capable interface
 	return true;
+}
+
+void init_locale(void)
+{
+	// Set locale to system default, needed for libidn to work properly
+	// Without this, libidn will not be able to convert UTF-8 to ASCII
+	// (error message "Character encoding conversion error")
+	setlocale(LC_ALL, "");
+
+	// Set locale for numeric values to C to ensure that we always use
+	// the dot as decimal separator (even if the system locale uses a
+	// comma, e.g., in German)
+	setlocale(LC_NUMERIC, "C");
 }

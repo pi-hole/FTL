@@ -206,6 +206,8 @@ components:
                   type: boolean
                 expandHosts:
                   type: boolean
+                domain:
+                  type: string
                 bogusPriv:
                   type: boolean
                 dnssec:
@@ -268,8 +270,10 @@ components:
                           type: boolean
                         IPv4:
                           type: string
+                          x-format: ipv4
                         IPv6:
                           type: string
+                          x-format: ipv6
                     blocking:
                       type: object
                       properties:
@@ -279,8 +283,10 @@ components:
                           type: boolean
                         IPv4:
                           type: string
+                          x-format: ipv4
                         IPv6:
                           type: string
+                          x-format: ipv6
                 rateLimit:
                   type: object
                   properties:
@@ -295,12 +301,16 @@ components:
                   type: boolean
                 start:
                   type: string
+                  x-format: ipv4
                 end:
                   type: string
+                  x-format: ipv4
                 router:
                   type: string
-                domain:
+                  x-format: ipv4
+                netmask:
                   type: string
+                  x-format: ipv4
                 leaseTime:
                   type: string
                 ipv6:
@@ -386,6 +396,8 @@ components:
                       type: boolean
                     searchAPIauth:
                       type: boolean
+                    max_sessions:
+                      type: integer
                     prettyJSON:
                       type: boolean
                     password:
@@ -430,6 +442,8 @@ components:
                   type: string
                 gravity:
                   type: string
+                gravity_tmp:
+                  type: string
                 macvendor:
                   type: string
                 setupVars:
@@ -454,12 +468,16 @@ components:
                   type: integer
                 addr2line:
                   type: boolean
+                etc_dnsmasq_d:
+                  type: boolean
                 privacylevel:
                   type: integer
                 dnsmasq_lines:
                   type: array
                   items:
                     type: string
+                extraLogging:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -587,6 +605,7 @@ components:
               - "192.168.2.123 mymusicbox"
             domainNeeded: true
             expandHosts: true
+            domain: "lan"
             bogusPriv: true
             dnssec: true
             interface: "eth0"
@@ -630,7 +649,7 @@ components:
             start: "192.168.0.10"
             end: "192.168.0.250"
             router: "192.168.0.1"
-            domain: "lan"
+            netmask: "0.0.0.0"
             leaseTime: "24h"
             ipv6: true
             rapidCommit: true
@@ -670,6 +689,7 @@ components:
             api:
               localAPIauth: false
               searchAPIauth: false
+              max_sessions: 16
               prettyJSON: false
               password: "********"
               pwhash: ''
@@ -687,6 +707,7 @@ components:
             pid: "/run/pihole-FTL.pid"
             database: "/etc/pihole/pihole-FTL.db"
             gravity: "/etc/pihole/gravity.db"
+            gravity_tmp: "/tmp"
             macvendor: "/etc/pihole/macvendor.db"
             setupVars: "/etc/pihole/setupVars.conf"
             pcap: ""
@@ -699,7 +720,9 @@ components:
             delay_startup: 10
             addr2line: true
             privacylevel: 0
+            etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
+            extraLogging: false
             check:
               load: true
               shmem: 90

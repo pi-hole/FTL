@@ -15,7 +15,7 @@
 #include "database/gravity-db.h"
 // match_regex()
 #include "regex_r.h"
-#include <idna.h>
+#include <idn2.h>
 
 #define MAX_SEARCH_RESULTS 10000u
 
@@ -182,18 +182,21 @@ int api_search(struct ftl_conn *api)
 	// use characters drawn from a large repertoire (Unicode), but IDNA
 	// allows the non-ASCII characters to be represented using only the
 	// ASCII characters already allowed in so-called host names today.
-	// idna_to_ascii_lz() convert domain name in the locale’s encoding to an
+	// idn2_to_ascii_lz() convert domain name in the locale’s encoding to an
 	// ASCII string. The domain name may contain several labels, separated
 	// by dots. The output buffer must be deallocated by the caller.
+	// Used flags:
+	// - IDN2_NFC_INPUT: Input is in Unicode Normalization Form C (NFC)
+	// - IDN2_NONTRANSITIONAL: Use Unicode TR46 non-transitional processing
 	char *punycode = NULL;
-	const Idna_rc rc = idna_to_ascii_lz(domain, &punycode, 0);
-	if (rc != IDNA_SUCCESS)
+	const int rc = idn2_to_ascii_lz(domain, &punycode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+	if (rc != IDN2_OK)
 	{
 		// Invalid domain name
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "Invalid request: Invalid domain name",
-		                       idna_strerror(rc));
+		                       idn2_strerror(rc));
 	}
 
 	// Convert punycode domain to lowercase
@@ -244,9 +247,11 @@ int api_search(struct ftl_conn *api)
 		char *allow_list = cJSON_PrintUnformatted(allow_ids);
 		ret = search_table(api,punycode, GRAVITY_DOMAINLIST_ALLOW_REGEX, allow_list, limit, &Nregex, false, domains);
 		free(allow_list);
-		free(punycode);
 		if(ret != 200)
+		{
+			free(punycode);
 			return ret;
+		}
 	}
 
 	if(cJSON_GetArraySize(deny_ids) > 0)
@@ -254,9 +259,11 @@ int api_search(struct ftl_conn *api)
 		char *deny_list = cJSON_PrintUnformatted(deny_ids);
 		ret = search_table(api, punycode, GRAVITY_DOMAINLIST_DENY_REGEX, deny_list, limit, &Nregex, false, domains);
 		free(deny_list);
-		free(punycode);
 		if(ret != 200)
+		{
+			free(punycode);
 			return ret;
+		}
 	}
 
 	cJSON *search = JSON_NEW_OBJECT();

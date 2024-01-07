@@ -34,8 +34,8 @@ static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *
 		                       "Could not read from in-memory database",
 		                       NULL);
 	}
-	sqlite3_stmt *stmt;
 
+	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -215,7 +215,7 @@ static void querystr_finish(char *querystr, const char *sort_col, const char *so
 			sort_col_sql = "q.reply_time";
 		else if(strcasecmp(sort_col, "dnssec") == 0)
 			sort_col_sql = "q.dnssec";
-		else if(strcasecmp(sort_col, "regex.id") == 0)
+		else if(strcasecmp(sort_col, "regex_id") == 0)
 			sort_col_sql = "regex_id";
 
 		// ... and the sort direction
@@ -279,7 +279,7 @@ int api_queries(struct ftl_conn *api)
 
 	// Start building database query string
 	char querystr[QUERYSTRBUFFERLEN] = { 0 };
-	sprintf(querystr, "%s FROM %s q %s", QUERYSTR, disk ? "disk.query_storage" : "query_storage", JOINSTR);
+	snprintf(querystr, QUERYSTRBUFFERLEN, "%s FROM %s q %s", QUERYSTR, disk ? "disk.query_storage" : "query_storage", JOINSTR);
 	int draw = 0;
 
 	char domainname[512] = { 0 };
@@ -439,7 +439,7 @@ int api_queries(struct ftl_conn *api)
 	}
 
 	// Regex filtering?
-	const size_t regex_filters = cJSON_GetArraySize(config.webserver.api.excludeRegex.v.json);
+	const int regex_filters = cJSON_GetArraySize(config.webserver.api.excludeRegex.v.json);
 	regex_t *regex = NULL;
 	if(regex_filters > 0)
 	{
@@ -454,7 +454,7 @@ int api_queries(struct ftl_conn *api)
 		}
 
 		// Compile regexes
-		for(size_t i = 0; i < regex_filters; i++)
+		for(int i = 0; i < regex_filters; i++)
 		{
 			// Iterate over regexes
 			cJSON *filter = NULL;
@@ -480,29 +480,24 @@ int api_queries(struct ftl_conn *api)
 		}
 	}
 
-	// Get connection to in-memory database
-	sqlite3 *db = get_memdb();
-
 	// Finish preparing query string
 	querystr_finish(querystr, sort_col, sort_dir);
 
-	// Attach disk database if necessary
-	const char *message = "";
-	if(disk && !attach_disk_database(&message))
+	// Get connection to in-memory database
+	sqlite3 *memdb = get_memdb();
+	if(memdb == NULL)
 	{
-		return send_json_error(api, 500,
-		                       "internal_error",
-		                       "Internal server error, cannot attach disk database",
-		                       message);
+		return send_json_error(api, 500, // 500 Internal error
+		                       "database_error",
+		                       "Could not read from in-memory database",
+		                       NULL);
 	}
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *read_stmt = NULL;
-	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
+	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		if(disk)
-			detach_disk_database(NULL);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error, failed to prepare read SQL query",
@@ -526,8 +521,6 @@ int api_queries(struct ftl_conn *api)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
-				if(disk)
-					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind timestamp:from to SQL query",
@@ -543,8 +536,6 @@ int api_queries(struct ftl_conn *api)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
-				if(disk)
-					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind timestamp:until to SQL query",
@@ -560,8 +551,6 @@ int api_queries(struct ftl_conn *api)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
-				if(disk)
-					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind domain to SQL query",
@@ -577,8 +566,6 @@ int api_queries(struct ftl_conn *api)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
-				if(disk)
-					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind cip to SQL query",
@@ -594,8 +581,6 @@ int api_queries(struct ftl_conn *api)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
-				if(disk)
-					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind client to SQL query",
@@ -611,8 +596,6 @@ int api_queries(struct ftl_conn *api)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
-				if(disk)
-					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind upstream to SQL query",
@@ -637,8 +620,6 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
-					if(disk)
-						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind type to SQL query",
@@ -647,8 +628,6 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
-				if(disk)
-					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested type is invalid",
@@ -673,8 +652,6 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
-					if(disk)
-						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind status to SQL query",
@@ -683,8 +660,6 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
-				if(disk)
-					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested status is invalid",
@@ -709,8 +684,6 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
-					if(disk)
-						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind reply to SQL query",
@@ -719,8 +692,6 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
-				if(disk)
-					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested reply is invalid",
@@ -745,8 +716,6 @@ int api_queries(struct ftl_conn *api)
 				{
 					sqlite3_reset(read_stmt);
 					sqlite3_finalize(read_stmt);
-					if(disk)
-						detach_disk_database(NULL);
 					return send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind dnssec to SQL query",
@@ -755,8 +724,6 @@ int api_queries(struct ftl_conn *api)
 			}
 			else
 			{
-				if(disk)
-					detach_disk_database(NULL);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested dnssec is invalid",
@@ -773,8 +740,6 @@ int api_queries(struct ftl_conn *api)
 			{
 				sqlite3_reset(read_stmt);
 				sqlite3_finalize(read_stmt);
-				if(disk)
-					detach_disk_database(NULL);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind count to SQL query",
@@ -801,7 +766,7 @@ int api_queries(struct ftl_conn *api)
 		{
 			bool match = false;
 			// Iterate over all regex filters
-			for(size_t i = 0; i < regex_filters; i++)
+			for(int i = 0; i < regex_filters; i++)
 			{
 				// Check if the domain matches the regex
 				if(regexec(&regex[i], domain, 0, NULL, 0) == 0)
@@ -827,7 +792,8 @@ int api_queries(struct ftl_conn *api)
 			continue;
 
 		// Check if we have reached the limit
-		if(added >= (unsigned int)length)
+		// Length may be set to -1 to indicate we want everything.
+		if(length > 0 && added >= (unsigned int)length)
 		{
 			if(filtering)
 			{
@@ -854,8 +820,6 @@ int api_queries(struct ftl_conn *api)
 		}
 		else if(length > 0 && added >= (unsigned int)length)
 		{
-			// Length may be set to -1 to indicate we want
-			// everything.
 			// Skip everything AFTER we added the requested number
 			// of queries if length is > 0.
 			continue;
@@ -1001,17 +965,14 @@ int api_queries(struct ftl_conn *api)
 	// Finalize statements
 	sqlite3_finalize(read_stmt);
 
-	if(disk && !detach_disk_database(&message))
-	{
-		return send_json_error(api, 500,
-		                       "internal_error",
-		                       "Internal server error, cannot detach disk database",
-		                       message);
-	}
-
 	// Free regex memory if allocated
 	if(regex_filters > 0)
 	{
+		// Free individual regexes
+		for(int i = 0; i < regex_filters; i++)
+			regfree(&regex[i]);
+
+		// Free array of regex pointers
 		free(regex);
 	}
 
