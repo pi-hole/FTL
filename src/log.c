@@ -482,6 +482,7 @@ void log_counter_info(void)
 	log_info(" -> Unknown DNS queries: %i", counters->status[QUERY_UNKNOWN]);
 	log_info(" -> Unique domains: %i", counters->domains);
 	log_info(" -> Unique clients: %i", counters->clients);
+	log_info(" -> DNS cache records: %i", counters->dns_cache_size);
 	log_info(" -> Known forward destinations: %i", counters->upstreams);
 }
 

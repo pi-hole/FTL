@@ -510,6 +510,20 @@ static int api_list_write(struct ftl_conn *api,
 	if(api->method == HTTP_PUT)
 		response_code = 200; // 200 - OK
 
+	// Add "Location" header to response
+	if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers), "Location: %s/%s", api->action_path, row.item) >= (int)sizeof(pi_hole_extra_headers))
+	{
+		// This may happen for *extremely* long URLs but is not issue in
+		// itself. Merely add a warning to the log file
+		log_warn("Could not add Location header to response: URL too long");
+
+		// Truncate location by replacing the last characters with "...\0"
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-4] = '.';
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-3] = '.';
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-2] = '.';
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-1] = '\0';
+	}
+
 	// Send GET style reply
 	const int ret = api_list_read(api, response_code, listtype, row.item, processed);
 
@@ -768,7 +782,7 @@ int api_list(struct ftl_conn *api)
 	}
 	else if((api->item = startsWith("/api/domains/allow", api)) != NULL)
 	{
-			listtype = GRAVITY_DOMAINLIST_ALLOW_ALL;
+		listtype = GRAVITY_DOMAINLIST_ALLOW_ALL;
 	}
 	else if((api->item = startsWith("/api/domains/deny/exact", api)) != NULL)
 	{

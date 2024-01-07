@@ -51,8 +51,8 @@ static void recycle(void)
 {
 	bool *client_used = calloc(counters->clients, sizeof(bool));
 	bool *domain_used = calloc(counters->domains, sizeof(bool));
-	bool *upstreams_used = calloc(counters->upstreams, sizeof(bool));
-	if(client_used == NULL || domain_used == NULL || upstreams_used == NULL)
+	bool *cache_used = calloc(counters->dns_cache_size, sizeof(bool));
+	if(client_used == NULL || domain_used == NULL || cache_used == NULL)
 	{
 		log_err("Cannot allocate memory for recycling");
 		return;
@@ -70,13 +70,13 @@ static void recycle(void)
 		client_used[query->clientID] = true;
 		domain_used[query->domainID] = true;
 
-		// Mark upstream as used (if any)
-		if(query->upstreamID > -1)
-			upstreams_used[query->upstreamID] = true;
-
 		// Mark CNAME domain as used (if any)
-		if(query->CNAME_domainID >= 0)
+		if(query->CNAME_domainID > -1)
 			domain_used[query->CNAME_domainID] = true;
+
+		// Mark cache entry as used (if any)
+		if(query->cacheID > -1)
+			cache_used[query->cacheID] = true;
 	}
 
 	// Recycle clients
@@ -128,12 +128,11 @@ static void recycle(void)
 	unsigned int cache_recycled = 0;
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
-		DNSCacheData *cache = getDNSCache(cacheID, true);
-		if(cache == NULL)
+		if(cache_used[cacheID])
 			continue;
 
-		// Skip cache entries that are still in use
-		if(cache->magic != 0x00)
+		DNSCacheData *cache = getDNSCache(cacheID, true);
+		if(cache == NULL)
 			continue;
 
 		log_debug(DEBUG_GC, "Recycling cache entry with ID %d", cacheID);
@@ -147,7 +146,7 @@ static void recycle(void)
 	// Free memory
 	free(client_used);
 	free(domain_used);
-	free(upstreams_used);
+	free(cache_used);
 
 	// Scan number of recycled clients and domains if in debug mode
 	if(config.debug.gc.v.b)
@@ -181,10 +180,10 @@ static void recycle(void)
 				free_cache++;
 		}
 
-		log_debug(DEBUG_GC, "Recycler summary: %u/%d (max %d) clients, %u/%d (max %d) domains and %u/%d (max %d) cache records are free",
-		          free_clients, counters->clients, counters->clients_MAX,
-		          free_domains, counters->domains, counters->domains_MAX,
-			  free_cache, counters->dns_cache_size, counters->dns_cache_MAX);
+		log_debug(DEBUG_GC, "%d/%d clients, %d/%d domains and %d/%d cache records are free",
+		          counters->clients_MAX + (int)free_clients - counters->clients, counters->clients_MAX,
+		          counters->domains_MAX + (int)free_domains - counters->domains_MAX, counters->domains_MAX,
+		          counters->dns_cache_MAX + (int)free_cache - counters->dns_cache_MAX, counters->dns_cache_MAX);
 
 		log_debug(DEBUG_GC, "Recycled additional %u clients, %u domains, and %u cache records (scanned %d queries)",
 		          clients_recycled, domains_recycled, cache_recycled, counters->queries);
@@ -378,17 +377,17 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 		// Update reply counters
 		counters->reply[query->reply]--;
-		log_debug(DEBUG_GC, "reply type %d removed (GC), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
+		log_debug(DEBUG_STATUS, "reply type %d removed (GC), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
 
 		// Update type counters
 		counters->querytype[query->type]--;
-		log_debug(DEBUG_GC, "query type %d removed (GC), ID = %d, new count = %d", query->type, query->id, counters->querytype[query->type]);
+		log_debug(DEBUG_STATUS, "query type %d removed (GC), ID = %d, new count = %d", query->type, query->id, counters->querytype[query->type]);
 
 		// Subtract UNKNOWN from the counters before
 		// setting the status if different.
 		// Minus one here and plus one below = net zero
 		counters->status[QUERY_UNKNOWN]--;
-		log_debug(DEBUG_GC, "status %d removed (GC), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
+		log_debug(DEBUG_STATUS, "status %d removed (GC), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
 
 		// Set query again to UNKNOWN to reset the counters
 		query_set_status(query, QUERY_UNKNOWN);

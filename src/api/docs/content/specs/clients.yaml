@@ -262,7 +262,7 @@ components:
             description: Array of clients
             items:
               allOf:
-                - $ref: 'clients.yaml#/components/schemas/client'
+                - $ref: 'clients.yaml#/components/schemas/client_object'
                 - $ref: 'clients.yaml#/components/schemas/comment'
                 - $ref: 'clients.yaml#/components/schemas/groups'
                 - $ref: 'clients.yaml#/components/schemas/readonly'
@@ -305,25 +305,27 @@ components:
                 description: Comma-separated list of hostnames (if available)
                 example: "localhost,ip6-localhost"
     client:
-      type: object
-      properties:
-        client:
-          description: client IP / MAC / hostname / interface
-          type: string
-          example: 127.0.0.1
+      description: client IP / MAC / hostname / interface
+      type: string
+      example: 127.0.0.1
     client_array:
+      description: array of client IPs / MACs / hostnames / interfaces
+      type: array
+      items:
+        type: string
+      example: ["127.0.0.1", "192.168.2.12"]
+    client_maybe_array:
       type: object
       properties:
         client:
-          description: array of client IPs / MACs / hostnames / interfaces
-          type: array
-          items:
-            type: string
-          example: ["127.0.0.1", "192.168.2.12"]
-    client_maybe_array:
-      oneOf:
-        - $ref: 'clients.yaml#/components/schemas/client'
-        - $ref: 'clients.yaml#/components/schemas/client_array'
+          oneOf:
+            - $ref: 'clients.yaml#/components/schemas/client'
+            - $ref: 'clients.yaml#/components/schemas/client_array'
+    client_object:
+      type: object
+      properties:
+        client:
+          $ref: 'clients.yaml#/components/schemas/client'
     comment:
       type: object
       properties:
