@@ -151,6 +151,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		}
 	}
 
+	// If not, does the client provide a session ID via COOKIE?
 	bool cookie_auth = false;
 	if(!sid_avail)
 	{
@@ -162,7 +163,22 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 			// Mark SID as available
 			sid_avail = true;
 		}
+	}
 
+	// If not, does the client provide a session ID via URI?
+	if(!sid_avail && api->request->query_string && GET_VAR("sid", sid, api->request->query_string) > 0)
+	{
+		// "+" may have been replaced by " ", undo this here
+		for(unsigned int i = 0; i < SID_SIZE; i++)
+			if(sid[i] == ' ')
+				sid[i] = '+';
+
+		// Zero terminate SID string
+		sid[SID_SIZE-1] = '\0';
+		// Mention source of SID
+		sid_source = "URI";
+		// Mark SID as available
+		sid_avail = true;
 	}
 
 	if(!sid_avail)
