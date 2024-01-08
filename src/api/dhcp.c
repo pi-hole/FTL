@@ -85,16 +85,18 @@ int api_dhcp_leases_DELETE(struct ftl_conn *api)
 		// Send empty reply with code 204 No Content
 		return send_json_error(api,
 		                       400,
-				       "bad_request",
+		                       "bad_request",
 		                       "The provided IPv4 address is invalid",
-				       api->item);
+		                       api->item);
 	}
 
 	// Delete lease
 	log_debug(DEBUG_API, "Deleting DHCP lease for address %s", api->item);
-	FTL_unlink_DHCP_lease(api->item);
+	const bool found = FTL_unlink_DHCP_lease(api->item);
 
-	// Send empty reply with code 204 No Content
+	// Send empty reply with codes:
+	// - 204 No Content (if a lease was deleted)
+	// - 404 Not Found (if no lease was found)
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_SEND_OBJECT_CODE(json, 204);
+	JSON_SEND_OBJECT_CODE(json, found ? 204 : 404);
 }

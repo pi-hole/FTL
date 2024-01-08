@@ -93,6 +93,12 @@ components:
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -189,18 +195,14 @@ components:
               schema:
                 $ref: 'lists.yaml#/components/schemas/lists/post'
         responses:
-          '201':
-            description: Created item
+          '204':
+            description: Items deleted
+          '404':
+            description: Item not found
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: 'lists.yaml#/components/schemas/lists/get'
-                    - $ref: 'lists.yaml#/components/schemas/lists_processed'
-                    - $ref: 'common.yaml#/components/schemas/took'
-            headers:
-              Location:
-                $ref: 'common.yaml#/components/headers/Location'
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
