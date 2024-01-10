@@ -838,25 +838,15 @@ int api_queries(struct ftl_conn *api)
 				// We are filtering, so we have to continue to
 				// step over the remaining rows to get the
 				// correct number of total records
-				if(regex_filters == 0)
-				{
-					skipTheRest = true;
-					continue;
-				}
+				skipTheRest = true;
+				continue;
 			}
 			else
 			{
 				// We are not filtering, so we can stop here
 				// The total number of records is the number
 				// of records in the database
-				if(regex_filters == 0)
-					break;
-				else
-					// We are regex filtering, so we have to
-					// continue to step over the remaining
-					// rows to get the correct number of
-					// total records
-					continue;
+				break;
 			}
 		}
 
