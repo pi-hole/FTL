@@ -438,6 +438,11 @@ int api_queries(struct ftl_conn *api)
 		}
 	}
 
+	// We use this boolean to memorize if we are filtering at all. It is used
+	// later to decide if we can short-circuit the query counting for
+	// performance reasons.
+	bool filtering = false;
+
 	// Regex filtering?
 	const int regex_filters = cJSON_GetArraySize(config.webserver.api.excludeRegex.v.json);
 	regex_t *regex = NULL;
@@ -478,6 +483,10 @@ int api_queries(struct ftl_conn *api)
 				}
 			}
 		}
+
+		// We are filtering, so we have to continue to step over the
+		// remaining rows to get the correct number of total records
+		filtering = true;
 	}
 
 	// Finish preparing query string
@@ -504,10 +513,6 @@ int api_queries(struct ftl_conn *api)
 		                       sqlite3_errstr(rc));
 	}
 
-	// We use this boolean to memorize if we are filtering at all. It is used
-	// later to decide if we can short-circuit the query counting for
-	// performance reasons.
-	bool filtering = false;
 	// Bind items to prepared statement
 	if(api->request->query_string != NULL)
 	{
