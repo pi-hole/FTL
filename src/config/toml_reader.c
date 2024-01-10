@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "toml_reader.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 // getprio(), setprio()
 #include <sys/resource.h>
@@ -18,24 +18,26 @@
 #include "args.h"
 // INT_MAX
 #include <limits.h>
-
-#include "../datastructure.h"
+#include "datastructure.h"
 // openFTLtoml()
-#include "toml_helper.h"
+#include "config/toml_helper.h"
+// delete_all_sessions()
+#include "api/api.h"
 
 // Private prototypes
-static toml_table_t *parseTOML(void);
+static toml_table_t *parseTOML(const unsigned int version);
 static void reportDebugFlags(void);
 
 bool readFTLtoml(struct config *oldconf, struct config *newconf,
-                 toml_table_t *toml, const bool verbose, bool *restart)
+                 toml_table_t *toml, const bool verbose, bool *restart,
+                 const unsigned int version)
 {
 	// Parse lines in the config file if we did not receive a pointer to a TOML
 	// table from an imported Teleporter file
 	bool teleporter = (toml != NULL);
 	if(!teleporter)
 	{
-		toml = parseTOML();
+		toml = parseTOML(version);
 		if(!toml)
 			return false;
 	}
@@ -58,8 +60,8 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 	}
 	set_debug_flags(newconf);
 
-	log_debug(DEBUG_CONFIG, "Reading %s TOML config file: full config",
-	          teleporter ? "teleporter" : "default");
+	log_debug(DEBUG_CONFIG, "Reading %s TOML config file",
+	          teleporter ? "teleporter" : version == 0 ? "default" : "backup");
 
 	// Read all known config items
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -114,6 +116,11 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 			log_debug(DEBUG_CONFIG, "%s CHANGED", new_conf_item->k);
 			if(new_conf_item->f & FLAG_RESTART_FTL && restart != NULL)
 				*restart = true;
+
+			// Check if this item changed the password, if so, we need to
+			// invalidate all currently active sessions
+			if(new_conf_item->f & FLAG_INVALIDATE_SESSIONS)
+				delete_all_sessions();
 		}
 	}
 
@@ -128,16 +135,12 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 }
 
 // Parse TOML config file
-static toml_table_t *parseTOML(void)
+static toml_table_t *parseTOML(const unsigned int version)
 {
 	// Try to open default config file. Use fallback if not found
 	FILE *fp;
-	if((fp = openFTLtoml("r")) == NULL)
-	{
-		log_warn("No config file available (%s), using defaults",
-		         strerror(errno));
+	if((fp = openFTLtoml("r", version)) == NULL)
 		return NULL;
-	}
 
 	// Parse lines in the config file
 	char errbuf[200];
@@ -161,7 +164,7 @@ bool getLogFilePathTOML(void)
 {
 	log_debug(DEBUG_CONFIG, "Reading TOML config file: log file path");
 
-	toml_table_t *conf = parseTOML();
+	toml_table_t *conf = parseTOML(0);
 	if(!conf)
 		return false;
 
@@ -203,11 +206,10 @@ static void reportDebugFlags(void)
 	// Read all known debug config items
 	for(unsigned int debug_flag = 1; debug_flag < DEBUG_ELEMENTS; debug_flag++)
 	{
-		const char *name;
 		// Get name of debug flag
 		// We do not need to add an offset as this loop starts counting
 		// at 1
-		debugstr(debug_flag, &name);
+		const char *name = debugstr(debug_flag);
 		// Calculate number of spaces to nicely align output
 		int spaces = 20 - strlen(name);
 		// Print debug flag

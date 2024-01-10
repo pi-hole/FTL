@@ -100,7 +100,10 @@
   #
   # Possible values are:
   #     Array of custom DNS records each one in HOSTS form: "IP HOSTNAME"
-  hosts = []
+  hosts = [
+    "1.1.1.1 abc-custom.com def-custom.de",
+    "2.2.2.2 äste.com steä.com"
+  ] ### CHANGED, default = []
 
   # If set, A and AAAA queries for plain names, without dots or domain parts, are never
   # forwarded to upstream nameservers
@@ -109,6 +112,27 @@
   # If set, the domain is added to simple names (without a period) in /etc/hosts in the
   # same way as for DHCP-derived names
   expandHosts = false
+
+  # The DNS domain used by your Pi-hole to expand hosts and for DHCP.
+  #
+  # Only if DHCP is enabled below: For DHCP, this has two effects; firstly it causes the
+  # DHCP server to return the domain to any hosts which request it, and secondly it sets
+  # the domain which it is legal for DHCP-configured hosts to claim. The intention is to
+  # constrain hostnames so that an untrusted host on the LAN cannot advertise its name
+  # via DHCP as e.g. "google.com" and capture traffic not meant for it. If no domain
+  # suffix is specified, then any DHCP hostname with a domain part (ie with a period)
+  # will be disallowed and logged. If a domain is specified, then hostnames with a
+  # domain part are allowed, provided the domain part matches the suffix. In addition,
+  # when a suffix is set then hostnames without a domain part have the suffix added as
+  # an optional domain part. For instance, we can set domain=mylab.com and have a
+  # machine whose DHCP hostname is "laptop". The IP address for that machine is
+  # available both as "laptop" and "laptop.mylab.com".
+  #
+  # You can disable setting a domain by setting this option to an empty string.
+  #
+  # Possible values are:
+  #     <any valid domain>
+  domain = "lan"
 
   # Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are
   # not found in /etc/hosts or the DHCP leases file be answered with "no such domain"
@@ -175,7 +199,9 @@
   # Possible values are:
   #     Array of static leases each on in one of the following forms:
   #     "<cname>,<target>[,<TTL>]"
-  cnameRecords = []
+  cnameRecords = [
+    "brücke.com,äste.com,2",
+  ]
 
   # Port used by the DNS server
   port = 53
@@ -344,7 +370,7 @@
     # Domain used for the reverse server feature
     #
     # Possible values are:
-    #     <valid domain>, typically set to the same value as dhcp.domain
+    #     <valid domain> (e.g., "fritz.box")
     domain = ""
 
 [dhcp]
@@ -370,11 +396,16 @@
   #     <ip-addr>, e.g., "192.168.0.1"
   router = ""
 
-  # The DNS domain used by your Pi-hole
+  # The netmask used by your Pi-hole. For directly connected networks (i.e., networks on
+  # which the machine running Pi-hole has an interface) the netmask is optional and may
+  # be set to "0.0.0.0": it will then be determined from the interface configuration
+  # itself. For networks which receive DHCP service via a relay agent, we cannot
+  # determine the netmask itself, so it should explicitly be specified, otherwise
+  # Pi-hole guesses based on the class (A, B or C) of the network address.
   #
   # Possible values are:
-  #     <any valid domain>
-  domain = "lan"
+  #     <any valid netmask>, e.g., "255.255.255.0" or "0.0.0.0" for auto-discovery
+  netmask = "0.0.0.0"
 
   # If the lease time is given, then leases will be given for that length of time. If not
   # given, the default lease time is one hour for IPv4 and one day for IPv6.
@@ -499,14 +530,14 @@
   # Comma-separated list of ports to listen on. It is possible to specify an IP address
   # to bind to. In this case, an IP address and a colon must be prepended to the port
   # number. For example, to bind to the loopback interface on port 80 (IPv4) and to all
-  # interfaces port 80 (IPv4), use "127.0.0.1:80,80". "[::]:808 can be used to
+  # interfaces port 8080 (IPv4), use "127.0.0.1:80,8080". "[::]:80" can be used to
   # listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be
-  # specified as well, e.g. "[::1]:80 for the IPv6 loopback interface. [::]:80 will
+  # specified as well, e.g. "[::1]:80" for the IPv6 loopback interface. [::]:80 will
   # bind to port 80 IPv6 only.
   # In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the
-  # configuration "80,[::]:80" (create one socket for IPv4 and one for IPv6 only),
-  # or "+80" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4
-  # and IPv6 will only work if no network interface is specified. Depending on your
+  # configuration "80,[::]:80" (create one socket for IPv4 and one for IPv6 only), or
+  # "+80" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and
+  # IPv6 will only work if no network interface is specified. Depending on your
   # operating system version and IPv6 network environment, some configurations might not
   # work as expected, so you have to test to find the configuration most suitable for
   # your needs. In case "+80" does not work for your environment, you need to use
@@ -516,11 +547,12 @@
   # non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected
   # ports will redirect all their traffic to the first configured SSL port. For example,
   # if webserver.port is "80r,443s", then all HTTP traffic coming at port 80 will be
-  # redirected to HTTPS port 443.
+  # redirected to HTTPS port 443. If this value is not set (empty string), the web
+  # server will not be started and, hence, the API will not be available.
   #
   # Possible values are:
   #     comma-separated list of <[ip_address:]port>
-  port = "80,[::]:80,443s"
+  port = "80,[::]:80,443s,[::]:443s"
 
   [webserver.session]
     # Session timeout in seconds. If a session is inactive for more than this time, it will
@@ -604,6 +636,12 @@
     # sense of the option means only 127.0.0.1 and [::1]
     searchAPIauth = false
 
+    # Number of concurrent sessions allowed for the API. If the number of sessions exceeds
+    # this value, no new sessions will be allowed until the number of sessions drops due
+    # to session expiration or logout. Note that the number of concurrent sessions is
+    # irrelevant if authentication is disabled as no sessions are used in this case.
+    max_sessions = 16
+
     # Should FTL prettify the API output (add extra spaces, newlines and indentation)?
     prettyJSON = false
 
@@ -621,6 +659,20 @@
     #     <valid TOTP secret (20 Bytes in Base32 encoding)>
     totp_secret = ""
 
+    # Pi-hole application password.
+    # After you turn on two-factor (2FA) verification and set up an Authenticator app, you
+    # may run into issues if you use apps or other services that don't support two-step
+    # verification. In this case, you can create and use an app password to sign in. An
+    # app password is a long, randomly generated password that can be used instead of your
+    # regular password + TOTP token when signing in to the API. The app password can be
+    # generated through the API and will be shown only once. You can revoke the app
+    # password at any time. If you revoke the app password, be sure to generate a new one
+    # and update your app with the new password.
+    #
+    # Possible values are:
+    #     <valid Pi-hole password hash>
+    app_pwhash = ""
+
     # Array of clients to be excluded from certain API responses
     # Example: [ "192.168.2.56", "fe80::341", "localhost" ]
     #
@@ -634,7 +686,7 @@
     # Example: [ "google.de", "pi-hole.net" ]
     #
     # Possible values are:
-    #     array of IP addresses and/or hostnames
+    #     array of domains
     excludeDomains = []
 
     # How much history should be imported from the database [seconds]? (max 24*60*60 =
@@ -678,6 +730,13 @@
   # Possible values are:
   #     <any Pi-hole gravity database>
   gravity = "/etc/pihole/gravity.db"
+
+  # A temporary directory where Pi-hole can store files during gravity updates. This
+  # directory must be writable by the user running gravity (typically pihole).
+  #
+  # Possible values are:
+  #     <any world-writable writable directory>
+  gravity_tmp = "/tmp"
 
   # The database containing MAC -> Vendor information for the network table
   #
@@ -761,12 +820,23 @@
   # malfunctioning addr2line can prevent from generating any backtrace at all.
   addr2line = true
 
+  # Should FTL load additional dnsmasq configuration files from /etc/dnsmasq.d/?
+  etc_dnsmasq_d = true ### CHANGED, default = false
+
   # Additional lines to inject into the generated dnsmasq configuration. Warning: This is
   # an advanced setting and should only be used with care. Incorrectly formatted or
   # duplicated lines as well as lines conflicting with the automatic configuration of
   # Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.
   # Use this option with extra care.
   dnsmasq_lines = []
+
+  # Log additional information about queries and replies to pihole.log
+  # When this setting is enabled, the log has extra information at the start of each
+  # line. This consists of a serial number which ties together the log lines associated
+  # with an individual query, and the IP address of the requestor. This setting is only
+  # effective if dns.queryLogging is enabled, too. This option is only useful for
+  # debugging and is not recommended for normal use.
+  extraLogging = false
 
   [misc.check]
     # Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you

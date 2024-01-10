@@ -8,24 +8,22 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
-#include "api.h"
-#include "../shmem.h"
-#include "../datastructure.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
+#include "api/api.h"
+#include "shmem.h"
+#include "datastructure.h"
 // read_setupVarsconf()
-#include "../setupVars.h"
+#include "config/setupVars.h"
 // logging routines
-#include "../log.h"
+#include "log.h"
 // config struct
-#include "../config/config.h"
-// in_auditlist()
-#include "../database/gravity-db.h"
+#include "config/config.h"
 // overTime data
-#include "../overTime.h"
+#include "overTime.h"
 // enum REGEX
-#include "../regex_r.h"
+#include "regex_r.h"
 // sqrt()
 #include <math.h>
 
@@ -100,6 +98,10 @@ int api_stats_summary(struct ftl_conn *api)
 		return ret;
 	JSON_ADD_ITEM_TO_OBJECT(queries, "types", types);
 
+	cJSON *statuses = JSON_NEW_OBJECT();
+	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
+		JSON_ADD_NUMBER_TO_OBJECT(statuses, get_query_status_str(status), counters->status[status]);
+	JSON_ADD_ITEM_TO_OBJECT(queries, "status", statuses);
 
 	cJSON *replies = JSON_NEW_OBJECT();
 	for(enum reply_type reply = 0; reply <QUERY_REPLY_MAX; reply++)
@@ -135,15 +137,6 @@ int api_stats_summary(struct ftl_conn *api)
 
 int api_stats_top_domains(struct ftl_conn *api)
 {
-	int count = 10;
-	bool audit = false;
-	int *temparray = calloc(2*counters->domains, sizeof(int*));
-	if(temparray == NULL)
-	{
-		log_err("Memory allocation failed in %s()", __FUNCTION__);
-		return 0;
-	}
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
 	{
@@ -155,29 +148,36 @@ int api_stats_top_domains(struct ftl_conn *api)
 		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *top_domains = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(json, "top_domains", top_domains);
-		free(temparray);
 		JSON_SEND_OBJECT(json);
-	}
-
-	bool blocked = false; // Can be overwritten by query string
-	// /api/stats/top_domains?blocked=true
-	if(api->request->query_string != NULL)
-	{
-		// Should blocked clients be shown?
-		get_bool_var(api->request->query_string, "blocked", &blocked);
-
-		// Does the user request a non-default number of replies?
-		// Note: We do not accept zero query requests here
-		get_int_var(api->request->query_string, "count", &count);
-
-		// Apply Audit Log filtering?
-		get_bool_var(api->request->query_string, "audit", &audit);
 	}
 
 	// Lock shared memory
 	lock_shm();
 
-	for(int domainID=0; domainID < counters->domains; domainID++)
+	// Allocate memory
+	const int domains = counters->domains;
+	int *temparray = calloc(2*domains, sizeof(int));
+	if(temparray == NULL)
+	{
+		log_err("Memory allocation failed in %s()", __FUNCTION__);
+		return 0;
+	}
+
+	bool blocked = false; // Can be overwritten by query string
+	int count = 10;
+	// /api/stats/top_domains?blocked=true
+	if(api->request->query_string != NULL)
+	{
+		// Should blocked domains be shown?
+		get_bool_var(api->request->query_string, "blocked", &blocked);
+
+		// Does the user request a non-default number of replies?
+		// Note: We do not accept zero query requests here
+		get_int_var(api->request->query_string, "count", &count);
+	}
+
+	unsigned int added_domains = 0u;
+	for(int domainID = 0; domainID < domains; domainID++)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(domainID, true);
@@ -190,10 +190,12 @@ int api_stats_top_domains(struct ftl_conn *api)
 		else
 			// Count only permitted queries
 			temparray[2*domainID + 1] = (domain->count - domain->blockedcount);
+
+		added_domains++;
 	}
 
 	// Sort temporary array
-	qsort(temparray, counters->domains, sizeof(int[2]), cmpdesc);
+	qsort(temparray, added_domains, sizeof(int[2]), cmpdesc);
 
 	// Get filter
 	const char* filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
@@ -217,7 +219,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 
 	int n = 0;
 	cJSON *top_domains = JSON_NEW_ARRAY();
-	for(int i = 0; i < counters->domains; i++)
+	for(unsigned int i = 0; i < added_domains; i++)
 	{
 		// Get sorted index
 		const int domainID = temparray[2*i + 0];
@@ -226,30 +228,19 @@ int api_stats_top_domains(struct ftl_conn *api)
 		if(domain == NULL)
 			continue;
 
-		// Skip this domain if there is a filter on it (but only if not in audit mode)
-		if(!audit)
+		// Skip this domain if there is a filter on it
+		bool skip_domain = false;
+		for(unsigned int j = 0; j < excludeDomains; j++)
 		{
-			// Check if this client should be skipped
-			bool skip_domain = false;
-			for(unsigned int j = 0; j < excludeDomains; j++)
+			cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeDomains.v.json, j);
+			if(strcmp(getstr(domain->domainpos), item->valuestring) == 0)
 			{
-				cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeDomains.v.json, j);
-				if(strcmp(getstr(domain->domainpos), item->valuestring) == 0)
-				{
-					skip_domain = true;
-					break;
-				}
+				skip_domain = true;
+				break;
 			}
-			if(skip_domain)
-				continue;
 		}
-
-		// Skip this domain if already audited
-		if(audit && in_auditlist(getstr(domain->domainpos)) > 0)
-		{
-			log_debug(DEBUG_API, "API: %s has been audited.", getstr(domain->domainpos));
+		if(skip_domain)
 			continue;
-		}
 
 		// Hidden domain, probably due to privacy level. Skip this in the top lists
 		if(strcmp(getstr(domain->domainpos), HIDDEN_DOMAIN) == 0)
@@ -283,9 +274,9 @@ int api_stats_top_domains(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "domains", top_domains);
 
-	const int blocked_queries = get_blocked_count();
+	const int blocked_count = get_blocked_count();
 	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_count);
 
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
@@ -293,8 +284,8 @@ int api_stats_top_domains(struct ftl_conn *api)
 int api_stats_top_clients(struct ftl_conn *api)
 {
 	int count = 10;
-	bool includezeroclients = false;
-	int *temparray = calloc(2*counters->clients, sizeof(int*));
+	const int clients = counters->clients;
+	int *temparray = calloc(2*clients, sizeof(int));
 	if(temparray == NULL)
 	{
 		log_err("Memory allocation failed in api_stats_top_clients()");
@@ -325,15 +316,12 @@ int api_stats_top_clients(struct ftl_conn *api)
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
 		get_int_var(api->request->query_string, "count", &count);
-
-		// Show also clients which have not been active recently?
-		get_bool_var(api->request->query_string, "withzero", &includezeroclients);
 	}
 
 	// Lock shared memory
 	lock_shm();
 
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(int clientID = 0; clientID < clients; clientID++)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
@@ -348,14 +336,14 @@ int api_stats_top_clients(struct ftl_conn *api)
 	}
 
 	// Sort temporary array
-	qsort(temparray, counters->clients, sizeof(int[2]), cmpdesc);
+	qsort(temparray, clients, sizeof(int[2]), cmpdesc);
 
 	// Get clients which the user doesn't want to see
 	unsigned int excludeClients = cJSON_GetArraySize(config.webserver.api.excludeClients.v.json);
 
 	int n = 0;
 	cJSON *top_clients = JSON_NEW_ARRAY();
-	for(int i=0; i < counters->clients; i++)
+	for(int i=0; i < clients; i++)
 	{
 		// Get sorted indices and counter values (may be either total or blocked count)
 		const int clientID = temparray[2*i + 0];
@@ -366,18 +354,18 @@ int api_stats_top_clients(struct ftl_conn *api)
 			continue;
 
 		// Skip this client if there is a filter on it
-		bool skip_domain = false;
+		bool skip_client = false;
 		for(unsigned int j = 0; j < excludeClients; j++)
 		{
 			cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeClients.v.json, j);
 			if(strcmp(getstr(client->ippos), item->valuestring) == 0 ||
 			   strcmp(getstr(client->namepos), item->valuestring) == 0)
 			{
-				skip_domain = true;
+				skip_client = true;
 				break;
 			}
 		}
-		if(skip_domain)
+		if(skip_client)
 			continue;
 
 		// Hidden client, probably due to privacy level. Skip this in the top lists
@@ -388,10 +376,9 @@ int api_stats_top_clients(struct ftl_conn *api)
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = getstr(client->namepos);
 
-		// Return this client if either
-		// - "withzero" option is set, and/or
-		// - the client made at least one query within the most recent 24 hours
-		if(includezeroclients || count > 0)
+		// Return this client if the client made at least one query
+		// within the most recent 24 hours
+		if(client_count > 0)
 		{
 			cJSON *client_item = JSON_NEW_OBJECT();
 			JSON_REF_STR_IN_OBJECT(client_item, "name", client_name);
@@ -410,8 +397,8 @@ int api_stats_top_clients(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", top_clients);
 
-	const int blocked_queries = get_blocked_count();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
+	const int blocked_count = get_blocked_count();
+	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_count);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
 	JSON_SEND_OBJECT_UNLOCK(json);
 }
@@ -419,9 +406,9 @@ int api_stats_top_clients(struct ftl_conn *api)
 
 int api_stats_upstreams(struct ftl_conn *api)
 {
-	const int forwarded = get_forwarded_count();
 	unsigned int totalcount = 0;
-	int *temparray = calloc(2*forwarded, sizeof(int*));
+	const int upstreams = counters->upstreams;
+	int *temparray = calloc(2*upstreams, sizeof(int));
 	if(temparray == NULL)
 	{
 		log_err("Memory allocation failed in api_stats_upstreams()");
@@ -431,7 +418,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 	// Lock shared memory
 	lock_shm();
 
-	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
+	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
 		// Get upstream pointer
 		const upstreamsData* upstream = getUpstream(upstreamID, true);
@@ -439,20 +426,16 @@ int api_stats_upstreams(struct ftl_conn *api)
 			continue;
 
 		temparray[2*upstreamID + 0] = upstreamID;
-
-		unsigned int count = 0;
-		for(unsigned i = 0; i < ArraySize(upstream->overTime); i++)
-			count += upstream->overTime[i];
-		temparray[2*upstreamID + 1] = count;
-		totalcount += count;
+		temparray[2*upstreamID + 1] = upstream->count;
+		totalcount += upstream->count;
 	}
 
 	// Sort temporary array in descending order
-	qsort(temparray, counters->upstreams, sizeof(int[2]), cmpdesc);
+	qsort(temparray, upstreams, sizeof(int[2]), cmpdesc);
 
 	// Loop over available forward destinations
-	cJSON *upstreams = JSON_NEW_ARRAY();
-	for(int i = -2; i < min(counters->upstreams, 8); i++)
+	cJSON *top_upstreams = JSON_NEW_ARRAY();
+	for(int i = -2; i < upstreams; i++)
 	{
 		int count = 0;
 		const char* ip, *name;
@@ -520,7 +503,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 			JSON_ADD_NUMBER_TO_OBJECT(statistics, "response", responsetime);
 			JSON_ADD_NUMBER_TO_OBJECT(statistics, "variance", uncertainty);
 			JSON_ADD_ITEM_TO_OBJECT(upstream, "statistics", statistics);
-			JSON_ADD_ITEM_TO_ARRAY(upstreams, upstream);
+			JSON_ADD_ITEM_TO_ARRAY(top_upstreams, upstream);
 		}
 	}
 
@@ -528,9 +511,9 @@ int api_stats_upstreams(struct ftl_conn *api)
 	free(temparray);
 
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "upstreams", upstreams);
-	const int forwarded_queries = get_forwarded_count();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "forwarded_queries", forwarded_queries);
+	JSON_ADD_ITEM_TO_OBJECT(json, "upstreams", top_upstreams);
+	const int forwarded_count = get_forwarded_count();
+	JSON_ADD_NUMBER_TO_OBJECT(json, "forwarded_queries", forwarded_count);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
 	JSON_SEND_OBJECT_UNLOCK(json);
 }

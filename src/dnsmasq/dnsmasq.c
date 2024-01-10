@@ -81,10 +81,7 @@ int main_dnsmasq (int argc, char **argv)
 #endif
 
 #if defined(HAVE_IDN) || defined(HAVE_LIBIDN2) || defined(LOCALEDIR)
-  setlocale(LC_ALL, "");
-  /*** Pi-hole modification ***/
-  setlocale(LC_NUMERIC, "C");
-  /****************************/
+  /*** Pi-hole modification: Locale is already initialized in main.c ***/
 #endif
 #ifdef LOCALEDIR
   bindtextdomain("dnsmasq", LOCALEDIR); 
@@ -97,7 +94,7 @@ int main_dnsmasq (int argc, char **argv)
   sigaction(SIGUSR1, &sigact, NULL);
   sigaction(SIGUSR2, &sigact, NULL);
   sigaction(SIGHUP, &sigact, NULL);
-  sigaction(SIGTERM, &sigact, NULL);
+  sigaction(SIGUSR6, &sigact, NULL); // Pi-hole modification
   sigaction(SIGALRM, &sigact, NULL);
   sigaction(SIGCHLD, &sigact, NULL);
   sigaction(SIGINT, &sigact, NULL);
@@ -1333,7 +1330,7 @@ static void sig_handler(int sig)
 	event = EVENT_CHILD;
       else if (sig == SIGALRM)
 	event = EVENT_ALARM;
-      else if (sig == SIGTERM)
+      else if (sig == SIGUSR6) // Pi-hole modified
 	event = EVENT_TERM;
       else if (sig == SIGUSR1)
 	event = EVENT_DUMP;

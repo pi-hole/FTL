@@ -63,6 +63,9 @@ components:
                     - $ref: 'groups.yaml#/components/schemas/groups/get' # identical to GET
                     - $ref: 'groups.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
+            headers:
+              Location:
+                $ref: 'common.yaml#/components/headers/Location'
           '400':
             description: Bad request
             content:
@@ -94,6 +97,12 @@ components:
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -165,6 +174,63 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+    batchDelete:
+      post:
+        summary: Delete multiple groups
+        tags:
+          - "Group management"
+        operationId: "batchDelete_groups"
+        description: |
+          Deletes multiple groups in the `groups` object. The `{groups}` themselves are specified in the request body (POST JSON).
+
+          On success, a new resource is created at `/groups/{name}`.
+
+          The `database_error` with message `UNIQUE constraint failed` error indicates that a group with the same name already exists.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    item:
+                      type: string
+                      description: group name
+                example:
+                  - "item": "test1"
+                  - "item": "test2"
+        responses:
+          '204':
+            description: Items deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'groups.yaml#/components/examples/errors/bad_request/no_payload'
+                  duplicate:
+                    $ref: 'groups.yaml#/components/examples/errors/database_error/duplicate'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     groups:
       get:
@@ -174,13 +240,14 @@ components:
             type: array
             items:
               allOf:
-                - $ref: 'groups.yaml#/components/schemas/name'
+                - $ref: 'groups.yaml#/components/schemas/name_object'
                 - $ref: 'groups.yaml#/components/schemas/comment'
                 - $ref: 'groups.yaml#/components/schemas/enabled'
                 - $ref: 'groups.yaml#/components/schemas/readonly'
       put:
         allOf:
-          - $ref: 'groups.yaml#/components/schemas/name'
+          # Can rename group
+          - $ref: 'groups.yaml#/components/schemas/name_object'
           - $ref: 'groups.yaml#/components/schemas/comment'
           - $ref: 'groups.yaml#/components/schemas/enabled'
       post:
@@ -189,25 +256,27 @@ components:
           - $ref: 'groups.yaml#/components/schemas/comment'
           - $ref: 'groups.yaml#/components/schemas/enabled'
     name:
-      type: object
-      properties:
-        name:
-          description: Group name
-          type: string
-          example: test_group
+      description: Group name
+      type: string
+      example: test_group
     name_array:
+      description: array of group names
+      type: array
+      items:
+        type: string
+      example: ["test1", "test2", "test3"]
+    name_maybe_array:
       type: object
       properties:
         name:
-          description: array of group names
-          type: array
-          items:
-            type: string
-          example: ["test1", "test2", "test3"]
-    name_maybe_array:
-      oneOf:
-        - $ref: 'groups.yaml#/components/schemas/name'
-        - $ref: 'groups.yaml#/components/schemas/name_array'
+          oneOf:
+            - $ref: 'groups.yaml#/components/schemas/name'
+            - $ref: 'groups.yaml#/components/schemas/name_array'
+    name_object:
+      type: object
+      properties:
+        name:
+          $ref: 'groups.yaml#/components/schemas/name'
     comment:
       type: object
       properties:

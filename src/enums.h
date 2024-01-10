@@ -270,6 +270,7 @@ enum message_type {
 	DISK_MESSAGE,
 	INACCESSIBLE_ADLIST_MESSAGE,
 	DISK_MESSAGE_EXTENDED,
+	CERTIFICATE_DOMAIN_MISMATCH_MESSAGE,
 	MAX_MESSAGE,
 } __attribute__ ((packed));
 
@@ -309,6 +310,15 @@ enum temp_unit {
 enum adlist_type {
 	ADLIST_BLOCK = 0,
 	ADLIST_ALLOW
+} __attribute__ ((packed));
+
+enum cert_check {
+	CERT_FILE_NOT_FOUND,
+	CERT_CANNOT_PARSE_CERT,
+	CERT_CANNOT_PARSE_KEY,
+	CERT_DOMAIN_MISMATCH,
+	CERT_DOMAIN_MATCH,
+	CERT_OKAY
 } __attribute__ ((packed));
 
 #endif // ENUMS_H

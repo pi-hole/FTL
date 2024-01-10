@@ -91,6 +91,11 @@ static char * __attribute__((malloc)) base64_encode(const uint8_t *data, const s
 	out_len = base64_encode_update(&ctx, encoded, length, data);
 	out_len += base64_encode_final(&ctx, encoded + out_len);
 
+	// Length check
+	if(out_len > BASE64_ENCODE_LENGTH(length) + BASE64_ENCODE_FINAL_LENGTH)
+		log_warn("Base64 encoding may have failed: Output buffer too small? (%zu > %zu)",
+		         out_len, BASE64_ENCODE_LENGTH(length) + BASE64_ENCODE_FINAL_LENGTH);
+
 	return encoded;
 }
 
@@ -259,7 +264,7 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 	// Decode salt and hash
 	size_t salt_len = 0;
 	*salt = base64_decode(salt_base64, &salt_len);
-	if(salt == NULL)
+	if(*salt == NULL)
 	{
 		// Error
 		log_err("Error while decoding salt: %s", strerror(errno));
@@ -275,7 +280,7 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 
 	size_t hash_len = 0;
 	*hash = base64_decode(hash_base64, &hash_len);
-	if(hash == NULL)
+	if(*hash == NULL)
 	{
 		// Error
 		log_err("Error while decoding hash: %s", strerror(errno));
@@ -307,11 +312,32 @@ char * __attribute__((malloc)) create_password(const char *password)
 	return balloon_password(password, salt, true);
 }
 
-char verify_password(const char *password, const char* pwhash, const bool rate_limiting)
+enum password_result verify_login(const char *password)
+{
+	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
+	if(pw == PASSWORD_CORRECT)
+		log_debug(DEBUG_API, "Password correct");
+	else
+		log_debug(DEBUG_API, "Password incorrect");
+
+	// Check if an application password is set and if it matches
+	if(pw == PASSWORD_INCORRECT &&
+	   strlen(config.webserver.api.app_pwhash.v.s) > 0 &&
+	   verify_password(password, config.webserver.api.app_pwhash.v.s, true) == PASSWORD_CORRECT)
+	{
+		log_debug(DEBUG_API, "App password correct");
+		return APPPASSWORD_CORRECT;
+	}
+
+	// Return result
+	return pw;
+}
+
+enum password_result verify_password(const char *password, const char *pwhash, const bool rate_limiting)
 {
 	// No password set
 	if(pwhash == NULL || pwhash[0] == '\0')
-		return PASSWORD_CORRECT;
+		return NO_PASSWORD_SET;
 
 	// No password supplied
 	if(password == NULL || password[0] == '\0')
@@ -356,10 +382,12 @@ char verify_password(const char *password, const char* pwhash, const bool rate_l
 
 		// Free allocated memory
 		free(supplied);
-		if(salt != NULL)
-			free(salt);
-		if(config_hash != NULL)
-			free(config_hash);
+		free(salt);
+		free(config_hash);
+
+		// Successful logins do not count against rate-limiting
+		if(result)
+			num_password_attempts--;
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
@@ -384,6 +412,9 @@ char verify_password(const char *password, const char* pwhash, const bool rate_l
 				writeFTLtoml(true);
 				free(new_hash);
 			}
+
+			// Successful logins do not count against rate-limiting
+			num_password_attempts--;
 		}
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
@@ -448,8 +479,8 @@ static int performance_test_task(const size_t s_cost, const size_t t_cost, const
 		printf("s = %5zu, t = %5zu took %6.1f +/- %4.1f ms (scratch buffer %6.1f%1sB) -> %.0f\n",
 		       s_cost, t_cost, 1e3*avg, 1e3*stdev, formatted, prefix, 1.0*(s_cost*t_cost)/avg);
 
-		// Break if test took longer than two seconds
-		if(avg > 2)
+		// Break if test took longer than half a second
+		if(avg > 0.5)
 			return 1;
 		return 0;
 }
@@ -576,8 +607,9 @@ bool set_and_check_password(struct conf_item *conf_item, const char *password)
 	// Get password hash as allocated string (an empty string is hashed to an empty string)
 	char *pwhash = strlen(password) > 0 ? create_password(password) : strdup("");
 
-	// Verify that the password hash is valid
-	if(verify_password(password, pwhash, false) != PASSWORD_CORRECT)
+	// Verify that the password hash is valid or that no password is set
+	const enum password_result status = verify_password(password, pwhash, false);
+	if(status != PASSWORD_CORRECT && status != NO_PASSWORD_SET)
 	{
 		free(pwhash);
 		log_warn("Failed to create password hash (verification failed), password remains unchanged");
@@ -594,6 +626,43 @@ bool set_and_check_password(struct conf_item *conf_item, const char *password)
 	// Set item
 	conf_item->v.s = pwhash;
 	log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
+
+	return true;
+}
+
+bool generate_app_password(char **password, char **pwhash)
+{
+	// Generate a 128 bit random salt
+	// genrandom() returns cryptographically secure random data
+	uint8_t salt[SALT_LEN] = { 0 };
+	if(getrandom(salt, sizeof(salt), 0) < 0)
+	{
+		log_err("getrandom() failed in generate_app_password()");
+		return false;
+	}
+
+	// Generate a 256 bit random password
+	uint8_t password_raw[256/8] = { 0 };
+	if(getrandom(password_raw, sizeof(password_raw), 0) < 0)
+	{
+		log_err("getrandom() failed in generate_app_password()");
+		return false;
+	}
+
+	// Encode password as base64
+	*password = base64_encode(password_raw, sizeof(password_raw));
+
+	// Generate balloon PHC-encoded password hash
+	*pwhash = balloon_password(*password, salt, true);
+
+	// Verify that the password hash is valid
+	if(verify_password(*password, *pwhash, false) != PASSWORD_CORRECT)
+	{
+		free(password);
+		free(pwhash);
+		log_warn("Failed to create password hash (verification failed), app password not available");
+		return false;
+	}
 
 	return true;
 }

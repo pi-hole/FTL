@@ -25,6 +25,6 @@ index 6280ebf6..a5e82f70 100644
        char *zHistory;
        int nHistory;
 +      print_FTL_version();
-       printf(
-         "SQLite version %s %.19s\n" /*extra-version-info*/
-         "Enter \".help\" for usage hints.\n",
+ #if CIO_WIN_WC_XLATE
+ # define SHELL_CIO_CHAR_SET (stdout_is_console? " (UTF-16 console I/O)" : "")
+ #else

@@ -12,6 +12,8 @@
 #include "database/session-table.h"
 #include "database/common.h"
 #include "config/config.h"
+// get_memdb()
+#include "database/query-table.h"
 
 bool create_session_table(sqlite3 *db)
 {
@@ -42,8 +44,29 @@ bool create_session_table(sqlite3 *db)
 	return true;
 }
 
+bool add_session_app_column(sqlite3 *db)
+{
+	// Start transaction of database update
+	SQL_bool(db, "BEGIN TRANSACTION;");
+
+	// Create session table
+	SQL_bool(db, "ALTER TABLE session ADD COLUMN app BOOL;");
+
+	// Update database version to 16
+	if(!db_set_FTL_property(db, DB_VERSION, 16))
+	{
+		log_err("add_session_app_column(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool(db, "COMMIT");
+
+	return true;
+}
+
 // Store all session in database
-bool backup_db_sessions(struct session *sessions)
+bool backup_db_sessions(struct session *sessions, const uint16_t max_sessions)
 {
 	if(!config.webserver.session.restore.v.b)
 	{
@@ -60,7 +83,7 @@ bool backup_db_sessions(struct session *sessions)
 
 	// Insert session into database
 	sqlite3_stmt *stmt = NULL;
-	if(sqlite3_prepare_v2(db, "INSERT INTO session (login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed) VALUES (?, ?, ?, ?, ?, ?, ?, ?);", -1, &stmt, 0) != SQLITE_OK)
+	if(sqlite3_prepare_v2(db, "INSERT INTO session (login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed, app) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);", -1, &stmt, 0) != SQLITE_OK)
 	{
 		log_err("SQL error in backup_db_sessions(): %s (%d)",
 		        sqlite3_errmsg(db), sqlite3_errcode(db));
@@ -68,7 +91,7 @@ bool backup_db_sessions(struct session *sessions)
 	}
 
 	unsigned int api_sessions = 0;
-	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+	for(unsigned int i = 0; i < max_sessions; i++)
 	{
 		// Get session
 		struct session *sess = &sessions[i];
@@ -134,6 +157,13 @@ bool backup_db_sessions(struct session *sessions)
 					sess->tls.mixed ? 1 : 0, sqlite3_errmsg(db), sqlite3_errcode(db));
 			return false;
 		}
+		// 9: app
+		if(sqlite3_bind_int(stmt, 8, sess->app ? 1: 0) != SQLITE_OK)
+		{
+			log_err("Cannot bind app = %d in backup_db_sessions(): %s (%d)",
+					sess->app ? 1 : 0, sqlite3_errmsg(db), sqlite3_errcode(db));
+			return false;
+		}
 
 		// Execute statement
 		if(sqlite3_step(stmt) != SQLITE_DONE)
@@ -180,7 +210,7 @@ bool backup_db_sessions(struct session *sessions)
 }
 
 // Restore all sessions found in the database
-bool restore_db_sessions(struct session *sessions)
+bool restore_db_sessions(struct session *sessions, const uint16_t max_sessions)
 {
 	if(!config.webserver.session.restore.v.b)
 	{
@@ -188,28 +218,23 @@ bool restore_db_sessions(struct session *sessions)
 		return true;
 	}
 
-	sqlite3 *db = dbopen(false, false);
-	if(db == NULL)
-	{
-		log_warn("Failed to open database in restore_db_sessions()");
-		return false;
-	}
+	sqlite3 *memdb = get_memdb();
 
 	// Remove expired sessions from database
-	SQL_bool(db, "DELETE FROM session WHERE valid_until < strftime('%%s', 'now');");
+	SQL_bool(memdb, "DELETE FROM disk.session WHERE valid_until < strftime('%%s', 'now');");
 
 	// Get all sessions from database
 	sqlite3_stmt *stmt = NULL;
-	if(sqlite3_prepare_v2(db, "SELECT login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed FROM session;", -1, &stmt, 0) != SQLITE_OK)
+	if(sqlite3_prepare_v2(memdb, "SELECT login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed, app FROM disk.session;", -1, &stmt, 0) != SQLITE_OK)
 	{
 		log_err("SQL error in restore_db_sessions(): %s (%d)",
-		        sqlite3_errmsg(db), sqlite3_errcode(db));
+		        sqlite3_errmsg(memdb), sqlite3_errcode(memdb));
 		return false;
 	}
 
 	// Iterate over all still valid sessions
 	unsigned int i = 0;
-	while(sqlite3_step(stmt) == SQLITE_ROW && i++ < API_MAX_CLIENTS)
+	while(sqlite3_step(stmt) == SQLITE_ROW && i < max_sessions)
 	{
 		// Allocate memory for new session
 		struct session *sess = &sessions[i];
@@ -259,8 +284,13 @@ bool restore_db_sessions(struct session *sessions)
 		// 8: tls_mixed
 		sess->tls.mixed = sqlite3_column_int(stmt, 7) == 1 ? true : false;
 
+		// 8: app
+		sess->app = sqlite3_column_int(stmt, 8) == 1 ? true : false;
+
 		// Mark session as used
 		sess->used = true;
+
+		i++;
 	}
 
 	log_info("Restored %u API session%s from the database",
@@ -270,7 +300,7 @@ bool restore_db_sessions(struct session *sessions)
 	if(sqlite3_finalize(stmt) != SQLITE_OK)
 	{
 		log_err("SQL error in restore_db_sessions(): %s (%d)",
-		        sqlite3_errmsg(db), sqlite3_errcode(db));
+		        sqlite3_errmsg(memdb), sqlite3_errcode(memdb));
 		return false;
 	}
 
@@ -278,11 +308,9 @@ bool restore_db_sessions(struct session *sessions)
 	// We use secure_delete to make sure the sessions are really gone
 	// In this mode, SQLite overwrites the deleted content with zeros
 	// (https://www.sqlite.org/pragma.html#pragma_secure_delete)
-	SQL_bool(db, "PRAGMA secure_delete = ON;");
-	SQL_bool(db, "DELETE FROM session;");
-
-	// Close database connection
-	dbclose(&db);
+	SQL_bool(memdb, "PRAGMA secure_delete = ON;");
+	SQL_bool(memdb, "DELETE FROM disk.session;");
+	SQL_bool(memdb, "PRAGMA secure_delete = OFF;");
 
 	return true;
 }

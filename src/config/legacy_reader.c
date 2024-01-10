@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "legacy_reader.h"
 #include "config.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 // nice()
 #include <unistd.h>
@@ -43,7 +43,7 @@ static FILE * __attribute__((nonnull(1), malloc, warn_unused_result)) openFTLcon
 		return fp;
 
 	// Local file not present, try system file
-	*path = "/etc/pihole/pihole-FTL.conf";
+	*path = GLOBALCONFFILE_LEGACY;
 	fp = fopen(*path, "r");
 
 	return fp;
@@ -113,9 +113,12 @@ const char *readFTLlegacy(struct config *conf)
 	const char *path = NULL;
 	FILE *fp = openFTLconf(&path);
 	if(fp == NULL)
+	{
+		log_warn("No readable FTL config file found, using default settings");
 		return NULL;
+	}
 
-	log_notice("Reading legacy config file");
+	log_info("Reading legacy config files from %s", path);
 
 	// MAXDBDAYS
 	// defaults to: 365 days
@@ -337,6 +340,10 @@ const char *readFTLlegacy(struct config *conf)
 	// 2.0) had the range -infinity..15.
 	buffer = parseFTLconf(fp, "NICE");
 
+	value = 0;
+	if(buffer != NULL && sscanf(buffer, "%i", &value) && value >= -20 && value <= 19)
+		conf->misc.nice.v.i = value;
+
 	// MAXNETAGE
 	// IP addresses (and associated host names) older than the specified number
 	// of days are removed to avoid dead entries in the network overview table
@@ -401,7 +408,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.host.force4.v.b = false;
 	conf->dns.reply.host.v4.v.in_addr.s_addr = 0;
 	buffer = parseFTLconf(fp, "LOCAL_IPV4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &conf->dns.reply.host.v4.v.in_addr))
+	if(buffer != NULL && strlen(buffer) > 0 && inet_pton(AF_INET, buffer, &conf->dns.reply.host.v4.v.in_addr))
 		conf->dns.reply.host.force4.v.b = true;
 
 	// LOCAL_IPV6
@@ -411,7 +418,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.host.force6.v.b = false;
 	memset(&conf->dns.reply.host.v6.v.in6_addr, 0, sizeof(conf->dns.reply.host.v6.v.in6_addr));
 	buffer = parseFTLconf(fp, "LOCAL_IPV6");
-	if(buffer != NULL && inet_pton(AF_INET6, buffer, &conf->dns.reply.host.v6.v.in6_addr))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET6, buffer, &conf->dns.reply.host.v6.v.in6_addr))
 		conf->dns.reply.host.force6.v.b = true;
 
 	// BLOCK_IPV4
@@ -420,7 +427,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.blocking.force4.v.b = false;
 	conf->dns.reply.blocking.v4.v.in_addr.s_addr = 0;
 	buffer = parseFTLconf(fp, "BLOCK_IPV4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &conf->dns.reply.blocking.v4.v.in_addr))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET, buffer, &conf->dns.reply.blocking.v4.v.in_addr))
 		conf->dns.reply.blocking.force4.v.b = true;
 
 	// BLOCK_IPV6
@@ -429,7 +436,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.blocking.force6.v.b = false;
 	memset(&conf->dns.reply.blocking.v6.v.in6_addr, 0, sizeof(conf->dns.reply.host.v6.v.in6_addr));
 	buffer = parseFTLconf(fp, "BLOCK_IPV6");
-	if(buffer != NULL && inet_pton(AF_INET6, buffer, &conf->dns.reply.blocking.v6.v.in6_addr))
+	if(buffer != NULL &&  strlen(buffer) > 0 && inet_pton(AF_INET6, buffer, &conf->dns.reply.blocking.v6.v.in6_addr))
 		conf->dns.reply.blocking.force6.v.b = true;
 
 	// REPLY_ADDR4 (deprecated setting)
@@ -438,7 +445,7 @@ const char *readFTLlegacy(struct config *conf)
 	// defaults to: not set
 	struct in_addr reply_addr4;
 	buffer = parseFTLconf(fp, "REPLY_ADDR4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr4))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET, buffer, &reply_addr4))
 	{
 		if(conf->dns.reply.host.force4.v.b || conf->dns.reply.blocking.force4.v.b)
 		{
@@ -459,7 +466,7 @@ const char *readFTLlegacy(struct config *conf)
 	// defaults to: not set
 	struct in6_addr reply_addr6;
 	buffer = parseFTLconf(fp, "REPLY_ADDR6");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr6))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET, buffer, &reply_addr6))
 	{
 		if(conf->dns.reply.host.force6.v.b || conf->dns.reply.blocking.force6.v.b)
 		{
@@ -576,8 +583,8 @@ const char *readFTLlegacy(struct config *conf)
 	// Release memory
 	releaseConfigMemory();
 
-	if(fp != NULL)
-		fclose(fp);
+	// Close file
+	fclose(fp);
 
 	return path;
 }
@@ -824,12 +831,7 @@ static void readDebugingSettingsLegacy(FILE *fp)
 	setDebugOption(fp, "DEBUG_ALL", ~(enum debug_flag)0);
 
 	for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
-	{
-		// DEBUG_DATABASE
-		const char *name;
-		debugstr(flag, &name);
-		setDebugOption(fp, name, flag);
-	}
+		setDebugOption(fp, debugstr(flag), flag);
 
 	// Parse debug options
 	set_debug_flags(&config);

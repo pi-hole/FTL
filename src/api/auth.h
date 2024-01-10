@@ -11,9 +11,6 @@
 #ifndef AUTH_H
 #define AUTH_H
 
-// How many authenticated API clients are allowed simultaneously? [.]
-#define API_MAX_CLIENTS 16
-
 // crypto library
 #include <nettle/sha2.h>
 #include <nettle/base64.h>
@@ -50,6 +47,7 @@
 
 struct session {
 	bool used;
+	bool app;
 	struct {
 		bool login;
 		bool mixed;

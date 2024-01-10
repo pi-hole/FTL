@@ -2793,7 +2793,11 @@ lua_error_handler(lua_State *L)
 static void
 prepare_lua_environment(struct mg_context *ctx,
                         struct mg_connection *conn,
+#if defined(USE_WEBSOCKET)
                         struct lua_websock_data *ws_conn_list,
+#else
+                        void *ws_conn_list,
+#endif
                         lua_State *L,
                         const char *script_name,
                         int lua_env_type)

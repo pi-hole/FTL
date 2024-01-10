@@ -35,11 +35,7 @@
 @test "dnsmasq options as expected" {
   run bash -c './pihole-FTL -vv | grep "cryptohash"'
   printf "%s\n" "${lines[@]}"
-  if [[ "${CI_ARCH}" == "x86_64_full" ]]; then
-    [[ ${lines[0]} == "Features:        IPv6 GNU-getopt DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP conntrack ipset nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
-  else
-    [[ ${lines[0]} == "Features:        IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
-  fi
+  [[ ${lines[0]} == "Features:        IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN2 DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
   [[ ${lines[1]} == "" ]]
 }
 
@@ -432,6 +428,18 @@
   [[ ${lines[@]} == *"status: SERVFAIL"* ]]
 }
 
+@test "Special domain: NXDOMAIN is returned" {
+  run bash -c "dig A mask.icloud.com @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: NXDOMAIN"* ]]
+}
+
+@test "Special domain: Record is returned when explicitly allowed" {
+  run bash -c "dig A mask.icloud.com -b 127.0.0.2 @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: NOERROR"* ]]
+}
+
 @test "ABP-style matching working as expected" {
   run bash -c "dig A special.gravity.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
@@ -453,7 +461,7 @@
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network\" (id INTEGER PRIMARY KEY NOT NULL, hwaddr TEXT UNIQUE NOT NULL, interface TEXT NOT NULL, firstSeen INTEGER NOT NULL, lastQuery INTEGER NOT NULL, numQueries INTEGER NOT NULL, macVendor TEXT, aliasclient_id INTEGER);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network_addresses\" (network_id INTEGER NOT NULL, ip TEXT UNIQUE NOT NULL, lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), name TEXT, nameUpdated INTEGER, FOREIGN KEY(network_id) REFERENCES network(id));"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE aliasclient (id INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, comment TEXT);"* ]]
-  [[ "${lines[@]}" == *"INSERT INTO ftl VALUES(0,15,'Database version');"* ]] # Expecting FTL database version 14
+  [[ "${lines[@]}" == *"INSERT INTO ftl VALUES(0,16,'Database version');"* ]]
   # vvv This has been added in version 10 vvv
   [[ "${lines[@]}" == *"CREATE VIEW queries AS SELECT id, timestamp, type, status, CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,CASE typeof(additional_info) WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, reply_type, reply_time, dnssec, regex_id FROM query_storage q;"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE domain_by_id (id INTEGER PRIMARY KEY, domain TEXT NOT NULL);"* ]]
@@ -465,7 +473,7 @@
   [[ "${lines[@]}" == *"CREATE TABLE addinfo_by_id (id INTEGER PRIMARY KEY, type INTEGER NOT NULL, content NOT NULL);"* ]]
   [[ "${lines[@]}" == *"CREATE UNIQUE INDEX addinfo_by_id_idx ON addinfo_by_id(type,content);"* ]]
   # vvv This has been added in version 15 vvv
-  [[ "${lines[@]}" == *"CREATE TABLE session (id INTEGER PRIMARY KEY, login_at TIMESTAMP NOT NULL, valid_until TIMESTAMP NOT NULL, remote_addr TEXT NOT NULL, user_agent TEXT, sid TEXT NOT NULL, csrf TEXT NOT NULL, tls_login BOOL, tls_mixed BOOL);"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE session (id INTEGER PRIMARY KEY, login_at TIMESTAMP NOT NULL, valid_until TIMESTAMP NOT NULL, remote_addr TEXT NOT NULL, user_agent TEXT, sid TEXT NOT NULL, csrf TEXT NOT NULL, tls_login BOOL, tls_mixed BOOL, app BOOL);"* ]]
 }
 
 @test "Ownership, permissions and type of pihole-FTL.db correct" {
@@ -493,21 +501,17 @@
   [[ ${lines[0]} == "The Pi-hole FTL engine - "* ]]
 }
 
-#@test "No WARNING messages in FTL.log (besides known capability issues)" {
-#  run bash -c 'grep "WARNING" /var/log/pihole/FTL.log'
-#  printf "%s\n" "${lines[@]}"
-#  run bash -c 'grep "WARNING" /var/log/pihole/FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN"'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[0]} == "0" ]]
-#}
+@test "No WARNING messages in FTL.log (besides known capability issues)" {
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|(Cannot set process priority)"'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == "" ]]
+}
 
-#@test "No FATAL messages in FTL.log (besides error due to starting FTL more than once)" {
-#  run bash -c 'grep "FATAL" /var/log/pihole/FTL.log'
-#  printf "%s\n" "${lines[@]}"
-#  run bash -c 'grep "FATAL:" /var/log/pihole/FTL.log | grep -c -v "FATAL: create_shm(): Failed to create shared memory object \"FTL-lock\": File exists"'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[0]} == "0" ]]
-#}
+@test "No CRIT messages in FTL.log (besides error due to starting FTL more than once)" {
+  run bash -c 'grep "CRIT:" /var/log/pihole/FTL.log | grep -v "CRIT: Initialization of shared memory failed"'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == "" ]]
+}
 
 @test "No \"database not available\" messages in FTL.log" {
   run bash -c 'grep -c "database not available" /var/log/pihole/FTL.log'
@@ -912,6 +916,26 @@
   [[ "${lines[@]}" == *"status: NOERROR"* ]]
 }
 
+@test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
+  run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[0]} == '"http://pi.hole:80/api/" "https://pi.hole:443/api/"' ]]
+}
+
+@test "API addresses reported correctly by CHAOS TXT local.api.ftl" {
+  run bash -c 'dig CHAOS TXT local.api.ftl +short @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[0]} == '"http://localhost:80/api/" "https://localhost:443/api/"' ]]
+}
+
+@test "API addresses reported by CHAOS TXT api.ftl identical to domain.api.ftl" {
+  run bash -c 'dig CHAOS TXT api.ftl +short @127.0.0.1'
+  api="${lines[0]}"
+  run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
+  domain_api="${lines[0]}"
+  [[ "${api}" == "${domain_api}" ]]
+}
+
 # x86_64-musl is built on busybox which has a slightly different
 # variant of ls displaying three, instead of one, spaces between the
 # user and group names.
@@ -1157,6 +1181,18 @@
   [[ ${lines[0]} == "Pi-hole FTL"* ]]
 }
 
+@test "Embedded SQLite3 shell ignores .sqliterc \"-ni\"" {
+  # Install .sqliterc file at current home directory
+  cp test/sqliterc ~/.sqliterc
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/gravity.db \"SELECT value FROM info WHERE property = 'abp_domains';\""
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != "1" ]]
+  run bash -c "./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db \"SELECT value FROM info WHERE property = 'abp_domains';\""
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  rm ~/.sqliterc
+}
+
 @test "Embedded LUA engine is called for .lua file" {
   echo 'print("Hello from LUA")' > abc.lua
   run bash -c './pihole-FTL abc.lua'
@@ -1253,6 +1289,50 @@
   [[ "${lines[0]}" == "192.168.1.7" ]]
 }
 
+@test "Custom DNS records: Multiple domains per line are accepted" {
+  run bash -c "dig A abc-custom.com +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "1.1.1.1" ]]
+  run bash -c "dig A def-custom.de +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "1.1.1.1" ]]
+}
+
+@test "Custom DNS records: International domains are converted to IDN form" {
+  # äste.com ---> xn--ste-pla.com
+  run bash -c "dig A xn--ste-pla.com +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "2.2.2.2" ]]
+  # steä.com -> xn--ste-sla.com
+  run bash -c "dig A xn--ste-sla.com +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "2.2.2.2" ]]
+}
+
+@test "Local CNAME records: International domains are converted to IDN form" {
+  # brücke.com ---> xn--brcke-lva.com
+  run bash -c "dig A xn--brcke-lva.com +short @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  # xn--ste-pla.com ---> äste.com
+  [[ "${lines[0]}" == "xn--ste-pla.com." ]]
+  [[ "${lines[1]}" == "2.2.2.2" ]]
+}
+
+@test "IDN2 CLI interface correctly encodes/decodes domain according to IDNA2008 + TR46" {
+  run bash -c './pihole-FTL idn2 äste.com'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "xn--ste-pla.com" ]]
+  run bash -c './pihole-FTL idn2 -d xn--ste-pla.com'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "äste.com" ]]
+  run bash -c './pihole-FTL idn2 ß.de'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "xn--zca.de" ]]
+  run bash -c './pihole-FTL idn2 -d xn--zca.de'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "ß.de" ]]
+}
+
 @test "Environmental variable is favored over config file" {
   # The config file has -10 but we set FTLCONF_misc_nice="-11"
   run bash -c 'grep -B1 "nice = -11" /etc/pihole/pihole.toml'
@@ -1286,10 +1366,51 @@
   [[ ${lines[0]} == '{"search":{"domains":[],"gravity":[{"domain":"antigravity.ftl","type":"block","address":"https://pi-hole.net/block.txt","comment":"Fake block-list","enabled":true,"id":1,"date_added":1559928803,"date_modified":1559928803,"type":"block","date_updated":1559928803,"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0,2]},{"domain":"antigravity.ftl","type":"allow","address":"https://pi-hole.net/allow.txt","comment":"Fake allow-list","enabled":true,"id":2,"date_added":1559928803,"date_modified":1559928803,"type":"allow","date_updated":1559928803,"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0]},{"domain":"@@||antigravity.ftl^","type":"allow","address":"https://pi-hole.net/allow.txt","comment":"Fake allow-list","enabled":true,"id":2,"date_added":1559928803,"date_modified":1559928803,"type":"allow","date_updated":1559928803,"number":2000,"invalid_domains":2,"abp_entries":0,"status":1,"groups":[0]}],"results":{"domains":{"exact":0,"regex":0},"gravity":{"allow":2,"block":1},"total":3},"parameters":{"N":20,"partial":false,"domain":"antigravity.ftl","debug":false}},"took":'*'}' ]]
 }
 
+@test "API domain search: Internationalized/partially capital domain returns expected lowercase punycode domain" {
+  run bash -c 'curl -s 127.0.0.1/api/search/äBC.com?debug=true | jq .search.debug.punycode'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '"xn--bc-uia.com"' ]]
+}
+
+@test "API history: Returns full 24 hours even if only a few queries are made" {
+  run bash -c 'curl -s 127.0.0.1/api/history | jq ".history | length"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "145" ]]
+}
+
+@test "API history/clients: Returns full 24 hours even if only a few queries are made" {
+  run bash -c 'curl -s 127.0.0.1/api/history/clients | jq ".history | length"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "145" ]]
+}
+
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1/api/auth'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '{"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"took":'*'}' ]]
+}
+
+@test "Create, set, and use application password" {
+  run bash -c 'curl -s 127.0.0.1/api/auth/app'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '{"app":{"password":"'*'","hash":"'*'"},"took":'*'}' ]]
+
+  # Extract password and hash from response
+  password="$(echo ${lines[0]} | jq .app.password)"
+  pwhash="$(echo ${lines[0]} | jq .app.hash)"
+
+  printf "password: %s\n" "${password}"
+  printf "pwhash: %s\n" "${pwhash}"
+
+  # Set app password hash
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config/webserver/api/app_pwhash -d  "{\"config\":{\"webserver\":{\"api\":{\"app_pwhash\":${0}}}}}"' "${pwhash}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"config\":{\"webserver\":{\"api\":{\"app_pwhash\":${pwhash}}}},\"took\":"*"}" ]]
+
+  # Login using app password is successful
+  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":${0}}" | jq .session.valid' "${password}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "true" ]]
 }
 
 @test "API authorization: Setting password" {
@@ -1327,6 +1448,89 @@
   run bash -c 'curl -I --cacert /etc/pihole/test.crt --resolve pi.hole:443:127.0.0.1 https://pi.hole/'
 }
 
+@test "X.509 certificate parser returns expected result" {
+  # We are getting the certificate from the config
+  run bash -c './pihole-FTL --read-x509'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}"  == "Reading certificate from /etc/pihole/test.pem ..." ]]
+  [[ "${lines[1]}"  == "Certificate (X.509):" ]]
+  [[ "${lines[2]}"  == "  cert. version     : 3" ]]
+  [[ "${lines[3]}"  == "  serial number     : 30:36:35:35:38:30:34:30:38:32:39:39:39:31:36" ]]
+  [[ "${lines[4]}"  == "  issuer name       : CN=pi.hole" ]]
+  [[ "${lines[5]}"  == "  subject name      : CN=pi.hole" ]]
+  [[ "${lines[6]}"  == "  issued  on        : 2001-01-01 00:00:00" ]]
+  [[ "${lines[7]}"  == "  expires on        : 2030-12-31 23:59:59" ]]
+  [[ "${lines[8]}"  == "  signed using      : ECDSA with SHA256" ]]
+  [[ "${lines[9]}"  == "  EC key size       : 521 bits" ]]
+  [[ "${lines[10]}" == "  basic constraints : CA=false" ]]
+  [[ "${lines[11]}" == "Public key (PEM):" ]]
+  [[ "${lines[12]}" == "-----BEGIN PUBLIC KEY-----" ]]
+  [[ "${lines[13]}" == "MIGbMBAGByqGSM49AgEGBSuBBAAjA4GGAAQBQ51HeOLjSap1Xr+pnFQJqvBZc92T" ]]
+  [[ "${lines[14]}" == "XyL4KwIZdpsHl95Pc0Xcn8Xzyox0cWhMyycQgcGbIw3nuefCZaXfc3CuU30BPDdb" ]]
+  [[ "${lines[15]}" == "91h+rDhV4+VkEkANPBbgKQ6kCiHNtMAdugyaeHxzFpqegGGvgQ2l4Vp98l4M7zBC" ]]
+  [[ "${lines[16]}" == "G6K/RbZDlDvNUCgwElE=" ]]
+  [[ "${lines[17]}" == "-----END PUBLIC KEY-----" ]]
+  [[ "${lines[18]}" == "" ]]
+}
+
+@test "X.509 certificate parser returns expected result (with private key)" {
+  # We are explicitly specifying the certificate file here
+  run bash -c './pihole-FTL --read-x509-key /etc/pihole/test.pem'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}"  == "Reading certificate from /etc/pihole/test.pem ..." ]]
+  [[ "${lines[1]}"  == "Certificate (X.509):" ]]
+  [[ "${lines[2]}"  == "  cert. version     : 3" ]]
+  [[ "${lines[3]}"  == "  serial number     : 30:36:35:35:38:30:34:30:38:32:39:39:39:31:36" ]]
+  [[ "${lines[4]}"  == "  issuer name       : CN=pi.hole" ]]
+  [[ "${lines[5]}"  == "  subject name      : CN=pi.hole" ]]
+  [[ "${lines[6]}"  == "  issued  on        : 2001-01-01 00:00:00" ]]
+  [[ "${lines[7]}"  == "  expires on        : 2030-12-31 23:59:59" ]]
+  [[ "${lines[8]}"  == "  signed using      : ECDSA with SHA256" ]]
+  [[ "${lines[9]}"  == "  EC key size       : 521 bits" ]]
+  [[ "${lines[10]}" == "  basic constraints : CA=false" ]]
+  [[ "${lines[11]}" == "Private key:" ]]
+  [[ "${lines[12]}" == "  Type: EC" ]]
+  [[ "${lines[13]}" == "  Curve type: Short Weierstrass (y^2 = x^3 + a x + b)" ]]
+  [[ "${lines[14]}" == "  Bitlen:  518 bit" ]]
+  [[ "${lines[15]}" == "  Private key:" ]]
+  [[ "${lines[16]}" == "    D = 0x2CBE6CF8A913B445F211165B0473B7037B5B06187C8685AEF4A58354C7061C388173E0B00374A55CEAC7BB5886159C9D54B3C020564355A0FA71A55559304156D8"* ]]
+  [[ "${lines[17]}" == "  Public key:" ]]
+  [[ "${lines[18]}" == "    X = 0x01439D4778E2E349AA755EBFA99C5409AAF05973DD935F22F82B0219769B0797DE4F7345DC9FC5F3CA8C7471684CCB271081C19B230DE7B9E7C265A5DF7370AE537D"* ]]
+  [[ "${lines[19]}" == "    Y = 0x013C375BF7587EAC3855E3E56412400D3C16E0290EA40A21CDB4C01DBA0C9A787C73169A9E8061AF810DA5E15A7DF25E0CEF30421BA2BF45B643943BCD5028301251"* ]]
+  [[ "${lines[20]}" == "    Z = 0x01"* ]]
+  [[ "${lines[21]}" == "Private key (PEM):" ]]
+  [[ "${lines[22]}" == "-----BEGIN EC PRIVATE KEY-----" ]]
+  [[ "${lines[23]}" == "MIHcAgEBBEIALL5s+KkTtEXyERZbBHO3A3tbBhh8hoWu9KWDVMcGHDiBc+CwA3Sl" ]]
+  [[ "${lines[24]}" == "XOrHu1iGFZydVLPAIFZDVaD6caVVWTBBVtigBwYFK4EEACOhgYkDgYYABAFDnUd4" ]]
+  [[ "${lines[25]}" == "4uNJqnVev6mcVAmq8Flz3ZNfIvgrAhl2mweX3k9zRdyfxfPKjHRxaEzLJxCBwZsj" ]]
+  [[ "${lines[26]}" == "Dee558Jlpd9zcK5TfQE8N1v3WH6sOFXj5WQSQA08FuApDqQKIc20wB26DJp4fHMW" ]]
+  [[ "${lines[27]}" == "mp6AYa+BDaXhWn3yXgzvMEIbor9FtkOUO81QKDASUQ==" ]]
+  [[ "${lines[28]}" == "-----END EC PRIVATE KEY-----" ]]
+  [[ "${lines[29]}" == "Public key (PEM):" ]]
+  [[ "${lines[30]}" == "-----BEGIN PUBLIC KEY-----" ]]
+  [[ "${lines[31]}" == "MIGbMBAGByqGSM49AgEGBSuBBAAjA4GGAAQBQ51HeOLjSap1Xr+pnFQJqvBZc92T" ]]
+  [[ "${lines[32]}" == "XyL4KwIZdpsHl95Pc0Xcn8Xzyox0cWhMyycQgcGbIw3nuefCZaXfc3CuU30BPDdb" ]]
+  [[ "${lines[33]}" == "91h+rDhV4+VkEkANPBbgKQ6kCiHNtMAdugyaeHxzFpqegGGvgQ2l4Vp98l4M7zBC" ]]
+  [[ "${lines[34]}" == "G6K/RbZDlDvNUCgwElE=" ]]
+  [[ "${lines[35]}" == "-----END PUBLIC KEY-----" ]]
+  [[ "${lines[36]}" == "" ]]
+}
+
+@test "X.509 certificate parser can check if domain is included" {
+  run bash -c './pihole-FTL --read-x509-key /etc/pihole/test.pem pi.hole'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "Reading certificate from /etc/pihole/test.pem ..." ]]
+  [[ "${lines[1]}" == "Certificate matches domain pi.hole" ]]
+  [[ "${lines[2]}" == "" ]]
+  [[ $status == 0 ]]
+  run bash -c './pihole-FTL --read-x509-key /etc/pihole/test.pem pi-hole.net'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "Reading certificate from /etc/pihole/test.pem ..." ]]
+  [[ "${lines[1]}" == "Certificate does not match domain pi-hole.net" ]]
+  [[ "${lines[2]}" == "" ]]
+  [[ $status == 1 ]]
+}
+
 @test "Test embedded GZIP compressor" {
   run bash -c './pihole-FTL gzip test/pihole-FTL.db.sql'
   printf "Compression output:\n"
@@ -1360,6 +1564,12 @@
   [[ $status == 0 ]]
 }
 
+@test "SHA256 checksum working" {
+  run bash -c './pihole-FTL sha256sum test/test.pem'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "eae293f0c30369935a7457a789658bedebf92d544e7526bc43aa07883a597fa9  test/test.pem" ]]
+}
+
 @test "API validation" {
   run python3 test/api/checkAPI.py
   printf "%s\n" "${lines[@]}"
@@ -1381,10 +1591,10 @@
   [[ "${lines[0]}" == "PI.HOLE" ]]
   run bash -c './pihole-FTL --config dns.hosts'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "[]" ]]
+  [[ "${lines[0]}" == "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]" ]]
   run bash -c './pihole-FTL --config webserver.port'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "80,[::]:80,443s" ]]
+  [[ "${lines[0]}" == "80,[::]:80,443s,[::]:443s" ]]
 }
 
 @test "Create, verify and re-import Teleporter file via CLI" {
@@ -1403,4 +1613,25 @@
   [[ "${lines[-1]}" == "Imported etc/pihole/gravity.db" ]]
   [[ $status == 0 ]]
   run bash -c "rm ${filename}"
+}
+
+@test "Expected number of config file rotations" {
+  run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "3" ]]
+  run bash -c 'grep -c "DEBUG_CONFIG: pihole.toml unchanged" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "3" ]]
+  run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c 'grep -c "DEBUG_CONFIG: dnsmasq.conf unchanged" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "2" ]]
+  run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c 'grep -c "DEBUG_CONFIG: custom.list unchanged" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "3" ]]
 }

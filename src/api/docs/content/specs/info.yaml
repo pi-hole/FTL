@@ -209,6 +209,7 @@ components:
                   allOf:
                     - $ref: 'info.yaml#/components/schemas/messages'
                     - $ref: 'common.yaml#/components/schemas/took'
+    messages_with_id:
       delete:
         summary: Delete Pi-hole diagnosis message
         tags:
@@ -217,10 +218,16 @@ components:
         parameters:
           - $ref: 'info.yaml#/components/parameters/message_id'
         description: |
-          *Note:* There will be no content on success. You may specify multiple IDs to delete multiple messages at once (comma-separated in the path like `1,2,3`)
+          You may specify multiple IDs to delete multiple messages at once (comma-separated in the path like `1,2,3`)
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -234,6 +241,14 @@ components:
                     $ref: 'info.yaml#/components/examples/errors/messages/uri_error'
                   bad_request:
                     $ref: 'info.yaml#/components/examples/errors/messages/bad_request'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     messages_count:
       get:
         summary: Get count of Pi-hole diagnosis messages
@@ -505,7 +520,7 @@ components:
                           type: number
                           nullable: true
                           description: Critical sensor value (if available, `null` otherwise)
-                        path:
+                        sensor:
                           type: string
                           description: Short path of temperature sensor
               example:
@@ -731,7 +746,7 @@ components:
               example: 0.1
             "%cpu":
               type: number
-              description: Percentage of total CPU used by FTL
+              description: Percentage of total CPU used by FTL (ten seconds average)
               example: 1.2
             allow_destructive:
               type: boolean
@@ -1192,9 +1207,9 @@ components:
           required: false
           example: 219
     message_id:
-      in: query
+      in: path
       description: ID of the message to be deleted
-      name: id
+      name: message_id
       schema:
         type: integer
       required: true

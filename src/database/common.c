@@ -251,9 +251,15 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 		generate_backtrace();
 
 	if(iErrCode == SQLITE_WARNING)
-		log_warn("SQLite3 message: %s (%d)", zMsg, iErrCode);
+		log_warn("SQLite3: %s (%d)", zMsg, iErrCode);
+	else if(iErrCode == SQLITE_NOTICE || iErrCode == SQLITE_SCHEMA)
+		// SQLITE_SCHEMA is returned when the database schema has changed
+		// This is not necessarily an error, as sqlite3_step() will re-prepare
+		// the statement and try again. If it cannot, it will return an error
+		// and this will be handled over there.
+		log_debug(DEBUG_ANY, "SQLite3: %s (%d)", zMsg, iErrCode);
 	else
-		log_err("SQLite3 message: %s (%d)", zMsg, iErrCode);
+		log_err("SQLite3: %s (%d)", zMsg, iErrCode);
 }
 
 void db_init(void)
@@ -521,6 +527,21 @@ void db_init(void)
 		if(!create_session_table(db))
 		{
 			log_info("Session table cannot be created, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 16 if lower
+	if(dbversion < 16)
+	{
+		// Update to version 16: Add app column to session table
+		log_info("Updating long-term database to version 16");
+		if(!add_session_app_column(db))
+		{
+			log_info("Session table cannot be updated, database not available");
 			dbclose(&db);
 			return;
 		}

@@ -205,7 +205,7 @@ RESOLVFILE
 
 /* Pi-hole definitions */
 #define HAVE_LUASCRIPT
-#define HAVE_IDN
+#define HAVE_LIBIDN2
 #define HAVE_DNSSEC
 #ifdef DNSMASQ_ALL_OPTS
   #define HAVE_DBUS

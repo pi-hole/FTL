@@ -311,9 +311,92 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		// Parse neighbor cache
 		set_event(PARSE_NEIGHBOR_CACHE);
 	}
+	// else if(rtsig == 6)
+	// {
+	// 	// Signal internally used to signal dnsmasq it has to stop
+	// }
 
 	// Restore errno before returning back to previous context
 	errno = _errno;
+}
+
+static void SIGTERM_handler(int signum, siginfo_t *si, void *unused)
+{
+	// Ignore SIGTERM outside of the main process (TCP forks)
+	if(mpid != getpid())
+		return;
+
+	// Get PID and UID of the process that sent the terminating signal
+	const pid_t kill_pid = si->si_pid;
+	const uid_t kill_uid = si->si_uid;
+
+	// Get name of the process that sent the terminating signal
+	char kill_name[256] = { 0 };
+	char kill_exe [256] = { 0 };
+	snprintf(kill_exe, sizeof(kill_exe), "/proc/%ld/cmdline", (long int)kill_pid);
+	FILE *fp = fopen(kill_exe, "r");
+	if(fp != NULL)
+	{
+		// Successfully opened file
+		size_t read = 0;
+		// Read line from file
+		if((read = fread(kill_name, sizeof(char), sizeof(kill_name), fp)) > 0)
+		{
+			// Successfully read line
+
+			// cmdline contains the command-line arguments as a set
+			// of strings separated by null bytes ('\0'), with a
+			// further null byte after the last string. Hence, we
+			// need to replace all null bytes with spaces for
+			// displaying it below
+			for(unsigned int i = 0; i < min((size_t)read, sizeof(kill_name)); i++)
+			{
+				if(kill_name[i] == '\0')
+					kill_name[i] = ' ';
+			}
+
+			// Remove any trailing spaces
+			for(unsigned int i = read - 1; i > 0; i--)
+			{
+				if(kill_name[i] == ' ')
+					kill_name[i] = '\0';
+				else
+					break;
+			}
+		}
+		else
+		{
+			// Failed to read line
+			strcpy(kill_name, "N/A");
+		}
+	}
+	else
+	{
+		// Failed to open file
+		strcpy(kill_name, "N/A");
+	}
+
+	// Get username of the process that sent the terminating signal
+	char kill_user[256] = { 0 };
+	struct passwd *pwd = getpwuid(kill_uid);
+	if(pwd != NULL)
+	{
+		// Successfully obtained username
+		strncpy(kill_user, pwd->pw_name, sizeof(kill_user));
+	}
+	else
+	{
+		// Failed to obtain username
+		strcpy(kill_user, "N/A");
+	}
+
+	// Log who sent the signal
+	log_info("Asked to terminate by \"%s\" (PID %ld, user %s UID %ld)",
+	         kill_name, (long int)kill_pid,
+	         kill_user, (long int)kill_uid);
+
+	// Terminate dnsmasq to stop DNS service
+	raise(SIGUSR6);
 }
 
 // Register ordinary signals handler
@@ -337,6 +420,13 @@ void handle_signals(void)
 		}
 	}
 
+	// Also catch SIGTERM
+	struct sigaction SIGaction = { 0 };
+	SIGaction.sa_flags = SA_SIGINFO;
+	sigemptyset(&SIGaction.sa_mask);
+	SIGaction.sa_sigaction = &SIGTERM_handler;
+	sigaction(SIGTERM, &SIGaction, NULL);
+
 	// Log start time of FTL
 	FTLstarttime = time(NULL);
 }
@@ -351,8 +441,12 @@ void handle_realtime_signals(void)
 	// Catch all real-time signals
 	for(int signum = SIGRTMIN; signum <= SIGRTMAX; signum++)
 	{
-		struct sigaction SIGACTION;
-		memset(&SIGACTION, 0, sizeof(struct sigaction));
+		if(signum == SIGUSR6)
+			// Skip SIGUSR6 as it is used internally to signify
+			// dnsmasq to stop
+			continue;
+
+		struct sigaction SIGACTION = { 0 };
 		SIGACTION.sa_flags = SA_SIGINFO;
 		sigemptyset(&SIGACTION.sa_mask);
 		SIGACTION.sa_sigaction = &SIGRT_handler;

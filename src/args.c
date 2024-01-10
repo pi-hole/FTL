@@ -60,6 +60,10 @@
 #include "tools/arp-scan.h"
 // run_performance_test()
 #include "config/password.h"
+// idn2_to_ascii_lz()
+#include <idn2.h>
+// sha256sum()
+#include "files.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -309,6 +313,7 @@ void parse_args(int argc, char* argv[])
 		exit(read_teleporter_zip_from_disk(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
+	// Generate X.509 certificate
 	if(argc > 1 && strcmp(argv[1], "--gen-x509") == 0)
 	{
 		if(argc < 3 || argc > 5)
@@ -327,6 +332,55 @@ void parse_args(int argc, char* argv[])
 		exit(generate_certificate(argv[2], rsa, domain) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
+	// Parse X.509 certificate
+	if(argc > 1 &&
+	  (strcmp(argv[1], "--read-x509") == 0 ||
+	   strcmp(argv[1], "--read-x509-key") == 0))
+	{
+		if(argc > 4)
+		{
+			printf("Usage: %s %s [<input file>] [<domain>]\n", argv[0], argv[1]);
+			printf("Example: %s %s /etc/pihole/tls.pem\n", argv[0], argv[1]);
+			printf(" with domain: %s %s /etc/pihole/tls.pem pi.hole\n", argv[0], argv[1]);
+			exit(EXIT_FAILURE);
+		}
+
+		// Option parsing
+		// Should we report on the private key?
+		const bool private_key = strcmp(argv[1], "--read-x509-key") == 0;
+		// If no certificate file is given, we use the one from the config
+		const char *certfile = NULL;
+		if(argc == 2)
+		{
+			readFTLconf(&config, false);
+			certfile = config.webserver.tls.cert.v.s;
+		}
+		else
+			certfile = argv[2];
+
+		// If no domain is given, we only check the certificate
+		const char *domain = argc > 3 ? argv[3] : NULL;
+
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+
+		enum cert_check result = read_certificate(certfile, domain, private_key);
+
+		if(argc < 4)
+			exit(result == CERT_OKAY ? EXIT_SUCCESS : EXIT_FAILURE);
+		else if(result == CERT_DOMAIN_MATCH)
+		{
+			printf("Certificate matches domain %s\n", argv[3]);
+			exit(EXIT_SUCCESS);
+		}
+		else
+		{
+			printf("Certificate does not match domain %s\n", argv[3]);
+			exit(EXIT_FAILURE);
+		}
+	}
+
 	// If the first argument is "gravity" (e.g., /usr/bin/pihole-FTL gravity),
 	// we offer some specialized gravity tools
 	if(argc > 1 && (strcmp(argv[1], "gravity") == 0 || strcmp(argv[1], "antigravity") == 0))
@@ -334,14 +388,14 @@ void parse_args(int argc, char* argv[])
 		const bool antigravity = strcmp(argv[1], "antigravity") == 0;
 
 		// pihole-FTL gravity parseList <infile> <outfile> <adlistID>
-		if(argc == 6 && strcmp(argv[2], "parseList") == 0)
+		if(argc == 6 && strcasecmp(argv[2], "parseList") == 0)
 		{
 			// Parse the given list and write the result to the given file
 			exit(gravity_parseList(argv[3], argv[4], argv[5], false, antigravity));
 		}
 
 		// pihole-FTL gravity checkList <infile>
-		if(argc == 4 && strcmp(argv[2], "checkList") == 0)
+		if(argc == 4 && strcasecmp(argv[2], "checkList") == 0)
 		{
 			// Parse the given list and write the result to the given file
 			exit(gravity_parseList(argv[3], "", "-1", true, antigravity));
@@ -375,6 +429,71 @@ void parse_args(int argc, char* argv[])
 		const bool scan_all = argc > 2 && strcmp(argv[2], "-a") == 0;
 		const bool extreme_mode = argc > 2 && strcmp(argv[2], "-x") == 0;
 		exit(run_arp_scan(scan_all, extreme_mode));
+	}
+
+	// IDN2 conversion mode
+	if(argc > 1 && strcmp(argv[1], "idn2") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		if(argc == 3)
+		{
+			// Convert unicode domain to punycode
+			char *punycode = NULL;
+			const int rc = idn2_to_ascii_lz(argv[2], &punycode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+			if (rc != IDN2_OK)
+			{
+				// Invalid domain name
+				printf("Invalid domain name: %s\n", argv[2]);
+				exit(EXIT_FAILURE);
+			}
+
+			// Convert punycode domain to lowercase
+			for(unsigned int i = 0u; i < strlen(punycode); i++)
+				punycode[i] = tolower(punycode[i]);
+
+			printf("%s\n", punycode);
+			exit(EXIT_SUCCESS);
+
+		}
+		else if(argc == 4 && (strcmp(argv[2], "-d") == 0 || strcmp(argv[2], "--decode") == 0))
+		{
+			// Convert punycode domain to unicode
+			char *unicode = NULL;
+			const int rc = idn2_to_unicode_lzlz(argv[3], &unicode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+			if (rc != IDN2_OK)
+			{
+				// Invalid domain name
+				printf("Invalid domain name: %s\n", argv[3]);
+				exit(EXIT_FAILURE);
+			}
+
+			printf("%s\n", unicode);
+			exit(EXIT_SUCCESS);
+		}
+		else
+		{
+			printf("Usage: %s idn2 [--decode] <domain>\n", argv[0]);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	// sha256sum mode
+	if(argc == 3 && strcmp(argv[1], "sha256sum") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		uint8_t checksum[SHA256_DIGEST_SIZE];
+		if(!sha256sum(argv[2], checksum))
+			exit(EXIT_FAILURE);
+
+		// Convert checksum to hex string
+		char hex[SHA256_DIGEST_SIZE*2+1];
+		sha256_raw_to_hex(checksum, hex);
+
+		// Print result
+		printf("%s  %s\n", hex, argv[2]);
+		exit(EXIT_SUCCESS);
 	}
 
 	// start from 1, as argv[0] is the executable name
@@ -415,6 +534,21 @@ void parse_args(int argc, char* argv[])
 				// i+1 = "-h"
 				for(int j = 0; j < argc - i - 2; j++)
 					argv2[5 + j] = argv[i + 2 + j];
+				exit(sqlite3_shell_main(argc2, argv2));
+			}
+			// Special non-interative mode
+			else if(i+1 < argc && strcmp(argv[i+1], "-ni") == 0)
+			{
+				int argc2 = argc - i + 4 - 2;
+				char **argv2 = calloc(argc2, sizeof(char*));
+				argv2[0] = argv[0]; // Application name
+				argv2[1] = (char*)"-batch";
+				argv2[2] = (char*)"-init";
+				argv2[3] = (char*)"/dev/null";
+				// i = "sqlite3"
+				// i+1 = "-ni"
+				for(int j = 0; j < argc - i - 2; j++)
+					argv2[4 + j] = argv[i + 2 + j];
 				exit(sqlite3_shell_main(argc2, argv2));
 			}
 			else
@@ -760,19 +894,30 @@ void parse_args(int argc, char* argv[])
 			printf("      the script.\n\n");
 
 			printf("%sEmbedded SQLite3 shell:%s\n", yellow, normal);
-			printf("\t%ssql %s[-h]%s, %ssqlite3 %s[-h]%s        FTL's SQLite3 shell\n", green, purple, normal, green, purple, normal);
-			printf("\t%s-h%s starts a special %shuman-readable mode%s\n\n", purple, normal, bold, normal);
+			printf("\t%ssql%s, %ssqlite3%s                      FTL's SQLite3 shell\n", green, normal, green, normal);
 
-			printf("    Usage: %spihole-FTL sqlite3 %s[-h] %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, purple, cyan, normal);
+			printf("    Usage: %spihole-FTL sqlite3 %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, cyan, normal);
 			printf("    Options:\n\n");
 			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
-			printf("      options can be found in %spihole-FTL sqlite3 --help%s\n", green, normal);
+			printf("      options can be found in %spihole-FTL sqlite3 --help%s.\n", green, normal);
+			printf("      The first option can be either %s-h%s or %s-ni%s, see below.\n", purple, normal, purple, normal);
 			printf("    - %s[FILENAME]%s is the optional name of an SQLite database.\n", cyan, normal);
 			printf("      A new database is created if the file does not previously\n");
 			printf("      exist. If this argument is omitted, SQLite3 will use a\n");
 			printf("      transient in-memory database instead.\n");
 			printf("    - %s[SQL]%s is an optional SQL statement to be executed. If\n", cyan, normal);
 			printf("      omitted, an interactive shell is started instead.\n\n");
+			printf("    There are two special %spihole-FTL sqlite3%s mode switches:\n", green, normal);
+			printf("    %s-h%s  %shuman-readable%s mode:\n", purple, normal, bold, normal);
+			printf("        In this mode, the output of the shell is formatted in\n");
+			printf("        a human-readable way. This is especially useful for\n");
+			printf("        debugging purposes. %s-h%s is a shortcut for\n", purple, normal);
+			printf("        %spihole-FTL sqlite3 %s-column -header -nullvalue '(null)'%s\n\n", green, purple, normal);
+			printf("    %s-ni%s %snon-interative%s mode\n", purple, normal, bold, normal);
+			printf("        In this mode, batch mode is enforced and any possibly\n");
+			printf("        existing .sqliterc file is ignored. %s-ni%s is a shortcut\n", purple, normal);
+			printf("        for %spihole-FTL sqlite3 %s-batch -init /dev/null%s\n\n", green, purple, normal);
+			printf("    Usage: %spihole-FTL sqlite3 %s-ni %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, purple, cyan, normal);
 
 			printf("%sEmbedded dnsmasq options:%s\n", yellow, normal);
 			printf("\t%sdnsmasq-test%s        Test syntax of dnsmasq's config\n", green, normal);
@@ -812,13 +957,30 @@ void parse_args(int argc, char* argv[])
 			printf("    an RSA (4096 bit) key will be generated instead.\n\n");
 			printf("    Usage: %spihole-FTL --gen-x509 %soutfile %s[rsa]%s\n\n", green, cyan, purple, normal);
 
+			printf("%sTLS X.509 certificate parser:%s\n", yellow, normal);
+			printf("    Parse the given X.509 certificate and optionally check if\n");
+			printf("    it matches a given domain. If no domain is given, only a\n");
+			printf("    human-readable output string is printed.\n\n");
+			printf("    If no certificate file is given, the one from the config\n");
+			printf("    is used (if applicable). If --read-x509-key is used, details\n");
+			printf("    about the private key are printed as well.\n\n");
+			printf("    Usage: %spihole-FTL --read-x509 %s[certfile] %s[domain]%s\n", green, cyan, purple, normal);
+			printf("    Usage: %spihole-FTL --read-x509-key %s[certfile] %s[domain]%s\n\n", green, cyan, purple, normal);
+
 			printf("%sGravity tools:%s\n", yellow, normal);
 			printf("    Check domains in a given file for validity using Pi-hole's\n");
 			printf("    gravity filters. The expected input format is one domain\n");
 			printf("    per line (no HOSTS lists, etc.)\n\n");
 			printf("    Usage: %spihole-FTL gravity checkList %sinfile%s\n\n", green, cyan, normal);
 
+			printf("%sIDN2 conversion:%s\n", yellow, normal);
+			printf("    Convert a given internationalized domain name (IDN) to\n");
+			printf("    punycode or vice versa.\n\n");
+			printf("    Encoding: %spihole-FTL idn2 %sdomain%s\n", green, cyan, normal);
+			printf("    Decoding: %spihole-FTL idn2 -d %spunycode%s\n\n", green, cyan, normal);
+
 			printf("%sOther:%s\n", yellow, normal);
+			printf("\t%ssha256sum %sfile%s      Calculate SHA256 checksum of a file\n", green, cyan, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
 			printf("\t%sarp-scan %s[-a/-x]%s    Use ARP to scan local network for\n", green, cyan, normal);
