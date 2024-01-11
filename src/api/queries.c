@@ -867,6 +867,10 @@ int api_queries(struct ftl_conn *api)
 			// Iterate over all client filters
 			for(int i = 0; i < client_filters; i++)
 			{
+				// Only compare against valid filter strings
+				if(filter_clients[i] == NULL)
+					continue;
+
 				// Check if the client matches the filter
 				if(strcasecmp(filter_clients[i], client_ip) == 0 ||
 				   (client_name != NULL && strcasecmp(filter_clients[i], client_name) == 0))
@@ -893,6 +897,10 @@ int api_queries(struct ftl_conn *api)
 			// Iterate over all domain filters
 			for(int i = 0; i < domain_filters; i++)
 			{
+				// Only compare against valid filter strings
+				if(filter_domains[i] == NULL)
+					continue;
+
 				// Check if the domain matches the filter
 				if(strcasecmp(filter_domains[i], domain) == 0)
 				{
