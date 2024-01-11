@@ -489,6 +489,70 @@ int api_queries(struct ftl_conn *api)
 		filtering = true;
 	}
 
+	const int client_filters = cJSON_GetArraySize(config.webserver.api.excludeClients.v.json);
+	char **filter_clients = NULL;
+	if(client_filters > 0)
+	{
+		// Allocate memory for regex array
+		filter_clients = calloc(client_filters, sizeof(char*));
+		if(filter_clients == NULL)
+		{
+			return send_json_error(api, 500,
+			                       "internal_error",
+			                       "Internal server error, failed to allocate memory",
+			                       NULL);
+		}
+
+		// Iterate over regexes
+		cJSON *filter = NULL;
+		unsigned int i = 0;
+		cJSON_ArrayForEach(filter, config.webserver.api.excludeClients.v.json)
+		{
+			// Skip non-string, invalid and empty values
+			if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
+				continue;
+
+			// Copy string reference
+			filter_clients[i++] = filter->valuestring;
+		}
+
+		// We are filtering, so we have to continue to step over the
+		// remaining rows to get the correct number of total records
+		filtering = true;
+	}
+
+	const int domain_filters = cJSON_GetArraySize(config.webserver.api.excludeDomains.v.json);
+	char **filter_domains = NULL;
+	if(domain_filters > 0)
+	{
+		// Allocate memory for regex array
+		filter_domains = calloc(domain_filters, sizeof(char*));
+		if(filter_domains == NULL)
+		{
+			return send_json_error(api, 500,
+			                       "internal_error",
+			                       "Internal server error, failed to allocate memory",
+			                       NULL);
+		}
+
+		// Iterate over regexes
+		cJSON *filter = NULL;
+		unsigned int i = 0;
+		cJSON_ArrayForEach(filter, config.webserver.api.excludeDomains.v.json)
+		{
+			// Skip non-string, invalid and empty values
+			if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
+				continue;
+
+			// Copy string reference
+			filter_domains[i++] = filter->valuestring;
+		}
+
+		// We are filtering, so we have to continue to step over the
+		// remaining rows to get the correct number of total records
+		filtering = true;
+	}
+
 	// Finish preparing query string
 	querystr_finish(querystr, sort_col, sort_dir);
 
@@ -792,6 +856,61 @@ int api_queries(struct ftl_conn *api)
 			}
 		}
 
+		// Apply possible client filters to Query Log clients
+		const char *client_ip = (const char*)sqlite3_column_text(read_stmt, 10); // c.ip
+		const char *client_name = NULL;
+		if(sqlite3_column_type(read_stmt, 11) == SQLITE_TEXT && sqlite3_column_bytes(read_stmt, 11) > 0)
+			client_name = (const char*)sqlite3_column_text(read_stmt, 11); // c.name
+		if(client_filters > 0)
+		{
+			bool match = false;
+			// Iterate over all client filters
+			for(int i = 0; i < client_filters; i++)
+			{
+				// Check if the client matches the filter
+				if(strcasecmp(filter_clients[i], client_ip) == 0 ||
+				   (client_name != NULL && strcasecmp(filter_clients[i], client_name) == 0))
+				{
+					// Client matches, so we can stop
+					// iterating here
+					match = true;
+					break;
+				}
+			}
+			if(match)
+			{
+				// Client matches, we skip it and adjust the
+				// counter
+				recordsCounted--;
+				continue;
+			}
+		}
+
+		// Apply possible domain filters to Query Log domains
+		if(domain_filters > 0)
+		{
+			bool match = false;
+			// Iterate over all domain filters
+			for(int i = 0; i < domain_filters; i++)
+			{
+				// Check if the domain matches the filter
+				if(strcasecmp(filter_domains[i], domain) == 0)
+				{
+					// Domain matches, so we can stop
+					// iterating here
+					match = true;
+					break;
+				}
+			}
+			if(match)
+			{
+				// Domain matches, we skip it and adjust the
+				// counter
+				recordsCounted--;
+				continue;
+			}
+		}
+
 		// Skip all records once we have enough (but still count them)
 		if(skipTheRest)
 			continue;
@@ -878,11 +997,9 @@ int api_queries(struct ftl_conn *api)
 		JSON_ADD_ITEM_TO_OBJECT(item, "reply", reply);
 
 		cJSON *client = JSON_NEW_OBJECT();
-		JSON_COPY_STR_TO_OBJECT(client, "ip", sqlite3_column_text(read_stmt, 10)); // c.ip
-
-		if(sqlite3_column_type(read_stmt, 11) == SQLITE_TEXT &&
-		   sqlite3_column_bytes(read_stmt, 11) > 0)
-			JSON_COPY_STR_TO_OBJECT(client, "name", sqlite3_column_text(read_stmt, 11)); // c.name
+		JSON_COPY_STR_TO_OBJECT(client, "ip", client_ip);
+		if(client_name != NULL)
+			JSON_COPY_STR_TO_OBJECT(client, "name", client_name);
 		else
 			JSON_ADD_NULL_TO_OBJECT(client, "name");
 		JSON_ADD_ITEM_TO_OBJECT(item, "client", client);
@@ -970,6 +1087,14 @@ int api_queries(struct ftl_conn *api)
 		// Free array of regex pointers
 		free(regex);
 	}
+
+	// Free client memory if allocated
+	if(client_filters > 0)
+		free(filter_clients);
+
+	// Free domain memory if allocated
+	if(domain_filters > 0)
+		free(filter_domains);
 
 	JSON_SEND_OBJECT(json);
 }
