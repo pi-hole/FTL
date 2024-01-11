@@ -673,7 +673,10 @@
     #     <valid Pi-hole password hash>
     app_pwhash = ""
 
-    # Array of clients to be excluded from certain API responses
+    # Array of clients to be excluded from certain API responses:
+    # - Query Log (/api/queries)
+    # - Top Clients (/api/stats/top_clients)
+    # - Client activity over time (/api/history/clients)
     # Example: [ "192.168.2.56", "fe80::341", "localhost" ]
     #
     # Possible values are:
@@ -682,14 +685,17 @@
       "1.2.3.4"
     ] ### CHANGED, default = []
 
-    # Array of domains to be excluded from certain API responses
+    # Array of domains to be excluded from certain API responses:
+    # - Query Log (/api/queries)
+    # - Top Clients (/api/stats/top_domains)
     # Example: [ "google.de", "pi-hole.net" ]
     #
     # Possible values are:
     #     array of domains
     excludeDomains = []
 
-    # Array of regular expressions to be excluded from certain API responses
+    # Array of regular expressions to be excluded from the Query Log. Note that backslashes
+    # "\" need to be escaped, i.e. "\\" in this setting
     # Example: [ "(^|\.)\.google\.de$", "\.pi-hole\.net$" ]
     #
     # Possible values are:
