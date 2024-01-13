@@ -56,6 +56,9 @@ void init_api(void)
 
 void free_api(void)
 {
+	if(auth_data == NULL)
+		return;
+
 	// Store sessions in database
 	backup_db_sessions(auth_data, max_sessions);
 	max_sessions = 0;
