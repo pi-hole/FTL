@@ -1915,7 +1915,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	if(!(flags & F_UPSTREAM))
 	{
 		cached = true;
-		if((flags & F_HOSTS) || // local.list, hostname.list, /etc/hosts and others
+		if((flags & F_HOSTS) || // hostname.list, /etc/hosts and others
 		   ((flags & F_NAMEP) && (flags & F_DHCP)) || // DHCP server reply
 		   (flags & F_FORWARD) || // cached answer to previously forwarded request
 		   (flags & F_REVERSE) || // cached answer to reverse request (PTR)
