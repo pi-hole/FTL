@@ -444,42 +444,44 @@ int api_queries(struct ftl_conn *api)
 	bool filtering = false;
 
 	// Regex filtering?
-	const int regex_filters = cJSON_GetArraySize(config.webserver.api.excludeRegex.v.json);
-	regex_t *regex = NULL;
-	if(regex_filters > 0)
+	const int N_regex_domains = cJSON_GetArraySize(config.webserver.api.excludeDomains.v.json);
+	regex_t *regex_domains = NULL;
+	if(N_regex_domains > 0)
 	{
 		// Allocate memory for regex array
-		regex = calloc(regex_filters, sizeof(regex_t));
-		if(regex == NULL)
+		regex_domains = calloc(N_regex_domains, sizeof(regex_t));
+		if(regex_domains == NULL)
 		{
 			return send_json_error(api, 500,
 			                       "internal_error",
-			                       "Internal server error, failed to allocate memory",
+			                       "Internal server error, failed to allocate memory for domain regex array",
 			                       NULL);
 		}
 
 		// Compile regexes
-		for(int i = 0; i < regex_filters; i++)
+		for(int i = 0; i < N_regex_domains; i++)
 		{
 			// Iterate over regexes
 			cJSON *filter = NULL;
-			cJSON_ArrayForEach(filter, config.webserver.api.excludeRegex.v.json)
+			cJSON_ArrayForEach(filter, config.webserver.api.excludeDomains.v.json)
 			{
 				// Skip non-string, invalid and empty values
 				if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
 					continue;
 
 				// Compile regex
-				int rc = regcomp(&regex[i], filter->valuestring, REG_EXTENDED);
+				int rc = regcomp(&regex_domains[i], filter->valuestring, REG_EXTENDED);
 				if(rc != 0)
 				{
 					// Failed to compile regex
 					char errbuf[1024];
-					regerror(rc, &regex[i], errbuf, sizeof(errbuf));
+					regerror(rc, &regex_domains[i], errbuf, sizeof(errbuf));
+					log_err("Failed to compile domain regex \"%s\": %s",
+					        filter->valuestring, errbuf);
 					return send_json_error(api, 400,
-							"bad_request",
-							"Failed to compile regex",
-							errbuf);
+					                       "bad_request",
+					                       "Failed to compile domain regex",
+					                       filter->valuestring);
 				}
 			}
 		}
@@ -489,63 +491,46 @@ int api_queries(struct ftl_conn *api)
 		filtering = true;
 	}
 
-	const int client_filters = cJSON_GetArraySize(config.webserver.api.excludeClients.v.json);
-	char **filter_clients = NULL;
-	if(client_filters > 0)
+	const int N_regex_clients = cJSON_GetArraySize(config.webserver.api.excludeClients.v.json);
+	regex_t *regex_clients = NULL;
+	if(N_regex_clients > 0)
 	{
 		// Allocate memory for regex array
-		filter_clients = calloc(client_filters, sizeof(char*));
-		if(filter_clients == NULL)
+		regex_clients = calloc(N_regex_clients, sizeof(regex_t));
+		if(regex_clients == NULL)
 		{
 			return send_json_error(api, 500,
 			                       "internal_error",
-			                       "Internal server error, failed to allocate memory",
+			                       "Internal server error, failed to allocate memory for client regex array",
 			                       NULL);
 		}
 
-		// Iterate over regexes
-		cJSON *filter = NULL;
-		unsigned int i = 0;
-		cJSON_ArrayForEach(filter, config.webserver.api.excludeClients.v.json)
+		// Compile regexes
+		for(int i = 0; i < N_regex_clients; i++)
 		{
-			// Skip non-string, invalid and empty values
-			if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
-				continue;
+			// Iterate over regexes
+			cJSON *filter = NULL;
+			cJSON_ArrayForEach(filter, config.webserver.api.excludeClients.v.json)
+			{
+				// Skip non-string, invalid and empty values
+				if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
+					continue;
 
-			// Copy string reference
-			filter_clients[i++] = filter->valuestring;
-		}
-
-		// We are filtering, so we have to continue to step over the
-		// remaining rows to get the correct number of total records
-		filtering = true;
-	}
-
-	const int domain_filters = cJSON_GetArraySize(config.webserver.api.excludeDomains.v.json);
-	char **filter_domains = NULL;
-	if(domain_filters > 0)
-	{
-		// Allocate memory for regex array
-		filter_domains = calloc(domain_filters, sizeof(char*));
-		if(filter_domains == NULL)
-		{
-			return send_json_error(api, 500,
-			                       "internal_error",
-			                       "Internal server error, failed to allocate memory",
-			                       NULL);
-		}
-
-		// Iterate over regexes
-		cJSON *filter = NULL;
-		unsigned int i = 0;
-		cJSON_ArrayForEach(filter, config.webserver.api.excludeDomains.v.json)
-		{
-			// Skip non-string, invalid and empty values
-			if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
-				continue;
-
-			// Copy string reference
-			filter_domains[i++] = filter->valuestring;
+				// Compile regex
+				int rc = regcomp(&regex_clients[i], filter->valuestring, REG_EXTENDED);
+				if(rc != 0)
+				{
+					// Failed to compile regex
+					char errbuf[1024];
+					regerror(rc, &regex_clients[i], errbuf, sizeof(errbuf));
+					log_err("Failed to compile client regex \"%s\": %s",
+					        filter->valuestring, errbuf);
+					return send_json_error(api, 400,
+					                       "bad_request",
+					                       "Failed to compile client regex",
+					                       filter->valuestring);
+				}
+			}
 		}
 
 		// We are filtering, so we have to continue to step over the
@@ -831,17 +816,16 @@ int api_queries(struct ftl_conn *api)
 
 		// Apply possible regex filters to Query Log domains
 		const char *domain = (const char*)sqlite3_column_text(read_stmt, 4); // d.domain
-		if(regex_filters > 0)
+		if(N_regex_domains > 0)
 		{
 			bool match = false;
 			// Iterate over all regex filters
-			for(int i = 0; i < regex_filters; i++)
+			for(int i = 0; i < N_regex_domains; i++)
 			{
 				// Check if the domain matches the regex
-				if(regexec(&regex[i], domain, 0, NULL, 0) == 0)
+				if(regexec(&regex_domains[i], domain, 0, NULL, 0) == 0)
 				{
-					// Domain matches, so we can stop
-					// iterating here
+					// Domain matches
 					match = true;
 					break;
 				}
@@ -861,51 +845,22 @@ int api_queries(struct ftl_conn *api)
 		const char *client_name = NULL;
 		if(sqlite3_column_type(read_stmt, 11) == SQLITE_TEXT && sqlite3_column_bytes(read_stmt, 11) > 0)
 			client_name = (const char*)sqlite3_column_text(read_stmt, 11); // c.name
-		if(client_filters > 0)
+		if(N_regex_clients > 0)
 		{
 			bool match = false;
-			// Iterate over all client filters
-			for(int i = 0; i < client_filters; i++)
+			// Iterate over all regex filters
+			for(int i = 0; i < N_regex_clients; i++)
 			{
-				// Only compare against valid filter strings
-				if(filter_clients[i] == NULL)
-					continue;
-
-				// Check if the client matches the filter
-				if(strcasecmp(filter_clients[i], client_ip) == 0 ||
-				   (client_name != NULL && strcasecmp(filter_clients[i], client_name) == 0))
+				// Check if the domain matches the regex
+				if(regexec(&regex_clients[i], client_ip, 0, NULL, 0) == 0)
 				{
-					// Client matches, so we can stop
-					// iterating here
+					// Client IP matches
 					match = true;
 					break;
 				}
-			}
-			if(match)
-			{
-				// Client matches, we skip it and adjust the
-				// counter
-				recordsCounted--;
-				continue;
-			}
-		}
-
-		// Apply possible domain filters to Query Log domains
-		if(domain_filters > 0)
-		{
-			bool match = false;
-			// Iterate over all domain filters
-			for(int i = 0; i < domain_filters; i++)
-			{
-				// Only compare against valid filter strings
-				if(filter_domains[i] == NULL)
-					continue;
-
-				// Check if the domain matches the filter
-				if(strcasecmp(filter_domains[i], domain) == 0)
+				else if(client_name != NULL && regexec(&regex_clients[i], client_name, 0, NULL, 0) == 0)
 				{
-					// Domain matches, so we can stop
-					// iterating here
+					// Client name matches
 					match = true;
 					break;
 				}
@@ -915,6 +870,7 @@ int api_queries(struct ftl_conn *api)
 				// Domain matches, we skip it and adjust the
 				// counter
 				recordsCounted--;
+				regex_skipped++;
 				continue;
 			}
 		}
@@ -1079,30 +1035,31 @@ int api_queries(struct ftl_conn *api)
 	// DataTables specific properties
 	const unsigned long recordsTotal = disk ? disk_dbnum : mem_dbnum;
 	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", recordsTotal);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", filtering || regex_filters > 0 ? recordsCounted : recordsTotal);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", filtering ? recordsCounted : recordsTotal);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "draw", draw);
 
 	// Finalize statements
 	sqlite3_finalize(read_stmt);
 
 	// Free regex memory if allocated
-	if(regex_filters > 0)
+	if(N_regex_domains > 0)
 	{
 		// Free individual regexes
-		for(int i = 0; i < regex_filters; i++)
-			regfree(&regex[i]);
+		for(int i = 0; i < N_regex_domains; i++)
+			regfree(&regex_domains[i]);
 
 		// Free array of regex pointers
-		free(regex);
+		free(regex_domains);
 	}
+	if(N_regex_clients > 0)
+	{
+		// Free individual regexes
+		for(int i = 0; i < N_regex_clients; i++)
+			regfree(&regex_clients[i]);
 
-	// Free client memory if allocated
-	if(client_filters > 0)
-		free(filter_clients);
-
-	// Free domain memory if allocated
-	if(domain_filters > 0)
-		free(filter_domains);
+		// Free array of regex pointers
+		free(regex_clients);
+	}
 
 	JSON_SEND_OBJECT(json);
 }

@@ -693,14 +693,6 @@
     #     array of domains
     excludeDomains = []
 
-    # Array of regular expressions to be excluded from the Query Log. Note that backslashes
-    # "\" need to be escaped, i.e. "\\" in this setting
-    # Example: [ "(^|\.)\.google\.de$", "\.pi-hole\.net$" ]
-    #
-    # Possible values are:
-    #     array of regular expressions
-    excludeRegex = []
-
     # How much history should be imported from the database [seconds]? (max 24*60*60 =
     # 86400)
     maxHistory = 86400

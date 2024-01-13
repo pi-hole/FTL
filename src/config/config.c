@@ -956,23 +956,16 @@ void initConfig(struct config *conf)
 	conf->webserver.api.app_pwhash.d.s = (char*)"";
 
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
-	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses:\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_clients)\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
+	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_clients)\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n Example: [ \"(^|\\\\.)\\\\.google\\\\.de$\", \"\\\\.pi-hole\\\\.net$\" ]\n\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
 	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
 	conf->webserver.api.excludeClients.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeClients.d.json = cJSON_CreateArray();
 
 	conf->webserver.api.excludeDomains.k = "webserver.api.excludeDomains";
-	conf->webserver.api.excludeDomains.h = "Array of domains to be excluded from certain API responses:\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_domains)\n Example: [ \"google.de\", \"pi-hole.net\" ]";
+	conf->webserver.api.excludeDomains.h = "Array of domains to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_domains)\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n Example: [ \"(^|\\\\.)\\\\.google\\\\.de$\", \"\\\\.pi-hole\\\\.net$\" ]\n\n Example: [ \"google.de\", \"pi-hole.net\" ]";
 	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of domains");
 	conf->webserver.api.excludeDomains.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeDomains.d.json = cJSON_CreateArray();
-
-	conf->webserver.api.excludeRegex.k = "webserver.api.excludeRegex";
-	conf->webserver.api.excludeRegex.h = "Array of regular expressions to be excluded from the Query Log. Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n Example: [ \"(^|\\\\.)\\\\.google\\\\.de$\", \"\\\\.pi-hole\\\\.net$\" ]";
-	conf->webserver.api.excludeRegex.a = cJSON_CreateStringReference("array of regular expressions");
-	conf->webserver.api.excludeRegex.t = CONF_JSON_STRING_ARRAY;
-	conf->webserver.api.excludeRegex.f = FLAG_RESTART_FTL | FLAG_ADVANCED_SETTING;
-	conf->webserver.api.excludeRegex.d.json = cJSON_CreateArray();
 
 	conf->webserver.api.maxHistory.k = "webserver.api.maxHistory";
 	conf->webserver.api.maxHistory.h = "How much history should be imported from the database and returned by the API [seconds]? (max 24*60*60 = 86400)";
