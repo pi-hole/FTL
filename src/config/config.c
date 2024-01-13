@@ -1447,36 +1447,39 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 		rename(GLOBALTOMLPATH, new_name);
 	}
 
-	// Determine default webserver ports
-	// Check if ports 80/TCP and 443/TCP are already in use
-	const in_port_t http_port = port_in_use(80) ? 8080 : 80;
-	const in_port_t https_port = port_in_use(443) ? 8443 : 443;
-
-	// Create a string with the default ports
-	// Allocate memory for the string
-	char *ports = calloc(32, sizeof(char));
-	if(ports == NULL)
+	// Determine default webserver ports if not imported from setupVars.conf
+	if(!(config.webserver.port.f & FLAG_CONF_IMPORTED))
 	{
-		log_err("Unable to allocate memory for default ports string");
-		return false;
+		// Check if ports 80/TCP and 443/TCP are already in use
+		const in_port_t http_port = port_in_use(80) ? 8080 : 80;
+		const in_port_t https_port = port_in_use(443) ? 8443 : 443;
+
+		// Create a string with the default ports
+		// Allocate memory for the string
+		char *ports = calloc(32, sizeof(char));
+		if(ports == NULL)
+		{
+			log_err("Unable to allocate memory for default ports string");
+			return false;
+		}
+		// Create the string
+		snprintf(ports, 32, "%d,%ds", http_port, https_port);
+
+		// Append IPv6 ports if IPv6 is enabled
+		const bool have_ipv6 = ipv6_enabled();
+		if(have_ipv6)
+			snprintf(ports + strlen(ports), 32 - strlen(ports),
+				",[::]:%d,[::]:%ds", http_port, https_port);
+
+		// Set default values for webserver ports
+		if(conf->webserver.port.t == CONF_STRING_ALLOCATED)
+			free(conf->webserver.port.v.s);
+		conf->webserver.port.v.s = ports;
+		conf->webserver.port.t = CONF_STRING_ALLOCATED;
+
+		log_info("Initialised webserver ports at %d (HTTP) and %d (HTTPS), IPv6 support is %s",
+			http_port, https_port, have_ipv6 ? "enabled" : "disabled");
 	}
-	// Create the string
-	snprintf(ports, 32, "%d,%ds", http_port, https_port);
-
-	// Append IPv6 ports if IPv6 is enabled
-	const bool have_ipv6 = ipv6_enabled();
-	if(have_ipv6)
-		snprintf(ports + strlen(ports), 32 - strlen(ports),
-		         ",[::]:%d,[::]:%ds", http_port, https_port);
-
-	// Set default values for webserver ports
-	if(conf->webserver.port.t == CONF_STRING_ALLOCATED)
-		free(conf->webserver.port.v.s);
-	conf->webserver.port.v.s = ports;
-	conf->webserver.port.t = CONF_STRING_ALLOCATED;
-
-	log_info("Initialised webserver ports at %d (HTTP) and %d (HTTPS), IPv6 support is %s",
-	         http_port, https_port, have_ipv6 ? "enabled" : "disabled");
 
 	// Initialize the TOML config file
 	writeFTLtoml(true);

@@ -128,6 +128,12 @@ components:
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -212,6 +218,70 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+    batchDelete:
+      summary: Delete multiple domains
+      post:
+        summary: Delete multiple domains
+        tags:
+          - "Domain management"
+        operationId: "batchDelete_domains"
+        description: |
+          *Note:* There will be no content on success.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    item:
+                      type: string
+                      description: Domain to delete
+                      example: "example.com"
+                    type:
+                      type: string
+                      description: Type of domain to delete
+                      enum:
+                        - "allow"
+                        - "deny"
+                      example: "allow"
+                    kind:
+                      type: string
+                      description: Kind of domain to delete
+                      enum:
+                        - "exact"
+                        - "regex"
+                      example: "exact"
+        responses:
+          '204':
+            description: Items deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     domains:
       get:
@@ -222,7 +292,7 @@ components:
             description: Array of domains
             items:
               allOf:
-                - $ref: 'domains.yaml#/components/schemas/domain'
+                - $ref: 'domains.yaml#/components/schemas/domain_object'
                 - $ref: 'domains.yaml#/components/schemas/unicode'
                 - $ref: 'domains.yaml#/components/schemas/type'
                 - $ref: 'domains.yaml#/components/schemas/kind'
@@ -244,12 +314,9 @@ components:
           - $ref: 'domains.yaml#/components/schemas/groups'
           - $ref: 'domains.yaml#/components/schemas/enabled'
     domain:
-      type: object
-      properties:
-        domain:
-          description: Domain
-          type: string
-          example: testdomain.com
+      description: Domain
+      type: string
+      example: testdomain.com
     unicode:
       type: object
       properties:
@@ -258,18 +325,23 @@ components:
           type: string
           example: "äbc.com"
     domain_array:
+      description: array of domains
+      type: array
+      items:
+        type: string
+      example: ["testdomain.com", "otherdomain.de"]
+    domain_maybe_array:
       type: object
       properties:
         domain:
-          description: array of domains
-          type: array
-          items:
-            type: string
-          example: ["testdomain.com", "otherdomain.de"]
-    domain_maybe_array:
-      oneOf:
-        - $ref: 'domains.yaml#/components/schemas/domain'
-        - $ref: 'domains.yaml#/components/schemas/domain_array'
+          oneOf:
+            - $ref: 'domains.yaml#/components/schemas/domain'
+            - $ref: 'domains.yaml#/components/schemas/domain_array'
+    domain_object:
+      type: object
+      properties:
+        domain:
+          $ref: 'domains.yaml#/components/schemas/domain'
     type:
       type: object
       properties:

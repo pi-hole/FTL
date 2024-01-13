@@ -200,7 +200,10 @@
 })
 
 #define JSON_SEND_OBJECT_CODE(object, code)({ \
-	cJSON_AddNumberToObject(object, "took", double_time() - api->now);\
+	if((code) != 204) \
+	{ \
+		cJSON_AddNumberToObject(object, "took", double_time() - api->now); \
+	} \
 	char *json_string = json_formatter(object); \
 	if(json_string == NULL) \
 	{ \

@@ -43,7 +43,7 @@ static FILE * __attribute__((nonnull(1), malloc, warn_unused_result)) openFTLcon
 		return fp;
 
 	// Local file not present, try system file
-	*path = "/etc/pihole/pihole-FTL.conf";
+	*path = GLOBALCONFFILE_LEGACY;
 	fp = fopen(*path, "r");
 
 	return fp;
@@ -113,9 +113,12 @@ const char *readFTLlegacy(struct config *conf)
 	const char *path = NULL;
 	FILE *fp = openFTLconf(&path);
 	if(fp == NULL)
+	{
+		log_warn("No readable FTL config file found, using default settings");
 		return NULL;
+	}
 
-	log_notice("Reading legacy config file");
+	log_info("Reading legacy config files from %s", path);
 
 	// MAXDBDAYS
 	// defaults to: 365 days
