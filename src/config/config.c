@@ -956,7 +956,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.app_pwhash.d.s = (char*)"";
 
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
-	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses:\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_clients)\n - Client activity over time (/api/history/clients)\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
+	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses:\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_clients)\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
 	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
 	conf->webserver.api.excludeClients.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeClients.d.json = cJSON_CreateArray();

@@ -676,7 +676,6 @@
     # Array of clients to be excluded from certain API responses:
     # - Query Log (/api/queries)
     # - Top Clients (/api/stats/top_clients)
-    # - Client activity over time (/api/history/clients)
     # Example: [ "192.168.2.56", "fe80::341", "localhost" ]
     #
     # Possible values are:
