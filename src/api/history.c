@@ -51,7 +51,6 @@ int api_history(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-#define DEFAULT_MAX_CLIENTS 10
 int api_history_clients(struct ftl_conn *api)
 {
 	// Exit before processing any data if requested via config setting
@@ -68,7 +67,7 @@ int api_history_clients(struct ftl_conn *api)
 	}
 
 	// Get number of clients to return´
-	unsigned int Nc = min(counters->clients, DEFAULT_MAX_CLIENTS);
+	unsigned int Nc = min(counters->clients, config.webserver.api.maxClients.v.u16);
 	if(api->request->query_string != NULL)
 	{
 		// Does the user request a non-default number of clients
