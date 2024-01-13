@@ -378,7 +378,7 @@ end_of_add_message: // Close database connection
 	return rowid;
 }
 
-bool delete_message(cJSON *ids)
+bool delete_message(cJSON *ids, int *deleted)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -413,6 +413,10 @@ bool delete_message(cJSON *ids)
 			log_err("SQL error (%i): %s", sqlite3_errcode(db), sqlite3_errmsg(db));
 			return false;
 		}
+
+		// Add to deleted count
+		*deleted += sqlite3_changes(db);
+
 		sqlite3_reset(res);
 		sqlite3_clear_bindings(res);
 	}

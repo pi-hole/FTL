@@ -328,6 +328,7 @@ enum password_result verify_login(const char *password)
 		log_debug(DEBUG_API, "App password correct");
 		return APPPASSWORD_CORRECT;
 	}
+
 	// Return result
 	return pw;
 }
@@ -336,7 +337,7 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 {
 	// No password set
 	if(pwhash == NULL || pwhash[0] == '\0')
-		return PASSWORD_CORRECT;
+		return NO_PASSWORD_SET;
 
 	// No password supplied
 	if(password == NULL || password[0] == '\0')
@@ -606,8 +607,9 @@ bool set_and_check_password(struct conf_item *conf_item, const char *password)
 	// Get password hash as allocated string (an empty string is hashed to an empty string)
 	char *pwhash = strlen(password) > 0 ? create_password(password) : strdup("");
 
-	// Verify that the password hash is valid
-	if(verify_password(password, pwhash, false) != PASSWORD_CORRECT)
+	// Verify that the password hash is valid or that no password is set
+	const enum password_result status = verify_password(password, pwhash, false);
+	if(status != PASSWORD_CORRECT && status != NO_PASSWORD_SET)
 	{
 		free(pwhash);
 		log_warn("Failed to create password hash (verification failed), password remains unchanged");

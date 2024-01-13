@@ -542,8 +542,6 @@ end_of_parseList:
 			// Print newline
 			puts("");
 		}
-		// Print final newline
-		puts("");
 	}
 
 	// Free memory

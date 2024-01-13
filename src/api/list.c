@@ -705,7 +705,8 @@ static int api_list_remove(struct ftl_conn *api,
 	}
 
 	// From here on, we can assume the JSON payload is valid
-	if(gravityDB_delFromTable(listtype, array, &sql_msg))
+	unsigned int deleted = 0u;
+	if(gravityDB_delFromTable(listtype, array, &deleted, &sql_msg))
 	{
 		// Inform the resolver that it needs to reload gravity
 		set_event(RELOAD_GRAVITY);
@@ -714,9 +715,11 @@ static int api_list_remove(struct ftl_conn *api,
 		if(allocated_json)
 			cJSON_free(array);
 
-		// Send empty reply with code 204 No Content
+		// Send empty reply with codes:
+		// - 204 No Content (if any items were deleted)
+		// - 404 Not Found (if no items were deleted)
 		cJSON *json = JSON_NEW_OBJECT();
-		JSON_SEND_OBJECT_CODE(json, 204);
+		JSON_SEND_OBJECT_CODE(json, deleted > 0u ? 204 : 404);
 	}
 	else
 	{
