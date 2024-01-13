@@ -120,7 +120,7 @@ static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf
 	          key, conf_item->k, conf_item->v.b ? "true" : "false");
 }
 
-static void get_conf_string_array_from_setupVars(const char *key, struct conf_item *conf_item)
+static void get_conf_string_array_from_setupVars(const char *key, struct conf_item *conf_item, const bool convert_to_regex)
 {
 	// Verify we are allowed to use this function
 	if(conf_item->t != CONF_JSON_STRING_ARRAY)
@@ -137,12 +137,69 @@ static void get_conf_string_array_from_setupVars(const char *key, struct conf_it
 		getSetupVarsArray(array);
 		for (unsigned int i = 0; i < setupVarsElements; ++i)
 		{
-			// Add string to our JSON array
-			cJSON *item = cJSON_CreateString(setupVarsArray[i]);
-			cJSON_AddItemToArray(conf_item->v.json, item);
+			// Convert to regex if requested
+			if(convert_to_regex)
+			{
+				// Convert to regex by adding ^ and $ to the string and replacing . with \.
+				// We need to allocate memory for this
+				char *regex = calloc(2*strlen(setupVarsArray[i]), sizeof(char));
+				if(regex == NULL)
+				{
+					log_warn("get_conf_string_array_from_setupVars(%s) failed: Could not allocate memory for regex", key);
+					continue;
+				}
 
-			log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s[%u] = %s\n",
-			          key, conf_item->k, i, item->valuestring);
+				// Copy string
+				strcpy(regex, setupVarsArray[i]);
+
+				// Replace . with \.
+				char *p = regex;
+				while(*p)
+				{
+					if(*p == '.')
+					{
+						// Move the rest of the string one character to the right
+						memmove(p + 1, p, strlen(p) + 1);
+						// Insert the escape character
+						*p = '\\';
+						// Skip the escape character
+						p++;
+					}
+					p++;
+				}
+
+				// Add ^ and $ to the string
+				char *regex2 = calloc(strlen(regex) + 3, sizeof(char));
+				if(regex2 == NULL)
+				{
+					log_warn("get_conf_string_array_from_setupVars(%s) failed: Could not allocate memory for regex2", key);
+					free(regex);
+					continue;
+				}
+				sprintf(regex2, "^%s$", regex);
+
+				// Free memory
+				free(regex);
+
+				// Add string to our JSON array
+				cJSON *item = cJSON_CreateString(regex2);
+				cJSON_AddItemToArray(conf_item->v.json, item);
+
+				log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s[%u] = %s\n",
+				          key, conf_item->k, i, item->valuestring);
+
+				// Free memory
+				free(regex2);
+			}
+			else
+			{
+				// Add string to our JSON array
+				cJSON *item = cJSON_CreateString(setupVarsArray[i]);
+				cJSON_AddItemToArray(conf_item->v.json, item);
+
+				log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s[%u] = %s\n",
+				          key, conf_item->k, i, item->valuestring);
+			}
 		}
 	}
 
@@ -384,10 +441,10 @@ void importsetupVarsConf(void)
 	get_conf_bool_from_setupVars("BLOCKING_ENABLED", &config.dns.blocking.active);
 
 	// Get clients which the user doesn't want to see
-	get_conf_string_array_from_setupVars("API_EXCLUDE_CLIENTS", &config.webserver.api.excludeClients);
+	get_conf_string_array_from_setupVars("API_EXCLUDE_CLIENTS", &config.webserver.api.excludeClients, true);
 
 	// Get domains which the user doesn't want to see
-	get_conf_string_array_from_setupVars("API_EXCLUDE_DOMAINS", &config.webserver.api.excludeDomains);
+	get_conf_string_array_from_setupVars("API_EXCLUDE_DOMAINS", &config.webserver.api.excludeDomains, true);
 
 	// Try to obtain temperature hot value
 	get_conf_temp_limit_from_setupVars();
