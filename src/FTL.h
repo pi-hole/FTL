@@ -50,6 +50,7 @@
 // Number of elements in an array
 #define ArraySize(X) (sizeof(X)/sizeof(X[0]))
 
+// Constant socket buffer length
 #define SOCKETBUFFERLEN 1024
 
 // How often do we garbage collect (to ensure we only have data fitting to the MAXLOGAGE defined above)? [seconds]
@@ -132,6 +133,14 @@
 
 // Special exit code used to signal that FTL wants to restart
 #define RESTART_FTL_CODE 22
+
+// How often should the database be analyzed?
+// Default: 604800 (once per week)
+#define DATABASE_ANALYZE_INTERVAL 604800
+
+// How often should we update client vendor's from the MAC vendor database?
+// Default: 2592000 (once per month)
+#define DATABASE_MACVENDOR_INTERVAL 2592000
 
 // Use out own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crash

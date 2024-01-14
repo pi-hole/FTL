@@ -160,8 +160,9 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			// Get password hash as allocated string (an empty string is hashed to an empty string)
 			char *pwhash = strlen(value) > 0 ? create_password(value) : strdup("");
 
-			// Verify that the password hash is valid
-			if(verify_password(value, pwhash, false) != PASSWORD_CORRECT)
+			// Verify that the password hash is either valid or empty
+			const enum password_result status = verify_password(value, pwhash, false);
+			if(status != PASSWORD_CORRECT && status != NO_PASSWORD_SET)
 			{
 				log_err("Failed to create password hash (verification failed), password remains unchanged");
 				free(pwhash);
@@ -481,13 +482,34 @@ int get_config_from_CLI(const char *key, const bool quiet)
 {
 	// Identify config option
 	struct conf_item *conf_item = NULL;
+
+	// We first loop over all config options to check if the one we are
+	// looking for is an exact match, use partial match otherwise
+	bool exactMatch = false;
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		// Get pointer to memory location of this conf_item
+		struct conf_item *item = get_conf_item(&config, i);
+
+		// Check if item.k is identical with key
+		if(strcmp(item->k, key) == 0)
+		{
+			exactMatch = true;
+			break;
+		}
+	}
+
+	// Loop over all config options again to find the one we are looking for
+	// (possibly partial match)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
 		struct conf_item *item = get_conf_item(&config, i);
 
 		// Check if item.k starts with key
-		if(key != NULL && strncmp(item->k, key, strlen(key)) != 0)
+		if(key != NULL &&
+		   ((exactMatch && strcmp(item->k, key) != 0) ||
+		    (!exactMatch && strncmp(item->k, key, strlen(key)))))
 			continue;
 
 		// Skip write-only options
@@ -510,7 +532,7 @@ int get_config_from_CLI(const char *key, const bool quiet)
 	}
 
 	// Check if we found the config option
-	if(key != NULL && conf_item == NULL)
+	if(conf_item == NULL)
 	{
 		log_err("Unknown config option: %s", key);
 		return 2;
@@ -518,7 +540,7 @@ int get_config_from_CLI(const char *key, const bool quiet)
 
 	// Use return status if this is a boolean value
 	// and we are in quiet mode
-	if(quiet && conf_item->t == CONF_BOOL)
+	if(quiet && conf_item != NULL && conf_item->t == CONF_BOOL)
 		return conf_item->v.b ? EXIT_SUCCESS : EXIT_FAILURE;
 
 	return EXIT_SUCCESS;

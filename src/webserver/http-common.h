@@ -33,9 +33,15 @@ enum http_method {
 	HTTP_OPTIONS = 1 << 5,
 };
 
+enum api_flags {
+	API_FLAG_NONE = 0,
+	API_DOMAINS = 1 << 0,
+	API_PARSE_JSON = 1 << 1,
+	API_BATCHDELETE = 1 << 2,
+};
+
 struct api_options {
-	bool domains :1;
-	bool parse_json :1;
+	enum api_flags flags;
 	enum fifo_logs which;
 };
 

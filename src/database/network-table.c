@@ -1083,7 +1083,7 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 
 		// Try to read IPv4 address
 		// We need a special rule here to avoid "inet6 ..." being accepted as IPv4 address
-		if(sscanf(linebuffer, "    inet%*[ ]%[0-9.] brd", ipaddr) == 1)
+		if(sscanf(linebuffer, "    inet%*[ ]%127[0-9.] brd", ipaddr) == 1)
 		{
 			// Obtained an IPv4 address
 			ipaddr[sizeof(ipaddr)-1] = '\0';
@@ -1091,7 +1091,7 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 		else
 		{
 			// Try to read IPv6 address
-			if(sscanf(linebuffer, "    inet6%*[ ]%[0-9a-fA-F:] scope", ipaddr) == 1)
+			if(sscanf(linebuffer, "    inet6%*[ ]%127[0-9a-fA-F:] scope", ipaddr) == 1)
 			{
 				// Obtained an IPv6 address
 				ipaddr[sizeof(ipaddr)-1] = '\0';
@@ -1250,7 +1250,6 @@ void parse_neighbor_cache(sqlite3* db)
 	// Prepare buffers
 	char *linebuffer = NULL;
 	size_t linebuffersize = 0u;
-	char ip[128], hwaddr[128], iface[128];
 	unsigned int entries = 0u, additional_entries = 0u;
 	time_t now = time(NULL);
 
@@ -1314,6 +1313,7 @@ void parse_neighbor_cache(sqlite3* db)
 				break;
 
 			// Analyze line
+			char ip[128], hwaddr[128], iface[128];
 			int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
 			                 ip, iface, hwaddr);
 
@@ -2425,7 +2425,7 @@ void networkTable_readIPsFinalize(sqlite3_stmt *read_stmt)
 	sqlite3_finalize(read_stmt);
 }
 
-bool networkTable_deleteDevice(sqlite3 *db, const int id, const char **message)
+bool networkTable_deleteDevice(sqlite3 *db, const int id, int *deleted, const char **message)
 {
 	// First step: Delete all associated IPs of this device
 	// Prepare SQLite statement
@@ -2462,6 +2462,9 @@ bool networkTable_deleteDevice(sqlite3 *db, const int id, const char **message)
 		return false;
 	}
 
+	// Check if we deleted any rows
+	*deleted += sqlite3_changes(db);
+
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
@@ -2497,6 +2500,9 @@ bool networkTable_deleteDevice(sqlite3 *db, const int id, const char **message)
 		sqlite3_finalize(stmt);
 		return false;
 	}
+
+	// Check if we deleted any rows
+	*deleted += sqlite3_changes(db);
 
 	// Finalize statement
 	sqlite3_finalize(stmt);

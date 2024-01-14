@@ -341,9 +341,15 @@ unsigned short get_api_string(char **buf, const bool domain)
 
 void http_init(void)
 {
-	log_web("Initializing HTTP server on port %s", config.webserver.port.v.s);
+	// Don't start web server if port is not set
+	if(strlen(config.webserver.port.v.s) == 0)
+	{
+		log_warn("Not starting web server as webserver.port is empty. API will not be available!");
+		return;
+	}
 
 	/* Initialize the library */
+	log_web("Initializing HTTP server on port %s", config.webserver.port.v.s);
 	unsigned int features = MG_FEATURES_FILES |
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
@@ -571,7 +577,14 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 
 	// Try full path with ".lp" appended
 	filename_lp = append_to_path(filename, ".lp");
-	if(filename_lp != NULL && file_readable(filename_lp))
+	if(filename_lp == NULL)
+	{
+		//Failed to allocate memory for filename!");
+		return;
+	}
+
+	// Check if the file exists. If so, rewrite the filename and return
+	if(file_readable(filename_lp))
 	{
 		log_debug(DEBUG_API, "Rewriting Lua page: %s ==> %s", filename, filename_lp);
 		strncpy(filename, filename_lp, filename_buf_len);
@@ -597,6 +610,7 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 
 void http_terminate(void)
 {
+	// The server may have never been started
 	if(!ctx)
 		return;
 

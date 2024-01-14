@@ -121,7 +121,7 @@ components:
                 examples:
                   invalid_path_depth:
                     $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
-                  item_not_found:
+                  item_already_present:
                     $ref: 'config.yaml#/components/examples/errors/bad_request/item_already_present'
           '401':
             description: Unauthorized
@@ -144,6 +144,12 @@ components:
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -155,8 +161,8 @@ components:
                 examples:
                   invalid_path_depth:
                     $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
-                  item_not_found:
-                    $ref: 'config.yaml#/components/examples/errors/bad_request/item_not_found'
+                  item_already_present:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/item_already_present'
           '401':
             description: Unauthorized
             content:
@@ -438,6 +444,8 @@ components:
                   type: string
                 gravity:
                   type: string
+                gravity_tmp:
+                  type: string
                 macvendor:
                   type: string
                 setupVars:
@@ -470,6 +478,8 @@ components:
                   type: array
                   items:
                     type: string
+                extraLogging:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -698,6 +708,7 @@ components:
             pid: "/run/pihole-FTL.pid"
             database: "/etc/pihole/pihole-FTL.db"
             gravity: "/etc/pihole/gravity.db"
+            gravity_tmp: "/tmp"
             macvendor: "/etc/pihole/macvendor.db"
             setupVars: "/etc/pihole/setupVars.conf"
             pcap: ""
@@ -712,6 +723,7 @@ components:
             privacylevel: 0
             etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
+            extraLogging: false
             check:
               load: true
               shmem: 90
@@ -789,13 +801,6 @@ components:
               key: "bad_request"
               message: "Invalid path depth"
               hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
-        item_not_found:
-          summary: Item to be deleted does not exist
-          value:
-            error:
-              key: "bad_request"
-              message: "Item not found"
-              hint: "Can only delete existing items"
         item_already_present:
           summary: Item to be added exists already
           value:

@@ -382,7 +382,6 @@ struct naptr {
 #define TXT_STAT_AUTH          6
 #define TXT_STAT_SERVERS       7
 /* Pi-hole modification */
-#define TXT_PRIVACYLEVEL       123
 #define TXT_API_DOMAIN         124
 #define TXT_API_LOCAL          125
 /************************/

@@ -23,7 +23,7 @@
 // directory_exists()
 #include "files.h"
 // trim_whitespace()
-#include "setupVars.h"
+#include "config/setupVars.h"
 // run_dnsmasq_main()
 #include "args.h"
 // optind
@@ -307,7 +307,6 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 
 	write_config_header(pihole_conf, "Dnsmasq config for Pi-hole's FTLDNS");
-	fputs("addn-hosts=/etc/pihole/local.list\n", pihole_conf);
 	fputs("hostsdir="DNSMASQ_HOSTSDIR"\n", pihole_conf);
 	fputs("\n", pihole_conf);
 	fputs("# Don't read /etc/resolv.conf. Get upstream servers only from the configuration\n", pihole_conf);
@@ -345,7 +344,10 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	if(conf->dns.queryLogging.v.b)
 	{
 		fputs("# Enable query logging\n", pihole_conf);
-		fputs("log-queries\n", pihole_conf);
+		if(conf->misc.extraLogging.v.b)
+			fputs("log-queries=extra\n", pihole_conf);
+		else
+			fputs("log-queries\n", pihole_conf);
 		fputs("log-async\n", pihole_conf);
 		fputs("\n", pihole_conf);
 	}
