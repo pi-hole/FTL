@@ -849,7 +849,7 @@ components:
                     version:
                       type: string
                       nullable: true
-                      description: Remote (Github) Pi-hole Core version
+                      description: Remote (Github) Pi-hole Core version (null if on custom branch)
                       example: "v6.1"
                     hash:
                       type: string
@@ -883,7 +883,7 @@ components:
                     version:
                       type: string
                       nullable: true
-                      description: Remote (Github) Pi-hole Web version
+                      description: Remote (Github) Pi-hole Web version (null if on custom branch)
                       example: "v6.1"
                     hash:
                       type: string
@@ -922,7 +922,7 @@ components:
                     version:
                       type: string
                       nullable: true
-                      description: Remote (Github) Pi-hole FTL version
+                      description: Remote (Github) Pi-hole FTL version (null if on custom branch)
                       example: "v6.1"
                     hash:
                       type: string
