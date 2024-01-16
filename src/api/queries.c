@@ -475,14 +475,14 @@ int api_queries(struct ftl_conn *api)
 			if(rc != 0)
 			{
 				// Failed to compile regex
-				char errbuf[1024];
+				char errbuf[1024] = { 0 };
 				regerror(rc, &regex_domains[i], errbuf, sizeof(errbuf));
 				log_err("Failed to compile domain regex \"%s\": %s",
 					filter->valuestring, errbuf);
 				return send_json_error(api, 400,
-							"bad_request",
-							"Failed to compile domain regex",
-							filter->valuestring);
+				                       "bad_request",
+				                       "Failed to compile domain regex",
+				                       filter->valuestring);
 			}
 
 			i++;
@@ -524,14 +524,14 @@ int api_queries(struct ftl_conn *api)
 			if(rc != 0)
 			{
 				// Failed to compile regex
-				char errbuf[1024];
+				char errbuf[1024] = { 0 };
 				regerror(rc, &regex_clients[i], errbuf, sizeof(errbuf));
 				log_err("Failed to compile client regex \"%s\": %s",
 					filter->valuestring, errbuf);
 				return send_json_error(api, 400,
-							"bad_request",
-							"Failed to compile client regex",
-							filter->valuestring);
+				                       "bad_request",
+				                       "Failed to compile client regex",
+				                       filter->valuestring);
 			}
 
 			i++;

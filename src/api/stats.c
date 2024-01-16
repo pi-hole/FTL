@@ -42,7 +42,7 @@ static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 } */
 
 // qsort subroutine, sort DESC
-static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
+int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 {
 	const int *elem1 = (int*)a;
 	const int *elem2 = (int*)b;
@@ -163,6 +163,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 		return 0;
 	}
 
+
 	bool blocked = false; // Can be overwritten by query string
 	int count = 10;
 	// /api/stats/top_domains?blocked=true
@@ -246,7 +247,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 			if(rc != 0)
 			{
 				// Failed to compile regex
-				char errbuf[1024];
+				char errbuf[1024] = { 0 };
 				regerror(rc, &regex_domains[i], errbuf, sizeof(errbuf));
 				log_err("Failed to compile domain regex \"%s\": %s",
 					filter->valuestring, errbuf);
@@ -433,7 +434,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 			if(rc != 0)
 			{
 				// Failed to compile regex
-				char errbuf[1024];
+				char errbuf[1024] = { 0 };
 				regerror(rc, &regex_clients[i], errbuf, sizeof(errbuf));
 				log_err("Failed to compile client regex \"%s\": %s",
 					filter->valuestring, errbuf);

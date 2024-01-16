@@ -1915,7 +1915,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	if(!(flags & F_UPSTREAM))
 	{
 		cached = true;
-		if((flags & F_HOSTS) || // local.list, hostname.list, /etc/hosts and others
+		if((flags & F_HOSTS) || // hostname.list, /etc/hosts and others
 		   ((flags & F_NAMEP) && (flags & F_DHCP)) || // DHCP server reply
 		   (flags & F_FORWARD) || // cached answer to previously forwarded request
 		   (flags & F_REVERSE) || // cached answer to reverse request (PTR)
@@ -3244,11 +3244,17 @@ void FTL_TCP_worker_created(const int confd)
 	gravityDB_forked();
 }
 
-bool FTL_unlink_DHCP_lease(const char *ipaddr)
+bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint)
 {
 	struct dhcp_lease *lease;
 	union all_addr addr;
 	const time_t now = dnsmasq_time();
+
+	if(!daemon->dhcp)
+	{
+		*hint = "DHCP is not enabled";
+		return false;
+	}
 
 	// Try to extract IP address
 	if (inet_pton(AF_INET, ipaddr, &addr.addr4) > 0)
@@ -3263,6 +3269,8 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 #endif
 	else
 	{
+		// Invalid IP address
+		*hint = "invalid target address (neither IPv4 nor IPv6)";
 		return false;
 	}
 
@@ -3278,6 +3286,11 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 		// when unlinking the lease above actually changed something
 		// (variable lease.c:dns_dirty is used here)
 		lease_update_dns(0);
+	}
+	else
+	{
+		*hint = NULL;
+		return false;
 	}
 
 	// Return success

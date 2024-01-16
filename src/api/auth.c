@@ -339,14 +339,18 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 	return 0;
 }
 
-static void delete_session(const int user_id)
+static bool delete_session(const int user_id)
 {
 	// Skip if nothing to be done here
 	if(user_id < 0 || user_id >= max_sessions)
-		return;
+		return false;
+
+	const bool was_valid = auth_data[user_id].used;
 
 	// Zero out this session (also sets valid to false == 0)
 	memset(&auth_data[user_id], 0, sizeof(auth_data[user_id]));
+
+	return was_valid;
 }
 
 void delete_all_sessions(void)
@@ -357,24 +361,6 @@ void delete_all_sessions(void)
 
 static int send_api_auth_status(struct ftl_conn *api, const int user_id, const time_t now)
 {
-	if(user_id == API_AUTH_LOCALHOST)
-	{
-		log_debug(DEBUG_API, "API Auth status: OK (localhost does not need auth)");
-
-		cJSON *json = JSON_NEW_OBJECT();
-		get_session_object(api, json, user_id, now);
-		JSON_SEND_OBJECT(json);
-	}
-
-	if(user_id == API_AUTH_EMPTYPASS)
-	{
-		log_debug(DEBUG_API, "API Auth status: OK (empty password)");
-
-		cJSON *json = JSON_NEW_OBJECT();
-		get_session_object(api, json, user_id, now);
-		JSON_SEND_OBJECT(json);
-	}
-
 	if(user_id > API_AUTH_UNAUTHORIZED && (api->method == HTTP_GET || api->method == HTTP_POST))
 	{
 		log_debug(DEBUG_API, "API Auth status: OK");
@@ -391,17 +377,45 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
-	else if(user_id > API_AUTH_UNAUTHORIZED && api->method == HTTP_DELETE)
+	else if(api->method == HTTP_DELETE)
 	{
-		log_debug(DEBUG_API, "API Auth status: Logout, asking to delete cookie");
+		if(user_id > API_AUTH_UNAUTHORIZED)
+		{
+			log_debug(DEBUG_API, "API Auth status: Logout, asking to delete cookie");
 
-		// Revoke client authentication. This slot can be used by a new client afterwards.
-		delete_session(user_id);
+			strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
 
-		strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
+			// Revoke client authentication. This slot can be used by a new client afterwards.
+			const int code = delete_session(user_id) ? 204 : 404;
+
+			// Send empty reply with appropriate HTTP status code
+			send_http_code(api, "application/json; charset=utf-8", code, "");
+			return code;
+		}
+		else
+		{
+			log_debug(DEBUG_API, "API Auth status: Logout, but not authenticated");
+
+			cJSON *json = JSON_NEW_OBJECT();
+			get_session_object(api, json, user_id, now);
+			JSON_SEND_OBJECT_CODE(json, 401); // 401 Unauthorized
+		}
+	}
+	else if(user_id == API_AUTH_LOCALHOST)
+	{
+		log_debug(DEBUG_API, "API Auth status: OK (localhost does not need auth)");
+
 		cJSON *json = JSON_NEW_OBJECT();
 		get_session_object(api, json, user_id, now);
-		JSON_SEND_OBJECT_CODE(json, 410); // 410 Gone
+		JSON_SEND_OBJECT(json);
+	}
+	else if(user_id == API_AUTH_EMPTYPASS)
+	{
+		log_debug(DEBUG_API, "API Auth status: OK (empty password)");
+
+		cJSON *json = JSON_NEW_OBJECT();
+		get_session_object(api, json, user_id, now);
+		JSON_SEND_OBJECT(json);
 	}
 	else
 	{
@@ -566,7 +580,7 @@ int api_auth(struct ftl_conn *api)
 		{
 			// Expired slow, mark as unused
 			if(auth_data[i].used &&
-				auth_data[i].valid_until < now)
+			   auth_data[i].valid_until < now)
 			{
 				log_debug(DEBUG_API, "API: Session of client %u (%s) expired, freeing...",
 						i, auth_data[i].remote_addr);
@@ -637,6 +651,11 @@ int api_auth(struct ftl_conn *api)
 		                       "Rate-limiting login attempts",
 		                       NULL);
 	}
+	else if(result == NO_PASSWORD_SET)
+	{
+		// No password set
+		log_debug(DEBUG_API, "API: Trying to auth with password but none set: '%s'", password);
+	}
 	else
 	{
 		log_debug(DEBUG_API, "API: Password incorrect: '%s'", password);
@@ -670,9 +689,9 @@ int api_auth_session_delete(struct ftl_conn *api)
 		return send_json_error(api, 400, "bad_request", "Session ID not in use", NULL);
 
 	// Delete session
-	delete_session(uid);
+	const int code = delete_session(uid) ? 204 : 404;
 
-	// Send empty reply with code 204 No Content
-	send_http_code(api, "application/json; charset=utf-8", 204, "");
-	return 204;
+	// Send empty reply with appropriate HTTP status code
+	send_http_code(api, "application/json; charset=utf-8", code, "");
+	return code;
 }

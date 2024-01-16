@@ -62,7 +62,15 @@ components:
           - Metrics
         operationId: "get_client_metrics"
         description: |
-          Request data needed to generate the \"Client activity over last 24 hours\" graph
+          Request data needed to generate the \"Client activity over last 24 hours\" graph.
+          This endpoint returns the top N clients, sorted by total number of queries within 24 hours. If N is set to 0, all clients will be returned.
+          The client name is only available if the client's IP address can be resolved to a hostname.
+
+          The last client returned is a special client that contains the total number of queries that were not sent by any of the other shown clients , i.e. queries that were sent by clients that are not in the top N. This client is always present, even if it has 0 queries and can be identified by the special name "other clients" (mind the space in the hostname) and the IP address "0.0.0.0".
+
+          Note that, due to privacy settings, the returned data may also be empty.
+        parameters:
+          - $ref: 'history.yaml#/components/parameters/clients/N'
         responses:
           '200':
             description: OK
@@ -142,6 +150,38 @@ components:
     client_history:
       type: object
       properties:
+        clients:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                nullable: true
+                description: Client name
+              ip:
+                type: string
+                description: Client IP address
+              total:
+                type: integer
+                description: Total number of queries
+          example:
+            - name: localhost
+              ip: "127.0.0.1"
+              total: 13428
+            - name: ip6-localnet
+              ip: "::1"
+              total: 2100
+            - name: null
+              ip: "192.168.1.1"
+              total: 254
+            - name: "pi.hole"
+              ip: "::"
+              total: 29
+            - name: "other clients"
+              ip: "0.0.0.0"
+              total: 14
         history:
           type: array
           description: Data array
@@ -162,28 +202,22 @@ components:
                 - 12
                 - 65
                 - 67
+                - 9
+                - 5
             - timestamp: 1511820500.583821
               data:
                 - 1
                 - 35
                 - 63
-        clients:
-          type: array
-          description: Data array
-          items:
-            type: object
-            properties:
-              name:
-                type: string
-                nullable: true
-                description: Client name
-              ip:
-                type: string
-                description: Client IP address
-          example:
-            - name: localhost
-              ip: "127.0.0.1"
-            - name: ip6-localnet
-              ip: "::1"
-            - name: null
-              ip: "192.168.1.1"
+                - 20
+                - 9
+  parameters:
+    clients:
+      N:
+        in: query
+        description: Maximum number of clients to return, setting this to 0 will return all clients
+        name: N
+        schema:
+          type: integer
+        required: false
+        example: 20

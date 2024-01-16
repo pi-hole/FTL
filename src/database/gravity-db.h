@@ -69,7 +69,7 @@ bool gravityDB_readTableGetRow(const enum gravity_list_type listtype, tablerow *
 void gravityDB_readTableFinalize(void);
 bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
                           const char **message, const enum http_method method);
-bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, const char **message);
+bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message);
 bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
                            const tablerow *row, const char **message);
 

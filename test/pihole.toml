@@ -702,6 +702,11 @@
     # 86400)
     maxHistory = 86400
 
+    # Up to how many clients should be returned in the activity graph endpoint
+    # (/api/history/clients)?
+    # This setting can be overwritten at run-time using the parameter N
+    maxClients = 10
+
     # Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)
     allow_destructive = true
 
