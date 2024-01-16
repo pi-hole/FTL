@@ -150,35 +150,6 @@ components:
     client_history:
       type: object
       properties:
-        history:
-          type: array
-          description: Data array
-          items:
-            type: object
-            properties:
-              timestamp:
-                type: number
-                description: Timestamp
-              data:
-                type: array
-                description: Data corresponding to the individual clients
-                items:
-                  type: integer
-          example:
-            - timestamp: 1511819900.539157
-              data:
-                - 12
-                - 65
-                - 67
-                - 9
-                - 5
-            - timestamp: 1511820500.583821
-              data:
-                - 1
-                - 35
-                - 63
-                - 20
-                - 9
         clients:
           type: array
           description: Data array
@@ -211,6 +182,35 @@ components:
             - name: "other clients"
               ip: "0.0.0.0"
               total: 14
+        history:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: number
+                description: Timestamp
+              data:
+                type: array
+                description: Data corresponding to the individual clients
+                items:
+                  type: integer
+          example:
+            - timestamp: 1511819900.539157
+              data:
+                - 12
+                - 65
+                - 67
+                - 9
+                - 5
+            - timestamp: 1511820500.583821
+              data:
+                - 1
+                - 35
+                - 63
+                - 20
+                - 9
   parameters:
     clients:
       N:
