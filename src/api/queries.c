@@ -459,31 +459,33 @@ int api_queries(struct ftl_conn *api)
 		}
 
 		// Compile regexes
-		for(int i = 0; i < N_regex_domains; i++)
+		unsigned int i = 0;
+		cJSON *filter = NULL;
+		cJSON_ArrayForEach(filter, config.webserver.api.excludeDomains.v.json)
 		{
-			// Iterate over regexes
-			cJSON *filter = NULL;
-			cJSON_ArrayForEach(filter, config.webserver.api.excludeDomains.v.json)
+			// Skip non-string, invalid and empty values
+			if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
 			{
-				// Skip non-string, invalid and empty values
-				if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
-					continue;
-
-				// Compile regex
-				int rc = regcomp(&regex_domains[i], filter->valuestring, REG_EXTENDED);
-				if(rc != 0)
-				{
-					// Failed to compile regex
-					char errbuf[1024];
-					regerror(rc, &regex_domains[i], errbuf, sizeof(errbuf));
-					log_err("Failed to compile domain regex \"%s\": %s",
-					        filter->valuestring, errbuf);
-					return send_json_error(api, 400,
-					                       "bad_request",
-					                       "Failed to compile domain regex",
-					                       filter->valuestring);
-				}
+				log_warn("Skipping invalid regex at webserver.api.excludeDomains.%u", i);
+				continue;
 			}
+
+			// Compile regex
+			int rc = regcomp(&regex_domains[i], filter->valuestring, REG_EXTENDED);
+			if(rc != 0)
+			{
+				// Failed to compile regex
+				char errbuf[1024];
+				regerror(rc, &regex_domains[i], errbuf, sizeof(errbuf));
+				log_err("Failed to compile domain regex \"%s\": %s",
+					filter->valuestring, errbuf);
+				return send_json_error(api, 400,
+							"bad_request",
+							"Failed to compile domain regex",
+							filter->valuestring);
+			}
+
+			i++;
 		}
 
 		// We are filtering, so we have to continue to step over the
@@ -506,31 +508,33 @@ int api_queries(struct ftl_conn *api)
 		}
 
 		// Compile regexes
-		for(int i = 0; i < N_regex_clients; i++)
+		unsigned int i = 0;
+		cJSON *filter = NULL;
+		cJSON_ArrayForEach(filter, config.webserver.api.excludeClients.v.json)
 		{
-			// Iterate over regexes
-			cJSON *filter = NULL;
-			cJSON_ArrayForEach(filter, config.webserver.api.excludeClients.v.json)
+			// Skip non-string, invalid and empty values
+			if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
 			{
-				// Skip non-string, invalid and empty values
-				if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
-					continue;
-
-				// Compile regex
-				int rc = regcomp(&regex_clients[i], filter->valuestring, REG_EXTENDED);
-				if(rc != 0)
-				{
-					// Failed to compile regex
-					char errbuf[1024];
-					regerror(rc, &regex_clients[i], errbuf, sizeof(errbuf));
-					log_err("Failed to compile client regex \"%s\": %s",
-					        filter->valuestring, errbuf);
-					return send_json_error(api, 400,
-					                       "bad_request",
-					                       "Failed to compile client regex",
-					                       filter->valuestring);
-				}
+				log_warn("Skipping invalid regex at webserver.api.excludeClients.%u", i);
+				continue;
 			}
+
+			// Compile regex
+			int rc = regcomp(&regex_clients[i], filter->valuestring, REG_EXTENDED);
+			if(rc != 0)
+			{
+				// Failed to compile regex
+				char errbuf[1024];
+				regerror(rc, &regex_clients[i], errbuf, sizeof(errbuf));
+				log_err("Failed to compile client regex \"%s\": %s",
+					filter->valuestring, errbuf);
+				return send_json_error(api, 400,
+							"bad_request",
+							"Failed to compile client regex",
+							filter->valuestring);
+			}
+
+			i++;
 		}
 
 		// We are filtering, so we have to continue to step over the
