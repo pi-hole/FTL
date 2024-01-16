@@ -972,6 +972,11 @@ void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.t = CONF_UINT;
 	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
 
+	conf->webserver.api.maxClients.k = "webserver.api.maxClients";
+	conf->webserver.api.maxClients.h = "Up to how many clients should be returned in the activity graph endpoint (/api/history/clients)?\n This setting can be overwritten at run-time using the parameter N";
+	conf->webserver.api.maxClients.t = CONF_UINT16;
+	conf->webserver.api.maxClients.d.u16 = 10;
+
 	conf->webserver.api.allow_destructive.k = "webserver.api.allow_destructive";
 	conf->webserver.api.allow_destructive.h = "Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)";
 	conf->webserver.api.allow_destructive.t = CONF_BOOL;

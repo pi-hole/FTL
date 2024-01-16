@@ -24,6 +24,7 @@
 int api_handler(struct mg_connection *conn, void *ignored);
 
 // Statistic methods
+int __attribute__((pure)) cmpdesc(const void *a, const void *b);
 int api_stats_summary(struct ftl_conn *api);
 int api_stats_query_types(struct ftl_conn *api);
 int api_stats_upstreams(struct ftl_conn *api);
