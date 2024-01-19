@@ -1286,6 +1286,17 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
   return NULL;
 }
 
+static void if_names_add(const char *ifname)
+{
+  struct iname *new = opt_malloc(sizeof(struct iname));
+  new->next = daemon->if_names;
+  daemon->if_names = new;
+  /* new->name may be NULL if someone does
+     "interface=" to disable all interfaces except loop. */
+  new->name = opt_string_alloc(ifname);
+  new->flags = 0;
+}
+
 #ifdef HAVE_DHCP
 
 static int is_tag_prefix(char *arg)
@@ -1413,17 +1424,6 @@ static void dhcp_opt_free(struct dhcp_opt *opt)
   dhcp_netid_free(opt->netid);
   free(opt->val);
   free(opt);
-}
-
-static void if_names_add(const char *ifname)
-{
-  struct iname *new = opt_malloc(sizeof(struct iname));
-  new->next = daemon->if_names;
-  daemon->if_names = new;
-  /* new->name may be NULL if someone does
-     "interface=" to disable all interfaces except loop. */
-  new->name = opt_string_alloc(ifname);
-  new->flags = 0;
 }
 
 /* This is too insanely large to keep in-line in the switch */
