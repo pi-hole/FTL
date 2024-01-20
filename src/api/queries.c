@@ -19,7 +19,6 @@
 #include "database/aliasclients.h"
 // get_memdb()
 #include "database/query-table.h"
-#include "regex.h"
 // dbopen(false, ), dbclose()
 #include "database/common.h"
 
@@ -444,103 +443,19 @@ int api_queries(struct ftl_conn *api)
 	bool filtering = false;
 
 	// Regex filtering?
-	const int N_regex_domains = cJSON_GetArraySize(config.webserver.api.excludeDomains.v.json);
 	regex_t *regex_domains = NULL;
-	if(N_regex_domains > 0)
-	{
-		// Allocate memory for regex array
-		regex_domains = calloc(N_regex_domains, sizeof(regex_t));
-		if(regex_domains == NULL)
-		{
-			return send_json_error(api, 500,
-			                       "internal_error",
-			                       "Internal server error, failed to allocate memory for domain regex array",
-			                       NULL);
-		}
-
-		// Compile regexes
-		unsigned int i = 0;
-		cJSON *filter = NULL;
-		cJSON_ArrayForEach(filter, config.webserver.api.excludeDomains.v.json)
-		{
-			// Skip non-string, invalid and empty values
-			if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
-			{
-				log_warn("Skipping invalid regex at webserver.api.excludeDomains.%u", i);
-				continue;
-			}
-
-			// Compile regex
-			int rc = regcomp(&regex_domains[i], filter->valuestring, REG_EXTENDED);
-			if(rc != 0)
-			{
-				// Failed to compile regex
-				char errbuf[1024] = { 0 };
-				regerror(rc, &regex_domains[i], errbuf, sizeof(errbuf));
-				log_err("Failed to compile domain regex \"%s\": %s",
-					filter->valuestring, errbuf);
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Failed to compile domain regex",
-				                       filter->valuestring);
-			}
-
-			i++;
-		}
-
-		// We are filtering, so we have to continue to step over the
-		// remaining rows to get the correct number of total records
+	unsigned int N_regex_domains = 0;
+	if(compile_filter_regex(api, "webserver.api.excludeDomains",
+	                        config.webserver.api.excludeDomains.v.json,
+	                        &regex_domains, &N_regex_domains))
 		filtering = true;
-	}
 
-	const int N_regex_clients = cJSON_GetArraySize(config.webserver.api.excludeClients.v.json);
 	regex_t *regex_clients = NULL;
-	if(N_regex_clients > 0)
-	{
-		// Allocate memory for regex array
-		regex_clients = calloc(N_regex_clients, sizeof(regex_t));
-		if(regex_clients == NULL)
-		{
-			return send_json_error(api, 500,
-			                       "internal_error",
-			                       "Internal server error, failed to allocate memory for client regex array",
-			                       NULL);
-		}
-
-		// Compile regexes
-		unsigned int i = 0;
-		cJSON *filter = NULL;
-		cJSON_ArrayForEach(filter, config.webserver.api.excludeClients.v.json)
-		{
-			// Skip non-string, invalid and empty values
-			if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
-			{
-				log_warn("Skipping invalid regex at webserver.api.excludeClients.%u", i);
-				continue;
-			}
-
-			// Compile regex
-			int rc = regcomp(&regex_clients[i], filter->valuestring, REG_EXTENDED);
-			if(rc != 0)
-			{
-				// Failed to compile regex
-				char errbuf[1024] = { 0 };
-				regerror(rc, &regex_clients[i], errbuf, sizeof(errbuf));
-				log_err("Failed to compile client regex \"%s\": %s",
-					filter->valuestring, errbuf);
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Failed to compile client regex",
-				                       filter->valuestring);
-			}
-
-			i++;
-		}
-
-		// We are filtering, so we have to continue to step over the
-		// remaining rows to get the correct number of total records
+	unsigned int N_regex_clients = 0;
+	if(compile_filter_regex(api, "webserver.api.excludeClients",
+	                        config.webserver.api.excludeClients.v.json,
+	                        &regex_clients, &N_regex_clients))
 		filtering = true;
-	}
 
 	// Finish preparing query string
 	querystr_finish(querystr, sort_col, sort_dir);
@@ -824,7 +739,7 @@ int api_queries(struct ftl_conn *api)
 		{
 			bool match = false;
 			// Iterate over all regex filters
-			for(int i = 0; i < N_regex_domains; i++)
+			for(unsigned int i = 0; i < N_regex_domains; i++)
 			{
 				// Check if the domain matches the regex
 				if(regexec(&regex_domains[i], domain, 0, NULL, 0) == 0)
@@ -853,7 +768,7 @@ int api_queries(struct ftl_conn *api)
 		{
 			bool match = false;
 			// Iterate over all regex filters
-			for(int i = 0; i < N_regex_clients; i++)
+			for(unsigned int i = 0; i < N_regex_clients; i++)
 			{
 				// Check if the domain matches the regex
 				if(regexec(&regex_clients[i], client_ip, 0, NULL, 0) == 0)
@@ -1049,7 +964,7 @@ int api_queries(struct ftl_conn *api)
 	if(N_regex_domains > 0)
 	{
 		// Free individual regexes
-		for(int i = 0; i < N_regex_domains; i++)
+		for(unsigned int i = 0; i < N_regex_domains; i++)
 			regfree(&regex_domains[i]);
 
 		// Free array of regex pointers
@@ -1058,12 +973,67 @@ int api_queries(struct ftl_conn *api)
 	if(N_regex_clients > 0)
 	{
 		// Free individual regexes
-		for(int i = 0; i < N_regex_clients; i++)
+		for(unsigned int i = 0; i < N_regex_clients; i++)
 			regfree(&regex_clients[i]);
 
-		// Free array of regex pointers
+		// Free array of regex po^inters
 		free(regex_clients);
 	}
 
 	JSON_SEND_OBJECT(json);
+}
+
+bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json, regex_t **regex, unsigned int *N_regex)
+{
+
+	const int N = cJSON_GetArraySize(json);
+	if(N < 1)
+		return false;
+
+	// Set number of regexes (positive = unsigned integer)
+	*N_regex = N;
+
+	// Allocate memory for regex array
+	*regex = calloc(N, sizeof(regex_t));
+	if(*regex == NULL)
+	{
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Internal server error, failed to allocate memory for regex array",
+		                       NULL);
+	}
+
+	// Compile regexes
+	unsigned int i = 0;
+	cJSON *filter = NULL;
+	cJSON_ArrayForEach(filter, json)
+	{
+		// Skip non-string, invalid and empty values
+		if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
+		{
+			log_warn("Skipping invalid regex at %s.%u", path, i);
+			continue;
+		}
+
+		// Compile regex
+		int rc = regcomp(regex[i], filter->valuestring, REG_EXTENDED);
+		if(rc != 0)
+		{
+			// Failed to compile regex
+			char errbuf[1024] = { 0 };
+			regerror(rc, regex[i], errbuf, sizeof(errbuf));
+			log_err("Failed to compile regex \"%s\": %s",
+			        filter->valuestring, errbuf);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Failed to compile regex",
+			                       filter->valuestring);
+		}
+
+		i++;
+	}
+
+	// We are filtering, so we have to continue to step over the
+	// remaining rows to get the correct number of total records
+	return true;
 }

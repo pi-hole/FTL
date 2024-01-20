@@ -216,50 +216,11 @@ int api_stats_top_domains(struct ftl_conn *api)
 	clearSetupVarsArray();
 
 	// Get domains which the user doesn't want to see
-	const int N_regex_domains = cJSON_GetArraySize(config.webserver.api.excludeDomains.v.json);
 	regex_t *regex_domains = NULL;
-	if(N_regex_domains > 0)
-	{
-		// Allocate memory for regex array
-		regex_domains = calloc(N_regex_domains, sizeof(regex_t));
-		if(regex_domains == NULL)
-		{
-			return send_json_error(api, 500,
-			                       "internal_error",
-			                       "Internal server error, failed to allocate memory for client regex array",
-			                       NULL);
-		}
-
-		// Compile regexes
-		unsigned int i = 0;
-		cJSON *filter = NULL;
-		cJSON_ArrayForEach(filter, config.webserver.api.excludeDomains.v.json)
-		{
-			// Skip non-string, invalid and empty values
-			if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
-			{
-				log_warn("Skipping invalid regex at webserver.api.excludeDomains.%u", i);
-				continue;
-			}
-
-			// Compile regex
-			int rc = regcomp(&regex_domains[i], filter->valuestring, REG_EXTENDED);
-			if(rc != 0)
-			{
-				// Failed to compile regex
-				char errbuf[1024] = { 0 };
-				regerror(rc, &regex_domains[i], errbuf, sizeof(errbuf));
-				log_err("Failed to compile domain regex \"%s\": %s",
-					filter->valuestring, errbuf);
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Failed to compile domain regex",
-				                       filter->valuestring);
-			}
-
-			i++;
-		}
-	}
+	unsigned int N_regex_domains = 0;
+	compile_filter_regex(api, "webserver.api.excludeDomains",
+	                     config.webserver.api.excludeDomains.v.json,
+	                     &regex_domains, &N_regex_domains);
 
 	int n = 0;
 	cJSON *top_domains = JSON_NEW_ARRAY();
@@ -284,7 +245,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 		if(N_regex_domains > 0)
 		{
 			// Iterate over all regex filters
-			for(int j = 0; j < N_regex_domains; j++)
+			for(unsigned int j = 0; j < N_regex_domains; j++)
 			{
 				// Check if the domain matches the regex
 				if(regexec(&regex_domains[j], domain_name, 0, NULL, 0) == 0)
@@ -328,7 +289,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 	if(N_regex_domains > 0)
 	{
 		// Free individual regexes
-		for(int i = 0; i < N_regex_domains; i++)
+		for(unsigned int i = 0; i < N_regex_domains; i++)
 			regfree(&regex_domains[i]);
 
 		// Free array of regex pointers
@@ -403,50 +364,11 @@ int api_stats_top_clients(struct ftl_conn *api)
 	qsort(temparray, clients, sizeof(int[2]), cmpdesc);
 
 	// Get clients which the user doesn't want to see
-	const int N_regex_clients = cJSON_GetArraySize(config.webserver.api.excludeClients.v.json);
 	regex_t *regex_clients = NULL;
-	if(N_regex_clients > 0)
-	{
-		// Allocate memory for regex array
-		regex_clients = calloc(N_regex_clients, sizeof(regex_t));
-		if(regex_clients == NULL)
-		{
-			return send_json_error(api, 500,
-			                       "internal_error",
-			                       "Internal server error, failed to allocate memory for client regex array",
-			                       NULL);
-		}
-
-		// Compile regexes
-		unsigned int i = 0;
-		cJSON *filter = NULL;
-		cJSON_ArrayForEach(filter, config.webserver.api.excludeClients.v.json)
-		{
-			// Skip non-string, invalid and empty values
-			if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
-			{
-				log_warn("Skipping invalid regex at webserver.api.excludeClients.%u", i);
-				continue;
-			}
-
-			// Compile regex
-			int rc = regcomp(&regex_clients[i], filter->valuestring, REG_EXTENDED);
-			if(rc != 0)
-			{
-				// Failed to compile regex
-				char errbuf[1024] = { 0 };
-				regerror(rc, &regex_clients[i], errbuf, sizeof(errbuf));
-				log_err("Failed to compile client regex \"%s\": %s",
-					filter->valuestring, errbuf);
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Failed to compile client regex",
-				                       filter->valuestring);
-			}
-
-			i++;
-		}
-	}
+	unsigned int N_regex_clients = 0;
+	compile_filter_regex(api, "webserver.api.excludeClients",
+	                     config.webserver.api.excludeClients.v.json,
+	                     &regex_clients, &N_regex_clients);
 
 	int n = 0;
 	cJSON *top_clients = JSON_NEW_ARRAY();
@@ -473,7 +395,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 		if(N_regex_clients > 0)
 		{
 			// Iterate over all regex filters
-			for(int j = 0; j < N_regex_clients; j++)
+			for(unsigned int j = 0; j < N_regex_clients; j++)
 			{
 				// Check if the domain matches the regex
 				if(regexec(&regex_clients[j], client_ip, 0, NULL, 0) == 0)
@@ -516,7 +438,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 	if(N_regex_clients > 0)
 	{
 		// Free individual regexes
-		for(int i = 0; i < N_regex_clients; i++)
+		for(unsigned int i = 0; i < N_regex_clients; i++)
 			regfree(&regex_clients[i]);
 
 		// Free array of regex pointers
