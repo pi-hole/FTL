@@ -733,7 +733,7 @@ int api_queries(struct ftl_conn *api)
 		// Increase number of records from the database
 		recordsCounted++;
 
-		// Apply possible regex filters to Query Log domains
+		// Apply possible domain regex filters to Query Log
 		const char *domain = (const char*)sqlite3_column_text(read_stmt, 4); // d.domain
 		if(N_regex_domains > 0)
 		{
@@ -759,7 +759,7 @@ int api_queries(struct ftl_conn *api)
 			}
 		}
 
-		// Apply possible client filters to Query Log clients
+		// Apply possible client regex filters to Query Log
 		const char *client_ip = (const char*)sqlite3_column_text(read_stmt, 10); // c.ip
 		const char *client_name = NULL;
 		if(sqlite3_column_type(read_stmt, 11) == SQLITE_TEXT && sqlite3_column_bytes(read_stmt, 11) > 0)
