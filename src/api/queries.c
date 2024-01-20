@@ -1016,12 +1016,12 @@ bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json, r
 		}
 
 		// Compile regex
-		int rc = regcomp(regex[i], filter->valuestring, REG_EXTENDED);
+		int rc = regcomp(&(*regex)[i], filter->valuestring, REG_EXTENDED);
 		if(rc != 0)
 		{
 			// Failed to compile regex
 			char errbuf[1024] = { 0 };
-			regerror(rc, regex[i], errbuf, sizeof(errbuf));
+			regerror(rc, &(*regex)[i], errbuf, sizeof(errbuf));
 			log_err("Failed to compile regex \"%s\": %s",
 			        filter->valuestring, errbuf);
 			return send_json_error(api, 400,
