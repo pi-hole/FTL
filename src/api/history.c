@@ -91,31 +91,10 @@ int api_history_clients(struct ftl_conn *api)
 	if(skipclient == NULL || temparray == NULL)
 	{
 		unlock_shm();
-		return send_json_error(api, 500, "internal_error",
-		                       "Failed to allocate memory for client history", NULL);
-	}
-
-	// Check if the user wants to exclude any clients, this code path is
-	// only taken if the user has configured the web interface to exclude
-	// clients (it will most often be skipped)
-	unsigned int excludeClients = cJSON_GetArraySize(config.webserver.api.excludeClients.v.json);
-	if(excludeClients > 0)
-	{
-		for(int clientID = 0; clientID < counters->clients; clientID++)
-		{
-			// Get client pointer
-			const clientsData* client = getClient(clientID, true);
-			if(client == NULL)
-				continue;
-			// Check if this client should be skipped
-			for(unsigned int i = 0; i < excludeClients; i++)
-			{
-				cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeClients.v.json, i);
-				if(strcmp(getstr(client->ippos), item->valuestring) == 0 ||
-				   strcmp(getstr(client->namepos), item->valuestring) == 0)
-					skipclient[clientID] = true;
-			}
-		}
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to allocate memory for skipclient array",
+		                       NULL);
 	}
 
 	// Skip clients included in others (in alias-clients)

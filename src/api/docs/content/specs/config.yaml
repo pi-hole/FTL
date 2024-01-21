@@ -699,8 +699,8 @@ components:
               pwhash: ''
               totp_secret: ''
               app_pwhash: ''
-              excludeClients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
-              excludeDomains: [ 'google.de', 'pi-hole.net' ]
+              excludeClients: [ '1\.2\.3\.4', 'localhost', 'fe80::345' ]
+              excludeDomains: [ 'google\\.de', 'pi-hole\.net' ]
               maxHistory: 86400
               maxClients: 10
               allow_destructive: true
