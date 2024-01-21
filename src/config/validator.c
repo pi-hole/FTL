@@ -12,6 +12,8 @@
 #include "log.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
+// regex
+#include "regex_r.h"
 
 // Validate the dns.hosts array
 // Each entry needs to be a string in form "IP HOSTNAME"
@@ -300,10 +302,29 @@ bool validate_filepath_empty(union conf_value *val, char err[VALIDATOR_ERRBUF_LE
 	return validate_filepath(val, err);
 }
 
+// Validate a single regular expression
+static bool validate_regex(const char *regex, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Compile regex
+	regex_t preg = { 0 };
+	const int ret = regcomp(&preg, regex, REG_EXTENDED);
+	if(ret != 0)
+	{
+		regerror(ret, &preg, err, VALIDATOR_ERRBUF_LEN);
+		regfree(&preg);
+		return false;
+	}
+
+	// Free regex
+	regfree(&preg);
+
+	return true;
+}
+
 // Validate array of regexes
 bool validate_regex_array(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 {
-	if(!cJSON_IsArray(val->json))
+	if(val == NULL || !cJSON_IsArray(val->json))
 	{
 		strncat(err, "Not an array", VALIDATOR_ERRBUF_LEN);
 		return false;
@@ -317,14 +338,17 @@ bool validate_regex_array(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
 		// Check if it's a string
 		if(!cJSON_IsString(item))
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not a string", i, get_ordinal_suffix(i));
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not a string",
+			         i, get_ordinal_suffix(i));
 			return false;
 		}
 
 		// Check if it's a valid regex
-		if(!validate_regex(item->valuestring))
+		char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(!validate_regex(item->valuestring, errbuf))
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not a valid regex (\"%s\")", i, get_ordinal_suffix(i), item->valuestring);
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not a valid regex (\"%s\"): %s",
+			         i, get_ordinal_suffix(i), item->valuestring, errbuf);
 			return false;
 		}
 	}

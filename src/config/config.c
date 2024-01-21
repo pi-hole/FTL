@@ -972,12 +972,14 @@ void initConfig(struct config *conf)
 	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of regular expressions describing clients");
 	conf->webserver.api.excludeClients.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeClients.d.json = cJSON_CreateArray();
+	conf->webserver.api.excludeClients.c = validate_regex_array;
 
 	conf->webserver.api.excludeDomains.k = "webserver.api.excludeDomains";
 	conf->webserver.api.excludeDomains.h = "Array of domains to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_domains)\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n\n Example: [ \"(^|\\\\.)\\\\.google\\\\.de$\", \"\\\\.pi-hole\\\\.net$\" ]";
 	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of regular expressions describing domains");
 	conf->webserver.api.excludeDomains.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeDomains.d.json = cJSON_CreateArray();
+	conf->webserver.api.excludeDomains.c = validate_regex_array;
 
 	conf->webserver.api.maxHistory.k = "webserver.api.maxHistory";
 	conf->webserver.api.maxHistory.h = "How much history should be imported from the database and returned by the API [seconds]? (max 24*60*60 = 86400)";
