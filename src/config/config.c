@@ -196,7 +196,7 @@ struct conf_item *get_conf_item(struct config *conf, const unsigned int n)
 	}
 
 	// Return n-th config element
-	return (void*)conf + n*sizeof(struct conf_item);
+	return (struct conf_item *)conf + n;
 }
 
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug)
@@ -209,7 +209,7 @@ struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debu
 	}
 
 	// Return n-th config element
-	return (void*)&conf->debug + debug*sizeof(struct conf_item);
+	return (struct conf_item *)&conf->debug + debug;
 }
 
 unsigned int __attribute__ ((pure)) config_path_depth(char **paths)
@@ -935,14 +935,14 @@ void initConfig(struct config *conf)
 	conf->webserver.api.app_pwhash.d.s = (char*)"";
 
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
-	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
-	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
+	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_clients)\n This setting accepts both IP addresses (IPv4 and IPv6) as well as hostnames.\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n\n Example: [ \"^192\\\\.168\\\\.2\\\\.56$\", \"^fe80::341:[0-9a-f]*$\", \"^localhost$\" ]";
+	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of regular expressions describing clients");
 	conf->webserver.api.excludeClients.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeClients.d.json = cJSON_CreateArray();
 
 	conf->webserver.api.excludeDomains.k = "webserver.api.excludeDomains";
-	conf->webserver.api.excludeDomains.h = "Array of domains to be excluded from certain API responses\n Example: [ \"google.de\", \"pi-hole.net\" ]";
-	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of domains");
+	conf->webserver.api.excludeDomains.h = "Array of domains to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_domains)\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n\n Example: [ \"(^|\\\\.)\\\\.google\\\\.de$\", \"\\\\.pi-hole\\\\.net$\" ]";
+	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of regular expressions describing domains");
 	conf->webserver.api.excludeDomains.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeDomains.d.json = cJSON_CreateArray();
 
@@ -950,6 +950,11 @@ void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.h = "How much history should be imported from the database and returned by the API [seconds]? (max 24*60*60 = 86400)";
 	conf->webserver.api.maxHistory.t = CONF_UINT;
 	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
+
+	conf->webserver.api.maxClients.k = "webserver.api.maxClients";
+	conf->webserver.api.maxClients.h = "Up to how many clients should be returned in the activity graph endpoint (/api/history/clients)?\n This setting can be overwritten at run-time using the parameter N";
+	conf->webserver.api.maxClients.t = CONF_UINT16;
+	conf->webserver.api.maxClients.d.u16 = 10;
 
 	conf->webserver.api.allow_destructive.k = "webserver.api.allow_destructive";
 	conf->webserver.api.allow_destructive.h = "Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)";
@@ -1414,36 +1419,39 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 		rename(GLOBALTOMLPATH, new_name);
 	}
 
-	// Determine default webserver ports
-	// Check if ports 80/TCP and 443/TCP are already in use
-	const in_port_t http_port = port_in_use(80) ? 8080 : 80;
-	const in_port_t https_port = port_in_use(443) ? 8443 : 443;
-
-	// Create a string with the default ports
-	// Allocate memory for the string
-	char *ports = calloc(32, sizeof(char));
-	if(ports == NULL)
+	// Determine default webserver ports if not imported from setupVars.conf
+	if(!(config.webserver.port.f & FLAG_CONF_IMPORTED))
 	{
-		log_err("Unable to allocate memory for default ports string");
-		return false;
+		// Check if ports 80/TCP and 443/TCP are already in use
+		const in_port_t http_port = port_in_use(80) ? 8080 : 80;
+		const in_port_t https_port = port_in_use(443) ? 8443 : 443;
+
+		// Create a string with the default ports
+		// Allocate memory for the string
+		char *ports = calloc(32, sizeof(char));
+		if(ports == NULL)
+		{
+			log_err("Unable to allocate memory for default ports string");
+			return false;
+		}
+		// Create the string
+		snprintf(ports, 32, "%d,%ds", http_port, https_port);
+
+		// Append IPv6 ports if IPv6 is enabled
+		const bool have_ipv6 = ipv6_enabled();
+		if(have_ipv6)
+			snprintf(ports + strlen(ports), 32 - strlen(ports),
+				",[::]:%d,[::]:%ds", http_port, https_port);
+
+		// Set default values for webserver ports
+		if(conf->webserver.port.t == CONF_STRING_ALLOCATED)
+			free(conf->webserver.port.v.s);
+		conf->webserver.port.v.s = ports;
+		conf->webserver.port.t = CONF_STRING_ALLOCATED;
+
+		log_info("Initialised webserver ports at %d (HTTP) and %d (HTTPS), IPv6 support is %s",
+			http_port, https_port, have_ipv6 ? "enabled" : "disabled");
 	}
-	// Create the string
-	snprintf(ports, 32, "%d,%ds", http_port, https_port);
-
-	// Append IPv6 ports if IPv6 is enabled
-	const bool have_ipv6 = ipv6_enabled();
-	if(have_ipv6)
-		snprintf(ports + strlen(ports), 32 - strlen(ports),
-		         ",[::]:%d,[::]:%ds", http_port, https_port);
-
-	// Set default values for webserver ports
-	if(conf->webserver.port.t == CONF_STRING_ALLOCATED)
-		free(conf->webserver.port.v.s);
-	conf->webserver.port.v.s = ports;
-	conf->webserver.port.t = CONF_STRING_ALLOCATED;
-
-	log_info("Initialised webserver ports at %d (HTTP) and %d (HTTPS), IPv6 support is %s",
-	         http_port, https_port, have_ipv6 ? "enabled" : "disabled");
 
 	// Initialize the TOML config file
 	writeFTLtoml(true);

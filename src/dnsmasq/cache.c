@@ -15,6 +15,7 @@
 */
 
 #include "dnsmasq.h"
+#include "dnsmasq_interface.h"
 #include "webserver/webserver.h"
 
 static struct crec *cache_head = NULL, *cache_tail = NULL, **hash_table = NULL;

@@ -38,6 +38,9 @@
 // characters will be replaced by their UTF-8 escape sequences (UCS-2)
 #define TOML_UTF8
 
+// Location of the legacy (pre-v6.0) config file
+#define GLOBALCONFFILE_LEGACY "/etc/pihole/pihole-FTL.conf"
+
 union conf_value {
 	bool b;                                     // boolean value
 	int i;                                      // integer value
@@ -94,6 +97,7 @@ enum conf_type {
 #define FLAG_INVALIDATE_SESSIONS   (1 << 3)
 #define FLAG_WRITE_ONLY            (1 << 4)
 #define FLAG_ENV_VAR               (1 << 5)
+#define FLAG_CONF_IMPORTED         (1 << 6)
 
 struct conf_item {
 	const char *k;        // item Key
@@ -235,6 +239,7 @@ struct config {
 			struct conf_item excludeClients;
 			struct conf_item excludeDomains;
 			struct conf_item maxHistory;
+			struct conf_item maxClients;
 			struct conf_item allow_destructive;
 			struct {
 				struct conf_item limit;

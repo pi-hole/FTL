@@ -11,7 +11,7 @@
 #define QUERY_TABLE_PRIVATE_H
 
 // struct queriesData
-#include "../datastructure.h"
+#include "datastructure.h"
 
 #define CREATE_FTL_TABLE "CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );"
 
@@ -111,11 +111,9 @@ bool init_memory_database(void);
 sqlite3 *get_memdb(void) __attribute__((pure));
 void close_memory_database(void);
 bool import_queries_from_disk(void);
-bool attach_disk_database(const char **msg);
 bool attach_database(sqlite3* db, const char **message, const char *path, const char *alias);
-bool detach_disk_database(const char **msg);
 bool detach_database(sqlite3* db, const char **message, const char *alias);
-int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, const bool do_attach);
+int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename);
 bool export_queries_to_disk(bool final);
 bool delete_old_queries_from_db(const bool use_memdb, const double mintime);
 bool add_additional_info_column(sqlite3 *db);

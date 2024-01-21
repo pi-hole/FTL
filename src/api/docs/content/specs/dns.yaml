@@ -29,7 +29,7 @@ components:
         description: |
           Change the current blocking mode by setting `blocking` to the desired value.
           The optional `timer` object may used to set a timer. Once this timer elapsed, the opposite blocking mode is automatically set.
-          For instance, you can request `{blocking: true, timer: 60}` to disable Pi-hole for one minute.
+          For instance, you can request `{blocking: false, timer: 60}` to disable Pi-hole for one minute.
           Blocking will be automatically resumed afterwards.
 
           You can terminate a possibly running timer by setting `timer` to `null` (the set mode becomes permanent).
@@ -39,9 +39,8 @@ components:
             'application/json':
               schema:
                 allOf:
-                  - $ref: 'dns.yaml#/components/schemas/blocking'
+                  - $ref: 'dns.yaml#/components/schemas/blocking_bool'
                   - $ref: 'dns.yaml#/components/schemas/timer'
-                  - $ref: 'common.yaml#/components/schemas/took'
         responses:
           '200':
             description: OK
@@ -83,6 +82,14 @@ components:
             - "failed"
             - "unknown"
           example: "enabled"
+    blocking_bool:
+      type: object
+      properties:
+        blocking:
+          type: boolean
+          description: Blocking status
+          default: true
+          example: true
     timer:
       type: object
       properties:

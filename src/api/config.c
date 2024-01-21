@@ -294,7 +294,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			}
 
 			if(!set_and_check_password(conf_item, elem->valuestring))
-				return "Failed to create password hash (verification failed), password remains unchanged";
+				return "password hash verification failed";
 
 			break;
 		}
@@ -605,8 +605,7 @@ static int api_config_get(struct ftl_conn *api)
 	}
 
 	// Release allocated memory
-	if(requested_path != NULL)
-		free_config_path(requested_path);
+	free_config_path(requested_path);
 
 	cJSON *json = JSON_NEW_OBJECT();
 
@@ -852,8 +851,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	if(min_level < 2)
 	{
 		// Release allocated memory
-		if(requested_path != NULL)
-			free_config_path(requested_path);
+		free_config_path(requested_path);
 
 		return send_json_error(api, 400,
 		                       "bad_request",
@@ -899,15 +897,14 @@ static int api_config_put_delete(struct ftl_conn *api)
 		{
 			char *key = strdup(new_item->k);
 			free_config(&newconf);
-			if(requested_path != NULL)
-				free_config_path(requested_path);
+			free_config_path(requested_path);
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config items set via environment variables cannot be changed via the API",
 			                            key, true);
 		}
 
-		// Check if this entry does already exist in the array
+		// Check if this entry exists in the array
 		int idx = 0;
 		for(; idx < cJSON_GetArraySize(new_item->v.json); idx++)
 		{
@@ -941,13 +938,12 @@ static int api_config_put_delete(struct ftl_conn *api)
 			if(found)
 			{
 				// Remove item from array
+				found = true;
 				cJSON_DeleteItemFromArray(new_item->v.json, idx);
 			}
 			else
 			{
 				// Item not found
-				message = "Item not found";
-				hint = "Can only delete existing items";
 				break;
 			}
 		}
@@ -965,16 +961,18 @@ static int api_config_put_delete(struct ftl_conn *api)
 	}
 
 	// Release allocated memory
-	if(requested_path != NULL)
-		free_config_path(requested_path);
+	free_config_path(requested_path);
 
-	// Error 404 if not found
-	if(!found || message != NULL)
+	// Error 404 if config element not found
+	if(!found)
 	{
-		// For any other error, a more specific message will have been added
-		// above
-		if(!message)
-			message = "No item specified";
+		cJSON *json = JSON_NEW_OBJECT();
+		JSON_SEND_OBJECT_CODE(json, 404);
+	}
+
+	// Error 400 if unique item already present
+	if(message != NULL)
+	{
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       message,

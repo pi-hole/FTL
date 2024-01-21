@@ -307,7 +307,6 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 
 	write_config_header(pihole_conf, "Dnsmasq config for Pi-hole's FTLDNS");
-	fputs("addn-hosts=/etc/pihole/local.list\n", pihole_conf);
 	fputs("hostsdir="DNSMASQ_HOSTSDIR"\n", pihole_conf);
 	fputs("\n", pihole_conf);
 	fputs("# Don't read /etc/resolv.conf. Get upstream servers only from the configuration\n", pihole_conf);

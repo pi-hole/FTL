@@ -12,6 +12,8 @@
 #include "database/session-table.h"
 #include "database/common.h"
 #include "config/config.h"
+// get_memdb()
+#include "database/query-table.h"
 
 bool create_session_table(sqlite3 *db)
 {
@@ -216,22 +218,17 @@ bool restore_db_sessions(struct session *sessions, const uint16_t max_sessions)
 		return true;
 	}
 
-	sqlite3 *db = dbopen(false, false);
-	if(db == NULL)
-	{
-		log_warn("Failed to open database in restore_db_sessions()");
-		return false;
-	}
+	sqlite3 *memdb = get_memdb();
 
 	// Remove expired sessions from database
-	SQL_bool(db, "DELETE FROM session WHERE valid_until < strftime('%%s', 'now');");
+	SQL_bool(memdb, "DELETE FROM disk.session WHERE valid_until < strftime('%%s', 'now');");
 
 	// Get all sessions from database
 	sqlite3_stmt *stmt = NULL;
-	if(sqlite3_prepare_v2(db, "SELECT login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed, app FROM session;", -1, &stmt, 0) != SQLITE_OK)
+	if(sqlite3_prepare_v2(memdb, "SELECT login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed, app FROM disk.session;", -1, &stmt, 0) != SQLITE_OK)
 	{
 		log_err("SQL error in restore_db_sessions(): %s (%d)",
-		        sqlite3_errmsg(db), sqlite3_errcode(db));
+		        sqlite3_errmsg(memdb), sqlite3_errcode(memdb));
 		return false;
 	}
 
@@ -303,7 +300,7 @@ bool restore_db_sessions(struct session *sessions, const uint16_t max_sessions)
 	if(sqlite3_finalize(stmt) != SQLITE_OK)
 	{
 		log_err("SQL error in restore_db_sessions(): %s (%d)",
-		        sqlite3_errmsg(db), sqlite3_errcode(db));
+		        sqlite3_errmsg(memdb), sqlite3_errcode(memdb));
 		return false;
 	}
 
@@ -311,11 +308,9 @@ bool restore_db_sessions(struct session *sessions, const uint16_t max_sessions)
 	// We use secure_delete to make sure the sessions are really gone
 	// In this mode, SQLite overwrites the deleted content with zeros
 	// (https://www.sqlite.org/pragma.html#pragma_secure_delete)
-	SQL_bool(db, "PRAGMA secure_delete = ON;");
-	SQL_bool(db, "DELETE FROM session;");
-
-	// Close database connection
-	dbclose(&db);
+	SQL_bool(memdb, "PRAGMA secure_delete = ON;");
+	SQL_bool(memdb, "DELETE FROM disk.session;");
+	SQL_bool(memdb, "PRAGMA secure_delete = OFF;");
 
 	return true;
 }

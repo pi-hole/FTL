@@ -12,6 +12,8 @@
 
 #include "enums.h"
 
+#define SIGUSR6 (SIGRTMIN + 6)
+
 // defined in dnsmasq/dnsmasq.h
 extern volatile char FTL_terminate;
 

@@ -428,6 +428,18 @@
   [[ ${lines[@]} == *"status: SERVFAIL"* ]]
 }
 
+@test "Special domain: NXDOMAIN is returned" {
+  run bash -c "dig A mask.icloud.com @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: NXDOMAIN"* ]]
+}
+
+@test "Special domain: Record is returned when explicitly allowed" {
+  run bash -c "dig A mask.icloud.com -b 127.0.0.2 @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: NOERROR"* ]]
+}
+
 @test "ABP-style matching working as expected" {
   run bash -c "dig A special.gravity.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
@@ -1167,6 +1179,18 @@
   run bash -c "echo -e '.quit\n' | ./pihole-FTL sqlite3 -interactive"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "Pi-hole FTL"* ]]
+}
+
+@test "Embedded SQLite3 shell ignores .sqliterc \"-ni\"" {
+  # Install .sqliterc file at current home directory
+  cp test/sqliterc ~/.sqliterc
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/gravity.db \"SELECT value FROM info WHERE property = 'abp_domains';\""
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != "1" ]]
+  run bash -c "./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db \"SELECT value FROM info WHERE property = 'abp_domains';\""
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  rm ~/.sqliterc
 }
 
 @test "Embedded LUA engine is called for .lua file" {

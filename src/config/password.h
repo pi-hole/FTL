@@ -26,6 +26,7 @@ enum password_result {
 	PASSWORD_INCORRECT = 0,
 	PASSWORD_CORRECT = 1,
 	APPPASSWORD_CORRECT = 2,
+	NO_PASSWORD_SET = 3,
 	PASSWORD_RATE_LIMITED = -1
 } __attribute__((packed));
 

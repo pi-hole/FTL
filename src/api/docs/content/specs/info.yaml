@@ -218,10 +218,16 @@ components:
         parameters:
           - $ref: 'info.yaml#/components/parameters/message_id'
         description: |
-          *Note:* There will be no content on success. You may specify multiple IDs to delete multiple messages at once (comma-separated in the path like `1,2,3`)
+          You may specify multiple IDs to delete multiple messages at once (comma-separated in the path like `1,2,3`)
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -235,6 +241,14 @@ components:
                     $ref: 'info.yaml#/components/examples/errors/messages/uri_error'
                   bad_request:
                     $ref: 'info.yaml#/components/examples/errors/messages/bad_request'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     messages_count:
       get:
         summary: Get count of Pi-hole diagnosis messages
@@ -835,7 +849,7 @@ components:
                     version:
                       type: string
                       nullable: true
-                      description: Remote (Github) Pi-hole Core version
+                      description: Remote (Github) Pi-hole Core version (null if on custom branch)
                       example: "v6.1"
                     hash:
                       type: string
@@ -869,7 +883,7 @@ components:
                     version:
                       type: string
                       nullable: true
-                      description: Remote (Github) Pi-hole Web version
+                      description: Remote (Github) Pi-hole Web version (null if on custom branch)
                       example: "v6.1"
                     hash:
                       type: string
@@ -908,7 +922,7 @@ components:
                     version:
                       type: string
                       nullable: true
-                      description: Remote (Github) Pi-hole FTL version
+                      description: Remote (Github) Pi-hole FTL version (null if on custom branch)
                       example: "v6.1"
                     hash:
                       type: string
