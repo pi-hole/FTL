@@ -15,6 +15,13 @@
 // regex
 #include "regex_r.h"
 
+// Stub validator for config types that need to dedicated validation as they can
+// be tested by their type only (e.g., integers, strings, booleans, enums, etc.)
+bool __attribute__((const)) validate_stub(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
+{
+	return true;
+}
+
 // Validate the dns.hosts array
 // Each entry needs to be a string in form "IP HOSTNAME"
 bool validate_dns_hosts(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])

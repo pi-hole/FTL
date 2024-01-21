@@ -14,6 +14,7 @@
 #include "FTL.h"
 #include "config/config.h"
 
+bool validate_stub(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN]) __attribute__((const));
 bool validate_dns_hosts(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_dns_cnames(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_cidr(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN]);
