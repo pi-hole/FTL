@@ -299,3 +299,35 @@ bool validate_filepath_empty(union conf_value *val, char err[VALIDATOR_ERRBUF_LE
 	// else:
 	return validate_filepath(val, err);
 }
+
+// Validate array of regexes
+bool validate_regex_array(union conf_value *val, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(!cJSON_IsArray(val->json))
+	{
+		strncat(err, "Not an array", VALIDATOR_ERRBUF_LEN);
+		return false;
+	}
+
+	for(int i = 1; i <= cJSON_GetArraySize(val->json); i++)
+	{
+		// Get array item
+		cJSON *item = cJSON_GetArrayItem(val->json, i-1);
+
+		// Check if it's a string
+		if(!cJSON_IsString(item))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not a string", i, get_ordinal_suffix(i));
+			return false;
+		}
+
+		// Check if it's a valid regex
+		if(!validate_regex(item->valuestring))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%d%s element is not a valid regex (\"%s\")", i, get_ordinal_suffix(i), item->valuestring);
+			return false;
+		}
+	}
+
+	return true;
+}

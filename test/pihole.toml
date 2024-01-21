@@ -673,25 +673,39 @@
     #     <valid Pi-hole password hash>
     app_pwhash = ""
 
-    # Array of clients to be excluded from certain API responses
-    # Example: [ "192.168.2.56", "fe80::341", "localhost" ]
+    # Array of clients to be excluded from certain API responses (regex):
+    # - Query Log (/api/queries)
+    # - Top Clients (/api/stats/top_clients)
+    # This setting accepts both IP addresses (IPv4 and IPv6) as well as hostnames.
+    # Note that backslashes "\" need to be escaped, i.e. "\\" in this setting
+    #
+    # Example: [ "^192\\.168\\.2\\.56$", "^fe80::341:[0-9a-f]*$", "^localhost$" ]
     #
     # Possible values are:
-    #     array of IP addresses and/or hostnames
+    #     array of regular expressions describing clients
     excludeClients = [
-      "1.2.3.4"
+      "^1\\.2\\.3\\.4$"
     ] ### CHANGED, default = []
 
-    # Array of domains to be excluded from certain API responses
-    # Example: [ "google.de", "pi-hole.net" ]
+    # Array of domains to be excluded from certain API responses (regex):
+    # - Query Log (/api/queries)
+    # - Top Clients (/api/stats/top_domains)
+    # Note that backslashes "\" need to be escaped, i.e. "\\" in this setting
+    #
+    # Example: [ "(^|\\.)\\.google\\.de$", "\\.pi-hole\\.net$" ]
     #
     # Possible values are:
-    #     array of domains
+    #     array of regular expressions describing domains
     excludeDomains = []
 
     # How much history should be imported from the database [seconds]? (max 24*60*60 =
     # 86400)
     maxHistory = 86400
+
+    # Up to how many clients should be returned in the activity graph endpoint
+    # (/api/history/clients)?
+    # This setting can be overwritten at run-time using the parameter N
+    maxClients = 10
 
     # Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)
     allow_destructive = true

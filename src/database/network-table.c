@@ -2425,7 +2425,7 @@ void networkTable_readIPsFinalize(sqlite3_stmt *read_stmt)
 	sqlite3_finalize(read_stmt);
 }
 
-bool networkTable_deleteDevice(sqlite3 *db, const int id, const char **message)
+bool networkTable_deleteDevice(sqlite3 *db, const int id, int *deleted, const char **message)
 {
 	// First step: Delete all associated IPs of this device
 	// Prepare SQLite statement
@@ -2462,6 +2462,9 @@ bool networkTable_deleteDevice(sqlite3 *db, const int id, const char **message)
 		return false;
 	}
 
+	// Check if we deleted any rows
+	*deleted += sqlite3_changes(db);
+
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
@@ -2497,6 +2500,9 @@ bool networkTable_deleteDevice(sqlite3 *db, const int id, const char **message)
 		sqlite3_finalize(stmt);
 		return false;
 	}
+
+	// Check if we deleted any rows
+	*deleted += sqlite3_changes(db);
 
 	// Finalize statement
 	sqlite3_finalize(stmt);

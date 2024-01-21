@@ -8,22 +8,22 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
-#include "api.h"
-#include "../shmem.h"
-#include "../datastructure.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
+#include "api/api.h"
+#include "shmem.h"
+#include "datastructure.h"
 // read_setupVarsconf()
-#include "../config/setupVars.h"
+#include "config/setupVars.h"
 // logging routines
-#include "../log.h"
+#include "log.h"
 // config struct
-#include "../config/config.h"
+#include "config/config.h"
 // overTime data
-#include "../overTime.h"
+#include "overTime.h"
 // enum REGEX
-#include "../regex_r.h"
+#include "regex_r.h"
 // sqrt()
 #include <math.h>
 
@@ -42,7 +42,7 @@ static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 } */
 
 // qsort subroutine, sort DESC
-static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
+int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 {
 	const int *elem1 = (int*)a;
 	const int *elem2 = (int*)b;
@@ -137,15 +137,6 @@ int api_stats_summary(struct ftl_conn *api)
 
 int api_stats_top_domains(struct ftl_conn *api)
 {
-	int count = 10;
-	const int domains = counters->domains;
-	int *temparray = calloc(2*domains, sizeof(int*));
-	if(temparray == NULL)
-	{
-		log_err("Memory allocation failed in %s()", __FUNCTION__);
-		return 0;
-	}
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
 	{
@@ -157,11 +148,24 @@ int api_stats_top_domains(struct ftl_conn *api)
 		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *top_domains = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(json, "top_domains", top_domains);
-		free(temparray);
 		JSON_SEND_OBJECT(json);
 	}
 
+	// Lock shared memory
+	lock_shm();
+
+	// Allocate memory
+	const int domains = counters->domains;
+	int *temparray = calloc(2*domains, sizeof(int));
+	if(temparray == NULL)
+	{
+		log_err("Memory allocation failed in %s()", __FUNCTION__);
+		return 0;
+	}
+
+
 	bool blocked = false; // Can be overwritten by query string
+	int count = 10;
 	// /api/stats/top_domains?blocked=true
 	if(api->request->query_string != NULL)
 	{
@@ -173,10 +177,8 @@ int api_stats_top_domains(struct ftl_conn *api)
 		get_int_var(api->request->query_string, "count", &count);
 	}
 
-	// Lock shared memory
-	lock_shm();
-
-	for(int domainID=0; domainID < domains; domainID++)
+	unsigned int added_domains = 0u;
+	for(int domainID = 0; domainID < domains; domainID++)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(domainID, true);
@@ -189,21 +191,23 @@ int api_stats_top_domains(struct ftl_conn *api)
 		else
 			// Count only permitted queries
 			temparray[2*domainID + 1] = (domain->count - domain->blockedcount);
+
+		added_domains++;
 	}
 
 	// Sort temporary array
-	qsort(temparray, domains, sizeof(int[2]), cmpdesc);
+	qsort(temparray, added_domains, sizeof(int[2]), cmpdesc);
 
 	// Get filter
-	const char* filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
+	const char* log_show = read_setupVarsconf("API_QUERY_LOG_SHOW");
 	bool showpermitted = true, showblocked = true;
-	if(filter != NULL)
+	if(log_show != NULL)
 	{
-		if((strcmp(filter, "permittedonly")) == 0)
+		if((strcmp(log_show, "permittedonly")) == 0)
 			showblocked = false;
-		else if((strcmp(filter, "blockedonly")) == 0)
+		else if((strcmp(log_show, "blockedonly")) == 0)
 			showpermitted = false;
-		else if((strcmp(filter, "nothing")) == 0)
+		else if((strcmp(log_show, "nothing")) == 0)
 		{
 			showpermitted = false;
 			showblocked = false;
@@ -212,11 +216,15 @@ int api_stats_top_domains(struct ftl_conn *api)
 	clearSetupVarsArray();
 
 	// Get domains which the user doesn't want to see
-	unsigned int excludeDomains = cJSON_GetArraySize(config.webserver.api.excludeDomains.v.json);
+	regex_t *regex_domains = NULL;
+	unsigned int N_regex_domains = 0;
+	compile_filter_regex(api, "webserver.api.excludeDomains",
+	                     config.webserver.api.excludeDomains.v.json,
+	                     &regex_domains, &N_regex_domains);
 
 	int n = 0;
 	cJSON *top_domains = JSON_NEW_ARRAY();
-	for(int i = 0; i < domains; i++)
+	for(unsigned int i = 0; i < added_domains; i++)
 	{
 		// Get sorted index
 		const int domainID = temparray[2*i + 0];
@@ -225,22 +233,31 @@ int api_stats_top_domains(struct ftl_conn *api)
 		if(domain == NULL)
 			continue;
 
-		// Skip this domain if there is a filter on it
-		bool skip_domain = false;
-		for(unsigned int j = 0; j < excludeDomains; j++)
-		{
-			cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeDomains.v.json, j);
-			if(strcmp(getstr(domain->domainpos), item->valuestring) == 0)
-			{
-				skip_domain = true;
-				break;
-			}
-		}
-		if(skip_domain)
-			continue;
+		// Get domain name
+		const char *domain_name = getstr(domain->domainpos);
 
 		// Hidden domain, probably due to privacy level. Skip this in the top lists
-		if(strcmp(getstr(domain->domainpos), HIDDEN_DOMAIN) == 0)
+		if(strcmp(domain_name, HIDDEN_DOMAIN) == 0)
+			continue;
+
+		// Skip this client if there is a filter on it
+		bool skip_domain = false;
+		if(N_regex_domains > 0)
+		{
+			// Iterate over all regex filters
+			for(unsigned int j = 0; j < N_regex_domains; j++)
+			{
+				// Check if the domain matches the regex
+				if(regexec(&regex_domains[j], domain_name, 0, NULL, 0) == 0)
+				{
+					// Domain matches
+					skip_domain = true;
+					break;
+				}
+			}
+		}
+
+		if(skip_domain)
 			continue;
 
 		int domain_count = -1;
@@ -257,7 +274,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 		if(domain_count > -1)
 		{
 			cJSON *domain_item = JSON_NEW_OBJECT();
-			JSON_REF_STR_IN_OBJECT(domain_item, "domain", getstr(domain->domainpos));
+			JSON_REF_STR_IN_OBJECT(domain_item, "domain", domain_name);
 			JSON_ADD_NUMBER_TO_OBJECT(domain_item, "count", domain_count);
 			JSON_ADD_ITEM_TO_ARRAY(top_domains, domain_item);
 		}
@@ -267,6 +284,17 @@ int api_stats_top_domains(struct ftl_conn *api)
 			break;
 	}
 	free(temparray);
+
+	// Free regexes
+	if(N_regex_domains > 0)
+	{
+		// Free individual regexes
+		for(unsigned int i = 0; i < N_regex_domains; i++)
+			regfree(&regex_domains[i]);
+
+		// Free array of regex pointers
+		free(regex_domains);
+	}
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "domains", top_domains);
@@ -282,7 +310,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 {
 	int count = 10;
 	const int clients = counters->clients;
-	int *temparray = calloc(2*clients, sizeof(int*));
+	int *temparray = calloc(2*clients, sizeof(int));
 	if(temparray == NULL)
 	{
 		log_err("Memory allocation failed in api_stats_top_clients()");
@@ -336,11 +364,15 @@ int api_stats_top_clients(struct ftl_conn *api)
 	qsort(temparray, clients, sizeof(int[2]), cmpdesc);
 
 	// Get clients which the user doesn't want to see
-	unsigned int excludeClients = cJSON_GetArraySize(config.webserver.api.excludeClients.v.json);
+	regex_t *regex_clients = NULL;
+	unsigned int N_regex_clients = 0;
+	compile_filter_regex(api, "webserver.api.excludeClients",
+	                     config.webserver.api.excludeClients.v.json,
+	                     &regex_clients, &N_regex_clients);
 
 	int n = 0;
 	cJSON *top_clients = JSON_NEW_ARRAY();
-	for(int i=0; i < clients; i++)
+	for(int i = 0; i < clients; i++)
 	{
 		// Get sorted indices and counter values (may be either total or blocked count)
 		const int clientID = temparray[2*i + 0];
@@ -350,28 +382,39 @@ int api_stats_top_clients(struct ftl_conn *api)
 		if(client == NULL)
 			continue;
 
-		// Skip this client if there is a filter on it
-		bool skip_client = false;
-		for(unsigned int j = 0; j < excludeClients; j++)
-		{
-			cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeClients.v.json, j);
-			if(strcmp(getstr(client->ippos), item->valuestring) == 0 ||
-			   strcmp(getstr(client->namepos), item->valuestring) == 0)
-			{
-				skip_client = true;
-				break;
-			}
-		}
-		if(skip_client)
-			continue;
-
-		// Hidden client, probably due to privacy level. Skip this in the top lists
-		if(strcmp(getstr(client->ippos), HIDDEN_CLIENT) == 0)
-			continue;
-
-		// Get client IP and name
+		// Get IP and host name of client
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = getstr(client->namepos);
+
+		// Hidden client, probably due to privacy level. Skip this in the top lists
+		if(strcmp(client_ip, HIDDEN_CLIENT) == 0)
+			continue;
+
+		// Skip this client if there is a filter on it
+		bool skip_client = false;
+		if(N_regex_clients > 0)
+		{
+			// Iterate over all regex filters
+			for(unsigned int j = 0; j < N_regex_clients; j++)
+			{
+				// Check if the domain matches the regex
+				if(regexec(&regex_clients[j], client_ip, 0, NULL, 0) == 0)
+				{
+					// Client IP matches
+					skip_client = true;
+					break;
+				}
+				else if(client_name != NULL && regexec(&regex_clients[j], client_name, 0, NULL, 0) == 0)
+				{
+					// Client name matches
+					skip_client = true;
+					break;
+				}
+			}
+		}
+
+		if(skip_client)
+			continue;
 
 		// Return this client if the client made at least one query
 		// within the most recent 24 hours
@@ -391,6 +434,17 @@ int api_stats_top_clients(struct ftl_conn *api)
 	// Free temporary array
 	free(temparray);
 
+	// Free regexes
+	if(N_regex_clients > 0)
+	{
+		// Free individual regexes
+		for(unsigned int i = 0; i < N_regex_clients; i++)
+			regfree(&regex_clients[i]);
+
+		// Free array of regex pointers
+		free(regex_clients);
+	}
+
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", top_clients);
 
@@ -405,7 +459,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 {
 	unsigned int totalcount = 0;
 	const int upstreams = counters->upstreams;
-	int *temparray = calloc(2*upstreams, sizeof(int*));
+	int *temparray = calloc(2*upstreams, sizeof(int));
 	if(temparray == NULL)
 	{
 		log_err("Memory allocation failed in api_stats_upstreams()");

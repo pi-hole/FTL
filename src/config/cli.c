@@ -160,8 +160,9 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			// Get password hash as allocated string (an empty string is hashed to an empty string)
 			char *pwhash = strlen(value) > 0 ? create_password(value) : strdup("");
 
-			// Verify that the password hash is valid
-			if(verify_password(value, pwhash, false) != PASSWORD_CORRECT)
+			// Verify that the password hash is either valid or empty
+			const enum password_result status = verify_password(value, pwhash, false);
+			if(status != PASSWORD_CORRECT && status != NO_PASSWORD_SET)
 			{
 				log_err("Failed to create password hash (verification failed), password remains unchanged");
 				free(pwhash);

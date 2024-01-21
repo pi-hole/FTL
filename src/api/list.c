@@ -510,6 +510,20 @@ static int api_list_write(struct ftl_conn *api,
 	if(api->method == HTTP_PUT)
 		response_code = 200; // 200 - OK
 
+	// Add "Location" header to response
+	if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers), "Location: %s/%s", api->action_path, row.item) >= (int)sizeof(pi_hole_extra_headers))
+	{
+		// This may happen for *extremely* long URLs but is not issue in
+		// itself. Merely add a warning to the log file
+		log_warn("Could not add Location header to response: URL too long");
+
+		// Truncate location by replacing the last characters with "...\0"
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-4] = '.';
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-3] = '.';
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-2] = '.';
+		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-1] = '\0';
+	}
+
 	// Send GET style reply
 	const int ret = api_list_read(api, response_code, listtype, row.item, processed);
 
@@ -691,7 +705,8 @@ static int api_list_remove(struct ftl_conn *api,
 	}
 
 	// From here on, we can assume the JSON payload is valid
-	if(gravityDB_delFromTable(listtype, array, &sql_msg))
+	unsigned int deleted = 0u;
+	if(gravityDB_delFromTable(listtype, array, &deleted, &sql_msg))
 	{
 		// Inform the resolver that it needs to reload gravity
 		set_event(RELOAD_GRAVITY);
@@ -700,9 +715,11 @@ static int api_list_remove(struct ftl_conn *api,
 		if(allocated_json)
 			cJSON_free(array);
 
-		// Send empty reply with code 204 No Content
+		// Send empty reply with codes:
+		// - 204 No Content (if any items were deleted)
+		// - 404 Not Found (if no items were deleted)
 		cJSON *json = JSON_NEW_OBJECT();
-		JSON_SEND_OBJECT_CODE(json, 204);
+		JSON_SEND_OBJECT_CODE(json, deleted > 0u ? 204 : 404);
 	}
 	else
 	{

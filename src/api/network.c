@@ -440,7 +440,8 @@ static int api_network_devices_DELETE(struct ftl_conn *api)
 
 	// Delete row from network table by ID
 	const char *sql_msg = NULL;
-	if(!networkTable_deleteDevice(db, device_id, &sql_msg))
+	int deleted = 0;
+	if(!networkTable_deleteDevice(db, device_id, &deleted, &sql_msg))
 	{
 		// Add SQL message (may be NULL = not available)
 		return send_json_error(api, 500,
@@ -452,9 +453,11 @@ static int api_network_devices_DELETE(struct ftl_conn *api)
 	// Close database
 	dbclose(&db);
 
-	// Send empty reply with code 204 No Content
+	// Send empty reply with codes:
+	// - 204 No Content (if any items were deleted)
+	// - 404 Not Found (if no items were deleted)
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_SEND_OBJECT_CODE(json, 204);
+	JSON_SEND_OBJECT_CODE(json, deleted > 0 ? 204 : 404);
 }
 
 int api_network_devices(struct ftl_conn *api)
