@@ -768,7 +768,7 @@ static int api_config_patch(struct ftl_conn *api)
 
 		// Validate new value (if validation function is defined)
 		char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
-		if(!conf_item->c(&new_item->v, errbuf))
+		if(!conf_item->c(&new_item->v, new_item->k, errbuf))
 		{
 			free_config(&newconf);
 			return send_json_error(api, 400,
@@ -965,7 +965,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(api->method == HTTP_PUT)
 		{
 			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
-			if(!new_item->c(&new_item->v, errbuf))
+			if(!new_item->c(&new_item->v, new_item->k, errbuf))
 			{
 				free_config(&newconf);
 				return send_json_error(api, 400,

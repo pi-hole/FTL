@@ -442,7 +442,7 @@ int set_config_from_CLI(const char *key, const char *value)
 		if(new_item->c != NULL)
 		{
 			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
-			if(!new_item->c(&new_item->v, errbuf))
+			if(!new_item->c(&new_item->v, new_item->k, errbuf))
 			{
 				free_config(&newconf);
 				log_err("Invalid value: %s", errbuf);
