@@ -76,7 +76,7 @@ components:
             properties:
               expires:
                 type: integer
-                description: Expiration time
+                description: Expiration time (0 = infinite lease, never expires)
                 example: 1675671991
               name:
                 type: string
