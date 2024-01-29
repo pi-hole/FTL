@@ -351,6 +351,8 @@ components:
                   type: integer
                 DBinterval:
                   type: integer
+                useWAL:
+                  type: boolean
                 network:
                   type: object
                   properties:
@@ -671,6 +673,7 @@ components:
             DBexport: true
             maxDBdays: 365
             DBinterval: 60
+            useWAL: true
             network:
               parseARPcache: true
               expire: 365

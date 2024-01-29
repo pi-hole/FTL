@@ -112,19 +112,47 @@ bool init_memory_database(void)
 	if(!attach_database(_memdb, NULL, config.files.database.v.s, "disk"))
 		return false;
 
-	// Change journal mode to WAL
-	// - WAL is significantly faster in most scenarios.
-	// - WAL provides more concurrency as readers do not block writers and a
-	//   writer does not block readers. Reading and writing can proceed
-	//   concurrently.
-	// - Disk I/O operations tends to be more sequential using WAL.
-	rc = sqlite3_exec(_memdb, "PRAGMA disk.journal_mode=WAL", NULL, NULL, NULL);
-	if( rc != SQLITE_OK )
+	// Enable WAL mode for the on-disk database (pihole-FTL.db) if
+	// configured (default is yes). User may not want to enable WAL
+	// mode if the database is on a network share as all processes
+	// accessing the database must be on the same host in WAL mode.
+	if(config.database.useWAL.v.b)
 	{
-		log_err("init_memory_database(): Step error while trying to set journal mode: %s",
-		        sqlite3_errstr(rc));
-		sqlite3_close(_memdb);
-		return false;
+		// Change journal mode to WAL
+		// - WAL is significantly faster in most scenarios.
+		// - WAL provides more concurrency as readers do not block writers and a
+		//   writer does not block readers. Reading and writing can proceed
+		//   concurrently.
+		// - Disk I/O operations tends to be more sequential using WAL.
+		rc = sqlite3_exec(_memdb, "PRAGMA disk.journal_mode=WAL", NULL, NULL, NULL);
+		if( rc != SQLITE_OK )
+		{
+			log_err("init_memory_database(): Step error while trying to set journal mode: %s",
+			        sqlite3_errstr(rc));
+			sqlite3_close(_memdb);
+			return false;
+		}
+	}
+	else
+	{
+		// Unlike the other journaling modes, PRAGMA journal_mode=WAL is
+		// persistent. If a process sets WAL mode, then closes and
+		// reopens the database, the database will come back in WAL
+		// mode. In contrast, if a process sets (for example) PRAGMA
+		// journal_mode=TRUNCATE and then closes and reopens the
+		// database will come back up in the default rollback mode of
+		// DELETE rather than the previous TRUNCATE setting.
+
+		// Change journal mode back to DELETE due to user configuration
+		// (might have been changed to WAL before)
+		rc = sqlite3_exec(_memdb, "PRAGMA disk.journal_mode=DELETE", NULL, NULL, NULL);
+		if( rc != SQLITE_OK )
+		{
+			log_err("init_memory_database(): Step error while trying to set journal mode: %s",
+			        sqlite3_errstr(rc));
+			sqlite3_close(_memdb);
+			return false;
+		}
 	}
 
 	// Everything went well
