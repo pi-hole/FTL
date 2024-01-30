@@ -11,7 +11,7 @@
 #define RESOLVE_H
 
 void *DNSclient_thread(void *val);
-char *resolveHostname(const char *addr);
+char *resolveHostname(const char *addr, const bool force) __attribute__((malloc));
 bool resolve_names(void) __attribute__((pure));
 bool resolve_this_name(const char *ipaddr) __attribute__((pure));
 

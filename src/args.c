@@ -64,6 +64,8 @@
 #include <idn2.h>
 // sha256sum()
 #include "files.h"
+// resolveHostname()
+#include "resolve.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -493,6 +495,25 @@ void parse_args(int argc, char* argv[])
 
 		// Print result
 		printf("%s  %s\n", hex, argv[2]);
+		exit(EXIT_SUCCESS);
+	}
+
+	// Local reverse name resolver
+	if(argc == 3 && strcasecmp(argv[1], "ptr") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+
+		// Need to get dns.port and the resolver settings
+		readFTLconf(&config, false);
+
+		char *name = resolveHostname(argv[2], true);
+		if(name == NULL)
+			exit(EXIT_FAILURE);
+
+		// Print result
+		printf("%s\n", name);
+		free(name);
 		exit(EXIT_SUCCESS);
 	}
 
@@ -980,6 +1001,7 @@ void parse_args(int argc, char* argv[])
 			printf("    Decoding: %spihole-FTL idn2 -d %spunycode%s\n\n", green, cyan, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
+			printf("\t%sptr %sIP%s              Resolve IP address to hostname\n", green, cyan, normal);
 			printf("\t%ssha256sum %sfile%s      Calculate SHA256 checksum of a file\n", green, cyan, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
