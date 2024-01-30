@@ -123,7 +123,7 @@ bool init_memory_database(void)
 		// - WAL provides more concurrency as readers do not block writers and a
 		//   writer does not block readers. Reading and writing can proceed
 		//   concurrently.
-		// - Disk I/O operations tends to be more sequential using WAL.
+		// - Disk I/O operations tend to be more sequential using WAL.
 		rc = sqlite3_exec(_memdb, "PRAGMA disk.journal_mode=WAL", NULL, NULL, NULL);
 		if( rc != SQLITE_OK )
 		{

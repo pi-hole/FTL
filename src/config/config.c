@@ -816,7 +816,7 @@ void initConfig(struct config *conf)
 	// Note: We would not necessarily need to restart FTL when this setting
 	// is changed, but we do it anyway as this ensures the database is
 	// properly re-initialized and the new journal mode is used. As this is
-	// a setting that will be changed very rarely, this semms the better
+	// a setting that will be changed very rarely, this seems the better
 	// compromise than adding special code that can transform the database
 	// while being active.
 	// The in-memory database is not affected by this setting as it uses a
