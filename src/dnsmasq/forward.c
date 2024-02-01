@@ -801,8 +801,13 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	server->flags |= SERV_WARNED_RECURSIVE;
     }  
 
-  if (daemon->bogus_addr && rcode != NXDOMAIN &&
-      check_for_bogus_wildcard(header, n, daemon->namebuff, now))
+  if (header->hb3 & HB3_TC)
+    {
+      log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
+      munged = 1;
+    }
+  else  if (daemon->bogus_addr && rcode != NXDOMAIN &&
+	    check_for_bogus_wildcard(header, n, daemon->namebuff, now))
     {
       munged = 1;
       SET_RCODE(header, NXDOMAIN);
@@ -812,8 +817,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
     }
   else 
     {
-      int doctored = 0;
-      
       if (rcode == NXDOMAIN && 
 	  extract_request(header, n, daemon->namebuff, NULL))
 	{
@@ -829,8 +832,11 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	      cache_secure = 0;
 	    }
 	}
+      
+      if (do_doctor(header, n))
+	cache_secure = 0;
 
-      switch (extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure, &doctored))
+      switch (extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure))
 	{
 	case 1:
 	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
@@ -868,9 +874,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 
       if (rcode == NOERROR && rrfilter(header, &n, RRFILTER_CONF) > 0) 
 	ede = EDE_FILTERED;
-      
-      if (doctored)
-	cache_secure = 0;
     }
   
 #ifdef HAVE_DNSSEC
@@ -901,7 +904,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       header->ancount = htons(0);
       header->nscount = htons(0);
       header->arcount = htons(0);
-      header->hb3 &= ~HB3_TC;
     }
   
   /* the bogus-nxdomain stuff, doctor and NXDOMAIN->NODATA munging can all elide

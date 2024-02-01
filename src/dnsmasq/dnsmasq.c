@@ -137,18 +137,10 @@ int main_dnsmasq (int argc, char **argv)
 	 '.' or NAME_ESCAPE then all would have to be escaped, so the 
 	 presentation format would be twice as long as the spec. */
       daemon->keyname = safe_malloc((MAXDNAME * 2) + 1);
-      daemon->workspacename = safe_malloc((MAXDNAME * 2) + 1);
       /* one char flag per possible RR in answer section (may get extended). */
       daemon->rr_status_sz = 64;
       daemon->rr_status = safe_malloc(sizeof(*daemon->rr_status) * daemon->rr_status_sz);
     }
-#endif
-
-#if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
-  /* CONNTRACK UBUS code uses this buffer, so if not allocated above,
-     we need to allocate it here. */
-  if (option_bool(OPT_CMARK_ALST_EN) && !daemon->workspacename)
-    daemon->workspacename = safe_malloc((MAXDNAME * 2) + 1);
 #endif
   
 #ifdef HAVE_DHCP

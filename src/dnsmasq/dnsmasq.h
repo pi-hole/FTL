@@ -341,7 +341,7 @@ union all_addr {
      in the cache flags. */
   struct datablock {
     unsigned short rrtype;
-    unsigned char datalen;
+    unsigned char datalen; /* also length of SOA in negative records. */
     char data[];
   } rrdata;
 };
@@ -1239,10 +1239,7 @@ extern struct daemon {
   char *packet; /* packet buffer */
   int packet_buff_sz; /* size of above */
   char *namebuff; /* MAXDNAME size buffer */
-#if (defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)) || defined(HAVE_DNSSEC)
-  /* CONNTRACK UBUS code uses this buffer, as well as DNSSEC code. */
   char *workspacename;
-#endif
 #ifdef HAVE_DNSSEC
   char *keyname; /* MAXDNAME size buffer */
   unsigned long *rr_status; /* ceiling in TTL from DNSSEC or zero for insecure */
@@ -1386,6 +1383,7 @@ int is_name_synthetic(int flags, char *name, union all_addr *addr);
 int is_rev_synth(int flag, union all_addr *addr, char *name);
 
 /* rfc1035.c */
+int do_doctor(struct dns_header *header, size_t qlen);
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
                  char *name, int isExtract, int extrabytes);
 unsigned char *skip_name(unsigned char *ansp, struct dns_header *header, size_t plen, int extrabytes);
@@ -1396,7 +1394,7 @@ unsigned int extract_request(struct dns_header *header, size_t qlen,
 void setup_reply(struct dns_header *header, unsigned int flags, int ede);
 int extract_addresses(struct dns_header *header, size_t qlen, char *name,
 		      time_t now, struct ipsets *ipsets, struct ipsets *nftsets, int is_sign,
-                      int check_rebind, int no_cache_dnssec, int secure, int *doctored);
+                      int check_rebind, int no_cache_dnssec, int secure);
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
 void report_addresses(struct dns_header *header, size_t len, u32 mark);
 #endif

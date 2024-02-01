@@ -5848,6 +5848,7 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon = opt_malloc(sizeof(struct daemon));
   memset(daemon, 0, sizeof(struct daemon));
   daemon->namebuff = buff;
+  daemon->workspacename = safe_malloc((MAXDNAME * 2) + 1);
   daemon->addrbuff = safe_malloc(ADDRSTRLEN);
   
   /* Set defaults - everything else is zero or NULL */
