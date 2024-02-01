@@ -832,12 +832,6 @@ void initConfig(struct config *conf)
 	conf->database.DBimport.d.b = true;
 	conf->database.DBimport.c = validate_stub; // Only type-based checking
 
-	conf->database.DBexport.k = "database.DBexport";
-	conf->database.DBexport.h =  "Should FTL store queries in the long-term database?";
-	conf->database.DBexport.t = CONF_BOOL;
-	conf->database.DBexport.d.b = true;
-	conf->database.DBexport.c = validate_stub; // Only type-based checking
-
 	conf->database.maxDBdays.k = "database.maxDBdays";
 	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?";
 	conf->database.maxDBdays.t = CONF_INT;
