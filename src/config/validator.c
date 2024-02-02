@@ -309,6 +309,17 @@ bool validate_filepath_empty(union conf_value *val, const char *key, char err[VA
 	return validate_filepath(val, key, err);
 }
 
+// Validate file path (dash allowed), used by files.log.dnsmasq
+bool validate_filepath_dash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Dash is allowed, this enabled printing to stderr
+	if(strlen(val->s) == 1 && val->s[0] == '-')
+		return true;
+
+	// else:
+	return validate_filepath(val, key, err);
+}
+
 // Validate a single regular expression
 static bool validate_regex(const char *regex, char err[VALIDATOR_ERRBUF_LEN])
 {

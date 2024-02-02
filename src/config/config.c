@@ -1166,7 +1166,7 @@ void initConfig(struct config *conf)
 	conf->files.log.dnsmasq.t = CONF_STRING;
 	conf->files.log.dnsmasq.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->files.log.dnsmasq.d.s = (char*)"/var/log/pihole/pihole.log";
-	conf->files.log.dnsmasq.c = validate_filepath;
+	conf->files.log.dnsmasq.c = validate_filepath_dash;
 
 
 	// struct misc
