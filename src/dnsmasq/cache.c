@@ -819,32 +819,28 @@ void cache_end_insert(void)
 	      read_write(daemon->pipe_to_parent, (unsigned char *)name, m, 0);
 	      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->ttd, sizeof(new_chain->ttd), 0);
 	      read_write(daemon->pipe_to_parent, (unsigned  char *)&flags, sizeof(flags), 0);
-
-	      if (flags & (F_IPV4 | F_IPV6 | F_DNSKEY | F_DS | F_RR))
+	      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr, sizeof(new_chain->addr), 0);
+	      
+	      if (flags & F_RR)
 		{
-		  read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr, sizeof(new_chain->addr), 0);
-
-		  if (flags & F_RR)
-		    {
-		      /* A negative RR entry is possible and has no data, obviously. */
-		      if (!(flags & F_NEG) && (flags & F_KEYTAG))
-			blockdata_write(new_chain->addr.rrblock.rrdata, new_chain->addr.rrblock.datalen, daemon->pipe_to_parent);
-		    }
-#ifdef HAVE_DNSSEC
-		  if (flags & F_DNSKEY)
-		    {
-		      read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
-		      blockdata_write(new_chain->addr.key.keydata, new_chain->addr.key.keylen, daemon->pipe_to_parent);
-		    }
-		  else if (flags & F_DS)
-		    {
-		      read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
-		      /* A negative DS entry is possible and has no data, obviously. */
-		      if (!(flags & F_NEG))
-			blockdata_write(new_chain->addr.ds.keydata, new_chain->addr.ds.keylen, daemon->pipe_to_parent);
-		    }
-#endif
+		  /* A negative RR entry is possible and has no data, obviously. */
+		  if (!(flags & F_NEG) && (flags & F_KEYTAG))
+		    blockdata_write(new_chain->addr.rrblock.rrdata, new_chain->addr.rrblock.datalen, daemon->pipe_to_parent);
 		}
+#ifdef HAVE_DNSSEC
+	      if (flags & F_DNSKEY)
+		{
+		  read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
+		  blockdata_write(new_chain->addr.key.keydata, new_chain->addr.key.keylen, daemon->pipe_to_parent);
+		}
+	      else if (flags & F_DS)
+		{
+		  read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
+		  /* A negative DS entry is possible and has no data, obviously. */
+		  if (!(flags & F_NEG))
+		    blockdata_write(new_chain->addr.ds.keydata, new_chain->addr.ds.keylen, daemon->pipe_to_parent);
+		}
+#endif
 	    }
 	}
       
@@ -888,7 +884,8 @@ int cache_recv_insert(time_t now, int fd)
 
       if (!read_write(fd, (unsigned char *)daemon->namebuff, m, 1) ||
 	  !read_write(fd, (unsigned char *)&ttd, sizeof(ttd), 1) ||
-	  !read_write(fd, (unsigned char *)&flags, sizeof(flags), 1))
+	  !read_write(fd, (unsigned char *)&flags, sizeof(flags), 1) ||
+	  !read_write(fd, (unsigned char *)&addr, sizeof(addr), 1))
 	return 0;
 
       daemon->namebuff[m] = 0;
@@ -919,30 +916,23 @@ int cache_recv_insert(time_t now, int fd)
 	{
 	  unsigned short class = C_IN;
 
-	  if (flags & (F_IPV4 | F_IPV6 | F_DNSKEY | F_DS | F_RR))
-	    {
-	      if (!read_write(fd, (unsigned char *)&addr, sizeof(addr), 1))
-		return 0;
-	      
-	      if ((flags & F_RR) && !(flags & F_NEG) && (flags & F_KEYTAG)
-		  && !(addr.rrblock.rrdata = blockdata_read(fd, addr.rrblock.datalen)))
-		return 0;
+	  if ((flags & F_RR) && !(flags & F_NEG) && (flags & F_KEYTAG)
+	      && !(addr.rrblock.rrdata = blockdata_read(fd, addr.rrblock.datalen)))
+	    return 0;
 #ifdef HAVE_DNSSEC
-	      if (flags & F_DNSKEY)
-		{
-		  if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
-		      !(addr.key.keydata = blockdata_read(fd, addr.key.keylen)))
-		    return 0;
-		}
-	      else  if (flags & F_DS)
-		{
-		  if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
-		      (!(flags & F_NEG) && !(addr.key.keydata = blockdata_read(fd, addr.key.keylen))))
-		    return 0;
-		}
-#endif
+	  if (flags & F_DNSKEY)
+	    {
+	      if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
+		  !(addr.key.keydata = blockdata_read(fd, addr.key.keylen)))
+		return 0;
 	    }
-	  
+	  else  if (flags & F_DS)
+	    {
+	      if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
+		  (!(flags & F_NEG) && !(addr.key.keydata = blockdata_read(fd, addr.key.keylen))))
+		return 0;
+	    }
+#endif
 	  crecp = really_insert(daemon->namebuff, &addr, class, now, ttl, flags);
 	}
     }
@@ -1843,8 +1833,18 @@ static void dump_cache_entry(struct crec *cache, time_t now)
   p = buff;
   
   *a = 0;
-  if (strlen(n) == 0 && !(cache->flags & F_REVERSE))
-    n = "<Root>";
+
+  if (cache->flags & F_REVERSE)
+    {
+      if ((cache->flags & F_NEG))
+	n = "";
+    }
+  else
+    {
+      if (strlen(n) == 0)
+	n = "<Root>";
+    }
+  
   p += sprintf(p, "%-30.30s ", sanitise(n));
   if ((cache->flags & F_CNAME) && !is_outdated_cname_pointer(cache))
     a = sanitise(cache_get_cname_target(cache));

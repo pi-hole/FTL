@@ -455,7 +455,7 @@ int do_doctor(struct dns_header *header, size_t qlen)
    Cache said SOA and return the difference in length between name and the name of the 
    SOA RR so we can look it up again.
 */
-static int find_soa(struct dns_header *header, size_t qlen, char *name, int *substring, int no_cache, time_t now)
+static int find_soa(struct dns_header *header, size_t qlen, char *name, int *substring, unsigned long *ttlp, int no_cache, time_t now)
 {
   unsigned char *p, *psave;
   int qtype, qclass, rdlen;
@@ -473,6 +473,9 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
   
   if (substring)
     *substring = name_len;
+
+  if (ttlp)
+    *ttlp = daemon->neg_ttl;
   
   for (i = 0; i < ntohs(header->nscount); i++)
     {
@@ -572,7 +575,10 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
 	      if (substring)
 		*substring = prefix;
 	      
-	      return minttl;
+	      if (ttlp)
+		*ttlp = minttl;
+
+	      return 1;
 	    }
 	}
 
@@ -582,7 +588,7 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
 	return 0; /* bad packet */
     }
   
-  return daemon->neg_ttl;
+  return 0;
 }
 
 /* Print TXT reply to log */
@@ -748,14 +754,16 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
       
       if (!found && !option_bool(OPT_NO_NEG))
 	{
-	  /* don't cache SOAs for negative PTR records */
-	  ttl = find_soa(header, qlen, name, NULL, 1, now);
+	  /* For reverse records, we use the name field to store the SOA name. */
+	  int substring, have_soa = find_soa(header, qlen, name, &substring, &ttl, no_cache_dnssec, now);
 	  
 	  flags |= F_NEG | (secure ?  F_DNSSECOK : 0);
 	  if (name_encoding && ttl)
 	    {
 	      flags |= F_REVERSE | name_encoding;
-	      cache_insert(NULL, &addr, C_IN, now, ttl, flags);
+	      if (!have_soa)
+		flags |= F_NO_RR; /* Marks no SOA found. */
+	      cache_insert(name + substring, &addr, C_IN, now, ttl, flags);
 	    }
 	  
 	  log_query(flags | F_UPSTREAM, name, &addr, NULL, 0);
@@ -1051,7 +1059,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
       
       if (!found && (qtype != T_ANY || (flags & F_NXDOMAIN)))
 	{
-	  int substring;
+	  int substring, have_soa;
 
 	  if (flags & F_NXDOMAIN)
 	    {
@@ -1063,15 +1071,23 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	  
 	  log_query(F_UPSTREAM | F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0), name, NULL, NULL, 0);
 	  
-	  /* If there's no SOA to get the TTL from, but there is a CNAME 
-	     pointing at this, inherit its TTL */
-	  if (insert && !option_bool(OPT_NO_NEG) && ((ttl = find_soa(header, qlen, name, &substring, no_cache_dnssec, now)) || cpp))
+	  if (insert && !option_bool(OPT_NO_NEG))
 	    {
-	      addr.rrdata.datalen = substring;
-	      addr.rrdata.rrtype = qtype;
+	      int have_soa = find_soa(header, qlen, name, &substring, &ttl, no_cache_dnssec, now);
 	      
-	      if (ttl == 0)
-		ttl = cttl;
+	      /* If there's no SOA to get the TTL from, but there is a CNAME 
+		 pointing at this, inherit its TTL */
+	      if (ttl || cpp)
+		{
+		  if (!ttl)
+		    ttl = cttl;
+		  
+		  addr.rrdata.datalen = substring;
+		  addr.rrdata.rrtype = qtype;
+		  
+		  if (!have_soa)
+		    flags |= F_NO_RR; /* Marks no SOA found. */
+		}
 	      
 	      newc = cache_insert(name, &addr, C_IN, now, ttl, F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0));	
 	      if (newc && cpp)
@@ -1640,6 +1656,9 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	    stale_flag = F_STALE;
 	  }
 	
+	if (crecp->flags & F_NEG)
+	  soa_lookup = crecp;
+	  
 	if (crecp->flags & F_NXDOMAIN)
 	  {
 	    if (qtype == T_CNAME)
@@ -1844,6 +1863,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			  if (crecp->flags & F_NXDOMAIN)
 			    nxdomain = 1;
 			  log_query(stale_flag | (crecp->flags & ~F_FORWARD), name, &addr, NULL, 0);
+			  soa_lookup = crecp;
 			}
 		      else
 			{
@@ -2264,21 +2284,31 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   if (!ans)
     return 0; /* failed to answer a question */
 
-  if (soa_lookup)
+  /* We found a negative record. See if we have an SOA record to 
+     return in the AUTH section. 
+     
+     For FORWARD NEG records, the addr.rrdata.datalen field of the othewise
+     empty addr is used to held an offset in to the name which yields the SOA
+     name. For REVERSE NEG records, the otherwise empty name field holds the
+     SOA name. If soa_name has zero length, then no SOA is known. soa_lookup
+     MUST be a neg record here.
+     
+     If the F_NO_RR flag is set, there was no SOA record supplied with the RR.  */
+  if (soa_lookup && !(soa_lookup->flags & F_NO_RR))
     {
-       /* We found a negative record. See if we have an SOA record to 
-	 return in the AUTH section. */
-      char *rrdata;
-      int substring = soa_lookup->addr.rrdata.datalen;
+      char *soa_name = soa_lookup->flags & F_REVERSE ? cache_get_name(soa_lookup) : name + soa_lookup->addr.rrdata.datalen;
+      
       crecp = NULL;
-      while ((crecp = cache_find_by_name(crecp, name + substring, now, F_RR)))
+      while ((crecp = cache_find_by_name(crecp, soa_name, now, F_RR)))
 	if (crecp->addr.rrblock.rrtype == T_SOA)
 	  {
+	    char *rrdata;
+	    
 	    if (!(crecp->flags & F_NEG) &&
 		(rrdata = blockdata_retrieve(crecp->addr.rrblock.rrdata, crecp->addr.rrblock.datalen, NULL)) &&
 		add_resource_record(header, limit, &trunc, 0, &ansp, 
 				    crec_ttl(crecp, now), NULL, T_SOA, C_IN, "t",
-				    name + substring, crecp->addr.rrblock.datalen, rrdata))
+				    soa_name, crecp->addr.rrblock.datalen, rrdata))
 	      {
 		nscount++;
 		
