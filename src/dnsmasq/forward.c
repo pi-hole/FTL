@@ -833,46 +833,56 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	    }
 	}
       
-      if (do_doctor(header, n))
-	cache_secure = 0;
-
-      switch (extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure))
+      if (!bogusanswer)
 	{
-	case 1:
-	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
-	  munged = 1;
-	  cache_secure = 0;
-	  ede = EDE_BLOCKED;
-	  break;
+	  if (daemon->doctors && !do_doctor(header, n))
+	    {
+	      /* do_doctors found malformed answer. */
+	      munged = 1;
+	      SET_RCODE(header, SERVFAIL);
+	      cache_secure = 0;
+	      ede = EDE_OTHER;
+	    }
 	  
-	  /* extract_addresses() found a malformed answer. */
-	case 2:
-	  munged = 1;
-	  SET_RCODE(header, SERVFAIL);
-	  cache_secure = 0;
-	  ede = EDE_OTHER;
-	  break;
+	  if (RCODE(header) != SERVFAIL)
+	    switch (extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure))
+	      {
+	      case 1:
+		my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
+		munged = 1;
+		cache_secure = 0;
+		ede = EDE_BLOCKED;
+		break;
+		
+		/* extract_addresses() found a malformed answer. */
+	      case 2:
+		munged = 1;
+		SET_RCODE(header, SERVFAIL);
+		cache_secure = 0;
+		ede = EDE_OTHER;
+		break;
 
-	  /* Pi-hole modification */
-	case 99:
-	  cache_secure = 0;
-	  // Make a private copy of the pheader to ensure
-	  // we are not accidentially rewriting what is in
-	  // the pheader when we're creating a crafted reply
-	  // further below (when a query is to be blocked)
-	  if (pheader)
-	  {
-	    pheader_copy = calloc(1, plen);
-	    memcpy(pheader_copy, pheader, plen);
-	  }
+		/* Pi-hole modification */
+	      case 99:
+		cache_secure = 0;
+		// Make a private copy of the pheader to ensure
+		// we are not accidentially rewriting what is in
+		// the pheader when we're creating a crafted reply
+		// further below (when a query is to be blocked)
+		if (pheader)
+		{
+		  pheader_copy = calloc(1, plen);
+		  memcpy(pheader_copy, pheader, plen);
+		}
 
-	  // Generate DNS packet for reply, a possibly existing pseudo header
-	  // will be restored later inside resize_packet()
-	  n = FTL_make_answer(header, ((char *) header) + 65536, n, &ede);
-	  break;
+		// Generate DNS packet for reply, a possibly existing pseudo header
+		// will be restored later inside resize_packet()
+		n = FTL_make_answer(header, ((char *) header) + 65536, n, &ede);
+		break;
+	      }
 	}
-
-      if (rcode == NOERROR && rrfilter(header, &n, RRFILTER_CONF) > 0) 
+      
+      if (RCODE(header) == NOERROR && rrfilter(header, &n, RRFILTER_CONF) > 0) 
 	ede = EDE_FILTERED;
     }
   

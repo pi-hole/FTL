@@ -1804,7 +1804,7 @@ static int zone_status(char *name, int class, char *keyname, time_t now)
 
    When validating replies to DS records, we're only interested in the NSEC{3} RRs in the auth section.
    Other RRs in that section missing sigs will not cause am INSECURE reply. We determine this mode
-   is the nons argument is non-NULL.
+   if the nons argument is non-NULL.
 */
 int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, 
 			  int *class, int check_unsigned, int *neganswer, int *nons, int *nsec_ttl)

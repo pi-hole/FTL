@@ -389,14 +389,10 @@ int do_doctor(struct dns_header *header, size_t qlen)
 {
   unsigned char *p;
   int i, qtype, qclass, rdlen;
-  int doctored = 0;
-  
-  if (!daemon->doctors)
-    return 0;
-  
+    
   if (!(p = skip_questions(header, qlen)))
     return 0;
-      
+  
   for (i = 0; i < ntohs(header->ancount) + ntohs(header->arcount); i++)
     {
       /* Skip over auth section */
@@ -437,7 +433,11 @@ int do_doctor(struct dns_header *header, size_t qlen)
 	      addr.addr4.s_addr |= (doctor->out.s_addr & doctor->mask.s_addr);
 	      /* Since we munged the data, the server it came from is no longer authoritative */
 	      header->hb3 &= ~HB3_AA;
-	      doctored = 1;
+#ifdef HAVE_DNSSEC
+	      /* remove validated flag from this RR, since we changed it! */
+	      if (option_bool(OPT_DNSSEC_VALID) && i <  ntohs(header->ancount))
+		daemon->rr_status[i] = 0;
+#endif
 	      memcpy(p, &addr.addr4, INADDRSZ);
 	      log_query(F_FORWARD | F_CONFIG | F_IPV4, daemon->workspacename, &addr, NULL, 0);
 	      break;
@@ -448,14 +448,14 @@ int do_doctor(struct dns_header *header, size_t qlen)
 	 return 0; /* bad packet */
     }
 
-  return doctored; 
+  return 1; 
 }
 
 /* Find SOA RR in auth section to get TTL for negative caching of name. 
    Cache said SOA and return the difference in length between name and the name of the 
    SOA RR so we can look it up again.
 */
-static int find_soa(struct dns_header *header, size_t qlen, char *name, int *substring, int no_cache, int secure, time_t now)
+static int find_soa(struct dns_header *header, size_t qlen, char *name, int *substring, int no_cache, time_t now)
 {
   unsigned char *p, *psave;
   int qtype, qclass, rdlen;
@@ -464,8 +464,6 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
   size_t name_len, soa_len, len;
   union all_addr addr;
 
-  (void)secure; /* warning */
-  
   /* first move to NS section and find TTL from  SOA RR */
   if (!(p = skip_questions(header, qlen)) ||
       !(p = skip_section(p, ntohs(header->ancount), header, qlen)))
@@ -548,7 +546,7 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
 		  int secflag = 0;
 
 #ifdef HAVE_DNSSEC
-		  if (option_bool(OPT_DNSSEC_VALID) && secure &&  daemon->rr_status[i + ntohs(header->ancount)] != 0)
+		  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[i + ntohs(header->ancount)] != 0)
 		    {
 		      secflag = F_DNSSECOK; 
 		  
@@ -702,7 +700,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      if (aqclass == C_IN && res != 2 && (aqtype == T_CNAME || aqtype == T_PTR))
 		{
 #ifdef HAVE_DNSSEC
-		  if (option_bool(OPT_DNSSEC_VALID) && secure && daemon->rr_status[j] != 0)
+		  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[j] != 0)
 		    {
 		      /* validated RR anywhere in CNAME chain, don't cache. */
 		      if (cname_short || aqtype == T_CNAME)
@@ -751,7 +749,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
       if (!found && !option_bool(OPT_NO_NEG))
 	{
 	  /* don't cache SOAs for negative PTR records */
-	  ttl = find_soa(header, qlen, name, NULL, 1, 0, now);
+	  ttl = find_soa(header, qlen, name, NULL, 1, now);
 	  
 	  flags |= F_NEG | (secure ?  F_DNSSECOK : 0);
 	  if (name_encoding && ttl)
@@ -816,7 +814,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    }
 	  
 #ifdef HAVE_DNSSEC
-	  if (option_bool(OPT_DNSSEC_VALID) && secure && daemon->rr_status[j] != 0)
+	  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[j] != 0)
 	    {
 	      secflag = F_DNSSECOK;
 	      
@@ -1067,7 +1065,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	  
 	  /* If there's no SOA to get the TTL from, but there is a CNAME 
 	     pointing at this, inherit its TTL */
-	  if (insert && !option_bool(OPT_NO_NEG) && ((ttl = find_soa(header, qlen, name, &substring, no_cache_dnssec, secure, now)) || cpp))
+	  if (insert && !option_bool(OPT_NO_NEG) && ((ttl = find_soa(header, qlen, name, &substring, no_cache_dnssec, now)) || cpp))
 	    {
 	      addr.rrdata.datalen = substring;
 	      addr.rrdata.rrtype = qtype;
