@@ -463,6 +463,8 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
   int i, j;
   size_t name_len, soa_len, len;
   union all_addr addr;
+
+  (void)secure; /* warning */
   
   /* first move to NS section and find TTL from  SOA RR */
   if (!(p = skip_questions(header, qlen)) ||
