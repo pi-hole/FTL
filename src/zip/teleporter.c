@@ -37,11 +37,11 @@
 #include "webserver/cJSON/cJSON.h"
 // set_event()
 #include "events.h"
-
+// JSON_KEY_TRUE
+#include "webserver/json_macros.h"
 
 // Tables to copy from the gravity database to the Teleporter database
 static const char *gravity_tables[] = {
-	"info",
 	"group",
 	"adlist",
 	"adlist_by_group",
@@ -365,7 +365,7 @@ static const char *import_dhcp_leases(void *ptr, size_t size, char * const hint)
 }
 
 static const char *test_and_import_database(void *ptr, size_t size, const char *destination,
-                                            const char **tables, const unsigned int num_tables,
+                                            const char **tables, const size_t num_tables,
                                             char * const hint)
 {
 	// Check if the file is empty
@@ -523,7 +523,7 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 	return NULL;
 }
 
-const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * const hint, cJSON *imported_files)
+const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * const hint, cJSON *import, cJSON *imported_files)
 {
 	// Initialize ZIP archive
 	mz_zip_archive zip = { 0 };
@@ -585,8 +585,16 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 
 		// Process file
 		// Is this "etc/pihole/pihole.toml" ?
-		if(strcmp(file_stat.m_filename, "etc/pihole/pihole.toml") == 0)
+		if(strcmp(file_stat.m_filename, extract_files[0]) == 0)
 		{
+			// Check whether we should import this file
+			if(import != NULL && !JSON_KEY_TRUE(import, "config"))
+			{
+				log_info("Ignoring file %s in Teleporter archive (not in import list)", file_stat.m_filename);
+				free(ptr);
+				continue;
+			}
+
 			// Import Pi-hole configuration
 			memset(hint, 0, ERRBUF_SIZE);
 			const char *err = test_and_import_pihole_toml(ptr, file_stat.m_uncomp_size, hint);
@@ -598,8 +606,16 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 			log_debug(DEBUG_CONFIG, "Imported Pi-hole configuration: %s", file_stat.m_filename);
 		}
 		// Is this "etc/pihole/dhcp.leases"?
-		else if(strcmp(file_stat.m_filename, "etc/pihole/dhcp.leases") == 0)
+		else if(strcmp(file_stat.m_filename, extract_files[1]) == 0)
 		{
+			// Check whether we should import this file
+			if(import != NULL && !JSON_KEY_TRUE(import, "dhcp_leases"))
+			{
+				log_info("Ignoring file %s in Teleporter archive (not in import list)", file_stat.m_filename);
+				free(ptr);
+				continue;
+			}
+
 			// Import DHCP leases
 			memset(hint, 0, ERRBUF_SIZE);
 			const char *err = import_dhcp_leases(ptr, file_stat.m_uncomp_size, hint);
@@ -610,12 +626,50 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 			}
 			log_debug(DEBUG_CONFIG, "Imported DHCP leases: %s", file_stat.m_filename);
 		}
-		else if(strcmp(file_stat.m_filename, "etc/pihole/gravity.db") == 0)
+		// Is this "etc/pihole/gravity.db"?
+		else if(strcmp(file_stat.m_filename, extract_files[2]) == 0)
 		{
+			// Check whether we should import this file
+			if(import != NULL && !cJSON_HasObjectItem(import, "gravity"))
+			{
+				log_info("Ignoring file %s in Teleporter archive (not in import list)", file_stat.m_filename);
+				free(ptr);
+				continue;
+			}
+
+			const char *import_tables[ArraySize(gravity_tables)] = { NULL };
+			size_t num_tables = 0u;
+			if(import == NULL)
+			{
+				// Import all tables
+				num_tables = ArraySize(gravity_tables);
+				memcpy(import_tables, gravity_tables, sizeof(gravity_tables));
+			}
+			else
+			{
+				// Get object at import.gravity
+				cJSON *import_gravity = cJSON_GetObjectItem(import, "gravity");
+
+				// Check if import.gravity is a JSON object
+				if(import_gravity == NULL || !cJSON_IsObject(import_gravity))
+				{
+					log_warn("Ignoring file %s in Teleporter archive (import.gravity is not a JSON object)", file_stat.m_filename);
+					free(ptr);
+					continue;
+				}
+
+				// Import selected tables
+				for(size_t j = 0; j < ArraySize(gravity_tables); j++)
+				{
+					if(JSON_KEY_TRUE(import, gravity_tables[j]))
+						import_tables[num_tables++] = gravity_tables[j];
+				}
+			}
+
 			// Import gravity database
 			memset(hint, 0, ERRBUF_SIZE);
 			const char *err = test_and_import_database(ptr, file_stat.m_uncomp_size, config.files.gravity.v.s,
-			                                           gravity_tables, ArraySize(gravity_tables), hint);
+			                                           import_tables, num_tables, hint);
 			if(err != NULL)
 			{
 				free(ptr);
@@ -730,7 +784,7 @@ bool read_teleporter_zip_from_disk(const char *filename)
 	// Process ZIP archive
 	char hint[ERRBUF_SIZE] = "";
 	cJSON *imported_files = cJSON_CreateArray();
-	const char *error = read_teleporter_zip(ptr, size, hint, imported_files);
+	const char *error = read_teleporter_zip(ptr, size, hint, NULL, imported_files);
 
 	if(error != NULL)
 	{

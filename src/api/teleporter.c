@@ -68,14 +68,18 @@ static int api_teleporter_GET(struct ftl_conn *api)
 struct upload_data {
 	bool too_large;
 	char *sid;
+	cJSON *import;
 	uint8_t *data;
 	char *filename;
 	size_t filesize;
+	struct {
+		bool file;
+		bool sid;
+		bool import;
+	} field;
 };
 
 // Callback function for CivetWeb to determine which fields we want to receive
-static bool is_file = false;
-static bool is_sid = false;
 static int field_found(const char *key,
                        const char *filename,
                        char *path,
@@ -85,17 +89,22 @@ static int field_found(const char *key,
 	struct upload_data *data = (struct upload_data *)user_data;
 	log_debug(DEBUG_API, "Found field: \"%s\", filename: \"%s\"", key, filename);
 
-	is_file = false;
-	is_sid = false;
+	// Set all fields to false
+	memset(&data->field, false, sizeof(data->field));
 	if(strcasecmp(key, "file") == 0 && filename && *filename)
 	{
 		data->filename = strdup(filename);
-		is_file = true;
+		data->field.file = true;
 		return MG_FORM_FIELD_STORAGE_GET;
 	}
 	else if(strcasecmp(key, "sid") == 0)
 	{
-		is_sid = true;
+		data->field.sid = true;
+		return MG_FORM_FIELD_STORAGE_GET;
+	}
+	else if(strcasecmp(key, "import") == 0)
+	{
+		data->field.import = true;
 		return MG_FORM_FIELD_STORAGE_GET;
 	}
 
@@ -111,7 +120,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 	struct upload_data *data = (struct upload_data *)user_data;
 	log_debug(DEBUG_API, "Received field: \"%s\" (length %zu bytes)", key, valuelen);
 
-	if(is_file)
+	if(data->field.file)
 	{
 		if(data->filesize + valuelen > MAXFILESIZE)
 		{
@@ -129,7 +138,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		log_debug(DEBUG_API, "Received file (%zu bytes, buffer is now %zu bytes)",
 		          valuelen, data->filesize);
 	}
-	else if(is_sid)
+	else if(data->field.sid)
 	{
 		// Allocate memory for the SID
 		data->sid = calloc(valuelen + 1, sizeof(char));
@@ -137,6 +146,27 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		memcpy(data->sid, value, valuelen);
 		// Add terminating NULL byte (memcpy does not do this)
 		data->sid[valuelen] = '\0';
+	}
+	else if(data->field.import)
+	{
+		// Try to parse the JSON data
+		cJSON *json = cJSON_ParseWithLength(value, valuelen);
+		if(json == NULL)
+		{
+			log_err("Unable to parse JSON data in API request: %s", cJSON_GetErrorPtr());
+			return MG_FORM_FIELD_HANDLE_ABORT;
+		}
+
+		// Check if the JSON data is an object
+		if(!cJSON_IsObject(json))
+		{
+			log_err("JSON data in API request is not an object");
+			cJSON_Delete(json);
+			return MG_FORM_FIELD_HANDLE_ABORT;
+		}
+
+		// Store the parsed JSON data
+		data->import = json;
 	}
 
 	// If there is more data in this field, get the next chunk.
@@ -167,6 +197,11 @@ static int free_upload_data(struct upload_data *data)
 	{
 		free(data->data);
 		data->data = NULL;
+	}
+	if(data->import)
+	{
+		cJSON_Delete(data->import);
+		data->import = NULL;
 	}
 	return 0;
 }
@@ -262,7 +297,7 @@ static int process_received_zip(struct ftl_conn *api, struct upload_data *data)
 	char hint[ERRBUF_SIZE];
 	memset(hint, 0, sizeof(hint));
 	cJSON *json_files = JSON_NEW_ARRAY();
-	const char *error = read_teleporter_zip(data->data, data->filesize, hint, json_files);
+	const char *error = read_teleporter_zip(data->data, data->filesize, hint, data->import, json_files);
 	if(error != NULL)
 	{
 		const size_t msglen = strlen(error) + strlen(hint) + 4;
@@ -277,7 +312,7 @@ static int process_received_zip(struct ftl_conn *api, struct upload_data *data)
 		free_upload_data(data);
 		return send_json_error_free(api, 400,
 		                            "bad_request",
-		                            "Invalid ZIP archive",
+		                            "Invalid request",
 		                            msg, true);
 	}
 
@@ -632,14 +667,34 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 
 	// Parse JSON files in the TAR archive
 	cJSON *imported_files = JSON_NEW_ARRAY();
-	for(size_t i = 0; i < sizeof(teleporter_v5_files) / sizeof(struct teleporter_files); i++)
+
+	// Check if the archive contains gravity tables
+	cJSON *gravity = data->import != NULL ? cJSON_GetObjectItemCaseSensitive(data->import, "gravity") : NULL;
+	if(data->import == NULL || gravity != NULL)
 	{
-		size_t fileSize = 0u;
-		cJSON *json = NULL;
-		const char *file = find_file_in_tar(archive, archive_size, teleporter_v5_files[i].filename, &fileSize);
-		if(file != NULL && fileSize > 0u && (json = cJSON_ParseWithLength(file, fileSize)) != NULL)
-			if(import_json_table(json, &teleporter_v5_files[i]))
-				JSON_COPY_STR_TO_ARRAY(imported_files, teleporter_v5_files[i].filename);
+		for(size_t i = 0; i < sizeof(teleporter_v5_files) / sizeof(struct teleporter_files); i++)
+		{
+			// - if import is NULL we import all files/tables
+			// - if import is non-NULL, but gravity is NULL we skip
+			//   the import of gravity tables
+			// - if import is non-NULL, and gravity is non-NULL, we
+			//   import the file/table if it is in the object, a
+			//   boolean and true
+			if(data->import != NULL || gravity == NULL || !JSON_KEY_TRUE(gravity, teleporter_v5_files[i].table_name))
+			{
+				log_info("Skipping import of \"%s\" as it was not requested for import",
+				         teleporter_v5_files[i].filename);
+				continue;
+			}
+
+			// Import the JSON file
+			size_t fileSize = 0u;
+			cJSON *json = NULL;
+			const char *file = find_file_in_tar(archive, archive_size, teleporter_v5_files[i].filename, &fileSize);
+			if(file != NULL && fileSize > 0u && (json = cJSON_ParseWithLength(file, fileSize)) != NULL)
+				if(import_json_table(json, &teleporter_v5_files[i]))
+					JSON_COPY_STR_TO_ARRAY(imported_files, teleporter_v5_files[i].filename);
+		}
 	}
 
 	// Temporarily write further files to to disk so we can import them on restart
@@ -648,15 +703,19 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		const char *destination;
 	} extract_files[] = {
 		{
+			// i = 0
 			.archive_name = "custom.list",
 			.destination = DNSMASQ_CUSTOM_LIST_LEGACY
 		},{
+			// i = 1
 			.archive_name = "dhcp.leases",
 			.destination = DHCPLEASESFILE
 		},{
+			// i = 2
 			.archive_name = "pihole-FTL.conf",
 			.destination = GLOBALCONFFILE_LEGACY
 		},{
+			// i = 3
 			.archive_name = "setupVars.conf",
 			.destination = config.files.setupVars.v.s
 		}
@@ -665,6 +724,21 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	{
 		size_t fileSize = 0u;
 		const char *file = find_file_in_tar(archive, archive_size, extract_files[i].archive_name, &fileSize);
+
+		if(data->import != NULL && i == 1 && !JSON_KEY_TRUE(data->import, "dhcp_leases"))
+		{
+			log_info("Skipping import of \"%s\" as it was not requested for import",
+			         extract_files[i].archive_name);
+			continue;
+		}
+		// all other values of i belong to config files
+		else if(data->import != NULL && !JSON_KEY_TRUE(data->import, "config"))
+		{
+			log_info("Skipping import of \"%s\" as it was not requested for import",
+			         extract_files[i].archive_name);
+			continue;
+		}
+
 		if(file != NULL && fileSize > 0u)
 		{
 			// Write file to disk

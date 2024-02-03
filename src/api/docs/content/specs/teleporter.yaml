@@ -42,6 +42,50 @@ components:
                   file:
                     type: string
                     format: binary
+                  import:
+                    type: object
+                    nullable: true
+                    properties:
+                      config:
+                        type: boolean
+                        description: "Import Pi-hole configuration"
+                        example: true
+                      dhcp_leases:
+                        type: boolean
+                        description: "Import Pi-hole DHCP leases"
+                        example: true
+                      gravity:
+                        type: object
+                        properties:
+                          group:
+                            type: boolean
+                            description: "Import Pi-hole's groups table"
+                            example: true
+                          adlist:
+                            type: boolean
+                            description: "Import Pi-hole's adlist table"
+                            example: true
+                          adlist_by_group:
+                            type: boolean
+                            description: "Import Pi-hole's table relating adlist entries to groups"
+                            example: true
+                          domainlist:
+                            type: boolean
+                            description: "Import Pi-hole's domainlist table"
+                            example: true
+                          domainlist_by_group:
+                            type: boolean
+                            description: "Import Pi-hole's table relating domainlist entries to groups"
+                            example: true
+                          client:
+                            type: boolean
+                            description: "Import Pi-hole's client table"
+                            example: true
+                          client_by_group:
+                            type: boolean
+                            description: "Import Pi-hole's table relating client entries to groups"
+                            example: true
+                    description: "A JSON object of files to import. If omitted, all files will be imported."
         responses:
           '200':
             description: OK
