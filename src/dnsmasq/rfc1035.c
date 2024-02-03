@@ -385,22 +385,23 @@ static int private_net6(struct in6_addr *a, int ban_localhost)
     ((u32 *)a)[0] == htonl(0x20010db8); /* RFC 6303 4.6 */
 }
 
-int do_doctor(struct dns_header *header, size_t qlen)
+int do_doctor(struct dns_header *header, size_t qlen, char *namebuff)
 {
   unsigned char *p;
   int i, qtype, qclass, rdlen;
-    
+  int done = 0;
+  
   if (!(p = skip_questions(header, qlen)))
-    return 0;
+    return done;
   
   for (i = 0; i < ntohs(header->ancount) + ntohs(header->arcount); i++)
     {
       /* Skip over auth section */
       if (i == ntohs(header->ancount) && !(p = skip_section(p, ntohs(header->nscount), header, qlen)))
-	return 0;
+	return done;
       
-      if (!extract_name(header, qlen, &p, daemon->workspacename, 1, 10))
-	return 0; /* bad packet */
+      if (!extract_name(header, qlen, &p, namebuff, 1, 10))
+	return done; /* bad packet */
       
       GETSHORT(qtype, p); 
       GETSHORT(qclass, p);
@@ -413,7 +414,7 @@ int do_doctor(struct dns_header *header, size_t qlen)
 	  union all_addr addr;
 	  
 	  if (!CHECK_LEN(header, p, qlen, INADDRSZ))
-	    return 0;
+	    return done;
 	  
 	  /* alignment */
 	  memcpy(&addr.addr4, p, INADDRSZ);
@@ -438,17 +439,18 @@ int do_doctor(struct dns_header *header, size_t qlen)
 	      if (option_bool(OPT_DNSSEC_VALID) && i <  ntohs(header->ancount))
 		daemon->rr_status[i] = 0;
 #endif
+	      done = 1;
 	      memcpy(p, &addr.addr4, INADDRSZ);
-	      log_query(F_FORWARD | F_CONFIG | F_IPV4, daemon->workspacename, &addr, NULL, 0);
+	      log_query(F_FORWARD | F_CONFIG | F_IPV4, namebuff, &addr, NULL, 0);
 	      break;
 	    }
 	}
       
       if (!ADD_RDLEN(header, p, qlen, rdlen))
-	 return 0; /* bad packet */
+	 return done; /* bad packet */
     }
 
-  return 1; 
+  return done;
 }
 
 /* Find SOA RR in auth section to get TTL for negative caching of name. 
@@ -1059,8 +1061,6 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
       
       if (!found && (qtype != T_ANY || (flags & F_NXDOMAIN)))
 	{
-	  int substring, have_soa;
-
 	  if (flags & F_NXDOMAIN)
 	    {
 	      flags &= ~(F_IPV4 | F_IPV6 | F_RR);
@@ -1073,7 +1073,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	  
 	  if (insert && !option_bool(OPT_NO_NEG))
 	    {
-	      int have_soa = find_soa(header, qlen, name, &substring, &ttl, no_cache_dnssec, now);
+	      int substring, have_soa = find_soa(header, qlen, name, &substring, &ttl, no_cache_dnssec, now);
 	      
 	      /* If there's no SOA to get the TTL from, but there is a CNAME 
 		 pointing at this, inherit its TTL */
@@ -1336,8 +1336,7 @@ static int check_bad_address(struct dns_header *header, size_t qlen, struct bogu
       GETSHORT(qtype, p); 
       GETSHORT(qclass, p);
       GETLONG(ttl, p);
-      GETSHORT(rdlen, p);
-
+      GETSHORT(rdlen, p)
       if (ttlp)
 	*ttlp = ttl;
       
@@ -1390,8 +1389,9 @@ int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name,
       /* Found a bogus address. Insert that info here, since there no SOA record
 	 to get the ttl from in the normal processing */
       cache_start_insert();
-      cache_insert(name, NULL, C_IN, now, ttl, F_IPV4 | F_FORWARD | F_NEG | F_NXDOMAIN);
+      cache_insert(name, NULL, C_IN, now, ttl, F_FORWARD | F_NEG | F_NXDOMAIN);
       cache_end_insert();
+      log_query(F_CONFIG | F_FORWARD | F_NEG | F_NXDOMAIN, name, NULL, NULL, 0);
 
       return 1;
     }

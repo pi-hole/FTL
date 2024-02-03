@@ -1383,7 +1383,7 @@ int is_name_synthetic(int flags, char *name, union all_addr *addr);
 int is_rev_synth(int flag, union all_addr *addr, char *name);
 
 /* rfc1035.c */
-int do_doctor(struct dns_header *header, size_t qlen);
+int do_doctor(struct dns_header *header, size_t qlen, char *namebuff);
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
                  char *name, int isExtract, int extrabytes);
 unsigned char *skip_name(unsigned char *ansp, struct dns_header *header, size_t plen, int extrabytes);
