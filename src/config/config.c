@@ -429,8 +429,8 @@ void initConfig(struct config *conf)
 		struct enum_options piholePTR[] =
 		{
 			{ get_ptr_type_str(PTR_NONE), "Pi-hole will not respond automatically on PTR requests to local interface addresses. Ensure pi.hole and/or hostname records exist elsewhere." },
-			{ get_ptr_type_str(PTR_HOSTNAME), "Pi-hole will not respond automatically on PTR requests to local interface addresses. Ensure pi.hole and/or hostname records exist elsewhere." },
-			{ get_ptr_type_str(PTR_HOSTNAMEFQDN), "Serve the machine's global hostname as fully qualified domain by adding the local suffix. If no local suffix has been defined, FTL appends the local domain .no_fqdn_available. In this case you should either add domain=whatever.com to a custom config file inside /etc/dnsmasq.d/ (to set whatever.com as local domain) or use domain=# which will try to derive the local domain from /etc/resolv.conf (or whatever is set with resolv-file, when multiple search directives exist, the first one is used)." },
+			{ get_ptr_type_str(PTR_HOSTNAME), "Serve the machine's hostname. The hostname is queried from the kernel through uname(2)->nodename. If the machine has multiple network interfaces, it can also have multiple nodenames. In this case, it is unspecified and up to the kernel which one will be returned. On Linux, the returned string is what has been set using sethostname(2) which is typically what has been set in /etc/hostname." },
+			{ get_ptr_type_str(PTR_HOSTNAMEFQDN), "Serve the machine's hostname (see limitations above) as fully qualified domain by adding the local domain. If no local domain has been defined (config option dns.domain), FTL tries to query the domain name from the kernel using getdomainname(2). If this fails, FTL appends \".no_fqdn_available\" to the hostname." },
 			{ get_ptr_type_str(PTR_PIHOLE), "Respond with \"pi.hole\"." }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->dns.piholePTR.a, piholePTR);
@@ -956,14 +956,14 @@ void initConfig(struct config *conf)
 	conf->webserver.api.app_pwhash.d.s = (char*)"";
 
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
-	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses\n Example: [ \"192.168.2.56\", \"fe80::341\", \"localhost\" ]";
-	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames");
+	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_clients)\n This setting accepts both IP addresses (IPv4 and IPv6) as well as hostnames.\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n\n Example: [ \"^192\\\\.168\\\\.2\\\\.56$\", \"^fe80::341:[0-9a-f]*$\", \"^localhost$\" ]";
+	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of regular expressions describing clients");
 	conf->webserver.api.excludeClients.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeClients.d.json = cJSON_CreateArray();
 
 	conf->webserver.api.excludeDomains.k = "webserver.api.excludeDomains";
-	conf->webserver.api.excludeDomains.h = "Array of domains to be excluded from certain API responses\n Example: [ \"google.de\", \"pi-hole.net\" ]";
-	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of domains");
+	conf->webserver.api.excludeDomains.h = "Array of domains to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_domains)\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n\n Example: [ \"(^|\\\\.)\\\\.google\\\\.de$\", \"\\\\.pi-hole\\\\.net$\" ]";
+	conf->webserver.api.excludeDomains.a = cJSON_CreateStringReference("array of regular expressions describing domains");
 	conf->webserver.api.excludeDomains.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeDomains.d.json = cJSON_CreateArray();
 
@@ -971,6 +971,11 @@ void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.h = "How much history should be imported from the database and returned by the API [seconds]? (max 24*60*60 = 86400)";
 	conf->webserver.api.maxHistory.t = CONF_UINT;
 	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
+
+	conf->webserver.api.maxClients.k = "webserver.api.maxClients";
+	conf->webserver.api.maxClients.h = "Up to how many clients should be returned in the activity graph endpoint (/api/history/clients)?\n This setting can be overwritten at run-time using the parameter N";
+	conf->webserver.api.maxClients.t = CONF_UINT16;
+	conf->webserver.api.maxClients.d.u16 = 10;
 
 	conf->webserver.api.allow_destructive.k = "webserver.api.allow_destructive";
 	conf->webserver.api.allow_destructive.h = "Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)";

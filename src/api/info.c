@@ -755,11 +755,26 @@ int api_info_version(struct ftl_conn *api)
 		//else if(strcmp(key, "FTL_VERSION") == 0)
 		//	JSON_COPY_STR_TO_OBJECT(ftl_local, "version", value);
 		else if(strcmp(key, "GITHUB_CORE_VERSION") == 0)
-			JSON_COPY_STR_TO_OBJECT(core_remote, "version", value);
+		{
+			if(strcmp(value, "null") == 0)
+				JSON_ADD_NULL_TO_OBJECT(core_remote, "version");
+			else
+				JSON_COPY_STR_TO_OBJECT(core_remote, "version", value);
+		}
 		else if(strcmp(key, "GITHUB_WEB_VERSION") == 0)
-			JSON_COPY_STR_TO_OBJECT(web_remote, "version", value);
+		{
+			if(strcmp(value, "null") == 0)
+				JSON_ADD_NULL_TO_OBJECT(web_remote, "version");
+			else
+				JSON_COPY_STR_TO_OBJECT(web_remote, "version", value);
+		}
 		else if(strcmp(key, "GITHUB_FTL_VERSION") == 0)
-			JSON_COPY_STR_TO_OBJECT(ftl_remote, "version", value);
+		{
+			if(strcmp(value, "null") == 0)
+				JSON_ADD_NULL_TO_OBJECT(ftl_remote, "version");
+			else
+				JSON_COPY_STR_TO_OBJECT(ftl_remote, "version", value);
+		}
 		else if(strcmp(key, "CORE_HASH") == 0)
 			JSON_COPY_STR_TO_OBJECT(core_local, "hash", value);
 		else if(strcmp(key, "WEB_HASH") == 0)

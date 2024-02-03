@@ -78,21 +78,81 @@ static int generate_private_key_ec(mbedtls_pk_context *key,
 	return 0;
 }
 
+// Write a key and/or certificate to a file
+static bool write_to_file(const char *filename, const char *type, const char *suffix, const char *cert, const char *key)
+{
+	// Create file with CA certificate only
+	char *targetname = calloc(strlen(filename) + (suffix != NULL ? strlen(suffix) : 0) + 1, sizeof(char));
+	strcpy(targetname, filename);
+
+	if(suffix != NULL)
+	{
+		// If the certificate file name ends with ".pem", replace it
+		// with the specified suffix. Otherwise, append the specified
+		// suffix to the certificate file name
+		if (strlen(targetname) > 4 && strcmp(targetname + strlen(targetname) - 4, ".pem") == 0)
+			targetname[strlen(filename) - 4] = '\0';
+
+		strcat(targetname, suffix);
+	}
+
+	printf("Storing %s in %s ...\n", type, targetname);
+	FILE *f = NULL;
+	if ((f = fopen(targetname, "wb")) == NULL)
+	{
+		printf("ERROR: Could not open %s for writing\n", targetname);
+		return false;
+	}
+
+	// Write key (if provided)
+	if(key != NULL)
+	{
+		const size_t olen = strlen((char *) key);
+		if (fwrite(key, 1, olen, f) != olen)
+		{
+			printf("ERROR: Could not write key to %s\n", targetname);
+			fclose(f);
+			return false;
+		}
+	}
+
+	// Write certificate (if provided)
+	if(cert != NULL)
+	{
+		const size_t olen = strlen((char *) cert);
+		if (fwrite(cert, 1, olen, f) != olen)
+		{
+			printf("ERROR: Could not write certificate to %s\n", targetname);
+			fclose(f);
+			return false;
+		}
+	}
+
+	// Close cert file
+	fclose(f);
+	free(targetname);
+
+	return true;
+}
+
 bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 {
 	int ret;
-	mbedtls_x509write_cert crt;
-	mbedtls_pk_context key;
+	mbedtls_x509write_cert ca_cert, server_cert;
+	mbedtls_pk_context ca_key, server_key;
 	mbedtls_entropy_context entropy;
 	mbedtls_ctr_drbg_context ctr_drbg;
 	const char *pers = "pihole-FTL";
+	unsigned char ca_buffer[BUFFER_SIZE];
 	unsigned char cert_buffer[BUFFER_SIZE];
 	unsigned char key_buffer[BUFFER_SIZE];
-	size_t olen = 0;
+	unsigned char ca_key_buffer[BUFFER_SIZE];
 
 	// Initialize structures
-	mbedtls_x509write_crt_init(&crt);
-	mbedtls_pk_init(&key);
+	mbedtls_x509write_crt_init(&ca_cert);
+	mbedtls_x509write_crt_init(&server_cert);
+	mbedtls_pk_init(&ca_key);
+	mbedtls_pk_init(&server_key);
 	mbedtls_ctr_drbg_init(&ctr_drbg);
 	mbedtls_entropy_init(&entropy);
 
@@ -110,7 +170,12 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	{
 		// Generate RSA key
 		printf("Generating RSA key...\n");
-		if((ret = generate_private_key_rsa(&key, &ctr_drbg, key_buffer)) != 0)
+		if((ret = generate_private_key_rsa(&ca_key, &ctr_drbg, ca_key_buffer)) != 0)
+		{
+			printf("ERROR: generate_private_key returned %d\n", ret);
+			return false;
+		}
+		if((ret = generate_private_key_rsa(&server_key, &ctr_drbg, key_buffer)) != 0)
 		{
 			printf("ERROR: generate_private_key returned %d\n", ret);
 			return false;
@@ -120,7 +185,12 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	{
 		// Generate EC key
 		printf("Generating EC key...\n");
-		if((ret = generate_private_key_ec(&key, &ctr_drbg, key_buffer)) != 0)
+		if((ret = generate_private_key_ec(&ca_key, &ctr_drbg, ca_key_buffer)) != 0)
+		{
+			printf("ERROR: generate_private_key_ec returned %d\n", ret);
+			return false;
+		}
+		if((ret = generate_private_key_ec(&server_key, &ctr_drbg, key_buffer)) != 0)
 		{
 			printf("ERROR: generate_private_key_ec returned %d\n", ret);
 			return false;
@@ -139,47 +209,72 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	// only one certificate being issued with a given browser. Any new generated
 	// certificate would be rejected by the browser as it would have the same
 	// serial number as the previous one and uniques is violated.
-	unsigned char serial[16] = { 0 };
-	mbedtls_ctr_drbg_random(&ctr_drbg, serial, sizeof(serial));
-	for(unsigned int i = 0; i < sizeof(serial) - 1; i++)
-		serial[i] = '0' + (serial[i] % 10);
-	serial[sizeof(serial) - 1] = '\0';
+	unsigned char serial1[16] = { 0 }, serial2[16] = { 0 };
+	mbedtls_ctr_drbg_random(&ctr_drbg, serial1, sizeof(serial1));
+	for(unsigned int i = 0; i < sizeof(serial1) - 1; i++)
+		serial1[i] = '0' + (serial1[i] % 10);
+	serial1[sizeof(serial1) - 1] = '\0';
+	mbedtls_ctr_drbg_random(&ctr_drbg, serial2, sizeof(serial2));
+	for(unsigned int i = 0; i < sizeof(serial2) - 1; i++)
+		serial2[i] = '0' + (serial2[i] % 10);
+	serial2[sizeof(serial2) - 1] = '\0';
 
 	// Create validity period
-	// Use YYYYMMDDHHMMSS as required by RFC 5280
+	// Use YYYYMMDDHHMMSS as required by RFC 5280 (UTCTime)
 	const time_t now = time(NULL);
 	struct tm tms = { 0 };
-	struct tm *tm = localtime_r(&now, &tms);
+	struct tm *tm = gmtime_r(&now, &tms);
 	char not_before[16] = { 0 };
 	char not_after[16] = { 0 };
 	strftime(not_before, sizeof(not_before), "%Y%m%d%H%M%S", tm);
 	tm->tm_year += 30; // 30 years from now
 	strftime(not_after, sizeof(not_after), "%Y%m%d%H%M%S", tm);
 
-	// Generate certificate
-	printf("Generating new certificate with serial number %s...\n", serial);
-	mbedtls_x509write_crt_set_version(&crt, MBEDTLS_X509_CRT_VERSION_3);
+	// 1. Create CA certificate
+	printf("Generating new CA with serial number %s...\n", serial1);
+	mbedtls_x509write_crt_set_version(&ca_cert, MBEDTLS_X509_CRT_VERSION_3);
 
-	mbedtls_x509write_crt_set_serial_raw(&crt, serial, sizeof(serial)-1);
-	mbedtls_x509write_crt_set_md_alg(&crt, MBEDTLS_MD_SHA256);
-	mbedtls_x509write_crt_set_subject_key(&crt, &key);
-	mbedtls_x509write_crt_set_issuer_key(&crt, &key);
-	mbedtls_x509write_crt_set_issuer_name(&crt, "CN=pi.hole");
-	mbedtls_x509write_crt_set_validity(&crt, not_before, not_after);
-	mbedtls_x509write_crt_set_basic_constraints(&crt, 0, -1);
-	mbedtls_x509write_crt_set_subject_key_identifier(&crt);
-	mbedtls_x509write_crt_set_authority_key_identifier(&crt);
+	mbedtls_x509write_crt_set_serial_raw(&ca_cert, serial1, sizeof(serial1)-1);
+	mbedtls_x509write_crt_set_md_alg(&ca_cert, MBEDTLS_MD_SHA256);
+	mbedtls_x509write_crt_set_subject_key(&ca_cert, &ca_key);
+	mbedtls_x509write_crt_set_subject_key_identifier(&ca_cert);
+	mbedtls_x509write_crt_set_issuer_key(&ca_cert, &ca_key);
+	mbedtls_x509write_crt_set_authority_key_identifier(&ca_cert);
+	mbedtls_x509write_crt_set_issuer_name(&ca_cert, "CN=pi.hole,O=Pi-hole,C=DE");
+	mbedtls_x509write_crt_set_subject_name(&ca_cert, "CN=pi.hole,O=Pi-hole,C=DE");
+	mbedtls_x509write_crt_set_validity(&ca_cert, not_before, not_after);
+	mbedtls_x509write_crt_set_basic_constraints(&ca_cert, 1, -1);
 
+	// Export CA in PEM format
+	if((ret = mbedtls_x509write_crt_pem(&ca_cert, ca_buffer, sizeof(ca_buffer),
+	                                    mbedtls_ctr_drbg_random, &ctr_drbg)) != 0)
+	{
+		printf("ERROR: mbedtls_x509write_crt_pem (CA) returned %d\n", ret);
+		return false;
+	}
+
+	printf("Generating new server certificate with serial number %s...\n", serial2);
+	mbedtls_x509write_crt_set_version(&server_cert, MBEDTLS_X509_CRT_VERSION_3);
+
+	mbedtls_x509write_crt_set_serial_raw(&server_cert, serial2, sizeof(serial2)-1);
+	mbedtls_x509write_crt_set_md_alg(&server_cert, MBEDTLS_MD_SHA256);
+	mbedtls_x509write_crt_set_subject_key(&server_cert, &server_key);
+	mbedtls_x509write_crt_set_subject_key_identifier(&server_cert);
+	mbedtls_x509write_crt_set_issuer_key(&server_cert, &ca_key);
+	mbedtls_x509write_crt_set_authority_key_identifier(&server_cert);
+	// subject name set below
+	mbedtls_x509write_crt_set_issuer_name(&server_cert, "CN=pi.hole,O=Pi-hole,C=DE");
+	mbedtls_x509write_crt_set_validity(&server_cert, not_before, not_after);
+	mbedtls_x509write_crt_set_basic_constraints(&server_cert, 0, -1);
 
 	// Set subject name depending on the (optionally) specified domain
 	{
 		char *subject_name = calloc(strlen(domain) + 4, sizeof(char));
 		strcpy(subject_name, "CN=");
 		strcat(subject_name, domain);
-		mbedtls_x509write_crt_set_subject_name(&crt, subject_name);
+		mbedtls_x509write_crt_set_subject_name(&server_cert, subject_name);
 		free(subject_name);
 	}
-
 
 	// Add "DNS:pi.hole" as subject alternative name (SAN)
 	//
@@ -209,85 +304,32 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 		san_dns_pihole.next = &san_dns_domain; // Link this domain
 	}
 
-	ret = mbedtls_x509write_crt_set_subject_alternative_name(&crt, &san_dns_pihole);
+	ret = mbedtls_x509write_crt_set_subject_alternative_name(&server_cert, &san_dns_pihole);
 	if (ret != 0)
 		printf("mbedtls_x509write_crt_set_subject_alternative_name returned %d\n", ret);
 
-
 	// Export certificate in PEM format
-	if((ret = mbedtls_x509write_crt_pem(&crt, cert_buffer, sizeof(cert_buffer),
+	if((ret = mbedtls_x509write_crt_pem(&server_cert, cert_buffer, sizeof(cert_buffer),
 	                                    mbedtls_ctr_drbg_random, &ctr_drbg)) != 0)
 	{
 		printf("ERROR: mbedtls_x509write_crt_pem returned %d\n", ret);
 		return false;
 	}
 
-	// Write private key and certificate to file
-	FILE *f = NULL;
-	printf("Storing key + certificate in %s ...\n", certfile);
-	if ((f = fopen(certfile, "wb")) == NULL)
-	{
-		printf("ERROR: Could not open %s for writing\n", certfile);
-		return false;
-	}
+	// Create file with CA certificate only
+	write_to_file(certfile, "CA certificate", "_ca.crt", (char*)ca_buffer, NULL);
 
-	// Write private key
-	olen = strlen((char *) key_buffer);
-	if (fwrite(key_buffer, 1, olen, f) != olen)
-	{
-		printf("ERROR: Could not write key to %s\n", certfile);
-		fclose(f);
-		return false;
-	}
+	// Create file with server certificate only
+	write_to_file(certfile, "server certificate", ".crt", (char*)cert_buffer, NULL);
 
-	// Write certificate
-	olen = strlen((char *) cert_buffer);
-	if (fwrite(cert_buffer, 1, olen, f) != olen)
-	{
-		printf("ERROR: Could not write certificate to %s\n", certfile);
-		fclose(f);
-		return false;
-	}
-
-	// Close key+cert file
-	fclose(f);
-
-	// Create second file with certificate only
-	char *certfile2 = calloc(strlen(certfile) + 5, sizeof(char));
-	strcpy(certfile2, certfile);
-
-	// If the certificate file name ends with ".pem" or ".key", replace it with ".crt"
-	// Otherwise, append ".crt" to the certificate file name
-	if (strlen(certfile2) > 4 &&
-	     (strcmp(certfile2 + strlen(certfile2) - 4, ".pem") == 0 ||
-	      strcmp(certfile2 + strlen(certfile2) - 4, ".key") == 0))
-		certfile2[strlen(certfile) - 4] = '\0';
-
-	strcat(certfile2, ".crt");
-
-	printf("Storing certificate in %s ...\n", certfile2);
-	if ((f = fopen(certfile2, "wb")) == NULL)
-	{
-		printf("ERROR: Could not open %s for writing\n", certfile2);
-		return false;
-	}
-
-	// Write certificate
-	olen = strlen((char *) cert_buffer);
-	if (fwrite(cert_buffer, 1, olen, f) != olen)
-	{
-		printf("ERROR: Could not write certificate to %s\n", certfile2);
-		fclose(f);
-		return false;
-	}
-
-	// Close cert file
-	fclose(f);
-	free(certfile2);
+	// Write server's private key and certificate to file
+	write_to_file(certfile, "server key + certificate", NULL, (char*)cert_buffer, (char*)key_buffer);
 
 	// Free resources
-	mbedtls_x509write_crt_free(&crt);
-	mbedtls_pk_free(&key);
+	mbedtls_x509write_crt_free(&ca_cert);
+	mbedtls_x509write_crt_free(&server_cert);
+	mbedtls_pk_free(&ca_key);
+	mbedtls_pk_free(&server_key);
 	mbedtls_ctr_drbg_free(&ctr_drbg);
 	mbedtls_entropy_free(&entropy);
 
@@ -345,11 +387,12 @@ enum cert_check read_certificate(const char* certfile, const char *domain, const
 		return CERT_FILE_NOT_FOUND;
 	}
 
+	bool has_key = true;
 	int rc = mbedtls_pk_parse_keyfile(&key, certfile, NULL, mbedtls_ctr_drbg_random, &ctr_drbg);
 	if (rc != 0)
 	{
-		log_err("Cannot parse key: Error code %d", rc);
-		return CERT_CANNOT_PARSE_KEY;
+		log_info("No key found");
+		has_key = false;
 	}
 
 	rc = mbedtls_x509_crt_parse_file(&crt, certfile);
@@ -444,7 +487,7 @@ next_san:
 	puts("Certificate (X.509):\n");
 	puts(certinfo);
 
-	if(!private_key)
+	if(!private_key || !has_key)
 		goto end;
 
 	puts("Private key:");
