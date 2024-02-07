@@ -427,8 +427,8 @@ int main_dnsmasq (int argc, char **argv)
     }
 
 #ifdef HAVE_INOTIFY
-  if ((daemon->port != 0 || daemon->dhcp || daemon->doing_dhcp6)
-      && (!option_bool(OPT_NO_RESOLV) || daemon->dynamic_dirs))
+  if ((daemon->port != 0 && !option_bool(OPT_NO_RESOLV)) ||
+      daemon->dynamic_dirs)
     inotify_dnsmasq_init();
   else
     daemon->inotifyfd = -1;
