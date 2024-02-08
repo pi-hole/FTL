@@ -85,7 +85,7 @@ src/dnsmasq/forward.c
 src/dnsmasq/forward.c
       my_syslog(LOG_WARNING, _("nameserver %s refused to do a recursive query"), daemon->namebuff);
 src/dnsmasq/forward.c
-	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
+	      my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
 src/dnsmasq/forward.c
       my_syslog(LOG_WARNING, _("reducing DNS packet size for nameserver %s to %d"), daemon->addrbuff, SAFE_PKTSZ);
 src/dnsmasq/forward.c
