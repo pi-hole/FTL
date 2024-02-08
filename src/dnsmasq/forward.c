@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -697,7 +697,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 {
   unsigned char *pheader, *sizep;
   struct ipsets *ipsets = NULL, *nftsets = NULL;
-  int munged = 0, is_sign;
+  int is_sign;
   unsigned int rcode = RCODE(header);
   size_t plen; 
   /******** Pi-hole modification ********/
@@ -706,8 +706,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
     
   (void)ad_reqd;
   (void)do_bit;
-  (void)bogusanswer;
-
+ 
 #ifdef HAVE_IPSET
   if (daemon->ipsets && extract_request(header, n, daemon->namebuff, NULL))
     ipsets = domain_find_sets(daemon->ipsets, daemon->namebuff);
@@ -738,7 +737,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  if (added_pheader)
 	    {
 	      /* client didn't send EDNS0, we added one, strip it off before returning answer. */
-	      n = rrfilter(header, n, RRFILTER_EDNS0);
+	      rrfilter(header, &n, RRFILTER_EDNS0);
 	      pheader = NULL;
 	    }
 	  else
@@ -801,119 +800,118 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	server->flags |= SERV_WARNED_RECURSIVE;
     }  
 
-  if (daemon->bogus_addr && rcode != NXDOMAIN &&
-      check_for_bogus_wildcard(header, n, daemon->namebuff, now))
+  if (header->hb3 & HB3_TC)
     {
-      munged = 1;
-      SET_RCODE(header, NXDOMAIN);
-      header->hb3 &= ~HB3_AA;
-      cache_secure = 0;
-      ede = EDE_BLOCKED;
+      log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
+      header->ancount = htons(0);
+      header->nscount = htons(0);
+      header->arcount = htons(0);
     }
-  else 
+
+  if  (!(header->hb3 & HB3_TC) && (!bogusanswer || (header->hb4 & HB4_CD)))
     {
-      int doctored = 0;
+      if (rcode == NXDOMAIN && extract_request(header, n, daemon->namebuff, NULL) &&
+	  (check_for_local_domain(daemon->namebuff, now) || lookup_domain(daemon->namebuff, F_CONFIG, NULL, NULL)))
+	{
+	  /* if we forwarded a query for a locally known name (because it was for 
+	     an unknown type) and the answer is NXDOMAIN, convert that to NODATA,
+	     since we know that the domain exists, even if upstream doesn't */
+	  header->hb3 |= HB3_AA;
+	  SET_RCODE(header, NOERROR);
+	  cache_secure = 0;
+	}
       
-      if (rcode == NXDOMAIN && 
-	  extract_request(header, n, daemon->namebuff, NULL))
+      if (daemon->doctors && do_doctor(header, n, daemon->namebuff))
+	cache_secure = 0;
+      
+      /* check_for_bogus_wildcard() does it's own caching, so
+	 don't call extract_addresses() if it triggers. */
+      if (daemon->bogus_addr && rcode != NXDOMAIN &&
+	  check_for_bogus_wildcard(header, n, daemon->namebuff, now))
 	{
-	  if (check_for_local_domain(daemon->namebuff, now) ||
-	      lookup_domain(daemon->namebuff, F_CONFIG, NULL, NULL))
-	    {
-	      /* if we forwarded a query for a locally known name (because it was for 
-		 an unknown type) and the answer is NXDOMAIN, convert that to NODATA,
-		 since we know that the domain exists, even if upstream doesn't */
-	      munged = 1;
-	      header->hb3 |= HB3_AA;
-	      SET_RCODE(header, NOERROR);
-	      cache_secure = 0;
-	    }
-	}
-
-      /* Before extract_addresses() */
-      if (rcode == NOERROR)
-	{
-	  if (option_bool(OPT_FILTER_A))
-	    n = rrfilter(header, n, RRFILTER_A);
-
-	  if (option_bool(OPT_FILTER_AAAA))
-	    n = rrfilter(header, n, RRFILTER_AAAA);
-	}
-
-      switch (extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure, &doctored))
-	{
-	case 1:
-	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
-	  munged = 1;
+	  header->ancount = htons(0);
+	  header->nscount = htons(0);
+	  header->arcount = htons(0);
+	  SET_RCODE(header, NXDOMAIN);
+	  header->hb3 &= ~HB3_AA;
 	  cache_secure = 0;
 	  ede = EDE_BLOCKED;
-	  break;
-	  
-	  /* extract_addresses() found a malformed answer. */
-	case 2:
-	  munged = 1;
-	  SET_RCODE(header, SERVFAIL);
-	  cache_secure = 0;
-	  ede = EDE_OTHER;
-	  break;
-
-	  /* Pi-hole modification */
-	case 99:
-	  cache_secure = 0;
-	  // Make a private copy of the pheader to ensure
-	  // we are not accidentially rewriting what is in
-	  // the pheader when we're creating a crafted reply
-	  // further below (when a query is to be blocked)
-	  if (pheader)
-	  {
-	    pheader_copy = calloc(1, plen);
-	    memcpy(pheader_copy, pheader, plen);
-	  }
-
-	  // Generate DNS packet for reply, a possibly existing pseudo header
-	  // will be restored later inside resize_packet()
-	  n = FTL_make_answer(header, ((char *) header) + 65536, n, &ede);
-	  break;
 	}
+      else
+	{
+	  int rc = extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure);
 
-      if (doctored)
-	cache_secure = 0;
+	  if (rc != 0)
+	    {
+	      header->ancount = htons(0);
+	      header->nscount = htons(0);
+	      header->arcount = htons(0);
+	      cache_secure = 0;
+	    }
+	  
+	  if (rc == 1)
+	    {
+	      my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
+	      ede = EDE_BLOCKED;
+	    }
+
+	  if (rc == 2)
+	    {
+	      /* extract_addresses() found a malformed answer. */
+	      SET_RCODE(header, SERVFAIL);
+	      ede = EDE_OTHER;
+	    }
+
+	/* Pi-hole modification */
+	if(rc == 99)
+	    {
+	      cache_secure = 0;
+	      // Make a private copy of the pheader to ensure
+	      // we are not accidentially rewriting what is in
+	      // the pheader when we're creating a crafted reply
+	      // further below (when a query is to be blocked)
+	      if (pheader)
+	      {
+	       pheader_copy = calloc(1, plen);
+		memcpy(pheader_copy, pheader, plen);
+	      }
+
+	      // Generate DNS packet for reply, a possibly existing pseudo header
+	      // will be restored later inside resize_packet()
+	      n = FTL_make_answer(header, ((char *) header) + 65536, n, &ede);
+	    }
+	}
+      
+      if (RCODE(header) == NOERROR && rrfilter(header, &n, RRFILTER_CONF) > 0) 
+	ede = EDE_FILTERED;
     }
   
 #ifdef HAVE_DNSSEC
-  if (bogusanswer && !(header->hb4 & HB4_CD) && !option_bool(OPT_DNSSEC_DEBUG))
-    {
-      /* Bogus reply, turn into SERVFAIL */
-      SET_RCODE(header, SERVFAIL);
-      munged = 1;
-    }
-
   if (option_bool(OPT_DNSSEC_VALID))
     {
-      header->hb4 &= ~HB4_AD;
-      
-      if (!(header->hb4 & HB4_CD) && ad_reqd && cache_secure)
+      if (bogusanswer)
+	{
+	  if (!(header->hb4 & HB4_CD) && !option_bool(OPT_DNSSEC_DEBUG))
+	    {
+	      /* Bogus reply, turn into SERVFAIL */
+	      SET_RCODE(header, SERVFAIL);
+	      header->ancount = htons(0);
+	      header->nscount = htons(0);
+	      header->arcount = htons(0);
+	      ede = EDE_DNSSEC_BOGUS;
+	    }
+	}
+      else if (!(header->hb4 & HB4_CD) && ad_reqd && cache_secure)
 	header->hb4 |= HB4_AD;
       
       /* If the requestor didn't set the DO bit, don't return DNSSEC info. */
       if (!do_bit)
-	n = rrfilter(header, n, RRFILTER_DNSSEC);
+	rrfilter(header, &n, RRFILTER_DNSSEC);
     }
 #endif
-
-  /* do this after extract_addresses. Ensure NODATA reply and remove
-     nameserver info. */
-  if (munged)
-    {
-      header->ancount = htons(0);
-      header->nscount = htons(0);
-      header->arcount = htons(0);
-      header->hb3 &= ~HB3_TC;
-    }
   
-  /* the bogus-nxdomain stuff, doctor and NXDOMAIN->NODATA munging can all elide
-     sections of the packet. Find the new length here and put back pseudoheader
-     if it was removed. */
+  /* the code above can elide sections of the packet. Find the new length here 
+     and put back pseudoheader if it was removed. */
   n = resize_packet(header, n, pheader_copy ? pheader_copy : pheader, plen);
   /******** Pi-hole modification ********/
   // The line above was modified to use
@@ -1882,10 +1880,10 @@ void receive_query(struct listener *listen, time_t now)
 #endif
   else
     {
-      int stale;
+      int stale, filtered;
       int ad_reqd = do_bit;
-      u16 hb3 = header->hb3, hb4 = header->hb4;
       int fd = listen->fd;
+      struct blockdata *saved_question = blockdata_alloc((char *) header, (size_t)n);
       
       /* RFC 6840 5.7 */
       if (header->hb4 & HB4_AD)
@@ -1922,17 +1920,27 @@ void receive_query(struct listener *listen, time_t now)
       /**********************************************/
       
       m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
-			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale);
+			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale, &filtered);
       
       if (m >= 1)
 	{
-	  if (stale && have_pseudoheader)
+	  if (have_pseudoheader)
 	    {
-	      u16 swap = htons(EDE_STALE);
-	      
-	      m = add_pseudoheader(header,  m,  ((unsigned char *) header) + udp_size, daemon->edns_pktsz,
-				   EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	      int ede = EDE_UNSET;
+	      if (filtered)
+		ede = EDE_FILTERED;
+	      else if (stale)
+		ede = EDE_STALE;
+
+	      if (ede != EDE_UNSET)
+		{
+		  u16 swap = htons(ede);
+		  
+		  m = add_pseudoheader(header,  m,  ((unsigned char *) header) + udp_size, daemon->edns_pktsz,
+				       EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+		}
 	    }
+	  
 #ifdef HAVE_DUMPFILE
 	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
 #endif
@@ -1947,34 +1955,31 @@ void receive_query(struct listener *listen, time_t now)
 	    daemon->metrics[METRIC_DNS_STALE_ANSWERED]++;
 	}
       
-      if (m == 0 || stale)
+      if (stale)
 	{
-	  if (m != 0)
+	  /* We answered with stale cache data, so forward the query anyway to
+	     refresh that. */
+	  m = 0;
+	  
+	  /* We've already answered the client, so don't send it the answer 
+	     when it comes back. */
+	  fd = -1;
+	}
+      
+      if (saved_question)
+	{
+	  if (m == 0)
 	    {
-	      size_t plen;
+	      blockdata_retrieve(saved_question, (size_t)n, header);
 	      
-	      /* We answered with stale cache data, so forward the query anyway to
-		 refresh that. Restore the query from the answer packet. */
-	      pheader = find_pseudoheader(header, (size_t)m, &plen, NULL, NULL, NULL);
-	      
-	      header->hb3 = hb3;
-	      header->hb4 = hb4;
-	      header->ancount = htons(0);
-	      header->nscount = htons(0);
-	      header->arcount = htons(0);
-
-	      m = resize_packet(header, m, pheader, plen);
-
-	      /* We've already answered the client, so don't send it the answer 
-		 when it comes back. */
-	      fd = -1;
+	      if (forward_query(fd, &source_addr, &dst_addr, if_index,
+				header, (size_t)n,  ((char *) header) + udp_size, now, NULL, ad_reqd, do_bit, 0))
+		daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
+	      else
+		daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
 	    }
 	  
-	  if (forward_query(fd, &source_addr, &dst_addr, if_index,
-			    header, (size_t)n,  ((char *) header) + udp_size, now, NULL, ad_reqd, do_bit, 0))
-	    daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
-	  else
-	    daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+	  blockdata_free(saved_question);
 	}
     }
 }
@@ -2163,7 +2168,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       daemon->log_display_id = ++daemon->log_id;
       
       log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, keyname, &server->addr,
-			    STAT_ISEQUAL(status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
+			    STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
             
       new_status = tcp_key_recurse(now, new_status, new_header, m, class, name, keyname, server, have_mark, mark, keycount);
 
@@ -2188,7 +2193,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 unsigned char *tcp_request(int confd, time_t now,
 			   union mysockaddr *local_addr, struct in_addr netmask, int auth_dns)
 {
-  size_t size = 0;
+  size_t size = 0, saved_size = 0;
   int norebind;
 #ifdef HAVE_CONNTRACK
   int is_single_query = 0, allowed = 1;
@@ -2199,6 +2204,7 @@ unsigned char *tcp_request(int confd, time_t now,
   int checking_disabled, do_bit, added_pheader = 0, have_pseudoheader = 0;
   int cacheable, no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
   size_t m;
+  struct blockdata *saved_question = NULL;
   unsigned short qtype;
   unsigned int gotname;
   /* Max TCP packet + slop + size */
@@ -2216,9 +2222,8 @@ unsigned char *tcp_request(int confd, time_t now,
   unsigned char *pheader;
   unsigned int mark = 0;
   int have_mark = 0;
-  int first, last, stale, do_stale = 0;
+  int first, last, filtered, stale, do_stale = 0;
   unsigned int flags = 0;
-  u16 hb3, hb4;
     
   /************ Pi-hole modification ************/
   bool piholeblocked = false;
@@ -2277,35 +2282,15 @@ unsigned char *tcp_request(int confd, time_t now,
     {
       int ede = EDE_UNSET;
 
-      if (query_count == TCP_MAX_QUERIES)
-	return packet;
-
-      if (do_stale)
+      if (!do_stale)
 	{
-	  size_t plen;
-
-	  /* We answered the last query with stale data. Now try and get fresh data.
-	     Restore query from answer. */
-	  pheader = find_pseudoheader(header, m, &plen, NULL, NULL, NULL);
+	  if (query_count == TCP_MAX_QUERIES)
+	    break;
 	  
-	  header->hb3 = hb3;
-	  header->hb4 = hb4;
-	  header->ancount = htons(0);
-	  header->nscount = htons(0);
-	  header->arcount = htons(0);
-	  
-	  size = resize_packet(header, m, pheader, plen);
-	}
-      else
-	{
 	  if (!read_write(confd, &c1, 1, 1) || !read_write(confd, &c2, 1, 1) ||
 	      !(size = c1 << 8 | c2) ||
 	      !read_write(confd, payload, size, 1))
-	    return packet;
-	  
-	  /* for stale-answer processing. */
-	  hb3 = header->hb3;
-	  hb4 = header->hb4;
+	    break;
 	}
       
       if (size < (int)sizeof(struct dns_header))
@@ -2327,7 +2312,6 @@ unsigned char *tcp_request(int confd, time_t now,
 	no_cache_dnssec = 1;
 
       //********************** Pi-hole modification **********************//
-      unsigned char *pheader = NULL;
       pheader = find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL);
       FTL_parse_pseudoheaders(pheader, (size_t)size);
       //******************************************************************//
@@ -2447,18 +2431,28 @@ unsigned char *tcp_request(int confd, time_t now,
 	   if (do_stale)
 	     m = 0;
 	   else
-	     /* m > 0 if answered from cache */
-	     m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
-				dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale);
-	   
+	     {
+	       if (saved_question)
+		 blockdata_free(saved_question);
+	       
+	       saved_question = blockdata_alloc((char *) header, (size_t)size);
+	       saved_size = size;
+	       
+	       /* m > 0 if answered from cache */
+	       m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
+				  dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale, &filtered);
+	     }
 	  /* Do this by steam now we're not in the select() loop */
 	  check_log_writer(1); 
 	  
-	  if (m == 0)
+	  if (m == 0 && saved_question)
 	    {
 	      struct server *master;
 	      int start;
 
+	      blockdata_retrieve(saved_question, (size_t)saved_size, header);
+	      size = saved_size;
+	      
 	      if (lookup_domain(daemon->namebuff, gotname, &first, &last))
 		flags = is_local_answer(now, first, daemon->namebuff);
 	      else
@@ -2591,13 +2585,23 @@ unsigned char *tcp_request(int confd, time_t now,
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 	    }
 	}
-      else if (stale)
-	 {
-	   u16 swap = htons((u16)EDE_STALE);
-	   
-	   m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
-	 }
-      
+      else if (have_pseudoheader)
+	{
+	  ede = EDE_UNSET;
+	  
+	  if (filtered)
+	    ede = EDE_FILTERED;
+	  else if (stale)
+	    ede = EDE_STALE;
+	  
+	  if (ede != EDE_UNSET)
+	    {
+	      u16 swap = htons((u16)ede);
+	      
+	      m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	    }
+	}
+	  
       check_log_writer(1);
       
       *length = htons(m);
@@ -2613,7 +2617,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	break;
       
       /* If we answered with stale data, this process will now try and get fresh data into
-	 the cache then and cannot therefore accept new queries. Close the incoming
+	 the cache and cannot therefore accept new queries. Close the incoming
 	 connection to signal that to the client. Then set do_stale and loop round
 	 once more to try and get fresh data, after which we exit. */
       if (stale)
@@ -2631,6 +2635,9 @@ unsigned char *tcp_request(int confd, time_t now,
       close(confd);
     }
 
+  if (saved_question)
+    blockdata_free(saved_question);
+  
   return packet;
 }
 

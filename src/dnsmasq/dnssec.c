@@ -1,5 +1,5 @@
 /* dnssec.c is Copyright (c) 2012 Giovanni Bajo <rasky@develer.com>
-           and Copyright (c) 2012-2020 Simon Kelley
+           and Copyright (c) 2012-2023 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -23,81 +23,6 @@
 #define SERIAL_EQ        0
 #define SERIAL_LT       -1
 #define SERIAL_GT        1
-
-/* Convert from presentation format to wire format, in place.
-   Also map UC -> LC.
-   Note that using extract_name to get presentation format
-   then calling to_wire() removes compression and maps case,
-   thus generating names in canonical form.
-   Calling to_wire followed by from_wire is almost an identity,
-   except that the UC remains mapped to LC. 
-
-   Note that both /000 and '.' are allowed within labels. These get
-   represented in presentation format using NAME_ESCAPE as an escape
-   character. In theory, if all the characters in a name were /000 or
-   '.' or NAME_ESCAPE then all would have to be escaped, so the 
-   presentation format would be twice as long as the spec (1024). 
-   The buffers are all declared as 2049 (allowing for the trailing zero) 
-   for this reason.
-*/
-static int to_wire(char *name)
-{
-  unsigned char *l, *p, *q, term;
-  int len;
-
-  for (l = (unsigned char*)name; *l != 0; l = p)
-    {
-      for (p = l; *p != '.' && *p != 0; p++)
-	if (*p >= 'A' && *p <= 'Z')
-	  *p = *p - 'A' + 'a';
-	else if (*p == NAME_ESCAPE)
-	  {
-	    for (q = p; *q; q++)
-	      *q = *(q+1);
-	    (*p)--;
-	  }
-      term = *p;
-      
-      if ((len = p - l) != 0)
-	memmove(l+1, l, len);
-      *l = len;
-      
-      p++;
-      
-      if (term == 0)
-	*p = 0;
-    }
-  
-  return l + 1 - (unsigned char *)name;
-}
-
-/* Note: no compression  allowed in input. */
-static void from_wire(char *name)
-{
-  unsigned char *l, *p, *last;
-  int len;
-  
-  for (last = (unsigned char *)name; *last != 0; last += *last+1);
-  
-  for (l = (unsigned char *)name; *l != 0; l += len+1)
-    {
-      len = *l;
-      memmove(l, l+1, len);
-      for (p = l; p < l + len; p++)
-	if (*p == '.' || *p == 0 || *p == NAME_ESCAPE)
-	  {
-	    memmove(p+1, p, 1 + last - p);
-	    len++;
-	    *p++ = NAME_ESCAPE; 
-	    (*p)++;
-	  }
-	
-      l[len] = '.';
-    }
-
-  if ((char *)l != name)
-    *(l-1) = 0;
-}
 
 /* Input in presentation format */
 static int count_labels(char *name)
@@ -225,7 +150,7 @@ static int is_check_date(unsigned long curtime)
    On returning 0, the end has been reached.
 */
 struct rdata_state {
-  u16 *desc;
+  short *desc;
   size_t c;
   unsigned char *end, *ip, *op;
   char *buff;
@@ -246,7 +171,7 @@ static int get_rdata(struct dns_header *header, size_t plen, struct rdata_state 
     {
       d = *(state->desc);
       
-      if (d == (u16)-1)
+      if (d == -1)
 	{
 	  /* all the bytes to the end. */
 	  if ((state->c = state->end - state->ip) != 0)
@@ -294,7 +219,7 @@ static int get_rdata(struct dns_header *header, size_t plen, struct rdata_state 
 
 /* Bubble sort the RRset into the canonical order. */
 
-static int sort_rrset(struct dns_header *header, size_t plen, u16 *rr_desc, int rrsetidx, 
+static int sort_rrset(struct dns_header *header, size_t plen, short *rr_desc, int rrsetidx, 
 		      unsigned char **rrset, char *buff1, char *buff2)
 {
   int swap, i, j;
@@ -331,7 +256,7 @@ static int sort_rrset(struct dns_header *header, size_t plen, u16 *rr_desc, int 
 	     is the identity function and we can compare
 	     the RRs directly. If not we compare the 
 	     canonicalised RRs one byte at a time. */
-	  if (*rr_desc == (u16)-1)	  
+	  if (*rr_desc == -1)	  
 	    {
 	      int rdmin = rdlen1 > rdlen2 ? rdlen2 : rdlen1;
 	      int cmp = memcmp(state1.ip, state2.ip, rdmin);
@@ -524,7 +449,7 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
   unsigned char *p;
   int rdlen, j, name_labels, algo, labels, key_tag;
   struct crec *crecp = NULL;
-  u16 *rr_desc = rrfilter_desc(type);
+  short *rr_desc = rrfilter_desc(type);
   u32 sig_expiration, sig_inception;
   int failflags = DNSSEC_FAIL_NOSIG | DNSSEC_FAIL_NYV | DNSSEC_FAIL_EXP | DNSSEC_FAIL_NOKEYSUP;
   
@@ -671,7 +596,7 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 	     
 	     If canonicalisation is not needed, a simple insertion into the hash works.
 	  */
-	  if (*rr_desc == (u16)-1)
+	  if (*rr_desc == -1)
 	    {
 	      len = htons(rdlen);
 	      hash->update(ctx, 2, (unsigned char *)&len);
@@ -996,7 +921,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class)
 {
   unsigned char *p = (unsigned char *)(header+1);
-  int qtype, qclass, rc, i, neganswer, nons, neg_ttl = 0, found_supported = 0;
+  int qtype, qclass, rc, i, neganswer = 0, nons = 0, servfail = 0, neg_ttl = 0, found_supported = 0;
   int aclass, atype, rdlen, flags;
   unsigned long ttl;
   union all_addr a;
@@ -1009,35 +934,43 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
   GETSHORT(qclass, p);
 
   if (qtype != T_DS || qclass != class)
-    rc = STAT_BOGUS;
-  else
-    rc = dnssec_validate_reply(now, header, plen, name, keyname, NULL, 0, &neganswer, &nons, &neg_ttl);
-  
-  if (STAT_ISEQUAL(rc, STAT_INSECURE))
-    {
-      my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
-      log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS - not secure", 0);
-      return STAT_BOGUS | DNSSEC_FAIL_INDET;
-    }
-  
-  p = (unsigned char *)(header+1);
-  if (!extract_name(header, plen, &p, name, 1, 4))
-      return STAT_BOGUS;
+    return STAT_BOGUS;
 
-  p += 4; /* qtype, qclass */
-  
-  /* If the key needed to validate the DS is on the same domain as the DS, we'll
-     loop getting nowhere. Stop that now. This can happen of the DS answer comes
-     from the DS's zone, and not the parent zone. */
-  if (STAT_ISEQUAL(rc, STAT_NEED_KEY) && hostname_isequal(name, keyname))
+  /* A SERVFAIL answer has been seen to a DS query not at start of authority,
+     so treat it as such and continue to search for a DS or proof of no existence
+     further down the tree. */
+  if (RCODE(header) == SERVFAIL)
+    servfail = neganswer = nons = 1;
+  else
     {
-      log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS", 0);
-      return STAT_BOGUS;
+      rc = dnssec_validate_reply(now, header, plen, name, keyname, NULL, 0, &neganswer, &nons, &neg_ttl);
+  
+      if (STAT_ISEQUAL(rc, STAT_INSECURE))
+	{
+	  my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
+	  log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS - not secure", 0);
+	  return STAT_BOGUS | DNSSEC_FAIL_INDET;
+	}
+      
+      p = (unsigned char *)(header+1);
+      if (!extract_name(header, plen, &p, name, 1, 4))
+	return STAT_BOGUS;
+
+      p += 4; /* qtype, qclass */
+      
+      /* If the key needed to validate the DS is on the same domain as the DS, we'll
+	 loop getting nowhere. Stop that now. This can happen of the DS answer comes
+	 from the DS's zone, and not the parent zone. */
+      if (STAT_ISEQUAL(rc, STAT_NEED_KEY) && hostname_isequal(name, keyname))
+	{
+	  log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS", 0);
+	  return STAT_BOGUS;
+	}
+  
+      if (!STAT_ISEQUAL(rc, STAT_SECURE))
+	return rc;
     }
   
-  if (!STAT_ISEQUAL(rc, STAT_SECURE))
-    return rc;
-   
   if (!neganswer)
     {
       cache_start_insert();
@@ -1135,7 +1068,8 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
   cache_end_insert();  
   
   if (neganswer)
-    log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, nons ? "no DS/cut" : "no DS", 0);
+    log_query(F_NOEXTRA | F_UPSTREAM, name, NULL,
+	      servfail ? "SERVFAIL" : (nons ? "no DS/cut" : "no DS"), 0);
       
   return STAT_OK;
 }
@@ -1870,7 +1804,7 @@ static int zone_status(char *name, int class, char *keyname, time_t now)
 
    When validating replies to DS records, we're only interested in the NSEC{3} RRs in the auth section.
    Other RRs in that section missing sigs will not cause am INSECURE reply. We determine this mode
-   is the nons argument is non-NULL.
+   if the nons argument is non-NULL.
 */
 int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, 
 			  int *class, int check_unsigned, int *neganswer, int *nons, int *nsec_ttl)

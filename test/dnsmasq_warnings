@@ -18,6 +18,10 @@ src/dnsmasq/cache.c
 		host_name, daemon->addrbuff,
 		record_source(fail_crec->uid), daemon->namebuff);
 src/dnsmasq/dhcp6.c
+	  my_syslog(MS_DHCP | LOG_WARNING,
+		    _("Working around kernel bug: faulty source address scope for VRF slave %s"),
+		    ifr.ifr_name);
+src/dnsmasq/dhcp6.c
 		    my_syslog(MS_DHCP | LOG_WARNING,
 			      _("unknown interface %s in bridge-interface"),
 			      bridge->iface);
@@ -81,7 +85,7 @@ src/dnsmasq/forward.c
 src/dnsmasq/forward.c
       my_syslog(LOG_WARNING, _("nameserver %s refused to do a recursive query"), daemon->namebuff);
 src/dnsmasq/forward.c
-	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
+	      my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
 src/dnsmasq/forward.c
       my_syslog(LOG_WARNING, _("reducing DNS packet size for nameserver %s to %d"), daemon->addrbuff, SAFE_PKTSZ);
 src/dnsmasq/forward.c
@@ -104,7 +108,7 @@ src/dnsmasq/lease.c
 src/dnsmasq/log.c
 		  my_syslog(LOG_WARNING, _("overflow: %d log entries lost"), e);
 src/dnsmasq/network.c
-	my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
+	    my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
 src/dnsmasq/network.c
 		my_syslog(LOG_WARNING, 
 			  _("LOUD WARNING: listening on %s may accept requests via interfaces other than %s"),

@@ -10,7 +10,7 @@
 #ifndef MAIN_H
 #define MAIN_H
 
-int main_dnsmasq(int argc, const char ** argv);
+int main_dnsmasq(int argc, char ** argv);
 
 extern char *username;
 extern bool startup;

@@ -113,7 +113,7 @@ int main (int argc, char* argv[])
 		for(int i = 0; i < argc_dnsmasq; i++)
 			logg("DEBUG: argv[%i] = \"%s\"", i, argv_dnsmasq[i]);
 	}
-	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
+	main_dnsmasq(argc_dnsmasq, (char**)argv_dnsmasq);
 
 	logg("Shutting down...");
 	// Extra grace time is needed as dnsmasq script-helpers may not be

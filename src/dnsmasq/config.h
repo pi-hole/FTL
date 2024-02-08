@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,7 +15,7 @@
 */
 
 #define FTABSIZ 150 /* max number of outstanding requests (default) */
-#define MAX_PROCS 60 /* max no children for TCP requests */
+#define MAX_PROCS 60 /* default max no children for TCP requests */
 #define CHILD_LIFETIME 300 /* secs 'till terminated (RFC1035 suggests > 120s) */
 #define TCP_MAX_QUERIES 100 /* Maximum number of queries per incoming TCP connection */
 #define TCP_BACKLOG 32  /* kernel backlog limit for TCP connections */

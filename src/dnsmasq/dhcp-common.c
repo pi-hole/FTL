@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -553,11 +553,11 @@ char *whichdevice(void)
     return NULL;
   
   for (if_tmp = daemon->if_names; if_tmp; if_tmp = if_tmp->next)
-    if (if_tmp->name && (!if_tmp->used || strchr(if_tmp->name, '*')))
+    if (if_tmp->name && (!(if_tmp->flags & INAME_USED) || strchr(if_tmp->name, '*')))
       return NULL;
 
   for (found = NULL, iface = daemon->interfaces; iface; iface = iface->next)
-    if (iface->dhcp_ok)
+    if (iface->dhcp4_ok || iface->dhcp6_ok)
       {
 	if (!found)
 	  found = iface;
