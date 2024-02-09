@@ -497,7 +497,7 @@ void initConfig(struct config *conf)
 	conf->dns.dnssec.h = "Validate DNS replies using DNSSEC?";
 	conf->dns.dnssec.t = CONF_BOOL;
 	conf->dns.dnssec.f = FLAG_RESTART_FTL;
-	conf->dns.dnssec.d.b = true;
+	conf->dns.dnssec.d.b = false;
 
 	conf->dns.interface.k = "dns.interface";
 	conf->dns.interface.h = "Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)";
