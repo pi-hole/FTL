@@ -568,7 +568,7 @@ void FTL_reset_per_client_domain_data(void)
 		// Reset blocking status
 		dns_cache->blocking_status = UNKNOWN_BLOCKED;
 		// Reset domainlist ID
-		dns_cache->domainlist_id = -1;
+		dns_cache->list_id = -1;
 	}
 }
 
