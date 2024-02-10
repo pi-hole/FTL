@@ -119,7 +119,7 @@ jobs:
       -
         name: Store binary artifacts for later deployoment
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4.2.0
+        uses: actions/upload-artifact@v4.3.0
         with:
           name: ${{ matrix.bin_name }}-binary
           path: '${{ matrix.bin_name }}*'
@@ -131,7 +131,7 @@ jobs:
       -
         name: Upload documentation artifacts for deployoment
         if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
-        uses: actions/upload-artifact@v4.2.0
+        uses: actions/upload-artifact@v4.3.0
         with:
           name: pihole-api-docs
           path: 'api-docs.tar.gz'

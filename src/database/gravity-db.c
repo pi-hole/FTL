@@ -857,7 +857,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 
 	// Prepare gravity statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
-	querystr = get_client_querystr("vw_gravity", "domain", getstr(client->groupspos));
+	querystr = get_client_querystr("vw_gravity", "adlist_id", getstr(client->groupspos));
 	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -870,7 +870,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 
 	// Prepare antigravity statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_antigravity statement for client %s", clientip);
-	querystr = get_client_querystr("vw_antigravity", "domain", getstr(client->groupspos));
+	querystr = get_client_querystr("vw_antigravity", "adlist_id", getstr(client->groupspos));
 	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -1244,6 +1244,11 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
 
+	// Check again as the client may have been reloaded if this is a TCP
+	// worker
+	if(whitelist_stmt == NULL)
+		return LIST_NOT_AVAILABLE;
+
 	// Get whitelist statement from vector of prepared statements if available
 	sqlite3_stmt *stmt = whitelist_stmt->get(whitelist_stmt, client->id);
 
@@ -1262,7 +1267,7 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
 	// whitelisted.
-	return domain_in_list(domain, stmt, "whitelist", &dns_cache->domainlist_id);
+	return domain_in_list(domain, stmt, "whitelist", &dns_cache->list_id);
 }
 
 cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
@@ -1377,6 +1382,11 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
 
+	// Check again as the client may have been reloaded if this is a TCP
+	// worker
+	if(gravity_stmt == NULL || antigravity_stmt == NULL)
+		return LIST_NOT_AVAILABLE;
+
 	// Get whitelist statement from vector of prepared statements
 	sqlite3_stmt *stmt = antigravity ?
 		antigravity_stmt->get(antigravity_stmt, client->id) :
@@ -1451,6 +1461,11 @@ enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsD
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
 
+	// Check again as the client may have been reloaded if this is a TCP
+	// worker
+	if(blacklist_stmt == NULL)
+		return LIST_NOT_AVAILABLE;
+
 	// Get whitelist statement from vector of prepared statements
 	sqlite3_stmt *stmt = blacklist_stmt->get(blacklist_stmt, client->id);
 
@@ -1466,7 +1481,7 @@ enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsD
 	if(stmt == NULL)
 		stmt = blacklist_stmt->get(blacklist_stmt, client->id);
 
-	return domain_in_list(domain, stmt, "blacklist", &dns_cache->domainlist_id);
+	return domain_in_list(domain, stmt, "blacklist", &dns_cache->list_id);
 }
 
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,
@@ -1969,8 +1984,8 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 	else if(listtype == GRAVITY_ADLISTS)
 	{
 		// This is actually a three-step deletion to satisfy foreign-key constraints
-		querystrs[0] = "DELETE FROM gravity WHERE adlist_id = (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable));";
-		querystrs[1] = "DELETE FROM antigravity WHERE adlist_id = (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable));";
+		querystrs[0] = "DELETE FROM gravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable));";
+		querystrs[1] = "DELETE FROM antigravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable));";
 		querystrs[2] = "DELETE FROM adlist WHERE address IN (SELECT item FROM deltable);";
 	}
 	else if(listtype == GRAVITY_CLIENTS)
@@ -1983,7 +1998,6 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		querystrs[3] = "DELETE FROM domainlist WHERE domain IN (SELECT item FROM deltable WHERE type = 3) AND type = 3;";
 	}
 
-	bool okay = true;
 	for(unsigned int i = 0; i < ArraySize(querystrs); i++)
 	{
 		// Finish if no more queries
@@ -1997,13 +2011,12 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 			*message = sqlite3_errmsg(gravity_db);
 			log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 			        listtype, querystrs[i], *message);
-			okay = false;
 
 			// Rollback transaction
 			querystr = "ROLLBACK TRANSACTION;";
 			sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
 
-			break;
+			return false;
 		}
 
 		// Add number of deleted rows
@@ -2018,7 +2031,6 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 		        listtype, querystr, *message);
-		okay = false;
 
 		// Rollback transaction
 		querystr = "ROLLBACK TRANSACTION;";
@@ -2033,14 +2045,13 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 		        listtype, querystr, *message);
-		okay = false;
 
 		// Rollback transaction
 		querystr = "ROLLBACK TRANSACTION;";
 		sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
 	}
 
-	return okay;
+	return true;
 }
 
 static sqlite3_stmt* read_stmt = NULL;
