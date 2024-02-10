@@ -80,7 +80,6 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	if(config.debug.api.v.b)
 	{
 		log_debug(DEBUG_API, "Host header: \"%s\", extracted host: \"%.*s\"", host, (int)host_len, host);
-
 		log_debug(DEBUG_API, "URI: %s", uri);
 	}
 

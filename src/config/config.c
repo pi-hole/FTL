@@ -1198,7 +1198,7 @@ void initConfig(struct config *conf)
 	conf->debug.regex.d.b = false;
 
 	conf->debug.api.k = "debug.api";
-	conf->debug.api.h = "Print extra debugging information during telnet API calls. Currently only used to send extra information when getting all queries.";
+	conf->debug.api.h = "Print extra debugging information concerning API calls. This includes the request, the request parameters, and the internal details about how the algorithms decide which data to present and in what form. This very verbose output should only be used when debugging specific API issues and can be helpful, e.g., when a client cannot connect due to an obscure API error. Furthermore, this setting enables logging of all API requests (auth log) and details about user authentication attempts.";
 	conf->debug.api.t = CONF_BOOL;
 	conf->debug.api.f = FLAG_ADVANCED_SETTING;
 	conf->debug.api.d.b = false;
