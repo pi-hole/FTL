@@ -22,6 +22,17 @@
 #include "config/password.h"
 // check_capability()
 #include "capabilities.h"
+// suggest_closest_conf_key()
+#include "config/suggest.h"
+
+enum exit_codes {
+	OKAY = 0,
+	FAIL = 1,
+	VALUE_INVALID = 2,
+	DNSMASQ_TEST_FAILED = 3,
+	KEY_UNKNOWN = 4,
+	ENV_VAR_FORCED = 5,
+} __attribute__((packed));
 
 // Read a TOML value from a table depending on its type
 static bool readStringValue(struct conf_item *conf_item, const char *value, struct config *newconf)
@@ -402,7 +413,7 @@ int set_config_from_CLI(const char *key, const char *value)
 		{
 			log_err("Config option %s is read-only (set via environmental variable)", key);
 			free_config(&newconf);
-			return 5;
+			return ENV_VAR_FORCED;
 		}
 
 		// This is the config option we are looking for
@@ -418,16 +429,22 @@ int set_config_from_CLI(const char *key, const char *value)
 	// Check if we found the config option
 	if(new_item == NULL)
 	{
-		log_err("Unknown config option: %s", key);
+		unsigned int N = 0;
+		char **matches = suggest_closest_conf_key(false, key, &N);
+		log_err("Unknown config option %s, did you mean:", key);
+		for(unsigned int i = 0; i < N; i++)
+			log_err(" - %s", matches[i]);
+		free(matches);
+
 		free_config(&newconf);
-		return 4;
+		return KEY_UNKNOWN;
 	}
 
 	// Parse value
 	if(!readStringValue(new_item, value, &newconf))
 	{
 		free_config(&newconf);
-		return 2;
+		return VALUE_INVALID;
 	}
 
 	// Check if value changed compared to current value
@@ -459,7 +476,7 @@ int set_config_from_CLI(const char *key, const char *value)
 				// Test failed
 				log_debug(DEBUG_CONFIG, "Config item %s: dnsmasq config test failed", conf_item->k);
 				free_config(&newconf);
-				return 3;
+				return DNSMASQ_TEST_FAILED;
 			}
 		}
 		else if(conf_item == &config.dns.hosts)
@@ -487,7 +504,7 @@ int set_config_from_CLI(const char *key, const char *value)
 
 	putchar('\n');
 	writeFTLtoml(false);
-	return EXIT_SUCCESS;
+	return OKAY;
 }
 
 int get_config_from_CLI(const char *key, const bool quiet)
@@ -546,14 +563,20 @@ int get_config_from_CLI(const char *key, const bool quiet)
 	// Check if we found the config option
 	if(conf_item == NULL)
 	{
-		log_err("Unknown config option: %s", key);
-		return 2;
+		unsigned int N = 0;
+		char **matches = suggest_closest_conf_key(false, key, &N);
+		log_err("Unknown config option %s, did you mean:", key);
+		for(unsigned int i = 0; i < N; i++)
+			log_err(" - %s", matches[i]);
+		free(matches);
+
+		return KEY_UNKNOWN;
 	}
 
 	// Use return status if this is a boolean value
 	// and we are in quiet mode
 	if(quiet && conf_item != NULL && conf_item->t == CONF_BOOL)
-		return conf_item->v.b ? EXIT_SUCCESS : EXIT_FAILURE;
+		return conf_item->v.b ? OKAY : FAIL;
 
-	return EXIT_SUCCESS;
+	return OKAY;
 }

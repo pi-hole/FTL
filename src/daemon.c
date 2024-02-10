@@ -37,6 +37,8 @@
 #include "api/api.h"
 // setlocale()
 #include <locale.h>
+// freeEnvVars()
+#include "config/env.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -369,6 +371,9 @@ void cleanup(const int ret)
 	//            counters-> ... etc.
 	// This should be the last action when c
 	destroy_shmem();
+
+	// Free environment variables
+	freeEnvVars();
 
 	char buffer[42] = { 0 };
 	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));

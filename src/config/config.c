@@ -31,6 +31,8 @@
 #include "signals.h"
 // validation functions
 #include "config/validator.h"
+// getEnvVars()
+#include "config/env.h"
 // sha256sum()
 #include "files.h"
 
@@ -1313,7 +1315,7 @@ void initConfig(struct config *conf)
 	conf->debug.regex.c = validate_stub; // Only type-based checking
 
 	conf->debug.api.k = "debug.api";
-	conf->debug.api.h = "Print extra debugging information during telnet API calls. Currently only used to send extra information when getting all queries.";
+	conf->debug.api.h = "Print extra debugging information concerning API calls. This includes the request, the request parameters, and the internal details about how the algorithms decide which data to present and in what form. This very verbose output should only be used when debugging specific API issues and can be helpful, e.g., when a client cannot connect due to an obscure API error. Furthermore, this setting enables logging of all API requests (auth log) and details about user authentication attempts.";
 	conf->debug.api.t = CONF_BOOL;
 	conf->debug.api.f = FLAG_ADVANCED_SETTING;
 	conf->debug.api.d.b = false;
@@ -1459,17 +1461,24 @@ void initConfig(struct config *conf)
 		// Parse and split paths
 		conf_item->p = gen_config_path(conf_item->k, '.');
 
-		// Verify all config options are defined above
-		if(!conf_item->p || !conf_item->k || !conf_item->h)
-		{
-			log_err("Config option %u/%u is not set!", i, (unsigned int)CONFIG_ELEMENTS);
-			continue;
-		}
+		// Initialize environment variable name
+		// Allocate memory for config key + prefix (sizeof includes the trailing '\0')
+		const size_t envkey_size = strlen(conf_item->k) + sizeof(FTLCONF_PREFIX);
+		conf_item->e = calloc(envkey_size, sizeof(char));
 
-		// Verify that all config options have a type
-		if(conf_item->t == 0)
+		// Build env key to look for
+		strcpy(conf_item->e, FTLCONF_PREFIX);
+		strcat(conf_item->e, conf_item->k);
+
+		// Replace all "." by "_" as this is the convention used in v5.x and earlier
+		for(unsigned int j = 0; j < envkey_size - 1; j++)
+			if(conf_item->e[j] == '.')
+				conf_item->e[j] = '_';
+
+		// Verify all config options are defined above
+		if(!conf_item->p || !conf_item->k || !conf_item->h || !conf_item->e || conf_item->t == 0)
 		{
-			log_err("Config option %s has no type!", conf_item->k);
+			log_err("Config option %u/%u is not fully configured!", i, (unsigned int)CONFIG_ELEMENTS);
 			continue;
 		}
 
@@ -1529,7 +1538,10 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// Initialize config with default values
 	initConfig(conf);
 
-	// First try to read TOML config file
+	// First, read the environment
+	getEnvVars();
+
+	// Try to read TOML config file
 	// If we cannot parse /etc/pihole.toml (due to missing or invalid syntax),
 	// we try to read the rotated files in /etc/pihole/config_backup starting at
 	// the most recent one and going back in time until we find a valid config
