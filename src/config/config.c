@@ -29,6 +29,8 @@
 #include "api/api.h"
 // exit_code
 #include "signals.h"
+// getEnvVars()
+#include "config/env.h"
 // sha256sum()
 #include "files.h"
 
@@ -1323,17 +1325,24 @@ void initConfig(struct config *conf)
 		// Parse and split paths
 		conf_item->p = gen_config_path(conf_item->k, '.');
 
-		// Verify all config options are defined above
-		if(!conf_item->p || !conf_item->k || !conf_item->h)
-		{
-			log_err("Config option %u/%u is not set!", i, (unsigned int)CONFIG_ELEMENTS);
-			continue;
-		}
+		// Initialize environment variable name
+		// Allocate memory for config key + prefix (sizeof includes the trailing '\0')
+		const size_t envkey_size = strlen(conf_item->k) + sizeof(FTLCONF_PREFIX);
+		conf_item->e = calloc(envkey_size, sizeof(char));
 
-		// Verify that all config options have a type
-		if(conf_item->t == 0)
+		// Build env key to look for
+		strcpy(conf_item->e, FTLCONF_PREFIX);
+		strcat(conf_item->e, conf_item->k);
+
+		// Replace all "." by "_" as this is the convention used in v5.x and earlier
+		for(unsigned int j = 0; j < envkey_size - 1; j++)
+			if(conf_item->e[j] == '.')
+				conf_item->e[j] = '_';
+
+		// Verify all config options are defined above
+		if(!conf_item->p || !conf_item->k || !conf_item->h || !conf_item->e || conf_item->t == 0)
 		{
-			log_err("Config option %s has no type!", conf_item->k);
+			log_err("Config option %u/%u is not fully configured!", i, (unsigned int)CONFIG_ELEMENTS);
 			continue;
 		}
 
@@ -1386,7 +1395,10 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// Initialize config with default values
 	initConfig(conf);
 
-	// First try to read TOML config file
+	// First, read the environment
+	getEnvVars();
+
+	// Try to read TOML config file
 	// If we cannot parse /etc/pihole.toml (due to missing or invalid syntax),
 	// we try to read the rotated files in /etc/pihole/config_backup starting at
 	// the most recent one and going back in time until we find a valid config

@@ -23,6 +23,8 @@
 #include "config/toml_helper.h"
 // delete_all_sessions()
 #include "api/api.h"
+// readEnvValue()
+#include "config/env.h"
 
 // Private prototypes
 static toml_table_t *parseTOML(const unsigned int version);
@@ -128,6 +130,9 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 	set_debug_flags(newconf);
 	if(verbose)
 		reportDebugFlags();
+
+	// Print FTL environment variables (if used)
+	printFTLenv();
 
 	// Free memory allocated by the TOML parser and return success
 	toml_free(toml);
