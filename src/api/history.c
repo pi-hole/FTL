@@ -36,6 +36,7 @@ int api_history(struct ftl_conn *api)
 		JSON_ADD_NUMBER_TO_OBJECT(item, "total", overTime[slot].total);
 		JSON_ADD_NUMBER_TO_OBJECT(item, "cached", overTime[slot].cached);
 		JSON_ADD_NUMBER_TO_OBJECT(item, "blocked", overTime[slot].blocked);
+		JSON_ADD_NUMBER_TO_OBJECT(item, "forwarded", overTime[slot].forwarded);
 		JSON_ADD_ITEM_TO_ARRAY(history, item);
 	}
 

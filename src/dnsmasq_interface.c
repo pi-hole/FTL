@@ -793,9 +793,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Increase DNS queries counter
 	counters->queries++;
 
-	// Update overTime data
-	overTime[timeidx].total++;
-
 	// Update overTime data structure with the new client
 	change_clientcount(client, 0, 0, timeidx, 1);
 

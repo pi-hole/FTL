@@ -8,7 +8,7 @@ components:
           - Metrics
         operationId: "get_activity_metrics"
         description: |
-          Request data needed to generate the \"Query over last 24 hours\" graph
+          Request data needed to generate the \"Query over last 24 hours\" graph. The sum of the values in the individual data arrays may be smaller than the total number of queries for the corresponding timestamp. The remaining queries are queries that do not fit into the shown categories (e.g. database busy, unknown status queries, etc.).
         responses:
           '200':
             description: OK
@@ -135,18 +135,24 @@ components:
                 description: Total number of queries
               cached:
                 type: integer
-                description: Total number of cached
+                description: Number of cached queries
               blocked:
                 type: integer
+                description: Number of blocked queries
+              forwarded:
+                type: integer
+                description: Number of forwarded queries
           example:
             - timestamp: 1511819900.539157
               total: 2134
               cached: 525
               blocked: 413
+              forwarded: 1196
             - timestamp: 1511820500.583821
               total: 2014
               cached: 52
               blocked: 43
+              forwarded: 1910
     client_history:
       type: object
       properties:
