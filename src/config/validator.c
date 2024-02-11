@@ -373,3 +373,173 @@ bool validate_regex_array(union conf_value *val, const char *key, char err[VALID
 
 	return true;
 }
+
+// Validate dns.revServers array
+// Each entry has to be of form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>"
+bool validate_dns_revServers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(!cJSON_IsArray(val->json))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not an array", key);
+		return false;
+	}
+
+	for(int i = 0; i < cJSON_GetArraySize(val->json); i++)
+	{
+		// Get array item
+		cJSON *item = cJSON_GetArrayItem(val->json, i);
+
+		// Check if it's a string
+		if(!cJSON_IsString(item))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not a string", key, i);
+			return false;
+		}
+
+		// Count the number of elements in the string
+		unsigned int elements = 1;
+		for(unsigned int j = 0; j < strlen(item->valuestring); j++)
+			if(item->valuestring[j] == ',')
+				elements++;
+
+		// Check if it's in the form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>"
+		// Mandatory elements are: <enabled>, <ip-address>, <server>, and <domain>
+		// Optional elements are: [/<prefix-len>] and [#<port>]
+		char *str = strdup(item->valuestring);
+		char *tmp = str, *s = NULL;
+		unsigned int e = 0;
+
+		while((s = strsep(&tmp, ",")) != NULL)
+		{
+			// Check if it's a valid element
+			if(strlen(s) == 0)
+			{
+				// Contains an empty string
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: contains two commas following each other immediately", key, i);
+				free(str);
+				return false;
+			}
+			// Check if the zeroth element is a boolean
+			if(e == 0)
+			{
+				if(strcmp(s, "true") != 0 && strcmp(s, "false") != 0)
+				{
+					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <enabled> not a boolean (\"%s\")", key, i, s);
+					free(str);
+					return false;
+				}
+			}
+			// Check if the first element is an IP address
+			else if(e == 1)
+			{
+				// Extract IP and prefix length (if present)
+				char *ip = strsep(&s, "/");
+				char *prefix = strsep(&s, "/");
+				if(strlen(ip) == 0)
+				{
+					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <ip-address> empty", key, i);
+					free(str);
+					return false;
+				}
+
+				// Check if IP is valid
+				struct in_addr addr = { 0 };
+				struct in6_addr addr6 = { 0 };
+				const bool ipv4 = inet_pton(AF_INET, ip, &addr) == 1;
+				const bool ipv6 = inet_pton(AF_INET6, ip, &addr6) == 1;
+				if(!ipv4 && !ipv6)
+				{
+					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <ip-address> neither a valid IPv4 nor IPv6 address (\"%s\")", key, i, ip);
+					free(str);
+					return false;
+				}
+
+				// Check if prefix length is valid (if present)
+				if(prefix != NULL)
+				{
+					if(strlen(prefix) == 0)
+					{
+						snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <prefix-len> empty", key, i);
+						free(str);
+						return false;
+					}
+					const int prefix_int = atoi(prefix);
+					if(prefix_int < 0 || (ipv4 && prefix_int > 32) || (ipv6 && prefix_int > 128))
+					{
+						snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <prefix-len> not a valid prefix length (\"%s\")", key, i, prefix);
+						free(str);
+						return false;
+					}
+				}
+			}
+			// Check if the second element is a valid server (either an IP address or a domain, optionally with a port)
+			else if(e == 2)
+			{
+				// Extract server and port (if present)
+				char *server = strsep(&s, "#");
+				char *port = strsep(&s, "#");
+				if(strlen(server) == 0)
+				{
+					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <server> empty", key, i);
+					free(str);
+					return false;
+				}
+
+				struct in_addr addr = { 0 };
+				struct in6_addr addr6 = { 0 };
+				const bool server_ipv4 = inet_pton(AF_INET, server, &addr) == 1;
+				const bool server_ipv6 = inet_pton(AF_INET6, server, &addr6) == 1;
+				const bool server_domain = valid_domain(server, strlen(server), false);
+
+				// Check if server is valid
+				if(!server_ipv4 && !server_ipv6 && !server_domain)
+				{
+					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <server> neither a valid domain nor an IPv4 or IPv6 address (\"%s\")", key, i, server);
+					free(str);
+					return false;
+				}
+
+				// Check if port is valid (if present)
+				if(port != NULL)
+				{
+					if(strlen(port) == 0)
+					{
+						snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: specified server <port> empty", key, i);
+						free(str);
+						return false;
+					}
+					const int port_int = atoi(port);
+					if(port_int < 0 || port_int > 65535)
+					{
+						snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: server <port> not a valid port (\"%s\")", key, i, port);
+						free(str);
+						return false;
+					}
+				}
+			}
+			// Check if the third element is a valid domain
+			else if(e == 3)
+			{
+				if(!valid_domain(s, strlen(s), false))
+				{
+					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <domain> not a valid domain (\"%s\")", key, i, s);
+					free(str);
+					return false;
+				}
+			}
+			// Check if there are too many elements
+			else
+			{
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: too many elements", key, i);
+				free(str);
+				return false;
+			}
+
+			// Increment element counter
+			e++;
+		}
+	}
+
+	// Return success
+	return true;
+}
