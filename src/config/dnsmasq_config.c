@@ -449,24 +449,52 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 	fputs("\n", pihole_conf);
 
-	if(conf->dns.revServer.active.v.b)
+	const unsigned int revServers = cJSON_GetArraySize(conf->dns.revServers.v.json);
+	for(unsigned int i = 0; i < revServers; i++)
 	{
-		fputs("# Reverse server setting\n", pihole_conf);
-		fprintf(pihole_conf, "rev-server=%s,%s\n",
-		        conf->dns.revServer.cidr.v.s, conf->dns.revServer.target.v.s);
+		cJSON *revServer = cJSON_GetArrayItem(conf->dns.revServers.v.json, i);
+
+		// Split comma-separated string into its components
+		char *copy = strdup(revServer->valuestring);
+		char *active = strtok(copy, ",");
+		char *cidr = strtok(NULL, ",");
+		char *target = strtok(NULL, ",");
+		char *domain = strtok(NULL, ",");
+
+		// Skip inactive reverse servers
+		if(active != NULL &&
+		   strcmp(active, "true") != 0 &&
+		   strcmp(active, "1") != 0)
+		{
+			log_debug(DEBUG_CONFIG, "Skipping inactive reverse server: %s", revServer->valuestring);
+			free(copy);
+			continue;
+		}
+
+		if(active == NULL || cidr == NULL || target == NULL || domain == NULL)
+		{
+			log_err("Invalid reverse server string: %s", revServer->valuestring);
+			free(copy);
+			continue;
+		}
+
+		fprintf(pihole_conf, "# Reverse server setting (%u%s server)\n",
+		        i+1, get_ordinal_suffix(i+1));
+		fprintf(pihole_conf, "rev-server=%s,%s\n", cidr, target);
 
 		// If we have a reverse domain, we forward all queries to this domain to
 		// the same destination
-		if(strlen(conf->dns.revServer.domain.v.s) > 0)
-			fprintf(pihole_conf, "server=/%s/%s\n",
-			        conf->dns.revServer.domain.v.s, conf->dns.revServer.target.v.s);
+		if(strlen(domain) > 0)
+			fprintf(pihole_conf, "server=/%s/%s\n", domain, target);
 
 		// Forward unqualified names to the target only when the "never forward
 		// non-FQDN" option is NOT ticked
 		if(!conf->dns.domainNeeded.v.b)
-			fprintf(pihole_conf, "server=//%s\n",
-			        conf->dns.revServer.target.v.s);
+			fprintf(pihole_conf, "server=//%s\n", target);
 		fputs("\n", pihole_conf);
+
+		// Free copy of string
+		free(copy);
 	}
 
 	// When there is a Pi-hole domain set and "Never forward non-FQDNs" is

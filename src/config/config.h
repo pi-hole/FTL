@@ -144,6 +144,7 @@ struct config {
 		struct conf_item queryLogging;
 		struct conf_item cnameRecords;
 		struct conf_item port;
+		struct conf_item revServers;
 		struct {
 			struct conf_item size;
 			struct conf_item optimizer;
@@ -174,13 +175,6 @@ struct config {
 			struct conf_item count;
 			struct conf_item interval;
 		} rateLimit;
-
-		struct {
-			struct conf_item active;
-			struct conf_item cidr;
-			struct conf_item target;
-			struct conf_item domain;
-		} revServer;
 	} dns;
 
 	struct {
