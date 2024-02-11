@@ -206,6 +206,28 @@
   # Port used by the DNS server
   port = 53
 
+  # Reverse server (former also called "conditional forwarding") feature
+  # Array of reverse servers each one in one of the following forms:
+  # "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>"
+  #
+  # Individual components:
+  #
+  # <enabled>: either "true" or "false"
+  #
+  # <ip-address>[/<prefix-len>]: Address range for the reverse server feature in CIDR
+  # notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are
+  # substituted (exact address match). This is almost certainly not what you want here.
+  # Example: "192.168.0.0/24" for the range 192.168.0.1 - 192.168.0.255
+  #
+  # <server>[#<port>]: Target server to be used for the reverse server feature
+  # Example: "192.168.0.1#53"
+  #
+  # <domain>: Domain used for the reverse server feature (e.g., "fritz.box")
+  # Example: "fritz.box"
+  #
+  # A valid line could look like this: "true,192.168.0.0/24,192.168.0.1,fritz.box"
+  revServers = []
+
   [dns.cache]
     # Cache size of the DNS server. Note that expiring cache entries naturally make room
     # for new insertions over time. Setting this number too high will have an adverse
@@ -347,31 +369,6 @@
 
     # ... in the set interval before rate-limiting?
     interval = 0 ### CHANGED, default = 60
-
-  [dns.revServer]
-    # Is the reverse server (former also called "conditional forwarding") feature enabled?
-    active = false
-
-    # Address range for the reverse server feature in CIDR notation. If the prefix length
-    # is omitted, either 32 (IPv4) or 128 (IPv6) are substitutet (exact address match).
-    # This is almost certainly not what you want here.
-    #
-    # Possible values are:
-    #     <ip-address>[/<prefix-len>], e.g., "192.168.0.0/24" for the range 192.168.0.1 -
-    #     192.168.0.255
-    cidr = ""
-
-    # Target server tp be used for the reverse server feature
-    #
-    # Possible values are:
-    #     <server>[#<port>], e.g., "192.168.0.1"
-    target = ""
-
-    # Domain used for the reverse server feature
-    #
-    # Possible values are:
-    #     <valid domain> (e.g., "fritz.box")
-    domain = ""
 
 [dhcp]
   # Is the embedded DHCP server enabled?
