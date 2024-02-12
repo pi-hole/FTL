@@ -594,7 +594,7 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
 }
 
 /* Print TXT reply to log */
-static int log_txt(char *name, unsigned char *p, const int ardlen, int secflag)
+static int log_txt(char *name, unsigned char *p, const int ardlen, int flag)
 {
   unsigned char *p1 = p;
  
@@ -616,7 +616,7 @@ static int log_txt(char *name, unsigned char *p, const int ardlen, int secflag)
 	}
 
       *p3 = 0;
-      log_query(secflag | F_FORWARD, name, NULL, (char*)p1, 0);
+      log_query(flag, name, NULL, (char*)p1, 0);
       /* restore */
       memmove(p1 + 1, p1, i);
       *p1 = len;
@@ -787,7 +787,8 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	  addrlen = IN6ADDRSZ;
 	  flags |= F_IPV6;
 	}
-      else if (qtype != T_CNAME && (qtype == T_SRV || rr_on_list(daemon->cache_rr, qtype)))
+      else if (qtype != T_CNAME &&
+	       (qtype == T_SRV || rr_on_list(daemon->cache_rr, qtype) || rr_on_list(daemon->cache_rr, T_ANY)))
 	flags |= F_RR;
       else
 	insert = 0; /* NOTE: do not cache data from CNAME queries. */
@@ -813,13 +814,14 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    }
 	  GETSHORT(ardlen, p1);
 	  endrr = p1+ardlen;
+
+	  if (!CHECK_LEN(header, endrr, qlen, 0))
+	    return 2; /* bad packet */
 	  
 	  /* Not what we're looking for? */
 	  if (aqclass != C_IN || res == 2)
 	    {
 	      p1 = endrr;
-	      if (!CHECK_LEN(header, p1, qlen, 0))
-		return 2; /* bad packet */
 	      continue;
 	    }
 	  
@@ -881,12 +883,13 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 
 	      found = 1;
 	    }
-	  else if (aqtype != qtype)
+	  else if (qtype == T_ANY || aqtype != qtype)
 	    {
 #ifdef HAVE_DNSSEC
 	      if (!option_bool(OPT_DNSSEC_VALID) || aqtype != T_RRSIG)
 #endif
-		log_query(secflag | F_FORWARD | F_UPSTREAM | F_RRNAME, name, NULL, NULL, aqtype);
+		if (qtype != T_ANY)
+		  log_query(secflag | F_FORWARD | F_UPSTREAM | F_RRNAME, name, NULL, NULL, aqtype);
 	    }
 	  else if (!(flags & F_NXDOMAIN))
 	    {
@@ -1032,26 +1035,17 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		    blockdata_free(addr.rrblock.rrdata);  
 		}
 	      
+	      /* We're filtering this RRtype. It will be removed from the 
+		 returned packet in process_reply() but gets cached here anyway
+		 and will be filtered again on the way out of the cache. Here,
+		 we just need to alter the logging. */
+	      if (rr_on_list(daemon->filter_rr, qtype))
+		secflag = F_NEG | F_CONFIG;
+	      
 	      if (aqtype == T_TXT)
-		{
-		   if (!CHECK_LEN(header, p1, qlen, ardlen))
-		     return 2;
-		   
-		   log_txt(name, p1, ardlen, secflag | F_UPSTREAM);
-		}
+		log_txt(name, p1, ardlen, flags | F_FORWARD | F_UPSTREAM | secflag);
 	      else
-		{
-		  int negflag = F_UPSTREAM;
-
-		  /* We're filtering this RRtype. It will be removed from the 
-		     returned packet in process_reply() but gets cached here anyway
-		     and will be filtered again on the way out of the cache. Here,
-		     we just need to alter the logging. */
-		  if (rr_on_list(daemon->filter_rr, qtype))
-		    negflag = F_NEG | F_CONFIG;
-		  
-		  log_query(negflag | flags | F_FORWARD | secflag, name, &addr, NULL, aqtype);
-		}
+		log_query(flags | F_FORWARD | F_UPSTREAM | secflag, name, &addr, NULL, aqtype);
 	    }
 	  
 	  p1 = endrr;
