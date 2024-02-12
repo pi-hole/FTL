@@ -1039,7 +1039,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		 returned packet in process_reply() but gets cached here anyway
 		 and will be filtered again on the way out of the cache. Here,
 		 we just need to alter the logging. */
-	      if (rr_on_list(daemon->filter_rr, qtype))
+	      if (qtype != T_ANY && rr_on_list(daemon->filter_rr, qtype))
 		secflag = F_NEG | F_CONFIG;
 	      
 	      if (aqtype == T_TXT)
@@ -2008,7 +2008,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    if (!(crecp->flags & (F_HOSTS | F_DHCP)))
 		      auth = 0;
 		    
-		    if (rr_on_list(daemon->filter_rr, qtype) &&
+		    if (qtype != T_ANY && rr_on_list(daemon->filter_rr, qtype) &&
 			!(crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG | F_NEG)))
 		      {
 			/* We have a cached answer but we're filtering it. */
@@ -2022,15 +2022,18 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      }
 		    else if (crecp->flags & F_NEG)
 		      {
-			ans = 1;
-			auth = 0;
-			soa_lookup = crecp;
-			if (crecp->flags & F_NXDOMAIN)
-			  nxdomain = 1;
+			if (qtype != T_ANY)
+			  {
+			    ans = 1;
+			    auth = 0;
+			    soa_lookup = crecp;
+			    if (crecp->flags & F_NXDOMAIN)
+			      nxdomain = 1;
 			    
 			    // Pi-hole modification: Added record_source(crecp->uid) such that the subroutines know
 			    //                       where the reply came from (e.g. gravity.list)
 			    log_query(stale_flag | crecp->flags, name, NULL, record_source(crecp->uid), 0);
+			  }
 		      }
 		    else 
 		      {
@@ -2208,7 +2211,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    
 		    if (flags & F_NXDOMAIN)
 		      nxdomain = 1;
-		    else if (rr_on_list(daemon->filter_rr, qtype))
+		    else if (qtype != T_ANY && rr_on_list(daemon->filter_rr, qtype))
 		      flags |=  F_NEG | F_CONFIG;
 		    
 		    auth = 0;
@@ -2253,7 +2256,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	}
       
       
-      if (!ans && rr_on_list(daemon->filter_rr, qtype))
+      if (qtype != T_ANY && !ans && rr_on_list(daemon->filter_rr, qtype))
 	{
 	  /* We don't have a cached answer and when we get an answer from upstream we're going to
 	     filter it anyway. If we have a cached answer for the domain for another RRtype then

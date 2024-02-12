@@ -213,6 +213,14 @@ size_t rrfilter(struct dns_header *header, size_t *plen, int mode)
 	  if (i < ntohs(header->ancount) && type == qtype && class == qclass)
 	    continue;
 	}
+      else if (qtype == T_ANY && rr_on_list(daemon->filter_rr, T_ANY))
+	{
+	  /* Filter replies to ANY queries in the spirit of
+	     RFC RFC 8482 para 4.3 */
+	  if (class != C_IN ||
+	      type == T_A || type == T_AAAA || type == T_MX || type == T_CNAME)
+	    continue;
+	}
       else
 	{
 	  /* Only looking at answer section now. */
