@@ -67,7 +67,7 @@ int api_history_clients(struct ftl_conn *api)
 		JSON_SEND_OBJECT_UNLOCK(json);
 	}
 
-	// Get number of clients to return´
+	// Get number of clients to return
 	unsigned int Nc = min(counters->clients, config.webserver.api.maxClients.v.u16);
 	if(api->request->query_string != NULL)
 	{
@@ -84,46 +84,41 @@ int api_history_clients(struct ftl_conn *api)
 	// Lock shared memory
 	lock_shm();
 
-	// Get clients which the user doesn't want to see
-	// if skipclient[i] == true then this client should be hidden from
-	// returned data. We initialize it with false
-	bool *skipclient = calloc(counters->clients, sizeof(bool));
+	// Allocate memory for the temporary buffer for ranking our clients
 	int *temparray = calloc(2*counters->clients, sizeof(int));
-	if(skipclient == NULL || temparray == NULL)
+	if(temparray == NULL)
 	{
 		unlock_shm();
 		return send_json_error(api, 500,
 		                       "internal_error",
-		                       "Failed to allocate memory for skipclient array",
+		                       "Failed to allocate memory for temporary array",
 		                       NULL);
 	}
 
+	// Get MAX_CLIENTS clients with the highest number of queries
 	// Skip clients included in others (in alias-clients)
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
-			continue;
 
-		// Check if this client should be skipped
-		if(!client->flags.aliasclient && client->aliasclient_id > -1)
-			skipclient[clientID] = true;
-	}
-
-	// Get MAX_CLIENTS clients with the highest number of queries
-	for(int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		// Get client pointer
-		const clientsData* client = getClient(clientID, true);
-
-		// Skip invalid clients
+		// Skip invalid (recycled) clients
 		if(client == NULL)
 			continue;
 
 		// Store clientID and number of queries in temporary array
 		temparray[2*clientID + 0] = clientID;
-		temparray[2*clientID + 1] = client->count;
+
+		// If this client is managed by an alias-client, we substitute
+		// -1 for the total count
+		if(!client->flags.aliasclient && client->aliasclient_id > -1)
+		{
+			log_debug(DEBUG_API, "Skipping client (ID %d) contained in alias-client with ID %d",
+			          clientID, client->aliasclient_id);
+			temparray[2*clientID + 1] = -1;
+		}
+		else
+			temparray[2*clientID + 1] = client->count;
 	}
 
 	// Sort temporary array
@@ -144,15 +139,23 @@ int api_history_clients(struct ftl_conn *api)
 		{
 			// Get client pointer
 			const int clientID = temparray[2*id + 0];
+			const int count = temparray[2*id + 1];
 			const clientsData* client = getClient(clientID, true);
 
 			// Skip invalid (recycled) clients
 			if(client == NULL)
 				continue;
 
-			// Skip clients which should be hidden and add them to the "others" counter.
-			// Also skip clients when we reached the maximum number of clients to return
-			if(skipclient[clientID] || id >= (int)Nc)
+			// Skip clients which are managed by alias-clients
+			// altogether. The user doesn't want them to appear as
+			// individual devices
+			if(count < 0)
+				continue;
+
+			// Skip clients when we reached the maximum number of
+			// clients to return They are summed together under the
+			// special "other" client
+			if(id >= (int)Nc)
 			{
 				others += client->overTime[slot];
 				continue;
@@ -176,15 +179,17 @@ int api_history_clients(struct ftl_conn *api)
 	{
 		// Get client pointer
 		const int clientID = temparray[2*id + 0];
+		const int count = temparray[2*id + 1];
 		const clientsData* client = getClient(clientID, true);
 
 		// Skip invalid (recycled) clients
 		if(client == NULL)
 			continue;
 
-		// Skip clients which should be hidden. Also skip clients when
-		// we reached the maximum number of clients to return
-		if(skipclient[clientID] || id >= (int)Nc)
+		// Skip clients which should be hidden (managed by
+		// alias-clients). Also skip clients when we reached the maximum
+		// number of clients to return
+		if(count < 0 || id >= (int)Nc)
 			continue;
 
 		// Get client name and IP address
@@ -213,7 +218,6 @@ int api_history_clients(struct ftl_conn *api)
 	unlock_shm();
 
 	// Free memory
-	free(skipclient);
 	free(temparray);
 
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
