@@ -436,7 +436,7 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 	dns_cache->clientID = clientID;
 	dns_cache->query_type = query_type;
 	dns_cache->force_reply = 0u;
-	dns_cache->domainlist_id = -1; // -1 = not set
+	dns_cache->list_id = -1; // -1 = not set
 
 	// Increase counter by one
 	counters->dns_cache_size++;
@@ -568,7 +568,7 @@ void FTL_reset_per_client_domain_data(void)
 		// Reset blocking status
 		dns_cache->blocking_status = UNKNOWN_BLOCKED;
 		// Reset domainlist ID
-		dns_cache->domainlist_id = -1;
+		dns_cache->list_id = -1;
 	}
 }
 

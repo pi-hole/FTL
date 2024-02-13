@@ -54,7 +54,7 @@ void init_FTL_log(const char *name)
 		if((logfile = fopen(config.files.log.ftl.v.s, "a+")) == NULL)
 		{
 			syslog(LOG_ERR, "Opening of FTL\'s log file failed, using syslog instead!");
-			printf("ERR: Opening of FTL log (%s) failed!\n",config.files.log.ftl.v.s);
+			printf("ERROR: Opening of FTL log (%s) failed!\n",config.files.log.ftl.v.s);
 			config.files.log.ftl.v.s = NULL;
 		}
 
@@ -140,7 +140,7 @@ static const char * __attribute__((const)) priostr(const int priority, const enu
 			return "CRIT";
 		// error conditions
 		case LOG_ERR:
-			return "ERR";
+			return "ERROR";
 		// warning conditions
 		case LOG_WARNING:
 			return "WARNING";
