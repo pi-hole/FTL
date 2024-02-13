@@ -311,6 +311,8 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"192.168.3.1"* ]]
   [[ ${lines[@]} == *"fe80::3c01"* ]]
+  # TXT records should not be returned due to filter-rr=ANY
+  [[ ${lines[@]} != *"Some example text"* ]]
 }
 
 @test "Local DNS test: CNAME cname-ok.ftl" {
