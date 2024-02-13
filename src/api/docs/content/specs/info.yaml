@@ -848,6 +848,18 @@ components:
                   type: integer
                   description: Number of dedicated TCP workers
                   example: 0
+                dnssec_max_crypto_use:
+                  type: integer
+                  description: DNSSEC per-query crypto work HWM
+                  example: 0
+                dnssec_max_sig_fail:
+                  type: integer
+                  description: DNSSEC per-RRSet signature fails HWM
+                  example: 0
+                dnssec_max_work:
+                  type: integer
+                  description: DNSSEC per-query subqueries HWM
+                  example: 0
 
     database:
       type: object
