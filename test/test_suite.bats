@@ -311,6 +311,8 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"192.168.3.1"* ]]
   [[ ${lines[@]} == *"fe80::3c01"* ]]
+  # TXT records should not be returned due to filter-rr=ANY
+  [[ ${lines[@]} != *"Some example text"* ]]
 }
 
 @test "Local DNS test: CNAME cname-ok.ftl" {
@@ -1418,6 +1420,20 @@
   run bash -c 'curl -s 127.0.0.1/api/history/clients | jq ".history | length"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "145" ]]
+}
+
+@test "API: No UNKNOWN reply in API" {
+  run bash -c 'curl -s 127.0.0.1/api/queries?reply=UNKNOWN | jq .queries'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'curl -s 127.0.0.1/api/queries?reply=UNKNOWN | jq ".queries | length"'
+  [[ ${lines[0]} == "0" ]]
+}
+
+@test "API: No UNKNOWN status in API" {
+  run bash -c 'curl -s 127.0.0.1/api/queries?status=UNKNOWN | jq .queries'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'curl -s 127.0.0.1/api/queries?status=UNKNOWN | jq ".queries | length"'
+  [[ ${lines[0]} == "0" ]]
 }
 
 @test "API authorization (without password): No login required" {

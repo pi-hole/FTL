@@ -79,17 +79,29 @@ src/dnsmasq/dnsmasq.c
 src/dnsmasq/dnsmasq.c
 	      my_syslog(LOG_WARNING, _("no servers found in %s, will retry"), latest->name);
 src/dnsmasq/dnssec.c
+      my_syslog(LOG_WARNING, "limit exceeded: %s", message ? message : _("per-query crypto work"));
+src/dnsmasq/dnssec.c
 	  my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
 src/dnsmasq/forward.c
 	  my_syslog(LOG_WARNING, _("discarding DNS reply: subnet option mismatch"));
 src/dnsmasq/forward.c
       my_syslog(LOG_WARNING, _("nameserver %s refused to do a recursive query"), daemon->namebuff);
 src/dnsmasq/forward.c
-	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
+	      my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
+src/dnsmasq/forward.c
+	      my_syslog(LOG_WARNING, _("limit exceeded: per-query subqueries"));
+src/dnsmasq/forward.c
+	my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
+		  daemon->namebuff[0] ? daemon->namebuff : ".");
 src/dnsmasq/forward.c
       my_syslog(LOG_WARNING, _("reducing DNS packet size for nameserver %s to %d"), daemon->addrbuff, SAFE_PKTSZ);
 src/dnsmasq/forward.c
 	      my_syslog(LOG_WARNING, _("ignoring query from non-local network %s (logged only once)"), daemon->addrbuff);
+src/dnsmasq/forward.c
+	  my_syslog(LOG_WARNING, _("limit exceeded: per-query subqueries"));
+src/dnsmasq/forward.c
+	    my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
+		      daemon->namebuff[0] ? daemon->namebuff : ".");
 src/dnsmasq/forward.c
 	  my_syslog(LOG_WARNING, _("ignoring query from non-local network %s"), daemon->addrbuff);
 src/dnsmasq/forward.c
@@ -108,7 +120,7 @@ src/dnsmasq/lease.c
 src/dnsmasq/log.c
 		  my_syslog(LOG_WARNING, _("overflow: %d log entries lost"), e);
 src/dnsmasq/network.c
-	my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
+	    my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
 src/dnsmasq/network.c
 		my_syslog(LOG_WARNING, 
 			  _("LOUD WARNING: listening on %s may accept requests via interfaces other than %s"),

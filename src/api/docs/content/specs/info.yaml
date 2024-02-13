@@ -752,6 +752,115 @@ components:
               type: boolean
               description: Whether or not FTL is allowed to perform destructive actions
               example: true
+            dnsmasq:
+              type: object
+              description: Metrics from the embedded dnsmasq resolver
+              properties:
+                dns_cache_inserted:
+                  type: integer
+                  description: Number of inserted entries in DNS cache
+                  example: 8
+                dns_cache_live_freed:
+                  type: integer
+                  description: Number of freed live entries in DNS cache
+                  example: 0
+                dns_queries_forwarded:
+                  type: integer
+                  description: Number of forwarded DNS queries
+                  example: 2
+                dns_auth_answered:
+                  type: integer
+                  description: Number of DNS queries for authoritative zones
+                  example: 0
+                dns_local_answered:
+                  type: integer
+                  description: Number of DNS queries answered from local cache
+                  example: 74
+                dns_stale_answered:
+                  type: integer
+                  description: Number of DNS queries answered from local cache (stale entries)
+                  example: 0
+                dns_unanswered:
+                  type: integer
+                  description: Number of unanswered DNS queries
+                  example: 0
+                bootp:
+                  type: integer
+                  description: Number of BOOTP requests
+                  example: 0
+                pxe:
+                  type: integer
+                  description: Number of PXE requests
+                  example: 0
+                dhcp_ack:
+                  type: integer
+                  description: Number of DHCP ACK
+                  example: 0
+                dhcp_decline:
+                  type: integer
+                  description: Number of DHCP DECLINE
+                  example: 0
+                dhcp_discover:
+                  type: integer
+                  description: Number of DHCP DISCOVER
+                  example: 0
+                dhcp_inform:
+                  type: integer
+                  description: Number of DHCP INFORM
+                  example: 0
+                dhcp_nak:
+                  type: integer
+                  description: Number of DHCP NAK
+                  example: 0
+                dhcp_offer:
+                  type: integer
+                  description: Number of DHCP OFFER
+                  example: 0
+                dhcp_release:
+                  type: integer
+                  description: Number of DHCP RELEASE
+                  example: 0
+                dhcp_request:
+                  type: integer
+                  description: Number of DHCP REQUEST
+                  example: 0
+                noanswer:
+                  type: integer
+                  description: Number of DHCP requests without answer (rapid commit)
+                  example: 0
+                leases_allocated_4:
+                  type: integer
+                  description: Number of allocated IPv4 leases
+                  example: 0
+                leases_pruned_4:
+                  type: integer
+                  description: Number of pruned IPv4 leases
+                  example: 0
+                leases_allocated_6:
+                  type: integer
+                  description: Number of allocated IPv6 leases
+                  example: 0
+                leases_pruned_6:
+                  type: integer
+                  description: Number of pruned IPv6 leases
+                  example: 0
+                tcp_connections:
+                  type: integer
+                  description: Number of dedicated TCP workers
+                  example: 0
+                dnssec_max_crypto_use:
+                  type: integer
+                  description: DNSSEC per-query crypto work HWM
+                  example: 0
+                dnssec_max_sig_fail:
+                  type: integer
+                  description: DNSSEC per-RRSet signature fails HWM
+                  example: 0
+                dnssec_max_work:
+                  type: integer
+                  description: DNSSEC per-query subqueries HWM
+                  example: 0
+
     database:
       type: object
       properties:

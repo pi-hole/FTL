@@ -590,6 +590,11 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 
 	JSON_ADD_BOOL_TO_OBJECT(ftl, "allow_destructive", config.webserver.api.allow_destructive.v.b);
 
+	// dnsmasq struct
+	cJSON *dnsmasq = JSON_NEW_OBJECT();
+	get_dnsmasq_metrics_obj(dnsmasq);
+	JSON_ADD_ITEM_TO_OBJECT(ftl, "dnsmasq", dnsmasq);
+
 	// All okay
 	return 0;
 }

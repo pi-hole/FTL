@@ -658,6 +658,15 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		}
 	}
 
+	// Add ANY filtering
+	fputs("# RFC 8482: Providing Minimal-Sized Responses to DNS Queries That Have QTYPE=ANY\n", pihole_conf);
+	fputs("# Filters replies to queries for type ANY. Everything other than A, AAAA, MX and CNAME\n", pihole_conf);
+	fputs("# records are removed. Since ANY queries with forged source addresses can be used in DNS amplification attacks\n", pihole_conf);
+	fputs("# replies to ANY queries can be large) this defangs such attacks, whilst still supporting the\n", pihole_conf);
+	fputs("# one remaining possible use of ANY queries. See RFC 8482 para 4.3 for details.\n", pihole_conf);
+	fputs("filter-rr=ANY\n", pihole_conf);
+	fputs("\n", pihole_conf);
+
 	// Add additional config lines to disk (if present)
 	if(conf->misc.dnsmasq_lines.v.json != NULL &&
 	   cJSON_GetArraySize(conf->misc.dnsmasq_lines.v.json) > 0)
