@@ -8,20 +8,20 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
 #include "api.h"
-#include "../shmem.h"
-#include "../datastructure.h"
+#include "shmem.h"
+#include "datastructure.h"
 // overTime data
-#include "../overTime.h"
+#include "overTime.h"
 // config struct
-#include "../config/config.h"
+#include "config/config.h"
 // read_setupVarsconf()
-#include "../config/setupVars.h"
+#include "config/setupVars.h"
 // get_aliasclient_list()
-#include "../database/aliasclients.h"
+#include "database/aliasclients.h"
 
 int api_history(struct ftl_conn *api)
 {
@@ -125,16 +125,17 @@ int api_history_clients(struct ftl_conn *api)
 	qsort(temparray, counters->clients, sizeof(int[2]), cmpdesc);
 
 	// Main return loop
-	cJSON *history = JSON_NEW_ARRAY();
 	int others_total = 0;
+	cJSON *history = JSON_NEW_ARRAY();
 	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
 
 		// Loop over clients to generate output to be sent to the client
-		cJSON *data = JSON_NEW_ARRAY();
 		int others = 0;
+		unsigned int added = 0;
+		cJSON *data = JSON_NEW_ARRAY();
 		for(int id = 0; id < counters->clients; id++)
 		{
 			// Get client pointer
@@ -155,7 +156,8 @@ int api_history_clients(struct ftl_conn *api)
 			// Skip clients when we reached the maximum number of
 			// clients to return They are summed together under the
 			// special "other" client
-			if(id >= (int)Nc)
+			// -1 because of the special "other" client
+			if(++added > Nc - 1)
 			{
 				others += client->overTime[slot];
 				continue;
@@ -174,6 +176,7 @@ int api_history_clients(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 
 	// Loop over clients to generate output to be sent to the client
+	unsigned int added = 0;
 	cJSON *clients = JSON_NEW_ARRAY();
 	for(int id = 0; id < counters->clients; id++)
 	{
@@ -187,10 +190,14 @@ int api_history_clients(struct ftl_conn *api)
 			continue;
 
 		// Skip clients which should be hidden (managed by
-		// alias-clients). Also skip clients when we reached the maximum
-		// number of clients to return
-		if(count < 0 || id >= (int)Nc)
+		// alias-clients)
+		if(count < 0)
 			continue;
+
+		// Break once we reached the maximum number of clients to return
+		// -1 because of the special "other" client
+		if(++added > Nc - 1)
+			break;
 
 		// Get client name and IP address
 		const char *client_ip = getstr(client->ippos);
