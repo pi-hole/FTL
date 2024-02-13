@@ -1575,6 +1575,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		// Nothing to be done for these tables
 		case GRAVITY_GROUPS:
 		case GRAVITY_ADLISTS:
+		case GRAVITY_ADLISTS_BLOCK:
+		case GRAVITY_ADLISTS_ALLOW:
 		case GRAVITY_CLIENTS:
 			break;
 
@@ -1597,7 +1599,9 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		{
 			querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:comment);";
 		}
-		else if(listtype == GRAVITY_ADLISTS)
+		else if(listtype == GRAVITY_ADLISTS ||
+		        listtype == GRAVITY_ADLISTS_BLOCK ||
+		        listtype == GRAVITY_ADLISTS_ALLOW)
 		{
 			querystr = "INSERT INTO adlist (address,enabled,comment,type) VALUES (:item,:enabled,:comment,:type);";
 		}
@@ -1605,7 +1609,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		{
 			querystr = "INSERT INTO client (ip,comment) VALUES (:item,:comment);";
 		}
-		else // domainlis
+		else // domainlist
 		{
 			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:type,:enabled,:comment);";
 		}
@@ -1625,9 +1629,11 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 				querystr = "UPDATE \"group\" SET name = :name, enabled = :enabled, description = :comment "
 				           "WHERE name = :item";
 			}
-		else if(listtype == GRAVITY_ADLISTS)
+		else if(listtype == GRAVITY_ADLISTS ||
+		        listtype == GRAVITY_ADLISTS_BLOCK ||
+		        listtype == GRAVITY_ADLISTS_ALLOW)
 			querystr = "INSERT INTO adlist (address,enabled,comment,type) VALUES (:item,:enabled,:comment,:type) "\
-			           "ON CONFLICT(address) DO UPDATE SET enabled = :enabled, comment = :comment, type = :type;";
+			           "ON CONFLICT(address,type) DO UPDATE SET enabled = :enabled, comment = :comment, type = :type;";
 		else if(listtype == GRAVITY_CLIENTS)
 			querystr = "INSERT INTO client (ip,comment) VALUES (:item,:comment) "\
 			           "ON CONFLICT(ip) DO UPDATE SET comment = :comment;";
@@ -1825,11 +1831,14 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		return false;
 	}
 
-	const bool isDomain = listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
-	                      listtype == GRAVITY_DOMAINLIST_DENY_EXACT ||
-	                      listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX ||
-	                      listtype == GRAVITY_DOMAINLIST_DENY_REGEX ||
-	                      listtype == GRAVITY_DOMAINLIST_ALL_ALL; // batch delete
+	const bool hasType = listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
+	                     listtype == GRAVITY_DOMAINLIST_DENY_EXACT ||
+	                     listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX ||
+	                     listtype == GRAVITY_DOMAINLIST_DENY_REGEX ||
+	                     listtype == GRAVITY_DOMAINLIST_ALL_ALL ||
+	                     listtype == GRAVITY_ADLISTS ||
+	                     listtype == GRAVITY_ADLISTS_BLOCK ||
+	                     listtype == GRAVITY_ADLISTS_ALLOW;
 
 	// Begin transaction
 	const char *querystr = "BEGIN TRANSACTION;";
@@ -1843,7 +1852,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 	}
 
 	// Create temporary table for JSON argument
-	if(isDomain)
+	if(hasType)
 		// Create temporary table for domains to be deleted
 		querystr = "CREATE TEMPORARY TABLE deltable (type INT, item TEXT);";
 	else
@@ -1885,7 +1894,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 	sqlite3_finalize(stmt);
 
 	// Prepare statement for inserting items into virtual table
-	if(isDomain)
+	if(hasType)
 		querystr = "INSERT INTO deltable (type, item) VALUES (:type, :item);";
 	else
 		querystr = "INSERT INTO deltable (item) VALUES (:item);";
@@ -1910,12 +1919,24 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 	{
 		// Bind type to prepared statement
 		cJSON *type = cJSON_GetObjectItemCaseSensitive(it, "type");
+		int type_int = cJSON_IsNumber(type) ? type->valueint : -1;
+		if(listtype == GRAVITY_ADLISTS_BLOCK)
+			type_int = ADLIST_BLOCK;
+		else if(listtype == GRAVITY_ADLISTS_ALLOW)
+			type_int = ADLIST_ALLOW;
+		else if(listtype == GRAVITY_ADLISTS && cJSON_IsString(type))
+		{
+			if(strcasecmp(type->valuestring, "block") == 0)
+				type_int = ADLIST_BLOCK;
+			else if(strcasecmp(type->valuestring, "allow") == 0)
+				type_int = ADLIST_ALLOW;
+		}
 		const int type_idx = sqlite3_bind_parameter_index(stmt, ":type");
-		if(type_idx > 0 && (!cJSON_IsNumber(type) || (rc = sqlite3_bind_int(stmt, type_idx, type->valueint)) != SQLITE_OK))
+		if(type_idx > 0 && (rc = sqlite3_bind_int(stmt, type_idx, type_int)) != SQLITE_OK)
 		{
 			*message = sqlite3_errmsg(gravity_db);
 			log_err("gravityDB_delFromTable(%d): Failed to bind type (error %d) - %s",
-			        type->valueint, rc, *message);
+			        type_int, rc, *message);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 
@@ -1981,12 +2002,15 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 	const char *querystrs[4] = {NULL, NULL, NULL, NULL};
 	if(listtype == GRAVITY_GROUPS)
 		querystrs[0] = "DELETE FROM \"group\" WHERE name IN (SELECT item FROM deltable);";
-	else if(listtype == GRAVITY_ADLISTS)
+	else if(listtype == GRAVITY_ADLISTS ||
+	        listtype == GRAVITY_ADLISTS_BLOCK ||
+	        listtype == GRAVITY_ADLISTS_ALLOW)
 	{
-		// This is actually a three-step deletion to satisfy foreign-key constraints
-		querystrs[0] = "DELETE FROM gravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable));";
-		querystrs[1] = "DELETE FROM antigravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable));";
-		querystrs[2] = "DELETE FROM adlist WHERE address IN (SELECT item FROM deltable);";
+		// This is actually a four-step deletion to satisfy foreign-key constraints
+		querystrs[0] = "DELETE FROM gravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 0));";
+		querystrs[1] = "DELETE FROM antigravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 1));";
+		querystrs[2] = "DELETE FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 0) AND type = 0;";
+		querystrs[3] = "DELETE FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 1) AND type = 1;";
 	}
 	else if(listtype == GRAVITY_CLIENTS)
 		querystrs[0] = "DELETE FROM client WHERE ip IN (SELECT item FROM deltable);";
@@ -2096,12 +2120,16 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 		case GRAVITY_DOMAINLIST_ALL_ALL:
 			type = "0,1,2,3";
 			break;
+
+		// No type required for these tables
 		case GRAVITY_GRAVITY:
 		case GRAVITY_ANTIGRAVITY:
 		case GRAVITY_GROUPS:
-		case GRAVITY_ADLISTS:
 		case GRAVITY_CLIENTS:
-			// No type required for these tables
+		case GRAVITY_ADLISTS:
+		// Type is set in the SQL query directly
+		case GRAVITY_ADLISTS_BLOCK:
+		case GRAVITY_ADLISTS_ALLOW:
 			break;
 	}
 
@@ -2133,19 +2161,29 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 		}
 		snprintf(querystr, buflen, "SELECT id,name,enabled,date_added,date_modified,description AS comment FROM \"group\"%s;", filter);
 	}
-	else if(listtype == GRAVITY_ADLISTS)
+	else if(listtype == GRAVITY_ADLISTS ||
+	        listtype == GRAVITY_ADLISTS_BLOCK ||
+	        listtype == GRAVITY_ADLISTS_ALLOW)
 	{
+		if(listtype == GRAVITY_ADLISTS_BLOCK)
+			filter = "type = 0";
+		else if(listtype == GRAVITY_ADLISTS_ALLOW)
+			filter = "type = 1";
+		else
+			filter = "TRUE";
+
+		const char *filter2 = "";
 		if(item != NULL && item[0] != '\0')
 		{
 			if(exact)
-				filter = " WHERE address = :item";
+				filter2 = " AND address = :item";
 			else
-				filter = " WHERE address LIKE :item";
+				filter2 = " AND address LIKE :item";
 		}
 		snprintf(querystr, buflen, "SELECT id,type,address,enabled,date_added,date_modified,comment,"
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids,"
 		                                     "date_updated,number,invalid_domains,status,abp_entries "
-		                                     "FROM adlist a%s;", filter);
+		                                     "FROM adlist a WHERE %s%s;", filter, filter2);
 	}
 	else if(listtype == GRAVITY_CLIENTS)
 	{
@@ -2312,6 +2350,8 @@ bool gravityDB_readTableGetRow(const enum gravity_list_type listtype, tablerow *
 					}
 				}
 				else if(listtype == GRAVITY_ADLISTS ||
+				        listtype == GRAVITY_ADLISTS_ALLOW ||
+				        listtype == GRAVITY_ADLISTS_BLOCK ||
 				        listtype == GRAVITY_GRAVITY ||
 				        listtype == GRAVITY_ANTIGRAVITY)
 				{
@@ -2327,6 +2367,10 @@ bool gravityDB_readTableGetRow(const enum gravity_list_type listtype, tablerow *
 							row->type = "unknown";
 							break;
 					}
+				}
+				else
+				{
+					row->type = "unknown";
 				}
 			}
 
@@ -2425,9 +2469,14 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		del_querystr = "DELETE FROM client_by_group WHERE client_id = :id;";
 		add_querystr = "INSERT INTO client_by_group (client_id,group_id) VALUES (:id,:gid);";
 	}
-	else if(listtype == GRAVITY_ADLISTS)
+	else if(listtype == GRAVITY_ADLISTS ||
+	        listtype == GRAVITY_ADLISTS_BLOCK ||
+	        listtype == GRAVITY_ADLISTS_ALLOW)
 	{
-		get_querystr = "SELECT id FROM adlist WHERE address = :item";
+		if(listtype == GRAVITY_ADLISTS)
+			get_querystr = "SELECT id FROM adlist WHERE address = :item";
+		else
+			get_querystr = "SELECT id FROM adlist WHERE address = :item AND type = :type";
 		del_querystr = "DELETE FROM adlist_by_group WHERE adlist_id = :id;";
 		add_querystr = "INSERT INTO adlist_by_group (adlist_id,group_id) VALUES (:id,:gid);";
 	}
