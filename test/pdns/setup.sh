@@ -114,6 +114,9 @@ pdnsutil add-record ftl. regex-multiple AAAA fe80::3f41
 pdnsutil add-record ftl. regex-notMultiple A 192.168.3.12
 pdnsutil add-record ftl. regex-notMultiple AAAA fe80::3f41
 
+# TXT
+pdnsutil add-record ftl. any TXT "\"Some example text\""
+
 # Create reverse lookup zone
 pdnsutil create-zone arpa ns1.ftl
 pdnsutil add-record arpa. 1.1.168.192.in-addr PTR ftl.

@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -119,7 +119,7 @@ int rr_on_list(struct rrlist *list, unsigned short rr)
 {
   while (list)
     {
-      if (list->rr == rr || list->rr == T_ANY)
+      if (list->rr == rr)
 	return 1;
 
       list = list->next;
