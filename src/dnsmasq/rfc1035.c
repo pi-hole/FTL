@@ -888,8 +888,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 #ifdef HAVE_DNSSEC
 	      if (!option_bool(OPT_DNSSEC_VALID) || aqtype != T_RRSIG)
 #endif
-		if (qtype != T_ANY)
-		  log_query(secflag | F_FORWARD | F_UPSTREAM | F_RRNAME, name, NULL, NULL, aqtype);
+		log_query(secflag | F_FORWARD | F_UPSTREAM | F_RRNAME, name, NULL, NULL, aqtype);
 	    }
 	  else if (!(flags & F_NXDOMAIN))
 	    {
