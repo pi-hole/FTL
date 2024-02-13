@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,7 +15,11 @@
 */
 
 #include "dnsmasq.h"
-#include "../log.h"
+/******* Pi-hole modification *******/
+#include "log.h"
+#include "dnsmasq_interface.h"
+#include "main.h"
+/************************************/
 
 #ifdef __ANDROID__
 #  include <android/log.h>
@@ -507,6 +511,4 @@ void die(char *message, char *arg1, int exit_code)
   /********** Pi-hole modification *************/
   FTL_log_dnsmasq_fatal(message, arg1, errmess);
   /*********************************************/
-  
-  exit(exit_code);
 }
