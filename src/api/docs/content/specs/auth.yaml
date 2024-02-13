@@ -244,7 +244,10 @@ components:
           - Authentication
         operationId: "add_app"
         description: |
-          Create a new application password. The generated password is shown only once and cannot be retrieved later so make sure to store it in a safe place. The application password can be used to authenticate against the API instead of the regular password. It does not require 2FA verification. Generating a new application password will invalidate all currently active sessions.
+          Create a new application password. The generated password is shown only once and cannot be retrieved later - make sure to store it in a safe place. The application password can be used to authenticate against the API instead of the regular password.
+          It does not require 2FA verification. Generating a new application password will invalidate all currently active sessions.
+
+          Note that this endpoint is only generates a application password accompanied by its hash. To make a password returned by this endpoint effective, the returned `hash` has to be set as `webserver.api.app_password` in the Pi-hole configuration in a follow-up step. This can be done in various ways, e.g. via the API (`PATCH /api/config/webserver/api/app_pwhash`), the graphical web interface (Settings -> All Settings) or by editing the configuration file directly.
         responses:
           '200':
             description: OK
