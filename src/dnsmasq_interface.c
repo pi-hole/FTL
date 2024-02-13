@@ -2426,6 +2426,17 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 	else
 		log_warn("Unknown DNSSEC status \"%s\"", arg);
 
+	// Set reply to NONE (if not already set) as we will not reply to this
+	// query when the status is neither SECURE nor INSECURE
+	if (query->reply == REPLY_UNKNOWN &&
+	    query->dnssec != DNSSEC_SECURE &&
+	    query->dnssec != DNSSEC_INSECURE)
+	{
+		struct timeval response;
+		gettimeofday(&response, 0);
+		query_set_reply(0, REPLY_NONE, addr, query, response);
+	}
+
 	// Mark query for updating in the database
 	query->flags.database.changed = true;
 
