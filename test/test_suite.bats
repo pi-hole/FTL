@@ -1422,6 +1422,20 @@
   [[ ${lines[0]} == "145" ]]
 }
 
+@test "API: No UNKNOWN reply in API" {
+  run bash -c 'curl -s 127.0.0.1/api/queries?reply=UNKNOWN | jq .queries'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'curl -s 127.0.0.1/api/queries?reply=UNKNOWN | jq ".queries | length"'
+  [[ ${lines[0]} == "0" ]]
+}
+
+@test "API: No UNKNOWN status in API" {
+  run bash -c 'curl -s 127.0.0.1/api/queries?status=UNKNOWN | jq .queries'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'curl -s 127.0.0.1/api/queries?status=UNKNOWN | jq ".queries | length"'
+  [[ ${lines[0]} == "0" ]]
+}
+
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1/api/auth'
   printf "%s\n" "${lines[@]}"
