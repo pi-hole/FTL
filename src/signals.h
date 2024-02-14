@@ -12,6 +12,8 @@
 
 #include "enums.h"
 
+#define SIGUSR6 (SIGRTMIN + 6)
+
 void handle_signals(void);
 void handle_realtime_signals(void);
 pid_t main_pid(void);

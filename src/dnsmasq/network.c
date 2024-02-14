@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2022 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -125,7 +125,10 @@ int iface_check(int family, union all_addr *addr, char *name, int *auth)
 
       for (tmp = daemon->if_names; tmp; tmp = tmp->next)
 	if (tmp->name && wildcard_match(tmp->name, name))
-	  ret = tmp->used = 1;
+	  {
+	    tmp->flags |= INAME_USED;
+	    ret = 1;
+	  }
 	        
       if (addr)
 	for (tmp = daemon->if_addrs; tmp; tmp = tmp->next)
@@ -133,11 +136,17 @@ int iface_check(int family, union all_addr *addr, char *name, int *auth)
 	    {
 	      if (family == AF_INET &&
 		  tmp->addr.in.sin_addr.s_addr == addr->addr4.s_addr)
-		ret = match_addr = tmp->used = 1;
+		{
+		  tmp->flags |= INAME_USED;
+		  ret = match_addr = 1;
+		}
 	      else if (family == AF_INET6 &&
 		       IN6_ARE_ADDR_EQUAL(&tmp->addr.in6.sin6_addr, 
 					  &addr->addr6))
-		ret = match_addr = tmp->used = 1;
+		{
+		  tmp->flags |= INAME_USED;
+		  ret = match_addr = 1;
+		}
 	    }          
     }
   
@@ -237,7 +246,8 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
   int loopback;
   struct ifreq ifr;
   int tftp_ok = !!option_bool(OPT_TFTP);
-  int dhcp_ok = 1;
+  int dhcp4_ok = 1;
+  int dhcp6_ok = 1;
   int auth_dns = 0;
   int is_label = 0;
 #if defined(HAVE_DHCP) || defined(HAVE_TFTP)
@@ -253,7 +263,7 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
   loopback = ifr.ifr_flags & IFF_LOOPBACK;
   
   if (loopback)
-    dhcp_ok = 0;
+    dhcp4_ok = dhcp6_ok = 0;
   
   if (!label)
     label = ifr.ifr_name;
@@ -503,7 +513,7 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
 	  if ((lo->name = whine_malloc(strlen(ifr.ifr_name)+1)))
 	    {
 	      strcpy(lo->name, ifr.ifr_name);
-	      lo->used = 1;
+	      lo->flags |= INAME_USED;
 	      lo->next = daemon->if_names;
 	      daemon->if_names = lo;
 	    }
@@ -525,14 +535,17 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
   if (auth_dns)
     {
       tftp_ok = 0;
-      dhcp_ok = 0;
+      dhcp4_ok = dhcp6_ok = 0;
     }
   else
     for (tmp = daemon->dhcp_except; tmp; tmp = tmp->next)
       if (tmp->name && wildcard_match(tmp->name, ifr.ifr_name))
 	{
 	  tftp_ok = 0;
-	  dhcp_ok = 0;
+	  if (tmp->flags & INAME_4)
+	    dhcp4_ok = 0;
+	  if (tmp->flags & INAME_6)
+	    dhcp6_ok = 0;
 	}
 #endif
  
@@ -559,7 +572,8 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
       iface->addr = *addr;
       iface->netmask = netmask;
       iface->tftp_ok = tftp_ok;
-      iface->dhcp_ok = dhcp_ok;
+      iface->dhcp4_ok = dhcp4_ok;
+      iface->dhcp6_ok = dhcp6_ok;
       iface->dns_auth = auth_dns;
       iface->mtu = mtu;
       iface->dad = !!(iface_flags & IFACE_TENTATIVE);
@@ -699,8 +713,7 @@ static int release_listener(struct listener *l)
       /* In case it ever returns */
       l->iface->done = 0;
       // Pi-hole modification
-      logg("stopped listening on %s(#%d): %s port %d",
-	   l->iface->name, l->iface->index, daemon->addrbuff, port);
+      logg("stopped listening on %s(#%d): %s port %d", l->iface->name, l->iface->index, daemon->addrbuff, port);
     }
 
   if (l->fd != -1)
@@ -915,15 +928,24 @@ static int make_sock(union mysockaddr *addr, int type, int dienow)
 	
       errno = errsave;
 
-      if (dienow)
+      /* Failure to bind addresses given by --listen-address at this point
+	 because there's no interface with the address is OK if we're doing bind-dynamic.
+	 If/when an interface is created with the relevant address we'll notice
+	 and attempt to bind it then. This is in the generic error path so we  close the socket,
+	 but EADDRNOTAVAIL is only a possible error from bind() 
+	 
+	 When a new address is created and we call this code again (dienow == 0) there
+	 may still be configured addresses when don't exist, (consider >1 --listen-address,
+	 when the first is created, the second will still be missing) so we suppress
+	 EADDRNOTAVAIL even in that case to avoid confusing log entries.
+      */
+      if (!option_bool(OPT_CLEVERBIND) || errno != EADDRNOTAVAIL)
 	{
-	  /* failure to bind addresses given by --listen-address at this point
-	     is OK if we're doing bind-dynamic */
-	  if (!option_bool(OPT_CLEVERBIND))
+	  if (dienow)
 	    die(s, daemon->addrbuff, EC_BADNET);
+	  else
+	    my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
 	}
-      else
-	my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
       
       return -1;
     }	
@@ -1199,7 +1221,7 @@ void create_bound_listeners(int dienow)
 	    // Pi-hole modification
 	    const int port = prettyprint_addr(&iface->addr, daemon->addrbuff);
 	    logg("listening on %s(#%d): %s port %d",
-		 iface->name, iface->index, daemon->addrbuff, port);
+		     iface->name, iface->index, daemon->addrbuff, port);
 	  }
       }
 
@@ -1215,7 +1237,7 @@ void create_bound_listeners(int dienow)
      (no netmask) and some MTU login the tftp code. */
 
   for (if_tmp = daemon->if_addrs; if_tmp; if_tmp = if_tmp->next)
-    if (!if_tmp->used && 
+    if (!(if_tmp->flags & INAME_USED) && 
 	(new = create_listeners(&if_tmp->addr, !!option_bool(OPT_TFTP), dienow)))
       {
 	new->next = daemon->listeners;
@@ -1227,7 +1249,7 @@ void create_bound_listeners(int dienow)
 	    my_syslog(LOG_DEBUG|MS_DEBUG, _("listening on %s port %d"), daemon->addrbuff, port);
 	  }
 	// Pi-hole modification
-        const int port = prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
+	const int port = prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
 	logg("listening on %s port %d", daemon->addrbuff, port);
       }
 }
@@ -1306,7 +1328,7 @@ void join_multicast(int dienow)
   struct irec *iface, *tmp;
 
   for (iface = daemon->interfaces; iface; iface = iface->next)
-    if (iface->addr.sa.sa_family == AF_INET6 && iface->dhcp_ok && !iface->multicast_done)
+    if (iface->addr.sa.sa_family == AF_INET6 && iface->dhcp6_ok && !iface->multicast_done)
       {
 	/* There's an irec per address but we only want to join for multicast 
 	   once per interface. Weed out duplicates. */
