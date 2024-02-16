@@ -157,36 +157,33 @@ components:
       type: object
       properties:
         clients:
-          type: array
-          description: Data array
-          items:
+          type: object
+          description: Data corresponding to the individual clients
+          additionalProperties:
             type: object
             properties:
               name:
                 type: string
                 nullable: true
                 description: Client name
-              ip:
-                type: string
-                description: Client IP address
               total:
                 type: integer
                 description: Total number of queries
           example:
-            - name: localhost
-              ip: "127.0.0.1"
+            "127.0.0.1":
+              name: localhost
               total: 13428
-            - name: ip6-localnet
-              ip: "::1"
+            "::1":
+              name: ip6-localnet
               total: 2100
-            - name: null
-              ip: "192.168.1.1"
+            "192.168.1.1":
+              name: null
               total: 254
-            - name: "pi.hole"
-              ip: "::"
+            "::":
+              name: "pi.hole"
               total: 29
-            - name: "other clients"
-              ip: "0.0.0.0"
+            "0.0.0.0":
+              name: "other clients"
               total: 14
         history:
           type: array
@@ -198,25 +195,25 @@ components:
                 type: number
                 description: Timestamp
               data:
-                type: array
+                type: object
                 description: Data corresponding to the individual clients
-                items:
+                additionalProperties:
                   type: integer
+                  description: Number of queries for the corresponding client
           example:
             - timestamp: 1511819900.539157
               data:
-                - 12
-                - 65
-                - 67
-                - 9
-                - 5
+                "127.0.0.1": 35
+                "::1": 63
+                "192.168.1.1": 20
+                "::": 9
+                "0.0.0.0": 0
             - timestamp: 1511820500.583821
               data:
-                - 1
-                - 35
-                - 63
-                - 20
-                - 9
+                "127.0.0.1": 10
+                "::1": 44
+                "192.168.1.1": 56
+                "::": 52
   parameters:
     clients:
       N:

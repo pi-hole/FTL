@@ -52,51 +52,11 @@ int api_history(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_history_clients(struct ftl_conn *api)
+static unsigned int build_client_temparray(int *temparray, const int slot)
 {
-	// Exit before processing any data if requested via config setting
-	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
-	{
-		// Minimum structure is
-		// {"history":[], "clients":[]}
-		cJSON *json = JSON_NEW_OBJECT();
-		cJSON *history = JSON_NEW_ARRAY();
-		JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
-		cJSON *clients = JSON_NEW_ARRAY();
-		JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
-		JSON_SEND_OBJECT_UNLOCK(json);
-	}
+	// Clear temporary array
+	memset(temparray, 0, 2 * counters->clients * sizeof(int));
 
-	// Get number of clients to return
-	unsigned int Nc = min(counters->clients, config.webserver.api.maxClients.v.u16);
-	if(api->request->query_string != NULL)
-	{
-		// Does the user request a non-default number of clients
-		get_uint_var(api->request->query_string, "N", &Nc);
-
-		// Limit the number of clients to return to the number of
-		// clients to avoid possible overflows for very large N
-		// Also allow N=0 to return all clients
-		if((int)Nc > counters->clients || Nc == 0)
-			Nc = counters->clients;
-	}
-
-	// Lock shared memory
-	lock_shm();
-
-	// Allocate memory for the temporary buffer for ranking our clients
-	int *temparray = calloc(2*counters->clients, sizeof(int));
-	if(temparray == NULL)
-	{
-		unlock_shm();
-		return send_json_error(api, 500,
-		                       "internal_error",
-		                       "Failed to allocate memory for temporary array",
-		                       NULL);
-	}
-
-	// Get MAX_CLIENTS clients with the highest number of queries
-	// Skip clients included in others (in alias-clients)
 	unsigned int num_clients = 0;
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
@@ -118,32 +78,105 @@ int api_history_clients(struct ftl_conn *api)
 		else
 
 		// Store clientID and number of queries in temporary array
+		// If the slot is -1, we return the total number of queries.
+		// Otherwise, we return the number of queries in the given time
+		// slot
 		temparray[2*num_clients + 0] = clientID;
-		temparray[2*num_clients + 1] = client->count;
+		temparray[2*num_clients + 1] = slot < 0 ? client->count : client->overTime[slot];
 
 		// Increase number of clients by one
 		num_clients++;
 	}
 
-	// Sort temporary array. Even when the array itself has <counters.clients>
-	// elements, we only sort the first <clients> elements to avoid sorting
-	// the whole array (the final elements are not used when clients have been
-	// skipped above, e.g. alias-clients or recycled clients)
-	qsort(temparray, num_clients, sizeof(int[2]), cmpdesc);
+	return num_clients;
+}
+
+int api_history_clients(struct ftl_conn *api)
+{
+	// Exit before processing any data if requested via config setting
+	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+	{
+		// Minimum structure is
+		// {"history":[], "clients":[]}
+		cJSON *json = JSON_NEW_OBJECT();
+		cJSON *history = JSON_NEW_ARRAY();
+		JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
+		cJSON *clients = JSON_NEW_ARRAY();
+		JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
+		JSON_SEND_OBJECT_UNLOCK(json);
+	}
+
+	// Get number of clients to return
+	unsigned int Nc = min(counters->clients, config.webserver.api.maxClients.v.u16);
+	if(api->request->query_string != NULL)
+	{
+		// Does the user request a non-default number of clients
+		get_uint_var(api->request->query_string, "N", &Nc);
+	}
+
+	// Limit the number of clients to the maximum number of clients
+	if(Nc == 0 || Nc > (unsigned int)counters->clients)
+	{
+		// Return all clients
+		Nc = counters->clients;
+	}
+
+	// Lock shared memory
+	lock_shm();
+
+	// Allocate memory for the temporary buffer for ranking our clients
+	int *temparray = calloc(counters->clients, 2 * sizeof(int));
+	if(temparray == NULL)
+	{
+		unlock_shm();
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to allocate memory for temporary array",
+		                       NULL);
+	}
+
+	// Get MAX_CLIENTS clients with the highest number of queries
+	// Skip clients included in others (in alias-clients)
+	unsigned int num_clients = build_client_temparray(temparray, -1);
+
+	if(config.webserver.api.client_history_global_max.v.b)
+	{
+		// Sort temporary array. Even when the array itself has <counters.clients>
+		// elements, we only sort the first <clients> elements to avoid sorting
+		// the whole array (the final elements are not used when clients have been
+		// skipped above, e.g. alias-clients or recycled clients)
+		qsort(temparray, num_clients, sizeof(int[2]), cmpdesc);
+	}
 
 	// Main return loop
 	int others_total = 0;
+
 	cJSON *history = JSON_NEW_ARRAY();
 	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
 
+		// If we are not in global-max mode, we need to build the temporary
+		// client array for each slot individually
+		if(!config.webserver.api.client_history_global_max.v.b)
+		{
+			// Collect global client data
+			num_clients = build_client_temparray(temparray, slot);
+
+			// Sort temporary array. Even when the array itself has <counters.clients>
+			// elements, we only sort the first <clients> elements to avoid sorting
+			// the whole array (the final elements are not used when clients have been
+			// skipped above, e.g. alias-clients or recycled clients)
+			qsort(temparray, num_clients, sizeof(int[2]), cmpdesc);
+		}
+
 		// Loop over clients to generate output to be sent to the client
 		int others = 0;
-		cJSON *data = JSON_NEW_ARRAY();
+		cJSON *data = JSON_NEW_OBJECT();
 		for(unsigned int arrayID = 0; arrayID < num_clients; arrayID++)
 		{
+
 			// Get client pointer
 			const int clientID = temparray[2*arrayID + 0];
 
@@ -155,26 +188,27 @@ int api_history_clients(struct ftl_conn *api)
 			// number of clients to return They are summed together
 			// under the special "other" client
 			// -1 because of the special "other" client we add below
+			// This is disabled when Nc is 0, which means we want to return
+			// all clients
 			if(arrayID >= Nc - 1)
 			{
 				others += client->overTime[slot];
 				continue;
 			}
 
-			JSON_ADD_NUMBER_TO_ARRAY(data, client->overTime[slot]);
+			// Add client to the array
+			cJSON_AddNumberToObject(data, getstr(client->ippos), client->overTime[slot]);
 		}
 		// Add others as last element in the array
 		others_total += others;
-		JSON_ADD_NUMBER_TO_ARRAY(data, others);
+		JSON_ADD_NUMBER_TO_OBJECT(data, "others", others);
 
 		JSON_ADD_ITEM_TO_OBJECT(item, "data", data);
 		JSON_ADD_ITEM_TO_ARRAY(history, item);
 	}
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 
 	// Loop over clients to generate output to be sent to the client
-	cJSON *clients = JSON_NEW_ARRAY();
+	cJSON *clients = JSON_NEW_OBJECT();
 	for(unsigned int arrayID = 0; arrayID < num_clients; arrayID++)
 	{
 		// Get client pointer
@@ -186,7 +220,11 @@ int api_history_clients(struct ftl_conn *api)
 
 		// Break once we reached the maximum number of clients to return
 		// -1 because of the special "other" client we add below
-		if(arrayID >= Nc - 1)
+		// This is disabled when
+		// - N is 0, which means we want to return all clients, or
+		// - when we are NOT in global-max mode as we need to return all
+		//   clients in that case
+		if(config.webserver.api.client_history_global_max.v.b && arrayID >= Nc - 1)
 			break;
 
 		// Get client name and IP address
@@ -196,9 +234,8 @@ int api_history_clients(struct ftl_conn *api)
 		// Create JSON object for this client
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_REF_STR_IN_OBJECT(item, "name", client_name);
-		JSON_REF_STR_IN_OBJECT(item, "ip", client_ip);
 		JSON_ADD_NUMBER_TO_OBJECT(item, "total", client->count);
-		JSON_ADD_ITEM_TO_ARRAY(clients, item);
+		JSON_ADD_ITEM_TO_OBJECT(clients, client_ip, item);
 	}
 
 	// Unlock already here to avoid keeping the lock during JSON generation
@@ -207,16 +244,21 @@ int api_history_clients(struct ftl_conn *api)
 	// memory and can, thus, be accessed at any time without locking
 	unlock_shm();
 
-	// Add "others" client
-	cJSON *item = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(item, "name", "other clients");
-	JSON_REF_STR_IN_OBJECT(item, "ip", "0.0.0.0");
-	JSON_ADD_NUMBER_TO_OBJECT(item, "total", others_total);
-	JSON_ADD_ITEM_TO_ARRAY(clients, item);
+	// Add "others" client only if there are more clients than we return
+	// and if we are not returning all clients
+	if(num_clients > Nc)
+	{
+		cJSON *item = JSON_NEW_OBJECT();
+		JSON_REF_STR_IN_OBJECT(item, "name", "other clients");
+		JSON_ADD_NUMBER_TO_OBJECT(item, "total", others_total);
+		JSON_ADD_ITEM_TO_OBJECT(clients, "others", item);
+	}
 
 	// Free memory
 	free(temparray);
 
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
 	JSON_SEND_OBJECT(json);
 }

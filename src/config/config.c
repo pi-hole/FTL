@@ -954,9 +954,14 @@ void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
 
 	conf->webserver.api.maxClients.k = "webserver.api.maxClients";
-	conf->webserver.api.maxClients.h = "Up to how many clients should be returned in the activity graph endpoint (/api/history/clients)?\n This setting can be overwritten at run-time using the parameter N";
+	conf->webserver.api.maxClients.h = "Up to how many clients should be returned in the activity graph endpoint (/api/history/clients)?\n This setting can be overwritten at run-time using the parameter N. Setting this to 0 will always send all clients. Be aware that this may be challenging for the GUI if you have many (think > 1.000 clients) in your network";
 	conf->webserver.api.maxClients.t = CONF_UINT16;
 	conf->webserver.api.maxClients.d.u16 = 10;
+
+	conf->webserver.api.client_history_global_max.k = "webserver.api.client_history_global_max";
+	conf->webserver.api.client_history_global_max.h = "How should the API compute the most active clients? If set to true, the API will return the clients with the most queries globally (within 24 hours). If set to false, the API will return the clients with the most queries per time slot individually.";
+	conf->webserver.api.client_history_global_max.t = CONF_BOOL;
+	conf->webserver.api.client_history_global_max.d.b = true;
 
 	conf->webserver.api.allow_destructive.k = "webserver.api.allow_destructive";
 	conf->webserver.api.allow_destructive.h = "Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)";

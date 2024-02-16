@@ -421,6 +421,8 @@ components:
                       type: integer
                     maxClients:
                       type: integer
+                    client_history_global_max:
+                      type: boolean
                     allow_destructive:
                       type: boolean
                     temp:
@@ -693,6 +695,7 @@ components:
               excludeDomains: [ 'google\\.de', 'pi-hole\.net' ]
               maxHistory: 86400
               maxClients: 10
+              client_history_global_max: true
               allow_destructive: true
               temp:
                 limit: 60.0
