@@ -163,7 +163,6 @@ int api_stats_top_domains(struct ftl_conn *api)
 		return 0;
 	}
 
-
 	bool blocked = false; // Can be overwritten by query string
 	int count = 10;
 	// /api/stats/top_domains?blocked=true
@@ -472,6 +471,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 	// Lock shared memory
 	lock_shm();
 
+	unsigned int added_upstreams = 0;
 	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
 		// Get upstream pointer
@@ -479,9 +479,11 @@ int api_stats_upstreams(struct ftl_conn *api)
 		if(upstream == NULL)
 			continue;
 
-		temparray[2*upstreamID + 0] = upstreamID;
-		temparray[2*upstreamID + 1] = upstream->count;
+		temparray[2*added_upstreams + 0] = upstreamID;
+		temparray[2*added_upstreams + 1] = upstream->count;
 		totalcount += upstream->count;
+
+		added_upstreams++;
 	}
 
 	// Sort temporary array in descending order
@@ -489,7 +491,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 
 	// Loop over available forward destinations
 	cJSON *top_upstreams = JSON_NEW_ARRAY();
-	for(int i = -2; i < upstreams; i++)
+	for(int i = -2; i < (int)added_upstreams; i++)
 	{
 		int count = 0;
 		const char* ip, *name;
