@@ -184,12 +184,11 @@ int api_stats_top_domains(struct ftl_conn *api)
 		if(domain == NULL)
 			continue;
 
-		temparray[2*domainID + 0] = domainID;
-		if(blocked)
-			temparray[2*added_domains + 1] = domain->blockedcount;
-		else
-			// Count only permitted queries
-			temparray[2*added_domains + 1] = domain->count - domain->blockedcount;
+		// Add domain ID
+		temparray[2*added_domains + 0] = domainID;
+
+		// Use either blocked or total count based on request string
+		temparray[2*added_domains + 1] = blocked ? domain->blockedcount : domain->count - domain->blockedcount;
 
 		added_domains++;
 	}
