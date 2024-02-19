@@ -833,6 +833,7 @@ DBusHandlerResult message_handler(DBusConnection *connection,
 
       if (!done)
 	{
+	  done = 1;
 	  list.next = daemon->filter_rr;
 	  daemon->filter_rr = &list;
 	}
@@ -844,6 +845,7 @@ DBusHandlerResult message_handler(DBusConnection *connection,
 
       if (!done)
 	{
+	  done = 1;
 	  list.next = daemon->filter_rr;
 	  daemon->filter_rr = &list;
 	}
