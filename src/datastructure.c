@@ -83,13 +83,13 @@ int findQueryID(const int id)
 	return -1;
 }
 
-int findUpstreamID(const char * upstreamString, const in_port_t port)
+int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, const char *func, const char *file)
 {
 	// Go through already knows upstream servers and see if we used one of those
-	for(int upstreamID=0; upstreamID < counters->upstreams; upstreamID++)
+	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
 		// Get upstream pointer
-		upstreamsData* upstream = getUpstream(upstreamID, true);
+		upstreamsData* upstream = _getUpstream(upstreamID, false, line, func, file);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(upstream == NULL)
@@ -101,10 +101,10 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 	// This upstream server is not known
 	// Store ID
 	const int upstreamID = counters->upstreams;
-	log_debug(DEBUG_ANY, "New upstream server: %s:%u (%i/%i)", upstreamString, port, upstreamID, counters->upstreams_MAX);
+	log_debug(DEBUG_GC, "New upstream server: %s:%u (ID %i)", upstreamString, port, upstreamID);
 
 	// Get upstream pointer
-	upstreamsData* upstream = getUpstream(upstreamID, false);
+	upstreamsData* upstream = _getUpstream(upstreamID, false, line, func, file);
 	if(upstream == NULL)
 	{
 		log_err("Encountered serious memory error in findupstreamID()");
@@ -137,13 +137,34 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 	return upstreamID;
 }
 
-int findDomainID(const char *domainString, const bool count)
+static int get_next_free_domainID(void)
+{
+	// Compare content of domain against known domain IP addresses
+	for(int domainID = 0; domainID < counters->domains; domainID++)
+	{
+		// Get domain pointer
+		domainsData* domain = getDomain(domainID, false);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(domain == NULL)
+			continue;
+
+		// Check if the magic byte is set
+		if(domain->magic == 0x00)
+			return domainID;
+	}
+
+	// If we did not return until here, then we need to allocate a new domain ID
+	return counters->domains;
+}
+
+int _findDomainID(const char *domainString, const bool count, int line, const char *func, const char *file)
 {
 	uint32_t domainHash = hashStr(domainString);
 	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(domainID, true);
+		domainsData* domain = _getDomain(domainID, false, line, func, file);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(domain == NULL)
@@ -157,22 +178,27 @@ int findDomainID(const char *domainString, const bool count)
 		if(strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
 			if(count)
+			{
 				domain->count++;
+				domain->lastQuery = double_time();
+			}
 			return domainID;
 		}
 	}
 
 	// If we did not return until here, then this domain is not known
 	// Store ID
-	const int domainID = counters->domains;
+	const int domainID = get_next_free_domainID();
 
 	// Get domain pointer
-	domainsData* domain = getDomain(domainID, false);
+	domainsData* domain = _getDomain(domainID, false, line, func, file);
 	if(domain == NULL)
 	{
 		log_err("Encountered serious memory error in findDomainID()");
 		return -1;
 	}
+
+	log_debug(DEBUG_GC, "New domain: %s (ID %d)", domainString, domainID);
 
 	// Set magic byte
 	domain->magic = MAGICBYTE;
@@ -185,19 +211,41 @@ int findDomainID(const char *domainString, const bool count)
 	domain->domainpos = addstr(domainString);
 	// Store pre-computed hash of domain for faster lookups later on
 	domain->domainhash = hashStr(domainString);
+	domain->lastQuery = 0.0;
 	// Increase counter by one
 	counters->domains++;
 
 	return domainID;
 }
 
-int findClientID(const char *clientIP, const bool count, const bool aliasclient)
+static int get_next_free_clientID(void)
+{
+	// Compare content of client against known client IP addresses
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		// Get client pointer
+		clientsData* client = getClient(clientID, false);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(client == NULL)
+			continue;
+
+		// Check if the magic byte is unset
+		if(client->magic == 0x00)
+			return clientID;
+	}
+
+	// If we did not return until here, then we need to allocate a new client ID
+	return counters->clients;
+}
+
+int _findClientID(const char *clientIP, const bool count, const bool aliasclient, int line, const char *func, const char *file)
 {
 	// Compare content of client against known client IP addresses
 	for(int clientID=0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		clientsData* client = getClient(clientID, true);
+		clientsData* client = _getClient(clientID, true, line, func, file);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(client == NULL)
@@ -223,15 +271,17 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 
 	// If we did not return until here, then this client is definitely new
 	// Store ID
-	const int clientID = counters->clients;
+	const int clientID = get_next_free_clientID();
 
 	// Get client pointer
-	clientsData* client = getClient(clientID, false);
+	clientsData* client = _getClient(clientID, false, line, func, file);
 	if(client == NULL)
 	{
 		log_err("Encountered serious memory error in findClientID()");
 		return -1;
 	}
+
+	log_debug(DEBUG_GC, "New client: %s (ID %d)", clientIP, clientID);
 
 	// Set magic byte
 	client->magic = MAGICBYTE;
@@ -264,7 +314,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	// Set all MAC address bytes to zero
 	client->hwlen = -1;
 	memset(client->hwaddr, 0, sizeof(client->hwaddr));
-	// This may be a alias-client, the ID is set elsewhere
+	// This may be an alias-client, the ID is set elsewhere
 	client->flags.aliasclient = aliasclient;
 	client->aliasclient_id = -1;
 
@@ -319,6 +369,27 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		}
 }
 
+static int get_next_free_cacheID(void)
+{
+	// Compare content of cache against known cache IP addresses
+	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	{
+		// Get cache pointer
+		DNSCacheData* cache = getDNSCache(cacheID, false);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(cache == NULL)
+			continue;
+
+		// Check if the magic byte is set
+		if(cache->magic == 0x00)
+			return cacheID;
+	}
+
+	// If we did not return until here, then we need to allocate a new cache ID
+	return counters->dns_cache_size;
+}
+
 int _findCacheID(const int domainID, const int clientID, const enum query_type query_type,
                  const bool create_new, const char *func, int line, const char *file)
 {
@@ -344,7 +415,7 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 		return -1;
 
 	// Get ID of new cache entry
-	const int cacheID = counters->dns_cache_size;
+	const int cacheID = get_next_free_cacheID();
 
 	// Get client pointer
 	DNSCacheData* dns_cache = _getDNSCache(cacheID, false, line, func, file);
@@ -355,6 +426,9 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 		return -1;
 	}
 
+	log_debug(DEBUG_GC, "New cache entry: domainID %d, clientID %d, query_type %d (ID %d)",
+	          domainID, clientID, query_type, cacheID);
+
 	// Initialize cache entry
 	dns_cache->magic = MAGICBYTE;
 	dns_cache->blocking_status = UNKNOWN_BLOCKED;
@@ -362,7 +436,7 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 	dns_cache->clientID = clientID;
 	dns_cache->query_type = query_type;
 	dns_cache->force_reply = 0u;
-	dns_cache->domainlist_id = -1; // -1 = not set
+	dns_cache->list_id = -1; // -1 = not set
 
 	// Increase counter by one
 	counters->dns_cache_size++;
@@ -441,7 +515,7 @@ const char *getClientIPString(const queriesData* query)
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(query->clientID, false);
+		const clientsData* client = getClient(query->clientID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(client == NULL)
@@ -484,12 +558,17 @@ void FTL_reset_per_client_domain_data(void)
 
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
-		// Reset all blocking yes/no fields for all domains and clients
-		// This forces a reprocessing of all available filters for any
-		// given domain and client the next time they are seen
-		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-		if(dns_cache != NULL)
-			dns_cache->blocking_status = UNKNOWN_BLOCKED;
+		// Get cache pointer
+		DNSCacheData* dns_cache = getDNSCache(cacheID, true);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(dns_cache == NULL)
+			continue;
+
+		// Reset blocking status
+		dns_cache->blocking_status = UNKNOWN_BLOCKED;
+		// Reset domainlist ID
+		dns_cache->list_id = -1;
 	}
 }
 
@@ -926,19 +1005,27 @@ static const char* __attribute__ ((const)) query_status_str(const enum query_sta
 	return NULL;
 }
 
-void _query_set_status(queriesData *query, const enum query_status new_status, const char *func, const int line, const char *file)
+void _query_set_status(queriesData *query, const enum query_status new_status, const bool init,
+                       const char *func, const int line, const char *file)
 {
 	// Debug logging
 	if(config.debug.status.v.b)
 	{
-		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str(query->status) : "INVALID";
-		if(query->status == new_status)
+		if(init)
 		{
+			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str(new_status) : "INVALID";
+			log_debug(DEBUG_STATUS, "Query %i: status initialized: %s (%d) in %s() (%s:%i)",
+			          query->id, newstr, new_status, func, short_path(file), line);
+		}
+		else if(query->status == new_status)
+		{
+			const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str(query->status) : "INVALID";
 			log_debug(DEBUG_STATUS, "Query %i: status unchanged: %s (%d) in %s() (%s:%i)",
 			          query->id, oldstr, query->status, func, short_path(file), line);
 		}
 		else
 		{
+			const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str(query->status) : "INVALID";
 			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str(new_status) : "INVALID";
 			log_debug(DEBUG_STATUS, "Query %i: status changed: %s (%d) -> %s (%d) in %s() (%s:%i)",
 			          query->id, oldstr, query->status, newstr, new_status, func, short_path(file), line);
@@ -949,30 +1036,40 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	if(new_status >= QUERY_STATUS_MAX)
 		return;
 
-	// Update counters
-	if(query->status != new_status)
+	const enum query_status old_status = query->status;
+	if(old_status == new_status && !init)
 	{
-		counters->status[query->status]--;
-		counters->status[new_status]++;
-
-		const int timeidx = getOverTimeID(query->timestamp);
-		if(is_blocked(query->status))
-			overTime[timeidx].blocked--;
-		if(is_blocked(new_status))
-			overTime[timeidx].blocked++;
-
-		if(query->status == QUERY_CACHE)
-			overTime[timeidx].cached--;
-		if(new_status == QUERY_CACHE)
-			overTime[timeidx].cached++;
-
-		if(query->status == QUERY_FORWARDED)
-			overTime[timeidx].forwarded--;
-		if(new_status == QUERY_FORWARDED)
-			overTime[timeidx].forwarded++;
+		// Nothing to do
+		return;
 	}
 
-	// Update status
+	// else: update global counters, ...
+	if(!init)
+	{
+		counters->status[old_status]--;
+		log_debug(DEBUG_STATUS, "status %d removed (!init), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
+	}
+	counters->status[new_status]++;
+	log_debug(DEBUG_STATUS, "status %d set, ID = %d, new count = %d", new_status, query->id, counters->status[new_status]);
+
+	// ... update overTime counters, ...
+	const int timeidx = getOverTimeID(query->timestamp);
+	if(is_blocked(old_status) && !init)
+		overTime[timeidx].blocked--;
+	if(is_blocked(new_status))
+		overTime[timeidx].blocked++;
+
+	if(old_status == QUERY_CACHE && !init)
+		overTime[timeidx].cached--;
+	if(new_status == QUERY_CACHE)
+		overTime[timeidx].cached++;
+
+	if(old_status == QUERY_FORWARDED && !init)
+		overTime[timeidx].forwarded--;
+	if(new_status == QUERY_FORWARDED)
+		overTime[timeidx].forwarded++;
+
+	// ... and set new status
 	query->status = new_status;
 }
 

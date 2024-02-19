@@ -19,7 +19,7 @@
 #include "../datastructure.h"
 // struct config
 #include "../config/config.h"
-// resolveHostname()
+// resolve_this_name()
 #include "../resolve.h"
 // killed
 #include "../signals.h"
@@ -1083,7 +1083,7 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 
 		// Try to read IPv4 address
 		// We need a special rule here to avoid "inet6 ..." being accepted as IPv4 address
-		if(sscanf(linebuffer, "    inet%*[ ]%[0-9.] brd", ipaddr) == 1)
+		if(sscanf(linebuffer, "    inet%*[ ]%127[0-9.] brd", ipaddr) == 1)
 		{
 			// Obtained an IPv4 address
 			ipaddr[sizeof(ipaddr)-1] = '\0';
@@ -1091,7 +1091,7 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 		else
 		{
 			// Try to read IPv6 address
-			if(sscanf(linebuffer, "    inet6%*[ ]%[0-9a-fA-F:] scope", ipaddr) == 1)
+			if(sscanf(linebuffer, "    inet6%*[ ]%127[0-9a-fA-F:] scope", ipaddr) == 1)
 			{
 				// Obtained an IPv6 address
 				ipaddr[sizeof(ipaddr)-1] = '\0';
@@ -1250,7 +1250,6 @@ void parse_neighbor_cache(sqlite3* db)
 	// Prepare buffers
 	char *linebuffer = NULL;
 	size_t linebuffersize = 0u;
-	char ip[128], hwaddr[128], iface[128];
 	unsigned int entries = 0u, additional_entries = 0u;
 	time_t now = time(NULL);
 
@@ -1314,6 +1313,7 @@ void parse_neighbor_cache(sqlite3* db)
 				break;
 
 			// Analyze line
+			char ip[128], hwaddr[128], iface[128];
 			int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
 			                 ip, iface, hwaddr);
 
@@ -2144,6 +2144,84 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	return name;
 }
 
+// Get most recently seen host name of device identified by MAC address
+char *__attribute__((malloc)) getNameFromMAC(const char *client)
+{
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return NULL;
+
+	log_debug(DEBUG_DATABASE,"Looking up host name for %s", client);
+
+	// Open pihole-FTL.db database file
+	sqlite3 *db = NULL;
+	if((db = dbopen(false, false)) == NULL)
+	{
+		log_warn("getNameFromMAC(\"%s\") - Failed to open DB", client);
+		return NULL;
+	}
+
+	// Check for a host name associated with the given client as MAC address
+	// COLLATE NOCASE: Case-insensitive comparison
+	const char *querystr = "SELECT name FROM network_addresses "
+	                               "WHERE name IS NOT NULL AND "
+	                                     "network_id = (SELECT id FROM network WHERE hwaddr = ? COLLATE NOCASE) "
+	                               "ORDER BY lastSeen DESC LIMIT 1";
+	sqlite3_stmt *stmt = NULL;
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		log_err("getNameFromMAC(\"%s\") - SQL error prepare: %s",
+		        client, sqlite3_errstr(rc));
+		dbclose(&db);
+		return NULL;
+	}
+
+	// Bind client to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, client, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		log_warn("getNameFromMAC(\"%s\"): Failed to bind ip: %s",
+		         client, sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+
+		dbclose(&db);
+		return NULL;
+	}
+
+	char *name = NULL;
+	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// Database record found (result might be empty)
+		name = strdup((char*)sqlite3_column_text(stmt, 0));
+
+		if(config.debug.resolver.v.b)
+			log_debug(DEBUG_RESOLVER, "Found database host name (by MAC) %s -> %s",
+			          client, name);
+	}
+	else if(rc == SQLITE_DONE)
+	{
+		// Not found
+		if(config.debug.resolver.v.b)
+			log_debug(DEBUG_RESOLVER, " ---> not found");
+	}
+	else
+	{
+		// Error
+		checkFTLDBrc(rc);
+		return NULL;
+	}
+
+	// Finalize statement and close database handle
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+	dbclose(&db);
+	return name;
+}
+
 // Get interface of device identified by IP address
 char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 {
@@ -2347,7 +2425,7 @@ void networkTable_readIPsFinalize(sqlite3_stmt *read_stmt)
 	sqlite3_finalize(read_stmt);
 }
 
-bool networkTable_deleteDevice(sqlite3 *db, const int id, const char **message)
+bool networkTable_deleteDevice(sqlite3 *db, const int id, int *deleted, const char **message)
 {
 	// First step: Delete all associated IPs of this device
 	// Prepare SQLite statement
@@ -2383,6 +2461,9 @@ bool networkTable_deleteDevice(sqlite3 *db, const int id, const char **message)
 		sqlite3_finalize(stmt);
 		return false;
 	}
+
+	// Check if we deleted any rows
+	*deleted += sqlite3_changes(db);
 
 	// Finalize statement
 	sqlite3_finalize(stmt);
@@ -2420,8 +2501,37 @@ bool networkTable_deleteDevice(sqlite3 *db, const int id, const char **message)
 		return false;
 	}
 
+	// Check if we deleted any rows
+	*deleted += sqlite3_changes(db);
+
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
 	return true;
+}
+
+// Counting number of occurrences of a specific char in a string
+static size_t __attribute__ ((pure)) count_char(const char *haystack, const char needle)
+{
+	size_t count = 0u;
+	while(*haystack)
+		if (*haystack++ == needle)
+			++count;
+	return count;
+}
+
+// Identify MAC addresses using a set of suitable criteria
+bool __attribute__ ((pure)) isMAC(const char *input)
+{
+	if(input != NULL &&                // Valid input
+	   strlen(input) == 17u &&         // MAC addresses are always 17 chars long (6 bytes + 5 colons)
+	   count_char(input, ':') == 5u && // MAC addresses always have 5 colons
+	   strstr(input, "::") == NULL)    // No double-colons (IPv6 address abbreviation)
+	   {
+		// This is a MAC address of the form AA:BB:CC:DD:EE:FF
+		return true;
+	   }
+
+	// Not a MAC address
+	return false;
 }

@@ -8,7 +8,6 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
 #include "toml_helper.h"
 #include "log.h"
 #include "config/config.h"
@@ -20,32 +19,63 @@
 #include "files.h"
 //set_and_check_password()
 #include "config/password.h"
+// PATH_MAX
+#include <limits.h>
 
 // Open the TOML file for reading or writing
-FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode)
+FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode, const unsigned int version)
 {
-	FILE *fp;
-	// Rotate config file, no rotation is done when the file is opened for
-	// reading (mode == "r")
-	if(mode[0] != 'r')
-		rotate_files(GLOBALTOMLPATH, NULL);
+	// This should not happen, install a safeguard anyway to unveil
+	// possible future coding issues early on
+	if(mode[0] == 'w' && version != 0)
+	{
+		log_crit("Writing to version != 0 is not supported in openFTLtoml(%s,%u)",
+		         mode, version);
+		exit(EXIT_FAILURE);
+	}
 
-	// No readable local file found, try global file
-	fp = fopen(GLOBALTOMLPATH, mode);
+	// Build filename based on version
+	char filename[PATH_MAX] = { 0 };
+	if(version == 0)
+	{
+		// Use global config file
+		strncpy(filename, GLOBALTOMLPATH, sizeof(filename));
+
+		// Append ".tmp" if we are writing
+		if(mode[0] == 'w')
+			strncat(filename, ".tmp", sizeof(filename));
+	}
+	else
+	{
+		// Use rotated config file
+		snprintf(filename, sizeof(filename), BACKUP_DIR"/pihole.toml.%u", version);
+	}
+
+	// Try to open config file
+	FILE *fp = fopen(filename, mode);
 
 	// Return early if opening failed
 	if(!fp)
+	{
+		log_info("Config %sfile %s not available: %s",
+		         version > 0 ? "backup " : "", filename, strerror(errno));
 		return NULL;
+	}
 
 	// Lock file, may block if the file is currently opened
 	if(flock(fileno(fp), LOCK_EX) != 0)
 	{
 		const int _e = errno;
-		log_err("Cannot open FTL's config file in exclusive mode: %s", strerror(errno));
+		log_err("Cannot open config file %s in exclusive mode: %s",
+		        filename, strerror(errno));
 		fclose(fp);
 		errno = _e;
 		return NULL;
 	}
+
+	// Log if we are using a backup file
+	if(version > 0)
+		log_info("Using config backup %s", filename);
 
 	errno = 0;
 	return fp;
@@ -123,17 +153,51 @@ static void printTOMLstring(FILE *fp, const char *s, const bool toml)
 			continue;
 		}
 
-		// Escape special characters
+		// Escape special characters with simple escape sequences
 		switch (ch) {
-			case 0x08: fprintf(fp, "\\b"); continue;
-			case 0x09: fprintf(fp, "\\t"); continue;
-			case 0x0a: fprintf(fp, "\\n"); continue;
-			case 0x0c: fprintf(fp, "\\f"); continue;
-			case 0x0d: fprintf(fp, "\\r"); continue;
-			case '"':  fprintf(fp, "\\\""); continue;
-			case '\\': fprintf(fp, "\\\\"); continue;
-			default:   fprintf(fp, "\\0x%02x", ch & 0xff); continue;
+			case '\b': fputs("\\b", fp); continue;
+			case '\t': fputs("\\t", fp); continue;
+			case '\n': fputs("\\n", fp); continue;
+			case '\f': fputs("\\f", fp); continue;
+			case '\r': fputs("\\r", fp); continue;
+			case '"':  fputs("\\\"", fp); continue;
+			case '\\': fputs("\\\\", fp); continue;
 		}
+
+#ifndef TOML_UTF8
+		// The Universal Coded Character Set (UCS, Unicode) is a
+		// standard set of characters defined by the international
+		// standard ISO/IEC 10646, Information technology — Universal
+		// Coded Character Set (UCS) (plus amendments to that standard),
+		// which is the basis of many character encodings, improving as
+		// characters from previously unrepresented typing systems are
+		// added.
+		// The following code converts a UTF-8 character to UCS and
+		// prints it as \UXXXXXXXX
+		int64_t ucs;
+		int bytes = toml_utf8_to_ucs(s, len, &ucs);
+		if(bytes > 0)
+		{
+			// Print 4-byte UCS as \UXXXXXXXX
+			fprintf(fp, "\\U%08X", (uint32_t)ucs);
+			// Advance string pointer
+			s += bytes - 1;
+			// Decrease remaining string length
+			len -= bytes - 1;
+			continue;
+		}
+#else
+		// Escape all other control characters as short 2-byte
+		// UCS sequences
+		if(iscntrl(ch))
+		{
+			fprintf(fp, "\\u%04X", ch);
+			continue;
+		}
+
+		// Print remaining characters as is
+		putc(ch, fp);
+#endif
 	}
 	if(toml) fprintf(fp, "\"");
 }
@@ -364,6 +428,13 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 			break;
 		case CONF_STRUCT_IN_ADDR:
 		{
+			// Special case: 0.0.0.0 -> return empty string
+			if(v->in_addr.s_addr == INADDR_ANY)
+			{
+				printTOMLstring(fp, "", toml);
+				break;
+			}
+			// else: normal address
 			char addr4[INET_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET, &v->in_addr, addr4, INET_ADDRSTRLEN);
 			printTOMLstring(fp, addr4, toml);
@@ -371,6 +442,13 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 		}
 		case CONF_STRUCT_IN6_ADDR:
 		{
+			// Special case: :: -> return empty string
+			if(memcmp(&v->in6_addr, &in6addr_any, sizeof(in6addr_any)) == 0)
+			{
+				printTOMLstring(fp, "", toml);
+				break;
+			}
+			// else: normal address
 			char addr6[INET6_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET6, &v->in6_addr, addr6, INET6_ADDRSTRLEN);
 			printTOMLstring(fp, addr6, toml);
@@ -654,7 +732,12 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			const toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
-				if(inet_pton(AF_INET, val.u.s, &addr4))
+				if(strlen(val.u.s) == 0)
+				{
+					// Special case: empty string -> 0.0.0.0
+					conf_item->v.in_addr.s_addr = INADDR_ANY;
+				}
+				else if(inet_pton(AF_INET, val.u.s, &addr4))
 					memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
 				else
 					log_warn("Config %s is invalid (not of type IPv4 address)", conf_item->k);
@@ -670,7 +753,12 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			const toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
-				if(inet_pton(AF_INET6, val.u.s, &addr6))
+				if(strlen(val.u.s) == 0)
+				{
+					// Special case: empty string -> ::
+					memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+				}
+				else if(inet_pton(AF_INET6, val.u.s, &addr6))
 					memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 				else
 					log_warn("Config %s is invalid (not of type IPv6 address)", conf_item->k);
@@ -719,250 +807,4 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 			break;
 		}
 	}
-}
-
-#define FTLCONF_PREFIX "FTLCONF_"
-bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
-{
-	// Allocate memory for config key + prefix (sizeof includes the trailing '\0')
-	const size_t envkey_size = strlen(conf_item->k) + sizeof(FTLCONF_PREFIX);
-	char *envkey = calloc(envkey_size, sizeof(char));
-
-	// Build env key to look for
-	strcpy(envkey, FTLCONF_PREFIX);
-	strcat(envkey, conf_item->k);
-
-	// Replace all "." by "_" as this is the convention used in v5.x and earlier
-	for(unsigned int i = 0; i < envkey_size - 1; i++)
-		if(envkey[i] == '.')
-			envkey[i] = '_';
-
-	// First check if a environmental variable with the given key exists
-	const char *envvar = getenv(envkey);
-
-	// Return early if this environment variable does not exist
-	if(envvar == NULL)
-	{
-		log_debug(DEBUG_CONFIG, "ENV %s is not set", envkey);
-		free(envkey);
-		return false;
-	}
-
-	log_debug(DEBUG_CONFIG, "ENV %s = \"%s\"", envkey, envvar);
-
-	switch(conf_item->t)
-	{
-		case CONF_BOOL:
-		{
-			if(strcasecmp(envvar, "true") == 0 || strcasecmp(envvar, "yes") == 0)
-				conf_item->v.b = true;
-			else if(strcasecmp(envvar, "false") == 0 || strcasecmp(envvar, "no") == 0)
-				conf_item->v.b = false;
-			else
-				log_warn("ENV %s is not of type bool", envkey);
-			break;
-		}
-		case CONF_ALL_DEBUG_BOOL:
-		{
-			if(strcasecmp(envvar, "true") == 0 || strcasecmp(envvar, "yes") == 0)
-				set_all_debug(newconf, true);
-			else if(strcasecmp(envvar, "false") == 0 || strcasecmp(envvar, "no") == 0)
-				set_all_debug(newconf, false);
-			else
-				log_warn("ENV %s is not of type bool", envkey);
-			break;
-		}
-		case CONF_INT:
-		{
-			int val = 0;
-			if(sscanf(envvar, "%i", &val) == 1)
-				conf_item->v.i = val;
-			else
-				log_warn("ENV %s is not of type integer", envkey);
-			break;
-		}
-		case CONF_UINT:
-		{
-			unsigned int val = 0;
-			if(sscanf(envvar, "%u", &val) == 1)
-				conf_item->v.ui = val;
-			else
-				log_warn("ENV %s is not of type unsigned integer", envkey);
-			break;
-		}
-		case CONF_UINT16:
-		{
-			unsigned int val = 0;
-			if(sscanf(envvar, "%u", &val) == 1 && val <= UINT16_MAX)
-				conf_item->v.ui = val;
-			else
-				log_warn("ENV %s is not of type unsigned integer (16 bit)", envkey);
-			break;
-		}
-		case CONF_LONG:
-		{
-			long val = 0;
-			if(sscanf(envvar, "%li", &val) == 1)
-				conf_item->v.l = val;
-			else
-				log_warn("ENV %s is not of type long", envkey);
-			break;
-		}
-		case CONF_ULONG:
-		{
-			unsigned long val = 0;
-			if(sscanf(envvar, "%lu", &val) == 1)
-				conf_item->v.ul = val;
-			else
-				log_warn("ENV %s is not of type unsigned long", envkey);
-			break;
-		}
-		case CONF_DOUBLE:
-		{
-			double val = 0;
-			if(sscanf(envvar, "%lf", &val) == 1)
-				conf_item->v.d = val;
-			else
-				log_warn("ENV %s is not of type double", envkey);
-			break;
-		}
-		case CONF_STRING:
-		case CONF_STRING_ALLOCATED:
-		{
-			if(conf_item->t == CONF_STRING_ALLOCATED)
-				free(conf_item->v.s);
-			conf_item->v.s = strdup(envvar);
-			conf_item->t = CONF_STRING_ALLOCATED;
-			break;
-		}
-		case CONF_ENUM_PTR_TYPE:
-		{
-			const int ptr_type = get_ptr_type_val(envvar);
-			if(ptr_type != -1)
-				conf_item->v.ptr_type = ptr_type;
-			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
-			break;
-		}
-		case CONF_ENUM_BUSY_TYPE:
-		{
-			const int busy_reply = get_busy_reply_val(envvar);
-			if(busy_reply != -1)
-				conf_item->v.busy_reply = busy_reply;
-			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
-			break;
-		}
-		case CONF_ENUM_BLOCKING_MODE:
-		{
-			const int blocking_mode = get_blocking_mode_val(envvar);
-			if(blocking_mode != -1)
-				conf_item->v.blocking_mode = blocking_mode;
-			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
-			break;
-		}
-		case CONF_ENUM_REFRESH_HOSTNAMES:
-		{
-			const int refresh_hostnames = get_refresh_hostnames_val(envvar);
-			if(refresh_hostnames != -1)
-				conf_item->v.refresh_hostnames = refresh_hostnames;
-			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
-			break;
-		}
-		case CONF_ENUM_LISTENING_MODE:
-		{
-			const int listeningMode = get_listeningMode_val(envvar);
-			if(listeningMode != -1)
-				conf_item->v.listeningMode = listeningMode;
-			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
-			break;
-		}
-		case CONF_ENUM_WEB_THEME:
-		{
-			const int web_theme = get_web_theme_val(envvar);
-			if(web_theme != -1)
-				conf_item->v.web_theme = web_theme;
-			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
-			break;
-		}
-		case CONF_ENUM_TEMP_UNIT:
-		{
-			const int temp_unit = get_temp_unit_val(envvar);
-			if(temp_unit != -1)
-				conf_item->v.temp_unit = temp_unit;
-			else
-				log_warn("ENV %s is invalid, allowed options are: %s", envkey, conf_item->h);
-			break;
-		}
-		case CONF_ENUM_PRIVACY_LEVEL:
-		{
-			int val = 0;
-			if(sscanf(envvar, "%i", &val) == 1 && val >= PRIVACY_SHOW_ALL && val <= PRIVACY_MAXIMUM)
-				conf_item->v.i = val;
-			else
-				log_warn("ENV %s is invalid (not of type integer or outside allowed bounds)", envkey);
-			break;
-		}
-		case CONF_STRUCT_IN_ADDR:
-		{
-			struct in_addr addr4 = { 0 };
-			if(inet_pton(AF_INET, envvar, &addr4))
-				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
-			else
-				log_warn("ENV %s is invalid (not of type IPv4 address)", envkey);
-			break;
-		}
-		case CONF_STRUCT_IN6_ADDR:
-		{
-			struct in6_addr addr6 = { 0 };
-			if(inet_pton(AF_INET6, envvar, &addr6))
-				memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
-			else
-				log_warn("ENV %s is invalid (not of type IPv6 address)", envkey);
-			break;
-		}
-		case CONF_JSON_STRING_ARRAY:
-		{
-			// Make a copy of envvar as strtok modified the input string
-			char *envvar_copy = strdup(envvar);
-			// Free previously allocated JSON array
-			cJSON_Delete(conf_item->v.json);
-			conf_item->v.json = cJSON_CreateArray();
-			// Parse envvar array and generate a JSON array (env var
-			// arrays are ;-delimited)
-			const char delim[] =";";
-			const char *elem = strtok(envvar_copy, delim);
-			while(elem != NULL)
-			{
-				// Only import non-empty entries
-				if(strlen(elem) > 0)
-				{
-					// Add string to our JSON array
-					cJSON *item = cJSON_CreateString(elem);
-					cJSON_AddItemToArray(conf_item->v.json, item);
-				}
-
-				// Search for the next element
-				elem = strtok(NULL, delim);
-			}
-			free(envvar_copy);
-			break;
-		}
-		case CONF_PASSWORD:
-		{
-			if(!set_and_check_password(conf_item, envvar))
-			{
-				log_warn("ENV %s is invalid", envkey);
-				break;
-			}
-		}
-	}
-
-	// Free allocated env var name
-	free(envkey);
-	return true;
 }

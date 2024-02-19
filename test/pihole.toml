@@ -100,7 +100,10 @@
   #
   # Possible values are:
   #     Array of custom DNS records each one in HOSTS form: "IP HOSTNAME"
-  hosts = []
+  hosts = [
+    "1.1.1.1 abc-custom.com def-custom.de",
+    "2.2.2.2 äste.com steä.com"
+  ] ### CHANGED, default = []
 
   # If set, A and AAAA queries for plain names, without dots or domain parts, are never
   # forwarded to upstream nameservers
@@ -196,10 +199,34 @@
   # Possible values are:
   #     Array of static leases each on in one of the following forms:
   #     "<cname>,<target>[,<TTL>]"
-  cnameRecords = []
+  cnameRecords = [
+    "brücke.com,äste.com,2",
+  ]
 
   # Port used by the DNS server
   port = 53
+
+  # Reverse server (former also called "conditional forwarding") feature
+  # Array of reverse servers each one in one of the following forms:
+  # "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>"
+  #
+  # Individual components:
+  #
+  # <enabled>: either "true" or "false"
+  #
+  # <ip-address>[/<prefix-len>]: Address range for the reverse server feature in CIDR
+  # notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are
+  # substituted (exact address match). This is almost certainly not what you want here.
+  # Example: "192.168.0.0/24" for the range 192.168.0.1 - 192.168.0.255
+  #
+  # <server>[#<port>]: Target server to be used for the reverse server feature
+  # Example: "192.168.0.1#53"
+  #
+  # <domain>: Domain used for the reverse server feature (e.g., "fritz.box")
+  # Example: "fritz.box"
+  #
+  # A valid line could look like this: "true,192.168.0.0/24,192.168.0.1,fritz.box"
+  revServers = []
 
   [dns.cache]
     # Cache size of the DNS server. Note that expiring cache entries naturally make room
@@ -343,31 +370,6 @@
     # ... in the set interval before rate-limiting?
     interval = 0 ### CHANGED, default = 60
 
-  [dns.revServer]
-    # Is the reverse server (former also called "conditional forwarding") feature enabled?
-    active = false
-
-    # Address range for the reverse server feature in CIDR notation. If the prefix length
-    # is omitted, either 32 (IPv4) or 128 (IPv6) are substitutet (exact address match).
-    # This is almost certainly not what you want here.
-    #
-    # Possible values are:
-    #     <ip-address>[/<prefix-len>], e.g., "192.168.0.0/24" for the range 192.168.0.1 -
-    #     192.168.0.255
-    cidr = ""
-
-    # Target server tp be used for the reverse server feature
-    #
-    # Possible values are:
-    #     <server>[#<port>], e.g., "192.168.0.1"
-    target = ""
-
-    # Domain used for the reverse server feature
-    #
-    # Possible values are:
-    #     <valid domain>, typically set to the same value as dhcp.domain
-    domain = ""
-
 [dhcp]
   # Is the embedded DHCP server enabled?
   active = false
@@ -391,14 +393,16 @@
   #     <ip-addr>, e.g., "192.168.0.1"
   router = ""
 
-  # The DNS domain used by your Pi-hole (*** DEPRECATED ***)
-  # This setting is deprecated and will be removed in a future version. Please use
-  # dns.domain instead. Setting it to any non-default value will overwrite the value of
-  # dns.domain if it is still set to its default value.
+  # The netmask used by your Pi-hole. For directly connected networks (i.e., networks on
+  # which the machine running Pi-hole has an interface) the netmask is optional and may
+  # be set to "0.0.0.0": it will then be determined from the interface configuration
+  # itself. For networks which receive DHCP service via a relay agent, we cannot
+  # determine the netmask itself, so it should explicitly be specified, otherwise
+  # Pi-hole guesses based on the class (A, B or C) of the network address.
   #
   # Possible values are:
-  #     <any valid domain>
-  domain = "lan"
+  #     <any valid netmask>, e.g., "255.255.255.0" or "0.0.0.0" for auto-discovery
+  netmask = "0.0.0.0"
 
   # If the lease time is given, then leases will be given for that length of time. If not
   # given, the default lease time is one hour for IPv4 and one day for IPv6.
@@ -523,14 +527,14 @@
   # Comma-separated list of ports to listen on. It is possible to specify an IP address
   # to bind to. In this case, an IP address and a colon must be prepended to the port
   # number. For example, to bind to the loopback interface on port 80 (IPv4) and to all
-  # interfaces port 80 (IPv4), use "127.0.0.1:80,80". "[::]:808 can be used to
+  # interfaces port 8080 (IPv4), use "127.0.0.1:80,8080". "[::]:80" can be used to
   # listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be
-  # specified as well, e.g. "[::1]:80 for the IPv6 loopback interface. [::]:80 will
+  # specified as well, e.g. "[::1]:80" for the IPv6 loopback interface. [::]:80 will
   # bind to port 80 IPv6 only.
   # In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the
-  # configuration "80,[::]:80" (create one socket for IPv4 and one for IPv6 only),
-  # or "+80" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4
-  # and IPv6 will only work if no network interface is specified. Depending on your
+  # configuration "80,[::]:80" (create one socket for IPv4 and one for IPv6 only), or
+  # "+80" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and
+  # IPv6 will only work if no network interface is specified. Depending on your
   # operating system version and IPv6 network environment, some configurations might not
   # work as expected, so you have to test to find the configuration most suitable for
   # your needs. In case "+80" does not work for your environment, you need to use
@@ -540,11 +544,12 @@
   # non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected
   # ports will redirect all their traffic to the first configured SSL port. For example,
   # if webserver.port is "80r,443s", then all HTTP traffic coming at port 80 will be
-  # redirected to HTTPS port 443.
+  # redirected to HTTPS port 443. If this value is not set (empty string), the web
+  # server will not be started and, hence, the API will not be available.
   #
   # Possible values are:
   #     comma-separated list of <[ip_address:]port>
-  port = "80,[::]:80,443s"
+  port = "80,[::]:80,443s,[::]:443s"
 
   [webserver.session]
     # Session timeout in seconds. If a session is inactive for more than this time, it will
@@ -665,25 +670,39 @@
     #     <valid Pi-hole password hash>
     app_pwhash = ""
 
-    # Array of clients to be excluded from certain API responses
-    # Example: [ "192.168.2.56", "fe80::341", "localhost" ]
+    # Array of clients to be excluded from certain API responses (regex):
+    # - Query Log (/api/queries)
+    # - Top Clients (/api/stats/top_clients)
+    # This setting accepts both IP addresses (IPv4 and IPv6) as well as hostnames.
+    # Note that backslashes "\" need to be escaped, i.e. "\\" in this setting
+    #
+    # Example: [ "^192\\.168\\.2\\.56$", "^fe80::341:[0-9a-f]*$", "^localhost$" ]
     #
     # Possible values are:
-    #     array of IP addresses and/or hostnames
+    #     array of regular expressions describing clients
     excludeClients = [
-      "1.2.3.4"
+      "^1\\.2\\.3\\.4$"
     ] ### CHANGED, default = []
 
-    # Array of domains to be excluded from certain API responses
-    # Example: [ "google.de", "pi-hole.net" ]
+    # Array of domains to be excluded from certain API responses (regex):
+    # - Query Log (/api/queries)
+    # - Top Clients (/api/stats/top_domains)
+    # Note that backslashes "\" need to be escaped, i.e. "\\" in this setting
+    #
+    # Example: [ "(^|\\.)\\.google\\.de$", "\\.pi-hole\\.net$" ]
     #
     # Possible values are:
-    #     array of IP addresses and/or hostnames
+    #     array of regular expressions describing domains
     excludeDomains = []
 
     # How much history should be imported from the database [seconds]? (max 24*60*60 =
     # 86400)
     maxHistory = 86400
+
+    # Up to how many clients should be returned in the activity graph endpoint
+    # (/api/history/clients)?
+    # This setting can be overwritten at run-time using the parameter N
+    maxClients = 10
 
     # Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)
     allow_destructive = true
@@ -722,6 +741,13 @@
   # Possible values are:
   #     <any Pi-hole gravity database>
   gravity = "/etc/pihole/gravity.db"
+
+  # A temporary directory where Pi-hole can store files during gravity updates. This
+  # directory must be writable by the user running gravity (typically pihole).
+  #
+  # Possible values are:
+  #     <any world-writable writable directory>
+  gravity_tmp = "/tmp"
 
   # The database containing MAC -> Vendor information for the network table
   #
@@ -815,6 +841,14 @@
   # Use this option with extra care.
   dnsmasq_lines = []
 
+  # Log additional information about queries and replies to pihole.log
+  # When this setting is enabled, the log has extra information at the start of each
+  # line. This consists of a serial number which ties together the log lines associated
+  # with an individual query, and the IP address of the requestor. This setting is only
+  # effective if dns.queryLogging is enabled, too. This option is only useful for
+  # debugging and is not recommended for normal use.
+  extraLogging = false
+
   [misc.check]
     # Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you
     # should run Pi-hole on a server that is otherwise extremely busy as queuing on the
@@ -878,8 +912,12 @@
   # Controls if FTLDNS should print extended details about regex matching into FTL.log.
   regex = true ### CHANGED, default = false
 
-  # Print extra debugging information during telnet API calls. Currently only used to
-  # send extra information when getting all queries.
+  # Print extra debugging information concerning API calls. This includes the request,
+  # the request parameters, and the internal details about how the algorithms decide
+  # which data to present and in what form. This very verbose output should only be used
+  # when debugging specific API issues and can be helpful, e.g., when a client cannot
+  # connect due to an obscure API error. Furthermore, this setting enables logging of
+  # all API requests (auth log) and details about user authentication attempts.
   api = true ### CHANGED, default = false
 
   # Print extra debugging information about TLS connections. This includes the TLS

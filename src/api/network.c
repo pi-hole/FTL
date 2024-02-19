@@ -31,16 +31,16 @@ static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
 	unsigned long dest_r = 0, gw_r = 0;
 	unsigned int flags = 0u;
 	int metric = 0, minmetric = __INT_MAX__;
-	char iface_r[IF_NAMESIZE] = { 0 };
-	char buf[1024] = { 0 };
 
 	FILE *file;
 	if((file = fopen("/proc/net/route", "r")))
 	{
 		// Parse /proc/net/route - the kernel's IPv4 routing table
+		char buf[1024] = { 0 };
 		while(fgets(buf, sizeof(buf), file))
 		{
-			if(sscanf(buf, "%s %lx %lx %x %*i %*i %i", iface_r, &dest_r, &gw_r, &flags, &metric) != 5)
+			char iface_r[IF_NAMESIZE] = { 0 };
+			if(sscanf(buf, "%15s %lx %lx %x %*i %*i %i", iface_r, &dest_r, &gw_r, &flags, &metric) != 5)
 				continue;
 
 			// Only analyze routes which are UP and whose
@@ -440,7 +440,8 @@ static int api_network_devices_DELETE(struct ftl_conn *api)
 
 	// Delete row from network table by ID
 	const char *sql_msg = NULL;
-	if(!networkTable_deleteDevice(db, device_id, &sql_msg))
+	int deleted = 0;
+	if(!networkTable_deleteDevice(db, device_id, &deleted, &sql_msg))
 	{
 		// Add SQL message (may be NULL = not available)
 		return send_json_error(api, 500,
@@ -452,9 +453,11 @@ static int api_network_devices_DELETE(struct ftl_conn *api)
 	// Close database
 	dbclose(&db);
 
-	// Send empty reply with code 204 No Content
+	// Send empty reply with codes:
+	// - 204 No Content (if any items were deleted)
+	// - 404 Not Found (if no items were deleted)
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_SEND_OBJECT_CODE(json, 204);
+	JSON_SEND_OBJECT_CODE(json, deleted > 0 ? 204 : 404);
 }
 
 int api_network_devices(struct ftl_conn *api)

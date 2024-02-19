@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "toml_reader.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 // getprio(), setprio()
 #include <sys/resource.h>
@@ -23,20 +23,65 @@
 #include "config/toml_helper.h"
 // delete_all_sessions()
 #include "api/api.h"
+// readEnvValue()
+#include "config/env.h"
 
 // Private prototypes
-static toml_table_t *parseTOML(void);
+static toml_table_t *parseTOML(const unsigned int version);
 static void reportDebugFlags(void);
 
+// Migrate config from old to new, returns true if a restart is required
+static bool migrate_config(toml_table_t *toml, struct config *newconf)
+{
+	bool restart = false;
+	toml_table_t *dns = toml_table_in(toml, "dns");
+	if(dns)
+	{
+		toml_table_t *revServer = toml_table_in(dns, "revServer");
+		if(revServer)
+		{
+			// Read old config
+			toml_datum_t active = toml_bool_in(revServer, "active");
+			toml_datum_t cidr = toml_string_in(revServer, "cidr");
+			toml_datum_t target = toml_string_in(revServer, "target");
+			toml_datum_t domain = toml_string_in(revServer, "domain");
+
+			// Necessary condition: all values must exist and CIDR and target must not be empty
+			if(active.ok && cidr.ok && target.ok && domain.ok && strlen(cidr.u.s) > 0 && strlen(target.u.s))
+			{
+				// Build comma-separated string of all values
+				char *old = calloc((active.u.b ? 4 : 5) + strlen(cidr.u.s) + strlen(target.u.s) + strlen(domain.u.s) + 4, sizeof(char));
+				if(old)
+				{
+					// Add to new config
+					sprintf(old, "%s,%s,%s,%s", active.u.s ? "true" : "false", cidr.u.s, target.u.s, domain.u.s);
+					log_debug(DEBUG_CONFIG, "Config setting dns.revServer MIGRATED: %s", old);
+					cJSON_AddItemToArray(newconf->dns.revServers.v.json, cJSON_CreateString(old));
+					restart = true;
+				}
+			}
+			else
+				log_warn("Config setting dns.revServer INVALID - ignoring: %s %s %s %s", active.ok ? active.u.s : "NULL", cidr.ok ? cidr.u.s : "NULL", target.ok ? target.u.s : "NULL", domain.ok ? domain.u.s : "NULL");
+		}
+		else
+			log_info("dns.revServer DOES NOT EXIST");
+	}
+	else
+		log_info("dns DOES NOT EXIST");
+
+	return restart;
+}
+
 bool readFTLtoml(struct config *oldconf, struct config *newconf,
-                 toml_table_t *toml, const bool verbose, bool *restart)
+                 toml_table_t *toml, const bool verbose, bool *restart,
+                 const unsigned int version)
 {
 	// Parse lines in the config file if we did not receive a pointer to a TOML
 	// table from an imported Teleporter file
 	bool teleporter = (toml != NULL);
 	if(!teleporter)
 	{
-		toml = parseTOML();
+		toml = parseTOML(version);
 		if(!toml)
 			return false;
 	}
@@ -59,8 +104,8 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 	}
 	set_debug_flags(newconf);
 
-	log_debug(DEBUG_CONFIG, "Reading %s TOML config file: full config",
-	          teleporter ? "teleporter" : "default");
+	log_debug(DEBUG_CONFIG, "Reading %s TOML config file",
+	          teleporter ? "teleporter" : version == 0 ? "default" : "backup");
 
 	// Read all known config items
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -123,10 +168,17 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		}
 	}
 
+	// Migrate config from old to new
+	if(migrate_config(toml, newconf) && restart != NULL)
+		*restart = true;
+
 	// Report debug config if enabled
 	set_debug_flags(newconf);
 	if(verbose)
 		reportDebugFlags();
+
+	// Print FTL environment variables (if used)
+	printFTLenv();
 
 	// Free memory allocated by the TOML parser and return success
 	toml_free(toml);
@@ -134,16 +186,12 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 }
 
 // Parse TOML config file
-static toml_table_t *parseTOML(void)
+static toml_table_t *parseTOML(const unsigned int version)
 {
 	// Try to open default config file. Use fallback if not found
 	FILE *fp;
-	if((fp = openFTLtoml("r")) == NULL)
-	{
-		log_warn("No config file available (%s), using defaults",
-		         strerror(errno));
+	if((fp = openFTLtoml("r", version)) == NULL)
 		return NULL;
-	}
 
 	// Parse lines in the config file
 	char errbuf[200];
@@ -167,7 +215,7 @@ bool getLogFilePathTOML(void)
 {
 	log_debug(DEBUG_CONFIG, "Reading TOML config file: log file path");
 
-	toml_table_t *conf = parseTOML();
+	toml_table_t *conf = parseTOML(0);
 	if(!conf)
 		return false;
 
@@ -209,11 +257,10 @@ static void reportDebugFlags(void)
 	// Read all known debug config items
 	for(unsigned int debug_flag = 1; debug_flag < DEBUG_ELEMENTS; debug_flag++)
 	{
-		const char *name;
 		// Get name of debug flag
 		// We do not need to add an offset as this loop starts counting
 		// at 1
-		debugstr(debug_flag, &name);
+		const char *name = debugstr(debug_flag);
 		// Calculate number of spaces to nicely align output
 		int spaces = 20 - strlen(name);
 		// Print debug flag

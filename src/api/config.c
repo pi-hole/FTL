@@ -130,12 +130,22 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 			return cJSON_CreateStringReference(get_temp_unit_str(val->temp_unit));
 		case CONF_STRUCT_IN_ADDR:
 		{
+			// Special case 0.0.0.0 -> return empty string
+			if(val->in_addr.s_addr == INADDR_ANY)
+				return cJSON_CreateStringReference("");
+
+			// else: normal address
 			char addr4[INET_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET, &val->in_addr, addr4, INET_ADDRSTRLEN);
 			return cJSON_CreateString(addr4); // Performs a copy
 		}
 		case CONF_STRUCT_IN6_ADDR:
 		{
+			// Special case :: -> return empty string
+			if(memcmp(&val->in6_addr, &in6addr_any, sizeof(in6addr_any)) == 0)
+				return cJSON_CreateStringReference("");
+
+			// else: normal address
 			char addr6[INET6_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET6, &val->in6_addr, addr6, INET6_ADDRSTRLEN);
 			return cJSON_CreateString(addr6); // Performs a copy
@@ -284,7 +294,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			}
 
 			if(!set_and_check_password(conf_item, elem->valuestring))
-				return "Failed to create password hash (verification failed), password remains unchanged";
+				return "password hash verification failed";
 
 			break;
 		}
@@ -402,11 +412,19 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			struct in_addr addr4 = { 0 };
 			if(!cJSON_IsString(elem))
 				return "not of type string";
-			if(!inet_pton(AF_INET, elem->valuestring, &addr4))
+			if(strlen(elem->valuestring) == 0)
+			{
+				// Special case: empty string -> 0.0.0.0
+				conf_item->v.in_addr.s_addr = INADDR_ANY;
+			}
+			else if(inet_pton(AF_INET, elem->valuestring, &addr4))
+			{
+				// Set item
+				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
+			}
+			else
 				return "not a valid IPv4 address";
-			// Set item
-			memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
-			log_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, elem->valuestring);
+			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
 			break;
 		}
 		case CONF_STRUCT_IN6_ADDR:
@@ -414,11 +432,16 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			struct in6_addr addr6 = { 0 };
 			if(!cJSON_IsString(elem))
 				return "not of type string";
-			if(!inet_pton(AF_INET6, elem->valuestring, &addr6))
+			if(strlen(elem->valuestring) == 0)
+			{
+				// Special case: empty string -> ::
+				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+			}
+			else if(!inet_pton(AF_INET6, elem->valuestring, &addr6))
 				return "not a valid IPv6 address";
 			// Set item
 			memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
-			log_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, elem->valuestring);
+			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
 			break;
 		}
 		case CONF_JSON_STRING_ARRAY:
@@ -582,8 +605,7 @@ static int api_config_get(struct ftl_conn *api)
 	}
 
 	// Release allocated memory
-	if(requested_path != NULL)
-		free_config_path(requested_path);
+	free_config_path(requested_path);
 
 	cJSON *json = JSON_NEW_OBJECT();
 
@@ -696,8 +718,23 @@ static int api_config_patch(struct ftl_conn *api)
 		const char *response = getJSONvalue(new_item, elem, &newconf);
 		if(response != NULL)
 		{
-			log_err("/api/config: %s invalid: %s", new_item->k, response);
-			continue;
+			char *hint = calloc(strlen(new_item->k) + strlen(response) + 3, sizeof(char));
+			if(hint == NULL)
+			{
+				free_config(&newconf);
+				return send_json_error(api, 500,
+				                       "internal_error",
+				                       "Failed to allocate memory for hint",
+				                       NULL);
+			}
+			strcpy(hint, new_item->k);
+			strcat(hint, ": ");
+			strcat(hint, response);
+			free_config(&newconf);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "Config item is invalid",
+			                            hint, true);
 		}
 
 		// Get pointer to memory location of this conf_item (global)
@@ -814,8 +851,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	if(min_level < 2)
 	{
 		// Release allocated memory
-		if(requested_path != NULL)
-			free_config_path(requested_path);
+		free_config_path(requested_path);
 
 		return send_json_error(api, 400,
 		                       "bad_request",
@@ -861,15 +897,14 @@ static int api_config_put_delete(struct ftl_conn *api)
 		{
 			char *key = strdup(new_item->k);
 			free_config(&newconf);
-			if(requested_path != NULL)
-				free_config_path(requested_path);
+			free_config_path(requested_path);
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config items set via environment variables cannot be changed via the API",
 			                            key, true);
 		}
 
-		// Check if this entry does already exist in the array
+		// Check if this entry exists in the array
 		int idx = 0;
 		for(; idx < cJSON_GetArraySize(new_item->v.json); idx++)
 		{
@@ -903,13 +938,12 @@ static int api_config_put_delete(struct ftl_conn *api)
 			if(found)
 			{
 				// Remove item from array
+				found = true;
 				cJSON_DeleteItemFromArray(new_item->v.json, idx);
 			}
 			else
 			{
 				// Item not found
-				message = "Item not found";
-				hint = "Can only delete existing items";
 				break;
 			}
 		}
@@ -927,16 +961,18 @@ static int api_config_put_delete(struct ftl_conn *api)
 	}
 
 	// Release allocated memory
-	if(requested_path != NULL)
-		free_config_path(requested_path);
+	free_config_path(requested_path);
 
-	// Error 404 if not found
-	if(!found || message != NULL)
+	// Error 404 if config element not found
+	if(!found)
 	{
-		// For any other error, a more specific message will have been added
-		// above
-		if(!message)
-			message = "No item specified";
+		cJSON *json = JSON_NEW_OBJECT();
+		JSON_SEND_OBJECT_CODE(json, 404);
+	}
+
+	// Error 400 if unique item already present
+	if(message != NULL)
+	{
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       message,

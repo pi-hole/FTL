@@ -19,63 +19,39 @@
 #include "datastructure.h"
 // watch_config()
 #include "config/inotify.h"
+// files_different()
+#include "files.h"
 
-static void migrate_config(void)
-{
-	// Migrating dhcp.domain -> dns.domain
-	if(strcmp(config.dns.domain.v.s, config.dns.domain.d.s) == 0)
-	{
-		// If the domain is the same as the default, check if the dhcp domain
-		// is different from the default. If so, migrate it
-		if(strcmp(config.dhcp.domain.v.s, config.dhcp.domain.d.s) != 0)
-		{
-			// Migrate dhcp.domain -> dns.domain
-			log_info("Migrating dhcp.domain = \"%s\" -> dns.domain", config.dhcp.domain.v.s);
-			if(config.dns.domain.t == CONF_STRING_ALLOCATED)
-				free(config.dns.domain.v.s);
-			config.dns.domain.v.s = strdup(config.dhcp.domain.v.s);
-			config.dns.domain.t = CONF_STRING_ALLOCATED;
-		}
-	}
-}
+// defined in config/config.c
+extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
 
 bool writeFTLtoml(const bool verbose)
 {
-	// Stop watching for changes in the config file
-	watch_config(false);
-
-	// Try to open global config file
+	// Try to open a temporary config file for writing
 	FILE *fp;
-	if((fp = openFTLtoml("w")) == NULL)
+	if((fp = openFTLtoml("w", 0)) == NULL)
 	{
 		log_warn("Cannot write to FTL config file (%s), content not updated", strerror(errno));
-		// Restart watching for changes in the config file
-		watch_config(true);
 		return false;
 	}
 
-	// Log that we are (re-)writing the config file if either in verbose or
-	// debug mode
-	if(verbose || config.debug.config.v.b)
-		log_info("Writing config file");
-
 	// Write header
-	fputs("# This file is managed by pihole-FTL\n#\n", fp);
-	fputs("# Do not edit the file while FTL is\n", fp);
-	fputs("# running or your changes may be overwritten\n#\n", fp);
+	fprintf(fp, "# Pi-hole configuration file (%s)\n", get_FTL_version());
+#ifdef TOML_UTF8
+	fputs("# Encoding: UTF-8\n", fp);
+#else
+	fputs("# Encoding: ASCII + UCS\n", fp);
+#endif
+	fputs("# This file is managed by pihole-FTL\n", fp);
 	char timestring[TIMESTR_SIZE] = "";
 	get_timestr(timestring, time(NULL), false, false);
 	fputs("# Last updated on ", fp);
 	fputs(timestring, fp);
-	fputs("\n# by FTL ", fp);
-	fputs(get_FTL_version(), fp);
 	fputs("\n\n", fp);
-
-	// Perform possible config migration
-	migrate_config();
 
 	// Iterate over configuration and store it into the file
 	char *last_path = (char*)"";
+	unsigned int modified = 0, env_vars = 0;
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
@@ -112,7 +88,10 @@ bool writeFTLtoml(const bool verbose)
 
 		// Print info if this value is overwritten by an env var
 		if(conf_item->f & FLAG_ENV_VAR)
+		{
 			print_comment(fp, ">>> This config is overwritten by an environmental variable <<<", "", 85, level-1);
+			env_vars++;
+		}
 
 		// Write value
 		indentTOML(fp, level-1);
@@ -132,17 +111,72 @@ bool writeFTLtoml(const bool verbose)
 		{
 			fprintf(fp, " ### CHANGED, default = ");
 			writeTOMLvalue(fp, -1, conf_item->t, &conf_item->d);
+			modified++;
 		}
 
 		// Add newlines after each entry
 		fputs("\n\n", fp);
 	}
 
+	// Log some statistics in verbose mode
+	if(verbose || config.debug.config.v.b)
+	{
+		log_info("Wrote config file:");
+		log_info(" - %zu total entries", CONFIG_ELEMENTS);
+		log_info(" - %zu %s default", CONFIG_ELEMENTS - modified,
+		         CONFIG_ELEMENTS - modified == 1 ? "entry is" : "entries are");
+		log_info(" - %u %s modified", modified,
+		         modified == 1 ? "entry is" : "entries are");
+		log_info(" - %u %s forced through environment", env_vars,
+		         env_vars == 1 ? "entry is" : "entries are");
+	}
+
 	// Close file and release exclusive lock
 	closeFTLtoml(fp);
 
-	// Restart watching for changes in the config file
-	watch_config(true);
+	// Move temporary file to the final location if it is different
+	// We skip the first 8 lines as they contain the header and will always
+	// be different
+	if(files_different(GLOBALTOMLPATH".tmp", GLOBALTOMLPATH, 8))
+	{
+		// Stop watching for changes in the config file
+		watch_config(false);
+
+		// Rotate config file
+		rotate_files(GLOBALTOMLPATH, NULL);
+
+		// Move file
+		if(rename(GLOBALTOMLPATH".tmp", GLOBALTOMLPATH) != 0)
+		{
+			log_warn("Cannot move temporary config file to final location (%s), content not updated", strerror(errno));
+			// Restart watching for changes in the config file
+			watch_config(true);
+			return false;
+		}
+
+		// Restart watching for changes in the config file
+		watch_config(true);
+
+		// Log that we have written the config file if either in verbose or
+		// debug mode
+		if(verbose || config.debug.config.v.b)
+			log_info("Config file written to %s", GLOBALTOMLPATH);
+	}
+	else
+	{
+		// Remove temporary file
+		if(unlink(GLOBALTOMLPATH".tmp") != 0)
+		{
+			log_warn("Cannot remove temporary config file (%s), content not updated", strerror(errno));
+			return false;
+		}
+
+		// Log that the config file has not changed if in debug mode
+		log_debug(DEBUG_CONFIG, "pihole.toml unchanged");
+	}
+
+	if(!sha256sum(GLOBALTOMLPATH, last_checksum))
+		log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
 
 	return true;
 }

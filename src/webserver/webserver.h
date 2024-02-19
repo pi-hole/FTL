@@ -10,9 +10,12 @@
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
 
+#include <stdbool.h>
+
 void http_init(void);
 void http_terminate(void);
 
 in_port_t get_https_port(void) __attribute__((pure));
+unsigned short get_api_string(char **buf, const bool domain);
 
 #endif // WEBSERVER_H

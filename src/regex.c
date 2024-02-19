@@ -470,14 +470,14 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 					log_info("    %s%s%s matches",
 					cli_bold(), regex->string, cli_normal());
 				}
-				else if(regextest && regexid == REGEX_DENY)
+				else if(regexid == REGEX_DENY)
 				{
 					// Database-sourced regular expression
 					log_info("    %s%s%s matches (regex blacklist, DB ID %i)",
 					cli_bold(), regex->string, cli_normal(),
 					regex->database_id);
 				}
-				else if(regextest && regexid == REGEX_ALLOW)
+				else if(regexid == REGEX_ALLOW)
 				{
 					// Database-sourced regular expression
 					log_info("    %s%s%s matches (regex whitelist, DB ID %i)",
@@ -548,7 +548,7 @@ bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, c
 	if(regex_id != -1)
 	{
 		// We found a match
-		dns_cache->domainlist_id = regex_id;
+		dns_cache->list_id = regex_id;
 		return true;
 	}
 

@@ -30,6 +30,7 @@ typedef struct {
 	int domainID;
 	int clientID;
 	int upstreamID;
+	int cacheID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int CNAME_domainID; // only valid if query has a CNAME blocking status
 	int ede;
@@ -63,7 +64,6 @@ typedef struct {
 	int count;
 	int failed;
 	unsigned int responses;
-	int overTime[OVERTIME_SLOTS];
 	size_t ippos;
 	size_t namepos;
 	double rtime;
@@ -103,6 +103,7 @@ typedef struct {
 	int blockedcount;
 	uint32_t domainhash;
 	size_t domainpos;
+	double lastQuery;
 } domainsData;
 
 typedef struct {
@@ -112,16 +113,19 @@ typedef struct {
 	enum query_type query_type;
 	int domainID;
 	int clientID;
-	int domainlist_id;
+	int list_id;
 	char *cname_target;
 } DNSCacheData;
 
 void strtolower(char *str);
 uint32_t hashStr(const char *s) __attribute__((pure));
 int findQueryID(const int id);
-int findUpstreamID(const char * upstream, const in_port_t port);
-int findDomainID(const char *domain, const bool count);
-int findClientID(const char *client, const bool count, const bool aliasclient);
+#define findUpstreamID(upstream, port) _findUpstreamID(upstream, port, __LINE__, __FUNCTION__, __FILE__)
+int _findUpstreamID(const char *upstream, const in_port_t port, int line, const char *func, const char *file);
+#define findDomainID(domain, count) _findDomainID(domain, count, __LINE__, __FUNCTION__, __FILE__)
+int _findDomainID(const char *domain, const bool count, int line, const char *func, const char *file);
+#define findClientID(client, count, aliasclient) _findClientID(client, count, aliasclient, __LINE__, __FUNCTION__, __FILE__)
+int _findClientID(const char *client, const bool count, const bool aliasclient, int line, const char *func, const char *file);
 #define findCacheID(domainID, clientID, query_type, create_new) _findCacheID(domainID, clientID, query_type, create_new, __FUNCTION__, __LINE__, __FILE__)
 int _findCacheID(const int domainID, const int clientID, const enum query_type query_type, const bool create_new, const char *func, const int line, const char *file);
 bool isValidIPv4(const char *addr);
@@ -134,8 +138,9 @@ const char *get_cached_statuslist(void) __attribute__ ((pure));
 int get_blocked_count(void) __attribute__ ((pure));
 int get_forwarded_count(void) __attribute__ ((pure));
 int get_cached_count(void) __attribute__ ((pure));
-#define query_set_status(query, new_status) _query_set_status(query, new_status, __FUNCTION__, __LINE__, __FILE__)
-void _query_set_status(queriesData *query, const enum query_status new_status, const char *func, const int line, const char *file);
+#define query_set_status(query, new_status) _query_set_status(query, new_status, false, __FUNCTION__, __LINE__, __FILE__)
+#define query_set_status_init(query, new_status) _query_set_status(query, new_status, true, __FUNCTION__, __LINE__, __FILE__)
+void _query_set_status(queriesData *query, const enum query_status new_status, const bool init, const char *func, const int line, const char *file);
 
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);

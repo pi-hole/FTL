@@ -22,6 +22,17 @@
 #include "config/password.h"
 // check_capability()
 #include "capabilities.h"
+// suggest_closest_conf_key()
+#include "config/suggest.h"
+
+enum exit_codes {
+	OKAY = 0,
+	FAIL = 1,
+	VALUE_INVALID = 2,
+	DNSMASQ_TEST_FAILED = 3,
+	KEY_UNKNOWN = 4,
+	ENV_VAR_FORCED = 5,
+} __attribute__((packed));
 
 // Read a TOML value from a table depending on its type
 static bool readStringValue(struct conf_item *conf_item, const char *value, struct config *newconf)
@@ -160,8 +171,9 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			// Get password hash as allocated string (an empty string is hashed to an empty string)
 			char *pwhash = strlen(value) > 0 ? create_password(value) : strdup("");
 
-			// Verify that the password hash is valid
-			if(verify_password(value, pwhash, false) != PASSWORD_CORRECT)
+			// Verify that the password hash is either valid or empty
+			const enum password_result status = verify_password(value, pwhash, false);
+			if(status != PASSWORD_CORRECT && status != NO_PASSWORD_SET)
 			{
 				log_err("Failed to create password hash (verification failed), password remains unchanged");
 				free(pwhash);
@@ -297,7 +309,12 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };
-			if(inet_pton(AF_INET, value, &addr4))
+			if(strlen(value) == 0)
+			{
+				// Special case: empty string -> 0.0.0.0
+				conf_item->v.in_addr.s_addr = INADDR_ANY;
+			}
+			else if(inet_pton(AF_INET, value, &addr4))
 				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
 			else
 			{
@@ -309,7 +326,12 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 		case CONF_STRUCT_IN6_ADDR:
 		{
 			struct in6_addr addr6 = { 0 };
-			if(inet_pton(AF_INET6, value, &addr6))
+			if(strlen(value) == 0)
+			{
+				// Special case: empty string -> ::
+				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+			}
+			else if(inet_pton(AF_INET6, value, &addr6))
 				memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 			else
 			{
@@ -391,7 +413,7 @@ int set_config_from_CLI(const char *key, const char *value)
 		{
 			log_err("Config option %s is read-only (set via environmental variable)", key);
 			free_config(&newconf);
-			return 5;
+			return ENV_VAR_FORCED;
 		}
 
 		// This is the config option we are looking for
@@ -407,16 +429,22 @@ int set_config_from_CLI(const char *key, const char *value)
 	// Check if we found the config option
 	if(new_item == NULL)
 	{
-		log_err("Unknown config option: %s", key);
+		unsigned int N = 0;
+		char **matches = suggest_closest_conf_key(false, key, &N);
+		log_err("Unknown config option %s, did you mean:", key);
+		for(unsigned int i = 0; i < N; i++)
+			log_err(" - %s", matches[i]);
+		free(matches);
+
 		free_config(&newconf);
-		return 4;
+		return KEY_UNKNOWN;
 	}
 
 	// Parse value
 	if(!readStringValue(new_item, value, &newconf))
 	{
 		free_config(&newconf);
-		return 2;
+		return VALUE_INVALID;
 	}
 
 	// Check if value changed compared to current value
@@ -436,7 +464,7 @@ int set_config_from_CLI(const char *key, const char *value)
 				// Test failed
 				log_debug(DEBUG_CONFIG, "Config item %s: dnsmasq config test failed", conf_item->k);
 				free_config(&newconf);
-				return 3;
+				return DNSMASQ_TEST_FAILED;
 			}
 		}
 		else if(conf_item == &config.dns.hosts)
@@ -464,20 +492,41 @@ int set_config_from_CLI(const char *key, const char *value)
 
 	putchar('\n');
 	writeFTLtoml(false);
-	return EXIT_SUCCESS;
+	return OKAY;
 }
 
 int get_config_from_CLI(const char *key, const bool quiet)
 {
 	// Identify config option
 	struct conf_item *conf_item = NULL;
+
+	// We first loop over all config options to check if the one we are
+	// looking for is an exact match, use partial match otherwise
+	bool exactMatch = false;
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		// Get pointer to memory location of this conf_item
+		struct conf_item *item = get_conf_item(&config, i);
+
+		// Check if item.k is identical with key
+		if(strcmp(item->k, key) == 0)
+		{
+			exactMatch = true;
+			break;
+		}
+	}
+
+	// Loop over all config options again to find the one we are looking for
+	// (possibly partial match)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
 		struct conf_item *item = get_conf_item(&config, i);
 
 		// Check if item.k starts with key
-		if(key != NULL && strncmp(item->k, key, strlen(key)) != 0)
+		if(key != NULL &&
+		   ((exactMatch && strcmp(item->k, key) != 0) ||
+		    (!exactMatch && strncmp(item->k, key, strlen(key)))))
 			continue;
 
 		// Skip write-only options
@@ -500,16 +549,22 @@ int get_config_from_CLI(const char *key, const bool quiet)
 	}
 
 	// Check if we found the config option
-	if(key != NULL && conf_item == NULL)
+	if(conf_item == NULL)
 	{
-		log_err("Unknown config option: %s", key);
-		return 2;
+		unsigned int N = 0;
+		char **matches = suggest_closest_conf_key(false, key, &N);
+		log_err("Unknown config option %s, did you mean:", key);
+		for(unsigned int i = 0; i < N; i++)
+			log_err(" - %s", matches[i]);
+		free(matches);
+
+		return KEY_UNKNOWN;
 	}
 
 	// Use return status if this is a boolean value
 	// and we are in quiet mode
-	if(quiet && conf_item->t == CONF_BOOL)
-		return conf_item->v.b ? EXIT_SUCCESS : EXIT_FAILURE;
+	if(quiet && conf_item != NULL && conf_item->t == CONF_BOOL)
+		return conf_item->v.b ? OKAY : FAIL;
 
-	return EXIT_SUCCESS;
+	return OKAY;
 }

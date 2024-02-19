@@ -64,14 +64,7 @@ CREATE TABLE info
 	value TEXT NOT NULL
 );
 
-INSERT INTO "info" VALUES('version','12');
-
-CREATE TABLE domain_audit
-(
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	domain TEXT UNIQUE NOT NULL,
-	date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int))
-);
+INSERT INTO "info" VALUES('version','19');
 
 CREATE TABLE domainlist_by_group
 (
@@ -143,14 +136,14 @@ CREATE VIEW vw_regex_blacklist AS SELECT domain, domainlist.id AS id, domainlist
     AND domainlist.type = 3
     ORDER BY domainlist.id;
 
-CREATE VIEW vw_gravity AS SELECT domain, adlist_by_group.group_id AS group_id
+CREATE VIEW vw_gravity AS SELECT domain, adlist.id AS adlist_id, adlist_by_group.group_id AS group_id
     FROM gravity
     LEFT JOIN adlist_by_group ON adlist_by_group.adlist_id = gravity.adlist_id
     LEFT JOIN adlist ON adlist.id = gravity.adlist_id
     LEFT JOIN "group" ON "group".id = adlist_by_group.group_id
     WHERE adlist.enabled = 1 AND (adlist_by_group.group_id IS NULL OR "group".enabled = 1) AND adlist.type = 0;
 
-CREATE VIEW vw_antigravity AS SELECT domain, adlist_by_group.group_id AS group_id
+CREATE VIEW vw_antigravity AS SELECT domain, adlist.id AS adlist_id, adlist_by_group.group_id AS group_id
     FROM antigravity
     LEFT JOIN adlist_by_group ON adlist_by_group.adlist_id = antigravity.adlist_id
     LEFT JOIN adlist ON adlist.id = antigravity.adlist_id
@@ -187,17 +180,17 @@ CREATE TRIGGER tr_group_zero AFTER DELETE ON "group"
       INSERT OR IGNORE INTO "group" (id,enabled,name) VALUES (0,1,'Default');
     END;
 
-CREATE TRIGGER tr_domainlist_delete AFTER DELETE ON domainlist
+CREATE TRIGGER tr_domainlist_delete BEFORE DELETE ON domainlist
     BEGIN
       DELETE FROM domainlist_by_group WHERE domainlist_id = OLD.id;
     END;
 
-CREATE TRIGGER tr_adlist_delete AFTER DELETE ON adlist
+CREATE TRIGGER tr_adlist_delete BEFORE DELETE ON adlist
     BEGIN
       DELETE FROM adlist_by_group WHERE adlist_id = OLD.id;
     END;
 
-CREATE TRIGGER tr_client_delete AFTER DELETE ON client
+CREATE TRIGGER tr_client_delete BEFORE DELETE ON client
     BEGIN
       DELETE FROM client_by_group WHERE client_id = OLD.id;
     END;
@@ -228,6 +221,8 @@ INSERT INTO domainlist VALUES(16,3,'^regex-notMultiple.ftl$;querytype=!ANY,HTTPS
 
 /* Other special domains */
 INSERT INTO domainlist VALUES(17,1,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
+INSERT INTO domainlist VALUES(18,0,'mask.icloud.com',1,1559928803,1559928803,'Allowing special domain');
+DELETE FROM domainlist_by_group WHERE domainlist_id = 18 AND group_id = 0;
 
 INSERT INTO adlist VALUES(1,0,'https://pi-hole.net/block.txt',1,1559928803,1559928803,'Fake block-list',1559928803,2000,2,1,0);
 INSERT INTO adlist VALUES(2,1,'https://pi-hole.net/allow.txt',1,1559928803,1559928803,'Fake allow-list',1559928803,2000,2,1,0);
@@ -251,8 +246,6 @@ INSERT INTO info VALUES('updated',0);
 INSERT INTO "group" VALUES(1,0,'Test group',1559928803,1559928803,'A disabled test group');
 INSERT INTO domainlist_by_group VALUES(15,1);
 
-INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
-
 INSERT INTO client (id,ip) VALUES(1,'127.0.0.1');
 
 INSERT INTO client (id,ip) VALUES(2,'127.0.0.2');
@@ -261,6 +254,7 @@ DELETE FROM client_by_group WHERE client_id = 2 AND group_id = 0;
 INSERT INTO client_by_group VALUES(2,2);
 INSERT INTO adlist_by_group VALUES(1,2);
 INSERT INTO domainlist_by_group VALUES(6,2);
+INSERT INTO domainlist_by_group VALUES(18,2); /* mask.icloud.com */
 
 INSERT INTO client (id,ip) VALUES(3,'127.0.0.3');
 INSERT INTO "group" VALUES(3,1,'Third test group',1559928803,1559928803,'A group associated with client IP 127.0.0.3');

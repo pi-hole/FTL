@@ -27,6 +27,8 @@
 #include "gc.h"
 // get_filesystem_details()
 #include "files.h"
+// get_memdb()
+#include "database/query-table.h"
 
 static const char *get_message_type_str(const enum message_type type)
 {
@@ -214,23 +216,10 @@ bool create_message_table(sqlite3 *db)
 // Flush message table
 bool flush_message_table(void)
 {
-	// Return early if database is known to be broken
-	if(FTLDBerror())
-		return false;
-
-	sqlite3 *db;
-	// Open database connection
-	if((db = dbopen(false, false)) == NULL)
-	{
-		log_err("flush_message_table() - Failed to open DB");
-		return false;
-	}
+	sqlite3 *memdb = get_memdb();
 
 	// Flush message table
-	SQL_bool(db, "DELETE FROM message;");
-
-	// Close database connection
-	dbclose(&db);
+	SQL_bool(memdb, "DELETE FROM disk.message;");
 
 	return true;
 }
@@ -389,7 +378,7 @@ end_of_add_message: // Close database connection
 	return rowid;
 }
 
-bool delete_message(cJSON *ids)
+bool delete_message(cJSON *ids, int *deleted)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -424,6 +413,10 @@ bool delete_message(cJSON *ids)
 			log_err("SQL error (%i): %s", sqlite3_errcode(db), sqlite3_errmsg(db));
 			return false;
 		}
+
+		// Add to deleted count
+		*deleted += sqlite3_changes(db);
+
 		sqlite3_reset(res);
 		sqlite3_clear_bindings(res);
 	}
@@ -659,7 +652,7 @@ static void format_inaccessible_adlist_message(char *plain, const int sizeof_pla
 
 	char *escaped_address = escape_html(address);
 
-	if(snprintf(html, sizeof_html, "<a href=\"groups-adlists.lp?adlist=%i\">List with ID <strong>%d</strong> (<code>%s</code>)</a> was inaccessible during last gravity run",
+	if(snprintf(html, sizeof_html, "<a href=\"groups/lists?listid=%i\">List with ID <strong>%d</strong> (<code>%s</code>)</a> was inaccessible during last gravity run",
 	            dbindex, dbindex, escaped_address) > sizeof_html)
 		log_warn("format_inaccessible_adlist_message(): Buffer too small to hold HTML message, warning truncated");
 

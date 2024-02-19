@@ -20,7 +20,7 @@ while pidof -s pihole-FTL > /dev/null; do
 done
 
 # Clean up possible old files from earlier test runs
-rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole/pihole.log /var/log/pihole/FTL.log /dev/shm/FTL-*
+rm -rf /etc/pihole /var/log/pihole /dev/shm/FTL-*
 
 # Create necessary directories and files
 mkdir -p /home/pihole /etc/pihole /run/pihole /var/log/pihole
@@ -70,6 +70,8 @@ umask 0022
 
 # Set exemplary config value by environment variable
 export FTLCONF_misc_nice="-11"
+export FTLCONF_dns_upstrrr="-11"
+export FTLCONF_debug_api="not_a_bool"
 
 # Start FTL
 if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then

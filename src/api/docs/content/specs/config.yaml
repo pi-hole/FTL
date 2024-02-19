@@ -121,7 +121,7 @@ components:
                 examples:
                   invalid_path_depth:
                     $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
-                  item_not_found:
+                  item_already_present:
                     $ref: 'config.yaml#/components/examples/errors/bad_request/item_already_present'
           '401':
             description: Unauthorized
@@ -144,6 +144,12 @@ components:
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -155,8 +161,8 @@ components:
                 examples:
                   invalid_path_depth:
                     $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
-                  item_not_found:
-                    $ref: 'config.yaml#/components/examples/errors/bad_request/item_not_found'
+                  item_already_present:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/item_already_present'
           '401':
             description: Unauthorized
             content:
@@ -233,17 +239,10 @@ components:
                       type: integer
                     optimizer:
                       type: integer
-                revServer:
-                  type: object
-                  properties:
-                    active:
-                      type: boolean
-                    cidr:
-                      type: string
-                    target:
-                      type: string
-                    domain:
-                      type: string
+                revServers:
+                  type: array
+                  items:
+                    type: string
                 blocking:
                   type: object
                   properties:
@@ -270,8 +269,10 @@ components:
                           type: boolean
                         IPv4:
                           type: string
+                          x-format: ipv4
                         IPv6:
                           type: string
+                          x-format: ipv6
                     blocking:
                       type: object
                       properties:
@@ -281,8 +282,10 @@ components:
                           type: boolean
                         IPv4:
                           type: string
+                          x-format: ipv4
                         IPv6:
                           type: string
+                          x-format: ipv6
                 rateLimit:
                   type: object
                   properties:
@@ -297,14 +300,16 @@ components:
                   type: boolean
                 start:
                   type: string
+                  x-format: ipv4
                 end:
                   type: string
+                  x-format: ipv4
                 router:
                   type: string
-                domain:
+                  x-format: ipv4
+                netmask:
                   type: string
-                  description: |
-                    *Note:* This setting is deprecated and will be removed in a future release. Use dns.domain instead.
+                  x-format: ipv4
                 leaseTime:
                   type: string
                 ipv6:
@@ -414,6 +419,8 @@ components:
                         type: string
                     maxHistory:
                       type: integer
+                    maxClients:
+                      type: integer
                     allow_destructive:
                       type: boolean
                     temp:
@@ -431,6 +438,8 @@ components:
                 database:
                   type: string
                 gravity:
+                  type: string
+                gravity_tmp:
                   type: string
                 macvendor:
                   type: string
@@ -464,6 +473,8 @@ components:
                   type: array
                   items:
                     type: string
+                extraLogging:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -605,11 +616,8 @@ components:
             cache:
               size: 10000
               optimizer: 3600
-            revServer:
-              active: false
-              cidr: "192.168.0.0/24"
-              target: "192.168.0.1"
-              domain: "lan"
+            revServers:
+              - "true,192.168.0.0/24,192.168.0.1,lan"
             blocking:
               active: true
               mode: 'NULL'
@@ -635,7 +643,7 @@ components:
             start: "192.168.0.10"
             end: "192.168.0.250"
             router: "192.168.0.1"
-            domain: "lan"
+            netmask: "0.0.0.0"
             leaseTime: "24h"
             ipv6: true
             rapidCommit: true
@@ -681,9 +689,10 @@ components:
               pwhash: ''
               totp_secret: ''
               app_pwhash: ''
-              excludeClients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
-              excludeDomains: [ 'google.de', 'pi-hole.net' ]
+              excludeClients: [ '1\.2\.3\.4', 'localhost', 'fe80::345' ]
+              excludeDomains: [ 'google\\.de', 'pi-hole\.net' ]
               maxHistory: 86400
+              maxClients: 10
               allow_destructive: true
               temp:
                 limit: 60.0
@@ -692,6 +701,7 @@ components:
             pid: "/run/pihole-FTL.pid"
             database: "/etc/pihole/pihole-FTL.db"
             gravity: "/etc/pihole/gravity.db"
+            gravity_tmp: "/tmp"
             macvendor: "/etc/pihole/macvendor.db"
             setupVars: "/etc/pihole/setupVars.conf"
             pcap: ""
@@ -706,6 +716,7 @@ components:
             privacylevel: 0
             etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
+            extraLogging: false
             check:
               load: true
               shmem: 90
@@ -783,13 +794,6 @@ components:
               key: "bad_request"
               message: "Invalid path depth"
               hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
-        item_not_found:
-          summary: Item to be deleted does not exist
-          value:
-            error:
-              key: "bad_request"
-              message: "Item not found"
-              hint: "Can only delete existing items"
         item_already_present:
           summary: Item to be added exists already
           value:
