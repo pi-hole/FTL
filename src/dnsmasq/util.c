@@ -119,7 +119,7 @@ int rr_on_list(struct rrlist *list, unsigned short rr)
 {
   while (list)
     {
-      if (list->rr == rr)
+      if (list->rr != 0 && list->rr == rr)
 	return 1;
 
       list = list->next;
