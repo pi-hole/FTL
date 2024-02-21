@@ -319,9 +319,12 @@ int main_dnsmasq (int argc, char **argv)
     {
       dhcp_init();
 #   ifdef HAVE_LINUX_NETWORK
+      /* Need NET_RAW to send ping. */
       if (!option_bool(OPT_NO_PING))
 	need_cap_net_raw = 1;
-      need_cap_net_admin = 1;
+      /* Need NET_ADMIN to change ARP cache if not always broadcasting. */
+      if (daemon->force_broadcast == NULL || daemon->force_broadcast->list != NULL)
+        need_cap_net_admin = 1;
 #   endif
     }
   
