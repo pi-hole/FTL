@@ -736,6 +736,9 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 			// i = 3
 			.archive_name = "setupVars.conf",
 			.destination = config.files.setupVars.v.s
+		},{
+			.archive_name = "dnsmasq.d/05-pihole-custom-cname.conf",
+			.destination = DNSMASQ_CNAMES
 		}
 	};
 	for(size_t i = 0; i < sizeof(extract_files) / sizeof(*extract_files); i++)
