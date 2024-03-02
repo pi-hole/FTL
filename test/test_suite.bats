@@ -1422,6 +1422,28 @@
   [[ ${lines[0]} == "145" ]]
 }
 
+@test "Check /api/lists?type=block returning only blocking lists" {
+  run bash -c 'curl -s 127.0.0.1/api/lists?type=block | jq ".lists[].type"'
+  printf "%s\n" "${lines[@]}"
+  # Check no allow entries are present
+  [[ ${lines[@]} != *"allow"* ]]
+}
+
+@test "Check /api/lists?type=allow returning only allowing lists" {
+  run bash -c 'curl -s 127.0.0.1/api/lists?type=allow | jq ".lists[].type"'
+  printf "%s\n" "${lines[@]}"
+  # Check no block entries are present
+  [[ ${lines[@]} != *"block"* ]]
+}
+
+@test "Check /api/lists without type parameter returning all lists" {
+  run bash -c 'curl -s 127.0.0.1/api/lists | jq ".lists[].type"'
+  printf "%s\n" "${lines[@]}"
+  # Check both block and allow entries are present
+  [[ ${lines[@]} == *"allow"* ]]
+  [[ ${lines[@]} == *"block"* ]]
+}
+
 @test "API: No UNKNOWN reply in API" {
   run bash -c 'curl -s 127.0.0.1/api/queries?reply=UNKNOWN | jq .queries'
   printf "%s\n" "${lines[@]}"
