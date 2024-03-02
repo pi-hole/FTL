@@ -81,13 +81,13 @@ jobs:
         uses: actions/checkout@v4.1.1
       -
         name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.0.0
+        uses: docker/setup-buildx-action@v3.1.0
       -
         name: Print directory contents
         run: ls -l
       -
         name: Build and test FTL in ftl-build container (QEMU)
-        uses: Wandalen/wretry.action@v1.4.4
+        uses: Wandalen/wretry.action@v1.4.5
         with:
           attempt_limit: 3
           action: docker/build-push-action@v5.0.0
@@ -146,7 +146,7 @@ jobs:
         uses: actions/checkout@v4.1.1
       -
         name: Get Binaries and documentation built in previous jobs
-        uses: actions/download-artifact@v4.1.2
+        uses: actions/download-artifact@v4.1.4
         id: download
         with:
           path: ftl_builds/
