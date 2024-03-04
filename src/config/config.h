@@ -202,6 +202,7 @@ struct config {
 		struct conf_item DBexport;
 		struct conf_item maxDBdays;
 		struct conf_item DBinterval;
+		struct conf_item useWAL;
 		struct {
 			struct conf_item parseARPcache;
 			struct conf_item expire;

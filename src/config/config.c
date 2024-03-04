@@ -791,6 +791,23 @@ void initConfig(struct config *conf)
 	conf->database.DBinterval.t = CONF_UINT;
 	conf->database.DBinterval.d.ui = 60;
 
+	conf->database.useWAL.k = "database.useWAL";
+	conf->database.useWAL.h = "Should FTL enable Write-Ahead Log (WAL) mode for the on-disk query database (configured via files.database)?\n It is recommended to leave this setting enabled for performance reasons. About the only reason to disable WAL mode is if you are experiencing specific issues with it, e.g., when using a database that is accessed from multiple hosts via a network share. When this setting is disabled, FTL will use SQLite3's default journal mode (rollback journal in DELETE mode).";
+	conf->database.useWAL.t = CONF_BOOL;
+	// Note: We would not necessarily need to restart FTL when this setting
+	// is changed, but we do it anyway as this ensures the database is
+	// properly re-initialized and the new journal mode is used. As this is
+	// a setting that will be changed very rarely, this seems the better
+	// compromise than adding special code that can transform the database
+	// while being active.
+	// The in-memory database is not affected by this setting as it uses a
+	// MEMORY journal mode anyway (there is nothing to be restored after power
+	// loss). The gravity database is also not affected as it is only written
+	// to on an individual basis (explicit API calls) and not continuously
+	// (like the query database).
+	conf->database.useWAL.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
+	conf->database.useWAL.d.b = true;
+
 	// sub-struct database.network
 	conf->database.network.parseARPcache.k = "database.network.parseARPcache";
 	conf->database.network.parseARPcache.h = "Should FTL analyze the local ARP cache? When disabled, client identification and the network table will stop working reliably.";
