@@ -51,7 +51,7 @@ jobs:
         shell: bash
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: smoke-tests
     strategy:
       fail-fast: false
@@ -156,7 +156,6 @@ jobs:
         name: Display structure of downloaded files
         run: ls -R
         working-directory: ${{steps.download.outputs.download-path}}
-      
       -
         name: Install SSH Key
         uses: benoitchantre/setup-ssh-authentication-action@1.0.1
