@@ -383,7 +383,7 @@ void initConfig(struct config *conf)
 
 	// struct dns
 	conf->dns.upstreams.k = "dns.upstreams";
-	conf->dns.upstreams.h = "Array of upstream DNS servers used by Pi-hole\n Example: [ \"8.8.8.8\", \"127.0.0.1#5353\", \"docker-resolver\" ]";
+	conf->dns.upstreams.h = "Array of upstream DNS servers used by Pi-hole\n Example: [ \"8.8.8.8\", \"127.0.0.1#5335\", \"docker-resolver\" ]";
 	conf->dns.upstreams.a = cJSON_CreateStringReference("array of IP addresses and/or hostnames, optionally with a port (#...)");
 	conf->dns.upstreams.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.upstreams.d.json = cJSON_CreateArray();
