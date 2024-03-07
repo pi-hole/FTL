@@ -175,14 +175,14 @@ static void get_revServer_from_setupVars(void)
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
 
-	if(active && cidr != NULL && target != NULL && domain != NULL)
+	if(cidr != NULL && target != NULL && domain != NULL)
 	{
 		// Build comma-separated string of all values
-		char *old = calloc(strlen(active_str) + strlen(cidr) + strlen(target) + strlen(domain) + 4, sizeof(char));
+		char *old = calloc(5 + strlen(cidr) + strlen(target) + strlen(domain) + 4, sizeof(char));
 		if(old)
 		{
 			// Add to new config
-			sprintf(old, "%s,%s,%s,%s", active_str, cidr, target, domain);
+			sprintf(old, "%s,%s,%s,%s", active ? "true" : "false", cidr, target, domain);
 			cJSON_AddItemToArray(config.dns.revServers.v.json, cJSON_CreateString(old));
 			free(old);
 		}
