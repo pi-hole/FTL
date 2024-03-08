@@ -61,148 +61,46 @@ jobs:
             bin_name: pihole-FTL-amd64
           - platform: linux/386
             bin_name: pihole-FTL-386
-
     env:
       CI_ARCH: ${{ matrix.platform }}
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
       GIT_TAG: ${{ needs.smoke-tests.outputs.GIT_TAG }}
-
     steps:
       -
         name: Checkout code
         uses: actions/checkout@v4.1.1
       -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.1.0
-      -
-        name: Print directory contents
-        run: ls -l
-      -
-        name: Build and test FTL in ftl-build container (QEMU)
-        uses: Wandalen/wretry.action@v1.4.5
+        name: Build and test FTL
+        uses: ./.github/actions/build-and-test
         with:
-          attempt_limit: 3
-          action: docker/build-push-action@v5.0.0
-          with: |
-            platforms: ${{ matrix.platform }}
-            pull: true
-            push: false
-            context: .
-            target: result
-            file: .github/Dockerfile
-            outputs: |
-              type=tar,dest=build.tar
-            build-args: |
-              "CI_ARCH=${{ matrix.platform }}"
-              "GIT_BRANCH=${{ needs.smoke-tests.outputs.GIT_BRANCH }}"
-              "GIT_TAG=${{ needs.smoke-tests.outputs.GIT_TAG }}"
-      -
-        name: List files in current directory
-        run: ls -l
-      -
-        name: Extract FTL binary from container
-        run: |
-          tar -xf build.tar pihole-FTL
-      -
-        name: "Generate checksum file"
-        run: |
-          mv pihole-FTL "${{ matrix.bin_name }}"
-          sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
-      -
-        name: Store binary artifacts for later deployoment
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4.3.1
-        with:
-          name: ${{ matrix.bin_name }}-binary
-          path: '${{ matrix.bin_name }}*'
-      -
-        name: Extract documentation files from container
-        if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
-        run: |
-          tar -xf build.tar api-docs.tar.gz
-      -
-        name: Upload documentation artifacts for deployoment
-        if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
-        uses: actions/upload-artifact@v4.3.1
-        with:
-          name: pihole-api-docs
-          path: 'api-docs.tar.gz'
+          platform: ${{ matrix.platform }}
+          bin_name: ${{ matrix.bin_name }}
+          artifact_name: ${{ matrix.bin_name }}-binary
+          git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
+          git_tag: ${{ needs.smoke-tests.outputs.GIT_TAG }}
+          event_name: ${{ github.event_name }}
 
   build-gha-riscv64:
     runs-on: ubuntu-latest
     needs: smoke-tests
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/riscv64
-            bin_name: pihole-FTL-riscv64
-
     env:
-      CI_ARCH: ${{ matrix.platform }}
+      CI_ARCH: linux/riscv64
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
       GIT_TAG: ${{ needs.smoke-tests.outputs.GIT_TAG }}
-
     steps:
       -
         name: Checkout code
         uses: actions/checkout@v4.1.1
       -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.1.0
-      -
-        name: Print directory contents
-        run: ls -l
-      -
-        name: Build and test FTL in ftl-build container (QEMU)
-        uses: Wandalen/wretry.action@v1.4.5
+        name: Build and test FTL
+        uses: ./.github/actions/build-and-test
         with:
-          attempt_limit: 3
-          action: docker/build-push-action@v5.0.0
-          with: |
-            platforms: ${{ matrix.platform }}
-            pull: true
-            push: false
-            context: .
-            target: result
-            file: .github/Dockerfile
-            outputs: |
-              type=tar,dest=build.tar
-            build-args: |
-              "CI_ARCH=${{ matrix.platform }}"
-              "GIT_BRANCH=${{ needs.smoke-tests.outputs.GIT_BRANCH }}"
-              "GIT_TAG=${{ needs.smoke-tests.outputs.GIT_TAG }}"
-      -
-        name: List files in current directory
-        run: ls -l
-      -
-        name: Extract FTL binary from container
-        run: |
-          tar -xf build.tar pihole-FTL
-      -
-        name: "Generate checksum file"
-        run: |
-          mv pihole-FTL "${{ matrix.bin_name }}"
-          sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
-      -
-        name: Store binary artifacts for later deployoment
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4.3.1
-        with:
-          name: riscv64-${{ matrix.bin_name }}-binary
-          path: '${{ matrix.bin_name }}*'
-      -
-        name: Extract documentation files from container
-        if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
-        run: |
-          tar -xf build.tar api-docs.tar.gz
-      -
-        name: Upload documentation artifacts for deployoment
-        if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
-        uses: actions/upload-artifact@v4.3.1
-        with:
-          name: pihole-api-docs
-          path: 'api-docs.tar.gz'
+          platform: linux/riscv64
+          bin_name: pihole-FTL-riscv64
+          artifact_name: riscv64-pihole-FTL-riscv64-binary
+          git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
+          git_tag: ${{ needs.smoke-tests.outputs.GIT_TAG }}
+          event_name: ${{ github.event_name }}
 
   build-self-hosted:
     runs-on: self-hosted
@@ -217,72 +115,24 @@ jobs:
             bin_name: pihole-FTL-armv7
           - platform: linux/arm64/v8
             bin_name: pihole-FTL-arm64
-
     env:
       CI_ARCH: ${{ matrix.platform }}
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
       GIT_TAG: ${{ needs.smoke-tests.outputs.GIT_TAG }}
-
     steps:
       -
         name: Checkout code
         uses: actions/checkout@v4.1.1
       -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.1.0
-      -
-        name: Print directory contents
-        run: ls -l
-      -
-        name: Build and test FTL in ftl-build container (QEMU)
-        uses: Wandalen/wretry.action@v1.4.5
+        name: Build and test FTL
+        uses: ./.github/actions/build-and-test
         with:
-          attempt_limit: 3
-          action: docker/build-push-action@v5.0.0
-          with: |
-            platforms: ${{ matrix.platform }}
-            pull: true
-            push: false
-            context: .
-            target: result
-            file: .github/Dockerfile
-            outputs: |
-              type=tar,dest=build.tar
-            build-args: |
-              "CI_ARCH=${{ matrix.platform }}"
-              "GIT_BRANCH=${{ needs.smoke-tests.outputs.GIT_BRANCH }}"
-              "GIT_TAG=${{ needs.smoke-tests.outputs.GIT_TAG }}"
-      -
-        name: List files in current directory
-        run: ls -l
-      -
-        name: Extract FTL binary from container
-        run: |
-          tar -xf build.tar pihole-FTL
-      -
-        name: "Generate checksum file"
-        run: |
-          mv pihole-FTL "${{ matrix.bin_name }}"
-          sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
-      -
-        name: Store binary artifacts for later deployoment
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4.3.1
-        with:
-          name: ${{ matrix.bin_name }}-binary
-          path: '${{ matrix.bin_name }}*'
-      -
-        name: Extract documentation files from container
-        if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
-        run: |
-          tar -xf build.tar api-docs.tar.gz
-      -
-        name: Upload documentation artifacts for deployoment
-        if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64'
-        uses: actions/upload-artifact@v4.3.1
-        with:
-          name: pihole-api-docs
-          path: 'api-docs.tar.gz'
+          platform: ${{ matrix.platform }}
+          bin_name: ${{ matrix.bin_name }}
+          artifact_name: ${{ matrix.bin_name }}-binary
+          git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
+          git_tag: ${{ needs.smoke-tests.outputs.GIT_TAG }}
+          event_name: ${{ github.event_name }}
 
   deploy:
     if: github.event_name != 'pull_request'
@@ -293,50 +143,17 @@ jobs:
         name: Checkout code
         uses: actions/checkout@v4.1.1
       -
-        name: Get Binaries and documentation built in previous jobs
-        uses: actions/download-artifact@v4.1.4
-        id: download
+        name: Build and test FTL
+        uses: ./.github/actions/deploy
         with:
-          path: ftl_builds/
           pattern: pihole-*
-          merge-multiple: true
-      -
-        name: Display structure of downloaded files
-        run: ls -R
-        working-directory: ${{steps.download.outputs.download-path}}
-      -
-        name: Install SSH Key
-        uses: benoitchantre/setup-ssh-authentication-action@1.0.1
-        with:
-          private-key: ${{ secrets.SSH_KEY }}
-          known-hosts: ${{ secrets.KNOWN_HOSTS }}
-      -
-        name: Untar documentation files
-        working-directory: ftl_builds/
-        run: |
-          mkdir docs/
-          tar xzvf api-docs.tar.gz -C docs/
-      -
-        name: Display structure of files ready for upload
-        run: ls -R
-        working-directory: ftl_builds/
-      -
-        name: Transfer Builds to Pi-hole server for pihole checkout
-        if: github.actor != 'dependabot[bot]'
-        env:
-          USER: ${{ secrets.SSH_USER }}
-          HOST: ${{ secrets.SSH_HOST }}
-          TARGET_DIR: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
-          SOURCE_DIR: ftl_builds/
-        run: |
-          bash ./deploy.sh
-      -
-        name: Attach binaries to release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            ftl_builds/*
+          target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
+          event_name: ${{ github.event_name }}
+          actor: ${{ github.actor }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
 
   deploy-riscv64:
     if: github.event_name != 'pull_request'
@@ -347,41 +164,14 @@ jobs:
         name: Checkout code
         uses: actions/checkout@v4.1.1
       -
-        name: Get Binaries and documentation built in previous jobs
-        uses: actions/download-artifact@v4.1.4
-        id: download
+        name: Build and test FTL
+        uses: ./.github/actions/deploy
         with:
-          path: ftl_builds/
           pattern: riscv64-pihole-*
-          merge-multiple: true
-      -
-        name: Display structure of downloaded files
-        run: ls -R
-        working-directory: ${{steps.download.outputs.download-path}}
-      -
-        name: Install SSH Key
-        uses: benoitchantre/setup-ssh-authentication-action@1.0.1
-        with:
-          private-key: ${{ secrets.SSH_KEY }}
-          known-hosts: ${{ secrets.KNOWN_HOSTS }}
-      -
-        name: Display structure of files ready for upload
-        run: ls -R
-        working-directory: ftl_builds/
-      -
-        name: Transfer Builds to Pi-hole server for pihole checkout
-        if: github.actor != 'dependabot[bot]'
-        env:
-          USER: ${{ secrets.SSH_USER }}
-          HOST: ${{ secrets.SSH_HOST }}
-          TARGET_DIR: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
-          SOURCE_DIR: ftl_builds/
-        run: |
-          bash ./deploy.sh
-      -
-        name: Attach binaries to release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            ftl_builds/*
+          target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
+          event_name: ${{ github.event_name }}
+          actor: ${{ github.actor }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
