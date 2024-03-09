@@ -87,7 +87,7 @@ jobs:
         run: ls -l
       -
         name: Build and test FTL in ftl-build container (QEMU)
-        uses: Wandalen/wretry.action@v1.4.5
+        uses: Wandalen/wretry.action@v1.4.8
         with:
           attempt_limit: 3
           action: docker/build-push-action@v5.0.0
@@ -186,7 +186,7 @@ jobs:
       -
         name: Attach binaries to release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             ftl_builds/*
