@@ -33,13 +33,20 @@ runs:
   using: "composite"
   steps:
     -
-      name: Get binaries (and possibly documentation) built in previous jobs
+      name: Get binaries built in previous jobs
       uses: actions/download-artifact@v4.1.4
       id: download
       with:
         path: ftl_builds/
         pattern: ${{ inputs.pattern }}
         merge-multiple: true
+    -
+      name: Get documentation files built in previous jobs
+      if: inputs.pattern == 'pihole-FTL-amd64-binary'
+      uses: actions/download-artifact@v4.1.4
+      with:
+        path: ftl_builds/
+        name: pihole-api-docs
     -
       name: Display structure of downloaded files
       shell: bash
@@ -50,7 +57,12 @@ runs:
       uses: benoitchantre/setup-ssh-authentication-action@1.0.1
       with:
         private-key: ${{ inputs.SSH_KEY }}
+        private-key-name: id_rsa
         known-hosts: ${{ inputs.KNOWN_HOSTS }}
+    -
+      name: Set private key permissions
+      shell: bash
+      run: chmod 600 ~/.ssh/id_rsa
     -
       name: Untar documentation files
       if: inputs.pattern == 'pihole-FTL-amd64-binary'
