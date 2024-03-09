@@ -14,6 +14,9 @@ inputs:
   actor:
     required: true
     description: The name of the user or app that initiated the workflow run
+  upload_docs:
+    required: true
+    description: Whether to upload the documentation to the server
   # Secrets cannot be accessed in the action.yml file so we need to pass them as
   # inputs to the action.
   SSH_KEY:
@@ -33,7 +36,7 @@ runs:
   using: "composite"
   steps:
     -
-      name: Get Binaries and documentation built in previous jobs
+      name: Get binaries (and possibly documentation) built in previous jobs
       uses: actions/download-artifact@v4.1.4
       id: download
       with:
@@ -53,6 +56,7 @@ runs:
         known-hosts: ${{ inputs.KNOWN_HOSTS }}
     -
       name: Untar documentation files
+      if: inputs.upload_docs == 'true'
       working-directory: ftl_builds/
       shell: bash
       run: |

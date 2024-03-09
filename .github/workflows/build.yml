@@ -150,6 +150,7 @@ jobs:
           target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
           event_name: ${{ github.event_name }}
           actor: ${{ github.actor }}
+          upload_docs: true
           SSH_KEY: ${{ secrets.SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -171,6 +172,7 @@ jobs:
           target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
           event_name: ${{ github.event_name }}
           actor: ${{ github.actor }}
+          upload_docs: false
           SSH_KEY: ${{ secrets.SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
           SSH_USER: ${{ secrets.SSH_USER }}
