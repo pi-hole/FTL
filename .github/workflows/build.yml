@@ -50,7 +50,7 @@ jobs:
           [[ $FAIL == 1 ]] && exit 1 || echo "Branch name depth check passed."
         shell: bash
 
-  gha-x86:
+  gha:
     runs-on: ubuntu-latest
     needs: smoke-tests
     strategy:
@@ -61,6 +61,8 @@ jobs:
             bin_name: pihole-FTL-amd64
           - platform: linux/386
             bin_name: pihole-FTL-386
+          - platform: linux/riscv64
+            bin_name: pihole-FTL-riscv64
     env:
       CI_ARCH: ${{ matrix.platform }}
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
@@ -76,34 +78,6 @@ jobs:
           platform: ${{ matrix.platform }}
           bin_name: ${{ matrix.bin_name }}
           artifact_name: ${{ matrix.bin_name }}-binary
-          target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
-          git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
-          git_tag: ${{ needs.smoke-tests.outputs.GIT_TAG }}
-          event_name: ${{ github.event_name }}
-          actor: ${{ github.actor }}
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-
-  gha-riscv64:
-    runs-on: ubuntu-latest
-    needs: smoke-tests
-    env:
-      CI_ARCH: linux/riscv64
-      GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
-      GIT_TAG: ${{ needs.smoke-tests.outputs.GIT_TAG }}
-    steps:
-      -
-        name: Checkout code
-        uses: actions/checkout@v4.1.1
-      -
-        name: Build and test and deploy FTL
-        uses: ./.github/actions/build-and-test
-        with:
-          platform: linux/riscv64
-          bin_name: pihole-FTL-riscv64
-          artifact_name: pihole-FTL-riscv64-binary
           target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
           git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
           git_tag: ${{ needs.smoke-tests.outputs.GIT_TAG }}
