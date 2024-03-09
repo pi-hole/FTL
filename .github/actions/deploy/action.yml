@@ -90,7 +90,7 @@ runs:
     -
       name: Attach binaries to release
       if: inputs.event_name == 'release'
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           ftl_builds/*
