@@ -79,6 +79,19 @@ jobs:
           git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
           git_tag: ${{ needs.smoke-tests.outputs.GIT_TAG }}
           event_name: ${{ github.event_name }}
+      -
+        name: Deploy
+        if: github.event_name != 'pull_request'
+        uses: ./.github/actions/deploy
+        with:
+          pattern: ${{ matrix.bin_name }}-binary
+          target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
+          event_name: ${{ github.event_name }}
+          actor: ${{ github.actor }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
 
   build-gha-riscv64:
     runs-on: ubuntu-latest
@@ -97,10 +110,23 @@ jobs:
         with:
           platform: linux/riscv64
           bin_name: pihole-FTL-riscv64
-          artifact_name: riscv64-pihole-FTL-riscv64-binary
+          artifact_name: pihole-FTL-riscv64-binary
           git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
           git_tag: ${{ needs.smoke-tests.outputs.GIT_TAG }}
           event_name: ${{ github.event_name }}
+      -
+        name: Deploy
+        if: github.event_name != 'pull_request'
+        uses: ./.github/actions/deploy
+        with:
+          pattern: ${{ matrix.bin_name }}-binary
+          target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
+          event_name: ${{ github.event_name }}
+          actor: ${{ github.actor }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
 
   build-self-hosted:
     runs-on: self-hosted
@@ -133,46 +159,15 @@ jobs:
           git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
           git_tag: ${{ needs.smoke-tests.outputs.GIT_TAG }}
           event_name: ${{ github.event_name }}
-
-  deploy:
-    if: github.event_name != 'pull_request'
-    needs: [smoke-tests, build-gha-x86, build-self-hosted]
-    runs-on: ubuntu-latest
-    steps:
       -
-        name: Checkout code
-        uses: actions/checkout@v4.1.1
-      -
-        name: Build and test FTL
+        name: Deploy
+        if: github.event_name != 'pull_request'
         uses: ./.github/actions/deploy
         with:
-          pattern: pihole-*
+          pattern: ${{ matrix.bin_name }}-binary
           target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
           event_name: ${{ github.event_name }}
           actor: ${{ github.actor }}
-          upload_docs: true
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-
-  deploy-riscv64:
-    if: github.event_name != 'pull_request'
-    needs: [smoke-tests, build-gha-riscv64]
-    runs-on: ubuntu-latest
-    steps:
-      -
-        name: Checkout code
-        uses: actions/checkout@v4.1.1
-      -
-        name: Build and test FTL
-        uses: ./.github/actions/deploy
-        with:
-          pattern: riscv64-pihole-*
-          target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
-          event_name: ${{ github.event_name }}
-          actor: ${{ github.actor }}
-          upload_docs: false
           SSH_KEY: ${{ secrets.SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
           SSH_USER: ${{ secrets.SSH_USER }}
