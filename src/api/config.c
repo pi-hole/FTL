@@ -773,7 +773,7 @@ static int api_config_patch(struct ftl_conn *api)
 			free_config(&newconf);
 			return send_json_error(api, 400,
 			                       "bad_request",
-			                       "Invalid value",
+			                       "Config item validation failed",
 			                       errbuf);
 		}
 

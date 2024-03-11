@@ -619,7 +619,7 @@ void initConfig(struct config *conf)
 	conf->dns.revServers.a = cJSON_CreateStringReference("array of reverse servers each one in one of the following forms: \"<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>\", e.g., \"true,192.168.0.0/24,192.168.0.1,fritz.box\"");
 	conf->dns.revServers.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.revServers.d.json = cJSON_CreateArray();
-	conf->dns.revServers.c = validate_dns_revServers; // Only type-based checking
+	conf->dns.revServers.c = validate_dns_revServers;
 	conf->dns.revServers.f = FLAG_RESTART_FTL;
 
 	// sub-struct dns.rate_limit

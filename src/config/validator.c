@@ -153,7 +153,7 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 		// Check if there are at least one cname and a target
 		if(j < 2)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d] element is not a valid CNAME definition", key, i);
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not a valid CNAME definition (too few elements)", key, i);
 			return false;
 		}
 	}
@@ -378,12 +378,14 @@ bool validate_regex_array(union conf_value *val, const char *key, char err[VALID
 // Each entry has to be of form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>"
 bool validate_dns_revServers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
+	// Check if it's an array
 	if(!cJSON_IsArray(val->json))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not an array", key);
 		return false;
 	}
 
+	// Iterate over all array items
 	for(int i = 0; i < cJSON_GetArraySize(val->json); i++)
 	{
 		// Get array item
@@ -466,7 +468,8 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 					const int prefix_int = atoi(prefix);
 					if(prefix_int < 0 || (ipv4 && prefix_int > 32) || (ipv6 && prefix_int > 128))
 					{
-						snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <prefix-len> not a valid prefix length (\"%s\")", key, i, prefix);
+						snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <prefix-len> not a valid %sprefix length (\"%s\")",
+						         key, i, ipv4 ? "IPv4 " : ipv6 ? "IPv6 " : "", prefix);
 						free(str);
 						return false;
 					}
@@ -537,6 +540,14 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 
 			// Increment element counter
 			e++;
+		}
+
+		// Check if there are all required elements
+		if(e < 4)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: entry does not have all required elements (<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>)", key, i);
+			free(str);
+			return false;
 		}
 	}
 

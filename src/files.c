@@ -221,7 +221,7 @@ void ls_dir(const char* path)
 		format_memory_size(prefix, (unsigned long long)st.st_size, &formatted);
 
 		// Log output for this file
-		log_info("%s %-15s %3.0f%s  %s", permissions, usergroup, formatted, prefix, filename);
+		log_info("%s %-15s %3.0f%s  %s", permissions, usergroup, formatted, strlen(prefix) > 0 ? prefix : " ", filename);
 	}
 
 	log_info("---------------------------------------------------");
