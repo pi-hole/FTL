@@ -115,17 +115,10 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 			return false;
 	}
 
-	// Check if we are in Adam mode
-	// (only read the env vars)
-	const char *envvar = getenv("FTLCONF_ENV_ONLY");
-	const bool adam_mode = (envvar != NULL &&
-	                          (strcmp(envvar, "true") == 0 ||
-	                           strcmp(envvar, "yes") == 0));
-
 	// Try to read debug config. This is done before the full config
 	// parsing to allow for debug output further down
 	// First try to read env variable, if this fails, read TOML
-	if((teleporter || !readEnvValue(&newconf->debug.config, newconf)) && !adam_mode)
+	if(teleporter || !readEnvValue(&newconf->debug.config, newconf))
 	{
 		toml_table_t *conf_debug = toml_table_in(toml, "debug");
 		if(conf_debug)
@@ -152,10 +145,6 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 			new_conf_item->f |= FLAG_ENV_VAR;
 			continue;
 		}
-
-		// Do not read TOML file when in Adam mode
-		if(adam_mode)
-			continue;
 
 		// Get config path depth
 		unsigned int level = config_path_depth(new_conf_item->p);
