@@ -38,6 +38,9 @@
 // characters will be replaced by their UTF-8 escape sequences (UCS-2)
 #define TOML_UTF8
 
+// Size of the buffer used to report possible errors during config validation
+#define VALIDATOR_ERRBUF_LEN 256
+
 // Location of the legacy (pre-v6.0) config file
 #define GLOBALCONFFILE_LEGACY "/etc/pihole/pihole-FTL.conf"
 
@@ -109,6 +112,7 @@ struct conf_item {
 	uint8_t f;            // additional Flags
 	union conf_value v;   // current Value
 	union conf_value d;   // Default value
+	bool (*c)(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]); // Function pointer to validate the value
 };
 
 struct enum_options {
