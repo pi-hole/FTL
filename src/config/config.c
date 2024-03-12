@@ -866,6 +866,7 @@ void initConfig(struct config *conf)
 	// (like the query database).
 	conf->database.useWAL.f = FLAG_ADVANCED_SETTING | FLAG_RESTART_FTL;
 	conf->database.useWAL.d.b = true;
+	conf->database.useWAL.c = validate_stub; // Only type-based checking
 
 	// sub-struct database.network
 	conf->database.network.parseARPcache.k = "database.network.parseARPcache";
