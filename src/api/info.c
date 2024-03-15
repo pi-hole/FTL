@@ -368,7 +368,7 @@ static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 	if(hwmon_dir == NULL)
 	{
 		// Nothing to read here, leave array empty
-		log_warn("Cannot open %s: %s", dirname, strerror(errno));
+		log_debug(DEBUG_API, "Cannot open %s: %s", dirname, strerror(errno));
 		return 0;
 	}
 
