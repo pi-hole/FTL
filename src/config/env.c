@@ -44,9 +44,14 @@ void getEnvVars(void)
 		// Check if this is a FTLCONF_ variable
 		if(strncmp(*env, FTLCONF_PREFIX, sizeof(FTLCONF_PREFIX) - 1) == 0)
 		{
-			// Split key and value
-			char *key = strtok(*env, "=");
-			char *value = strtok(NULL, "=");
+			// Make a copy of the environment variable to avoid
+			// modifying the original string
+			char *env_copy = strdup(*env);
+
+			// Split key and value using strtok_r
+			char *saveptr = NULL;
+			char *key = strtok_r(env_copy, "=", &saveptr);
+			char *value = strtok_r(NULL, "=", &saveptr);
 
 			// Log warning if value is missing
 			if(value == NULL)
@@ -64,6 +69,9 @@ void getEnvVars(void)
 			new_item->allowed = NULL;
 			new_item->next = env_list;
 			env_list = new_item;
+
+			// Free the copy of the environment variable
+			free(env_copy);
 		}
 	}
 
