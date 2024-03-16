@@ -1131,8 +1131,6 @@ void DB_read_queries(void)
 		clientsData *client = getClient(clientID, true);
 		client->lastQuery = queryTimeStamp;
 
-		// Update overTime data
-		overTime[timeidx].total++;
 		// Update client's overTime data structure
 		change_clientcount(client, 0, 0, timeidx, 1);
 

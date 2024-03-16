@@ -713,6 +713,12 @@
     # This setting can be overwritten at run-time using the parameter N
     maxClients = 10
 
+    # How should the API compute the most active clients? If set to true, the API will
+    # return the clients with the most queries globally (within 24 hours). If set to
+    # false, the API will return the clients with the most queries per time slot
+    # individually.
+    client_history_global_max = true
+
     # Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)
     allow_destructive = true
 

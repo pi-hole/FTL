@@ -246,6 +246,7 @@ struct config {
 			struct conf_item excludeDomains;
 			struct conf_item maxHistory;
 			struct conf_item maxClients;
+			struct conf_item client_history_global_max;
 			struct conf_item allow_destructive;
 			struct {
 				struct conf_item limit;
