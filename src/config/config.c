@@ -1064,6 +1064,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.client_history_global_max.h = "How should the API compute the most active clients? If set to true, the API will return the clients with the most queries globally (within 24 hours). If set to false, the API will return the clients with the most queries per time slot individually.";
 	conf->webserver.api.client_history_global_max.t = CONF_BOOL;
 	conf->webserver.api.client_history_global_max.d.b = true;
+	conf->webserver.api.client_history_global_max.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.allow_destructive.k = "webserver.api.allow_destructive";
 	conf->webserver.api.allow_destructive.h = "Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)";
