@@ -10,6 +10,8 @@
 #ifndef METRICS_H
 #define METRICS_H
 
+#include "webserver/cJSON/cJSON.h"
+
 // defined in src/dnsmasq/cache.c
 const char *rrtype_name(unsigned short type);
 
@@ -87,5 +89,7 @@ struct metrics
 };
 
 void get_dnsmasq_metrics(struct metrics *ci);
+
+void get_dnsmasq_metrics_obj(cJSON *json);
 
 #endif // METRICS_H

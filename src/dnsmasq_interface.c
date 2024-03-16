@@ -1417,10 +1417,10 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 	}
 
-	// Skip all checks and continue if we hit already at least one whitelist in the chain
+	// Skip all checks and continue if we hit already at least one allowlist in the chain
 	if(query->flags.allowed)
 	{
-		log_debug(DEBUG_QUERIES, "Query is permitted as at least one whitelist entry matched");
+		log_debug(DEBUG_QUERIES, "Query is permitted as at least one allowlist entry matched");
 		return false;
 	}
 
@@ -2422,6 +2422,17 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 		query_set_dnssec(query, DNSSEC_TRUNCATED);
 	else
 		log_warn("Unknown DNSSEC status \"%s\"", arg);
+
+	// Set reply to NONE (if not already set) as we will not reply to this
+	// query when the status is neither SECURE nor INSECURE
+	if (query->reply == REPLY_UNKNOWN &&
+	    query->dnssec != DNSSEC_SECURE &&
+	    query->dnssec != DNSSEC_INSECURE)
+	{
+		struct timeval response;
+		gettimeofday(&response, 0);
+		query_set_reply(0, REPLY_NONE, addr, query, response);
+	}
 
 	// Mark query for updating in the database
 	query->flags.database.changed = true;
@@ -3485,4 +3496,10 @@ static const char *check_dnsmasq_name(const char *name)
 		return ".";
 	// else
 	return name;
+}
+
+void get_dnsmasq_metrics_obj(cJSON *json)
+{
+	for (unsigned int i = 0; i < __METRIC_MAX; i++)
+		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
 }

@@ -487,6 +487,15 @@
   # How often do we store queries in FTL's database [seconds]?
   DBinterval = 60
 
+  # Should FTL enable Write-Ahead Log (WAL) mode for the on-disk query database
+  # (configured via files.database)?
+  # It is recommended to leave this setting enabled for performance reasons. About the
+  # only reason to disable WAL mode is if you are experiencing specific issues with it,
+  # e.g., when using a database that is accessed from multiple hosts via a network
+  # share. When this setting is disabled, FTL will use SQLite3's default journal mode
+  # (rollback journal in DELETE mode).
+  useWAL = true
+
   [database.network]
     # Should FTL analyze the local ARP cache? When disabled, client identification and the
     # network table will stop working reliably.

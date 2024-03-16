@@ -753,7 +753,7 @@ static int update_netDB_interface(sqlite3 *db, const int network_id, const char 
 
 // Loop over all clients known to FTL and ensure we add them all to the database
 static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status *client_status,
-                                             const int clients, time_t now, unsigned int *additional_entries)
+                                             const int clients, const time_t now, unsigned int *additional_entries)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -1546,6 +1546,7 @@ void parse_neighbor_cache(sqlite3* db)
 		free(client_status);
 		return;
 	}
+
 	free(client_status);
 	client_status = NULL;
 

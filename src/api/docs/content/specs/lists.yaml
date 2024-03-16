@@ -5,6 +5,7 @@ components:
       summary: Modify list
       parameters:
         - $ref: 'lists.yaml#/components/parameters/list'
+        - $ref: 'lists.yaml#/components/parameters/listtype'
       get:
         summary: Get lists
         tags:
@@ -449,3 +450,14 @@ components:
       required: true
       description: Address of the list
       example: https://hosts-file.net/ad_servers.txt
+    listtype:
+      in: query
+      name: type
+      schema:
+        type: string
+        enum:
+          - "allow"
+          - "block"
+      required: false
+      description: Type of list, optional
+      example: block

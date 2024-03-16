@@ -54,7 +54,7 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 		// Domain must not contain any character other than [a-zA-Z0-9.-_]
 		if(domain[i] != '-' && domain[i] != '.' && domain[i] != '_' &&
 		   (domain[i] < 'a' || domain[i] > 'z') &&
-//		   (domain[i] < 'A' || domain[i] > 'Z') && // not needed as all domains are converted to lowercase
+		   (domain[i] < 'A' || domain[i] > 'Z') &&
 		   (domain[i] < '0' || domain[i] > '9'))
 			return false;
 

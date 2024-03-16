@@ -48,6 +48,13 @@ void getEnvVars(void)
 			char *key = strtok(*env, "=");
 			char *value = strtok(NULL, "=");
 
+			// Log warning if value is missing
+			if(value == NULL)
+			{
+				log_warn("Environment variable %s has no value, substituting with empty string", key);
+				value = (char*)"";
+			}
+
 			// Add to list
 			struct env_item *new_item = calloc(1, sizeof(struct env_item));
 			new_item->used = false;
