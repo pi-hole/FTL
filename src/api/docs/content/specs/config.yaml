@@ -338,8 +338,6 @@ components:
               properties:
                 DBimport:
                   type: boolean
-                DBexport:
-                  type: boolean
                 maxDBdays:
                   type: integer
                 DBinterval:
@@ -662,7 +660,6 @@ components:
             refreshNames: IPV4_ONLY
           database:
             DBimport: true
-            DBexport: true
             maxDBdays: 365
             DBinterval: 60
             useWAL: true

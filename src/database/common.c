@@ -578,13 +578,9 @@ void db_init(void)
 	dbclose(&db);
 
 	// Log if users asked us to not use the long-term database for queries
-	// We will still use it to store warnings in it
-	config.database.DBexport.v.b = true;
-	if(config.database.maxDBdays.v.i == 0)
-	{
+	// We will still use it to store warnings (Pi-hole diagnosis system)
+	if(config.database.maxDBdays.v.ui == 0)
 		log_info("Not using the database for storing queries");
-		config.database.DBexport.v.b = false;
-	}
 
 	log_info("Database successfully initialized");
 }

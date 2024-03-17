@@ -478,10 +478,8 @@
   # recent history?
   DBimport = true
 
-  # Should FTL store queries in the long-term database?
-  DBexport = true
-
   # How long should queries be stored in the database [days]?
+  # Setting this to 0 disables exporting queries to the database.
   maxDBdays = 365
 
   # How often do we store queries in FTL's database [seconds]?
