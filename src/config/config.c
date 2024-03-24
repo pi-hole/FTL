@@ -778,6 +778,13 @@ void initConfig(struct config *conf)
 	conf->dhcp.rapidCommit.d.b = false;
 	conf->dhcp.rapidCommit.c = validate_stub; // Only type-based checking
 
+	conf->dhcp.logging.k = "dhcp.logging";
+	conf->dhcp.logging.h = "Enable logging for DHCP. This will log all relevant DHCP-related activity, including, e.g., all the options sent to DHCP clients and the tags used to determine them (if any). This can be useful for debugging DHCP issues. The generated output is saved to the file specified by files.log.dnsmasq below.";
+	conf->dhcp.logging.t = CONF_BOOL;
+	conf->dhcp.logging.f = FLAG_RESTART_FTL;
+	conf->dhcp.logging.d.b = false;
+	conf->dhcp.logging.c = validate_stub; // Only type-based checking
+
 	conf->dhcp.hosts.k = "dhcp.hosts";
 	conf->dhcp.hosts.h = "Per host parameters for the DHCP server. This allows a machine with a particular hardware address to be always allocated the same hostname, IP address and lease time or to specify static DHCP leases";
 	conf->dhcp.hosts.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]\"");
