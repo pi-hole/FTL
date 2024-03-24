@@ -72,7 +72,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char* arg, const int id, const char* file, const int line);
 static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char* file, const int line);
 static void FTL_dnssec(const char *result, const union all_addr *addr, const int id, const char* file, const int line);
-static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
+static void mysockaddr_extract_ip_port(const union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
 static void check_pihole_PTR(char *domain);
 #define query_set_dnssec(query, dnssec) _query_set_dnssec(query, dnssec, __FILE__, __LINE__)
@@ -1829,7 +1829,7 @@ static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, c
 	inet_ntop(family, addr, ip, ADDRSTRLEN);
 }
 
-static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port)
+static void mysockaddr_extract_ip_port(const union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port)
 {
 	// Extract IP address
 	inet_ntop(server->sa.sa_family,
@@ -3507,4 +3507,27 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 {
 	for (unsigned int i = 0; i < __METRIC_MAX; i++)
 		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
+}
+
+void FTL_connection_error(const char *reason, const union mysockaddr *addr)
+{
+	// Make a private copy of the error
+	const char *error = strerror(errno);
+
+	if(config.debug.queries.v.b)
+	{
+		const int id = daemon->log_display_id;
+
+		// Format the address into a string (if available)
+		in_port_t port = 0;
+		char ip[ADDRSTRLEN] = { 0 };
+		if(addr != NULL)
+			mysockaddr_extract_ip_port(addr, ip, &port);
+
+		// Log to FTL.log
+		log_debug(DEBUG_QUERIES, "Connection error: %s (%s) for %s#%u (ID %d)", reason, error, ip, port, id);
+	}
+
+	// Log to pihole.log
+	my_syslog(LOG_ERR, "%s: %s", reason, error);
 }

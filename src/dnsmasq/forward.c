@@ -105,7 +105,12 @@ int send_from(int fd, int nowild, char *packet, size_t len,
 #ifdef HAVE_LINUX_NETWORK
       /* If interface is still in DAD, EINVAL results - ignore that. */
       if (errno != EINVAL)
-	my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
+	{
+	  my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
+	  /********** Pi-hole modification **********/
+	  FTL_connection_error("failed to send UDP reply", to);
+	  /******************************************/
+	}
 #endif
       return 0;
     }
@@ -567,6 +572,12 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		break;
 	      forward->forwardall++;
 	    }
+	    /**** Pi-hole modification ****/
+	    else
+	    {
+	      FTL_connection_error("failed to send UDP request", &srv->addr);
+	    }
+	    /******************************/
 	}
       
       if (++start == last)
@@ -2087,12 +2098,19 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	    data_sent = 1;
 	  else if (errno == ETIMEDOUT || errno == EHOSTUNREACH)
 	    timedout = 1;
+	  /**** Pi-hole modification ****/
+	  if (errno != 0)
+	    FTL_connection_error("failed to send TCP(fast-open) packet", &serv->addr);
+	  /******************************/
 #endif
 	  
 	  /* If fastopen failed due to lack of reply, then there's no point in
 	     trying again in non-FASTOPEN mode. */
 	  if (timedout || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
 	    {
+	      /**** Pi-hole modification ****/
+	      FTL_connection_error("failed to send TCP(connect) packet", &serv->addr);
+	      /******************************/
 	      close(serv->tcpfd);
 	      serv->tcpfd = -1;
 	      continue;
@@ -2107,6 +2125,10 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  !read_write(serv->tcpfd, &c2, 1, 1) ||
 	  !read_write(serv->tcpfd, payload, (rsize = (c1 << 8) | c2), 1))
 	{
+	  /**** Pi-hole modification ****/
+	  FTL_connection_error("failed to send TCP(read_write) packet", &serv->addr);
+	  /******************************/
+
 	  close(serv->tcpfd);
 	  serv->tcpfd = -1;
 	  /* We get data then EOF, reopen connection to same server,
