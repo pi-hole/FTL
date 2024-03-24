@@ -567,6 +567,12 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		break;
 	      forward->forwardall++;
 	    }
+	    /**** Pi-hole modification ****/
+	    else
+	    {
+	      my_syslog(LOG_ERR, _("failed to send packet (sendto): %s"), strerror(errno));
+	    }
+	    /******************************/
 	}
       
       if (++start == last)
@@ -2087,6 +2093,10 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	    data_sent = 1;
 	  else if (errno == ETIMEDOUT || errno == EHOSTUNREACH)
 	    timedout = 1;
+	  /**** Pi-hole modification ****/
+	  else
+	    my_syslog(LOG_ERR, _("failed to send packet (server_send): %s"), strerror(errno));
+	  /******************************/
 #endif
 	  
 	  /* If fastopen failed due to lack of reply, then there's no point in
@@ -2107,6 +2117,10 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  !read_write(serv->tcpfd, &c2, 1, 1) ||
 	  !read_write(serv->tcpfd, payload, (rsize = (c1 << 8) | c2), 1))
 	{
+	  /**** Pi-hole modification ****/
+	  my_syslog(LOG_ERR, _("failed to send packet (read_write): %s"), strerror(errno));
+	  /******************************/
+
 	  close(serv->tcpfd);
 	  serv->tcpfd = -1;
 	  /* We get data then EOF, reopen connection to same server,
