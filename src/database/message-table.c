@@ -482,26 +482,42 @@ static void format_subnet_message(char *plain, const int sizeof_plain, char *htm
 
 static void format_hostname_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *ip, const char *name, const int pos)
 {
+	cJSON *json_name = cJSON_CreateStringReference(name);
+	if(json_name == NULL)
+	{
+		log_err("format_hostname_message(): Failed to create JSON string reference for host name \"%s\" of client \"%s\"", name, ip);
+		return;
+	}
+	const char *namep = cJSON_PrintUnformatted(json_name);
+	cJSON_Delete(json_name);
+
 	// Check if the position is within the string before proceeding
 	// This is a safety measure to prevent buffer overflows caused by
 	// malicious database records
 	if(pos > (int)strlen(name))
 	{
-		log_err("format_hostname_message(): Invalid position %i for host name \"%s\" of client \"%s\"", pos, name, ip);
+		log_err("format_hostname_message(): Invalid position %i for host name \"%s\" of client \"%s\"", pos, namep, ip);
+		if(namep != NULL)
+			free(namep);
 		return;
 	}
 
-	// Format the plain text message
-	if(snprintf(plain, sizeof_plain, "Host name of client \"%s\" => \"%s\" contains (at least) one invalid character (hex %02x) at position %i",
-			ip, name, (unsigned char)name[pos], pos) > sizeof_plain)
+	// Format the plain text message (the JSON string is already escaped and
+	// contains "" around the string)
+	if(snprintf(plain, sizeof_plain, "Host name of client \"%s\" => %s contains (at least) one invalid character (hex %02x) at position %i",
+			ip, namep, (unsigned char)name[pos], pos) > sizeof_plain)
 		log_warn("format_hostname_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
 	if(sizeof_html < 1 || html == NULL)
+	{
+		if(namep != NULL)
+			free(namep);
 		return;
+	}
 
 	char *escaped_ip = escape_html(ip);
-	char *escaped_name = escape_html(name);
+	char *escaped_name = escape_html(namep);
 
 	if(snprintf(html, sizeof_html, "Host name of client <code>%s</code> => <code>%s</code> contains (at least) one invalid character (hex %02x) at position %i",
 			escaped_ip, escaped_name, (unsigned char)name[pos], pos) > sizeof_html)
@@ -511,6 +527,8 @@ static void format_hostname_message(char *plain, const int sizeof_plain, char *h
 		free(escaped_ip);
 	if(escaped_name != NULL)
 		free(escaped_name);
+	if(namep != NULL)
+		free(namep);
 }
 
 static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
