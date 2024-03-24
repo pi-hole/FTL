@@ -1368,6 +1368,15 @@
   [[ ${lines[1]} == *"WARNING:     - FTLCONF_dns_upstreams" ]]
 }
 
+@test "cJSON_GetErrorPtr and cJSON_InitHooks are never used (for thread-safety reasons)" {
+  # cJSON_GetErrorPtr() is not thread-safe but can be replaces by cJSON_ParseWithOpts()
+  # cJSON_InitHooks() is only thread-safe if used before any other cJSON function in a thread
+  # We grep for the two functions recursively and exclude cJSON.{c,h} where they are defined
+  run bash -c 'grep -rE "(cJSON_GetErrorPtr)|(cJSON_InitHooks)" src/ | grep -vE "^src/webserver/cJSON/cJSON."'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "" ]]
+}
+
 @test "CLI complains about unknown config key and offers a suggestion" {
   run bash -c './pihole-FTL --config dbg.all'
   [[ ${lines[0]} == "Unknown config option dbg.all, did you mean:" ]]
@@ -1472,7 +1481,7 @@
 
   run bash -c './pihole-FTL --config dns.revServers "abc"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == 'Config setting dns.revServers is invalid: not valid JSON, error before: abc' ]]
+  [[ ${lines[0]} == 'Config setting dns.revServers is invalid: not valid JSON, error at: abc' ]]
   [[ $status == 2 ]]
 }
 

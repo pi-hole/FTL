@@ -8,11 +8,11 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "http-common.h"
-#include "../config/config.h"
-#include "../log.h"
-#include "json_macros.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "config/config.h"
+#include "log.h"
+#include "webserver/json_macros.h"
 // UINT_MAX
 #include <limits.h>
 // HUGE_VAL
@@ -515,8 +515,7 @@ void read_and_parse_payload(struct ftl_conn *api)
 	api->payload.avail = true;
 
 	// Try to parse possibly existing JSON payload
-	api->payload.json = cJSON_Parse(api->payload.raw);
-	api->payload.json_error = cJSON_GetErrorPtr();
+	api->payload.json = cJSON_ParseWithOpts(api->payload.raw, &api->payload.json_error, 0);
 }
 
 // Escape a string to mask HTML special characters, the resulting string is
@@ -568,4 +567,62 @@ char *__attribute__((malloc)) escape_html(const char *string)
 	*ptr = '\0';
 
 	return escaped;
+}
+
+int check_json_payload(struct ftl_conn *api)
+{
+	if (api->payload.json == NULL)
+	{
+		if (api->payload.json_error == NULL)
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "No request body data",
+			                       NULL);
+		else
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid request body data (no valid JSON), error at hint",
+			                       api->payload.json_error);
+	}
+
+	// All okay
+	return 0;
+}
+
+// Black magic at work here: We build a JSON array from the group_concat result
+// delivered from the database, parse it as valid array and append it as row to
+// the data
+int parse_groupIDs(struct ftl_conn *api, tablerow *table, cJSON *row)
+{
+	const size_t buflen = strlen(table->group_ids) + 3u;
+	char *group_ids_str = calloc(buflen, sizeof(char));
+	if(group_ids_str == NULL)
+	{
+		return send_json_error(api, 500, // 500 Internal Server Error
+		                       "out_of_memory",
+		                       "Out of memory",
+		                       NULL);
+	}
+	group_ids_str[0] = '[';
+	strcpy(group_ids_str+1u , table->group_ids);
+	group_ids_str[buflen-2u] = ']';
+	group_ids_str[buflen-1u] = '\0';
+	const char *json_error = NULL;
+	cJSON *group_ids = cJSON_ParseWithOpts(group_ids_str, &json_error, false);
+	free(group_ids_str);
+	if(group_ids == NULL)
+	{
+		// Error parsing group_ids, substitute empty array
+		// Note: This should never happen as the database's aggregate
+		//       function should always return a valid JSON array
+		log_err("Error parsing group_ids, error at: %s", json_error);
+		JSON_ADD_ITEM_TO_OBJECT(row, "groups", JSON_NEW_ARRAY());
+	}
+	else
+	{
+		JSON_ADD_ITEM_TO_OBJECT(row, "groups", group_ids);
+	}
+
+	// Success
+	return 0;
 }
