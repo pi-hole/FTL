@@ -109,5 +109,6 @@ enum http_method __attribute__((pure)) http_method(struct mg_connection *conn);
 const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api);
 void read_and_parse_payload(struct ftl_conn *api);
 char * __attribute__((malloc)) escape_html(const char *string);
+char * __attribute__((malloc)) escape_json(const char *string);
 
 #endif // HTTP_H

@@ -482,14 +482,12 @@ static void format_subnet_message(char *plain, const int sizeof_plain, char *htm
 
 static void format_hostname_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *ip, const char *name, const int pos)
 {
-	cJSON *json_name = cJSON_CreateStringReference(name);
-	if(json_name == NULL)
+	char *namep = escape_json(name);
+	if(namep == NULL)
 	{
-		log_err("format_hostname_message(): Failed to create JSON string reference for host name \"%s\" of client \"%s\"", name, ip);
+		log_err("format_hostname_message(): Failed to JSON escape host name \"%s\" of client \"%s\"", name, ip);
 		return;
 	}
-	const char *namep = cJSON_PrintUnformatted(json_name);
-	cJSON_Delete(json_name);
 
 	// Check if the position is within the string before proceeding
 	// This is a safety measure to prevent buffer overflows caused by
