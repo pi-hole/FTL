@@ -191,6 +191,7 @@ struct config {
 		struct conf_item ipv6;
 		struct conf_item rapidCommit;
 		struct conf_item multiDNS;
+		struct conf_item logging;
 		struct conf_item hosts;
 	} dhcp;
 

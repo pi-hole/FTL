@@ -427,6 +427,12 @@
   # clients, which should prevent this from happening.
   multiDNS = false
 
+  # Enable logging for DHCP. This will log all relevant DHCP-related activity, including,
+  # e.g., all the options sent to DHCP clients and the tags used to determine them (if
+  # any). This can be useful for debugging DHCP issues. The generated output is saved to
+  # the file specified by files.log.dnsmasq below.
+  logging = false
+
   # Per host parameters for the DHCP server. This allows a machine with a particular
   # hardware address to be always allocated the same hostname, IP address and lease time
   # or to specify static DHCP leases
