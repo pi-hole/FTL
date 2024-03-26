@@ -637,9 +637,17 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		size_t fileSize = 0u;
 		cJSON *json = NULL;
 		const char *file = find_file_in_tar(archive, archive_size, teleporter_v5_files[i].filename, &fileSize);
-		if(file != NULL && fileSize > 0u && (json = cJSON_ParseWithLength(file, fileSize)) != NULL)
+		const char *json_error = NULL;
+		if(file != NULL && fileSize > 0u && (json = cJSON_ParseWithLengthOpts(file, fileSize, &json_error, false)) != NULL)
+		{
 			if(import_json_table(json, &teleporter_v5_files[i]))
 				JSON_COPY_STR_TO_ARRAY(imported_files, teleporter_v5_files[i].filename);
+		}
+		else if(json_error != NULL)
+		{
+			log_err("Unable to parse JSON file \"%s\", error at: %s",
+			        teleporter_v5_files[i].filename, json_error);
+		}
 	}
 
 	// Temporarily write further files to to disk so we can import them on restart

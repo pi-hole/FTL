@@ -461,19 +461,9 @@ int api_auth(struct ftl_conn *api)
 	if(api->method == HTTP_POST)
 	{
 		// Try to extract response from payload
-		if (api->payload.json == NULL)
-		{
-			if (api->payload.json_error == NULL)
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "No request body data",
-				                       NULL);
-			else
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Invalid request body data (no valid JSON), error before hint",
-				                       api->payload.json_error);
-		}
+		const int ret = check_json_payload(api);
+		if(ret != 0)
+			return ret;
 
 		// Check if password is available
 		cJSON *json_password;

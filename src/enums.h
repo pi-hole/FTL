@@ -323,4 +323,21 @@ enum cert_check {
 	CERT_OKAY
 } __attribute__ ((packed));
 
+enum http_method {
+	HTTP_UNKNOWN = 0,
+	HTTP_GET = 1 << 0,
+	HTTP_POST = 1 << 1,
+	HTTP_PUT = 1 << 2,
+	HTTP_PATCH = 1 << 3,
+	HTTP_DELETE = 1 << 4,
+	HTTP_OPTIONS = 1 << 5,
+};
+
+enum api_flags {
+	API_FLAG_NONE = 0,
+	API_DOMAINS = 1 << 0,
+	API_PARSE_JSON = 1 << 1,
+	API_BATCHDELETE = 1 << 2,
+};
+
 #endif // ENUMS_H

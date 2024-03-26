@@ -11,11 +11,9 @@
 #define GRAVITY_H
 
 // clients data structure
-#include "../datastructure.h"
-// enum http_method
-#include "../webserver/http-common.h"
+#include "datastructure.h"
 // Definition of struct regexData
-#include "../regex_r.h"
+#include "regex_r.h"
 
 // Table row record, not all fields are used by all tables
 typedef struct {

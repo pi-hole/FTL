@@ -15,6 +15,8 @@
 #include "database/gravity-db.h"
 // match_regex()
 #include "regex_r.h"
+// parse_groupIDs()
+#include "webserver/http-common.h"
 #include <idn2.h>
 
 #define MAX_SEARCH_RESULTS 10000u
@@ -77,19 +79,9 @@ static int search_table(struct ftl_conn *api, const char *item,
 
 		if(table.group_ids != NULL)
 		{
-			// Black magic at work here: We build a JSON array from
-			// the group_concat result delivered from the database,
-			// parse it as valid array and append it as row to the
-			// data
-			const size_t buflen = strlen(table.group_ids)+3u;
-			char *group_ids_str = calloc(buflen, sizeof(char));
-			group_ids_str[0] = '[';
-			strcpy(group_ids_str+1u , table.group_ids);
-			group_ids_str[buflen-2u] = ']';
-			group_ids_str[buflen-1u] = '\0';
-			cJSON * group_ids = cJSON_Parse(group_ids_str);
-			free(group_ids_str);
-			JSON_ADD_ITEM_TO_OBJECT(row, "groups", group_ids);
+			const int ret = parse_groupIDs(api, &table, row);
+			if(ret != 0)
+				return ret;
 		}
 		else
 		{
