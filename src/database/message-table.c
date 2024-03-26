@@ -482,25 +482,51 @@ static void format_subnet_message(char *plain, const int sizeof_plain, char *htm
 
 static void format_hostname_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *ip, const char *name, const int pos)
 {
-	if(snprintf(plain, sizeof_plain, "Host name of client \"%s\" => \"%s\" contains (at least) one invalid character at position %i",
-			ip, name, pos) > sizeof_plain)
+	char *namep = escape_json(name);
+	if(namep == NULL)
+	{
+		log_err("format_hostname_message(): Failed to JSON escape host name \"%s\" of client \"%s\"", name, ip);
+		return;
+	}
+
+	// Check if the position is within the string before proceeding
+	// This is a safety measure to prevent buffer overflows caused by
+	// malicious database records
+	if(pos > (int)strlen(name))
+	{
+		log_err("format_hostname_message(): Invalid position %i for host name \"%s\" of client \"%s\"", pos, namep, ip);
+		if(namep != NULL)
+			free(namep);
+		return;
+	}
+
+	// Format the plain text message (the JSON string is already escaped and
+	// contains "" around the string)
+	if(snprintf(plain, sizeof_plain, "Host name of client \"%s\" => %s contains (at least) one invalid character (hex %02x) at position %i",
+			ip, namep, (unsigned char)name[pos], pos) > sizeof_plain)
 		log_warn("format_hostname_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
 	if(sizeof_html < 1 || html == NULL)
+	{
+		if(namep != NULL)
+			free(namep);
 		return;
+	}
 
 	char *escaped_ip = escape_html(ip);
-	char *escaped_name = escape_html(name);
+	char *escaped_name = escape_html(namep);
 
-	if(snprintf(html, sizeof_html, "Host name of client <code>%s</code> => <code>%s</code> contains (at least) one invalid character at position %i",
-			escaped_ip, escaped_name, pos) > sizeof_html)
+	if(snprintf(html, sizeof_html, "Host name of client <code>%s</code> => <code>%s</code> contains (at least) one invalid character (hex %02x) at position %i",
+			escaped_ip, escaped_name, (unsigned char)name[pos], pos) > sizeof_html)
 		log_warn("format_hostname_message(): Buffer too small to hold HTML message, warning truncated");
 
 	if(escaped_ip != NULL)
 		free(escaped_ip);
 	if(escaped_name != NULL)
 		free(escaped_name);
+	if(namep != NULL)
+		free(namep);
 }
 
 static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
@@ -1002,8 +1028,12 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 void logg_hostname_warning(const char *ip, const char *name, const unsigned int pos)
 {
 	// Create message
-	char buf[2048];
+	char buf[2048] = { 0 };
 	format_hostname_message(buf, sizeof(buf), NULL, 0, ip, name, pos);
+
+	// Return early if we did not generate a message
+	if(buf[0] == '\0')
+		return;
 
 	// Log to FTL.log
 	log_warn("%s", buf);

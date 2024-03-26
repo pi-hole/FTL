@@ -261,7 +261,7 @@ static char *__attribute__((malloc)) ngethostbyname(const char *host, const char
 		          ipaddr, answers[i].name, i, answers[i].rdata);
 
 		// We break out of the loop if this is a valid hostname
-		if(valid_hostname(name, ipaddr))
+		if(strlen(name) > 0 && valid_hostname(name, ipaddr))
 		{
 			break;
 		}
