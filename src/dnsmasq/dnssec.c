@@ -943,8 +943,10 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 			   
 			   if (!cache_insert(name, &a, class, now, ttl, F_FORWARD | F_DNSKEY | F_DNSSECOK))
 			     {
+			       /* cache_insert fails when the cache is too small, so error with STAT_ABANDONED which
+				  will log this as a resource exhaustion problem, which it is. */
 			       blockdata_free(key);
-			       return STAT_BOGUS;
+			       return STAT_ABANDONED;
 			     }
 			   
 			   a.log.keytag = keytag;
@@ -1091,8 +1093,10 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 		  
 		  if (!cache_insert(name, &a, class, now, ttl, F_FORWARD | F_DS | F_DNSSECOK))
 		    {
+		      /* cache_insert fails when the cache is too small, so error with STAT_ABANDONED which
+			 will log this as a resource exhaustion problem, which it is. */
 		      blockdata_free(key);
-		      return STAT_BOGUS;
+		      return STAT_ABANDONED;
 		    }
 		  else
 		    {
@@ -1132,7 +1136,7 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
   
   /* Use TTL from NSEC for negative cache entries */
   if (!cache_insert(name, NULL, class, now, neg_ttl, flags))
-    return STAT_BOGUS;
+    return STAT_ABANDONED;
   
   cache_end_insert();  
   
