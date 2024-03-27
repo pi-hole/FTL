@@ -1422,6 +1422,28 @@
   [[ ${lines[0]} == "145" ]]
 }
 
+@test "Check /api/lists?type=block returning only blocking lists" {
+  run bash -c 'curl -s 127.0.0.1/api/lists?type=block | jq ".lists[].type"'
+  printf "%s\n" "${lines[@]}"
+  # Check no allow entries are present
+  [[ ${lines[@]} != *"allow"* ]]
+}
+
+@test "Check /api/lists?type=allow returning only allowing lists" {
+  run bash -c 'curl -s 127.0.0.1/api/lists?type=allow | jq ".lists[].type"'
+  printf "%s\n" "${lines[@]}"
+  # Check no block entries are present
+  [[ ${lines[@]} != *"block"* ]]
+}
+
+@test "Check /api/lists without type parameter returning all lists" {
+  run bash -c 'curl -s 127.0.0.1/api/lists | jq ".lists[].type"'
+  printf "%s\n" "${lines[@]}"
+  # Check both block and allow entries are present
+  [[ ${lines[@]} == *"allow"* ]]
+  [[ ${lines[@]} == *"block"* ]]
+}
+
 @test "API: No UNKNOWN reply in API" {
   run bash -c 'curl -s 127.0.0.1/api/queries?reply=UNKNOWN | jq .queries'
   printf "%s\n" "${lines[@]}"
@@ -1440,6 +1462,93 @@
   run bash -c 'curl -s 127.0.0.1/api/auth'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '{"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"took":'*'}' ]]
+}
+
+@test "Config validation working on the CLI (type-based checking)" {
+  run bash -c './pihole-FTL --config dns.port true'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Config setting dns.port is invalid, allowed options are: unsigned integer (16 bit)' ]]
+  [[ $status == 2 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "abc"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Config setting dns.revServers is invalid: not valid JSON, error before: abc' ]]
+  [[ $status == 2 ]]
+}
+
+@test "Config validation working on the API (type-based checking)" {
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"blockESNI\":15.5}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item is invalid\",\"hint\":\"dns.blockESNI: not of type bool\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"piholePTR\":\"something_else\"}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item is invalid\",\"hint\":\"dns.piholePTR: invalid option\"},\"took\":"*"}" ]]
+}
+
+@test "Config validation working on the CLI (validator-based checking)" {
+  run bash -c './pihole-FTL --config dns.hosts "[\"111.222.333.444 abc\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.hosts[0]: neither a valid IPv4 nor IPv6 address ("111.222.333.444")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.hosts "[\"1.1.1.1 cf\",\"8.8.8.8 google\",\"1.2.3.4\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.hosts[2]: entry does not have at least one hostname ("1.2.3.4")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"abc,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <enabled> not a boolean ("abc")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,abc,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <ip-address> neither a valid IPv4 nor IPv6 address ("abc")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,1.2.3.4/55,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <prefix-len> not a valid IPv4 prefix length ("55")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,::1/255,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <prefix-len> not a valid IPv6 prefix length ("255")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,1.1.1.1,def\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: entry does not have all required elements (<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>)' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,1.1.1.1,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'New dnsmasq configuration is not valid ('*'Name does not resolve at line '*' of /etc/pihole/dnsmasq.conf.temp: "rev-server=1.1.1.1,def"), config remains unchanged' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\' ]]
+  [[ $status == 3 ]]
+}
+
+@test "Config validation working on the API (validator-based checking)" {
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"files\":{\"pcap\":\"%gh4b\"}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item validation failed\",\"hint\":\"files.pcap: not a valid file path (\\\"%gh4b\\\")\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"cnameRecords\":[\"a\"]}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item validation failed\",\"hint\":\"dns.cnameRecords[0]: not a valid CNAME definition (too few elements)\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"cnameRecords\":[\"a,b,c\",\"a,b,c,,c\"]}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item validation failed\",\"hint\":\"dns.cnameRecords[1]: contains an empty string at position 3\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"cnameRecords\":[\"a,b,c\",\"a,b,c\",5]}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item is invalid\",\"hint\":\"dns.cnameRecords: array has invalid elements\"},\"took\":"*"}" ]]
 }
 
 @test "Create, set, and use application password" {

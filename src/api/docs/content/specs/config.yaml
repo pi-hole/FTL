@@ -318,6 +318,8 @@ components:
                   type: boolean
                 multiDNS:
                   type: boolean
+                logging:
+                  type: boolean
                 hosts:
                   type: array
                   items:
@@ -338,12 +340,12 @@ components:
               properties:
                 DBimport:
                   type: boolean
-                DBexport:
-                  type: boolean
                 maxDBdays:
                   type: integer
                 DBinterval:
                   type: integer
+                useWAL:
+                  type: boolean
                 network:
                   type: object
                   properties:
@@ -421,6 +423,8 @@ components:
                       type: integer
                     maxClients:
                       type: integer
+                    client_history_global_max:
+                      type: boolean
                     allow_destructive:
                       type: boolean
                     temp:
@@ -645,9 +649,10 @@ components:
             router: "192.168.0.1"
             netmask: "0.0.0.0"
             leaseTime: "24h"
-            ipv6: true
-            rapidCommit: true
-            multiDNS: true
+            ipv6: false
+            rapidCommit: false
+            multiDNS: false
+            logging: false
             hosts:
               - "11:22:33:44:55:66,192.168.1.123"
               - "11:22:33:44:55:67,192.168.1.124,hostname"
@@ -658,9 +663,9 @@ components:
             refreshNames: IPV4_ONLY
           database:
             DBimport: true
-            DBexport: true
             maxDBdays: 365
             DBinterval: 60
+            useWAL: true
             network:
               parseARPcache: true
               expire: 365
@@ -693,6 +698,7 @@ components:
               excludeDomains: [ 'google\\.de', 'pi-hole\.net' ]
               maxHistory: 86400
               maxClients: 10
+              client_history_global_max: true
               allow_destructive: true
               temp:
                 limit: 60.0

@@ -793,9 +793,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Increase DNS queries counter
 	counters->queries++;
 
-	// Update overTime data
-	overTime[timeidx].total++;
-
 	// Update overTime data structure with the new client
 	change_clientcount(client, 0, 0, timeidx, 1);
 
@@ -1420,10 +1417,10 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 	}
 
-	// Skip all checks and continue if we hit already at least one whitelist in the chain
+	// Skip all checks and continue if we hit already at least one allowlist in the chain
 	if(query->flags.allowed)
 	{
-		log_debug(DEBUG_QUERIES, "Query is permitted as at least one whitelist entry matched");
+		log_debug(DEBUG_QUERIES, "Query is permitted as at least one allowlist entry matched");
 		return false;
 	}
 

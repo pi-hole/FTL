@@ -427,6 +427,12 @@
   # clients, which should prevent this from happening.
   multiDNS = false
 
+  # Enable logging for DHCP. This will log all relevant DHCP-related activity, including,
+  # e.g., all the options sent to DHCP clients and the tags used to determine them (if
+  # any). This can be useful for debugging DHCP issues. The generated output is saved to
+  # the file specified by files.log.dnsmasq below.
+  logging = false
+
   # Per host parameters for the DHCP server. This allows a machine with a particular
   # hardware address to be always allocated the same hostname, IP address and lease time
   # or to specify static DHCP leases
@@ -478,14 +484,21 @@
   # recent history?
   DBimport = true
 
-  # Should FTL store queries in the long-term database?
-  DBexport = true
-
   # How long should queries be stored in the database [days]?
+  # Setting this to 0 disables exporting queries to the database.
   maxDBdays = 365
 
   # How often do we store queries in FTL's database [seconds]?
   DBinterval = 60
+
+  # Should FTL enable Write-Ahead Log (WAL) mode for the on-disk query database
+  # (configured via files.database)?
+  # It is recommended to leave this setting enabled for performance reasons. About the
+  # only reason to disable WAL mode is if you are experiencing specific issues with it,
+  # e.g., when using a database that is accessed from multiple hosts via a network
+  # share. When this setting is disabled, FTL will use SQLite3's default journal mode
+  # (rollback journal in DELETE mode).
+  useWAL = true
 
   [database.network]
     # Should FTL analyze the local ARP cache? When disabled, client identification and the
@@ -703,6 +716,12 @@
     # (/api/history/clients)?
     # This setting can be overwritten at run-time using the parameter N
     maxClients = 10
+
+    # How should the API compute the most active clients? If set to true, the API will
+    # return the clients with the most queries globally (within 24 hours). If set to
+    # false, the API will return the clients with the most queries per time slot
+    # individually.
+    client_history_global_max = true
 
     # Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)
     allow_destructive = true

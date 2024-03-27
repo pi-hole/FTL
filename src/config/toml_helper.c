@@ -21,6 +21,8 @@
 #include "config/password.h"
 // PATH_MAX
 #include <limits.h>
+// escape_json()
+#include "webserver/http-common.h"
 
 // Open the TOML file for reading or writing
 FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode, const unsigned int version)
@@ -124,82 +126,32 @@ static void printTOMLstring(FILE *fp, const char *s, const bool toml)
 	if(s == NULL)
 		 s = "";
 
-	bool ok = true;
-	// Check if string is printable and does not contain any special characters
-	for (const char* p = s; *p && ok; p++)
-	{
-		int ch = *p;
-		ok = isprint(ch) && ch != '"' && ch != '\\';
-	}
+	// JSON escape string
+	char *escaped = escape_json(s);
 
-	// If string is printable and does not contain any special characters, we can
-	// print it as is without further escaping
-	if (ok)
+	// Print error and return if escaping failed
+	if(escaped == NULL)
 	{
-		if(toml) fprintf(fp, "\"%s\"", s);
-		else fputs(s, fp);
+		log_err("Cannot escape string \"%s\" for TOML output", s);
 		return;
 	}
 
-	// Otherwise, we need to escape special characters, this is more work
-	int len = strlen(s);
-	if(toml) fprintf(fp, "\"");
-	for ( ; len; len--, s++)
+	// Print string to file
+	if(toml)
 	{
-		unsigned char ch = *s;
-		if (isprint(ch) && ch != '"' && ch != '\\')
-		{
-			putc(ch, fp);
-			continue;
-		}
-
-		// Escape special characters with simple escape sequences
-		switch (ch) {
-			case '\b': fputs("\\b", fp); continue;
-			case '\t': fputs("\\t", fp); continue;
-			case '\n': fputs("\\n", fp); continue;
-			case '\f': fputs("\\f", fp); continue;
-			case '\r': fputs("\\r", fp); continue;
-			case '"':  fputs("\\\"", fp); continue;
-			case '\\': fputs("\\\\", fp); continue;
-		}
-
-#ifndef TOML_UTF8
-		// The Universal Coded Character Set (UCS, Unicode) is a
-		// standard set of characters defined by the international
-		// standard ISO/IEC 10646, Information technology — Universal
-		// Coded Character Set (UCS) (plus amendments to that standard),
-		// which is the basis of many character encodings, improving as
-		// characters from previously unrepresented typing systems are
-		// added.
-		// The following code converts a UTF-8 character to UCS and
-		// prints it as \UXXXXXXXX
-		int64_t ucs;
-		int bytes = toml_utf8_to_ucs(s, len, &ucs);
-		if(bytes > 0)
-		{
-			// Print 4-byte UCS as \UXXXXXXXX
-			fprintf(fp, "\\U%08X", (uint32_t)ucs);
-			// Advance string pointer
-			s += bytes - 1;
-			// Decrease remaining string length
-			len -= bytes - 1;
-			continue;
-		}
-#else
-		// Escape all other control characters as short 2-byte
-		// UCS sequences
-		if(iscntrl(ch))
-		{
-			fprintf(fp, "\\u%04X", ch);
-			continue;
-		}
-
-		// Print remaining characters as is
-		putc(ch, fp);
-#endif
+		// Print string with quotes
+		fputs(escaped, fp);
 	}
-	if(toml) fprintf(fp, "\"");
+	else
+	{
+		// Remove trailing quote before printing
+		escaped[strlen(escaped) - 1] = '\0';
+		// Print string skipping over the leading quote
+		fputs(escaped + 1, fp);
+	}
+
+	// Free escaped string
+	free(escaped);
 }
 
 // Indentation (tabs and/or spaces) is allowed but not required, we use it for
