@@ -574,6 +574,15 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			fprintf(pihole_conf, "dhcp-range=::,constructor:%s,ra-names,ra-stateless,64\n", interface);
 		}
 		fputs("\n", pihole_conf);
+
+		// Enable DHCP logging if requested
+		if(conf->dhcp.logging.v.b)
+		{
+			fputs("# Enable DHCP logging\n", pihole_conf);
+			fputs("log-dhcp\n\n", pihole_conf);
+		}
+
+		// Add per-host parameters
 		if(cJSON_GetArraySize(conf->dhcp.hosts.v.json) > 0)
 		{
 			fputs("# Per host parameters for the DHCP server\n", pihole_conf);

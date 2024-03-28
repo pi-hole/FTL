@@ -519,7 +519,7 @@ void read_and_parse_payload(struct ftl_conn *api)
 }
 
 // Escape a string to mask HTML special characters, the resulting string is
-// always allocated and must be freed
+// always allocated and must be freed (unless NULL is returned)
 // See https://www.w3.org/International/questions/qa-escapes#use
 char *__attribute__((malloc)) escape_html(const char *string)
 {
@@ -569,6 +569,11 @@ char *__attribute__((malloc)) escape_html(const char *string)
 	return escaped;
 }
 
+// Check if the payload is valid JSON, if not send an error response with the
+// appropriate status code. If the payload is NULL, send a 400 Bad Request
+// response with a hint that no payload was received. If the payload is not
+// valid JSON, send a 400 Bad Request response with a hint that the payload is
+// invalid JSON.
 int check_json_payload(struct ftl_conn *api)
 {
 	if (api->payload.json == NULL)
@@ -625,4 +630,29 @@ int parse_groupIDs(struct ftl_conn *api, tablerow *table, cJSON *row)
 
 	// Success
 	return 0;
+}
+
+// Escape a string to mask JSON special characters, the resulting string is
+// always allocated and must be freed (unless NULL is returned)
+// See https://tools.ietf.org/html/rfc8259#section-7
+char *__attribute__((malloc)) escape_json(const char *string)
+{
+	// If the string is NULL, return NULL
+	if(string == NULL)
+		return NULL;
+
+	// Create a cJSON object (reference, no copy) from the string string
+	cJSON *json = cJSON_CreateStringReference(string);
+	if(json == NULL)
+		return NULL;
+
+	// Get the string representation of the cJSON object. This allocates
+	// memory for the string which needs to be free'd later on
+	char *namep = cJSON_PrintUnformatted(json);
+
+	// Free cJSON object
+	cJSON_Delete(json);
+
+	// Return the JSON escaped string
+	return namep;
 }

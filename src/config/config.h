@@ -33,11 +33,6 @@
 // This static string represents an unchanged password
 #define PASSWORD_VALUE "********"
 
-// Remove the following line to disable the use of UTF-8 in the config file
-// As consequence, the config file will be written in ASCII and all non-ASCII
-// characters will be replaced by their UTF-8 escape sequences (UCS-2)
-#define TOML_UTF8
-
 // Size of the buffer used to report possible errors during config validation
 #define VALIDATOR_ERRBUF_LEN 256
 
@@ -191,6 +186,7 @@ struct config {
 		struct conf_item ipv6;
 		struct conf_item rapidCommit;
 		struct conf_item multiDNS;
+		struct conf_item logging;
 		struct conf_item hosts;
 	} dhcp;
 
