@@ -332,6 +332,16 @@ void my_syslog(int priority, const char *format, ...)
 
   if (echo_stderr) 
     {
+      /********** Pi-hole modification *************/
+      if(only_testing)
+        // Print 32 bytes filled with '~' to the pipe to signal the
+        // beginning of the output. This is necessary as sometimes the
+        // very first bytes of the output are lost in the pipe and we
+        // need to know where the output starts
+        for(int i = 0; i < 32; i++)
+          fputc('~', stderr);
+      /*********************************************/
+
       fprintf(stderr, "dnsmasq%s: ", func);
       va_start(ap, format);
       vfprintf(stderr, format, ap);

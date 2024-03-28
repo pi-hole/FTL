@@ -1524,7 +1524,7 @@
 
   run bash -c './pihole-FTL --config dns.revServers "[\"true,1.1.1.1,def,ghi\"]"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == 'New dnsmasq configuration is not valid ('*'Name does not resolve at line '*' of /etc/pihole/dnsmasq.conf.temp: "rev-server=1.1.1.1,def"), config remains unchanged' ]]
+  [[ ${lines[0]} == 'New dnsmasq configuration is not valid (dnsmasq: Name does not resolve at line '*' of /etc/pihole/dnsmasq.conf.temp: "rev-server=1.1.1.1,def"), config remains unchanged' ]]
   [[ $status == 3 ]]
 
   run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'

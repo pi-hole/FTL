@@ -89,19 +89,21 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 		// Read readirected STDERR until EOF
 		if(errbuf != NULL)
 		{
-			// We are only interested in the last pipe line
 			while(read(pipefd[0], errbuf, ERRBUF_SIZE) > 0)
 			{
-				// Remove initial newline character (if present)
-				if(errbuf[0] == '\n')
-					memmove(errbuf, &errbuf[1], ERRBUF_SIZE-1);
+				char *ptr = errbuf;
+				// Remove initial newline characters and '~'s (if present)
+				while(*ptr == '\n' || *ptr == '~') ptr++;
+				memmove(errbuf, ptr, ERRBUF_SIZE - (ptr - errbuf));
+
 				// Strip newline character (if present)
 				if(errbuf[strlen(errbuf)-1] == '\n')
 					errbuf[strlen(errbuf)-1] = '\0';
+
 				// Replace any possible internal newline characters by spaces
-				char *ptr = errbuf;
 				while((ptr = strchr(ptr, '\n')) != NULL)
 					*ptr = ' ';
+
 				log_debug(DEBUG_CONFIG, "dnsmasq pipe: %s", errbuf);
 			}
 		}
