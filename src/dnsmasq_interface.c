@@ -1502,13 +1502,13 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	{
 		// Explicitly mark as not blocked to skip the entire gravity/blacklist
 		// chain when the same client asks for the same domain in the future.
-		// Store domain as whitelisted if this is the case
+		// Store domain as allowed if this is the case
 		dns_cache->blocking_status = query->flags.allowed ? ALLOWED : NOT_BLOCKED;
 
 		// Debug output
 		// client is guaranteed to be non-NULL above
 		log_debug(DEBUG_QUERIES, "DNS cache: %s/%s is %s (domainlist ID: %i)", getstr(client->ippos),
-		          domainstr, query->flags.allowed ? "whitelisted" : "not blocked", dns_cache->list_id);
+		          domainstr, query->flags.allowed ? "allowed" : "not blocked", dns_cache->list_id);
 	}
 
 	free(domainstr);
