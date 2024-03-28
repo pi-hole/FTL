@@ -576,7 +576,6 @@ static int api_config_get(struct ftl_conn *api)
 			// Add config item flags
 			cJSON *flags = JSON_NEW_OBJECT();
 			JSON_ADD_BOOL_TO_OBJECT(flags, "restart_dnsmasq", conf_item->f & FLAG_RESTART_FTL);
-			JSON_ADD_BOOL_TO_OBJECT(flags, "advanced", conf_item->f & FLAG_ADVANCED_SETTING);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "session_reset", conf_item->f & FLAG_INVALIDATE_SESSIONS);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "env_var", conf_item->f & FLAG_ENV_VAR);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "flags", flags);
