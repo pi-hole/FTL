@@ -1154,6 +1154,11 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		// ...
 		dns_cache->list_id = -1 * (list_id + 2);
 
+		// Mark query as allowed to prevent further checks such as CNAME
+		// inspection. This ensures antigravity matches have similar effects
+		// than explicitly allowed domains.
+		query->flags.allowed = true;
+
 		return false;
 	}
 
