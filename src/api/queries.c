@@ -173,7 +173,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-#define QUERYSTR "SELECT q.id,timestamp,q.type,status,d.domain,f.forward,additional_info,reply_type,reply_time,dnssec,c.ip,c.name,a.content,regex_id"
+#define QUERYSTR "SELECT q.id,timestamp,q.type,status,d.domain,f.forward,additional_info,reply_type,reply_time,dnssec,c.ip,c.name,a.content,list_id"
 // JOIN: Only return rows where there is a match in BOTH tables
 // LEFT JOIN: Return all rows from the left table, and the matched rows from the right table
 #define JOINSTR "JOIN client_by_id c ON q.client = c.id JOIN domain_by_id d ON q.domain = d.id LEFT JOIN forward_by_id f ON q.forward = f.id LEFT JOIN addinfo_by_id a ON a.id = q.additional_info"
@@ -214,8 +214,8 @@ static void querystr_finish(char *querystr, const char *sort_col, const char *so
 			sort_col_sql = "q.reply_time";
 		else if(strcasecmp(sort_col, "dnssec") == 0)
 			sort_col_sql = "q.dnssec";
-		else if(strcasecmp(sort_col, "regex_id") == 0)
-			sort_col_sql = "regex_id";
+		else if(strcasecmp(sort_col, "list_id") == 0)
+			sort_col_sql = "list_id";
 
 		// ... and the sort direction
 		if(strcasecmp(sort_dir, "asc") == 0 || strcasecmp(sort_dir, "ascending") == 0)
@@ -292,6 +292,8 @@ int api_queries(struct ftl_conn *api)
 
 	char sort_dir[16] = { 0 };
 	char sort_col[16] = { 0 };
+
+	char search[2][512] = { { 0 }, { 0 } };
 
 	// We start with the most recent query at the beginning (until the cursor is changed)
 	unsigned long cursor, largest_db_index, mem_dbnum, disk_dbnum;
@@ -434,6 +436,72 @@ int api_queries(struct ftl_conn *api)
 			else
 				log_warn("Sorting by column %d (%s) requested, but column name not found",
 				         sort_column, sort_dir);
+		}
+
+		// Column searching?
+		// ID 3 = domain, ID 4 = client, every other combination is requested
+		for(unsigned int j = 0; j < 2; j++)
+		{
+			// Encoded URI string: %5B = [ and %5D = ]
+			// columns[X][search][value] is the search string for column X
+			char search_col[] = "columns%5BX%5D%5Bsearch%5D%5Bvalue%5D";
+			search_col[10] = '3' + j;
+			if(GET_STR(search_col, search[j], api->request->query_string) > 0)
+			{
+				// columns[X][data] is the name of column X
+				char search_col_id[] = "columns%5BX%5D%5Bdata%5D";
+				search_col_id[10] = '3' + j;
+
+				// Encoded URI string: %5B = [ and %5D = ]
+				char search_col_id_str[32] = { 0 };
+				if(GET_VAR(search_col_id, search_col_id_str, api->request->query_string) > 0)
+				{
+					size_t searchlen = min(strlen(search[j]), sizeof(search[j]) - 2);
+
+					// Replace "*" by SQLite3 wildcard character "%"
+					for(unsigned int i = 0; i < searchlen; i++)
+					{
+						if(search[j][i] == '*')
+							search[j][i] = '%';
+					}
+
+					// Add % at the end of the search string to
+					// make it a wildcard if there is none
+					if(search[j][searchlen - 1] != '%')
+					{
+						search[j][searchlen] = '%';
+						search[j][searchlen + 1] = '\0';
+						searchlen++;
+					}
+
+					// Add % at the beginning of the search
+					// string to make it a wildcard if there
+					// is none
+					if(search[j][0] != '%')
+					{
+						memmove(search[j] + 1, search[j], searchlen + 1);
+						search[j][0] = '%';
+					}
+
+					// Apply the search string to the query if this is an allowed column
+					if(j == 0 && strcasecmp(search_col_id_str, "domain") == 0)
+					{
+						log_debug(DEBUG_API, "Searching column domain: \"%s\"", search[j]);
+						add_querystr_string(api, querystr, "d.domain LIKE", ":domain_search", &where);
+					}
+					else if(j == 1 && (strcasecmp(search_col_id_str, "client.ip") == 0 || strcasecmp(search_col_id_str, "client") == 0))
+					{
+						log_debug(DEBUG_API, "Searching column client: \"%s\"", search[j]);
+						// We search both client IP and name
+						add_querystr_string(api, querystr, "c.ip LIKE :client_search OR c.name LIKE", ":client_search", &where);
+					}
+					else
+						log_warn("Column %u with name \"%s\" is not searchable (allowed: 3 = domain, 4 = client)",
+						         3 + j, search_col_id_str);
+				}
+				else
+					log_warn("Column %u is not searchable (allowed: 3 = domain, 4 = client)", 3 + j);
+			}
 		}
 	}
 
@@ -719,6 +787,36 @@ int api_queries(struct ftl_conn *api)
 				                       sqlite3_errstr(rc));
 			}
 		}
+		idx = sqlite3_bind_parameter_index(read_stmt, ":domain_search");
+		if(idx > 0)
+		{
+			log_debug(DEBUG_API, "adding :domain_search = \"%s\" to query", search[0]);
+			filtering = true;
+			if((rc = sqlite3_bind_text(read_stmt, idx, search[0], -1, SQLITE_STATIC)) != SQLITE_OK)
+			{
+				sqlite3_reset(read_stmt);
+				sqlite3_finalize(read_stmt);
+				return send_json_error(api, 500,
+				                       "internal_error",
+				                       "Internal server error, failed to bind domain_search to SQL query",
+				                       sqlite3_errstr(rc));
+			}
+		}
+		idx = sqlite3_bind_parameter_index(read_stmt, ":client_search");
+		if(idx > 0)
+		{
+			log_debug(DEBUG_API, "adding :client_search = \"%s\" to query", search[1]);
+			filtering = true;
+			if((rc = sqlite3_bind_text(read_stmt, idx, search[1], -1, SQLITE_STATIC)) != SQLITE_OK)
+			{
+				sqlite3_reset(read_stmt);
+				sqlite3_finalize(read_stmt);
+				return send_json_error(api, 500,
+				                       "internal_error",
+				                       "Internal server error, failed to bind client_search to SQL query",
+				                       sqlite3_errstr(rc));
+			}
+		}
 	}
 
 	// Debug logging
@@ -887,11 +985,11 @@ int api_queries(struct ftl_conn *api)
 			JSON_ADD_NULL_TO_OBJECT(client, "name");
 		JSON_ADD_ITEM_TO_OBJECT(item, "client", client);
 
-		// Add regex_id if it exists
+		// Add list_id if it exists
 		if(sqlite3_column_type(read_stmt, 13) == SQLITE_INTEGER)
-			JSON_ADD_NUMBER_TO_OBJECT(item, "regex_id", sqlite3_column_int(read_stmt, 13)); // regex_id
+			JSON_ADD_NUMBER_TO_OBJECT(item, "list_id", sqlite3_column_int(read_stmt, 13)); // list_id
 		else
-			JSON_ADD_NULL_TO_OBJECT(item, "regex_id");
+			JSON_ADD_NULL_TO_OBJECT(item, "list_id");
 
 		const unsigned char *cname = NULL;
 		switch(query.status)

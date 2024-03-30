@@ -70,6 +70,8 @@ umask 0022
 
 # Set exemplary config value by environment variable
 export FTLCONF_misc_nice="-11"
+export FTLCONF_dns_upstrrr="-11"
+export FTLCONF_debug_api="not_a_bool"
 
 # Start FTL
 if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then

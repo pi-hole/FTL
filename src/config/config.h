@@ -33,10 +33,8 @@
 // This static string represents an unchanged password
 #define PASSWORD_VALUE "********"
 
-// Remove the following line to disable the use of UTF-8 in the config file
-// As consequence, the config file will be written in ASCII and all non-ASCII
-// characters will be replaced by their UTF-8 escape sequences (UCS-2)
-#define TOML_UTF8
+// Size of the buffer used to report possible errors during config validation
+#define VALIDATOR_ERRBUF_LEN 256
 
 // Location of the legacy (pre-v6.0) config file
 #define GLOBALCONFFILE_LEGACY "/etc/pihole/pihole-FTL.conf"
@@ -102,12 +100,14 @@ enum conf_type {
 struct conf_item {
 	const char *k;        // item Key
 	char **p;             // item Path
+	char *e;              // item Environment variable
 	const char *h;        // Help text / description
 	cJSON *a;             // JSON array or object of Allowed values (where applicable)
 	enum conf_type t;     // variable Type
 	uint8_t f;            // additional Flags
 	union conf_value v;   // current Value
 	union conf_value d;   // Default value
+	bool (*c)(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]); // Function pointer to validate the value
 };
 
 struct enum_options {
@@ -143,6 +143,7 @@ struct config {
 		struct conf_item queryLogging;
 		struct conf_item cnameRecords;
 		struct conf_item port;
+		struct conf_item revServers;
 		struct {
 			struct conf_item size;
 			struct conf_item optimizer;
@@ -173,13 +174,6 @@ struct config {
 			struct conf_item count;
 			struct conf_item interval;
 		} rateLimit;
-
-		struct {
-			struct conf_item active;
-			struct conf_item cidr;
-			struct conf_item target;
-			struct conf_item domain;
-		} revServer;
 	} dns;
 
 	struct {
@@ -192,6 +186,7 @@ struct config {
 		struct conf_item ipv6;
 		struct conf_item rapidCommit;
 		struct conf_item multiDNS;
+		struct conf_item logging;
 		struct conf_item hosts;
 	} dhcp;
 
@@ -204,9 +199,9 @@ struct config {
 
 	struct {
 		struct conf_item DBimport;
-		struct conf_item DBexport;
 		struct conf_item maxDBdays;
 		struct conf_item DBinterval;
+		struct conf_item useWAL;
 		struct {
 			struct conf_item parseARPcache;
 			struct conf_item expire;
@@ -246,6 +241,7 @@ struct config {
 			struct conf_item excludeDomains;
 			struct conf_item maxHistory;
 			struct conf_item maxClients;
+			struct conf_item client_history_global_max;
 			struct conf_item allow_destructive;
 			struct {
 				struct conf_item limit;

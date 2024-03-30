@@ -189,7 +189,9 @@ enum gravity_list_type {
 	GRAVITY_ADLISTS,
 	GRAVITY_CLIENTS,
 	GRAVITY_GRAVITY,
-	GRAVITY_ANTIGRAVITY
+	GRAVITY_ANTIGRAVITY,
+	GRAVITY_ADLISTS_BLOCK,
+	GRAVITY_ADLISTS_ALLOW
 } __attribute__ ((packed));
 
 enum gravity_tables {
@@ -283,7 +285,7 @@ enum ptr_type {
 
 enum addinfo_type {
 	ADDINFO_CNAME_DOMAIN = 1,
-	ADDINFO_REGEX_ID
+	ADDINFO_LIST_ID
 } __attribute__ ((packed));
 
 enum listening_mode {
@@ -320,5 +322,22 @@ enum cert_check {
 	CERT_DOMAIN_MATCH,
 	CERT_OKAY
 } __attribute__ ((packed));
+
+enum http_method {
+	HTTP_UNKNOWN = 0,
+	HTTP_GET = 1 << 0,
+	HTTP_POST = 1 << 1,
+	HTTP_PUT = 1 << 2,
+	HTTP_PATCH = 1 << 3,
+	HTTP_DELETE = 1 << 4,
+	HTTP_OPTIONS = 1 << 5,
+};
+
+enum api_flags {
+	API_FLAG_NONE = 0,
+	API_DOMAINS = 1 << 0,
+	API_PARSE_JSON = 1 << 1,
+	API_BATCHDELETE = 1 << 2,
+};
 
 #endif // ENUMS_H

@@ -316,11 +316,8 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		if(query->timestamp > mintime)
 			break;
 
-		// Adjust overTime counter
-		const int timeidx = getOverTimeID(query->timestamp);
-		overTime[timeidx].total--;
-
 		// Adjust client counter (total and overTime)
+		const int timeidx = getOverTimeID(query->timestamp);
 		clientsData* client = getClient(query->clientID, true);
 		if(client != NULL)
 			change_clientcount(client, -1, 0, timeidx, -1);

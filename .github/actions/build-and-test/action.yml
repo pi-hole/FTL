@@ -1,0 +1,126 @@
+name: Build and test
+description: Builds and tests FTL on all supported platforms
+
+inputs:
+  platform:
+    required: true
+    description: The platform to build for
+  git_branch:
+    required: true
+    description: The branch to build from
+  git_tag:
+    required: true
+    description: The tag to build from (if any)
+  bin_name:
+    required: true
+    description: The name of the binary to build
+  artifact_name:
+    required: true
+    description: The name of the artifact to upload
+  event_name:
+    required: true
+    description: The name of the event that triggered the workflow run
+  actor:
+    required: true
+    description: The name of the user or app that initiated the workflow run
+  target_dir:
+    required: true
+    description: The directory to deploy the artifacts to
+  # Secrets cannot be accessed in the action.yml file so we need to pass them as
+  # inputs to the action.
+  SSH_KEY:
+    required: true
+    description: The SSH private key to use for authentication
+  KNOWN_HOSTS:
+    required: true
+    description: The SSH known hosts file
+  SSH_USER:
+    required: true
+    description: The SSH user to use for authentication
+  SSH_HOST:
+    required: true
+    description: The SSH host to connect to
+
+# Both the definition of environment variables and checking out the code
+# needs to be done outside of the composite action as
+# - environment variables cannot be defined using inputs
+# - the checkout action needs to be the first step in the workflow, otherwise we
+#   cannot use the composite action as the corresponding "action.yml" isn't
+#   there yet
+runs:
+  using: "composite"
+  steps:
+    -
+      name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3.1.0
+    -
+      name: Print directory contents
+      shell: bash
+      run: ls -l
+    -
+      name: Build and test FTL in ftl-build container (QEMU)
+      uses: Wandalen/wretry.action@v1.4.8
+      with:
+        attempt_limit: 3
+        action: docker/build-push-action@v5.0.0
+        with: |
+          platforms: ${{ inputs.platform }}
+          pull: true
+          push: false
+          context: .
+          target: result
+          file: .github/Dockerfile
+          outputs: |
+            type=tar,dest=build.tar
+          build-args: |
+            "CI_ARCH=${{ inputs.platform }}"
+            "GIT_BRANCH=${{ inputs.git_branch }}"
+            "GIT_TAG=${{ inputs.git_tag }}"
+    -
+      name: List files in current directory
+      shell: bash
+      run: ls -l
+    -
+      name: Extract FTL binary from container
+      shell: bash
+      run: |
+        tar -xf build.tar pihole-FTL
+    -
+      name: "Generate checksum file"
+      shell: bash
+      run: |
+        mv pihole-FTL "${{ inputs.bin_name }}"
+        sha1sum pihole-FTL-* > ${{ inputs.bin_name }}.sha1
+    -
+      name: Store binary artifacts for later deployoment
+      if: inputs.event_name != 'pull_request'
+      uses: actions/upload-artifact@v4.3.1
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: '${{ inputs.bin_name }}*'
+    -
+      name: Extract documentation files from container
+      if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64'
+      shell: bash
+      run: |
+        tar -xf build.tar api-docs.tar.gz
+    -
+      name: Upload documentation artifacts for deployoment
+      if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64'
+      uses: actions/upload-artifact@v4.3.1
+      with:
+        name: pihole-api-docs
+        path: 'api-docs.tar.gz'
+    -
+      name: Deploy
+      if: inputs.event_name != 'pull_request'
+      uses: ./.github/actions/deploy
+      with:
+        pattern: ${{ inputs.bin_name }}-binary
+        target_dir: ${{ inputs.target_dir }}
+        event_name: ${{ inputs.event_name }}
+        actor: ${{ inputs.actor }}
+        SSH_KEY: ${{ inputs.SSH_KEY }}
+        KNOWN_HOSTS: ${{ inputs.KNOWN_HOSTS }}
+        SSH_USER: ${{ inputs.SSH_USER }}
+        SSH_HOST: ${{ inputs.SSH_HOST }}

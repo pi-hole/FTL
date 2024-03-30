@@ -41,7 +41,7 @@ static bool delete_old_queries_in_DB(sqlite3 *db)
 	// Even when the database storing interval is set to 1 hour, this
 	// method would still delete 24% of the database per day so maxDBdays > 4
 	// does still work.
-	const time_t timestamp = time(NULL) - config.database.maxDBdays.v.i * 86400;
+	const time_t timestamp = time(NULL) - config.database.maxDBdays.v.ui * 86400;
 	SQL_bool(db, "DELETE FROM query_storage WHERE id IN (SELECT id FROM query_storage WHERE timestamp <= %lu LIMIT (SELECT COUNT(*)/100 FROM query_storage));",
 	         (unsigned long)timestamp);
 
@@ -135,33 +135,31 @@ void *DB_thread(void *val)
 			break;
 
 		// Store queries in on-disk database
-		if(now - lastDBsave >= (time_t)config.database.DBinterval.v.ui)
+		if(config.database.maxDBdays.v.ui > 0 &&
+		   now - lastDBsave >= (time_t)config.database.DBinterval.v.ui)
 		{
 			// Update lastDBsave timer
 			lastDBsave = now - now%config.database.DBinterval.v.ui;
 
-			// Save data to database (if enabled)
-			if(config.database.DBexport.v.b)
+			// Save data to database
+			DBOPEN_OR_AGAIN();
+			lock_shm();
+			export_queries_to_disk(false);
+			unlock_shm();
+
+			// Intermediate cancellation-point
+			if(killed)
+				break;
+
+			// Check if GC should be done on the database
+			if(DBdeleteoldqueries)
 			{
-				DBOPEN_OR_AGAIN();
-				lock_shm();
-				export_queries_to_disk(false);
-				unlock_shm();
-
-				// Intermediate cancellation-point
-				if(killed)
-					break;
-
-				// Check if GC should be done on the database
-				if(DBdeleteoldqueries && config.database.maxDBdays.v.i != -1)
-				{
-					// No thread locks needed
-					delete_old_queries_in_DB(db);
-					DBdeleteoldqueries = false;
-				}
-
-				DBCLOSE_OR_BREAK();
+				// No thread locks needed
+				delete_old_queries_in_DB(db);
+				DBdeleteoldqueries = false;
 			}
+
+			DBCLOSE_OR_BREAK();
 
 			// Parse neighbor cache (fill network table)
 			set_event(PARSE_NEIGHBOR_CACHE);

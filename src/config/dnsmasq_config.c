@@ -449,24 +449,52 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 	fputs("\n", pihole_conf);
 
-	if(conf->dns.revServer.active.v.b)
+	const unsigned int revServers = cJSON_GetArraySize(conf->dns.revServers.v.json);
+	for(unsigned int i = 0; i < revServers; i++)
 	{
-		fputs("# Reverse server setting\n", pihole_conf);
-		fprintf(pihole_conf, "rev-server=%s,%s\n",
-		        conf->dns.revServer.cidr.v.s, conf->dns.revServer.target.v.s);
+		cJSON *revServer = cJSON_GetArrayItem(conf->dns.revServers.v.json, i);
+
+		// Split comma-separated string into its components
+		char *copy = strdup(revServer->valuestring);
+		char *active = strtok(copy, ",");
+		char *cidr = strtok(NULL, ",");
+		char *target = strtok(NULL, ",");
+		char *domain = strtok(NULL, ",");
+
+		// Skip inactive reverse servers
+		if(active != NULL &&
+		   strcmp(active, "true") != 0 &&
+		   strcmp(active, "1") != 0)
+		{
+			log_debug(DEBUG_CONFIG, "Skipping inactive reverse server: %s", revServer->valuestring);
+			free(copy);
+			continue;
+		}
+
+		if(active == NULL || cidr == NULL || target == NULL || domain == NULL)
+		{
+			log_err("Skipped invalid dns.revServers[%u]: %s", i, revServer->valuestring);
+			free(copy);
+			continue;
+		}
+
+		fprintf(pihole_conf, "# Reverse server setting (%u%s server)\n",
+		        i+1, get_ordinal_suffix(i+1));
+		fprintf(pihole_conf, "rev-server=%s,%s\n", cidr, target);
 
 		// If we have a reverse domain, we forward all queries to this domain to
 		// the same destination
-		if(strlen(conf->dns.revServer.domain.v.s) > 0)
-			fprintf(pihole_conf, "server=/%s/%s\n",
-			        conf->dns.revServer.domain.v.s, conf->dns.revServer.target.v.s);
+		if(strlen(domain) > 0)
+			fprintf(pihole_conf, "server=/%s/%s\n", domain, target);
 
 		// Forward unqualified names to the target only when the "never forward
 		// non-FQDN" option is NOT ticked
 		if(!conf->dns.domainNeeded.v.b)
-			fprintf(pihole_conf, "server=//%s\n",
-			        conf->dns.revServer.target.v.s);
+			fprintf(pihole_conf, "server=//%s\n", target);
 		fputs("\n", pihole_conf);
+
+		// Free copy of string
+		free(copy);
 	}
 
 	// When there is a Pi-hole domain set and "Never forward non-FQDNs" is
@@ -546,6 +574,15 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			fprintf(pihole_conf, "dhcp-range=::,constructor:%s,ra-names,ra-stateless,64\n", interface);
 		}
 		fputs("\n", pihole_conf);
+
+		// Enable DHCP logging if requested
+		if(conf->dhcp.logging.v.b)
+		{
+			fputs("# Enable DHCP logging\n", pihole_conf);
+			fputs("log-dhcp\n\n", pihole_conf);
+		}
+
+		// Add per-host parameters
 		if(cJSON_GetArraySize(conf->dhcp.hosts.v.json) > 0)
 		{
 			fputs("# Per host parameters for the DHCP server\n", pihole_conf);
@@ -630,6 +667,15 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		}
 	}
 
+	// Add ANY filtering
+	fputs("# RFC 8482: Providing Minimal-Sized Responses to DNS Queries That Have QTYPE=ANY\n", pihole_conf);
+	fputs("# Filters replies to queries for type ANY. Everything other than A, AAAA, MX and CNAME\n", pihole_conf);
+	fputs("# records are removed. Since ANY queries with forged source addresses can be used in DNS amplification attacks\n", pihole_conf);
+	fputs("# replies to ANY queries can be large) this defangs such attacks, whilst still supporting the\n", pihole_conf);
+	fputs("# one remaining possible use of ANY queries. See RFC 8482 para 4.3 for details.\n", pihole_conf);
+	fputs("filter-rr=ANY\n", pihole_conf);
+	fputs("\n", pihole_conf);
+
 	// Add additional config lines to disk (if present)
 	if(conf->misc.dnsmasq_lines.v.json != NULL &&
 	   cJSON_GetArraySize(conf->misc.dnsmasq_lines.v.json) > 0)
@@ -669,6 +715,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	if(test_config && !test_dnsmasq_config(errbuf))
 	{
 		log_warn("New dnsmasq configuration is not valid (%s), config remains unchanged", errbuf);
+
+		// Remove temporary config file
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+		{
+			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			return false;
+		}
+
 		return false;
 	}
 
@@ -679,8 +733,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
 		{
 			log_err("Cannot install dnsmasq config file: %s", strerror(errno));
+
+			// Remove temporary config file
+			if(remove(DNSMASQ_TEMP_CONF) != 0)
+				log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+
 			return false;
 		}
+
 		log_debug(DEBUG_CONFIG, "Config file written to "DNSMASQ_PH_CONFIG);
 	}
 	else

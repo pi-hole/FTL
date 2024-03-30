@@ -190,7 +190,7 @@
   run bash -c "grep -c 'get_client_querystr: SELECT id from vw_blacklist WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT adlist_id from vw_gravity WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
   run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole/FTL.log"
@@ -222,7 +222,7 @@
   run bash -c "grep -c 'get_client_querystr: SELECT id from vw_blacklist WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT adlist_id from vw_gravity WHERE domain = ? AND group_id IN (4);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
   run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole/FTL.log"
@@ -260,7 +260,7 @@
   run bash -c "grep -c 'get_client_querystr: SELECT id from vw_blacklist WHERE domain = ? AND group_id IN (5);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'get_client_querystr: SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (5);' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'get_client_querystr: SELECT adlist_id from vw_gravity WHERE domain = ? AND group_id IN (5);' /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
   run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
@@ -311,6 +311,8 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"192.168.3.1"* ]]
   [[ ${lines[@]} == *"fe80::3c01"* ]]
+  # TXT records should not be returned due to filter-rr=ANY
+  [[ ${lines[@]} != *"Some example text"* ]]
 }
 
 @test "Local DNS test: CNAME cname-ok.ftl" {
@@ -454,16 +456,16 @@
 @test "pihole-FTL.db schema is as expected" {
   run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db .dump'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"query_storage\" (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER, additional_info INTEGER, reply_type INTEGER, reply_time REAL, dnssec INTEGER, regex_id INTEGER);"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"query_storage\" (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER, additional_info INTEGER, reply_type INTEGER, reply_time REAL, dnssec INTEGER, list_id INTEGER);"* ]]
   [[ "${lines[@]}" == *"CREATE INDEX idx_queries_timestamps ON \"query_storage\" (timestamp);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE ftl (id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL, description TEXT);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE counters (id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network\" (id INTEGER PRIMARY KEY NOT NULL, hwaddr TEXT UNIQUE NOT NULL, interface TEXT NOT NULL, firstSeen INTEGER NOT NULL, lastQuery INTEGER NOT NULL, numQueries INTEGER NOT NULL, macVendor TEXT, aliasclient_id INTEGER);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network_addresses\" (network_id INTEGER NOT NULL, ip TEXT UNIQUE NOT NULL, lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), name TEXT, nameUpdated INTEGER, FOREIGN KEY(network_id) REFERENCES network(id));"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE aliasclient (id INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, comment TEXT);"* ]]
-  [[ "${lines[@]}" == *"INSERT INTO ftl VALUES(0,16,'Database version');"* ]]
+  [[ "${lines[@]}" == *"INSERT INTO ftl VALUES(0,17,'Database version');"* ]]
   # vvv This has been added in version 10 vvv
-  [[ "${lines[@]}" == *"CREATE VIEW queries AS SELECT id, timestamp, type, status, CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,CASE typeof(additional_info) WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, reply_type, reply_time, dnssec, regex_id FROM query_storage q;"* ]]
+  [[ "${lines[@]}" == *"CREATE VIEW queries AS SELECT id, timestamp, type, status, CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,CASE typeof(additional_info) WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, reply_type, reply_time, dnssec, list_id FROM query_storage q;"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE domain_by_id (id INTEGER PRIMARY KEY, domain TEXT NOT NULL);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE client_by_id (id INTEGER PRIMARY KEY, ip TEXT NOT NULL, name TEXT);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE forward_by_id (id INTEGER PRIMARY KEY, forward TEXT NOT NULL);"* ]]
@@ -501,8 +503,8 @@
   [[ ${lines[0]} == "The Pi-hole FTL engine - "* ]]
 }
 
-@test "No WARNING messages in FTL.log (besides known capability issues)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|(Cannot set process priority)"'
+@test "No WARNING messages in FTL.log (besides known warnings)" {
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|(Cannot set process priority)|FTLCONF_"'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == "" ]]
 }
@@ -1207,10 +1209,10 @@
   [[ "${lines[@]}" != *"ERROR"* ]]
 }
 
-@test "No ERROR messages in FTL.log (besides known index.html error)" {
-  run bash -c 'grep "ERR: " /var/log/pihole/FTL.log'
+@test "No ERROR messages in FTL.log (besides known/intended error)" {
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  run bash -c 'grep "ERR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is invalid)"'
   printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
@@ -1341,6 +1343,51 @@
   [[ ${lines[1]} == "  nice = -11 ### CHANGED, default = -10" ]]
 }
 
+@test "Correct number of environmental variables is logged" {
+  run bash -c 'grep -q "3 FTLCONF environment variables found (1 used, 1 invalid, 1 ignored)" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Correct environmental variable is logged" {
+  run bash -c 'grep -q "FTLCONF_misc_nice is used" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Invalid environmental variable is logged" {
+  run bash -c 'grep -q "FTLCONF_debug_api is invalid" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Unknown environmental variable is logged, a useful alternative is suggested" {
+  run bash -c 'grep -A1 "FTLCONF_dns_upstrrr is unknown" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"WARNING: [?] FTLCONF_dns_upstrrr is unknown, did you mean any of these?" ]]
+  [[ ${lines[1]} == *"WARNING:     - FTLCONF_dns_upstreams" ]]
+}
+
+@test "cJSON_GetErrorPtr and cJSON_InitHooks are never used (for thread-safety reasons)" {
+  # cJSON_GetErrorPtr() is not thread-safe but can be replaces by cJSON_ParseWithOpts()
+  # cJSON_InitHooks() is only thread-safe if used before any other cJSON function in a thread
+  # We grep for the two functions recursively and exclude cJSON.{c,h} where they are defined
+  run bash -c 'grep -rE "(cJSON_GetErrorPtr)|(cJSON_InitHooks)" src/ | grep -vE "^src/webserver/cJSON/cJSON."'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "" ]]
+}
+
+@test "CLI complains about unknown config key and offers a suggestion" {
+  run bash -c './pihole-FTL --config dbg.all'
+  [[ ${lines[0]} == "Unknown config option dbg.all, did you mean:" ]]
+  [[ ${lines[1]} == " - debug.all" ]]
+  [[ $status == 4 ]]
+  run bash -c './pihole-FTL --config misc.privacyLLL'
+  [[ ${lines[0]} == "Unknown config option misc.privacyLLL, did you mean:" ]]
+  [[ ${lines[1]} == " - misc.privacylevel" ]]
+  [[ $status == 4 ]]
+}
+
 @test "Changing a config option set forced by ENVVAR is not possible via the CLI" {
   run bash -c './pihole-FTL --config misc.nice -12'
   printf "%s\n" "${lines[@]}"
@@ -1384,10 +1431,133 @@
   [[ ${lines[0]} == "145" ]]
 }
 
+@test "Check /api/lists?type=block returning only blocking lists" {
+  run bash -c 'curl -s 127.0.0.1/api/lists?type=block | jq ".lists[].type"'
+  printf "%s\n" "${lines[@]}"
+  # Check no allow entries are present
+  [[ ${lines[@]} != *"allow"* ]]
+}
+
+@test "Check /api/lists?type=allow returning only allowing lists" {
+  run bash -c 'curl -s 127.0.0.1/api/lists?type=allow | jq ".lists[].type"'
+  printf "%s\n" "${lines[@]}"
+  # Check no block entries are present
+  [[ ${lines[@]} != *"block"* ]]
+}
+
+@test "Check /api/lists without type parameter returning all lists" {
+  run bash -c 'curl -s 127.0.0.1/api/lists | jq ".lists[].type"'
+  printf "%s\n" "${lines[@]}"
+  # Check both block and allow entries are present
+  [[ ${lines[@]} == *"allow"* ]]
+  [[ ${lines[@]} == *"block"* ]]
+}
+
+@test "API: No UNKNOWN reply in API" {
+  run bash -c 'curl -s 127.0.0.1/api/queries?reply=UNKNOWN | jq .queries'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'curl -s 127.0.0.1/api/queries?reply=UNKNOWN | jq ".queries | length"'
+  [[ ${lines[0]} == "0" ]]
+}
+
+@test "API: No UNKNOWN status in API" {
+  run bash -c 'curl -s 127.0.0.1/api/queries?status=UNKNOWN | jq .queries'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'curl -s 127.0.0.1/api/queries?status=UNKNOWN | jq ".queries | length"'
+  [[ ${lines[0]} == "0" ]]
+}
+
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1/api/auth'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '{"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"took":'*'}' ]]
+}
+
+@test "Config validation working on the CLI (type-based checking)" {
+  run bash -c './pihole-FTL --config dns.port true'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Config setting dns.port is invalid, allowed options are: unsigned integer (16 bit)' ]]
+  [[ $status == 2 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "abc"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Config setting dns.revServers is invalid: not valid JSON, error at: abc' ]]
+  [[ $status == 2 ]]
+}
+
+@test "Config validation working on the API (type-based checking)" {
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"blockESNI\":15.5}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item is invalid\",\"hint\":\"dns.blockESNI: not of type bool\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"piholePTR\":\"something_else\"}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item is invalid\",\"hint\":\"dns.piholePTR: invalid option\"},\"took\":"*"}" ]]
+}
+
+@test "Config validation working on the CLI (validator-based checking)" {
+  run bash -c './pihole-FTL --config dns.hosts "[\"111.222.333.444 abc\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.hosts[0]: neither a valid IPv4 nor IPv6 address ("111.222.333.444")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.hosts "[\"1.1.1.1 cf\",\"8.8.8.8 google\",\"1.2.3.4\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.hosts[2]: entry does not have at least one hostname ("1.2.3.4")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"abc,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <enabled> not a boolean ("abc")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,abc,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <ip-address> neither a valid IPv4 nor IPv6 address ("abc")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,1.2.3.4/55,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <prefix-len> not a valid IPv4 prefix length ("55")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,::1/255,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <prefix-len> not a valid IPv6 prefix length ("255")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,1.1.1.1,def\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: entry does not have all required elements (<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>)' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,1.1.1.1,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'New dnsmasq configuration is not valid ('*'resolve at line '*' of /etc/pihole/dnsmasq.conf.temp: "rev-server=1.1.1.1,def"), config remains unchanged' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\' ]]
+  [[ $status == 3 ]]
+}
+
+@test "Config validation working on the API (validator-based checking)" {
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"files\":{\"pcap\":\"%gh4b\"}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item validation failed\",\"hint\":\"files.pcap: not a valid file path (\\\"%gh4b\\\")\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"cnameRecords\":[\"a\"]}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item validation failed\",\"hint\":\"dns.cnameRecords[0]: not a valid CNAME definition (too few elements)\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"cnameRecords\":[\"a,b,c\",\"a,b,c,,c\"]}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item validation failed\",\"hint\":\"dns.cnameRecords[1]: contains an empty string at position 3\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"cnameRecords\":[\"a,b,c\",\"a,b,c\",5]}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item is invalid\",\"hint\":\"dns.cnameRecords: array has invalid elements\"},\"took\":"*"}" ]]
 }
 
 @test "Create, set, and use application password" {

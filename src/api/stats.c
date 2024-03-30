@@ -163,7 +163,6 @@ int api_stats_top_domains(struct ftl_conn *api)
 		return 0;
 	}
 
-
 	bool blocked = false; // Can be overwritten by query string
 	int count = 10;
 	// /api/stats/top_domains?blocked=true
@@ -185,12 +184,11 @@ int api_stats_top_domains(struct ftl_conn *api)
 		if(domain == NULL)
 			continue;
 
-		temparray[2*domainID + 0] = domainID;
-		if(blocked)
-			temparray[2*domainID + 1] = domain->blockedcount;
-		else
-			// Count only permitted queries
-			temparray[2*domainID + 1] = (domain->count - domain->blockedcount);
+		// Add domain ID
+		temparray[2*added_domains + 0] = domainID;
+
+		// Use either blocked or total count based on request string
+		temparray[2*added_domains + 1] = blocked ? domain->blockedcount : domain->count - domain->blockedcount;
 
 		added_domains++;
 	}
@@ -309,13 +307,6 @@ int api_stats_top_domains(struct ftl_conn *api)
 int api_stats_top_clients(struct ftl_conn *api)
 {
 	int count = 10;
-	const int clients = counters->clients;
-	int *temparray = calloc(2*clients, sizeof(int));
-	if(temparray == NULL)
-	{
-		log_err("Memory allocation failed in api_stats_top_clients()");
-		return 0;
-	}
 
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
@@ -328,7 +319,6 @@ int api_stats_top_clients(struct ftl_conn *api)
 		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *top_clients = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(json, "top_clients", top_clients);
-		free(temparray);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -346,6 +336,15 @@ int api_stats_top_clients(struct ftl_conn *api)
 	// Lock shared memory
 	lock_shm();
 
+	int clients = counters->clients;
+	int *temparray = calloc(2*clients, sizeof(int));
+	if(temparray == NULL)
+	{
+		log_err("Memory allocation failed in api_stats_top_clients()");
+		return 0;
+	}
+
+	unsigned int added_clients = 0;
 	for(int clientID = 0; clientID < clients; clientID++)
 	{
 		// Get client pointer
@@ -355,13 +354,15 @@ int api_stats_top_clients(struct ftl_conn *api)
 		if(client == NULL || (!client->flags.aliasclient && client->aliasclient_id >= 0))
 			continue;
 
-		temparray[2*clientID + 0] = clientID;
+		temparray[2*added_clients + 0] = clientID;
 		// Use either blocked or total count based on request string
-		temparray[2*clientID + 1] = blocked ? client->blockedcount : client->count;
+		temparray[2*added_clients + 1] = blocked ? client->blockedcount : client->count;
+
+		added_clients++;
 	}
 
 	// Sort temporary array
-	qsort(temparray, clients, sizeof(int[2]), cmpdesc);
+	qsort(temparray, added_clients, sizeof(int[2]), cmpdesc);
 
 	// Get clients which the user doesn't want to see
 	regex_t *regex_clients = NULL;
@@ -372,7 +373,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 
 	int n = 0;
 	cJSON *top_clients = JSON_NEW_ARRAY();
-	for(int i = 0; i < clients; i++)
+	for(unsigned int i = 0; i < added_clients; i++)
 	{
 		// Get sorted indices and counter values (may be either total or blocked count)
 		const int clientID = temparray[2*i + 0];
@@ -469,6 +470,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 	// Lock shared memory
 	lock_shm();
 
+	unsigned int added_upstreams = 0;
 	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
 		// Get upstream pointer
@@ -476,9 +478,11 @@ int api_stats_upstreams(struct ftl_conn *api)
 		if(upstream == NULL)
 			continue;
 
-		temparray[2*upstreamID + 0] = upstreamID;
-		temparray[2*upstreamID + 1] = upstream->count;
+		temparray[2*added_upstreams + 0] = upstreamID;
+		temparray[2*added_upstreams + 1] = upstream->count;
 		totalcount += upstream->count;
+
+		added_upstreams++;
 	}
 
 	// Sort temporary array in descending order
@@ -486,7 +490,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 
 	// Loop over available forward destinations
 	cJSON *top_upstreams = JSON_NEW_ARRAY();
-	for(int i = -2; i < upstreams; i++)
+	for(int i = -2; i < (int)added_upstreams; i++)
 	{
 		int count = 0;
 		const char* ip, *name;

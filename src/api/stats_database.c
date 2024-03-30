@@ -513,14 +513,13 @@ int api_history_database_clients(struct ftl_conn *api)
 	}
 
 	// Loop over clients and accumulate results
-	cJSON *clients = JSON_NEW_ARRAY();
+	cJSON *clients = JSON_NEW_OBJECT();
 	unsigned int num_clients = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
-		JSON_COPY_STR_TO_OBJECT(item, "ip", sqlite3_column_text(stmt, 1));
 		JSON_COPY_STR_TO_OBJECT(item, "name", sqlite3_column_text(stmt, 2));
-		JSON_ADD_ITEM_TO_ARRAY(clients, item);
+		JSON_ADD_ITEM_TO_OBJECT(clients, (const char*)sqlite3_column_text(stmt, 1), item);
 		num_clients++;
 	}
 	sqlite3_finalize(stmt);
@@ -607,13 +606,7 @@ int api_history_database_clients(struct ftl_conn *api)
 			}
 
 			item = JSON_NEW_OBJECT();
-			data = JSON_NEW_ARRAY();
-			// Prefill data with zeroes
-			// We have to do this as not all clients may have
-			// have been active in any time interval we're
-			// querying
-			for(unsigned int i = 0; i < num_clients; i++)
-				JSON_ADD_NUMBER_TO_ARRAY(data, 0);
+			data = JSON_NEW_OBJECT();
 
 			JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", previous_timeslot);
 		}
@@ -621,24 +614,7 @@ int api_history_database_clients(struct ftl_conn *api)
 		const char *client = (char*)sqlite3_column_text(stmt, 1);
 		const int count = sqlite3_column_int(stmt, 2);
 
-		// Find index of this client in known clients...
-		unsigned int idx = 0;
-		for(; idx < num_clients; idx++)
-		{
-			const char *array_client = cJSON_GetStringValue(cJSON_GetObjectItem(cJSON_GetArrayItem(clients, idx), "ip"));
-			if(array_client != NULL &&
-			   strcmp(client, array_client) == 0)
-				break;
-		}
-
-		if(idx == num_clients)
-		{
-			// Not found
-			continue;
-		}
-
-		// ... and replace corresponding number in data array
-		JSON_REPLACE_NUMBER_IN_ARRAY(data, idx, count);
+		JSON_ADD_NUMBER_TO_OBJECT(data, client, count);
 	}
 
 	// Append final timeslot at the end if applicable

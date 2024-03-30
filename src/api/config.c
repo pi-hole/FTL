@@ -656,19 +656,9 @@ static int api_config_get(struct ftl_conn *api)
 static int api_config_patch(struct ftl_conn *api)
 {
 	// Is there a payload with valid JSON data?
-	if (api->payload.json == NULL)
-	{
-		if (api->payload.json_error == NULL)
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "No request body data",
-			                       NULL);
-		else
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "Invalid request body data (no valid JSON), error before hint",
-			                       api->payload.json_error);
-	}
+	const int ret = check_json_payload(api);
+	if(ret != 0)
+		return ret;
 
 	// Is there a "config" object at the root of the received JSON payload?
 	cJSON *conf = cJSON_GetObjectItem(api->payload.json, "config");
@@ -765,6 +755,17 @@ static int api_config_patch(struct ftl_conn *api)
 		config_changed = true;
 
 		// If we reach this point, a valid setting was found and changed
+
+		// Validate new value (if validation function is defined)
+		char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(!conf_item->c(&new_item->v, new_item->k, errbuf))
+		{
+			free_config(&newconf);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Config item validation failed",
+			                       errbuf);
+		}
 
 		// Check if this item requires a config-rewrite + restart of dnsmasq
 		if(conf_item->f & FLAG_RESTART_FTL)
@@ -949,6 +950,21 @@ static int api_config_put_delete(struct ftl_conn *api)
 		}
 
 		// If we reach this point, a valid setting was found and changed
+
+		// Validate new value on PUT (if validation function is defined)
+		if(api->method == HTTP_PUT)
+		{
+			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+			if(!new_item->c(&new_item->v, new_item->k, errbuf))
+			{
+				free_config(&newconf);
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid value",
+				                       errbuf);
+			}
+		}
+
 		// Check if this item requires a config-rewrite + restart of dnsmasq
 		if(new_item->f & FLAG_RESTART_FTL)
 			dnsmasq_changed = true;

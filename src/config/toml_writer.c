@@ -37,11 +37,7 @@ bool writeFTLtoml(const bool verbose)
 
 	// Write header
 	fprintf(fp, "# Pi-hole configuration file (%s)\n", get_FTL_version());
-#ifdef TOML_UTF8
 	fputs("# Encoding: UTF-8\n", fp);
-#else
-	fputs("# Encoding: ASCII + UCS\n", fp);
-#endif
 	fputs("# This file is managed by pihole-FTL\n", fp);
 	char timestring[TIMESTR_SIZE] = "";
 	get_timestr(timestring, time(NULL), false, false);
@@ -51,6 +47,7 @@ bool writeFTLtoml(const bool verbose)
 
 	// Iterate over configuration and store it into the file
 	char *last_path = (char*)"";
+	unsigned int modified = 0, env_vars = 0;
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
@@ -87,7 +84,10 @@ bool writeFTLtoml(const bool verbose)
 
 		// Print info if this value is overwritten by an env var
 		if(conf_item->f & FLAG_ENV_VAR)
+		{
 			print_comment(fp, ">>> This config is overwritten by an environmental variable <<<", "", 85, level-1);
+			env_vars++;
+		}
 
 		// Write value
 		indentTOML(fp, level-1);
@@ -107,10 +107,24 @@ bool writeFTLtoml(const bool verbose)
 		{
 			fprintf(fp, " ### CHANGED, default = ");
 			writeTOMLvalue(fp, -1, conf_item->t, &conf_item->d);
+			modified++;
 		}
 
 		// Add newlines after each entry
 		fputs("\n\n", fp);
+	}
+
+	// Log some statistics in verbose mode
+	if(verbose || config.debug.config.v.b)
+	{
+		log_info("Wrote config file:");
+		log_info(" - %zu total entries", CONFIG_ELEMENTS);
+		log_info(" - %zu %s default", CONFIG_ELEMENTS - modified,
+		         CONFIG_ELEMENTS - modified == 1 ? "entry is" : "entries are");
+		log_info(" - %u %s modified", modified,
+		         modified == 1 ? "entry is" : "entries are");
+		log_info(" - %u %s forced through environment", env_vars,
+		         env_vars == 1 ? "entry is" : "entries are");
 	}
 
 	// Close file and release exclusive lock

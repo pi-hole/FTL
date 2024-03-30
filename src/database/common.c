@@ -549,6 +549,26 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 17 if lower
+	if(dbversion < 17)
+	{
+		// Update to version 17: Rename regex_id column to regex_id_old
+		log_info("Updating long-term database to version 17");
+		if(!rename_query_storage_column_regex_id(db))
+		{
+			log_info("regex_id cannot be renamed to list_id, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Last check after all migrations, if this happens, it will cause the
+	// CI to fail the tests
+	if(dbversion != MEMDB_VERSION)
+		log_err("Database version %i does not match MEMDB_VERSION %i", dbversion, MEMDB_VERSION);
+
 	lock_shm();
 	import_aliasclients(db);
 	unlock_shm();
@@ -558,13 +578,9 @@ void db_init(void)
 	dbclose(&db);
 
 	// Log if users asked us to not use the long-term database for queries
-	// We will still use it to store warnings in it
-	config.database.DBexport.v.b = true;
-	if(config.database.maxDBdays.v.i == 0)
-	{
+	// We will still use it to store warnings (Pi-hole diagnosis system)
+	if(config.database.maxDBdays.v.ui == 0)
 		log_info("Not using the database for storing queries");
-		config.database.DBexport.v.b = false;
-	}
 
 	log_info("Database successfully initialized");
 }

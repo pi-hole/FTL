@@ -132,9 +132,9 @@ const char *readFTLlegacy(struct config *conf)
 		if(value > maxdbdays_max)
 			value = maxdbdays_max;
 
-		// Only use valid values
-		if(value == -1 || value >= 0)
-			conf->database.maxDBdays.v.i = value;
+		// Import value if it is >= than 0, convert negative values
+		// to 0 to disable the database
+		conf->database.maxDBdays.v.ui = value >= 0 ? value : 0;
 	}
 
 	// RESOLVE_IPV6
@@ -177,7 +177,7 @@ const char *readFTLlegacy(struct config *conf)
 		// Use standard path if path was set to zero but override
 		// MAXDBDAYS=0 to ensure no queries are stored in the database
 		conf->files.database.v.s = conf->files.database.d.s;
-		conf->database.maxDBdays.v.i = 0;
+		conf->database.maxDBdays.v.ui = 0;
 	}
 
 	// MAXLOGAGE

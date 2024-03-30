@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -929,15 +929,24 @@ static int make_sock(union mysockaddr *addr, int type, int dienow)
 	
       errno = errsave;
 
-      if (dienow)
+      /* Failure to bind addresses given by --listen-address at this point
+	 because there's no interface with the address is OK if we're doing bind-dynamic.
+	 If/when an interface is created with the relevant address we'll notice
+	 and attempt to bind it then. This is in the generic error path so we  close the socket,
+	 but EADDRNOTAVAIL is only a possible error from bind() 
+	 
+	 When a new address is created and we call this code again (dienow == 0) there
+	 may still be configured addresses when don't exist, (consider >1 --listen-address,
+	 when the first is created, the second will still be missing) so we suppress
+	 EADDRNOTAVAIL even in that case to avoid confusing log entries.
+      */
+      if (!option_bool(OPT_CLEVERBIND) || errno != EADDRNOTAVAIL)
 	{
-	  /* failure to bind addresses given by --listen-address at this point
-	     is OK if we're doing bind-dynamic */
-	  if (!option_bool(OPT_CLEVERBIND))
+	  if (dienow)
 	    die(s, daemon->addrbuff, EC_BADNET);
+	  else
+	    my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
 	}
-      else
-	my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
       
       return -1;
     }	

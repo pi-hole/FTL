@@ -19,6 +19,8 @@
 #include "database/network-table.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
+// parse_groupIDs()
+#include "webserver/http-common.h"
 #include <idn2.h>
 
 static int api_list_read(struct ftl_conn *api,
@@ -36,7 +38,7 @@ static int api_list_read(struct ftl_conn *api,
 		                       sql_msg);
 	}
 
-	tablerow table;
+	tablerow table = { 0 };
 	cJSON *rows = JSON_NEW_ARRAY();
 	while(gravityDB_readTableGetRow(listtype, &table, &sql_msg))
 	{
@@ -48,7 +50,9 @@ static int api_list_read(struct ftl_conn *api,
 			JSON_COPY_STR_TO_OBJECT(row, "name", table.name);
 			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
 		}
-		else if(listtype == GRAVITY_ADLISTS)
+		else if(listtype == GRAVITY_ADLISTS ||
+		        listtype == GRAVITY_ADLISTS_BLOCK ||
+		        listtype == GRAVITY_ADLISTS_ALLOW)
 		{
 			JSON_COPY_STR_TO_OBJECT(row, "address", table.address);
 			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
@@ -94,19 +98,13 @@ static int api_list_read(struct ftl_conn *api,
 		{
 			if(table.group_ids != NULL)
 			{
-				// Black magic at work here: We build a JSON array from
-				// the group_concat result delivered from the database,
-				// parse it as valid array and append it as row to the
-				// data
-				const size_t buflen = strlen(table.group_ids)+3u;
-				char *group_ids_str = calloc(buflen, sizeof(char));
-				group_ids_str[0] = '[';
-				strcpy(group_ids_str+1u , table.group_ids);
-				group_ids_str[buflen-2u] = ']';
-				group_ids_str[buflen-1u] = '\0';
-				cJSON * group_ids = cJSON_Parse(group_ids_str);
-				free(group_ids_str);
-				JSON_ADD_ITEM_TO_OBJECT(row, "groups", group_ids);
+				const int ret = parse_groupIDs(api, &table, row);
+				if(ret != 0)
+				{
+					JSON_DELETE(rows);
+					return ret;
+				}
+
 			}
 			else
 			{
@@ -126,7 +124,9 @@ static int api_list_read(struct ftl_conn *api,
 		JSON_ADD_NUMBER_TO_OBJECT(row, "date_modified", table.date_modified);
 
 		// Properties added in https://github.com/pi-hole/pi-hole/pull/3951
-		if(listtype == GRAVITY_ADLISTS)
+		if(listtype == GRAVITY_ADLISTS ||
+		   listtype == GRAVITY_ADLISTS_BLOCK ||
+		   listtype == GRAVITY_ADLISTS_ALLOW)
 		{
 			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
 			JSON_ADD_NUMBER_TO_OBJECT(row, "date_updated", table.date_updated);
@@ -147,7 +147,9 @@ static int api_list_read(struct ftl_conn *api,
 		cJSON *json = JSON_NEW_OBJECT();
 		if(listtype == GRAVITY_GROUPS)
 			objname = "groups";
-		else if(listtype == GRAVITY_ADLISTS)
+		else if(listtype == GRAVITY_ADLISTS ||
+		        listtype == GRAVITY_ADLISTS_BLOCK ||
+		        listtype == GRAVITY_ADLISTS_ALLOW)
 			objname = "lists";
 		else if(listtype == GRAVITY_CLIENTS)
 			objname = "clients";
@@ -178,19 +180,9 @@ static int api_list_write(struct ftl_conn *api,
 	tablerow row = { 0 };
 
 	// Check if valid JSON payload is available
-	if (api->payload.json == NULL)
-	{
-		if (api->payload.json_error == NULL)
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "No request body data",
-			                       NULL);
-		else
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "Invalid request body data (no valid JSON), error before hint",
-			                       api->payload.json_error);
-	}
+	const int json_ret = check_json_payload(api);
+	if(json_ret != 0)
+		return json_ret;
 
 	bool spaces_allowed = false;
 	bool allocated_json = false;
@@ -268,6 +260,8 @@ static int api_list_write(struct ftl_conn *api,
 			}
 
 			case GRAVITY_ADLISTS:
+			case GRAVITY_ADLISTS_BLOCK:
+			case GRAVITY_ADLISTS_ALLOW:
 			{
 				cJSON *json_address = cJSON_GetObjectItemCaseSensitive(api->payload.json, "address");
 				if(cJSON_IsString(json_address) && strlen(json_address->valuestring) > 0)
@@ -331,6 +325,10 @@ static int api_list_write(struct ftl_conn *api,
 			                       NULL);
 		}
 	}
+	else if(listtype == GRAVITY_ADLISTS_BLOCK)
+		row.type_int = ADLIST_BLOCK;
+	else if(listtype == GRAVITY_ADLISTS_ALLOW)
+		row.type_int = ADLIST_ALLOW;
 	else
 	{
 		cJSON *json_type = cJSON_GetObjectItemCaseSensitive(api->payload.json, "type");
@@ -552,7 +550,9 @@ static int api_list_remove(struct ftl_conn *api,
 	if(listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
 	   listtype == GRAVITY_DOMAINLIST_DENY_EXACT ||
 	   listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX ||
-	   listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
+	   listtype == GRAVITY_DOMAINLIST_DENY_REGEX ||
+	   listtype == GRAVITY_ADLISTS_BLOCK ||
+	   listtype == GRAVITY_ADLISTS_ALLOW)
 	{
 		int type = -1;
 		switch (listtype)
@@ -568,12 +568,17 @@ static int api_list_remove(struct ftl_conn *api,
 				break;
 			case GRAVITY_DOMAINLIST_DENY_REGEX:
 				type = 3;
+				break;
+			case GRAVITY_ADLISTS_BLOCK:
+				type = ADLIST_BLOCK;
+				break;
+			case GRAVITY_ADLISTS_ALLOW:
+				type = ADLIST_ALLOW;
+				break;
+			// Not handled herein
 			case GRAVITY_GROUPS:
 			case GRAVITY_ADLISTS:
 			case GRAVITY_CLIENTS:
-				// No type required for these tables
-				break;
-			// Aggregate types cannot be handled by this routine
 			case GRAVITY_GRAVITY:
 			case GRAVITY_ANTIGRAVITY:
 			case GRAVITY_DOMAINLIST_ALLOW_ALL:
@@ -582,7 +587,7 @@ static int api_list_remove(struct ftl_conn *api,
 			case GRAVITY_DOMAINLIST_ALL_REGEX:
 			case GRAVITY_DOMAINLIST_ALL_ALL:
 			default:
-				return false;
+				break;
 		}
 
 		// Create new JSON array with the item and type:
@@ -825,6 +830,30 @@ int api_list(struct ftl_conn *api)
 			                       "bad_request",
 			                       "Invalid request: Specified endpoint not available",
 			                       api->request->local_uri_raw);
+	}
+
+	// If this is a request for a list, we check if there is a request
+	// parameter narrowing down which kind of list. If so, we modify the
+	// list type accordingly
+	if(listtype == GRAVITY_ADLISTS && api->request->query_string != NULL)
+	{
+		// Check if there is a type parameter
+		char typestr[16] = { 0 };
+		if(get_string_var(api->request->query_string, "type", typestr, sizeof(typestr)) > 0)
+		{
+			if(strcasecmp(typestr, "allow") == 0)
+				listtype = GRAVITY_ADLISTS_ALLOW;
+			else if(strcasecmp(typestr, "block") == 0)
+				listtype = GRAVITY_ADLISTS_BLOCK;
+			else
+			{
+				// Invalid type parameter
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid request: Invalid type parameter (should be either \"allow\" or \"block\")",
+				                       api->request->query_string);
+			}
+		}
 	}
 
 	if(api->method == HTTP_GET)

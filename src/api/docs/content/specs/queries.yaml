@@ -216,9 +216,9 @@ components:
                   time:
                     type: number
                     description: Time until the response was received (ms, negative if N/A)
-              regex_id:
+              list_id:
                 type: integer
-                description: ID of regex (`NULL` if N/A)
+                description: ID of corresponding database table (adlist for anti-/gravity, else domainlist) (`NULL` if N/A)
                 nullable: true
               upstream:
                 type: string
@@ -237,7 +237,7 @@ components:
               reply:
                 type: "IP"
                 time: 19
-              regex_id: NULL
+              list_id: NULL
               upstream: "localhost#5353"
               dbid: 112421354
             - time: 1581907871.583821
@@ -252,7 +252,7 @@ components:
               reply:
                 type: "IP"
                 time: 12.3
-              regex_id: NULL
+              list_id: NULL
               upstream: "localhost#5353"
               dbid: 112421355
         cursor:

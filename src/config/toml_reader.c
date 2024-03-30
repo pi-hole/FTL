@@ -23,10 +23,83 @@
 #include "config/toml_helper.h"
 // delete_all_sessions()
 #include "api/api.h"
+// readEnvValue()
+#include "config/env.h"
 
 // Private prototypes
 static toml_table_t *parseTOML(const unsigned int version);
 static void reportDebugFlags(void);
+
+// Migrate dns.revServer -> dns.revServers[0]
+static bool migrate_dns_revServer(toml_table_t *toml, struct config *newconf)
+{
+	bool restart = false;
+	toml_table_t *dns = toml_table_in(toml, "dns");
+	if(dns)
+	{
+		toml_table_t *revServer = toml_table_in(dns, "revServer");
+		if(revServer)
+		{
+			// Read old config
+			toml_datum_t active = toml_bool_in(revServer, "active");
+			toml_datum_t cidr = toml_string_in(revServer, "cidr");
+			toml_datum_t target = toml_string_in(revServer, "target");
+			toml_datum_t domain = toml_string_in(revServer, "domain");
+
+			// Necessary condition: all values must exist and CIDR and target must not be empty
+			if(active.ok && cidr.ok && target.ok && domain.ok && strlen(cidr.u.s) > 0 && strlen(target.u.s))
+			{
+				// Build comma-separated string of all values
+				char *old = calloc((active.u.b ? 4 : 5) + strlen(cidr.u.s) + strlen(target.u.s) + strlen(domain.u.s) + 4, sizeof(char));
+				if(old)
+				{
+					// Add to new config
+					sprintf(old, "%s,%s,%s,%s", active.u.s ? "true" : "false", cidr.u.s, target.u.s, domain.u.s);
+					log_debug(DEBUG_CONFIG, "Config setting dns.revServer MIGRATED to dns.revServers[0]: %s", old);
+					cJSON_AddItemToArray(newconf->dns.revServers.v.json, cJSON_CreateString(old));
+					restart = true;
+				}
+			}
+			else
+			{
+				// Invalid config - ignored but logged in case
+				// the user wants to know and restore it later
+				// manually after fixing whatever the problem is
+				log_warn("Config setting dns.revServer INVALID - ignoring: %s %s %s %s",
+				         active.ok ? active.u.s : "NULL",
+				         cidr.ok ? cidr.u.s : "NULL",
+				         target.ok ? target.u.s : "NULL",
+				         domain.ok ? domain.u.s : "NULL");
+			}
+		}
+		else
+		{
+			// Perfectly fine - it just means this old option does
+			// not exist and, hence, does not need to be migrated
+			log_debug(DEBUG_CONFIG, "dns.revServer does not exist - nothing to migrate");
+		}
+	}
+	else
+	{
+		// This is actually a problem as the old config file
+		// should always contain a "dns" section
+		log_warn("dns config tab does not exist - config file corrupt or incomplete");
+	}
+
+	return restart;
+}
+
+// Migrate config from old to new, returns true if a restart is required to
+// apply the changes
+static bool migrate_config(toml_table_t *toml, struct config *newconf)
+{
+	bool restart = false;
+
+	// Migrate dns.revServer -> dns.revServers[0]
+	restart |= migrate_dns_revServer(toml, newconf);
+
+	return restart;
+}
 
 bool readFTLtoml(struct config *oldconf, struct config *newconf,
                  toml_table_t *toml, const bool verbose, bool *restart,
@@ -42,17 +115,10 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 			return false;
 	}
 
-	// Check if we are in Adam mode
-	// (only read the env vars)
-	const char *envvar = getenv("FTLCONF_ENV_ONLY");
-	const bool adam_mode = (envvar != NULL &&
-	                          (strcmp(envvar, "true") == 0 ||
-	                           strcmp(envvar, "yes") == 0));
-
 	// Try to read debug config. This is done before the full config
 	// parsing to allow for debug output further down
 	// First try to read env variable, if this fails, read TOML
-	if((teleporter || !readEnvValue(&newconf->debug.config, newconf)) && !adam_mode)
+	if(teleporter || !readEnvValue(&newconf->debug.config, newconf))
 	{
 		toml_table_t *conf_debug = toml_table_in(toml, "debug");
 		if(conf_debug)
@@ -79,10 +145,6 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 			new_conf_item->f |= FLAG_ENV_VAR;
 			continue;
 		}
-
-		// Do not read TOML file when in Adam mode
-		if(adam_mode)
-			continue;
 
 		// Get config path depth
 		unsigned int level = config_path_depth(new_conf_item->p);
@@ -124,10 +186,17 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		}
 	}
 
+	// Migrate config from old to new
+	if(migrate_config(toml, newconf) && restart != NULL)
+		*restart = true;
+
 	// Report debug config if enabled
 	set_debug_flags(newconf);
 	if(verbose)
 		reportDebugFlags();
+
+	// Print FTL environment variables (if used)
+	printFTLenv();
 
 	// Free memory allocated by the TOML parser and return success
 	toml_free(toml);
