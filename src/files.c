@@ -269,11 +269,12 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 	// If size is 0, we return 0% to avoid division by zero below
 	if(size == 0)
 		return 0;
-	// If used is larger than size, we return 100%
-	if(used > size)
-		return 100;
+
 	// Return percentage of used memory at this path (rounded down)
-	return (used*100)/(size + 1);
+	// If the used size is larger than the total size, this intentionally
+	// returns more than 100% so that the caller can handle this case
+	// (this can happen with docker on macOS)
+	return (used * 100) / size;
 }
 
 // Get the filesystem where the given path is located
