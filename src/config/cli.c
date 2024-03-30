@@ -342,10 +342,11 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 		}
 		case CONF_JSON_STRING_ARRAY:
 		{
-			cJSON *elem = cJSON_Parse(value);
+			const char *json_error = NULL;
+			cJSON *elem = cJSON_ParseWithOpts(value, &json_error, 0);
 			if(elem == NULL)
 			{
-				log_err("Config setting %s is invalid: not valid JSON, error before: %s", conf_item->k, cJSON_GetErrorPtr());
+				log_err("Config setting %s is invalid: not valid JSON, error at: %s", conf_item->k, json_error);
 				return false;
 			}
 			if(!cJSON_IsArray(elem))

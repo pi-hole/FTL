@@ -29,6 +29,8 @@
 #include "files.h"
 // get_memdb()
 #include "database/query-table.h"
+// escape_html()
+#include "webserver/http-common.h"
 
 static const char *get_message_type_str(const enum message_type type)
 {

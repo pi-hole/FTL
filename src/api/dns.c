@@ -74,19 +74,10 @@ static int set_blocking(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	if (api->payload.json == NULL)
-	{
-		if (api->payload.json_error == NULL)
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "No request body data",
-			                       NULL);
-		else
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "Invalid request body data (no valid JSON), error before hint",
-			                       api->payload.json_error);
-	}
+	// Check if the payload is valid JSON
+	const int ret = check_json_payload(api);
+	if(ret != 0)
+		return ret;
 
 	cJSON *elem = cJSON_GetObjectItemCaseSensitive(api->payload.json, "blocking");
 	if (!cJSON_IsBool(elem))

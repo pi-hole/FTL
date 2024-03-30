@@ -12,10 +12,10 @@
 // logging routines
 #include "log.h"
 
-#define JSON_NEW_OBJECT() cJSON_CreateObject();
-#define JSON_NEW_ARRAY() cJSON_CreateArray();
+#define JSON_NEW_OBJECT() cJSON_CreateObject()
+#define JSON_NEW_ARRAY() cJSON_CreateArray()
 
-#define JSON_ADD_ITEM_TO_ARRAY(array, item) cJSON_AddItemToArray(array, item);
+#define JSON_ADD_ITEM_TO_ARRAY(array, item) cJSON_AddItemToArray(array, item)
 
 #define JSON_COPY_STR_TO_OBJECT(object, key, string)({ \
 	cJSON *string_item = NULL; \
