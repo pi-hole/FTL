@@ -673,19 +673,22 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	cJSON *gravity = data->import != NULL ? cJSON_GetObjectItemCaseSensitive(data->import, "gravity") : NULL;
 	for(size_t i = 0; i < sizeof(teleporter_v5_files) / sizeof(struct teleporter_files); i++)
 	{
-		// - if import is NULL we import all files/tables
-		// - if import is non-NULL, but gravity is NULL we skip
-		//   the import of gravity tables
-		// - if import is non-NULL, and gravity is non-NULL, we
-		//   import the file/table if it is in the object, a
-		//   boolean and true
-		if(data->import != NULL || gravity == NULL || !JSON_KEY_TRUE(gravity, teleporter_v5_files[i].table_name))
+		// - if import is non-NULL we may skip some tables
+		if(data->import != NULL)
 		{
-			log_info("Skipping import of \"%s\" as it was not requested for import (JSON: %s, gravity: %s)",
-			         teleporter_v5_files[i].filename,
-			         data->import != NULL ? "yes" : "no",
-			         gravity != NULL ? "yes" : "no");
-			continue;
+			// - if import is non-NULL, but gravity is NULL we skip
+			//   the import of gravity tables altogether
+			// - if import is non-NULL, and gravity is non-NULL, we
+			//   import the file/table if it is in the object, a
+			//   boolean and true
+			if(gravity == NULL || !JSON_KEY_TRUE(gravity, teleporter_v5_files[i].table_name))
+			{
+				log_info("Skipping import of \"%s\" as it was not requested for import (JSON: %s, gravity: %s)",
+				         teleporter_v5_files[i].filename,
+				         data->import != NULL ? "yes" : "no",
+				         gravity != NULL ? "yes" : "no");
+				continue;
+			}
 		}
 
 		// Import the JSON file
