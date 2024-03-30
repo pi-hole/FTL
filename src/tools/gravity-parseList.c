@@ -94,12 +94,6 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 	if(domain[last_dot + 1] == '-' || domain[len - 1] == '-')
 		return false;
 
-	// TLD length check
-	// The last label must be at least 2 characters long
-	// (len-1) because we start counting from zero
-	if((len - 1) - last_dot < 2)
-		return false;
-
 	return true;
 }
 
