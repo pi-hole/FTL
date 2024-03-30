@@ -670,43 +670,40 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 
 	// Check if the archive contains gravity tables
 	cJSON *gravity = data->import != NULL ? cJSON_GetObjectItemCaseSensitive(data->import, "gravity") : NULL;
-	if(data->import == NULL || gravity != NULL)
+	for(size_t i = 0; i < sizeof(teleporter_v5_files) / sizeof(struct teleporter_files); i++)
 	{
-		for(size_t i = 0; i < sizeof(teleporter_v5_files) / sizeof(struct teleporter_files); i++)
+		// - if import is NULL we import all files/tables
+		// - if import is non-NULL, but gravity is NULL we skip
+		//   the import of gravity tables
+		// - if import is non-NULL, and gravity is non-NULL, we
+		//   import the file/table if it is in the object, a
+		//   boolean and true
+		if(data->import != NULL || gravity == NULL || !JSON_KEY_TRUE(gravity, teleporter_v5_files[i].table_name))
 		{
-			// - if import is NULL we import all files/tables
-			// - if import is non-NULL, but gravity is NULL we skip
-			//   the import of gravity tables
-			// - if import is non-NULL, and gravity is non-NULL, we
-			//   import the file/table if it is in the object, a
-			//   boolean and true
-			if(data->import != NULL || gravity == NULL || !JSON_KEY_TRUE(gravity, teleporter_v5_files[i].table_name))
-			{
-				log_info("Skipping import of \"%s\" as it was not requested for import",
-				         teleporter_v5_files[i].filename);
-				continue;
-			}
+			log_info("Skipping import of \"%s\" as it was not requested for import",
+			         teleporter_v5_files[i].filename);
+			continue;
+		}
 
-			// Import the JSON file
-			size_t fileSize = 0u;
-			cJSON *json = NULL;
-			const char *file = find_file_in_tar(archive, archive_size, teleporter_v5_files[i].filename, &fileSize);
-			const char *json_error = NULL;
-			if(file != NULL && fileSize > 0u && (json = cJSON_ParseWithLengthOpts(file, fileSize, &json_error, false)) != NULL)
-			{
-				if(import_json_table(json, &teleporter_v5_files[i]))
-					JSON_COPY_STR_TO_ARRAY(imported_files, teleporter_v5_files[i].filename);
-			}
-			else if(json_error != NULL)
-			{
-				log_err("Unable to parse JSON file \"%s\", error at: %s",
-				        teleporter_v5_files[i].filename, json_error);
-			}
-			else
-			{
-				log_debug(DEBUG_CONFIG, "Unable to find file \"%s\" in TAR archive",
-				          teleporter_v5_files[i].filename);
-			}
+		// Import the JSON file
+		size_t fileSize = 0u;
+		cJSON *json = NULL;
+		const char *file = find_file_in_tar(archive, archive_size, teleporter_v5_files[i].filename, &fileSize);
+		const char *json_error = NULL;
+		if(file != NULL && fileSize > 0u && (json = cJSON_ParseWithLengthOpts(file, fileSize, &json_error, false)) != NULL)
+		{
+			if(import_json_table(json, &teleporter_v5_files[i]))
+				JSON_COPY_STR_TO_ARRAY(imported_files, teleporter_v5_files[i].filename);
+		}
+		else if(json_error != NULL)
+		{
+			log_err("Unable to parse JSON file \"%s\", error at: %s",
+				teleporter_v5_files[i].filename, json_error);
+		}
+		else
+		{
+			log_debug(DEBUG_CONFIG, "Unable to find file \"%s\" in TAR archive",
+					teleporter_v5_files[i].filename);
 		}
 	}
 
