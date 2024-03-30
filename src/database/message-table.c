@@ -443,14 +443,22 @@ static void format_regex_message(char *plain, const int sizeof_plain, char *html
 	char *escaped_regex = escape_html(regex);
 	char *escaped_warning = escape_html(warning);
 
+	// Return early if memory allocation failed
+	if(escaped_regex == NULL || escaped_warning == NULL)
+	{
+		if(escaped_regex != NULL)
+			free(escaped_regex);
+		if(escaped_warning != NULL)
+			free(escaped_warning);
+		return;
+	}
+
 	if(snprintf(html, sizeof_html, "Encountered an error when processing <a href=\"groups-domains.lp?domainid=%d\">regex %s filter with ID %d</a>: <pre>%s</pre>Error message: <pre>%s</pre>",
 	            dbindex, type, dbindex, escaped_regex, escaped_warning))
 		log_warn("format_regex_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_regex != NULL)
-		free(escaped_regex);
-	if(escaped_warning != NULL)
-		free(escaped_warning);
+	free(escaped_regex);
+	free(escaped_warning);
 }
 
 static void format_subnet_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *ip, const int matching_count, const char *names, const char *matching_ids, const char *chosen_match_text, const int chosen_match_id)
@@ -469,17 +477,26 @@ static void format_subnet_message(char *plain, const int sizeof_plain, char *htm
 	char *escaped_ids = escape_html(matching_ids);
 	char *escaped_names = escape_html(names);
 
+	// Return early if memory allocation failed
+	if(escaped_ip == NULL || escaped_ids == NULL || escaped_names == NULL)
+	{
+		if(escaped_ip != NULL)
+			free(escaped_ip);
+		if(escaped_ids != NULL)
+			free(escaped_ids);
+		if(escaped_names != NULL)
+			free(escaped_names);
+		return;
+	}
+
 	if(snprintf(html, sizeof_html, "Client <code>%s</code> is managed by %i groups (IDs [%s]), all describing the same subnet:<pre>%s</pre>"
 	            "FTL chose the most recent entry (ID %i) to obtain the group configuration for this client.",
 	            escaped_ip, matching_count, escaped_ids, escaped_names, chosen_match_id) > sizeof_html)
 		log_warn("format_subnet_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_ip != NULL)
-		free(escaped_ip);
-	if(escaped_ids != NULL)
-		free(escaped_ids);
-	if(escaped_names != NULL)
-		free(escaped_names);
+	free(escaped_ip);
+	free(escaped_ids);
+	free(escaped_names);
 }
 
 static void format_hostname_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *ip, const char *name, const int pos)
@@ -519,14 +536,24 @@ static void format_hostname_message(char *plain, const int sizeof_plain, char *h
 	char *escaped_ip = escape_html(ip);
 	char *escaped_name = escape_html(namep);
 
+	// Return early if memory allocation failed
+	if(escaped_ip == NULL || escaped_name == NULL)
+	{
+		if(escaped_ip != NULL)
+			free(escaped_ip);
+		if(escaped_name != NULL)
+			free(escaped_name);
+		if(namep != NULL)
+			free(namep);
+		return;
+	}
+
 	if(snprintf(html, sizeof_html, "Host name of client <code>%s</code> => <code>%s</code> contains (at least) one invalid character (hex %02x) at position %i",
 			escaped_ip, escaped_name, (unsigned char)name[pos], pos) > sizeof_html)
 		log_warn("format_hostname_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_ip != NULL)
-		free(escaped_ip);
-	if(escaped_name != NULL)
-		free(escaped_name);
+	free(escaped_ip);
+	free(escaped_name);
 	if(namep != NULL)
 		free(namep);
 }
@@ -542,11 +569,14 @@ static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, c
 
 	char *escaped_message = escape_html(message);
 
+	// Return early if memory allocation failed
+	if(escaped_message == NULL)
+		return;
+
 	if(snprintf(html, sizeof_html, "FTL failed to start due to %s.", escaped_message) > sizeof_html)
 		log_warn("format_dnsmasq_config_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_message != NULL)
-		free(escaped_message);
+	free(escaped_message);
 }
 
 static void format_rate_limit_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *clientIP, const unsigned int count, const unsigned int interval, const time_t turnaround)
@@ -561,12 +591,15 @@ static void format_rate_limit_message(char *plain, const int sizeof_plain, char 
 
 	char *escaped_clientIP = escape_html(clientIP);
 
+	// Return early if memory allocation failed
+	if(escaped_clientIP == NULL)
+		return;
+
 	if(snprintf(html, sizeof_html, "Client <code>%s</code> has been rate-limited for at least %lu second%s (current limit: %u queries per %u seconds)",
 			escaped_clientIP, (unsigned long int)turnaround, turnaround == 1 ? "" : "s", count, interval) > sizeof_html)
 		log_warn("format_rate_limit_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_clientIP != NULL)
-		free(escaped_clientIP);
+	free(escaped_clientIP);
 }
 
 static void format_dnsmasq_warn_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
@@ -610,14 +643,22 @@ static void format_shmem_message(char *plain, const int sizeof_plain, char *html
 	char *escaped_path = escape_html(path);
 	char *escaped_msg = escape_html(msg);
 
+	// Return early if memory allocation failed
+	if(escaped_path == NULL || escaped_msg == NULL)
+	{
+		if(escaped_path != NULL)
+			free(escaped_path);
+		if(escaped_msg != NULL)
+			free(escaped_msg);
+		return;
+	}
+
 	if(snprintf(html, sizeof_html, "Shared memory shortage (<code>%s</code>) ahead: <strong>%d%%</strong> is used<br>%s",
 	            escaped_path, shmem, escaped_msg) > sizeof_html)
 		log_warn("log_resource_shortage(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_path != NULL)
-		free(escaped_path);
-	if(escaped_msg != NULL)
-		free(escaped_msg);
+	free(escaped_path);
+	free(escaped_msg);
 }
 
 static void format_disk_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
@@ -634,10 +675,22 @@ static void format_disk_message(char *plain, const int sizeof_plain, char *html,
 	char *escaped_path = escape_html(path);
 	char *escaped_msg = escape_html(msg);
 
+	// Return early if memory allocation failed
+	if(escaped_path == NULL || escaped_msg == NULL)
+	{
+		if(escaped_path != NULL)
+			free(escaped_path);
+		if(escaped_msg != NULL)
+			free(escaped_msg);
+		return;
+	}
 
 	if(snprintf(html, sizeof_html, "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on partition containing the file <code>%s</code>",
 	            disk, escaped_msg, escaped_path) > sizeof_html)
 		log_warn("format_disk_message(): Buffer too small to hold HTML message, warning truncated");
+
+	free(escaped_path);
+	free(escaped_msg);
 }
 
 static void format_disk_message_extended(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
@@ -655,16 +708,25 @@ static void format_disk_message_extended(char *plain, const int sizeof_plain, ch
 	char *escaped_mnt_dir = escape_html(mnt_dir);
 	char *escaped_msg = escape_html(msg);
 
+	// Return early if memory allocation failed
+	if(escaped_mnt_type == NULL || escaped_mnt_dir == NULL || escaped_msg == NULL)
+	{
+		if(escaped_mnt_type != NULL)
+			free(escaped_mnt_type);
+		if(escaped_mnt_dir != NULL)
+			free(escaped_mnt_dir);
+		if(escaped_msg != NULL)
+			free(escaped_msg);
+		return;
+	}
+
 	if(snprintf(html, sizeof_html, "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on %s filesystem mounted at <code>%s</code>",
 	            disk, escaped_msg, escaped_mnt_type, escaped_mnt_dir) > sizeof_html)
 		log_warn("format_disk_message_extended(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_mnt_type != NULL)
-		free(escaped_mnt_type);
-	if(escaped_mnt_dir != NULL)
-		free(escaped_mnt_dir);
-	if(escaped_msg != NULL)
-		free(escaped_msg);
+	free(escaped_mnt_type);
+	free(escaped_mnt_dir);
+	free(escaped_msg);
 }
 
 static void format_inaccessible_adlist_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
@@ -680,12 +742,15 @@ static void format_inaccessible_adlist_message(char *plain, const int sizeof_pla
 
 	char *escaped_address = escape_html(address);
 
+	// Return early if memory allocation failed
+	if(escaped_address == NULL)
+		return;
+
 	if(snprintf(html, sizeof_html, "<a href=\"groups/lists?listid=%i\">List with ID <strong>%d</strong> (<code>%s</code>)</a> was inaccessible during last gravity run",
 	            dbindex, dbindex, escaped_address) > sizeof_html)
 		log_warn("format_inaccessible_adlist_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_address != NULL)
-		free(escaped_address);
+	free(escaped_address);
 }
 
 static void format_certificate_domain_mismatch(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
@@ -701,13 +766,21 @@ static void format_certificate_domain_mismatch(char *plain, const int sizeof_pla
 	char *escaped_certfile = escape_html(certfile);
 	char *escaped_domain = escape_html(domain);
 
+	// Return early if memory allocation failed
+	if(escaped_certfile == NULL || escaped_domain == NULL)
+	{
+		if(escaped_certfile != NULL)
+			free(escaped_certfile);
+		if(escaped_domain != NULL)
+			free(escaped_domain);
+		return;
+	}
+
 	if(snprintf(html, sizeof_html, "SSL/TLS certificate %s does not match domain <strong>%s</strong>!", escaped_certfile, escaped_domain) > sizeof_html)
 		log_warn("format_certificate_domain_mismatch(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_certfile != NULL)
-		free(escaped_certfile);
-	if(escaped_domain != NULL)
-		free(escaped_domain);
+	free(escaped_certfile);
+	free(escaped_domain);
 }
 
 int count_messages(const bool filter_dnsmasq_warnings)
