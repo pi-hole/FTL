@@ -150,10 +150,11 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 	else if(data->field.import)
 	{
 		// Try to parse the JSON data
-		cJSON *json = cJSON_ParseWithLength(value, valuelen);
+		const char *json_error = NULL;
+		cJSON *json = cJSON_ParseWithLengthOpts(value, valuelen, &json_error, false);
 		if(json == NULL)
 		{
-			log_err("Unable to parse JSON data in API request: %s", cJSON_GetErrorPtr());
+			log_err("Unable to parse JSON data in API request, error at: %.20s", json_error);
 			return MG_FORM_FIELD_HANDLE_ABORT;
 		}
 
@@ -680,8 +681,10 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		//   boolean and true
 		if(data->import != NULL || gravity == NULL || !JSON_KEY_TRUE(gravity, teleporter_v5_files[i].table_name))
 		{
-			log_info("Skipping import of \"%s\" as it was not requested for import",
-			         teleporter_v5_files[i].filename);
+			log_info("Skipping import of \"%s\" as it was not requested for import (JSON: %s, gravity: %s)",
+			         teleporter_v5_files[i].filename,
+			         data->import != NULL ? "yes" : "no",
+			         gravity != NULL ? "yes" : "no");
 			continue;
 		}
 
@@ -697,13 +700,13 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		}
 		else if(json_error != NULL)
 		{
-			log_err("Unable to parse JSON file \"%s\", error at: %s",
-				teleporter_v5_files[i].filename, json_error);
+			log_err("Unable to parse JSON file \"%s\", error at: %.20s",
+			        teleporter_v5_files[i].filename, json_error);
 		}
 		else
 		{
 			log_debug(DEBUG_CONFIG, "Unable to find file \"%s\" in TAR archive",
-					teleporter_v5_files[i].filename);
+			          teleporter_v5_files[i].filename);
 		}
 	}
 
