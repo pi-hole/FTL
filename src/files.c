@@ -252,6 +252,23 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 	const unsigned long long free = (unsigned long long)f.f_bavail * f.f_bsize;
 	const unsigned long long used = size - free;
 
+	// Print statvfs() results if in debug.gc mode
+	if(config.debug.gc.v.b)
+	{
+		log_debug(DEBUG_GC, "Statvfs() results for %s:", path);
+		log_debug(DEBUG_GC, "  Block size: %lu", f.f_bsize);
+		log_debug(DEBUG_GC, "  Fragment size: %lu", f.f_frsize);
+		log_debug(DEBUG_GC, "  Total blocks: %lu", f.f_blocks);
+		log_debug(DEBUG_GC, "  Free blocks: %lu", f.f_bfree);
+		log_debug(DEBUG_GC, "  Available blocks: %lu", f.f_bavail);
+		log_debug(DEBUG_GC, "  Total inodes: %lu", f.f_files);
+		log_debug(DEBUG_GC, "  Free inodes: %lu", f.f_ffree);
+		log_debug(DEBUG_GC, "  Available inodes: %lu", f.f_favail);
+		log_debug(DEBUG_GC, "  Filesystem ID: %lu", f.f_fsid);
+		log_debug(DEBUG_GC, "  Mount flags: %lu", f.f_flag);
+		log_debug(DEBUG_GC, "  Maximum filename length: %lu", f.f_namemax);
+	}
+
 	// Create human-readable total size
 	char prefix_size[2] = { 0 };
 	double formatted_size = 0.0;

@@ -1206,6 +1206,23 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		// Get filesystem details for this path
 		struct mntent *fsdetails = get_filesystem_details(path);
 
+		// Log filesystem details if in debug mode
+		if(config.debug.gc.v.b)
+		{
+			if(fsdetails != NULL)
+			{
+				log_debug(DEBUG_GC, "Disk details for path \"%s\":", path);
+				log_debug(DEBUG_GC, "  Device or server for filesystem: %s", fsdetails->mnt_fsname);
+				log_debug(DEBUG_GC, "  Directory mounted on: %s", fsdetails->mnt_dir);
+				log_debug(DEBUG_GC, "  Type of filesystem: %s", fsdetails->mnt_type);
+				log_debug(DEBUG_GC, "  Comma-separated options for fs: %s", fsdetails->mnt_opts);
+				log_debug(DEBUG_GC, "  Dump frequency (in days): %d", fsdetails->mnt_freq);
+				log_debug(DEBUG_GC, "  Pass number for `fsck': %d", fsdetails->mnt_passno);
+			}
+			else
+				log_debug(DEBUG_GC, "Failed to get filesystem details for path \"%s\"", path);
+		}
+
 		// Create plain message
 		if(fsdetails != NULL)
 			format_disk_message_extended(buf, sizeof(buf), NULL, 0, disk, msg, fsdetails->mnt_type, fsdetails->mnt_dir);
