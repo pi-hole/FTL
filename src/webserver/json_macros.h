@@ -254,3 +254,9 @@
 #define JSON_INCREMENT_NUMBER(number_obj, inc)({ \
 	cJSON_SetNumberHelper(number_obj, number_obj->valuedouble + inc); \
 })
+
+// Returns true if the key exists and is true, otherwise false
+#define JSON_KEY_TRUE(obj, key)({ \
+	cJSON *elem = cJSON_GetObjectItemCaseSensitive(obj, key); \
+	elem != NULL ? cJSON_IsTrue(elem) : false; \
+})

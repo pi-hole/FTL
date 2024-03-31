@@ -620,7 +620,7 @@ int parse_groupIDs(struct ftl_conn *api, tablerow *table, cJSON *row)
 		// Error parsing group_ids, substitute empty array
 		// Note: This should never happen as the database's aggregate
 		//       function should always return a valid JSON array
-		log_err("Error parsing group_ids, error at: %s", json_error);
+		log_err("Error parsing group_ids, error at: %.20s", json_error);
 		JSON_ADD_ITEM_TO_OBJECT(row, "groups", JSON_NEW_ARRAY());
 	}
 	else
