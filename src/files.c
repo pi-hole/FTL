@@ -249,11 +249,13 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 		return 0;
 	}
 
-	// Explicitly cast the block counts to unsigned long long to avoid
-	// overflowing with drives larger than 4 GB on 32bit systems
-	const unsigned long long size = (unsigned long long)f.f_blocks * f.f_frsize;
-	const unsigned long long free = (unsigned long long)f.f_bavail * f.f_bsize;
-	const unsigned long long used = size - free;
+	// Explicitly cast the block counts to uint64_t to avoid overflowing
+	// with drives larger than 4 GB on 32bit systems. Multiply the block
+	// count with the fragment size to get the total size in bytes, see
+	// https://github.com/torvalds/linux/blob/39cd87c4eb2b893354f3b850f916353f2658ae6f/fs/nfs/super.c#L285-L291
+	const uint64_t size = (uint64_t)f.f_blocks * f.f_frsize;
+	const uint64_t free = (uint64_t)f.f_bavail * f.f_frsize;
+	const uint64_t used = size - free;
 
 	// Print statvfs() results if in debug.gc mode
 	if(config.debug.gc.v.b)
