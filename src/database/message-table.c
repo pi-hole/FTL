@@ -1234,7 +1234,7 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 
 		// Log to database
 		const int rowid = fsdetails != NULL ?
-			add_message(DISK_MESSAGE_EXTENDED, path, 4, disk, fsdetails->mnt_type, fsdetails->mnt_dir) :
+			add_message(DISK_MESSAGE_EXTENDED, path, 4, disk, msg, fsdetails->mnt_type, fsdetails->mnt_dir) :
 			add_message(DISK_MESSAGE, path, 2, disk, msg);
 
 		if(rowid == -1)
