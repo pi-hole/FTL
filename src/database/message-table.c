@@ -32,6 +32,41 @@
 // escape_html()
 #include "webserver/http-common.h"
 
+// Number of arguments in a variadic macro
+// Credit: https://stackoverflow.com/a/35693080/2087442
+#define PP_NARG(...) \
+         PP_NARG_(__VA_ARGS__,PP_RSEQ_N())
+#define PP_NARG_(...) \
+         PP_128TH_ARG(__VA_ARGS__)
+#define PP_128TH_ARG( \
+          _1, _2, _3, _4, _5, _6, _7, _8, _9,_10, \
+         _11,_12,_13,_14,_15,_16,_17,_18,_19,_20, \
+         _21,_22,_23,_24,_25,_26,_27,_28,_29,_30, \
+         _31,_32,_33,_34,_35,_36,_37,_38,_39,_40, \
+         _41,_42,_43,_44,_45,_46,_47,_48,_49,_50, \
+         _51,_52,_53,_54,_55,_56,_57,_58,_59,_60, \
+         _61,_62,_63,_64,_65,_66,_67,_68,_69,_70, \
+         _71,_72,_73,_74,_75,_76,_77,_78,_79,_80, \
+         _81,_82,_83,_84,_85,_86,_87,_88,_89,_90, \
+         _91,_92,_93,_94,_95,_96,_97,_98,_99,_100, \
+         _101,_102,_103,_104,_105,_106,_107,_108,_109,_110, \
+         _111,_112,_113,_114,_115,_116,_117,_118,_119,_120, \
+         _121,_122,_123,_124,_125,_126,_127,N,...) N
+#define PP_RSEQ_N() \
+         127,126,125,124,123,122,121,120, \
+         119,118,117,116,115,114,113,112,111,110, \
+         109,108,107,106,105,104,103,102,101,100, \
+         99,98,97,96,95,94,93,92,91,90, \
+         89,88,87,86,85,84,83,82,81,80, \
+         79,78,77,76,75,74,73,72,71,70, \
+         69,68,67,66,65,64,63,62,61,60, \
+         59,58,57,56,55,54,53,52,51,50, \
+         49,48,47,46,45,44,43,42,41,40, \
+         39,38,37,36,35,34,33,32,31,30, \
+         29,28,27,26,25,24,23,22,21,20, \
+         19,18,17,16,15,14,13,12,11,10, \
+         9,8,7,6,5,4,3,2,1,0
+
 static const char *get_message_type_str(const enum message_type type)
 {
 	switch(type)
@@ -226,20 +261,56 @@ bool flush_message_table(void)
 	return true;
 }
 
-static int add_message(const enum message_type type,
-                       const char *message, const int count,...)
+static int _add_message(const enum message_type type,
+                        const char *message, const size_t count, ...);
+#define add_message(type, message, ...) _add_message(type, message, PP_NARG(__VA_ARGS__), __VA_ARGS__)
+#define add_message_no_args(type, message) _add_message(type, message, 0)
+
+static int _add_message(const enum message_type type,
+                        const char *message, const size_t count,...)
 {
 	int rowid = -1;
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return rowid;
+		return -1;
+
+	// Check if message type is known
+	if(type >= MAX_MESSAGE)
+	{
+		log_err("add_message(type=%u, message=%s) - Invalid message type with %zu arguments",
+		        type, message, count);
+		return -1;
+	}
+
+	// Check if number of arguments is valid
+	// Total number of arguments
+	if(count > 5)
+	{
+		log_err("add_message(type=%u, message=%s) - Too many arguments (%zu), expected at most 5",
+		        type, message, count);
+		return -1;
+	}
+	// No arguments check
+	if(count == 0 && message_blob_types[type][0] != SQLITE_NULL)
+	{
+		log_err("add_message(type=%u, message=%s) - Invalid number of arguments: No arguments passed for message type requiring arguments",
+		        type, message);
+		return -1;
+	}
+	// Non-zero arguments check
+	else if(count > 1 && message_blob_types[type][count - 2] == SQLITE_NULL)
+	{
+		log_err("add_message(type=%u, message=%s) - Invalid number of arguments: Too many (%zu) arguments passed for this message type",
+		        type, message, count);
+		return -1;
+	}
 
 	sqlite3 *db;
 	// Open database connection
 	if((db = dbopen(false, false)) == NULL)
 	{
 		log_err("add_message() - Failed to open DB");
-		return rowid;
+		return -1;
 	}
 
 	// Ensure there are no duplicates when adding messages
@@ -317,7 +388,7 @@ static int add_message(const enum message_type type,
 
 	va_list ap;
 	va_start(ap, count);
-	for (int j = 0; j < count; j++)
+	for (size_t j = 0; j < count; j++)
 	{
 		const unsigned char datatype = message_blob_types[type][j];
 		switch (datatype)
@@ -345,7 +416,7 @@ static int add_message(const enum message_type type,
 		// Bind message to prepared statement
 		if(rc != SQLITE_OK)
 		{
-			log_err("add_message(type=%u, message=%s) - Failed to bind argument %d (type %u): %s",
+			log_err("add_message(type=%u, message=%s) - Failed to bind argument %zu (type %u): %s",
 			        type, message, 3 + j, datatype, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
@@ -1072,7 +1143,7 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 		return;
 
 	// Add to database
-	const int rowid = add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
+	const int rowid = add_message(REGEX_MESSAGE, warning, type, regex, dbindex);
 	if(rowid == -1)
 		log_err("logg_regex_warning(): Failed to add message to database");
 }
@@ -1092,7 +1163,7 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(SUBNET_MESSAGE, ip, 5, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
+	const int rowid = add_message(SUBNET_MESSAGE, ip, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
 
 	if(rowid == -1)
 		log_err("logg_subnet_warning(): Failed to add message to database");
@@ -1114,7 +1185,7 @@ void logg_hostname_warning(const char *ip, const char *name, const unsigned int 
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(HOSTNAME_MESSAGE, ip, 2, name, (const int)pos);
+	const int rowid = add_message(HOSTNAME_MESSAGE, ip, name, (const int)pos);
 
 	if(rowid == -1)
 		log_err("logg_hostname_warning(): Failed to add message to database");
@@ -1130,7 +1201,7 @@ void logg_fatal_dnsmasq_message(const char *message)
 	log_crit("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(DNSMASQ_CONFIG_MESSAGE, message, 0);
+	const int rowid = add_message_no_args(DNSMASQ_CONFIG_MESSAGE, message);
 
 	if(rowid == -1)
 		log_err("logg_fatal_dnsmasq_message(): Failed to add message to database");
@@ -1148,7 +1219,7 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 	log_info("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(RATE_LIMIT_MESSAGE, clientIP, 3, config.dns.rateLimit.count.v.ui, config.dns.rateLimit.interval.v.ui, turnaround);
+	const int rowid = add_message(RATE_LIMIT_MESSAGE, clientIP, config.dns.rateLimit.count.v.ui, config.dns.rateLimit.interval.v.ui, turnaround);
 
 	if(rowid == -1)
 		log_err("logg_rate_limit_message(): Failed to add message to database");
@@ -1164,7 +1235,7 @@ void logg_warn_dnsmasq_message(char *message)
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(DNSMASQ_WARN_MESSAGE, message, 0);
+	const int rowid = add_message_no_args(DNSMASQ_WARN_MESSAGE, message);
 
 	if(rowid == -1)
 		log_err("logg_warn_dnsmasq_message(): Failed to add message to database");
@@ -1183,7 +1254,7 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		log_warn("%s", buf);
 
 		// Log to database
-		const int rowid = add_message(LOAD_MESSAGE, "excessive load", 2, load, nprocs);
+		const int rowid = add_message(LOAD_MESSAGE, "excessive load", load, nprocs);
 
 		if(rowid == -1)
 			log_err("log_resource_shortage(): Failed to add message to database");
@@ -1196,7 +1267,7 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		log_warn("%s", buf);
 
 		// Log to database
-		const int rowid = add_message(SHMEM_MESSAGE, path, 2, shmem, msg);
+		const int rowid = add_message(SHMEM_MESSAGE, path, shmem, msg);
 
 		if(rowid == -1)
 			log_err("log_resource_shortage(): Failed to add message to database");
@@ -1234,8 +1305,8 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 
 		// Log to database
 		const int rowid = fsdetails != NULL ?
-			add_message(DISK_MESSAGE_EXTENDED, path, 4, disk, msg, fsdetails->mnt_type, fsdetails->mnt_dir) :
-			add_message(DISK_MESSAGE, path, 2, disk, msg);
+			add_message(DISK_MESSAGE_EXTENDED, path, disk, msg, fsdetails->mnt_type, fsdetails->mnt_dir) :
+			add_message(DISK_MESSAGE, path, disk, msg);
 
 		if(rowid == -1)
 			log_err("log_resource_shortage(): Failed to add message to database");
@@ -1252,7 +1323,7 @@ void logg_inaccessible_adlist(const int dbindex, const char *address)
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(INACCESSIBLE_ADLIST_MESSAGE, address, 1, dbindex);
+	const int rowid = add_message(INACCESSIBLE_ADLIST_MESSAGE, address, dbindex);
 
 	if(rowid == -1)
 		log_err("logg_inaccessible_adlist(): Failed to add message to database");
@@ -1268,7 +1339,7 @@ void log_certificate_domain_mismatch(const char *certfile, const char *domain)
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(CERTIFICATE_DOMAIN_MISMATCH_MESSAGE, certfile, 1, domain);
+	const int rowid = add_message(CERTIFICATE_DOMAIN_MISMATCH_MESSAGE, certfile, domain);
 
 	if(rowid == -1)
 		log_err("log_certificate_domain_mismatch(): Failed to add message to database");
