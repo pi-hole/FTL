@@ -60,6 +60,8 @@ static const char *get_message_type_str(const enum message_type type)
 			return "DISK_EXTENDED";
 		case CERTIFICATE_DOMAIN_MISMATCH_MESSAGE:
 			return "CERTIFICATE_DOMAIN_MISMATCH";
+		case CONNECTION_ERROR_MESSAGE:
+			return "CONNECTION_ERROR";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
@@ -92,6 +94,8 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return DISK_MESSAGE_EXTENDED;
 	else if (strcmp(typestr, "CERTIFICATE_DOMAIN_MISMATCH") == 0)
 		return CERTIFICATE_DOMAIN_MISMATCH_MESSAGE;
+	else if (strcmp(typestr, "CONNECTION_ERROR") == 0)
+		return CONNECTION_ERROR_MESSAGE;
 	else
 		return MAX_MESSAGE;
 }
@@ -180,6 +184,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			// CERTIFICATE_DOMAIN_MISMATCH_MESSAGE: The message column contains the certificate file
 			SQLITE_TEXT, // domain
 			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
+		},
+		{
+			// CONNECTION_ERROR_MESSAGE: The message column contains the server address
+			SQLITE_TEXT, // reason
+			SQLITE_TEXT, // error message
 			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
@@ -710,6 +722,40 @@ static void format_certificate_domain_mismatch(char *plain, const int sizeof_pla
 		free(escaped_domain);
 }
 
+static void format_connection_error(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                    const char *server, const char *reason, const char *error)
+{
+	if(snprintf(plain, sizeof_plain, "Connection error (%s): %s (%s)", server, reason, error) > sizeof_plain)
+		log_warn("format_connection_error(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_reason = escape_html(reason);
+	char *escaped_error = escape_html(error);
+	char *escaped_server = escape_html(server);
+
+	// Return early if memory allocation failed
+	if(escaped_reason == NULL || escaped_error == NULL || escaped_server == NULL)
+	{
+		if(escaped_reason != NULL)
+			free(escaped_reason);
+		if(escaped_error != NULL)
+			free(escaped_error);
+		if(escaped_server != NULL)
+			free(escaped_server);
+		return;
+	}
+
+	if(snprintf(html, sizeof_html, "Connection error (<strong>%s</strong>): %s (<strong>%s</strong>)", server, reason, error) > sizeof_html)
+		log_warn("format_connection_error(): Buffer too small to hold HTML message, warning truncated");
+
+	free(escaped_reason);
+	free(escaped_error);
+	free(escaped_server);
+}
+
 int count_messages(const bool filter_dnsmasq_warnings)
 {
 	int count = 0;
@@ -798,7 +844,7 @@ bool format_messages(cJSON *array)
 
 		// Generate messages
 		char plain[1024] = { 0 }, html[2048] = { 0 };
-		const int mtype = get_message_type_from_string(mtypestr);
+		const enum message_type mtype = get_message_type_from_string(mtypestr);
 		switch(mtype)
 		{
 			case REGEX_MESSAGE:
@@ -944,6 +990,23 @@ bool format_messages(cJSON *array)
 
 				break;
 			}
+
+			case CONNECTION_ERROR_MESSAGE:
+			{
+				const char *server = (const char*)sqlite3_column_text(stmt, 3);
+				const char *reason = (const char*)sqlite3_column_text(stmt, 4);
+				const char *error = (const char*)sqlite3_column_text(stmt, 5);
+
+				format_connection_error(plain, sizeof(plain), html, sizeof(html),
+				                        server, reason, error);
+
+				break;
+			}
+
+			case MAX_MESSAGE: // Fall through
+			default:
+				log_warn("format_messages() - Unknown message type: %s", mtypestr);
+				break;
 		}
 
 		// Add the plain message
@@ -1182,4 +1245,20 @@ void log_certificate_domain_mismatch(const char *certfile, const char *domain)
 
 	if(rowid == -1)
 		log_err("log_certificate_domain_mismatch(): Failed to add message to database");
+}
+
+void log_connection_error(const char *server, const char *reason, const char *error)
+{
+	// Create message
+	char buf[2048];
+	format_connection_error(buf, sizeof(buf), NULL, 0, server, reason, error);
+
+	// Log to FTL.log
+	log_warn("%s", buf);
+
+	// Log to database
+	const int rowid = add_message(CONNECTION_ERROR_MESSAGE, server, 2, reason, error);
+
+	if(rowid == -1)
+		log_err("logg_connection_error(): Failed to add message to database");
 }

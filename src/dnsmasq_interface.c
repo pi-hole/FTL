@@ -3514,20 +3514,39 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr)
 	// Make a private copy of the error
 	const char *error = strerror(errno);
 
-	if(config.debug.queries.v.b)
-	{
-		const int id = daemon->log_display_id;
+	// Format the address into a string (if available)
+	in_port_t port = 0;
+	char ip[ADDRSTRLEN + 1] = { 0 };
+	if(addr != NULL)
+		mysockaddr_extract_ip_port(addr, ip, &port);
 
-		// Format the address into a string (if available)
-		in_port_t port = 0;
-		char ip[ADDRSTRLEN] = { 0 };
-		if(addr != NULL)
-			mysockaddr_extract_ip_port(addr, ip, &port);
-
-		// Log to FTL.log
-		log_debug(DEBUG_QUERIES, "Connection error: %s (%s) for %s#%u (ID %d)", reason, error, ip, port, id);
-	}
+	// Log to FTL.log
+	const int id = daemon->log_display_id;
+	log_debug(DEBUG_QUERIES, "Connection error (%s#%u, ID %d): %s (%s)", ip, port, id, reason, error);
 
 	// Log to pihole.log
 	my_syslog(LOG_ERR, "%s: %s", reason, error);
+
+	// Add to Pi-hole diagnostics but do not add messages more often than
+	// once every five seconds to avoid hammering the database with errors
+	// on continuously failing connections
+	static time_t last = 0;
+	if(time(NULL) - last > 5)
+	{
+		last = time(NULL);
+		char *server = NULL;
+		if(ip[0] != '\0')
+		{
+			const size_t len = strlen(ip) + 6;
+			server = calloc(len, sizeof(char));
+			if(server != NULL)
+			{
+				snprintf(server, len, "%s#%u", ip, port);
+				server[len - 1] = '\0';
+			}
+		}
+		log_connection_error(server, reason, error);
+		if(server != NULL)
+			free(server);
+	}
 }
