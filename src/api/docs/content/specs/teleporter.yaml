@@ -150,4 +150,6 @@ components:
       value:
         processed:
           - etc/pihole/pihole.toml
-          - etc/pihole/gravity.db
+          - etc/pihole/gravity.db->group
+          - etc/pihole/gravity.db->adlist
+          - etc/pihole/gravity.db->adlist_by_group

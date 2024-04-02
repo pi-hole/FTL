@@ -584,6 +584,8 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 		          file_stat.m_comment, (unsigned long)file_stat.m_time);
 
 		// Process file
+		const char *import_tables[ArraySize(gravity_tables)] = { NULL };
+		size_t num_tables = 0u;
 		// Is this "etc/pihole/pihole.toml" ?
 		if(strcmp(file_stat.m_filename, extract_files[0]) == 0)
 		{
@@ -637,8 +639,6 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 				continue;
 			}
 
-			const char *import_tables[ArraySize(gravity_tables)] = { NULL };
-			size_t num_tables = 0u;
 			if(import == NULL)
 			{
 				// Import all tables
@@ -658,11 +658,13 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 					continue;
 				}
 
-				// Import selected tables
+				// Import selected tables from import.gravity object
 				for(size_t j = 0; j < ArraySize(gravity_tables); j++)
 				{
-					if(JSON_KEY_TRUE(import, gravity_tables[j]))
+					if(JSON_KEY_TRUE(import_gravity, gravity_tables[j]))
 						import_tables[num_tables++] = gravity_tables[j];
+					else
+						log_info("Ignoring table %s in %s (not in import list)", gravity_tables[j], file_stat.m_filename);
 				}
 			}
 
@@ -676,10 +678,38 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 				return err;
 			}
 			log_debug(DEBUG_CONFIG, "Imported database: %s", file_stat.m_filename);
+
+			// Add filename of processed files to JSON array
+			for(unsigned j = 0; j < num_tables; j++)
+			{
+				const size_t len = strlen(file_stat.m_filename) + 3 + strlen(import_tables[j]);
+				char *tablename = calloc(len, sizeof(char));
+				if(tablename == NULL)
+				{
+					log_err("Failed to allocate memory for table name");
+					free(ptr);
+					continue;
+				}
+
+				// Create imported pseudo file name in the
+				// format "filename->table" and add it to the
+				// JSON array
+				snprintf(tablename, len, "%s->%s", file_stat.m_filename, import_tables[j]);
+				if(imported_files != NULL && !cJSON_AddItemToArray(imported_files, cJSON_CreateString(tablename)))
+					log_warn("Failed to add table %s to JSON array", tablename);
+				free(tablename);
+			}
+
+			// Free allocated memory and skip to next file without
+			// adding it to the JSON array again below
+			free(ptr);
+			continue;
 		}
 		else
 		{
 			log_warn("Ignoring file %s in Teleporter archive", file_stat.m_filename);
+
+			// Free allocated memory and skip to next file
 			free(ptr);
 			continue;
 		}

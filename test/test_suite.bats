@@ -1788,9 +1788,15 @@
 #  [[ $status == 0 ]]
   run bash -c "./pihole-FTL --teleporter ${filename}"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[-3]}" == "Imported etc/pihole/pihole.toml" ]]
-  [[ "${lines[-2]}" == "Imported etc/pihole/dhcp.leases" ]]
-  [[ "${lines[-1]}" == "Imported etc/pihole/gravity.db" ]]
+  [[ "${lines[-9]}" == "Imported etc/pihole/pihole.toml" ]]
+  [[ "${lines[-8]}" == "Imported etc/pihole/dhcp.leases" ]]
+  [[ "${lines[-7]}" == "Imported etc/pihole/gravity.db->group" ]]
+  [[ "${lines[-6]}" == "Imported etc/pihole/gravity.db->adlist" ]]
+  [[ "${lines[-5]}" == "Imported etc/pihole/gravity.db->adlist_by_group" ]]
+  [[ "${lines[-4]}" == "Imported etc/pihole/gravity.db->domainlist" ]]
+  [[ "${lines[-3]}" == "Imported etc/pihole/gravity.db->domainlist_by_group" ]]
+  [[ "${lines[-2]}" == "Imported etc/pihole/gravity.db->client" ]]
+  [[ "${lines[-1]}" == "Imported etc/pihole/gravity.db->client_by_group" ]]
   [[ $status == 0 ]]
   run bash -c "rm ${filename}"
 }
