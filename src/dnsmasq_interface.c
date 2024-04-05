@@ -3508,3 +3508,68 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 	for (unsigned int i = 0; i < __METRIC_MAX; i++)
 		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
 }
+
+/* Changes */
+bool FTL_model_query(char* domain){
+	// Sending domain name to localhost:5336 to check domain credibility
+	// If the domain is credible, return false, else return true
+
+	// Create a socket
+	int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (sockfd < 0)
+	{
+		printf("Error creating socket\n");
+		return false;
+	}
+	// Sending domain name to localhost:5336
+	struct sockaddr_in serv_addr;
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_port = htons(5336);
+
+	struct in_addr server_ip;
+	if (inet_pton(AF_INET, "127.0.0.1", &server_ip) <= 0)
+	{
+		printf("Invalid server IP address\n");
+		return false;
+	}
+
+	serv_addr.sin_addr = server_ip;
+
+	// Connect to the server
+	if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+	{
+		printf("Error connecting to the server\n");
+		return true;
+	}
+
+	// Send the domain name to the server
+	if (send(sockfd, domain, strlen(domain), 0) < 0)
+	{
+		printf("Error sending domain name\n");
+		return false;
+	}
+	else
+	{
+		// Assuming sockfd is the socket file descriptor
+		char buffer[2]; // Buffer to store the received data
+
+		// Receive data from the server
+		int bytes_received = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+		if (bytes_received < 0)
+		{
+			printf("Error receiving data\n");
+			return false;
+		}
+
+		buffer[bytes_received] = '\0'; // Null-terminate the received data
+
+		// Convert the received data to a boolean
+		bool received_bool = (buffer[0] == '1') ? true : false;
+		close(sockfd);
+		return received_bool;
+	}
+
+	// Close the socket
+	close(sockfd);
+	return true;
+}
