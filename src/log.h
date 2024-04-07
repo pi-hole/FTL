@@ -15,6 +15,8 @@
 // enums
 #include "enums.h"
 #include <sys/syslog.h>
+// uint64_t
+#include <stdint.h>
 
 #define DEBUG_ANY 0
 #define TIMESTR_SIZE 84
@@ -43,8 +45,7 @@ extern bool only_testing;
 void clear_debug_flags(void);
 void init_FTL_log(const char *name);
 void log_counter_info(void);
-void format_memory_size(char prefix[2], unsigned long long int bytes,
-                        double * const formatted);
+void format_memory_size(char prefix[2], const uint64_t bytes, double * const formatted);
 void format_time(char buffer[42], unsigned long seconds, double milliseconds);
 unsigned int get_year(const time_t timein);
 const char *get_FTL_version(void);
