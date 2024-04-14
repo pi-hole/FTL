@@ -52,7 +52,8 @@ set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
 # -Wall: This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros. This also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
 # -Wextra: This enables some extra warning flags that are not enabled by -Wall.
 # -Wno-unused-parameter: Disable warning for unused parameters. For threads that don't need arguments, we still have to provide a void* args which is then unused.
-set(WARN_FLAGS "-Wall -Wextra -Wno-unused-parameter")
+# -Wuse-after-free=3: Warn about uses of pointers to dynamically allocated objects that have been rendered indeterminate by a call to a deallocation function.
+set(WARN_FLAGS "-Wall -Wextra -Wno-unused-parameter -Wuse-after-free=3")
 
 # Extra warning flags we apply only to the FTL part of the code (used not for foreign code such as dnsmasq and SQLite3)
 # -Werror: Halt on any warnings, useful for enforcing clean code without any warnings (we use it only for our code part)
