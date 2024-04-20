@@ -1418,7 +1418,7 @@ void log_connection_error(const char *server, const char *reason, const char *er
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(CONNECTION_ERROR_MESSAGE, server, 2, reason, error);
+	const int rowid = add_message(CONNECTION_ERROR_MESSAGE, server, reason, error);
 
 	if(rowid == -1)
 		log_err("logg_connection_error(): Failed to add message to database");
