@@ -82,6 +82,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	// This may be allowed without authentication depending on the configuration
 	if(!config.webserver.api.localAPIauth.v.b && is_local_api_user(api->request->remote_addr))
 	{
+		api->message = "no auth for local user";
 		add_request_info(api, NULL);
 		return API_AUTH_LOCALHOST;
 	}
@@ -89,6 +90,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	// When the pwhash is unset, authentication is disabled
 	if(config.webserver.api.pwhash.v.s[0] == '\0')
 	{
+		api->message = "no password set";
 		add_request_info(api, NULL);
 		return API_AUTH_EMPTYPASS;
 	}
@@ -186,7 +188,8 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 
 	if(!sid_avail)
 	{
-		log_debug(DEBUG_API, "API Authentication: FAIL (no SID provided)");
+		api->message = "no SID provided";
+		log_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
 		return API_AUTH_UNAUTHORIZED;
 	}
 
@@ -212,21 +215,28 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		}
 		else
 		{
-			log_debug(DEBUG_API, "API Authentication: FAIL (Cookie authentication without CSRF token)");
+			api->message = "Cookie authentication without CSRF token";
+			log_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
 			return API_AUTH_UNAUTHORIZED;
 		}
 	}
 
+	bool expired = false;
 	for(unsigned int i = 0; i < max_sessions; i++)
 	{
 		if(auth_data[i].used &&
-		   auth_data[i].valid_until >= now &&
 		   strcmp(auth_data[i].sid, sid) == 0)
 		{
+			// Check if session is known but expired
+			if(auth_data[i].valid_until < now)
+				expired = true;
+
+			// Check CSRF if authentiating via cookie
 			if(need_csrf && strcmp(auth_data[i].csrf, csrf) != 0)
 			{
-				log_debug(DEBUG_API, "API Authentication: FAIL (CSRF token mismatch, received \"%s\", expected \"%s\")",
-				          csrf, auth_data[i].csrf);
+				api->message = "CSRF token mismatch";
+				log_debug(DEBUG_API, "API Authentication: FAIL (%s, received \"%s\", expected \"%s\")",
+				          api->message, csrf, auth_data[i].csrf);
 				return API_AUTH_UNAUTHORIZED;
 			}
 			user_id = i;
@@ -266,12 +276,14 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	}
 	else
 	{
-		log_debug(DEBUG_API, "API Authentication: FAIL (SID invalid/expired)");
+		api->message = expired ? "session expired" : "session unknown";
+		log_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
 		return API_AUTH_UNAUTHORIZED;
 	}
 
 	api->user_id = user_id;
 
+	api->message = "correct password";
 	return user_id;
 }
 
@@ -314,6 +326,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 		JSON_ADD_BOOL_TO_OBJECT(session, "totp", strlen(config.webserver.api.totp_secret.v.s) > 0);
 		JSON_ADD_NULL_TO_OBJECT(session, "sid");
 		JSON_ADD_NUMBER_TO_OBJECT(session, "validity", -1);
+		JSON_REF_STR_IN_OBJECT(session, "message", api->message);
 		JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
 		return 0;
 	}
@@ -326,6 +339,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 		JSON_REF_STR_IN_OBJECT(session, "sid", auth_data[user_id].sid);
 		JSON_REF_STR_IN_OBJECT(session, "csrf", auth_data[user_id].csrf);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "validity", auth_data[user_id].valid_until - now);
+		JSON_REF_STR_IN_OBJECT(session, "message", api->message);
 		JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
 		return 0;
 	}
@@ -335,6 +349,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 	JSON_ADD_BOOL_TO_OBJECT(session, "totp", strlen(config.webserver.api.totp_secret.v.s) > 0);
 	JSON_ADD_NULL_TO_OBJECT(session, "sid");
 	JSON_ADD_NUMBER_TO_OBJECT(session, "validity", -1);
+	JSON_REF_STR_IN_OBJECT(session, "message", api->message);
 	JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
 	return 0;
 }
@@ -632,6 +647,8 @@ int api_auth(struct ftl_conn *api)
 			                       "API seats exceeded",
 			                       "increase webserver.api.max_sessions");
 		}
+
+		api->message = result == APPPASSWORD_CORRECT ? "app-password correct" : "password correct";
 	}
 	else if(result == PASSWORD_RATE_LIMITED)
 	{
@@ -644,10 +661,12 @@ int api_auth(struct ftl_conn *api)
 	else if(result == NO_PASSWORD_SET)
 	{
 		// No password set
+		api->message = "password incorrect";
 		log_debug(DEBUG_API, "API: Trying to auth with password but none set: '%s'", password);
 	}
 	else
 	{
+		api->message = "password incorrect";
 		log_debug(DEBUG_API, "API: Password incorrect: '%s'", password);
 	}
 

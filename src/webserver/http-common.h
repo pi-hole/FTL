@@ -37,6 +37,7 @@ struct ftl_conn {
 	const enum http_method method;
 	char *action_path;
 	const char *item;
+	const char *message;
 	int user_id;
 	double now;
 	struct {
