@@ -82,7 +82,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	// This may be allowed without authentication depending on the configuration
 	if(!config.webserver.api.localAPIauth.v.b && is_local_api_user(api->request->remote_addr))
 	{
-		api->message = "no auth for local user";
+		api->message = "no auth required for local user";
 		add_request_info(api, NULL);
 		return API_AUTH_LOCALHOST;
 	}
