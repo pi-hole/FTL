@@ -1470,7 +1470,7 @@
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1/api/auth'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '{"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"took":'*'}' ]]
+  [[ ${lines[0]} == '{"session":{"valid":true,"totp":false,"sid":null,"validity":-1,"message":"no password set"},"took":'*'}' ]]
 }
 
 @test "Config validation working on the CLI (type-based checking)" {
@@ -1592,17 +1592,16 @@
 
 @test "API authorization (with password): Incorrect password is rejected if password auth is enabled" {
   # Password: ABC
-  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"XXX\"}" | jq .session.valid'
+  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"XXX\"}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "false" ]]
+  [[ ${lines[0]} == "{\"session\":{\"valid\":false,\"totp\":false,\"sid\":null,\"validity\":-1,\"message\":\"password incorrect\"},\"took\":"*"}" ]]
 }
 
 @test "API authorization (with password): Correct password is accepted" {
-  session="$(curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"ABC\"}")"
-  printf "Session: %s\n" "${session}"
-  run jq .session.valid <<< "${session}"
+  # Password: ABC
+  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"ABC\"}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "true" ]]
+  [[ ${lines[0]} == "{\"session\":{\"valid\":true,\"totp\":false,\"sid\":\""*"\",\"csrf\":\""*"\",\"validity\":300,\"message\":\"password correct\"},\"took\":"*"}" ]]
 }
 
 @test "Test TLS/SSL server using self-signed certificate" {

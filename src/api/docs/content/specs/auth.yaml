@@ -280,6 +280,7 @@ components:
             - sid
             - csrf
             - validity
+            - message
             - totp
           properties:
             valid:
@@ -299,6 +300,10 @@ components:
             validity:
               type: integer
               description: Remaining lifetime of this session unless refreshed (seconds)
+            message:
+              type: string
+              description: Human-readable message describing the session status
+              nullable: true
 
     password:
       type: object
@@ -431,7 +436,7 @@ components:
 
   examples:
     auth_okay:
-      summary: Authentication valid
+      summary: Session valid
       value:
         session:
           valid: true
@@ -439,6 +444,7 @@ components:
           sid: null
           csrf: null
           validity: 300
+          message: null
     login_okay:
       summary: Login successful
       value:
@@ -448,6 +454,7 @@ components:
           sid: "vFA+EP4MQ5JJvJg+3Q2Jnw="
           csrf: "Ux87YTIiMOf/GKCefVIOMw="
           validity: 300
+          message: correct password
     no_login_required:
       summary: No login required for this client
       value:
@@ -457,6 +464,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+          message: no auth for local user
     login_required:
       summary: Login required, 2FA disabled
       value:
@@ -466,6 +474,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+          message: password incorrect
     login_required_2fa:
       summary: Login required, 2FA enabled
       value:
@@ -475,6 +484,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+          message: password incorrect
     login_failed:
       summary: Login failed
       value:
@@ -484,6 +494,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+          message: no SID provided
     errors:
       no_payload:
         summary: Bad request (no valid JSON payload)
