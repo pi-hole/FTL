@@ -3512,7 +3512,19 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 void FTL_connection_error(const char *reason, const union mysockaddr *addr)
 {
 	// Make a private copy of the error
-	const char *error = strerror(errno);
+	const int errnum = errno;
+	const char *error = strerror(errnum);
+
+	// Set log priority
+	int priority = LOG_ERR;
+
+	// If this is a TCP connection error and errno == 0, this isn't a
+	// connection error but the remote side closed the connection
+	if(errnum == 0 && strstr(reason, "TCP(read_write)") != NULL)
+	{
+		error = "Connection prematurely closed by remote server";
+		priority = LOG_INFO;
+	}
 
 	// Format the address into a string (if available)
 	in_port_t port = 0;
@@ -3525,7 +3537,7 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr)
 	log_debug(DEBUG_QUERIES, "Connection error (%s#%u, ID %d): %s (%s)", ip, port, id, reason, error);
 
 	// Log to pihole.log
-	my_syslog(LOG_ERR, "%s: %s", reason, error);
+	my_syslog(priority, "%s: %s", reason, error);
 
 	// Add to Pi-hole diagnostics but do not add messages more often than
 	// once every five seconds to avoid hammering the database with errors
