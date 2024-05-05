@@ -99,6 +99,11 @@ runs:
         name: ${{ inputs.artifact_name }}
         path: '${{ inputs.bin_name }}*'
     -
+      name: Generate artifact attestation
+      uses: actions/attest-build-provenance@v1
+      with:
+        subject-path: ${{ inputs.bin_name }}
+    -
       name: Extract documentation files from container
       if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64'
       shell: bash
