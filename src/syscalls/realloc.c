@@ -29,6 +29,8 @@ void __attribute__((alloc_size(2))) *FTLrealloc(void *ptr_in, const size_t size,
 	{
 		errno = 0;
 		ptr_out = realloc(ptr_in, size);
+		if(ptr_out != NULL)
+			ptr_in = NULL;
 	}
 	// Try again to allocate memory if this failed due to an interruption by
 	// an incoming signal
