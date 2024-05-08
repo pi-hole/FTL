@@ -511,4 +511,6 @@ void die(char *message, char *arg1, int exit_code)
   /********** Pi-hole modification *************/
   FTL_log_dnsmasq_fatal(message, arg1, errmess);
   /*********************************************/
+
+  exit(exit_code);
 }
