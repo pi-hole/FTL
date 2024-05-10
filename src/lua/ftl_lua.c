@@ -20,7 +20,9 @@
 #include "../files.h"
 // get_web_theme_str
 #include "../datastructure.h"
+#if HAVE_READLINE
 #include <readline/history.h>
+#endif
 #include <wordexp.h>
 #include "scripts/scripts.h"
 
