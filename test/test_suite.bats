@@ -483,7 +483,7 @@
   printf "%s\n" "${lines[@]}"
   # Depending on the shell (x86_64-musl is built on busybox) there can be one or multiple spaces between user and group
   [[ ${lines[0]} == *"pihole"?*"pihole"* ]]
-  [[ ${lines[0]} == "-rw-rw-r--"* ]]
+  [[ ${lines[0]} == "-rw-r-----"* ]]
   run bash -c 'file /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "/etc/pihole/pihole-FTL.db: SQLite 3.x database"* ]]
@@ -936,17 +936,6 @@
   run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
   domain_api="${lines[0]}"
   [[ "${api}" == "${domain_api}" ]]
-}
-
-# x86_64-musl is built on busybox which has a slightly different
-# variant of ls displaying three, instead of one, spaces between the
-# user and group names.
-
-@test "Ownership and permissions of pihole-FTL.db correct" {
-  run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == *"pihole pihole"* || ${lines[0]} == *"pihole   pihole"* ]]
-  [[ ${lines[0]} == "-rw-rw-r--"* ]]
 }
 
 # "ldd" prints library dependencies and the used interpreter for a given program

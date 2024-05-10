@@ -284,9 +284,9 @@ void db_init(void)
 		}
 	}
 
-	// Explicitly set permissions to 0644
-	// 644 =            u+w       u+r       g+w       g+r      o+r
-	const mode_t mode = S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP| S_IROTH;
+	// Explicitly set permissions to 0640
+	// 640 =            u+w       u+r       g+r
+	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP;
 	chmod_file(config.files.database.v.s, mode);
 
 	// Open database
