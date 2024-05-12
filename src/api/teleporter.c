@@ -25,6 +25,8 @@
 #include "database/common.h"
 // MAX_ROTATIONS
 #include "files.h"
+//basename()
+#include <libgen.h>
 
 #define MAXFILESIZE (50u*1024*1024)
 
