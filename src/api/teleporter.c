@@ -797,8 +797,8 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	// restore on restart
 	for(unsigned int i = MAX_ROTATIONS; i > 0; i--)
 	{
-		const char *fname = GLOBALTOMLPATH;
-		const char *filename = basename(fname);
+		char *fname = strdup(GLOBALTOMLPATH);
+		char *filename = basename(fname);
 		// extra 6 bytes is enough space for up to 999 rotations ("/", ".", "\0", "999")
 		const size_t buflen = strlen(filename) + strlen(BACKUP_DIR) + 6;
 		char *path = calloc(buflen, sizeof(char));
@@ -807,6 +807,8 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		// Remove file (if it exists)
 		if(remove(path) != 0 && errno != ENOENT)
 			log_err("Unable to remove file \"%s\": %s", path, strerror(errno));
+
+		free(fname);
 	}
 
 	// Free allocated memory
