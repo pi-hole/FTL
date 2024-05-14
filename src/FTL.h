@@ -126,7 +126,7 @@
 
 // REPLY_TIMEOUT defines until how far back in the history of queries we are
 // checking for changed/updated queries. This value should not be set too high
-// to avoid unecessary spinning in the updating loop of the queries running
+// to avoid unnecessary spinning in the updating loop of the queries running
 // every second. The value should be set to a value that is high enough to
 // catch all queries that are still in the process of being resolved.
 // Default: 30 [seconds]

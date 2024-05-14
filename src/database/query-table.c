@@ -165,7 +165,7 @@ bool init_memory_database(void)
 		}
 	}
 
-	// Prepare insertion/replace statements
+	// Prepare persistent insertion/replace statements
 	rc = sqlite3_prepare_v3(_memdb, "REPLACE INTO query_storage VALUES "\
 	                                "(?1," \
 	                                 "?2," \
@@ -181,7 +181,7 @@ bool init_memory_database(void)
 	                                 "?14)", -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		log_err("queries_to_database(query_storage) - SQL error step: %s", sqlite3_errstr(rc));
+		log_err("init_memory_database(query_storage) - SQL error step: %s", sqlite3_errstr(rc));
 		return false;
 	}
 
@@ -189,7 +189,7 @@ bool init_memory_database(void)
 	                        -1, SQLITE_PREPARE_PERSISTENT, &domain_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		log_err("queries_to_database(domain_by_id) - SQL error step: %s", sqlite3_errstr(rc));
+		log_err("init_memory_database(domain_by_id) - SQL error step: %s", sqlite3_errstr(rc));
 		return false;
 	}
 
@@ -197,7 +197,7 @@ bool init_memory_database(void)
 	                        -1, SQLITE_PREPARE_PERSISTENT, &client_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		log_err("queries_to_database(client_by_id) - SQL error step: %s", sqlite3_errstr(rc));
+		log_err("init_memory_database(client_by_id) - SQL error step: %s", sqlite3_errstr(rc));
 		return false;
 	}
 
@@ -205,7 +205,7 @@ bool init_memory_database(void)
 	                        -1, SQLITE_PREPARE_PERSISTENT, &forward_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		log_err("queries_to_database(forward_by_id) - SQL error step: %s", sqlite3_errstr(rc));
+		log_err("init_memory_database(forward_by_id) - SQL error step: %s", sqlite3_errstr(rc));
 		return false;
 	}
 
@@ -213,7 +213,7 @@ bool init_memory_database(void)
 	                        -1, SQLITE_PREPARE_PERSISTENT, &addinfo_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		log_err("queries_to_database(addinfo_by_id) - SQL error step: %s", sqlite3_errstr(rc));
+		log_err("init_memory_database(addinfo_by_id) - SQL error step: %s", sqlite3_errstr(rc));
 		return false;
 	}
 
@@ -575,10 +575,14 @@ bool import_queries_from_disk(void)
 
 // Export in-memory queries to disk - either due to periodic dumping (final =
 // false) or because of a shutdown (final = true)
+// When final is false, we only export queries that are older than REPLY_TIMEOUT
+// seconds. This is to give queries some time to complete before they are
+// exported to disk. When final is true, we export all queries (nothing is going
+// to be added to the in-memory database anymore).
 bool export_queries_to_disk(bool final)
 {
 	bool okay = false;
-	const double time = double_time() - (final ? 0.0 : 30.0);
+	const double time = double_time() - (final ? 0.0 : REPLY_TIMEOUT);
 	const char *querystr = "INSERT INTO disk.query_storage SELECT * FROM query_storage WHERE id > ? AND timestamp < ?";
 
 	log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE id > %lu (max is %lu) and timestamp < %f",
@@ -741,8 +745,7 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 		        mintime, sqlite3_errstr(rc));
 
 	// Update number of queries in in-memory database
-	sqlite3 *memdb = get_memdb();
-	const int new_num = get_number_of_queries_in_DB(memdb, "query_storage");
+	const int new_num = get_number_of_queries_in_DB(NULL, "query_storage");
 	log_debug(DEBUG_GC, "delete_old_queries_from_db(): Deleted %i (%u) queries, new number of queries in memory: %i",
 	          sqlite3_changes(db), (mem_db_num - new_num), new_num);
 	mem_db_num = new_num;
@@ -1613,8 +1616,7 @@ bool queries_to_database(void)
 	}
 
 	// Update number of queries in in-memory database
-	sqlite3 *memdb = get_memdb();
-	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage");
+	mem_db_num = get_number_of_queries_in_DB(NULL, "query_storage");
 
 	if(config.debug.database.v.b && updated + added > 0)
 	{
