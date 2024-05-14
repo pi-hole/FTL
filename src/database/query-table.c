@@ -27,6 +27,16 @@ static double new_last_timestamp = 0;
 static unsigned int new_total = 0, new_blocked = 0;
 static unsigned long last_mem_db_idx = 0, last_disk_db_idx = 0;
 static unsigned int mem_db_num = 0, disk_db_num = 0;
+static sqlite3_stmt *query_stmt = NULL;
+static sqlite3_stmt *domain_stmt = NULL;
+static sqlite3_stmt *client_stmt = NULL;
+static sqlite3_stmt *forward_stmt = NULL;
+static sqlite3_stmt *addinfo_stmt = NULL;
+static sqlite3_stmt **stmts[] = { &query_stmt,
+                                  &domain_stmt,
+                                  &client_stmt,
+                                  &forward_stmt,
+                                  &addinfo_stmt };
 
 // Return the maximum ID of the in-memory database
 unsigned long __attribute__((pure)) get_max_db_idx(void)
@@ -155,6 +165,58 @@ bool init_memory_database(void)
 		}
 	}
 
+	// Prepare insertion/replace statements
+	rc = sqlite3_prepare_v3(_memdb, "REPLACE INTO query_storage VALUES "\
+	                                "(?1," \
+	                                 "?2," \
+	                                 "?3," \
+	                                 "?4," \
+	                                 "(SELECT id FROM domain_by_id WHERE domain = ?5)," \
+	                                 "(SELECT id FROM client_by_id WHERE ip = ?6 AND name = ?7)," \
+	                                 "(SELECT id FROM forward_by_id WHERE forward = ?8)," \
+	                                 "(SELECT id FROM addinfo_by_id WHERE type = ?9 AND content = ?10),"
+	                                 "?11," \
+	                                 "?12," \
+	                                 "?13," \
+	                                 "?14)", -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("queries_to_database(query_storage) - SQL error step: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	rc = sqlite3_prepare_v3(_memdb, "INSERT OR IGNORE INTO domain_by_id (domain) VALUES (?)",
+	                        -1, SQLITE_PREPARE_PERSISTENT, &domain_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("queries_to_database(domain_by_id) - SQL error step: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	rc = sqlite3_prepare_v3(_memdb, "INSERT OR IGNORE INTO client_by_id (ip,name) VALUES (?,?)",
+	                        -1, SQLITE_PREPARE_PERSISTENT, &client_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("queries_to_database(client_by_id) - SQL error step: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	rc = sqlite3_prepare_v3(_memdb, "INSERT OR IGNORE INTO forward_by_id (forward) VALUES (?)",
+	                        -1, SQLITE_PREPARE_PERSISTENT, &forward_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("queries_to_database(forward_by_id) - SQL error step: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	rc = sqlite3_prepare_v3(_memdb, "INSERT OR IGNORE INTO addinfo_by_id (type,content) VALUES (?,?)",
+	                        -1, SQLITE_PREPARE_PERSISTENT, &addinfo_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("queries_to_database(addinfo_by_id) - SQL error step: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
 	// Everything went well
 	return true;
 }
@@ -165,6 +227,15 @@ void close_memory_database(void)
 	// Return early if there is no memory database to be closed
 	if(_memdb == NULL)
 		return;
+
+	// Finalize all statements
+	for(unsigned int i = 0; i < ArraySize(stmts); i++)
+	{
+		if(*stmts[i] == NULL)
+			continue;
+		sqlite3_finalize(*stmts[i]);
+		*stmts[i] = NULL;
+	}
 
 	// Detach disk database
 	if(!detach_database(_memdb, NULL, "disk"))
@@ -1232,6 +1303,7 @@ void DB_read_queries(void)
 			log_info("  %d queries parsed...", counters->queries);
 	}
 
+	// Release shared memory
 	unlock_shm();
 
 	if( rc != SQLITE_DONE )
@@ -1279,16 +1351,6 @@ bool queries_to_database(void)
 	int rc;
 	unsigned int added = 0, updated = 0;
 	sqlite3_int64 idx = 0;
-	sqlite3_stmt *query_stmt = NULL;
-	sqlite3_stmt *domain_stmt = NULL;
-	sqlite3_stmt *client_stmt = NULL;
-	sqlite3_stmt *forward_stmt = NULL;
-	sqlite3_stmt *addinfo_stmt = NULL;
-	sqlite3_stmt **stmts[] = { &query_stmt,
-	                           &domain_stmt,
-	                           &client_stmt,
-	                           &forward_stmt,
-	                           &addinfo_stmt };
 
 	// Skip, we never store nor count queries recorded while have been in
 	// maximum privacy mode in the database
@@ -1303,81 +1365,32 @@ bool queries_to_database(void)
 		return true;
 	}
 
-	// Start preparing query
-	sqlite3 *memdb = get_memdb();
-	rc = sqlite3_prepare_v3(memdb, "REPLACE INTO query_storage VALUES "\
-	                                "(?1," \
-	                                 "?2," \
-	                                 "?3," \
-	                                 "?4," \
-	                                 "(SELECT id FROM domain_by_id WHERE domain = ?5)," \
-	                                 "(SELECT id FROM client_by_id WHERE ip = ?6 AND name = ?7)," \
-	                                 "(SELECT id FROM forward_by_id WHERE forward = ?8)," \
-	                                 "(SELECT id FROM addinfo_by_id WHERE type = ?9 AND content = ?10),"
-	                                 "?11," \
-	                                 "?12," \
-	                                 "?13," \
-	                                 "?14)", -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("queries_to_database(query_storage) - SQL error step: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	rc = sqlite3_prepare_v3(memdb, "INSERT OR IGNORE INTO domain_by_id (domain) VALUES (?)",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &domain_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("queries_to_database(domain_by_id) - SQL error step: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	rc = sqlite3_prepare_v3(memdb, "INSERT OR IGNORE INTO client_by_id (ip,name) VALUES (?,?)",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &client_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("queries_to_database(client_by_id) - SQL error step: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	rc = sqlite3_prepare_v3(memdb, "INSERT OR IGNORE INTO forward_by_id (forward) VALUES (?)",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &forward_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("queries_to_database(forward_by_id) - SQL error step: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	rc = sqlite3_prepare_v3(memdb, "INSERT OR IGNORE INTO addinfo_by_id (type,content) VALUES (?,?)",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &addinfo_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("queries_to_database(addinfo_by_id) - SQL error step: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	// Loop over recent queries and store new or changed ones in the in-memory database
-	const unsigned int min_iter = counters->queries - 1;
-	unsigned int max_iter = min_iter > DB_QUERY_MAX_ITER ? min_iter - DB_QUERY_MAX_ITER : 0;
-	for(unsigned int queryID = min_iter; queryID > max_iter; queryID--)
+	// Loop over recent queries and store new or changed ones in the
+	// in-memory database
+	// The upper bound is the last query in the array, the lower bound is
+	// indirectly given by the first query older than 30 seconds - we do not
+	// expect replies to still arrive after 30 seconds - they are anyway
+	// useless as the client will have already timed out tis particular
+	// query and retried or failed
+	const double limit_timestamp = double_time() - REPLY_TIMEOUT;
+	for(unsigned int queryID = counters->queries - 1; queryID > 0; queryID--)
 	{
 		// Get query pointer
 		queriesData *query = getQuery(queryID, true);
 		if(query == NULL)
 		{
 			// Encountered memory error, skip query
-			log_err("Memory error in queries_to_database()");
+			log_err("Memory error in queries_to_database() when trying to access query %u", queryID);
 			break;
 		}
+
+		// Skip too old queries (see note above the loop)
+		if(query->timestamp < limit_timestamp)
+			break;
 
 		// Skip queries which have not changed since the last iteration
 		if(!query->flags.database.changed)
 			continue;
-
-		// Update max_iter in case we have changes queries very close to
-		// the end of the iteration interval
-		if(min_iter - max_iter < 10)
-			max_iter = max_iter > DB_QUERY_MAX_ITER ? max_iter - DB_QUERY_MAX_ITER : 0;
 
 		// Explicitly set ID to match what is in the on-disk database
 		if(query->db > -1)
@@ -1599,14 +1612,8 @@ bool queries_to_database(void)
 		query->flags.database.changed = false;
 	}
 
-	// Finalize all statements
-	for(unsigned int i = 0; i < ArraySize(stmts); i++)
-	{
-		sqlite3_finalize(*stmts[i]);
-		*stmts[i] = NULL;
-	}
-
 	// Update number of queries in in-memory database
+	sqlite3 *memdb = get_memdb();
 	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage");
 
 	if(config.debug.database.v.b && updated + added > 0)
