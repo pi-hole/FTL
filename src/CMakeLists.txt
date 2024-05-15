@@ -53,8 +53,10 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 # -Wl,-z,now: Disable lazy binding
 # -Wl,-z,relro: Read-only segments after relocation
 # -fno-common: Emit globals without explicit initializer from `.bss` to `.data`. This causes GCC to reject multiple definitions of global variables. This is the new default from GCC-10 on.
-set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
-set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
+    set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
+endif()
 
 # -Wall: This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros. This also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
 # -Wextra: This enables some extra warning flags that are not enabled by -Wall.
@@ -155,11 +157,25 @@ else()
 set(EXTRAWARN_GCC13 "")
 endif()
 
-set(EXTRAWARN "${EXTRAWARN_GCC6} \
-               ${EXTRAWARN_GCC7} \
-               ${EXTRAWARN_GCC8} \
-               ${EXTRAWARN_GCC12} \
-               ${EXTRAWARN_GCC13}")
+# Set extrawarn flags if CC is GCC
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+   set(EXTRAWARN "${EXTRAWARN_GCC6} \
+                  ${EXTRAWARN_GCC7} \
+                  ${EXTRAWARN_GCC8} \
+                  ${EXTRAWARN_GCC12} \
+                  ${EXTRAWARN_GCC13}")
+elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    set(EXTRAWARN "-Wnewline-eof \
+                   -Wno-dangling-else \
+                   -Wno-gnu-zero-variadic-macro-arguments \
+                   -Wno-gnu-variable-sized-type-not-at-end \
+                   -Wno-declaration-after-statement \
+                   -Wno-reserved-identifier \
+                   -Wno-reserved-macro-identifier")
+else()
+    message(WARNING "Unknown compiler, not setting warnings flags")
+    set(EXTRAWARN "")
+endif()
 
 # Remove extra spaces from EXTRAWARN
 string(REGEX REPLACE " +" " " EXTRAWARN "${EXTRAWARN}")
@@ -185,11 +201,14 @@ else()
     message(STATUS "Compiling dynamically linked executable")
 endif()
 # -pie -fPIE: (Dynamic) position independent executable
-set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
+
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
+endif()
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 # We define HAVE_POLL_H as this is needed for the musl builds to succeed
-set(CMAKE_C_FLAGS "-pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
+set(CMAKE_C_FLAGS "-std=c99 -pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
 
 set(CMAKE_C_FLAGS_DEBUG "-O0 -g3")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
@@ -279,7 +298,7 @@ add_executable(pihole-FTL
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
-    target_link_libraries(pihole-FTL -static-libgcc -static -pie)
+    target_link_libraries(pihole-FTL -static-libgcc -static)
 else()
     find_library(LIBMATH m)
     target_link_libraries(pihole-FTL ${LIBMATH})

@@ -92,7 +92,7 @@ static bool deflate_buffer(const unsigned char *buffer_uncompressed, const mz_ul
 	//        ITU-T V.42.)
 	// isize: This contains the size of the original (uncompressed) input
 	//        data modulo 2^32 (little endian).
-	const uint32_t crc = mz_crc32(MZ_CRC32_INIT, buffer_uncompressed, size_uncompressed);
+	const uint32_t crc = (uint32_t)mz_crc32(MZ_CRC32_INIT, buffer_uncompressed, size_uncompressed);
 	memcpy(*buffer_compressed + *size_compressed, &crc, sizeof(crc));
 	*size_compressed += sizeof(crc);
 	const uint32_t isize = htole32(size_uncompressed);
@@ -313,7 +313,15 @@ bool inflate_file(const char *infilename, const char *outfilename, bool verbose)
 
 	// Get file size
 	fseek(infile, 0, SEEK_END);
-	const mz_ulong size_compressed = ftell(infile);
+	const long sc = ftell(infile);
+	if(sc < 0)
+	{
+		log_warn("Failed to get file size of %s", infilename);
+		fclose(infile);
+		fclose(outfile);
+		return false;
+	}
+	const mz_ulong size_compressed = (mz_ulong)sc;
 	fseek(infile, 0, SEEK_SET);
 
 	// Read file into memory
@@ -398,7 +406,7 @@ bool deflate_file(const char *infilename, const char *outfilename, bool verbose)
 
 	// Get file size
 	fseek(infile, 0, SEEK_END);
-	const mz_ulong size_uncompressed = ftell(infile);
+	const long size_uncompressed = ftell(infile);
 	fseek(infile, 0, SEEK_SET);
 
 	// Read file into memory
@@ -410,7 +418,7 @@ bool deflate_file(const char *infilename, const char *outfilename, bool verbose)
 		fclose(outfile);
 		return false;
 	}
-	if(fread(buffer_uncompressed, 1, size_uncompressed, infile) != size_uncompressed)
+	if(fread(buffer_uncompressed, 1, size_uncompressed, infile) != (size_t)size_uncompressed)
 	{
 		log_warn("Failed to read %lu bytes from %s", (unsigned long)size_uncompressed, infilename);
 		fclose(infile);

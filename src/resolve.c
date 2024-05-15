@@ -66,7 +66,7 @@ struct DNS_HEADER
 	uint16_t auth_count; // number of authority entries
 	uint16_t add_count; // number of resource entries
 } __attribute__((packed));
-static_assert(sizeof(struct DNS_HEADER) == 12);
+static_assert(sizeof(struct DNS_HEADER) == 12, "DNS_HEADER size mismatch");
 
 // Constant sized fields of query structure
 struct QUESTION
@@ -74,7 +74,7 @@ struct QUESTION
 	uint16_t qtype;
 	uint16_t qclass;
 };
-static_assert(sizeof(struct QUESTION) == 4);
+static_assert(sizeof(struct QUESTION) == 4, "QUESTION size mismatch");
 
 // Constant sized fields of the resource record structure
 struct R_DATA
@@ -84,7 +84,7 @@ struct R_DATA
 	uint32_t ttl; // RFC 1035 defines the TTL field as "positive values of a signed 32bit number"
 	uint16_t data_len;
 } __attribute__((packed));
-static_assert(sizeof(struct R_DATA) == 10);
+static_assert(sizeof(struct R_DATA) == 10, "R_DATA size mismatch");
 _Pragma("GCC diagnostic pop")
 
 // Pointers to resource record contents

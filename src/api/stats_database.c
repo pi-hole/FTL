@@ -514,13 +514,11 @@ int api_history_database_clients(struct ftl_conn *api)
 
 	// Loop over clients and accumulate results
 	cJSON *clients = JSON_NEW_OBJECT();
-	unsigned int num_clients = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_COPY_STR_TO_OBJECT(item, "name", sqlite3_column_text(stmt, 2));
 		JSON_ADD_ITEM_TO_OBJECT(clients, (const char*)sqlite3_column_text(stmt, 1), item);
-		num_clients++;
 	}
 	sqlite3_finalize(stmt);
 

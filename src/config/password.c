@@ -315,10 +315,7 @@ char * __attribute__((malloc)) create_password(const char *password)
 enum password_result verify_login(const char *password)
 {
 	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
-	if(pw == PASSWORD_CORRECT)
-		log_debug(DEBUG_API, "Password correct");
-	else
-		log_debug(DEBUG_API, "Password incorrect");
+	log_debug(DEBUG_API, pw == PASSWORD_CORRECT ? "Password correct" : "Password incorrect");
 
 	// Check if an application password is set and if it matches
 	if(pw == PASSWORD_INCORRECT &&

@@ -1046,7 +1046,7 @@ void DB_read_queries(void)
 		   (buffer = (const char *)sqlite3_column_text(stmt, 6)) != NULL)
 		{
 			// Get IP address and port of upstream destination
-			char serv_addr[INET6_ADDRSTRLEN] = { 0 };
+			char serv_addr[INET6_ADDRSTRLEN + 1] = { 0 };
 			unsigned int serv_port = 53;
 			// We limit the number of bytes written into the serv_addr buffer
 			// to prevent buffer overflows. If there is no port available in

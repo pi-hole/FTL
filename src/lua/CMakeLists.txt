@@ -65,7 +65,9 @@ set(sources
         )
 
 add_library(lua OBJECT ${sources})
-target_compile_options(lua PRIVATE -Wno-maybe-uninitialized -Wno-unused-variable -Wno-unused-value)
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(lua PRIVATE -Wno-maybe-uninitialized -Wno-unused-variable -Wno-unused-value)
+endif()
 
 # LUA_USE_POSIX: ensures recommended POSIX functions are used instead of
 #                (partially obsoleted) standard C functions

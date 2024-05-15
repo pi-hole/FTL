@@ -286,7 +286,7 @@ const char *_getstr(const size_t pos, const char *func, const int line, const ch
 // Create a mutex for shared memory
 static void create_mutex(pthread_mutex_t *lock) {
 	log_debug(DEBUG_SHMEM, "Creating SHM mutex lock");
-	pthread_mutexattr_t lock_attr = {};
+	pthread_mutexattr_t lock_attr;
 
 	// Initialize the lock attributes
 	pthread_mutexattr_init(&lock_attr);
@@ -740,11 +740,15 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 
 	// Log output
 	if(resize)
+	{
 		log_debug(DEBUG_SHMEM, "Resizing \"%s\" from %zu to (%zu * %zu) == %zu (%s)",
 		          sharedMemory->name, sharedMemory->size, size1, size2, size, df);
+	}
 	else
+	{
 		log_debug(DEBUG_SHMEM, "Remapping \"%s\" from %zu to (%zu * %zu) == %zu",
 		          sharedMemory->name, sharedMemory->size, size1, size2, size);
+	}
 
 	if(config.misc.check.shmem.v.ui > 0 && percentage > config.misc.check.shmem.v.ui)
 		log_resource_shortage(-1.0, 0, percentage, -1, SHMEM_PATH, df);
@@ -801,11 +805,15 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 	used_shmem += (size - sharedMemory->size);
 
 	if(sharedMemory->ptr == new_ptr)
+	{
 		log_debug(DEBUG_SHMEM, "SHMEM pointer not updated: %p (%zu %zu)",
 		          sharedMemory->ptr, sharedMemory->size, size);
+	}
 	else
+	{
 		log_debug(DEBUG_SHMEM, "SHMEM pointer updated: %p -> %p (%zu %zu)",
 		          sharedMemory->ptr, new_ptr, sharedMemory->size, size);
+	}
 
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = size;

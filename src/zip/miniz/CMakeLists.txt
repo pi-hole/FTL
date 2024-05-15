@@ -15,4 +15,5 @@ set(sources
 
 add_library(miniz OBJECT ${sources})
 target_compile_options(miniz PRIVATE)
+target_compile_options(miniz PRIVATE "-Wno-padded")
 target_include_directories(miniz PRIVATE ${PROJECT_SOURCE_DIR}/src)

@@ -77,9 +77,12 @@ bool getLogFilePathLegacy(struct config *conf, FILE *fp)
 			       strerror(errno), errno);
 			exit(EXIT_FAILURE);
 		}
+
+		fclose(fp);
+		return true;
 	}
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	else if(sscanf(buffer, "%127ms", &val_buffer) == 0)
+	else if((val_buffer = calloc(128, sizeof(char))) == NULL || sscanf(buffer, "%127s", val_buffer) == 0)
 	{
 		// Free previously allocated memory (if any)
 		if(conf->files.log.ftl.t == CONF_STRING_ALLOCATED)
@@ -91,7 +94,8 @@ bool getLogFilePathLegacy(struct config *conf, FILE *fp)
 		log_info("Using syslog facility");
 	}
 
-	if(val_buffer)
+	// Set string if memory allocation was successful and a value was read
+	if(val_buffer != NULL && strlen(val_buffer) > 0)
 	{
 		// Free previously allocated memory (if any)
 		if(conf->files.log.ftl.t == CONF_STRING_ALLOCATED)
@@ -589,35 +593,36 @@ const char *readFTLlegacy(struct config *conf)
 	return path;
 }
 
-static char* getPath(FILE* fp, const char *option, char *ptr)
+static char *getPath(FILE* fp, const char *option, char *path_default)
 {
 	// This subroutine is used to read paths from pihole-FTL.conf
-	// fp:         File ptr to opened and readable config file
-	// option:     Option string ("key") to try to read
-	// ptr:        Location where read (or default) parameter is stored
+	// fp:           File path to opened and readable config file
+	// option:       Option string ("key") to try to read
+	// path_default: Location where read (or default) parameter is stored
 	char *buffer = parseFTLconf(fp, option);
 
 	errno = 0;
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	if(buffer == NULL || sscanf(buffer, "%127ms", &ptr) != 1)
+	char *val_ptr = calloc(128, sizeof(char));
+	if(buffer == NULL || sscanf(buffer, "%127s", val_ptr) != 1)
 	{
 		// Use standard path if no custom path was obtained from the config file
-		return ptr;
+		return path_default;
 	}
 
 	// Test if memory allocation was successful
-	if(ptr == NULL)
+	if(val_ptr == NULL)
 	{
 		log_crit("Allocating memory for %s failed (%s, %i). Exiting.", option, strerror(errno), errno);
 		exit(EXIT_FAILURE);
 	}
-	else if(strlen(ptr) == 0)
+	else if(strlen(val_ptr) == 0)
 	{
 		log_info("   %s: Empty path is not possible, using default",
 		         option);
 	}
 
-	return ptr;
+	return val_ptr;
 }
 
 static char *parseFTLconf(FILE *fp, const char * key)
@@ -703,7 +708,7 @@ void releaseConfigMemory(void)
 void init_config_mutex(void)
 {
 	// Initialize the lock attributes
-	pthread_mutexattr_t lock_attr = {};
+	pthread_mutexattr_t lock_attr;
 	pthread_mutexattr_init(&lock_attr);
 
 	// Initialize the lock
