@@ -17,6 +17,12 @@
 # include <mbedtls/x509.h>
 # include <mbedtls/x509_crt.h>
 
+// We enforce at least mbedTLS v3.5.0 if we use it
+#if MBEDTLS_VERSION_NUMBER < 0x03050000
+# error "mbedTLS version 3.5.0 or later is required"
+#endif
+
+
 #define RSA_KEY_SIZE 4096
 #define BUFFER_SIZE 16000
 
