@@ -11,11 +11,11 @@
 #include "FTL.h"
 #include "log.h"
 #include "x509.h"
-#include <mbedtls/rsa.h>
-#include <mbedtls/x509.h>
-#include <mbedtls/x509_crt.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
+
+#ifdef HAVE_MBEDTLS
+# include <mbedtls/rsa.h>
+# include <mbedtls/x509.h>
+# include <mbedtls/x509_crt.h>
 
 #define RSA_KEY_SIZE 4096
 #define BUFFER_SIZE 16000
@@ -621,3 +621,19 @@ end:
 
 	return CERT_OKAY;
 }
+
+#else
+
+bool generate_certificate(const char* certfile, bool rsa, const char *domain)
+{
+	log_err("FTL was not compiled with mbedtls support");
+	return false;
+}
+
+enum cert_check read_certificate(const char* certfile, const char *domain, const bool private_key)
+{
+	log_err("FTL was not compiled with mbedtls support");
+	return CERT_FILE_NOT_FOUND;
+}
+
+#endif

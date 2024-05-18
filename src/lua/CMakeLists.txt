@@ -78,11 +78,4 @@ if(LUA_DL STREQUAL "true")
     target_compile_definitions(lua PRIVATE LUA_USE_DLOPEN)
 endif()
 
-if(LIBREADLINE AND LIBHISTORY AND LIBTERMCAP)
-    message(STATUS "Embedded LUA will use readline for history: YES")
-    target_compile_definitions(lua PRIVATE LUA_USE_READLINE)
-else()
-    message(STATUS "Embedded LUA will use readline for history: NO")
-endif()
-
 target_include_directories(lua PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/lua)

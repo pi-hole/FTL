@@ -20,7 +20,7 @@
 #include "../files.h"
 // get_web_theme_str
 #include "../datastructure.h"
-#if HAVE_READLINE
+#if LUA_USE_READLINE
 #include <readline/history.h>
 #endif
 #include <wordexp.h>
