@@ -2937,13 +2937,45 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		if(ent_pw != NULL && ent_pw->pw_uid != 0)
 		{
 			log_info("FTL is going to drop from root to user %s (UID %u)",
-			     ent_pw->pw_name, ent_pw->pw_uid);
+			         ent_pw->pw_name, ent_pw->pw_uid);
 			if(chown(config.files.log.ftl.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			{
 				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
-				ent_pw->pw_uid, ent_pw->pw_gid, config.files.log.ftl.v.s, strerror(errno), errno);
+				         ent_pw->pw_uid, ent_pw->pw_gid, config.files.log.ftl.v.s, strerror(errno), errno);
+			}
+
 			if(chown(config.files.database.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			{
 				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
-				ent_pw->pw_uid, ent_pw->pw_gid, config.files.database.v.s, strerror(errno), errno);
+				         ent_pw->pw_uid, ent_pw->pw_gid, config.files.database.v.s, strerror(errno), errno);
+
+				// Check if WAL files are present and change
+				// their ownership, too
+				char *walname = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
+				if(walname != NULL)
+				{
+					strcpy(walname, config.files.database.v.s);
+					strcat(walname, "-wal");
+					if(chown(walname, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+					{
+						log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
+						         ent_pw->pw_uid, ent_pw->pw_gid, walname, strerror(errno), errno);
+					}
+					free(walname);
+				}
+				char *shmname = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
+				if(shmname != NULL)
+				{
+					strcpy(shmname, config.files.database.v.s);
+					strcat(shmname, "-shm");
+					if(chown(shmname, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+					{
+						log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
+						         ent_pw->pw_uid, ent_pw->pw_gid, shmname, strerror(errno), errno);
+					}
+					free(shmname);
+				}
+			}
 			chown_all_shmem(ent_pw);
 		}
 		else
