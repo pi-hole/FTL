@@ -18,7 +18,7 @@ set(sqlite3_sources
         )
 
 add_library(sqlite3 OBJECT ${sqlite3_sources})
-target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type -Wno-sign-compare)
+target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type -Wno-sign-compare -Wno-implicit-function-declaration -Wno-int-conversion)
 
 if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
     target_compile_options(sqlite3 PRIVATE "-Wno-null-pointer-subtraction")

@@ -8,8 +8,6 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(CMAKE_C_STANDARD 11)
-
 # Default to a release with debug info build
 if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
     if (NOT CMAKE_BUILD_TYPE)
@@ -165,13 +163,16 @@ if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
                   ${EXTRAWARN_GCC12} \
                   ${EXTRAWARN_GCC13}")
 elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    set(EXTRAWARN "-Wnewline-eof \
+    set(EXTRAWARN "
+                   -Werror \
+                   -Wnewline-eof \
                    -Wno-dangling-else \
                    -Wno-gnu-zero-variadic-macro-arguments \
                    -Wno-gnu-variable-sized-type-not-at-end \
                    -Wno-declaration-after-statement \
                    -Wno-reserved-identifier \
-                   -Wno-reserved-macro-identifier")
+                   -Wno-reserved-macro-identifier \
+                   -Wl,--fatal-warnings")
 else()
     message(WARNING "Unknown compiler, not setting warnings flags")
     set(EXTRAWARN "")

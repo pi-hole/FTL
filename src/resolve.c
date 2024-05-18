@@ -40,7 +40,7 @@ static unsigned char *name_fromDNS(unsigned char *reader, unsigned char *buffer,
 
 // Avoid "error: packed attribute causes inefficient alignment for ..." on ARM32
 // builds due to the use of __attribute__((packed)) in the following structs
-// Their correct size is ensured for each by static_assert() below
+// Their correct size is ensured for each by check_struct_sizes() below
 _Pragma("GCC diagnostic push")
 _Pragma("GCC diagnostic ignored \"-Wattributes\"")
 
@@ -66,7 +66,6 @@ struct DNS_HEADER
 	uint16_t auth_count; // number of authority entries
 	uint16_t add_count; // number of resource entries
 } __attribute__((packed));
-static_assert(sizeof(struct DNS_HEADER) == 12, "DNS_HEADER size mismatch");
 
 // Constant sized fields of query structure
 struct QUESTION
@@ -74,7 +73,6 @@ struct QUESTION
 	uint16_t qtype;
 	uint16_t qclass;
 };
-static_assert(sizeof(struct QUESTION) == 4, "QUESTION size mismatch");
 
 // Constant sized fields of the resource record structure
 struct R_DATA
@@ -84,8 +82,17 @@ struct R_DATA
 	uint32_t ttl; // RFC 1035 defines the TTL field as "positive values of a signed 32bit number"
 	uint16_t data_len;
 } __attribute__((packed));
-static_assert(sizeof(struct R_DATA) == 10, "R_DATA size mismatch");
 _Pragma("GCC diagnostic pop")
+
+static bool check_struct_sizes(void)
+{
+	// Check sizes of structs
+	assert(sizeof(struct DNS_HEADER) == 12);
+	assert(sizeof(struct QUESTION) == 4);
+	assert(sizeof(struct R_DATA) == 10);
+
+	return true;
+}
 
 // Pointers to resource record contents
 struct RES_RECORD
@@ -811,6 +818,14 @@ void *DNSclient_thread(void *val)
 	thread_names[DNSclient] = "DNS client";
 	thread_running[DNSclient] = true;
 	prctl(PR_SET_NAME, thread_names[DNSclient], 0, 0, 0);
+
+	// Test struct sizes
+	if(!check_struct_sizes())
+	{
+		log_err("Struct sizes do not match expected sizes, aborting resolver thread");
+		thread_running[DNSclient] = false;
+		return NULL;
+	}
 
 	// Initial delay until we first try to resolve anything
 	thread_sleepms(DNSclient, 2000);

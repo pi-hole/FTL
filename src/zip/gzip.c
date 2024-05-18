@@ -8,14 +8,16 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
+#include "gzip.h"
+#include "log.h"
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 // le32toh and friends
+#define __USE_MISC
 #include <endian.h>
-#include "gzip.h"
-#include "log.h"
 
 static int mz_uncompress2_raw(unsigned char *pDest, mz_ulong *pDest_len, const unsigned char *pSource, mz_ulong *pSource_len);
 
