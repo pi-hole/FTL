@@ -635,6 +635,8 @@
     #       High-contrast theme (dark)
     #   - "lcars"
     #       Star Trek LCARS theme (dark)
+    #   - "lcars-picard"
+    #       Star Trek Picard LCARS theme (dark)
     theme = "default-auto"
 
   [webserver.api]

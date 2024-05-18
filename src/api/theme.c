@@ -65,6 +65,13 @@ struct web_themes webthemes[THEME_MAX] = {
 		/* dark */ true,
 		/* color */ "#4488FF"
 	},
+	{
+		/* id */ THEME_LCARS_PICARD,
+		/* name */ "lcars-picard",
+		/* description */ "Star Trek Picard LCARS",
+		/* dark */ true,
+		/* color */ "#313748"
+	},
 };
 
 const char * __attribute__ ((pure)) get_web_theme_str(const enum web_theme web_theme)

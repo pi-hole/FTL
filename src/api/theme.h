@@ -20,6 +20,7 @@ enum web_theme {
 	THEME_HIGH_CONTRAST,
 	THEME_HIGH_CONTRAST_DARK,
 	THEME_LCARS,
+	THEME_LCARS_PICARD,
 	THEME_MAX // This needs to be the last element in this enum
 } __attribute__ ((packed));
 
