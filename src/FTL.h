@@ -124,12 +124,13 @@
 // Default: 180 [seconds]
 #define DELAY_UPTIME 180
 
-// DB_QUERY_MAX_ITER defines how many queries we check periodically for updates to be added
-// to the in-memory database. This value may need to be increased on *very* busy systems.
-// However, there is an algorithm in place that tries to ensure we are not missing queries
-// on systems with > 100 queries per second
-// Default: 100 (per second)
-#define DB_QUERY_MAX_ITER 100
+// REPLY_TIMEOUT defines until how far back in the history of queries we are
+// checking for changed/updated queries. This value should not be set too high
+// to avoid unnecessary spinning in the updating loop of the queries running
+// every second. The value should be set to a value that is high enough to
+// catch all queries that are still in the process of being resolved.
+// Default: 30 [seconds]
+#define REPLY_TIMEOUT 30
 
 // Special exit code used to signal that FTL wants to restart
 #define RESTART_FTL_CODE 22
