@@ -8,20 +8,24 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
 #include "ftl_lua.h"
+
+#include "FTL.h"
 // struct luaL_Reg
 #include "lauxlib.h"
 // get_FTL_version()
-#include "../log.h"
+#include "log.h"
 // config struct
-#include "../config/config.h"
+#include "config/config.h"
 // file_exists
-#include "../files.h"
+#include "files.h"
 // get_web_theme_str
-#include "../datastructure.h"
+#include "datastructure.h"
+
 #if HAVE_READLINE
-#include <readline/history.h>
+# include <readline/readline.h>
+# include <readline/history.h>
+
 #endif
 #include <wordexp.h>
 #include "scripts/scripts.h"
