@@ -750,11 +750,12 @@ void parse_args(int argc, char* argv[])
 			printf("\n");
 			printf("****************************** %s%sCivetWeb%s *****************************\n",
 			       yellow, bold, normal);
-#ifdef MBEDTLS_VERSION_STRING_FULL
+#ifdef HAVE_MBEDTLS
 			printf("Version:         %s%s%s%s with %smbed TLS %s%s"MBEDTLS_VERSION_STRING"%s\n",
 			       green, bold, mg_version(), normal, yellow, green, bold, normal);
 #else
-			printf("Version:         %s%s%s%s\n", green, bold, mg_version(), normal);
+			printf("Version:         %s%s%s%s%s without %smbed TLS%s\n",
+			       green, bold, mg_version(), normal, red, yellow, normal);
 #endif
 			printf("Features:        ");
 			if(mg_check_feature(MG_FEATURES_FILES))
