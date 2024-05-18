@@ -353,7 +353,7 @@ void http_init(void)
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
 
-#ifdef HAVE_TLS
+#ifdef HAVE_MBEDTLS
 	features |= MG_FEATURES_TLS;
 #endif
 
@@ -419,7 +419,7 @@ void http_init(void)
 	// from the end of the array.
 	unsigned int next_option = ArraySize(options) - 6;
 
-#ifdef HAVE_TLS
+#ifdef HAVE_MBEDTLS
 	// Add TLS options if configured
 	if(config.webserver.tls.cert.v.s != NULL &&
 	   strlen(config.webserver.tls.cert.v.s) > 0)

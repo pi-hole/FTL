@@ -268,15 +268,14 @@ add_custom_target(
         COMMAND ${CMAKE_COMMAND} -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -P ${CMAKE_CURRENT_SOURCE_DIR}/gen_version.cmake
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_library(FTL OBJECT ${sources})
-target_compile_options(FTL PRIVATE ${EXTRAWARN})
-target_compile_definitions(FTL PRIVATE DNSMASQ_VERSION=\"${DNSMASQ_VERSION}\")
-target_include_directories(FTL PRIVATE ${PROJECT_SOURCE_DIR}/src)
-add_dependencies(FTL gen_version)
-
+add_library(core OBJECT ${sources})
+target_compile_options(core PRIVATE ${EXTRAWARN})
+target_compile_definitions(core PRIVATE DNSMASQ_VERSION=\"${DNSMASQ_VERSION}\")
+target_include_directories(core PRIVATE ${PROJECT_SOURCE_DIR}/src)
+add_dependencies(core gen_version)
 
 add_executable(pihole-FTL
-        $<TARGET_OBJECTS:FTL>
+        $<TARGET_OBJECTS:core>
         $<TARGET_OBJECTS:api>
         $<TARGET_OBJECTS:api_docs>
         $<TARGET_OBJECTS:webserver>
@@ -288,6 +287,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
         $<TARGET_OBJECTS:lua>
+        $<TARGET_OBJECTS:ftl_lua>
         $<TARGET_OBJECTS:tre-regex>
         $<TARGET_OBJECTS:syscalls>
         $<TARGET_OBJECTS:tomlc99>
@@ -322,14 +322,26 @@ if(LUA_DL STREQUAL "true")
     target_link_libraries(pihole-FTL ${LIBDL})
 endif()
 
+add_subdirectory(api)
+add_subdirectory(webserver)
+add_subdirectory(zip)
+add_subdirectory(database)
+add_subdirectory(dnsmasq)
+add_subdirectory(lua)
+add_subdirectory(lua/scripts)
+add_subdirectory(tre-regex)
+add_subdirectory(syscalls)
+add_subdirectory(config)
+add_subdirectory(tools)
+
 find_library(LIBREADLINE NAMES libreadline${CMAKE_STATIC_LIBRARY_SUFFIX} readline)
 find_library(LIBHISTORY NAMES libhistory${CMAKE_STATIC_LIBRARY_SUFFIX} history)
 find_library(LIBTERMCAP NAMES libtermcap${CMAKE_STATIC_LIBRARY_SUFFIX} termcap)
 if(LIBREADLINE AND LIBHISTORY AND LIBTERMCAP)
     message(STATUS "Building FTL with readline support: YES")
+    target_compile_definitions(lua PRIVATE LUA_USE_READLINE)
+    target_compile_definitions(sqlite3 PRIVATE HAVE_READLINE)
     target_link_libraries(pihole-FTL ${LIBREADLINE} ${LIBHISTORY} ${LIBTERMCAP})
-    add_compile_definitions(HAVE_READLINE)
-    set(HAVE_READLINE TRUE)
 else()
     message(STATUS "Building FTL with readline support: NO")
 endif()
@@ -342,9 +354,17 @@ find_library(LIBMBEDCRYPTO NAMES lmbedcrypto${CMAKE_STATIC_LIBRARY_SUFFIX} mbedc
 find_library(LIBMBEDX509 NAMES lmbedx509${CMAKE_STATIC_LIBRARY_SUFFIX} mbedx509)
 find_library(LIBMBEDTLS NAMES lmbedtls${CMAKE_STATIC_LIBRARY_SUFFIX} mbedtls)
 if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
+    # Enable TLS support in civetweb if mbedTLS is available
+    message(STATUS "Building FTL with TLS support: YES")
+    target_compile_definitions(core PRIVATE HAVE_MBEDTLS)
+    target_compile_definitions(civetweb PRIVATE USE_MBEDTLS)
+    target_compile_definitions(webserver PRIVATE HAVE_MBEDTLS)
     # Link against the mbedTLS libraries, the order is important (!)
-    target_compile_definitions(FTL PRIVATE HAVE_MBEDTLS)
     target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO})
+else()
+    # Disable TLS support in civetweb if mbedTLS is not available
+    message(STATUS "Building FTL with TLS support: NO")
+    target_compile_definitions(civetweb PRIVATE NO_SSL)
 endif()
 
 find_program(SETCAP setcap)
@@ -353,14 +373,3 @@ install(TARGETS pihole-FTL
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN+eip \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 
-add_subdirectory(api)
-add_subdirectory(webserver)
-add_subdirectory(zip)
-add_subdirectory(database)
-add_subdirectory(dnsmasq)
-add_subdirectory(lua)
-add_subdirectory(lua/scripts)
-add_subdirectory(tre-regex)
-add_subdirectory(syscalls)
-add_subdirectory(config)
-add_subdirectory(tools)
