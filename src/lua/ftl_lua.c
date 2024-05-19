@@ -27,7 +27,7 @@
 // prototype for luaopen_pihole()
 #include "lualib.h"
 
-#if LUA_USE_READLINE
+#if defined(LUA_USE_READLINE)
 # include <readline/history.h>
 #endif
 #include <wordexp.h>
