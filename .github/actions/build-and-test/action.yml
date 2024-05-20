@@ -101,6 +101,9 @@ runs:
     -
       name: Generate artifact attestation
       uses: actions/attest-build-provenance@v1
+      # Skip attestation if ACTIONS_ID_TOKEN_REQUEST_URL env variable is not
+      # available (e.g., PR originating from a fork)
+      if: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}
       with:
         subject-path: ${{ inputs.bin_name }}
     -
@@ -118,7 +121,11 @@ runs:
         path: 'api-docs.tar.gz'
     -
       name: Deploy
-      if: inputs.event_name != 'pull_request'
+      # Skip deployment step if:
+      # - this is a triggered by a PR event (we only push on commit to branch
+      #   events)
+      # - no SSH key is provided (this is a PR from a fork)
+      if: inputs.event_name != 'pull_request' && ${{ inputs.SSH_KEY != '' }}
       uses: ./.github/actions/deploy
       with:
         pattern: ${{ inputs.bin_name }}-binary
