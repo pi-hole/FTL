@@ -5,6 +5,9 @@ inputs:
   platform:
     required: true
     description: The platform to build for
+  build_opts:
+    required: true
+    description: Any extra build opts to use
   git_branch:
     required: true
     description: The branch to build from
@@ -76,6 +79,7 @@ runs:
             "CI_ARCH=${{ inputs.platform }}"
             "GIT_BRANCH=${{ inputs.git_branch }}"
             "GIT_TAG=${{ inputs.git_tag }}"
+            "BUILD_OPTS=${{ inputs.build_opts }}"
     -
       name: List files in current directory
       shell: bash

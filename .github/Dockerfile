@@ -10,12 +10,14 @@ ARG GIT_BRANCH="test"
 ENV GIT_BRANCH ${GIT_BRANCH}
 ARG GIT_TAG="test"
 ENV GIT_TAG ${GIT_TAG}
+ARG BUILD_OPTS=""
+ENV BUILD_OPTS ${BUILD_OPTS}
 
 # Build FTL
 # Remove possible old build files
 RUN rm -rf cmake && \
 # Build FTL
-    bash build.sh "-DSTATIC=${STATIC}" && \
+    bash build.sh "-DSTATIC=${STATIC}" ${BUILD_OPTS} && \
 # Run binary architecture tests
     bash test/arch_test.sh && \
 # Run full test suite
