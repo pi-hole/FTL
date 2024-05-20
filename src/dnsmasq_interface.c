@@ -2933,50 +2933,58 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	if(getuid() == 0)
 	{
 		// Only print this and change ownership of shmem objects when
-		// we're actually dropping root (user/group my be set to root)
+		// we're actually dropping root (user/group may be set to root)
 		if(ent_pw != NULL && ent_pw->pw_uid != 0)
 		{
 			log_info("FTL is going to drop from root to user %s (UID %u)",
 			         ent_pw->pw_name, ent_pw->pw_uid);
+
+			// Change ownership of shared memory objects
+			chown_all_shmem(ent_pw);
+
+			// Configured FTL log file
 			if(chown(config.files.log.ftl.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 			{
 				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
 				         ent_pw->pw_uid, ent_pw->pw_gid, config.files.log.ftl.v.s, strerror(errno), errno);
 			}
 
+			// Configured FTL database file
 			if(chown(config.files.database.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 			{
 				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
 				         ent_pw->pw_uid, ent_pw->pw_gid, config.files.database.v.s, strerror(errno), errno);
 
-				// Check if WAL files are present and change
-				// their ownership, too
-				char *walname = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
-				if(walname != NULL)
-				{
-					strcpy(walname, config.files.database.v.s);
-					strcat(walname, "-wal");
-					if(chown(walname, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-					{
-						log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
-						         ent_pw->pw_uid, ent_pw->pw_gid, walname, strerror(errno), errno);
-					}
-					free(walname);
-				}
-				char *shmname = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
-				if(shmname != NULL)
-				{
-					strcpy(shmname, config.files.database.v.s);
-					strcat(shmname, "-shm");
-					if(chown(shmname, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-					{
-						log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
-						         ent_pw->pw_uid, ent_pw->pw_gid, shmname, strerror(errno), errno);
-					}
-					free(shmname);
-				}
 			}
-			chown_all_shmem(ent_pw);
+
+			// Check if auxiliary files exist and change ownership
+			char *extrafile = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
+			if(extrafile == NULL)
+			{
+				log_err("Memory allocation failed. Skipping some file ownership checks.");
+				return;
+			}
+
+			// Check <database>-wal file (write-ahead log)
+			strcpy(extrafile, config.files.database.v.s);
+			strcat(extrafile, "-wal");
+			if(file_exists(extrafile) && chown(extrafile, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			{
+				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
+				         ent_pw->pw_uid, ent_pw->pw_gid, extrafile, strerror(errno), errno);
+			}
+
+			// Check <database>-shm file (mmapped shared memory)
+			strcpy(extrafile, config.files.database.v.s);
+			strcat(extrafile, "-shm");
+			if(file_exists(extrafile) && chown(extrafile, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			{
+				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
+				         ent_pw->pw_uid, ent_pw->pw_gid, extrafile, strerror(errno), errno);
+			}
+
+			// Free allocated memory
+			free(extrafile);
 		}
 		else
 		{
