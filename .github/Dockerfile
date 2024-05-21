@@ -16,12 +16,8 @@ ENV BUILD_OPTS ${BUILD_OPTS}
 # Build FTL
 # Remove possible old build files
 RUN rm -rf cmake && \
-# Build FTL
-    bash build.sh "-DSTATIC=${STATIC}" ${BUILD_OPTS} && \
-# Run binary architecture tests
-    bash test/arch_test.sh && \
-# Run full test suite
-    bash test/run.sh && \
+# Build and test FTL
+    bash build.sh "-DSTATIC=${STATIC}" test ${BUILD_OPTS} && \
 # Move FTL binary to root directory
     cd / &&\
     mv /app/pihole-FTL . && \
