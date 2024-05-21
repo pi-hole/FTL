@@ -109,13 +109,13 @@ runs:
         subject-path: ${{ inputs.bin_name }}
     -
       name: Extract documentation files from container
-      if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64'
+      if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64' && inputs.build_opts == ''
       shell: bash
       run: |
         tar -xf build.tar api-docs.tar.gz
     -
       name: Upload documentation artifacts for deployoment
-      if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64'
+      if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64' && inputs.build_opts == ''
       uses: actions/upload-artifact@v4.3.1
       with:
         name: pihole-api-docs
