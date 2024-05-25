@@ -28,7 +28,7 @@ static pthread_mutex_t lock;
 // Private prototypes
 static char *parseFTLconf(FILE *fp, const char *key);
 static void releaseConfigMemory(void);
-static char *getPath(FILE* fp, const char *option, char *ptr);
+static char *__attribute__((nonnull(1,2,3), malloc, warn_unused_result)) getPath(FILE* fp, const char *option, char *ptr);
 static bool parseBool(const char *option, bool *ptr);
 static void readDebugingSettingsLegacy(FILE *fp);
 static void getBlockingModeLegacy(FILE *fp);
@@ -593,7 +593,7 @@ const char *readFTLlegacy(struct config *conf)
 	return path;
 }
 
-static char *getPath(FILE* fp, const char *option, char *path_default)
+static char *__attribute__((nonnull(1,2,3), malloc, warn_unused_result)) getPath(FILE* fp, const char *option, char *path_default)
 {
 	// This subroutine is used to read paths from pihole-FTL.conf
 	// fp:           File path to opened and readable config file
@@ -604,22 +604,24 @@ static char *getPath(FILE* fp, const char *option, char *path_default)
 	errno = 0;
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
 	char *val_ptr = calloc(128, sizeof(char));
-	if(buffer == NULL || sscanf(buffer, "%127s", val_ptr) != 1)
-	{
-		// Use standard path if no custom path was obtained from the config file
-		return path_default;
-	}
 
 	// Test if memory allocation was successful
 	if(val_ptr == NULL)
 	{
-		log_crit("Allocating memory for %s failed (%s, %i). Exiting.", option, strerror(errno), errno);
+		log_crit("Allocating memory for %s failed (%s, %i). Exiting.",
+		         option, strerror(errno), errno);
 		exit(EXIT_FAILURE);
 	}
-	else if(strlen(val_ptr) == 0)
+
+	if(buffer == NULL || sscanf(buffer, "%127s", val_ptr) != 1 || strlen(val_ptr) == 0)
 	{
+		// Use standard path if no custom path was obtained from the config file
 		log_info("   %s: Empty path is not possible, using default",
 		         option);
+
+		strncpy(val_ptr, path_default, 127);
+		val_ptr[127] = '\0';
+		return val_ptr;
 	}
 
 	return val_ptr;

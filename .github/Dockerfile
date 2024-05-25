@@ -1,4 +1,4 @@
-FROM ghcr.io/pi-hole/ftl-build:new-clang AS builder
+FROM ghcr.io/pi-hole/ftl-build:v2.6 AS builder
 
 WORKDIR /app
 
