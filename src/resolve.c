@@ -33,6 +33,8 @@
 #include "regex_r.h"
 // statis_assert()
 #include <assert.h>
+// TCP_MAX_QUERIES
+#include "dnsmasq/config.h"
 
 // Function Prototypes
 static void name_toDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen) __attribute__((nonnull(1,3)));
@@ -212,10 +214,49 @@ bool __attribute__((pure)) resolve_this_name(const char *ipaddr)
 	return true;
 }
 
-// Perform a name lookup by sending a packet to ourselves
-static char *__attribute__((malloc)) ngethostbyname(const char *host, const char *ipaddr)
+int create_socket(bool tcp, struct sockaddr_in *dest)
 {
-	uint8_t buf[1024] = { 0 };
+	// Create a UDP (datagram) or TCP (stream) socket
+	const int sock = socket(AF_INET, tcp ? SOCK_STREAM : SOCK_DGRAM, tcp ? IPPROTO_TCP : IPPROTO_UDP);
+	if(sock < 0)
+	{
+		log_err("Unable to create DNS resolver socket: %s", strerror(errno));
+		return -1;
+	}
+
+	// Set timeout for socket (2 seconds)
+	struct timeval tv;
+	tv.tv_sec = 2;
+	tv.tv_usec = 0;
+	if(setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+	{
+		log_err("Unable to set DNS resolver socket timeout: %s", strerror(errno));
+		close(sock);
+		return -1;
+	}
+
+	// Create socket destination structure
+	memset(dest, 0, sizeof(*dest));
+	dest->sin_family = AF_INET; // IPv4
+	dest->sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
+	dest->sin_port = htons(config.dns.port.v.u16); // Configured DNS port
+
+	// Connect to the DNS server (only done for TCP as UDP is
+	// connectionless)
+	if(tcp && connect(sock, (struct sockaddr*)dest, sizeof(*dest)) < 0)
+	{
+		log_err("Unable to connect to DNS resolver: %s", strerror(errno));
+		close(sock);
+		return -1;
+	}
+
+	return sock;
+}
+
+// Perform a name lookup by sending a packet to ourselves
+static char *__attribute__((malloc)) ngethostbyname(const int sock, struct sockaddr_in *dest, const bool tcp, const char *host, const char *ipaddr)
+{
+	uint8_t buf[4096] = { 0 }; // buffer for DNS query
 	uint8_t *qname = NULL, *reader = NULL;
 	struct RES_RECORD answers[20] = { 0 }; // buffer for DNS replies
 	struct DNS_HEADER *dns = NULL;
@@ -262,42 +303,73 @@ static char *__attribute__((malloc)) ngethostbyname(const char *host, const char
 
 	qinfo->qtype = htons(T_PTR); // Type of the query, A, MX, CNAME, NS etc
 	qinfo->qclass = htons(1); // IN
-
-	// UDP packet for DNS queries
-	const int s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	struct sockaddr_in dest = { 0 };
-	dest.sin_family = AF_INET; // IPv4
-	dest.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
-	dest.sin_port = htons(config.dns.port.v.u16); // Configured DNS port
+	const size_t len = sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1) + sizeof(struct QUESTION);
 
 	// Log query in debug mode
-	log_debug(DEBUG_RESOLVER, "Resolving PTR \"%s\" on 127.0.0.1#%u", host, config.dns.port.v.u16);
+	log_debug(DEBUG_RESOLVER, "Resolving PTR \"%s\" on 127.0.0.1#%u (%s)",
+	          host, config.dns.port.v.u16, tcp ? "TCP" : "UDP");
 
-	// Send the query
-	const size_t questionlen = sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1) + sizeof(struct QUESTION);
-	if(sendto(s, buf, questionlen, 0, (struct sockaddr*)&dest, sizeof(dest)) < 0)
+	if(!tcp)
 	{
-		perror("sendto failed");
-		close(s);
-		return strdup("");
-	}
+		// Send the query
+		socklen_t addrlen = sizeof(*dest);
+		if(sendto(sock, buf, len, 0, (struct sockaddr*)dest, addrlen) < 0)
+		{
+			log_err("Cannot send UDP DNS query: %s", strerror(errno));
+			return strdup("");
+		}
 
-	// Receive the answer
-	socklen_t addrlen = sizeof(dest);
-	if(recvfrom (s, buf, sizeof(buf), 0, (struct sockaddr*)&dest, &addrlen) < 0)
+		// Receive the answer
+		if(recvfrom (sock, buf, sizeof(buf), 0, (struct sockaddr*)dest, &addrlen) < 0)
+		{
+			log_err("Cannot receive UDP DNS reply: %s", strerror(errno));
+			return strdup("");
+		}
+	}
+	else
 	{
-		perror("recvfrom failed");
-		close(s);
-		return strdup("");
-	}
+		// Send the query
+		// For TCP streams, we first have to send the length of the data
+		// we are sending. The reason for this is that with TCP, we are
+		// not sending messages (datagrams) but a continuous stream of
+		// bytes. We therefore need a way to tell the receiver about
+		// this length of the message.
+		uint16_t prefix = htons(len & 0xffffu);
+		if(send(sock, &prefix, sizeof(prefix), 0) < 0 ||
+		   send(sock, buf, len, 0) < 0)
+		{
+			log_err("Cannot send TCP DNS query: %s", strerror(errno));
+			return strdup("");
+		}
 
-	// Close socket
-	close(s);
+		// Receive the answer, first the length of the message ...
+		prefix = 0;
+		if(recv(sock, &prefix, sizeof(prefix), 0) < 0)
+		{
+			log_err("Cannot receive TCP DNS reply (1): %s", strerror(errno));
+			return strdup("");
+		}
+		prefix = ntohs(prefix);
+
+		// Sanity check the length of the message
+		if(prefix > sizeof(buf))
+		{
+			log_err("Received TCP DNS reply is too long (%u bytes)", prefix);
+			return strdup("");
+		}
+		bzero(buf, prefix + 1);
+		// ... then the message itself
+		if(recv(sock, buf, sizeof(buf), 0) < 0)
+		{
+			log_err("Cannot receive TCP DNS reply (2): %s", strerror(errno));
+			return strdup("");
+		}
+	}
 
 	// Parse the reply
 	dns = (struct DNS_HEADER*) buf;
 	// Move ahead of the dns header and the query field
-	reader = &buf[questionlen];
+	reader = &buf[len];
 
 	// Log the status of the query
 	log_debug(DEBUG_RESOLVER, "DNS query for PTR \"%s\" returned status %s (%i)",
@@ -447,7 +519,7 @@ static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fro
 	}
 
 	// Strip off the trailing dot
-	name[i-1] = '\0';
+	name[i > 0 ? i-1 : i] = '\0';
 	return name;
 }
 
@@ -477,7 +549,8 @@ static void __attribute__((nonnull(1,3))) name_toDNS(unsigned char *dns, const s
 	*dns++='\0';
 }
 
-char *__attribute__((malloc)) resolveHostname(const char *addr, const bool force)
+char *__attribute__((malloc)) resolveHostname(const int sock, struct sockaddr_in *dest,
+                                              const bool tcp, const char *addr, const bool force)
 {
 	// Get host name
 	char *hostn = NULL;
@@ -600,11 +673,11 @@ char *__attribute__((malloc)) resolveHostname(const char *addr, const bool force
 	// Get host name by making a reverse lookup to ourselves (server at 127.0.0.1 with port 53)
 	// We implement a minimalistic resolver here as we cannot rely on the system resolver using whatever
 	// nameserver we configured in /etc/resolv.conf
-	return ngethostbyname(inaddr, addr);
+	return ngethostbyname(sock, dest, tcp, inaddr, addr);
 }
 
 // Resolve upstream destination host names
-static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
+static size_t resolveAndAddHostname(const int sock, struct sockaddr_in *dest, const bool tcp, size_t ippos, size_t oldnamepos)
 {
 	// Get IP and host name strings. They are cloned in case shared memory is
 	// resized before the next lock
@@ -629,7 +702,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
-	char *newname = resolveHostname(ipaddr, false);
+	char *newname = resolveHostname(sock, dest, tcp, ipaddr, false);
 
 	// If no hostname was found, try to obtain hostname from the network table
 	// This may be disabled due to a user setting
@@ -680,7 +753,18 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 	int clientscount = counters->clients;
 	unlock_shm();
 
+	// Create DNS client socket
+	const bool tcp = true;
+	struct sockaddr_in dest = { 0 };
+	int sock = create_socket(tcp, &dest);
+	if(sock < 0)
+	{
+		log_err("Unable to create DNS resolver socket, client host name resolution failed");
+		return;
+	}
+
 	int skipped = 0;
+	unsigned int queries = 0u;
 	for(int clientID = 0; clientID < clientscount; clientID++)
 	{
 		// Memory access needs to get locked
@@ -768,8 +852,24 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			continue;
 		}
 
+		// We need to reconnect after a certain number of queries due to
+		// dnsmasq-internal limits
+		if(tcp && ++queries > TCP_MAX_QUERIES - 1)
+		{
+			close(sock);
+			sock = create_socket(tcp, &dest);
+			if(sock < 0)
+			{
+				log_err("Unable to recreate to DNS resolver socket, client host name resolution failed");
+				return;
+			}
+
+			// Reset query counter
+			queries = 0;
+		}
+
 		// Obtain/update hostname of this client
-		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
+		size_t newnamepos = resolveAndAddHostname(sock, &dest, tcp, ippos, oldnamepos);
 
 		lock_shm();
 		// Get client pointer for the second time (writing data)
@@ -795,6 +895,9 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		unlock_shm();
 	}
 
+	// Close socket
+	close(sock);
+
 	log_debug(DEBUG_RESOLVER, "%i / %i client host names resolved",
 	          clientscount-skipped, clientscount);
 }
@@ -808,7 +911,18 @@ static void resolveUpstreams(const bool onlynew)
 	int upstreams = counters->upstreams;
 	unlock_shm();
 
+	// Create socket
+	const bool tcp = false;
+	struct sockaddr_in dest = { 0 };
+	int sock = create_socket(tcp, &dest);
+	if(sock < 0)
+	{
+		log_err("Unable to create DNS resolver socket, upstream host name resolution failed");
+		return;
+	}
+
 	int skipped = 0;
+	unsigned int queries = 0u;
 	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
 		// Memory access needs to get locked
@@ -853,8 +967,24 @@ static void resolveUpstreams(const bool onlynew)
 			continue;
 		}
 
+		// We need to reconnect after a certain number of queries due to
+		// dnsmasq-internal limits
+		if(tcp && ++queries > TCP_MAX_QUERIES - 1)
+		{
+			close(sock);
+			sock = create_socket(tcp, &dest);
+			if(sock < 0)
+			{
+				log_err("Unable to recreate to DNS resolver socket, client host name resolution failed");
+				return;
+			}
+
+			// Reset query counter
+			queries = 0;
+		}
+
 		// Obtain/update hostname of this client
-		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
+		size_t newnamepos = resolveAndAddHostname(sock, &dest, tcp, ippos, oldnamepos);
 
 		lock_shm();
 		// Get upstream pointer for the second time (writing data)
@@ -879,6 +1009,9 @@ static void resolveUpstreams(const bool onlynew)
 
 		unlock_shm();
 	}
+
+	// Close socket
+	close(sock);
 
 	log_debug(DEBUG_RESOLVER, "%i / %i upstream server host names resolved",
 	          upstreams-skipped, upstreams);

@@ -499,7 +499,7 @@ void parse_args(int argc, char* argv[])
 	}
 
 	// Local reverse name resolver
-	if(argc == 3 && strcasecmp(argv[1], "ptr") == 0)
+	if((argc == 3 || argc == 4) && strcasecmp(argv[1], "ptr") == 0)
 	{
 		// Enable stdout printing
 		cli_mode = true;
@@ -507,7 +507,18 @@ void parse_args(int argc, char* argv[])
 		// Need to get dns.port and the resolver settings
 		readFTLconf(&config, false);
 
-		char *name = resolveHostname(argv[2], true);
+		// TCP or UDP (default)?
+		const bool tcp = argc == 4 && strcasecmp(argv[3], "tcp") == 0;
+
+		// Create a socket
+		struct sockaddr_in dest;
+		const int sock = create_socket(tcp, &dest);
+		char *name = resolveHostname(sock, &dest, tcp, argv[2], true);
+
+		// Close the socket
+		close(sock);
+
+		// Exit early if no name was found
 		if(name == NULL)
 			exit(EXIT_FAILURE);
 

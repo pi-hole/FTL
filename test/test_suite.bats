@@ -1729,11 +1729,26 @@
   [[ ${lines[0]} == "ce4c01340ef46bf3bc26831f7c53763d57c863528826aa795f1da5e16d6e7b2d  test/test.pem" ]]
 }
 
-@test "Internal IP -> name resolution works" {
+@test "Internal IP -> name resolution works (UDP IPv4)" {
   run bash -c "./pihole-FTL ptr 127.0.0.1 | tail -n1"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "localhost" ]]
+}
+
+@test "Internal IP -> name resolution works (UDP IPv6)" {
   run bash -c "./pihole-FTL ptr ::1 | tail -n1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "localhost" ]]
+}
+
+@test "Internal IP -> name resolution works (TCP IPv4)" {
+  run bash -c "./pihole-FTL ptr 127.0.0.1 tcp | tail -n1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "localhost" ]]
+}
+
+@test "Internal IP -> name resolution works (TCP IPv6)" {
+  run bash -c "./pihole-FTL ptr ::1 tcp | tail -n1"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "localhost" ]]
 }
