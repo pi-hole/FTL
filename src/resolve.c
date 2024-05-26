@@ -95,6 +95,64 @@ struct RES_RECORD
 	uint8_t *rdata;
 };
 
+// see https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml
+static const char *getDNScode(int code)
+{
+	switch(code)
+	{
+		case 0:
+			return "NoError";
+		case 1:
+			return "FormErr (Format Error)";
+		case 2:
+			return "ServFail (Server Failure)";
+		case 3:
+			return "NXDomain (Non-Existent Domain)";
+		case 4:
+			return "NotImp (Not Implemented)";
+		case 5:
+			return "Refused (Query Refused)";
+		case 6:
+			return "YXDomain (Name Exists when it should not)";
+		case 7:
+			return "YXRRSet (RR Set Exists when it should not)";
+		case 8:
+			return "NXRRSet (RR Set that should exist does not)";
+		case 9:
+			return "NotAuth (Server Not Authoritative for zone)";
+		case 10:
+			return "NotZone (Name not contained in zone)";
+		case 11:
+			return "DSOTYPENI (DSO-TYPE Not Implemented)";
+		case 16:
+			return "BADVERS (Bad OPT Version) -or- BADSIG (TSIG Signature Failure)";
+		case 17:
+			return "BADKEY (Key not recognized)";
+		case 18:
+			return "BADTIME (Signature out of time window)";
+		case 19:
+			return "BADMODE (Bad TKEY Mode)";
+		case 20:
+			return "BADNAME (Duplicate key name)";
+		case 21:
+			return "BADALG (Algorithm not supported)";
+		case 22:
+			return "BADTRUNC (Bad Truncation)";
+		case 23:
+			return "BADCOOKIE (Bad/missing Server Cookie)";
+		default:
+			;
+	}
+
+	if((code >= 24 && code <= 3840) || (code >= 4096 && code <= 65535))
+		return "Unassigned";
+	else if(code >= 3841 && code <= 4095)
+		return "Reserved for Private Use";
+
+	// else:
+	return "Unknown";
+}
+
 // Validate given hostname
 static bool valid_hostname(char* name, const char* clientip)
 {
@@ -212,6 +270,10 @@ static char *__attribute__((malloc)) ngethostbyname(const char *host, const char
 	dest.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
 	dest.sin_port = htons(config.dns.port.v.u16); // Configured DNS port
 
+	// Log query in debug mode
+	log_debug(DEBUG_RESOLVER, "Resolving PTR \"%s\" on 127.0.0.1#%u", host, config.dns.port.v.u16);
+
+	// Send the query
 	const size_t questionlen = sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1) + sizeof(struct QUESTION);
 	if(sendto(s, buf, questionlen, 0, (struct sockaddr*)&dest, sizeof(dest)) < 0)
 	{
@@ -237,6 +299,18 @@ static char *__attribute__((malloc)) ngethostbyname(const char *host, const char
 	// Move ahead of the dns header and the query field
 	reader = &buf[questionlen];
 
+	// Log the status of the query
+	log_debug(DEBUG_RESOLVER, "DNS query for PTR \"%s\" returned status %s (%i)",
+	          host, getDNScode(dns->rcode), dns->rcode);
+
+	// Abort if the query was not successful
+	if(dns->tc != 0)
+	{
+		log_debug(DEBUG_RESOLVER, "Internal name lookup for %s was unsuccessful: DNS response was truncated",
+		          ipaddr);
+		return strdup("");
+	}
+
 	// Start reading answers
 	uint16_t stop = 0;
 	char *name = NULL;
@@ -249,16 +323,21 @@ static char *__attribute__((malloc)) ngethostbyname(const char *host, const char
 		reader = reader + sizeof(struct R_DATA);
 
 		// We only care about PTR answers and ignore all others
-		if(ntohs(answers[i].resource->type) != T_PTR)
+		const uint16_t rtype = ntohs(answers[i].resource->type);
+		if(rtype != T_PTR)
+		{
+			log_debug(DEBUG_RESOLVER, "Answer %u is not of type PTR but %u (skipping)",
+			          i, rtype);
 			continue;
+		}
 
 		// Read the answer and convert from network to host representation
 		answers[i].rdata = name_fromDNS(reader, buf, &stop);
 		reader = reader + stop;
 
 		name = (char *)answers[i].rdata;
-		log_debug(DEBUG_RESOLVER, "Resolving %s (PTR \"%s\"): %u = \"%s\"",
-		          ipaddr, answers[i].name, i, answers[i].rdata);
+		log_debug(DEBUG_RESOLVER, "Answer %u is PTR \"%s\" => \"%s\"",
+		          i, answers[i].name, answers[i].rdata);
 
 		// We break out of the loop if this is a valid hostname
 		if(strlen(name) > 0 && valid_hostname(name, ipaddr))
@@ -652,13 +731,13 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			continue;
 		}
 
-		unlock_shm();
-
 		// Check if we want to resolve an IPv6 address
 		bool IPv6 = false;
 		const char *ipaddr = NULL;
 		if((ipaddr = getstr(ippos)) != NULL && strstr(ipaddr,":") != NULL)
 			IPv6 = true;
+
+		unlock_shm();
 
 		// If we're in refreshing mode (onlynew == false), we skip clients if
 		// 1. We should not refresh any hostnames
