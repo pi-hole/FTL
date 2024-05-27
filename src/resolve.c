@@ -291,7 +291,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, struct socka
 	if(hname == NULL)
 	{
 		log_err("Unable to allocate memory for hname");
-		return strdup("");
+		return NULL;
 	}
 	strncpy(hname, host, hnamelen);
 	strncat(hname, ".", hnamelen - strlen(hname));
@@ -316,14 +316,14 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, struct socka
 		if(sendto(sock, buf, len, 0, (struct sockaddr*)dest, addrlen) < 0)
 		{
 			log_err("Cannot send UDP DNS query: %s", strerror(errno));
-			return strdup("");
+			return NULL;
 		}
 
 		// Receive the answer
 		if(recvfrom (sock, buf, sizeof(buf), 0, (struct sockaddr*)dest, &addrlen) < 0)
 		{
 			log_err("Cannot receive UDP DNS reply: %s", strerror(errno));
-			return strdup("");
+			return NULL;
 		}
 	}
 	else
@@ -339,7 +339,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, struct socka
 		   send(sock, buf, len, 0) < 0)
 		{
 			log_err("Cannot send TCP DNS query: %s", strerror(errno));
-			return strdup("");
+			return NULL;
 		}
 
 		// Receive the answer, first the length of the message ...
@@ -347,7 +347,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, struct socka
 		if(recv(sock, &prefix, sizeof(prefix), 0) < 0)
 		{
 			log_err("Cannot receive TCP DNS reply (1): %s", strerror(errno));
-			return strdup("");
+			return NULL;
 		}
 		prefix = ntohs(prefix);
 
@@ -355,14 +355,14 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, struct socka
 		if(prefix > sizeof(buf))
 		{
 			log_err("Received TCP DNS reply is too long (%u bytes)", prefix);
-			return strdup("");
+			return NULL;
 		}
 		bzero(buf, prefix + 1);
 		// ... then the message itself
 		if(recv(sock, buf, sizeof(buf), 0) < 0)
 		{
 			log_err("Cannot receive TCP DNS reply (2): %s", strerror(errno));
-			return strdup("");
+			return NULL;
 		}
 	}
 
@@ -380,7 +380,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, struct socka
 	{
 		log_debug(DEBUG_RESOLVER, "Internal name lookup for %s was unsuccessful: DNS response was truncated",
 		          ipaddr);
-		return strdup("");
+		return NULL;
 	}
 
 	// Start reading answers
@@ -608,7 +608,7 @@ char *__attribute__((malloc)) resolveHostname(const int sock, struct sockaddr_in
 		if(inaddr == NULL)
 		{
 			log_err("Unable to allocate memory for reverse lookup");
-			return strdup("");
+			return NULL;
 		}
 
 		// Convert IPv6 address to reverse lookup format
@@ -658,7 +658,7 @@ char *__attribute__((malloc)) resolveHostname(const int sock, struct sockaddr_in
 		if(inaddr == NULL)
 		{
 			log_err("Unable to allocate memory for reverse lookup");
-			return strdup("");
+			return NULL;
 		}
 
 		// Convert IPv4 address to reverse lookup format
@@ -677,7 +677,8 @@ char *__attribute__((malloc)) resolveHostname(const int sock, struct sockaddr_in
 }
 
 // Resolve upstream destination host names
-static size_t resolveAndAddHostname(const int sock, struct sockaddr_in *dest, const bool tcp, size_t ippos, size_t oldnamepos)
+static size_t resolveAndAddHostname(const int sock, struct sockaddr_in *dest, const bool tcp,
+                                    size_t ippos, size_t oldnamepos, bool *success)
 {
 	// Get IP and host name strings. They are cloned in case shared memory is
 	// resized before the next lock
@@ -703,6 +704,18 @@ static size_t resolveAndAddHostname(const int sock, struct sockaddr_in *dest, co
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
 	char *newname = resolveHostname(sock, dest, tcp, ipaddr, false);
+	if(newname == NULL)
+	{
+		// We could not resolve the hostname, so we keep the old one
+		// and mark the entry as not new
+		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (failed to resolve)", oldname);
+
+		// Free allocated memory
+		*success = false;
+		free(ipaddr);
+		free(oldname);
+		return oldnamepos;
+	}
 
 	// If no hostname was found, try to obtain hostname from the network table
 	// This may be disabled due to a user setting
@@ -721,6 +734,8 @@ static size_t resolveAndAddHostname(const int sock, struct sockaddr_in *dest, co
 	{
 		lock_shm();
 		size_t newnamepos = addstr(newname);
+
+		// Free allocated memory
 		// newname has already been checked against NULL
 		// so we can safely free it
 		free(newname);
@@ -795,7 +810,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// Limit for a "recently active" client is two hours ago
 		if(!force_refreshing && !onlynew && client->lastQuery < now - 2*60*60)
 		{
-			log_debug(DEBUG_RESOLVER, "Skipping client %s (%s) because it was inactive for %i seconds",
+			log_debug(DEBUG_RESOLVER, "Skipping client %s -> \"%s\" because it was inactive for %i seconds",
 			          getstr(ippos), getstr(oldnamepos), (int)(now - client->lastQuery));
 
 			unlock_shm();
@@ -807,7 +822,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// If not, we will try to re-resolve all known clients
 		if(!force_refreshing && onlynew && !newflag)
 		{
-			log_debug(DEBUG_RESOLVER, "Skipping client %s (%s) because it is not new",
+			log_debug(DEBUG_RESOLVER, "Skipping client %s -> \"%s\" because it is not new",
 			          getstr(ippos), getstr(oldnamepos));
 
 			unlock_shm();
@@ -844,7 +859,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 					reason = "Looking only for unknown hostnames";
 
 				lock_shm();
-				log_debug(DEBUG_RESOLVER, "Skipping client %s (%s) because it should not be refreshed: %s",
+				log_debug(DEBUG_RESOLVER, "Skipping client %s -> \"%s\" because it should not be refreshed: %s",
 				          getstr(ippos), getstr(oldnamepos), reason);
 				unlock_shm();
 			}
@@ -869,7 +884,8 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		}
 
 		// Obtain/update hostname of this client
-		size_t newnamepos = resolveAndAddHostname(sock, &dest, tcp, ippos, oldnamepos);
+		bool success = true;
+		size_t newnamepos = resolveAndAddHostname(sock, &dest, tcp, ippos, oldnamepos, &success);
 
 		lock_shm();
 		// Get client pointer for the second time (writing data)
@@ -885,6 +901,20 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			continue;
 		}
 
+		if(!success)
+		{
+			// We could not resolve the hostname, so we keep the old one
+			// and mark the entry as not new - it will be retried later
+			client->flags.new = false;
+
+			log_debug(DEBUG_RESOLVER, "Client %s -> \"%s\" could not be resolved, retrying later",
+			          getstr(ippos), getstr(oldnamepos));
+
+			unlock_shm();
+			continue;
+		}
+
+		// else:
 		// Store obtained host name (may be unchanged)
 		client->namepos = newnamepos;
 		// Mark entry as not new
@@ -912,7 +942,7 @@ static void resolveUpstreams(const bool onlynew)
 	unlock_shm();
 
 	// Create socket
-	const bool tcp = false;
+	const bool tcp = true;
 	struct sockaddr_in dest = { 0 };
 	int sock = create_socket(tcp, &dest);
 	if(sock < 0)
@@ -945,7 +975,7 @@ static void resolveUpstreams(const bool onlynew)
 		// Limit for a "recently active" upstream server is two hours ago
 		if(upstream->lastQuery < now - 2*60*60)
 		{
-			log_debug(DEBUG_RESOLVER, "Skipping upstream %s (%s) because it was inactive for %i seconds",
+			log_debug(DEBUG_RESOLVER, "Skipping upstream %s -> \"%s\" because it was inactive for %i seconds",
 			          getstr(ippos), getstr(oldnamepos), (int)(now - upstream->lastQuery));
 
 			unlock_shm();
@@ -984,7 +1014,8 @@ static void resolveUpstreams(const bool onlynew)
 		}
 
 		// Obtain/update hostname of this client
-		size_t newnamepos = resolveAndAddHostname(sock, &dest, tcp, ippos, oldnamepos);
+		bool success = true;
+		size_t newnamepos = resolveAndAddHostname(sock, &dest, tcp, ippos, oldnamepos, &success);
 
 		lock_shm();
 		// Get upstream pointer for the second time (writing data)
@@ -996,6 +1027,19 @@ static void resolveUpstreams(const bool onlynew)
 		{
 			log_warn("Unable to get upstream pointer (2) with ID %i in resolveUpstreams(), skipping...", upstreamID);
 			skipped++;
+			unlock_shm();
+			continue;
+		}
+
+		if(!success)
+		{
+			// We could not resolve the hostname, so we keep the old one
+			// and mark the entry as not new - it will be retried later
+			upstream->flags.new = false;
+
+			log_debug(DEBUG_RESOLVER, "Upstream %s -> \"%s\" could not be resolved, retrying later",
+			          getstr(ippos), getstr(oldnamepos));
+
 			unlock_shm();
 			continue;
 		}
