@@ -324,6 +324,25 @@ components:
                   type: array
                   items:
                     type: string
+            ntp:
+              type: object
+              properties:
+                ipv4:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    address:
+                      type: string
+                      x-format: ipv4
+                ipv6:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    address:
+                      type: string
+                      x-format: ipv6
             resolver:
               type: object
               properties:
@@ -656,6 +675,13 @@ components:
             hosts:
               - "11:22:33:44:55:66,192.168.1.123"
               - "11:22:33:44:55:67,192.168.1.124,hostname"
+          ntp:
+            ipv4:
+              active: true
+              address: ""
+            ipv6:
+              active: true
+              address: ""
           resolver:
             resolveIPv4: true
             resolveIPv6: true

@@ -66,6 +66,8 @@
 #include "files.h"
 // resolveHostname()
 #include "resolve.h"
+// ntp_client()
+#include "ntp/ntp.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -303,6 +305,16 @@ void parse_args(int argc, char* argv[])
 		log_ctrl(false, true);
 		readFTLconf(&config, false);
 		exit(write_teleporter_zip_to_disk() ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Create test NTP client
+	if((argc == 2 || argc == 3) && strcmp(argv[1], "ntp-client") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		const char *server = argc == 3 ? argv[2] : "127.0.0.1";
+		exit(ntp_client(server) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Import teleporter archive through CLI

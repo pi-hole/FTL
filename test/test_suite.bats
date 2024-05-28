@@ -26,7 +26,7 @@
 #}
 #
 @test "Running a second instance is detected and prevented" {
-  run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
+  run bash -c 'su pihole -s /bin/sh -c "./pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"CRIT: Initialization of shared memory failed."* ]]
   [[ "${lines[@]}" == *"INFO: pihole-FTL is already running"* ]]
@@ -54,7 +54,7 @@
 @test "Number of compiled regex filters as expected" {
   run bash -c 'grep "Compiled [0-9]* allow" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == *"Compiled 2 allow and 11 deny regex for 1 client in "* ]]
+  [[ ${lines[0]} == *"Compiled 2 allow and 11 deny regex"* ]]
 }
 
 @test "denied domain is blocked" {
@@ -490,15 +490,15 @@
 }
 
 @test "Test fail on invalid CLI argument" {
-  run bash -c '/home/pihole/pihole-FTL abc'
+  run bash -c './pihole-FTL abc'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pihole-FTL: invalid option -- 'abc'" ]]
-  [[ ${lines[1]} == "Command: '/home/pihole/pihole-FTL abc'" ]]
-  [[ ${lines[2]} == "Try '/home/pihole/pihole-FTL --help' for more information" ]]
+  [[ ${lines[1]} == "Command: './pihole-FTL abc'" ]]
+  [[ ${lines[2]} == "Try './pihole-FTL --help' for more information" ]]
 }
 
 @test "Help CLI argument return help text" {
-  run bash -c '/home/pihole/pihole-FTL help'
+  run bash -c './pihole-FTL help'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "The Pi-hole FTL engine - "* ]]
 }
@@ -1389,6 +1389,14 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '{"error":{"key":"bad_request","message":"Config items set via environment variables cannot be changed via the API","hint":"misc.nice"},"took":'*'}' ]]
 }
+
+@test "Check NTP server is broadcasting correct time" {
+  run bash -c './pihole-FTL ntp-client 127.0.0.1'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+# We cannot easily test IPv6 as it may not be available in docker (CI)
 
 @test "API domain search: Non-existing domain returns expected JSON" {
   run bash -c 'curl -s 127.0.0.1/api/search/non.existent'

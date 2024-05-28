@@ -191,6 +191,17 @@ struct config {
 	} dhcp;
 
 	struct {
+		struct {
+			struct conf_item active;
+			struct conf_item address;
+		} ipv4;
+		struct {
+			struct conf_item active;
+			struct conf_item address;
+		} ipv6;
+	} ntp;
+
+	struct {
 		struct conf_item resolveIPv4;
 		struct conf_item resolveIPv6;
 		struct conf_item networkNames;

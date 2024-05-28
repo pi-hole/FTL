@@ -794,6 +794,38 @@ void initConfig(struct config *conf)
 	conf->dhcp.hosts.c = validate_stub; // Type-based checking + dnsmasq syntax checking
 
 
+	// struct ntp
+	conf->ntp.ipv4.active.k = "ntp.ipv4.active";
+	conf->ntp.ipv4.active.h = "Should FTL act as an NTP server (IPv4)?";
+	conf->ntp.ipv4.active.t = CONF_BOOL;
+	conf->ntp.ipv4.active.f = FLAG_RESTART_FTL;
+	conf->ntp.ipv4.active.d.b = true;
+	conf->ntp.ipv4.active.c = validate_stub; // Only type-based checking
+
+	conf->ntp.ipv4.address.k = "ntp.ipv4.address";
+	conf->ntp.ipv4.address.h = "IPv4 address to listen on for NTP requests";
+	conf->ntp.ipv4.address.a = cJSON_CreateStringReference("<valid IPv4 address> or empty string (\"\") for wildcard");
+	conf->ntp.ipv4.address.t = CONF_STRUCT_IN_ADDR;
+	conf->ntp.ipv4.address.f = FLAG_RESTART_FTL;
+	memset(&conf->ntp.ipv4.address.d.in_addr, 0, sizeof(struct in_addr));
+	conf->ntp.ipv4.address.c = validate_stub; // Only type-based checking
+
+	conf->ntp.ipv6.active.k = "ntp.ipv6.active";
+	conf->ntp.ipv6.active.h = "Should FTL act as an NTP server (IPv6)?";
+	conf->ntp.ipv6.active.t = CONF_BOOL;
+	conf->ntp.ipv6.active.f = FLAG_RESTART_FTL;
+	conf->ntp.ipv6.active.d.b = true;
+	conf->ntp.ipv6.active.c = validate_stub; // Only type-based checking
+
+	conf->ntp.ipv6.address.k = "ntp.ipv6.address";
+	conf->ntp.ipv6.address.h = "IPv6 address to listen on for NTP requests";
+	conf->ntp.ipv6.address.a = cJSON_CreateStringReference("<valid IPv6 address> or empty string (\"\") for wildcard");
+	conf->ntp.ipv6.address.t = CONF_STRUCT_IN6_ADDR;
+	conf->ntp.ipv6.address.f = FLAG_RESTART_FTL;
+	memset(&conf->ntp.ipv6.address.d.in6_addr, 0, sizeof(struct in6_addr));
+	conf->ntp.ipv6.address.c = validate_stub; // Only type-based checking
+
+
 	// struct resolver
 	conf->resolver.resolveIPv6.k = "resolver.resolveIPv6";
 	conf->resolver.resolveIPv6.h = "Should FTL try to resolve IPv6 addresses to hostnames?";

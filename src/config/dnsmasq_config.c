@@ -582,6 +582,15 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			fputs("log-dhcp\n\n", pihole_conf);
 		}
 
+		// Check if IPv4 NTP server is active and broadcast it as DHCP option
+		if(conf->ntp.ipv4.active.v.b)
+		{
+			fputs("# Add NTP server to DHCP\n", pihole_conf);
+			// The special address 0.0.0.0 is taken to mean "the
+			// address of the machine running the DHCP server"
+			fputs("dhcp-option=option:ntp-server,0.0.0.0", pihole_conf);
+		}
+
 		// Add per-host parameters
 		if(cJSON_GetArraySize(conf->dhcp.hosts.v.json) > 0)
 		{

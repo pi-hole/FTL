@@ -274,6 +274,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:tomlc99>
         $<TARGET_OBJECTS:config>
         $<TARGET_OBJECTS:tools>
+        $<TARGET_OBJECTS:ntp>
         )
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -314,6 +315,7 @@ add_subdirectory(tre-regex)
 add_subdirectory(syscalls)
 add_subdirectory(config)
 add_subdirectory(tools)
+add_subdirectory(ntp)
 
 find_library(LIBREADLINE NAMES libreadline${CMAKE_STATIC_LIBRARY_SUFFIX} readline)
 find_library(LIBHISTORY NAMES libhistory${CMAKE_STATIC_LIBRARY_SUFFIX} history)

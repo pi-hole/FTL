@@ -58,6 +58,8 @@
 #include "config/config.h"
 // FTL_fork_and_bind_sockets()
 #include "main.h"
+// ntp_server_start()
+#include "ntp/ntp.h"
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
@@ -2887,6 +2889,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// Helper processes are already split from the main instance
 	// so they will not listen to real-time signals
 	handle_realtime_signals();
+
+	// Initialize NTP server
+	ntp_server_start();
 
 	// We will use the attributes object later to start all threads in
 	// detached mode

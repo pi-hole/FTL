@@ -442,6 +442,26 @@
   #     "[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]"
   hosts = []
 
+  [ntp.ipv4]
+    # Should FTL act as an NTP server (IPv4)?
+    active = true
+
+    # IPv4 address to listen on for NTP requests
+    #
+    # Possible values are:
+    #     <valid IPv4 address> or empty string ("") for wildcard (0.0.0.0)
+    address = ""
+
+  [ntp.ipv6]
+    # Should FTL act as an NTP server (IPv6)?
+    active = true
+
+    # IPv6 address to listen on for NTP requests
+    #
+    # Possible values are:
+    #     <valid IPv6 address> or empty string ("") for wildcard (::)
+    address = ""
+
 [resolver]
   # Should FTL try to resolve IPv4 addresses to hostnames?
   resolveIPv4 = false ### CHANGED, default = true
