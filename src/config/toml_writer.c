@@ -112,6 +112,15 @@ bool writeFTLtoml(const bool verbose)
 		fputs("\n\n", fp);
 	}
 
+	// Print config file statistics at the end of the file as comment
+	fputs("# Configuration statistics:\n", fp);
+	fprintf(fp, "# %zu total entries out of which %zu %s default\n",
+	        CONFIG_ELEMENTS, CONFIG_ELEMENTS - modified,
+		CONFIG_ELEMENTS - modified == 1 ? "entry is" : "entries are");
+	fprintf(fp, "# --> %u %s modified (%u %s forced through environment variables)\n",
+	        modified, modified == 1 ? "entry is" : "entries are",
+		env_vars, env_vars == 1 ? "entry is" : "entries are");
+
 	// Log some statistics in verbose mode
 	if(verbose || config.debug.config.v.b)
 	{
