@@ -1016,6 +1016,8 @@ void parse_args(int argc, char* argv[])
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sptr %sIP%s              Resolve IP address to hostname\n", green, cyan, normal);
 			printf("\t%ssha256sum %sfile%s      Calculate SHA256 checksum of a file\n", green, cyan, normal);
+			printf("\t%sntp-client %s[server]%s Request network time from %sserver%s\n", green, cyan, normal, cyan, normal);
+			printf("\t                    defaults to 127.0.0.1 if omitted\n");
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
 			printf("\t%sarp-scan %s[-a/-x]%s    Use ARP to scan local network for\n", green, cyan, normal);
