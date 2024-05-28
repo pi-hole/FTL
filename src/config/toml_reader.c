@@ -115,10 +115,14 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 			return false;
 	}
 
+	// First, get an array of keys of config items that have been forced
+	// through environment variables
+	cJSON *env_vars = read_forced_vars(version);
+
 	// Try to read debug config. This is done before the full config
 	// parsing to allow for debug output further down
 	// First try to read env variable, if this fails, read TOML
-	if(teleporter || !readEnvValue(&newconf->debug.config, newconf))
+	if(teleporter || !readEnvValue(&newconf->debug.config, newconf, env_vars, NULL))
 	{
 		toml_table_t *conf_debug = toml_table_in(toml, "debug");
 		if(conf_debug)
@@ -140,9 +144,18 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		// First try to read this config option from an environment variable
 		// Skip reading environment variables when importing from Teleporter
 		// If this succeeds, skip searching the TOML file for this config item
-		if(!teleporter && readEnvValue(new_conf_item, newconf))
+		bool reset = false;
+		if(!teleporter && readEnvValue(new_conf_item, newconf, env_vars, &reset))
 		{
 			new_conf_item->f |= FLAG_ENV_VAR;
+			continue;
+		}
+
+		// Skip this variable if it has been reset (forced by
+		// environment variable before but not anymore)
+		if(reset)
+		{
+			log_info("Skipping %s as it has been reset", new_conf_item->k);
 			continue;
 		}
 
@@ -200,6 +213,7 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 
 	// Free memory allocated by the TOML parser and return success
 	toml_free(toml);
+	cJSON_Delete(env_vars);
 	return true;
 }
 
