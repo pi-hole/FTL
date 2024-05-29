@@ -469,7 +469,8 @@ void http_init(void)
 	}
 
 	// Configure logging handlers
-	struct mg_callbacks callbacks = { NULL };
+	struct mg_callbacks callbacks;
+	memset(&callbacks, 0, sizeof(callbacks));
 	callbacks.log_message = log_http_message;
 	callbacks.log_access  = log_http_access;
 	callbacks.init_lua    = init_lua;

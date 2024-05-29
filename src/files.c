@@ -33,6 +33,9 @@
 // PRIu64
 #include <inttypes.h>
 
+//basename()
+#include <libgen.h>
+
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
 // octal number representing the bit pattern for the new mode bits

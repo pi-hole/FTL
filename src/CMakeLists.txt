@@ -8,8 +8,6 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(CMAKE_C_STANDARD 11)
-
 # Default to a release with debug info build
 if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
     if (NOT CMAKE_BUILD_TYPE)
@@ -52,8 +50,10 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 # -Wl,-z,now: Disable lazy binding
 # -Wl,-z,relro: Read-only segments after relocation
 # -fno-common: Emit globals without explicit initializer from `.bss` to `.data`. This causes GCC to reject multiple definitions of global variables. This is the new default from GCC-10 on.
-set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
-set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
+    set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
+endif()
 
 # -Wall: This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros. This also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
 # -Wextra: This enables some extra warning flags that are not enabled by -Wall.
@@ -154,11 +154,27 @@ else()
 set(EXTRAWARN_GCC13 "")
 endif()
 
-set(EXTRAWARN "${EXTRAWARN_GCC6} \
-               ${EXTRAWARN_GCC7} \
-               ${EXTRAWARN_GCC8} \
-               ${EXTRAWARN_GCC12} \
-               ${EXTRAWARN_GCC13}")
+# Set extrawarn flags if CC is GCC
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+   set(EXTRAWARN "${EXTRAWARN_GCC6} \
+                  ${EXTRAWARN_GCC7} \
+                  ${EXTRAWARN_GCC8} \
+                  ${EXTRAWARN_GCC12} \
+                  ${EXTRAWARN_GCC13}")
+elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    set(EXTRAWARN "
+                   -Werror \
+                   -Wnewline-eof \
+                   -Wno-dangling-else \
+                   -Wno-gnu-zero-variadic-macro-arguments \
+                   -Wno-gnu-variable-sized-type-not-at-end \
+                   -Wno-declaration-after-statement \
+                   -Wno-reserved-identifier \
+                   -Wno-reserved-macro-identifier")
+else()
+    message(WARNING "Unknown compiler, not setting warnings flags")
+    set(EXTRAWARN "")
+endif()
 
 # Remove extra spaces from EXTRAWARN
 string(REGEX REPLACE " +" " " EXTRAWARN "${EXTRAWARN}")
@@ -184,11 +200,14 @@ else()
     message(STATUS "Compiling dynamically linked executable")
 endif()
 # -pie -fPIE: (Dynamic) position independent executable
-set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
+
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
+endif()
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 # We define HAVE_POLL_H as this is needed for the musl builds to succeed
-set(CMAKE_C_FLAGS "-pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
+set(CMAKE_C_FLAGS "-std=c99 -pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
 
 set(CMAKE_C_FLAGS_DEBUG "-O0 -g3")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
@@ -255,7 +274,6 @@ target_compile_definitions(core PRIVATE DNSMASQ_VERSION=\"${DNSMASQ_VERSION}\")
 target_include_directories(core PRIVATE ${PROJECT_SOURCE_DIR}/src)
 add_dependencies(core gen_version)
 
-
 add_executable(pihole-FTL
         $<TARGET_OBJECTS:core>
         $<TARGET_OBJECTS:api>
@@ -269,6 +287,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
         $<TARGET_OBJECTS:lua>
+        $<TARGET_OBJECTS:ftl_lua>
         $<TARGET_OBJECTS:tre-regex>
         $<TARGET_OBJECTS:syscalls>
         $<TARGET_OBJECTS:tomlc99>
@@ -278,23 +297,25 @@ add_executable(pihole-FTL
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
-    target_link_libraries(pihole-FTL -static-libgcc -static -pie)
+    target_link_libraries(pihole-FTL -static-libgcc -static)
+    set(LIBRARY_SUFFIX "${CMAKE_STATIC_LIBRARY_SUFFIX}")
 else()
     find_library(LIBMATH m)
     target_link_libraries(pihole-FTL ${LIBMATH})
+    set(LIBRARY_SUFFIX "")
 endif()
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
 # for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
-find_library(LIBHOGWEED NAMES libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX} hogweed HINTS /usr/local/lib64)
-find_library(LIBGMP NAMES libgmp${CMAKE_STATIC_LIBRARY_SUFFIX} gmp)
-find_library(LIBNETTLE NAMES libnettle${CMAKE_STATIC_LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
+find_library(LIBHOGWEED NAMES libhogweed${LIBRARY_SUFFIX} hogweed HINTS /usr/local/lib64)
+find_library(LIBGMP NAMES libgmp${LIBRARY_SUFFIX} gmp)
+find_library(LIBNETTLE NAMES libnettle${LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
 
 # for IDN2 we need the idn2 library which in turn depends on the unistring library
-find_library(LIBIDN2 NAMES libidn2${CMAKE_STATIC_LIBRARY_SUFFIX} idn2)
-find_library(LIBUNISTRING NAMES libunistring${CMAKE_STATIC_LIBRARY_SUFFIX} unistring)
+find_library(LIBIDN2 NAMES libidn2${LIBRARY_SUFFIX} idn2)
+find_library(LIBUNISTRING NAMES libunistring${LIBRARY_SUFFIX} unistring)
 
 target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN2} ${LIBUNISTRING})
 
@@ -315,9 +336,9 @@ add_subdirectory(syscalls)
 add_subdirectory(config)
 add_subdirectory(tools)
 
-find_library(LIBREADLINE NAMES libreadline${CMAKE_STATIC_LIBRARY_SUFFIX} readline)
-find_library(LIBHISTORY NAMES libhistory${CMAKE_STATIC_LIBRARY_SUFFIX} history)
-find_library(LIBTERMCAP NAMES libtermcap${CMAKE_STATIC_LIBRARY_SUFFIX} termcap)
+find_library(LIBREADLINE NAMES libreadline${LIBRARY_SUFFIX} readline)
+find_library(LIBHISTORY NAMES libhistory${LIBRARY_SUFFIX} history)
+find_library(LIBTERMCAP NAMES libtermcap${LIBRARY_SUFFIX} termcap)
 if(LIBREADLINE AND LIBHISTORY AND LIBTERMCAP)
     message(STATUS "Building FTL with readline support: YES")
     target_compile_definitions(lua PRIVATE LUA_USE_READLINE)
@@ -327,31 +348,13 @@ else()
     message(STATUS "Building FTL with readline support: NO")
 endif()
 
-# Do we want to compile an all-in FTL version?
-if(DEFINED ENV{CI_ARCH})
-  if($ENV{CI_ARCH} STREQUAL "x86_64_full")
-    add_definitions(-DDNSMASQ_ALL_OPTS)
-    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
-    find_package(DBus REQUIRED)
-    # Use results of find_package() call.
-    include_directories(${DBUS_INCLUDE_DIRS})
-    target_link_libraries(pihole-FTL ${DBUS_LIBRARIES})
-    find_library(LIBMNL mnl)
-    find_library(LIBNFTNL nftnl)
-    find_library(LIBNFTABLES nftables)
-    find_library(LIBNFNETLINK nfnetlink)
-    find_library(LIBNETFILTER_CONNTRACK netfilter_conntrack)
-    target_link_libraries(pihole-FTL ${LIBMNL} ${LIBNFTABLES} ${LIBNFTNL} ${LIBNFNETLINK} ${LIBNETFILTER_CONNTRACK})
-  endif()
-endif()
-
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
 endif()
 
-find_library(LIBMBEDCRYPTO NAMES lmbedcrypto${CMAKE_STATIC_LIBRARY_SUFFIX} mbedcrypto)
-find_library(LIBMBEDX509 NAMES lmbedx509${CMAKE_STATIC_LIBRARY_SUFFIX} mbedx509)
-find_library(LIBMBEDTLS NAMES lmbedtls${CMAKE_STATIC_LIBRARY_SUFFIX} mbedtls)
+find_library(LIBMBEDCRYPTO NAMES lmbedcrypto${LIBRARY_SUFFIX} mbedcrypto)
+find_library(LIBMBEDX509 NAMES lmbedx509${LIBRARY_SUFFIX} mbedx509)
+find_library(LIBMBEDTLS NAMES lmbedtls${LIBRARY_SUFFIX} mbedtls)
 if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
     # Enable TLS support in civetweb if mbedTLS is available
     message(STATUS "Building FTL with TLS support: YES")

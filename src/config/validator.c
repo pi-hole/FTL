@@ -123,12 +123,6 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 			return false;
 		}
 
-		// Count the number of elements in the string
-		unsigned int elements = 1;
-		for(unsigned int j = 0; j < strlen(item->valuestring); j++)
-			if(item->valuestring[j] == ',')
-				elements++;
-
 		// Check if it's in the form "<cname>,[<cnameX>,]<target>[,<TTL>]"
 		// <cnameX> is optional and may be repeated
 		char *str = strdup(item->valuestring);
@@ -397,12 +391,6 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not a string", key, i);
 			return false;
 		}
-
-		// Count the number of elements in the string
-		unsigned int elements = 1;
-		for(unsigned int j = 0; j < strlen(item->valuestring); j++)
-			if(item->valuestring[j] == ',')
-				elements++;
 
 		// Check if it's in the form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>"
 		// Mandatory elements are: <enabled>, <ip-address>, <server>, and <domain>

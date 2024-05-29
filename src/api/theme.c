@@ -11,7 +11,7 @@
 // NULL
 #include <stddef.h>
 // strcasecmp()
-#include <string.h>
+#include <strings.h>
 
 #include "theme.h"
 

@@ -972,19 +972,6 @@
   [[ "${STATIC}" == "true" && "${lines[@]}" != *"interpreter"* ]]
 }
 
-@test "Architecture is correctly reported on startup" {
-  run bash -c 'grep "Compiled for" /var/log/pihole/FTL.log'
-  printf "Output: %s\n\$CI_ARCH: %s\nuname -m: %s\n" "${lines[@]:-not set}" "${CI_ARCH:-not set}" "$(uname -m)"
-  [[ ${lines[0]} == *"Compiled for ${CI_ARCH:-$(uname -m)}"* ]]
-}
-
-@test "Building machine (CI) is reported on startup" {
-  [[ ${CI_ARCH} != "" ]] && compiled_str="on CI" || compiled_str="locally" && export compiled_str
-  run bash -c 'grep "Compiled for" /var/log/pihole/FTL.log'
-  printf "Output: %s\n\$CI_ARCH: %s\n" "${lines[@]:-not set}" "${CI_ARCH:-not set}"
-  [[ ${lines[0]} == *"(compiled ${compiled_str})"* ]]
-}
-
 @test "Compiler version is correctly reported on startup" {
   compiler_version="$(${CC} --version | head -n1)" && export compiler_version
   run bash -c 'grep "Compiled for" /var/log/pihole/FTL.log'
