@@ -15,7 +15,7 @@
 */
 
 #include "dnsmasq.h"
-#include "../dnsmasq_interface.h"
+#include "dnsmasq_interface.h"
 
 static struct frec *get_new_frec(time_t now, struct server *serv, int force);
 static struct frec *lookup_frec(unsigned short id, int fd, void *hash, int *firstp, int *lastp);

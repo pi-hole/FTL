@@ -381,7 +381,7 @@ static void *arp_scan_iface(void *args)
 	thread_data->dst_cidr = netmask_to_cidr(&thread_data->mask.sin_addr);
 
 	// Get interface index
-	const int ifindex = if_nametoindex(iface);
+	const int ifindex = (int)if_nametoindex(iface);
 
 	// Scan only interfaces with CIDR >= 24
 	if(thread_data->dst_cidr < 24 && !thread_data->scan_all)
@@ -701,7 +701,7 @@ int run_arp_scan(const bool scan_all, const bool extreme_mode)
 		{
 			// Calculate progress (total number of scans / total number of addresses)
 			// We add 1 to total_scans to avoid division by zero
-			const unsigned int new_progress = 100 * num_scans / (total_scans + 1);
+			const unsigned int new_progress = 100 * (unsigned int)(num_scans / (total_scans + 1));
 			if(new_progress > progress)
 			{
 				// Print progress

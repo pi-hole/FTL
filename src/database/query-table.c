@@ -1120,13 +1120,13 @@ void DB_read_queries(void)
 		   (buffer = (const char *)sqlite3_column_text(stmt, 6)) != NULL)
 		{
 			// Get IP address and port of upstream destination
-			char serv_addr[INET6_ADDRSTRLEN] = { 0 };
+			char serv_addr[INET6_ADDRSTRLEN + 16] = { 0 };
 			unsigned int serv_port = 53;
 			// We limit the number of bytes written into the serv_addr buffer
 			// to prevent buffer overflows. If there is no port available in
 			// the database, we skip extracting them and use the default port
 			sscanf(buffer, "%"xstr(INET6_ADDRSTRLEN)"[^#]#%u", serv_addr, &serv_port);
-			serv_addr[INET6_ADDRSTRLEN-1] = '\0';
+			serv_addr[INET6_ADDRSTRLEN + 15] = '\0';
 			upstreamID = findUpstreamID(serv_addr, (in_port_t)serv_port);
 		}
 

@@ -198,10 +198,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		return 0;
 
 	// Debug logging
-	if(*ede != EDE_UNSET)
-		log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\", EDE: %s (%d)", name, edestr(*ede), *ede);
-	else
-		log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\", EDE: N/A", name);
+	log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\", EDE: %s (%d)", name, *ede != EDE_UNSET ? edestr(*ede) : "N/A", *ede);
 
 	// Get question type
 	int qtype, flags = 0;
@@ -844,13 +841,17 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		if(config.debug.arp.v.b)
 		{
 			if(client->hwlen == 6)
+			{
 				log_debug(DEBUG_ARP, "find_mac(\"%s\") returned hardware address "
 				          "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
 				          client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
 				          client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
+			}
 			else
+			{
 				log_debug(DEBUG_ARP, "find_mac(\"%s\") returned %i bytes of data",
 				          clientIP, client->hwlen);
+			}
 		}
 	}
 
@@ -2000,10 +2001,12 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			dispname = ".";
 
 		if(cached || last_server.sa.sa_family == 0)
+		{
 			// Log cache or upstream reply from unknown source
 			log_debug(DEBUG_QUERIES, "**** got %s%s reply: %s is %s (ID %i, %s:%i)",
 			          stale ? "stale ": "", cached ? "cache" : "upstream",
 			          dispname, answer, id, file, line);
+		}
 		else
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };

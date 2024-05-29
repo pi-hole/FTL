@@ -8,7 +8,11 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-cmake_minimum_required(VERSION 2.8.12)
+# C17 supports requires minimum CMake version 3.21
+# GCC 8.1.0
+# LLVM Clang 7.0.0
+cmake_minimum_required(VERSION 3.21)
+set(CMAKE_C_STANDARD 17)
 
 project(PIHOLE_FTL C)
 

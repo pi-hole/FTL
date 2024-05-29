@@ -726,7 +726,12 @@ void parse_args(int argc, char* argv[])
 			printf("Branch:          " GIT_BRANCH "\n");
 			printf("Commit:          " GIT_HASH " (" GIT_DATE ")\n");
 			printf("Architecture:    " FTL_ARCH "\n");
-			printf("Compiler:        " FTL_CC "\n\n");
+			printf("Compiler:        " FTL_CC "\n");
+#if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
+			printf("GLIBC version:   %d.%d\n\n", __GLIBC__, __GLIBC_MINOR__);
+#else
+			printf("GLIBC version:   -\n\n");
+#endif
 
 			// Print dnsmasq version and compile time options
 			print_dnsmasq_version(yellow, green, bold, normal);
