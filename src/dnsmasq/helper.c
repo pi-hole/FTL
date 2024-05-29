@@ -15,7 +15,7 @@
 */
 
 #include "dnsmasq.h"
-#include "../log.h"
+#include "log.h"
 
 #ifdef HAVE_SCRIPT
 

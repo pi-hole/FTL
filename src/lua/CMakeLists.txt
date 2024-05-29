@@ -1,6 +1,11 @@
-set(sources
+set(ftl_sources
         ftl_lua.c
         ftl_lua.h
+)
+
+add_library(ftl_lua OBJECT ${ftl_sources})
+
+set(sources
         lapi.c
         lapi.h
         lauxlib.c
@@ -65,7 +70,10 @@ set(sources
         )
 
 add_library(lua OBJECT ${sources})
-target_compile_options(lua PRIVATE -Wno-maybe-uninitialized -Wno-unused-variable -Wno-unused-value)
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(lua PRIVATE -Wno-maybe-uninitialized -Wno-unused-variable -Wno-unused-value)
+    target_compile_options(ftl_lua PRIVATE -Wno-unused-value ${EXTRAWARN})
+endif()
 
 # LUA_USE_POSIX: ensures recommended POSIX functions are used instead of
 #                (partially obsoleted) standard C functions
@@ -79,3 +87,4 @@ if(LUA_DL STREQUAL "true")
 endif()
 
 target_include_directories(lua PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/lua)
+target_include_directories(ftl_lua PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/lua)

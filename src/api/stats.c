@@ -458,7 +458,6 @@ int api_stats_top_clients(struct ftl_conn *api)
 
 int api_stats_upstreams(struct ftl_conn *api)
 {
-	unsigned int totalcount = 0;
 	const int upstreams = counters->upstreams;
 	int *temparray = calloc(2*upstreams, sizeof(int));
 	if(temparray == NULL)
@@ -480,7 +479,6 @@ int api_stats_upstreams(struct ftl_conn *api)
 
 		temparray[2*added_upstreams + 0] = upstreamID;
 		temparray[2*added_upstreams + 1] = upstream->count;
-		totalcount += upstream->count;
 
 		added_upstreams++;
 	}

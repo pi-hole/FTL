@@ -20,7 +20,7 @@
 #include <setjmp.h>
 
 /* Pi-hole modification */
-#include "../log.h"
+#include "log.h"
 /************************/
 
 static volatile int mem_recover = 0;

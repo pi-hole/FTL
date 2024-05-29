@@ -5,6 +5,9 @@ inputs:
   platform:
     required: true
     description: The platform to build for
+  build_opts:
+    required: true
+    description: Any extra build opts to use
   git_branch:
     required: true
     description: The branch to build from
@@ -76,6 +79,7 @@ runs:
             "CI_ARCH=${{ inputs.platform }}"
             "GIT_BRANCH=${{ inputs.git_branch }}"
             "GIT_TAG=${{ inputs.git_tag }}"
+            "BUILD_OPTS=${{ inputs.build_opts }}"
     -
       name: List files in current directory
       shell: bash
@@ -108,13 +112,13 @@ runs:
         subject-path: ${{ inputs.bin_name }}
     -
       name: Extract documentation files from container
-      if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64'
+      if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64' && inputs.build_opts == ''
       shell: bash
       run: |
         tar -xf build.tar api-docs.tar.gz
     -
       name: Upload documentation artifacts for deployoment
-      if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64'
+      if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64' && inputs.build_opts == ''
       uses: actions/upload-artifact@v4.3.1
       with:
         name: pihole-api-docs

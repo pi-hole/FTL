@@ -64,10 +64,16 @@ jobs:
         include:
           - platform: linux/amd64
             bin_name: pihole-FTL-amd64
+            build_opts: ""
+          - platform: linux/amd64
+            bin_name: pihole-FTL-amd64-clang
+            build_opts: clang
           - platform: linux/386
             bin_name: pihole-FTL-386
+            build_opts: ""
           - platform: linux/riscv64
             bin_name: pihole-FTL-riscv64
+            build_opts: ""
     env:
       CI_ARCH: ${{ matrix.platform }}
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
@@ -82,6 +88,7 @@ jobs:
         with:
           platform: ${{ matrix.platform }}
           bin_name: ${{ matrix.bin_name }}
+          build_opts: ${{ matrix.build_opts }}
           artifact_name: ${{ matrix.bin_name }}-binary
           target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
           git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
