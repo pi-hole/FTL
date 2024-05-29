@@ -1018,7 +1018,8 @@ void parse_args(int argc, char* argv[])
 			printf("    Decoding: %spihole-FTL idn2 -d %spunycode%s\n\n", green, cyan, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
-			printf("\t%sptr %sIP%s              Resolve IP address to hostname\n", green, cyan, normal);
+			printf("\t%sptr %sIP%s %s[tcp]%s        Resolve IP address to hostname\n", green, cyan, normal, purple, normal);
+			printf("\t                    Append %stcp%s to use TCP instead of UDP\n", purple, normal);
 			printf("\t%ssha256sum %sfile%s      Calculate SHA256 checksum of a file\n", green, cyan, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
