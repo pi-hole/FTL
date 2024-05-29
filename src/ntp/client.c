@@ -26,7 +26,7 @@
 // errno
 #include <errno.h>
 
-#include "ntp.h"
+#include "ntp/ntp.h"
 #include "log.h"
 
 // Create minimal NTP request, see server implementation for details about the

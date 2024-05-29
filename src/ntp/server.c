@@ -36,7 +36,7 @@
 // PR_SET_NAME
 #include <sys/prctl.h>
 
-#include "ntp.h"
+#include "ntp/ntp.h"
 #include "log.h"
 #include "config/config.h"
 
