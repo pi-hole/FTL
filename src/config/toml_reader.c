@@ -155,6 +155,13 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		// environment variable before but not anymore)
 		if(reset)
 		{
+			if(new_conf_item->t == CONF_ALL_DEBUG_BOOL)
+			{
+				// Reset all debug flags to false if debug.all
+				// has been reset
+				set_all_debug(newconf, false);
+				set_debug_flags(newconf);
+			}
 			log_info("Skipping %s as it has been reset", new_conf_item->k);
 			continue;
 		}
