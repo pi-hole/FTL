@@ -1313,10 +1313,9 @@
 
 @test "Environmental variable is favored over config file" {
   # The config file has -10 but we set FTLCONF_misc_nice="-11"
-  run bash -c 'grep -B1 "nice = -11" /etc/pihole/pihole.toml'
+  run bash -c 'grep "nice = -11" /etc/pihole/pihole.toml'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "  # >>> This config is overwritten by an environmental variable <<<" ]]
-  [[ ${lines[1]} == "  nice = -11 ### CHANGED, default = -10" ]]
+  [[ ${lines[0]} == "  nice = -11 ### CHANGED (env), default = -10" ]]
 }
 
 @test "Correct number of environmental variables is logged" {

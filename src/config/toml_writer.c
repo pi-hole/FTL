@@ -47,7 +47,8 @@ bool writeFTLtoml(const bool verbose)
 
 	// Iterate over configuration and store it into the file
 	char *last_path = (char*)"";
-	unsigned int modified = 0, env_vars = 0;
+	unsigned int modified = 0;
+	cJSON *env_vars = cJSON_CreateArray();
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
@@ -82,13 +83,6 @@ bool writeFTLtoml(const bool verbose)
 			print_toml_allowed_values(conf_item->a, fp, 85, level-1);
 		}
 
-		// Print info if this value is overwritten by an env var
-		if(conf_item->f & FLAG_ENV_VAR)
-		{
-			print_comment(fp, ">>> This config is overwritten by an environmental variable <<<", "", 85, level-1);
-			env_vars++;
-		}
-
 		// Write value
 		indentTOML(fp, level-1);
 		fprintf(fp, "%s = ", conf_item->p[level-1]);
@@ -105,7 +99,12 @@ bool writeFTLtoml(const bool verbose)
 
 		if(changed)
 		{
-			fprintf(fp, " ### CHANGED, default = ");
+
+			// Print info if this value is overwritten by an env var
+			if(conf_item->f & FLAG_ENV_VAR)
+				cJSON_AddItemToArray(env_vars, cJSON_CreateStringReference(conf_item->k));
+
+			fprintf(fp, " ### CHANGED%s, default = ", conf_item->f & FLAG_ENV_VAR ? " (env)" : "");
 			writeTOMLvalue(fp, -1, conf_item->t, &conf_item->d);
 			modified++;
 		}
@@ -113,6 +112,29 @@ bool writeFTLtoml(const bool verbose)
 		// Add newlines after each entry
 		fputs("\n\n", fp);
 	}
+
+	// Print config file statistics at the end of the file as comment
+	fputs("# Configuration statistics:\n", fp);
+	fprintf(fp, "# %zu total entries out of which %zu %s default\n",
+	        CONFIG_ELEMENTS, CONFIG_ELEMENTS - modified,
+		CONFIG_ELEMENTS - modified == 1 ? "entry is" : "entries are");
+	fprintf(fp, "# --> %u %s modified\n",
+	        modified, modified == 1 ? "entry is" : "entries are");
+
+	const unsigned int num_env_vars = cJSON_GetArraySize(env_vars);
+	if(num_env_vars > 0)
+	{
+		fprintf(fp, "# %u %s forced through environment:\n",
+			num_env_vars, num_env_vars == 1 ? "entry is" : "entries are");
+
+		for(unsigned int i = 0; i < num_env_vars; i++)
+		{
+			const char *env_var = cJSON_GetArrayItem(env_vars, i)->valuestring;
+			fprintf(fp, "#   - %s\n", env_var);
+		}
+	}
+	else
+		fputc('\n', fp);
 
 	// Log some statistics in verbose mode
 	if(verbose || config.debug.config.v.b)
@@ -123,9 +145,12 @@ bool writeFTLtoml(const bool verbose)
 		         CONFIG_ELEMENTS - modified == 1 ? "entry is" : "entries are");
 		log_info(" - %u %s modified", modified,
 		         modified == 1 ? "entry is" : "entries are");
-		log_info(" - %u %s forced through environment", env_vars,
-		         env_vars == 1 ? "entry is" : "entries are");
+		log_info(" - %u %s forced through environment", num_env_vars,
+		         num_env_vars == 1 ? "entry is" : "entries are");
 	}
+
+	// Free cJSON array
+	cJSON_Delete(env_vars);
 
 	// Close file and release exclusive lock
 	closeFTLtoml(fp);
