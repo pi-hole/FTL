@@ -209,7 +209,7 @@ void print_comment(FILE *fp, const char *str, const char *intro, const unsigned 
 			// If this the first line? If not, add a newline
 			if (i > 0)
 				fputc('\n', fp);
-			// Add intendation
+			// Add indentation
 			for (unsigned int j = 0; j != 2*indent; ++j)
 				fputc(' ', fp);
 			// Start a new line
@@ -428,7 +428,7 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 				if(strlen(item->valuestring) == 0)
 					continue;
 
-				// Add intendation (if we are indenting)
+				// Add indentation (if we are indenting)
 				if(indent > -1)
 					indentTOML(fp, indent + 1);
 

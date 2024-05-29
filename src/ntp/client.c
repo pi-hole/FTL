@@ -8,6 +8,7 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
+#include "FTL.h"
 // close()
 #include <unistd.h>
 // clock_gettime()
@@ -147,7 +148,7 @@ static bool get_reply(int fd, uint32_t org_[2])
 	// Print current time at client
 	char client_time_str[26];
 	const time_t client_time = dst[0];
-	ctime_r(&client_time, client_time_str);
+	strncpy(client_time_str, ctime(&client_time), sizeof(client_time_str) -1);
 	// Remove trailing newline
 	client_time_str[24] = '\0';
 	log_info("Current time at client: %s", client_time_str);
@@ -155,9 +156,9 @@ static bool get_reply(int fd, uint32_t org_[2])
 	// Print current time at server
 	char server_time_str[26];
 	const time_t server_time = xmt[0];
+	strncpy(server_time_str, ctime(&server_time), sizeof(server_time_str) -1);
 	// Remove trailing newline
 	server_time_str[24] = '\0';
-	ctime_r(&server_time, server_time_str);
 	log_info("Current time at server: %s", server_time_str);
 
 	// Print offset and delay

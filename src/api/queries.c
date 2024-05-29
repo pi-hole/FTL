@@ -432,10 +432,14 @@ int api_queries(struct ftl_conn *api)
 
 			// Encoded URI string: %5B = [ and %5D = ]
 			if(GET_VAR(sort_col_id, sort_col, api->request->query_string) > 0)
+			{
 				log_debug(DEBUG_API, "Sorting by column %s (%s)", sort_col, sort_dir);
+			}
 			else
+			{
 				log_warn("Sorting by column %d (%s) requested, but column name not found",
 				         sort_column, sort_dir);
+			}
 		}
 
 		// Column searching?

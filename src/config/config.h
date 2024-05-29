@@ -11,7 +11,7 @@
 #define CONFIG_H
 
 // enum privacy_level
-#include "../enums.h"
+#include "enums.h"
 #include <stdbool.h>
 // typedef int16_t
 #include <sys/types.h>

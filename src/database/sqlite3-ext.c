@@ -22,9 +22,9 @@
 // free()
 #include <stdlib.h>
 // logging routines
-#include "../log.h"
+#include "log.h"
 // struct config
-#include "../config/config.h"
+#include "config/config.h"
 
 // isMAC()
 #include "network-table.h"
