@@ -219,12 +219,13 @@ const char *debugstr(const enum debug_flag flag)
 			return "DEBUG_RESERVED";
 		case DEBUG_MAX:
 			return "DEBUG_MAX";
+		case DEBUG_NONE: // fall through
 		default:
 			return "DEBUG_ANY";
 	}
 }
 
-void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
+void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
 {
 	char timestring[TIMESTR_SIZE] = "";
 	va_list args;
@@ -321,7 +322,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	}
 }
 
-void __attribute__ ((format (gnu_printf, 1, 2))) log_web(const char *format, ...)
+void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 {
 	char timestring[TIMESTR_SIZE] = "";
 	const time_t now = time(NULL);
@@ -362,7 +363,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) log_web(const char *format, ...
 }
 
 // Log helper activity (may be script or lua)
-void FTL_log_helper(const unsigned char n, ...)
+void FTL_log_helper(const unsigned int n, ...)
 {
 	// Only log helper debug messages if enabled
 	if(!(config.debug.helper.v.b))
@@ -407,19 +408,18 @@ void FTL_log_helper(const unsigned char n, ...)
 	free(arg);
 }
 
-void format_memory_size(char prefix[2], const unsigned long long int bytes,
-                        double * const formatted)
+void format_memory_size(char prefix[2], const uint64_t bytes, double * const formatted)
 {
 	unsigned int i;
 	*formatted = bytes;
 	// Determine exponent for human-readable display
-	for(i = 0; i < 7; i++)
+	const char prefixes[] = { '\0', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y', 'R', '?' };
+	for(i = 0; i < sizeof(prefixes)/sizeof(*prefixes) - 1; i++)
 	{
 		if(*formatted <= 1e3)
 			break;
 		*formatted /= 1e3;
 	}
-	const char prefixes[8] = { '\0', 'K', 'M', 'G', 'T', 'P', 'E', '?' };
 	// Chose matching SI prefix
 	prefix[0] = prefixes[i];
 	prefix[1] = '\0';

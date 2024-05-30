@@ -350,7 +350,10 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		client->count += total;
 		client->blockedcount += blocked;
 		if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
+		{
+			overTime[overTimeIdx].total += overTimeMod;
 			client->overTime[overTimeIdx] += overTimeMod;
+		}
 
 		// Also add counts to the connected alias-client (if any)
 		if(client->flags.aliasclient)
@@ -1059,9 +1062,9 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	if(is_blocked(new_status))
 		overTime[timeidx].blocked++;
 
-	if(old_status == QUERY_CACHE && !init)
+	if((old_status == QUERY_CACHE || old_status == QUERY_CACHE_STALE) && !init)
 		overTime[timeidx].cached--;
-	if(new_status == QUERY_CACHE)
+	if(new_status == QUERY_CACHE || new_status == QUERY_CACHE_STALE)
 		overTime[timeidx].cached++;
 
 	if(old_status == QUERY_FORWARDED && !init)

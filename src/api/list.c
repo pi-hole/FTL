@@ -19,6 +19,8 @@
 #include "database/network-table.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
+// parse_groupIDs()
+#include "webserver/http-common.h"
 #include <idn2.h>
 
 static int api_list_read(struct ftl_conn *api,
@@ -96,19 +98,13 @@ static int api_list_read(struct ftl_conn *api,
 		{
 			if(table.group_ids != NULL)
 			{
-				// Black magic at work here: We build a JSON array from
-				// the group_concat result delivered from the database,
-				// parse it as valid array and append it as row to the
-				// data
-				const size_t buflen = strlen(table.group_ids)+3u;
-				char *group_ids_str = calloc(buflen, sizeof(char));
-				group_ids_str[0] = '[';
-				strcpy(group_ids_str+1u , table.group_ids);
-				group_ids_str[buflen-2u] = ']';
-				group_ids_str[buflen-1u] = '\0';
-				cJSON * group_ids = cJSON_Parse(group_ids_str);
-				free(group_ids_str);
-				JSON_ADD_ITEM_TO_OBJECT(row, "groups", group_ids);
+				const int ret = parse_groupIDs(api, &table, row);
+				if(ret != 0)
+				{
+					JSON_DELETE(rows);
+					return ret;
+				}
+
 			}
 			else
 			{
@@ -184,19 +180,9 @@ static int api_list_write(struct ftl_conn *api,
 	tablerow row = { 0 };
 
 	// Check if valid JSON payload is available
-	if (api->payload.json == NULL)
-	{
-		if (api->payload.json_error == NULL)
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "No request body data",
-			                       NULL);
-		else
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "Invalid request body data (no valid JSON), error before hint",
-			                       api->payload.json_error);
-	}
+	const int json_ret = check_json_payload(api);
+	if(json_ret != 0)
+		return json_ret;
 
 	bool spaces_allowed = false;
 	bool allocated_json = false;

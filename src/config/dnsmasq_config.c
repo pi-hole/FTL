@@ -475,7 +475,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 
 		if(active == NULL || cidr == NULL || target == NULL || domain == NULL)
 		{
-			log_err("Invalid reverse server string: %s", revServer->valuestring);
+			log_err("Skipped invalid dns.revServers[%u]: %s", i, revServer->valuestring);
 			free(copy);
 			continue;
 		}
@@ -591,6 +591,15 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			fprintf(pihole_conf, "dhcp-range=::,constructor:%s,ra-names,ra-stateless,64\n", interface);
 		}
 		fputs("\n", pihole_conf);
+
+		// Enable DHCP logging if requested
+		if(conf->dhcp.logging.v.b)
+		{
+			fputs("# Enable DHCP logging\n", pihole_conf);
+			fputs("log-dhcp\n\n", pihole_conf);
+		}
+
+		// Add per-host parameters
 		if(cJSON_GetArraySize(conf->dhcp.hosts.v.json) > 0)
 		{
 			fputs("# Per host parameters for the DHCP server\n", pihole_conf);
@@ -723,6 +732,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	if(test_config && !test_dnsmasq_config(errbuf))
 	{
 		log_warn("New dnsmasq configuration is not valid (%s), config remains unchanged", errbuf);
+
+		// Remove temporary config file
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+		{
+			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			return false;
+		}
+
 		return false;
 	}
 
@@ -733,8 +750,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
 		{
 			log_err("Cannot install dnsmasq config file: %s", strerror(errno));
+
+			// Remove temporary config file
+			if(remove(DNSMASQ_TEMP_CONF) != 0)
+				log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+
 			return false;
 		}
+
 		log_debug(DEBUG_CONFIG, "Config file written to "DNSMASQ_PH_CONFIG);
 	}
 	else

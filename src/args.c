@@ -715,7 +715,12 @@ void parse_args(int argc, char* argv[])
 			printf("Branch:          " GIT_BRANCH "\n");
 			printf("Commit:          " GIT_HASH " (" GIT_DATE ")\n");
 			printf("Architecture:    " FTL_ARCH "\n");
-			printf("Compiler:        " FTL_CC "\n\n");
+			printf("Compiler:        " FTL_CC "\n");
+#if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
+			printf("GLIBC version:   %d.%d\n\n", __GLIBC__, __GLIBC_MINOR__);
+#else
+			printf("GLIBC version:   -\n\n");
+#endif
 
 			// Print dnsmasq version and compile time options
 			print_dnsmasq_version(yellow, green, bold, normal);
@@ -750,11 +755,12 @@ void parse_args(int argc, char* argv[])
 			printf("\n");
 			printf("****************************** %s%sCivetWeb%s *****************************\n",
 			       yellow, bold, normal);
-#ifdef MBEDTLS_VERSION_STRING_FULL
+#ifdef HAVE_MBEDTLS
 			printf("Version:         %s%s%s%s with %smbed TLS %s%s"MBEDTLS_VERSION_STRING"%s\n",
 			       green, bold, mg_version(), normal, yellow, green, bold, normal);
 #else
-			printf("Version:         %s%s%s%s\n", green, bold, mg_version(), normal);
+			printf("Version:         %s%s%s%s%s without %smbed TLS%s\n",
+			       green, bold, mg_version(), normal, red, yellow, normal);
 #endif
 			printf("Features:        ");
 			if(mg_check_feature(MG_FEATURES_FILES))

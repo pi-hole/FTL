@@ -113,6 +113,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		http_method(conn),
 		NULL,
 		NULL,
+		NULL,
 		API_AUTH_UNAUTHORIZED,
 		double_time(),
 		{ false, NULL, NULL, NULL, 0u },

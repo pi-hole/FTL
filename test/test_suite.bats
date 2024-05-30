@@ -483,7 +483,7 @@
   printf "%s\n" "${lines[@]}"
   # Depending on the shell (x86_64-musl is built on busybox) there can be one or multiple spaces between user and group
   [[ ${lines[0]} == *"pihole"?*"pihole"* ]]
-  [[ ${lines[0]} == "-rw-rw-r--"* ]]
+  [[ ${lines[0]} == "-rw-r-----"* ]]
   run bash -c 'file /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "/etc/pihole/pihole-FTL.db: SQLite 3.x database"* ]]
@@ -938,17 +938,6 @@
   [[ "${api}" == "${domain_api}" ]]
 }
 
-# x86_64-musl is built on busybox which has a slightly different
-# variant of ls displaying three, instead of one, spaces between the
-# user and group names.
-
-@test "Ownership and permissions of pihole-FTL.db correct" {
-  run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == *"pihole pihole"* || ${lines[0]} == *"pihole   pihole"* ]]
-  [[ ${lines[0]} == "-rw-rw-r--"* ]]
-}
-
 # "ldd" prints library dependencies and the used interpreter for a given program
 #
 # Dependencies on shared libraries are displayed like
@@ -981,19 +970,6 @@
   printf "%s\n" "${lines[@]}"
   [[ "${STATIC}" != "true" && "${lines[@]}" == *"interpreter"* ]] || \
   [[ "${STATIC}" == "true" && "${lines[@]}" != *"interpreter"* ]]
-}
-
-@test "Architecture is correctly reported on startup" {
-  run bash -c 'grep "Compiled for" /var/log/pihole/FTL.log'
-  printf "Output: %s\n\$CI_ARCH: %s\nuname -m: %s\n" "${lines[@]:-not set}" "${CI_ARCH:-not set}" "$(uname -m)"
-  [[ ${lines[0]} == *"Compiled for ${CI_ARCH:-$(uname -m)}"* ]]
-}
-
-@test "Building machine (CI) is reported on startup" {
-  [[ ${CI_ARCH} != "" ]] && compiled_str="on CI" || compiled_str="locally" && export compiled_str
-  run bash -c 'grep "Compiled for" /var/log/pihole/FTL.log'
-  printf "Output: %s\n\$CI_ARCH: %s\n" "${lines[@]:-not set}" "${CI_ARCH:-not set}"
-  [[ ${lines[0]} == *"(compiled ${compiled_str})"* ]]
 }
 
 @test "Compiler version is correctly reported on startup" {
@@ -1368,6 +1344,15 @@
   [[ ${lines[1]} == *"WARNING:     - FTLCONF_dns_upstreams" ]]
 }
 
+@test "cJSON_GetErrorPtr and cJSON_InitHooks are never used (for thread-safety reasons)" {
+  # cJSON_GetErrorPtr() is not thread-safe but can be replaces by cJSON_ParseWithOpts()
+  # cJSON_InitHooks() is only thread-safe if used before any other cJSON function in a thread
+  # We grep for the two functions recursively and exclude cJSON.{c,h} where they are defined
+  run bash -c 'grep -rE "(cJSON_GetErrorPtr)|(cJSON_InitHooks)" src/ | grep -vE "^src/webserver/cJSON/cJSON."'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "" ]]
+}
+
 @test "CLI complains about unknown config key and offers a suggestion" {
   run bash -c './pihole-FTL --config dbg.all'
   [[ ${lines[0]} == "Unknown config option dbg.all, did you mean:" ]]
@@ -1461,7 +1446,94 @@
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1/api/auth'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '{"session":{"valid":true,"totp":false,"sid":null,"validity":-1},"took":'*'}' ]]
+  [[ ${lines[0]} == '{"session":{"valid":true,"totp":false,"sid":null,"validity":-1,"message":"no password set"},"took":'*'}' ]]
+}
+
+@test "Config validation working on the CLI (type-based checking)" {
+  run bash -c './pihole-FTL --config dns.port true'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Config setting dns.port is invalid, allowed options are: unsigned integer (16 bit)' ]]
+  [[ $status == 2 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "abc"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Config setting dns.revServers is invalid: not valid JSON, error at: abc' ]]
+  [[ $status == 2 ]]
+}
+
+@test "Config validation working on the API (type-based checking)" {
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"blockESNI\":15.5}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item is invalid\",\"hint\":\"dns.blockESNI: not of type bool\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"piholePTR\":\"something_else\"}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item is invalid\",\"hint\":\"dns.piholePTR: invalid option\"},\"took\":"*"}" ]]
+}
+
+@test "Config validation working on the CLI (validator-based checking)" {
+  run bash -c './pihole-FTL --config dns.hosts "[\"111.222.333.444 abc\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.hosts[0]: neither a valid IPv4 nor IPv6 address ("111.222.333.444")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.hosts "[\"1.1.1.1 cf\",\"8.8.8.8 google\",\"1.2.3.4\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.hosts[2]: entry does not have at least one hostname ("1.2.3.4")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"abc,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <enabled> not a boolean ("abc")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,abc,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <ip-address> neither a valid IPv4 nor IPv6 address ("abc")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,1.2.3.4/55,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <prefix-len> not a valid IPv4 prefix length ("55")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,::1/255,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <prefix-len> not a valid IPv6 prefix length ("255")' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,1.1.1.1,def\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: entry does not have all required elements (<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>)' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config dns.revServers "[\"true,1.1.1.1,def,ghi\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'New dnsmasq configuration is not valid ('*'resolve at line '*' of /etc/pihole/dnsmasq.conf.temp: "rev-server=1.1.1.1,def"), config remains unchanged' ]]
+  [[ $status == 3 ]]
+
+  run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\' ]]
+  [[ $status == 3 ]]
+}
+
+@test "Config validation working on the API (validator-based checking)" {
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"files\":{\"pcap\":\"%gh4b\"}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item validation failed\",\"hint\":\"files.pcap: not a valid file path (\\\"%gh4b\\\")\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"cnameRecords\":[\"a\"]}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item validation failed\",\"hint\":\"dns.cnameRecords[0]: not a valid CNAME definition (too few elements)\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"cnameRecords\":[\"a,b,c\",\"a,b,c,,c\"]}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item validation failed\",\"hint\":\"dns.cnameRecords[1]: contains an empty string at position 3\"},\"took\":"*"}" ]]
+
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"cnameRecords\":[\"a,b,c\",\"a,b,c\",5]}}}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"bad_request\",\"message\":\"Config item is invalid\",\"hint\":\"dns.cnameRecords: array has invalid elements\"},\"took\":"*"}" ]]
 }
 
 @test "Create, set, and use application password" {
@@ -1496,17 +1568,16 @@
 
 @test "API authorization (with password): Incorrect password is rejected if password auth is enabled" {
   # Password: ABC
-  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"XXX\"}" | jq .session.valid'
+  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"XXX\"}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "false" ]]
+  [[ ${lines[0]} == "{\"session\":{\"valid\":false,\"totp\":false,\"sid\":null,\"validity\":-1,\"message\":\"password incorrect\"},\"took\":"*"}" ]]
 }
 
 @test "API authorization (with password): Correct password is accepted" {
-  session="$(curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"ABC\"}")"
-  printf "Session: %s\n" "${session}"
-  run jq .session.valid <<< "${session}"
+  # Password: ABC
+  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"ABC\"}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "true" ]]
+  [[ ${lines[0]} == "{\"session\":{\"valid\":true,\"totp\":false,\"sid\":\""*"\",\"csrf\":\""*"\",\"validity\":300,\"message\":\"password correct\"},\"took\":"*"}" ]]
 }
 
 @test "Test TLS/SSL server using self-signed certificate" {
@@ -1692,9 +1763,15 @@
 #  [[ $status == 0 ]]
   run bash -c "./pihole-FTL --teleporter ${filename}"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[-3]}" == "Imported etc/pihole/pihole.toml" ]]
-  [[ "${lines[-2]}" == "Imported etc/pihole/dhcp.leases" ]]
-  [[ "${lines[-1]}" == "Imported etc/pihole/gravity.db" ]]
+  [[ "${lines[-9]}" == "Imported etc/pihole/pihole.toml" ]]
+  [[ "${lines[-8]}" == "Imported etc/pihole/dhcp.leases" ]]
+  [[ "${lines[-7]}" == "Imported etc/pihole/gravity.db->group" ]]
+  [[ "${lines[-6]}" == "Imported etc/pihole/gravity.db->adlist" ]]
+  [[ "${lines[-5]}" == "Imported etc/pihole/gravity.db->adlist_by_group" ]]
+  [[ "${lines[-4]}" == "Imported etc/pihole/gravity.db->domainlist" ]]
+  [[ "${lines[-3]}" == "Imported etc/pihole/gravity.db->domainlist_by_group" ]]
+  [[ "${lines[-2]}" == "Imported etc/pihole/gravity.db->client" ]]
+  [[ "${lines[-1]}" == "Imported etc/pihole/gravity.db->client_by_group" ]]
   [[ $status == 0 ]]
   run bash -c "rm ${filename}"
 }

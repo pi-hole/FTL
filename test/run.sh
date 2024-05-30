@@ -73,6 +73,9 @@ export FTLCONF_misc_nice="-11"
 export FTLCONF_dns_upstrrr="-11"
 export FTLCONF_debug_api="not_a_bool"
 
+# Prepare gdb session
+echo "handle SIGHUP nostop SIGPIPE nostop SIGTERM nostop SIG32 nostop SIG33 nostop SIG34 nostop SIG35 nostop SIG41 nostop" > /root/.gdbinit
+
 # Start FTL
 if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
   echo "pihole-FTL failed to start"
@@ -88,6 +91,10 @@ fi
 
 # Give FTL some time for startup preparations
 sleep 2
+
+# Attach debugger and immediately continue running the binary
+# In case a non-ignored signal occurs (a crash), create a full backtrace
+gdb -p $(cat /run/pihole-FTL.pid) --ex continue --ex "bt full" &
 
 # Print versions of pihole-FTL
 echo -n "FTL version (DNS): "
@@ -130,6 +137,7 @@ if [[ $RET != 0 ]]; then
 fi
 
 # Kill pihole-FTL after having completed tests
+# This will also shut down the debugger
 kill "$(pidof pihole-FTL)"
 
 # Restore umask

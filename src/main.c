@@ -28,12 +28,6 @@
 // export_queries_to_disk()
 #include "database/query-table.h"
 
-#if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
-#pragma message "Minimum GLIBC version: " xstr(__GLIBC__) "." xstr(__GLIBC_MINOR__)
-#else
-#pragma message "Minimum GLIBC version: unknown, assuming this is a MUSL build"
-#endif
-
 char *username;
 bool needGC = false;
 bool needDBGC = false;
@@ -148,7 +142,7 @@ int main (int argc, char *argv[])
 	sleepms(250);
 
 	// Save new queries to database (if database is used)
-	if(config.database.DBexport.v.b)
+	if(config.database.maxDBdays.v.ui > 0)
 	{
 		export_queries_to_disk(true);
 		log_info("Finished final database update");

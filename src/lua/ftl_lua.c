@@ -8,23 +8,33 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
 #include "ftl_lua.h"
+
+#include "FTL.h"
 // struct luaL_Reg
 #include "lauxlib.h"
 // get_FTL_version()
-#include "../log.h"
+#include "log.h"
 // config struct
-#include "../config/config.h"
+#include "config/config.h"
 // file_exists
-#include "../files.h"
+#include "files.h"
 // get_web_theme_str
-#include "../datastructure.h"
-#include <readline/history.h>
-#include <wordexp.h>
+#include "datastructure.h"
+#include "api/api.h"
 #include "scripts/scripts.h"
 
-#include "api/api.h"
+// prototype for luaopen_pihole()
+#include "lualib.h"
+
+#if defined(LUA_USE_READLINE)
+# include <readline/history.h>
+#endif
+#include <wordexp.h>
+
+// hostname()
+#include "daemon.h"
+
 
 int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 {
@@ -98,11 +108,8 @@ static int pihole_ftl_version(lua_State *L) {
 
 // pihole.hostname()
 static int pihole_hostname(lua_State *L) {
-	// Get host name
-	char name[256];
-	if(gethostname(name, sizeof(name)) != 0)
-		strcpy(name, "N/A");
-	lua_pushstring(L, name);
+	// Get and immediately push host name
+	lua_pushstring(L, hostname());
 	return 1; // number of results
 }
 

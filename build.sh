@@ -23,6 +23,7 @@ do
         "-C" | "CLEAN"   ) clean=1 && nobuild=1;;
         "-i" | "install" ) install=1;;
         "-t" | "test"    ) test=1;;
+        "clang"          ) clang=1;;
         "ci"             ) builddir="cmake_ci/";;
     esac
 done
@@ -60,6 +61,13 @@ for scriptname in src/lua/scripts/*.lua; do
     fi
 done
 
+# Set compiler to clang if requested
+if [[ -n "${clang}" ]]; then
+    export CC=clang
+    export CXX=clang++
+    export STATIC="false"
+fi
+
 # Configure build, pass CMake CACHE entries if present
 # Wrap multiple options in "" as first argument to ./build.sh:
 #     ./build.sh "-DA=1 -DB=2" install
@@ -88,5 +96,6 @@ fi
 # If we are asked to run tests, we do this here
 if [[ -n "${test}" ]]; then
     cd ..
-    ./test/run.sh
+    bash test/arch_test.sh
+    bash test/run.sh
 fi
