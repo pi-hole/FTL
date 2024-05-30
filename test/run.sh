@@ -23,13 +23,12 @@ done
 rm -rf /etc/pihole /var/log/pihole /dev/shm/FTL-*
 
 # Create necessary directories and files
-mkdir -p /home/pihole /etc/pihole /run/pihole /var/log/pihole
+mkdir -p /home/pihole /etc/pihole /run/pihole /var/log/pihole /etc/pihole/config_backups
 echo "" > /var/log/pihole/FTL.log
 echo "" > /var/log/pihole/pihole.log
 touch /run/pihole-FTL.pid /run/pihole-FTL.port dig.log ptr.log
-touch /var/log/pihole/HTTP_info.log /var/log/pihole/PH7.log /etc/pihole/dhcp.leases
-chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole/pihole.log /var/log/pihole/FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
-chown pihole:pihole /var/log/pihole/HTTP_info.log /var/log/pihole/PH7.log /etc/pihole/dhcp.leases
+touch /var/log/pihole/HTTP_info.log /etc/pihole/dhcp.leases
+chown -R pihole:pihole /etc/pihole /run/pihole /var/log/pihole
 
 # Copy binary into a location the new user pihole can access
 cp ./pihole-FTL /home/pihole/pihole-FTL
@@ -127,9 +126,6 @@ if [[ $RET != 0 ]]; then
   echo ""
   echo -n "HTTP_info.log: "
   curl_to_tricorder /var/log/pihole/HTTP_info.log
-  echo ""
-  echo -n "PH7.log: "
-  curl_to_tricorder /var/log/pihole/PH7.log
   echo ""
   echo -n "pihole.toml: "
   curl_to_tricorder /etc/pihole/pihole.toml
