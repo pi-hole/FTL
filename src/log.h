@@ -19,7 +19,7 @@
 #include <stdint.h>
 
 #define DEBUG_ANY 0
-#define TIMESTR_SIZE 84
+#define TIMESTR_SIZE 128
 
 // Credit: https://stackoverflow.com/a/75116514
 #define LEFT(str, w) \
@@ -51,7 +51,8 @@ unsigned int get_year(const time_t timein);
 const char *get_FTL_version(void);
 void log_FTL_version(bool crashreport);
 double double_time(void);
-void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible);
+void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein,
+                 const bool millis, const bool uri_compatible, const bool timezone);
 const char *debugstr(const enum debug_flag flag) __attribute__((const));
 void log_web(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));

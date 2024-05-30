@@ -85,9 +85,9 @@ double double_time(void)
 	return tp.tv_sec + 1e-9*tp.tv_nsec;
 }
 
-// The size of 84 bytes has been carefully selected for all possible timestamps
-// to always fit into the available space without buffer overflows
-void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible)
+// Get a human-readable time string
+void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein,
+                 const bool millis, const bool uri_compatible, const bool timezone)
 {
 	struct tm tm;
 	localtime_r(&timein, &tm);
@@ -115,6 +115,15 @@ void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool 
 		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
 		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec);
 	}
+
+	// Append timezone if requested
+	if(timezone)
+		snprintf(timestring + strlen(timestring),
+		         TIMESTR_SIZE - strlen(timestring),
+		         "%c%s", space, tm.tm_zone);
+
+	// Ensure that the string is zero-terminated
+	timestring[TIMESTR_SIZE - 1] = '\0';
 }
 
 // Return the current year
@@ -227,7 +236,7 @@ const char *debugstr(const enum debug_flag flag)
 
 void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
 {
-	char timestring[TIMESTR_SIZE] = "";
+	char timestring[TIMESTR_SIZE];
 	va_list args;
 
 	// We have been explicitly asked to not print anything to the log
@@ -235,7 +244,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		return;
 
 	// Get human-readable time
-	get_timestr(timestring, time(NULL), true, false);
+	get_timestr(timestring, time(NULL), true, false, false);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
@@ -324,7 +333,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 
 void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 {
-	char timestring[TIMESTR_SIZE] = "";
+	char timestring[TIMESTR_SIZE];
 	const time_t now = time(NULL);
 	va_list args;
 
@@ -336,7 +345,7 @@ void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, NULL, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
 	// Get human-readable time
-	get_timestr(timestring, now, true, false);
+	get_timestr(timestring, now, true, false, false);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file

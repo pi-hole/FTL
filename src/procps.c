@@ -109,7 +109,7 @@ static bool get_process_creation_time(const pid_t pid, char timestr[TIMESTR_SIZE
 	struct stat st;
 	if(stat(filename, &st) < 0)
 		return false;
-	get_timestr(timestr, st.st_ctim.tv_sec, false, false);
+	get_timestr(timestr, st.st_ctim.tv_sec, false, false, true);
 
 	return true;
 }
