@@ -2004,6 +2004,7 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	// Return early if database is known to be broken
 	if(FTLDBerror())
 		return NULL;
+	log_debug(DEBUG_RESOLVER, "Trying to obtain host name of \"%s\" from network_addresses table", ipaddr);
 
 	// Check if we want to resolve host names
 	if(!resolve_this_name(ipaddr))

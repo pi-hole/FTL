@@ -1724,7 +1724,10 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 
 	upstreamsData *upstream = getUpstream(upstreamID, true);
 	if(upstream != NULL)
+	{
 		upstream->count++;
+		upstream->lastQuery = now;
+	}
 
 	// Proceed only if
 	// - current query has not been marked as replied to so far
