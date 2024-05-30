@@ -582,6 +582,13 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			fputs("log-dhcp\n\n", pihole_conf);
 		}
 
+		// Add option to ignore unknown clients if enabled
+		if(conf->dhcp.ignoreUnknownClients.v.b)
+		{
+			fputs("# Ignore clients not configured below\n", pihole_conf);
+			fputs("dhcp-ignore=tag:!known\n", pihole_conf);
+		}
+
 		// Add per-host parameters
 		if(cJSON_GetArraySize(conf->dhcp.hosts.v.json) > 0)
 		{
