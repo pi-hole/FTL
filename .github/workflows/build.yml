@@ -1,5 +1,10 @@
 name: Build, Test, Deploy
 
+permissions:
+  id-token: write
+  contents: read
+  attestations: write
+
 on:
   push:
     branches:
@@ -26,7 +31,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v4.1.1
+        uses: actions/checkout@v4.1.6
       -
         name: "Calculate required variables"
         id: variables
@@ -59,10 +64,16 @@ jobs:
         include:
           - platform: linux/amd64
             bin_name: pihole-FTL-amd64
+            build_opts: ""
+          - platform: linux/amd64
+            bin_name: pihole-FTL-amd64-clang
+            build_opts: clang
           - platform: linux/386
             bin_name: pihole-FTL-386
+            build_opts: ""
           - platform: linux/riscv64
             bin_name: pihole-FTL-riscv64
+            build_opts: ""
     env:
       CI_ARCH: ${{ matrix.platform }}
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
@@ -70,13 +81,14 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v4.1.1
+        uses: actions/checkout@v4.1.6
       -
         name: Build and test and deploy FTL
         uses: ./.github/actions/build-and-test
         with:
           platform: ${{ matrix.platform }}
           bin_name: ${{ matrix.bin_name }}
+          build_opts: ${{ matrix.build_opts }}
           artifact_name: ${{ matrix.bin_name }}-binary
           target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
           git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
@@ -108,7 +120,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v4.1.1
+        uses: actions/checkout@v4.1.6
       -
         name: Build and test and deploy FTL
         uses: ./.github/actions/build-and-test

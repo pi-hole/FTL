@@ -8,9 +8,9 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 //#include "syscalls.h" is implicitly done in FTL.h
-#include "../log.h"
+#include "log.h"
 
 static uint8_t already_writing = 0;
 

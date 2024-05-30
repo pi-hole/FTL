@@ -162,8 +162,10 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 			free(target);
 
 			// User is not authenticated, redirect to login page
-			log_web("Authentication required, redirecting to %slogin?target=%s", config.webserver.paths.webhome.v.s, encoded_target);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin?target=%s\r\n\r\n", config.webserver.paths.webhome.v.s, encoded_target);
+			log_web("Authentication required, redirecting to %slogin?target=%s",
+			        config.webserver.paths.webhome.v.s, encoded_target);
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin?target=%s\r\n\r\n",
+			          config.webserver.paths.webhome.v.s, encoded_target);
 			free(encoded_target);
 			return 302;
 		}

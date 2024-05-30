@@ -30,6 +30,12 @@
 #include <fcntl.h>
 #include <sys/sendfile.h>
 
+// PRIu64
+#include <inttypes.h>
+
+//basename()
+#include <libgen.h>
+
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
 // octal number representing the bit pattern for the new mode bits
@@ -246,11 +252,30 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 		return 0;
 	}
 
-	// Explicitly cast the block counts to unsigned long long to avoid
-	// overflowing with drives larger than 4 GB on 32bit systems
-	const unsigned long long size = (unsigned long long)f.f_blocks * f.f_frsize;
-	const unsigned long long free = (unsigned long long)f.f_bavail * f.f_bsize;
-	const unsigned long long used = size - free;
+	// Explicitly cast the block counts to uint64_t to avoid overflowing
+	// with drives larger than 4 GB on 32bit systems. Multiply the block
+	// count with the fragment size to get the total size in bytes, see
+	// https://github.com/torvalds/linux/blob/39cd87c4eb2b893354f3b850f916353f2658ae6f/fs/nfs/super.c#L285-L291
+	const uint64_t size = (uint64_t)f.f_blocks * f.f_frsize;
+	const uint64_t free = (uint64_t)f.f_bavail * f.f_frsize;
+	const uint64_t used = size - free;
+
+	// Print statvfs() results if in debug.gc mode
+	if(config.debug.gc.v.b)
+	{
+		log_debug(DEBUG_GC, "Statvfs() results for %s:", path);
+		log_debug(DEBUG_GC, "  Block size: %lu", f.f_bsize);
+		log_debug(DEBUG_GC, "  Fragment size: %lu", f.f_frsize);
+		log_debug(DEBUG_GC, "  Total blocks: %"PRIu64, f.f_blocks);
+		log_debug(DEBUG_GC, "  Free blocks: %"PRIu64, f.f_bfree);
+		log_debug(DEBUG_GC, "  Available blocks: %"PRIu64, f.f_bavail);
+		log_debug(DEBUG_GC, "  Total inodes: %"PRIu64, f.f_files);
+		log_debug(DEBUG_GC, "  Free inodes: %"PRIu64, f.f_ffree);
+		log_debug(DEBUG_GC, "  Available inodes: %"PRIu64, f.f_favail);
+		log_debug(DEBUG_GC, "  Filesystem ID: %lu", f.f_fsid);
+		log_debug(DEBUG_GC, "  Mount flags: %lu", f.f_flag);
+		log_debug(DEBUG_GC, "  Maximum filename length: %lu", f.f_namemax);
+	}
 
 	// Create human-readable total size
 	char prefix_size[2] = { 0 };
@@ -269,37 +294,51 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 	// If size is 0, we return 0% to avoid division by zero below
 	if(size == 0)
 		return 0;
-	// If used is larger than size, we return 100%
-	if(used > size)
-		return 100;
+
 	// Return percentage of used memory at this path (rounded down)
-	return (used*100)/(size + 1);
+	// If the used size is larger than the total size, this intentionally
+	// returns more than 100% so that the caller can handle this case
+	// (this can happen with docker on macOS)
+	return (used * 100) / size;
 }
 
 // Get the filesystem where the given path is located
 struct mntent *get_filesystem_details(const char *path)
 {
-	/* stat the file in question */
+	// stat the file in question
 	struct stat path_stat;
 	stat(path, &path_stat);
 
-	/* iterate through the list of devices */
+	// iterate through the list of devices
 	FILE *file = setmntent("/proc/mounts", "r");
 	struct mntent *ent = NULL;
+	bool found = false;
 	while(file != NULL && (ent = getmntent(file)) != NULL)
 	{
-		/* stat the mount point */
+		// stat the mount point
 		struct stat dev_stat;
-		stat(ent->mnt_dir, &dev_stat);
+		if(stat(ent->mnt_dir, &dev_stat) < 0)
+		{
+			if(config.debug.gc.v.b)
+			{
+				log_warn("get_filesystem_details(): Failed to get stat for \"%s\": %s",
+				         ent->mnt_dir, strerror(errno));
+			}
+			continue;
+		}
 
-		/* check if our file and the mount point are on the same device */
+		// check if our file and the mount point are on the same device
 		if(dev_stat.st_dev == path_stat.st_dev)
+		{
+			found = true;
 			break;
+		}
 	}
 
+	// Close mount table file handle
 	endmntent(file);
 
-	return ent;
+	return found ? ent : NULL;
 }
 
 // Credits: https://stackoverflow.com/a/55410469

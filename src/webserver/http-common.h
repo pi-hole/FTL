@@ -15,6 +15,8 @@
 #include "webserver/cJSON/cJSON.h"
 // enum fifo_logs
 #include "enums.h"
+// tablerow
+#include "database/gravity-db.h"
 
 // strlen()
 #include <string.h>
@@ -23,22 +25,6 @@
 
 // Maximum size of received and processed payload: 64 KB
 #define MAX_PAYLOAD_BYTES 64*1024
-enum http_method {
-	HTTP_UNKNOWN = 0,
-	HTTP_GET = 1 << 0,
-	HTTP_POST = 1 << 1,
-	HTTP_PUT = 1 << 2,
-	HTTP_PATCH = 1 << 3,
-	HTTP_DELETE = 1 << 4,
-	HTTP_OPTIONS = 1 << 5,
-};
-
-enum api_flags {
-	API_FLAG_NONE = 0,
-	API_DOMAINS = 1 << 0,
-	API_PARSE_JSON = 1 << 1,
-	API_BATCHDELETE = 1 << 2,
-};
 
 struct api_options {
 	enum api_flags flags;
@@ -51,6 +37,7 @@ struct ftl_conn {
 	const enum http_method method;
 	char *action_path;
 	const char *item;
+	const char *message;
 	int user_id;
 	double now;
 	struct {
@@ -109,5 +96,8 @@ enum http_method __attribute__((pure)) http_method(struct mg_connection *conn);
 const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api);
 void read_and_parse_payload(struct ftl_conn *api);
 char * __attribute__((malloc)) escape_html(const char *string);
+int check_json_payload(struct ftl_conn *api);
+int parse_groupIDs(struct ftl_conn *api, tablerow *table, cJSON *row);
+char * __attribute__((malloc)) escape_json(const char *string);
 
 #endif // HTTP_H

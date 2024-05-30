@@ -1,4 +1,4 @@
-FROM ghcr.io/pi-hole/ftl-build:v2.5 AS builder
+FROM ghcr.io/pi-hole/ftl-build:v2.6 AS builder
 
 WORKDIR /app
 
@@ -10,16 +10,14 @@ ARG GIT_BRANCH="test"
 ENV GIT_BRANCH ${GIT_BRANCH}
 ARG GIT_TAG="test"
 ENV GIT_TAG ${GIT_TAG}
+ARG BUILD_OPTS=""
+ENV BUILD_OPTS ${BUILD_OPTS}
 
 # Build FTL
 # Remove possible old build files
 RUN rm -rf cmake && \
-# Build FTL
-    bash build.sh "-DSTATIC=${STATIC}" && \
-# Run binary architecture tests
-    bash test/arch_test.sh && \
-# Run full test suite
-    bash test/run.sh && \
+# Build and test FTL
+    bash build.sh "-DSTATIC=${STATIC}" test ${BUILD_OPTS} && \
 # Move FTL binary to root directory
     cd / &&\
     mv /app/pihole-FTL . && \

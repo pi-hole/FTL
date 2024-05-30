@@ -8,29 +8,29 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 #include "sqlite3.h"
 #include "gravity-db.h"
 // struct config
-#include "../config/config.h"
+#include "config/config.h"
 // logging routines
-#include "../log.h"
+#include "log.h"
 // getstr()
-#include "../shmem.h"
+#include "shmem.h"
 // SQLite3 prepared statement vectors
-#include "../vector.h"
+#include "vector.h"
 // log_subnet_warning()
 // logg_inaccessible_adlist
 #include "message-table.h"
 // getMACfromIP()
 #include "network-table.h"
 // struct DNSCacheData
-#include "../datastructure.h"
+#include "datastructure.h"
 // reset_aliasclient()
 #include "aliasclients.h"
 
 // Definition of struct regexData
-#include "../regex_r.h"
+#include "regex_r.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"

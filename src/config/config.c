@@ -760,6 +760,13 @@ void initConfig(struct config *conf)
 	conf->dhcp.rapidCommit.d.b = false;
 	conf->dhcp.rapidCommit.c = validate_stub; // Only type-based checking
 
+	conf->dhcp.logging.k = "dhcp.logging";
+	conf->dhcp.logging.h = "Enable logging for DHCP. This will log all relevant DHCP-related activity, including, e.g., all the options sent to DHCP clients and the tags used to determine them (if any). This can be useful for debugging DHCP issues. The generated output is saved to the file specified by files.log.dnsmasq below.";
+	conf->dhcp.logging.t = CONF_BOOL;
+	conf->dhcp.logging.f = FLAG_RESTART_FTL;
+	conf->dhcp.logging.d.b = false;
+	conf->dhcp.logging.c = validate_stub; // Only type-based checking
+
 	conf->dhcp.hosts.k = "dhcp.hosts";
 	conf->dhcp.hosts.h = "Per host parameters for the DHCP server. This allows a machine with a particular hardware address to be always allocated the same hostname, IP address and lease time or to specify static DHCP leases";
 	conf->dhcp.hosts.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]\"");
@@ -811,12 +818,6 @@ void initConfig(struct config *conf)
 	conf->database.DBimport.t = CONF_BOOL;
 	conf->database.DBimport.d.b = true;
 	conf->database.DBimport.c = validate_stub; // Only type-based checking
-
-	conf->database.DBexport.k = "database.DBexport";
-	conf->database.DBexport.h =  "Should FTL store queries in the long-term database?";
-	conf->database.DBexport.t = CONF_BOOL;
-	conf->database.DBexport.d.b = true;
-	conf->database.DBexport.c = validate_stub; // Only type-based checking
 
 	conf->database.maxDBdays.k = "database.maxDBdays";
 	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?";
@@ -1031,10 +1032,16 @@ void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.maxClients.k = "webserver.api.maxClients";
-	conf->webserver.api.maxClients.h = "Up to how many clients should be returned in the activity graph endpoint (/api/history/clients)?\n This setting can be overwritten at run-time using the parameter N";
+	conf->webserver.api.maxClients.h = "Up to how many clients should be returned in the activity graph endpoint (/api/history/clients)?\n This setting can be overwritten at run-time using the parameter N. Setting this to 0 will always send all clients. Be aware that this may be challenging for the GUI if you have many (think > 1.000 clients) in your network";
 	conf->webserver.api.maxClients.t = CONF_UINT16;
 	conf->webserver.api.maxClients.d.u16 = 10;
 	conf->webserver.api.maxClients.c = validate_stub; // Only type-based checking
+
+	conf->webserver.api.client_history_global_max.k = "webserver.api.client_history_global_max";
+	conf->webserver.api.client_history_global_max.h = "How should the API compute the most active clients? If set to true, the API will return the clients with the most queries globally (within 24 hours). If set to false, the API will return the clients with the most queries per time slot individually.";
+	conf->webserver.api.client_history_global_max.t = CONF_BOOL;
+	conf->webserver.api.client_history_global_max.d.b = true;
+	conf->webserver.api.client_history_global_max.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.allow_destructive.k = "webserver.api.allow_destructive";
 	conf->webserver.api.allow_destructive.h = "Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)";

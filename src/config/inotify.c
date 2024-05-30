@@ -12,7 +12,7 @@
 #include "log.h"
 #include <sys/inotify.h>
 // NAME_MAX
-#include <limits.h>
+#include <linux/limits.h>
 
 #define WATCHDIR "/etc/pihole"
 

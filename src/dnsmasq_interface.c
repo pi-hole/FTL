@@ -72,7 +72,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char* arg, const int id, const char* file, const int line);
 static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char* file, const int line);
 static void FTL_dnssec(const char *result, const union all_addr *addr, const int id, const char* file, const int line);
-static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
+static void mysockaddr_extract_ip_port(const union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
 static void check_pihole_PTR(char *domain);
 #define query_set_dnssec(query, dnssec) _query_set_dnssec(query, dnssec, __FILE__, __LINE__)
@@ -198,10 +198,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		return 0;
 
 	// Debug logging
-	if(*ede != EDE_UNSET)
-		log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\", EDE: %s (%d)", name, edestr(*ede), *ede);
-	else
-		log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\", EDE: N/A", name);
+	log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\", EDE: %s (%d)", name, *ede != EDE_UNSET ? edestr(*ede) : "N/A", *ede);
 
 	// Get question type
 	int qtype, flags = 0;
@@ -793,9 +790,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Increase DNS queries counter
 	counters->queries++;
 
-	// Update overTime data
-	overTime[timeidx].total++;
-
 	// Update overTime data structure with the new client
 	change_clientcount(client, 0, 0, timeidx, 1);
 
@@ -847,13 +841,17 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		if(config.debug.arp.v.b)
 		{
 			if(client->hwlen == 6)
+			{
 				log_debug(DEBUG_ARP, "find_mac(\"%s\") returned hardware address "
 				          "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
 				          client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
 				          client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
+			}
 			else
+			{
 				log_debug(DEBUG_ARP, "find_mac(\"%s\") returned %i bytes of data",
 				          clientIP, client->hwlen);
+			}
 		}
 	}
 
@@ -1156,6 +1154,11 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		// -3 is gravity list 1
 		// ...
 		dns_cache->list_id = -1 * (list_id + 2);
+
+		// Mark query as allowed to prevent further checks such as CNAME
+		// inspection. This ensures antigravity matches have similar effects
+		// than explicitly allowed domains.
+		query->flags.allowed = true;
 
 		return false;
 	}
@@ -1505,13 +1508,13 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	{
 		// Explicitly mark as not blocked to skip the entire gravity/blacklist
 		// chain when the same client asks for the same domain in the future.
-		// Store domain as whitelisted if this is the case
+		// Store domain as allowed if this is the case
 		dns_cache->blocking_status = query->flags.allowed ? ALLOWED : NOT_BLOCKED;
 
 		// Debug output
 		// client is guaranteed to be non-NULL above
 		log_debug(DEBUG_QUERIES, "DNS cache: %s/%s is %s (domainlist ID: %i)", getstr(client->ippos),
-		          domainstr, query->flags.allowed ? "whitelisted" : "not blocked", dns_cache->list_id);
+		          domainstr, query->flags.allowed ? "allowed" : "not blocked", dns_cache->list_id);
 	}
 
 	free(domainstr);
@@ -1827,7 +1830,7 @@ static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, c
 	inet_ntop(family, addr, ip, ADDRSTRLEN);
 }
 
-static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port)
+static void mysockaddr_extract_ip_port(const union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port)
 {
 	// Extract IP address
 	inet_ntop(server->sa.sa_family,
@@ -1995,10 +1998,12 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			dispname = ".";
 
 		if(cached || last_server.sa.sa_family == 0)
+		{
 			// Log cache or upstream reply from unknown source
 			log_debug(DEBUG_QUERIES, "**** got %s%s reply: %s is %s (ID %i, %s:%i)",
 			          stale ? "stale ": "", cached ? "cache" : "upstream",
 			          dispname, answer, id, file, line);
+		}
 		else
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
@@ -2931,18 +2936,58 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	if(getuid() == 0)
 	{
 		// Only print this and change ownership of shmem objects when
-		// we're actually dropping root (user/group my be set to root)
+		// we're actually dropping root (user/group may be set to root)
 		if(ent_pw != NULL && ent_pw->pw_uid != 0)
 		{
 			log_info("FTL is going to drop from root to user %s (UID %u)",
-			     ent_pw->pw_name, ent_pw->pw_uid);
-			if(chown(config.files.log.ftl.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
-				ent_pw->pw_uid, ent_pw->pw_gid, config.files.log.ftl.v.s, strerror(errno), errno);
-			if(chown(config.files.database.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
-				ent_pw->pw_uid, ent_pw->pw_gid, config.files.database.v.s, strerror(errno), errno);
+			         ent_pw->pw_name, ent_pw->pw_uid);
+
+			// Change ownership of shared memory objects
 			chown_all_shmem(ent_pw);
+
+			// Configured FTL log file
+			if(chown(config.files.log.ftl.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			{
+				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
+				         ent_pw->pw_uid, ent_pw->pw_gid, config.files.log.ftl.v.s, strerror(errno), errno);
+			}
+
+			// Configured FTL database file
+			if(chown(config.files.database.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			{
+				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
+				         ent_pw->pw_uid, ent_pw->pw_gid, config.files.database.v.s, strerror(errno), errno);
+
+			}
+
+			// Check if auxiliary files exist and change ownership
+			char *extrafile = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
+			if(extrafile == NULL)
+			{
+				log_err("Memory allocation failed. Skipping some file ownership checks.");
+				return;
+			}
+
+			// Check <database>-wal file (write-ahead log)
+			strcpy(extrafile, config.files.database.v.s);
+			strcat(extrafile, "-wal");
+			if(file_exists(extrafile) && chown(extrafile, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			{
+				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
+				         ent_pw->pw_uid, ent_pw->pw_gid, extrafile, strerror(errno), errno);
+			}
+
+			// Check <database>-shm file (mmapped shared memory)
+			strcpy(extrafile, config.files.database.v.s);
+			strcat(extrafile, "-shm");
+			if(file_exists(extrafile) && chown(extrafile, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			{
+				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
+				         ent_pw->pw_uid, ent_pw->pw_gid, extrafile, strerror(errno), errno);
+			}
+
+			// Free allocated memory
+			free(extrafile);
 		}
 		else
 		{
@@ -3505,4 +3550,58 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 {
 	for (unsigned int i = 0; i < __METRIC_MAX; i++)
 		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
+}
+
+void FTL_connection_error(const char *reason, const union mysockaddr *addr)
+{
+	// Make a private copy of the error
+	const int errnum = errno;
+	const char *error = strerror(errnum);
+
+	// Set log priority
+	int priority = LOG_ERR;
+
+	// If this is a TCP connection error and errno == 0, this isn't a
+	// connection error but the remote side closed the connection
+	if(errnum == 0 && strstr(reason, "TCP(read_write)") != NULL)
+	{
+		error = "Connection prematurely closed by remote server";
+		priority = LOG_INFO;
+	}
+
+	// Format the address into a string (if available)
+	in_port_t port = 0;
+	char ip[ADDRSTRLEN + 1] = { 0 };
+	if(addr != NULL)
+		mysockaddr_extract_ip_port(addr, ip, &port);
+
+	// Log to FTL.log
+	const int id = daemon->log_display_id;
+	log_debug(DEBUG_QUERIES, "Connection error (%s#%u, ID %d): %s (%s)", ip, port, id, reason, error);
+
+	// Log to pihole.log
+	my_syslog(priority, "%s: %s", reason, error);
+
+	// Add to Pi-hole diagnostics but do not add messages more often than
+	// once every five seconds to avoid hammering the database with errors
+	// on continuously failing connections
+	static time_t last = 0;
+	if(time(NULL) - last > 5)
+	{
+		last = time(NULL);
+		char *server = NULL;
+		if(ip[0] != '\0')
+		{
+			const size_t len = strlen(ip) + 6;
+			server = calloc(len, sizeof(char));
+			if(server != NULL)
+			{
+				snprintf(server, len, "%s#%u", ip, port);
+				server[len - 1] = '\0';
+			}
+		}
+		log_connection_error(server, reason, error);
+		if(server != NULL)
+			free(server);
+	}
 }

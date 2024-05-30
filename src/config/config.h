@@ -11,7 +11,7 @@
 #define CONFIG_H
 
 // enum privacy_level
-#include "../enums.h"
+#include "enums.h"
 #include <stdbool.h>
 // typedef int16_t
 #include <sys/types.h>
@@ -32,11 +32,6 @@
 
 // This static string represents an unchanged password
 #define PASSWORD_VALUE "********"
-
-// Remove the following line to disable the use of UTF-8 in the config file
-// As consequence, the config file will be written in ASCII and all non-ASCII
-// characters will be replaced by their UTF-8 escape sequences (UCS-2)
-#define TOML_UTF8
 
 // Size of the buffer used to report possible errors during config validation
 #define VALIDATOR_ERRBUF_LEN 256
@@ -190,6 +185,7 @@ struct config {
 		struct conf_item ipv6;
 		struct conf_item rapidCommit;
 		struct conf_item multiDNS;
+		struct conf_item logging;
 		struct conf_item hosts;
 	} dhcp;
 
@@ -202,7 +198,6 @@ struct config {
 
 	struct {
 		struct conf_item DBimport;
-		struct conf_item DBexport;
 		struct conf_item maxDBdays;
 		struct conf_item DBinterval;
 		struct conf_item useWAL;
@@ -245,6 +240,7 @@ struct config {
 			struct conf_item excludeDomains;
 			struct conf_item maxHistory;
 			struct conf_item maxClients;
+			struct conf_item client_history_global_max;
 			struct conf_item allow_destructive;
 			struct {
 				struct conf_item limit;

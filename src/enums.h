@@ -134,6 +134,7 @@ enum domain_client_status {
 } __attribute__ ((packed));
 
 enum debug_flag {
+	DEBUG_NONE = 0,
 	DEBUG_DATABASE = 1,
 	DEBUG_NETWORKING,
 	DEBUG_LOCKS,
@@ -273,6 +274,7 @@ enum message_type {
 	INACCESSIBLE_ADLIST_MESSAGE,
 	DISK_MESSAGE_EXTENDED,
 	CERTIFICATE_DOMAIN_MISMATCH_MESSAGE,
+	CONNECTION_ERROR_MESSAGE,
 	MAX_MESSAGE,
 } __attribute__ ((packed));
 
@@ -322,5 +324,22 @@ enum cert_check {
 	CERT_DOMAIN_MATCH,
 	CERT_OKAY
 } __attribute__ ((packed));
+
+enum http_method {
+	HTTP_UNKNOWN = 0,
+	HTTP_GET = 1 << 0,
+	HTTP_POST = 1 << 1,
+	HTTP_PUT = 1 << 2,
+	HTTP_PATCH = 1 << 3,
+	HTTP_DELETE = 1 << 4,
+	HTTP_OPTIONS = 1 << 5,
+};
+
+enum api_flags {
+	API_FLAG_NONE = 0,
+	API_DOMAINS = 1 << 0,
+	API_PARSE_JSON = 1 << 1,
+	API_BATCHDELETE = 1 << 2,
+};
 
 #endif // ENUMS_H

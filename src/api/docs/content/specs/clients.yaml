@@ -11,7 +11,7 @@ components:
           - "Client management"
         operationId: "get_clients"
         description: |
-          `{client}` is optional. Specifying it will result in only the requested client being returned.
+          `{client}` is optional. If it is specified, it will result in only the requested client being returned. This parameter needs to be URI-encoded.
 
           Valid combinations are:
           - `/api/clients` (all clients)
@@ -42,7 +42,7 @@ components:
           - "Client management"
         operationId: "replace_client"
         description: |
-          Items may be updated by replacing them. `{client}` is required.
+          Items may be updated by replacing them. `{client}` is required and needs to be URI-encoded.
 
           Ensure to send all the required parameters (such as `comment` or `groups`) to ensure these properties are retained.
           The read-only fields `id` and `date_added` are preserved, `date_modified` is automatically updated on success.
@@ -91,7 +91,7 @@ components:
           - "Client management"
         operationId: "delete_client"
         description: |
-          *Note:* There will be no content on success.
+          *Note:* There will be no content on success. `{client}` is required and needs to be URI-encoded.
         responses:
           '204':
             description: Item deleted
@@ -383,6 +383,12 @@ components:
           type: integer
           readOnly: true
           example: 1611239099
+        name:
+          description: hostname (only if available)
+          type: string
+          readOnly: true
+          nullable: true
+          example: localhost
     lists_processed:
       type: object
       properties:

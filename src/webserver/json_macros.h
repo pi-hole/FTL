@@ -12,10 +12,10 @@
 // logging routines
 #include "log.h"
 
-#define JSON_NEW_OBJECT() cJSON_CreateObject();
-#define JSON_NEW_ARRAY() cJSON_CreateArray();
+#define JSON_NEW_OBJECT() cJSON_CreateObject()
+#define JSON_NEW_ARRAY() cJSON_CreateArray()
 
-#define JSON_ADD_ITEM_TO_ARRAY(array, item) cJSON_AddItemToArray(array, item);
+#define JSON_ADD_ITEM_TO_ARRAY(array, item) cJSON_AddItemToArray(array, item)
 
 #define JSON_COPY_STR_TO_OBJECT(object, key, string)({ \
 	cJSON *string_item = NULL; \
@@ -253,4 +253,10 @@
 
 #define JSON_INCREMENT_NUMBER(number_obj, inc)({ \
 	cJSON_SetNumberHelper(number_obj, number_obj->valuedouble + inc); \
+})
+
+// Returns true if the key exists and is true, otherwise false
+#define JSON_KEY_TRUE(obj, key)({ \
+	cJSON *elem = cJSON_GetObjectItemCaseSensitive(obj, key); \
+	elem != NULL ? cJSON_IsTrue(elem) : false; \
 })

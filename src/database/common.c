@@ -253,11 +253,13 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 	if(iErrCode == SQLITE_WARNING)
 		log_warn("SQLite3: %s (%d)", zMsg, iErrCode);
 	else if(iErrCode == SQLITE_NOTICE || iErrCode == SQLITE_SCHEMA)
+	{
 		// SQLITE_SCHEMA is returned when the database schema has changed
 		// This is not necessarily an error, as sqlite3_step() will re-prepare
 		// the statement and try again. If it cannot, it will return an error
 		// and this will be handled over there.
 		log_debug(DEBUG_ANY, "SQLite3: %s (%d)", zMsg, iErrCode);
+	}
 	else
 		log_err("SQLite3: %s (%d)", zMsg, iErrCode);
 }
@@ -284,9 +286,9 @@ void db_init(void)
 		}
 	}
 
-	// Explicitly set permissions to 0644
-	// 644 =            u+w       u+r       g+w       g+r      o+r
-	const mode_t mode = S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP| S_IROTH;
+	// Explicitly set permissions to 0640
+	// 640 =            u+w       u+r       g+r
+	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP;
 	chmod_file(config.files.database.v.s, mode);
 
 	// Open database
@@ -578,13 +580,9 @@ void db_init(void)
 	dbclose(&db);
 
 	// Log if users asked us to not use the long-term database for queries
-	// We will still use it to store warnings in it
-	config.database.DBexport.v.b = true;
-	if(config.database.maxDBdays.v.i == 0)
-	{
+	// We will still use it to store warnings (Pi-hole diagnosis system)
+	if(config.database.maxDBdays.v.ui == 0)
 		log_info("Not using the database for storing queries");
-		config.database.DBexport.v.b = false;
-	}
 
 	log_info("Database successfully initialized");
 }

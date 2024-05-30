@@ -15,8 +15,8 @@
 */
 
 #include "dnsmasq.h"
-#include "../dnsmasq_interface.h"
-#include "../log.h"
+#include "dnsmasq_interface.h"
+#include "log.h"
 
 #ifdef HAVE_LINUX_NETWORK
 

@@ -8,15 +8,15 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 #include "aliasclients.h"
 #include "common.h"
 // global counters variable
-#include "../shmem.h"
+#include "shmem.h"
 // global config variable
-#include "../config/config.h"
+#include "config/config.h"
 // logging routines
-#include "../log.h"
+#include "log.h"
 // getAliasclientIDfromIP()
 #include "network-table.h"
 
