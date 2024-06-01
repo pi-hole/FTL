@@ -320,6 +320,8 @@ components:
                   type: boolean
                 logging:
                   type: boolean
+                ignoreUnknownClients:
+                  type: boolean
                 hosts:
                   type: array
                   items:
@@ -653,6 +655,7 @@ components:
             rapidCommit: false
             multiDNS: false
             logging: false
+            ignoreUnknownClients: false
             hosts:
               - "11:22:33:44:55:66,192.168.1.123"
               - "11:22:33:44:55:67,192.168.1.124,hostname"
