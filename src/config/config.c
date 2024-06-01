@@ -811,7 +811,7 @@ void initConfig(struct config *conf)
 
 	conf->ntp.ipv4.address.k = "ntp.ipv4.address";
 	conf->ntp.ipv4.address.h = "IPv4 address to listen on for NTP requests";
-	conf->ntp.ipv4.address.a = cJSON_CreateStringReference("<valid IPv4 address> or empty string (\"\") for wildcard");
+	conf->ntp.ipv4.address.a = cJSON_CreateStringReference("<valid IPv4 address> or empty string (\"\") for wildcard (0.0.0.0)");
 	conf->ntp.ipv4.address.t = CONF_STRUCT_IN_ADDR;
 	conf->ntp.ipv4.address.f = FLAG_RESTART_FTL;
 	memset(&conf->ntp.ipv4.address.d.in_addr, 0, sizeof(struct in_addr));
@@ -826,7 +826,7 @@ void initConfig(struct config *conf)
 
 	conf->ntp.ipv6.address.k = "ntp.ipv6.address";
 	conf->ntp.ipv6.address.h = "IPv6 address to listen on for NTP requests";
-	conf->ntp.ipv6.address.a = cJSON_CreateStringReference("<valid IPv6 address> or empty string (\"\") for wildcard");
+	conf->ntp.ipv6.address.a = cJSON_CreateStringReference("<valid IPv6 address> or empty string (\"\") for wildcard (::)");
 	conf->ntp.ipv6.address.t = CONF_STRUCT_IN6_ADDR;
 	conf->ntp.ipv6.address.f = FLAG_RESTART_FTL;
 	memset(&conf->ntp.ipv6.address.d.in6_addr, 0, sizeof(struct in6_addr));
