@@ -1,14 +1,11 @@
+# Pi-hole configuration file (v5.25.2-1891-g7ff016f2-dirty)
+# Encoding: UTF-8
 # This file is managed by pihole-FTL
-#
-# Do not edit the file while FTL is
-# running or your changes may be overwritten
-#
-# Last updated on 2023-01-23 14:51:44
-# by FTL v5.20.1-552-g5184ed28
+# Last updated on 2024-05-30 11:37:59
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
-  # Example: [ "8.8.8.8", "127.0.0.1#5353", "docker-resolver" ]
+  # Example: [ "8.8.8.8", "127.0.0.1#5335", "docker-resolver" ]
   #
   # Possible values are:
   #     array of IP addresses and/or hostnames, optionally with a port (#...)
@@ -57,16 +54,18 @@
   #       Pi-hole will not respond automatically on PTR requests to local interface
   #       addresses. Ensure pi.hole and/or hostname records exist elsewhere.
   #   - "HOSTNAME"
-  #       Pi-hole will not respond automatically on PTR requests to local interface
-  #       addresses. Ensure pi.hole and/or hostname records exist elsewhere.
+  #       Serve the machine's hostname. The hostname is queried from the kernel through
+  #       uname(2)->nodename. If the machine has multiple network interfaces, it can
+  #       also have multiple nodenames. In this case, it is unspecified and up to the
+  #       kernel which one will be returned. On Linux, the returned string is what has
+  #       been set using sethostname(2) which is typically what has been set in
+  #       /etc/hostname.
   #   - "HOSTNAMEFQDN"
-  #       Serve the machine's global hostname as fully qualified domain by adding the
-  #       local suffix. If no local suffix has been defined, FTL appends the local
-  #       domain .no_fqdn_available. In this case you should either add
-  #       domain=whatever.com to a custom config file inside /etc/dnsmasq.d/ (to set
-  #       whatever.com as local domain) or use domain=# which will try to derive the
-  #       local domain from /etc/resolv.conf (or whatever is set with resolv-file, when
-  #       multiple search directives exist, the first one is used).
+  #       Serve the machine's hostname (see limitations above) as fully qualified domain
+  #       by adding the local domain. If no local domain has been defined (config option
+  #       dns.domain), FTL tries to query the domain name from the kernel using
+  #       getdomainname(2). If this fails, FTL appends ".no_fqdn_available" to the
+  #       hostname.
   #   - "PI.HOLE"
   #       Respond with "pi.hole".
   piholePTR = "PI.HOLE"
@@ -140,7 +139,7 @@
   bogusPriv = true
 
   # Validate DNS replies using DNSSEC?
-  dnssec = true
+  dnssec = true ### CHANGED, default = false
 
   # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)
   #
@@ -197,11 +196,10 @@
   # given, it overwrites the value of local-ttl
   #
   # Possible values are:
-  #     Array of static leases each on in one of the following forms:
-  #     "<cname>,<target>[,<TTL>]"
+  #     Array of CNAMEs each on in one of the following forms: "<cname>,<target>[,<TTL>]"
   cnameRecords = [
-    "brücke.com,äste.com,2",
-  ]
+    "brücke.com,äste.com,2"
+  ] ### CHANGED, default = []
 
   # Port used by the DNS server
   port = 53
@@ -225,7 +223,10 @@
   # <domain>: Domain used for the reverse server feature (e.g., "fritz.box")
   # Example: "fritz.box"
   #
-  # A valid line could look like this: "true,192.168.0.0/24,192.168.0.1,fritz.box"
+  # Possible values are:
+  #     array of reverse servers each one in one of the following forms:
+  #     "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>", e.g.,
+  #     "true,192.168.0.0/24,192.168.0.1,fritz.box"
   revServers = []
 
   [dns.cache]
@@ -239,11 +240,15 @@
     # expired only recently, the data will be used anyway (a refreshing from upstream is
     # triggered). This can improve DNS query delays especially over unreliable Internet
     # connections. This feature comes at the expense of possibly sometimes returning
-    # out-of-date data and less efficient cache utilisation, since old data cannot be
+    # out-of-date data and less efficient cache utilization, since old data cannot be
     # flushed when its TTL expires, so the cache becomes mostly least-recently-used. To
     # mitigate issues caused by massively outdated DNS replies, the maximum overaging of
     # cached records is limited. We strongly recommend staying below 86400 (1 day) with
     # this option.
+    # Setting the TTL excess time to zero will serve stale cache data regardless how long
+    # it has expired. This is not recommended as it may lead to stale data being served
+    # for a long time. Setting this option to any negative value will disable this feature
+    # altogether.
     optimizer = 3600
 
   [dns.blocking]
@@ -259,7 +264,7 @@
     #       (0.0.0.0 or ::). The "unspecified address" is a reserved IP address specified
     #       by RFC 3513 - Internet Protocol Version 6 (IPv6) Addressing Architecture,
     #       section 2.5.2.
-    #   - "IP-NODATA-AAAA"
+    #   - "IP_NODATA_AAAA"
     #       In IP-NODATA-AAAA mode, blocked queries will be answered with the local IPv4
     #       addresses of your Pi-hole. Blocked AAAA queries will be answered with
     #       NODATA-IPV6 and clients will only try to reach your Pi-hole over its static
@@ -267,7 +272,7 @@
     #   - "IP"
     #       In IP mode, blocked queries will be answered with the local IP addresses of
     #       your Pi-hole.
-    #   - "NXDOMAIN"
+    #   - "NX"
     #       In NXDOMAIN mode, blocked queries will be answered with an empty response
     #       (i.e., there won't be an answer section) and status NXDOMAIN. A NXDOMAIN
     #       response should indicate that there is no such domain to the client making the
@@ -300,21 +305,21 @@
       # "pi.hole.<local domain>", "<the device's hostname>.<local domain>" ]
       force4 = true ### CHANGED, default = false
 
-      # Use a specific IPv6 address for the Pi-hole host? See description for the IPv4
-      # variant above for further details.
-      force6 = true ### CHANGED, default = false
-
       # Custom IPv4 address for the Pi-hole host
       #
       # Possible values are:
       #     <valid IPv4 address> or empty string ("")
-      IPv4 = "10.100.0.10" ### CHANGED, default = "0.0.0.0"
+      IPv4 = "10.100.0.10" ### CHANGED, default = ""
+
+      # Use a specific IPv6 address for the Pi-hole host? See description for the IPv4
+      # variant above for further details.
+      force6 = true ### CHANGED, default = false
 
       # Custom IPv6 address for the Pi-hole host
       #
       # Possible values are:
       #     <valid IPv6 address> or empty string ("")
-      IPv6 = "fe80::10" ### CHANGED, default = "::"
+      IPv6 = "fe80::10" ### CHANGED, default = ""
 
     [dns.reply.blocking]
       # Use a specific IPv4 address in IP blocking mode? By default, FTL determines the
@@ -325,26 +330,26 @@
       # blocked, regular expressions with the ;reply=IP regex extension.
       force4 = true ### CHANGED, default = false
 
-      # Use a specific IPv6 address in IP blocking mode? See description for the IPv4 variant
-      # above for further details.
-      force6 = true ### CHANGED, default = false
-
       # Custom IPv4 address for IP blocking mode
       #
       # Possible values are:
       #     <valid IPv4 address> or empty string ("")
-      IPv4 = "10.100.0.11" ### CHANGED, default = "0.0.0.0"
+      IPv4 = "10.100.0.11" ### CHANGED, default = ""
+
+      # Use a specific IPv6 address in IP blocking mode? See description for the IPv4 variant
+      # above for further details.
+      force6 = true ### CHANGED, default = false
 
       # Custom IPv6 address for IP blocking mode
       #
       # Possible values are:
       #     <valid IPv6 address> or empty string ("")
-      IPv6 = "fe80::11" ### CHANGED, default = "::"
+      IPv6 = "fe80::11" ### CHANGED, default = ""
 
   [dns.rateLimit]
     # Rate-limited queries are answered with a REFUSED reply and not further processed by
     # FTL.
-    #The default settings for FTL's rate-limiting are to permit no more than 1000 queries
+    # The default settings for FTL's rate-limiting are to permit no more than 1000 queries
     # in 60 seconds. Both numbers can be customized independently. It is important to note
     # that rate-limiting is happening on a per-client basis. Other clients can continue to
     # use FTL while rate-limited clients are short-circuited at the same time.
@@ -377,32 +382,33 @@
   # Start address of the DHCP address pool
   #
   # Possible values are:
-  #     <ip-addr>, e.g., "192.168.0.10"
+  #     <valid IPv4 address> or empty string (""), e.g., "192.168.0.10"
   start = ""
 
   # End address of the DHCP address pool
   #
   # Possible values are:
-  #     <ip-addr>, e.g., "192.168.0.250"
+  #     <valid IPv4 address> or empty string (""), e.g., "192.168.0.250"
   end = ""
 
   # Address of the gateway to be used (typically the address of your router in a home
   # installation)
   #
   # Possible values are:
-  #     <ip-addr>, e.g., "192.168.0.1"
+  #     <valid IPv4 address> or empty string (""), e.g., "192.168.0.1"
   router = ""
 
   # The netmask used by your Pi-hole. For directly connected networks (i.e., networks on
   # which the machine running Pi-hole has an interface) the netmask is optional and may
-  # be set to "0.0.0.0": it will then be determined from the interface configuration
-  # itself. For networks which receive DHCP service via a relay agent, we cannot
-  # determine the netmask itself, so it should explicitly be specified, otherwise
+  # be set to an empty string (""): it will then be determined from the interface
+  # configuration itself. For networks which receive DHCP service via a relay agent, we
+  # cannot determine the netmask itself, so it should explicitly be specified, otherwise
   # Pi-hole guesses based on the class (A, B or C) of the network address.
   #
   # Possible values are:
-  #     <any valid netmask>, e.g., "255.255.255.0" or "0.0.0.0" for auto-discovery
-  netmask = "0.0.0.0"
+  #     <any valid netmask> (e.g., "255.255.255.0") or empty string ("") for
+  #     auto-discovery
+  netmask = ""
 
   # If the lease time is given, then leases will be given for that length of time. If not
   # given, the default lease time is one hour for IPv4 and one day for IPv6.
@@ -432,6 +438,18 @@
   # any). This can be useful for debugging DHCP issues. The generated output is saved to
   # the file specified by files.log.dnsmasq below.
   logging = false
+
+  # Ignore unknown DHCP clients.
+  # If this option is set, Pi-hole ignores all clients which are not explicitly
+  # configured through dhcp.hosts. This can be useful to prevent unauthorized clients
+  # from getting an IP address from the DHCP server.
+  # It should be noted that this option is not a security feature, as clients can still
+  # assign themselves an IP address and use the network. It is merely a convenience
+  # feature to prevent unknown clients from getting a valid IP configuration assigned
+  # automatically.
+  # Note that you will need to configure new clients manually in dhcp.hosts before they
+  # can use the network when this feature is enabled.
+  ignoreUnknownClients = false
 
   # Per host parameters for the DHCP server. This allows a machine with a particular
   # hardware address to be always allocated the same hostname, IP address and lease time
@@ -471,10 +489,11 @@
 
   # Control whether FTL should use the fallback option to try to obtain client names from
   # checking the network table. This behavior can be disabled with this option.
-  #Assume an IPv6 client without a host names. However, the network table knows - though
-  # the client's MAC address - that this is the same device where we have a host name
-  # for another IP address (e.g., a DHCP server managed IPv4 address). In this case, we
-  # use the host name associated to the other address as this is the same device.
+  # Assume an IPv6 client without a host names. However, the network table knows -
+  # though the client's MAC address - that this is the same device where we have a host
+  # name for another IP address (e.g., a DHCP server managed IPv4 address). In this
+  # case, we use the host name associated to the other address as this is the same
+  # device.
   networkNames = false ### CHANGED, default = true
 
   # With this option, you can change how (and if) hourly PTR requests are made to check
@@ -505,8 +524,7 @@
   DBimport = true
 
   # How long should queries be stored in the database [days]?
-  # Setting this to 0 disables exporting queries to the database.
-  maxDBdays = 365
+  maxDBdays = 91
 
   # How often do we store queries in FTL's database [seconds]?
   DBinterval = 60
@@ -528,7 +546,7 @@
     # How long should IP addresses be kept in the network_addresses table [days]? IP
     # addresses (and associated host names) older than the specified number of days are
     # removed to avoid dead entries in the network overview table.
-    expire = 365
+    expire = 91
 
 [webserver]
   # On which domain is the web interface served?
@@ -593,7 +611,7 @@
     # the total number of concurrent sessions is limited so setting this value too high
     # may result in users being rejected and unable to log in if there are already too
     # many sessions active.
-    timeout = 300
+    timeout = 300 ### CHANGED, default = 1800
 
     # Should Pi-hole backup and restore sessions from the database? This is useful if you
     # want to keep your sessions after a restart of the web interface.
@@ -619,7 +637,7 @@
     #
     # Possible values are:
     #     <valid TLS certificate file (*.pem)>
-    cert = "/etc/pihole/test.pem"
+    cert = "/etc/pihole/test.pem" ### CHANGED, default = "/etc/pihole/tls.pem"
 
   [webserver.paths]
     # Server root on the host
@@ -642,23 +660,24 @@
     #
     # Possible values are:
     #   - "default-auto"
-    #       Pi-hole auto theme (light/dark, default)
+    #       Pi-hole auto
     #   - "default-light"
-    #       Pi-hole day theme (light)
+    #       Pi-hole day
     #   - "default-dark"
-    #       Pi-hole midnight theme (dark)
+    #       Pi-hole midnight
     #   - "default-darker"
-    #       Pi-hole deep-midnight theme (dark)
+    #       Pi-hole deep-midnight
     #   - "high-contrast"
-    #       High-contrast theme (light)
+    #       High-contrast light
     #   - "high-contrast-dark"
-    #       High-contrast theme (dark)
+    #       High-contrast dark
     #   - "lcars"
-    #       Star Trek LCARS theme (dark)
+    #       Star Trek LCARS
     theme = "default-auto"
 
   [webserver.api]
-    # Does local clients need to authenticate to access the API?
+    # Do local clients need to authenticate to access the API? This settings allows local
+    # clients to use the API without authentication.
     localAPIauth = true
 
     # Do local clients need to authenticate to access the search API? This settings allows
@@ -728,13 +747,15 @@
     #     array of regular expressions describing domains
     excludeDomains = []
 
-    # How much history should be imported from the database [seconds]? (max 24*60*60 =
-    # 86400)
+    # How much history should be imported from the database and returned by the API
+    # [seconds]? (max 24*60*60 = 86400)
     maxHistory = 86400
 
     # Up to how many clients should be returned in the activity graph endpoint
     # (/api/history/clients)?
-    # This setting can be overwritten at run-time using the parameter N
+    # This setting can be overwritten at run-time using the parameter N. Setting this to 0
+    # will always send all clients. Be aware that this may be challenging for the GUI if
+    # you have many (think > 1.000 clients) in your network
     maxClients = 10
 
     # How should the API compute the most active clients? If set to true, the API will
@@ -785,7 +806,7 @@
   # directory must be writable by the user running gravity (typically pihole).
   #
   # Possible values are:
-  #     <any world-writable writable directory>
+  #     <any existing world-writable writable directory>
   gravity_tmp = "/tmp"
 
   # The database containing MAC -> Vendor information for the network table
@@ -794,7 +815,7 @@
   #     <any Pi-hole macvendor database>
   macvendor = "/etc/pihole/macvendor.db"
 
-  # The config file of Pi-hole
+  # The old config file of Pi-hole used before v6.0
   #
   # Possible values are:
   #     <any Pi-hole setupVars file>
@@ -832,11 +853,11 @@
 
 [misc]
   # Using privacy levels you can specify which level of detail you want to see in your
-  # Pi-hole statistics.
+  # Pi-hole statistics. Changing this setting will trigger a restart of FTL
   #
   # Possible values are:
   #   - 0
-  #       Doesn't hide anything, all statistics are available.
+  #       Don't hide anything, all statistics are available.
   #   - 1
   #       Hide domains. This setting disables Top Domains and Top Ads
   #   - 2
@@ -861,7 +882,7 @@
   # CPU scheduler to favor or disfavor a process in scheduling decisions. The range of
   # the nice value varies across UNIX systems. On modern Linux, the range is -20 (high
   # priority = not very nice to other processes) to +19 (low priority).
-  nice = -999 ### CHANGED, default = -10
+  nice = -11 ### CHANGED (env), default = -10
 
   # Should FTL translate its own stack addresses into code lines during the bug
   # backtrace? This improves the analysis of crashed significantly. It is recommended to
@@ -873,11 +894,15 @@
   # Should FTL load additional dnsmasq configuration files from /etc/dnsmasq.d/?
   etc_dnsmasq_d = true ### CHANGED, default = false
 
-  # Additional lines to inject into the generated dnsmasq configuration. Warning: This is
-  # an advanced setting and should only be used with care. Incorrectly formatted or
-  # duplicated lines as well as lines conflicting with the automatic configuration of
-  # Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.
+  # Additional lines to inject into the generated dnsmasq configuration.
+  # Warning: This is an advanced setting and should only be used with care. Incorrectly
+  # formatted or duplicated lines as well as lines conflicting with the automatic
+  # configuration of Pi-hole can break the embedded dnsmasq and will stop DNS resolution
+  # from working.
   # Use this option with extra care.
+  #
+  # Possible values are:
+  #     array of valid dnsmasq config line options
   dnsmasq_lines = []
 
   # Log additional information about queries and replies to pihole.log
@@ -957,7 +982,7 @@
   # when debugging specific API issues and can be helpful, e.g., when a client cannot
   # connect due to an obscure API error. Furthermore, this setting enables logging of
   # all API requests (auth log) and details about user authentication attempts.
-  api = true ### CHANGED, default = false
+  api = true ### CHANGED (env), default = false
 
   # Print extra debugging information about TLS connections. This includes the TLS
   # version, the cipher suite, the certificate chain and much more. This very verbose
@@ -1017,7 +1042,7 @@
   # Debug monitoring of /etc/pihole filesystem events
   inotify = true ### CHANGED, default = false
 
-  # Logging of webserver (CivetWeb) debug messages
+  # Debug monitoring of the webserver (CivetWeb) events
   webserver = true ### CHANGED, default = false
 
   # Temporary flag that may print additional information. This debug flag is meant to be
@@ -1033,3 +1058,9 @@
   # *remaining* debug flags but unsetting it will disable *all* debug flags.
   all = true ### CHANGED, default = false
 
+# Configuration statistics:
+# 136 total entries out of which 82 entries are default
+# --> 54 entries are modified
+# 2 entries are forced through environment:
+#   - misc.nice
+#   - debug.api

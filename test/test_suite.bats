@@ -1,30 +1,13 @@
 #!./test/libs/bats/bin/bats
 
-#@test "Version, Tag, Branch, Hash, Date is reported" {
-#  run bash -c 'echo ">version >quit" | nc -v 127.0.0.1 4711'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[1]} == "version "* ]]
-#  [[ ${lines[2]} == "tag "* ]]
-#  [[ ${lines[3]} == "branch "* ]]
-#  [[ ${lines[4]} == "hash "* ]]
-#  [[ ${lines[5]} == "date "* ]]
-#  [[ ${lines[6]} == "" ]]
-#}
-#
-#@test "DNS server port is reported over Telnet API" {
-#  run bash -c 'echo ">dns-port >quit" | nc -v 127.0.0.1 4711'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[1]} == "53" ]]
-#  [[ ${lines[2]} == "" ]]
-#}
-#
-#@test "Maxlogage value is reported over Telnet API" {
-#  run bash -c 'echo ">maxlogage >quit" | nc -v 127.0.0.1 4711'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[1]} == "86400" ]]
-#  [[ ${lines[2]} == "" ]]
-#}
-#
+@test "Compare template and test TOML config files" {
+  # We skip the first 5 lines of the files as they contain the version and
+  # timestamp of the file creation/modification
+  run bash -c 'diff <(tail -n +6 test/pihole.toml) <(tail -n +6 /etc/pihole/pihole.toml)'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == "" ]]
+}
+
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "./pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
@@ -1313,10 +1296,9 @@
 
 @test "Environmental variable is favored over config file" {
   # The config file has -10 but we set FTLCONF_misc_nice="-11"
-  run bash -c 'grep -B1 "nice = -11" /etc/pihole/pihole.toml'
+  run bash -c 'grep "nice = -11" /etc/pihole/pihole.toml'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "  # >>> This config is overwritten by an environmental variable <<<" ]]
-  [[ ${lines[1]} == "  nice = -11 ### CHANGED, default = -10" ]]
+  [[ ${lines[0]} == "  nice = -11 ### CHANGED (env), default = -10" ]]
 }
 
 @test "Correct number of environmental variables is logged" {
@@ -1724,11 +1706,26 @@
   [[ ${lines[0]} == "ce4c01340ef46bf3bc26831f7c53763d57c863528826aa795f1da5e16d6e7b2d  test/test.pem" ]]
 }
 
-@test "Internal IP -> name resolution works" {
+@test "Internal IP -> name resolution works (UDP IPv4)" {
   run bash -c "./pihole-FTL ptr 127.0.0.1 | tail -n1"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "localhost" ]]
+}
+
+@test "Internal IP -> name resolution works (UDP IPv6)" {
   run bash -c "./pihole-FTL ptr ::1 | tail -n1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "localhost" ]]
+}
+
+@test "Internal IP -> name resolution works (TCP IPv4)" {
+  run bash -c "./pihole-FTL ptr 127.0.0.1 tcp | tail -n1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "localhost" ]]
+}
+
+@test "Internal IP -> name resolution works (TCP IPv6)" {
+  run bash -c "./pihole-FTL ptr ::1 tcp | tail -n1"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "localhost" ]]
 }
@@ -1787,10 +1784,10 @@
 @test "Expected number of config file rotations" {
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "3" ]]
+  [[ ${lines[0]} == "2" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: pihole.toml unchanged" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "3" ]]
+  [[ ${lines[0]} == "4" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]

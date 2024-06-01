@@ -785,6 +785,13 @@ void initConfig(struct config *conf)
 	conf->dhcp.logging.d.b = false;
 	conf->dhcp.logging.c = validate_stub; // Only type-based checking
 
+	conf->dhcp.ignoreUnknownClients.k = "dhcp.ignoreUnknownClients";
+	conf->dhcp.ignoreUnknownClients.h = "Ignore unknown DHCP clients.\n If this option is set, Pi-hole ignores all clients which are not explicitly configured through dhcp.hosts. This can be useful to prevent unauthorized clients from getting an IP address from the DHCP server.\n It should be noted that this option is not a security feature, as clients can still assign themselves an IP address and use the network. It is merely a convenience feature to prevent unknown clients from getting a valid IP configuration assigned automatically.\n Note that you will need to configure new clients manually in dhcp.hosts before they can use the network when this feature is enabled.";
+	conf->dhcp.ignoreUnknownClients.t = CONF_BOOL;
+	conf->dhcp.ignoreUnknownClients.f = FLAG_RESTART_FTL;
+	conf->dhcp.ignoreUnknownClients.d.b = false;
+	conf->dhcp.ignoreUnknownClients.c = validate_stub; // Only type-based checking
+
 	conf->dhcp.hosts.k = "dhcp.hosts";
 	conf->dhcp.hosts.h = "Per host parameters for the DHCP server. This allows a machine with a particular hardware address to be always allocated the same hostname, IP address and lease time or to specify static DHCP leases";
 	conf->dhcp.hosts.a = cJSON_CreateStringReference("Array of static leases each on in one of the following forms: \"[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]\"");
