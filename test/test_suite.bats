@@ -1,30 +1,13 @@
 #!./test/libs/bats/bin/bats
 
-#@test "Version, Tag, Branch, Hash, Date is reported" {
-#  run bash -c 'echo ">version >quit" | nc -v 127.0.0.1 4711'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[1]} == "version "* ]]
-#  [[ ${lines[2]} == "tag "* ]]
-#  [[ ${lines[3]} == "branch "* ]]
-#  [[ ${lines[4]} == "hash "* ]]
-#  [[ ${lines[5]} == "date "* ]]
-#  [[ ${lines[6]} == "" ]]
-#}
-#
-#@test "DNS server port is reported over Telnet API" {
-#  run bash -c 'echo ">dns-port >quit" | nc -v 127.0.0.1 4711'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[1]} == "53" ]]
-#  [[ ${lines[2]} == "" ]]
-#}
-#
-#@test "Maxlogage value is reported over Telnet API" {
-#  run bash -c 'echo ">maxlogage >quit" | nc -v 127.0.0.1 4711'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[1]} == "86400" ]]
-#  [[ ${lines[2]} == "" ]]
-#}
-#
+@test "Compare template and test TOML config files" {
+  # We skip the first 5 lines of the files as they contain the version and
+  # timestamp of the file creation/modification
+  run bash -c 'diff <(tail -n +6 test/pihole.toml) <(tail -n +6 /etc/pihole/pihole.toml)'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == "" ]]
+}
+
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
@@ -1793,10 +1776,10 @@
 @test "Expected number of config file rotations" {
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "3" ]]
+  [[ ${lines[0]} == "2" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: pihole.toml unchanged" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "3" ]]
+  [[ ${lines[0]} == "4" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
