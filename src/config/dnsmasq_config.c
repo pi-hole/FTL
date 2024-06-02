@@ -588,14 +588,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			fputs("# Add NTP server to DHCP\n", pihole_conf);
 			// The special address 0.0.0.0 is taken to mean "the
 			// address of the machine running the DHCP server"
-			fputs("dhcp-option=option:ntp-server,0.0.0.0", pihole_conf);
+			fputs("dhcp-option=option:ntp-server,0.0.0.0\n\n", pihole_conf);
 		}
-	
+
 		// Add option to ignore unknown clients if enabled
 		if(conf->dhcp.ignoreUnknownClients.v.b)
 		{
 			fputs("# Ignore clients not configured below\n", pihole_conf);
-			fputs("dhcp-ignore=tag:!known\n", pihole_conf);
+			fputs("dhcp-ignore=tag:!known\n\n", pihole_conf);
 		}
 
 		// Add per-host parameters
