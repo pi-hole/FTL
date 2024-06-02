@@ -27,6 +27,13 @@ extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
 
 bool writeFTLtoml(const bool verbose)
 {
+	// Return early without writing if we are in config read-only mode
+	if(config.misc.readOnly.v.b)
+	{
+		log_debug(DEBUG_CONFIG, "Config file is read-only, not writing");
+		return true;
+	}
+
 	// Try to open a temporary config file for writing
 	FILE *fp;
 	if((fp = openFTLtoml("w", 0)) == NULL)

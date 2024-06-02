@@ -893,6 +893,12 @@
   # debugging and is not recommended for normal use.
   extraLogging = false
 
+  # Put configuration into read-only mode. This will prevent any changes to the
+  # configuration file via the API or CLI. This setting useful when a configuration is
+  # to be forced/modified by some third-party application (like infrastructure-as-code
+  # providers) and should not be changed by any means.
+  readOnly = false
+
   [misc.check]
     # Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you
     # should run Pi-hole on a server that is otherwise extremely busy as queuing on the
@@ -1039,7 +1045,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 136 total entries out of which 82 entries are default
+# 137 total entries out of which 83 entries are default
 # --> 54 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

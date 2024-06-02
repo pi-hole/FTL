@@ -670,6 +670,16 @@ static int api_config_patch(struct ftl_conn *api)
 		                       NULL);
 	}
 
+	// Return early if the user tries to change some settings but the config
+	// is in read-only mode
+	if(config.misc.readOnly.v.b)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "The config is currently in read-only mode",
+		                       NULL);
+	}
+
 	// Read all known config items
 	bool config_changed = false;
 	bool dnsmasq_changed = false;
@@ -694,6 +704,16 @@ static int api_config_patch(struct ftl_conn *api)
 		{
 			log_debug(DEBUG_CONFIG, "%s not in JSON payload", new_item->k);
 			continue;
+		}
+
+		if(new_item->f & FLAG_READ_ONLY && cJSON_IsBool(elem) && elem->valueint == 1)
+		{
+			char *key = strdup(new_item->k);
+			free_config(&newconf);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "This config option can only be set in pihole.toml, not via the API",
+			                            key, true);
 		}
 
 		// Check if this is a write-only config item with the placeholder value

@@ -1238,6 +1238,13 @@ void initConfig(struct config *conf)
 	conf->misc.extraLogging.d.b = false;
 	conf->misc.extraLogging.c = validate_stub; // Only type-based checking
 
+	conf->misc.readOnly.k = "misc.readOnly";
+	conf->misc.readOnly.h = "Put configuration into read-only mode. This will prevent any changes to the configuration file via the API or CLI. This setting useful when a configuration is to be forced/modified by some third-party application (like infrastructure-as-code providers) and should not be changed by any means.";
+	conf->misc.readOnly.t = CONF_BOOL;
+	conf->misc.readOnly.f = FLAG_READ_ONLY;
+	conf->misc.readOnly.d.b = false;
+	conf->misc.readOnly.c = validate_stub; // Only type-based checking
+
 	// sub-struct misc.check
 	conf->misc.check.load.k = "misc.check.load";
 	conf->misc.check.load.h = "Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you should run Pi-hole on a server that is otherwise extremely busy as queuing on the system can lead to unnecessary delays in DNS operation as the system becomes less and less usable as the system load increases because all resources are permanently in use. To account for this, FTL regularly checks the system load. To bring this to your attention, FTL warns about excessive load when the 15 minute system load average exceeds the number of cores.\n This check can be disabled with this setting.";
