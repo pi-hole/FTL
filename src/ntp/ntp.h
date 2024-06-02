@@ -25,6 +25,10 @@ bool ntp_server_start(void);
 // Start NTP client
 bool ntp_client(const char *server, const bool settime);
 
+// Number of NTP queries to average. The more queries, the more accurate the
+// time, but the longer it takes to synchronize. The minimum is 1.
+#define NTP_AVERGAGE_COUNT 8
+
 // number of seconds between 1900 and 1970 (MSB=1)
 #define DIFF_SEC_1900_1970         (2208988800UL)
 // number of seconds between 1970 and Feb 7, 2036 (6:28:16 UTC) (MSB=0)

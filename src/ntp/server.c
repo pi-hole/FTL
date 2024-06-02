@@ -84,8 +84,10 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 	// Copy Poll value from client
 	send_buf[2] = recv_buf[2];
 
-	// Precision (log2(1e-6) = -19.931568569324174)
-	send_buf[3] = (signed char)(-19);
+	// Precision: the precision of the  local clock, in seconds to the
+	// nearest power of two.
+	// log2(1 usec = 1e-6 s) = -19.931568569324174
+	send_buf[3] = (signed char)(-20);
 
 	// Advance 32 bit pointer to the next field
 	u32p++;
@@ -98,9 +100,11 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 //      |                         Root Dispersion                       |
 //      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-	/* zur Vereinfachung , Root Delay = 0, Root Dispersion = 0 */
-	*u32p++ = 0;
-	*u32p++ = 0;
+	// Assume Root Delay (total roundtrip delay to the primary reference
+	// source) = 0, Root Dispersion (the nominal error relative to the
+	// primary reference source) = 0 as we don't have these numbers
+	*u32p++ = 0.0;
+	*u32p++ = 0.0;
 
 //       0                   1                   2                   3
 //       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -124,20 +128,12 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 	// Time when the system clock was last set or corrected, in NTP
 	// timestamp format. As this is not a stratum 1 server, we don't have
 	// a hardware clock to set this value.
-#ifdef MOCK_REFTIME
-	// Mock this timestamp with the current time of the server minus 1
-	// minute.
-	const uint64_t ref_time = gettime64() - 60 * 1000000;
-	const uint64_t net_ref_time = hton64(ref_time);
-	memcpy(u32p, &net_ref_time, sizeof(uint64_t));
-	u32p += 2;
-#else
 	// A stateless server copies T3 and T4 from the client packet to T1 and
 	// T2 of the server packet and tacks on the transmit timestamp T3 before
 	// sending it to the client.
 	memcpy(u32p, &u32r[8], sizeof(uint64_t));
 	u32p += 2;
-#endif
+
 //       0                   1                   2                   3
 //       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 //      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
