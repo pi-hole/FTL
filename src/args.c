@@ -308,13 +308,17 @@ void parse_args(int argc, char* argv[])
 	}
 
 	// Create test NTP client
-	if((argc == 2 || argc == 3) && strcmp(argv[1], "ntp-client") == 0)
+	if((argc > 1 && argc < 5) && strcmp(argv[1], "ntp") == 0)
 	{
 		// Enable stdout printing
 		cli_mode = true;
 		log_ctrl(false, true);
-		const char *server = argc == 3 ? argv[2] : "127.0.0.1";
-		exit(ntp_client(server) ? EXIT_SUCCESS : EXIT_FAILURE);
+		const bool update = (argc > 2 && strcmp(argv[2], "--update") == 0) ||
+		                    (argc > 3 && strcmp(argv[3], "--update") == 0);
+		const char *server = "127.0.0.1";
+		if(argc > 2 && strcmp(argv[2], "--update") != 0)
+			server = argv[2];
+		exit(ntp_client(server, update) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Import teleporter archive through CLI
@@ -1029,12 +1033,18 @@ void parse_args(int argc, char* argv[])
 			printf("    Encoding: %spihole-FTL idn2 %sdomain%s\n", green, cyan, normal);
 			printf("    Decoding: %spihole-FTL idn2 -d %spunycode%s\n\n", green, cyan, normal);
 
+			printf("%sNTP client:%s\n", yellow, normal);
+			printf("    Query an NTP server for the current time and print the\n");
+			printf("    result in human-readable format. An optional %sserver%s may be\n", cyan, normal);
+			printf("    as argument. If the server is omitted, 127.0.0.1 is used.\n\n");
+			printf("    The system time is updated on the system when the optional\n");
+			printf("    %s--update%s flag is given.\n\n", purple, normal);
+			printf("    Usage: %spihole-FTL ntp %s[server]%s %s[--update]%s\n\n", green, cyan, normal, purple, normal);
+
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sptr %sIP%s %s[tcp]%s        Resolve IP address to hostname\n", green, cyan, normal, purple, normal);
 			printf("\t                    Append %stcp%s to use TCP instead of UDP\n", purple, normal);
 			printf("\t%ssha256sum %sfile%s      Calculate SHA256 checksum of a file\n", green, cyan, normal);
-			printf("\t%sntp-client %s[server]%s Request network time from %sserver%s\n", green, cyan, normal, cyan, normal);
-			printf("\t                    defaults to 127.0.0.1 if omitted\n");
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
 			printf("\t%sarp-scan %s[-a/-x]%s    Use ARP to scan local network for\n", green, cyan, normal);

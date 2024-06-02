@@ -29,8 +29,6 @@
 #include <errno.h>
 // ctime()
 #include <time.h>
-// log2()
-#include <math.h>
 // pthread_create
 #include <pthread.h>
 // PR_SET_NAME
@@ -40,33 +38,17 @@
 #include "log.h"
 #include "config/config.h"
 
-// Retrieves the current system time, adjusts it to a 1900 epoch, converts it to
-// a 32-bit fraction of a second, and optionally converts it to network byte
-// order.
-void gettime32(uint32_t tv[], const bool netorder)
+// RFC 5905 Appendix A.4: Kernel System Clock Interface
+uint64_t gettime64(void)
 {
-	struct timespec ts;
-	// CLOCK_REALTIME is the system-wide realtime clock.
-	// It is both affected by discontinuous jumps in the system time (e.g.,
-	// if the system administrator manually changes the clock), and by the
-	// incremental adjustments performed by adjtime(3) and NTP.
-	clock_gettime(CLOCK_REALTIME, &ts);
-
-	// Set the epoch to 1900 (add seconds from 1900 to 1970)
-	tv[0] = ts.tv_sec + 2208988800ULL;
-	// Convert microseconds to 32 bit fraction of a second
-	tv[1] = (ts.tv_nsec * 0x100000000ULL) / 1000000000ULL;
-
-	if (netorder)
-	{
-		tv[0] = htonl(tv[0]);
-		tv[1] = htonl(tv[1]);
-	}
+	struct timeval unix_time;
+	gettimeofday(&unix_time, NULL);
+	return (U2LFP(unix_time));
 }
 
 // Create and send an NTP reply to the client
 static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const socklen_t saddrlen,
-                     const unsigned char recv_buf[], const uint32_t recv_time[2])
+                     const unsigned char recv_buf[], const uint64_t *recv_time)
 {
 	// Buffer for the response
 	unsigned char send_buf[48];
@@ -102,13 +84,8 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 	// Copy Poll value from client
 	send_buf[2] = recv_buf[2];
 
-	// Precision in Nanoseconds from CLOCK_REALTIME
-	struct timespec ts;
-	clock_getres(CLOCK_REALTIME, &ts);
-	// Precision in log2 seconds
-	signed char precision = (signed char)(1.0*log2(1e-9*ts.tv_nsec));
-	// Precision in log2 seconds
-	send_buf[3] = precision;
+	// Precision (log2(1e-6) = -19.931568569324174)
+	send_buf[3] = (signed char)(-19);
 
 	// Advance 32 bit pointer to the next field
 	u32p++;
@@ -143,23 +120,23 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 //      +                     Reference Timestamp (64)                  +
 //      |                                                               |
 //      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
 	// Time when the system clock was last set or corrected, in NTP
 	// timestamp format. As this is not a stratum 1 server, we don't have
 	// a hardware clock to set this value.
 #ifdef MOCK_REFTIME
 	// Mock this timestamp with the current time of the server minus 1
 	// minute.
-	uint32_t ref_time[2];
-	gettime32(ref_time, true);
-	ref_time[0] = ref_time[0] - htonl(60);  // subtract 60 seconds
-	memcpy(u32p, ref_time, 2 * sizeof(uint32_t));
+	const uint64_t ref_time = gettime64() - 60 * 1000000;
+	const uint64_t net_ref_time = hton64(ref_time);
+	memcpy(u32p, &net_ref_time, sizeof(uint64_t));
 	u32p += 2;
 #else
 	// A stateless server copies T3 and T4 from the client packet to T1 and
 	// T2 of the server packet and tacks on the transmit timestamp T3 before
 	// sending it to the client.
-	*u32p++ = u32r[8];
-	*u32p++ = u32r[9];
+	memcpy(u32p, &u32r[8], sizeof(uint64_t));
+	u32p += 2;
 #endif
 //       0                   1                   2                   3
 //       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -168,10 +145,11 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 //      +                      Origin Timestamp (64)                    +
 //      |                                                               |
 //      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
 	// Time at the client when the request departed for the server, in NTP
 	// timestamp format. (this is the client's transmit time)
-	*u32p++ = u32r[10];
-	*u32p++ = u32r[11];
+	memcpy(u32p, &u32r[10], sizeof(uint64_t));
+	u32p += 2;
 
 //       0                   1                   2                   3
 //       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -180,9 +158,11 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 //      +                      Receive Timestamp (64)                   +
 //      |                                                               |
 //      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
 	// Time at the server when the request arrived from the client, in NTP
 	// timestamp format. (this is the server's receive time)
-	memcpy(u32p, recv_time, 2 * sizeof(uint32_t));
+	const uint64_t net_recv_time = hton64(*recv_time);
+	memcpy(u32p, &net_recv_time, sizeof(uint64_t));
 	u32p += 2;
 
 //       0                   1                   2                   3
@@ -192,12 +172,13 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 //      +                      Transmit Timestamp (64)                  +
 //      |                                                               |
 //      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
 	// Time at the server when the response left for the client, in NTP
 	// timestamp format. (this is the server's transmit time)
-	uint32_t transmit_time[2];
-	gettime32(transmit_time, true);
-	memcpy(u32p, transmit_time, 2 * sizeof(uint32_t));
-	u32p += 2;
+	const uint64_t transmit_time = gettime64();
+	const uint64_t net_transmit_time = hton64(transmit_time);
+	memcpy(u32p, &net_transmit_time, sizeof(uint64_t));
+	// u32p += 2;
 
 //       0                   1                   2                   3
 //       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -245,18 +226,17 @@ static void request_process_loop(int fd, const char *ipstr, const int protocol)
 		socklen_t src_addrlen = sizeof(src_addr);
 		while(recvfrom(fd, buf, sizeof(buf), 0, &src_addr, &src_addrlen) < 48);  // ignore invalid requests
 
-		// Get the current time in NTP format
-		uint32_t recv_time[2];
-		gettime32(recv_time, true);
+		// Get the current time in NTP format directly after receiving
+		// the request
+		const uint64_t recv_time = gettime64();
 
 		struct sockaddr_in sin;
 		memcpy(&sin, &src_addr, sizeof(sin));
-		// printf("Request from %s\n", inet_ntoa(sin.sin_addr));
 
 		const pid_t pid = fork();
 		if (pid == 0) {
-			/* Child */
-			ntp_reply(fd, &src_addr , src_addrlen, buf, recv_time);
+			// Child
+			ntp_reply(fd, &src_addr , src_addrlen, buf, &recv_time);
 			exit(0);
 		} else if (pid == -1) {
 			log_err("fork() error");
@@ -265,18 +245,10 @@ static void request_process_loop(int fd, const char *ipstr, const int protocol)
 		// return to parent
 	}
 }
-/*
-// Wait for a child process to exit
-static void wait_wrapper(int _a)
-{
-	int s;
-	wait(&s);
-}*/
 
 // Start the NTP server
 static void *ntp_bind_and_listen(void *param)
 {
-//	signal(SIGCHLD, wait_wrapper);
 	const int protocol = param == 0 ? AF_INET : AF_INET6;
 
   	// Create a socket

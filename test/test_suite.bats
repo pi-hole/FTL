@@ -1360,7 +1360,7 @@
 }
 
 @test "Check NTP server is broadcasting correct time" {
-  run bash -c './pihole-FTL ntp-client 127.0.0.1'
+  run bash -c './pihole-FTL ntp 127.0.0.1'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }

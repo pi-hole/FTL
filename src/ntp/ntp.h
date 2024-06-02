@@ -16,12 +16,34 @@
 // bool
 #include <stdbool.h>
 
-//uint64_t gettime32(void);
-void gettime32(uint32_t ts[], const bool netorder);
-//uint64_t gettime64(void);
+// Get current time in NTP (64bit) format
+uint64_t gettime64(void);
 
+// Start NTP server
 bool ntp_server_start(void);
-bool ntp_client(const char *server);
+
+// Start NTP client
+bool ntp_client(const char *server, const bool settime);
+
+// number of seconds between 1900 and 1970 (MSB=1)
+#define DIFF_SEC_1900_1970         (2208988800UL)
+// number of seconds between 1970 and Feb 7, 2036 (6:28:16 UTC) (MSB=0)
+#define DIFF_SEC_1970_2036         (2085978496UL)
+
+// Timestamp conversion macroni (RFC 5905, Appendix A)
+#define FRAC       4294967296.               // 2^32 as double
+#define D2LFP(a)   ((uint64_t)((a) * FRAC))  // NTP timestamp
+#define LFP2D(a)   ((double)(a) / FRAC)
+#define U2LFP(a)   (((uint64_t)((a).tv_sec + DIFF_SEC_1900_1970) << 32) + (uint64_t) ((a).tv_usec / 1e6 * FRAC))
+
+// Convert NTP timestamp to seconds and microseconds
+//#define NTPtoSEC(x) (((x & 0x80000000) != 0) ? ((x >> 32) - DIFF_SEC_1900_1970) : ((x >> 32) + DIFF_SEC_1970_2036))
+#define NTPtoSEC(x) ((x >> 32) - DIFF_SEC_1900_1970)
+#define NTPtoUSEC(x) (suseconds_t)((LFP2D(x & 0xFFFFFFFF) * 1e6))
+
+// Convert uint64_t to network byte order and vice versa
+#define hton64(x) ((((uint64_t)htonl(x)) << 32) + htonl((x) >> 32))
+#define ntoh64(x) ((((uint64_t)ntohl(x)) << 32) + ntohl((x) >> 32))
 
 #endif // NTP_H
 

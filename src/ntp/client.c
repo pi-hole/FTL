@@ -25,13 +25,15 @@
 #include <time.h>
 // errno
 #include <errno.h>
+// PRIi64
+#include <inttypes.h>
 
 #include "ntp/ntp.h"
 #include "log.h"
 
 // Create minimal NTP request, see server implementation for details about the
 // packet structure
-static bool request(int fd, uint32_t org[2])
+static bool request(int fd, uint64_t *org)
 {
 	// NTP Packet buffer
 	unsigned char buf[48] = {0};
@@ -39,9 +41,14 @@ static bool request(int fd, uint32_t org[2])
 	// LI = 0, VN = 4 (current version), Mode = 3 (Client)
 	buf[0] = 0x23;
 
+	// Minimum poll interval (2^6 = 64 seconds)
+	buf[2] = 0x06;
+
 	// Set Origin Timestamp
-	gettime32(org, true);
-	memcpy(&buf[40], &org[0], 2 * sizeof(uint32_t));
+	*org = gettime64();
+	//memcpy(&buf[40], &org[0], 2 * sizeof(uint32_t));
+	const uint64_t norg = hton64(*org);
+	memcpy(&buf[40], &norg, sizeof(norg));
 
 	// Send request
 	if(send(fd, buf, 48, 0) != 48)
@@ -53,12 +60,10 @@ static bool request(int fd, uint32_t org[2])
 	return true;
 }
 
-static bool get_reply(int fd, uint32_t org_[2])
+static bool reply(int fd, uint64_t *org_, const bool settime)
 {
 	// NTP Packet buffer
 	unsigned char buf[48];
-	// NTP Packet buffer as uint32_t
-	uint32_t *pt = (uint32_t *)((void*)&buf[24]);;
 
 	// Receive reply
 	if(recv(fd, buf, 48, 0) < 48)
@@ -81,27 +86,24 @@ static bool get_reply(int fd, uint32_t org_[2])
 
 	// Extract Transmit Timestamp
 	// org = Origin Timestamp (Transmit Timestamp @ Client)
-	uint32_t org[2];
-	org[0] = ntohl(*pt++);
-	org[1] = ntohl(*pt++);
+	uint64_t netbuffer;
+	memcpy(&netbuffer, &buf[24], sizeof(netbuffer));
+	const uint64_t org = ntoh64(netbuffer);
 	// rec = Receive Timestamp (Receive Timestamp @ Server)
-	uint32_t rec[2];
-	rec[0] = ntohl(*pt++);
-	rec[1] = ntohl(*pt++);
+	memcpy(&netbuffer, &buf[32], sizeof(netbuffer));
+	const uint64_t rec = ntoh64(netbuffer);
 	// xmt = Transmit Timestamp (Transmit Timestamp @ Server)
-	uint32_t xmt[2];
-	xmt[0] = ntohl(*pt++);
-	xmt[1] = ntohl(*pt++);
+	memcpy(&netbuffer, &buf[40], sizeof(netbuffer));
+	const uint64_t xmt = ntoh64(netbuffer);
 
 	// dst = Destination Timestamp (Receive Timestamp @ Client)
-	uint32_t dst[2];
-	gettime32(dst, false);
+	uint64_t dst = gettime64();
 
 	// Check org_ and org are identical (otherwise, the reply corresponds to
 	// a different request and should be ignored), note that the byte order
 	// of the received packet is already converted while org_ is still in
 	// network byte order
-	if(ntohl(org_[0]) != org[0] || ntohl(org_[1]) != org[1])
+	if(*org_ != org)
 	{
 		log_warn("Received NTP reply does not match request");
 		return false;
@@ -115,11 +117,10 @@ static bool get_reply(int fd, uint32_t org_[2])
 	}
 
 	// Calculate delay and offset
-	const double tfrac = 4294967296.0; // 2^32 as double
-	const double T1 = org[0] + org[1] / tfrac;
-	const double T2 = rec[0] + rec[1] / tfrac;
-	const double T3 = xmt[0] + xmt[1] / tfrac;
-	const double T4 = dst[0] + dst[1] / tfrac;
+	const double T1 = org / FRAC;
+	const double T2 = rec / FRAC;
+	const double T3 = xmt / FRAC;
+	const double T4 = dst / FRAC;
 
 	// RFC 5905, Section 8: On-wire protocol
 	// It is recommended to use double precision floating point arithmetic
@@ -128,7 +129,9 @@ static bool get_reply(int fd, uint32_t org_[2])
 
 	// Compute offset of client clock relative to server clock
 	const double theta = ( ( T2 - T1 ) + ( T3 - T4 ) ) / 2;
-	// Compute round-trip delay
+	// Compute round-trip delay, which represents the delay of the packet
+	// passing through the network, which can be due switches and network
+	// technologies are highly variable
 	double delta = ( T4 - T1 ) - ( T3 - T2 );
 
 	// In some scenarios where the initial frequency offset of the client is
@@ -140,37 +143,78 @@ static bool get_reply(int fd, uint32_t org_[2])
 	// clamped not less than s.rho, where s.rho is the system precision
 	// described in Section 11.1, expressed in seconds.
 	if(delta < s_rho)
-	{
-		log_warn("Negative delay detected, clamping to 0");
 		delta = 0;
-	}
 
 	// Print current time at client
-	char client_time_str[26];
-	const time_t client_time = dst[0];
-	strncpy(client_time_str, ctime(&client_time), sizeof(client_time_str) -1);
-	// Remove trailing newline
-	client_time_str[24] = '\0';
+	char client_time_str[128];
+	struct timeval client_time;
+	client_time.tv_sec = NTPtoSEC(dst);
+	client_time.tv_usec = NTPtoUSEC(dst);
+	struct tm *client_tm = localtime(&client_time.tv_sec);
+	snprintf(client_time_str, sizeof(client_time_str), "%04i-%02i-%02i %02i:%02i:%02i.%06"PRIi64" %s",
+		client_tm->tm_year + 1900, client_tm->tm_mon + 1, client_tm->tm_mday,
+		client_tm->tm_hour, client_tm->tm_min, client_tm->tm_sec, client_time.tv_usec,
+		client_tm->tm_zone);
+	client_time_str[sizeof(client_time_str) - 1] = '\0';
 	log_info("Current time at client: %s", client_time_str);
 
 	// Print current time at server
-	char server_time_str[26];
-	const time_t server_time = xmt[0];
-	strncpy(server_time_str, ctime(&server_time), sizeof(server_time_str) -1);
-	// Remove trailing newline
-	server_time_str[24] = '\0';
+	char server_time_str[128];
+	struct timeval server_time;
+	server_time.tv_sec = NTPtoSEC(xmt);
+	server_time.tv_usec = NTPtoUSEC(xmt);
+	struct tm *server_tm = localtime(&server_time.tv_sec);
+	snprintf(server_time_str, sizeof(server_time_str), "%04i-%02i-%02i %02i:%02i:%02i.%06"PRIi64" %s",
+		server_tm->tm_year + 1900, server_tm->tm_mon + 1, server_tm->tm_mday,
+		server_tm->tm_hour, server_tm->tm_min, server_tm->tm_sec, server_time.tv_usec,
+		server_tm->tm_zone);
+	server_time_str[sizeof(server_time_str) - 1] = '\0';
 	log_info("Current time at server: %s", server_time_str);
 
 	// Print offset and delay
 	log_info("Time offset: %e s", theta);
 	log_info("Round-trip delay: %e s", delta);
 
+	// Set time if requested
+	if(settime)
+	{
+		// Get current time
+		struct timeval unix_time;
+		gettimeofday(&unix_time, NULL);
+
+		// Convert from double to native format (signed) and add to the
+		// current time.  Note the addition is done in native format to
+		// avoid overflow or loss of precision.
+		const uint64_t ntp_time = D2LFP(theta) + U2LFP(unix_time);
+
+		// Convert NTP to native format
+		unix_time.tv_sec = NTPtoSEC(ntp_time);
+		unix_time.tv_usec = NTPtoUSEC(ntp_time);
+
+		// Print new time
+		char new_time_str[128];
+		struct tm *new_time_tm = localtime(&unix_time.tv_sec);
+		snprintf(new_time_str, sizeof(new_time_str), "%04i-%02i-%02i %02i:%02i:%02i.%06"PRIi64" %s",
+			new_time_tm->tm_year + 1900, new_time_tm->tm_mon + 1, new_time_tm->tm_mday,
+			new_time_tm->tm_hour, new_time_tm->tm_min, new_time_tm->tm_sec, unix_time.tv_usec,
+			new_time_tm->tm_zone);
+		new_time_str[sizeof(new_time_str) - 1] = '\0';
+
+		// Set time
+		if(settimeofday(&unix_time, NULL) != 0)
+		{
+			log_warn("Failed to set time to %s: %s", new_time_str, strerror(errno));
+			return false;
+		}
+		log_info("Updated time at client: %s", new_time_str);
+	}
+
 	// Offset and delay larger than 0.1 seconds are considered as invalid
 	// during local testing
 	return theta < 0.1 && delta < 0.1;
 }
 
-bool ntp_client(const char *server)
+bool ntp_client(const char *server, const bool settime)
 {
 	const int protocol = strchr(server, ':') != NULL ? AF_INET6 : AF_INET;
 
@@ -212,15 +256,15 @@ bool ntp_client(const char *server)
 	freeaddrinfo(saddr);
 
 	// Send request
-	uint32_t org[2];
-	if(!request(s, org))
+	uint64_t org;
+	if(!request(s, &org))
 	{
 		close(s);
 		return false;
 	}
 
 	// Get reply
-	const bool status = get_reply(s, org);
+	const bool status = reply(s, &org, settime);
 	close(s);
 
 	return status;
