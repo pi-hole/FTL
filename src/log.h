@@ -19,7 +19,7 @@
 #include <stdint.h>
 
 #define DEBUG_ANY 0
-#define TIMESTR_SIZE 84
+#define TIMESTR_SIZE 128
 
 // Credit: https://stackoverflow.com/a/75116514
 #define LEFT(str, w) \

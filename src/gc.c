@@ -298,7 +298,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	if(config.debug.gc.v.b)
 	{
 		timer_start(GC_TIMER);
-		char timestring[TIMESTR_SIZE] = "";
+		char timestring[TIMESTR_SIZE];
 		get_timestr(timestring, mintime, false, false);
 		log_debug(DEBUG_GC, "GC starting, mintime: %s (%lu), counters->queries = %d",
 		          timestring, (unsigned long)mintime, counters->queries);

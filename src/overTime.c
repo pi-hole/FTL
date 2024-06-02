@@ -119,11 +119,11 @@ unsigned int _getOverTimeID(time_t timestamp, const char *file, const int line)
 		// This is definitely wrong. We warn about this (but only once)
 		if(!warned_about_hwclock)
 		{
-			char timestampStr[TIMESTR_SIZE] = "";
+			char timestampStr[TIMESTR_SIZE];
 			get_timestr(timestampStr, timestamp, false, false);
 
 			const time_t lastTimestamp = overTime[OVERTIME_SLOTS-1].timestamp;
-			char lastTimestampStr[TIMESTR_SIZE] = "";
+			char lastTimestampStr[TIMESTR_SIZE];
 			get_timestr(lastTimestampStr, lastTimestamp, false, false);
 
 			log_warn("Found database entries in the future (%s (%lu), last timestamp for importing: %s (%lu)). "

@@ -39,7 +39,7 @@ bool writeFTLtoml(const bool verbose)
 	fprintf(fp, "# Pi-hole configuration file (%s)\n", get_FTL_version());
 	fputs("# Encoding: UTF-8\n", fp);
 	fputs("# This file is managed by pihole-FTL\n", fp);
-	char timestring[TIMESTR_SIZE] = "";
+	char timestring[TIMESTR_SIZE];
 	get_timestr(timestring, time(NULL), false, false);
 	fputs("# Last updated on ", fp);
 	fputs(timestring, fp);
