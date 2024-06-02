@@ -86,8 +86,7 @@ double double_time(void)
 }
 
 // Get a human-readable time string
-void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein,
-                 const bool millis, const bool uri_compatible, const bool timezone)
+void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible)
 {
 	struct tm tm;
 	localtime_r(&timein, &tm);
@@ -105,22 +104,16 @@ void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein,
 		gettimeofday(&tv, NULL);
 		const int millisec = tv.tv_usec/1000;
 
-		sprintf(timestring,"%d-%02d-%02d%c%02d%c%02d%c%02d.%03i",
+		snprintf(timestring, TIMESTR_SIZE, "%d-%02d-%02d%c%02d%c%02d%c%02d.%03i%c%s",
 		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
-		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, millisec);
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, millisec, space, tm.tm_zone);
 	}
 	else
 	{
-		sprintf(timestring,"%d-%02d-%02d%c%02d%c%02d%c%02d",
+		snprintf(timestring, TIMESTR_SIZE, "%d-%02d-%02d%c%02d%c%02d%c%02d%c%s",
 		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
-		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec);
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, space, tm.tm_zone);
 	}
-
-	// Append timezone if requested
-	if(timezone)
-		snprintf(timestring + strlen(timestring),
-		         TIMESTR_SIZE - strlen(timestring),
-		         "%c%s", space, tm.tm_zone);
 
 	// Ensure that the string is zero-terminated
 	timestring[TIMESTR_SIZE - 1] = '\0';
@@ -244,7 +237,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		return;
 
 	// Get human-readable time
-	get_timestr(timestring, time(NULL), true, false, false);
+	get_timestr(timestring, time(NULL), true, false);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
@@ -345,7 +338,7 @@ void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, NULL, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
 	// Get human-readable time
-	get_timestr(timestring, now, true, false, false);
+	get_timestr(timestring, now, true, false);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
