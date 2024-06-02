@@ -60,6 +60,22 @@ static bool request(int fd, uint64_t *org)
 	return true;
 }
 
+// Display NTP time in human-readable format
+static void display_time(const char *description, const uint64_t ntp_time)
+{
+	char client_time_str[128];
+	struct timeval client_time;
+	client_time.tv_sec = NTPtoSEC(ntp_time);
+	client_time.tv_usec = NTPtoUSEC(ntp_time);
+	struct tm *client_tm = localtime(&client_time.tv_sec);
+	snprintf(client_time_str, sizeof(client_time_str), "%04i-%02i-%02i %02i:%02i:%02i.%06"PRIi64" %s",
+		client_tm->tm_year + 1900, client_tm->tm_mon + 1, client_tm->tm_mday,
+		client_tm->tm_hour, client_tm->tm_min, client_tm->tm_sec, client_time.tv_usec,
+		client_tm->tm_zone);
+	client_time_str[sizeof(client_time_str) - 1] = '\0';
+	log_info("%s: %s", description, client_time_str);
+}
+
 static bool reply(int fd, uint64_t *org_, const bool settime)
 {
 	// NTP Packet buffer
@@ -146,30 +162,10 @@ static bool reply(int fd, uint64_t *org_, const bool settime)
 		delta = 0;
 
 	// Print current time at client
-	char client_time_str[128];
-	struct timeval client_time;
-	client_time.tv_sec = NTPtoSEC(dst);
-	client_time.tv_usec = NTPtoUSEC(dst);
-	struct tm *client_tm = localtime(&client_time.tv_sec);
-	snprintf(client_time_str, sizeof(client_time_str), "%04i-%02i-%02i %02i:%02i:%02i.%06"PRIi64" %s",
-		client_tm->tm_year + 1900, client_tm->tm_mon + 1, client_tm->tm_mday,
-		client_tm->tm_hour, client_tm->tm_min, client_tm->tm_sec, client_time.tv_usec,
-		client_tm->tm_zone);
-	client_time_str[sizeof(client_time_str) - 1] = '\0';
-	log_info("Current time at client: %s", client_time_str);
+	display_time("Current time at client", dst);
 
 	// Print current time at server
-	char server_time_str[128];
-	struct timeval server_time;
-	server_time.tv_sec = NTPtoSEC(xmt);
-	server_time.tv_usec = NTPtoUSEC(xmt);
-	struct tm *server_tm = localtime(&server_time.tv_sec);
-	snprintf(server_time_str, sizeof(server_time_str), "%04i-%02i-%02i %02i:%02i:%02i.%06"PRIi64" %s",
-		server_tm->tm_year + 1900, server_tm->tm_mon + 1, server_tm->tm_mday,
-		server_tm->tm_hour, server_tm->tm_min, server_tm->tm_sec, server_time.tv_usec,
-		server_tm->tm_zone);
-	server_time_str[sizeof(server_time_str) - 1] = '\0';
-	log_info("Current time at server: %s", server_time_str);
+	display_time("Current time at server", xmt);
 
 	// Print offset and delay
 	log_info("Time offset: %e s", theta);
@@ -192,21 +188,14 @@ static bool reply(int fd, uint64_t *org_, const bool settime)
 		unix_time.tv_usec = NTPtoUSEC(ntp_time);
 
 		// Print new time
-		char new_time_str[128];
-		struct tm *new_time_tm = localtime(&unix_time.tv_sec);
-		snprintf(new_time_str, sizeof(new_time_str), "%04i-%02i-%02i %02i:%02i:%02i.%06"PRIi64" %s",
-			new_time_tm->tm_year + 1900, new_time_tm->tm_mon + 1, new_time_tm->tm_mday,
-			new_time_tm->tm_hour, new_time_tm->tm_min, new_time_tm->tm_sec, unix_time.tv_usec,
-			new_time_tm->tm_zone);
-		new_time_str[sizeof(new_time_str) - 1] = '\0';
+		display_time("Setting time to", ntp_time);
 
 		// Set time
 		if(settimeofday(&unix_time, NULL) != 0)
 		{
-			log_warn("Failed to set time to %s: %s", new_time_str, strerror(errno));
+			log_warn("Failed to set time: %s", strerror(errno));
 			return false;
 		}
-		log_info("Updated time at client: %s", new_time_str);
 	}
 
 	// Offset and delay larger than 0.1 seconds are considered as invalid
