@@ -137,9 +137,9 @@ static enum message_type get_message_type_from_string(const char *typestr)
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
-		{	// REGEX_MESSAGE: The message column contains the regex warning text
+		{	// REGEX_MESSAGE: The message column contains the regex text (the erroring regex filter itself)
 			SQLITE_TEXT, // regex type ("deny", "allow")
-			SQLITE_TEXT, // regex text (the erroring regex filter itself)
+			SQLITE_TEXT, // regex warning text
 			SQLITE_INTEGER, // database index of regex (so the dashboard can show a link)
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
@@ -993,9 +993,9 @@ bool format_messages(cJSON *array)
 		{
 			case REGEX_MESSAGE:
 			{
-				const char *warning = (const char*)sqlite3_column_text(stmt, 3);
+				const char *regex = (const char*)sqlite3_column_text(stmt, 3);
 				const char *type = (const char*)sqlite3_column_text(stmt, 4);
-				const char *regex = (const char*)sqlite3_column_text(stmt, 5);
+				const char *warning = (const char*)sqlite3_column_text(stmt, 5);
 				const int dbindex = sqlite3_column_int(stmt, 6);
 
 				format_regex_message(plain, sizeof(plain), html, sizeof(html),
@@ -1206,7 +1206,7 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 		return;
 
 	// Add to database
-	const int rowid = add_message(REGEX_MESSAGE, warning, type, regex, dbindex);
+	const int rowid = add_message(REGEX_MESSAGE, regex, type, warning, dbindex);
 	if(rowid == -1)
 		log_err("logg_regex_warning(): Failed to add message to database");
 }
