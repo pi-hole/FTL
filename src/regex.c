@@ -788,7 +788,7 @@ static void read_regex_table(const enum regex_type regexid)
 		if(!compile_regex(regex_string, &regex[index], &message) && message != NULL)
 		{
 			logg_regex_warning(regextype[regexid], message,
-			                   regex->database_id, regex_string);
+			                   rowid, regex_string);
 			free(message);
 		}
 
