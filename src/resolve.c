@@ -451,7 +451,8 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 // 3www6google3com -> www.google.com
 static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count)
 {
-	unsigned char *name = calloc(MAXHOSTNAMELEN, sizeof(char));
+	const size_t MAXNAMELEN = 256;
+	unsigned char *name = calloc(MAXNAMELEN, sizeof(char));
 	unsigned int p = 0, jumped = 0;
 
 	// Initialize count
@@ -464,7 +465,7 @@ static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fro
 	// Instead, each label is preceded by a byte containing its length, and
 	// the name is terminated by a zero-length label representing the root
 	// zone.
-	while(*reader != 0)
+	while(*reader != 0 && p < MAXNAMELEN - 2)
 	{
 		if(*reader >= 0xC0)
 		{
