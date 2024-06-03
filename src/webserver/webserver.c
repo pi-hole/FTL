@@ -421,7 +421,17 @@ void http_init(void)
 
 #ifdef HAVE_MBEDTLS
 	// Add TLS options if configured
-	if(config.webserver.tls.cert.v.s != NULL &&
+
+	// TLS is used when webserver.port contains "s" (e.g. "443s")
+	const bool tls_used = config.webserver.port.v.s != NULL &&
+	                      strchr(config.webserver.port.v.s, 's') != NULL;
+
+	// Check certificate domain if
+	// - TLS is used
+	// - A certificate is configured
+	// - The certificate is readable
+	if(tls_used &&
+	   config.webserver.tls.cert.v.s != NULL &&
 	   strlen(config.webserver.tls.cert.v.s) > 0)
 	{
 		// Try to generate certificate if not present
@@ -439,6 +449,8 @@ void http_init(void)
 			}
 		}
 
+		// Check if the certificate is readable (we may have just
+		// created it)
 		if(file_readable(config.webserver.tls.cert.v.s))
 		{
 			if(read_certificate(config.webserver.tls.cert.v.s, config.webserver.domain.v.s, false) != CERT_DOMAIN_MATCH)
