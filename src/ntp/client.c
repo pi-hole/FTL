@@ -29,6 +29,8 @@
 #include <inttypes.h>
 // config struct
 #include "config/config.h"
+// ntp_adjtime()
+#include <sys/timex.h>
 
 struct ntp_sync
 {
@@ -112,6 +114,61 @@ void print_debug_time(const char *label, const uint32_t *u32p, const uint64_t nt
 	// Print the time
 	log_debug(DEBUG_NTP, "%s: %08"PRIx64".%08"PRIx64" = %s", label,
 	          (timevar >> 32) & 0xFFFFFFFF, timevar & 0xFFFFFFFF, time_str);
+}
+
+static bool settime_step(const double offset)
+{
+	// Get current time
+	struct timeval unix_time;
+	gettimeofday(&unix_time, NULL);
+
+	// Convert from double to native format (signed) and add to the
+	// current time.  Note the addition is done in native format to
+	// avoid overflow or loss of precision.
+	const uint64_t ntp_time = U2LFP(unix_time) + D2LFP(offset);
+
+	// Convert NTP to native format
+	unix_time.tv_sec = NTPtoSEC(ntp_time);
+	unix_time.tv_usec = NTPtoUSEC(ntp_time);
+	log_debug(DEBUG_NTP, "Stepping system time by %e s", offset);
+
+	// Set time immediately
+	if(settimeofday(&unix_time, NULL) != 0)
+	{
+		log_err("Failed to set time: %s",
+		        errno == EPERM ? "Insufficient permissions, try running with sudo" : strerror(errno));
+		return false;
+	}
+
+	return true;
+}
+
+static bool settime_skew(const double offset)
+{
+	// Gradually adjust time using ntp_adjtime() using David
+	// L. Mills' clock adjustment algorithm (see RFC 5905)
+	// Deviations will only gradually be corrected at
+	// maximum slew rate of 500ppm (0.05%), i.e., no faster
+	// than a correction of 500 microseconds per second, or, in
+	// other words, 1000 seconds (16 minutes and 40 seconds) to
+	// correct a 0.5 second offset.
+	struct timex tx;
+	memset(&tx, 0, sizeof(tx));
+
+	// Set mode to adjust time offset
+	tx.modes = MOD_CLKA | MOD_MICRO;
+	tx.offset = 1e6 * offset; // Convert to microseconds
+	log_debug(DEBUG_NTP, "Gradually adjusting system time by %li usec within the next %.1f seconds)",
+	          tx.offset, fabs(1e6 * offset / 500));
+
+	if(ntp_adjtime(&tx) < 0)
+	{
+		log_err("Failed to adjust time: %s",
+		        errno == EPERM ? "Insufficient permissions, try running with sudo" : strerror(errno));
+		return false;
+	}
+
+	return true;
 }
 
 static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
@@ -352,31 +409,20 @@ bool ntp_client(const char *server, const bool settime)
 	// Set time if requested
 	if(settime)
 	{
-		// Get current time
-		struct timeval unix_time;
-		gettimeofday(&unix_time, NULL);
+		// If the clock deviates more than 0.5 seconds from the NTP server,
+		// the time is updated immediately.  Otherwise, the time is updated
+		// gradually to avoid sudden jumps in the system clock.
+		// The threshold of 0.5 seconds is hard-wired into the kernel
+		// since Linux 2.6.26, see man ntp_adjtime(2) for details.
+		bool success;
+		if(fabs(theta_trim) > 0.5)
+			success = settime_step(theta_trim);
+		else
+			success = settime_skew(theta_trim);
 
-		// Convert from double to native format (signed) and add to the
-		// current time.  Note the addition is done in native format to
-		// avoid overflow or loss of precision.
-		const uint64_t ntp_time = U2LFP(unix_time) + D2LFP(theta_trim);
-
-		// Convert NTP to native format
-		unix_time.tv_sec = NTPtoSEC(ntp_time);
-		unix_time.tv_usec = NTPtoUSEC(ntp_time);
-
-		// Print new time
-		char time_str[TIMESTR_SIZE];
-		format_NTP_time(time_str, ntp_time);
-		log_info("Setting local time to: %s", time_str);
-
-		// Set time
-		if(settimeofday(&unix_time, NULL) != 0)
-		{
-			log_err("Failed to set time: %s",
-			         errno == EPERM ? "Insufficient permissions, try running with sudo" : strerror(errno));
+		// Return early if time could not be set
+		if(!success)
 			return false;
-		}
 	}
 
 	// Offset and delay larger than 0.1 seconds are considered as invalid
