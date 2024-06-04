@@ -274,7 +274,7 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	if(ntp->delta < ntp->precision)
 		ntp->delta = 0;
 
-#	// Return early if not verbose
+	// Return early if not verbose
 	if(!config.debug.ntp.v.b)
 		return true;
 
