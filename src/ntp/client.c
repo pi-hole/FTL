@@ -322,6 +322,33 @@ bool ntp_client(const char *server, const bool settime)
 	log_info("Average time offset: (%e +/- %e s)", theta_avg, theta_stdev);
 	log_info("Average round-trip delay: (%e +/- %e s)", delta_avg, delta_stdev);
 
+	// Compute trimmed mean (average excluding outliers)
+	double theta_trim = 0.0, delta_trim = 0.0;
+	unsigned int trim = 0;
+	for(unsigned int i = 0; i < NTP_AVERGAGE_COUNT; i++)
+	{
+		// Skip invalid values
+		if(fabs(ntp[i].theta) < ntp[i].precision ||
+		   fabs(ntp[i].delta) < ntp[i].precision)
+			continue;
+
+		// Skip outliers
+		// We consider values > 2 standard deviations from the mean as
+		// outliers
+		if(fabs(ntp[i].theta - theta_avg) > 2 * theta_stdev ||
+		   fabs(ntp[i].delta - delta_avg) > 2 * delta_stdev)
+			continue;
+
+		theta_trim += ntp[i].theta;
+		delta_trim += ntp[i].delta;
+		trim++;
+	}
+	theta_trim /= trim;
+	delta_trim /= trim;
+
+	log_info("Trimmed mean time offset: %e s (excluded %u outliers)", theta_trim, NTP_AVERGAGE_COUNT - trim);
+	log_info("Trimmed mean round-trip delay: %e s (excluded %u outliers)", delta_trim, NTP_AVERGAGE_COUNT - trim);
+
 	// Set time if requested
 	if(settime)
 	{
@@ -332,7 +359,7 @@ bool ntp_client(const char *server, const bool settime)
 		// Convert from double to native format (signed) and add to the
 		// current time.  Note the addition is done in native format to
 		// avoid overflow or loss of precision.
-		const uint64_t ntp_time = U2LFP(unix_time) + D2LFP(theta_avg);
+		const uint64_t ntp_time = U2LFP(unix_time) + D2LFP(theta_trim);
 
 		// Convert NTP to native format
 		unix_time.tv_sec = NTPtoSEC(ntp_time);
