@@ -529,7 +529,7 @@ void parse_args(int argc, char* argv[])
 		// Create a socket
 		struct sockaddr_in dest;
 		const int sock = create_socket(tcp, &dest);
-		char *name = resolveHostname(sock, &dest, tcp, argv[2], true);
+		char *name = resolveHostname(sock, tcp, &dest, argv[2], true, NULL);
 
 		// Close the socket
 		close(sock);

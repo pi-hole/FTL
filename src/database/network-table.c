@@ -2009,7 +2009,7 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	// Check if we want to resolve host names
 	if(!resolve_this_name(ipaddr))
 	{
-		log_debug(DEBUG_DATABASE, "getNameFromIP(\"%s\") - configured to not resolve host name", ipaddr);
+		log_debug(DEBUG_RESOLVER, "getNameFromIP(\"%s\") - configured to not resolve host name", ipaddr);
 		return NULL;
 	}
 
@@ -2056,6 +2056,8 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 		return NULL;
 	}
 
+	log_debug(DEBUG_RESOLVER, "Check for a host name associated with IP address %s", ipaddr);
+
 	char *name = NULL;
 	rc = sqlite3_step(stmt);
 	if(rc == SQLITE_ROW)
@@ -2063,7 +2065,7 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 		// Database record found (result might be empty)
 		name = strdup((char*)sqlite3_column_text(stmt, 0));
 
-		log_debug(DEBUG_DATABASE, "Found database host name (same address) %s -> %s", ipaddr, name);
+		log_debug(DEBUG_RESOLVER, "Found database host name (same address) %s -> %s", ipaddr, name);
 	}
 	else if(rc != SQLITE_DONE)
 	{
@@ -2083,6 +2085,8 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 
 		return name;
 	}
+
+	log_debug(DEBUG_RESOLVER, " ---> not found");
 
 	// Nothing found for the exact IP address
 	// Check for a host name associated with the same device (but another IP address)
@@ -2113,6 +2117,8 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 
 		return NULL;
 	}
+
+	log_debug(DEBUG_RESOLVER, "Checking for a host name associated with the same device (but another IP address)");
 
 	rc = sqlite3_step(stmt);
 	if(rc == SQLITE_ROW)
@@ -2153,8 +2159,6 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 	if(FTLDBerror())
 		return NULL;
 
-	log_debug(DEBUG_DATABASE,"Looking up host name for %s", client);
-
 	// Open pihole-FTL.db database file
 	sqlite3 *db = NULL;
 	if((db = dbopen(false, false)) == NULL)
@@ -2191,6 +2195,8 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 		dbclose(&db);
 		return NULL;
 	}
+
+	log_debug(DEBUG_RESOLVER, "Check for a host name associated with MAC address %s", client);
 
 	char *name = NULL;
 	rc = sqlite3_step(stmt);
@@ -2262,11 +2268,8 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 		return NULL;
 	}
 
-	if(config.debug.resolver.v.b)
-	{
-		log_debug(DEBUG_RESOLVER, "getIfaceFromIP(): \"%s\" with ? = \"%s\"",
-		          querystr, ipaddr);
-	}
+	log_debug(DEBUG_DATABASE, "getIfaceFromIP(): \"%s\" with ? = \"%s\"",
+	          querystr, ipaddr);
 
 	// Bind ipaddr to prepared statement
 	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
