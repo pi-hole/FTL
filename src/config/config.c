@@ -1480,6 +1480,13 @@ void initConfig(struct config *conf)
 	conf->debug.reserved.d.b = false;
 	conf->debug.reserved.c = validate_stub; // Only type-based checking
 
+	conf->debug.ntp.k = "debug.ntp";
+	conf->debug.ntp.h = "Print information about NTP synchronization";
+	conf->debug.ntp.t = CONF_BOOL;
+	conf->debug.ntp.f = FLAG_ADVANCED_SETTING;
+	conf->debug.ntp.d.b = false;
+	conf->debug.ntp.c = validate_stub; // Only type-based checking
+
 	conf->debug.all.k = "debug.all";
 	conf->debug.all.h = "Set all debug flags at once. This is a convenience option to enable all debug flags at once. Note that this option is not persistent, setting it to true will enable all *remaining* debug flags but unsetting it will disable *all* debug flags.";
 	conf->debug.all.t = CONF_ALL_DEBUG_BOOL;

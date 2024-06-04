@@ -11,6 +11,10 @@
 #ifndef NTP_H
 #define NTP_H
 
+#include "FTL.h"
+// TIMESTR_SIZE
+#include "log.h"
+
 // uint64_t
 #include <stdint.h>
 // bool
@@ -18,6 +22,9 @@
 
 // Get current time in NTP (64bit) format
 uint64_t gettime64(void);
+
+// Print NTP timestamp in human-readable form
+void print_debug_time(const char *label, const uint32_t *u32p, const uint64_t ntp_time);
 
 // Start NTP server
 bool ntp_server_start(void);

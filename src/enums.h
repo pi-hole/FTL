@@ -162,6 +162,7 @@ enum debug_flag {
 	DEBUG_WEBSERVER,
 	DEBUG_EXTRA,
 	DEBUG_RESERVED,
+	DEBUG_NTP,
 	DEBUG_MAX
 } __attribute__ ((packed));
 

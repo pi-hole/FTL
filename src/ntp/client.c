@@ -8,7 +8,7 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "ntp/ntp.h"
 // close()
 #include <unistd.h>
 // clock_gettime()
@@ -27,9 +27,8 @@
 #include <errno.h>
 // PRIi64
 #include <inttypes.h>
-
-#include "ntp/ntp.h"
-#include "log.h"
+// config struct
+#include "config/config.h"
 
 struct ntp_sync
 {
@@ -65,7 +64,7 @@ static bool request(int fd, struct ntp_sync *ntp)
 	// Send request
 	if(send(fd, buf, 48, 0) != 48)
 	{
-		printf("Failed to send data to NTP server: %s\n", strerror(errno));
+		log_err("Failed to send data to NTP server: %s", strerror(errno));
 		return false;
 	}
 
@@ -75,19 +74,44 @@ static bool request(int fd, struct ntp_sync *ntp)
 // Display NTP time in human-readable format
 // This function is similar to get_timestr() in src/log.c but differs in that it
 // includes microseconds whereas get_timestr() only includes milliseconds
-static void display_time(const char *description, const uint64_t ntp_time)
+static void format_NTP_time(char time_str[TIMESTR_SIZE], const uint64_t ntp_time)
 {
-	char client_time_str[128];
 	struct timeval client_time;
 	client_time.tv_sec = NTPtoSEC(ntp_time);
 	client_time.tv_usec = NTPtoUSEC(ntp_time);
 	struct tm *client_tm = localtime(&client_time.tv_sec);
-	snprintf(client_time_str, sizeof(client_time_str), "%04i-%02i-%02i %02i:%02i:%02i.%06"PRIi64" %s",
-		client_tm->tm_year + 1900, client_tm->tm_mon + 1, client_tm->tm_mday,
-		client_tm->tm_hour, client_tm->tm_min, client_tm->tm_sec, client_time.tv_usec,
-		client_tm->tm_zone);
-	client_time_str[sizeof(client_time_str) - 1] = '\0';
-	printf("%s: %s\n", description, client_time_str);
+	snprintf(time_str, TIMESTR_SIZE, "%04i-%02i-%02i %02i:%02i:%02i.%06"PRIi64" %s",
+	         client_tm->tm_year + 1900, client_tm->tm_mon + 1, client_tm->tm_mday,
+	         client_tm->tm_hour, client_tm->tm_min, client_tm->tm_sec, client_time.tv_usec,
+	         client_tm->tm_zone);
+	time_str[TIMESTR_SIZE - 1] = '\0';
+}
+
+// Print NTP timestamp in human-readable form for debugging
+void print_debug_time(const char *label, const uint32_t *u32p, const uint64_t ntp_time)
+{
+	// Get the time from the appropriate buffer
+	uint64_t timevar;
+	if(u32p != NULL)
+	{
+		memcpy(&timevar, u32p, sizeof(uint64_t));
+		// Convert to host byte order
+		timevar = ntoh64(timevar);
+	}
+	else
+	{
+		// Use the provided time (already in host byte order)
+		timevar = ntp_time;
+	}
+
+
+	// Format the time
+	char time_str[TIMESTR_SIZE];
+	format_NTP_time(time_str, timevar);
+
+	// Print the time
+	log_debug(DEBUG_NTP, "%s: %08"PRIx64".%08"PRIx64" = %s", label,
+	          (timevar >> 32) & 0xFFFFFFFF, timevar & 0xFFFFFFFF, time_str);
 }
 
 static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
@@ -98,7 +122,7 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	// Receive reply
 	if(recv(fd, buf, 48, 0) < 48)
 	{
-		printf("Failed to receive data from NTP server: %s\n", strerror(errno));
+		log_err("Failed to receive data from NTP server: %s", strerror(errno));
 		return false;
 	}
 
@@ -108,7 +132,7 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	{
 		// Accepted limits are 2^-32 (~ 0.2 nanoseconds)
 		// to 2^0 (= 1 second)
-		printf("Received NTP reply has invalid precision: 2^(%i), assuming microsecond accuracy\n", rho);
+		log_warn("Received NTP reply has invalid precision: 2^(%i), assuming microsecond accuracy", rho);
 		rho = -19;
 	}
 	// Compute precision of server clock in seconds 2^rho
@@ -135,14 +159,14 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	// network byte order
 	if(ntp->org != org)
 	{
-		printf("Received NTP reply does not match request (request %"PRIx64", reply %"PRIx64")\n", ntp->org, org);
+		log_warn("Received NTP reply does not match request (request %"PRIx64", reply %"PRIx64")", ntp->org, org);
 		return false;
 	}
 
 	// Check stratum, mode, version, etc.
 	if((buf[0] & 0x07) != 4)
 	{
-		printf("Received NTP reply has invalid version\n");
+		log_warn("Received NTP reply has invalid version");
 		return false;
 	}
 
@@ -176,18 +200,18 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 		ntp->delta = 0;
 
 #	// Return early if not verbose
-	if(!verbose)
+	if(!config.debug.ntp.v.b)
 		return true;
 
 	// Print current time at client
-	display_time("Current time at client", dst);
+	print_debug_time("Current time at client", NULL, dst);
 
 	// Print current time at server
-	display_time("Current time at server", ntp->xmt);
+	print_debug_time("Current time at server", NULL, ntp->xmt);
 
 	// Print offset and delay
-	printf("Time offset: %e s\n", ntp->theta);
-	printf("Round-trip delay: %e s\n", ntp->delta);
+	log_debug(DEBUG_NTP, "Time offset: %e s", ntp->theta);
+	log_debug(DEBUG_NTP, "Round-trip delay: %e s", ntp->delta);
 
 	return true;
 }
@@ -200,7 +224,7 @@ bool ntp_client(const char *server, const bool settime)
 	const int s = socket(protocol, SOCK_DGRAM, IPPROTO_UDP);
 	if(s == -1)
 	{
-		printf("ERROR: Cannot create UDP socket\n");
+		log_err("Cannot create UDP socket\n");
 		return false;
 	}
 
@@ -210,7 +234,7 @@ bool ntp_client(const char *server, const bool settime)
 	tv.tv_usec = 0;
 	if(setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) != 0)
 	{
-		printf("ERROR: Cannot set socket timeout\n");
+		log_err("Cannot set socket timeout\n");
 		close(s);
 		return false;
 	}
@@ -219,7 +243,7 @@ bool ntp_client(const char *server, const bool settime)
 	struct addrinfo *saddr;
 	if(getaddrinfo(server, "123", NULL, &saddr) != 0)
 	{
-		printf("ERROR: Cannot resolve NTP server address\n");
+		log_err("Cannot resolve NTP server address\n");
 		close(s);
 		return false;
 	}
@@ -227,7 +251,7 @@ bool ntp_client(const char *server, const bool settime)
 	// Set address to send to/receive from
 	if(connect(s, saddr->ai_addr, saddr->ai_addrlen) != 0)
 	{
-		printf("ERROR: Cannot connect to NTP server\n");
+		log_err("Cannot connect to NTP server\n");
 		close(s);
 		return false;
 	}
@@ -275,10 +299,10 @@ bool ntp_client(const char *server, const bool settime)
 
 	if(valid == 0)
 	{
-		printf("No valid NTP replies received, check server and network connectivity\n\n");
+		log_err("No valid NTP replies received, check server and network connectivity\n");
 		return false;
 	}
-	printf("Received %u/%d valid NTP replies\n\n", valid, NTP_AVERGAGE_COUNT);
+	log_info("Received %u/%d valid NTP replies\n", valid, NTP_AVERGAGE_COUNT);
 
 	theta_avg /= valid;
 	delta_avg /= valid;
@@ -295,8 +319,8 @@ bool ntp_client(const char *server, const bool settime)
 	theta_stdev = sqrt(theta_stdev / valid);
 	delta_stdev = sqrt(delta_stdev / valid);
 
-	printf("Average time offset: (%e +/- %e s)\n", theta_avg, theta_stdev);
-	printf("Average round-trip delay: (%e +/- %e s)\n", delta_avg, delta_stdev);
+	log_info("Average time offset: (%e +/- %e s)", theta_avg, theta_stdev);
+	log_info("Average round-trip delay: (%e +/- %e s)", delta_avg, delta_stdev);
 
 	// Set time if requested
 	if(settime)
@@ -315,12 +339,14 @@ bool ntp_client(const char *server, const bool settime)
 		unix_time.tv_usec = NTPtoUSEC(ntp_time);
 
 		// Print new time
-		display_time("Setting local time to", ntp_time);
+		char time_str[TIMESTR_SIZE];
+		format_NTP_time(time_str, ntp_time);
+		log_info("Setting local time to: %s", time_str);
 
 		// Set time
 		if(settimeofday(&unix_time, NULL) != 0)
 		{
-			printf("Failed to set time: %s\n",
+			log_err("Failed to set time: %s",
 			         errno == EPERM ? "Insufficient permissions, try running with sudo" : strerror(errno));
 			return false;
 		}

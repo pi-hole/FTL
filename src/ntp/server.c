@@ -8,7 +8,7 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "ntp/ntp.h"
 // exit(0)
 #include <stdlib.h>
 // memcpy()
@@ -33,10 +33,10 @@
 #include <pthread.h>
 // PR_SET_NAME
 #include <sys/prctl.h>
-
-#include "ntp/ntp.h"
-#include "log.h"
+// config struct
 #include "config/config.h"
+// PRIi64
+#include <inttypes.h>
 
 // RFC 5905 Appendix A.4: Kernel System Clock Interface
 uint64_t gettime64(void)
@@ -47,8 +47,8 @@ uint64_t gettime64(void)
 }
 
 // Create and send an NTP reply to the client
-static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const socklen_t saddrlen,
-                     const unsigned char recv_buf[], const uint64_t *recv_time)
+static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const socklen_t saddrlen,
+                      const unsigned char recv_buf[], const uint64_t *recv_time)
 {
 	// Buffer for the response
 	unsigned char send_buf[48];
@@ -69,7 +69,7 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
  	// Check if the first byte is valid: mode is expected to be 3 ("client")
 	if ((recv_buf[0] & 0x07) != 0x3) {
 		log_warn("Received invalid NTP request: not from an NTP client, ignoring");
-		return 1;
+		return false;
 	}
 
 	// set LI = 0 (no warning about leap seconds), set version-number to
@@ -132,6 +132,8 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 	// T2 of the server packet and tacks on the transmit timestamp T3 before
 	// sending it to the client.
 	memcpy(u32p, &u32r[8], sizeof(uint64_t));
+	if(config.debug.ntp.v.b)
+		print_debug_time("Reference Timestamp", u32p, 0);
 	u32p += 2;
 
 //       0                   1                   2                   3
@@ -145,6 +147,8 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 	// Time at the client when the request departed for the server, in NTP
 	// timestamp format. (this is the client's transmit time)
 	memcpy(u32p, &u32r[10], sizeof(uint64_t));
+	if(config.debug.ntp.v.b)
+		print_debug_time("Origin Timestamp", u32p, 0);
 	u32p += 2;
 
 //       0                   1                   2                   3
@@ -159,6 +163,8 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 	// timestamp format. (this is the server's receive time)
 	const uint64_t net_recv_time = hton64(*recv_time);
 	memcpy(u32p, &net_recv_time, sizeof(uint64_t));
+	if(config.debug.ntp.v.b)
+		print_debug_time("Receive Timestamp", u32p, 0);
 	u32p += 2;
 
 //       0                   1                   2                   3
@@ -174,7 +180,9 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 	const uint64_t transmit_time = gettime64();
 	const uint64_t net_transmit_time = hton64(transmit_time);
 	memcpy(u32p, &net_transmit_time, sizeof(uint64_t));
-	// u32p += 2;
+	if(config.debug.ntp.v.b)
+		print_debug_time("Transmit Timestamp", u32p, 0);
+	u32p += 2;
 
 //       0                   1                   2                   3
 //       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -205,10 +213,10 @@ static int ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const 
 	if(sendto(socket_fd, send_buf, sizeof(send_buf), 0, saddr_p, saddrlen) < 48)
 	{
 		log_err("NTP send error: %s", strerror(errno));
-		return 1;
+		return false;
 	}
 
-	return 0;
+	return true;
 }
 
 // Process incoming NTP requests
@@ -226,9 +234,32 @@ static void request_process_loop(int fd, const char *ipstr, const int protocol)
 		// the request
 		const uint64_t recv_time = gettime64();
 
-		struct sockaddr_in sin;
-		memcpy(&sin, &src_addr, sizeof(sin));
+		// Print the request
+		if(config.debug.ntp.v.b)
+		{
+			if(protocol == AF_INET6)
+			{
+				struct sockaddr_in6 sin6;
+				memcpy(&sin6, &src_addr, sizeof(sin6));
 
+				char ip[INET6_ADDRSTRLEN];
+				const in_port_t port = ntohs(sin6.sin6_port);
+				inet_ntop(protocol, &sin6.sin6_addr, ip, sizeof(ip));
+				log_debug(DEBUG_NTP, "Received NTP request from [%s]:%u", ip, port);
+			}
+			else
+			{
+				struct sockaddr_in sin;
+				memcpy(&sin, &src_addr, sizeof(sin));
+
+				char ip[INET6_ADDRSTRLEN];
+				const in_port_t port = ntohs(sin.sin_port);
+				inet_ntop(protocol, &sin.sin_addr, ip, sizeof(ip));
+				log_debug(DEBUG_NTP, "Received NTP request from %s:%u", ip, port);
+			}
+		}
+
+		// Fork a child to handle the request
 		const pid_t pid = fork();
 		if (pid == 0) {
 			// Child

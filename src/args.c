@@ -313,6 +313,7 @@ void parse_args(int argc, char* argv[])
 		// Enable stdout printing
 		cli_mode = true;
 		log_ctrl(false, true);
+		readFTLconf(&config, false);
 		const bool update = (argc > 2 && strcmp(argv[2], "--update") == 0) ||
 		                    (argc > 3 && strcmp(argv[3], "--update") == 0);
 		const char *server = "127.0.0.1";

@@ -323,6 +323,7 @@ struct config {
 		struct conf_item webserver;
 		struct conf_item extra;
 		struct conf_item reserved;
+		struct conf_item ntp;
 		// all must be the last item in this struct
 		struct conf_item all;
 	} debug;

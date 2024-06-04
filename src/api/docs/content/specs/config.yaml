@@ -566,6 +566,8 @@ components:
                   type: boolean
                 reserved:
                   type: boolean
+                ntp:
+                  type: boolean
                 all:
                   type: boolean
     topics:
@@ -784,6 +786,7 @@ components:
             webserver: false
             extra: false
             reserved: false
+            ntp: false
             all: false
     config_one:
       summary: One option

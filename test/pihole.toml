@@ -1053,14 +1053,17 @@
   # Reserved debug flag
   reserved = true ### CHANGED, default = false
 
+  # Print information about NTP synchronization
+  ntp = true ### CHANGED, default = false
+
   # Set all debug flags at once. This is a convenience option to enable all debug flags
   # at once. Note that this option is not persistent, setting it to true will enable all
   # *remaining* debug flags but unsetting it will disable *all* debug flags.
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 140 total entries out of which 86 entries are default
-# --> 54 entries are modified
+# 141 total entries out of which 86 entries are default
+# --> 55 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice
 #   - debug.api
