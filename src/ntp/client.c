@@ -31,7 +31,8 @@
 #include "config/config.h"
 // adjtime()
 #include <sys/time.h>
-
+// thread_names[]
+#include "signals.h"
 struct ntp_sync
 {
 	uint64_t org;
@@ -464,18 +465,26 @@ bool ntp_client(const char *server, const bool settime)
 static void *ntp_client_thread(void *arg)
 {
 	// Set thread name
+	thread_names[NTP] = "ntp-client";
+	thread_running[NTP] = true;
+	prctl(PR_SET_NAME, thread_names[DB], 0, 0, 0);
 	pthread_setname_np(pthread_self(), "NTP sync");
 
 	// Run NTP client
-	while(true)
+	while(!killed)
 	{
 		// Run NTP client
-		if(ntp_client(config.ntp.sync.server.v.s, true))
-			break;
+		ntp_client(config.ntp.sync.server.v.s, true);
+
+		// Intermediate cancellation-point
+		BREAK_IF_KILLED();
 
 		// Sleep before retrying
-		sleep(config.ntp.sync.interval.v.ui);
+		thread_sleepms(NTP, 1000 * config.ntp.sync.interval.v.ui);
 	}
+
+	log_info("Terminating NTP thread");
+	thread_running[NTP] = false;
 
 	return NULL;
 }

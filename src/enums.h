@@ -252,6 +252,7 @@ enum thread_types {
 	DNSclient,
 	CONF_READER,
 	TIMER,
+	NTP,
 	THREADS_MAX
 } __attribute__ ((packed));
 

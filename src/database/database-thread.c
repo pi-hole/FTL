@@ -78,7 +78,6 @@ static bool analyze_database(sqlite3 *db)
 }
 
 #define DBOPEN_OR_AGAIN() { if(!db) db = dbopen(false, false); if(!db) { thread_sleepms(DB, 5000); continue; } }
-#define BREAK_IF_KILLED() { if(killed) break; }
 #define DBCLOSE_OR_BREAK() { dbclose(&db); BREAK_IF_KILLED(); }
 
 void *DB_thread(void *val)
