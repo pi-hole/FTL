@@ -345,6 +345,15 @@ components:
                     address:
                       type: string
                       x-format: ipv6
+                sync:
+                  type: object
+                  properties:
+                    server:
+                      type: string
+                    interval:
+                      type: integer
+                    count:
+                      type: integer
             resolver:
               type: object
               properties:
@@ -687,6 +696,10 @@ components:
             ipv6:
               active: true
               address: ""
+            sync:
+              server: "pool.ntp.org"
+              interval: 3600
+              count: 8
           resolver:
             resolveIPv4: true
             resolveIPv6: true

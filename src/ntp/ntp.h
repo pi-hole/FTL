@@ -32,6 +32,9 @@ bool ntp_server_start(void);
 // Start NTP client
 bool ntp_client(const char *server, const bool settime);
 
+// Start NTP sync thread
+bool ntp_start_sync_thread(void);
+
 // Number of NTP queries to average. The more queries, the more accurate the
 // time, but the longer it takes to synchronize. The minimum is 1.
 #define NTP_AVERGAGE_COUNT 8

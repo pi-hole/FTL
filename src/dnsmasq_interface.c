@@ -2899,6 +2899,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// Initialize NTP server
 	ntp_server_start();
 
+	// Start NTP sync thread
+	ntp_start_sync_thread();
+
 	// We will use the attributes object later to start all threads in
 	// detached mode
 	pthread_attr_t attr;

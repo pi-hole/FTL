@@ -832,6 +832,25 @@ void initConfig(struct config *conf)
 	memset(&conf->ntp.ipv6.address.d.in6_addr, 0, sizeof(struct in6_addr));
 	conf->ntp.ipv6.address.c = validate_stub; // Only type-based checking
 
+	conf->ntp.sync.server.k = "ntp.sync.server";
+	conf->ntp.sync.server.h = "NTP server (hostname, IPv4 or IPv6) to sync with, e.g., \"pool.ntp.org\" or \"[2001:4860:4860::8888]\"";
+	conf->ntp.sync.server.a = cJSON_CreateStringReference("valid NTP upstream server");
+	conf->ntp.sync.server.t = CONF_STRING;
+	conf->ntp.sync.server.d.s = (char*)"pool.ntp.org";
+	conf->ntp.sync.server.c = validate_stub; // Only type-based checking
+
+	conf->ntp.sync.interval.k = "ntp.sync.interval";
+	conf->ntp.sync.interval.h = "Interval in seconds to sync with the NTP server";
+	conf->ntp.sync.interval.t = CONF_UINT;
+	conf->ntp.sync.interval.d.ui = 3600;
+	conf->ntp.sync.interval.c = validate_stub; // Only type-based checking
+
+	conf->ntp.sync.count.k = "ntp.sync.count";
+	conf->ntp.sync.count.h = "Number of NTP syncs to perform and average before updating the system time";
+	conf->ntp.sync.count.t = CONF_UINT;
+	conf->ntp.sync.count.d.ui = 8;
+	conf->ntp.sync.count.c = validate_stub; // Only type-based checking
+
 
 	// struct resolver
 	conf->resolver.resolveIPv6.k = "resolver.resolveIPv6";

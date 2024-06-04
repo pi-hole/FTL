@@ -29,8 +29,8 @@
 #include <inttypes.h>
 // config struct
 #include "config/config.h"
-// ntp_adjtime()
-#include <sys/timex.h>
+// adjtime()
+#include <sys/time.h>
 
 struct ntp_sync
 {
@@ -145,23 +145,41 @@ static bool settime_step(const double offset)
 
 static bool settime_skew(const double offset)
 {
-	// Gradually adjust time using ntp_adjtime() using David
-	// L. Mills' clock adjustment algorithm (see RFC 5905)
-	// Deviations will only gradually be corrected at
-	// maximum slew rate of 500ppm (0.05%), i.e., no faster
-	// than a correction of 500 microseconds per second, or, in
-	// other words, 1000 seconds (16 minutes and 40 seconds) to
-	// correct a 0.5 second offset.
-	struct timex tx;
-	memset(&tx, 0, sizeof(tx));
+	// This function gradually adjusts the system clock.
+	//
+	// If the adjustment in delta is positive, then the system clock is
+	// speeded up by some small percentage (i.e., by adding a small amount
+	// of time to the clock value in each second) until the adjustment has
+	// been completed. If the adjustment in delta is negative, then the
+	// clock is slowed down in a similar fashion.
+	//
+	// If a clock adjustment from an earlier adjtime() call is already in
+	// progress at the time of a later adjtime() call, and delta is not NULL
+	// for the later call, then the earlier adjustment is stopped, but any
+	// al‐ ready completed part of that adjustment is not undone.
+	//
+	// The adjustment that adjtime() makes to the clock is carried out in
+	// such a manner that the clock is always monotonically increasing.
+	// Using adjtime() to adjust the time prevents the problems that can be
+	// caused for certain applications (e.g., make(1)) by abrupt positive or
+	// negative jumps in the system time.
+	//
+	// adjtime() is intended to be used to make small adjustments to the
+	// system time. The actual time adjustment rate is implementation-specific
+	// but is typically on the order of 500 ppm, i.e., 0.5 ms/s.
+	struct timeval tx;
+	tx.tv_sec = (long int)offset;
+	tx.tv_usec = (offset - tx.tv_sec) * 1e6;
+	if(tx.tv_usec < 0)
+	{
+		// Adjust seconds if microseconds are negative
+		tx.tv_sec--;
+		tx.tv_usec += 1000000000;
+	}
+	log_debug(DEBUG_NTP, "Gradually adjusting system time by %li.%06li s",
+	          (long int)tx.tv_sec, (long int)tx.tv_usec);
 
-	// Set mode to adjust time offset
-	tx.modes = MOD_CLKA | MOD_MICRO;
-	tx.offset = 1e6 * offset; // Convert to microseconds
-	log_debug(DEBUG_NTP, "Gradually adjusting system time by %li usec within the next %.1f seconds)",
-	          tx.offset, fabs(1e6 * offset / 500));
-
-	if(ntp_adjtime(&tx) < 0)
+	if(adjtime(&tx, NULL) < 0)
 	{
 		log_err("Failed to adjust time: %s",
 		        errno == EPERM ? "Insufficient permissions, try running with sudo" : strerror(errno));
@@ -314,14 +332,23 @@ bool ntp_client(const char *server, const bool settime)
 	}
 	freeaddrinfo(saddr);
 
-	struct ntp_sync ntp[NTP_AVERGAGE_COUNT];
-	memset(&ntp, 0, sizeof(ntp));
-	for(unsigned int i = 0; i < NTP_AVERGAGE_COUNT; i++)
+	// Send and receive NTP packets
+	const unsigned int count = config.ntp.sync.count.v.ui;
+	struct ntp_sync *ntp = calloc(count, sizeof(struct ntp_sync));
+	if(ntp == NULL)
+	{
+		log_err("Cannot allocate memory for NTP client\n");
+		close(s);
+		return false;
+	}
+	memset(ntp, 0, count*sizeof(*ntp));
+	for(unsigned int i = 0; i < count; i++)
 	{
 		// Send request
 		if(!request(s, &ntp[i]))
 		{
 			close(s);
+			free(ntp);
 			return false;
 		}
 		// Get reply
@@ -342,7 +369,7 @@ bool ntp_client(const char *server, const bool settime)
 	unsigned int valid = 0;
 	double theta_avg = 0.0, theta_stdev = 0.0;
 	double delta_avg = 0.0, delta_stdev = 0.0;
-	for(unsigned int i = 0; i < NTP_AVERGAGE_COUNT; i++)
+	for(unsigned int i = 0; i < count; i++)
 	{
 		// Skip invalid values
 		if(fabs(ntp[i].theta) < ntp[i].precision ||
@@ -357,13 +384,14 @@ bool ntp_client(const char *server, const bool settime)
 	if(valid == 0)
 	{
 		log_err("No valid NTP replies received, check server and network connectivity\n");
+		free(ntp);
 		return false;
 	}
-	log_info("Received %u/%d valid NTP replies\n", valid, NTP_AVERGAGE_COUNT);
+	log_info("Received %u/%u valid NTP replies\n", valid, count);
 
 	theta_avg /= valid;
 	delta_avg /= valid;
-	for(unsigned int i = 0; i < NTP_AVERGAGE_COUNT; i++)
+	for(unsigned int i = 0; i < count; i++)
 	{
 		// Skip invalid values
 		if(fabs(ntp[i].theta) < ntp[i].precision ||
@@ -382,7 +410,7 @@ bool ntp_client(const char *server, const bool settime)
 	// Compute trimmed mean (average excluding outliers)
 	double theta_trim = 0.0, delta_trim = 0.0;
 	unsigned int trim = 0;
-	for(unsigned int i = 0; i < NTP_AVERGAGE_COUNT; i++)
+	for(unsigned int i = 0; i < count; i++)
 	{
 		// Skip invalid values
 		if(fabs(ntp[i].theta) < ntp[i].precision ||
@@ -403,8 +431,11 @@ bool ntp_client(const char *server, const bool settime)
 	theta_trim /= trim;
 	delta_trim /= trim;
 
-	log_info("Trimmed mean time offset: %e s (excluded %u outliers)", theta_trim, NTP_AVERGAGE_COUNT - trim);
-	log_info("Trimmed mean round-trip delay: %e s (excluded %u outliers)", delta_trim, NTP_AVERGAGE_COUNT - trim);
+	// Free allocated memory
+	free(ntp);
+
+	log_info("Trimmed mean time offset: %e s (excluded %u outliers)", theta_trim, count - trim);
+	log_info("Trimmed mean round-trip delay: %e s (excluded %u outliers)", delta_trim, count - trim);
 
 	// Set time if requested
 	if(settime)
@@ -428,4 +459,49 @@ bool ntp_client(const char *server, const bool settime)
 	// Offset and delay larger than 0.1 seconds are considered as invalid
 	// during local testing (e.g., when the server is on the same machine)
 	return theta_avg < 0.1 && delta_avg < 0.1;
+}
+
+static void *ntp_client_thread(void *arg)
+{
+	// Set thread name
+	pthread_setname_np(pthread_self(), "NTP sync");
+
+	// Run NTP client
+	while(true)
+	{
+		// Run NTP client
+		if(ntp_client(config.ntp.sync.server.v.s, true))
+			break;
+
+		// Sleep before retrying
+		sleep(config.ntp.sync.interval.v.ui);
+	}
+
+	return NULL;
+}
+
+bool ntp_start_sync_thread(void)
+{
+	// Return early if NTP client is disabled
+	if(config.ntp.sync.server.v.s == NULL ||
+	   strlen(config.ntp.sync.server.v.s) == 0 ||
+	   config.ntp.sync.interval.v.ui == 0)
+		return false;
+
+	// Create thread
+	pthread_t thread;
+	if(pthread_create(&thread, NULL, ntp_client_thread, NULL) != 0)
+	{
+		log_err("Cannot create NTP client thread\n");
+		return false;
+	}
+
+	// Detach thread
+	if(pthread_detach(thread) != 0)
+	{
+		log_err("Cannot detach NTP client thread\n");
+		return false;
+	}
+
+	return true;
 }

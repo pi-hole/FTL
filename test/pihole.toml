@@ -480,6 +480,20 @@
     #     <valid IPv6 address> or empty string ("") for wildcard (::)
     address = ""
 
+  [ntp.sync]
+    # NTP server (hostname, IPv4 or IPv6) to sync with, e.g., "pool.ntp.org" or
+    # "[2001:4860:4860::8888]"
+    #
+    # Possible values are:
+    #     valid NTP upstream server
+    server = "pool.ntp.org"
+
+    # Interval in seconds to sync with the NTP server
+    interval = 3600
+
+    # Number of NTP syncs to perform and average before updating the system time
+    count = 8
+
 [resolver]
   # Should FTL try to resolve IPv4 addresses to hostnames?
   resolveIPv4 = false ### CHANGED, default = true
@@ -1062,7 +1076,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 141 total entries out of which 86 entries are default
+# 144 total entries out of which 89 entries are default
 # --> 55 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice
