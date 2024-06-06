@@ -601,6 +601,13 @@ int run_performance_test(void)
 
 bool set_and_check_password(struct conf_item *conf_item, const char *password)
 {
+	// Check if the newly set password is the same as the old one
+	if(verify_password(password, config.webserver.api.pwhash.v.s, false) == PASSWORD_CORRECT)
+	{
+		log_debug(DEBUG_CONFIG, "Password unchanged, not updating");
+		return true;
+	}
+
 	// Get password hash as allocated string (an empty string is hashed to an empty string)
 	char *pwhash = strlen(password) > 0 ? create_password(password) : strdup("");
 
