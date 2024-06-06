@@ -277,7 +277,7 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 
 	// Generate filename for ZIP archive (it has both the hostname and the
 	// current datetime)
-	char timestr[TIMESTR_SIZE] = "";
+	char timestr[TIMESTR_SIZE];
 	get_timestr(timestr, time(NULL), false, true);
 	snprintf(filename, 128, "pi-hole_%s_teleporter_%s.zip", hostname(), timestr);
 
