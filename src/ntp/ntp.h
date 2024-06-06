@@ -27,13 +27,13 @@ uint64_t gettime64(void);
 void print_debug_time(const char *label, const uint32_t *u32p, const uint64_t ntp_time);
 
 // Start NTP server
-bool ntp_server_start(void);
+bool ntp_server_start(pthread_attr_t *attr);
 
 // Start NTP client
 bool ntp_client(const char *server, const bool settime, const bool print);
 
 // Start NTP sync thread
-bool ntp_start_sync_thread(void);
+bool ntp_start_sync_thread(pthread_attr_t *attr);
 
 // Number of NTP queries to average. The more queries, the more accurate the
 // time, but the longer it takes to synchronize. The minimum is 1.

@@ -31,6 +31,8 @@
 #include "config/config.h"
 // adjtime()
 #include <sys/time.h>
+// threads[]
+#include "daemon.h"
 // thread_names[]
 #include "signals.h"
 struct ntp_sync
@@ -493,7 +495,7 @@ static void *ntp_client_thread(void *arg)
 	return NULL;
 }
 
-bool ntp_start_sync_thread(void)
+bool ntp_start_sync_thread(pthread_attr_t *attr)
 {
 	// Return early if NTP client is disabled
 	if(config.ntp.sync.server.v.s == NULL ||
@@ -502,17 +504,9 @@ bool ntp_start_sync_thread(void)
 		return false;
 
 	// Create thread
-	pthread_t thread;
-	if(pthread_create(&thread, NULL, ntp_client_thread, NULL) != 0)
+	if(pthread_create(&threads[NTP], attr, ntp_client_thread, NULL) != 0)
 	{
 		log_err("Cannot create NTP client thread");
-		return false;
-	}
-
-	// Detach thread
-	if(pthread_detach(thread) != 0)
-	{
-		log_err("Cannot detach NTP client thread");
 		return false;
 	}
 

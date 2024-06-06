@@ -37,6 +37,7 @@ static struct {
 {
 	{ "dns", "DNS", "DNS server settings" },
 	{ "dhcp", "DHCP", "DHCP server settings" },
+	{ "ntp", "NTP", "Network Time Sync settings" },
 	{ "resolver", "Resolver", "Resolver settings" },
 	{ "database", "Database", "Database settings" },
 	{ "webserver", "HTTP/API", "Webserver and API settings" },

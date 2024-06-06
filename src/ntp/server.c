@@ -353,7 +353,7 @@ static void *ntp_bind_and_listen(void *param)
 }
 
 // Start the NTP server
-bool ntp_server_start(void)
+bool ntp_server_start(pthread_attr_t *attr)
 {
 	// Spawn two pthreads, one for IPv4 and one for IPv6
 
@@ -362,7 +362,7 @@ bool ntp_server_start(void)
 	{
 		// Create a thread for the IPv4 NTP server
 		pthread_t thread;
-		if (pthread_create(&thread, NULL, ntp_bind_and_listen, (void *)0) != 0)
+		if (pthread_create(&thread, attr, ntp_bind_and_listen, (void *)0) != 0)
 		{
 			log_err("Can not create NTP server thread for IPv4");
 			return false;
@@ -374,14 +374,12 @@ bool ntp_server_start(void)
 	{
 		// Create a thread for the IPv6 NTP server
 		pthread_t thread;
-		if (pthread_create(&thread, NULL, ntp_bind_and_listen, (void *)1) != 0)
+		if (pthread_create(&thread, attr, ntp_bind_and_listen, (void *)1) != 0)
 		{
 			log_err("Can not create NTP server thread for IPv6");
 			return false;
 		}
 	}
-
-	sleep(10);
 
 	return true;
 }

@@ -2896,17 +2896,19 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// so they will not listen to real-time signals
 	handle_realtime_signals();
 
-	// Initialize NTP server
-	ntp_server_start();
-
-	// Start NTP sync thread
-	ntp_start_sync_thread();
-
 	// We will use the attributes object later to start all threads in
 	// detached mode
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
 	pthread_attr_init(&attr);
+	// Set thread attributes to detached mode
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	// Initialize NTP server
+	ntp_server_start(&attr);
+
+	// Start NTP sync thread
+	ntp_start_sync_thread(&attr);
 
 	// Start database thread if database is used
 	if(pthread_create( &threads[DB], &attr, DB_thread, NULL ) != 0)

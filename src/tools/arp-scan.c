@@ -616,6 +616,8 @@ int run_arp_scan(const bool scan_all, const bool extreme_mode)
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
 	pthread_attr_init(&attr);
+	// Set thread attributes to detached mode
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	struct ifaddrs *addrs, *tmp;
 	getifaddrs(&addrs);
