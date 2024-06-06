@@ -319,7 +319,7 @@ void parse_args(int argc, char* argv[])
 		const char *server = "127.0.0.1";
 		if(argc > 2 && strcmp(argv[2], "--update") != 0)
 			server = argv[2];
-		exit(ntp_client(server, update) ? EXIT_SUCCESS : EXIT_FAILURE);
+		exit(ntp_client(server, update, true) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Import teleporter archive through CLI

@@ -67,7 +67,8 @@ static bool request(int fd, struct ntp_sync *ntp)
 	// Send request
 	if(send(fd, buf, 48, 0) != 48)
 	{
-		log_err("Failed to send data to NTP server: %s", strerror(errno));
+		log_err("Failed to send data to NTP server: %s",
+		        errno == EAGAIN ? "Timeout" : strerror(errno));
 		return false;
 	}
 
@@ -171,14 +172,7 @@ static bool settime_skew(const double offset)
 	struct timeval tx;
 	tx.tv_sec = (long int)offset;
 	tx.tv_usec = (offset - tx.tv_sec) * 1e6;
-	if(tx.tv_usec < 0)
-	{
-		// Adjust seconds if microseconds are negative
-		tx.tv_sec--;
-		tx.tv_usec += 1000000000;
-	}
-	log_debug(DEBUG_NTP, "Gradually adjusting system time by %li.%06li s",
-	          (long int)tx.tv_sec, (long int)tx.tv_usec);
+	log_debug(DEBUG_NTP, "Gradually adjusting system time by %.3f ms", 1e3 * offset);
 
 	if(adjtime(&tx, NULL) < 0)
 	{
@@ -198,7 +192,8 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	// Receive reply
 	if(recv(fd, buf, 48, 0) < 48)
 	{
-		log_err("Failed to receive data from NTP server: %s", strerror(errno));
+		log_err("Failed to receive data from NTP server: %s",
+		        errno == EAGAIN ? "Timeout" : strerror(errno));
 		return false;
 	}
 
@@ -235,14 +230,15 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	// network byte order
 	if(ntp->org != org)
 	{
-		log_warn("Received NTP reply does not match request (request %"PRIx64", reply %"PRIx64")", ntp->org, org);
+		log_warn("Received NTP reply does not match request (request %"PRIx64", reply %"PRIx64"), ignoring",
+		         ntp->org, org);
 		return false;
 	}
 
 	// Check stratum, mode, version, etc.
 	if((buf[0] & 0x07) != 4)
 	{
-		log_warn("Received NTP reply has invalid version");
+		log_warn("Received NTP reply has invalid version, ignoring");
 		return false;
 	}
 
@@ -292,7 +288,7 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	return true;
 }
 
-bool ntp_client(const char *server, const bool settime)
+bool ntp_client(const char *server, const bool settime, const bool print)
 {
 	const int protocol = strchr(server, ':') != NULL ? AF_INET6 : AF_INET;
 
@@ -300,26 +296,26 @@ bool ntp_client(const char *server, const bool settime)
 	const int s = socket(protocol, SOCK_DGRAM, IPPROTO_UDP);
 	if(s == -1)
 	{
-		log_err("Cannot create UDP socket\n");
+		log_err("Cannot create UDP socket");
 		return false;
 	}
 
-	// Set socket timeout to 2 seconds
+	// Set socket timeout to 5 seconds
 	struct timeval tv;
-	tv.tv_sec = 2;
+	tv.tv_sec = 5;
 	tv.tv_usec = 0;
 	if(setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) != 0)
 	{
-		log_err("Cannot set socket timeout\n");
+		log_err("Cannot set socket timeout");
 		close(s);
 		return false;
 	}
 
 	// Resolve server address
 	struct addrinfo *saddr;
-	if(getaddrinfo(server, "123", NULL, &saddr) != 0)
+	if(getaddrinfo(server, "ntp", NULL, &saddr) != 0)
 	{
-		log_err("Cannot resolve NTP server address\n");
+		log_err("Cannot resolve NTP server address");
 		close(s);
 		return false;
 	}
@@ -327,7 +323,7 @@ bool ntp_client(const char *server, const bool settime)
 	// Set address to send to/receive from
 	if(connect(s, saddr->ai_addr, saddr->ai_addrlen) != 0)
 	{
-		log_err("Cannot connect to NTP server\n");
+		log_err("Cannot connect to NTP server");
 		close(s);
 		return false;
 	}
@@ -338,7 +334,7 @@ bool ntp_client(const char *server, const bool settime)
 	struct ntp_sync *ntp = calloc(count, sizeof(struct ntp_sync));
 	if(ntp == NULL)
 	{
-		log_err("Cannot allocate memory for NTP client\n");
+		log_err("Cannot allocate memory for NTP client");
 		close(s);
 		return false;
 	}
@@ -356,12 +352,14 @@ bool ntp_client(const char *server, const bool settime)
 		if(!reply(s, &ntp[i], false))
 			continue;
 
-		// Sleep for 100 ms to avoid flooding the server
-		printf(".");
+		// Sleep for some time to avoid flooding the server
+		if(print)
+			printf(".");
 		fflush(stdout);
-		usleep(100000);
+		usleep(NTP_DELAY);
 	}
-	printf("\n");
+	if(print)
+		printf("\n");
 
 	// Close socket
 	close(s);
@@ -384,11 +382,11 @@ bool ntp_client(const char *server, const bool settime)
 
 	if(valid == 0)
 	{
-		log_err("No valid NTP replies received, check server and network connectivity\n");
+		log_warn("No valid NTP replies received, check server and network connectivity");
 		free(ntp);
 		return false;
 	}
-	log_info("Received %u/%u valid NTP replies\n", valid, count);
+	log_info("Received %u/%u valid NTP replies", valid, count);
 
 	theta_avg /= valid;
 	delta_avg /= valid;
@@ -429,11 +427,17 @@ bool ntp_client(const char *server, const bool settime)
 		delta_trim += ntp[i].delta;
 		trim++;
 	}
-	theta_trim /= trim;
-	delta_trim /= trim;
 
 	// Free allocated memory
 	free(ntp);
+
+	if(trim == 0)
+	{
+		log_warn("No valid NTP replies after outlier removal, check server and network connectivity");
+		return false;
+	}
+	theta_trim /= trim;
+	delta_trim /= trim;
 
 	log_info("Trimmed mean time offset: %e s (excluded %u outliers)", theta_trim, count - trim);
 	log_info("Trimmed mean round-trip delay: %e s (excluded %u outliers)", delta_trim, count - trim);
@@ -474,7 +478,7 @@ static void *ntp_client_thread(void *arg)
 	while(!killed)
 	{
 		// Run NTP client
-		ntp_client(config.ntp.sync.server.v.s, true);
+		ntp_client(config.ntp.sync.server.v.s, true, false);
 
 		// Intermediate cancellation-point
 		BREAK_IF_KILLED();
@@ -501,14 +505,14 @@ bool ntp_start_sync_thread(void)
 	pthread_t thread;
 	if(pthread_create(&thread, NULL, ntp_client_thread, NULL) != 0)
 	{
-		log_err("Cannot create NTP client thread\n");
+		log_err("Cannot create NTP client thread");
 		return false;
 	}
 
 	// Detach thread
 	if(pthread_detach(thread) != 0)
 	{
-		log_err("Cannot detach NTP client thread\n");
+		log_err("Cannot detach NTP client thread");
 		return false;
 	}
 

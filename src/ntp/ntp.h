@@ -30,7 +30,7 @@ void print_debug_time(const char *label, const uint32_t *u32p, const uint64_t nt
 bool ntp_server_start(void);
 
 // Start NTP client
-bool ntp_client(const char *server, const bool settime);
+bool ntp_client(const char *server, const bool settime, const bool print);
 
 // Start NTP sync thread
 bool ntp_start_sync_thread(void);
@@ -38,6 +38,9 @@ bool ntp_start_sync_thread(void);
 // Number of NTP queries to average. The more queries, the more accurate the
 // time, but the longer it takes to synchronize. The minimum is 1.
 #define NTP_AVERGAGE_COUNT 8
+
+// Delay between consecutive NTP queries in microseconds
+#define NTP_DELAY 500000
 
 // number of seconds between 1900 and 1970 (MSB=1)
 #define DIFF_SEC_1900_1970         (2208988800UL)
