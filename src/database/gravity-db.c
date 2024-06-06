@@ -28,9 +28,10 @@
 #include "datastructure.h"
 // reset_aliasclient()
 #include "aliasclients.h"
-
 // Definition of struct regexData
 #include "regex_r.h"
+// file_readable()
+#include "files.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
@@ -2715,9 +2716,17 @@ bool gravity_updated(void)
 	sqlite3 *db = NULL;
 	sqlite3_stmt *query_stmt = NULL;
 
+	// Check if database is a readable file
+	if(file_readable(config.files.gravity.v.s) == false)
+	{
+		log_err("Cannot read gravity database at %s - file does not exist or is not readable",
+		        config.files.gravity.v.s);
+		return false;
+	}
+
 	// Open database
 	int rc = sqlite3_open_v2(config.files.gravity.v.s, &db, SQLITE_OPEN_READONLY, NULL);
-	if(db == NULL)
+	if(db == NULL || rc != SQLITE_OK)
 	{
 		log_err("gravity_updated(): %s - SQL error open: %s", config.files.gravity.v.s, sqlite3_errstr(rc));
 		return false;
