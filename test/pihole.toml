@@ -461,7 +461,7 @@
   hosts = []
 
   [ntp.ipv4]
-    # Should FTL act as an NTP server (IPv4)?
+    # Should FTL act as network time protocol (NTP) server (IPv4)?
     active = true
 
     # IPv4 address to listen on for NTP requests
@@ -471,7 +471,7 @@
     address = ""
 
   [ntp.ipv6]
-    # Should FTL act as an NTP server (IPv6)?
+    # Should FTL act as network time protocol (NTP) server (IPv6)?
     active = true
 
     # IPv6 address to listen on for NTP requests
@@ -481,14 +481,15 @@
     address = ""
 
   [ntp.sync]
-    # NTP server (hostname, IPv4 or IPv6) to sync with, e.g., "pool.ntp.org" or
-    # "[2001:4860:4860::8888]"
+    # NTP upstream server to sync with, e.g., "pool.ntp.org". Note that the NTP server
+    # should be located as close as possible to you in order to minimize the time offset
+    # possibly introduced by different routing paths.
     #
     # Possible values are:
     #     valid NTP upstream server
     server = "pool.ntp.org"
 
-    # Interval in seconds to sync with the NTP server
+    # Interval in seconds between successive syncronization attempts with the NTP server
     interval = 3600
 
     # Number of NTP syncs to perform and average before updating the system time

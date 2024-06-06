@@ -803,7 +803,7 @@ void initConfig(struct config *conf)
 
 	// struct ntp
 	conf->ntp.ipv4.active.k = "ntp.ipv4.active";
-	conf->ntp.ipv4.active.h = "Should FTL act as an NTP server (IPv4)?";
+	conf->ntp.ipv4.active.h = "Should FTL act as network time protocol (NTP) server (IPv4)?";
 	conf->ntp.ipv4.active.t = CONF_BOOL;
 	conf->ntp.ipv4.active.f = FLAG_RESTART_FTL;
 	conf->ntp.ipv4.active.d.b = true;
@@ -818,7 +818,7 @@ void initConfig(struct config *conf)
 	conf->ntp.ipv4.address.c = validate_stub; // Only type-based checking
 
 	conf->ntp.ipv6.active.k = "ntp.ipv6.active";
-	conf->ntp.ipv6.active.h = "Should FTL act as an NTP server (IPv6)?";
+	conf->ntp.ipv6.active.h = "Should FTL act as network time protocol (NTP) server (IPv6)?";
 	conf->ntp.ipv6.active.t = CONF_BOOL;
 	conf->ntp.ipv6.active.f = FLAG_RESTART_FTL;
 	conf->ntp.ipv6.active.d.b = true;
@@ -833,14 +833,14 @@ void initConfig(struct config *conf)
 	conf->ntp.ipv6.address.c = validate_stub; // Only type-based checking
 
 	conf->ntp.sync.server.k = "ntp.sync.server";
-	conf->ntp.sync.server.h = "NTP server (hostname, IPv4 or IPv6) to sync with, e.g., \"pool.ntp.org\" or \"[2001:4860:4860::8888]\"";
+	conf->ntp.sync.server.h = "NTP upstream server to sync with, e.g., \"pool.ntp.org\". Note that the NTP server should be located as close as possible to you in order to minimize the time offset possibly introduced by different routing paths.";
 	conf->ntp.sync.server.a = cJSON_CreateStringReference("valid NTP upstream server");
 	conf->ntp.sync.server.t = CONF_STRING;
 	conf->ntp.sync.server.d.s = (char*)"pool.ntp.org";
 	conf->ntp.sync.server.c = validate_stub; // Only type-based checking
 
 	conf->ntp.sync.interval.k = "ntp.sync.interval";
-	conf->ntp.sync.interval.h = "Interval in seconds to sync with the NTP server";
+	conf->ntp.sync.interval.h = "Interval in seconds between successive syncronization attempts with the NTP server";
 	conf->ntp.sync.interval.t = CONF_UINT;
 	conf->ntp.sync.interval.d.ui = 3600;
 	conf->ntp.sync.interval.c = validate_stub; // Only type-based checking
