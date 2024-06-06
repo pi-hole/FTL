@@ -31,6 +31,12 @@ bool writeFTLtoml(const bool verbose)
 	if(config.misc.readOnly.v.b)
 	{
 		log_debug(DEBUG_CONFIG, "Config file is read-only, not writing");
+
+		// We need to (re-)calculate the checksum here as it'd otherwise
+		// be outdated (in non-read-only mode, it's calculated at the
+		// end of this function)
+		if(!sha256sum(GLOBALTOMLPATH, last_checksum))
+			log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
 		return true;
 	}
 
