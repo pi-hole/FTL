@@ -840,7 +840,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.server.c = validate_stub; // Only type-based checking
 
 	conf->ntp.sync.interval.k = "ntp.sync.interval";
-	conf->ntp.sync.interval.h = "Interval in seconds between successive syncronization attempts with the NTP server";
+	conf->ntp.sync.interval.h = "Interval in seconds between successive synchronization attempts with the NTP server";
 	conf->ntp.sync.interval.t = CONF_UINT;
 	conf->ntp.sync.interval.d.ui = 3600;
 	conf->ntp.sync.interval.c = validate_stub; // Only type-based checking
