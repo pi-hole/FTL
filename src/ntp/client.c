@@ -35,6 +35,8 @@
 #include "daemon.h"
 // thread_names[]
 #include "signals.h"
+// adjtimex()
+#include <sys/timex.h>
 struct ntp_sync
 {
 	uint64_t org;
@@ -151,6 +153,7 @@ static bool settime_skew(const double offset)
 {
 	// This function gradually adjusts the system clock.
 	//
+	// Linux uses David L. Mills' clock adjustment algorithm (see RFC 5905).
 	// If the adjustment in delta is positive, then the system clock is
 	// speeded up by some small percentage (i.e., by adding a small amount
 	// of time to the clock value in each second) until the adjustment has
@@ -160,23 +163,30 @@ static bool settime_skew(const double offset)
 	// If a clock adjustment from an earlier adjtime() call is already in
 	// progress at the time of a later adjtime() call, and delta is not NULL
 	// for the later call, then the earlier adjustment is stopped, but any
-	// al‐ ready completed part of that adjustment is not undone.
+	// already completed part of that adjustment is not undone.
 	//
-	// The adjustment that adjtime() makes to the clock is carried out in
+	// The adjustment that adjtimex() makes to the clock is carried out in
 	// such a manner that the clock is always monotonically increasing.
-	// Using adjtime() to adjust the time prevents the problems that can be
+	// Using adjtimex() to adjust the time prevents the problems that can be
 	// caused for certain applications (e.g., make(1)) by abrupt positive or
 	// negative jumps in the system time.
 	//
-	// adjtime() is intended to be used to make small adjustments to the
+	// adjtimex() is intended to be used to make small adjustments to the
 	// system time. The actual time adjustment rate is implementation-specific
 	// but is typically on the order of 500 ppm, i.e., 0.5 ms/s.
-	struct timeval tx;
-	tx.tv_sec = (long int)offset;
-	tx.tv_usec = (offset - tx.tv_sec) * 1e6;
-	log_debug(DEBUG_NTP, "Gradually adjusting system time by %.3f ms", 1e3 * offset);
+	//
+	// man rtc(4) adds:
+	// When the kernel's system time is synchronized with an external
+	// reference using adjtimex() it will update a designated RTC
+	// periodically every 11 minutes.
 
-	if(adjtime(&tx, NULL) < 0)
+	struct timex tx = { 0 };
+	tx.offset = 1000000 * offset;
+	tx.modes = ADJ_OFFSET_SINGLESHOT;
+
+	log_debug(DEBUG_NTP, "Gradually adjusting system time by %ld us", tx.offset);
+
+	if(adjtimex(&tx) < 0)
 	{
 		log_err("Failed to adjust time: %s",
 		        errno == EPERM ? "Insufficient permissions, try running with sudo" : strerror(errno));
