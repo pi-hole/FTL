@@ -489,7 +489,7 @@
     #     valid NTP upstream server
     server = "pool.ntp.org"
 
-    # Interval in seconds between successive syncronization attempts with the NTP server
+    # Interval in seconds between successive synchronization attempts with the NTP server
     interval = 3600
 
     # Number of NTP syncs to perform and average before updating the system time
