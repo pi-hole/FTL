@@ -418,6 +418,15 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	log_info("Average time offset: (%e +/- %e s)", theta_avg, theta_stdev);
 	log_info("Average round-trip delay: (%e +/- %e s)", delta_avg, delta_stdev);
 
+	// Reject synchronization if the standard deviation of the time offset
+	// or round-trip delay is larger than 1 second
+	if(theta_stdev > 1.0 || delta_stdev > 1.0)
+	{
+		log_warn("Standard deviation of time offset is too large, rejecting synchronization");
+		free(ntp);
+		return false;
+	}
+
 	// Compute trimmed mean (average excluding outliers)
 	double theta_trim = 0.0, delta_trim = 0.0;
 	unsigned int trim = 0;
