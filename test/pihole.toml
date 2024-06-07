@@ -495,6 +495,19 @@
     # Number of NTP syncs to perform and average before updating the system time
     count = 8
 
+  [ntp.rtc]
+    # Should FTL update a real-time clock (RTC) if available?
+    set = true
+
+    # Path to the RTC device to update. Leave empty for auto-discovery
+    #
+    # Possible values are:
+    #     Path to the RTC device, e.g., "/dev/rtc0"
+    device = ""
+
+    # Should the RTC be set to UTC?
+    utc = true
+
 [resolver]
   # Should FTL try to resolve IPv4 addresses to hostnames?
   resolveIPv4 = false ### CHANGED, default = true
@@ -1077,7 +1090,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 144 total entries out of which 89 entries are default
+# 147 total entries out of which 92 entries are default
 # --> 55 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

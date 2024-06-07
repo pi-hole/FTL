@@ -851,6 +851,25 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.count.d.ui = 8;
 	conf->ntp.sync.count.c = validate_stub; // Only type-based checking
 
+	conf->ntp.rtc.set.k = "ntp.rtc.set";
+	conf->ntp.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
+	conf->ntp.rtc.set.t = CONF_BOOL;
+	conf->ntp.rtc.set.d.b = true;
+	conf->ntp.rtc.set.c = validate_stub; // Only type-based checking
+
+	conf->ntp.rtc.device.k = "ntp.rtc.device";
+	conf->ntp.rtc.device.h = "Path to the RTC device to update. Leave empty for auto-discovery";
+	conf->ntp.rtc.device.a = cJSON_CreateStringReference("Path to the RTC device, e.g., \"/dev/rtc0\"");
+	conf->ntp.rtc.device.t = CONF_STRING;
+	conf->ntp.rtc.device.d.s = (char*)"";
+	conf->ntp.rtc.device.c = validate_stub; // Only type-based checking
+
+	conf->ntp.rtc.utc.k = "ntp.rtc.utc";
+	conf->ntp.rtc.utc.h = "Should the RTC be set to UTC?";
+	conf->ntp.rtc.utc.t = CONF_BOOL;
+	conf->ntp.rtc.utc.d.b = true;
+	conf->ntp.rtc.utc.c = validate_stub; // Only type-based checking
+
 
 	// struct resolver
 	conf->resolver.resolveIPv6.k = "resolver.resolveIPv6";

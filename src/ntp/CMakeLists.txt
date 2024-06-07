@@ -11,6 +11,7 @@
 set(ntp_sources
         server.c
         client.c
+        rtc.c
         ntp.h
         )
 

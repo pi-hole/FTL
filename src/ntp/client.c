@@ -480,6 +480,10 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		// Return early if time could not be set
 		if(!success)
 			return false;
+
+		// Finally, adjust RTC if configured
+		if(config.ntp.rtc.set.v.b)
+			ntp_sync_rtc();
 	}
 
 	// Offset and delay larger than 0.1 seconds are considered as invalid

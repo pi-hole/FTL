@@ -205,6 +205,11 @@ struct config {
 			struct conf_item interval;
 			struct conf_item count;
 		} sync;
+		struct {
+			struct conf_item set;
+			struct conf_item device;
+			struct conf_item utc;
+		} rtc;
 	} ntp;
 
 	struct {
