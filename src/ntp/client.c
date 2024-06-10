@@ -319,16 +319,15 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	return true;
 }
 
-bool ntp_client(const char *server, const bool settime, const bool print)
+static int getsock(const struct addrinfo *saddr)
 {
-	const int protocol = strchr(server, ':') != NULL ? AF_INET6 : AF_INET;
-
 	// Create UDP socket
+	const int protocol = saddr->ai_addrlen == sizeof(struct sockaddr_in6) ? AF_INET6 : AF_INET;
 	const int s = socket(protocol, SOCK_DGRAM, IPPROTO_UDP);
 	if(s == -1)
 	{
 		log_err("Cannot create UDP socket");
-		return false;
+		return -1;
 	}
 
 	// Set socket timeout to 5 seconds
@@ -339,16 +338,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	{
 		log_err("Cannot set socket timeout");
 		close(s);
-		return false;
-	}
-
-	// Resolve server address
-	struct addrinfo *saddr;
-	if(getaddrinfo(server, "ntp", NULL, &saddr) != 0)
-	{
-		log_err("Cannot resolve NTP server address");
-		close(s);
-		return false;
+		return -1;
 	}
 
 	// Set address to send to/receive from
@@ -356,32 +346,56 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	{
 		log_err("Cannot connect to NTP server");
 		close(s);
+		return -1;
+	}
+
+	// Return socket
+	return s;
+}
+
+bool ntp_client(const char *server, const bool settime, const bool print)
+{
+	// Resolve server address
+	struct addrinfo *saddr;
+	if(getaddrinfo(server, "ntp", NULL, &saddr) != 0)
+	{
+		log_err("Cannot resolve NTP server address");
 		return false;
 	}
-	freeaddrinfo(saddr);
 
-	// Send and receive NTP packets
 	const unsigned int count = config.ntp.sync.count.v.ui;
 	struct ntp_sync *ntp = calloc(count, sizeof(struct ntp_sync));
 	if(ntp == NULL)
 	{
 		log_err("Cannot allocate memory for NTP client");
-		close(s);
 		return false;
 	}
-	memset(ntp, 0, count*sizeof(*ntp));
+
+	// Send and receive NTP packets
 	for(unsigned int i = 0; i < count; i++)
 	{
+		// Create socket
+		const int s = getsock(saddr);
+		if(s == -1)
+			continue;
+
 		// Send request
 		if(!request(s, &ntp[i]))
 		{
 			close(s);
 			free(ntp);
+			freeaddrinfo(saddr);
 			return false;
 		}
 		// Get reply
 		if(!reply(s, &ntp[i], false))
+		{
+			close(s);
 			continue;
+		}
+
+		// Close socket
+		close(s);
 
 		// Sleep for some time to avoid flooding the server
 		if(print)
@@ -392,8 +406,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	if(print)
 		printf("\n");
 
-	// Close socket
-	close(s);
+	// Free allocated memory
+	freeaddrinfo(saddr);
 
 	// Compute average and standard deviation
 	unsigned int valid = 0;
