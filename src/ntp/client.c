@@ -496,8 +496,7 @@ static void *ntp_client_thread(void *arg)
 	// Set thread name
 	thread_names[NTP] = "ntp-client";
 	thread_running[NTP] = true;
-	prctl(PR_SET_NAME, thread_names[DB], 0, 0, 0);
-	pthread_setname_np(pthread_self(), "NTP sync");
+	prctl(PR_SET_NAME, thread_names[NTP], 0, 0, 0);
 
 	// Run NTP client
 	while(!killed)

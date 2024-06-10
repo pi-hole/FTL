@@ -272,9 +272,14 @@ static void terminate_threads(void)
 	log_info("Waiting for threads to join");
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
+		log_debug(DEBUG_EXTRA, "Joining %s thread (%d)", thread_names[i], i);
 		// Skip threads that have never been started or which are already stopped
-		if(!thread_running[i])
+		if(threads[i] == 0 || !thread_running[i])
+		{
+			log_debug(DEBUG_EXTRA, "Skipping thread as it %s",
+			          threads[i] == 0 ? "was never started" : "is not running");
 			continue;
+		}
 
 		// Cancel thread if it is idle
 		if(thread_cancellable[i])
@@ -297,8 +302,7 @@ static void terminate_threads(void)
 		ts.tv_sec += 2;
 
 		// Try to join thread and cancel it if it is still busy
-		const int s = pthread_timedjoin_np(threads[i], NULL, &ts);
-		if(s != 0)
+		if(pthread_timedjoin_np(threads[i], NULL, &ts) != 0)
 		{
 			log_info("Thread %s (%d) is still busy, cancelling it.",
 			     thread_names[i], i);
