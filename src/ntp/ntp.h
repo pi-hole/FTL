@@ -65,6 +65,10 @@ bool ntp_sync_rtc(void);
 #define hton64(x) ((((uint64_t)htonl(x)) << 32) + htonl((x) >> 32))
 #define ntoh64(x) ((((uint64_t)ntohl(x)) << 32) + ntohl((x) >> 32))
 
+extern uint64_t ntp_last_sync;
+extern uint32_t ntp_root_delay;
+extern uint32_t ntp_root_dispersion;
+
 #endif // NTP_H
 
 

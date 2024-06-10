@@ -122,24 +122,29 @@ void print_debug_time(const char *label, const uint32_t *u32p, const uint64_t nt
 	          (timevar >> 32) & 0xFFFFFFFF, timevar & 0xFFFFFFFF, time_str);
 }
 
-static bool settime_step(const double offset)
+static uint64_t get_new_time(struct timeval *unix_time, const double offset)
 {
 	// Get current time
-	struct timeval unix_time;
-	gettimeofday(&unix_time, NULL);
+	gettimeofday(unix_time, NULL);
 
 	// Convert from double to native format (signed) and add to the
 	// current time.  Note the addition is done in native format to
 	// avoid overflow or loss of precision.
-	const uint64_t ntp_time = U2LFP(unix_time) + D2LFP(offset);
+	const uint64_t ntp_time = U2LFP(*unix_time) + D2LFP(offset);
 
 	// Convert NTP to native format
-	unix_time.tv_sec = NTPtoSEC(ntp_time);
-	unix_time.tv_usec = NTPtoUSEC(ntp_time);
+	unix_time->tv_sec = NTPtoSEC(ntp_time);
+	unix_time->tv_usec = NTPtoUSEC(ntp_time);
+
+	return ntp_time;
+}
+
+static bool settime_step(struct timeval *unix_time, const double offset)
+{
 	log_debug(DEBUG_NTP, "Stepping system time by %e s", offset);
 
 	// Set time immediately
-	if(settimeofday(&unix_time, NULL) != 0)
+	if(settimeofday(unix_time, NULL) != 0)
 	{
 		log_err("Failed to set time: %s",
 		        errno == EPERM ? "Insufficient permissions, try running with sudo" : strerror(errno));
@@ -221,9 +226,16 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	// Compute precision of server clock in seconds 2^rho
 	ntp->precision = pow(2, rho);
 
+	// Get root delay and dispersion (in network-byte-order !)
+	memcpy(&ntp_root_delay, &buf[4], sizeof(ntp_root_delay));
+	memcpy(&ntp_root_dispersion, &buf[8], sizeof(ntp_root_dispersion));
+
 	// Extract Transmit Timestamp
-	// org = Origin Timestamp (Transmit Timestamp @ Client)
 	uint64_t netbuffer;
+	// ref = Reference Timestamp (Time at which the clock was last set or corrected)
+	memcpy(&netbuffer, &buf[16], sizeof(netbuffer));
+	const uint64_t ref = ntoh64(netbuffer);
+	// org = Origin Timestamp (Transmit Timestamp @ Client)
 	memcpy(&netbuffer, &buf[24], sizeof(netbuffer));
 	const uint64_t org = ntoh64(netbuffer);
 	// rec = Receive Timestamp (Receive Timestamp @ Server)
@@ -287,6 +299,9 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	if(!config.debug.ntp.v.b)
 		return true;
 
+	// Print current time at server
+	print_debug_time("Server reference time", NULL, ref);
+
 	// Print current time at client
 	print_debug_time("Current time at client", NULL, dst);
 
@@ -296,6 +311,10 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	// Print offset and delay
 	log_debug(DEBUG_NTP, "Time offset: %e s", ntp->theta);
 	log_debug(DEBUG_NTP, "Round-trip delay: %e s", ntp->delta);
+	const uint32_t root_delay = ntohl(ntp_root_delay);
+	log_debug(DEBUG_NTP, "Root delay: %e s", LFP2D(root_delay));
+	const uint32_t root_dispersion = ntohl(ntp_root_dispersion);
+	log_debug(DEBUG_NTP, "Root dispersion: %e s", LFP2D(root_dispersion));
 
 	return true;
 }
@@ -398,7 +417,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		free(ntp);
 		return false;
 	}
-	log_info("Received %u/%u valid NTP replies", valid, count);
+	log_info("Received %u/%u valid NTP replies from %s", valid, count, server);
 
 	theta_avg /= valid;
 	delta_avg /= valid;
@@ -466,6 +485,10 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	// Set time if requested
 	if(settime)
 	{
+		// Calculate corrected time
+		struct timeval unix_time;
+		const uint64_t ntp_time = get_new_time(&unix_time, theta_trim);
+
 		// If the clock deviates more than 0.5 seconds from the NTP server,
 		// the time is updated immediately.  Otherwise, the time is updated
 		// gradually to avoid sudden jumps in the system clock.
@@ -473,13 +496,16 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		// since Linux 2.6.26, see man ntp_adjtime(2) for details.
 		bool success;
 		if(fabs(theta_trim) > 0.5)
-			success = settime_step(theta_trim);
+			success = settime_step(&unix_time, theta_trim);
 		else
 			success = settime_skew(theta_trim);
 
 		// Return early if time could not be set
 		if(!success)
 			return false;
+
+		// Update last NTP sync time
+		ntp_last_sync = ntp_time;
 
 		// Finally, adjust RTC if configured
 		if(config.ntp.rtc.set.v.b)

@@ -38,6 +38,10 @@
 // PRIi64
 #include <inttypes.h>
 
+uint64_t ntp_last_sync = 0u;
+uint32_t ntp_root_delay = 0u;
+uint32_t ntp_root_dispersion = 0u;
+
 // RFC 5905 Appendix A.4: Kernel System Clock Interface
 uint64_t gettime64(void)
 {
@@ -100,11 +104,12 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
 //      |                         Root Dispersion                       |
 //      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-	// Assume Root Delay (total roundtrip delay to the primary reference
-	// source) = 0, Root Dispersion (the nominal error relative to the
-	// primary reference source) = 0 as we don't have these numbers
-	*u32p++ = 0.0;
-	*u32p++ = 0.0;
+	// Set Root Delay (total roundtrip delay to the primary reference
+	// source) and Root Dispersion (the nominal error relative to the
+	// primary reference source) to the values obtained from the upstream
+	// NTP server. These values are already in network byte order.
+	*u32p++ = ntp_root_delay;
+	*u32p++ = ntp_root_dispersion;
 
 //       0                   1                   2                   3
 //       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -115,7 +120,7 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
 	// Reference ID = 'LOCL" (LOCAL CLOCK)
 	// A four-octet, left-justified, zero-padded ASCII string assigned to
 	// the reference clock
-	memcpy(u32p++, "LOCL", 4);
+	memcpy(u32p++, "LOCL", sizeof(uint32_t));
 
 //       0                   1                   2                   3
 //       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -126,12 +131,9 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
 //      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 	// Time when the system clock was last set or corrected, in NTP
-	// timestamp format. As this is not a stratum 1 server, we don't have
-	// a hardware clock to set this value.
-	// A stateless server copies T3 and T4 from the client packet to T1 and
-	// T2 of the server packet and tacks on the transmit timestamp T3 before
-	// sending it to the client.
-	memcpy(u32p, &u32r[8], sizeof(uint64_t));
+	// timestamp format.
+	const uint64_t last_sync = hton64(ntp_last_sync);
+	memcpy(u32p, &last_sync, sizeof(uint64_t));
 	if(config.debug.ntp.v.b)
 		print_debug_time("Reference Timestamp", u32p, 0);
 	u32p += 2;
