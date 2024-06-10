@@ -107,9 +107,9 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
 	// Set Root Delay (total roundtrip delay to the primary reference
 	// source) and Root Dispersion (the nominal error relative to the
 	// primary reference source) to the values obtained from the upstream
-	// NTP server. These values are already in network byte order.
-	*u32p++ = ntp_root_delay;
-	*u32p++ = ntp_root_dispersion;
+	// NTP server.
+	*u32p++ = htonl(ntp_root_delay);
+	*u32p++ = htonl(ntp_root_dispersion);
 
 //       0                   1                   2                   3
 //       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1

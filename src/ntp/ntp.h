@@ -51,6 +51,9 @@ bool ntp_sync_rtc(void);
 #define DIFF_SEC_1970_2036         (2085978496UL)
 
 // Timestamp conversion macroni (RFC 5905, Appendix A)
+#define FRIC       65536.                   // 2^16 as a double
+#define D2FP(r)    ((uint32_t)((r) * FRIC)) // NTP short
+#define FP2D(r)    ((double)(r) / FRIC)
 #define FRAC       4294967296.               // 2^32 as double
 #define D2LFP(a)   ((uint64_t)((a) * FRAC))  // NTP timestamp
 #define LFP2D(a)   ((double)(a) / FRAC)

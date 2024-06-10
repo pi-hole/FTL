@@ -226,10 +226,6 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	// Compute precision of server clock in seconds 2^rho
 	ntp->precision = pow(2, rho);
 
-	// Get root delay and dispersion (in network-byte-order !)
-	memcpy(&ntp_root_delay, &buf[4], sizeof(ntp_root_delay));
-	memcpy(&ntp_root_dispersion, &buf[8], sizeof(ntp_root_dispersion));
-
 	// Extract Transmit Timestamp
 	uint64_t netbuffer;
 	// ref = Reference Timestamp (Time at which the clock was last set or corrected)
@@ -520,6 +516,15 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 
 		// Update last NTP sync time
 		ntp_last_sync = ntp_time;
+
+		// Compute our server's root dispersion and delay
+		// Both quantities are the maximum error and maximum delay of
+		// the server's time relative to the reference time. The root
+		// dispersion is the maximum error of the server's time relative
+		// to the reference time, while the root delay is the maximum
+		// delay of the server's time relative to the reference time
+		ntp_root_delay = D2FP(theta_trim);
+		ntp_root_dispersion = D2FP(theta_stdev);
 
 		// Finally, adjust RTC if configured
 		if(config.ntp.rtc.set.v.b)
