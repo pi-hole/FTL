@@ -2900,9 +2900,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// detached mode
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
+	// Do NOT detach threads as we want to join them during shutdown with a
+	// fixed timeout to give them time to clean up and finish their work
 	pthread_attr_init(&attr);
-	// Set thread attributes to detached mode
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	// Initialize NTP server
 	ntp_server_start(&attr);

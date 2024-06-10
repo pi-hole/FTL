@@ -265,7 +265,6 @@ pid_t FTL_gettid(void)
 
 static void terminate_threads(void)
 {
-	struct timespec ts;
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
 	// Try to join threads to ensure cancellation has succeeded
@@ -290,6 +289,8 @@ static void terminate_threads(void)
 		}
 
 		// Cancel thread if we cannot set a timeout for joining
+		struct timespec ts;
+		memset(&ts, 0, sizeof(ts));
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
 		{
 			log_info("Thread %s (%d) is busy, cancelling it (cannot set timeout).",
