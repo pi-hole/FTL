@@ -226,6 +226,11 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	// Compute precision of server clock in seconds 2^rho
 	ntp->precision = pow(2, rho);
 
+	// Extract root delay and root dispersion of server clock
+	uint32_t srv_root_delay, srv_root_dispersion;
+	memcpy(&srv_root_delay, &buf[4], sizeof(srv_root_delay));
+	memcpy(&srv_root_dispersion, &buf[8], sizeof(srv_root_dispersion));
+
 	// Extract Transmit Timestamp
 	uint64_t netbuffer;
 	// ref = Reference Timestamp (Time at which the clock was last set or corrected)
@@ -307,10 +312,10 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	// Print offset and delay
 	log_debug(DEBUG_NTP, "Time offset: %e s", ntp->theta);
 	log_debug(DEBUG_NTP, "Round-trip delay: %e s", ntp->delta);
-	const uint32_t root_delay = ntohl(ntp_root_delay);
-	log_debug(DEBUG_NTP, "Root delay: %e s", LFP2D(root_delay));
-	const uint32_t root_dispersion = ntohl(ntp_root_dispersion);
-	log_debug(DEBUG_NTP, "Root dispersion: %e s", LFP2D(root_dispersion));
+	const uint32_t root_delay = ntohl(srv_root_delay);
+	log_debug(DEBUG_NTP, "Root delay: %e s", FP2D(root_delay));
+	const uint32_t root_dispersion = ntohl(srv_root_dispersion);
+	log_debug(DEBUG_NTP, "Root dispersion: %e s", FP2D(root_dispersion));
 
 	return true;
 }
@@ -539,7 +544,6 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 static void *ntp_client_thread(void *arg)
 {
 	// Set thread name
-	thread_names[NTP] = "ntp-client";
 	thread_running[NTP] = true;
 	prctl(PR_SET_NAME, thread_names[NTP], 0, 0, 0);
 
