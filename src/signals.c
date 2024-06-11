@@ -38,9 +38,9 @@ volatile sig_atomic_t thread_running[THREADS_MAX] = { false };
 const char * const thread_names[THREADS_MAX] = {
 	"database",
 	"housekeeper",
-	"DNS client",
+	"dns-client",
 	"timer",
-	"NTP client"
+	"ntp-client"
  };
 
 // Return the (null-terminated) name of the calling thread

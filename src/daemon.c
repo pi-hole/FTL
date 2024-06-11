@@ -273,10 +273,9 @@ static void terminate_threads(void)
 	{
 		log_debug(DEBUG_EXTRA, "Joining %s thread (%d)", thread_names[i], i);
 		// Skip threads that have never been started or which are already stopped
-		if(threads[i] == 0 || !thread_running[i])
+		if(threads[i] == 0)
 		{
-			log_debug(DEBUG_EXTRA, "Skipping thread as it %s",
-			          threads[i] == 0 ? "was never started" : "is not running");
+			log_debug(DEBUG_EXTRA, "Skipping thread as it was never started");
 			continue;
 		}
 
