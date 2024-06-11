@@ -250,7 +250,6 @@ enum thread_types {
 	DB,
 	GC,
 	DNSclient,
-	CONF_READER,
 	TIMER,
 	NTP,
 	THREADS_MAX

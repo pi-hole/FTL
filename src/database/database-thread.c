@@ -83,7 +83,6 @@ static bool analyze_database(sqlite3 *db)
 void *DB_thread(void *val)
 {
 	// Set thread name
-	thread_names[DB] = "database";
 	thread_running[DB] = true;
 	prctl(PR_SET_NAME, thread_names[DB], 0, 0, 0);
 
