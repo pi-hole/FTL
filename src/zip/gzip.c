@@ -16,7 +16,9 @@
 #include <stdlib.h>
 #include <string.h>
 // le32toh and friends
+#ifndef __USE_MISC
 #define __USE_MISC
+#endif
 #include <endian.h>
 
 static int mz_uncompress2_raw(unsigned char *pDest, mz_ulong *pDest_len, const unsigned char *pSource, mz_ulong *pSource_len);
