@@ -37,6 +37,8 @@
 #include "signals.h"
 // adjtimex()
 #include <sys/timex.h>
+// log_ntp_message()
+#include "database/message-table.h"
 struct ntp_sync
 {
 	uint64_t org;
@@ -146,8 +148,11 @@ static bool settime_step(struct timeval *unix_time, const double offset)
 	// Set time immediately
 	if(settimeofday(unix_time, NULL) != 0)
 	{
-		log_err("Failed to set time: %s",
-		        errno == EPERM ? "Insufficient permissions, try running with sudo" : strerror(errno));
+		char errbuf[1024];
+		strncpy(errbuf, "Failed to set time during NTP sync: ", sizeof(errbuf));
+		strncat(errbuf, errno == EPERM ? "Insufficient permissions" : strerror(errno), sizeof(errbuf) - strlen(errbuf) - 1);
+		errbuf[sizeof(errbuf) - 1] = '\0';
+		log_ntp_message(true, false, errbuf);
 		return false;
 	}
 
@@ -193,8 +198,11 @@ static bool settime_skew(const double offset)
 
 	if(adjtimex(&tx) < 0)
 	{
-		log_err("Failed to adjust time: %s",
-		        errno == EPERM ? "Insufficient permissions, try running with sudo" : strerror(errno));
+		char errbuf[1024];
+		strncpy(errbuf, "Failed to adjust time during NTP sync: ", sizeof(errbuf));
+		strncat(errbuf, errno == EPERM ? "Insufficient permissions" : strerror(errno), sizeof(errbuf) - strlen(errbuf) - 1);
+		errbuf[sizeof(errbuf) - 1] = '\0';
+		log_ntp_message(true, false, errbuf);
 		return false;
 	}
 
@@ -220,7 +228,10 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	{
 		// Accepted limits are 2^-32 (~ 0.2 nanoseconds)
 		// to 2^0 (= 1 second)
-		log_warn("Received NTP reply has invalid precision: 2^(%i), assuming microsecond accuracy", rho);
+		char errbuf[1024];
+		snprintf(errbuf, sizeof(errbuf), "Received NTP reply has invalid precision: 2^(%i), assuming microsecond accuracy", rho);
+		errbuf[sizeof(errbuf) - 1] = '\0';
+		log_ntp_message(false, false, errbuf);
 		rho = -19;
 	}
 	// Compute precision of server clock in seconds 2^rho
@@ -327,7 +338,11 @@ static int getsock(const struct addrinfo *saddr)
 	const int s = socket(protocol, SOCK_DGRAM, IPPROTO_UDP);
 	if(s == -1)
 	{
-		log_err("Cannot create UDP socket");
+		char errbuf[1024];
+		strncpy(errbuf, "Cannot create UDP socket: ", sizeof(errbuf));
+		strncat(errbuf, strerror(errno), sizeof(errbuf) - strlen(errbuf) - 1);
+		errbuf[sizeof(errbuf) - 1] = '\0';
+		log_ntp_message(true, false, errbuf);
 		return -1;
 	}
 
@@ -337,7 +352,11 @@ static int getsock(const struct addrinfo *saddr)
 	tv.tv_usec = 0;
 	if(setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) != 0)
 	{
-		log_err("Cannot set socket timeout");
+		char errbuf[1024];
+		strncpy(errbuf, "Cannot set socket timeout: ", sizeof(errbuf));
+		strncat(errbuf, strerror(errno), sizeof(errbuf) - strlen(errbuf) - 1);
+		errbuf[sizeof(errbuf) - 1] = '\0';
+		log_ntp_message(true, false, errbuf);
 		close(s);
 		return -1;
 	}
@@ -345,7 +364,11 @@ static int getsock(const struct addrinfo *saddr)
 	// Set address to send to/receive from
 	if(connect(s, saddr->ai_addr, saddr->ai_addrlen) != 0)
 	{
-		log_err("Cannot connect to NTP server");
+		char errbuf[1024];
+		strncpy(errbuf, "Canot connect to NTP server: ", sizeof(errbuf));
+		strncat(errbuf, strerror(errno), sizeof(errbuf) - strlen(errbuf) - 1);
+		errbuf[sizeof(errbuf) - 1] = '\0';
+		log_ntp_message(true, false, errbuf);
 		close(s);
 		return -1;
 	}
@@ -357,10 +380,22 @@ static int getsock(const struct addrinfo *saddr)
 bool ntp_client(const char *server, const bool settime, const bool print)
 {
 	// Resolve server address
+	int eai;
 	struct addrinfo *saddr;
-	if(getaddrinfo(server, "ntp", NULL, &saddr) != 0)
+	if((eai = getaddrinfo(server, "ntp", NULL, &saddr)) != 0)
 	{
-		log_err("Cannot resolve NTP server address");
+		char errbuf[1024];
+		strncpy(errbuf, "Cannot resolve NTP server address: ", sizeof(errbuf));
+		strncat(errbuf, errno == EAI_SYSTEM ? strerror(errno) : gai_strerror(eai),
+		        sizeof(errbuf) - strlen(errbuf) - 1);
+		if(eai == EAI_NONAME || eai == EAI_NODATA)
+		{
+			strncat(errbuf, " \"", sizeof(errbuf) - strlen(errbuf) - 1);
+			strncat(errbuf, server, sizeof(errbuf) - strlen(errbuf) - 1);
+			strncat(errbuf, "\"", sizeof(errbuf) - strlen(errbuf) - 1);
+		}
+		errbuf[sizeof(errbuf) - 1] = '\0';
+		log_ntp_message(true, false, errbuf);
 		return false;
 	}
 
@@ -428,7 +463,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 
 	if(valid == 0)
 	{
-		log_warn("No valid NTP replies received, check server and network connectivity");
+		log_ntp_message(false, false, "No valid NTP replies received, check server and network connectivity");
 		free(ntp);
 		return false;
 	}
@@ -456,7 +491,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	// or round-trip delay is larger than 1 second
 	if(theta_stdev > 1.0 || delta_stdev > 1.0)
 	{
-		log_warn("Standard deviation of time offset is too large, rejecting synchronization");
+		log_ntp_message(false, false, "Standard deviation of time offset is too large, rejecting synchronization");
 		free(ntp);
 		return false;
 	}

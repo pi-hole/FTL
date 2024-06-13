@@ -97,6 +97,8 @@ static const char *get_message_type_str(const enum message_type type)
 			return "CERTIFICATE_DOMAIN_MISMATCH";
 		case CONNECTION_ERROR_MESSAGE:
 			return "CONNECTION_ERROR";
+		case NTP_MESSAGE:
+			return "NTP";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
@@ -131,6 +133,8 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return CERTIFICATE_DOMAIN_MISMATCH_MESSAGE;
 	else if (strcmp(typestr, "CONNECTION_ERROR") == 0)
 		return CONNECTION_ERROR_MESSAGE;
+	else if (strcmp(typestr, "NTP") == 0)
+		return NTP_MESSAGE;
 	else
 		return MAX_MESSAGE;
 }
@@ -227,6 +231,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			// CONNECTION_ERROR_MESSAGE: The message column contains the server address
 			SQLITE_TEXT, // reason
 			SQLITE_TEXT, // error message
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
+		},
+		{
+			// NTP: The message column contains the warning/error
+			SQLITE_TEXT, // level (warning/error)
+			SQLITE_TEXT, // component (server/client)
 			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
@@ -900,6 +912,20 @@ static void format_connection_error(char *plain, const int sizeof_plain, char *h
 	free(escaped_server);
 }
 
+static void format_ntp_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                               const char *message, const char *level, const char *who)
+{
+	if(snprintf(plain, sizeof_plain, "%s NTP %s: %s", level, who, message) > sizeof_plain)
+		log_warn("format_ntp_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	if(snprintf(html, sizeof_html, "%s in NTP %s:<pre>%s</pre>", level, who, message) > sizeof_html)
+		log_warn("format_ntp_message(): Buffer too small to hold HTML message, warning truncated");
+}
+
 int count_messages(const bool filter_dnsmasq_warnings)
 {
 	int count = 0;
@@ -1143,6 +1169,18 @@ bool format_messages(cJSON *array)
 
 				format_connection_error(plain, sizeof(plain), html, sizeof(html),
 				                        server, reason, error);
+
+				break;
+			}
+
+			case NTP_MESSAGE:
+			{
+				const char *message = (const char*)sqlite3_column_text(stmt, 3);
+				const char *level = (const char*)sqlite3_column_text(stmt, 4);
+				const char *who = (const char*)sqlite3_column_text(stmt, 5);
+
+				format_ntp_message(plain, sizeof(plain), html, sizeof(html),
+				                   message, level, who);
 
 				break;
 			}
@@ -1422,4 +1460,26 @@ void log_connection_error(const char *server, const char *reason, const char *er
 
 	if(rowid == -1)
 		log_err("logg_connection_error(): Failed to add message to database");
+}
+
+void log_ntp_message(const bool error, const bool server, const char *message)
+{
+	const char *who = server ? "server" : "client";
+	const char *level = error ? "Error" : "Warning";
+
+	// Create message
+	char buf[2048];
+	format_ntp_message(buf, sizeof(buf), NULL, 0, message, level, who);
+
+	// Log to FTL.log
+	if(error)
+		log_err("%s", buf);
+	else
+		log_warn("%s", buf);
+
+	// Log to database
+	const int rowid = add_message(NTP_MESSAGE, message, level, who);
+
+	if(rowid == -1)
+		log_err("log_ntp_message(): Failed to add message to database");
 }

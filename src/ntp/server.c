@@ -37,6 +37,8 @@
 #include "config/config.h"
 // PRIi64
 #include <inttypes.h>
+// log_ntp_message()
+#include "database/message-table.h"
 
 uint64_t ntp_last_sync = 0u;
 uint32_t ntp_root_delay = 0u;
@@ -285,8 +287,12 @@ static void *ntp_bind_and_listen(void *param)
 	const int s = socket(protocol, SOCK_DGRAM, IPPROTO_UDP);
 	if(s == -1)
 	{
-		log_warn("Cannot create NTP socket (%s), IPv%i NTP server not available",
+		char errbuf[1024];
+		snprintf(errbuf, sizeof(errbuf),
+		         "Cannot create NTP socket (%s), IPv%i NTP server not available",
 		         strerror(errno), protocol == AF_INET ? 4 : 6);
+		errbuf[sizeof(errbuf) - 1] = '\0';
+		log_ntp_message(true, true, errbuf);
 		return NULL;
 	}
 
@@ -310,8 +316,12 @@ static void *ntp_bind_and_listen(void *param)
 		errno = 0;
 		if(bind(s, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) != 0)
 		{
-			log_warn("Cannot bind to IPv4 address %s:123 (%s), IPv4 NTP server not available",
+			char errbuf[1024];
+			snprintf(errbuf, sizeof(errbuf),
+			         "Cannot bind to IPv4 address %s:123 (%s), IPv4 NTP server not available",
 			         ipstr, strerror(errno));
+			errbuf[sizeof(errbuf) - 1] = '\0';
+			log_ntp_message(true, true, errbuf);
 			return NULL;
 		}
 	}
@@ -326,7 +336,11 @@ static void *ntp_bind_and_listen(void *param)
 		int opt = 1;
 		if(setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt)) != 0)
 		{
-			log_warn("Cannot set socket option IPV6_V6ONLY (%s), IPv6 NTP server not available", strerror(errno));
+			char errbuf[1024];
+			strncpy(errbuf, "Cannot set socket option IPV6_V6ONLY, IPv6 NTP server not available: ", sizeof(errbuf));
+			strncat(errbuf, strerror(errno), sizeof(errbuf) - strlen(errbuf) - 1);
+			errbuf[sizeof(errbuf) - 1] = '\0';
+			log_ntp_message(true, true, errbuf);
 			return NULL;
 		}
 
@@ -342,8 +356,12 @@ static void *ntp_bind_and_listen(void *param)
 		errno = 0;
 		if(bind(s, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) != 0)
 		{
-			log_warn("Cannot bind to IPv6 address %s:123 (%s), IPv6 NTP server not available",
+			char errbuf[1024];
+			snprintf(errbuf, sizeof(errbuf),
+			         "Cannot bind to IPv6 address %s:123 (%s), IPv6 NTP server not available",
 			         ipstr, strerror(errno));
+			errbuf[sizeof(errbuf) - 1] = '\0';
+			log_ntp_message(true, true, errbuf);
 			return NULL;
 		}
 	}
@@ -366,7 +384,7 @@ bool ntp_server_start(pthread_attr_t *attr)
 		pthread_t thread;
 		if (pthread_create(&thread, attr, ntp_bind_and_listen, (void *)0) != 0)
 		{
-			log_err("Can not create NTP server thread for IPv4");
+			log_ntp_message(true, true, "Cannot create NTP server thread for IPv4");
 			return false;
 		}
 	}
@@ -378,7 +396,7 @@ bool ntp_server_start(pthread_attr_t *attr)
 		pthread_t thread;
 		if (pthread_create(&thread, attr, ntp_bind_and_listen, (void *)1) != 0)
 		{
-			log_err("Can not create NTP server thread for IPv6");
+			log_ntp_message(true, true, "Cannot create NTP server thread for IPv6");
 			return false;
 		}
 	}
