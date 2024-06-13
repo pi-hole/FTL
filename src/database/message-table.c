@@ -549,7 +549,7 @@ static void format_regex_message(char *plain, const int sizeof_plain, char *html
 	}
 
 	if(snprintf(html, sizeof_html, "Encountered an error when processing <a href=\"groups-domains.lp?domainid=%d\">regex %s filter with ID %d</a>: <pre>%s</pre>Error message: <pre>%s</pre>",
-	            dbindex, type, dbindex, escaped_regex, escaped_warning))
+	            dbindex, type, dbindex, escaped_regex, escaped_warning) > sizeof_html)
 		log_warn("format_regex_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_regex);
