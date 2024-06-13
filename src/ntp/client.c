@@ -365,7 +365,7 @@ static int getsock(const struct addrinfo *saddr)
 	if(connect(s, saddr->ai_addr, saddr->ai_addrlen) != 0)
 	{
 		char errbuf[1024];
-		strncpy(errbuf, "Canot connect to NTP server: ", sizeof(errbuf));
+		strncpy(errbuf, "Cannot connect to NTP server: ", sizeof(errbuf));
 		strncat(errbuf, strerror(errno), sizeof(errbuf) - strlen(errbuf) - 1);
 		errbuf[sizeof(errbuf) - 1] = '\0';
 		log_ntp_message(true, false, errbuf);
