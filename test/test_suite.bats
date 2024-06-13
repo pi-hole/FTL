@@ -1171,7 +1171,7 @@
 @test "No ERROR messages in FTL.log (besides known/intended error)" {
   run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is invalid)|(Failed to adjust time: Insufficient permissions)"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is invalid)|(Failed to set|adjust time during NTP sync: Insufficient permissions)"'
   printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
