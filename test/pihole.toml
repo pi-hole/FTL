@@ -702,6 +702,14 @@
     #     <valid Pi-hole password hash>
     app_pwhash = ""
 
+    # Should the application password be allowed to modify Pi-hole config settings?
+    # Note that this setting is only relevant if the application password is set. Setting
+    # this to true allows third-party applications to modify advanced settings, e.g., the
+    # DNS server, DHCP server, or change passwords.
+    # Be aware that this setting is a security risk and should only be enabled if you
+    # trust the application and its developer.
+    app_sudo = false
+
     # Array of clients to be excluded from certain API responses (regex):
     # - Query Log (/api/queries)
     # - Top Clients (/api/stats/top_clients)
@@ -1039,7 +1047,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 136 total entries out of which 82 entries are default
+# 137 total entries out of which 83 entries are default
 # --> 54 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

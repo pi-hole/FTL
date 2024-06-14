@@ -237,6 +237,7 @@ struct config {
 			struct conf_item password; // This is a pseudo-item
 			struct conf_item totp_secret; // This is a write-only item
 			struct conf_item app_pwhash;
+			struct conf_item app_sudo;
 			struct conf_item excludeClients;
 			struct conf_item excludeDomains;
 			struct conf_item maxHistory;

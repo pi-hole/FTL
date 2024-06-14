@@ -118,6 +118,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		double_time(),
 		{ false, NULL, NULL, NULL, 0u },
 		{ false },
+		NULL,
 		{ API_FLAG_NONE, 0 }
 	};
 

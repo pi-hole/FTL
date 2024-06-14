@@ -1018,6 +1018,12 @@ void initConfig(struct config *conf)
 	conf->webserver.api.app_pwhash.d.s = (char*)"";
 	conf->webserver.api.app_pwhash.c = validate_stub; // Only type-based checking
 
+	conf->webserver.api.app_sudo.k = "webserver.api.app_sudo";
+	conf->webserver.api.app_sudo.h = "Should the application password be allowed to modify Pi-hole config settings?\n Note that this setting is only relevant if the application password is set. Setting this to true allows third-party applications to modify advanced settings, e.g., the DNS server, DHCP server, or change passwords.\n Be aware that this setting is a security risk and should only be enabled if you trust the application and its developer.";
+	conf->webserver.api.app_sudo.t = CONF_BOOL;
+	conf->webserver.api.app_sudo.d.b = false;
+	conf->webserver.api.app_sudo.c = validate_stub; // Only type-based checking
+
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
 	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_clients)\n This setting accepts both IP addresses (IPv4 and IPv6) as well as hostnames.\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n\n Example: [ \"^192\\\\.168\\\\.2\\\\.56$\", \"^fe80::341:[0-9a-f]*$\", \"^localhost$\" ]";
 	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("array of regular expressions describing clients");

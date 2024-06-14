@@ -282,6 +282,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	}
 
 	api->user_id = user_id;
+	api->session = &auth_data[user_id];
 
 	api->message = "correct password";
 	return user_id;

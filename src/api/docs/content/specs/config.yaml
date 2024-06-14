@@ -413,6 +413,8 @@ components:
                       type: string
                     app_pwhash:
                       type: string
+                    app_sudo:
+                      type: boolean
                     excludeClients:
                       type: array
                       items:
@@ -697,6 +699,7 @@ components:
               pwhash: ''
               totp_secret: ''
               app_pwhash: ''
+              app_sudo: false
               excludeClients: [ '1\.2\.3\.4', 'localhost', 'fe80::345' ]
               excludeDomains: [ 'google\\.de', 'pi-hole\.net' ]
               maxHistory: 86400
