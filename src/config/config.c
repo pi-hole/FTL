@@ -1019,7 +1019,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.app_pwhash.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.app_sudo.k = "webserver.api.app_sudo";
-	conf->webserver.api.app_sudo.h = "Should the application password be allowed to modify Pi-hole config settings?\n Note that this setting is only relevant if the application password is set. Setting this to true allows third-party applications to modify advanced settings, e.g., the DNS server, DHCP server, or change passwords.\n Be aware that this setting is a security risk and should only be enabled if you trust the application and its developer.";
+	conf->webserver.api.app_sudo.h = "Should application password API sessions be allowed to modify config settings?\n Setting this to true allows third-party applications using the application password to modify advanced settings, e.g., the upstream DNS servers, DHCP server settings, or changing passwords. This setting should only be enabled if really needed and only if you trust the applications using the application password.";
 	conf->webserver.api.app_sudo.t = CONF_BOOL;
 	conf->webserver.api.app_sudo.d.b = false;
 	conf->webserver.api.app_sudo.c = validate_stub; // Only type-based checking
