@@ -844,9 +844,9 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 	const char *hint = NULL, *message = NULL;
 	if(api->method == HTTP_PUT)
-		hint = "Use, e.g., PUT /api/config/dnsmasq/upstreams/127.0.0.1 to add \"127.0.0.1\" to config.dns.upstreams";
+		hint = "Use, e.g., PUT /api/config/dns/upstreams/127.0.0.1 to add \"127.0.0.1\" to config.dns.upstreams";
 	else
-		hint = "Use, e.g., DELETE /api/config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams";
+		hint = "Use, e.g., DELETE /api/config/dns/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams";
 
 	if(min_level < 2)
 	{
