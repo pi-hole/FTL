@@ -1043,8 +1043,8 @@ int api_config(struct ftl_conn *api)
 	{
 		return send_json_error(api, 403,
 		                       "forbidden",
-		                       "config read-only",
-		                       "app session but webserver.api.app_sudo is false");
+		                       "Unable to change configuration (read-only)",
+		                       "The current app session is not allowed to modify Pi-hole config settings (webserver.api.app_sudo is false)");
 	}
 
 	// POST: Create a new config (not supported)
