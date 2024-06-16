@@ -723,6 +723,12 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	{
 		log_warn("New dnsmasq configuration is not valid (%s), config remains unchanged", errbuf);
 
+		if(debug_flags[DEBUG_ANY])
+		{
+			log_debug(DEBUG_ANY, "Temporary dnsmasq config file left in place for debugging purposes");
+			return false;
+		}
+
 		// Remove temporary config file
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{
