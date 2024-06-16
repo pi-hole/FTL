@@ -151,14 +151,14 @@ bool backup_db_sessions(struct session *sessions, const uint16_t max_sessions)
 			return false;
 		}
 		// 8: tls_mixed
-		if(sqlite3_bind_int(stmt, 8, sess->tls.mixed ? 1: 0) != SQLITE_OK)
+		if(sqlite3_bind_int(stmt, 8, sess->tls.mixed ? 1 : 0) != SQLITE_OK)
 		{
 			log_err("Cannot bind tls_mixed = %d in backup_db_sessions(): %s (%d)",
 					sess->tls.mixed ? 1 : 0, sqlite3_errmsg(db), sqlite3_errcode(db));
 			return false;
 		}
 		// 9: app
-		if(sqlite3_bind_int(stmt, 8, sess->app ? 1: 0) != SQLITE_OK)
+		if(sqlite3_bind_int(stmt, 9, sess->app ? 1 : 0) != SQLITE_OK)
 		{
 			log_err("Cannot bind app = %d in backup_db_sessions(): %s (%d)",
 					sess->app ? 1 : 0, sqlite3_errmsg(db), sqlite3_errcode(db));
