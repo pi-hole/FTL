@@ -397,8 +397,6 @@ components:
                   properties:
                     localAPIauth:
                       type: boolean
-                    searchAPIauth:
-                      type: boolean
                     max_sessions:
                       type: integer
                     prettyJSON:
@@ -694,7 +692,6 @@ components:
               theme: "default-darker"
             api:
               localAPIauth: false
-              searchAPIauth: false
               max_sessions: 16
               prettyJSON: false
               password: "********"

@@ -230,7 +230,6 @@ struct config {
 		} interface;
 		struct {
 			struct conf_item localAPIauth;
-			struct conf_item searchAPIauth;
 			struct conf_item max_sessions;
 			struct conf_item prettyJSON;
 			struct conf_item pwhash;

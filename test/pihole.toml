@@ -660,11 +660,6 @@
     # clients to use the API without authentication.
     localAPIauth = true
 
-    # Do local clients need to authenticate to access the search API? This settings allows
-    # local clients to use pihole -q ... without authentication. Note that "local" in the
-    # sense of the option means only 127.0.0.1 and [::1]
-    searchAPIauth = false
-
     # Number of concurrent sessions allowed for the API. If the number of sessions exceeds
     # this value, no new sessions will be allowed until the number of sessions drops due
     # to session expiration or logout. Note that the number of concurrent sessions is
@@ -1054,7 +1049,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 138 total entries out of which 84 entries are default
+# 137 total entries out of which 83 entries are default
 # --> 54 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice
