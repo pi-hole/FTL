@@ -310,6 +310,7 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 		JSON_REF_STR_IN_OBJECT(session, "remote_addr", auth_data[i].remote_addr);
 		JSON_REF_STR_IN_OBJECT(session, "user_agent", auth_data[i].user_agent);
 		JSON_ADD_BOOL_TO_OBJECT(session, "app", auth_data[i].app);
+		JSON_ADD_BOOL_TO_OBJECT(session, "cli", auth_data[i].cli);
 		JSON_ADD_ITEM_TO_ARRAY(sessions, session);
 	}
 	JSON_ADD_ITEM_TO_OBJECT(json, "sessions", sessions);
@@ -537,7 +538,9 @@ int api_auth(struct ftl_conn *api)
 	else
 		result = verify_login(password);
 
-	if(result == PASSWORD_CORRECT || result == APPPASSWORD_CORRECT)
+	if(result == PASSWORD_CORRECT ||
+	   result == APPPASSWORD_CORRECT ||
+	   result ==CLIPASSWORD_CORRECT)
 	{
 		// Accepted
 
@@ -548,7 +551,7 @@ int api_auth(struct ftl_conn *api)
 
 		// Check possible 2FA token
 		// Successful login with empty password does not require 2FA
-		if(strlen(config.webserver.api.totp_secret.v.s) > 0 && result != APPPASSWORD_CORRECT)
+		if(strlen(config.webserver.api.totp_secret.v.s) > 0 && result == PASSWORD_CORRECT)
 		{
 			// Get 2FA token from payload
 			cJSON *json_totp;
@@ -619,6 +622,7 @@ int api_auth(struct ftl_conn *api)
 				auth_data[i].tls.login = api->request->is_ssl;
 				auth_data[i].tls.mixed = false;
 				auth_data[i].app = result == APPPASSWORD_CORRECT;
+				auth_data[i].cli = result == CLIPASSWORD_CORRECT;
 
 				// Generate new SID and CSRF token
 				generateSID(auth_data[i].sid);

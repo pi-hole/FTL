@@ -709,6 +709,14 @@
     # if you trust the applications using the application password.
     app_sudo = false
 
+    # Should FTL create a temporary CLI password? This password is stored in clear in
+    # /etc/pihole and can be used by the CLI (pihole ...  commands) to authenticate
+    # against the API. Note that the password is only valid for the current session and
+    # regenerated on each FTL restart. Sessions initiated with this password cannot modify
+    # the Pi-hole configuration (change passwords, etc.) for security reasons but can
+    # still use the API to query data and manage lists.
+    cli_pw = true
+
     # Array of clients to be excluded from certain API responses (regex):
     # - Query Log (/api/queries)
     # - Top Clients (/api/stats/top_clients)
@@ -1046,7 +1054,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 137 total entries out of which 83 entries are default
+# 138 total entries out of which 84 entries are default
 # --> 54 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

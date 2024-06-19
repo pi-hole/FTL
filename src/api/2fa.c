@@ -15,7 +15,7 @@
 #include "config/config.h"
 // getrandom()
 #include "daemon.h"
-// generate_app_password()
+// generate_password()
 #include "config/password.h"
 
 // TOTP+HMAC
@@ -313,7 +313,7 @@ int generateAppPw(struct ftl_conn *api)
 {
 	// Generate and set app password
 	char *password = NULL, *pwhash = NULL;
-	if(!generate_app_password(&password, &pwhash))
+	if(!generate_password(&password, &pwhash))
 	{
 		return send_json_error(api,
 		                       500,
