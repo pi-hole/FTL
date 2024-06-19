@@ -1541,6 +1541,28 @@
   [[ ${lines[0]} == "true" ]]
 }
 
+@test "CLI password file is as expected" {
+  # Check the file is non-empty
+  run bash -c 'cat /etc/pihole/cli_pw'
+  printf "%s\n" "${lines[@]}"
+  [[ ${#lines[0]} -gt 0 ]]
+
+  # Check if file has exactly one line
+  [[ ${#lines[@]} -eq 1 ]]
+
+  # Check if this line does NOT have a newline character at the end
+  [[ ${lines[0]} != *$'\n' ]]
+
+  # Check the file content is valid base64
+  run bash -c 'echo ${0} | base64 -d > /dev/null' "${lines[0]}"
+  [[ $status == 0 ]]
+
+  # Check permission set on the file is 640
+  run bash -c 'stat -c "%a" /etc/pihole/cli_pw'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "640" ]]
+}
+
 @test "API authorization: Setting password" {
   # Password: ABC
   run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config/webserver/api/password -d "{\"config\":{\"webserver\":{\"api\":{\"password\":\"ABC\"}}}}"'
