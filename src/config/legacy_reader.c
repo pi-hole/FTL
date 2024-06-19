@@ -309,11 +309,6 @@ const char *readFTLlegacy(struct config *conf)
 	if(buffer != NULL)
 		conf->webserver.acl.v.s = strdup(buffer);
 
-	// API_AUTH_FOR_LOCALHOST
-	// defaults to: true
-	buffer = parseFTLconf(fp, "API_AUTH_FOR_LOCALHOST");
-	parseBool(buffer, &conf->webserver.api.localAPIauth.v.b);
-
 	// API_SESSION_TIMEOUT
 	// How long should a session be considered valid after login?
 	// defaults to: 300 seconds

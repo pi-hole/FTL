@@ -656,10 +656,6 @@
     theme = "default-auto"
 
   [webserver.api]
-    # Do local clients need to authenticate to access the API? This settings allows local
-    # clients to use the API without authentication.
-    localAPIauth = true
-
     # Number of concurrent sessions allowed for the API. If the number of sessions exceeds
     # this value, no new sessions will be allowed until the number of sessions drops due
     # to session expiration or logout. Note that the number of concurrent sessions is
@@ -1049,7 +1045,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 137 total entries out of which 83 entries are default
+# 136 total entries out of which 82 entries are default
 # --> 54 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

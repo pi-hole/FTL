@@ -229,7 +229,6 @@ struct config {
 			struct conf_item theme;
 		} interface;
 		struct {
-			struct conf_item localAPIauth;
 			struct conf_item max_sessions;
 			struct conf_item prettyJSON;
 			struct conf_item pwhash;

@@ -961,12 +961,6 @@ void initConfig(struct config *conf)
 	conf->webserver.interface.theme.c = validate_stub; // Only type-based checking
 
 	// sub-struct api
-	conf->webserver.api.localAPIauth.k = "webserver.api.localAPIauth";
-	conf->webserver.api.localAPIauth.h = "Do local clients need to authenticate to access the API? This settings allows local clients to use the API without authentication.";
-	conf->webserver.api.localAPIauth.t = CONF_BOOL;
-	conf->webserver.api.localAPIauth.d.b = true;
-	conf->webserver.api.localAPIauth.c = validate_stub; // Only type-based checking
-
 	conf->webserver.api.max_sessions.k = "webserver.api.max_sessions";
 	conf->webserver.api.max_sessions.h = "Number of concurrent sessions allowed for the API. If the number of sessions exceeds this value, no new sessions will be allowed until the number of sessions drops due to session expiration or logout. Note that the number of concurrent sessions is irrelevant if authentication is disabled as no sessions are used in this case.";
 	conf->webserver.api.max_sessions.t = CONF_UINT16;
