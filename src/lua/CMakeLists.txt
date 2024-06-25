@@ -9,6 +9,7 @@ set(lsqlite3_sources
         lsqlite3.c
 )
 add_library(lsqlite3 OBJECT ${lsqlite3_sources})
+target_compile_definitions(lsqlite3 PRIVATE LSQLITE_VERSION="0.9.6")
 target_include_directories(lsqlite3 PRIVATE ${PROJECT_SOURCE_DIR}/src)
 # Add sqlite3.h to target's include path
 target_include_directories(lsqlite3 PRIVATE ${PROJECT_SOURCE_DIR}/src/database)
