@@ -484,8 +484,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	theta_stdev = sqrt(theta_stdev / valid);
 	delta_stdev = sqrt(delta_stdev / valid);
 
-	log_info("Average time offset: (%e +/- %e s)", theta_avg, theta_stdev);
-	log_info("Average round-trip delay: (%e +/- %e s)", delta_avg, delta_stdev);
+	log_debug(DEBUG_NTP, "Average time offset: (%e +/- %e) s", theta_avg, theta_stdev);
+	log_debug(DEBUG_NTP, "Average round-trip delay: (%e +/- %e) s", delta_avg, delta_stdev);
 
 	// Reject synchronization if the standard deviation of the time offset
 	// or round-trip delay is larger than 1 second
@@ -529,8 +529,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	theta_trim /= trim;
 	delta_trim /= trim;
 
-	log_info("Trimmed mean time offset: %e s (excluded %u outliers)", theta_trim, count - trim);
-	log_info("Trimmed mean round-trip delay: %e s (excluded %u outliers)", delta_trim, count - trim);
+	log_info("Time offset: %e ms (excluded %u outliers)", 1e3*theta_trim, count - trim);
+	log_info("Round-trip delay: %e ms (excluded %u outliers)", 1e3*delta_trim, count - trim);
 
 	// Set time if requested
 	if(settime)
@@ -585,8 +585,30 @@ static void *ntp_client_thread(void *arg)
 	// Run NTP client
 	while(!killed)
 	{
+
+		// Get time before NTP sync
+		const time_t before = time(NULL);
+
 		// Run NTP client
 		ntp_client(config.ntp.sync.server.v.s, true, false);
+
+		// Get time after NTP sync
+		const time_t after = time(NULL);
+
+		// If the time was updated by more than one hour, restart FTL to
+		// import recent data. This is relevant when the system time was
+		// set to an incorrect value (e.g., due to a dead CMOS battery
+		// or overall missing RTC) and the time was off.
+		if(after - before > 3600)
+		{
+			log_info("System time was updated by more than one hour, restarting FTL to import recent data");
+			// Set the restart flag to true
+			exit_code = RESTART_FTL_CODE;
+			// Send SIGTERM to FTL
+			kill(main_pid(), SIGTERM);
+			// Kill the NTP thread
+			killed = true;
+		}
 
 		// Intermediate cancellation-point
 		BREAK_IF_KILLED();
