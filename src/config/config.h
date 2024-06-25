@@ -95,6 +95,7 @@ enum conf_type {
 #define FLAG_WRITE_ONLY            (1 << 3)
 #define FLAG_ENV_VAR               (1 << 4)
 #define FLAG_CONF_IMPORTED         (1 << 5)
+#define FLAG_READ_ONLY             (1 << 6)
 
 struct conf_item {
 	const char *k;        // item Key
@@ -273,6 +274,7 @@ struct config {
 		struct conf_item etc_dnsmasq_d;
 		struct conf_item dnsmasq_lines;
 		struct conf_item extraLogging;
+		struct conf_item readOnly;
 		struct {
 			struct conf_item load;
 			struct conf_item shmem;

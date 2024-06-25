@@ -397,6 +397,14 @@ int set_config_from_CLI(const char *key, const char *value)
 		return EXIT_FAILURE;
 	}
 
+	// Return early if the user tries to change some settings but the config
+	// is in read-only mode
+	if(config.misc.readOnly.v.b)
+	{
+		printf("Config is in read-only mode, changes are not allowed (misc.readOnly = true)\n");
+		return EXIT_FAILURE;
+	}
+
 	// Identify config option
 	struct config newconf;
 	duplicate_config(&newconf, &config);
@@ -410,11 +418,20 @@ int set_config_from_CLI(const char *key, const char *value)
 		if(strcmp(item->k, key) != 0)
 			continue;
 
+		// Check if this is a read-only config option (forced by env var)
 		if(item->f & FLAG_ENV_VAR)
 		{
 			log_err("Config option %s is read-only (set via environmental variable)", key);
 			free_config(&newconf);
 			return ENV_VAR_FORCED;
+		}
+
+		// Check if this the special read-only config option
+		if(item->f & FLAG_READ_ONLY)
+		{
+			log_err("Config option %s can only be set in pihole.toml, not via the CLI", key);
+			free_config(&newconf);
+			return EXIT_FAILURE;
 		}
 
 		// This is the config option we are looking for
