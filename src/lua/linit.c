@@ -52,7 +52,6 @@ static const luaL_Reg loadedlibs[] = {
   {LUA_DBLIBNAME, luaopen_debug},
   /****** Pi-hole modification ******/
   {LUA_PIHOLELIBNAME, luaopen_pihole},
-  {LUA_LSQLITE3LIBNAME, luaopen_lsqlite3},
   /**********************************/
   {NULL, NULL}
 };

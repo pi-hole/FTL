@@ -5,6 +5,14 @@ set(ftl_sources
 
 add_library(ftl_lua OBJECT ${ftl_sources})
 
+set(lsqlite3_sources
+        lsqlite3.c
+)
+add_library(lsqlite3 OBJECT ${lsqlite3_sources})
+target_include_directories(lsqlite3 PRIVATE ${PROJECT_SOURCE_DIR}/src)
+# Add sqlite3.h to target's include path
+target_include_directories(lsqlite3 PRIVATE ${PROJECT_SOURCE_DIR}/src/database)
+
 set(sources
         lapi.c
         lapi.h

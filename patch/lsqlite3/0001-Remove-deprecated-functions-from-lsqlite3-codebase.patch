@@ -5,13 +5,13 @@ Subject: [PATCH] Remove deprecated functions from lsqlite3 codebase
 
 Signed-off-by: DL6ER <dl6er@dl6er.de>
 ---
- src/database/lsqlite3.c | 16 +++++++++-------
+ src/lua/lsqlite3.c | 16 +++++++++-------
  1 file changed, 9 insertions(+), 7 deletions(-)
 
-diff --git a/src/database/lsqlite3.c b/src/database/lsqlite3.c
+diff --git a/src/lua/lsqlite3.c b/src/lua/lsqlite3.c
 index e3d0657d..f196f040 100644
---- a/src/database/lsqlite3.c
-+++ b/src/database/lsqlite3.c
+--- a/src/lua/lsqlite3.c
++++ b/src/lua/lsqlite3.c
 @@ -805,14 +805,14 @@ static int lcontext_set_aggregate_context(lua_State *L) {
      ctx->ud = luaL_ref(L, LUA_REGISTRYINDEX);
      return 0;

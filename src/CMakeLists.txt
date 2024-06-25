@@ -293,6 +293,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:tomlc99>
         $<TARGET_OBJECTS:config>
         $<TARGET_OBJECTS:tools>
+        $<TARGET_OBJECTS:lsqlite3>
         )
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)

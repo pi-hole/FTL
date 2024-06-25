@@ -47,8 +47,6 @@ LUAMOD_API int (luaopen_package) (lua_State *L);
 /************ Pi-hole modification *************/
 #define LUA_PIHOLELIBNAME	"pihole"
 LUAMOD_API int (luaopen_pihole) (lua_State *L);
-#define LUA_LSQLITE3LIBNAME	"lsqlite3"
-LUAMOD_API int (luaopen_lsqlite3) (lua_State *L);
 /***********************************************/
 
 /* open all previous libraries */
