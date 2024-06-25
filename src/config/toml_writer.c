@@ -27,6 +27,19 @@ extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
 
 bool writeFTLtoml(const bool verbose)
 {
+	// Return early without writing if we are in config read-only mode
+	if(config.misc.readOnly.v.b)
+	{
+		log_debug(DEBUG_CONFIG, "Config file is read-only, not writing");
+
+		// We need to (re-)calculate the checksum here as it'd otherwise
+		// be outdated (in non-read-only mode, it's calculated at the
+		// end of this function)
+		if(!sha256sum(GLOBALTOMLPATH, last_checksum))
+			log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
+		return true;
+	}
+
 	// Try to open a temporary config file for writing
 	FILE *fp;
 	if((fp = openFTLtoml("w", 0)) == NULL)

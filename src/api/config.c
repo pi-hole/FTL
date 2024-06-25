@@ -577,7 +577,6 @@ static int api_config_get(struct ftl_conn *api)
 			// Add config item flags
 			cJSON *flags = JSON_NEW_OBJECT();
 			JSON_ADD_BOOL_TO_OBJECT(flags, "restart_dnsmasq", conf_item->f & FLAG_RESTART_FTL);
-			JSON_ADD_BOOL_TO_OBJECT(flags, "advanced", conf_item->f & FLAG_ADVANCED_SETTING);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "session_reset", conf_item->f & FLAG_INVALIDATE_SESSIONS);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "env_var", conf_item->f & FLAG_ENV_VAR);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "flags", flags);
@@ -671,6 +670,16 @@ static int api_config_patch(struct ftl_conn *api)
 		                       NULL);
 	}
 
+	// Return early if the user tries to change some settings but the config
+	// is in read-only mode
+	if(config.misc.readOnly.v.b)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "The config is currently in read-only mode",
+		                       NULL);
+	}
+
 	// Read all known config items
 	bool config_changed = false;
 	bool dnsmasq_changed = false;
@@ -695,6 +704,16 @@ static int api_config_patch(struct ftl_conn *api)
 		{
 			log_debug(DEBUG_CONFIG, "%s not in JSON payload", new_item->k);
 			continue;
+		}
+
+		if(new_item->f & FLAG_READ_ONLY && cJSON_IsBool(elem) && elem->valueint == 1)
+		{
+			char *key = strdup(new_item->k);
+			free_config(&newconf);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "This config option can only be set in pihole.toml, not via the API",
+			                            key, true);
 		}
 
 		// Check if this is a write-only config item with the placeholder value
@@ -846,9 +865,9 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 	const char *hint = NULL, *message = NULL;
 	if(api->method == HTTP_PUT)
-		hint = "Use, e.g., PUT /api/config/dnsmasq/upstreams/127.0.0.1 to add \"127.0.0.1\" to config.dns.upstreams";
+		hint = "Use, e.g., PUT /api/config/dns/upstreams/127.0.0.1 to add \"127.0.0.1\" to config.dns.upstreams";
 	else
-		hint = "Use, e.g., DELETE /api/config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams";
+		hint = "Use, e.g., DELETE /api/config/dns/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams";
 
 	if(min_level < 2)
 	{

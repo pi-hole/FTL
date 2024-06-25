@@ -518,6 +518,8 @@ components:
                     type: string
                 extraLogging:
                   type: boolean
+                readOnly:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -780,6 +782,7 @@ components:
             etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
             extraLogging: false
+            readOnly: false
             check:
               load: true
               shmem: 90
