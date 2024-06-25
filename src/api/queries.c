@@ -44,14 +44,23 @@ static int add_strings_to_array(struct ftl_conn *api, cJSON *array1, cJSON *arra
 		                       sqlite3_errstr(rc));
 	}
 
-	// Loop through returned rows
+	// Loop through returned rows and add them to the array
 	int counter = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW &&
 	      (max_count < 0 || ++counter <= max_count))
 	{
-		JSON_COPY_STR_TO_ARRAY(array1, (const char*)sqlite3_column_text(stmt, 0));
+		const char *array1_str = (const char*)sqlite3_column_text(stmt, 0);
+		if(array1_str != NULL && array1_str[0] != '\0')
+			// Only add non-empty strings
+			JSON_COPY_STR_TO_ARRAY(array1, array1_str);
 		if(array2 != NULL)
-			JSON_COPY_STR_TO_ARRAY(array2, (const char*)sqlite3_column_text(stmt, 1));
+		{
+			// We have a second array to fill (second column in the query)
+			const char *array2_str = (const char*)sqlite3_column_text(stmt, 1);
+			if(array2_str != NULL && array2_str[0] != '\0')
+				// Only add non-empty strings
+				JSON_COPY_STR_TO_ARRAY(array2, array2_str);
+		}
 	}
 
 	// Acceptable return codes are either
