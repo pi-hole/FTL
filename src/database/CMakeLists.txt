@@ -15,9 +15,11 @@
 set(sqlite3_sources
         shell.c
         sqlite3.c
+        lsqlite3.c
         )
 
 add_library(sqlite3 OBJECT ${sqlite3_sources})
+target_include_directories(sqlite3 PRIVATE ${PROJECT_SOURCE_DIR}/src/lua)
 target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type -Wno-sign-compare -Wno-implicit-function-declaration -Wno-int-conversion)
 
 if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
