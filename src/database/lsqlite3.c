@@ -805,14 +805,14 @@ static int lcontext_set_aggregate_context(lua_State *L) {
     ctx->ud = luaL_ref(L, LUA_REGISTRYINDEX);
     return 0;
 }
-
+#if 0
 static int lcontext_aggregate_count(lua_State *L) {
     lcontext *ctx = lsqlite_checkcontext(L, 1);
     lcontext_check_aggregate(L, ctx);
     lua_pushinteger(L, sqlite3_aggregate_count(ctx->ctx));
     return 1;
 }
-
+#endif
 #if 0
 void *sqlite3_get_auxdata(sqlite3_context*, int);
 void sqlite3_set_auxdata(sqlite3_context*, int, void*, void (*)(void*));
@@ -1227,6 +1227,7 @@ static int db_create_collation(lua_State *L) {
 
 /* Thanks to Wolfgang Oertl...
 */
+#if 0
 static int db_load_extension(lua_State *L) {
     sdb *db=lsqlite_checkdb(L,1);
     const char *extname=luaL_optstring(L,2,NULL);
@@ -1252,6 +1253,7 @@ static int db_load_extension(lua_State *L) {
     sqlite3_free(errmsg);
     return 2;
 }
+#endif
 
 /*
 ** trace callback:
@@ -1276,7 +1278,7 @@ static void db_trace_callback(void *user, const char *sql) {
 
     lua_settop(L, top);
 }
-
+#if 0
 static int db_trace(lua_State *L) {
     sdb *db = lsqlite_checkdb(L, 1);
 
@@ -1308,7 +1310,7 @@ static int db_trace(lua_State *L) {
 
     return 0;
 }
-
+#endif
 #if !defined(LSQLITE_OMIT_UPDATE_HOOK) || !LSQLITE_OMIT_UPDATE_HOOK
 
 /*
@@ -2286,9 +2288,9 @@ static const luaL_Reg dblib[] = {
     {"create_function",     db_create_function      },
     {"create_aggregate",    db_create_aggregate     },
     {"create_collation",    db_create_collation     },
-    {"load_extension",      db_load_extension       },
+//    {"load_extension",      db_load_extension       },
 
-    {"trace",               db_trace                },
+//    {"trace",               db_trace                },
     {"progress_handler",    db_progress_handler     },
     {"busy_timeout",        db_busy_timeout         },
     {"busy_handler",        db_busy_handler         },
@@ -2368,7 +2370,7 @@ static const luaL_Reg ctxlib[] = {
 
     {"get_aggregate_data",      lcontext_get_aggregate_context  },
     {"set_aggregate_data",      lcontext_set_aggregate_context  },
-    {"aggregate_count",         lcontext_aggregate_count        },
+//    {"aggregate_count",         lcontext_aggregate_count        },
 
     {"result",                  lcontext_result                 },
     {"result_null",             lcontext_result_null            },
