@@ -20,10 +20,6 @@
 #include "lauxlib.h"
 #include "lualib.h"
 
-/** Pi-hole modification **/
-#include "ftl_lua.h"
-/**************************/
-
 
 #if !defined(LUA_PROGNAME)
 #define LUA_PROGNAME		"lua"
@@ -645,11 +641,6 @@ static int pmain (lua_State *L) {
     if (handle_luainit(L) != LUA_OK)  /* run LUA_INIT */
       return 0;  /* error running LUA_INIT */
   }
-
-  /************** Pi-hole modification ***************/
-  // Load and enable libraries bundled with Pi-hole
-  ftl_lua_init(L);
-  /***************************************************/
 
   if (!runargs(L, argv, optlim))  /* execute arguments -e and -l */
     return 0;  /* something failed */

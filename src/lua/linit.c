@@ -34,6 +34,10 @@
 #include "lualib.h"
 #include "lauxlib.h"
 
+/** Pi-hole modification **/
+#include "ftl_lua.h"
+/**************************/
+
 
 /*
 ** these libs are loaded by lua.c and are readily available to any Lua
@@ -65,5 +69,10 @@ LUALIB_API void luaL_openlibs (lua_State *L) {
     luaL_requiref(L, lib->name, lib->func, 1);
     lua_pop(L, 1);  /* remove lib */
   }
+
+  /************** Pi-hole modification ***************/
+  // Load and enable libraries bundled with Pi-hole
+  ftl_lua_init(L);
+  /***************************************************/
 }
 
