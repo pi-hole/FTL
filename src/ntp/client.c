@@ -41,6 +41,7 @@
 #include "database/message-table.h"
 struct ntp_sync
 {
+	bool valid;
 	uint64_t org;
 	uint64_t xmt;
 	double theta;
@@ -50,7 +51,7 @@ struct ntp_sync
 
 // Create minimal NTP request, see server implementation for details about the
 // packet structure
-static bool request(int fd, struct ntp_sync *ntp)
+static bool request(int fd, const char *server, struct ntp_sync *ntp)
 {
 	// NTP Packet buffer
 	unsigned char buf[48] = {0};
@@ -73,8 +74,8 @@ static bool request(int fd, struct ntp_sync *ntp)
 	// Send request
 	if(send(fd, buf, 48, 0) != 48)
 	{
-		log_err("Failed to send data to NTP server: %s",
-		        errno == EAGAIN ? "Timeout" : strerror(errno));
+		log_err("Failed to send data to NTP server %s: %s",
+		        server, errno == EAGAIN ? "Timeout" : strerror(errno));
 		return false;
 	}
 
@@ -209,7 +210,7 @@ static bool settime_skew(const double offset)
 	return true;
 }
 
-static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
+static bool reply(int fd, const char *server, struct ntp_sync *ntp, const bool verbose)
 {
 	// NTP Packet buffer
 	unsigned char buf[48];
@@ -217,8 +218,8 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	// Receive reply
 	if(recv(fd, buf, 48, 0) < 48)
 	{
-		log_err("Failed to receive data from NTP server: %s",
-		        errno == EAGAIN ? "Timeout" : strerror(errno));
+		log_err("Failed to receive data from NTP server %s: %s",
+		        server, errno == EAGAIN ? "Timeout" : strerror(errno));
 		return false;
 	}
 
@@ -295,6 +296,9 @@ static bool reply(int fd, struct ntp_sync *ntp, const bool verbose)
 	// passing through the network, which can be due switches and network
 	// technologies are highly variable
 	ntp->delta = ( T4 - T1 ) - ( T3 - T2 );
+
+	// This reply is valid
+	ntp->valid = true;
 
 	// In some scenarios where the initial frequency offset of the client is
 	// relatively large and the actual propagation time small, it is
@@ -416,7 +420,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 			continue;
 
 		// Send request
-		if(!request(s, &ntp[i]))
+		if(!request(s, server, &ntp[i]))
 		{
 			close(s);
 			free(ntp);
@@ -424,7 +428,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 			return false;
 		}
 		// Get reply
-		if(!reply(s, &ntp[i], false))
+		if(!reply(s, server, &ntp[i], false))
 		{
 			close(s);
 			continue;
@@ -453,7 +457,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	{
 		// Skip invalid values
 		if(fabs(ntp[i].theta) < ntp[i].precision ||
-		   fabs(ntp[i].delta) < ntp[i].precision)
+		   fabs(ntp[i].delta) < ntp[i].precision ||
+		   !ntp[i].valid)
 			continue;
 
 		theta_avg += ntp[i].theta;
@@ -475,7 +480,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	{
 		// Skip invalid values
 		if(fabs(ntp[i].theta) < ntp[i].precision ||
-		   fabs(ntp[i].delta) < ntp[i].precision)
+		   fabs(ntp[i].delta) < ntp[i].precision ||
+		   !ntp[i].valid)
 			continue;
 
 		theta_stdev += pow(ntp[i].theta - theta_avg, 2);
@@ -503,7 +509,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	{
 		// Skip invalid values
 		if(fabs(ntp[i].theta) < ntp[i].precision ||
-		   fabs(ntp[i].delta) < ntp[i].precision)
+		   fabs(ntp[i].delta) < ntp[i].precision ||
+		   !ntp[i].valid)
 			continue;
 
 		// Skip outliers
