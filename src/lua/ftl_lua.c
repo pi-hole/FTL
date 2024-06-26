@@ -17,12 +17,18 @@
 #include "log.h"
 // config struct
 #include "config/config.h"
-// file_exists
+// file_exists()
 #include "files.h"
-// get_web_theme_str
+// get_web_theme_str()
 #include "datastructure.h"
+// LOCALHOSTv4/6
 #include "api/api.h"
+// inspect_lua()
 #include "scripts/scripts.h"
+// hostname()
+#include "daemon.h"
+// get_memdb()
+#include "database/query-table.h"
 
 // prototype for luaopen_pihole()
 #include "lualib.h"
@@ -31,9 +37,6 @@
 # include <readline/history.h>
 #endif
 #include <wordexp.h>
-
-// hostname()
-#include "daemon.h"
 
 
 int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
@@ -259,6 +262,23 @@ static int pihole_rev_proxy(lua_State *L) {
 	return 1; // number of results
 }
 
+// pihole.get_memdb()
+// This function only returns the memory database if the database debug flag is
+// set. This is a security measure to prevent the memory database from being
+// exposed to the Lua environment when this is not needed as modifying the
+// memory database can have serious consequences (incorrect statistics, etc).
+static int pihole_get_memdb(lua_State *L) {
+	if(!config.debug.database.v.b)
+	{
+		lua_pushnil(L);
+		return 1; // number of results
+	}
+
+	const sqlite3 *memory_db = get_memdb();
+	lua_pushlightuserdata(L, (void *) memory_db);
+	return 1; // number of results
+}
+
 static const luaL_Reg piholelib[] = {
 	{"ftl_version", pihole_ftl_version},
 	{"hostname", pihole_hostname},
@@ -269,6 +289,7 @@ static const luaL_Reg piholelib[] = {
 	{"boxedlayout", pihole_boxedlayout},
 	{"needLogin", pihole_needLogin},
 	{"rev_proxy", pihole_rev_proxy},
+	{"get_memdb", pihole_get_memdb},
 	{NULL, NULL}
 };
 

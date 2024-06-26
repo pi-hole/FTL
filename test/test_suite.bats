@@ -1793,3 +1793,43 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "3" ]]
 }
+
+@test "Test lsqlite3 LUA module" {
+  run bash -c './pihole-FTL lua test/lsqlite3/simple.lua'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[0]} == "1	Hello World" ]]
+  [[ ${lines[1]} == "2	Hello Lua" ]]
+  [[ ${lines[2]} == "3	Hello Sqlite3" ]]
+  [[ ${lines[3]} == "" ]]
+
+  run bash -c './pihole-FTL lua test/lsqlite3/smart.lua'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[0]} == "1	Hello World" ]]
+  [[ ${lines[1]} == "2	Hello Lua" ]]
+  [[ ${lines[2]} == "3	Hello Sqlite3" ]]
+  [[ ${lines[3]} == "" ]]
+
+  run bash -c './pihole-FTL lua test/lsqlite3/function.lua'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[0]} == "1	2	3.0" ]]
+  [[ ${lines[1]} == "2	4	6.0" ]]
+  [[ ${lines[2]} == "3	6	9.0" ]]
+  [[ ${lines[3]} == "4	8	12.0" ]]
+  [[ ${lines[4]} == "5	10	15.0" ]]
+  [[ ${lines[5]} == "" ]]
+
+  run bash -c './pihole-FTL lua test/lsqlite3/update_hook.lua'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  [[ ${lines[0]} == "Sqlite Update Hook:	INSERT	main	test	1" ]]
+  [[ ${lines[1]} == "Sqlite Update Hook:	INSERT	main	test	2" ]]
+  [[ ${lines[2]} == "Sqlite Update Hook:	INSERT	main	test	3" ]]
+  [[ ${lines[3]} == "Sqlite Update Hook:	UPDATE	main	test	1" ]]
+  [[ ${lines[4]} == "Sqlite Update Hook:	DELETE	main	test	2" ]]
+  [[ ${lines[5]} == "1	Hello Again World" ]]
+  [[ ${lines[6]} == "3	Hello Sqlite3" ]]
+  [[ ${lines[7]} == "" ]]
+}

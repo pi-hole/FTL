@@ -1,0 +1,39 @@
+From a32d777a6f6c17bc6b2b5655f538516962da727d Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Tue, 25 Jun 2024 11:55:34 +0200
+Subject: [PATCH] Make lsqlite3 globally available in LUA
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/lua/linit.c  | 1 +
+ src/lua/lualib.h | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/src/lua/linit.c b/src/lua/linit.c
+index 9a5bcfdc..6023020c 100644
+--- a/src/lua/linit.c
++++ b/src/lua/linit.c
+@@ -52,6 +52,7 @@ static const luaL_Reg loadedlibs[] = {
+   {LUA_DBLIBNAME, luaopen_debug},
+   /****** Pi-hole modification ******/
+   {LUA_PIHOLELIBNAME, luaopen_pihole},
++  {LUA_LSQLITE3LIBNAME, luaopen_lsqlite3},
+   /**********************************/
+   {NULL, NULL}
+ };
+diff --git a/src/lua/lualib.h b/src/lua/lualib.h
+index a7cab4eb..3d7b9a59 100644
+--- a/src/lua/lualib.h
++++ b/src/lua/lualib.h
+@@ -47,6 +47,8 @@ LUAMOD_API int (luaopen_package) (lua_State *L);
+ /************ Pi-hole modification *************/
+ #define LUA_PIHOLELIBNAME	"pihole"
+ LUAMOD_API int (luaopen_pihole) (lua_State *L);
++#define LUA_LSQLITE3LIBNAME	"lsqlite3"
++LUAMOD_API int (luaopen_lsqlite3) (lua_State *L);
+ /***********************************************/
+ 
+ /* open all previous libraries */
+-- 
+2.34.1
+
