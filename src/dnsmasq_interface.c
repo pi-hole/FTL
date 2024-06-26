@@ -2904,13 +2904,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// Flush messages stored in the long-term database
 	flush_message_table();
 
-	// Try to import queries from long-term database if available
-	if(config.database.DBimport.v.b)
-	{
-		import_queries_from_disk();
-		DB_read_queries();
-	}
-
 	// Initialize in-memory database starting index
 	update_disk_db_idx();
 

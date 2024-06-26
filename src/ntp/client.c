@@ -39,6 +39,8 @@
 #include <sys/timex.h>
 // log_ntp_message()
 #include "database/message-table.h"
+// load_queries_from_disk()
+#include "database/query-table.h"
 struct ntp_sync
 {
 	bool valid;
@@ -590,6 +592,7 @@ static void *ntp_client_thread(void *arg)
 	prctl(PR_SET_NAME, thread_names[NTP], 0, 0, 0);
 
 	// Run NTP client
+	bool first_run = true;
 	while(!killed)
 	{
 
@@ -598,6 +601,13 @@ static void *ntp_client_thread(void *arg)
 
 		// Run NTP client
 		ntp_client(config.ntp.sync.server.v.s, true, false);
+
+		// Load queries from database after first NTP synchronization
+		if(first_run)
+		{
+			load_queries_from_disk();
+			first_run = false;
+		}
 
 		// Get time after NTP sync
 		const time_t after = time(NULL);
@@ -636,12 +646,16 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	if(config.ntp.sync.server.v.s == NULL ||
 	   strlen(config.ntp.sync.server.v.s) == 0 ||
 	   config.ntp.sync.interval.v.ui == 0)
+	{
+		load_queries_from_disk();
 		return false;
+	}
 
 	// Create thread
 	if(pthread_create(&threads[NTP], attr, ntp_client_thread, NULL) != 0)
 	{
 		log_err("Cannot create NTP client thread");
+		load_queries_from_disk();
 		return false;
 	}
 
