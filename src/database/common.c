@@ -103,6 +103,15 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 		return NULL;
 	}
 
+	// If the database is opened in read-write mode, actually check if it is
+	// writable. If it is not, close the database and return an error
+	if(!readonly && sqlite3_db_readonly(db, NULL))
+	{
+		log_err("Cannot open database in read-write mode");
+		dbclose(&db);
+		return NULL;
+	}
+
 	// Explicitly set busy handler to value defined in FTL.h
 	rc = sqlite3_busy_timeout(db, DATABASE_BUSY_TIMEOUT);
 	if( rc != SQLITE_OK )
