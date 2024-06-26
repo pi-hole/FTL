@@ -8,7 +8,7 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "ntp/ntp.h"
+#include "ntp.h"
 // close()
 #include <unistd.h>
 // clock_gettime()
@@ -595,10 +595,6 @@ static void *ntp_client_thread(void *arg)
 	bool first_run = true;
 	while(!killed)
 	{
-
-		// Get time before NTP sync
-		const time_t before = time(NULL);
-
 		// Run NTP client
 		ntp_client(config.ntp.sync.server.v.s, true, false);
 
@@ -607,24 +603,6 @@ static void *ntp_client_thread(void *arg)
 		{
 			load_queries_from_disk();
 			first_run = false;
-		}
-
-		// Get time after NTP sync
-		const time_t after = time(NULL);
-
-		// If the time was updated by more than one hour, restart FTL to
-		// import recent data. This is relevant when the system time was
-		// set to an incorrect value (e.g., due to a dead CMOS battery
-		// or overall missing RTC) and the time was off.
-		if(after - before > 3600)
-		{
-			log_info("System time was updated by more than one hour, restarting FTL to import recent data");
-			// Set the restart flag to true
-			exit_code = RESTART_FTL_CODE;
-			// Send SIGTERM to FTL
-			kill(main_pid(), SIGTERM);
-			// Kill the NTP thread
-			killed = true;
 		}
 
 		// Intermediate cancellation-point
