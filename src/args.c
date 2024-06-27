@@ -68,6 +68,8 @@
 #include "resolve.h"
 // ntp_client()
 #include "ntp/ntp.h"
+// check_capability()
+#include "capabilities.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -310,6 +312,18 @@ void parse_args(int argc, char* argv[])
 	// Create test NTP client
 	if((argc > 1 && argc < 5) && strcmp(argv[1], "ntp") == 0)
 	{
+		// Ensure we have the necessary capabilities
+		if(!check_capability(CAP_SYS_TIME))
+		{
+			puts("Insufficient capabilities to run NTP client");
+			const char *bold = cli_bold();
+			const char *normal = cli_normal();
+			printf("Try: %ssudo%s ", bold, normal);
+			for(int i = 0; i < argc; i++)
+				printf("%s ", argv[i]);
+			puts("");
+			exit(EXIT_FAILURE);
+		}
 		// Enable stdout printing
 		cli_mode = true;
 		log_ctrl(false, true);
