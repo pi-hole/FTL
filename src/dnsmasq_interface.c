@@ -2907,9 +2907,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// Initialize in-memory database starting index
 	update_disk_db_idx();
 
-	// Log some information about the imported queries (if any)
-	log_counter_info();
-
 	// Handle real-time signals in this process (and its children)
 	// Helper processes are already split from the main instance
 	// so they will not listen to real-time signals

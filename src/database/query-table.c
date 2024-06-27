@@ -1648,5 +1648,8 @@ void load_queries_from_disk(void)
 	import_queries_from_disk();
 	DB_read_queries();
 
+	// Log some information about the imported queries (if any)
+	log_counter_info();
+
 	store_in_database = true;
 }
