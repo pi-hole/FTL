@@ -312,8 +312,15 @@ void parse_args(int argc, char* argv[])
 	// Create test NTP client
 	if((argc > 1 && argc < 5) && strcmp(argv[1], "ntp") == 0)
 	{
+		// Parse arguments
+		const bool update = (argc > 2 && strcmp(argv[2], "--update") == 0) ||
+		                    (argc > 3 && strcmp(argv[3], "--update") == 0);
+		const char *server = "127.0.0.1";
+		if(argc > 2 && strcmp(argv[2], "--update") != 0)
+			server = argv[2];
+
 		// Ensure we have the necessary capabilities
-		if(!check_capability(CAP_SYS_TIME))
+		if(update && !check_capability(CAP_SYS_TIME))
 		{
 			puts("Insufficient capabilities to run NTP client");
 			const char *bold = cli_bold();
@@ -324,16 +331,13 @@ void parse_args(int argc, char* argv[])
 			puts("");
 			exit(EXIT_FAILURE);
 		}
+
+		printf("Using NTP server: %s\n", server);
+
 		// Enable stdout printing
 		cli_mode = true;
 		log_ctrl(false, true);
 		readFTLconf(&config, false);
-		const bool update = (argc > 2 && strcmp(argv[2], "--update") == 0) ||
-		                    (argc > 3 && strcmp(argv[3], "--update") == 0);
-		const char *server = "127.0.0.1";
-		if(argc > 2 && strcmp(argv[2], "--update") != 0)
-			server = argv[2];
-		printf("Using NTP server: %s\n", server);
 		exit(ntp_client(server, update, true) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
