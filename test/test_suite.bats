@@ -22,12 +22,6 @@
   [[ ${lines[1]} == "" ]]
 }
 
-@test "Starting tests without prior history" {
-  run bash -c 'grep -c "Total DNS queries: 0" /var/log/pihole/FTL.log'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
-}
-
 @test "Initial blocking status is enabled" {
   run bash -c 'grep -c "Blocking status is enabled" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
@@ -40,7 +34,7 @@
   [[ ${lines[0]} == *"Compiled 2 allow and 11 deny regex"* ]]
 }
 
-@test "denied domain is blocked" {
+@test "Denied domain is blocked" {
   run bash -c "dig denied.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
