@@ -30,5 +30,6 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 void logg_inaccessible_adlist(const int dbindex, const char *address);
 void log_certificate_domain_mismatch(const char *certfile, const char *domain);
 void log_connection_error(const char *server, const char *reason, const char *error);
+void log_ntp_message(const bool error, const bool server, const char *message);
 
 #endif //MESSAGETABLE_H

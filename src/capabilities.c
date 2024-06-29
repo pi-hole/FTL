@@ -141,6 +141,13 @@ bool check_capabilities(void)
 		log_warn("Required Linux capability CAP_CHOWN not available");
 		capabilities_okay = false;
 	}
+	if (!(data->permitted & (1 << CAP_SYS_TIME)) ||
+	    !(data->effective & (1 << CAP_SYS_TIME)))
+	{
+		// Necessary for setting the system time in the NTP client
+		log_warn("Required Linux capability CAP_SYS_TIME not available");
+		capabilities_okay = false;
+	}
 
 	// Free allocated memory
 	free(hdr);

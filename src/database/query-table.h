@@ -119,6 +119,7 @@ bool add_additional_info_column(sqlite3 *db);
 void DB_read_queries(void);
 void update_disk_db_idx(void);
 bool queries_to_database(void);
+void load_queries_from_disk(void);
 
 bool optimize_queries_table(sqlite3 *db);
 bool create_addinfo_table(sqlite3 *db);

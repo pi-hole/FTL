@@ -783,6 +783,76 @@ void initConfig(struct config *conf)
 	conf->dhcp.hosts.c = validate_stub; // Type-based checking + dnsmasq syntax checking
 
 
+	// struct ntp
+	conf->ntp.ipv4.active.k = "ntp.ipv4.active";
+	conf->ntp.ipv4.active.h = "Should FTL act as network time protocol (NTP) server (IPv4)?";
+	conf->ntp.ipv4.active.t = CONF_BOOL;
+	conf->ntp.ipv4.active.f = FLAG_RESTART_FTL;
+	conf->ntp.ipv4.active.d.b = true;
+	conf->ntp.ipv4.active.c = validate_stub; // Only type-based checking
+
+	conf->ntp.ipv4.address.k = "ntp.ipv4.address";
+	conf->ntp.ipv4.address.h = "IPv4 address to listen on for NTP requests";
+	conf->ntp.ipv4.address.a = cJSON_CreateStringReference("<valid IPv4 address> or empty string (\"\") for wildcard (0.0.0.0)");
+	conf->ntp.ipv4.address.t = CONF_STRUCT_IN_ADDR;
+	conf->ntp.ipv4.address.f = FLAG_RESTART_FTL;
+	memset(&conf->ntp.ipv4.address.d.in_addr, 0, sizeof(struct in_addr));
+	conf->ntp.ipv4.address.c = validate_stub; // Only type-based checking
+
+	conf->ntp.ipv6.active.k = "ntp.ipv6.active";
+	conf->ntp.ipv6.active.h = "Should FTL act as network time protocol (NTP) server (IPv6)?";
+	conf->ntp.ipv6.active.t = CONF_BOOL;
+	conf->ntp.ipv6.active.f = FLAG_RESTART_FTL;
+	conf->ntp.ipv6.active.d.b = true;
+	conf->ntp.ipv6.active.c = validate_stub; // Only type-based checking
+
+	conf->ntp.ipv6.address.k = "ntp.ipv6.address";
+	conf->ntp.ipv6.address.h = "IPv6 address to listen on for NTP requests";
+	conf->ntp.ipv6.address.a = cJSON_CreateStringReference("<valid IPv6 address> or empty string (\"\") for wildcard (::)");
+	conf->ntp.ipv6.address.t = CONF_STRUCT_IN6_ADDR;
+	conf->ntp.ipv6.address.f = FLAG_RESTART_FTL;
+	memset(&conf->ntp.ipv6.address.d.in6_addr, 0, sizeof(struct in6_addr));
+	conf->ntp.ipv6.address.c = validate_stub; // Only type-based checking
+
+	conf->ntp.sync.server.k = "ntp.sync.server";
+	conf->ntp.sync.server.h = "NTP upstream server to sync with, e.g., \"pool.ntp.org\". Note that the NTP server should be located as close as possible to you in order to minimize the time offset possibly introduced by different routing paths.";
+	conf->ntp.sync.server.a = cJSON_CreateStringReference("valid NTP upstream server");
+	conf->ntp.sync.server.t = CONF_STRING;
+	conf->ntp.sync.server.d.s = (char*)"pool.ntp.org";
+	conf->ntp.sync.server.c = validate_stub; // Only type-based checking
+
+	conf->ntp.sync.interval.k = "ntp.sync.interval";
+	conf->ntp.sync.interval.h = "Interval in seconds between successive synchronization attempts with the NTP server";
+	conf->ntp.sync.interval.t = CONF_UINT;
+	conf->ntp.sync.interval.d.ui = 3600;
+	conf->ntp.sync.interval.c = validate_stub; // Only type-based checking
+
+	conf->ntp.sync.count.k = "ntp.sync.count";
+	conf->ntp.sync.count.h = "Number of NTP syncs to perform and average before updating the system time";
+	conf->ntp.sync.count.t = CONF_UINT;
+	conf->ntp.sync.count.d.ui = 8;
+	conf->ntp.sync.count.c = validate_stub; // Only type-based checking
+
+	conf->ntp.rtc.set.k = "ntp.rtc.set";
+	conf->ntp.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
+	conf->ntp.rtc.set.t = CONF_BOOL;
+	conf->ntp.rtc.set.d.b = true;
+	conf->ntp.rtc.set.c = validate_stub; // Only type-based checking
+
+	conf->ntp.rtc.device.k = "ntp.rtc.device";
+	conf->ntp.rtc.device.h = "Path to the RTC device to update. Leave empty for auto-discovery";
+	conf->ntp.rtc.device.a = cJSON_CreateStringReference("Path to the RTC device, e.g., \"/dev/rtc0\"");
+	conf->ntp.rtc.device.t = CONF_STRING;
+	conf->ntp.rtc.device.d.s = (char*)"";
+	conf->ntp.rtc.device.c = validate_stub; // Only type-based checking
+
+	conf->ntp.rtc.utc.k = "ntp.rtc.utc";
+	conf->ntp.rtc.utc.h = "Should the RTC be set to UTC?";
+	conf->ntp.rtc.utc.t = CONF_BOOL;
+	conf->ntp.rtc.utc.d.b = true;
+	conf->ntp.rtc.utc.c = validate_stub; // Only type-based checking
+
+
 	// struct resolver
 	conf->resolver.resolveIPv6.k = "resolver.resolveIPv6";
 	conf->resolver.resolveIPv6.h = "Should FTL try to resolve IPv6 addresses to hostnames?";
@@ -1210,6 +1280,13 @@ void initConfig(struct config *conf)
 	conf->misc.extraLogging.d.b = false;
 	conf->misc.extraLogging.c = validate_stub; // Only type-based checking
 
+	conf->misc.readOnly.k = "misc.readOnly";
+	conf->misc.readOnly.h = "Put configuration into read-only mode. This will prevent any changes to the configuration file via the API or CLI. This setting useful when a configuration is to be forced/modified by some third-party application (like infrastructure-as-code providers) and should not be changed by any means.";
+	conf->misc.readOnly.t = CONF_BOOL;
+	conf->misc.readOnly.f = FLAG_READ_ONLY;
+	conf->misc.readOnly.d.b = false;
+	conf->misc.readOnly.c = validate_stub; // Only type-based checking
+
 	// sub-struct misc.check
 	conf->misc.check.load.k = "misc.check.load";
 	conf->misc.check.load.h = "Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you should run Pi-hole on a server that is otherwise extremely busy as queuing on the system can lead to unnecessary delays in DNS operation as the system becomes less and less usable as the system load increases because all resources are permanently in use. To account for this, FTL regularly checks the system load. To bring this to your attention, FTL warns about excessive load when the 15 minute system load average exceeds the number of cores.\n This check can be disabled with this setting.";
@@ -1392,6 +1469,12 @@ void initConfig(struct config *conf)
 	conf->debug.reserved.t = CONF_BOOL;
 	conf->debug.reserved.d.b = false;
 	conf->debug.reserved.c = validate_stub; // Only type-based checking
+
+	conf->debug.ntp.k = "debug.ntp";
+	conf->debug.ntp.h = "Print information about NTP synchronization";
+	conf->debug.ntp.t = CONF_BOOL;
+	conf->debug.ntp.d.b = false;
+	conf->debug.ntp.c = validate_stub; // Only type-based checking
 
 	conf->debug.all.k = "debug.all";
 	conf->debug.all.h = "Set all debug flags at once. This is a convenience option to enable all debug flags at once. Note that this option is not persistent, setting it to true will enable all *remaining* debug flags but unsetting it will disable *all* debug flags.";

@@ -31,7 +31,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v4.1.6
+        uses: actions/checkout@v4.1.7
       -
         name: "Calculate required variables"
         id: variables
@@ -81,7 +81,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v4.1.6
+        uses: actions/checkout@v4.1.7
       -
         name: Build and test and deploy FTL
         uses: ./.github/actions/build-and-test
@@ -120,7 +120,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v4.1.6
+        uses: actions/checkout@v4.1.7
       -
         name: Build and test and deploy FTL
         uses: ./.github/actions/build-and-test

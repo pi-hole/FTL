@@ -162,6 +162,7 @@ enum debug_flag {
 	DEBUG_WEBSERVER,
 	DEBUG_EXTRA,
 	DEBUG_RESERVED,
+	DEBUG_NTP,
 	DEBUG_MAX
 } __attribute__ ((packed));
 
@@ -248,8 +249,8 @@ enum thread_types {
 	DB,
 	GC,
 	DNSclient,
-	CONF_READER,
 	TIMER,
+	NTP,
 	THREADS_MAX
 } __attribute__ ((packed));
 
@@ -274,6 +275,7 @@ enum message_type {
 	DISK_MESSAGE_EXTENDED,
 	CERTIFICATE_DOMAIN_MISMATCH_MESSAGE,
 	CONNECTION_ERROR_MESSAGE,
+	NTP_MESSAGE,
 	MAX_MESSAGE,
 } __attribute__ ((packed));
 

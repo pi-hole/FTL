@@ -21,8 +21,11 @@
 #include "overTime.h"
 #include "database/common.h"
 #include "timers.h"
+// runGC()
+#include "gc.h"
 
 static sqlite3 *_memdb = NULL;
+static bool store_in_database = false;
 static double new_last_timestamp = 0;
 static unsigned int new_total = 0, new_blocked = 0;
 static unsigned long last_mem_db_idx = 0, last_disk_db_idx = 0;
@@ -1367,6 +1370,11 @@ bool queries_to_database(void)
 		log_debug(DEBUG_DATABASE, "Not storing query in database as there are none");
 		return true;
 	}
+	if(!store_in_database)
+	{
+		log_debug(DEBUG_DATABASE, "Not storing query in database as this is disabled");
+		return true;
+	}
 
 	// Loop over recent queries and store new or changed ones in the
 	// in-memory database
@@ -1625,4 +1633,23 @@ bool queries_to_database(void)
 	}
 
 	return true;
+}
+
+void load_queries_from_disk(void)
+{
+	// Compensate for possible jumps in time
+	runGC(time(NULL), NULL, false);
+
+	// Skip if we are not supposed to load queries from disk
+	if(!config.database.DBimport.v.b)
+		return;
+
+	// Try to import queries from long-term database if available
+	import_queries_from_disk();
+	DB_read_queries();
+
+	// Log some information about the imported queries (if any)
+	log_counter_info();
+
+	store_in_database = true;
 }

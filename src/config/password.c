@@ -622,6 +622,16 @@ int run_performance_test(void)
 
 bool set_and_check_password(struct conf_item *conf_item, const char *password)
 {
+	// Check if the user wants to set an empty password but the password is
+	// already empty, or if the newly set password is the same as the old
+	// one
+	if((strlen(password) == 0 && strlen(config.webserver.api.pwhash.v.s) == 0) ||
+	   verify_password(password, config.webserver.api.pwhash.v.s, false) == PASSWORD_CORRECT)
+	{
+		log_debug(DEBUG_CONFIG, "Password unchanged, not updating");
+		return true;
+	}
+
 	// Get password hash as allocated string (an empty string is hashed to an empty string)
 	char *pwhash = strlen(password) > 0 ? create_password(password) : strdup("");
 

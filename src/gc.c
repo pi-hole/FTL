@@ -481,7 +481,6 @@ static bool check_files_on_same_device(const char *path1, const char *path2)
 void *GC_thread(void *val)
 {
 	// Set thread name
-	thread_names[GC] = "housekeeper";
 	thread_running[GC] = true;
 	prctl(PR_SET_NAME, thread_names[GC], 0, 0, 0);
 
