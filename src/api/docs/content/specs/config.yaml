@@ -326,6 +326,43 @@ components:
                   type: array
                   items:
                     type: string
+            ntp:
+              type: object
+              properties:
+                ipv4:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    address:
+                      type: string
+                      x-format: ipv4
+                ipv6:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    address:
+                      type: string
+                      x-format: ipv6
+                sync:
+                  type: object
+                  properties:
+                    server:
+                      type: string
+                    interval:
+                      type: integer
+                    count:
+                      type: integer
+                rtc:
+                  type: object
+                  properties:
+                    set:
+                      type: boolean
+                    device:
+                      type: string
+                    utc:
+                      type: boolean
             resolver:
               type: object
               properties:
@@ -483,6 +520,8 @@ components:
                     type: string
                 extraLogging:
                   type: boolean
+                readOnly:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -548,6 +587,8 @@ components:
                 extra:
                   type: boolean
                 reserved:
+                  type: boolean
+                ntp:
                   type: boolean
                 all:
                   type: boolean
@@ -661,6 +702,21 @@ components:
             hosts:
               - "11:22:33:44:55:66,192.168.1.123"
               - "11:22:33:44:55:67,192.168.1.124,hostname"
+          ntp:
+            ipv4:
+              active: true
+              address: ""
+            ipv6:
+              active: true
+              address: ""
+            sync:
+              server: "pool.ntp.org"
+              interval: 3600
+              count: 8
+            rtc:
+              set: true
+              device: ""
+              utc: true
           resolver:
             resolveIPv4: true
             resolveIPv6: true
@@ -729,6 +785,7 @@ components:
             etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
             extraLogging: false
+            readOnly: false
             check:
               load: true
               shmem: 90
@@ -761,6 +818,7 @@ components:
             webserver: false
             extra: false
             reserved: false
+            ntp: false
             all: false
     config_one:
       summary: One option

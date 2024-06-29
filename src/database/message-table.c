@@ -97,6 +97,8 @@ static const char *get_message_type_str(const enum message_type type)
 			return "CERTIFICATE_DOMAIN_MISMATCH";
 		case CONNECTION_ERROR_MESSAGE:
 			return "CONNECTION_ERROR";
+		case NTP_MESSAGE:
+			return "NTP";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
@@ -131,6 +133,8 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return CERTIFICATE_DOMAIN_MISMATCH_MESSAGE;
 	else if (strcmp(typestr, "CONNECTION_ERROR") == 0)
 		return CONNECTION_ERROR_MESSAGE;
+	else if (strcmp(typestr, "NTP") == 0)
+		return NTP_MESSAGE;
 	else
 		return MAX_MESSAGE;
 }
@@ -230,6 +234,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
+		},
+		{
+			// NTP: The message column contains the warning/error
+			SQLITE_TEXT, // level (warning/error)
+			SQLITE_TEXT, // component (server/client)
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
 		}
 	};
 // Create message table in the database
@@ -320,10 +332,8 @@ static int _add_message(const enum message_type type,
 	sqlite3 *db;
 	// Open database connection
 	if((db = dbopen(false, false)) == NULL)
-	{
-		log_err("add_message() - Failed to open DB");
+		// Reason for failure is logged in dbopen()
 		return -1;
-	}
 
 	// Ensure there are no duplicates when adding messages
 	sqlite3_stmt* stmt = NULL;
@@ -537,7 +547,7 @@ static void format_regex_message(char *plain, const int sizeof_plain, char *html
 	}
 
 	if(snprintf(html, sizeof_html, "Encountered an error when processing <a href=\"groups-domains.lp?domainid=%d\">regex %s filter with ID %d</a>: <pre>%s</pre>Error message: <pre>%s</pre>",
-	            dbindex, type, dbindex, escaped_regex, escaped_warning))
+	            dbindex, type, dbindex, escaped_regex, escaped_warning) > sizeof_html)
 		log_warn("format_regex_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_regex);
@@ -900,6 +910,20 @@ static void format_connection_error(char *plain, const int sizeof_plain, char *h
 	free(escaped_server);
 }
 
+static void format_ntp_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                               const char *message, const char *level, const char *who)
+{
+	if(snprintf(plain, sizeof_plain, "%s NTP %s: %s", level, who, message) > sizeof_plain)
+		log_warn("format_ntp_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	if(snprintf(html, sizeof_html, "%s in NTP %s:<pre>%s</pre>", level, who, message) > sizeof_html)
+		log_warn("format_ntp_message(): Buffer too small to hold HTML message, warning truncated");
+}
+
 int count_messages(const bool filter_dnsmasq_warnings)
 {
 	int count = 0;
@@ -1147,6 +1171,18 @@ bool format_messages(cJSON *array)
 				break;
 			}
 
+			case NTP_MESSAGE:
+			{
+				const char *message = (const char*)sqlite3_column_text(stmt, 3);
+				const char *level = (const char*)sqlite3_column_text(stmt, 4);
+				const char *who = (const char*)sqlite3_column_text(stmt, 5);
+
+				format_ntp_message(plain, sizeof(plain), html, sizeof(html),
+				                   message, level, who);
+
+				break;
+			}
+
 			case MAX_MESSAGE: // Fall through
 			default:
 				log_warn("format_messages() - Unknown message type: %s", mtypestr);
@@ -1206,9 +1242,7 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 		return;
 
 	// Add to database
-	const int rowid = add_message(REGEX_MESSAGE, regex, type, warning, dbindex);
-	if(rowid == -1)
-		log_err("logg_regex_warning(): Failed to add message to database");
+	add_message(REGEX_MESSAGE, regex, type, warning, dbindex);
 }
 
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,
@@ -1226,10 +1260,8 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(SUBNET_MESSAGE, ip, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
+	add_message(SUBNET_MESSAGE, ip, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
 
-	if(rowid == -1)
-		log_err("logg_subnet_warning(): Failed to add message to database");
 
 	free(names);
 }
@@ -1248,10 +1280,8 @@ void logg_hostname_warning(const char *ip, const char *name, const unsigned int 
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(HOSTNAME_MESSAGE, ip, name, (const int)pos);
+	add_message(HOSTNAME_MESSAGE, ip, name, (const int)pos);
 
-	if(rowid == -1)
-		log_err("logg_hostname_warning(): Failed to add message to database");
 }
 
 void logg_fatal_dnsmasq_message(const char *message)
@@ -1264,10 +1294,8 @@ void logg_fatal_dnsmasq_message(const char *message)
 	log_crit("%s", buf);
 
 	// Log to database
-	const int rowid = add_message_no_args(DNSMASQ_CONFIG_MESSAGE, message);
+	add_message_no_args(DNSMASQ_CONFIG_MESSAGE, message);
 
-	if(rowid == -1)
-		log_err("logg_fatal_dnsmasq_message(): Failed to add message to database");
 }
 
 void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit_count)
@@ -1282,10 +1310,8 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 	log_info("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(RATE_LIMIT_MESSAGE, clientIP, config.dns.rateLimit.count.v.ui, config.dns.rateLimit.interval.v.ui, turnaround);
+	add_message(RATE_LIMIT_MESSAGE, clientIP, config.dns.rateLimit.count.v.ui, config.dns.rateLimit.interval.v.ui, turnaround);
 
-	if(rowid == -1)
-		log_err("logg_rate_limit_message(): Failed to add message to database");
 }
 
 void logg_warn_dnsmasq_message(char *message)
@@ -1298,10 +1324,8 @@ void logg_warn_dnsmasq_message(char *message)
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message_no_args(DNSMASQ_WARN_MESSAGE, message);
+	add_message_no_args(DNSMASQ_WARN_MESSAGE, message);
 
-	if(rowid == -1)
-		log_err("logg_warn_dnsmasq_message(): Failed to add message to database");
 }
 
 void log_resource_shortage(const double load, const int nprocs, const int shmem, const int disk, const char *path, const char *msg)
@@ -1317,10 +1341,9 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		log_warn("%s", buf);
 
 		// Log to database
-		const int rowid = add_message(LOAD_MESSAGE, "excessive load", load, nprocs);
+		add_message(LOAD_MESSAGE, "excessive load", load, nprocs);
 
-		if(rowid == -1)
-			log_err("log_resource_shortage(): Failed to add message to database");
+
 	}
 	else if(shmem > -1)
 	{
@@ -1330,10 +1353,9 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		log_warn("%s", buf);
 
 		// Log to database
-		const int rowid = add_message(SHMEM_MESSAGE, path, shmem, msg);
+		add_message(SHMEM_MESSAGE, path, shmem, msg);
 
-		if(rowid == -1)
-			log_err("log_resource_shortage(): Failed to add message to database");
+
 	}
 	else if(disk > -1)
 	{
@@ -1367,12 +1389,11 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		log_warn("%s", buf);
 
 		// Log to database
-		const int rowid = fsdetails != NULL ?
+		fsdetails != NULL ?
 			add_message(DISK_MESSAGE_EXTENDED, path, disk, msg, fsdetails->mnt_type, fsdetails->mnt_dir) :
 			add_message(DISK_MESSAGE, path, disk, msg);
 
-		if(rowid == -1)
-			log_err("log_resource_shortage(): Failed to add message to database");
+
 	}
 }
 
@@ -1386,10 +1407,8 @@ void logg_inaccessible_adlist(const int dbindex, const char *address)
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(INACCESSIBLE_ADLIST_MESSAGE, address, dbindex);
+	add_message(INACCESSIBLE_ADLIST_MESSAGE, address, dbindex);
 
-	if(rowid == -1)
-		log_err("logg_inaccessible_adlist(): Failed to add message to database");
 }
 
 void log_certificate_domain_mismatch(const char *certfile, const char *domain)
@@ -1402,10 +1421,8 @@ void log_certificate_domain_mismatch(const char *certfile, const char *domain)
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(CERTIFICATE_DOMAIN_MISMATCH_MESSAGE, certfile, domain);
+	add_message(CERTIFICATE_DOMAIN_MISMATCH_MESSAGE, certfile, domain);
 
-	if(rowid == -1)
-		log_err("log_certificate_domain_mismatch(): Failed to add message to database");
 }
 
 void log_connection_error(const char *server, const char *reason, const char *error)
@@ -1418,8 +1435,26 @@ void log_connection_error(const char *server, const char *reason, const char *er
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(CONNECTION_ERROR_MESSAGE, server, reason, error);
+	add_message(CONNECTION_ERROR_MESSAGE, server, reason, error);
 
-	if(rowid == -1)
-		log_err("logg_connection_error(): Failed to add message to database");
+}
+
+void log_ntp_message(const bool error, const bool server, const char *message)
+{
+	const char *who = server ? "server" : "client";
+	const char *level = error ? "Error" : "Warning";
+
+	// Create message
+	char buf[2048];
+	format_ntp_message(buf, sizeof(buf), NULL, 0, message, level, who);
+
+	// Log to FTL.log
+	if(error)
+		log_err("%s", buf);
+	else
+		log_warn("%s", buf);
+
+	// Log to database
+	add_message(NTP_MESSAGE, message, level, who);
+
 }

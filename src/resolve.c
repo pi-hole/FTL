@@ -1053,7 +1053,6 @@ static void resolveUpstreams(const bool onlynew)
 void *DNSclient_thread(void *val)
 {
 	// Set thread name
-	thread_names[DNSclient] = "DNS client";
 	thread_running[DNSclient] = true;
 	prctl(PR_SET_NAME, thread_names[DNSclient], 0, 0, 0);
 
