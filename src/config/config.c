@@ -1077,7 +1077,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.app_pwhash.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.app_sudo.k = "webserver.api.app_sudo";
-	conf->webserver.api.app_sudo.h = "Should application password API sessions be allowed to modify config settings?\n Setting this to true allows third-party applications using the application password to modify advanced settings, e.g., the upstream DNS servers, DHCP server settings, or changing passwords. This setting should only be enabled if really needed and only if you trust the applications using the application password.";
+	conf->webserver.api.app_sudo.h = "Should application password API sessions be allowed to modify config settings?\n Setting this to true allows third-party applications using the application password to modify settings, e.g., the upstream DNS servers, DHCP server settings, or changing passwords. This setting should only be enabled if really needed and only if you trust the applications using the application password.";
 	conf->webserver.api.app_sudo.t = CONF_BOOL;
 	conf->webserver.api.app_sudo.d.b = false;
 	conf->webserver.api.app_sudo.c = validate_stub; // Only type-based checking
