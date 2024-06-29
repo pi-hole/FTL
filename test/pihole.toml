@@ -704,9 +704,9 @@
 
     # Should application password API sessions be allowed to modify config settings?
     # Setting this to true allows third-party applications using the application password
-    # to modify advanced settings, e.g., the upstream DNS servers, DHCP server settings,
-    # or changing passwords. This setting should only be enabled if really needed and only
-    # if you trust the applications using the application password.
+    # to modify settings, e.g., the upstream DNS servers, DHCP server settings, or
+    # changing passwords. This setting should only be enabled if really needed and only if
+    # you trust the applications using the application password.
     app_sudo = false
 
     # Array of clients to be excluded from certain API responses (regex):
