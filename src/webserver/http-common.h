@@ -21,6 +21,9 @@
 // strlen()
 #include <string.h>
 
+// struct session
+#include "api/auth.h"
+
 // API-internal definitions
 
 // Maximum size of received and processed payload: 64 KB
@@ -50,6 +53,7 @@ struct ftl_conn {
 	struct {
 		bool restart;
 	} ftl;
+	struct session *session;
 
 	struct api_options opts;
 };

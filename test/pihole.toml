@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v5.25.2-1891-g7ff016f2-dirty)
+# Pi-hole configuration file (v5.25.2-1921-gd3948088-dirty)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2024-05-30 11:37:59
+# Last updated on 2024-06-15 09:10:13 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -750,6 +750,13 @@
     #     <valid Pi-hole password hash>
     app_pwhash = ""
 
+    # Should application password API sessions be allowed to modify config settings?
+    # Setting this to true allows third-party applications using the application password
+    # to modify settings, e.g., the upstream DNS servers, DHCP server settings, or
+    # changing passwords. This setting should only be enabled if really needed and only if
+    # you trust the applications using the application password.
+    app_sudo = false
+
     # Array of clients to be excluded from certain API responses (regex):
     # - Query Log (/api/queries)
     # - Top Clients (/api/stats/top_clients)
@@ -1096,7 +1103,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 148 total entries out of which 93 entries are default
+# 149 total entries out of which 94 entries are default
 # --> 55 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice
