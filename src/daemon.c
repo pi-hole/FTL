@@ -265,16 +265,19 @@ pid_t FTL_gettid(void)
 
 static void terminate_threads(void)
 {
-	struct timespec ts;
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
 	// Try to join threads to ensure cancellation has succeeded
 	log_info("Waiting for threads to join");
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
+		log_debug(DEBUG_EXTRA, "Joining %s thread (%d)", thread_names[i], i);
 		// Skip threads that have never been started or which are already stopped
-		if(!thread_running[i])
+		if(threads[i] == 0)
+		{
+			log_debug(DEBUG_EXTRA, "Skipping thread as it was never started");
 			continue;
+		}
 
 		// Cancel thread if it is idle
 		if(thread_cancellable[i])
@@ -285,6 +288,8 @@ static void terminate_threads(void)
 		}
 
 		// Cancel thread if we cannot set a timeout for joining
+		struct timespec ts;
+		memset(&ts, 0, sizeof(ts));
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
 		{
 			log_info("Thread %s (%d) is busy, cancelling it (cannot set timeout).",
@@ -297,8 +302,7 @@ static void terminate_threads(void)
 		ts.tv_sec += 2;
 
 		// Try to join thread and cancel it if it is still busy
-		const int s = pthread_timedjoin_np(threads[i], NULL, &ts);
-		if(s != 0)
+		if(pthread_timedjoin_np(threads[i], NULL, &ts) != 0)
 		{
 			log_info("Thread %s (%d) is still busy, cancelling it.",
 			     thread_names[i], i);

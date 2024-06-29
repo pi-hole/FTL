@@ -293,6 +293,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:tomlc99>
         $<TARGET_OBJECTS:config>
         $<TARGET_OBJECTS:tools>
+        $<TARGET_OBJECTS:ntp>
         )
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -335,6 +336,7 @@ add_subdirectory(tre-regex)
 add_subdirectory(syscalls)
 add_subdirectory(config)
 add_subdirectory(tools)
+add_subdirectory(ntp)
 
 find_library(LIBREADLINE NAMES libreadline${LIBRARY_SUFFIX} readline)
 find_library(LIBHISTORY NAMES libhistory${LIBRARY_SUFFIX} history)
@@ -373,5 +375,5 @@ find_program(SETCAP setcap)
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN+eip \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
+install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN,CAP_SYS_TIME+eip \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 

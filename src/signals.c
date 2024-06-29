@@ -35,7 +35,13 @@ volatile int exit_code = EXIT_SUCCESS;
 
 volatile sig_atomic_t thread_cancellable[THREADS_MAX] = { false };
 volatile sig_atomic_t thread_running[THREADS_MAX] = { false };
-const char *thread_names[THREADS_MAX] = { "" };
+const char * const thread_names[THREADS_MAX] = {
+	"database",
+	"housekeeper",
+	"dns-client",
+	"timer",
+	"ntp-client"
+ };
 
 // Return the (null-terminated) name of the calling thread
 // The name is stored in the buffer as well as returned for convenience

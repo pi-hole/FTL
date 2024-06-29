@@ -725,6 +725,8 @@ int run_dhcp_discover(void)
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
 	pthread_attr_init(&attr);
+	// Set thread attributes to detached mode
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	// Create processing/printfing lock
 	pthread_mutexattr_t lock_attr;

@@ -58,6 +58,8 @@
 #include "config/config.h"
 // FTL_fork_and_bind_sockets()
 #include "main.h"
+// ntp_server_start()
+#include "ntp/ntp.h"
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
@@ -2902,18 +2904,8 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// Flush messages stored in the long-term database
 	flush_message_table();
 
-	// Try to import queries from long-term database if available
-	if(config.database.DBimport.v.b)
-	{
-		import_queries_from_disk();
-		DB_read_queries();
-	}
-
 	// Initialize in-memory database starting index
 	update_disk_db_idx();
-
-	// Log some information about the imported queries (if any)
-	log_counter_info();
 
 	// Handle real-time signals in this process (and its children)
 	// Helper processes are already split from the main instance
@@ -2924,7 +2916,15 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// detached mode
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
+	// Do NOT detach threads as we want to join them during shutdown with a
+	// fixed timeout to give them time to clean up and finish their work
 	pthread_attr_init(&attr);
+
+	// Initialize NTP server
+	ntp_server_start(&attr);
+
+	// Start NTP sync thread
+	ntp_start_sync_thread(&attr);
 
 	// Start database thread if database is used
 	if(pthread_create( &threads[DB], &attr, DB_thread, NULL ) != 0)

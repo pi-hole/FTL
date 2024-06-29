@@ -192,6 +192,27 @@ struct config {
 	} dhcp;
 
 	struct {
+		struct {
+			struct conf_item active;
+			struct conf_item address;
+		} ipv4;
+		struct {
+			struct conf_item active;
+			struct conf_item address;
+		} ipv6;
+		struct {
+			struct conf_item server;
+			struct conf_item interval;
+			struct conf_item count;
+		} sync;
+		struct {
+			struct conf_item set;
+			struct conf_item device;
+			struct conf_item utc;
+		} rtc;
+	} ntp;
+
+	struct {
 		struct conf_item resolveIPv4;
 		struct conf_item resolveIPv6;
 		struct conf_item networkNames;
@@ -313,6 +334,7 @@ struct config {
 		struct conf_item webserver;
 		struct conf_item extra;
 		struct conf_item reserved;
+		struct conf_item ntp;
 		// all must be the last item in this struct
 		struct conf_item all;
 	} debug;

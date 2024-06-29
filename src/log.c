@@ -219,6 +219,8 @@ const char *debugstr(const enum debug_flag flag)
 			return "DEBUG_WEBSERVER";
 		case DEBUG_RESERVED:
 			return "DEBUG_RESERVED";
+		case DEBUG_NTP:
+			return "DEBUG_NTP";
 		case DEBUG_MAX:
 			return "DEBUG_MAX";
 		case DEBUG_NONE: // fall through

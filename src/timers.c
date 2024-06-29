@@ -84,7 +84,8 @@ void get_blockingmode_timer(double *delay, bool *target_status)
 void *timer(void *val)
 {
 	// Set thread name
-	prctl(PR_SET_NAME, "int.timer", 0, 0, 0);
+	thread_running[GC] = true;
+	prctl(PR_SET_NAME, thread_names[TIMER], 0, 0, 0);
 
 	// Save timestamp as we do not want to store immediately
 	// to the database
@@ -105,9 +106,11 @@ void *timer(void *val)
 			set_blockingstatus(timer_target_status);
 			timer_delay = -1.0;
 		}
-		sleepms(SLEEPING_TIME * 1000);
+		thread_sleepms(TIMER, SLEEPING_TIME * 1000);
 	}
 
+	log_info("Terminating timer thread");
+	thread_running[GC] = false;
 	return NULL;
 }
 
