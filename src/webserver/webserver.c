@@ -28,6 +28,8 @@
 #include "webserver/lua_web.h"
 // log_certificate_domain_mismatch()
 #include "database/message-table.h"
+// create_cli_password()
+#include "config/password.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
@@ -542,6 +544,9 @@ void http_init(void)
 
 	// Restore sessions from database
 	init_api();
+
+	// Create CLI password (if enabled)
+	create_cli_password();
 }
 
 static char *append_to_path(char *path, const char *append)
@@ -634,6 +639,9 @@ void http_terminate(void)
 
 	// Free Lua-related resources
 	free_lua();
+
+	// Remove CLI password
+	remove_cli_password();
 
 	// Free error_pages path
 	if(error_pages != NULL)

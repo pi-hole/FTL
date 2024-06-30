@@ -78,15 +78,6 @@ bool __attribute__((pure)) is_local_api_user(const char *remote_addr)
 // Returns >= 0 for any valid authentication
 int check_client_auth(struct ftl_conn *api, const bool is_api)
 {
-	// Is the user requesting from localhost?
-	// This may be allowed without authentication depending on the configuration
-	if(!config.webserver.api.localAPIauth.v.b && is_local_api_user(api->request->remote_addr))
-	{
-		api->message = "no auth required for local user";
-		add_request_info(api, NULL);
-		return API_AUTH_LOCALHOST;
-	}
-
 	// When the pwhash is unset, authentication is disabled
 	if(config.webserver.api.pwhash.v.s[0] == '\0')
 	{
@@ -310,6 +301,7 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 		JSON_REF_STR_IN_OBJECT(session, "remote_addr", auth_data[i].remote_addr);
 		JSON_REF_STR_IN_OBJECT(session, "user_agent", auth_data[i].user_agent);
 		JSON_ADD_BOOL_TO_OBJECT(session, "app", auth_data[i].app);
+		JSON_ADD_BOOL_TO_OBJECT(session, "cli", auth_data[i].cli);
 		JSON_ADD_ITEM_TO_ARRAY(sessions, session);
 	}
 	JSON_ADD_ITEM_TO_OBJECT(json, "sessions", sessions);
@@ -321,7 +313,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 	cJSON *session = JSON_NEW_OBJECT();
 
 	// Authentication not needed
-	if(user_id == API_AUTH_LOCALHOST || user_id == API_AUTH_EMPTYPASS)
+	if(user_id == API_AUTH_EMPTYPASS)
 	{
 		JSON_ADD_BOOL_TO_OBJECT(session, "valid", true);
 		JSON_ADD_BOOL_TO_OBJECT(session, "totp", strlen(config.webserver.api.totp_secret.v.s) > 0);
@@ -416,14 +408,6 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 			get_session_object(api, json, user_id, now);
 			JSON_SEND_OBJECT_CODE(json, 401); // 401 Unauthorized
 		}
-	}
-	else if(user_id == API_AUTH_LOCALHOST)
-	{
-		log_debug(DEBUG_API, "API Auth status: OK (localhost does not need auth)");
-
-		cJSON *json = JSON_NEW_OBJECT();
-		get_session_object(api, json, user_id, now);
-		JSON_SEND_OBJECT(json);
 	}
 	else if(user_id == API_AUTH_EMPTYPASS)
 	{
@@ -537,7 +521,9 @@ int api_auth(struct ftl_conn *api)
 	else
 		result = verify_login(password);
 
-	if(result == PASSWORD_CORRECT || result == APPPASSWORD_CORRECT)
+	if(result == PASSWORD_CORRECT ||
+	   result == APPPASSWORD_CORRECT ||
+	   result ==CLIPASSWORD_CORRECT)
 	{
 		// Accepted
 
@@ -548,7 +534,7 @@ int api_auth(struct ftl_conn *api)
 
 		// Check possible 2FA token
 		// Successful login with empty password does not require 2FA
-		if(strlen(config.webserver.api.totp_secret.v.s) > 0 && result != APPPASSWORD_CORRECT)
+		if(strlen(config.webserver.api.totp_secret.v.s) > 0 && result == PASSWORD_CORRECT)
 		{
 			// Get 2FA token from payload
 			cJSON *json_totp;
@@ -619,6 +605,7 @@ int api_auth(struct ftl_conn *api)
 				auth_data[i].tls.login = api->request->is_ssl;
 				auth_data[i].tls.mixed = false;
 				auth_data[i].app = result == APPPASSWORD_CORRECT;
+				auth_data[i].cli = result == CLIPASSWORD_CORRECT;
 
 				// Generate new SID and CSRF token
 				generateSID(auth_data[i].sid);

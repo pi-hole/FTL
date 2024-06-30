@@ -345,6 +345,9 @@ components:
               app:
                 type: boolean
                 description: Indicator if this session was initiated using an application password
+              cli:
+                type: boolean
+                description: Indicator if this session was initiated using the command-line interface (CLI)
               login_at:
                 type: integer
                 description: Timestamp of login (seconds since epoch)
@@ -368,6 +371,7 @@ components:
                 login: true
                 mixed: false
               app: false
+              cli: false
               login_at: 1580000000
               last_active: 1580000000
               valid_until: 1580000300

@@ -575,6 +575,29 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 18 if lower
+	if(dbversion < 18)
+	{
+		// Update to version 18: Add cli column to session table
+		log_info("Updating long-term database to version 18");
+		if(!add_session_cli_column(db))
+		{
+			log_info("Session table cannot be updated, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	/* * * * * * * * * * * * * IMPORTANT * * * * * * * * * * * * *
+	 * If you add a new database version, check if the in-memory
+	 * schema needs to be update as well (always recreated from
+	 * scratch on every FTL (re)start). Also, ensure to update the
+	 * MEMDB_VERSION in src/database/query-table.h as well as the
+	 * expected database schema in the CI tests.
+	 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
 	// Last check after all migrations, if this happens, it will cause the
 	// CI to fail the tests
 	if(dbversion != MEMDB_VERSION)

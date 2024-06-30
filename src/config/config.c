@@ -1031,18 +1031,6 @@ void initConfig(struct config *conf)
 	conf->webserver.interface.theme.c = validate_stub; // Only type-based checking
 
 	// sub-struct api
-	conf->webserver.api.searchAPIauth.k = "webserver.api.searchAPIauth";
-	conf->webserver.api.searchAPIauth.h = "Do local clients need to authenticate to access the search API? This settings allows local clients to use pihole -q ... without authentication. Note that \"local\" in the sense of the option means only 127.0.0.1 and [::1]";
-	conf->webserver.api.searchAPIauth.t = CONF_BOOL;
-	conf->webserver.api.searchAPIauth.d.b = false;
-	conf->webserver.api.searchAPIauth.c = validate_stub; // Only type-based checking
-
-	conf->webserver.api.localAPIauth.k = "webserver.api.localAPIauth";
-	conf->webserver.api.localAPIauth.h = "Do local clients need to authenticate to access the API? This settings allows local clients to use the API without authentication.";
-	conf->webserver.api.localAPIauth.t = CONF_BOOL;
-	conf->webserver.api.localAPIauth.d.b = true;
-	conf->webserver.api.localAPIauth.c = validate_stub; // Only type-based checking
-
 	conf->webserver.api.max_sessions.k = "webserver.api.max_sessions";
 	conf->webserver.api.max_sessions.h = "Number of concurrent sessions allowed for the API. If the number of sessions exceeds this value, no new sessions will be allowed until the number of sessions drops due to session expiration or logout. Note that the number of concurrent sessions is irrelevant if authentication is disabled as no sessions are used in this case.";
 	conf->webserver.api.max_sessions.t = CONF_UINT16;
@@ -1093,6 +1081,12 @@ void initConfig(struct config *conf)
 	conf->webserver.api.app_sudo.t = CONF_BOOL;
 	conf->webserver.api.app_sudo.d.b = false;
 	conf->webserver.api.app_sudo.c = validate_stub; // Only type-based checking
+
+	conf->webserver.api.cli_pw.k = "webserver.api.cli_pw";
+	conf->webserver.api.cli_pw.h = "Should FTL create a temporary CLI password? This password is stored in clear in /etc/pihole and can be used by the CLI (pihole ...  commands) to authenticate against the API. Note that the password is only valid for the current session and regenerated on each FTL restart. Sessions initiated with this password cannot modify the Pi-hole configuration (change passwords, etc.) for security reasons but can still use the API to query data and manage lists.";
+	conf->webserver.api.cli_pw.t = CONF_BOOL;
+	conf->webserver.api.cli_pw.d.b = true;
+	conf->webserver.api.cli_pw.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
 	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_clients)\n This setting accepts both IP addresses (IPv4 and IPv6) as well as hostnames.\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n\n Example: [ \"^192\\\\.168\\\\.2\\\\.56$\", \"^fe80::341:[0-9a-f]*$\", \"^localhost$\" ]";

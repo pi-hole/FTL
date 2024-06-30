@@ -251,8 +251,6 @@ struct config {
 			struct conf_item theme;
 		} interface;
 		struct {
-			struct conf_item localAPIauth;
-			struct conf_item searchAPIauth;
 			struct conf_item max_sessions;
 			struct conf_item prettyJSON;
 			struct conf_item pwhash;
@@ -260,6 +258,7 @@ struct config {
 			struct conf_item totp_secret; // This is a write-only item
 			struct conf_item app_pwhash;
 			struct conf_item app_sudo;
+			struct conf_item cli_pw;
 			struct conf_item excludeClients;
 			struct conf_item excludeDomains;
 			struct conf_item maxHistory;

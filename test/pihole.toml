@@ -704,15 +704,6 @@
     theme = "default-auto"
 
   [webserver.api]
-    # Do local clients need to authenticate to access the API? This settings allows local
-    # clients to use the API without authentication.
-    localAPIauth = true
-
-    # Do local clients need to authenticate to access the search API? This settings allows
-    # local clients to use pihole -q ... without authentication. Note that "local" in the
-    # sense of the option means only 127.0.0.1 and [::1]
-    searchAPIauth = false
-
     # Number of concurrent sessions allowed for the API. If the number of sessions exceeds
     # this value, no new sessions will be allowed until the number of sessions drops due
     # to session expiration or logout. Note that the number of concurrent sessions is
@@ -756,6 +747,14 @@
     # changing passwords. This setting should only be enabled if really needed and only if
     # you trust the applications using the application password.
     app_sudo = false
+
+    # Should FTL create a temporary CLI password? This password is stored in clear in
+    # /etc/pihole and can be used by the CLI (pihole ...  commands) to authenticate
+    # against the API. Note that the password is only valid for the current session and
+    # regenerated on each FTL restart. Sessions initiated with this password cannot modify
+    # the Pi-hole configuration (change passwords, etc.) for security reasons but can
+    # still use the API to query data and manage lists.
+    cli_pw = true
 
     # Array of clients to be excluded from certain API responses (regex):
     # - Query Log (/api/queries)
@@ -1103,7 +1102,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 149 total entries out of which 94 entries are default
+# 148 total entries out of which 93 entries are default
 # --> 55 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

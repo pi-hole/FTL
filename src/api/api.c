@@ -172,22 +172,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			}
 
 			// Verify requesting client is allowed to see this resource
-			if(api_request[i].func == api_search)
-			{
-				// Handle /api/search special as it may be allowed for local users due to webserver.api.searchAPIauth
-				if(!config.webserver.api.searchAPIauth.v.b && is_local_api_user(api.request->remote_addr))
-				{
-					// Local users does not need to authenticate when searchAPIauth is false
-					;
-				}
-				else if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
-				{
-					// Users need to authenticate but authentication failed
-					unauthorized = true;
-					break;
-				}
-			}
-			else if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
+			if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
 			{
 				unauthorized = true;
 				break;

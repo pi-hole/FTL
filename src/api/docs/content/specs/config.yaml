@@ -432,10 +432,6 @@ components:
                 api:
                   type: object
                   properties:
-                    localAPIauth:
-                      type: boolean
-                    searchAPIauth:
-                      type: boolean
                     max_sessions:
                       type: integer
                     prettyJSON:
@@ -451,6 +447,8 @@ components:
                     app_pwhash:
                       type: string
                     app_sudo:
+                      type: boolean
+                    cli_pw:
                       type: boolean
                     excludeClients:
                       type: array
@@ -747,8 +745,6 @@ components:
               boxed: true
               theme: "default-darker"
             api:
-              localAPIauth: false
-              searchAPIauth: false
               max_sessions: 16
               prettyJSON: false
               password: "********"
@@ -756,6 +752,7 @@ components:
               totp_secret: ''
               app_pwhash: ''
               app_sudo: false
+              cli_pw: true
               excludeClients: [ '1\.2\.3\.4', 'localhost', 'fe80::345' ]
               excludeDomains: [ 'google\\.de', 'pi-hole\.net' ]
               maxHistory: 86400

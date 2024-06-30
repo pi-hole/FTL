@@ -1068,6 +1068,15 @@ int api_config(struct ftl_conn *api)
 		                       "The current app session is not allowed to modify Pi-hole config settings (webserver.api.app_sudo is false)");
 	}
 
+	// Check if this is a CLI session and reject the request
+	if(api->session != NULL && api->session->cli)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to change configuration (read-only)",
+		                       "The current CLI session is not allowed to modify Pi-hole config settings");
+	}
+
 	// POST: Create a new config (not supported)
 	// PATCH: Replace parts of the the config with the provided one
 	// PUT: Replaces the entire config with the provided one (not supported

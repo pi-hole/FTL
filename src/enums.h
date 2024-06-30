@@ -229,8 +229,7 @@ enum refresh_hostnames {
 
 enum api_auth_status {
 	API_AUTH_UNAUTHORIZED  = -1,
-	API_AUTH_LOCALHOST  = -2,
-	API_AUTH_EMPTYPASS  = -3,
+	API_AUTH_EMPTYPASS  = -2,
 } __attribute__ ((packed));
 
 enum db_result {
