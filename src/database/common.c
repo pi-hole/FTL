@@ -590,6 +590,14 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	/* * * * * * * * * * * * * IMPORTANT * * * * * * * * * * * * *
+	 * If you add a new database version, check if the in-memory
+	 * schema needs to be update as well (always recreated from
+	 * scratch on every FTL (re)start). Also, ensure to update the
+	 * MEMDB_VERSION in src/database/query-table.h as well as the
+	 * expected database schema in the CI tests.
+	 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
 	// Last check after all migrations, if this happens, it will cause the
 	// CI to fail the tests
 	if(dbversion != MEMDB_VERSION)
