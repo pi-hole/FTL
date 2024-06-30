@@ -253,7 +253,7 @@ bool restore_db_sessions(struct session *sessions, const uint16_t max_sessions)
 
 	// Get all sessions from database
 	sqlite3_stmt *stmt = NULL;
-	if(sqlite3_prepare_v2(memdb, "SELECT login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed, app FROM disk.session;", -1, &stmt, 0) != SQLITE_OK)
+	if(sqlite3_prepare_v2(memdb, "SELECT login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed, app, cli FROM disk.session;", -1, &stmt, 0) != SQLITE_OK)
 	{
 		log_err("SQL error in restore_db_sessions(): %s (%d)",
 		        sqlite3_errmsg(memdb), sqlite3_errcode(memdb));
@@ -315,7 +315,7 @@ bool restore_db_sessions(struct session *sessions, const uint16_t max_sessions)
 		// 8: app
 		sess->app = sqlite3_column_int(stmt, 8) == 1 ? true : false;
 
-		// 9: app
+		// 9: cli
 		sess->cli = sqlite3_column_int(stmt, 9) == 1 ? true : false;
 
 		// Mark session as used
