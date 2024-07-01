@@ -22,7 +22,7 @@
 // dbopen(false, ), dbclose()
 #include "database/common.h"
 
-static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *querystr, const int max_count)
+static int add_strings_to_array(struct ftl_conn *api, cJSON *array1, cJSON *array2, const char *querystr, const int max_count)
 {
 
 	sqlite3 *memdb = get_memdb();
@@ -44,11 +44,24 @@ static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *
 		                       sqlite3_errstr(rc));
 	}
 
-	// Loop through returned rows
+	// Loop through returned rows and add them to the array
 	int counter = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW &&
-	      (max_count < 0 || ++counter < max_count))
-		JSON_COPY_STR_TO_ARRAY(array, (const char*)sqlite3_column_text(stmt, 0));
+	      (max_count < 0 || ++counter <= max_count))
+	{
+		const char *array1_str = (const char*)sqlite3_column_text(stmt, 0);
+		if(array1_str != NULL && array1_str[0] != '\0')
+			// Only add non-empty strings
+			JSON_COPY_STR_TO_ARRAY(array1, array1_str);
+		if(array2 != NULL)
+		{
+			// We have a second array to fill (second column in the query)
+			const char *array2_str = (const char*)sqlite3_column_text(stmt, 1);
+			if(array2_str != NULL && array2_str[0] != '\0')
+				// Only add non-empty strings
+				JSON_COPY_STR_TO_ARRAY(array2, array2_str);
+		}
+	}
 
 	// Acceptable return codes are either
 	// - SQLITE_DONE: We read all lines, or
@@ -77,19 +90,25 @@ int api_queries_suggestions(struct ftl_conn *api)
 
 	// Get domains
 	cJSON *domain = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, domain, "SELECT domain FROM domain_by_id", count);
+	log_debug(DEBUG_API, "Reading top domains from database");
+	rc = add_strings_to_array(api, domain, NULL, "WITH CTE AS (SELECT COUNT(*) cnt, domain FROM query_storage GROUP BY domain ORDER BY cnt DESC)"\
+	                                             "SELECT d.domain FROM CTE JOIN domain_by_id d ON CTE.domain = d.id", count);
 	if(rc != 0)
 	{
 		log_err("Cannot read domains from database");
 		cJSON_Delete(domain);
 		return rc;
 	}
+	log_debug(DEBUG_API, "Read %d domains from database", cJSON_GetArraySize(domain));
 
 	// Get clients, both by IP and names
 	// We have to call DISTINCT() here as multiple IPs can map to and name and
 	// vice versa
 	cJSON *client_ip = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, client_ip, "SELECT DISTINCT(ip) FROM client_by_id", count);
+	cJSON *client_name = JSON_NEW_ARRAY();
+	log_debug(DEBUG_API, "Reading top client IPs and names from database");
+	rc = add_strings_to_array(api, client_ip, client_name, "WITH CTE AS (SELECT COUNT(*) cnt, client FROM query_storage GROUP BY client ORDER BY cnt DESC)"\
+	                                                       "SELECT c.ip,c.name FROM CTE JOIN client_by_id c ON CTE.client = c.id", count);
 	if(rc != 0)
 	{
 		log_err("Cannot read client IPs from database");
@@ -97,20 +116,13 @@ int api_queries_suggestions(struct ftl_conn *api)
 		cJSON_Delete(client_ip);
 		return rc;
 	}
-	cJSON *client_name = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, client_name, "SELECT DISTINCT(name) FROM client_by_id", count);
-	if(rc != 0)
-	{
-		log_err("Cannot read client names from database");
-		cJSON_Delete(domain);
-		cJSON_Delete(client_ip);
-		cJSON_Delete(client_name);
-		return rc;
-	}
+	log_debug(DEBUG_API, "Read %d client IPs and %d client names from database", cJSON_GetArraySize(client_ip), cJSON_GetArraySize(client_name));
 
 	// Get upstreams
 	cJSON *upstream = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, upstream, "SELECT forward FROM forward_by_id", count);
+	log_debug(DEBUG_API, "Reading top upstreams from database");
+	rc = add_strings_to_array(api, upstream, NULL, "WITH CTE AS (SELECT COUNT(*) cnt, forward FROM query_storage GROUP BY forward ORDER BY cnt DESC)"\
+	                                               "SELECT f.forward FROM CTE JOIN forward_by_id f ON CTE.forward = f.id", count);
 	if(rc != 0)
 	{
 		log_err("Cannot read forward from database");
@@ -120,6 +132,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 		cJSON_Delete(upstream);
 		return rc;
 	}
+	log_debug(DEBUG_API, "Read %d upstreams from database", cJSON_GetArraySize(upstream));
 
 	// Get types
 	cJSON *type = JSON_NEW_ARRAY();
