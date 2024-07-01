@@ -588,8 +588,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 static void *ntp_client_thread(void *arg)
 {
 	// Set thread name
-	thread_running[NTP] = true;
-	prctl(PR_SET_NAME, thread_names[NTP], 0, 0, 0);
+	prctl(PR_SET_NAME, thread_names[NTP_CLIENT], 0, 0, 0);
 
 	// Run NTP client
 	bool first_run = true;
@@ -619,11 +618,10 @@ static void *ntp_client_thread(void *arg)
 		BREAK_IF_KILLED();
 
 		// Sleep before retrying
-		thread_sleepms(NTP, 1000 * config.ntp.sync.interval.v.ui);
+		thread_sleepms(NTP_CLIENT, 1000 * config.ntp.sync.interval.v.ui);
 	}
 
 	log_info("Terminating NTP thread");
-	thread_running[NTP] = false;
 
 	return NULL;
 }
@@ -641,7 +639,7 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	}
 
 	// Create thread
-	if(pthread_create(&threads[NTP], attr, ntp_client_thread, NULL) != 0)
+	if(pthread_create(&threads[NTP_CLIENT], attr, ntp_client_thread, NULL) != 0)
 	{
 		log_err("Cannot create NTP client thread - NTP server will not be available");
 		load_queries_from_disk();
