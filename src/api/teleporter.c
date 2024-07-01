@@ -316,7 +316,7 @@ static int process_received_zip(struct ftl_conn *api, struct upload_data *data)
 		return send_json_error_free(api, 400,
 		                            "bad_request",
 		                            "Invalid request",
-		                            msg, true);
+		                            msg, true, true);
 	}
 
 	// Free allocated memory
