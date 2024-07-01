@@ -640,19 +640,24 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	   strlen(config.ntp.sync.server.v.s) == 0 ||
 	   config.ntp.sync.interval.v.ui == 0)
 	{
-		log_info("NTP sync is disabled - NTP server will not be available");
+		log_info("NTP sync is disabled");
 		// Send SIGUSR7 to embedded dnsmasq instance to signal time is
 		// assumed to be correct
 		kill(main_pid(), SIGUSR7);
 		load_queries_from_disk();
+		ntp_server_start();
 		return false;
 	}
 
 	// Create thread
 	if(pthread_create(&threads[NTP_CLIENT], attr, ntp_client_thread, NULL) != 0)
 	{
-		log_err("Cannot create NTP client thread - NTP server will not be available");
+		log_err("Cannot create NTP client thread");
+		// Send SIGUSR7 to embedded dnsmasq instance to signal time is
+		// assumed to be correct - at least we cannot synchronize it
+		kill(main_pid(), SIGUSR7);
 		load_queries_from_disk();
+		ntp_server_start();
 		return false;
 	}
 
