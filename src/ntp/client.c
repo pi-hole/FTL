@@ -41,6 +41,8 @@
 #include "database/message-table.h"
 // load_queries_from_disk()
 #include "database/query-table.h"
+// check_capability()
+#include "capabilities.h"
 struct ntp_sync
 {
 	bool valid;
@@ -649,12 +651,27 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 		return false;
 	}
 
+	// Check if we have the ambient capabilities to set the system time.
+	// Without CAP_SYS_TIME, we cannot set the system time and the NTP
+	// client will not be able to synchronize the time so there is no point
+	// in starting the thread.
+	if(!check_capability(CAP_SYS_TIME))
+	{
+		log_warn("Insufficient permissions to set system time, NTP client not available");
+		// Send SIGUSR7 to embedded dnsmasq instance to signal time is
+		// assumed to be correct
+		kill(main_pid(), SIGUSR7);
+		load_queries_from_disk();
+		ntp_server_start();
+		return false;
+	}
+
 	// Create thread
 	if(pthread_create(&threads[NTP_CLIENT], attr, ntp_client_thread, NULL) != 0)
 	{
 		log_err("Cannot create NTP client thread");
 		// Send SIGUSR7 to embedded dnsmasq instance to signal time is
-		// assumed to be correct - at least we cannot synchronize it
+		// assumed to be correct
 		kill(main_pid(), SIGUSR7);
 		load_queries_from_disk();
 		ntp_server_start();
