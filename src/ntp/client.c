@@ -593,16 +593,26 @@ static void *ntp_client_thread(void *arg)
 
 	// Run NTP client
 	bool first_run = true;
+	bool ntp_server_started = false;
 	while(!killed)
 	{
 		// Run NTP client
-		ntp_client(config.ntp.sync.server.v.s, true, false);
+		const bool success = ntp_client(config.ntp.sync.server.v.s, true, false);
 
 		// Load queries from database after first NTP synchronization
 		if(first_run)
 		{
 			load_queries_from_disk();
+
 			first_run = false;
+		}
+
+		if(success && !ntp_server_started)
+		{
+			// Initialize NTP server only after first NTP
+			// synchronization to ensure that the time is set
+			// correctly
+			ntp_server_started = ntp_server_start();
 		}
 
 		// Intermediate cancellation-point
@@ -625,6 +635,7 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	   strlen(config.ntp.sync.server.v.s) == 0 ||
 	   config.ntp.sync.interval.v.ui == 0)
 	{
+		log_info("NTP sync is disabled - NTP server will not be available");
 		load_queries_from_disk();
 		return false;
 	}
@@ -632,7 +643,7 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	// Create thread
 	if(pthread_create(&threads[NTP], attr, ntp_client_thread, NULL) != 0)
 	{
-		log_err("Cannot create NTP client thread");
+		log_err("Cannot create NTP client thread - NTP server will not be available");
 		load_queries_from_disk();
 		return false;
 	}
