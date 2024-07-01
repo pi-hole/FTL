@@ -576,7 +576,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		ntp_root_dispersion = D2FP(theta_stdev);
 
 		// Finally, adjust RTC if configured
-		if(config.ntp.rtc.set.v.b)
+		if(config.ntp.sync.rtc.set.v.b)
 			ntp_sync_rtc();
 	}
 
@@ -635,7 +635,8 @@ static void *ntp_client_thread(void *arg)
 bool ntp_start_sync_thread(pthread_attr_t *attr)
 {
 	// Return early if NTP client is disabled
-	if(config.ntp.sync.server.v.s == NULL ||
+	if(config.ntp.sync.active.v.b == false ||
+	   config.ntp.sync.server.v.s == NULL ||
 	   strlen(config.ntp.sync.server.v.s) == 0 ||
 	   config.ntp.sync.interval.v.ui == 0)
 	{
