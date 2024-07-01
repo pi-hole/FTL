@@ -1,0 +1,29 @@
+openapi: 3.0.2
+components:
+  paths:
+    docs:
+      summary: Pi-hole's API documentation
+      get:
+        summary: Get the embedded API documentation rendered as HTML
+        tags:
+          - "Documentation"
+        operationId: "get_docs"
+        security: []
+        description: |
+          This API hook returns the embedded API documentation rendered as HTML.
+        responses:
+          '200':
+            description: OK
+            content:
+              text/html:
+                schema:
+                  description: HTML document
+                  type: string
+                  example: |
+                    <!DOCTYPE html>
+                    <html lang="en">
+                    <head>
+                      <meta charset="utf-8">
+                      <title>API Documentation</title>
+                    </body>
+                    </html>

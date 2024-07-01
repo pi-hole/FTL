@@ -45,9 +45,11 @@ pdnsutil disable-dnssec ftl
 # Create A records
 pdnsutil add-record ftl. a A 192.168.1.1
 pdnsutil add-record ftl. gravity A 192.168.1.2
-pdnsutil add-record ftl. blacklisted A 192.168.1.3
-pdnsutil add-record ftl. whitelisted A 192.168.1.4
-pdnsutil add-record ftl. gravity-whitelisted A 192.168.1.5
+pdnsutil add-record ftl. denied A 192.168.1.3
+pdnsutil add-record ftl. allowed A 192.168.1.4
+pdnsutil add-record ftl. gravity-allowed A 192.168.1.5
+pdnsutil add-record ftl. antigravity A 192.168.1.6
+pdnsutil add-record ftl. x.y.z.abp.antigravity A 192.168.1.7
 pdnsutil add-record ftl. regex1 A 192.168.2.1
 pdnsutil add-record ftl. regex2 A 192.168.2.2
 pdnsutil add-record ftl. regex5 A 192.168.2.3
@@ -111,6 +113,9 @@ pdnsutil add-record ftl. regex-multiple A 192.168.3.12
 pdnsutil add-record ftl. regex-multiple AAAA fe80::3f41
 pdnsutil add-record ftl. regex-notMultiple A 192.168.3.12
 pdnsutil add-record ftl. regex-notMultiple AAAA fe80::3f41
+
+# TXT
+pdnsutil add-record ftl. any TXT "\"Some example text\""
 
 # Create reverse lookup zone
 pdnsutil create-zone arpa ns1.ftl

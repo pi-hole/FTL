@@ -15,8 +15,8 @@
 */
 
 #include "dnsmasq.h"
-#include "../dnsmasq_interface.h"
-#include "../log.h"
+#include "dnsmasq_interface.h"
+#include "log.h"
 
 #ifdef HAVE_LINUX_NETWORK
 
@@ -713,7 +713,8 @@ static int release_listener(struct listener *l)
       /* In case it ever returns */
       l->iface->done = 0;
       // Pi-hole modification
-      logg("stopped listening on %s(#%d): %s port %d", l->iface->name, l->iface->index, daemon->addrbuff, port);
+      log_info("stopped listening on %s(#%d): %s port %d",
+	   l->iface->name, l->iface->index, daemon->addrbuff, port);
     }
 
   if (l->fd != -1)
@@ -1140,7 +1141,7 @@ static struct listener *create_listeners(union mysockaddr *addr, int do_tftp, in
 
     // Pi-hole modification
     const int port = prettyprint_addr(addr, daemon->addrbuff);
-    logg("listening on %s port %d", daemon->addrbuff, port);
+    log_info("listening on %s port %d", daemon->addrbuff, port);
 
   return l;
 }
@@ -1220,7 +1221,7 @@ void create_bound_listeners(int dienow)
 	      }
 	    // Pi-hole modification
 	    const int port = prettyprint_addr(&iface->addr, daemon->addrbuff);
-	    logg("listening on %s(#%d): %s port %d",
+	    log_info("listening on %s(#%d): %s port %d",
 		     iface->name, iface->index, daemon->addrbuff, port);
 	  }
       }
@@ -1250,7 +1251,7 @@ void create_bound_listeners(int dienow)
 	  }
 	// Pi-hole modification
 	const int port = prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
-	logg("listening on %s port %d", daemon->addrbuff, port);
+	log_info("listening on %s port %d", daemon->addrbuff, port);
       }
 }
 

@@ -211,9 +211,16 @@ tre_regnexec(const regex_t *preg, const char *str, size_t len,
   return tre_match(tnfa, str, len, type, nmatch, pmatch, eflags);
 }
 
+#ifdef TRE_USE_GNUC_REGEXEC_FPL
+int
+tre_regexec(const regex_t *preg, const char *str,
+	size_t nmatch, regmatch_t pmatch[_Restrict_arr_ _REGEX_NELTS (nmatch)],
+	int eflags)
+#else
 int
 tre_regexec(const regex_t *preg, const char *str,
 	size_t nmatch, regmatch_t pmatch[], int eflags)
+#endif
 {
   return tre_regnexec(preg, str, (unsigned)-1, nmatch, pmatch, eflags);
 }

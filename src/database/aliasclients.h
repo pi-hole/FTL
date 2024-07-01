@@ -11,7 +11,7 @@
 #define ALIASCLIENTS_TABLE_H
 
 // type clientsData
-#include "../datastructure.h"
+#include "datastructure.h"
 
 
 bool create_aliasclients_table(sqlite3 *db);

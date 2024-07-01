@@ -25,16 +25,18 @@ CREATE TABLE domainlist
 
 CREATE TABLE adlist
 (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, 
-  address TEXT UNIQUE NOT NULL, 
-  enabled BOOLEAN NOT NULL DEFAULT 1, 
-  date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), 
-  date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), 
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+	type INTEGER NOT NULL DEFAULT 0,
+  address TEXT UNIQUE NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT 1,
+  date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as int)),
+  date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as int)),
   comment TEXT,
-  date_updated INTEGER, 
-  number INTEGER NOT NULL DEFAULT 0, 
-  invalid_domains INTEGER NOT NULL DEFAULT 0, 
-  status INTEGER NOT NULL DEFAULT 0
+  date_updated INTEGER,
+  number INTEGER NOT NULL DEFAULT 0,
+  invalid_domains INTEGER NOT NULL DEFAULT 0,
+  status INTEGER NOT NULL DEFAULT 0,
+  abp_entries INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE adlist_by_group
@@ -50,20 +52,19 @@ CREATE TABLE gravity
 	adlist_id INTEGER NOT NULL REFERENCES adlist (id)
 );
 
+CREATE TABLE antigravity
+(
+	domain TEXT NOT NULL,
+	adlist_id INTEGER NOT NULL REFERENCES adlist (id)
+);
+
 CREATE TABLE info
 (
 	property TEXT PRIMARY KEY,
 	value TEXT NOT NULL
 );
 
-INSERT INTO "info" VALUES('version','12');
-
-CREATE TABLE domain_audit
-(
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	domain TEXT UNIQUE NOT NULL,
-	date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int))
-);
+INSERT INTO "info" VALUES('version','19');
 
 CREATE TABLE domainlist_by_group
 (
@@ -135,12 +136,19 @@ CREATE VIEW vw_regex_blacklist AS SELECT domain, domainlist.id AS id, domainlist
     AND domainlist.type = 3
     ORDER BY domainlist.id;
 
-CREATE VIEW vw_gravity AS SELECT domain, adlist_by_group.group_id AS group_id
+CREATE VIEW vw_gravity AS SELECT domain, adlist.id AS adlist_id, adlist_by_group.group_id AS group_id
     FROM gravity
     LEFT JOIN adlist_by_group ON adlist_by_group.adlist_id = gravity.adlist_id
     LEFT JOIN adlist ON adlist.id = gravity.adlist_id
     LEFT JOIN "group" ON "group".id = adlist_by_group.group_id
-    WHERE adlist.enabled = 1 AND (adlist_by_group.group_id IS NULL OR "group".enabled = 1);
+    WHERE adlist.enabled = 1 AND (adlist_by_group.group_id IS NULL OR "group".enabled = 1) AND adlist.type = 0;
+
+CREATE VIEW vw_antigravity AS SELECT domain, adlist.id AS adlist_id, adlist_by_group.group_id AS group_id
+    FROM antigravity
+    LEFT JOIN adlist_by_group ON adlist_by_group.adlist_id = antigravity.adlist_id
+    LEFT JOIN adlist ON adlist.id = antigravity.adlist_id
+    LEFT JOIN "group" ON "group".id = adlist_by_group.group_id
+    WHERE adlist.enabled = 1 AND (adlist_by_group.group_id IS NULL OR "group".enabled = 1) AND adlist.type = 1;
 
 CREATE VIEW vw_adlist AS SELECT DISTINCT address, id
     FROM adlist
@@ -172,17 +180,17 @@ CREATE TRIGGER tr_group_zero AFTER DELETE ON "group"
       INSERT OR IGNORE INTO "group" (id,enabled,name) VALUES (0,1,'Default');
     END;
 
-CREATE TRIGGER tr_domainlist_delete AFTER DELETE ON domainlist
+CREATE TRIGGER tr_domainlist_delete BEFORE DELETE ON domainlist
     BEGIN
       DELETE FROM domainlist_by_group WHERE domainlist_id = OLD.id;
     END;
 
-CREATE TRIGGER tr_adlist_delete AFTER DELETE ON adlist
+CREATE TRIGGER tr_adlist_delete BEFORE DELETE ON adlist
     BEGIN
       DELETE FROM adlist_by_group WHERE adlist_id = OLD.id;
     END;
 
-CREATE TRIGGER tr_client_delete AFTER DELETE ON client
+CREATE TRIGGER tr_client_delete BEFORE DELETE ON client
     BEGIN
       DELETE FROM client_by_group WHERE client_id = OLD.id;
     END;
@@ -190,13 +198,13 @@ CREATE TRIGGER tr_client_delete AFTER DELETE ON client
 
 /* ^^^ basic gravity table definition, taken from /advanced/Templates/gravity.db.sql ^^^ */
 /* vvv Test content following vvv */
-INSERT INTO domainlist VALUES(1,0,'whitelisted.ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
+INSERT INTO domainlist VALUES(1,0,'allowed.ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
 INSERT INTO domainlist VALUES(2,0,'regex1.ftl',1,1559928803,1559928803,'');
 INSERT INTO domainlist VALUES(3,2,'regex2',1,1559928803,1559928803,'');
-INSERT INTO domainlist VALUES(4,2,'^gravity-whitelisted',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(4,2,'^gravity-allowed',1,1559928803,1559928803,'');
 
 /* Regular regex */
-INSERT INTO domainlist VALUES(5,1,'blacklisted.ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
+INSERT INTO domainlist VALUES(5,1,'denied.ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
 INSERT INTO domainlist VALUES(6,3,'regex[0-9].ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
 
 /* Regex option testing */
@@ -213,21 +221,30 @@ INSERT INTO domainlist VALUES(16,3,'^regex-notMultiple.ftl$;querytype=!ANY,HTTPS
 
 /* Other special domains */
 INSERT INTO domainlist VALUES(17,1,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
+INSERT INTO domainlist VALUES(18,0,'mask.icloud.com',1,1559928803,1559928803,'Allowing special domain');
+DELETE FROM domainlist_by_group WHERE domainlist_id = 18 AND group_id = 0;
 
-INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list',1559928803,2000,2,1);
+INSERT INTO adlist VALUES(1,0,'https://pi-hole.net/block.txt',1,1559928803,1559928803,'Fake block-list',1559928803,2000,2,1,0);
+INSERT INTO adlist VALUES(2,1,'https://pi-hole.net/allow.txt',1,1559928803,1559928803,'Fake allow-list',1559928803,2000,2,1,0);
 
-INSERT INTO gravity VALUES('whitelisted.ftl',1);
+INSERT INTO gravity VALUES('allowed.ftl',1);
 INSERT INTO gravity VALUES('gravity.ftl',1);
 INSERT INTO gravity VALUES('gravity-aaaa.ftl',1);
-INSERT INTO gravity VALUES('gravity-whitelisted.ftl',1);
+INSERT INTO gravity VALUES('gravity-allowed.ftl',1);
 INSERT INTO gravity VALUES('||special.gravity.ftl^',1);
-INSERT INTO info VALUES('gravity_count',5);
+
+INSERT INTO gravity VALUES('gravity.ftl',1);
+INSERT INTO gravity VALUES('antigravity.ftl',1);
+INSERT INTO gravity VALUES('x.y.z.abp.antigravity',1);
+INSERT INTO antigravity VALUES('antigravity.ftl',2);
+INSERT INTO antigravity VALUES('@@||antigravity.ftl^',2);
+
+INSERT INTO info VALUES('gravity_count',8);
 INSERT INTO info VALUES('abp_domains',1);
+INSERT INTO info VALUES('updated',0);
 
 INSERT INTO "group" VALUES(1,0,'Test group',1559928803,1559928803,'A disabled test group');
 INSERT INTO domainlist_by_group VALUES(15,1);
-
-INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
 
 INSERT INTO client (id,ip) VALUES(1,'127.0.0.1');
 
@@ -237,6 +254,7 @@ DELETE FROM client_by_group WHERE client_id = 2 AND group_id = 0;
 INSERT INTO client_by_group VALUES(2,2);
 INSERT INTO adlist_by_group VALUES(1,2);
 INSERT INTO domainlist_by_group VALUES(6,2);
+INSERT INTO domainlist_by_group VALUES(18,2); /* mask.icloud.com */
 
 INSERT INTO client (id,ip) VALUES(3,'127.0.0.3');
 INSERT INTO "group" VALUES(3,1,'Third test group',1559928803,1559928803,'A group associated with client IP 127.0.0.3');

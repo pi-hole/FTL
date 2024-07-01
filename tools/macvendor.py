@@ -12,21 +12,19 @@
 
 import os
 import re
-import urllib.request
+import requests
 import sqlite3
 
 # Download raw data from Wireshark's website
 # We use the official URL recommended in the header of this file
-# Thanks to mibere for the update
+URL = "https://www.wireshark.org/download/automated/data/manuf"
+# User-Agent string to use for the request
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36"
 print("Downloading...")
-opener = urllib.request.build_opener()
-opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-urllib.request.install_opener(opener)
-urllib.request.urlretrieve("https://gitlab.com/wireshark/wireshark/-/raw/master/manuf", "manuf.data")
+manuf = requests.get(URL, headers={"User-Agent": USER_AGENT}).text.splitlines()
 print("...done")
 
 # Read file into memory and process lines
-manuf = open("manuf.data", "r")
 data = []
 print("Processing...")
 for line in manuf:
@@ -63,7 +61,6 @@ for line in manuf:
 	else:
 		data.append([mac, desc_short])
 print("...done")
-manuf.close()
 
 # Create database
 database = "macvendor.db"

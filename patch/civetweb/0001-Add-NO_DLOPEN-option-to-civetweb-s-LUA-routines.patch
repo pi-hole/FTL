@@ -1,0 +1,35 @@
+From 1b81285fed48df6939d4b2569bba9e572f4c1137 Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Fri, 13 Jan 2023 21:37:31 +0100
+Subject: [PATCH] Add NO_DLOPEN option to civetweb's LUA routines
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/webserver/civetweb/mod_lua.inl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/webserver/civetweb/mod_lua.inl b/src/webserver/civetweb/mod_lua.inl
+index 5cc94318..59c4f2b3 100644
+--- a/src/webserver/civetweb/mod_lua.inl
++++ b/src/webserver/civetweb/mod_lua.inl
+@@ -3634,7 +3634,7 @@ lua_init_optional_libraries(void)
+ 	lua_shared_init();
+ 
+ /* UUID library */
+-#if !defined(_WIN32)
++#if !defined(_WIN32) && !defined(NO_DLOPEN)
+ 	lib_handle_uuid = dlopen("libuuid.so", RTLD_LAZY);
+ 	pf_uuid_generate.p =
+ 	    (lib_handle_uuid ? dlsym(lib_handle_uuid, "uuid_generate") : 0);
+@@ -3648,7 +3648,7 @@ static void
+ lua_exit_optional_libraries(void)
+ {
+ /* UUID library */
+-#if !defined(_WIN32)
++#if !defined(_WIN32) && !defined(NO_DLOPEN)
+ 	if (lib_handle_uuid) {
+ 		dlclose(lib_handle_uuid);
+ 	}
+-- 
+2.34.1
+

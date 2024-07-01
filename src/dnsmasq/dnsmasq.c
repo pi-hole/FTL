@@ -704,7 +704,7 @@ int main_dnsmasq (int argc, char **argv)
 	}
     }
 
-    FTL_fork_and_bind_sockets(ent_pw);
+    FTL_fork_and_bind_sockets(ent_pw, true);
   
    log_err = log_start(ent_pw, err_pipe[1]);
 
@@ -1534,6 +1534,7 @@ static void async_event(int pipe, time_t now)
 	  {
 	    lease_prune(NULL, now);
 	    lease_update_file(now);
+	    lease_update_dns(0);
 	  }
 #ifdef HAVE_DHCP6
 	else if (daemon->doing_ra)

@@ -1,0 +1,226 @@
+openapi: 3.0.2
+components:
+  paths:
+    history:
+      get:
+        summary: Get activity graph data
+        tags:
+          - Metrics
+        operationId: "get_activity_metrics"
+        description: |
+          Request data needed to generate the \"Query over last 24 hours\" graph. The sum of the values in the individual data arrays may be smaller than the total number of queries for the corresponding timestamp. The remaining queries are queries that do not fit into the shown categories (e.g. database busy, unknown status queries, etc.).
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'history.yaml#/components/schemas/total_history'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    database_history:
+      get:
+        summary: Get activity graph data (long-term data)
+        tags:
+          - Metrics
+        operationId: "get_activity_metrics_database"
+        description: |
+          Request long-term data needed to generate the activity graph
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'history.yaml#/components/schemas/total_history'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+    clients:
+      get:
+        summary: Get per-client activity graph data
+        tags:
+          - Metrics
+        operationId: "get_client_metrics"
+        description: |
+          Request data needed to generate the \"Client activity over last 24 hours\" graph.
+          This endpoint returns the top N clients, sorted by total number of queries within 24 hours. If N is set to 0, all clients will be returned.
+          The client name is only available if the client's IP address can be resolved to a hostname.
+
+          The last client returned is a special client that contains the total number of queries that were not sent by any of the other shown clients , i.e. queries that were sent by clients that are not in the top N. This client is always present, even if it has 0 queries and can be identified by the special name "other clients" (mind the space in the hostname) and the IP address "0.0.0.0".
+
+          Note that, due to privacy settings, the returned data may also be empty.
+        parameters:
+          - $ref: 'history.yaml#/components/parameters/clients/N'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'history.yaml#/components/schemas/client_history'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    database_clients:
+      get:
+        summary: Get per-client activity graph data (long-term data)
+        tags:
+          - Metrics
+        operationId: "get_client_metrics_database"
+        description: |
+          Request long-term data needed to generate the client activity graph
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'history.yaml#/components/schemas/client_history'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+  schemas:
+    total_history:
+      type: object
+      properties:
+        history:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: number
+                description: Timestamp
+              total:
+                type: integer
+                description: Total number of queries
+              cached:
+                type: integer
+                description: Number of cached queries
+              blocked:
+                type: integer
+                description: Number of blocked queries
+              forwarded:
+                type: integer
+                description: Number of forwarded queries
+          example:
+            - timestamp: 1511819900.539157
+              total: 2134
+              cached: 525
+              blocked: 413
+              forwarded: 1196
+            - timestamp: 1511820500.583821
+              total: 2014
+              cached: 52
+              blocked: 43
+              forwarded: 1910
+    client_history:
+      type: object
+      properties:
+        clients:
+          type: object
+          description: Data corresponding to the individual clients
+          additionalProperties:
+            type: object
+            properties:
+              name:
+                type: string
+                nullable: true
+                description: Client name
+              total:
+                type: integer
+                description: Total number of queries
+          example:
+            "127.0.0.1":
+              name: localhost
+              total: 13428
+            "::1":
+              name: ip6-localnet
+              total: 2100
+            "192.168.1.1":
+              name: null
+              total: 254
+            "::":
+              name: "pi.hole"
+              total: 29
+            "0.0.0.0":
+              name: "other clients"
+              total: 14
+        history:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: number
+                description: Timestamp
+              data:
+                type: object
+                description: Data corresponding to the individual clients
+                additionalProperties:
+                  type: integer
+                  description: Number of queries for the corresponding client
+          example:
+            - timestamp: 1511819900.539157
+              data:
+                "127.0.0.1": 35
+                "::1": 63
+                "192.168.1.1": 20
+                "::": 9
+                "0.0.0.0": 0
+            - timestamp: 1511820500.583821
+              data:
+                "127.0.0.1": 10
+                "::1": 44
+                "192.168.1.1": 56
+                "::": 52
+  parameters:
+    clients:
+      N:
+        in: query
+        description: Maximum number of clients to return, setting this to 0 will return all clients
+        name: N
+        schema:
+          type: integer
+        required: false
+        example: 20

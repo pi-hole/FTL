@@ -8,9 +8,9 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 //#include "syscalls.h" is implicitly done in FTL.h
-#include "../log.h"
+#include "log.h"
 
 char* __attribute__((malloc)) FTLstrdup(const char *src, const char *file, const char *func, const int line)
 {
@@ -19,7 +19,7 @@ char* __attribute__((malloc)) FTLstrdup(const char *src, const char *file, const
 	// calloc(3), and can be freed with free(3).
 	if(src == NULL)
 	{
-		logg("WARN: Trying to copy a NULL string in %s() (%s:%i)", func, file, line);
+		log_warn("Trying to copy a NULL string in %s() (%s:%i)", func, file, line);
 		return NULL;
 	}
 	const size_t len = strlen(src);

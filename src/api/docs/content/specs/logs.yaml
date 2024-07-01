@@ -1,0 +1,158 @@
+openapi: 3.0.2
+components:
+  paths:
+    logs:
+      dnsmasq:
+        get:
+          summary: Get DNS log content
+          tags:
+            - "FTL information"
+          operationId: "get_dns_log"
+          description: |
+            This API hook returns content from the log of the embedded DNS resolver `dnsmasq`.
+
+            Every successful request will return a `nextID`.
+            This ID can be used on the next request to only get lines which were added *after* the last request.
+            This makes periodic polling for new log lines easy as no check for duplicated log lines is necessary.
+            The expected behavior for an immediate re-request of a log line with the same ID is an empty response.
+            As soon as the next message arrived, this will be included in your request and `nextID` is incremented by one.
+          parameters:
+            - $ref: 'logs.yaml#/components/parameters/logs/dnsmasq/nextID'
+          responses:
+            '200':
+              description: OK
+              content:
+                application/json:
+                  schema:
+                    allOf:
+                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
+                      - $ref: 'common.yaml#/components/schemas/took'
+            '401':
+              description: Unauthorized
+              content:
+                application/json:
+                  schema:
+                    allOf:
+                      - $ref: 'common.yaml#/components/errors/unauthorized'
+                      - $ref: 'common.yaml#/components/schemas/took'
+      ftl:
+        get:
+          summary: Get DNS log content
+          tags:
+            - "FTL information"
+          operationId: "get_ftl_log"
+          description: |
+            This API hook returns content from the log of FTL.
+
+            Every successful request will return a `nextID`.
+            This ID can be used on the next request to only get lines which were added *after* the last request.
+            This makes periodic polling for new log lines easy as no check for duplicated log lines is necessary.
+            The expected behavior for an immediate re-request of a log line with the same ID is an empty response.
+            As soon as the next message arrived, this will be included in your request and `nextID` is incremented by one.
+          parameters:
+            - $ref: 'logs.yaml#/components/parameters/logs/dnsmasq/nextID'
+          responses:
+            '200':
+              description: OK
+              content:
+                application/json:
+                  schema:
+                    allOf:
+                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
+                      - $ref: 'common.yaml#/components/schemas/took'
+            '401':
+              description: Unauthorized
+              content:
+                application/json:
+                  schema:
+                    allOf:
+                      - $ref: 'common.yaml#/components/errors/unauthorized'
+                      - $ref: 'common.yaml#/components/schemas/took'
+      webserver:
+        get:
+          summary: Get DNS log content
+          tags:
+            - "FTL information"
+          operationId: "get_webserver_log"
+          description: |
+            This API hook returns content from the log of the embedded CivetWeb HTTP server.
+
+            Every successful request will return a `nextID`.
+            This ID can be used on the next request to only get lines which were added *after* the last request.
+            This makes periodic polling for new log lines easy as no check for duplicated log lines is necessary.
+            The expected behavior for an immediate re-request of a log line with the same ID is an empty response.
+            As soon as the next message arrived, this will be included in your request and `nextID` is incremented by one.
+          parameters:
+            - $ref: 'logs.yaml#/components/parameters/logs/dnsmasq/nextID'
+          responses:
+            '200':
+              description: OK
+              content:
+                application/json:
+                  schema:
+                    allOf:
+                      - $ref: 'logs.yaml#/components/schemas/logs/dnsmasq/log'
+                      - $ref: 'common.yaml#/components/schemas/took'
+            '401':
+              description: Unauthorized
+              content:
+                application/json:
+                  schema:
+                    allOf:
+                      - $ref: 'common.yaml#/components/errors/unauthorized'
+                      - $ref: 'common.yaml#/components/schemas/took'
+  schemas:
+    logs:
+      dnsmasq:
+        log:
+          type: object
+          properties:
+            log:
+              type: array
+              description: Request headers
+              items:
+                type: object
+                properties:
+                  timestamp:
+                    type: number
+                    description: Unix timestamp of log line creation (server time)
+                  message:
+                    type: string
+                    description: Log line content
+                  prio:
+                    type: string
+                    nullable: true
+                    description: Log line priority (if available)
+              example:
+                - timestamp: 1611729969.0
+                  message: "started, version pi-hole-2.84 cachesize 10000"
+                - timestamp: 1611729969.0
+                  message: "reading /etc/resolv.conf"
+                - timestamp: 1611729969.0
+                  message: "read /etc/hosts - 7 addresses"
+                - timestamp: 1611729969.0
+                  message: "query[A] connectivity-check.ubuntu.com from 127.0.0.1"
+            nextID:
+              type: integer
+              description: Next ID to query if checking for new log lines
+              example: 229
+            pid:
+              type: integer
+              description: Process ID of FTL. When this changes, FTL was restarted and nextID should be reset to 0.
+              example: 2258
+            file:
+              type: string
+              description: Path to respective log file on disk
+              example: /var/log/pihole/pihole.log
+
+  parameters:
+    logs:
+      dnsmasq:
+        nextID:
+          in: query
+          description: (Optional) ID of next line to return
+          name: nextID
+          schema:
+            type: integer
+          required: false
+          example: 219

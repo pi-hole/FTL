@@ -1,0 +1,306 @@
+
+openapi: 3.0.2
+components:
+  paths:
+    gateway:
+      get:
+        summary: Get info about the gateway of your Pi-hole
+        tags:
+          - "Network information"
+        operationId: "get_gateway"
+        description: |
+          This API hook returns infos about the gateway of your Pi-hole.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'network.yaml#/components/schemas/gateway'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    interfaces:
+      get:
+        summary: Get info about the interfaces of your Pi-hole
+        tags:
+          - "Network information"
+        operationId: "get_interfaces"
+        description: |
+          This API hook returns infos about the networking interfaces of your Pi-hole.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'network.yaml#/components/schemas/interfaces'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    devices:
+      get:
+        summary: Get info about the devices in your local network as seen by your Pi-hole
+        tags:
+          - "Network information"
+        operationId: "get_network"
+        description: |
+          This API hook returns infos about the devices in your local network as seen by your Pi-hole. By default, this number of shown devices is limited to 10. Devices are ordered by when your Pi-hole has received the last query from this device (most recent first)
+        parameters:
+          - $ref: 'network.yaml#/components/parameters/devices/max_devices'
+          - $ref: 'network.yaml#/components/parameters/devices/max_addresses'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'network.yaml#/components/schemas/devices'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    devices_id:
+      delete:
+        summary: Delete a device from the network table
+        tags:
+          - "Network information"
+        operationId: "delete_device"
+        description: |
+          This API hook deletes a device from the network table. This will also remove all associated IP addresses and hostnames.
+        parameters:
+          - $ref: 'network.yaml#/components/parameters/devices/device_id'
+        responses:
+          '204':
+            description: No Content (deleted)
+          '404':
+            description: Not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+  schemas:
+    gateway:
+      type: object
+      properties:
+        address:
+          type: string
+          description: Address of the gateway
+          example: "192.168.0.1"
+        interface:
+          type: string
+          description: Interface of your Pi-hole connected to the gateway
+          example: "eth0"
+    interfaces:
+      type: object
+      properties:
+        interfaces:
+          type: array
+          description: Interface information
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                nullable: true
+                description: Interface name
+              default:
+                type: boolean
+                description: If the interface is the default gateway
+              carrier:
+                type: boolean
+                description: If the interface is connected
+              speed:
+                type: integer
+                description: Speed of the interface in Mbit/s (-1 if not applicable)
+              tx:
+                type: object
+                properties:
+                  num:
+                    type: number
+                    description: Number of transmitted data since boot
+                  unit:
+                    type: string
+                    description: Unit of transmitted data since boot
+              rx:
+                type: object
+                properties:
+                  num:
+                    type: number
+                    description: Number of received data since boot
+                  unit:
+                    type: string
+                    description: Unit of received data since boot
+              ipv4:
+                type: array
+                nullable: true
+                description: Array of associated IPv4 addresses
+                items:
+                  type: string
+              ipv6:
+                type: array
+                nullable: true
+                description: Array of associated IPv6 addresses
+                items:
+                  type: string
+          example:
+            - name: "eth0"
+              default: true
+              carrier: true
+              speed: 1000
+              tx:
+                num: 10.4
+                unit: "MB"
+              rx:
+                num: 8.1
+                unit: "MB"
+              ipv4: ["192.168.0.123"]
+              ipv6: ["fe80::1234:5678:9abc:def0", "2001:db8::1234:5678:9abc:def0"]
+            - name: "wlan0"
+              default: false
+              carrier: false
+              speed: -1
+              tx:
+                num: 0
+                unit: "B"
+              rx:
+                num: 0
+                unit: "B"
+              ipv4: []
+              ipv6: []
+            - name: "wg0"
+              default: false
+              carrier: true
+              speed: -1
+              tx:
+                num: 170.3
+                unit: "kB"
+              rx:
+                num: 222.3
+                unit: "kB"
+              ipv4: ["10.1.0.1"]
+              ipv6: ["fd00:4711::1"]
+    devices:
+      type: object
+      properties:
+        devices:
+          type: array
+          description: Array of devices
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                description: Device network table ID
+                example: 1
+              hwaddr:
+                type: string
+                description: MAC address of this device
+                example: 00:11:22:33:44:55
+              interface:
+                type: string
+                description: Interface this device is connected to
+                example: enp2s0
+              firstSeen:
+                type: integer
+                description: Unix timestamp when this device was first seen by your Pi-hole
+                example: 1664623620
+              lastQuery:
+                type: integer
+                description: Unix timestamp when your Pi-hole received the last query from this device
+                example: 1664688620
+              numQueries:
+                type: integer
+                description: Total number of queries your Pi-hole has received from this device
+                example: 585462
+              macVendor:
+                type: string
+                nullable: true
+                description: Vendor name associated with the device's MAC address (if available)
+                example: "Digital Data Communications Asia Co.,Ltd"
+              ips:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    ip:
+                      type: string
+                      description: Associated IP address (can be IPv4 or IPv6)
+                      example: "192.168.1.51"
+                    name:
+                      type: string
+                      description: Associated hostname (can be null)
+                      nullable: true
+                      example: ubuntu-server
+                    lastSeen:
+                      type: integer
+                      description: Unix timestamp when your Pi-hole has seen this address the last time
+                      example: 1664688620
+                    nameUpdated:
+                      type: integer
+                      description: Unix timestamp when device updated its hostname the last time
+                      example: 1664688620
+
+
+  parameters:
+    devices:
+      max_devices:
+        in: query
+        description: (Optional) Maximum number of devices to show
+        name: max_devices
+        schema:
+          type: integer
+        required: false
+        example: 10
+      max_addresses:
+        in: query
+        description: (Optional) Maximum number of addresses to show per device
+        name: max_addresses
+        schema:
+          type: integer
+        required: false
+        example: 3
+      device_id:
+        in: path
+        description: Device ID
+        name: device_id
+        schema:
+          type: integer
+        required: true
+        example: 1

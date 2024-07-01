@@ -8,9 +8,9 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 //#include "syscalls.h" is implicitly done in FTL.h
-#include "../log.h"
+#include "log.h"
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -38,8 +38,8 @@ ssize_t FTLrecvfrom(int sockfd, void *buf, size_t len, int flags, struct sockadd
 	// socket that has no data available or we ran into an (expected)
 	// timeout. In that case, do not log a warning
 	if(ret < 0 && errno != EAGAIN)
-		logg("WARN: Could not recvfrom() in %s() (%s:%i): %s",
-		     func, file, line, strerror(errno));
+		log_warn("Could not recvfrom() in %s() (%s:%i): %s",
+		         func, file, line, strerror(errno));
 
 	// Restore errno value
 	errno = _errno;

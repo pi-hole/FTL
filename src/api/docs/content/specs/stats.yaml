@@ -1,0 +1,789 @@
+openapi: 3.0.2
+components:
+  paths:
+    summary:
+      get:
+        summary: Get overview of Pi-hole activity
+        tags:
+          - Metrics
+        operationId: "get_metrics_summary"
+        description: |
+          Request various query, system, and FTL properties
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'stats.yaml#/components/schemas/queries'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+    database_summary:
+      get:
+        summary: Get database content details
+        tags:
+          - Metrics
+        operationId: "get_metrics_database_summary"
+        description: |
+          Request various database content details
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'stats.yaml#/components/schemas/database_summary'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+    upstreams:
+      get:
+        summary: Get metrics about Pi-hole's upstream destinations
+        tags:
+          - Metrics
+        operationId: "get_metrics_upstreams"
+        description: |
+          Request upstream metrics
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'stats.yaml#/components/schemas/upstreams'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+    database_upstreams:
+      get:
+        summary: Get metrics about Pi-hole's upstream destinations (long-term database)
+        tags:
+          - Metrics
+        operationId: "get_metrics_upstreams_database"
+        description: |
+          Request upstream metrics (long-term database)
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'stats.yaml#/components/schemas/upstreams'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    recent_blocked:
+      get:
+        summary: Get most recently blocked domain
+        tags:
+          - Metrics
+        operationId: "get_metrics_recent_blocked"
+        description: |
+          Request most recently blocked domain
+        parameters:
+          - $ref: 'stats.yaml#/components/parameters/recent_blocked/count'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'stats.yaml#/components/schemas/recent_blocked'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    top_domains:
+      get:
+        summary: Get top domains
+        tags:
+          - Metrics
+        operationId: "get_metrics_top_domains"
+        description: |
+          Request top domains
+        parameters:
+          - $ref: 'stats.yaml#/components/parameters/top_items/blocked'
+          - $ref: 'stats.yaml#/components/parameters/top_items/count'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'stats.yaml#/components/schemas/top_domains'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    database_top_domains:
+      get:
+        summary: Get top domains (long-term database)
+        tags:
+          - Metrics
+        operationId: "get_metrics_database_top_domains"
+        description: |
+          Request top domains
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+          - $ref: 'stats.yaml#/components/parameters/top_items/blocked'
+          - $ref: 'stats.yaml#/components/parameters/top_items/count'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'stats.yaml#/components/schemas/top_domains'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    top_clients:
+      get:
+        summary: Get top clients
+        tags:
+          - Metrics
+        operationId: "get_metrics_top_clients"
+        description: |
+          Request top clients
+        parameters:
+          - $ref: 'stats.yaml#/components/parameters/top_items/blocked'
+          - $ref: 'stats.yaml#/components/parameters/top_items/count'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'stats.yaml#/components/schemas/top_clients'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    database_top_clients:
+      get:
+        summary: Get top clients (long-term database)
+        tags:
+          - Metrics
+        operationId: "get_metrics_database_top_clients"
+        description: |
+          Request top clients
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+          - $ref: 'stats.yaml#/components/parameters/top_items/blocked'
+          - $ref: 'stats.yaml#/components/parameters/top_items/count'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'stats.yaml#/components/schemas/top_clients'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    query_types:
+      get:
+        summary: Get query types
+        tags:
+          - Metrics
+        operationId: "get_metrics_query_types"
+        description: |
+          Request query types
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'stats.yaml#/components/schemas/query_types'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    database_query_types:
+      get:
+        summary: Get query types (long-term database)
+        tags:
+          - Metrics
+        operationId: "get_metrics_database_query_types"
+        description: |
+          Request query types
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/database/from'
+          - $ref: 'common.yaml#/components/parameters/database/until'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'stats.yaml#/components/schemas/query_types'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+  schemas:
+    queries:
+      type: object
+      properties:
+        queries:
+          type: object
+          properties:
+            total:
+              type: integer
+              description: Total number of queries
+              example: 7497
+            blocked:
+              type: integer
+              description: Number of blocked queries
+              example: 3465
+            percent_blocked:
+              type: number
+              description: Percent of blocked queries
+              example: 34.5
+            unique_domains:
+              type: integer
+              description: Number of unique domains FTL knows
+              example: 445
+            forwarded:
+              type: integer
+              description: Number of queries that have been forwarded upstream
+              example: 4574
+            cached:
+              type: integer
+              description: Number of queries replied to from cache or local configuration
+              example: 9765
+            types:
+              type: object
+              description: Number of individual queries
+              properties:
+                A:
+                  type: integer
+                  description: Type A queries
+                  example: 3643
+                AAAA:
+                  type: integer
+                  description: Type AAAA queries
+                  example: 123
+                ANY:
+                  type: integer
+                  description: Type ANY queries
+                  example: 3423
+                SRV:
+                  type: integer
+                  description: Type SRV queries
+                  example: 345
+                SOA:
+                  type: integer
+                  description: Type SOA queries
+                  example: 7567
+                PTR:
+                  type: integer
+                  description: Type PTR queries
+                  example: 456
+                TXT:
+                  type: integer
+                  description: Type TXT queries
+                  example: 85
+                NAPTR:
+                  type: integer
+                  description: Type NAPTR queries
+                  example: 346
+                MX:
+                  type: integer
+                  description: Type MX queries
+                  example: 457
+                DS:
+                  type: integer
+                  description: Type DS queries
+                  example: 456
+                RRSIG:
+                  type: integer
+                  description: Type RRSIG queries
+                  example: 345
+                DNSKEY:
+                  type: integer
+                  description: Type DNSKEY queries
+                  example: 55
+                NS:
+                  type: integer
+                  description: Type NS queries
+                  example: 868
+                SVCB:
+                  type: integer
+                  description: Type SVCB queries
+                  example: 645
+                HTTPS:
+                  type: integer
+                  description: Type HTTPS queries
+                  example: 4
+                OTHER:
+                  type: integer
+                  description: Queries of remaining types
+                  example: 845
+            status:
+              type: object
+              description: Number of individual queries (by status)
+              properties:
+                UNKNOWN:
+                  type: integer
+                  description: Type UNKNOWN queries
+                  example: 3
+                GRAVITY:
+                  type: integer
+                  description: Type GRAVITY queries
+                  example: 72
+                FORWARDED:
+                  type: integer
+                  description: Type FORWARDED queries
+                  example: 533
+                CACHE:
+                  type: integer
+                  description: Type CACHE queries
+                  example: 32
+                REGEX:
+                  type: integer
+                  description: Type REGEX queries
+                  example: 84
+                DENYLIST:
+                  type: integer
+                  description: Type DENYLIST queries
+                  example: 31
+                EXTERNAL_BLOCKED_IP:
+                  type: integer
+                  description: Type EXTERNAL_BLOCKED_IP queries
+                  example: 0
+                EXTERNAL_BLOCKED_NULL:
+                  type: integer
+                  description: Type EXTERNAL_BLOCKED_NULL queries
+                  example: 0
+                EXTERNAL_BLOCKED_NXRA:
+                  type: integer
+                  description: Type EXTERNAL_BLOCKED_NXRA queries
+                  example: 0
+                GRAVITY_CNAME:
+                  type: integer
+                  description: Type GRAVITY_CNAME queries
+                  example: 0
+                REGEX_CNAME:
+                  type: integer
+                  description: Type REGEX_CNAME queries
+                  example: 0
+                DENYLIST_CNAME:
+                  type: integer
+                  description: Type DENYLIST_CNAME queries
+                  example: 0
+                RETRIED:
+                  type: integer
+                  description: Type RETRIED queries
+                  example: 0
+                RETRIED_DNSSEC:
+                  type: integer
+                  description: Type RETRIED_DNSSEC queries
+                  example: 0
+                IN_PROGRESS:
+                  type: integer
+                  description: Type IN_PROGRESS queries
+                  example: 0
+                DBBUSY:
+                  type: integer
+                  description: Type DBBUSY queries
+                  example: 0
+                SPECIAL_DOMAIN:
+                  type: integer
+                  description: Type SPECIAL_DOMAIN queries
+                  example: 0
+                CACHE_STALE:
+                  type: integer
+                  description: Type CACHE_STALE queries
+                  example: 0
+            replies:
+              type: object
+              description: Number of individual replies
+              properties:
+                UNKNOWN:
+                  type: integer
+                  description: Type UNKNOWN replies
+                  example: 3
+                NODATA:
+                  type: integer
+                  description: Type NODATA replies
+                  example: 72
+                NXDOMAIN:
+                  type: integer
+                  description: Type NXDOMAIN replies
+                  example: 533
+                CNAME:
+                  type: integer
+                  description: Type CNAME replies
+                  example: 32
+                IP:
+                  type: integer
+                  description: Type IP replies
+                  example: 84
+                DOMAIN:
+                  type: integer
+                  description: Type DOMAIN replies
+                  example: 31
+                RRNAME:
+                  type: integer
+                  description: Type RRNAME replies
+                  example: 0
+                SERVFAIL:
+                  type: integer
+                  description: Type SERVFAIL replies
+                  example: 0
+                REFUSED:
+                  type: integer
+                  description: Type REFUSED replies
+                  example: 0
+                NOTIMP:
+                  type: integer
+                  description: Type NOTIMP replies
+                  example: 0
+                OTHER:
+                  type: integer
+                  description: Type OTHER replies
+                  example: 0
+                DNSSEC:
+                  type: integer
+                  description: Type DNSSEC replies
+                  example: 31
+                NONE:
+                  type: integer
+                  description: Type NONE replies
+                  example: 0
+                BLOB:
+                  type: integer
+                  description: Type BLOB replies
+                  example: 0
+        clients:
+          type: object
+          properties:
+            active:
+              type: integer
+              description: Number of active clients (seen in the last 24 hours)
+              example: 10
+            total:
+              type: integer
+              description: Total number of clients seen by FTL
+              example: 22
+        gravity:
+          type: object
+          properties:
+            domains_being_blocked:
+              type: integer
+              description: Number of domain on your Pi-hole's gravity list
+              example: 104756
+    upstreams:
+      type: object
+      properties:
+        upstreams:
+          type: array
+          description: Array of upstream destinations
+          items:
+            type: object
+            properties:
+              ip:
+                type: string
+                description: Upstream destination's IP address (can be either IPv4 or IPv6)
+                nullable: true
+                example: "127.0.0.1"
+              name:
+                type: string
+                description: Upstream destination's hostname (if available)
+                nullable: true
+                example: "localhost"
+              port:
+                type: integer
+                description: Upstream destination's destination port (-1 if not applicable, e.g., for the local cache)
+                example: 53
+              count:
+                type: integer
+                description: Number of queries this upstream destination has been used for
+                example: 65445
+              statistics:
+                type: object
+                properties:
+                  response:
+                    type: number
+                    description: Average response time of this upstream destination in seconds (0 if not applicable)
+                    example: 0.0254856
+                  variance:
+                    type: number
+                    description: Standard deviation of the average response time (0 if not applicable)
+                    example: 0.02058
+        forwarded_queries:
+          type: integer
+          description: Number of forwarded queries
+          example: 6379
+        total_queries:
+          type: integer
+          description: Total number of queries
+          example: 29160
+    top_domains:
+      type: object
+      properties:
+        domains:
+          type: array
+          description: Array of domains
+          items:
+            type: object
+            properties:
+              domain:
+                type: string
+                description: Requested domain
+                example: "pi-hole.net"
+              count:
+                type: integer
+                description: Number of times this domain has been requested
+                example: 8516
+        total_queries:
+          type: integer
+          description: Total number of queries
+          example: 29160
+        blocked_queries:
+          type: integer
+          description: Number of blocked queries
+          example: 6379
+    top_clients:
+      type: object
+      properties:
+        clients:
+          type: array
+          description: Array of clients
+          items:
+            type: object
+            properties:
+              ip:
+                type: string
+                description: Client IP address (can be either IPv4 or IPv6)
+                example: "192.168.0.44"
+              name:
+                type: string
+                description: Client hostname (if available)
+                example: "raspberrypi.lan"
+              count:
+                type: integer
+                description: Number of queries this client has made
+                example: 5896
+        total_queries:
+          type: integer
+          description: Total number of queries
+          example: 29160
+        blocked_queries:
+          type: integer
+          description: Number of blocked queries
+          example: 6379
+    query_types:
+      type: object
+      properties:
+        types:
+          type: object
+          description: Number of individual query types
+          properties:
+            A:
+              type: integer
+              description: Type A queries
+              example: 18268
+            AAAA:
+              type: integer
+              description: Type AAAA queries
+              example: 2332
+            ANY:
+              type: integer
+              description: Type ANY queries
+              example: 0
+            SRV:
+              type: integer
+              description: Type SRV queries
+              example: 6
+            SOA:
+              type: integer
+              description: Type SOA queries
+              example: 44
+            PTR:
+              type: integer
+              description: Type PTR queries
+              example: 389
+            TXT:
+              type: integer
+              description: Type TXT queries
+              example: 0
+            NAPTR:
+              type: integer
+              description: Type NAPTR queries
+              example: 1
+            MX:
+              type: integer
+              description: Type MX queries
+              example: 109
+            DS:
+              type: integer
+              description: Type DS queries
+              example: 596
+            RRSIG:
+              type: integer
+              description: Type RRSIG queries
+              example: 25
+            DNSKEY:
+              type: integer
+              description: Type DNSKEY queries
+              example: 240
+            NS:
+              type: integer
+              description: Type NS queries
+              example: 18
+            SVCB:
+              type: integer
+              description: Type SVCB queries
+              example: 0
+            HTTPS:
+              type: integer
+              description: Type HTTPS queries
+              example: 11
+            OTHER:
+              type: integer
+              description: Type OTHER queries
+              example: 0
+    database_summary:
+      type: object
+      properties:
+        sum_queries:
+          type: integer
+          description: Total number of queries
+          example: 29160
+        sum_blocked:
+          type: integer
+          description: Total number of blocked queries
+          example: 6379
+        percent_blocked:
+          type: number
+          description: Percentage of blocked queries
+          example: 21.9
+        total_clients:
+          type: integer
+          description: Total number of clients
+          example: 10
+    recent_blocked:
+      type: object
+      properties:
+        blocked:
+          type: array
+          description: List of blocked domains
+          items:
+            type: string
+          example: ["doubleclick.net"]
+
+  parameters:
+    recent_blocked:
+      count:
+        in: query
+        description: Number of requested blocked domains
+        name: count
+        schema:
+          type: integer
+        required: false
+        example: 1
+    top_items:
+      blocked:
+        in: query
+        description: Return information about permitted or blocked queries
+        name: blocked
+        schema:
+          type: boolean
+        required: false
+        example: false
+      count:
+        in: query
+        description: Number of requested items
+        name: count
+        schema:
+          type: integer
+        required: false
+        example: 10

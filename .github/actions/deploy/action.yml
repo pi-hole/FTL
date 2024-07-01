@@ -1,0 +1,96 @@
+name: Deploy
+description: Deploy the FTL binary and documentation
+
+inputs:
+  pattern:
+    required: true
+    description: The pattern to match the artifacts to download
+  target_dir:
+    required: true
+    description: The directory to deploy the artifacts to
+  event_name:
+    required: true
+    description: The name of the event that triggered the workflow run
+  actor:
+    required: true
+    description: The name of the user or app that initiated the workflow run
+  # Secrets cannot be accessed in the action.yml file so we need to pass them as
+  # inputs to the action.
+  SSH_KEY:
+    required: true
+    description: The SSH private key to use for authentication
+  KNOWN_HOSTS:
+    required: true
+    description: The SSH known hosts file
+  SSH_USER:
+    required: true
+    description: The SSH user to use for authentication
+  SSH_HOST:
+    required: true
+    description: The SSH host to connect to
+
+runs:
+  using: "composite"
+  steps:
+    -
+      name: Get binaries built in previous jobs
+      uses: actions/download-artifact@v4.1.4
+      id: download
+      with:
+        path: ftl_builds/
+        pattern: ${{ inputs.pattern }}
+        merge-multiple: true
+    -
+      name: Get documentation files built in previous jobs
+      if: inputs.pattern == 'pihole-FTL-amd64-binary'
+      uses: actions/download-artifact@v4.1.4
+      with:
+        path: ftl_builds/
+        name: pihole-api-docs
+    -
+      name: Display structure of downloaded files
+      shell: bash
+      run: ls -R
+      working-directory: ${{steps.download.outputs.download-path}}
+    -
+      name: Install SSH Key
+      uses: benoitchantre/setup-ssh-authentication-action@1.0.1
+      with:
+        private-key: ${{ inputs.SSH_KEY }}
+        private-key-name: id_rsa
+        known-hosts: ${{ inputs.KNOWN_HOSTS }}
+    -
+      name: Set private key permissions
+      shell: bash
+      run: chmod 600 ~/.ssh/id_rsa
+    -
+      name: Untar documentation files
+      if: inputs.pattern == 'pihole-FTL-amd64-binary'
+      working-directory: ftl_builds/
+      shell: bash
+      run: |
+        mkdir docs/
+        tar xzvf api-docs.tar.gz -C docs/
+    -
+      name: Display structure of files ready for upload
+      working-directory: ftl_builds/
+      shell: bash
+      run: ls -R
+    -
+      name: Transfer Builds to Pi-hole server for pihole checkout
+      if: inputs.actor != 'dependabot[bot]'
+      env:
+        USER: ${{ inputs.SSH_USER }}
+        HOST: ${{ inputs.SSH_HOST }}
+        TARGET_DIR: ${{ inputs.target_dir }}
+        SOURCE_DIR: ftl_builds/
+      shell: bash
+      run: |
+        bash ./deploy.sh
+    -
+      name: Attach binaries to release
+      if: inputs.event_name == 'release'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          ftl_builds/*

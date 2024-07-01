@@ -8,9 +8,9 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 //#include "syscalls.h" is implicitly done in FTL.h
-#include "../log.h"
+#include "log.h"
 #include <fcntl.h>
 
 // off_t is automatically set as off64_t when this is a 64bit system
@@ -30,8 +30,8 @@ int FTLfallocate(const int fd, const off_t offset, const off_t len, const char *
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret > 0)
-		logg("WARN: Could not fallocate() in %s() (%s:%i): %s",
-		     func, file, line, strerror(ret));
+		log_warn("Could not fallocate() in %s() (%s:%i): %s",
+		         func, file, line, strerror(ret));
 
 	// Set errno ourselves as posix_fallocate doesn't do it
 	errno = ret;

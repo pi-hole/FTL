@@ -1,0 +1,58 @@
+From 4890e1c2586d4a74a3925ede8cfeb1805672a42e Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Sat, 3 Jun 2023 20:52:02 +0200
+Subject: [PATCH] Register CSRF token and is_authenticated boolean in conn->request_info
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/webserver/civetweb/civetweb.c  | 3 +++
+ src/webserver/civetweb/civetweb.h  | 2 ++
+ src/webserver/civetweb/mod_lua.inl | 3 +++
+ 3 files changed, 8 insertions(+)
+
+diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
+index 233b342a..f44b17ba 100644
+--- a/src/webserver/civetweb/civetweb.c
++++ b/src/webserver/civetweb/civetweb.c
+@@ -17760,6 +17760,9 @@ reset_per_request_attributes(struct mg_connection *conn)
+ 	}
+ 	conn->request_info.local_uri = NULL;
+ 
++	/* Pi-hole addition */
++	memset(conn->request_info.csrf_token, 0, sizeof(conn->request_info.csrf_token));
++	reg_boolean(L, "is_authenticated", conn->request_info.is_authenticated != 0);
++
+ #if defined(USE_SERVER_STATS)
+ 	conn->processing_time = 0;
+ #endif
+diff --git a/src/webserver/civetweb/civetweb.h b/src/webserver/civetweb/civetweb.h
+index 5b3d596b..291ef683 100644
+--- a/src/webserver/civetweb/civetweb.h
++++ b/src/webserver/civetweb/civetweb.h
+@@ -183,6 +183,8 @@ struct mg_request_info {
+ 
+ 	const char *acceptedWebSocketSubprotocol; /* websocket subprotocol,
+ 	                                           * accepted during handshake */
++	/* Pi-hole modification */
++	char csrf_token[32];
++	int is_authenticated;
+ };
+ 
+ 
+diff --git a/src/webserver/civetweb/mod_lua.inl b/src/webserver/civetweb/mod_lua.inl
+index e9a13835..92066b3f 100644
+--- a/src/webserver/civetweb/mod_lua.inl
++++ b/src/webserver/civetweb/mod_lua.inl
+@@ -2603,6 +2603,9 @@ prepare_lua_request_info_inner(const struct mg_connection *conn, lua_State *L)
+ 		reg_string(L, "finger", conn->request_info.client_cert->finger);
+ 		lua_rawset(L, -3);
+ 	}
++
++	/* Pi-hole addition */
++	reg_string(L, "csrf_token", conn->request_info.csrf_token);
+ }
+ 
+ 
+-- 
+2.34.1
+

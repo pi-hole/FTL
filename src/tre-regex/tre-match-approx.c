@@ -6,9 +6,6 @@
 
 */
 
-#include "tre-config.h"
-#include "tre-internal.h"
-
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif /* HAVE_CONFIG_H */
@@ -765,10 +762,10 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, int len,
 			       default_params);
 
 	      /* Set the costs after this transition. */
-		memcpy(&reach_next[dest_id].costs,
-		       reach[id].costs,
-		       sizeof(reach[id].costs[0][0])
-		       * TRE_M_LAST * (depth + 1));
+	      memcpy(&reach_next[dest_id].costs,
+		     reach[id].costs,
+		     sizeof(reach[id].costs[0][0])
+		     * TRE_M_LAST * (depth + 1));
 	      reach_next[dest_id].costs[depth][TRE_M_COST] = cost;
 	      reach_next[dest_id].costs[depth][TRE_M_NUM_SUBST] += err;
 	      reach_next[dest_id].costs[depth][TRE_M_NUM_ERR] += err;

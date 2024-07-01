@@ -1,0 +1,31 @@
+From 19efd3e2e10858b549404e6cae97c20337aafb0b Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Mon, 22 May 2023 19:11:44 +0200
+Subject: [PATCH] Always Kepler syntax for Lua server pages
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/webserver/civetweb/mod_lua.inl | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/src/webserver/civetweb/mod_lua.inl b/src/webserver/civetweb/mod_lua.inl
+index 26f281ee..e9a13835 100644
+--- a/src/webserver/civetweb/mod_lua.inl
++++ b/src/webserver/civetweb/mod_lua.inl
+@@ -3208,10 +3208,9 @@ handle_lsp_request(struct mg_connection *conn,
+ 	 * "<?" which means "classic CivetWeb Syntax".
+ 	 *
+ 	 */
+-	run_lsp = run_lsp_civetweb;
+-	if ((addr[0] == '<') && (addr[1] != '?')) {
+-		run_lsp = run_lsp_kepler;
+-	}
++
++	// Pi-hole change: Always use Kepler syntax, ignore rules above
++	run_lsp = run_lsp_kepler;
+ 
+ 	/* We're not sending HTTP headers here, Lua page must do it. */
+ 	error =
+-- 
+2.34.1
+

@@ -1,0 +1,115 @@
+openapi: 3.0.2
+components:
+  paths:
+    leases:
+      get:
+        summary: Get currently active DHCP leases
+        tags:
+          - "DHCP"
+        operationId: "get_dhcp"
+        description: |
+          This API hook returns the currently active DHCP leases.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'dhcp.yaml#/components/schemas/leases'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    leases_ip:
+      parameters:
+        - $ref: 'dhcp.yaml#/components/parameters/ip'
+      delete:
+        summary: Remove DHCP lease
+        tags:
+          - "DHCP"
+        operationId: "delete_dhcp"
+        description: |
+          This API hook removes a currently active DHCP lease.
+          Managing DHCP leases is only possible when the DHCP server is enabled.
+          *Note:* There will be no content on success.
+        responses:
+          '204':
+            description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  item_missing:
+                    $ref: 'dhcp.yaml#/components/examples/errors/uri_error/item_missing'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+  schemas:
+    leases:
+      type: object
+      properties:
+        leases:
+          type: array
+          description: DHCP leases
+          items:
+            type: object
+            properties:
+              expires:
+                type: integer
+                description: Expiration time (0 = infinite lease, never expires)
+                example: 1675671991
+              name:
+                type: string
+                description: Hostname
+                example: "raspberrypi"
+              hwaddr:
+                type: string
+                description: Hardware (MAC) address
+                example: "00:00:00:00:00:00"
+              ip:
+                type: string
+                description: IP address
+                example: "192.168.2.111"
+              clientid:
+                type: string
+                description: Client ID
+                example: "00:00:00:00:00:00"
+  examples:
+    errors:
+      uri_error:
+        item_missing:
+          summary: DHCP lease to be deleted not specified accurately enough
+          value:
+            error:
+              key: "uri_error"
+              message: "No ip in URI"
+              hint: null
+  parameters:
+    ip:
+      in: path
+      name: ip
+      schema:
+        type: string
+      required: true
+      description: IP address of lease to be modified
+      example: 192.168.2.222

@@ -1,0 +1,73 @@
+
+.btn {
+  padding: 6px 12px;
+  font-size:13px;
+  background-color: var(--primary-color);
+  color: #fff;
+  border: none;
+  margin: 0 2px;
+  border-radius: 2px;
+  cursor:pointer;
+}
+.btn.large {
+  width: 120px;
+  height: 24px
+}
+.btn.medium {
+  width: 75px;
+  height: 24px
+}
+.btn.small {
+  width: 60px;
+  height: 24px
+}
+.btn.green {
+  background-color: #228b22;
+}
+.btn.red {
+  background-color: #ff4500;
+}
+
+.btn:hover {
+  background: #fff;
+  color: var(--primary-color);
+}
+
+.logo-slot {
+  padding: 10px 0 10px 16px;
+  width: 50px;
+}
+
+.header-slot {
+  margin: 0 15px 0 0;
+  width: 100%;
+  display: flex;
+  gap: 6px 32px;
+  flex-wrap: wrap;
+  justify-content: start;
+}
+.header-title {
+  font-weight: 700;
+  font-size: 32px;
+  line-height: 1;
+}
+
+.password-controls {
+  display: flex;
+  align-items: stretch;
+}
+
+.footer-slot {
+  margin:0;
+  padding:16px;
+  display: flex;
+  gap: 16px 36px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  color:#fff;
+  text-align:center;
+  background-color:#222;
+}
+.footer-slot > div {
+  flex: 0 0 auto;
+}

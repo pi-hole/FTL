@@ -1,0 +1,106 @@
+openapi: 3.0.2
+components:
+  schemas:
+    took:
+      type: object
+      properties:
+        took:
+          type: number
+          description: Time in seconds it took to process the request
+          example: 0.003
+    success:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Key indicating the status of the request
+          example: "success"
+  errors:
+    bad_request:
+      type: object
+      description: Bad request
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+            message:
+              type: string
+              description: "Human-readable error message"
+            hint:
+              type: string
+              description: "Further details"
+              nullable: true
+    unauthorized:
+      type: object
+      description: Authentication required
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "unauthorized"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Unauthorized"
+            hint:
+              type: string
+              nullable: true
+              description: "No additional data available"
+              example: null
+    too_many_requests:
+      type: object
+      description: "Too many requests (rate limiting)"
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "too_many_requests"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Too many requests"
+            hint:
+              type: string
+              nullable: true
+              description: "No additional data available"
+              example: null
+  headers:
+    Location:
+      description: Location of created resource
+      schema:
+        type: string
+
+  parameters:
+    database:
+      from:
+        in: query
+        description: Unix timestamp from when the data should be requested
+        name: from
+        schema:
+          type: integer
+        required: true
+        example: 1672580025
+      until:
+        in: query
+        description: Unix timestamp from when the data should be requested
+        name: until
+        schema:
+          type: integer
+        required: true
+        example: 1672666425
+      blocked:
+        in: query
+        description: Should this query return only blocked queries?
+        schema:
+          type: boolean
+        required: false
+        example: false

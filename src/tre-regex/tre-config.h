@@ -10,17 +10,17 @@
 /* #undef C_ALLOCA */
 
 /* Define to 1 if you have `alloca', as a function or macro. */
-#define HAVE_ALLOCA 1
+#define HAVE_ALLOCA 0
 
 /* Define to 1 if you have <alloca.h> and it should be used (not on Ultrix).
    */
-#define HAVE_ALLOCA_H 1
+#define HAVE_ALLOCA_H 0
 
 /* Define if the GNU gettext() function is already present or preinstalled. */
 /* #define HAVE_GETTEXT 1 */
 
 /* Define to 1 if you have the `isascii' function. */
-#define HAVE_ISASCII 1
+//#define HAVE_ISASCII 1
 
 /* Define to 1 if you have the `isblank' function. */
 #define HAVE_ISBLANK 1
@@ -72,7 +72,7 @@
 
 /* Define if you want TRE to use alloca() instead of malloc() when allocating
    memory needed for regexec operations. */
-#define TRE_USE_ALLOCA 1
+// #define TRE_USE_ALLOCA 1
 
 /* Define to include the system regex.h from TRE regex.h */
 /* #undef TRE_USE_SYSTEM_REGEX_H */

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,minimum-scale=1,initial-scale=1,user-scalable=yes">
+        <title>Pi-hole API documentation</title>
+        <!--<link href="https://fonts.googleapis.com/css?family=Open+Sans:300,600&display=swap" rel="stylesheet">-->
+        <link rel="stylesheet" href="external/highlight-default.min.css">
+        <script src="external/highlight.min.js"></script>
+        <script type='text/javascript' src='external/rapidoc-min.js'></script>
+        <script type="text/javascript" src="pi-hole.js"></script>
+        <link href='index.css' rel='stylesheet'>
+        <link rel="apple-touch-icon" href="/admin/img/favicons/apple-touch-icon.png" sizes="180x180">
+        <link rel="icon" href="/admin/img/favicons/favicon-32x32.png" sizes="32x32" type="image/png">
+        <link rel="icon" href="/admin/img/favicons/favicon-16x16.png" sizes="16x16" type="image/png">
+        <link rel="manifest" href="/admin/img/favicons/manifest.json">
+        <link rel="mask-icon" href="/admin/img/favicons/safari-pinned-tab.svg" color="#367fa9">
+        <link rel="shortcut icon" href="/admin/img/favicons/favicon.ico">
+        <meta name="msapplication-TileColor" content="#367fa9">
+        <meta name="msapplication-TileImage" content="/admin/img/favicons/mstile-150x150.png">
+        <meta name="theme-color" content="#367fa9">
+    </head>
+    <body>
+        <rapi-doc id = "thedoc"
+          spec-url = "specs/main.yaml"
+          allow-server-selection = "true"
+          allow-authentication = "false"
+          allow-spec-url-load = "false"
+          allow-spec-file-load = "false"
+          show-header = "true"
+          show-info = "true"
+          theme = "dark"
+          allow-try = "true"
+          sort-endpoints-by = "path"
+          default-schema-tab = "model"
+          schema-style = "tree"
+          render-style = "view"
+          primary-color = "#2d87e2"
+          header-color = "#222"
+          api-key-name = "sid"
+          api-key-location = "header"
+          api-key-value = "-"
+          show-method-in-nav-bar="as-colored-block"
+          allow-search = "false">
+            <img slot="logo" class="logo-slot" src="images/logo.svg">
+            <div slot="header" class="header-slot">
+                <div class="header-title">Pi-hole API Documentation</div>
+                <div class="password-controls">
+                    <input id="loginpw" type="password" placeholder="password">
+                    <button class="btn" id="loginbtn" onclick="loginout()">Login</button>
+                </div>
+            </div>
+            <!-- content at the bottom -->
+            <div slot="footer" class="footer-slot">
+                <div>
+                    <button onclick="document.getElementById('thedoc').setAttribute('theme', 'dark')" class="btn">Dark Theme</button>
+                    <button onclick="document.getElementById('thedoc').setAttribute('theme', 'light')" class="btn">Light Theme</button>
+                </div>
+                <div>
+                    <button onclick="setStyle('view')" class="btn">Default</button>
+                    <button onclick="setStyle('read')" class="btn">Reader</button>
+                    <button onclick="setStyle('focused')" class="btn">Focused reader</button>
+                </div>
+            </div>
+        </rapi-doc>
+    </body>
+</html>

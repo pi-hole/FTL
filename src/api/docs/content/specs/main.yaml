@@ -1,0 +1,301 @@
+openapi: 3.0.2
+info:
+  title: Pi-hole API
+  version: "6.0"
+  contact:
+    name: Pi-hole API Support
+    url: https://discourse.pi-hole.net
+  license:
+    name: European Union Public Licence (EUPL)
+    url: https://joinup.ec.europa.eu/community/eupl/og_page/eupl
+  description: >
+    The Pi-hole API is organized around [REST](http://en.wikipedia.org/wiki/Representational_State_Transfer).
+    Our API has predictable resource-oriented URLs, accepts and returns reliable UTF-8 [JavaScript Object Notation (JSON)-encoded](http://www.json.org/) data for all API responses, and uses standard HTTP response codes and verbs.
+
+    Most (but not all) endpoints require authentication.
+    API endpoints requiring authentication will fail with code `401 Unauthorized` when used outside a valid session.
+servers:
+  - url: 'https://{url}:{port}/{path}'
+    variables:
+      url:
+        description: URL or address of your Pi-hole
+        default: pi.hole
+      port:
+        description: Port of your Pi-hole's API (HTTPS)
+        default: "443"
+      path:
+        description: Path where your Pi-hole's API is hosted
+        default: api
+  - url: 'http://{url}:{port}/{path}'
+    variables:
+      url:
+        description: URL or address of your Pi-hole
+        default: pi.hole
+      port:
+        description: Port of your Pi-hole's API
+        default: "80"
+      path:
+        description: Path where your Pi-hole's API is hosted
+        default: api
+
+tags:
+  - name: "Authentication"
+    description: Methods used to authentaticate with the API
+  - name: "Metrics"
+    description: Methods used to get usage data from your Pi-hole
+  - name: "DNS control"
+    description: Methods used to control the behavior of your Pi-hole
+  - name: "DHCP server control"
+    description: Methods used to control the DHCP server of your Pi-hole
+  - name: "Group management"
+    description: Methods used to manage groups on your Pi-hole
+  - name: "Domain management"
+    description: Methods used to manage domains on your Pi-hole
+  - name: "Client management"
+    description: Methods used to manage clients on your Pi-hole
+  - name: "List management"
+    description: Methods used to manage lists on your Pi-hole
+  - name: "FTL information"
+    description: Methods used to gather advanced data from your Pi-hole
+  - name: "Pi-hole configuration"
+    description: Methods used to configure your Pi-hole
+  - name: "Network information"
+    description: Methods used to gather advanced information about your network
+  - name: "Actions"
+    description: Methods used to trigger certain actions on your Pi-hole
+
+
+
+paths:
+  /auth:
+    $ref: 'auth.yaml#/components/paths/auth'
+
+  /auth/session/{id}:
+    $ref: 'auth.yaml#/components/paths/session'
+
+  /auth/sessions:
+    $ref: 'auth.yaml#/components/paths/session_list'
+
+  /auth/totp:
+    $ref: 'auth.yaml#/components/paths/totp'
+
+  /auth/app:
+    $ref: 'auth.yaml#/components/paths/app'
+
+  /stats/summary:
+    $ref: 'stats.yaml#/components/paths/summary'
+
+  /stats/database/summary:
+    $ref: 'stats.yaml#/components/paths/database_summary'
+
+  /stats/upstreams:
+    $ref: 'stats.yaml#/components/paths/upstreams'
+
+  /stats/database/upstreams:
+    $ref: 'stats.yaml#/components/paths/database_upstreams'
+
+  /stats/top_domains:
+    $ref: 'stats.yaml#/components/paths/top_domains'
+
+  /stats/database/top_domains:
+    $ref: 'stats.yaml#/components/paths/database_top_domains'
+
+  /stats/top_clients:
+    $ref: 'stats.yaml#/components/paths/top_clients'
+
+  /stats/database/top_clients:
+    $ref: 'stats.yaml#/components/paths/database_top_clients'
+
+  /stats/query_types:
+    $ref: 'stats.yaml#/components/paths/query_types'
+
+  /stats/database/query_types:
+    $ref: 'stats.yaml#/components/paths/database_query_types'
+
+  /stats/recent_blocked:
+    $ref: 'stats.yaml#/components/paths/recent_blocked'
+
+  /history:
+    $ref: 'history.yaml#/components/paths/history'
+
+  /history/clients:
+    $ref: 'history.yaml#/components/paths/clients'
+
+  /history/database:
+    $ref: 'history.yaml#/components/paths/database_history'
+
+  /history/database/clients:
+    $ref: 'history.yaml#/components/paths/database_clients'
+
+  /queries:
+    $ref: 'queries.yaml#/components/paths/queries'
+
+  /queries/suggestions:
+    $ref: 'queries.yaml#/components/paths/suggestions'
+
+  /dns/blocking:
+    $ref: 'dns.yaml#/components/paths/blocking'
+
+  /domains/{type}/{kind}/{domain}:
+    $ref: 'domains.yaml#/components/paths/type_kind_domain'
+
+  /domains/{type}/{kind}:
+    $ref: 'domains.yaml#/components/paths/type_kind'
+
+  /domains:batchDelete:
+    $ref: 'domains.yaml#/components/paths/batchDelete'
+
+  /groups/{name}:
+    $ref: 'groups.yaml#/components/paths/name'
+
+  /groups:
+    $ref: 'groups.yaml#/components/paths/direct'
+
+  /groups:batchDelete:
+    $ref: 'groups.yaml#/components/paths/batchDelete'
+
+  /clients/{client}:
+    $ref: 'clients.yaml#/components/paths/client'
+
+  /clients:
+    $ref: 'clients.yaml#/components/paths/direct'
+
+  /clients:batchDelete:
+    $ref: 'clients.yaml#/components/paths/batchDelete'
+
+  /clients/_suggestions:
+    $ref: 'clients.yaml#/components/paths/suggestions'
+
+  /lists/{list}:
+    $ref: 'lists.yaml#/components/paths/list'
+
+  /lists:
+    $ref: 'lists.yaml#/components/paths/direct'
+
+  /lists:batchDelete:
+    $ref: 'lists.yaml#/components/paths/batchDelete'
+
+  /info/client:
+    $ref: 'info.yaml#/components/paths/client'
+
+  /info/system:
+    $ref: 'info.yaml#/components/paths/system'
+
+  /info/database:
+    $ref: 'info.yaml#/components/paths/database'
+
+  /info/ftl:
+    $ref: 'info.yaml#/components/paths/ftl'
+
+  /info/host:
+    $ref: 'info.yaml#/components/paths/host'
+
+  /info/sensors:
+    $ref: 'info.yaml#/components/paths/sensors'
+
+  /info/version:
+    $ref: 'info.yaml#/components/paths/version'
+
+  /info/messages:
+    $ref: 'info.yaml#/components/paths/messages'
+
+  /info/messages/{message_id}:
+    $ref: 'info.yaml#/components/paths/messages_with_id'
+
+  /info/messages/count:
+    $ref: 'info.yaml#/components/paths/messages_count'
+
+  /info/metrics:
+    $ref: 'info.yaml#/components/paths/metrics'
+
+  /info/login:
+    $ref: 'info.yaml#/components/paths/login'
+
+  /logs/dnsmasq:
+    $ref: 'logs.yaml#/components/paths/logs/dnsmasq'
+
+  /logs/ftl:
+    $ref: 'logs.yaml#/components/paths/logs/ftl'
+
+  /logs/webserver:
+    $ref: 'logs.yaml#/components/paths/logs/webserver'
+
+  /endpoints:
+    $ref: 'endpoints.yaml#/components/paths/endpoints'
+
+  /config:
+    $ref: 'config.yaml#/components/paths/config'
+
+  /config/{element}:
+    $ref: 'config.yaml#/components/paths/config_elem'
+
+  /config/{element}/{value}:
+    $ref: 'config.yaml#/components/paths/config_elem_value'
+
+  /network/devices:
+    $ref: 'network.yaml#/components/paths/devices'
+
+  /network/devices/{device_id}:
+    $ref: 'network.yaml#/components/paths/devices_id'
+
+  /network/gateway:
+    $ref: 'network.yaml#/components/paths/gateway'
+
+  /network/interfaces:
+    $ref: 'network.yaml#/components/paths/interfaces'
+
+  /teleporter:
+    $ref: 'teleporter.yaml#/components/paths/teleporter'
+
+  /action/gravity:
+    $ref: 'action.yaml#/components/paths/gravity'
+
+  /action/restartdns:
+    $ref: 'action.yaml#/components/paths/restartdns'
+
+  /action/flush/logs:
+    $ref: 'action.yaml#/components/paths/flush_logs'
+
+  /action/flush/arp:
+    $ref: 'action.yaml#/components/paths/flush_arp'
+
+  /dhcp/leases:
+    $ref: 'dhcp.yaml#/components/paths/leases'
+
+  /dhcp/leases/{ip}:
+    $ref: 'dhcp.yaml#/components/paths/leases_ip'
+
+  /search/{domain}:
+    $ref: 'search.yaml#/components/paths/search'
+
+  /docs:
+    $ref: 'docs.yaml#/components/paths/docs'
+
+components:
+  securitySchemes:
+    query_sid:
+      type: apiKey
+      in: query
+      name: sid
+    cookie_sid:
+      type: apiKey
+      in: cookie
+      name: sid
+    header_sid:
+      type: apiKey
+      in: header
+      name: sid
+    x_header_sid:
+      type: apiKey
+      in: header
+      name: X-FTL-SID
+    query_password:
+      type: apiKey
+      in: query
+      name: password
+
+security:
+  - query_sid: []
+  - cookie_sid: []
+  - header_sid: []
+  - x_header_sid: []
