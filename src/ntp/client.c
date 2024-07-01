@@ -603,6 +603,12 @@ static void *ntp_client_thread(void *arg)
 		{
 			load_queries_from_disk();
 
+			// If this was the first run and NTP time synchronization was
+			// successful, we send SIGUSR7 to the embedded dnsmasq instance
+			// to signal time is now guaranteed to be correct
+			if(success)
+				kill(main_pid(), SIGUSR7);
+
 			first_run = false;
 		}
 
@@ -634,6 +640,9 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	   config.ntp.sync.interval.v.ui == 0)
 	{
 		log_info("NTP sync is disabled - NTP server will not be available");
+		// Send SIGUSR7 to embedded dnsmasq instance to signal time is
+		// assumed to be correct
+		kill(main_pid(), SIGUSR7);
 		load_queries_from_disk();
 		return false;
 	}

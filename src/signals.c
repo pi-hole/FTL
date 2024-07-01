@@ -322,6 +322,11 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	// {
 	// 	// Signal internally used to signal dnsmasq it has to stop
 	// }
+	// else if(rtsig == 7)
+	// {
+	//      // Signal internally used to signal dnsmasq it should do
+	//      // DNSSEC timestamp checks
+	// }
 
 	// Restore errno before returning back to previous context
 	errno = _errno;
@@ -448,9 +453,8 @@ void handle_realtime_signals(void)
 	// Catch all real-time signals
 	for(int signum = SIGRTMIN; signum <= SIGRTMAX; signum++)
 	{
-		if(signum == SIGUSR6)
-			// Skip SIGUSR6 as it is used internally to signify
-			// dnsmasq to stop
+		if(signum == SIGUSR6 || signum == SIGUSR7)
+			// Skip SIGUSR6 as it is used internally by dnsmasq
 			continue;
 
 		struct sigaction SIGACTION = { 0 };
