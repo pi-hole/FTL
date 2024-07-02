@@ -713,7 +713,7 @@ static int api_config_patch(struct ftl_conn *api)
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "This config option can only be set in pihole.toml, not via the API",
-			                            key, true);
+			                            key, true, true);
 		}
 
 		// Check if this is a write-only config item with the placeholder value
@@ -744,7 +744,7 @@ static int api_config_patch(struct ftl_conn *api)
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config item is invalid",
-			                            hint, true);
+			                            hint, true, true);
 		}
 
 		// Get pointer to memory location of this conf_item (global)
@@ -759,7 +759,7 @@ static int api_config_patch(struct ftl_conn *api)
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config items set via environment variables cannot be changed via the API",
-			                            key, true);
+			                            key, true, true);
 		}
 
 		// Skip processing if value didn't change compared to current value
@@ -922,7 +922,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config items set via environment variables cannot be changed via the API",
-			                            key, true);
+			                            key, true, true);
 		}
 
 		// Check if this entry exists in the array

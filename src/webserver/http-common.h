@@ -70,7 +70,7 @@ int send_json_error(struct ftl_conn *api, const int code,
                     const char *hint);
 int send_json_error_free(struct ftl_conn *api, const int code,
                          const char *key, const char* message,
-                         char *hint, bool free_hint);
+                         char *hint, bool free_hint, const bool log);
 int send_json_success(struct ftl_conn *api);
 const char *get_http_method_str(const enum http_method method) __attribute__((const));
 

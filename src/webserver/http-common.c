@@ -68,27 +68,33 @@ int send_http_code(struct ftl_conn *api, const char *mime_type,
 
 int send_json_unauthorized(struct ftl_conn *api)
 {
-	return send_json_error(api, 401,
-                               "unauthorized",
-                               "Unauthorized",
-                               NULL);
+	// Log API warnings only if debug.api is true
+	return send_json_error_free(api, 401,
+	                            "unauthorized",
+	                            "Unauthorized",
+	                            NULL, false,
+	                            config.debug.api.v.b);
 }
 
 int send_json_error(struct ftl_conn *api, const int code,
                     const char *key, const char* message,
                     const char *hint)
 {
-	return send_json_error_free(api, code, key, message, (char*)hint, false);
+	return send_json_error_free(api, code, key, message,
+	                            (char*)hint, false, true);
 }
 
 int send_json_error_free(struct ftl_conn *api, const int code,
                          const char *key, const char* message,
-                         char *hint, bool free_hint)
+                         char *hint, const bool free_hint, const bool log)
 {
-	if(hint != NULL)
-		log_warn("API: %s (%s)", message, hint);
-	else
-		log_warn("API: %s", message);
+	if(log)
+	{
+		if(hint != NULL)
+			log_warn("API: %s (%s)", message, hint);
+		else
+			log_warn("API: %s", message);
+	}
 
 	cJSON *error = JSON_NEW_OBJECT();
 	JSON_REF_STR_IN_OBJECT(error, "key", key);

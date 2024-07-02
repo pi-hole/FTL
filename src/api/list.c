@@ -461,7 +461,7 @@ static int api_list_write(struct ftl_conn *api,
 		return send_json_error_free(api, 400, // 400 Bad Request
 		                            "regex_error",
 		                            "Regex validation failed",
-		                            regex_msg, true);
+		                            regex_msg, true, true);
 	}
 
 	// Try to add item(s) to table
