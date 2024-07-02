@@ -481,6 +481,9 @@
     address = ""
 
   [ntp.sync]
+    # Should FTL try to synchronize the system time with an upstream NTP server?
+    active = true
+
     # NTP upstream server to sync with, e.g., "pool.ntp.org". Note that the NTP server
     # should be located as close as possible to you in order to minimize the time offset
     # possibly introduced by different routing paths.
@@ -495,18 +498,18 @@
     # Number of NTP syncs to perform and average before updating the system time
     count = 8
 
-  [ntp.rtc]
-    # Should FTL update a real-time clock (RTC) if available?
-    set = true
+    [ntp.sync.rtc]
+      # Should FTL update a real-time clock (RTC) if available?
+      set = true
 
-    # Path to the RTC device to update. Leave empty for auto-discovery
-    #
-    # Possible values are:
-    #     Path to the RTC device, e.g., "/dev/rtc0"
-    device = ""
+      # Path to the RTC device to update. Leave empty for auto-discovery
+      #
+      # Possible values are:
+      #     Path to the RTC device, e.g., "/dev/rtc0"
+      device = ""
 
-    # Should the RTC be set to UTC?
-    utc = true
+      # Should the RTC be set to UTC?
+      utc = true
 
 [resolver]
   # Should FTL try to resolve IPv4 addresses to hostnames?
@@ -1102,7 +1105,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 148 total entries out of which 93 entries are default
+# 149 total entries out of which 94 entries are default
 # --> 55 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

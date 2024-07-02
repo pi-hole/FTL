@@ -293,6 +293,10 @@ static int _add_message(const enum message_type type,
 static int _add_message(const enum message_type type,
                         const char *message, const size_t count,...)
 {
+	// Log to database only if not in CLI mode
+	if(cli_mode)
+		return -1;
+
 	int rowid = -1;
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -1236,10 +1240,6 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 
 	// Log to FTL.log
 	log_warn("%s", buf);
-
-	// Log to database only if not in CLI mode
-	if(cli_mode)
-		return;
 
 	// Add to database
 	add_message(REGEX_MESSAGE, regex, type, warning, dbindex);

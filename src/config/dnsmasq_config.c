@@ -400,7 +400,11 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# 2017-02-02 root zone trust anchor\n", pihole_conf);
 		fputs("trust-anchor=.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D\n",
 		      pihole_conf);
-		fputs("\n", pihole_conf);
+
+		// Prevent DNSSEC timestamp checks until either NTP synchronization has succeeded or
+		// the user has disabled the NTP client
+		fputs("# Do not check DNSSEC timestamps until NTP synchronization has succeeded\n", pihole_conf);
+		fputs("dnssec-no-timecheck\n\n", pihole_conf);
 	}
 
 	if(strlen(conf->dns.hostRecord.v.s) > 0)

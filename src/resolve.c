@@ -1053,14 +1053,12 @@ static void resolveUpstreams(const bool onlynew)
 void *DNSclient_thread(void *val)
 {
 	// Set thread name
-	thread_running[DNSclient] = true;
 	prctl(PR_SET_NAME, thread_names[DNSclient], 0, 0, 0);
 
 	// Test struct sizes
 	if(!check_struct_sizes())
 	{
 		log_err("Struct sizes do not match expected sizes, aborting resolver thread");
-		thread_running[DNSclient] = false;
 		return NULL;
 	}
 
@@ -1124,6 +1122,5 @@ void *DNSclient_thread(void *val)
 	}
 
 	log_info("Terminating resolver thread");
-	thread_running[DNSclient] = false;
 	return NULL;
 }

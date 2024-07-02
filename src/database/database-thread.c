@@ -83,7 +83,6 @@ static bool analyze_database(sqlite3 *db)
 void *DB_thread(void *val)
 {
 	// Set thread name
-	thread_running[DB] = true;
 	prctl(PR_SET_NAME, thread_names[DB], 0, 0, 0);
 
 	// Save timestamp as we do not want to store immediately
@@ -241,6 +240,5 @@ void *DB_thread(void *val)
 		dbclose(&db);
 
 	log_info("Terminating database thread");
-	thread_running[DB] = false;
 	return NULL;
 }

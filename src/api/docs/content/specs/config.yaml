@@ -348,21 +348,23 @@ components:
                 sync:
                   type: object
                   properties:
+                    active:
+                      type: boolean
                     server:
                       type: string
                     interval:
                       type: integer
                     count:
                       type: integer
-                rtc:
-                  type: object
-                  properties:
-                    set:
-                      type: boolean
-                    device:
-                      type: string
-                    utc:
-                      type: boolean
+                    rtc:
+                      type: object
+                      properties:
+                        set:
+                          type: boolean
+                        device:
+                          type: string
+                        utc:
+                          type: boolean
             resolver:
               type: object
               properties:
@@ -708,13 +710,14 @@ components:
               active: true
               address: ""
             sync:
+              active: true
               server: "pool.ntp.org"
               interval: 3600
               count: 8
-            rtc:
-              set: true
-              device: ""
-              utc: true
+              rtc:
+                set: true
+                device: ""
+                utc: true
           resolver:
             resolveIPv4: true
             resolveIPv6: true

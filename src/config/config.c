@@ -814,6 +814,13 @@ void initConfig(struct config *conf)
 	memset(&conf->ntp.ipv6.address.d.in6_addr, 0, sizeof(struct in6_addr));
 	conf->ntp.ipv6.address.c = validate_stub; // Only type-based checking
 
+	conf->ntp.sync.active.k = "ntp.sync.active";
+	conf->ntp.sync.active.h = "Should FTL try to synchronize the system time with an upstream NTP server?";
+	conf->ntp.sync.active.t = CONF_BOOL;
+	conf->ntp.sync.active.f = FLAG_RESTART_FTL;
+	conf->ntp.sync.active.d.b = true;
+	conf->ntp.sync.active.c = validate_stub; // Only type-based checking
+
 	conf->ntp.sync.server.k = "ntp.sync.server";
 	conf->ntp.sync.server.h = "NTP upstream server to sync with, e.g., \"pool.ntp.org\". Note that the NTP server should be located as close as possible to you in order to minimize the time offset possibly introduced by different routing paths.";
 	conf->ntp.sync.server.a = cJSON_CreateStringReference("valid NTP upstream server");
@@ -833,24 +840,24 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.count.d.ui = 8;
 	conf->ntp.sync.count.c = validate_stub; // Only type-based checking
 
-	conf->ntp.rtc.set.k = "ntp.rtc.set";
-	conf->ntp.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
-	conf->ntp.rtc.set.t = CONF_BOOL;
-	conf->ntp.rtc.set.d.b = true;
-	conf->ntp.rtc.set.c = validate_stub; // Only type-based checking
+	conf->ntp.sync.rtc.set.k = "ntp.sync.rtc.set";
+	conf->ntp.sync.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
+	conf->ntp.sync.rtc.set.t = CONF_BOOL;
+	conf->ntp.sync.rtc.set.d.b = true;
+	conf->ntp.sync.rtc.set.c = validate_stub; // Only type-based checking
 
-	conf->ntp.rtc.device.k = "ntp.rtc.device";
-	conf->ntp.rtc.device.h = "Path to the RTC device to update. Leave empty for auto-discovery";
-	conf->ntp.rtc.device.a = cJSON_CreateStringReference("Path to the RTC device, e.g., \"/dev/rtc0\"");
-	conf->ntp.rtc.device.t = CONF_STRING;
-	conf->ntp.rtc.device.d.s = (char*)"";
-	conf->ntp.rtc.device.c = validate_stub; // Only type-based checking
+	conf->ntp.sync.rtc.device.k = "ntp.sync.rtc.device";
+	conf->ntp.sync.rtc.device.h = "Path to the RTC device to update. Leave empty for auto-discovery";
+	conf->ntp.sync.rtc.device.a = cJSON_CreateStringReference("Path to the RTC device, e.g., \"/dev/rtc0\"");
+	conf->ntp.sync.rtc.device.t = CONF_STRING;
+	conf->ntp.sync.rtc.device.d.s = (char*)"";
+	conf->ntp.sync.rtc.device.c = validate_stub; // Only type-based checking
 
-	conf->ntp.rtc.utc.k = "ntp.rtc.utc";
-	conf->ntp.rtc.utc.h = "Should the RTC be set to UTC?";
-	conf->ntp.rtc.utc.t = CONF_BOOL;
-	conf->ntp.rtc.utc.d.b = true;
-	conf->ntp.rtc.utc.c = validate_stub; // Only type-based checking
+	conf->ntp.sync.rtc.utc.k = "ntp.sync.rtc.utc";
+	conf->ntp.sync.rtc.utc.h = "Should the RTC be set to UTC?";
+	conf->ntp.sync.rtc.utc.t = CONF_BOOL;
+	conf->ntp.sync.rtc.utc.d.b = true;
+	conf->ntp.sync.rtc.utc.c = validate_stub; // Only type-based checking
 
 
 	// struct resolver

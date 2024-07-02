@@ -27,7 +27,7 @@ uint64_t gettime64(void);
 void print_debug_time(const char *label, const uint32_t *u32p, const uint64_t ntp_time);
 
 // Start NTP server
-bool ntp_server_start(pthread_attr_t *attr);
+bool ntp_server_start(void);
 
 // Start NTP client
 bool ntp_client(const char *server, const bool settime, const bool print);

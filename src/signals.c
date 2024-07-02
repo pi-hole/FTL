@@ -34,13 +34,14 @@ static time_t FTLstarttime = 0;
 volatile int exit_code = EXIT_SUCCESS;
 
 volatile sig_atomic_t thread_cancellable[THREADS_MAX] = { false };
-volatile sig_atomic_t thread_running[THREADS_MAX] = { false };
 const char * const thread_names[THREADS_MAX] = {
 	"database",
 	"housekeeper",
 	"dns-client",
 	"timer",
-	"ntp-client"
+	"ntp-client",
+	"ntp-server4",
+	"ntp-server6",
  };
 
 // Return the (null-terminated) name of the calling thread
@@ -321,6 +322,11 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	// {
 	// 	// Signal internally used to signal dnsmasq it has to stop
 	// }
+	// else if(rtsig == 7)
+	// {
+	//      // Signal internally used to signal dnsmasq it should do
+	//      // DNSSEC timestamp checks
+	// }
 
 	// Restore errno before returning back to previous context
 	errno = _errno;
@@ -447,9 +453,8 @@ void handle_realtime_signals(void)
 	// Catch all real-time signals
 	for(int signum = SIGRTMIN; signum <= SIGRTMAX; signum++)
 	{
-		if(signum == SIGUSR6)
-			// Skip SIGUSR6 as it is used internally to signify
-			// dnsmasq to stop
+		if(signum == SIGUSR6 || signum == SIGUSR7)
+			// Skip SIGUSR6 as it is used internally by dnsmasq
 			continue;
 
 		struct sigaction SIGACTION = { 0 };

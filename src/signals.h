@@ -13,6 +13,7 @@
 #include "enums.h"
 
 #define SIGUSR6 (SIGRTMIN + 6)
+#define SIGUSR7 (SIGRTMIN + 7)
 
 // defined in dnsmasq/dnsmasq.h
 extern volatile char FTL_terminate;
@@ -29,7 +30,6 @@ extern volatile sig_atomic_t want_to_reimport_aliasclients;
 extern volatile sig_atomic_t want_to_reload_lists;
 
 extern volatile sig_atomic_t thread_cancellable[THREADS_MAX];
-extern volatile sig_atomic_t thread_running[THREADS_MAX];
 extern const char * const thread_names[THREADS_MAX];
 
 #define BREAK_IF_KILLED() { if(killed) break; }
