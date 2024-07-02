@@ -82,7 +82,8 @@ static int open_rtc(void)
 			if(chown(config.ntp.sync.rtc.device.v.s, uid, gid) == -1)
 			{
 				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-				          config.ntp.sync.rtc.device.v.s, uid, gid, strerror(errno));
+				          config.ntp.sync.rtc.device.v.s, uid, gid,
+				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
 				return -1;
 			}
 
@@ -97,7 +98,8 @@ static int open_rtc(void)
 			if(chown(config.ntp.sync.rtc.device.v.s, st.st_uid, st.st_gid) == -1)
 			{
 				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-						config.ntp.sync.rtc.device.v.s, st.st_uid, st.st_gid, strerror(errno));
+				          config.ntp.sync.rtc.device.v.s, st.st_uid, st.st_gid,
+				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
 				return -1;
 			}
 
@@ -139,7 +141,8 @@ static int open_rtc(void)
 			if(chown(rtc_devices[i], uid, gid) == -1)
 			{
 				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-				          rtc_devices[i], uid, gid, strerror(errno));
+				          rtc_devices[i], uid, gid,
+				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
 				return -1;
 			}
 
@@ -154,7 +157,8 @@ static int open_rtc(void)
 			if(chown(rtc_devices[i], st.st_uid, st.st_gid) == -1)
 			{
 				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-						rtc_devices[i], st.st_uid, st.st_gid, strerror(errno));
+				          rtc_devices[i], st.st_uid, st.st_gid, 
+				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
 				return -1;
 			}
 

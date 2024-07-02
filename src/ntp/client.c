@@ -657,7 +657,7 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	// in starting the thread.
 	if(!check_capability(CAP_SYS_TIME))
 	{
-		log_warn("Insufficient permissions to set system time, NTP client not available");
+		log_warn("Insufficient permissions to set system time (CAP_SYS_TIME required), NTP client not available");
 		// Send SIGUSR7 to embedded dnsmasq instance to signal time is
 		// assumed to be correct
 		kill(main_pid(), SIGUSR7);
