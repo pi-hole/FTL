@@ -95,8 +95,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		return send_json_error_free(&api, 400,
 		                            "bad_request",
 		                            "Bad request",
-		                            hint,
-		                            true);
+		                            hint, true, true);
 	}
 
 	// Check if last part of the URI contains a dot (is a file)
