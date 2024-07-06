@@ -593,10 +593,33 @@ static void *ntp_client_thread(void *arg)
 
 	// Run NTP client
 	bool ntp_server_started = false;
+	bool first_run = true;
 	while(!killed)
 	{
+		// Get time before NTP sync
+		const time_t before = time(NULL);
+
 		// Run NTP client
 		const bool success = ntp_client(config.ntp.sync.server.v.s, true, false);
+
+		// Get time after NTP sync
+		const time_t after = time(NULL);
+
+		// If the time was updated by more than one hour, restart FTL to
+		// import recent data. This is relevant when the system time was
+		// set to an incorrect value (e.g., due to a dead CMOS battery
+		// or overall missing RTC) and the time was off.
+		if(first_run && after - before > 3600)
+		{
+			log_info("System time was updated by more than one hour, restarting FTL to import recent data");
+			// Set the restart flag to true
+			exit_code = RESTART_FTL_CODE;
+			// Send SIGTERM to FTL
+			kill(main_pid(), SIGTERM);
+		}
+
+		// Set first run to false
+		first_run = false;
 
 		if(success && !ntp_server_started)
 		{
