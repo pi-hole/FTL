@@ -97,7 +97,6 @@ int main_dnsmasq (int argc, char **argv)
   sigaction(SIGUSR2, &sigact, NULL);
   sigaction(SIGHUP, &sigact, NULL);
   sigaction(SIGUSR6, &sigact, NULL); // Pi-hole modification
-  sigaction(SIGUSR7, &sigact, NULL); // Pi-hole modification
   sigaction(SIGALRM, &sigact, NULL);
   sigaction(SIGCHLD, &sigact, NULL);
   sigaction(SIGINT, &sigact, NULL);
@@ -1359,8 +1358,6 @@ static void sig_handler(int sig)
 	  else
 	    event = EVENT_TIME;
 	}
-      else if (sig == SIGUSR7) // Pi-hole modified
-	event = EVENT_TIME;
       else
 	return;
 
