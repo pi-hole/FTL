@@ -39,10 +39,9 @@
 #include <sys/timex.h>
 // log_ntp_message()
 #include "database/message-table.h"
-// load_queries_from_disk()
-#include "database/query-table.h"
 // check_capability()
 #include "capabilities.h"
+
 struct ntp_sync
 {
 	bool valid;
@@ -593,20 +592,11 @@ static void *ntp_client_thread(void *arg)
 	prctl(PR_SET_NAME, thread_names[NTP_CLIENT], 0, 0, 0);
 
 	// Run NTP client
-	bool first_run = true;
 	bool ntp_server_started = false;
 	while(!killed)
 	{
 		// Run NTP client
 		const bool success = ntp_client(config.ntp.sync.server.v.s, true, false);
-
-		// Load queries from database after first NTP synchronization
-		if(first_run)
-		{
-			load_queries_from_disk();
-
-			first_run = false;
-		}
 
 		if(success && !ntp_server_started)
 		{
@@ -636,8 +626,7 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	   strlen(config.ntp.sync.server.v.s) == 0 ||
 	   config.ntp.sync.interval.v.ui == 0)
 	{
-		log_info("NTP sync is disabled - NTP server will not be available");
-		load_queries_from_disk();
+		log_info("NTP sync is disabled");
 		ntp_server_start();
 		return false;
 	}
@@ -649,10 +638,6 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	if(!check_capability(CAP_SYS_TIME))
 	{
 		log_warn("Insufficient permissions to set system time (CAP_SYS_TIME required), NTP client not available");
-		// Send SIGUSR7 to embedded dnsmasq instance to signal time is
-		// assumed to be correct
-		kill(main_pid(), SIGUSR7);
-		load_queries_from_disk();
 		ntp_server_start();
 		return false;
 	}
@@ -661,10 +646,6 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	if(pthread_create(&threads[NTP_CLIENT], attr, ntp_client_thread, NULL) != 0)
 	{
 		log_err("Cannot create NTP client thread");
-		// Send SIGUSR7 to embedded dnsmasq instance to signal time is
-		// assumed to be correct
-		kill(main_pid(), SIGUSR7);
-		load_queries_from_disk();
 		ntp_server_start();
 		return false;
 	}
