@@ -41,9 +41,6 @@ static sqlite3_stmt **stmts[] = { &query_stmt,
                                   &forward_stmt,
                                   &addinfo_stmt };
 
-// Private prototypes
-static bool import_linked_tables_from_disk(void);
-
 // Return the maximum ID of the in-memory database
 unsigned long __attribute__((pure)) get_max_db_idx(void)
 {
@@ -222,9 +219,6 @@ bool init_memory_database(void)
 		log_err("init_memory_database(addinfo_by_id) - SQL error step: %s", sqlite3_errstr(rc));
 		return false;
 	}
-
-	// Import linked-tables from disk database (domains, clients, ...)
-	import_linked_tables_from_disk();
 
 	// Everything went well
 	return true;
@@ -541,24 +535,6 @@ bool import_queries_from_disk(void)
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
-	// End transaction
-	if((rc = sqlite3_exec(memdb, "END TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
-	{
-		log_err("import_queries_from_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	// Get number of queries on disk before detaching
-	disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage");
-	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage");
-
-	log_info("Imported %u queries from the on-disk database (it has %u rows)", mem_db_num, disk_db_num);
-
-	return okay;
-}
-
-static bool import_linked_tables_from_disk(void)
-{
 	// Import linking tables and current AUTOINCREMENT values from the disk database
 	const char *subtable_names[] = {
 		"domain_by_id",
@@ -574,15 +550,6 @@ static bool import_linked_tables_from_disk(void)
 		"INSERT INTO addinfo_by_id SELECT * FROM disk.addinfo_by_id",
 		"INSERT OR REPLACE INTO sqlite_sequence SELECT * FROM disk.sqlite_sequence"
 	};
-
-	// Begin transaction
-	int rc;
-	sqlite3 *memdb = get_memdb();
-	if((rc = sqlite3_exec(memdb, "BEGIN TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
-	{
-		log_err("import_queries_from_disk(): Cannot start transaction: %s", sqlite3_errstr(rc));
-		return false;
-	}
 
 	// Import linking tables
 	for(unsigned int i = 0; i < ArraySize(subtable_sql); i++)
@@ -600,7 +567,13 @@ static bool import_linked_tables_from_disk(void)
 		return false;
 	}
 
-	return true;
+	// Get number of queries on disk before detaching
+	disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage");
+	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage");
+
+	log_info("Imported %u queries from the on-disk database (it has %u rows)", mem_db_num, disk_db_num);
+
+	return okay;
 }
 
 // Export in-memory queries to disk - either due to periodic dumping (final =
@@ -1395,6 +1368,11 @@ bool queries_to_database(void)
 	if(counters->queries == 0)
 	{
 		log_debug(DEBUG_DATABASE, "Not storing query in database as there are none");
+		return true;
+	}
+	if(!store_in_database)
+	{
+		log_debug(DEBUG_DATABASE, "Not storing query in database as this is disabled");
 		return true;
 	}
 
