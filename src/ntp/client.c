@@ -597,21 +597,21 @@ static void *ntp_client_thread(void *arg)
 	while(!killed)
 	{
 		// Get time before NTP sync
-		const time_t before = time(NULL);
+		const double before = double_time();
 
 		// Run NTP client
 		const bool success = ntp_client(config.ntp.sync.server.v.s, true, false);
 
 		// Get time after NTP sync
-		const time_t after = time(NULL);
+		const double after = double_time();
 
 		// If the time was updated by more than a certain amount,
 		// restart FTL to import recent data. This is relevant when the
 		// system time was set to an incorrect value (e.g., due to a
 		// dead CMOS battery or overall missing RTC) and the time was
 		// off.
-		double time_delta;
-		if(first_run && (time_delta = fabs((double)after - before)) > GCinterval)
+		double time_delta = fabs(after - before);
+		if(first_run && time_delta > GCinterval)
 		{
 			log_info("System time was updated by %.1f seconds, restarting FTL to import recent data",
 			         time_delta);
