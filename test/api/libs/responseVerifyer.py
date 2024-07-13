@@ -292,7 +292,6 @@ class ResponseVerifyer():
 		# Check if the property is defined in the API specs (unless we know there are "any-key" items here)
 		if props[-1] not in YAMLprops:
 			self.errors.append("Property '" + flat_path + "' missing in the API specs (2)")
-			print(YAMLprop)
 			return False
 		YAMLprop = YAMLprops[props[-1]]
 

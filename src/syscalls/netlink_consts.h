@@ -558,8 +558,11 @@ static const char *__attribute__ ((const)) family_name(int family)
 			return "smc";
 		case PF_XDP:
 			return "xdp";
+#ifdef PF_MCTP
+		// 2024-July: defined by glibc but not musl
 		case PF_MCTP:
 			return "mctp";
+#endif
 		default:
 			return "unknown";
 	}

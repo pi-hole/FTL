@@ -38,21 +38,23 @@ int api_network_gateway(struct ftl_conn *api)
 	// Add routing information
 	cJSON *routes = JSON_NEW_ARRAY();
 	nlroutes(routes, false);
-	cJSON *gateway = JSON_NEW_ARRAY();
 
+	cJSON *gateway = JSON_NEW_ARRAY();
 	// Search through routes for the default gateway
 	// They are the ones with "dst" == "default"
 	cJSON *route = NULL;
 	cJSON_ArrayForEach(route, routes)
 	{
 		cJSON *dst = cJSON_GetObjectItem(route, "dst");
-		if(dst != NULL && cJSON_IsString(dst) && strcmp(cJSON_GetStringValue(dst), "default") == 0)
+		if(dst != NULL &&
+		   cJSON_IsString(dst) &&
+		   strcmp(cJSON_GetStringValue(dst), "default") == 0)
 		{
 			cJSON *gwobj = JSON_NEW_OBJECT();
 
 			// Extract and add family
-			const int family = cJSON_GetNumberValue(cJSON_GetObjectItem(route, "family"));
-			JSON_ADD_NUMBER_TO_OBJECT(gwobj, "family", family);
+			const char *family = cJSON_GetStringValue(cJSON_GetObjectItem(route, "family"));
+			JSON_REF_STR_IN_OBJECT(gwobj, "family", family);
 
 			// Extract and add interface name
 			const char *iface_name = cJSON_GetStringValue(cJSON_GetObjectItem(route, "oif"));
@@ -65,8 +67,11 @@ int api_network_gateway(struct ftl_conn *api)
 			cJSON_AddItemToArray(gateway, gwobj);
 		}
 	}
+
+	// Free routes array
 	cJSON_Delete(routes);
 
+	// Send gateway information
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "gateway", gateway);
 	JSON_SEND_OBJECT(json);

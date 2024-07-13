@@ -56,7 +56,11 @@ static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 
 	// Prepare struct msghdr for sending
 	struct iovec iov = { nl, nl->nlmsg_len };
-	struct msghdr msg = { sa, sizeof(*sa), &iov, 1, NULL, 0, 0 };
+	struct msghdr msg = { 0 };
+	msg.msg_name = sa;
+	msg.msg_namelen = sizeof(*sa);
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
 
 	// Send netlink message to kernel
 	return sendmsg(fd, &msg, 0) >= 0;
@@ -82,8 +86,8 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 {
 	char ifname[IF_NAMESIZE];
 	cJSON *route = cJSON_CreateObject();
-	cJSON_AddNumberToObject(route, "family", rt->rtm_family);
 	cJSON_AddNumberToObject(route, "table", rt->rtm_table);
+	cJSON_AddStringReferenceToObject(route, "family", family_name(rt->rtm_family));
 
 	// Print human-readable protocol
 	for(unsigned int i = 0; i < sizeof(rtprots)/sizeof(rtprots[0]); i++)
@@ -149,10 +153,12 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 
 			case RTA_IIF: // incoming interface
 			case RTA_OIF: // outgoing interface
+			{
 				const uint32_t ifidx = *(uint32_t*)RTA_DATA(rta);
 				if_indextoname(ifidx, ifname);
 				cJSON_AddStringToObject(route, rtaTypeToString(rta->rta_type), ifname);
 				break;
+			}
 
 			case RTA_FLOW: // route realm
 			case RTA_METRICS: // route metric
@@ -165,23 +171,24 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 			case RTA_SPORT:
 			case RTA_DPORT:
 			case RTA_NH_ID:
+			{
 				if(!detailed)
 					break;
 				const uint32_t number = *(uint32_t*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), number);
 				break;
+			}
 
-			case RTA_PRIORITY: // royute priority
-				const uint32_t prio = *(uint32_t*)RTA_DATA(rta);
-				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), prio);
-				break;
-
+			case RTA_PRIORITY: // route priority
 			case RTA_PREF: // route preference
-				const uint32_t pref = *(uint32_t*)RTA_DATA(rta);
-				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), pref);
+			{
+				const uint32_t num = *(uint32_t*)RTA_DATA(rta);
+				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), num);
 				break;
+			}
 
 			case RTA_MULTIPATH: // multipath route
+			{
 				if(!detailed)
 					break;
 				struct rtnexthop *rtnh = (struct rtnexthop *) RTA_DATA (rta);
@@ -202,14 +209,18 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 				cJSON_AddStringToObject(multipath, "if", ifname); // Interface for this nexthop
 				cJSON_AddItemToObject(route, rtaTypeToString(rta->rta_type), multipath);
 				break;
+			}
 
 			case RTA_VIA: // next hop address
+			{
 				struct rtvia *via = (struct rtvia*)RTA_DATA(rta);
 				inet_ntop(via->rtvia_family, &via->rtvia_addr, ip, INET6_ADDRSTRLEN);
 				cJSON_AddStringToObject(route, rtaTypeToString(rta->rta_type), ip);
 				break;
+			}
 
 			case RTA_MFC_STATS: // multicast forwarding cache statistics
+			{
 				if(!detailed)
 					break;
 				struct rta_mfc_stats *mfc = (struct rta_mfc_stats*)RTA_DATA(rta);
@@ -217,8 +228,10 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 				cJSON_AddNumberToObject(route, "mfcs_bytes", mfc->mfcs_bytes);
 				cJSON_AddNumberToObject(route, "mfcs_wrong_if", mfc->mfcs_wrong_if);
 				break;
+			}
 
 			case RTA_CACHEINFO:
+			{
 				if(!detailed)
 					break;
 				struct rta_cacheinfo *ci = (struct rta_cacheinfo*)RTA_DATA(rta);
@@ -228,8 +241,10 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 				cJSON_AddNumberToObject(route, "error", ci->rta_error);
 				cJSON_AddNumberToObject(route, "used", ci->rta_used);
 				break;
+			}
 
 			default:
+			{
 				// Unknown rta_type
 				// Add the rta_type as a number to an array of
 				// unknown types if in detailed mode
@@ -244,6 +259,7 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 				}
 				cJSON_AddNumberToArray(unknown, rta->rta_type);
 				break;
+			}
 		}
 	}
 
@@ -297,10 +313,12 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 			case IFA_LOCAL:
 			case IFA_BROADCAST:
 			case IFA_ANYCAST:
+			{
 				char ip[INET6_ADDRSTRLEN] = { 0 };
 				inet_ntop(ifa->ifa_family, RTA_DATA(rta), ip, INET6_ADDRSTRLEN);
 				cJSON_AddStringToObject(addr, ifaTypeToString(rta->rta_type), ip);
 				break;
+			}
 
 			case IFA_LABEL:
 				strncpy(ifname, (char*)RTA_DATA(rta), IF_NAMESIZE);
@@ -308,36 +326,45 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 				break;
 
 			case IFA_CACHEINFO:
+			{
 				struct ifa_cacheinfo *ci = (struct ifa_cacheinfo*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(addr, "prefered", ci->ifa_prefered);
 				cJSON_AddNumberToObject(addr, "valid", ci->ifa_valid);
 				cJSON_AddNumberToObject(addr, "cstamp", 0.01*ci->cstamp); // created timestamp
 				cJSON_AddNumberToObject(addr, "tstamp", 0.01*ci->tstamp); // updated timestamp
 				break;
+			}
 
 			case IFA_FLAGS:
+			{
 				cJSON *iflags = cJSON_CreateArray();
 				for(unsigned int i = 0; i < sizeof(ifaf_flags)/sizeof(ifaf_flags[0]); i++)
 					if (ifaf_flags[i].flag & ifa->ifa_flags)
 						cJSON_AddStringReferenceToArray(iflags, ifaf_flags[i].name);
 				cJSON_AddItemToObject(addr, "flags", iflags);
 				break;
+			}
 
 			case IFA_RT_PRIORITY:
+			{
 				if(!detailed)
 					break;
 				const uint32_t prio = *(uint32_t*)RTA_DATA(rta);
 				cJSON_AddStringToObject(addr, rtaTypeToString(rta->rta_type), rt_priority(prio));
 				break;
+			}
 
 			case IFA_TARGET_NETNSID:
+			{
 				if(!detailed)
 					break;
 				const uint32_t number = *(uint32_t*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(addr, ifaTypeToString(rta->rta_type), number);
 				break;
+			}
 
 			default:
+			{
 				// Unknown rta_type
 				// Add the rta_type as a number to an array of
 				// unknown types if in detailed mode
@@ -352,6 +379,7 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 				}
 				cJSON_AddNumberToArray(unknown, rta->rta_type);
 				break;
+			}
 		}
 	}
 
@@ -429,12 +457,14 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 
 	// Parse the link attributes
 	struct rtattr *rta = NULL;
+	cJSON *jstats = NULL, *jstats64 = NULL;
 	for_each_rattr(rta, buf, len){
 		switch(rta->rta_type)
 		{
 			case IFLA_ADDRESS:
 			case IFLA_BROADCAST:
 			case IFLA_PERM_ADDRESS:
+			{
 				char mac[18];
 				const unsigned char *addr = RTA_DATA(rta);
 				snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
@@ -443,27 +473,29 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 				// Addresses may be empty, so only add them if they are not
 				cJSON_AddStringToObject(link, iflaTypeToString(rta->rta_type), mac);
 				break;
+			}
 
 			case IFLA_IFNAME:
-				// Only add it != ifname
-				if(strcmp(ifname, (char*)RTA_DATA(rta)) != 0)
-					cJSON_AddStringToObject(link, iflaTypeToString(rta->rta_type), (char*)RTA_DATA(rta));
-				break;
 			case IFLA_ALT_IFNAME:
 			case IFLA_PHYS_PORT_NAME:
 			case IFLA_QDISC:
 			case IFLA_PARENT_DEV_NAME:
 			case IFLA_PARENT_DEV_BUS_NAME:
+			{
 				if(!detailed)
 					break;
-				cJSON_AddStringToObject(link, iflaTypeToString(rta->rta_type), (char*)RTA_DATA(rta));
+				const char *string = (char*)RTA_DATA(rta);
+				cJSON_AddStringToObject(link, iflaTypeToString(rta->rta_type), string);
 				break;
+			}
 
 			case IFLA_CARRIER:
 			case IFLA_PROTO_DOWN:
+			{
 				const uint8_t carrier = *(uint8_t*)RTA_DATA(rta);
 				cJSON_AddBoolToObject(link, iflaTypeToString(rta->rta_type), carrier == 0 ? false : true);
 				break;
+			}
 
 			case IFLA_OPERSTATE:
 				for(unsigned int i = 0; i < sizeof(ifstates)/sizeof(ifstates[0]); i++)
@@ -500,71 +532,267 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			case IFLA_NEW_NETNSID:
 			case IFLA_MIN_MTU:
 			case IFLA_MAX_MTU:
+			{
 				if(!detailed)
 					break;
 				const uint32_t number = *(uint32_t*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(link, iflaTypeToString(rta->rta_type), number);
 				break;
+			}
 
 			case IFLA_STATS:
+			{
+				// See description of the individual statistics
+				// below in the IFLA_STATS64 case
+				jstats = JSON_NEW_OBJECT();
+				struct rtnl_link_stats *stats = (struct rtnl_link_stats*)RTA_DATA(rta);
+				{
+					// Warning: May be overflown if the interface has been up for a long time
+					// and has transferred a lot of data as 32 bits are used for the counters
+					// resulting in a maximum of 4 GiB. It is recommended to use the 64 bit
+					// counters if available.
+					char prefix[2] = { 0 };
+					double formatted_size;
+					format_memory_size(prefix, stats->rx_bytes, &formatted_size);
+					cJSON *rx_bytes = cJSON_CreateObject();
+					cJSON_AddNumberToObject(rx_bytes, "value", formatted_size);
+					cJSON_AddStringToObject(rx_bytes, "unit", prefix);
+					cJSON_AddItemToObject(jstats, "rx_bytes", rx_bytes);
+				}
+				{
+					// Warning: May be overflown if the interface has been up for a long time
+					// and has transferred a lot of data as 32 bits are used for the counters
+					// resulting in a maximum of 4 GiB. It is recommended to use the 64 bit
+					// counters if available.
+					char prefix[2] = { 0 };
+					double formatted_size;
+					format_memory_size(prefix, stats->tx_bytes, &formatted_size);
+					cJSON *tx_bytes = cJSON_CreateObject();
+					cJSON_AddNumberToObject(tx_bytes, "value", formatted_size);
+					cJSON_AddStringToObject(tx_bytes, "unit", prefix);
+					cJSON_AddItemToObject(jstats, "tx_bytes", tx_bytes);
+				}
+				cJSON_AddNumberToObject(jstats, "bits", 32);
 				if(!detailed)
 					break;
-				struct rtnl_link_stats *stats = (struct rtnl_link_stats*)RTA_DATA(rta);
-				cJSON_AddNumberToObject(link, "rx_packets", stats->rx_packets);
-				cJSON_AddNumberToObject(link, "tx_packets", stats->tx_packets);
-				cJSON_AddNumberToObject(link, "rx_bytes", stats->rx_bytes);
-				cJSON_AddNumberToObject(link, "tx_bytes", stats->tx_bytes);
-				cJSON_AddNumberToObject(link, "rx_errors", stats->rx_errors);
-				cJSON_AddNumberToObject(link, "tx_errors", stats->tx_errors);
-				cJSON_AddNumberToObject(link, "rx_dropped", stats->rx_dropped);
-				cJSON_AddNumberToObject(link, "tx_dropped", stats->tx_dropped);
-				cJSON_AddNumberToObject(link, "multicast", stats->multicast);
-				cJSON_AddNumberToObject(link, "collisions", stats->collisions);
-				cJSON_AddNumberToObject(link, "rx_length_errors", stats->rx_length_errors);
-				cJSON_AddNumberToObject(link, "rx_over_errors", stats->rx_over_errors);
-				cJSON_AddNumberToObject(link, "rx_crc_errors", stats->rx_crc_errors);
-				cJSON_AddNumberToObject(link, "rx_frame_errors", stats->rx_frame_errors);
-				cJSON_AddNumberToObject(link, "rx_fifo_errors", stats->rx_fifo_errors);
-				cJSON_AddNumberToObject(link, "rx_missed_errors", stats->rx_missed_errors);
-				cJSON_AddNumberToObject(link, "tx_aborted_errors", stats->tx_aborted_errors);
-				cJSON_AddNumberToObject(link, "tx_carrier_errors", stats->tx_carrier_errors);
-				cJSON_AddNumberToObject(link, "tx_fifo_errors", stats->tx_fifo_errors);
-				cJSON_AddNumberToObject(link, "tx_heartbeat_errors", stats->tx_heartbeat_errors);
-				cJSON_AddNumberToObject(link, "tx_window_errors", stats->tx_window_errors);
-				cJSON_AddNumberToObject(link, "rx_compressed", stats->rx_compressed);
-				cJSON_AddNumberToObject(link, "tx_compressed", stats->tx_compressed);
+				cJSON_AddNumberToObject(jstats, "rx_packets", stats->rx_packets);
+				cJSON_AddNumberToObject(jstats, "tx_packets", stats->tx_packets);
+				cJSON_AddNumberToObject(jstats, "rx_errors", stats->rx_errors);
+				cJSON_AddNumberToObject(jstats, "tx_errors", stats->tx_errors);
+				cJSON_AddNumberToObject(jstats, "rx_dropped", stats->rx_dropped);
+				cJSON_AddNumberToObject(jstats, "tx_dropped", stats->tx_dropped);
+				cJSON_AddNumberToObject(jstats, "multicast", stats->multicast);
+				cJSON_AddNumberToObject(jstats, "collisions", stats->collisions);
+				cJSON_AddNumberToObject(jstats, "rx_length_errors", stats->rx_length_errors);
+				cJSON_AddNumberToObject(jstats, "rx_over_errors", stats->rx_over_errors);
+				cJSON_AddNumberToObject(jstats, "rx_crc_errors", stats->rx_crc_errors);
+				cJSON_AddNumberToObject(jstats, "rx_frame_errors", stats->rx_frame_errors);
+				cJSON_AddNumberToObject(jstats, "rx_fifo_errors", stats->rx_fifo_errors);
+				cJSON_AddNumberToObject(jstats, "rx_missed_errors", stats->rx_missed_errors);
+				cJSON_AddNumberToObject(jstats, "tx_aborted_errors", stats->tx_aborted_errors);
+				cJSON_AddNumberToObject(jstats, "tx_carrier_errors", stats->tx_carrier_errors);
+				cJSON_AddNumberToObject(jstats, "tx_fifo_errors", stats->tx_fifo_errors);
+				cJSON_AddNumberToObject(jstats, "tx_heartbeat_errors", stats->tx_heartbeat_errors);
+				cJSON_AddNumberToObject(jstats, "tx_window_errors", stats->tx_window_errors);
+				cJSON_AddNumberToObject(jstats, "rx_compressed", stats->rx_compressed);
+				cJSON_AddNumberToObject(jstats, "tx_compressed", stats->tx_compressed);
+				cJSON_AddNumberToObject(jstats, "rx_nohandler", stats->rx_nohandler);
 				break;
+			}
 
 			case IFLA_STATS64:
+			{
+				jstats64 = JSON_NEW_OBJECT();
+				struct rtnl_link_stats64 *stats64 = (struct rtnl_link_stats64*)RTA_DATA(rta);
+				{
+					char prefix[2] = { 0 };
+					double formatted_size;
+					format_memory_size(prefix, stats64->rx_bytes, &formatted_size);
+					cJSON *rx_bytes = cJSON_CreateObject();
+					cJSON_AddNumberToObject(rx_bytes, "value", formatted_size);
+					cJSON_AddStringToObject(rx_bytes, "unit", prefix);
+					// @rx_bytes: Number of good received
+					// bytes, corresponding to @rx_packets.
+					cJSON_AddItemToObject(jstats64, "rx_bytes", rx_bytes);
+				}
+				{
+					char prefix[2] = { 0 };
+					double formatted_size;
+					format_memory_size(prefix, stats64->tx_bytes, &formatted_size);
+					cJSON *tx_bytes = cJSON_CreateObject();
+					cJSON_AddNumberToObject(tx_bytes, "value", formatted_size);
+					cJSON_AddStringToObject(tx_bytes, "unit", prefix);
+					// @tx_bytes: Number of transmitted bytes,
+					// corresponding to @tx_packets.
+					cJSON_AddItemToObject(jstats64, "tx_bytes", tx_bytes);
+				}
+				cJSON_AddNumberToObject(jstats64, "bits", 64);
 				if(!detailed)
 					break;
-				struct rtnl_link_stats64 *stats64 = (struct rtnl_link_stats64*)RTA_DATA(rta);
-				cJSON_AddNumberToObject(link, "rx_packets", stats64->rx_packets);
-				cJSON_AddNumberToObject(link, "tx_packets", stats64->tx_packets);
-				cJSON_AddNumberToObject(link, "rx_bytes", stats64->rx_bytes);
-				cJSON_AddNumberToObject(link, "tx_bytes", stats64->tx_bytes);
-				cJSON_AddNumberToObject(link, "rx_errors", stats64->rx_errors);
-				cJSON_AddNumberToObject(link, "tx_errors", stats64->tx_errors);
-				cJSON_AddNumberToObject(link, "rx_dropped", stats64->rx_dropped);
-				cJSON_AddNumberToObject(link, "tx_dropped", stats64->tx_dropped);
-				cJSON_AddNumberToObject(link, "multicast", stats64->multicast);
-				cJSON_AddNumberToObject(link, "collisions", stats64->collisions);
-				cJSON_AddNumberToObject(link, "rx_length_errors", stats64->rx_length_errors);
-				cJSON_AddNumberToObject(link, "rx_over_errors", stats64->rx_over_errors);
-				cJSON_AddNumberToObject(link, "rx_crc_errors", stats64->rx_crc_errors);
-				cJSON_AddNumberToObject(link, "rx_frame_errors", stats64->rx_frame_errors);
-				cJSON_AddNumberToObject(link, "rx_fifo_errors", stats64->rx_fifo_errors);
-				cJSON_AddNumberToObject(link, "rx_missed_errors", stats64->rx_missed_errors);
-				cJSON_AddNumberToObject(link, "tx_aborted_errors", stats64->tx_aborted_errors);
-				cJSON_AddNumberToObject(link, "tx_carrier_errors", stats64->tx_carrier_errors);
-				cJSON_AddNumberToObject(link, "tx_fifo_errors", stats64->tx_fifo_errors);
-				cJSON_AddNumberToObject(link, "tx_heartbeat_errors", stats64->tx_heartbeat_errors);
-				cJSON_AddNumberToObject(link, "tx_window_errors", stats64->tx_window_errors);
-				cJSON_AddNumberToObject(link, "rx_compressed", stats64->rx_compressed);
-				cJSON_AddNumberToObject(link, "tx_compressed", stats64->tx_compressed);
+				// @rx_packets: Number of good packets received
+				// by the interface. For hardware interfaces
+				// counts all good packets received from the
+				// device by the host, including packets which
+				// host had to drop at various stages of
+				// processing (even in the driver).
+				cJSON_AddNumberToObject(jstats64, "rx_packets", stats64->rx_packets);
+				// @tx_packets: Number of packets successfully
+				// transmitted. For hardware interfaces counts
+				// packets which host was able to successfully
+				// hand over to the device, which does not
+				// necessarily mean that packets had been
+				// successfully transmitted out of the device,
+				// only that device acknowledged it copied them
+				// out of host memory.
+				cJSON_AddNumberToObject(jstats64, "tx_packets", stats64->tx_packets);
+				// @rx_errors: Total number of bad packets
+				// received on this network device. This counter
+				// must include events counted by
+				// @rx_length_errors, @rx_crc_errors,
+				// @rx_frame_errors and other errors not
+				// otherwise counted.
+				cJSON_AddNumberToObject(jstats64, "rx_errors", stats64->rx_errors);
+				// @tx_errors: Total number of transmit
+				// problems. This counter must include events
+				// counter by @tx_aborted_errors,
+				// @tx_carrier_errors, @tx_fifo_errors,
+				// @tx_heartbeat_errors,
+				// @tx_window_errors and other errors not
+				// otherwise counted.
+				cJSON_AddNumberToObject(jstats64, "tx_errors", stats64->tx_errors);
+				// @rx_dropped: Number of packets received but
+				// not processed, e.g. due to lack of resources
+				// or unsupported protocol. For hardware
+				// interfaces this counter may include packets
+				// discarded due to L2 address filtering but
+				// should not include packets dropped by the
+				// device due to buffer exhaustion which are
+				// counted separately in
+				// @rx_missed_errors (since procfs folds those
+				// two counters together).
+				cJSON_AddNumberToObject(jstats64, "rx_dropped", stats64->rx_dropped);
+				// @tx_dropped: Number of packets dropped on
+				// their way to transmission, e.g. due to lack
+				// of resources.
+				cJSON_AddNumberToObject(jstats64, "tx_dropped", stats64->tx_dropped);
+				// @multicast: Multicast packets received. For
+				// hardware interfaces this statistic is
+				// commonly calculated at the device level
+				// (unlike @rx_packets) and therefore may
+				// include packets which did not reach the host.
+				cJSON_AddNumberToObject(jstats64, "multicast", stats64->multicast);
+				// @collisions: Number of collisions during
+				// packet transmissions.
+				cJSON_AddNumberToObject(jstats64, "collisions", stats64->collisions);
+				// @rx_length_errors: Number of packets dropped
+ 				// due to invalid length. Part of aggregate
+ 				// "frame" errors in `/proc/net/dev`.
+				cJSON_AddNumberToObject(jstats64, "rx_length_errors", stats64->rx_length_errors);
+				// @rx_over_errors: Receiver FIFO overflow event
+				// counter. Historically the count of overflow
+				// events. Such events may be reported in the
+				// receive descriptors or via interrupts, and
+				// may not correspond one-to-one with dropped
+				// packets.
+				//
+				// The recommended interpretation for high speed
+				// interfaces is - number of packets dropped
+				// because they did not fit into buffers
+				// provided by the host, e.g. packets larger
+				// than MTU or next buffer in the ring was not
+				// available for a scatter transfer.
+				//
+				// Part of aggregate "frame" errors in `/proc/net/dev`.
+				//
+				// This statistics was historically used
+				// interchangeably with @rx_fifo_errors.
+				//
+				// This statistic corresponds to hardware events
+				// and is not commonly used on software devices.
+				cJSON_AddNumberToObject(jstats64, "rx_over_errors", stats64->rx_over_errors);
+				// @rx_crc_errors: Number of packets received
+				// with a CRC error. Part of aggregate "frame"
+				// errors in `/proc/net/dev`.
+				cJSON_AddNumberToObject(jstats64, "rx_crc_errors", stats64->rx_crc_errors);
+				// @rx_frame_errors: Receiver frame alignment
+				// errors. Part of aggregate "frame" errors in
+				// `/proc/net/dev`.
+				cJSON_AddNumberToObject(jstats64, "rx_frame_errors", stats64->rx_frame_errors);
+				// @rx_fifo_errors: Receiver FIFO error counter.
+				//
+				// Historically the count of overflow events.
+				// Those events may be reported in the receive
+				// descriptors or via interrupts, and may not
+				// correspond one-to-one with dropped packets.
+				//
+				// This statistics was used interchangeably with
+				// @rx_over_errors. Not recommended for use in
+				// drivers for high speed interfaces.
+				//
+				// This statistic is used on software devices,
+				// e.g. to count software packet queue overflow
+				// (can) or sequencing errors (GRE).
+				cJSON_AddNumberToObject(jstats64, "rx_fifo_errors", stats64->rx_fifo_errors);
+				// @rx_missed_errors: Count of packets missed by
+				// the host. Folded into the "drop" counter in
+				// `/proc/net/dev`.
+				//
+				// Counts number of packets dropped by the device due to lack
+				// of buffer space. This usually indicates that the host interface
+				// is slower than the network interface, or host is not keeping up
+				// with the receive packet rate.
+				//
+				// This statistic corresponds to hardware events and is not used
+				// on software devices.
+				cJSON_AddNumberToObject(jstats64, "rx_missed_errors", stats64->rx_missed_errors);
+				// @tx_aborted_errors: Part of aggregate
+				// "carrier" errors in `/proc/net/dev`.
+				cJSON_AddNumberToObject(jstats64, "tx_aborted_errors", stats64->tx_aborted_errors);
+				// @tx_carrier_errors: Number of frame
+				// transmission errors due to loss of carrier
+				// during transmission. Part of aggregate
+				// "carrier" errors in `/proc/net/dev`.
+				cJSON_AddNumberToObject(jstats64, "tx_carrier_errors", stats64->tx_carrier_errors);
+				// @tx_fifo_errors: Number of frame transmission
+				// errors due to device FIFO underrun /
+				// underflow. This condition occurs when the
+				// device begins transmission of a frame but is
+				// unable to deliver the entire frame to the
+				// transmitter in time for transmission. Part of
+				// aggregate "carrier" errors in
+				// `/proc/net/dev`.
+				cJSON_AddNumberToObject(jstats64, "tx_fifo_errors", stats64->tx_fifo_errors);
+				// @tx_heartbeat_errors: Number of Heartbeat /
+				// SQE Test errors for old half-duplex Ethernet.
+				// Part of aggregate "carrier" errors in
+				// `/proc/net/dev`.
+				cJSON_AddNumberToObject(jstats64, "tx_heartbeat_errors", stats64->tx_heartbeat_errors);
+				// @tx_window_errors: Number of frame
+				// transmission errors due to late collisions
+				// (for Ethernet - after the first 64B of
+				// transmission). Part of aggregate "carrier"
+				// errors in `/proc/net/dev`.
+				cJSON_AddNumberToObject(jstats64, "tx_window_errors", stats64->tx_window_errors);
+				// @rx_compressed: Number of received compressed
+				// packets. This counters is only meaningful for
+				// interfaces which support packet compression
+				// (e.g. CSLIP, PPP).
+				cJSON_AddNumberToObject(jstats64, "rx_compressed", stats64->rx_compressed);
+				// @tx_compressed: Number of transmitted
+				// compressed packets. This counters is only
+				// meaningful for interfaces which support
+				// packet compression (e.g. CSLIP, PPP).
+				cJSON_AddNumberToObject(jstats64, "tx_compressed", stats64->tx_compressed);
+				// @rx_nohandler: Number of packets received on
+				// the interface but dropped by the networking
+				// stack because the device is not designated to
+				// receive packets (e.g. backup link in a bond).
+				cJSON_AddNumberToObject(jstats64, "rx_nohandler", stats64->rx_nohandler);
 				break;
+			}
 
 			case IFLA_LINKINFO:
+			{
 				if(!detailed)
 					break;
 				struct rtattr *nlinkinfo = NULL;
@@ -577,6 +805,7 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 							cJSON_AddStringToObject(link, "link_kind", (char*)RTA_DATA(nlinkinfo));
 							break;
 						default:
+						{
 							// Unknown rta_type
 							cJSON *unknown = cJSON_GetObjectItem(link, "linkinfo_unknown");
 							if(unknown == NULL)
@@ -586,11 +815,14 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 							}
 							cJSON_AddNumberToArray(unknown, nlinkinfo->rta_type);
 							break;
+						}
 					}
 				}
 				break;
+			}
 
 			case IFLA_VFINFO_LIST:
+			{
 				if(!detailed)
 					break;
 				struct rtattr *vfinfo = RTA_DATA(rta);
@@ -610,6 +842,7 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 
 				if (vf[IFLA_VF_BROADCAST])
 				{
+					char mac[18];
 					snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
 					         vf_broadcast->broadcast[0], vf_broadcast->broadcast[1],
 					         vf_broadcast->broadcast[2], vf_broadcast->broadcast[3],
@@ -618,6 +851,7 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 				}
 				if(vf[IFLA_VF_MAC])
 				{
+					char mac[18];
 					snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
 					         vf_mac->mac[0], vf_mac->mac[1], vf_mac->mac[2],
 					         vf_mac->mac[3], vf_mac->mac[4], vf_mac->mac[5]);
@@ -634,8 +868,10 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 				}
 
 				break;
+			}
 
 			case IFLA_EVENT:
+			{
 				if(!detailed)
 					break;
 				const uint32_t event = *(uint32_t*)RTA_DATA(rta);
@@ -648,8 +884,10 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 				if(cJSON_GetObjectItem(link, "event") == NULL)
 					cJSON_AddNumberToObject(link, "event", event);
 				break;
+			}
 
 			case IFLA_AF_SPEC:
+			{
 				if(!detailed)
 					break;
 				struct rtattr *af_spec = RTA_DATA(rta);
@@ -683,8 +921,10 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 					}
 				cJSON_AddItemToObject(link, "af_specs", af_specs);
 				break;
+			}
 
 			default:
+			{
 				// Unknown rta_type
 				// Add the rta_type as a number to an array of
 				// unknown types if in detailed mode
@@ -699,8 +939,23 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 				}
 				cJSON_AddNumberToArray(unknown, rta->rta_type);
 				break;
+			}
 		}
 	}
+
+	// Add 64 bit statistics if available and delete the 32 bit statistics
+	if(jstats64)
+	{
+		cJSON_AddItemToObject(link, "stats", jstats64);
+		if(jstats)
+		{
+			cJSON_Delete(jstats);
+			jstats = NULL;
+		}
+	}
+	// otherwise add the 32 bit statistics (64 has never been allocated)
+	else if(jstats)
+		cJSON_AddItemToObject(link, "stats", jstats);
 
 	// Add the link to the object
 	cJSON_AddItemToObject(links, ifname, link);

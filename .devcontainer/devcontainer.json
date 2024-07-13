@@ -8,7 +8,9 @@
         "jetmartin.bats",
         "ms-vscode.cpptools",
         "ms-vscode.cmake-tools",
-        "eamodio.gitlens"
+        "eamodio.gitlens",
+        "github.copilot",
+        "ms-python.python"
       ]
     }
   },

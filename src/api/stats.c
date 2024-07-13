@@ -196,23 +196,6 @@ int api_stats_top_domains(struct ftl_conn *api)
 	// Sort temporary array
 	qsort(temparray, added_domains, sizeof(int[2]), cmpdesc);
 
-	// Get filter
-	const char* log_show = read_setupVarsconf("API_QUERY_LOG_SHOW");
-	bool showpermitted = true, showblocked = true;
-	if(log_show != NULL)
-	{
-		if((strcmp(log_show, "permittedonly")) == 0)
-			showblocked = false;
-		else if((strcmp(log_show, "blockedonly")) == 0)
-			showpermitted = false;
-		else if((strcmp(log_show, "nothing")) == 0)
-		{
-			showpermitted = false;
-			showblocked = false;
-		}
-	}
-	clearSetupVarsArray();
-
 	// Get domains which the user doesn't want to see
 	regex_t *regex_domains = NULL;
 	unsigned int N_regex_domains = 0;
@@ -259,12 +242,12 @@ int api_stats_top_domains(struct ftl_conn *api)
 			continue;
 
 		int domain_count = -1;
-		if(blocked && showblocked && domain->blockedcount > 0)
+		if(blocked && domain->blockedcount > 0)
 		{
 			domain_count = domain->blockedcount;
 			n++;
 		}
-		else if(!blocked && showpermitted && (domain->count - domain->blockedcount) > 0)
+		else if(!blocked && (domain->count - domain->blockedcount) > 0)
 		{
 			domain_count = domain->count - domain->blockedcount;
 			n++;

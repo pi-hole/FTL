@@ -190,8 +190,8 @@ components:
                 enum: [ "inet", "inet6", "link", "mpls", "bridge", "???" ]
                 description: Address family
               table:
-                type: main
-                description: Routing table ID (0 = unspecified, 253 = default, 254 = local, 255 = local)
+                type: integer
+                description: Routing table ID (0 = unspecified, 253 = default, 254 = local, 255 = local, other = user-defined)
               protocol:
                 type: string
                 description: Routing protocol
@@ -222,8 +222,11 @@ components:
                 type: string
                 description: Preferred source address
               priority:
-                type: string
+                type: integer
                 description: Route priority
+              pref:
+                type: integer
+                description: Route preference
 
           example:
             - family: "inet"
@@ -258,7 +261,7 @@ components:
               type: "local"
               flags: []
               dst: "::1"
-              priority: "medium"
+              priority: 0
               oif: "eth0"
             - family: "inet6"
               table: 254
@@ -275,7 +278,7 @@ components:
               type: "multicast"
               flags: []
               dst: "fd00:4711::"
-              priority: "unknown"
+              priority: 5
               oif: "wg0"
 
     interfaces:
@@ -294,6 +297,9 @@ components:
                 type: integer
                 nullable: true
                 description: Speed of the interface in Mbit/s (`null` if not applicable)
+              carrier:
+                type: boolean
+                description: Whether the interface is connected
               type:
                 type: string
                 description: Type of the interface
@@ -311,12 +317,35 @@ components:
               address:
                 type: string
                 description: Interface hardware address
-              broadcase:
+              broadcast:
                 type: string
                 description: Interface broadcast address
               perm_address:
                 type: string
                 description: Interface permanent hardware address
+              stats:
+                type: object
+                properties:
+                  rx_bytes:
+                    type: object
+                    description: Interface received bytes
+                    properties:
+                      value:
+                        type: number
+                        description: Number of received bytes
+                      unit:
+                        type: string
+                        description: Unit of the received bytes
+                  tx_bytes:
+                    type: object
+                    description: Interface transmitted bytes
+                    properties:
+                      value:
+                        type: number
+                        description: Number of transmitted bytes
+                      unit:
+                        type: string
+                        description: Unit of the transmitted bytes
               addresses:
                 type: array
                 nullable: true
@@ -327,9 +356,15 @@ components:
                     address:
                       type: string
                       description: Interface address
+                    broadcast:
+                      type: string
+                      description: Interface broadcast address
                     local:
                       type: string
                       description: Local address
+                    label:
+                      type: string
+                      description: Interface label
                     family:
                       type: string
                       enum: [ "inet", "inet6", "link", "mpls", "bridge", "???" ]
@@ -366,6 +401,13 @@ components:
               carrier: true
               address: "00:00:00:00:00:00"
               broadcast: "00:00:00:00:00:00"
+              stats:
+                rx_bytes:
+                  value: 81.6571641
+                  unit: "MB"
+                tx_bytes:
+                  value: 648.818
+                  unit: "MB"
               addresses:
                 - address: "127.0.0.1"
                   local: "127.0.0.1"
@@ -398,6 +440,13 @@ components:
               address: "00:11:22:33:44:55"
               broadcast: "ff:ff:ff:ff:ff:ff"
               perm_address: "00:11:22:33:44:55"
+              stats:
+                rx_bytes:
+                  value: 15.5585
+                  unit: "GB"
+                tx_bytes:
+                  value: 1.55858
+                  unit: "GB"
               addresses:
                 - address: "192.168.0.123"
                   local: "192.168.0.123"
@@ -446,6 +495,13 @@ components:
               flags: [ "up", "pointopoint", "running", "noarp", "lower_up" ]
               state: "unknown"
               carrier: true
+              stats:
+                rx_bytes:
+                  value: 458.44598
+                  unit: "MB"
+                tx_bytes:
+                  value: 5.5895
+                  unit: "MB"
               addresses:
                 - address: "10.1.0.1"
                   local: "10.1.0.1"
