@@ -13,9 +13,6 @@ set(sources
         asprintf.c
         calloc.c
         ftlallocate.c
-        netlink_consts.h
-        netlink.c
-        netlink.h
         fopen.c
         fprintf.c
         free.c

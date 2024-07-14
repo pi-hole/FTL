@@ -685,8 +685,8 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 				// packet transmissions.
 				cJSON_AddNumberToObject(jstats64, "collisions", stats64->collisions);
 				// @rx_length_errors: Number of packets dropped
- 				// due to invalid length. Part of aggregate
- 				// "frame" errors in `/proc/net/dev`.
+				// due to invalid length. Part of aggregate
+				// "frame" errors in `/proc/net/dev`.
 				cJSON_AddNumberToObject(jstats64, "rx_length_errors", stats64->rx_length_errors);
 				// @rx_over_errors: Receiver FIFO overflow event
 				// counter. Historically the count of overflow

@@ -30,7 +30,7 @@
 // IFA_LINK and friends
 #include <linux/if_addr.h>
 // nlroutes(), nladdrs(), nllinks()
-#include "syscalls/netlink.h"
+#include "tools/netlink.h"
 
 int api_network_gateway(struct ftl_conn *api)
 {
