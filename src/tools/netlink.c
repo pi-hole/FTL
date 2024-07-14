@@ -235,8 +235,14 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 				if(!detailed)
 					break;
 				struct rta_cacheinfo *ci = (struct rta_cacheinfo*)RTA_DATA(rta);
-				cJSON_AddNumberToObject(route, "cstamp", ci->rta_clntref);
-				cJSON_AddNumberToObject(route, "tstamp", ci->rta_lastuse);
+				// Get seconds the system is already up ("uptime")
+				struct timespec wall_clock;
+				clock_gettime(CLOCK_REALTIME, &wall_clock);
+				struct timespec boot_clock;
+				clock_gettime(CLOCK_BOOTTIME, &boot_clock);
+				const time_t delta_time = wall_clock.tv_sec - boot_clock.tv_sec;
+				cJSON_AddNumberToObject(route, "cstamp", delta_time + ci->rta_clntref);
+				cJSON_AddNumberToObject(route, "tstamp", delta_time + ci->rta_lastuse);
 				cJSON_AddNumberToObject(route, "expires", ci->rta_expires);
 				cJSON_AddNumberToObject(route, "error", ci->rta_error);
 				cJSON_AddNumberToObject(route, "used", ci->rta_used);
@@ -330,8 +336,14 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 				struct ifa_cacheinfo *ci = (struct ifa_cacheinfo*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(addr, "prefered", ci->ifa_prefered);
 				cJSON_AddNumberToObject(addr, "valid", ci->ifa_valid);
-				cJSON_AddNumberToObject(addr, "cstamp", 0.01*ci->cstamp); // created timestamp
-				cJSON_AddNumberToObject(addr, "tstamp", 0.01*ci->tstamp); // updated timestamp
+				// Get seconds the system is already up ("uptime")
+				struct timespec wall_clock;
+				clock_gettime(CLOCK_REALTIME, &wall_clock);
+				struct timespec boot_clock;
+				clock_gettime(CLOCK_BOOTTIME, &boot_clock);
+				const time_t delta_time = wall_clock.tv_sec - boot_clock.tv_sec;
+				cJSON_AddNumberToObject(addr, "cstamp", delta_time + 0.01*ci->cstamp); // created timestamp
+				cJSON_AddNumberToObject(addr, "tstamp", delta_time + 0.01*ci->tstamp); // updated timestamp
 				break;
 			}
 

@@ -34,10 +34,19 @@
 
 int api_network_gateway(struct ftl_conn *api)
 {
+	// Get ?detailed parameter
+	bool detailed = false;
+	get_bool_var(api->request->query_string, "detailed", &detailed);
 
-	// Add routing information
+	// Get routing information
 	cJSON *routes = JSON_NEW_ARRAY();
-	nlroutes(routes, false);
+	nlroutes(routes, detailed);
+
+	// Get interface information ...
+	cJSON *interfaces = JSON_NEW_ARRAY();
+	nllinks(interfaces, detailed);
+	// ... and enrich them with addresses
+	nladdrs(interfaces, detailed);
 
 	cJSON *gateway = JSON_NEW_ARRAY();
 	// Search through routes for the default gateway
@@ -64,16 +73,54 @@ int api_network_gateway(struct ftl_conn *api)
 			const char *gw_addr = cJSON_GetStringValue(cJSON_GetObjectItem(route, "gateway"));
 			JSON_COPY_STR_TO_OBJECT(gwobj, "address", gw_addr);
 
+			// Extract and add local interface address
+			cJSON *local = JSON_NEW_ARRAY();
+			cJSON *iface = NULL;
+			cJSON_ArrayForEach(iface, interfaces)
+			{
+				const char *ifname = cJSON_GetStringValue(cJSON_GetObjectItem(iface, "name"));
+				if(ifname != NULL && strcmp(ifname, iface_name) == 0)
+				{
+					cJSON *addr = NULL;
+					cJSON *addrs = cJSON_GetObjectItem(iface, "addresses");
+					cJSON_ArrayForEach(addr, addrs)
+					{
+						// Skip addresses belonging to another address family
+						const char *ifamily = cJSON_GetStringValue(cJSON_GetObjectItem(addr, "family"));
+						if(ifamily == NULL || strcmp(ifamily, family) != 0)
+							continue;
+
+						const char *addr_str = cJSON_GetStringValue(cJSON_GetObjectItem(addr, "address"));
+						if(addr_str != NULL)
+							JSON_COPY_STR_TO_ARRAY(local, addr_str);
+					}
+					break;
+				}
+			}
+
+			// Add local addresses array to gateway object
+			JSON_ADD_ITEM_TO_OBJECT(gwobj, "local", local);
+
 			cJSON_AddItemToArray(gateway, gwobj);
 		}
 	}
 
-	// Free routes array
-	cJSON_Delete(routes);
-
 	// Send gateway information
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "gateway", gateway);
+
+	if(detailed)
+	{
+		JSON_ADD_ITEM_TO_OBJECT(json, "routes", routes);
+		JSON_ADD_ITEM_TO_OBJECT(json, "interfaces", interfaces);
+	}
+	else
+	{
+		// Free arrays
+		cJSON_Delete(routes);
+		cJSON_Delete(interfaces);
+	}
+
 	JSON_SEND_OBJECT(json);
 }
 
