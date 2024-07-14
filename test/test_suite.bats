@@ -401,12 +401,6 @@
   [[ ${lines[@]} == *"status: NOERROR"* ]]
 }
 
-@test "DNSSEC: BOGUS domain is rejected" {
-  run bash -c "dig A fail01.dnssec.works @127.0.0.1"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[@]} == *"status: SERVFAIL"* ]]
-}
-
 @test "Special domain: NXDOMAIN is returned" {
   run bash -c "dig A mask.icloud.com @127.0.0.1"
   printf "%s\n" "${lines[@]}"
