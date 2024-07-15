@@ -1001,7 +1001,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 			// MUSL defines it differently than GNU C
 			uint8_t bytes[2];
 			memcpy(&bytes, &iface->addr.in6.sin6_addr, 2);
-		        // Global Unicast Address (2000::/3, RFC 4291)
+			// Global Unicast Address (2000::/3, RFC 4291)
 			isGUA = (bytes[0] & 0x70) == 0x20;
 			// Unique Local Address   (fc00::/7, RFC 4193)
 			isULA = (bytes[0] & 0xfe) == 0xfc;

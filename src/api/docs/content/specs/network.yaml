@@ -369,12 +369,21 @@ components:
                     address:
                       type: string
                       description: Interface address
+                    address_type:
+                      type: string
+                      description: Type of the interface address
                     broadcast:
                       type: string
                       description: Interface broadcast address
+                    broadcast_type:
+                      type: string
+                      description: Type of the broadcast address
                     local:
                       type: string
                       description: Local address
+                    local_type:
+                      type: string
+                      description: Type of the local address
                     label:
                       type: string
                       description: Interface label
@@ -423,7 +432,9 @@ components:
                   unit: "MB"
               addresses:
                 - address: "127.0.0.1"
+                  address_type: "loopback"
                   local: "127.0.0.1"
+                  local_type: "loopback"
                   family: "inet"
                   scope: "host"
                   flags: [ "permanent" ]
@@ -434,7 +445,9 @@ components:
                   cstamp: 1720989931
                   tstamp: 1720989931
                 - address: "::1"
+                  address_type: "loopback"
                   local: "::1"
+                  local_type: "loopback"
                   family: "inet6"
                   scope: "host"
                   flags: [ "permanent" ]
@@ -462,7 +475,9 @@ components:
                   unit: "GB"
               addresses:
                 - address: "192.168.0.123"
+                  address_type: "private"
                   local: "192.168.0.123"
+                  local_type: "private"
                   family: "inet"
                   scope: "universe"
                   flags: [ "permanent" ]
@@ -470,9 +485,10 @@ components:
                   label: "eth0"
                   prefered: 4294967295
                   valid: 4294967295
-                  cstamp: 11.23
-                  tstamp: 11.23
+                  cstamp: 1720989931.1
+                  tstamp: 1720989931.1
                 - address: "2001:db8::1234:5678:9abc:def0"
+                  address_type: "global (GUA)"
                   family: "inet6"
                   scope: "universe"
                   flags: []
@@ -483,6 +499,7 @@ components:
                   cstamp: 2789057.25
                   tstamp: 2789057.25
                 - address: "fd29:db8::1234:5678:9abc:def0"
+                  address_type: "site-local (ULA)"
                   family: "inet6"
                   scope: "universe"
                   flags: []
@@ -490,9 +507,10 @@ components:
                   label: "eth0"
                   prefered: 3461
                   valid: 7061
-                  cstamp: 12.5
-                  tstamp: 2827298.75
+                  cstamp: 1720989931.1
+                  tstamp: 1720989931.1
                 - address: "fe80::1234:5678:9abc:def0"
+                  address_type: "link-local (LL)"
                   family: "inet6"
                   scope: "link"
                   flags: [ "permanent" ]
@@ -500,8 +518,8 @@ components:
                   label: "eth0"
                   prefered: 4294967295
                   valid: 4294967295
-                  cstamp: 11.23
-                  tstamp: 11.23
+                  cstamp: 1720989931.1
+                  tstamp: 1720989931.1
             - name: "wg0"
               speed: null
               type: "none"
@@ -517,16 +535,20 @@ components:
                   unit: "MB"
               addresses:
                 - address: "10.1.0.1"
+                  address_type: "private"
                   local: "10.1.0.1"
+                  local_type: "private"
+                  family: "inet"
                   scope: "universe"
                   flags: [ "permanent" ]
                   prefixlen: 24
                   label: "wg0"
                   prefered: 4294967295
                   valid: 4294967295
-                  cstamp: 11.23
-                  tstamp: 11.23
+                  cstamp: 1720989931.1
+                  tstamp: 1720989931.1
                 - address: "fd00:4711::1"
+                  address_type: "site-local (ULA)"
                   family: "inet6"
                   scope: "global"
                   flags: [ "permanent" ]
@@ -534,8 +556,8 @@ components:
                   label: "wg0"
                   prefered: 4294967295
                   valid: 4294967295
-                  cstamp: 11.23
-                  tstamp: 11.23
+                  cstamp: 1720989931.1
+                  tstamp: 1720989931.1
     devices:
       type: object
       properties:

@@ -17,6 +17,9 @@
 #include <string.h>
 #include <errno.h>
 
+// defined in src/dnsmasq/rfc1035.c
+extern int private_net(struct in_addr addr, int ban_localhost);
+
 static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 {
 	char buf[BUFLEN] = { 0 };
@@ -162,7 +165,6 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 
 			case RTA_FLOW: // route realm
 			case RTA_METRICS: // route metric
-			case RTA_TABLE: // routing table id
 			case RTA_MARK: // route mark
 			case RTA_EXPIRES: // route expires (in seconds)
 			case RTA_UID: // user id
@@ -178,6 +180,10 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), number);
 				break;
 			}
+
+			case RTA_TABLE: // routing table id
+				// Already added above
+				break;
 
 			case RTA_PRIORITY: // route priority
 			case RTA_PREF: // route preference
@@ -323,6 +329,79 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 				char ip[INET6_ADDRSTRLEN] = { 0 };
 				inet_ntop(ifa->ifa_family, RTA_DATA(rta), ip, INET6_ADDRSTRLEN);
 				cJSON_AddStringToObject(addr, ifaTypeToString(rta->rta_type), ip);
+
+				// Determine and add address type (GUA, ULA, LL, ...)
+				const char *type_str = "unknown";
+				if(rta->rta_type == IFA_ADDRESS)
+					type_str = "address_type";
+				else if(rta->rta_type == IFA_LOCAL)
+					type_str = "local_type";
+				else if(rta->rta_type == IFA_BROADCAST)
+					type_str = "broadcast_type";
+				else if(rta->rta_type == IFA_ANYCAST)
+					type_str = "anycast_type";
+
+				if(ifa->ifa_family == AF_INET6)
+				{
+					const struct in6_addr *in6 = (struct in6_addr*)RTA_DATA(rta);
+					if(IN6_IS_ADDR_UNSPECIFIED(in6))
+						cJSON_AddStringToObject(addr, type_str, "unspecified");
+					else if(IN6_IS_ADDR_LOOPBACK(in6))
+						cJSON_AddStringToObject(addr, type_str, "loopback");
+					else if(IN6_IS_ADDR_MULTICAST(in6))
+						cJSON_AddStringToObject(addr, type_str, "multicast");
+					else if(IN6_IS_ADDR_LINKLOCAL(in6))
+						cJSON_AddStringToObject(addr, type_str, "link-local (LL)");
+					else if(IN6_IS_ADDR_SITELOCAL(in6))
+						cJSON_AddStringToObject(addr, type_str, "site-local (ULA)");
+					else if(IN6_IS_ADDR_V4MAPPED(in6))
+						cJSON_AddStringToObject(addr, type_str, "IPv4-mapped");
+					else if(IN6_IS_ADDR_V4COMPAT(in6))
+						cJSON_AddStringToObject(addr, type_str, "IPv4-compatible");
+					else if(IN6_IS_ADDR_MC_NODELOCAL(in6))
+						cJSON_AddStringToObject(addr, type_str, "node-local");
+					else if(IN6_IS_ADDR_MC_LINKLOCAL(in6))
+						cJSON_AddStringToObject(addr, type_str, "link-local (LL)");
+					else if(IN6_IS_ADDR_MC_SITELOCAL(in6))
+						cJSON_AddStringToObject(addr, type_str, "site-local (ULA)");
+					else if(IN6_IS_ADDR_MC_ORGLOCAL(in6))
+						cJSON_AddStringToObject(addr, type_str, "organization-local");
+					else if(IN6_IS_ADDR_MC_GLOBAL(in6))
+						cJSON_AddStringToObject(addr, type_str, "global (GUA)");
+					else
+					{
+						uint8_t bytes[2];
+						memcpy(&bytes, in6, 2);
+						// Global Unicast Address (2000::/3, RFC 4291)
+						if((bytes[0] & 0x70) == 0x20)
+							cJSON_AddStringToObject(addr, type_str, "global (GUA)");
+						// Unique Local Address   (fc00::/7, RFC 4193)
+						else if((bytes[0] & 0xfe) == 0xfc)
+							cJSON_AddStringToObject(addr, type_str, "site-local (ULA)");
+						// Link Local Address   (fe80::/10, RFC 4291)
+						else if((bytes[0] & 0xff) == 0xfe && (bytes[1] & 0x30) == 0)
+							cJSON_AddStringToObject(addr, type_str, "link-local (LL)");
+						else
+							cJSON_AddStringToObject(addr, type_str, "unknown");
+					}
+				}
+				else if(ifa->ifa_family == AF_INET)
+				{
+					const struct in_addr *in = (struct in_addr*)RTA_DATA(rta);
+					if(in->s_addr == INADDR_ANY)
+						cJSON_AddStringToObject(addr, type_str, "unspecified");
+					else if(in->s_addr == INADDR_LOOPBACK ||
+					        (in->s_addr & htonl(0xff000000)) == htonl(0x7f000000))
+						cJSON_AddStringToObject(addr, type_str, "loopback");
+					else if((in->s_addr & htonl(0xf0000000)) == htonl(0xe0000000))
+						cJSON_AddStringToObject(addr, type_str, "multicast");
+					else if(private_net(*in, false))
+						cJSON_AddStringToObject(addr, type_str, "private");
+					else
+						cJSON_AddStringToObject(addr, type_str, "public");
+				}
+				else
+					cJSON_AddStringToObject(addr, type_str, "unknown");
 				break;
 			}
 
@@ -348,14 +427,8 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 			}
 
 			case IFA_FLAGS:
-			{
-				cJSON *iflags = cJSON_CreateArray();
-				for(unsigned int i = 0; i < sizeof(ifaf_flags)/sizeof(ifaf_flags[0]); i++)
-					if (ifaf_flags[i].flag & ifa->ifa_flags)
-						cJSON_AddStringReferenceToArray(iflags, ifaf_flags[i].name);
-				cJSON_AddItemToObject(addr, "flags", iflags);
+				// Already added above, ignore this duplicate
 				break;
-			}
 
 			case IFA_RT_PRIORITY:
 			{
@@ -544,6 +617,7 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			case IFLA_NEW_NETNSID:
 			case IFLA_MIN_MTU:
 			case IFLA_MAX_MTU:
+			case IFLA_LINK_NETNSID:
 			{
 				if(!detailed)
 					break;
@@ -816,6 +890,15 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 						case IFLA_INFO_KIND:
 							cJSON_AddStringToObject(link, "link_kind", (char*)RTA_DATA(nlinkinfo));
 							break;
+						case IFLA_INFO_SLAVE_KIND:
+							cJSON_AddStringToObject(link, "slave_kind", (char*)RTA_DATA(nlinkinfo));
+							break;
+						case IFLA_INFO_DATA:
+						case IFLA_INFO_SLAVE_DATA:
+							// Needs a very complex
+							// disassembler, out of
+							// scope here
+							break;
 						default:
 						{
 							// Unknown rta_type
@@ -934,6 +1017,12 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 				cJSON_AddItemToObject(link, "af_specs", af_specs);
 				break;
 			}
+
+			case IFLA_XDP:
+				// Parsing XDP needs a full BPF program
+				// disassembler which is clearly out of scope
+				// here
+				break;
 
 			default:
 			{
