@@ -94,10 +94,10 @@ static void format_NTP_time(char time_str[TIMESTR_SIZE], const uint64_t ntp_time
 	client_time.tv_sec = NTPtoSEC(ntp_time);
 	client_time.tv_usec = NTPtoUSEC(ntp_time);
 	struct tm *client_tm = localtime(&client_time.tv_sec);
-	snprintf(time_str, TIMESTR_SIZE, "%04i-%02i-%02i %02i:%02i:%02i.%06"PRIi64" %s",
+	snprintf(time_str, TIMESTR_SIZE, "%04i-%02i-%02i %02i:%02i:%02i.%06li %s",
 	         client_tm->tm_year + 1900, client_tm->tm_mon + 1, client_tm->tm_mday,
-	         client_tm->tm_hour, client_tm->tm_min, client_tm->tm_sec, client_time.tv_usec,
-	         client_tm->tm_zone);
+	         client_tm->tm_hour, client_tm->tm_min, client_tm->tm_sec,
+	         (long int)client_time.tv_usec, client_tm->tm_zone);
 	time_str[TIMESTR_SIZE - 1] = '\0';
 }
 
