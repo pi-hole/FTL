@@ -161,7 +161,8 @@ int api_stats_summary(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_top_domains(struct ftl_conn *api)
+cJSON *get_top_domains(struct ftl_conn *api, const int count,
+                       const bool blocked, const bool domains_only)
 {
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
@@ -171,23 +172,14 @@ int api_stats_top_domains(struct ftl_conn *api)
 
 		// Minimum structure is
 		// {"top_domains":[]}
-		cJSON *json = JSON_NEW_OBJECT();
-		cJSON *top_domains = JSON_NEW_ARRAY();
-		JSON_ADD_ITEM_TO_OBJECT(json, "top_domains", top_domains);
-		JSON_SEND_OBJECT(json);
-	}
+		if(domains_only)
+			return cJSON_CreateArray();
 
-	bool blocked = false; // Can be overwritten by query string
-	int count = 10;
-	// /api/stats/top_domains?blocked=true
-	if(api->request->query_string != NULL)
-	{
-		// Should blocked domains be shown?
-		get_bool_var(api->request->query_string, "blocked", &blocked);
-
-		// Does the user request a non-default number of replies?
-		// Note: We do not accept zero query requests here
-		get_int_var(api->request->query_string, "count", &count);
+		cJSON *json = cJSON_CreateObject();
+		cJSON_AddItemToObject(json, "domains", cJSON_CreateArray());
+		cJSON_AddNumberToObject(json, "total_queries", -1);
+		cJSON_AddNumberToObject(json, "blocked_queries", -1);
+		return json;
 	}
 
 	// Get domains which the user doesn't want to see
@@ -207,7 +199,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 	if(top_domains == NULL)
 	{
 		log_err("Memory allocation failed in %s()", __FUNCTION__);
-		return 0;
+		return NULL;
 	}
 
 	unsigned int added_domains = 0u;
@@ -241,7 +233,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 	qsort(top_domains, added_domains, sizeof(*top_domains), cmpdesc_te);
 
 	int n = 0;
-	cJSON *jtop_domains = JSON_NEW_ARRAY();
+	cJSON *jtop_domains = cJSON_CreateArray();
 
 	// Lock shared memory
 	lock_shm();
@@ -271,20 +263,23 @@ int api_stats_top_domains(struct ftl_conn *api)
 			}
 		}
 
-		if(skip_domain)
+		if(skip_domain || top_domains[i].count < 1)
 			continue;
 
-		if(top_domains[i].count > 0)
+		if(domains_only)
 		{
-			cJSON *domain_item = JSON_NEW_OBJECT();
-			JSON_COPY_STR_TO_OBJECT(domain_item, "domain", domain);
-			JSON_ADD_NUMBER_TO_OBJECT(domain_item, "count", top_domains[i].count);
-			JSON_ADD_ITEM_TO_ARRAY(jtop_domains, domain_item);
-			n++;
+			cJSON_AddStringToArray(jtop_domains, domain);
+		}
+		else
+		{
+			cJSON *domain_item = cJSON_CreateObject();
+			cJSON_AddStringToObject(domain_item, "domain", domain);
+			cJSON_AddNumberToObject(domain_item, "count", top_domains[i].count);
+			cJSON_AddItemToArray(jtop_domains, domain_item);
 		}
 
 		// Only count entries that are actually sent and return when we have send enough data
-		if(n >= count)
+		if(++n >= count)
 			break;
 	}
 
@@ -305,19 +300,43 @@ int api_stats_top_domains(struct ftl_conn *api)
 		free(regex_domains);
 	}
 
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "domains", jtop_domains);
+	if(domains_only)
+	{
+		// Return the array of domains only
+		return jtop_domains;
+	}
 
-	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", total_queries);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_count);
+	// else: Build and return full object
+	cJSON *json = cJSON_CreateObject();
+	cJSON_AddItemToObject(json, "domains", jtop_domains);
+	cJSON_AddNumberToObject(json, "total_queries", total_queries);
+	cJSON_AddNumberToObject(json, "blocked_queries", blocked_count);
+	return json;
+}
 
+int api_stats_top_domains(struct ftl_conn *api)
+{
+	bool blocked = false; // Can be overwritten by query string
+	int count = 10;
+	// /api/stats/top_domains?blocked=true
+	if(api->request->query_string != NULL)
+	{
+		// Should blocked domains be shown?
+		get_bool_var(api->request->query_string, "blocked", &blocked);
+
+		// Does the user request a non-default number of replies?
+		// Note: We do not accept zero query requests here
+		get_int_var(api->request->query_string, "count", &count);
+	}
+
+	cJSON *json = get_top_domains(api, count, blocked, false);
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_top_clients(struct ftl_conn *api)
+cJSON *get_top_clients(struct ftl_conn *api, const int count,
+                       const bool blocked, const bool clients_only,
+                       const bool names_only)
 {
-	int count = 10;
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
@@ -326,21 +345,14 @@ int api_stats_top_clients(struct ftl_conn *api)
 
 		// Minimum structure is
 		// {"top_clients":[]}
-		cJSON *json = JSON_NEW_OBJECT();
-		cJSON *top_clients = JSON_NEW_ARRAY();
-		JSON_ADD_ITEM_TO_OBJECT(json, "top_clients", top_clients);
-		JSON_SEND_OBJECT(json);
-	}
+		if(clients_only)
+			return cJSON_CreateArray();
 
-	bool blocked = false; // /api/stats/top_clients?blocked=true
-	if(api->request->query_string != NULL)
-	{
-		// Should blocked clients be shown?
-		get_bool_var(api->request->query_string, "blocked", &blocked);
-
-		// Does the user request a non-default number of replies?
-		// Note: We do not accept zero query requests here
-		get_int_var(api->request->query_string, "count", &count);
+		cJSON *json = cJSON_CreateObject();
+		cJSON_AddItemToObject(json, "clients", cJSON_CreateArray());
+		cJSON_AddNumberToObject(json, "total_queries", -1);
+		cJSON_AddNumberToObject(json, "blocked_queries", -1);
+		return json;
 	}
 
 	// Lock shared memory
@@ -432,22 +444,29 @@ int api_stats_top_clients(struct ftl_conn *api)
 			}
 		}
 
-		if(skip_client)
+		if(skip_client || top_clients[i].count < 1)
 			continue;
 
-		// Return this client if the client made at least one query
-		// within the most recent 24 hours
-		if(top_clients[i].count > 0)
+		if(clients_only)
 		{
-			cJSON *client_item = JSON_NEW_OBJECT();
-			JSON_COPY_STR_TO_OBJECT(client_item, "name", client_name);
-			JSON_COPY_STR_TO_OBJECT(client_item, "ip", client_ip);
-			JSON_ADD_NUMBER_TO_OBJECT(client_item, "count", top_clients[i].count);
-			JSON_ADD_ITEM_TO_ARRAY(jtop_clients, client_item);
-			n++;
+			if(names_only)
+			{
+				if(strlen(client_name) > 0)
+					cJSON_AddStringToArray(jtop_clients, client_name);
+			}
+			else
+				cJSON_AddStringToArray(jtop_clients, client_ip);
+		}
+		else
+		{
+			cJSON *client_item = cJSON_CreateObject();
+			cJSON_AddStringToObject(client_item, "name", client_name);
+			cJSON_AddStringToObject(client_item, "ip", client_ip);
+			cJSON_AddNumberToObject(client_item, "count", top_clients[i].count);
+			cJSON_AddItemToArray(jtop_clients, client_item);
 		}
 
-		if(n == count)
+		if(++n == count)
 			break;
 	}
 
@@ -468,16 +487,40 @@ int api_stats_top_clients(struct ftl_conn *api)
 		free(regex_clients);
 	}
 
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "clients", jtop_clients);
+	if(clients_only)
+	{
+		// Return the array of clients only
+		return jtop_clients;
+	}
 
-	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_count);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", total_queries);
+	// else: Build and return full object
+	cJSON *json = cJSON_CreateObject();
+	cJSON_AddItemToObject(json, "clients", jtop_clients);
+	cJSON_AddNumberToObject(json, "total_queries", total_queries);
+	cJSON_AddNumberToObject(json, "blocked_queries", blocked_count);
+	return json;
+}
+
+int api_stats_top_clients(struct ftl_conn *api)
+{
+	bool blocked = false; // Can be overwritten by query string
+	int count = 10;
+	// /api/stats/top_clients?blocked=true
+	if(api->request->query_string != NULL)
+	{
+		// Should blocked clients be shown?
+		get_bool_var(api->request->query_string, "blocked", &blocked);
+
+		// Does the user request a non-default number of replies?
+		// Note: We do not accept zero query requests here
+		get_int_var(api->request->query_string, "count", &count);
+	}
+
+	cJSON *json = get_top_clients(api, count, blocked, false, false);
 	JSON_SEND_OBJECT(json);
 }
 
-
-int api_stats_upstreams(struct ftl_conn *api)
+cJSON *get_top_upstreams(struct ftl_conn *api, const bool upstreams_only)
 {
 	const int upstreams = counters->upstreams;
 	const int forwarded_count = get_forwarded_count();
@@ -569,18 +612,25 @@ int api_stats_upstreams(struct ftl_conn *api)
 		// Send data:
 		// - always if i < 0 (special upstreams: blocklist and cache)
 		// - only if there are any queries for all others (i > 0)
-		if(count > 0 || i < 0)
+		if(count < 1 && i >= 0)
+			continue;
+
+		if(upstreams_only)
+		{
+			cJSON_AddStringToArray(jtop_upstreams, name);
+		}
+		else
 		{
 			cJSON *upstream = JSON_NEW_OBJECT();
-			JSON_COPY_STR_TO_OBJECT(upstream, "ip", ip);
-			JSON_COPY_STR_TO_OBJECT(upstream, "name", name);
-			JSON_ADD_NUMBER_TO_OBJECT(upstream, "port", port);
-			JSON_ADD_NUMBER_TO_OBJECT(upstream, "count", count);
+			cJSON_AddStringToObject(upstream, "ip", ip);
+			cJSON_AddStringToObject(upstream, "name", name);
+			cJSON_AddNumberToObject(upstream, "port", port);
+			cJSON_AddNumberToObject(upstream, "count", count);
 			cJSON *statistics = JSON_NEW_OBJECT();
-			JSON_ADD_NUMBER_TO_OBJECT(statistics, "response", responsetime);
-			JSON_ADD_NUMBER_TO_OBJECT(statistics, "variance", uncertainty);
-			JSON_ADD_ITEM_TO_OBJECT(upstream, "statistics", statistics);
-			JSON_ADD_ITEM_TO_ARRAY(jtop_upstreams, upstream);
+			cJSON_AddNumberToObject(statistics, "response", responsetime);
+			cJSON_AddNumberToObject(statistics, "variance", uncertainty);
+			cJSON_AddItemToObject(upstream, "statistics", statistics);
+			cJSON_AddItemToArray(jtop_upstreams, upstream);
 		}
 	}
 
@@ -590,12 +640,24 @@ int api_stats_upstreams(struct ftl_conn *api)
 	// Free temporary array
 	free(top_upstreams);
 
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "upstreams", jtop_upstreams);
+	if(upstreams_only)
+	{
+		// Return the array of upstreams only
+		return jtop_upstreams;
+	}
 
-	JSON_ADD_NUMBER_TO_OBJECT(json, "forwarded_queries", forwarded_count);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", total_queries);
+	// else: Build and return full object
+	cJSON *json = cJSON_CreateObject();
+	cJSON_AddItemToObject(json, "upstreams", jtop_upstreams);
+	cJSON_AddNumberToObject(json, "total_queries", total_queries);
+	cJSON_AddNumberToObject(json, "forwarded_queries", forwarded_count);
 
+	return json;
+}
+
+int api_stats_upstreams(struct ftl_conn *api)
+{
+	cJSON *json = get_top_upstreams(api, false);
 	JSON_SEND_OBJECT(json);
 }
 

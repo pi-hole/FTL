@@ -22,6 +22,7 @@
 // dbopen(false, ), dbclose()
 #include "database/common.h"
 
+#if 0
 static int add_strings_to_array(struct ftl_conn *api, cJSON *array1, cJSON *array2, const char *querystr, const int max_count)
 {
 
@@ -80,60 +81,44 @@ static int add_strings_to_array(struct ftl_conn *api, cJSON *array1, cJSON *arra
 
 	return 0;
 }
+#endif
 
 int api_queries_suggestions(struct ftl_conn *api)
 {
-	int rc;
 	// Does the user request a custom number of records to be included?
 	int count = 30;
 	get_int_var(api->request->query_string, "count", &count);
 
 	// Get domains
-	cJSON *domain = JSON_NEW_ARRAY();
-	log_debug(DEBUG_API, "Reading top domains from database");
-	rc = add_strings_to_array(api, domain, NULL, "WITH CTE AS (SELECT COUNT(*) cnt, domain FROM query_storage GROUP BY domain ORDER BY cnt DESC)"\
-	                                             "SELECT d.domain FROM CTE JOIN domain_by_id d ON CTE.domain = d.id", count);
-	if(rc != 0)
+	cJSON *domain = get_top_domains(api, count, false, true);
+	cJSON *blocked = get_top_domains(api, count, true, true);
+	// Add domains from both arrays, avoiding duplicates
+	cJSON *entry = NULL;
+	cJSON_ArrayForEach(entry, blocked)
 	{
-		log_err("Cannot read domains from database");
-		cJSON_Delete(domain);
-		return rc;
+		// Check if the domain is already in the list
+		bool found = false;
+		cJSON *entry2 = NULL;
+		cJSON_ArrayForEach(entry2, domain)
+		{
+			if(strcmp(cJSON_GetStringValue(entry), cJSON_GetStringValue(entry2)) == 0)
+			{
+				found = true;
+				break;
+			}
+		}
+		if(!found)
+			JSON_ADD_ITEM_TO_ARRAY(domain, cJSON_Duplicate(entry, true));
 	}
-	log_debug(DEBUG_API, "Read %d domains from database", cJSON_GetArraySize(domain));
+	// Free the blocked list
+	cJSON_Delete(blocked);
 
 	// Get clients, both by IP and names
-	// We have to call DISTINCT() here as multiple IPs can map to and name and
-	// vice versa
-	cJSON *client_ip = JSON_NEW_ARRAY();
-	cJSON *client_name = JSON_NEW_ARRAY();
-	log_debug(DEBUG_API, "Reading top client IPs and names from database");
-	rc = add_strings_to_array(api, client_ip, client_name, "WITH CTE AS (SELECT COUNT(*) cnt, client FROM query_storage GROUP BY client ORDER BY cnt DESC)"\
-	                                                       "SELECT c.ip,c.name FROM CTE JOIN client_by_id c ON CTE.client = c.id", count);
-	if(rc != 0)
-	{
-		log_err("Cannot read client IPs from database");
-		cJSON_Delete(domain);
-		cJSON_Delete(client_ip);
-		return rc;
-	}
-	log_debug(DEBUG_API, "Read %d client IPs and %d client names from database", cJSON_GetArraySize(client_ip), cJSON_GetArraySize(client_name));
+	cJSON *client_ip = get_top_clients(api, count, false, true, false);
+	cJSON *client_name = get_top_clients(api, count, false, true, true);
 
 	// Get upstreams
-	cJSON *upstream = JSON_NEW_ARRAY();
-	log_debug(DEBUG_API, "Reading top upstreams from database");
-	rc = add_strings_to_array(api, upstream, NULL, "WITH CTE AS (SELECT COUNT(*) cnt, forward FROM query_storage GROUP BY forward ORDER BY cnt DESC)"\
-	                                               "SELECT f.forward FROM CTE JOIN forward_by_id f ON CTE.forward = f.id", count);
-	if(rc != 0)
-	{
-		log_err("Cannot read forward from database");
-		cJSON_Delete(domain);
-		cJSON_Delete(client_ip);
-		cJSON_Delete(client_name);
-		cJSON_Delete(upstream);
-		return rc;
-	}
-	log_debug(DEBUG_API, "Read %d upstreams from database", cJSON_GetArraySize(upstream));
-
+	cJSON *upstream = get_top_upstreams(api, true);
 	// Get types
 	cJSON *type = JSON_NEW_ARRAY();
 	queriesData query = { 0 };
