@@ -124,12 +124,6 @@ pdnsutil add-record arpa. 2.1.168.192.in-addr PTR a.ftl.
 pdnsutil add-record arpa. 1.0.c.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.e.f.ip6 PTR ftl.
 pdnsutil add-record arpa. 2.0.c.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.e.f.ip6 PTR aaaa.ftl.
 
-# Add DNSSEC zone
-pdnsutil create-zone dnssec ns1.ftl
-
-# Create trust anchor
-pdnsutil add-zone-key dnssec KSK active
-
 # Calculates the ‘ordername’ and ‘auth’ fields for all zones so they comply with
 # DNSSEC settings. Can be used to fix up migrated data. Can always safely be
 # run, it does no harm.
