@@ -662,3 +662,46 @@ char *__attribute__((malloc)) escape_json(const char *string)
 	// Return the JSON escaped string
 	return namep;
 }
+
+// Remove duplicates from a cJSON array
+// This function uses the less efficient cJSON_GetArraySize() function compared
+// to cJSON_ArrayForEach() as we are going to modify the array in-place while
+// iterating over it
+void cJSON_unique_array(cJSON *array)
+{
+	// Check if the array is an array
+	if(!cJSON_IsArray(array))
+		return;
+
+	for(int oi = 0; oi < cJSON_GetArraySize(array); oi++)
+	{
+		// Get the outer item
+		cJSON *outer_item = cJSON_GetArrayItem(array, oi);
+		// Check if the item is a string
+		if (!cJSON_IsString(outer_item))
+			continue;
+
+		// Check for duplicates in the remainder of the array
+		for(int ii = oi + 1; ii < cJSON_GetArraySize(array); ii++)
+		{
+			// Get the inner item
+			cJSON *inner_item = cJSON_GetArrayItem(array, ii);
+			// Check if the inner item is a string
+			if (!cJSON_IsString(inner_item))
+				continue;
+
+			// Compare the two strings
+			if(strcmp(outer_item->valuestring, inner_item->valuestring) == 0)
+			{
+				// Remove the duplicate item, this is safe as we are
+				// at least one item ahead of the outer item
+				cJSON_DeleteItemFromArray(array, ii);
+				// Compensate for removed item (the for loop
+				// will increment ii for the next step, thus
+				// we need to decrement it here)
+				ii--;
+				continue;
+			}
+		}
+	}
+}
