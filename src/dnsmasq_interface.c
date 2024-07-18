@@ -1803,7 +1803,7 @@ void FTL_dnsmasq_reload(void)
 	// This function is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and re-reading the lists
 	if(reload++ > 0)
-		log_info("Received SIGHUP, flushing cache and re-reading config");
+		log_info("Flushing cache and re-reading config");
 
 	// Gravity database updates
 	// - (Re-)open gravity database connection
@@ -2918,9 +2918,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 
-	// Initialize NTP server
-	ntp_server_start(&attr);
-
 	// Start NTP sync thread
 	ntp_start_sync_thread(&attr);
 
@@ -2966,26 +2963,16 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		// we're actually dropping root (user/group may be set to root)
 		if(ent_pw != NULL && ent_pw->pw_uid != 0)
 		{
-			log_info("FTL is going to drop from root to user %s (UID %u)",
-			         ent_pw->pw_name, ent_pw->pw_uid);
+			log_info("FTL is going to drop from root to user pihole");
 
 			// Change ownership of shared memory objects
 			chown_all_shmem(ent_pw);
 
 			// Configured FTL log file
-			if(chown(config.files.log.ftl.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-			{
-				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
-				         ent_pw->pw_uid, ent_pw->pw_gid, config.files.log.ftl.v.s, strerror(errno), errno);
-			}
+			chown_pihole(config.files.log.ftl.v.s, ent_pw);
 
 			// Configured FTL database file
-			if(chown(config.files.database.v.s, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-			{
-				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
-				         ent_pw->pw_uid, ent_pw->pw_gid, config.files.database.v.s, strerror(errno), errno);
-
-			}
+			chown_pihole(config.files.database.v.s, ent_pw);
 
 			// Check if auxiliary files exist and change ownership
 			char *extrafile = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
@@ -2998,20 +2985,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			// Check <database>-wal file (write-ahead log)
 			strcpy(extrafile, config.files.database.v.s);
 			strcat(extrafile, "-wal");
-			if(file_exists(extrafile) && chown(extrafile, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-			{
-				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
-				         ent_pw->pw_uid, ent_pw->pw_gid, extrafile, strerror(errno), errno);
-			}
+			if(file_exists(extrafile))
+				chown_pihole(extrafile, ent_pw);
 
 			// Check <database>-shm file (mmapped shared memory)
 			strcpy(extrafile, config.files.database.v.s);
 			strcat(extrafile, "-shm");
-			if(file_exists(extrafile) && chown(extrafile, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-			{
-				log_warn("Setting ownership (%u:%u) of %s failed: %s (%i)",
-				         ent_pw->pw_uid, ent_pw->pw_gid, extrafile, strerror(errno), errno);
-			}
+			if(file_exists(extrafile))
+				chown_pihole(extrafile, ent_pw);
 
 			// Free allocated memory
 			free(extrafile);

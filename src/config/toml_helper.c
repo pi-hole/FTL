@@ -23,6 +23,8 @@
 #include <limits.h>
 // escape_json()
 #include "webserver/http-common.h"
+// chown_pihole()
+#include "files.h"
 
 // Open the TOML file for reading or writing
 FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode, const unsigned int version)
@@ -96,26 +98,8 @@ void closeFTLtoml(FILE *fp)
 
 	// Chown file if we are root
 	if(geteuid() == 0)
-	{
-		// Get UID and GID of user with name "pihole"
-		struct passwd *pwd = getpwnam("pihole");
-		if(pwd == NULL)
-		{
-			log_warn("Cannot get UID and GID of user pihole: %s", strerror(errno));
-		}
-		else
-		{
-			const uid_t pihole_uid = pwd->pw_uid;
-			const gid_t pihole_gid = pwd->pw_gid;
-			// Chown file to pihole user
-			if(chown(GLOBALTOMLPATH, pihole_uid, pihole_gid) != 0)
-				log_warn("Cannot chown "GLOBALTOMLPATH" to pihole:pihole (%u:%u): %s",
-					(unsigned int)pihole_uid, (unsigned int)pihole_gid, strerror(errno));
-			else
-				log_debug(DEBUG_CONFIG, "Chown-ed "GLOBALTOMLPATH" to pihole:pihole (%u:%u)",
-					(unsigned int)pihole_uid, (unsigned int)pihole_gid);
-		}
-	}
+		chown_pihole(GLOBALTOMLPATH, NULL);
+
 	return;
 }
 

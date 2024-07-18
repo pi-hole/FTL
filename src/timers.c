@@ -84,7 +84,6 @@ void get_blockingmode_timer(double *delay, bool *target_status)
 void *timer(void *val)
 {
 	// Set thread name
-	thread_running[GC] = true;
 	prctl(PR_SET_NAME, thread_names[TIMER], 0, 0, 0);
 
 	// Save timestamp as we do not want to store immediately
@@ -110,7 +109,6 @@ void *timer(void *val)
 	}
 
 	log_info("Terminating timer thread");
-	thread_running[GC] = false;
 	return NULL;
 }
 

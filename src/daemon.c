@@ -330,13 +330,32 @@ void set_nice(void)
 		// Set nice value
 		const int ret = setpriority(which, pid, config.misc.nice.v.i);
 		if(ret == -1)
-			// ERROR EPERM: The calling process attempted to increase its priority
-			// by supplying a negative value but has insufficient privileges.
-			// On Linux, the RLIMIT_NICE resource limit can be used to define a limit to
-			// which an unprivileged process's nice value can be raised. We are not
-			// affected by this limit when pihole-FTL is running with CAP_SYS_NICE
-			log_warn("Cannot set process priority to %d: %s. Process priority remains at %d",
-			         config.misc.nice.v.i, strerror(errno), priority);
+		{
+			if(errno == EACCES || errno == EPERM)
+			{
+				// from man 2 setpriority:
+				//
+				// ERRORS
+				// [...]
+				// EACCES The caller attempted to set a lower nice value (i.e.,  a  higher
+				//        process  priority),  but did not have the required privilege (on
+				//        Linux: did not have the CAP_SYS_NICE capability).
+				//
+				// EPERM  A process was located, but its effective user ID did  not  match
+				//        either  the effective or the real user ID of the caller, and was
+				//        not privileged (on Linux: did not have the CAP_SYS_NICE capabil‐
+				//        ity).
+				// [...]
+				log_warn("Insufficient permissions to set process priority to %d (CAP_SYS_NICE required), process priority remains at %d",
+				         config.misc.nice.v.i, priority);
+			}
+			else
+			{
+				// Other error
+				log_warn("Cannot set process priority to %d: %s. Process priority remains at %d",
+				         config.misc.nice.v.i, strerror(errno), priority);
+			}
+		}
 	}
 }
 

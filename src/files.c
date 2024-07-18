@@ -16,8 +16,6 @@
 
 // opendir(), readdir()
 #include <dirent.h>
-// getpwuid()
-#include <pwd.h>
 // getgrgid()
 #include <grp.h>
 // NAME_MAX
@@ -434,29 +432,35 @@ static int copy_file(const char *source, const char *destination)
 }
 
 // Change ownership of file to pihole user
-static bool chown_pihole(const char *path)
+bool chown_pihole(const char *path, struct passwd *pwd)
 {
-	// Get pihole user's uid and gid
-	struct passwd *pwd = getpwnam("pihole");
+	// Get pihole user's UID and GID if not provided
 	if(pwd == NULL)
 	{
-		log_warn("chown_pihole(): Failed to get pihole user's uid: %s", strerror(errno));
-		return false;
+		pwd = getpwnam("pihole");
+		if(pwd == NULL)
+		{
+			log_warn("chown_pihole(): Failed to get pihole user's UID/GID: %s", strerror(errno));
+			return false;
+		}
 	}
-	struct group *grp = getgrnam("pihole");
-	if(grp == NULL)
+
+	// Get group name
+	struct group *grp = getgrgid(pwd->pw_gid);
+	const char *grp_name = grp != NULL ? grp->gr_name : "<unknown>";
+
+	// Change ownership of file to pihole user
+	if(chown(path, pwd->pw_uid, pwd->pw_gid) < 0)
 	{
-		log_warn("chown_pihole(): Failed to get pihole user's gid: %s", strerror(errno));
+		log_warn("Failed to change ownership of \"%s\" to %s:%s (%u:%u): %s",
+		         path, pwd->pw_name, grp_name, pwd->pw_uid, pwd->pw_gid,
+		         errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
+
 		return false;
 	}
 
-	// Change ownership of file to pihole user
-	if(chown(path, pwd->pw_uid, grp->gr_gid) < 0)
-	{
-		log_warn("chown_pihole(): Failed to change ownership of \"%s\" to %u:%u: %s",
-		         path, pwd->pw_uid, grp->gr_gid, strerror(errno));
-		return false;
-	}
+	log_debug(DEBUG_INOTIFY, "Changed ownership of \"%s\" to %s:%s (%u:%u)",
+	          path, pwd->pw_name, grp_name, pwd->pw_uid, pwd->pw_gid);
 
 	return true;
 }
@@ -533,7 +537,7 @@ void rotate_files(const char *path, char **first_file)
 			}
 
 			// Change ownership of file to pihole user
-			chown_pihole(new_path);
+			chown_pihole(new_path, NULL);
 		}
 
 		// Free memory

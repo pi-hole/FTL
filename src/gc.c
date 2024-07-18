@@ -481,7 +481,6 @@ static bool check_files_on_same_device(const char *path1, const char *path2)
 void *GC_thread(void *val)
 {
 	// Set thread name
-	thread_running[GC] = true;
 	prctl(PR_SET_NAME, thread_names[GC], 0, 0, 0);
 
 	// Remember when we last ran the actions
@@ -567,6 +566,5 @@ void *GC_thread(void *val)
 	watch_config(false);
 
 	log_info("Terminating GC thread");
-	thread_running[GC] = false;
 	return NULL;
 }

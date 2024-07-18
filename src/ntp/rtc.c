@@ -51,15 +51,15 @@ static int open_rtc(void)
 	const gid_t gid = getgid();
 
 	// If the user has specified an RTC device, try to open it
-	if(config.ntp.rtc.device.v.s != NULL &&
-	   strlen(config.ntp.rtc.device.v.s) > 0)
+	if(config.ntp.sync.rtc.device.v.s != NULL &&
+	   strlen(config.ntp.sync.rtc.device.v.s) > 0)
 	{
 		// Open the RTC device
-		rtc_fd = open(config.ntp.rtc.device.v.s, O_RDONLY);
+		rtc_fd = open(config.ntp.sync.rtc.device.v.s, O_RDONLY);
 		if (rtc_fd != -1)
 		{
 			log_debug(DEBUG_NTP, "Successfully opened RTC at \"%s\"",
-			          config.ntp.rtc.device.v.s);
+			          config.ntp.sync.rtc.device.v.s);
 			return rtc_fd;
 		}
 
@@ -72,32 +72,34 @@ static int open_rtc(void)
 		{
 			// Get current owner of the device
 			struct stat st = { 0 };
-			if(stat(config.ntp.rtc.device.v.s, &st) == -1)
+			if(stat(config.ntp.sync.rtc.device.v.s, &st) == -1)
 			{
 				log_debug(DEBUG_NTP, "stat(\"%s\") failed: %s",
-				          config.ntp.rtc.device.v.s, strerror(errno));
+				          config.ntp.sync.rtc.device.v.s, strerror(errno));
 				return -1;
 			}
 
-			if(chown(config.ntp.rtc.device.v.s, uid, gid) == -1)
+			if(chown(config.ntp.sync.rtc.device.v.s, uid, gid) == -1)
 			{
 				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-				          config.ntp.rtc.device.v.s, uid, gid, strerror(errno));
+				          config.ntp.sync.rtc.device.v.s, uid, gid,
+				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
 				return -1;
 			}
 
-			rtc_fd = open(config.ntp.rtc.device.v.s, O_RDONLY);
+			rtc_fd = open(config.ntp.sync.rtc.device.v.s, O_RDONLY);
 			if (rtc_fd != -1)
 			{
 				log_debug(DEBUG_NTP, "Successfully opened RTC at \"%s\"",
-				          config.ntp.rtc.device.v.s);
+				          config.ntp.sync.rtc.device.v.s);
 			}
 
 			// Chown the device back to the original owner
-			if(chown(config.ntp.rtc.device.v.s, st.st_uid, st.st_gid) == -1)
+			if(chown(config.ntp.sync.rtc.device.v.s, st.st_uid, st.st_gid) == -1)
 			{
 				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-						config.ntp.rtc.device.v.s, st.st_uid, st.st_gid, strerror(errno));
+				          config.ntp.sync.rtc.device.v.s, st.st_uid, st.st_gid,
+				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
 				return -1;
 			}
 
@@ -106,7 +108,7 @@ static int open_rtc(void)
 		}
 
 		log_debug(DEBUG_NTP, "Failed to open RTC at \"%s\": %s",
-		          config.ntp.rtc.device.v.s, strerror(errno));
+		          config.ntp.sync.rtc.device.v.s, strerror(errno));
 
 		return -1;
 	}
@@ -139,7 +141,8 @@ static int open_rtc(void)
 			if(chown(rtc_devices[i], uid, gid) == -1)
 			{
 				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-				          rtc_devices[i], uid, gid, strerror(errno));
+				          rtc_devices[i], uid, gid,
+				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
 				return -1;
 			}
 
@@ -154,7 +157,8 @@ static int open_rtc(void)
 			if(chown(rtc_devices[i], st.st_uid, st.st_gid) == -1)
 			{
 				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-						rtc_devices[i], st.st_uid, st.st_gid, strerror(errno));
+				          rtc_devices[i], st.st_uid, st.st_gid, 
+				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
 				return -1;
 			}
 
@@ -255,7 +259,7 @@ bool ntp_sync_rtc(void)
 	// Time to which we will set Hardware Clock, in broken down format
 	struct tm new_time = { 0 };
 	const time_t newtime = time(NULL);
-	if(config.ntp.rtc.utc.v.b)
+	if(config.ntp.sync.rtc.utc.v.b)
 		// UTC
 		gmtime_r(&newtime, &new_time);
 	else

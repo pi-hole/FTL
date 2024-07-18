@@ -39,6 +39,10 @@
 #include <inttypes.h>
 // log_ntp_message()
 #include "database/message-table.h"
+// NTP_SERVER_IPV4,6
+#include "enums.h"
+// threads
+#include "signals.h"
 
 uint64_t ntp_last_sync = 0u;
 uint32_t ntp_root_delay = 0u;
@@ -224,7 +228,7 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
 }
 
 // Process incoming NTP requests
-static void request_process_loop(int fd, const char *ipstr, const int protocol)
+static void request_process_loop(const int fd, const char *ipstr, const int protocol)
 {
 	log_info("NTP server listening on %s:123 (%s)", ipstr, protocol == AF_INET ? "IPv4" : "IPv6");
 	while (true)
@@ -280,9 +284,12 @@ static void request_process_loop(int fd, const char *ipstr, const int protocol)
 // Start the NTP server
 static void *ntp_bind_and_listen(void *param)
 {
-	const int protocol = param == 0 ? AF_INET : AF_INET6;
+	// Set thread name
+	const unsigned int thread_id = param == 0 ? NTP_SERVER4 : NTP_SERVER6;
+	prctl(PR_SET_NAME, thread_names[thread_id], 0, 0, 0);
 
   	// Create a socket
+	const int protocol = param == 0 ? AF_INET : AF_INET6;
 	errno = 0;
 	const int s = socket(protocol, SOCK_DGRAM, IPPROTO_UDP);
 	if(s == -1)
@@ -301,8 +308,7 @@ static void *ntp_bind_and_listen(void *param)
 	memset(ipstr, 0, sizeof(ipstr));
 	if(protocol == AF_INET)
 	{
-		// IPv4 - set thread name
-		prctl(PR_SET_NAME, "NTP (IPv4)", 0, 0, 0);
+		// IPv4 NTP server
 
 		// Prepare the bind address
 		struct sockaddr_in bind_addr;
@@ -327,8 +333,7 @@ static void *ntp_bind_and_listen(void *param)
 	}
 	else
 	{
-		// IPv6 - set thread name
-		prctl(PR_SET_NAME, "NTP (IPv6)", 0, 0, 0);
+		// IPv6 NTP server
 
 		// Set socket options to allow IPv6 only, otherwise it will bind
 		// to both IPv4 and IPv6 and show IPv4 addresses as
@@ -373,7 +378,7 @@ static void *ntp_bind_and_listen(void *param)
 }
 
 // Start the NTP server
-bool ntp_server_start(pthread_attr_t *attr)
+bool ntp_server_start(void)
 {
 	// Spawn two pthreads, one for IPv4 and one for IPv6
 
@@ -382,7 +387,7 @@ bool ntp_server_start(pthread_attr_t *attr)
 	{
 		// Create a thread for the IPv4 NTP server
 		pthread_t thread;
-		if (pthread_create(&thread, attr, ntp_bind_and_listen, (void *)0) != 0)
+		if (pthread_create(&thread, NULL, ntp_bind_and_listen, (void *)0) != 0)
 		{
 			log_ntp_message(true, true, "Cannot create NTP server thread for IPv4");
 			return false;
@@ -394,7 +399,7 @@ bool ntp_server_start(pthread_attr_t *attr)
 	{
 		// Create a thread for the IPv6 NTP server
 		pthread_t thread;
-		if (pthread_create(&thread, attr, ntp_bind_and_listen, (void *)1) != 0)
+		if (pthread_create(&thread, NULL, ntp_bind_and_listen, (void *)1) != 0)
 		{
 			log_ntp_message(true, true, "Cannot create NTP server thread for IPv6");
 			return false;
