@@ -487,3 +487,35 @@ void thread_sleepms(const enum thread_types thread, const int milliseconds)
 	sleepms(milliseconds);
 	thread_cancellable[thread] = false;
 }
+
+static void print_signal(int signum, siginfo_t *si, void *unused)
+{
+	printf("Received signal %d: \"%s\"\n", signum, strsignal(signum));
+	fflush(stdin);
+	if(signum == SIGTERM)
+		exit(EXIT_SUCCESS);
+}
+
+// Register handler that catches *all* signals and displays them
+int sigtest(void)
+{
+	printf("PID: %d\n", getpid());
+	// Catch all real-time signals
+	for(int signum = 0; signum <= SIGRTMAX; signum++)
+	{
+		struct sigaction SIGACTION = { 0 };
+		SIGACTION.sa_flags = SA_SIGINFO;
+		sigemptyset(&SIGACTION.sa_mask);
+		SIGACTION.sa_sigaction = &print_signal;
+		sigaction(signum, &SIGACTION, NULL);
+	}
+
+	printf("Waiting (30sec)...\n");
+	fflush(stdin);
+
+	// Sleep here for 30 seconds
+	sleepms(30000);
+
+	// Exit successfully
+	return EXIT_SUCCESS;
+}
