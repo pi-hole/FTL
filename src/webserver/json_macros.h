@@ -57,6 +57,29 @@
 	cJSON_AddItemToObject(object, key, string_item); \
 })
 
+// Hand over allocated string to cJSON - it will thereafter take care of freeing
+// it when the cJSON object is deleted
+#define JSON_GIVE_STR_TO_OBJECT(object, key, string)({ \
+	cJSON *string_item = NULL; \
+	if(string != NULL) \
+	{ \
+		string_item = cJSON_CreateStringReference((const char*)(string)); \
+		string_item->type &= ~cJSON_IsReference; \
+	} \
+	else \
+	{ \
+		string_item = cJSON_CreateNull(); \
+	} \
+	if(string_item == NULL) \
+	{ \
+		cJSON_Delete(object); \
+		send_http_internal_error(api); \
+		log_err("JSON_GIVE_STR_TO_OBJECT FAILED (key: \"%s\", string: \"%s\")!", key, string); \
+		return 500; \
+	} \
+	cJSON_AddItemToObject(object, key, string_item); \
+})
+
 #define JSON_ADD_NUMBER_TO_OBJECT(object, key, num)({ \
 	const double number = num; \
 	if(cJSON_AddNumberToObject(object, key, number) == NULL) \
@@ -269,3 +292,6 @@
 
 #define cJSON_AddNumberToArray(array, num) \
 	cJSON_AddItemToArray(array, cJSON_CreateNumber(num))
+
+#define cJSON_AddStringToArray(array, string) \
+	cJSON_AddItemToArray(array, cJSON_CreateString(string))

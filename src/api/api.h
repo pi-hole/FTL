@@ -33,6 +33,12 @@ int api_stats_upstreams(struct ftl_conn *api);
 int api_stats_top_domains(struct ftl_conn *api);
 int api_stats_top_clients(struct ftl_conn *api);
 int api_stats_recentblocked(struct ftl_conn *api);
+cJSON *get_top_domains(struct ftl_conn *api, const int count,
+                       const bool blocked, const bool domains_only);
+cJSON *get_top_clients(struct ftl_conn *api, const int count,
+                       const bool blocked, const bool clients_only,
+                       const bool names_only);
+cJSON *get_top_upstreams(struct ftl_conn *api, const bool upstreams_only);
 
 // History methods
 int api_history(struct ftl_conn *api);

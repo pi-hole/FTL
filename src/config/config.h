@@ -201,15 +201,16 @@ struct config {
 			struct conf_item address;
 		} ipv6;
 		struct {
+			struct conf_item active;
 			struct conf_item server;
 			struct conf_item interval;
 			struct conf_item count;
+			struct {
+				struct conf_item set;
+				struct conf_item device;
+				struct conf_item utc;
+			} rtc;
 		} sync;
-		struct {
-			struct conf_item set;
-			struct conf_item device;
-			struct conf_item utc;
-		} rtc;
 	} ntp;
 
 	struct {

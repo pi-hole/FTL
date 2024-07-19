@@ -41,6 +41,9 @@ static sqlite3_stmt **stmts[] = { &query_stmt,
                                   &forward_stmt,
                                   &addinfo_stmt };
 
+// Private prototypes
+static void load_queries_from_disk(void);
+
 // Return the maximum ID of the in-memory database
 unsigned long __attribute__((pure)) get_max_db_idx(void)
 {
@@ -219,6 +222,8 @@ bool init_memory_database(void)
 		log_err("init_memory_database(addinfo_by_id) - SQL error step: %s", sqlite3_errstr(rc));
 		return false;
 	}
+
+	load_queries_from_disk();
 
 	// Everything went well
 	return true;
@@ -1635,7 +1640,7 @@ bool queries_to_database(void)
 	return true;
 }
 
-void load_queries_from_disk(void)
+static void load_queries_from_disk(void)
 {
 	// Compensate for possible jumps in time
 	runGC(time(NULL), NULL, false);

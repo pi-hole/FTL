@@ -475,7 +475,7 @@
 }
 
 @test "No WARNING messages in FTL.log (besides known warnings)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|(Cannot set process priority)|FTLCONF_"'
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_"'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == "" ]]
 }
@@ -1347,12 +1347,6 @@
   [[ ${lines[0]} == '{"error":{"key":"bad_request","message":"Config items set via environment variables cannot be changed via the API","hint":"misc.nice"},"took":'*'}' ]]
 }
 
-@test "Check NTP server is broadcasting correct time" {
-  run bash -c './pihole-FTL ntp 127.0.0.1 --dry-run'
-  printf "%s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-}
-
 # We cannot easily test IPv6 as it may not be available in docker (CI)
 
 @test "API domain search: Non-existing domain returns expected JSON" {
@@ -1810,4 +1804,12 @@
   run bash -c 'grep -c "DEBUG_CONFIG: custom.list unchanged" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "3" ]]
+}
+
+@test "Check NTP server is broadcasting correct time" {
+  # Run this test at the very end of the test suite
+  # to ensure the NTP server has been started
+  run bash -c './pihole-FTL ntp 127.0.0.1'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
 }

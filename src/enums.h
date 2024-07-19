@@ -250,7 +250,9 @@ enum thread_types {
 	GC,
 	DNSclient,
 	TIMER,
-	NTP,
+	NTP_CLIENT,
+	NTP_SERVER4,
+	NTP_SERVER6,
 	THREADS_MAX
 } __attribute__ ((packed));
 

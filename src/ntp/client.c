@@ -39,8 +39,9 @@
 #include <sys/timex.h>
 // log_ntp_message()
 #include "database/message-table.h"
-// load_queries_from_disk()
-#include "database/query-table.h"
+// check_capability()
+#include "capabilities.h"
+
 struct ntp_sync
 {
 	bool valid;
@@ -576,7 +577,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		ntp_root_dispersion = D2FP(theta_stdev);
 
 		// Finally, adjust RTC if configured
-		if(config.ntp.rtc.set.v.b)
+		if(config.ntp.sync.rtc.set.v.b)
 			ntp_sync_rtc();
 	}
 
@@ -588,32 +589,57 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 static void *ntp_client_thread(void *arg)
 {
 	// Set thread name
-	thread_running[NTP] = true;
-	prctl(PR_SET_NAME, thread_names[NTP], 0, 0, 0);
+	prctl(PR_SET_NAME, thread_names[NTP_CLIENT], 0, 0, 0);
 
 	// Run NTP client
+	bool ntp_server_started = false;
 	bool first_run = true;
 	while(!killed)
 	{
-		// Run NTP client
-		ntp_client(config.ntp.sync.server.v.s, true, false);
+		// Get time before NTP sync
+		const double before = double_time();
 
-		// Load queries from database after first NTP synchronization
-		if(first_run)
+		// Run NTP client
+		const bool success = ntp_client(config.ntp.sync.server.v.s, true, false);
+
+		// Get time after NTP sync
+		const double after = double_time();
+
+		// If the time was updated by more than a certain amount,
+		// restart FTL to import recent data. This is relevant when the
+		// system time was set to an incorrect value (e.g., due to a
+		// dead CMOS battery or overall missing RTC) and the time was
+		// off.
+		double time_delta = fabs(after - before);
+		if(first_run && time_delta > GCinterval)
 		{
-			load_queries_from_disk();
-			first_run = false;
+			log_info("System time was updated by %.1f seconds, restarting FTL to import recent data",
+			         time_delta);
+			// Set the restart flag to true
+			exit_code = RESTART_FTL_CODE;
+			// Send SIGTERM to FTL
+			kill(main_pid(), SIGTERM);
+		}
+
+		// Set first run to false
+		first_run = false;
+
+		if(success && !ntp_server_started)
+		{
+			// Initialize NTP server only after first NTP
+			// synchronization to ensure that the time is set
+			// correctly
+			ntp_server_started = ntp_server_start();
 		}
 
 		// Intermediate cancellation-point
 		BREAK_IF_KILLED();
 
 		// Sleep before retrying
-		thread_sleepms(NTP, 1000 * config.ntp.sync.interval.v.ui);
+		thread_sleepms(NTP_CLIENT, 1000 * config.ntp.sync.interval.v.ui);
 	}
 
 	log_info("Terminating NTP thread");
-	thread_running[NTP] = false;
 
 	return NULL;
 }
@@ -621,19 +647,32 @@ static void *ntp_client_thread(void *arg)
 bool ntp_start_sync_thread(pthread_attr_t *attr)
 {
 	// Return early if NTP client is disabled
-	if(config.ntp.sync.server.v.s == NULL ||
+	if(config.ntp.sync.active.v.b == false ||
+	   config.ntp.sync.server.v.s == NULL ||
 	   strlen(config.ntp.sync.server.v.s) == 0 ||
 	   config.ntp.sync.interval.v.ui == 0)
 	{
-		load_queries_from_disk();
+		log_info("NTP sync is disabled");
+		ntp_server_start();
+		return false;
+	}
+
+	// Check if we have the ambient capabilities to set the system time.
+	// Without CAP_SYS_TIME, we cannot set the system time and the NTP
+	// client will not be able to synchronize the time so there is no point
+	// in starting the thread.
+	if(!check_capability(CAP_SYS_TIME))
+	{
+		log_warn("Insufficient permissions to set system time (CAP_SYS_TIME required), NTP client not available");
+		ntp_server_start();
 		return false;
 	}
 
 	// Create thread
-	if(pthread_create(&threads[NTP], attr, ntp_client_thread, NULL) != 0)
+	if(pthread_create(&threads[NTP_CLIENT], attr, ntp_client_thread, NULL) != 0)
 	{
 		log_err("Cannot create NTP client thread");
-		load_queries_from_disk();
+		ntp_server_start();
 		return false;
 	}
 

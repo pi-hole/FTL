@@ -103,5 +103,6 @@ char * __attribute__((malloc)) escape_html(const char *string);
 int check_json_payload(struct ftl_conn *api);
 int parse_groupIDs(struct ftl_conn *api, tablerow *table, cJSON *row);
 char * __attribute__((malloc)) escape_json(const char *string);
+void cJSON_unique_array(cJSON *array);
 
 #endif // HTTP_H

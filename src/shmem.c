@@ -190,17 +190,20 @@ static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
 	// Open shared memory object
 	const int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
 	log_debug(DEBUG_SHMEM, "Changing %s (%d) to %u:%u", sharedMemory->name, fd, ent_pw->pw_uid, ent_pw->pw_gid);
+
 	if(fd == -1)
 	{
-		log_crit("chown_shmem(): Failed to open shared memory object \"%s\": %s",
+		log_crit("Failed to open shared memory object \"%s\" for chown: %s",
 		         sharedMemory->name, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
+
 	if(fchown(fd, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 	{
-		log_warn("chown_shmem(%d, %u, %u): failed for %s: %s (%d)",
-		         fd, ent_pw->pw_uid, ent_pw->pw_gid, sharedMemory->name,
-		         strerror(errno), errno);
+		log_crit("Failed to change ownership of shared memory object \"%s\": %s",
+		         sharedMemory->name,
+		         errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
+
 		return false;
 	}
 
