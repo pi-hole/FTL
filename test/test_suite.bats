@@ -396,9 +396,15 @@
 }
 
 @test "DNSSEC: SECURE domain is resolved" {
-  run bash -c "dig A dnssec.works @127.0.0.1"
+  run bash -c "dig A a.dnssec @127.0.0.1"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"status: NOERROR"* ]]
+}
+
+@test "DNSSEC: BOGUS domain is rejected" {
+  run bash -c "dig A a.bogus @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: SERVFAIL"* ]]
 }
 
 @test "Special domain: NXDOMAIN is returned" {
