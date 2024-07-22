@@ -1459,6 +1459,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 		// Debug output
 		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
+		free(domainstr);
 
 		return true;
 	}

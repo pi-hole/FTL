@@ -50,6 +50,9 @@ static sqlite3_stmt* table_stmt = NULL;
 bool gravityDB_opened = false;
 static bool gravity_abp_format = false;
 
+// Private prototypes
+static bool gravityDB_open(void);
+
 // Table names corresponding to the enum defined in gravity-db.h
 static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "client", "group", "adlist", "denied_domains", "allowed_domains", "" };
 
@@ -133,7 +136,7 @@ static void gravity_check_ABP_format(void)
 }
 
 // Open gravity database
-bool gravityDB_open(void)
+static bool gravityDB_open(void)
 {
 	struct stat st;
 	if(stat(config.files.gravity.v.s, &st) != 0)
