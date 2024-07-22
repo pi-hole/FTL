@@ -323,6 +323,8 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	// 	// Signal internally used to signal dnsmasq it has to stop
 	// }
 
+	// SIGRT32: Used internally by valgrind, do not use
+
 	// Restore errno before returning back to previous context
 	errno = _errno;
 }
