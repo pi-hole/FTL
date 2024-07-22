@@ -395,7 +395,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 	// Start reading answers
 	uint16_t stop = 0;
 	char *name = NULL;
-	for(uint16_t i = 0; i < ntohs(dns->ans_count); i++)
+	for(uint16_t i = 0; i < min(ntohs(dns->ans_count), ArraySize(answers)); i++)
 	{
 		answers[i].name = name_fromDNS(reader, buf, &stop);
 		reader = reader + stop;
@@ -431,6 +431,15 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 			free(name);
 			name = NULL;
 		}
+	}
+
+	// Free memory
+	for(uint16_t i = 0; i < min(ntohs(dns->ans_count), ArraySize(answers)); i++)
+	{
+		if(answers[i].name != NULL)
+			free(answers[i].name);
+		if(answers[i].rdata != NULL && (char*)answers[i].rdata != name)
+			free(answers[i].rdata);
 	}
 
 	if(name != NULL)

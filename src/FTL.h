@@ -48,7 +48,7 @@
 // MIN(x,y) is already defined in dnsmasq.h
 
 // Number of elements in an array
-#define ArraySize(X) (sizeof(X)/sizeof(X[0]))
+#define ArraySize(X) (sizeof(X)/sizeof(*X))
 
 // Constant socket buffer length
 #define SOCKETBUFFERLEN 1024

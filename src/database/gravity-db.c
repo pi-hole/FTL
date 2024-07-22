@@ -955,6 +955,7 @@ void gravityDB_close(void)
 	free_sqlite3_stmt_vec(&antigravity_stmt);
 
 	// Close table
+	log_debug(DEBUG_ANY, "Closing gravity database");
 	sqlite3_close(gravity_db);
 	gravity_db = NULL;
 	gravityDB_opened = false;
@@ -1046,7 +1047,7 @@ inline const char* gravityDB_getDomain(int *rowid)
 // Finalize statement of a gravity database transaction
 void gravityDB_finalizeTable(void)
 {
-	if(!gravityDB_opened)
+	if(!gravityDB_opened || table_stmt == NULL)
 		return;
 
 	// Finalize statement

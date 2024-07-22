@@ -454,6 +454,10 @@ void handle_realtime_signals(void)
 			// Skip SIGUSR6 as it is used internally to signify
 			// dnsmasq to stop
 			continue;
+		if(signum == SIGUSR32)
+			// Skip SIGUSR32 as it is used internally by valgrind
+			// and should not be used
+			continue;
 
 		struct sigaction SIGACTION = { 0 };
 		SIGACTION.sa_flags = SA_SIGINFO;
