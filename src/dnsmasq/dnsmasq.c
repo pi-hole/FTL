@@ -28,6 +28,8 @@
 #include "signals.h"
 // FTL_fork_and_bind_sockets()
 #include "main.h"
+// log_debug()
+#include "log.h"
 
 struct daemon *daemon;
 
@@ -1313,6 +1315,7 @@ int main_dnsmasq (int argc, char **argv)
 
 static void sig_handler(int sig)
 {
+  log_debug(DEBUG_ANY, "dnsmasq received signal %d", sig);
   if (pid == 0)
     {
       /* ignore anything other than TERM during startup
