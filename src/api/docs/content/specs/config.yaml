@@ -413,8 +413,6 @@ components:
                 tls:
                   type: object
                   properties:
-                    rev_proxy:
-                      type: boolean
                     cert:
                       type: string
                 paths:
@@ -739,7 +737,6 @@ components:
               timeout: 300
               restore: true
             tls:
-              rev_proxy: false
               cert: "/etc/pihole/tls.pem"
             paths:
               webroot: "/var/www/html"

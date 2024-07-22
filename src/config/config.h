@@ -240,7 +240,6 @@ struct config {
 			struct conf_item restore;
 		} session;
 		struct {
-			struct conf_item rev_proxy;
 			struct conf_item cert;
 		} tls;
 		struct {
