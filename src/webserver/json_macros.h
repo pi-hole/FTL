@@ -284,4 +284,14 @@
 	elem != NULL ? cJSON_IsTrue(elem) : false; \
 })
 
-#define cJSON_AddStringToArray(array, string) cJSON_AddItemToArray(array, cJSON_CreateString(string))
+#define cJSON_AddStringReferenceToObject(object, key, string) \
+	cJSON_AddItemToObject(object, key, cJSON_CreateStringReference((const char*)(string)))
+
+#define cJSON_AddStringReferenceToArray(array, string) \
+	cJSON_AddItemToArray(array, cJSON_CreateStringReference((const char*)(string)))
+
+#define cJSON_AddNumberToArray(array, num) \
+	cJSON_AddItemToArray(array, cJSON_CreateNumber(num))
+
+#define cJSON_AddStringToArray(array, string) \
+	cJSON_AddItemToArray(array, cJSON_CreateString(string))

@@ -90,6 +90,7 @@ static struct {
 	{ "/api/config",                            "/{element}",                 api_config,                            { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/config",                            "/{element}/{value}",         api_config,                            { API_PARSE_JSON, 0                         }, true,  HTTP_DELETE | HTTP_PUT },
 	{ "/api/network/gateway",                   "",                           api_network_gateway,                   { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
+	{ "/api/network/routes",                    "",                           api_network_routes,                    { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/network/devices",                   "",                           api_network_devices,                   { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/network/devices",                   "/{device_id}",               api_network_devices,                   { API_PARSE_JSON, 0                         }, true,  HTTP_DELETE },

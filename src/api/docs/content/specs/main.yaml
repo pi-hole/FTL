@@ -241,6 +241,9 @@ paths:
   /network/gateway:
     $ref: 'network.yaml#/components/paths/gateway'
 
+  /network/routes:
+    $ref: 'network.yaml#/components/paths/routes'
+
   /network/interfaces:
     $ref: 'network.yaml#/components/paths/interfaces'
 
