@@ -240,8 +240,7 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	return 0;
 }
 
-static int read_hwmon_sensors(struct ftl_conn *api,
-                              cJSON *array,
+static int read_hwmon_sensors(cJSON *array,
                               const char *path,
                               const char *value_path,
                               const unsigned int sensor_id)
@@ -279,11 +278,11 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 			// Remove newline if present
 			char *p = strchr(label, '\n');
 			if (p != NULL) *p = '\0';
-			JSON_COPY_STR_TO_OBJECT(item, "name", label);
+			cJSON_AddStringToObject(item, "name", label);
 		}
 		else
 		{
-			JSON_ADD_NULL_TO_OBJECT(item, "name");
+			cJSON_AddNullToObject(item, "name");
 		}
 		if(f_label != NULL)
 			fclose(f_label);
@@ -330,18 +329,18 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 			max += 273.15;
 			crit += 273.15;
 		}
-		JSON_ADD_NUMBER_TO_OBJECT(item, "value", temp);
+		cJSON_AddNumberToObject(item, "value", temp);
 		if(has_max)
-			JSON_ADD_NUMBER_TO_OBJECT(item, "max", max);
+			cJSON_AddNumberToObject(item, "max", max);
 		else
-			JSON_ADD_NULL_TO_OBJECT(item, "max");
+			cJSON_AddNullToObject(item, "max");
 		if(has_crit)
-			JSON_ADD_NUMBER_TO_OBJECT(item, "crit", crit);
+			cJSON_AddNumberToObject(item, "crit", crit);
 		else
-			JSON_ADD_NULL_TO_OBJECT(item, "crit");
-		JSON_COPY_STR_TO_OBJECT(item, "sensor", name);
+			cJSON_AddNullToObject(item, "crit");
+		cJSON_AddStringToObject(item, "sensor", name);
 
-		JSON_ADD_ITEM_TO_ARRAY(array, item);
+		cJSON_AddItemToArray(array, item);
 	}
 
 	if(f_value != NULL)
@@ -351,7 +350,7 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 	return 0;
 }
 
-static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
+static int get_hwmon_sensors(cJSON *sensors)
 {
 	int ret;
 	// Source available temperatures, we try to read temperature sensors from
@@ -411,18 +410,18 @@ static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 			break;
 
 		// Create sensor array item
-		cJSON *hwmon = JSON_NEW_OBJECT();
-		JSON_COPY_STR_TO_OBJECT(hwmon, "name", name);
-		JSON_COPY_STR_TO_OBJECT(hwmon, "path", dircontent->d_name);
+		cJSON *hwmon = cJSON_CreateObject();
+		cJSON_AddStringToObject(hwmon, "name", name);
+		cJSON_AddStringToObject(hwmon, "path", dircontent->d_name);
 
 		// Get symlink target
 		char *target = get_hwmon_target(dirpath);
-		JSON_COPY_STR_TO_OBJECT(hwmon, "source", target);
+		cJSON_AddStringToObject(hwmon, "source", target);
 		free(target);
 
-		cJSON *temps = JSON_NEW_ARRAY();
-		JSON_ADD_ITEM_TO_OBJECT(hwmon, "temps", temps);
-		JSON_ADD_ITEM_TO_ARRAY(sensors, hwmon);
+		cJSON *temps = cJSON_CreateArray();
+		cJSON_AddItemToObject(hwmon, "temps", temps);
+		cJSON_AddItemToArray(sensors, hwmon);
 
 		// Iterate over /sys/class/hwmon/hwmonX/tempY_...
 		DIR *sensor_dir = opendir(dirpath);
@@ -451,7 +450,7 @@ static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 			strncat(value_path, dircontent_sensor->d_name, sizeof(value_path)-strlen(value_path)-1);
 
 			// Read sensor
-			ret = read_hwmon_sensors(api, temps, dirpath, value_path, sensor_id);
+			ret = read_hwmon_sensors(temps, dirpath, value_path, sensor_id);
 			if(ret != 0)
 				break;
 		}
@@ -641,11 +640,11 @@ int api_info_host(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-int get_sensors_obj(struct ftl_conn *api, cJSON *sensors, const bool add_list)
+int get_sensors_obj(cJSON *sensors, const bool add_list)
 {
 	// Get sensors array
 	cJSON *list = JSON_NEW_ARRAY();
-	int ret = get_hwmon_sensors(api, list);
+	int ret = get_hwmon_sensors(list);
 	if (ret != 0)
 		return ret;
 	if(add_list)
@@ -687,17 +686,17 @@ int get_sensors_obj(struct ftl_conn *api, cJSON *sensors, const bool add_list)
 		cJSON *first_sensor = cJSON_GetArrayItem(sensors_array, 0);
 		cJSON *first_sensor_value = cJSON_GetObjectItemCaseSensitive(first_sensor, "value");
 		if(cJSON_IsNumber(first_sensor_value))
-			JSON_ADD_NUMBER_TO_OBJECT(sensors, "cpu_temp", first_sensor_value->valuedouble);
+			cJSON_AddNumberToObject(sensors, "cpu_temp", first_sensor_value->valuedouble);
 		else
-			JSON_ADD_NULL_TO_OBJECT(sensors, "cpu_temp");
+			cJSON_AddNullToObject(sensors, "cpu_temp");
 	}
 	else
 	{
-		JSON_ADD_NULL_TO_OBJECT(sensors, "cpu_temp");
+		cJSON_AddNullToObject(sensors, "cpu_temp");
 	}
 
 	// Add hot limit
-	JSON_ADD_NUMBER_TO_OBJECT(sensors, "hot_limit", config.webserver.api.temp.limit.v.d);
+	cJSON_AddNumberToObject(sensors, "hot_limit", config.webserver.api.temp.limit.v.d);
 
 	// Add unit
 	const char *unit = "C";
@@ -705,7 +704,7 @@ int get_sensors_obj(struct ftl_conn *api, cJSON *sensors, const bool add_list)
 		unit = "F";
 	else if(config.webserver.api.temp.unit.v.temp_unit == TEMP_UNIT_K)
 		unit = "K";
-	JSON_REF_STR_IN_OBJECT(sensors, "unit", unit);
+	cJSON_AddStringReferenceToObject(sensors, "unit", unit);
 
 	if(!add_list)
 		cJSON_Delete(list);
@@ -716,7 +715,7 @@ int get_sensors_obj(struct ftl_conn *api, cJSON *sensors, const bool add_list)
 int api_info_sensors(struct ftl_conn *api)
 {
 	cJSON *sensors = JSON_NEW_OBJECT();
-	int ret = get_sensors_obj(api, sensors, true);
+	int ret = get_sensors_obj(sensors, true);
 	if (ret != 0)
 		return ret;
 

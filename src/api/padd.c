@@ -301,7 +301,7 @@ int api_padd(struct ftl_conn *api)
 
 	// info/sensors -> CPU temp sensor
 	cJSON *sensors = JSON_NEW_OBJECT();
-	get_sensors_obj(api, sensors, false);
+	get_sensors_obj(sensors, false);
 	JSON_ADD_ITEM_TO_OBJECT(json, "sensors", sensors);
 
 	JSON_SEND_OBJECT(json);

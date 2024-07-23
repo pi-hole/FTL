@@ -302,7 +302,6 @@ void parse_args(int argc, char* argv[])
 		exit(printTOTP());
 	}
 
-
 	// Create teleporter archive through CLI
 	if(argc == 2 && strcmp(argv[1], "--teleporter") == 0)
 	{
@@ -565,6 +564,30 @@ void parse_args(int argc, char* argv[])
 		// Print result
 		printf("%s\n", name);
 		free(name);
+		exit(EXIT_SUCCESS);
+	}
+
+
+	// Export sensors in human-readable JSON format
+	if(argc == 2 && strcmp(argv[1], "--sensors") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+
+		cJSON *sensors = cJSON_CreateObject();
+		int ret = get_sensors_obj(sensors, true);
+
+		// Print result
+		if(ret == 0)
+		{
+			char *json = cJSON_Print(sensors);
+			printf("%s\n", json);
+			free(json);
+		}
+		else
+			printf("No sensors found\n");
+		cJSON_Delete(sensors);
 		exit(EXIT_SUCCESS);
 	}
 
@@ -1081,6 +1104,7 @@ void parse_args(int argc, char* argv[])
 			printf("\t                    authentication (if enabled)\n");
 			printf("\t%s--perf%s              Run performance-tests based on the\n", green, normal);
 			printf("\t                    BALLOON password-hashing algorithm\n");
+			printf("\t%s--sensors%s           Return JSON-formatted sensor data\n", green, normal);
 			printf("\t%s--%s [OPTIONS]%s        Pass OPTIONS to internal dnsmasq resolver\n", green, cyan, normal);
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);

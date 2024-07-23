@@ -76,7 +76,7 @@ int api_info_metrics(struct ftl_conn *api);
 int api_info_login(struct ftl_conn *api);
 cJSON *read_sys_property(const char *path);
 int get_system_obj(struct ftl_conn *api, cJSON *system);
-int get_sensors_obj(struct ftl_conn *api, cJSON *sensors, const bool add_list);
+int get_sensors_obj(cJSON *sensors, const bool add_list);
 int get_version_obj(struct ftl_conn *api, cJSON *version);
 
 // Config methods
