@@ -449,6 +449,8 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 	fputs("\n", pihole_conf);
 
+	// Add upstream DNS servers for reverse lookups
+	bool domain_revServer = false;
 	const unsigned int revServers = cJSON_GetArraySize(conf->dns.revServers.v.json);
 	for(unsigned int i = 0; i < revServers; i++)
 	{
@@ -485,7 +487,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		// If we have a reverse domain, we forward all queries to this domain to
 		// the same destination
 		if(strlen(domain) > 0)
+		{
 			fprintf(pihole_conf, "server=/%s/%s\n", domain, target);
+
+			// Check if the configured domain is the same as the main domain
+			if(strlen(config.dns.domain.v.s) > 0 &&
+			   strcasecmp(domain, config.dns.domain.v.s) == 0)
+				domain_revServer = true;
+		}
 
 		// Forward unqualified names to the target only when the "never forward
 		// non-FQDN" option is NOT ticked
@@ -497,19 +506,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		free(copy);
 	}
 
-	// When there is a Pi-hole domain set and "Never forward non-FQDNs" is
-	// ticked, we add `local=/domain/` to signal that this domain is purely
-	// local and FTL may answer queries from /etc/hosts or DHCP but should
-	// never forward queries on that domain to any upstream servers
+	// When "Never forward non-FQDNs" is ticked, we add `local=//` to signal
+	// that non-FQDNs queries should never be sent to any upstream servers
 	if(conf->dns.domainNeeded.v.b)
 	{
 		fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
 		fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
-		fputs("# is not known from /etc/hosts or DHCP a NXDOMAIN is returned\n", pihole_conf);
-		if(strlen(conf->dns.domain.v.s))
-			fprintf(pihole_conf, "local=/%s/\n\n", conf->dns.domain.v.s);
-		else
-			fputs("\n", pihole_conf);
+		fputs("# is not known from /etc/hosts or DHCP, NXDOMAIN is returned\n", pihole_conf);
+		fputs("local=//\n\n", pihole_conf);
 	}
 
 	// Add domain to DNS server. It will also be used for DHCP if the DHCP
@@ -517,7 +521,20 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	if(strlen(conf->dns.domain.v.s) > 0)
 	{
 		fputs("# DNS domain for both the DNS and DHCP server\n", pihole_conf);
-		fprintf(pihole_conf, "domain=%s\n\n", conf->dns.domain.v.s);
+		if(!domain_revServer)
+		{
+			fputs("# This DNS domain in purely local. FTL may answer queries from\n", pihole_conf);
+			fputs("# /etc/hosts or DHCP but should never forward queries on that\n", pihole_conf);
+			fputs("# domain to any upstream servers\n", pihole_conf);
+			fprintf(pihole_conf, "domain=%s\n", conf->dns.domain.v.s);
+			fprintf(pihole_conf, "local=/%s/\n\n", conf->dns.domain.v.s);
+		}
+		else
+		{
+			fputs("# This DNS domain is also used for reverse lookups\n", pihole_conf);
+			fputs("# (see server=/<domain>/target above)\n", pihole_conf);
+			fprintf(pihole_conf, "domain=%s\n\n", conf->dns.domain.v.s);
+		}
 	}
 
 	if(conf->dhcp.active.v.b)
