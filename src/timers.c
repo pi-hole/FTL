@@ -66,7 +66,7 @@ void sleepms(const int milliseconds)
 }
 
 static double timer_delay = -1.0;
-static bool timer_target_status;
+static bool timer_target_status = true;
 
 void set_blockingmode_timer(double delay, bool target_status)
 {

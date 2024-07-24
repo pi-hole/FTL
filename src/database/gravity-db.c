@@ -50,6 +50,17 @@ static sqlite3_stmt* table_stmt = NULL;
 bool gravityDB_opened = false;
 static bool gravity_abp_format = false;
 
+// Variables memorizing the parent gravity database connection and prepared
+// statements to avoid valgrind warnings about memory leaks
+static sqlite3 *parent_gravity_db = NULL;
+sqlite3_stmt_vec *parent_whitelist_stmt = NULL;
+sqlite3_stmt_vec *parent_gravity_stmt = NULL;
+sqlite3_stmt_vec *parent_antigravity_stmt = NULL;
+sqlite3_stmt_vec *parent_blacklist_stmt = NULL;
+
+// Private prototypes
+static bool gravityDB_open(void);
+
 // Table names corresponding to the enum defined in gravity-db.h
 static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "client", "group", "adlist", "denied_domains", "allowed_domains", "" };
 
@@ -86,12 +97,17 @@ void gravityDB_forked(void)
 	// is clear that this in not what we want to do as this is a slow
 	// process and many TCP queries could lead to a DoS attack.
 	gravityDB_opened = false;
+	parent_gravity_db = gravity_db;
 	gravity_db = NULL;
 
 	// Also pretend we have not yet prepared the list statements
+	parent_whitelist_stmt = whitelist_stmt;
 	whitelist_stmt = NULL;
+	parent_blacklist_stmt = blacklist_stmt;
 	blacklist_stmt = NULL;
+	parent_gravity_stmt = gravity_stmt;
 	gravity_stmt = NULL;
+	parent_antigravity_stmt = antigravity_stmt;
 	antigravity_stmt = NULL;
 
 	// Open the database
@@ -133,7 +149,7 @@ static void gravity_check_ABP_format(void)
 }
 
 // Open gravity database
-bool gravityDB_open(void)
+static bool gravityDB_open(void)
 {
 	struct stat st;
 	if(stat(config.files.gravity.v.s, &st) != 0)
@@ -955,6 +971,7 @@ void gravityDB_close(void)
 	free_sqlite3_stmt_vec(&antigravity_stmt);
 
 	// Close table
+	log_debug(DEBUG_ANY, "Closing gravity database");
 	sqlite3_close(gravity_db);
 	gravity_db = NULL;
 	gravityDB_opened = false;
@@ -1046,7 +1063,7 @@ inline const char* gravityDB_getDomain(int *rowid)
 // Finalize statement of a gravity database transaction
 void gravityDB_finalizeTable(void)
 {
-	if(!gravityDB_opened)
+	if(!gravityDB_opened || table_stmt == NULL)
 		return;
 
 	// Finalize statement

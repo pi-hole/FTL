@@ -1459,6 +1459,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 		// Debug output
 		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
+		free(domainstr);
 
 		return true;
 	}
@@ -1961,7 +1962,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		const char *answer = arg;
 		// Determine returned address (if applicable)
 		char dest[ADDRSTRLEN]; dest[0] = '\0';
-		if(addr)
+		if(addr && flags & (F_IPV4 | F_IPV6))
 		{
 			inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 			answer = dest; // Overwrite answer with human-readable IP address
