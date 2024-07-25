@@ -32,6 +32,7 @@ char *username;
 bool needGC = false;
 bool needDBGC = false;
 bool startup = true;
+bool forked = false;
 jmp_buf exit_jmp;
 
 int main (int argc, char *argv[])
@@ -124,7 +125,7 @@ int main (int argc, char *argv[])
 		log_debug(DEBUG_ANY, "Jumped back to main() from dnsmasq/die()");
 		dnsmasq_failed = true;
 
-		if(!resolver_ready)
+		if(!forked)
 		{
 			// If dnsmasq never finished initializing, we need to
 			// launch the threads
@@ -132,7 +133,7 @@ int main (int argc, char *argv[])
 		}
 
 		// Loop here to keep the webserver running unless requested to restart
-		while(!FTL_terminate)
+		while(!killed)
 			sleepms(100);
 	}
 

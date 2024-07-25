@@ -35,7 +35,6 @@ struct daemon *daemon;
 
 static volatile pid_t pid = 0;
 static volatile int pipewrite;
-volatile char FTL_terminate = 0;
 
 static void set_dns_listeners(void);
 static void set_tftp_listeners(void);
@@ -1067,12 +1066,8 @@ int main_dnsmasq (int argc, char **argv)
   /* Using inotify, have to select a resolv file at startup */
   poll_resolv(1, 0, now);
 #endif
-
-  /*** Pi-hole modification ***/
-  FTL_terminate = killed;
-  /****************************/
   
-  while (!FTL_terminate)
+  while (!killed)
     {
       int timeout = fast_retry(now);
       
@@ -1669,7 +1664,7 @@ static void async_event(int pipe, time_t now)
 	flush_log();
 	/*** Pi-hole modification ***/
 //	exit(EC_GOOD);
-	FTL_terminate = 1;
+	killed = 1;
 	/*** Pi-hole modification ***/
       }
 }

@@ -15,9 +15,6 @@
 #define SIGUSR6 (SIGRTMIN + 6)
 #define SIGUSR32 (SIGRTMIN + 32)
 
-// defined in dnsmasq/dnsmasq.h
-extern volatile char FTL_terminate;
-
 void handle_signals(void);
 void handle_realtime_signals(void);
 pid_t main_pid(void);

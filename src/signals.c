@@ -408,8 +408,16 @@ static void SIGTERM_handler(int signum, siginfo_t *si, void *unused)
 	         kill_name, (long int)kill_pid, kill_user, (long int)kill_uid);
 
 	// Terminate dnsmasq to stop DNS service
-	log_debug(DEBUG_ANY, "Sending SIGUSR6 to dnsmasq to stop DNS service");
-	raise(SIGUSR6);
+	if(!dnsmasq_failed)
+	{
+		log_debug(DEBUG_ANY, "Sending SIGUSR6 to dnsmasq to stop DNS service");
+		raise(SIGUSR6);
+	}
+	else
+	{
+		log_debug(DEBUG_ANY, "Embedded dnsmasq failed, exiting on request");
+		killed = true;
+	}
 }
 
 // Register ordinary signals handler
