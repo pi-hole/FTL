@@ -398,7 +398,12 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# Use DNNSEC\n", pihole_conf);
 		fputs("dnssec\n", pihole_conf);
 		fputs("# 2017-02-02 root zone trust anchor\n", pihole_conf);
+		fputs("# https://www.iana.org/reports/2017/root-ksk-2017.pdf\n", pihole_conf);
 		fputs("trust-anchor=.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D\n",
+		      pihole_conf);
+		fputs("# 2024-07-26 root zone trust anchor\n", pihole_conf);
+		fputs("# https://www.iana.org/reports/2024/root-ksk-2024.pdf\n", pihole_conf);
+		fputs("trust-anchor=.,38696,8,2,683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16\n",
 		      pihole_conf);
 		fputs("\n", pihole_conf);
 	}
