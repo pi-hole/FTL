@@ -15,14 +15,12 @@
 #define SIGUSR6 (SIGRTMIN + 6)
 #define SIGUSR32 (SIGRTMIN + 32)
 
-// defined in dnsmasq/dnsmasq.h
-extern volatile char FTL_terminate;
-
 void handle_signals(void);
 void handle_realtime_signals(void);
 pid_t main_pid(void);
 void thread_sleepms(const enum thread_types thread, const int milliseconds);
 void generate_backtrace(void);
+int sigtest(void);
 
 extern volatile int exit_code;
 extern volatile sig_atomic_t killed;

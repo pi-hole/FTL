@@ -333,7 +333,11 @@ static void SIGTERM_handler(int signum, siginfo_t *si, void *unused)
 {
 	// Ignore SIGTERM outside of the main process (TCP forks)
 	if(mpid != getpid())
+	{
+		log_debug(DEBUG_ANY, "Ignoring SIGTERM in TCP worker");
 		return;
+	}
+	log_debug(DEBUG_ANY, "Received SIGTERM");
 
 	// Get PID and UID of the process that sent the terminating signal
 	const pid_t kill_pid = si->si_pid;
@@ -401,11 +405,19 @@ static void SIGTERM_handler(int signum, siginfo_t *si, void *unused)
 
 	// Log who sent the signal
 	log_info("Asked to terminate by \"%s\" (PID %ld, user %s UID %ld)",
-	         kill_name, (long int)kill_pid,
-	         kill_user, (long int)kill_uid);
+	         kill_name, (long int)kill_pid, kill_user, (long int)kill_uid);
 
 	// Terminate dnsmasq to stop DNS service
-	raise(SIGUSR6);
+	if(!dnsmasq_failed)
+	{
+		log_debug(DEBUG_ANY, "Sending SIGUSR6 to dnsmasq to stop DNS service");
+		raise(SIGUSR6);
+	}
+	else
+	{
+		log_debug(DEBUG_ANY, "Embedded dnsmasq failed, exiting on request");
+		killed = true;
+	}
 }
 
 // Register ordinary signals handler
@@ -413,28 +425,20 @@ void handle_signals(void)
 {
 	struct sigaction old_action;
 
-	const int signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE };
+	const int signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTERM };
 	for(unsigned int i = 0; i < ArraySize(signals); i++)
 	{
 		// Catch this signal
 		sigaction (signals[i], NULL, &old_action);
 		if(old_action.sa_handler != SIG_IGN)
 		{
-			struct sigaction SIGaction;
-			memset(&SIGaction, 0, sizeof(struct sigaction));
+			struct sigaction SIGaction = { 0 };
 			SIGaction.sa_flags = SA_SIGINFO;
 			sigemptyset(&SIGaction.sa_mask);
-			SIGaction.sa_sigaction = &signal_handler;
+			SIGaction.sa_sigaction = signals[i] != SIGTERM ? &signal_handler : &SIGTERM_handler;
 			sigaction(signals[i], &SIGaction, NULL);
 		}
 	}
-
-	// Also catch SIGTERM
-	struct sigaction SIGaction = { 0 };
-	SIGaction.sa_flags = SA_SIGINFO;
-	sigemptyset(&SIGaction.sa_mask);
-	SIGaction.sa_sigaction = &SIGTERM_handler;
-	sigaction(SIGTERM, &SIGaction, NULL);
 
 	// Log start time of FTL
 	FTLstarttime = time(NULL);
@@ -486,4 +490,36 @@ void thread_sleepms(const enum thread_types thread, const int milliseconds)
 	thread_cancellable[thread] = true;
 	sleepms(milliseconds);
 	thread_cancellable[thread] = false;
+}
+
+static void print_signal(int signum, siginfo_t *si, void *unused)
+{
+	printf("Received signal %d: \"%s\"\n", signum, strsignal(signum));
+	fflush(stdin);
+	if(signum == SIGTERM)
+		exit(EXIT_SUCCESS);
+}
+
+// Register handler that catches *all* signals and displays them
+int sigtest(void)
+{
+	printf("PID: %d\n", getpid());
+	// Catch all real-time signals
+	for(int signum = 0; signum <= SIGRTMAX; signum++)
+	{
+		struct sigaction SIGACTION = { 0 };
+		SIGACTION.sa_flags = SA_SIGINFO;
+		sigemptyset(&SIGACTION.sa_mask);
+		SIGACTION.sa_sigaction = &print_signal;
+		sigaction(signum, &SIGACTION, NULL);
+	}
+
+	printf("Waiting (30sec)...\n");
+	fflush(stdin);
+
+	// Sleep here for 30 seconds
+	sleepms(30000);
+
+	// Exit successfully
+	return EXIT_SUCCESS;
 }

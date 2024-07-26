@@ -201,6 +201,10 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "luac"))
 		exit(run_luac(argc, argv));
 
+	// Special (undocumented) mode to test kernel signal handling
+	if(argc == 2 && strcmp(argv[1], "sigtest") == 0)
+		exit(sigtest());
+
 	// If the binary name is "sqlite3"  (e.g., symlink /usr/bin/sqlite3 -> /usr/bin/pihole-FTL),
 	// we operate in drop-in mode and consume all arguments for the embedded SQLite3 engine
 	// Also, we do this if the first argument is a file with ".db" ending

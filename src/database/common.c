@@ -255,10 +255,6 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 		return;
 	}
 
-	// Log backtrace if any debug flag is set
-	if(config.debug.extra.v.b)
-		generate_backtrace();
-
 	if(iErrCode == SQLITE_WARNING)
 		log_warn("SQLite3: %s (%d)", zMsg, iErrCode);
 	else if(iErrCode == SQLITE_NOTICE || iErrCode == SQLITE_SCHEMA)

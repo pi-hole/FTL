@@ -28,12 +28,13 @@
 #include "signals.h"
 // FTL_fork_and_bind_sockets()
 #include "main.h"
+// log_debug()
+#include "log.h"
 
 struct daemon *daemon;
 
 static volatile pid_t pid = 0;
 static volatile int pipewrite;
-volatile char FTL_terminate = 0;
 
 static void set_dns_listeners(void);
 static void set_tftp_listeners(void);
@@ -1065,12 +1066,8 @@ int main_dnsmasq (int argc, char **argv)
   /* Using inotify, have to select a resolv file at startup */
   poll_resolv(1, 0, now);
 #endif
-
-  /*** Pi-hole modification ***/
-  FTL_terminate = killed;
-  /****************************/
   
-  while (!FTL_terminate)
+  while (!killed)
     {
       int timeout = fast_retry(now);
       
@@ -1313,6 +1310,7 @@ int main_dnsmasq (int argc, char **argv)
 
 static void sig_handler(int sig)
 {
+  log_debug(DEBUG_ANY, "dnsmasq received signal %d", sig);
   if (pid == 0)
     {
       /* ignore anything other than TERM during startup
@@ -1666,7 +1664,7 @@ static void async_event(int pipe, time_t now)
 	flush_log();
 	/*** Pi-hole modification ***/
 //	exit(EC_GOOD);
-	FTL_terminate = 1;
+	killed = 1;
 	/*** Pi-hole modification ***/
       }
 }
