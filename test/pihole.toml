@@ -649,14 +649,6 @@
     restore = true
 
   [webserver.tls]
-    # Is Pi-hole running behind a reverse proxy? If yes, Pi-hole will not consider
-    # HTTP-only connections being insecure. This is useful if you are running Pi-hole in a
-    # trusted environment, for example, in a local network, and you are using a reverse
-    # proxy to provide TLS encryption, e.g., by using Traefik (docker). If you are using a
-    # reverse proxy, you can alternatively set webserver.tls.cert to the path of the TLS
-    # certificate file and let Pi-hole handle true end-to-end encryption.
-    rev_proxy = false
-
     # Path to the TLS (SSL) certificate file. This option is only required when at least
     # one of webserver.port is TLS. The file must be in PEM format, and it must have both,
     # private key and certificate (the *.pem file created must contain a 'CERTIFICATE'
@@ -1105,7 +1097,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 149 total entries out of which 94 entries are default
+# 148 total entries out of which 93 entries are default
 # --> 55 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

@@ -972,12 +972,6 @@ void initConfig(struct config *conf)
 	conf->webserver.port.d.s = (char*)"80,[::]:80,443s,[::]:443s";
 	conf->webserver.port.c = validate_stub; // Type-based checking + civetweb syntax checking
 
-	conf->webserver.tls.rev_proxy.k = "webserver.tls.rev_proxy";
-	conf->webserver.tls.rev_proxy.h = "Is Pi-hole running behind a reverse proxy? If yes, Pi-hole will not consider HTTP-only connections being insecure. This is useful if you are running Pi-hole in a trusted environment, for example, in a local network, and you are using a reverse proxy to provide TLS encryption, e.g., by using Traefik (docker). If you are using a reverse proxy, you can alternatively set webserver.tls.cert to the path of the TLS certificate file and let Pi-hole handle true end-to-end encryption.";
-	conf->webserver.tls.rev_proxy.t = CONF_BOOL;
-	conf->webserver.tls.rev_proxy.d.b = false;
-	conf->webserver.tls.rev_proxy.c = validate_stub; // Only type-based checking
-
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
 	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
 	conf->webserver.tls.cert.a = cJSON_CreateStringReference("<valid TLS certificate file (*.pem)>");

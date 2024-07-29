@@ -299,7 +299,14 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 		JSON_ADD_NUMBER_TO_OBJECT(session, "last_active", auth_data[i].valid_until - config.webserver.session.timeout.v.ui);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "valid_until", auth_data[i].valid_until);
 		JSON_REF_STR_IN_OBJECT(session, "remote_addr", auth_data[i].remote_addr);
-		JSON_REF_STR_IN_OBJECT(session, "user_agent", auth_data[i].user_agent);
+		if(auth_data[i].user_agent[0] != '\0')
+			JSON_REF_STR_IN_OBJECT(session, "user_agent", auth_data[i].user_agent);
+		else
+			JSON_ADD_NULL_TO_OBJECT(session, "user_agent");
+		if(auth_data[i].x_forwarded_for[0] != '\0')
+			JSON_REF_STR_IN_OBJECT(session, "x_forwarded_for", auth_data[i].x_forwarded_for);
+		else
+			JSON_ADD_NULL_TO_OBJECT(session, "x_forwarded_for");
 		JSON_ADD_BOOL_TO_OBJECT(session, "app", auth_data[i].app);
 		JSON_ADD_BOOL_TO_OBJECT(session, "cli", auth_data[i].cli);
 		JSON_ADD_ITEM_TO_ARRAY(sessions, session);
@@ -523,7 +530,7 @@ int api_auth(struct ftl_conn *api)
 
 	if(result == PASSWORD_CORRECT ||
 	   result == APPPASSWORD_CORRECT ||
-	   result ==CLIPASSWORD_CORRECT)
+	   result == CLIPASSWORD_CORRECT)
 	{
 		// Accepted
 
@@ -575,7 +582,7 @@ int api_auth(struct ftl_conn *api)
 			   auth_data[i].valid_until < now)
 			{
 				log_debug(DEBUG_API, "API: Session of client %u (%s) expired, freeing...",
-						i, auth_data[i].remote_addr);
+				          i, auth_data[i].remote_addr);
 				delete_session(i);
 			}
 
@@ -600,6 +607,17 @@ int api_auth(struct ftl_conn *api)
 				else
 				{
 					auth_data[i].user_agent[0] = '\0';
+				}
+				// Store X-Forwarded-For (if available)
+				const char *x_forwarded_for = mg_get_header(api->conn, "X-Forwarded-For");
+				if(x_forwarded_for != NULL)
+				{
+					strncpy(auth_data[i].x_forwarded_for, x_forwarded_for, sizeof(auth_data[i].x_forwarded_for));
+					auth_data[i].x_forwarded_for[sizeof(auth_data[i].x_forwarded_for)-1] = '\0';
+				}
+				else
+				{
+					auth_data[i].x_forwarded_for[0] = '\0';
 				}
 
 				auth_data[i].tls.login = api->request->is_ssl;

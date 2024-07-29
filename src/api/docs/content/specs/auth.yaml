@@ -362,7 +362,12 @@ components:
                 description: IP address of the client
               user_agent:
                 type: string
-                description: User agent of the client
+                nullable: true
+                description: User agent of the client (optional)
+              x_forwarded_for:
+                type: string
+                nullable: true
+                description: IP address of the client (if behind a proxy, optional)
           example:
             - id: 1
               current_session: true
@@ -377,6 +382,7 @@ components:
               valid_until: 1580000300
               remote_addr: "192.168.0.34"
               user_agent: "Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0"
+              x_forwarded_for: null
     totp:
       type: object
       description: TOTP secret suggestion
