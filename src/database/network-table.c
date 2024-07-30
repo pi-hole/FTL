@@ -1298,6 +1298,7 @@ void parse_neighbor_cache(sqlite3* db)
 		if((arpfp = popen(cmd, "r")) == NULL)
 		{
 			log_warn("Command \"%s\" failed: %s", cmd, strerror(errno));
+			free(client_status);
 			return;
 		}
 

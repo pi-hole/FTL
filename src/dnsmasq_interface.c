@@ -87,7 +87,6 @@ static bool adbit = false;
 static const char *blockingreason = "";
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static int last_regex_idx = -1;
-static struct ptr_record *pihole_ptr = NULL;
 static char *pihole_suffix = NULL;
 static char *hostname_suffix = NULL;
 static char *cname_target = NULL;
@@ -1058,9 +1057,22 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 
 static void check_pihole_PTR(char *domain)
 {
-	// Return early if Pi-hole PTR is not available
-	if(pihole_ptr == NULL)
-		return;
+	// Iterate through the already configured PTR entries in dnsmasq's
+	// structure and check if we already have a PTR record for this address
+	// This avoids adding work into defining PTR records that have already
+	// been added but also overwriting PTR records manually added by users
+	// using custom dnsmasq config lines like "ptr-record=<name>,<target>"
+	for(struct ptr_record *ptr = daemon->ptr; ptr; ptr = ptr->next)
+	{
+		log_debug(DEBUG_EXTRA, "Known PTR record %p: %s -> %s (next = %p)", ptr, ptr->name, ptr->ptr, ptr->next);
+
+		if(ptr->name != NULL && strcmp(ptr->name, domain) == 0)
+		{
+			// We already have a PTR record for this address
+			log_debug(DEBUG_QUERIES, "PTR record for %s exists", domain);
+			return;
+		}
+	}
 
 	// Convert PTR request into numeric form
 	union all_addr addr = {{ 0 }};
@@ -1082,30 +1094,46 @@ static void check_pihole_PTR(char *domain)
 	for (struct irec *iface = daemon->interfaces; iface != NULL; iface = iface->next)
 	{
 		const sa_family_t family = iface->addr.sa.sa_family;
-		if((family == AF_INET && flags == F_IPV4 && iface->addr.in.sin_addr.s_addr == addr.addr4.s_addr) ||
-		   (family == AF_INET6 && flags == F_IPV6 && IN6_ARE_ADDR_EQUAL(&iface->addr.in6.sin6_addr, &addr.addr6)))
+		// If the family matches but the address doesn't, we skip this address
+		if(!(family == AF_INET && flags == F_IPV4 && iface->addr.in.sin_addr.s_addr == addr.addr4.s_addr) &&
+		   !(family == AF_INET6 && flags == F_IPV6 && IN6_ARE_ADDR_EQUAL(&iface->addr.in6.sin6_addr, &addr.addr6)))
+			continue;
+
+		// If we reached this point, we have a match between the address the client
+		struct ptr_record *pihole_ptr = calloc(1, sizeof(struct ptr_record));
+		pihole_ptr->name = strdup(domain);
+		if(family == AF_INET)
 		{
-			// The last PTR record in daemon->ptr is reserved for Pi-hole
-			free(pihole_ptr->name);
-			pihole_ptr->name = strdup(domain);
-			if(family == AF_INET)
-			{
-				// IPv4 supports conditional domains
-				struct in_addr addrv4 = { 0 };
-				addrv4.s_addr = iface->addr.in.sin_addr.s_addr;
-				pihole_ptr->ptr = get_ptrname(&addrv4);
-			}
-			else
-			{
-				// IPv6 does not support conditional domains
-				pihole_ptr->ptr = get_ptrname(NULL);
-			}
-
-			// Debug logging
-			log_debug(DEBUG_QUERIES, "Generating PTR response: %s -> %s", pihole_ptr->name, pihole_ptr->ptr);
-
-			return;
+			// IPv4 supports conditional domains
+			pihole_ptr->ptr = get_ptrname(&iface->addr.in.sin_addr);
 		}
+		else
+		{
+			// IPv6 does not support conditional domains
+			pihole_ptr->ptr = get_ptrname(NULL);
+		}
+
+		// If we have a PTR record, we add it to the list
+		if(daemon->ptr != NULL)
+		{
+			// Iterate to the last PTR entry in dnsmasq's structure
+			struct ptr_record *ptr;
+			for(ptr = daemon->ptr; ptr && ptr->next; ptr = ptr->next);
+
+			// Add our record after the last existing ptr-record
+			ptr->next = pihole_ptr;
+		}
+		else
+		{
+			// We do not have any PTR records yet, so we add our
+			// record as the first one
+			daemon->ptr = pihole_ptr;
+		}
+
+		// Debug logging
+		log_debug(DEBUG_QUERIES, "Generating PTR record (%p): %s -> %s", pihole_ptr, pihole_ptr->name, pihole_ptr->ptr);
+
+		return;
 	}
 }
 
@@ -2854,32 +2882,7 @@ static void init_pihole_PTR(void)
 				// Fallback to "<hostname>" on memory error
 				ptrname = (char*)hostname();
 			}
-		}
 			break;
-	}
-
-	// Obtain PTR record used for Pi-hole PTR injection (if enabled)
-	if(config.dns.piholePTR.v.ptr_type != PTR_NONE)
-	{
-		// Add PTR record for pi.hole, the address will be injected later
-		pihole_ptr = calloc(1, sizeof(struct ptr_record));
-		pihole_ptr->name = strdup("x.x.x.x.in-addr.arpa");
-		pihole_ptr->ptr = (char*)"";
-		pihole_ptr->next = NULL;
-		// Add our PTR record to the end of the linked list
-		if(daemon->ptr != NULL)
-		{
-			// Iterate to the last PTR entry in dnsmasq's structure
-			struct ptr_record *ptr;
-			for(ptr = daemon->ptr; ptr && ptr->next; ptr = ptr->next);
-
-			// Add our record after the last existing ptr-record
-			ptr->next = pihole_ptr;
-		}
-		else
-		{
-			// Ours is the only record for daemon->ptr
-			daemon->ptr = pihole_ptr;
 		}
 	}
 }
