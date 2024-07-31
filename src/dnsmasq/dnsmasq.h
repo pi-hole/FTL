@@ -200,6 +200,9 @@ struct event_desc {
 #define EVENT_SCRIPT_LOG 25
 #define EVENT_TIME       26
 
+// Pi-hole
+#define EVENT_SIGNAL     255
+
 /* Exit codes. */
 #define EC_GOOD        0
 #define EC_BADCONF     1
