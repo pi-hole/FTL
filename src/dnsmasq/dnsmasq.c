@@ -1310,7 +1310,10 @@ int main_dnsmasq (int argc, char **argv)
 
 static void sig_handler(int sig)
 {
-  log_debug(DEBUG_ANY, "dnsmasq received signal %d", sig);
+  /**** Pi-hole modification ****/
+  send_event(pipewrite, EVENT_SIGNAL, sig, NULL);
+  /******************************/
+
   if (pid == 0)
     {
       /* ignore anything other than TERM during startup
@@ -1569,6 +1572,12 @@ static void async_event(int pipe, time_t now)
       case EVENT_EXITED:
 	my_syslog(LOG_WARNING, _("script process exited with status %d"), ev.data);
 	break;
+
+  /**** Pi-hole modification ****/
+      case EVENT_SIGNAL:
+	log_debug(DEBUG_ANY, "dnsmasq received signal %d", ev.data);
+	break;
+  /**************************** */
 
       case EVENT_EXEC_ERR:
 	my_syslog(LOG_ERR, _("failed to execute %s: %s"), 

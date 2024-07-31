@@ -481,14 +481,6 @@ int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename)
 	rc = sqlite3_step(stmt);
 	if( rc == SQLITE_ROW )
 		num = sqlite3_column_int(stmt, 0);
-	else
-	{
-		log_err("get_number_of_queries_in_DB(%s): Step error: %s",
-		        tablename, sqlite3_errstr(rc));
-		free(querystr);
-		sqlite3_finalize(stmt);
-		return false;
-	}
 	sqlite3_finalize(stmt);
 	free(querystr);
 

@@ -36,7 +36,7 @@ int send_from(int fd, int nowild, char *packet, size_t len,
 	      union mysockaddr *to, union all_addr *source,
 	      unsigned int iface)
 {
-  struct msghdr msg;
+  struct msghdr msg = { 0 };
   struct iovec iov[1]; 
   union {
     struct cmsghdr align; /* this ensures alignment */
@@ -46,7 +46,7 @@ int send_from(int fd, int nowild, char *packet, size_t len,
     char control[CMSG_SPACE(sizeof(struct in_addr))];
 #endif
     char control6[CMSG_SPACE(sizeof(struct in6_pktinfo))];
-  } control_u;
+  } control_u = { 0 };
   
   iov[0].iov_base = packet;
   iov[0].iov_len = len;

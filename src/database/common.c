@@ -248,7 +248,7 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 	// Note: pArg is NULL and not used
 	// See https://sqlite.org/rescode.html#extrc for details
 	// concerning the return codes returned here
-	if(strncmp(zMsg, "file renamed while open: ", sizeof("file renamed while open: ")-1) == 0)
+	if(zMsg != NULL && strncmp(zMsg, "file renamed while open: ", sizeof("file renamed while open: ")-1) == 0)
 	{
 		// This happens when gravity.db is replaced while FTL is running
 		// We can safely ignore this warning
@@ -612,7 +612,7 @@ void db_init(void)
 	// Last check after all migrations, if this happens, it will cause the
 	// CI to fail the tests
 	if(dbversion != MEMDB_VERSION)
-		log_err("Database version %i does not match MEMDB_VERSION %i", dbversion, MEMDB_VERSION);
+		log_err("Expected query database version %d but found %d", MEMDB_VERSION, dbversion);
 
 	lock_shm();
 	import_aliasclients(db);

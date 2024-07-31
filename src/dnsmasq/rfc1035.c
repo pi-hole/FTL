@@ -868,7 +868,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		return 2;
 	      
 	      // ****************************** Pi-hole modification ******************************
-	      const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
+	      const char *src = cpp != NULL ? cache_get_name(cpp) : NULL;
 	      if(FTL_CNAME(name, src, daemon->log_display_id))
 		{
 		  // Found while processing a reply from upstream. We prevent cache insertion here
@@ -2047,7 +2047,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			log_query(stale_flag | (crecp->flags & ~F_REVERSE), name, &crecp->addr,
 				  record_source(crecp->uid), 0);
 			    // ****************************** Pi-hole modification ******************************
-			    const char *src = crecp != NULL ? crecp->flags & F_BIGNAME ? crecp->name.bname->name : crecp->name.sname : NULL;
+			    const char *src = crecp != NULL ? cache_get_name(crecp) : NULL;
 			    if(FTL_CNAME(name, src, daemon->log_display_id))
 			      {
 			        // Served from cache. This can happen if a domain hidden in the CNAME path
