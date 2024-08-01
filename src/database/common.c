@@ -758,6 +758,98 @@ int db_query_int(sqlite3 *db, const char* querystr)
 	return result;
 }
 
+int db_query_int_int(sqlite3 *db, const char* querystr, const int arg)
+{
+	log_debug(DEBUG_DATABASE, "db_query_int_arg: \"%s\"", querystr);
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			log_err("Encountered prepare error in db_query_int(\"%s\"): %s",
+			        querystr, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	// Bind argument to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 1, arg)) != SQLITE_OK)
+	{
+		log_err("Encountered bind error in db_query_int(\"%s\"): %s",
+		        querystr, sqlite3_errstr(rc));
+	}
+
+	rc = sqlite3_step(stmt);
+	int result;
+
+	if( rc == SQLITE_ROW )
+	{
+		result = sqlite3_column_int(stmt, 0);
+		log_debug(DEBUG_DATABASE, "         ---> Result %i (int)", result);
+	}
+	else if( rc == SQLITE_DONE )
+	{
+		// No rows available
+		result = DB_NODATA;
+		log_debug(DEBUG_DATABASE, "         ---> No data");
+	}
+	else
+	{
+		log_err("Encountered step error in db_query_int(\"%s\"): %s",
+		        querystr, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	sqlite3_finalize(stmt);
+	return result;
+}
+
+int db_query_int_str(sqlite3 *db, const char* querystr, const char *arg)
+{
+	log_debug(DEBUG_DATABASE, "db_query_int_str: \"%s\"", querystr);
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			log_err("Encountered prepare error in db_query_int(\"%s\"): %s",
+			        querystr, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	// Bind argument to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, arg, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		log_err("Encountered bind error in db_query_int(\"%s\"): %s",
+		        querystr, sqlite3_errstr(rc));
+	}
+
+	rc = sqlite3_step(stmt);
+	int result;
+
+	if( rc == SQLITE_ROW )
+	{
+		result = sqlite3_column_int(stmt, 0);
+		log_debug(DEBUG_DATABASE, "         ---> Result %i (int)", result);
+	}
+	else if( rc == SQLITE_DONE )
+	{
+		// No rows available
+		result = DB_NODATA;
+		log_debug(DEBUG_DATABASE, "         ---> No data");
+	}
+	else
+	{
+		log_err("Encountered step error in db_query_int(\"%s\"): %s",
+		        querystr, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	sqlite3_finalize(stmt);
+	return result;
+}
+
 double db_query_double(sqlite3 *db, const char* querystr)
 {
 	log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", querystr);

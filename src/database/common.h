@@ -45,6 +45,8 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file);
 
 void piholeFTLDB_reopen(void);
 int db_query_int(sqlite3 *db, const char *querystr);
+int db_query_int_int(sqlite3 *db, const char* querystr, const int arg);
+int db_query_int_str(sqlite3 *db, const char* querystr, const char *arg);
 double db_query_double(sqlite3 *db, const char *querystr);
 int db_query_int_from_until(sqlite3 *db, const char* querystr, const double from, const double until);
 int db_query_int_from_until_type(sqlite3 *db, const char* querystr, const double from, const double until, const int type);

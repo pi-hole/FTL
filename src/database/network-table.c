@@ -210,23 +210,13 @@ static int find_device_by_recent_ip(sqlite3 *db, const char *ipaddr)
 	if(FTLDBerror())
 		return -1;
 
-	char *querystr = NULL;
-	int ret = asprintf(&querystr,
-	                   "SELECT network_id FROM network_addresses "
-	                   "WHERE ip = \'%s\' AND "
-	                   "lastSeen > (cast(strftime('%%s', 'now') as int)-86400) "
-	                   "ORDER BY lastSeen DESC LIMIT 1;", ipaddr);
-	if(querystr == NULL || ret < 0)
-	{
-		log_warn("Memory allocation failed in find_device_by_recent_ip(\"%s\"): %i",
-		         ipaddr, ret);
-		return -1;
-	}
+	const char *querystr = "SELECT network_id FROM network_addresses "
+	                       "WHERE ip = ?1 AND "
+	                       "lastSeen > (cast(strftime('%%s', 'now') as int)-86400) "
+	                       "ORDER BY lastSeen DESC LIMIT 1;";
 
 	// Perform SQL query
-	int network_id = db_query_int(db, querystr);
-	free(querystr);
-	querystr = NULL;
+	int network_id = db_query_int_str(db, querystr, ipaddr);
 
 	if(network_id == DB_FAILED)
 	{
@@ -252,20 +242,10 @@ static int find_device_by_mock_hwaddr(sqlite3 *db, const char *ipaddr)
 	if(FTLDBerror())
 		return DB_FAILED;
 
-	char *querystr = NULL;
-	int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'ip-%s\';", ipaddr);
-	if(querystr == NULL || ret < 0)
-	{
-		log_warn("Memory allocation failed in find_device_by_mock_hwaddr(\"%s\"): %i",
-		         ipaddr, ret);
-		return -1;
-	}
+	const char *querystr = "SELECT id FROM network WHERE hwaddr = concat('ip-',?1)";
 
 	// Perform SQL query
-	int network_id = db_query_int(db, querystr);
-	free(querystr);
-
-	return network_id;
+	return db_query_int_str(db, querystr, ipaddr);
 }
 
 // Try to find device by hardware address
@@ -275,20 +255,10 @@ static int find_device_by_hwaddr(sqlite3 *db, const char hwaddr[])
 	if(FTLDBerror())
 		return DB_FAILED;
 
-	char *querystr = NULL;
-	int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\' COLLATE NOCASE;", hwaddr);
-	if(querystr == NULL || ret < 0)
-	{
-		log_warn("Memory allocation failed in find_device_by_hwaddr(\"%s\"): %i",
-		         hwaddr, ret);
-		return -1;
-	}
+	const char *querystr = "SELECT id FROM network WHERE hwaddr = ?1 COLLATE NOCASE;";
 
 	// Perform SQL query
-	int network_id = db_query_int(db, querystr);
-	free(querystr);
-
-	return network_id;
+	return db_query_int_str(db, querystr, hwaddr);
 }
 
 // Try to find device by RECENT mock hardware address (generated from IP address)
@@ -298,24 +268,12 @@ static int find_recent_device_by_mock_hwaddr(sqlite3 *db, const char *ipaddr)
 	if(FTLDBerror())
 		return DB_FAILED;
 
-	char *querystr = NULL;
-	int ret = asprintf(&querystr,
-	                   "SELECT id FROM network WHERE "
-	                   "hwaddr = \'ip-%s\' AND "
-	                   "firstSeen > (cast(strftime('%%s', 'now') as int)-3600);",
-	                   ipaddr);
-	if(querystr == NULL || ret < 0)
-	{
-		log_warn("Memory allocation failed in find_device_by_recent_mock_hwaddr(\"%s\"): %i",
-		         ipaddr, ret);
-		return -1;
-	}
+	const char *querystr = "SELECT id FROM network WHERE "
+	                       "hwaddr = concat('ip-',?1) AND "
+	                       "firstSeen > (cast(strftime('%%s', 'now') as int)-3600)";
 
 	// Perform SQL query
-	int network_id = db_query_int(db, querystr);
-	free(querystr);
-
-	return network_id;
+	return db_query_int_str(db, querystr, ipaddr);
 }
 
 // Store hostname of device identified by dbID
@@ -1137,30 +1095,9 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 			int lastQuery = 0, firstSeen = now, numQueries = 0;
 			if(mockID >= 0)
 			{
-				char *querystr = NULL;
-				if(asprintf(&querystr, "SELECT lastQuery from network where id = %i", mockID) < 10)
-				{
-					free(macVendor);
-					return false;
-				}
-				lastQuery = db_query_int(db, querystr);
-				free(querystr);
-
-				if(asprintf(&querystr, "SELECT firstSeen from network where id = %i", mockID) < 10)
-				{
-					free(macVendor);
-					return false;
-				}
-				firstSeen = db_query_int(db, querystr);
-				free(querystr);
-
-				if(asprintf(&querystr, "SELECT numQueries from network where id = %i", mockID) < 10)
-				{
-					free(macVendor);
-					return false;
-				}
-				numQueries = db_query_int(db, querystr);
-				free(querystr);
+				lastQuery = db_query_int_int(db, "SELECT lastQuery from network where id = ?1", mockID);
+				firstSeen = db_query_int_int(db, "SELECT firstSeen from network where id = ?1", mockID);
+				numQueries = db_query_int_int(db, "SELECT numQueries from network where id = ?1", mockID);
 			}
 
 			// Add new device to database
@@ -1800,33 +1737,56 @@ void updateMACVendorRecords(sqlite3 *db)
 
 		// Get vendor for MAC
 		char *vendor = getMACVendor(hwaddr);
+
+		// Free allocated memory
 		free(hwaddr);
 		hwaddr = NULL;
 
-		// Prepare UPDATE statement
-		char *updatestr = NULL;
-		if(asprintf(&updatestr, "UPDATE network SET macVendor = \'%s\' WHERE id = %i", vendor, id) < 1)
+		// Prepare statement
+		sqlite3_stmt *stmt2 = NULL;
+		const char *updatestr = "UPDATE network SET macVendor = ?1 WHERE id = ?2";
+		rc = sqlite3_prepare_v2(db, updatestr, -1, &stmt2, NULL);
+		if(rc != SQLITE_OK)
 		{
-			log_err("updateMACVendorRecords() - Allocation error");
+			log_err("updateMACVendorRecords() - SQL error prepare \"%s\": %s", updatestr, sqlite3_errstr(rc));
+			checkFTLDBrc(rc);
 			free(vendor);
 			break;
 		}
 
-		// Execute prepared statement
-		char *zErrMsg = NULL;
-		rc = sqlite3_exec(db, updatestr, NULL, NULL, &zErrMsg);
-		if(rc != SQLITE_OK)
+		// Bind vendor to prepared statement
+		if((rc = sqlite3_bind_text(stmt2, 1, vendor, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
-			log_err("updateMACVendorRecords() - SQL exec error: \"%s\": %s", updatestr, zErrMsg);
+			log_err("updateMACVendorRecords() - Failed to bind vendor: %s", sqlite3_errstr(rc));
+			sqlite3_reset(stmt2);
+			sqlite3_finalize(stmt2);
+			free(vendor);
+			break;
+		}
+
+		// Bind id to prepared statement
+		if((rc = sqlite3_bind_int(stmt2, 2, id)) != SQLITE_OK)
+		{
+			log_err("updateMACVendorRecords() - Failed to bind id: %s", sqlite3_errstr(rc));
+			sqlite3_reset(stmt2);
+			sqlite3_finalize(stmt2);
+			free(vendor);
+			break;
+		}
+
+		// Execute statement
+		rc = sqlite3_step(stmt2);
+		if(rc != SQLITE_DONE)
+		{
+			log_err("updateMACVendorRecords() - SQL error step: %s", sqlite3_errstr(rc));
 			checkFTLDBrc(rc);
-			sqlite3_free(zErrMsg);
-			free(updatestr);
+			sqlite3_reset(stmt2);
+			sqlite3_finalize(stmt2);
 			free(vendor);
 			break;
 		}
 
 		// Free allocated memory
-		free(updatestr);
 		free(vendor);
 	}
 	if(rc != SQLITE_DONE)
