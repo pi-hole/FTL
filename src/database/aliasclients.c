@@ -109,6 +109,7 @@ bool import_aliasclients(sqlite3 *db)
 
 	// Loop until no further data is available
 	int imported = 0;
+	const double now = double_time();
 	while((rc = sqlite3_step(stmt)) != SQLITE_DONE)
 	{
 		// Check if we ran into an error
@@ -132,7 +133,7 @@ bool import_aliasclients(sqlite3 *db)
 		}
 
 		// Try to open existing client
-		const int clientID = findClientID(aliasclient_str, false, true);
+		const int clientID = findClientID(aliasclient_str, false, true, now);
 
 		clientsData *client = getClient(clientID, true);
 		if(client == NULL)

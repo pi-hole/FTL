@@ -1189,7 +1189,7 @@ void parse_neighbor_cache(sqlite3* db)
 	char *linebuffer = NULL;
 	size_t linebuffersize = 0u;
 	unsigned int entries = 0u, additional_entries = 0u;
-	time_t now = time(NULL);
+	const time_t now = time(NULL);
 
 	// Start ARP timer
 	if(config.debug.arp.v.b)
@@ -1269,8 +1269,11 @@ void parse_neighbor_cache(sqlite3* db)
 				{
 					// This line is incomplete, remember this to skip
 					// mock-device creation after ARP processing
+					// both false = do not create a new record if the client
+					//              is unknown (only DNS requesting clients
+					//              do this), the now value is ignored
 					lock_shm();
-					int clientID = findClientID(ip, false, false);
+					int clientID = findClientID(ip, false, false, 0.0);
 					unlock_shm();
 					if(clientID >= 0 && clientID < clients)
 						client_status[clientID] = CLIENT_ARP_INCOMPLETE;
@@ -1303,10 +1306,11 @@ void parse_neighbor_cache(sqlite3* db)
 
 			// If we reach this point, we can check if this client
 			// is known to pihole-FTL
-			// false = do not create a new record if the client is
-			//         unknown (only DNS requesting clients do this)
+			// both false = do not create a new record if the client
+			//              is unknown (only DNS requesting clients
+			//              do this), the now value is ignored
 			lock_shm();
-			int clientID = findClientID(ip, false, false);
+			int clientID = findClientID(ip, false, false, 0.0);
 
 			// Set default values for a new device, may be updated
 			// below if the client is known to pihole-FTL
