@@ -1318,7 +1318,7 @@ void parse_neighbor_cache(sqlite3* db)
 			bool client_valid = false;
 			time_t lastQuery = 0;
 			time_t firstSeen = now;
-			unsigned int numQueries = 0;
+			unsigned int numQueries = 0, totalQueries = 0;
 
 			// This client is known (by its IP address) to pihole-FTL if
 			// findClientID() returned a non-negative index
@@ -1335,6 +1335,7 @@ void parse_neighbor_cache(sqlite3* db)
 				firstSeen = client->firstSeen;
 				lastQuery = client->lastQuery;
 				numQueries = client->numQueriesARP;
+				totalQueries = client->count;
 				client_status[clientID] = CLIENT_ARP_COMPLETE;
 			}
 			else
@@ -1355,6 +1356,15 @@ void parse_neighbor_cache(sqlite3* db)
 				// Check if we recently added a mock-device with the same IP address
 				// and the ARP entry just came a bit delayed (reported by at least one user)
 				dbID = find_recent_device_by_mock_hwaddr(db, ip);
+
+				// Exception for the case where the device is
+				// not yet in the database: Use total count of
+				// queries as the number of queries for the new
+				// device instead of the special ARP cache
+				// counter to add also the number of queries in
+				// the DNS history imported from the long-term
+				// database
+				numQueries = totalQueries;
 
 				if(dbID == DB_NODATA)
 				{
