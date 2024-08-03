@@ -860,9 +860,9 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 			// Add new device to database
 			const time_t lastQuery = client->lastQuery;
 			const time_t firstSeen = client->firstSeen;
-			const unsigned int numQueriesARP = client->numQueriesARP;
+			const unsigned int numQueries = client->count;
 			unlock_shm();
-			insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueriesARP, macVendor);
+			insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor);
 			lock_shm();
 
 			// Reacquire client pointer (if may have changed when unlocking above)
