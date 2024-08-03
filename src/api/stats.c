@@ -570,7 +570,7 @@ cJSON *get_top_upstreams(struct ftl_conn *api, const bool upstreams_only)
 	{
 		int count = 0;
 		const char* ip, *name;
-		in_port_t port = -1;
+		int port = -1; // Need signed data type here as -1 means: no port applicable
 		double responsetime = 0.0, uncertainty = 0.0;
 
 		if(i == -2)
