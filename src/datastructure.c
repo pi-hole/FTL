@@ -239,7 +239,8 @@ static int get_next_free_clientID(void)
 	return counters->clients;
 }
 
-int _findClientID(const char *clientIP, const bool count, const bool aliasclient, int line, const char *func, const char *file)
+int _findClientID(const char *clientIP, const bool count, const bool aliasclient,
+                  const double now, int line, const char *func, const char *file)
 {
 	// Compare content of client against known client IP addresses
 	for(int clientID=0; clientID < counters->clients; clientID++)
@@ -308,7 +309,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	// some time after adding a client to ensure we pick up possible
 	// group configuration though hostname, MAC address or interface
 	client->reread_groups = 0u;
-	client->firstSeen = time(NULL);
+	client->firstSeen = now;
 	// Interface is not yet known
 	client->ifacepos = 0;
 	// Set all MAC address bytes to zero

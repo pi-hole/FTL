@@ -93,7 +93,7 @@ typedef struct {
 	size_t ippos;
 	size_t namepos;
 	size_t ifacepos;
-	time_t firstSeen;
+	double firstSeen;
 	double lastQuery;
 } clientsData;
 
@@ -124,8 +124,8 @@ int findQueryID(const int id);
 int _findUpstreamID(const char *upstream, const in_port_t port, int line, const char *func, const char *file);
 #define findDomainID(domain, count) _findDomainID(domain, count, __LINE__, __FUNCTION__, __FILE__)
 int _findDomainID(const char *domain, const bool count, int line, const char *func, const char *file);
-#define findClientID(client, count, aliasclient) _findClientID(client, count, aliasclient, __LINE__, __FUNCTION__, __FILE__)
-int _findClientID(const char *client, const bool count, const bool aliasclient, int line, const char *func, const char *file);
+#define findClientID(client, count, aliasclient, now) _findClientID(client, count, aliasclient, now, __LINE__, __FUNCTION__, __FILE__)
+int _findClientID(const char *client, const bool count, const bool aliasclient, const double now, int line, const char *func, const char *file);
 #define findCacheID(domainID, clientID, query_type, create_new) _findCacheID(domainID, clientID, query_type, create_new, __FUNCTION__, __LINE__, __FILE__)
 int _findCacheID(const int domainID, const int clientID, const enum query_type query_type, const bool create_new, const char *func, const int line, const char *file);
 bool isValidIPv4(const char *addr);

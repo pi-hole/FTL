@@ -647,7 +647,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	const int queryID = counters->queries;
 
 	// Find client IP
-	const int clientID = findClientID(clientIP, true, false);
+	const int clientID = findClientID(clientIP, true, false, querytimestamp);
 
 	// Get client pointer
 	clientsData* client = getClient(clientID, true);
