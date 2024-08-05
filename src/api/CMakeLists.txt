@@ -20,6 +20,7 @@ set(sources
         dhcp.c
         dns.c
         network.c
+        padd.c
         history.c
         info.c
         list.c

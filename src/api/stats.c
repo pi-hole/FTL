@@ -92,26 +92,54 @@ static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 	return 0;
 }
 
+// shmem needs to be locked while calling this function
+unsigned int get_active_clients(void)
+{
+	unsigned int activeclients = 0;
+	for(int clientID=0; clientID < counters->clients; clientID++)
+	{
+		// Get client pointer
+		const clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
+		if(client->count > 0)
+			activeclients++;
+	}
+
+	return activeclients;
+}
+
 int api_stats_summary(struct ftl_conn *api)
 {
-	const int blocked =  get_blocked_count();
-	const int forwarded =  get_forwarded_count();
-	const int cached =  get_cached_count();
-	const int total = counters->queries;
-	float percent_blocked = 0.0f;
+	// Lock shared memory
+	lock_shm();
 
+	const int blocked = get_blocked_count();
+	const int forwarded = get_forwarded_count();
+	const int cached = get_cached_count();
+	const int total = counters->queries;
+	const int num_gravity = counters->database.gravity;
+	const int num_clients = counters->clients;
+	const int num_domains = counters->domains;
+
+	// Count clients that have been active within the most recent 24 hours
+	unsigned int activeclients = get_active_clients();
+
+	// Unlock shared memory
+	unlock_shm();
+
+	// Calculate percentage of blocked queries
+	float percent_blocked = 0.0f;
 	// Avoid 1/0 condition
 	if(total > 0)
 		percent_blocked = 1e2f*blocked/total;
-
-	// Lock shared memory
-	lock_shm();
 
 	cJSON *queries = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "total", total);
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "blocked", blocked);
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "percent_blocked", percent_blocked);
-	JSON_ADD_NUMBER_TO_OBJECT(queries, "unique_domains", counters->domains);
+	JSON_ADD_NUMBER_TO_OBJECT(queries, "unique_domains", num_domains);
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "forwarded", forwarded);
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "cached", cached);
 
@@ -131,28 +159,12 @@ int api_stats_summary(struct ftl_conn *api)
 		JSON_ADD_NUMBER_TO_OBJECT(replies, get_query_reply_str(reply), counters->reply[reply]);
 	JSON_ADD_ITEM_TO_OBJECT(queries, "replies", replies);
 
-	// Count clients that have been active within the most recent 24 hours
-	unsigned int activeclients = 0;
-	for(int clientID=0; clientID < counters->clients; clientID++)
-	{
-		// Get client pointer
-		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
-			continue;
-
-		if(client->count > 0)
-			activeclients++;
-	}
-
 	cJSON *clients = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(clients, "active", activeclients);
-	JSON_ADD_NUMBER_TO_OBJECT(clients, "total", counters->clients);
+	JSON_ADD_NUMBER_TO_OBJECT(clients, "total", num_clients);
 
 	cJSON *gravity = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(gravity, "domains_being_blocked", counters->database.gravity);
-
-	// Unlock shared memory
-	unlock_shm();
+	JSON_ADD_NUMBER_TO_OBJECT(gravity, "domains_being_blocked", num_gravity);
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
@@ -335,7 +347,7 @@ int api_stats_top_domains(struct ftl_conn *api)
 
 cJSON *get_top_clients(struct ftl_conn *api, const int count,
                        const bool blocked, const bool clients_only,
-                       const bool names_only)
+                       const bool names_only, const bool ip_if_no_name)
 {
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
@@ -449,7 +461,14 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 
 		if(clients_only)
 		{
-			if(names_only)
+			if(ip_if_no_name)
+			{
+				if(strlen(client_name) > 0)
+					cJSON_AddStringToArray(jtop_clients, client_name);
+				else
+					cJSON_AddStringToArray(jtop_clients, client_ip);
+			}
+			else if(names_only)
 			{
 				if(strlen(client_name) > 0)
 					cJSON_AddStringToArray(jtop_clients, client_name);
@@ -516,7 +535,7 @@ int api_stats_top_clients(struct ftl_conn *api)
 		get_int_var(api->request->query_string, "count", &count);
 	}
 
-	cJSON *json = get_top_clients(api, count, blocked, false, false);
+	cJSON *json = get_top_clients(api, count, blocked, false, false, false);
 	JSON_SEND_OBJECT(json);
 }
 

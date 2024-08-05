@@ -92,7 +92,7 @@ static cJSON *get_or_create_object(cJSON *parent, const char *path_element)
 
 // This function is used to add a property to the JSON output using the
 // appropriate type of the config item to add.
-static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val)
+cJSON *addJSONConfValue(const enum conf_type conf_type, union conf_value *val)
 {
 	switch(conf_type)
 	{
@@ -464,17 +464,9 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 	return NULL;
 }
 
-static int api_config_get(struct ftl_conn *api)
+int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 {
-	// Parse query string parameters
-	bool detailed = false;
-	if(api->request->query_string != NULL)
-	{
-		// Check if we should return detailed config information
-		get_bool_var(api->request->query_string, "detailed", &detailed);
-	}
-
-	// Create root JSON object
+	// Create root config object
 	cJSON *config_j = JSON_NEW_OBJECT();
 
 	// Does the user request only a subset of /config?
@@ -552,7 +544,7 @@ static int api_config_get(struct ftl_conn *api)
 			else
 			{
 				// Add current value
-				cJSON *val = addJSONvalue(conf_item->t, &conf_item->v);
+				cJSON *val = addJSONConfValue(conf_item->t, &conf_item->v);
 				if(val == NULL)
 				{
 					log_warn("Cannot format config item type %s of type %i",
@@ -563,7 +555,7 @@ static int api_config_get(struct ftl_conn *api)
 			}
 
 			// Add default value
-			cJSON *dval = addJSONvalue(conf_item->t, &conf_item->d);
+			cJSON *dval = addJSONConfValue(conf_item->t, &conf_item->d);
 			if(dval == NULL)
 			{
 				log_warn("Cannot format config item type %s of type %i",
@@ -592,7 +584,7 @@ static int api_config_get(struct ftl_conn *api)
 			else
 			{
 				// Create the config item leaf object
-				cJSON *leaf = addJSONvalue(conf_item->t, &conf_item->v);
+				cJSON *leaf = addJSONConfValue(conf_item->t, &conf_item->v);
 				if(leaf == NULL)
 				{
 					log_warn("Cannot format config item type %s of type %i",
@@ -606,8 +598,6 @@ static int api_config_get(struct ftl_conn *api)
 
 	// Release allocated memory
 	free_config_path(requested_path);
-
-	cJSON *json = JSON_NEW_OBJECT();
 
 	// Add topics and DNS server suggestions if in detailed mode
 	if(detailed)
@@ -650,6 +640,24 @@ static int api_config_get(struct ftl_conn *api)
 
 	// Build and return JSON response
 	JSON_ADD_ITEM_TO_OBJECT(json, "config", config_j);
+
+	return 0;
+}
+
+static int api_config_get(struct ftl_conn *api)
+{
+	// Parse query string parameters
+	bool detailed = false;
+	if(api->request->query_string != NULL)
+	{
+		// Check if we should return detailed config information
+		get_bool_var(api->request->query_string, "detailed", &detailed);
+	}
+
+	cJSON *json = JSON_NEW_OBJECT();
+	get_json_config(api, json, detailed);
+
+	// Build and return JSON response
 	JSON_SEND_OBJECT(json);
 }
 

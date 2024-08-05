@@ -32,11 +32,8 @@
 // nlroutes(), nladdrs(), nllinks()
 #include "tools/netlink.h"
 
-int api_network_gateway(struct ftl_conn *api)
+int get_gateway(struct ftl_conn *api, cJSON * json, const bool detailed)
 {
-	// Get ?detailed parameter
-	bool detailed = false;
-	get_bool_var(api->request->query_string, "detailed", &detailed);
 
 	// Get routing information
 	cJSON *routes = JSON_NEW_ARRAY();
@@ -106,7 +103,6 @@ int api_network_gateway(struct ftl_conn *api)
 	}
 
 	// Send gateway information
-	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "gateway", gateway);
 
 	if(detailed)
@@ -120,6 +116,18 @@ int api_network_gateway(struct ftl_conn *api)
 		cJSON_Delete(routes);
 		cJSON_Delete(interfaces);
 	}
+
+	return 0;
+}
+
+int api_network_gateway(struct ftl_conn *api)
+{
+	// Get ?detailed parameter
+	bool detailed = false;
+	get_bool_var(api->request->query_string, "detailed", &detailed);
+
+	cJSON *json = JSON_NEW_OBJECT();
+	get_gateway(api, json, detailed);
 
 	JSON_SEND_OBJECT(json);
 }
