@@ -34,6 +34,10 @@
 #include <sys/utsname.h>
 #endif
 
+/****** Pi-hole modification ******/
+extern int is_shm_fd(const int fd);
+/**********************************/
+
 /* SURF random number generator */
 
 static u32 seed[32];
@@ -815,6 +819,11 @@ void close_fds(long max_fd, int spare1, int spare2, int spare3)
 	      fd == spare1 || fd == spare2 || fd == spare3)
 	    continue;
 	  
+	  /****** Pi-hole modification ******/
+	  if(is_shm_fd(fd))
+	    continue;
+	  /**********************************/
+
 	  close(fd);
 	}
       

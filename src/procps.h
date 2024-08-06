@@ -10,7 +10,7 @@
 
 #ifndef PROCPS_H
 #define PROCPS_H
-bool check_running_FTL(void);
+bool another_FTL(void);
 
 struct proc_mem {
 	// Memory currently resident in RAM (in kB)

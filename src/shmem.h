@@ -22,6 +22,8 @@ typedef struct {
     const char *name;
     size_t size;
     void *ptr;
+    int fd;
+    struct flock lock;
 } SharedMemory;
 
 typedef struct {
@@ -139,5 +141,8 @@ void add_per_client_regex(unsigned int clientID);
 void reset_per_client_regex(const int clientID);
 bool get_per_client_regex(const int clientID, const int regexID);
 void set_per_client_regex(const int clientID, const int regexID, const bool value);
+
+// Used in dnsmasq/utils.c
+int is_shm_fd(const int fd);
 
 #endif //SHARED_MEMORY_SERVER_H
