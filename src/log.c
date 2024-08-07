@@ -53,8 +53,9 @@ void init_FTL_log(const char *name)
 		FILE *logfile = NULL;
 		if((logfile = fopen(config.files.log.ftl.v.s, "a+")) == NULL)
 		{
+			printf("ERROR: Opening of FTL log (%s) failed: %s\nUsing syslog instead!\n",
+			       config.files.log.ftl.v.s, strerror(errno));
 			syslog(LOG_ERR, "Opening of FTL\'s log file failed, using syslog instead!");
-			printf("ERROR: Opening of FTL log (%s) failed!\n",config.files.log.ftl.v.s);
 			config.files.log.ftl.v.s = NULL;
 		}
 
