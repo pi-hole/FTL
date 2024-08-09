@@ -289,6 +289,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		va_end(args);
 		add_to_fifo_buffer(FIFO_FTL, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
+		bool logged = false;
 		if(config.files.log.ftl.v.s != NULL)
 		{
 			// Open log file
@@ -310,6 +311,8 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 
 				// Close file after writing
 				fclose(logfile);
+
+				logged = true;
 			}
 			else if(!daemonmode)
 			{
@@ -317,7 +320,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 				syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
 			}
 		}
-		else
+		if(!logged)
 		{
 			// Syslog logging
 			va_start(args, format);

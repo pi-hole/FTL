@@ -141,12 +141,6 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		struct conf_item *old_conf_item = oldconf != NULL ? get_conf_item(oldconf, i) : NULL;
 		struct conf_item *new_conf_item = get_conf_item(newconf, i);
 
-		// Do not read config.files.log.ftl from the TOML file if it has been
-		// set to NULL due to permissions issues during startup
-		if(config.files.log.ftl.v.s == NULL &&
-		   new_conf_item == &newconf->files.log.ftl)
-			continue;
-
 		// First try to read this config option from an environment variable
 		// Skip reading environment variables when importing from Teleporter
 		// If this succeeds, skip searching the TOML file for this config item
