@@ -389,7 +389,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	// Resolve server address
 	int eai;
 	struct addrinfo *saddr;
-	if((eai = getaddrinfo(server, "ntp", NULL, &saddr)) != 0)
+	// Resolve server address, port 123 is used for NTP
+	if((eai = getaddrinfo(server, "123", NULL, &saddr)) != 0)
 	{
 		char errbuf[1024];
 		strncpy(errbuf, "Cannot resolve NTP server address: ", sizeof(errbuf));
