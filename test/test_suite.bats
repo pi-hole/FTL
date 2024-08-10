@@ -11,8 +11,7 @@
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "./pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"CRIT: Initialization of shared memory failed."* ]]
-  [[ "${lines[@]}" == *"INFO: pihole-FTL is already running"* ]]
+  [[ "${lines[@]}" == *"CRIT: pihole-FTL is already running"* ]]
 }
 
 @test "dnsmasq options as expected" {
@@ -486,8 +485,16 @@
   [[ "${lines[@]}" == "" ]]
 }
 
+@test "No ERROR messages in FTL.log (besides known/intended error)" {
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is invalid)|(Failed to set|adjust time during NTP sync: Insufficient permissions)"'
+  printf "count: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
+
 @test "No CRIT messages in FTL.log (besides error due to starting FTL more than once)" {
-  run bash -c 'grep "CRIT:" /var/log/pihole/FTL.log | grep -v "CRIT: Initialization of shared memory failed"'
+  run bash -c 'grep "CRIT:" /var/log/pihole/FTL.log | grep -v "CRIT: pihole-FTL is already running"'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == "" ]]
 }
@@ -1160,22 +1167,6 @@
   run bash -c "bash test/hostnames.sh | tee ptr.log"
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" != *"ERROR"* ]]
-}
-
-@test "No ERROR messages in FTL.log (besides known/intended error)" {
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log'
-  printf "%s\n" "${lines[@]}"
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is invalid)|(Failed to set|adjust time during NTP sync: Insufficient permissions)"'
-  printf "count: %s\n" "${lines[@]}"
-  [[ ${lines[0]} == "0" ]]
-}
-
-@test "No CRIT messages in FTL.log (besides error due to testing to start FTL more than once)" {
-  run bash -c 'grep "CRIT: " /var/log/pihole/FTL.log'
-  printf "%s\n" "${lines[@]}"
-  run bash -c 'grep "CRIT: " /var/log/pihole/FTL.log | grep -c -v "Initialization of shared memory failed."'
-  printf "count: %s\n" "${lines[@]}"
-  [[ ${lines[0]} == "0" ]]
 }
 
 @test "No missing config items in pihole.toml" {

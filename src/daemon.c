@@ -285,6 +285,7 @@ static void terminate_threads(void)
 			log_info("Thread %s (%d) is idle, terminating it.",
 			         thread_names[i], i);
 			pthread_cancel(threads[i]);
+			continue;
 		}
 
 		// Cancel thread if we cannot set a timeout for joining

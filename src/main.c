@@ -72,6 +72,10 @@ int main (int argc, char *argv[])
 	if(readFTLconf(&config, true))
 		log_info("Parsed config file "GLOBALTOMLPATH" successfully");
 
+	// Check if another FTL process is already running
+	if(another_FTL())
+		return EXIT_FAILURE;
+
 	// Set process priority
 	set_nice();
 
@@ -79,8 +83,6 @@ int main (int argc, char *argv[])
 	if(!init_shmem())
 	{
 		log_crit("Initialization of shared memory failed.");
-		// Check if there is already a running FTL process
-		check_running_FTL();
 		return EXIT_FAILURE;
 	}
 
