@@ -573,6 +573,30 @@
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"umbrella.ftl AAAA ::\""* ]]
 }
 
+@test "Externally blocked domain: IP is recognized (multi)" {
+  # Get number of lines in the log before the test
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # Run test
+  run bash -c "dig A umbrella-multi.ftl @127.0.0.1"
+
+  # Get number of lines in the log after the test
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # Extract relevant log lines
+  log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
+  # Split log into array by newline
+  lines=()
+  while IFS= read -r line; do
+    lines+=("$line")
+  done <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella-multi.ftl is not blocked (domainlist ID: -1)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded umbrella-multi.ftl to 127.0.0.1#5555"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella-multi.ftl is blocked upstream with known address (IPv4)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"umbrella-multi.ftl A 0.0.0.0\""* ]]
+}
+
 @test "ABP-style matching working as expected" {
   run bash -c "dig A special.gravity.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"

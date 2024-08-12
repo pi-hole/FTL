@@ -124,6 +124,11 @@ pdnsutil add-record ftl. noerror A
 pdnsutil add-record ftl. umbrella A 146.112.61.104
 pdnsutil add-record ftl. umbrella AAAA ::ffff:146.112.61.104
 
+# Special record which consists of both blocked and non-blocked IP
+pdnsutil add-record ftl. umbrella-multi A 1.2.3.4
+pdnsutil add-record ftl. umbrella-multi A 146.112.61.104
+pdnsutil add-record ftl. umbrella-multi A 8.8.8.8
+
 # Null address
 pdnsutil add-record ftl. null A 0.0.0.0
 pdnsutil add-record ftl. null AAAA ::
