@@ -31,21 +31,8 @@ static int get_blocking(struct ftl_conn *api)
 	// Return current status
 	cJSON *json = JSON_NEW_OBJECT();
 	const enum blocking_status blocking = get_blockingstatus();
-	switch(blocking)
-	{
-		case BLOCKING_ENABLED:
-			JSON_REF_STR_IN_OBJECT(json, "blocking", "enabled");
-			break;
-		case BLOCKING_DISABLED:
-			JSON_REF_STR_IN_OBJECT(json, "blocking", "disabled");
-			break;
-		case DNS_FAILED:
-			JSON_REF_STR_IN_OBJECT(json, "blocking", "failure");
-			break;
-		case BLOCKING_UNKNOWN:
-			JSON_REF_STR_IN_OBJECT(json, "blocking", "unknown");
-			break;
-	}
+	const char *status = get_blocking_status_str(blocking);
+	JSON_REF_STR_IN_OBJECT(json, "blocking", status);
 
 	// Get timer information (if applicable)
 	double delay;

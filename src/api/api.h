@@ -17,6 +17,8 @@
 #include "webserver/http-common.h"
 // regex_t
 #include "regex_r.h"
+// enum conf_type
+#include "config/config.h"
 
 // Common definitions
 #define LOCALHOSTv4 "127.0.0.1"
@@ -27,6 +29,7 @@ int api_handler(struct mg_connection *conn, void *ignored);
 
 // Statistic methods
 int __attribute__((pure)) cmpdesc(const void *a, const void *b);
+unsigned int get_active_clients(void);
 int api_stats_summary(struct ftl_conn *api);
 int api_stats_query_types(struct ftl_conn *api);
 int api_stats_upstreams(struct ftl_conn *api);
@@ -37,7 +40,7 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
                        const bool blocked, const bool domains_only);
 cJSON *get_top_clients(struct ftl_conn *api, const int count,
                        const bool blocked, const bool clients_only,
-                       const bool names_only);
+                       const bool names_only, const bool ip_if_no_name);
 cJSON *get_top_upstreams(struct ftl_conn *api, const bool upstreams_only);
 
 // History methods
@@ -71,9 +74,15 @@ int api_info_messages_count(struct ftl_conn *api);
 int api_info_messages(struct ftl_conn *api);
 int api_info_metrics(struct ftl_conn *api);
 int api_info_login(struct ftl_conn *api);
+cJSON *read_sys_property(const char *path);
+int get_system_obj(struct ftl_conn *api, cJSON *system);
+int get_sensors_obj(struct ftl_conn *api, cJSON *sensors, const bool add_list);
+int get_version_obj(struct ftl_conn *api, cJSON *version);
 
 // Config methods
 int api_config(struct ftl_conn *api);
+int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed);
+cJSON *addJSONConfValue(const enum conf_type conf_type, union conf_value *val);
 
 // Log methods
 int api_logs(struct ftl_conn *api);
@@ -84,6 +93,7 @@ int api_network_routes(struct ftl_conn *api);
 int api_network_interfaces(struct ftl_conn *api);
 int api_network_devices(struct ftl_conn *api);
 int api_client_suggestions(struct ftl_conn *api);
+int get_gateway(struct ftl_conn *api, cJSON * json, const bool detailed);
 
 // DNS methods
 int api_dns_blocking(struct ftl_conn *api);
@@ -131,5 +141,8 @@ int api_search(struct ftl_conn *api);
 // DHCP methods
 int api_dhcp_leases_GET(struct ftl_conn *api);
 int api_dhcp_leases_DELETE(struct ftl_conn *api);
+
+// PADD methods
+int api_padd(struct ftl_conn *api);
 
 #endif // ROUTES_H

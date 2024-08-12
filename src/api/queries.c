@@ -114,8 +114,8 @@ int api_queries_suggestions(struct ftl_conn *api)
 	cJSON_Delete(blocked);
 
 	// Get clients, both by IP and names
-	cJSON *client_ip = get_top_clients(api, count, false, true, false);
-	cJSON *client_name = get_top_clients(api, count, false, true, true);
+	cJSON *client_ip = get_top_clients(api, count, false, true, false, false);
+	cJSON *client_name = get_top_clients(api, count, false, true, true, false);
 
 	// Delete duplicate entries from client_name
 	cJSON_unique_array(client_name);

@@ -835,6 +835,22 @@ int __attribute__ ((pure)) get_blocking_mode_val(const char *blocking_mode)
 	return -1;
 }
 
+const char * __attribute__ ((const)) get_blocking_status_str(const enum blocking_status blocking)
+{
+	switch(blocking)
+	{
+		case BLOCKING_ENABLED:
+			return "enabled";
+		case BLOCKING_DISABLED:
+			return "disabled";
+		case DNS_FAILED:
+			return "failure";
+		case BLOCKING_UNKNOWN:
+		default:
+			return "unknown";
+	}
+}
+
 bool __attribute__ ((const)) is_blocked(const enum query_status status)
 {
 	switch (status)
