@@ -130,6 +130,9 @@ enum domain_client_status {
 	REGEX_BLOCKED,
 	ALLOWED,
 	SPECIAL_DOMAIN,
+	UPSTREAM_BLOCKED_NXRA,
+	UPSTREAM_BLOCKED_NULL,
+	UPSTREAM_BLOCKED_IP,
 	NOT_BLOCKED
 } __attribute__ ((packed));
 

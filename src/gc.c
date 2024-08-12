@@ -62,7 +62,7 @@ static void recycle(void)
 	// and recycle them
 	for(int queryID = 0; queryID < counters->queries; queryID++)
 	{
-		queriesData* query = getQuery(queryID, true);
+		queriesData *query = getQuery(queryID, true);
 		if(query == NULL)
 			continue;
 
@@ -308,7 +308,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	unsigned int removed = 0;
 	for(long int i = 0; i < counters->queries; i++)
 	{
-		queriesData* query = getQuery(i, true);
+		queriesData *query = getQuery(i, true);
 		if(query == NULL)
 			continue;
 

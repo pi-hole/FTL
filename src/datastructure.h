@@ -145,10 +145,10 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);
 
-const char *getDomainString(const queriesData* query);
-const char *getCNAMEDomainString(const queriesData* query);
-const char *getClientIPString(const queriesData* query);
-const char *getClientNameString(const queriesData* query);
+const char *getDomainString(const queriesData *query);
+const char *getCNAMEDomainString(const queriesData *query);
+const char *getClientIPString(const queriesData *query);
+const char *getClientNameString(const queriesData *query);
 
 void change_clientcount(clientsData *client, int total, int blocked, int overTimeIdx, int overTimeMod);
 const char *get_query_type_str(const enum query_type type, const queriesData *query, char buffer[20]);
@@ -171,7 +171,7 @@ int __attribute__ ((pure)) get_temp_unit_val(const char *temp_unit);
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-queriesData* _getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file);
+queriesData *_getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file);
 #define getClient(clientID, checkMagic) _getClient(clientID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
 clientsData* _getClient(int clientID, bool checkMagic, int line, const char *func, const char *file);
 #define getDomain(domainID, checkMagic) _getDomain(domainID, checkMagic, __LINE__, __FUNCTION__, __FILE__)

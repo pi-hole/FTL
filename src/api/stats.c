@@ -748,7 +748,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 	cJSON *blocked = JSON_NEW_ARRAY();
 	for(int queryID = counters->queries - 1; queryID > 0 ; queryID--)
 	{
-		const queriesData* query = getQuery(queryID, true);
+		const queriesData *query = getQuery(queryID, true);
 		if(query == NULL)
 			continue;
 
