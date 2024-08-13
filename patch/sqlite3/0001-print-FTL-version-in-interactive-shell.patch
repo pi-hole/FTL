@@ -7,7 +7,7 @@ index 6280ebf6..a5e82f70 100644
  #include <ctype.h>
  #include <stdarg.h>
 +// print_FTL_version()
-+#include "log.h"
++#include "../log.h"
  
  #if !defined(_WIN32) && !defined(WIN32)
  # include <signal.h>
