@@ -388,12 +388,26 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 
 		// Skip invalid clients and also those managed by alias clients
 		if(client == NULL || (!client->flags.aliasclient && client->aliasclient_id >= 0))
+		{
+			log_debug(DEBUG_API, "Skipping client %i because %s", clientID,
+			          client == NULL ? "it is invalid" : "it is an alias client");
 			continue;
+		}
+
+		// Skip recycled clients
+		if(client->ippos == 0)
+		{
+			log_debug(DEBUG_API, "Skipping client %i because it is recycled", clientID);
+			continue;
+		}
 
 		const char *client_ip = getstr(client->ippos);
 		// Hidden client, probably due to privacy level. Skip this in the top lists
 		if(strcmp(client_ip, HIDDEN_CLIENT) == 0)
+		{
+			log_debug(DEBUG_API, "Skipping client %i because it is hidden", clientID);
 			continue;
+		}
 
 		// Use either blocked or total count based on request string
 		top_clients[added_clients].count = blocked ? client->blockedcount : client->count;
@@ -404,6 +418,8 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 
 		added_clients++;
 	}
+
+	log_debug(DEBUG_API, "Found %u clients", added_clients);
 
 	// Unlock shared memory
 	unlock_shm();
@@ -426,10 +442,6 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 
 	for(unsigned int i = 0; i < added_clients; i++)
 	{
-		// Skip e.g. recycled clients
-		if(top_clients[i].namepos == 0)
-			continue;
-
 		const char *client_ip = getstr(top_clients[i].ippos);
 		const char *client_name = getstr(top_clients[i].namepos);
 
@@ -457,7 +469,11 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 		}
 
 		if(skip_client || top_clients[i].count < 1)
+		{
+			log_debug(DEBUG_API, "Skipping client %s because it %s", client_ip,
+			          skip_client ? "matches a filter" : "has no queries");
 			continue;
+		}
 
 		if(clients_only)
 		{
