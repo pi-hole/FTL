@@ -14,8 +14,8 @@ index 2ad76693..52724199 100644
 --- a/src/webserver/civetweb/civetweb.h
 +++ b/src/webserver/civetweb/civetweb.h
 @@ -938,6 +938,10 @@ int my_send_http_error_headers(struct mg_connection *conn,
- void FTL_rewrite_pattern(char *filename, size_t filename_buf_len,
-                          const char *root, const char *uri);
+ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len);
+ 
  
 +#define MG_CONFIG_MBEDTLS_DEBUG 3
 +void FTL_mbed_debug(void *user_param, int level, const char *file,
@@ -36,9 +36,9 @@ index e72685f4..00b9280a 100644
 +	mbedtls_ssl_conf_dbg(conf, FTL_mbed_debug, NULL);
 +	/****************************************************/
 +
- #ifdef MBEDTLS_SSL_PROTO_TLS1_3
- 	psa_status_t status = psa_crypto_init();
- 	if (status != PSA_SUCCESS) {
+ 	/* Initialize TLS key and cert */
+ 	mbedtls_pk_init(&ctx->pkey);
+ 	mbedtls_ctr_drbg_init(&ctx->ctr);
 -- 
 2.34.1
 

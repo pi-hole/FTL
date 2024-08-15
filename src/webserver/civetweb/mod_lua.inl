@@ -2606,6 +2606,10 @@ prepare_lua_request_info_inner(const struct mg_connection *conn, lua_State *L)
 		reg_string(L, "finger", conn->request_info.client_cert->finger);
 		lua_rawset(L, -3);
 	}
+
+	/* Pi-hole addition */
+	reg_string(L, "csrf_token", conn->request_info.csrf_token);
+	reg_boolean(L, "is_authenticated", conn->request_info.is_authenticated != 0);
 }
 
 
@@ -3226,10 +3230,9 @@ handle_lsp_request(struct mg_connection *conn,
 	 * "<?" which means "classic CivetWeb Syntax".
 	 *
 	 */
-	run_lsp = run_lsp_civetweb;
-	if ((addr[0] == '<') && (addr[1] != '?')) {
-		run_lsp = run_lsp_kepler;
-	}
+
+	// Pi-hole change: Always use Kepler syntax, ignore rules above
+	run_lsp = run_lsp_kepler;
 
 	/* We're not sending HTTP headers here, Lua page must do it. */
 	error =

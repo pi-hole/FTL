@@ -83,10 +83,26 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	mbedtls_ssl_conf_dbg(conf, mbed_debug, (void *)ctx);
 #endif
 
+	/****************** Pi-hole change ******************/
+	mbedtls_ssl_conf_dbg(conf, FTL_mbed_debug, NULL);
+	/****************************************************/
+
 	/* Initialize TLS key and cert */
 	mbedtls_pk_init(&ctx->pkey);
 	mbedtls_ctr_drbg_init(&ctx->ctr);
 	mbedtls_x509_crt_init(&ctx->cert);
+
+#ifdef MBEDTLS_PSA_CRYPTO_C
+	/* Initialize PSA crypto (mandatory with TLS 1.3)
+	 * This must be done before calling any other PSA Crypto
+	 * functions or they will fail with PSA_ERROR_BAD_STATE
+	 */
+	const psa_status_t status = psa_crypto_init();
+	if (status != PSA_SUCCESS) {
+		DEBUG_TRACE("Failed to initialize PSA crypto, returned %d\n", (int) status);
+		return -1;
+	}
+#endif
 
 	rc = mbedtls_ctr_drbg_seed(&ctx->ctr,
 	                           mbedtls_entropy_func,

@@ -183,6 +183,9 @@ struct mg_request_info {
 
 	const char *acceptedWebSocketSubprotocol; /* websocket subprotocol,
 	                                           * accepted during handshake */
+	/* Pi-hole modification */
+	char csrf_token[32];
+	int is_authenticated;
 };
 
 
@@ -927,6 +930,23 @@ CIVETWEB_API int mg_send_http_error(struct mg_connection *conn,
                                     int status_code,
                                     PRINTF_FORMAT_STRING(const char *fmt),
                                     ...) PRINTF_ARGS(3, 4);
+
+/************************************** Pi-hole method **************************************/
+int my_send_http_error_headers(struct mg_connection *conn,
+                               int status, const char* mime_type,
+                               long long content_length);
+
+void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len);
+
+
+#define MG_CONFIG_MBEDTLS_DEBUG 3
+void FTL_mbed_debug(void *user_param, int level, const char *file,
+                    int line, const char *message);
+
+// Buffer used for additional "Set-Cookie" headers
+#define PIHOLE_HEADERS_MAXLEN 1024
+extern char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN];
+/********************************************************************************************/
 
 
 /* Send "HTTP 200 OK" response header.
