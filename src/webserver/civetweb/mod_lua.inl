@@ -641,7 +641,10 @@ run_lsp_kepler(struct mg_connection *conn,
 		/* Only send a HTML header, if this is the top level page.
 		 * If this page is included by some mg.include calls, do not add a
 		 * header. */
-		mg_printf(conn, "HTTP/1.1 200 OK\r\n");
+		if(conn->status_code < 0)
+			mg_printf(conn, "HTTP/1.1 200 OK\r\n");
+		else
+			mg_printf(conn, "HTTP/1.1 %d %s\r\n", conn->status_code, mg_get_response_code_text(conn, conn->status_code));
 		send_no_cache_header(conn);
 		send_additional_header(conn);
 		mg_printf(conn,
@@ -2603,10 +2606,6 @@ prepare_lua_request_info_inner(const struct mg_connection *conn, lua_State *L)
 		reg_string(L, "finger", conn->request_info.client_cert->finger);
 		lua_rawset(L, -3);
 	}
-
-	/* Pi-hole addition */
-	reg_string(L, "csrf_token", conn->request_info.csrf_token);
-	reg_boolean(L, "is_authenticated", conn->request_info.is_authenticated != 0);
 }
 
 
@@ -2793,11 +2792,7 @@ lua_error_handler(lua_State *L)
 static void
 prepare_lua_environment(struct mg_context *ctx,
                         struct mg_connection *conn,
-#if defined(USE_WEBSOCKET)
                         struct lua_websock_data *ws_conn_list,
-#else
-                        void *ws_conn_list,
-#endif
                         lua_State *L,
                         const char *script_name,
                         int lua_env_type)
@@ -2943,6 +2938,11 @@ prepare_lua_environment(struct mg_context *ctx,
 
 	if ((conn != NULL) && (conn->dom_ctx != NULL)) {
 		reg_string(L, "document_root", conn->dom_ctx->config[DOCUMENT_ROOT]);
+		if (conn->dom_ctx->config[FALLBACK_DOCUMENT_ROOT]) {
+			reg_string(L,
+			           "fallback_document_root",
+			           conn->dom_ctx->config[FALLBACK_DOCUMENT_ROOT]);
+		}
 		reg_string(L,
 		           "auth_domain",
 		           conn->dom_ctx->config[AUTHENTICATION_DOMAIN]);
@@ -2951,6 +2951,11 @@ prepare_lua_environment(struct mg_context *ctx,
 			reg_string(L,
 			           "websocket_root",
 			           conn->dom_ctx->config[WEBSOCKET_ROOT]);
+			if (conn->dom_ctx->config[FALLBACK_WEBSOCKET_ROOT]) {
+				reg_string(L,
+				           "fallback_websocket_root",
+				           conn->dom_ctx->config[FALLBACK_WEBSOCKET_ROOT]);
+			}
 		} else {
 			reg_string(L,
 			           "websocket_root",
@@ -3066,9 +3071,14 @@ mg_exec_lua_script(struct mg_connection *conn,
 		}
 
 		if (luaL_loadfile(L, path) != 0) {
+			mg_send_http_error(conn, 500, "Lua error:\r\n");
 			lua_error_handler(L);
 		} else {
-			lua_pcall(L, 0, 0, -2);
+			int call_status = lua_pcall(L, 0, 0, 0);
+			if (call_status != 0) {
+				mg_send_http_error(conn, 500, "Lua error:\r\n");
+				lua_error_handler(L);
+			}
 		}
 		DEBUG_TRACE("Close Lua environment %p", L);
 		lua_close(L);
@@ -3216,9 +3226,10 @@ handle_lsp_request(struct mg_connection *conn,
 	 * "<?" which means "classic CivetWeb Syntax".
 	 *
 	 */
-
-	// Pi-hole change: Always use Kepler syntax, ignore rules above
-	run_lsp = run_lsp_kepler;
+	run_lsp = run_lsp_civetweb;
+	if ((addr[0] == '<') && (addr[1] != '?')) {
+		run_lsp = run_lsp_kepler;
+	}
 
 	/* We're not sending HTTP headers here, Lua page must do it. */
 	error =
