@@ -350,7 +350,7 @@ void http_init(void)
 	}
 
 	/* Initialize the library */
-	log_web("Initializing HTTP server on port %s", config.webserver.port.v.s);
+	log_web("Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
 	unsigned int features = MG_FEATURES_FILES |
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
