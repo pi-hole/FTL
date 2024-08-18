@@ -1600,6 +1600,13 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 
 	log_info("No config file nor backup available, using defaults");
 
+	// If we reach this point, we could not read the TOML config file When
+	// this functions is invoked to run without rewriting, we are likely
+	// running interactively and do not want to migrate settings (yet):
+	// using defaults is fine in this case
+	if(!rewrite)
+		return false;
+
 	// If no previous config file could be read, we are likely either running
 	// for the first time or we are upgrading from a version prior to v6.0
 	// In this case, we try to read the legacy config files
@@ -1661,8 +1668,8 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 		conf->webserver.port.v.s = ports;
 		conf->webserver.port.t = CONF_STRING_ALLOCATED;
 
-		log_info("Initialised webserver ports at %d (HTTP) and %d (HTTPS), IPv6 support is %s",
-			http_port, https_port, have_ipv6 ? "enabled" : "disabled");
+		log_info("Config initialized with webserver ports %d (HTTP) and %d (HTTPS), IPv6 support is %s",
+		         http_port, https_port, have_ipv6 ? "enabled" : "disabled");
 	}
 
 	// Initialize the TOML config file
