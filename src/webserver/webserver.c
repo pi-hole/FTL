@@ -376,8 +376,12 @@ void http_init(void)
 	// Prepare options for HTTP server (NULL-terminated list)
 	// Note about the additional headers:
 	// - "Content-Security-Policy: [...]"
-	//   'unsafe-inline' is both required by Chart.js styling some elements directly, and
-	//   index.html containing some inlined Javascript code.
+	//   Declares what kind of resources are allowed to be loaded on the page. Importantly,
+	//   it mitigates XSS attacks by only allowing scripts from the same origin (e.g. http://pi.hole:80).
+	//   The frame-ancestors directive replaces the deprecated X-Frame-Options on newer browsers.
+	//   'unsafe-inline' on style-src is required by Chart.js styling some elements directly.
+	//   Note that 'self' on script-src can be potentially bypassed via user uploaded files
+	//   and JSONP endpoints on the same origin, so those should be avoided.
 	// - "X-Frame-Options: DENY"
 	//   The page can not be displayed in a frame, regardless of the site attempting to do
 	//   so.
@@ -391,7 +395,7 @@ void http_init(void)
 	//   opt-out of MIME type sniffing, or, in other words, it is a way to say that the
 	//   webmasters knew what they were doing. Site security testers usually expect this
 	//   header to be set.
-	// - "Referrer-Policy: strict-origin-when-cross-origin"
+	// - "Referrer-Policy: same-origin"
 	//   A referrer will be sent for same-site origins, but cross-origin requests will
 	//   send no referrer information.
 	// The latter four headers are set as expected by https://securityheaders.io
@@ -405,11 +409,11 @@ void http_init(void)
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
 		"authentication_domain", config.webserver.domain.v.s,
-		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
+		"additional_header", "Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; img-src 'self'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'\r\n"
 		                     "X-Frame-Options: DENY\r\n"
 		                     "X-XSS-Protection: 0\r\n"
 		                     "X-Content-Type-Options: nosniff\r\n"
-		                     "Referrer-Policy: strict-origin-when-cross-origin",
+		                     "Referrer-Policy: same-origin",
 		"index_files", "index.html,index.htm,index.lp",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
