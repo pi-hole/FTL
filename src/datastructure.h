@@ -169,6 +169,8 @@ const char * get_listeningMode_str(const enum listening_mode listeningMode) __at
 int get_listeningMode_val(const char *listeningMode) __attribute__ ((pure));
 const char * __attribute__ ((const)) get_temp_unit_str(const enum temp_unit temp_unit);
 int __attribute__ ((pure)) get_temp_unit_val(const char *temp_unit);
+const char * __attribute__ ((const)) get_edns_mode_str(const enum edns_mode edns_mode);
+int __attribute__ ((pure)) get_edns_mode_val(const char *edns_mode);
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)

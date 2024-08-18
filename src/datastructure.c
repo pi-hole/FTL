@@ -1217,3 +1217,30 @@ int __attribute__ ((pure)) get_temp_unit_val(const char *temp_unit)
 	// Invalid value
 	return -1;
 }
+
+const char * __attribute__ ((const)) get_edns_mode_str(const enum edns_mode edns_mode)
+{
+	switch(edns_mode)
+	{
+		case EDNS_MODE_NONE:
+			return "NONE";
+		case EDNS_MODE_CODE:
+			return "CODE";
+		case EDNS_MODE_TEXT:
+			return "TEXT";
+	}
+	return NULL;
+}
+
+int __attribute__ ((pure)) get_edns_mode_val(const char *edns_mode)
+{
+	if(strcasecmp(edns_mode, "NONE") == 0)
+		return EDNS_MODE_NONE;
+	else if(strcasecmp(edns_mode, "CODE") == 0)
+		return EDNS_MODE_CODE;
+	else if(strcasecmp(edns_mode, "TEXT") == 0)
+		return EDNS_MODE_TEXT;
+
+	// Invalid value
+	return -1;
+}

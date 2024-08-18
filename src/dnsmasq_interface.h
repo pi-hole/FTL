@@ -35,8 +35,9 @@ int _FTL_check_reply(const unsigned int rcode, const unsigned short flags, const
 
 void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec);
 
-#define FTL_make_answer(header, limit, len, ede) _FTL_make_answer(header, limit, len, ede, __FILE__, __LINE__)
-size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede, const char* file, const int line);
+#define MAX_EDE_DATA 128
+#define FTL_make_answer(header, limit, len, ede_data, ede_len) _FTL_make_answer(header, limit, len, ede_data, ede_len, __FILE__, __LINE__)
+size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, unsigned char ede_data[MAX_EDE_DATA], size_t *ede_len, const char* file, const int line);
 
 #define FTL_CNAME(dst, src, id) _FTL_CNAME(dst, src, id, __FILE__, __LINE__)
 bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file, const int line);

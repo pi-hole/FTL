@@ -133,6 +133,7 @@ enum domain_client_status {
 	UPSTREAM_BLOCKED_NXRA,
 	UPSTREAM_BLOCKED_NULL,
 	UPSTREAM_BLOCKED_IP,
+	PIHOLE_SYNTH,
 	NOT_BLOCKED
 } __attribute__ ((packed));
 
@@ -315,6 +316,12 @@ enum temp_unit {
 	TEMP_UNIT_C = 0,
 	TEMP_UNIT_F,
 	TEMP_UNIT_K
+} __attribute__ ((packed));
+
+enum edns_mode {
+	EDNS_MODE_NONE = 0,
+	EDNS_MODE_CODE,
+	EDNS_MODE_TEXT,
 } __attribute__ ((packed));
 
 enum adlist_type {

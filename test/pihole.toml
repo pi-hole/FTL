@@ -289,6 +289,18 @@
     #       exists, but there is no record for the requested query type.
     mode = "NULL"
 
+    # Should FTL enrich blocked replies with EDNS0 information?
+    #
+    # Possible values are:
+    #   - "NONE"
+    #       In NONE mode, no additional EDNS information is added to blocked queries
+    #   - "CODE"
+    #       In CODE mode, blocked queries will be enriched with EDNS info-code BLOCKED (15)
+    #   - "TEXT"
+    #       In TEXT mode, blocked queries will be enriched with EDNS info-code BLOCKED (15)
+    #       and a text message describing the reason for the block
+    edns = "TEXT"
+
   [dns.specialDomains]
     # Should Pi-hole always replies with NXDOMAIN to A and AAAA queries of
     # use-application-dns.net to disable Firefox automatic DNS-over-HTTP? This is
@@ -1103,7 +1115,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 149 total entries out of which 94 entries are default
+# 150 total entries out of which 95 entries are default
 # --> 55 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

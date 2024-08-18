@@ -306,6 +306,21 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			}
 			break;
 		}
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		{
+			const int edns_mode = get_edns_mode_val(value);
+			if(edns_mode != -1)
+				conf_item->v.edns_mode = edns_mode;
+			else
+			{
+				char *allowed = NULL;
+				CONFIG_ITEM_ARRAY(conf_item->a, allowed);
+				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, allowed);
+				free(allowed);
+				return false;
+			}
+			break;
+		}
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };

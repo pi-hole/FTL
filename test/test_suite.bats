@@ -38,6 +38,10 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
+  run bash -c "dig denied.ftl @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 15 (Blocked): (denylist)" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain is blocked" {
@@ -45,12 +49,20 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
+  run bash -c "dig gravity.ftl @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 15 (Blocked): (gravity)" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain is blocked (TCP)" {
   run bash -c "dig gravity.ftl @127.0.0.1 +tcp +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c "dig gravity.ftl @127.0.0.1 +tcp | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 15 (Blocked): (gravity)" ]]
   [[ ${lines[1]} == "" ]]
 }
 
@@ -76,6 +88,10 @@
   run bash -c "dig regex5.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c "dig regex5.ftl @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 15 (Blocked): (regex)" ]]
   [[ ${lines[1]} == "" ]]
 }
 
@@ -429,6 +445,7 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"status: NOERROR"* ]]
   [[ ${lines[@]} == *"null.ftl."*"2"*"IN"*"A"*"0.0.0.0"* ]]
+  [[ ${lines[@]} == *"EDE: 15 (Blocked): (upstream NULL)"* ]]
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -483,6 +500,7 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"status: NOERROR"* ]]
   [[ ${lines[@]} == *"null.ftl."*"2"*"IN"*"AAAA"*"::"* ]]
+  [[ ${lines[@]} == *"EDE: 15 (Blocked): (upstream NULL)"* ]]
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -507,6 +525,7 @@
 
   # Run test
   run bash -c "dig A umbrella.ftl @127.0.0.1"
+  [[ ${lines[@]} == *"EDE: 15 (Blocked): (upstream IP)"* ]]
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -531,6 +550,7 @@
 
   # Run test
   run bash -c "dig A umbrella.ftl @127.0.0.1"
+  [[ ${lines[@]} == *"EDE: 15 (Blocked): (upstream IP)"* ]]
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -1151,7 +1171,7 @@
 @test "Blocking status is correctly logged in pihole.log" {
   run bash -c 'grep -c "gravity blocked gravity.ftl is 0.0.0.0" /var/log/pihole/pihole.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "2" ]]
+  [[ ${lines[0]} == "4" ]]
 }
 
 @test "HTTP server responds with JSON error 404 to unknown API path" {
@@ -1369,6 +1389,15 @@
   run bash -c "dig AAAA pi.hole +short @127.0.0.1"
   printf "AAAA: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::10" ]]
+
+  run bash -c "dig A pi.hole @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 29: (synthesized)" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c "dig AAAA pi.hole @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 29: (synthesized)" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Pi-hole uses dns.reply.host.IPv4/6 for hostname" {
@@ -1378,6 +1407,15 @@
   run bash -c "dig AAAA $(hostname) +short @127.0.0.1"
   printf "AAAA: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::10" ]]
+
+  run bash -c "dig A $(hostname) @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 29: (synthesized)" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c "dig AAAA $(hostname) @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 29: (synthesized)" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Pi-hole uses dns.reply.blocking.IPv4/6 for blocked domain" {

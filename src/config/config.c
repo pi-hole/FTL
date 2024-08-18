@@ -278,6 +278,7 @@ void duplicate_config(struct config *dst, struct config *src)
 			case CONF_ENUM_LISTENING_MODE:
 			case CONF_ENUM_WEB_THEME:
 			case CONF_ENUM_TEMP_UNIT:
+			case CONF_ENUM_BLOCKING_EDNS_MODE:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
 			case CONF_ALL_DEBUG_BOOL:
@@ -314,6 +315,7 @@ bool compare_config_item(const enum conf_type t, const union conf_value *val1, c
 		case CONF_ENUM_LISTENING_MODE:
 		case CONF_ENUM_WEB_THEME:
 		case CONF_ENUM_TEMP_UNIT:
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
 		case CONF_STRUCT_IN_ADDR:
 		case CONF_STRUCT_IN6_ADDR:
 		case CONF_ALL_DEBUG_BOOL:
@@ -370,6 +372,7 @@ void free_config(struct config *conf)
 			case CONF_ENUM_LISTENING_MODE:
 			case CONF_ENUM_WEB_THEME:
 			case CONF_ENUM_TEMP_UNIT:
+			case CONF_ENUM_BLOCKING_EDNS_MODE:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
 			case CONF_ALL_DEBUG_BOOL:
@@ -619,6 +622,21 @@ static void initConfig(struct config *conf)
 	conf->dns.blocking.mode.t = CONF_ENUM_BLOCKING_MODE;
 	conf->dns.blocking.mode.d.blocking_mode = MODE_NULL;
 	conf->dns.blocking.mode.c = validate_stub; // Only type-based checking
+
+	conf->dns.blocking.edns.k = "dns.blocking.edns";
+	conf->dns.blocking.edns.h = "Should FTL enrich blocked replies with EDNS0 information?";
+	{
+		struct enum_options blocking_edns[] =
+		{
+			{ get_edns_mode_str(EDNS_MODE_NONE), "In NONE mode, no additional EDNS information is added to blocked queries" },
+			{ get_edns_mode_str(EDNS_MODE_CODE), "In CODE mode, blocked queries will be enriched with EDNS info-code BLOCKED (15)" },
+			{ get_edns_mode_str(EDNS_MODE_TEXT), "In TEXT mode, blocked queries will be enriched with EDNS info-code BLOCKED (15) and a text message describing the reason for the block" }
+		};
+		CONFIG_ADD_ENUM_OPTIONS(conf->dns.blocking.edns.a, blocking_edns);
+	}
+	conf->dns.blocking.edns.t = CONF_ENUM_BLOCKING_EDNS_MODE;
+	conf->dns.blocking.edns.d.edns_mode = EDNS_MODE_TEXT;
+	conf->dns.blocking.edns.c = validate_stub; // Only type-based checking
 
 	conf->dns.revServers.k = "dns.revServers";
 	conf->dns.revServers.h = "Reverse server (former also called \"conditional forwarding\") feature\n Array of reverse servers each one in one of the following forms: \"<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>\"\n\n Individual components:\n\n <enabled>: either \"true\" or \"false\"\n\n <ip-address>[/<prefix-len>]: Address range for the reverse server feature in CIDR notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are substituted (exact address match). This is almost certainly not what you want here.\n Example: \"192.168.0.0/24\" for the range 192.168.0.1 - 192.168.0.255\n\n <server>[#<port>]: Target server to be used for the reverse server feature\n Example: \"192.168.0.1#53\"\n\n <domain>: Domain used for the reverse server feature (e.g., \"fritz.box\")\n Example: \"fritz.box\"";
@@ -1766,6 +1784,7 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 		case CONF_ENUM_LISTENING_MODE:
 		case CONF_ENUM_WEB_THEME:
 		case CONF_ENUM_TEMP_UNIT:
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
 			return "enum (string)";
 		case CONF_ENUM_PRIVACY_LEVEL:
 			return "enum (unsigned integer)";

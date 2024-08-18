@@ -85,6 +85,7 @@ static const char *check_dnsmasq_name(const char *name);
 static bool adbit = false, rabit = false;
 static const char *blockingreason = "";
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
+static enum domain_client_status cacheStatus = UNKNOWN_BLOCKED;
 static int last_regex_idx = -1;
 static char *pihole_suffix = NULL;
 static char *hostname_suffix = NULL;
@@ -184,7 +185,8 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 }
 
 // This is inspired by make_local_answer()
-size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede,
+size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len,
+                        unsigned char ede_data[MAX_EDE_DATA], size_t *ede_len,
                         const char *file, const int line)
 {
 	log_debug(DEBUG_FLAGS, "FTL_make_answer() called from %s:%d", short_path(file), line);
@@ -199,7 +201,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		return 0;
 
 	// Debug logging
-	log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\", EDE: %s (%d)", name, *ede != EDE_UNSET ? edestr(*ede) : "N/A", *ede);
+	log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\"", name);
 
 	// Get question type
 	int qtype, flags = 0;
@@ -247,9 +249,6 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Debug logging
 		log_debug(DEBUG_QUERIES, "Forced DNS reply to REFUSED");
-
-		// Set EDE code to blocked
-		*ede = EDE_BLOCKED;
 	}
 	else if(force_next_DNS_reply == REPLY_IP)
 	{
@@ -324,11 +323,79 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		force_next_DNS_reply = REPLY_UNKNOWN;
 	}
 
+	// Derive EDE code and text from cacheStatus
+	int ede_code = EDE_UNSET;
+	const char *ede_text = NULL;
+	switch(cacheStatus)
+	{
+		case UNKNOWN_BLOCKED:
+		case NOT_BLOCKED:
+		case ALLOWED:
+			// Not going through this function
+			break;
+		case GRAVITY_BLOCKED:
+			ede_code = EDE_BLOCKED;
+			ede_text = "gravity";
+			break;
+		case DENYLIST_BLOCKED:
+			ede_code = EDE_BLOCKED;
+			ede_text = "denylist";
+			break;
+		case REGEX_BLOCKED:
+			ede_code = EDE_BLOCKED;
+			ede_text = "regex";
+			break;
+		case SPECIAL_DOMAIN:
+			ede_code = EDE_BLOCKED;
+			ede_text = "special";
+			break;
+		case UPSTREAM_BLOCKED_NXRA:
+			ede_code = EDE_BLOCKED;
+			ede_text = "upstream NXRA";
+			break;
+		case UPSTREAM_BLOCKED_NULL:
+			ede_code = EDE_BLOCKED;
+			ede_text = "upstream NULL";
+			break;
+		case UPSTREAM_BLOCKED_IP:
+			ede_code = EDE_BLOCKED;
+			ede_text = "upstream IP";
+			break;
+		case PIHOLE_SYNTH:
+			ede_code = EDE_SYNTHESIZED;
+			ede_text = "synthesized";
+			break;
+	}
+	cacheStatus = UNKNOWN_BLOCKED;
+
+	// Debug logging
+	log_debug(DEBUG_QUERIES, "Setting EDE: %s (%d) + \"%s\"",
+	          ede_code != EDE_UNSET ? edestr(ede_code) : "---", ede_code, ede_text ? ede_text : "---");
+
+	if(ede_code != EDE_UNSET && config.dns.blocking.edns.v.edns_mode > EDNS_MODE_NONE)
+	{
+		// Set EDE INFO-CODE (network byte order)
+		uint16_t swap = htons(ede_code);
+		memcpy(ede_data, &swap, sizeof(swap));
+		*ede_len = sizeof(swap);
+
+		// Set EDE INFO-TEXT (if available)
+		if(ede_text && config.dns.blocking.edns.v.edns_mode > EDNS_MODE_CODE)
+		{
+			size_t extra_len = strlen(ede_text);
+			// Truncate if necessary
+			if(extra_len > MAX_EDE_DATA - *ede_len)
+				extra_len = MAX_EDE_DATA - *ede_len;
+			memcpy(ede_data + *ede_len, ede_text, extra_len);
+			*ede_len += extra_len;
+		}
+	}
+
 	// Debug logging
 	print_flags(flags);
 
 	// Setup reply header
-	setup_reply(header, flags, *ede);
+	setup_reply(header, flags, ede_code);
 
 	// Add NEG flag when replying with NXDOMAIN or NODATA. This is necessary
 	// to get proper logging in pihole.log At the same time, we cannot add
@@ -590,6 +657,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			            "interface-local IP address" :
 			            "NODATA due to missing iface address");
 
+			cacheStatus = PIHOLE_SYNTH;
 			return true;
 		}
 		else
@@ -1395,6 +1463,10 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		dns_cache->list_id = -1;
 	}
 
+	// Memorize blocking status DNS cache for the domain/client combination
+	if(dns_cache->blocking_status != UNKNOWN_BLOCKED)
+		cacheStatus = dns_cache->blocking_status;
+
 	// Skip the entire chain of tests if we already know the answer for this
 	// particular client
 	char *domainstr = (char*)getstr(domain->domainpos);
@@ -1499,9 +1571,15 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			const enum query_status qstat = dns_cache->blocking_status == UPSTREAM_BLOCKED_IP ?
 			                                QUERY_EXTERNAL_BLOCKED_IP :
 			                                dns_cache->blocking_status == UPSTREAM_BLOCKED_NULL ?
-			                                 QUERY_EXTERNAL_BLOCKED_NULL : QUERY_EXTERNAL_BLOCKED_NXRA;
+			                                QUERY_EXTERNAL_BLOCKED_NULL : QUERY_EXTERNAL_BLOCKED_NXRA;
 			query_blocked(query, domain, client, qstat);
 			return true;
+			break;
+
+		case PIHOLE_SYNTH:
+			// Known as a synthetic reply, we return this result early, skipping
+			// all the lengthy tests below
+			return false;
 			break;
 	}
 
@@ -1532,6 +1610,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	{
 		// Set DNS cache properties
 		dns_cache->blocking_status = SPECIAL_DOMAIN;
+		cacheStatus = SPECIAL_DOMAIN;
 		dns_cache->force_reply = force_next_DNS_reply;
 
 		// Adjust counters
@@ -1600,6 +1679,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		          get_query_type_str(query->type, NULL, NULL), getstr(client->ippos),
 		          domainstr, query->flags.allowed ? "allowed" : "not blocked", dns_cache->list_id);
 	}
+
+	// Update DNS cache status
+	cacheStatus = dns_cache->blocking_status;
 
 	free(domainstr);
 	return blockDomain;
@@ -2362,6 +2444,7 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
 			blockingreason = "blocked upstream with known address (IPv4)";
+			cacheStatus = UPSTREAM_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -2380,6 +2463,7 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
 			blockingreason = "blocked upstream with known address (IPv6)";
+			cacheStatus = UPSTREAM_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -2395,6 +2479,7 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 		if(config.debug.queries.v.b)
 		{
 			blockingreason = "blocked upstream with 0.0.0.0";
+			cacheStatus = UPSTREAM_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
 		}
 
@@ -2410,6 +2495,7 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 		if(config.debug.queries.v.b)
 		{
 			blockingreason = "blocked upstream with ::";
+			cacheStatus = UPSTREAM_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
 		}
 
@@ -2720,6 +2806,7 @@ static void FTL_NXRA(const int id, const char* file, const int line)
 
 	// Set blocking reason
 	blockingreason = "blocked upstream with NXDOMAIN and unset RA bit";
+	cacheStatus = UPSTREAM_BLOCKED_NXRA;
 
 	// Get response time
 	struct timeval response;

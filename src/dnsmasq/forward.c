@@ -714,6 +714,8 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   size_t plen; 
   /******** Pi-hole modification ********/
   unsigned char *pheader_copy = NULL;
+  unsigned char ede_data[MAX_EDE_DATA] = { 0 };
+  size_t ede_len = 0;
   /**************************************/
     
   (void)ad_reqd;
@@ -890,7 +892,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 
 	      // Generate DNS packet for reply, a possibly existing pseudo header
 	      // will be restored later inside resize_packet()
-	      n = FTL_make_answer(header, ((char *) header) + 65536, n, &ede);
+	      n = FTL_make_answer(header, ((char *) header) + 65536, n, ede_data, &ede_len);
 	    }
 	}
       
@@ -930,13 +932,18 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   // pheader_copy instead of pheader
   if(pheader_copy)
     free(pheader_copy);
-  /**************************************/
 
-  if (pheader && ede != EDE_UNSET)
+  if (pheader && (ede != EDE_UNSET || ede_len > 0))
     {
-      u16 swap = htons((u16)ede);
-      n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
+      if (ede_len > 0)
+	  n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 1);
+	else
+	  {
+	    u16 swap = htons((u16)ede);
+	    n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
+	  }
     }
+  /**************************************/
 
   if (RCODE(header) == NXDOMAIN)
     server->nxdomain_replies++;
@@ -1930,8 +1937,9 @@ void receive_query(struct listener *listen, time_t now)
       if(piholeblocked)
 	{
 	  // Generate DNS packet for reply
-	  int ede = EDE_UNSET;
-	  n = FTL_make_answer(header, ((char *) header) + udp_size, n, &ede);
+	  unsigned char ede_data[MAX_EDE_DATA] = { 0 };
+	  size_t ede_len = 0;
+	  n = FTL_make_answer(header, ((char *) header) + udp_size, n, ede_data, &ede_len);
 	  // The pseudoheader may contain important information such as EDNS0 version important for
 	  // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
 
@@ -1941,10 +1949,9 @@ void receive_query(struct listener *listen, time_t now)
 
 	  if (have_pseudoheader)
 	  {
-	    u16 swap = htons(ede);
-	    if (ede != EDE_UNSET) // Add EDNS0 option EDE if applicable
+	    if (ede_len > 0) // Add EDNS0 option EDE if applicable
 	      n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
-				   daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+				   daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
 	    else
 	      n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
 				   daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
@@ -2470,18 +2477,18 @@ unsigned char *tcp_request(int confd, time_t now,
 	  // Interface name is known from before forking
 	  if(piholeblocked)
 	  {
-	    int ede = EDE_UNSET;
+	    unsigned char ede_data[MAX_EDE_DATA] = { 0 };
+	    size_t ede_len = 0;
 	    stale = 0;
 	    // Generate DNS packet for reply
-	    m = FTL_make_answer(header, ((char *) header) + 65536, size, &ede);
+	    m = FTL_make_answer(header, ((char *) header) + 65536, size, ede_data, &ede_len);
 	    // The pseudoheader may contain important information such as EDNS0 version important for
 	    // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
 	    if (have_pseudoheader && m > 0)
 	    {
-	      u16 swap = htons(ede);
-	      if (ede != -1) // Add EDNS0 option EDE if applicable
+	      if (ede_len > 0) // Add EDNS0 option EDE if applicable
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
-				     daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+				     daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
 	      else
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
 				     daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
