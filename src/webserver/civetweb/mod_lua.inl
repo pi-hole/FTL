@@ -641,14 +641,22 @@ run_lsp_kepler(struct mg_connection *conn,
 		/* Only send a HTML header, if this is the top level page.
 		 * If this page is included by some mg.include calls, do not add a
 		 * header. */
-		mg_printf(conn, "HTTP/1.1 200 OK\r\n");
+
+		/* Initialize a new HTTP response, either with some-predefined
+		 * status code (e.g. 404 if this is called from an error
+		 * handler) or with 200 OK */
+		mg_response_header_start(conn, conn->status_code > 0 ? conn->status_code : 200);
+
+		/* Add additional headers */
 		send_no_cache_header(conn);
 		send_additional_header(conn);
-		mg_printf(conn,
-		          "Date: %s\r\n"
-		          "Connection: close\r\n"
-		          "Content-Type: text/html; charset=utf-8\r\n\r\n",
-		          date);
+		send_cors_header(conn);
+
+		/* Add content type */
+		mg_response_header_add(conn, "Content-Type", "text/html; charset=utf-8", -1);
+
+		/* Send the HTTP response (status and all headers) */
+		mg_response_header_send(conn);
 	}
 
 	data.begin = p;
@@ -2793,11 +2801,7 @@ lua_error_handler(lua_State *L)
 static void
 prepare_lua_environment(struct mg_context *ctx,
                         struct mg_connection *conn,
-#if defined(USE_WEBSOCKET)
                         struct lua_websock_data *ws_conn_list,
-#else
-                        void *ws_conn_list,
-#endif
                         lua_State *L,
                         const char *script_name,
                         int lua_env_type)
@@ -2943,6 +2947,11 @@ prepare_lua_environment(struct mg_context *ctx,
 
 	if ((conn != NULL) && (conn->dom_ctx != NULL)) {
 		reg_string(L, "document_root", conn->dom_ctx->config[DOCUMENT_ROOT]);
+		if (conn->dom_ctx->config[FALLBACK_DOCUMENT_ROOT]) {
+			reg_string(L,
+			           "fallback_document_root",
+			           conn->dom_ctx->config[FALLBACK_DOCUMENT_ROOT]);
+		}
 		reg_string(L,
 		           "auth_domain",
 		           conn->dom_ctx->config[AUTHENTICATION_DOMAIN]);
@@ -2951,6 +2960,11 @@ prepare_lua_environment(struct mg_context *ctx,
 			reg_string(L,
 			           "websocket_root",
 			           conn->dom_ctx->config[WEBSOCKET_ROOT]);
+			if (conn->dom_ctx->config[FALLBACK_WEBSOCKET_ROOT]) {
+				reg_string(L,
+				           "fallback_websocket_root",
+				           conn->dom_ctx->config[FALLBACK_WEBSOCKET_ROOT]);
+			}
 		} else {
 			reg_string(L,
 			           "websocket_root",
@@ -3066,9 +3080,14 @@ mg_exec_lua_script(struct mg_connection *conn,
 		}
 
 		if (luaL_loadfile(L, path) != 0) {
+			mg_send_http_error(conn, 500, "Lua error:\r\n");
 			lua_error_handler(L);
 		} else {
-			lua_pcall(L, 0, 0, -2);
+			int call_status = lua_pcall(L, 0, 0, 0);
+			if (call_status != 0) {
+				mg_send_http_error(conn, 500, "Lua error:\r\n");
+				lua_error_handler(L);
+			}
 		}
 		DEBUG_TRACE("Close Lua environment %p", L);
 		lua_close(L);

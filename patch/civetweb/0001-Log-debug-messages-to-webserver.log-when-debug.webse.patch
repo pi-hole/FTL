@@ -27,28 +27,6 @@ index 3df8eab9..9b0c6308 100644
  #endif /* DEBUG */
  #endif /* DEBUG_TRACE */
  
-diff --git a/src/webserver/civetweb/mod_mbedtls.inl b/src/webserver/civetweb/mod_mbedtls.inl
-index 00b9280a..6a450ba3 100644
---- a/src/webserver/civetweb/mod_mbedtls.inl
-+++ b/src/webserver/civetweb/mod_mbedtls.inl
-@@ -213,7 +213,7 @@ mbed_ssl_accept(mbedtls_ssl_context **ssl,
- 		return -1;
- 	}
- 
--	DEBUG_TRACE("TLS connection %p accepted, state: %d", ssl, (*ssl)->state);
-+	DEBUG_TRACE("TLS connection %p accepted, state: %d", ssl, (*ssl)->MBEDTLS_PRIVATE(state));
- 	return 0;
- }
- 
-@@ -239,7 +239,7 @@ mbed_ssl_handshake(mbedtls_ssl_context *ssl)
- 		}
- 	}
- 
--	DEBUG_TRACE("TLS handshake rc: %d, state: %d", rc, ssl->state);
-+	DEBUG_TRACE("TLS handshake rc: %d, state: %d", rc, ssl->MBEDTLS_PRIVATE(state));
- 	return rc;
- }
- 
 -- 
 2.34.1
 

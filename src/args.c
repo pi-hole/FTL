@@ -807,10 +807,10 @@ void parse_args(int argc, char* argv[])
 			printf("****************************** %s%sCivetWeb%s *****************************\n",
 			       yellow, bold, normal);
 #ifdef HAVE_MBEDTLS
-			printf("Version:         %s%s%s%s with %smbed TLS %s%s"MBEDTLS_VERSION_STRING"%s\n",
+			printf("Version:         %s%s%s%s (modified by Pi-hole) with %smbed TLS %s%s"MBEDTLS_VERSION_STRING"%s\n",
 			       green, bold, mg_version(), normal, yellow, green, bold, normal);
 #else
-			printf("Version:         %s%s%s%s%s without %smbed TLS%s\n",
+			printf("Version:         %s%s%s%s%s (modified by Pi-hole) without %smbed TLS%s\n",
 			       green, bold, mg_version(), normal, red, yellow, normal);
 #endif
 			printf("Features:        ");

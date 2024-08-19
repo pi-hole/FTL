@@ -565,8 +565,9 @@ static char *append_to_path(char *path, const char *append)
 	return new_path;
 }
 
-void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
+void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len)
 {
+	log_debug(DEBUG_API, "Rewriting filename: %s", filename);
 	const bool trailing_slash = filename[strlen(filename) - 1] == '/';
 	char *filename_lp = NULL;
 
