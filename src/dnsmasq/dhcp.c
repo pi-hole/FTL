@@ -398,6 +398,10 @@ void dhcp_packet(time_t now, int pxe_fd)
       struct in_pktinfo *pkt;
       msg.msg_control = control_u.control;
       msg.msg_controllen = sizeof(control_u);
+
+      /* alignment padding passed to the kernel should not be uninitialised. */
+      memset(&control_u, 0, sizeof(control_u));
+
       cmptr = CMSG_FIRSTHDR(&msg);
       pkt = (struct in_pktinfo *)CMSG_DATA(cmptr);
       pkt->ipi_ifindex = rcvd_iface_index;

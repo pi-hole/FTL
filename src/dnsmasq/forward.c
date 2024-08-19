@@ -46,8 +46,8 @@ int send_from(int fd, int nowild, char *packet, size_t len,
     char control[CMSG_SPACE(sizeof(struct in_addr))];
 #endif
     char control6[CMSG_SPACE(sizeof(struct in6_pktinfo))];
-  } control_u = { 0 };
-  
+  } control_u;
+      
   iov[0].iov_base = packet;
   iov[0].iov_len = len;
 
@@ -61,19 +61,18 @@ int send_from(int fd, int nowild, char *packet, size_t len,
   
   if (!nowild)
     {
-      struct cmsghdr *cmptr;
-      msg.msg_control = &control_u;
-      msg.msg_controllen = sizeof(control_u);
-      cmptr = CMSG_FIRSTHDR(&msg);
+      struct cmsghdr *cmptr = msg.msg_control = &control_u.align;
 
+      /* alignment padding passed to the kernel should not be uninitialised. */
+      memset(&control_u, 0, sizeof(control_u));
+      
       if (to->sa.sa_family == AF_INET)
 	{
 #if defined(HAVE_LINUX_NETWORK)
-	  struct in_pktinfo p;
-	  p.ipi_ifindex = 0;
-	  p.ipi_spec_dst = source->addr4;
+	  struct in_pktinfo *p = (struct in_pktinfo *)CMSG_DATA(cmptr);;
+	  p->ipi_ifindex = 0;
+	  p->ipi_spec_dst = source->addr4;
 	  msg.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
-	  memcpy(CMSG_DATA(cmptr), &p, sizeof(p));
 	  cmptr->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
 	  cmptr->cmsg_level = IPPROTO_IP;
 	  cmptr->cmsg_type = IP_PKTINFO;
@@ -87,11 +86,10 @@ int send_from(int fd, int nowild, char *packet, size_t len,
 	}
       else
 	{
-	  struct in6_pktinfo p;
-	  p.ipi6_ifindex = iface; /* Need iface for IPv6 to handle link-local addrs */
-	  p.ipi6_addr = source->addr6;
+	  struct in6_pktinfo *p = (struct in6_pktinfo *)CMSG_DATA(cmptr);
+	  p->ipi6_ifindex = iface; /* Need iface for IPv6 to handle link-local addrs */
+	  p->ipi6_addr = source->addr6;
 	  msg.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
-	  memcpy(CMSG_DATA(cmptr), &p, sizeof(p));
 	  cmptr->cmsg_len = CMSG_LEN(sizeof(struct in6_pktinfo));
 	  cmptr->cmsg_type = daemon->v6pktinfo;
 	  cmptr->cmsg_level = IPPROTO_IPV6;
