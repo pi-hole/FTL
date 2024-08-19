@@ -409,7 +409,7 @@ void http_init(void)
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
 		"authentication_domain", config.webserver.domain.v.s,
-		"additional_header", "Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; img-src 'self'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'\r\n"
+		"additional_header", "Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; img-src 'self'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; require-trusted-types-for 'script'\r\n"
 		                     "X-Frame-Options: DENY\r\n"
 		                     "X-XSS-Protection: 0\r\n"
 		                     "X-Content-Type-Options: nosniff\r\n"
