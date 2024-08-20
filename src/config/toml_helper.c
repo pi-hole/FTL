@@ -61,8 +61,8 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	// Return early if opening failed
 	if(!fp)
 	{
-		log_info("Config %sfile %s not available: %s",
-		         version > 0 ? "backup " : "", filename, strerror(errno));
+		log_info("Config %sfile %s not available (%s): %s",
+		         version > 0 ? "backup " : "", filename, mode, strerror(errno));
 		return NULL;
 	}
 
@@ -70,8 +70,8 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	if(flock(fileno(fp), LOCK_EX) != 0)
 	{
 		const int _e = errno;
-		log_err("Cannot open config file %s in exclusive mode: %s",
-		        filename, strerror(errno));
+		log_err("Cannot open config file %s in exclusive mode (%s): %s",
+		        filename, mode, strerror(errno));
 		fclose(fp);
 		errno = _e;
 		return NULL;
