@@ -66,6 +66,10 @@ bool getLogFilePathLegacy(struct config *conf, FILE *fp)
 	// No option set => use default log location
 	if(buffer == NULL)
 	{
+		// Free previously allocated memory (if any)
+		if(conf->files.log.ftl.t == CONF_STRING_ALLOCATED)
+			free(conf->files.log.ftl.v.s);
+
 		// Use standard path if no custom path was obtained from the config file
 		conf->files.log.ftl.v.s = strdup("/var/log/pihole/FTL.log");
 		conf->files.log.ftl.t = CONF_STRING_ALLOCATED;
@@ -92,6 +96,10 @@ bool getLogFilePathLegacy(struct config *conf, FILE *fp)
 		conf->files.log.ftl.v.s = NULL;
 		conf->files.log.ftl.t = CONF_STRING;
 		log_info("Using syslog facility");
+
+		// Free buffer
+		if(val_buffer != NULL)
+			free(val_buffer);
 	}
 
 	// Set string if memory allocation was successful and a value was read

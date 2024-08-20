@@ -553,7 +553,7 @@ void importsetupVarsConf(void)
 	get_conf_string_from_setupVars("DHCP_LEASETIME", &config.dhcp.leaseTime);
 
 	// If the DHCP lease time is set to "24", it is interpreted as "24h".
-	// This is some relic from the past that may still be present in some
+	// This is some relict from the past that may still be present in some
 	// setups
 	if(strcmp(config.dhcp.leaseTime.v.s, "24") == 0)
 	{

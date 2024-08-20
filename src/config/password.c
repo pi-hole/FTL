@@ -199,6 +199,14 @@ static char * __attribute__((malloc)) balloon_password(const char *password,
 
 	// Build PHC string-like output (output string is 101 bytes long (measured))
 	char *output = calloc(128, sizeof(char));
+
+	if(output == NULL || salt_base64 == NULL || scratch_base64 == NULL)
+	{
+		log_err("Error while allocating memory for PHC string: %s", strerror(errno));
+		goto clean_and_exit;
+	}
+
+	// Generate PHC string
 	int size = snprintf(output, 128, "$BALLOON-SHA256$v=1$s=%zu,t=%zu$%s$%s",
 	                    s_cost,
 	                    t_cost,
@@ -213,11 +221,15 @@ static char * __attribute__((malloc)) balloon_password(const char *password,
 	}
 
 clean_and_exit:
-	free(scratch);
-	free(salt_base64);
-	free(scratch_base64);
+	// Clean up
+	if(scratch != NULL)
+		free(scratch);
+	if(salt_base64 != NULL)
+		free(salt_base64);
+	if(scratch_base64 != NULL)
+		free(scratch_base64);
 
-	return output;
+	return output; // may be NULL on failure (unlikely)
 }
 
 // Parse a PHC string and return the parameters and hash
@@ -653,6 +665,7 @@ bool set_and_check_password(struct conf_item *conf_item, const char *password)
 
 	// Set item
 	conf_item->v.s = pwhash;
+	conf_item->t = CONF_STRING_ALLOCATED;
 	log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
 
 	return true;
