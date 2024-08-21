@@ -700,6 +700,8 @@ const char * __attribute__ ((const)) get_query_status_str(const enum query_statu
 			return "SPECIAL_DOMAIN";
 		case QUERY_CACHE_STALE:
 			return "CACHE_STALE";
+		case QUERY_EXTERNAL_BLOCKED_EDE15:
+			return "EXTERNAL_BLOCKED_EDE15";
 		case QUERY_STATUS_MAX:
 		default:
 			return "INVALID";
@@ -872,6 +874,7 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 		case QUERY_EXTERNAL_BLOCKED_IP:
 		case QUERY_EXTERNAL_BLOCKED_NULL:
 		case QUERY_EXTERNAL_BLOCKED_NXRA:
+		case QUERY_EXTERNAL_BLOCKED_EDE15:
 		case QUERY_GRAVITY_CNAME:
 		case QUERY_REGEX_CNAME:
 		case QUERY_DENYLIST_CNAME:
@@ -969,6 +972,7 @@ bool __attribute__ ((const)) is_cached(const enum query_status status)
 		case QUERY_EXTERNAL_BLOCKED_IP:
 		case QUERY_EXTERNAL_BLOCKED_NULL:
 		case QUERY_EXTERNAL_BLOCKED_NXRA:
+		case QUERY_EXTERNAL_BLOCKED_EDE15:
 		case QUERY_GRAVITY_CNAME:
 		case QUERY_REGEX_CNAME:
 		case QUERY_DENYLIST_CNAME:
@@ -1019,6 +1023,8 @@ static const char* __attribute__ ((const)) query_status_str(const enum query_sta
 			return "SPECIAL_DOMAIN";
 		case QUERY_CACHE_STALE:
 			return "CACHE_STALE";
+		case QUERY_EXTERNAL_BLOCKED_EDE15:
+			return "EXTERNAL_BLOCKED_EDE15";
 		case QUERY_STATUS_MAX:
 			return NULL;
 	}

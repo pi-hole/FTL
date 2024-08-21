@@ -49,6 +49,7 @@ enum query_status {
 	QUERY_DBBUSY,
 	QUERY_SPECIAL_DOMAIN,
 	QUERY_CACHE_STALE,
+	QUERY_EXTERNAL_BLOCKED_EDE15,
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 
@@ -133,6 +134,7 @@ enum domain_client_status {
 	UPSTREAM_BLOCKED_NXRA,
 	UPSTREAM_BLOCKED_NULL,
 	UPSTREAM_BLOCKED_IP,
+	UPSTREAM_BLOCKED_EDE15,
 	PIHOLE_SYNTH,
 	NOT_BLOCKED
 } __attribute__ ((packed));

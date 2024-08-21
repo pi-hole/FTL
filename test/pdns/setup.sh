@@ -25,6 +25,7 @@ else
   exit 1
 fi
 
+cp test/pdns/luadns.lua /etc/pdns/luadns.lua
 cp test/pdns/recursor.conf $RECURSOR_CONF
 
 # Create zone database

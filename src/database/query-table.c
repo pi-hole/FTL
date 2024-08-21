@@ -1256,9 +1256,10 @@ void DB_read_queries(void)
 			case QUERY_GRAVITY: // Blocked by gravity
 			case QUERY_REGEX: // Blocked by regex denylist
 			case QUERY_DENYLIST: // Blocked by exact denylist
-			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by external provider
-			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by external provider
-			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by external provider
+			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked upstream
+			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked upstream
+			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked upstream
+			case QUERY_EXTERNAL_BLOCKED_EDE15: // Blocked upstream
 			case QUERY_GRAVITY_CNAME: // Blocked by gravity (inside CNAME path)
 			case QUERY_REGEX_CNAME: // Blocked by regex denylist (inside CNAME path)
 			case QUERY_DENYLIST_CNAME: // Blocked by exact denylist (inside CNAME path)
