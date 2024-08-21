@@ -114,6 +114,7 @@ typedef struct {
 	int domainID;
 	int clientID;
 	int list_id;
+	time_t expires;
 	char *cname_target;
 } DNSCacheData;
 

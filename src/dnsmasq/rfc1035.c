@@ -1033,7 +1033,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		if(FTL_check_reply(RCODE(header), flags, &addr, daemon->log_display_id))
 		  {
  		    // Found while processing a reply from upstream
- 		    log_query(F_UPSTREAM, name, NULL, "blocked due to upstream response (IP)", 0);
+ 		    log_query(F_UPSTREAM, name, NULL, "blocked due to upstream response (answer)", 0);
  		    return 99;
  		  }
 		/********************************************/

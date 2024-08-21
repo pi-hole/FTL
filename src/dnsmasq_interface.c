@@ -184,7 +184,8 @@ void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *
 }
 
 // This is inspired by make_local_answer()
-size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede, const char *file, const int line)
+size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede,
+                        const char *file, const int line)
 {
 	log_debug(DEBUG_FLAGS, "FTL_make_answer() called from %s:%d", short_path(file), line);
 	// Exit early if there are no questions in this query
@@ -1139,11 +1140,24 @@ static void check_pihole_PTR(char *domain)
 	}
 }
 
-inline static void set_dnscache_blockingstatus(DNSCacheData * dns_cache, enum domain_client_status new_status,
-                                               const char *client, const char *domain)
+static void set_dnscache_blockingstatus(DNSCacheData *dns_cache, enum domain_client_status new_status,
+                                        const char *client, const char *domain)
 {
 	// Memorize blocking status DNS cache for the domain/client combination
 	dns_cache->blocking_status = new_status;
+
+	// Set expiration time for this cache entry (if applicable)
+	// We set this only if not already set to avoid extending the TTL of an
+	// existing entry
+	if(config.dns.cache.upstreamTTL.v.ui > 0 &&
+	   dns_cache->expires == 0 &&
+	   (new_status == UPSTREAM_BLOCKED_NXRA ||
+	    new_status == UPSTREAM_BLOCKED_NULL ||
+	    new_status == UPSTREAM_BLOCKED_IP))
+	{
+		// Set expiration time for this cache entry
+		dns_cache->expires = time(NULL) + config.dns.cache.upstreamTTL.v.ui;
+	}
 
 	if(!config.debug.queries.v.b)
 		return;
@@ -1151,7 +1165,9 @@ inline static void set_dnscache_blockingstatus(DNSCacheData * dns_cache, enum do
 	// Debug logging
 	const char *qtype = get_query_type_str(dns_cache->query_type, NULL, NULL);
 	const char *clientstr = client ? client : "<unknown>";
-	log_debug(DEBUG_QUERIES, "DNS cache: %s/%s/%s is %s", qtype, clientstr, domain, blockingreason);
+	log_debug(DEBUG_QUERIES, "DNS cache: %s/%s/%s is %s, expires in %lis",
+	          qtype, clientstr, domain, blockingreason,
+	          dns_cache->expires > 0 ? (long)(dns_cache->expires - time(NULL)) : -1);
 }
 
 static bool check_domain_blocked(const char *domain, const int clientID,
@@ -1358,13 +1374,22 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// already stored in the query, we have to re-lookup the cache ID.
 	// This can happen when a CNAME chain is followed and analyzed
 	const int cacheID = query->domainID == domainID && query->clientID == clientID ?
-	                    query->cacheID :
-	                    findCacheID(domainID, clientID, query->type, true);
+	                    query->cacheID : findCacheID(domainID, clientID, query->type, true);
 	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 	if(dns_cache == NULL)
 	{
 		log_err("No memory available, skipping query analysis");
 		return false;
+	}
+
+	// If this cache record can expire, check if it is still valid
+	if(dns_cache->expires > 0 && dns_cache->expires < time(NULL))
+	{
+		// This cache record is expired, we have to re-check
+		log_debug(DEBUG_QUERIES, "DNS cache record expired");
+		dns_cache->blocking_status = UNKNOWN_BLOCKED;
+		dns_cache->expires = 0;
+		dns_cache->list_id = -1;
 	}
 
 	// Skip the entire chain of tests if we already know the answer for this
@@ -1464,7 +1489,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// Known as upstream blocked, we return this result
 			// early, skipping all the lengthy tests below
 			blockingreason = "upstream blocked";
-			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, blockingreason);
+			log_debug(DEBUG_QUERIES, "%s is known as %s (expires in %lus)",
+			          domainstr, blockingreason, (unsigned long)(dns_cache->expires - time(NULL)));
 
 			force_next_DNS_reply = dns_cache->force_reply;
 			const enum query_status qstat = dns_cache->blocking_status == UPSTREAM_BLOCKED_IP ?
