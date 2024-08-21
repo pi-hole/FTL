@@ -485,7 +485,7 @@
     lines+=("$line")
   done <<< "${log}"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[@]} == *"DEBUG_QUERIES: null.ftl is known as blocked upstream with NULL address"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: null.ftl is known as blocked upstream with NULL address (expires in"* ]]
   [[ ${lines[@]} != *"DEBUG_QUERIES: **** forwarded null.ftl to 127.0.0.1#5555"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"null.ftl A 0.0.0.0\""* ]]
 }
@@ -541,6 +541,7 @@
   [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella.ftl is not blocked (domainlist ID: -1)"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded umbrella.ftl to 127.0.0.1#5555"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: blocked upstream with known address (IPv4)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella.ftl -> EXTERNAL_BLOCKED_IP"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"umbrella.ftl A 0.0.0.0\""* ]]
 }
 
@@ -564,7 +565,7 @@
     lines+=("$line")
   done <<< "${log}"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[@]} == *"DEBUG_QUERIES: umbrella.ftl is known as blocked upstream with known address"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: umbrella.ftl is known as blocked upstream with known address (expires in"* ]]
   [[ ${lines[@]} != *"DEBUG_QUERIES: **** forwarded umbrella.ftl to 127.0.0.1#5555"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"umbrella.ftl A 0.0.0.0\""* ]]
 }
@@ -590,7 +591,8 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: AAAA/127.0.0.1/umbrella.ftl is not blocked (domainlist ID: -1)"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded umbrella.ftl to 127.0.0.1#5555"* ]]
-  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: AAAA/127.0.0.1/umbrella.ftl is blocked upstream with known address (IPv6)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: blocked upstream with known address (IPv6)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: AAAA/127.0.0.1/umbrella.ftl -> EXTERNAL_BLOCKED_IP"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"umbrella.ftl AAAA ::\""* ]]
 }
 
@@ -615,7 +617,7 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella-multi.ftl is not blocked (domainlist ID: -1)"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded umbrella-multi.ftl to 127.0.0.1#5555"* ]]
-  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella-multi.ftl is blocked upstream with known address (IPv4)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella-multi.ftl -> EXTERNAL_BLOCKED_IP"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"umbrella-multi.ftl A 0.0.0.0\""* ]]
 }
 
@@ -641,7 +643,7 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/nxdomain.ede15.ftl is not blocked (domainlist ID: -1)"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded nxdomain.ede15.ftl to 127.0.0.1#5555"* ]]
-  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/nxdomain.ede15.ftl is blocked upstream with EDE15"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/nxdomain.ede15.ftl -> EXTERNAL_BLOCKED_EDE15"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"nxdomain.ede15.ftl A 0.0.0.0\""* ]]
 }
 
@@ -665,7 +667,7 @@
     lines+=("$line")
   done <<< "${log}"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[@]} == *"DEBUG_QUERIES: nxdomain.ede15.ftl is known as blocked upstream with EDE15"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: nxdomain.ede15.ftl is known as blocked upstream with EDE15 (expires in"* ]]
   [[ ${lines[@]} != *"DEBUG_QUERIES: **** forwarded umbrella.ftl to 127.0.0.1#5555"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"nxdomain.ede15.ftl A 0.0.0.0\""* ]]
 }

@@ -121,24 +121,6 @@ enum blocking_status {
 	BLOCKING_UNKNOWN
 } __attribute__ ((packed));
 
-// Blocking status constants used by the dns_cache->blocking_status vector
-// We explicitly force UNKNOWN_BLOCKED to zero on all platforms as this is the
-// default value set initially with calloc
-enum domain_client_status {
-	UNKNOWN_BLOCKED = 0,
-	GRAVITY_BLOCKED,
-	DENYLIST_BLOCKED,
-	REGEX_BLOCKED,
-	ALLOWED,
-	SPECIAL_DOMAIN,
-	UPSTREAM_BLOCKED_NXRA,
-	UPSTREAM_BLOCKED_NULL,
-	UPSTREAM_BLOCKED_IP,
-	UPSTREAM_BLOCKED_EDE15,
-	PIHOLE_SYNTH,
-	NOT_BLOCKED
-} __attribute__ ((packed));
-
 enum debug_flag {
 	DEBUG_NONE = 0,
 	DEBUG_DATABASE = 1,

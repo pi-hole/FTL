@@ -108,7 +108,10 @@ typedef struct {
 
 typedef struct {
 	unsigned char magic;
-	enum domain_client_status blocking_status;
+	struct {
+		bool allowed :1;
+	} flags;
+	enum query_status blocking_status;
 	enum reply_type force_reply;
 	enum query_type query_type;
 	int domainID;

@@ -658,7 +658,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int edns_mode = get_edns_mode_val(val.u.s);

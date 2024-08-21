@@ -68,8 +68,7 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
                              const struct timeval response, const char *file, const int line);
 #define FTL_check_blocking(queryID, domainID, clientID) _FTL_check_blocking(queryID, domainID, clientID, __FILE__, __LINE__)
 static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line);
-static void query_blocked(queriesData *query, domainsData *domain, clientsData *client,
-                          const enum query_status new_status, const enum domain_client_status cache_status);
+static void query_blocked(queriesData *query, domainsData *domain, clientsData *client, const enum query_status new_status);
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, unsigned short port, const int id, const char* file, const int line);
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char* arg, unsigned short type, const int id, const char* file, const int line);
 static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char* file, const int line);
@@ -86,7 +85,7 @@ static const char *check_dnsmasq_name(const char *name);
 static bool adbit = false, rabit = false;
 static const char *blockingreason = "";
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
-static enum domain_client_status cacheStatus = UNKNOWN_BLOCKED;
+static enum query_status cacheStatus = QUERY_UNKNOWN;
 static int last_regex_idx = -1;
 static char *pihole_suffix = NULL;
 static char *hostname_suffix = NULL;
@@ -329,49 +328,69 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	const char *ede_text = NULL;
 	switch(cacheStatus)
 	{
-		case UNKNOWN_BLOCKED:
-		case NOT_BLOCKED:
-		case ALLOWED:
+		case QUERY_UNKNOWN:
+//		case QUERY_CACHE:
+		case QUERY_FORWARDED:
+		case QUERY_RETRIED:
+		case QUERY_RETRIED_DNSSEC:
+		case QUERY_IN_PROGRESS:
+		case QUERY_DBBUSY:
+		case QUERY_CACHE_STALE:
+		case QUERY_STATUS_MAX:
 			// Not going through this function
 			break;
-		case GRAVITY_BLOCKED:
+		case QUERY_GRAVITY:
 			ede_code = EDE_BLOCKED;
 			ede_text = "gravity";
 			break;
-		case DENYLIST_BLOCKED:
+		case QUERY_GRAVITY_CNAME:
+			ede_code = EDE_BLOCKED;
+			ede_text = "gravity (CNAME)";
+			break;
+		case QUERY_DENYLIST:
 			ede_code = EDE_BLOCKED;
 			ede_text = "denylist";
 			break;
-		case REGEX_BLOCKED:
+		case QUERY_DENYLIST_CNAME:
+			ede_code = EDE_BLOCKED;
+			ede_text = "denylist (CNAME)";
+			break;
+		case QUERY_REGEX:
 			ede_code = EDE_BLOCKED;
 			ede_text = "regex";
 			break;
-		case SPECIAL_DOMAIN:
+		case QUERY_REGEX_CNAME:
+			ede_code = EDE_BLOCKED;
+			ede_text = "regex (CNAME)";
+			break;
+		case QUERY_SPECIAL_DOMAIN:
 			ede_code = EDE_BLOCKED;
 			ede_text = "special";
 			break;
-		case UPSTREAM_BLOCKED_NXRA:
+		case QUERY_EXTERNAL_BLOCKED_NXRA:
 			ede_code = EDE_BLOCKED;
 			ede_text = "upstream NXRA";
 			break;
-		case UPSTREAM_BLOCKED_NULL:
+		case QUERY_EXTERNAL_BLOCKED_NULL:
 			ede_code = EDE_BLOCKED;
 			ede_text = "upstream NULL";
 			break;
-		case UPSTREAM_BLOCKED_IP:
+		case QUERY_EXTERNAL_BLOCKED_IP:
 			ede_code = EDE_BLOCKED;
 			ede_text = "upstream IP";
 			break;
-		case UPSTREAM_BLOCKED_EDE15:
+		case QUERY_EXTERNAL_BLOCKED_EDE15:
 			ede_code = EDE_BLOCKED;
 			ede_text = "upstream EDE 15";
 			break;
-		case PIHOLE_SYNTH:
+		case QUERY_CACHE:
 			ede_code = EDE_SYNTHESIZED;
 			ede_text = "synthesized";
 			break;
 	}
-	cacheStatus = UNKNOWN_BLOCKED;
+
+	// Reset global DNS cache status
+	cacheStatus = QUERY_UNKNOWN;
 
 	// Debug logging
 	log_debug(DEBUG_QUERIES, "Setting EDE: %s (%d) + \"%s\"",
@@ -662,7 +681,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			            "interface-local IP address" :
 			            "NODATA due to missing iface address");
 
-			cacheStatus = PIHOLE_SYNTH;
+			cacheStatus = QUERY_CACHE;
 			return true;
 		}
 		else
@@ -1216,37 +1235,6 @@ static void check_pihole_PTR(char *domain)
 	}
 }
 
-static void set_dnscache_blockingstatus(DNSCacheData *dns_cache, enum domain_client_status new_status,
-                                        const char *client, const char *domain)
-{
-	// Memorize blocking status DNS cache for the domain/client combination
-	dns_cache->blocking_status = new_status;
-
-	// Set expiration time for this cache entry (if applicable)
-	// We set this only if not already set to avoid extending the TTL of an
-	// existing entry
-	if(config.dns.cache.upstreamBlockedTTL.v.ui > 0 &&
-	   dns_cache->expires == 0 &&
-	   (new_status == UPSTREAM_BLOCKED_NXRA ||
-	    new_status == UPSTREAM_BLOCKED_NULL ||
-	    new_status == UPSTREAM_BLOCKED_IP ||
-	    new_status == UPSTREAM_BLOCKED_EDE15))
-	{
-		// Set expiration time for this cache entry
-		dns_cache->expires = time(NULL) + config.dns.cache.upstreamBlockedTTL.v.ui;
-	}
-
-	if(!config.debug.queries.v.b)
-		return;
-
-	// Debug logging
-	const char *qtype = get_query_type_str(dns_cache->query_type, NULL, NULL);
-	const char *clientstr = client ? client : "<unknown>";
-	log_debug(DEBUG_QUERIES, "DNS cache: %s/%s/%s is %s, expires in %lis",
-	          qtype, clientstr, domain, blockingreason,
-	          dns_cache->expires > 0 ? (long)(dns_cache->expires - time(NULL)) : -1);
-}
-
 static bool check_domain_blocked(const char *domain, const int clientID,
                                  clientsData *client, queriesData *query, DNSCacheData *dns_cache,
                                  enum query_status *new_status, bool *db_okay)
@@ -1262,9 +1250,6 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		// Set new status
 		*new_status = QUERY_DENYLIST;
 		blockingreason = "exactly denied";
-
-		// Mark domain as exactly denied for this client
-		set_dnscache_blockingstatus(dns_cache, DENYLIST_BLOCKED, client ? getstr(client->ippos) : NULL, domain);
 
 		// We block this domain
 		return true;
@@ -1300,9 +1285,6 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		// Set new status
 		*new_status = QUERY_GRAVITY;
 		blockingreason = "gravity blocked";
-
-		// Mark domain as gravity blocked for this client
-		set_dnscache_blockingstatus(dns_cache, GRAVITY_BLOCKED, client ? getstr(client->ippos) : NULL, domain);
 
 		log_debug(DEBUG_QUERIES, "Blocking query due to gravity match (list ID %i)", list_id);
 
@@ -1360,9 +1342,6 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		// Set new status
 		*new_status = QUERY_REGEX;
 		blockingreason = "regex denied";
-
-		// Mark domain as regex matched for this client
-		set_dnscache_blockingstatus(dns_cache, REGEX_BLOCKED, client ? getstr(client->ippos) : NULL, domain);
 
 		// Regex may be overwriting reply type for this domain
 		if(dns_cache->force_reply != REPLY_UNKNOWN)
@@ -1464,7 +1443,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	{
 		// This cache record is expired, we have to re-check
 		log_debug(DEBUG_QUERIES, "DNS cache record expired");
-		dns_cache->blocking_status = UNKNOWN_BLOCKED;
+		dns_cache->blocking_status = QUERY_UNKNOWN;
+		dns_cache->flags.allowed = false;
 		dns_cache->expires = 0;
 		dns_cache->list_id = -1;
 	}
@@ -1478,17 +1458,18 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	char *domainstr = (char*)getstr(domain->domainpos);
 	switch(dns_cache->blocking_status)
 	{
-		case UNKNOWN_BLOCKED:
+		case QUERY_UNKNOWN:
 			// New domain/client combination.
 			// We have to go through all the tests below
 			log_debug(DEBUG_QUERIES, "%s is not known", domainstr);
 
 			break;
 
-		case DENYLIST_BLOCKED:
+		case QUERY_DENYLIST:
+		case QUERY_DENYLIST_CNAME:
 			// Known as exactly denied, we return this result early, skipping
 			// all the lengthy tests below
-			blockingreason = "exactly denied";
+			blockingreason = dns_cache->blocking_status == QUERY_DENYLIST ? "exactly denied" : "exactly denied (CNAME)";
 			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, blockingreason);
 
 			// Do not block if the entire query is to be permitted
@@ -1496,15 +1477,16 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
-				query_blocked(query, domain, client, QUERY_DENYLIST, DENYLIST_BLOCKED);
+				query_blocked(query, domain, client, QUERY_DENYLIST);
 				return true;
 			}
 			break;
 
-		case GRAVITY_BLOCKED:
+		case QUERY_GRAVITY:
+		case QUERY_GRAVITY_CNAME:
 			// Known as gravity blocked, we return this result early, skipping
 			// all the lengthy tests below
-			blockingreason = "gravity blocked";
+			blockingreason = dns_cache->blocking_status == QUERY_GRAVITY ? "gravity blocked" : "gravity blocked (CNAME)";
 			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, blockingreason);
 
 			// Do not block if the entire query is to be permitted
@@ -1512,15 +1494,16 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
-				query_blocked(query, domain, client, QUERY_GRAVITY, GRAVITY_BLOCKED);
+				query_blocked(query, domain, client, QUERY_GRAVITY);
 				return true;
 			}
 			break;
 
-		case REGEX_BLOCKED:
+		case QUERY_REGEX:
+		case QUERY_REGEX_CNAME:
 			// Known as regex denied, we return this result early, skipping all
 			// the lengthy tests below
-			blockingreason = "regex denied";
+			blockingreason = dns_cache->blocking_status == QUERY_REGEX ? "regex denied" : "regex denied (CNAME)";
 			log_debug(DEBUG_QUERIES, "%s is known as %s (cache regex ID: %i)",
 			          domainstr, blockingreason, dns_cache->list_id);
 
@@ -1530,74 +1513,58 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
 				last_regex_idx = dns_cache->list_id;
-				query_blocked(query, domain, client, QUERY_REGEX, REGEX_BLOCKED);
+				query_blocked(query, domain, client, QUERY_REGEX);
 				return true;
 			}
 			break;
 
-		case ALLOWED:
-			// Known as allowed, we return this result early, skipping all the
-			// lengthy tests below
-			log_debug(DEBUG_QUERIES, "%s is known as not to be blocked (allowed)", domainstr);
-
-			query->flags.allowed = true;
-
-			return false;
-			break;
-
-		case SPECIAL_DOMAIN:
+		case QUERY_SPECIAL_DOMAIN:
 			// Known as a special domain, we return this result early, skipping
 			// all the lengthy tests below
 			blockingreason = "special domain";
 			log_debug(DEBUG_QUERIES, "%s is known as special domain", domainstr);
 
 			force_next_DNS_reply = dns_cache->force_reply;
-			query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN, SPECIAL_DOMAIN);
+			query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 			return true;
 			break;
 
-		case NOT_BLOCKED:
-			// Known as not blocked, we return this result early, skipping all
-			// the lengthy tests below
-			log_debug(DEBUG_QUERIES, "%s is known as not to be blocked", domainstr);
-
-			return false;
-			break;
-
-		case UPSTREAM_BLOCKED_IP:
-		case UPSTREAM_BLOCKED_NULL:
-		case UPSTREAM_BLOCKED_NXRA:
-		case UPSTREAM_BLOCKED_EDE15:
-
-			enum query_status qstat;
+		case QUERY_EXTERNAL_BLOCKED_IP:
+		case QUERY_EXTERNAL_BLOCKED_NULL:
+		case QUERY_EXTERNAL_BLOCKED_NXRA:
+		case QUERY_EXTERNAL_BLOCKED_EDE15:
 
 			switch(dns_cache->blocking_status)
 			{
-				case UNKNOWN_BLOCKED:
-				case GRAVITY_BLOCKED:
-				case DENYLIST_BLOCKED:
-				case REGEX_BLOCKED:
-				case ALLOWED:
-				case SPECIAL_DOMAIN:
-				case PIHOLE_SYNTH:
-				case NOT_BLOCKED:
+				case QUERY_UNKNOWN:
+				case QUERY_GRAVITY:
+				case QUERY_DENYLIST:
+				case QUERY_REGEX:
+				case QUERY_FORWARDED:
+				case QUERY_CACHE:
+				case QUERY_GRAVITY_CNAME:
+				case QUERY_REGEX_CNAME:
+				case QUERY_DENYLIST_CNAME:
+				case QUERY_RETRIED:
+				case QUERY_RETRIED_DNSSEC:
+				case QUERY_IN_PROGRESS:
+				case QUERY_DBBUSY:
+				case QUERY_SPECIAL_DOMAIN:
+				case QUERY_CACHE_STALE:
+				case QUERY_STATUS_MAX:
 					// Cannot happen
 					break;
-				case UPSTREAM_BLOCKED_IP:
-					qstat = QUERY_EXTERNAL_BLOCKED_IP;
+				case QUERY_EXTERNAL_BLOCKED_IP:
 					blockingreason = "blocked upstream with known address";
 					break;
-				case UPSTREAM_BLOCKED_NULL:
-					qstat = QUERY_EXTERNAL_BLOCKED_NULL;
+				case QUERY_EXTERNAL_BLOCKED_NULL:
 					blockingreason = "blocked upstream with NULL address";
 					break;
-				case UPSTREAM_BLOCKED_EDE15:
-					qstat = QUERY_EXTERNAL_BLOCKED_EDE15;
+				case QUERY_EXTERNAL_BLOCKED_EDE15:
 					blockingreason = "blocked upstream with EDE15";
 					break;
-				case UPSTREAM_BLOCKED_NXRA:
+				case QUERY_EXTERNAL_BLOCKED_NXRA:
 					blockingreason = "blocked upstream with NXRA address";
-					qstat = QUERY_EXTERNAL_BLOCKED_NXRA;
 					break;
 			}
 			
@@ -1607,13 +1574,27 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			          domainstr, blockingreason, (unsigned long)(dns_cache->expires - time(NULL)));
 
 			force_next_DNS_reply = dns_cache->force_reply;
-			query_blocked(query, domain, client, qstat, dns_cache->blocking_status);
+			query_blocked(query, domain, client, dns_cache->blocking_status);
 			return true;
 			break;
 
-		case PIHOLE_SYNTH:
-			// Known as a synthetic reply, we return this result early, skipping
-			// all the lengthy tests below
+		case QUERY_CACHE:
+		case QUERY_FORWARDED:
+		case QUERY_RETRIED:
+		case QUERY_RETRIED_DNSSEC:
+		case QUERY_IN_PROGRESS:
+		case QUERY_DBBUSY:
+		case QUERY_CACHE_STALE:
+		case QUERY_STATUS_MAX:
+			// Known as not to be blocked, possibly even explicitly
+			// allowed - we return this result early, skipping all
+			// the lengthy tests below
+			log_debug(DEBUG_QUERIES, "%s is known as not to be blocked%s", domainstr,
+			          dns_cache->flags.allowed ? " (allowed)" : "");
+
+			if(dns_cache->flags.allowed)
+				query->flags.allowed = true;
+
 			return false;
 			break;
 	}
@@ -1644,12 +1625,12 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	if(!query->flags.allowed && special_domain(query, domainstr))
 	{
 		// Set DNS cache properties
-		dns_cache->blocking_status = SPECIAL_DOMAIN;
-		cacheStatus = SPECIAL_DOMAIN;
+		dns_cache->blocking_status = QUERY_SPECIAL_DOMAIN;
+		cacheStatus = dns_cache->blocking_status;
 		dns_cache->force_reply = force_next_DNS_reply;
 
 		// Adjust counters
-		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN, SPECIAL_DOMAIN);
+		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 
 		// Debug output
 		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
@@ -1693,7 +1674,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	if(blockDomain)
 	{
 		// Adjust counters
-		query_blocked(query, domain, client, new_status, cacheStatus);
+		query_blocked(query, domain, client, new_status);
 
 		// Debug output
 		if(config.debug.queries.v.b)
@@ -1709,7 +1690,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		// Explicitly mark as not blocked to skip the entire gravity/blacklist
 		// chain when the same client asks for the same domain in the future.
 		// Store domain as allowed if this is the case
-		dns_cache->blocking_status = query->flags.allowed ? ALLOWED : NOT_BLOCKED;
+		dns_cache->flags.allowed = query->flags.allowed;
 
 		// Debug output
 		// client is guaranteed to be non-NULL above
@@ -2480,7 +2461,7 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
 			blockingreason = "blocked upstream with known address (IPv4)";
-			cacheStatus = UPSTREAM_BLOCKED_IP;
+			cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -2499,7 +2480,7 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
 			blockingreason = "blocked upstream with known address (IPv6)";
-			cacheStatus = UPSTREAM_BLOCKED_IP;
+			cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -2515,7 +2496,7 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 		if(config.debug.queries.v.b)
 		{
 			blockingreason = "blocked upstream with 0.0.0.0";
-			cacheStatus = UPSTREAM_BLOCKED_NULL;
+			cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
 		}
 
@@ -2531,7 +2512,7 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 		if(config.debug.queries.v.b)
 		{
 			blockingreason = "blocked upstream with ::";
-			cacheStatus = UPSTREAM_BLOCKED_NULL;
+			cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
 		}
 
@@ -2543,26 +2524,11 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	return QUERY_UNKNOWN;
 }
 
-static void query_blocked(queriesData *query, domainsData *domain, clientsData *client,
-                          const enum query_status new_status, const enum domain_client_status cache_status)
+static void query_blocked(queriesData *query, domainsData *domain, clientsData *client, const enum query_status new_status)
 {
 	// Get response time
 	struct timeval response;
 	gettimeofday(&response, 0);
-
-	// Memorize this in the DNS cache if blocked due to the response
-	if(cache_status != UNKNOWN_BLOCKED)
-	{
-		const int cacheID = findCacheID(query->domainID, query->clientID, query->type, true);
-		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-		if(dns_cache != NULL && dns_cache->blocking_status != cache_status)
-		{
-			// Update status
-			set_dnscache_blockingstatus(dns_cache, cache_status,
-			                            client ? getstr(client->ippos) : NULL,
-			                            domain ? getstr(domain->domainpos) : NULL);
-		}
-	}
 
 	// Adjust counters if we recorded a non-blocking status
 	if(query->status == QUERY_FORWARDED)
@@ -2796,7 +2762,7 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 	unlock_shm();
 }
 
-static void FTL_blocked_upstream_by_header(const enum domain_client_status new_status, const int id, const char* file, const int line)
+static void FTL_blocked_upstream_by_header(const enum query_status new_status, const int id, const char* file, const int line)
 {
 	// Lock shared memory
 	lock_shm();
@@ -2837,7 +2803,7 @@ static void FTL_blocked_upstream_by_header(const enum domain_client_status new_s
 	}
 
 	// Set blocking reason
-	blockingreason = new_status == UPSTREAM_BLOCKED_NXRA ?
+	blockingreason = new_status == QUERY_EXTERNAL_BLOCKED_NXRA ?
 	                 "blocked upstream with NXDOMAIN + no RA" :
 	                 "blocked upstream with EDE15";
 	cacheStatus = new_status;
@@ -2849,12 +2815,7 @@ static void FTL_blocked_upstream_by_header(const enum domain_client_status new_s
 	// Store query as externally blocked
 	clientsData *client = getClient(query->clientID, true);
 	if(client != NULL)
-	{
-		const enum query_status new_qstatus = new_status == UPSTREAM_BLOCKED_NXRA ?
-		                                                    QUERY_EXTERNAL_BLOCKED_NXRA :
-		                                                    QUERY_EXTERNAL_BLOCKED_EDE15;
-		query_blocked(query, domain, client, new_qstatus, new_status);
-	}
+		query_blocked(query, domain, client, new_status);
 
 	// Store reply type as replied with NXDOMAIN
 	query_set_reply(F_NEG | F_NXDOMAIN, 0, NULL, query, response);
@@ -2866,7 +2827,7 @@ static void FTL_blocked_upstream_by_header(const enum domain_client_status new_s
 	unlock_shm();
 }
 
-static void FTL_blocked_upstream_by_addr(const enum query_status new_qstatus, const int id, const char* file, const int line)
+static void FTL_blocked_upstream_by_addr(const enum query_status new_status, const int id, const char* file, const int line)
 {
 	// Lock shared memory
 	lock_shm();
@@ -2893,12 +2854,7 @@ static void FTL_blocked_upstream_by_addr(const enum query_status new_qstatus, co
 	clientsData *client = getClient(query->clientID, true);
 	domainsData *domain = getDomain(query->domainID, true);
 	if(client != NULL && domain != NULL)
-	{
-		const enum domain_client_status new_status = new_qstatus == QUERY_EXTERNAL_BLOCKED_IP ?
-		                                                            UPSTREAM_BLOCKED_IP :
-		                                                            UPSTREAM_BLOCKED_NULL;
-		query_blocked(query, domain, client, new_qstatus, new_status);
-	}
+		query_blocked(query, domain, client, new_status);
 
 	// Possible debugging information
 	if(config.debug.queries.v.b)
@@ -2933,7 +2889,7 @@ int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
 		// RA bit is not set and rcode is NXDOMAIN
 		if(!rabit && rcode == NXDOMAIN)
 		{
-			FTL_blocked_upstream_by_header(UPSTREAM_BLOCKED_NXRA, id, file, line);
+			FTL_blocked_upstream_by_header(QUERY_EXTERNAL_BLOCKED_NXRA, id, file, line);
 
 			// Query is blocked
 			return 1;
@@ -2942,7 +2898,7 @@ int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
 		// EDE 15
 		if(edns != NULL && edns->ede == EDE_BLOCKED)
 		{
-			FTL_blocked_upstream_by_header(UPSTREAM_BLOCKED_EDE15, id, file, line);
+			FTL_blocked_upstream_by_header(QUERY_EXTERNAL_BLOCKED_EDE15, id, file, line);
 
 			// Query is blocked
 			return 1;

@@ -435,7 +435,8 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 
 	// Initialize cache entry
 	dns_cache->magic = MAGICBYTE;
-	dns_cache->blocking_status = UNKNOWN_BLOCKED;
+	dns_cache->blocking_status = QUERY_UNKNOWN;
+	dns_cache->expires = 0;
 	dns_cache->domainID = domainID;
 	dns_cache->clientID = clientID;
 	dns_cache->query_type = query_type;
@@ -570,7 +571,9 @@ void FTL_reset_per_client_domain_data(void)
 			continue;
 
 		// Reset blocking status
-		dns_cache->blocking_status = UNKNOWN_BLOCKED;
+		dns_cache->blocking_status = QUERY_UNKNOWN;
+		// Reset expiry
+		dns_cache->expires = 0;
 		// Reset domainlist ID
 		dns_cache->list_id = -1;
 	}
@@ -1067,6 +1070,59 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	{
 		// Nothing to do
 		return;
+	}
+
+	// Memorize this in the DNS cache if blocked due to the response
+	// We do not cache intermittent statuses as they are subject to change
+	if(!init &&
+	   new_status != QUERY_UNKNOWN &&
+	   new_status != QUERY_DBBUSY &&
+	   new_status != QUERY_IN_PROGRESS &&
+	   new_status != QUERY_RETRIED &&
+	   new_status != QUERY_RETRIED_DNSSEC)
+	{
+		const int cacheID = findCacheID(query->domainID, query->clientID, query->type, true);
+		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+		if(dns_cache != NULL && dns_cache->blocking_status != new_status)
+		{
+			// Memorize blocking status DNS cache for the domain/client combination
+			dns_cache->blocking_status = new_status;
+
+			// Set expiration time for this cache entry (if applicable)
+			// We set this only if not already set to avoid extending the TTL of an
+			// existing entry
+			if(config.dns.cache.upstreamBlockedTTL.v.ui > 0 &&
+			   dns_cache->expires == 0 &&
+			   (new_status == QUERY_EXTERNAL_BLOCKED_NXRA ||
+			    new_status == QUERY_EXTERNAL_BLOCKED_NULL ||
+			    new_status == QUERY_EXTERNAL_BLOCKED_IP ||
+			    new_status == QUERY_EXTERNAL_BLOCKED_EDE15))
+			{
+				// Set expiration time for this cache entry
+				dns_cache->expires = time(NULL) + config.dns.cache.upstreamBlockedTTL.v.ui;
+			}
+
+			if(config.debug.queries.v.b)
+			{
+				// Debug logging
+				const char *qtype = get_query_type_str(dns_cache->query_type, NULL, NULL);
+				const char *domain = getDomainString(query);
+				const char *clientstr = getClientIPString(query);
+				const char *statusstr = get_query_status_str(new_status);
+
+				if(dns_cache->expires > 0)
+				{
+					log_debug(DEBUG_QUERIES, "DNS cache: %s/%s/%s -> %s, expires in %lis",
+					          qtype, clientstr, domain, statusstr,
+					          (long)(dns_cache->expires - time(NULL)));
+				}
+				else
+				{
+					log_debug(DEBUG_QUERIES, "DNS cache: %s/%s/%s -> %s, no expiry",
+					          qtype, clientstr, domain, statusstr);
+				}
+			}
+		}
 	}
 
 	// else: update global counters, ...
