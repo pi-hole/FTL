@@ -114,6 +114,30 @@ static bool get_process_creation_time(const pid_t pid, char timestr[TIMESTR_SIZE
 	return true;
 }
 
+// This function checks if a given PID is running inside a docker container
+static bool is_in_docker(const pid_t pid)
+{
+	char filename[sizeof("/proc/%u/cgroup") + sizeof(int)*3];
+	snprintf(filename, sizeof(filename), "/proc/%d/cgroup", pid);
+
+	FILE *f = fopen(filename, "r");
+	if(f == NULL)
+		return false;
+
+	char buffer[128];
+	while(fgets(buffer, sizeof(buffer), f) != NULL)
+	{
+		if(strstr(buffer, "/docker") != NULL)
+		{
+			fclose(f);
+			return true;
+		}
+	}
+	fclose(f);
+
+	return false;
+}
+
 // This function prints an info message about if another FTL process is already
 // running. It returns true if another FTL process is already running, false
 // otherwise.
@@ -219,7 +243,7 @@ bool another_FTL(void)
 		if(pid == ourselves)
 			continue;
 
-		// Only process this is this is our own process
+		// Only process this if this is our own process
 		if(strcasecmp(name, PROCESS_NAME) != 0)
 			continue;
 
@@ -229,6 +253,10 @@ bool another_FTL(void)
 			continue;
 		char ppid_name[PROC_PATH_SIZ] = { 0 };
 		if(!get_process_name(ppid, ppid_name))
+			continue;
+
+		// Skip if this is an instance running inside a docker container
+		if(is_in_docker(pid))
 			continue;
 
 		log_debug(DEBUG_SHMEM, " └ PPID: %d -> name: %s", ppid, ppid_name);
