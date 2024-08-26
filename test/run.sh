@@ -106,7 +106,7 @@ echo -n "Contained dnsmasq version (DNS): "
 dig TXT CHAOS version.bind @127.0.0.1 +short
 
 # Run tests
-$BATS "test/test_suite.bats"
+$BATS -p "test/test_suite.bats"
 RET=$?
 
 curl_to_tricorder() {
