@@ -255,7 +255,7 @@
     # the TTL expires, the query will be forwarded to the upstream server again to check
     # if the block is still valid. Defaults to caching for one day (86400 seconds).
     # Setting this value to zero disables caching of queries blocked upstream.
-    upstreamTTL = 86400
+    upstreamBlockedTTL = 86400
 
   [dns.blocking]
     # Should FTL block queries?

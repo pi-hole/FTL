@@ -1149,14 +1149,14 @@ static void set_dnscache_blockingstatus(DNSCacheData *dns_cache, enum domain_cli
 	// Set expiration time for this cache entry (if applicable)
 	// We set this only if not already set to avoid extending the TTL of an
 	// existing entry
-	if(config.dns.cache.upstreamTTL.v.ui > 0 &&
+	if(config.dns.cache.upstreamBlockedTTL.v.ui > 0 &&
 	   dns_cache->expires == 0 &&
 	   (new_status == UPSTREAM_BLOCKED_NXRA ||
 	    new_status == UPSTREAM_BLOCKED_NULL ||
 	    new_status == UPSTREAM_BLOCKED_IP))
 	{
 		// Set expiration time for this cache entry
-		dns_cache->expires = time(NULL) + config.dns.cache.upstreamTTL.v.ui;
+		dns_cache->expires = time(NULL) + config.dns.cache.upstreamBlockedTTL.v.ui;
 	}
 
 	if(!config.debug.queries.v.b)

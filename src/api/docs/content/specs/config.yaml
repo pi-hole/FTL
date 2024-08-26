@@ -239,7 +239,7 @@ components:
                       type: integer
                     optimizer:
                       type: integer
-                    upstreamTTL:
+                    upstreamBlockedTTL:
                       type: integer
                 revServers:
                   type: array
@@ -665,7 +665,7 @@ components:
             cache:
               size: 10000
               optimizer: 3600
-              upstreamTTL: 86400
+              upstreamBlockedTTL: 86400
             revServers:
               - "true,192.168.0.0/24,192.168.0.1,lan"
             blocking:
