@@ -320,7 +320,7 @@ static void get_conf_upstream_servers_from_setupVars(struct conf_item *conf_item
 			cJSON *item = cJSON_CreateString(value);
 			cJSON_AddItemToArray(conf_item->v.json, item);
 
-			log_info("setupVars.conf:PIHOLE_DNS_%u -> Setting %s[%u] = %s\n",
+			log_info("setupVars.conf:PIHOLE_DNS_%u -> Setting %s[%u] = %s",
 			         j, conf_item->k, j, item->valuestring);
 		}
 
