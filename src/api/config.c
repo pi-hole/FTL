@@ -279,6 +279,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				free(conf_item->v.s);
 			// Set item
 			conf_item->v.s = strdup(elem->valuestring);
+			conf_item->t = CONF_STRING_ALLOCATED; // allocated now
 			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, conf_item->v.s);
 			break;
 		}

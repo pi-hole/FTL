@@ -42,6 +42,8 @@ uint8_t last_checksum[SHA256_DIGEST_SIZE] = { 0 };
 
 // Private prototypes
 static bool port_in_use(const in_port_t port);
+static void reset_config_default(struct conf_item *conf_item);
+static void initConfig(struct config *conf);
 
 // Set debug flags from config struct to global debug_flags array
 // This is called whenever the config is reloaded and debug flags may have
@@ -158,7 +160,10 @@ void free_config_path(char **paths)
 
 	for(unsigned int i = 0; i < MAX_CONFIG_PATH_DEPTH; i++)
 		if(paths[i] != NULL)
+		{
 			free(paths[i]);
+			paths[i] = NULL;
+		}
 }
 
 bool __attribute__ ((pure)) check_paths_equal(char **paths1, char **paths2, unsigned int max_level)
@@ -369,6 +374,8 @@ void free_config(struct config *conf)
 				break;
 			case CONF_STRING_ALLOCATED:
 				free(copy_item->v.s);
+				copy_item->v.s = NULL;
+				copy_item->t = CONF_STRING; // not allocated anymore
 				break;
 			case CONF_JSON_STRING_ARRAY:
 				cJSON_Delete(copy_item->v.json);
@@ -377,7 +384,7 @@ void free_config(struct config *conf)
 	}
 }
 
-void initConfig(struct config *conf)
+static void initConfig(struct config *conf)
 {
 	if(config_initialized)
 		return;
@@ -1492,7 +1499,7 @@ void initConfig(struct config *conf)
 
 		// Initialize config value with default one for all *except* the log file path
 		if(conf_item != &conf->files.log.ftl)
-			reset_config(conf_item);
+			reset_config_default(conf_item);
 
 		// Parse and split paths
 		conf_item->p = gen_config_path(conf_item->k, '.');
@@ -1541,7 +1548,7 @@ void initConfig(struct config *conf)
 	}
 }
 
-void reset_config(struct conf_item *conf_item)
+static void reset_config_default(struct conf_item *conf_item)
 {
 	if(conf_item->t == CONF_JSON_STRING_ARRAY)
 	{

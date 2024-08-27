@@ -403,18 +403,22 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		answers[i].resource = (struct R_DATA*)(reader);
 		reader = reader + sizeof(struct R_DATA);
 
+		// Read the answer and convert from network to host representation
+		answers[i].rdata = name_fromDNS(reader, buf, &stop);
+		reader = reader + stop;
+
 		// We only care about PTR answers and ignore all others
 		const uint16_t rtype = ntohs(answers[i].resource->type);
 		if(rtype != T_PTR)
 		{
 			log_debug(DEBUG_RESOLVER, "Answer %u is not of type PTR but %u (skipping)",
 			          i, rtype);
+
+			// Skip this answer
+			free(answers[i].name);
+			free(answers[i].rdata);
 			continue;
 		}
-
-		// Read the answer and convert from network to host representation
-		answers[i].rdata = name_fromDNS(reader, buf, &stop);
-		reader = reader + stop;
 
 		name = (char *)answers[i].rdata;
 		log_debug(DEBUG_RESOLVER, "Answer %u is PTR \"%s\" => \"%s\"",
@@ -423,23 +427,16 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		// We break out of the loop if this is a valid hostname
 		if(strlen(name) > 0 && valid_hostname(name, ipaddr))
 		{
+			free(answers[i].name);
 			break;
 		}
 		else
 		{
 			// Discard this answer: free memory and set name to NULL
-			free(name);
+			free(answers[i].name);
+			free(answers[i].rdata);
 			name = NULL;
 		}
-	}
-
-	// Free memory
-	for(uint16_t i = 0; i < min(ntohs(dns->ans_count), ArraySize(answers)); i++)
-	{
-		if(answers[i].name != NULL)
-			free(answers[i].name);
-		if(answers[i].rdata != NULL && (char*)answers[i].rdata != name)
-			free(answers[i].rdata);
 	}
 
 	if(name != NULL)

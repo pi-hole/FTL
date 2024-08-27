@@ -182,7 +182,7 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 
 			// Free old password hash if it was allocated
 			if(conf_item->t == CONF_STRING_ALLOCATED)
-					free(conf_item->v.s);
+				free(conf_item->v.s);
 
 			// Store new password hash
 			conf_item->v.s = pwhash;
