@@ -792,6 +792,17 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	flags |= F_RR;
       else
 	insert = 0; /* NOTE: do not cache data from CNAME queries. */
+
+      /*********** Pi-hole modification ***********/
+      if(FTL_check_reply(RCODE(header), flags, NULL, daemon->log_display_id))
+	{
+	  // Found while processing a reply from upstream. We prevent cache insertion here
+	  // This query is to be blocked as we found a blocked
+	  // domain while walking the CNAME path. Log to pihole.log here
+	  log_query(F_UPSTREAM, name, NULL, "blocked due to upstream response (header)", 0);
+	  return 99;
+	}
+      /********************************************/
       
     cname_loop1:
       if (!(p1 = skip_questions(header, qlen)))
@@ -1017,6 +1028,15 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, nftsets->domain, &addr, *nftsets_cur, 0);
 #endif
 		}
+
+		/*********** Pi-hole modification ***********/
+		if(FTL_check_reply(RCODE(header), flags, &addr, daemon->log_display_id))
+		  {
+ 		    // Found while processing a reply from upstream
+ 		    log_query(F_UPSTREAM, name, NULL, "blocked due to upstream response (answer)", 0);
+ 		    return 99;
+ 		  }
+		/********************************************/
 	      
 	      if (insert)
 		{

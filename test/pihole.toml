@@ -251,6 +251,12 @@
     # altogether.
     optimizer = 3600
 
+    # This setting allows you to specify the TTL used for queries blocked upstream. Once
+    # the TTL expires, the query will be forwarded to the upstream server again to check
+    # if the block is still valid. Defaults to caching for one day (86400 seconds).
+    # Setting this value to zero disables caching of queries blocked upstream.
+    upstreamBlockedTTL = 86400
+
   [dns.blocking]
     # Should FTL block queries?
     active = true
@@ -1097,7 +1103,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 148 total entries out of which 93 entries are default
+# 149 total entries out of which 94 entries are default
 # --> 55 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

@@ -1024,7 +1024,7 @@ static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, con
 	return true;
 }
 
-queriesData* _getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file)
+queriesData *_getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file)
 {
 	// This does not exist, return a NULL pointer
 	if(queryID == -1)

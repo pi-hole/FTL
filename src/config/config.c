@@ -587,6 +587,12 @@ static void initConfig(struct config *conf)
 	conf->dns.cache.optimizer.d.i = 3600u;
 	conf->dns.cache.optimizer.c = validate_stub; // Only type-based checking
 
+	conf->dns.cache.upstreamBlockedTTL.k = "dns.cache.upstreamBlockedTTL";
+	conf->dns.cache.upstreamBlockedTTL.h = "This setting allows you to specify the TTL used for queries blocked upstream. Once the TTL expires, the query will be forwarded to the upstream server again to check if the block is still valid. Defaults to caching for one day (86400 seconds). Setting this value to zero disables caching of queries blocked upstream.";
+	conf->dns.cache.upstreamBlockedTTL.t = CONF_UINT;
+	conf->dns.cache.upstreamBlockedTTL.d.ui = 86400;
+	conf->dns.cache.upstreamBlockedTTL.c = validate_stub; // Only type-based checking
+
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
 	conf->dns.blocking.active.h = "Should FTL block queries?";

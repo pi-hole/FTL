@@ -52,7 +52,7 @@ int api_padd(struct ftl_conn *api)
 		// Find most recently blocked query
 		for(int queryID = counters->queries - 1; queryID > 0 ; queryID--)
 		{
-			const queriesData* query = getQuery(queryID, true);
+			const queriesData *query = getQuery(queryID, true);
 			if(query == NULL)
 				continue;
 

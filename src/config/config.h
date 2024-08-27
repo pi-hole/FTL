@@ -147,6 +147,7 @@ struct config {
 		struct {
 			struct conf_item size;
 			struct conf_item optimizer;
+			struct conf_item upstreamBlockedTTL;
 		} cache;
 		struct {
 			struct conf_item active;

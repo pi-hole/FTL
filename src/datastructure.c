@@ -69,7 +69,7 @@ int findQueryID(const int id)
 	// Check UUIDs of queries
 	for(int i = start; i >= until; i--)
 	{
-		const queriesData* query = getQuery(i, true);
+		const queriesData *query = getQuery(i, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(query == NULL)
@@ -462,7 +462,7 @@ bool isValidIPv6(const char *addr)
 
 // Privacy-level sensitive subroutine that returns the domain name
 // only when appropriate for the requested query
-const char *getDomainString(const queriesData* query)
+const char *getDomainString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL || query->domainID < 0)
@@ -486,7 +486,7 @@ const char *getDomainString(const queriesData* query)
 
 // Privacy-level sensitive subroutine that returns the domain name
 // only when appropriate for the requested query
-const char *getCNAMEDomainString(const queriesData* query)
+const char *getCNAMEDomainString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL || query->CNAME_domainID < 0)
@@ -510,7 +510,7 @@ const char *getCNAMEDomainString(const queriesData* query)
 
 // Privacy-level sensitive subroutine that returns the client IP
 // only when appropriate for the requested query
-const char *getClientIPString(const queriesData* query)
+const char *getClientIPString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL || query->clientID < 0)
@@ -534,7 +534,7 @@ const char *getClientIPString(const queriesData* query)
 
 // Privacy-level sensitive subroutine that returns the client host name
 // only when appropriate for the requested query
-const char *getClientNameString(const queriesData* query)
+const char *getClientNameString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL || query->clientID < 0)

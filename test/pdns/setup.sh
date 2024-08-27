@@ -117,6 +117,22 @@ pdnsutil add-record ftl. regex-notMultiple AAAA fe80::3f41
 # TXT
 pdnsutil add-record ftl. any TXT "\"Some example text\""
 
+# NOERROR
+pdnsutil add-record ftl. noerror A
+
+# Blocked Cisco Umbrella IP (https://support.opendns.com/hc/en-us/articles/227986927-What-are-the-Cisco-Umbrella-Block-Page-IP-Addresses)
+pdnsutil add-record ftl. umbrella A 146.112.61.104
+pdnsutil add-record ftl. umbrella AAAA ::ffff:146.112.61.104
+
+# Special record which consists of both blocked and non-blocked IP
+pdnsutil add-record ftl. umbrella-multi A 1.2.3.4
+pdnsutil add-record ftl. umbrella-multi A 146.112.61.104
+pdnsutil add-record ftl. umbrella-multi A 8.8.8.8
+
+# Null address
+pdnsutil add-record ftl. null A 0.0.0.0
+pdnsutil add-record ftl. null AAAA ::
+
 # Create valid internal DNSSEC zone
 pdnsutil create-zone dnssec ns1.ftl
 pdnsutil add-record dnssec. a A 192.168.4.1
