@@ -758,6 +758,13 @@ bool create_cli_password(void)
 
 bool remove_cli_password(void)
 {
+	// Remove the CLI password from memory (if allocated)
+	if(cli_password != NULL)
+	{
+		free(cli_password);
+		cli_password = NULL;
+	}
+
 	// Empty the CLI password file
 	FILE *file = fopen(CLI_PW_FILE, "w");
 	if(file == NULL)
@@ -769,8 +776,13 @@ bool remove_cli_password(void)
 	// Close file
 	fclose(file);
 
-	// Remove the CLI password from memory
-	free(cli_password);
+	// Remove the CLI password file from disk
+	// If the file does not exist, we returned above already
+	if(unlink(CLI_PW_FILE) < 0)
+	{
+		log_err("Failed to remove CLI password file: %s", strerror(errno));
+		return false;
+	}
 
 	log_debug(DEBUG_API, "CLI password removed");
 	return true;
