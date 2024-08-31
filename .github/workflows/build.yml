@@ -24,7 +24,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.6.0
+        uses: actions/checkout@v4.1.7
       -
         name: "Calculate required variables"
         id: variables
@@ -90,7 +90,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.6.0
+        uses: actions/checkout@v4.1.7
       -
         name: "Fix ownership of repository"
         run: chown -R root .
@@ -121,7 +121,7 @@ jobs:
       -
         name: Upload artifacts to job for later processing
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v3.1.3
+        uses: actions/upload-artifact@v4.4.0
         with:
           name: tmp-binary-storage
           path: '${{ matrix.bin_name }}*'
@@ -133,10 +133,10 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v3.6.0
+        uses: actions/checkout@v4.1.7
       -
         name: Get Binaries built in previous jobs
-        uses: actions/download-artifact@v3.0.2
+        uses: actions/download-artifact@v4.1.8
         id: download
         with:
           name: tmp-binary-storage
@@ -164,7 +164,7 @@ jobs:
       -
         name: Attach binaries to release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ steps.download.outputs.download-path }}/*
