@@ -30,7 +30,7 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 	if(setupVarsValue == NULL)
 	{
 		// Do not change default value, this value is not set in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Not set", key);
+		log_info("setupVars.conf:%s -> Not set", key);
 
 		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 		clearSetupVarsArray();
@@ -48,7 +48,7 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 	clearSetupVarsArray();
 
 	// Parameter present in setupVars.conf
-	log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s to %s", key, conf_item->k, conf_item->v.s);
+	log_info("setupVars.conf:%s -> Setting %s to %s", key, conf_item->k, conf_item->v.s);
 }
 
 static void get_conf_ipv4_from_setupVars(const char *key, struct conf_item *conf_item)
@@ -64,7 +64,7 @@ static void get_conf_ipv4_from_setupVars(const char *key, struct conf_item *conf
 	if(setupVarsValue == NULL)
 	{
 		// Do not change default value, this value is not set in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Not set", key);
+		log_info("setupVars.conf:%s -> Not set", key);
 
 		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 		clearSetupVarsArray();
@@ -75,7 +75,7 @@ static void get_conf_ipv4_from_setupVars(const char *key, struct conf_item *conf
 		memset(&conf_item->v.in_addr, 0, sizeof(struct in_addr));
 	else if(inet_pton(AF_INET, setupVarsValue, &conf_item->v.in_addr) != 1)
 	{
-		log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Invalid IPv4 address: %s", key, setupVarsValue);
+		log_info("setupVars.conf:%s -> Invalid IPv4 address: %s", key, setupVarsValue);
 		memset(&conf_item->v.in_addr, 0, sizeof(struct in_addr));
 	}
 
@@ -83,7 +83,7 @@ static void get_conf_ipv4_from_setupVars(const char *key, struct conf_item *conf
 	clearSetupVarsArray();
 
 	// Parameter present in setupVars.conf
-	log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s to %s", key, conf_item->k, inet_ntoa(conf_item->v.in_addr));
+	log_info("setupVars.conf:%s -> Setting %s to %s", key, conf_item->k, inet_ntoa(conf_item->v.in_addr));
 }
 
 static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf_item)
@@ -100,7 +100,7 @@ static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf
 	if(boolean == NULL)
 	{
 		// Do not change default value, this value is not set in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Not set", key);
+		log_info("setupVars.conf:%s -> Not set", key);
 
 		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 		clearSetupVarsArray();
@@ -116,13 +116,13 @@ static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf
 	clearSetupVarsArray();
 
 	// Parameter present in setupVars.conf
-	log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s to %s",
-	          key, conf_item->k, conf_item->v.b ? "true" : "false");
+	log_info("setupVars.conf:%s -> Setting %s to %s",
+	         key, conf_item->k, conf_item->v.b ? "true" : "false");
 }
 
 static void get_revServer_from_setupVars(void)
 {
-	bool active = false;
+	char *active = NULL;
 	char *cidr = NULL;
 	char *target = NULL;
 	char *domain = NULL;
@@ -130,17 +130,21 @@ static void get_revServer_from_setupVars(void)
 	if(active_str == NULL)
 	{
 		// Do not change default value, this value is not set in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:REV_SERVER -> Not set");
+		log_info("setupVars.conf:REV_SERVER -> Not set");
 
 		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 		clearSetupVarsArray();
 		return;
 	}
-	else
+	// Parameter present in setupVars.conf, check if either "true" or "false"
+	if(strcasecmp(active_str, "true") != 0 && strcasecmp(active_str, "false") != 0)
 	{
-		// Parameter present in setupVars.conf
-		active = getSetupVarsBool(active_str);
+		log_info("setupVars.conf:REV_SERVER -> Invalid value: %s", active_str);
+
+		clearSetupVarsArray();
+		return;
 	}
+	active = strdup(active_str);
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
@@ -151,6 +155,8 @@ static void get_revServer_from_setupVars(void)
 		cidr = strdup(cidr_str);
 		trim_whitespace(cidr);
 	}
+	else
+		log_info("setupVars.conf:REV_SERVER_CIDR -> Not set");
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
@@ -161,6 +167,8 @@ static void get_revServer_from_setupVars(void)
 		target = strdup(target_str);
 		trim_whitespace(target);
 	}
+	else
+		log_info("setupVars.conf:REV_SERVER_TARGET -> Not set");
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
@@ -171,27 +179,40 @@ static void get_revServer_from_setupVars(void)
 		domain = strdup(domain_str);
 		trim_whitespace(domain);
 	}
+	else
+		log_info("setupVars.conf:REV_SERVER_DOMAIN -> Not set");
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
 
 	// Only add the entry if all values are present and active
-	if(active && cidr != NULL && target != NULL && domain != NULL)
+	if(active != NULL && cidr != NULL && target != NULL && domain != NULL)
 	{
 		// Build comma-separated string of all values
-		// 8 = 3 commas, "true", and null terminator
-		char *old = calloc(strlen(cidr) + strlen(target) + strlen(domain) + 8, sizeof(char));
+		// 9 = 3 commas, "true/false", and null terminator
+		char *old = calloc(strlen(cidr) + strlen(target) + strlen(domain) + 9, sizeof(char));
 		if(old)
 		{
 			// Add to new config
 			// active is always true as we only add active entries
-			sprintf(old, "true,%s,%s,%s", cidr, target, domain);
+			sprintf(old, "%s,%s,%s,%s", active_str, cidr, target, domain);
 			cJSON_AddItemToArray(config.dns.revServers.v.json, cJSON_CreateString(old));
+
+			// Parameter present in setupVars.conf
+			log_info("setupVars.conf:REV_SERVER -> Setting %s to %s",
+			         config.dns.revServers.k, old);
 			free(old);
 		}
 	}
+	else
+	{
+		// Parameter not present in setupVars.conf
+		log_info("setupVars.conf:REV_SERVER_* -> Not set (found invalid/incomplete parameters)");
+	}
 
 	// Free memory
+	if(active != NULL)
+		free(active);
 	if(cidr != NULL)
 		free(cidr);
 	if(target != NULL)
@@ -262,8 +283,8 @@ static void get_conf_string_array_from_setupVars_regex(const char *key, struct c
 			cJSON *item = cJSON_CreateString(regex2);
 			cJSON_AddItemToArray(conf_item->v.json, item);
 
-			log_debug(DEBUG_CONFIG, "setupVars.conf:%s -> Setting %s[%u] = %s\n",
-					key, conf_item->k, i, item->valuestring);
+			log_info("setupVars.conf:%s -> Setting %s[%u] = %s\n",
+			         key, conf_item->k, i, item->valuestring);
 
 			// Free memory
 			free(regex2);
@@ -295,13 +316,12 @@ static void get_conf_upstream_servers_from_setupVars(struct conf_item *conf_item
 
 		if(value != NULL)
 		{
-			log_debug(DEBUG_CONFIG, "%s = %s\n", server_key, value);
 			// Add string to our JSON array
 			cJSON *item = cJSON_CreateString(value);
 			cJSON_AddItemToArray(conf_item->v.json, item);
 
-			log_debug(DEBUG_CONFIG, "setupVars.conf:PIHOLE_DNS_%u -> Setting %s[%u] = %s\n",
-			          j, conf_item->k, j, item->valuestring);
+			log_info("setupVars.conf:PIHOLE_DNS_%u -> Setting %s[%u] = %s",
+			         j, conf_item->k, j, item->valuestring);
 		}
 
 		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
@@ -317,7 +337,7 @@ static void get_conf_temp_limit_from_setupVars(void)
 	if(temp_limit == NULL)
 	{
 		// Do not change default value, this value is not set in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_LIMIT -> Not set");
+		log_info("setupVars.conf:TEMPERATURE_LIMIT -> Not set");
 
 		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 		clearSetupVarsArray();
@@ -339,13 +359,13 @@ static void get_conf_temp_limit_from_setupVars(void)
 	if(set)
 	{
 		// Parameter present in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_LIMIT -> Setting %s to %f",
+		log_info("setupVars.conf:TEMPERATURE_LIMIT -> Setting %s to %f",
 		          config.webserver.api.temp.limit.k, config.webserver.api.temp.limit.v.d);
 	}
 	else
 	{
 		// Parameter not present in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_LIMIT -> Not set (found invalid value)");
+		log_info("setupVars.conf:TEMPERATURE_LIMIT -> Not set (found invalid value)");
 	}
 }
 
@@ -357,7 +377,7 @@ static void get_conf_weblayout_from_setupVars(void)
 	if(web_layout == NULL)
 	{
 		// Do not change default value, this value is not set in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:WEBUIBOXEDLAYOUT -> Not set");
+		log_info("setupVars.conf:WEBUIBOXEDLAYOUT -> Not set");
 
 		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 		clearSetupVarsArray();
@@ -365,16 +385,14 @@ static void get_conf_weblayout_from_setupVars(void)
 	}
 
 	// If the property is set to false and different than "boxed", the property
-	// is disabled. This is consistent with the code in AdminLTE when writing
-	// this code
-	if(strcasecmp(web_layout, "boxed") != 0)
-		config.webserver.interface.boxed.v.b = false;
+	// is disabled
+	config.webserver.interface.boxed.v.b = strcasecmp(web_layout, "boxed") == 0;
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
 
 	// Parameter present in setupVars.conf
-	log_debug(DEBUG_CONFIG, "setupVars.conf:WEBUIBOXEDLAYOUT -> Setting %s to %s",
+	log_info("setupVars.conf:WEBUIBOXEDLAYOUT -> Setting %s to %s",
 	         config.webserver.interface.boxed.k,config.webserver.interface.boxed.v.b ? "true" : "false");
 }
 
@@ -386,7 +404,7 @@ static void get_conf_webtheme_from_setupVars(void)
 	if(webTheme == NULL)
 	{
 		// Do not change default value, this value is not set in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:WEBTHEME -> Not set");
+		log_info("setupVars.conf:WEBTHEME -> Not set");
 
 		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 		clearSetupVarsArray();
@@ -407,14 +425,14 @@ static void get_conf_webtheme_from_setupVars(void)
 	if(set)
 	{
 		// Parameter present in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:WEBTHEME -> Setting %s to %s",
-		          config.webserver.interface.theme.k,
-		          get_web_theme_str(config.webserver.interface.theme.v.web_theme));
+		log_info("setupVars.conf:WEBTHEME -> Setting %s to %s",
+		         config.webserver.interface.theme.k,
+		         get_web_theme_str(config.webserver.interface.theme.v.web_theme));
 	}
 	else
 	{
 		// Parameter not present in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:WEBTHEME -> Not set (found invalid value)");
+		log_info("setupVars.conf:WEBTHEME -> Not set (found invalid value)");
 	}
 }
 
@@ -426,7 +444,7 @@ static void get_conf_temp_unit_from_setupVars(void)
 	if(temp_unit == NULL)
 	{
 		// Do not change default value, this value is not set in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_UNIT -> Not set");
+		log_info("setupVars.conf:TEMPERATURE_UNIT -> Not set");
 
 		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 		clearSetupVarsArray();
@@ -447,14 +465,14 @@ static void get_conf_temp_unit_from_setupVars(void)
 	if(set)
 	{
 		// Parameter present in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_UNIT -> Setting %s to %s",
-		          config.webserver.interface.theme.k,
-		          get_temp_unit_str(config.webserver.api.temp.unit.v.temp_unit));
+		log_info("setupVars.conf:TEMPERATURE_UNIT -> Setting %s to %s",
+		         config.webserver.interface.theme.k,
+		         get_temp_unit_str(config.webserver.api.temp.unit.v.temp_unit));
 	}
 	else
 	{
 		// Parameter not present in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:TEMPERATURE_UNIT -> Not set (found invalid value)");
+		log_info("setupVars.conf:TEMPERATURE_UNIT -> Not set (found invalid value)");
 	}
 }
 
@@ -466,7 +484,7 @@ static void get_conf_listeningMode_from_setupVars(void)
 	if(listeningMode == NULL)
 	{
 		// Do not change default value, this value is not set in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:DNSMASQ_LISTENING -> Not set");
+		log_info("setupVars.conf:DNSMASQ_LISTENING -> Not set");
 
 		// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 		clearSetupVarsArray();
@@ -487,13 +505,13 @@ static void get_conf_listeningMode_from_setupVars(void)
 	if(set)
 	{
 		// Parameter present in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:DNSMASQ_LISTENING -> Setting %s to %s",
-		          config.dns.listeningMode.k, get_listeningMode_str(config.dns.listeningMode.v.listeningMode));
+		log_info("setupVars.conf:DNSMASQ_LISTENING -> Setting %s to %s",
+		         config.dns.listeningMode.k, get_listeningMode_str(config.dns.listeningMode.v.listeningMode));
 	}
 	else
 	{
 		// Parameter not present in setupVars.conf
-		log_debug(DEBUG_CONFIG, "setupVars.conf:DNSMASQ_LISTENING -> Not set (found invalid value)");
+		log_info("setupVars.conf:DNSMASQ_LISTENING -> Not set (found invalid value)");
 	}
 }
 
@@ -587,6 +605,8 @@ void importsetupVarsConf(void)
 	else
 		log_info("Moved %s to %s", config.files.setupVars.v.s, old_setupVars);
 	free(old_setupVars);
+
+	log_info("Migration complete");
 }
 
 char* __attribute__((pure)) find_equals(char *s)
