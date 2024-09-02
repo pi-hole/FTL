@@ -560,6 +560,10 @@ components:
               type: integer
               description: Number of domain on your Pi-hole's gravity list
               example: 104756
+            last_update:
+              type: integer
+              description: Unix timestamp of last gravity update (may be `0` if unknown)
+              example: 1725194639
     upstreams:
       type: object
       properties:

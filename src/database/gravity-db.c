@@ -2796,3 +2796,8 @@ bool gravity_updated(void)
 
 	return changed;
 }
+
+time_t __attribute__((pure)) gravity_last_updated(void)
+{
+	return last_updated > 0 ? (time_t)last_updated : 0;
+}
