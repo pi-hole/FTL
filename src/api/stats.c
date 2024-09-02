@@ -165,6 +165,7 @@ int api_stats_summary(struct ftl_conn *api)
 
 	cJSON *gravity = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(gravity, "domains_being_blocked", num_gravity);
+	JSON_ADD_NUMBER_TO_OBJECT(gravity, "last_update", gravity_last_updated());
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
