@@ -17,23 +17,3 @@ updates:
     github_action-dependencies:
       patterns:
         - "*"
-
-# As above, but for development-v6
-- package-ecosystem: github-actions
-  directory: "/"
-  schedule:
-    interval: weekly
-    day: saturday
-    time: "10:00"
-  open-pull-requests-limit: 10
-  target-branch: development-v6
-  reviewers:
-    - "pi-hole/ftl-maintainers"
-  pull-request-branch-name:
-      # Separate sections of the branch name with a hyphen
-      separator: "-"
-  groups:
-    github_action-dependencies:
-      patterns:
-        - "*"
-
