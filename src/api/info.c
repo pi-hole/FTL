@@ -12,7 +12,7 @@
 #include "webserver/http-common.h"
 #include "webserver/json_macros.h"
 #include "api/api.h"
-// sysinfo()
+// sysinfo(), get_nprocs_conf()
 #include <sys/sysinfo.h>
 // get_blockingstatus()
 #include "config/setupVars.h"
@@ -159,7 +159,11 @@ int api_info_database(struct ftl_conn *api)
 
 int get_system_obj(struct ftl_conn *api, cJSON *system)
 {
-	const int nprocs = get_nprocs();
+	// Use total number of processors
+	// This difference is important for virtualized systems where the number
+	// of available (= online) processors can be lower than the total number
+	//  (= configured) of processors
+	const int nprocs = get_nprocs_conf();
 	struct sysinfo info;
 	if(sysinfo(&info) != 0)
 		return send_json_error(api, 500, "error", strerror(errno), NULL);
