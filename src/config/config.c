@@ -1099,6 +1099,7 @@ static void initConfig(struct config *conf)
 	conf->webserver.api.cli_pw.k = "webserver.api.cli_pw";
 	conf->webserver.api.cli_pw.h = "Should FTL create a temporary CLI password? This password is stored in clear in /etc/pihole and can be used by the CLI (pihole ...  commands) to authenticate against the API. Note that the password is only valid for the current session and regenerated on each FTL restart. Sessions initiated with this password cannot modify the Pi-hole configuration (change passwords, etc.) for security reasons but can still use the API to query data and manage lists.";
 	conf->webserver.api.cli_pw.t = CONF_BOOL;
+	conf->webserver.api.cli_pw.f = FLAG_RESTART_FTL;
 	conf->webserver.api.cli_pw.d.b = true;
 	conf->webserver.api.cli_pw.c = validate_stub; // Only type-based checking
 
