@@ -31,7 +31,7 @@
 #define FORWARD_TEST 1000 /* try all servers every 1000 queries */
 #define FORWARD_TIME 600 /* or 10 minutes */
 #define UDP_TEST_TIME 60 /* How often to reset our idea of max packet size. */
-#define SERVERS_LOGGED 30 /* Only log this many servers when logging state */
+#define SERVERS_LOGGED 300 /* Only log this many servers when logging state */
 #define LOCALS_LOGGED 8 /* Only log this many local addresses when logging state */
 #define LEASE_RETRY 60 /* on error, retry writing leasefile after LEASE_RETRY seconds */
 #define CACHESIZ 150 /* default cache size */
@@ -208,7 +208,7 @@ RESOLVFILE
 
 /* Pi-hole definitions */
 #define HAVE_LUASCRIPT
-#define HAVE_IDN
+#define HAVE_LIBIDN2
 #define HAVE_DNSSEC
 #ifdef DNSMASQ_ALL_OPTS
   #define HAVE_DBUS

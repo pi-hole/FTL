@@ -20,7 +20,7 @@
 #include <setjmp.h>
 
 /* Pi-hole modification */
-#include "../log.h"
+#include "log.h"
 /************************/
 
 static volatile int mem_recover = 0;
@@ -1193,10 +1193,10 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
 		return  _("error");
 	    }
 
-	  if (sdetails.orig_hostinfo)
-	    freeaddrinfo(sdetails.orig_hostinfo);
 	}
     }
+    if (sdetails.orig_hostinfo)
+      freeaddrinfo(sdetails.orig_hostinfo);
   
   return NULL;
 }
@@ -1280,11 +1280,10 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
 	      if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
 		return  _("error");
 	    }
-
-	  if (sdetails.orig_hostinfo)
-	    freeaddrinfo(sdetails.orig_hostinfo);
 	}
     }
+    if (sdetails.orig_hostinfo)
+      freeaddrinfo(sdetails.orig_hostinfo);
   
   return NULL;
 }

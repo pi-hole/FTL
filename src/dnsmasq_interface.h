@@ -1,5 +1,5 @@
 /* Pi-hole: A black hole for Internet advertisements
-*  (c) 2017 Pi-hole, LLC (https://pi-hole.net)
+*  (c) 2021 Pi-hole, LLC (https://pi-hole.net)
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
@@ -14,6 +14,7 @@
 #include <stdbool.h>
 
 #include "edns0.h"
+#include "metrics.h"
 
 extern unsigned char* pihole_privacylevel;
 enum protocol { TCP, UDP, INTERNAL };
@@ -26,8 +27,11 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 #define FTL_new_query(flags, name, addr, arg, qtype, id, proto) _FTL_new_query(flags, name, addr, arg, qtype, id, proto, __FILE__, __LINE__)
 bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, char *arg, const unsigned short qtype, const int id, enum protocol proto, const char* file, const int line);
 
-#define FTL_header_analysis(header4, rcode, server, id) _FTL_header_analysis(header4, rcode, server, id, __FILE__, __LINE__)
-void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const struct server *server, const int id, const char* file, const int line);
+#define FTL_header_analysis(header4, server, id) _FTL_header_analysis(header4, server, id, __FILE__, __LINE__)
+void _FTL_header_analysis(const unsigned char header4, const struct server *server, const int id, const char* file, const int line);
+
+#define FTL_check_reply(rcode, flags, addr, id) _FTL_check_reply(rcode, flags, addr, id, __FILE__, __LINE__)
+int _FTL_check_reply(const unsigned int rcode, const unsigned short flags, const union all_addr *addr, const int id, const char* file, const int line);
 
 void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec);
 
@@ -42,13 +46,16 @@ void FTL_query_in_progress(const int id);
 void FTL_multiple_replies(const int id, int *firstID);
 
 void FTL_dnsmasq_reload(void);
-void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
 void FTL_TCP_worker_created(const int confd);
 void FTL_TCP_worker_terminating(bool finished);
 
-bool FTL_unlink_DHCP_lease(const char *ipaddr);
+bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint);
+
+void FTL_connection_error(const char *reason, const union mysockaddr *addr);
 
 // defined in src/dnsmasq/cache.c
 extern char *querystr(char *desc, unsigned short type);
+
+extern void FTL_dnsmasq_log(const char *payload, const int length);
 
 #endif // DNSMASQ_INTERFACE_H

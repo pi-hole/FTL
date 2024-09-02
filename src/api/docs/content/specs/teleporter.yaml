@@ -1,0 +1,155 @@
+openapi: 3.0.2
+components:
+  paths:
+    teleporter:
+      get:
+        summary: Export Pi-hole settings
+        tags:
+          - "Pi-hole configuration"
+        operationId: "get_teleporter"
+        description: |
+          Request an archived copy of your Pi-hole's current configuration.
+          Authentication via header or cookie is required for the endpoint.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/zip:
+                schema:
+                  type: string
+                  format: binary
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      post:
+        summary: Import Pi-hole settings
+        tags:
+          - "Pi-hole configuration"
+        operationId: "post_teleporter"
+        description: |
+          Upload a Pi-hole Teleporter archive to (partially) restore from it. Note that this will overwrite your current configuration.
+          Authentication via header or cookie is required for the endpoint.
+        requestBody:
+          content:
+            multipart/form-data:
+              schema:
+                properties:
+                  file:
+                    type: string
+                    format: binary
+                  import:
+                    type: object
+                    nullable: true
+                    properties:
+                      config:
+                        type: boolean
+                        description: "Import Pi-hole configuration"
+                        example: true
+                      dhcp_leases:
+                        type: boolean
+                        description: "Import Pi-hole DHCP leases"
+                        example: true
+                      gravity:
+                        type: object
+                        properties:
+                          group:
+                            type: boolean
+                            description: "Import Pi-hole's groups table"
+                            example: true
+                          adlist:
+                            type: boolean
+                            description: "Import Pi-hole's adlist table"
+                            example: true
+                          adlist_by_group:
+                            type: boolean
+                            description: "Import Pi-hole's table relating adlist entries to groups"
+                            example: true
+                          domainlist:
+                            type: boolean
+                            description: "Import Pi-hole's domainlist table"
+                            example: true
+                          domainlist_by_group:
+                            type: boolean
+                            description: "Import Pi-hole's table relating domainlist entries to groups"
+                            example: true
+                          client:
+                            type: boolean
+                            description: "Import Pi-hole's client table"
+                            example: true
+                          client_by_group:
+                            type: boolean
+                            description: "Import Pi-hole's table relating client entries to groups"
+                            example: true
+                    description: "A JSON object of files to import. If omitted, all files will be imported."
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'teleporter.yaml#/components/schemas/teleporter/post'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  teleporter:
+                    $ref: 'teleporter.yaml#/components/examples/teleporter'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'teleporter.yaml#/components/errors/invalid_zip'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+  schemas:
+    teleporter:
+      post:
+        type: object
+        properties:
+          processed:
+            type: array
+            items:
+              type: string
+  errors:
+    invalid_zip:
+      type: object
+      description: Invalid ZIP archive uploaded
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "invalid_zip"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Invalid ZIP file uploaded"
+            hint:
+              type: string
+              nullable: true
+              description: "No additional data available"
+              example: null
+
+  examples:
+    teleporter:
+      value:
+        processed:
+          - etc/pihole/pihole.toml
+          - etc/pihole/gravity.db->group
+          - etc/pihole/gravity.db->adlist
+          - etc/pihole/gravity.db->adlist_by_group

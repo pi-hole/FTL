@@ -12,7 +12,7 @@
 #include "regex_r.h"
 #include "timers.h"
 #include "log.h"
-#include "config.h"
+#include "config/config.h"
 // data getter functions
 #include "datastructure.h"
 #include "database/gravity-db.h"
@@ -21,32 +21,32 @@
 #include "database/message-table.h"
 // init_shmem()
 #include "shmem.h"
-// read_FTL_config()
-#include "config.h"
+// readFTLconf()
+#include "config/config.h"
 // cli_stuff()
 #include "args.h"
 
+const char *regextype[REGEX_MAX] = { "deny", "allow", "CLI" };
 // Safety-measure for future extensions
 #if TYPE_MAX > 30
 #error "Too many query types to be handled by a 32-bit integer"
 #endif
 
-const char *regextype[REGEX_MAX] = { "blacklist", "whitelist", "CLI" };
-
-static regexData *white_regex = NULL;
-static regexData *black_regex = NULL;
+static regexData *allow_regex = NULL;
+static regexData  *deny_regex = NULL;
 static regexData   *cli_regex = NULL;
 static unsigned int num_regex[REGEX_MAX] = { 0 };
 unsigned int regex_change = 0;
+static char regex_msg[REGEX_MSG_LEN] = { 0 };
 
 static inline regexData *get_regex_ptr(const enum regex_type regexid)
 {
 	switch (regexid)
 	{
-		case REGEX_BLACKLIST:
-			return black_regex;
-		case REGEX_WHITELIST:
-			return white_regex;
+		case REGEX_DENY:
+			return deny_regex;
+		case REGEX_ALLOW:
+			return allow_regex;
 		case REGEX_CLI:
 			return cli_regex;
 		case REGEX_MAX: // Fall through
@@ -60,11 +60,11 @@ static inline void free_regex_ptr(const enum regex_type regexid)
 	regexData **regex;
 	switch (regexid)
 	{
-		case REGEX_BLACKLIST:
-			regex = &black_regex;
+		case REGEX_DENY:
+			regex = &deny_regex;
 			break;
-		case REGEX_WHITELIST:
-			regex = &white_regex;
+		case REGEX_ALLOW:
+			regex = &allow_regex;
 			break;
 		case REGEX_CLI:
 			regex = &cli_regex;
@@ -86,28 +86,28 @@ static __attribute__ ((pure)) regexData *get_regex_ptr_from_id(unsigned int rege
 {
 	unsigned int maxi;
 	enum regex_type regex_type;
-	if(regexID < num_regex[REGEX_BLACKLIST])
+	if(regexID < num_regex[REGEX_DENY])
 	{
 		// Regex blacklist
-		regex_type = REGEX_BLACKLIST;
-		maxi = num_regex[REGEX_BLACKLIST];
+		regex_type = REGEX_DENY;
+		maxi = num_regex[REGEX_DENY];
 	}
 	else
 	{
 		// Subtract regex blacklist
-		regexID -= num_regex[REGEX_BLACKLIST];
+		regexID -= num_regex[REGEX_DENY];
 
 		// Check for regex whitelist
-		if(regexID < num_regex[REGEX_WHITELIST])
+		if(regexID < num_regex[REGEX_ALLOW])
 		{
 			// Regex whitelist
-			regex_type = REGEX_WHITELIST;
-			maxi = num_regex[REGEX_WHITELIST];
+			regex_type = REGEX_ALLOW;
+			maxi = num_regex[REGEX_ALLOW];
 		}
 		else
 		{
 			// Subtract regex whitelist
-			regexID -= num_regex[REGEX_WHITELIST];
+			regexID -= num_regex[REGEX_ALLOW];
 
 			// CLI regex
 			regex_type = REGEX_CLI;
@@ -140,13 +140,10 @@ unsigned int __attribute__((pure)) get_num_regex(const enum regex_type regexid)
 #define FTL_REGEX_SEP ";"
 /* Compile regular expressions into data structures that can be used with
    regexec() to match against a string */
-static bool compile_regex(const char *regexin, const enum regex_type regexid, const int dbidx)
+bool compile_regex(const char *regexin, regexData *regex, char **message)
 {
-	regexData *regex = get_regex_ptr(regexid);
-	int index = num_regex[regexid]++;
-
 	// Extract possible Pi-hole extensions
-	char rgxbuf[strlen(regexin) + 1u];
+	char *rgxbuf = calloc(strlen(regexin) + 1u, sizeof(char));
 	// Parse special FTL syntax if present
 	if(strstr(regexin, FTL_REGEX_SEP) != NULL)
 	{
@@ -154,12 +151,12 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 		// Extract regular expression pattern in front of FTL-specific syntax
 		char *saveptr = NULL;
 		char *part = strtok_r(buf, FTL_REGEX_SEP, &saveptr);
-		strncpy(rgxbuf, part, sizeof(rgxbuf));
+		strncpy(rgxbuf, part, strlen(regexin));
 
 		// Analyze FTL-specific parts
 		while((part = strtok_r(NULL, FTL_REGEX_SEP, &saveptr)) != NULL)
 		{
-			char extra[64] = { 0 };
+			char extra[256] = { 0 };
 			// options like
 			// - ";querytype=A" (only match type A queries)
 			// - ";querytype=!AAAA" (match everything but AAAA queries)
@@ -168,10 +165,13 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 			if(sscanf(part, "querytype=%63s", extra))
 			{
 				// Warn if specified more than one querytype option
-				if(regex[index].ext.query_type != 0)
-					logg_regex_warning(regextype[regexid],
-					                   "Overwriting previous querytype setting",
-					                   dbidx, regexin);
+				if(regex->ext.query_type != 0)
+				{
+					*message = strdup("Overwriting previous querytype setting (multiple \"querytype=...\" found)");
+					free(buf);
+					free(rgxbuf);
+					return false;
+				}
 
 				// Check if the first letter is a "!"
 				// This means that the query type matching is inverted
@@ -192,115 +192,150 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 				while(token != NULL)
 				{
 					// Test input string against all implemented query types
-					for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
+					for(enum query_type type = TYPE_A; type < TYPE_MAX; type++)
 					{
 						// Check for querytype
-						if(strcasecmp(token, querytypes[type]) == 0)
+						const char *qtype = get_query_type_str(type, NULL, NULL);
+						if(strcasecmp(token, qtype) == 0)
 						{
-							regex[index].ext.query_type ^= 1 << type;
+							regex->ext.query_type ^= 1 << type;
 							break;
 						}
-					}
-					// Check if we found a valid query type
-					if(regex[index].ext.query_type == 0)
-					{
-						logg_regex_warning(regextype[regexid],
-						                   "Unknown query type",
-						                   dbidx, regexin);
-						free(buf);
-						return false;
 					}
 
 					// Get next token
 					token = strtok_r(NULL, ",", &saveptr2);
 				}
 
+				// Check if we found a valid query type
+				if(regex->ext.query_type == 0)
+				{
+					if(asprintf(message, "Unknown querytype \"%s\"", extra) < 1)
+							log_err("Memory allocation failed in compile_regex()");
+					free(buf);
+					free(rgxbuf);
+					return false;
+				}
+
 				// Invert query types if requested
 				if(inverted)
-					regex[index].ext.query_type = ~regex[index].ext.query_type;
+					regex->ext.query_type = ~regex->ext.query_type;
 
-				if(regex[index].ext.query_type != 0 && config.debug & DEBUG_REGEX)
+				if(regex->ext.query_type != 0 && config.debug.regex.v.b)
 				{
-					logg("    Hint: This regex matches only specific query types:");
-					for(int i = TYPE_A; i < TYPE_MAX; i++)
+					log_debug(DEBUG_REGEX, "    Hint: This regex matches only specific query types:");
+					for(enum query_type type = TYPE_A; type < TYPE_MAX; type++)
 					{
-						if(regex[index].ext.query_type & (1 << i))
-							logg("      - %s", querytypes[i]);
+						if(regex->ext.query_type & (1 << type))
+						{
+							const char *qtype = get_query_type_str(type, NULL, NULL);
+							log_debug(DEBUG_REGEX, "      - %s", qtype);
+						}
 					}
 				}
 			}
 			// option: ";invert"
 			else if(strcasecmp(part, "invert") == 0)
 			{
-				regex[index].ext.inverted = true;
+				regex->ext.inverted = true;
 
 				// Debug output
-				if(config.debug & DEBUG_REGEX)
-				{
-					logg("   This regex will match in inverted mode.");
-				}
+				log_debug(DEBUG_REGEX, "   This regex will match in inverted mode.");
 			}
 			// options ";reply=NXDOMAIN", etc.
-			else if(sscanf(part, "reply=%16s", extra))
+			else if(sscanf(part, "reply=%255s", extra))
 			{
 				// Test input string against all implemented reply types
 				const char *type = "";
 				if(strcasecmp(extra, "NODATA") == 0)
 				{
 					type = "NODATA";
-					regex[index].ext.reply = REPLY_NODATA;
+					regex->ext.reply = REPLY_NODATA;
 				}
 				else if(strcasecmp(extra, "NXDOMAIN") == 0)
 				{
 					type = "NXDOMAIN";
-					regex[index].ext.reply = REPLY_NXDOMAIN;
+					regex->ext.reply = REPLY_NXDOMAIN;
 				}
 				else if(strcasecmp(extra, "REFUSED") == 0)
 				{
 					type = "REFUSED";
-					regex[index].ext.reply = REPLY_REFUSED;
+					regex->ext.reply = REPLY_REFUSED;
 				}
 				else if(strcasecmp(extra, "IP") == 0)
 				{
 					type = "IP";
-					regex[index].ext.reply = REPLY_IP;
+					regex->ext.reply = REPLY_IP;
 				}
-				else if(inet_pton(AF_INET, extra, &regex[index].ext.addr4) == 1)
+				else if(inet_pton(AF_INET, extra, &regex->ext.addr4) == 1)
 				{
 					// Custom IPv4 target
 					type = extra;
-					regex[index].ext.reply = REPLY_IP;
-					regex[index].ext.custom_ip4 = true;
+					regex->ext.reply = REPLY_IP;
+					regex->ext.custom_ip4 = true;
 				}
-				else if(inet_pton(AF_INET6, extra, &regex[index].ext.addr6) == 1)
+				else if(inet_pton(AF_INET6, extra, &regex->ext.addr6) == 1)
 				{
 					// Custom IPv6 target
 					type = extra;
-					regex[index].ext.reply = REPLY_IP;
-					regex[index].ext.custom_ip6 = true;
+					regex->ext.reply = REPLY_IP;
+					regex->ext.custom_ip6 = true;
 				}
 				else if(strcasecmp(extra, "NONE") == 0)
 				{
 					type = "NONE";
-					regex[index].ext.reply = REPLY_NONE;
+					regex->ext.reply = REPLY_NONE;
+				}
+				else if(strncasecmp(extra, "CNAME", 4) == 0)
+				{
+					type = "CNAME";
+					regex->ext.reply = REPLY_CNAME;
+					// Check if "CNAME" is followed by a comma and a domain name
+					char *comma = strchr(extra, ',');
+					if(comma != NULL)
+					{
+						// Skip comma
+						comma++;
+
+						// Copy domain name into buffer
+						regex->ext.cname_target = strdup(comma);
+						if(regex->ext.cname_target == NULL)
+						{
+							log_err("Memory allocation failed in compile_regex()");
+							free(buf);
+							free(rgxbuf);
+							return false;
+						}
+					}
+					else
+					{
+						if(asprintf(message, "Missing domain name for CNAME reply") < 1)
+							log_err("Memory allocation failed in compile_regex()");
+						free(buf);
+						free(rgxbuf);
+						return false;
+					}
 				}
 				else
 				{
-					char msg[64] = { 0 };
-					snprintf(msg, sizeof(msg)-1, "Unknown reply type \"%s\"", extra);
-					logg_regex_warning(regextype[regexid], msg, dbidx, regexin);
+					if(asprintf(message, "Unknown reply type \"%s\"", extra) < 1)
+						log_err("Memory allocation failed in compile_regex()");
+					free(buf);
+					free(rgxbuf);
+					return false;
 				}
 
 				// Debug output
-				if(config.debug & DEBUG_REGEX && regex[index].ext.reply != REPLY_UNKNOWN)
-					logg("   This regex will result in a custom reply: %s", type);
+				if(regex->ext.reply != REPLY_UNKNOWN)
+					log_debug(DEBUG_REGEX, "   This regex will result in a custom reply: %s", type);
 			}
 			else
 			{
-				char hint[40 + strlen(part)];
-				snprintf(hint, sizeof(hint)-1, "Option \"%s\" not known, ignoring it.", part);
-				logg_regex_warning(regextype[regexid], hint,
-				                   dbidx, regexin);
+				if(asprintf(message, "Invalid regex option \"%s\"", part) < 1)
+					log_err("Memory allocation failed in compile_regex()");
+				free(buf);
+				free(rgxbuf);
+				return false;
 			}
 		}
 		free(buf);
@@ -313,31 +348,29 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 
 	// We use the extended RegEx flavor (ERE) and specify that matching should
 	// always be case INsensitive
-	const int errcode = regcomp(&regex[index].regex, rgxbuf, REG_EXTENDED | REG_ICASE | REG_NOSUB);
+	const int errcode = regcomp(&regex->regex, rgxbuf, REG_EXTENDED | REG_ICASE | REG_NOSUB);
 	if(errcode != 0)
 	{
 		// Get error string and log it
-		const size_t length = regerror(errcode, &regex[index].regex, NULL, 0);
-		char *buffer = calloc(length, sizeof(char));
-		(void) regerror (errcode, &regex[index].regex, buffer, length);
-		logg_regex_warning(regextype[regexid], buffer, dbidx, regexin);
-		free(buffer);
-		regex[index].available = false;
+		(void) regerror (errcode, &regex->regex, regex_msg, sizeof(regex_msg));
+		*message = strdup(regex_msg);
+		regex->available = false;
+		free(rgxbuf);
 		return false;
 	}
 
 	// Store compiled regex string in buffer
-	regex[index].string = strdup(regexin);
-	regex[index].available = true;
+	regex->string = strdup(regexin);
+	regex->available = true;
 
+	free(rgxbuf);
 	return true;
 }
 
 static int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
-                       const enum regex_type regexid, const bool regextest)
+                       const enum regex_type regexid, const bool regextest, cJSON *json)
 {
 	int match_idx = -1;
-	regexData *regex = get_regex_ptr(regexid);
 #ifdef USE_TRE_REGEX
 	regmatch_t match[1] = {{ 0 }}; // This also disables any sub-matching
 #endif
@@ -347,146 +380,143 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 	// themselves as well as per-client enabled/disabled state)
 	if(regex_change != counters->regex_change)
 	{
-		logg("Reloading externally changed regular expressions");
+		log_info("Reloading externally changed regular expressions");
 		read_regex_from_database();
-		// Update regex pointer as it will have changed (free_regex has
-		// been called)
-		regex = get_regex_ptr(regexid);
 	}
 
 	// Loop over all configured regex filters of this type
 	for(unsigned int index = 0; index < num_regex[regexid]; index++)
 	{
+		regexData *regex = &get_regex_ptr(regexid)[index];
 		// Only check regex which have been successfully compiled ...
-		if(!regex[index].available)
+		if(!regex->available)
 		{
-			if(config.debug & DEBUG_REGEX)
-			{
-				logg("Regex %s (%u, DB ID %d) \"%s\" is NOT AVAILABLE",
-				     regextype[regexid], index, regex[index].database_id,
-				     regex[index].string);
-			}
+			log_debug(DEBUG_REGEX, "Regex %s (%u, DB ID %d) is NOT AVAILABLE (compilation error)",
+			          regextype[regexid], index, regex->database_id);
 			continue;
 		}
 		// ... and are enabled for this client
 		int regexID = index;
-		if(regexid == REGEX_WHITELIST)
-			regexID += num_regex[REGEX_BLACKLIST];
+		if(regexid == REGEX_ALLOW)
+			regexID += num_regex[REGEX_DENY];
 		else if(regexid == REGEX_CLI)
-			regexID += num_regex[REGEX_BLACKLIST] +
-			           num_regex[REGEX_WHITELIST];
+			regexID += num_regex[REGEX_DENY] +
+			           num_regex[REGEX_ALLOW];
 
 		// Only use regular expressions enabled for this client
 		// We allow clientID = -1 to get all regex (for testing)
 		if(clientID >= 0 && !get_per_client_regex(clientID, regexID))
 		{
-			if(config.debug & DEBUG_REGEX)
+			if(config.debug.regex.v.b)
 			{
 				clientsData* client = getClient(clientID, true);
 				if(client != NULL)
 				{
-					logg("Regex %s (%u, DB ID %d) \"%s\" NOT ENABLED for client %s",
-					     regextype[regexid], index, regex[index].database_id,
-					     regex[index].string, getstr(client->ippos));
+					log_debug(DEBUG_REGEX, "Regex %s (%u, DB ID %d) \"%s\" NOT ENABLED for client %s",
+					          regextype[regexid], index, regex->database_id,
+					          regex->string, getstr(client->ippos));
 				}
 			}
 			continue;
 		}
 
 		// Try to match the compiled regular expression against input
-		if(config.debug & DEBUG_REGEX)
-			logg("Executing: index = %d, preg = %p, str = \"%s\", pmatch = %p", index, &regex[index].regex, input, &match);
 #ifdef USE_TRE_REGEX
-		int retval = tre_regexec(&regex[index].regex, input, 0, match, 0);
+		int retval = tre_regexec(&regex->regex, input, 0, match, 0);
 #else
-		int retval = regexec(&regex[index].regex, input, 0, NULL, 0);
+		int retval = regexec(&regex->regex, input, 0, NULL, 0);
 #endif
 		// regexec() returns REG_OK for a successful match or REG_NOMATCH for failure.
-		if ((retval == REG_OK && !regex[index].ext.inverted) ||
-		    (retval == REG_NOMATCH && regex[index].ext.inverted))
+		if ((retval == REG_OK && !regex->ext.inverted) ||
+		    (retval == REG_NOMATCH && regex->ext.inverted))
 		{
 			// Check possible additional regex settings
 			if(dns_cache != NULL)
 			{
 				// Check query type filtering
-				if(regex[index].ext.query_type != 0)
+				if(regex->ext.query_type != 0)
 				{
-					if(!(regex[index].ext.query_type & (1 << dns_cache->query_type)))
+					if(!(regex->ext.query_type & (1 << dns_cache->query_type)))
 					{
-						if(config.debug & DEBUG_REGEX)
-						{
-							logg("Regex %s (%u, DB ID %i) NO match: \"%s\" vs. \"%s\""
-								" (skipped because of query type mismatch)",
-							regextype[regexid], index, regex[index].database_id,
-							input, regex[index].string);
-						}
+						log_debug(DEBUG_REGEX, "Regex %s (%u, DB ID %i) NO match: \"%s\" vs. \"%s\""
+						                       " (skipped because of query type mismatch)",
+						          regextype[regexid], index, regex->database_id,
+						          input, regex->string);
 						continue;
 					}
 				}
 				// Set special reply type if configured for this regex
-				if(regex[index].ext.reply != REPLY_UNKNOWN)
-					dns_cache->force_reply = regex[index].ext.reply;
+				if(regex->ext.reply != REPLY_UNKNOWN)
+					dns_cache->force_reply = regex->ext.reply;
+
+				// Set CNAME target if configured for this regex
+				if(regex->ext.cname_target != NULL)
+					dns_cache->cname_target = regex->ext.cname_target;
 			}
 
 			// Match, return true
-			match_idx = regex[index].database_id;
+			match_idx = regex->database_id;
 
 			// Print match message when in regex debug mode
-			if(config.debug & DEBUG_REGEX)
-			{
-				// Approximate regex matching mode
-				logg("Regex %s (%u, DB ID %i) >> MATCH: \"%s\" vs. \"%s\"",
-				     regextype[regexid], index, regex[index].database_id,
-				     input, regex[index].string);
-			}
+			log_debug(DEBUG_REGEX, "Regex %s (%u, DB ID %i) >> MATCH: \"%s\" vs. \"%s\"",
+			          regextype[regexid], index, regex->database_id,
+			          input, regex->string);
 
 			if(regextest)
 			{
 				if(regexid == REGEX_CLI)
 				{
 					// CLI provided regular expression
-					logg("    %s%s%s matches",
-					cli_bold(), regex[index].string, cli_normal());
+					log_info("    %s%s%s matches",
+					cli_bold(), regex->string, cli_normal());
 				}
-				else if(regextest && regexid == REGEX_BLACKLIST)
+				else if(regexid == REGEX_DENY)
 				{
 					// Database-sourced regular expression
-					logg("    %s%s%s matches (regex blacklist, DB ID %i)",
-					cli_bold(), regex[index].string, cli_normal(),
-					regex[index].database_id);
+					log_info("    %s%s%s matches (regex blacklist, DB ID %i)",
+					cli_bold(), regex->string, cli_normal(),
+					regex->database_id);
 				}
-				else if(regextest && regexid == REGEX_WHITELIST)
+				else if(regexid == REGEX_ALLOW)
 				{
 					// Database-sourced regular expression
-					logg("    %s%s%s matches (regex whitelist, DB ID %i)",
-					cli_bold(), regex[index].string, cli_normal(),
-					regex[index].database_id);
+					log_info("    %s%s%s matches (regex whitelist, DB ID %i)",
+					cli_bold(), regex->string, cli_normal(),
+					regex->database_id);
 				}
 
 				// Check query type filtering
-				if(regex[index].ext.query_type != 0)
+				if(regex->ext.query_type != 0)
 				{
-					logg("    Hint: This regex matches only specific query types:");
-					for(int i = TYPE_A; i < TYPE_MAX; i++)
+					log_info("    Hint: This regex matches only specific query types:");
+					for(enum query_type type = TYPE_A; type < TYPE_MAX; type++)
 					{
-						if(regex[index].ext.query_type & (1 << i))
-							logg("      - %s", querytypes[i]);
+						if(regex->ext.query_type & (1 << type))
+						{
+							const char *qtype = get_query_type_str(type, NULL, NULL);
+							log_info("      - %s", qtype);
+						}
 					}
 				}
 
 				// Check inversion
-				if(regex[index].ext.inverted)
+				if(regex->ext.inverted)
 				{
-					logg("    Hint: This regex is inverted");
+					log_info("    Hint: This regex is inverted");
 				}
 
 				// Check special reply type
-				if(regex[index].ext.reply != REPLY_UNKNOWN)
+				if(regex->ext.reply != REPLY_UNKNOWN)
 				{
-					logg("    Hint: This regex forces reply type %s",
-					     get_query_reply_str(regex[index].ext.reply));
+					const char *replystr = get_query_reply_str(regex->ext.reply);
+					log_info("    Hint: This regex forces reply type %s", replystr);
 				}
 
+			}
+			else if(json != NULL)
+			{
+				// Add match to JSON array
+				cJSON_AddItemToArray(json, cJSON_CreateNumber(regex->database_id));
 			}
 			else
 			{
@@ -496,11 +526,10 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 		}
 
 		// Print no match message when in regex debug mode
-		if(config.debug & DEBUG_REGEX && match_idx == -1)
+		if(match_idx == -1)
 		{
-			logg("Regex %s (%u, DB ID %i) NO match: \"%s\" vs. \"%s\"",
-			     regextype[regexid], index, regex[index].database_id,
-			     input, regex[index].string);
+			log_debug(DEBUG_REGEX, "Regex %s (FTL %u, DB %i) NO match: \"%s\" (input) vs. \"%s\" (regex)",
+			          regextype[regexid], index, regex->database_id, input, regex->string);
 		}
 	}
 
@@ -515,32 +544,97 @@ bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, c
 	// optimization as the database lookup will most likely hit (a) more domains
 	// and (b) will be faster (given a sufficiently large number of regex
 	// whitelisting filters).
-	const int regex_id = match_regex(domain, dns_cache, clientID, regexid, false);
+	const int regex_id = match_regex(domain, dns_cache, clientID, regexid, false, NULL);
 	if(regex_id != -1)
 	{
 		// We found a match
-		dns_cache->domainlist_id = regex_id;
+		dns_cache->list_id = regex_id;
 		return true;
 	}
 
 	return false;
 }
 
-static void free_regex(void)
+// Resolve CNAME targets for regex entries
+void resolve_regex_cnames(void)
+{
+	// Loop over all regex types
+	for(enum regex_type regexid = REGEX_DENY; regexid < REGEX_MAX; regexid++)
+	{
+		// Get pointer to regex data
+		regexData *regex = get_regex_ptr(regexid);
+
+		// Skip if no regex of this type are available
+		if(regex == NULL)
+			continue;
+
+		// Loop over entries with this regex type
+		for(unsigned int index = 0; index < num_regex[regexid]; index++)
+		{
+			if(!regex[index].available)
+				continue;
+
+			// Check if this regex has a CNAME target
+			if(regex[index].ext.cname_target == NULL)
+				continue;
+
+			log_debug(DEBUG_REGEX, "Resolving CNAME target \"%s\" for regex filter %i",
+			          regex[index].ext.cname_target, regex[index].database_id);
+
+			// Prepare hints for getaddrinfo()
+			struct addrinfo hints;
+			memset(&hints, 0, sizeof(hints));
+			hints.ai_family = AF_INET;
+			hints.ai_socktype = SOCK_STREAM;
+
+			// Resolve CNAME target to IPv4 address using getaddrinfo()
+			struct addrinfo *result;
+			if(getaddrinfo(regex[index].ext.cname_target, NULL, &hints, &result) == 0 && result->ai_family == AF_INET)
+			{
+				regex[index].ext.custom_ip4 = true;
+				struct sockaddr_in *addr_in = (void *)result->ai_addr;
+				memcpy(&regex[index].ext.addr4, &addr_in->sin_addr, sizeof(regex[index].ext.addr4));
+				char buffer[INET_ADDRSTRLEN];
+				log_debug(DEBUG_REGEX, "Resolved CNAME target \"%s\" to IPv4 address %s for regex filter %i",
+				          regex[index].ext.cname_target, inet_ntop(AF_INET, &regex[index].ext.addr4, buffer, INET_ADDRSTRLEN), regex[index].database_id);
+			}
+
+			// Free result
+			freeaddrinfo(result);
+
+			// Prepare hints for getaddrinfo()
+			hints.ai_family = AF_INET6;
+
+			// Resolve CNAME target to IPv6 address using getaddrinfo()
+			if(getaddrinfo(regex[index].ext.cname_target, NULL, &hints, &result) == 0 && result->ai_family == AF_INET6)
+			{
+				regex[index].ext.custom_ip6 = true;
+				struct sockaddr_in6 *addr_in = (void *)(result->ai_addr);
+				memcpy(&regex[index].ext.addr6, &addr_in->sin6_addr, sizeof(regex[index].ext.addr6));
+				char buffer[INET6_ADDRSTRLEN];
+				log_debug(DEBUG_REGEX, "Resolved CNAME target \"%s\" to IPv6 address %s for regex filter %i",
+				          regex[index].ext.cname_target, inet_ntop(AF_INET6, &regex[index].ext.addr6, buffer, INET6_ADDRSTRLEN), regex[index].database_id);
+			}
+
+			// Free result
+			freeaddrinfo(result);
+		}
+	}
+}
+
+void free_regex(void)
 {
 	// Return early if we don't use any regex filters
-	if(white_regex == NULL &&
-	   black_regex == NULL &&
+	if(allow_regex == NULL &&
+	    deny_regex == NULL &&
 	     cli_regex == NULL)
 	{
-		if(config.debug & DEBUG_DATABASE)
-			logg("Not using any regex filters, nothing to free or reset");
+		log_debug(DEBUG_DATABASE, "Not using any regex filters, nothing to free or reset");
 		return;
 	}
 
 	// Reset client configuration
-	if(config.debug & DEBUG_DATABASE)
-		logg("Resetting per-client regex settings");
+	log_debug(DEBUG_DATABASE, "Resetting per-client regex settings");
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		reset_per_client_regex(clientID);
@@ -548,7 +642,7 @@ static void free_regex(void)
 
 	// Free regex datastructure
 	// Loop over regex types
-	for(enum regex_type regexid = REGEX_BLACKLIST; regexid < REGEX_MAX; regexid++)
+	for(enum regex_type regexid = REGEX_DENY; regexid < REGEX_MAX; regexid++)
 	{
 		regexData *regex = get_regex_ptr(regexid);
 
@@ -560,11 +654,8 @@ static void free_regex(void)
 		if(regex == NULL)
 			continue;
 
-		if(config.debug & DEBUG_DATABASE)
-		{
-			logg("Going to free %i entries in %s regex struct",
-			     oldcount, regextype[regexid]);
-		}
+		log_debug(DEBUG_DATABASE, "Going to free %u entries in %s regex struct",
+		          oldcount, regextype[regexid]);
 
 		// Loop over entries with this regex type
 		for(unsigned int index = 0; index < oldcount; index++)
@@ -580,12 +671,16 @@ static void free_regex(void)
 				free(regex[index].string);
 				regex[index].string = NULL;
 			}
+
+			// Also free buffered CNAME target (if any)
+			if(regex[index].ext.cname_target != NULL)
+			{
+				free(regex[index].ext.cname_target);
+				regex[index].ext.cname_target = NULL;
+			}
 		}
 
-		if(config.debug & DEBUG_DATABASE)
-		{
-			logg("Loop done, freeing regex pointer (%p)", regex);
-		}
+		log_debug(DEBUG_DATABASE, "Loop done, freeing regex pointer (%p)", regex);
 
 		// Free array with regex datastructure
 		free_regex_ptr(regexid);
@@ -604,26 +699,25 @@ void reload_per_client_regex(clientsData *client)
 	// Zero-initialize (or wipe previous) regex
 	reset_per_client_regex(client->id);
 
-	// Load regex per-group regex blacklist for this client
-	if(num_regex[REGEX_BLACKLIST] > 0)
-		gravityDB_get_regex_client_groups(client, num_regex[REGEX_BLACKLIST],
-		                                  black_regex, REGEX_BLACKLIST,
+	// Load regex per-group deny regex for this client
+	if(num_regex[REGEX_DENY] > 0)
+		gravityDB_get_regex_client_groups(client, num_regex[REGEX_DENY],
+		                                  deny_regex, REGEX_DENY,
 		                                  "vw_regex_blacklist");
 
-	// Load regex per-group regex whitelist for this client
-	if(num_regex[REGEX_WHITELIST] > 0)
-		gravityDB_get_regex_client_groups(client, num_regex[REGEX_WHITELIST],
-		                                  white_regex, REGEX_WHITELIST,
+	// Load regex per-group allow regex for this client
+	if(num_regex[REGEX_ALLOW] > 0)
+		gravityDB_get_regex_client_groups(client, num_regex[REGEX_ALLOW],
+		                                  allow_regex, REGEX_ALLOW,
 		                                  "vw_regex_whitelist");
 }
 
 static void read_regex_table(const enum regex_type regexid)
 {
 	// Get table ID
-	const enum gravity_tables tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
+	const enum gravity_tables tableID = (regexid == REGEX_DENY) ? REGEX_DENY_TABLE : REGEX_ALLOW_TABLE;
 
-	if(config.debug & DEBUG_DATABASE)
-		logg("Reading regex %s from database", regextype[regexid]);
+	log_debug(DEBUG_DATABASE, "Reading regex %s from database", regextype[regexid]);
 
 	// Get number of lines in the regex table
 	num_regex[regexid] = 0;
@@ -635,62 +729,70 @@ static void read_regex_table(const enum regex_type regexid)
 	}
 	else if(count < 0)
 	{
-		logg("WARN: Database query failed, assuming there are no %s regex entries", regextype[regexid]);
+		log_warn("Database query failed, assuming there are no %s regex entries", regextype[regexid]);
 		return;
 	}
 
 	// Allocate memory for regex
 	regexData *regex = NULL;
-	if(regexid == REGEX_BLACKLIST)
+	if(regexid == REGEX_DENY)
 	{
-		black_regex = calloc(count, sizeof(regexData));
-		regex = black_regex;
+		deny_regex = calloc(count, sizeof(regexData));
+		regex = deny_regex;
 	}
 	else
 	{
-		white_regex = calloc(count, sizeof(regexData));
-		regex = white_regex;
+		allow_regex = calloc(count, sizeof(regexData));
+		regex = allow_regex;
 	}
 
 	// Connect to regex table
 	if(!gravityDB_getTable(tableID))
 	{
-		logg("read_regex_from_database(): Error getting %s regex table from database",
-		     regextype[regexid]);
+		log_warn("read_regex_from_database(): Error getting %s regex table from database",
+		         regextype[regexid]);
 		return;
 	}
 
 	// Walk database table
-	const char *domain = NULL;
+	const char *regex_string = NULL;
 	int rowid = 0;
-	while((domain = gravityDB_getDomain(&rowid)) != NULL)
+	while((regex_string = gravityDB_getDomain(&rowid)) != NULL)
 	{
 		// Avoid buffer overflow if database table changed
 		// since we counted its entries
 		if(num_regex[regexid] >= (unsigned int)count)
 		{
-			logg("INFO: read_regex_table(%s) exiting early to avoid overflow (%d/%d).",
-			     regextype[regexid], num_regex[regexid], count);
+			log_warn("read_regex_table(%s) exiting early to avoid overflow (%u/%d).",
+			         regextype[regexid], num_regex[regexid], count);
 			break;
 		}
 
 		// Skip this entry if empty: an empty regex filter would match
-		// anything anywhere and hence match all incoming domains. A user
+		// anything anywhere and hence match all incoming regex_strings. A user
 		// can still achieve this with a filter such as ".*", however empty
 		// filters in the regex table are probably not expected to have such
-		// an effect and would immediately lead to "blocking or whitelisting
+		// an effect and would immediately lead to "blocking or allowing
 		// the entire Internet"
-		if(strlen(domain) < 1)
+		if(strlen(regex_string) < 1)
 			continue;
 
+		// Debug logging
+		log_debug(DEBUG_REGEX, "Compiling %s regex %u (DB ID %i): %s",
+		          regextype[regexid], num_regex[regexid], rowid, regex_string);
+
+		const int index = num_regex[regexid]++;
+		char *message = NULL;
+
 		// Compile this regex
-		if(config.debug & DEBUG_REGEX)
+		if(!compile_regex(regex_string, &regex[index], &message) && message != NULL)
 		{
-			logg("Compiling %s regex %i (DB ID %i): %s",
-			     regextype[regexid], num_regex[regexid], rowid, domain);
+			logg_regex_warning(regextype[regexid], message,
+			                   rowid, regex_string);
+			free(message);
 		}
 
-		compile_regex(domain, regexid, rowid);
+		// Store database ID
 		regex[num_regex[regexid]-1].database_id = rowid;
 
 		// Signal other forks that the regex data has changed and should be updated
@@ -700,12 +802,10 @@ static void read_regex_table(const enum regex_type regexid)
 	// Finalize statement and close gravity database handle
 	gravityDB_finalizeTable();
 
-	if(config.debug & DEBUG_DATABASE)
-	{
-		logg("Read %i %s regex entries",
-		     num_regex[regexid],
-		     regextype[regexid]);
-	}
+	// Debug logging
+	log_debug(DEBUG_DATABASE, "Read %u %s regex entries",
+	          num_regex[regexid],
+	          regextype[regexid]);
 }
 
 void read_regex_from_database(void)
@@ -719,16 +819,15 @@ void read_regex_from_database(void)
 	timer_start(REGEX_TIMER);
 
 	// Read and compile regex blacklist
-	read_regex_table(REGEX_BLACKLIST);
+	read_regex_table(REGEX_DENY);
 
 	// Read and compile regex whitelist
-	read_regex_table(REGEX_WHITELIST);
+	read_regex_table(REGEX_ALLOW);
 
 	// Loop over all clients and ensure we have enough space and load
 	// per-client regex data, not all of the regex read and compiled above
 	// will also be used by all clients
-	if(config.debug & DEBUG_DATABASE)
-		logg("Loading per-client regex data");
+	log_debug(DEBUG_DATABASE, "Loading per-client regex data");
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
@@ -741,9 +840,10 @@ void read_regex_from_database(void)
 	}
 
 	// Print message to FTL's log after reloading regex filters
-	logg("Compiled %i whitelist and %i blacklist regex filters for %i clients in %.1f msec",
-	     num_regex[REGEX_WHITELIST], num_regex[REGEX_BLACKLIST],
-	     counters->clients, timer_elapsed_msec(REGEX_TIMER));
+	log_info("Compiled %u allow and %u deny regex for %i client%s in %.1f msec",
+	         num_regex[REGEX_ALLOW], num_regex[REGEX_DENY],
+	         counters->clients, counters->clients > 1 ? "s" : "",
+	         timer_elapsed_msec(REGEX_TIMER));
 }
 
 int regex_test(const bool debug_mode, const bool quiet, const char *domainin, const char *regexin)
@@ -752,12 +852,14 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 	counters = calloc(1, sizeof(countersStruct));
 	// Disable terminal output during config config file parsing
 	log_ctrl(false, false);
-	// Process pihole-FTL.conf to get gravity.db
-	read_FTLconf();
+
+	// Process pihole-FTL.conf to get gravity.db path
+	// Do not overwrite the file after reading it
+	readFTLconf(&config, false);
 
 	// Disable all debugging output if not explicitly in debug mode (CLI argument "d")
 	if(!debug_mode)
-		config.debug = 0;
+		clear_debug_flags(); // No debug printing wanted
 	// Re-enable terminal output
 	log_ctrl(false, !quiet);
 
@@ -765,56 +867,80 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 	if(regexin == NULL)
 	{
 		// Read and compile regex lists from database
-		logg("%s Loading regex filters from database...", cli_info());
+		log_info("%s Loading regex filters from database...", cli_info());
 		timer_start(REGEX_TIMER);
 		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
-		read_regex_table(REGEX_BLACKLIST);
-		read_regex_table(REGEX_WHITELIST);
+		read_regex_table(REGEX_DENY);
+		read_regex_table(REGEX_ALLOW);
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
-		logg("    Compiled %i black- and %i whitelist regex filters in %.3f msec\n",
-		     num_regex[REGEX_BLACKLIST],
-		     num_regex[REGEX_WHITELIST],
+		log_info("    Compiled %u deny and %u allow regex in %.3f msec\n",
+		     num_regex[REGEX_DENY], num_regex[REGEX_ALLOW],
 		     timer_elapsed_msec(REGEX_TIMER));
 
-		// Check user-provided domain against all loaded regular blacklist expressions
-		logg("%s Checking domain against blacklist...", cli_info());
+		// Check user-provided domain against all loaded regular deny expressions
+		log_info("%s Checking domain against deny regex...", cli_info());
 		timer_start(REGEX_TIMER);
-		int matchidx1 = match_regex(domainin, NULL, -1, REGEX_BLACKLIST, true);
-		logg("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
+		int matchidx1 = match_regex(domainin, NULL, -1, REGEX_DENY, true, NULL);
+		log_info("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 
-		// Check user-provided domain against all loaded regular whitelist expressions
-		logg("%s Checking domain against whitelist...", cli_info());
+		// Check user-provided domain against all loaded regular allow expressions
+		log_info("%s Checking domain against allow regex...", cli_info());
 		timer_start(REGEX_TIMER);
-		int matchidx2 = match_regex(domainin, NULL, -1, REGEX_WHITELIST, true);
-		logg("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
+		int matchidx2 = match_regex(domainin, NULL, -1, REGEX_ALLOW, true, NULL);
+		log_info("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 		matchidx = MAX(matchidx1, matchidx2);
 
 	}
 	else
 	{
 		// Compile CLI regex
-		logg("%s Compiling regex filter...", cli_info());
-		cli_regex = calloc(1, sizeof(regexData));
+		log_info("%s Compiling regex filter...", cli_info());
+		regexData regex = { 0 };
+		cli_regex = &regex;
+		num_regex[REGEX_CLI] = 1;
 
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);
 		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
-		if(!compile_regex(regexin, REGEX_CLI, -1))
-			return EXIT_FAILURE;
+		char *message = NULL;
+		if(!compile_regex(regexin, &regex, &message) && message != NULL)
+		{
+			logg_regex_warning("CLI", message, 0, regexin);
+			free(message);
+			return 1;
+		}
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
-		logg("    Compiled regex filter in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
+		log_info("    Compiled regex filter in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against user-provided regular expression
-		logg("Checking domain...");
+		log_info("Checking domain \"%s\"...", domainin);
 		timer_start(REGEX_TIMER);
-		matchidx = match_regex(domainin, NULL, -1, REGEX_CLI, true);
+		matchidx = match_regex(domainin, NULL, -1, REGEX_CLI, true, NULL);
 		if(matchidx == -1)
-			logg("    NO MATCH!");
-		logg("   Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
+			log_info("    NO MATCH!");
+		log_info("   Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 	}
 
 	// Return status 0 = MATCH, 1 = ERROR, 2 = NO MATCH
 	return matchidx > -1 ? EXIT_SUCCESS : 2;
+}
+
+bool check_all_regex(const char *domainin, cJSON *json)
+{
+	// Check user-provided domain against all loaded regular expressions
+	// (deny, allow, and CLI regex)
+	cJSON *deny = cJSON_CreateArray();
+	int matchidx1 = match_regex(domainin, NULL, -1, REGEX_DENY, false, deny);
+	cJSON *allow = cJSON_CreateArray();
+	int matchidx2 = match_regex(domainin, NULL, -1, REGEX_ALLOW, false, allow);
+	int matchidx = MAX(matchidx1, matchidx2);
+
+	// Add deny and allow regex matches to JSON object
+	cJSON_AddItemToObject(json, "deny", deny);
+	cJSON_AddItemToObject(json, "allow", allow);
+
+	// Return true if domain matches any regular expression
+	return matchidx > -1;
 }
 
 // Get internal ID of regex with this database ID
@@ -848,8 +974,7 @@ bool regex_get_redirect(const int dbID, struct in_addr *addr4, struct in6_addr *
 	// Get internal regex ID from database regex ID
 	const int regexID = regex_id_from_database_id(dbID);
 
-	if(config.debug & DEBUG_REGEX)
-		logg("Regex: %d (database) -> %d (internal)", dbID, regexID);
+	log_debug(DEBUG_REGEX, "Regex: %d (database) -> %d (internal)", dbID, regexID);
 
 	// Check internal regex ID for validity, return early if negative
 	if(regexID < 0)

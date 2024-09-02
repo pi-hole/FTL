@@ -1,0 +1,899 @@
+openapi: 3.0.2
+components:
+  paths:
+    config:
+      get:
+        summary: Get current configuration of your Pi-hole
+        tags:
+          - "Pi-hole Configuration"
+        operationId: "get_config"
+        description: |
+          This API hook returns infos about the config of your Pi-hole.
+        parameters:
+          - $ref: 'config.yaml#/components/parameters/detailed'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'config.yaml#/components/schemas/config'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  config:
+                    $ref: 'config.yaml#/components/examples/config'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      patch:
+        summary: Change configuration of your Pi-hole
+        tags:
+          - "Pi-hole Configuration"
+        operationId: "patch_config"
+        description: |
+          This API hook allows to modify the config of your Pi-hole. This endpoint supports changing multiple properties at once when you specify several in the payload. See examples below.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: 'config.yaml#/components/schemas/config'
+                  - $ref: 'common.yaml#/components/schemas/took'
+              examples:
+                config_one:
+                  $ref: 'config.yaml#/components/examples/config_one'
+                config_two:
+                  $ref: 'config.yaml#/components/examples/config_two'
+                config:
+                  $ref: 'config.yaml#/components/examples/config'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'config.yaml#/components/schemas/config'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  config:
+                    $ref: 'config.yaml#/components/examples/config'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    config_elem:
+      get:
+        summary: Get specific part of current configuration of your Pi-hole
+        tags:
+          - "Pi-hole Configuration"
+        operationId: "get_config_elem"
+        description: |
+          This API hook returns infos about the requested subset of your Pi-hole's configuration.
+          The response will be a filtered JSON object and a subset of the full `GET /config` response.
+        parameters:
+          - $ref: 'config.yaml#/components/parameters/detailed'
+          - $ref: 'config.yaml#/components/parameters/element'
+        responses:
+          '200':
+            description: OK
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    config_elem_value:
+      put:
+        summary: Add config array item
+        tags:
+          - "Pi-hole Configuration"
+        operationId: "add_array_item"
+        description: |
+          *Note:* There will be no content on success.
+        parameters:
+          - $ref: 'config.yaml#/components/parameters/element'
+          - $ref: 'config.yaml#/components/parameters/value'
+        responses:
+          '201':
+            description: Item created
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  invalid_path_depth:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
+                  item_already_present:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/item_already_present'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      delete:
+        summary: Delete config array item
+        tags:
+          - "Pi-hole Configuration"
+        operationId: "delete_array_item"
+        description: |
+          *Note:* There will be no content on success.
+        parameters:
+          - $ref: 'config.yaml#/components/parameters/element'
+          - $ref: 'config.yaml#/components/parameters/value'
+        responses:
+          '204':
+            description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  invalid_path_depth:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
+                  item_already_present:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/item_already_present'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+  schemas:
+    config:
+      type: object
+      properties:
+        config:
+          type: object
+          properties:
+            dns:
+              type: object
+              properties:
+                upstreams:
+                  type: array
+                  items:
+                    type: string
+                CNAMEdeepInspect:
+                  type: boolean
+                blockESNI:
+                  type: boolean
+                EDNS0ECS:
+                  type: boolean
+                ignoreLocalhost:
+                  type: boolean
+                showDNSSEC:
+                  type: boolean
+                analyzeOnlyAandAAAA:
+                  type: boolean
+                piholePTR:
+                  type: string
+                replyWhenBusy:
+                  type: string
+                blockTTL:
+                  type: integer
+                hosts:
+                  type: array
+                  items:
+                    type: string
+                domainNeeded:
+                  type: boolean
+                expandHosts:
+                  type: boolean
+                domain:
+                  type: string
+                bogusPriv:
+                  type: boolean
+                dnssec:
+                  type: boolean
+                interface:
+                  type: string
+                hostRecord:
+                  type: string
+                listeningMode:
+                  type: string
+                queryLogging:
+                  type: boolean
+                cnameRecords:
+                  type: array
+                  items:
+                    type: string
+                port:
+                  type: integer
+                cache:
+                  type: object
+                  properties:
+                    size:
+                      type: integer
+                    optimizer:
+                      type: integer
+                    upstreamBlockedTTL:
+                      type: integer
+                revServers:
+                  type: array
+                  items:
+                    type: string
+                blocking:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    mode:
+                      type: string
+                specialDomains:
+                  type: object
+                  properties:
+                    mozillaCanary:
+                      type: boolean
+                    iCloudPrivateRelay:
+                      type: boolean
+                reply:
+                  type: object
+                  properties:
+                    host:
+                      type: object
+                      properties:
+                        force4:
+                          type: boolean
+                        force6:
+                          type: boolean
+                        IPv4:
+                          type: string
+                          x-format: ipv4
+                        IPv6:
+                          type: string
+                          x-format: ipv6
+                    blocking:
+                      type: object
+                      properties:
+                        force4:
+                          type: boolean
+                        force6:
+                          type: boolean
+                        IPv4:
+                          type: string
+                          x-format: ipv4
+                        IPv6:
+                          type: string
+                          x-format: ipv6
+                rateLimit:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                    interval:
+                      type: integer
+            dhcp:
+              type: object
+              properties:
+                active:
+                  type: boolean
+                start:
+                  type: string
+                  x-format: ipv4
+                end:
+                  type: string
+                  x-format: ipv4
+                router:
+                  type: string
+                  x-format: ipv4
+                netmask:
+                  type: string
+                  x-format: ipv4
+                leaseTime:
+                  type: string
+                ipv6:
+                  type: boolean
+                rapidCommit:
+                  type: boolean
+                multiDNS:
+                  type: boolean
+                logging:
+                  type: boolean
+                ignoreUnknownClients:
+                  type: boolean
+                hosts:
+                  type: array
+                  items:
+                    type: string
+            ntp:
+              type: object
+              properties:
+                ipv4:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    address:
+                      type: string
+                      x-format: ipv4
+                ipv6:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    address:
+                      type: string
+                      x-format: ipv6
+                sync:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    server:
+                      type: string
+                    interval:
+                      type: integer
+                    count:
+                      type: integer
+                    rtc:
+                      type: object
+                      properties:
+                        set:
+                          type: boolean
+                        device:
+                          type: string
+                        utc:
+                          type: boolean
+            resolver:
+              type: object
+              properties:
+                resolveIPv4:
+                  type: boolean
+                resolveIPv6:
+                  type: boolean
+                networkNames:
+                  type: boolean
+                refreshNames:
+                  type: string
+            database:
+              type: object
+              properties:
+                DBimport:
+                  type: boolean
+                maxDBdays:
+                  type: integer
+                DBinterval:
+                  type: integer
+                useWAL:
+                  type: boolean
+                network:
+                  type: object
+                  properties:
+                    parseARPcache:
+                      type: boolean
+                    expire:
+                      type: integer
+            webserver:
+              type: object
+              properties:
+                domain:
+                  type: string
+                acl:
+                  type: string
+                port:
+                  type: string
+                session:
+                  type: object
+                  properties:
+                    timeout:
+                      type: integer
+                    restore:
+                      type: boolean
+                tls:
+                  type: object
+                  properties:
+                    cert:
+                      type: string
+                paths:
+                  type: object
+                  properties:
+                    webroot:
+                      type: string
+                    webhome:
+                      type: string
+                interface:
+                  type: object
+                  properties:
+                    boxed:
+                      type: boolean
+                    theme:
+                      type: string
+                api:
+                  type: object
+                  properties:
+                    max_sessions:
+                      type: integer
+                    prettyJSON:
+                      type: boolean
+                    password:
+                      description: |
+                        *Note:* Special write-only property used to change the password via the API.
+                      type: string
+                    pwhash:
+                      type: string
+                    totp_secret:
+                      type: string
+                    app_pwhash:
+                      type: string
+                    app_sudo:
+                      type: boolean
+                    cli_pw:
+                      type: boolean
+                    excludeClients:
+                      type: array
+                      items:
+                        type: string
+                    excludeDomains:
+                      type: array
+                      items:
+                        type: string
+                    maxHistory:
+                      type: integer
+                    maxClients:
+                      type: integer
+                    client_history_global_max:
+                      type: boolean
+                    allow_destructive:
+                      type: boolean
+                    temp:
+                      type: object
+                      properties:
+                        limit:
+                          type: number
+                        unit:
+                          type: string
+            files:
+              type: object
+              properties:
+                pid:
+                  type: string
+                database:
+                  type: string
+                gravity:
+                  type: string
+                gravity_tmp:
+                  type: string
+                macvendor:
+                  type: string
+                setupVars:
+                  type: string
+                pcap:
+                  type: string
+                log:
+                  type: object
+                  properties:
+                    ftl:
+                      type: string
+                    dnsmasq:
+                      type: string
+                    webserver:
+                      type: string
+            misc:
+              type: object
+              properties:
+                nice:
+                  type: integer
+                delay_startup:
+                  type: integer
+                addr2line:
+                  type: boolean
+                etc_dnsmasq_d:
+                  type: boolean
+                privacylevel:
+                  type: integer
+                dnsmasq_lines:
+                  type: array
+                  items:
+                    type: string
+                extraLogging:
+                  type: boolean
+                readOnly:
+                  type: boolean
+                check:
+                  type: object
+                  properties:
+                    load:
+                      type: boolean
+                    shmem:
+                      type: integer
+                    disk:
+                      type: integer
+            debug:
+              type: object
+              properties:
+                database:
+                  type: boolean
+                networking:
+                  type: boolean
+                locks:
+                  type: boolean
+                queries:
+                  type: boolean
+                flags:
+                  type: boolean
+                shmem:
+                  type: boolean
+                gc:
+                  type: boolean
+                arp:
+                  type: boolean
+                regex:
+                  type: boolean
+                api:
+                  type: boolean
+                tls:
+                  type: boolean
+                overtime:
+                  type: boolean
+                status:
+                  type: boolean
+                caps:
+                  type: boolean
+                dnssec:
+                  type: boolean
+                vectors:
+                  type: boolean
+                resolver:
+                  type: boolean
+                edns0:
+                  type: boolean
+                clients:
+                  type: boolean
+                aliasclients:
+                  type: boolean
+                events:
+                  type: boolean
+                helper:
+                  type: boolean
+                config:
+                  type: boolean
+                inotify:
+                  type: boolean
+                webserver:
+                  type: boolean
+                extra:
+                  type: boolean
+                reserved:
+                  type: boolean
+                ntp:
+                  type: boolean
+                all:
+                  type: boolean
+    topics:
+      type: object
+      properties:
+        topics:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: The name of the topic
+              title:
+                type: string
+                description: The tab title of the topic
+              description:
+                type: string
+                description: A human-readable description of the topic
+    server:
+      type: object
+      properties:
+        server:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Human-readable name of this server
+              v4:
+                type: array
+                description: Array of IPv4 addresses (if any)
+                items:
+                  type: string
+              v6:
+                type: array
+                description: Array of IPv6 addresses (if any)
+                items:
+                  type: string
+
+  examples:
+    config:
+      summary: The entire configuration
+      value:
+        config:
+          dns:
+            upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
+            CNAMEdeepInspect: true
+            blockESNI: true
+            EDNS0ECS: true
+            ignoreLocalhost: false
+            showDNSSEC: true
+            analyzeOnlyAandAAAA: false
+            piholePTR: PI.HOLE
+            replyWhenBusy: ALLOW
+            blockTTL: 2
+            hosts:
+              - "192.168.2.123 mymusicbox"
+            domainNeeded: true
+            expandHosts: true
+            domain: "lan"
+            bogusPriv: true
+            dnssec: true
+            interface: "eth0"
+            hostRecord: ""
+            listeningMode: "local"
+            queryLogging: true
+            cnameRecords:
+              - "*.example.com,default.example.com"
+              - "hourly.yetanother.com,yetanother.com,3600"
+            port: 53
+            cache:
+              size: 10000
+              optimizer: 3600
+              upstreamBlockedTTL: 86400
+            revServers:
+              - "true,192.168.0.0/24,192.168.0.1,lan"
+            blocking:
+              active: true
+              mode: 'NULL'
+            specialDomains:
+              mozillaCanary: true
+              iCloudPrivateRelay: true
+            reply:
+              host:
+                force4: false
+                force6: false
+                IPv4: 0.0.0.0
+                IPv6: "::"
+              blocking:
+                force4: false
+                force6: false
+                IPv4: 0.0.0.0
+                IPv6: "::"
+            rateLimit:
+              count: 0
+              interval: 0
+          dhcp:
+            active: false
+            start: "192.168.0.10"
+            end: "192.168.0.250"
+            router: "192.168.0.1"
+            netmask: "0.0.0.0"
+            leaseTime: "24h"
+            ipv6: false
+            rapidCommit: false
+            multiDNS: false
+            logging: false
+            ignoreUnknownClients: false
+            hosts:
+              - "11:22:33:44:55:66,192.168.1.123"
+              - "11:22:33:44:55:67,192.168.1.124,hostname"
+          ntp:
+            ipv4:
+              active: true
+              address: ""
+            ipv6:
+              active: true
+              address: ""
+            sync:
+              active: true
+              server: "pool.ntp.org"
+              interval: 3600
+              count: 8
+              rtc:
+                set: true
+                device: ""
+                utc: true
+          resolver:
+            resolveIPv4: true
+            resolveIPv6: true
+            networkNames: true
+            refreshNames: IPV4_ONLY
+          database:
+            DBimport: true
+            maxDBdays: 365
+            DBinterval: 60
+            useWAL: true
+            network:
+              parseARPcache: true
+              expire: 365
+          webserver:
+            domain: pi.hole
+            acl: "+0.0.0.0/0,::/0"
+            port: 80,[::]:80
+            session:
+              timeout: 300
+              restore: true
+            tls:
+              cert: "/etc/pihole/tls.pem"
+            paths:
+              webroot: "/var/www/html"
+              webhome: "/admin/"
+            interface:
+              boxed: true
+              theme: "default-darker"
+            api:
+              max_sessions: 16
+              prettyJSON: false
+              password: "********"
+              pwhash: ''
+              totp_secret: ''
+              app_pwhash: ''
+              app_sudo: false
+              cli_pw: true
+              excludeClients: [ '1\.2\.3\.4', 'localhost', 'fe80::345' ]
+              excludeDomains: [ 'google\\.de', 'pi-hole\.net' ]
+              maxHistory: 86400
+              maxClients: 10
+              client_history_global_max: true
+              allow_destructive: true
+              temp:
+                limit: 60.0
+                unit: "C"
+          files:
+            pid: "/run/pihole-FTL.pid"
+            database: "/etc/pihole/pihole-FTL.db"
+            gravity: "/etc/pihole/gravity.db"
+            gravity_tmp: "/tmp"
+            macvendor: "/etc/pihole/macvendor.db"
+            setupVars: "/etc/pihole/setupVars.conf"
+            pcap: ""
+            log:
+              ftl: "/var/log/pihole/FTL.log"
+              dnsmasq: "/var/log/pihole/pihole.log"
+              webserver: "/var/log/pihole/webserver.log"
+          misc:
+            nice: -10
+            delay_startup: 10
+            addr2line: true
+            privacylevel: 0
+            etc_dnsmasq_d: false
+            dnsmasq_lines: [ ]
+            extraLogging: false
+            readOnly: false
+            check:
+              load: true
+              shmem: 90
+              disk: 90
+          debug:
+            database: false
+            networking: false
+            locks: false
+            queries: false
+            flags: false
+            shmem: false
+            gc: false
+            arp: false
+            regex: false
+            api: false
+            tls: false
+            overtime: false
+            status: false
+            caps: false
+            dnssec: false
+            vectors: false
+            resolver: false
+            edns0: false
+            clients: false
+            aliasclients: false
+            events: false
+            helper: false
+            config: false
+            inotify: false
+            webserver: false
+            extra: false
+            reserved: false
+            ntp: false
+            all: false
+    config_one:
+      summary: One option
+      value:
+        config:
+          dns:
+            CNAMEdeepInspect: true
+    config_two:
+      summary: Two options
+      value:
+        config:
+          dns:
+            specialDomains:
+              mozillaCanary: true
+          misc:
+            nice: -10
+    topics:
+      summary: All topics
+      value:
+        topics:
+          - name: dns
+            title: DNS
+            description: DNS settings
+          - name: dhcp
+            title: DHCP
+            description: DHCP settings
+    server:
+      summary: Several servers being suggested
+      value:
+        server:
+          - name: Google (ECS, DNSSEC)
+            v4: ["8.8.8.8", "8.8.4.4"]
+            v6: ["2001:4860:4860:0:0:0:0:8888","2001:4860:4860:0:0:0:0:8844"]
+          - name: OpenDNS (ECS, DNSSEC)
+            v4: ["208.67.222.222", "208.67.220.220"]
+            v6: ["2620:119:35::35","2620:119:53::53"]
+    errors:
+      bad_request:
+        invalid_path_depth:
+          summary: Invalid path
+          value:
+            error:
+              key: "bad_request"
+              message: "Invalid path depth"
+              hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
+        item_already_present:
+          summary: Item to be added exists already
+          value:
+            error:
+              key: "bad_request"
+              message: "Item already present"
+              hint: "Uniqueness of items is enforced"
+  parameters:
+    detailed:
+      name: detailed
+      in: query
+      description: Return detailed information about the configuration
+      required: false
+      schema:
+        type: boolean
+        default: false
+        example: false
+    element:
+      in: path
+      name: element
+      schema:
+        type: string
+      required: true
+      description: config element
+      example: "dnsmasq/upstreams"
+    value:
+      in: path
+      name: value
+      schema:
+        type: string
+      required: true
+      description: config value
+      example: "8.8.8.8"

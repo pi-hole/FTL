@@ -8,9 +8,9 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 //#include "syscalls.h" is implicitly done in FTL.h
-#include "../log.h"
+#include "log.h"
 
 #undef accept
 int FTLaccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, const char *file, const char *func, const int line)
@@ -32,8 +32,8 @@ int FTLaccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, const char 
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret < 0)
-		logg("WARN: Could not accept() in %s() (%s:%i): %s",
-		     func, file, line, strerror(errno));
+		log_warn("Could not accept() in %s() (%s:%i): %s",
+		         func, file, line, strerror(errno));
 
 	// Restore errno value
 	errno = _errno;

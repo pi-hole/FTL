@@ -8,29 +8,30 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 #include "sqlite3.h"
 #include "gravity-db.h"
 // struct config
-#include "../config.h"
-// logg()
-#include "../log.h"
+#include "config/config.h"
+// logging routines
+#include "log.h"
 // getstr()
-#include "../shmem.h"
+#include "shmem.h"
 // SQLite3 prepared statement vectors
-#include "../vector.h"
+#include "vector.h"
 // log_subnet_warning()
 // logg_inaccessible_adlist
 #include "message-table.h"
 // getMACfromIP()
 #include "network-table.h"
 // struct DNSCacheData
-#include "../datastructure.h"
+#include "datastructure.h"
 // reset_aliasclient()
 #include "aliasclients.h"
-
 // Definition of struct regexData
-#include "../regex_r.h"
+#include "regex_r.h"
+// file_readable()
+#include "files.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
@@ -40,17 +41,28 @@
 // gravity database
 sqlite3_stmt_vec *whitelist_stmt = NULL;
 sqlite3_stmt_vec *gravity_stmt = NULL;
+sqlite3_stmt_vec *antigravity_stmt = NULL;
 sqlite3_stmt_vec *blacklist_stmt = NULL;
 
 // Private variables
 static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
-static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravityDB_opened = false;
 static bool gravity_abp_format = false;
 
+// Variables memorizing the parent gravity database connection and prepared
+// statements to avoid valgrind warnings about memory leaks
+static sqlite3 *parent_gravity_db = NULL;
+sqlite3_stmt_vec *parent_whitelist_stmt = NULL;
+sqlite3_stmt_vec *parent_gravity_stmt = NULL;
+sqlite3_stmt_vec *parent_antigravity_stmt = NULL;
+sqlite3_stmt_vec *parent_blacklist_stmt = NULL;
+
+// Private prototypes
+static bool gravityDB_open(void);
+
 // Table names corresponding to the enum defined in gravity-db.h
-static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "" };
+static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "client", "group", "adlist", "denied_domains", "allowed_domains", "" };
 
 // Prototypes from functions in dnsmasq's source
 extern void rehash(int size);
@@ -85,12 +97,18 @@ void gravityDB_forked(void)
 	// is clear that this in not what we want to do as this is a slow
 	// process and many TCP queries could lead to a DoS attack.
 	gravityDB_opened = false;
+	parent_gravity_db = gravity_db;
 	gravity_db = NULL;
 
 	// Also pretend we have not yet prepared the list statements
+	parent_whitelist_stmt = whitelist_stmt;
 	whitelist_stmt = NULL;
+	parent_blacklist_stmt = blacklist_stmt;
 	blacklist_stmt = NULL;
+	parent_gravity_stmt = gravity_stmt;
 	gravity_stmt = NULL;
+	parent_antigravity_stmt = antigravity_stmt;
+	antigravity_stmt = NULL;
 
 	// Open the database
 	gravityDB_open();
@@ -109,7 +127,7 @@ static void gravity_check_ABP_format(void)
 
 	if( rc != SQLITE_OK )
 	{
-		logg("gravity_check_ABP_format() - SQL error prepare: %s", sqlite3_errstr(rc));
+		log_warn("gravity_check_ABP_format() - SQL error prepare: %s", sqlite3_errstr(rc));
 		return;
 	}
 
@@ -131,29 +149,27 @@ static void gravity_check_ABP_format(void)
 }
 
 // Open gravity database
-bool gravityDB_open(void)
+static bool gravityDB_open(void)
 {
 	struct stat st;
-	if(stat(FTLfiles.gravity_db, &st) != 0)
+	if(stat(config.files.gravity.v.s, &st) != 0)
 	{
 		// File does not exist
-		logg("gravityDB_open(): %s does not exist", FTLfiles.gravity_db);
+		log_warn("gravityDB_open(): %s does not exist", config.files.gravity.v.s);
 		return false;
 	}
 
 	if(gravityDB_opened && gravity_db != NULL)
 	{
-		if(config.debug & DEBUG_DATABASE)
-			logg("gravityDB_open(): Database already connected");
+		log_debug(DEBUG_DATABASE, "gravityDB_open(): Database already connected");
 		return true;
 	}
 
-	if(config.debug & DEBUG_DATABASE)
-		logg("gravityDB_open(): Trying to open %s in read-only mode", FTLfiles.gravity_db);
-	int rc = sqlite3_open_v2(FTLfiles.gravity_db, &gravity_db, SQLITE_OPEN_READONLY, NULL);
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Trying to open %s in read-only mode", config.files.gravity.v.s);
+	int rc = sqlite3_open_v2(config.files.gravity.v.s, &gravity_db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open() - SQL error: %s", sqlite3_errstr(rc));
+		log_err("gravityDB_open() - SQL error: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
@@ -163,44 +179,13 @@ bool gravityDB_open(void)
 
 	// Tell SQLite3 to store temporary tables in memory. This speeds up read operations on
 	// temporary tables, indices, and views.
-	if(config.debug & DEBUG_DATABASE)
-		logg("gravityDB_open(): Setting location for temporary object to MEMORY");
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Setting location for temporary object to MEMORY");
 	char *zErrMsg = NULL;
 	rc = sqlite3_exec(gravity_db, "PRAGMA temp_store = MEMORY", NULL, NULL, &zErrMsg);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open(PRAGMA temp_store) - SQL error (%i): %s", rc, zErrMsg);
+		log_err("gravityDB_open(PRAGMA temp_store) - SQL error (%i): %s", rc, zErrMsg);
 		sqlite3_free(zErrMsg);
-		gravityDB_close();
-		return false;
-	}
-
-	// Prepare audit statement
-	if(config.debug & DEBUG_DATABASE)
-		logg("gravityDB_open(): Preparing audit query");
-
-	// We support adding audit domains with a wildcard character (*)
-	// Example 1: google.de
-	//            matches only google.de
-	// Example 2: *.google.de
-	//            matches all subdomains of google.de
-	//            BUT NOT google.de itself
-	// Example 3: *google.de
-	//            matches 'google.de' and all of its subdomains but
-	//            also other domains ending in google.de, like
-	//            abcgoogle.de
-	rc = sqlite3_prepare_v3(gravity_db,
-	        "SELECT domain, "
-	          "CASE WHEN substr(domain, 1, 1) = '*' " // Does the database string start in '*' ?
-	            "THEN '*' || substr(:input, - length(domain) + 1) " // If so: Crop the input domain and prepend '*'
-	            "ELSE :input " // If not: Use input domain directly for comparison
-	          "END matcher "
-	        "FROM domain_audit WHERE matcher = domain" // Match where (modified) domain equals the database domain
-	        ";", -1, SQLITE_PREPARE_PERSISTENT, &auditlist_stmt, NULL);
-
-	if( rc != SQLITE_OK )
-	{
-		logg("gravityDB_open(\"SELECT EXISTS(... domain_audit ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
@@ -208,8 +193,7 @@ bool gravityDB_open(void)
 	// Set SQLite3 busy timeout to a user-defined value (defaults to 1 second)
 	// to avoid immediate failures when the gravity database is still busy
 	// writing the changes to disk
-	if(config.debug & DEBUG_DATABASE)
-		logg("gravityDB_open(): Setting busy timeout to %d", DATABASE_BUSY_TIMEOUT);
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Setting busy timeout to %d", DATABASE_BUSY_TIMEOUT);
 	sqlite3_busy_timeout(gravity_db, DATABASE_BUSY_TIMEOUT);
 
 	// Prepare private vector of statements for this process (might be a TCP fork!)
@@ -219,22 +203,21 @@ bool gravityDB_open(void)
 		blacklist_stmt = new_sqlite3_stmt_vec(counters->clients);
 	if(gravity_stmt == NULL)
 		gravity_stmt = new_sqlite3_stmt_vec(counters->clients);
+	if(antigravity_stmt == NULL)
+		antigravity_stmt = new_sqlite3_stmt_vec(counters->clients);
 
 	// Explicitly set busy handler to zero milliseconds
-	if(config.debug & DEBUG_DATABASE)
-		logg("gravityDB_open(): Setting busy timeout to zero");
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Setting busy timeout to zero");
 	rc = sqlite3_busy_timeout(gravity_db, 0);
 	if(rc != SQLITE_OK)
-	{
-		logg("gravityDB_open() - Cannot set busy handler: %s", sqlite3_errstr(rc));
-	}
+		log_err("gravityDB_open() - Cannot set busy handler: %s", sqlite3_errstr(rc));
 
 	// Check (and remember in global variable) if there are any ABP-style
 	// entries in the database
 	gravity_check_ABP_format();
 
-	if(config.debug & DEBUG_DATABASE)
-		logg("gravityDB_open(): Successfully opened gravity.db");
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Successfully opened gravity.db");
+
 	return true;
 }
 
@@ -253,19 +236,18 @@ static char* get_client_querystr(const char *table, const char *column, const ch
 	char *querystr = NULL;
 	if(asprintf(&querystr, "SELECT %s from %s WHERE domain = ? AND group_id IN (%s);", column, table, groups) < 1)
 	{
-		logg("get_client_querystr(%s, %s) - asprintf() error", table, groups);
+		log_err("get_client_querystr(%s, %s) - asprintf() error", table, groups);
 		return NULL;
 	}
 
-	if(config.debug & DEBUG_DATABASE)
-		logg("get_client_querystr: %s", querystr);
+	log_debug(DEBUG_DATABASE, "get_client_querystr: %s", querystr);
 
 	return querystr;
 }
 
 // Determine whether to show IP or hardware address
-static inline const char *show_client_string(const char *hwaddr, const char *hostname,
-                                             const char *ip)
+static const char *show_client_string(const char *hwaddr, const char *hostname,
+                                      const char *ip)
 {
 	if(hostname != NULL && strlen(hostname) > 0)
 	{
@@ -282,7 +264,6 @@ static inline const char *show_client_string(const char *hwaddr, const char *hos
 	return ip;
 }
 
-
 // Get associated groups for this client (if defined)
 static bool get_client_groupids(clientsData* client)
 {
@@ -293,12 +274,11 @@ static bool get_client_groupids(clientsData* client)
 	// Do not proceed when database is not available
 	if(!gravityDB_opened && !gravityDB_open())
 	{
-		logg("get_client_groupids(): Gravity database not available");
+		log_warn("get_client_groupids(): Gravity database not available");
 		return false;
 	}
 
-	if(config.debug & DEBUG_CLIENTS)
-		logg("Querying gravity database for client with IP %s...", ip);
+	log_debug(DEBUG_DATABASE, "Querying gravity database for client with IP %s...", ip);
 
 	// Check if client is configured through the client table
 	// This will return nothing if the client is unknown/unconfigured
@@ -315,19 +295,19 @@ static bool get_client_groupids(clientsData* client)
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
-		logg("get_client_groupids(\"%s\") - SQL error prepare: %s",
-		     ip, sqlite3_errstr(rc));
+		log_err("get_client_groupids(\"%s\") - SQL error prepare: %s",
+		        ip, sqlite3_errstr(rc));
 		return false;
 	}
 
 	// Bind ipaddr to prepared statement
 	if((rc = sqlite3_bind_text(table_stmt, 1, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("get_client_groupids(\"%s\"): Failed to bind ip: %s",
-		     ip, sqlite3_errstr(rc));
+		log_err("get_client_groupids(\"%s\"): Failed to bind ip: %s",
+		        ip, sqlite3_errstr(rc));
 		sqlite3_reset(table_stmt);
 		sqlite3_finalize(table_stmt);
-		return NULL;
+		return false;
 	}
 
 	// Perform query
@@ -344,20 +324,19 @@ static bool get_client_groupids(clientsData* client)
 		matching_ids = strdup((const char*)sqlite3_column_text(table_stmt, 3));
 		matching_bits = sqlite3_column_int(table_stmt, 4);
 
-		if(config.debug & DEBUG_CLIENTS && matching_count == 1)
+		if(matching_count == 1)
 			// Case matching_count > 1 handled below using logg_subnet_warning()
-			logg("--> Found record for %s in the client table (group ID %d)", ip, chosen_match_id);
+			log_debug(DEBUG_CLIENTS, "--> Found record for %s in the client table (group ID %d)", ip, chosen_match_id);
 	}
 	else if(rc == SQLITE_DONE)
 	{
-		if(config.debug & DEBUG_CLIENTS)
-			logg("--> No record for %s in the client table", ip);
+		log_debug(DEBUG_CLIENTS, "--> No record for %s in the client table", ip);
 	}
 	else
 	{
 		// Error
-		logg("get_client_groupids(\"%s\") - SQL error step: %s",
-		     ip, sqlite3_errstr(rc));
+		log_err("get_client_groupids(\"%s\") - SQL error step: %s",
+		        ip, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		return false;
 	}
@@ -397,26 +376,24 @@ static bool get_client_groupids(clientsData* client)
 	char *hwaddr = NULL;
 	if(chosen_match_id < 0)
 	{
-		if(config.debug & DEBUG_CLIENTS)
-			logg("Querying gravity database for MAC address of %s...", ip);
+		log_debug(DEBUG_CLIENTS, "Querying gravity database for MAC address of %s...", ip);
 
 		// Do the lookup
 		hwaddr = getMACfromIP(NULL, ip);
 
-		if(hwaddr == NULL && config.debug & DEBUG_CLIENTS)
+		if(hwaddr == NULL)
 		{
-			logg("--> No result.");
+			log_debug(DEBUG_CLIENTS, "--> No result.");
 		}
-		else if(hwaddr != NULL && strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
+		else if(strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
 		{
 			free(hwaddr);
 			hwaddr = NULL;
 
-			if(config.debug & DEBUG_CLIENTS)
-				logg("Skipping mock-device hardware address lookup");
+			log_debug(DEBUG_CLIENTS, "Skipping mock-device hardware address lookup");
 		}
 		// Set MAC address from database information if available and the MAC address is not already set
-		else if(hwaddr != NULL && client->hwlen != 6)
+		else if(client->hwlen != 6)
 		{
 			// Proper MAC parsing
 			unsigned char data[6];
@@ -435,14 +412,12 @@ static bool get_client_groupids(clientsData* client)
 		// MAC address fallback: Try to synthesize MAC address from internal buffer
 		if(hwaddr == NULL && client->hwlen == 6)
 		{
-			const size_t strlen = sizeof("AA:BB:CC:DD:EE:FF");
-			hwaddr = calloc(18, strlen);
-			snprintf(hwaddr, strlen, "%02X:%02X:%02X:%02X:%02X:%02X",
+			hwaddr = calloc(18, sizeof(char)); // 18 == sizeof("AA:BB:CC:DD:EE:FF")
+			snprintf(hwaddr, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
 			         client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
 			         client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
 
-			if(config.debug & DEBUG_CLIENTS)
-				logg("--> Obtained %s from internal ARP cache", hwaddr);
+			log_debug(DEBUG_CLIENTS, "--> Obtained %s from internal ARP cache", hwaddr);
 		}
 	}
 
@@ -450,8 +425,7 @@ static bool get_client_groupids(clientsData* client)
 	// This ensures we skip mock hardware addresses such as "ip-127.0.0.1"
 	if(hwaddr != NULL)
 	{
-		if(config.debug & DEBUG_CLIENTS)
-			logg("--> Querying client table for %s", hwaddr);
+		log_debug(DEBUG_CLIENTS, "--> Querying client table for %s", hwaddr);
 
 		// Check if client is configured through the client table
 		// This will return nothing if the client is unknown/unconfigured
@@ -462,8 +436,8 @@ static bool get_client_groupids(clientsData* client)
 		rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 		if(rc != SQLITE_OK)
 		{
-			logg("get_client_groupids(%s) - SQL error prepare: %s",
-				querystr, sqlite3_errstr(rc));
+			log_err("get_client_groupids(%s) - SQL error prepare: %s",
+			        querystr, sqlite3_errstr(rc));
 			free(hwaddr); // hwaddr != NULL -> memory has been allocated
 			return false;
 		}
@@ -471,8 +445,8 @@ static bool get_client_groupids(clientsData* client)
 		// Bind hwaddr to prepared statement
 		if((rc = sqlite3_bind_text(table_stmt, 1, hwaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
-			logg("get_client_groupids(\"%s\", \"%s\"): Failed to bind hwaddr: %s",
-				ip, hwaddr, sqlite3_errstr(rc));
+			log_err("get_client_groupids(\"%s\", \"%s\"): Failed to bind hwaddr: %s",
+			        ip, hwaddr, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
 			free(hwaddr); // hwaddr != NULL -> memory has been allocated
@@ -487,19 +461,17 @@ static bool get_client_groupids(clientsData* client)
 			// extract the result (there can be at most one line)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
-			if(config.debug & DEBUG_CLIENTS)
-				logg("--> Found record for %s in the client table (group ID %d)", hwaddr, chosen_match_id);
+			log_debug(DEBUG_CLIENTS, "--> Found record for %s in the client table (group ID %d)", hwaddr, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
-			if(config.debug & DEBUG_CLIENTS)
-				logg("--> There is no record for %s in the client table", hwaddr);
+			log_debug(DEBUG_CLIENTS, "--> There is no record for %s in the client table", hwaddr);
 		}
 		else
 		{
 			// Error
-			logg("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
-				ip, hwaddr, sqlite3_errstr(rc));
+			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
+			        ip, hwaddr, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
 			free(hwaddr); // hwaddr != NULL -> memory has been allocated
 			return false;
@@ -516,21 +488,19 @@ static bool get_client_groupids(clientsData* client)
 	char *hostname = NULL;
 	if(chosen_match_id < 0)
 	{
-		if(config.debug & DEBUG_CLIENTS)
-			logg("Querying gravity database for host name of %s...", ip);
+		log_debug(DEBUG_CLIENTS, "Querying gravity database for host name of %s...", ip);
 
 		// Do the lookup
 		hostname = getNameFromIP(NULL, ip);
 
-		if(hostname == NULL && config.debug & DEBUG_CLIENTS)
-			logg("--> No result.");
+		if(hostname == NULL)
+			log_debug(DEBUG_CLIENTS, "--> No result.");
 
 		if(hostname != NULL && strlen(hostname) == 0)
 		{
 			free(hostname);
 			hostname = NULL;
-			if(config.debug & DEBUG_CLIENTS)
-				logg("Skipping empty host name lookup");
+			log_debug(DEBUG_CLIENTS, "Skipping empty host name lookup");
 		}
 	}
 
@@ -538,8 +508,7 @@ static bool get_client_groupids(clientsData* client)
 	// This ensures we skip mock hardware addresses such as "ip-127.0.0.1"
 	if(hostname != NULL)
 	{
-		if(config.debug & DEBUG_CLIENTS)
-			logg("--> Querying client table for %s", hostname);
+		log_debug(DEBUG_CLIENTS, "--> Querying client table for %s", hostname);
 
 		// Check if client is configured through the client table
 		// This will return nothing if the client is unknown/unconfigured
@@ -550,8 +519,8 @@ static bool get_client_groupids(clientsData* client)
 		rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 		if(rc != SQLITE_OK)
 		{
-			logg("get_client_groupids(%s) - SQL error prepare: %s",
-				querystr, sqlite3_errstr(rc));
+			log_err("get_client_groupids(%s) - SQL error prepare: %s",
+			        querystr, sqlite3_errstr(rc));
 			if(hwaddr) free(hwaddr);
 			free(hostname); // hostname != NULL -> memory has been allocated
 			return false;
@@ -560,8 +529,8 @@ static bool get_client_groupids(clientsData* client)
 		// Bind hostname to prepared statement
 		if((rc = sqlite3_bind_text(table_stmt, 1, hostname, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
-			logg("get_client_groupids(\"%s\", \"%s\"): Failed to bind hostname: %s",
-				ip, hostname, sqlite3_errstr(rc));
+			log_err("get_client_groupids(\"%s\", \"%s\"): Failed to bind hostname: %s",
+			        ip, hostname, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
 			if(hwaddr) free(hwaddr);
@@ -577,19 +546,17 @@ static bool get_client_groupids(clientsData* client)
 			// extract the result (there can be at most one line)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
-			if(config.debug & DEBUG_CLIENTS)
-				logg("--> Found record for %s in the client table (group ID %d)", hostname, chosen_match_id);
+			log_debug(DEBUG_CLIENTS, "--> Found record for %s in the client table (group ID %d)", hostname, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
-			if(config.debug & DEBUG_CLIENTS)
-				logg("--> There is no record for %s in the client table", hostname);
+			log_debug(DEBUG_CLIENTS, "--> There is no record for %s in the client table", hostname);
 		}
 		else
 		{
 			// Error
-			logg("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
-				ip, hostname, sqlite3_errstr(rc));
+			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
+			        ip, hostname, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
 			if(hwaddr) free(hwaddr);
 			free(hostname); // hostname != NULL -> memory has been allocated
@@ -608,29 +575,26 @@ static bool get_client_groupids(clientsData* client)
 	char *interface = NULL;
 	if(chosen_match_id < 0)
 	{
-		if(config.debug & DEBUG_CLIENTS)
-			logg("Querying gravity database for interface of %s...", ip);
+		log_debug(DEBUG_CLIENTS, "Querying gravity database for interface of %s...", ip);
 
 		// Do the lookup
 		interface = getIfaceFromIP(NULL, ip);
 
-		if(interface == NULL && config.debug & DEBUG_CLIENTS)
-			logg("--> No result.");
+		if(interface == NULL)
+			log_debug(DEBUG_CLIENTS, "--> No result.");
 
 		if(interface != NULL && strlen(interface) == 0)
 		{
 			free(interface);
 			interface = 0;
-			if(config.debug & DEBUG_CLIENTS)
-				logg("Skipping empty interface lookup");
+			log_debug(DEBUG_CLIENTS, "Skipping empty interface lookup");
 		}
 	}
 
 	// Check if we received a valid interface
 	if(interface != NULL)
 	{
-		if(config.debug & DEBUG_CLIENTS)
-			logg("Querying client table for interface "INTERFACE_SEP"%s", interface);
+		log_debug(DEBUG_CLIENTS, "Querying client table for interface "INTERFACE_SEP"%s", interface);
 
 		// Check if client is configured through the client table using its interface
 		// This will return nothing if the client is unknown/unconfigured
@@ -642,8 +606,8 @@ static bool get_client_groupids(clientsData* client)
 		rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 		if(rc != SQLITE_OK)
 		{
-			logg("get_client_groupids(%s) - SQL error prepare: %s",
-				querystr, sqlite3_errstr(rc));
+			log_err("get_client_groupids(%s) - SQL error prepare: %s",
+			        querystr, sqlite3_errstr(rc));
 			if(hwaddr) free(hwaddr);
 			if(hostname) free(hostname);
 			free(interface); // interface != NULL -> memory has been allocated
@@ -653,8 +617,8 @@ static bool get_client_groupids(clientsData* client)
 		// Bind interface to prepared statement
 		if((rc = sqlite3_bind_text(table_stmt, 1, interface, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
-			logg("get_client_groupids(\"%s\", \"%s\"): Failed to bind interface: %s",
-				ip, interface, sqlite3_errstr(rc));
+			log_err("get_client_groupids(\"%s\", \"%s\"): Failed to bind interface: %s",
+			        ip, interface, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
 			if(hwaddr) free(hwaddr);
@@ -671,19 +635,17 @@ static bool get_client_groupids(clientsData* client)
 			// extract the result (there can be at most one line)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
-			if(config.debug & DEBUG_CLIENTS)
-				logg("--> Found record for interface "INTERFACE_SEP"%s in the client table (group ID %d)", interface, chosen_match_id);
+			log_debug(DEBUG_CLIENTS, "--> Found record for interface "INTERFACE_SEP"%s in the client table (group ID %d)", interface, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
-			if(config.debug & DEBUG_CLIENTS)
-				logg("--> There is no record for interface "INTERFACE_SEP"%s in the client table", interface);
+			log_debug(DEBUG_CLIENTS, "--> There is no record for interface "INTERFACE_SEP"%s in the client table", interface);
 		}
 		else
 		{
 			// Error
-			logg("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
-				ip, interface, sqlite3_errstr(rc));
+			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
+			        ip, interface, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
 			if(hwaddr) free(hwaddr);
 			if(hostname) free(hostname);
@@ -700,9 +662,8 @@ static bool get_client_groupids(clientsData* client)
 	// (the client is not configured through the client table)
 	if(chosen_match_id < 0)
 	{
-		if(config.debug & DEBUG_CLIENTS)
-			logg("Gravity database: Client %s not found. Using default group.\n",
-			     show_client_string(hwaddr, hostname, ip));
+		log_debug(DEBUG_CLIENTS, "Gravity database: Client %s not found. Using default group.\n",
+		          show_client_string(hwaddr, hostname, ip));
 
 		client->groupspos = addstr("0");
 		client->flags.found_group = true;
@@ -736,15 +697,14 @@ static bool get_client_groupids(clientsData* client)
 	querystr = "SELECT GROUP_CONCAT(group_id) FROM client_by_group "
 	           "WHERE client_id = ?;";
 
-	if(config.debug & DEBUG_CLIENTS)
-		logg("Querying gravity database for client %s (getting groups)", ip);
+	log_debug(DEBUG_CLIENTS, "Querying gravity database for client %s (getting groups)", ip);
 
 	// Prepare query
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
-		logg("get_client_groupids(\"%s\", \"%s\", %d) - SQL error prepare: %s",
-		     ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
+		log_err("get_client_groupids(\"%s\", \"%s\", %d) - SQL error prepare: %s",
+		        ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
 		return false;
 	}
@@ -752,8 +712,8 @@ static bool get_client_groupids(clientsData* client)
 	// Bind hwaddr to prepared statement
 	if((rc = sqlite3_bind_int(table_stmt, 1, chosen_match_id)) != SQLITE_OK)
 	{
-		logg("get_client_groupids(\"%s\", \"%s\", %d): Failed to bind chosen_match_id: %s",
-			ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
+		log_err("get_client_groupids(\"%s\", \"%s\", %d): Failed to bind chosen_match_id: %s",
+		        ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
 		sqlite3_reset(table_stmt);
 		sqlite3_finalize(table_stmt);
 		return false;
@@ -780,25 +740,26 @@ static bool get_client_groupids(clientsData* client)
 	}
 	else
 	{
-		logg("get_client_groupids(\"%s\", \"%s\", %d) - SQL error step: %s",
-		     ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
+		log_err("get_client_groupids(\"%s\", \"%s\", %d) - SQL error step: %s",
+		        ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		return false;
 	}
 	// Finalize statement
 	gravityDB_finalizeTable();
 
-	if(config.debug & DEBUG_CLIENTS)
+	// Debug logging
+	if(config.debug.clients.v.b)
 	{
 		if(interface != NULL)
 		{
-			logg("Gravity database: Client %s found (identified by interface %s). Using groups (%s)\n",
-			     show_client_string(hwaddr, hostname, ip), interface, getstr(client->groupspos));
+			log_debug(DEBUG_CLIENTS, "Gravity database: Client %s found (identified by interface %s). Using groups (%s)\n",
+			          show_client_string(hwaddr, hostname, ip), interface, getstr(client->groupspos));
 		}
 		else
 		{
-			logg("Gravity database: Client %s found. Using groups (%s)\n",
-			     show_client_string(hwaddr, hostname, ip), getstr(client->groupspos));
+			log_debug(DEBUG_CLIENTS, "Gravity database: Client %s found. Using groups (%s)\n",
+			          show_client_string(hwaddr, hostname, ip), getstr(client->groupspos));
 		}
 	}
 
@@ -823,25 +784,24 @@ static bool get_client_groupids(clientsData* client)
 	return true;
 }
 
-char* __attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
+char *__attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 {
 	// Build query string to get concatenated groups
 	char *querystr = NULL;
 	if(asprintf(&querystr, "SELECT GROUP_CONCAT(ip) FROM client "
 	                       "WHERE id IN (%s);", group_ids) < 1)
 	{
-		logg("group_names(%s) - asprintf() error", group_ids);
+		log_err("group_names(%s) - asprintf() error", group_ids);
 		return NULL;
 	}
 
-	if(config.debug & DEBUG_DATABASE)
-		logg("Querying group names for IDs (%s)", group_ids);
+	log_debug(DEBUG_DATABASE, "Querying group names for IDs (%s)", group_ids);
 
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK){
-		logg("get_client_groupids(%s) - SQL error prepare: %s",
-		     querystr, sqlite3_errstr(rc));
+		log_err("get_client_groupids(%s) - SQL error prepare: %s",
+		        querystr, sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
 		free(querystr);
 		return strdup("N/A");
@@ -865,8 +825,8 @@ char* __attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 	}
 	else
 	{
-		logg("group_names(%s) - SQL error step: %s",
-		     querystr, sqlite3_errstr(rc));
+		log_err("group_names(%s) - SQL error step: %s",
+		        querystr, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		free(querystr);
 		return strdup("N/A");
@@ -886,8 +846,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 
 	const char *clientip = getstr(client->ippos);
 
-	if(config.debug & DEBUG_DATABASE)
-		logg("Initializing gravity statements for %s", clientip);
+	log_debug(DEBUG_DATABASE, "Initializing gravity statements for %s", clientip);
 
 	// Get associated groups for this client (if defined)
 	char *querystr = NULL;
@@ -895,14 +854,18 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 		return false;
 
 	// Prepare whitelist statement
-	if(config.debug & DEBUG_DATABASE)
-		logg("gravityDB_open(): Preparing vw_whitelist statement for client %s", clientip);
+	// We use SELECT EXISTS() as this is known to efficiently use the index
+	// We are only interested in whether the domain exists or not in the
+	// list but don't case about duplicates or similar. SELECT EXISTS(...)
+	// returns true as soon as it sees the first row from the query inside
+	// of EXISTS().
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_whitelist statement for client %s", clientip);
 	querystr = get_client_querystr("vw_whitelist", "id", getstr(client->groupspos));
 	sqlite3_stmt* stmt = NULL;
 	int rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open(\"SELECT(... vw_whitelist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
+		log_err("gravityDB_open(\"SELECT(... vw_whitelist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
@@ -910,27 +873,38 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	free(querystr);
 
 	// Prepare gravity statement
-	if(config.debug & DEBUG_DATABASE)
-		logg("gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
-	querystr = get_client_querystr("vw_gravity", "domain", getstr(client->groupspos));
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
+	querystr = get_client_querystr("vw_gravity", "adlist_id", getstr(client->groupspos));
 	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open(\"SELECT(... vw_gravity ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
+		log_err("gravityDB_open(\"SELECT(... vw_gravity ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
 	gravity_stmt->set(gravity_stmt, client->id, stmt);
 	free(querystr);
 
+	// Prepare antigravity statement
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_antigravity statement for client %s", clientip);
+	querystr = get_client_querystr("vw_antigravity", "adlist_id", getstr(client->groupspos));
+	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("gravityDB_open(\"SELECT(... vw_antigravity ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
+		gravityDB_close();
+		return false;
+	}
+	antigravity_stmt->set(antigravity_stmt, client->id, stmt);
+	free(querystr);
+
 	// Prepare blacklist statement
-	if(config.debug & DEBUG_DATABASE)
-		logg("gravityDB_open(): Preparing vw_blacklist statement for client %s", clientip);
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_blacklist statement for client %s", clientip);
 	querystr = get_client_querystr("vw_blacklist", "id", getstr(client->groupspos));
 	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open(\"SELECT(... vw_blacklist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
+		log_err("gravityDB_open(\"SELECT(... vw_blacklist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
@@ -943,8 +917,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 // Finalize non-NULL prepared statements and set them to NULL for a given client
 static inline void gravityDB_finalize_client_statements(clientsData *client)
 {
-	if(config.debug & DEBUG_DATABASE)
-		logg("Finalizing gravity statements for %s", getstr(client->ippos));
+	log_debug(DEBUG_DATABASE, "Finalizing gravity statements for %s", getstr(client->ippos));
 
 	if(whitelist_stmt != NULL &&
 	   whitelist_stmt->get(whitelist_stmt, client->id) != NULL)
@@ -964,13 +937,16 @@ static inline void gravityDB_finalize_client_statements(clientsData *client)
 		sqlite3_finalize(gravity_stmt->get(gravity_stmt, client->id));
 		gravity_stmt->set(gravity_stmt, client->id, NULL);
 	}
+	if(antigravity_stmt != NULL &&
+	   antigravity_stmt->get(antigravity_stmt, client->id) != NULL)
+	{
+		sqlite3_finalize(antigravity_stmt->get(antigravity_stmt, client->id));
+		antigravity_stmt->set(antigravity_stmt, client->id, NULL);
+	}
 
 	// Unset group found property to trigger a check next time the
 	// client sends a query
-	if(client != NULL)
-	{
-		client->flags.found_group = false;
-	}
+	client->flags.found_group = false;
 }
 
 // Close gravity database connection
@@ -992,12 +968,10 @@ void gravityDB_close(void)
 	free_sqlite3_stmt_vec(&whitelist_stmt);
 	free_sqlite3_stmt_vec(&blacklist_stmt);
 	free_sqlite3_stmt_vec(&gravity_stmt);
-
-	// Finalize audit list statement
-	sqlite3_finalize(auditlist_stmt);
-	auditlist_stmt = NULL;
+	free_sqlite3_stmt_vec(&antigravity_stmt);
 
 	// Close table
+	log_debug(DEBUG_ANY, "Closing gravity database");
 	sqlite3_close(gravity_db);
 	gravity_db = NULL;
 	gravityDB_opened = false;
@@ -1009,14 +983,14 @@ bool gravityDB_getTable(const unsigned char list)
 {
 	if(!gravityDB_opened && !gravityDB_open())
 	{
-		logg("gravityDB_getTable(%u): Gravity database not available", list);
+		log_err("gravityDB_getTable(%u): Gravity database not available", list);
 		return false;
 	}
 
 	// Checking for smaller than GRAVITY_LIST is omitted due to list being unsigned
 	if(list >= UNKNOWN_TABLE)
 	{
-		logg("gravityDB_getTable(%u): Requested list is not known!", list);
+		log_warn("gravityDB_getTable(%u): Requested list is not known!", list);
 		return false;
 	}
 
@@ -1030,16 +1004,16 @@ bool gravityDB_getTable(const unsigned char list)
 		querystr = "SELECT domain, id FROM vw_blacklist GROUP BY id";
 	else if(list == EXACT_WHITELIST_TABLE)
 		querystr = "SELECT domain, id FROM vw_whitelist GROUP BY id";
-	else if(list == REGEX_BLACKLIST_TABLE)
+	else if(list == REGEX_DENY_TABLE)
 		querystr = "SELECT domain, id FROM vw_regex_blacklist GROUP BY id";
-	else if(list == REGEX_WHITELIST_TABLE)
+	else if(list == REGEX_ALLOW_TABLE)
 		querystr = "SELECT domain, id FROM vw_regex_whitelist GROUP BY id";
 
 	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
-		logg("readGravity(%s) - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
+		log_err("readGravity(%s) - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
@@ -1049,13 +1023,12 @@ bool gravityDB_getTable(const unsigned char list)
 }
 
 // Get a single domain from a running SELECT operation
-// This function returns a pointer to a string as long
-// as there are domains available. Once we reached the
-// end of the table, it returns NULL. It also returns
-// NULL when it encounters an error (e.g., on reading
-// errors). Errors are logged to FTL.log
-// This function is performance critical as it might
-// be called millions of times for large blocking lists
+// This function returns a pointer to a string as long as there are domains
+// available. Once we reached the end of the table, it returns NULL. It also
+// returns NULL when it encounters an error (e.g., on reading errors). Errors
+// are logged to FTL.log
+// This function is performance critical as it might be called millions of times
+// for large blocking lists
 inline const char* gravityDB_getDomain(int *rowid)
 {
 	// Perform step
@@ -1075,7 +1048,7 @@ inline const char* gravityDB_getDomain(int *rowid)
 	// SQLITE_DONE (we are finished reading the table)
 	if(rc != SQLITE_DONE)
 	{
-		logg("gravityDB_getDomain() - SQL error step: %s", sqlite3_errstr(rc));
+		log_err("gravityDB_getDomain() - SQL error step: %s", sqlite3_errstr(rc));
 		if(rowid != NULL)
 			*rowid = -1;
 		return NULL;
@@ -1090,7 +1063,7 @@ inline const char* gravityDB_getDomain(int *rowid)
 // Finalize statement of a gravity database transaction
 void gravityDB_finalizeTable(void)
 {
-	if(!gravityDB_opened)
+	if(!gravityDB_opened || table_stmt == NULL)
 		return;
 
 	// Finalize statement
@@ -1104,7 +1077,7 @@ int gravityDB_count(const enum gravity_tables list)
 {
 	if(!gravityDB_opened && !gravityDB_open())
 	{
-		logg("gravityDB_count(%d): Gravity database not available", list);
+		log_warn("gravityDB_count(%d): Gravity database not available", list);
 		return DB_FAILED;
 	}
 
@@ -1124,26 +1097,37 @@ int gravityDB_count(const enum gravity_tables list)
 		case EXACT_WHITELIST_TABLE:
 			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_whitelist";
 			break;
-		case REGEX_BLACKLIST_TABLE:
+		case REGEX_DENY_TABLE:
 			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_blacklist";
 			break;
-		case REGEX_WHITELIST_TABLE:
+		case REGEX_ALLOW_TABLE:
 			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_whitelist";
 			break;
+		case CLIENTS_TABLE:
+			querystr = "SELECT COUNT(1) FROM client";
+			break;
+		case GROUPS_TABLE:
+			querystr = "SELECT COUNT(1) FROM \"group\" WHERE enabled != 0";
+			break;
+		case ADLISTS_TABLE:
+			querystr = "SELECT COUNT(1) FROM adlist WHERE enabled != 0";
+			break;
+		case DENIED_DOMAINS_TABLE:
+			querystr = "SELECT COUNT(1) FROM domainlist WHERE (type = 0 OR type = 2) AND enabled != 0";
+			break;
+		case ALLOWED_DOMAINS_TABLE:
+			querystr = "SELECT COUNT(1) FROM domainlist WHERE (type = 1 OR type = 3) AND enabled != 0";
+			break;
 		case UNKNOWN_TABLE:
-			logg("Error: List type %u unknown!", list);
+			log_err("List type %u unknown!", list);
 			gravityDB_close();
 			return DB_FAILED;
 	}
 
-	if(config.debug & DEBUG_DATABASE)
-		logg("Querying count of distinct domains in gravity database table %s: %s",
-		     tablename[list], querystr);
-
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK){
-		logg("gravityDB_count(%s) - SQL error prepare %s", querystr, sqlite3_errstr(rc));
+		log_err("gravityDB_count(%s) - SQL error prepare %s", querystr, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		gravityDB_close();
 		return DB_FAILED;
@@ -1152,11 +1136,11 @@ int gravityDB_count(const enum gravity_tables list)
 	// Perform query
 	rc = sqlite3_step(table_stmt);
 	if(rc != SQLITE_ROW){
-		logg("gravityDB_count(%s) - SQL error step %s", querystr, sqlite3_errstr(rc));
+		log_err("gravityDB_count(%s) - SQL error step %s", querystr, sqlite3_errstr(rc));
+
 		if(list == GRAVITY_TABLE)
-		{
-			logg("Count of gravity domains not available. Please run pihole -g");
-		}
+			log_warn("Count of gravity domains not available. Please run pihole -g");
+
 		gravityDB_finalizeTable();
 		gravityDB_close();
 		return DB_FAILED;
@@ -1164,15 +1148,10 @@ int gravityDB_count(const enum gravity_tables list)
 
 	// Get result when there was no error
 	const int result = sqlite3_column_int(table_stmt, 0);
+	log_debug(DEBUG_DATABASE, "Found %d distinct rows in gravity table %s", result, tablename[list]);
 
 	// Finalize statement
 	gravityDB_finalizeTable();
-
-	if(config.debug & DEBUG_DATABASE)
-	{
-		logg("gravityDB_count(%d): %i entries in %s",
-		     list, result, tablename[list]);
-	}
 
 	// Return result
 	return result;
@@ -1183,7 +1162,8 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 	// Do not try to bind text to statement when database is not available
 	if(!gravityDB_opened && !gravityDB_open())
 	{
-		logg("Gravity database not available (%s)", listname);
+		log_err("domain_in_list(\"%s\", %p, %s): Gravity database not available",
+		        domain, stmt, listname);
 		return LIST_NOT_AVAILABLE;
 	}
 
@@ -1191,14 +1171,14 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 	// Bind domain to prepared statement
 	// SQLITE_STATIC: Use the string without first duplicating it internally.
 	// We can do this as domain has dynamic scope that exceeds that of the binding.
-	// We need to bind the domain only once even to the prepared audit statement as:
+	// We need to bind the domain only once:
 	//     When the same named SQL parameter is used more than once, second and
 	//     subsequent occurrences have the same index as the first occurrence.
 	//     (https://www.sqlite.org/c3ref/bind_blob.html)
 	if((rc = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("domain_in_list(\"%s\", %p, %s): Failed to bind domain: %s",
-		     domain, stmt, listname, sqlite3_errstr(rc));
+		log_err("domain_in_list(\"%s\", %p, %s): Failed to bind domain: %s",
+		        domain, stmt, listname, sqlite3_errstr(rc));
 		return LIST_NOT_AVAILABLE;
 	}
 
@@ -1207,17 +1187,18 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 	if(rc == SQLITE_BUSY)
 	{
 		// Database is busy
-		logg("Gravity database is busy (%s)", listname);
+		log_warn("domain_in_list(\"%s\", %p, %s): Database is busy, assuming domain is NOT on list",
+		         domain, stmt, listname);
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
 		return LIST_NOT_AVAILABLE;
 	}
 	else if(rc != SQLITE_ROW && rc != SQLITE_DONE)
 	{
-		// Any return code that is neither SQLITE_BUSY nor SQLITE_ROW or
-		// SQLITE_DONE is an error we should log
-		logg("domain_in_list(\"%s\", %p, %s): Failed to perform step: %s",
-		     domain, stmt, listname, sqlite3_errstr(rc));
+		// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
+		// is a real error we should log
+		log_err("domain_in_list(\"%s\", %p, %s): Failed to perform step: %s",
+		        domain, stmt, listname, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
 		return LIST_NOT_AVAILABLE;
@@ -1228,8 +1209,7 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 	if(domain_id != NULL)
 		*domain_id = result;
 
-	if(config.debug & DEBUG_DATABASE)
-		logg("domain_in_list(\"%s\", %p, %s): %d", domain, stmt, listname, result);
+	log_debug(DEBUG_DATABASE, "domain_in_list(\"%s\", %p, %s): %d", domain, stmt, listname, result);
 
 	// The sqlite3_reset() function is called to reset a prepared statement
 	// object back to its initial state, ready to be re-executed. Note: Any SQL
@@ -1265,15 +1245,14 @@ static void gravityDB_client_check_again(clientsData* client)
 	if(check_count <= NUM_RECHECKS && diff > check_count * RECHECK_DELAY)
 	{
 		const char *ord = get_ordinal_suffix(check_count);
-		if(config.debug & DEBUG_CLIENTS)
-			logg("Reloading client groups after %u seconds (%u%s check)",
-			     (unsigned int)diff, check_count, ord);
+		log_debug(DEBUG_CLIENTS, "Reloading client groups after %u seconds (%u%s check)",
+		          (unsigned int)diff, check_count, ord);
 		client->reread_groups++;
 		gravityDB_reload_groups(client);
 	}
 }
 
-enum db_result in_whitelist(const char *domain, DNSCacheData *dns_cache, clientsData* client)
+enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clientsData* client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
@@ -1283,6 +1262,11 @@ enum db_result in_whitelist(const char *domain, DNSCacheData *dns_cache, clients
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
 
+	// Check again as the client may have been reloaded if this is a TCP
+	// worker
+	if(whitelist_stmt == NULL)
+		return LIST_NOT_AVAILABLE;
+
 	// Get whitelist statement from vector of prepared statements if available
 	sqlite3_stmt *stmt = whitelist_stmt->get(whitelist_stmt, client->id);
 
@@ -1290,7 +1274,7 @@ enum db_result in_whitelist(const char *domain, DNSCacheData *dns_cache, clients
 	// the database), we return false (not in whitelist) to prevent an FTL crash
 	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
 	{
-		logg("ERROR: Gravity database not available");
+		log_err("Gravity database not available (allowlist)");
 		return LIST_NOT_AVAILABLE;
 	}
 
@@ -1301,66 +1285,32 @@ enum db_result in_whitelist(const char *domain, DNSCacheData *dns_cache, clients
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
 	// whitelisted.
-	return domain_in_list(domain, stmt, "whitelist", &dns_cache->domainlist_id);
+	return domain_in_list(domain, stmt, "whitelist", &dns_cache->list_id);
 }
 
-enum db_result in_gravity(const char *domain, clientsData *client)
+cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
 {
-	// If list statement is not ready and cannot be initialized (e.g. no
-	// access to the database), we return false to prevent an FTL crash
-	if(gravity_stmt == NULL)
-		return LIST_NOT_AVAILABLE;
-
-	// Check if this client needs a rechecking of group membership
-	gravityDB_client_check_again(client);
-
-	// Get whitelist statement from vector of prepared statements
-	sqlite3_stmt *stmt = gravity_stmt->get(gravity_stmt, client->id);
-
-	// If client statement is not ready and cannot be initialized (e.g. no access to
-	// the database), we return false (not in gravity list) to prevent an FTL crash
-	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
-	{
-		logg("ERROR: Gravity database not available");
-		return LIST_NOT_AVAILABLE;
-	}
-
-	// Update statement if has just been initialized
-	if(stmt == NULL)
-		stmt = gravity_stmt->get(gravity_stmt, client->id);
-
-	// Check if domain is exactly in gravity list
-	const enum db_result exact_match = domain_in_list(domain, stmt, "gravity", NULL);
-	if(config.debug & DEBUG_QUERIES)
-		logg("Checking if \"%s\" is in gravity: %s",
-		     domain, exact_match == FOUND ? "yes" : "no");
-	// Return for anything else than "not found" (e.g. "found" or "list not available")
-	if(exact_match != NOT_FOUND)
-		return exact_match;
-
-	// Return early if we are not supposed to check for ABP-style regex
-	// matches. This needs to be enabled in the config file as it is
-	// computationally expensive and not needed in most cases (HOSTS lists).
-	if(!gravity_abp_format)
-		return NOT_FOUND;
-
-	// Make a copy of the domain we will slowly truncate
-	// while extracting the individual components below
+	// Make a private copy of the domain we will slowly truncate while
+	// extracting the individual components below
 	char *domainBuf = strdup(domain);
+	const size_t domainBufLen = strlen(domainBuf);
 
 	// Buffer to hold the constructed (sub)domain in ABP format
-	char *abpDomain = calloc(strlen(domain) + 4, sizeof(char));
+	const char *abp_template = antigravity ? "@@||^" : "||^";
+	const size_t intro_len = strlen(abp_template) - 1; // "@@||" or "||" without the trailing "^"
+	char *abpDomain = calloc(domainBufLen + intro_len + 4, sizeof(char));
 	// Prime abp matcher with minimal content
-	strcpy(abpDomain, "||^");
+	strcpy(abpDomain, abp_template);
 
 	// Get number of domain parts (equals the number of dots + 1)
 	unsigned int N = 1u;
-	for(const char *p = domain; *p != '\0'; p++)
+	for(const char *p = domainBuf; *p != '\0'; p++)
 		if(*p == '.')
 			N++;
 
 	// Loop over domain parts, building matcher from the TLD
 	// going down into domain and subdomains one by one
+	cJSON *patterns = cJSON_CreateArray();
 	while(N-- > 0)
 	{
 		// Get domain to the *last* occurrence of '.'
@@ -1380,33 +1330,47 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 		{
 			// If the component starts with a dot, we need
 			// to skip it when copying it into the ABP buffer
-			// Move excluding initial "||" but including final \0 (strlen-2+1 = strlen-1)
-			memmove(abpDomain+2+component_size-1, abpDomain+2, strlen(abpDomain)-1);
-			// Copy component bytes (excl. trailing null-byte)
-			memcpy(abpDomain+2, ptr+1, component_size-1);
+			// Move excluding initial "(@@)||" but including final \0 (strlen-intro_len+1 = strlen-1)
+			// Example: We need to insert "defg." into "||abc^:
+			//                111
+			//      0123456789012
+			//      @@||abc^
+			// to:  @@||_____abc^ (_ = space made by memmove), because strlen("defg.") = 5
+			memmove(abpDomain + intro_len + (component_size - 1), abpDomain + intro_len, strlen(abpDomain) - (intro_len - 1));
+			// Copy component bytes, we use component_size - 1
+			// because we exclude the trailing null-byte (we insert
+			// in the middle of the other string)
+			// Example: We need to insert "defg." into "||___abc^:
+			//                111
+			//      0123456789012
+			//      @@||_____abc^
+			// to:  @@||defg.abc^
+			memcpy(abpDomain + intro_len, ptr + 1, component_size - 1);
 		}
 		else
 		{
 			// Otherwise, we copy the component as-is
-			memmove(abpDomain+2+component_size, abpDomain+2, strlen(abpDomain)-1);
+			// Example: We need to insert "abc" into "||^:
+			//                1
+			//      01234567890
+			//      @@||^
+			// to:  @@||___^ (_ = space made by memmove), because strlen("abc") = 3
+			memmove(abpDomain + intro_len + component_size, abpDomain + intro_len, strlen(abpDomain) - (intro_len - 1));
 			// Copy component bytes (excl. trailing null-byte)
-			memcpy(abpDomain+2, ptr, component_size);
+			// Example: We need to insert "abc" into "||___^:
+			//                1
+			//      01234567890
+			//      @@||___^
+			// to:  @@||abc^
+			memcpy(abpDomain + intro_len, ptr, component_size);
 		}
-		// Check if the constructed ABP-style domain is in the gravity list
-		const enum db_result abp_match = domain_in_list(abpDomain, stmt, "gravity", NULL);
-		if(config.debug & DEBUG_QUERIES)
-			logg("Checking if \"%s\" is in gravity: %s",
-			     abpDomain, abp_match == FOUND ? "yes" : "no");
-		// Return for anything else than "not found" (e.g. "found" or "list not available")
-		if(abp_match != NOT_FOUND)
-		{
-			free(domainBuf);
-			free(abpDomain);
-			return abp_match;
-		}
+
+		// Add the current ABP domain to the list of patterns
+		cJSON_AddItemToArray(patterns, cJSON_CreateString(abpDomain));
+
 		// Truncate the domain buffer to the left of the
 		// last dot, effectively removing the last component
-		const ssize_t truncate_pos = strlen(domainBuf)-component_size;
+		const ssize_t truncate_pos = strlen(domainBuf) - component_size;
 		if(truncate_pos < 1)
 			// This was already the last iteration
 			break;
@@ -1415,19 +1379,97 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 		domainBuf[truncate_pos] = '\0';
 
 		// Move the ABP buffer to the right by one byte ...
-		memmove(abpDomain+3, abpDomain+2, strlen(abpDomain));
+		memmove(abpDomain + intro_len + 1, abpDomain + intro_len, strlen(abpDomain));
 		// ... and insert '.' for the next iteration
-		abpDomain[2] = '.';
+		abpDomain[intro_len] = '.';
 	}
 
 	free(domainBuf);
 	free(abpDomain);
 
+	return patterns;
+}
+
+enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity, int *domain_id)
+{
+	// If list statement is not ready and cannot be initialized (e.g. no
+	// access to the database), we return false to prevent an FTL crash
+	if(gravity_stmt == NULL || antigravity_stmt == NULL)
+		return LIST_NOT_AVAILABLE;
+
+	// Check if this client needs a rechecking of group membership
+	gravityDB_client_check_again(client);
+
+	// Check again as the client may have been reloaded if this is a TCP
+	// worker
+	if(gravity_stmt == NULL || antigravity_stmt == NULL)
+		return LIST_NOT_AVAILABLE;
+
+	// Get whitelist statement from vector of prepared statements
+	sqlite3_stmt *stmt = antigravity ?
+		antigravity_stmt->get(antigravity_stmt, client->id) :
+		gravity_stmt->get(gravity_stmt, client->id);
+
+	// Get string for debug logging
+	const char *listname = antigravity ? "antigravity" : "gravity";
+
+	// If client statement is not ready and cannot be initialized (e.g. no access to
+	// the database), we return false (not in gravity list) to prevent an FTL crash
+	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
+	{
+		log_err("Gravity database not available (%s)", listname);
+		return LIST_NOT_AVAILABLE;
+	}
+
+	// Update statement if has just been initialized
+	if(stmt == NULL)
+		antigravity ?
+			antigravity_stmt->get(antigravity_stmt, client->id) :
+			gravity_stmt->get(gravity_stmt, client->id);
+
+	// Check if domain is exactly in gravity list
+	const enum db_result exact_match = domain_in_list(domain, stmt, listname, domain_id);
+	log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %s (exact): %s",
+	          domain, listname, exact_match == FOUND ? "yes" : "no");
+	// Return for anything else than "not found" (e.g. "found" or "list not available")
+	if(exact_match != NOT_FOUND)
+		return exact_match;
+
+	// Return early if we are not supposed to check for ABP-style regex
+	// matches. This needs to be enabled in the config file as it is
+	// computationally expensive and not needed in most cases (HOSTS lists).
+	if(!gravity_abp_format)
+		return NOT_FOUND;
+
+	// Generate ABP patterns for domain
+	cJSON *abp_patterns = gen_abp_patterns(domain, antigravity);
+	if(abp_patterns == NULL)
+	{
+		log_err("Failed to generate ABP patterns for domain \"%s\"", domain);
+		return LIST_NOT_AVAILABLE;
+	}
+
+	// Check if any of the ABP patterns is in the (anti)gravity list
+	cJSON * abp_pattern = NULL;
+	cJSON_ArrayForEach(abp_pattern, abp_patterns)
+	{
+		const char *pattern = cJSON_GetStringValue(abp_pattern);
+		log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %s (ABP): %s",
+		          pattern, listname, exact_match == FOUND ? "yes" : "no");
+		const enum db_result abp_match = domain_in_list(pattern, stmt, listname, domain_id);
+		if(abp_match == FOUND || abp_match == LIST_NOT_AVAILABLE)
+		{
+			cJSON_Delete(abp_patterns);
+			return FOUND;
+		}
+	}
+
 	// Domain not found in gravity list
+	cJSON_Delete(abp_patterns);
 	return NOT_FOUND;
 }
 
-enum db_result in_blacklist(const char *domain, DNSCacheData *dns_cache, clientsData *client)
+enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsData *client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
@@ -1437,6 +1479,11 @@ enum db_result in_blacklist(const char *domain, DNSCacheData *dns_cache, clients
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
 
+	// Check again as the client may have been reloaded if this is a TCP
+	// worker
+	if(blacklist_stmt == NULL)
+		return LIST_NOT_AVAILABLE;
+
 	// Get whitelist statement from vector of prepared statements
 	sqlite3_stmt *stmt = blacklist_stmt->get(blacklist_stmt, client->id);
 
@@ -1444,7 +1491,7 @@ enum db_result in_blacklist(const char *domain, DNSCacheData *dns_cache, clients
 	// the database), we return false (not in blacklist) to prevent an FTL crash
 	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
 	{
-		logg("ERROR: Gravity database not available");
+		log_err("Gravity database not available (denylist)");
 		return LIST_NOT_AVAILABLE;
 	}
 
@@ -1452,25 +1499,13 @@ enum db_result in_blacklist(const char *domain, DNSCacheData *dns_cache, clients
 	if(stmt == NULL)
 		stmt = blacklist_stmt->get(blacklist_stmt, client->id);
 
-	return domain_in_list(domain, stmt, "blacklist", &dns_cache->domainlist_id);
-}
-
-bool in_auditlist(const char *domain)
-{
-	// If audit list statement is not ready and cannot be initialized (e.g. no access
-	// to the database), we return false (not in audit list) to prevent an FTL crash
-	if(auditlist_stmt == NULL)
-		return false;
-
-	// We check the domain_audit table for the given domain
-	return domain_in_list(domain, auditlist_stmt, "auditlist", NULL) == FOUND;
+	return domain_in_list(domain, stmt, "blacklist", &dns_cache->list_id);
 }
 
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,
                                        const unsigned char type, const char* table)
 {
-	if(config.debug & DEBUG_REGEX)
-		logg("Getting regex client groups for client with ID %i", client->id);
+	log_debug(DEBUG_REGEX, "Getting regex client groups for client with ID %u", client->id);
 
 	char *querystr = NULL;
 	if(!client->flags.found_group && !get_client_groupids(client))
@@ -1480,7 +1515,7 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 	const char *groups = getstr(client->groupspos);
 	if(asprintf(&querystr, "SELECT id from %s WHERE group_id IN (%s);", table, groups) < 1)
 	{
-		logg("gravityDB_get_regex_client_groups(%s, %s) - asprintf() error", table, groups);
+		log_err("gravityDB_get_regex_client_groups(%s, %s) - asprintf() error", table, groups);
 		return false;
 	}
 
@@ -1488,15 +1523,14 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 	sqlite3_stmt *query_stmt;
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &query_stmt, NULL);
 	if(rc != SQLITE_OK){
-		logg("gravityDB_get_regex_client_groups(): %s - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
+		log_err("gravityDB_get_regex_client_groups(): %s - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
 		gravityDB_close();
 		free(querystr);
 		return false;
 	}
 
 	// Perform query
-	if(config.debug & DEBUG_REGEX)
-		logg("Regex %s: Querying groups for client %s: \"%s\"", regextype[type], getstr(client->ippos), querystr);
+	log_debug(DEBUG_REGEX, "Regex %s: Querying groups for client %s: \"%s\"", regextype[type], getstr(client->ippos), querystr);
 	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
 	{
 		const int result = sqlite3_column_int(query_stmt, 0);
@@ -1505,12 +1539,12 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 			if(regex[regexID].database_id == result)
 			{
 				// Regular expressions are stored in one array
-				if(type == REGEX_WHITELIST)
-					regexID += get_num_regex(REGEX_BLACKLIST);
+				if(type == REGEX_ALLOW)
+					regexID += get_num_regex(REGEX_DENY);
 				set_per_client_regex(client->id, regexID, true);
 
-				if(config.debug & DEBUG_REGEX)
-					logg("Regex %s: Enabling regex with DB ID %i for client %s", regextype[type], result, getstr(client->ippos));
+				log_debug(DEBUG_REGEX, "Regex %s: Enabling regex with DB ID %i for client %s",
+				          regextype[type], result, getstr(client->ippos));
 
 				break;
 			}
@@ -1526,18 +1560,1144 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 	return true;
 }
 
+bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
+                          const char **message, const enum http_method method)
+{
+	if(gravity_db == NULL)
+	{
+		*message = "Database not available";
+		return false;
+	}
+
+	switch (listtype)
+	{
+		case GRAVITY_DOMAINLIST_ALLOW_EXACT:
+			row->type_int = 0;
+			break;
+		case GRAVITY_DOMAINLIST_DENY_EXACT:
+			row->type_int = 1;
+			break;
+		case GRAVITY_DOMAINLIST_ALLOW_REGEX:
+			row->type_int = 2;
+			break;
+		case GRAVITY_DOMAINLIST_DENY_REGEX:
+			row->type_int = 3;
+			break;
+		case GRAVITY_GRAVITY:
+			row->type_int = 0;
+			break;
+		case GRAVITY_ANTIGRAVITY:
+			row->type_int = 1;
+			break;
+
+		// Nothing to be done for these tables
+		case GRAVITY_GROUPS:
+		case GRAVITY_ADLISTS:
+		case GRAVITY_ADLISTS_BLOCK:
+		case GRAVITY_ADLISTS_ALLOW:
+		case GRAVITY_CLIENTS:
+			break;
+
+		// Aggregate types are not handled by this routine
+		case GRAVITY_DOMAINLIST_ALLOW_ALL:
+		case GRAVITY_DOMAINLIST_DENY_ALL:
+		case GRAVITY_DOMAINLIST_ALL_EXACT:
+		case GRAVITY_DOMAINLIST_ALL_REGEX:
+		case GRAVITY_DOMAINLIST_ALL_ALL:
+			return false;
+	}
+
+	// Prepare SQLite statement
+	sqlite3_stmt* stmt = NULL;
+	const char *querystr;
+	if(method == HTTP_POST) // Create NEW entry, error if existing
+	{
+		// The item is the item for all POST requests
+		if(listtype == GRAVITY_GROUPS)
+		{
+			querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:comment);";
+		}
+		else if(listtype == GRAVITY_ADLISTS ||
+		        listtype == GRAVITY_ADLISTS_BLOCK ||
+		        listtype == GRAVITY_ADLISTS_ALLOW)
+		{
+			querystr = "INSERT INTO adlist (address,enabled,comment,type) VALUES (:item,:enabled,:comment,:type);";
+		}
+		else if(listtype == GRAVITY_CLIENTS)
+		{
+			querystr = "INSERT INTO client (ip,comment) VALUES (:item,:comment);";
+		}
+		else // domainlist
+		{
+			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:type,:enabled,:comment);";
+		}
+	}
+	else
+	{	// Create new or replace existing entry, no error if existing
+		// We UPSERT here to avoid violating FOREIGN KEY constraints
+		if(listtype == GRAVITY_GROUPS)
+			if(row->name == NULL)
+			{
+				// Name is not to be changed
+				querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:comment) "
+				           "ON CONFLICT(name) DO UPDATE SET enabled = :enabled, description = :comment;";
+			}
+			else
+			{
+				querystr = "UPDATE \"group\" SET name = :name, enabled = :enabled, description = :comment "
+				           "WHERE name = :item";
+			}
+		else if(listtype == GRAVITY_ADLISTS ||
+		        listtype == GRAVITY_ADLISTS_BLOCK ||
+		        listtype == GRAVITY_ADLISTS_ALLOW)
+			querystr = "INSERT INTO adlist (address,enabled,comment,type) VALUES (:item,:enabled,:comment,:type) "\
+			           "ON CONFLICT(address,type) DO UPDATE SET enabled = :enabled, comment = :comment, type = :type;";
+		else if(listtype == GRAVITY_CLIENTS)
+			querystr = "INSERT INTO client (ip,comment) VALUES (:item,:comment) "\
+			           "ON CONFLICT(ip) DO UPDATE SET comment = :comment;";
+		else // domainlist
+			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:oldtype,:enabled,:comment) "\
+			           "ON CONFLICT(domain,type) DO UPDATE SET type = :type, enabled = :enabled, comment = :comment;";
+	}
+
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_addToTable(%d, %s) - SQL error prepare (%i): %s",
+		        row->type_int, row->item, rc, *message);
+		return false;
+	}
+
+	// Bind item to prepared statement (if requested)
+	const int item_idx = sqlite3_bind_parameter_index(stmt, ":item");
+	if(item_idx > 0 && (rc = sqlite3_bind_text(stmt, item_idx, row->item, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_addToTable(%d, %s): Failed to bind item (error %d) - %s",
+		        row->type_int, row->item, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Bind name to prepared statement (if requested)
+	const int name_idx = sqlite3_bind_parameter_index(stmt, ":name");
+	if(name_idx > 0 && (rc = sqlite3_bind_text(stmt, name_idx, row->name, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_addToTable(%d, %s): Failed to bind name (error %d) - %s",
+		        row->type_int, row->item, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Bind type to prepared statement (if requested)
+	const int type_idx = sqlite3_bind_parameter_index(stmt, ":type");
+	if(type_idx > 0 && (rc = sqlite3_bind_int(stmt, type_idx, row->type_int)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_addToTable(%d, %s): Failed to bind type (error %d) - %s",
+		        row->type_int, row->item, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Bind oldtype to prepared statement (if requested)
+	const int oldtype_idx = sqlite3_bind_parameter_index(stmt, ":oldtype");
+	int oldtype = -1;
+	if(oldtype_idx > 0)
+	{
+		if(row->type == NULL && row->kind == NULL)
+		{
+			// User didn't specify oldtype/oldkind, just replace without moving
+			oldtype = row->type_int;
+		}
+		else if(row->type == NULL)
+		{
+			// Error, one is not meaningful without the other
+			*message = "Field type missing from request";
+			log_err("gravityDB_addToTable(%d, %s): type missing",
+			        row->type_int, row->item);
+			sqlite3_reset(stmt);
+			sqlite3_finalize(stmt);
+			return false;
+		}
+		else if(row->kind == NULL)
+		{
+			// Error, one is not meaningful without the other
+			*message = "Field oldkind missing from request";
+			log_err("gravityDB_addToTable(%d, %s): Oldkind missing",
+			        row->type_int, row->item);
+			sqlite3_reset(stmt);
+			sqlite3_finalize(stmt);
+			return false;
+		}
+		else
+		{
+			if(strcasecmp("allow", row->type) == 0 &&
+			   strcasecmp("exact", row->kind) == 0)
+			        oldtype = 0;
+			else if(strcasecmp("deny", row->type) == 0 &&
+					strcasecmp("exact", row->kind) == 0)
+			        oldtype = 1;
+			else if(strcasecmp("allow", row->type) == 0 &&
+					strcasecmp("regex", row->kind) == 0)
+			        oldtype = 2;
+			else if(strcasecmp("deny", row->type) == 0 &&
+			        strcasecmp("regex", row->kind) == 0)
+				oldtype = 3;
+			else
+			{
+				*message = "Cannot interpret type/kind";
+				log_err("gravityDB_addToTable(%d, %s): Failed to identify type=\"%s\", kind=\"%s\"",
+				        row->type_int, row->item, row->type, row->kind);
+				sqlite3_reset(stmt);
+				sqlite3_finalize(stmt);
+				return false;
+			}
+		}
+
+		// Bind oldtype to database statement
+		if((rc = sqlite3_bind_int(stmt, oldtype_idx, oldtype)) != SQLITE_OK)
+		{
+			*message = sqlite3_errmsg(gravity_db);
+			log_err("gravityDB_addToTable(%d, %s): Failed to bind oldtype (error %d) - %s",
+			        row->type_int, row->item, rc, *message);
+			sqlite3_reset(stmt);
+			sqlite3_finalize(stmt);
+			return false;
+		}
+	}
+
+	// Bind enabled boolean to prepared statement (if requested)
+	const int enabled_idx = sqlite3_bind_parameter_index(stmt, ":enabled");
+	if(enabled_idx > 0 && (rc = sqlite3_bind_int(stmt, enabled_idx, row->enabled ? 1 : 0)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_addToTable(%d, %s): Failed to bind enabled (error %d) - %s",
+		        row->type_int, row->item, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Bind comment string to prepared statement (if requested)
+	const int comment_idx = sqlite3_bind_parameter_index(stmt, ":comment");
+	if(comment_idx > 0 && (rc = sqlite3_bind_text(stmt, comment_idx, row->comment, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_addToTable(%d, %s): Failed to bind comment (error %d) - %s",
+		        row->type_int, row->item, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Perform step
+	bool okay = false;
+	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+	{
+		// Domain added/modified
+		okay = true;
+	}
+	else
+	{
+		*message = sqlite3_errmsg(gravity_db);
+	}
+
+	// Finalize statement and close database handle
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+	// Debug output
+	if(config.debug.api.v.b)
+	{
+		log_debug(DEBUG_API, "SQL: %s", querystr);
+		if(item_idx > 0)
+			log_debug(DEBUG_API, "     :item = \"%s\"", row->item);
+		if(type_idx > 0)
+			log_debug(DEBUG_API, "     :type = %i", row->type_int);
+		if(oldtype_idx > 0)
+			log_debug(DEBUG_API, "     :oldtype = %i", oldtype);
+		if(comment_idx > 0)
+			log_debug(DEBUG_API, "     :comment = \"%s\"", row->comment);
+		if(enabled_idx > 0)
+			log_debug(DEBUG_API, "     :enabled = %i", row->enabled ? 1 : 0);
+	}
+
+	return okay;
+}
+
+bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message)
+{
+	// Return early if database is not available
+	if(gravity_db == NULL)
+	{
+		*message = "Database not available";
+		return false;
+	}
+
+	// Return early if passed JSON argument is not an array
+	if(!cJSON_IsArray(array))
+	{
+		*message = "Argument is not an array";
+		log_err("gravityDB_delFromTable(%d): %s",
+		        listtype, *message);
+		return false;
+	}
+
+	const bool hasType = listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
+	                     listtype == GRAVITY_DOMAINLIST_DENY_EXACT ||
+	                     listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX ||
+	                     listtype == GRAVITY_DOMAINLIST_DENY_REGEX ||
+	                     listtype == GRAVITY_DOMAINLIST_ALL_ALL ||
+	                     listtype == GRAVITY_ADLISTS ||
+	                     listtype == GRAVITY_ADLISTS_BLOCK ||
+	                     listtype == GRAVITY_ADLISTS_ALLOW;
+
+	// Begin transaction
+	const char *querystr = "BEGIN TRANSACTION;";
+	int rc = sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+	if(rc != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
+		        listtype, querystr, *message);
+		return false;
+	}
+
+	// Create temporary table for JSON argument
+	if(hasType)
+		// Create temporary table for domains to be deleted
+		querystr = "CREATE TEMPORARY TABLE deltable (type INT, item TEXT);";
+	else
+		querystr = "CREATE TEMPORARY TABLE deltable (item TEXT);";
+
+	sqlite3_stmt* stmt = NULL;
+	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_delFromTable(%d) - SQL error prepare(\"%s\"): %s",
+		        listtype, querystr, *message);
+
+		// Rollback transaction
+		querystr = "ROLLBACK TRANSACTION;";
+		sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+
+		return false;
+	}
+
+	// Execute statement
+	if((rc = sqlite3_step(stmt)) != SQLITE_DONE)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_delFromTable(%d) - SQL error step(\"%s\"): %s",
+		        listtype, querystr, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+
+		// Rollback transaction
+		querystr = "ROLLBACK TRANSACTION;";
+		sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+
+		return false;
+	}
+
+	// Finalize statement
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+	// Prepare statement for inserting items into virtual table
+	if(hasType)
+		querystr = "INSERT INTO deltable (type, item) VALUES (:type, :item);";
+	else
+		querystr = "INSERT INTO deltable (item) VALUES (:item);";
+
+	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_delFromTable(%d) - SQL error prepare(\"%s\"): %s",
+		        listtype, querystr, *message);
+
+		// Rollback transaction
+		querystr = "ROLLBACK TRANSACTION;";
+		sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+
+		return false;
+	}
+
+	// Loop over all domains in the JSON array
+	cJSON *it = NULL;
+	cJSON_ArrayForEach(it, array)
+	{
+		// Bind type to prepared statement
+		cJSON *type = cJSON_GetObjectItemCaseSensitive(it, "type");
+		int type_int = cJSON_IsNumber(type) ? type->valueint : -1;
+		if(listtype == GRAVITY_ADLISTS_BLOCK)
+			type_int = ADLIST_BLOCK;
+		else if(listtype == GRAVITY_ADLISTS_ALLOW)
+			type_int = ADLIST_ALLOW;
+		else if(listtype == GRAVITY_ADLISTS && cJSON_IsString(type))
+		{
+			if(strcasecmp(type->valuestring, "block") == 0)
+				type_int = ADLIST_BLOCK;
+			else if(strcasecmp(type->valuestring, "allow") == 0)
+				type_int = ADLIST_ALLOW;
+		}
+		const int type_idx = sqlite3_bind_parameter_index(stmt, ":type");
+		if(type_idx > 0 && (rc = sqlite3_bind_int(stmt, type_idx, type_int)) != SQLITE_OK)
+		{
+			*message = sqlite3_errmsg(gravity_db);
+			log_err("gravityDB_delFromTable(%d): Failed to bind type (error %d) - %s",
+			        type_int, rc, *message);
+			sqlite3_reset(stmt);
+			sqlite3_finalize(stmt);
+
+			// Rollback transaction
+			querystr = "ROLLBACK TRANSACTION;";
+			sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+
+			return false;
+		}
+
+		// Bind item to prepared statement
+		cJSON *item = cJSON_GetObjectItemCaseSensitive(it, "item");
+		const int item_idx = sqlite3_bind_parameter_index(stmt, ":item");
+		if(item_idx > 0 && (!cJSON_IsString(item) || (rc = sqlite3_bind_text(stmt, item_idx, item->valuestring, -1, SQLITE_STATIC)) != SQLITE_OK))
+		{
+			*message = sqlite3_errmsg(gravity_db);
+			log_err("gravityDB_delFromTable(%d): Failed to bind item (error %d) - %s",
+			        listtype, rc, *message);
+			sqlite3_reset(stmt);
+			sqlite3_finalize(stmt);
+
+			// Rollback transaction
+			querystr = "ROLLBACK TRANSACTION;";
+			sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+
+			return false;
+		}
+
+		// Execute statement
+		if((rc = sqlite3_step(stmt)) != SQLITE_DONE)
+		{
+			*message = sqlite3_errmsg(gravity_db);
+			log_err("gravityDB_delFromTable(%d) - SQL error step(\"%s\"): %s",
+			        listtype, querystr, *message);
+			sqlite3_reset(stmt);
+			sqlite3_finalize(stmt);
+
+			// Rollback transaction
+			querystr = "ROLLBACK TRANSACTION;";
+			sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+
+			return false;
+		}
+
+		// Reset statement
+		sqlite3_reset(stmt);
+
+		// Debug output
+		if(config.debug.api.v.b)
+		{
+			log_debug(DEBUG_API, "SQL: %s", querystr);
+			if(item_idx > 0)
+				log_debug(DEBUG_API, "     :item = \"%s\"", item->valuestring);
+			if(type_idx > 0)
+				log_debug(DEBUG_API, "     :type = %i", cJSON_IsNumber(type) ? type->valueint : -1);
+		}
+	}
+
+	// Finalize statement
+	sqlite3_finalize(stmt);
+
+	// Prepare SQL for deleting items from the requested table
+	const char *querystrs[4] = {NULL, NULL, NULL, NULL};
+	if(listtype == GRAVITY_GROUPS)
+		querystrs[0] = "DELETE FROM \"group\" WHERE name IN (SELECT item FROM deltable);";
+	else if(listtype == GRAVITY_ADLISTS ||
+	        listtype == GRAVITY_ADLISTS_BLOCK ||
+	        listtype == GRAVITY_ADLISTS_ALLOW)
+	{
+		// This is actually a four-step deletion to satisfy foreign-key constraints
+		querystrs[0] = "DELETE FROM gravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 0));";
+		querystrs[1] = "DELETE FROM antigravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 1));";
+		querystrs[2] = "DELETE FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 0) AND type = 0;";
+		querystrs[3] = "DELETE FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 1) AND type = 1;";
+	}
+	else if(listtype == GRAVITY_CLIENTS)
+		querystrs[0] = "DELETE FROM client WHERE ip IN (SELECT item FROM deltable);";
+	else // domainlist
+	{
+		querystrs[0] = "DELETE FROM domainlist WHERE domain IN (SELECT item FROM deltable WHERE type = 0) AND type = 0;";
+		querystrs[1] = "DELETE FROM domainlist WHERE domain IN (SELECT item FROM deltable WHERE type = 1) AND type = 1;";
+		querystrs[2] = "DELETE FROM domainlist WHERE domain IN (SELECT item FROM deltable WHERE type = 2) AND type = 2;";
+		querystrs[3] = "DELETE FROM domainlist WHERE domain IN (SELECT item FROM deltable WHERE type = 3) AND type = 3;";
+	}
+
+	for(unsigned int i = 0; i < ArraySize(querystrs); i++)
+	{
+		// Finish if no more queries
+		if(querystrs[i] == NULL)
+			break;
+
+		// Execute statement
+		rc = sqlite3_exec(gravity_db, querystrs[i], NULL, NULL, NULL);
+		if(rc != SQLITE_OK)
+		{
+			*message = sqlite3_errmsg(gravity_db);
+			log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
+			        listtype, querystrs[i], *message);
+
+			// Rollback transaction
+			querystr = "ROLLBACK TRANSACTION;";
+			sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+
+			return false;
+		}
+
+		// Add number of deleted rows
+		*deleted += sqlite3_changes(gravity_db);
+	}
+
+	// Drop temporary table
+	querystr = "DROP TABLE deltable;";
+	rc = sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+	if(rc != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
+		        listtype, querystr, *message);
+
+		// Rollback transaction
+		querystr = "ROLLBACK TRANSACTION;";
+		sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+	}
+
+	// Commit transaction
+	querystr = "COMMIT TRANSACTION;";
+	rc = sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+	if(rc != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
+		        listtype, querystr, *message);
+
+		// Rollback transaction
+		querystr = "ROLLBACK TRANSACTION;";
+		sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+	}
+
+	return true;
+}
+
+static sqlite3_stmt* read_stmt = NULL;
+bool gravityDB_readTable(const enum gravity_list_type listtype,
+                         const char *item, const char **message,
+                         const bool exact, const char *ids)
+{
+	if(gravity_db == NULL)
+	{
+		*message = "Database not available";
+		return false;
+	}
+
+	// Get filter string for the requested list type
+	const char *type = "N/A";
+	switch (listtype)
+	{
+		case GRAVITY_DOMAINLIST_ALLOW_EXACT:
+			type = "0";
+			break;
+		case GRAVITY_DOMAINLIST_ALLOW_REGEX:
+			type = "2";
+			break;
+		case GRAVITY_DOMAINLIST_ALLOW_ALL:
+			type = "0,2";
+			break;
+		case GRAVITY_DOMAINLIST_DENY_EXACT:
+			type = "1";
+			break;
+		case GRAVITY_DOMAINLIST_DENY_REGEX:
+			type = "3";
+			break;
+		case GRAVITY_DOMAINLIST_DENY_ALL:
+			type = "1,3";
+			break;
+		case GRAVITY_DOMAINLIST_ALL_EXACT:
+			type = "0,1";
+			break;
+		case GRAVITY_DOMAINLIST_ALL_REGEX:
+			type = "2,3";
+			break;
+		case GRAVITY_DOMAINLIST_ALL_ALL:
+			type = "0,1,2,3";
+			break;
+
+		// No type required for these tables
+		case GRAVITY_GRAVITY:
+		case GRAVITY_ANTIGRAVITY:
+		case GRAVITY_GROUPS:
+		case GRAVITY_CLIENTS:
+		case GRAVITY_ADLISTS:
+		// Type is set in the SQL query directly
+		case GRAVITY_ADLISTS_BLOCK:
+		case GRAVITY_ADLISTS_ALLOW:
+			break;
+	}
+
+	// Build query statement
+	const size_t buflen = 512u + (ids != NULL ? strlen(ids) : 0u);
+	char *querystr = calloc(buflen, sizeof(char));
+	char *like_name = (char*)item;
+	if(!exact && item != NULL && item[0] != '\0')
+	{
+		// Build LIKE string (% + item + %)
+		like_name = calloc(strlen(item)+3, sizeof(char));
+		if(like_name == NULL)
+		{
+			log_err("Failed to allocate memory for like_name");
+			*message = "Failed to allocate memory for like_name";
+			return false;
+		}
+		sprintf(like_name, "%%%s%%", item);
+	}
+	const char *filter = "";
+	if(listtype == GRAVITY_GROUPS)
+	{
+		if(item != NULL && item[0] != '\0')
+		{
+			if(exact)
+				filter = " WHERE name = :item";
+			else
+				filter = " WHERE name LIKE :item";
+		}
+		snprintf(querystr, buflen, "SELECT id,name,enabled,date_added,date_modified,description AS comment FROM \"group\"%s;", filter);
+	}
+	else if(listtype == GRAVITY_ADLISTS ||
+	        listtype == GRAVITY_ADLISTS_BLOCK ||
+	        listtype == GRAVITY_ADLISTS_ALLOW)
+	{
+		if(listtype == GRAVITY_ADLISTS_BLOCK)
+			filter = "type = 0";
+		else if(listtype == GRAVITY_ADLISTS_ALLOW)
+			filter = "type = 1";
+		else
+			filter = "TRUE";
+
+		const char *filter2 = "";
+		if(item != NULL && item[0] != '\0')
+		{
+			if(exact)
+				filter2 = " AND address = :item";
+			else
+				filter2 = " AND address LIKE :item";
+		}
+		snprintf(querystr, buflen, "SELECT id,type,address,enabled,date_added,date_modified,comment,"
+		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids,"
+		                                     "date_updated,number,invalid_domains,status,abp_entries "
+		                                     "FROM adlist a WHERE %s%s;", filter, filter2);
+	}
+	else if(listtype == GRAVITY_CLIENTS)
+	{
+		if(item != NULL && item[0] != '\0')
+		{
+			if(exact)
+				filter = " WHERE ip = :item";
+			else
+				filter = " WHERE ip LIKE :item";
+		}
+		snprintf(querystr, buflen, "SELECT id,ip AS client,date_added,date_modified,comment,"
+		                                     "(SELECT GROUP_CONCAT(group_id) FROM client_by_group g WHERE g.client_id = c.id) AS group_ids "
+		                                     "FROM client c%s;", filter);
+	}
+	else if(listtype == GRAVITY_GRAVITY || listtype == GRAVITY_ANTIGRAVITY)
+	{
+		if(item != NULL && item[0] != '\0')
+		{
+			if(exact)
+				filter = " WHERE g.domain = :item";
+			else
+				filter = " WHERE g.domain LIKE :item";
+		}
+		const char *table = listtype == GRAVITY_GRAVITY ? "gravity" : "antigravity";
+		snprintf(querystr, buflen, "SELECT domain,a.id,a.address,a.enabled,a.date_added,a.date_modified,a.comment,a.date_updated,a.number,a.invalid_domains,a.status,a.abp_entries,a.type,"
+		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group ag WHERE ag.adlist_id = g.adlist_id) AS group_ids "
+		                                     "FROM %s g JOIN adlist a ON a.id = g.adlist_id %s;", table, filter);
+	}
+	else // domainlist
+	{
+		if(item != NULL && item[0] != '\0')
+		{
+			if(exact)
+				filter = " AND domain = :item";
+			else
+				filter = " AND domain LIKE :item";
+		}
+
+		snprintf(querystr, buflen, "SELECT id,domain,type,enabled,date_added,date_modified,comment,"
+		                                     "(SELECT GROUP_CONCAT(group_id) FROM domainlist_by_group g WHERE g.domainlist_id = d.id) AS group_ids "
+		                                     "FROM domainlist d WHERE d.type IN (%s)%s", type, filter);
+
+		// Append id array filter to query string
+		// We have to do it this way as binding a sequence of int via a prepared
+		// statement isn't possible in SQLite3
+		if(ids != NULL)
+			snprintf(querystr+strlen(querystr), buflen-strlen(querystr), " AND id IN (%s)", ids);
+	}
+
+	// Prepare SQLite statement
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &read_stmt, NULL);
+	if( rc != SQLITE_OK ){
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_readTable(%d => (%s)) - SQL error prepare (%i): %s => %s",
+		        listtype, type, rc, querystr, *message);
+		if(!exact)
+			free(like_name);
+		free(querystr);
+		return false;
+	}
+
+	// Bind item to prepared statement (if requested)
+	int idx = sqlite3_bind_parameter_index(read_stmt, ":item");
+	if(idx > 0 && (rc = sqlite3_bind_text(read_stmt, idx, like_name, -1, SQLITE_TRANSIENT)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_readTable(%d => (%s), %s): Failed to bind item (error %d) - %s",
+		        listtype, type, like_name, rc, *message);
+		sqlite3_reset(read_stmt);
+		sqlite3_finalize(read_stmt);
+		if(!exact)
+			free(like_name);
+		free(querystr);
+		return false;
+	}
+
+	// Bind ids to prepared statement (if requested)
+	idx = sqlite3_bind_parameter_index(read_stmt, ":ids");
+	if(idx > 0 && (rc = sqlite3_bind_text(read_stmt, idx, ids, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_readTable(%d => (%s), %s): Failed to bind ids (error %d) - %s",
+		        listtype, type, like_name, rc, *message);
+		sqlite3_reset(read_stmt);
+		sqlite3_finalize(read_stmt);
+		if(!exact)
+			free(like_name);
+		free(querystr);
+		return false;
+	}
+
+	// Debug output
+	if(config.debug.api.v.b)
+	{
+		log_debug(DEBUG_API, "SQL: %s", querystr);
+		log_debug(DEBUG_API, "     :item = \"%s\"", like_name);
+		log_debug(DEBUG_API, "     :ids = \"%s\"", ids);
+	}
+
+	// Free memory
+	free(querystr);
+	if(!exact)
+		free(like_name);
+
+	return true;
+}
+
+bool gravityDB_readTableGetRow(const enum gravity_list_type listtype, tablerow *row, const char **message)
+{
+	// Perform step
+	const int rc = sqlite3_step(read_stmt);
+
+	// Ensure no old data stayed in here
+	memset(row, 0, sizeof(*row));
+
+	// Valid row
+	if(rc == SQLITE_ROW)
+	{
+		const int cols = sqlite3_column_count(read_stmt);
+		for(int c = 0; c < cols; c++)
+		{
+			const char *cname = sqlite3_column_name(read_stmt, c);
+			if(strcasecmp(cname, "id") == 0)
+				row->id = sqlite3_column_int(read_stmt, c);
+
+			else if(strcasecmp(cname, "type") == 0)
+			{
+				// Get raw type
+				row->type_int = sqlite3_column_int(read_stmt, c);
+
+				// Convert to string
+				if(listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
+				   listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX ||
+				   listtype == GRAVITY_DOMAINLIST_ALLOW_ALL ||
+				   listtype == GRAVITY_DOMAINLIST_DENY_EXACT ||
+				   listtype == GRAVITY_DOMAINLIST_DENY_REGEX ||
+				   listtype == GRAVITY_DOMAINLIST_DENY_ALL ||
+				   listtype == GRAVITY_DOMAINLIST_ALL_EXACT ||
+				   listtype == GRAVITY_DOMAINLIST_ALL_REGEX ||
+				   listtype == GRAVITY_DOMAINLIST_ALL_ALL)
+				{
+					switch(row->type_int)
+					{
+						case 0:
+							row->type = "allow";
+							row->kind = "exact";
+							break;
+						case 1:
+							row->type = "deny";
+							row->kind = "exact";
+							break;
+						case 2:
+							row->type = "allow";
+							row->kind = "regex";
+							break;
+						case 3:
+							row->type = "deny";
+							row->kind = "regex";
+							break;
+						default:
+							row->type = "unknown";
+							row->kind = "unknown";
+							break;
+					}
+				}
+				else if(listtype == GRAVITY_ADLISTS ||
+				        listtype == GRAVITY_ADLISTS_ALLOW ||
+				        listtype == GRAVITY_ADLISTS_BLOCK ||
+				        listtype == GRAVITY_GRAVITY ||
+				        listtype == GRAVITY_ANTIGRAVITY)
+				{
+					switch(row->type_int)
+					{
+						case 0:
+							row->type = "block";
+							break;
+						case 1:
+							row->type = "allow";
+							break;
+						default:
+							row->type = "unknown";
+							break;
+					}
+				}
+				else
+				{
+					row->type = "unknown";
+				}
+			}
+
+			else if(strcasecmp(cname, "domain") == 0)
+				row->domain = (char*)sqlite3_column_text(read_stmt, c);
+
+			else if(strcasecmp(cname, "address") == 0)
+				row->address = (char*)sqlite3_column_text(read_stmt, c);
+
+			else if(strcasecmp(cname, "enabled") == 0)
+				row->enabled = sqlite3_column_int(read_stmt, c) != 0;
+
+			else if(strcasecmp(cname, "date_added") == 0)
+				row->date_added = sqlite3_column_int64(read_stmt, c);
+
+			else if(strcasecmp(cname, "date_modified") == 0)
+				row->date_modified = sqlite3_column_int64(read_stmt, c);
+
+			else if(strcasecmp(cname, "comment") == 0)
+				row->comment = (char*)sqlite3_column_text(read_stmt, c);
+
+			else if(strcasecmp(cname, "group_ids") == 0)
+				row->group_ids = (char*)sqlite3_column_text(read_stmt, c);
+
+			else if(strcasecmp(cname, "address") == 0)
+				row->address = (char*)sqlite3_column_text(read_stmt, c);
+
+			else if(strcasecmp(cname, "name") == 0)
+				row->name = (char*)sqlite3_column_text(read_stmt, c);
+
+			else if(strcasecmp(cname, "client") == 0)
+				row->client = (char*)sqlite3_column_text(read_stmt, c);
+
+			else if(strcasecmp(cname, "date_updated") == 0)
+				row->date_updated = sqlite3_column_int64(read_stmt, c);
+
+			else if(strcasecmp(cname, "number") == 0)
+				row->number = sqlite3_column_int(read_stmt, c);
+
+			else if(strcasecmp(cname, "type") == 0)
+				row->type_int = sqlite3_column_int(read_stmt, c);
+
+			else if(strcasecmp(cname, "invalid_domains") == 0)
+				row->invalid_domains = sqlite3_column_int(read_stmt, c);
+
+			else if(strcasecmp(cname, "status") == 0)
+				row->status = sqlite3_column_int(read_stmt, c);
+
+			else if(strcasecmp(cname, "abp_entries") == 0)
+				row->abp_entries = sqlite3_column_int(read_stmt, c);
+
+			else
+				log_err("API: Encountered unknown column %s", cname);
+		}
+		return true;
+	}
+
+	// Check for error. An error happened when the result is neither
+	// SQLITE_ROW (we returned earlier in this case), nor
+	// SQLITE_DONE (we are finished reading the table)
+	if(rc != SQLITE_DONE)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_readTableGetRow() - SQL error step (%i): %s",
+		        rc, *message);
+		return false;
+	}
+
+	// Finished reading, nothing to get here
+	return false;
+}
+
+// Finalize statement of a gravity database transaction
+void gravityDB_readTableFinalize(void)
+{
+	// Finalize statement
+	sqlite3_finalize(read_stmt);
+}
+
+bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
+                           const tablerow *row, const char **message)
+{
+	if(gravity_db == NULL)
+	{
+		*message = "Database not available";
+		return false;
+	}
+
+	// Prepare SQLite statements
+	const char *get_querystr, *del_querystr, *add_querystr;
+	if(listtype == GRAVITY_GROUPS)
+		return false;
+	else if(listtype == GRAVITY_CLIENTS)
+	{
+		get_querystr = "SELECT id FROM client WHERE ip = :item";
+		del_querystr = "DELETE FROM client_by_group WHERE client_id = :id;";
+		add_querystr = "INSERT INTO client_by_group (client_id,group_id) VALUES (:id,:gid);";
+	}
+	else if(listtype == GRAVITY_ADLISTS ||
+	        listtype == GRAVITY_ADLISTS_BLOCK ||
+	        listtype == GRAVITY_ADLISTS_ALLOW)
+	{
+		if(listtype == GRAVITY_ADLISTS)
+			get_querystr = "SELECT id FROM adlist WHERE address = :item";
+		else
+			get_querystr = "SELECT id FROM adlist WHERE address = :item AND type = :type";
+		del_querystr = "DELETE FROM adlist_by_group WHERE adlist_id = :id;";
+		add_querystr = "INSERT INTO adlist_by_group (adlist_id,group_id) VALUES (:id,:gid);";
+	}
+	else // domainlist
+	{
+		get_querystr = "SELECT id FROM domainlist WHERE domain = :item AND type = :type";
+		del_querystr = "DELETE FROM domainlist_by_group WHERE domainlist_id = :id;";
+		add_querystr = "INSERT INTO domainlist_by_group (domainlist_id,group_id) VALUES (:id,:gid);";
+	}
+
+	// First step: Get ID of the item to modify
+	sqlite3_stmt* stmt = NULL;
+	int rc = sqlite3_prepare_v2(gravity_db, get_querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_edit_groups(%d) - SQL error prepare SELECT (%i): %s",
+		        listtype, rc, *message);
+		return false;
+	}
+
+	// Bind item string to prepared statement (if requested)
+	int idx = sqlite3_bind_parameter_index(stmt, ":item");
+	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row->item, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_edit_groups(%d): Failed to bind item SELECT (error %d) - %s",
+		        listtype, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Bind type to prepared statement (if requested)
+	idx = sqlite3_bind_parameter_index(stmt, ":type");
+	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, row->type_int)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_edit_groups(%d): Failed to bind type SELECT (error %d) - %s",
+		        listtype, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Perform step
+	bool okay = false;
+	int id = -1;
+	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	{
+		// Get ID of domain
+		id = sqlite3_column_int(stmt, 0);
+		okay = true;
+	}
+	else
+	{
+		*message = sqlite3_errmsg(gravity_db);
+	}
+
+	// Debug output
+	if(config.debug.api.v.b)
+	{
+		log_debug(DEBUG_API, "SQL: %s", get_querystr);
+		log_debug(DEBUG_API, "     :item = \"%s\"", row->item);
+		log_debug(DEBUG_API, "     :type = \"%d\"", row->type_int);
+	}
+
+	// Finalize statement
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+	// Return early if getting the ID failed
+	if(!okay)
+		return false;
+
+	// Second step: Delete all existing group associations for this item
+	rc = sqlite3_prepare_v2(gravity_db, del_querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_edit_groups(%d) - SQL error prepare DELETE (%i): %s",
+		        listtype, rc, *message);
+		return false;
+	}
+
+	// Bind id to prepared statement (if requested)
+	idx = sqlite3_bind_parameter_index(stmt, ":id");
+	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, id)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_edit_groups(%d): Failed to bind id DELETE (error %d) - %s",
+		        listtype, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Perform step
+	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+	{
+		// All groups deleted
+	}
+	else
+	{
+		okay = false;
+		*message = sqlite3_errmsg(gravity_db);
+	}
+
+	// Debug output
+	if(config.debug.api.v.b)
+	{
+		log_debug(DEBUG_API, "SQL: %s", del_querystr);
+		log_debug(DEBUG_API, "     :id = \"%d\"", id);
+	}
+
+	// Finalize statement
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+	// Return early if deleting the existing group associations failed
+	if(!okay)
+		return false;
+
+	// Third step: Create new group associations for this item
+	rc = sqlite3_prepare_v2(gravity_db, add_querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_edit_groups(%d) - SQL error prepare INSERT (%i): %s",
+		        listtype, rc, *message);
+		return false;
+	}
+
+	// Bind id to prepared statement (if requested)
+	idx = sqlite3_bind_parameter_index(stmt, ":id");
+	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, id)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		log_err("gravityDB_edit_groups(%d): Failed to bind id INSERT (error %d) - %s",
+		        listtype, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Loop over all loops in array
+	const int groupcount = cJSON_GetArraySize(groups);
+	log_debug(DEBUG_API, "groupscount = %d", groupcount);
+	for(int i = 0; i < groupcount; i++)
+	{
+		cJSON *group = cJSON_GetArrayItem(groups, i);
+		if(group == NULL || !cJSON_IsNumber(group))
+			continue;
+
+		idx = sqlite3_bind_parameter_index(stmt, ":gid");
+		if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, group->valueint)) != SQLITE_OK)
+		{
+			*message = sqlite3_errmsg(gravity_db);
+			log_err("gravityDB_edit_groups(%d): Failed to bind gid INSERT (error %d) - %s",
+			listtype, rc, *message);
+			sqlite3_reset(stmt);
+			sqlite3_finalize(stmt);
+			return false;
+		}
+
+		// Perform step
+		if((rc = sqlite3_step(stmt)) != SQLITE_DONE)
+		{
+			okay = false;
+			*message = sqlite3_errmsg(gravity_db);
+			break;
+		}
+
+		// Debug output
+		if(config.debug.api.v.b)
+		{
+			log_debug(DEBUG_API, "INSERT: %i -> (%i,%i)", rc, id, group->valueint);
+			log_debug(DEBUG_API, "SQL: %s", add_querystr);
+			log_debug(DEBUG_API, "     :id = \"%d\"", id);
+			log_debug(DEBUG_API, "     :gid = \"%d\"", group->valueint);
+		}
+
+		// Reset before next iteration, this will not clear the id binding
+		sqlite3_reset(stmt);
+	}
+
+	// Finalize statement
+	sqlite3_finalize(stmt);
+
+	return okay;
+}
+
 void check_inaccessible_adlists(void)
 {
-
-	// check if any adlist was inaccessible in the last gravity run
-	// if so, gravity stored `status` in the adlist table with
+	// Check if any adlist was inaccessible in the last gravity run
+	// If so, gravity stored `status` in the adlist table with
 	// "3": List unavailable, Pi-hole used a local copy
 	// "4": List unavailable, there is no local copy available
 
 	// Do not proceed when database is not available
 	if(!gravityDB_opened && !gravityDB_open())
 	{
-		logg("check_inaccessible_adlists(): Gravity database not available");
+		log_err("check_inaccessible_adlists(): Gravity database not available");
 		return;
 	}
 
@@ -1547,7 +2707,7 @@ void check_inaccessible_adlists(void)
 	sqlite3_stmt *query_stmt;
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &query_stmt, NULL);
 	if(rc != SQLITE_OK){
-		logg("check_inaccessible_adlists(): %s - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
+		log_err("check_inaccessible_adlists(): %s - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
 		gravityDB_close();
 		return;
 	}
@@ -1564,4 +2724,80 @@ void check_inaccessible_adlists(void)
 
 	// Finalize statement
 	sqlite3_finalize(query_stmt);
+}
+
+static sqlite3_int64 last_updated = -1;
+bool gravity_updated(void)
+{
+	bool changed = false;
+	sqlite3 *db = NULL;
+	sqlite3_stmt *query_stmt = NULL;
+
+	// Check if database is a readable file
+	if(file_readable(config.files.gravity.v.s) == false)
+	{
+		log_err("Cannot read gravity database at %s - file does not exist or is not readable",
+		        config.files.gravity.v.s);
+		return false;
+	}
+
+	// Open database
+	int rc = sqlite3_open_v2(config.files.gravity.v.s, &db, SQLITE_OPEN_READONLY, NULL);
+	if(db == NULL || rc != SQLITE_OK)
+	{
+		log_err("gravity_updated(): %s - SQL error open: %s", config.files.gravity.v.s, sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Get *updated* timestamp from gravity database
+	const char *querystr = "SELECT value FROM info WHERE property = 'updated';";
+	rc = sqlite3_prepare_v2(db, querystr, -1, &query_stmt, NULL);
+	if(rc != SQLITE_OK){
+		// Ignore SQLITE_BUSY errors, as this is not a critical error
+		// We will just try again later
+		if(rc != SQLITE_BUSY)
+			log_warn("gravity_updated(): %s - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
+		sqlite3_close(db);
+		return false;
+	}
+
+	// Perform query
+	rc = sqlite3_step(query_stmt);
+	if(rc != SQLITE_ROW)
+	{
+		log_err("gravity_updated(): %s - SQL error step: %s", querystr, sqlite3_errstr(rc));
+		sqlite3_finalize(query_stmt);
+		sqlite3_close(db);
+		return false;
+	}
+
+	// Get timestamp from database
+	const sqlite3_int64 updated = sqlite3_column_int64(query_stmt, 0);
+
+	// Check if timestamp has changed
+	if(last_updated == -1)
+	{
+		// First run, set last_updated
+		last_updated = updated;
+	}
+	else if(last_updated < updated)
+	{
+		// Gravity database has been updated
+		last_updated = updated;
+		changed = true;
+		log_info("Gravity database has been updated, reloading now");
+	}
+
+	// Finalize statement
+	sqlite3_finalize(query_stmt);
+
+	// Close database
+	sqlite3_close(db);
+
+	return changed;
+}
+
+time_t __attribute__((pure)) gravity_last_updated(void)
+{
+	return last_updated > 0 ? (time_t)last_updated : 0;
 }

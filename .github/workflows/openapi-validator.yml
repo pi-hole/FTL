@@ -1,0 +1,26 @@
+name: API validation
+
+on: [push]
+
+env:
+  CI: true
+
+jobs:
+  openapi-validator:
+    name: Node
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4.1.7
+
+      - name: Set Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test

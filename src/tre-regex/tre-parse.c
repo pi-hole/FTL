@@ -628,8 +628,10 @@ tre_parse_bound(tre_parse_ctx_t *ctx, tre_ast_node_t **result)
     }
 
   /* Check that the repeat counts are sane. */
-  if ((max >= 0 && min > max) || max > RE_DUP_MAX)
+  if (max >= 0 && min > max)
     return REG_BADBR;
+  if (max > RE_DUP_MAX)
+    return REG_BADMAX;
 
 
   /*
@@ -1340,8 +1342,8 @@ tre_parse(tre_parse_ctx_t *ctx)
 	      break;
 
 	    case CHAR_RPAREN:  /* end of current subexpression */
-	      if ((ctx->cflags & REG_EXTENDED && depth > 0)
-		  || (ctx->re > ctx->re_start
+	      if (((ctx->cflags & REG_EXTENDED) && depth > 0)
+		  || (!(ctx->cflags & REG_EXTENDED) && ctx->re > ctx->re_start
 		      && *(ctx->re - 1) == CHAR_BACKSLASH))
 		{
 		  DPRINT(("tre_parse:	    empty: '%.*" STRF "'\n",

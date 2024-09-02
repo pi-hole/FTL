@@ -90,7 +90,7 @@ int log_start(struct passwd *ent_pw, int errfd)
   if (!log_reopen(daemon->log_file))
     {
       send_event(errfd, EVENT_LOG_ERR, errno, daemon->log_file ? daemon->log_file : "");
-      _exit(0);
+      die(_("failed to open log file: %s"), strerror(errno), 1); // Pi-hole modification
     }
 
   /* if queuing is inhibited, make sure we allocate
@@ -322,6 +322,14 @@ void my_syslog(int priority, const char *format, ...)
   priority &= LOG_PRIMASK;
 #endif
 
+  /*************************** Pi-hole specific logging **************************/
+  char buffer[MAX_MESSAGE + 1u];
+  va_start(ap, format);
+  len = vsnprintf(buffer, MAX_MESSAGE, format, ap) + 1u; /* include zero-terminator */
+  va_end(ap);
+  FTL_dnsmasq_log(buffer, len > MAX_MESSAGE ? MAX_MESSAGE : len);
+  /*******************************************************************************/
+
   if (echo_stderr) 
     {
       fprintf(stderr, "dnsmasq%s: ", func);
@@ -509,8 +517,12 @@ void die(char *message, char *arg1, int exit_code)
   flush_log();
 
   /********** Pi-hole modification *************/
-  FTL_log_dnsmasq_fatal(message, arg1, errmess);
-  /*********************************************/
+  if(only_testing)
+    exit(exit_code);
 
-  exit(exit_code);
+  FTL_log_dnsmasq_fatal(message, arg1, errmess);
+
+  // Jump back into main() to exit gracefully
+  longjmp(exit_jmp, exit_code);
+  /*********************************************/
 }

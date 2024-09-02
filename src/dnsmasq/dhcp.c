@@ -162,7 +162,7 @@ void dhcp_packet(time_t now, int pxe_fd)
 #elif defined(HAVE_BSD_NETWORK) 
     char control[CMSG_SPACE(sizeof(struct sockaddr_dl))];
 #endif
-  } control_u;
+  } control_u = { 0 };
   struct dhcp_bridge *bridge, *alias;
 
   msg.msg_controllen = sizeof(control_u);

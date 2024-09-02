@@ -1,0 +1,1325 @@
+openapi: 3.0.2
+components:
+  paths:
+    client:
+      get:
+        summary: Get information about requesting client
+        tags:
+          - "FTL information"
+        security: []
+        operationId: "get_client"
+        description: |
+          The property `timer` may contain additional details concerning a temporary en-/disabling.
+          It is `null` when no timer is active (the current status is permanent).
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/client/remote_addr'
+                    - $ref: 'info.yaml#/components/schemas/client/http_version'
+                    - $ref: 'info.yaml#/components/schemas/client/method'
+                    - $ref: 'info.yaml#/components/schemas/client/headers'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    logs:
+      dns:
+        get:
+          summary: Get DNS log content
+          tags:
+            - "FTL information"
+          operationId: "get_dns_log"
+          description: |
+            This API hook returns content from the log of the embedded DNS resolver `dnsmasq`.
+
+            Every successful request will return a `nextID`.
+            This ID can be used on the next request to only get lines which were added *after* the last request.
+            This makes periodic polling for new log lines easy as no check for duplicated log lines is necessary.
+            The expected behavior for an immediate re-request of a log line with the same ID is an empty response.
+            As soon as the next message arrived, this will be included in your request and `nextID` is incremented by one.
+          parameters:
+            - $ref: 'info.yaml#/components/parameters/logs/dns/nextID'
+          responses:
+            '200':
+              description: OK
+              content:
+                application/json:
+                  schema:
+                    allOf:
+                      - $ref: 'info.yaml#/components/schemas/logs/dns/log'
+                      - $ref: 'info.yaml#/components/schemas/logs/dns/nextID'
+                      - $ref: 'common.yaml#/components/schemas/took'
+            '401':
+              description: Unauthorized
+              content:
+                application/json:
+                  schema:
+                    allOf:
+                      - $ref: 'common.yaml#/components/errors/unauthorized'
+                      - $ref: 'common.yaml#/components/schemas/took'
+    system:
+      get:
+        summary: Get info about various system parameters
+        tags:
+          - "FTL information"
+        operationId: "get_systeminfo"
+        description: |
+          This API hook returns a collection of various system infos.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/system'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    host:
+      get:
+        summary: Get info about various host parameters
+        tags:
+          - "FTL information"
+        operationId: "get_hostinfo"
+        description: |
+          This API hook returns a collection of host infos.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/host'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    ftl:
+      get:
+        summary: Get info about various ftl parameters
+        tags:
+          - "FTL information"
+        operationId: "get_ftlinfo"
+        description: |
+          This API hook returns a collection of various ftl infos.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/ftl'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    sensors:
+      get:
+        summary: Get info about various sensors
+        tags:
+          - "FTL information"
+        operationId: "get_sensors"
+        description: |
+          This API hook returns a collection of various sensors.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/sensors'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    database:
+      get:
+        summary: Get info about long-term database
+        tags:
+          - "FTL information"
+        operationId: "get_dbinfo"
+        description: |
+          This API hook returns a collection of various long-term database properties infos.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/database'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    version:
+      get:
+        summary: Get Pi-hole version
+        tags:
+          - "FTL information"
+        operationId: "get_version"
+        description: |
+          Request versions of the individual Pi-hole components
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/version'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    messages:
+      get:
+        summary: Get Pi-hole diagnosis messages
+        tags:
+          - "FTL information"
+        operationId: "get_messages"
+        description: |
+          Request Pi-hole diagnosis messages
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/messages'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    messages_with_id:
+      delete:
+        summary: Delete Pi-hole diagnosis message
+        tags:
+          - "FTL information"
+        operationId: "delete_message"
+        parameters:
+          - $ref: 'info.yaml#/components/parameters/message_id'
+        description: |
+          You may specify multiple IDs to delete multiple messages at once (comma-separated in the path like `1,2,3`)
+        responses:
+          '204':
+            description: Item deleted
+          '404':
+            description: Not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  uri_error:
+                    $ref: 'info.yaml#/components/examples/errors/messages/uri_error'
+                  bad_request:
+                    $ref: 'info.yaml#/components/examples/errors/messages/bad_request'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    messages_count:
+      get:
+        summary: Get count of Pi-hole diagnosis messages
+        tags:
+          - "FTL information"
+        operationId: "get_messages_count"
+        description: |
+          Request number of Pi-hole diagnosis messages
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/count'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    metrics:
+      get:
+        summary: Get metrics info
+        tags:
+          - "FTL information"
+        operationId: "get_metricsinfo"
+        description: |
+          This API hook returns live information about the DNS and DHCP metrics.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/metrics'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  metrics:
+                    $ref: 'info.yaml#/components/examples/metrics'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    login:
+      get:
+        summary: Login page related information
+        tags:
+          - "FTL information"
+        operationId: "get_logininfo"
+        security: []
+        description: |
+          This API hook returns information used on the login page to possibly display messages/warnings.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/login'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+  schemas:
+    client:
+      remote_addr:
+        type: object
+        properties:
+          remote_addr:
+            type: string
+            description: Address of requesting client
+            example: "127.0.0.1"
+      http_version:
+        type: object
+        properties:
+          http_version:
+            type: string
+            description: HTTP version of request
+            example: "1.1"
+      method:
+        type: object
+        properties:
+          method:
+            type: string
+            description: Request method
+            example: "GET"
+      headers:
+        type: object
+        properties:
+          headers:
+            type: array
+            description: Request headers
+            items:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Header name
+                value:
+                  type: string
+                  description: Header value
+            example:
+              - name: "Accept"
+                value: "application/json"
+              - name: "Connection"
+                value: "keep-alive"
+              - name: "Pragma"
+                value: "no-cache"
+    logs:
+      dns:
+        log:
+          type: object
+          properties:
+            log:
+              type: array
+              description: Request headers
+              items:
+                type: object
+                properties:
+                  timestamp:
+                    type: number
+                    description: Unix timestamp of log line creation (server time)
+                  message:
+                    type: string
+                    description: Log line content
+              example:
+                - timestamp: 1611729969.0
+                  message: "started, version pi-hole-2.84 cachesize 10000"
+                - timestamp: 1611729969.0
+                  message: "reading /etc/resolv.conf"
+                - timestamp: 1611729969.0
+                  message: "read /etc/hosts - 7 addresses"
+                - timestamp: 1611729969.0
+                  message: "query[A] connectivity-check.ubuntu.com from 127.0.0.1"
+        nextID:
+          type: object
+          properties:
+            nextID:
+              type: integer
+              description: next ID to query if checking for new log lines
+              example: 0
+    system:
+      type: object
+      properties:
+        system:
+          type: object
+          properties:
+            uptime:
+              type: integer
+              description: How long the system has been running (seconds)
+              example: 67906
+            memory:
+              type: object
+              description: Memory info given in kilobytes
+              properties:
+                ram:
+                  type: object
+                  description: RAM
+                  properties:
+                    total:
+                      type: integer
+                      description: Total RAM
+                      example: 10317877
+                    free:
+                      type: integer
+                      description: Total free RAM
+                      example: 308736
+                    used:
+                      type: integer
+                      description: Used RAM
+                      example: 8920416
+                    available:
+                      type: integer
+                      description: Total available RAM
+                      example: 972304
+                    "%used":
+                      type: number
+                      description: Used RAM in percent
+                      example: 26.854
+                swap:
+                  type: object
+                  description: swap memory
+                  properties:
+                    total:
+                      type: integer
+                      description: Total swap
+                      example: 10317877
+                    used:
+                      type: integer
+                      description: Used swap
+                      example: 8920416
+                    free:
+                      type: integer
+                      description: Total free swap memory
+                      example: 308736
+                    "%used":
+                      type: number
+                      description: Used swap in percent
+                      example: 1.67
+            procs:
+              type: integer
+              description: Number of current processes
+              example: 1452
+            cpu:
+              type: object
+              description: CPU info
+              properties:
+                nprocs:
+                  type: integer
+                  description: Number of available processors
+                  example: 8
+                load:
+                  type: object
+                  description: 1, 5, and 15 minute load averages
+                  properties:
+                    raw:
+                      type: array
+                      description: raw values
+                      items:
+                        type: number
+                      example: [0.58837890625, 0.64990234375, 0.66748046875]
+                    percent:
+                      type: array
+                      description: raw values
+                      items:
+                        type: number
+                      example: [4.903157711029053, 5.415853023529053, 5.562337398529053]
+
+    sensors:
+      type: object
+      properties:
+        sensors:
+          type: object
+          properties:
+            list:
+              type: array
+              description: Sensor information (temperature)
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    nullable: true
+                    description: Description of temperature sensor (if available, `null` otherwise)
+                  path:
+                    type: string
+                    description: Short path of temperature sensor
+                  source:
+                    type: string
+                    description: Path-like device description
+                  temps:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          nullable: true
+                          description: Description of temperature sensor (if available, `null` otherwise)
+                        value:
+                          type: number
+                          description: Sensor value
+                        max:
+                          type: number
+                          nullable: true
+                          description: Maximum sensor value (if available, `null` otherwise)
+                        crit:
+                          type: number
+                          nullable: true
+                          description: Critical sensor value (if available, `null` otherwise)
+                        sensor:
+                          type: string
+                          description: Short path of temperature sensor
+              example:
+                - name: "amdgpu"
+                  path: "hwmon1"
+                  source: "devices/pci0000:00/0000:00:08.1/0000:05:00.0"
+                  temps:
+                    - name: "edge"
+                      value: 40.0
+                      max: null
+                      crit: null
+                      path: "temp1"
+                - name: "nct6793"
+                  path: "hwmon2"
+                  source: "devices/platform/nct6775.656"
+                  temps:
+                    - name: "SMBUSMASTER 0"
+                      value: 59.5
+                      max: null
+                      crit: null
+                      path: "temp1"
+                    - name: CPUTIN
+                      value: 40.0
+                      max: null
+                      crit: null
+                      path: "temp2"
+                - name: "k10temp"
+                  path: "hwmon3"
+                  source: "devices/pci0000:00/0000:00:18.3"
+                  temps:
+                    - name: "Tdie"
+                      value: 58.875
+                      max: 70.0
+                      crit: null
+                      path: "temp1"
+                    - name: "Tctl"
+                      value: 58.875
+                      max: null
+                      crit: null
+                      path: "temp2"
+                - name: "coretemp"
+                  path: "hwmon4"
+                  source: "devices/platform/coretemp.0"
+                  temps:
+                    - name: "Package id 0"
+                      value: 48.0
+                      max: 100.0
+                      crit: 100.0
+                      path: "temp1"
+                    - name: "Core 0"
+                      value: 48.0
+                      max: 100.0
+                      crit: 100.0
+                      path: "temp2"
+                    - name: "Core 1"
+                      value: 47.0
+                      max: 100.0
+                      crit: 100.0
+                      path: "temp3"
+            cpu_temp:
+              type: number
+              description: CPU temperature (best guess, may be *null* if no sensor can be reliably identified, please report if you encounter this)
+              nullable: true
+              example: 48.0
+            hot_limit:
+              type: number
+              description: Limit defined in FTL's config beyond which the CPU should be considered hot
+              example: 60.0
+            unit:
+              type: string
+              description: Sensor value unit
+              example: "C"
+
+    host:
+      type: object
+      properties:
+        host:
+          type: object
+          properties:
+            uname:
+              type: object
+              properties:
+                domainname:
+                  type: string
+                  example: "(none)"
+                machine:
+                  type: string
+                  example: "x86_64"
+                nodename:
+                  type: string
+                  example: "raspberrypi"
+                release:
+                  type: string
+                  example: "5.15.0-52-generic"
+                sysname:
+                  type: string
+                  example: "Linux"
+                version:
+                  type: string
+                  example: "#58-Ubuntu SMP Thu Oct 13 08:03:55 UTC 2022"
+            model:
+              type: string
+              description: Device model (if available, `null` otherwise)
+              example: "Raspberry Pi Model 4B"
+              nullable: true
+            dmi:
+              type: object
+              properties:
+                bios:
+                  type: object
+                  properties:
+                    vendor:
+                      type: string
+                      description: BIOS vendor (if available, `null` otherwise)
+                      example: "American Megatrends Inc."
+                      nullable: true
+                board:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Board name (if available, `null` otherwise)
+                      example: "Raspberry Pi 4 Model B Rev 1.4"
+                      nullable: true
+                    vendor:
+                      type: string
+                      description: Board vendor (if available, `null` otherwise)
+                      example: "Raspberry Pi Foundation"
+                      nullable: true
+                    version:
+                      type: string
+                      description: Board version (if available, `null` otherwise)
+                      example: "0x14"
+                      nullable: true
+                product:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Product name (if available, `null` otherwise)
+                      example: "Raspberry Pi 4 Model B Rev 1.4"
+                      nullable: true
+                    version:
+                      type: string
+                      description: Product version (if available, `null` otherwise)
+                      example: "0x14"
+                      nullable: true
+                    family:
+                      type: string
+                      description: Product family (if available, `null` otherwise)
+                      example: "Raspberry Pi 4 Model B Rev 1.4"
+                      nullable: true
+                sys:
+                  type: object
+                  properties:
+                    vendor:
+                      type: string
+                      description: System vendor (if available, `null` otherwise)
+                      example: "Raspberry Pi Foundation"
+                      nullable: true
+    ftl:
+      type: object
+      properties:
+        ftl:
+          type: object
+          properties:
+            database:
+              type: object
+              properties:
+                gravity:
+                  type: integer
+                  description: Number of collected exact domains on lists
+                  example: 67906
+                groups:
+                  type: integer
+                  description: Number of groups
+                  example: 6
+                lists:
+                  type: integer
+                  description: Number of lists
+                  example: 1
+                clients:
+                  type: integer
+                  description: Number of configured clients
+                  example: 5
+                domains:
+                  type: object
+                  properties:
+                    allowed:
+                      type: integer
+                      description: Number of allowed domains
+                      example: 10
+                    denied:
+                      type: integer
+                      description: Number of denied domains
+                      example: 3
+            privacy_level:
+              type: integer
+              description: Currently used privacy level
+              example: 0
+            clients:
+              type: object
+              properties:
+                total:
+                  type: integer
+                  description: Number of clients FTL has seen in its lfetime
+                  example: 10
+                active:
+                  type: integer
+                  description: Number of clients actively using FTL
+                  example: 8
+            pid:
+              type: integer
+              description: PID of FTL process
+              example: 1234
+            uptime:
+              type: number
+              description: Uptime of FTL in milliseconds
+              example: 123456789
+            "%mem":
+              type: number
+              description: Percentage of total RAM memory used by FTL
+              example: 0.1
+            "%cpu":
+              type: number
+              description: Percentage of total CPU used by FTL (ten seconds average)
+              example: 1.2
+            allow_destructive:
+              type: boolean
+              description: Whether or not FTL is allowed to perform destructive actions
+              example: true
+            dnsmasq:
+              type: object
+              description: Metrics from the embedded dnsmasq resolver
+              properties:
+                dns_cache_inserted:
+                  type: integer
+                  description: Number of inserted entries in DNS cache
+                  example: 8
+                dns_cache_live_freed:
+                  type: integer
+                  description: Number of freed live entries in DNS cache
+                  example: 0
+                dns_queries_forwarded:
+                  type: integer
+                  description: Number of forwarded DNS queries
+                  example: 2
+                dns_auth_answered:
+                  type: integer
+                  description: Number of DNS queries for authoritative zones
+                  example: 0
+                dns_local_answered:
+                  type: integer
+                  description: Number of DNS queries answered from local cache
+                  example: 74
+                dns_stale_answered:
+                  type: integer
+                  description: Number of DNS queries answered from local cache (stale entries)
+                  example: 0
+                dns_unanswered:
+                  type: integer
+                  description: Number of unanswered DNS queries
+                  example: 0
+                bootp:
+                  type: integer
+                  description: Number of BOOTP requests
+                  example: 0
+                pxe:
+                  type: integer
+                  description: Number of PXE requests
+                  example: 0
+                dhcp_ack:
+                  type: integer
+                  description: Number of DHCP ACK
+                  example: 0
+                dhcp_decline:
+                  type: integer
+                  description: Number of DHCP DECLINE
+                  example: 0
+                dhcp_discover:
+                  type: integer
+                  description: Number of DHCP DISCOVER
+                  example: 0
+                dhcp_inform:
+                  type: integer
+                  description: Number of DHCP INFORM
+                  example: 0
+                dhcp_nak:
+                  type: integer
+                  description: Number of DHCP NAK
+                  example: 0
+                dhcp_offer:
+                  type: integer
+                  description: Number of DHCP OFFER
+                  example: 0
+                dhcp_release:
+                  type: integer
+                  description: Number of DHCP RELEASE
+                  example: 0
+                dhcp_request:
+                  type: integer
+                  description: Number of DHCP REQUEST
+                  example: 0
+                noanswer:
+                  type: integer
+                  description: Number of DHCP requests without answer (rapid commit)
+                  example: 0
+                leases_allocated_4:
+                  type: integer
+                  description: Number of allocated IPv4 leases
+                  example: 0
+                leases_pruned_4:
+                  type: integer
+                  description: Number of pruned IPv4 leases
+                  example: 0
+                leases_allocated_6:
+                  type: integer
+                  description: Number of allocated IPv6 leases
+                  example: 0
+                leases_pruned_6:
+                  type: integer
+                  description: Number of pruned IPv6 leases
+                  example: 0
+                tcp_connections:
+                  type: integer
+                  description: Number of dedicated TCP workers
+                  example: 0
+                dnssec_max_crypto_use:
+                  type: integer
+                  description: DNSSEC per-query crypto work HWM
+                  example: 0
+                dnssec_max_sig_fail:
+                  type: integer
+                  description: DNSSEC per-RRSet signature fails HWM
+                  example: 0
+                dnssec_max_work:
+                  type: integer
+                  description: DNSSEC per-query subqueries HWM
+                  example: 0
+
+    database:
+      type: object
+      properties:
+        size:
+          type: integer
+          description: Database size in bytes
+          example: 3690496
+        type:
+          type: string
+          description: Database file type
+          example: "Regular file"
+        mode:
+          type: string
+          description: Database file mode
+          example: "rw-r--r--"
+        atime:
+          type: integer
+          description: Timestamp of last access
+          example: 1611742120
+        mtime:
+          type: integer
+          description: Timestamp of last modification
+          example: 1611742120
+        ctime:
+          type: integer
+          description: Timestamp of last status change
+          example: 1611742120
+        owner:
+          type: object
+          properties:
+            user:
+              type: object
+              properties:
+                uid:
+                  type: integer
+                  description: UID of database owner
+                  example: 998
+                name:
+                  type: string
+                  description: Name of database owner (user)
+                  example: "pihole"
+                info:
+                  type: string
+                  description: User info
+                  example: ""
+            group:
+              type: object
+              properties:
+                gid:
+                  type: integer
+                  description: GID of database owner
+                  example: 998
+                name:
+                  type: string
+                  description: Name of database owner (group)
+                  example: "pihole"
+        queries:
+          type: integer
+          description: Number of queries in long-term database
+          example: 536956
+        sqlite_version:
+          type: string
+          description: Version of embedded SQLite3 engine
+          example: "3.34.0"
+    version:
+      type: object
+      properties:
+        version:
+          type: object
+          properties:
+            core:
+              type: object
+              properties:
+                local:
+                  type: object
+                  properties:
+                    branch:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Core branch
+                      example: "development"
+                    version:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Core version
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Core hash
+                      example: "955e36a9"
+                remote:
+                  type: object
+                  properties:
+                    version:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole Core version (null if on custom branch)
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole Core hash
+                      example: "955e36a9"
+            web:
+              type: object
+              properties:
+                local:
+                  type: object
+                  properties:
+                    branch:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Web branch
+                      example: "devel"
+                    version:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Web version
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole Web hash
+                      example: "f69f7e88"
+                remote:
+                  type: object
+                  properties:
+                    version:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole Web version (null if on custom branch)
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole Web hash
+                      example: "f69f7e88"
+            ftl:
+              type: object
+              properties:
+                local:
+                  type: object
+                  properties:
+                    branch:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole FTL branch
+                      example: "development"
+                    version:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole FTL version
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Local Pi-hole FTL hash
+                      example: "64441ed6-dirty"
+                    date:
+                      type: string
+                      nullable: true
+                      description: Build time of your local Pi-hole FTL
+                      example: "2023-01-09 20:25:24 +0100"
+                remote:
+                  type: object
+                  properties:
+                    version:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole FTL version (null if on custom branch)
+                      example: "v6.1"
+                    hash:
+                      type: string
+                      nullable: true
+                      description: Remote (Github) Pi-hole FTL hash
+                      example: "64441ed6"
+            docker:
+              type: object
+              properties:
+                local:
+                  type: string
+                  nullable: true
+                  description: Local Pi-hole Docker image version (`null` if not running in Docker)
+                  example: "v6.1"
+                remote:
+                  type: string
+                  nullable: true
+                  description: Remote (Docker Hub) Pi-hole Docker image version (`null` if not running in Docker)
+                  example: "v6.1"
+    messages:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                description: ID of message
+                example: 3
+              timestamp:
+                type: number
+                description: Unix timestamp of message
+                example: 123456789.123
+              type:
+                type: string
+                description: Message type
+                example: "SUBNET"
+              plain:
+                type: string
+                description: Plain message
+                example: "Rate-limiting 192.168.2.42 for at least 5 seconds"
+              html:
+                type: string
+                description: HTML-formatted message
+                example: "Client <code>192.168.2.42</code> has been rate-limited for at least 5 seconds (current limit: 1000 queries per 60 seconds)"
+    metrics:
+      type: object
+      properties:
+        metrics:
+          type: object
+          properties:
+            dns:
+              type: object
+              description: DNS metrics
+              properties:
+                cache:
+                  type: object
+                  description: Cache information
+                  properties:
+                    size:
+                      type: integer
+                      description: Cache size
+                    inserted:
+                      type: integer
+                      description: Number of inserted entries
+                    evicted:
+                      type: integer
+                      description: Number of evicted entries
+                    expired:
+                      type: integer
+                      description: Number of expired entries
+                    immortal:
+                      type: integer
+                      description: Number of immortal entries
+                    content:
+                      type: array
+                      description: Array of valid DNS cache entries
+                      items:
+                        type: object
+                        properties:
+                          type:
+                            type: integer
+                            description: RR type of cache entry
+                          name:
+                            type: string
+                            description: RR name of cache entry
+                          count:
+                            type: object
+                            description: Number of cache entries for this RR type
+                            properties:
+                              valid:
+                                type: integer
+                                description: Number of valid cache entries
+                              stale:
+                                type: integer
+                                description: Number of stale cache entries
+                replies:
+                  type: object
+                  properties:
+                    forwarded:
+                      type: integer
+                      description: Number of forwarded queries
+                    unanswered:
+                      type: integer
+                      description: Number of unanswered queries
+                    local:
+                      type: integer
+                      description: Number of queries answered from local cache
+                    optimized:
+                      type: integer
+                      description: Number of queries answered from local cache (stale entries)
+                    auth:
+                      type: integer
+                      description: Number of queries for authoritative zones
+                    sum:
+                      type: integer
+                      description: Total number of queries
+            dhcp:
+              type: object
+              description: DHCP metrics
+              properties:
+                ack:
+                  type: integer
+                  description: Number of DHCP ACKs
+                nak:
+                  type: integer
+                  description: Number of DHCP NAKs
+                decline:
+                  type: integer
+                  description: Number of DHCP declines
+                offer:
+                  type: integer
+                  description: Number of DHCP offers
+                discover:
+                  type: integer
+                  description: Number of DHCP discovers
+                inform:
+                  type: integer
+                  description: Number of DHCP informs
+                request:
+                  type: integer
+                  description: Number of DHCP requests
+                release:
+                  type: integer
+                  description: Number of DHCP releases
+                noanswer:
+                  type: integer
+                  description: Number of DHCP requests without answer
+                bootp:
+                  type: integer
+                  description: Number of BOOTP requests
+                pxe:
+                  type: integer
+                  description: Number of PXE requests
+                leases:
+                  type: object
+                  description: DHCP leases
+                  properties:
+                    allocated_4:
+                      type: integer
+                      description: Number of allocated IPv4 leases
+                    pruned_4:
+                      type: integer
+                      description: Number of pruned IPv4 leases
+                    allocated_6:
+                      type: integer
+                      description: Number of allocated IPv6 leases
+                    pruned_6:
+                      type: integer
+                      description: Number of pruned IPv6 leases
+    count:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Number of items
+          example: 42
+    login:
+      type: object
+      properties:
+        https_port:
+          type: integer
+          description: HTTPS port of the Pi-hole webserver (0 if disabled)
+        dns:
+          type: boolean
+          description: Whether the DNS server is up and running. False only in failed state
+  examples:
+    errors:
+      messages:
+        uri_error:
+          summary: ID of message to delete is missing
+          value:
+            error:
+              key: "uri_error"
+              message: "Specify ID of message to delete in path"
+              hint: "/api/info/messages"
+        bad_request:
+          summary: ID of message to delete is invalid
+          value:
+            error:
+              key: "bad_request"
+              message: "Invalid ID in path"
+              hint: "/api/info/messages/486741168746857468758478"
+    metrics:
+      summary: Server metrics
+      value:
+        metrics:
+          dns:
+            cache:
+              size: 10000
+              inserted: 4060
+              evicted: 0
+              expired: 0
+              immortal: 0
+              content:
+                - type: 0
+                  name: "OTHER"
+                  count:
+                    valid: 0
+                    stale: 0
+                - type: 1
+                  name: "A"
+                  count:
+                    valid: 14
+                    stale: 3
+                - type: 28
+                  name: "AAAA"
+                  count:
+                    valid: 12
+                    stale: 1
+                - type: 5
+                  name: "CNAME"
+                  count:
+                    valid: 5
+                    stale: 3
+                - type: 43
+                  name: "DS"
+                  count:
+                    valid: 34
+                    stale: 21
+                - type: 48
+                  name: "DNSKEY"
+                  count:
+                    valid: 1
+                    stale: 0
+            replies:
+              optimized: 1
+              local: 84
+              auth: 0
+              forwarded: 46
+              unanswered: 0
+              sum: 131
+          dhcp:
+            ack: 0
+            nak: 0
+            decline: 0
+            offer: 0
+            discover: 0
+            inform: 0
+            request: 0
+            release: 0
+            noanswer: 0
+            bootp: 0
+            pxe: 0
+            leases:
+              allocated_4: 0
+              pruned_4: 0
+              allocated_6: 0
+              pruned_6: 0
+
+  parameters:
+    logs:
+      dns:
+        nextID:
+          in: query
+          description: (Optional) ID of next line to return
+          name: nextID
+          schema:
+            type: integer
+          required: false
+          example: 219
+    message_id:
+      in: path
+      description: ID of the message to be deleted
+      name: message_id
+      schema:
+        type: integer
+      required: true
+      example: 512

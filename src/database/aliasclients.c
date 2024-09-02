@@ -8,20 +8,23 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 #include "aliasclients.h"
 #include "common.h"
 // global counters variable
-#include "../shmem.h"
+#include "shmem.h"
 // global config variable
-#include "../config.h"
-// logg()
-#include "../log.h"
+#include "config/config.h"
+// logging routines
+#include "log.h"
 // getAliasclientIDfromIP()
 #include "network-table.h"
 
 bool create_aliasclients_table(sqlite3 *db)
 {
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// Create aliasclient table in the database
 	SQL_bool(db, "CREATE TABLE aliasclient (id INTEGER PRIMARY KEY NOT NULL, " \
 	                                       "name TEXT NOT NULL, " \
@@ -33,9 +36,12 @@ bool create_aliasclients_table(sqlite3 *db)
 	// Update database version to 9
 	if(!db_set_FTL_property(db, DB_VERSION, 9))
 	{
-		logg("create_aliasclients_table(): Failed to update database version!");
+		log_err("create_aliasclients_table(): Failed to update database version!");
 		return false;
 	}
+
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }
@@ -46,11 +52,8 @@ static void recompute_aliasclient(const int aliasclientID)
 {
 	clientsData *aliasclient = getClient(aliasclientID, true);
 
-	if(config.debug & DEBUG_ALIASCLIENTS)
-	{
-		logg("Recomputing alias-client \"%s\" (%s)...",
-		     getstr(aliasclient->namepos), getstr(aliasclient->ippos));
-	}
+	log_debug(DEBUG_ALIASCLIENTS, "Recomputing alias-client \"%s\" (%s)...",
+	          getstr(aliasclient->namepos), getstr(aliasclient->ippos));
 
 	// Reset this alias-client
 	aliasclient->count = 0;
@@ -69,20 +72,14 @@ static void recompute_aliasclient(const int aliasclientID)
 		// Skip clients that are not managed by this aliasclient
 		if(client->aliasclient_id != aliasclientID)
 		{
-			if(config.debug & DEBUG_ALIASCLIENTS)
-			{
-				logg("Client \"%s\" (%s) NOT managed by this alias-client, skipping",
-				     getstr(client->namepos), getstr(client->ippos));
-			}
+			log_debug(DEBUG_ALIASCLIENTS, "Client \"%s\" (%s) NOT managed by this alias-client, skipping",
+			          getstr(client->namepos), getstr(client->ippos));
 			continue;
 		}
 
 		// Debug logging
-		if(config.debug & DEBUG_ALIASCLIENTS)
-		{
-			logg("Client \"%s\" (%s) IS  managed by this alias-client, adding counts",
-					getstr(client->namepos), getstr(client->ippos));
-		}
+		log_debug(DEBUG_ALIASCLIENTS, "Client \"%s\" (%s) IS  managed by this alias-client, adding counts",
+		          getstr(client->namepos), getstr(client->ippos));
 
 		// Add counts of this client to the alias-client
 		aliasclient->count += client->count;
@@ -105,19 +102,20 @@ bool import_aliasclients(sqlite3 *db)
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
-		logg("import_aliasclients() - SQL error prepare: %s", sqlite3_errstr(rc));
+		log_err("import_aliasclients() - SQL error prepare: %s", sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
 		return false;
 	}
 
 	// Loop until no further data is available
 	int imported = 0;
+	const double now = double_time();
 	while((rc = sqlite3_step(stmt)) != SQLITE_DONE)
 	{
 		// Check if we ran into an error
 		if(rc != SQLITE_ROW)
 		{
-			logg("import_aliasclients() - SQL error step: %s", sqlite3_errstr(rc));
+			log_err("import_aliasclients() - SQL error step: %s", sqlite3_errstr(rc));
 			checkFTLDBrc(rc);
 			return false;
 		}
@@ -129,13 +127,13 @@ bool import_aliasclients(sqlite3 *db)
 		char *aliasclient_str = NULL;
 		if(asprintf(&aliasclient_str, "aliasclient-%i", aliasclient_id) < 10)
 		{
-			logg("Memory error in import_aliasclients()");
+			log_err("Memory error in import_aliasclients()");
 			checkFTLDBrc(rc);
 			return false;
 		}
 
 		// Try to open existing client
-		const int clientID = findClientID(aliasclient_str, false, true);
+		const int clientID = findClientID(aliasclient_str, false, true, now);
 
 		clientsData *client = getClient(clientID, true);
 		if(client == NULL)
@@ -159,10 +157,7 @@ bool import_aliasclients(sqlite3 *db)
 		client->aliasclient_id = aliasclient_id;
 
 		// Debug logging
-		if(config.debug & DEBUG_ALIASCLIENTS)
-		{
-			logg("Added alias-client \"%s\" (%s) with FTL ID %i", name, aliasclient_str, clientID);
-		}
+		log_debug(DEBUG_ALIASCLIENTS, "Added alias-client \"%s\" (%s) with FTL ID %i", name, aliasclient_str, clientID);
 
 		free(aliasclient_str);
 		imported++;
@@ -171,12 +166,12 @@ bool import_aliasclients(sqlite3 *db)
 	// Finalize statement
 	if ((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
 	{
-		logg("import_aliasclients() - SQL error finalize: %s", sqlite3_errstr(rc));
+		log_err("import_aliasclients() - SQL error finalize: %s", sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
 		return false;
 	}
 
-	logg("Imported %d alias-client%s", imported, (imported != 1) ? "s":"");
+	log_debug(DEBUG_ALIASCLIENTS, "Imported %d alias-client%s", imported, (imported != 1) ? "s":"");
 
 	return true;
 }
@@ -188,11 +183,7 @@ static int get_aliasclient_ID(sqlite3 *db, const clientsData *client)
 		return -1;
 
 	const char *clientIP = getstr(client->ippos);
-	if(config.debug & DEBUG_ALIASCLIENTS)
-	{
-		logg("   Looking for the alias-client for client %s...",
-		     clientIP);
-	}
+	log_debug(DEBUG_ALIASCLIENTS, "   Looking for the alias-client for client %s...", clientIP);
 
 	// Get aliasclient ID from database (DB index)
 	const int aliasclient_DBid = getAliasclientIDfromIP(db, clientIP);
@@ -205,27 +196,24 @@ static int get_aliasclient_ID(sqlite3 *db, const clientsData *client)
 		const clientsData *alias_client = getClient(aliasclientID, true);
 
 		// Skip clients that are not alias-clients
-		if(!alias_client->flags.aliasclient)
+		if(alias_client == NULL || !alias_client->flags.aliasclient)
 			continue;
 
 		// Compare MAC address of the current client to the
 		// alias client candidate's MAC address
 		if(alias_client->aliasclient_id == aliasclient_DBid)
 		{
-			if(config.debug & DEBUG_ALIASCLIENTS)
-			{
-				logg("   -> \"%s\" (%s)",
-				     getstr(alias_client->namepos),
-				     getstr(alias_client->ippos));
-			}
+			log_debug(DEBUG_ALIASCLIENTS, "   -> \"%s\" (%s)",
+			          getstr(alias_client->namepos),
+			          getstr(alias_client->ippos));
 
 			return aliasclientID;
 		}
 	}
 
-	if(config.debug & DEBUG_ALIASCLIENTS && aliasclientID == counters->clients)
+	if(aliasclientID == counters->clients)
 	{
-		logg("   -> not found");
+		log_debug(DEBUG_ALIASCLIENTS, "   -> not found");
 	}
 
 	// Not found
@@ -242,9 +230,9 @@ void reset_aliasclient(sqlite3 *db, clientsData *client)
 	bool db_opened = false;
 	if(db == NULL)
 	{
-		if((db = dbopen(false)) == NULL)
+		if((db = dbopen(false, false)) == NULL)
 		{
-			logg("reimport_aliasclients() - Failed to open DB");
+			log_warn("Failed to open database in reimport_aliasclients()");
 			return;
 		}
 
@@ -319,9 +307,9 @@ void reimport_aliasclients(sqlite3 *db)
 	bool db_opened = false;
 	if(db == NULL)
 	{
-		if((db = dbopen(false)) == NULL)
+		if((db = dbopen(false, false)) == NULL)
 		{
-			logg("reimport_aliasclients() - Failed to open DB");
+			log_warn("Failed to open database in reimport_aliasclients()");
 			return;
 		}
 

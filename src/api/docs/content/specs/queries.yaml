@@ -1,0 +1,320 @@
+openapi: 3.0.2
+components:
+  paths:
+    queries:
+      get:
+        summary: Get queries
+        tags:
+          - Metrics
+        operationId: "get_queries"
+        description: |
+          Request query details.
+          Query parameters may be used to limit the number of results.
+
+          By default, this API callback returns the most recent 100 queries.
+          This can be changed using the parameter `n`.
+
+          This callback allows for fine-grained filtering by various parameters.
+          All query parameters are all optional and can be combined in any way:
+
+          - Only show queries *from* a given timestamp on: Use parameter `from`
+          - Only show queries *until* a given timestamp: Use parameter `until`
+          - Only show queries sent to a specific upstream destination (may also be `cache` or `blocklist`): Use parameter `upstream`
+          - Only show queries for specific domains: Use parameter `domain`
+          - Only show queries for specific clients: Use parameter `client`
+
+          By default, the returned queries always start at the most recent query.
+          This can be changed by supplying the parameter `cursor`.
+          Each result of this API callback contains a `cursor` pointing the beginning of the next `n` queries chunk.
+          This provides a very fast and lightweight server-side pagination implementation.
+
+          If wildcards are supported for a parameter, you may specify `*` at any position in the parameter to match any number of characters.
+        parameters:
+          - in: query
+            name: from
+            description: Get queries from...
+            required: false
+            schema:
+              type: number
+          - in: query
+            name: until
+            description: Get queries until...
+            required: false
+            schema:
+              type: number
+          - in: query
+            name: length
+            description: Number of results to return
+            required: false
+            schema:
+              type: integer
+          - in: query
+            name: start
+            description: Offset from first record
+            required: false
+            schema:
+              type: integer
+          - in: query
+            name: cursor
+            description: |
+              Database ID of the most recent query to be shown
+            required: false
+            schema:
+              type: integer
+          - in: query
+            name: domain
+            description: Filter by specific domain (wildcards supported)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: client_ip
+            description: Filter by specific client IP address (wildcards supported)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: client_name
+            description: Filter by specific client hostname (wildcards supported)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: upstream
+            description: Filter by specific upstream (wildcards supported)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: type
+            description: Filter by specific query type (A, AAAA, ...)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: status
+            description: Filter by specific query status (GRAVITY, FORWARDED, ...)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: reply
+            description: Filter by specific reply type (NODATA, NXDOMAIN, ...)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: dnssec
+            description: Filter by specific DNSSEC status (SECURE, INSECURE, ...)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: disk
+            description: Load queries from on-disk database rather than from in-memory
+            required: false
+            schema:
+              enum:
+                - true
+                - false
+              default: false
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'queries.yaml#/components/schemas/queries'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+    suggestions:
+      get:
+        summary: Get query filter suggestions
+        tags:
+          - Metrics
+        operationId: "get_suggestions"
+        description: |
+          This endpoint provides suggestions for filters suitable to be used with /queries
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'queries.yaml#/components/schemas/suggestions'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+  schemas:
+    queries:
+      type: object
+      properties:
+        queries:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                description: Query ID in the long-term database
+              time:
+                type: number
+                description: Timestamp
+              type:
+                type: string
+                description: Query type
+              domain:
+                type: string
+                description: Queried domain
+              cname:
+                type: string
+                description: Domain blocked during deep CNAME inspection
+                nullable: true
+              status:
+                type: string
+                description: Query status
+                nullable: true
+              client:
+                type: object
+                properties:
+                  ip:
+                    type: string
+                    description: Requesting client's IP address
+                  name:
+                    type: string
+                    description: Requesting client's hostname (if available)
+                    nullable: true
+              dnssec:
+                type: string
+                description: DNSSEC status
+                nullable: true
+              reply:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    description: Reply type
+                    nullable: true
+                  time:
+                    type: number
+                    description: Time until the response was received (ms, negative if N/A)
+              list_id:
+                type: integer
+                description: ID of corresponding database table (adlist for anti-/gravity, else domainlist) (`NULL` if N/A)
+                nullable: true
+              upstream:
+                type: string
+                description: IP or name + port of upstream server
+                nullable: true
+          example:
+            - time: 1581907991.539157
+              type: "A"
+              domain: "community.stoplight.io"
+              cname: null
+              status: "FORWARDED"
+              client:
+                ip: "192.168.0.14"
+                name: "desktop.lan"
+              dnssec: "INSECURE"
+              reply:
+                type: "IP"
+                time: 19
+              list_id: NULL
+              upstream: "localhost#5353"
+              dbid: 112421354
+            - time: 1581907871.583821
+              type: "AAAA"
+              domain: "api.github.com"
+              cname: null
+              status: "FORWARDED"
+              client:
+                ip: "127.0.0.1"
+                name: "localhost"
+              dnssec: "UNKNOWN"
+              reply:
+                type: "IP"
+                time: 12.3
+              list_id: NULL
+              upstream: "localhost#5353"
+              dbid: 112421355
+        cursor:
+          type: integer
+          description: Database ID of most recent query to show
+          example: 175881
+        recordsTotal:
+          type: integer
+          description: Total number of available queries
+          example: 1234
+        recordsFiltered:
+          type: integer
+          description: Number of available queries after filtering
+          example: 1234
+        draw:
+          type: integer
+          description: DataTables-specific integer (echos input value)
+          example: 1
+    suggestions:
+      type: object
+      properties:
+        suggestions:
+          type: object
+          properties:
+            domain:
+              type: array
+              description: Array of suggested domains
+              items:
+                type: string
+              example: ["pi-hole.net","amazon.com"]
+            client_ip:
+              type: array
+              description: Array of suggested client IP addresses
+              items:
+                type: string
+            client_name:
+              type: array
+              description: Array of suggested client names
+              items:
+                type: string
+            upstream:
+              type: array
+              description: Array of suggested upstreams
+              items:
+                type: string
+            type:
+              type: array
+              description: Array of suggested query types
+              items:
+                type: string
+            status:
+              type: array
+              description: Array of suggested query statuses
+              items:
+                type: string
+            reply:
+              type: array
+              description: Array of suggested query replies
+              items:
+                type: string
+            dnssec:
+              type: array
+              description: Array of suggested DNSSEC statuses
+              items:
+                type: string

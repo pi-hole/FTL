@@ -8,9 +8,9 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 //#include "syscalls.h" is implicitly done in FTL.h
-#include "../log.h"
+#include "log.h"
 
 #undef calloc
 void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(const size_t nmemb, const size_t size, const char *file, const char *func, const int line)
@@ -35,8 +35,8 @@ void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(const s
 
 	// Handle other errors than EINTR
 	if(ptr == NULL)
-		logg("FATAL: Memory allocation (%zu x %zu) failed in %s() (%s:%i)",
-		     nmemb, size, func, file, line);
+		log_err("Memory allocation (%zu x %zu) failed in %s() (%s:%i)",
+		        nmemb, size, func, file, line);
 
 	// Restore errno value
 	errno = _errno;

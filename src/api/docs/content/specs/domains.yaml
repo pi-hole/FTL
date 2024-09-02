@@ -1,0 +1,545 @@
+openapi: 3.0.2
+components:
+  paths:
+    type_kind_domain:
+      summary: Modify domains and regular expressions
+      parameters:
+        - $ref: 'domains.yaml#/components/parameters/type'
+        - $ref: 'domains.yaml#/components/parameters/kind'
+        - $ref: 'domains.yaml#/components/parameters/domain'
+      get:
+        summary: Get domain
+        tags:
+          - "Domain management"
+        operationId: "get_domains"
+        description: |
+          `{type}`, `{kind}`, and `{domain}` are optional. Specifying any of these may result in only a subset of the available data being returned.
+
+          Valid combinations are:
+          - `/api/domains` (all domains)
+          - `/api/domains/abc.com` (all domains identical to `abc.com`)
+          - `/api/domains/allow` (only allowed domains)
+          - `/api/domains/allow/abc.com` (only allowed domains identical to `abc.com`)
+          - `/api/domains/allow/exact` (only exactly allowed domains)
+          - `/api/domains/allow/exact/abc.com` (only exactly allowed domain identical to `abc.com`)
+          - `/api/domains/allow/regex` (only allowed regex domains)
+          - `/api/domains/allow/regex/abc.com` (only allowed regex domains identical to `abc.com`)
+          - `/api/domains/deny` (only denied domains)
+          - `/api/domains/deny/abc.com` (only denied domains identical to `abc.com`)
+          - `/api/domains/deny/exact` (only exactly denied domains)
+          - `/api/domains/deny/exact/abc.com` (only exactly denied domain identical to `abc.com`)
+          - `/api/domains/deny/regex` (only denied regex domains)
+          - `/api/domains/deny/regex/abc.com` (only denied regex domains identical to `abc.com`)
+          - `/api/domains/exact` (allowed and denied exact domains)
+          - `/api/domains/exact/abc.com` (allowed and denied exact domains identical to `abc.com`)
+          - `/api/domains/regex` (allowed and denied regex domains)
+          - `/api/domains/regex/abc.com` (allowed and denied regex domains identical to `abc.com`)
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'domains.yaml#/components/schemas/domains/get'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  domains:
+                    $ref: 'domains.yaml#/components/examples/domains'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      put:
+        summary: Replace domain
+        tags:
+          - "Domain management"
+        operationId: "replace_domain"
+        description: |
+          Items may be updated by replacing them. `{type}`, `{kind}`, and `{domain}` are required.
+
+          Ensure to send all the required parameters (such as `comment`) to ensure these properties are retained.
+          The read-only fields `id` and `date_added` are preserved, `date_modified` is automatically updated on success.
+
+          You can move existing domains to another list type/kind by `PUT`ting the domain to the new destination by specifying the optional fields `type` and `kind`.
+          Example:
+          Use `PUT allow/exact/abc.com` with `type="deny", kind="exact"` to change `abc.com` from exact denied to exact allowed. Make sure to always specify *both* values.
+
+          When adding/replacing a regular expression, ensure that `{domain}` is properly URI-escaped.
+        requestBody:
+          description: Callback payload
+          content:
+            'application/json':
+              schema:
+                allOf:
+                  - $ref: 'domains.yaml#/components/schemas/domains/put'
+                  - $ref: 'common.yaml#/components/schemas/took'
+        responses:
+          '201':
+            description: Created domain
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'domains.yaml#/components/schemas/domains/get' # identical to GET
+                    - $ref: 'domains.yaml#/components/schemas/lists_processed'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  domains:
+                    $ref: 'domains.yaml#/components/examples/domains'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  list_imprecise:
+                    $ref: 'domains.yaml#/components/examples/errors/uri_error/list_imprecise'
+                  item_missing:
+                    $ref: 'domains.yaml#/components/examples/errors/uri_error/item_missing'
+                  no_payload:
+                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
+                  duplicate:
+                    $ref: 'domains.yaml#/components/examples/errors/database_error/duplicate'
+                  invalid_regex:
+                    $ref: 'domains.yaml#/components/examples/errors/regex_error/invalid_regex'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      delete:
+        summary: Delete domain
+        tags:
+          - "Domain management"
+        operationId: "delete_domain"
+        description: |
+          *Note:* There will be no content on success.
+        responses:
+          '204':
+            description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  list_imprecise:
+                    $ref: 'domains.yaml#/components/examples/errors/uri_error/list_imprecise'
+                  item_missing:
+                    $ref: 'domains.yaml#/components/examples/errors/uri_error/item_missing'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    type_kind:
+      parameters:
+        - $ref: 'domains.yaml#/components/parameters/type'
+        - $ref: 'domains.yaml#/components/parameters/kind'
+      post:
+        summary: Add new domain
+        tags:
+          - "Domain management"
+        operationId: "add_domain"
+        description: |
+          Creates a new domain in the `domains` object. This may be either an exact domain or a regex, depending on `{kind}`.
+          Both `{type}` and `{kind}` are mandatory for this endpoint.
+          The `{domain}` itself is specified in the request body (POST JSON).
+
+          On success, a new resource is created at `/domains/{type}/{kind}/{domain}`.
+
+          The `database_error` with message `UNIQUE constraint failed` error indicates that the same entry (`domain`, `type`, `kind`) already exists.
+
+          When adding a regular expression, ensure the request body is properly JSON-escaped.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                $ref: 'domains.yaml#/components/schemas/domains/post'
+        responses:
+          '201':
+            description: Created domain
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'domains.yaml#/components/schemas/domains/get' # identical to GET
+                    - $ref: 'domains.yaml#/components/schemas/lists_processed'
+                    - $ref: 'common.yaml#/components/schemas/took'
+            headers:
+              Location:
+                $ref: 'common.yaml#/components/headers/Location'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  list_imprecise:
+                    $ref: 'domains.yaml#/components/examples/errors/uri_error/list_imprecise'
+                  no_payload:
+                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
+                  duplicate:
+                    $ref: 'domains.yaml#/components/examples/errors/database_error/duplicate'
+                  invalid_regex:
+                    $ref: 'domains.yaml#/components/examples/errors/regex_error/invalid_regex'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    batchDelete:
+      summary: Delete multiple domains
+      post:
+        summary: Delete multiple domains
+        tags:
+          - "Domain management"
+        operationId: "batchDelete_domains"
+        description: |
+          *Note:* There will be no content on success.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    item:
+                      type: string
+                      description: Domain to delete
+                      example: "example.com"
+                    type:
+                      type: string
+                      description: Type of domain to delete
+                      enum:
+                        - "allow"
+                        - "deny"
+                      example: "allow"
+                    kind:
+                      type: string
+                      description: Kind of domain to delete
+                      enum:
+                        - "exact"
+                        - "regex"
+                      example: "exact"
+        responses:
+          '204':
+            description: Items deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+  schemas:
+    domains:
+      get:
+        type: object
+        properties:
+          domains:
+            type: array
+            description: Array of domains
+            items:
+              allOf:
+                - $ref: 'domains.yaml#/components/schemas/domain_object'
+                - $ref: 'domains.yaml#/components/schemas/unicode'
+                - $ref: 'domains.yaml#/components/schemas/type'
+                - $ref: 'domains.yaml#/components/schemas/kind'
+                - $ref: 'domains.yaml#/components/schemas/comment'
+                - $ref: 'domains.yaml#/components/schemas/groups'
+                - $ref: 'domains.yaml#/components/schemas/enabled'
+                - $ref: 'domains.yaml#/components/schemas/readonly'
+      put:
+        allOf:
+          - $ref: 'domains.yaml#/components/schemas/type'
+          - $ref: 'domains.yaml#/components/schemas/kind'
+          - $ref: 'domains.yaml#/components/schemas/comment'
+          - $ref: 'domains.yaml#/components/schemas/groups'
+          - $ref: 'domains.yaml#/components/schemas/enabled'
+      post:
+        allOf:
+          - $ref: 'domains.yaml#/components/schemas/domain_maybe_array'
+          - $ref: 'domains.yaml#/components/schemas/comment'
+          - $ref: 'domains.yaml#/components/schemas/groups'
+          - $ref: 'domains.yaml#/components/schemas/enabled'
+    domain:
+      description: Domain
+      type: string
+      example: testdomain.com
+    unicode:
+      type: object
+      properties:
+        unicode:
+          description: Unicode domain (may be different from `domain` if punycode-encoding is used)
+          type: string
+          example: "äbc.com"
+    domain_array:
+      description: array of domains
+      type: array
+      items:
+        type: string
+      example: ["testdomain.com", "otherdomain.de"]
+    domain_maybe_array:
+      type: object
+      properties:
+        domain:
+          oneOf:
+            - $ref: 'domains.yaml#/components/schemas/domain'
+            - $ref: 'domains.yaml#/components/schemas/domain_array'
+    domain_object:
+      type: object
+      properties:
+        domain:
+          $ref: 'domains.yaml#/components/schemas/domain'
+    type:
+      type: object
+      properties:
+        type:
+          description: String specifying domain type
+          type: string
+          enum:
+            - "allow"
+            - "deny"
+          example: "allow"
+    kind:
+      type: object
+      properties:
+        kind:
+          description: String specifying domain kind
+          type: string
+          enum:
+            - "exact"
+            - "regex"
+          example: "exact"
+    comment:
+      type: object
+      properties:
+        comment:
+          description: User-provided free-text comment for this domain
+          type: string
+          nullable: true
+          default: null
+          example: Some comment describing this domain
+    groups:
+      type: object
+      properties:
+        groups:
+          description: Array of group IDs
+          type: array
+          items:
+            type: integer
+    enabled:
+      type: object
+      properties:
+        enabled:
+          description: Status of domain
+          type: boolean
+          default: true
+    readonly:
+      type: object
+      properties:
+        id:
+          description: Database ID
+          type: integer
+          readOnly: true
+        date_added:
+          description: Unix timestamp of domain addition
+          type: integer
+          readOnly: true
+        date_modified:
+          description: Unix timestamp of last domain modification
+          type: integer
+          readOnly: true
+    lists_processed:
+      type: object
+      properties:
+        processed:
+          type: object
+          nullable: true
+          description: |
+            Object containing the number of domains that were successfully
+            added to the database and the number of domains that could not be
+            added to the database.
+          properties:
+            success:
+              description: |
+                Array of domains that were successfully added to the database.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Domain that was added to the database
+                    type: string
+            errors:
+              description: |
+                Array of errors that occurred during processing.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Domain that could not be added to the database
+                    type: string
+                  error:
+                    description: Error message
+                    type: string
+          example:
+            success:
+              - item: "example.com"
+              - item: "example3.com"
+            errors:
+              - item: "example2.com"
+                error: "UNIQUE constraint failed: domainlist.domain"
+  examples:
+    domains:
+      summary: Example domains
+      value:
+        domains:
+          - domain: "allowed.com"
+            unicode: "allowed.com"
+            type: allow
+            kind: exact
+            comment: null
+            groups:
+              - 0
+            enabled: true
+            id: 299
+            date_added: 1611239095
+            date_modified: 1612163756
+          - domain: "xn--4ca.com"
+            unicode: "ä.com"
+            type: allow
+            kind: regex
+            comment: "Some text"
+            groups:
+              - 0
+            enabled: true
+            id: 305
+            date_added: 1611240635
+            date_modified: 1611241276
+        took: 0.012
+        processed: null
+    errors:
+      uri_error:
+        list_imprecise:
+          summary: List not specified precisely enough
+          value:
+            error:
+              key: "uri_error"
+              message: "Invalid request: Specify list to modify more precisely"
+              hint: null
+        item_missing:
+          summary: Domain to be modified is missing
+          value:
+            error:
+              key: "uri_error"
+              message: "Invalid request: Specify item in URI"
+              hint: null
+      bad_request:
+        no_payload:
+          summary: No JSON payload found
+          value:
+            error:
+              key: "bad_request"
+              message: "Invalid request body data (no valid JSON)"
+              hint: null
+      database_error:
+        duplicate:
+          summary: Database error
+          value:
+            error:
+              key: "database_error"
+              message: "Could not add to gravity database"
+              hint: "UNIQUE constraint failed: domainlist.domain, domainlist.type"
+      regex_error:
+        invalid_regex:
+          summary: Invalid regex rejected
+          value:
+            error:
+              key: "regex_error"
+              message: "Regex validation failed"
+              hint: "Missing ']'"
+
+  parameters:
+    type:
+      in: path
+      name: type
+      description: Type (allowed or denied domain)
+      schema:
+        type: string
+        enum:
+          - allow
+          - deny
+      required: true
+      example: allow
+    kind:
+      in: path
+      name: kind
+      description: Kind (exact domain or regular expression)
+      schema:
+        type: string
+        enum:
+          - exact
+          - regex
+      required: true
+      example: exact
+    domain:
+      in: path
+      name: domain
+      description: Domain
+      schema:
+        type: string
+      required: true
+      example: testdomain.com

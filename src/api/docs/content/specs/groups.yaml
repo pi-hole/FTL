@@ -1,0 +1,408 @@
+openapi: 3.0.2
+components:
+  paths:
+    name:
+      summary: Modify group
+      parameters:
+        - $ref: 'groups.yaml#/components/parameters/name'
+      get:
+        summary: Get groups
+        tags:
+          - "Group management"
+        operationId: "get_groups"
+        description: |
+          `{name}` is optional. Specifying it will result in only the requested group being returned.
+
+          Valid combinations are:
+          - `/api/groups` (all groups)
+          - `/api/groups/my_group` (group identical to `my_group`)
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'groups.yaml#/components/schemas/groups/get'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  groups:
+                    $ref: 'groups.yaml#/components/examples/groups'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      put:
+        summary: Replace group
+        tags:
+          - "Group management"
+        operationId: "replace_group"
+        description: |
+          Items may be updated by replacing them. `{name}` is required.
+
+          Ensure to send all the required parameters (such as `comment`) to ensure these properties are retained.
+          By specifying a different `name`, the group with the former name as specified in the URI will be renamed.
+          The read-only fields `id` and `date_added` are preserved, `date_modified` is automatically updated on success.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                $ref: 'groups.yaml#/components/schemas/groups/put'
+        responses:
+          '201':
+            description: Created item
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'groups.yaml#/components/schemas/groups/get' # identical to GET
+                    - $ref: 'groups.yaml#/components/schemas/lists_processed'
+                    - $ref: 'common.yaml#/components/schemas/took'
+            headers:
+              Location:
+                $ref: 'common.yaml#/components/headers/Location'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  item_missing:
+                    $ref: 'groups.yaml#/components/examples/errors/uri_error/item_missing'
+                  no_payload:
+                    $ref: 'groups.yaml#/components/examples/errors/bad_request/no_payload'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      delete:
+        summary: Delete group
+        tags:
+          - "Group management"
+        operationId: "delete_group"
+        description: |
+          *Note:* There will be no content on success.
+        responses:
+          '204':
+            description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  item_missing:
+                    $ref: 'groups.yaml#/components/examples/errors/uri_error/item_missing'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    direct:
+      post:
+        summary: Add new group
+        tags:
+          - "Group management"
+        operationId: "add_group"
+        description: |
+          Creates a new group in the `groups` object. The `{group}` itself is specified in the request body (POST JSON).
+
+          On success, a new resource is created at `/groups/{name}`.
+
+          The `database_error` with message `UNIQUE constraint failed` error indicates that a group with the same name already exists.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+                schema:
+                  $ref: 'groups.yaml#/components/schemas/groups/post'
+        responses:
+          '201':
+            description: Created item
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'groups.yaml#/components/schemas/groups/get' # identical to GET
+                    - $ref: 'groups.yaml#/components/schemas/lists_processed'
+                    - $ref: 'common.yaml#/components/schemas/took'
+            headers:
+              Location:
+                $ref: 'common.yaml#/components/headers/Location'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'groups.yaml#/components/examples/errors/bad_request/no_payload'
+                  duplicate:
+                    $ref: 'groups.yaml#/components/examples/errors/database_error/duplicate'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    batchDelete:
+      post:
+        summary: Delete multiple groups
+        tags:
+          - "Group management"
+        operationId: "batchDelete_groups"
+        description: |
+          Deletes multiple groups in the `groups` object. The `{groups}` themselves are specified in the request body (POST JSON).
+
+          On success, a new resource is created at `/groups/{name}`.
+
+          The `database_error` with message `UNIQUE constraint failed` error indicates that a group with the same name already exists.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    item:
+                      type: string
+                      description: group name
+                example:
+                  - "item": "test1"
+                  - "item": "test2"
+        responses:
+          '204':
+            description: Items deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'groups.yaml#/components/examples/errors/bad_request/no_payload'
+                  duplicate:
+                    $ref: 'groups.yaml#/components/examples/errors/database_error/duplicate'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+  schemas:
+    groups:
+      get:
+        type: object
+        properties:
+          groups:
+            type: array
+            items:
+              allOf:
+                - $ref: 'groups.yaml#/components/schemas/name_object'
+                - $ref: 'groups.yaml#/components/schemas/comment'
+                - $ref: 'groups.yaml#/components/schemas/enabled'
+                - $ref: 'groups.yaml#/components/schemas/readonly'
+      put:
+        allOf:
+          # Can rename group
+          - $ref: 'groups.yaml#/components/schemas/name_object'
+          - $ref: 'groups.yaml#/components/schemas/comment'
+          - $ref: 'groups.yaml#/components/schemas/enabled'
+      post:
+        allOf:
+          - $ref: 'groups.yaml#/components/schemas/name_maybe_array'
+          - $ref: 'groups.yaml#/components/schemas/comment'
+          - $ref: 'groups.yaml#/components/schemas/enabled'
+    name:
+      description: Group name
+      type: string
+      example: test_group
+    name_array:
+      description: array of group names
+      type: array
+      items:
+        type: string
+      example: ["test1", "test2", "test3"]
+    name_maybe_array:
+      type: object
+      properties:
+        name:
+          oneOf:
+            - $ref: 'groups.yaml#/components/schemas/name'
+            - $ref: 'groups.yaml#/components/schemas/name_array'
+    name_object:
+      type: object
+      properties:
+        name:
+          $ref: 'groups.yaml#/components/schemas/name'
+    comment:
+      type: object
+      properties:
+        comment:
+          description: User-provided free-text comment for this group
+          type: string
+          nullable: true
+          default: null
+          example: Some comment for this group
+    enabled:
+      type: object
+      properties:
+        enabled:
+          description: Status of item
+          type: boolean
+          default: true
+          example: true
+    readonly:
+      type: object
+      properties:
+        id:
+          description: Database ID
+          type: integer
+          readOnly: true
+          example: 1
+        date_added:
+          description: Unix timestamp of item addition
+          type: integer
+          readOnly: true
+          example: 1611239095
+        date_modified:
+          description: Unix timestamp of last item modification
+          type: integer
+          readOnly: true
+          example: 1611239099
+    lists_processed:
+      type: object
+      properties:
+        processed:
+          type: object
+          nullable: true
+          description: |
+            Object containing the number of groups that were successfully
+            added to the database and the number of groups that could not be
+            added to the database.
+          properties:
+            success:
+              description: |
+                Array of groups that were successfully added to the database.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Group that was added to the database
+                    type: string
+            errors:
+              description: |
+                Array of errors that occurred during processing.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Group that could not be added to the database
+                    type: string
+                  error:
+                    description: Error message
+                    type: string
+          example:
+            success:
+              - item: "Home-Automation"
+              - item: "Children"
+            errors:
+              - item: "Garden"
+                error: "UNIQUE constraint failed: group.name"
+  examples:
+    groups:
+      value:
+        groups:
+          - name: "Default"
+            comment: "The default group"
+            enabled: true
+            id: 0
+            date_added: 1594670974
+            date_modified: 1611157897
+          - name: "a"
+            comment: null
+            enabled: true
+            id: 5
+            date_added: 1604871899
+            date_modified: 1604871899
+        took: 0.003
+        processed: null
+    errors:
+      uri_error:
+        item_missing:
+          summary: Group to be modified is missing
+          value:
+            error:
+              key: "uri_error"
+              message: "Invalid request: Specify item in URI"
+              hint: null
+      bad_request:
+        no_payload:
+          summary: No JSON payload found
+          value:
+            error:
+              key: "bad_request"
+              message: "Invalid request body data (no valid JSON)"
+              hint: null
+      database_error:
+        duplicate:
+          summary: Database error
+          value:
+            error:
+              key: "database_error"
+              message: "Could not add to gravity database"
+              hint: "UNIQUE constraint failed: grouplist.group"
+
+  parameters:
+    name:
+      in: path
+      name: name
+      schema:
+        type: string
+      required: true
+      description: Group name
+      example: test_group

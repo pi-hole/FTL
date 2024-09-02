@@ -15,7 +15,7 @@
 */
 
 #include "dnsmasq.h"
-#include "../log.h"
+#include "log.h"
 
 #ifdef HAVE_SCRIPT
 
@@ -99,7 +99,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
     }
 
   /**** Pi-hole modification ****/
-  logg("Started script helper");
+  log_info("Started script helper");
   /******************************/
 
   /* ignore SIGTERM and SIGINT, so that we can clean up when the main process gets hit

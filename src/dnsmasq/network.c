@@ -15,8 +15,8 @@
 */
 
 #include "dnsmasq.h"
-#include "../dnsmasq_interface.h"
-#include "../log.h"
+#include "dnsmasq_interface.h"
+#include "log.h"
 
 #ifdef HAVE_LINUX_NETWORK
 
@@ -713,7 +713,8 @@ static int release_listener(struct listener *l)
       /* In case it ever returns */
       l->iface->done = 0;
       // Pi-hole modification
-      logg("stopped listening on %s(#%d): %s port %d", l->iface->name, l->iface->index, daemon->addrbuff, port);
+      log_info("stopped listening on %s(#%d): %s port %d",
+	   l->iface->name, l->iface->index, daemon->addrbuff, port);
     }
 
   if (l->fd != -1)
@@ -1140,7 +1141,7 @@ static struct listener *create_listeners(union mysockaddr *addr, int do_tftp, in
 
     // Pi-hole modification
     const int port = prettyprint_addr(addr, daemon->addrbuff);
-    logg("listening on %s port %d", daemon->addrbuff, port);
+    log_info("listening on %s port %d", daemon->addrbuff, port);
 
   return l;
 }
@@ -1220,7 +1221,7 @@ void create_bound_listeners(int dienow)
 	      }
 	    // Pi-hole modification
 	    const int port = prettyprint_addr(&iface->addr, daemon->addrbuff);
-	    logg("listening on %s(#%d): %s port %d",
+	    log_info("listening on %s(#%d): %s port %d",
 		     iface->name, iface->index, daemon->addrbuff, port);
 	  }
       }
@@ -1250,7 +1251,7 @@ void create_bound_listeners(int dienow)
 	  }
 	// Pi-hole modification
 	const int port = prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
-	logg("listening on %s port %d", daemon->addrbuff, port);
+	log_info("listening on %s port %d", daemon->addrbuff, port);
       }
 }
 
@@ -1860,3 +1861,46 @@ void newaddress(time_t now)
     relay->iface_index = 0;
 #endif
 }
+
+
+static int callback_v4(struct in_addr local, int if_index, char *label,
+			    struct in_addr netmask, struct in_addr broadcast, void *vparam)
+			    {
+            log_info("callback_v4");
+            // Log the interface information
+            log_info("Interface: %s", label);
+            log_info("IP Address: %s", inet_ntoa(local));
+            log_info("Netmask: %s", inet_ntoa(netmask));
+            log_info("Broadcast: %s", inet_ntoa(broadcast));
+            log_info("Interface Index: %d", if_index);
+				return 1;
+			    }
+
+
+static int callback_v6(struct in6_addr *local, int prefix, 
+			    int scope, int if_index, int flags, 
+			    int preferred, int valid, void *vparam)
+			    {
+            log_info("callback_v6");
+            // Log the interface information
+            char ip[INET6_ADDRSTRLEN];
+            inet_ntop(AF_INET6, local, ip, INET6_ADDRSTRLEN);
+            log_info("IP Address: %s", ip);
+            log_info("Prefix: %d", prefix);
+            log_info("Scope: %d", scope);
+            log_info("Interface Index: %d", if_index);
+            log_info("Flags: %d", flags);
+            log_info("Preferred: %d", preferred);
+            log_info("Valid: %d", valid);
+				return 1;
+			    }
+
+extern int iface_enumerate(int family, void *parm, int (*callback)());
+void test_enumerate(void)
+{
+  log_info("test_enumerate 4");
+	iface_enumerate(AF_INET, NULL, callback_v4);
+  log_info("test_enumerate 6");
+	iface_enumerate(AF_INET6, NULL, callback_v6);
+  log_info("test_enumerate done");
+};

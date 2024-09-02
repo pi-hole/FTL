@@ -39,8 +39,6 @@
 #include <syslog.h>
 // tolower()
 #include <ctype.h>
-// Unix socket
-#include <sys/un.h>
 // Interfaces
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -49,6 +47,10 @@
 #define MAX(x,y) (((x) > (y)) ? (x) : (y))
 // MIN(x,y) is already defined in dnsmasq.h
 
+// Number of elements in an array
+#define ArraySize(X) (sizeof(X)/sizeof(*X))
+
+// Constant socket buffer length
 #define SOCKETBUFFERLEN 1024
 
 // How often do we garbage collect (to ensure we only have data fitting to the MAXLOGAGE defined above)? [seconds]
@@ -56,7 +58,7 @@
 #define GCinterval 600
 
 // Delay applied to the garbage collecting [seconds]
-// Default: -60 (one minute before a full hour)
+// Default: -60 (one minute before the end of the interval set above)
 #define GCdelay (-60)
 
 // How many client connection do we accept at once?
@@ -102,6 +104,10 @@
 // Default: 1000 (one second)
 #define DATABASE_BUSY_TIMEOUT 1000
 
+// After how much time does a valid API session expire? [seconds]
+// Default: 300 (five minutes)
+#define API_SESSION_EXPIRE 300u
+
 // After how many seconds do we check again if a client can be identified by other means?
 // (e.g., interface, MAC address, hostname)
 // Default: 60 (after one minutee)
@@ -118,12 +124,31 @@
 // Default: 180 [seconds]
 #define DELAY_UPTIME 180
 
+// REPLY_TIMEOUT defines until how far back in the history of queries we are
+// checking for changed/updated queries. This value should not be set too high
+// to avoid unnecessary spinning in the updating loop of the queries running
+// every second. The value should be set to a value that is high enough to
+// catch all queries that are still in the process of being resolved.
+// Default: 30 [seconds]
+#define REPLY_TIMEOUT 30
+
+// Special exit code used to signal that FTL wants to restart
+#define RESTART_FTL_CODE 22
+
+// How often should the database be analyzed?
+// Default: 604800 (once per week)
+#define DATABASE_ANALYZE_INTERVAL 604800
+
+// How often should we update client vendor's from the MAC vendor database?
+// Default: 2592000 (once per month)
+#define DATABASE_MACVENDOR_INTERVAL 2592000
+
 // Use out own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crash
 // caused by insufficient memory or by code bugs (not properly dealing
 // with NULL pointers) much easier.
 #undef strdup // strdup() is a macro in itself, it needs special handling
-#define free(ptr) FTLfree(ptr, __FILE__,  __FUNCTION__,  __LINE__)
+#define free(ptr) FTLfree((void**)&ptr, __FILE__,  __FUNCTION__,  __LINE__)
 #define strdup(str_in) FTLstrdup(str_in, __FILE__,  __FUNCTION__,  __LINE__)
 #define calloc(numer_of_elements, element_size) FTLcalloc(numer_of_elements, element_size, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(ptr, new_size) FTLrealloc(ptr, new_size, __FILE__,  __FUNCTION__,  __LINE__)
@@ -146,10 +171,32 @@
 #define pthread_mutex_lock(mutex) FTLpthread_mutex_lock(mutex, __FILE__,  __FUNCTION__,  __LINE__)
 #define fopen(pathname, mode) FTLfopen(pathname, mode, __FILE__,  __FUNCTION__,  __LINE__)
 #define ftlallocate(fd, offset, len) FTLfallocate(fd, offset, len, __FILE__,  __FUNCTION__,  __LINE__)
+#define strlen(str) FTLstrlen(str, __FILE__,  __FUNCTION__,  __LINE__)
+#define strnlen(str, maxlen) FTLstrnlen(str, maxlen, __FILE__,  __FUNCTION__,  __LINE__)
+#define strcpy(dest, src) FTLstrcpy(dest, src, __FILE__,  __FUNCTION__,  __LINE__)
+#define strncpy(dest, src, n) FTLstrncpy(dest, src, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define memset(s, c, n) FTLmemset(s, c, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define memcpy(dest, src, n) FTLmemcpy(dest, src, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define memmove(dest, src, n) FTLmemmove(dest, src, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define strstr(haystack, needle) FTLstrstr(haystack, needle, __FILE__,  __FUNCTION__,  __LINE__)
+#define strcmp(s1, s2) FTLstrcmp(s1, s2, __FILE__,  __FUNCTION__,  __LINE__)
+#define strncmp(s1, s2, n) FTLstrncmp(s1, s2, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define strcasecmp(s1, s2) FTLstrcasecmp(s1, s2, __FILE__,  __FUNCTION__,  __LINE__)
+#define strncasecmp(s1, s2, n) FTLstrncasecmp(s1, s2, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define strcat(dest, src) FTLstrcat(dest, src, __FILE__,  __FUNCTION__,  __LINE__)
+#define strncat(dest, src, n) FTLstrncat(dest, src, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define memcmp(s1, s2, n) FTLmemcmp(s1, s2, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define memmem(haystack, haystacklen, needle, needlelen) FTLmemmem(haystack, haystacklen, needle, needlelen, __FILE__,  __FUNCTION__,  __LINE__)
 #include "syscalls/syscalls.h"
 
 // Preprocessor help functions
-#define str(x) # x
+#define str(x) #x
 #define xstr(x) str(x)
+
+// Intentionally ignore result of function declared warn_unused_result
+#define igr(x) {__typeof__(x) __attribute__((unused)) d=(x);}
+
+#define max(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a > _b ? _a : _b; })
+#define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
 #endif // FTL_H
