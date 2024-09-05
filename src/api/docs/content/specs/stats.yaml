@@ -338,6 +338,10 @@ components:
               type: integer
               description: Number of queries replied to from cache or local configuration
               example: 9765
+            frequency:
+              type: number
+              description: Average number of queries per second
+              example: 1.1
             types:
               type: object
               description: Number of individual queries

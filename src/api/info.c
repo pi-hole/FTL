@@ -548,6 +548,7 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	const int db_denied = counters->database.domains.denied;
 	const int clients_total = counters->clients;
 	const int privacylevel = config.misc.privacylevel.v.privacy_level;
+	const double qps = get_qps();
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int activeclients = 0;
@@ -575,6 +576,7 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	JSON_ADD_ITEM_TO_OBJECT(ftl, "database", database);
 
 	JSON_ADD_NUMBER_TO_OBJECT(ftl, "privacy_level", privacylevel);
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "query_frequency", qps);
 
 	cJSON *clients = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(clients, "total",clients_total);
