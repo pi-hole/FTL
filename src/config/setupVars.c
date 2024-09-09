@@ -591,20 +591,12 @@ void importsetupVarsConf(void)
 	// Ports may be temporarily stored when importing a legacy Teleporter v5 file
 	get_conf_string_from_setupVars("WEB_PORTS", &config.webserver.port);
 
-	// Move the setupVars.conf file to setupVars.conf.old
-	char *old_setupVars = calloc(strlen(config.files.setupVars.v.s) + 5, sizeof(char));
-	if(old_setupVars == NULL)
-	{
-		log_warn("Could not allocate memory for old_setupVars");
-		return;
-	}
-	strcpy(old_setupVars, config.files.setupVars.v.s);
-	strcat(old_setupVars, ".old");
-	if(rename(config.files.setupVars.v.s, old_setupVars) != 0)
-		log_warn("Could not move %s to %s", config.files.setupVars.v.s, old_setupVars);
+	// Move the setupVars.conf file to the migration directory
+	const char *setupVars_target = "/etc/pihole/migration_backup_v6/setupVars.conf";
+	if(rename(config.files.setupVars.v.s, setupVars_target) != 0)
+		log_warn("Could not move %s to %s", config.files.setupVars.v.s, setupVars_target);
 	else
-		log_info("Moved %s to %s", config.files.setupVars.v.s, old_setupVars);
-	free(old_setupVars);
+		log_info("Moved %s to %s", config.files.setupVars.v.s, setupVars_target);
 
 	log_info("Migration complete");
 }

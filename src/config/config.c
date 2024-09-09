@@ -1627,7 +1627,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	const char *path = "";
 	if((path = readFTLlegacy(conf)) != NULL)
 	{
-		const char *target = "/etc/pihole/pihole-FTL.conf.bck";
+		const char *target = "/etc/pihole/migration_backup_v6/pihole-FTL.conf";
 		log_info("Moving %s to %s", path, target);
 		if(rename(path, target) != 0)
 			log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));

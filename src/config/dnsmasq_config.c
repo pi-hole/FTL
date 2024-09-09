@@ -917,7 +917,7 @@ bool read_legacy_custom_hosts_config(void)
 {
 	// Check if file exists, if not, there is nothing to do
 	const char *path = DNSMASQ_CUSTOM_LIST_LEGACY;
-	const char *target = DNSMASQ_CUSTOM_LIST_LEGACY".bck";
+	const char *target = DNSMASQ_CUSTOM_LIST_LEGACY_TARGET;
 	if(!file_exists(path))
 		return true;
 
