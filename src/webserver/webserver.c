@@ -303,6 +303,7 @@ unsigned short get_api_string(char **buf, const bool domain)
 		if(this_len < 0)
 		{
 			log_err("Failed to append API URL to buffer: %s", strerror(errno));
+			free(api_str);
 			return 0;
 		}
 
@@ -311,6 +312,7 @@ unsigned short get_api_string(char **buf, const bool domain)
 		if((size_t)this_len >= bufsz - len - 1)
 		{
 			log_err("API URL buffer too small!");
+			free(api_str);
 			return 0;
 		}
 
@@ -318,8 +320,8 @@ unsigned short get_api_string(char **buf, const bool domain)
 		if(memmem(*buf, len, api_str, this_len) != NULL)
 		{
 			// This string is already present, so skip it
-			free(api_str);
 			log_debug(DEBUG_API, "Skipping duplicate API URL: %s", api_str);
+			free(api_str);
 			continue;
 		}
 

@@ -13,7 +13,7 @@
 #include "log.h"
 
 #undef free
-void FTLfree(void **ptr, const char *file, const char *func, const int line)
+bool FTLfree(void *ptr, const char *file, const char *func, const int line)
 {
 	// The free() function frees the memory space pointed  to  by  ptr,  which
 	// must  have  been  returned by a previous call to malloc(), calloc(), or
@@ -21,18 +21,12 @@ void FTLfree(void **ptr, const char *file, const char *func, const int line)
 	// undefined behavior occurs.  If ptr is NULL, no operation is performed.
 	if(ptr == NULL)
 	{
-		log_warn("Trying to free NULL memory location in %s() (%s:%i)", func, file, line);
-		return;
-	}
-	if(*ptr == NULL)
-	{
 		log_warn("Trying to free NULL pointer in %s() (%s:%i)", func, file, line);
-		return;
+		return false;
 	}
 
 	// Actually free the memory
-	free(*ptr);
+	free(ptr);
 
-	// Set the pointer to NULL
-	*ptr = NULL;
+	return true;
 }
