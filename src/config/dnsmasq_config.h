@@ -29,6 +29,7 @@ bool write_custom_list(void);
 #define DNSMASQ_HOSTSDIR "/etc/pihole/hosts"
 #define DNSMASQ_CUSTOM_LIST DNSMASQ_HOSTSDIR"/custom.list"
 #define DNSMASQ_CUSTOM_LIST_LEGACY "/etc/pihole/custom.list"
+#define DNSMASQ_CUSTOM_LIST_LEGACY_TARGET "/etc/pihole/migration_backup_v6/custom.list"
 #define DHCPLEASESFILE "/etc/pihole/dhcp.leases"
 
 #endif //DNSMASQ_CONFIG_H
