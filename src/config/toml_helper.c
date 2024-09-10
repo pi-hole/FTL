@@ -543,7 +543,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_PTR_TYPE:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int ptr_type = get_ptr_type_val(val.u.s);
@@ -559,7 +559,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_BUSY_TYPE:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int busy_reply = get_busy_reply_val(val.u.s);
@@ -575,7 +575,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_BLOCKING_MODE:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int blocking_mode = get_blocking_mode_val(val.u.s);
@@ -591,7 +591,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int refresh_hostnames = get_refresh_hostnames_val(val.u.s);
@@ -607,7 +607,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_LISTENING_MODE:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int listeningMode = get_listeningMode_val(val.u.s);
@@ -623,7 +623,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_WEB_THEME:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int web_theme = get_web_theme_val(val.u.s);
@@ -639,7 +639,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_TEMP_UNIT:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int temp_unit = get_temp_unit_val(val.u.s);
@@ -665,7 +665,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				if(strlen(val.u.s) == 0)
@@ -686,7 +686,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		case CONF_STRUCT_IN6_ADDR:
 		{
 			struct in6_addr addr6 = { 0 };
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				if(strlen(val.u.s) == 0)
@@ -717,7 +717,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 				for(unsigned int i = 0; i < nelem; i++)
 				{
 					// Get string from TOML
-					const toml_datum_t d = toml_string_at(array, i);
+					toml_datum_t d = toml_string_at(array, i);
 					if(!d.ok)
 					{
 						log_warn("Config %s is an invalid array (found at index %u)", conf_item->k, i);

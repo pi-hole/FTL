@@ -122,7 +122,6 @@ static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf
 
 static void get_revServer_from_setupVars(void)
 {
-	char *active = NULL;
 	char *cidr = NULL;
 	char *target = NULL;
 	char *domain = NULL;
@@ -144,7 +143,7 @@ static void get_revServer_from_setupVars(void)
 		clearSetupVarsArray();
 		return;
 	}
-	active = strdup(active_str);
+	bool active = strcasecmp(active_str, "true") == 0;
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
@@ -186,16 +185,16 @@ static void get_revServer_from_setupVars(void)
 	clearSetupVarsArray();
 
 	// Only add the entry if all values are present and active
-	if(active != NULL && cidr != NULL && target != NULL && domain != NULL)
+	if(cidr != NULL && target != NULL && domain != NULL)
 	{
 		// Build comma-separated string of all values
 		// 9 = 3 commas, "true/false", and null terminator
 		char *old = calloc(strlen(cidr) + strlen(target) + strlen(domain) + 9, sizeof(char));
-		if(old)
+		if(old != NULL)
 		{
 			// Add to new config
 			// active is always true as we only add active entries
-			sprintf(old, "%s,%s,%s,%s", active_str, cidr, target, domain);
+			sprintf(old, "%s,%s,%s,%s", active ? "true" : "false", cidr, target, domain);
 			cJSON_AddItemToArray(config.dns.revServers.v.json, cJSON_CreateString(old));
 
 			// Parameter present in setupVars.conf
@@ -211,8 +210,6 @@ static void get_revServer_from_setupVars(void)
 	}
 
 	// Free memory
-	if(active != NULL)
-		free(active);
 	if(cidr != NULL)
 		free(cidr);
 	if(target != NULL)

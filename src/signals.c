@@ -29,7 +29,7 @@
 #define BINARY_NAME "pihole-FTL"
 
 volatile sig_atomic_t killed = 0;
-static volatile pid_t mpid = -1;
+static volatile pid_t mpid = 0;
 static time_t FTLstarttime = 0;
 volatile int exit_code = EXIT_SUCCESS;
 
@@ -253,7 +253,7 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	log_info("Thank you for helping us to improve our FTL engine!");
 
 	// Terminate main process if crash happened in a TCP worker
-	if(mpid != getpid())
+	if(main_pid() != getpid())
 	{
 		// This is a forked process
 		log_info("Asking parent pihole-FTL (PID %i) to shut down", (int)mpid);
@@ -474,7 +474,7 @@ void handle_realtime_signals(void)
 // Return PID of the main FTL process
 pid_t main_pid(void)
 {
-	if(mpid > -1)
+	if(mpid > 0)
 		// Has already been set
 		return mpid;
 	else
