@@ -440,7 +440,6 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 				config.webserver.api.pwhash.v.s = new_hash;
 				config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
 				writeFTLtoml(true);
-				free(new_hash);
 			}
 
 			// Successful logins do not count against rate-limiting
