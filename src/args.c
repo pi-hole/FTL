@@ -1015,12 +1015,17 @@ void parse_args(int argc, char* argv[])
 
 			printf("%sEmbedded GZIP un-/compressor:%s\n", yellow, normal);
 			printf("    A simple but fast in-memory gzip compressor\n\n");
-			printf("    Usage: %spihole-FTL --compress %sinfile %s[outfile]%s\n", green, cyan, purple, normal);
-			printf("    Usage: %spihole-FTL --uncompress %sinfile %s[outfile]%s\n\n", green, cyan, purple, normal);
-			printf("    - %sinfile%s is the file to be compressed.\n", cyan, normal);
+			printf("    Usage: %spihole-FTL --gzip %sinfile %s[outfile]%s\n\n", green, cyan, purple, normal);
+			printf("    - %sinfile%s is the file to be processed. If the filename ends\n", cyan, normal);
+			printf("      in %s.gz%s, FTL will uncompress, otherwise it will compress\n\n", yellow, normal);
 			printf("    - %s[outfile]%s is the optional target. If omitted, FTL will\n", purple, normal);
-			printf("      %s--compress%s:   use the %sinfile%s and append %s.gz%s at the end\n", green, normal, cyan, normal, cyan, normal);
-			printf("      %s--uncompress%s: use the %sinfile%s and remove %s.gz%s at the end\n\n", green, normal, cyan, normal, cyan, normal);
+			printf("      - input is gz: use %sinfile%s.gz%s and remove %s.gz%s from the end\n", cyan, yellow, normal, purple, normal);
+			printf("      - otherwise: use %sinfile%s and append %s.gz%s at the end\n\n", cyan, normal, purple, normal);
+			printf("    Examples:\n");
+			printf("      - %spihole-FTL --gzip %sfile.txt%s\n", green, cyan, normal);
+			printf("        compresses %sfile.txt%s to %sfile.txt.gz%s\n\n", cyan, normal, cyan, normal);
+			printf("      - %spihole-FTL --gzip %sfile.txt.gz%s\n", green, cyan, normal);
+			printf("        uncompresses %sfile.txt.gz%s to %sfile.txt%s\n\n", cyan, normal, cyan, normal);
 
 			printf("%sTeleporter:%s\n", yellow, normal);
 			printf("\t%s--teleporter%s        Create a Teleporter archive in the\n", green, normal);
