@@ -664,6 +664,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		return false;
 	}
 
+	// Update rolling window of queries per second
+	update_qps(querytimestamp);
+
 	// Interface name is only available for regular queries, not for
 	// automatically generated DNSSEC queries
 	const char *interface = internal_query ? "-" : next_iface.name;

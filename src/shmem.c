@@ -1206,3 +1206,46 @@ int __attribute__((pure)) is_shm_fd(const int fd)
 	// Not found
 	return 0;
 }
+
+// Update queries per second (qps) value
+// This is done in shared memory to allow for both UDP and TCP workers to
+// contribute.
+void update_qps(const double timestamp)
+{
+	// Get the timeslot for the current timestamp
+	const unsigned int slot = (unsigned int)timestamp % QPS_AVGLEN;
+
+	// Check if the timestamp is in the same slot as the last one
+	if(shmSettings->qps.last != slot)
+	{
+		// Reset all the slots in between
+		// This is relevant if less than one query per second is
+		// received and the intermediate slots are not updated
+		for(unsigned int i = (shmSettings->qps.last + 1) % QPS_AVGLEN; i != slot; i = (i + 1) % QPS_AVGLEN)
+			shmSettings->qps.buf[i] = 0;
+
+		// Reset the current slot
+		shmSettings->qps.buf[slot] = 0;
+
+		// Update the last slot index
+		shmSettings->qps.last = slot;
+	}
+
+	// Add the query
+	shmSettings->qps.buf[slot]++;
+}
+
+// Compute queries per second (qps) value
+double __attribute__((pure)) get_qps(void)
+{
+	// Compute the arithmetic mean of all slots
+	//        1  N
+	// QPS = --- Σ buf[i]
+	//        N  i=0
+	//
+	double qps = 0.0;
+	for(unsigned int i = 0; i < QPS_AVGLEN; i++)
+		qps += shmSettings->qps.buf[i];
+
+	return qps / QPS_AVGLEN;
+}

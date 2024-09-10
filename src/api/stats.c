@@ -143,6 +143,8 @@ int api_stats_summary(struct ftl_conn *api)
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "forwarded", forwarded);
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "cached", cached);
 
+	JSON_ADD_NUMBER_TO_OBJECT(queries, "frequency", get_qps());
+
 	cJSON *types = JSON_NEW_OBJECT();
 	int ret = get_query_types_obj(api, types);
 	if(ret != 0)

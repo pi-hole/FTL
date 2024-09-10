@@ -143,6 +143,10 @@
 // Default: 2592000 (once per month)
 #define DATABASE_MACVENDOR_INTERVAL 2592000
 
+// Over how many seconds should the query-per-second (QPS) value be averaged?
+// Default: 30 (seconds)
+#define QPS_AVGLEN 30
+
 // Use out own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crash
 // caused by insufficient memory or by code bugs (not properly dealing

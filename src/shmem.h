@@ -31,6 +31,10 @@ typedef struct {
 	pid_t pid;
 	unsigned int global_shm_counter;
 	unsigned int next_str_pos;
+	struct {
+		unsigned int last;
+		unsigned int buf[QPS_AVGLEN];
+	} qps;
 } ShmSettings;
 
 typedef struct {
@@ -144,5 +148,8 @@ void set_per_client_regex(const int clientID, const int regexID, const bool valu
 
 // Used in dnsmasq/utils.c
 int is_shm_fd(const int fd);
+
+void update_qps(const double timestamp);
+double get_qps(void) __attribute__((pure));
 
 #endif //SHARED_MEMORY_SERVER_H
