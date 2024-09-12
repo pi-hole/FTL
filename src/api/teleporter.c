@@ -27,6 +27,8 @@
 #include "files.h"
 //basename()
 #include <libgen.h>
+// restart_ftl()
+#include "signals.h"
 
 #define MAXFILESIZE (50u*1024*1024)
 
@@ -321,6 +323,10 @@ static int process_received_zip(struct ftl_conn *api, struct upload_data *data)
 
 	// Free allocated memory
 	free_upload_data(data);
+
+	// Signal FTL we want to restart for re-import
+	api->ftl.restart_reason = "Teleporter (ZIP) import";
+	api->ftl.restart = true;
 
 	// Send response
 	cJSON *json = JSON_NEW_OBJECT();
@@ -818,6 +824,7 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	free_upload_data(data);
 
 	// Signal FTL we want to restart for re-import
+	api->ftl.restart_reason = "Teleporter (TAR.GZ) import";
 	api->ftl.restart = true;
 
 	// Send response

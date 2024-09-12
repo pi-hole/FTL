@@ -807,7 +807,10 @@ static int api_config_patch(struct ftl_conn *api)
 		// If the privacy level was decreased, we need to restart
 		if(new_item == &newconf.misc.privacylevel &&
 		   new_item->v.privacy_level < conf_item->v.privacy_level)
+		{
+			api->ftl.restart_reason = "Privacy level decreased";
 			api->ftl.restart = true;
+		}
 
 		// Check if this item changed the password, if so, we need to
 		// invalidate all currently active sessions
@@ -823,7 +826,10 @@ static int api_config_patch(struct ftl_conn *api)
 		{
 			char errbuf[ERRBUF_SIZE] = { 0 };
 			if(write_dnsmasq_config(&newconf, true, errbuf))
+			{
+				api->ftl.restart_reason = "dnsmasq config changed";
 				api->ftl.restart = true;
+			}
 			else
 			{
 				free_config(&newconf);
@@ -1031,7 +1037,10 @@ static int api_config_put_delete(struct ftl_conn *api)
 		char errbuf[ERRBUF_SIZE] = { 0 };
 		// Request restart of FTL
 		if(write_dnsmasq_config(&newconf, true, errbuf))
+		{
+			api->ftl.restart_reason = "dnsmasq config changed";
 			api->ftl.restart = true;
+		}
 		else
 		{
 			// The new config did not work

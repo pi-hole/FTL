@@ -128,10 +128,7 @@ int api_action_restartDNS(struct ftl_conn *api)
 		                       "Restarting DNS is not allowed",
 		                       "Check setting webserver.api.allow_destructive");
 
-	log_info("Restarting FTL due to API action request");
-	exit_code = RESTART_FTL_CODE;
-	// Send SIGTERM to FTL
-	kill(main_pid(), SIGTERM);
+	restart_ftl("API action request");
 
 	return send_json_success(api);
 }

@@ -39,6 +39,8 @@
 #include "events.h"
 // JSON_KEY_TRUE
 #include "webserver/json_macros.h"
+// exit_code
+#include "signals.h"
 
 // Tables to copy from the gravity database to the Teleporter database
 static const char *gravity_tables[] = {
