@@ -614,12 +614,8 @@ static void *ntp_client_thread(void *arg)
 		double time_delta = fabs(after - before);
 		if(first_run && time_delta > GCinterval)
 		{
-			log_info("System time was updated by %.1f seconds, restarting FTL to import recent data",
-			         time_delta);
-			// Set the restart flag to true
-			exit_code = RESTART_FTL_CODE;
-			// Send SIGTERM to FTL
-			kill(main_pid(), SIGTERM);
+			log_info("System time was updated by %.1f seconds", time_delta);
+			restart_ftl("System time updated");
 		}
 
 		// Set first run to false

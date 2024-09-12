@@ -595,7 +595,7 @@ void importsetupVarsConf(void)
 	else
 		log_info("Moved %s to %s", config.files.setupVars.v.s, setupVars_target);
 
-	log_info("Migration complete");
+	log_info("setupVars.conf migration complete");
 }
 
 char* __attribute__((pure)) find_equals(char *s)

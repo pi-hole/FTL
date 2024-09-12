@@ -401,7 +401,10 @@ void cleanup(const int ret)
 
 	char buffer[42] = { 0 };
 	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
-	log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
+	if(ret == RESTART_FTL_CODE)
+		log_info("########## FTL terminated after%s (internal restart)! ##########", buffer);
+	else
+		log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
 }
 
 static float last_clock = 0.0f;

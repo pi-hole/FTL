@@ -51,7 +51,8 @@ struct ftl_conn {
 		long unsigned int size;
 	} payload;
 	struct {
-		bool restart;
+		bool restart :1;
+		const char *restart_reason;
 	} ftl;
 	struct session *session;
 

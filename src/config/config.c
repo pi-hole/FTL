@@ -35,7 +35,10 @@
 #include "config/env.h"
 // sha256sum()
 #include "files.h"
+// restart_ftl()
+#include "signals.h"
 
+// Global variables
 struct config config = { 0 };
 static bool config_initialized = false;
 uint8_t last_checksum[SHA256_DIGEST_SIZE] = { 0 };
@@ -1867,12 +1870,7 @@ void reread_config(void)
 
 	// If we need to restart FTL, we do so now
 	if(restart)
-	{
-		log_info("Restarting FTL due to pihole.toml change");
-		exit_code = RESTART_FTL_CODE;
-		// Send SIGTERM to FTL
-		kill(main_pid(), SIGTERM);
-	}
+		restart_ftl("pihole.toml change");
 }
 
 // Very simple test of a port's availability by trying to bind a TCP socket to

@@ -523,3 +523,11 @@ int sigtest(void)
 	// Exit successfully
 	return EXIT_SUCCESS;
 }
+
+void restart_ftl(const char *reason)
+{
+	log_info("Restarting FTL: %s", reason);
+	exit_code = RESTART_FTL_CODE;
+	// Send SIGTERM to FTL
+	kill(main_pid(), SIGTERM);
+}
