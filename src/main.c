@@ -139,7 +139,7 @@ int main (int argc, char *argv[])
 			sleepms(100);
 	}
 
-	log_info("Shutting down... // exit code %d // jmpret %d", exit_code, jmpret);
+	log_debug(DEBUG_ANY, "Shutting down... // exit code %d // jmpret %d", exit_code, jmpret);
 	// Extra grace time is needed as dnsmasq script-helpers and the API may not
 	// be terminating immediately
 	sleepms(250);
