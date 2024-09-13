@@ -29,6 +29,8 @@
 #include <libgen.h>
 // restart_ftl()
 #include "signals.h"
+// create_migration_target_v6()
+#include "config/config.h"
 
 #define MAXFILESIZE (50u*1024*1024)
 
@@ -263,6 +265,9 @@ static int api_teleporter_POST(struct ftl_conn *api)
 		                       "ZIP archive too large",
 		                       NULL);
 	}
+
+	// Ensure v6 migration directory exists
+	create_migration_target_v6();
 
 	// Check if we received something that claims to be a ZIP archive
 	// - filename should end in ".zip"
