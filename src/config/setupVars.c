@@ -589,7 +589,7 @@ void importsetupVarsConf(void)
 	get_conf_string_from_setupVars("WEB_PORTS", &config.webserver.port);
 
 	// Move the setupVars.conf file to the migration directory
-	const char *setupVars_target = "/etc/pihole/migration_backup_v6/setupVars.conf";
+	const char *setupVars_target = MIGRATION_TARGET_V6"/setupVars.conf";
 	if(rename(config.files.setupVars.v.s, setupVars_target) != 0)
 		log_warn("Could not move %s to %s", config.files.setupVars.v.s, setupVars_target);
 	else

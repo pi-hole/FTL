@@ -1624,13 +1624,19 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	if(!rewrite)
 		return false;
 
+	// Check if MIGRATION_TARGET_V6 exists and is a directory
+	// Ideally, this directory should be created by the installer but users
+	// may have deleted it manually and it is necessary for restoring
+	// Teleporter files
+	create_migration_target_v6();
+
 	// If no previous config file could be read, we are likely either running
 	// for the first time or we are upgrading from a version prior to v6.0
 	// In this case, we try to read the legacy config files
 	const char *path = "";
 	if((path = readFTLlegacy(conf)) != NULL)
 	{
-		const char *target = "/etc/pihole/migration_backup_v6/pihole-FTL.conf";
+		const char *target = MIGRATION_TARGET_V6"/pihole-FTL.conf";
 		log_info("Moving %s to %s", path, target);
 		if(rename(path, target) != 0)
 			log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
@@ -1902,4 +1908,33 @@ static bool port_in_use(const in_port_t port)
 	// If we can bind the socket, the port is not in use
 	close(sock);
 	return false;
+}
+
+/**
+ * @brief Create a migration target directory for version 6.
+ *
+ * This function creates a directory for migration target version 6. If the directory
+ * already exists, it does nothing. The function also changes the ownership of the
+ * directory to the user running the FTL program.
+ *
+ * @return true if the directory creation and ownership change were successful, false otherwise.
+ */
+bool create_migration_target_v6(void)
+{
+	if(mkdir(MIGRATION_TARGET_V6, 0755) != 0 && errno != EEXIST)
+	{
+		log_err("Unable to create directory %s: %s", MIGRATION_TARGET_V6, strerror(errno));
+		return false;
+	}
+	else
+	{
+		// Change ownership of the directory to the user running FTL
+		if(chown(MIGRATION_TARGET_V6, getuid(), getgid()) != 0)
+		{
+			log_err("Unable to change ownership of %s: %s", MIGRATION_TARGET_V6, strerror(errno));
+			return false;
+		}
+	}
+
+	return true;
 }
