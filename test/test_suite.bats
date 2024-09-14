@@ -38,6 +38,10 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
+  run bash -c "dig denied.ftl @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 15 (Blocked): (denylist)" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain is blocked" {
@@ -45,12 +49,20 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
+  run bash -c "dig gravity.ftl @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 15 (Blocked): (gravity)" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain is blocked (TCP)" {
   run bash -c "dig gravity.ftl @127.0.0.1 +tcp +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c "dig gravity.ftl @127.0.0.1 +tcp | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 15 (Blocked): (gravity)" ]]
   [[ ${lines[1]} == "" ]]
 }
 
@@ -76,6 +88,10 @@
   run bash -c "dig regex5.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c "dig regex5.ftl @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 15 (Blocked): (regex)" ]]
   [[ ${lines[1]} == "" ]]
 }
 
@@ -420,7 +436,7 @@
 
 # NXRA + RA unset cannot be tested with PowerDNS as upstream provider
 
-@test "Externally blocked domain: NULL is recognized" {
+@test "Upstream blocked domain: NULL is recognized" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
 
@@ -429,6 +445,7 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"status: NOERROR"* ]]
   [[ ${lines[@]} == *"null.ftl."*"2"*"IN"*"A"*"0.0.0.0"* ]]
+  [[ ${lines[@]} == *"EDE: 15 (Blocked): (upstream NULL)"* ]]
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -443,11 +460,11 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/null.ftl is not blocked (domainlist ID: -1)"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded null.ftl to 127.0.0.1#5555"* ]]
-  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/null.ftl is blocked upstream with 0.0.0.0"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: blocked upstream with 0.0.0.0"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"null.ftl A 0.0.0.0\""* ]]
 }
 
-@test "Externally blocked domain: NULL is recognized (cached)" {
+@test "Upstream blocked domain: NULL is recognized (cached)" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
 
@@ -468,13 +485,12 @@
     lines+=("$line")
   done <<< "${log}"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[@]} == *"DEBUG_QUERIES: null.ftl is known as upstream blocked"* ]]
-  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/null.ftl is upstream blocked"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: null.ftl is known as blocked upstream with NULL address (expires in"* ]]
   [[ ${lines[@]} != *"DEBUG_QUERIES: **** forwarded null.ftl to 127.0.0.1#5555"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"null.ftl A 0.0.0.0\""* ]]
 }
 
-@test "Externally blocked domain: NULL is recognized (IPv6)" {
+@test "Upstream blocked domain: NULL is recognized (IPv6)" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
 
@@ -483,6 +499,7 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"status: NOERROR"* ]]
   [[ ${lines[@]} == *"null.ftl."*"2"*"IN"*"AAAA"*"::"* ]]
+  [[ ${lines[@]} == *"EDE: 15 (Blocked): (upstream NULL)"* ]]
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -497,16 +514,18 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: AAAA/127.0.0.1/null.ftl is not blocked (domainlist ID: -1)"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded null.ftl to 127.0.0.1#5555"* ]]
-  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: AAAA/127.0.0.1/null.ftl is blocked upstream with ::"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: blocked upstream with ::"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"null.ftl AAAA ::\""* ]]
 }
 
-@test "Externally blocked domain: IP is recognized" {
+@test "Upstream blocked domain: IP is recognized" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig A umbrella.ftl @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"EDE: 15 (Blocked): (upstream IP)"* ]]
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -521,16 +540,19 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella.ftl is not blocked (domainlist ID: -1)"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded umbrella.ftl to 127.0.0.1#5555"* ]]
-  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella.ftl is blocked upstream with known address (IPv4)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: blocked upstream with known address (IPv4)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella.ftl -> EXTERNAL_BLOCKED_IP"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"umbrella.ftl A 0.0.0.0\""* ]]
 }
 
-@test "Externally blocked domain: IP is recognized (cached)" {
+@test "Upstream blocked domain: IP is recognized (cached)" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig A umbrella.ftl @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"EDE: 15 (Blocked): (upstream IP)"* ]]
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -543,18 +565,18 @@
     lines+=("$line")
   done <<< "${log}"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[@]} == *"DEBUG_QUERIES: umbrella.ftl is known as upstream blocked"* ]]
-  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella.ftl is upstream blocked"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: umbrella.ftl is known as blocked upstream with known address (expires in"* ]]
   [[ ${lines[@]} != *"DEBUG_QUERIES: **** forwarded umbrella.ftl to 127.0.0.1#5555"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"umbrella.ftl A 0.0.0.0\""* ]]
 }
 
-@test "Externally blocked domain: IP is recognized (IPv6)" {
+@test "Upstream blocked domain: IP is recognized (IPv6)" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig AAAA umbrella.ftl @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -569,16 +591,18 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: AAAA/127.0.0.1/umbrella.ftl is not blocked (domainlist ID: -1)"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded umbrella.ftl to 127.0.0.1#5555"* ]]
-  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: AAAA/127.0.0.1/umbrella.ftl is blocked upstream with known address (IPv6)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: blocked upstream with known address (IPv6)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: AAAA/127.0.0.1/umbrella.ftl -> EXTERNAL_BLOCKED_IP"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"umbrella.ftl AAAA ::\""* ]]
 }
 
-@test "Externally blocked domain: IP is recognized (multi)" {
+@test "Upstream blocked domain: IP is recognized (multi)" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig A umbrella-multi.ftl @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -593,8 +617,59 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella-multi.ftl is not blocked (domainlist ID: -1)"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded umbrella-multi.ftl to 127.0.0.1#5555"* ]]
-  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella-multi.ftl is blocked upstream with known address (IPv4)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/umbrella-multi.ftl -> EXTERNAL_BLOCKED_IP"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"umbrella-multi.ftl A 0.0.0.0\""* ]]
+}
+
+@test "Upstream blocked domain: EDE 15 is recognized" {
+  # Get number of lines in the log before the test
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # Run test
+  run bash -c "dig A nxdomain.ede15.ftl @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"EDE: 15 (Blocked): (upstream EDE 15)"* ]]
+
+  # Get number of lines in the log after the test
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # Extract relevant log lines
+  log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
+  # Split log into array by newline
+  lines=()
+  while IFS= read -r line; do
+    lines+=("$line")
+  done <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/nxdomain.ede15.ftl is not blocked (domainlist ID: -1)"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded nxdomain.ede15.ftl to 127.0.0.1#5555"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES: DNS cache: A/127.0.0.1/nxdomain.ede15.ftl -> EXTERNAL_BLOCKED_EDE15"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"nxdomain.ede15.ftl A 0.0.0.0\""* ]]
+}
+
+@test "Upstream blocked domain: EDE 15 is recognized (cached)" {
+  # Get number of lines in the log before the test
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # Run test
+  run bash -c "dig A nxdomain.ede15.ftl @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"EDE: 15 (Blocked): (upstream EDE 15)"* ]]
+
+  # Get number of lines in the log after the test
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # Extract relevant log lines
+  log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
+  # Split log into array by newline
+  lines=()
+  while IFS= read -r line; do
+    lines+=("$line")
+  done <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"DEBUG_QUERIES: nxdomain.ede15.ftl is known as blocked upstream with EDE15 (expires in"* ]]
+  [[ ${lines[@]} != *"DEBUG_QUERIES: **** forwarded umbrella.ftl to 127.0.0.1#5555"* ]]
+  [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"nxdomain.ede15.ftl A 0.0.0.0\""* ]]
 }
 
 @test "ABP-style matching working as expected" {
@@ -1151,7 +1226,7 @@
 @test "Blocking status is correctly logged in pihole.log" {
   run bash -c 'grep -c "gravity blocked gravity.ftl is 0.0.0.0" /var/log/pihole/pihole.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "2" ]]
+  [[ ${lines[0]} == "4" ]]
 }
 
 @test "HTTP server responds with JSON error 404 to unknown API path" {
@@ -1369,6 +1444,15 @@
   run bash -c "dig AAAA pi.hole +short @127.0.0.1"
   printf "AAAA: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::10" ]]
+
+  run bash -c "dig A pi.hole @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 29: (synthesized)" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c "dig AAAA pi.hole @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 29: (synthesized)" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Pi-hole uses dns.reply.host.IPv4/6 for hostname" {
@@ -1378,6 +1462,15 @@
   run bash -c "dig AAAA $(hostname) +short @127.0.0.1"
   printf "AAAA: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::10" ]]
+
+  run bash -c "dig A $(hostname) @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 29: (synthesized)" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c "dig AAAA $(hostname) @127.0.0.1 | grep 'EDE: '"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"EDE: 29: (synthesized)" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Pi-hole uses dns.reply.blocking.IPv4/6 for blocked domain" {

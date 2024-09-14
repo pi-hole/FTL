@@ -486,6 +486,10 @@ components:
                   type: integer
                   description: Type CACHE_STALE queries
                   example: 0
+                EXTERNAL_BLOCKED_EDE15:
+                  type: integer
+                  description: Type EXTERNAL_BLOCKED_EDE15 queries
+                  example: 0
             replies:
               type: object
               description: Number of individual replies

@@ -60,6 +60,7 @@ union conf_value {
 	enum listening_mode listeningMode;          // enum listening_mode value
 	enum web_theme web_theme;                   // enum web_theme value
 	enum temp_unit temp_unit;                   // enum temp_unit value
+	enum edns_mode edns_mode;                   // enum edns_mode value
 	struct in_addr in_addr;                     // struct in_addr value
 	struct in6_addr in6_addr;                   // struct in6_addr value
 	cJSON *json;                                // cJSON * value
@@ -83,6 +84,7 @@ enum conf_type {
 	CONF_ENUM_PRIVACY_LEVEL,
 	CONF_ENUM_LISTENING_MODE,
 	CONF_ENUM_WEB_THEME,
+	CONF_ENUM_BLOCKING_EDNS_MODE,
 	CONF_ENUM_TEMP_UNIT,
 	CONF_STRUCT_IN_ADDR,
 	CONF_STRUCT_IN6_ADDR,
@@ -155,6 +157,7 @@ struct config {
 		struct {
 			struct conf_item active;
 			struct conf_item mode;
+			struct conf_item edns;
 		} blocking;
 		struct {
 			struct conf_item mozillaCanary;

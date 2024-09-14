@@ -252,6 +252,8 @@ components:
                       type: boolean
                     mode:
                       type: string
+                    edns:
+                      type: string
                 specialDomains:
                   type: object
                   properties:
@@ -671,6 +673,7 @@ components:
             blocking:
               active: true
               mode: 'NULL'
+              edns: 'NONE'
             specialDomains:
               mozillaCanary: true
               iCloudPrivateRelay: true

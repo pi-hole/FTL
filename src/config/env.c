@@ -499,6 +499,25 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			break;
 		}
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		{
+			const int edns_mode = get_edns_mode_val(envvar);
+			if(edns_mode != -1)
+			{
+				conf_item->v.edns_mode = edns_mode;
+				item->valid = true;
+			}
+			else
+			{
+
+				item->error = "not an allowed option";
+				item->allowed = conf_item->h;
+				log_warn("ENV %s is %s, allowed options are: %s",
+				         conf_item->e, item->error, item->allowed);
+				item->valid = false;
+			}
+			break;
+		}
 		case CONF_ENUM_PRIVACY_LEVEL:
 		{
 			int val = 0;

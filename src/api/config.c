@@ -129,6 +129,8 @@ cJSON *addJSONConfValue(const enum conf_type conf_type, union conf_value *val)
 			return cJSON_CreateStringReference(get_web_theme_str(val->web_theme));
 		case CONF_ENUM_TEMP_UNIT:
 			return cJSON_CreateStringReference(get_temp_unit_str(val->temp_unit));
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+			return cJSON_CreateStringReference(get_edns_mode_str(val->edns_mode));
 		case CONF_STRUCT_IN_ADDR:
 		{
 			// Special case 0.0.0.0 -> return empty string
@@ -389,6 +391,19 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Set item
 			conf_item->v.temp_unit = temp_unit;
 			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.temp_unit);
+			break;
+		}
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int edns_mode = get_edns_mode_val(elem->valuestring);
+			if(edns_mode == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.edns_mode = edns_mode;
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.edns_mode);
 			break;
 		}
 		case CONF_ENUM_PRIVACY_LEVEL:

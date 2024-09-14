@@ -49,6 +49,7 @@ enum query_status {
 	QUERY_DBBUSY,
 	QUERY_SPECIAL_DOMAIN,
 	QUERY_CACHE_STALE,
+	QUERY_EXTERNAL_BLOCKED_EDE15,
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 
@@ -118,22 +119,6 @@ enum blocking_status {
 	BLOCKING_ENABLED,
 	DNS_FAILED,
 	BLOCKING_UNKNOWN
-} __attribute__ ((packed));
-
-// Blocking status constants used by the dns_cache->blocking_status vector
-// We explicitly force UNKNOWN_BLOCKED to zero on all platforms as this is the
-// default value set initially with calloc
-enum domain_client_status {
-	UNKNOWN_BLOCKED = 0,
-	GRAVITY_BLOCKED,
-	DENYLIST_BLOCKED,
-	REGEX_BLOCKED,
-	ALLOWED,
-	SPECIAL_DOMAIN,
-	UPSTREAM_BLOCKED_NXRA,
-	UPSTREAM_BLOCKED_NULL,
-	UPSTREAM_BLOCKED_IP,
-	NOT_BLOCKED
 } __attribute__ ((packed));
 
 enum debug_flag {
@@ -315,6 +300,12 @@ enum temp_unit {
 	TEMP_UNIT_C = 0,
 	TEMP_UNIT_F,
 	TEMP_UNIT_K
+} __attribute__ ((packed));
+
+enum edns_mode {
+	EDNS_MODE_NONE = 0,
+	EDNS_MODE_CODE,
+	EDNS_MODE_TEXT,
 } __attribute__ ((packed));
 
 enum adlist_type {
