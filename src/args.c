@@ -1018,9 +1018,10 @@ void parse_args(int argc, char* argv[])
 			printf("    Usage: %spihole-FTL --gzip %sinfile %s[outfile]%s\n\n", green, cyan, purple, normal);
 			printf("    - %sinfile%s is the file to be processed. If the filename ends\n", cyan, normal);
 			printf("      in %s.gz%s, FTL will uncompress, otherwise it will compress\n\n", yellow, normal);
-			printf("    - %s[outfile]%s is the optional target. If omitted, FTL will\n", purple, normal);
-			printf("      - input is gz: use %sinfile%s.gz%s and remove %s.gz%s from the end\n", cyan, yellow, normal, purple, normal);
-			printf("      - otherwise: use %sinfile%s and append %s.gz%s at the end\n\n", cyan, normal, purple, normal);
+			printf("    - %s[outfile]%s is the optional target file.\n", purple, normal);
+			printf("      If omitted, FTL will modify the original filename:\n");
+			printf("      - FTL will remove %s.gz%s from the end of the filename, if present.\n", yellow, normal);
+			printf("      - otherwise, FTL will append %s.gz%s to the filename\n\n", yellow, normal);
 			printf("    Examples:\n");
 			printf("      - %spihole-FTL --gzip %sfile.txt%s\n", green, cyan, normal);
 			printf("        compresses %sfile.txt%s to %sfile.txt.gz%s\n\n", cyan, normal, cyan, normal);
