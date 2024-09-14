@@ -106,6 +106,7 @@ const char** argv_dnsmasq = NULL;
 #define COL_BLUE	"\x1b[94m" // bright foreground color
 #define COL_PURPLE	"\x1b[95m" // bright foreground color
 #define COL_CYAN	"\x1b[96m" // bright foreground color
+#define CLI_OVER	"\r\x1b[K" // go back to beginning of line and erase to end of line
 
 static bool __attribute__ ((pure)) is_term(void)
 {
@@ -149,6 +150,16 @@ const char __attribute__ ((pure)) *cli_bold(void)
 	return is_term() ? COL_BOLD : "";
 }
 
+const char __attribute__ ((pure)) *cli_underline(void)
+{
+	return is_term() ? COL_ULINE : "";
+}
+
+const char __attribute__ ((pure)) *cli_italics(void)
+{
+	return is_term() ? COL_ITALIC : "";
+}
+
 // Resets font to normal
 const char __attribute__ ((pure)) *cli_normal(void)
 {
@@ -165,7 +176,7 @@ static const char __attribute__ ((pure)) *cli_color(const char *color)
 const char __attribute__ ((pure)) *cli_over(void)
 {
 	// \x1b[K is the ANSI escape sequence for "erase to end of line"
-	return is_term() ? "\r\x1b[K" : "\r";
+	return is_term() ? CLI_OVER : "\r";
 }
 
 static inline bool strEndsWith(const char *input, const char *end)
@@ -925,6 +936,7 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "help") == 0 || strcmp(argv[i], "--help") == 0)
 		{
 			const char *bold = cli_bold();
+			const char *uline = cli_underline();
 			const char *normal = cli_normal();
 			const char *blue = cli_color(COL_BLUE);
 			const char *cyan = cli_color(COL_CYAN);
@@ -1019,14 +1031,13 @@ void parse_args(int argc, char* argv[])
 			printf("    - %sinfile%s is the file to be processed. If the filename ends\n", cyan, normal);
 			printf("      in %s.gz%s, FTL will uncompress, otherwise it will compress\n\n", yellow, normal);
 			printf("    - %s[outfile]%s is the optional target file.\n", purple, normal);
-			printf("      If omitted, FTL will modify the original filename:\n");
-			printf("      - FTL will remove %s.gz%s from the end of the filename, if present.\n", yellow, normal);
-			printf("      - otherwise, FTL will append %s.gz%s to the filename\n\n", yellow, normal);
+			printf("      If omitted, FTL will try to derive the target file from\n");
+			printf("      the source file.\n\n");
 			printf("    Examples:\n");
 			printf("      - %spihole-FTL --gzip %sfile.txt%s\n", green, cyan, normal);
-			printf("        compresses %sfile.txt%s to %sfile.txt.gz%s\n\n", cyan, normal, cyan, normal);
-			printf("      - %spihole-FTL --gzip %sfile.txt.gz%s\n", green, cyan, normal);
-			printf("        uncompresses %sfile.txt.gz%s to %sfile.txt%s\n\n", cyan, normal, cyan, normal);
+			printf("        compresses %sfile.txt%s to %sfile.txt%s.gz%s\n\n", cyan, normal, cyan, yellow, normal);
+			printf("      - %spihole-FTL --gzip %sfile.txt%s.gz%s\n", green, cyan, yellow, normal);
+			printf("        %sun%scompresses %sfile.txt%s.gz%s to %sfile.txt%s\n\n", uline, normal, cyan, yellow, normal, cyan, normal);
 
 			printf("%sTeleporter:%s\n", yellow, normal);
 			printf("\t%s--teleporter%s        Create a Teleporter archive in the\n", green, normal);
