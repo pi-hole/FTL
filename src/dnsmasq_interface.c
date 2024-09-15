@@ -1451,7 +1451,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 	// Memorize blocking status DNS cache for the domain/client combination
 	cacheStatus = dns_cache->blocking_status;
-	log_info("Set global cache status to %d", cacheStatus);
+	log_debug(DEBUG_QUERIES, "Set global cache status to %d", cacheStatus);
 
 	// Skip the entire chain of tests if we already know the answer for this
 	// particular client
