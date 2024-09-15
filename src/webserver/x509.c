@@ -110,6 +110,10 @@ static bool write_to_file(const char *filename, const char *type, const char *su
 		return false;
 	}
 
+	// Restrict permissions to owner read/write only
+	if(fchmod(fileno(f), S_IRUSR | S_IWUSR) != 0)
+		log_warn("Unable to set permissions on file \"%s\": %s", targetname, strerror(errno));
+
 	// Write key (if provided)
 	if(key != NULL)
 	{
