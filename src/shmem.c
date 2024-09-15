@@ -951,7 +951,7 @@ void reset_per_client_regex(const int clientID)
 void add_per_client_regex(unsigned int clientID)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
-	const size_t size = get_optimal_object_size(1, counters->clients * num_regex_tot);
+	const size_t size = get_optimal_object_size(1, (size_t)counters->clients * num_regex_tot);
 	if(size > shm_per_client_regex.size &&
 	   realloc_shm(&shm_per_client_regex, 1, size, true))
 	{
