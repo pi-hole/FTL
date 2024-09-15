@@ -30,7 +30,9 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 	if(config.debug.overtime.v.b)
 	{
 		char timestr[20];
-		strftime(timestr, 20, "%Y-%m-%d %H:%M:%S", localtime(&timestamp));
+		struct tm tm = { 0 };
+		localtime_r(&timestamp, &tm);
+		strftime(timestr, 20, "%Y-%m-%d %H:%M:%S", &tm);
 		log_debug(DEBUG_OVERTIME, "initSlot(%u, %lu): Zeroing overTime slot at %s", index, (unsigned long)timestamp, timestr);
 	}
 
@@ -73,8 +75,11 @@ void initOverTime(void)
 	if(config.debug.overtime.v.b)
 	{
 		char first[20], last[20];
-		strftime(first, 20, "%Y-%m-%d %H:%M:%S", localtime(&oldest));
-		strftime(last, 20, "%Y-%m-%d %H:%M:%S", localtime(&newest));
+		struct tm tm_o = { 0 }, tm_n = { 0 };
+		localtime_r(&oldest, &tm_o);
+		localtime_r(&newest, &tm_n);
+		strftime(first, 20, "%Y-%m-%d %H:%M:%S", &tm_o);
+		strftime(last, 20, "%Y-%m-%d %H:%M:%S", &tm_n);
 		log_debug(DEBUG_OVERTIME, "initOverTime(): Initializing %i slots from %s (%lu) to %s (%lu)",
 		          OVERTIME_SLOTS, first, (unsigned long)oldest, last, (unsigned long)newest);
 	}
