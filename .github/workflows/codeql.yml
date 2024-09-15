@@ -10,6 +10,9 @@
 # supported CodeQL languages.
 #
 name: "CodeQL Advanced"
+env:
+  nettleversion: 3.9.1
+  mbedtlsversion: 3.6.1
 
 on:
   push:
@@ -57,6 +60,29 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y  libidn2-0 libidn2-0-dev libunistring-dev
+
+    - name: Install nettle
+      run: |
+        curl -sSL https://ftl.pi-hole.net/libraries/nettle-${nettleversion}.tar.gz | tar -xz
+        cd nettle-${nettleversion}
+        ./configure --enable-static --disable-shared --disable-openssl --disable-mini-gmp -disable-gcov --disable-documentation
+        sudo make -j $(nproc) install
+
+    - name: Install mbedTLS
+    # Build static mbedTLS with pthread support
+    # Disable AESNI on linux/386 asit would possibly result in an incompatible
+    # binary in processors lacking the AESNI and SSE2 instruction sets
+      run: |
+        curl -sSL https://ftl.pi-hole.net/libraries/mbedtls-${mbedtlsversion}.tar.bz2 | tar -xj
+        cd mbedtls-${mbedtlsversion}
+        sed -i '/#define MBEDTLS_THREADING_C/s*^//**g' include/mbedtls/mbedtls_config.h
+        sed -i '/#define MBEDTLS_THREADING_PTHREAD/s*^//**g' include/mbedtls/mbedtls_config.h
+        sudo make -j $(nproc) install
+
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
@@ -85,6 +111,7 @@ jobs:
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"
+      id: codeql_analysis
 
     - name: Upload CodeQL results as an artifact
       if: success() || failure()
