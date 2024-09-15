@@ -111,12 +111,37 @@ jobs:
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"
-      id: codeql_analysis
+        upload: failure-only # upload only in case of failure, otherwise upload later after filtering
+        output: codeql-results
+    
+    - name: Filter SARIF
+      uses: advanced-security/filter-sarif@v1
+      with:
+        # filter out third-party dependencies
+        patterns: |
+          -src/dnsmasq/*
+          -src/webserver/civetweb/*
+          -src/webserver/cJSON/*
+          -src/tre-regex/*
+          -src/config/tomlc99/*
+          -src/database/shell.c
+          -src/database/sqlite3.c
+          -src/database/sqlite3.h
+          -src/zip/miniz/*
+          -src/lua/*
+          +src/lua/ftl_*  
+        input: codeql-results/cpp.sarif
+        output: codeql-results/cpp.sarif
+
+    - name: Upload SARIF
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: codeql-results/cpp.sarif
 
     - name: Upload CodeQL results as an artifact
       if: success() || failure()
       uses: actions/upload-artifact@v4
       with:
         name: codeql-results
-        path: ${{ steps.codeql_analysis.outputs.sarif-output }}
+        path: codeql-results
         retention-days: 5
