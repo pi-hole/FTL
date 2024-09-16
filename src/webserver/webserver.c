@@ -606,7 +606,7 @@ void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len)
 	filename_lp = append_to_path(filename, ".lp");
 	if(filename_lp == NULL)
 	{
-		//Failed to allocate memory for filename!");
+		// Failed to allocate memory for filename
 		return;
 	}
 

@@ -19,7 +19,6 @@
 #include <signal.h>
 // clock_gettime()
 #include <sys/time.h>
-//#include <sys/types.h>
 #include <sys/wait.h>
 // wait()
 #include <sys/socket.h>

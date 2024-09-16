@@ -8,5 +8,10 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
+#ifndef SQLITE3_EXT_H
+#define SQLITE3_EXT_H
+
 // Initialization point for SQLite3 extensions
 extern int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const struct sqlite3_api_routines *pApi);
+
+#endif // SQLITE3_EXT_H
