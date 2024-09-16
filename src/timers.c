@@ -16,7 +16,7 @@
 // set_blockingmode()
 #include "config/config.h"
 
-struct timespec t0[NUMTIMERS];
+static struct timespec t0[NUMTIMERS];
 
 void timer_start(const enum timers i)
 {
