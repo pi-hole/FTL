@@ -34,7 +34,7 @@ const char *regextype[REGEX_MAX] = { "deny", "allow", "CLI" };
 
 static regexData *allow_regex = NULL;
 static regexData  *deny_regex = NULL;
-static regexData   *cli_regex = NULL;
+static regexData    cli_regex = { 0 };
 static unsigned int num_regex[REGEX_MAX] = { 0 };
 unsigned int regex_change = 0;
 static char regex_msg[REGEX_MSG_LEN] = { 0 };
@@ -48,7 +48,7 @@ static inline regexData *get_regex_ptr(const enum regex_type regexid)
 		case REGEX_ALLOW:
 			return allow_regex;
 		case REGEX_CLI:
-			return cli_regex;
+			return &cli_regex;
 		case REGEX_MAX: // Fall through
 		default: // This is not possible
 			return NULL;
@@ -57,7 +57,7 @@ static inline regexData *get_regex_ptr(const enum regex_type regexid)
 
 static inline void free_regex_ptr(const enum regex_type regexid)
 {
-	regexData **regex;
+	regexData **regex = NULL;
 	switch (regexid)
 	{
 		case REGEX_DENY:
@@ -67,8 +67,8 @@ static inline void free_regex_ptr(const enum regex_type regexid)
 			regex = &allow_regex;
 			break;
 		case REGEX_CLI:
-			regex = &cli_regex;
-			break;
+			// cannot be freed
+			return;
 		case REGEX_MAX: // Fall through
 		default: // This is not possible
 			return;
@@ -626,8 +626,7 @@ void free_regex(void)
 {
 	// Return early if we don't use any regex filters
 	if(allow_regex == NULL &&
-	    deny_regex == NULL &&
-	     cli_regex == NULL)
+	    deny_regex == NULL)
 	{
 		log_debug(DEBUG_DATABASE, "Not using any regex filters, nothing to free or reset");
 		return;
@@ -895,15 +894,13 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 	{
 		// Compile CLI regex
 		log_info("%s Compiling regex filter...", cli_info());
-		regexData regex = { 0 };
-		cli_regex = &regex;
 		num_regex[REGEX_CLI] = 1;
 
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);
 		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
 		char *message = NULL;
-		if(!compile_regex(regexin, &regex, &message) && message != NULL)
+		if(!compile_regex(regexin, &cli_regex, &message) && message != NULL)
 		{
 			logg_regex_warning("CLI", message, 0, regexin);
 			free(message);
