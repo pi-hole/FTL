@@ -1567,7 +1567,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 					blockingreason = "blocked upstream with NXRA address";
 					break;
 			}
-			
+
 			// Known as upstream blocked, we return this result
 			// early, skipping all the lengthy tests below
 			log_debug(DEBUG_QUERIES, "%s is known as %s (expires in %lus)",
