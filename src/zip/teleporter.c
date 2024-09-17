@@ -816,6 +816,12 @@ bool read_teleporter_zip_from_disk(const char *filename)
 	// Process ZIP archive
 	char hint[ERRBUF_SIZE] = "";
 	cJSON *imported_files = cJSON_CreateArray();
+	if(imported_files == NULL)
+	{
+		log_err("Failed to create JSON array for imported files");
+		free(ptr);
+		return false;
+	}
 	const char *error = read_teleporter_zip(ptr, size, hint, NULL, imported_files);
 
 	if(error != NULL)

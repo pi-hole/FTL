@@ -8,6 +8,7 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
+#include "FTL.h"
 #include "gzip.h"
 #include "log.h"
 
@@ -315,6 +316,10 @@ bool inflate_file(const char *infilename, const char *outfilename, bool verbose)
 		return false;
 	}
 
+	// Restrict permissions to owner read/write only
+	if(fchmod(fileno(outfile), S_IRUSR | S_IWUSR) != 0)
+		log_warn("Unable to set permissions on file \"%s\": %s", outfilename, strerror(errno));
+
 	// Get file size
 	fseek(infile, 0, SEEK_END);
 	const long sc = ftell(infile);
@@ -407,6 +412,10 @@ bool deflate_file(const char *infilename, const char *outfilename, bool verbose)
 		fclose(infile);
 		return false;
 	}
+
+	// Restrict permissions to owner read/write only
+	if(fchmod(fileno(outfile), S_IRUSR | S_IWUSR) != 0)
+		log_warn("Unable to set permissions on file \"%s\": %s", outfilename, strerror(errno));
 
 	// Get file size
 	fseek(infile, 0, SEEK_END);

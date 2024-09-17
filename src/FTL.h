@@ -33,7 +33,6 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/prctl.h>
-//#include <math.h>
 #include <pwd.h>
 // syslog
 #include <syslog.h>

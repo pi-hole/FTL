@@ -381,7 +381,7 @@ void FTL_log_helper(const unsigned int n, ...)
 	va_list args;
 	char **arg = calloc(n, sizeof(char*));
 	va_start(args, n);
-	for(unsigned char i = 0; i < n; i++)
+	for(unsigned int i = 0; i < n; i++)
 	{
 		const char *argin = va_arg(args, char*);
 		if(argin == NULL)
@@ -410,7 +410,7 @@ void FTL_log_helper(const unsigned int n, ...)
 	}
 
 	// Free allocated memory
-	for(unsigned char i = 0; i < n; i++)
+	for(unsigned int i = 0; i < n; i++)
 		if(arg[i] != NULL)
 			free(arg[i]);
 	free(arg);

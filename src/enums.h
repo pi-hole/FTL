@@ -123,7 +123,7 @@ enum blocking_status {
 
 enum debug_flag {
 	DEBUG_NONE = 0,
-	DEBUG_DATABASE = 1,
+	DEBUG_DATABASE,
 	DEBUG_NETWORKING,
 	DEBUG_LOCKS,
 	DEBUG_QUERIES,

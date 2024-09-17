@@ -1118,17 +1118,16 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 	memset(&sa, 0, sizeof(sa));
 	sa.nl_family = AF_NETLINK;
 
-	ssize_t len = nlrequest(fd, &sa, type);
-	if(len < 0)
+	if(!nlrequest(fd, &sa, type))
 	{
 		log_info("nlrequest error: %s", strerror(errno));
 		return -1;
 	}
 
-	char buf[BUFLEN];
 	uint32_t nl_msg_type;
 	do {
-		len = nlgetmsg(fd, &sa, buf, BUFLEN);
+		char buf[BUFLEN];
+		ssize_t len = nlgetmsg(fd, &sa, buf, BUFLEN);
 		nl_msg_type = parse_nl_msg(buf, len, json, detailed);
 	} while (nl_msg_type != NLMSG_DONE && nl_msg_type != NLMSG_ERROR);
 

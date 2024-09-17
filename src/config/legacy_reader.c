@@ -268,7 +268,7 @@ const char *readFTLlegacy(struct config *conf)
 	buffer = parseFTLconf(fp, "DELAY_STARTUP");
 
 	unsigned int unum;
-	if(buffer != NULL && sscanf(buffer, "%u", &unum) && unum > 0 && unum <= 300)
+	if(buffer != NULL && sscanf(buffer, "%u", &unum) == 1 && unum > 0 && unum <= 300)
 		conf->misc.delay_startup.v.ui = unum;
 
 	// BLOCK_ESNI

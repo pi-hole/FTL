@@ -782,6 +782,12 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 				log_err("Unable to open file \"%s\" for writing: %s", extract_files[i].destination, strerror(errno));
 				continue;
 			}
+
+			// Restrict permissions to owner read/write only
+			if(fchmod(fileno(fp), S_IRUSR | S_IWUSR) != 0)
+				log_warn("Unable to set permissions on file \"%s\": %s", extract_files[i].destination, strerror(errno));
+
+			// Write file to disk
 			if(fwrite(file, fileSize, 1, fp) != 1)
 			{
 				log_err("Unable to write file \"%s\": %s", extract_files[i].destination, strerror(errno));
