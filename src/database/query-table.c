@@ -677,19 +677,6 @@ bool export_queries_to_disk(bool final)
 		log_debug(DEBUG_DATABASE, "Exported %i rows to disk.%s", sqlite3_changes(memdb), subtable_names[i]);
 	}
 
-	// End transaction
-	if((rc = sqlite3_exec(memdb, "END TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
-	{
-		log_err("export_queries_to_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	// Update number of queries in the disk database
-	disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage");
-
-	// All temp queries were stored to disk, update the IDs
-	last_disk_db_idx += insertions;
-
 	/*
 	 * If there are any insertions, we:
 	 * 1. Insert (or replace) the last timestamp into the `disk.ftl` table.
@@ -707,6 +694,19 @@ bool export_queries_to_disk(bool final)
 		if((rc = dbquery(memdb, "UPDATE disk.counters SET value = value + %u WHERE id = %i;", new_blocked, DB_BLOCKEDQUERIES)) != SQLITE_OK)
 			log_err("export_queries_to_disk(): Cannot update blocked queries counter: %s", sqlite3_errstr(rc));
 	}
+
+	// End transaction
+	if((rc = sqlite3_exec(memdb, "END TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
+	{
+		log_err("export_queries_to_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Update number of queries in the disk database
+	disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage");
+
+	// All temp queries were stored to disk, update the IDs
+	last_disk_db_idx += insertions;
 
 	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms, last SQLite ID %lu)",
 	          insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER), last_disk_db_idx);
