@@ -682,6 +682,11 @@ bool export_queries_to_disk(bool final)
 	 * 1. Insert (or replace) the last timestamp into the `disk.ftl` table.
 	 * 2. Update the total queries counter in the `disk.counters` table.
 	 * 3. Update the blocked queries counter in the `disk.counters` table.
+	 *
+	 * Note that new_total does not need to match the total number of
+	 * insertions here as storing queries to the database happens
+	 * time-delayed. In the end, the total number of queries will be
+	 * correct (after final synchronization during FTL shutdown).
 	 */
 	if(insertions > 0)
 	{
@@ -690,9 +695,15 @@ bool export_queries_to_disk(bool final)
 
 		if((rc = dbquery(memdb, "UPDATE disk.counters SET value = value + %u WHERE id = %i;", new_total, DB_TOTALQUERIES)) != SQLITE_OK)
 			log_err("export_queries_to_disk(): Cannot update total queries counter: %s", sqlite3_errstr(rc));
+		else
+			// Success
+			new_total = 0;
 
 		if((rc = dbquery(memdb, "UPDATE disk.counters SET value = value + %u WHERE id = %i;", new_blocked, DB_BLOCKEDQUERIES)) != SQLITE_OK)
 			log_err("export_queries_to_disk(): Cannot update blocked queries counter: %s", sqlite3_errstr(rc));
+		else
+			// Success
+			new_blocked = 0;
 	}
 
 	// End transaction
