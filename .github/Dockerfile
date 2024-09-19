@@ -1,4 +1,4 @@
-FROM ghcr.io/pi-hole/ftl-build:v2.7 AS builder
+FROM ghcr.io/pi-hole/ftl-build:v2.8 AS builder
 
 WORKDIR /app
 
@@ -13,8 +13,7 @@ ENV GIT_TAG=${GIT_TAG}
 ARG BUILD_OPTS=""
 ENV BUILD_OPTS=${BUILD_OPTS}
 
-# Add ncurses used for pretty output in bats tests
-RUN apk add --no-cache ncurses
+# Setting TERM is needed for pretty output in BATS tests
 ENV TERM=xterm
 
 # Monkeypatch BATS to remove duplicate output of starting and finished test

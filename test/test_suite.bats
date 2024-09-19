@@ -1,9 +1,5 @@
 #!./test/libs/bats/bin/bats
 
-@test 'fail()' {
-  fail 'this test always fails'
-}
-
 @test "Compare template and test TOML config files" {
   # We skip the first 5 lines of the files as they contain the version and
   # timestamp of the file creation/modification
