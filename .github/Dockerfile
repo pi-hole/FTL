@@ -1,4 +1,4 @@
-FROM ghcr.io/pi-hole/ftl-build:v2.7 AS builder
+FROM ghcr.io/pi-hole/ftl-build:v2.8 AS builder
 
 WORKDIR /app
 
@@ -12,6 +12,14 @@ ARG GIT_TAG="test"
 ENV GIT_TAG=${GIT_TAG}
 ARG BUILD_OPTS=""
 ENV BUILD_OPTS=${BUILD_OPTS}
+
+# Setting TERM is needed for pretty output in BATS tests
+ENV TERM=xterm
+
+# Monkeypatch BATS to remove duplicate output of starting and finished test
+# BATS uses ANSI escape codes to overwrite the line after the test has finished
+# This is not supported by Github Actions as it does not provide a TTY to the docker build container
+RUN sed -i '/buffer_with_truncation /d' /bats-core/libexec/bats-core/bats-format-pretty
 
 # Build FTL
 # Remove possible old build files
