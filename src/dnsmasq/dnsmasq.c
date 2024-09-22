@@ -2026,6 +2026,11 @@ static void check_dns_listeners(time_t now)
 
 	      /* The child can use up to TCP_MAX_QUERIES ids, so skip that many. */
 	      daemon->log_id += TCP_MAX_QUERIES;
+#ifdef HAVE_DNSSEC
+	      /* It can do more if making DNSSEC queries too. */
+	      if (option_bool(OPT_DNSSEC_VALID))
+		daemon->log_id += daemon->limit[LIMIT_WORK];
+#endif
 	    }
 	  else
 	    {
@@ -2062,10 +2067,6 @@ static void check_dns_listeners(time_t now)
 		  daemon->pipe_to_parent = pipefd[1];
 		}
 
-	      /* start with no upstream connections. */
-	      for (s = daemon->servers; s; s = s->next)
-		 s->tcpfd = -1; 
-	      
 	      /* The connected socket inherits non-blocking
 		 attribute from the listening socket. 
 		 Reset that here. */
@@ -2092,6 +2093,7 @@ static void check_dns_listeners(time_t now)
 		  {
 		    shutdown(s->tcpfd, SHUT_RDWR);
 		    close(s->tcpfd);
+		    s->tcpfd = -1;
 		  }
 	      
 	      if (!option_bool(OPT_DEBUG))
@@ -2104,6 +2106,124 @@ static void check_dns_listeners(time_t now)
 	}
     }
 }
+
+#ifdef HAVE_DNSSEC
+/* If a DNSSEC query over UDP returns a truncated answer,
+   we swap to the TCP path. This routine is responsible for forking
+   the required process, the child then calls tcp_key_recurse() and
+   returns the result of the validation through the pipe to the parent
+   (which has also primed the cache with the relevant DS and DNSKEY records).
+   If we're in debug mode, don't fork and return the result directly, otherwise
+   return  STAT_ASYNC. The UDP validation process will restart when 
+   cache_recv_insert() calls pop_and_retry_query() after the result 
+   arrives via the pipe to the parent. */
+int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header *header,
+		size_t plen, int class, struct server *server, int *keycount, int *validatecount)
+{
+  struct server *s;
+
+  if (!option_bool(OPT_DEBUG))
+    {
+      pid_t p;
+      int i, pipefd[2];
+#ifdef HAVE_LINUX_NETWORK
+      unsigned char a = 0;
+#endif
+      
+      /* check to see if we have a free tcp process slot. */
+      for (i = daemon->max_procs - 1; i >= 0; i--)
+	if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
+	  break;
+      
+      /* No slots */
+      if (i < 0)
+	return STAT_ABANDONED;
+      
+      if (pipe(pipefd) == 0 && (p = fork()) != 0)
+	{
+	  close(pipefd[1]); /* parent needs read pipe end. */
+	  if (p == -1)
+	    {
+	      /* fork() failed */
+	      close(pipefd[0]);
+	      return STAT_ABANDONED;
+	    }
+
+#ifdef HAVE_LINUX_NETWORK
+	  /* The child process inherits the netlink socket, 
+	     which it never uses, but when the parent (us) 
+	     uses it in the future, the answer may go to the 
+	     child, resulting in the parent blocking
+	     forever awaiting the result. To avoid this
+	     the child closes the netlink socket, but there's
+	     a nasty race, since the parent may use netlink
+	     before the child has done the close.
+	     
+	     To avoid this, the parent blocks here until a 
+	     single byte comes back up the pipe, which
+	     is sent by the child after it has closed the
+	     netlink socket. */
+	  read_write(pipefd[0], &a, 1, 1);
+#endif
+	  
+	  /* i holds index of free slot */
+	  daemon->tcp_pids[i] = p;
+	  daemon->tcp_pipes[i] = pipefd[0];
+	  daemon->metrics[METRIC_TCP_CONNECTIONS]++;
+	  if (daemon->metrics[METRIC_TCP_CONNECTIONS] > daemon->max_procs_used)
+	    daemon->max_procs_used = daemon->metrics[METRIC_TCP_CONNECTIONS];
+
+	  /* child can use a maximum of this many log serials. */
+	  daemon->log_id += daemon->limit[LIMIT_WORK];
+
+	  /* tell the caller we've forked. */
+	  return STAT_ASYNC;
+	}
+      else
+	{
+	  /* child starts here. */
+#ifdef HAVE_LINUX_NETWORK
+	  /* See comment above re: netlink socket. */
+	  close(daemon->netlinkfd);
+	  read_write(pipefd[1], &a, 1, 0);
+#endif		  
+	  close(pipefd[0]); /* close read end in child. */
+	  daemon->pipe_to_parent = pipefd[1];	  
+	}
+    }
+  
+  status = tcp_key_recurse(now, status, header, plen, class, daemon->namebuff, daemon->keyname, 
+			   server, 0, 0, keycount, validatecount);
+  
+  /* close upstream connections. */
+  for (s = daemon->servers; s; s = s->next)
+    if (s->tcpfd != -1)
+      {
+	shutdown(s->tcpfd, SHUT_RDWR);
+	close(s->tcpfd);
+	s->tcpfd = -1;
+      }
+  
+   if (!option_bool(OPT_DEBUG))
+     {
+       ssize_t m = -2;
+
+       /* tell our parent we're done, and what the result was then exit. */
+       read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
+       read_write(daemon->pipe_to_parent, (unsigned char *)&status, sizeof(status), 0);
+       read_write(daemon->pipe_to_parent, (unsigned char *)&forward, sizeof(forward), 0);
+       read_write(daemon->pipe_to_parent, (unsigned char *)&forward->uid, sizeof(forward->uid), 0);
+       close(daemon->pipe_to_parent);
+       
+       flush_log();
+       _exit(0);
+     }
+   
+   /* path for debug mode. */
+   return status;
+}
+#endif
+
 
 #ifdef HAVE_DHCP
 int make_icmp_sock(void)

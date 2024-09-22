@@ -744,6 +744,7 @@ int add_update_server(int flags,
   serv->flags = flags;
   serv->domain = alloc_domain;
   serv->domain_len = strlen(alloc_domain);
+  serv->tcpfd = -1;
   
   return 1;
 }

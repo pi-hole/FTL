@@ -908,6 +908,31 @@ int cache_recv_insert(time_t now, int fd)
 	  return 1;
 	}
 
+#ifdef HAVE_DNSSEC
+      /* UDP validation moved to TCP to avoid truncation. 
+	 Restart UDP validation process with the returned result. */
+      if (m == -2)
+	{
+	  int status, uid;
+	  struct frec *forward;
+	  
+	  if (!read_write(fd, (unsigned char *)&status, sizeof(status), 1))
+	    return 0;
+	  if (!read_write(fd, (unsigned char *)&forward, sizeof(forward), 1))
+	    return 0;
+	  if (!read_write(fd, (unsigned char *)&uid, sizeof(uid), 1))
+	    return 0;
+
+	  /* There's a tiny chance that the frec may have been freed 
+	     and reused before the TCP process returns. Detect that with
+	     the uid field which is unique modulo 2^32 for each use. */
+	  if (uid == forward->uid)
+	    pop_and_retry_query(forward, status, now);
+
+	  return 1;
+	}
+#endif
+       
       if (!read_write(fd, (unsigned char *)daemon->namebuff, m, 1) ||
 	  !read_write(fd, (unsigned char *)&ttd, sizeof(ttd), 1) ||
 	  !read_write(fd, (unsigned char *)&flags, sizeof(flags), 1) ||

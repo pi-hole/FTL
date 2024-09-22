@@ -761,6 +761,9 @@ struct dyndir {
 #define STAT_SECURE_WILDCARD    0x70000
 #define STAT_OK                 0x80000
 #define STAT_ABANDONED          0x90000
+#define STAT_NEED_DS_QUERY      0xa0000
+#define STAT_NEED_KEY_QUERY     0xb0000
+#define STAT_ASYNC              0xc0000
 
 #define DNSSEC_FAIL_NYV         0x0001 /* key not yet valid */
 #define DNSSEC_FAIL_EXP         0x0002 /* key expired */
@@ -788,6 +791,7 @@ struct dyndir {
 #define FREC_TEST_PKTSZ       256
 #define FREC_HAS_EXTRADATA    512
 #define FREC_HAS_PHEADER     1024
+#define FREC_GONE_TO_TCP     2048
 
 #define HASH_SIZE 32 /* SHA-256 digest size */
 
@@ -811,7 +815,7 @@ struct frec {
   struct blockdata *stash; /* Saved reply, whilst we validate */
   size_t stash_len;
 #ifdef HAVE_DNSSEC 
-  int class, work_counter, validate_counter;
+  int uid, class, work_counter, validate_counter;
   struct frec *dependent; /* Query awaiting internally-generated DNSKEY or DS query */
   struct frec *next_dependent; /* list of above. */
   struct frec *blocking_query; /* Query which is blocking us. */
@@ -1541,6 +1545,12 @@ int option_read_dynfile(char *file, int flags);
 /* forward.c */
 void reply_query(int fd, time_t now);
 void receive_query(struct listener *listen, time_t now);
+#ifdef HAVE_DNSSEC
+void pop_and_retry_query(struct frec *forward, int status, time_t now);
+int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n, 
+		    int class, char *name, char *keyname, struct server *server, 
+		    int have_mark, unsigned int mark, int *keycount, int *validatecount);
+#endif
 unsigned char *tcp_request(int confd, time_t now,
 			   union mysockaddr *local_addr, struct in_addr netmask, int auth_dns);
 void server_gone(struct server *server);
@@ -1660,6 +1670,10 @@ void queue_event(int event);
 void send_alarm(time_t event, time_t now);
 void send_event(int fd, int event, int data, char *msg);
 void clear_cache_and_reload(time_t now);
+#ifdef HAVE_DNSSEC
+int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header *header,
+		size_t plen, int class, struct server *server, int *keycount, int *validatecount);
+#endif
 
 /* netlink.c */
 #ifdef HAVE_LINUX_NETWORK
