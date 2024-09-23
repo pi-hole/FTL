@@ -23,7 +23,7 @@ done
 rm -rf /etc/pihole /var/log/pihole /dev/shm/FTL-*
 
 # Create necessary directories and files
-mkdir -p /home/pihole /etc/pihole /run/pihole /var/log/pihole /etc/pihole/config_backups
+mkdir -p /home/pihole /etc/pihole /run/pihole /var/log/pihole /etc/pihole/config_backups /var/www/html
 echo "" > /var/log/pihole/FTL.log
 echo "" > /var/log/pihole/pihole.log
 echo "" > /var/log/pihole/webserver.log
@@ -61,6 +61,9 @@ cp test/01-pihole-tests.conf /etc/dnsmasq.d/01-pihole-tests.conf
 
 # Prepare versions file (read by /api/version)
 cp test/versions /etc/pihole/versions
+
+# Prepare Lua test script
+cp test/broken_lua.lp /var/www/html/broken_lua.lp
 
 # Prepare local powerDNS resolver
 bash test/pdns/setup.sh
