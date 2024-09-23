@@ -1689,12 +1689,17 @@
   # Run a page with a syntax error
   run bash -c 'curl -s 127.0.0.1/broken_lua'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == 'Hello, world!' ]]
-  [[ ${lines[1]} == '[string "/var/www/html/broken_lua.lp"]:4: Cannot include [/var/www/html/does_not_exist.lp]: not found' ]]
-  [[ ${lines[2]} == '' ]]
+  [[ ${lines[0]} == 'Hello, world 1!' ]]
+  [[ ${lines[1]} == 'Hello, world 2!' ]]
+  [[ ${lines[2]} == '[string "/var/www/html/broken_lua_2.lp"]:4: Cannot include [/var/www/html/does_not_exist.lp]: not found' ]]
+  [[ ${lines[3]} == 'stack traceback:' ]]
+  [[ ${lines[4]} == "	[C]: in field 'include'" ]]
+  [[ ${lines[5]} == '	[string "/var/www/html/broken_lua.lp"]:4: in main chunk' ]]
+  [[ ${lines[6]} == 'aborting' ]]
+  [[ ${lines[7]} == '' ]]
 
   # Check if the error is logged (-F = fixed string (no regex), -q = quiet)
-  run grep -qF 'LSP Kepler: call failed: runtime error: [string "/var/www/html/broken_lua.lp"]:4: Cannot include [/var/www/html/does_not_exist.lp]: not found' /var/log/pihole/webserver.log
+  run grep -qF 'LSP Kepler: call failed: runtime error: [string "/var/www/html/broken_lua_2.lp"]:4: Cannot include [/var/www/html/does_not_exist.lp]: not found' /var/log/pihole/webserver.log
   [[ $status == 0 ]]
 }
 

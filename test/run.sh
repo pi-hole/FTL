@@ -64,6 +64,7 @@ cp test/versions /etc/pihole/versions
 
 # Prepare Lua test script
 cp test/broken_lua.lp /var/www/html/broken_lua.lp
+cp test/broken_lua_2.lp /var/www/html/broken_lua_2.lp
 
 # Prepare local powerDNS resolver
 bash test/pdns/setup.sh
