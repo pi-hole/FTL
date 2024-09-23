@@ -10,6 +10,9 @@
 #include "civetweb_lua.h"
 #include "civetweb_private_lua.h"
 
+static int
+lua_error_handler(lua_State *L);
+
 
 #if defined(_WIN32)
 static void *
@@ -670,7 +673,7 @@ run_lsp_kepler(struct mg_connection *conn,
 		/* Syntax error or OOM.
 		 * Error message is pushed on stack. */
 		lua_pcall(L, 1, 0, 0);
-		lua_cry(conn, lua_ok, L, "LSP Kepler", "execute");
+		lua_error_handler(L);
 		return 1;
 
 	} else {
@@ -678,7 +681,7 @@ run_lsp_kepler(struct mg_connection *conn,
 		lua_ok = lua_pcall(L, 0, 0, 0);
 		if(lua_ok != LUA_OK)
 		{
-			lua_cry(conn, lua_ok, L, "LSP Kepler", "call");
+			lua_error_handler(L);
 			return 1;
 		}
 	}
@@ -794,14 +797,14 @@ run_lsp_civetweb(struct mg_connection *conn,
 						/* Syntax error or OOM.
 						 * Error message is pushed on stack. */
 						lua_pcall(L, 1, 0, 0);
-						lua_cry(conn, lua_ok, L, "LSP", "execute");
+						lua_error_handler(L);
 						return 1;
 					} else {
 						/* Success loading chunk. Call it. */
 						lua_ok = lua_pcall(L, 0, 0, 0);
 						if(lua_ok != LUA_OK)
 						{
-							lua_cry(conn, lua_ok, L, "LSP", "call");
+							lua_error_handler(L);
 							return 1;
 						}
 					}
@@ -2791,6 +2794,9 @@ static int
 lua_error_handler(lua_State *L)
 {
 	const char *error_msg = lua_isstring(L, -1) ? lua_tostring(L, -1) : "?\n";
+
+	/* Log error message */
+	lua_cry(NULL, 0, L, error_msg, "error");
 
 	lua_getglobal(L, "mg");
 	if (!lua_isnil(L, -1)) {
