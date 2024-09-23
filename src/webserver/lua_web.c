@@ -57,12 +57,7 @@ void free_lua(void)
 
 void init_lua(const struct mg_connection *conn, void *L, unsigned context_flags)
 {
-	// Set onerror handler to print errors to the log
-	if(luaL_dostring(L, "mg.onerror = function(e) mg.cry('Error at ' .. e) end") != LUA_OK)
-	{
-		log_err("Error setting Lua onerror handler: %s", lua_tostring(L, -1));
-		lua_pop(L, 1);
-	}
+	return;
 }
 
 int request_handler(struct mg_connection *conn, void *cbdata)
