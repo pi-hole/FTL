@@ -2213,6 +2213,10 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
        read_write(daemon->pipe_to_parent, (unsigned char *)&status, sizeof(status), 0);
        read_write(daemon->pipe_to_parent, (unsigned char *)&forward, sizeof(forward), 0);
        read_write(daemon->pipe_to_parent, (unsigned char *)&forward->uid, sizeof(forward->uid), 0);
+       read_write(daemon->pipe_to_parent, (unsigned char *)keycount, sizeof(*keycount), 0);
+       read_write(daemon->pipe_to_parent, (unsigned char *)&keycount, sizeof(keycount), 0);
+       read_write(daemon->pipe_to_parent, (unsigned char *)validatecount, sizeof(*validatecount), 0);
+       read_write(daemon->pipe_to_parent, (unsigned char *)&validatecount, sizeof(validatecount), 0);
        close(daemon->pipe_to_parent);
        
        flush_log();

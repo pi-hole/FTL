@@ -986,6 +986,9 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	  if  (extract_name(header, plen, &p, daemon->namebuff, 0, 4) == 1)
 	    log_query(F_UPSTREAM | F_NOEXTRA, daemon->namebuff, NULL, "truncated", (forward->flags & FREC_DNSKEY_QUERY) ? T_DNSKEY : T_DS);
 	  
+	  /* Don't count failed UDP attempt AND TCP */
+	  orig->work_counter++;
+
 	  /* NOTE: Can't move connection marks from UDP to TCP */
 	  status = swap_to_tcp(forward, now, (forward->flags & FREC_DNSKEY_QUERY) ? STAT_NEED_KEY_QUERY : STAT_NEED_DS_QUERY,
 			       header, forward->stash_len, forward->class, forward->sentto, &orig->work_counter, &orig->validate_counter);
