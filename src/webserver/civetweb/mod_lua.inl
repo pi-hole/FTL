@@ -670,13 +670,17 @@ run_lsp_kepler(struct mg_connection *conn,
 		/* Syntax error or OOM.
 		 * Error message is pushed on stack. */
 		lua_pcall(L, 1, 0, 0);
-		lua_cry(conn, lua_ok, L, "LSP", "execute"); /* XXX TODO: everywhere ! */
+		lua_cry(conn, lua_ok, L, "LSP Kepler", "execute");
+		return 1;
 
 	} else {
 		/* Success loading chunk. Call it. */
 		lua_ok = lua_pcall(L, 0, 0, 0);
-		if(lua_ok != LUA_OK) 
-			lua_cry(conn, lua_ok, L, "LSP", "call");
+		if(lua_ok != LUA_OK)
+		{
+			lua_cry(conn, lua_ok, L, "LSP Kepler", "call");
+			return 1;
+		}
 	}
 	return 0;
 }
@@ -790,11 +794,16 @@ run_lsp_civetweb(struct mg_connection *conn,
 						/* Syntax error or OOM.
 						 * Error message is pushed on stack. */
 						lua_pcall(L, 1, 0, 0);
+						lua_cry(conn, lua_ok, L, "LSP", "execute");
+						return 1;
 					} else {
 						/* Success loading chunk. Call it. */
 						lua_ok = lua_pcall(L, 0, 0, 0);
-						if(lua_ok != LUA_OK) 
+						if(lua_ok != LUA_OK)
+						{
 							lua_cry(conn, lua_ok, L, "LSP", "call");
+							return 1;
+						}
 					}
 
 					/* Progress until after the Lua closing tag. */
