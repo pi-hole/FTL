@@ -20,10 +20,6 @@
 #include "lauxlib.h"
 #include "lualib.h"
 
-/** Pi-hole modification **/
-#include "ftl_lua.h"
-/**************************/
-
 
 #if !defined(LUA_PROGNAME)
 #define LUA_PROGNAME		"lua"
@@ -218,9 +214,7 @@ static int dostring (lua_State *L, const char *s, const char *name) {
 ** If there is no explicit modname and globname contains a '-', cut
 ** the suffix after '-' (the "version") to make the global name.
 */
-/************** Pi-hole modification ***************/
-int dolibrary (lua_State *L, char *globname) {
-/***************************************************/
+static int dolibrary (lua_State *L, char *globname) {
   int status;
   char *suffix = NULL;
   char *modname = strchr(globname, '=');
@@ -654,11 +648,6 @@ static int pmain (lua_State *L) {
     if (handle_luainit(L) != LUA_OK)  /* run LUA_INIT */
       return 0;  /* error running LUA_INIT */
   }
-
-  /************** Pi-hole modification ***************/
-  // Load and enable libraries bundled with Pi-hole
-  ftl_lua_init(L);
-  /***************************************************/
 
   if (!runargs(L, argv, optlim))  /* execute arguments -e and -l */
     return 0;  /* something failed */

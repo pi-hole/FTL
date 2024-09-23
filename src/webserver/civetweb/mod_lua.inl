@@ -2824,7 +2824,7 @@ lua_error_handler(lua_State *L)
 			lua_call(L, 2, 0); /* call mg.write(traceback + \n) */
 			lua_pop(L, 2); /* pop mg and traceback */
 		} else {
-			lua_pop(L, 3); /* pop mg, traceback and error message */
+			lua_pop(L, 3); /* pop mg, traceback and write */
 		}
 
 	} else {
