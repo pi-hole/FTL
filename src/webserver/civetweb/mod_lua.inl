@@ -13,7 +13,6 @@
 static int
 lua_error_handler(lua_State *L);
 
-
 #if defined(_WIN32)
 static void *
 mmap(void *addr, int64_t len, int prot, int flags, int fd, int offset)
@@ -673,6 +672,7 @@ run_lsp_kepler(struct mg_connection *conn,
 		/* Syntax error or OOM.
 		 * Error message is pushed on stack. */
 		lua_pcall(L, 1, 0, 0);
+		lua_cry(conn, lua_ok, L, "LSP Kepler", "execute");
 		lua_error_handler(L);
 		return 1;
 
@@ -681,6 +681,7 @@ run_lsp_kepler(struct mg_connection *conn,
 		lua_ok = lua_pcall(L, 0, 0, 0);
 		if(lua_ok != LUA_OK)
 		{
+			lua_cry(conn, lua_ok, L, "LSP Kepler", "call");
 			lua_error_handler(L);
 			return 1;
 		}
@@ -797,6 +798,7 @@ run_lsp_civetweb(struct mg_connection *conn,
 						/* Syntax error or OOM.
 						 * Error message is pushed on stack. */
 						lua_pcall(L, 1, 0, 0);
+						lua_cry(conn, lua_ok, L, "LSP", "call");
 						lua_error_handler(L);
 						return 1;
 					} else {
@@ -804,6 +806,7 @@ run_lsp_civetweb(struct mg_connection *conn,
 						lua_ok = lua_pcall(L, 0, 0, 0);
 						if(lua_ok != LUA_OK)
 						{
+							lua_cry(conn, lua_ok, L, "LSP", "execute");
 							lua_error_handler(L);
 							return 1;
 						}
