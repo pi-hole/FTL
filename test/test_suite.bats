@@ -1235,10 +1235,10 @@
   [[ ${lines[0]} == '{"error":{"key":"not_found","message":"Not found","hint":"/api/undefined"},"took":'*'}' ]]
 }
 
-@test "HTTP server responds with normal error 404 to path outside /admin" {
-  run bash -c 'curl -s 127.0.0.1/undefined'
+@test "HTTP server responds with error 404 to path outside /admin" {
+  run bash -c 'curl -sI 127.0.0.1/undefined'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "Error 404: Not Found" ]]
+  [[ ${lines[@]} == *"HTTP/1.1 404 Not Found"* ]]
 }
 
 @test "LUA: Interpreter returns FTL version" {
@@ -1682,6 +1682,25 @@
   printf "%s\n" "${lines[@]}"
   run bash -c 'curl -s 127.0.0.1/api/queries?status=UNKNOWN | jq ".queries | length"'
   [[ ${lines[0]} == "0" ]]
+}
+
+# This test should run before a password it set
+@test "Lua server page is generating proper backtrace" {
+  # Run a page with a syntax error
+  run bash -c 'curl -s 127.0.0.1/broken_lua'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Hello, world 1!' ]]
+  [[ ${lines[1]} == 'Hello, world 2!' ]]
+  [[ ${lines[2]} == '[string "/var/www/html/broken_lua_2.lp"]:4: Cannot include [/var/www/html/does_not_exist.lp]: not found' ]]
+  [[ ${lines[3]} == 'stack traceback:' ]]
+  [[ ${lines[4]} == "	[C]: in field 'include'" ]]
+  [[ ${lines[5]} == '	[string "/var/www/html/broken_lua.lp"]:4: in main chunk' ]]
+  [[ ${lines[6]} == 'aborting' ]]
+  [[ ${lines[7]} == '' ]]
+
+  # Check if the error is logged (-F = fixed string (no regex), -q = quiet)
+  run grep -qF 'LSP Kepler: call failed: runtime error: [string "/var/www/html/broken_lua_2.lp"]:4: Cannot include [/var/www/html/does_not_exist.lp]: not found' /var/log/pihole/webserver.log
+  [[ $status == 0 ]]
 }
 
 @test "API authorization (without password): No login required" {

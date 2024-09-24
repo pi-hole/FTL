@@ -8,6 +8,10 @@
 #define linit_c
 #define LUA_LIB
 
+/** Pi-hole modification **/
+#include "ftl_lua.h"
+/**************************/
+
 /*
 ** If you embed Lua in your program and need to open the standard
 ** libraries, call luaL_openlibs in your program. If you need a
@@ -64,5 +68,7 @@ LUALIB_API void luaL_openlibs (lua_State *L) {
     luaL_requiref(L, lib->name, lib->func, 1);
     lua_pop(L, 1);  /* remove lib */
   }
+  // Load and enable libraries bundled with Pi-hole
+  ftl_lua_init(L);
 }
 
