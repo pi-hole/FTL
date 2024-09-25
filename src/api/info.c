@@ -544,8 +544,10 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	const int db_groups = counters->database.groups;
 	const int db_lists = counters->database.lists;
 	const int db_clients = counters->database.clients;
-	const int db_allowed = counters->database.domains.allowed;
-	const int db_denied = counters->database.domains.denied;
+	const int db_allowed_exact = counters->database.domains.allowed.exact;
+	const int db_denied_exact = counters->database.domains.denied.exact;
+	const int db_allowed_regex = counters->database.domains.allowed.regex;
+	const int db_denied_regex = counters->database.domains.denied.regex;
 	const int clients_total = counters->clients;
 	const int privacylevel = config.misc.privacylevel.v.privacy_level;
 	const double qps = get_qps();
@@ -570,9 +572,14 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	JSON_ADD_NUMBER_TO_OBJECT(database, "clients", db_clients);
 
 	cJSON *domains = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(domains, "allowed", db_allowed);
-	JSON_ADD_NUMBER_TO_OBJECT(domains, "denied", db_denied);
+	JSON_ADD_NUMBER_TO_OBJECT(domains, "allowed", db_allowed_exact);
+	JSON_ADD_NUMBER_TO_OBJECT(domains, "denied", db_denied_exact);
 	JSON_ADD_ITEM_TO_OBJECT(database, "domains", domains);
+
+	cJSON *regex = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(regex, "allowed", db_allowed_regex);
+	JSON_ADD_NUMBER_TO_OBJECT(regex, "denied", db_denied_regex);
+	JSON_ADD_ITEM_TO_OBJECT(database, "regex", regex);
 	JSON_ADD_ITEM_TO_OBJECT(ftl, "database", database);
 
 	JSON_ADD_NUMBER_TO_OBJECT(ftl, "privacy_level", privacylevel);

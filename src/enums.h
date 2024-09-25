@@ -193,8 +193,6 @@ enum gravity_tables {
 	CLIENTS_TABLE,
 	GROUPS_TABLE,
 	ADLISTS_TABLE,
-	DENIED_DOMAINS_TABLE,
-	ALLOWED_DOMAINS_TABLE,
 	UNKNOWN_TABLE
 } __attribute__ ((packed));
 
