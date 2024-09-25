@@ -62,8 +62,14 @@ typedef struct {
 		int groups;
 		int lists;
 		struct {
-			int allowed;
-			int denied;
+			struct {
+				int exact;
+				int regex;
+			} allowed;
+			struct {
+				int exact;
+				int regex;
+			} denied;
 		} domains;
 	} database;
 	int querytype[TYPE_MAX];
