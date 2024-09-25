@@ -678,17 +678,6 @@ bool db_set_FTL_property(sqlite3 *db, const enum ftl_table_props ID, const int v
 	return true;
 }
 
-bool db_set_FTL_property_double(sqlite3 *db, const enum ftl_table_props ID, const double value)
-{
-	int ret = dbquery(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %f );", ID, value);
-	if(ret != SQLITE_OK)
-	{
-		checkFTLDBrc(ret);
-		return false;
-	}
-	return true;
-}
-
 bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const int value)
 {
 	int ret = dbquery(db, "INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %d );", ID, value);
@@ -697,25 +686,6 @@ bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const int v
 		checkFTLDBrc(ret);
 		return false;
 	}
-	return true;
-}
-
-bool db_update_counters(sqlite3 *db, const int total, const int blocked)
-{
-	int ret = dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES);
-	if(ret != SQLITE_OK)
-	{
-		checkFTLDBrc(ret);
-		return false;
-	}
-
-	ret = dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES);
-	if(ret != SQLITE_OK)
-	{
-		checkFTLDBrc(ret);
-		return false;
-	}
-
 	return true;
 }
 

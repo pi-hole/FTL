@@ -637,7 +637,6 @@ bool export_queries_to_disk(bool final)
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
-
 	// Update last_disk_db_idx
 	// Prepare SQLite3 statement
 	log_debug(DEBUG_DATABASE, "Accessing in-memory database");
@@ -678,6 +677,35 @@ bool export_queries_to_disk(bool final)
 		log_debug(DEBUG_DATABASE, "Exported %i rows to disk.%s", sqlite3_changes(memdb), subtable_names[i]);
 	}
 
+	/*
+	 * If there are any insertions, we:
+	 * 1. Insert (or replace) the last timestamp into the `disk.ftl` table.
+	 * 2. Update the total queries counter in the `disk.counters` table.
+	 * 3. Update the blocked queries counter in the `disk.counters` table.
+	 *
+	 * Note that new_total does not need to match the total number of
+	 * insertions here as storing queries to the database happens
+	 * time-delayed. In the end, the total number of queries will be
+	 * correct (after final synchronization during FTL shutdown).
+	 */
+	if(insertions > 0)
+	{
+		if((rc = dbquery(memdb, "INSERT OR REPLACE INTO disk.ftl (id, value) VALUES ( %i, %f );", DB_LASTTIMESTAMP, new_last_timestamp)) != SQLITE_OK)
+			log_err("export_queries_to_disk(): Cannot update timestamp: %s", sqlite3_errstr(rc));
+
+		if((rc = dbquery(memdb, "UPDATE disk.counters SET value = value + %u WHERE id = %i;", new_total, DB_TOTALQUERIES)) != SQLITE_OK)
+			log_err("export_queries_to_disk(): Cannot update total queries counter: %s", sqlite3_errstr(rc));
+		else
+			// Success
+			new_total = 0;
+
+		if((rc = dbquery(memdb, "UPDATE disk.counters SET value = value + %u WHERE id = %i;", new_blocked, DB_BLOCKEDQUERIES)) != SQLITE_OK)
+			log_err("export_queries_to_disk(): Cannot update blocked queries counter: %s", sqlite3_errstr(rc));
+		else
+			// Success
+			new_blocked = 0;
+	}
+
 	// End transaction
 	if((rc = sqlite3_exec(memdb, "END TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
 	{
@@ -690,17 +718,6 @@ bool export_queries_to_disk(bool final)
 
 	// All temp queries were stored to disk, update the IDs
 	last_disk_db_idx += insertions;
-
-	if(insertions > 0)
-	{
-		sqlite3 *db = dbopen(false, false);
-		if(db != NULL)
-		{
-			db_set_FTL_property_double(db, DB_LASTTIMESTAMP, new_last_timestamp);
-			db_update_counters(db, new_total, new_blocked);
-			dbclose(&db);
-		}
-	}
 
 	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms, last SQLite ID %lu)",
 	          insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER), last_disk_db_idx);

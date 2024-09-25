@@ -33,7 +33,6 @@ int db_get_int(sqlite3* db, const enum ftl_table_props ID);
 int db_get_FTL_property(sqlite3* db, const enum ftl_table_props ID);
 double db_get_FTL_property_double(sqlite3* db, const enum ftl_table_props ID);
 bool db_set_FTL_property(sqlite3* db, const enum ftl_table_props ID, const int value);
-bool db_set_FTL_property_double(sqlite3* db, const enum ftl_table_props ID, const double value);
 
 /// Execute a formatted SQL query and get the return code
 int dbquery(sqlite3* db, const char *format, ...) __attribute__ ((format (printf, 2, 3)));;
@@ -53,7 +52,6 @@ int db_query_int_from_until_type(sqlite3 *db, const char* querystr, const double
 
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
 bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const int value);
-bool db_update_counters(sqlite3 *db, const int total, const int blocked);
 const char *get_sqlite3_version(void);
 
 extern bool DBdeleteoldqueries;
