@@ -532,12 +532,13 @@ void parse_args(int argc, char* argv[])
 	}
 
 	// sha256sum mode
-	if(argc == 3 && strcmp(argv[1], "sha256sum") == 0)
+	if((argc == 3 || (argc == 4 && strcmp(argv[2], "--skip-end"))) && strcmp(argv[1], "sha256sum") == 0)
 	{
+		const bool skip_end = argc == 4;
 		// Enable stdout printing
 		cli_mode = true;
 		uint8_t checksum[SHA256_DIGEST_SIZE];
-		if(!sha256sum(argv[2], checksum))
+		if(!sha256sum(argv[skip_end ? 3 : 2], checksum, skip_end))
 			exit(EXIT_FAILURE);
 
 		// Convert checksum to hex string
@@ -545,8 +546,21 @@ void parse_args(int argc, char* argv[])
 		sha256_raw_to_hex(checksum, hex);
 
 		// Print result
-		printf("%s  %s\n", hex, argv[2]);
+		printf("%s  %s\n", hex, argv[skip_end ? 3 : 2]);
 		exit(EXIT_SUCCESS);
+	}
+
+	// Checksum verification mode
+	if(argc == 2 && strcmp(argv[1], "verify") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		const bool match = verify_self_hash(true);
+		if(match)
+			printf("%s SHA256 checksum matches\n", cli_tick());
+		else
+			printf("%s SHA256 checksum does not match\n", cli_cross());
+		exit(match ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Local reverse name resolver
@@ -1082,10 +1096,18 @@ void parse_args(int argc, char* argv[])
 			printf("    %s--update%s flag is given.\n\n", purple, normal);
 			printf("    Usage: %spihole-FTL ntp %s[server]%s %s[--update]%s\n\n", green, cyan, normal, purple, normal);
 
+			printf("%sSHA256 checksum tools:%s\n", yellow, normal);
+			printf("    Calculates the SHA256 checksum of a file.\n\n");
+			printf("    Usage: %spihole-FTL sha256sum %sfile%s\n\n", green, cyan, normal);
+			printf("    The special flag %s--skip-end%s can be used to skip the last 32\n", purple, normal);
+			printf("    bytes of the file. This is useful for files which have their\n");
+			printf("    checksum appended at the end of the file, e.g., pihole-FTL:\n\n");
+			printf("    %spihole-FTL sha256sum %s--skip_end %sfile%s\n\n", green, purple, cyan, normal);
+
 			printf("%sOther:%s\n", yellow, normal);
+			printf("\t%sverify%s              Verify the integrity of the FTL binary\n", green, normal);
 			printf("\t%sptr %sIP%s %s[tcp]%s        Resolve IP address to hostname\n", green, cyan, normal, purple, normal);
 			printf("\t                    Append %stcp%s to use TCP instead of UDP\n", purple, normal);
-			printf("\t%ssha256sum %sfile%s      Calculate SHA256 checksum of a file\n", green, cyan, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
 			printf("\t%sarp-scan %s[-a/-x]%s    Use ARP to scan local network for\n", green, cyan, normal);

@@ -13,6 +13,8 @@
 #include "config/config.h"
 #include "config/setupVars.h"
 #include "log.h"
+// sha256_raw_to_hex()
+#include "config/password.h"
 
 // opendir(), readdir()
 #include <dirent.h>
@@ -27,10 +29,8 @@
 // sendfile()
 #include <fcntl.h>
 #include <sys/sendfile.h>
-
 // PRIu64
 #include <inttypes.h>
-
 //basename()
 #include <libgen.h>
 
@@ -714,7 +714,7 @@ bool files_different(const char *pathA, const char* pathB, unsigned int from)
 }
 
 // Create SHA256 checksum of a file
-bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE])
+bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE], const bool skip_end)
 {
 	// Open file
 	FILE *fp = fopen(path, "rb");
@@ -728,14 +728,30 @@ bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE])
 	struct sha256_ctx ctx;
 	sha256_init(&ctx);
 
-	// Read file in chunks of <pagesize> bytes
-	const size_t pagesize = getpagesize();
-	unsigned char *buf = calloc(pagesize, sizeof(char));
+	// Get size of file
+	fseek(fp, 0, SEEK_END);
+	size_t filesize = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+
+	// Determine chunk size
+	size_t chunksize = getpagesize();
+
+	// Read file in chunks
+	unsigned char *buf = calloc(chunksize, sizeof(char));
 	size_t len;
-	while((len = fread(buf, sizeof(char), pagesize, fp)) > 0)
+	while((len = fread(buf, sizeof(char), chunksize, fp)) > 0)
 	{
 		// Update SHA256 context
 		sha256_update(&ctx, len, buf);
+
+		// Reduce filesize by the number of bytes read
+		filesize -= len;
+
+		// If we want to skip the end of the file, we have to adjust the
+		// chunk size to the remaining bytes minus the size of the SHA256
+		// checksum itself
+		if(skip_end && filesize <= chunksize + SHA256_DIGEST_SIZE)
+			chunksize = filesize - SHA256_DIGEST_SIZE;
 	}
 
 	// Finalize SHA256 context
@@ -748,4 +764,77 @@ bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE])
 	free(buf);
 
 	return true;
+}
+
+/**
+ * @brief Verifies the integrity of the current executable file by comparing its
+ * SHA256 checksum with a pre-computed hash stored in the last 8 bytes of the
+ * binary.
+ *
+ * @param verbose A boolean value indicating whether verbose output should be
+ * enabled.
+ * @return Returns true if the checksum matches the expected value, false
+ * otherwise.
+ */
+bool verify_self_hash(bool verbose)
+{
+	// Get the filename of the current executable
+	char filename[PATH_MAX] = { 0 };
+	if(readlink("/proc/self/exe", filename, sizeof(filename)) == -1)
+	{
+		log_err("Failed to read self filename: %s", strerror(errno));
+		return -1;
+	}
+
+	// Read the pre-computed hash - it is stored in the last 8 bytes of the
+	// binary itself
+	uint8_t self_hash[SHA256_DIGEST_SIZE];
+	FILE *f = fopen(filename, "r");
+	if(f == NULL)
+	{
+		log_err("Failed to open self file \"%s\": %s", filename, strerror(errno));
+		return -1;
+	}
+	if(fseek(f, -SHA256_DIGEST_SIZE, SEEK_END) != 0)
+	{
+		log_err("Failed to seek to hash: %s", strerror(errno));
+		fclose(f);
+		return -1;
+	}
+	if(fread(self_hash, SHA256_DIGEST_SIZE, 1, f) != 1)
+	{
+		log_err("Failed to read hash: %s", strerror(errno));
+		fclose(f);
+		return -1;
+	}
+	fclose(f);
+
+	// Calculate the hash of the binary
+	uint8_t checksum[SHA256_DIGEST_SIZE];
+	if(!sha256sum(filename, checksum, true))
+	{
+		log_err("Failed to calculate SHA256 checksum of %s", filename);
+		return false;
+	}
+
+	// Compare the checksums
+	bool success = memcmp(checksum, self_hash, SHA256_DIGEST_SIZE) == 0;
+	if(!success)
+		log_err("SHA256 checksum of %s does not match the expected value", filename);
+
+	// Log the checksums if the verification failed or if verbose output is
+	// requested
+	if(!success || verbose)
+	{
+		// Convert checksums to human-readable hex strings
+		char expected_hex[SHA256_DIGEST_SIZE*2+1];
+		sha256_raw_to_hex(self_hash, expected_hex);
+		char actual_hex[SHA256_DIGEST_SIZE*2+1];
+		sha256_raw_to_hex(checksum, actual_hex);
+
+		log_info("Expected: %s", expected_hex);
+		log_info("Actual:   %s", actual_hex);
+	}
+
+	return success;
 }

@@ -35,7 +35,7 @@ bool writeFTLtoml(const bool verbose)
 		// We need to (re-)calculate the checksum here as it'd otherwise
 		// be outdated (in non-read-only mode, it's calculated at the
 		// end of this function)
-		if(!sha256sum(GLOBALTOMLPATH, last_checksum))
+		if(!sha256sum(GLOBALTOMLPATH, last_checksum, false))
 			log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
 		return true;
 	}
@@ -209,7 +209,7 @@ bool writeFTLtoml(const bool verbose)
 		log_debug(DEBUG_CONFIG, "pihole.toml unchanged");
 	}
 
-	if(!sha256sum(GLOBALTOMLPATH, last_checksum))
+	if(!sha256sum(GLOBALTOMLPATH, last_checksum, false))
 		log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
 
 	return true;

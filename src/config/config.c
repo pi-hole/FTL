@@ -1831,7 +1831,7 @@ void reread_config(void)
 
 	// Create checksum of config file
 	uint8_t checksum[SHA256_DIGEST_SIZE];
-	if(!sha256sum(GLOBALTOMLPATH, checksum))
+	if(!sha256sum(GLOBALTOMLPATH, checksum, false))
 	{
 		log_err("Unable to create checksum of %s, not re-reading config file", GLOBALTOMLPATH);
 		return;

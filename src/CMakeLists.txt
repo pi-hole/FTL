@@ -371,6 +371,13 @@ else()
     target_compile_definitions(civetweb PRIVATE NO_SSL)
 endif()
 
+# After finishing building the FTL binary, we append the sha256sum of the binary in raw form to itself
+add_custom_command(TARGET pihole-FTL POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pihole-FTL> $<TARGET_FILE_DIR:pihole-FTL>/pihole-FTL.tmp
+        COMMAND sha256sum $<TARGET_FILE:pihole-FTL>.tmp | cut -d ' ' -f 1 | xxd -r -p >> $<TARGET_FILE:pihole-FTL>.tmp
+        COMMAND mv $<TARGET_FILE:pihole-FTL>.tmp $<TARGET_FILE:pihole-FTL>
+        )
+
 find_program(SETCAP setcap)
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin
