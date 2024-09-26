@@ -442,7 +442,7 @@ static void initConfig(struct config *conf)
 	conf->dns.analyzeOnlyAandAAAA.c = validate_stub; // Only type-based checking
 
 	conf->dns.piholePTR.k = "dns.piholePTR";
-	conf->dns.piholePTR.h = "Controls whether and how FTL will reply with for address for which a local interface exists.";
+	conf->dns.piholePTR.h = "Controls whether and how FTL will reply with for address for which a local interface exists. Changing this setting causes FTL to restart.";
 	{
 		struct enum_options piholePTR[] =
 		{
@@ -455,6 +455,7 @@ static void initConfig(struct config *conf)
 	}
 	conf->dns.piholePTR.t = CONF_ENUM_PTR_TYPE;
 	conf->dns.piholePTR.d.ptr_type = PTR_PIHOLE;
+	conf->dns.piholePTR.f = FLAG_RESTART_FTL;
 	conf->dns.piholePTR.c = validate_stub; // Only type-based checking
 
 	conf->dns.replyWhenBusy.k = "dns.replyWhenBusy";

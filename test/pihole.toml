@@ -47,7 +47,7 @@
   analyzeOnlyAandAAAA = false
 
   # Controls whether and how FTL will reply with for address for which a local interface
-  # exists.
+  # exists. Changing this setting causes FTL to restart.
   #
   # Possible values are:
   #   - "NONE"
