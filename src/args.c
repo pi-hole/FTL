@@ -555,7 +555,7 @@ void parse_args(int argc, char* argv[])
 	{
 		// Enable stdout printing
 		cli_mode = true;
-		const bool match = verify_self_hash(true);
+		const bool match = verify_FTL(true);
 		if(match)
 			printf("%s SHA256 checksum matches\n", cli_tick());
 		else

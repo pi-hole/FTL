@@ -37,7 +37,7 @@ bool chown_pihole(const char *path, struct passwd *pwd);
 void rotate_files(const char *path, char **first_file);
 bool files_different(const char *pathA, const char* pathB, unsigned int from);
 bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE], const bool skip_end);
-bool verify_self_hash(bool verbose);
+bool verify_FTL(bool verbose);
 
 int parse_line(char *line, char **key, char **value);
 

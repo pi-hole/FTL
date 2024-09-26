@@ -31,6 +31,8 @@
 #include "database/query-table.h"
 // escape_html()
 #include "webserver/http-common.h"
+// GIT_HASH, FTL_ARCH
+#include "version.h"
 
 // Number of arguments in a variadic macro
 // Credit: https://stackoverflow.com/a/35693080/2087442
@@ -99,6 +101,8 @@ static const char *get_message_type_str(const enum message_type type)
 			return "CONNECTION_ERROR";
 		case NTP_MESSAGE:
 			return "NTP";
+		case VERIFY_MESSAGE:
+			return "VERIFY";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
@@ -135,6 +139,8 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return CONNECTION_ERROR_MESSAGE;
 	else if (strcmp(typestr, "NTP") == 0)
 		return NTP_MESSAGE;
+	else if (strcmp(typestr, "VERIFY") == 0)
+		return VERIFY_MESSAGE;
 	else
 		return MAX_MESSAGE;
 }
@@ -241,6 +247,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_TEXT, // component (server/client)
 			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
+		},
+		{
+			// VERIFY_MESSAGE: The message column contains the error
+			SQLITE_TEXT, // expected checksum
+			SQLITE_TEXT, // actual checksum
+			SQLITE_TEXT, // FTL commit hash
+			SQLITE_TEXT, // FTL architecture
 			SQLITE_NULL // not used
 		}
 	};
@@ -928,6 +942,39 @@ static void format_ntp_message(char *plain, const int sizeof_plain, char *html, 
 		log_warn("format_ntp_message(): Buffer too small to hold HTML message, warning truncated");
 }
 
+static void format_verify_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                  const char *message, const char *expected, const char *actual,
+                                  const char *commit, const char *arch)
+{
+	if(snprintf(plain, sizeof_plain, "%s - expected \"%s\", but got \"%s\" - FTL commit is %s on %s",
+	            message, expected, actual, commit, arch) > sizeof_plain)
+		log_warn("format_verify_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_message = escape_html(message);
+	char *escaped_expected = escape_html(expected);
+	char *escaped_actual = escape_html(actual);
+	char *escaped_commit = escape_html(commit);
+	char *escaped_arch = escape_html(arch);
+
+	// Return early if memory allocation failed
+	if(escaped_message == NULL || escaped_expected == NULL || escaped_actual == NULL || escaped_commit == NULL || escaped_arch == NULL)
+		return;
+
+	if(snprintf(html, sizeof_html, "%s<br>Expected: <pre>%s</pre><br>Actual: <pre>%s</pre><br>FTL commit is <code>%s</code> on <code>%s</code>",
+	            escaped_message, escaped_expected, escaped_actual, escaped_commit, escaped_arch) > sizeof_html)
+		log_warn("format_verify_message(): Buffer too small to hold HTML message, warning truncated");
+
+	free(escaped_message);
+	free(escaped_expected);
+	free(escaped_actual);
+	free(escaped_commit);
+	free(escaped_arch);
+}
+
 int count_messages(const bool filter_dnsmasq_warnings)
 {
 	int count = 0;
@@ -1183,6 +1230,20 @@ bool format_messages(cJSON *array)
 
 				format_ntp_message(plain, sizeof(plain), html, sizeof(html),
 				                   message, level, who);
+
+				break;
+			}
+
+			case VERIFY_MESSAGE:
+			{
+				const char *message = (const char*)sqlite3_column_text(stmt, 3);
+				const char *expected = (const char*)sqlite3_column_text(stmt, 4);
+				const char *actual = (const char*)sqlite3_column_text(stmt, 5);
+				const char *hash = (const char*)sqlite3_column_text(stmt, 6);
+				const char *arch = (const char*)sqlite3_column_text(stmt, 7);
+
+				format_verify_message(plain, sizeof(plain), html, sizeof(html),
+				                      message, expected, actual, hash, arch);
 
 				break;
 			}
@@ -1456,5 +1517,19 @@ void log_ntp_message(const bool error, const bool server, const char *message)
 
 	// Log to database
 	add_message(NTP_MESSAGE, message, level, who);
+
+}
+
+void log_verify_message(const char *expected, const char *actual)
+{
+	// Create message
+	char buf[2048];
+	snprintf(buf, sizeof(buf), "Corrupt binary detected - this may lead to unexpected behaviour!");
+
+	// Log to FTL.log
+	log_crit("%s", buf);
+
+	// Log to database
+	add_message(VERIFY_MESSAGE, buf, expected, actual, GIT_HASH, FTL_ARCH);
 
 }

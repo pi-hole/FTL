@@ -15,6 +15,8 @@
 #include "log.h"
 // sha256_raw_to_hex()
 #include "config/password.h"
+// log_verify_message()
+#include "database/message-table.h"
 
 // opendir(), readdir()
 #include <dirent.h>
@@ -776,7 +778,7 @@ bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE], const boo
  * @return Returns true if the checksum matches the expected value, false
  * otherwise.
  */
-bool verify_self_hash(bool verbose)
+bool verify_FTL(bool verbose)
 {
 	// Get the filename of the current executable
 	char filename[PATH_MAX] = { 0 };
@@ -820,11 +822,6 @@ bool verify_self_hash(bool verbose)
 	// Compare the checksums
 	bool success = memcmp(checksum, self_hash, SHA256_DIGEST_SIZE) == 0;
 	if(!success)
-		log_err("SHA256 checksum of %s does not match the expected value", filename);
-
-	// Log the checksums if the verification failed or if verbose output is
-	// requested
-	if(!success || verbose)
 	{
 		// Convert checksums to human-readable hex strings
 		char expected_hex[SHA256_DIGEST_SIZE*2+1];
@@ -832,8 +829,14 @@ bool verify_self_hash(bool verbose)
 		char actual_hex[SHA256_DIGEST_SIZE*2+1];
 		sha256_raw_to_hex(checksum, actual_hex);
 
-		log_info("Expected: %s", expected_hex);
-		log_info("Actual:   %s", actual_hex);
+		if(!verbose) // during startup
+			log_verify_message(expected_hex, actual_hex);
+		else // CLI verification
+		{
+			log_err("Checksum verification failed!");
+			log_err("Expected: %s", expected_hex);
+			log_err("Actual:   %s", actual_hex);
+		}
 	}
 
 	return success;
