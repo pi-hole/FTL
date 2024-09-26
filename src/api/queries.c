@@ -307,6 +307,11 @@ int api_queries(struct ftl_conn *api)
 	bool cursor_set = false, where = false;
 	double timestamp_from = 0.0, timestamp_until = 0.0;
 
+	// We use this boolean to memorize if we are filtering at all. It is used
+	// later to decide if we can short-circuit the query counting for
+	// performance reasons.
+	bool filtering = false;
+
 	// Filter-/sorting based on GET parameters?
 	if(api->request->query_string != NULL)
 	{
@@ -331,11 +336,17 @@ int api_queries(struct ftl_conn *api)
 		if(GET_STR("upstream", upstreamname, api->request->query_string) > 0)
 		{
 			if(strcmp(upstreamname, "blocklist") == 0)
+			{
 				// Pseudo-upstream for blocked queries
 				add_querystr_string(api, querystr, "q.status IN ", get_blocked_statuslist(), &where);
+				filtering = true;
+			}
 			else if(strcmp(upstreamname, "cache") == 0)
+			{
 				// Pseudo-upstream for cached queries
 				add_querystr_string(api, querystr, "q.status IN ", get_cached_statuslist(), &where);
+				filtering = true;
+			}
 			else
 			{
 				if(is_wildcard(upstreamname))
@@ -509,11 +520,6 @@ int api_queries(struct ftl_conn *api)
 			}
 		}
 	}
-
-	// We use this boolean to memorize if we are filtering at all. It is used
-	// later to decide if we can short-circuit the query counting for
-	// performance reasons.
-	bool filtering = false;
 
 	// Regex filtering?
 	regex_t *regex_domains = NULL;
