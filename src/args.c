@@ -532,13 +532,12 @@ void parse_args(int argc, char* argv[])
 	}
 
 	// sha256sum mode
-	if((argc == 3 || (argc == 4 && strcmp(argv[2], "--skip-end"))) && strcmp(argv[1], "sha256sum") == 0)
+	if(argc == 3 && strcmp(argv[1], "sha256sum") == 0)
 	{
-		const bool skip_end = argc == 4;
 		// Enable stdout printing
 		cli_mode = true;
 		uint8_t checksum[SHA256_DIGEST_SIZE];
-		if(!sha256sum(argv[skip_end ? 3 : 2], checksum, skip_end))
+		if(!sha256sum(argv[2], checksum, false))
 			exit(EXIT_FAILURE);
 
 		// Convert checksum to hex string
@@ -546,7 +545,7 @@ void parse_args(int argc, char* argv[])
 		sha256_raw_to_hex(checksum, hex);
 
 		// Print result
-		printf("%s  %s\n", hex, argv[skip_end ? 3 : 2]);
+		printf("%s  %s\n", hex, argv[2]);
 		exit(EXIT_SUCCESS);
 	}
 
@@ -1097,12 +1096,11 @@ void parse_args(int argc, char* argv[])
 			printf("    Usage: %spihole-FTL ntp %s[server]%s %s[--update]%s\n\n", green, cyan, normal, purple, normal);
 
 			printf("%sSHA256 checksum tools:%s\n", yellow, normal);
-			printf("    Calculates the SHA256 checksum of a file.\n\n");
+			printf("    Calculates the SHA256 checksum of a file. The checksum is\n");
+			printf("    computed as described in FIPS-180-2 and uses streaming\n");
+			printf("    to allow processing arbitrary large files with a small\n");
+			printf("    memory footprint.\n\n");
 			printf("    Usage: %spihole-FTL sha256sum %sfile%s\n\n", green, cyan, normal);
-			printf("    The special flag %s--skip-end%s can be used to skip the last 32\n", purple, normal);
-			printf("    bytes of the file. This is useful for files which have their\n");
-			printf("    checksum appended at the end of the file, e.g., pihole-FTL:\n\n");
-			printf("    %spihole-FTL sha256sum %s--skip_end %sfile%s\n\n", green, purple, cyan, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sverify%s              Verify the integrity of the FTL binary\n", green, normal);
