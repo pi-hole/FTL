@@ -555,10 +555,9 @@ void parse_args(int argc, char* argv[])
 		// Enable stdout printing
 		cli_mode = true;
 		const bool match = verify_FTL(true);
-		if(match)
-			printf("%s SHA256 checksum matches\n", cli_tick());
-		else
-			printf("%s SHA256 checksum does not match\n", cli_cross());
+		printf("%s Binary integrity check: %s\n",
+		       match ? cli_tick() : cli_cross() ,
+		       match ? "OK" : "FAILED");
 		exit(match ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
