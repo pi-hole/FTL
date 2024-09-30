@@ -812,6 +812,7 @@ bool verify_FTL(bool verbose)
 	fclose(f);
 
 	// Calculate the hash of the binary
+	// Skip the last 256 bit as it contains the hast itself
 	uint8_t checksum[SHA256_DIGEST_SIZE];
 	if(!sha256sum(filename, checksum, true))
 	{
