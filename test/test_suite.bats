@@ -8,6 +8,12 @@
   [[ "${lines[@]}" == "" ]]
 }
 
+@test "Check FTL binary integrity" {
+  run bash -c './pihole-FTL verify'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == *"Binary integrity check: OK" ]]
+}
+
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "./pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"

@@ -27,6 +27,8 @@
 #include "overTime.h"
 // export_queries_to_disk()
 #include "database/query-table.h"
+// verify_FTL()
+#include "files.h"
 
 char *username;
 bool needGC = false;

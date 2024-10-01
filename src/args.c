@@ -537,7 +537,7 @@ void parse_args(int argc, char* argv[])
 		// Enable stdout printing
 		cli_mode = true;
 		uint8_t checksum[SHA256_DIGEST_SIZE];
-		if(!sha256sum(argv[2], checksum))
+		if(!sha256sum(argv[2], checksum, false))
 			exit(EXIT_FAILURE);
 
 		// Convert checksum to hex string
@@ -547,6 +547,18 @@ void parse_args(int argc, char* argv[])
 		// Print result
 		printf("%s  %s\n", hex, argv[2]);
 		exit(EXIT_SUCCESS);
+	}
+
+	// Checksum verification mode
+	if(argc == 2 && strcmp(argv[1], "verify") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		const bool match = verify_FTL(true);
+		printf("%s Binary integrity check: %s\n",
+		       match ? cli_tick() : cli_cross() ,
+		       match ? "OK" : "FAILED");
+		exit(match ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Local reverse name resolver
@@ -1082,10 +1094,17 @@ void parse_args(int argc, char* argv[])
 			printf("    %s--update%s flag is given.\n\n", purple, normal);
 			printf("    Usage: %spihole-FTL ntp %s[server]%s %s[--update]%s\n\n", green, cyan, normal, purple, normal);
 
+			printf("%sSHA256 checksum tools:%s\n", yellow, normal);
+			printf("    Calculates the SHA256 checksum of a file. The checksum is\n");
+			printf("    computed as described in FIPS-180-2 and uses streaming\n");
+			printf("    to allow processing arbitrary large files with a small\n");
+			printf("    memory footprint.\n\n");
+			printf("    Usage: %spihole-FTL sha256sum %sfile%s\n\n", green, cyan, normal);
+
 			printf("%sOther:%s\n", yellow, normal);
+			printf("\t%sverify%s              Verify the integrity of the FTL binary\n", green, normal);
 			printf("\t%sptr %sIP%s %s[tcp]%s        Resolve IP address to hostname\n", green, cyan, normal, purple, normal);
 			printf("\t                    Append %stcp%s to use TCP instead of UDP\n", purple, normal);
-			printf("\t%ssha256sum %sfile%s      Calculate SHA256 checksum of a file\n", green, cyan, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
 			printf("\t%sarp-scan %s[-a/-x]%s    Use ARP to scan local network for\n", green, cyan, normal);
