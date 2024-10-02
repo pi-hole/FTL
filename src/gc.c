@@ -560,6 +560,15 @@ void *GC_thread(void *val)
 			reread_config();
 		}
 
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
+		// Reset the queries-per-second counter
+		lock_shm();
+		reset_qps(now);
+		unlock_shm();
+
 		thread_sleepms(GC, 1000);
 	}
 
