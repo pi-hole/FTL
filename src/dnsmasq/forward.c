@@ -640,7 +640,7 @@ int fast_retry(time_t now)
 	if (f->sentto && f->stash && difftime(now, f->time) < daemon->fast_retry_timeout)
 	  {
 #ifdef HAVE_DNSSEC
-	    if (f->blocking_query)
+	    if (f->blocking_query || (f->flags & FREC_GONE_TO_TCP))
 	      continue;
 #endif
 	    /* t is milliseconds since last query sent. */ 
@@ -963,7 +963,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 
   /* Find the original query that started it all.... */
   for (orig = forward; orig->dependent; orig = orig->dependent);
-
+  
   /* As soon as anything returns BOGUS, we stop and unwind, to do otherwise
      would invite infinite loops, since the answers to DNSKEY and DS queries
      will not be cached, so they'll be repeated. */
@@ -983,7 +983,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	  /* Get the query we sent by UDP */
 	  blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
 	  
-	  if  (extract_name(header, plen, &p, daemon->namebuff, 0, 4) == 1)
+	  if  (extract_name(header, forward->stash_len, &p, daemon->namebuff, 1, 4))
 	    log_query(F_UPSTREAM | F_NOEXTRA, daemon->namebuff, NULL, "truncated", (forward->flags & FREC_DNSKEY_QUERY) ? T_DNSKEY : T_DS);
 	  
 	  /* Don't count failed UDP attempt AND TCP */
@@ -994,7 +994,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 			       header, forward->stash_len, forward->class, forward->sentto, &orig->work_counter, &orig->validate_counter);
 
 	  /* We forked a new process. pop_and_retry_query() will be called when is completes. */
-	  if (status == STAT_ASYNC)
+	  if (STAT_ISEQUAL(status, STAT_ASYNC))
 	    {
 	      forward->flags |=  FREC_GONE_TO_TCP;
 	      return;
@@ -1153,7 +1153,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
     {
       /* Log the actual validation that made us barf. */
       unsigned char *p = (unsigned char *)(header+1);
-      if  (extract_name(header, plen, &p, daemon->namebuff, 0, 4) == 1)
+      if  (extract_name(header, plen, &p, daemon->namebuff, 1, 4))
 	my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
 		  daemon->namebuff[0] ? daemon->namebuff : ".");
     }
@@ -1276,7 +1276,7 @@ void reply_query(int fd, time_t now)
       /* The query MAY have got a good answer, and be awaiting
 	 the results of further queries, in which case
 	 The Stash contains something else and we don't need to retry anyway. */
-      if (forward->blocking_query)
+      if (forward->blocking_query || (forward->flags & FREC_GONE_TO_TCP))
 	return;
       
       if (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY))
@@ -2228,7 +2228,7 @@ int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n,
 	{
 	  /* Log the actual validation that made us barf. */
 	  unsigned char *p = (unsigned char *)(header+1);
-	  if  (extract_name(header, n, &p, daemon->namebuff, 0, 4) == 1)
+	  if  (extract_name(header, n, &p, daemon->namebuff, 1, 4))
 	    my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
 		      daemon->namebuff[0] ? daemon->namebuff : ".");
 	  break;
@@ -2253,7 +2253,7 @@ int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n,
 	  /* recycling UDP query, copy into new buffer and get the name we're looking for. */
 	  unsigned char *p = (unsigned char *)(header+1);
 
-	  if  (extract_name(header, n, &p, keyname, 0, 4) == 1)
+	  if  (extract_name(header, n, &p, keyname, 1, 4))
 	    {
 	      memcpy(new_header, header, n);
 	      m = n;
