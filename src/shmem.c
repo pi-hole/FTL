@@ -1219,11 +1219,12 @@ void update_qps(const time_t timestamp)
 	shmSettings->qps[slot]++;
 }
 
-// Reset queries per second (qps) value for a given timeslot
+// Reset queries per second (qps) value for the timeslot following the current
+// one
 void reset_qps(const time_t timestamp)
 {
 	// Get the timeslot for the current timestamp
-	const unsigned int slot = timestamp % QPS_AVGLEN;
+	const unsigned int slot = (timestamp + 1) % QPS_AVGLEN;
 
 	// Reset the query count
 	shmSettings->qps[slot] = 0;
@@ -1241,5 +1242,6 @@ double __attribute__((pure)) get_qps(void)
 	for(unsigned int i = 0; i < QPS_AVGLEN; i++)
 		qps += shmSettings->qps[i];
 
+	// Return the computed value divided by N (the number of slots)
 	return qps / QPS_AVGLEN;
 }
