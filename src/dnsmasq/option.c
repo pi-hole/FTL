@@ -1339,7 +1339,7 @@ static void dhcp_netid_free(struct dhcp_netid *nid)
 
 /* Parse one or more tag:s before parameters.
  * Moves arg to the end of tags. */
-static struct dhcp_netid * dhcp_tags(char **arg)
+static struct dhcp_netid *dhcp_tags(char **arg)
 {
   struct dhcp_netid *id = NULL;
 
@@ -1363,7 +1363,13 @@ static void dhcp_netid_list_free(struct dhcp_netid_list *netid)
     {
       struct dhcp_netid_list *tmplist = netid;
       netid = netid->next;
-      dhcp_netid_free(tmplist->list);
+      /* Note: don't use dhcp_netid_free() here, since that 
+	 frees a list linked on netid->next. Where a netid_list
+	 is used that's because the the ->next pointers in the
+	 netids are being used to temporarily construct 
+	 a list of valid tags. */
+      free(tmplist->list->net);
+      free(tmplist->list);
       free(tmplist);
     }
 }
