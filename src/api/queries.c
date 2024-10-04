@@ -22,7 +22,8 @@
 // dbopen(false, ), dbclose()
 #include "database/common.h"
 
-static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *querystr, const int max_count)
+#if 0
+static int add_strings_to_array(struct ftl_conn *api, cJSON *array1, cJSON *array2, const char *querystr, const int max_count)
 {
 
 	sqlite3 *memdb = get_memdb();
@@ -44,11 +45,24 @@ static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *
 		                       sqlite3_errstr(rc));
 	}
 
-	// Loop through returned rows
+	// Loop through returned rows and add them to the array
 	int counter = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW &&
-	      (max_count < 0 || ++counter < max_count))
-		JSON_COPY_STR_TO_ARRAY(array, (const char*)sqlite3_column_text(stmt, 0));
+	      (max_count < 0 || ++counter <= max_count))
+	{
+		const char *array1_str = (const char*)sqlite3_column_text(stmt, 0);
+		if(array1_str != NULL && array1_str[0] != '\0')
+			// Only add non-empty strings
+			JSON_COPY_STR_TO_ARRAY(array1, array1_str);
+		if(array2 != NULL)
+		{
+			// We have a second array to fill (second column in the query)
+			const char *array2_str = (const char*)sqlite3_column_text(stmt, 1);
+			if(array2_str != NULL && array2_str[0] != '\0')
+				// Only add non-empty strings
+				JSON_COPY_STR_TO_ARRAY(array2, array2_str);
+		}
+	}
 
 	// Acceptable return codes are either
 	// - SQLITE_DONE: We read all lines, or
@@ -67,60 +81,47 @@ static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *
 
 	return 0;
 }
+#endif
 
 int api_queries_suggestions(struct ftl_conn *api)
 {
-	int rc;
 	// Does the user request a custom number of records to be included?
 	int count = 30;
 	get_int_var(api->request->query_string, "count", &count);
 
 	// Get domains
-	cJSON *domain = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, domain, "SELECT domain FROM domain_by_id", count);
-	if(rc != 0)
+	cJSON *domain = get_top_domains(api, count, false, true);
+	cJSON *blocked = get_top_domains(api, count, true, true);
+	// Add domains from both arrays, avoiding duplicates
+	cJSON *entry = NULL;
+	cJSON_ArrayForEach(entry, blocked)
 	{
-		log_err("Cannot read domains from database");
-		cJSON_Delete(domain);
-		return rc;
+		// Check if the domain is already in the list
+		bool found = false;
+		cJSON *entry2 = NULL;
+		cJSON_ArrayForEach(entry2, domain)
+		{
+			if(strcmp(cJSON_GetStringValue(entry), cJSON_GetStringValue(entry2)) == 0)
+			{
+				found = true;
+				break;
+			}
+		}
+		if(!found)
+			JSON_ADD_ITEM_TO_ARRAY(domain, cJSON_Duplicate(entry, true));
 	}
+	// Free the blocked list
+	cJSON_Delete(blocked);
 
 	// Get clients, both by IP and names
-	// We have to call DISTINCT() here as multiple IPs can map to and name and
-	// vice versa
-	cJSON *client_ip = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, client_ip, "SELECT DISTINCT(ip) FROM client_by_id", count);
-	if(rc != 0)
-	{
-		log_err("Cannot read client IPs from database");
-		cJSON_Delete(domain);
-		cJSON_Delete(client_ip);
-		return rc;
-	}
-	cJSON *client_name = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, client_name, "SELECT DISTINCT(name) FROM client_by_id", count);
-	if(rc != 0)
-	{
-		log_err("Cannot read client names from database");
-		cJSON_Delete(domain);
-		cJSON_Delete(client_ip);
-		cJSON_Delete(client_name);
-		return rc;
-	}
+	cJSON *client_ip = get_top_clients(api, count, false, true, false, false);
+	cJSON *client_name = get_top_clients(api, count, false, true, true, false);
+
+	// Delete duplicate entries from client_name
+	cJSON_unique_array(client_name);
 
 	// Get upstreams
-	cJSON *upstream = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, upstream, "SELECT forward FROM forward_by_id", count);
-	if(rc != 0)
-	{
-		log_err("Cannot read forward from database");
-		cJSON_Delete(domain);
-		cJSON_Delete(client_ip);
-		cJSON_Delete(client_name);
-		cJSON_Delete(upstream);
-		return rc;
-	}
-
+	cJSON *upstream = get_top_upstreams(api, true);
 	// Get types
 	cJSON *type = JSON_NEW_ARRAY();
 	queriesData query = { 0 };
@@ -306,6 +307,11 @@ int api_queries(struct ftl_conn *api)
 	bool cursor_set = false, where = false;
 	double timestamp_from = 0.0, timestamp_until = 0.0;
 
+	// We use this boolean to memorize if we are filtering at all. It is used
+	// later to decide if we can short-circuit the query counting for
+	// performance reasons.
+	bool filtering = false;
+
 	// Filter-/sorting based on GET parameters?
 	if(api->request->query_string != NULL)
 	{
@@ -330,11 +336,17 @@ int api_queries(struct ftl_conn *api)
 		if(GET_STR("upstream", upstreamname, api->request->query_string) > 0)
 		{
 			if(strcmp(upstreamname, "blocklist") == 0)
+			{
 				// Pseudo-upstream for blocked queries
 				add_querystr_string(api, querystr, "q.status IN ", get_blocked_statuslist(), &where);
+				filtering = true;
+			}
 			else if(strcmp(upstreamname, "cache") == 0)
+			{
 				// Pseudo-upstream for cached queries
 				add_querystr_string(api, querystr, "q.status IN ", get_cached_statuslist(), &where);
+				filtering = true;
+			}
 			else
 			{
 				if(is_wildcard(upstreamname))
@@ -432,10 +444,14 @@ int api_queries(struct ftl_conn *api)
 
 			// Encoded URI string: %5B = [ and %5D = ]
 			if(GET_VAR(sort_col_id, sort_col, api->request->query_string) > 0)
+			{
 				log_debug(DEBUG_API, "Sorting by column %s (%s)", sort_col, sort_dir);
+			}
 			else
+			{
 				log_warn("Sorting by column %d (%s) requested, but column name not found",
 				         sort_column, sort_dir);
+			}
 		}
 
 		// Column searching?
@@ -504,11 +520,6 @@ int api_queries(struct ftl_conn *api)
 			}
 		}
 	}
-
-	// We use this boolean to memorize if we are filtering at all. It is used
-	// later to decide if we can short-circuit the query counting for
-	// performance reasons.
-	bool filtering = false;
 
 	// Regex filtering?
 	regex_t *regex_domains = NULL;
@@ -1010,6 +1021,7 @@ int api_queries(struct ftl_conn *api)
 			case QUERY_EXTERNAL_BLOCKED_IP:
 			case QUERY_EXTERNAL_BLOCKED_NULL:
 			case QUERY_EXTERNAL_BLOCKED_NXRA:
+			case QUERY_EXTERNAL_BLOCKED_EDE15:
 			case QUERY_RETRIED:
 			case QUERY_RETRIED_DNSSEC:
 			case QUERY_IN_PROGRESS:

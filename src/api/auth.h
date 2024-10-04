@@ -48,6 +48,7 @@
 struct session {
 	bool used;
 	bool app;
+	bool cli;
 	struct {
 		bool login;
 		bool mixed;
@@ -56,6 +57,7 @@ struct session {
 	time_t valid_until;
 	char remote_addr[48]; // Large enough for IPv4 and IPv6 addresses, hard-coded in civetweb.h as mg_request_info.remote_addr
 	char user_agent[128];
+	char x_forwarded_for[48]; // see remote_addr note
 	char sid[SID_SIZE];
 	char csrf[SID_SIZE];
 };

@@ -8,15 +8,15 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 #include "aliasclients.h"
 #include "common.h"
 // global counters variable
-#include "../shmem.h"
+#include "shmem.h"
 // global config variable
-#include "../config/config.h"
+#include "config/config.h"
 // logging routines
-#include "../log.h"
+#include "log.h"
 // getAliasclientIDfromIP()
 #include "network-table.h"
 
@@ -109,6 +109,7 @@ bool import_aliasclients(sqlite3 *db)
 
 	// Loop until no further data is available
 	int imported = 0;
+	const double now = double_time();
 	while((rc = sqlite3_step(stmt)) != SQLITE_DONE)
 	{
 		// Check if we ran into an error
@@ -132,7 +133,7 @@ bool import_aliasclients(sqlite3 *db)
 		}
 
 		// Try to open existing client
-		const int clientID = findClientID(aliasclient_str, false, true);
+		const int clientID = findClientID(aliasclient_str, false, true, now);
 
 		clientsData *client = getClient(clientID, true);
 		if(client == NULL)

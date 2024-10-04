@@ -28,6 +28,8 @@
 #include "webserver/lua_web.h"
 // log_certificate_domain_mismatch()
 #include "database/message-table.h"
+// create_cli_password()
+#include "config/password.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
@@ -301,6 +303,7 @@ unsigned short get_api_string(char **buf, const bool domain)
 		if(this_len < 0)
 		{
 			log_err("Failed to append API URL to buffer: %s", strerror(errno));
+			free(api_str);
 			return 0;
 		}
 
@@ -309,6 +312,7 @@ unsigned short get_api_string(char **buf, const bool domain)
 		if((size_t)this_len >= bufsz - len - 1)
 		{
 			log_err("API URL buffer too small!");
+			free(api_str);
 			return 0;
 		}
 
@@ -316,8 +320,8 @@ unsigned short get_api_string(char **buf, const bool domain)
 		if(memmem(*buf, len, api_str, this_len) != NULL)
 		{
 			// This string is already present, so skip it
-			free(api_str);
 			log_debug(DEBUG_API, "Skipping duplicate API URL: %s", api_str);
+			free(api_str);
 			continue;
 		}
 
@@ -353,7 +357,7 @@ void http_init(void)
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
 
-#ifdef HAVE_TLS
+#ifdef HAVE_MBEDTLS
 	features |= MG_FEATURES_TLS;
 #endif
 
@@ -394,6 +398,13 @@ void http_init(void)
 	//   send no referrer information.
 	// The latter four headers are set as expected by https://securityheaders.io
 	char num_threads[3] = { 0 };
+	// Use 16 threads if more than 8 cores are available, otherwise use
+	// 2*cores. This is to prevent overloading the system with too many
+	// threads.
+	// We use the number of available (= online) cores which may be less
+	// than the total number of cores in the system, e.g., if a
+	// virtualization environment is used and fewer cores are assigned to
+	// the VM than are available on the host.
 	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
 	const char *options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
@@ -419,9 +430,19 @@ void http_init(void)
 	// from the end of the array.
 	unsigned int next_option = ArraySize(options) - 6;
 
-#ifdef HAVE_TLS
+#ifdef HAVE_MBEDTLS
 	// Add TLS options if configured
-	if(config.webserver.tls.cert.v.s != NULL &&
+
+	// TLS is used when webserver.port contains "s" (e.g. "443s")
+	const bool tls_used = config.webserver.port.v.s != NULL &&
+	                      strchr(config.webserver.port.v.s, 's') != NULL;
+
+	// Check certificate domain if
+	// - TLS is used
+	// - A certificate is configured
+	// - The certificate is readable
+	if(tls_used &&
+	   config.webserver.tls.cert.v.s != NULL &&
 	   strlen(config.webserver.tls.cert.v.s) > 0)
 	{
 		// Try to generate certificate if not present
@@ -439,6 +460,8 @@ void http_init(void)
 			}
 		}
 
+		// Check if the certificate is readable (we may have just
+		// created it)
 		if(file_readable(config.webserver.tls.cert.v.s))
 		{
 			if(read_certificate(config.webserver.tls.cert.v.s, config.webserver.domain.v.s, false) != CERT_DOMAIN_MATCH)
@@ -469,7 +492,8 @@ void http_init(void)
 	}
 
 	// Configure logging handlers
-	struct mg_callbacks callbacks = { NULL };
+	struct mg_callbacks callbacks;
+	memset(&callbacks, 0, sizeof(callbacks));
 	callbacks.log_message = log_http_message;
 	callbacks.log_access  = log_http_access;
 	callbacks.init_lua    = init_lua;
@@ -529,6 +553,9 @@ void http_init(void)
 
 	// Restore sessions from database
 	init_api();
+
+	// Create CLI password (if enabled)
+	create_cli_password();
 }
 
 static char *append_to_path(char *path, const char *append)
@@ -547,8 +574,9 @@ static char *append_to_path(char *path, const char *append)
 	return new_path;
 }
 
-void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
+void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len)
 {
+	log_debug(DEBUG_API, "Rewriting filename: %s", filename);
 	const bool trailing_slash = filename[strlen(filename) - 1] == '/';
 	char *filename_lp = NULL;
 
@@ -578,7 +606,7 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 	filename_lp = append_to_path(filename, ".lp");
 	if(filename_lp == NULL)
 	{
-		//Failed to allocate memory for filename!");
+		// Failed to allocate memory for filename
 		return;
 	}
 
@@ -621,6 +649,9 @@ void http_terminate(void)
 
 	// Free Lua-related resources
 	free_lua();
+
+	// Remove CLI password
+	remove_cli_password();
 
 	// Free error_pages path
 	if(error_pages != NULL)

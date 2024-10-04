@@ -93,7 +93,7 @@ typedef struct {
 	size_t ippos;
 	size_t namepos;
 	size_t ifacepos;
-	time_t firstSeen;
+	double firstSeen;
 	double lastQuery;
 } clientsData;
 
@@ -108,12 +108,16 @@ typedef struct {
 
 typedef struct {
 	unsigned char magic;
-	enum domain_client_status blocking_status;
+	struct {
+		bool allowed :1;
+	} flags;
+	enum query_status blocking_status;
 	enum reply_type force_reply;
 	enum query_type query_type;
 	int domainID;
 	int clientID;
 	int list_id;
+	time_t expires;
 	char *cname_target;
 } DNSCacheData;
 
@@ -124,8 +128,8 @@ int findQueryID(const int id);
 int _findUpstreamID(const char *upstream, const in_port_t port, int line, const char *func, const char *file);
 #define findDomainID(domain, count) _findDomainID(domain, count, __LINE__, __FUNCTION__, __FILE__)
 int _findDomainID(const char *domain, const bool count, int line, const char *func, const char *file);
-#define findClientID(client, count, aliasclient) _findClientID(client, count, aliasclient, __LINE__, __FUNCTION__, __FILE__)
-int _findClientID(const char *client, const bool count, const bool aliasclient, int line, const char *func, const char *file);
+#define findClientID(client, count, aliasclient, now) _findClientID(client, count, aliasclient, now, __LINE__, __FUNCTION__, __FILE__)
+int _findClientID(const char *client, const bool count, const bool aliasclient, const double now, int line, const char *func, const char *file);
 #define findCacheID(domainID, clientID, query_type, create_new) _findCacheID(domainID, clientID, query_type, create_new, __FUNCTION__, __LINE__, __FILE__)
 int _findCacheID(const int domainID, const int clientID, const enum query_type query_type, const bool create_new, const char *func, const int line, const char *file);
 bool isValidIPv4(const char *addr);
@@ -145,10 +149,10 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);
 
-const char *getDomainString(const queriesData* query);
-const char *getCNAMEDomainString(const queriesData* query);
-const char *getClientIPString(const queriesData* query);
-const char *getClientNameString(const queriesData* query);
+const char *getDomainString(const queriesData *query);
+const char *getCNAMEDomainString(const queriesData *query);
+const char *getClientIPString(const queriesData *query);
+const char *getClientNameString(const queriesData *query);
 
 void change_clientcount(clientsData *client, int total, int blocked, int overTimeIdx, int overTimeMod);
 const char *get_query_type_str(const enum query_type type, const queriesData *query, char buffer[20]);
@@ -159,6 +163,7 @@ const char *get_refresh_hostnames_str(const enum refresh_hostnames refresh) __at
 int get_refresh_hostnames_val(const char *refresh_hostnames) __attribute__ ((pure));
 const char *get_blocking_mode_str(const enum blocking_mode mode) __attribute__ ((const));
 int get_blocking_mode_val(const char *blocking_mode) __attribute__ ((pure));
+const char * __attribute__ ((const)) get_blocking_status_str(const enum blocking_status blocking);
 const char *get_ptr_type_str(const enum ptr_type piholePTR) __attribute__ ((const));
 int get_ptr_type_val(const char *piholePTR) __attribute__ ((pure));
 const char *get_busy_reply_str(const enum busy_reply replyWhenBusy) __attribute__ ((const));
@@ -167,10 +172,12 @@ const char * get_listeningMode_str(const enum listening_mode listeningMode) __at
 int get_listeningMode_val(const char *listeningMode) __attribute__ ((pure));
 const char * __attribute__ ((const)) get_temp_unit_str(const enum temp_unit temp_unit);
 int __attribute__ ((pure)) get_temp_unit_val(const char *temp_unit);
+const char * __attribute__ ((const)) get_edns_mode_str(const enum edns_mode edns_mode);
+int __attribute__ ((pure)) get_edns_mode_val(const char *edns_mode);
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-queriesData* _getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file);
+queriesData *_getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file);
 #define getClient(clientID, checkMagic) _getClient(clientID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
 clientsData* _getClient(int clientID, bool checkMagic, int line, const char *func, const char *file);
 #define getDomain(domainID, checkMagic) _getDomain(domainID, checkMagic, __LINE__, __FUNCTION__, __FILE__)

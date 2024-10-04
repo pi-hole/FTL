@@ -15,6 +15,9 @@ set(tools_sources
         dhcp-discover.h
         gravity-parseList.c
         gravity-parseList.h
+        netlink_consts.h
+        netlink.c
+        netlink.h
         )
 
 add_library(tools OBJECT ${tools_sources})

@@ -27,17 +27,14 @@
 #include "overTime.h"
 // export_queries_to_disk()
 #include "database/query-table.h"
-
-#if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
-#pragma message "Minimum GLIBC version: " xstr(__GLIBC__) "." xstr(__GLIBC_MINOR__)
-#else
-#pragma message "Minimum GLIBC version: unknown, assuming this is a MUSL build"
-#endif
+// verify_FTL()
+#include "files.h"
 
 char *username;
 bool needGC = false;
 bool needDBGC = false;
 bool startup = true;
+bool forked = false;
 jmp_buf exit_jmp;
 
 int main (int argc, char *argv[])
@@ -77,6 +74,10 @@ int main (int argc, char *argv[])
 	if(readFTLconf(&config, true))
 		log_info("Parsed config file "GLOBALTOMLPATH" successfully");
 
+	// Check if another FTL process is already running
+	if(another_FTL())
+		return EXIT_FAILURE;
+
 	// Set process priority
 	set_nice();
 
@@ -84,8 +85,6 @@ int main (int argc, char *argv[])
 	if(!init_shmem())
 	{
 		log_crit("Initialization of shared memory failed.");
-		// Check if there is already a running FTL process
-		check_running_FTL();
 		return EXIT_FAILURE;
 	}
 
@@ -130,7 +129,7 @@ int main (int argc, char *argv[])
 		log_debug(DEBUG_ANY, "Jumped back to main() from dnsmasq/die()");
 		dnsmasq_failed = true;
 
-		if(!resolver_ready)
+		if(!forked)
 		{
 			// If dnsmasq never finished initializing, we need to
 			// launch the threads
@@ -138,11 +137,11 @@ int main (int argc, char *argv[])
 		}
 
 		// Loop here to keep the webserver running unless requested to restart
-		while(!FTL_terminate)
+		while(!killed)
 			sleepms(100);
 	}
 
-	log_info("Shutting down... // exit code %d // jmpret %d", exit_code, jmpret);
+	log_debug(DEBUG_ANY, "Shutting down... // exit code %d // jmpret %d", exit_code, jmpret);
 	// Extra grace time is needed as dnsmasq script-helpers and the API may not
 	// be terminating immediately
 	sleepms(250);

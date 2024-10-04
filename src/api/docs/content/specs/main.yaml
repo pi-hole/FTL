@@ -63,6 +63,8 @@ tags:
     description: Methods used to gather advanced information about your network
   - name: "Actions"
     description: Methods used to trigger certain actions on your Pi-hole
+  - name: "PADD"
+    description: Methods used to query Pi-hole from PADD
 
 
 
@@ -241,6 +243,9 @@ paths:
   /network/gateway:
     $ref: 'network.yaml#/components/paths/gateway'
 
+  /network/routes:
+    $ref: 'network.yaml#/components/paths/routes'
+
   /network/interfaces:
     $ref: 'network.yaml#/components/paths/interfaces'
 
@@ -270,6 +275,9 @@ paths:
 
   /docs:
     $ref: 'docs.yaml#/components/paths/docs'
+
+  /padd:
+    $ref: 'padd.yaml#/components/paths/padd'
 
 components:
   securitySchemes:

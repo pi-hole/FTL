@@ -23,6 +23,8 @@
 #include <limits.h>
 // escape_json()
 #include "webserver/http-common.h"
+// chown_pihole()
+#include "files.h"
 
 // Open the TOML file for reading or writing
 FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode, const unsigned int version)
@@ -59,8 +61,8 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	// Return early if opening failed
 	if(!fp)
 	{
-		log_info("Config %sfile %s not available: %s",
-		         version > 0 ? "backup " : "", filename, strerror(errno));
+		log_info("Config %sfile %s not available (%s): %s",
+		         version > 0 ? "backup " : "", filename, mode, strerror(errno));
 		return NULL;
 	}
 
@@ -68,8 +70,8 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	if(flock(fileno(fp), LOCK_EX) != 0)
 	{
 		const int _e = errno;
-		log_err("Cannot open config file %s in exclusive mode: %s",
-		        filename, strerror(errno));
+		log_err("Cannot open config file %s in exclusive mode (%s): %s",
+		        filename, mode, strerror(errno));
 		fclose(fp);
 		errno = _e;
 		return NULL;
@@ -96,26 +98,8 @@ void closeFTLtoml(FILE *fp)
 
 	// Chown file if we are root
 	if(geteuid() == 0)
-	{
-		// Get UID and GID of user with name "pihole"
-		struct passwd *pwd = getpwnam("pihole");
-		if(pwd == NULL)
-		{
-			log_warn("Cannot get UID and GID of user pihole: %s", strerror(errno));
-		}
-		else
-		{
-			const uid_t pihole_uid = pwd->pw_uid;
-			const gid_t pihole_gid = pwd->pw_gid;
-			// Chown file to pihole user
-			if(chown(GLOBALTOMLPATH, pihole_uid, pihole_gid) != 0)
-				log_warn("Cannot chown "GLOBALTOMLPATH" to pihole:pihole (%u:%u): %s",
-					(unsigned int)pihole_uid, (unsigned int)pihole_gid, strerror(errno));
-			else
-				log_debug(DEBUG_CONFIG, "Chown-ed "GLOBALTOMLPATH" to pihole:pihole (%u:%u)",
-					(unsigned int)pihole_uid, (unsigned int)pihole_gid);
-		}
-	}
+		chown_pihole(GLOBALTOMLPATH, NULL);
+
 	return;
 }
 
@@ -209,7 +193,7 @@ void print_comment(FILE *fp, const char *str, const char *intro, const unsigned 
 			// If this the first line? If not, add a newline
 			if (i > 0)
 				fputc('\n', fp);
-			// Add intendation
+			// Add indentation
 			for (unsigned int j = 0; j != 2*indent; ++j)
 				fputc(' ', fp);
 			// Start a new line
@@ -378,6 +362,9 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 		case CONF_ENUM_TEMP_UNIT:
 			printTOMLstring(fp, get_temp_unit_str(v->temp_unit), toml);
 			break;
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+			printTOMLstring(fp, get_edns_mode_str(v->edns_mode), toml);
+			break;
 		case CONF_STRUCT_IN_ADDR:
 		{
 			// Special case: 0.0.0.0 -> return empty string
@@ -428,7 +415,7 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 				if(strlen(item->valuestring) == 0)
 					continue;
 
-				// Add intendation (if we are indenting)
+				// Add indentation (if we are indenting)
 				if(indent > -1)
 					indentTOML(fp, indent + 1);
 
@@ -559,7 +546,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_PTR_TYPE:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int ptr_type = get_ptr_type_val(val.u.s);
@@ -575,7 +562,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_BUSY_TYPE:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int busy_reply = get_busy_reply_val(val.u.s);
@@ -591,7 +578,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_BLOCKING_MODE:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int blocking_mode = get_blocking_mode_val(val.u.s);
@@ -607,7 +594,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int refresh_hostnames = get_refresh_hostnames_val(val.u.s);
@@ -623,7 +610,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_LISTENING_MODE:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int listeningMode = get_listeningMode_val(val.u.s);
@@ -639,7 +626,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_WEB_THEME:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int web_theme = get_web_theme_val(val.u.s);
@@ -655,13 +642,29 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_TEMP_UNIT:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				const int temp_unit = get_temp_unit_val(val.u.s);
 				free(val.u.s);
 				if(temp_unit != -1)
 					conf_item->v.temp_unit = temp_unit;
+				else
+					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
+			}
+			else
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid string", conf_item->k);
+			break;
+		}
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		{
+			toml_datum_t val = toml_string_in(toml, key);
+			if(val.ok)
+			{
+				const int edns_mode = get_edns_mode_val(val.u.s);
+				free(val.u.s);
+				if(edns_mode != -1)
+					conf_item->v.edns_mode = edns_mode;
 				else
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
@@ -681,7 +684,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				if(strlen(val.u.s) == 0)
@@ -702,7 +705,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		case CONF_STRUCT_IN6_ADDR:
 		{
 			struct in6_addr addr6 = { 0 };
-			const toml_datum_t val = toml_string_in(toml, key);
+			toml_datum_t val = toml_string_in(toml, key);
 			if(val.ok)
 			{
 				if(strlen(val.u.s) == 0)
@@ -733,7 +736,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 				for(unsigned int i = 0; i < nelem; i++)
 				{
 					// Get string from TOML
-					const toml_datum_t d = toml_string_at(array, i);
+					toml_datum_t d = toml_string_at(array, i);
 					if(!d.ok)
 					{
 						log_warn("Config %s is an invalid array (found at index %u)", conf_item->k, i);

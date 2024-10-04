@@ -34,6 +34,7 @@ set(sources
         hex/specs/logs.yaml
         hex/specs/main.yaml
         hex/specs/network.yaml
+        hex/specs/padd.yaml
         hex/specs/queries.yaml
         hex/specs/search.yaml
         hex/specs/stats.yaml

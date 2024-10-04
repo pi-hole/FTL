@@ -31,21 +31,8 @@ static int get_blocking(struct ftl_conn *api)
 	// Return current status
 	cJSON *json = JSON_NEW_OBJECT();
 	const enum blocking_status blocking = get_blockingstatus();
-	switch(blocking)
-	{
-		case BLOCKING_ENABLED:
-			JSON_REF_STR_IN_OBJECT(json, "blocking", "enabled");
-			break;
-		case BLOCKING_DISABLED:
-			JSON_REF_STR_IN_OBJECT(json, "blocking", "disabled");
-			break;
-		case DNS_FAILED:
-			JSON_REF_STR_IN_OBJECT(json, "blocking", "failure");
-			break;
-		case BLOCKING_UNKNOWN:
-			JSON_REF_STR_IN_OBJECT(json, "blocking", "unknown");
-			break;
-	}
+	const char *status = get_blocking_status_str(blocking);
+	JSON_REF_STR_IN_OBJECT(json, "blocking", status);
 
 	// Get timer information (if applicable)
 	double delay;
@@ -74,19 +61,10 @@ static int set_blocking(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	if (api->payload.json == NULL)
-	{
-		if (api->payload.json_error == NULL)
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "No request body data",
-			                       NULL);
-		else
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "Invalid request body data (no valid JSON), error before hint",
-			                       api->payload.json_error);
-	}
+	// Check if the payload is valid JSON
+	const int ret = check_json_payload(api);
+	if(ret != 0)
+		return ret;
 
 	cJSON *elem = cJSON_GetObjectItemCaseSensitive(api->payload.json, "blocking");
 	if (!cJSON_IsBool(elem))
@@ -109,7 +87,7 @@ static int set_blocking(struct ftl_conn *api)
 		// The blocking status does not need to be changed
 
 		// Delete a possibly running timer
-		set_blockingmode_timer(-1.0, true);
+		set_blockingmode_timer(timer, true);
 
 		log_debug(DEBUG_API, "No change in blocking mode, resetting timer");
 	}

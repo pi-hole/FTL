@@ -11,11 +11,17 @@
 #include "FTL.h"
 #include "log.h"
 #include "x509.h"
-#include <mbedtls/rsa.h>
-#include <mbedtls/x509.h>
-#include <mbedtls/x509_crt.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
+
+#ifdef HAVE_MBEDTLS
+# include <mbedtls/rsa.h>
+# include <mbedtls/x509.h>
+# include <mbedtls/x509_crt.h>
+
+// We enforce at least mbedTLS v3.5.0 if we use it
+#if MBEDTLS_VERSION_NUMBER < 0x03050000
+# error "mbedTLS version 3.5.0 or later is required"
+#endif
+
 
 #define RSA_KEY_SIZE 4096
 #define BUFFER_SIZE 16000
@@ -103,6 +109,10 @@ static bool write_to_file(const char *filename, const char *type, const char *su
 		printf("ERROR: Could not open %s for writing\n", targetname);
 		return false;
 	}
+
+	// Restrict permissions to owner read/write only
+	if(fchmod(fileno(f), S_IRUSR | S_IWUSR) != 0)
+		log_warn("Unable to set permissions on file \"%s\": %s", targetname, strerror(errno));
 
 	// Write key (if provided)
 	if(key != NULL)
@@ -228,6 +238,9 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	char not_after[16] = { 0 };
 	strftime(not_before, sizeof(not_before), "%Y%m%d%H%M%S", tm);
 	tm->tm_year += 30; // 30 years from now
+	// Check for leap year, and adjust the date accordingly
+	const bool isLeapYear = tm->tm_year % 4 == 0 && (tm->tm_year % 100 != 0 || tm->tm_year % 400 == 0);
+	tm->tm_mday = tm->tm_mon == 2 && tm->tm_mday == 29 && !isLeapYear ? 28 : tm->tm_mday;
 	strftime(not_after, sizeof(not_after), "%Y%m%d%H%M%S", tm);
 
 	// 1. Create CA certificate
@@ -621,3 +634,19 @@ end:
 
 	return CERT_OKAY;
 }
+
+#else
+
+bool generate_certificate(const char* certfile, bool rsa, const char *domain)
+{
+	log_err("FTL was not compiled with mbedtls support");
+	return false;
+}
+
+enum cert_check read_certificate(const char* certfile, const char *domain, const bool private_key)
+{
+	log_err("FTL was not compiled with mbedtls support");
+	return CERT_FILE_NOT_FOUND;
+}
+
+#endif

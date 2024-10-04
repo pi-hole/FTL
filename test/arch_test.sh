@@ -95,10 +95,16 @@ check_minimum_glibc_version() {
 
 if [[ "${CI_ARCH}" == "linux/amd64" ]]; then
 
-  check_machine "ELF64" "Advanced Micro Devices X86-64"
-  check_static # Binary should not rely on any dynamic interpreter
-  check_libs "" # No dependency on any shared library is intended
-  check_file "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, with debug_info, not stripped"
+  if [[ "${STATIC}" == "true" ]]; then
+    check_machine "ELF64" "Advanced Micro Devices X86-64"
+    check_static # Binary should not rely on any dynamic interpreter
+    check_libs "" # No dependency on any shared library is intended
+    check_file "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, with debug_info, not stripped"
+else
+    check_machine "ELF64" "Advanced Micro Devices X86-64"
+    check_libs "[libgmp.so.10] [libidn2.so.0] [libc.musl-x86_64.so.1]"
+    check_file "ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-musl-x86_64.so.1, with debug_info, not stripped"
+  fi
 
 elif [[ "${CI_ARCH}" == "linux/386" ]]; then
 

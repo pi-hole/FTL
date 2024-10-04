@@ -32,8 +32,6 @@
 #include "files.h"
 // log_resource_shortage()
 #include "database/message-table.h"
-// check_running_FTL()
-#include "procps.h"
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 14
@@ -149,58 +147,26 @@ static int get_dev_shm_usage(char buffer[64])
 	return percentage;
 }
 
-// Verify the PID stored during shared memory initialization is the same as ours
-// (while we initialized the shared memory objects)
-static void verify_shmem_pid(void)
-{
-	// Open shared memory settings object
-	const int settingsfd = shm_open(SHARED_SETTINGS_NAME, O_RDONLY, S_IRUSR | S_IWUSR);
-	if(settingsfd == -1)
-	{
-		log_crit("verify_shmem_pid(): Failed to open shared memory object \"%s\": %s",
-			SHARED_SETTINGS_NAME, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	ShmSettings shms = { 0 };
-	if(read(settingsfd, &shms, sizeof(shms)) != sizeof(shms))
-	{
-		log_crit("verify_shmem_pid(): Failed to read %zu bytes from shared memory object \"%s\": %s",
-			sizeof(shms), SHARED_SETTINGS_NAME, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	close(settingsfd);
-
-	// Compare the SHM's PID to the one we had when creating the SHM objects
-	if(shms.pid == shmem_pid)
-		return;
-
-	// If we reach here, we are in serious trouble. Terminating with error
-	// code is the most sensible thing we can do at this point
-	log_crit("Shared memory is owned by a different process (PID %d)", shms.pid);
-	check_running_FTL();
-	log_crit("Exiting now!");
-	exit(EXIT_FAILURE);
-}
-
 // chown_shmem() changes the file ownership of a given shared memory object
 static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
 {
 	// Open shared memory object
 	const int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
 	log_debug(DEBUG_SHMEM, "Changing %s (%d) to %u:%u", sharedMemory->name, fd, ent_pw->pw_uid, ent_pw->pw_gid);
+
 	if(fd == -1)
 	{
-		log_crit("chown_shmem(): Failed to open shared memory object \"%s\": %s",
+		log_crit("Failed to open shared memory object \"%s\" for chown: %s",
 		         sharedMemory->name, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
+
 	if(fchown(fd, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 	{
-		log_warn("chown_shmem(%d, %u, %u): failed for %s: %s (%d)",
-		         fd, ent_pw->pw_uid, ent_pw->pw_gid, sharedMemory->name,
-		         strerror(errno), errno);
+		log_crit("Failed to change ownership of shared memory object \"%s\": %s",
+		         sharedMemory->name,
+		         errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
+
 		return false;
 	}
 
@@ -286,7 +252,7 @@ const char *_getstr(const size_t pos, const char *func, const int line, const ch
 // Create a mutex for shared memory
 static void create_mutex(pthread_mutex_t *lock) {
 	log_debug(DEBUG_SHMEM, "Creating SHM mutex lock");
-	pthread_mutexattr_t lock_attr = {};
+	pthread_mutexattr_t lock_attr;
 
 	// Initialize the lock attributes
 	pthread_mutexattr_init(&lock_attr);
@@ -621,13 +587,29 @@ static bool create_shm(const char *name, SharedMemory *sharedMemory, const size_
 	// - O_CREAT: Create the shared memory object if it does not exist.
 	// - O_EXCL: Return an error if a shared memory object with the given name already exists.
 	errno = 0;
-	const int fd = shm_open(sharedMemory->name, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+	sharedMemory->fd = shm_open(sharedMemory->name, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
 
 	// Check for `shm_open` error
-	if(fd == -1)
+	if(sharedMemory->fd == -1)
 	{
 		log_err("create_shm(): Failed to create shared memory object \"%s\": %s",
 		        name, strerror(errno));
+		return sharedMemory;
+	}
+
+	// Create exclusive file lock on shared memory object
+	// The lock will be automatically released when the file descriptor is closed
+	sharedMemory->lock.l_type = F_WRLCK; // write = exclusive lock
+	sharedMemory->lock.l_whence = SEEK_SET;
+	sharedMemory->lock.l_start = 0; // lock everything from the start ...
+	sharedMemory->lock.l_len = 0; // ... to the end of the file (magic 0 = EOF)
+
+	// Try to lock the shared memory object
+	if(fcntl(sharedMemory->fd, F_SETLK, &sharedMemory->lock) == -1)
+	{
+		log_err("create_shm(): Failed to exclusively lock shared memory object \"%s\": %s",
+		        name, strerror(errno));
+		close(sharedMemory->fd);
 		return sharedMemory;
 	}
 
@@ -635,11 +617,11 @@ static bool create_shm(const char *name, SharedMemory *sharedMemory, const size_
 	// Using f[tl]allocate() will ensure that there's actually space for
 	// this file. Otherwise we end up with a sparse file that can give
 	// SIGBUS if we run out of space while writing to it.
-	const int ret = ftlallocate(fd, 0U, size);
+	const int ret = ftlallocate(sharedMemory->fd, 0U, size);
 	if(ret != 0)
 	{
 		log_err("create_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
-		        sharedMemory->name, fd, size, strerror(errno), ret);
+		        sharedMemory->name, sharedMemory->fd, size, strerror(errno), ret);
 		exit(EXIT_FAILURE);
 	}
 
@@ -648,22 +630,18 @@ static bool create_shm(const char *name, SharedMemory *sharedMemory, const size_
 	used_shmem += size;
 
 	// Create shared memory mapping
-	void *shm = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	void *shm = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, sharedMemory->fd, 0);
 
 	// Check for `mmap` error
 	if(shm == MAP_FAILED)
 	{
 		log_err("create_shm(): Failed to map shared memory object \"%s\" (%i): %s",
-		        sharedMemory->name, fd, strerror(errno));
+		        sharedMemory->name, sharedMemory->fd, strerror(errno));
 		return sharedMemory;
 	}
 
 	// Initialize shared memory object to zero
 	memset(shm, 0, size);
-
-	// Close shared memory object file descriptor as it is no longer
-	// needed after having called mmap()
-	close(fd);
 
 	sharedMemory->ptr = shm;
 	return sharedMemory;
@@ -740,11 +718,15 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 
 	// Log output
 	if(resize)
+	{
 		log_debug(DEBUG_SHMEM, "Resizing \"%s\" from %zu to (%zu * %zu) == %zu (%s)",
 		          sharedMemory->name, sharedMemory->size, size1, size2, size, df);
+	}
 	else
+	{
 		log_debug(DEBUG_SHMEM, "Remapping \"%s\" from %zu to (%zu * %zu) == %zu",
 		          sharedMemory->name, sharedMemory->size, size1, size2, size);
+	}
 
 	if(config.misc.check.shmem.v.ui > 0 && percentage > config.misc.check.shmem.v.ui)
 		log_resource_shortage(-1.0, 0, percentage, -1, SHMEM_PATH, df);
@@ -755,33 +737,17 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 	// TCP requests.
 	if(resize)
 	{
-		// Verify shared memory ownership
-		verify_shmem_pid();
-
-		// Open shared memory object
-		const int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
-		if(fd == -1)
-		{
-			log_crit("realloc_shm(): Failed to open shared memory object \"%s\": %s",
-			         sharedMemory->name, strerror(errno));
-			exit(EXIT_FAILURE);
-		}
-
 		// Allocate shared memory object to specified size
 		// Using f[tl]allocate() will ensure that there's actually space for
 		// this file. Otherwise we end up with a sparse file that can give
 		// SIGBUS if we run out of space while writing to it.
-		const int ret = ftlallocate(fd, 0U, size);
+		const int ret = ftlallocate(sharedMemory->fd, 0U, size);
 		if(ret != 0)
 		{
 			log_crit("realloc_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
-			         sharedMemory->name, fd, size, strerror(ret), ret);
+			         sharedMemory->name, sharedMemory->fd, size, strerror(ret), ret);
 			exit(EXIT_FAILURE);
 		}
-
-		// Close shared memory object file descriptor as it is no longer
-		// needed after having called f[tl]allocate()
-		close(fd);
 
 		// Update shm counters to indicate that at least one shared memory object changed
 		shmSettings->global_shm_counter++;
@@ -801,11 +767,15 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 	used_shmem += (size - sharedMemory->size);
 
 	if(sharedMemory->ptr == new_ptr)
+	{
 		log_debug(DEBUG_SHMEM, "SHMEM pointer not updated: %p (%zu %zu)",
 		          sharedMemory->ptr, sharedMemory->size, size);
+	}
 	else
+	{
 		log_debug(DEBUG_SHMEM, "SHMEM pointer updated: %p -> %p (%zu %zu)",
 		          sharedMemory->ptr, new_ptr, sharedMemory->size, size);
+	}
 
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = size;
@@ -836,6 +806,11 @@ static void delete_shm(SharedMemory *sharedMemory)
 
 	// Set unmapped pointer to NULL
 	sharedMemory->ptr = NULL;
+
+	// Close shared memory file descriptor
+	if(close(sharedMemory->fd) != 0)
+		log_warn("delete_shm(): close(%i) failed: %s", sharedMemory->fd, strerror(errno));
+	sharedMemory->fd = -1;
 
 	// Now you can no longer `shm_open` the memory, and once all others
 	// unlink, it will be destroyed.
@@ -976,7 +951,7 @@ void reset_per_client_regex(const int clientID)
 void add_per_client_regex(unsigned int clientID)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
-	const size_t size = get_optimal_object_size(1, counters->clients * num_regex_tot);
+	const size_t size = get_optimal_object_size(1, (size_t)counters->clients * num_regex_tot);
 	if(size > shm_per_client_regex.size &&
 	   realloc_shm(&shm_per_client_regex, 1, size, true))
 	{
@@ -1049,7 +1024,7 @@ static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, con
 	return true;
 }
 
-queriesData* _getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file)
+queriesData *_getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file)
 {
 	// This does not exist, return a NULL pointer
 	if(queryID == -1)
@@ -1217,4 +1192,60 @@ DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char *f
 		return &dns_cache[cacheID];
 
 	return NULL;
+}
+
+// Return 1 if this fd is associated with any shared memory object to avoid
+// dnsmasq closing it during initialization
+int __attribute__((pure)) is_shm_fd(const int fd)
+{
+	// Check all shared memory objects
+	for(unsigned int i = 0; i < ArraySize(sharedMemories); i++)
+		if(sharedMemories[i]->fd == fd)
+			return 1;
+
+	// Not found
+	return 0;
+}
+
+// Update queries per second (qps) value
+// This is done in shared memory to allow for both UDP and TCP workers to
+// contribute.
+void update_qps(const double timestamp)
+{
+	// Get the timeslot for the current timestamp
+	const unsigned int slot = (unsigned int)timestamp % QPS_AVGLEN;
+
+	// Check if the timestamp is in the same slot as the last one
+	if(shmSettings->qps.last != slot)
+	{
+		// Reset all the slots in between
+		// This is relevant if less than one query per second is
+		// received and the intermediate slots are not updated
+		for(unsigned int i = (shmSettings->qps.last + 1) % QPS_AVGLEN; i != slot; i = (i + 1) % QPS_AVGLEN)
+			shmSettings->qps.buf[i] = 0;
+
+		// Reset the current slot
+		shmSettings->qps.buf[slot] = 0;
+
+		// Update the last slot index
+		shmSettings->qps.last = slot;
+	}
+
+	// Add the query
+	shmSettings->qps.buf[slot]++;
+}
+
+// Compute queries per second (qps) value
+double __attribute__((pure)) get_qps(void)
+{
+	// Compute the arithmetic mean of all slots
+	//        1  N
+	// QPS = --- Σ buf[i]
+	//        N  i=0
+	//
+	double qps = 0.0;
+	for(unsigned int i = 0; i < QPS_AVGLEN; i++)
+		qps += shmSettings->qps.buf[i];
+
+	return qps / QPS_AVGLEN;
 }

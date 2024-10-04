@@ -39,6 +39,20 @@
 // 2023, using 128 bits should be sufficient for the foreseeable future.
 #define SALT_LEN 16 // 16 bytes = 128 bits
 
+// App password length
+// The app password is a 256 bit password. This is a good balance between
+// security and usability. It is long enough to be secure.
+#define APPPW_LEN 32 // 32 bytes = 256 bits
+
+// CLI password file and memory
+// We store the password in plain memory. This is not a security issue as the
+// memory is only accessible to the user running the FTL process. Anyone with
+// sufficient access to the memory (ptrace, swapfile) would also have access to
+// the password file. Leaking the password after exit is not a concern as a new
+// password is generated on every start.
+#define CLI_PW_FILE "/etc/pihole/cli_pw"
+static char *cli_password = NULL;
+
 // Convert RAW data into hex representation
 // Two hexadecimal digits are generated for each input byte.
 void sha256_raw_to_hex(uint8_t *data, char *buffer)
@@ -185,6 +199,14 @@ static char * __attribute__((malloc)) balloon_password(const char *password,
 
 	// Build PHC string-like output (output string is 101 bytes long (measured))
 	char *output = calloc(128, sizeof(char));
+
+	if(output == NULL || salt_base64 == NULL || scratch_base64 == NULL)
+	{
+		log_err("Error while allocating memory for PHC string: %s", strerror(errno));
+		goto clean_and_exit;
+	}
+
+	// Generate PHC string
 	int size = snprintf(output, 128, "$BALLOON-SHA256$v=1$s=%zu,t=%zu$%s$%s",
 	                    s_cost,
 	                    t_cost,
@@ -199,11 +221,15 @@ static char * __attribute__((malloc)) balloon_password(const char *password,
 	}
 
 clean_and_exit:
-	free(scratch);
-	free(salt_base64);
-	free(scratch_base64);
+	// Clean up
+	if(scratch != NULL)
+		free(scratch);
+	if(salt_base64 != NULL)
+		free(salt_base64);
+	if(scratch_base64 != NULL)
+		free(scratch_base64);
 
-	return output;
+	return output; // may be NULL on failure (unlikely)
 }
 
 // Parse a PHC string and return the parameters and hash
@@ -314,11 +340,15 @@ char * __attribute__((malloc)) create_password(const char *password)
 
 enum password_result verify_login(const char *password)
 {
+	// Check if this is the CLI password
+	if(config.webserver.api.cli_pw.v.b && cli_password != NULL)
+	{
+		if(strcmp(cli_password, password) == 0)
+			return CLIPASSWORD_CORRECT;
+	}
+
 	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
-	if(pw == PASSWORD_CORRECT)
-		log_debug(DEBUG_API, "Password correct");
-	else
-		log_debug(DEBUG_API, "Password incorrect");
+	log_debug(DEBUG_API, "Password %s correct", pw == PASSWORD_CORRECT ? "" : "not");
 
 	// Check if an application password is set and if it matches
 	if(pw == PASSWORD_INCORRECT &&
@@ -410,7 +440,6 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 				config.webserver.api.pwhash.v.s = new_hash;
 				config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
 				writeFTLtoml(true);
-				free(new_hash);
 			}
 
 			// Successful logins do not count against rate-limiting
@@ -604,6 +633,16 @@ int run_performance_test(void)
 
 bool set_and_check_password(struct conf_item *conf_item, const char *password)
 {
+	// Check if the user wants to set an empty password but the password is
+	// already empty, or if the newly set password is the same as the old
+	// one
+	if((strlen(password) == 0 && strlen(config.webserver.api.pwhash.v.s) == 0) ||
+	   verify_password(password, config.webserver.api.pwhash.v.s, false) == PASSWORD_CORRECT)
+	{
+		log_debug(DEBUG_CONFIG, "Password unchanged, not updating");
+		return true;
+	}
+
 	// Get password hash as allocated string (an empty string is hashed to an empty string)
 	char *pwhash = strlen(password) > 0 ? create_password(password) : strdup("");
 
@@ -625,32 +664,45 @@ bool set_and_check_password(struct conf_item *conf_item, const char *password)
 
 	// Set item
 	conf_item->v.s = pwhash;
+	conf_item->t = CONF_STRING_ALLOCATED;
 	log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
 
 	return true;
 }
 
-bool generate_app_password(char **password, char **pwhash)
+bool generate_password(char **password, char **pwhash)
 {
-	// Generate a 128 bit random salt
-	// genrandom() returns cryptographically secure random data
-	uint8_t salt[SALT_LEN] = { 0 };
-	if(getrandom(salt, sizeof(salt), 0) < 0)
-	{
-		log_err("getrandom() failed in generate_app_password()");
-		return false;
-	}
-
 	// Generate a 256 bit random password
-	uint8_t password_raw[256/8] = { 0 };
+	// genrandom() returns cryptographically secure random data
+	uint8_t password_raw[APPPW_LEN] = { 0 };
 	if(getrandom(password_raw, sizeof(password_raw), 0) < 0)
 	{
-		log_err("getrandom() failed in generate_app_password()");
+		log_err("getrandom() failed in generate_password()");
 		return false;
 	}
 
 	// Encode password as base64
 	*password = base64_encode(password_raw, sizeof(password_raw));
+
+	if(*password == NULL)
+	{
+		log_err("Error while encoding password as base64");
+		return false;
+	}
+
+	if(pwhash == NULL)
+	{
+		// No password hash requested
+		return true;
+	}
+
+	// Generate a 128 bit random salt
+	uint8_t salt[SALT_LEN] = { 0 };
+	if(getrandom(salt, sizeof(salt), 0) < 0)
+	{
+		log_err("getrandom() failed in generate_password()");
+		return false;
+	}
 
 	// Generate balloon PHC-encoded password hash
 	*pwhash = balloon_password(*password, salt, true);
@@ -664,5 +716,86 @@ bool generate_app_password(char **password, char **pwhash)
 		return false;
 	}
 
+	return true;
+}
+
+bool create_cli_password(void)
+{
+	// Check if the CLI password is enabled
+	if(!config.webserver.api.cli_pw.v.b)
+	{
+		log_debug(DEBUG_API, "CLI password is not set");
+		return true;
+	}
+
+	// Generate a new CLI password hash
+	if(!generate_password(&cli_password, NULL))
+	{
+		log_err("Failed to generate CLI password hash!");
+		return false;
+	}
+
+	// Store the CLI password in the corresponding file
+	FILE *file = fopen(CLI_PW_FILE, "w");
+	if(file == NULL)
+	{
+		log_err("Failed to open CLI password file for writing: %s", strerror(errno));
+		free(cli_password);
+		return false;
+	}
+
+	// Write password
+	if(fputs(cli_password, file) == EOF)
+	{
+		log_err("Failed to write CLI password to file: %s", strerror(errno));
+		fclose(file);
+		free(cli_password);
+		return false;
+	}
+
+	// Close file
+	fclose(file);
+
+	// Set file permissions to 0640
+	if(chmod(CLI_PW_FILE, S_IRUSR | S_IWUSR | S_IRGRP) < 0)
+	{
+		log_err("Failed to set permissions on CLI password file: %s", strerror(errno));
+		free(cli_password);
+		return false;
+	}
+
+	log_debug(DEBUG_API, "CLI password set and stored in file");
+	return true;
+}
+
+bool remove_cli_password(void)
+{
+	// Remove the CLI password from memory (if allocated)
+	if(cli_password != NULL)
+	{
+		free(cli_password);
+		cli_password = NULL;
+	}
+
+	// Empty the CLI password file
+	FILE *file = fopen(CLI_PW_FILE, "w");
+	if(file == NULL)
+	{
+		log_err("Failed to open CLI password file for writing: %s", strerror(errno));
+		return false;
+	}
+
+	// Close file
+	fclose(file);
+
+	// Remove the CLI password file from disk
+	// If the file does not exist, we returned above already
+	if(unlink(CLI_PW_FILE) < 0)
+	{
+		log_err("Failed to remove CLI password file: %s", strerror(errno));
+		return false;
+	}
+
+	log_debug(DEBUG_API, "CLI password removed");
 	return true;
 }

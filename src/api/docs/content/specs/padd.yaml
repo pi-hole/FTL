@@ -1,0 +1,248 @@
+openapi: 3.0.2
+components:
+  paths:
+    padd:
+      get:
+        summary: Get summarized data for PADD
+        tags:
+          - "PADD"
+        operationId: "get_padd"
+        parameters:
+          - in: query
+            description: (Optional) Return full data
+            name: full
+            schema:
+              type: boolean
+            required: false
+            example: true
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'padd.yaml#/components/schemas/padd'
+                    - $ref: 'info.yaml#/components/schemas/system'
+                    - $ref: 'info.yaml#/components/schemas/version'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+  schemas:
+    padd:
+      type: object
+      properties:
+        recent_blocked:
+          type: string
+          description: "Most recent blocked domain"
+          nullable: true
+          example: "bad.example.com"
+        top_domain:
+          type: string
+          description: "Most requested domain"
+          nullable: true
+          example: "good.example.com"
+        top_blocked:
+          type: string
+          description: "Most blocked domain"
+          nullable: true
+          example: "bad.example.com"
+        top_client:
+          type: string
+          description: "Most active client"
+          nullable: true
+          example: "localhost"
+        active_clients:
+          type: integer
+          description: "Number of active clients"
+          example: 22
+        gravity_size:
+          type: integer
+          description: "Gravity list size"
+          example: 225382
+        blocking:
+          type: string
+          description: "Blocking status"
+          example: "enabled"
+        queries:
+          type: object
+          properties:
+            total:
+              type: integer
+              description: "Total number of queries within the last 24 hours"
+              example: 92258
+            blocked:
+              type: integer
+              description: "Number of blocked queries"
+              example: 4784
+            percent_blocked:
+              type: number
+              description: "Percentage of blocked queries"
+              example: 5.18
+        cache:
+          type: object
+          properties:
+            size:
+              type: integer
+              description: "Total cache size"
+              example: 10000
+            inserted:
+              type: integer
+              description: "Number of inserted cache entries"
+              example: 233
+            evicted:
+              type: integer
+              description: "Number of evicted cache entries"
+              example: 0
+        iface:
+          type: object
+          description: "Default interfaces"
+          properties:
+            v4:
+              type: object
+              description: "IPv4 interface"
+              properties:
+                addr:
+                  type: string
+                  description: "Primary address"
+                  nullable: true # there may be no IPv4 address
+                  example: "192.168.2.11"
+                rx_bytes:
+                  type: object
+                  description: "Received bytes"
+                  properties:
+                    value:
+                      type: number
+                      example: 76.46
+                    unit:
+                      type: string
+                      example: "G"
+                tx_bytes:
+                  type: object
+                  description: "Transmitted bytes"
+                  properties:
+                    value:
+                      type: number
+                      example: 68.58
+                    unit:
+                      type: string
+                      example: "G"
+                num_addrs:
+                  type: integer
+                  description: "Number of addresses on the interface"
+                  example: 1
+                name:
+                  type: string
+                  description: "Interface name"
+                  example: "eth0"
+                gw_addr:
+                  type: string
+                  description: "Gateway address"
+                  nullable: true # there may be no IPv4 gateway
+                  example: "192.168.2.1"
+            v6:
+              type: object
+              description: "IPv6 interface"
+              properties:
+                addr:
+                  type: string
+                  description: "Primary address"
+                  nullable: true # there may be no IPv6 address
+                  example: "fe80::b0e4:1b1e:7b7d:5855"
+                num_addrs:
+                  type: integer
+                  description: "Number of addresses on the interface"
+                  example: 3
+                name:
+                  type: string
+                  description: "Interface name"
+                  example: "eth0"
+                gw_addr:
+                  type: string
+                  description: "Gateway address"
+                  nullable: true # there may be no IPv6 gateway
+                  example: "fe80::b0e4:1b1e:7b7d:1b1e"
+        node_name:
+          type: string
+          description: "Pi-hole host's name"
+          example: "pihole"
+        host_model:
+          type: string
+          description: "Host model"
+          example: "Raspberry Pi 3 Model B Plus Rev 1.3"
+          nullable: true
+        config:
+          type: object
+          description: "Pi-hole configuration (excerpt)"
+          properties:
+            dhcp_active:
+              type: boolean
+              description: "DHCP server status"
+              example: true
+            dhcp_start:
+              type: string
+              description: "DHCP start address"
+              example: "192.168.0.1"
+            dhcp_end:
+              type: string
+              description: "DHCP end address"
+              example: "192.168.0.254"
+            dhcp_ipv6:
+              type: boolean
+              description: "DHCPv6 server status"
+              example: false
+            dns_domain:
+              type: string
+              description: "DNS domain"
+              example: "lan"
+            dns_port:
+              type: integer
+              description: "DNS port"
+              example: 53
+            dns_num_upstreams:
+              type: integer
+              description: "Number of upstream DNS servers"
+              example: 1
+            dns_dnssec:
+              type: boolean
+              description: "DNSSEC status"
+              example: true
+            dns_revServer_active:
+              type: boolean
+              description: "Reverse DNS server status"
+              example: false
+        "%cpu":
+          type: number
+          description: "CPU usage"
+          example: 0.0
+        "%mem":
+          type: number
+          description: "Memory usage"
+          example: 1.5
+        pid:
+          type: integer
+          description: "FTL's process ID"
+          example: 1639
+        sensors:
+          type: object
+          properties:
+            cpu_temp:
+              type: number
+              description: "CPU temperature"
+              nullable: true
+              example: 45.0
+            hot_limit:
+              type: number
+              description: "Temperature limit"
+              example: 80.0
+            unit:
+              type: string
+              description: "Temperature unit"
+              example: "C"

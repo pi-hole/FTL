@@ -62,7 +62,7 @@ static void recycle(void)
 	// and recycle them
 	for(int queryID = 0; queryID < counters->queries; queryID++)
 	{
-		queriesData* query = getQuery(queryID, true);
+		queriesData *query = getQuery(queryID, true);
 		if(query == NULL)
 			continue;
 
@@ -262,8 +262,8 @@ static void check_load(void)
 	if (getloadavg(load, 3) == -1)
 		return;
 
-	// Get number of CPU cores
-	const int nprocs = get_nprocs();
+	// Get total number of CPU cores
+	const int nprocs = get_nprocs_conf();
 
 	// Warn if 15 minute average of load exceeds number of available
 	// processors
@@ -298,7 +298,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	if(config.debug.gc.v.b)
 	{
 		timer_start(GC_TIMER);
-		char timestring[TIMESTR_SIZE] = "";
+		char timestring[TIMESTR_SIZE];
 		get_timestr(timestring, mintime, false, false);
 		log_debug(DEBUG_GC, "GC starting, mintime: %s (%lu), counters->queries = %d",
 		          timestring, (unsigned long)mintime, counters->queries);
@@ -308,7 +308,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	unsigned int removed = 0;
 	for(long int i = 0; i < counters->queries; i++)
 	{
-		queriesData* query = getQuery(i, true);
+		queriesData *query = getQuery(i, true);
 		if(query == NULL)
 			continue;
 
@@ -354,6 +354,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by upstream provider (fall through)
 			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
 			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
+			case QUERY_EXTERNAL_BLOCKED_EDE15: // Blocked by upstream provider (fall through)
 			case QUERY_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
 			case QUERY_REGEX_CNAME: // Regex denied domain in CNAME chain (fall through)
 			case QUERY_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
@@ -481,8 +482,6 @@ static bool check_files_on_same_device(const char *path1, const char *path2)
 void *GC_thread(void *val)
 {
 	// Set thread name
-	thread_names[GC] = "housekeeper";
-	thread_running[GC] = true;
 	prctl(PR_SET_NAME, thread_names[GC], 0, 0, 0);
 
 	// Remember when we last ran the actions
@@ -568,6 +567,5 @@ void *GC_thread(void *val)
 	watch_config(false);
 
 	log_info("Terminating GC thread");
-	thread_running[GC] = false;
 	return NULL;
 }

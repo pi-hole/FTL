@@ -27,13 +27,17 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 #define FTL_new_query(flags, name, addr, arg, qtype, id, proto) _FTL_new_query(flags, name, addr, arg, qtype, id, proto, __FILE__, __LINE__)
 bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, char *arg, const unsigned short qtype, const int id, enum protocol proto, const char* file, const int line);
 
-#define FTL_header_analysis(header4, rcode, server, id) _FTL_header_analysis(header4, rcode, server, id, __FILE__, __LINE__)
-void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const struct server *server, const int id, const char* file, const int line);
+#define FTL_header_analysis(header4, server, id) _FTL_header_analysis(header4, server, id, __FILE__, __LINE__)
+void _FTL_header_analysis(const unsigned char header4, const struct server *server, const int id, const char* file, const int line);
+
+#define FTL_check_reply(rcode, flags, addr, id) _FTL_check_reply(rcode, flags, addr, id, __FILE__, __LINE__)
+int _FTL_check_reply(const unsigned int rcode, const unsigned short flags, const union all_addr *addr, const int id, const char* file, const int line);
 
 void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec);
 
-#define FTL_make_answer(header, limit, len, ede) _FTL_make_answer(header, limit, len, ede, __FILE__, __LINE__)
-size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede, const char* file, const int line);
+#define MAX_EDE_DATA 128
+#define FTL_make_answer(header, limit, len, ede_data, ede_len) _FTL_make_answer(header, limit, len, ede_data, ede_len, __FILE__, __LINE__)
+size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, unsigned char ede_data[MAX_EDE_DATA], size_t *ede_len, const char* file, const int line);
 
 #define FTL_CNAME(dst, src, id) _FTL_CNAME(dst, src, id, __FILE__, __LINE__)
 bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file, const int line);
@@ -47,6 +51,8 @@ void FTL_TCP_worker_created(const int confd);
 void FTL_TCP_worker_terminating(bool finished);
 
 bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint);
+
+void FTL_connection_error(const char *reason, const union mysockaddr *addr);
 
 // defined in src/dnsmasq/cache.c
 extern char *querystr(char *desc, unsigned short type);

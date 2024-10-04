@@ -182,7 +182,7 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 
 			// Free old password hash if it was allocated
 			if(conf_item->t == CONF_STRING_ALLOCATED)
-					free(conf_item->v.s);
+				free(conf_item->v.s);
 
 			// Store new password hash
 			conf_item->v.s = pwhash;
@@ -306,6 +306,21 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			}
 			break;
 		}
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		{
+			const int edns_mode = get_edns_mode_val(value);
+			if(edns_mode != -1)
+				conf_item->v.edns_mode = edns_mode;
+			else
+			{
+				char *allowed = NULL;
+				CONFIG_ITEM_ARRAY(conf_item->a, allowed);
+				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, allowed);
+				free(allowed);
+				return false;
+			}
+			break;
+		}
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };
@@ -342,10 +357,11 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 		}
 		case CONF_JSON_STRING_ARRAY:
 		{
-			cJSON *elem = cJSON_Parse(value);
+			const char *json_error = NULL;
+			cJSON *elem = cJSON_ParseWithOpts(value, &json_error, 0);
 			if(elem == NULL)
 			{
-				log_err("Config setting %s is invalid: not valid JSON, error before: %s", conf_item->k, cJSON_GetErrorPtr());
+				log_err("Config setting %s is invalid: not valid JSON, error at: %.20s", conf_item->k, json_error);
 				return false;
 			}
 			if(!cJSON_IsArray(elem))
@@ -396,6 +412,14 @@ int set_config_from_CLI(const char *key, const char *value)
 		return EXIT_FAILURE;
 	}
 
+	// Return early if the user tries to change some settings but the config
+	// is in read-only mode
+	if(config.misc.readOnly.v.b)
+	{
+		printf("Config is in read-only mode, changes are not allowed (misc.readOnly = true)\n");
+		return EXIT_FAILURE;
+	}
+
 	// Identify config option
 	struct config newconf;
 	duplicate_config(&newconf, &config);
@@ -409,11 +433,20 @@ int set_config_from_CLI(const char *key, const char *value)
 		if(strcmp(item->k, key) != 0)
 			continue;
 
+		// Check if this is a read-only config option (forced by env var)
 		if(item->f & FLAG_ENV_VAR)
 		{
 			log_err("Config option %s is read-only (set via environmental variable)", key);
 			free_config(&newconf);
 			return ENV_VAR_FORCED;
+		}
+
+		// Check if this the special read-only config option
+		if(item->f & FLAG_READ_ONLY)
+		{
+			log_err("Config option %s can only be set in pihole.toml, not via the CLI", key);
+			free_config(&newconf);
+			return EXIT_FAILURE;
 		}
 
 		// This is the config option we are looking for

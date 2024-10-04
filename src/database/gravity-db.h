@@ -11,11 +11,9 @@
 #define GRAVITY_H
 
 // clients data structure
-#include "../datastructure.h"
-// enum http_method
-#include "../webserver/http-common.h"
+#include "datastructure.h"
 // Definition of struct regexData
-#include "../regex_r.h"
+#include "regex_r.h"
 
 // Table row record, not all fields are used by all tables
 typedef struct {
@@ -41,7 +39,6 @@ typedef struct {
 	time_t date_updated;
 } tablerow;
 
-bool gravityDB_open(void);
 bool gravityDB_reopen(void);
 void gravityDB_forked(void);
 void gravityDB_reload_groups(clientsData* client);
@@ -72,5 +69,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message);
 bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
                            const tablerow *row, const char **message);
+
+time_t gravity_last_updated(void) __attribute__((pure));
 
 #endif //GRAVITY_H

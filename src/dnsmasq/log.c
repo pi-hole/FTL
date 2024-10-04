@@ -90,7 +90,7 @@ int log_start(struct passwd *ent_pw, int errfd)
   if (!log_reopen(daemon->log_file))
     {
       send_event(errfd, EVENT_LOG_ERR, errno, daemon->log_file ? daemon->log_file : "");
-      _exit(0);
+      die(_("failed to open log file: %s"), strerror(errno), 1); // Pi-hole modification
     }
 
   /* if queuing is inhibited, make sure we allocate

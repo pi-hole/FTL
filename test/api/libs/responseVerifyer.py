@@ -11,6 +11,7 @@
 
 import io
 import ipaddress
+import json
 import random
 import zipfile
 from libs.openAPI import openApi
@@ -23,7 +24,7 @@ class ResponseVerifyer():
 	# Translate between OpenAPI and Python types
 	YAML_TYPES = { "string": [str], "integer": [int], "number": [int, float], "boolean": [bool], "array": [list] }
 	TELEPORTER_FILES_EXPORT = ["etc/pihole/gravity.db", "etc/pihole/pihole.toml", "etc/pihole/pihole-FTL.db", "etc/hosts"]
-	TELEPORTER_FILES_IMPORT = ['etc/pihole/pihole.toml', 'etc/pihole/dhcp.leases', 'etc/pihole/gravity.db']
+	TELEPORTER_FILES_IMPORT = ['etc/pihole/pihole.toml', 'etc/pihole/dhcp.leases', 'etc/pihole/gravity.db->group', 'etc/pihole/gravity.db->adlist', 'etc/pihole/gravity.db->adlist_by_group', 'etc/pihole/gravity.db->domainlist', 'etc/pihole/gravity.db->domainlist_by_group', 'etc/pihole/gravity.db->client', 'etc/pihole/gravity.db->client_by_group' ]
 
 	auth_method = "?"
 	teleporter_archive = None
@@ -229,6 +230,7 @@ class ResponseVerifyer():
 		for expected_file in self.TELEPORTER_FILES_IMPORT:
 			if expected_file not in FTLresponse['files']:
 				self.errors.append("File " + expected_file + " is missing in FTL response")
+				self.errors.append(json.dumps(FTLresponse['files'], indent=4))
 
 		return self.errors
 
@@ -290,7 +292,6 @@ class ResponseVerifyer():
 		# Check if the property is defined in the API specs (unless we know there are "any-key" items here)
 		if props[-1] not in YAMLprops:
 			self.errors.append("Property '" + flat_path + "' missing in the API specs (2)")
-			print(YAMLprop)
 			return False
 		YAMLprop = YAMLprops[props[-1]]
 

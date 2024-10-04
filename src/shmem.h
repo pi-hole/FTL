@@ -22,6 +22,8 @@ typedef struct {
     const char *name;
     size_t size;
     void *ptr;
+    int fd;
+    struct flock lock;
 } SharedMemory;
 
 typedef struct {
@@ -29,6 +31,10 @@ typedef struct {
 	pid_t pid;
 	unsigned int global_shm_counter;
 	unsigned int next_str_pos;
+	struct {
+		unsigned int last;
+		unsigned int buf[QPS_AVGLEN];
+	} qps;
 } ShmSettings;
 
 typedef struct {
@@ -56,8 +62,14 @@ typedef struct {
 		int groups;
 		int lists;
 		struct {
-			int allowed;
-			int denied;
+			struct {
+				int exact;
+				int regex;
+			} allowed;
+			struct {
+				int exact;
+				int regex;
+			} denied;
 		} domains;
 	} database;
 	int querytype[TYPE_MAX];
@@ -139,5 +151,11 @@ void add_per_client_regex(unsigned int clientID);
 void reset_per_client_regex(const int clientID);
 bool get_per_client_regex(const int clientID, const int regexID);
 void set_per_client_regex(const int clientID, const int regexID, const bool value);
+
+// Used in dnsmasq/utils.c
+int is_shm_fd(const int fd);
+
+void update_qps(const double timestamp);
+double get_qps(void) __attribute__((pure));
 
 #endif //SHARED_MEMORY_SERVER_H

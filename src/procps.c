@@ -114,10 +114,34 @@ static bool get_process_creation_time(const pid_t pid, char timestr[TIMESTR_SIZE
 	return true;
 }
 
+// This function checks if a given PID is running inside a docker container
+static bool is_in_docker(const pid_t pid)
+{
+	char filename[sizeof("/proc/%u/cgroup") + sizeof(int)*3];
+	snprintf(filename, sizeof(filename), "/proc/%d/cgroup", pid);
+
+	FILE *f = fopen(filename, "r");
+	if(f == NULL)
+		return false;
+
+	char buffer[128];
+	while(fgets(buffer, sizeof(buffer), f) != NULL)
+	{
+		if(strstr(buffer, "/docker") != NULL)
+		{
+			fclose(f);
+			return true;
+		}
+	}
+	fclose(f);
+
+	return false;
+}
+
 // This function prints an info message about if another FTL process is already
 // running. It returns true if another FTL process is already running, false
 // otherwise.
-bool check_running_FTL(void)
+bool another_FTL(void)
 {
 	DIR *dirPos;
 	struct dirent *entry;
@@ -144,7 +168,7 @@ bool check_running_FTL(void)
 				{
 					// Note: kill(pid, 0) does not send a
 					// signal, but merely checks if the
-					// process exists If the process does
+					// process exists. If the process does
 					// not exist, kill() returns -1 and sets
 					// errno to ESRCH. However, if the
 					// process exists, but security
@@ -162,20 +186,22 @@ bool check_running_FTL(void)
 			}
 			else
 			{
-				log_debug(DEBUG_SHMEM, "Failed to parse PID in PID file");
+				log_debug(DEBUG_SHMEM, "Failed to parse PID in PID file: %s",
+				          strerror(errno));
 			}
 			fclose(pidFile);
 		}
 		else
 		{
-			log_debug(DEBUG_SHMEM, "Failed to open PID file");
+			log_debug(DEBUG_SHMEM, "Failed to open PID file \"%s\": %s",
+			          config.files.pid.v.s, strerror(errno));
 		}
 	}
 
 	// If already_running is true, we are done
 	if(already_running)
 	{
-		log_info("%s is already running (PID %d)!", PROCESS_NAME, pid);
+		log_crit("%s is already running (PID %d)!", PROCESS_NAME, pid);
 		return true;
 	}
 
@@ -217,7 +243,7 @@ bool check_running_FTL(void)
 		if(pid == ourselves)
 			continue;
 
-		// Only process this is this is our own process
+		// Only process this if this is our own process
 		if(strcasecmp(name, PROCESS_NAME) != 0)
 			continue;
 
@@ -229,6 +255,10 @@ bool check_running_FTL(void)
 		if(!get_process_name(ppid, ppid_name))
 			continue;
 
+		// Skip if this is an instance running inside a docker container
+		if(is_in_docker(pid))
+			continue;
+
 		log_debug(DEBUG_SHMEM, " └ PPID: %d -> name: %s", ppid, ppid_name);
 
 		char timestr[TIMESTR_SIZE] = { 0 };
@@ -238,7 +268,7 @@ bool check_running_FTL(void)
 		if(!already_running)
 		{
 			already_running = true;
-			log_info("%s is already running!", PROCESS_NAME);
+			log_crit("%s is already running!", PROCESS_NAME);
 		}
 
 		if(last_pid != ppid)

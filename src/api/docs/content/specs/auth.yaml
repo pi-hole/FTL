@@ -280,6 +280,7 @@ components:
             - sid
             - csrf
             - validity
+            - message
             - totp
           properties:
             valid:
@@ -299,6 +300,10 @@ components:
             validity:
               type: integer
               description: Remaining lifetime of this session unless refreshed (seconds)
+            message:
+              type: string
+              description: Human-readable message describing the session status
+              nullable: true
 
     password:
       type: object
@@ -340,6 +345,9 @@ components:
               app:
                 type: boolean
                 description: Indicator if this session was initiated using an application password
+              cli:
+                type: boolean
+                description: Indicator if this session was initiated using the command-line interface (CLI)
               login_at:
                 type: integer
                 description: Timestamp of login (seconds since epoch)
@@ -354,7 +362,12 @@ components:
                 description: IP address of the client
               user_agent:
                 type: string
-                description: User agent of the client
+                nullable: true
+                description: User agent of the client (optional)
+              x_forwarded_for:
+                type: string
+                nullable: true
+                description: IP address of the client (if behind a proxy, optional)
           example:
             - id: 1
               current_session: true
@@ -363,11 +376,13 @@ components:
                 login: true
                 mixed: false
               app: false
+              cli: false
               login_at: 1580000000
               last_active: 1580000000
               valid_until: 1580000300
               remote_addr: "192.168.0.34"
               user_agent: "Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0"
+              x_forwarded_for: null
     totp:
       type: object
       description: TOTP secret suggestion
@@ -431,7 +446,7 @@ components:
 
   examples:
     auth_okay:
-      summary: Authentication valid
+      summary: Session valid
       value:
         session:
           valid: true
@@ -439,6 +454,7 @@ components:
           sid: null
           csrf: null
           validity: 300
+          message: null
     login_okay:
       summary: Login successful
       value:
@@ -448,6 +464,7 @@ components:
           sid: "vFA+EP4MQ5JJvJg+3Q2Jnw="
           csrf: "Ux87YTIiMOf/GKCefVIOMw="
           validity: 300
+          message: correct password
     no_login_required:
       summary: No login required for this client
       value:
@@ -457,6 +474,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+          message: no auth for local user
     login_required:
       summary: Login required, 2FA disabled
       value:
@@ -466,6 +484,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+          message: password incorrect
     login_required_2fa:
       summary: Login required, 2FA enabled
       value:
@@ -475,6 +494,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+          message: password incorrect
     login_failed:
       summary: Login failed
       value:
@@ -484,6 +504,7 @@ components:
           sid: null
           csrf: null
           validity: -1
+          message: no SID provided
     errors:
       no_payload:
         summary: Bad request (no valid JSON payload)

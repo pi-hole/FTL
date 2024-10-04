@@ -14,9 +14,8 @@ version~
 # IDE files
 .idea/
 *.sw*
-/.vscode
-.vscode/
-/.vscode/
+.vscode/*
+!.vscode/c_cpp_properties.json
 /build/
 
 # __pycache__ files (API tests)

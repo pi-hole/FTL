@@ -16,7 +16,7 @@
 // set_blockingmode()
 #include "config/config.h"
 
-struct timespec t0[NUMTIMERS];
+static struct timespec t0[NUMTIMERS];
 
 void timer_start(const enum timers i)
 {
@@ -66,7 +66,7 @@ void sleepms(const int milliseconds)
 }
 
 static double timer_delay = -1.0;
-static bool timer_target_status;
+static bool timer_target_status = true;
 
 void set_blockingmode_timer(double delay, bool target_status)
 {
@@ -84,7 +84,7 @@ void get_blockingmode_timer(double *delay, bool *target_status)
 void *timer(void *val)
 {
 	// Set thread name
-	prctl(PR_SET_NAME, "int.timer", 0, 0, 0);
+	prctl(PR_SET_NAME, thread_names[TIMER], 0, 0, 0);
 
 	// Save timestamp as we do not want to store immediately
 	// to the database
@@ -105,9 +105,10 @@ void *timer(void *val)
 			set_blockingstatus(timer_target_status);
 			timer_delay = -1.0;
 		}
-		sleepms(SLEEPING_TIME * 1000);
+		thread_sleepms(TIMER, SLEEPING_TIME * 1000);
 	}
 
+	log_info("Terminating timer thread");
 	return NULL;
 }
 

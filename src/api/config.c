@@ -37,6 +37,7 @@ static struct {
 {
 	{ "dns", "DNS", "DNS server settings" },
 	{ "dhcp", "DHCP", "DHCP server settings" },
+	{ "ntp", "NTP", "Network Time Sync settings" },
 	{ "resolver", "Resolver", "Resolver settings" },
 	{ "database", "Database", "Database settings" },
 	{ "webserver", "HTTP/API", "Webserver and API settings" },
@@ -91,7 +92,7 @@ static cJSON *get_or_create_object(cJSON *parent, const char *path_element)
 
 // This function is used to add a property to the JSON output using the
 // appropriate type of the config item to add.
-static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val)
+cJSON *addJSONConfValue(const enum conf_type conf_type, union conf_value *val)
 {
 	switch(conf_type)
 	{
@@ -128,6 +129,8 @@ static cJSON *addJSONvalue(const enum conf_type conf_type, union conf_value *val
 			return cJSON_CreateStringReference(get_web_theme_str(val->web_theme));
 		case CONF_ENUM_TEMP_UNIT:
 			return cJSON_CreateStringReference(get_temp_unit_str(val->temp_unit));
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+			return cJSON_CreateStringReference(get_edns_mode_str(val->edns_mode));
 		case CONF_STRUCT_IN_ADDR:
 		{
 			// Special case 0.0.0.0 -> return empty string
@@ -238,7 +241,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// 1. Check it is a number
 			// 2. Check the number is within the allowed range for the given data type
 			if(!cJSON_IsNumber(elem) ||
-			   elem->valuedouble < LONG_MIN || elem->valuedouble > LONG_MAX)
+			   elem->valuedouble < (double)LONG_MIN || elem->valuedouble > (double)LONG_MAX)
 				return "not of type long";
 			// Set item
 			conf_item->v.l = elem->valuedouble;
@@ -250,7 +253,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// 1. Check it is a number
 			// 2. Check the number is within the allowed range for the given data type
 			if(!cJSON_IsNumber(elem) ||
-			   elem->valuedouble < 0 || elem->valuedouble > ULONG_MAX)
+			   elem->valuedouble < 0 || elem->valuedouble > (double)ULONG_MAX)
 				return "not of type unsigned long";
 			// Set item
 			conf_item->v.ul = elem->valuedouble;
@@ -278,6 +281,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				free(conf_item->v.s);
 			// Set item
 			conf_item->v.s = strdup(elem->valuestring);
+			conf_item->t = CONF_STRING_ALLOCATED; // allocated now
 			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, conf_item->v.s);
 			break;
 		}
@@ -389,6 +393,19 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.temp_unit);
 			break;
 		}
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int edns_mode = get_edns_mode_val(elem->valuestring);
+			if(edns_mode == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.edns_mode = edns_mode;
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.edns_mode);
+			break;
+		}
 		case CONF_ENUM_PRIVACY_LEVEL:
 		{
 			// Check type
@@ -463,17 +480,9 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 	return NULL;
 }
 
-static int api_config_get(struct ftl_conn *api)
+int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 {
-	// Parse query string parameters
-	bool detailed = false;
-	if(api->request->query_string != NULL)
-	{
-		// Check if we should return detailed config information
-		get_bool_var(api->request->query_string, "detailed", &detailed);
-	}
-
-	// Create root JSON object
+	// Create root config object
 	cJSON *config_j = JSON_NEW_OBJECT();
 
 	// Does the user request only a subset of /config?
@@ -551,7 +560,7 @@ static int api_config_get(struct ftl_conn *api)
 			else
 			{
 				// Add current value
-				cJSON *val = addJSONvalue(conf_item->t, &conf_item->v);
+				cJSON *val = addJSONConfValue(conf_item->t, &conf_item->v);
 				if(val == NULL)
 				{
 					log_warn("Cannot format config item type %s of type %i",
@@ -562,7 +571,7 @@ static int api_config_get(struct ftl_conn *api)
 			}
 
 			// Add default value
-			cJSON *dval = addJSONvalue(conf_item->t, &conf_item->d);
+			cJSON *dval = addJSONConfValue(conf_item->t, &conf_item->d);
 			if(dval == NULL)
 			{
 				log_warn("Cannot format config item type %s of type %i",
@@ -576,7 +585,6 @@ static int api_config_get(struct ftl_conn *api)
 			// Add config item flags
 			cJSON *flags = JSON_NEW_OBJECT();
 			JSON_ADD_BOOL_TO_OBJECT(flags, "restart_dnsmasq", conf_item->f & FLAG_RESTART_FTL);
-			JSON_ADD_BOOL_TO_OBJECT(flags, "advanced", conf_item->f & FLAG_ADVANCED_SETTING);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "session_reset", conf_item->f & FLAG_INVALIDATE_SESSIONS);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "env_var", conf_item->f & FLAG_ENV_VAR);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "flags", flags);
@@ -592,7 +600,7 @@ static int api_config_get(struct ftl_conn *api)
 			else
 			{
 				// Create the config item leaf object
-				cJSON *leaf = addJSONvalue(conf_item->t, &conf_item->v);
+				cJSON *leaf = addJSONConfValue(conf_item->t, &conf_item->v);
 				if(leaf == NULL)
 				{
 					log_warn("Cannot format config item type %s of type %i",
@@ -606,8 +614,6 @@ static int api_config_get(struct ftl_conn *api)
 
 	// Release allocated memory
 	free_config_path(requested_path);
-
-	cJSON *json = JSON_NEW_OBJECT();
 
 	// Add topics and DNS server suggestions if in detailed mode
 	if(detailed)
@@ -650,25 +656,33 @@ static int api_config_get(struct ftl_conn *api)
 
 	// Build and return JSON response
 	JSON_ADD_ITEM_TO_OBJECT(json, "config", config_j);
+
+	return 0;
+}
+
+static int api_config_get(struct ftl_conn *api)
+{
+	// Parse query string parameters
+	bool detailed = false;
+	if(api->request->query_string != NULL)
+	{
+		// Check if we should return detailed config information
+		get_bool_var(api->request->query_string, "detailed", &detailed);
+	}
+
+	cJSON *json = JSON_NEW_OBJECT();
+	get_json_config(api, json, detailed);
+
+	// Build and return JSON response
 	JSON_SEND_OBJECT(json);
 }
 
 static int api_config_patch(struct ftl_conn *api)
 {
 	// Is there a payload with valid JSON data?
-	if (api->payload.json == NULL)
-	{
-		if (api->payload.json_error == NULL)
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "No request body data",
-			                       NULL);
-		else
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "Invalid request body data (no valid JSON), error before hint",
-			                       api->payload.json_error);
-	}
+	const int ret = check_json_payload(api);
+	if(ret != 0)
+		return ret;
 
 	// Is there a "config" object at the root of the received JSON payload?
 	cJSON *conf = cJSON_GetObjectItem(api->payload.json, "config");
@@ -677,6 +691,16 @@ static int api_config_patch(struct ftl_conn *api)
 		return send_json_error(api, 400,
 		                       "body_error",
 		                       "No \"config\" object in body data",
+		                       NULL);
+	}
+
+	// Return early if the user tries to change some settings but the config
+	// is in read-only mode
+	if(config.misc.readOnly.v.b)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "The config is currently in read-only mode",
 		                       NULL);
 	}
 
@@ -704,6 +728,16 @@ static int api_config_patch(struct ftl_conn *api)
 		{
 			log_debug(DEBUG_CONFIG, "%s not in JSON payload", new_item->k);
 			continue;
+		}
+
+		if(new_item->f & FLAG_READ_ONLY && cJSON_IsBool(elem) && elem->valueint == 1)
+		{
+			char *key = strdup(new_item->k);
+			free_config(&newconf);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "This config option can only be set in pihole.toml, not via the API",
+			                            key, true, true);
 		}
 
 		// Check if this is a write-only config item with the placeholder value
@@ -734,7 +768,7 @@ static int api_config_patch(struct ftl_conn *api)
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config item is invalid",
-			                            hint, true);
+			                            hint, true, true);
 		}
 
 		// Get pointer to memory location of this conf_item (global)
@@ -749,7 +783,7 @@ static int api_config_patch(struct ftl_conn *api)
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config items set via environment variables cannot be changed via the API",
-			                            key, true);
+			                            key, true, true);
 		}
 
 		// Skip processing if value didn't change compared to current value
@@ -788,7 +822,10 @@ static int api_config_patch(struct ftl_conn *api)
 		// If the privacy level was decreased, we need to restart
 		if(new_item == &newconf.misc.privacylevel &&
 		   new_item->v.privacy_level < conf_item->v.privacy_level)
+		{
+			api->ftl.restart_reason = "Privacy level decreased";
 			api->ftl.restart = true;
+		}
 
 		// Check if this item changed the password, if so, we need to
 		// invalidate all currently active sessions
@@ -804,7 +841,10 @@ static int api_config_patch(struct ftl_conn *api)
 		{
 			char errbuf[ERRBUF_SIZE] = { 0 };
 			if(write_dnsmasq_config(&newconf, true, errbuf))
+			{
+				api->ftl.restart_reason = "dnsmasq config changed";
 				api->ftl.restart = true;
+			}
 			else
 			{
 				free_config(&newconf);
@@ -855,9 +895,9 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 	const char *hint = NULL, *message = NULL;
 	if(api->method == HTTP_PUT)
-		hint = "Use, e.g., PUT /api/config/dnsmasq/upstreams/127.0.0.1 to add \"127.0.0.1\" to config.dns.upstreams";
+		hint = "Use, e.g., PUT /api/config/dns/upstreams/127.0.0.1 to add \"127.0.0.1\" to config.dns.upstreams";
 	else
-		hint = "Use, e.g., DELETE /api/config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams";
+		hint = "Use, e.g., DELETE /api/config/dns/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams";
 
 	if(min_level < 2)
 	{
@@ -912,7 +952,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config items set via environment variables cannot be changed via the API",
-			                            key, true);
+			                            key, true, true);
 		}
 
 		// Check if this entry exists in the array
@@ -1012,7 +1052,10 @@ static int api_config_put_delete(struct ftl_conn *api)
 		char errbuf[ERRBUF_SIZE] = { 0 };
 		// Request restart of FTL
 		if(write_dnsmasq_config(&newconf, true, errbuf))
+		{
+			api->ftl.restart_reason = "dnsmasq config changed";
 			api->ftl.restart = true;
+		}
 		else
 		{
 			// The new config did not work
@@ -1047,6 +1090,25 @@ int api_config(struct ftl_conn *api)
 {
 	if(api->method == HTTP_GET)
 		return api_config_get(api);
+
+	// Check if this is an app session and reject the request if app sudo
+	// mode is disabled
+	if(api->session != NULL && api->session->app && !config.webserver.api.app_sudo.v.b)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to change configuration (read-only)",
+		                       "The current app session is not allowed to modify Pi-hole config settings (webserver.api.app_sudo is false)");
+	}
+
+	// Check if this is a CLI session and reject the request
+	if(api->session != NULL && api->session->cli)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to change configuration (read-only)",
+		                       "The current CLI session is not allowed to modify Pi-hole config settings");
+	}
 
 	// POST: Create a new config (not supported)
 	// PATCH: Replace parts of the the config with the provided one

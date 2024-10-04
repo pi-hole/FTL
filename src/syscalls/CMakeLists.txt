@@ -36,3 +36,4 @@ set(sources
 
 add_library(syscalls OBJECT ${sources})
 target_compile_options(syscalls PRIVATE ${EXTRAWARN})
+target_include_directories(syscalls PRIVATE ${PROJECT_SOURCE_DIR}/src)

@@ -24,11 +24,12 @@ bool write_custom_list(void);
 
 #define DNSMASQ_PH_CONFIG "/etc/pihole/dnsmasq.conf"
 #define DNSMASQ_TEMP_CONF "/etc/pihole/dnsmasq.conf.temp"
-#define DNSMASQ_STATIC_LEASES "/etc/pihole/04-pihole-static-dhcp.conf"
-#define DNSMASQ_CNAMES "/etc/pihole/05-pihole-custom-cname.conf"
+#define DNSMASQ_STATIC_LEASES MIGRATION_TARGET_V6"/04-pihole-static-dhcp.conf"
+#define DNSMASQ_CNAMES MIGRATION_TARGET_V6"/05-pihole-custom-cname.conf"
 #define DNSMASQ_HOSTSDIR "/etc/pihole/hosts"
 #define DNSMASQ_CUSTOM_LIST DNSMASQ_HOSTSDIR"/custom.list"
 #define DNSMASQ_CUSTOM_LIST_LEGACY "/etc/pihole/custom.list"
+#define DNSMASQ_CUSTOM_LIST_LEGACY_TARGET MIGRATION_TARGET_V6"/custom.list"
 #define DHCPLEASESFILE "/etc/pihole/dhcp.leases"
 
 #endif //DNSMASQ_CONFIG_H

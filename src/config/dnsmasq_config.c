@@ -191,7 +191,7 @@ char *get_dnsmasq_line(const unsigned int lineno)
 static void write_config_header(FILE *fp, const char *description)
 {
 	const time_t now = time(NULL);
-	char timestring[TIMESTR_SIZE] = "";
+	char timestring[TIMESTR_SIZE];
 	get_timestr(timestring, now, false, false);
 	fputs("# Pi-hole: A black hole for Internet advertisements\n", fp);
 	fprintf(fp, "# (c) %u Pi-hole, LLC (https://pi-hole.net)\n", get_year(now));
@@ -398,7 +398,12 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# Use DNNSEC\n", pihole_conf);
 		fputs("dnssec\n", pihole_conf);
 		fputs("# 2017-02-02 root zone trust anchor\n", pihole_conf);
+		fputs("# https://www.iana.org/reports/2017/root-ksk-2017.pdf\n", pihole_conf);
 		fputs("trust-anchor=.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D\n",
+		      pihole_conf);
+		fputs("# 2024-07-26 root zone trust anchor\n", pihole_conf);
+		fputs("# https://www.iana.org/reports/2024/root-ksk-2024.pdf\n", pihole_conf);
+		fputs("trust-anchor=.,38696,8,2,683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16\n",
 		      pihole_conf);
 		fputs("\n", pihole_conf);
 	}
@@ -449,6 +454,8 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 	fputs("\n", pihole_conf);
 
+	// Add upstream DNS servers for reverse lookups
+	bool domain_revServer = false;
 	const unsigned int revServers = cJSON_GetArraySize(conf->dns.revServers.v.json);
 	for(unsigned int i = 0; i < revServers; i++)
 	{
@@ -485,7 +492,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		// If we have a reverse domain, we forward all queries to this domain to
 		// the same destination
 		if(strlen(domain) > 0)
+		{
 			fprintf(pihole_conf, "server=/%s/%s\n", domain, target);
+
+			// Check if the configured domain is the same as the main domain
+			if(strlen(config.dns.domain.v.s) > 0 &&
+			   strcasecmp(domain, config.dns.domain.v.s) == 0)
+				domain_revServer = true;
+		}
 
 		// Forward unqualified names to the target only when the "never forward
 		// non-FQDN" option is NOT ticked
@@ -497,19 +511,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		free(copy);
 	}
 
-	// When there is a Pi-hole domain set and "Never forward non-FQDNs" is
-	// ticked, we add `local=/domain/` to signal that this domain is purely
-	// local and FTL may answer queries from /etc/hosts or DHCP but should
-	// never forward queries on that domain to any upstream servers
+	// When "Never forward non-FQDNs" is ticked, we add `local=//` to signal
+	// that non-FQDNs queries should never be sent to any upstream servers
 	if(conf->dns.domainNeeded.v.b)
 	{
 		fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
 		fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
-		fputs("# is not known from /etc/hosts or DHCP a NXDOMAIN is returned\n", pihole_conf);
-		if(strlen(conf->dns.domain.v.s))
-			fprintf(pihole_conf, "local=/%s/\n\n", conf->dns.domain.v.s);
-		else
-			fputs("\n", pihole_conf);
+		fputs("# is not known from /etc/hosts or DHCP, NXDOMAIN is returned\n", pihole_conf);
+		fputs("local=//\n\n", pihole_conf);
 	}
 
 	// Add domain to DNS server. It will also be used for DHCP if the DHCP
@@ -517,7 +526,20 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	if(strlen(conf->dns.domain.v.s) > 0)
 	{
 		fputs("# DNS domain for both the DNS and DHCP server\n", pihole_conf);
-		fprintf(pihole_conf, "domain=%s\n\n", conf->dns.domain.v.s);
+		if(!domain_revServer)
+		{
+			fputs("# This DNS domain in purely local. FTL may answer queries from\n", pihole_conf);
+			fputs("# /etc/hosts or DHCP but should never forward queries on that\n", pihole_conf);
+			fputs("# domain to any upstream servers\n", pihole_conf);
+			fprintf(pihole_conf, "domain=%s\n", conf->dns.domain.v.s);
+			fprintf(pihole_conf, "local=/%s/\n\n", conf->dns.domain.v.s);
+		}
+		else
+		{
+			fputs("# This DNS domain is also used for reverse lookups\n", pihole_conf);
+			fputs("# (see server=/<domain>/target above)\n", pihole_conf);
+			fprintf(pihole_conf, "domain=%s\n\n", conf->dns.domain.v.s);
+		}
 	}
 
 	if(conf->dhcp.active.v.b)
@@ -580,6 +602,22 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		{
 			fputs("# Enable DHCP logging\n", pihole_conf);
 			fputs("log-dhcp\n\n", pihole_conf);
+		}
+
+		// Check if IPv4 NTP server is active and broadcast it as DHCP option
+		if(conf->ntp.ipv4.active.v.b)
+		{
+			fputs("# Add NTP server to DHCP\n", pihole_conf);
+			// The special address 0.0.0.0 is taken to mean "the
+			// address of the machine running the DHCP server"
+			fputs("dhcp-option=option:ntp-server,0.0.0.0\n\n", pihole_conf);
+		}
+
+		// Add option to ignore unknown clients if enabled
+		if(conf->dhcp.ignoreUnknownClients.v.b)
+		{
+			fputs("# Ignore clients not configured below\n", pihole_conf);
+			fputs("dhcp-ignore=tag:!known\n\n", pihole_conf);
 		}
 
 		// Add per-host parameters
@@ -716,6 +754,12 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	{
 		log_warn("New dnsmasq configuration is not valid (%s), config remains unchanged", errbuf);
 
+		if(debug_flags[DEBUG_ANY])
+		{
+			log_debug(DEBUG_ANY, "Temporary dnsmasq config file left in place for debugging purposes");
+			return false;
+		}
+
 		// Remove temporary config file
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{
@@ -760,7 +804,6 @@ bool read_legacy_dhcp_static_config(void)
 {
 	// Check if file exists, if not, there is nothing to do
 	const char *path = DNSMASQ_STATIC_LEASES;
-	const char *target = DNSMASQ_STATIC_LEASES".bck";
 	if(!file_exists(path))
 		return true;
 
@@ -810,11 +853,6 @@ bool read_legacy_dhcp_static_config(void)
 		return false;
 	}
 
-	// Move file to backup location
-	log_info("Moving %s to %s", path, target);
-	if(rename(path, target) != 0)
-		log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
-
 	return true;
 }
 
@@ -823,7 +861,6 @@ bool read_legacy_cnames_config(void)
 {
 	// Check if file exists, if not, there is nothing to do
 	const char *path = DNSMASQ_CNAMES;
-	const char *target = DNSMASQ_CNAMES".bck";
 	if(!file_exists(path))
 		return true;
 
@@ -873,11 +910,6 @@ bool read_legacy_cnames_config(void)
 		return false;
 	}
 
-	// Move file to backup location
-	log_info("Moving %s to %s", path, target);
-	if(rename(path, target) != 0)
-		log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
-
 	return true;
 }
 
@@ -885,7 +917,7 @@ bool read_legacy_custom_hosts_config(void)
 {
 	// Check if file exists, if not, there is nothing to do
 	const char *path = DNSMASQ_CUSTOM_LIST_LEGACY;
-	const char *target = DNSMASQ_CUSTOM_LIST_LEGACY".bck";
+	const char *target = DNSMASQ_CUSTOM_LIST_LEGACY_TARGET;
 	if(!file_exists(path))
 		return true;
 

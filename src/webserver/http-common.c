@@ -8,11 +8,11 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "http-common.h"
-#include "../config/config.h"
-#include "../log.h"
-#include "json_macros.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "config/config.h"
+#include "log.h"
+#include "webserver/json_macros.h"
 // UINT_MAX
 #include <limits.h>
 // HUGE_VAL
@@ -68,27 +68,33 @@ int send_http_code(struct ftl_conn *api, const char *mime_type,
 
 int send_json_unauthorized(struct ftl_conn *api)
 {
-	return send_json_error(api, 401,
-                               "unauthorized",
-                               "Unauthorized",
-                               NULL);
+	// Log API warnings only if debug.api is true
+	return send_json_error_free(api, 401,
+	                            "unauthorized",
+	                            "Unauthorized",
+	                            NULL, false,
+	                            config.debug.api.v.b);
 }
 
 int send_json_error(struct ftl_conn *api, const int code,
                     const char *key, const char* message,
                     const char *hint)
 {
-	return send_json_error_free(api, code, key, message, (char*)hint, false);
+	return send_json_error_free(api, code, key, message,
+	                            (char*)hint, false, true);
 }
 
 int send_json_error_free(struct ftl_conn *api, const int code,
                          const char *key, const char* message,
-                         char *hint, bool free_hint)
+                         char *hint, const bool free_hint, const bool log)
 {
-	if(hint != NULL)
-		log_warn("API: %s (%s)", message, hint);
-	else
-		log_warn("API: %s", message);
+	if(log)
+	{
+		if(hint != NULL)
+			log_warn("API: %s (%s)", message, hint);
+		else
+			log_warn("API: %s", message);
+	}
 
 	cJSON *error = JSON_NEW_OBJECT();
 	JSON_REF_STR_IN_OBJECT(error, "key", key);
@@ -515,8 +521,7 @@ void read_and_parse_payload(struct ftl_conn *api)
 	api->payload.avail = true;
 
 	// Try to parse possibly existing JSON payload
-	api->payload.json = cJSON_Parse(api->payload.raw);
-	api->payload.json_error = cJSON_GetErrorPtr();
+	api->payload.json = cJSON_ParseWithOpts(api->payload.raw, &api->payload.json_error, 0);
 }
 
 // Escape a string to mask HTML special characters, the resulting string is
@@ -570,6 +575,69 @@ char *__attribute__((malloc)) escape_html(const char *string)
 	return escaped;
 }
 
+// Check if the payload is valid JSON, if not send an error response with the
+// appropriate status code. If the payload is NULL, send a 400 Bad Request
+// response with a hint that no payload was received. If the payload is not
+// valid JSON, send a 400 Bad Request response with a hint that the payload is
+// invalid JSON.
+int check_json_payload(struct ftl_conn *api)
+{
+	if (api->payload.json == NULL)
+	{
+		if (api->payload.json_error == NULL)
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "No request body data",
+			                       NULL);
+		else
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid request body data (no valid JSON), error at hint",
+			                       api->payload.json_error);
+	}
+
+	// All okay
+	return 0;
+}
+
+// Black magic at work here: We build a JSON array from the group_concat result
+// delivered from the database, parse it as valid array and append it as row to
+// the data
+int parse_groupIDs(struct ftl_conn *api, tablerow *table, cJSON *row)
+{
+	const size_t buflen = strlen(table->group_ids) + 3u;
+	char *group_ids_str = calloc(buflen, sizeof(char));
+	if(group_ids_str == NULL)
+	{
+		return send_json_error(api, 500, // 500 Internal Server Error
+		                       "out_of_memory",
+		                       "Out of memory",
+		                       NULL);
+	}
+	group_ids_str[0] = '[';
+	strcpy(group_ids_str+1u , table->group_ids);
+	group_ids_str[buflen-2u] = ']';
+	group_ids_str[buflen-1u] = '\0';
+	const char *json_error = NULL;
+	cJSON *group_ids = cJSON_ParseWithOpts(group_ids_str, &json_error, false);
+	free(group_ids_str);
+	if(group_ids == NULL)
+	{
+		// Error parsing group_ids, substitute empty array
+		// Note: This should never happen as the database's aggregate
+		//       function should always return a valid JSON array
+		log_err("Error parsing group_ids, error at: %.20s", json_error);
+		JSON_ADD_ITEM_TO_OBJECT(row, "groups", JSON_NEW_ARRAY());
+	}
+	else
+	{
+		JSON_ADD_ITEM_TO_OBJECT(row, "groups", group_ids);
+	}
+
+	// Success
+	return 0;
+}
+
 // Escape a string to mask JSON special characters, the resulting string is
 // always allocated and must be freed (unless NULL is returned)
 // See https://tools.ietf.org/html/rfc8259#section-7
@@ -593,4 +661,47 @@ char *__attribute__((malloc)) escape_json(const char *string)
 
 	// Return the JSON escaped string
 	return namep;
+}
+
+// Remove duplicates from a cJSON array
+// This function uses the less efficient cJSON_GetArraySize() function compared
+// to cJSON_ArrayForEach() as we are going to modify the array in-place while
+// iterating over it
+void cJSON_unique_array(cJSON *array)
+{
+	// Check if the array is an array
+	if(!cJSON_IsArray(array))
+		return;
+
+	for(int oi = 0; oi < cJSON_GetArraySize(array); oi++)
+	{
+		// Get the outer item
+		cJSON *outer_item = cJSON_GetArrayItem(array, oi);
+		// Check if the item is a string
+		if (!cJSON_IsString(outer_item))
+			continue;
+
+		// Check for duplicates in the remainder of the array
+		for(int ii = oi + 1; ii < cJSON_GetArraySize(array); ii++)
+		{
+			// Get the inner item
+			cJSON *inner_item = cJSON_GetArrayItem(array, ii);
+			// Check if the inner item is a string
+			if (!cJSON_IsString(inner_item))
+				continue;
+
+			// Compare the two strings
+			if(strcmp(outer_item->valuestring, inner_item->valuestring) == 0)
+			{
+				// Remove the duplicate item, this is safe as we are
+				// at least one item ahead of the outer item
+				cJSON_DeleteItemFromArray(array, ii);
+				// Compensate for removed item (the for loop
+				// will increment ii for the next step, thus
+				// we need to decrement it here)
+				ii--;
+				continue;
+			}
+		}
+	}
 }

@@ -90,6 +90,7 @@ static struct {
 	{ "/api/config",                            "/{element}",                 api_config,                            { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/config",                            "/{element}/{value}",         api_config,                            { API_PARSE_JSON, 0                         }, true,  HTTP_DELETE | HTTP_PUT },
 	{ "/api/network/gateway",                   "",                           api_network_gateway,                   { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
+	{ "/api/network/routes",                    "",                           api_network_routes,                    { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/network/interfaces",                "",                           api_network_interfaces,                { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/network/devices",                   "",                           api_network_devices,                   { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/network/devices",                   "/{device_id}",               api_network_devices,                   { API_PARSE_JSON, 0                         }, true,  HTTP_DELETE },
@@ -101,6 +102,7 @@ static struct {
 	{ "/api/action/restartdns",                 "",                           api_action_restartDNS,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/flush/logs",                 "",                           api_action_flush_logs,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/flush/arp",                  "",                           api_action_flush_arp,                  { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
+	{ "/api/padd",                              "",                           api_padd,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/docs",                              "",                           api_docs,                              { API_PARSE_JSON, 0                         }, false, HTTP_GET },
 };
 
@@ -113,10 +115,12 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		http_method(conn),
 		NULL,
 		NULL,
+		NULL,
 		API_AUTH_UNAUTHORIZED,
 		double_time(),
 		{ false, NULL, NULL, NULL, 0u },
 		{ false },
+		NULL,
 		{ API_FLAG_NONE, 0 }
 	};
 
@@ -170,22 +174,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			}
 
 			// Verify requesting client is allowed to see this resource
-			if(api_request[i].func == api_search)
-			{
-				// Handle /api/search special as it may be allowed for local users due to webserver.api.searchAPIauth
-				if(!config.webserver.api.searchAPIauth.v.b && is_local_api_user(api.request->remote_addr))
-				{
-					// Local users does not need to authenticate when searchAPIauth is false
-					;
-				}
-				else if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
-				{
-					// Users need to authenticate but authentication failed
-					unauthorized = true;
-					break;
-				}
-			}
-			else if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
+			if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
 			{
 				unauthorized = true;
 				break;
@@ -270,12 +259,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 	// Restart FTL if requested
 	if(api.ftl.restart)
-	{
-		log_info("Restarting FTL due to API config change");
-		exit_code = RESTART_FTL_CODE;
-		// Send SIGTERM to FTL
-		kill(main_pid(), SIGTERM);
-	}
+		restart_ftl(api.ftl.restart_reason);
 
 	return ret;
 }

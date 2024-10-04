@@ -28,12 +28,13 @@
 #include "signals.h"
 // FTL_fork_and_bind_sockets()
 #include "main.h"
+// log_debug()
+#include "log.h"
 
 struct daemon *daemon;
 
 static volatile pid_t pid = 0;
 static volatile int pipewrite;
-volatile char FTL_terminate = 0;
 
 static void set_dns_listeners(void);
 static void set_tftp_listeners(void);
@@ -1068,12 +1069,8 @@ int main_dnsmasq (int argc, char **argv)
   /* Using inotify, have to select a resolv file at startup */
   poll_resolv(1, 0, now);
 #endif
-
-  /*** Pi-hole modification ***/
-  FTL_terminate = killed;
-  /****************************/
   
-  while (!FTL_terminate)
+  while (!killed)
     {
       int timeout = fast_retry(now);
       
@@ -1316,6 +1313,10 @@ int main_dnsmasq (int argc, char **argv)
 
 static void sig_handler(int sig)
 {
+  /**** Pi-hole modification ****/
+  send_event(pipewrite, EVENT_SIGNAL, sig, NULL);
+  /******************************/
+
   if (pid == 0)
     {
       /* ignore anything other than TERM during startup
@@ -1537,6 +1538,7 @@ static void async_event(int pipe, time_t now)
 	  {
 	    lease_prune(NULL, now);
 	    lease_update_file(now);
+	    lease_update_dns(0);
 	  }
 #ifdef HAVE_DHCP6
 	else if (daemon->doing_ra)
@@ -1573,6 +1575,12 @@ static void async_event(int pipe, time_t now)
       case EVENT_EXITED:
 	my_syslog(LOG_WARNING, _("script process exited with status %d"), ev.data);
 	break;
+
+  /**** Pi-hole modification ****/
+      case EVENT_SIGNAL:
+	log_debug(DEBUG_ANY, "dnsmasq received signal %d", ev.data);
+	break;
+  /**************************** */
 
       case EVENT_EXEC_ERR:
 	my_syslog(LOG_ERR, _("failed to execute %s: %s"), 
@@ -1668,7 +1676,7 @@ static void async_event(int pipe, time_t now)
 	flush_log();
 	/*** Pi-hole modification ***/
 //	exit(EC_GOOD);
-	FTL_terminate = 1;
+	killed = 1;
 	/*** Pi-hole modification ***/
       }
 }

@@ -66,6 +66,10 @@
 #include "files.h"
 // resolveHostname()
 #include "resolve.h"
+// ntp_client()
+#include "ntp/ntp.h"
+// check_capability()
+#include "capabilities.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -102,6 +106,7 @@ const char** argv_dnsmasq = NULL;
 #define COL_BLUE	"\x1b[94m" // bright foreground color
 #define COL_PURPLE	"\x1b[95m" // bright foreground color
 #define COL_CYAN	"\x1b[96m" // bright foreground color
+#define CLI_OVER	"\r\x1b[K" // go back to beginning of line and erase to end of line
 
 static bool __attribute__ ((pure)) is_term(void)
 {
@@ -145,6 +150,16 @@ const char __attribute__ ((pure)) *cli_bold(void)
 	return is_term() ? COL_BOLD : "";
 }
 
+const char __attribute__ ((pure)) *cli_underline(void)
+{
+	return is_term() ? COL_ULINE : "";
+}
+
+const char __attribute__ ((pure)) *cli_italics(void)
+{
+	return is_term() ? COL_ITALIC : "";
+}
+
 // Resets font to normal
 const char __attribute__ ((pure)) *cli_normal(void)
 {
@@ -161,7 +176,7 @@ static const char __attribute__ ((pure)) *cli_color(const char *color)
 const char __attribute__ ((pure)) *cli_over(void)
 {
 	// \x1b[K is the ANSI escape sequence for "erase to end of line"
-	return is_term() ? "\r\x1b[K" : "\r";
+	return is_term() ? CLI_OVER : "\r";
 }
 
 static inline bool strEndsWith(const char *input, const char *end)
@@ -196,6 +211,10 @@ void parse_args(int argc, char* argv[])
 	// we operate in drop-in mode and consume all arguments for the embedded luac engine
 	if(strEndsWith(argv[0], "luac"))
 		exit(run_luac(argc, argv));
+
+	// Special (undocumented) mode to test kernel signal handling
+	if(argc == 2 && strcmp(argv[1], "sigtest") == 0)
+		exit(sigtest());
 
 	// If the binary name is "sqlite3"  (e.g., symlink /usr/bin/sqlite3 -> /usr/bin/pihole-FTL),
 	// we operate in drop-in mode and consume all arguments for the embedded SQLite3 engine
@@ -303,6 +322,38 @@ void parse_args(int argc, char* argv[])
 		log_ctrl(false, true);
 		readFTLconf(&config, false);
 		exit(write_teleporter_zip_to_disk() ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Create test NTP client
+	if((argc > 1 && argc < 5) && strcmp(argv[1], "ntp") == 0)
+	{
+		// Parse arguments
+		const bool update = (argc > 2 && strcmp(argv[2], "--update") == 0) ||
+		                    (argc > 3 && strcmp(argv[3], "--update") == 0);
+		const char *server = "127.0.0.1";
+		if(argc > 2 && strcmp(argv[2], "--update") != 0)
+			server = argv[2];
+
+		// Ensure we have the necessary capabilities
+		if(update && !check_capability(CAP_SYS_TIME))
+		{
+			puts("Insufficient capabilities to run NTP client");
+			const char *bold = cli_bold();
+			const char *normal = cli_normal();
+			printf("Try: %ssudo%s ", bold, normal);
+			for(int i = 0; i < argc; i++)
+				printf("%s ", argv[i]);
+			puts("");
+			exit(EXIT_FAILURE);
+		}
+
+		printf("Using NTP server: %s\n", server);
+
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		readFTLconf(&config, false);
+		exit(ntp_client(server, update, true) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Import teleporter archive through CLI
@@ -486,7 +537,7 @@ void parse_args(int argc, char* argv[])
 		// Enable stdout printing
 		cli_mode = true;
 		uint8_t checksum[SHA256_DIGEST_SIZE];
-		if(!sha256sum(argv[2], checksum))
+		if(!sha256sum(argv[2], checksum, false))
 			exit(EXIT_FAILURE);
 
 		// Convert checksum to hex string
@@ -498,8 +549,20 @@ void parse_args(int argc, char* argv[])
 		exit(EXIT_SUCCESS);
 	}
 
+	// Checksum verification mode
+	if(argc == 2 && strcmp(argv[1], "verify") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		const bool match = verify_FTL(true);
+		printf("%s Binary integrity check: %s\n",
+		       match ? cli_tick() : cli_cross() ,
+		       match ? "OK" : "FAILED");
+		exit(match ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
 	// Local reverse name resolver
-	if(argc == 3 && strcasecmp(argv[1], "ptr") == 0)
+	if((argc == 3 || argc == 4) && strcasecmp(argv[1], "ptr") == 0)
 	{
 		// Enable stdout printing
 		cli_mode = true;
@@ -507,7 +570,18 @@ void parse_args(int argc, char* argv[])
 		// Need to get dns.port and the resolver settings
 		readFTLconf(&config, false);
 
-		char *name = resolveHostname(argv[2], true);
+		// TCP or UDP (default)?
+		const bool tcp = argc == 4 && strcasecmp(argv[3], "tcp") == 0;
+
+		// Create a socket
+		struct sockaddr_in dest;
+		const int sock = create_socket(tcp, &dest);
+		char *name = resolveHostname(sock, tcp, &dest, argv[2], true, NULL);
+
+		// Close the socket
+		close(sock);
+
+		// Exit early if no name was found
 		if(name == NULL)
 			exit(EXIT_FAILURE);
 
@@ -715,7 +789,12 @@ void parse_args(int argc, char* argv[])
 			printf("Branch:          " GIT_BRANCH "\n");
 			printf("Commit:          " GIT_HASH " (" GIT_DATE ")\n");
 			printf("Architecture:    " FTL_ARCH "\n");
-			printf("Compiler:        " FTL_CC "\n\n");
+			printf("Compiler:        " FTL_CC "\n");
+#if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
+			printf("GLIBC version:   %d.%d\n\n", __GLIBC__, __GLIBC_MINOR__);
+#else
+			printf("GLIBC version:   -\n\n");
+#endif
 
 			// Print dnsmasq version and compile time options
 			print_dnsmasq_version(yellow, green, bold, normal);
@@ -750,11 +829,12 @@ void parse_args(int argc, char* argv[])
 			printf("\n");
 			printf("****************************** %s%sCivetWeb%s *****************************\n",
 			       yellow, bold, normal);
-#ifdef MBEDTLS_VERSION_STRING_FULL
-			printf("Version:         %s%s%s%s with %smbed TLS %s%s"MBEDTLS_VERSION_STRING"%s\n",
+#ifdef HAVE_MBEDTLS
+			printf("Version:         %s%s%s%s (modified by Pi-hole) with %smbed TLS %s%s"MBEDTLS_VERSION_STRING"%s\n",
 			       green, bold, mg_version(), normal, yellow, green, bold, normal);
 #else
-			printf("Version:         %s%s%s%s\n", green, bold, mg_version(), normal);
+			printf("Version:         %s%s%s%s%s (modified by Pi-hole) without %smbed TLS%s\n",
+			       green, bold, mg_version(), normal, red, yellow, normal);
 #endif
 			printf("Features:        ");
 			if(mg_check_feature(MG_FEATURES_FILES))
@@ -868,6 +948,7 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "help") == 0 || strcmp(argv[i], "--help") == 0)
 		{
 			const char *bold = cli_bold();
+			const char *uline = cli_underline();
 			const char *normal = cli_normal();
 			const char *blue = cli_color(COL_BLUE);
 			const char *cyan = cli_color(COL_CYAN);
@@ -958,12 +1039,17 @@ void parse_args(int argc, char* argv[])
 
 			printf("%sEmbedded GZIP un-/compressor:%s\n", yellow, normal);
 			printf("    A simple but fast in-memory gzip compressor\n\n");
-			printf("    Usage: %spihole-FTL --compress %sinfile %s[outfile]%s\n", green, cyan, purple, normal);
-			printf("    Usage: %spihole-FTL --uncompress %sinfile %s[outfile]%s\n\n", green, cyan, purple, normal);
-			printf("    - %sinfile%s is the file to be compressed.\n", cyan, normal);
-			printf("    - %s[outfile]%s is the optional target. If omitted, FTL will\n", purple, normal);
-			printf("      %s--compress%s:   use the %sinfile%s and append %s.gz%s at the end\n", green, normal, cyan, normal, cyan, normal);
-			printf("      %s--uncompress%s: use the %sinfile%s and remove %s.gz%s at the end\n\n", green, normal, cyan, normal, cyan, normal);
+			printf("    Usage: %spihole-FTL --gzip %sinfile %s[outfile]%s\n\n", green, cyan, purple, normal);
+			printf("    - %sinfile%s is the file to be processed. If the filename ends\n", cyan, normal);
+			printf("      in %s.gz%s, FTL will uncompress, otherwise it will compress\n\n", yellow, normal);
+			printf("    - %s[outfile]%s is the optional target file.\n", purple, normal);
+			printf("      If omitted, FTL will try to derive the target file from\n");
+			printf("      the source file.\n\n");
+			printf("    Examples:\n");
+			printf("      - %spihole-FTL --gzip %sfile.txt%s\n", green, cyan, normal);
+			printf("        compresses %sfile.txt%s to %sfile.txt%s.gz%s\n\n", cyan, normal, cyan, yellow, normal);
+			printf("      - %spihole-FTL --gzip %sfile.txt%s.gz%s\n", green, cyan, yellow, normal);
+			printf("        %sun%scompresses %sfile.txt%s.gz%s to %sfile.txt%s\n\n", uline, normal, cyan, yellow, normal, cyan, normal);
 
 			printf("%sTeleporter:%s\n", yellow, normal);
 			printf("\t%s--teleporter%s        Create a Teleporter archive in the\n", green, normal);
@@ -1000,9 +1086,25 @@ void parse_args(int argc, char* argv[])
 			printf("    Encoding: %spihole-FTL idn2 %sdomain%s\n", green, cyan, normal);
 			printf("    Decoding: %spihole-FTL idn2 -d %spunycode%s\n\n", green, cyan, normal);
 
+			printf("%sNTP client:%s\n", yellow, normal);
+			printf("    Query an NTP server for the current time and print the\n");
+			printf("    result in human-readable format. An optional %sserver%s may be\n", cyan, normal);
+			printf("    as argument. If the server is omitted, 127.0.0.1 is used.\n\n");
+			printf("    The system time is updated on the system when the optional\n");
+			printf("    %s--update%s flag is given.\n\n", purple, normal);
+			printf("    Usage: %spihole-FTL ntp %s[server]%s %s[--update]%s\n\n", green, cyan, normal, purple, normal);
+
+			printf("%sSHA256 checksum tools:%s\n", yellow, normal);
+			printf("    Calculates the SHA256 checksum of a file. The checksum is\n");
+			printf("    computed as described in FIPS-180-2 and uses streaming\n");
+			printf("    to allow processing arbitrary large files with a small\n");
+			printf("    memory footprint.\n\n");
+			printf("    Usage: %spihole-FTL sha256sum %sfile%s\n\n", green, cyan, normal);
+
 			printf("%sOther:%s\n", yellow, normal);
-			printf("\t%sptr %sIP%s              Resolve IP address to hostname\n", green, cyan, normal);
-			printf("\t%ssha256sum %sfile%s      Calculate SHA256 checksum of a file\n", green, cyan, normal);
+			printf("\t%sverify%s              Verify the integrity of the FTL binary\n", green, normal);
+			printf("\t%sptr %sIP%s %s[tcp]%s        Resolve IP address to hostname\n", green, cyan, normal, purple, normal);
+			printf("\t                    Append %stcp%s to use TCP instead of UDP\n", purple, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
 			printf("\t%sarp-scan %s[-a/-x]%s    Use ARP to scan local network for\n", green, cyan, normal);

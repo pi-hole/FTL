@@ -16,6 +16,8 @@
 #include <mntent.h>
 // SHA256_DIGEST_SIZE
 #include <nettle/sha2.h>
+// getpwuid()
+#include <pwd.h>
 
 #define MAX_ROTATIONS 15
 #define BACKUP_DIR "/etc/pihole/config_backups"
@@ -31,9 +33,11 @@ void ls_dir(const char* path);
 unsigned int get_path_usage(const char *path, char buffer[64]);
 struct mntent *get_filesystem_details(const char *path);
 bool directory_exists(const char *path);
+bool chown_pihole(const char *path, struct passwd *pwd);
 void rotate_files(const char *path, char **first_file);
 bool files_different(const char *pathA, const char* pathB, unsigned int from);
-bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE]);
+bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE], const bool skip_end);
+bool verify_FTL(bool verbose);
 
 int parse_line(char *line, char **key, char **value);
 

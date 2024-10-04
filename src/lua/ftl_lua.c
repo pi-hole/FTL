@@ -8,23 +8,33 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
 #include "ftl_lua.h"
+
+#include "FTL.h"
 // struct luaL_Reg
 #include "lauxlib.h"
 // get_FTL_version()
-#include "../log.h"
+#include "log.h"
 // config struct
-#include "../config/config.h"
+#include "config/config.h"
 // file_exists
-#include "../files.h"
+#include "files.h"
 // get_web_theme_str
-#include "../datastructure.h"
-#include <readline/history.h>
-#include <wordexp.h>
+#include "datastructure.h"
+#include "api/api.h"
 #include "scripts/scripts.h"
 
-#include "api/api.h"
+// prototype for luaopen_pihole()
+#include "lualib.h"
+
+#if defined(LUA_USE_READLINE)
+# include <readline/history.h>
+#endif
+#include <wordexp.h>
+
+// hostname()
+#include "daemon.h"
+
 
 int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 {
@@ -98,11 +108,8 @@ static int pihole_ftl_version(lua_State *L) {
 
 // pihole.hostname()
 static int pihole_hostname(lua_State *L) {
-	// Get host name
-	char name[256];
-	if(gethostname(name, sizeof(name)) != 0)
-		strcpy(name, "N/A");
-	lua_pushstring(L, name);
+	// Get and immediately push host name
+	lua_pushstring(L, hostname());
 	return 1; // number of results
 }
 
@@ -223,32 +230,13 @@ static int pihole_boxedlayout(lua_State *L) {
 	return 1; // number of results
 }
 
-// pihole.needLogin(remote_addr:str)
+// pihole.needLogin()
 static int pihole_needLogin(lua_State *L) {
-	// Get remote_addr (first argument to LUA function)
-	const char *remote_addr = luaL_checkstring(L, 1);
-
 	// Check if password is set
 	const bool has_password = config.webserver.api.pwhash.v.s != NULL &&
 	                          config.webserver.api.pwhash.v.s[0] != '\0';
 
-	// Check if address is loopback
-	const bool is_loopback = strcmp(remote_addr, LOCALHOSTv4) == 0 ||
-	                         strcmp(remote_addr, LOCALHOSTv6) == 0;
-
-	// Check if local API authentication is enabled
-	const bool localAPIauth = config.webserver.api.localAPIauth.v.b;
-
-	// Check if login is required
-	const bool need_login = has_password || (is_loopback && !localAPIauth);
-
-	lua_pushboolean(L, need_login);
-	return 1; // number of results
-}
-
-// pihole.rev_proxy()
-static int pihole_rev_proxy(lua_State *L) {
-	lua_pushboolean(L, config.webserver.tls.rev_proxy.v.b);
+	lua_pushboolean(L, has_password);
 	return 1; // number of results
 }
 
@@ -261,7 +249,6 @@ static const luaL_Reg piholelib[] = {
 	{"include", pihole_include},
 	{"boxedlayout", pihole_boxedlayout},
 	{"needLogin", pihole_needLogin},
-	{"rev_proxy", pihole_rev_proxy},
 	{NULL, NULL}
 };
 

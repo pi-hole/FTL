@@ -69,7 +69,7 @@ int findQueryID(const int id)
 	// Check UUIDs of queries
 	for(int i = start; i >= until; i--)
 	{
-		const queriesData* query = getQuery(i, true);
+		const queriesData *query = getQuery(i, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(query == NULL)
@@ -239,7 +239,8 @@ static int get_next_free_clientID(void)
 	return counters->clients;
 }
 
-int _findClientID(const char *clientIP, const bool count, const bool aliasclient, int line, const char *func, const char *file)
+int _findClientID(const char *clientIP, const bool count, const bool aliasclient,
+                  const double now, int line, const char *func, const char *file)
 {
 	// Compare content of client against known client IP addresses
 	for(int clientID=0; clientID < counters->clients; clientID++)
@@ -308,7 +309,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	// some time after adding a client to ensure we pick up possible
 	// group configuration though hostname, MAC address or interface
 	client->reread_groups = 0u;
-	client->firstSeen = time(NULL);
+	client->firstSeen = now;
 	// Interface is not yet known
 	client->ifacepos = 0;
 	// Set all MAC address bytes to zero
@@ -434,7 +435,8 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 
 	// Initialize cache entry
 	dns_cache->magic = MAGICBYTE;
-	dns_cache->blocking_status = UNKNOWN_BLOCKED;
+	dns_cache->blocking_status = QUERY_UNKNOWN;
+	dns_cache->expires = 0;
 	dns_cache->domainID = domainID;
 	dns_cache->clientID = clientID;
 	dns_cache->query_type = query_type;
@@ -461,7 +463,7 @@ bool isValidIPv6(const char *addr)
 
 // Privacy-level sensitive subroutine that returns the domain name
 // only when appropriate for the requested query
-const char *getDomainString(const queriesData* query)
+const char *getDomainString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL || query->domainID < 0)
@@ -485,7 +487,7 @@ const char *getDomainString(const queriesData* query)
 
 // Privacy-level sensitive subroutine that returns the domain name
 // only when appropriate for the requested query
-const char *getCNAMEDomainString(const queriesData* query)
+const char *getCNAMEDomainString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL || query->CNAME_domainID < 0)
@@ -509,7 +511,7 @@ const char *getCNAMEDomainString(const queriesData* query)
 
 // Privacy-level sensitive subroutine that returns the client IP
 // only when appropriate for the requested query
-const char *getClientIPString(const queriesData* query)
+const char *getClientIPString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL || query->clientID < 0)
@@ -533,7 +535,7 @@ const char *getClientIPString(const queriesData* query)
 
 // Privacy-level sensitive subroutine that returns the client host name
 // only when appropriate for the requested query
-const char *getClientNameString(const queriesData* query)
+const char *getClientNameString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL || query->clientID < 0)
@@ -569,7 +571,9 @@ void FTL_reset_per_client_domain_data(void)
 			continue;
 
 		// Reset blocking status
-		dns_cache->blocking_status = UNKNOWN_BLOCKED;
+		dns_cache->blocking_status = QUERY_UNKNOWN;
+		// Reset expiry
+		dns_cache->expires = 0;
 		// Reset domainlist ID
 		dns_cache->list_id = -1;
 	}
@@ -590,11 +594,13 @@ void FTL_reload_all_domainlists(void)
 	counters->database.groups = gravityDB_count(GROUPS_TABLE);
 	counters->database.clients = gravityDB_count(CLIENTS_TABLE);
 	counters->database.lists = gravityDB_count(ADLISTS_TABLE);
-	counters->database.domains.allowed = gravityDB_count(DENIED_DOMAINS_TABLE);
-	counters->database.domains.denied = gravityDB_count(ALLOWED_DOMAINS_TABLE);
+	counters->database.domains.allowed.exact = gravityDB_count(EXACT_WHITELIST_TABLE);
+	counters->database.domains.denied.exact = gravityDB_count(EXACT_BLACKLIST_TABLE);
+	counters->database.domains.allowed.regex = gravityDB_count(REGEX_ALLOW_TABLE);
+	counters->database.domains.denied.regex = gravityDB_count(REGEX_DENY_TABLE);
 
 	// Read and compile possible regex filters
-	// only after having called gravityDB_open()
+	// only after having called gravityDB_reopen()
 	read_regex_from_database();
 
 	// Check for inaccessible adlist URLs
@@ -699,6 +705,8 @@ const char * __attribute__ ((const)) get_query_status_str(const enum query_statu
 			return "SPECIAL_DOMAIN";
 		case QUERY_CACHE_STALE:
 			return "CACHE_STALE";
+		case QUERY_EXTERNAL_BLOCKED_EDE15:
+			return "EXTERNAL_BLOCKED_EDE15";
 		case QUERY_STATUS_MAX:
 		default:
 			return "INVALID";
@@ -834,6 +842,22 @@ int __attribute__ ((pure)) get_blocking_mode_val(const char *blocking_mode)
 	return -1;
 }
 
+const char * __attribute__ ((const)) get_blocking_status_str(const enum blocking_status blocking)
+{
+	switch(blocking)
+	{
+		case BLOCKING_ENABLED:
+			return "enabled";
+		case BLOCKING_DISABLED:
+			return "disabled";
+		case DNS_FAILED:
+			return "failure";
+		case BLOCKING_UNKNOWN:
+		default:
+			return "unknown";
+	}
+}
+
 bool __attribute__ ((const)) is_blocked(const enum query_status status)
 {
 	switch (status)
@@ -855,6 +879,7 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 		case QUERY_EXTERNAL_BLOCKED_IP:
 		case QUERY_EXTERNAL_BLOCKED_NULL:
 		case QUERY_EXTERNAL_BLOCKED_NXRA:
+		case QUERY_EXTERNAL_BLOCKED_EDE15:
 		case QUERY_GRAVITY_CNAME:
 		case QUERY_REGEX_CNAME:
 		case QUERY_DENYLIST_CNAME:
@@ -952,6 +977,7 @@ bool __attribute__ ((const)) is_cached(const enum query_status status)
 		case QUERY_EXTERNAL_BLOCKED_IP:
 		case QUERY_EXTERNAL_BLOCKED_NULL:
 		case QUERY_EXTERNAL_BLOCKED_NXRA:
+		case QUERY_EXTERNAL_BLOCKED_EDE15:
 		case QUERY_GRAVITY_CNAME:
 		case QUERY_REGEX_CNAME:
 		case QUERY_DENYLIST_CNAME:
@@ -1002,6 +1028,8 @@ static const char* __attribute__ ((const)) query_status_str(const enum query_sta
 			return "SPECIAL_DOMAIN";
 		case QUERY_CACHE_STALE:
 			return "CACHE_STALE";
+		case QUERY_EXTERNAL_BLOCKED_EDE15:
+			return "EXTERNAL_BLOCKED_EDE15";
 		case QUERY_STATUS_MAX:
 			return NULL;
 	}
@@ -1044,6 +1072,59 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	{
 		// Nothing to do
 		return;
+	}
+
+	// Memorize this in the DNS cache if blocked due to the response
+	// We do not cache intermittent statuses as they are subject to change
+	if(!init &&
+	   new_status != QUERY_UNKNOWN &&
+	   new_status != QUERY_DBBUSY &&
+	   new_status != QUERY_IN_PROGRESS &&
+	   new_status != QUERY_RETRIED &&
+	   new_status != QUERY_RETRIED_DNSSEC)
+	{
+		const int cacheID = findCacheID(query->domainID, query->clientID, query->type, true);
+		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+		if(dns_cache != NULL && dns_cache->blocking_status != new_status)
+		{
+			// Memorize blocking status DNS cache for the domain/client combination
+			dns_cache->blocking_status = new_status;
+
+			// Set expiration time for this cache entry (if applicable)
+			// We set this only if not already set to avoid extending the TTL of an
+			// existing entry
+			if(config.dns.cache.upstreamBlockedTTL.v.ui > 0 &&
+			   dns_cache->expires == 0 &&
+			   (new_status == QUERY_EXTERNAL_BLOCKED_NXRA ||
+			    new_status == QUERY_EXTERNAL_BLOCKED_NULL ||
+			    new_status == QUERY_EXTERNAL_BLOCKED_IP ||
+			    new_status == QUERY_EXTERNAL_BLOCKED_EDE15))
+			{
+				// Set expiration time for this cache entry
+				dns_cache->expires = time(NULL) + config.dns.cache.upstreamBlockedTTL.v.ui;
+			}
+
+			if(config.debug.queries.v.b)
+			{
+				// Debug logging
+				const char *qtype = get_query_type_str(dns_cache->query_type, NULL, NULL);
+				const char *domain = getDomainString(query);
+				const char *clientstr = getClientIPString(query);
+				const char *statusstr = get_query_status_str(new_status);
+
+				if(dns_cache->expires > 0)
+				{
+					log_debug(DEBUG_QUERIES, "DNS cache: %s/%s/%s -> %s, expires in %lis",
+					          qtype, clientstr, domain, statusstr,
+					          (long)(dns_cache->expires - time(NULL)));
+				}
+				else
+				{
+					log_debug(DEBUG_QUERIES, "DNS cache: %s/%s/%s -> %s, no expiry",
+					          qtype, clientstr, domain, statusstr);
+				}
+			}
+		}
 	}
 
 	// else: update global counters, ...
@@ -1196,6 +1277,33 @@ int __attribute__ ((pure)) get_temp_unit_val(const char *temp_unit)
 		return TEMP_UNIT_F;
 	else if(strcasecmp(temp_unit, "K") == 0)
 		return TEMP_UNIT_K;
+
+	// Invalid value
+	return -1;
+}
+
+const char * __attribute__ ((const)) get_edns_mode_str(const enum edns_mode edns_mode)
+{
+	switch(edns_mode)
+	{
+		case EDNS_MODE_NONE:
+			return "NONE";
+		case EDNS_MODE_CODE:
+			return "CODE";
+		case EDNS_MODE_TEXT:
+			return "TEXT";
+	}
+	return NULL;
+}
+
+int __attribute__ ((pure)) get_edns_mode_val(const char *edns_mode)
+{
+	if(strcasecmp(edns_mode, "NONE") == 0)
+		return EDNS_MODE_NONE;
+	else if(strcasecmp(edns_mode, "CODE") == 0)
+		return EDNS_MODE_CODE;
+	else if(strcasecmp(edns_mode, "TEXT") == 0)
+		return EDNS_MODE_TEXT;
 
 	// Invalid value
 	return -1;

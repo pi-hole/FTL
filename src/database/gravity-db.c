@@ -8,29 +8,30 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
+#include "FTL.h"
 #include "sqlite3.h"
 #include "gravity-db.h"
 // struct config
-#include "../config/config.h"
+#include "config/config.h"
 // logging routines
-#include "../log.h"
+#include "log.h"
 // getstr()
-#include "../shmem.h"
+#include "shmem.h"
 // SQLite3 prepared statement vectors
-#include "../vector.h"
+#include "vector.h"
 // log_subnet_warning()
 // logg_inaccessible_adlist
 #include "message-table.h"
 // getMACfromIP()
 #include "network-table.h"
 // struct DNSCacheData
-#include "../datastructure.h"
+#include "datastructure.h"
 // reset_aliasclient()
 #include "aliasclients.h"
-
 // Definition of struct regexData
-#include "../regex_r.h"
+#include "regex_r.h"
+// file_readable()
+#include "files.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
@@ -48,6 +49,17 @@ static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
 bool gravityDB_opened = false;
 static bool gravity_abp_format = false;
+
+// Variables memorizing the parent gravity database connection and prepared
+// statements to avoid valgrind warnings about memory leaks
+static sqlite3 *parent_gravity_db = NULL;
+sqlite3_stmt_vec *parent_whitelist_stmt = NULL;
+sqlite3_stmt_vec *parent_gravity_stmt = NULL;
+sqlite3_stmt_vec *parent_antigravity_stmt = NULL;
+sqlite3_stmt_vec *parent_blacklist_stmt = NULL;
+
+// Private prototypes
+static bool gravityDB_open(void);
 
 // Table names corresponding to the enum defined in gravity-db.h
 static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "client", "group", "adlist", "denied_domains", "allowed_domains", "" };
@@ -85,12 +97,17 @@ void gravityDB_forked(void)
 	// is clear that this in not what we want to do as this is a slow
 	// process and many TCP queries could lead to a DoS attack.
 	gravityDB_opened = false;
+	parent_gravity_db = gravity_db;
 	gravity_db = NULL;
 
 	// Also pretend we have not yet prepared the list statements
+	parent_whitelist_stmt = whitelist_stmt;
 	whitelist_stmt = NULL;
+	parent_blacklist_stmt = blacklist_stmt;
 	blacklist_stmt = NULL;
+	parent_gravity_stmt = gravity_stmt;
 	gravity_stmt = NULL;
+	parent_antigravity_stmt = antigravity_stmt;
 	antigravity_stmt = NULL;
 
 	// Open the database
@@ -132,7 +149,7 @@ static void gravity_check_ABP_format(void)
 }
 
 // Open gravity database
-bool gravityDB_open(void)
+static bool gravityDB_open(void)
 {
 	struct stat st;
 	if(stat(config.files.gravity.v.s, &st) != 0)
@@ -954,6 +971,7 @@ void gravityDB_close(void)
 	free_sqlite3_stmt_vec(&antigravity_stmt);
 
 	// Close table
+	log_debug(DEBUG_ANY, "Closing gravity database");
 	sqlite3_close(gravity_db);
 	gravity_db = NULL;
 	gravityDB_opened = false;
@@ -1045,7 +1063,7 @@ inline const char* gravityDB_getDomain(int *rowid)
 // Finalize statement of a gravity database transaction
 void gravityDB_finalizeTable(void)
 {
-	if(!gravityDB_opened)
+	if(!gravityDB_opened || table_stmt == NULL)
 		return;
 
 	// Finalize statement
@@ -1093,12 +1111,6 @@ int gravityDB_count(const enum gravity_tables list)
 			break;
 		case ADLISTS_TABLE:
 			querystr = "SELECT COUNT(1) FROM adlist WHERE enabled != 0";
-			break;
-		case DENIED_DOMAINS_TABLE:
-			querystr = "SELECT COUNT(1) FROM domainlist WHERE (type = 0 OR type = 2) AND enabled != 0";
-			break;
-		case ALLOWED_DOMAINS_TABLE:
-			querystr = "SELECT COUNT(1) FROM domainlist WHERE (type = 1 OR type = 3) AND enabled != 0";
 			break;
 		case UNKNOWN_TABLE:
 			log_err("List type %u unknown!", list);
@@ -2715,9 +2727,17 @@ bool gravity_updated(void)
 	sqlite3 *db = NULL;
 	sqlite3_stmt *query_stmt = NULL;
 
+	// Check if database is a readable file
+	if(file_readable(config.files.gravity.v.s) == false)
+	{
+		log_err("Cannot read gravity database at %s - file does not exist or is not readable",
+		        config.files.gravity.v.s);
+		return false;
+	}
+
 	// Open database
 	int rc = sqlite3_open_v2(config.files.gravity.v.s, &db, SQLITE_OPEN_READONLY, NULL);
-	if(db == NULL)
+	if(db == NULL || rc != SQLITE_OK)
 	{
 		log_err("gravity_updated(): %s - SQL error open: %s", config.files.gravity.v.s, sqlite3_errstr(rc));
 		return false;
@@ -2769,4 +2789,9 @@ bool gravity_updated(void)
 	sqlite3_close(db);
 
 	return changed;
+}
+
+time_t __attribute__((pure)) gravity_last_updated(void)
+{
+	return last_updated > 0 ? (time_t)last_updated : 0;
 }

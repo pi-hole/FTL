@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2021 the Civetweb developers
+/* Copyright (c) 2013-2024 the Civetweb developers
  * Copyright (c) 2004-2013 Sergey Lyubka
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -23,9 +23,9 @@
 #ifndef CIVETWEB_HEADER_INCLUDED
 #define CIVETWEB_HEADER_INCLUDED
 
-#define CIVETWEB_VERSION "1.16"
+#define CIVETWEB_VERSION "1.17"
 #define CIVETWEB_VERSION_MAJOR (1)
-#define CIVETWEB_VERSION_MINOR (16)
+#define CIVETWEB_VERSION_MINOR (17)
 #define CIVETWEB_VERSION_PATCH (0)
 
 #ifndef CIVETWEB_API
@@ -936,7 +936,8 @@ int my_send_http_error_headers(struct mg_connection *conn,
                                int status, const char* mime_type,
                                long long content_length);
 
-void FTL_rewrite_pattern(char *filename, size_t filename_buf_len);
+void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len);
+
 
 #define MG_CONFIG_MBEDTLS_DEBUG 3
 void FTL_mbed_debug(void *user_param, int level, const char *file,

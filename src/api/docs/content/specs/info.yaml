@@ -717,10 +717,25 @@ components:
                       type: integer
                       description: Number of denied domains
                       example: 3
+                regex:
+                  type: object
+                  properties:
+                    allowed:
+                      type: integer
+                      description: Number of allowed regex filters
+                      example: 4
+                    denied:
+                      type: integer
+                      description: Number of denied regex filters
+                      example: 2
             privacy_level:
               type: integer
               description: Currently used privacy level
               example: 0
+            query_frequency:
+              type: number
+              description: Average number of queries per second
+              example: 1.1
             clients:
               type: object
               properties:

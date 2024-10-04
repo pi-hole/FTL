@@ -265,16 +265,19 @@ pid_t FTL_gettid(void)
 
 static void terminate_threads(void)
 {
-	struct timespec ts;
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
 	// Try to join threads to ensure cancellation has succeeded
 	log_info("Waiting for threads to join");
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
+		log_debug(DEBUG_EXTRA, "Joining %s thread (%d)", thread_names[i], i);
 		// Skip threads that have never been started or which are already stopped
-		if(!thread_running[i])
+		if(threads[i] == 0)
+		{
+			log_debug(DEBUG_EXTRA, "Skipping thread as it was never started");
 			continue;
+		}
 
 		// Cancel thread if it is idle
 		if(thread_cancellable[i])
@@ -282,9 +285,12 @@ static void terminate_threads(void)
 			log_info("Thread %s (%d) is idle, terminating it.",
 			         thread_names[i], i);
 			pthread_cancel(threads[i]);
+			continue;
 		}
 
 		// Cancel thread if we cannot set a timeout for joining
+		struct timespec ts;
+		memset(&ts, 0, sizeof(ts));
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
 		{
 			log_info("Thread %s (%d) is busy, cancelling it (cannot set timeout).",
@@ -297,8 +303,7 @@ static void terminate_threads(void)
 		ts.tv_sec += 2;
 
 		// Try to join thread and cancel it if it is still busy
-		const int s = pthread_timedjoin_np(threads[i], NULL, &ts);
-		if(s != 0)
+		if(pthread_timedjoin_np(threads[i], NULL, &ts) != 0)
 		{
 			log_info("Thread %s (%d) is still busy, cancelling it.",
 			     thread_names[i], i);
@@ -326,13 +331,32 @@ void set_nice(void)
 		// Set nice value
 		const int ret = setpriority(which, pid, config.misc.nice.v.i);
 		if(ret == -1)
-			// ERROR EPERM: The calling process attempted to increase its priority
-			// by supplying a negative value but has insufficient privileges.
-			// On Linux, the RLIMIT_NICE resource limit can be used to define a limit to
-			// which an unprivileged process's nice value can be raised. We are not
-			// affected by this limit when pihole-FTL is running with CAP_SYS_NICE
-			log_warn("Cannot set process priority to %d: %s. Process priority remains at %d",
-			         config.misc.nice.v.i, strerror(errno), priority);
+		{
+			if(errno == EACCES || errno == EPERM)
+			{
+				// from man 2 setpriority:
+				//
+				// ERRORS
+				// [...]
+				// EACCES The caller attempted to set a lower nice value (i.e.,  a  higher
+				//        process  priority),  but did not have the required privilege (on
+				//        Linux: did not have the CAP_SYS_NICE capability).
+				//
+				// EPERM  A process was located, but its effective user ID did  not  match
+				//        either  the effective or the real user ID of the caller, and was
+				//        not privileged (on Linux: did not have the CAP_SYS_NICE capabil‐
+				//        ity).
+				// [...]
+				log_warn("Insufficient permissions to set process priority to %d (CAP_SYS_NICE required), process priority remains at %d",
+				         config.misc.nice.v.i, priority);
+			}
+			else
+			{
+				// Other error
+				log_warn("Cannot set process priority to %d: %s. Process priority remains at %d",
+				         config.misc.nice.v.i, strerror(errno), priority);
+			}
+		}
 	}
 }
 
@@ -377,7 +401,10 @@ void cleanup(const int ret)
 
 	char buffer[42] = { 0 };
 	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
-	log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
+	if(ret == RESTART_FTL_CODE)
+		log_info("########## FTL terminated after%s (internal restart)! ##########", buffer);
+	else
+		log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
 }
 
 static float last_clock = 0.0f;

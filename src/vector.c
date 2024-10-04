@@ -118,6 +118,16 @@ void free_sqlite3_stmt_vec(sqlite3_stmt_vec **v)
 	if(v == NULL || *v == NULL || (*v)->items == NULL)
 		return;
 
+	// Run sqlite3_finalize on all statements in the vector
+	for(unsigned int i = 0; i < (*v)->capacity; i++)
+	{
+		if((*v)->items[i] != NULL)
+		{
+			log_debug(DEBUG_VECTORS, "Finalizing sqlite3_stmt** %p[%u] --> %p", *v, i, (*v)->items[i]);
+			sqlite3_finalize((*v)->items[i]);
+		}
+	}
+
 	// Free elements of the vector...
 	free((*v)->items);
 	// ...and then the vector itself

@@ -27,8 +27,8 @@ foreach(INPUT_FILE ${COMPILED_RESOURCES})
     list(APPEND COMPILED_RESOURCES ${OUTPUT_FILE})
 endforeach()
 
-# Ensure target lua_scripts is build before target lua
-add_dependencies(lua lua_scripts)
+# Ensure target lua_scripts is build before target ftl_lua depending on it
+add_dependencies(ftl_lua lua_scripts)
 
 add_library(lua_scripts OBJECT ${sources})
 target_compile_options(lua_scripts PRIVATE ${EXTRAWARN})

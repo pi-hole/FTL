@@ -33,7 +33,6 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/prctl.h>
-//#include <math.h>
 #include <pwd.h>
 // syslog
 #include <syslog.h>
@@ -48,7 +47,7 @@
 // MIN(x,y) is already defined in dnsmasq.h
 
 // Number of elements in an array
-#define ArraySize(X) (sizeof(X)/sizeof(X[0]))
+#define ArraySize(X) (sizeof(X)/sizeof(*X))
 
 // Constant socket buffer length
 #define SOCKETBUFFERLEN 1024
@@ -124,12 +123,13 @@
 // Default: 180 [seconds]
 #define DELAY_UPTIME 180
 
-// DB_QUERY_MAX_ITER defines how many queries we check periodically for updates to be added
-// to the in-memory database. This value may need to be increased on *very* busy systems.
-// However, there is an algorithm in place that tries to ensure we are not missing queries
-// on systems with > 100 queries per second
-// Default: 100 (per second)
-#define DB_QUERY_MAX_ITER 100
+// REPLY_TIMEOUT defines until how far back in the history of queries we are
+// checking for changed/updated queries. This value should not be set too high
+// to avoid unnecessary spinning in the updating loop of the queries running
+// every second. The value should be set to a value that is high enough to
+// catch all queries that are still in the process of being resolved.
+// Default: 30 [seconds]
+#define REPLY_TIMEOUT 30
 
 // Special exit code used to signal that FTL wants to restart
 #define RESTART_FTL_CODE 22
@@ -142,12 +142,16 @@
 // Default: 2592000 (once per month)
 #define DATABASE_MACVENDOR_INTERVAL 2592000
 
+// Over how many seconds should the query-per-second (QPS) value be averaged?
+// Default: 30 (seconds)
+#define QPS_AVGLEN 30
+
 // Use out own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crash
 // caused by insufficient memory or by code bugs (not properly dealing
 // with NULL pointers) much easier.
 #undef strdup // strdup() is a macro in itself, it needs special handling
-#define free(ptr) FTLfree((void**)&ptr, __FILE__,  __FUNCTION__,  __LINE__)
+#define free(ptr) { FTLfree(ptr, __FILE__,  __FUNCTION__,  __LINE__); ptr = NULL; }
 #define strdup(str_in) FTLstrdup(str_in, __FILE__,  __FUNCTION__,  __LINE__)
 #define calloc(numer_of_elements, element_size) FTLcalloc(numer_of_elements, element_size, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(ptr, new_size) FTLrealloc(ptr, new_size, __FILE__,  __FUNCTION__,  __LINE__)

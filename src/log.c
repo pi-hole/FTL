@@ -53,8 +53,9 @@ void init_FTL_log(const char *name)
 		FILE *logfile = NULL;
 		if((logfile = fopen(config.files.log.ftl.v.s, "a+")) == NULL)
 		{
+			printf("ERROR: Opening of FTL log (%s) failed: %s\nUsing syslog instead!\n",
+			       config.files.log.ftl.v.s, strerror(errno));
 			syslog(LOG_ERR, "Opening of FTL\'s log file failed, using syslog instead!");
-			printf("ERROR: Opening of FTL log (%s) failed!\n",config.files.log.ftl.v.s);
 			config.files.log.ftl.v.s = NULL;
 		}
 
@@ -85,8 +86,7 @@ double double_time(void)
 	return tp.tv_sec + 1e-9*tp.tv_nsec;
 }
 
-// The size of 84 bytes has been carefully selected for all possible timestamps
-// to always fit into the available space without buffer overflows
+// Get a human-readable time string
 void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible)
 {
 	struct tm tm;
@@ -105,16 +105,19 @@ void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool 
 		gettimeofday(&tv, NULL);
 		const int millisec = tv.tv_usec/1000;
 
-		sprintf(timestring,"%d-%02d-%02d%c%02d%c%02d%c%02d.%03i",
+		snprintf(timestring, TIMESTR_SIZE, "%d-%02d-%02d%c%02d%c%02d%c%02d.%03i%c%s",
 		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
-		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, millisec);
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, millisec, space, tm.tm_zone);
 	}
 	else
 	{
-		sprintf(timestring,"%d-%02d-%02d%c%02d%c%02d%c%02d",
+		snprintf(timestring, TIMESTR_SIZE, "%d-%02d-%02d%c%02d%c%02d%c%02d%c%s",
 		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
-		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec);
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, space, tm.tm_zone);
 	}
+
+	// Ensure that the string is zero-terminated
+	timestring[TIMESTR_SIZE - 1] = '\0';
 }
 
 // Return the current year
@@ -217,16 +220,19 @@ const char *debugstr(const enum debug_flag flag)
 			return "DEBUG_WEBSERVER";
 		case DEBUG_RESERVED:
 			return "DEBUG_RESERVED";
+		case DEBUG_NTP:
+			return "DEBUG_NTP";
 		case DEBUG_MAX:
 			return "DEBUG_MAX";
+		case DEBUG_NONE: // fall through
 		default:
 			return "DEBUG_ANY";
 	}
 }
 
-void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
+void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
 {
-	char timestring[TIMESTR_SIZE] = "";
+	char timestring[TIMESTR_SIZE];
 	va_list args;
 
 	// We have been explicitly asked to not print anything to the log
@@ -283,6 +289,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 		va_end(args);
 		add_to_fifo_buffer(FIFO_FTL, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
+		bool logged = false;
 		if(config.files.log.ftl.v.s != NULL)
 		{
 			// Open log file
@@ -304,6 +311,8 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 
 				// Close file after writing
 				fclose(logfile);
+
+				logged = true;
 			}
 			else if(!daemonmode)
 			{
@@ -311,7 +320,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 				syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
 			}
 		}
-		else
+		if(!logged)
 		{
 			// Syslog logging
 			va_start(args, format);
@@ -321,9 +330,9 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	}
 }
 
-void __attribute__ ((format (gnu_printf, 1, 2))) log_web(const char *format, ...)
+void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 {
-	char timestring[TIMESTR_SIZE] = "";
+	char timestring[TIMESTR_SIZE];
 	const time_t now = time(NULL);
 	va_list args;
 
@@ -362,7 +371,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) log_web(const char *format, ...
 }
 
 // Log helper activity (may be script or lua)
-void FTL_log_helper(const unsigned char n, ...)
+void FTL_log_helper(const unsigned int n, ...)
 {
 	// Only log helper debug messages if enabled
 	if(!(config.debug.helper.v.b))
@@ -372,7 +381,7 @@ void FTL_log_helper(const unsigned char n, ...)
 	va_list args;
 	char **arg = calloc(n, sizeof(char*));
 	va_start(args, n);
-	for(unsigned char i = 0; i < n; i++)
+	for(unsigned int i = 0; i < n; i++)
 	{
 		const char *argin = va_arg(args, char*);
 		if(argin == NULL)
@@ -401,25 +410,24 @@ void FTL_log_helper(const unsigned char n, ...)
 	}
 
 	// Free allocated memory
-	for(unsigned char i = 0; i < n; i++)
+	for(unsigned int i = 0; i < n; i++)
 		if(arg[i] != NULL)
 			free(arg[i]);
 	free(arg);
 }
 
-void format_memory_size(char prefix[2], const unsigned long long int bytes,
-                        double * const formatted)
+void format_memory_size(char prefix[2], const uint64_t bytes, double * const formatted)
 {
 	unsigned int i;
 	*formatted = bytes;
 	// Determine exponent for human-readable display
-	for(i = 0; i < 7; i++)
+	const char prefixes[] = { '\0', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y', 'R', '?' };
+	for(i = 0; i < sizeof(prefixes)/sizeof(*prefixes) - 1; i++)
 	{
 		if(*formatted <= 1e3)
 			break;
 		*formatted /= 1e3;
 	}
-	const char prefixes[8] = { '\0', 'K', 'M', 'G', 'T', 'P', 'E', '?' };
 	// Chose matching SI prefix
 	prefix[0] = prefixes[i];
 	prefix[1] = '\0';

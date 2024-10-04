@@ -239,6 +239,8 @@ components:
                       type: integer
                     optimizer:
                       type: integer
+                    upstreamBlockedTTL:
+                      type: integer
                 revServers:
                   type: array
                   items:
@@ -249,6 +251,8 @@ components:
                     active:
                       type: boolean
                     mode:
+                      type: string
+                    edns:
                       type: string
                 specialDomains:
                   type: object
@@ -320,10 +324,51 @@ components:
                   type: boolean
                 logging:
                   type: boolean
+                ignoreUnknownClients:
+                  type: boolean
                 hosts:
                   type: array
                   items:
                     type: string
+            ntp:
+              type: object
+              properties:
+                ipv4:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    address:
+                      type: string
+                      x-format: ipv4
+                ipv6:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    address:
+                      type: string
+                      x-format: ipv6
+                sync:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    server:
+                      type: string
+                    interval:
+                      type: integer
+                    count:
+                      type: integer
+                    rtc:
+                      type: object
+                      properties:
+                        set:
+                          type: boolean
+                        device:
+                          type: string
+                        utc:
+                          type: boolean
             resolver:
               type: object
               properties:
@@ -372,8 +417,6 @@ components:
                 tls:
                   type: object
                   properties:
-                    rev_proxy:
-                      type: boolean
                     cert:
                       type: string
                 paths:
@@ -393,10 +436,6 @@ components:
                 api:
                   type: object
                   properties:
-                    localAPIauth:
-                      type: boolean
-                    searchAPIauth:
-                      type: boolean
                     max_sessions:
                       type: integer
                     prettyJSON:
@@ -411,6 +450,10 @@ components:
                       type: string
                     app_pwhash:
                       type: string
+                    app_sudo:
+                      type: boolean
+                    cli_pw:
+                      type: boolean
                     excludeClients:
                       type: array
                       items:
@@ -479,6 +522,8 @@ components:
                     type: string
                 extraLogging:
                   type: boolean
+                readOnly:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -544,6 +589,8 @@ components:
                 extra:
                   type: boolean
                 reserved:
+                  type: boolean
+                ntp:
                   type: boolean
                 all:
                   type: boolean
@@ -620,11 +667,13 @@ components:
             cache:
               size: 10000
               optimizer: 3600
+              upstreamBlockedTTL: 86400
             revServers:
               - "true,192.168.0.0/24,192.168.0.1,lan"
             blocking:
               active: true
               mode: 'NULL'
+              edns: 'NONE'
             specialDomains:
               mozillaCanary: true
               iCloudPrivateRelay: true
@@ -653,9 +702,26 @@ components:
             rapidCommit: false
             multiDNS: false
             logging: false
+            ignoreUnknownClients: false
             hosts:
               - "11:22:33:44:55:66,192.168.1.123"
               - "11:22:33:44:55:67,192.168.1.124,hostname"
+          ntp:
+            ipv4:
+              active: true
+              address: ""
+            ipv6:
+              active: true
+              address: ""
+            sync:
+              active: true
+              server: "pool.ntp.org"
+              interval: 3600
+              count: 8
+              rtc:
+                set: true
+                device: ""
+                utc: true
           resolver:
             resolveIPv4: true
             resolveIPv6: true
@@ -677,7 +743,6 @@ components:
               timeout: 300
               restore: true
             tls:
-              rev_proxy: false
               cert: "/etc/pihole/tls.pem"
             paths:
               webroot: "/var/www/html"
@@ -686,14 +751,14 @@ components:
               boxed: true
               theme: "default-darker"
             api:
-              localAPIauth: false
-              searchAPIauth: false
               max_sessions: 16
               prettyJSON: false
               password: "********"
               pwhash: ''
               totp_secret: ''
               app_pwhash: ''
+              app_sudo: false
+              cli_pw: true
               excludeClients: [ '1\.2\.3\.4', 'localhost', 'fe80::345' ]
               excludeDomains: [ 'google\\.de', 'pi-hole\.net' ]
               maxHistory: 86400
@@ -723,6 +788,7 @@ components:
             etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
             extraLogging: false
+            readOnly: false
             check:
               load: true
               shmem: 90
@@ -755,6 +821,7 @@ components:
             webserver: false
             extra: false
             reserved: false
+            ntp: false
             all: false
     config_one:
       summary: One option

@@ -8,16 +8,16 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
 #include "api.h"
 // querytypes[]
-#include "../datastructure.h"
+#include "datastructure.h"
 // logging routines
 #include "log.h"
 // db
-#include "../database/common.h"
+#include "database/common.h"
 
 // SQL Query type filters for the database
 #define FILTER_STATUS_NOT_BLOCKED "status IN (0,2,3,12,13,14,17)"
@@ -514,13 +514,11 @@ int api_history_database_clients(struct ftl_conn *api)
 
 	// Loop over clients and accumulate results
 	cJSON *clients = JSON_NEW_OBJECT();
-	unsigned int num_clients = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_COPY_STR_TO_OBJECT(item, "name", sqlite3_column_text(stmt, 2));
 		JSON_ADD_ITEM_TO_OBJECT(clients, (const char*)sqlite3_column_text(stmt, 1), item);
-		num_clients++;
 	}
 	sqlite3_finalize(stmt);
 

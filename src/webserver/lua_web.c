@@ -57,12 +57,7 @@ void free_lua(void)
 
 void init_lua(const struct mg_connection *conn, void *L, unsigned context_flags)
 {
-	// Set onerror handler to print errors to the log
-	if(luaL_dostring(L, "mg.onerror = function(e) mg.cry('Error at ' .. e) end") != LUA_OK)
-	{
-		log_err("Error setting Lua onerror handler: %s", lua_tostring(L, -1));
-		lua_pop(L, 1);
-	}
+	return;
 }
 
 int request_handler(struct mg_connection *conn, void *cbdata)
@@ -74,7 +69,6 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 
 	/* Handler may access the request info using mg_get_request_info */
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
-	const size_t uri_raw_len = strlen(req_info->local_uri_raw);
 
 	// Build minimal api struct to check authentication
 	struct ftl_conn api = { 0 };
@@ -95,8 +89,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		return send_json_error_free(&api, 400,
 		                            "bad_request",
 		                            "Bad request",
-		                            hint,
-		                            true);
+		                            hint, true, true);
 	}
 
 	// Check if last part of the URI contains a dot (is a file)
@@ -123,48 +116,11 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		// Check if the user is authenticated
 		if(!authorized)
 		{
-			// Append query string to target
-			char *target = NULL;
-			if(req_info->query_string != NULL)
-			{
-				target = calloc(uri_raw_len + strlen(req_info->query_string) + 2u, sizeof(char));
-				strcpy(target, req_info->local_uri_raw);
-				strcat(target, "?");
-				strcat(target, req_info->query_string);
-			}
-			else
-			{
-				target = strdup(req_info->local_uri_raw);
-			}
-			if(target == NULL)
-			{
-				log_err("Error allocating memory for redirection target");
-				return send_json_error(&api, 500,
-				                       "internal_error",
-				                       "Internal server error",
-				                       "Cannot allocate memory for redirection target");
-			}
-
-			// Encode target string
-			const size_t encoded_target_len = strlen(target) * 3u + 1u;
-			char *encoded_target = calloc(encoded_target_len, sizeof(char));
-			if(encoded_target == NULL)
-			{
-				log_err("Error allocating memory for encoded redirection target");
-				return send_json_error(&api, 500,
-				                       "internal_error",
-				                       "Internal server error",
-				                       "Cannot allocate memory for encoded redirection target");
-			}
-
-			// Encode target string
-			mg_url_encode(target, encoded_target, encoded_target_len);
-			free(target);
-
 			// User is not authenticated, redirect to login page
-			log_web("Authentication required, redirecting to %slogin?target=%s", config.webserver.paths.webhome.v.s, encoded_target);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin?target=%s\r\n\r\n", config.webserver.paths.webhome.v.s, encoded_target);
-			free(encoded_target);
+			log_web("Authentication required, redirecting to %slogin",
+			        config.webserver.paths.webhome.v.s);
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin\r\n\r\n",
+			          config.webserver.paths.webhome.v.s);
 			return 302;
 		}
 	}

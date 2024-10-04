@@ -15,7 +15,7 @@
 */
 
 #include "dnsmasq.h"
-#include "../dnsmasq_interface.h"
+#include "dnsmasq_interface.h"
 
 static struct frec *get_new_frec(time_t now, struct server *serv, int force);
 static struct frec *lookup_frec(unsigned short id, int fd, void *hash, int *firstp, int *lastp);
@@ -36,7 +36,7 @@ int send_from(int fd, int nowild, char *packet, size_t len,
 	      union mysockaddr *to, union all_addr *source,
 	      unsigned int iface)
 {
-  struct msghdr msg;
+  struct msghdr msg = { 0 };
   struct iovec iov[1]; 
   union {
     struct cmsghdr align; /* this ensures alignment */
@@ -46,7 +46,7 @@ int send_from(int fd, int nowild, char *packet, size_t len,
     char control[CMSG_SPACE(sizeof(struct in_addr))];
 #endif
     char control6[CMSG_SPACE(sizeof(struct in6_pktinfo))];
-  } control_u;
+  } control_u = { 0 };
   
   iov[0].iov_base = packet;
   iov[0].iov_len = len;
@@ -105,7 +105,12 @@ int send_from(int fd, int nowild, char *packet, size_t len,
 #ifdef HAVE_LINUX_NETWORK
       /* If interface is still in DAD, EINVAL results - ignore that. */
       if (errno != EINVAL)
-	my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
+	{
+	  my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
+	  /********** Pi-hole modification **********/
+	  FTL_connection_error("failed to send UDP reply", to);
+	  /******************************************/
+	}
 #endif
       return 0;
     }
@@ -567,6 +572,12 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		break;
 	      forward->forwardall++;
 	    }
+	    /**** Pi-hole modification ****/
+	    else
+	    {
+	      FTL_connection_error("failed to send UDP request", &srv->addr);
+	    }
+	    /******************************/
 	}
       
       if (++start == last)
@@ -703,6 +714,8 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   size_t plen; 
   /******** Pi-hole modification ********/
   unsigned char *pheader_copy = NULL;
+  unsigned char ede_data[MAX_EDE_DATA] = { 0 };
+  size_t ede_len = 0;
   /**************************************/
     
   (void)ad_reqd;
@@ -770,7 +783,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	}
     }
   
-  FTL_header_analysis(header->hb4, rcode, server, daemon->log_display_id);
+  FTL_header_analysis(header->hb4, server, daemon->log_display_id);
   
   /* RFC 4035 sect 4.6 para 3 */
   if (!is_sign && !option_bool(OPT_DNSSEC_PROXY))
@@ -879,7 +892,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 
 	      // Generate DNS packet for reply, a possibly existing pseudo header
 	      // will be restored later inside resize_packet()
-	      n = FTL_make_answer(header, ((char *) header) + 65536, n, &ede);
+	      n = FTL_make_answer(header, ((char *) header) + 65536, n, ede_data, &ede_len);
 	    }
 	}
       
@@ -919,13 +932,18 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   // pheader_copy instead of pheader
   if(pheader_copy)
     free(pheader_copy);
-  /**************************************/
 
-  if (pheader && ede != EDE_UNSET)
+  if (pheader && (ede != EDE_UNSET || ede_len > 0))
     {
-      u16 swap = htons((u16)ede);
-      n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
+      if (ede_len > 0)
+	  n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 1);
+	else
+	  {
+	    u16 swap = htons((u16)ede);
+	    n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
+	  }
     }
+  /**************************************/
 
   if (RCODE(header) == NXDOMAIN)
     server->nxdomain_replies++;
@@ -1195,7 +1213,7 @@ void reply_query(int fd, time_t now)
 
   server = daemon->serverarray[c];
 
-  FTL_header_analysis(header->hb4, RCODE(header), server, daemon->log_display_id);
+  FTL_header_analysis(header->hb4, server, daemon->log_display_id);
 
   if (RCODE(header) != REFUSED)
     daemon->serverarray[first]->last_server = c;
@@ -1919,8 +1937,9 @@ void receive_query(struct listener *listen, time_t now)
       if(piholeblocked)
 	{
 	  // Generate DNS packet for reply
-	  int ede = EDE_UNSET;
-	  n = FTL_make_answer(header, ((char *) header) + udp_size, n, &ede);
+	  unsigned char ede_data[MAX_EDE_DATA] = { 0 };
+	  size_t ede_len = 0;
+	  n = FTL_make_answer(header, ((char *) header) + udp_size, n, ede_data, &ede_len);
 	  // The pseudoheader may contain important information such as EDNS0 version important for
 	  // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
 
@@ -1930,10 +1949,9 @@ void receive_query(struct listener *listen, time_t now)
 
 	  if (have_pseudoheader)
 	  {
-	    u16 swap = htons(ede);
-	    if (ede != EDE_UNSET) // Add EDNS0 option EDE if applicable
+	    if (ede_len > 0) // Add EDNS0 option EDE if applicable
 	      n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
-				   daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+				   daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
 	    else
 	      n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
 				   daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
@@ -2087,12 +2105,19 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	    data_sent = 1;
 	  else if (errno == ETIMEDOUT || errno == EHOSTUNREACH)
 	    timedout = 1;
+	  /**** Pi-hole modification ****/
+	  if (errno != 0)
+	    FTL_connection_error("failed to send TCP(fast-open) packet", &serv->addr);
+	  /******************************/
 #endif
 	  
 	  /* If fastopen failed due to lack of reply, then there's no point in
 	     trying again in non-FASTOPEN mode. */
 	  if (timedout || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
 	    {
+	      /**** Pi-hole modification ****/
+	      FTL_connection_error("failed to send TCP(connect) packet", &serv->addr);
+	      /******************************/
 	      close(serv->tcpfd);
 	      serv->tcpfd = -1;
 	      continue;
@@ -2107,6 +2132,10 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  !read_write(serv->tcpfd, &c2, 1, 1) ||
 	  !read_write(serv->tcpfd, payload, (rsize = (c1 << 8) | c2), 1))
 	{
+	  /**** Pi-hole modification ****/
+	  FTL_connection_error("failed to send TCP(read_write) packet", &serv->addr);
+	  /******************************/
+
 	  close(serv->tcpfd);
 	  serv->tcpfd = -1;
 	  /* We get data then EOF, reopen connection to same server,
@@ -2144,7 +2173,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
   unsigned char *packet = NULL;
   struct dns_header *new_header = NULL;
   
-  FTL_header_analysis(header->hb4, RCODE(header), server, daemon->log_display_id);
+  FTL_header_analysis(header->hb4, server, daemon->log_display_id);
 
   while (1)
     {
@@ -2448,18 +2477,18 @@ unsigned char *tcp_request(int confd, time_t now,
 	  // Interface name is known from before forking
 	  if(piholeblocked)
 	  {
-	    int ede = EDE_UNSET;
+	    unsigned char ede_data[MAX_EDE_DATA] = { 0 };
+	    size_t ede_len = 0;
 	    stale = 0;
 	    // Generate DNS packet for reply
-	    m = FTL_make_answer(header, ((char *) header) + 65536, size, &ede);
+	    m = FTL_make_answer(header, ((char *) header) + 65536, size, ede_data, &ede_len);
 	    // The pseudoheader may contain important information such as EDNS0 version important for
 	    // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
 	    if (have_pseudoheader && m > 0)
 	    {
-	      u16 swap = htons(ede);
-	      if (ede != -1) // Add EDNS0 option EDE if applicable
+	      if (ede_len > 0) // Add EDNS0 option EDE if applicable
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
-				     daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+				     daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
 	      else
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
 				     daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);

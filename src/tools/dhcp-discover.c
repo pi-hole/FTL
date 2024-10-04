@@ -54,15 +54,12 @@
 // we scan for DHCP activity.
 #define MAXTHREADS 32
 
-// Probe DHCP servers responding to the broadcast address
-#define PROBE_BCAST
-
 // Should we generate test data for DHCP option 249?
 //#define TEST_OPT_249
 
 // Global lock used by all threads
 static pthread_mutex_t lock;
-static void __attribute__((format(gnu_printf, 1, 2))) printf_locked(const char *format, ...)
+static void __attribute__((format(printf, 1, 2))) printf_locked(const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);
@@ -179,7 +176,7 @@ struct dhcp_packet_data
 	unsigned char chaddr [MAX_DHCP_CHADDR_LENGTH];  // hardware address of this machine
 	char sname [MAX_DHCP_SNAME_LENGTH];             // name of DHCP server
 	char file [MAX_DHCP_FILE_LENGTH];               // boot file name (used for diskless booting?)
-	char options[MAX_DHCP_OPTIONS_LENGTH];          // options
+	unsigned char options[MAX_DHCP_OPTIONS_LENGTH]; // options
 };
 
 // sends a DHCPDISCOVER message to the specified in an attempt to find DHCP servers
@@ -219,7 +216,7 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	discover_packet.options[6] = 1;  // DHCP message type code for DHCPDISCOVER
 
 	// Place end option at the end of the options
-	discover_packet.options[7] = 255;
+	discover_packet.options[7] = (char)255;
 
 	// Send the DHCPDISCOVER packet to the specified address
 	struct sockaddr_in target = { 0 };
@@ -236,7 +233,7 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	printf_locked("DHCDISCOVER giaddr:  %s\n", inet_ntoa(discover_packet.giaddr));
 #endif
 	// send the DHCPDISCOVER packet
-	const int bytes = sendto(sock, (char *)&discover_packet, sizeof(discover_packet), 0, (struct sockaddr *)&target, sizeof(target));
+	const ssize_t bytes = sendto(sock, (char *)&discover_packet, sizeof(discover_packet), 0, (struct sockaddr *)&target, sizeof(target));
 	if(bytes < 0)
 	{
 		// strerror() returns "Required key not available" for ENOKEY
@@ -250,7 +247,7 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	}
 
 #ifdef DEBUG
-	printf_locked("Sent %d bytes\n", bytes);
+	printf_locked("Sent %zu bytes\n", (size_t)bytes);
 #endif
 	return true;
 }
@@ -340,7 +337,7 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 				// possible "(empty)"
 				const size_t bufsiz = 4*optlen + 9;
 				char *buffer = calloc(bufsiz, sizeof(char));
-				binbuf_to_escaped_C_literal(&offer_packet->options[x], optlen, buffer, bufsiz);
+				binbuf_to_escaped_C_literal((char*)&offer_packet->options[x], optlen, buffer, bufsiz);
 				printf("%s: \"%s\"\n", opttab[i].name, buffer);
 				free(buffer);
 			}
@@ -428,7 +425,7 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 				// chars per control character plus room for
 				// possible "(empty)"
 				char *buffer = calloc(4*optlen + 9, sizeof(char));
-				binbuf_to_escaped_C_literal(&offer_packet->options[x], optlen, buffer, sizeof(buffer));
+				binbuf_to_escaped_C_literal((char*)&offer_packet->options[x], optlen, buffer, sizeof(buffer));
 				printf("wpad-server: \"%s\"\n", buffer);
 				free(buffer);
 			}
@@ -730,7 +727,7 @@ int run_dhcp_discover(void)
 	pthread_attr_init(&attr);
 
 	// Create processing/printfing lock
-	pthread_mutexattr_t lock_attr = {};
+	pthread_mutexattr_t lock_attr;
 	// Initialize the lock attributes
 	pthread_mutexattr_init(&lock_attr);
 	// Initialize the lock

@@ -19,6 +19,10 @@
 #include "args.h"
 // suggest_closest()
 #include "config/suggest.h"
+// LINE_MAX
+#include <limits.h>
+// openFTLtoml()
+#include "config/toml_helper.h"
 struct env_item
 {
 	bool used;
@@ -161,16 +165,51 @@ void freeEnvVars(void)
 	}
 }
 
-bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
+bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, struct config *newconf, cJSON *forced_vars, bool *reset)
 {
 	// First check if a environmental variable with the given key exists by
 	// iterating over the list of FTLCONF_ variables
 	struct env_item *item = getFTLenv(conf_item->e);
 
-	// Return early if this environment variable does not exist
 	if(item == NULL)
-		return false;
+	{
+		// Environment variable does not exist
 
+		// Check if this was a forced setting before
+		// If so, we revert the config option to default
+		for(int i = 0; i < cJSON_GetArraySize(forced_vars); i++)
+		{
+			const char *forced_var = cJSON_GetArrayItem(forced_vars, i)->valuestring;
+			if(strcmp(forced_var, conf_item->k) == 0)
+			{
+				log_info("Resetting %s to default (not forced anymore)", conf_item->k);
+
+				// Revert to default
+				if(conf_item->t == CONF_STRING_ALLOCATED)
+				{
+					// Free previously allocated string
+					free(conf_item->v.s);
+					// Make a duplicate of the default value
+					conf_item->v.s = strdup(conf_item->d.s);
+				}
+				else
+				{
+					// Revert to default value
+					memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->v));
+				}
+
+				// Mark this environment variable as reset to
+				// default
+				if(reset != NULL)
+					*reset = true;
+				break;
+			}
+		}
+
+		// Return false as this setting is not forced by an environment
+		// variable
+		return false;
+	}
 
 	// Mark this environment variable as used
 	item->used = true;
@@ -460,6 +499,25 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 			}
 			break;
 		}
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		{
+			const int edns_mode = get_edns_mode_val(envvar);
+			if(edns_mode != -1)
+			{
+				conf_item->v.edns_mode = edns_mode;
+				item->valid = true;
+			}
+			else
+			{
+
+				item->error = "not an allowed option";
+				item->allowed = conf_item->h;
+				log_warn("ENV %s is %s, allowed options are: %s",
+				         conf_item->e, item->error, item->allowed);
+				item->valid = false;
+			}
+			break;
+		}
 		case CONF_ENUM_PRIVACY_LEVEL:
 		{
 			int val = 0;
@@ -560,4 +618,55 @@ bool readEnvValue(struct conf_item *conf_item, struct config *newconf)
 	}
 
 	return true;
+}
+
+cJSON *read_forced_vars(const unsigned int version)
+{
+	// Create cJSON array to store forced variables
+	cJSON *env_vars = cJSON_CreateArray();
+
+	// Try to open default config file. Use fallback if not found
+	FILE *fp;
+	if((fp = openFTLtoml("r", version)) == NULL)
+	{
+		// Return empty cJSON array
+		return env_vars;
+	}
+
+	// Read file line by line until we get to the end of the file where the
+	// statistics are stored, specifically, the line starting with
+	// "# X entr{y is,ies are} forced through environment"
+	char line[LINE_MAX] = { 0 };
+	while(fgets(line, sizeof(line), fp) != NULL)
+	{
+		// Check if this is the line we are looking for
+		if(strncmp(line, "# ", 2) == 0)
+		{
+			// Check if this is the line we are looking for
+			if(strstr(line, "forced through environment:") != NULL)
+				break;
+		}
+	}
+
+	// Read the next lines to extract the variables
+	while(fgets(line, sizeof(line), fp) != NULL)
+	{
+		// Check if this is the line we are looking for
+		if(strncmp(line, "#   - ", 6) != 0)
+		{
+			// We are done, break out of the loop
+			break;
+		}
+
+		// else: Add the variable to the cJSON array
+		// Trim the string (remove leading "#   - " and trailing newline)
+		line[strcspn(line, "\n")] = '\0';
+		cJSON_AddItemToArray(env_vars, cJSON_CreateString(line + 6));
+	}
+
+	// Close file and release exclusive lock
+	closeFTLtoml(fp);
+
+	// Return cJSON array
+	return env_vars;
 }

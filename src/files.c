@@ -13,11 +13,13 @@
 #include "config/config.h"
 #include "config/setupVars.h"
 #include "log.h"
+// sha256_raw_to_hex()
+#include "config/password.h"
+// log_verify_message()
+#include "database/message-table.h"
 
 // opendir(), readdir()
 #include <dirent.h>
-// getpwuid()
-#include <pwd.h>
 // getgrgid()
 #include <grp.h>
 // NAME_MAX
@@ -29,6 +31,10 @@
 // sendfile()
 #include <fcntl.h>
 #include <sys/sendfile.h>
+// PRIu64
+#include <inttypes.h>
+//basename()
+#include <libgen.h>
 
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
@@ -246,11 +252,30 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 		return 0;
 	}
 
-	// Explicitly cast the block counts to unsigned long long to avoid
-	// overflowing with drives larger than 4 GB on 32bit systems
-	const unsigned long long size = (unsigned long long)f.f_blocks * f.f_frsize;
-	const unsigned long long free = (unsigned long long)f.f_bavail * f.f_bsize;
-	const unsigned long long used = size - free;
+	// Explicitly cast the block counts to uint64_t to avoid overflowing
+	// with drives larger than 4 GB on 32bit systems. Multiply the block
+	// count with the fragment size to get the total size in bytes, see
+	// https://github.com/torvalds/linux/blob/39cd87c4eb2b893354f3b850f916353f2658ae6f/fs/nfs/super.c#L285-L291
+	const uint64_t size = (uint64_t)f.f_blocks * f.f_frsize;
+	const uint64_t free = (uint64_t)f.f_bavail * f.f_frsize;
+	const uint64_t used = size - free;
+
+	// Print statvfs() results if in debug.gc mode
+	if(config.debug.gc.v.b)
+	{
+		log_debug(DEBUG_GC, "Statvfs() results for %s:", path);
+		log_debug(DEBUG_GC, "  Block size: %lu", f.f_bsize);
+		log_debug(DEBUG_GC, "  Fragment size: %lu", f.f_frsize);
+		log_debug(DEBUG_GC, "  Total blocks: %"PRIu64, f.f_blocks);
+		log_debug(DEBUG_GC, "  Free blocks: %"PRIu64, f.f_bfree);
+		log_debug(DEBUG_GC, "  Available blocks: %"PRIu64, f.f_bavail);
+		log_debug(DEBUG_GC, "  Total inodes: %"PRIu64, f.f_files);
+		log_debug(DEBUG_GC, "  Free inodes: %"PRIu64, f.f_ffree);
+		log_debug(DEBUG_GC, "  Available inodes: %"PRIu64, f.f_favail);
+		log_debug(DEBUG_GC, "  Filesystem ID: %lu", f.f_fsid);
+		log_debug(DEBUG_GC, "  Mount flags: %lu", f.f_flag);
+		log_debug(DEBUG_GC, "  Maximum filename length: %lu", f.f_namemax);
+	}
 
 	// Create human-readable total size
 	char prefix_size[2] = { 0 };
@@ -269,37 +294,51 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 	// If size is 0, we return 0% to avoid division by zero below
 	if(size == 0)
 		return 0;
-	// If used is larger than size, we return 100%
-	if(used > size)
-		return 100;
+
 	// Return percentage of used memory at this path (rounded down)
-	return (used*100)/(size + 1);
+	// If the used size is larger than the total size, this intentionally
+	// returns more than 100% so that the caller can handle this case
+	// (this can happen with docker on macOS)
+	return (used * 100) / size;
 }
 
 // Get the filesystem where the given path is located
 struct mntent *get_filesystem_details(const char *path)
 {
-	/* stat the file in question */
+	// stat the file in question
 	struct stat path_stat;
 	stat(path, &path_stat);
 
-	/* iterate through the list of devices */
+	// iterate through the list of devices
 	FILE *file = setmntent("/proc/mounts", "r");
 	struct mntent *ent = NULL;
+	bool found = false;
 	while(file != NULL && (ent = getmntent(file)) != NULL)
 	{
-		/* stat the mount point */
+		// stat the mount point
 		struct stat dev_stat;
-		stat(ent->mnt_dir, &dev_stat);
+		if(stat(ent->mnt_dir, &dev_stat) < 0)
+		{
+			if(config.debug.gc.v.b)
+			{
+				log_warn("get_filesystem_details(): Failed to get stat for \"%s\": %s",
+				         ent->mnt_dir, strerror(errno));
+			}
+			continue;
+		}
 
-		/* check if our file and the mount point are on the same device */
+		// check if our file and the mount point are on the same device
 		if(dev_stat.st_dev == path_stat.st_dev)
+		{
+			found = true;
 			break;
+		}
 	}
 
+	// Close mount table file handle
 	endmntent(file);
 
-	return ent;
+	return found ? ent : NULL;
 }
 
 // Credits: https://stackoverflow.com/a/55410469
@@ -395,29 +434,35 @@ static int copy_file(const char *source, const char *destination)
 }
 
 // Change ownership of file to pihole user
-static bool chown_pihole(const char *path)
+bool chown_pihole(const char *path, struct passwd *pwd)
 {
-	// Get pihole user's uid and gid
-	struct passwd *pwd = getpwnam("pihole");
+	// Get pihole user's UID and GID if not provided
 	if(pwd == NULL)
 	{
-		log_warn("chown_pihole(): Failed to get pihole user's uid: %s", strerror(errno));
-		return false;
+		pwd = getpwnam("pihole");
+		if(pwd == NULL)
+		{
+			log_warn("chown_pihole(): Failed to get pihole user's UID/GID: %s", strerror(errno));
+			return false;
+		}
 	}
-	struct group *grp = getgrnam("pihole");
-	if(grp == NULL)
+
+	// Get group name
+	struct group *grp = getgrgid(pwd->pw_gid);
+	const char *grp_name = grp != NULL ? grp->gr_name : "<unknown>";
+
+	// Change ownership of file to pihole user
+	if(chown(path, pwd->pw_uid, pwd->pw_gid) < 0)
 	{
-		log_warn("chown_pihole(): Failed to get pihole user's gid: %s", strerror(errno));
+		log_warn("Failed to change ownership of \"%s\" to %s:%s (%u:%u): %s",
+		         path, pwd->pw_name, grp_name, pwd->pw_uid, pwd->pw_gid,
+		         errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
+
 		return false;
 	}
 
-	// Change ownership of file to pihole user
-	if(chown(path, pwd->pw_uid, grp->gr_gid) < 0)
-	{
-		log_warn("chown_pihole(): Failed to change ownership of \"%s\" to %u:%u: %s",
-		         path, pwd->pw_uid, grp->gr_gid, strerror(errno));
-		return false;
-	}
+	log_debug(DEBUG_INOTIFY, "Changed ownership of \"%s\" to %s:%s (%u:%u)",
+	          path, pwd->pw_name, grp_name, pwd->pw_uid, pwd->pw_gid);
 
 	return true;
 }
@@ -494,7 +539,7 @@ void rotate_files(const char *path, char **first_file)
 			}
 
 			// Change ownership of file to pihole user
-			chown_pihole(new_path);
+			chown_pihole(new_path, NULL);
 		}
 
 		// Free memory
@@ -671,7 +716,7 @@ bool files_different(const char *pathA, const char* pathB, unsigned int from)
 }
 
 // Create SHA256 checksum of a file
-bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE])
+bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE], const bool skip_end)
 {
 	// Open file
 	FILE *fp = fopen(path, "rb");
@@ -685,14 +730,30 @@ bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE])
 	struct sha256_ctx ctx;
 	sha256_init(&ctx);
 
-	// Read file in chunks of <pagesize> bytes
-	const size_t pagesize = getpagesize();
-	unsigned char *buf = calloc(pagesize, sizeof(char));
+	// Get size of file
+	fseek(fp, 0, SEEK_END);
+	size_t filesize = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+
+	// Determine chunk size
+	size_t chunksize = getpagesize();
+
+	// Read file in chunks
+	unsigned char *buf = calloc(chunksize, sizeof(char));
 	size_t len;
-	while((len = fread(buf, sizeof(char), pagesize, fp)) > 0)
+	while((len = fread(buf, sizeof(char), chunksize, fp)) > 0)
 	{
 		// Update SHA256 context
 		sha256_update(&ctx, len, buf);
+
+		// Reduce filesize by the number of bytes read
+		filesize -= len;
+
+		// If we want to skip the end of the file, we have to adjust the
+		// chunk size to the remaining bytes minus the size of the SHA256
+		// checksum itself
+		if(skip_end && filesize <= chunksize + SHA256_DIGEST_SIZE)
+			chunksize = filesize - SHA256_DIGEST_SIZE;
 	}
 
 	// Finalize SHA256 context
@@ -705,4 +766,79 @@ bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE])
 	free(buf);
 
 	return true;
+}
+
+/**
+ * @brief Verifies the integrity of the current executable file by comparing its
+ * SHA256 checksum with a pre-computed hash stored in the last 8 bytes of the
+ * binary.
+ *
+ * @param verbose A boolean value indicating whether verbose output should be
+ * enabled.
+ * @return Returns true if the checksum matches the expected value, false
+ * otherwise.
+ */
+bool verify_FTL(bool verbose)
+{
+	// Get the filename of the current executable
+	char filename[PATH_MAX] = { 0 };
+	if(readlink("/proc/self/exe", filename, sizeof(filename)) == -1)
+	{
+		log_err("Failed to read self filename: %s", strerror(errno));
+		return -1;
+	}
+
+	// Read the pre-computed hash - it is stored in the last 8 bytes of the
+	// binary itself
+	uint8_t self_hash[SHA256_DIGEST_SIZE];
+	FILE *f = fopen(filename, "r");
+	if(f == NULL)
+	{
+		log_err("Failed to open self file \"%s\": %s", filename, strerror(errno));
+		return -1;
+	}
+	if(fseek(f, -SHA256_DIGEST_SIZE, SEEK_END) != 0)
+	{
+		log_err("Failed to seek to hash: %s", strerror(errno));
+		fclose(f);
+		return -1;
+	}
+	if(fread(self_hash, SHA256_DIGEST_SIZE, 1, f) != 1)
+	{
+		log_err("Failed to read hash: %s", strerror(errno));
+		fclose(f);
+		return -1;
+	}
+	fclose(f);
+
+	// Calculate the hash of the binary
+	// Skip the last 256 bit as it contains the hast itself
+	uint8_t checksum[SHA256_DIGEST_SIZE];
+	if(!sha256sum(filename, checksum, true))
+	{
+		log_err("Failed to calculate SHA256 checksum of %s", filename);
+		return false;
+	}
+
+	// Compare the checksums
+	bool success = memcmp(checksum, self_hash, SHA256_DIGEST_SIZE) == 0;
+	if(!success)
+	{
+		// Convert checksums to human-readable hex strings
+		char expected_hex[SHA256_DIGEST_SIZE*2+1];
+		sha256_raw_to_hex(self_hash, expected_hex);
+		char actual_hex[SHA256_DIGEST_SIZE*2+1];
+		sha256_raw_to_hex(checksum, actual_hex);
+
+		if(!verbose) // during startup
+			log_verify_message(expected_hex, actual_hex);
+		else // CLI verification
+		{
+			log_err("Checksum verification failed!");
+			log_err("Expected: %s", expected_hex);
+			log_err("Actual:   %s", actual_hex);
+		}
+	}
+
+	return success;
 }
