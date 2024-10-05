@@ -504,6 +504,7 @@ void *GC_thread(void *val)
 	while(!killed)
 	{
 		const time_t now = time(NULL);
+		const double time_start = double_time();
 		if(config.dns.rateLimit.interval.v.ui > 0 &&
 		   (unsigned int)(now - lastRateLimitCleaner) >= config.dns.rateLimit.interval.v.ui)
 		{
@@ -560,7 +561,26 @@ void *GC_thread(void *val)
 			reread_config();
 		}
 
-		thread_sleepms(GC, 1000);
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
+		// Reset the queries-per-second counter
+		lock_shm();
+		reset_qps(now);
+		unlock_shm();
+
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
+		// Sleep for the remaining time of the interval (if any)
+		const double time_end = double_time();
+		const double time_diff = time_end - time_start;
+		const double sleep_time = 1.0 - time_diff; // 1.0 second interval
+
+		if(sleep_time > 0)
+			thread_sleepms(GC, (unsigned int)(sleep_time*1000));
 	}
 
 	// Close inotify watcher
