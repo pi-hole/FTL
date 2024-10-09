@@ -484,6 +484,12 @@ void parse_args(int argc, char* argv[])
 		exit(run_arp_scan(scan_all, extreme_mode));
 	}
 
+	// Adam exit code simulation
+	if(argc > 1 && strcmp(argv[1], "--adam") == 0)
+	{
+		exit(42);
+	}
+
 	// IDN2 conversion mode
 	if(argc > 1 && strcmp(argv[1], "idn2") == 0)
 	{
