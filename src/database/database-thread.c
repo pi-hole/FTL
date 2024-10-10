@@ -48,10 +48,9 @@ static bool delete_old_queries_in_DB(sqlite3 *db)
 	// Get how many rows have been affected (deleted)
 	const int affected = sqlite3_changes(db);
 
-	// Print final message only if there is a difference
-	if((config.debug.database.v.b) || affected)
-		log_info("Size of %s is %.2f MB, deleted %i rows",
-		         config.files.database.v.s, 1e-6*get_FTL_db_filesize(), affected);
+	// Print debug message
+	log_debug(DEBUG_DATABASE, "Size of %s is %.2f MB, deleted %i rows",
+	          config.files.database.v.s, 1e-6*get_FTL_db_filesize(), affected);
 
 	return true;
 }
