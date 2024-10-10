@@ -36,7 +36,7 @@ sqlite3_stmt_vec *new_sqlite3_stmt_vec(unsigned int initial_size)
 	return v;
 }
 
-static void resize_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int capacity)
+static bool resize_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int capacity)
 {
 	log_debug(DEBUG_VECTORS, "Resizing sqlite3_stmt* vector %p from %u to %u", v, v->capacity, capacity);
 
@@ -48,7 +48,7 @@ static void resize_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int capacity)
 	{
 		log_err("Memory allocation failed in resize_sqlite3_stmt_vec(%p, %u)",
 		        v, capacity);
-		return;
+		return false;
 	}
 
 	// Update items pointer
@@ -60,6 +60,8 @@ static void resize_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int capacity)
 
 	// Update capacity
 	v->capacity = capacity;
+
+	return true;
 }
 
 void set_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int index, sqlite3_stmt *item)
@@ -78,7 +80,8 @@ void set_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int index, sqlite3_stmt 
 		// Allocate more memory when trying to set a statement vector entry with
 		// an index larger than the current array size (this makes set an
 		// equivalent alternative to append)
-		resize_sqlite3_stmt_vec(v, index + VEC_ALLOC_STEP);
+		if(!resize_sqlite3_stmt_vec(v, index + VEC_ALLOC_STEP))
+			return;
 	}
 
 	// Set item
@@ -94,13 +97,15 @@ sqlite3_stmt * __attribute__((pure)) get_sqlite3_stmt_vec(sqlite3_stmt_vec *v, u
 	{
 		log_err("Passed NULL vector to get_sqlite3_stmt_vec(%p, %u)",
 		        v, index);
-		return 0;
+		return NULL;
 	}
 
 	if(index >= v->capacity)
 	{
 		// Silently increase size of vector if trying to read out-of-bounds
-		resize_sqlite3_stmt_vec(v, index + VEC_ALLOC_STEP);
+		// Return NULL if the allocation fails
+		if(!resize_sqlite3_stmt_vec(v, index + VEC_ALLOC_STEP))
+			return NULL;
 	}
 
 	sqlite3_stmt* item = v->items[index];
