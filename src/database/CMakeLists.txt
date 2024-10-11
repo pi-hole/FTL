@@ -15,9 +15,12 @@
 set(sqlite3_sources
         shell.c
         sqlite3.c
+        sqlite3.h
         )
 
 add_library(sqlite3 OBJECT ${sqlite3_sources})
+# Define the function that will be called to initialize the sqlite3 shell
+target_compile_definitions(sqlite3 PRIVATE "-DSQLITE_SHELL_INIT_PROC=pihole_sqlite3_initalize")
 target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type -Wno-sign-compare -Wno-implicit-function-declaration -Wno-int-conversion)
 
 if (CMAKE_C_COMPILER_ID STREQUAL "Clang")

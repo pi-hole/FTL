@@ -186,10 +186,9 @@ static void isIPv6_impl(sqlite3_context *context, int argc, sqlite3_value **argv
 	sqlite3_result_int(context, 0);
 }
 
-int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const struct sqlite3_api_routines *pApi)
+// Initialize Pi-hole SQLite3 extension
+static int sqlite3_pihole_extensions_init(sqlite3 *db, char **pzErrMsg, const struct sqlite3_api_routines *pApi)
 {
-	(void)pzErrMsg;  /* Unused parameter */
-
 	// Register new sqlite function subnet_match taking 2 arguments in UTF8 format.
 	// The function is deterministic in the sense of always returning the same output for the same input.
 	// We define a scalar function here so the last two pointers are NULL.
@@ -215,4 +214,19 @@ int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const str
 	}
 
 	return rc;
+}
+
+/**
+ * @brief Initializes the Pi-hole SQLite3 extensions and the SQLite3 engine.
+ *
+ * This function registers the Pi-hole provided SQLite3 extensions and initializes
+ * the SQLite3 engine. It should be called before any SQLite3 operations are performed.
+ */
+void pihole_sqlite3_initalize(void)
+{
+	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
+	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
+
+	// Initialize the SQLite3 engine
+	sqlite3_initialize();
 }

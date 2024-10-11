@@ -277,8 +277,9 @@ void db_init(void)
 	// explicitly check for failures to have happened
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
 
-	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
-	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
+	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c) and
+	// initialize SQLite3 engine
+	pihole_sqlite3_initalize();
 
 	// Check if database exists, if not create empty database
 	if(!file_exists(config.files.database.v.s))

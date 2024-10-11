@@ -12,6 +12,6 @@
 #define SQLITE3_EXT_H
 
 // Initialization point for SQLite3 extensions
-extern int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const struct sqlite3_api_routines *pApi);
+void pihole_sqlite3_initalize(void);
 
 #endif // SQLITE3_EXT_H
