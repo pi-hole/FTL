@@ -213,6 +213,9 @@ static int sqlite3_pihole_extensions_init(sqlite3 *db, char **pzErrMsg, const st
 		        sqlite3_errstr(rc));
 	}
 
+	// Initialize the percentile extension
+	sqlite3_percentile_init(db, pzErrMsg, pApi);
+
 	return rc;
 }
 
