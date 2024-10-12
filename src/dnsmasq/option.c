@@ -3414,8 +3414,16 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
     
     case 'q': /* --log-queries */
       set_option_bool(OPT_LOG);
-      if (arg && strcmp(arg, "extra") == 0)
-	set_option_bool(OPT_EXTRALOG);
+      if (arg)
+	{
+	  if (strcmp(arg, "extra") == 0)
+	    set_option_bool(OPT_EXTRALOG);
+	  else if (strcmp(arg, "proto") == 0)
+	    {
+	      set_option_bool(OPT_EXTRALOG);
+	      set_option_bool(OPT_LOG_PROTO);
+	    }
+	}
       break;
 
     case LOPT_MAX_LOGS:  /* --log-async */

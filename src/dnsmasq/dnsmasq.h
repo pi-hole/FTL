@@ -285,7 +285,8 @@ struct event_desc {
 #define OPT_NO_IDENT       70
 #define OPT_CACHE_RR       71
 #define OPT_LOCALHOST_SERVICE  72
-#define OPT_LAST           73
+#define OPT_LOG_PROTO      73
+#define OPT_LAST           74
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -761,9 +762,7 @@ struct dyndir {
 #define STAT_SECURE_WILDCARD    0x70000
 #define STAT_OK                 0x80000
 #define STAT_ABANDONED          0x90000
-#define STAT_NEED_DS_QUERY      0xa0000
-#define STAT_NEED_KEY_QUERY     0xb0000
-#define STAT_ASYNC              0xc0000
+#define STAT_ASYNC              0xa0000
 
 #define DNSSEC_FAIL_NYV         0x0001 /* key not yet valid */
 #define DNSSEC_FAIL_EXP         0x0002 /* key expired */
@@ -1545,11 +1544,12 @@ int option_read_dynfile(char *file, int flags);
 /* forward.c */
 void reply_query(int fd, time_t now);
 void receive_query(struct listener *listen, time_t now);
+void return_reply(time_t now, struct frec *forward, struct dns_header *header, ssize_t n, int status);
 #ifdef HAVE_DNSSEC
 void pop_and_retry_query(struct frec *forward, int status, time_t now);
-int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n, 
-		    int class, char *name, char *keyname, struct server *server, 
-		    int have_mark, unsigned int mark, int *keycount, int *validatecount);
+int tcp_from_udp(time_t now, int status, struct dns_header *header, ssize_t *n, 
+		 int class, char *name, char *keyname, struct server *server, 
+		 int *keycount, int *validatecount);
 #endif
 unsigned char *tcp_request(int confd, time_t now,
 			   union mysockaddr *local_addr, struct in_addr netmask, int auth_dns);
@@ -1672,7 +1672,7 @@ void send_event(int fd, int event, int data, char *msg);
 void clear_cache_and_reload(time_t now);
 #ifdef HAVE_DNSSEC
 int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header *header,
-		size_t plen, int class, struct server *server, int *keycount, int *validatecount);
+		ssize_t *plen, int class, struct server *server, int *keycount, int *validatecount);
 #endif
 
 /* netlink.c */

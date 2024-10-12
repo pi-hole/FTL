@@ -26,8 +26,10 @@ static struct frec *lookup_frec_dnssec(char *target, int class, int flags, struc
 static unsigned short get_id(void);
 static void free_frec(struct frec *f);
 static void query_full(time_t now, char *domain);
+static int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n, 
+			   int class, char *name, char *keyname, struct server *server, 
+			   int have_mark, unsigned int mark, int *keycount, int *validatecount);
 
-static void return_reply(time_t now, struct frec *forward, struct dns_header *header, ssize_t n, int status);
 
 /* Send a UDP packet with its source address set as "source" 
    unless nowild is true, when we just send it with the kernel default */
@@ -321,8 +323,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	goto reply;
       /* table full - flags == 0, return REFUSED */
       
-      /* Keep copy of query if we're doing fast retry. */
-      if (daemon->fast_retry_time != 0)
+      /* Keep copy of query if we're doing fast retry or DNSSEC. */
+      if (daemon->fast_retry_time != 0 || option_bool(OPT_DNSSEC_VALID))
 	{
 	  forward->stash = blockdata_alloc((char *)header, plen);
 	  forward->stash_len = plen;
@@ -972,36 +974,59 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
       /* If all replies to a query are REFUSED, give up. */
       if (RCODE(header) == REFUSED)
 	status = STAT_ABANDONED;
-      else if ((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) && (header->hb3 & HB3_TC))
+      else if (header->hb3 & HB3_TC)
 	{
 	  /* Truncated answer can't be validated.
 	     If this is an answer to a DNSSEC-generated query, we 
-	     switch to TCP mode. For downstream queries get the client 
+	     switch to TCP mode. For downstream queries, if the client didn't ask for 
+	     DNSSEC RRs, do the query over TCP, and hope that it fits once the DNSSEC RRs 
+	     have been stripped, otherwise get the client 
 	     to retry over TCP, so return an answer with the TC bit set. */
-	  unsigned char *p = (unsigned char *)(header+1);
-	  
-	  /* Get the query we sent by UDP */
-	  blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
-	  
-	  if  (extract_name(header, forward->stash_len, &p, daemon->namebuff, 1, 4))
-	    log_query(F_UPSTREAM | F_NOEXTRA, daemon->namebuff, NULL, "truncated", (forward->flags & FREC_DNSKEY_QUERY) ? T_DNSKEY : T_DS);
-	  
-	  /* Don't count failed UDP attempt AND TCP */
-	  orig->work_counter++;
-
-	  /* NOTE: Can't move connection marks from UDP to TCP */
-	  status = swap_to_tcp(forward, now, (forward->flags & FREC_DNSKEY_QUERY) ? STAT_NEED_KEY_QUERY : STAT_NEED_DS_QUERY,
-			       header, forward->stash_len, forward->class, forward->sentto, &orig->work_counter, &orig->validate_counter);
-
-	  /* We forked a new process. pop_and_retry_query() will be called when is completes. */
-	  if (STAT_ISEQUAL(status, STAT_ASYNC))
+	  if ((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) || !(forward->flags & FREC_DO_QUESTION))
 	    {
-	      forward->flags |=  FREC_GONE_TO_TCP;
-	      return;
+	      status = (forward->flags & FREC_DNSKEY_QUERY) ? STAT_NEED_KEY:
+		((forward->flags & FREC_DS_QUERY) ? STAT_NEED_DS : STAT_OK);
+		
+	      /* Get the query we sent by UDP */
+	      blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
+	      
+	      if  (extract_request(header, forward->stash_len, daemon->namebuff, NULL))
+		log_query(F_UPSTREAM | F_NOEXTRA, daemon->namebuff, NULL, "truncated", 0);
+	      
+	      /* Don't count failed UDP attempt AND TCP */
+	      if (status != STAT_OK)
+		orig->work_counter++;
+	      else
+		{
+		  /* repeat changes made as packet forwarded over UDP */
+		  int cacheable;
+
+		  header->id = htons(forward->new_id);
+      
+		  plen = add_edns0_config(header, plen, ((unsigned char *)header) + PACKETSZ, &forward->frec_src.source, now, &cacheable);
+		  plen = add_do_bit(header, plen, ((unsigned char *) header) + PACKETSZ);
+		  
+		  /* For debugging, set Checking Disabled, otherwise, have the upstream check too,
+		     this allows it to select auth servers when one is returning bad data. */
+		  if (option_bool(OPT_DNSSEC_DEBUG))
+		    header->hb4 |= HB4_CD;
+		  
+		}
+
+	      /* NOTE: Can't move connection marks from UDP to TCP */
+	      plen = forward->stash_len;
+	      status = swap_to_tcp(forward, now, status, header, &plen, forward->class, forward->sentto, &orig->work_counter, &orig->validate_counter);
+	      
+	      /* We forked a new process. pop_and_retry_query() will be called when is completes. */
+	      if (STAT_ISEQUAL(status, STAT_ASYNC))
+		{
+		  forward->flags |=  FREC_GONE_TO_TCP;
+		  return;
+		}
 	    }
+	  else
+	    status = STAT_TRUNCATED;
 	}
-      else if (header->hb3 & HB3_TC)
-	status = STAT_TRUNCATED;
       else
 	{
 	  /* As soon as anything returns BOGUS, we stop and unwind, to do otherwise
@@ -1152,8 +1177,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
   if (log_resource)
     {
       /* Log the actual validation that made us barf. */
-      unsigned char *p = (unsigned char *)(header+1);
-      if  (extract_name(header, plen, &p, daemon->namebuff, 1, 4))
+      if  (extract_request(header, plen, daemon->namebuff, NULL))
 	my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
 		  daemon->namebuff[0] ? daemon->namebuff : ".");
     }
@@ -1290,7 +1314,7 @@ void reply_query(int fd, time_t now)
 #endif
 	{
 	  /* in fast retry mode, we have a copy of the query. */
-	  if (daemon->fast_retry_time != 0 && forward->stash)
+	  if ((daemon->fast_retry_time != 0 || option_bool(OPT_DNSSEC_VALID)) && forward->stash)
 	    {
 	      blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
 	      nn = forward->stash_len;
@@ -1386,7 +1410,7 @@ void reply_query(int fd, time_t now)
     return_reply(now, forward, header, n, STAT_OK); 
 }
 
-static void return_reply(time_t now, struct frec *forward, struct dns_header *header, ssize_t n, int status)
+void return_reply(time_t now, struct frec *forward, struct dns_header *header, ssize_t n, int status)
 {
   int check_rebind = 0, no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
   size_t nn;
@@ -2074,7 +2098,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
     {
       int data_sent = 0, timedout = 0;
       struct server *serv;
-      
+
       if (firstsendto == -1)
 	firstsendto = start;
       else
@@ -2185,6 +2209,77 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 }
 		  
 #ifdef HAVE_DNSSEC
+/* An answer to an downstream query or DNSSEC subquery has 
+   returned truncated. (Which type held in status).
+   Resend the query (in header) via TCP */
+int tcp_from_udp(time_t now, int status, struct dns_header *header, ssize_t *plenp, 
+		 int class, char *name, char *keyname, struct server *server, 
+		 int *keycount, int *validatecount)
+{
+  unsigned char *packet = whine_malloc(65536 + MAXDNAME + RRFIXEDSZ + sizeof(u16));
+  struct dns_header *new_header = (struct dns_header *)&packet[2];
+  int start, first, last, new_status;
+  ssize_t n = *plenp;
+  int have_req = extract_request(header, n, keyname, NULL);
+  int log_save = daemon->log_display_id;
+  
+  *plenp = 0;
+  
+  if (!packet)
+    return STAT_ABANDONED;
+
+  memcpy(new_header, header, n);
+
+  /* Set TCP flag in logs. */
+  daemon->log_display_id = -daemon->log_display_id;
+
+  /* send orginal query to same server that generated truncated reply on UDP. */
+  first = start = server->arrayposn;
+  last = first + 1;
+  
+  if (!STAT_ISEQUAL(status, STAT_OK) && (!have_req || (start = dnssec_server(server, keyname, &first, &last)) == -1))
+    new_status = STAT_ABANDONED;
+  else if ((n = tcp_talk(first, last, start, packet, n, 0, 0, &server)) == 0)
+    new_status = STAT_ABANDONED;
+  else
+    {
+      if (have_req)
+	{
+	  if (STAT_ISEQUAL(status, STAT_OK))
+	    log_query_mysockaddr(F_SERVER | F_FORWARD, keyname, &server->addr, NULL, 0);
+	  else
+	    log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, keyname, &server->addr,
+				 STAT_ISEQUAL(status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
+	}
+      
+      new_status = tcp_key_recurse(now, status, new_header, n, class, name, keyname, server, 0, 0, keycount, validatecount);
+      
+      if (STAT_ISEQUAL(status, STAT_OK))
+	{
+	  /* downstream query: strip DNSSSEC RRs and see if it will
+	     fit in a UDP reply. */
+	  rrfilter(new_header, (size_t *)&n, RRFILTER_DNSSEC);
+
+	  if (n >= daemon->edns_pktsz)
+	    {
+	      new_header->ancount = htons(0);
+	      new_header->nscount = htons(0);
+	      new_header->arcount = htons(0);
+	      n = resize_packet(header, n, NULL, 0);
+	      new_status = STAT_TRUNCATED;
+	    }
+
+	  /* return the stripped or truncated reply. */
+	  memcpy(header, new_header, n);
+	  *plenp = n;
+	}
+    }
+  
+   daemon->log_display_id = log_save;
+   free(packet);
+  return new_status;
+}			    
+ 
 /* Recurse down the key hierarchy */
 int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n, 
 		    int class, char *name, char *keyname, struct server *server, 
@@ -2193,7 +2288,7 @@ int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n,
   int first, last, start, new_status;
   unsigned char *packet = NULL;
   struct dns_header *new_header = NULL;
-  
+
   FTL_header_analysis(header, server, daemon->log_display_id);
 
   while (1)
@@ -2206,10 +2301,6 @@ int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n,
 	new_status = dnssec_validate_by_ds(now, header, n, name, keyname, class, validatecount);
       else if (STAT_ISEQUAL(status, STAT_NEED_DS))
 	new_status = dnssec_validate_ds(now, header, n, name, keyname, class, validatecount);
-      else if (STAT_ISEQUAL(status, STAT_NEED_KEY_QUERY))
-	new_status = STAT_NEED_KEY;
-      else if (STAT_ISEQUAL(status, STAT_NEED_DS_QUERY))
-	new_status = STAT_NEED_DS;
       else
 	new_status = dnssec_validate_reply(now, header, n, name, keyname, &class,
 					   !option_bool(OPT_DNSSEC_IGN_NS) && (server->flags & SERV_DO_DNSSEC),
@@ -2227,8 +2318,7 @@ int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n,
       if (STAT_ISEQUAL(new_status, STAT_ABANDONED))
 	{
 	  /* Log the actual validation that made us barf. */
-	  unsigned char *p = (unsigned char *)(header+1);
-	  if  (extract_name(header, n, &p, daemon->namebuff, 1, 4))
+	  if  (extract_request(header, n, daemon->namebuff, NULL))
 	    my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
 		      daemon->namebuff[0] ? daemon->namebuff : ".");
 	  break;
@@ -2248,35 +2338,23 @@ int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n,
 	  break;
 	}
       
-      if (STAT_ISEQUAL(status, STAT_NEED_KEY_QUERY) || STAT_ISEQUAL(status, STAT_NEED_DS_QUERY))
-	{
-	  /* recycling UDP query, copy into new buffer and get the name we're looking for. */
-	  unsigned char *p = (unsigned char *)(header+1);
-
-	  if  (extract_name(header, n, &p, keyname, 1, 4))
-	    {
-	      memcpy(new_header, header, n);
-	      m = n;
-	    }
-	  else
-	    {
-	      new_status = STAT_ABANDONED;
-	      break;
-	    }
-	}
-      else
-	m = dnssec_generate_query(new_header, ((unsigned char *) new_header) + 65536, keyname, class, 
-				  STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz);
+      m = dnssec_generate_query(new_header, ((unsigned char *) new_header) + 65536, keyname, class, 
+				STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz);
       
-      if ((start = dnssec_server(server, keyname, &first, &last)) == -1 ||
-	  (m = tcp_talk(first, last, start, packet, m, have_mark, mark, &server)) == 0)
+      if ((start = dnssec_server(server, keyname, &first, &last)) == -1)
+	{
+	  new_status = STAT_ABANDONED;
+	  break;
+	}
+      
+      if ((m = tcp_talk(first, last, start, packet, m, have_mark, mark, &server)) == 0)
 	{
 	  new_status = STAT_ABANDONED;
 	  break;
 	}
 
       log_save = daemon->log_display_id;
-      daemon->log_display_id = ++daemon->log_id;
+      daemon->log_display_id = -(++daemon->log_id);
       
       log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, keyname, &server->addr,
 			   STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
@@ -2286,16 +2364,14 @@ int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n,
       
       daemon->log_display_id = log_save;
       
-      /* If we got STAT_OK from a DS or KEY validation on recursing, loop round and try the failed validation again.
-	 Exception is if we're the first round is for DS or KEY and we're in the first invokation of this function.
-	 In that new_status will be STAT_OK if the validation worked, but we're all done anyway. */
-      if (!STAT_ISEQUAL(new_status, STAT_OK) || STAT_ISEQUAL(status, STAT_NEED_KEY_QUERY) || STAT_ISEQUAL(status, STAT_NEED_DS_QUERY))
-	 break; 
+      /* If we got STAT_OK from a DS or KEY validation on recursing, loop round and try the failed validation again. */
+      if (!STAT_ISEQUAL(new_status, STAT_OK))
+	break; 
     }
-    
+  
   if (packet)
     free(packet);
-    
+  
   return new_status;
 }
 #endif
@@ -2418,8 +2494,9 @@ unsigned char *tcp_request(int confd, time_t now,
       query_count++;
 
       /* log_query gets called indirectly all over the place, so 
-	 pass these in global variables - sorry. */
-      daemon->log_display_id = ++daemon->log_id;
+	 pass these in global variables - sorry. 
+	 log_display_id is negative for TCP connections. */
+      daemon->log_display_id = -(++daemon->log_id);
       daemon->log_source_addr = &peer_addr;
       
       /* save state of "cd" flag in query */

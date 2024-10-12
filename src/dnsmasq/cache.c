@@ -915,9 +915,15 @@ int cache_recv_insert(time_t now, int fd)
 	{
 	  int status, uid, keycount, validatecount;
 	  int *keycountp, *validatecountp;
+	  size_t ret_len;
+	  
 	  struct frec *forward;
 	  
 	  if (!read_write(fd, (unsigned char *)&status, sizeof(status), 1))
+	    return 0;
+	  if (!read_write(fd, (unsigned char *)&ret_len, sizeof(ret_len), 1))
+	    return 0;
+	  if (!read_write(fd, (unsigned char *)daemon->packet, ret_len, 1))
 	    return 0;
 	  if (!read_write(fd, (unsigned char *)&forward, sizeof(forward), 1))
 	    return 0;
@@ -940,10 +946,13 @@ int cache_recv_insert(time_t now, int fd)
 	      /* repatriate the work counters from the child process. */
 	      *keycountp = keycount;
 	      *validatecountp = validatecount;
-
-	      pop_and_retry_query(forward, status, now);
+	      
+	      if (!forward->dependent)
+		return_reply(now, forward, (struct dns_header *)daemon->packet, ret_len, status);
+	      else
+		pop_and_retry_query(forward, status, now);
 	    }
- 
+	  
 	  return 1;
 	}
 #endif
@@ -2402,12 +2411,21 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   
   if (option_bool(OPT_EXTRALOG))
     {
+      int display_id = daemon->log_display_id;
+      char *proto = "";
+
+      if (option_bool(OPT_LOG_PROTO))
+	proto = (display_id < 0) ? "TCP " : "UDP ";
+      
+      if (display_id < 0)
+	display_id = -display_id;
+      
       if (flags & F_NOEXTRA)
-	my_syslog(LOG_INFO, "%u %s %s%s%s %s%s", daemon->log_display_id, source, name, gap, verb, dest, extra);
+	my_syslog(LOG_INFO, "%s%u %s %s%s%s %s%s", proto, display_id, source, name, gap, verb, dest, extra);
       else
 	{
 	   int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
-	   my_syslog(LOG_INFO, "%u %s/%u %s %s%s%s %s%s", daemon->log_display_id, daemon->addrbuff2, port, source, name, gap, verb, dest, extra);
+	   my_syslog(LOG_INFO, "%s%u %s/%u %s %s%s%s %s%s", proto, display_id, daemon->addrbuff2, port, source, name, gap, verb, dest, extra);
 	}
     }
   else

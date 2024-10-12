@@ -2118,7 +2118,7 @@ static void check_dns_listeners(time_t now)
    cache_recv_insert() calls pop_and_retry_query() after the result 
    arrives via the pipe to the parent. */
 int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header *header,
-		size_t plen, int class, struct server *server, int *keycount, int *validatecount)
+		ssize_t *plen, int class, struct server *server, int *keycount, int *validatecount)
 {
   struct server *s;
 
@@ -2192,8 +2192,8 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 	}
     }
   
-  status = tcp_key_recurse(now, status, header, plen, class, daemon->namebuff, daemon->keyname, 
-			   server, 0, 0, keycount, validatecount);
+  status = tcp_from_udp(now, status, header, plen, class, daemon->namebuff, daemon->keyname, 
+			server, keycount, validatecount);
   
   /* close upstream connections. */
   for (s = daemon->servers; s; s = s->next)
@@ -2211,6 +2211,8 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
        /* tell our parent we're done, and what the result was then exit. */
        read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
        read_write(daemon->pipe_to_parent, (unsigned char *)&status, sizeof(status), 0);
+       read_write(daemon->pipe_to_parent, (unsigned char *)plen, sizeof(*plen), 0);
+       read_write(daemon->pipe_to_parent, (unsigned char *)header, *plen, 0);
        read_write(daemon->pipe_to_parent, (unsigned char *)&forward, sizeof(forward), 0);
        read_write(daemon->pipe_to_parent, (unsigned char *)&forward->uid, sizeof(forward->uid), 0);
        read_write(daemon->pipe_to_parent, (unsigned char *)keycount, sizeof(*keycount), 0);
