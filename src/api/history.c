@@ -56,7 +56,7 @@ static unsigned int build_client_temparray(int *temparray, const int slot)
 	memset(temparray, 0, 2 * counters->clients * sizeof(int));
 
 	unsigned int num_clients = 0;
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
@@ -69,7 +69,7 @@ static unsigned int build_client_temparray(int *temparray, const int slot)
 		// -1 for the total count
 		if(!client->flags.aliasclient && client->aliasclient_id > -1)
 		{
-			log_debug(DEBUG_API, "Skipping client (ID %d) contained in alias-client with ID %d",
+			log_debug(DEBUG_API, "Skipping client (ID %u) contained in alias-client with ID %d",
 			          clientID, client->aliasclient_id);
 			continue;
 		}

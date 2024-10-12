@@ -483,15 +483,15 @@ void FTL_log_dnsmasq_fatal(const char *format, ...)
 
 void log_counter_info(void)
 {
-	log_info(" -> Total DNS queries: %i", counters->queries);
-	log_info(" -> Cached DNS queries: %i", get_cached_count());
-	log_info(" -> Forwarded DNS queries: %i", get_forwarded_count());
-	log_info(" -> Blocked DNS queries: %i", get_blocked_count());
-	log_info(" -> Unknown DNS queries: %i", counters->status[QUERY_UNKNOWN]);
-	log_info(" -> Unique domains: %i", counters->domains);
-	log_info(" -> Unique clients: %i", counters->clients);
-	log_info(" -> DNS cache records: %i", counters->dns_cache_size);
-	log_info(" -> Known forward destinations: %i", counters->upstreams);
+	log_info(" -> Total DNS queries: %u", counters->queries);
+	log_info(" -> Cached DNS queries: %u", get_cached_count());
+	log_info(" -> Forwarded DNS queries: %u", get_forwarded_count());
+	log_info(" -> Blocked DNS queries: %u", get_blocked_count());
+	log_info(" -> Unknown DNS queries: %u", counters->status[QUERY_UNKNOWN]);
+	log_info(" -> Unique domains: %u", counters->domains);
+	log_info(" -> Unique clients: %u", counters->clients);
+	log_info(" -> DNS cache records: %u", counters->dns_cache_size);
+	log_info(" -> Known forward destinations: %u", counters->upstreams);
 }
 
 void log_FTL_version(const bool crashreport)

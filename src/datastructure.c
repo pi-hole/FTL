@@ -28,6 +28,8 @@
 #include "overTime.h"
 // short_path()
 #include "files.h"
+// lookup_insert
+#include "lookup-table.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
@@ -111,20 +113,21 @@ int findQueryID(const int id)
 	// We iterate from the most recent query down to at most MAXITER queries in the past to avoid
 	// iterating through the entire array of queries
 	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
-	const int until = MAX(0, counters->queries-MAXITER);
-	const int start = MAX(0, counters->queries-1);
+	const unsigned int until = counters->queries > MAXITER ? counters->queries - MAXITER : 0;
+	const unsigned int start = counters->queries > 0 ? counters->queries - 1 : 0;
 
 	// Check UUIDs of queries
-	for(int i = start; i >= until; i--)
+	for(unsigned int i = start; i >= until; i--)
 	{
 		const queriesData *query = getQuery(i, true);
 
 		// Check if the returned pointer is valid before trying to access it
-		if(query == NULL)
-			continue;
-
-		if(query->id == id)
+		if(query != NULL && query->id == id)
 			return i;
+
+		// If we reached the beginning of the array, we can stop
+		if(i == 0)
+			break;
 	}
 
 	// If not found
@@ -134,7 +137,7 @@ int findQueryID(const int id)
 int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, const char *func, const char *file)
 {
 	// Go through already knows upstream servers and see if we used one of those
-	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
+	for(unsigned int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
 		// Get upstream pointer
 		const upstreamsData *upstream = _getUpstream(upstreamID, false, line, func, file);
@@ -188,7 +191,7 @@ int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, 
 static int get_next_free_domainID(void)
 {
 	// Compare content of domain against known domain IP addresses
-	for(int domainID = 0; domainID < counters->domains; domainID++)
+	for(unsigned int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
 		const domainsData *domain = getDomain(domainID, false);
@@ -212,7 +215,7 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 	const uint32_t hash = hashStr(domainString);
 
 	// Try to find the domain in the list of known domains
-	for(int domainID = 0; domainID < counters->domains; domainID++)
+	for(unsigned int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
 		domainsData *domain = _getDomain(domainID, false, line, func, file);
@@ -251,6 +254,9 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 
 	log_debug(DEBUG_GC, "New domain: %s (ID %d)", domainString, domainID);
 
+	// Insert domain into lookup table
+	lookup_insert(DOMAINS_LOOKUP, domainID, hash);
+
 	// Set magic byte
 	domain->magic = MAGICBYTE;
 	// Set its counter to 1 only if this domain is to be counted
@@ -272,7 +278,7 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 static int get_next_free_clientID(void)
 {
 	// Compare content of client against known client IP addresses
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
 		const clientsData *client = getClient(clientID, false);
@@ -297,7 +303,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	const uint32_t hash = hashStr(clientIP);
 
 	// Try to find the domain in the list of known client IP addresses
-	for(int clientID=0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID=0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
 		clientsData *client = _getClient(clientID, true, line, func, file);
@@ -432,7 +438,7 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 static int get_next_free_cacheID(void)
 {
 	// Compare content of cache against known cache IP addresses
-	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Get cache pointer
 		const DNSCacheData *cache = getDNSCache(cacheID, false);
@@ -457,7 +463,7 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 	const uint32_t hash = hashThreeInts(domainID, clientID, query_type);
 
 	// Compare content of client against known client IP addresses
-	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Get cache pointer
 		DNSCacheData *dns_cache = _getDNSCache(cacheID, true, line, func, file);
@@ -625,9 +631,9 @@ const char *getClientNameString(const queriesData *query)
 
 void FTL_reset_per_client_domain_data(void)
 {
-	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
+	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache, size is %u", counters->dns_cache_size);
 
-	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Get cache pointer
 		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
@@ -1001,7 +1007,7 @@ const char * __attribute__ ((pure)) get_cached_statuslist(void)
 	return cached_list;
 }
 
-int __attribute__ ((pure)) get_blocked_count(void)
+unsigned int __attribute__ ((pure)) get_blocked_count(void)
 {
 	int blocked = 0;
 	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
@@ -1011,14 +1017,14 @@ int __attribute__ ((pure)) get_blocked_count(void)
 	return blocked;
 }
 
-int __attribute__ ((pure)) get_forwarded_count(void)
+unsigned int __attribute__ ((pure)) get_forwarded_count(void)
 {
 	return counters->status[QUERY_FORWARDED] +
 	       counters->status[QUERY_RETRIED] +
 	       counters->status[QUERY_RETRIED_DNSSEC];
 }
 
-int __attribute__ ((pure)) get_cached_count(void)
+unsigned int __attribute__ ((pure)) get_cached_count(void)
 {
 	return counters->status[QUERY_CACHE] + counters->status[QUERY_CACHE_STALE];
 }
@@ -1197,10 +1203,10 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	if(!init)
 	{
 		counters->status[old_status]--;
-		log_debug(DEBUG_STATUS, "status %d removed (!init), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
+		log_debug(DEBUG_STATUS, "status %d removed (!init), ID = %d, new count = %u", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
 	}
 	counters->status[new_status]++;
-	log_debug(DEBUG_STATUS, "status %d set, ID = %d, new count = %d", new_status, query->id, counters->status[new_status]);
+	log_debug(DEBUG_STATUS, "status %d set, ID = %d, new count = %u", new_status, query->id, counters->status[new_status]);
 
 	// ... update overTime counters, ...
 	const int timeidx = getOverTimeID(query->timestamp);

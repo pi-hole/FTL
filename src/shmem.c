@@ -32,6 +32,8 @@
 #include "files.h"
 // log_resource_shortage()
 #include "database/message-table.h"
+// struct lookup_table
+#include "lookup-table.h"
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 14
@@ -49,6 +51,9 @@
 #define SHARED_SETTINGS_NAME "FTL-settings"
 #define SHARED_DNS_CACHE "FTL-dns-cache"
 #define SHARED_PER_CLIENT_REGEX "FTL-per-client-regex"
+#define SHARED_CLIENTS_LOOKUP_NAME "FTL-clients-lookup"
+#define SHARED_DOMAINS_LOOKUP_NAME "FTL-domains-lookup"
+#define SHARED_DNS_CACHE_LOOKUP_NAME "FTL-dns-cache-lookup"
 
 // Allocation step for FTL-strings bucket. This is somewhat special as we use
 // this as a general-purpose storage which should always be large enough. If,
@@ -74,6 +79,9 @@ static SharedMemory shm_settings = { 0 };
 static SharedMemory shm_dns_cache = { 0 };
 static SharedMemory shm_per_client_regex = { 0 };
 static SharedMemory shm_fifo_log = { 0 };
+static SharedMemory shm_clients_lookup = { 0 };
+static SharedMemory shm_domains_lookup = { 0 };
+static SharedMemory shm_dns_cache_lookup = { 0 };
 
 static SharedMemory *sharedMemories[] = { &shm_lock,
                                           &shm_strings,
@@ -86,7 +94,10 @@ static SharedMemory *sharedMemories[] = { &shm_lock,
                                           &shm_settings,
                                           &shm_dns_cache,
                                           &shm_per_client_regex,
-                                          &shm_fifo_log };
+                                          &shm_fifo_log,
+                                          &shm_clients_lookup,
+                                          &shm_domains_lookup,
+                                          &shm_dns_cache_lookup };
 
 // Variable size array structs
 static queriesData *queries = NULL;
@@ -95,13 +106,19 @@ static domainsData *domains = NULL;
 static upstreamsData *upstreams = NULL;
 static DNSCacheData *dns_cache = NULL;
 fifologData *fifo_log = NULL;
+struct lookup_table *clients_lookup = NULL;
+struct lookup_table *domains_lookup = NULL;
+struct lookup_table *dns_cache_lookup = NULL;
 
 static void **global_pointers[] = {(void**)&queries,
                                    (void**)&clients,
                                    (void**)&domains,
                                    (void**)&upstreams,
                                    (void**)&dns_cache,
-                                   (void**)&fifo_log };
+                                   (void**)&fifo_log,
+                                   (void**)&clients_lookup,
+                                   (void**)&domains_lookup,
+                                   (void**)&dns_cache_lookup };
 
 typedef struct {
 	struct {
@@ -534,6 +551,33 @@ bool init_shmem()
 		return false;
 	fifo_log = (fifologData*)shm_fifo_log.ptr;
 
+	/****************************** shared clients_lookup struct ******************************/
+	size = get_optimal_object_size(sizeof(struct lookup_table), 1);
+	// Try to create shared memory object
+	create_shm(SHARED_CLIENTS_LOOKUP_NAME, &shm_clients_lookup, size*sizeof(struct lookup_table));
+	if(shm_clients_lookup.ptr == NULL)
+		return false;
+	clients_lookup = (struct lookup_table*)shm_clients_lookup.ptr;
+	counters->clients_lookup_MAX = size;
+
+	/****************************** shared domains_lookup struct ******************************/
+	size = get_optimal_object_size(sizeof(struct lookup_table), 1);
+	// Try to create shared memory object
+	create_shm(SHARED_DOMAINS_LOOKUP_NAME, &shm_domains_lookup, size*sizeof(struct lookup_table));
+	if(shm_domains_lookup.ptr == NULL)
+		return false;
+	domains_lookup = (struct lookup_table*)shm_domains_lookup.ptr;
+	counters->domains_lookup_MAX = size;
+
+	/****************************** shared dns_cache_lookup struct ******************************/
+	size = get_optimal_object_size(sizeof(struct lookup_table), 1);
+	// Try to create shared memory object
+	create_shm(SHARED_DNS_CACHE_LOOKUP_NAME, &shm_dns_cache_lookup, size*sizeof(struct lookup_table));
+	if(shm_dns_cache_lookup.ptr == NULL)
+		return false;
+	dns_cache_lookup = (struct lookup_table*)shm_dns_cache_lookup.ptr;
+	counters->dns_cache_lookup_MAX = size;
+
 	return true;
 }
 
@@ -651,7 +695,7 @@ static void *enlarge_shmem_struct(const char type)
 {
 	SharedMemory *sharedMemory = NULL;
 	size_t sizeofobj, allocation_step;
-	int *counter = NULL;
+	unsigned int *size = NULL;
 
 	// Select type of struct that should be enlarged
 	switch(type)
@@ -660,37 +704,55 @@ static void *enlarge_shmem_struct(const char type)
 			sharedMemory = &shm_queries;
 			allocation_step = pagesize;
 			sizeofobj = sizeof(queriesData);
-			counter = &counters->queries_MAX;
+			size = &counters->queries_MAX;
 			break;
 		case CLIENTS:
 			sharedMemory = &shm_clients;
 			allocation_step = get_optimal_object_size(sizeof(clientsData), 1);
 			sizeofobj = sizeof(clientsData);
-			counter = &counters->clients_MAX;
+			size = &counters->clients_MAX;
 			break;
 		case DOMAINS:
 			sharedMemory = &shm_domains;
 			allocation_step = get_optimal_object_size(sizeof(domainsData), 1);
 			sizeofobj = sizeof(domainsData);
-			counter = &counters->domains_MAX;
+			size = &counters->domains_MAX;
 			break;
 		case UPSTREAMS:
 			sharedMemory = &shm_upstreams;
 			allocation_step = get_optimal_object_size(sizeof(upstreamsData), 1);
 			sizeofobj = sizeof(upstreamsData);
-			counter = &counters->upstreams_MAX;
+			size = &counters->upstreams_MAX;
 			break;
 		case DNS_CACHE:
 			sharedMemory = &shm_dns_cache;
 			allocation_step = get_optimal_object_size(sizeof(DNSCacheData), 1);
 			sizeofobj = sizeof(DNSCacheData);
-			counter = &counters->dns_cache_MAX;
+			size = &counters->dns_cache_MAX;
 			break;
 		case STRINGS:
 			sharedMemory = &shm_strings;
 			allocation_step = STRINGS_ALLOC_STEP;
 			sizeofobj = 1;
-			counter = &counters->strings_MAX;
+			size = &counters->strings_MAX;
+			break;
+		case CLIENTS_LOOKUP:
+			sharedMemory = &shm_clients_lookup;
+			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), 1);
+			sizeofobj = sizeof(struct lookup_table);
+			size = &counters->clients_lookup_MAX;
+			break;
+		case DOMAINS_LOOKUP:
+			sharedMemory = &shm_domains_lookup;
+			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), 1);
+			sizeofobj = sizeof(struct lookup_table);
+			size = &counters->domains_lookup_MAX;
+			break;
+		case DNS_CACHE_LOOKUP:
+			sharedMemory = &shm_dns_cache_lookup;
+			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), 1);
+			sizeofobj = sizeof(struct lookup_table);
+			size = &counters->dns_cache_lookup_MAX;
 			break;
 		default:
 			log_err("Invalid argument in enlarge_shmem_struct(%i)", type);
@@ -701,8 +763,8 @@ static void *enlarge_shmem_struct(const char type)
 	const size_t current = sharedMemory->size/sizeofobj;
 	realloc_shm(sharedMemory, current + allocation_step, sizeofobj, true);
 
-	// Add allocated memory to corresponding counter
-	*counter += allocation_step;
+	// Add allocated memory to corresponding size
+	*size += allocation_step;
 
 	return sharedMemory->ptr;
 }
@@ -936,9 +998,39 @@ void shm_ensure_size(void)
 			exit(EXIT_FAILURE);
 		}
 	}
+	if(counters->clients >= counters->clients_lookup_MAX-1)
+	{
+		// Have to reallocate shared memory
+		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP);
+		if(clients_lookup == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->domains >= counters->domains_lookup_MAX-1)
+	{
+		// Have to reallocate shared memory
+		domains_lookup = enlarge_shmem_struct(DOMAINS_LOOKUP);
+		if(domains_lookup == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->dns_cache_size >= counters->dns_cache_lookup_MAX-1)
+	{
+		// Have to reallocate shared memory
+		dns_cache_lookup = enlarge_shmem_struct(DNS_CACHE_LOOKUP);
+		if(dns_cache_lookup == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
 }
 
-void reset_per_client_regex(const int clientID)
+void reset_per_client_regex(const unsigned int clientID)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	for(unsigned int i = 0u; i < num_regex_tot; i++)
@@ -948,7 +1040,7 @@ void reset_per_client_regex(const int clientID)
 	}
 }
 
-void add_per_client_regex(unsigned int clientID)
+void add_per_client_regex(const unsigned int clientID)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const size_t size = get_optimal_object_size(1, (size_t)counters->clients * num_regex_tot);
@@ -960,14 +1052,14 @@ void add_per_client_regex(unsigned int clientID)
 	}
 }
 
-bool get_per_client_regex(const int clientID, const int regexID)
+bool get_per_client_regex(const unsigned int clientID, const unsigned int regexID)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		log_err("get_per_client_regex(%d, %d): Out of bounds (%u > %d * %u, shm_per_client_regex.size = %zu)!",
+		log_err("get_per_client_regex(%u, %u): Out of bounds (%u > %u * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID,
 		        id, counters->clients, num_regex_tot, maxval);
 		return false;
@@ -975,14 +1067,14 @@ bool get_per_client_regex(const int clientID, const int regexID)
 	return ((bool*) shm_per_client_regex.ptr)[id];
 }
 
-void set_per_client_regex(const int clientID, const int regexID, const bool value)
+void set_per_client_regex(const unsigned int clientID, const unsigned int regexID, const bool value)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		log_err("set_per_client_regex(%d, %d, %s): Out of bounds (%u > %d * %u, shm_per_client_regex.size = %zu)!",
+		log_err("set_per_client_regex(%u, %u, %s): Out of bounds (%u > %u * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID, value ? "true" : "false",
 		        id, counters->clients, num_regex_tot, maxval);
 		return;
@@ -990,14 +1082,14 @@ void set_per_client_regex(const int clientID, const int regexID, const bool valu
 	((bool*) shm_per_client_regex.ptr)[id] = value;
 }
 
-static inline bool check_range(int ID, int MAXID, const char* type, const char *func, int line, const char *file)
+static inline bool check_range(unsigned int ID, unsigned int MAXID, const char* type, const char *func, int line, const char *file)
 {
 	// Check bounds
-	if(ID < 0 || ID > MAXID)
+	if(ID > MAXID)
 	{
 		if(debug_flags[DEBUG_ANY])
 		{
-			log_err("Trying to access %s ID %i, but maximum is %i", type, ID, MAXID);
+			log_err("Trying to access %s ID %u, but maximum is %u", type, ID, MAXID);
 			log_err("found in %s() (%s:%i)", func, short_path(file), line);
 		}
 		return false;
@@ -1007,14 +1099,14 @@ static inline bool check_range(int ID, int MAXID, const char* type, const char *
 	return true;
 }
 
-static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, const char *type, const char *func, int line, const char *file)
+static inline bool check_magic(unsigned int ID, bool checkMagic, unsigned char magic, const char *type, const char *func, int line, const char *file)
 {
 	// Check magic only if requested (skipped for new entries which are uninitialized)
 	if(checkMagic && magic != MAGICBYTE)
 	{
 		if(debug_flags[DEBUG_ANY])
 		{
-			log_err("Trying to access %s ID %i, but magic byte is %x", type, ID, magic);
+			log_err("Trying to access %s ID %u, but magic byte is %x", type, ID, magic);
 			log_err("found in %s() (%s:%i)", func, short_path(file), line);
 		}
 		return false;
@@ -1024,12 +1116,8 @@ static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, con
 	return true;
 }
 
-queriesData *_getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file)
+queriesData *_getQuery(unsigned int queryID, bool checkMagic, int line, const char *func, const char *file)
 {
-	// This does not exist, return a NULL pointer
-	if(queryID == -1)
-		return NULL;
-
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
@@ -1058,12 +1146,8 @@ queriesData *_getQuery(int queryID, bool checkMagic, int line, const char *func,
 	return NULL;
 }
 
-clientsData* _getClient(int clientID, bool checkMagic, int line, const char *func, const char *file)
+clientsData* _getClient(unsigned int clientID, bool checkMagic, int line, const char *func, const char *file)
 {
-	// This does not exist, we return a NULL pointer
-	if(clientID == -1)
-		return NULL;
-
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
@@ -1092,12 +1176,8 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char *fun
 	return NULL;
 }
 
-domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *func, const char *file)
+domainsData* _getDomain(unsigned int domainID, bool checkMagic, int line, const char *func, const char *file)
 {
-	// This does not exist, we return a NULL pointer
-	if(domainID == -1)
-		return NULL;
-
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
@@ -1128,10 +1208,6 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *fun
 
 upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char *func, const char *file)
 {
-	// This does not exist, we return a NULL pointer
-	if(upstreamID == -1)
-		return NULL;
-
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
@@ -1160,12 +1236,8 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 	return NULL;
 }
 
-DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char *func, const char *file)
+DNSCacheData* _getDNSCache(unsigned int cacheID, bool checkMagic, int line, const char *func, const char *file)
 {
-	// This does not exist, we return a NULL pointer
-	if(cacheID == -1)
-		return NULL;
-
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{

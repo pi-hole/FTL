@@ -237,6 +237,8 @@ set(sources
         gc.h
         log.c
         log.h
+        lookup-table.c
+        lookup-table.h
         main.c
         main.h
         metrics.h

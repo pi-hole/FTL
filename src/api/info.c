@@ -554,7 +554,7 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int activeclients = 0;
-	for(int clientID=0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID=0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);

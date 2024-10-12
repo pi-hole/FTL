@@ -843,7 +843,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->timestamp = querytimestamp;
 	query->type = querytype;
 	counters->querytype[querytype]++;
-	log_debug(DEBUG_STATUS, "query type %d set (new query), ID = %d, new count = %d", query->type, id, counters->querytype[query->type]);
+	log_debug(DEBUG_STATUS, "query type %d set (new query), ID = %d, new count = %u", query->type, id, counters->querytype[query->type]);
 	query->qtype = qtype;
 	query->id = id; // Has to be set before calling query_set_status()
 
@@ -860,7 +860,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
 	counters->reply[REPLY_UNKNOWN]++;
-	log_debug(DEBUG_STATUS, "reply type %d set (new query), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
+	log_debug(DEBUG_STATUS, "reply type %u set (new query), ID = %d, new count = %u", query->reply, query->id, counters->reply[query->reply]);
 	// Store DNSSEC result for this domain
 	query->dnssec = DNSSEC_UNKNOWN;
 	query->CNAME_domainID = -1;
@@ -3055,12 +3055,12 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 
 	// Subtract from old reply counter
 	counters->reply[query->reply]--;
-	log_debug(DEBUG_STATUS, "reply type %d removed (set_reply), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
+	log_debug(DEBUG_STATUS, "reply type %u removed (set_reply), ID = %d, new count = %u", query->reply, query->id, counters->reply[query->reply]);
 	// Add to new reply counter
 	counters->reply[new_reply]++;
 	// Store reply type
 	query->reply = new_reply;
-	log_debug(DEBUG_STATUS, "reply type %d added (set_reply), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
+	log_debug(DEBUG_STATUS, "reply type %u added (set_reply), ID = %d, new count = %u", query->reply, query->id, counters->reply[query->reply]);
 
 	// Save response time
 	// Skipped internally if already computed
@@ -3719,10 +3719,10 @@ void FTL_multiple_replies(const int id, int *firstID)
 
 	// Copy relevant information over
 	counters->reply[duplicated_query->reply]--;
-	log_debug(DEBUG_STATUS, "duplicated_query reply type %d removed, ID = %d, new count = %d", duplicated_query->reply, duplicated_query->id, counters->reply[duplicated_query->reply]);
+	log_debug(DEBUG_STATUS, "duplicated_query reply type %u removed, ID = %d, new count = %u", duplicated_query->reply, duplicated_query->id, counters->reply[duplicated_query->reply]);
 	duplicated_query->reply = source_query->reply;
 	counters->reply[duplicated_query->reply]++;
-	log_debug(DEBUG_STATUS, "duplicated_query reply type %d set, ID = %d, new count = %d", duplicated_query->reply, duplicated_query->id, counters->reply[duplicated_query->reply]);
+	log_debug(DEBUG_STATUS, "duplicated_query reply type %u set, ID = %d, new count = %u", duplicated_query->reply, duplicated_query->id, counters->reply[duplicated_query->reply]);
 
 	duplicated_query->dnssec = source_query->dnssec;
 	duplicated_query->flags.complete = true;

@@ -61,7 +61,7 @@ static void recompute_aliasclient(const int aliasclientID)
 	memset(aliasclient->overTime, 0, sizeof(aliasclient->overTime));
 
 	// Loop over all existing clients to find which clients are associated to this one
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get pointer to client candidate
 		const clientsData *client = getClient(clientID, true);
@@ -189,7 +189,7 @@ static int get_aliasclient_ID(sqlite3 *db, const clientsData *client)
 	const int aliasclient_DBid = getAliasclientIDfromIP(db, clientIP);
 
 	// Compare DB index for all alias-clients stored in FTL
-	int aliasclientID = 0;
+	unsigned int aliasclientID = 0;
 	for(; aliasclientID < counters->clients; aliasclientID++)
 	{
 		// Get pointer to alias client candidate
@@ -264,7 +264,7 @@ int *get_aliasclient_list(const int aliasclientID)
 {
 	int count = 0;
 	// Loop over all existing clients to count associated clients
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get pointer to client candidate
 		const clientsData *client = getClient(clientID, true);
@@ -280,7 +280,7 @@ int *get_aliasclient_list(const int aliasclientID)
 
 	// Loop over all existing clients to fill list of clients
 	count = 0;
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get pointer to client candidate
 		const clientsData *client = getClient(clientID, true);
@@ -318,7 +318,7 @@ void reimport_aliasclients(sqlite3 *db)
 	}
 
 	// Loop over all existing alias-clients and set their counters to zero
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get pointer to client candidate
 		clientsData *client = getClient(clientID, true);
@@ -336,7 +336,7 @@ void reimport_aliasclients(sqlite3 *db)
 	import_aliasclients(db);
 
 	// Recompute all alias-clients
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get pointer to client candidate
 		clientsData *client = getClient(clientID, true);

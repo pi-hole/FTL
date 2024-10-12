@@ -711,7 +711,7 @@ static int update_netDB_interface(sqlite3 *db, const int network_id, const char 
 
 // Loop over all clients known to FTL and ensure we add them all to the database
 static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status *client_status,
-                                             const int clients, const time_t now, unsigned int *additional_entries)
+                                             const unsigned int clients, const time_t now, unsigned int *additional_entries)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -719,7 +719,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 
 	int rc = SQLITE_OK;
 	char hwaddr[128];
-	for(int clientID = 0; clientID < clients; clientID++)
+	for(unsigned int clientID = 0; clientID < clients; clientID++)
 	{
 		// Check thread cancellation
 		if(killed)
@@ -730,7 +730,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		clientsData *client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			log_debug(DEBUG_ARP, "Network table: Client %d returned NULL pointer", clientID);
+			log_debug(DEBUG_ARP, "Network table: Client %u returned NULL pointer", clientID);
 			unlock_shm();
 			continue;
 		}

@@ -634,7 +634,7 @@ void free_regex(void)
 
 	// Reset client configuration
 	log_debug(DEBUG_DATABASE, "Resetting per-client regex settings");
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		reset_per_client_regex(clientID);
 	}
@@ -827,7 +827,7 @@ void read_regex_from_database(void)
 	// per-client regex data, not all of the regex read and compiled above
 	// will also be used by all clients
 	log_debug(DEBUG_DATABASE, "Loading per-client regex data");
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
 		clientsData *client = getClient(clientID, true);
@@ -839,7 +839,7 @@ void read_regex_from_database(void)
 	}
 
 	// Print message to FTL's log after reloading regex filters
-	log_info("Compiled %u allow and %u deny regex for %i client%s in %.1f msec",
+	log_info("Compiled %u allow and %u deny regex for %u client%s in %.1f msec",
 	         num_regex[REGEX_ALLOW], num_regex[REGEX_DENY],
 	         counters->clients, counters->clients > 1 ? "s" : "",
 	         timer_elapsed_msec(REGEX_TIMER));

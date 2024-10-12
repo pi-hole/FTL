@@ -1194,7 +1194,7 @@ void DB_read_queries(void)
 			query->qtype = type - 100;
 		}
 		counters->querytype[query->type]++;
-		log_debug(DEBUG_STATUS, "query type %d set (database), ID = %d, new count = %d", query->type, counters->queries, counters->querytype[query->type]);
+		log_debug(DEBUG_STATUS, "query type %d set (database), ID = %u, new count = %u", query->type, counters->queries, counters->querytype[query->type]);
 
 		// Status is set below
 		query->domainID = domainID;
@@ -1207,7 +1207,7 @@ void DB_read_queries(void)
 		query->dnssec = dnssec;
 		query->reply = reply;
 		counters->reply[query->reply]++;
-		log_debug(DEBUG_STATUS, "reply type %d set (database), ID = %d, new count = %d", query->reply, counters->queries, counters->reply[query->reply]);
+		log_debug(DEBUG_STATUS, "reply type %u set (database), ID = %u, new count = %u", query->reply, counters->queries, counters->reply[query->reply]);
 		query->response = reply_time;
 		query->CNAME_domainID = -1;
 		// Initialize flags
@@ -1321,7 +1321,7 @@ void DB_read_queries(void)
 		}
 
 		if(counters->queries % 10000 == 0)
-			log_info("  %d queries parsed...", counters->queries);
+			log_info("  %u queries parsed...", counters->queries);
 	}
 
 	// Release shared memory
@@ -1336,7 +1336,7 @@ void DB_read_queries(void)
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
 
-	log_info("Imported %i queries from the long-term database", counters->queries);
+	log_info("Imported %u queries from the long-term database", counters->queries);
 }
 
 void update_disk_db_idx(void)

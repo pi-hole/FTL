@@ -957,7 +957,7 @@ void gravityDB_close(void)
 		return;
 
 	// Finalize prepared list statements for all clients
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
 		if(client != NULL)
