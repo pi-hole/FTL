@@ -86,7 +86,7 @@ static void recycle(void)
 		if(client_used[clientID])
 			continue;
 
-		clientsData* client = getClient(clientID, true);
+		clientsData *client = getClient(clientID, true);
 		if(client == NULL)
 			continue;
 
@@ -111,7 +111,7 @@ static void recycle(void)
 		if(domain_used[domainID])
 			continue;
 
-		domainsData* domain = getDomain(domainID, true);
+		domainsData *domain = getDomain(domainID, true);
 		if(domain == NULL)
 			continue;
 
@@ -155,7 +155,7 @@ static void recycle(void)
 		for(int clientID = 0; clientID < counters->clients; clientID++)
 		{
 			// Do not check magic to avoid skipping recycled clients
-			clientsData *client = getClient(clientID, false);
+			const clientsData *client = getClient(clientID, false);
 			if(client == NULL)
 				continue;
 			if(client->magic == 0x00)
@@ -164,7 +164,7 @@ static void recycle(void)
 		for(int domainID = 0; domainID < counters->domains; domainID++)
 		{
 			// Do not check magic to avoid skipping recycled domains
-			domainsData *domain = getDomain(domainID, false);
+			const domainsData *domain = getDomain(domainID, false);
 			if(domain == NULL)
 				continue;
 			if(domain->magic == 0x00)
@@ -173,7 +173,7 @@ static void recycle(void)
 		for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 		{
 			// Do not check magic to avoid skipping recycled cache entries
-			DNSCacheData *cache = getDNSCache(cacheID, false);
+			const DNSCacheData *cache = getDNSCache(cacheID, false);
 			if(cache == NULL)
 				continue;
 			if(cache->magic == 0x00)
@@ -182,8 +182,8 @@ static void recycle(void)
 
 		log_debug(DEBUG_GC, "%d/%d clients, %d/%d domains and %d/%d cache records are free",
 		          counters->clients_MAX + (int)free_clients - counters->clients, counters->clients_MAX,
-		          counters->domains_MAX + (int)free_domains - counters->domains_MAX, counters->domains_MAX,
-		          counters->dns_cache_MAX + (int)free_cache - counters->dns_cache_MAX, counters->dns_cache_MAX);
+		          counters->domains_MAX + (int)free_domains - counters->domains, counters->domains_MAX,
+		          counters->dns_cache_MAX + (int)free_cache - counters->dns_cache_size, counters->dns_cache_MAX);
 
 		log_debug(DEBUG_GC, "Recycled additional %u clients, %u domains, and %u cache records (scanned %d queries)",
 		          clients_recycled, domains_recycled, cache_recycled, counters->queries);
@@ -318,7 +318,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 		// Adjust client counter (total and overTime)
 		const int timeidx = getOverTimeID(query->timestamp);
-		clientsData* client = getClient(query->clientID, true);
+		clientsData *client = getClient(query->clientID, true);
 		if(client != NULL)
 			change_clientcount(client, -1, 0, timeidx, -1);
 

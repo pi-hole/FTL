@@ -36,22 +36,70 @@ void strtolower(char *str)
 	while(str[i]){ str[i] = tolower(str[i]); i++; }
 }
 
-// creates a simple hash of a string that fits into a uint32_t
-uint32_t __attribute__ ((pure)) hashStr(const char *s)
+/**
+ * @brief Computes a hash value for a given string using Jenkins' One-at-a-Time
+ * hash algorithm.
+ *
+ * This function is marked as pure, indicating that it has no side effects and
+ * its return value depends only on the input parameters.
+ *
+ * @param s The input string to be hashed.
+ * @return The computed hash value as a 32-bit unsigned integer.
+ *
+ * @note Jenkins' One-at-a-Time hash is a simple and effective hash function for
+ *       strings. More details can be found at:
+ *       http://www.burtleburtle.net/bob/hash/doobs.html
+ */
+static uint32_t __attribute__ ((pure)) hashStr(const char *s)
 {
-        uint32_t hash = 0;
-        // Jenkins' One-at-a-Time hash (http://www.burtleburtle.net/bob/hash/doobs.html)
-        for(; *s; ++s)
-        {
-                hash += *s;
-                hash += hash << 10;
-                hash ^= hash >> 6;
-        }
+	// Jenkins' One-at-a-Time hash
+	// (http://www.burtleburtle.net/bob/hash/doobs.html)
+	uint32_t hash = 0;
+	for(; *s; ++s)
+	{
+		hash += *s;
+		hash += hash << 10;
+		hash ^= hash >> 6;
+	}
 
-        hash += hash << 3;
-        hash ^= hash >> 11;
-        hash += hash << 15;
-        return hash;
+	hash += hash << 3;
+	hash ^= hash >> 11;
+	hash += hash << 15;
+	return hash;
+}
+
+/**
+ * @brief Computes a hash value for three integers using a modified form of
+ * Jenkins' One-at-a-Time hash.
+ *
+ * This function is marked as pure, indicating that it has no side effects and
+ * its return value depends only on the input parameters.
+ *
+ * @param a The first integer.
+ * @param b The second integer.
+ * @param c The third integer.
+ * @return The computed hash value as a 32-bit unsigned integer.
+ *
+ * @note This function is a modified form of Jenkins' One-at-a-Time hash
+ *       function, which is a simple and effective hash function for two
+ *       integers. More details can be found at:
+ *       http://www.burtleburtle.net/bob/hash/doobs.html
+ */
+static uint32_t __attribute__ ((pure)) hashThreeInts(const int a, const int b, const int c)
+{
+	// a modified form of Jenkins' One-at-a-Time hash
+	// (http://www.burtleburtle.net/bob/hash/doobs.html)
+	uint32_t hash = (uint32_t)a;
+	hash += hash << 10;
+	hash ^= hash >> 6;
+	hash += (uint32_t)b;
+	hash += hash << 3;
+	hash ^= hash >> 11;
+	hash += (uint32_t)c;
+	hash += hash << 3;
+	hash ^= hash >> 11;
+	hash += hash << 15;
+	return hash;
 }
 
 int findQueryID(const int id)
@@ -89,7 +137,7 @@ int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, 
 	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
 		// Get upstream pointer
-		upstreamsData* upstream = _getUpstream(upstreamID, false, line, func, file);
+		const upstreamsData *upstream = _getUpstream(upstreamID, false, line, func, file);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(upstream == NULL)
@@ -104,7 +152,7 @@ int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, 
 	log_debug(DEBUG_GC, "New upstream server: %s:%u (ID %i)", upstreamString, port, upstreamID);
 
 	// Get upstream pointer
-	upstreamsData* upstream = _getUpstream(upstreamID, false, line, func, file);
+	upstreamsData *upstream = _getUpstream(upstreamID, false, line, func, file);
 	if(upstream == NULL)
 	{
 		log_err("Encountered serious memory error in findupstreamID()");
@@ -143,7 +191,7 @@ static int get_next_free_domainID(void)
 	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(domainID, false);
+		const domainsData *domain = getDomain(domainID, false);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(domain == NULL)
@@ -161,20 +209,20 @@ static int get_next_free_domainID(void)
 int _findDomainID(const char *domainString, const bool count, int line, const char *func, const char *file)
 {
 	// Get domain hash
-	const uint32_t domainHash = hashStr(domainString);
+	const uint32_t hash = hashStr(domainString);
 
 	// Try to find the domain in the list of known domains
 	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
-		domainsData* domain = _getDomain(domainID, false, line, func, file);
+		domainsData *domain = _getDomain(domainID, false, line, func, file);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(domain == NULL)
 			continue;
 
 		// Quicker test: Does the domain match the pre-computed hash?
-		if(domain->domainHash != domainHash)
+		if(domain->hash != hash)
 			continue;
 
 		// If so, compare the full domain using strcmp
@@ -194,7 +242,7 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 	const int domainID = get_next_free_domainID();
 
 	// Get domain pointer
-	domainsData* domain = _getDomain(domainID, false, line, func, file);
+	domainsData *domain = _getDomain(domainID, false, line, func, file);
 	if(domain == NULL)
 	{
 		log_err("Encountered serious memory error in findDomainID()");
@@ -213,7 +261,7 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domain->domainpos = addstr(domainString);
 	// Store pre-computed hash for faster lookups later on
-	domain->domainHash = domainHash;
+	domain->hash = hash;
 	domain->lastQuery = 0.0;
 	// Increase counter by one
 	counters->domains++;
@@ -227,7 +275,7 @@ static int get_next_free_clientID(void)
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		clientsData* client = getClient(clientID, false);
+		const clientsData *client = getClient(clientID, false);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(client == NULL)
@@ -246,20 +294,20 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
                   const double now, int line, const char *func, const char *file)
 {
 	// Get client hash
-	const uint32_t clientHash = hashStr(clientIP);
+	const uint32_t hash = hashStr(clientIP);
 
 	// Try to find the domain in the list of known client IP addresses
 	for(int clientID=0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		clientsData* client = _getClient(clientID, true, line, func, file);
+		clientsData *client = _getClient(clientID, true, line, func, file);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(client == NULL)
 			continue;
 
 		// Quicker test: Does the domain match the pre-computed hash?
-		if(client->clientHash != clientHash)
+		if(client->hash != hash)
 			continue;
 
 		// If so, compare the full IP using strcmp
@@ -281,7 +329,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	const int clientID = get_next_free_clientID();
 
 	// Get client pointer
-	clientsData* client = _getClient(clientID, false, line, func, file);
+	clientsData *client = _getClient(clientID, false, line, func, file);
 	if(client == NULL)
 	{
 		log_err("Encountered serious memory error in findClientID()");
@@ -299,7 +347,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	// Store client IP - no need to check for NULL here as it doesn't harm
 	client->ippos = addstr(clientIP);
 	// Store pre-computed hash for faster lookups later on
-	client->clientHash = clientHash;
+	client->hash = hash;
 	// Initialize client hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
@@ -387,7 +435,7 @@ static int get_next_free_cacheID(void)
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Get cache pointer
-		DNSCacheData* cache = getDNSCache(cacheID, false);
+		const DNSCacheData *cache = getDNSCache(cacheID, false);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(cache == NULL)
@@ -405,16 +453,25 @@ static int get_next_free_cacheID(void)
 int _findCacheID(const int domainID, const int clientID, const enum query_type query_type,
                  const bool create_new, const char *func, int line, const char *file)
 {
+	// Get cache hash
+	const uint32_t hash = hashThreeInts(domainID, clientID, query_type);
+
 	// Compare content of client against known client IP addresses
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Get cache pointer
-		DNSCacheData* dns_cache = _getDNSCache(cacheID, true, line, func, file);
+		DNSCacheData *dns_cache = _getDNSCache(cacheID, true, line, func, file);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(dns_cache == NULL)
 			continue;
 
+		// Quicker test: Does the domain match the pre-computed hash?
+		if(dns_cache->hash != hash)
+			continue;
+
+		// If so, do the full comparison of the domain and client ID
+		// just to be sure (hash collision)
 		if(dns_cache->domainID == domainID &&
 		   dns_cache->clientID == clientID &&
 		   dns_cache->query_type == query_type)
@@ -430,7 +487,7 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 	const int cacheID = get_next_free_cacheID();
 
 	// Get client pointer
-	DNSCacheData* dns_cache = _getDNSCache(cacheID, false, line, func, file);
+	DNSCacheData *dns_cache = _getDNSCache(cacheID, false, line, func, file);
 
 	if(dns_cache == NULL)
 	{
@@ -445,6 +502,7 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 	dns_cache->magic = MAGICBYTE;
 	dns_cache->blocking_status = QUERY_UNKNOWN;
 	dns_cache->expires = 0;
+	dns_cache->hash = hash;
 	dns_cache->domainID = domainID;
 	dns_cache->clientID = clientID;
 	dns_cache->query_type = query_type;
@@ -480,7 +538,7 @@ const char *getDomainString(const queriesData *query)
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
 		// Get domain pointer
-		const domainsData* domain = getDomain(query->domainID, true);
+		const domainsData *domain = getDomain(query->domainID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(domain == NULL)
@@ -504,7 +562,7 @@ const char *getCNAMEDomainString(const queriesData *query)
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
 		// Get domain pointer
-		const domainsData* domain = getDomain(query->CNAME_domainID, true);
+		const domainsData *domain = getDomain(query->CNAME_domainID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(domain == NULL)
@@ -528,7 +586,7 @@ const char *getClientIPString(const queriesData *query)
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(query->clientID, true);
+		const clientsData *client = getClient(query->clientID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(client == NULL)
@@ -552,7 +610,7 @@ const char *getClientNameString(const queriesData *query)
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(query->clientID, true);
+		const clientsData *client = getClient(query->clientID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(client == NULL)
@@ -572,7 +630,7 @@ void FTL_reset_per_client_domain_data(void)
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Get cache pointer
-		DNSCacheData* dns_cache = getDNSCache(cacheID, true);
+		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(dns_cache == NULL)

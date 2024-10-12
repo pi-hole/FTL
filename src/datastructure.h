@@ -89,7 +89,7 @@ typedef struct {
 	unsigned int rate_limit;
 	unsigned int numQueriesARP;
 	int overTime[OVERTIME_SLOTS];
-	uint32_t clientHash;
+	uint32_t hash;
 	size_t groupspos;
 	size_t ippos;
 	size_t namepos;
@@ -102,7 +102,7 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
-	uint32_t domainHash;
+	uint32_t hash;
 	size_t domainpos;
 	double lastQuery;
 } domainsData;
@@ -118,12 +118,12 @@ typedef struct {
 	int domainID;
 	int clientID;
 	int list_id;
+	uint32_t hash;
 	time_t expires;
 	char *cname_target;
 } DNSCacheData;
 
 void strtolower(char *str);
-uint32_t hashStr(const char *s) __attribute__((pure));
 int findQueryID(const int id);
 #define findUpstreamID(upstream, port) _findUpstreamID(upstream, port, __LINE__, __FUNCTION__, __FILE__)
 int _findUpstreamID(const char *upstream, const in_port_t port, int line, const char *func, const char *file);
