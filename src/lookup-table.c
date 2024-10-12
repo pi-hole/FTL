@@ -19,7 +19,6 @@
 // counters
 #include "shmem.h"
 
-
 /**
  * @brief Compare two hash values.
  *
@@ -74,14 +73,26 @@ static inline int cmp_hash(const uint32_t a, const uint32_t b)
  * found element or NULL (!) if the element is not found which provides no
  * information about the position where the element would need to be inserted.
  */
-static bool binsearch(const struct lookup_table *base, const uint32_t hash, size_t nel, const struct lookup_table **try)
+static bool binsearch(const struct lookup_table *base, const uint32_t hash, size_t nel, const struct lookup_table **try
+#ifdef MEASURE_ITERATIONS
+	, unsigned int *iterations
+#endif
+)
 {
+#ifdef MEASURE_ITERATIONS
+	// Count the number of iterations
+	*iterations = 0;
+#endif
 	// Run while there are elements left to be searched in the base array
 	while(nel > 0)
 	{
+#ifdef MEASURE_ITERATIONS
+		// Increment the number of iterations
+		(*iterations)++;
+#endif
 		// Set the try pointer to the (relative) middle element of the
 		// current base
-		*try = base + (nel/2);
+		*try = base + (nel / 2);
 
 		// Compare the key with the current element
 		const int sign = cmp_hash(hash, (*try)->hash);
@@ -119,7 +130,7 @@ static bool binsearch(const struct lookup_table *base, const uint32_t hash, size
 			// If the key is greater than the middle element, search
 			// in the (relative) right half and try again
 			base = *try;
-			nel -= nel/2;
+			nel -= nel / 2;
 		}
 	}
 
@@ -193,8 +204,15 @@ bool lookup_insert(const enum memory_type type, const unsigned int id, const uin
 	// Find the correct position in the lookup_table array
 	// We do not check the return value as we are inserting a new element
 	// and don't care if elements with the same hash value exist already
-	const struct lookup_table *try = NULL;
-	binsearch(table, hash, *size, &try);
+	const struct lookup_table *try = table;
+#ifdef MEASURE_ITERATIONS
+	unsigned int iterations = 0;
+#endif
+	binsearch(table, hash, *size, &try
+#ifdef MEASURE_ITERATIONS
+		, &iterations
+#endif
+	);
 
 	// Calculate the position where the element would be inserted
 	const size_t pos = try - table;
@@ -242,7 +260,14 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 
 	// Find the correct position in the lookup_table array
 	const struct lookup_table *try = NULL;
-	if(!binsearch(table, hash, *size, &try))
+#ifdef MEASURE_ITERATIONS
+	unsigned int iterations = 0;
+#endif
+	if(!binsearch(table, hash, *size, &try
+#ifdef MEASURE_ITERATIONS
+		, &iterations
+#endif
+	))
 	{
 		// The element is not in the array
 		log_warn("Element to be removed (type %u, hash %u) is not in the lookup table",
@@ -259,7 +284,12 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 	// all elements with the same hash value to find the correct one
 	// where the ID matches as well.
 	while(pos > 0 && table[pos - 1].hash == hash)
+	{
+#ifdef MEASURE_ITERATIONS
+		iterations++;
+#endif
 		pos--;
+	}
 
 	// Iterate over all elements with the same hash value
 	while(pos < *size && table[pos].hash == hash)
@@ -274,14 +304,23 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 			// Decrease the number of elements in the array
 			(*size)--;
 
+#ifdef MEASURE_ITERATIONS
+			log_debug(DEBUG_GC, "Removed element (type %u, ID %u, hash %u) at position %zu (%u iterations)",
+			          type, id, hash, pos, iterations);
+#else
 			log_debug(DEBUG_GC, "Removed element (type %u, ID %u, hash %u) at position %zu",
 			          type, id, hash, pos);
+#endif
 
 			return true;
 		}
 
 		// Move to the next element with the same hash value
 		pos++;
+
+#ifdef MEASURE_ITERATIONS
+		iterations++;
+#endif
 	}
 
 	// The element is not in the array
@@ -318,11 +357,18 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 
 	// Find the correct position in the lookup_table array
 	const struct lookup_table *try = NULL;
-	if(!binsearch(table, hash, *size, &try))
+#ifdef MEASURE_ITERATIONS
+	unsigned int iterations = 0;
+#endif
+	if(!binsearch(table, hash, *size, &try
+#ifdef MEASURE_ITERATIONS
+		, &iterations
+#endif
+	))
 	{
-		// The element is not in the array
-		log_warn("Element to be found (type %u, hash %u) is not in the lookup table",
-		         type, hash);
+		// The element is not in the array - this is not an error
+		log_debug(DEBUG_GC, "Element to be found (type %u, hash %u) is not in the lookup table",
+		          type, hash);
 		return false;
 	}
 
@@ -335,7 +381,12 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 	// all elements with the same hash value to find the correct one
 	// where the ID matches as well.
 	while(pos > 0 && table[pos - 1].hash == hash)
+	{
+#ifdef MEASURE_ITERATIONS
+		iterations++;
+#endif
 		pos--;
+	}
 
 	// Iterate over all elements with the same hash value
 	while(pos < *size && table[pos].hash == hash)
@@ -343,8 +394,13 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 		// If the ID matches, we found the correct element
 		if(cmp_func(&table[pos], lookup_data))
 		{
+#ifdef MEASURE_ITERATIONS
+			log_debug(DEBUG_GC, "Found element (type %u, ID %u, hash %u) at position %zu (%u iterations)",
+			          type, table[pos].id, hash, pos, iterations);
+#else
 			log_debug(DEBUG_GC, "Found element (type %u, ID %u, hash %u) at position %zu",
 			          type, table[pos].id, hash, pos);
+#endif
 
 			// Store the matching ID
 			*matchingID = table[pos].id;
@@ -355,11 +411,15 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 
 		// Move to the next element with the same hash value
 		pos++;
+
+#ifdef MEASURE_ITERATIONS
+		iterations++;
+#endif
 	}
 
-	// The element is not in the array
-	log_warn("Element to be found (type %u, hash %u) not in lookup table",
-	         type, hash);
+	// The element is not in the array - this is not an error
+	log_debug(DEBUG_GC, "Element to be found (type %u, hash %u) not in lookup table",
+	          type, hash);
 
 	return false;
 }

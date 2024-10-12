@@ -209,40 +209,46 @@ static int get_next_free_domainID(void)
 	return counters->domains;
 }
 
+static bool cmp_domain(const struct lookup_table *entry, const struct lookup_data *lookup_data)
+{
+	// Get domain pointer
+	const domainsData *domain = getDomain(entry->id, true);
+
+	// Check if the returned pointer is valid before trying to access it
+	if(domain == NULL)
+		return false;
+
+	// Compare domain strings
+	return strcmp(getstr(domain->domainpos), lookup_data->domain) == 0;
+}
+
 int _findDomainID(const char *domainString, const bool count, int line, const char *func, const char *file)
 {
 	// Get domain hash
 	const uint32_t hash = hashStr(domainString);
 
-	// Try to find the domain in the list of known domains
-	for(unsigned int domainID = 0; domainID < counters->domains; domainID++)
+	// Use lookup table to speed up domain lookups
+	const struct lookup_data lookup_data = { .domain = domainString	};
+	unsigned int domainID = 0;
+	if(lookup_find_id(DOMAINS_LOOKUP, hash, &lookup_data, &domainID, cmp_domain))
 	{
 		// Get domain pointer
-		domainsData *domain = _getDomain(domainID, false, line, func, file);
+		domainsData *domain = getDomain(domainID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(domain == NULL)
-			continue;
+			return -1;
 
-		// Quicker test: Does the domain match the pre-computed hash?
-		if(domain->hash != hash)
-			continue;
-
-		// If so, compare the full domain using strcmp
-		if(strcmp(getstr(domain->domainpos), domainString) == 0)
-		{
-			if(count)
-			{
-				domain->count++;
-				domain->lastQuery = double_time();
-			}
-			return domainID;
-		}
+		// Add one if count == true (do not add one, e.g., during CNAME inspection)
+		if(count) domain->count++;
+		return domainID;
 	}
 
-	// If we did not return until here, then this domain is not known
-	// Store ID
-	const int domainID = get_next_free_domainID();
+	// If we did not return until here, then this domain is not known and we
+	// need to create a new domain entry
+
+	// Get new domain ID
+	domainID = get_next_free_domainID();
 
 	// Get domain pointer
 	domainsData *domain = _getDomain(domainID, false, line, func, file);
@@ -252,7 +258,7 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 		return -1;
 	}
 
-	log_debug(DEBUG_GC, "New domain: %s (ID %d)", domainString, domainID);
+	log_debug(DEBUG_GC, "New domain: %s (ID %u)", domainString, domainID);
 
 	// Insert domain into lookup table
 	lookup_insert(DOMAINS_LOOKUP, domainID, hash);
@@ -296,33 +302,40 @@ static int get_next_free_clientID(void)
 	return counters->clients;
 }
 
+static bool cmp_client(const struct lookup_table *entry, const struct lookup_data *lookup_data)
+{
+	// Get client pointer
+	const clientsData *client = getClient(entry->id, true);
+
+	// Check if the returned pointer is valid before trying to access it
+	if(client == NULL)
+		return false;
+
+	// Compare client strings
+	return strcmp(getstr(client->ippos), lookup_data->client) == 0;
+}
+
 int _findClientID(const char *clientIP, const bool count, const bool aliasclient,
                   const double now, int line, const char *func, const char *file)
 {
 	// Get client hash
 	const uint32_t hash = hashStr(clientIP);
 
-	// Try to find the domain in the list of known client IP addresses
-	for(unsigned int clientID=0; clientID < counters->clients; clientID++)
+	// Use lookup table to speed up domain lookups
+	const struct lookup_data lookup_data = { .client = clientIP };
+	unsigned int clientID = 0;
+	if(lookup_find_id(CLIENTS_LOOKUP, hash, &lookup_data, &clientID, cmp_client))
 	{
 		// Get client pointer
-		clientsData *client = _getClient(clientID, true, line, func, file);
+		clientsData *client = getClient(clientID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(client == NULL)
-			continue;
+			return -1;
 
-		// Quicker test: Does the domain match the pre-computed hash?
-		if(client->hash != hash)
-			continue;
-
-		// If so, compare the full IP using strcmp
-		if(strcmp(getstr(client->ippos), clientIP) == 0)
-		{
-			// Add one if count == true (do not add one, e.g., during ARP table processing)
-			if(count && !aliasclient) change_clientcount(client, 1, 0, -1, 0);
-			return clientID;
-		}
+		// Add one if count == true (do not add one, e.g., during ARP table processing)
+		if(count && !aliasclient) change_clientcount(client, 1, 0, -1, 0);
+		return clientID;
 	}
 
 	// Return -1 (= not found) if count is false because we do not want to create a new client here
@@ -331,8 +344,8 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 		return -1;
 
 	// If we did not return until here, then this client is definitely new
-	// Store ID
-	const int clientID = get_next_free_clientID();
+	// Get new client ID
+	clientID = get_next_free_clientID();
 
 	// Get client pointer
 	clientsData *client = _getClient(clientID, false, line, func, file);
@@ -342,7 +355,10 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 		return -1;
 	}
 
-	log_debug(DEBUG_GC, "New client: %s (ID %d)", clientIP, clientID);
+	log_debug(DEBUG_GC, "New client: %s (ID %u)", clientIP, clientID);
+
+	// Insert domain into lookup table
+	lookup_insert(CLIENTS_LOOKUP, clientID, hash);
 
 	// Set magic byte
 	client->magic = MAGICBYTE;
@@ -456,41 +472,47 @@ static int get_next_free_cacheID(void)
 	return counters->dns_cache_size;
 }
 
-int _findCacheID(const int domainID, const int clientID, const enum query_type query_type,
+static bool cmp_cache(const struct lookup_table *entry, const struct lookup_data *lookup_data)
+{
+	// Get cache pointer
+	const DNSCacheData *cache = getDNSCache(entry->id, true);
+
+	// Check if the returned pointer is valid before trying to access it
+	if(cache == NULL)
+		return false;
+
+	// Compare cache data
+	return cache->domainID == lookup_data->domainID &&
+	       cache->clientID == lookup_data->clientID &&
+	       cache->query_type == lookup_data->query_type;
+}
+
+int _findCacheID(const unsigned int domainID, const unsigned int clientID, const enum query_type query_type,
                  const bool create_new, const char *func, int line, const char *file)
 {
 	// Get cache hash
 	const uint32_t hash = hashThreeInts(domainID, clientID, query_type);
 
-	// Compare content of client against known client IP addresses
-	for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	// Use lookup table to speed up cache lookups
+	const struct lookup_data lookup_data = { .domainID = domainID, .clientID = clientID, .query_type = query_type };
+	unsigned int cacheID = 0;
+	if(lookup_find_id(DNS_CACHE_LOOKUP, hash, &lookup_data, &cacheID, cmp_cache))
 	{
 		// Get cache pointer
-		DNSCacheData *dns_cache = _getDNSCache(cacheID, true, line, func, file);
+		DNSCacheData *cache = getDNSCache(cacheID, true);
 
 		// Check if the returned pointer is valid before trying to access it
-		if(dns_cache == NULL)
-			continue;
+		if(cache == NULL)
+			return -1;
 
-		// Quicker test: Does the domain match the pre-computed hash?
-		if(dns_cache->hash != hash)
-			continue;
-
-		// If so, do the full comparison of the domain and client ID
-		// just to be sure (hash collision)
-		if(dns_cache->domainID == domainID &&
-		   dns_cache->clientID == clientID &&
-		   dns_cache->query_type == query_type)
-		{
-			return cacheID;
-		}
+		return cacheID;
 	}
 
 	if(!create_new)
 		return -1;
 
 	// Get ID of new cache entry
-	const int cacheID = get_next_free_cacheID();
+	cacheID = get_next_free_cacheID();
 
 	// Get client pointer
 	DNSCacheData *dns_cache = _getDNSCache(cacheID, false, line, func, file);
@@ -501,8 +523,11 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 		return -1;
 	}
 
-	log_debug(DEBUG_GC, "New cache entry: domainID %d, clientID %d, query_type %d (ID %d)",
+	log_debug(DEBUG_GC, "New cache entry: domainID %u, clientID %u, query_type %u (ID %u)",
 	          domainID, clientID, query_type, cacheID);
+
+	// Insert cache into lookup table
+	lookup_insert(DNS_CACHE_LOOKUP, cacheID, hash);
 
 	// Initialize cache entry
 	dns_cache->magic = MAGICBYTE;

@@ -100,6 +100,9 @@ static void recycle(void)
 		log_debug(DEBUG_GC, "Recycling client %s (ID %u, lastQuery at %.3f)",
 		          getstr(client->ippos), clientID, client->lastQuery);
 
+		// Remove client from lookup table
+		lookup_remove(CLIENTS_LOOKUP, clientID, client->hash);
+
 		// Wipe client's memory
 		memset(client, 0, sizeof(clientsData));
 
@@ -141,6 +144,9 @@ static void recycle(void)
 			continue;
 
 		log_debug(DEBUG_GC, "Recycling cache entry with ID %u", cacheID);
+
+		// Remove cache entry from lookup table
+		lookup_remove(DNS_CACHE_LOOKUP, cacheID, cache->hash);
 
 		// Wipe cache entry's memory
 		memset(cache, 0, sizeof(DNSCacheData));

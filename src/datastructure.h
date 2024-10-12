@@ -115,8 +115,8 @@ typedef struct {
 	enum query_status blocking_status;
 	enum reply_type force_reply;
 	enum query_type query_type;
-	int domainID;
-	int clientID;
+	unsigned int domainID;
+	unsigned int clientID;
 	int list_id;
 	uint32_t hash;
 	time_t expires;
@@ -140,7 +140,7 @@ int _findDomainID(const char *domain, const bool count, int line, const char *fu
 #define findClientID(client, count, aliasclient, now) _findClientID(client, count, aliasclient, now, __LINE__, __FUNCTION__, __FILE__)
 int _findClientID(const char *client, const bool count, const bool aliasclient, const double now, int line, const char *func, const char *file);
 #define findCacheID(domainID, clientID, query_type, create_new) _findCacheID(domainID, clientID, query_type, create_new, __FUNCTION__, __LINE__, __FILE__)
-int _findCacheID(const int domainID, const int clientID, const enum query_type query_type, const bool create_new, const char *func, const int line, const char *file);
+int _findCacheID(const unsigned int domainID, const unsigned int clientID, const enum query_type query_type, const bool create_new, const char *func, const int line, const char *file);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 

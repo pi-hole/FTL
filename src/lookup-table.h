@@ -11,6 +11,8 @@
 #ifndef LOOKUP_TABLE_H
 #define LOOKUP_TABLE_H
 
+//#define MEASURE_ITERATIONS
+
 #include <stdbool.h>
 #include <stddef.h>
 // uint32_t

@@ -1246,7 +1246,7 @@ static void gravityDB_client_check_again(clientsData* client)
 	}
 }
 
-enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clientsData* client)
+enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clientsData *client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
