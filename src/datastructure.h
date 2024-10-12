@@ -89,6 +89,7 @@ typedef struct {
 	unsigned int rate_limit;
 	unsigned int numQueriesARP;
 	int overTime[OVERTIME_SLOTS];
+	uint32_t clientHash;
 	size_t groupspos;
 	size_t ippos;
 	size_t namepos;
@@ -101,7 +102,7 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
-	uint32_t domainhash;
+	uint32_t domainHash;
 	size_t domainpos;
 	double lastQuery;
 } domainsData;

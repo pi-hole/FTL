@@ -160,7 +160,10 @@ static int get_next_free_domainID(void)
 
 int _findDomainID(const char *domainString, const bool count, int line, const char *func, const char *file)
 {
-	uint32_t domainHash = hashStr(domainString);
+	// Get domain hash
+	const uint32_t domainHash = hashStr(domainString);
+
+	// Try to find the domain in the list of known domains
 	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
@@ -171,7 +174,7 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 			continue;
 
 		// Quicker test: Does the domain match the pre-computed hash?
-		if(domain->domainhash != domainHash)
+		if(domain->domainHash != domainHash)
 			continue;
 
 		// If so, compare the full domain using strcmp
@@ -209,8 +212,8 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domain->domainpos = addstr(domainString);
-	// Store pre-computed hash of domain for faster lookups later on
-	domain->domainhash = hashStr(domainString);
+	// Store pre-computed hash for faster lookups later on
+	domain->domainHash = domainHash;
 	domain->lastQuery = 0.0;
 	// Increase counter by one
 	counters->domains++;
@@ -242,7 +245,10 @@ static int get_next_free_clientID(void)
 int _findClientID(const char *clientIP, const bool count, const bool aliasclient,
                   const double now, int line, const char *func, const char *file)
 {
-	// Compare content of client against known client IP addresses
+	// Get client hash
+	const uint32_t clientHash = hashStr(clientIP);
+
+	// Try to find the domain in the list of known client IP addresses
 	for(int clientID=0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
@@ -252,8 +258,8 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 		if(client == NULL)
 			continue;
 
-		// Quick test: Does the clients IP start with the same character?
-		if(getstr(client->ippos)[0] != clientIP[0])
+		// Quicker test: Does the domain match the pre-computed hash?
+		if(client->clientHash != clientHash)
 			continue;
 
 		// If so, compare the full IP using strcmp
@@ -292,6 +298,8 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
 	client->ippos = addstr(clientIP);
+	// Store pre-computed hash for faster lookups later on
+	client->clientHash = clientHash;
 	// Initialize client hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
