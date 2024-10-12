@@ -2420,7 +2420,7 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
       if (display_id < 0)
 	display_id = -display_id;
       
-      if (flags & F_NOEXTRA)
+      if (flags & F_NOEXTRA || !daemon->log_source_addr)
 	my_syslog(LOG_INFO, "%s%u %s %s%s%s %s%s", proto, display_id, source, name, gap, verb, dest, extra);
       else
 	{

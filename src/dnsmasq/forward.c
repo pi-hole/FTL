@@ -666,6 +666,7 @@ int fast_retry(time_t now)
 		  GETSHORT(udp_size, udpsz);
 		
 		daemon->log_display_id = f->frec_src.log_id;
+		daemon->log_source_addr = NULL;
 		
 		forward_query(-1, NULL, NULL, 0, header, f->stash_len, ((char *) header) + udp_size, now, f,
 			      f->flags & FREC_AD_QUESTION, f->flags & FREC_DO_QUESTION, 1);
@@ -958,7 +959,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
   int log_resource = 0;
 
   daemon->log_display_id = forward->frec_src.log_id;
-  
+    
   /* We've had a reply already, which we're validating. Ignore this duplicate */
   if (forward->blocking_query || (forward->flags & FREC_GONE_TO_TCP))
     return;
@@ -1419,7 +1420,7 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
   (void)status;
 
   daemon->log_display_id = forward->frec_src.log_id;
-  daemon->log_source_addr = &forward->frec_src.source;
+  daemon->log_source_addr = (forward->frec_src.fd != -1) ? &forward->frec_src.source : NULL;
   
   /* Don't cache replies where DNSSEC validation was turned off, either
      the upstream server told us so, or the original query specified it.  */
@@ -2049,6 +2050,9 @@ void receive_query(struct listener *listen, time_t now)
 	  /* We answered with stale cache data, so forward the query anyway to
 	     refresh that. */
 	  m = 0;
+
+	  /* Don't mark the query with the source in this case. */
+	  daemon->log_source_addr = NULL;
 	  
 	  /* We've already answered the client, so don't send it the answer 
 	     when it comes back. */
