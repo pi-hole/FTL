@@ -2266,11 +2266,18 @@ int tcp_from_udp(time_t now, int status, struct dns_header *header, ssize_t *ple
 
 	  if (n >= daemon->edns_pktsz)
 	    {
-	      new_header->ancount = htons(0);
+	      /* still too bug, strip optional sections and try again. */
 	      new_header->nscount = htons(0);
 	      new_header->arcount = htons(0);
-	      n = resize_packet(header, n, NULL, 0);
-	      new_status = STAT_TRUNCATED;
+	      n = resize_packet(new_header, n, NULL, 0);
+	      if (n >= daemon->edns_pktsz)
+		{
+		  /* truncating the packet will break the answers, so remove them too
+		     and mark the reply as truncated. */
+		  new_header->ancount = htons(0);
+		  n = resize_packet(new_header, n, NULL, 0);
+		  new_status = STAT_TRUNCATED;
+		}
 	    }
 
 	  /* return the stripped or truncated reply. */
