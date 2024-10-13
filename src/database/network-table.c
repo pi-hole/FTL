@@ -1348,7 +1348,7 @@ void parse_neighbor_cache(sqlite3* db)
 			unlock_shm();
 
 			// Device not in database, add new entry
-			if(dbID == DB_NODATA)
+			if(client_valid && dbID == DB_NODATA)
 			{
 				// Try to obtain vendor from MAC database
 				char *macVendor = getMACVendor(hwaddr);
@@ -1379,8 +1379,6 @@ void parse_neighbor_cache(sqlite3* db)
 					clientsData *client = getClient(clientID, true);
 					if(client != NULL)
 					{
-						// Reacquire client pointer (if may have changed when unlocking above)
-						client = getClient(clientID, true);
 						// Reset client ARP counter (we stored the entry in the database)
 						client->numQueriesARP = 0;
 					}

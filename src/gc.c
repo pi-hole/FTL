@@ -317,7 +317,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 	// Process all queries
 	unsigned int removed = 0;
-	for(long int i = 0; i < counters->queries; i++)
+	for(unsigned int i = 0; i < counters->queries; i++)
 	{
 		queriesData *query = getQuery(i, true);
 		if(query == NULL)
