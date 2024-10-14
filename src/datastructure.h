@@ -27,12 +27,12 @@ typedef struct {
 	enum reply_type reply;
 	enum dnssec_status dnssec;
 	uint16_t qtype;
-	int domainID;
-	int clientID;
-	int upstreamID;
+	unsigned int domainID;
+	unsigned int clientID;
+	int upstreamID; // -1 if not forwarded
 	int cacheID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
-	int CNAME_domainID; // only valid if query has a CNAME blocking status
+	int CNAME_domainID; // only valid if query has a CNAME blocking status, -1 otherwise
 	int ede;
 	double response;
 	double timestamp;
@@ -186,14 +186,14 @@ int __attribute__ ((pure)) get_edns_mode_val(const char *edns_mode);
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-queriesData *_getQuery(unsigned int queryID, bool checkMagic, int line, const char *func, const char *file);
+queriesData *_getQuery(const unsigned int queryID, const bool checkMagic, const int line, const char *func, const char *file);
 #define getClient(clientID, checkMagic) _getClient(clientID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-clientsData* _getClient(unsigned int clientID, bool checkMagic, int line, const char *func, const char *file);
+clientsData *_getClient(const unsigned int clientID, const bool checkMagic, const int line, const char *func, const char *file);
 #define getDomain(domainID, checkMagic) _getDomain(domainID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-domainsData* _getDomain(unsigned int domainID, bool checkMagic, int line, const char *func, const char *file);
+domainsData *_getDomain(const unsigned int domainID, const bool checkMagic, const int line, const char *func, const char *file);
 #define getUpstream(upstreamID, checkMagic) _getUpstream(upstreamID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char *func, const char *file);
+upstreamsData *_getUpstream(const unsigned int upstreamID, const bool checkMagic, const int line, const char *func, const char *file);
 #define getDNSCache(cacheID, checkMagic) _getDNSCache(cacheID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-DNSCacheData* _getDNSCache(unsigned int cacheID, bool checkMagic, int line, const char *func, const char *file);
+DNSCacheData *_getDNSCache(const unsigned int cacheID, const bool checkMagic, const int line, const char *func, const char *file);
 
 #endif //DATASTRUCTURE_H

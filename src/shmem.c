@@ -1099,7 +1099,7 @@ static inline bool check_range(unsigned int ID, unsigned int MAXID, const char* 
 	return true;
 }
 
-static inline bool check_magic(unsigned int ID, bool checkMagic, unsigned char magic, const char *type, const char *func, int line, const char *file)
+static inline bool check_magic(const unsigned int ID, const bool checkMagic, const unsigned char magic, const char *type, const char *func, const int line, const char *file)
 {
 	// Check magic only if requested (skipped for new entries which are uninitialized)
 	if(checkMagic && magic != MAGICBYTE)
@@ -1116,7 +1116,7 @@ static inline bool check_magic(unsigned int ID, bool checkMagic, unsigned char m
 	return true;
 }
 
-queriesData *_getQuery(unsigned int queryID, bool checkMagic, int line, const char *func, const char *file)
+queriesData *_getQuery(const unsigned int queryID, const bool checkMagic, const int line, const char *func, const char *file)
 {
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
@@ -1146,7 +1146,7 @@ queriesData *_getQuery(unsigned int queryID, bool checkMagic, int line, const ch
 	return NULL;
 }
 
-clientsData* _getClient(unsigned int clientID, bool checkMagic, int line, const char *func, const char *file)
+clientsData *_getClient(const unsigned int clientID, const bool checkMagic, const int line, const char *func, const char *file)
 {
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
@@ -1176,7 +1176,7 @@ clientsData* _getClient(unsigned int clientID, bool checkMagic, int line, const 
 	return NULL;
 }
 
-domainsData* _getDomain(unsigned int domainID, bool checkMagic, int line, const char *func, const char *file)
+domainsData *_getDomain(const unsigned int domainID, const bool checkMagic, const int line, const char *func, const char *file)
 {
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
@@ -1206,7 +1206,7 @@ domainsData* _getDomain(unsigned int domainID, bool checkMagic, int line, const 
 	return NULL;
 }
 
-upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char *func, const char *file)
+upstreamsData *_getUpstream(const unsigned int upstreamID, const bool checkMagic, const int line, const char *func, const char *file)
 {
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
@@ -1236,7 +1236,7 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 	return NULL;
 }
 
-DNSCacheData* _getDNSCache(unsigned int cacheID, bool checkMagic, int line, const char *func, const char *file)
+DNSCacheData *_getDNSCache(const unsigned int cacheID, const bool checkMagic, const int line, const char *func, const char *file)
 {
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())

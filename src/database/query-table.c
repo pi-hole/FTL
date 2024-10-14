@@ -641,6 +641,11 @@ bool export_queries_to_disk(bool final)
 	// Prepare SQLite3 statement
 	log_debug(DEBUG_DATABASE, "Accessing in-memory database");
 	rc = sqlite3_prepare_v2(memdb, "SELECT MAX(id) FROM disk.query_storage;", -1, &stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		log_err("export_queries_to_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
+		return false;
+	}
 
 	// Perform step
 	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
@@ -1491,10 +1496,10 @@ bool queries_to_database(void)
 		{
 			// Get forward pointer
 			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
-			const char *forwardIP = getstr(upstream->ippos);
-			if(upstream && forwardIP)
+			if(upstream != NULL)
 			{
 				char *buffer = NULL;
+				const char *forwardIP = getstr(upstream->ippos);
 				int len = 0; // The length of the string WITHOUT the NUL byte. This is what sqlite3_bind_text() expects.
 				if((len = asprintf(&buffer, "%s#%u", forwardIP, upstream->port)) > 0)
 				{

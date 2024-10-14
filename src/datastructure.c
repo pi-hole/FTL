@@ -151,8 +151,8 @@ int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, 
 	}
 	// This upstream server is not known
 	// Store ID
-	const int upstreamID = counters->upstreams;
-	log_debug(DEBUG_GC, "New upstream server: %s:%u (ID %i)", upstreamString, port, upstreamID);
+	const unsigned int upstreamID = counters->upstreams;
+	log_debug(DEBUG_GC, "New upstream server: %s:%u (ID %u)", upstreamString, port, upstreamID);
 
 	// Get upstream pointer
 	upstreamsData *upstream = _getUpstream(upstreamID, false, line, func, file);
@@ -563,7 +563,7 @@ bool isValidIPv6(const char *addr)
 const char *getDomainString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL || query->domainID < 0)
+	if(query == NULL)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
@@ -611,7 +611,7 @@ const char *getCNAMEDomainString(const queriesData *query)
 const char *getClientIPString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL || query->clientID < 0)
+	if(query == NULL)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
@@ -635,7 +635,7 @@ const char *getClientIPString(const queriesData *query)
 const char *getClientNameString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL || query->clientID < 0)
+	if(query == NULL)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
