@@ -339,10 +339,13 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 			domain->count--;
 
 		// Adjust upstream counter (no overTime information)
-		upstreamsData *upstream = getUpstream(query->upstreamID, true);
-		if(upstream != NULL)
-			// Adjust upstream counter
-			upstream->count--;
+		if(query->upstreamID > -1)
+		{
+			upstreamsData *upstream = getUpstream(query->upstreamID, true);
+			if(upstream != NULL)
+				// Adjust upstream counter
+				upstream->count--;
+		}
 
 		// Change other counters according to status of this query
 		switch(query->status)
