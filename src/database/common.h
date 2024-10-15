@@ -31,7 +31,6 @@ enum counters_table_props {
 void db_init(void);
 int db_get_int(sqlite3* db, const enum ftl_table_props ID);
 int db_get_FTL_property(sqlite3* db, const enum ftl_table_props ID);
-double db_get_FTL_property_double(sqlite3* db, const enum ftl_table_props ID);
 bool db_set_FTL_property(sqlite3* db, const enum ftl_table_props ID, const int value);
 
 /// Execute a formatted SQL query and get the return code

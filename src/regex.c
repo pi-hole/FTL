@@ -367,7 +367,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 	return true;
 }
 
-static int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
+static int match_regex(const char *input, DNSCacheData *dns_cache, const int clientID,
                        const enum regex_type regexid, const bool regextest, cJSON *json)
 {
 	int match_idx = -1;
@@ -409,7 +409,7 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 		{
 			if(config.debug.regex.v.b)
 			{
-				clientsData* client = getClient(clientID, true);
+				clientsData *client = getClient(clientID, true);
 				if(client != NULL)
 				{
 					log_debug(DEBUG_REGEX, "Regex %s (%u, DB ID %d) \"%s\" NOT ENABLED for client %s",

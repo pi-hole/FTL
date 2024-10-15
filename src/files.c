@@ -168,10 +168,10 @@ void get_permission_string(char permissions[10], struct stat *st)
 	         st->st_mode & S_IXOTH ? "x":"-");
 }
 
-void ls_dir(const char* path)
+void ls_dir(const char *path)
 {
 	// Open directory stream
-	DIR* dirp = opendir(path);
+	DIR *dirp = opendir(path);
 	if(dirp == NULL)
 	{
 		log_warn("opendir(\"%s\") failed with %s", path, strerror(errno));
@@ -626,7 +626,7 @@ char * __attribute__((malloc)) get_hwmon_target(const char *path)
 
 // Returns true if the files have different contents
 // from specifies from which line number the files should be compared
-bool files_different(const char *pathA, const char* pathB, unsigned int from)
+bool files_different(const char *pathA, const char *pathB, unsigned int from)
 {
 	// Check if both files exist
 	if(!file_exists(pathA) || !file_exists(pathB))

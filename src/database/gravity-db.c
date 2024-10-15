@@ -265,7 +265,7 @@ static const char *show_client_string(const char *hwaddr, const char *hostname,
 }
 
 // Get associated groups for this client (if defined)
-static bool get_client_groupids(clientsData* client)
+static bool get_client_groupids(clientsData *client)
 {
 	const char *ip = getstr(client->ippos);
 	client->flags.found_group = false;
@@ -1220,7 +1220,7 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 	return (rc == SQLITE_ROW) ? FOUND : NOT_FOUND;
 }
 
-void gravityDB_reload_groups(clientsData* client)
+void gravityDB_reload_groups(clientsData *client)
 {
 	// Rebuild client table statements (possibly from a different group set)
 	gravityDB_finalize_client_statements(client);
@@ -1232,7 +1232,7 @@ void gravityDB_reload_groups(clientsData* client)
 
 // Check if this client needs a rechecking of group membership
 // This client may be identified by something that wasn't there on its first query (hostname, MAC address, interface)
-static void gravityDB_client_check_again(clientsData* client)
+static void gravityDB_client_check_again(clientsData *client)
 {
 	const time_t diff = time(NULL) - client->firstSeen;
 	const unsigned char check_count = client->reread_groups + 1u;
@@ -1496,7 +1496,7 @@ enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsD
 	return domain_in_list(domain, stmt, "blacklist", &dns_cache->list_id);
 }
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,
+bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int numregex, const regexData *regex,
                                        const unsigned char type, const char* table)
 {
 	log_debug(DEBUG_REGEX, "Getting regex client groups for client with ID %u", client->id);

@@ -1495,7 +1495,7 @@ bool queries_to_database(void)
 		if(query->upstreamID > -1)
 		{
 			// Get forward pointer
-			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
+			const upstreamsData *upstream = getUpstream(query->upstreamID, true);
 			if(upstream != NULL)
 			{
 				char *buffer = NULL;

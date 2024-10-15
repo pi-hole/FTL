@@ -293,28 +293,6 @@ bool another_FTL(void)
 	return already_running;
 }
 
-bool read_self_memory_status(struct statm_t *result)
-{
-	const char* statm_path = "/proc/self/statm";
-
-	FILE *f = fopen(statm_path,"r");
-	if(!f){
-		perror(statm_path);
-		return false;
-	}
-	if(fscanf(f,"%lu %lu %lu %lu %lu %lu %lu",
-	   &result->size, &result->resident, &result->shared,
-	   &result->text, &result->lib, &result->data,
-	   &result->dirty) != 7)
-	{
-		perror(statm_path);
-		return false;
-	}
-	fclose(f);
-
-	return true;
-}
-
 bool getProcessMemory(struct proc_mem *mem, const unsigned long total_memory)
 {
 	// Open /proc/self/status

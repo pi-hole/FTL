@@ -258,42 +258,6 @@ void reset_aliasclient(sqlite3 *db, clientsData *client)
 	recompute_aliasclient(client->aliasclient_id);
 }
 
-// Return a list of clients linked to the current alias-client
-// The first element contains the number of following IDs
-int *get_aliasclient_list(const int aliasclientID)
-{
-	int count = 0;
-	// Loop over all existing clients to count associated clients
-	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		// Get pointer to client candidate
-		const clientsData *client = getClient(clientID, true);
-		// Skip invalid clients and those that are not managed by this aliasclient
-		if(client == NULL || client->aliasclient_id != aliasclientID)
-			continue;
-
-		count++;
-	}
-
-	int *list = calloc(count + 1, sizeof(int));
-	list[0] = count;
-
-	// Loop over all existing clients to fill list of clients
-	count = 0;
-	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		// Get pointer to client candidate
-		const clientsData *client = getClient(clientID, true);
-		// Skip invalid clients and those that are not managed by this aliasclient
-		if(client == NULL || client->aliasclient_id != aliasclientID)
-			continue;
-
-		list[++count] = clientID;
-	}
-
-	return list;
-}
-
 // Reimport alias-clients from database
 // Note that this will always only change or add new clients. Alias-clients are
 // removed by nulling them before importing new clients

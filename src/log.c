@@ -643,37 +643,6 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 	return src - src_buf;
 }
 
-// Find number of occurrences of a character in a string
-unsigned int __attribute__ ((pure)) countchar(const char *str, const char c)
-{
-	unsigned int count = 0;
-	for(const char *p = str; *p != '\0'; p++)
-		if(*p == c)
-			count++;
-	return count;
-}
-
-int __attribute__ ((pure)) forwarded_queries(void)
-{
-	return counters->status[QUERY_FORWARDED] +
-	       counters->status[QUERY_RETRIED] +
-	       counters->status[QUERY_RETRIED_DNSSEC];
-}
-
-int __attribute__ ((pure)) cached_queries(void)
-{
-	return counters->status[QUERY_CACHE];
-}
-
-int __attribute__ ((pure)) blocked_queries(void)
-{
-	int num = 0;
-	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
-		if(is_blocked(status))
-			num += counters->status[status];
-	return num;
-}
-
 const char * __attribute__ ((pure)) short_path(const char *full_path)
 {
 	const char *shorter = strstr(full_path, "src/");

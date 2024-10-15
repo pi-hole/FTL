@@ -48,7 +48,7 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		clientsData* client = getClient(clientID, true);
+		clientsData *client = getClient(clientID, true);
 		if(client != NULL)
 		{
 			// Set overTime data to zero

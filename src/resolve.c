@@ -163,7 +163,7 @@ static const char *getDNScode(int code)
 }
 
 // Validate given hostname
-static bool valid_hostname(char* name, const char* clientip)
+static bool valid_hostname(char *name, const char *clientip)
 {
 	// Check for validity of input
 	if(name == NULL)
@@ -814,7 +814,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// Memory access needs to get locked
 		lock_shm();
 		// Get client pointer for the first time (reading data)
-		clientsData* client = getClient(clientID, true);
+		clientsData *client = getClient(clientID, true);
 		if(client == NULL)
 		{
 			// Client has been recycled, skip it
@@ -969,7 +969,7 @@ static void resolveUpstreams(const bool onlynew)
 		// Memory access needs to get locked
 		lock_shm();
 		// Get upstream pointer for the first time (reading data)
-		upstreamsData* upstream = getUpstream(upstreamID, true);
+		upstreamsData *upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 		{
 			// This is not a fatal error, as the upstream may have been recycled

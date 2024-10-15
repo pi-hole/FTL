@@ -254,8 +254,6 @@ set(sources
         shmem.h
         signals.c
         signals.h
-        struct_size.c
-        struct_size.h
         timers.c
         timers.h
         vector.c

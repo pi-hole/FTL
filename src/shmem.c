@@ -393,7 +393,7 @@ void _lock_shm(const char *func, const int line, const char *file)
 }
 
 // Release SHM lock
-void _unlock_shm(const char* func, const int line, const char * file)
+void _unlock_shm(const char *func, const int line, const char * file)
 {
 	// There is no need to unlock if we are the only thread
 	// (e.g., when running pihole-FTL --config a.b.c def)
@@ -1082,7 +1082,7 @@ void set_per_client_regex(const unsigned int clientID, const unsigned int regexI
 	((bool*) shm_per_client_regex.ptr)[id] = value;
 }
 
-static inline bool check_range(unsigned int ID, unsigned int MAXID, const char* type, const char *func, int line, const char *file)
+static inline bool check_range(unsigned int ID, unsigned int MAXID, const char *type, const char *func, int line, const char *file)
 {
 	// Check bounds
 	if(ID > MAXID)

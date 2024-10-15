@@ -42,16 +42,12 @@
 #include <netinet/in.h>
 // offsetof()
 #include <stddef.h>
-// get_edestr()
-#include "api/api_helper.h"
 // logg_rate_limit_message()
 #include "database/message-table.h"
 // http_init()
 #include "webserver/webserver.h"
 // type struct sqlite3_stmt_vec
 #include "vector.h"
-// check_one_struct()
-#include "struct_size.h"
 // query_to_database()
 #include "database/query-table.h"
 // reread_config()
@@ -68,10 +64,10 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
                              const double now, const char *file, const int line);
 static bool FTL_check_blocking(const unsigned int queryID, const unsigned int domainID, const unsigned int clientID);
 static void query_blocked(queriesData *query, domainsData *domain, clientsData *client, const enum query_status new_status);
-static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, unsigned short port, const int id, const char* file, const int line);
-static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char* arg, unsigned short type, const int id, const char* file, const int line);
-static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char* file, const int line);
-static void FTL_dnssec(const char *result, const union all_addr *addr, const int id, const char* file, const int line);
+static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, unsigned short port, const int id, const char *file, const int line);
+static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char *arg, unsigned short type, const int id, const char *file, const int line);
+static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char *file, const int line);
+static void FTL_dnssec(const char *result, const union all_addr *addr, const int id, const char *file, const int line);
 static void mysockaddr_extract_ip_port(const union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
 static void check_pihole_PTR(char *domain);
@@ -103,10 +99,9 @@ static struct {
 // Fork-private copy of the server data the most recent reply came from
 static union mysockaddr last_server = {{ 0 }};
 
-unsigned char* pihole_privacylevel = &config.misc.privacylevel.v.privacy_level;
 const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_DOMAINSRV", "F_RCODE", "F_RR", "F_STALE" };
 
-void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
+void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, char *arg, int id, unsigned short type, const char *file, const int line)
 {
 	// Extract filename from path
 	const char *path = short_path(file);
@@ -585,7 +580,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
                     union mysockaddr *addr, char *arg,
                     const unsigned short qtype, const int id,
                     const enum protocol proto,
-                    const char* file, const int line)
+                    const char *file, const int line)
 {
 	// Create new query in data structure
 
@@ -1829,7 +1824,7 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 }
 
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr,
-                          unsigned short port, const int id, const char* file, const int line)
+                          unsigned short port, const int id, const char *file, const int line)
 {
 	// Save that this query got forwarded to an upstream server
 	const double now = double_time();
@@ -2081,7 +2076,7 @@ static void update_upstream(queriesData *query, const int id)
 }
 
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr,
-                      const char *arg, unsigned short type, const int id, const char* file, const int line)
+                      const char *arg, unsigned short type, const int id, const char *file, const int line)
 {
 	const double now = double_time();
 	// If domain is "pi.hole", we skip this query
@@ -2570,7 +2565,7 @@ static void query_blocked(queriesData *query, domainsData *domain, clientsData *
 	query->flags.database.changed = true;
 }
 
-static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id, const char* file, const int line)
+static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id, const char *file, const int line)
 {
 	// Process DNSSEC result for a domain
 	const double now = double_time();
@@ -2641,7 +2636,7 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 	unlock_shm();
 }
 
-static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char* file, const int line)
+static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char *file, const int line)
 {
 	// Process local and upstream errors
 	// Queries with error are those where the RCODE
@@ -2764,7 +2759,7 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 	unlock_shm();
 }
 
-static void FTL_blocked_upstream_by_header(const enum query_status new_status, const int id, const char* file, const int line)
+static void FTL_blocked_upstream_by_header(const enum query_status new_status, const int id, const char *file, const int line)
 {
 	// Get response time
 	const double now = double_time();
@@ -2828,7 +2823,7 @@ static void FTL_blocked_upstream_by_header(const enum query_status new_status, c
 	unlock_shm();
 }
 
-static void FTL_blocked_upstream_by_addr(const enum query_status new_status, const int id, const char* file, const int line)
+static void FTL_blocked_upstream_by_addr(const enum query_status new_status, const int id, const char *file, const int line)
 {
 	// Lock shared memory
 	lock_shm();
@@ -2874,7 +2869,7 @@ static void FTL_blocked_upstream_by_addr(const enum query_status new_status, con
 
 int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
                      const union all_addr *addr,
-                     const int id, const char* file, const int line)
+                     const int id, const char *file, const int line)
 {
 	const ednsData *edns = getEDNS();
 	// Check if RA bit is unset in DNS header and rcode is NXDOMAIN
@@ -2925,7 +2920,7 @@ int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
 }
 
 void _FTL_header_analysis(const unsigned char header4, const struct server *server,
-                          const int id, const char* file, const int line)
+                          const int id, const char *file, const int line)
 {
 	// Analyze DNS header bits
 
@@ -3368,55 +3363,6 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 	return;
 }
 
-unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t qlen)
-{
-	// Create working pointer
-	unsigned char *p = (unsigned char *)(header+1);
-	uint16_t qtype, qclass;
-
-	// Go through the questions
-	for (uint16_t i = ntohs(header->qdcount); i != 0; i--)
-	{
-		// Prime dnsmasq flags
-		int flags = RCODE(header) == NXDOMAIN ? F_NXDOMAIN : 0;
-
-		// Extract name from this question
-		char name[MAXDNAME];
-		if (!extract_name(header, qlen, &p, name, 1, 4))
-			break; // bad packet, go to fallback solution
-
-		// Extract query type
-		GETSHORT(qtype, p);
-		GETSHORT(qclass, p);
-
-		// Only further analyze IN questions here (not CHAOS, etc.)
-		if (qclass != C_IN)
-			continue;
-
-		// Very simple decision: If the question is AAAA, the reply
-		// should be IPv6. We use IPv4 in all other cases
-		if(qtype == T_AAAA)
-			flags |= F_IPV6;
-		else
-			flags |= F_IPV4;
-
-		// Debug logging if enabled
-		if(config.debug.queries.v.b)
-		{
-			char *qtype_str = querystr(NULL, qtype);
-			log_debug(DEBUG_QUERIES, "CNAME header: Question was <IN> %s %s", qtype_str, name);
-		}
-
-		return flags;
-	}
-
-	// Fall back to IPv4 (type A) when for the unlikely event that we cannot
-	// find any questions in this header
-	log_debug(DEBUG_QUERIES, "CNAME header: No valid IN question found in header");
-
-	return F_IPV4;
-}
-
 // Called when a (forked) TCP worker is terminated by receiving SIGALRM
 // We close the dedicated database connection this client had opened
 // to avoid dangling database locks
@@ -3698,11 +3644,6 @@ void FTL_multiple_replies(const int id, int *firstID)
 
 	// Unlock shared memory
 	unlock_shm();
-}
-
-const char *get_edestr(const int ede)
-{
-	return edestr(ede);
 }
 
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line)

@@ -557,7 +557,7 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	for(unsigned int clientID=0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(clientID, true);
+		const clientsData *client = getClient(clientID, true);
 		if(client == NULL)
 			continue;
 

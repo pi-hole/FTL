@@ -18,8 +18,6 @@
 #include "overTime.h"
 // config struct
 #include "config/config.h"
-// get_aliasclient_list()
-#include "database/aliasclients.h"
 
 int api_history(struct ftl_conn *api)
 {
@@ -59,7 +57,7 @@ static unsigned int build_client_temparray(int *temparray, const int slot)
 	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(clientID, true);
+		const clientsData *client = getClient(clientID, true);
 
 		// Skip invalid (recycled) clients
 		if(client == NULL)
@@ -180,7 +178,7 @@ int api_history_clients(struct ftl_conn *api)
 
 			// All clientIDs will be valid because we only added
 			// valid clients to the temparray
-			const clientsData* client = getClient(clientID, true);
+			const clientsData *client = getClient(clientID, true);
 
 			// Skip further clients when we reached the maximum
 			// number of clients to return They are summed together
@@ -214,7 +212,7 @@ int api_history_clients(struct ftl_conn *api)
 
 		// All clientIDs will be valid because we only added
 		// valid clients to the temparray
-		const clientsData* client = getClient(clientID, true);
+		const clientsData *client = getClient(clientID, true);
 
 		// Break once we reached the maximum number of clients to return
 		// -1 because of the special "other" client we add below
