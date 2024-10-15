@@ -77,7 +77,6 @@ components:
               schema:
                 allOf:
                   - $ref: 'domains.yaml#/components/schemas/domains/put'
-                  - $ref: 'common.yaml#/components/schemas/took'
         responses:
           '201':
             description: Created domain

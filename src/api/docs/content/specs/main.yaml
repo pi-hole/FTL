@@ -65,8 +65,8 @@ tags:
     description: Methods used to trigger certain actions on your Pi-hole
   - name: "PADD"
     description: Methods used to query Pi-hole from PADD
-
-
+  - name: "Local DNS Records"
+    description: Methods used to manage A and CNAME records
 
 paths:
   /auth:
@@ -227,6 +227,15 @@ paths:
 
   /config:
     $ref: 'config.yaml#/components/paths/config'
+
+  /config/dns/{type}:
+    $ref: 'localdns.yaml#/components/paths/record_type'
+
+  /config/dns/hosts/{record}:
+    $ref: 'localdns.yaml#/components/paths/host_value'
+
+  /config/dns/cnameRecords/{record}:
+    $ref: 'localdns.yaml#/components/paths/cname_value'
 
   /config/{element}:
     $ref: 'config.yaml#/components/paths/config_elem'

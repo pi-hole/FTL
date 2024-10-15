@@ -32,13 +32,13 @@ components:
         parameters:
           - in: query
             name: from
-            description: Get queries from...
+            description: Unix timestamp from when the data should be requested
             required: false
             schema:
               type: number
           - in: query
             name: until
-            description: Get queries until...
+            description: Unix timestamp until when the data should be requested
             required: false
             schema:
               type: number
@@ -114,6 +114,7 @@ components:
             description: Load queries from on-disk database rather than from in-memory
             required: false
             schema:
+              type: boolean
               enum:
                 - true
                 - false
