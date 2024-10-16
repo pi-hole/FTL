@@ -27,12 +27,12 @@ typedef struct {
 	enum reply_type reply;
 	enum dnssec_status dnssec;
 	uint16_t qtype;
-	int domainID;
-	int clientID;
-	int upstreamID;
+	unsigned int domainID;
+	unsigned int clientID;
+	int upstreamID; // -1 if not forwarded
 	int cacheID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
-	int CNAME_domainID; // only valid if query has a CNAME blocking status
+	int CNAME_domainID; // only valid if query has a CNAME blocking status, -1 otherwise
 	int ede;
 	double response;
 	double timestamp;
@@ -84,11 +84,12 @@ typedef struct {
 	} flags;
 	int count;
 	int blockedcount;
-	int aliasclient_id;
+	int aliasclient_id; // -1 if not an alias-client
 	unsigned int id;
 	unsigned int rate_limit;
 	unsigned int numQueriesARP;
 	int overTime[OVERTIME_SLOTS];
+	uint32_t hash;
 	size_t groupspos;
 	size_t ippos;
 	size_t namepos;
@@ -101,7 +102,7 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
-	uint32_t domainhash;
+	uint32_t hash;
 	size_t domainpos;
 	double lastQuery;
 } domainsData;
@@ -114,15 +115,23 @@ typedef struct {
 	enum query_status blocking_status;
 	enum reply_type force_reply;
 	enum query_type query_type;
-	int domainID;
-	int clientID;
+	unsigned int domainID;
+	unsigned int clientID;
 	int list_id;
+	uint32_t hash;
 	time_t expires;
 	char *cname_target;
 } DNSCacheData;
 
+struct lookup_data {
+	const char *domain;
+	const char *client;
+	unsigned int domainID;
+	unsigned int clientID;
+	enum query_type query_type;
+};
+
 void strtolower(char *str);
-uint32_t hashStr(const char *s) __attribute__((pure));
 int findQueryID(const int id);
 #define findUpstreamID(upstream, port) _findUpstreamID(upstream, port, __LINE__, __FUNCTION__, __FILE__)
 int _findUpstreamID(const char *upstream, const in_port_t port, int line, const char *func, const char *file);
@@ -131,7 +140,7 @@ int _findDomainID(const char *domain, const bool count, int line, const char *fu
 #define findClientID(client, count, aliasclient, now) _findClientID(client, count, aliasclient, now, __LINE__, __FUNCTION__, __FILE__)
 int _findClientID(const char *client, const bool count, const bool aliasclient, const double now, int line, const char *func, const char *file);
 #define findCacheID(domainID, clientID, query_type, create_new) _findCacheID(domainID, clientID, query_type, create_new, __FUNCTION__, __LINE__, __FILE__)
-int _findCacheID(const int domainID, const int clientID, const enum query_type query_type, const bool create_new, const char *func, const int line, const char *file);
+int _findCacheID(const unsigned int domainID, const unsigned int clientID, const enum query_type query_type, const bool create_new, const char *func, const int line, const char *file);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 
@@ -139,9 +148,9 @@ bool is_blocked(const enum query_status status) __attribute__ ((const));
 bool is_cached(const enum query_status status) __attribute__ ((const));
 const char *get_blocked_statuslist(void) __attribute__ ((pure));
 const char *get_cached_statuslist(void) __attribute__ ((pure));
-int get_blocked_count(void) __attribute__ ((pure));
-int get_forwarded_count(void) __attribute__ ((pure));
-int get_cached_count(void) __attribute__ ((pure));
+unsigned int get_blocked_count(void) __attribute__ ((pure));
+unsigned int get_forwarded_count(void) __attribute__ ((pure));
+unsigned int get_cached_count(void) __attribute__ ((pure));
 #define query_set_status(query, new_status) _query_set_status(query, new_status, false, __FUNCTION__, __LINE__, __FILE__)
 #define query_set_status_init(query, new_status) _query_set_status(query, new_status, true, __FUNCTION__, __LINE__, __FILE__)
 void _query_set_status(queriesData *query, const enum query_status new_status, const bool init, const char *func, const int line, const char *file);
@@ -177,14 +186,14 @@ int __attribute__ ((pure)) get_edns_mode_val(const char *edns_mode);
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-queriesData *_getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file);
+queriesData *_getQuery(const unsigned int queryID, const bool checkMagic, const int line, const char *func, const char *file);
 #define getClient(clientID, checkMagic) _getClient(clientID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-clientsData* _getClient(int clientID, bool checkMagic, int line, const char *func, const char *file);
+clientsData *_getClient(const unsigned int clientID, const bool checkMagic, const int line, const char *func, const char *file);
 #define getDomain(domainID, checkMagic) _getDomain(domainID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *func, const char *file);
+domainsData *_getDomain(const unsigned int domainID, const bool checkMagic, const int line, const char *func, const char *file);
 #define getUpstream(upstreamID, checkMagic) _getUpstream(upstreamID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char *func, const char *file);
+upstreamsData *_getUpstream(const unsigned int upstreamID, const bool checkMagic, const int line, const char *func, const char *file);
 #define getDNSCache(cacheID, checkMagic) _getDNSCache(cacheID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char *func, const char *file);
+DNSCacheData *_getDNSCache(const unsigned int cacheID, const bool checkMagic, const int line, const char *func, const char *file);
 
 #endif //DATASTRUCTURE_H

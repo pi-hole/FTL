@@ -31,8 +31,6 @@
 #include "files.h"
 
 char *username;
-bool needGC = false;
-bool needDBGC = false;
 bool startup = true;
 bool forked = false;
 jmp_buf exit_jmp;

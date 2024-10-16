@@ -96,10 +96,10 @@ static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 unsigned int get_active_clients(void)
 {
 	unsigned int activeclients = 0;
-	for(int clientID=0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID=0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(clientID, true);
+		const clientsData *client = getClient(clientID, true);
 		if(client == NULL)
 			continue;
 
@@ -207,9 +207,9 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 	// Lock shared memory
 	lock_shm();
 
-	const int domains = counters->domains;
-	const int total_queries = counters->queries;
-	const int blocked_count = get_blocked_count();
+	const unsigned int domains = counters->domains;
+	const unsigned int total_queries = counters->queries;
+	const unsigned int blocked_count = get_blocked_count();
 	struct top_entries *top_domains = calloc(domains, sizeof(struct top_entries));
 	if(top_domains == NULL)
 	{
@@ -218,10 +218,10 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 	}
 
 	unsigned int added_domains = 0u;
-	for(int domainID = 0; domainID < domains; domainID++)
+	for(unsigned int domainID = 0; domainID < domains; domainID++)
 	{
 		// Get domain pointer
-		const domainsData* domain = getDomain(domainID, true);
+		const domainsData *domain = getDomain(domainID, true);
 		if(domain == NULL)
 			continue;
 
@@ -373,7 +373,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 	// Lock shared memory
 	lock_shm();
 
-	int clients = counters->clients;
+	const unsigned int clients = counters->clients;
 	const int total_queries = counters->queries;
 	const int blocked_count = get_blocked_count();
 	struct top_entries *top_clients = calloc(clients, sizeof(struct top_entries));
@@ -384,15 +384,15 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 	}
 
 	unsigned int added_clients = 0;
-	for(int clientID = 0; clientID < clients; clientID++)
+	for(unsigned int clientID = 0; clientID < clients; clientID++)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(clientID, true);
+		const clientsData *client = getClient(clientID, true);
 
 		// Skip invalid clients and also those managed by alias clients
 		if(client == NULL || (!client->flags.aliasclient && client->aliasclient_id >= 0))
 		{
-			log_debug(DEBUG_API, "Skipping client %i because %s", clientID,
+			log_debug(DEBUG_API, "Skipping client %u because %s", clientID,
 			          client == NULL ? "it is invalid" : "it is an alias client");
 			continue;
 		}
@@ -400,7 +400,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 		// Skip recycled clients
 		if(client->ippos == 0)
 		{
-			log_debug(DEBUG_API, "Skipping client %i because it is recycled", clientID);
+			log_debug(DEBUG_API, "Skipping client %u because it is recycled", clientID);
 			continue;
 		}
 
@@ -408,7 +408,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 		// Hidden client, probably due to privacy level. Skip this in the top lists
 		if(strcmp(client_ip, HIDDEN_CLIENT) == 0)
 		{
-			log_debug(DEBUG_API, "Skipping client %i because it is hidden", clientID);
+			log_debug(DEBUG_API, "Skipping client %u because it is hidden", clientID);
 			continue;
 		}
 
@@ -577,7 +577,7 @@ cJSON *get_top_upstreams(struct ftl_conn *api, const bool upstreams_only)
 	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
 		// Get upstream pointer
-		const upstreamsData* upstream = getUpstream(upstreamID, true);
+		const upstreamsData *upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 			continue;
 

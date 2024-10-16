@@ -39,7 +39,6 @@ struct proc_meminfo {
 	unsigned long cached;
 };
 
-bool read_self_memory_status(struct statm_t *result);
 bool getProcessMemory(struct proc_mem *mem, const unsigned long total_memory);
 bool parse_proc_meminfo(struct proc_meminfo *mem);
 
