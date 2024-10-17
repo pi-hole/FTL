@@ -82,7 +82,7 @@ static char *get_ptrname(struct in_addr *addr);
 static const char *check_dnsmasq_name(const char *name);
 
 // Static blocking metadata
-static bool adbit = false, rabit = false;
+static bool aabit = false, adbit = false, rabit = false;
 static const char *blockingreason = "";
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static enum query_status cacheStatus = QUERY_UNKNOWN;
@@ -2876,7 +2876,7 @@ int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
                      const int id, const char* file, const int line)
 {
 	ednsData *edns = getEDNS();
-	// Check if RA bit is unset in DNS header and rcode is NXDOMAIN
+	// Check if RA and AA bits are unset in DNS header and rcode is NXDOMAIN
 	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
 	// an externally blocked query. As they are not always accompany a necessary
 	// SOA record, they are not getting added to our cache and, therefore,
@@ -2886,8 +2886,8 @@ int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
 	// Alternatively, we also consider EDE15 as a blocking reason.
 	if(addr == NULL)
 	{
-		// RA bit is not set and rcode is NXDOMAIN
-		if(!rabit && rcode == NXDOMAIN)
+		// RA and AA bits are not set and rcode is NXDOMAIN
+		if(!rabit && !aabit && rcode == NXDOMAIN)
 		{
 			FTL_blocked_upstream_by_header(QUERY_EXTERNAL_BLOCKED_NXRA, id, file, line);
 
@@ -2923,17 +2923,18 @@ int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
 	return 0;
 }
 
-void _FTL_header_analysis(const unsigned char header4, const struct server *server,
+void _FTL_header_analysis(struct dns_header *header, const struct server *server,
                           const int id, const char* file, const int line)
 {
 	// Analyze DNS header bits
 
 	// Check if AD bit is set in DNS header
-	adbit = header4 & HB4_AD;
+	adbit = header->hb4 & HB4_AD;
 
-	// Check if RA bit is set in DNS header. We do it here as it is it is
+	// Check if RA and AA bit is set in DNS header. We do it here as it is it is
 	// forced by dnsmasq shortly after calling FTL_header_analysis()
-	rabit = header4 & HB4_RA;
+	rabit = header->hb4 & HB4_RA;
+	aabit = header->hb3 & HB3_AA;
 
 	// Store server which sent this reply (if applicable)
 	if(server)
