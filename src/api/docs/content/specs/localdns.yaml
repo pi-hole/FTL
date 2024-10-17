@@ -1,0 +1,199 @@
+openapi: 3.0.2
+components:
+  paths:
+    record_type:
+      parameters:
+        - $ref: 'localdns.yaml#/components/parameters/record_type'
+      get:
+        summary: Get local DNS records
+        tags:
+          - "Local DNS Records"
+        security: []
+        operationId: "get_records"
+        description: |
+          Get local DNS records (A or CNAME).
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'localdns.yaml#/components/schemas/record_type'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+    host_value:
+      parameters:
+        - $ref: 'localdns.yaml#/components/parameters/host_value'
+      put:
+        summary: Add a host record
+        tags:
+          - "Local DNS Records"
+        operationId: "add_host_record"
+        description: |
+          Add a 'host' (A or AAAA) DNS record to the Pi-hole hosts file.
+        responses:
+          '201':
+            description: Created item
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      delete:
+        summary: Delete a host record
+        tags:
+          - "Local DNS Records"
+        operationId: "delete_host_record"
+        description: |
+          Remove a host DNS record from the hosts file.
+        responses:
+          '204':
+            description: No Content (deleted)
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+
+    cname_value:
+      parameters:
+        - $ref: 'localdns.yaml#/components/parameters/cname_value'
+      put:
+        summary: Add a CNAME record
+        tags:
+          - "Local DNS Records"
+        operationId: "add_cname_value"
+        description: |
+          Add a CNAME DNS record to the Pi-hole dnsmaq.conf file.
+        responses:
+          '201':
+            description: Created item
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      delete:
+        summary: Delete a CNAME record
+        tags:
+          - "Local DNS Records"
+        operationId: "delete_cname_value"
+        description: |
+          Delete a local 'CNAME' DNS record
+        responses:
+          '204':
+            description: No Content (deleted)
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+
+  parameters:
+    record_type:
+      in: path
+      name: type
+      schema:
+        type: string
+        enum:
+          - hosts
+          - cnameRecords
+      required: true
+      description: The type of DNS record hosts (A) or cnameRecord (CNAME)
+      example: hosts
+    host_value:
+      in: path
+      name: record
+      schema:
+        type: string
+      required: true
+      description: The IP address (IPv4 or IPv6) and domain seperated by a 'SPACE'
+      example: 8.8.8.8 googledns.com
+    cname_value:
+      in: path
+      name: record
+      schema:
+        type: string
+      required: true
+      description: A CSV string with domain, target doomain and TTL
+      example: example.net,pi-hole.net,60
+
+  schemas:
+    record_type:
+      type: object
+      properties:
+        config:
+          type: object
+          properties:
+            dns:
+              type: object
+              properties:
+                # cnameRecords:
+                #   type: array
+                #   items:
+                #     type: string
+                #   example: ["pi.hole,pi-hole.net,60"]
+                hosts:
+                  type: array
+                  items:
+                    type: string
+                  example: ["192.168.0.1 mygateway.local"]

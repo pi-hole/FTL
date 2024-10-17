@@ -39,6 +39,7 @@ set(sources
         hex/specs/search.yaml
         hex/specs/stats.yaml
         hex/specs/teleporter.yaml
+        hex/specs/localdns.yaml
         docs.c
         )
 
