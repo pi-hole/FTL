@@ -115,9 +115,6 @@ components:
             required: false
             schema:
               type: boolean
-              enum:
-                - true
-                - false
               default: false
         responses:
           '200':
