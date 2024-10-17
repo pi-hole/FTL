@@ -783,7 +783,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	}
     }
   
-  FTL_header_analysis(header->hb4, server, daemon->log_display_id);
+  FTL_header_analysis(header, server, daemon->log_display_id);
   
   /* RFC 4035 sect 4.6 para 3 */
   if (!is_sign && !option_bool(OPT_DNSSEC_PROXY))
@@ -1213,7 +1213,7 @@ void reply_query(int fd, time_t now)
 
   server = daemon->serverarray[c];
 
-  FTL_header_analysis(header->hb4, server, daemon->log_display_id);
+  FTL_header_analysis(header, server, daemon->log_display_id);
 
   if (RCODE(header) != REFUSED)
     daemon->serverarray[first]->last_server = c;
@@ -2173,7 +2173,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
   unsigned char *packet = NULL;
   struct dns_header *new_header = NULL;
   
-  FTL_header_analysis(header->hb4, server, daemon->log_display_id);
+  FTL_header_analysis(header, server, daemon->log_display_id);
 
   while (1)
     {
