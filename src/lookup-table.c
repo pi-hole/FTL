@@ -430,29 +430,3 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 
 	return false;
 }
-
-/**
- * @brief Prints the lookup table based on the specified memory type.
- *
- * This function retrieves the appropriate lookup table and its size based on
- * the provided memory type. It then iterates through the table and logs each
- * element's ID and hash value.
- *
- * @param type The memory type used to determine which lookup table to print.
- */
-void print_lookup_table(const enum memory_type type)
-{
-	// Get the correct lookup_table array based on the type
-	struct lookup_table *table = NULL;
-	unsigned int *size = NULL;
-	const char *name = NULL;
-	if(!get_table(type, &table, &size, &name))
-		return;
-
-	// Print the lookup_table array's elements
-	for(unsigned int i = 0; i < *size; i++)
-		log_info("%s[%u]: ID = %u, hash = %u, ok = %s",
-		         name, i, table[i].id, table[i].hash,
-		         i > 0 ? table[i].hash >= table[i-1].hash ?
-		            "true" : "false" : "---");
-}

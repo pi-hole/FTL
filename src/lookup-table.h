@@ -51,6 +51,5 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 bool lookup_find_id(const enum memory_type type, const uint32_t hash, const struct lookup_data *lookup_data,
                     unsigned int *matchingID,
                     bool (*cmp_func)(const struct lookup_table *entry, const struct lookup_data *lookup_data));
-void print_lookup_table(const enum memory_type type);
 
 #endif //LOOKUP_TABLE_H
