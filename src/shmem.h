@@ -19,11 +19,11 @@
 #include "datastructure.h"
 
 typedef struct {
-    const char *name;
-    size_t size;
-    void *ptr;
-    int fd;
-    struct flock lock;
+	const char *name;
+	size_t size;
+	void *ptr;
+	int fd;
+	struct flock lock;
 } SharedMemory;
 
 typedef struct {
@@ -35,23 +35,29 @@ typedef struct {
 } ShmSettings;
 
 typedef struct {
-	int queries;
-	int upstreams;
-	int clients;
-	int domains;
-	int queries_MAX;
-	int upstreams_MAX;
-	int clients_MAX;
-	int domains_MAX;
-	int strings_MAX;
-	int reply_NODATA;
-	int reply_NXDOMAIN;
-	int reply_CNAME;
-	int reply_IP;
-	int reply_domain;
-	int dns_cache_size;
-	int dns_cache_MAX;
-	int per_client_regex_MAX;
+	unsigned int queries;
+	unsigned int upstreams;
+	unsigned int clients;
+	unsigned int domains;
+	unsigned int queries_MAX;
+	unsigned int upstreams_MAX;
+	unsigned int clients_MAX;
+	unsigned int domains_MAX;
+	unsigned int strings_MAX;
+	unsigned int reply_NODATA;
+	unsigned int reply_NXDOMAIN;
+	unsigned int reply_CNAME;
+	unsigned int reply_IP;
+	unsigned int reply_domain;
+	unsigned int dns_cache_size;
+	unsigned int dns_cache_MAX;
+	unsigned int per_client_regex_MAX;
+	unsigned int clients_lookup_MAX;
+	unsigned int clients_lookup_size;
+	unsigned int domains_lookup_MAX;
+	unsigned int domains_lookup_size;
+	unsigned int dns_cache_lookup_MAX;
+	unsigned int dns_cache_lookup_size;
 	unsigned int regex_change;
 	struct {
 		int gravity;
@@ -69,9 +75,9 @@ typedef struct {
 			} denied;
 		} domains;
 	} database;
-	int querytype[TYPE_MAX];
-	int status[QUERY_STATUS_MAX];
-	int reply[QUERY_REPLY_MAX];
+	unsigned int querytype[TYPE_MAX];
+	unsigned int status[QUERY_STATUS_MAX];
+	unsigned int reply[QUERY_REPLY_MAX];
 } countersStruct;
 
 extern countersStruct *counters;
@@ -98,6 +104,12 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 ///
 /// \param sharedMemory the shared memory struct
 static void delete_shm(SharedMemory *sharedMemory);
+#endif
+
+#if defined(SHMEM_PRIVATE) || defined(LOOKUP_TABLE_PRIVATE)
+extern struct lookup_table *clients_lookup;
+extern struct lookup_table *domains_lookup;
+extern struct lookup_table *dns_cache_lookup;
 #endif
 
 /// Block until a lock can be obtained
@@ -145,9 +157,9 @@ void log_shmem_details(void);
 
 // Per-client regex buffer storing whether or not a specific regex is enabled for a particular client
 void add_per_client_regex(unsigned int clientID);
-void reset_per_client_regex(const int clientID);
-bool get_per_client_regex(const int clientID, const int regexID);
-void set_per_client_regex(const int clientID, const int regexID, const bool value);
+void reset_per_client_regex(const unsigned int clientID);
+bool get_per_client_regex(const unsigned int clientID, const unsigned int regexID);
+void set_per_client_regex(const unsigned int clientID, const unsigned int regexID, const bool value);
 
 // Used in dnsmasq/utils.c
 int is_shm_fd(const int fd);

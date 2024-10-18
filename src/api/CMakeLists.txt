@@ -11,7 +11,6 @@
 set(sources
         2fa.c
         action.c
-        api_helper.h
         api.h
         api.c
         auth.c

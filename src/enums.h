@@ -17,7 +17,10 @@ enum memory_type {
 	DOMAINS,
 	OVERTIME,
 	DNS_CACHE,
-	STRINGS
+	STRINGS,
+	CLIENTS_LOOKUP,
+	DOMAINS_LOOKUP,
+	DNS_CACHE_LOOKUP,
 } __attribute__ ((packed));
 
 enum dnssec_status {
@@ -161,6 +164,7 @@ enum events {
 	RERESOLVE_HOSTNAMES_FORCE,
 	REIMPORT_ALIASCLIENTS,
 	PARSE_NEIGHBOR_CACHE,
+	SEARCH_LOOKUP_HASH_COLLISIONS,
 	EVENTS_MAX
 } __attribute__ ((packed));
 

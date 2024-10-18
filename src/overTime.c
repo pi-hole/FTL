@@ -45,10 +45,10 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 	overTime[index].forwarded = 0;
 
 	// Zero overTime counter for all known clients
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		clientsData* client = getClient(clientID, true);
+		clientsData *client = getClient(clientID, true);
 		if(client != NULL)
 		{
 			// Set overTime data to zero
@@ -184,7 +184,7 @@ void moveOverTimeMemory(const time_t mintime)
 		remainingSlots*sizeof(*overTime));
 
 	// Move client-specific overTime memory
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
 		if(!client)

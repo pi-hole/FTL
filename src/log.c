@@ -483,15 +483,15 @@ void FTL_log_dnsmasq_fatal(const char *format, ...)
 
 void log_counter_info(void)
 {
-	log_info(" -> Total DNS queries: %i", counters->queries);
-	log_info(" -> Cached DNS queries: %i", get_cached_count());
-	log_info(" -> Forwarded DNS queries: %i", get_forwarded_count());
-	log_info(" -> Blocked DNS queries: %i", get_blocked_count());
-	log_info(" -> Unknown DNS queries: %i", counters->status[QUERY_UNKNOWN]);
-	log_info(" -> Unique domains: %i", counters->domains);
-	log_info(" -> Unique clients: %i", counters->clients);
-	log_info(" -> DNS cache records: %i", counters->dns_cache_size);
-	log_info(" -> Known forward destinations: %i", counters->upstreams);
+	log_info(" -> Total DNS queries: %u", counters->queries);
+	log_info(" -> Cached DNS queries: %u", get_cached_count());
+	log_info(" -> Forwarded DNS queries: %u", get_forwarded_count());
+	log_info(" -> Blocked DNS queries: %u", get_blocked_count());
+	log_info(" -> Unknown DNS queries: %u", counters->status[QUERY_UNKNOWN]);
+	log_info(" -> Unique domains: %u", counters->domains);
+	log_info(" -> Unique clients: %u", counters->clients);
+	log_info(" -> DNS cache records: %u", counters->dns_cache_size);
+	log_info(" -> Known forward destinations: %u", counters->upstreams);
 }
 
 void log_FTL_version(const bool crashreport)
@@ -641,37 +641,6 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 	*dst = '\0';
 
 	return src - src_buf;
-}
-
-// Find number of occurrences of a character in a string
-unsigned int __attribute__ ((pure)) countchar(const char *str, const char c)
-{
-	unsigned int count = 0;
-	for(const char *p = str; *p != '\0'; p++)
-		if(*p == c)
-			count++;
-	return count;
-}
-
-int __attribute__ ((pure)) forwarded_queries(void)
-{
-	return counters->status[QUERY_FORWARDED] +
-	       counters->status[QUERY_RETRIED] +
-	       counters->status[QUERY_RETRIED_DNSSEC];
-}
-
-int __attribute__ ((pure)) cached_queries(void)
-{
-	return counters->status[QUERY_CACHE];
-}
-
-int __attribute__ ((pure)) blocked_queries(void)
-{
-	int num = 0;
-	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
-		if(is_blocked(status))
-			num += counters->status[status];
-	return num;
 }
 
 const char * __attribute__ ((pure)) short_path(const char *full_path)

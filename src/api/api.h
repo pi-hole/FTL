@@ -110,7 +110,6 @@ int api_auth(struct ftl_conn *api);
 void delete_all_sessions(void);
 int api_auth_sessions(struct ftl_conn *api);
 int api_auth_session_delete(struct ftl_conn *api);
-bool is_local_api_user(const char *remote_addr) __attribute__((pure));
 
 // 2FA methods
 enum totp_status {

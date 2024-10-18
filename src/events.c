@@ -98,6 +98,8 @@ static const char *eventtext(const enum events event)
 			return "PARSE_NEIGHBOR_CACHE";
 		case RESOLVE_NEW_HOSTNAMES:
 			return "RESOLVE_NEW_HOSTNAMES";
+		case SEARCH_LOOKUP_HASH_COLLISIONS:
+			return "SEARCH_LOOKUP_HASH_COLLISIONS";
 		case EVENTS_MAX: // fall through
 		default:
 			return "UNKNOWN";

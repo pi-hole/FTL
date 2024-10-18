@@ -163,7 +163,7 @@ static const char *getDNScode(int code)
 }
 
 // Validate given hostname
-static bool valid_hostname(char* name, const char* clientip)
+static bool valid_hostname(char *name, const char *clientip)
 {
 	// Check for validity of input
 	if(name == NULL)
@@ -796,7 +796,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
-	int clientscount = counters->clients;
+	unsigned int clientscount = counters->clients;
 	unlock_shm();
 
 	// Create DNS client socket
@@ -808,13 +808,13 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		return;
 	}
 
-	int skipped = 0;
-	for(int clientID = 0; clientID < clientscount; clientID++)
+	unsigned int skipped = 0;
+	for(unsigned int clientID = 0; clientID < clientscount; clientID++)
 	{
 		// Memory access needs to get locked
 		lock_shm();
 		// Get client pointer for the first time (reading data)
-		clientsData* client = getClient(clientID, true);
+		clientsData *client = getClient(clientID, true);
 		if(client == NULL)
 		{
 			// Client has been recycled, skip it
@@ -908,7 +908,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			log_warn("Unable to get client pointer (2) with ID %i in resolveClients(), skipping...", clientID);
+			log_warn("Unable to get client pointer (2) with ID %u in resolveClients(), skipping...", clientID);
 			skipped++;
 			unlock_shm();
 			continue;
@@ -941,8 +941,8 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 	// Close socket
 	close(udp_sock);
 
-	log_debug(DEBUG_RESOLVER, "%i / %i client host names resolved",
-	          clientscount-skipped, clientscount);
+	log_debug(DEBUG_RESOLVER, "%u / %u client host names resolved",
+	          clientscount - skipped, clientscount);
 }
 
 // Resolve upstream destination host names
@@ -969,7 +969,7 @@ static void resolveUpstreams(const bool onlynew)
 		// Memory access needs to get locked
 		lock_shm();
 		// Get upstream pointer for the first time (reading data)
-		upstreamsData* upstream = getUpstream(upstreamID, true);
+		upstreamsData *upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 		{
 			// This is not a fatal error, as the upstream may have been recycled
