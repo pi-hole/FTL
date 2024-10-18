@@ -939,7 +939,7 @@ static void initConfig(struct config *conf)
 	conf->database.DBimport.c = validate_stub; // Only type-based checking
 
 	conf->database.maxDBdays.k = "database.maxDBdays";
-	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?";
+	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?\n Setting this value to 0 will disable the database.";
 	conf->database.maxDBdays.t = CONF_INT;
 	conf->database.maxDBdays.d.i = (365/4);
 	conf->database.maxDBdays.c = validate_stub; // Only type-based checking
