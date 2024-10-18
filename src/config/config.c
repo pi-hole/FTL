@@ -878,7 +878,7 @@ static void initConfig(struct config *conf)
 	conf->ntp.sync.rtc.set.k = "ntp.sync.rtc.set";
 	conf->ntp.sync.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
 	conf->ntp.sync.rtc.set.t = CONF_BOOL;
-	conf->ntp.sync.rtc.set.d.b = true;
+	conf->ntp.sync.rtc.set.d.b = false;
 	conf->ntp.sync.rtc.set.c = validate_stub; // Only type-based checking
 
 	conf->ntp.sync.rtc.device.k = "ntp.sync.rtc.device";
