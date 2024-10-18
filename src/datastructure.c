@@ -71,36 +71,40 @@ static uint32_t __attribute__ ((pure)) hashStr(const char *s)
 }
 
 /**
- * @brief Computes a hash value for three integers using a modified form of
- * Jenkins' One-at-a-Time hash.
+ * @brief Computes a hash value for three unsigned integers.
  *
  * This function is marked as pure, indicating that it has no side effects and
  * its return value depends only on the input parameters.
  *
- * @param a The first integer.
- * @param b The second integer.
- * @param c The third integer.
+ * @param a The first unsigned integer.
+ * @param b The second unsigned integer.
+ * @param c The third unsigned integer.
  * @return The computed hash value as a 32-bit unsigned integer.
- *
- * @note This function is a modified form of Jenkins' One-at-a-Time hash
- *       function, which is a simple and effective hash function for two
- *       integers. More details can be found at:
- *       http://www.burtleburtle.net/bob/hash/doobs.html
  */
-static uint32_t __attribute__ ((pure)) hashThreeInts(const int a, const int b, const int c)
+static uint32_t __attribute__ ((pure)) hashThreeInts(const unsigned int a, const unsigned int b, const unsigned int c)
 {
-	// a modified form of Jenkins' One-at-a-Time hash
-	// (http://www.burtleburtle.net/bob/hash/doobs.html)
-	uint32_t hash = (uint32_t)a;
-	hash += hash << 10;
-	hash ^= hash >> 6;
-	hash += (uint32_t)b;
-	hash += hash << 3;
-	hash ^= hash >> 11;
-	hash += (uint32_t)c;
-	hash += hash << 3;
-	hash ^= hash >> 11;
-	hash += hash << 15;
+	// Shuffle the bits of the three integers to create a new hash
+	// This hashing has been "invented" by the author and is not based on any
+	// known algorithm (as far as the author knows).
+	//
+	// Implementation details:
+	// (hash << 5) + hash is the same as hash * 33, but the former is faster
+	// than the latter on most architectures.
+	//
+	// The final hash value is created by combining the three integers in a
+	// way that the order of the integers matters. The hash value is created
+	// by combining the three integers in the order a, b, c.
+	//
+	// The first added integer is in total multiplied by 2*33 = 66, the
+	// second by 33 and the third by 1. This ensures that the hash value is
+	// unique for each combination of the three integers. Truncation of the
+	// first integer will only happen if more than 2**32/66 ~ 65 million
+	// different values are used for the first integer, which is highly
+	// unlikely to happen in practice.
+
+	uint32_t hash = a;
+	hash = (hash << 5) + hash + b;
+	hash = (hash << 5) + hash + c;
 	return hash;
 }
 

@@ -434,15 +434,22 @@ static void lookup_find_hash_collisions_table(const enum memory_type type)
 		}
 	}
 
-	log_info("Found %u hash collisions in %s lookup table", collisions, name);
+	log_info("Found %u hash collisions in %s lookup table (scanned %u elements)",
+	         collisions, name, *size);
 }
 
 /**
  * @brief Searches for hash collisions in various lookup tables.
+ *
+ * @param has_lock Whether the shared memory lock is already held.
+ * If the lock is not held, it will be acquired and released by this function.
+ *
+ * @return void
  */
-void lookup_find_hash_collisions(void)
+void lookup_find_hash_collisions(const bool has_lock)
 {
-	lock_shm();
+	if(!has_lock)
+		lock_shm();
 
 	// Search for hash collisions in the clients lookup table
 	lookup_find_hash_collisions_table(CLIENTS_LOOKUP);
@@ -453,5 +460,6 @@ void lookup_find_hash_collisions(void)
 	// Search for hash collisions in the DNS cache lookup table
 	lookup_find_hash_collisions_table(DNS_CACHE_LOOKUP);
 
-	unlock_shm();
+	if(!has_lock)
+		unlock_shm();
 }
