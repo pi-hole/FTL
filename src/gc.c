@@ -34,6 +34,8 @@
 #include "config/inotify.h"
 // lookup_remove()
 #include "lookup-table.h"
+// get_and_clear_event()
+#include "events.h"
 
 // Resource checking interval
 // default: 300 seconds
@@ -474,9 +476,6 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	if(!flush)
 		unlock_shm();
 
-	if(config.debug.gc.v.b)
-		lookup_find_hash_collisions(flush);
-
 	// After storing data in the database for the next time,
 	// we should scan for old entries, which will then be deleted
 	// to free up pages in the database and prevent it from growing
@@ -586,6 +585,18 @@ void *GC_thread(void *val)
 		lock_shm();
 		reset_qps(now);
 		unlock_shm();
+
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
+		// Check if we need to search for hash collisions
+		if(get_and_clear_event(SEARCH_LOOKUP_HASH_COLLISIONS))
+		{
+			lock_shm();
+			lookup_find_hash_collisions();
+			unlock_shm();
+		}
 
 		// Intermediate cancellation-point
 		if(killed)

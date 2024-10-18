@@ -327,7 +327,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	else if(rtsig == 7)
 	{
 		// Search for hash collisions in the lookup tables
-		lookup_find_hash_collisions();
+		set_event(SEARCH_LOOKUP_HASH_COLLISIONS);
 	}
 
 	// SIGRT32: Used internally by valgrind, do not use

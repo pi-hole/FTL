@@ -441,16 +441,10 @@ static void lookup_find_hash_collisions_table(const enum memory_type type)
 /**
  * @brief Searches for hash collisions in various lookup tables.
  *
- * @param has_lock Whether the shared memory lock is already held.
- * If the lock is not held, it will be acquired and released by this function.
- *
  * @return void
  */
-void lookup_find_hash_collisions(const bool has_lock)
+void lookup_find_hash_collisions(void)
 {
-	if(!has_lock)
-		lock_shm();
-
 	// Search for hash collisions in the clients lookup table
 	lookup_find_hash_collisions_table(CLIENTS_LOOKUP);
 
@@ -459,7 +453,4 @@ void lookup_find_hash_collisions(const bool has_lock)
 
 	// Search for hash collisions in the DNS cache lookup table
 	lookup_find_hash_collisions_table(DNS_CACHE_LOOKUP);
-
-	if(!has_lock)
-		unlock_shm();
 }
