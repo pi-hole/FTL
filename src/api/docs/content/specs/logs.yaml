@@ -37,7 +37,7 @@ components:
                       - $ref: 'common.yaml#/components/schemas/took'
       ftl:
         get:
-          summary: Get DNS log content
+          summary: Get FTL information
           tags:
             - "FTL information"
           operationId: "get_ftl_log"
@@ -70,7 +70,7 @@ components:
                       - $ref: 'common.yaml#/components/schemas/took'
       webserver:
         get:
-          summary: Get DNS log content
+          summary: Get HTTP server information
           tags:
             - "FTL information"
           operationId: "get_webserver_log"
