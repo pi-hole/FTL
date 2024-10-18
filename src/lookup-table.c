@@ -403,8 +403,8 @@ static void lookup_find_hash_collisions_table(const enum memory_type type)
 				const char *name1 = client1 ? getstr(client1->namepos) : "<invalid>";
 				const char *name2 = client2 ? getstr(client2->namepos) : "<invalid>";
 
-				log_info("Hash collision %"PRIu32" found at position %zu between client IDs %u (%s) and %u (%s)",
-				         table[i].hash, i, id1, name1, id2, name2);
+				log_info("Hash collision %"PRIu32" found at position %zu/%zu between client IDs %u (%s) and %u (%s)",
+				         table[i].hash, i - 1, i, id1, name1, id2, name2);
 			}
 			else if(type == DOMAINS_LOOKUP)
 			{
@@ -415,8 +415,8 @@ static void lookup_find_hash_collisions_table(const enum memory_type type)
 				const char *name1 = domain1 ? getstr(domain1->domainpos) : "<invalid>";
 				const char *name2 = domain2 ? getstr(domain2->domainpos) : "<invalid>";
 
-				log_info("Hash collision %"PRIu32" found at position %zu between domain IDs %u (%s) and %u (%s)",
-				         table[i].hash, i, id1, name1, id2, name2);
+				log_info("Hash collision %"PRIu32" found at position %zu/%zu between domain IDs %u (%s) and %u (%s)",
+				         table[i].hash, i - 1, i, id1, name1, id2, name2);
 			}
 			else if(type == DNS_CACHE_LOOKUP)
 			{
@@ -424,8 +424,8 @@ static void lookup_find_hash_collisions_table(const enum memory_type type)
 				const DNSCacheData *cache1 = getDNSCache(id1, true);
 				const DNSCacheData *cache2 = getDNSCache(id2, true);
 
-				log_info("Hash collision %"PRIu32" found at position %zu between DNS cache IDs %u (%u/%u/%u) and %u (%u/%u/%u)",
-				         table[i].hash, i,
+				log_info("Hash collision %"PRIu32" found at position %zu/%zu between DNS cache IDs %u (%u/%u/%u) and %u (%u/%u/%u)",
+				         table[i].hash, i - 1, i,
 				         id1, cache1->clientID, cache1->domainID, cache1->query_type,
 				         id2, cache2->clientID, cache2->domainID, cache2->query_type);
 			}
@@ -442,6 +442,8 @@ static void lookup_find_hash_collisions_table(const enum memory_type type)
  */
 void lookup_find_hash_collisions(void)
 {
+	lock_shm();
+
 	// Search for hash collisions in the clients lookup table
 	lookup_find_hash_collisions_table(CLIENTS_LOOKUP);
 
@@ -450,4 +452,6 @@ void lookup_find_hash_collisions(void)
 
 	// Search for hash collisions in the DNS cache lookup table
 	lookup_find_hash_collisions_table(DNS_CACHE_LOOKUP);
+
+	unlock_shm();
 }

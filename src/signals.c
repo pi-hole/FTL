@@ -25,6 +25,8 @@
 #include "timers.h"
 // struct config
 #include "config/config.h"
+// lookup_find_hash_collisions
+#include "lookup-table.h"
 
 #define BINARY_NAME "pihole-FTL"
 
@@ -322,6 +324,11 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	// {
 	// 	// Signal internally used to signal dnsmasq it has to stop
 	// }
+	else if(rtsig == 7)
+	{
+		// Search for hash collisions in the lookup tables
+		lookup_find_hash_collisions();
+	}
 
 	// SIGRT32: Used internally by valgrind, do not use
 
