@@ -18,6 +18,8 @@
 #include "log.h"
 // counters
 #include "shmem.h"
+// PRIu32
+#include <inttypes.h>
 
 /**
  * @brief Compare two hash values.
@@ -217,9 +219,6 @@ bool lookup_insert(const enum memory_type type, const unsigned int id, const uin
 	// Insert the new element at the correct position
 	memcpy((void*)try, &key, sizeof(struct lookup_table));
 
-	log_debug(DEBUG_GC, "Inserted element (ID %u, hash %u) at position %zu in %s lookup table",
-	          id, hash, pos, name);
-
 	// Increase the number of elements in the array
 	(*size)++;
 
@@ -283,9 +282,6 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 			// Decrease the number of elements in the array
 			(*size)--;
 
-			log_debug(DEBUG_GC, "Removed element (ID %u, hash %u) at position %zu in %s lookup table",
-			          id, hash, pos, name);
-
 			return true;
 		}
 
@@ -329,12 +325,7 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 	// Find the correct position in the lookup_table array
 	const struct lookup_table *try = NULL;
 	if(!binsearch(table, hash, *size, &try))
-	{
-		// The element is not in the array - this is not an error
-		log_debug(DEBUG_GC, "Element to be found (hash %u) is not in the %s lookup table",
-		          hash, name);
 		return false;
-	}
 
 	// Calculate the position where the element is located
 	size_t pos = try - table;
@@ -353,9 +344,6 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 		// If the ID matches, we found the correct element
 		if(cmp_func(&table[pos], lookup_data))
 		{
-			log_debug(DEBUG_GC, "Found element (ID %u, hash %u) at position %zu in %s lookup table",
-			          table[pos].id, hash, pos, name);
-
 			// Store the matching ID
 			*matchingID = table[pos].id;
 
@@ -367,9 +355,99 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 		pos++;
 	}
 
-	// The element is not in the array - this is not an error
-	log_debug(DEBUG_GC, "Element to be found (hash %u) not in %s lookup table",
-	          hash, name);
-
 	return false;
+}
+
+/**
+ * @brief Searches for hash collisions in the lookup table of the specified memory type.
+ *
+ * This function my be used to assess the quality of the hash function.
+ *
+ * @param type The type of memory for which to search for hash collisions. This can be one of:
+ *             - CLIENTS_LOOKUP: Searches for collisions in the clients lookup table.
+ *             - DOMAINS_LOOKUP: Searches for collisions in the domains lookup table.
+ *             - DNS_CACHE_LOOKUP: Searches for collisions in the DNS cache lookup table.
+ *
+ * The function retrieves the appropriate lookup table based on the provided type and iterates
+ * through it to find and log any hash collisions. The logged information varies depending on the
+ * type of lookup table being searched.
+ */
+static void lookup_find_hash_collisions_table(const enum memory_type type)
+{
+	// Get the correct lookup_table array based on the type
+	struct lookup_table *table = NULL;
+	unsigned int *size = NULL;
+	const char *name = NULL;
+	if(!get_table(type, &table, &size, &name))
+		return;
+
+	log_info("Searching for hash collisions in %s lookup table", name);
+
+	// Do a linear search to find hash collisions in the sorted array
+	unsigned int collisions = 0;
+	for(size_t i = 1; i < *size; i++)
+	{
+		// If the hash value of the current element is the same as the previous element
+		if(table[i].hash == table[i - 1].hash)
+		{
+			// Get the corresponding ID of the previous and this element
+			unsigned int id1 = table[i - 1].id;
+			unsigned int id2 = table[i].id;
+
+			if(type == CLIENTS_LOOKUP)
+			{
+				// Get and log the correlated client name (clients lookup only)
+				const clientsData *client1 = getClient(id1, true);
+				const clientsData *client2 = getClient(id2, true);
+
+				const char *name1 = client1 ? getstr(client1->namepos) : "<invalid>";
+				const char *name2 = client2 ? getstr(client2->namepos) : "<invalid>";
+
+				log_info("Hash collision %"PRIu32" found at position %zu between client IDs %u (%s) and %u (%s)",
+				         table[i].hash, i, id1, name1, id2, name2);
+			}
+			else if(type == DOMAINS_LOOKUP)
+			{
+				// Get and log the correlated domain name (domains lookup only)
+				const domainsData *domain1 = getDomain(id1, true);
+				const domainsData *domain2 = getDomain(id2, true);
+
+				const char *name1 = domain1 ? getstr(domain1->domainpos) : "<invalid>";
+				const char *name2 = domain2 ? getstr(domain2->domainpos) : "<invalid>";
+
+				log_info("Hash collision %"PRIu32" found at position %zu between domain IDs %u (%s) and %u (%s)",
+				         table[i].hash, i, id1, name1, id2, name2);
+			}
+			else if(type == DNS_CACHE_LOOKUP)
+			{
+				// Get and log the correlated IDs (DNS cache only)
+				const DNSCacheData *cache1 = getDNSCache(id1, true);
+				const DNSCacheData *cache2 = getDNSCache(id2, true);
+
+				log_info("Hash collision %"PRIu32" found at position %zu between DNS cache IDs %u (%u/%u/%u) and %u (%u/%u/%u)",
+				         table[i].hash, i,
+				         id1, cache1->clientID, cache1->domainID, cache1->query_type,
+				         id2, cache2->clientID, cache2->domainID, cache2->query_type);
+			}
+
+			collisions++;
+		}
+	}
+
+	log_info("Found %u hash collisions in %s lookup table", collisions, name);
+}
+
+/**
+ * @brief Searches for hash collisions in various lookup tables.
+ */
+void lookup_find_hash_collisions(void)
+{
+	// Search for hash collisions in the clients lookup table
+	lookup_find_hash_collisions_table(CLIENTS_LOOKUP);
+
+	// Search for hash collisions in the domains lookup table
+	lookup_find_hash_collisions_table(DOMAINS_LOOKUP);
+
+	// Search for hash collisions in the DNS cache lookup table
+	lookup_find_hash_collisions_table(DNS_CACHE_LOOKUP);
 }

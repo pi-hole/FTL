@@ -474,6 +474,9 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	if(!flush)
 		unlock_shm();
 
+	if(config.debug.gc.v.b)
+		lookup_find_hash_collisions();
+
 	// After storing data in the database for the next time,
 	// we should scan for old entries, which will then be deleted
 	// to free up pages in the database and prevent it from growing
