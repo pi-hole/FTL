@@ -63,7 +63,7 @@ static inline int cmp_hash(const uint32_t a, const uint32_t b)
  * Finding the element in the array is done in O(log n) time complexity.
  *
  * This function is different from the standard bsearch function in that it
- * always the address of where the element would be found if it were in the
+ * always returns the address of where the element would be found if it were in the
  * array - even if the element is not found. This is useful for inserting new
  * elements subsequently as we already have the correct position in the array
  * without resorting to do a linear search to find the insertion point later on.
