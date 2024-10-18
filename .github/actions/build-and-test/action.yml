@@ -105,7 +105,7 @@ runs:
         name: ${{ inputs.artifact_name }}
         path: '${{ inputs.bin_name }}*'
     -
-      name: Generate artifact attestation
+      name: Generate artifact attestations
       uses: actions/attest-build-provenance@v1
       # Skip attestation if ACTIONS_ID_TOKEN_REQUEST_URL env variable is not
       # available (e.g., PR originating from a fork)
