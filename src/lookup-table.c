@@ -151,23 +151,27 @@ static bool binsearch(const struct lookup_table *base, const uint32_t hash, size
  *             - DNS_CACHE_LOOKUP
  * @param table A pointer to a pointer that will be assigned the address of the appropriate lookup table.
  * @param size A pointer to a pointer that will be assigned the address of the size of the appropriate lookup table.
+ * @param name A pointer to a pointer that will be assigned the name of the appropriate lookup table.
  * @return true if the lookup table and size were successfully retrieved, false if the memory type is invalid.
  */
-static bool get_table(const enum memory_type type, struct lookup_table **table, unsigned int **size)
+static bool get_table(const enum memory_type type, struct lookup_table **table, unsigned int **size, const char **name)
 {
 	// Get the correct lookup_table array based on the type
 	if(type == CLIENTS_LOOKUP)
 	{
+		*name = "clients";
 		*table = clients_lookup;
 		*size = &counters->clients_lookup_size;
 	}
 	else if(type == DOMAINS_LOOKUP)
 	{
+		*name = "domains";
 		*table = domains_lookup;
 		*size = &counters->domains_lookup_size;
 	}
 	else if(type == DNS_CACHE_LOOKUP)
 	{
+		*name = "DNS cache";
 		*table = dns_cache_lookup;
 		*size = &counters->dns_cache_lookup_size;
 	}
@@ -198,7 +202,8 @@ bool lookup_insert(const enum memory_type type, const unsigned int id, const uin
 	// Get the correct lookup_table array based on the type
 	struct lookup_table *table = NULL;
 	unsigned int *size = NULL;
-	if(!get_table(type, &table, &size))
+	const char *name = NULL;
+	if(!get_table(type, &table, &size, &name))
 		return false;
 
 	// Find the correct position in the lookup_table array
@@ -227,8 +232,8 @@ bool lookup_insert(const enum memory_type type, const unsigned int id, const uin
 	// Insert the new element at the correct position
 	memcpy((void*)try, &key, sizeof(struct lookup_table));
 
-	log_debug(DEBUG_GC, "Inserted element (type %u, ID %u, hash %u) at position %zu",
-	          type, id, hash, pos);
+	log_debug(DEBUG_GC, "Inserted element (ID %u, hash %u) at position %zu in %s lookup table",
+	          id, hash, pos, name);
 
 	// Increase the number of elements in the array
 	(*size)++;
@@ -237,7 +242,7 @@ bool lookup_insert(const enum memory_type type, const unsigned int id, const uin
 }
 
 /**
- * @brief Inserts an element into the lookup table.
+ * @brief Removes an element from the lookup table.
  *
  * This function removes an element with the specified ID and hash from the
  * lookup table corresponding to the given memory type. If the element does not
@@ -255,7 +260,8 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 	// Get the correct lookup_table array based on the type
 	struct lookup_table *table = NULL;
 	unsigned int *size = NULL;
-	if(!get_table(type, &table, &size))
+	const char *name = NULL;
+	if(!get_table(type, &table, &size, &name))
 		return false;
 
 	// Find the correct position in the lookup_table array
@@ -270,8 +276,8 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 	))
 	{
 		// The element is not in the array
-		log_warn("Element to be removed (type %u, hash %u) is not in the lookup table",
-		         type, hash);
+		log_warn("Element to be removed (hash %u) is not in the %s lookup table",
+		         hash, name);
 		return true;
 	}
 
@@ -305,11 +311,11 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 			(*size)--;
 
 #ifdef MEASURE_ITERATIONS
-			log_debug(DEBUG_GC, "Removed element (type %u, ID %u, hash %u) at position %zu (%u iterations)",
-			          type, id, hash, pos, iterations);
+			log_debug(DEBUG_GC, "Removed element (ID %u, hash %u) at position %zu in %s lookup table (%u iterations)",
+			          id, hash, pos, name, iterations);
 #else
-			log_debug(DEBUG_GC, "Removed element (type %u, ID %u, hash %u) at position %zu",
-			          type, id, hash, pos);
+			log_debug(DEBUG_GC, "Removed element (ID %u, hash %u) at position %zu in %s lookup table",
+			          id, hash, pos, name);
 #endif
 
 			return true;
@@ -324,8 +330,8 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 	}
 
 	// The element is not in the array
-	log_warn("Element to be removed (type %u, ID, %u, hash %u) not in lookup table",
-	         type, id, hash);
+	log_warn("Element to be removed (ID %u, hash %u) not in %s lookup table",
+	         id, hash, name);
 
 	return true;
 }
@@ -352,7 +358,8 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 	// Get the correct lookup_table array based on the type
 	struct lookup_table *table = NULL;
 	unsigned int *size = NULL;
-	if(!get_table(type, &table, &size))
+	const char *name = NULL;
+	if(!get_table(type, &table, &size, &name))
 		return false;
 
 	// Find the correct position in the lookup_table array
@@ -367,8 +374,8 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 	))
 	{
 		// The element is not in the array - this is not an error
-		log_debug(DEBUG_GC, "Element to be found (type %u, hash %u) is not in the lookup table",
-		          type, hash);
+		log_debug(DEBUG_GC, "Element to be found (hash %u) is not in the %s lookup table",
+		          hash, name);
 		return false;
 	}
 
@@ -395,11 +402,11 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 		if(cmp_func(&table[pos], lookup_data))
 		{
 #ifdef MEASURE_ITERATIONS
-			log_debug(DEBUG_GC, "Found element (type %u, ID %u, hash %u) at position %zu (%u iterations)",
-			          type, table[pos].id, hash, pos, iterations);
+			log_debug(DEBUG_GC, "Found element (ID %u, hash %u) at position %zu in %s lookup table (%u iterations)",
+			          table[pos].id, hash, pos, name, iterations);
 #else
-			log_debug(DEBUG_GC, "Found element (type %u, ID %u, hash %u) at position %zu",
-			          type, table[pos].id, hash, pos);
+			log_debug(DEBUG_GC, "Found element (ID %u, hash %u) at position %zu in %s lookup table",
+			          table[pos].id, hash, pos, name);
 #endif
 
 			// Store the matching ID
@@ -418,8 +425,8 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 	}
 
 	// The element is not in the array - this is not an error
-	log_debug(DEBUG_GC, "Element to be found (type %u, hash %u) not in lookup table",
-	          type, hash);
+	log_debug(DEBUG_GC, "Element to be found (hash %u) not in %s lookup table",
+	          hash, name);
 
 	return false;
 }
@@ -436,15 +443,16 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 void print_lookup_table(const enum memory_type type)
 {
 	// Get the correct lookup_table array based on the type
-	unsigned int *size = NULL;
 	struct lookup_table *table = NULL;
-	if(!get_table(type, &table, &size))
+	unsigned int *size = NULL;
+	const char *name = NULL;
+	if(!get_table(type, &table, &size, &name))
 		return;
 
 	// Print the lookup_table array's elements
 	for(unsigned int i = 0; i < *size; i++)
-		log_info("Table %u[%u]: ID = %u, hash = %u, ok = %s",
-		         type, i, table[i].id, table[i].hash,
+		log_info("%s[%u]: ID = %u, hash = %u, ok = %s",
+		         name, i, table[i].id, table[i].hash,
 		         i > 0 ? table[i].hash >= table[i-1].hash ?
 		            "true" : "false" : "---");
 }

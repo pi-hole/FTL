@@ -11,7 +11,9 @@
 #ifndef LOOKUP_TABLE_H
 #define LOOKUP_TABLE_H
 
-//#define MEASURE_ITERATIONS
+// Uncomment to measure the number of iterations in the lookup table. This is a
+// debug feature as it slows down the lookup table operations.
+// #define MEASURE_ITERATIONS
 
 #include <stdbool.h>
 #include <stddef.h>
