@@ -277,10 +277,13 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 		{
 			// Move all elements from the position to the end of the array
 			// one position to the left to remove the element
-			memmove((void*)(&table[pos]), &table[pos + 1], (*size - pos - 1) * sizeof(struct lookup_table));
+			memmove(&table[pos], &table[pos + 1], (*size - pos - 1) * sizeof(struct lookup_table));
 
 			// Decrease the number of elements in the array
 			(*size)--;
+
+			// Zero out the memory of the removed element
+			memset(&table[*size], 0, sizeof(struct lookup_table));
 
 			return true;
 		}
