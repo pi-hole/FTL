@@ -518,7 +518,7 @@
 
     [ntp.sync.rtc]
       # Should FTL update a real-time clock (RTC) if available?
-      set = true
+      set = false
 
       # Path to the RTC device to update. Leave empty for auto-discovery
       #
