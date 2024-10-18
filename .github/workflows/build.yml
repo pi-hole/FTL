@@ -131,7 +131,7 @@ jobs:
           target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
           git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
           git_tag: ${{ needs.smoke-tests.outputs.GIT_TAG }}
-          event_name: ${{ github.event_name }}
+          deploy: ${{ github.event_name == 'push' && github.event.pull_request.head.repo.full_name == 'org/repo' }} # Only deploy if this is a push event, not a PR event and if this is not a PR originating from a fork
           actor: ${{ github.actor }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
