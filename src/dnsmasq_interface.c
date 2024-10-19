@@ -890,6 +890,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
 
+	// Update domain's last query time
+	domainsData *domain = getDomain(domainID, false);
+	if(domain != NULL)
+		domain->lastQuery = querytimestamp;
+
 	// Process interface information of client (if available)
 	// Skip interface name length 1 to skip "-". No real interface should
 	// have a name with a length of 1...
