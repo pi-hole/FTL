@@ -1251,6 +1251,11 @@ void DB_read_queries(void)
 				// it was queried intentionally.
 				const int CNAMEdomainID = findDomainID(CNAMEdomain, false);
 				query->CNAME_domainID = CNAMEdomainID;
+
+				// Get domain pointer and update lastQuery timer
+				domainsData *cdomain = getDomain(CNAMEdomainID, true);
+				if(cdomain != NULL)
+					cdomain->lastQuery = queryTimeStamp;
 			}
 		}
 		else if(sqlite3_column_bytes(stmt, 7) != 0)

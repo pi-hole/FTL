@@ -1757,6 +1757,14 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 	strtolower(child_domain);
 	const int child_domainID = findDomainID(child_domain, false);
 
+	// Set child domains's last query time
+	if(child_domainID >= 0)
+	{
+		domainsData *cdomain = getDomain(child_domainID, true);
+		if(cdomain != NULL)
+			cdomain->lastQuery = now;
+	}
+
 	// Get client ID from the original query (the entire chain always
 	// belongs to the same client)
 	const int clientID = query->clientID;
