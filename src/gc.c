@@ -53,6 +53,10 @@ bool doGC = false;
 // by any query (only head and tail of the CNAME chain are)
 static void recycle(void)
 {
+	// Get current time
+	const double twentyfour_hrs_ago = double_time() - 24*3600;
+
+	// Allocate memory for recycling
 	bool *client_used = calloc(counters->clients, sizeof(bool));
 	bool *domain_used = calloc(counters->domains, sizeof(bool));
 	bool *cache_used = calloc(counters->dns_cache_size, sizeof(bool));
@@ -120,6 +124,13 @@ static void recycle(void)
 
 		domainsData *domain = getDomain(domainID, true);
 		if(domain == NULL)
+			continue;
+
+		// Only recycle domains when their last query was more than 24
+		// hours ago. This ensures that we do not recycle domains that
+		// have recently been seen but which are not part of any query
+		// (e.g., intermediate domains during CNAME inspection)
+		if(domain->lastQuery > twentyfour_hrs_ago)
 			continue;
 
 		log_debug(DEBUG_GC, "Recycling domain %s (ID %u, lastQuery at %.3f)",
