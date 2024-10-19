@@ -71,41 +71,43 @@ static uint32_t __attribute__ ((pure)) hashStr(const char *s)
 }
 
 /**
- * @brief Computes a hash value for three unsigned integers.
+ * @brief Computes a hash value for the cache IDs using a simple XOR operation.
  *
  * This function is marked as pure, indicating that it has no side effects and
  * its return value depends only on the input parameters.
  *
- * @param a The first unsigned integer.
- * @param b The second unsigned integer.
- * @param c The third unsigned integer.
+ * @param a The first unsigned integer (domain ID).
+ * @param b The second unsigned integer (client ID).
+ * @param c The third unsigned integer (enum query_type ID).
  * @return The computed hash value as a 32-bit unsigned integer.
  */
-static uint32_t __attribute__ ((pure)) hashThreeInts(const unsigned int a, const unsigned int b, const unsigned int c)
+static uint32_t __attribute__ ((pure)) hashCacheIDs(const unsigned int domainID,
+                                                    const unsigned int clientID,
+                                                    const enum query_type query_type)
 {
-	// Shuffle the bits of the three integers to create a new hash
-	// This hashing has been "invented" by the author and is not based on any
-	// known algorithm (as far as the author knows).
+	// We distribute the available bits as follows:
+	// - 16 bits for the domain ID (2^16 = 65536 unique domains)
+	// - 11 bits for the client ID (2^11 = 2048 unique clients)
+	// -  	5 bits for the query type (2^5 = 32 unique query types)
 	//
-	// Implementation details:
-	// (hash << 5) + hash is the same as hash * 33, but the former is faster
-	// than the latter on most architectures.
+	// It is unlikely that we will ever reach these number of unique domains
+	// or clients due to recycling, so this hash function should always
+	// return unique hash values.
 	//
-	// The final hash value is created by combining the three integers in a
-	// way that the order of the integers matters. The hash value is created
-	// by combining the three integers in the order a, b, c.
+	// Even if more than 65536 domains or more than 2048 clients are used,
+	// the hash works as our binsearch implementation handles collisions
+	// gracefully. Furthermore, it is rather unlikely that collisions will
+	// ever really occur in practice even if the numbers above are exceeded
+	// as not every single domain will be queried by every single client for
+	// every possible query type.
 	//
-	// The first added integer is in total multiplied by 2*33 = 66, the
-	// second by 33 and the third by 1. This ensures that the hash value is
-	// unique for each combination of the three integers. Truncation of the
-	// first integer will only happen if more than 2**32/66 ~ 65 million
-	// different values are used for the first integer, which is highly
-	// unlikely to happen in practice.
+	// We use the XOR operation to combine the three values into a single
+	// hash value. XOR uses less transistors than other operations, making
+	// it possibly slightly more efficient on embedded systems. Both XOR and
+	// addition happen faster than a single clock cycle on pretty much every
+	// CPU, so the performance difference is negligible.
 
-	uint32_t hash = a;
-	hash = (hash << 5) + hash + b;
-	hash = (hash << 5) + hash + c;
-	return hash;
+	return (((uint32_t)domainID) << 16) ^ ((uint32_t)(clientID) << 5) ^ query_type;
 }
 
 int findQueryID(const int id)
@@ -495,7 +497,7 @@ int _findCacheID(const unsigned int domainID, const unsigned int clientID, const
                  const bool create_new, const char *func, int line, const char *file)
 {
 	// Get cache hash
-	const uint32_t hash = hashThreeInts(domainID, clientID, query_type);
+	const uint32_t hash = hashCacheIDs(domainID, clientID, query_type);
 
 	// Use lookup table to speed up cache lookups
 	const struct lookup_data lookup_data = { .domainID = domainID, .clientID = clientID, .query_type = query_type };
