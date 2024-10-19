@@ -54,7 +54,8 @@ bool doGC = false;
 static void recycle(void)
 {
 	// Get current time
-	const double twentyfour_hrs_ago = double_time() - 24*3600;
+	const double now = double_time();
+	const double twentyfour_hrs_ago = now - 24*3600;
 
 	// Allocate memory for recycling
 	bool *client_used = calloc(counters->clients, sizeof(bool));
@@ -103,8 +104,14 @@ static void recycle(void)
 		if(client->flags.aliasclient)
 			continue;
 
-		log_debug(DEBUG_GC, "Recycling client %s (ID %u, lastQuery at %.3f)",
-		          getstr(client->ippos), clientID, client->lastQuery);
+		if(config.debug.gc.v.b)
+		{
+			char timestring[TIMESTR_SIZE];
+			get_timestr(timestring, client->lastQuery, true, false);
+
+			log_debug(DEBUG_GC, "Recycling client %s (ID %u, last query was %s)",
+			          getstr(client->ippos), clientID, timestring);
+		}
 
 		// Remove client from lookup table
 		lookup_remove(CLIENTS_LOOKUP, clientID, client->hash);
@@ -133,8 +140,14 @@ static void recycle(void)
 		if(domain->lastQuery > twentyfour_hrs_ago)
 			continue;
 
-		log_debug(DEBUG_GC, "Recycling domain %s (ID %u, lastQuery at %.3f)",
-		          getstr(domain->domainpos), domainID, domain->lastQuery);
+		if(config.debug.gc.v.b)
+		{
+			char timestring[TIMESTR_SIZE];
+			get_timestr(timestring, domain->lastQuery, true, false);
+
+			log_debug(DEBUG_GC, "Recycling domain %s (ID %u, last query was %s)",
+			          getstr(domain->domainpos), domainID, timestring);
+		}
 
 		// Remove domain from lookup table
 		lookup_remove(DOMAINS_LOOKUP, domainID, domain->hash);
