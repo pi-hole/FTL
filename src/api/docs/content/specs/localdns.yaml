@@ -8,7 +8,6 @@ components:
         summary: Get local DNS records
         tags:
           - "Local DNS Records"
-        security: []
         operationId: "get_records"
         description: |
           Get local DNS records (A or CNAME).
