@@ -166,7 +166,7 @@ components:
       schema:
         type: string
       required: true
-      description: The IP address (IPv4 or IPv6) and domain seperated by a 'SPACE'
+      description: The IP address (IPv4 or IPv6) and domain separated by a 'SPACE'
       example: 8.8.8.8 googledns.com
     cname_value:
       in: path
