@@ -16,7 +16,6 @@ set(sqlite3_sources
         shell.c
         sqlite3.c
         sqlite3.h
-        sqlite3-percentile.c
         )
 
 add_library(sqlite3 OBJECT ${sqlite3_sources})
