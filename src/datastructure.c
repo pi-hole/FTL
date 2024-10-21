@@ -1186,7 +1186,7 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	   new_status != QUERY_RETRIED &&
 	   new_status != QUERY_RETRIED_DNSSEC)
 	{
-		const int cacheID = findCacheID(query->domainID, query->clientID, query->type, true);
+		const unsigned int cacheID = query->cacheID > 0 ? query->cacheID : findCacheID(query->domainID, query->clientID, query->type, true);
 		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 		if(dns_cache != NULL && dns_cache->blocking_status != new_status)
 		{

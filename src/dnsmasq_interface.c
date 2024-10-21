@@ -1425,12 +1425,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	}
 
 	// Get cache pointer
-	// When this function is called with a different domain than the one
-	// already stored in the query, we have to re-lookup the cache ID.
-	// This can happen when a CNAME chain is followed and analyzed
-	const int cacheID = query->domainID == domainID && query->clientID == clientID ?
-	                    query->cacheID : findCacheID(domainID, clientID, query->type, true);
-	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+	DNSCacheData *dns_cache = getDNSCache(query->cacheID, true);
 	if(dns_cache == NULL)
 	{
 		log_err("No memory available, skipping query analysis");
@@ -1448,14 +1443,20 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		dns_cache->list_id = -1;
 	}
 
+	// Check if the cache record we have applies to the current query
+	// If not, ensure we re-check the domain (happens during CNAME inspection)
+	enum query_status blocking_status = QUERY_UNKNOWN;
+	if(query->clientID == clientID && query->domainID == domainID)
+		blocking_status = dns_cache->blocking_status;
+
 	// Memorize blocking status DNS cache for the domain/client combination
-	cacheStatus = dns_cache->blocking_status;
+	cacheStatus = blocking_status;
 	log_debug(DEBUG_QUERIES, "Set global cache status to %d", cacheStatus);
 
 	// Skip the entire chain of tests if we already know the answer for this
 	// particular client
 	char *domainstr = (char*)getstr(domain->domainpos);
-	switch(dns_cache->blocking_status)
+	switch(blocking_status)
 	{
 		case QUERY_UNKNOWN:
 			// New domain/client combination.
@@ -1468,7 +1469,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		case QUERY_DENYLIST_CNAME:
 			// Known as exactly denied, we return this result early, skipping
 			// all the lengthy tests below
-			blockingreason = dns_cache->blocking_status == QUERY_DENYLIST ? "exactly denied" : "exactly denied (CNAME)";
+			blockingreason = blocking_status == QUERY_DENYLIST ? "exactly denied" : "exactly denied (CNAME)";
 			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, blockingreason);
 
 			// Do not block if the entire query is to be permitted
@@ -1485,7 +1486,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		case QUERY_GRAVITY_CNAME:
 			// Known as gravity blocked, we return this result early, skipping
 			// all the lengthy tests below
-			blockingreason = dns_cache->blocking_status == QUERY_GRAVITY ? "gravity blocked" : "gravity blocked (CNAME)";
+			blockingreason = blocking_status == QUERY_GRAVITY ? "gravity blocked" : "gravity blocked (CNAME)";
 			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, blockingreason);
 
 			// Do not block if the entire query is to be permitted
@@ -1502,7 +1503,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		case QUERY_REGEX_CNAME:
 			// Known as regex denied, we return this result early, skipping all
 			// the lengthy tests below
-			blockingreason = dns_cache->blocking_status == QUERY_REGEX ? "regex denied" : "regex denied (CNAME)";
+			blockingreason = blocking_status == QUERY_REGEX ? "regex denied" : "regex denied (CNAME)";
 			log_debug(DEBUG_QUERIES, "%s is known as %s (cache regex ID: %i)",
 			          domainstr, blockingreason, dns_cache->list_id);
 
@@ -1533,7 +1534,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		case QUERY_EXTERNAL_BLOCKED_NXRA:
 		case QUERY_EXTERNAL_BLOCKED_EDE15:
 
-			switch(dns_cache->blocking_status)
+			switch(blocking_status)
 			{
 				case QUERY_UNKNOWN:
 				case QUERY_GRAVITY:
@@ -1573,7 +1574,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 			          domainstr, blockingreason, (unsigned long)(dns_cache->expires - time(NULL)));
 
 			force_next_DNS_reply = dns_cache->force_reply;
-			query_blocked(query, domain, client, dns_cache->blocking_status);
+			query_blocked(query, domain, client, blocking_status);
 			return true;
 			break;
 
@@ -1802,8 +1803,8 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		else if(query->status == QUERY_REGEX)
 		{
 			// Get parent and child DNS cache entries
-			const int parent_cacheID = query->cacheID;
-			const int child_cacheID = findCacheID(child_domainID, clientID, query->type, false);
+			const unsigned int parent_cacheID = query->cacheID > -1 ? query->cacheID : findCacheID(parent_domainID, clientID, query->type, false);
+			const unsigned int child_cacheID = findCacheID(child_domainID, clientID, query->type, false);
 
 			// Get cache pointers
 			DNSCacheData *parent_cache = getDNSCache(parent_cacheID, true);
