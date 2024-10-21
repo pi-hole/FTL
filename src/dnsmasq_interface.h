@@ -16,33 +16,30 @@
 #include "edns0.h"
 #include "metrics.h"
 
-extern unsigned char* pihole_privacylevel;
 enum protocol { TCP, UDP, INTERNAL };
 
-void FTL_hook(unsigned int flags, const char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line);
+void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, char *arg, int id, unsigned short type, const char *file, const int line);
 
 #define FTL_iface(iface, addr, addrfamily) _FTL_iface(iface, addr, addrfamily, __FILE__, __LINE__)
-void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_family_t addrfamily, const char* file, const int line);
+void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_family_t addrfamily, const char *file, const int line);
 
 #define FTL_new_query(flags, name, addr, arg, qtype, id, proto) _FTL_new_query(flags, name, addr, arg, qtype, id, proto, __FILE__, __LINE__)
-bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, char *arg, const unsigned short qtype, const int id, enum protocol proto, const char* file, const int line);
+bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, char *arg, const unsigned short qtype, const int id, enum protocol proto, const char *file, const int line);
 
 #define FTL_header_analysis(header, server, id) _FTL_header_analysis(header, server, id, __FILE__, __LINE__)
-void _FTL_header_analysis(struct dns_header *header, const struct server *server, const int id, const char* file, const int line);
+void _FTL_header_analysis(const struct dns_header *header, const struct server *server, const int id, const char *file, const int line);
 
 #define FTL_check_reply(rcode, flags, addr, id) _FTL_check_reply(rcode, flags, addr, id, __FILE__, __LINE__)
-int _FTL_check_reply(const unsigned int rcode, const unsigned short flags, const union all_addr *addr, const int id, const char* file, const int line);
+int _FTL_check_reply(const unsigned int rcode, const unsigned short flags, const union all_addr *addr, const int id, const char *file, const int line);
 
 void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec);
 
 #define MAX_EDE_DATA 128
 #define FTL_make_answer(header, limit, len, ede_data, ede_len) _FTL_make_answer(header, limit, len, ede_data, ede_len, __FILE__, __LINE__)
-size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, unsigned char ede_data[MAX_EDE_DATA], size_t *ede_len, const char* file, const int line);
+size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, unsigned char ede_data[MAX_EDE_DATA], size_t *ede_len, const char *file, const int line);
 
-#define FTL_CNAME(dst, src, id) _FTL_CNAME(dst, src, id, __FILE__, __LINE__)
-bool _FTL_CNAME(const char *dst, const char *src, const int id, const char* file, const int line);
+bool FTL_CNAME(const char *dst, const char *src, const int id);
 
-unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t qlen);
 void FTL_query_in_progress(const int id);
 void FTL_multiple_replies(const int id, int *firstID);
 

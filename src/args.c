@@ -184,7 +184,7 @@ static inline bool strEndsWith(const char *input, const char *end)
 	return strcmp(input + strlen(input) - strlen(end), end) == 0;
 }
 
-void parse_args(int argc, char* argv[])
+void parse_args(int argc, char *argv[])
 {
 	bool quiet = false;
 	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
