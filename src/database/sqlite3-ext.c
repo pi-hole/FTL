@@ -79,6 +79,14 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	char *addrDB = NULL;
 	const int rt = sscanf(addrDBcidr, "%m[^/]/%i", &addrDB, &cidr);
 
+	// Limit CIDR to valid values
+	if(cidr < 0 || cidr > (isIPv6_DB ? 128 : 32))
+	{
+		log_err("SQL: Invalid CIDR value %d in database entry: %s", cidr, addrDBcidr);
+		sqlite3_result_int(context, 0);
+		return;
+	}
+
 	// Skip if database row seems to be a CIDR but does not contain an address ('/32' is invalid)
 	// Passing an invalid IP address to inet_pton() causes a SEGFAULT
 	if(rt < 1 || addrDB == NULL)
