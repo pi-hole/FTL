@@ -20,6 +20,5 @@ void sleepms(const int milliseconds);
 void set_blockingmode_timer(double delay, bool blocked);
 void get_blockingmode_timer(double *delay, bool *target_status);
 void *timer(void *val);
-unsigned long converttimeval(const struct timeval time) __attribute__((const));
 
 #endif //TIMERS_H

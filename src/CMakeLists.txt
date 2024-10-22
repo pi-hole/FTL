@@ -237,6 +237,8 @@ set(sources
         gc.h
         log.c
         log.h
+        lookup-table.c
+        lookup-table.h
         main.c
         main.h
         metrics.h
@@ -252,8 +254,6 @@ set(sources
         shmem.h
         signals.c
         signals.h
-        struct_size.c
-        struct_size.h
         timers.c
         timers.h
         vector.c
@@ -371,8 +371,10 @@ else()
     target_compile_definitions(civetweb PRIVATE NO_SSL)
 endif()
 
-# After finishing building the FTL binary, we append the sha256sum of the binary in raw form to itself
-add_custom_command(TARGET pihole-FTL POST_BUILD
+# After finishing building the FTL binary, we append the sha256sum of the binary
+# in raw form to itself and print the checksum to the console
+add_custom_command(TARGET pihole-FTL POST_BUILD COMMENT "Appending sha256sum to pihole-FTL"
+        COMMAND echo -n "SHA256 checksum of pihole-FTL: " && sha256sum $<TARGET_FILE:pihole-FTL> | cut -d ' ' -f 1
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pihole-FTL> $<TARGET_FILE_DIR:pihole-FTL>/pihole-FTL.tmp
         COMMAND sha256sum $<TARGET_FILE:pihole-FTL>.tmp | cut -d ' ' -f 1 | xxd -r -p >> $<TARGET_FILE:pihole-FTL>.tmp
         COMMAND mv $<TARGET_FILE:pihole-FTL>.tmp $<TARGET_FILE:pihole-FTL>

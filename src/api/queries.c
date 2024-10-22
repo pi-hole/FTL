@@ -15,8 +15,6 @@
 #include "datastructure.h"
 // config struct
 #include "config/config.h"
-// get_aliasclient_list()
-#include "database/aliasclients.h"
 // get_memdb()
 #include "database/query-table.h"
 // dbopen(false, ), dbclose()

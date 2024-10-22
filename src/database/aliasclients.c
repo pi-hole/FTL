@@ -61,7 +61,7 @@ static void recompute_aliasclient(const int aliasclientID)
 	memset(aliasclient->overTime, 0, sizeof(aliasclient->overTime));
 
 	// Loop over all existing clients to find which clients are associated to this one
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get pointer to client candidate
 		const clientsData *client = getClient(clientID, true);
@@ -189,7 +189,7 @@ static int get_aliasclient_ID(sqlite3 *db, const clientsData *client)
 	const int aliasclient_DBid = getAliasclientIDfromIP(db, clientIP);
 
 	// Compare DB index for all alias-clients stored in FTL
-	int aliasclientID = 0;
+	unsigned int aliasclientID = 0;
 	for(; aliasclientID < counters->clients; aliasclientID++)
 	{
 		// Get pointer to alias client candidate
@@ -258,42 +258,6 @@ void reset_aliasclient(sqlite3 *db, clientsData *client)
 	recompute_aliasclient(client->aliasclient_id);
 }
 
-// Return a list of clients linked to the current alias-client
-// The first element contains the number of following IDs
-int *get_aliasclient_list(const int aliasclientID)
-{
-	int count = 0;
-	// Loop over all existing clients to count associated clients
-	for(int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		// Get pointer to client candidate
-		const clientsData *client = getClient(clientID, true);
-		// Skip invalid clients and those that are not managed by this aliasclient
-		if(client == NULL || client->aliasclient_id != aliasclientID)
-			continue;
-
-		count++;
-	}
-
-	int *list = calloc(count + 1, sizeof(int));
-	list[0] = count;
-
-	// Loop over all existing clients to fill list of clients
-	count = 0;
-	for(int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		// Get pointer to client candidate
-		const clientsData *client = getClient(clientID, true);
-		// Skip invalid clients and those that are not managed by this aliasclient
-		if(client == NULL || client->aliasclient_id != aliasclientID)
-			continue;
-
-		list[++count] = clientID;
-	}
-
-	return list;
-}
-
 // Reimport alias-clients from database
 // Note that this will always only change or add new clients. Alias-clients are
 // removed by nulling them before importing new clients
@@ -318,7 +282,7 @@ void reimport_aliasclients(sqlite3 *db)
 	}
 
 	// Loop over all existing alias-clients and set their counters to zero
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get pointer to client candidate
 		clientsData *client = getClient(clientID, true);
@@ -336,7 +300,7 @@ void reimport_aliasclients(sqlite3 *db)
 	import_aliasclients(db);
 
 	// Recompute all alias-clients
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get pointer to client candidate
 		clientsData *client = getClient(clientID, true);

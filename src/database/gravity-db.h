@@ -41,8 +41,8 @@ typedef struct {
 
 bool gravityDB_reopen(void);
 void gravityDB_forked(void);
-void gravityDB_reload_groups(clientsData* client);
-bool gravityDB_prepare_client_statements(clientsData* client);
+void gravityDB_reload_groups(clientsData *client);
+bool gravityDB_prepare_client_statements(clientsData *client);
 void gravityDB_close(void);
 bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(int *rowid);
@@ -53,11 +53,11 @@ void check_inaccessible_adlists(void);
 bool gravity_updated(void);
 
 cJSON *gen_abp_patterns(const char *domain, const bool antigravity);
-enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity, int* domain_id);
+enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity, int *domain_id);
 enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
 enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,
+bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int numregex, const regexData *regex,
                                        const unsigned char type, const char* table);
 
 bool gravityDB_readTable(const enum gravity_list_type listtype, const char *filter,

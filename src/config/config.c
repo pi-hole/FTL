@@ -878,7 +878,7 @@ static void initConfig(struct config *conf)
 	conf->ntp.sync.rtc.set.k = "ntp.sync.rtc.set";
 	conf->ntp.sync.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
 	conf->ntp.sync.rtc.set.t = CONF_BOOL;
-	conf->ntp.sync.rtc.set.d.b = true;
+	conf->ntp.sync.rtc.set.d.b = false;
 	conf->ntp.sync.rtc.set.c = validate_stub; // Only type-based checking
 
 	conf->ntp.sync.rtc.device.k = "ntp.sync.rtc.device";
@@ -939,7 +939,7 @@ static void initConfig(struct config *conf)
 	conf->database.DBimport.c = validate_stub; // Only type-based checking
 
 	conf->database.maxDBdays.k = "database.maxDBdays";
-	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?";
+	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?\n Setting this value to 0 will disable the database.";
 	conf->database.maxDBdays.t = CONF_INT;
 	conf->database.maxDBdays.d.i = (365/4);
 	conf->database.maxDBdays.c = validate_stub; // Only type-based checking

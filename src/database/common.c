@@ -33,7 +33,6 @@
 
 bool DBdeleteoldqueries = false;
 static bool DBerror = false;
-long int lastdbindex = 0;
 
 bool __attribute__ ((pure)) FTLDBerror(void)
 {
@@ -644,25 +643,6 @@ int db_get_int(sqlite3* db, const enum ftl_table_props ID)
 	}
 
 	int value = db_query_int(db, querystr);
-	free(querystr);
-
-	return value;
-}
-
-double db_get_FTL_property_double(sqlite3 *db, const enum ftl_table_props ID)
-{
-	// Prepare SQL statement
-	char* querystr = NULL;
-	int ret = asprintf(&querystr, "SELECT VALUE FROM ftl WHERE id = %u;", ID);
-
-	if(querystr == NULL || ret < 0)
-	{
-		log_err("Memory allocation failed in db_get_FTL_property with ID = %u (%i)", ID, ret);
-		checkFTLDBrc(ret);
-		return DB_FAILED;
-	}
-
-	double value = db_query_double(db, querystr);
 	free(querystr);
 
 	return value;

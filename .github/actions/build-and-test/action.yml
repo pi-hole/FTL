@@ -129,7 +129,7 @@ runs:
       # - this is a triggered by a PR event (we only push on commit to branch
       #   events)
       # - no SSH key is provided (this is a PR from a fork)
-      if: inputs.event_name != 'pull_request' && ${{ inputs.SSH_KEY != '' }}
+      if: inputs.event_name != 'pull_request' && inputs.SSH_KEY != ''
       uses: ./.github/actions/deploy
       with:
         pattern: ${{ inputs.bin_name }}-binary

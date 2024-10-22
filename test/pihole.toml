@@ -518,7 +518,7 @@
 
     [ntp.sync.rtc]
       # Should FTL update a real-time clock (RTC) if available?
-      set = true
+      set = false
 
       # Path to the RTC device to update. Leave empty for auto-discovery
       #
@@ -573,6 +573,7 @@
   DBimport = true
 
   # How long should queries be stored in the database [days]?
+  # Setting this value to 0 will disable the database.
   maxDBdays = 91
 
   # How often do we store queries in FTL's database [seconds]?
