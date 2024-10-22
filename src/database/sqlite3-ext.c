@@ -178,11 +178,15 @@ static void isIPv6_impl(sqlite3_context *context, int argc, sqlite3_value **argv
 		return;
 	}
 
-	struct in6_addr addr;
+	struct in6_addr addr = { 0 };
 	if(inet_pton(AF_INET6, input, &addr) == 1)
+	{
+		// IPv6 address, return 1 and exit
 		sqlite3_result_int(context, 1);
+		return;
+	}
 
-	// Not an IPv6 address
+	// Not an IPv6 address, return 0
 	sqlite3_result_int(context, 0);
 }
 
