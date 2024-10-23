@@ -104,6 +104,35 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 ///
 /// \param sharedMemory the shared memory struct
 static void delete_shm(SharedMemory *sharedMemory);
+
+// Number of elements in the recycle array
+// Default: 1024
+// Size estimate of struct recycler_tables is ~ RECYCLE_ARRAY_LEN * 12 bytes
+// (roughly 12 KB for the default value)
+#define RECYCLE_ARRAY_LEN 1024
+
+/**
+ * struct recycle_table - Structure to hold recycling information.
+ * @var recycle_table::size: The size of the recycle table.
+ * @var recycle_table::id: An array of recycled IDs.
+ */
+struct recycle_table {
+	unsigned int count;
+	unsigned int id[RECYCLE_ARRAY_LEN];
+};
+
+
+/**
+ * struct recycler_table - Structure to hold multiple recycle tables.
+ * @var recycler_tables::client: Recycle table for clients.
+ * @var recycler_tables::domain: Recycle table for domains.
+ * @var recycler_tables::DNScache: Recycle table for DNS cache.
+ */
+struct recycler_tables {
+	struct recycle_table client;
+	struct recycle_table domain;
+	struct recycle_table dns_cache;
+};
 #endif
 
 #if defined(SHMEM_PRIVATE) || defined(LOOKUP_TABLE_PRIVATE)
@@ -167,5 +196,9 @@ int is_shm_fd(const int fd);
 void update_qps(const time_t timestamp);
 void reset_qps(const time_t timestamp);
 double get_qps(void) __attribute__((pure));
+
+// Recycler table functions
+bool set_next_recycled_ID(const enum memory_type type, const unsigned int ID);
+bool get_next_recycled_ID(const enum memory_type type, unsigned int *id);
 
 #endif //SHARED_MEMORY_SERVER_H

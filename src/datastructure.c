@@ -196,20 +196,10 @@ int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, 
 
 static int get_next_free_domainID(void)
 {
-	// Compare content of domain against known domain IP addresses
-	for(unsigned int domainID = 0; domainID < counters->domains; domainID++)
-	{
-		// Get domain pointer
-		const domainsData *domain = getDomain(domainID, false);
-
-		// Check if the returned pointer is valid before trying to access it
-		if(domain == NULL)
-			continue;
-
-		// Check if the magic byte is set
-		if(domain->magic == 0x00)
-			return domainID;
-	}
+	// First, try to obtain a previously recycled domain ID
+	unsigned int domainID = 0;
+	if(get_next_recycled_ID(DOMAINS, &domainID))
+		return domainID;
 
 	// If we did not return until here, then we need to allocate a new domain ID
 	return counters->domains;
@@ -289,20 +279,10 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 
 static int get_next_free_clientID(void)
 {
-	// Compare content of client against known client IP addresses
-	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		// Get client pointer
-		const clientsData *client = getClient(clientID, false);
-
-		// Check if the returned pointer is valid before trying to access it
-		if(client == NULL)
-			continue;
-
-		// Check if the magic byte is unset
-		if(client->magic == 0x00)
-			return clientID;
-	}
+	// First, try to obtain a previously recycled client ID
+	unsigned int clientID = 0;
+	if(get_next_recycled_ID(CLIENTS, &clientID))
+		return clientID;
 
 	// If we did not return until here, then we need to allocate a new client ID
 	return counters->clients;
@@ -459,20 +439,10 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 
 static int get_next_free_cacheID(void)
 {
-	// Compare content of cache against known cache IP addresses
-	for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
-	{
-		// Get cache pointer
-		const DNSCacheData *cache = getDNSCache(cacheID, false);
-
-		// Check if the returned pointer is valid before trying to access it
-		if(cache == NULL)
-			continue;
-
-		// Check if the magic byte is set
-		if(cache->magic == 0x00)
-			return cacheID;
-	}
+	// First, try to obtain a previously recycled cache ID
+	unsigned int cacheID = 0;
+	if(get_next_recycled_ID(DNS_CACHE, &cacheID))
+		return cacheID;
 
 	// If we did not return until here, then we need to allocate a new cache ID
 	return counters->dns_cache_size;
