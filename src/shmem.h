@@ -109,7 +109,7 @@ static void delete_shm(SharedMemory *sharedMemory);
 // Default: 1024
 // Size estimate of struct recycler_tables is ~ RECYCLE_ARRAY_LEN * 12 bytes
 // (roughly 12 KB for the default value)
-#define RECYCLE_ARRAY_LEN 1024
+#define RECYCLE_ARRAY_LEN 1024u
 
 /**
  * struct recycle_table - Structure to hold recycling information.
@@ -198,7 +198,8 @@ void reset_qps(const time_t timestamp);
 double get_qps(void) __attribute__((pure));
 
 // Recycler table functions
-bool set_next_recycled_ID(const enum memory_type type, const unsigned int ID);
+bool set_next_recycled_ID(const enum memory_type type, const unsigned int id);
 bool get_next_recycled_ID(const enum memory_type type, unsigned int *id);
+void print_recycle_list_fullness(void);
 
 #endif //SHARED_MEMORY_SERVER_H

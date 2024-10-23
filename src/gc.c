@@ -628,6 +628,7 @@ void *GC_thread(void *val)
 		{
 			lock_shm();
 			lookup_find_hash_collisions();
+			print_recycle_list_fullness();
 			unlock_shm();
 		}
 

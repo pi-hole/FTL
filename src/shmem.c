@@ -1455,3 +1455,19 @@ bool get_next_recycled_ID(const enum memory_type type, unsigned int *id)
 
 	return true;
 }
+
+/**
+ * @brief Logs the fullness of various recycle lists.
+ *
+ * This function logs the fullness of the recycle lists for clients, domains,
+ * and DNS cache. It provides the current count, the maximum capacity, and the
+ * percentage of fullness for each list.
+ *
+ */
+void print_recycle_list_fullness(void)
+{
+	log_info("Recycle list fullness:");
+	log_info("  Clients: %u/%u (%.2f%%)", recycler->client.count, RECYCLE_ARRAY_LEN, (double)recycler->client.count / RECYCLE_ARRAY_LEN * 100.0);
+	log_info("  Domains: %u/%u (%.2f%%)", recycler->domain.count, RECYCLE_ARRAY_LEN, (double)recycler->domain.count / RECYCLE_ARRAY_LEN * 100.0);
+	log_info("  DNS Cache: %u/%u (%.2f%%)", recycler->dns_cache.count, RECYCLE_ARRAY_LEN, (double)recycler->dns_cache.count / RECYCLE_ARRAY_LEN * 100.0);
+}
