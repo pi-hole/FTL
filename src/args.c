@@ -1062,7 +1062,10 @@ void parse_args(int argc, char *argv[])
 			printf("    By default, this new certificate is based on the elliptic\n");
 			printf("    curve secp521r1. If the optional flag %s[rsa]%s is specified,\n", purple, normal);
 			printf("    an RSA (4096 bit) key will be generated instead.\n\n");
-			printf("    Usage: %spihole-FTL --gen-x509 %soutfile %s[rsa]%s\n\n", green, cyan, purple, normal);
+			printf("    An optional %s[domain]%s can be given to specify the domain\n", blue, normal);
+			printf("    for which the certificate is valid. If omitted, the domain\n");
+			printf("    is set to %spi.hole%s.\n\n", blue, normal);
+			printf("    Usage: %spihole-FTL --gen-x509 %soutfile %s[domain] %s[rsa]%s\n\n", green, cyan, blue, purple, normal);
 
 			printf("%sTLS X.509 certificate parser:%s\n", yellow, normal);
 			printf("    Parse the given X.509 certificate and optionally check if\n");
