@@ -105,11 +105,11 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 /// \param sharedMemory the shared memory struct
 static void delete_shm(SharedMemory *sharedMemory);
 
-// Number of elements in the recycle array
-// Default: 1024
-// Size estimate of struct recycler_tables is ~ RECYCLE_ARRAY_LEN * 12 bytes
-// (roughly 12 KB for the default value)
-#define RECYCLE_ARRAY_LEN 1024u
+// Number of elements in the recycle arrays
+// Default: 65535 (which is 2^16 - 1)
+// Total RAM estimate of struct recycler_tables is ~ RECYCLE_ARRAY_LEN * 12 bytes
+// (roughly 786 KB for the default value)
+#define RECYCLE_ARRAY_LEN 65535u
 
 /**
  * struct recycle_table - Structure to hold recycling information.
