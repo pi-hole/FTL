@@ -57,7 +57,7 @@ int api_history_database(struct ftl_conn *api)
 
 
 	// Prepare SQLite statement
-	sqlite3_stmt *stmt;
+	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		log_err("api_stats_database_history() - SQL error prepare (%i): %s",
@@ -282,7 +282,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 
 
 	// Prepare SQLite statement
-	sqlite3_stmt *stmt;
+	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		log_err("api_stats_database_history() - SQL error prepare (%i): %s",
@@ -470,7 +470,7 @@ int api_history_database_clients(struct ftl_conn *api)
 	                       "ORDER BY client DESC";
 
 	// Prepare SQLite statement
-	sqlite3_stmt *stmt;
+	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		log_err("api_stats_database_clients() - SQL error prepare outer (%i): %s",
@@ -727,7 +727,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	           "GROUP BY forward ORDER BY forward";
 
 	// Prepare SQLite statement
-	sqlite3_stmt *stmt;
+	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		log_err("api_stats_database_clients() - SQL error prepare (%i): %s",

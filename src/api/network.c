@@ -185,6 +185,9 @@ static int api_network_devices_GET(struct ftl_conn *api)
 	const char *sql_msg = NULL;
 	if(!networkTable_readDevices(db, &device_stmt, &sql_msg))
 	{
+		networkTable_readDevicesFinalize(device_stmt);
+		dbclose(&db);
+	
 		// Add SQL message (may be NULL = not available)
 		return send_json_error(api, 500,
 		                       "database_error",
@@ -231,6 +234,11 @@ static int api_network_devices_GET(struct ftl_conn *api)
 			{
 				cJSON_Delete(ips);
 				cJSON_Delete(devices);
+
+				networkTable_readIPsFinalize(ip_stmt);
+				networkTable_readDevicesFinalize(device_stmt);
+				dbclose(&db);
+
 				return send_json_error(api, 500,
 				                       "database_error",
 				                       "Could not read network details from database table (getting IP records)",
@@ -250,6 +258,9 @@ static int api_network_devices_GET(struct ftl_conn *api)
 
 	if(sql_msg != NULL)
 	{
+		networkTable_readDevicesFinalize(device_stmt);
+		dbclose(&db);
+
 		cJSON_Delete(devices);
 		return send_json_error(api, 500,
 		                       "database_error",
