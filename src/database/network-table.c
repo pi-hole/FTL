@@ -212,7 +212,7 @@ bool create_network_addresses_network_id_index(sqlite3 *db)
 	// Create index on network_id column in network_addresses table
 	SQL_bool(db, "CREATE INDEX IF NOT EXISTS network_addresses_network_id_index ON network_addresses (network_id);");
 
-	// Update database version to 8
+	// Update database version to 20
 	if(!db_set_FTL_property(db, DB_VERSION, 20))
 	{
 		log_warn("create_network_addresses_with_names_table(): Failed to update database version!");
