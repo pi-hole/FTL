@@ -369,7 +369,8 @@ int api_client_suggestions(struct ftl_conn *api)
 	                    "FROM network_addresses na "
 	                      "WHERE na.network_id = n.id) "
 	                  "FROM network n "
-	                  "WHERE n.hwaddr NOT IN (SELECT CONCAT('ip-',lower(ip)) FROM g.client)"
+	                  "WHERE n.hwaddr NOT IN (SELECT lower(ip) FROM g.client)" // real hardware addresses
+	                    "AND n.hwaddr NOT IN (SELECT CONCAT('ip-',lower(ip)) FROM g.client)" // mock hardware addresses built from IP addresses
 	                  "ORDER BY lastQuery DESC LIMIT ?";
 
 	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
