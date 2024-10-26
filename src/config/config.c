@@ -1008,7 +1008,7 @@ static void initConfig(struct config *conf)
 	conf->webserver.port.c = validate_stub; // Type-based checking + civetweb syntax checking
 
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
-	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. All directories of the path must be readable and accessible by the 'pihole' user. This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
+	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
 	conf->webserver.tls.cert.a = cJSON_CreateStringReference("<valid TLS certificate file (*.pem)>");
 	conf->webserver.tls.cert.f = FLAG_RESTART_FTL;
 	conf->webserver.tls.cert.t = CONF_STRING;
