@@ -15,6 +15,7 @@
 bool create_network_table(sqlite3 *db);
 bool create_network_addresses_table(sqlite3 *db);
 bool create_network_addresses_with_names_table(sqlite3 *db);
+bool create_network_addresses_network_id_index(sqlite3 *db);
 void parse_neighbor_cache(sqlite3 *db);
 void updateMACVendorRecords(sqlite3 *db);
 bool unify_hwaddr(sqlite3 *db);

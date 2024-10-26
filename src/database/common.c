@@ -601,6 +601,21 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 20 if lower
+	if(dbversion < 20)
+	{
+		// Update to version 20: Add additional column for the network table
+		log_info("Updating long-term database to version 20");
+		if(!create_network_addresses_network_id_index(db))
+		{
+			log_info("Network addresses network_id index cannot be added, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
 	/* * * * * * * * * * * * * IMPORTANT * * * * * * * * * * * * *
 	 * If you add a new database version, check if the in-memory
 	 * schema needs to be update as well (always recreated from
