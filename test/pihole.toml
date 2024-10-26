@@ -668,7 +668,8 @@
     restore = true
 
   [webserver.tls]
-    # Path to the TLS (SSL) certificate file. This option is only required when at least
+    # Path to the TLS (SSL) certificate file. All directories along the path must be readable and accessible 
+    # by the user running FTL (typically 'pihole'). This option is only required when at least
     # one of webserver.port is TLS. The file must be in PEM format, and it must have both,
     # private key and certificate (the *.pem file created must contain a 'CERTIFICATE'
     # section as well as a 'RSA PRIVATE KEY' section).
