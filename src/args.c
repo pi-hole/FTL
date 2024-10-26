@@ -77,6 +77,9 @@ extern void print_dnsmasq_version(const char *yellow, const char *green, const c
 // defined in database/shell.c
 extern int sqlite3_shell_main(int argc, char **argv);
 
+// defined in database/sqlite3_rsync.c
+extern int sqlite3_rsync_main(int argc, char **argv);
+
 bool dnsmasq_debug = false;
 bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
@@ -179,7 +182,7 @@ const char __attribute__ ((pure)) *cli_over(void)
 	return is_term() ? CLI_OVER : "\r";
 }
 
-static inline bool strEndsWith(const char *input, const char *end)
+static bool strEndsWith(const char *input, const char *end)
 {
 	return strcmp(input + strlen(input) - strlen(end), end) == 0;
 }
@@ -222,6 +225,11 @@ void parse_args(int argc, char *argv[])
 	if(strEndsWith(argv[0], "sqlite3") ||
 	   (argc > 1 && strEndsWith(argv[1], ".db")))
 			exit(sqlite3_shell_main(argc, argv));
+
+	// If the binary name is "sqlite3_rsync"  (e.g., symlink /usr/bin/sqlite3_rsync -> /usr/bin/pihole-FTL),
+	// we operate in drop-in mode and consume all arguments for the embedded sqlite3_rsync tool
+	if(strEndsWith(argv[0], "sqlite3_rsync"))
+		exit(sqlite3_rsync_main(argc, argv));
 
 	// Compression feature
 	if((argc == 3 || argc == 4) &&
@@ -650,6 +658,12 @@ void parse_args(int argc, char *argv[])
 				exit(sqlite3_shell_main(argc - i, &argv[i]));
 		}
 
+		if(strcmp(argv[i], "sqlite3_rsync") == 0 ||
+		   strcmp(argv[i], "--sqlite3_rsync") == 0)
+		{
+			exit(sqlite3_rsync_main(argc - i, &argv[i]));
+		}
+
 		// Implement dnsmasq's test function, no need to prepare the entire FTL
 		// environment (initialize shared memory, lead queries from long-term
 		// database, ...) when the task is a simple (dnsmasq) syntax check
@@ -997,7 +1011,6 @@ void parse_args(int argc, char *argv[])
 
 			printf("%sEmbedded SQLite3 shell:%s\n", yellow, normal);
 			printf("\t%ssql%s, %ssqlite3%s                      FTL's SQLite3 shell\n", green, normal, green, normal);
-
 			printf("    Usage: %spihole-FTL sqlite3 %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, cyan, normal);
 			printf("    Options:\n\n");
 			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
@@ -1020,6 +1033,18 @@ void parse_args(int argc, char *argv[])
 			printf("        existing .sqliterc file is ignored. %s-ni%s is a shortcut\n", purple, normal);
 			printf("        for %spihole-FTL sqlite3 %s-batch -init /dev/null%s\n\n", green, purple, normal);
 			printf("    Usage: %spihole-FTL sqlite3 %s-ni %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, purple, cyan, normal);
+
+			printf("%ssqlite3_rsync%s tool:\n", yellow, normal);
+			printf("\t%ssqlite3_rsync%s           Synchronize SQLite3 databases\n", green, normal);
+			printf("    Usage: %spihole-FTL sqlite3_rsync %sORIGIN REPLICA [OPTIONS]%s\n\n", green, cyan, normal);
+			printf("    This tool is used to synchronize a local database with a\n");
+			printf("    remote one. The remote database is accessed via an SSH\n");
+			printf("    connection. The main difference to rsync is that this\n");
+			printf("    tool using SQLite3 transactions and, hence, can\n");
+			printf("    synchronize the local database with the remote one in a\n");
+			printf("    safe way, preventing data corruption. Both databases must\n");
+			printf("    be using WAL mode.\n\n");
+			printf("    For more information, see %spihole-FTL sqlite3_rsync --help%s\n\n", green, normal);
 
 			printf("%sEmbedded dnsmasq options:%s\n", yellow, normal);
 			printf("\t%sdnsmasq-test%s        Test syntax of dnsmasq's config\n", green, normal);
