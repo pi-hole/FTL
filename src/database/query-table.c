@@ -1205,7 +1205,7 @@ void DB_read_queries(void)
 		query->domainID = domainID;
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
-		query->cacheID = findCacheID(domainID, clientID, query->type, true);
+		query->cacheID = -1;
 		query->id = counters->queries;
 		query->response = 0;
 		query->flags.response_calculated = reply_time_avail;
@@ -1263,6 +1263,7 @@ void DB_read_queries(void)
 			// Set ID of the domainlist entry that was the reason for permitting/blocking this query
 			// We assume the value in this field is said ID when it is not a CNAME-related domain
 			// (checked above) and the value of additional_info is not NULL (0 bytes storage size)
+			query->cacheID = findCacheID(domainID, clientID, query->type, true);
 			DNSCacheData *cache = getDNSCache(query->cacheID, true);
 			// Only load if
 			//  a) we have a cache entry
@@ -1539,7 +1540,7 @@ bool queries_to_database(void)
 		}
 
 		// Get cache entry for this query
-		const int cacheID = query->cacheID >= 0 ? query->cacheID : findCacheID(query->domainID, query->clientID, query->type, false);
+		const unsigned int cacheID = query->cacheID > -1 ? query->cacheID : findCacheID(query->domainID, query->clientID, query->type, false);
 		DNSCacheData *cache = getDNSCache(cacheID, true);
 
 		// ADDITIONAL_INFO

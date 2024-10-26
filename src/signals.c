@@ -25,8 +25,6 @@
 #include "timers.h"
 // struct config
 #include "config/config.h"
-// lookup_find_hash_collisions
-#include "lookup-table.h"
 
 #define BINARY_NAME "pihole-FTL"
 

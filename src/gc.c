@@ -116,6 +116,9 @@ static void recycle(void)
 		// Remove client from lookup table
 		lookup_remove(CLIENTS_LOOKUP, clientID, client->hash);
 
+		// Add ID of recycled client to recycle table
+		set_next_recycled_ID(CLIENTS, clientID);
+
 		// Wipe client's memory
 		memset(client, 0, sizeof(clientsData));
 
@@ -152,6 +155,9 @@ static void recycle(void)
 		// Remove domain from lookup table
 		lookup_remove(DOMAINS_LOOKUP, domainID, domain->hash);
 
+		// Add ID of recycled domain to recycle table
+		set_next_recycled_ID(DOMAINS, domainID);
+
 		// Wipe domain's memory
 		memset(domain, 0, sizeof(domainsData));
 
@@ -173,6 +179,9 @@ static void recycle(void)
 
 		// Remove cache entry from lookup table
 		lookup_remove(DNS_CACHE_LOOKUP, cacheID, cache->hash);
+
+		// Add ID of recycled domain to recycle table
+		set_next_recycled_ID(DNS_CACHE, cacheID);
 
 		// Wipe cache entry's memory
 		memset(cache, 0, sizeof(DNSCacheData));
@@ -222,7 +231,7 @@ static void recycle(void)
 		          counters->domains_MAX + free_domains - counters->domains, counters->domains_MAX,
 		          counters->dns_cache_MAX + free_cache - counters->dns_cache_size, counters->dns_cache_MAX);
 
-		log_debug(DEBUG_GC, "Recycled additional %u clients, %u domains, and %u cache records (scanned %u queries)",
+		log_debug(DEBUG_GC, "Recycled %u clients, %u domains, and %u cache records (scanned %u queries)",
 		          clients_recycled, domains_recycled, cache_recycled, counters->queries);
 	}
 }
@@ -619,6 +628,7 @@ void *GC_thread(void *val)
 		{
 			lock_shm();
 			lookup_find_hash_collisions();
+			print_recycle_list_fullness();
 			unlock_shm();
 		}
 

@@ -54,6 +54,7 @@
 #define SHARED_CLIENTS_LOOKUP_NAME "FTL-clients-lookup"
 #define SHARED_DOMAINS_LOOKUP_NAME "FTL-domains-lookup"
 #define SHARED_DNS_CACHE_LOOKUP_NAME "FTL-dns-cache-lookup"
+#define SHARED_RECYCLER_NAME "FTL-recycler"
 
 // Allocation step for FTL-strings bucket. This is somewhat special as we use
 // this as a general-purpose storage which should always be large enough. If,
@@ -82,6 +83,7 @@ static SharedMemory shm_fifo_log = { 0 };
 static SharedMemory shm_clients_lookup = { 0 };
 static SharedMemory shm_domains_lookup = { 0 };
 static SharedMemory shm_dns_cache_lookup = { 0 };
+static SharedMemory shm_recycler = { 0 };
 
 static SharedMemory *sharedMemories[] = { &shm_lock,
                                           &shm_strings,
@@ -97,7 +99,8 @@ static SharedMemory *sharedMemories[] = { &shm_lock,
                                           &shm_fifo_log,
                                           &shm_clients_lookup,
                                           &shm_domains_lookup,
-                                          &shm_dns_cache_lookup };
+                                          &shm_dns_cache_lookup,
+                                          &shm_recycler };
 
 // Variable size array structs
 static queriesData *queries = NULL;
@@ -109,6 +112,7 @@ fifologData *fifo_log = NULL;
 struct lookup_table *clients_lookup = NULL;
 struct lookup_table *domains_lookup = NULL;
 struct lookup_table *dns_cache_lookup = NULL;
+struct recycler_tables *recycler = NULL;
 
 static void **global_pointers[] = {(void**)&queries,
                                    (void**)&clients,
@@ -118,7 +122,8 @@ static void **global_pointers[] = {(void**)&queries,
                                    (void**)&fifo_log,
                                    (void**)&clients_lookup,
                                    (void**)&domains_lookup,
-                                   (void**)&dns_cache_lookup };
+                                   (void**)&dns_cache_lookup,
+                                   (void**)&recycler};
 
 typedef struct {
 	struct {
@@ -577,6 +582,13 @@ bool init_shmem()
 		return false;
 	dns_cache_lookup = (struct lookup_table*)shm_dns_cache_lookup.ptr;
 	counters->dns_cache_lookup_MAX = size;
+
+	/****************************** shared recycler struct ******************************/
+	// Try to create shared memory object
+	create_shm(SHARED_RECYCLER_NAME, &shm_recycler, sizeof(struct recycler_tables));
+	if(shm_recycler.ptr == NULL)
+		return false;
+	recycler = (struct recycler_tables*)shm_recycler.ptr;
 
 	return true;
 }
@@ -1316,4 +1328,146 @@ double __attribute__((pure)) get_qps(void)
 
 	// Return the computed value divided by N (the number of slots)
 	return qps / QPS_AVGLEN;
+}
+
+/**
+ * @brief Retrieves the recycle table based on the specified memory type.
+ *
+ * This function returns a pointer to the appropriate recycle table
+ * corresponding to the given memory type. The memory types can be
+ * CLIENTS, DOMAINS, or DNS_CACHE. If the memory type does not match
+ * any of these, the function returns NULL.
+ *
+ * @param type The memory type for which the recycle table is requested.
+ *             It can be one of the following:
+ *             - CLIENTS: Recycle table for clients.
+ *             - DOMAINS: Recycle table for domains.
+ *             - DNS_CACHE: Recycle table for DNS cache.
+ * @param name A pointer to a string that will be set to the name of the
+ *             recycle table corresponding to the given memory type.
+ *
+ * @return A pointer to the recycle table corresponding to the given
+ *         memory type, or NULL if the memory type is not recognized.
+ */
+static struct recycle_table *get_recycle_table(const enum memory_type type, const char **name)
+{
+	if(type == CLIENTS)
+	{
+		*name = "clients";
+		return &recycler->client;
+	}
+	else if(type == DOMAINS)
+	{
+		*name = "domains";
+		return &recycler->domain;
+	}
+	else if(type == DNS_CACHE)
+	{
+		*name = "dns_cache";
+		return &recycler->dns_cache;
+	}
+
+	return NULL;
+}
+
+/**
+ * @brief Sets the next recycled ID for a given memory type.
+ *
+ * This function adds a new ID to the recycle table for the specified memory type.
+ * If the recycle table is full or the memory type is invalid, the function will
+ * log an appropriate message and return false.
+ *
+ * @param type The memory type for which the ID is being set.
+ * @param id The ID to be added to the recycle table.
+ * @return true if the ID was successfully added to the recycle table, false otherwise.
+ */
+bool set_next_recycled_ID(const enum memory_type type, const unsigned int id)
+{
+	// Get the correct table
+	const char *name = NULL;
+	struct recycle_table *rp = get_recycle_table(type, &name);
+
+	if(rp == NULL)
+	{
+		log_err("set_next_recycled_ID(): Invalid memory type %i", type);
+		return false;
+	}
+
+	// Check if we already have the maximum number of recycled entries
+	if(rp->count >= RECYCLE_ARRAY_LEN)
+	{
+		// This is not strictly an error, but it is worth noting if in
+		// debug mode as increasing RECYCLE_ARRAY_LEN may be useful in
+		// this environment
+		log_debug(DEBUG_SHMEM, "set_next_recycled_ID(): Recycle table[%s] is full", name);
+		return false;
+	}
+
+	log_debug(DEBUG_GC, "RECYCLE[%s][%u] = %u SET", name, rp->count, id);
+
+	// Set the id of the recycled entry and increment the count
+	rp->id[rp->count] = id;
+	rp->count++;
+
+	return true;
+}
+
+/**
+ * @brief Retrieves the next recycled ID from the recycle table for the specified memory type.
+ *
+ * This function fetches the next available recycled ID from the recycle table associated with the given memory type.
+ * If there are no recycled IDs available or the memory type is invalid, the function returns false.
+ *
+ * @param type The memory type for which to retrieve the recycled ID.
+ * @param id A pointer to an unsigned int where the retrieved recycled ID will be stored.
+ * @return true if a recycled ID was successfully retrieved, false otherwise.
+ */
+bool get_next_recycled_ID(const enum memory_type type, unsigned int *id)
+{
+	// Get the correct table
+	const char *name = NULL;
+	struct recycle_table *rp = get_recycle_table(type, &name);
+
+	if(rp == NULL)
+	{
+		log_err("get_next_recycled_ID(): Invalid memory type %i", type);
+		return false;
+	}
+
+
+	// Check if we have any recycled entries
+	if(rp->count == 0)
+	{
+		log_debug(DEBUG_GC, "RECYCLE[%s] is empty", name);
+		return false;
+	}
+
+	// Take one away from the array
+	rp->count--;
+
+	// Get the ID of the recycled entry and decrement the count
+	*id = rp->id[rp->count];
+
+	// Unset the ID of the element just used
+	rp->id[rp->count] = 0;
+
+	log_debug(DEBUG_GC, "RECYCLE[%s][%u] = %u TAKE", name, rp->count, *id);
+
+	return true;
+}
+
+/**
+ * @brief Logs the fullness of various recycle lists.
+ *
+ * This function logs the fullness of the recycle lists for clients, domains,
+ * and DNS cache. It provides the current count, the maximum capacity, and the
+ * percentage of fullness for each list.
+ *
+ */
+void print_recycle_list_fullness(void)
+{
+	log_info("Recycle list fullness:");
+	log_info("  Clients: %u/%u (%.2f%%)", recycler->client.count, RECYCLE_ARRAY_LEN, (double)recycler->client.count / RECYCLE_ARRAY_LEN * 100.0);
+	log_info("  Domains: %u/%u (%.2f%%)", recycler->domain.count, RECYCLE_ARRAY_LEN, (double)recycler->domain.count / RECYCLE_ARRAY_LEN * 100.0);
+	log_info("  DNS Cache: %u/%u (%.2f%%)", recycler->dns_cache.count, RECYCLE_ARRAY_LEN, (double)recycler->dns_cache.count / RECYCLE_ARRAY_LEN * 100.0);
 }
