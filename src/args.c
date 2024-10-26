@@ -77,6 +77,9 @@ extern void print_dnsmasq_version(const char *yellow, const char *green, const c
 // defined in database/shell.c
 extern int sqlite3_shell_main(int argc, char **argv);
 
+// defined in database/sqlite3_rsync.c
+extern int sqlite3_rsync_main(int argc, char **argv);
+
 bool dnsmasq_debug = false;
 bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
@@ -179,7 +182,7 @@ const char __attribute__ ((pure)) *cli_over(void)
 	return is_term() ? CLI_OVER : "\r";
 }
 
-static inline bool strEndsWith(const char *input, const char *end)
+static bool strEndsWith(const char *input, const char *end)
 {
 	return strcmp(input + strlen(input) - strlen(end), end) == 0;
 }
@@ -222,6 +225,11 @@ void parse_args(int argc, char *argv[])
 	if(strEndsWith(argv[0], "sqlite3") ||
 	   (argc > 1 && strEndsWith(argv[1], ".db")))
 			exit(sqlite3_shell_main(argc, argv));
+
+	// If the binary name is "sqlite3_rsync"  (e.g., symlink /usr/bin/sqlite3_rsync -> /usr/bin/pihole-FTL),
+	// we operate in drop-in mode and consume all arguments for the embedded sqlite3_rsync tool
+	if(strEndsWith(argv[0], "sqlite3_rsync"))
+		exit(sqlite3_rsync_main(argc, argv));
 
 	// Compression feature
 	if((argc == 3 || argc == 4) &&
@@ -650,6 +658,12 @@ void parse_args(int argc, char *argv[])
 				exit(sqlite3_shell_main(argc - i, &argv[i]));
 		}
 
+		if(strcmp(argv[i], "sqlite3_rsync") == 0 ||
+		   strcmp(argv[i], "--sqlite3_rsync") == 0)
+		{
+			exit(sqlite3_rsync_main(argc - i, &argv[i]));
+		}
+
 		// Implement dnsmasq's test function, no need to prepare the entire FTL
 		// environment (initialize shared memory, lead queries from long-term
 		// database, ...) when the task is a simple (dnsmasq) syntax check
@@ -976,19 +990,19 @@ void parse_args(int argc, char *argv[])
 			printf("\t%sregex-test %sstr %srgx%s  Test %sstr%s against regular expression\n", green, blue, cyan, normal, blue, normal);
 			printf("\t                    given by regular expression %srgx%s\n\n", cyan, normal);
 
-			printf("    Example: %spihole-FTL regex-test %ssomebad.domain %sbad%s\n", green, blue, cyan, normal);
+			printf("    Example: %s%s regex-test %ssomebad.domain %sbad%s\n", green, argv[0], blue, cyan, normal);
 			printf("    to test %ssomebad.domain%s against %sbad%s\n\n", blue, normal, cyan, normal);
 			printf("    An optional %s-q%s prevents any output (exit code testing):\n", purple, normal);
-			printf("    %spihole-FTL %s-q%s regex-test %ssomebad.domain %sbad%s\n\n", green, purple, green, blue, cyan, normal);
+			printf("    %s%s %s-q%s regex-test %ssomebad.domain %sbad%s\n\n", green, argv[0], purple, green, blue, cyan, normal);
 
 			printf("%sEmbedded Lua engine:%s\n", yellow, normal);
 			printf("\t%s--lua%s, %slua%s          FTL's lua interpreter\n", green, normal, green, normal);
 			printf("\t%s--luac%s, %sluac%s        FTL's lua compiler\n\n", green, normal, green, normal);
 
-			printf("    Usage: %spihole-FTL lua %s[OPTIONS] [SCRIPT [ARGS]]%s\n\n", green, cyan, normal);
+			printf("    Usage: %s%s lua %s[OPTIONS] [SCRIPT [ARGS]]%s\n\n", green, argv[0], cyan, normal);
 			printf("    Options:\n\n");
 			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
-			printf("      options can be seen by running %spihole-FTL lua --help%s\n", green, normal);
+			printf("      options can be seen by running %s%s lua --help%s\n", green, argv[0], normal);
 			printf("    - %s[SCRIPT]%s is the optional name of a Lua script.\n", cyan, normal);
 			printf("      If this script does not exist, an interactive shell is\n");
 			printf("      started instead.\n");
@@ -997,11 +1011,10 @@ void parse_args(int argc, char *argv[])
 
 			printf("%sEmbedded SQLite3 shell:%s\n", yellow, normal);
 			printf("\t%ssql%s, %ssqlite3%s                      FTL's SQLite3 shell\n", green, normal, green, normal);
-
-			printf("    Usage: %spihole-FTL sqlite3 %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, cyan, normal);
+			printf("    Usage: %s sqlite3 %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, cyan, normal);
 			printf("    Options:\n\n");
 			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
-			printf("      options can be found in %spihole-FTL sqlite3 --help%s.\n", green, normal);
+			printf("      options can be found in %s%s sqlite3 --help%s.\n", green, argv[0], normal);
 			printf("      The first option can be either %s-h%s or %s-ni%s, see below.\n", purple, normal, purple, normal);
 			printf("    - %s[FILENAME]%s is the optional name of an SQLite database.\n", cyan, normal);
 			printf("      A new database is created if the file does not previously\n");
@@ -1009,17 +1022,29 @@ void parse_args(int argc, char *argv[])
 			printf("      transient in-memory database instead.\n");
 			printf("    - %s[SQL]%s is an optional SQL statement to be executed. If\n", cyan, normal);
 			printf("      omitted, an interactive shell is started instead.\n\n");
-			printf("    There are two special %spihole-FTL sqlite3%s mode switches:\n", green, normal);
+			printf("    There are two special %s%s sqlite3%s mode switches:\n", green, argv[0], normal);
 			printf("    %s-h%s  %shuman-readable%s mode:\n", purple, normal, bold, normal);
 			printf("        In this mode, the output of the shell is formatted in\n");
 			printf("        a human-readable way. This is especially useful for\n");
 			printf("        debugging purposes. %s-h%s is a shortcut for\n", purple, normal);
-			printf("        %spihole-FTL sqlite3 %s-column -header -nullvalue '(null)'%s\n\n", green, purple, normal);
+			printf("        %s%s sqlite3 %s-column -header -nullvalue '(null)'%s\n\n", green, argv[0], purple, normal);
 			printf("    %s-ni%s %snon-interative%s mode\n", purple, normal, bold, normal);
 			printf("        In this mode, batch mode is enforced and any possibly\n");
 			printf("        existing .sqliterc file is ignored. %s-ni%s is a shortcut\n", purple, normal);
-			printf("        for %spihole-FTL sqlite3 %s-batch -init /dev/null%s\n\n", green, purple, normal);
-			printf("    Usage: %spihole-FTL sqlite3 %s-ni %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, purple, cyan, normal);
+			printf("        for %s%s sqlite3 %s-batch -init /dev/null%s\n\n", green, argv[0], purple, normal);
+			printf("    Usage: %s%s sqlite3 %s-ni %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, argv[0], purple, cyan, normal);
+
+			printf("%ssqlite3_rsync%s tool:\n", yellow, normal);
+			printf("\t%ssqlite3_rsync%s           Synchronize SQLite3 databases\n", green, normal);
+			printf("    Usage: %s%s sqlite3_rsync %sORIGIN REPLICA [OPTIONS]%s\n\n", green, argv[0], cyan, normal);
+			printf("    This tool is used to synchronize a local database with a\n");
+			printf("    remote one. The remote database is accessed via an SSH\n");
+			printf("    connection. The main difference to rsync is that this\n");
+			printf("    tool using SQLite3 transactions and, hence, can\n");
+			printf("    synchronize the local database with the remote one in a\n");
+			printf("    safe way, preventing data corruption. Both databases must\n");
+			printf("    be using WAL mode.\n\n");
+			printf("    For more information, see %s%s sqlite3_rsync --help%s\n\n", green, argv[0], normal);
 
 			printf("%sEmbedded dnsmasq options:%s\n", yellow, normal);
 			printf("\t%sdnsmasq-test%s        Test syntax of dnsmasq's config\n", green, normal);
@@ -1039,16 +1064,16 @@ void parse_args(int argc, char *argv[])
 
 			printf("%sEmbedded GZIP un-/compressor:%s\n", yellow, normal);
 			printf("    A simple but fast in-memory gzip compressor\n\n");
-			printf("    Usage: %spihole-FTL --gzip %sinfile %s[outfile]%s\n\n", green, cyan, purple, normal);
+			printf("    Usage: %s%s --gzip %sinfile %s[outfile]%s\n\n", green, argv[0], cyan, purple, normal);
 			printf("    - %sinfile%s is the file to be processed. If the filename ends\n", cyan, normal);
 			printf("      in %s.gz%s, FTL will uncompress, otherwise it will compress\n\n", yellow, normal);
 			printf("    - %s[outfile]%s is the optional target file.\n", purple, normal);
 			printf("      If omitted, FTL will try to derive the target file from\n");
 			printf("      the source file.\n\n");
 			printf("    Examples:\n");
-			printf("      - %spihole-FTL --gzip %sfile.txt%s\n", green, cyan, normal);
+			printf("      - %s%s --gzip %sfile.txt%s\n", green, argv[0], cyan, normal);
 			printf("        compresses %sfile.txt%s to %sfile.txt%s.gz%s\n\n", cyan, normal, cyan, yellow, normal);
-			printf("      - %spihole-FTL --gzip %sfile.txt%s.gz%s\n", green, cyan, yellow, normal);
+			printf("      - %s%s --gzip %sfile.txt%s.gz%s\n", green, cyan, argv[0], yellow, normal);
 			printf("        %sun%scompresses %sfile.txt%s.gz%s to %sfile.txt%s\n\n", uline, normal, cyan, yellow, normal, cyan, normal);
 
 			printf("%sTeleporter:%s\n", yellow, normal);
@@ -1065,7 +1090,7 @@ void parse_args(int argc, char *argv[])
 			printf("    An optional %s[domain]%s can be given to specify the domain\n", blue, normal);
 			printf("    for which the certificate is valid. If omitted, the domain\n");
 			printf("    is set to %spi.hole%s.\n\n", blue, normal);
-			printf("    Usage: %spihole-FTL --gen-x509 %soutfile %s[domain] %s[rsa]%s\n\n", green, cyan, blue, purple, normal);
+			printf("    Usage: %s%s --gen-x509 %soutfile %s[domain] %s[rsa]%s\n\n", green, argv[0], cyan, blue, purple, normal);
 
 			printf("%sTLS X.509 certificate parser:%s\n", yellow, normal);
 			printf("    Parse the given X.509 certificate and optionally check if\n");
@@ -1074,20 +1099,20 @@ void parse_args(int argc, char *argv[])
 			printf("    If no certificate file is given, the one from the config\n");
 			printf("    is used (if applicable). If --read-x509-key is used, details\n");
 			printf("    about the private key are printed as well.\n\n");
-			printf("    Usage: %spihole-FTL --read-x509 %s[certfile] %s[domain]%s\n", green, cyan, purple, normal);
-			printf("    Usage: %spihole-FTL --read-x509-key %s[certfile] %s[domain]%s\n\n", green, cyan, purple, normal);
+			printf("    Usage: %s%s --read-x509 %s[certfile] %s[domain]%s\n", green, argv[0], cyan, purple, normal);
+			printf("    Usage: %s%s --read-x509-key %s[certfile] %s[domain]%s\n\n", green, argv[0], cyan, purple, normal);
 
 			printf("%sGravity tools:%s\n", yellow, normal);
 			printf("    Check domains in a given file for validity using Pi-hole's\n");
 			printf("    gravity filters. The expected input format is one domain\n");
 			printf("    per line (no HOSTS lists, etc.)\n\n");
-			printf("    Usage: %spihole-FTL gravity checkList %sinfile%s\n\n", green, cyan, normal);
+			printf("    Usage: %s%s gravity checkList %sinfile%s\n\n", green, argv[0], cyan, normal);
 
 			printf("%sIDN2 conversion:%s\n", yellow, normal);
 			printf("    Convert a given internationalized domain name (IDN) to\n");
 			printf("    punycode or vice versa.\n\n");
-			printf("    Encoding: %spihole-FTL idn2 %sdomain%s\n", green, cyan, normal);
-			printf("    Decoding: %spihole-FTL idn2 -d %spunycode%s\n\n", green, cyan, normal);
+			printf("    Encoding: %s%s idn2 %sdomain%s\n", green, argv[0], cyan, normal);
+			printf("    Decoding: %s%s idn2 -d %spunycode%s\n\n", green, argv[0], cyan, normal);
 
 			printf("%sNTP client:%s\n", yellow, normal);
 			printf("    Query an NTP server for the current time and print the\n");
@@ -1095,14 +1120,14 @@ void parse_args(int argc, char *argv[])
 			printf("    as argument. If the server is omitted, 127.0.0.1 is used.\n\n");
 			printf("    The system time is updated on the system when the optional\n");
 			printf("    %s--update%s flag is given.\n\n", purple, normal);
-			printf("    Usage: %spihole-FTL ntp %s[server]%s %s[--update]%s\n\n", green, cyan, normal, purple, normal);
+			printf("    Usage: %s%s ntp %s[server]%s %s[--update]%s\n\n", green, argv[0], cyan, normal, purple, normal);
 
 			printf("%sSHA256 checksum tools:%s\n", yellow, normal);
 			printf("    Calculates the SHA256 checksum of a file. The checksum is\n");
 			printf("    computed as described in FIPS-180-2 and uses streaming\n");
 			printf("    to allow processing arbitrary large files with a small\n");
 			printf("    memory footprint.\n\n");
-			printf("    Usage: %spihole-FTL sha256sum %sfile%s\n\n", green, cyan, normal);
+			printf("    Usage: %s%s sha256sum %sfile%s\n\n", green, argv[0], cyan, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sverify%s              Verify the integrity of the FTL binary\n", green, normal);

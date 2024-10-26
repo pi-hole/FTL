@@ -16,6 +16,7 @@ set(sqlite3_sources
         shell.c
         sqlite3.c
         sqlite3.h
+        sqlite3_rsync.c
         )
 
 add_library(sqlite3 OBJECT ${sqlite3_sources})
