@@ -16,7 +16,7 @@ bool create_network_table(sqlite3 *db);
 bool create_network_addresses_table(sqlite3 *db);
 bool create_network_addresses_with_names_table(sqlite3 *db);
 void parse_neighbor_cache(sqlite3 *db);
-void updateMACVendorRecords(sqlite3 *db);
+bool updateMACVendorRecords(sqlite3 *db);
 bool unify_hwaddr(sqlite3 *db);
 char *getMACfromIP(sqlite3 *db, const char* ipaddr) __attribute__((malloc));
 int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr);
