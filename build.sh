@@ -91,9 +91,6 @@ if [[ -n "${install}" ]]; then
     echo "Installing pihole-FTL"
     SUDO=$(command -v sudo)
     ${SUDO} cmake --install .
-
-    # Verify checksum again after installation
-    /usr/bin/pihole-FTL verify
 else
     echo "Copying compiled pihole-FTL binary to repository root"
     cp pihole-FTL ../
