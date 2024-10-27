@@ -82,12 +82,18 @@ fi
 # Build the sources with the number of available cores
 cmake --build . -- -j $(nproc)
 
+# Checksum verification
+./pihole-FTL verify
+
 # If we are asked to install, we do this here (requires root privileges)
-# Otherwise, we simply copy the binary one level up
+# Otherwise, we simply copy the binary one level down
 if [[ -n "${install}" ]]; then
     echo "Installing pihole-FTL"
     SUDO=$(command -v sudo)
     ${SUDO} cmake --install .
+
+    # Verify checksum again after installation
+    /usr/bin/pihole-FTL verify
 else
     echo "Copying compiled pihole-FTL binary to repository root"
     cp pihole-FTL ../
