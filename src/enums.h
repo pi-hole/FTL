@@ -342,4 +342,11 @@ enum api_flags {
 	API_BATCHDELETE = 1 << 2,
 };
 
+enum verify_result {
+	VERIFY_OK = 0, // EXIT_SUCCESS
+	VERIFY_FAILED,
+	VERIFY_ERROR,
+	VERIFY_NO_CHECKSUM
+} __attribute__ ((packed));
+
 #endif // ENUMS_H

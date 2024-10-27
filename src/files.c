@@ -778,14 +778,14 @@ bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE], const boo
  * @return Returns true if the checksum matches the expected value, false
  * otherwise.
  */
-bool verify_FTL(bool verbose)
+enum verify_result verify_FTL(bool verbose)
 {
 	// Get the filename of the current executable
 	char filename[PATH_MAX] = { 0 };
 	if(readlink("/proc/self/exe", filename, sizeof(filename)) == -1)
 	{
 		log_err("Failed to read self filename: %s", strerror(errno));
-		return false;
+		return VERIFY_ERROR;
 	}
 
 	// Read the pre-computed hash as well as the checksum mark from the
@@ -796,25 +796,25 @@ bool verify_FTL(bool verbose)
 	if(f == NULL)
 	{
 		log_err("Failed to open self file \"%s\": %s", filename, strerror(errno));
-		return false;
+		return VERIFY_ERROR;
 	}
 	if(fseek(f, -(SHA256_DIGEST_SIZE + 9), SEEK_END) != 0)
 	{
 		log_err("Failed to seek to hash: %s", strerror(errno));
 		fclose(f);
-		return false;
+		return VERIFY_ERROR;
 	}
 	if(fread(checksum_mark, 9, 1, f) != 1)
 	{
 		log_err("Failed to read checksum mark: %s", strerror(errno));
 		fclose(f);
-		return false;
+		return VERIFY_ERROR;
 	}
 	if(fread(self_hash, SHA256_DIGEST_SIZE, 1, f) != 1)
 	{
 		log_err("Failed to read hash: %s", strerror(errno));
 		fclose(f);
-		return false;
+		return VERIFY_ERROR;
 	}
 	fclose(f);
 
@@ -824,7 +824,7 @@ bool verify_FTL(bool verbose)
 		log_warn("Binary integrity check not possible: No checksum mark found");
 		// This is not an error, as the binary may not have a checksum mark
 		// if it was built with a different toolchain
-		return true;
+		return VERIFY_NO_CHECKSUM;
 	}
 
 	// Calculate the hash of the binary
@@ -856,5 +856,5 @@ bool verify_FTL(bool verbose)
 		}
 	}
 
-	return success;
+	return success ? VERIFY_OK : VERIFY_FAILED;
 }
