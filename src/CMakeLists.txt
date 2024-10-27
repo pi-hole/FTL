@@ -15,6 +15,12 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
     endif()
 endif()
 
+# Do not add run time path information
+# This ensures CMake does not add rpath information to the binary and
+# subsequently strip it from the binary during install causing the binary
+# validation to fail. RPATH is not needed for the FTL binary
+SET(CMAKE_SKIP_RPATH TRUE)
+
 # Put runtime output, i.e. pihole-FTL, in the root of the build dir
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 
