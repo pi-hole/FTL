@@ -65,6 +65,7 @@ void dnsmasq_diagnosis_warning(char *message);
 #define log_warn(format, ...) _FTL_log(LOG_WARNING, 0, format, ## __VA_ARGS__)
 #define log_notice(format, ...) _FTL_log(LOG_NOTICE, 0, format, ## __VA_ARGS__)
 #define log_info(format, ...) _FTL_log(LOG_INFO, 0, format, ## __VA_ARGS__)
+#define log_lvl(priority, format, ...) _FTL_log(priority, 0, format, ## __VA_ARGS__)
 #define log_debug(flag, format, ...) \
 	if(flag > -1 && flag < DEBUG_MAX && debug_flags[flag]) \
 		_FTL_log(LOG_DEBUG, flag, format, ## __VA_ARGS__)
