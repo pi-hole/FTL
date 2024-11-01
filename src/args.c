@@ -562,11 +562,14 @@ void parse_args(int argc, char *argv[])
 	{
 		// Enable stdout printing
 		cli_mode = true;
-		const bool match = verify_FTL(true);
+		const enum verify_result match = verify_FTL(true);
 		printf("%s Binary integrity check: %s\n",
-		       match ? cli_tick() : cli_cross() ,
-		       match ? "OK" : "FAILED");
-		exit(match ? EXIT_SUCCESS : EXIT_FAILURE);
+		       match == VERIFY_OK ? cli_tick() :
+		         match == VERIFY_NO_CHECKSUM ? cli_qst() : cli_cross(),
+		       match == VERIFY_OK ? "OK" :
+		         match == VERIFY_NO_CHECKSUM ? "No checksum found" :
+		           match == VERIFY_ERROR ? "Error" : "Failed");
+		exit(match);
 	}
 
 	// Local reverse name resolver

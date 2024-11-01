@@ -15,6 +15,12 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
     endif()
 endif()
 
+# Do not add run time path information
+# This ensures CMake does not add rpath information to the binary and
+# subsequently strip it from the binary during install causing the binary
+# validation to fail. RPATH is not needed for the FTL binary
+SET(CMAKE_SKIP_RPATH TRUE)
+
 # Put runtime output, i.e. pihole-FTL, in the root of the build dir
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 
@@ -376,13 +382,18 @@ endif()
 add_custom_command(TARGET pihole-FTL POST_BUILD COMMENT "Appending sha256sum to pihole-FTL"
         COMMAND echo -n "SHA256 checksum of pihole-FTL: " && sha256sum $<TARGET_FILE:pihole-FTL> | cut -d ' ' -f 1
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pihole-FTL> $<TARGET_FILE_DIR:pihole-FTL>/pihole-FTL.tmp
+        COMMAND echo -n "sha256sum" >> $<TARGET_FILE:pihole-FTL>.tmp
         COMMAND sha256sum $<TARGET_FILE:pihole-FTL>.tmp | cut -d ' ' -f 1 | xxd -r -p >> $<TARGET_FILE:pihole-FTL>.tmp
         COMMAND mv $<TARGET_FILE:pihole-FTL>.tmp $<TARGET_FILE:pihole-FTL>
         )
 
-find_program(SETCAP setcap)
+######### Installation target ############
+# Install the binary
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN,CAP_SYS_TIME+eip \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
-
+find_program(SETCAP setcap)
+# After installing the binary, we set the capabilities on the binary ...
+install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN,CAP_SYS_TIME+eip \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
+# ... and verify the binary integrity
+install(CODE "execute_process(COMMAND \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL verify)")
