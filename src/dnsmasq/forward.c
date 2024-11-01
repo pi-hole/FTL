@@ -176,7 +176,8 @@ static int domain_no_rebind(char *domain)
 static int forward_query(int udpfd, union mysockaddr *udpaddr,
 			 union all_addr *dst_addr, unsigned int dst_iface,
 			 struct dns_header *header, size_t plen,  char *limit, time_t now, 
-			 struct frec *forward, int ad_reqd, int do_bit, int fast_retry)
+			 struct frec *forward, int ad_reqd, int do_bit, int fast_retry,
+			 struct blockdata *saved_question)
 {
   unsigned int flags = 0;
   unsigned int fwd_flags = 0;
@@ -192,6 +193,9 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   unsigned char *pheader;
   int ede = EDE_UNSET;
   (void)do_bit;
+
+  if (saved_question)
+    blockdata_retrieve(saved_question, plen, header);
   
   if (header->hb4 & HB4_CD)
     fwd_flags |= FREC_CHECKING_DISABLED;
@@ -351,7 +355,13 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	}
       
       /* Keep copy of query. */
-      forward->stash = blockdata_alloc((char *)header, plen);
+      if (saved_question)
+	{
+	  forward->stash = saved_question;
+	  saved_question = NULL; /* don't free */
+	}
+      else
+	forward->stash = blockdata_alloc((char *)header, plen);
       forward->stash_len = plen;
       
       forward->frec_src.log_id = daemon->log_id;
@@ -427,7 +437,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  
 	  /* Find suitable servers: should never fail. */
 	  if (!filter_servers(forward->sentto->arrayposn, F_DNSSECOK, &first, &last))
-	    return 0;
+	    {
+	      blockdata_free(saved_question);
+	      return 0;
+	    }
 	  
 	  is_dnssec = 1;
 	  forward->forwardall = 1;
@@ -573,6 +586,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   if (forwarded || is_dnssec)
     {
       forward->forward_timestamp = dnsmasq_milliseconds();
+      blockdata_free(saved_question);
       return 1;
     }
   
@@ -585,7 +599,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   if (udpfd != -1)
     {
       if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, limit, first, last, ede)))
-	return 0;
+	{
+	  blockdata_free(saved_question);
+	  return 0;
+	}
       
       if (oph)
 	{
@@ -610,6 +627,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       send_from(udpfd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, plen, udpaddr, dst_addr, dst_iface);
     }
   
+  blockdata_free(saved_question);
   return 0;
 }
 
@@ -656,7 +674,7 @@ int fast_retry(time_t now)
 		daemon->log_source_addr = NULL;
 		
 		forward_query(-1, NULL, NULL, 0, header, f->stash_len, ((char *) header) + udp_size, now, f,
-			      f->flags & FREC_AD_QUESTION, f->flags & FREC_DO_QUESTION, 1);
+			      f->flags & FREC_AD_QUESTION, f->flags & FREC_DO_QUESTION, 1, NULL);
 
 		to_run = f->forward_delay = 2 * f->forward_delay;
 	      }
@@ -1300,7 +1318,7 @@ void reply_query(int fd, time_t now)
       if (nn)
 	{
 	  forward_query(-1, NULL, NULL, 0, header, nn, ((char *) header) + udp_size, now, forward,
-			forward->flags & FREC_AD_QUESTION, forward->flags & FREC_DO_QUESTION, 0);
+			forward->flags & FREC_AD_QUESTION, forward->flags & FREC_DO_QUESTION, 0, NULL);
 	  return;
 	}
     }
@@ -2006,16 +2024,14 @@ void receive_query(struct listener *listen, time_t now)
 	{
 	  if (m == 0)
 	    {
-	      blockdata_retrieve(saved_question, (size_t)n, header);
-	      
-	      if (forward_query(fd, &source_addr, &dst_addr, if_index,
-				header, (size_t)n,  ((char *) header) + udp_size, now, NULL, ad_reqd, do_bit, 0))
+	      if (forward_query(fd, &source_addr, &dst_addr, if_index, header, (size_t)n,
+				((char *) header) + udp_size, now, NULL, ad_reqd, do_bit, 0, saved_question))
 		daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
 	      else
 		daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
 	    }
-	  
-	  blockdata_free(saved_question);
+	  else
+	    blockdata_free(saved_question);
 	}
     }
 }
