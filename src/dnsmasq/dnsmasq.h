@@ -788,9 +788,8 @@ struct dyndir {
 #define FREC_DO_QUESTION       64
 #define FREC_ADDED_PHEADER    128
 #define FREC_TEST_PKTSZ       256
-#define FREC_HAS_EXTRADATA    512
-#define FREC_HAS_PHEADER     1024
-#define FREC_GONE_TO_TCP     2048
+#define FREC_HAS_PHEADER      512
+#define FREC_GONE_TO_TCP     1024
 
 #define HASH_SIZE 32 /* SHA-256 digest size */
 
@@ -810,8 +809,7 @@ struct frec {
   time_t time;
   u32 forward_timestamp;
   int forward_delay;
-  unsigned char *hash[HASH_SIZE];
-  struct blockdata *stash; /* Saved reply, whilst we validate */
+  struct blockdata *stash; /* saved query or saved reply, whilst we validate */
   size_t stash_len;
 #ifdef HAVE_DNSSEC 
   int uid, class, work_counter, validate_counter;
