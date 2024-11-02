@@ -361,8 +361,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  forward->stash = saved_question;
 	  saved_question = NULL; /* don't free */
 	}
-      else
-	forward->stash = blockdata_alloc((char *)header, plen);
+      else if (!(forward->stash = blockdata_alloc((char *)header, plen)))
+	goto reply; /* no mem. return REFUSED */
 
       forward->stash_len = plen;
       forward->frec_src.log_id = daemon->log_id;
@@ -1055,7 +1055,6 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
      answer aside, whilst we get that. */     
   if (STAT_ISEQUAL(status, STAT_NEED_DS) || STAT_ISEQUAL(status, STAT_NEED_KEY))
     {
-      struct frec *new = NULL;
       struct blockdata *stash;
       
       /* Now save reply pending receipt of key data */
@@ -1063,8 +1062,9 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	{
 	  /* validate routines leave name of required record in daemon->keyname */
 	  unsigned int flags = STAT_ISEQUAL(status, STAT_NEED_KEY) ? FREC_DNSKEY_QUERY : FREC_DS_QUERY;
-
-	  if ((new = lookup_frec(daemon->keyname, forward->class, -1, -1, flags, flags)))
+	  struct frec *old;
+	  
+	  if ((old = lookup_frec(daemon->keyname, forward->class, -1, -1, flags, flags)))
 	    {
 	      /* This is tricky; it detects loops in the dependency
 		 graph for DNSSEC validation, say validating A requires DS B
@@ -1075,18 +1075,18 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		 can form a cycle, and under certain circumstances that can lock us in 
 		 an infinite loop. Here we transform the situation into ABANDONED. */
 	      struct frec *f;
-	      for (f = new; f; f = f->blocking_query)
+	      for (f = old; f; f = f->blocking_query)
 		if (f == forward)
 		  break;
 
 	      if (!f)
 		{
-		  forward->next_dependent = new->dependent;
-		  new->dependent = forward;
+		  forward->next_dependent = old->dependent;
+		  old->dependent = forward;
 		  /* Make consistent, only replace query copy with unvalidated answer
 		     when we set ->blocking_query. */
 		  blockdata_free(forward->stash);
-		  forward->blocking_query = new;
+		  forward->blocking_query = old;
 		  forward->stash_len = plen;
 		  forward->stash = stash;
 		  return;
@@ -1103,6 +1103,8 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	      size_t nn;
 	      int serverind, fd;
 	      struct randfd_list *rfds = NULL;
+	      struct frec *new = NULL;
+	      struct blockdata *newstash = NULL;
 	      
 	      /* Make sure we don't expire and free the orig frec during the
 		 allocation of a new one: third arg of get_new_frec() does that. */
@@ -1112,6 +1114,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 					      daemon->keyname, forward->class,
 					      STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz)) && 
 		  (fd = allocate_rfd(&rfds, server)) != -1 &&
+		  (newstash = blockdata_alloc((char *)header, nn)) &&
 		  (new = get_new_frec(now, server, 1)))
 		{
 		  struct frec *next = new->next;
@@ -1141,7 +1144,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  new->new_id = get_id();
 		  header->id = htons(new->new_id);
 		  /* Save query for retransmission and de-dup */
-		  new->stash = blockdata_alloc((char *)header, nn);
+		  new->stash = newstash;
 		  new->stash_len = nn;
 		  if (daemon->fast_retry_time != 0)
 		    new->forward_timestamp = dnsmasq_milliseconds();
@@ -1164,7 +1167,9 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  return;
 		}
 	      
-	      free_rfds(&rfds); /* error unwind */
+	      /* error unwind */
+	      free_rfds(&rfds);
+	      blockdata_free(newstash);
 	    }
 	  
 	  blockdata_free(stash); /* don't leak this on failure. */
