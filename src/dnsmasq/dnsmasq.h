@@ -155,11 +155,7 @@ extern int capget(cap_user_header_t header, cap_user_data_t data);
 #include <priv.h>
 #endif
 
-/* Backwards compat with 2.83 */
-#if defined(HAVE_NETTLEHASH)
-#  define HAVE_CRYPTOHASH
-#endif
-#if defined(HAVE_DNSSEC) || defined(HAVE_CRYPTOHASH)
+#if defined(HAVE_DNSSEC)
 #  include <nettle/nettle-meta.h>
 #endif
 
@@ -790,8 +786,6 @@ struct dyndir {
 #define FREC_TEST_PKTSZ       256
 #define FREC_HAS_PHEADER      512
 #define FREC_GONE_TO_TCP     1024
-
-#define HASH_SIZE 32 /* SHA-256 digest size */
 
 struct frec {
   struct frec_src {
@@ -1455,10 +1449,6 @@ size_t filter_rrsigs(struct dns_header *header, size_t plen);
 int setup_timestamp(void);
 int errflags_to_ede(int status);
 #endif
-
-/* hash_questions.c */
-void hash_questions_init(void);
-unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name);
 
 /* crypto.c */
 const struct nettle_hash *hash_find(char *name);
