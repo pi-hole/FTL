@@ -2064,17 +2064,20 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
   unsigned char *payload = &packet[2];
   struct dns_header *header = (struct dns_header *)payload;
   unsigned char c1, c2;
-  unsigned char hash[HASH_SIZE], *hashp;
   unsigned int rsize;
+  int class, rclass, type, rtype;
+  unsigned char *p;
   
   (void)mark;
   (void)have_mark;
 
-  if (!(hashp = hash_questions(header, (unsigned int)qsize, daemon->namebuff)))
+  /* Save the query to make sure we get the answer we expect. */
+  p = (unsigned char *)(header+1);
+  if (!extract_name(header, qsize, &p, daemon->namebuff, 1, 4))
     return 0;
-
-  memcpy(hash, hashp, HASH_SIZE);
-  
+  GETSHORT(type, p); 
+  GETSHORT(class, p);
+    
   while (1) 
     {
       int data_sent = 0, timedout = 0;
@@ -2173,11 +2176,17 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	    continue;
 	}
 
-      /* If the hash of the question section doesn't match the crc we sent, then
+      /* If the question section of the reply doesn't match the crc we sent, then
 	 someone might be attempting to insert bogus values into the cache by 
 	 sending replies containing questions and bogus answers. 
 	 Try another server, or give up */
-      if (!(hashp = hash_questions(header, rsize, daemon->namebuff)) || memcmp(hash, hashp, HASH_SIZE) != 0)
+      p = (unsigned char *)(header+1);
+      if (extract_name(header, rsize, &p, daemon->namebuff, 0, 4) != 1)
+	continue;
+      GETSHORT(rtype, p); 
+      GETSHORT(rclass, p);
+      
+      if (type != rtype || class != rclass)
 	continue;
       
       serv->flags |= SERV_GOT_TCP;
