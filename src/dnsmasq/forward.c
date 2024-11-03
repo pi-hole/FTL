@@ -219,7 +219,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       old_src = 1;
       old_reply = 1;
     }
-  else if (gotname && (forward = lookup_frec(daemon->namebuff, C_IN, (int)rrtype, fwd_flags, -1,
+  else if (gotname && (forward = lookup_frec(daemon->namebuff, C_IN, (int)rrtype, -1, fwd_flags,
 					     FREC_CHECKING_DISABLED | FREC_AD_QUESTION | FREC_DO_QUESTION |
 					     FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)))
     {
