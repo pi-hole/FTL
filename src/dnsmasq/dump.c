@@ -285,7 +285,7 @@ static void do_dump_packet(int mask, void *packet, size_t len,
       (proto == IPPROTO_UDP && !read_write(daemon->dumpfd, (void *)&udp, sizeof(udp), 0)) ||
       !read_write(daemon->dumpfd, (void *)packet, len, 0))
     my_syslog(LOG_ERR, _("failed to write packet dump"));
-  else if (option_bool(OPT_EXTRALOG))
+  else if (option_bool(OPT_EXTRALOG) && (mask & 0x00ff))
     my_syslog(LOG_INFO, _("%u dumping packet %u mask 0x%04x"),  daemon->log_display_id, ++packet_count, mask);
   else
     my_syslog(LOG_INFO, _("dumping packet %u mask 0x%04x"), ++packet_count, mask);

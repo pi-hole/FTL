@@ -1512,9 +1512,6 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 	  
 	  if (src->fd != -1)
 	    {
-#ifdef HAVE_DUMPFILE
-	      dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source, src->fd);
-#endif 
 	      send_from(src->fd, option_bool(OPT_NOWILD) || option_bool (OPT_CLEVERBIND), daemon->packet, nn, 
 			&src->source, &src->dest, src->iface);
 	      
@@ -1524,6 +1521,10 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 		  daemon->log_source_addr = &src->source;
 		  log_query(F_UPSTREAM, "query", NULL, "duplicate", 0);
 		}
+
+#ifdef HAVE_DUMPFILE
+	      dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source, src->fd);
+#endif 
 	    }
 	  /* Pi-hole modification */
 	  FTL_multiple_replies(src->log_id, &first_ID);
