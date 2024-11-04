@@ -68,9 +68,9 @@ EOF
     exit ${help}
 fi
 
-# debug and tail are mutually exclusive
-if [[ -n "${debug}" && -n "${tail}" ]]; then
-    echo "Error: -d and -f are mutually exclusive"
+# debug, tail and dev are mutually exclusive
+if [[ $((debug + tail + dev)) -gt 1 ]]; then
+    echo "Error: debug, tail, and dev are mutually exclusive options."
     exit 1
 fi
 
@@ -102,9 +102,6 @@ if [[ -n "${clean}" ]]; then
     echo "Cleaning build environment"
     # Remove build directory
     rm -rf "${builddir}"
-    if [[ -n ${nobuild} ]]; then
-        exit 0
-    fi
 fi
 
 # Remove possibly outdated api/docs elements
@@ -129,6 +126,11 @@ for scriptname in src/lua/scripts/*.lua; do
         rm "${scriptname}.hex"
     fi
 done
+
+# If we are asked to NOT build, we exit here
+if [[ -n ${nobuild} ]]; then
+    exit 0
+fi
 
 # Set compiler to clang if requested
 if [[ -n "${clang}" ]]; then
