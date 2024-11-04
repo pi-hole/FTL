@@ -41,8 +41,11 @@ if [[ -n "${help}" ]]; then
 Usage: $0 [options]
 Helper script simplifying the build process of Pi-hole FTL.
 
-Options:
+Shortcuts:
   dev                Build, install, restart, and tail logs.
+  debug              Build, install, restart, and attach debugger.
+
+Other options:
   clean              Clean the build environment before building.
   nobuild            Do not trigger a build, e.g., after cleaning.
   install            Install the built binaries (requires sudo).
@@ -209,6 +212,14 @@ fi
 
 # If we are asked to tail the log, we do this here
 if [[ -n "${tail}" ]]; then
+
+    # Check if tmux is installed
+    if ! command -v tmux &> /dev/null; then
+        echo "Error: tmux is not installed. Please install tmux to use the tail option."
+        exit 1
+    fi
+
+    # Get the log file locations
     ftl_log=$(pihole-FTL --config files.log.ftl)
     dnsmasq_log=$(pihole-FTL --config files.log.dnsmasq)
 
