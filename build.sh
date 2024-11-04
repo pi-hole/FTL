@@ -19,18 +19,19 @@ builddir="cmake/"
 for var in "$@"
 do
     case "${var}" in
-        "-c" | "clean"   ) clean=1;;
-        "-C" | "CLEAN"   ) clean=1 && nobuild=1;;
-        "-i" | "install" ) install=1;;
-        "-r" | "restart" ) restart=1;;
-        "-f" | "tail"    ) tail=1;;
-        "-d" | "debug"   ) debug=1;;
-        "-D" | "dev"     ) dev=1;;
-        "-t" | "test"    ) test=1;;
+        "clean"          ) clean=1;;
+        "nobuild"        ) nobuild=1;;
+        "install"        ) install=1;;
+        "restart"        ) restart=1;;
+        "tail"           ) tail=1;;
+        "debug"          ) debug=1;;
+        "dev"            ) dev=1;;
+        "test"           ) test=1;;
         "clean-logs"     ) clean_logs=1;;
         "clang"          ) clang=1;;
         "ci"             ) builddir="cmake_ci/";;
-        "-h"  | "--help" ) help=1;;
+        "-h"  | "help"   ) help=0;;
+        *                ) echo -e "Unknown option: ${var}\n"; help=1;;
     esac
 done
 
@@ -41,19 +42,19 @@ Usage: $0 [options]
 Helper script simplifying the build process of Pi-hole FTL.
 
 Options:
-  -d, dev            Build, install, restart, and tail logs.
-  -c, clean          Clean the build environment and trigger a build.
-  -C, CLEAN          Clean the build environment and DO NOT build.
-  -i, install        Install the built binaries (requires sudo).
-  -r, restart        Restart the pihole-FTL service (requires sudo).
-  -h, --help         Display this help text.
+  dev                Build, install, restart, and tail logs.
+  clean              Clean the build environment before building.
+  nobuild            Do not trigger a build, e.g., after cleaning.
+  install            Install the built binaries (requires sudo).
+  restart            Restart the pihole-FTL service (requires sudo).
   clean-logs         Clean the FTL and dnsmasq log files.
-  -f, tail           Tail (follow) the FTL and dnsmasq log files.
+  tail               Tail (follow) the FTL and dnsmasq log files.
+  -h, help           Display this help text.
 
 Special CI options:
   ci                 Use the CI build directory (cmake_ci/).
   clang              Use clang as the compiler.
-  -t, test           Run tests after building.
+  test               Run tests after building.
 
 If no options are provided, the script will build the sources.
 If the -d option is provided, the script will build, install, restart,
@@ -61,7 +62,7 @@ and tail the two most important log file. The -d option is intended
 for development purposes.
 EOF
 
-    exit 0
+    exit ${help}
 fi
 
 # debug and tail are mutually exclusive
