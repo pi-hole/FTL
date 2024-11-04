@@ -26,8 +26,8 @@
  *
  * This function compares two 32-bit hash values and returns:
  * - -1 if the first hash is less than the second hash.
- * - 1 if the first hash is greater than the second hash.
- * - 0 if both hashes are equal.
+ * -  1 if the first hash is greater than the second hash.
+ * -  0 if both hashes are equal.
  *
  * @param a The first hash value to compare.
  * @param b The second hash value to compare.
@@ -53,7 +53,7 @@ static inline int cmp_hash(const uint32_t a, const uint32_t b)
  *
  * @param key Pointer to the lookup_table structure to search for (element to find).
  * @param base Pointer to the base of the array of lookup_table structures to search in.
- * @param nel Number of elements in the array to search in.
+ * @param size Number of elements in the array to search in.
  * @param try Pointer to a pointer where the address of the found element will be stored.
  * @return true if the element is found, false otherwise.
  *
@@ -76,17 +76,19 @@ static inline int cmp_hash(const uint32_t a, const uint32_t b)
  * information about the position where the element would need to be inserted.
  */
 static bool binsearch(const struct lookup_table *base, const uint32_t hash,
-                      size_t nel, const struct lookup_table **try)
+                      size_t size, const struct lookup_table **try)
 {
 	// Initialize the base pointer to the start of the array
 	*try = base;
 
 	// Run while there are elements left to be searched in the base array
-	while(nel > 0)
+	while(size > 0)
 	{
-		// Set the try pointer to the (relative) middle element of the
-		// current base
-		*try = base + (nel / 2);
+		// Use unsigned arithmetic to avoid overflow when calculating
+		// the middle element of the array
+		const size_t mid = size / 2;
+		// Update the base pointer to the middle element of the array
+		*try = base + mid;
 
 		// Compare the key with the current element
 		const int sign = cmp_hash(hash, (*try)->hash);
@@ -97,34 +99,36 @@ static bool binsearch(const struct lookup_table *base, const uint32_t hash,
 			// occurrence of the key in the array
 			return true;
 		}
-		else if(nel == 1)
+		else if(size == 1)
 		{
 			// If there's only one element left and it doesn't
 			// match, break the loop as the key is not in the array
 			// => return false
 
-			// If the key is less than the middle element, the key
-			// would be inserted before the middle element
-			if(sign < 0)
-				break;
+			// If the key is greater than the middle element, the
+			// key would be inserted after the middle element
+			if(sign > 0)
+				(*try)++;
 
-			// If the key is greater than the middle element, the key
-			// would be inserted after the middle element
-			(*try)++;
+			// Break the loop, we have not found the key but
+			// know that it would need to be inserted at *try
 			break;
 		}
 		else if(sign < 0)
 		{
 			// If the key is less than the middle element, search in
-			// the (relative) left half and try again
-			nel /= 2;
+			// the (relative) left half (XXXX-----) and try again
+
+			// base stays the same
+			size = mid; // size is now the left half
 		}
 		else
 		{
 			// If the key is greater than the middle element, search
-			// in the (relative) right half and try again
-			base = *try;
-			nel -= nel / 2;
+			// in the (relative) right half (-----XXXX) and try again
+
+			base = *try; // base is now the beginning of the right half
+			size -= mid; // size is now the right half
 		}
 	}
 
@@ -211,13 +215,13 @@ bool lookup_insert(const enum memory_type type, const unsigned int id, const uin
 
 	// Move all elements from the insertion point to the end of the array
 	// one position to the right to make space for the new element
-	memmove((void*)(try + 1), try, (*size - pos) * sizeof(struct lookup_table));
+	// Don't move anything if the element is added at the end of the array
+	if(pos < *size)
+		memmove((void*)(try + 1), try, (*size - pos) * sizeof(struct lookup_table));
 
-	// Prepare the new lookup_table element
-	struct lookup_table key = { .id = id, .hash = hash };
-
-	// Insert the new element at the correct position
-	memcpy((void*)try, &key, sizeof(struct lookup_table));
+	// Prepare the new lookup_table element and insert it at the correct
+	// position
+	table[pos] = (struct lookup_table){ .id = id, .hash = hash };
 
 	// Increase the number of elements in the array
 	(*size)++;
@@ -277,7 +281,9 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 		{
 			// Move all elements from the position to the end of the array
 			// one position to the left to remove the element
-			memmove(&table[pos], &table[pos + 1], (*size - pos - 1) * sizeof(struct lookup_table));
+			// Don't move anything if the element is removed from the end of the array
+			if(pos < *size - 1)
+				memmove(&table[pos], &table[pos + 1], (*size - pos - 1) * sizeof(struct lookup_table));
 
 			// Decrease the number of elements in the array
 			(*size)--;
@@ -387,7 +393,7 @@ static void lookup_find_hash_collisions_table(const enum memory_type type)
 	log_info("Searching for hash collisions in %s lookup table", name);
 
 	// Do a linear search to find hash collisions in the sorted array
-	unsigned int collisions = 0;
+	unsigned int collisions = 0, errors = 0;
 	for(size_t i = 1; i < *size; i++)
 	{
 		// If the hash value of the current element is the same as the previous element
@@ -435,10 +441,28 @@ static void lookup_find_hash_collisions_table(const enum memory_type type)
 
 			collisions++;
 		}
+		else if(table[i].hash < table[i - 1].hash)
+		{
+			// Log an error if the array is not sorted, the equality
+			// check was already done in the previous if statement
+			//
+			// This is really an error as, when the array is not
+			// sorted, the binary search algorithm will not be able
+			// to find elements possibly even causing artificial
+			// hash collisions above as the same entry might be
+			// inserted multiple times
+			log_err("Array is not sorted at position %zu/%zu: %"PRIu32" > %"PRIu32,
+			        i - 1, i, table[i - 1].hash, table[i].hash);
+
+			errors++;
+		}
 	}
 
-	log_info("Found %u hash collisions in %s lookup table (scanned %u elements)",
-	         collisions, name, *size);
+	// Log results, if there are any collisions or errors, log as error,
+	// otherwise as info message
+	const int priority = collisions > 0 || errors > 0 ? LOG_ERR : LOG_INFO;
+	log_lvl(priority, "Found %u hash collisions and %u sorting errors in %s lookup table (scanned %u elements)",
+	        collisions, errors, name, *size);
 }
 
 /**
