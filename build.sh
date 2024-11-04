@@ -16,6 +16,13 @@ set -e
 builddir="cmake/"
 
 # Parse arguments
+# If the first argument starts in "-D", we pass it to CMake
+if [[ "${1}" == "-D"* ]]; then
+    cmake_args="${1}"
+    shift
+fi
+
+# Parse the remaining arguments
 for var in "$@"
 do
     case "${var}" in
@@ -35,7 +42,7 @@ do
     esac
 done
 
-# Display help text
+# Display help text if requested
 if [[ -n "${help}" ]]; then
     cat << EOF
 Usage: $0 [options]
@@ -144,8 +151,8 @@ fi
 #     ./build.sh "-DA=1 -DB=2" install
 mkdir -p "${builddir}"
 cd "${builddir}"
-if [[ "${1}" == "-D"* ]]; then
-    cmake "${1}" ..
+if [[ -n ${cmake_args} ]]; then
+    cmake "${cmake_args}" ..
 else
     cmake ..
 fi
