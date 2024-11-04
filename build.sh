@@ -65,7 +65,7 @@ and tail the two most important log file. The -d option is intended
 for development purposes.
 EOF
 
-    exit ${help}
+    exit "${help}"
 fi
 
 # debug, tail and dev are mutually exclusive
@@ -151,7 +151,7 @@ else
 fi
 
 # Build the sources with the number of available cores
-cmake --build . -- -j $(nproc)
+cmake --build . -- -j "$(nproc)"
 
 # Checksum verification
 ./pihole-FTL verify
