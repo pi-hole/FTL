@@ -34,7 +34,6 @@
 
 int get_gateway(struct ftl_conn *api, cJSON * json, const bool detailed)
 {
-
 	// Get routing information
 	cJSON *routes = JSON_NEW_ARRAY();
 	nlroutes(routes, detailed);
