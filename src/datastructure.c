@@ -146,7 +146,7 @@ int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, 
 	for(unsigned int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
 		// Get upstream pointer
-		const upstreamsData *upstream = _getUpstream(upstreamID, false, line, func, file);
+		const upstreamsData *upstream = _getUpstream(upstreamID, true, line, func, file);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(upstream == NULL)
