@@ -104,6 +104,27 @@ struct RES_RECORD
 	uint8_t *rdata;
 };
 
+/**
+ * @brief Converts a socket error number to a human-readable string.
+ *
+ * This function takes an error number (errno) and returns a string
+ * describing the error. It provides specific messages for common
+ * socket errors such as EAGAIN and ECONNREFUSED, and falls back to
+ * the standard strerror function for other error numbers.
+ *
+ * @param errno The error number to convert.
+ * @return A string describing the error.
+ */
+static const char *strsockerr(const int err)
+{
+	if(err == EAGAIN)
+		return "Timeout - no response from upstream DNS server";
+	else if(err == ECONNREFUSED)
+		return "Connection refused by upstream DNS server";
+	else
+		return strerror(err);
+}
+
 // see https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml
 static const char *getDNScode(int code)
 {
@@ -323,14 +344,14 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		socklen_t addrlen = sizeof(*dest);
 		if(sendto(sock, buf, len, 0, (struct sockaddr*)dest, addrlen) < 0)
 		{
-			log_err("Cannot send UDP DNS query: %s", strerror(errno));
+			log_err("Cannot send UDP DNS query: %s", strsockerr(errno));
 			return NULL;
 		}
 
 		// Receive the answer
 		if(recvfrom (sock, buf, sizeof(buf), 0, (struct sockaddr*)dest, &addrlen) < 0)
 		{
-			log_err("Cannot receive UDP DNS reply: %s", strerror(errno));
+			log_err("Cannot receive UDP DNS reply: %s", strsockerr(errno));
 			return NULL;
 		}
 	}
@@ -346,7 +367,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		if(send(sock, &prefix, sizeof(prefix), 0) < 0 ||
 		   send(sock, buf, len, 0) < 0)
 		{
-			log_err("Cannot send TCP DNS query: %s", strerror(errno));
+			log_err("Cannot send TCP DNS query: %s", strsockerr(errno));
 			return NULL;
 		}
 
@@ -354,7 +375,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		prefix = 0;
 		if(recv(sock, &prefix, sizeof(prefix), 0) < 0)
 		{
-			log_err("Cannot receive TCP DNS reply (1): %s", strerror(errno));
+			log_err("Cannot receive TCP DNS reply (1): %s", strsockerr(errno));
 			return NULL;
 		}
 		prefix = ntohs(prefix);
@@ -369,7 +390,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		// ... then the message itself
 		if(recv(sock, buf, sizeof(buf), 0) < 0)
 		{
-			log_err("Cannot receive TCP DNS reply (2): %s", strerror(errno));
+			log_err("Cannot receive TCP DNS reply (2): %s", strsockerr(errno));
 			return NULL;
 		}
 	}
