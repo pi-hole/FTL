@@ -281,6 +281,9 @@ int create_socket(bool tcp, struct sockaddr_in *dest)
 	return sock;
 }
 
+// Helper macro to reduce code duplication
+#define log_resolve_info(host, port, tcp) { log_info("Tried to resolve PTR \"%s\" on 127.0.0.1#%u (%s)", host, port, tcp ? "TCP" : "UDP"); }
+
 // Perform a name lookup by sending a packet to ourselves
 static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *dest,
                                                     const char *host, const char *ipaddr, bool *truncated)
@@ -345,6 +348,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		if(sendto(sock, buf, len, 0, (struct sockaddr*)dest, addrlen) < 0)
 		{
 			log_err("Cannot send UDP DNS query: %s", strsockerr(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
 			return NULL;
 		}
 
@@ -352,6 +356,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		if(recvfrom (sock, buf, sizeof(buf), 0, (struct sockaddr*)dest, &addrlen) < 0)
 		{
 			log_err("Cannot receive UDP DNS reply: %s", strsockerr(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
 			return NULL;
 		}
 	}
@@ -368,6 +373,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		   send(sock, buf, len, 0) < 0)
 		{
 			log_err("Cannot send TCP DNS query: %s", strsockerr(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
 			return NULL;
 		}
 
@@ -376,6 +382,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		if(recv(sock, &prefix, sizeof(prefix), 0) < 0)
 		{
 			log_err("Cannot receive TCP DNS reply (1): %s", strsockerr(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
 			return NULL;
 		}
 		prefix = ntohs(prefix);
@@ -384,6 +391,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		if(prefix > sizeof(buf))
 		{
 			log_err("Received TCP DNS reply is too long (%u bytes)", prefix);
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
 			return NULL;
 		}
 		bzero(buf, prefix + 1);
@@ -391,6 +399,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		if(recv(sock, buf, sizeof(buf), 0) < 0)
 		{
 			log_err("Cannot receive TCP DNS reply (2): %s", strsockerr(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
 			return NULL;
 		}
 	}
