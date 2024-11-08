@@ -507,7 +507,7 @@ static void initConfig(struct config *conf)
 	conf->dns.domain.t = CONF_STRING;
 	conf->dns.domain.f = FLAG_RESTART_FTL;
 	conf->dns.domain.d.s = (char*)"lan";
-	conf->dns.domain.c = validate_domain;
+	conf->dns.domain.c = validate_dns_domain;
 
 	conf->dns.bogusPriv.k = "dns.bogusPriv";
 	conf->dns.bogusPriv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
