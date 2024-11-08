@@ -155,6 +155,20 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 	return true;
 }
 
+// Validate dns.domain string
+// Accepts an empty string or a valid domain
+bool validate_dns_domain(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if domain is valid
+	if(strlen(val->s)!=0 && !valid_domain(val->s, strlen(val->s), false))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
+		return false;
+	}
+
+	return true;
+}
+
 // Validate IPs in CIDR notation
 bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
