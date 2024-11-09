@@ -417,6 +417,7 @@ void http_init(void)
 		                     "X-Content-Type-Options: nosniff\r\n"
 		                     "Referrer-Policy: strict-origin-when-cross-origin",
 		"index_files", "index.html,index.htm,index.lp",
+		"enable_http2", "yes",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
 		NULL
