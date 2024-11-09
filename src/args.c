@@ -19,10 +19,6 @@
 #  define NETTLE_VERSION_MINOR 0
 #endif
 
-#ifdef HAVE_MBEDTLS
-#include <mbedtls/version.h>
-#endif
-
 #include "FTL.h"
 #include "args.h"
 #include "version.h"

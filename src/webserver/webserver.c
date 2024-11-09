@@ -357,9 +357,6 @@ void http_init(void)
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
 
-#ifdef HAVE_MBEDTLS
-	features |= MG_FEATURES_TLS;
-#endif
 
 	if(mg_init_library(features) == 0)
 	{
@@ -430,7 +427,6 @@ void http_init(void)
 	// from the end of the array.
 	unsigned int next_option = ArraySize(options) - 6;
 
-#ifdef HAVE_MBEDTLS
 	// Add TLS options if configured
 
 	// TLS is used when webserver.port contains "s" (e.g. "443s")
@@ -480,7 +476,6 @@ void http_init(void)
 			        config.webserver.tls.cert.v.s);
 		}
 	}
-#endif
 	// Add access control list if configured (last two options)
 	if(strlen(config.webserver.acl.v.s) > 0)
 	{
