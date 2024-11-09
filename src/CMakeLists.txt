@@ -360,6 +360,23 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
 endif()
 
+find_library(LIBMBEDCRYPTO NAMES lmbedcrypto${LIBRARY_SUFFIX} mbedcrypto)
+find_library(LIBMBEDX509 NAMES lmbedx509${LIBRARY_SUFFIX} mbedx509)
+find_library(LIBMBEDTLS NAMES lmbedtls${LIBRARY_SUFFIX} mbedtls)
+find_library(LIBSSL NAMES libssl${LIBRARY_SUFFIX} ssl)
+find_library(LIBCRYPTO NAMES libcrypto${LIBRARY_SUFFIX} crypto)
+if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
+    # Enable TLS support in civetweb if mbedTLS is available
+    message(STATUS "Building FTL with TLS support: YES")
+    target_compile_definitions(core PRIVATE HAVE_MBEDTLS)
+    target_compile_definitions(webserver PRIVATE HAVE_MBEDTLS)
+    # Link against the mbedTLS libraries, the order is important (!)
+    target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO} ${LIBSSL} ${LIBCRYPTO})
+else()
+    # Disable TLS support in civetweb if mbedTLS is not available
+    message(STATUS "Building FTL with TLS support: NO")
+    target_compile_definitions(civetweb PRIVATE NO_SSL)
+endif()
 
 # After finishing building the FTL binary, we append the sha256sum of the binary
 # in raw form to itself and print the checksum to the console

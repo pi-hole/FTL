@@ -25,9 +25,11 @@ target_compile_options(civetweb PRIVATE -Wno-unused-but-set-variable -Wno-unused
 # USE_IPV6: add IPv6 support
 # USE_LUA: add Lua support
 # USE_HTTP2: enable HTTP2 support
+# OPENSSL_API_3_0: enable OpenSSL 3.0 API
 # TIMER_RESOLUTION: set timer resolution to 1000ms (default is 10ms) in an attempt to reduce CPU load
 target_compile_definitions(civetweb PRIVATE NO_CGI
                                             NO_DLOPEN
+                                            NO_SSL_DL
                                             USE_IPV6
                                             USE_LUA
                                             USE_HTTP2

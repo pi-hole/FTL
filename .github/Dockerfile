@@ -21,6 +21,9 @@ ENV TERM=xterm
 # This is not supported by Github Actions as it does not provide a TTY to the docker build container
 RUN sed -i '/buffer_with_truncation /d' /bats-core/libexec/bats-core/bats-format-pretty
 
+# Temporarily install openssl-libs-static to build FTL until we have a new base image
+RUN apk --no-cache add openssl-libs-static openssl-dev
+
 # Build FTL
 # Remove possible old build files
 RUN rm -rf cmake && \
