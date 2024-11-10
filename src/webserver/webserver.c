@@ -352,12 +352,9 @@ void http_init(void)
 	}
 
 	/* Initialize the library */
-	log_web("Initializing HTTP server on port %s", config.webserver.port.v.s);
-	unsigned int features = MG_FEATURES_FILES |
-	                        MG_FEATURES_IPV6 |
-	                        MG_FEATURES_CACHE;
-
-
+	const unsigned int features = mg_check_feature(UINT_MAX);
+	log_web("Initializing HTTP server on port %s (feature set 0x%04x)", config.webserver.port.v.s, features);
+	// Get all features enabled at compile-time
 	if(mg_init_library(features) == 0)
 	{
 		log_web("Initializing HTTP library failed!");

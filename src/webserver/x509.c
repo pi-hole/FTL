@@ -12,7 +12,6 @@
 #include "log.h"
 #include "x509.h"
 
-#ifdef HAVE_MBEDTLS
 # include <mbedtls/rsa.h>
 # include <mbedtls/x509.h>
 # include <mbedtls/x509_crt.h>
@@ -635,7 +634,7 @@ end:
 	return CERT_OKAY;
 }
 
-#else
+#if 0
 
 bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 {

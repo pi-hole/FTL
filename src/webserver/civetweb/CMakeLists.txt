@@ -21,7 +21,8 @@ add_library(civetweb OBJECT ${sources})
 target_compile_options(civetweb PRIVATE -Wno-unused-but-set-variable -Wno-unused-variable)
 # We can remove the NO_SSL later on. It adds additional constraints to the build system (availablity of libSSL-dev)
 # NO_CGI = no CGI support (we don't need it)
-# NO_SSL_DL NO_SSL = no SSL support (for now)
+# NO_DLOPEN = no dynamic loading of any libraries
+# NO_SSL_DL = no dynamic loading of SSL libraries
 # USE_IPV6: add IPv6 support
 # USE_LUA: add Lua support
 # USE_HTTP2: enable HTTP2 support

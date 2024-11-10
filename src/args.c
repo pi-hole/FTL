@@ -66,6 +66,8 @@
 #include "ntp/ntp.h"
 // check_capability()
 #include "capabilities.h"
+// OpenSSL_version()
+#include <openssl/crypto.h>
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -842,13 +844,10 @@ void parse_args(int argc, char *argv[])
 			printf("\n");
 			printf("****************************** %s%sCivetWeb%s *****************************\n",
 			       yellow, bold, normal);
-#ifdef HAVE_MBEDTLS
-			printf("Version:         %s%s%s%s (modified by Pi-hole) with %smbed TLS %s%s"MBEDTLS_VERSION_STRING"%s\n",
-			       green, bold, mg_version(), normal, yellow, green, bold, normal);
-#else
-			printf("Version:         %s%s%s%s%s (modified by Pi-hole) without %smbed TLS%s\n",
-			       green, bold, mg_version(), normal, red, yellow, normal);
-#endif
+			printf("Version:         %s%s%s%s%s (modified by Pi-hole)%s using\n",
+			       green, bold, mg_version(), normal, yellow, normal);
+			printf("                 %s%s%s%s\n",
+			       green, bold, OpenSSL_version(OPENSSL_VERSION), normal);
 			printf("Features:        ");
 			if(mg_check_feature(MG_FEATURES_FILES))
 				printf("Files: %sYes%s, ", green, normal);
