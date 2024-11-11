@@ -332,7 +332,7 @@ bool validate_regex_array(union conf_value *val, const char *key, char err[VALID
 }
 
 // Validate dns.revServers array
-// Each entry has to be of form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>"
+// Each entry has to be of form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>"]
 bool validate_dns_revServers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if it's an array
@@ -355,9 +355,9 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			return false;
 		}
 
-		// Check if it's in the form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>"
-		// Mandatory elements are: <enabled>, <ip-address>, <server>, and <domain>
-		// Optional elements are: [/<prefix-len>] and [#<port>]
+		// Check if it's in the form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>]"
+		// Mandatory elements are: <enabled>, <ip-address>, and <server>
+		// Optional elements are: [/<prefix-len>] and [#<port>], and [,<domain>]
 		char *str = strdup(item->valuestring);
 		char *tmp = str, *s = NULL;
 		unsigned int e = 0;
@@ -476,7 +476,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			{
 				if(!valid_domain(s, strlen(s), false))
 				{
-					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <domain> not a valid domain (\"%s\")", key, i, s);
+					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: specified <domain> not a valid domain (\"%s\")", key, i, s);
 					free(str);
 					return false;
 				}
@@ -494,9 +494,9 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 		}
 
 		// Check if there are all required elements
-		if(e < 4)
+		if(e < 3)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: entry does not have all required elements (<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>)", key, i);
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: entry does not have all required elements (<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>])", key, i);
 			free(str);
 			return false;
 		}
