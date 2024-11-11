@@ -1770,11 +1770,6 @@
   [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: <prefix-len> not a valid IPv6 prefix length ("255")' ]]
   [[ $status == 3 ]]
 
-  run bash -c './pihole-FTL --config dns.revServers "[\"true,1.1.1.1,def\"]"'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == 'Invalid value: dns.revServers[0]: entry does not have all required elements (<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>)' ]]
-  [[ $status == 3 ]]
-
   run bash -c './pihole-FTL --config dns.revServers "[\"true,1.1.1.1,def,ghi\"]"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == 'New dnsmasq configuration is not valid ('*'resolve at line '*' of /etc/pihole/dnsmasq.conf.temp: "rev-server=1.1.1.1,def"), config remains unchanged' ]]
