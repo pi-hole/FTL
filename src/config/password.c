@@ -14,6 +14,8 @@
 #include "password.h"
 // genrandom() with fallback
 #include "daemon.h"
+// sleepms()
+#include "timers.h"
 
 // Randomness generator
 #include "webserver/x509.h"
@@ -36,6 +38,20 @@
 // As a prime example, Linux uses 64 bits in the shadow password system. In
 // 2023, using 128 bits should be sufficient for the foreseeable future.
 #define SALT_LEN 16 // 16 bytes = 128 bits
+
+// App password length
+// The app password is a 256 bit password. This is a good balance between
+// security and usability. It is long enough to be secure.
+#define APPPW_LEN 32 // 32 bytes = 256 bits
+
+// CLI password file and memory
+// We store the password in plain memory. This is not a security issue as the
+// memory is only accessible to the user running the FTL process. Anyone with
+// sufficient access to the memory (ptrace, swapfile) would also have access to
+// the password file. Leaking the password after exit is not a concern as a new
+// password is generated on every start.
+#define CLI_PW_FILE "/etc/pihole/cli_pw"
+static char *cli_password = NULL;
 
 // Convert RAW data into hex representation
 // Two hexadecimal digits are generated for each input byte.
@@ -89,6 +105,11 @@ static char * __attribute__((malloc)) base64_encode(const uint8_t *data, const s
 	out_len = base64_encode_update(&ctx, encoded, length, data);
 	out_len += base64_encode_final(&ctx, encoded + out_len);
 
+	// Length check
+	if(out_len > BASE64_ENCODE_LENGTH(length) + BASE64_ENCODE_FINAL_LENGTH)
+		log_warn("Base64 encoding may have failed: Output buffer too small? (%zu > %zu)",
+		         out_len, BASE64_ENCODE_LENGTH(length) + BASE64_ENCODE_FINAL_LENGTH);
+
 	return encoded;
 }
 
@@ -121,6 +142,10 @@ static char * __attribute__((malloc)) balloon_password(const char *password,
                                                        const uint8_t salt[SALT_LEN],
                                                        const bool phc_string)
 {
+	// Parameter check
+	if(password == NULL || salt == NULL)
+		return NULL;
+
 	struct timespec start, end;
 	// Record starting time
 	if(config.debug.api.v.b)
@@ -174,6 +199,14 @@ static char * __attribute__((malloc)) balloon_password(const char *password,
 
 	// Build PHC string-like output (output string is 101 bytes long (measured))
 	char *output = calloc(128, sizeof(char));
+
+	if(output == NULL || salt_base64 == NULL || scratch_base64 == NULL)
+	{
+		log_err("Error while allocating memory for PHC string: %s", strerror(errno));
+		goto clean_and_exit;
+	}
+
+	// Generate PHC string
 	int size = snprintf(output, 128, "$BALLOON-SHA256$v=1$s=%zu,t=%zu$%s$%s",
 	                    s_cost,
 	                    t_cost,
@@ -188,11 +221,15 @@ static char * __attribute__((malloc)) balloon_password(const char *password,
 	}
 
 clean_and_exit:
-	free(scratch);
-	free(salt_base64);
-	free(scratch_base64);
+	// Clean up
+	if(scratch != NULL)
+		free(scratch);
+	if(salt_base64 != NULL)
+		free(salt_base64);
+	if(scratch_base64 != NULL)
+		free(scratch_base64);
 
-	return output;
+	return output; // may be NULL on failure (unlikely)
 }
 
 // Parse a PHC string and return the parameters and hash
@@ -253,7 +290,7 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 	// Decode salt and hash
 	size_t salt_len = 0;
 	*salt = base64_decode(salt_base64, &salt_len);
-	if(salt == NULL)
+	if(*salt == NULL)
 	{
 		// Error
 		log_err("Error while decoding salt: %s", strerror(errno));
@@ -269,7 +306,7 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 
 	size_t hash_len = 0;
 	*hash = base64_decode(hash_base64, &hash_len);
-	if(hash == NULL)
+	if(*hash == NULL)
 	{
 		// Error
 		log_err("Error while decoding hash: %s", strerror(errno));
@@ -301,16 +338,64 @@ char * __attribute__((malloc)) create_password(const char *password)
 	return balloon_password(password, salt, true);
 }
 
-bool verify_password(const char *password, const char* pwhash)
+enum password_result verify_login(const char *password)
 {
-	// No password supplied
-	if(password == NULL || password[0] == '\0')
-		return false;
+	// Check if this is the CLI password
+	if(config.webserver.api.cli_pw.v.b && cli_password != NULL)
+	{
+		if(strcmp(cli_password, password) == 0)
+			return CLIPASSWORD_CORRECT;
+	}
 
+	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
+	log_debug(DEBUG_API, "Password %s correct", pw == PASSWORD_CORRECT ? "" : "not");
+
+	// Check if an application password is set and if it matches
+	if(pw == PASSWORD_INCORRECT &&
+	   strlen(config.webserver.api.app_pwhash.v.s) > 0 &&
+	   verify_password(password, config.webserver.api.app_pwhash.v.s, true) == PASSWORD_CORRECT)
+	{
+		log_debug(DEBUG_API, "App password correct");
+		return APPPASSWORD_CORRECT;
+	}
+
+	// Return result
+	return pw;
+}
+
+enum password_result verify_password(const char *password, const char *pwhash, const bool rate_limiting)
+{
 	// No password set
 	if(pwhash == NULL || pwhash[0] == '\0')
-		return true;
+		return NO_PASSWORD_SET;
 
+	// No password supplied
+	if(password == NULL || password[0] == '\0')
+		return PASSWORD_INCORRECT;
+
+	// Check if there has already been one login attempt within this second
+	static time_t last_password_attempt = 0;
+	static unsigned int num_password_attempts = 0;
+	if(rate_limiting &&
+	   last_password_attempt > 0 &&
+	   last_password_attempt == time(NULL))
+	{
+		// Check if we have reached the maximum number of attempts
+		if(++num_password_attempts > MAX_PASSWORD_ATTEMPTS_PER_SECOND)
+		{
+			// Rate limit reached
+			sleepms(250);
+			return PASSWORD_RATE_LIMITED;
+		}
+	}
+	else
+	{
+		// Reset counter
+		num_password_attempts = 1;
+		last_password_attempt = time(NULL);
+	}
+
+	// Check password hash format
 	if(pwhash[0] == '$')
 	{
 		// Parse PHC string
@@ -319,20 +404,22 @@ bool verify_password(const char *password, const char* pwhash)
 		uint8_t *salt = NULL;
 		uint8_t *config_hash = NULL;
 		if(!parse_PHC_string(pwhash, &s_cost, &t_cost, &salt, &config_hash))
-			return false;
+			return PASSWORD_INCORRECT;
 		if(salt == NULL || config_hash == NULL)
-			return false;
+			return PASSWORD_INCORRECT;
 		char *supplied = balloon_password(password, salt, false);
 		const bool result = memcmp(config_hash, supplied, SHA256_DIGEST_SIZE) == 0;
 
 		// Free allocated memory
 		free(supplied);
-		if(salt != NULL)
-			free(salt);
-		if(config_hash != NULL)
-			free(config_hash);
+		free(salt);
+		free(config_hash);
 
-		return result;
+		// Successful logins do not count against rate-limiting
+		if(result)
+			num_password_attempts--;
+
+		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
 	else
 	{
@@ -344,7 +431,7 @@ bool verify_password(const char *password, const char* pwhash)
 		// Upgrade double-hashed password to BALLOON hash
 		if(result)
 		{
-			char *new_hash = balloon_password(password, NULL, true);
+			char *new_hash = create_password(password);
 			if(new_hash != NULL)
 			{
 				log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
@@ -353,10 +440,362 @@ bool verify_password(const char *password, const char* pwhash)
 				config.webserver.api.pwhash.v.s = new_hash;
 				config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
 				writeFTLtoml(true);
-				free(new_hash);
 			}
+
+			// Successful logins do not count against rate-limiting
+			num_password_attempts--;
 		}
 
-		return result;
+		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
+}
+
+static double sqroot(double square)
+{
+	double root = square / 3.0;
+	if (square <= 0) return 0.0;
+	for (unsigned int i=0; i<32; i++)
+		root = (root + square / root) / 2;
+	return root;
+}
+
+static int performance_test_task(const size_t s_cost, const size_t t_cost, const uint8_t password[],
+                                 const size_t pwlen, uint8_t salt[SALT_LEN],
+                                 double *elapsed1, double *elapsed2)
+{
+		struct timespec start, end, end2;
+		// Scratch buffer scratch is a user allocated working space required by
+		// the algorithm.  To determine the required size of the scratch buffer
+		// use the utility function balloon_itch.  Output of BALLOON algorithm
+		// will be written into the output buffer dst that has to be at least
+		// digest_size bytes long.
+		const size_t scratch_size = balloon_itch(SHA256_DIGEST_SIZE, s_cost);
+		uint8_t *scratch = calloc(scratch_size, sizeof(uint8_t));
+		if(scratch == NULL)
+		{
+			printf("Could not allocate %zu bytes of memory for test!\n", scratch_size);
+			return -1;
+		}
+
+		// Record starting time
+		clock_gettime(CLOCK_MONOTONIC, &start);
+
+		// Compute hash of given password password salted with salt and write
+		// the result into the output buffer dst
+		balloon_sha256(s_cost, t_cost, pwlen, password, SALT_LEN, salt, scratch, scratch);
+
+		// Record end time
+		clock_gettime(CLOCK_MONOTONIC, &end);
+
+		// Compute hash of given password password salted with salt and write
+		// the result into the output buffer dst
+		balloon_sha256(s_cost, t_cost, pwlen, password, SALT_LEN, salt, scratch, scratch);
+
+		// Record end time
+		clock_gettime(CLOCK_MONOTONIC, &end2);
+
+		// Free allocated memory
+		free(scratch);
+
+		// Compute elapsed time
+		*elapsed1 = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+		*elapsed2 = (end2.tv_sec - end.tv_sec) + (end2.tv_nsec - end.tv_nsec) / 1000000000.0;
+		char prefix[2] = { 0 };
+		double formatted = 0.0;
+		format_memory_size(prefix, (unsigned long long)scratch_size, &formatted);
+		const double avg = (*elapsed1 + *elapsed2)/2;
+		const double stdev = sqroot(((*elapsed1 - avg)*(*elapsed1 - avg) + (*elapsed2 - avg)*(*elapsed2 - avg))/2);
+		printf("s = %5zu, t = %5zu took %6.1f +/- %4.1f ms (scratch buffer %6.1f%1sB) -> %.0f\n",
+		       s_cost, t_cost, 1e3*avg, 1e3*stdev, formatted, prefix, 1.0*(s_cost*t_cost)/avg);
+
+		// Break if test took longer than half a second
+		if(avg > 0.5)
+			return 1;
+		return 0;
+}
+
+// Run performance tests until individual test result gets beyond 3 seconds
+int run_performance_test(void)
+{
+	struct timespec start, end;
+	// Record starting time
+	clock_gettime(CLOCK_MONOTONIC, &start);
+
+	// Test password
+	const uint8_t password[] = "abcdefghijklmnopqrstuvwxyz0123456789!\"§$%&/()=?";
+
+	// Generate a 128 bit random salt
+	// genrandom() returns cryptographically secure random data
+	uint8_t salt[SALT_LEN] = { 0 };
+	if(getrandom(salt, sizeof(salt), 0) < 0)
+	{
+		printf("Could not generate random salt!\n");
+		return EXIT_FAILURE;
+	}
+
+	printf("Running time-performance test:\n");
+	size_t t_t_cost = 16;
+	const size_t t_s_cost = 512;
+	cJSON *time_test = cJSON_CreateArray();
+	unsigned int i = 0;
+	while(true)
+	{
+		double elapsed1 = 0.0, elapsed2 = 0.0;
+		const int ret = performance_test_task(t_s_cost, t_t_cost, password, sizeof(password), salt,
+		                                      &elapsed1, &elapsed2);
+
+		if(ret == -1)
+			return EXIT_FAILURE;
+
+		if(i > 0)
+		{
+			// We do not want to include the first test in the
+			// average as the first call is slower
+			cJSON_AddItemToArray(time_test, cJSON_CreateNumber(1.0*(t_s_cost*t_t_cost)/elapsed1));
+			cJSON_AddItemToArray(time_test, cJSON_CreateNumber(1.0*(t_s_cost*t_t_cost)/elapsed2));
+		}
+
+		if(ret == 1)
+			break;
+
+		// Double time costs
+		t_t_cost *= 2;
+		i++;
+	}
+
+	printf("\nRunning space-performance test:\n");
+	const size_t s_t_cost = 512;
+	size_t s_s_cost = 8;
+	cJSON *space_test = cJSON_CreateArray();
+	while(true)
+	{
+		double elapsed1 = 0.0, elapsed2 = 0.0;
+		const int ret = performance_test_task(s_s_cost, s_t_cost, password, sizeof(password), salt,
+		                                      &elapsed1, &elapsed2);
+
+		cJSON_AddItemToArray(space_test, cJSON_CreateNumber(1.0*(s_t_cost*s_s_cost)/elapsed1));
+		cJSON_AddItemToArray(space_test, cJSON_CreateNumber(1.0*(s_t_cost*s_s_cost)/elapsed2));
+
+		if(ret == -1)
+			return EXIT_FAILURE;
+		else if(ret == 1)
+			break;
+
+		// Double space costs
+		s_s_cost *= 2;
+	}
+
+	clock_gettime(CLOCK_MONOTONIC, &end);
+	const double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+
+	// Compute average time and space costs from data in cJSON arrays
+	cJSON *item = NULL;
+	double t_avg_sum1 = 0.0;
+	cJSON_ArrayForEach(item, time_test)
+	{
+		t_avg_sum1 += item->valuedouble;
+	}
+	t_avg_sum1 /= cJSON_GetArraySize(time_test);
+
+	double s_avg_sum1 = 0.0;
+	cJSON_ArrayForEach(item, space_test)
+	{
+		s_avg_sum1 += item->valuedouble;
+	}
+	s_avg_sum1 /= cJSON_GetArraySize(space_test);
+
+	// Get standard deviations
+	double t_stdev_sum1 = 0.0;
+	cJSON_ArrayForEach(item, time_test)
+	{
+		t_stdev_sum1 += (item->valuedouble - t_avg_sum1)*(item->valuedouble - t_avg_sum1);
+	}
+	t_stdev_sum1 = sqroot(t_stdev_sum1/cJSON_GetArraySize(time_test));
+
+	double s_stdev_sum1 = 0.0;
+	cJSON_ArrayForEach(item, space_test)
+	{
+		s_stdev_sum1 += (item->valuedouble - s_avg_sum1)*(item->valuedouble - s_avg_sum1);
+	}
+	s_stdev_sum1 = sqroot(s_stdev_sum1/cJSON_GetArraySize(space_test));
+
+	// Free allocated memory
+	cJSON_Delete(time_test);
+	cJSON_Delete(space_test);
+
+	// Print results
+	printf("\nAverage time-performance index:  %9.0f +/- %.0f (s = %zu)\n", t_avg_sum1, t_stdev_sum1, t_s_cost);
+	printf("Average space-performance index: %9.0f +/- %.0f (t = %zu)\n", s_avg_sum1, s_stdev_sum1, s_t_cost);
+	printf("\nTotal test time: %.1f seconds\n\n", elapsed);
+
+	return EXIT_SUCCESS;
+}
+
+bool set_and_check_password(struct conf_item *conf_item, const char *password)
+{
+	// Check if the user wants to set an empty password but the password is
+	// already empty, or if the newly set password is the same as the old
+	// one
+	if((strlen(password) == 0 && strlen(config.webserver.api.pwhash.v.s) == 0) ||
+	   verify_password(password, config.webserver.api.pwhash.v.s, false) == PASSWORD_CORRECT)
+	{
+		log_debug(DEBUG_CONFIG, "Password unchanged, not updating");
+		return true;
+	}
+
+	// Get password hash as allocated string (an empty string is hashed to an empty string)
+	char *pwhash = strlen(password) > 0 ? create_password(password) : strdup("");
+
+	// Verify that the password hash is valid or that no password is set
+	const enum password_result status = verify_password(password, pwhash, false);
+	if(status != PASSWORD_CORRECT && status != NO_PASSWORD_SET)
+	{
+		free(pwhash);
+		log_warn("Failed to create password hash (verification failed), password remains unchanged");
+		return false;
+	}
+
+	// Get pointer to pwhash instead
+	conf_item--;
+
+	// Free previously allocated memory (if applicable)
+	if(conf_item->t == CONF_STRING_ALLOCATED)
+		free(conf_item->v.s);
+
+	// Set item
+	conf_item->v.s = pwhash;
+	conf_item->t = CONF_STRING_ALLOCATED;
+	log_debug(DEBUG_CONFIG, "Set %s to \"%s\"", conf_item->k, conf_item->v.s);
+
+	return true;
+}
+
+bool generate_password(char **password, char **pwhash)
+{
+	// Generate a 256 bit random password
+	// genrandom() returns cryptographically secure random data
+	uint8_t password_raw[APPPW_LEN] = { 0 };
+	if(getrandom(password_raw, sizeof(password_raw), 0) < 0)
+	{
+		log_err("getrandom() failed in generate_password()");
+		return false;
+	}
+
+	// Encode password as base64
+	*password = base64_encode(password_raw, sizeof(password_raw));
+
+	if(*password == NULL)
+	{
+		log_err("Error while encoding password as base64");
+		return false;
+	}
+
+	if(pwhash == NULL)
+	{
+		// No password hash requested
+		return true;
+	}
+
+	// Generate a 128 bit random salt
+	uint8_t salt[SALT_LEN] = { 0 };
+	if(getrandom(salt, sizeof(salt), 0) < 0)
+	{
+		log_err("getrandom() failed in generate_password()");
+		return false;
+	}
+
+	// Generate balloon PHC-encoded password hash
+	*pwhash = balloon_password(*password, salt, true);
+
+	// Verify that the password hash is valid
+	if(verify_password(*password, *pwhash, false) != PASSWORD_CORRECT)
+	{
+		free(password);
+		free(pwhash);
+		log_warn("Failed to create password hash (verification failed), app password not available");
+		return false;
+	}
+
+	return true;
+}
+
+bool create_cli_password(void)
+{
+	// Check if the CLI password is enabled
+	if(!config.webserver.api.cli_pw.v.b)
+	{
+		log_debug(DEBUG_API, "CLI password is not set");
+		return true;
+	}
+
+	// Generate a new CLI password hash
+	if(!generate_password(&cli_password, NULL))
+	{
+		log_err("Failed to generate CLI password hash!");
+		return false;
+	}
+
+	// Store the CLI password in the corresponding file
+	FILE *file = fopen(CLI_PW_FILE, "w");
+	if(file == NULL)
+	{
+		log_err("Failed to open CLI password file for writing: %s", strerror(errno));
+		free(cli_password);
+		return false;
+	}
+
+	// Write password
+	if(fputs(cli_password, file) == EOF)
+	{
+		log_err("Failed to write CLI password to file: %s", strerror(errno));
+		fclose(file);
+		free(cli_password);
+		return false;
+	}
+
+	// Close file
+	fclose(file);
+
+	// Set file permissions to 0640
+	if(chmod(CLI_PW_FILE, S_IRUSR | S_IWUSR | S_IRGRP) < 0)
+	{
+		log_err("Failed to set permissions on CLI password file: %s", strerror(errno));
+		free(cli_password);
+		return false;
+	}
+
+	log_debug(DEBUG_API, "CLI password set and stored in file");
+	return true;
+}
+
+bool remove_cli_password(void)
+{
+	// Remove the CLI password from memory (if allocated)
+	if(cli_password != NULL)
+	{
+		free(cli_password);
+		cli_password = NULL;
+	}
+
+	// Empty the CLI password file
+	FILE *file = fopen(CLI_PW_FILE, "w");
+	if(file == NULL)
+	{
+		log_err("Failed to open CLI password file for writing: %s", strerror(errno));
+		return false;
+	}
+
+	// Close file
+	fclose(file);
+
+	// Remove the CLI password file from disk
+	// If the file does not exist, we returned above already
+	if(unlink(CLI_PW_FILE) < 0)
+	{
+		log_err("Failed to remove CLI password file: %s", strerror(errno));
+		return false;
+	}
+
+	log_debug(DEBUG_API, "CLI password removed");
+	return true;
 }

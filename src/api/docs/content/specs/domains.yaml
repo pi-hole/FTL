@@ -85,7 +85,8 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'domains.yaml#/components/schemas/domains/get'
+                    - $ref: 'domains.yaml#/components/schemas/domains/get' # identical to GET
+                    - $ref: 'domains.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   domains:
@@ -127,6 +128,12 @@ components:
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -180,7 +187,8 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'domains.yaml#/components/schemas/domains/get'
+                    - $ref: 'domains.yaml#/components/schemas/domains/get' # identical to GET
+                    - $ref: 'domains.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -210,6 +218,70 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+    batchDelete:
+      summary: Delete multiple domains
+      post:
+        summary: Delete multiple domains
+        tags:
+          - "Domain management"
+        operationId: "batchDelete_domains"
+        description: |
+          *Note:* There will be no content on success.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    item:
+                      type: string
+                      description: Domain to delete
+                      example: "example.com"
+                    type:
+                      type: string
+                      description: Type of domain to delete
+                      enum:
+                        - "allow"
+                        - "deny"
+                      example: "allow"
+                    kind:
+                      type: string
+                      description: Kind of domain to delete
+                      enum:
+                        - "exact"
+                        - "regex"
+                      example: "exact"
+        responses:
+          '204':
+            description: Items deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     domains:
       get:
@@ -217,9 +289,11 @@ components:
         properties:
           domains:
             type: array
+            description: Array of domains
             items:
               allOf:
-                - $ref: 'domains.yaml#/components/schemas/domain'
+                - $ref: 'domains.yaml#/components/schemas/domain_object'
+                - $ref: 'domains.yaml#/components/schemas/unicode'
                 - $ref: 'domains.yaml#/components/schemas/type'
                 - $ref: 'domains.yaml#/components/schemas/kind'
                 - $ref: 'domains.yaml#/components/schemas/comment'
@@ -235,17 +309,39 @@ components:
           - $ref: 'domains.yaml#/components/schemas/enabled'
       post:
         allOf:
-          - $ref: 'domains.yaml#/components/schemas/domain'
+          - $ref: 'domains.yaml#/components/schemas/domain_maybe_array'
           - $ref: 'domains.yaml#/components/schemas/comment'
           - $ref: 'domains.yaml#/components/schemas/groups'
           - $ref: 'domains.yaml#/components/schemas/enabled'
     domain:
+      description: Domain
+      type: string
+      example: testdomain.com
+    unicode:
+      type: object
+      properties:
+        unicode:
+          description: Unicode domain (may be different from `domain` if punycode-encoding is used)
+          type: string
+          example: "äbc.com"
+    domain_array:
+      description: array of domains
+      type: array
+      items:
+        type: string
+      example: ["testdomain.com", "otherdomain.de"]
+    domain_maybe_array:
       type: object
       properties:
         domain:
-          description: Domain
-          type: string
-          example: testdomain.com
+          oneOf:
+            - $ref: 'domains.yaml#/components/schemas/domain'
+            - $ref: 'domains.yaml#/components/schemas/domain_array'
+    domain_object:
+      type: object
+      properties:
+        domain:
+          $ref: 'domains.yaml#/components/schemas/domain'
     type:
       type: object
       properties:
@@ -305,12 +401,54 @@ components:
           description: Unix timestamp of last domain modification
           type: integer
           readOnly: true
+    lists_processed:
+      type: object
+      properties:
+        processed:
+          type: object
+          nullable: true
+          description: |
+            Object containing the number of domains that were successfully
+            added to the database and the number of domains that could not be
+            added to the database.
+          properties:
+            success:
+              description: |
+                Array of domains that were successfully added to the database.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Domain that was added to the database
+                    type: string
+            errors:
+              description: |
+                Array of errors that occurred during processing.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Domain that could not be added to the database
+                    type: string
+                  error:
+                    description: Error message
+                    type: string
+          example:
+            success:
+              - item: "example.com"
+              - item: "example3.com"
+            errors:
+              - item: "example2.com"
+                error: "UNIQUE constraint failed: domainlist.domain"
   examples:
     domains:
       summary: Example domains
       value:
         domains:
           - domain: "allowed.com"
+            unicode: "allowed.com"
             type: allow
             kind: exact
             comment: null
@@ -320,7 +458,8 @@ components:
             id: 299
             date_added: 1611239095
             date_modified: 1612163756
-          - domain: "allowed2.comm"
+          - domain: "xn--4ca.com"
+            unicode: "ä.com"
             type: allow
             kind: regex
             comment: "Some text"
@@ -330,6 +469,8 @@ components:
             id: 305
             date_added: 1611240635
             date_modified: 1611241276
+        took: 0.012
+        processed: null
     errors:
       uri_error:
         list_imprecise:

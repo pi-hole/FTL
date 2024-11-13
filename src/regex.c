@@ -34,7 +34,7 @@ const char *regextype[REGEX_MAX] = { "deny", "allow", "CLI" };
 
 static regexData *allow_regex = NULL;
 static regexData  *deny_regex = NULL;
-static regexData   *cli_regex = NULL;
+static regexData    cli_regex = { 0 };
 static unsigned int num_regex[REGEX_MAX] = { 0 };
 unsigned int regex_change = 0;
 static char regex_msg[REGEX_MSG_LEN] = { 0 };
@@ -48,7 +48,7 @@ static inline regexData *get_regex_ptr(const enum regex_type regexid)
 		case REGEX_ALLOW:
 			return allow_regex;
 		case REGEX_CLI:
-			return cli_regex;
+			return &cli_regex;
 		case REGEX_MAX: // Fall through
 		default: // This is not possible
 			return NULL;
@@ -57,7 +57,7 @@ static inline regexData *get_regex_ptr(const enum regex_type regexid)
 
 static inline void free_regex_ptr(const enum regex_type regexid)
 {
-	regexData **regex;
+	regexData **regex = NULL;
 	switch (regexid)
 	{
 		case REGEX_DENY:
@@ -67,8 +67,8 @@ static inline void free_regex_ptr(const enum regex_type regexid)
 			regex = &allow_regex;
 			break;
 		case REGEX_CLI:
-			regex = &cli_regex;
-			break;
+			// cannot be freed
+			return;
 		case REGEX_MAX: // Fall through
 		default: // This is not possible
 			return;
@@ -367,7 +367,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 	return true;
 }
 
-static int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
+static int match_regex(const char *input, DNSCacheData *dns_cache, const int clientID,
                        const enum regex_type regexid, const bool regextest, cJSON *json)
 {
 	int match_idx = -1;
@@ -409,7 +409,7 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 		{
 			if(config.debug.regex.v.b)
 			{
-				clientsData* client = getClient(clientID, true);
+				clientsData *client = getClient(clientID, true);
 				if(client != NULL)
 				{
 					log_debug(DEBUG_REGEX, "Regex %s (%u, DB ID %d) \"%s\" NOT ENABLED for client %s",
@@ -470,14 +470,14 @@ static int match_regex(const char *input, DNSCacheData* dns_cache, const int cli
 					log_info("    %s%s%s matches",
 					cli_bold(), regex->string, cli_normal());
 				}
-				else if(regextest && regexid == REGEX_DENY)
+				else if(regexid == REGEX_DENY)
 				{
 					// Database-sourced regular expression
 					log_info("    %s%s%s matches (regex blacklist, DB ID %i)",
 					cli_bold(), regex->string, cli_normal(),
 					regex->database_id);
 				}
-				else if(regextest && regexid == REGEX_ALLOW)
+				else if(regexid == REGEX_ALLOW)
 				{
 					// Database-sourced regular expression
 					log_info("    %s%s%s matches (regex whitelist, DB ID %i)",
@@ -548,7 +548,7 @@ bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, c
 	if(regex_id != -1)
 	{
 		// We found a match
-		dns_cache->domainlist_id = regex_id;
+		dns_cache->list_id = regex_id;
 		return true;
 	}
 
@@ -626,8 +626,7 @@ void free_regex(void)
 {
 	// Return early if we don't use any regex filters
 	if(allow_regex == NULL &&
-	    deny_regex == NULL &&
-	     cli_regex == NULL)
+	    deny_regex == NULL)
 	{
 		log_debug(DEBUG_DATABASE, "Not using any regex filters, nothing to free or reset");
 		return;
@@ -635,7 +634,7 @@ void free_regex(void)
 
 	// Reset client configuration
 	log_debug(DEBUG_DATABASE, "Resetting per-client regex settings");
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		reset_per_client_regex(clientID);
 	}
@@ -788,7 +787,7 @@ static void read_regex_table(const enum regex_type regexid)
 		if(!compile_regex(regex_string, &regex[index], &message) && message != NULL)
 		{
 			logg_regex_warning(regextype[regexid], message,
-			                   regex->database_id, regex_string);
+			                   rowid, regex_string);
 			free(message);
 		}
 
@@ -828,7 +827,7 @@ void read_regex_from_database(void)
 	// per-client regex data, not all of the regex read and compiled above
 	// will also be used by all clients
 	log_debug(DEBUG_DATABASE, "Loading per-client regex data");
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
 		clientsData *client = getClient(clientID, true);
@@ -840,7 +839,7 @@ void read_regex_from_database(void)
 	}
 
 	// Print message to FTL's log after reloading regex filters
-	log_info("Compiled %u allow and %u deny regex for %i client%s in %.1f msec",
+	log_info("Compiled %u allow and %u deny regex for %u client%s in %.1f msec",
 	         num_regex[REGEX_ALLOW], num_regex[REGEX_DENY],
 	         counters->clients, counters->clients > 1 ? "s" : "",
 	         timer_elapsed_msec(REGEX_TIMER));
@@ -895,15 +894,13 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 	{
 		// Compile CLI regex
 		log_info("%s Compiling regex filter...", cli_info());
-		regexData regex = { 0 };
-		cli_regex = &regex;
 		num_regex[REGEX_CLI] = 1;
 
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);
 		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
 		char *message = NULL;
-		if(!compile_regex(regexin, &regex, &message) && message != NULL)
+		if(!compile_regex(regexin, &cli_regex, &message) && message != NULL)
 		{
 			logg_regex_warning("CLI", message, 0, regexin);
 			free(message);

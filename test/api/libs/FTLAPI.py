@@ -15,6 +15,7 @@ import requests
 from typing import List
 import json
 from hashlib import sha256
+import urllib.parse
 
 url = "http://pi.hole/api/auth"
 
@@ -23,6 +24,7 @@ class AuthenticationMethods(Enum):
 	HEADER = 1
 	BODY = 2
 	COOKIE = 3
+	QUERY_STR = 4
 
 # Class to query the FTL API
 class FTLAPI():
@@ -43,9 +45,10 @@ class FTLAPI():
 		self.verbose = False
 
 		# Login to FTL API
-		self.login(password)
-		if self.session is None or 'valid' not in self.session or not self.session['valid']:
-			raise Exception("Could not login to FTL API")
+		if password is not None:
+			self.login(password)
+			if self.session is None or 'valid' not in self.session or not self.session['valid']:
+				raise Exception("Could not login to FTL API")
 
 	def login(self, password: str = None):
 		# Check if we even need to login
@@ -65,6 +68,8 @@ class FTLAPI():
 			return
 
 		response = self.POST("/api/auth", {"password": password})
+		if "error" in response:
+			raise Exception("FTL returned error: " + json.dumps(response["error"]))
 		if 'session' not in response:
 			raise Exception("FTL returned invalid response item")
 		self.session = response["session"]
@@ -100,12 +105,17 @@ class FTLAPI():
 	def GET(self, uri: str, params: List[str] = [], expected_mimetype: str = "application/json", authenticate: AuthenticationMethods = AuthenticationMethods.BODY):
 		self.errors = []
 		try:
+			# Get json_data, headers and cookies
+			json_data, headers, cookies = self.get_jsondata_headers_cookies(authenticate)
+
+			# Add session ID to the request if authenticating via query string
+			if self.auth_method == AuthenticationMethods.QUERY_STR.name:
+				encoded_sid = urllib.parse.quote(self.session['sid'], safe='')
+				params.append("sid=" + encoded_sid)
+
 			# Add parameters to the URI (if any)
 			if len(params) > 0:
 				uri = uri + "?" + "&".join(params)
-
-			# Get json_data, headers and cookies
-			json_data, headers, cookies = self.get_jsondata_headers_cookies(authenticate)
 
 			if self.verbose:
 				print("GET " + self.api_url + uri + " with json_data: " + json.dumps(json_data))

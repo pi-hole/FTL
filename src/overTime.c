@@ -30,7 +30,9 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 	if(config.debug.overtime.v.b)
 	{
 		char timestr[20];
-		strftime(timestr, 20, "%Y-%m-%d %H:%M:%S", localtime(&timestamp));
+		struct tm tm = { 0 };
+		localtime_r(&timestamp, &tm);
+		strftime(timestr, 20, "%Y-%m-%d %H:%M:%S", &tm);
 		log_debug(DEBUG_OVERTIME, "initSlot(%u, %lu): Zeroing overTime slot at %s", index, (unsigned long)timestamp, timestr);
 	}
 
@@ -43,26 +45,14 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 	overTime[index].forwarded = 0;
 
 	// Zero overTime counter for all known clients
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		clientsData* client = getClient(clientID, true);
+		clientsData *client = getClient(clientID, true);
 		if(client != NULL)
 		{
 			// Set overTime data to zero
 			client->overTime[index] = 0;
-		}
-	}
-
-	// Zero overTime counter for all known upstream destinations
-	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
-	{
-		// Get client pointer
-		upstreamsData* upstream = getUpstream(upstreamID, true);
-		if(upstream != NULL)
-		{
-			// Set overTime data to zero
-			upstream->overTime[index] = 0;
 		}
 	}
 }
@@ -85,8 +75,11 @@ void initOverTime(void)
 	if(config.debug.overtime.v.b)
 	{
 		char first[20], last[20];
-		strftime(first, 20, "%Y-%m-%d %H:%M:%S", localtime(&oldest));
-		strftime(last, 20, "%Y-%m-%d %H:%M:%S", localtime(&newest));
+		struct tm tm_o = { 0 }, tm_n = { 0 };
+		localtime_r(&oldest, &tm_o);
+		localtime_r(&newest, &tm_n);
+		strftime(first, 20, "%Y-%m-%d %H:%M:%S", &tm_o);
+		strftime(last, 20, "%Y-%m-%d %H:%M:%S", &tm_n);
 		log_debug(DEBUG_OVERTIME, "initOverTime(): Initializing %i slots from %s (%lu) to %s (%lu)",
 		          OVERTIME_SLOTS, first, (unsigned long)oldest, last, (unsigned long)newest);
 	}
@@ -131,11 +124,11 @@ unsigned int _getOverTimeID(time_t timestamp, const char *file, const int line)
 		// This is definitely wrong. We warn about this (but only once)
 		if(!warned_about_hwclock)
 		{
-			char timestampStr[TIMESTR_SIZE] = "";
+			char timestampStr[TIMESTR_SIZE];
 			get_timestr(timestampStr, timestamp, false, false);
 
 			const time_t lastTimestamp = overTime[OVERTIME_SLOTS-1].timestamp;
-			char lastTimestampStr[TIMESTR_SIZE] = "";
+			char lastTimestampStr[TIMESTR_SIZE];
 			get_timestr(lastTimestampStr, lastTimestamp, false, false);
 
 			log_warn("Found database entries in the future (%s (%lu), last timestamp for importing: %s (%lu)). "
@@ -190,17 +183,8 @@ void moveOverTimeMemory(const time_t mintime)
 		&overTime[moveOverTime],
 		remainingSlots*sizeof(*overTime));
 
-	// Correct time indices of queries. This is necessary because we just moved the slot this index points to
-	for(int queryID = 0; queryID < counters->queries; queryID++)
-	{
-		// Get query pointer
-		queriesData* query = getQuery(queryID, true);
-		if(query == NULL)
-			continue;
-	}
-
 	// Move client-specific overTime memory
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
 		if(!client)
@@ -209,22 +193,6 @@ void moveOverTimeMemory(const time_t mintime)
 		memmove(&(client->overTime[0]),
 		        &(client->overTime[moveOverTime]),
 		        remainingSlots*sizeof(*client->overTime));
-	}
-
-	// Process upstream data
-	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
-	{
-		upstreamsData *upstream = getUpstream(upstreamID, true);
-		if(!upstream)
-			continue;
-
-		// Adjust upstream's queries counter
-		upstream->count -= upstream->overTime[0];
-
-		// Move upstream-specific overTime memory
-		memmove(&(upstream->overTime[0]),
-		        &(upstream->overTime[moveOverTime]),
-		        remainingSlots*sizeof(*upstream->overTime));
 	}
 
 	// Iterate over new overTime region and initialize it

@@ -11,10 +11,9 @@
 #include "FTL.h"
 #include "daemon.h"
 #include "log.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "args.h"
 #include "config/config.h"
-#include "database/common.h"
 #include "main.h"
 // exit_code
 #include "signals.h"
@@ -24,23 +23,16 @@
 #include "capabilities.h"
 #include "timers.h"
 #include "procps.h"
-// init_memory_database(), import_queries_from_disk()
-#include "database/query-table.h"
 // init_overtime()
 #include "overTime.h"
-// flush_message_table()
-#include "database/message-table.h"
-
-#if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
-#pragma message "Minimum GLIBC version: " xstr(__GLIBC__) "." xstr(__GLIBC_MINOR__)
-#else
-#pragma message "Minimum GLIBC version: unknown, assuming this is a MUSL build"
-#endif
+// export_queries_to_disk()
+#include "database/query-table.h"
+// verify_FTL()
+#include "files.h"
 
 char *username;
-bool needGC = false;
-bool needDBGC = false;
 bool startup = true;
+bool forked = false;
 jmp_buf exit_jmp;
 
 int main (int argc, char *argv[])
@@ -50,6 +42,9 @@ int main (int argc, char *argv[])
 
 	// Set binary name
 	set_bin_name(argv[0]);
+
+	// Initialize locale (needed for libidn)
+	init_locale();
 
 	// Get user pihole-FTL is running as
 	// We store this in a global variable
@@ -79,7 +74,12 @@ int main (int argc, char *argv[])
 	// Process pihole.toml configuration file
 	// The file is rewritten after parsing to ensure that all
 	// settings are present and have a valid value
-	readFTLconf(&config, true);
+	if(readFTLconf(&config, true))
+		log_info("Parsed config file "GLOBALTOMLPATH" successfully");
+
+	// Check if another FTL process is already running
+	if(another_FTL())
+		return EXIT_FAILURE;
 
 	// Set process priority
 	set_nice();
@@ -88,8 +88,6 @@ int main (int argc, char *argv[])
 	if(!init_shmem())
 	{
 		log_crit("Initialization of shared memory failed.");
-		// Check if there is already a running FTL process
-		check_running_FTL();
 		return EXIT_FAILURE;
 	}
 
@@ -110,28 +108,6 @@ int main (int argc, char *argv[])
 
 	// Initialize overTime datastructure
 	initOverTime();
-
-	// Initialize query database (pihole-FTL.db)
-	db_init();
-
-	// Initialize in-memory databases
-	if(!init_memory_database())
-	{
-		log_crit("FATAL: Cannot initialize in-memory database.");
-		return EXIT_FAILURE;
-	}
-
-	// Flush messages stored in the long-term database
-	flush_message_table();
-
-	// Try to import queries from long-term database if available
-	if(config.database.DBimport.v.b)
-	{
-		import_queries_from_disk();
-		DB_read_queries();
-	}
-
-	log_counter_info();
 
 	// Check for availability of capabilities in debug mode
 	if(config.debug.caps.v.b)
@@ -156,7 +132,7 @@ int main (int argc, char *argv[])
 		log_debug(DEBUG_ANY, "Jumped back to main() from dnsmasq/die()");
 		dnsmasq_failed = true;
 
-		if(!resolver_ready)
+		if(!forked)
 		{
 			// If dnsmasq never finished initializing, we need to
 			// launch the threads
@@ -164,17 +140,17 @@ int main (int argc, char *argv[])
 		}
 
 		// Loop here to keep the webserver running unless requested to restart
-		while(!FTL_terminate)
+		while(!killed)
 			sleepms(100);
 	}
 
-	log_info("Shutting down... // exit code %d // jmpret %d", exit_code, jmpret);
+	log_debug(DEBUG_ANY, "Shutting down... // exit code %d // jmpret %d", exit_code, jmpret);
 	// Extra grace time is needed as dnsmasq script-helpers and the API may not
 	// be terminating immediately
 	sleepms(250);
 
 	// Save new queries to database (if database is used)
-	if(config.database.DBexport.v.b)
+	if(config.database.maxDBdays.v.ui > 0)
 	{
 		export_queries_to_disk(true);
 		log_info("Finished final database update");
@@ -183,7 +159,7 @@ int main (int argc, char *argv[])
 	cleanup(exit_code);
 
 	if(exit_code == RESTART_FTL_CODE)
-		execv(argv[0], argv);
+		execvp(argv[0], argv);
 
 	return exit_code;
 }

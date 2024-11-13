@@ -15,6 +15,7 @@ int api_docs(struct ftl_conn *api)
 	// Handle resource request by redirecting to "/"
 	if(strcmp(api->request->request_uri, "/api/docs") == 0)
 	{
+		log_debug(DEBUG_API, "Redirecting /api/docs --301--> /api/docs/");
 		mg_send_http_redirect(api->conn, "/api/docs/", 301);
 	}
 

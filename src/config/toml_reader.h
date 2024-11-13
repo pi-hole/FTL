@@ -13,7 +13,9 @@
 #include "config/config.h"
 #include "tomlc99/toml.h"
 
-bool readFTLtoml(struct config *conf, toml_table_t *toml, const bool verbose);
+bool readFTLtoml(struct config *oldconf, struct config *newconf,
+                 toml_table_t *toml, const bool verbose, bool *restart,
+                 const unsigned int version);
 bool getLogFilePathTOML(void);
 
 #endif //TOML_READER_H

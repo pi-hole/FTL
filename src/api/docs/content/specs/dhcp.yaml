@@ -36,10 +36,17 @@ components:
         operationId: "delete_dhcp"
         description: |
           This API hook removes a currently active DHCP lease.
+          Managing DHCP leases is only possible when the DHCP server is enabled.
           *Note:* There will be no content on success.
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -69,7 +76,7 @@ components:
             properties:
               expires:
                 type: integer
-                description: Expiration time
+                description: Expiration time (0 = infinite lease, never expires)
                 example: 1675671991
               name:
                 type: string

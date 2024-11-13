@@ -8,27 +8,35 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "webserver.h"
+#include "FTL.h"
+#include "webserver/webserver.h"
 // api_handler()
-#include "../api/api.h"
+#include "api/api.h"
 // send_http()
 #include "http-common.h"
 // struct config
-#include "../config/config.h"
+#include "config/config.h"
 // log_web()
-#include "../log.h"
+#include "log.h"
 // get_nprocs()
 #include <sys/sysinfo.h>
 // file_readable()
-#include "../files.h"
+#include "files.h"
 // generate_certificate()
-#include "x509.h"
+#include "webserver/x509.h"
 // allocate_lua(), free_lua(), init_lua(), request_handler()
-#include "lua_web.h"
+#include "webserver/lua_web.h"
+// log_certificate_domain_mismatch()
+#include "database/message-table.h"
+// create_cli_password()
+#include "config/password.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
+static char *error_pages = NULL;
+
+// Private prototypes
+static char *append_to_path(char *path, const char *append);
 
 static int redirect_root_handler(struct mg_connection *conn, void *input)
 {
@@ -74,7 +82,6 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	if(config.debug.api.v.b)
 	{
 		log_debug(DEBUG_API, "Host header: \"%s\", extracted host: \"%.*s\"", host, (int)host_len, host);
-
 		log_debug(DEBUG_API, "URI: %s", uri);
 	}
 
@@ -83,9 +90,11 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	// blocked domain in IP blocking mode
 	if(host != NULL && strncmp(host, config.webserver.domain.v.s, host_len) == 0)
 	{
-		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
+		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
 		if(strcmp(uri, "/") == 0)
 		{
+			log_debug(DEBUG_API, "Redirecting / --308--> %s",
+			          config.webserver.paths.webhome.v.s);
 			mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
 			return 1;
 		}
@@ -95,57 +104,45 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	return 0;
 }
 
+static int redirect_admin_handler(struct mg_connection *conn, void *input)
+{
+	if(config.debug.api.v.b)
+	{
+		// Get requested URI
+		const struct mg_request_info *request = mg_get_request_info(conn);
+		const char *uri = request->local_uri_raw;
+
+		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
+		          uri, config.webserver.paths.webhome.v.s);
+	}
+
+	// 308 Permanent Redirect from /admin -> /admin/
+	mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
+	return 1;
+}
+
 static int redirect_lp_handler(struct mg_connection *conn, void *input)
 {
 	// Get requested URI
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	const char *uri = request->local_uri_raw;
+	const size_t uri_len = strlen(uri);
 	const char *query_string = request->query_string;
 	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
 
-	// Remove the ".lp" from the URI
-	char *pos = strstr(uri, ".lp");
-	char *new_uri = calloc(strlen(uri) + query_len, sizeof(char));
-	// Copy everything from before the ".lp" to the new URI
-	strncpy(new_uri, uri, pos - uri);
+	// We allocate uri_len + query_len - 1 bytes, which is enough for the
+	// new URI. The calculation is as follows:
+	// 1. We are saving three bytes by skipping ".lp" at the end of the URI
+	// 2. We are adding one byte for the trailing '\0'
+	// 3. We are adding query_len bytes for the query string (if present)
+	// 4. We are adding one byte for the '?' between URI and query string
+	//    (if present)
+	// Total bytes required: uri_len - 3 + query_len + 1 + 1
+	char *new_uri = calloc(uri_len + query_len - 1, sizeof(char));
 
-	// Append query string to the new URI if present
-	if(query_len > 0)
-	{
-		strcat(new_uri, "?");
-		strcat(new_uri, query_string);
-	}
-
-	// Send a 301 redirect to the new URI
-	log_debug(DEBUG_API, "Redirecting %s?%s ==301==> %s",
-	          uri, query_string, new_uri);
-	mg_send_http_redirect(conn, new_uri, 301);
-	free(new_uri);
-
-	return 1;
-}
-
-static int redirect_slash_handler(struct mg_connection *conn, void *input)
-{
-	// Get requested URI
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	const char *uri = request->local_uri_raw;
-	const char *query_string = request->query_string;
-	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
-
-	// Do not redirect if the new URI is the webhome
-	if(strcmp(uri, config.webserver.paths.webhome.v.s) == 0)
-	{
-		log_debug(DEBUG_API, "Not redirecting %s?%s",
-		          uri, query_string);
-
-		// Handle as a normal request
-		return request_handler(conn, input);
-	}
-
-	// Remove the trailing slash from the URI
-	char *new_uri = strdup(uri);
-	new_uri[strlen(new_uri) - 1] = '\0';
+	// Copy everything from before the ".lp" to the new URI to effectively
+	// remove it
+	strncpy(new_uri, uri, uri_len - 3);
 
 	// Append query string to the new URI if present
 	if(query_len > 0)
@@ -204,22 +201,177 @@ void FTL_mbed_debug(void *user_param, int level, const char *file, int line, con
 	log_web("mbedTLS(%s:%d, %d): %.*s", file, line, level, (int)len, message);
 }
 
+#define MAXPORTS 8
+static struct serverports
+{
+	bool is_secure;
+	bool is_redirect;
+	unsigned char protocol; // 1 = IPv4, 2 = IPv4+IPv6, 3 = IPv6
+	in_port_t port;
+} server_ports[MAXPORTS] = { 0 };
+static in_port_t https_port = 0;
+static void get_server_ports(void)
+{
+	if(ctx == NULL)
+		return;
+
+	// Loop over all listening ports
+	struct mg_server_port mgports[MAXPORTS] = { 0 };
+	if(mg_get_server_ports(ctx, MAXPORTS, mgports) > 0)
+	{
+		// Loop over all ports
+		for(unsigned int i = 0; i < MAXPORTS; i++)
+		{
+			// Stop if no more ports are configured
+			if(mgports[i].protocol == 0)
+				break;
+
+			// Store port information
+			server_ports[i].port = mgports[i].port;
+			server_ports[i].is_secure = mgports[i].is_ssl;
+			server_ports[i].is_redirect = mgports[i].is_redirect;
+			server_ports[i].protocol = mgports[i].protocol;
+
+			// Store HTTPS port if not already set
+			if(mgports[i].is_ssl && https_port == 0)
+				https_port = mgports[i].port;
+
+			// Print port information
+			log_debug(DEBUG_API, "Listening on port %d (HTTP%s, IPv%s)",
+			          mgports[i].port, mgports[i].is_ssl ? "S" : "",
+			          mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"));
+		}
+	}
+}
+
+in_port_t __attribute__((pure)) get_https_port(void)
+{
+	return https_port;
+}
+
+unsigned short get_api_string(char **buf, const bool domain)
+{
+	// Initialize buffer to empty string
+	size_t len = 0;
+	// First byte has the length of the first string
+	**buf = 0;
+	const char *domain_str = domain ? config.webserver.domain.v.s : "localhost";
+	size_t api_str_size = strlen(domain_str) + 20;
+
+	// Check if the string is too long for the TXT record
+	if(api_str_size > 255)
+	{
+		log_err("API URL too long for TXT record!");
+		return 0;
+	}
+
+	// TXT record format:
+	//
+	// 0                 length of first string (unsigned char n)
+	// 1 to (n+1)        first string
+	// (n+2)             length of second string (unsigned char m)
+	// (n+3) to (n+m+3)  second string
+	// ...
+	// This is repeated for every port, so the total length is
+	// (n+1) + (n+m+3) + (n+m+3) + ...
+	//
+	// This is implemented in the loop below
+
+	// Loop over all ports
+	for(unsigned int i = 0; i < MAXPORTS; i++)
+	{
+		// Skip ports that are not configured or redirected
+		if(server_ports[i].port == 0 || server_ports[i].is_redirect)
+			continue;
+
+		// Reallocate additional memory for every port
+		if((*buf = realloc(*buf, (i+1)*api_str_size)) == NULL)
+		{
+			log_err("Failed to reallocate API URL buffer!");
+			return 0;
+		}
+		const size_t bufsz = (i+1)*api_str_size;
+
+		// Append API URL to buffer
+		// We add this at buffer + 1 because the first byte is the
+		// length of the string, which we don't know yet
+		char *api_str = calloc(api_str_size, sizeof(char));
+		const ssize_t this_len = snprintf(api_str, bufsz - len - 1, "http%s://%s:%d/api/",
+		                                  server_ports[i].is_secure ? "s" : "",
+		                                  domain_str, server_ports[i].port);
+		// Check if snprintf() failed
+		if(this_len < 0)
+		{
+			log_err("Failed to append API URL to buffer: %s", strerror(errno));
+			free(api_str);
+			return 0;
+		}
+
+		// Check if snprintf() truncated the string (this should never
+		// happen as we allocate enough memory for the domain to fit)
+		if((size_t)this_len >= bufsz - len - 1)
+		{
+			log_err("API URL buffer too small!");
+			free(api_str);
+			return 0;
+		}
+
+		// Check if this string is already present in the buffer
+		if(memmem(*buf, len, api_str, this_len) != NULL)
+		{
+			// This string is already present, so skip it
+			log_debug(DEBUG_API, "Skipping duplicate API URL: %s", api_str);
+			free(api_str);
+			continue;
+		}
+
+		// Append string to buffer (one byte after the current end of
+		// the buffer to leave space for the length byte)
+		strcpy(*buf + len + 1, api_str);
+		free(api_str);
+
+		// Set first byte to the length of the string (see breakdown
+		// above)
+		(*buf)[len] = (unsigned char)this_len;
+
+		// Increase total length
+		len += this_len + 1;
+	}
+
+	// Return total length
+	return (unsigned short)len;
+}
+
 void http_init(void)
 {
-	log_web("Initializing HTTP server on port %s", config.webserver.port.v.s);
+	// Don't start web server if port is not set
+	if(strlen(config.webserver.port.v.s) == 0)
+	{
+		log_warn("Not starting web server as webserver.port is empty. API will not be available!");
+		return;
+	}
 
 	/* Initialize the library */
+	log_web("Initializing HTTP server on port %s", config.webserver.port.v.s);
 	unsigned int features = MG_FEATURES_FILES |
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
 
-#ifdef HAVE_TLS
+#ifdef HAVE_MBEDTLS
 	features |= MG_FEATURES_TLS;
 #endif
 
 	if(mg_init_library(features) == 0)
 	{
 		log_web("Initializing HTTP library failed!");
+		return;
+	}
+
+	// Construct error_pages path
+	error_pages = append_to_path(config.webserver.paths.webroot.v.s, config.webserver.paths.webhome.v.s);
+	if(error_pages == NULL)
+	{
+		log_err("Failed to allocate memory for error_pages path!");
 		return;
 	}
 
@@ -246,21 +398,28 @@ void http_init(void)
 	//   send no referrer information.
 	// The latter four headers are set as expected by https://securityheaders.io
 	char num_threads[3] = { 0 };
+	// Use 16 threads if more than 8 cores are available, otherwise use
+	// 2*cores. This is to prevent overloading the system with too many
+	// threads.
+	// We use the number of available (= online) cores which may be less
+	// than the total number of cores in the system, e.g., if a
+	// virtualization environment is used and fewer cores are assigned to
+	// the VM than are available on the host.
 	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
 	const char *options[] = {
-		// All passed strings are duplicated internally. See also comment below.
 		"document_root", config.webserver.paths.webroot.v.s,
+		"error_pages", error_pages,
 		"listening_ports", config.webserver.port.v.s,
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
+		"authentication_domain", config.webserver.domain.v.s,
 		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
 		                     "X-Frame-Options: DENY\r\n"
 		                     "X-XSS-Protection: 0\r\n"
 		                     "X-Content-Type-Options: nosniff\r\n"
 		                     "Referrer-Policy: strict-origin-when-cross-origin",
 		"index_files", "index.html,index.htm,index.lp",
-		"enable_auth_domain_check", "no",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
 		NULL
@@ -271,23 +430,49 @@ void http_init(void)
 	// from the end of the array.
 	unsigned int next_option = ArraySize(options) - 6;
 
-#ifdef HAVE_TLS
+#ifdef HAVE_MBEDTLS
 	// Add TLS options if configured
-	if(config.webserver.tls.cert.v.s != NULL &&
+
+	// TLS is used when webserver.port contains "s" (e.g. "443s")
+	const bool tls_used = config.webserver.port.v.s != NULL &&
+	                      strchr(config.webserver.port.v.s, 's') != NULL;
+
+	// Check certificate domain if
+	// - TLS is used
+	// - A certificate is configured
+	// - The certificate is readable
+	if(tls_used &&
+	   config.webserver.tls.cert.v.s != NULL &&
 	   strlen(config.webserver.tls.cert.v.s) > 0)
 	{
 		// Try to generate certificate if not present
-		if(!file_readable(config.webserver.tls.cert.v.s) &&
-		   !generate_certificate(config.webserver.tls.cert.v.s, false))
+		if(!file_readable(config.webserver.tls.cert.v.s))
 		{
-			log_err("Generation of SSL/TLS certificate %s failed!",
-			        config.webserver.tls.cert.v.s);
+			if(generate_certificate(config.webserver.tls.cert.v.s, false, config.webserver.domain.v.s))
+			{
+				log_info("Created SSL/TLS certificate for %s at %s",
+				         config.webserver.domain.v.s, config.webserver.tls.cert.v.s);
+			}
+			else
+			{
+				log_err("Generation of SSL/TLS certificate %s failed!",
+				        config.webserver.tls.cert.v.s);
+			}
 		}
 
+		// Check if the certificate is readable (we may have just
+		// created it)
 		if(file_readable(config.webserver.tls.cert.v.s))
 		{
+			if(read_certificate(config.webserver.tls.cert.v.s, config.webserver.domain.v.s, false) != CERT_DOMAIN_MATCH)
+			{
+				log_certificate_domain_mismatch(config.webserver.tls.cert.v.s, config.webserver.domain.v.s);
+			}
 			options[++next_option] = "ssl_certificate";
 			options[++next_option] = config.webserver.tls.cert.v.s;
+
+			log_info("Using SSL/TLS certificate file %s",
+			         config.webserver.tls.cert.v.s);
 		}
 		else
 		{
@@ -307,37 +492,70 @@ void http_init(void)
 	}
 
 	// Configure logging handlers
-	struct mg_callbacks callbacks = { NULL };
+	struct mg_callbacks callbacks;
+	memset(&callbacks, 0, sizeof(callbacks));
 	callbacks.log_message = log_http_message;
 	callbacks.log_access  = log_http_access;
 	callbacks.init_lua    = init_lua;
 
+	// Prepare error handler
+	struct mg_error_data error = { 0 };
+	char error_buffer[1024] = { 0 };
+	error.text_buffer_size = sizeof(error_buffer);
+	error.text = error_buffer;
+
+	// Prepare initialization data
+	struct mg_init_data init = { 0 };
+	init.callbacks = &callbacks;
+	init.user_data = NULL;
+	init.configuration_options = options;
+
 	/* Start the server */
-	if((ctx = mg_start(&callbacks, NULL, options)) == NULL)
+	if((ctx = mg_start2(&init, &error)) == NULL)
 	{
 		log_err("Start of webserver failed!. Web interface will not be available!");
-		log_err("       Check webroot %s and listening ports %s",
-		        config.webserver.paths.webroot.v.s, config.webserver.port.v.s);
+		log_err("       Error: %s (error code %u.%u)", error.text, error.code, error.code_sub);
+		log_err("       Hint: Check the webserver log at %s", config.files.log.webserver.v.s);
 		return;
 	}
 
 	// Register API handler
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
-	// Register / -> /admin redirect handler
+	// Register / -> /admin/ redirect handler
 	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
+
+	// Register /admin -> /admin/ redirect handler
+	if(strlen(config.webserver.paths.webhome.v.s) > 1)
+	{
+		// Construct webhome_matcher path
+		char *webhome_matcher = NULL;
+		webhome_matcher = strdup(config.webserver.paths.webhome.v.s);
+		webhome_matcher[strlen(webhome_matcher)-1] = '$';
+		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
+		          webhome_matcher, config.webserver.paths.webhome.v.s);
+		// String is internally duplicated during request configuration
+		mg_set_request_handler(ctx, webhome_matcher, redirect_admin_handler, NULL);
+		free(webhome_matcher);
+	}
 
 	// Register **.lp -> ** redirect handler
 	mg_set_request_handler(ctx, "**.lp$", redirect_lp_handler, NULL);
-
-	// Register **/ -> ** redirect handler
-	mg_set_request_handler(ctx, "**/$", redirect_slash_handler, NULL);
 
 	// Register handler for the rest
 	mg_set_request_handler(ctx, "**", request_handler, NULL);
 
 	// Prepare prerequisites for Lua
 	allocate_lua();
+
+	// Get server ports
+	get_server_ports();
+
+	// Restore sessions from database
+	init_api();
+
+	// Create CLI password (if enabled)
+	create_cli_password();
 }
 
 static char *append_to_path(char *path, const char *append)
@@ -356,8 +574,9 @@ static char *append_to_path(char *path, const char *append)
 	return new_path;
 }
 
-void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
+void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len)
 {
+	log_debug(DEBUG_API, "Rewriting filename: %s", filename);
 	const bool trailing_slash = filename[strlen(filename) - 1] == '/';
 	char *filename_lp = NULL;
 
@@ -385,7 +604,14 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 
 	// Try full path with ".lp" appended
 	filename_lp = append_to_path(filename, ".lp");
-	if(filename_lp != NULL && file_readable(filename_lp))
+	if(filename_lp == NULL)
+	{
+		// Failed to allocate memory for filename
+		return;
+	}
+
+	// Check if the file exists. If so, rewrite the filename and return
+	if(file_readable(filename_lp))
 	{
 		log_debug(DEBUG_API, "Rewriting Lua page: %s ==> %s", filename, filename_lp);
 		strncpy(filename, filename_lp, filename_buf_len);
@@ -411,6 +637,7 @@ void FTL_rewrite_pattern(char *filename, size_t filename_buf_len)
 
 void http_terminate(void)
 {
+	// The server may have never been started
 	if(!ctx)
 		return;
 
@@ -422,4 +649,14 @@ void http_terminate(void)
 
 	// Free Lua-related resources
 	free_lua();
+
+	// Remove CLI password
+	remove_cli_password();
+
+	// Free error_pages path
+	if(error_pages != NULL)
+	{
+		free(error_pages);
+		error_pages = NULL;
+	}
 }

@@ -15,8 +15,6 @@
 #include "shmem.h"
 // struct config
 #include "config/config.h"
-// logging routines
-#include "log.h"
 #include "timers.h"
 // file_exists()
 #include "files.h"
@@ -28,10 +26,13 @@
 #include "database/query-table.h"
 // set_event()
 #include "events.h"
+// generate_backtrace()
+#include "signals.h"
+// create_session_table()
+#include "database/session-table.h"
 
 bool DBdeleteoldqueries = false;
 static bool DBerror = false;
-long int lastdbindex = 0;
 
 bool __attribute__ ((pure)) FTLDBerror(void)
 {
@@ -101,6 +102,15 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 		return NULL;
 	}
 
+	// If the database is opened in read-write mode, actually check if it is
+	// writable. If it is not, close the database and return an error
+	if(!readonly && sqlite3_db_readonly(db, NULL))
+	{
+		log_err("Cannot open database in read-write mode");
+		dbclose(&db);
+		return NULL;
+	}
+
 	// Explicitly set busy handler to value defined in FTL.h
 	rc = sqlite3_busy_timeout(db, DATABASE_BUSY_TIMEOUT);
 	if( rc != SQLITE_OK )
@@ -164,6 +174,9 @@ int dbquery(sqlite3* db, const char *format, ...)
 
 static bool create_counter_table(sqlite3* db)
 {
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// Create FTL table in the database (holds properties like database version, etc.)
 	SQL_bool(db, "CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );");
 
@@ -194,6 +207,8 @@ static bool create_counter_table(sqlite3* db)
 		log_err("create_counter_table(): Failed to update database version!");
 		return false;
 	}
+	// End transaction
+	SQL_bool(db, "COMMIT");
 
 	return true;
 }
@@ -232,16 +247,25 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 	// Note: pArg is NULL and not used
 	// See https://sqlite.org/rescode.html#extrc for details
 	// concerning the return codes returned here
-	if(strncmp(zMsg, "file renamed while open: ", sizeof("file renamed while open: ")-1) == 0)
+	if(zMsg != NULL && strncmp(zMsg, "file renamed while open: ", sizeof("file renamed while open: ")-1) == 0)
 	{
 		// This happens when gravity.db is replaced while FTL is running
 		// We can safely ignore this warning
 		return;
 	}
+
 	if(iErrCode == SQLITE_WARNING)
-		log_warn("SQLite3 message: %s (%d)", zMsg, iErrCode);
+		log_warn("SQLite3: %s (%d)", zMsg, iErrCode);
+	else if(iErrCode == SQLITE_NOTICE || iErrCode == SQLITE_SCHEMA)
+	{
+		// SQLITE_SCHEMA is returned when the database schema has changed
+		// This is not necessarily an error, as sqlite3_step() will re-prepare
+		// the statement and try again. If it cannot, it will return an error
+		// and this will be handled over there.
+		log_debug(DEBUG_ANY, "SQLite3: %s (%d)", zMsg, iErrCode);
+	}
 	else
-		log_err("SQLite3 message: %s (%d)", zMsg, iErrCode);
+		log_err("SQLite3: %s (%d)", zMsg, iErrCode);
 }
 
 void db_init(void)
@@ -252,8 +276,9 @@ void db_init(void)
 	// explicitly check for failures to have happened
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
 
-	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
-	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
+	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c) and
+	// initialize SQLite3 engine
+	pihole_sqlite3_initalize();
 
 	// Check if database exists, if not create empty database
 	if(!file_exists(config.files.database.v.s))
@@ -266,9 +291,9 @@ void db_init(void)
 		}
 	}
 
-	// Explicitly set permissions to 0644
-	// 644 =            u+w       u+r       g+w       g+r      o+r
-	const mode_t mode = S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP| S_IROTH;
+	// Explicitly set permissions to 0640
+	// 640 =            u+w       u+r       g+r
+	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP;
 	chmod_file(config.files.database.v.s, mode);
 
 	// Open database
@@ -471,6 +496,139 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 13 if lower
+	if(dbversion < 13)
+	{
+		// Update to version 13: Add additional column for regex ID
+		log_info("Updating long-term database to version 13");
+		if(!add_query_storage_column_regex_id(db))
+		{
+			log_info("Additional records not generated, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 14 if lower
+	if(dbversion < 14)
+	{
+		// Update to version 14: Add additional column for the ftl table
+		log_info("Updating long-term database to version 14");
+		if(!add_ftl_table_description(db))
+		{
+			log_info("FTL table description cannot be added, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 15 if lower
+	if(dbversion < 15)
+	{
+		// Update to version 15: Add session table
+		log_info("Updating long-term database to version 15");
+		if(!create_session_table(db))
+		{
+			log_info("Session table cannot be created, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 16 if lower
+	if(dbversion < 16)
+	{
+		// Update to version 16: Add app column to session table
+		log_info("Updating long-term database to version 16");
+		if(!add_session_app_column(db))
+		{
+			log_info("Session table cannot be updated, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 17 if lower
+	if(dbversion < 17)
+	{
+		// Update to version 17: Rename regex_id column to regex_id_old
+		log_info("Updating long-term database to version 17");
+		if(!rename_query_storage_column_regex_id(db))
+		{
+			log_info("regex_id cannot be renamed to list_id, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 18 if lower
+	if(dbversion < 18)
+	{
+		// Update to version 18: Add cli column to session table
+		log_info("Updating long-term database to version 18");
+		if(!add_session_cli_column(db))
+		{
+			log_info("Session table cannot be updated, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 19 if lower
+	if(dbversion < 19)
+	{
+		// Update to version 19: Add x_forwarded_for column to session table
+		log_info("Updating long-term database to version 19");
+		if(!add_session_x_forwarded_for_column(db))
+		{
+			log_info("Session table cannot be updated, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 20 if lower
+	if(dbversion < 20)
+	{
+		// Update to version 20: Add additional column for the network table
+		log_info("Updating long-term database to version 20");
+		if(!create_network_addresses_network_id_index(db))
+		{
+			log_info("Network addresses network_id index cannot be added, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	/* * * * * * * * * * * * * IMPORTANT * * * * * * * * * * * * *
+	 * If you add a new database version, check if the in-memory
+	 * schema needs to be update as well (always recreated from
+	 * scratch on every FTL (re)start). Also, ensure to update the
+	 * MEMDB_VERSION in src/database/query-table.h as well as the
+	 * expected database schema in the CI tests.
+	 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+	// Last check after all migrations, if this happens, it will cause the
+	// CI to fail the tests
+	if(dbversion != MEMDB_VERSION)
+		log_err("Expected query database version %d but found %d", MEMDB_VERSION, dbversion);
+
 	lock_shm();
 	import_aliasclients(db);
 	unlock_shm();
@@ -480,13 +638,9 @@ void db_init(void)
 	dbclose(&db);
 
 	// Log if users asked us to not use the long-term database for queries
-	// We will still use it to store warnings in it
-	config.database.DBexport.v.b = true;
-	if(config.database.maxDBdays.v.i == 0)
-	{
+	// We will still use it to store warnings (Pi-hole diagnosis system)
+	if(config.database.maxDBdays.v.ui == 0)
 		log_info("Not using the database for storing queries");
-		config.database.DBexport.v.b = false;
-	}
 
 	log_info("Database successfully initialized");
 }
@@ -509,40 +663,14 @@ int db_get_int(sqlite3* db, const enum ftl_table_props ID)
 	return value;
 }
 
-double db_get_FTL_property_double(sqlite3 *db, const enum ftl_table_props ID)
-{
-	// Prepare SQL statement
-	char* querystr = NULL;
-	int ret = asprintf(&querystr, "SELECT VALUE FROM ftl WHERE id = %u;", ID);
-
-	if(querystr == NULL || ret < 0)
-	{
-		log_err("Memory allocation failed in db_get_FTL_property with ID = %u (%i)", ID, ret);
-		checkFTLDBrc(ret);
-		return DB_FAILED;
-	}
-
-	double value = db_query_double(db, querystr);
-	free(querystr);
-
-	return value;
-}
-
 bool db_set_FTL_property(sqlite3 *db, const enum ftl_table_props ID, const int value)
 {
-	// return dbquery(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %ld );", ID, value) == SQLITE_OK;
-	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %d );", ID, value);
-	return true;
-}
-
-bool db_set_FTL_property_double(sqlite3 *db, const enum ftl_table_props ID, const double value)
-{
-	int ret = dbquery(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %f );", ID, value);
-	if(ret != SQLITE_OK)
-	{
-		checkFTLDBrc(ret);
-		return false;
-	}
+	// Use UPSERT (https://sqlite.org/lang_upsert.html)
+	// UPSERT is a clause added to INSERT that causes the INSERT to behave
+	// as an UPDATE or a no-op if the INSERT would violate a uniqueness
+	// constraint. UPSERT is not standard SQL. UPSERT in SQLite follows the
+	// syntax established by PostgreSQL, with generalizations. 
+	SQL_bool(db, "INSERT INTO ftl (id, value) VALUES ( %u, %d ) ON CONFLICT (id) DO UPDATE SET value=%d;", ID, value, value);
 	return true;
 }
 
@@ -554,25 +682,6 @@ bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const int v
 		checkFTLDBrc(ret);
 		return false;
 	}
-	return true;
-}
-
-bool db_update_counters(sqlite3 *db, const int total, const int blocked)
-{
-	int ret = dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES);
-	if(ret != SQLITE_OK)
-	{
-		checkFTLDBrc(ret);
-		return false;
-	}
-
-	ret = dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES);
-	if(ret != SQLITE_OK)
-	{
-		checkFTLDBrc(ret);
-		return false;
-	}
-
 	return true;
 }
 
@@ -588,6 +697,98 @@ int db_query_int(sqlite3 *db, const char* querystr)
 			log_err("Encountered prepare error in db_query_int(\"%s\"): %s",
 			        querystr, sqlite3_errstr(rc));
 		return DB_FAILED;
+	}
+
+	rc = sqlite3_step(stmt);
+	int result;
+
+	if( rc == SQLITE_ROW )
+	{
+		result = sqlite3_column_int(stmt, 0);
+		log_debug(DEBUG_DATABASE, "         ---> Result %i (int)", result);
+	}
+	else if( rc == SQLITE_DONE )
+	{
+		// No rows available
+		result = DB_NODATA;
+		log_debug(DEBUG_DATABASE, "         ---> No data");
+	}
+	else
+	{
+		log_err("Encountered step error in db_query_int(\"%s\"): %s",
+		        querystr, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	sqlite3_finalize(stmt);
+	return result;
+}
+
+int db_query_int_int(sqlite3 *db, const char* querystr, const int arg)
+{
+	log_debug(DEBUG_DATABASE, "db_query_int_arg: \"%s\"", querystr);
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			log_err("Encountered prepare error in db_query_int(\"%s\"): %s",
+			        querystr, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	// Bind argument to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 1, arg)) != SQLITE_OK)
+	{
+		log_err("Encountered bind error in db_query_int(\"%s\"): %s",
+		        querystr, sqlite3_errstr(rc));
+	}
+
+	rc = sqlite3_step(stmt);
+	int result;
+
+	if( rc == SQLITE_ROW )
+	{
+		result = sqlite3_column_int(stmt, 0);
+		log_debug(DEBUG_DATABASE, "         ---> Result %i (int)", result);
+	}
+	else if( rc == SQLITE_DONE )
+	{
+		// No rows available
+		result = DB_NODATA;
+		log_debug(DEBUG_DATABASE, "         ---> No data");
+	}
+	else
+	{
+		log_err("Encountered step error in db_query_int(\"%s\"): %s",
+		        querystr, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	sqlite3_finalize(stmt);
+	return result;
+}
+
+int db_query_int_str(sqlite3 *db, const char* querystr, const char *arg)
+{
+	log_debug(DEBUG_DATABASE, "db_query_int_str: \"%s\"", querystr);
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			log_err("Encountered prepare error in db_query_int(\"%s\"): %s",
+			        querystr, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	// Bind argument to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, arg, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		log_err("Encountered bind error in db_query_int(\"%s\"): %s",
+		        querystr, sqlite3_errstr(rc));
 	}
 
 	rc = sqlite3_step(stmt);

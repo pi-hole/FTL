@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -90,7 +90,7 @@ int log_start(struct passwd *ent_pw, int errfd)
   if (!log_reopen(daemon->log_file))
     {
       send_event(errfd, EVENT_LOG_ERR, errno, daemon->log_file ? daemon->log_file : "");
-      _exit(0);
+      die(_("failed to open log file: %s"), strerror(errno), 1); // Pi-hole modification
     }
 
   /* if queuing is inhibited, make sure we allocate
@@ -517,6 +517,9 @@ void die(char *message, char *arg1, int exit_code)
   flush_log();
 
   /********** Pi-hole modification *************/
+  if(only_testing)
+    exit(exit_code);
+
   FTL_log_dnsmasq_fatal(message, arg1, errmess);
 
   // Jump back into main() to exit gracefully

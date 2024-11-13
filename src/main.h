@@ -20,6 +20,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start);
 
 extern char *username;
 extern bool startup;
+extern bool forked;
 extern jmp_buf exit_jmp;
 
 #endif //MAIN_H

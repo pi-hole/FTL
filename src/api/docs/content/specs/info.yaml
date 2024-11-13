@@ -6,6 +6,7 @@ components:
         summary: Get information about requesting client
         tags:
           - "FTL information"
+        security: []
         operationId: "get_client"
         description: |
           The property `timer` may contain additional details concerning a temporary en-/disabling.
@@ -208,6 +209,7 @@ components:
                   allOf:
                     - $ref: 'info.yaml#/components/schemas/messages'
                     - $ref: 'common.yaml#/components/schemas/took'
+    messages_with_id:
       delete:
         summary: Delete Pi-hole diagnosis message
         tags:
@@ -216,10 +218,16 @@ components:
         parameters:
           - $ref: 'info.yaml#/components/parameters/message_id'
         description: |
-          *Note:* There will be no content on success. You may specify multiple IDs to delete multiple messages at once (comma-separated in the path like `1,2,3`)
+          You may specify multiple IDs to delete multiple messages at once (comma-separated in the path like `1,2,3`)
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -233,6 +241,14 @@ components:
                     $ref: 'info.yaml#/components/examples/errors/messages/uri_error'
                   bad_request:
                     $ref: 'info.yaml#/components/examples/errors/messages/bad_request'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     messages_count:
       get:
         summary: Get count of Pi-hole diagnosis messages
@@ -277,6 +293,24 @@ components:
                 schema:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    login:
+      get:
+        summary: Login page related information
+        tags:
+          - "FTL information"
+        operationId: "get_logininfo"
+        security: []
+        description: |
+          This API hook returns information used on the login page to possibly display messages/warnings.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'info.yaml#/components/schemas/login'
                     - $ref: 'common.yaml#/components/schemas/took'
 
   schemas:
@@ -486,7 +520,7 @@ components:
                           type: number
                           nullable: true
                           description: Critical sensor value (if available, `null` otherwise)
-                        path:
+                        sensor:
                           type: string
                           description: Short path of temperature sensor
               example:
@@ -683,10 +717,25 @@ components:
                       type: integer
                       description: Number of denied domains
                       example: 3
+                regex:
+                  type: object
+                  properties:
+                    allowed:
+                      type: integer
+                      description: Number of allowed regex filters
+                      example: 4
+                    denied:
+                      type: integer
+                      description: Number of denied regex filters
+                      example: 2
             privacy_level:
               type: integer
               description: Currently used privacy level
               example: 0
+            query_frequency:
+              type: number
+              description: Average number of queries per second
+              example: 1.1
             clients:
               type: object
               properties:
@@ -712,12 +761,121 @@ components:
               example: 0.1
             "%cpu":
               type: number
-              description: Percentage of total CPU used by FTL
+              description: Percentage of total CPU used by FTL (ten seconds average)
               example: 1.2
             allow_destructive:
               type: boolean
               description: Whether or not FTL is allowed to perform destructive actions
               example: true
+            dnsmasq:
+              type: object
+              description: Metrics from the embedded dnsmasq resolver
+              properties:
+                dns_cache_inserted:
+                  type: integer
+                  description: Number of inserted entries in DNS cache
+                  example: 8
+                dns_cache_live_freed:
+                  type: integer
+                  description: Number of freed live entries in DNS cache
+                  example: 0
+                dns_queries_forwarded:
+                  type: integer
+                  description: Number of forwarded DNS queries
+                  example: 2
+                dns_auth_answered:
+                  type: integer
+                  description: Number of DNS queries for authoritative zones
+                  example: 0
+                dns_local_answered:
+                  type: integer
+                  description: Number of DNS queries answered from local cache
+                  example: 74
+                dns_stale_answered:
+                  type: integer
+                  description: Number of DNS queries answered from local cache (stale entries)
+                  example: 0
+                dns_unanswered:
+                  type: integer
+                  description: Number of unanswered DNS queries
+                  example: 0
+                bootp:
+                  type: integer
+                  description: Number of BOOTP requests
+                  example: 0
+                pxe:
+                  type: integer
+                  description: Number of PXE requests
+                  example: 0
+                dhcp_ack:
+                  type: integer
+                  description: Number of DHCP ACK
+                  example: 0
+                dhcp_decline:
+                  type: integer
+                  description: Number of DHCP DECLINE
+                  example: 0
+                dhcp_discover:
+                  type: integer
+                  description: Number of DHCP DISCOVER
+                  example: 0
+                dhcp_inform:
+                  type: integer
+                  description: Number of DHCP INFORM
+                  example: 0
+                dhcp_nak:
+                  type: integer
+                  description: Number of DHCP NAK
+                  example: 0
+                dhcp_offer:
+                  type: integer
+                  description: Number of DHCP OFFER
+                  example: 0
+                dhcp_release:
+                  type: integer
+                  description: Number of DHCP RELEASE
+                  example: 0
+                dhcp_request:
+                  type: integer
+                  description: Number of DHCP REQUEST
+                  example: 0
+                noanswer:
+                  type: integer
+                  description: Number of DHCP requests without answer (rapid commit)
+                  example: 0
+                leases_allocated_4:
+                  type: integer
+                  description: Number of allocated IPv4 leases
+                  example: 0
+                leases_pruned_4:
+                  type: integer
+                  description: Number of pruned IPv4 leases
+                  example: 0
+                leases_allocated_6:
+                  type: integer
+                  description: Number of allocated IPv6 leases
+                  example: 0
+                leases_pruned_6:
+                  type: integer
+                  description: Number of pruned IPv6 leases
+                  example: 0
+                tcp_connections:
+                  type: integer
+                  description: Number of dedicated TCP workers
+                  example: 0
+                dnssec_max_crypto_use:
+                  type: integer
+                  description: DNSSEC per-query crypto work HWM
+                  example: 0
+                dnssec_max_sig_fail:
+                  type: integer
+                  description: DNSSEC per-RRSet signature fails HWM
+                  example: 0
+                dnssec_max_work:
+                  type: integer
+                  description: DNSSEC per-query subqueries HWM
+                  example: 0
+
     database:
       type: object
       properties:
@@ -815,7 +973,7 @@ components:
                     version:
                       type: string
                       nullable: true
-                      description: Remote (Github) Pi-hole Core version
+                      description: Remote (Github) Pi-hole Core version (null if on custom branch)
                       example: "v6.1"
                     hash:
                       type: string
@@ -849,7 +1007,7 @@ components:
                     version:
                       type: string
                       nullable: true
-                      description: Remote (Github) Pi-hole Web version
+                      description: Remote (Github) Pi-hole Web version (null if on custom branch)
                       example: "v6.1"
                     hash:
                       type: string
@@ -888,7 +1046,7 @@ components:
                     version:
                       type: string
                       nullable: true
-                      description: Remote (Github) Pi-hole FTL version
+                      description: Remote (Github) Pi-hole FTL version (null if on custom branch)
                       example: "v6.1"
                     hash:
                       type: string
@@ -1068,6 +1226,15 @@ components:
           type: integer
           description: Number of items
           example: 42
+    login:
+      type: object
+      properties:
+        https_port:
+          type: integer
+          description: HTTPS port of the Pi-hole webserver (0 if disabled)
+        dns:
+          type: boolean
+          description: Whether the DNS server is up and running. False only in failed state
   examples:
     errors:
       messages:
@@ -1164,9 +1331,9 @@ components:
           required: false
           example: 219
     message_id:
-      in: query
+      in: path
       description: ID of the message to be deleted
-      name: id
+      name: message_id
       schema:
         type: integer
       required: true

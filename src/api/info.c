@@ -12,10 +12,10 @@
 #include "webserver/http-common.h"
 #include "webserver/json_macros.h"
 #include "api/api.h"
-// sysinfo()
+// sysinfo(), get_nprocs_conf()
 #include <sys/sysinfo.h>
 // get_blockingstatus()
-#include "setupVars.h"
+#include "config/setupVars.h"
 // counters
 #include "shmem.h"
 // get_FTL_db_filesize()
@@ -48,6 +48,9 @@
 // LONG_MIN, LONG_MAX
 #include <limits.h>
 #include "metrics.h"
+
+// get_https_port()
+#include "webserver/webserver.h"
 
 // DIR
 #include <dirent.h>
@@ -144,7 +147,7 @@ int api_info_database(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(json, "owner", owner);
 
 	// Add number of queries in on-disk database
-	const int queries_in_database = get_number_of_queries_in_DB(NULL, "query_storage", true);
+	const int queries_in_database = get_number_of_queries_in_DB(NULL, "query_storage");
 	JSON_ADD_NUMBER_TO_OBJECT(json, "queries", queries_in_database);
 
 	// Add SQLite library version
@@ -154,9 +157,13 @@ int api_info_database(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-static int get_system_obj(struct ftl_conn *api, cJSON *system)
+int get_system_obj(struct ftl_conn *api, cJSON *system)
 {
-	const int nprocs = get_nprocs();
+	// Use total number of processors
+	// This difference is important for virtualized systems where the number
+	// of available (= online) processors can be lower than the total number
+	//  (= configured) of processors
+	const int nprocs = get_nprocs_conf();
 	struct sysinfo info;
 	if(sysinfo(&info) != 0)
 		return send_json_error(api, 500, "error", strerror(errno), NULL);
@@ -191,7 +198,7 @@ static int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// "cached", which was fine ten years ago, but is pretty much guaranteed
 	// to be wrong today."
 	JSON_ADD_NUMBER_TO_OBJECT(ram, "available", mem.avail);
-	JSON_ADD_NUMBER_TO_OBJECT(ram, "%used", 100.0*mem.used/mem.total);
+	JSON_ADD_NUMBER_TO_OBJECT(ram, "%used", mem.total > 0 ? 100.0*mem.used/mem.total : 0);
 	JSON_ADD_ITEM_TO_OBJECT(memory, "ram", ram);
 
 	cJSON *swap = JSON_NEW_OBJECT();
@@ -203,7 +210,7 @@ static int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// Used swap space
 	const float used_swap = (info.totalswap - info.freeswap) * info.mem_unit / 1024;
 	JSON_ADD_NUMBER_TO_OBJECT(swap, "used", used_swap);
-	JSON_ADD_NUMBER_TO_OBJECT(swap, "%used", 100.0*used_swap/total_swap);
+	JSON_ADD_NUMBER_TO_OBJECT(swap, "%used", total_swap > 0 ? 100.0*used_swap/total_swap : 0);
 	JSON_ADD_ITEM_TO_OBJECT(memory, "swap", swap);
 	JSON_ADD_ITEM_TO_OBJECT(system, "memory", memory);
 
@@ -258,7 +265,7 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 	if(f_value == NULL)
 	{
 		log_warn("Cannot open %s: %s", value_path, strerror(errno));
-		return -1;
+		return 0;
 	}
 
 	int raw_temp = 0;
@@ -348,7 +355,7 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 	return 0;
 }
 
-static int get_sensors(struct ftl_conn *api, cJSON *sensors)
+static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 {
 	int ret;
 	// Source available temperatures, we try to read temperature sensors from
@@ -360,11 +367,13 @@ static int get_sensors(struct ftl_conn *api, cJSON *sensors)
 	// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-hwmon
 
 	// Iterate over content of /sys/class/hwmon
-	DIR *hwmon_dir = opendir("/sys/class/hwmon");
+	const char *dirname = "/sys/class/hwmon";
+	DIR *hwmon_dir = opendir(dirname);
 	if(hwmon_dir == NULL)
 	{
-		log_warn("Cannot open /sys/class/hwmon: %s", strerror(errno));
-		return -1;
+		// Nothing to read here, leave array empty
+		log_debug(DEBUG_API, "Cannot open %s: %s", dirname, strerror(errno));
+		return 0;
 	}
 
 	// Iterate over all hwmonX directories
@@ -460,7 +469,7 @@ static int get_sensors(struct ftl_conn *api, cJSON *sensors)
 	return 0;
 }
 
-static cJSON *read_sys_property(const char *path)
+cJSON *read_sys_property(const char *path)
 {
 	if(!file_exists(path))
 		return cJSON_CreateNull();
@@ -535,17 +544,20 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	const int db_groups = counters->database.groups;
 	const int db_lists = counters->database.lists;
 	const int db_clients = counters->database.clients;
-	const int db_allowed = counters->database.domains.allowed;
-	const int db_denied = counters->database.domains.denied;
+	const int db_allowed_exact = counters->database.domains.allowed.exact;
+	const int db_denied_exact = counters->database.domains.denied.exact;
+	const int db_allowed_regex = counters->database.domains.allowed.regex;
+	const int db_denied_regex = counters->database.domains.denied.regex;
 	const int clients_total = counters->clients;
 	const int privacylevel = config.misc.privacylevel.v.privacy_level;
+	const double qps = get_qps();
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int activeclients = 0;
-	for(int clientID=0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID=0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(clientID, true);
+		const clientsData *client = getClient(clientID, true);
 		if(client == NULL)
 			continue;
 
@@ -560,12 +572,18 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	JSON_ADD_NUMBER_TO_OBJECT(database, "clients", db_clients);
 
 	cJSON *domains = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(domains, "allowed", db_allowed);
-	JSON_ADD_NUMBER_TO_OBJECT(domains, "denied", db_denied);
+	JSON_ADD_NUMBER_TO_OBJECT(domains, "allowed", db_allowed_exact);
+	JSON_ADD_NUMBER_TO_OBJECT(domains, "denied", db_denied_exact);
 	JSON_ADD_ITEM_TO_OBJECT(database, "domains", domains);
+
+	cJSON *regex = JSON_NEW_OBJECT();
+	JSON_ADD_NUMBER_TO_OBJECT(regex, "allowed", db_allowed_regex);
+	JSON_ADD_NUMBER_TO_OBJECT(regex, "denied", db_denied_regex);
+	JSON_ADD_ITEM_TO_OBJECT(database, "regex", regex);
 	JSON_ADD_ITEM_TO_OBJECT(ftl, "database", database);
 
 	JSON_ADD_NUMBER_TO_OBJECT(ftl, "privacy_level", privacylevel);
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "query_frequency", qps);
 
 	cJSON *clients = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(clients, "total",clients_total);
@@ -584,6 +602,11 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%cpu", get_cpu_percentage());
 
 	JSON_ADD_BOOL_TO_OBJECT(ftl, "allow_destructive", config.webserver.api.allow_destructive.v.b);
+
+	// dnsmasq struct
+	cJSON *dnsmasq = JSON_NEW_OBJECT();
+	get_dnsmasq_metrics_obj(dnsmasq);
+	JSON_ADD_ITEM_TO_OBJECT(ftl, "dnsmasq", dnsmasq);
 
 	// All okay
 	return 0;
@@ -631,16 +654,15 @@ int api_info_host(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_info_sensors(struct ftl_conn *api)
+int get_sensors_obj(struct ftl_conn *api, cJSON *sensors, const bool add_list)
 {
-	cJSON *sensors = JSON_NEW_OBJECT();
-
 	// Get sensors array
 	cJSON *list = JSON_NEW_ARRAY();
-	int ret = get_sensors(api, list);
+	int ret = get_hwmon_sensors(api, list);
 	if (ret != 0)
 		return ret;
-	JSON_ADD_ITEM_TO_OBJECT(sensors, "list", list);
+	if(add_list)
+		JSON_ADD_ITEM_TO_OBJECT(sensors, "list", list);
 
 	// Loop over available sensors and try to identify the most suitable CPU temperature sensor
 	int cpu_temp_sensor = -1;
@@ -659,9 +681,11 @@ int api_info_sensors(struct ftl_conn *api)
 		// 1. AMD CPU temperature sensor
 		// 2. Intel CPU temperature sensor
 		// 3. General CPU temperature sensor
+		// 4. General SoC temperature sensor (https://discourse.pi-hole.net/t/temperature-value-not-shown/66883)
 		if(strcmp(name->valuestring, "k10temp") == 0 ||
 		   strcmp(name->valuestring, "coretemp") == 0 ||
-		   strcmp(name->valuestring, "cpu_thermal") == 0)
+		   strcmp(name->valuestring, "cpu_thermal") == 0 ||
+		   strcmp(name->valuestring, "soc_thermal") == 0)
 		{
 			cpu_temp_sensor = i;
 			break;
@@ -696,12 +720,25 @@ int api_info_sensors(struct ftl_conn *api)
 		unit = "K";
 	JSON_REF_STR_IN_OBJECT(sensors, "unit", unit);
 
+	if(!add_list)
+		cJSON_Delete(list);
+
+	return 0;
+}
+
+int api_info_sensors(struct ftl_conn *api)
+{
+	cJSON *sensors = JSON_NEW_OBJECT();
+	int ret = get_sensors_obj(api, sensors, true);
+	if (ret != 0)
+		return ret;
+
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "sensors", sensors);
 	JSON_SEND_OBJECT(json);
 }
 
-int api_info_version(struct ftl_conn *api)
+int get_version_obj(struct ftl_conn *api, cJSON *version)
 {
 	char *line = NULL;
 	size_t len = 0;
@@ -743,11 +780,26 @@ int api_info_version(struct ftl_conn *api)
 		//else if(strcmp(key, "FTL_VERSION") == 0)
 		//	JSON_COPY_STR_TO_OBJECT(ftl_local, "version", value);
 		else if(strcmp(key, "GITHUB_CORE_VERSION") == 0)
-			JSON_COPY_STR_TO_OBJECT(core_remote, "version", value);
+		{
+			if(strcmp(value, "null") == 0)
+				JSON_ADD_NULL_TO_OBJECT(core_remote, "version");
+			else
+				JSON_COPY_STR_TO_OBJECT(core_remote, "version", value);
+		}
 		else if(strcmp(key, "GITHUB_WEB_VERSION") == 0)
-			JSON_COPY_STR_TO_OBJECT(web_remote, "version", value);
+		{
+			if(strcmp(value, "null") == 0)
+				JSON_ADD_NULL_TO_OBJECT(web_remote, "version");
+			else
+				JSON_COPY_STR_TO_OBJECT(web_remote, "version", value);
+		}
 		else if(strcmp(key, "GITHUB_FTL_VERSION") == 0)
-			JSON_COPY_STR_TO_OBJECT(ftl_remote, "version", value);
+		{
+			if(strcmp(value, "null") == 0)
+				JSON_ADD_NULL_TO_OBJECT(ftl_remote, "version");
+			else
+				JSON_COPY_STR_TO_OBJECT(ftl_remote, "version", value);
+		}
 		else if(strcmp(key, "CORE_HASH") == 0)
 			JSON_COPY_STR_TO_OBJECT(core_local, "hash", value);
 		else if(strcmp(key, "WEB_HASH") == 0)
@@ -774,8 +826,6 @@ int api_info_version(struct ftl_conn *api)
 	JSON_REF_STR_IN_OBJECT(ftl_local, "branch", GIT_BRANCH);
 	JSON_REF_STR_IN_OBJECT(ftl_local, "version", get_FTL_version());
 	JSON_REF_STR_IN_OBJECT(ftl_local, "date", GIT_DATE);
-
-	cJSON *version = JSON_NEW_OBJECT();
 
 	cJSON *core = JSON_NEW_OBJECT();
 	JSON_ADD_NULL_IF_NOT_EXISTS(core_local, "branch");
@@ -812,7 +862,14 @@ int api_info_version(struct ftl_conn *api)
 	JSON_ADD_NULL_IF_NOT_EXISTS(docker, "remote");
 	JSON_ADD_ITEM_TO_OBJECT(version, "docker", docker);
 
+	return 0;
+}
+
+int api_info_version(struct ftl_conn *api)
+{
 	// Send reply
+	cJSON *version = JSON_NEW_OBJECT();
+	get_version_obj(api, version);
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "version", version);
 	JSON_SEND_OBJECT(json);
@@ -933,15 +990,18 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 	}
 
 	// Delete message with this ID from the database
-	delete_message(ids);
+	int deleted = 0;
+	delete_message(ids, &deleted);
 
 	// Free memory
 	free(id);
 	cJSON_free(ids);
 
-	// Send empty reply with code 204 No Content
+	// Send empty reply with codes:
+	// - 204 No Content (if any items were deleted)
+	// - 404 Not Found (if no items were deleted)
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_SEND_OBJECT_CODE(json, 204);
+	JSON_SEND_OBJECT_CODE(json, deleted > 0 ? 204 : 404);
 }
 
 int api_info_messages(struct ftl_conn *api)
@@ -1029,4 +1089,16 @@ int api_info_metrics(struct ftl_conn *api)
 	cJSON *json2 = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json2, "metrics", json);
 	JSON_SEND_OBJECT(json2);
+}
+
+int api_info_login(struct ftl_conn *api)
+{
+	cJSON *json = JSON_NEW_OBJECT();
+
+	const bool dns = get_blockingstatus() != DNS_FAILED;
+	JSON_ADD_BOOL_TO_OBJECT(json, "dns", dns);
+
+	JSON_ADD_NUMBER_TO_OBJECT(json, "https_port", get_https_port());
+
+	JSON_SEND_OBJECT(json);
 }

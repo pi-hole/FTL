@@ -15,10 +15,20 @@
 set(sqlite3_sources
         shell.c
         sqlite3.c
+        sqlite3.h
+        sqlite3_rsync.c
         )
 
 add_library(sqlite3 OBJECT ${sqlite3_sources})
-target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type -Wno-sign-compare)
+# Define the function that will be called to initialize the sqlite3 shell
+target_compile_definitions(sqlite3 PRIVATE "-DSQLITE_SHELL_INIT_PROC=pihole_sqlite3_initalize")
+# Define that we want to statically link the percentile extension into the sqlite3 library
+target_compile_definitions(sqlite3 PRIVATE "-DSQLITE_STATIC_PERCENTILE=1")
+target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type -Wno-sign-compare -Wno-implicit-function-declaration -Wno-int-conversion)
+
+if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    target_compile_options(sqlite3 PRIVATE "-Wno-null-pointer-subtraction")
+endif()
 
 set(database_sources
         common.c
@@ -33,6 +43,8 @@ set(database_sources
         network-table.h
         query-table.c
         query-table.h
+        session-table.c
+        session-table.h
         sqlite3.h
         sqlite3-ext.c
         sqlite3-ext.h

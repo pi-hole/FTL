@@ -27,6 +27,8 @@ components:
           This can be changed by supplying the parameter `cursor`.
           Each result of this API callback contains a `cursor` pointing the beginning of the next `n` queries chunk.
           This provides a very fast and lightweight server-side pagination implementation.
+
+          If wildcards are supported for a parameter, you may specify `*` at any position in the parameter to match any number of characters.
         parameters:
           - in: query
             name: from
@@ -61,19 +63,25 @@ components:
               type: integer
           - in: query
             name: domain
-            description: Filter by specific domain
+            description: Filter by specific domain (wildcards supported)
             required: false
             schema:
               type: string
           - in: query
-            name: client
-            description: Filter by specific client
+            name: client_ip
+            description: Filter by specific client IP address (wildcards supported)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: client_name
+            description: Filter by specific client hostname (wildcards supported)
             required: false
             schema:
               type: string
           - in: query
             name: upstream
-            description: Filter by specific upstream
+            description: Filter by specific upstream (wildcards supported)
             required: false
             schema:
               type: string
@@ -208,12 +216,10 @@ components:
                   time:
                     type: number
                     description: Time until the response was received (ms, negative if N/A)
-              ttl:
+              list_id:
                 type: integer
-                description: Query's Time-To-Live (TTL) value (`-1` if N/A)
-              regex_id:
-                type: integer
-                description: ID of blocking regex (`-1` if N/A)
+                description: ID of corresponding database table (adlist for anti-/gravity, else domainlist) (`NULL` if N/A)
+                nullable: true
               upstream:
                 type: string
                 description: IP or name + port of upstream server
@@ -231,8 +237,7 @@ components:
               reply:
                 type: "IP"
                 time: 19
-              ttl: -1
-              regex_id: -1
+              list_id: NULL
               upstream: "localhost#5353"
               dbid: 112421354
             - time: 1581907871.583821
@@ -247,8 +252,7 @@ components:
               reply:
                 type: "IP"
                 time: 12.3
-              ttl: 7
-              regex_id: -1
+              list_id: NULL
               upstream: "localhost#5353"
               dbid: 112421355
         cursor:

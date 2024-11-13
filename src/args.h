@@ -10,7 +10,7 @@
 #ifndef ARGS_H
 #define ARGS_H
 
-void parse_args(int argc, char* argv[]);
+void parse_args(int argc, char *argv[]);
 
 extern bool daemonmode, cli_mode, dnsmasq_debug;
 extern int argc_dnsmasq;
@@ -24,6 +24,8 @@ const char *cli_done(void) __attribute__ ((pure));
 const char *cli_bold(void) __attribute__ ((pure));
 const char *cli_normal(void) __attribute__ ((pure));
 const char *cli_over(void) __attribute__ ((pure));
+const char *cli_underline(void) __attribute__ ((pure));
+const char *cli_italics(void) __attribute__ ((pure));
 
 void test_dnsmasq_options(int argc, const char *argv[]);
 

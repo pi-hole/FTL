@@ -31,11 +31,160 @@
 #include "events.h"
 // resolve_regex_cnames()
 #include "regex_r.h"
+// statis_assert()
+#include <assert.h>
+// TCP_MAX_QUERIES
+#include "dnsmasq/config.h"
 
-static bool res_initialized = false;
+// Function Prototypes
+static void name_toDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen) __attribute__((nonnull(1,3)));
+static unsigned char *name_fromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count) __attribute__((malloc)) __attribute__((nonnull(1,2,3)));
+
+// Avoid "error: packed attribute causes inefficient alignment for ..." on ARM32
+// builds due to the use of __attribute__((packed)) in the following structs
+// Their correct size is ensured for each by check_struct_sizes() below
+_Pragma("GCC diagnostic push")
+_Pragma("GCC diagnostic ignored \"-Wattributes\"")
+
+// DNS header structure
+struct DNS_HEADER
+{
+	uint16_t id; // identification number
+
+	bool rd :1; // recursion desired
+	bool tc :1; // truncated message
+	bool aa :1; // authoritative answer
+	uint8_t opcode :4; // purpose of message
+	bool qr :1; // query/response flag
+
+	uint8_t rcode :4; // response code
+	bool cd :1; // checking disabled
+	bool ad :1; // authenticated data
+	bool z :1; // its z! reserved
+	bool ra :1; // recursion available
+
+	uint16_t q_count; // number of question entries
+	uint16_t ans_count; // number of answer entries
+	uint16_t auth_count; // number of authority entries
+	uint16_t add_count; // number of resource entries
+} __attribute__((packed));
+
+// Constant sized fields of query structure
+struct QUESTION
+{
+	uint16_t qtype;
+	uint16_t qclass;
+};
+
+// Constant sized fields of the resource record structure
+struct R_DATA
+{
+	uint16_t type;
+	uint16_t class;
+	uint32_t ttl; // RFC 1035 defines the TTL field as "positive values of a signed 32bit number"
+	uint16_t data_len;
+} __attribute__((packed));
+_Pragma("GCC diagnostic pop")
+
+static bool check_struct_sizes(void)
+{
+	// Check sizes of structs
+	assert(sizeof(struct DNS_HEADER) == 12);
+	assert(sizeof(struct QUESTION) == 4);
+	assert(sizeof(struct R_DATA) == 10);
+
+	return true;
+}
+
+// Pointers to resource record contents
+struct RES_RECORD
+{
+	unsigned char *name;
+	struct R_DATA *resource;
+	uint8_t *rdata;
+};
+
+/**
+ * @brief Converts a socket error number to a human-readable string.
+ *
+ * This function takes an error number (errno) and returns a string
+ * describing the error. It provides specific messages for common
+ * socket errors such as EAGAIN and ECONNREFUSED, and falls back to
+ * the standard strerror function for other error numbers.
+ *
+ * @param errno The error number to convert.
+ * @return A string describing the error.
+ */
+static const char *strsockerr(const int err)
+{
+	if(err == EAGAIN)
+		return "Timeout - no response from upstream DNS server";
+	else if(err == ECONNREFUSED)
+		return "Connection refused by upstream DNS server";
+	else
+		return strerror(err);
+}
+
+// see https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml
+static const char *getDNScode(int code)
+{
+	switch(code)
+	{
+		case 0:
+			return "NoError";
+		case 1:
+			return "FormErr (Format Error)";
+		case 2:
+			return "ServFail (Server Failure)";
+		case 3:
+			return "NXDomain (Non-Existent Domain)";
+		case 4:
+			return "NotImp (Not Implemented)";
+		case 5:
+			return "Refused (Query Refused)";
+		case 6:
+			return "YXDomain (Name Exists when it should not)";
+		case 7:
+			return "YXRRSet (RR Set Exists when it should not)";
+		case 8:
+			return "NXRRSet (RR Set that should exist does not)";
+		case 9:
+			return "NotAuth (Server Not Authoritative for zone)";
+		case 10:
+			return "NotZone (Name not contained in zone)";
+		case 11:
+			return "DSOTYPENI (DSO-TYPE Not Implemented)";
+		case 16:
+			return "BADVERS (Bad OPT Version) -or- BADSIG (TSIG Signature Failure)";
+		case 17:
+			return "BADKEY (Key not recognized)";
+		case 18:
+			return "BADTIME (Signature out of time window)";
+		case 19:
+			return "BADMODE (Bad TKEY Mode)";
+		case 20:
+			return "BADNAME (Duplicate key name)";
+		case 21:
+			return "BADALG (Algorithm not supported)";
+		case 22:
+			return "BADTRUNC (Bad Truncation)";
+		case 23:
+			return "BADCOOKIE (Bad/missing Server Cookie)";
+		default:
+			;
+	}
+
+	if((code >= 24 && code <= 3840) || (code >= 4096 && code <= 65535))
+		return "Unassigned";
+	else if(code >= 3841 && code <= 4095)
+		return "Reserved for Private Use";
+
+	// else:
+	return "Unknown";
+}
 
 // Validate given hostname
-static bool valid_hostname(char* name, const char* clientip)
+static bool valid_hostname(char *name, const char *clientip)
 {
 	// Check for validity of input
 	if(name == NULL)
@@ -75,56 +224,6 @@ static bool valid_hostname(char* name, const char* clientip)
 	return true;
 }
 
-#define NUM_NS4 (sizeof(_res.nsaddr_list) / sizeof(_res.nsaddr_list[0]))
-#define NUM_NS6 (sizeof(_res._u._ext.nsaddrs) / sizeof(_res._u._ext.nsaddrs[0]))
-
-static void print_used_resolvers(const char *message)
-{
-	// Print details only when debugging
-	if(!(config.debug.resolver.v.b))
-		return;
-
-	log_debug(DEBUG_RESOLVER, "%s", message);
-	for(unsigned int i = 0u; i < NUM_NS4 + NUM_NS6; i++)
-	{
-		int family;
-		in_port_t port;
-		void *addr = NULL;
-		if(i < NUM_NS4)
-		{
-			// Regular name servers (IPv4)
-			const unsigned int j = i;
-			// Some of the entries may not be configured
-			if(_res.nsaddr_list[j].sin_family != AF_INET)
-				continue;
-
-			// IPv4 name servers
-			addr = &_res.nsaddr_list[j].sin_addr;
-			port = ntohs(_res.nsaddr_list[j].sin_port);
-			family = _res.nsaddr_list[j].sin_family;
-		}
-		else
-		{
-			// Extension name servers (IPv6)
-			const unsigned int j = i - NUM_NS4;
-			// Some of the entries may not be configured
-			if(_res._u._ext.nsaddrs[j] == NULL ||
-			   _res._u._ext.nsaddrs[j]->sin6_family != AF_INET6)
-				continue;
-			addr = &_res._u._ext.nsaddrs[j]->sin6_addr;
-			port = ntohs(_res._u._ext.nsaddrs[j]->sin6_port);
-			family = _res._u._ext.nsaddrs[j]->sin6_family;
-		}
-
-		// Convert nameserver information to human-readable form
-		char nsname[INET6_ADDRSTRLEN];
-		inet_ntop(family, addr, nsname, INET6_ADDRSTRLEN);
-
-		log_debug(DEBUG_RESOLVER, " %s %u: %s:%hu (IPv%u)", i < MAXNS ? "   " : "EXT",
-		          i, nsname, port, family == AF_INET ? 4u : 6u);
-	}
-}
-
 // Return if we want to resolve address to names at all
 // (may be disabled due to config settings)
 bool __attribute__((pure)) resolve_names(void)
@@ -143,13 +242,367 @@ bool __attribute__((pure)) resolve_this_name(const char *ipaddr)
 	return true;
 }
 
-char *resolveHostname(const char *addr)
+int create_socket(bool tcp, struct sockaddr_in *dest)
+{
+	// Create a UDP (datagram) or TCP (stream) socket
+	const int sock = socket(AF_INET, tcp ? SOCK_STREAM : SOCK_DGRAM, tcp ? IPPROTO_TCP : IPPROTO_UDP);
+	if(sock < 0)
+	{
+		log_err("Unable to create DNS resolver socket: %s", strerror(errno));
+		return -1;
+	}
+
+	// Set timeout for socket (2 seconds)
+	struct timeval tv;
+	tv.tv_sec = 2;
+	tv.tv_usec = 0;
+	if(setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+	{
+		log_err("Unable to set DNS resolver socket timeout: %s", strerror(errno));
+		close(sock);
+		return -1;
+	}
+
+	// Create socket destination structure
+	memset(dest, 0, sizeof(*dest));
+	dest->sin_family = AF_INET; // IPv4
+	dest->sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
+	dest->sin_port = htons(config.dns.port.v.u16); // Configured DNS port
+
+	// Connect to the DNS server (only done for TCP as UDP is
+	// connectionless)
+	if(tcp && connect(sock, (struct sockaddr*)dest, sizeof(*dest)) < 0)
+	{
+		log_err("Unable to connect to DNS resolver: %s", strerror(errno));
+		close(sock);
+		return -1;
+	}
+
+	return sock;
+}
+
+// Helper macro to reduce code duplication
+#define log_resolve_info(host, port, tcp) { log_info("Tried to resolve PTR \"%s\" on 127.0.0.1#%u (%s)", host, port, tcp ? "TCP" : "UDP"); }
+
+// Perform a name lookup by sending a packet to ourselves
+static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *dest,
+                                                    const char *host, const char *ipaddr, bool *truncated)
+{
+	uint8_t buf[4096] = { 0 }; // buffer for DNS query
+	uint8_t *qname = NULL, *reader = NULL;
+	struct RES_RECORD answers[20] = { 0 }; // buffer for DNS replies
+	struct DNS_HEADER *dns = NULL;
+	struct QUESTION *qinfo = NULL;
+
+	// Set the DNS structure to standard queries
+	dns = (struct DNS_HEADER *)&buf;
+	dns->id = (unsigned short) htons(random()); // random query ID
+	dns->qr = 0; // This is a query
+	dns->opcode = 0; // This is a standard query
+	dns->aa = 0; // Not Authoritative
+	dns->tc = 0; // This message is not truncated
+	dns->rd = 1; // Recursion Desired
+	dns->ra = 0; // Recursion not available!
+	dns->z = 0; // Reserved
+	dns->ad = 0; // This is not an authenticated answer
+	dns->cd = 0; // Checking Disabled
+	dns->rcode = 0; // Response code
+	dns->q_count = htons(1); // 1 question
+	dns->ans_count = 0; // No answers
+	dns->auth_count = 0; // No authority
+	dns->add_count = 0; // No additional
+
+	// Point to the query portion
+	qname = &buf[sizeof(struct DNS_HEADER)];
+
+	// Make a copy of the hostname with two extra bytes for the length and
+	// the final dot, copy the hostname into it and convert to convert to
+	// DNS format
+	const size_t hnamelen = strlen(host) + 2;
+	char *hname = calloc(hnamelen, sizeof(char));
+	if(hname == NULL)
+	{
+		log_err("Unable to allocate memory for hname");
+		return NULL;
+	}
+	strncpy(hname, host, hnamelen);
+	strncat(hname, ".", hnamelen - strlen(hname));
+	hname[hnamelen - 1] = '\0';
+
+	name_toDNS(qname, sizeof(buf) - sizeof(struct DNS_HEADER), hname, hnamelen);
+	free(hname);
+	qinfo = (void*)&buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1)];
+
+	qinfo->qtype = htons(T_PTR); // Type of the query, A, MX, CNAME, NS etc
+	qinfo->qclass = htons(1); // IN
+	const size_t len = sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1) + sizeof(struct QUESTION);
+
+	// Log query in debug mode
+	log_debug(DEBUG_RESOLVER, "Resolving PTR \"%s\" on 127.0.0.1#%u (%s)",
+	          host, config.dns.port.v.u16, tcp ? "TCP" : "UDP");
+
+	if(!tcp)
+	{
+		// Send the query
+		socklen_t addrlen = sizeof(*dest);
+		if(sendto(sock, buf, len, 0, (struct sockaddr*)dest, addrlen) < 0)
+		{
+			log_err("Cannot send UDP DNS query: %s", strsockerr(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
+			return NULL;
+		}
+
+		// Receive the answer
+		if(recvfrom (sock, buf, sizeof(buf), 0, (struct sockaddr*)dest, &addrlen) < 0)
+		{
+			log_err("Cannot receive UDP DNS reply: %s", strsockerr(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
+			return NULL;
+		}
+	}
+	else
+	{
+		// Send the query
+		// For TCP streams, we first have to send the length of the data
+		// we are sending. The reason for this is that with TCP, we are
+		// not sending messages (datagrams) but a continuous stream of
+		// bytes. We therefore need a way to tell the receiver about
+		// this length of the message.
+		uint16_t prefix = htons(len & 0xffffu);
+		if(send(sock, &prefix, sizeof(prefix), 0) < 0 ||
+		   send(sock, buf, len, 0) < 0)
+		{
+			log_err("Cannot send TCP DNS query: %s", strsockerr(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
+			return NULL;
+		}
+
+		// Receive the answer, first the length of the message ...
+		prefix = 0;
+		if(recv(sock, &prefix, sizeof(prefix), 0) < 0)
+		{
+			log_err("Cannot receive TCP DNS reply (1): %s", strsockerr(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
+			return NULL;
+		}
+		prefix = ntohs(prefix);
+
+		// Sanity check the length of the message
+		if(prefix > sizeof(buf))
+		{
+			log_err("Received TCP DNS reply is too long (%u bytes)", prefix);
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
+			return NULL;
+		}
+		bzero(buf, prefix + 1);
+		// ... then the message itself
+		if(recv(sock, buf, sizeof(buf), 0) < 0)
+		{
+			log_err("Cannot receive TCP DNS reply (2): %s", strsockerr(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
+			return NULL;
+		}
+	}
+
+	// Parse the reply
+	dns = (struct DNS_HEADER*) buf;
+	// Move ahead of the dns header and the query field
+	reader = &buf[len];
+
+	// Log the status of the query
+	log_debug(DEBUG_RESOLVER, "DNS query for PTR \"%s\" returned status %s (%i)",
+	          host, getDNScode(dns->rcode), dns->rcode);
+
+	// Abort if the query was not successful
+	if(dns->tc != 0)
+	{
+		log_debug(DEBUG_RESOLVER, " --> DNS response truncated");
+		if(truncated != NULL)
+			*truncated = true;
+		return NULL;
+	}
+
+	// Start reading answers
+	uint16_t stop = 0;
+	char *name = NULL;
+	for(uint16_t i = 0; i < min(ntohs(dns->ans_count), ArraySize(answers)); i++)
+	{
+		answers[i].name = name_fromDNS(reader, buf, &stop);
+		reader = reader + stop;
+
+		answers[i].resource = (struct R_DATA*)(reader);
+		reader = reader + sizeof(struct R_DATA);
+
+		// Read the answer and convert from network to host representation
+		answers[i].rdata = name_fromDNS(reader, buf, &stop);
+		reader = reader + stop;
+
+		// We only care about PTR answers and ignore all others
+		const uint16_t rtype = ntohs(answers[i].resource->type);
+		if(rtype != T_PTR)
+		{
+			log_debug(DEBUG_RESOLVER, "Answer %u is not of type PTR but %u (skipping)",
+			          i, rtype);
+
+			// Skip this answer
+			free(answers[i].name);
+			free(answers[i].rdata);
+			continue;
+		}
+
+		name = (char *)answers[i].rdata;
+		log_debug(DEBUG_RESOLVER, "Answer %u is PTR \"%s\" => \"%s\"",
+		          i, answers[i].name, answers[i].rdata);
+
+		// We break out of the loop if this is a valid hostname
+		if(strlen(name) > 0 && valid_hostname(name, ipaddr))
+		{
+			free(answers[i].name);
+			break;
+		}
+		else
+		{
+			// Discard this answer: free memory and set name to NULL
+			free(answers[i].name);
+			free(answers[i].rdata);
+			name = NULL;
+		}
+	}
+
+	if(name != NULL)
+	{
+		// We have a valid hostname, return it
+		// This is allocated memory
+		return name;
+	}
+	else
+	{
+		// No valid hostname found, return empty string
+		return strdup("");
+	}
+}
+
+// Convert hostname from network to host representation
+// This routine supports DNS compression pointers
+// 3www6google3com -> www.google.com
+static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count)
+{
+	const size_t MAXNAMELEN = 256;
+	unsigned char *name = calloc(MAXNAMELEN, sizeof(char));
+	unsigned int p = 0, jumped = 0;
+
+	// Initialize count
+	*count = 1;
+
+	// Parse DNS label string encoding (e.g, 3www6google3com)
+	//
+	// In its text format, a domain name is a sequence of dot-separated
+	// "labels". The dot separators are not used in binary DNS messages.
+	// Instead, each label is preceded by a byte containing its length, and
+	// the name is terminated by a zero-length label representing the root
+	// zone.
+	while(*reader != 0 && p < MAXNAMELEN - 2)
+	{
+		if(*reader >= 0xC0)
+		{
+			// RFC 1035, Section 4.1.4: Message compression
+			//
+			// A label can be up to 63 bytes long; if the length
+			// byte is 64 (0x40) or greater, it has a special
+			// meaning. Values between 0x40 and 0xBF have no purpose
+			// except to cause painful memories for those involved
+			// in DNS extensions in the late 1990s.
+			//
+			// However, if the length byte is 0xC0 or greater, the
+			// length byte and the next byte form a "compression
+			// pointer". A DNS name compression pointer allows DNS
+			// messages to reuse parent domains. The lower 14 bits
+			// are an offset into the DNS message where the
+			// remaining suffix of the name previously occurred.
+			//
+			//  +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+			//  | 1  1|                OFFSET                   |
+			//  +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+			//
+			// The first two bits are ones.  This allows a pointer
+			// to be distinguished from a label, since the label
+			// must begin with two zero bits because labels are
+			// restricted to 63 octets or less. See the referenced
+			// RFC for more details.
+			const unsigned int offset = ((*reader - 0xC0) << 8) + *(reader + 1);
+			reader = buffer + offset - 1;
+			jumped = 1; // We have jumped to another location so counting won't go up
+		}
+		else
+			// Copy character to name
+			name[p++] = *reader;
+
+		// Increment read pointer
+		reader = reader + 1;
+
+		if(jumped == 0)
+			*count = *count + 1; // If we haven't jumped to another location then we can count up
+	}
+
+	// Terminate string
+	name[p] = '\0';
+
+	// Number of steps we actually moved forward in the packet
+	if(jumped == 1)
+		*count += 1;
+
+	// Now convert 3www6google3com0 to www.google.com
+	unsigned int i = 0;
+	for(; i < strlen((const char*)name); i++)
+	{
+		p = name[i];
+		for(unsigned j = 0; j < p; j++)
+		{
+			name[i] = name[i + 1];
+			i = i + 1;
+		}
+		name[i] = '.';
+	}
+
+	// Strip off the trailing dot
+	name[i > 0 ? i-1 : i] = '\0';
+	return name;
+}
+
+// Convert hostname from host to network representation
+// www.google.com -> 3www6google3com
+// We do not use DNS compression pointers here as we do not know if the DNS
+// server we are talking to supports them
+static void __attribute__((nonnull(1,3))) name_toDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen)
+{
+	unsigned int lock = 0;
+
+	// Iterate over hostname characters
+	for(unsigned int i = 0 ; i < strlen((char*)host); i++)
+	{
+		// If we encounter a dot, write the number of characters since the last dot
+		// and then write the characters themselves
+		if(host[i] == '.')
+		{
+			*dns++ = i - lock;
+			for(;lock < i; lock++)
+				*dns++ = host[lock];
+			lock++;
+		}
+	}
+
+	// Terminate the string at the end
+	*dns++='\0';
+}
+
+char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, struct sockaddr_in *dest,
+                                              const char *addr, const bool force, bool *truncated)
 {
 	// Get host name
-	char *hostname = NULL;
+	char *hostn = NULL;
 
 	// Check if we want to resolve host names
-	if(!resolve_this_name(addr))
+	if(!force && !resolve_this_name(addr))
 	{
 		log_debug(DEBUG_RESOLVER, "Configured to not resolve host name for %s", addr);
 
@@ -163,27 +616,18 @@ char *resolveHostname(const char *addr)
 	// if so, return "hidden" as hostname
 	if(strcmp(addr, "0.0.0.0") == 0)
 	{
-		hostname = strdup("hidden");
-		log_debug(DEBUG_RESOLVER, "---> \"%s\" (privacy settings)", hostname);
-		return hostname;
+		hostn = strdup("hidden");
+		log_debug(DEBUG_RESOLVER, "---> \"%s\" (privacy settings)", hostn);
+		return hostn;
 	}
 
 	// Check if this is the internal client
 	// if so, return "hidden" as hostname
 	if(strcmp(addr, "::") == 0)
 	{
-		hostname = strdup("pi.hole");
-		log_debug(DEBUG_RESOLVER, "---> \"%s\" (special)", hostname);
-		return hostname;
-	}
-
-	// Check if we want to resolve host names
-	if(!resolve_this_name(addr))
-	{
-		log_debug(DEBUG_RESOLVER, "Configured to not resolve host name for %s", addr);
-
-		// Return an empty host name
-		return strdup("");
+		hostn = strdup("pi.hole");
+		log_debug(DEBUG_RESOLVER, "---> \"%s\" (special)", hostn);
+		return hostn;
 	}
 
 	// Test if we want to resolve an IPv6 address
@@ -193,6 +637,7 @@ char *resolveHostname(const char *addr)
 
 	// Convert address into binary form
 	struct sockaddr_storage ss = { 0 };
+	char *inaddr = NULL;
 	if(IPv6)
 	{
 		// Get binary form of IPv6 address
@@ -202,6 +647,47 @@ char *resolveHostname(const char *addr)
 			log_warn("Invalid IPv6 address when trying to resolve hostname: %s", addr);
 			return strdup("");
 		}
+
+		// Need extra space for ".ip6.arpa" suffix
+		// The 1.2.3.4... string is 63 + terminating \0 = 64 bytes long
+		inaddr = calloc(64 + 10, sizeof(char));
+		if(inaddr == NULL)
+		{
+			log_err("Unable to allocate memory for reverse lookup");
+			return NULL;
+		}
+
+		// Convert IPv6 address to reverse lookup format
+		//                       b a 9 8 7 6 5   4       |<--       ::      -->| 0       1 2 3 4
+		// 4321:0::4:567:89ab -> b.a.9.8.7.6.5.0.4.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.1.2.3.4
+		for(int i = 0; i < 32; i++)
+		{
+			// Get current nibble
+			uint8_t nibble = ((uint8_t *)&(((struct sockaddr_in6 *)&ss)->sin6_addr))[i/2];
+
+			// Get lower nibble for even i, upper nibble for odd i
+			if(i % 2 == 0)
+				nibble = nibble >> 4;
+
+			// Mask out upper nibble
+			nibble = nibble & 0x0F;
+
+			// Convert to ASCII
+			char c = '0' + nibble;
+			if(c > '9')
+				c = 'a' + nibble - 10;
+
+			// Prepend to string
+			inaddr[62-2*i] = c;
+
+			// Add dot after (actually: before) every nibble except
+			// the last one
+			if(i != 31)
+				inaddr[62-2*i-1] = '.';
+		}
+
+		// Add suffix
+		strcat(inaddr, ".ip6.arpa");
 	}
 	else
 	{
@@ -212,152 +698,39 @@ char *resolveHostname(const char *addr)
 			log_warn("Invalid IPv4 address when trying to resolve hostname: %s", addr);
 			return strdup("");
 		}
-	}
 
-	// Initialize resolver subroutines if trying to resolve for the first time
-	// res_init() reads resolv.conf to get the default domain name and name server
-	// address(es). If no server is given, the local host is tried. If no domain
-	// is given, that associated with the local host is used.
-	if(!res_initialized)
-	{
-		res_init();
-		res_initialized = true;
-	}
-
-	// INADDR_LOOPBACK is in host byte order, however, in_addr has to be in
-	// network byte order, convert it here if necessary
-	struct in_addr FTLaddr = { htonl(INADDR_LOOPBACK) };
-	in_port_t FTLport = htons(config.dns.port.v.u16);
-
-	// Temporarily set FTL as system resolver
-
-	// Backup configured name servers and invalidate them (IPv4)
-	struct in_addr ns_addr_bck[MAXNS];
-	in_port_t ns_port_bck[MAXNS];
-	int bck_nscount = _res.nscount;
-	for(unsigned int i = 0u; i < NUM_NS4; i++)
-	{
-		ns_addr_bck[i] = _res.nsaddr_list[i].sin_addr;
-		ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
-		_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
-	}
-
-	// Set FTL at 127.0.0.1 as the only resolver
-	_res.nsaddr_list[0].sin_addr.s_addr = FTLaddr.s_addr;
-	// Set resolver port
-	_res.nsaddr_list[0].sin_port = FTLport;
-	// Configure resolver to use only one resolver
-	_res.nscount = 1;
-
-	// Backup configured name server and invalidate them (IPv6)
-	struct in6_addr ns6_addr_bck[MAXNS];
-	in_port_t ns6_port_bck[MAXNS];
-	int bck_nscount6 = _res._u._ext.nscount6;
-	for(unsigned int i = 0u; i < NUM_NS6; i++)
-	{
-		if(_res._u._ext.nsaddrs[i] == NULL)
-			continue;
-		memcpy(&ns6_addr_bck[i], &_res._u._ext.nsaddrs[i]->sin6_addr, sizeof(struct in6_addr));
-		ns6_port_bck[i] = _res._u._ext.nsaddrs[i]->sin6_port;
-		memcpy(&_res._u._ext.nsaddrs[i]->sin6_addr, &in6addr_any, sizeof(struct in6_addr));
-	}
-
-	// Set FTL as the only resolver only when IPv6 is enabled
-	if(bck_nscount6 > 0)
-	{
-		// Set FTL at ::1 as the only resolver
-		memcpy(&_res._u._ext.nsaddrs[0]->sin6_addr, &in6addr_loopback, sizeof(struct in6_addr));
-		// Set resolver port
-		_res._u._ext.nsaddrs[0]->sin6_port = FTLport;
-		// Configure resolver to use only one resolver
-		_res._u._ext.nscount6 = 1;
-	}
-
-	if(config.debug.resolver.v.b)
-		print_used_resolvers("Set nameservers to:");
-
-	// Try to resolve address
-	char host[NI_MAXHOST] = { 0 };
-	int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
-
-	// Check if getnameinfo() returned a host name
-	if(ret == 0)
-	{
-		if(valid_hostname(host, addr))
+		// Need extra space for ".in-addr.arpa" suffix
+		inaddr = calloc(INET_ADDRSTRLEN + 14, sizeof(char));
+		if(inaddr == NULL)
 		{
-			// Return hostname copied to new memory location
-			hostname = strdup(host);
-		}
-		else
-		{
-			hostname = strdup("[invalid host name]");
+			log_err("Unable to allocate memory for reverse lookup");
+			return NULL;
 		}
 
-		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found internally)", hostname);
-	}
-	else
-		log_debug(DEBUG_RESOLVER, " ---> \"\" (not found internally: %s", gai_strerror(ret));
-
-	// Restore IPv4 resolvers
-	for(unsigned int i = 0u; i < NUM_NS4; i++)
-	{
-		_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
-		_res.nsaddr_list[i].sin_port = ns_port_bck[i];
-	}
-	_res.nscount = bck_nscount;
-
-	// Restore IPv6 resolvers
-	for(unsigned int i = 0u; i < NUM_NS6; i++)
-	{
-		if(_res._u._ext.nsaddrs[i] == NULL)
-			continue;
-		memcpy(&_res._u._ext.nsaddrs[i]->sin6_addr, &ns6_addr_bck[i], sizeof(struct in6_addr));
-		_res._u._ext.nsaddrs[i]->sin6_port = ns6_port_bck[i];
-	}
-	_res._u._ext.nscount6 = bck_nscount6;
-
-	if(config.debug.resolver.v.b)
-		print_used_resolvers("Restored nameservers to:");
-
-	// If no host name was found before, try again with system-configured
-	// resolvers (necessary for docker and friends)
-	if(hostname == NULL)
-	{
-		// Try to resolve address
-		ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
-
-		// Check if getnameinfo() returned a host name this time
-		// First check for he not being NULL before trying to dereference it
-		if(ret == 0)
-		{
-			if(valid_hostname(host, addr))
-			{
-				// Return hostname copied to new memory location
-				hostname = strdup(host);
-			}
-			else
-			{
-				hostname = strdup("[invalid host name]");
-			}
-
-			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found externally)", hostname);
-		}
-		else
-		{
-			// No hostname found (empty PTR)
-			hostname = strdup("");
-
-			if(config.debug.resolver.v.b)
-			log_debug(DEBUG_RESOLVER, " ---> \"\" (not found externally: %s)", gai_strerror(ret));
-		}
+		// Convert IPv4 address to reverse lookup format
+		// 12.34.56.78 -> 78.56.34.12.in-addr.arpa
+		snprintf(inaddr, INET_ADDRSTRLEN + 14, "%d.%d.%d.%d.in-addr.arpa",
+		        (int)((uint8_t *)&(((struct sockaddr_in *)&ss)->sin_addr))[3],
+		        (int)((uint8_t *)&(((struct sockaddr_in *)&ss)->sin_addr))[2],
+		        (int)((uint8_t *)&(((struct sockaddr_in *)&ss)->sin_addr))[1],
+		        (int)((uint8_t *)&(((struct sockaddr_in *)&ss)->sin_addr))[0]);
 	}
 
-	// Return result
-	return hostname;
+	// Get host name by making a reverse lookup to ourselves (server at 127.0.0.1 with port 53)
+	// We implement a minimalistic resolver here as we cannot rely on the system resolver using whatever
+	// nameserver we configured in /etc/resolv.conf
+	hostn = ngethostbyname(sock, tcp, dest, inaddr, addr, truncated);
+
+	// Free allocated memory
+	free(inaddr);
+
+	// Return obtained host name
+	return hostn;
 }
 
 // Resolve upstream destination host names
-static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
+static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest,
+                                    size_t ippos, size_t oldnamepos, bool *success)
 {
 	// Get IP and host name strings. They are cloned in case shared memory is
 	// resized before the next lock
@@ -382,7 +755,28 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
-	char *newname = resolveHostname(ipaddr);
+	bool truncated = false;
+	char *newname = resolveHostname(udp_sock, false, dest, ipaddr, false, &truncated);
+	if(newname == NULL && truncated)
+	{
+		// Retry with TCP if UDP failed due to truncation (RFC 7766)
+		const int tcp_sock = create_socket(true, dest);
+		newname = resolveHostname(tcp_sock, true, dest, ipaddr, false, NULL);
+		close(tcp_sock);
+	}
+
+	if(newname == NULL)
+	{
+		// We could not resolve the hostname, so we keep the old one
+		// and mark the entry as not new
+		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (failed to resolve via UDP, too)", oldname);
+
+		// Free allocated memory
+		*success = false;
+		free(ipaddr);
+		free(oldname);
+		return oldnamepos;
+	}
 
 	// If no hostname was found, try to obtain hostname from the network table
 	// This may be disabled due to a user setting
@@ -401,6 +795,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	{
 		lock_shm();
 		size_t newnamepos = addstr(newname);
+
+		// Free allocated memory
 		// newname has already been checked against NULL
 		// so we can safely free it
 		free(newname);
@@ -430,21 +826,30 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
-	int clientscount = counters->clients;
+	unsigned int clientscount = counters->clients;
 	unlock_shm();
 
-	int skipped = 0;
-	for(int clientID = 0; clientID < clientscount; clientID++)
+	// Create DNS client socket
+	struct sockaddr_in dest = { 0 };
+	const int udp_sock = create_socket(false, &dest);
+	if(udp_sock < 0)
+	{
+		log_err("Unable to create DNS resolver socket, client host name resolution failed");
+		return;
+	}
+
+	unsigned int skipped = 0;
+	for(unsigned int clientID = 0; clientID < clientscount; clientID++)
 	{
 		// Memory access needs to get locked
 		lock_shm();
 		// Get client pointer for the first time (reading data)
-		clientsData* client = getClient(clientID, true);
+		clientsData *client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			log_warn("Unable to get client pointer (1) with ID %i in resolveClients(), skipping...", clientID);
-			skipped++;
+			// Client has been recycled, skip it
 			unlock_shm();
+			skipped++;
 			continue;
 		}
 
@@ -452,6 +857,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		if(client->flags.aliasclient)
 		{
 			unlock_shm();
+			skipped++;
 			continue;
 		}
 
@@ -463,10 +869,11 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// Limit for a "recently active" client is two hours ago
 		if(!force_refreshing && !onlynew && client->lastQuery < now - 2*60*60)
 		{
-			log_debug(DEBUG_RESOLVER, "Skipping client %s (%s) because it was inactive for %i seconds",
+			log_debug(DEBUG_RESOLVER, "Skipping client %s -> \"%s\" because it was inactive for %i seconds",
 			          getstr(ippos), getstr(oldnamepos), (int)(now - client->lastQuery));
 
 			unlock_shm();
+			skipped++;
 			continue;
 		}
 
@@ -474,7 +881,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// If not, we will try to re-resolve all known clients
 		if(!force_refreshing && onlynew && !newflag)
 		{
-			log_debug(DEBUG_RESOLVER, "Skipping client %s (%s) because it is not new",
+			log_debug(DEBUG_RESOLVER, "Skipping client %s -> \"%s\" because it is not new",
 			          getstr(ippos), getstr(oldnamepos));
 
 			unlock_shm();
@@ -482,13 +889,13 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			continue;
 		}
 
-		unlock_shm();
-
 		// Check if we want to resolve an IPv6 address
 		bool IPv6 = false;
 		const char *ipaddr = NULL;
 		if((ipaddr = getstr(ippos)) != NULL && strstr(ipaddr,":") != NULL)
 			IPv6 = true;
+
+		unlock_shm();
 
 		// If we're in refreshing mode (onlynew == false), we skip clients if
 		// 1. We should not refresh any hostnames
@@ -511,7 +918,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 					reason = "Looking only for unknown hostnames";
 
 				lock_shm();
-				log_debug(DEBUG_RESOLVER, "Skipping client %s (%s) because it should not be refreshed: %s",
+				log_debug(DEBUG_RESOLVER, "Skipping client %s -> \"%s\" because it should not be refreshed: %s",
 				          getstr(ippos), getstr(oldnamepos), reason);
 				unlock_shm();
 			}
@@ -520,7 +927,8 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		}
 
 		// Obtain/update hostname of this client
-		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
+		bool success = true;
+		size_t newnamepos = resolveAndAddHostname(udp_sock, &dest, ippos, oldnamepos, &success);
 
 		lock_shm();
 		// Get client pointer for the second time (writing data)
@@ -530,12 +938,26 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			log_warn("Unable to get client pointer (2) with ID %i in resolveClients(), skipping...", clientID);
+			log_warn("Unable to get client pointer (2) with ID %u in resolveClients(), skipping...", clientID);
 			skipped++;
 			unlock_shm();
 			continue;
 		}
 
+		if(!success)
+		{
+			// We could not resolve the hostname, so we keep the old one
+			// and mark the entry as not new - it will be retried later
+			client->flags.new = false;
+
+			log_debug(DEBUG_RESOLVER, "Client %s -> \"%s\" could not be resolved, retrying later",
+			          getstr(ippos), getstr(oldnamepos));
+
+			unlock_shm();
+			continue;
+		}
+
+		// else:
 		// Store obtained host name (may be unchanged)
 		client->namepos = newnamepos;
 		// Mark entry as not new
@@ -546,8 +968,11 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		unlock_shm();
 	}
 
-	log_debug(DEBUG_RESOLVER, "%i / %i client host names resolved",
-	          clientscount-skipped, clientscount);
+	// Close socket
+	close(udp_sock);
+
+	log_debug(DEBUG_RESOLVER, "%u / %u client host names resolved",
+	          clientscount - skipped, clientscount);
 }
 
 // Resolve upstream destination host names
@@ -559,16 +984,25 @@ static void resolveUpstreams(const bool onlynew)
 	int upstreams = counters->upstreams;
 	unlock_shm();
 
+	// Create socket
+	struct sockaddr_in dest = { 0 };
+	const int udp_sock = create_socket(false, &dest);
+	if(udp_sock < 0)
+	{
+		log_err("Unable to create DNS resolver socket, client host name resolution failed");
+		return;
+	}
+
 	int skipped = 0;
 	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
 		// Memory access needs to get locked
 		lock_shm();
 		// Get upstream pointer for the first time (reading data)
-		upstreamsData* upstream = getUpstream(upstreamID, true);
+		upstreamsData *upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 		{
-			log_warn("Unable to get upstream pointer with ID %i in resolveUpstreams(), skipping...", upstreamID);
+			// This is not a fatal error, as the upstream may have been recycled
 			skipped++;
 			unlock_shm();
 			continue;
@@ -582,7 +1016,7 @@ static void resolveUpstreams(const bool onlynew)
 		// Limit for a "recently active" upstream server is two hours ago
 		if(upstream->lastQuery < now - 2*60*60)
 		{
-			log_debug(DEBUG_RESOLVER, "Skipping upstream %s (%s) because it was inactive for %i seconds",
+			log_debug(DEBUG_RESOLVER, "Skipping upstream %s -> \"%s\" because it was inactive for %i seconds",
 			          getstr(ippos), getstr(oldnamepos), (int)(now - upstream->lastQuery));
 
 			unlock_shm();
@@ -605,7 +1039,8 @@ static void resolveUpstreams(const bool onlynew)
 		}
 
 		// Obtain/update hostname of this client
-		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
+		bool success = true;
+		size_t newnamepos = resolveAndAddHostname(udp_sock, &dest, ippos, oldnamepos, &success);
 
 		lock_shm();
 		// Get upstream pointer for the second time (writing data)
@@ -621,6 +1056,19 @@ static void resolveUpstreams(const bool onlynew)
 			continue;
 		}
 
+		if(!success)
+		{
+			// We could not resolve the hostname, so we keep the old one
+			// and mark the entry as not new - it will be retried later
+			upstream->flags.new = false;
+
+			log_debug(DEBUG_RESOLVER, "Upstream %s -> \"%s\" could not be resolved, retrying later",
+			          getstr(ippos), getstr(oldnamepos));
+
+			unlock_shm();
+			continue;
+		}
+
 		// Store obtained host name (may be unchanged)
 		upstream->namepos = newnamepos;
 		// Mark entry as not new
@@ -631,6 +1079,9 @@ static void resolveUpstreams(const bool onlynew)
 		unlock_shm();
 	}
 
+	// Close socket
+	close(udp_sock);
+
 	log_debug(DEBUG_RESOLVER, "%i / %i upstream server host names resolved",
 	          upstreams-skipped, upstreams);
 }
@@ -638,9 +1089,14 @@ static void resolveUpstreams(const bool onlynew)
 void *DNSclient_thread(void *val)
 {
 	// Set thread name
-	thread_names[DNSclient] = "DNS client";
-	thread_running[DNSclient] = true;
 	prctl(PR_SET_NAME, thread_names[DNSclient], 0, 0, 0);
+
+	// Test struct sizes
+	if(!check_struct_sizes())
+	{
+		log_err("Struct sizes do not match expected sizes, aborting resolver thread");
+		return NULL;
+	}
 
 	// Initial delay until we first try to resolve anything
 	thread_sleepms(DNSclient, 2000);
@@ -702,6 +1158,5 @@ void *DNSclient_thread(void *val)
 	}
 
 	log_info("Terminating resolver thread");
-	thread_running[DNSclient] = false;
 	return NULL;
 }

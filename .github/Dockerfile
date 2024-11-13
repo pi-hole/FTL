@@ -1,26 +1,34 @@
-ARG BUILDER="alpine"
-FROM ghcr.io/pi-hole/ftl-build:ftl-build-libnunwind-${BUILDER} AS builder
+FROM ghcr.io/pi-hole/ftl-build:v2.9 AS builder
 
 WORKDIR /app
 
 COPY . /app
 
 ARG CI_ARCH="linux/amd64"
-ENV CI_ARCH ${CI_ARCH}
+ENV CI_ARCH=${CI_ARCH}
 ARG GIT_BRANCH="test"
-ENV GIT_BRANCH ${GIT_BRANCH}
+ENV GIT_BRANCH=${GIT_BRANCH}
 ARG GIT_TAG="test"
-ENV GIT_TAG ${GIT_TAG}
+ENV GIT_TAG=${GIT_TAG}
+ARG BUILD_OPTS=""
+ENV BUILD_OPTS=${BUILD_OPTS}
+
+# Setting TERM is needed for pretty output in BATS tests
+ENV TERM=xterm
+
+# Monkeypatch BATS to remove duplicate output of starting and finished test
+# BATS uses ANSI escape codes to overwrite the line after the test has finished
+# This is not supported by Github Actions as it does not provide a TTY to the docker build container
+RUN sed -i '/buffer_with_truncation /d' /bats-core/libexec/bats-core/bats-format-pretty
+
+# Temporary
+RUN apk add libunwind-dev libunwind-static libunwind-dbg xz-static xz-dev
 
 # Build FTL
 # Remove possible old build files
 RUN rm -rf cmake && \
-# Build FTL
-    bash build.sh "-DSTATIC=${STATIC}" && \
-# Run binary architecture tests
-    bash test/arch_test.sh && \
-# Run full test suite
-    bash test/run.sh && \
+# Build and test FTL
+    bash build.sh "-DSTATIC=${STATIC}" test ${BUILD_OPTS} && \
 # Run crash test
     [[ ./pihole-FTL crash || true ]] && \
 # Move FTL binary to root directory

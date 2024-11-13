@@ -24,6 +24,7 @@ set(sources
         hex/specs/common.yaml
         hex/specs/dhcp.yaml
         hex/specs/dns.yaml
+        hex/specs/docs.yaml
         hex/specs/domains.yaml
         hex/specs/endpoints.yaml
         hex/specs/groups.yaml
@@ -33,6 +34,7 @@ set(sources
         hex/specs/logs.yaml
         hex/specs/main.yaml
         hex/specs/network.yaml
+        hex/specs/padd.yaml
         hex/specs/queries.yaml
         hex/specs/search.yaml
         hex/specs/stats.yaml

@@ -10,6 +10,10 @@ components:
         operationId: "get_gateway"
         description: |
           This API hook returns infos about the gateway of your Pi-hole.
+
+          If the optional parameter `detailed` is set to `true`, the response will include detailed information about the individual interfaces and routes. Note that the available information is dependent on the interface type and state.
+        parameters:
+          - $ref: 'network.yaml#/components/parameters/devices/detailed'
         responses:
           '200':
             description: OK
@@ -27,14 +31,47 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+    routes:
+      get:
+        summary: Get info about the routes of your Pi-hole
+        tags:
+          - "Network information"
+        operationId: "get_routes"
+        parameters:
+          - $ref: 'network.yaml#/components/parameters/devices/detailed'
+        description: |
+          This API hook returns infos about the networking routes of your Pi-hole. Note that not all described fields are applicable to any routing type. Users must not rely on the presence of any field without checking the route type first.
+
+          If the optional parameter `detailed` is set to `true`, the response will include more detailed information about the individual routes where the available information is dependent on the route type and state.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'network.yaml#/components/schemas/routes'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     interfaces:
       get:
         summary: Get info about the interfaces of your Pi-hole
         tags:
           - "Network information"
         operationId: "get_interfaces"
+        parameters:
+          - $ref: 'network.yaml#/components/parameters/devices/detailed'
         description: |
-          This API hook returns infos about the networking interfaces of your Pi-hole.
+          This API hook returns infos about the networking interfaces of your Pi-hole. Note that not all described fields are applicable to any routing type. Users must not rely on the presence of any field without checking the route type first.
+
+          If the optional parameter `detailed` is set to `true`, the response will include more detailed information about the individual interfaces where the available information is dependent on the interface type and state.
         responses:
           '200':
             description: OK
@@ -93,6 +130,20 @@ components:
         responses:
           '204':
             description: No Content (deleted)
+          '404':
+            description: Not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '401':
             description: Unauthorized
             content:
@@ -105,14 +156,144 @@ components:
     gateway:
       type: object
       properties:
-        address:
-          type: string
-          description: Address of the gateway
-          example: "192.168.0.1"
-        interface:
-          type: string
-          description: Interface of your Pi-hole connected to the gateway
-          example: "eth0"
+        gateway:
+          type: array
+          items:
+            type: object
+            properties:
+              family:
+                type: string
+                description: Address family
+              interface:
+                type: string
+                description: Interface name
+              address:
+                type: string
+                description: Gateway address
+              local:
+                type: array
+                description: Local interface addresses
+                items:
+                  type: string
+          example:
+            - family: "inet"
+              interface: "eth0"
+              address: "192.168.0.1"
+              local:
+                - "192.168.0.22"
+            - family: "inet6"
+              interface: "eth0"
+              address: "fe80::3587:2fff:f11a:1"
+              local:
+                - "fe80::3587:2fff:f11a:4321"
+    routes:
+      type: object
+      properties:
+        routes:
+          type: array
+          description: Array of routes
+          items:
+            type: object
+            properties:
+              gateway:
+                type: string
+                description: Gateway address
+              family:
+                type: string
+                enum: [ "inet", "inet6", "link", "mpls", "bridge", "???" ]
+                description: Address family
+              table:
+                type: integer
+                description: Routing table ID (0 = unspecified, 253 = default, 254 = local, 255 = local, other = user-defined)
+              protocol:
+                type: string
+                description: Routing protocol
+              scope:
+                type: string
+                description: Routing scope
+              type:
+                type: string
+                description: Routing type
+              flags:
+                type: array
+                description: Array of route flags
+                items:
+                  type: string
+              oif:
+                type: string
+                description: Outgoing interface
+              iif:
+                type: string
+                description: Incoming interface
+              dst:
+                type: string
+                description: Destination address (or "default" for the default route)
+              src:
+                type: string
+                description: Source address
+              prefsrc:
+                type: string
+                description: Preferred source address
+              priority:
+                type: integer
+                description: Route priority
+              pref:
+                type: integer
+                description: Route preference
+
+          example:
+            - family: "inet"
+              table: 254
+              protocol: "static"
+              scope: "universe"
+              type: "unicast"
+              flags: []
+              gateway: "192.168.0.1"
+              oif: "eth0"
+            - family: "inet"
+              table: 254
+              protocol: "boot"
+              scope: "link"
+              type: "unicast"
+              flags: []
+              dst: "10.1.0.0"
+              oif: "wg0"
+            - family: "inet"
+              table: 255
+              protocol: "kernel"
+              scope: "host"
+              type: "local"
+              flags: []
+              dst: "127.0.0.1"
+              prefsrc: "127.0.0.1"
+              oif: "lo"
+            - family: "inet6"
+              table: 255
+              protocol: "kernel"
+              scope: "universe"
+              type: "local"
+              flags: []
+              dst: "::1"
+              priority: 0
+              oif: "eth0"
+            - family: "inet6"
+              table: 254
+              protocol: "static"
+              scope: "universe"
+              type: "unicast"
+              flags: []
+              gateway: "fe80::3587:2fff:f11a:4321"
+              oif: "eth0"
+            - family: "inet6"
+              table: 255
+              protocol: "kernel"
+              scope: "universe"
+              type: "multicast"
+              flags: []
+              dst: "fd00:4711::"
+              priority: 5
+              oif: "wg0"
+
     interfaces:
       type: object
       properties:
@@ -124,81 +305,259 @@ components:
             properties:
               name:
                 type: string
-                nullable: true
                 description: Interface name
-              carrier:
-                type: boolean
-                description: If the interface is connected
               speed:
                 type: integer
-                description: Speed of the interface in Mbit/s (-1 if not applicable)
-              tx:
-                type: object
-                properties:
-                  num:
-                    type: number
-                    description: Number of transmitted data since boot
-                  unit:
-                    type: string
-                    description: Unit of transmitted data since boot
-              rx:
-                type: object
-                properties:
-                  num:
-                    type: number
-                    description: Number of received data since boot
-                  unit:
-                    type: string
-                    description: Unit of received data since boot
-              ipv4:
-                type: array
                 nullable: true
-                description: Array of associated IPv4 addresses
+                description: Speed of the interface in Mbit/s (`null` if not applicable)
+              carrier:
+                type: boolean
+                description: Whether the interface is connected
+              type:
+                type: string
+                description: Type of the interface
+              flags:
+                type: array
+                description: Array of address flags
                 items:
                   type: string
-              ipv6:
+              state:
+                type: string
+                description: State of the interface
+              proto_down:
+                type: boolean
+                description: Whether the interface is administratively down
+              address:
+                type: string
+                description: Interface hardware address
+              broadcast:
+                type: string
+                description: Interface broadcast address
+              perm_address:
+                type: string
+                description: Interface permanent hardware address
+              stats:
+                type: object
+                properties:
+                  rx_bytes:
+                    type: object
+                    description: Interface received bytes
+                    properties:
+                      value:
+                        type: number
+                        description: Number of received bytes
+                      unit:
+                        type: string
+                        description: Unit of the received bytes
+                  tx_bytes:
+                    type: object
+                    description: Interface transmitted bytes
+                    properties:
+                      value:
+                        type: number
+                        description: Number of transmitted bytes
+                      unit:
+                        type: string
+                        description: Unit of the transmitted bytes
+              addresses:
                 type: array
                 nullable: true
-                description: Array of associated IPv6 addresses
+                description: Array of associated IPv addresses
                 items:
-                  type: string
+                  type: object
+                  properties:
+                    address:
+                      type: string
+                      description: Interface address
+                    address_type:
+                      type: string
+                      description: Type of the interface address
+                    broadcast:
+                      type: string
+                      description: Interface broadcast address
+                    broadcast_type:
+                      type: string
+                      description: Type of the broadcast address
+                    local:
+                      type: string
+                      description: Local address
+                    local_type:
+                      type: string
+                      description: Type of the local address
+                    label:
+                      type: string
+                      description: Interface label
+                    family:
+                      type: string
+                      enum: [ "inet", "inet6", "link", "mpls", "bridge", "???" ]
+                      description: Address family
+                    flags:
+                      type: array
+                      description: Array of address flags
+                      items:
+                        type: string
+                    prefixlen:
+                      type: integer
+                      description: Prefix length of the interface address
+                    scope:
+                      type: string
+                      description: Address scope
+                    prefered:
+                      type: integer
+                      description: Preferred lifetime of the address (`4294967295` = forever)
+                    valid:
+                      type: integer
+                      description: Valid lifetime of the address (`4294967295` = forever)
+                    cstamp:
+                      type: number
+                      description: Creation timestamp of the address
+                    tstamp:
+                      type: number
+                      description: Updated timestamp of the address
           example:
+            - name: "lo"
+              speed: null
+              type: "loopback"
+              flags: [ "up", "loopback", "running", "lower_up" ]
+              state: "unknown"
+              carrier: true
+              address: "00:00:00:00:00:00"
+              broadcast: "00:00:00:00:00:00"
+              stats:
+                rx_bytes:
+                  value: 81.6571641
+                  unit: "MB"
+                tx_bytes:
+                  value: 648.818
+                  unit: "MB"
+              addresses:
+                - address: "127.0.0.1"
+                  address_type: "loopback"
+                  local: "127.0.0.1"
+                  local_type: "loopback"
+                  family: "inet"
+                  scope: "host"
+                  flags: [ "permanent" ]
+                  prefixlen: 8
+                  label: "lo"
+                  prefered: 4294967295
+                  valid: 4294967295
+                  cstamp: 1720989931
+                  tstamp: 1720989931
+                - address: "::1"
+                  address_type: "loopback"
+                  local: "::1"
+                  local_type: "loopback"
+                  family: "inet6"
+                  scope: "host"
+                  flags: [ "permanent" ]
+                  prefixlen: 128
+                  label: "lo"
+                  prefered: 4294967295
+                  valid: 4294967295
+                  cstamp: 1720989931.1
+                  tstamp: 1720989931.1
             - name: "eth0"
-              default: true
-              carrier: true
               speed: 1000
-              tx:
-                num: 10.4
-                unit: "MB"
-              rx:
-                num: 8.1
-                unit: "MB"
-              ipv4: ["192.168.0.123"]
-              ipv6: ["fe80::1234:5678:9abc:def0", "2001:db8::1234:5678:9abc:def0"]
-            - name: "wlan0"
-              default: false
-              carrier: false
-              speed: -1
-              tx:
-                num: 0
-                unit: "B"
-              rx:
-                num: 0
-                unit: "B"
-              ipv4: []
-              ipv6: []
-            - name: "wg0"
-              default: false
+              type: "ether"
+              flags: [ "up", "broadcast", "running", "multicast", "lower_up" ]
+              state: "up"
               carrier: true
-              speed: -1
-              tx:
-                num: 170.3
-                unit: "kB"
-              rx:
-                num: 222.3
-                unit: "kB"
-              ipv4: ["10.1.0.1"]
-              ipv6: ["fd00:4711::1"]
+              address: "00:11:22:33:44:55"
+              broadcast: "ff:ff:ff:ff:ff:ff"
+              perm_address: "00:11:22:33:44:55"
+              stats:
+                rx_bytes:
+                  value: 15.5585
+                  unit: "GB"
+                tx_bytes:
+                  value: 1.55858
+                  unit: "GB"
+              addresses:
+                - address: "192.168.0.123"
+                  address_type: "private"
+                  local: "192.168.0.123"
+                  local_type: "private"
+                  family: "inet"
+                  scope: "universe"
+                  flags: [ "permanent" ]
+                  prefixlen: 24
+                  label: "eth0"
+                  prefered: 4294967295
+                  valid: 4294967295
+                  cstamp: 1720989931.1
+                  tstamp: 1720989931.1
+                - address: "2001:db8::1234:5678:9abc:def0"
+                  address_type: "global (GUA)"
+                  family: "inet6"
+                  scope: "universe"
+                  flags: []
+                  prefixlen: 64
+                  label: "eth0"
+                  prefered: 3461
+                  valid: 7061
+                  cstamp: 2789057.25
+                  tstamp: 2789057.25
+                - address: "fd29:db8::1234:5678:9abc:def0"
+                  address_type: "site-local (ULA)"
+                  family: "inet6"
+                  scope: "universe"
+                  flags: []
+                  prefixlen: 64
+                  label: "eth0"
+                  prefered: 3461
+                  valid: 7061
+                  cstamp: 1720989931.1
+                  tstamp: 1720989931.1
+                - address: "fe80::1234:5678:9abc:def0"
+                  address_type: "link-local (LL)"
+                  family: "inet6"
+                  scope: "link"
+                  flags: [ "permanent" ]
+                  prefixlen: 64
+                  label: "eth0"
+                  prefered: 4294967295
+                  valid: 4294967295
+                  cstamp: 1720989931.1
+                  tstamp: 1720989931.1
+            - name: "wg0"
+              speed: null
+              type: "none"
+              flags: [ "up", "pointopoint", "running", "noarp", "lower_up" ]
+              state: "unknown"
+              carrier: true
+              stats:
+                rx_bytes:
+                  value: 458.44598
+                  unit: "MB"
+                tx_bytes:
+                  value: 5.5895
+                  unit: "MB"
+              addresses:
+                - address: "10.1.0.1"
+                  address_type: "private"
+                  local: "10.1.0.1"
+                  local_type: "private"
+                  family: "inet"
+                  scope: "universe"
+                  flags: [ "permanent" ]
+                  prefixlen: 24
+                  label: "wg0"
+                  prefered: 4294967295
+                  valid: 4294967295
+                  cstamp: 1720989931.1
+                  tstamp: 1720989931.1
+                - address: "fd00:4711::1"
+                  address_type: "site-local (ULA)"
+                  family: "inet6"
+                  scope: "global"
+                  flags: [ "permanent" ]
+                  prefixlen: 64
+                  label: "wg0"
+                  prefered: 4294967295
+                  valid: 4294967295
+                  cstamp: 1720989931.1
+                  tstamp: 1720989931.1
     devices:
       type: object
       properties:
@@ -234,7 +593,8 @@ components:
                 example: 585462
               macVendor:
                 type: string
-                description: Vendor name associated with the device's MAC address
+                nullable: true
+                description: Vendor name associated with the device's MAC address (if available)
                 example: "Digital Data Communications Asia Co.,Ltd"
               ips:
                 type: array
@@ -248,6 +608,7 @@ components:
                     name:
                       type: string
                       description: Associated hostname (can be null)
+                      nullable: true
                       example: ubuntu-server
                     lastSeen:
                       type: integer
@@ -280,8 +641,16 @@ components:
       device_id:
         in: path
         description: Device ID
-        name: id
+        name: device_id
         schema:
           type: integer
         required: true
         example: 1
+      detailed:
+        in: query
+        description: (Optional) Detailed interface/routing information
+        name: detailed
+        schema:
+          type: boolean
+        required: false
+        example: false

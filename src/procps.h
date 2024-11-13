@@ -10,7 +10,7 @@
 
 #ifndef PROCPS_H
 #define PROCPS_H
-bool check_running_FTL(void);
+bool another_FTL(void);
 
 struct proc_mem {
 	// Memory currently resident in RAM (in kB)
@@ -39,7 +39,6 @@ struct proc_meminfo {
 	unsigned long cached;
 };
 
-bool read_self_memory_status(struct statm_t *result);
 bool getProcessMemory(struct proc_mem *mem, const unsigned long total_memory);
 bool parse_proc_meminfo(struct proc_meminfo *mem);
 

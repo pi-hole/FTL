@@ -8,14 +8,18 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(CMAKE_C_STANDARD 11)
-
 # Default to a release with debug info build
 if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
     if (NOT CMAKE_BUILD_TYPE)
         set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "" FORCE)
     endif()
 endif()
+
+# Do not add run time path information
+# This ensures CMake does not add rpath information to the binary and
+# subsequently strip it from the binary during install causing the binary
+# validation to fail. RPATH is not needed for the FTL binary
+SET(CMAKE_SKIP_RPATH TRUE)
 
 # Put runtime output, i.e. pihole-FTL, in the root of the build dir
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
@@ -24,18 +28,23 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_DEFAULT_MEMSTATUS=0: This setting causes the sqlite3_status() interfaces that track memory usage to be disabled. This helps the sqlite3_malloc() routines run much faster, and since SQLite uses sqlite3_malloc() internally, this helps to make the entire library faster.
 # SQLITE_OMIT_DEPRECATED: Omitting deprecated interfaces and features will not help SQLite to run any faster. It will reduce the library footprint, however. And it is the right thing to do.
 # SQLITE_OMIT_PROGRESS_CALLBACK: The progress handler callback counter must be checked in the inner loop of the bytecode engine. By omitting this interface, a single conditional is removed from the inner loop of the bytecode engine, helping SQL statements to run slightly faster.
+# SQLITE_OMIT_SHARED_CACHE: This option builds SQLite without support for shared cache mode. The sqlite3_enable_shared_cache() is omitted along with a fair amount of logic within the B-Tree subsystem associated with shared cache management. This compile-time option is recommended most applications as it results in improved performance and reduced library footprint.
 # SQLITE_DEFAULT_FOREIGN_KEYS=1: This macro determines whether enforcement of foreign key constraints is enabled or disabled by default for new database connections.
 # SQLITE_DQS=0: This setting disables the double-quoted string literal misfeature.
 # SQLITE_ENABLE_DBPAGE_VTAB: Enables the SQLITE_DBPAGE virtual table. Warning: writing to the SQLITE_DBPAGE virtual table can very easily cause unrecoverably database corruption.
 # SQLITE_TEMP_STORE=2: Store temporary tables in memory for reduced IO and higher performance (can be overwritten by the user at runtime).
-# SQLITE_USE_URI=1: The advantage of using a URI filename is that query parameters on the URI can be used to control details of the newly created database connection.
-# HAVE_READLINE: Enable readline support to allow easy editing, history and auto-completion
 # SQLITE_DEFAULT_CACHE_SIZE=-16384: Allow up to 16 MiB of cache to be used by SQLite3 (default is 2000 kiB)
-set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=2 -DSQLITE_USE_URI=1 -DHAVE_READLINE -DSQLITE_DEFAULT_CACHE_SIZE=16384")
+# SQLITE_DEFAULT_SYNCHRONOUS=1: Use normal synchronous mode (default is 2)
+# SQLITE_LIKE_DOESNT_MATCH_BLOBS: This option causes the LIKE operator to only match BLOB values against BLOB values and TEXT values against TEXT values. This compile-time option makes SQLite run more efficiently when processing queries that use the LIKE operator.
+# HAVE_MALLOC_USABLE_SIZE: This option causes SQLite to try to use the malloc_usable_size() function to obtain the actual size of memory allocations from the underlying malloc() system interface. Applications are encouraged to use HAVE_MALLOC_USABLE_SIZE whenever possible.
+# HAVE_FDATASYNC: This option causes SQLite to try to use the fdatasync() system call to sync the database file to disk when committing a transaction. Syncing using fdatasync() is faster than syncing using fsync() as fdatasync() does not wait for the file metadata to be written to disk.
+# SQLITE_DEFAULT_WORKER_THREADS=4: This option sets the default number of worker threads to use when doing parallel sorting and indexing. The default is 0 which means to use a single thread. The default for SQLITE_MAX_WORKER_THREADS is 8.
+# SQLITE_MAX_PREPARE_RETRY=200: This option sets the maximum number of automatic re-preparation attempts that can occur after encountering a schema change. This can be caused by running ANALYZE which is done periodically by FTL.
+set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=2 -DSQLITE_DEFAULT_CACHE_SIZE=16384 -DSQLITE_DEFAULT_SYNCHRONOUS=1 -DSQLITE_LIKE_DOESNT_MATCH_BLOBS -DHAVE_MALLOC_USABLE_SIZE -DHAVE_FDATASYNC -DSQLITE_DEFAULT_WORKER_THREADS=4 -DSQLITE_MAX_PREPARE_RETRY=200")
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
-# -Wp,-D_FORTIFY_SOURCE=2 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts
+# -Wp,-D_FORTIFY_SOURCE=3 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts. We may have to undefine _FORTIFY_SOURCE to avoid a warning about the redefinition of this macro
 # -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
 # -g3: More debugging information
@@ -47,8 +56,10 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 # -Wl,-z,now: Disable lazy binding
 # -Wl,-z,relro: Read-only segments after relocation
 # -fno-common: Emit globals without explicit initializer from `.bss` to `.data`. This causes GCC to reject multiple definitions of global variables. This is the new default from GCC-10 on.
-set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
-set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=3 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
+    set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
+endif()
 
 # -Wall: This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros. This also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
 # -Wextra: This enables some extra warning flags that are not enabled by -Wall.
@@ -149,11 +160,32 @@ else()
 set(EXTRAWARN_GCC13 "")
 endif()
 
-set(EXTRAWARN "${EXTRAWARN_GCC6} \
-               ${EXTRAWARN_GCC7} \
-               ${EXTRAWARN_GCC8} \
-               ${EXTRAWARN_GCC12} \
-               ${EXTRAWARN_GCC13}")
+# Set extrawarn flags if CC is GCC
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+   set(EXTRAWARN "${EXTRAWARN_GCC6} \
+                  ${EXTRAWARN_GCC7} \
+                  ${EXTRAWARN_GCC8} \
+                  ${EXTRAWARN_GCC12} \
+                  ${EXTRAWARN_GCC13}")
+elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    set(EXTRAWARN "
+                   -Werror \
+                   -Wnewline-eof \
+                   -Wno-dangling-else \
+                   -Wno-gnu-zero-variadic-macro-arguments \
+                   -Wno-gnu-variable-sized-type-not-at-end \
+                   -Wno-declaration-after-statement \
+                   -Wno-reserved-identifier \
+                   -Wno-reserved-macro-identifier")
+else()
+    message(WARNING "Unknown compiler, not setting warnings flags")
+    set(EXTRAWARN "")
+endif()
+
+# Remove extra spaces from EXTRAWARN
+string(REGEX REPLACE " +" " " EXTRAWARN "${EXTRAWARN}")
+
+# Separate EXTRAWARN into a list of arguments
 separate_arguments(EXTRAWARN)
 
 # -Wxor-used-as-pow
@@ -174,11 +206,14 @@ else()
     message(STATUS "Compiling dynamically linked executable")
 endif()
 # -pie -fPIE: (Dynamic) position independent executable
-set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
+
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
+endif()
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 # We define HAVE_POLL_H as this is needed for the musl builds to succeed
-set(CMAKE_C_FLAGS "-pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
+set(CMAKE_C_FLAGS "-std=c99 -pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
 
 set(CMAKE_C_FLAGS_DEBUG "-O0 -g3")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
@@ -208,6 +243,8 @@ set(sources
         gc.h
         log.c
         log.h
+        lookup-table.c
+        lookup-table.h
         main.c
         main.h
         metrics.h
@@ -219,14 +256,10 @@ set(sources
         regex_r.h
         resolve.c
         resolve.h
-        setupVars.c
-        setupVars.h
         shmem.c
         shmem.h
         signals.c
         signals.h
-        struct_size.c
-        struct_size.h
         timers.c
         timers.h
         vector.c
@@ -241,15 +274,14 @@ add_custom_target(
         COMMAND ${CMAKE_COMMAND} -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -P ${CMAKE_CURRENT_SOURCE_DIR}/gen_version.cmake
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_library(FTL OBJECT ${sources})
-target_compile_options(FTL PRIVATE ${EXTRAWARN})
-target_compile_definitions(FTL PRIVATE DNSMASQ_VERSION=\"${DNSMASQ_VERSION}\")
-target_include_directories(FTL PRIVATE ${PROJECT_SOURCE_DIR}/src)
-add_dependencies(FTL gen_version)
-
+add_library(core OBJECT ${sources})
+target_compile_options(core PRIVATE ${EXTRAWARN})
+target_compile_definitions(core PRIVATE DNSMASQ_VERSION=\"${DNSMASQ_VERSION}\")
+target_include_directories(core PRIVATE ${PROJECT_SOURCE_DIR}/src)
+add_dependencies(core gen_version)
 
 add_executable(pihole-FTL
-        $<TARGET_OBJECTS:FTL>
+        $<TARGET_OBJECTS:core>
         $<TARGET_OBJECTS:api>
         $<TARGET_OBJECTS:api_docs>
         $<TARGET_OBJECTS:webserver>
@@ -261,36 +293,43 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
         $<TARGET_OBJECTS:lua>
+        $<TARGET_OBJECTS:ftl_lua>
         $<TARGET_OBJECTS:tre-regex>
         $<TARGET_OBJECTS:syscalls>
         $<TARGET_OBJECTS:tomlc99>
         $<TARGET_OBJECTS:config>
         $<TARGET_OBJECTS:tools>
+        $<TARGET_OBJECTS:ntp>
         )
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
-    target_link_libraries(pihole-FTL -static-libgcc -static -pie)
+    target_link_libraries(pihole-FTL -static-libgcc -static)
+    set(LIBRARY_SUFFIX "${CMAKE_STATIC_LIBRARY_SUFFIX}")
 else()
     find_library(LIBMATH m)
     target_link_libraries(pihole-FTL ${LIBMATH})
+    set(LIBRARY_SUFFIX "")
 endif()
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
 # for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
-find_library(LIBHOGWEED NAMES libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX} hogweed HINTS /usr/local/lib64)
-find_library(LIBGMP NAMES libgmp${CMAKE_STATIC_LIBRARY_SUFFIX} gmp)
-find_library(LIBNETTLE NAMES libnettle${CMAKE_STATIC_LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
-find_library(LIBIDN NAMES libidn${CMAKE_STATIC_LIBRARY_SUFFIX} idn)
-find_library(LIBDL NAMES libdl${CMAKE_STATIC_LIBRARY_SUFFIX} dl)
-target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN} -ldl ${LIBDL})
+find_library(LIBHOGWEED NAMES libhogweed${LIBRARY_SUFFIX} hogweed HINTS /usr/local/lib64)
+find_library(LIBGMP NAMES libgmp${LIBRARY_SUFFIX} gmp)
+find_library(LIBNETTLE NAMES libnettle${LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
+
+# for IDN2 we need the idn2 library which in turn depends on the unistring library
+find_library(LIBIDN2 NAMES libidn2${LIBRARY_SUFFIX} idn2)
+find_library(LIBUNISTRING NAMES libunistring${LIBRARY_SUFFIX} unistring)
+
+target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN2} ${LIBUNISTRING})
 
 find_library(LIBUNWIND NAMES libunwind${CMAKE_STATIC_LIBRARY_SUFFIX} unwind)
 if(LIBUNWIND)
     message(STATUS "Building FTL with unwinding support: YES")
-    target_compile_definitions(FTL PRIVATE USE_UNWIND)
+    target_compile_definitions(core PRIVATE USE_UNWIND)
     target_compile_definitions(pihole-FTL PRIVATE USE_UNWIND)
     target_link_libraries(pihole-FTL ${LIBUNWIND})
 else()
@@ -301,55 +340,6 @@ if(LUA_DL STREQUAL "true")
     find_library(LIBDL dl)
     target_link_libraries(pihole-FTL ${LIBDL})
 endif()
-
-find_library(LIBREADLINE NAMES libreadline${CMAKE_STATIC_LIBRARY_SUFFIX} readline)
-find_library(LIBHISTORY NAMES libhistory${CMAKE_STATIC_LIBRARY_SUFFIX} history)
-find_library(LIBTERMCAP NAMES libtermcap${CMAKE_STATIC_LIBRARY_SUFFIX} termcap)
-if(LIBREADLINE AND LIBHISTORY AND LIBTERMCAP)
-    message(STATUS "Building FTL with readline support: YES")
-    target_compile_definitions(FTL PRIVATE LUA_USE_READLINE)
-    target_compile_definitions(pihole-FTL PRIVATE LUA_USE_READLINE)
-    target_link_libraries(pihole-FTL ${LIBREADLINE} ${LIBHISTORY} ${LIBTERMCAP})
-else()
-    message(STATUS "Building FTL with readline support: NO")
-endif()
-
-# Do we want to compile an all-in FTL version?
-if(DEFINED ENV{CI_ARCH})
-  if($ENV{CI_ARCH} STREQUAL "x86_64_full")
-    add_definitions(-DDNSMASQ_ALL_OPTS)
-    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
-    find_package(DBus REQUIRED)
-    # Use results of find_package() call.
-    include_directories(${DBUS_INCLUDE_DIRS})
-    target_link_libraries(pihole-FTL ${DBUS_LIBRARIES})
-    find_library(LIBMNL mnl)
-    find_library(LIBNFTNL nftnl)
-    find_library(LIBNFTABLES nftables)
-    find_library(LIBNFNETLINK nfnetlink)
-    find_library(LIBNETFILTER_CONNTRACK netfilter_conntrack)
-    target_link_libraries(pihole-FTL ${LIBMNL} ${LIBNFTABLES} ${LIBNFTNL} ${LIBNFNETLINK} ${LIBNETFILTER_CONNTRACK})
-  endif()
-endif()
-
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-    set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
-endif()
-
-find_library(LIBMBEDCRYPTO NAMES lmbedcrypto${CMAKE_STATIC_LIBRARY_SUFFIX} mbedcrypto)
-find_library(LIBMBEDX509 NAMES lmbedx509${CMAKE_STATIC_LIBRARY_SUFFIX} mbedx509)
-find_library(LIBMBEDTLS NAMES lmbedtls${CMAKE_STATIC_LIBRARY_SUFFIX} mbedtls)
-if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
-    # Link against the mbedTLS libraries, the order is important (!)
-    target_compile_definitions(FTL PRIVATE HAVE_MBEDTLS)
-    target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO})
-endif()
-
-find_program(SETCAP setcap)
-install(TARGETS pihole-FTL
-        RUNTIME DESTINATION bin
-        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE+eip \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 
 add_subdirectory(api)
 add_subdirectory(webserver)
@@ -362,3 +352,58 @@ add_subdirectory(tre-regex)
 add_subdirectory(syscalls)
 add_subdirectory(config)
 add_subdirectory(tools)
+add_subdirectory(ntp)
+
+find_library(LIBREADLINE NAMES libreadline${LIBRARY_SUFFIX} readline)
+find_library(LIBHISTORY NAMES libhistory${LIBRARY_SUFFIX} history)
+find_library(LIBTERMCAP NAMES libtermcap${LIBRARY_SUFFIX} termcap)
+if(LIBREADLINE AND LIBHISTORY AND LIBTERMCAP)
+    message(STATUS "Building FTL with readline support: YES")
+    target_compile_definitions(lua PRIVATE LUA_USE_READLINE)
+    target_compile_definitions(sqlite3 PRIVATE HAVE_READLINE)
+    target_link_libraries(pihole-FTL ${LIBREADLINE} ${LIBHISTORY} ${LIBTERMCAP})
+else()
+    message(STATUS "Building FTL with readline support: NO")
+endif()
+
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
+endif()
+
+find_library(LIBMBEDCRYPTO NAMES lmbedcrypto${LIBRARY_SUFFIX} mbedcrypto)
+find_library(LIBMBEDX509 NAMES lmbedx509${LIBRARY_SUFFIX} mbedx509)
+find_library(LIBMBEDTLS NAMES lmbedtls${LIBRARY_SUFFIX} mbedtls)
+if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
+    # Enable TLS support in civetweb if mbedTLS is available
+    message(STATUS "Building FTL with TLS support: YES")
+    target_compile_definitions(core PRIVATE HAVE_MBEDTLS)
+    target_compile_definitions(civetweb PRIVATE USE_MBEDTLS)
+    target_compile_definitions(webserver PRIVATE HAVE_MBEDTLS)
+    # Link against the mbedTLS libraries, the order is important (!)
+    target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO})
+else()
+    # Disable TLS support in civetweb if mbedTLS is not available
+    message(STATUS "Building FTL with TLS support: NO")
+    target_compile_definitions(civetweb PRIVATE NO_SSL)
+endif()
+
+# After finishing building the FTL binary, we append the sha256sum of the binary
+# in raw form to itself and print the checksum to the console
+add_custom_command(TARGET pihole-FTL POST_BUILD COMMENT "Appending sha256sum to pihole-FTL"
+        COMMAND echo -n "SHA256 checksum of pihole-FTL: " && sha256sum $<TARGET_FILE:pihole-FTL> | cut -d ' ' -f 1
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pihole-FTL> $<TARGET_FILE_DIR:pihole-FTL>/pihole-FTL.tmp
+        COMMAND echo -n "sha256sum" >> $<TARGET_FILE:pihole-FTL>.tmp
+        COMMAND sha256sum $<TARGET_FILE:pihole-FTL>.tmp | cut -d ' ' -f 1 | xxd -r -p >> $<TARGET_FILE:pihole-FTL>.tmp
+        COMMAND mv $<TARGET_FILE:pihole-FTL>.tmp $<TARGET_FILE:pihole-FTL>
+        )
+
+######### Installation target ############
+# Install the binary
+install(TARGETS pihole-FTL
+        RUNTIME DESTINATION bin
+        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+find_program(SETCAP setcap)
+# After installing the binary, we set the capabilities on the binary ...
+install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN,CAP_SYS_TIME+eip \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
+# ... and verify the binary integrity
+install(CODE "execute_process(COMMAND \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL verify)")

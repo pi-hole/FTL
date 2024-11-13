@@ -24,292 +24,140 @@
 #include "database/query-table.h"
 // config struct
 #include "config/config.h"
+// PRIx64
+#include <inttypes.h>
+#include <linux/rtnetlink.h>
+// IFA_LINK and friends
+#include <linux/if_addr.h>
+// nlroutes(), nladdrs(), nllinks()
+#include "tools/netlink.h"
 
-static bool getDefaultInterface(char iface[IF_NAMESIZE], in_addr_t *gw)
+int get_gateway(struct ftl_conn *api, cJSON * json, const bool detailed)
 {
-	// Get IPv4 default route gateway and associated interface
-	unsigned long dest_r = 0, gw_r = 0;
-	unsigned int flags = 0u;
-	int metric = 0, minmetric = __INT_MAX__;
-	char iface_r[IF_NAMESIZE] = { 0 };
-	char buf[1024] = { 0 };
+	// Get routing information
+	cJSON *routes = JSON_NEW_ARRAY();
+	nlroutes(routes, detailed);
 
-	FILE *file;
-	if((file = fopen("/proc/net/route", "r")))
+	// Get interface information ...
+	cJSON *interfaces = JSON_NEW_ARRAY();
+	nllinks(interfaces, detailed);
+	// ... and enrich them with addresses
+	nladdrs(interfaces, detailed);
+
+	cJSON *gateway = JSON_NEW_ARRAY();
+	// Search through routes for the default gateway
+	// They are the ones with "dst" == "default"
+	cJSON *route = NULL;
+	cJSON_ArrayForEach(route, routes)
 	{
-		// Parse /proc/net/route - the kernel's IPv4 routing table
-		while(fgets(buf, sizeof(buf), file))
+		cJSON *dst = cJSON_GetObjectItem(route, "dst");
+		if(dst != NULL &&
+		   cJSON_IsString(dst) &&
+		   strcmp(cJSON_GetStringValue(dst), "default") == 0)
 		{
-			if(sscanf(buf, "%s %lx %lx %x %*i %*i %i", iface_r, &dest_r, &gw_r, &flags, &metric) != 5)
-				continue;
+			cJSON *gwobj = JSON_NEW_OBJECT();
 
-			// Only analyze routes which are UP and whose
-			// destinations are a gateway
-			if(!(flags & RTF_UP) || !(flags & RTF_GATEWAY))
-				continue;
+			// Extract and add family
+			const char *family = cJSON_GetStringValue(cJSON_GetObjectItem(route, "family"));
+			JSON_REF_STR_IN_OBJECT(gwobj, "family", family);
 
-			// Only analyze "catch all" routes (destination 0.0.0.0)
-			if(dest_r != 0)
-				continue;
+			// Extract and add interface name
+			const char *iface_name = cJSON_GetStringValue(cJSON_GetObjectItem(route, "oif"));
+			JSON_COPY_STR_TO_OBJECT(gwobj, "interface", iface_name);
 
-			// Store default gateway, overwrite if we find a route with
-			// a lower metric
-			if(metric < minmetric)
+			// Extract and add gateway address
+			const char *gw_addr = cJSON_GetStringValue(cJSON_GetObjectItem(route, "gateway"));
+			JSON_COPY_STR_TO_OBJECT(gwobj, "address", gw_addr);
+
+			// Extract and add local interface address
+			cJSON *local = JSON_NEW_ARRAY();
+			cJSON *iface = NULL;
+			cJSON_ArrayForEach(iface, interfaces)
 			{
-				minmetric = metric;
-				*gw = gw_r;
-				strcpy(iface, iface_r);
+				const char *ifname = cJSON_GetStringValue(cJSON_GetObjectItem(iface, "name"));
+				if(ifname != NULL && strcmp(ifname, iface_name) == 0)
+				{
+					cJSON *addr = NULL;
+					cJSON *addrs = cJSON_GetObjectItem(iface, "addresses");
+					cJSON_ArrayForEach(addr, addrs)
+					{
+						// Skip addresses belonging to another address family
+						const char *ifamily = cJSON_GetStringValue(cJSON_GetObjectItem(addr, "family"));
+						if(ifamily == NULL || strcmp(ifamily, family) != 0)
+							continue;
 
-				log_debug(DEBUG_API, "Reading interfaces: flags: %u, addr: %s, iface: %s, metric: %i, minmetric: %i",
-				          flags, inet_ntoa(*(struct in_addr *) gw), iface, metric, minmetric);
+						const char *addr_str = cJSON_GetStringValue(cJSON_GetObjectItem(addr, "address"));
+						if(addr_str != NULL)
+							JSON_COPY_STR_TO_ARRAY(local, addr_str);
+					}
+					break;
+				}
 			}
+
+			// Add local addresses array to gateway object
+			JSON_ADD_ITEM_TO_OBJECT(gwobj, "local", local);
+
+			cJSON_AddItemToArray(gateway, gwobj);
 		}
-		fclose(file);
+	}
+
+	// Send gateway information
+	JSON_ADD_ITEM_TO_OBJECT(json, "gateway", gateway);
+
+	if(detailed)
+	{
+		JSON_ADD_ITEM_TO_OBJECT(json, "routes", routes);
+		JSON_ADD_ITEM_TO_OBJECT(json, "interfaces", interfaces);
 	}
 	else
-		log_err("Cannot read /proc/net/route: %s", strerror(errno));
+	{
+		// Free arrays
+		cJSON_Delete(routes);
+		cJSON_Delete(interfaces);
+	}
 
-	// Return success based on having found the default gateway's address
-	return gw != 0;
+	return 0;
 }
 
 int api_network_gateway(struct ftl_conn *api)
 {
-	in_addr_t gw = 0;
-	char iface[IF_NAMESIZE] = { 0 };
+	// Get ?detailed parameter
+	bool detailed = false;
+	get_bool_var(api->request->query_string, "detailed", &detailed);
 
-	// Get default interface
-	getDefaultInterface(iface, &gw);
-
-	// Generate JSON response
 	cJSON *json = JSON_NEW_OBJECT();
-	const char *gwaddr = inet_ntoa(*(struct in_addr *) &gw);
-	JSON_COPY_STR_TO_OBJECT(json, "address", gwaddr);
-	JSON_REF_STR_IN_OBJECT(json, "interface", iface);
+	get_gateway(api, json, detailed);
+
+	JSON_SEND_OBJECT(json);
+}
+
+int api_network_routes(struct ftl_conn *api)
+{
+	// Get ?detailed parameter
+	bool detailed = false;
+	get_bool_var(api->request->query_string, "detailed", &detailed);
+
+	// Add routing information
+	cJSON *routes = JSON_NEW_ARRAY();
+	nlroutes(routes, detailed);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "routes", routes);
 	JSON_SEND_OBJECT(json);
 }
 
 int api_network_interfaces(struct ftl_conn *api)
 {
-	cJSON *json = JSON_NEW_OBJECT();
-
-	// Get interface with default route
-	in_addr_t gw = 0;
-	char default_iface[IF_NAMESIZE] = { 0 };
-	getDefaultInterface(default_iface, &gw);
-
-	// Enumerate and list interfaces
-	// Loop over interfaces and extract information
-	DIR *dfd;
-	FILE *f;
-	struct dirent *dp;
-	size_t tx_sum = 0, rx_sum = 0;
-	char fname[64 + IF_NAMESIZE] = { 0 };
-	char readbuffer[1024] = { 0 };
-
-	// Open /sys/class/net directory
-	if ((dfd = opendir("/sys/class/net")) == NULL)
-	{
-		log_err("API: Cannot access /sys/class/net");
-		return 500;
-	}
-
-	// Get IP addresses of all interfaces on this machine
-	struct ifaddrs *ifap = NULL;
-	if(getifaddrs(&ifap) == -1)
-		log_err("API: Cannot get interface addresses: %s", strerror(errno));
+	// Get ?detailed parameter
+	bool detailed = false;
+	get_bool_var(api->request->query_string, "detailed", &detailed);
 
 	cJSON *interfaces = JSON_NEW_ARRAY();
-	// Walk /sys/class/net directory
-	while ((dp = readdir(dfd)) != NULL)
-	{
-		// Skip "." and ".."
-		if(strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
-			continue;
+	// Get links ...
+	nllinks(interfaces, detailed);
+	// ... and enrich them with addresses
+	nladdrs(interfaces, detailed);
 
-		// Create new interface record
-		cJSON *iface = JSON_NEW_OBJECT();
-
-		// Extract interface name
-		const char *iface_name = dp->d_name;
-		JSON_COPY_STR_TO_OBJECT(iface, "name", iface_name);
-
-		// Is this the default interface?
-		const bool is_default_iface = strcmp(iface_name, default_iface) == 0;
-		JSON_ADD_BOOL_TO_OBJECT(iface, "default", is_default_iface);
-
-		// Extract carrier status
-		bool carrier = false;
-		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/carrier", iface_name);
-		if((f = fopen(fname, "r")) != NULL)
-		{
-			if(fgets(readbuffer, sizeof(readbuffer)-1, f) != NULL)
-				carrier = readbuffer[0] == '1';
-			fclose(f);
-		}
-		else
-			log_err("Cannot read %s: %s", fname, strerror(errno));
-		JSON_ADD_BOOL_TO_OBJECT(iface, "carrier", carrier);
-
-		// Extract link speed (may not be possible, e.g., for WiFi devices with dynamic link speeds)
-		int speed = -1;
-		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/speed", iface_name);
-		if((f = fopen(fname, "r")) != NULL)
-		{
-			if(fscanf(f, "%i", &(speed)) != 1)
-				speed = -1;
-			fclose(f);
-		}
-		else
-			log_err("Cannot read %s: %s", fname, strerror(errno));
-		JSON_ADD_NUMBER_TO_OBJECT(iface, "speed", speed);
-
-		// Get total transmitted bytes
-		ssize_t tx_bytes = -1;
-		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/statistics/tx_bytes", iface_name);
-		if((f = fopen(fname, "r")) != NULL)
-		{
-			if(fscanf(f, "%zi", &(tx_bytes)) != 1)
-				tx_bytes = -1;
-			fclose(f);
-		}
-		else
-			log_err("Cannot read %s: %s", fname, strerror(errno));
-
-		// Format transmitted bytes
-		double tx = 0.0;
-		char tx_unit[3] = { 0 };
-		format_memory_size(tx_unit, tx_bytes, &tx);
-		if(tx_unit[0] != '\0')
-			tx_unit[1] = 'B';
-
-		// Add transmitted bytes to interface record
-		cJSON *tx_json = JSON_NEW_OBJECT();
-		JSON_ADD_NUMBER_TO_OBJECT(tx_json, "num", tx);
-		JSON_COPY_STR_TO_OBJECT(tx_json, "unit", tx_unit);
-		JSON_ADD_ITEM_TO_OBJECT(iface, "tx", tx_json);
-
-		// Get total received bytes
-		ssize_t rx_bytes = -1;
-		snprintf(fname, sizeof(fname)-1, "/sys/class/net/%s/statistics/rx_bytes", iface_name);
-		if((f = fopen(fname, "r")) != NULL)
-		{
-			if(fscanf(f, "%zi", &(rx_bytes)) != 1)
-				rx_bytes = -1;
-			fclose(f);
-		}
-		else
-			log_err("Cannot read %s: %s", fname, strerror(errno));
-
-		// Format received bytes
-		double rx = 0.0;
-		char rx_unit[3] = { 0 };
-		format_memory_size(rx_unit, rx_bytes, &rx);
-		if(rx_unit[0] != '\0')
-			rx_unit[1] = 'B';
-
-		// Add received bytes to JSON object
-		cJSON *rx_json = JSON_NEW_OBJECT();
-		JSON_ADD_NUMBER_TO_OBJECT(rx_json, "num", rx);
-		JSON_COPY_STR_TO_OBJECT(rx_json, "unit", rx_unit);
-		JSON_ADD_ITEM_TO_OBJECT(iface, "rx", rx_json);
-
-		// Get IP address(es) of this interface
-		if(ifap)
-		{
-			// Walk through linked list of interface addresses
-			cJSON *ipv4 = JSON_NEW_ARRAY();
-			cJSON *ipv6 = JSON_NEW_ARRAY();
-			for(struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next)
-			{
-				// Skip interfaces without an address and those
-				// not matching the current interface
-				if(ifa->ifa_addr == NULL || strcmp(ifa->ifa_name, iface_name) != 0)
-					continue;
-
-				// If we reach this point, we found the correct interface
-				const sa_family_t family = ifa->ifa_addr->sa_family;
-				char host[NI_MAXHOST] = { 0 };
-				if(family == AF_INET || family == AF_INET6)
-				{
-					// Get IP address
-					const int s = getnameinfo(ifa->ifa_addr,
-					                          (family == AF_INET) ?
-					                               sizeof(struct sockaddr_in) :
-					                               sizeof(struct sockaddr_in6),
-					                          host, NI_MAXHOST,
-					                          NULL, 0, NI_NUMERICHOST);
-					if (s != 0)
-					{
-						log_warn("API: getnameinfo() failed: %s\n", gai_strerror(s));
-						continue;
-					}
-
-					if(family == AF_INET)
-					{
-						JSON_COPY_STR_TO_ARRAY(ipv4, host);
-					}
-					else if(family == AF_INET6)
-					{
-						JSON_COPY_STR_TO_ARRAY(ipv6, host);
-					}
-				}
-			}
-			JSON_ADD_ITEM_TO_OBJECT(iface, "ipv4", ipv4);
-			JSON_ADD_ITEM_TO_OBJECT(iface, "ipv6", ipv6);
-		}
-
-		// Sum up transmitted and received bytes
-		if(tx_bytes > 0)
-			tx_sum += tx_bytes;
-		if(rx_bytes > 0)
-			rx_sum += rx_bytes;
-
-		// Add interface to array
-		JSON_ADD_ITEM_TO_ARRAY(interfaces, iface);
-	}
-
-	freeifaddrs(ifap);
-	closedir(dfd);
-
-	cJSON *sum = JSON_NEW_OBJECT();
-	JSON_COPY_STR_TO_OBJECT(sum, "name", "sum");
-	JSON_ADD_BOOL_TO_OBJECT(sum, "carrier", true);
-	JSON_ADD_NUMBER_TO_OBJECT(sum, "speed", 0);
-
-	// Format transmitted bytes
-	double tx = 0.0;
-	char tx_unit[3] = { 0 };
-	format_memory_size(tx_unit, tx_sum, &tx);
-	if(tx_unit[0] != '\0')
-		tx_unit[1] = 'B';
-
-	// Add transmitted bytes to interface record
-	cJSON *tx_json = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(tx_json, "num", tx);
-	JSON_COPY_STR_TO_OBJECT(tx_json, "unit", tx_unit);
-	JSON_ADD_ITEM_TO_OBJECT(sum, "tx", tx_json);
-
-	// Format received bytes
-	double rx = 0.0;
-	char rx_unit[3] = { 0 };
-	format_memory_size(rx_unit, rx_sum, &rx);
-	if(rx_unit[0] != '\0')
-		rx_unit[1] = 'B';
-
-	// Add received bytes to JSON object
-	cJSON *rx_json = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(rx_json, "num", rx);
-	JSON_COPY_STR_TO_OBJECT(rx_json, "unit", rx_unit);
-	JSON_ADD_ITEM_TO_OBJECT(sum, "rx", rx_json);
-
-	cJSON *ipv4 = JSON_NEW_ARRAY();
-	cJSON *ipv6 = JSON_NEW_ARRAY();
-	JSON_ADD_ITEM_TO_OBJECT(sum, "ipv4", ipv4);
-	JSON_ADD_ITEM_TO_OBJECT(sum, "ipv6", ipv6);
-
-	// Add interface to array
-	JSON_ADD_ITEM_TO_ARRAY(interfaces, sum);
+	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "interfaces", interfaces);
 	JSON_SEND_OBJECT(json);
 }
@@ -336,6 +184,9 @@ static int api_network_devices_GET(struct ftl_conn *api)
 	const char *sql_msg = NULL;
 	if(!networkTable_readDevices(db, &device_stmt, &sql_msg))
 	{
+		networkTable_readDevicesFinalize(device_stmt);
+		dbclose(&db);
+	
 		// Add SQL message (may be NULL = not available)
 		return send_json_error(api, 500,
 		                       "database_error",
@@ -382,6 +233,11 @@ static int api_network_devices_GET(struct ftl_conn *api)
 			{
 				cJSON_Delete(ips);
 				cJSON_Delete(devices);
+
+				networkTable_readIPsFinalize(ip_stmt);
+				networkTable_readDevicesFinalize(device_stmt);
+				dbclose(&db);
+
 				return send_json_error(api, 500,
 				                       "database_error",
 				                       "Could not read network details from database table (getting IP records)",
@@ -401,6 +257,9 @@ static int api_network_devices_GET(struct ftl_conn *api)
 
 	if(sql_msg != NULL)
 	{
+		networkTable_readDevicesFinalize(device_stmt);
+		dbclose(&db);
+
 		cJSON_Delete(devices);
 		return send_json_error(api, 500,
 		                       "database_error",
@@ -440,7 +299,8 @@ static int api_network_devices_DELETE(struct ftl_conn *api)
 
 	// Delete row from network table by ID
 	const char *sql_msg = NULL;
-	if(!networkTable_deleteDevice(db, device_id, &sql_msg))
+	int deleted = 0;
+	if(!networkTable_deleteDevice(db, device_id, &deleted, &sql_msg))
 	{
 		// Add SQL message (may be NULL = not available)
 		return send_json_error(api, 500,
@@ -452,9 +312,11 @@ static int api_network_devices_DELETE(struct ftl_conn *api)
 	// Close database
 	dbclose(&db);
 
-	// Send empty reply with code 204 No Content
+	// Send empty reply with codes:
+	// - 204 No Content (if any items were deleted)
+	// - 404 Not Found (if no items were deleted)
 	cJSON *json = JSON_NEW_OBJECT();
-	JSON_SEND_OBJECT_CODE(json, 204);
+	JSON_SEND_OBJECT_CODE(json, deleted > 0 ? 204 : 404);
 }
 
 int api_network_devices(struct ftl_conn *api)
@@ -517,6 +379,8 @@ int api_client_suggestions(struct ftl_conn *api)
 	                    "FROM network_addresses na "
 	                      "WHERE na.network_id = n.id) "
 	                  "FROM network n "
+	                  "WHERE n.hwaddr NOT IN (SELECT lower(ip) FROM g.client)" // real hardware addresses
+	                    "AND n.hwaddr NOT IN (SELECT CONCAT('ip-',lower(ip)) FROM g.client)" // mock hardware addresses built from IP addresses
 	                  "ORDER BY lastQuery DESC LIMIT ?";
 
 	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
@@ -576,4 +440,3 @@ int api_client_suggestions(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
 	JSON_SEND_OBJECT(json);
 }
-

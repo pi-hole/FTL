@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
  
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#define COPYRIGHT "Copyright (c) 2000-2023 Simon Kelley"
+#define COPYRIGHT "Copyright (c) 2000-2024 Simon Kelley"
 
 /* We do defines that influence behavior of stdio.h, so complain
    if included too early. */
@@ -200,6 +200,9 @@ struct event_desc {
 #define EVENT_SCRIPT_LOG 25
 #define EVENT_TIME       26
 
+// Pi-hole
+#define EVENT_SIGNAL     255
+
 /* Exit codes. */
 #define EC_GOOD        0
 #define EC_BADCONF     1
@@ -281,7 +284,8 @@ struct event_desc {
 #define OPT_NORR           69
 #define OPT_NO_IDENT       70
 #define OPT_CACHE_RR       71
-#define OPT_LAST           72
+#define OPT_LOCALHOST_SERVICE  72
+#define OPT_LAST           73
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -340,7 +344,7 @@ union all_addr {
      in the cache flags. */
   struct datablock {
     unsigned short rrtype;
-    unsigned char datalen;
+    unsigned char datalen; /* also length of SOA in negative records. */
     char data[];
   } rrdata;
 };
@@ -381,7 +385,8 @@ struct naptr {
 #define TXT_STAT_AUTH          6
 #define TXT_STAT_SERVERS       7
 /* Pi-hole modification */
-#define TXT_PRIVACYLEVEL       123
+#define TXT_API_DOMAIN         124
+#define TXT_API_LOCAL          125
 /************************/
 #endif
 
@@ -761,6 +766,9 @@ struct dyndir {
 #define DNSSEC_FAIL_NONSEC      0x0040 /* No NSEC */
 #define DNSSEC_FAIL_NODSSUP     0x0080 /* no supported DS algo. */
 #define DNSSEC_FAIL_NOKEY       0x0100 /* no DNSKEY */
+#define DNSSEC_FAIL_NSEC3_ITERS 0x0200 /* too many iterations in NSEC3 */
+#define DNSSEC_FAIL_BADPACKET   0x0400 /* bad packet */
+#define DNSSEC_FAIL_WORK        0x0800 /* too much crypto */
 
 #define STAT_ISEQUAL(a, b)  (((a) & 0xffff0000) == (b))
 
@@ -798,7 +806,7 @@ struct frec {
   struct blockdata *stash; /* Saved reply, whilst we validate */
   size_t stash_len;
 #ifdef HAVE_DNSSEC 
-  int class, work_counter;
+  int class, work_counter, validate_counter;
   struct frec *dependent; /* Query awaiting internally-generated DNSKEY or DS query */
   struct frec *next_dependent; /* list of above. */
   struct frec *blocking_query; /* Query which is blocking us. */
@@ -834,6 +842,12 @@ struct frec {
 #define LEASE_TA            64  /* IPv6 temporary lease */
 #define LEASE_HAVE_HWADDR  128  /* Have set hwaddress */
 #define LEASE_EXP_CHANGED  256  /* Lease expiry time changed */
+
+#define LIMIT_SIG_FAIL    0
+#define LIMIT_CRYPTO      1
+#define LIMIT_WORK        2
+#define LIMIT_NSEC3_ITERS 3
+#define LIMIT_MAX         4
 
 struct dhcp_lease {
   int clid_len;          /* length of client identifier */
@@ -1237,16 +1251,14 @@ extern struct daemon {
   char *packet; /* packet buffer */
   int packet_buff_sz; /* size of above */
   char *namebuff; /* MAXDNAME size buffer */
-#if (defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)) || defined(HAVE_DNSSEC)
-  /* CONNTRACK UBUS code uses this buffer, as well as DNSSEC code. */
   char *workspacename;
-#endif
 #ifdef HAVE_DNSSEC
   char *keyname; /* MAXDNAME size buffer */
   unsigned long *rr_status; /* ceiling in TTL from DNSSEC or zero for insecure */
   int rr_status_sz;
   int dnssec_no_time_check;
   int back_to_the_future;
+  int limit[LIMIT_MAX];
 #endif
   struct frec *frec_list;
   struct frec_src *free_frec_src;
@@ -1257,8 +1269,8 @@ extern struct daemon {
   struct server *srv_save; /* Used for resend on DoD */
   size_t packet_len;       /*      "        "        */
   int    fd_save;          /*      "        "        */
-  pid_t tcp_pids[MAX_PROCS];
-  int tcp_pipes[MAX_PROCS];
+  pid_t *tcp_pids;
+  int *tcp_pipes;
   int pipe_to_parent;
   int numrrand;
   struct randfd *randomsocks;
@@ -1318,6 +1330,8 @@ extern struct daemon {
   /* file for packet dumps. */
   int dumpfd;
 #endif
+  int max_procs;
+  uint max_procs_used;
 } *daemon;
 
 struct server_details {
@@ -1382,6 +1396,7 @@ int is_name_synthetic(int flags, char *name, union all_addr *addr);
 int is_rev_synth(int flag, union all_addr *addr, char *name);
 
 /* rfc1035.c */
+int do_doctor(struct dns_header *header, size_t qlen, char *namebuff);
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
                  char *name, int isExtract, int extrabytes);
 unsigned char *skip_name(unsigned char *ansp, struct dns_header *header, size_t plen, int extrabytes);
@@ -1392,7 +1407,7 @@ unsigned int extract_request(struct dns_header *header, size_t qlen,
 void setup_reply(struct dns_header *header, unsigned int flags, int ede);
 int extract_addresses(struct dns_header *header, size_t qlen, char *name,
 		      time_t now, struct ipsets *ipsets, struct ipsets *nftsets, int is_sign,
-                      int check_rebind, int no_cache_dnssec, int secure, int *doctored);
+                      int check_rebind, int no_cache_dnssec, int secure);
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
 void report_addresses(struct dns_header *header, size_t len, u32 mark);
 #endif
@@ -1423,10 +1438,12 @@ int in_zone(struct auth_zone *zone, char *name, char **cut);
 /* dnssec.c */
 #ifdef HAVE_DNSSEC
 size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char *name, int class, int type, int edns_pktsz);
-int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class);
-int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class);
+int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, char *name,
+			  char *keyname, int class, int *validate_count);
+int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name,
+		       char *keyname, int class, int *validate_count);
 int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int *class,
-			  int check_unsigned, int *neganswer, int *nons, int *nsec_ttl);
+			  int check_unsigned, int *neganswer, int *nons, int *nsec_ttl, int *validate_count);
 int dnskey_keytag(int alg, int flags, unsigned char *key, int keylen);
 size_t filter_rrsigs(struct dns_header *header, size_t plen);
 int setup_timestamp(void);
@@ -1612,6 +1629,7 @@ void lease_update_from_configs(void);
 int do_script_run(time_t now);
 void rerun_scripts(void);
 void lease_find_interfaces(time_t now);
+void lease_calc_fqdns(void);
 #ifdef HAVE_SCRIPT
 void lease_add_extradata(struct dhcp_lease *lease, unsigned char *data, 
 			 unsigned int len, int delim);

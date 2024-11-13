@@ -63,56 +63,6 @@ components:
               application/json:
                 schema:
                   $ref: 'common.yaml#/components/errors/unauthorized'
-    reboot:
-      post:
-        summary: Reboot the system
-        tags:
-          - Actions
-        operationId: "action_reboot"
-        description: |
-          Reboots the system Pi-hole is running on. Note that this should be done as a last-resort only as it will forcefully interrupt all currently running processes.
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  allOf:
-                    - $ref: 'common.yaml#/components/schemas/success'
-                    - $ref: 'common.yaml#/components/schemas/took'
-          '401':
-            description: Unauthorized
-            content:
-              application/json:
-                schema:
-                  allOf:
-                    - $ref: 'common.yaml#/components/errors/unauthorized'
-                    - $ref: 'common.yaml#/components/schemas/took'
-    poweroff:
-      post:
-        summary: Poweroff the system
-        tags:
-          - Actions
-        operationId: "action_poweroff"
-        description: |
-          Halts and powers off the system Pi-hole is running on. Note that this should be done as a last-resort only as it will forcefully interrupt all currently running processes.
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  allOf:
-                    - $ref: 'common.yaml#/components/schemas/success'
-                    - $ref: 'common.yaml#/components/schemas/took'
-          '401':
-            description: Unauthorized
-            content:
-              application/json:
-                schema:
-                  allOf:
-                    - $ref: 'common.yaml#/components/errors/unauthorized'
-                    - $ref: 'common.yaml#/components/schemas/took'
     restartdns:
       post:
         summary: Restart pihole-FTL

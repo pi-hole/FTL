@@ -119,6 +119,10 @@ components:
                   message:
                     type: string
                     description: Log line content
+                  prio:
+                    type: string
+                    nullable: true
+                    description: Log line priority (if available)
               example:
                 - timestamp: 1611729969.0
                   message: "started, version pi-hole-2.84 cachesize 10000"
@@ -132,6 +136,10 @@ components:
               type: integer
               description: Next ID to query if checking for new log lines
               example: 229
+            pid:
+              type: integer
+              description: Process ID of FTL. When this changes, FTL was restarted and nextID should be reset to 0.
+              example: 2258
             file:
               type: string
               description: Path to respective log file on disk

@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,7 +15,7 @@
 */
 
 #include "dnsmasq.h"
-#include "../dnsmasq_interface.h"
+#include "dnsmasq_interface.h"
 
 static struct frec *get_new_frec(time_t now, struct server *serv, int force);
 static struct frec *lookup_frec(unsigned short id, int fd, void *hash, int *firstp, int *lastp);
@@ -36,7 +36,7 @@ int send_from(int fd, int nowild, char *packet, size_t len,
 	      union mysockaddr *to, union all_addr *source,
 	      unsigned int iface)
 {
-  struct msghdr msg;
+  struct msghdr msg = { 0 };
   struct iovec iov[1]; 
   union {
     struct cmsghdr align; /* this ensures alignment */
@@ -46,7 +46,7 @@ int send_from(int fd, int nowild, char *packet, size_t len,
     char control[CMSG_SPACE(sizeof(struct in_addr))];
 #endif
     char control6[CMSG_SPACE(sizeof(struct in6_pktinfo))];
-  } control_u;
+  } control_u = { 0 };
   
   iov[0].iov_base = packet;
   iov[0].iov_len = len;
@@ -105,7 +105,12 @@ int send_from(int fd, int nowild, char *packet, size_t len,
 #ifdef HAVE_LINUX_NETWORK
       /* If interface is still in DAD, EINVAL results - ignore that. */
       if (errno != EINVAL)
-	my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
+	{
+	  my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
+	  /********** Pi-hole modification **********/
+	  FTL_connection_error("failed to send UDP reply", to);
+	  /******************************************/
+	}
 #endif
       return 0;
     }
@@ -344,7 +349,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (ad_reqd)
 	forward->flags |= FREC_AD_QUESTION;
 #ifdef HAVE_DNSSEC
-      forward->work_counter = DNSSEC_WORK;
+      forward->work_counter = daemon->limit[LIMIT_WORK];
+      forward->validate_counter = daemon->limit[LIMIT_CRYPTO]; 
       if (do_bit)
 	forward->flags |= FREC_DO_QUESTION;
 #endif
@@ -566,6 +572,12 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		break;
 	      forward->forwardall++;
 	    }
+	    /**** Pi-hole modification ****/
+	    else
+	    {
+	      FTL_connection_error("failed to send UDP request", &srv->addr);
+	    }
+	    /******************************/
 	}
       
       if (++start == last)
@@ -697,17 +709,18 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 {
   unsigned char *pheader, *sizep;
   struct ipsets *ipsets = NULL, *nftsets = NULL;
-  int munged = 0, is_sign;
+  int is_sign;
   unsigned int rcode = RCODE(header);
   size_t plen; 
   /******** Pi-hole modification ********/
   unsigned char *pheader_copy = NULL;
+  unsigned char ede_data[MAX_EDE_DATA] = { 0 };
+  size_t ede_len = 0;
   /**************************************/
     
   (void)ad_reqd;
   (void)do_bit;
-  (void)bogusanswer;
-
+ 
 #ifdef HAVE_IPSET
   if (daemon->ipsets && extract_request(header, n, daemon->namebuff, NULL))
     ipsets = domain_find_sets(daemon->ipsets, daemon->namebuff);
@@ -770,7 +783,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	}
     }
   
-  FTL_header_analysis(header->hb4, rcode, server, daemon->log_display_id);
+  FTL_header_analysis(header, server, daemon->log_display_id);
   
   /* RFC 4035 sect 4.6 para 3 */
   if (!is_sign && !option_bool(OPT_DNSSEC_PROXY))
@@ -801,91 +814,108 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	server->flags |= SERV_WARNED_RECURSIVE;
     }  
 
-  if (daemon->bogus_addr && rcode != NXDOMAIN &&
-      check_for_bogus_wildcard(header, n, daemon->namebuff, now))
+  if (header->hb3 & HB3_TC)
     {
-      munged = 1;
-      SET_RCODE(header, NXDOMAIN);
-      header->hb3 &= ~HB3_AA;
-      cache_secure = 0;
-      ede = EDE_BLOCKED;
+      log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
+      header->ancount = htons(0);
+      header->nscount = htons(0);
+      header->arcount = htons(0);
     }
-  else 
-    {
-      int doctored = 0;
-      
-      if (rcode == NXDOMAIN && 
-	  extract_request(header, n, daemon->namebuff, NULL))
-	{
-	  if (check_for_local_domain(daemon->namebuff, now) ||
-	      lookup_domain(daemon->namebuff, F_CONFIG, NULL, NULL))
-	    {
-	      /* if we forwarded a query for a locally known name (because it was for 
-		 an unknown type) and the answer is NXDOMAIN, convert that to NODATA,
-		 since we know that the domain exists, even if upstream doesn't */
-	      munged = 1;
-	      header->hb3 |= HB3_AA;
-	      SET_RCODE(header, NOERROR);
-	      cache_secure = 0;
-	    }
-	}
 
-      switch (extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure, &doctored))
+  if  (!(header->hb3 & HB3_TC) && (!bogusanswer || (header->hb4 & HB4_CD)))
+    {
+      if (rcode == NXDOMAIN && extract_request(header, n, daemon->namebuff, NULL) &&
+	  (check_for_local_domain(daemon->namebuff, now) || lookup_domain(daemon->namebuff, F_CONFIG, NULL, NULL)))
 	{
-	case 1:
-	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
-	  munged = 1;
+	  /* if we forwarded a query for a locally known name (because it was for 
+	     an unknown type) and the answer is NXDOMAIN, convert that to NODATA,
+	     since we know that the domain exists, even if upstream doesn't */
+	  header->hb3 |= HB3_AA;
+	  SET_RCODE(header, NOERROR);
+	  cache_secure = 0;
+	}
+      
+      if (daemon->doctors && do_doctor(header, n, daemon->namebuff))
+	cache_secure = 0;
+      
+      /* check_for_bogus_wildcard() does it's own caching, so
+	 don't call extract_addresses() if it triggers. */
+      if (daemon->bogus_addr && rcode != NXDOMAIN &&
+	  check_for_bogus_wildcard(header, n, daemon->namebuff, now))
+	{
+	  header->ancount = htons(0);
+	  header->nscount = htons(0);
+	  header->arcount = htons(0);
+	  SET_RCODE(header, NXDOMAIN);
+	  header->hb3 &= ~HB3_AA;
 	  cache_secure = 0;
 	  ede = EDE_BLOCKED;
-	  break;
-	  
-	  /* extract_addresses() found a malformed answer. */
-	case 2:
-	  munged = 1;
-	  SET_RCODE(header, SERVFAIL);
-	  cache_secure = 0;
-	  ede = EDE_OTHER;
-	  break;
-
-	  /* Pi-hole modification */
-	case 99:
-	  cache_secure = 0;
-	  // Make a private copy of the pheader to ensure
-	  // we are not accidentially rewriting what is in
-	  // the pheader when we're creating a crafted reply
-	  // further below (when a query is to be blocked)
-	  if (pheader)
-	  {
-	    pheader_copy = calloc(1, plen);
-	    memcpy(pheader_copy, pheader, plen);
-	  }
-
-	  // Generate DNS packet for reply, a possibly existing pseudo header
-	  // will be restored later inside resize_packet()
-	  n = FTL_make_answer(header, ((char *) header) + 65536, n, &ede);
-	  break;
 	}
+      else
+	{
+	  int rc = extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure);
 
-      if (rcode == NOERROR && rrfilter(header, &n, RRFILTER_CONF) > 0) 
-	ede = EDE_FILTERED;
+	  if (rc != 0)
+	    {
+	      header->ancount = htons(0);
+	      header->nscount = htons(0);
+	      header->arcount = htons(0);
+	      cache_secure = 0;
+	    }
+	  
+	  if (rc == 1)
+	    {
+	      my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
+	      ede = EDE_BLOCKED;
+	    }
+
+	  if (rc == 2)
+	    {
+	      /* extract_addresses() found a malformed answer. */
+	      SET_RCODE(header, SERVFAIL);
+	      ede = EDE_OTHER;
+	    }
+
+	/* Pi-hole modification */
+	if(rc == 99)
+	    {
+	      cache_secure = 0;
+	      // Make a private copy of the pheader to ensure
+	      // we are not accidentially rewriting what is in
+	      // the pheader when we're creating a crafted reply
+	      // further below (when a query is to be blocked)
+	      if (pheader)
+	      {
+	       pheader_copy = calloc(1, plen);
+		memcpy(pheader_copy, pheader, plen);
+	      }
+
+	      // Generate DNS packet for reply, a possibly existing pseudo header
+	      // will be restored later inside resize_packet()
+	      n = FTL_make_answer(header, ((char *) header) + 65536, n, ede_data, &ede_len);
+	    }
+	}
       
-      if (doctored)
-	cache_secure = 0;
+      if (RCODE(header) == NOERROR && rrfilter(header, &n, RRFILTER_CONF) > 0) 
+	ede = EDE_FILTERED;
     }
   
 #ifdef HAVE_DNSSEC
-  if (bogusanswer && !(header->hb4 & HB4_CD) && !option_bool(OPT_DNSSEC_DEBUG))
-    {
-      /* Bogus reply, turn into SERVFAIL */
-      SET_RCODE(header, SERVFAIL);
-      munged = 1;
-    }
-
   if (option_bool(OPT_DNSSEC_VALID))
     {
-      header->hb4 &= ~HB4_AD;
-      
-      if (!(header->hb4 & HB4_CD) && ad_reqd && cache_secure)
+      if (bogusanswer)
+	{
+	  if (!(header->hb4 & HB4_CD) && !option_bool(OPT_DNSSEC_DEBUG))
+	    {
+	      /* Bogus reply, turn into SERVFAIL */
+	      SET_RCODE(header, SERVFAIL);
+	      header->ancount = htons(0);
+	      header->nscount = htons(0);
+	      header->arcount = htons(0);
+	      ede = EDE_DNSSEC_BOGUS;
+	    }
+	}
+      else if (!(header->hb4 & HB4_CD) && ad_reqd && cache_secure)
 	header->hb4 |= HB4_AD;
       
       /* If the requestor didn't set the DO bit, don't return DNSSEC info. */
@@ -893,33 +923,27 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	rrfilter(header, &n, RRFILTER_DNSSEC);
     }
 #endif
-
-  /* do this after extract_addresses. Ensure NODATA reply and remove
-     nameserver info. */
-  if (munged)
-    {
-      header->ancount = htons(0);
-      header->nscount = htons(0);
-      header->arcount = htons(0);
-      header->hb3 &= ~HB3_TC;
-    }
   
-  /* the bogus-nxdomain stuff, doctor and NXDOMAIN->NODATA munging can all elide
-     sections of the packet. Find the new length here and put back pseudoheader
-     if it was removed. */
+  /* the code above can elide sections of the packet. Find the new length here 
+     and put back pseudoheader if it was removed. */
   n = resize_packet(header, n, pheader_copy ? pheader_copy : pheader, plen);
   /******** Pi-hole modification ********/
   // The line above was modified to use
   // pheader_copy instead of pheader
   if(pheader_copy)
     free(pheader_copy);
-  /**************************************/
 
-  if (pheader && ede != EDE_UNSET)
+  if (pheader && (ede != EDE_UNSET || ede_len > 0))
     {
-      u16 swap = htons((u16)ede);
-      n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
+      if (ede_len > 0)
+	  n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 1);
+	else
+	  {
+	    u16 swap = htons((u16)ede);
+	    n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
+	  }
     }
+  /**************************************/
 
   if (RCODE(header) == NXDOMAIN)
     server->nxdomain_replies++;
@@ -931,6 +955,9 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 static void dnssec_validate(struct frec *forward, struct dns_header *header,
 			    ssize_t plen, int status, time_t now)
 {
+  struct frec *orig;
+  int log_resource = 0;
+
   daemon->log_display_id = forward->frec_src.log_id;
   
   /* We've had a reply already, which we're validating. Ignore this duplicate */
@@ -955,6 +982,9 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	    log_query(F_UPSTREAM | F_NOEXTRA, daemon->namebuff, NULL, "truncated", (forward->flags & FREC_DNSKEY_QUERY) ? T_DNSKEY : T_DS);
 	}
     }
+
+  /* Find the original query that started it all.... */
+  for (orig = forward; orig->dependent; orig = orig->dependent);
   
   /* As soon as anything returns BOGUS, we stop and unwind, to do otherwise
      would invite infinite loops, since the answers to DNSKEY and DS queries
@@ -962,18 +992,16 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
   if (!STAT_ISEQUAL(status, STAT_BOGUS) && !STAT_ISEQUAL(status, STAT_TRUNCATED) && !STAT_ISEQUAL(status, STAT_ABANDONED))
     {
       if (forward->flags & FREC_DNSKEY_QUERY)
-	status = dnssec_validate_by_ds(now, header, plen, daemon->namebuff, daemon->keyname, forward->class);
+	status = dnssec_validate_by_ds(now, header, plen, daemon->namebuff, daemon->keyname, forward->class, &orig->validate_counter);
       else if (forward->flags & FREC_DS_QUERY)
-	status = dnssec_validate_ds(now, header, plen, daemon->namebuff, daemon->keyname, forward->class);
+	status = dnssec_validate_ds(now, header, plen, daemon->namebuff, daemon->keyname, forward->class, &orig->validate_counter);
       else
 	status = dnssec_validate_reply(now, header, plen, daemon->namebuff, daemon->keyname, &forward->class, 
 				       !option_bool(OPT_DNSSEC_IGN_NS) && (forward->sentto->flags & SERV_DO_DNSSEC),
-				       NULL, NULL, NULL);
-#ifdef HAVE_DUMPFILE
-      if (STAT_ISEQUAL(status, STAT_BOGUS))
-	dump_packet_udp((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_BOGUS : DUMP_BOGUS,
-			header, (size_t)plen, &forward->sentto->addr, NULL, -daemon->port);
-#endif
+				       NULL, NULL, NULL, &orig->validate_counter);
+
+      if (STAT_ISEQUAL(status, STAT_ABANDONED))
+	log_resource = 1;
     }
   
   /* Can't validate, as we're missing key data. Put this
@@ -1018,17 +1046,18 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  return;
 		}
 	    }
+	  else if (orig->work_counter-- == 0)
+	    {
+	      my_syslog(LOG_WARNING, _("limit exceeded: per-query subqueries"));
+	      log_resource = 1;
+	    }
 	  else
 	    {
 	      struct server *server;
-	      struct frec *orig;
 	      void *hash;
 	      size_t nn;
 	      int serverind, fd;
 	      struct randfd_list *rfds = NULL;
-	      
-	      /* Find the original query that started it all.... */
-	      for (orig = forward; orig->dependent; orig = orig->dependent);
 	      
 	      /* Make sure we don't expire and free the orig frec during the
 		 allocation of a new one: third arg of get_new_frec() does that. */
@@ -1038,7 +1067,6 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 					      daemon->keyname, forward->class,
 					      STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz)) && 
 		  (hash = hash_questions(header, nn, daemon->namebuff)) &&
-		  --orig->work_counter != 0 &&
 		  (fd = allocate_rfd(&rfds, server)) != -1 &&
 		  (new = get_new_frec(now, server, 1)))
 		{
@@ -1104,6 +1132,21 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
       status = STAT_ABANDONED;
     }
 
+  if (log_resource)
+    {
+      /* Log the actual validation that made us barf. */
+      unsigned char *p = (unsigned char *)(header+1);
+      if  (extract_name(header, plen, &p, daemon->namebuff, 0, 4) == 1)
+	my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
+		  daemon->namebuff[0] ? daemon->namebuff : ".");
+    }
+  
+#ifdef HAVE_DUMPFILE
+  if (STAT_ISEQUAL(status, STAT_BOGUS) || STAT_ISEQUAL(status, STAT_ABANDONED))
+    dump_packet_udp((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_BOGUS : DUMP_BOGUS,
+		    header, (size_t)plen, &forward->sentto->addr, NULL, -daemon->port);
+#endif
+  
   /* Validated original answer, all done. */
   if (!forward->dependent)
     return_reply(now, forward, header, plen, status);
@@ -1112,7 +1155,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
       /* validated subsidiary query/queries, (and cached result)
 	 pop that and return to the previous query/queries we were working on. */
       struct frec *prev, *nxt = forward->dependent;
-      
+
       free_frec(forward);
       
       while ((prev = nxt))
@@ -1170,7 +1213,7 @@ void reply_query(int fd, time_t now)
 
   server = daemon->serverarray[c];
 
-  FTL_header_analysis(header->hb4, RCODE(header), server, daemon->log_display_id);
+  FTL_header_analysis(header, server, daemon->log_display_id);
 
   if (RCODE(header) != REFUSED)
     daemon->serverarray[first]->last_server = c;
@@ -1378,6 +1421,12 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 	  log_query(F_SECSTAT, domain, &a, result, 0);
 	}
     }
+
+  if ((daemon->limit[LIMIT_CRYPTO] - forward->validate_counter) > (int)daemon->metrics[METRIC_CRYPTO_HWM])
+    daemon->metrics[METRIC_CRYPTO_HWM] = daemon->limit[LIMIT_CRYPTO] - forward->validate_counter;
+
+  if ((daemon->limit[LIMIT_WORK] - forward->work_counter) > (int)daemon->metrics[METRIC_WORK_HWM])
+    daemon->metrics[METRIC_WORK_HWM] = daemon->limit[LIMIT_WORK] - forward->work_counter;
 #endif
   
   if (option_bool(OPT_NO_REBIND))
@@ -1878,11 +1927,7 @@ void receive_query(struct listener *listen, time_t now)
       int stale, filtered;
       int ad_reqd = do_bit;
       int fd = listen->fd;
-      struct blockdata *saved_question = NULL;
-      
-      /* In case answer is stale */
-      if (daemon->cache_max_expiry != 0)
-	saved_question = blockdata_alloc((char *) header, (size_t)n);
+      struct blockdata *saved_question = blockdata_alloc((char *) header, (size_t)n);
       
       /* RFC 6840 5.7 */
       if (header->hb4 & HB4_AD)
@@ -1892,8 +1937,9 @@ void receive_query(struct listener *listen, time_t now)
       if(piholeblocked)
 	{
 	  // Generate DNS packet for reply
-	  int ede = EDE_UNSET;
-	  n = FTL_make_answer(header, ((char *) header) + udp_size, n, &ede);
+	  unsigned char ede_data[MAX_EDE_DATA] = { 0 };
+	  size_t ede_len = 0;
+	  n = FTL_make_answer(header, ((char *) header) + udp_size, n, ede_data, &ede_len);
 	  // The pseudoheader may contain important information such as EDNS0 version important for
 	  // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
 
@@ -1903,10 +1949,9 @@ void receive_query(struct listener *listen, time_t now)
 
 	  if (have_pseudoheader)
 	  {
-	    u16 swap = htons(ede);
-	    if (ede != EDE_UNSET) // Add EDNS0 option EDE if applicable
+	    if (ede_len > 0) // Add EDNS0 option EDE if applicable
 	      n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
-				   daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+				   daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
 	    else
 	      n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
 				   daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
@@ -1954,11 +1999,10 @@ void receive_query(struct listener *listen, time_t now)
 	    daemon->metrics[METRIC_DNS_STALE_ANSWERED]++;
 	}
       
-      if (stale && saved_question)
+      if (stale)
 	{
 	  /* We answered with stale cache data, so forward the query anyway to
-	     refresh that. Restore saved query. */
-	  blockdata_retrieve(saved_question, (size_t)n, header);
+	     refresh that. */
 	  m = 0;
 	  
 	  /* We've already answered the client, so don't send it the answer 
@@ -1966,15 +2010,20 @@ void receive_query(struct listener *listen, time_t now)
 	  fd = -1;
 	}
       
-      blockdata_free(saved_question);
-
-      if (m == 0)
+      if (saved_question)
 	{
-	  if (forward_query(fd, &source_addr, &dst_addr, if_index,
-			    header, (size_t)n,  ((char *) header) + udp_size, now, NULL, ad_reqd, do_bit, 0))
-	    daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
-	  else
-	    daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+	  if (m == 0)
+	    {
+	      blockdata_retrieve(saved_question, (size_t)n, header);
+	      
+	      if (forward_query(fd, &source_addr, &dst_addr, if_index,
+				header, (size_t)n,  ((char *) header) + udp_size, now, NULL, ad_reqd, do_bit, 0))
+		daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
+	      else
+		daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+	    }
+	  
+	  blockdata_free(saved_question);
 	}
     }
 }
@@ -2056,12 +2105,19 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	    data_sent = 1;
 	  else if (errno == ETIMEDOUT || errno == EHOSTUNREACH)
 	    timedout = 1;
+	  /**** Pi-hole modification ****/
+	  if (errno != 0)
+	    FTL_connection_error("failed to send TCP(fast-open) packet", &serv->addr);
+	  /******************************/
 #endif
 	  
 	  /* If fastopen failed due to lack of reply, then there's no point in
 	     trying again in non-FASTOPEN mode. */
 	  if (timedout || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
 	    {
+	      /**** Pi-hole modification ****/
+	      FTL_connection_error("failed to send TCP(connect) packet", &serv->addr);
+	      /******************************/
 	      close(serv->tcpfd);
 	      serv->tcpfd = -1;
 	      continue;
@@ -2076,6 +2132,10 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  !read_write(serv->tcpfd, &c2, 1, 1) ||
 	  !read_write(serv->tcpfd, payload, (rsize = (c1 << 8) | c2), 1))
 	{
+	  /**** Pi-hole modification ****/
+	  FTL_connection_error("failed to send TCP(read_write) packet", &serv->addr);
+	  /******************************/
+
 	  close(serv->tcpfd);
 	  serv->tcpfd = -1;
 	  /* We get data then EOF, reopen connection to same server,
@@ -2107,13 +2167,13 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 /* Recurse down the key hierarchy */
 static int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n, 
 			   int class, char *name, char *keyname, struct server *server, 
-			   int have_mark, unsigned int mark, int *keycount)
+			   int have_mark, unsigned int mark, int *keycount, int *validatecount)
 {
   int first, last, start, new_status;
   unsigned char *packet = NULL;
   struct dns_header *new_header = NULL;
   
-  FTL_header_analysis(header->hb4, RCODE(header), server, daemon->log_display_id);
+  FTL_header_analysis(header, server, daemon->log_display_id);
 
   while (1)
     {
@@ -2121,20 +2181,34 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       int log_save;
             
       /* limit the amount of work we do, to avoid cycling forever on loops in the DNS */
-      if (--(*keycount) == 0)
-	new_status = STAT_ABANDONED;
-      else if (STAT_ISEQUAL(status, STAT_NEED_KEY))
-	new_status = dnssec_validate_by_ds(now, header, n, name, keyname, class);
+      if (STAT_ISEQUAL(status, STAT_NEED_KEY))
+	new_status = dnssec_validate_by_ds(now, header, n, name, keyname, class, validatecount);
       else if (STAT_ISEQUAL(status, STAT_NEED_DS))
-	new_status = dnssec_validate_ds(now, header, n, name, keyname, class);
+	new_status = dnssec_validate_ds(now, header, n, name, keyname, class, validatecount);
       else 
 	new_status = dnssec_validate_reply(now, header, n, name, keyname, &class,
 					   !option_bool(OPT_DNSSEC_IGN_NS) && (server->flags & SERV_DO_DNSSEC),
-					   NULL, NULL, NULL);
+					   NULL, NULL, NULL, validatecount);
       
-      if (!STAT_ISEQUAL(new_status, STAT_NEED_DS) && !STAT_ISEQUAL(new_status, STAT_NEED_KEY))
+      if (!STAT_ISEQUAL(new_status, STAT_NEED_DS) && !STAT_ISEQUAL(new_status, STAT_NEED_KEY) && !STAT_ISEQUAL(new_status, STAT_ABANDONED))
 	break;
-
+      
+      if ((*keycount)-- == 0)
+	{
+	  my_syslog(LOG_WARNING, _("limit exceeded: per-query subqueries"));
+	  new_status = STAT_ABANDONED;
+	}
+      
+      if (STAT_ISEQUAL(new_status, STAT_ABANDONED))
+	{
+	  /* Log the actual validation that made us barf. */
+	  unsigned char *p = (unsigned char *)(header+1);
+	  if  (extract_name(header, n, &p, daemon->namebuff, 0, 4) == 1)
+	    my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
+		      daemon->namebuff[0] ? daemon->namebuff : ".");
+	  break;
+	}
+      
       /* Can't validate because we need a key/DS whose name now in keyname.
 	 Make query for same, and recurse to validate */
       if (!packet)
@@ -2148,7 +2222,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 	  new_status = STAT_ABANDONED;
 	  break;
 	}
-
+      
       m = dnssec_generate_query(new_header, ((unsigned char *) new_header) + 65536, keyname, class, 
 				STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz);
       
@@ -2163,10 +2237,11 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       daemon->log_display_id = ++daemon->log_id;
       
       log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, keyname, &server->addr,
-			    STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
-            
-      new_status = tcp_key_recurse(now, new_status, new_header, m, class, name, keyname, server, have_mark, mark, keycount);
-
+			   STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? "dnssec-query[DNSKEY]" : "dnssec-query[DS]", 0);
+      
+      new_status = tcp_key_recurse(now, new_status, new_header, m, class, name, keyname, server,
+				   have_mark, mark, keycount, validatecount);
+      
       daemon->log_display_id = log_save;
       
       if (!STAT_ISEQUAL(new_status, STAT_OK))
@@ -2277,25 +2352,15 @@ unsigned char *tcp_request(int confd, time_t now,
     {
       int ede = EDE_UNSET;
 
-      if (do_stale)
-	{
-	  /* We answered the last query with stale data. Now try and get fresh data.
-	     Restore saved query */
-	  if (!saved_question)
-	    break;
-
-	  blockdata_retrieve(saved_question, (size_t)saved_size, header);
-	  size = saved_size;
-	}
-      else
+      if (!do_stale)
 	{
 	  if (query_count == TCP_MAX_QUERIES)
-	    return packet;
-
+	    break;
+	  
 	  if (!read_write(confd, &c1, 1, 1) || !read_write(confd, &c2, 1, 1) ||
 	      !(size = c1 << 8 | c2) ||
 	      !read_write(confd, payload, size, 1))
-	    return packet;
+	    break;
 	}
       
       if (size < (int)sizeof(struct dns_header))
@@ -2412,18 +2477,18 @@ unsigned char *tcp_request(int confd, time_t now,
 	  // Interface name is known from before forking
 	  if(piholeblocked)
 	  {
-	    int ede = EDE_UNSET;
+	    unsigned char ede_data[MAX_EDE_DATA] = { 0 };
+	    size_t ede_len = 0;
 	    stale = 0;
 	    // Generate DNS packet for reply
-	    m = FTL_make_answer(header, ((char *) header) + 65536, size, &ede);
+	    m = FTL_make_answer(header, ((char *) header) + 65536, size, ede_data, &ede_len);
 	    // The pseudoheader may contain important information such as EDNS0 version important for
 	    // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
 	    if (have_pseudoheader && m > 0)
 	    {
-	      u16 swap = htons(ede);
-	      if (ede != -1) // Add EDNS0 option EDE if applicable
+	      if (ede_len > 0) // Add EDNS0 option EDE if applicable
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
-				     daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+				     daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
 	      else
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
 				     daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
@@ -2437,14 +2502,11 @@ unsigned char *tcp_request(int confd, time_t now,
 	     m = 0;
 	   else
 	     {
-	       if (daemon->cache_max_expiry != 0)
-		 {
-		   if (saved_question)
-		     blockdata_free(saved_question);
-		   
-		   saved_question = blockdata_alloc((char *) header, (size_t)size);
-		   saved_size = size;
-		 }
+	       if (saved_question)
+		 blockdata_free(saved_question);
+	       
+	       saved_question = blockdata_alloc((char *) header, (size_t)size);
+	       saved_size = size;
 	       
 	       /* m > 0 if answered from cache */
 	       m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
@@ -2453,11 +2515,14 @@ unsigned char *tcp_request(int confd, time_t now,
 	  /* Do this by steam now we're not in the select() loop */
 	  check_log_writer(1); 
 	  
-	  if (m == 0)
+	  if (m == 0 && saved_question)
 	    {
 	      struct server *master;
 	      int start;
 
+	      blockdata_retrieve(saved_question, (size_t)saved_size, header);
+	      size = saved_size;
+	      
 	      if (lookup_domain(daemon->namebuff, gotname, &first, &last))
 		flags = is_local_answer(now, first, daemon->namebuff);
 	      else
@@ -2518,9 +2583,10 @@ unsigned char *tcp_request(int confd, time_t now,
 #ifdef HAVE_DNSSEC
 		  if (option_bool(OPT_DNSSEC_VALID) && !checking_disabled && (master->flags & SERV_DO_DNSSEC))
 		    {
-		      int keycount = DNSSEC_WORK; /* Limit to number of DNSSEC questions, to catch loops and avoid filling cache. */
+		      int keycount = daemon->limit[LIMIT_WORK]; /* Limit to number of DNSSEC questions, to catch loops and avoid filling cache. */
+		      int validatecount = daemon->limit[LIMIT_CRYPTO]; 
 		      int status = tcp_key_recurse(now, STAT_OK, header, m, 0, daemon->namebuff, daemon->keyname, 
-						   serv, have_mark, mark, &keycount);
+						   serv, have_mark, mark, &keycount, &validatecount);
 		      char *result, *domain = "result";
 		      
 		      union all_addr a;
@@ -2546,6 +2612,12 @@ unsigned char *tcp_request(int confd, time_t now,
 			}
 		      
 		      log_query(F_SECSTAT, domain, &a, result, 0);
+		    
+		      if ((daemon->limit[LIMIT_CRYPTO] - validatecount) > (int)daemon->metrics[METRIC_CRYPTO_HWM])
+			daemon->metrics[METRIC_CRYPTO_HWM] = daemon->limit[LIMIT_CRYPTO] - validatecount;
+
+		      if ((daemon->limit[LIMIT_WORK] - keycount) > (int)daemon->metrics[METRIC_WORK_HWM])
+			daemon->metrics[METRIC_WORK_HWM] = daemon->limit[LIMIT_WORK] - keycount;
 		    }
 #endif
 		  
@@ -2622,7 +2694,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	break;
       
       /* If we answered with stale data, this process will now try and get fresh data into
-	 the cache then and cannot therefore accept new queries. Close the incoming
+	 the cache and cannot therefore accept new queries. Close the incoming
 	 connection to signal that to the client. Then set do_stale and loop round
 	 once more to try and get fresh data, after which we exit. */
       if (stale)

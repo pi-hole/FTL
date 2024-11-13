@@ -11,13 +11,15 @@
 #include "FTL.h"
 #include "files.h"
 #include "config/config.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
+// sha256_raw_to_hex()
+#include "config/password.h"
+// log_verify_message()
+#include "database/message-table.h"
 
 // opendir(), readdir()
 #include <dirent.h>
-// getpwuid()
-#include <pwd.h>
 // getgrgid()
 #include <grp.h>
 // NAME_MAX
@@ -26,13 +28,13 @@
 #include <sys/statvfs.h>
 // dirname()
 #include <libgen.h>
-// compression functions
-#include "zip/gzip.h"
 // sendfile()
 #include <fcntl.h>
 #include <sys/sendfile.h>
-
-#define BACKUP_DIR "/etc/pihole/config_backups"
+// PRIu64
+#include <inttypes.h>
+//basename()
+#include <libgen.h>
 
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
@@ -94,6 +96,28 @@ bool file_readable(const char *filename)
 }
 
 /**
+ * Function to check whether a file is writable or not.
+ * This function also returns success when a file does not exist yet but could
+ * be created and written to.
+ */
+bool file_writeable(const char *filename)
+{
+	// Check if file is writable
+	FILE *fp = fopen(filename, "ab");
+	if(fp == NULL)
+	{
+		// File is not writable
+		return false;
+	}
+
+	// Close file
+	fclose(fp);
+
+	// File is writable
+	return true;
+}
+
+/**
  * Function to check whether a directory exists or not.
  * It returns true if given path is a directory and exists
  * otherwise returns false.
@@ -144,10 +168,10 @@ void get_permission_string(char permissions[10], struct stat *st)
 	         st->st_mode & S_IXOTH ? "x":"-");
 }
 
-void ls_dir(const char* path)
+void ls_dir(const char *path)
 {
 	// Open directory stream
-	DIR* dirp = opendir(path);
+	DIR *dirp = opendir(path);
 	if(dirp == NULL)
 	{
 		log_warn("opendir(\"%s\") failed with %s", path, strerror(errno));
@@ -203,7 +227,7 @@ void ls_dir(const char* path)
 		format_memory_size(prefix, (unsigned long long)st.st_size, &formatted);
 
 		// Log output for this file
-		log_info("%s %-15s %3.0f%s  %s", permissions, usergroup, formatted, prefix, filename);
+		log_info("%s %-15s %3.0f%s  %s", permissions, usergroup, formatted, strlen(prefix) > 0 ? prefix : " ", filename);
 	}
 
 	log_info("---------------------------------------------------");
@@ -228,11 +252,30 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 		return 0;
 	}
 
-	// Explicitly cast the block counts to unsigned long long to avoid
-	// overflowing with drives larger than 4 GB on 32bit systems
-	const unsigned long long size = (unsigned long long)f.f_blocks * f.f_frsize;
-	const unsigned long long free = (unsigned long long)f.f_bavail * f.f_bsize;
-	const unsigned long long used = size - free;
+	// Explicitly cast the block counts to uint64_t to avoid overflowing
+	// with drives larger than 4 GB on 32bit systems. Multiply the block
+	// count with the fragment size to get the total size in bytes, see
+	// https://github.com/torvalds/linux/blob/39cd87c4eb2b893354f3b850f916353f2658ae6f/fs/nfs/super.c#L285-L291
+	const uint64_t size = (uint64_t)f.f_blocks * f.f_frsize;
+	const uint64_t free = (uint64_t)f.f_bavail * f.f_frsize;
+	const uint64_t used = size - free;
+
+	// Print statvfs() results if in debug.gc mode
+	if(config.debug.gc.v.b)
+	{
+		log_debug(DEBUG_GC, "Statvfs() results for %s:", path);
+		log_debug(DEBUG_GC, "  Block size: %lu", f.f_bsize);
+		log_debug(DEBUG_GC, "  Fragment size: %lu", f.f_frsize);
+		log_debug(DEBUG_GC, "  Total blocks: %"PRIu64, f.f_blocks);
+		log_debug(DEBUG_GC, "  Free blocks: %"PRIu64, f.f_bfree);
+		log_debug(DEBUG_GC, "  Available blocks: %"PRIu64, f.f_bavail);
+		log_debug(DEBUG_GC, "  Total inodes: %"PRIu64, f.f_files);
+		log_debug(DEBUG_GC, "  Free inodes: %"PRIu64, f.f_ffree);
+		log_debug(DEBUG_GC, "  Available inodes: %"PRIu64, f.f_favail);
+		log_debug(DEBUG_GC, "  Filesystem ID: %lu", f.f_fsid);
+		log_debug(DEBUG_GC, "  Mount flags: %lu", f.f_flag);
+		log_debug(DEBUG_GC, "  Maximum filename length: %lu", f.f_namemax);
+	}
 
 	// Create human-readable total size
 	char prefix_size[2] = { 0 };
@@ -251,37 +294,51 @@ unsigned int get_path_usage(const char *path, char buffer[64])
 	// If size is 0, we return 0% to avoid division by zero below
 	if(size == 0)
 		return 0;
-	// If used is larger than size, we return 100%
-	if(used > size)
-		return 100;
+
 	// Return percentage of used memory at this path (rounded down)
-	return (used*100)/(size + 1);
+	// If the used size is larger than the total size, this intentionally
+	// returns more than 100% so that the caller can handle this case
+	// (this can happen with docker on macOS)
+	return (used * 100) / size;
 }
 
 // Get the filesystem where the given path is located
 struct mntent *get_filesystem_details(const char *path)
 {
-	/* stat the file in question */
+	// stat the file in question
 	struct stat path_stat;
 	stat(path, &path_stat);
 
-	/* iterate through the list of devices */
+	// iterate through the list of devices
 	FILE *file = setmntent("/proc/mounts", "r");
 	struct mntent *ent = NULL;
+	bool found = false;
 	while(file != NULL && (ent = getmntent(file)) != NULL)
 	{
-		/* stat the mount point */
+		// stat the mount point
 		struct stat dev_stat;
-		stat(ent->mnt_dir, &dev_stat);
+		if(stat(ent->mnt_dir, &dev_stat) < 0)
+		{
+			if(config.debug.gc.v.b)
+			{
+				log_warn("get_filesystem_details(): Failed to get stat for \"%s\": %s",
+				         ent->mnt_dir, strerror(errno));
+			}
+			continue;
+		}
 
-		/* check if our file and the mount point are on the same device */
+		// check if our file and the mount point are on the same device
 		if(dev_stat.st_dev == path_stat.st_dev)
+		{
+			found = true;
 			break;
+		}
 	}
 
+	// Close mount table file handle
 	endmntent(file);
 
-	return ent;
+	return found ? ent : NULL;
 }
 
 // Credits: https://stackoverflow.com/a/55410469
@@ -376,7 +433,39 @@ static int copy_file(const char *source, const char *destination)
 #endif
 }
 
+// Change ownership of file to pihole user
+bool chown_pihole(const char *path, struct passwd *pwd)
+{
+	// Get pihole user's UID and GID if not provided
+	if(pwd == NULL)
+	{
+		pwd = getpwnam("pihole");
+		if(pwd == NULL)
+		{
+			log_warn("chown_pihole(): Failed to get pihole user's UID/GID: %s", strerror(errno));
+			return false;
+		}
+	}
 
+	// Get group name
+	struct group *grp = getgrgid(pwd->pw_gid);
+	const char *grp_name = grp != NULL ? grp->gr_name : "<unknown>";
+
+	// Change ownership of file to pihole user
+	if(chown(path, pwd->pw_uid, pwd->pw_gid) < 0)
+	{
+		log_warn("Failed to change ownership of \"%s\" to %s:%s (%u:%u): %s",
+		         path, pwd->pw_name, grp_name, pwd->pw_uid, pwd->pw_gid,
+		         errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
+
+		return false;
+	}
+
+	log_debug(DEBUG_INOTIFY, "Changed ownership of \"%s\" to %s:%s (%u:%u)",
+	          path, pwd->pw_name, grp_name, pwd->pw_uid, pwd->pw_gid);
+
+	return true;
+}
 
 // Rotate files in a directory
 void rotate_files(const char *path, char **first_file)
@@ -417,14 +506,6 @@ void rotate_files(const char *path, char **first_file)
 		if(i == 1 && first_file != NULL)
 			*first_file = strdup(new_path);
 
-		size_t old_path_len = strlen(old_path) + 4;
-		char *old_path_compressed = calloc(old_path_len, sizeof(char));
-		snprintf(old_path_compressed, old_path_len, "%s.gz", old_path);
-
-		size_t new_path_len = strlen(new_path) + 4;
-		char *new_path_compressed = calloc(new_path_len, sizeof(char));
-		snprintf(new_path_compressed, new_path_len, "%s.gz", new_path);
-
 		if(file_exists(old_path))
 		{
 			// Copy file to backup directory
@@ -457,39 +538,13 @@ void rotate_files(const char *path, char **first_file)
 				          old_path, new_path);
 			}
 
-			// Compress file if we are rotating a sufficiently old file
-			if(i > ZIP_ROTATIONS)
-			{
-				log_debug(DEBUG_CONFIG, "Compressing %s -> %s",
-				          new_path, new_path_compressed);
-				if(deflate_file(new_path, new_path_compressed, false))
-				{
-					// On success, we remove the uncompressed file
-					remove(new_path);
-				}
-			}
-		}
-		else if(file_exists(old_path_compressed))
-		{
-			// Rename file
-			if(rename(old_path_compressed, new_path_compressed) < 0)
-			{
-				log_warn("Rotation %s -(MOVE)> %s failed: %s",
-				         old_path_compressed, new_path_compressed, strerror(errno));
-			}
-			else
-			{
-				// Log success if debug is enabled
-				log_debug(DEBUG_CONFIG, "Rotated %s -> %s",
-				          old_path_compressed, new_path_compressed);
-			}
+			// Change ownership of file to pihole user
+			chown_pihole(new_path, NULL);
 		}
 
 		// Free memory
 		free(old_path);
 		free(new_path);
-		free(old_path_compressed);
-		free(new_path_compressed);
 	}
 }
 
@@ -567,4 +622,239 @@ char * __attribute__((malloc)) get_hwmon_target(const char *path)
 	target[nbytes] = '\0';
 
 	return target;
+}
+
+// Returns true if the files have different contents
+// from specifies from which line number the files should be compared
+bool files_different(const char *pathA, const char *pathB, unsigned int from)
+{
+	// Check if both files exist
+	if(!file_exists(pathA) || !file_exists(pathB))
+		return true;
+
+	// Check if both files are identical
+	if(strcmp(pathA, pathB) == 0)
+		return false;
+
+	// Open both files
+	FILE *fpA = fopen(pathA, "r");
+	if(fpA == NULL)
+	{
+		log_warn("files_different(): Failed to open \"%s\" for reading: %s", pathA, strerror(errno));
+		return true;
+	}
+	FILE *fpB = fopen(pathB, "r");
+	if(fpB == NULL)
+	{
+		log_warn("files_different(): Failed to open \"%s\" for reading: %s", pathB, strerror(errno));
+		fclose(fpA);
+		return true;
+	}
+
+	// Compare both files line by line
+	char *lineA = NULL, *lineB = NULL;
+	size_t lenA = 0, lenB = 0;
+	ssize_t readA = 0, readB = 0;
+	bool different = false;
+	unsigned int lineno = 0;
+	while(true)
+	{
+		// Read lines from both files
+		readA = getline(&lineA, &lenA, fpA);
+		readB = getline(&lineB, &lenB, fpB);
+
+		// Check if we reached the end of any of the files
+		if(readA < 0 || readB < 0)
+			break;
+
+		// Skip lines until we reach the requested line number
+		if(from > ++lineno)
+			continue;
+
+		// Remove possible trailing newline characters
+		if(lineA[readA - 1] == '\n')
+			lineA[readA - 1] = '\0';
+		if(lineB[readB - 1] == '\n')
+			lineB[readB - 1] = '\0';
+
+		// Compare lines
+		if(strcmp(lineA, lineB) != 0)
+		{
+			different = true;
+			log_debug(DEBUG_CONFIG, "Files %s and %s differ at line %u",
+			          pathA, pathB, lineno);
+			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : lineA);
+			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : lineB);
+			break;
+		}
+	}
+
+	// Check if one file has more lines than the other
+	if(!different && readA != readB)
+	{
+		different = true;
+		log_debug(DEBUG_CONFIG, "Files %s and %s differ at the final line %u",
+		          pathA, pathB, lineno);
+		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : lineA);
+		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : lineB);
+	}
+
+	// Free memory
+	free(lineA);
+	free(lineB);
+
+	// Close files
+	fclose(fpA);
+	fclose(fpB);
+
+	// Log result (if not already done above)
+	if(!different)
+		log_debug(DEBUG_CONFIG, "Files %s and %s are identical (skipped the first %u line%s)",
+		          pathA, pathB, from, from == 1 ? "" : "s");
+
+	return different;
+}
+
+// Create SHA256 checksum of a file
+bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE], const bool skip_end)
+{
+	// Open file
+	FILE *fp = fopen(path, "rb");
+	if(fp == NULL)
+	{
+		log_warn("sha256_file(): Failed to open \"%s\" for reading: %s", path, strerror(errno));
+		return false;
+	}
+
+	// Initialize SHA2-256 context
+	struct sha256_ctx ctx;
+	sha256_init(&ctx);
+
+	// Get size of file
+	fseek(fp, 0, SEEK_END);
+	size_t filesize = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+
+	if(skip_end)
+	{
+		// Skip the checksum at the end
+		filesize -= SHA256_DIGEST_SIZE;
+	}
+
+	// Determine chunk size
+	size_t chunksize = getpagesize();
+
+	// Read file in chunks
+	unsigned char *buf = calloc(chunksize, sizeof(char));
+	size_t len;
+	while((len = fread(buf, sizeof(char), min(chunksize, filesize), fp)) > 0)
+	{
+		// Update SHA256 context
+		sha256_update(&ctx, len, buf);
+
+		// Reduce filesize by the number of bytes read
+		filesize -= len;
+	}
+
+	// Finalize SHA256 context
+	sha256_digest(&ctx, SHA256_DIGEST_SIZE, checksum);
+
+	// Close file
+	fclose(fp);
+
+	// Free memory
+	free(buf);
+
+	return true;
+}
+
+/**
+ * @brief Verifies the integrity of the current executable file by comparing its
+ * SHA256 checksum with a pre-computed hash stored in the last 8 bytes of the
+ * binary.
+ *
+ * @param verbose A boolean value indicating whether verbose output should be
+ * enabled.
+ * @return Returns true if the checksum matches the expected value, false
+ * otherwise.
+ */
+enum verify_result verify_FTL(bool verbose)
+{
+	// Get the filename of the current executable
+	char filename[PATH_MAX] = { 0 };
+	if(readlink("/proc/self/exe", filename, sizeof(filename)) == -1)
+	{
+		log_err("Failed to read self filename: %s", strerror(errno));
+		return VERIFY_ERROR;
+	}
+
+	// Read the pre-computed hash as well as the checksum mark from the
+	// binary (last 9 + 32 bytes)
+	uint8_t self_hash[SHA256_DIGEST_SIZE];
+	uint8_t checksum_mark[9] = { 0 };
+	FILE *f = fopen(filename, "r");
+	if(f == NULL)
+	{
+		log_err("Failed to open self file \"%s\": %s", filename, strerror(errno));
+		return VERIFY_ERROR;
+	}
+	if(fseek(f, -(SHA256_DIGEST_SIZE + 9), SEEK_END) != 0)
+	{
+		log_err("Failed to seek to hash: %s", strerror(errno));
+		fclose(f);
+		return VERIFY_ERROR;
+	}
+	if(fread(checksum_mark, 9, 1, f) != 1)
+	{
+		log_err("Failed to read checksum mark: %s", strerror(errno));
+		fclose(f);
+		return VERIFY_ERROR;
+	}
+	if(fread(self_hash, SHA256_DIGEST_SIZE, 1, f) != 1)
+	{
+		log_err("Failed to read hash: %s", strerror(errno));
+		fclose(f);
+		return VERIFY_ERROR;
+	}
+	fclose(f);
+
+	// Verify checksum mark matches magic string "sha256sum"
+	if(memcmp(checksum_mark, "sha256sum", 9) != 0)
+	{
+		log_warn("Binary integrity check not possible: No checksum mark found");
+		// This is not an error, as the binary may not have a checksum mark
+		// if it was built with a different toolchain
+		return VERIFY_NO_CHECKSUM;
+	}
+
+	// Calculate the hash of the binary
+	// Skip the last 256 bit as it contains the hast itself
+	uint8_t checksum[SHA256_DIGEST_SIZE];
+	if(!sha256sum(filename, checksum, true))
+	{
+		log_err("Failed to calculate SHA256 checksum of %s", filename);
+		return false;
+	}
+
+	// Compare the checksums
+	bool success = memcmp(checksum, self_hash, SHA256_DIGEST_SIZE) == 0;
+	if(!success)
+	{
+		// Convert checksums to human-readable hex strings
+		char expected_hex[SHA256_DIGEST_SIZE*2+1];
+		sha256_raw_to_hex(self_hash, expected_hex);
+		char actual_hex[SHA256_DIGEST_SIZE*2+1];
+		sha256_raw_to_hex(checksum, actual_hex);
+
+		if(!verbose) // during startup
+			log_verify_message(expected_hex, actual_hex);
+		else // CLI verification
+		{
+			log_err("Checksum verification failed!");
+			log_err("Expected: %s", expected_hex);
+			log_err("Actual:   %s", actual_hex);
+		}
+	}
+
+	return success ? VERIFY_OK : VERIFY_FAILED;
 }

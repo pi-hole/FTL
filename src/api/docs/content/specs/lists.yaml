@@ -5,6 +5,7 @@ components:
       summary: Modify list
       parameters:
         - $ref: 'lists.yaml#/components/parameters/list'
+        - $ref: 'lists.yaml#/components/parameters/listtype'
       get:
         summary: Get lists
         tags:
@@ -60,6 +61,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'lists.yaml#/components/schemas/lists/get' # identical to GET
+                    - $ref: 'lists.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
@@ -92,6 +94,12 @@ components:
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -143,6 +151,7 @@ components:
                 schema:
                   allOf:
                     - $ref: 'lists.yaml#/components/schemas/lists/get'
+                    - $ref: 'lists.yaml#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -168,6 +177,52 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+    batchDelete:
+      post:
+        summary: Delete lists
+        tags:
+          - "List management"
+        operationId: "batchDelete_lists"
+        description: |
+          Deletes multiple lists in the `lists` object. The `{list}`s themselves are specified in the request body (POST JSON).
+
+          On success, a new resource is created at `/lists/{list}`.
+
+          The `database_error` with message `UNIQUE constraint failed` error indicates that this list already exists.
+        requestBody:
+          description: Callback payload
+          content:
+            application/json:
+              schema:
+                $ref: 'lists.yaml#/components/schemas/lists/post'
+        responses:
+          '204':
+            description: Items deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_payload:
+                    $ref: 'lists.yaml#/components/examples/errors/bad_request/no_payload'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     lists:
       get:
@@ -175,9 +230,11 @@ components:
         properties:
           lists:
             type: array
+            description: Array of lists
             items:
               allOf:
-                - $ref: 'lists.yaml#/components/schemas/list'
+                - $ref: 'lists.yaml#/components/schemas/address_object'
+                - $ref: 'lists.yaml#/components/schemas/type'
                 - $ref: 'lists.yaml#/components/schemas/comment'
                 - $ref: 'lists.yaml#/components/schemas/groups'
                 - $ref: 'lists.yaml#/components/schemas/enabled'
@@ -185,21 +242,48 @@ components:
       put:
         allOf:
           - $ref: 'lists.yaml#/components/schemas/comment'
+          - $ref: 'lists.yaml#/components/schemas/type'
           - $ref: 'lists.yaml#/components/schemas/groups'
           - $ref: 'lists.yaml#/components/schemas/enabled'
       post:
         allOf:
-          - $ref: 'lists.yaml#/components/schemas/list'
+          - $ref: 'lists.yaml#/components/schemas/address_maybe_array'
+          - $ref: 'lists.yaml#/components/schemas/type'
           - $ref: 'lists.yaml#/components/schemas/comment'
           - $ref: 'lists.yaml#/components/schemas/groups'
           - $ref: 'lists.yaml#/components/schemas/enabled'
-    list:
+    address:
+      description: Address of the list
+      type: string
+      example: https://hosts-file.net/ad_servers.txt
+    address_array:
+      description: array of list addresses
+      type: array
+      items:
+        type: string
+      example: ["https://hosts-file.net/ad_servers.txt"]
+    address_maybe_array:
       type: object
       properties:
         address:
-          description: Address of the list
+          oneOf:
+            - $ref: 'lists.yaml#/components/schemas/address'
+            - $ref: 'lists.yaml#/components/schemas/address_array'
+    address_object:
+      type: object
+      properties:
+        address:
+          $ref: 'lists.yaml#/components/schemas/address'
+    type:
+      type: object
+      properties:
+        type:
+          description: Type of list
           type: string
-          example: https://hosts-file.net/ad_servers.txt
+          enum:
+            - "allow"
+            - "block"
+          example: "block"
     comment:
       type: object
       properties:
@@ -269,6 +353,47 @@ components:
           type: integer
           readOnly: true
           example: 2
+    lists_processed:
+      type: object
+      properties:
+        processed:
+          type: object
+          nullable: true
+          description: |
+            Object containing the number of lists that were successfully
+            added to the database and the number of lists that could not be
+            added to the database.
+          properties:
+            success:
+              description: |
+                Array of lists that were successfully added to the database.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: List that was added to the database
+                    type: string
+            errors:
+              description: |
+                Array of errors that occurred during processing.
+              type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: List that could not be added to the database
+                    type: string
+                  error:
+                    description: Error message
+                    type: string
+          example:
+            success:
+              - item: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+              - item: "https://mirror1.malwaredomains.com/files/justdomains"
+            errors:
+              - item: "https://raw.githubusercontent.com/abc/def/master/hosts"
+                error: "UNIQUE constraint failed: adlist.address"
   examples:
     lists:
       value:
@@ -289,6 +414,8 @@ components:
             id: 2
             date_added: 1594670974
             date_modified: 1594670974
+        took: 0.012
+        processed: null
     errors:
       uri_error:
         item_missing:
@@ -323,3 +450,14 @@ components:
       required: true
       description: Address of the list
       example: https://hosts-file.net/ad_servers.txt
+    listtype:
+      in: query
+      name: type
+      schema:
+        type: string
+        enum:
+          - "allow"
+          - "block"
+      required: false
+      description: Type of list, optional
+      example: block
