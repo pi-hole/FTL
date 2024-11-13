@@ -53,8 +53,9 @@ void init_FTL_log(const char *name)
 		FILE *logfile = NULL;
 		if((logfile = fopen(config.files.log.ftl.v.s, "a+")) == NULL)
 		{
+			printf("ERROR: Opening of FTL log (%s) failed: %s\nUsing syslog instead!\n",
+			       config.files.log.ftl.v.s, strerror(errno));
 			syslog(LOG_ERR, "Opening of FTL\'s log file failed, using syslog instead!");
-			printf("ERR: Opening of FTL log (%s) failed!\n",config.files.log.ftl.v.s);
 			config.files.log.ftl.v.s = NULL;
 		}
 
@@ -85,8 +86,7 @@ double double_time(void)
 	return tp.tv_sec + 1e-9*tp.tv_nsec;
 }
 
-// The size of 84 bytes has been carefully selected for all possible timestamps
-// to always fit into the available space without buffer overflows
+// Get a human-readable time string
 void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible)
 {
 	struct tm tm;
@@ -105,16 +105,19 @@ void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool 
 		gettimeofday(&tv, NULL);
 		const int millisec = tv.tv_usec/1000;
 
-		sprintf(timestring,"%d-%02d-%02d%c%02d%c%02d%c%02d.%03i",
+		snprintf(timestring, TIMESTR_SIZE, "%d-%02d-%02d%c%02d%c%02d%c%02d.%03i%c%s",
 		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
-		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, millisec);
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, millisec, space, tm.tm_zone);
 	}
 	else
 	{
-		sprintf(timestring,"%d-%02d-%02d%c%02d%c%02d%c%02d",
+		snprintf(timestring, TIMESTR_SIZE, "%d-%02d-%02d%c%02d%c%02d%c%02d%c%s",
 		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
-		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec);
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, space, tm.tm_zone);
 	}
+
+	// Ensure that the string is zero-terminated
+	timestring[TIMESTR_SIZE - 1] = '\0';
 }
 
 // Return the current year
@@ -125,9 +128,8 @@ unsigned int get_year(const time_t timein)
 	return tm.tm_year + 1900;
 }
 
-static const char *priostr(const int priority, const enum debug_flag flag)
+static const char * __attribute__((const)) priostr(const int priority, const enum debug_flag flag)
 {
-	const char *name;
 	switch (priority)
 	{
 		// system is unusable
@@ -141,7 +143,7 @@ static const char *priostr(const int priority, const enum debug_flag flag)
 			return "CRIT";
 		// error conditions
 		case LOG_ERR:
-			return "ERR";
+			return "ERROR";
 		// warning conditions
 		case LOG_WARNING:
 			return "WARNING";
@@ -153,108 +155,84 @@ static const char *priostr(const int priority, const enum debug_flag flag)
 			return "INFO";
 		// debug-level messages
 		case LOG_DEBUG:
-			debugstr(flag, &name);
-			return name;
+			return debugstr(flag);
 		// invalid option
 		default:
 			return "UNKNOWN";
 	}
 }
 
-void debugstr(const enum debug_flag flag, const char **name)
+const char *debugstr(const enum debug_flag flag)
 {
 	switch (flag)
 	{
 		case DEBUG_DATABASE:
-			*name = "DEBUG_DATABASE";
-			return;
+			return "DEBUG_DATABASE";
 		case DEBUG_NETWORKING:
-			*name = "DEBUG_NETWORKING";
-			return;
+			return "DEBUG_NETWORKING";
 		case DEBUG_LOCKS:
-			*name = "DEBUG_LOCKS";
-			return;
+			return "DEBUG_LOCKS";
 		case DEBUG_QUERIES:
-			*name = "DEBUG_QUERIES";
-			return;
+			return "DEBUG_QUERIES";
 		case DEBUG_FLAGS:
-			*name = "DEBUG_FLAGS";
-			return;
+			return "DEBUG_FLAGS";
 		case DEBUG_SHMEM:
-			*name = "DEBUG_SHMEM";
-			return;
+			return "DEBUG_SHMEM";
 		case DEBUG_GC:
-			*name = "DEBUG_GC";
-			return;
+			return "DEBUG_GC";
 		case DEBUG_ARP:
-			*name = "DEBUG_ARP";
-			return;
+			return "DEBUG_ARP";
 		case DEBUG_REGEX:
-			*name = "DEBUG_REGEX";
-			return;
+			return "DEBUG_REGEX";
 		case DEBUG_API:
-			*name = "DEBUG_API";
-			return;
+			return "DEBUG_API";
 		case DEBUG_TLS:
-			*name = "DEBUG_TLS";
-			return;
+			return "DEBUG_TLS";
 		case DEBUG_OVERTIME:
-			*name = "DEBUG_OVERTIME";
-			return;
+			return "DEBUG_OVERTIME";
 		case DEBUG_STATUS:
-			*name = "DEBUG_STATUS";
-			return;
+			return "DEBUG_STATUS";
 		case DEBUG_CAPS:
-			*name = "DEBUG_CAPS";
-			return;
+			return "DEBUG_CAPS";
 		case DEBUG_DNSSEC:
-			*name = "DEBUG_DNSSEC";
-			return;
+			return "DEBUG_DNSSEC";
 		case DEBUG_VECTORS:
-			*name = "DEBUG_VECTORS";
-			return;
+			return "DEBUG_VECTORS";
 		case DEBUG_RESOLVER:
-			*name = "DEBUG_RESOLVER";
-			return;
+			return "DEBUG_RESOLVER";
 		case DEBUG_EDNS0:
-			*name = "DEBUG_EDNS0";
-			return;
+			return "DEBUG_EDNS0";
 		case DEBUG_CLIENTS:
-			*name = "DEBUG_CLIENTS";
-			return;
+			return "DEBUG_CLIENTS";
 		case DEBUG_ALIASCLIENTS:
-			*name = "DEBUG_ALIASCLIENTS";
-			return;
+			return "DEBUG_ALIASCLIENTS";
 		case DEBUG_EVENTS:
-			*name = "DEBUG_EVENTS";
-			return;
+			return "DEBUG_EVENTS";
 		case DEBUG_HELPER:
-			*name = "DEBUG_HELPER";
-			return;
+			return "DEBUG_HELPER";
 		case DEBUG_EXTRA:
-			*name = "DEBUG_EXTRA";
-			return;
+			return "DEBUG_EXTRA";
 		case DEBUG_CONFIG:
-			*name = "DEBUG_CONFIG";
-			return;
+			return "DEBUG_CONFIG";
 		case DEBUG_INOTIFY:
-			*name = "DEBUG_INOTIFY";
-			return;
+			return "DEBUG_INOTIFY";
+		case DEBUG_WEBSERVER:
+			return "DEBUG_WEBSERVER";
 		case DEBUG_RESERVED:
-			*name = "DEBUG_RESERVED";
-			return;
+			return "DEBUG_RESERVED";
+		case DEBUG_NTP:
+			return "DEBUG_NTP";
 		case DEBUG_MAX:
-			*name = "DEBUG_MAX";
-			return;
+			return "DEBUG_MAX";
+		case DEBUG_NONE: // fall through
 		default:
-			*name = "DEBUG_ANY";
-			return;
+			return "DEBUG_ANY";
 	}
 }
 
-void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
+void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
 {
-	char timestring[TIMESTR_SIZE] = "";
+	char timestring[TIMESTR_SIZE];
 	va_list args;
 
 	// We have been explicitly asked to not print anything to the log
@@ -270,6 +248,8 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	const int pid = getpid(); // Get the process ID of the calling process
 	const int mpid = main_pid(); // Get the process ID of the main FTL process
 	const int tid = gettid(); // Get the thread ID of the calling process
+
+	const char *prio = priostr(priority, flag);
 
 	// There are four cases we have to differentiate here:
 	if(pid == tid)
@@ -292,7 +272,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	{
 		// Only print time/ID string when not in direct user interaction (CLI mode)
 		if(!cli_mode)
-			printf("%s [%s] %s: ", timestring, idstr, priostr(priority, flag));
+			printf("%s [%s] %s: ", timestring, idstr, prio);
 		va_start(args, format);
 		vprintf(format, args);
 		va_end(args);
@@ -307,8 +287,9 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 		va_start(args, format);
 		const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
 		va_end(args);
-		add_to_fifo_buffer(FIFO_FTL, buffer, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
+		add_to_fifo_buffer(FIFO_FTL, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
+		bool logged = false;
 		if(config.files.log.ftl.v.s != NULL)
 		{
 			// Open log file
@@ -318,7 +299,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 			if(logfile != NULL)
 			{
 				// Prepend message with identification string and priority
-				fprintf(logfile, "%s [%s] %s: ", timestring, idstr, priostr(priority, flag));
+				fprintf(logfile, "%s [%s] %s: ", timestring, idstr, prio);
 
 				// Log message
 				va_start(args, format);
@@ -330,6 +311,8 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 
 				// Close file after writing
 				fclose(logfile);
+
+				logged = true;
 			}
 			else if(!daemonmode)
 			{
@@ -337,7 +320,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 				syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
 			}
 		}
-		else
+		if(!logged)
 		{
 			// Syslog logging
 			va_start(args, format);
@@ -347,9 +330,9 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	}
 }
 
-void __attribute__ ((format (gnu_printf, 1, 2))) log_web(const char *format, ...)
+void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 {
-	char timestring[TIMESTR_SIZE] = "";
+	char timestring[TIMESTR_SIZE];
 	const time_t now = time(NULL);
 	va_list args;
 
@@ -358,7 +341,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) log_web(const char *format, ...
 	va_start(args, format);
 	const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
 	va_end(args);
-	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
+	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, NULL, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
 	// Get human-readable time
 	get_timestr(timestring, now, true, false);
@@ -388,7 +371,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) log_web(const char *format, ...
 }
 
 // Log helper activity (may be script or lua)
-void FTL_log_helper(const unsigned char n, ...)
+void FTL_log_helper(const unsigned int n, ...)
 {
 	// Only log helper debug messages if enabled
 	if(!(config.debug.helper.v.b))
@@ -398,7 +381,7 @@ void FTL_log_helper(const unsigned char n, ...)
 	va_list args;
 	char **arg = calloc(n, sizeof(char*));
 	va_start(args, n);
-	for(unsigned char i = 0; i < n; i++)
+	for(unsigned int i = 0; i < n; i++)
 	{
 		const char *argin = va_arg(args, char*);
 		if(argin == NULL)
@@ -427,25 +410,24 @@ void FTL_log_helper(const unsigned char n, ...)
 	}
 
 	// Free allocated memory
-	for(unsigned char i = 0; i < n; i++)
+	for(unsigned int i = 0; i < n; i++)
 		if(arg[i] != NULL)
 			free(arg[i]);
 	free(arg);
 }
 
-void format_memory_size(char prefix[2], const unsigned long long int bytes,
-                        double * const formatted)
+void format_memory_size(char prefix[2], const uint64_t bytes, double * const formatted)
 {
 	unsigned int i;
 	*formatted = bytes;
 	// Determine exponent for human-readable display
-	for(i = 0; i < 7; i++)
+	const char prefixes[] = { '\0', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y', 'R', '?' };
+	for(i = 0; i < sizeof(prefixes)/sizeof(*prefixes) - 1; i++)
 	{
 		if(*formatted <= 1e3)
 			break;
 		*formatted /= 1e3;
 	}
-	const char prefixes[8] = { '\0', 'K', 'M', 'G', 'T', 'P', 'E', '?' };
 	// Chose matching SI prefix
 	prefix[0] = prefixes[i];
 	prefix[1] = '\0';
@@ -501,14 +483,15 @@ void FTL_log_dnsmasq_fatal(const char *format, ...)
 
 void log_counter_info(void)
 {
-	log_info(" -> Total DNS queries: %i", counters->queries);
-	log_info(" -> Cached DNS queries: %i", get_cached_count());
-	log_info(" -> Forwarded DNS queries: %i", get_forwarded_count());
-	log_info(" -> Blocked DNS queries: %i", get_blocked_count());
-	log_info(" -> Unknown DNS queries: %i", counters->status[QUERY_UNKNOWN]);
-	log_info(" -> Unique domains: %i", counters->domains);
-	log_info(" -> Unique clients: %i", counters->clients);
-	log_info(" -> Known forward destinations: %i", counters->upstreams);
+	log_info(" -> Total DNS queries: %u", counters->queries);
+	log_info(" -> Cached DNS queries: %u", get_cached_count());
+	log_info(" -> Forwarded DNS queries: %u", get_forwarded_count());
+	log_info(" -> Blocked DNS queries: %u", get_blocked_count());
+	log_info(" -> Unknown DNS queries: %u", counters->status[QUERY_UNKNOWN]);
+	log_info(" -> Unique domains: %u", counters->domains);
+	log_info(" -> Unique clients: %u", counters->clients);
+	log_info(" -> DNS cache records: %u", counters->dns_cache_size);
+	log_info(" -> Known forward destinations: %u", counters->upstreams);
 }
 
 void log_FTL_version(const bool crashreport)
@@ -660,37 +643,6 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 	return src - src_buf;
 }
 
-// Find number of occurrences of a character in a string
-unsigned int __attribute__ ((pure)) countchar(const char *str, const char c)
-{
-	unsigned int count = 0;
-	for(const char *p = str; *p != '\0'; p++)
-		if(*p == c)
-			count++;
-	return count;
-}
-
-int __attribute__ ((pure)) forwarded_queries(void)
-{
-	return counters->status[QUERY_FORWARDED] +
-	       counters->status[QUERY_RETRIED] +
-	       counters->status[QUERY_RETRIED_DNSSEC];
-}
-
-int __attribute__ ((pure)) cached_queries(void)
-{
-	return counters->status[QUERY_CACHE];
-}
-
-int __attribute__ ((pure)) blocked_queries(void)
-{
-	int num = 0;
-	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
-		if(is_blocked(status))
-			num += counters->status[status];
-	return num;
-}
-
 const char * __attribute__ ((pure)) short_path(const char *full_path)
 {
 	const char *shorter = strstr(full_path, "src/");
@@ -718,7 +670,7 @@ void dnsmasq_diagnosis_warning(char *message)
 	logg_warn_dnsmasq_message(skipStr("warning: ", message));
 }
 
-void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const size_t length)
+void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const char *prio, const size_t length)
 {
 	const double now = double_time();
 
@@ -732,6 +684,7 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const s
 		// Log is full, move everything one slot forward to make space for a new record at the end
 		// This pruges the oldest message from the list (it is overwritten by the second message)
 		memmove(&fifo_log->logs[which].message[0][0], &fifo_log->logs[which].message[1][0], (LOG_SIZE - 1u) * MAX_MSG_FIFO);
+		memmove(&fifo_log->logs[which].prio[0], &fifo_log->logs[which].prio[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].prio[0]));
 		memmove(&fifo_log->logs[which].timestamp[0], &fifo_log->logs[which].timestamp[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].timestamp[0]));
 		idx = LOG_SIZE - 1u;
 	}
@@ -755,6 +708,9 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const s
 
 	// Set timestamp
 	fifo_log->logs[which].timestamp[idx] = now;
+
+	// Set prio (if available)
+	fifo_log->logs[which].prio[idx] = prio;
 }
 
 bool flush_dnsmasq_log(void)

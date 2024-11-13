@@ -14,15 +14,25 @@
 #include "config/toml_helper.h"
 #include "config/toml_writer.h"
 #include "config/dnsmasq_config.h"
-
 #include "log.h"
 #include "datastructure.h"
-
 // toml_table_t
 #include "tomlc99/toml.h"
-
 // hash_password()
 #include "config/password.h"
+// check_capability()
+#include "capabilities.h"
+// suggest_closest_conf_key()
+#include "config/suggest.h"
+
+enum exit_codes {
+	OKAY = 0,
+	FAIL = 1,
+	VALUE_INVALID = 2,
+	DNSMASQ_TEST_FAILED = 3,
+	KEY_UNKNOWN = 4,
+	ENV_VAR_FORCED = 5,
+} __attribute__((packed));
 
 // Read a TOML value from a table depending on its type
 static bool readStringValue(struct conf_item *conf_item, const char *value, struct config *newconf)
@@ -161,8 +171,9 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			// Get password hash as allocated string (an empty string is hashed to an empty string)
 			char *pwhash = strlen(value) > 0 ? create_password(value) : strdup("");
 
-			// Verify that the password hash is valid
-			if(verify_password(value, pwhash, false) != PASSWORD_CORRECT)
+			// Verify that the password hash is either valid or empty
+			const enum password_result status = verify_password(value, pwhash, false);
+			if(status != PASSWORD_CORRECT && status != NO_PASSWORD_SET)
 			{
 				log_err("Failed to create password hash (verification failed), password remains unchanged");
 				free(pwhash);
@@ -171,7 +182,7 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 
 			// Free old password hash if it was allocated
 			if(conf_item->t == CONF_STRING_ALLOCATED)
-					free(conf_item->v.s);
+				free(conf_item->v.s);
 
 			// Store new password hash
 			conf_item->v.s = pwhash;
@@ -295,10 +306,30 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			}
 			break;
 		}
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		{
+			const int edns_mode = get_edns_mode_val(value);
+			if(edns_mode != -1)
+				conf_item->v.edns_mode = edns_mode;
+			else
+			{
+				char *allowed = NULL;
+				CONFIG_ITEM_ARRAY(conf_item->a, allowed);
+				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, allowed);
+				free(allowed);
+				return false;
+			}
+			break;
+		}
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };
-			if(inet_pton(AF_INET, value, &addr4))
+			if(strlen(value) == 0)
+			{
+				// Special case: empty string -> 0.0.0.0
+				conf_item->v.in_addr.s_addr = INADDR_ANY;
+			}
+			else if(inet_pton(AF_INET, value, &addr4))
 				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
 			else
 			{
@@ -310,7 +341,12 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 		case CONF_STRUCT_IN6_ADDR:
 		{
 			struct in6_addr addr6 = { 0 };
-			if(inet_pton(AF_INET6, value, &addr6))
+			if(strlen(value) == 0)
+			{
+				// Special case: empty string -> ::
+				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+			}
+			else if(inet_pton(AF_INET6, value, &addr6))
 				memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 			else
 			{
@@ -321,10 +357,11 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 		}
 		case CONF_JSON_STRING_ARRAY:
 		{
-			cJSON *elem = cJSON_Parse(value);
+			const char *json_error = NULL;
+			cJSON *elem = cJSON_ParseWithOpts(value, &json_error, 0);
 			if(elem == NULL)
 			{
-				log_err("Config setting %s is invalid: not valid JSON, error before: %s", conf_item->k, cJSON_GetErrorPtr());
+				log_err("Config setting %s is invalid: not valid JSON, error at: %.20s", conf_item->k, json_error);
 				return false;
 			}
 			if(!cJSON_IsArray(elem))
@@ -356,6 +393,33 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 
 int set_config_from_CLI(const char *key, const char *value)
 {
+	// Check if we are either
+	// - root, or
+	// - pihole with CAP_CHOWN capability on the pihole-FTL binary
+	const uid_t euid = geteuid();
+	const struct passwd *current_user = getpwuid(euid);
+	const bool is_root = euid == 0;
+	const bool is_pihole = current_user != NULL && strcmp(current_user->pw_name, "pihole") == 0;
+	const bool have_chown_cap = check_capability(CAP_CHOWN);
+	if(!is_root && !(is_pihole && have_chown_cap))
+	{
+		if(is_pihole)
+			printf("Permission error: CAP_CHOWN is missing on the binary\n");
+		else
+			printf("Permission error: User %s is not allowed to edit Pi-hole's config\n", current_user->pw_name);
+
+		printf("Please run this command using sudo\n\n");
+		return EXIT_FAILURE;
+	}
+
+	// Return early if the user tries to change some settings but the config
+	// is in read-only mode
+	if(config.misc.readOnly.v.b)
+	{
+		printf("Config is in read-only mode, changes are not allowed (misc.readOnly = true)\n");
+		return EXIT_FAILURE;
+	}
+
 	// Identify config option
 	struct config newconf;
 	duplicate_config(&newconf, &config);
@@ -368,6 +432,22 @@ int set_config_from_CLI(const char *key, const char *value)
 
 		if(strcmp(item->k, key) != 0)
 			continue;
+
+		// Check if this is a read-only config option (forced by env var)
+		if(item->f & FLAG_ENV_VAR)
+		{
+			log_err("Config option %s is read-only (set via environmental variable)", key);
+			free_config(&newconf);
+			return ENV_VAR_FORCED;
+		}
+
+		// Check if this the special read-only config option
+		if(item->f & FLAG_READ_ONLY)
+		{
+			log_err("Config option %s can only be set in pihole.toml, not via the CLI", key);
+			free_config(&newconf);
+			return EXIT_FAILURE;
+		}
 
 		// This is the config option we are looking for
 		new_item = item;
@@ -382,13 +462,23 @@ int set_config_from_CLI(const char *key, const char *value)
 	// Check if we found the config option
 	if(new_item == NULL)
 	{
-		log_err("Unknown config option: %s", key);
-		return 2;
+		unsigned int N = 0;
+		char **matches = suggest_closest_conf_key(false, key, &N);
+		log_err("Unknown config option %s, did you mean:", key);
+		for(unsigned int i = 0; i < N; i++)
+			log_err(" - %s", matches[i]);
+		free(matches);
+
+		free_config(&newconf);
+		return KEY_UNKNOWN;
 	}
 
 	// Parse value
 	if(!readStringValue(new_item, value, &newconf))
-		return 2;
+	{
+		free_config(&newconf);
+		return VALUE_INVALID;
+	}
 
 	// Check if value changed compared to current value
 	// Also check if this is the password config item change as this
@@ -398,23 +488,34 @@ int set_config_from_CLI(const char *key, const char *value)
 	{
 		// Config item changed
 
+		// Validate new value(if validation function is defined)
+		if(new_item->c != NULL)
+		{
+			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+			if(!new_item->c(&new_item->v, new_item->k, errbuf))
+			{
+				free_config(&newconf);
+				log_err("Invalid value: %s", errbuf);
+				return 3;
+			}
+		}
+
 		// Is this a dnsmasq option we need to check?
-		if(conf_item->f & FLAG_RESTART_DNSMASQ)
+		if(conf_item->f & FLAG_RESTART_FTL)
 		{
 			char errbuf[ERRBUF_SIZE] = { 0 };
 			if(!write_dnsmasq_config(&newconf, true, errbuf))
 			{
 				// Test failed
 				log_debug(DEBUG_CONFIG, "Config item %s: dnsmasq config test failed", conf_item->k);
-				return 3;
+				free_config(&newconf);
+				return DNSMASQ_TEST_FAILED;
 			}
 		}
 		else if(conf_item == &config.dns.hosts)
 		{
-			// We need to rewrite the custom.list file but do not need to
-			// restart dnsmasq. If dnsmasq is going to be restarted anyway,
-			// this is not necessary as the file will be rewritten during
-			// the restart
+			// We need to rewrite the custom.list file but do not
+			// need to restart dnsmasq
 			write_custom_list();
 		}
 
@@ -436,20 +537,41 @@ int set_config_from_CLI(const char *key, const char *value)
 
 	putchar('\n');
 	writeFTLtoml(false);
-	return EXIT_SUCCESS;
+	return OKAY;
 }
 
 int get_config_from_CLI(const char *key, const bool quiet)
 {
 	// Identify config option
 	struct conf_item *conf_item = NULL;
+
+	// We first loop over all config options to check if the one we are
+	// looking for is an exact match, use partial match otherwise
+	bool exactMatch = false;
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		// Get pointer to memory location of this conf_item
+		struct conf_item *item = get_conf_item(&config, i);
+
+		// Check if item.k is identical with key
+		if(strcmp(item->k, key) == 0)
+		{
+			exactMatch = true;
+			break;
+		}
+	}
+
+	// Loop over all config options again to find the one we are looking for
+	// (possibly partial match)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
 		struct conf_item *item = get_conf_item(&config, i);
 
 		// Check if item.k starts with key
-		if(key != NULL && strncmp(item->k, key, strlen(key)) != 0)
+		if(key != NULL &&
+		   ((exactMatch && strcmp(item->k, key) != 0) ||
+		    (!exactMatch && strncmp(item->k, key, strlen(key)))))
 			continue;
 
 		// Skip write-only options
@@ -472,16 +594,22 @@ int get_config_from_CLI(const char *key, const bool quiet)
 	}
 
 	// Check if we found the config option
-	if(key != NULL && conf_item == NULL)
+	if(conf_item == NULL)
 	{
-		log_err("Unknown config option: %s", key);
-		return 2;
+		unsigned int N = 0;
+		char **matches = suggest_closest_conf_key(false, key, &N);
+		log_err("Unknown config option %s, did you mean:", key);
+		for(unsigned int i = 0; i < N; i++)
+			log_err(" - %s", matches[i]);
+		free(matches);
+
+		return KEY_UNKNOWN;
 	}
 
 	// Use return status if this is a boolean value
 	// and we are in quiet mode
-	if(quiet && conf_item->t == CONF_BOOL)
-		return conf_item->v.b ? EXIT_SUCCESS : EXIT_FAILURE;
+	if(quiet && conf_item != NULL && conf_item->t == CONF_BOOL)
+		return conf_item->v.b ? OKAY : FAIL;
 
-	return EXIT_SUCCESS;
+	return OKAY;
 }

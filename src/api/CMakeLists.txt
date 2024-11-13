@@ -11,14 +11,15 @@
 set(sources
         2fa.c
         action.c
-        api_helper.h
         api.h
         api.c
         auth.c
+        auth.h
         config.c
         dhcp.c
         dns.c
         network.c
+        padd.c
         history.c
         info.c
         list.c

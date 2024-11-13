@@ -9,67 +9,25 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "api/auth.h"
 #include "webserver/http-common.h"
 #include "webserver/json_macros.h"
 #include "api/api.h"
 #include "log.h"
 #include "config/config.h"
 // get_password_hash()
-#include "setupVars.h"
+#include "config/setupVars.h"
 // (un)lock_shm()
 #include "shmem.h"
 // getrandom()
 #include "daemon.h"
 // sha256_raw_to_hex()
 #include "config/password.h"
+// database session functions
+#include "database/session-table.h"
 
-// crypto library
-#include <nettle/sha2.h>
-#include <nettle/base64.h>
-#include <nettle/version.h>
-
-// On 2017-08-27 (after v3.3, before v3.4), nettle changed the type of
-// destination from uint_8t* to char* in all base64 and base16 functions
-// (armor-signedness branch). This is a breaking change as this is a change in
-// signedness causing issues when compiling FTL against older versions of
-// nettle. We create this constant here to have a conversion if necessary.
-// See https://github.com/gnutls/nettle/commit/f2da403135e2b2f641cf0f8219ad5b72083b7dfd
-#if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR < 4
-#define NETTLE_SIGN (uint8_t*)
-#else
-#define NETTLE_SIGN
-#endif
-
-// How many bits should the SID and CSRF token use?
-#define SID_BITSIZE 128
-#define SID_SIZE BASE64_ENCODE_RAW_LENGTH(SID_BITSIZE/8)
-
-// SameSite=Strict: Defense against some classes of cross-site request forgery
-// (CSRF) attacks. This ensures the session cookie will only be sent in a
-// first-party (i.e., Pi-hole) context and NOT be sent along with requests
-// initiated by third party websites.
-//
-// HttpOnly: the cookie cannot be accessed through client side script (if the
-// browser supports this flag). As a result, even if a cross-site scripting
-// (XSS) flaw exists, and a user accidentally accesses a link that exploits this
-// flaw, the browser (primarily Internet Explorer) will not reveal the cookie to
-// a third party.
-#define FTL_SET_COOKIE "Set-Cookie: sid=%s; SameSite=Strict; Path=/; Max-Age=%u; HttpOnly\r\n"
-#define FTL_DELETE_COOKIE "Set-Cookie: sid=deleted; SameSite=Strict; Path=/; Max-Age=-1\r\n"
-
-static struct {
-	bool used;
-	struct {
-		bool login;
-		bool mixed;
-	} tls;
-	time_t login_at;
-	time_t valid_until;
-	char remote_addr[48]; // Large enough for IPv4 and IPv6 addresses, hard-coded in civetweb.h as mg_request_info.remote_addr
-	char user_agent[128];
-	char sid[SID_SIZE];
-	char csrf[SID_SIZE];
-} auth_data[API_MAX_CLIENTS] = {{false, {false, false}, 0, 0, {0}, {0}, {0}, {0}}};
+static uint16_t max_sessions = 0;
+static struct session *auth_data = NULL;
 
 static void add_request_info(struct ftl_conn *api, const char *csrf)
 {
@@ -83,23 +41,40 @@ static void add_request_info(struct ftl_conn *api, const char *csrf)
 	memset((int*)&api->request->is_authenticated, 1, sizeof(api->request->is_authenticated));
 }
 
+void init_api(void)
+{
+	// Restore sessions from database
+	max_sessions = config.webserver.api.max_sessions.v.u16;
+	auth_data = calloc(max_sessions, sizeof(struct session));
+	if(auth_data == NULL)
+	{
+		log_crit("Could not allocate memory for API sessions, check config value of webserver.api.max_sessions");
+		exit(EXIT_FAILURE);
+	}
+	restore_db_sessions(auth_data, max_sessions);
+}
+
+void free_api(void)
+{
+	if(auth_data == NULL)
+		return;
+
+	// Store sessions in database
+	backup_db_sessions(auth_data, max_sessions);
+	max_sessions = 0;
+	free(auth_data);
+	auth_data = NULL;
+}
+
 // Can we validate this client?
 // Returns -1 if not authenticated or expired
 // Returns >= 0 for any valid authentication
 int check_client_auth(struct ftl_conn *api, const bool is_api)
 {
-	// Is the user requesting from localhost?
-	// This may be allowed without authentication depending on the configuration
-	if(!config.webserver.api.localAPIauth.v.b && (strcmp(api->request->remote_addr, LOCALHOSTv4) == 0 ||
-	                                              strcmp(api->request->remote_addr, LOCALHOSTv6) == 0))
-	{
-		add_request_info(api, NULL);
-		return API_AUTH_LOCALHOST;
-	}
-
 	// When the pwhash is unset, authentication is disabled
 	if(config.webserver.api.pwhash.v.s[0] == '\0')
 	{
+		api->message = "no password set";
 		add_request_info(api, NULL);
 		return API_AUTH_EMPTYPASS;
 	}
@@ -165,6 +140,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		}
 	}
 
+	// If not, does the client provide a session ID via COOKIE?
 	bool cookie_auth = false;
 	if(!sid_avail)
 	{
@@ -176,12 +152,28 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 			// Mark SID as available
 			sid_avail = true;
 		}
+	}
 
+	// If not, does the client provide a session ID via URI?
+	if(!sid_avail && api->request->query_string && GET_VAR("sid", sid, api->request->query_string) > 0)
+	{
+		// "+" may have been replaced by " ", undo this here
+		for(unsigned int i = 0; i < SID_SIZE; i++)
+			if(sid[i] == ' ')
+				sid[i] = '+';
+
+		// Zero terminate SID string
+		sid[SID_SIZE-1] = '\0';
+		// Mention source of SID
+		sid_source = "URI";
+		// Mark SID as available
+		sid_avail = true;
 	}
 
 	if(!sid_avail)
 	{
-		log_debug(DEBUG_API, "API Authentication: FAIL (no SID provided)");
+		api->message = "no SID provided";
+		log_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
 		return API_AUTH_UNAUTHORIZED;
 	}
 
@@ -207,22 +199,28 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		}
 		else
 		{
-			log_debug(DEBUG_API, "API Authentication: FAIL (Cookie authentication without CSRF token)");
+			api->message = "Cookie authentication without CSRF token";
+			log_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
 			return API_AUTH_UNAUTHORIZED;
 		}
 	}
 
-	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+	bool expired = false;
+	for(unsigned int i = 0; i < max_sessions; i++)
 	{
 		if(auth_data[i].used &&
-		   auth_data[i].valid_until >= now &&
-		   strcmp(auth_data[i].remote_addr, api->request->remote_addr) == 0 &&
 		   strcmp(auth_data[i].sid, sid) == 0)
 		{
+			// Check if session is known but expired
+			if(auth_data[i].valid_until < now)
+				expired = true;
+
+			// Check CSRF if authentiating via cookie
 			if(need_csrf && strcmp(auth_data[i].csrf, csrf) != 0)
 			{
-				log_debug(DEBUG_API, "API Authentication: FAIL (CSRF token mismatch, received \"%s\", expected \"%s\")",
-				          csrf, auth_data[i].csrf);
+				api->message = "CSRF token mismatch";
+				log_debug(DEBUG_API, "API Authentication: FAIL (%s, received \"%s\", expected \"%s\")",
+				          api->message, csrf, auth_data[i].csrf);
 				return API_AUTH_UNAUTHORIZED;
 			}
 			user_id = i;
@@ -231,14 +229,11 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	}
 	if(user_id > API_AUTH_UNAUTHORIZED)
 	{
-		// Authentication successful:
-		// - We know this client
-		// - The session is (still) valid
-		// - The IP matches the one we know for this SID
+		// Authentication successful: valid session
 
 		// Update timestamp of this client to extend
 		// the validity of their API authentication
-		auth_data[user_id].valid_until = now + config.webserver.sessionTimeout.v.ui;
+		auth_data[user_id].valid_until = now + config.webserver.session.timeout.v.ui;
 
 		// Set strict_tls permanently to false if the client connected via HTTP
 		auth_data[user_id].tls.mixed |= api->request->is_ssl != auth_data[user_id].tls.login;
@@ -246,29 +241,34 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		// Update user cookie
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 		            FTL_SET_COOKIE,
-		            auth_data[user_id].sid, config.webserver.sessionTimeout.v.ui) < 0)
+		            auth_data[user_id].sid, config.webserver.session.timeout.v.ui) < 0)
 		{
 			return send_json_error(api, 500, "internal_error", "Internal server error", NULL);
 		}
 
+		// Add CSRF token to request
 		add_request_info(api, auth_data[user_id].csrf);
 
+		// Debug logging
 		if(config.debug.api.v.b)
 		{
-			char timestr[128];
+			char timestr[TIMESTR_SIZE];
 			get_timestr(timestr, auth_data[user_id].valid_until, false, false);
-			log_debug(DEBUG_API, "Recognized known user: user_id %i, valid_until: %s, remote_addr %s",
-				user_id, timestr, auth_data[user_id].remote_addr);
+			log_debug(DEBUG_API, "Recognized known user: user_id %i, valid_until: %s, remote_addr %s (%s at login)",
+			          user_id, timestr, api->request->remote_addr, auth_data[user_id].remote_addr);
 		}
 	}
 	else
 	{
-		log_debug(DEBUG_API, "API Authentication: FAIL (SID invalid/expired)");
+		api->message = expired ? "session expired" : "session unknown";
+		log_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
 		return API_AUTH_UNAUTHORIZED;
 	}
 
 	api->user_id = user_id;
+	api->session = &auth_data[user_id];
 
+	api->message = "correct password";
 	return user_id;
 }
 
@@ -276,7 +276,7 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 {
 	const time_t now = time(NULL);
 	cJSON *sessions = JSON_NEW_ARRAY();
-	for(int i = 0; i < API_MAX_CLIENTS; i++)
+	for(int i = 0; i < max_sessions; i++)
 	{
 		if(!auth_data[i].used)
 			continue;
@@ -289,10 +289,19 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 		JSON_ADD_BOOL_TO_OBJECT(tls, "mixed", auth_data[i].tls.mixed);
 		JSON_ADD_ITEM_TO_OBJECT(session, "tls", tls);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "login_at", auth_data[i].login_at);
-		JSON_ADD_NUMBER_TO_OBJECT(session, "last_active", auth_data[i].valid_until - config.webserver.sessionTimeout.v.ui);
+		JSON_ADD_NUMBER_TO_OBJECT(session, "last_active", auth_data[i].valid_until - config.webserver.session.timeout.v.ui);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "valid_until", auth_data[i].valid_until);
 		JSON_REF_STR_IN_OBJECT(session, "remote_addr", auth_data[i].remote_addr);
-		JSON_REF_STR_IN_OBJECT(session, "user_agent", auth_data[i].user_agent);
+		if(auth_data[i].user_agent[0] != '\0')
+			JSON_REF_STR_IN_OBJECT(session, "user_agent", auth_data[i].user_agent);
+		else
+			JSON_ADD_NULL_TO_OBJECT(session, "user_agent");
+		if(auth_data[i].x_forwarded_for[0] != '\0')
+			JSON_REF_STR_IN_OBJECT(session, "x_forwarded_for", auth_data[i].x_forwarded_for);
+		else
+			JSON_ADD_NULL_TO_OBJECT(session, "x_forwarded_for");
+		JSON_ADD_BOOL_TO_OBJECT(session, "app", auth_data[i].app);
+		JSON_ADD_BOOL_TO_OBJECT(session, "cli", auth_data[i].cli);
 		JSON_ADD_ITEM_TO_ARRAY(sessions, session);
 	}
 	JSON_ADD_ITEM_TO_OBJECT(json, "sessions", sessions);
@@ -302,17 +311,16 @@ static int get_all_sessions(struct ftl_conn *api, cJSON *json)
 static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_id, const time_t now)
 {
 	cJSON *session = JSON_NEW_OBJECT();
-	const bool dns = get_blockingstatus() != DNS_FAILED;
 
 	// Authentication not needed
-	if(user_id == API_AUTH_LOCALHOST || user_id == API_AUTH_EMPTYPASS)
+	if(user_id == API_AUTH_EMPTYPASS)
 	{
 		JSON_ADD_BOOL_TO_OBJECT(session, "valid", true);
 		JSON_ADD_BOOL_TO_OBJECT(session, "totp", strlen(config.webserver.api.totp_secret.v.s) > 0);
 		JSON_ADD_NULL_TO_OBJECT(session, "sid");
 		JSON_ADD_NUMBER_TO_OBJECT(session, "validity", -1);
+		JSON_REF_STR_IN_OBJECT(session, "message", api->message);
 		JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
-		JSON_ADD_BOOL_TO_OBJECT(json, "dns", dns);
 		return 0;
 	}
 
@@ -324,8 +332,8 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 		JSON_REF_STR_IN_OBJECT(session, "sid", auth_data[user_id].sid);
 		JSON_REF_STR_IN_OBJECT(session, "csrf", auth_data[user_id].csrf);
 		JSON_ADD_NUMBER_TO_OBJECT(session, "validity", auth_data[user_id].valid_until - now);
+		JSON_REF_STR_IN_OBJECT(session, "message", api->message);
 		JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
-		JSON_ADD_BOOL_TO_OBJECT(json, "dns", dns);
 		return 0;
 	}
 
@@ -334,47 +342,33 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 	JSON_ADD_BOOL_TO_OBJECT(session, "totp", strlen(config.webserver.api.totp_secret.v.s) > 0);
 	JSON_ADD_NULL_TO_OBJECT(session, "sid");
 	JSON_ADD_NUMBER_TO_OBJECT(session, "validity", -1);
+	JSON_REF_STR_IN_OBJECT(session, "message", api->message);
 	JSON_ADD_ITEM_TO_OBJECT(json, "session", session);
-	JSON_ADD_BOOL_TO_OBJECT(json, "dns", dns);
 	return 0;
 }
 
-static void delete_session(const int user_id)
+static bool delete_session(const int user_id)
 {
 	// Skip if nothing to be done here
-	if(user_id < 0 || user_id >= API_MAX_CLIENTS)
-		return;
+	if(user_id < 0 || user_id >= max_sessions)
+		return false;
+
+	const bool was_valid = auth_data[user_id].used;
 
 	// Zero out this session (also sets valid to false == 0)
 	memset(&auth_data[user_id], 0, sizeof(auth_data[user_id]));
+
+	return was_valid;
 }
 
 void delete_all_sessions(void)
 {
-	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
-		delete_session(i);
+	// Zero out all sessions without looping
+	memset(auth_data, 0, max_sessions*sizeof(*auth_data));
 }
 
 static int send_api_auth_status(struct ftl_conn *api, const int user_id, const time_t now)
 {
-	if(user_id == API_AUTH_LOCALHOST)
-	{
-		log_debug(DEBUG_API, "API Auth status: OK (localhost does not need auth)");
-
-		cJSON *json = JSON_NEW_OBJECT();
-		get_session_object(api, json, user_id, now);
-		JSON_SEND_OBJECT(json);
-	}
-
-	if(user_id == API_AUTH_EMPTYPASS)
-	{
-		log_debug(DEBUG_API, "API Auth status: OK (empty password)");
-
-		cJSON *json = JSON_NEW_OBJECT();
-		get_session_object(api, json, user_id, now);
-		JSON_SEND_OBJECT(json);
-	}
-
 	if(user_id > API_AUTH_UNAUTHORIZED && (api->method == HTTP_GET || api->method == HTTP_POST))
 	{
 		log_debug(DEBUG_API, "API Auth status: OK");
@@ -382,7 +376,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 		// Ten minutes validity
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 		            FTL_SET_COOKIE,
-		            auth_data[user_id].sid, config.webserver.sessionTimeout.d.ui) < 0)
+		            auth_data[user_id].sid, config.webserver.session.timeout.d.ui) < 0)
 		{
 			return send_json_error(api, 500, "internal_error", "Internal server error", NULL);
 		}
@@ -391,17 +385,37 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
-	else if(user_id > API_AUTH_UNAUTHORIZED && api->method == HTTP_DELETE)
+	else if(api->method == HTTP_DELETE)
 	{
-		log_debug(DEBUG_API, "API Auth status: Logout, asking to delete cookie");
+		if(user_id > API_AUTH_UNAUTHORIZED)
+		{
+			log_debug(DEBUG_API, "API Auth status: Logout, asking to delete cookie");
 
-		// Revoke client authentication. This slot can be used by a new client afterwards.
-		delete_session(user_id);
+			strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
 
-		strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
+			// Revoke client authentication. This slot can be used by a new client afterwards.
+			const int code = delete_session(user_id) ? 204 : 404;
+
+			// Send empty reply with appropriate HTTP status code
+			send_http_code(api, "application/json; charset=utf-8", code, "");
+			return code;
+		}
+		else
+		{
+			log_debug(DEBUG_API, "API Auth status: Logout, but not authenticated");
+
+			cJSON *json = JSON_NEW_OBJECT();
+			get_session_object(api, json, user_id, now);
+			JSON_SEND_OBJECT_CODE(json, 401); // 401 Unauthorized
+		}
+	}
+	else if(user_id == API_AUTH_EMPTYPASS)
+	{
+		log_debug(DEBUG_API, "API Auth status: OK (empty password)");
+
 		cJSON *json = JSON_NEW_OBJECT();
 		get_session_object(api, json, user_id, now);
-		JSON_SEND_OBJECT_CODE(json, 410); // 410 Gone
+		JSON_SEND_OBJECT(json);
 	}
 	else
 	{
@@ -443,30 +457,13 @@ int api_auth(struct ftl_conn *api)
 		return 0;
 	}
 
-	// Did the client authenticate before and we can validate this?
-	int user_id = check_client_auth(api, false);
-
-	// If this is a valid session, we can exit early at this point
-	if(user_id != API_AUTH_UNAUTHORIZED)
-		return send_api_auth_status(api, user_id, now);
-
 	// Login attempt, check password
 	if(api->method == HTTP_POST)
 	{
 		// Try to extract response from payload
-		if (api->payload.json == NULL)
-		{
-			if (api->payload.json_error == NULL)
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "No request body data",
-				                       NULL);
-			else
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Invalid request body data (no valid JSON), error before hint",
-				                       api->payload.json_error);
-		}
+		const int ret = check_json_payload(api);
+		if(ret != 0)
+			return ret;
 
 		// Check if password is available
 		cJSON *json_password;
@@ -495,6 +492,13 @@ int api_auth(struct ftl_conn *api)
 		password = json_password->valuestring;
 	}
 
+	// Did the client authenticate before and we can validate this?
+	int user_id = check_client_auth(api, false);
+
+	// If this is a valid session, we can exit early at this point if no password is supplied
+	if(user_id != API_AUTH_UNAUTHORIZED && (password == NULL || strlen(password) == 0))
+		return send_api_auth_status(api, user_id, now);
+
 	// Logout attempt
 	if(api->method == HTTP_DELETE)
 	{
@@ -509,8 +513,17 @@ int api_auth(struct ftl_conn *api)
 	// else: Login attempt
 	// - Client tries to authenticate using a password, or
 	// - There no password on this machine
-	const enum password_result result = empty_password ? true : verify_password(password, config.webserver.api.pwhash.v.s, true);
-	if(result == PASSWORD_CORRECT)
+	enum password_result result = PASSWORD_INCORRECT;
+
+	// If there is no password (or empty), check if there is any password at all
+	if(empty_password && (password == NULL || strlen(password) == 0))
+		result = PASSWORD_CORRECT;
+	else
+		result = verify_login(password);
+
+	if(result == PASSWORD_CORRECT ||
+	   result == APPPASSWORD_CORRECT ||
+	   result == CLIPASSWORD_CORRECT)
 	{
 		// Accepted
 
@@ -520,7 +533,8 @@ int api_auth(struct ftl_conn *api)
 			memset(password, 0, strlen(password));
 
 		// Check possible 2FA token
-		if(strlen(config.webserver.api.totp_secret.v.s) > 0)
+		// Successful login with empty password does not require 2FA
+		if(strlen(config.webserver.api.totp_secret.v.s) > 0 && result == PASSWORD_CORRECT)
 		{
 			// Get 2FA token from payload
 			cJSON *json_totp;
@@ -534,25 +548,34 @@ int api_auth(struct ftl_conn *api)
 							NULL);
 			}
 
-			if(!verifyTOTP(json_totp->valueint))
+			enum totp_status totp = verifyTOTP(json_totp->valueint);
+			if(totp == TOTP_REUSED)
+			{
+				// 2FA token has been reused
+				return send_json_error(api, 401,
+				                       "unauthorized",
+				                       "Reused 2FA token",
+				                       "wait for new token");
+			}
+			else if(totp != TOTP_CORRECT)
 			{
 				// 2FA token is invalid
 				return send_json_error(api, 401,
-							"unauthorized",
-							"Invalid 2FA token",
-							NULL);
+				                       "unauthorized",
+				                       "Invalid 2FA token",
+				                       NULL);
 			}
 		}
 
 		// Find unused authentication slot
-		for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+		for(unsigned int i = 0; i < max_sessions; i++)
 		{
 			// Expired slow, mark as unused
 			if(auth_data[i].used &&
-				auth_data[i].valid_until < now)
+			   auth_data[i].valid_until < now)
 			{
 				log_debug(DEBUG_API, "API: Session of client %u (%s) expired, freeing...",
-						i, auth_data[i].remote_addr);
+				          i, auth_data[i].remote_addr);
 				delete_session(i);
 			}
 
@@ -563,7 +586,7 @@ int api_auth(struct ftl_conn *api)
 				auth_data[i].used = true;
 				// Set validitiy to now + timeout
 				auth_data[i].login_at = now;
-				auth_data[i].valid_until = now + config.webserver.sessionTimeout.v.ui;
+				auth_data[i].valid_until = now + config.webserver.session.timeout.v.ui;
 				// Set remote address
 				strncpy(auth_data[i].remote_addr, api->request->remote_addr, sizeof(auth_data[i].remote_addr));
 				auth_data[i].remote_addr[sizeof(auth_data[i].remote_addr)-1] = '\0';
@@ -578,9 +601,22 @@ int api_auth(struct ftl_conn *api)
 				{
 					auth_data[i].user_agent[0] = '\0';
 				}
+				// Store X-Forwarded-For (if available)
+				const char *x_forwarded_for = mg_get_header(api->conn, "X-Forwarded-For");
+				if(x_forwarded_for != NULL)
+				{
+					strncpy(auth_data[i].x_forwarded_for, x_forwarded_for, sizeof(auth_data[i].x_forwarded_for));
+					auth_data[i].x_forwarded_for[sizeof(auth_data[i].x_forwarded_for)-1] = '\0';
+				}
+				else
+				{
+					auth_data[i].x_forwarded_for[0] = '\0';
+				}
 
 				auth_data[i].tls.login = api->request->is_ssl;
 				auth_data[i].tls.mixed = false;
+				auth_data[i].app = result == APPPASSWORD_CORRECT;
+				auth_data[i].cli = result == CLIPASSWORD_CORRECT;
 
 				// Generate new SID and CSRF token
 				generateSID(auth_data[i].sid);
@@ -594,7 +630,7 @@ int api_auth(struct ftl_conn *api)
 		// Debug logging
 		if(config.debug.api.v.b && user_id > API_AUTH_UNAUTHORIZED)
 		{
-			char timestr[128];
+			char timestr[TIMESTR_SIZE];
 			get_timestr(timestr, auth_data[user_id].valid_until, false, false);
 			log_debug(DEBUG_API, "API: Registered new user: user_id %i valid_until: %s remote_addr %s (accepted due to %s)",
 					user_id, timestr, auth_data[user_id].remote_addr,
@@ -602,19 +638,34 @@ int api_auth(struct ftl_conn *api)
 		}
 		if(user_id == API_AUTH_UNAUTHORIZED)
 		{
-			log_warn("No free API seats available, not authenticating client");
+			log_warn("No free API seats available (webserver.api.max_sessions = %u), not authenticating client",
+			         max_sessions);
+
+			return send_json_error(api, 429,
+			                       "api_seats_exceeded",
+			                       "API seats exceeded",
+			                       "increase webserver.api.max_sessions");
 		}
+
+		api->message = result == APPPASSWORD_CORRECT ? "app-password correct" : "password correct";
 	}
 	else if(result == PASSWORD_RATE_LIMITED)
 	{
 		// Rate limited
 		return send_json_error(api, 429,
-					"too_many_requests",
-					"Too many requests",
-					"login rate limiting");
+		                       "rate_limiting",
+		                       "Rate-limiting login attempts",
+		                       NULL);
+	}
+	else if(result == NO_PASSWORD_SET)
+	{
+		// No password set
+		api->message = "password incorrect";
+		log_debug(DEBUG_API, "API: Trying to auth with password but none set: '%s'", password);
 	}
 	else
 	{
+		api->message = "password incorrect";
 		log_debug(DEBUG_API, "API: Password incorrect: '%s'", password);
 	}
 
@@ -638,7 +689,7 @@ int api_auth_session_delete(struct ftl_conn *api)
 		return send_json_error(api, 400, "bad_request", "Missing or invalid session ID", NULL);
 
 	// Check if session ID is valid
-	if(uid <= API_AUTH_UNAUTHORIZED || uid >= API_MAX_CLIENTS)
+	if(uid <= API_AUTH_UNAUTHORIZED || uid >= max_sessions)
 		return send_json_error(api, 400, "bad_request", "Session ID out of bounds", NULL);
 
 	// Check if session is used
@@ -646,9 +697,9 @@ int api_auth_session_delete(struct ftl_conn *api)
 		return send_json_error(api, 400, "bad_request", "Session ID not in use", NULL);
 
 	// Delete session
-	delete_session(uid);
+	const int code = delete_session(uid) ? 204 : 404;
 
-	// Send empty reply with code 204 No Content
-	send_http_code(api, "application/json; charset=utf-8", 204, "");
-	return 204;
+	// Send empty reply with appropriate HTTP status code
+	send_http_code(api, "application/json; charset=utf-8", code, "");
+	return code;
 }

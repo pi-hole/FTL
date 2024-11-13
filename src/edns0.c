@@ -400,12 +400,15 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 			// this document. The value of the INFO-CODE is encoded
 			// as a two-octet unsigned integer in network byte
 			// order.
-			//
-			// The EXTRA-TEXT from the EDE EDNS option is ignored by
-			// FTL
 
 			// Debug output
 			log_debug(DEBUG_EDNS0, "EDE: %s (code %d)", edestr(edns.ede), edns.ede);
+
+			if(optlen > 2)
+			{
+				// Debug output
+				log_debug(DEBUG_EDNS0, "EDE: EXTRA-TEXT: %.*s", optlen - 2, p + 2);
+			}
 
 			// Advance working pointer
 			p += optlen;

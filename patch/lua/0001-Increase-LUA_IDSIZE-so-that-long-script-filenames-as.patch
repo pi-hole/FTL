@@ -1,0 +1,27 @@
+From 835933f8501e517a781b380b8cfafa656adc6fa7 Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Mon, 23 Sep 2024 13:25:34 +0200
+Subject: [PATCH] Increase LUA_IDSIZE so that long script filenames as well as
+ long script lines fit into the error logging buffer
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/lua/luaconf.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lua/luaconf.h b/src/lua/luaconf.h
+index 33bb580d..dacc5221 100644
+--- a/src/lua/luaconf.h
++++ b/src/lua/luaconf.h
+@@ -765,7 +765,7 @@
+ ** of a function in debug information.
+ ** CHANGE it if you want a different size.
+ */
+-#define LUA_IDSIZE	60
++#define LUA_IDSIZE	256
+ 
+ 
+ /*
+-- 
+2.34.1
+

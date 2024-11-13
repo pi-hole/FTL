@@ -29,13 +29,20 @@
 #define BINARY_NAME "pihole-FTL"
 
 volatile sig_atomic_t killed = 0;
-static volatile pid_t mpid = -1;
+static volatile pid_t mpid = 0;
 static time_t FTLstarttime = 0;
 volatile int exit_code = EXIT_SUCCESS;
 
 volatile sig_atomic_t thread_cancellable[THREADS_MAX] = { false };
-volatile sig_atomic_t thread_running[THREADS_MAX] = { false };
-const char *thread_names[THREADS_MAX] = { "" };
+const char * const thread_names[THREADS_MAX] = {
+	"database",
+	"housekeeper",
+	"dns-client",
+	"timer",
+	"ntp-client",
+	"ntp-server4",
+	"ntp-server6",
+ };
 
 // Return the (null-terminated) name of the calling thread
 // The name is stored in the buffer as well as returned for convenience
@@ -239,7 +246,7 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	log_info("Thank you for helping us to improve our FTL engine!");
 
 	// Terminate main process if crash happened in a TCP worker
-	if(mpid != getpid())
+	if(main_pid() != getpid())
 	{
 		// This is a forked process
 		log_info("Asking parent pihole-FTL (PID %i) to shut down", (int)mpid);
@@ -304,9 +311,111 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		// Parse neighbor cache
 		set_event(PARSE_NEIGHBOR_CACHE);
 	}
+	// else if(rtsig == 6)
+	// {
+	// 	// Signal internally used to signal dnsmasq it has to stop
+	// }
+	else if(rtsig == 7)
+	{
+		// Search for hash collisions in the lookup tables
+		set_event(SEARCH_LOOKUP_HASH_COLLISIONS);
+	}
+
+	// SIGRT32: Used internally by valgrind, do not use
 
 	// Restore errno before returning back to previous context
 	errno = _errno;
+}
+
+static void SIGTERM_handler(int signum, siginfo_t *si, void *unused)
+{
+	// Ignore SIGTERM outside of the main process (TCP forks)
+	if(mpid != getpid())
+	{
+		log_debug(DEBUG_ANY, "Ignoring SIGTERM in TCP worker");
+		return;
+	}
+	log_debug(DEBUG_ANY, "Received SIGTERM");
+
+	// Get PID and UID of the process that sent the terminating signal
+	const pid_t kill_pid = si->si_pid;
+	const uid_t kill_uid = si->si_uid;
+
+	// Get name of the process that sent the terminating signal
+	char kill_name[256] = { 0 };
+	char kill_exe [256] = { 0 };
+	snprintf(kill_exe, sizeof(kill_exe), "/proc/%ld/cmdline", (long int)kill_pid);
+	FILE *fp = fopen(kill_exe, "r");
+	if(fp != NULL)
+	{
+		// Successfully opened file
+		size_t read = 0;
+		// Read line from file
+		if((read = fread(kill_name, sizeof(char), sizeof(kill_name), fp)) > 0)
+		{
+			// Successfully read line
+
+			// cmdline contains the command-line arguments as a set
+			// of strings separated by null bytes ('\0'), with a
+			// further null byte after the last string. Hence, we
+			// need to replace all null bytes with spaces for
+			// displaying it below
+			for(unsigned int i = 0; i < min((size_t)read, sizeof(kill_name)); i++)
+			{
+				if(kill_name[i] == '\0')
+					kill_name[i] = ' ';
+			}
+
+			// Remove any trailing spaces
+			for(unsigned int i = read - 1; i > 0; i--)
+			{
+				if(kill_name[i] == ' ')
+					kill_name[i] = '\0';
+				else
+					break;
+			}
+		}
+		else
+		{
+			// Failed to read line
+			strcpy(kill_name, "N/A");
+		}
+	}
+	else
+	{
+		// Failed to open file
+		strcpy(kill_name, "N/A");
+	}
+
+	// Get username of the process that sent the terminating signal
+	char kill_user[256] = { 0 };
+	struct passwd *pwd = getpwuid(kill_uid);
+	if(pwd != NULL)
+	{
+		// Successfully obtained username
+		strncpy(kill_user, pwd->pw_name, sizeof(kill_user));
+	}
+	else
+	{
+		// Failed to obtain username
+		strcpy(kill_user, "N/A");
+	}
+
+	// Log who sent the signal
+	log_info("Asked to terminate by \"%s\" (PID %ld, user %s UID %ld)",
+	         kill_name, (long int)kill_pid, kill_user, (long int)kill_uid);
+
+	// Terminate dnsmasq to stop DNS service
+	if(!dnsmasq_failed)
+	{
+		log_debug(DEBUG_ANY, "Sending SIGUSR6 to dnsmasq to stop DNS service");
+		raise(SIGUSR6);
+	}
+	else
+	{
+		log_debug(DEBUG_ANY, "Embedded dnsmasq failed, exiting on request");
+		killed = true;
+	}
 }
 
 // Register ordinary signals handler
@@ -314,18 +423,17 @@ void handle_signals(void)
 {
 	struct sigaction old_action;
 
-	const int signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE };
+	const int signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTERM };
 	for(unsigned int i = 0; i < ArraySize(signals); i++)
 	{
 		// Catch this signal
 		sigaction (signals[i], NULL, &old_action);
 		if(old_action.sa_handler != SIG_IGN)
 		{
-			struct sigaction SIGaction;
-			memset(&SIGaction, 0, sizeof(struct sigaction));
+			struct sigaction SIGaction = { 0 };
 			SIGaction.sa_flags = SA_SIGINFO;
 			sigemptyset(&SIGaction.sa_mask);
-			SIGaction.sa_sigaction = &signal_handler;
+			SIGaction.sa_sigaction = signals[i] != SIGTERM ? &signal_handler : &SIGTERM_handler;
 			sigaction(signals[i], &SIGaction, NULL);
 		}
 	}
@@ -344,8 +452,16 @@ void handle_realtime_signals(void)
 	// Catch all real-time signals
 	for(int signum = SIGRTMIN; signum <= SIGRTMAX; signum++)
 	{
-		struct sigaction SIGACTION;
-		memset(&SIGACTION, 0, sizeof(struct sigaction));
+		if(signum == SIGUSR6)
+			// Skip SIGUSR6 as it is used internally to signify
+			// dnsmasq to stop
+			continue;
+		if(signum == SIGUSR32)
+			// Skip SIGUSR32 as it is used internally by valgrind
+			// and should not be used
+			continue;
+
+		struct sigaction SIGACTION = { 0 };
 		SIGACTION.sa_flags = SA_SIGINFO;
 		sigemptyset(&SIGACTION.sa_mask);
 		SIGACTION.sa_sigaction = &SIGRT_handler;
@@ -356,7 +472,7 @@ void handle_realtime_signals(void)
 // Return PID of the main FTL process
 pid_t main_pid(void)
 {
-	if(mpid > -1)
+	if(mpid > 0)
 		// Has already been set
 		return mpid;
 	else
@@ -372,4 +488,44 @@ void thread_sleepms(const enum thread_types thread, const int milliseconds)
 	thread_cancellable[thread] = true;
 	sleepms(milliseconds);
 	thread_cancellable[thread] = false;
+}
+
+static void print_signal(int signum, siginfo_t *si, void *unused)
+{
+	printf("Received signal %d: \"%s\"\n", signum, strsignal(signum));
+	fflush(stdin);
+	if(signum == SIGTERM)
+		exit(EXIT_SUCCESS);
+}
+
+// Register handler that catches *all* signals and displays them
+int sigtest(void)
+{
+	printf("PID: %d\n", getpid());
+	// Catch all real-time signals
+	for(int signum = 0; signum <= SIGRTMAX; signum++)
+	{
+		struct sigaction SIGACTION = { 0 };
+		SIGACTION.sa_flags = SA_SIGINFO;
+		sigemptyset(&SIGACTION.sa_mask);
+		SIGACTION.sa_sigaction = &print_signal;
+		sigaction(signum, &SIGACTION, NULL);
+	}
+
+	printf("Waiting (30sec)...\n");
+	fflush(stdin);
+
+	// Sleep here for 30 seconds
+	sleepms(30000);
+
+	// Exit successfully
+	return EXIT_SUCCESS;
+}
+
+void restart_ftl(const char *reason)
+{
+	log_info("Restarting FTL: %s", reason);
+	exit_code = RESTART_FTL_CODE;
+	// Send SIGTERM to FTL
+	kill(main_pid(), SIGTERM);
 }

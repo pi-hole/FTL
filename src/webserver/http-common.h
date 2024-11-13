@@ -15,27 +15,22 @@
 #include "webserver/cJSON/cJSON.h"
 // enum fifo_logs
 #include "enums.h"
+// tablerow
+#include "database/gravity-db.h"
 
 // strlen()
 #include <string.h>
+
+// struct session
+#include "api/auth.h"
 
 // API-internal definitions
 
 // Maximum size of received and processed payload: 64 KB
 #define MAX_PAYLOAD_BYTES 64*1024
-enum http_method {
-	HTTP_UNKNOWN = 0,
-	HTTP_GET = 1 << 0,
-	HTTP_POST = 1 << 1,
-	HTTP_PUT = 1 << 2,
-	HTTP_PATCH = 1 << 3,
-	HTTP_DELETE = 1 << 4,
-	HTTP_OPTIONS = 1 << 5,
-};
 
 struct api_options {
-	bool domains :1;
-	bool parse_json :1;
+	enum api_flags flags;
 	enum fifo_logs which;
 };
 
@@ -45,6 +40,7 @@ struct ftl_conn {
 	const enum http_method method;
 	char *action_path;
 	const char *item;
+	const char *message;
 	int user_id;
 	double now;
 	struct {
@@ -55,8 +51,10 @@ struct ftl_conn {
 		long unsigned int size;
 	} payload;
 	struct {
-		bool restart;
+		bool restart :1;
+		const char *restart_reason;
 	} ftl;
+	struct session *session;
 
 	struct api_options opts;
 };
@@ -73,7 +71,7 @@ int send_json_error(struct ftl_conn *api, const int code,
                     const char *hint);
 int send_json_error_free(struct ftl_conn *api, const int code,
                          const char *key, const char* message,
-                         char *hint, bool free_hint);
+                         char *hint, bool free_hint, const bool log);
 int send_json_success(struct ftl_conn *api);
 const char *get_http_method_str(const enum http_method method) __attribute__((const));
 
@@ -103,5 +101,9 @@ enum http_method __attribute__((pure)) http_method(struct mg_connection *conn);
 const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api);
 void read_and_parse_payload(struct ftl_conn *api);
 char * __attribute__((malloc)) escape_html(const char *string);
+int check_json_payload(struct ftl_conn *api);
+int parse_groupIDs(struct ftl_conn *api, tablerow *table, cJSON *row);
+char * __attribute__((malloc)) escape_json(const char *string);
+void cJSON_unique_array(cJSON *array);
 
 #endif // HTTP_H

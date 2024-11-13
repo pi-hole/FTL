@@ -15,17 +15,6 @@ info:
     Most (but not all) endpoints require authentication.
     API endpoints requiring authentication will fail with code `401 Unauthorized` when used outside a valid session.
 servers:
-  - url: 'http://{url}:{port}/{path}'
-    variables:
-      url:
-        description: URL or address of your Pi-hole
-        default: pi.hole
-      port:
-        description: Port of your Pi-hole's API
-        default: "8080"
-      path:
-        description: Path where your Pi-hole's API is hosted
-        default: api
   - url: 'https://{url}:{port}/{path}'
     variables:
       url:
@@ -34,6 +23,17 @@ servers:
       port:
         description: Port of your Pi-hole's API (HTTPS)
         default: "443"
+      path:
+        description: Path where your Pi-hole's API is hosted
+        default: api
+  - url: 'http://{url}:{port}/{path}'
+    variables:
+      url:
+        description: URL or address of your Pi-hole
+        default: pi.hole
+      port:
+        description: Port of your Pi-hole's API
+        default: "80"
       path:
         description: Path where your Pi-hole's API is hosted
         default: api
@@ -63,6 +63,8 @@ tags:
     description: Methods used to gather advanced information about your network
   - name: "Actions"
     description: Methods used to trigger certain actions on your Pi-hole
+  - name: "PADD"
+    description: Methods used to query Pi-hole from PADD
 
 
 
@@ -78,6 +80,9 @@ paths:
 
   /auth/totp:
     $ref: 'auth.yaml#/components/paths/totp'
+
+  /auth/app:
+    $ref: 'auth.yaml#/components/paths/app'
 
   /stats/summary:
     $ref: 'stats.yaml#/components/paths/summary'
@@ -139,17 +144,26 @@ paths:
   /domains/{type}/{kind}:
     $ref: 'domains.yaml#/components/paths/type_kind'
 
+  /domains:batchDelete:
+    $ref: 'domains.yaml#/components/paths/batchDelete'
+
   /groups/{name}:
     $ref: 'groups.yaml#/components/paths/name'
 
   /groups:
     $ref: 'groups.yaml#/components/paths/direct'
 
+  /groups:batchDelete:
+    $ref: 'groups.yaml#/components/paths/batchDelete'
+
   /clients/{client}:
     $ref: 'clients.yaml#/components/paths/client'
 
   /clients:
     $ref: 'clients.yaml#/components/paths/direct'
+
+  /clients:batchDelete:
+    $ref: 'clients.yaml#/components/paths/batchDelete'
 
   /clients/_suggestions:
     $ref: 'clients.yaml#/components/paths/suggestions'
@@ -159,6 +173,9 @@ paths:
 
   /lists:
     $ref: 'lists.yaml#/components/paths/direct'
+
+  /lists:batchDelete:
+    $ref: 'lists.yaml#/components/paths/batchDelete'
 
   /info/client:
     $ref: 'info.yaml#/components/paths/client'
@@ -184,11 +201,17 @@ paths:
   /info/messages:
     $ref: 'info.yaml#/components/paths/messages'
 
+  /info/messages/{message_id}:
+    $ref: 'info.yaml#/components/paths/messages_with_id'
+
   /info/messages/count:
     $ref: 'info.yaml#/components/paths/messages_count'
 
   /info/metrics:
     $ref: 'info.yaml#/components/paths/metrics'
+
+  /info/login:
+    $ref: 'info.yaml#/components/paths/login'
 
   /logs/dnsmasq:
     $ref: 'logs.yaml#/components/paths/logs/dnsmasq'
@@ -214,11 +237,14 @@ paths:
   /network/devices:
     $ref: 'network.yaml#/components/paths/devices'
 
-  /network/devices/{id}:
+  /network/devices/{device_id}:
     $ref: 'network.yaml#/components/paths/devices_id'
 
   /network/gateway:
     $ref: 'network.yaml#/components/paths/gateway'
+
+  /network/routes:
+    $ref: 'network.yaml#/components/paths/routes'
 
   /network/interfaces:
     $ref: 'network.yaml#/components/paths/interfaces'
@@ -238,12 +264,6 @@ paths:
   /action/flush/arp:
     $ref: 'action.yaml#/components/paths/flush_arp'
 
-  /action/reboot:
-    $ref: 'action.yaml#/components/paths/reboot'
-
-  /action/poweroff:
-    $ref: 'action.yaml#/components/paths/poweroff'
-
   /dhcp/leases:
     $ref: 'dhcp.yaml#/components/paths/leases'
 
@@ -252,6 +272,12 @@ paths:
 
   /search/{domain}:
     $ref: 'search.yaml#/components/paths/search'
+
+  /docs:
+    $ref: 'docs.yaml#/components/paths/docs'
+
+  /padd:
+    $ref: 'padd.yaml#/components/paths/padd'
 
 components:
   securitySchemes:

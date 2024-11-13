@@ -11,6 +11,10 @@
 #define GZIP_H
 
 #include <stdbool.h>
+#include "miniz/miniz.h"
+
+bool inflate_buffer(unsigned char *buffer_compressed, mz_ulong size_compressed,
+                    unsigned char **buffer_uncompressed, mz_ulong *size_uncompressed);
 
 bool deflate_file(const char *in, const char *out, bool verbose);
 bool inflate_file(const char *infile, const char *outfile, bool verbose);

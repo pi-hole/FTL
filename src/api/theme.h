@@ -24,11 +24,11 @@ enum web_theme {
 } __attribute__ ((packed));
 
 struct web_themes{
-	const enum web_theme id;
 	const char *name;
 	const char *description;
-	const bool dark;
 	const char *color;
+	const enum web_theme id;
+	const bool dark;
 };
 
 // defined in theme.c

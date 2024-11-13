@@ -121,7 +121,7 @@ components:
                 examples:
                   invalid_path_depth:
                     $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
-                  item_not_found:
+                  item_already_present:
                     $ref: 'config.yaml#/components/examples/errors/bad_request/item_already_present'
           '401':
             description: Unauthorized
@@ -144,6 +144,12 @@ components:
         responses:
           '204':
             description: Item deleted
+          '404':
+            description: Item not found
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -155,8 +161,8 @@ components:
                 examples:
                   invalid_path_depth:
                     $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_path_depth'
-                  item_not_found:
-                    $ref: 'config.yaml#/components/examples/errors/bad_request/item_not_found'
+                  item_already_present:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/item_already_present'
           '401':
             description: Unauthorized
             content:
@@ -206,6 +212,8 @@ components:
                   type: boolean
                 expandHosts:
                   type: boolean
+                domain:
+                  type: string
                 bogusPriv:
                   type: boolean
                 dnssec:
@@ -231,23 +239,20 @@ components:
                       type: integer
                     optimizer:
                       type: integer
-                revServer:
-                  type: object
-                  properties:
-                    active:
-                      type: boolean
-                    cidr:
-                      type: string
-                    target:
-                      type: string
-                    domain:
-                      type: string
+                    upstreamBlockedTTL:
+                      type: integer
+                revServers:
+                  type: array
+                  items:
+                    type: string
                 blocking:
                   type: object
                   properties:
                     active:
                       type: boolean
                     mode:
+                      type: string
+                    edns:
                       type: string
                 specialDomains:
                   type: object
@@ -268,8 +273,10 @@ components:
                           type: boolean
                         IPv4:
                           type: string
+                          x-format: ipv4
                         IPv6:
                           type: string
+                          x-format: ipv6
                     blocking:
                       type: object
                       properties:
@@ -279,8 +286,10 @@ components:
                           type: boolean
                         IPv4:
                           type: string
+                          x-format: ipv4
                         IPv6:
                           type: string
+                          x-format: ipv6
                 rateLimit:
                   type: object
                   properties:
@@ -295,12 +304,16 @@ components:
                   type: boolean
                 start:
                   type: string
+                  x-format: ipv4
                 end:
                   type: string
+                  x-format: ipv4
                 router:
                   type: string
-                domain:
+                  x-format: ipv4
+                netmask:
                   type: string
+                  x-format: ipv4
                 leaseTime:
                   type: string
                 ipv6:
@@ -309,10 +322,53 @@ components:
                   type: boolean
                 multiDNS:
                   type: boolean
+                logging:
+                  type: boolean
+                ignoreUnknownClients:
+                  type: boolean
                 hosts:
                   type: array
                   items:
                     type: string
+            ntp:
+              type: object
+              properties:
+                ipv4:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    address:
+                      type: string
+                      x-format: ipv4
+                ipv6:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    address:
+                      type: string
+                      x-format: ipv6
+                sync:
+                  type: object
+                  properties:
+                    active:
+                      type: boolean
+                    server:
+                      type: string
+                    interval:
+                      type: integer
+                    count:
+                      type: integer
+                    rtc:
+                      type: object
+                      properties:
+                        set:
+                          type: boolean
+                        device:
+                          type: string
+                        utc:
+                          type: boolean
             resolver:
               type: object
               properties:
@@ -329,12 +385,12 @@ components:
               properties:
                 DBimport:
                   type: boolean
-                DBexport:
-                  type: boolean
                 maxDBdays:
                   type: integer
                 DBinterval:
                   type: integer
+                useWAL:
+                  type: boolean
                 network:
                   type: object
                   properties:
@@ -351,13 +407,16 @@ components:
                   type: string
                 port:
                   type: string
-                sessionTimeout:
-                  type: integer
+                session:
+                  type: object
+                  properties:
+                    timeout:
+                      type: integer
+                    restore:
+                      type: boolean
                 tls:
                   type: object
                   properties:
-                    rev_proxy:
-                      type: boolean
                     cert:
                       type: string
                 paths:
@@ -377,8 +436,8 @@ components:
                 api:
                   type: object
                   properties:
-                    localAPIauth:
-                      type: boolean
+                    max_sessions:
+                      type: integer
                     prettyJSON:
                       type: boolean
                     password:
@@ -389,6 +448,12 @@ components:
                       type: string
                     totp_secret:
                       type: string
+                    app_pwhash:
+                      type: string
+                    app_sudo:
+                      type: boolean
+                    cli_pw:
+                      type: boolean
                     excludeClients:
                       type: array
                       items:
@@ -399,6 +464,10 @@ components:
                         type: string
                     maxHistory:
                       type: integer
+                    maxClients:
+                      type: integer
+                    client_history_global_max:
+                      type: boolean
                     allow_destructive:
                       type: boolean
                     temp:
@@ -416,6 +485,8 @@ components:
                 database:
                   type: string
                 gravity:
+                  type: string
+                gravity_tmp:
                   type: string
                 macvendor:
                   type: string
@@ -441,12 +512,18 @@ components:
                   type: integer
                 addr2line:
                   type: boolean
+                etc_dnsmasq_d:
+                  type: boolean
                 privacylevel:
                   type: integer
                 dnsmasq_lines:
                   type: array
                   items:
                     type: string
+                extraLogging:
+                  type: boolean
+                readOnly:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -507,9 +584,13 @@ components:
                   type: boolean
                 inotify:
                   type: boolean
+                webserver:
+                  type: boolean
                 extra:
                   type: boolean
                 reserved:
+                  type: boolean
+                ntp:
                   type: boolean
                 all:
                   type: boolean
@@ -572,6 +653,7 @@ components:
               - "192.168.2.123 mymusicbox"
             domainNeeded: true
             expandHosts: true
+            domain: "lan"
             bogusPriv: true
             dnssec: true
             interface: "eth0"
@@ -585,14 +667,13 @@ components:
             cache:
               size: 10000
               optimizer: 3600
-            revServer:
-              active: false
-              cidr: "192.168.0.0/24"
-              target: "192.168.0.1"
-              domain: "lan"
+              upstreamBlockedTTL: 86400
+            revServers:
+              - "true,192.168.0.0/24,192.168.0.1,lan"
             blocking:
               active: true
               mode: 'NULL'
+              edns: 'NONE'
             specialDomains:
               mozillaCanary: true
               iCloudPrivateRelay: true
@@ -615,14 +696,32 @@ components:
             start: "192.168.0.10"
             end: "192.168.0.250"
             router: "192.168.0.1"
-            domain: "lan"
+            netmask: "0.0.0.0"
             leaseTime: "24h"
-            ipv6: true
-            rapidCommit: true
-            multiDNS: true
+            ipv6: false
+            rapidCommit: false
+            multiDNS: false
+            logging: false
+            ignoreUnknownClients: false
             hosts:
               - "11:22:33:44:55:66,192.168.1.123"
               - "11:22:33:44:55:67,192.168.1.124,hostname"
+          ntp:
+            ipv4:
+              active: true
+              address: ""
+            ipv6:
+              active: true
+              address: ""
+            sync:
+              active: true
+              server: "pool.ntp.org"
+              interval: 3600
+              count: 8
+              rtc:
+                set: true
+                device: ""
+                utc: true
           resolver:
             resolveIPv4: true
             resolveIPv6: true
@@ -630,9 +729,9 @@ components:
             refreshNames: IPV4_ONLY
           database:
             DBimport: true
-            DBexport: true
             maxDBdays: 365
             DBinterval: 60
+            useWAL: true
             network:
               parseARPcache: true
               expire: 365
@@ -640,9 +739,10 @@ components:
             domain: pi.hole
             acl: "+0.0.0.0/0,::/0"
             port: 80,[::]:80
-            sessionTimeout: 300
+            session:
+              timeout: 300
+              restore: true
             tls:
-              rev_proxy: false
               cert: "/etc/pihole/tls.pem"
             paths:
               webroot: "/var/www/html"
@@ -651,14 +751,19 @@ components:
               boxed: true
               theme: "default-darker"
             api:
-              localAPIauth: false
+              max_sessions: 16
               prettyJSON: false
               password: "********"
               pwhash: ''
               totp_secret: ''
-              excludeClients: [ '1.2.3.4', 'localhost', 'fe80::345' ]
-              excludeDomains: [ 'google.de', 'pi-hole.net' ]
+              app_pwhash: ''
+              app_sudo: false
+              cli_pw: true
+              excludeClients: [ '1\.2\.3\.4', 'localhost', 'fe80::345' ]
+              excludeDomains: [ 'google\\.de', 'pi-hole\.net' ]
               maxHistory: 86400
+              maxClients: 10
+              client_history_global_max: true
               allow_destructive: true
               temp:
                 limit: 60.0
@@ -667,6 +772,7 @@ components:
             pid: "/run/pihole-FTL.pid"
             database: "/etc/pihole/pihole-FTL.db"
             gravity: "/etc/pihole/gravity.db"
+            gravity_tmp: "/tmp"
             macvendor: "/etc/pihole/macvendor.db"
             setupVars: "/etc/pihole/setupVars.conf"
             pcap: ""
@@ -679,7 +785,10 @@ components:
             delay_startup: 10
             addr2line: true
             privacylevel: 0
+            etc_dnsmasq_d: false
             dnsmasq_lines: [ ]
+            extraLogging: false
+            readOnly: false
             check:
               load: true
               shmem: 90
@@ -709,8 +818,10 @@ components:
             helper: false
             config: false
             inotify: false
+            webserver: false
             extra: false
             reserved: false
+            ntp: false
             all: false
     config_one:
       summary: One option
@@ -756,13 +867,6 @@ components:
               key: "bad_request"
               message: "Invalid path depth"
               hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
-        item_not_found:
-          summary: Item to be deleted does not exist
-          value:
-            error:
-              key: "bad_request"
-              message: "Item not found"
-              hint: "Can only delete existing items"
         item_already_present:
           summary: Item to be added exists already
           value:

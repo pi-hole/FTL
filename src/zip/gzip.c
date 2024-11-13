@@ -8,15 +8,19 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
+#include "FTL.h"
+#include "gzip.h"
+#include "log.h"
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 // le32toh and friends
+#ifndef __USE_MISC
+#define __USE_MISC
+#endif
 #include <endian.h>
-#include "miniz/miniz.h"
-#include "gzip.h"
-#include "log.h"
 
 static int mz_uncompress2_raw(unsigned char *pDest, mz_ulong *pDest_len, const unsigned char *pSource, mz_ulong *pSource_len);
 
@@ -29,7 +33,7 @@ static bool deflate_buffer(const unsigned char *buffer_uncompressed, const mz_ul
 	// space for the GZIP header and footer
 	*size_compressed = compressBound(size_uncompressed) + 14;
 	*buffer_compressed = malloc(*size_compressed);
-	if(buffer_compressed == NULL)
+	if(*buffer_compressed == NULL)
 	{
 		log_warn("Failed to allocate %lu bytes of memory", (unsigned long)*size_compressed);
 		return false;
@@ -93,7 +97,7 @@ static bool deflate_buffer(const unsigned char *buffer_uncompressed, const mz_ul
 	//        ITU-T V.42.)
 	// isize: This contains the size of the original (uncompressed) input
 	//        data modulo 2^32 (little endian).
-	const uint32_t crc = mz_crc32(MZ_CRC32_INIT, buffer_uncompressed, size_uncompressed);
+	const uint32_t crc = (uint32_t)mz_crc32(MZ_CRC32_INIT, buffer_uncompressed, size_uncompressed);
 	memcpy(*buffer_compressed + *size_compressed, &crc, sizeof(crc));
 	*size_compressed += sizeof(crc);
 	const uint32_t isize = htole32(size_uncompressed);
@@ -103,8 +107,8 @@ static bool deflate_buffer(const unsigned char *buffer_uncompressed, const mz_ul
 	return true;
 }
 
-static bool inflate_buffer(unsigned char *buffer_compressed, mz_ulong size_compressed,
-                           unsigned char **buffer_uncompressed, mz_ulong *size_uncompressed)
+bool inflate_buffer(unsigned char *buffer_compressed, mz_ulong size_compressed,
+                    unsigned char **buffer_uncompressed, mz_ulong *size_uncompressed)
 {
 	// Check GZIP header (magic byte 1F 8B and compression algorithm deflate 08)
 	if(buffer_compressed[0] != 0x1F || buffer_compressed[1] != 0x8B)
@@ -308,12 +312,25 @@ bool inflate_file(const char *infilename, const char *outfilename, bool verbose)
 	if(outfile == NULL)
 	{
 		log_warn("Failed to open %s: %s", outfilename, strerror(errno));
+		fclose(infile);
 		return false;
 	}
 
+	// Restrict permissions to owner read/write only
+	if(fchmod(fileno(outfile), S_IRUSR | S_IWUSR) != 0)
+		log_warn("Unable to set permissions on file \"%s\": %s", outfilename, strerror(errno));
+
 	// Get file size
 	fseek(infile, 0, SEEK_END);
-	const mz_ulong size_compressed = ftell(infile);
+	const long sc = ftell(infile);
+	if(sc < 0)
+	{
+		log_warn("Failed to get file size of %s", infilename);
+		fclose(infile);
+		fclose(outfile);
+		return false;
+	}
+	const mz_ulong size_compressed = (mz_ulong)sc;
 	fseek(infile, 0, SEEK_SET);
 
 	// Read file into memory
@@ -322,12 +339,15 @@ bool inflate_file(const char *infilename, const char *outfilename, bool verbose)
 	{
 		log_warn("Failed to allocate %lu bytes of memory", (unsigned long)size_compressed);
 		fclose(infile);
+		fclose(outfile);
 		return false;
 	}
 	if(fread(buffer_compressed, 1, size_compressed, infile) != size_compressed)
 	{
 		log_warn("Failed to read %lu bytes from %s", (unsigned long)size_compressed, infilename);
 		fclose(infile);
+		fclose(outfile);
+		free(buffer_compressed);
 		return false;
 	}
 	fclose(infile);
@@ -389,12 +409,17 @@ bool deflate_file(const char *infilename, const char *outfilename, bool verbose)
 	if(outfile == NULL)
 	{
 		log_warn("Failed to open %s for writing: %s", outfilename, strerror(errno));
+		fclose(infile);
 		return false;
 	}
 
+	// Restrict permissions to owner read/write only
+	if(fchmod(fileno(outfile), S_IRUSR | S_IWUSR) != 0)
+		log_warn("Unable to set permissions on file \"%s\": %s", outfilename, strerror(errno));
+
 	// Get file size
 	fseek(infile, 0, SEEK_END);
-	const mz_ulong size_uncompressed = ftell(infile);
+	const long size_uncompressed = ftell(infile);
 	fseek(infile, 0, SEEK_SET);
 
 	// Read file into memory
@@ -403,12 +428,14 @@ bool deflate_file(const char *infilename, const char *outfilename, bool verbose)
 	{
 		log_warn("Failed to allocate %lu bytes of memory", (unsigned long)size_uncompressed);
 		fclose(infile);
+		fclose(outfile);
 		return false;
 	}
-	if(fread(buffer_uncompressed, 1, size_uncompressed, infile) != size_uncompressed)
+	if(fread(buffer_uncompressed, 1, size_uncompressed, infile) != (size_t)size_uncompressed)
 	{
 		log_warn("Failed to read %lu bytes from %s", (unsigned long)size_uncompressed, infilename);
 		fclose(infile);
+		fclose(outfile);
 		free(buffer_uncompressed);
 		return false;
 	}

@@ -13,3 +13,7 @@ updates:
   pull-request-branch-name:
       # Separate sections of the branch name with a hyphen
       separator: "-"
+  groups:
+    github_action-dependencies:
+      patterns:
+        - "*"

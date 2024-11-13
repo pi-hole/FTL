@@ -19,9 +19,11 @@
 #include "datastructure.h"
 
 typedef struct {
-    const char *name;
-    size_t size;
-    void *ptr;
+	const char *name;
+	size_t size;
+	void *ptr;
+	int fd;
+	struct flock lock;
 } SharedMemory;
 
 typedef struct {
@@ -29,26 +31,33 @@ typedef struct {
 	pid_t pid;
 	unsigned int global_shm_counter;
 	unsigned int next_str_pos;
+	unsigned int qps[QPS_AVGLEN];
 } ShmSettings;
 
 typedef struct {
-	int queries;
-	int upstreams;
-	int clients;
-	int domains;
-	int queries_MAX;
-	int upstreams_MAX;
-	int clients_MAX;
-	int domains_MAX;
-	int strings_MAX;
-	int reply_NODATA;
-	int reply_NXDOMAIN;
-	int reply_CNAME;
-	int reply_IP;
-	int reply_domain;
-	int dns_cache_size;
-	int dns_cache_MAX;
-	int per_client_regex_MAX;
+	unsigned int queries;
+	unsigned int upstreams;
+	unsigned int clients;
+	unsigned int domains;
+	unsigned int queries_MAX;
+	unsigned int upstreams_MAX;
+	unsigned int clients_MAX;
+	unsigned int domains_MAX;
+	unsigned int strings_MAX;
+	unsigned int reply_NODATA;
+	unsigned int reply_NXDOMAIN;
+	unsigned int reply_CNAME;
+	unsigned int reply_IP;
+	unsigned int reply_domain;
+	unsigned int dns_cache_size;
+	unsigned int dns_cache_MAX;
+	unsigned int per_client_regex_MAX;
+	unsigned int clients_lookup_MAX;
+	unsigned int clients_lookup_size;
+	unsigned int domains_lookup_MAX;
+	unsigned int domains_lookup_size;
+	unsigned int dns_cache_lookup_MAX;
+	unsigned int dns_cache_lookup_size;
 	unsigned int regex_change;
 	struct {
 		int gravity;
@@ -56,13 +65,19 @@ typedef struct {
 		int groups;
 		int lists;
 		struct {
-			int allowed;
-			int denied;
+			struct {
+				int exact;
+				int regex;
+			} allowed;
+			struct {
+				int exact;
+				int regex;
+			} denied;
 		} domains;
 	} database;
-	int querytype[TYPE_MAX];
-	int status[QUERY_STATUS_MAX];
-	int reply[QUERY_REPLY_MAX];
+	unsigned int querytype[TYPE_MAX];
+	unsigned int status[QUERY_STATUS_MAX];
+	unsigned int reply[QUERY_REPLY_MAX];
 } countersStruct;
 
 extern countersStruct *counters;
@@ -89,6 +104,41 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 ///
 /// \param sharedMemory the shared memory struct
 static void delete_shm(SharedMemory *sharedMemory);
+
+// Number of elements in the recycle arrays
+// Default: 65535 (which is 2^16 - 1)
+// Total RAM estimate of struct recycler_tables is ~ RECYCLE_ARRAY_LEN * 12 bytes
+// (roughly 786 KB for the default value)
+#define RECYCLE_ARRAY_LEN 65535u
+
+/**
+ * struct recycle_table - Structure to hold recycling information.
+ * @var recycle_table::size: The size of the recycle table.
+ * @var recycle_table::id: An array of recycled IDs.
+ */
+struct recycle_table {
+	unsigned int count;
+	unsigned int id[RECYCLE_ARRAY_LEN];
+};
+
+
+/**
+ * struct recycler_table - Structure to hold multiple recycle tables.
+ * @var recycler_tables::client: Recycle table for clients.
+ * @var recycler_tables::domain: Recycle table for domains.
+ * @var recycler_tables::DNScache: Recycle table for DNS cache.
+ */
+struct recycler_tables {
+	struct recycle_table client;
+	struct recycle_table domain;
+	struct recycle_table dns_cache;
+};
+#endif
+
+#if defined(SHMEM_PRIVATE) || defined(LOOKUP_TABLE_PRIVATE)
+extern struct lookup_table *clients_lookup;
+extern struct lookup_table *domains_lookup;
+extern struct lookup_table *dns_cache_lookup;
 #endif
 
 /// Block until a lock can be obtained
@@ -111,20 +161,10 @@ void _unlock_shm(const char* func, const int line, const char* file);
 
 bool init_shmem(void);
 void destroy_shmem(void);
-size_t addstr(const char *str);
+#define addstr(str) _addstr(str, __FUNCTION__, __LINE__, __FILE__)
+size_t _addstr(const char *str, const char *func, const int line, const char *file);
 #define getstr(pos) _getstr(pos, __FUNCTION__, __LINE__, __FILE__)
 const char *_getstr(const size_t pos, const char *func, const int line, const char *file);
-
-/**
- * Escapes a string by replacing special characters, such as spaces
- * The input string is always duplicated, ensure to free it after use
- */
-char *str_escape(const char *input, unsigned int *N) __attribute__ ((malloc));
-
-/**
- * Compare two strings. Escape them if needed
- */
-bool strcmp_escaped(const char *a, const char *b);
 
 /**
  * Create a new overTime client shared memory block.
@@ -146,8 +186,20 @@ void log_shmem_details(void);
 
 // Per-client regex buffer storing whether or not a specific regex is enabled for a particular client
 void add_per_client_regex(unsigned int clientID);
-void reset_per_client_regex(const int clientID);
-bool get_per_client_regex(const int clientID, const int regexID);
-void set_per_client_regex(const int clientID, const int regexID, const bool value);
+void reset_per_client_regex(const unsigned int clientID);
+bool get_per_client_regex(const unsigned int clientID, const unsigned int regexID);
+void set_per_client_regex(const unsigned int clientID, const unsigned int regexID, const bool value);
+
+// Used in dnsmasq/utils.c
+int is_shm_fd(const int fd);
+
+void update_qps(const time_t timestamp);
+void reset_qps(const time_t timestamp);
+double get_qps(void) __attribute__((pure));
+
+// Recycler table functions
+bool set_next_recycled_ID(const enum memory_type type, const unsigned int id);
+bool get_next_recycled_ID(const enum memory_type type, unsigned int *id);
+void print_recycle_list_fullness(void);
 
 #endif //SHARED_MEMORY_SERVER_H

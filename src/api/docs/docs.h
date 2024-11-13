@@ -68,6 +68,10 @@ static const unsigned char specs_dns_yaml[] = {
 #include "hex/specs/dns.yaml"
 };
 
+static const unsigned char specs_docs_yaml[] = {
+#include "hex/specs/docs.yaml"
+};
+
 static const unsigned char specs_domains_yaml[] = {
 #include "hex/specs/domains.yaml"
 };
@@ -128,6 +132,10 @@ static const unsigned char specs_action_yaml[] = {
 #include "hex/specs/action.yaml"
 };
 
+static const unsigned char specs_padd_yaml[] = {
+#include "hex/specs/padd.yaml"
+};
+
 struct {
     const char *path;
     const char *mime_type;
@@ -150,6 +158,7 @@ struct {
     {"specs/dhcp.yaml", "text/plain", (const char*)specs_dhcp_yaml, sizeof(specs_dhcp_yaml)},
     {"specs/dns.yaml", "text/plain", (const char*)specs_dns_yaml, sizeof(specs_dns_yaml)},
     {"specs/domains.yaml", "text/plain", (const char*)specs_domains_yaml, sizeof(specs_domains_yaml)},
+    {"specs/docs.yaml", "text/plain", (const char*)specs_docs_yaml, sizeof(specs_docs_yaml)},
     {"specs/endpoints.yaml", "text/plain", (const char*)specs_endpoints_yaml, sizeof(specs_endpoints_yaml)},
     {"specs/groups.yaml", "text/plain", (const char*)specs_groups_yaml, sizeof(specs_groups_yaml)},
     {"specs/history.yaml", "text/plain", (const char*)specs_history_yaml, sizeof(specs_history_yaml)},
@@ -163,6 +172,7 @@ struct {
     {"specs/stats.yaml", "text/plain", (const char*)specs_stats_yaml, sizeof(specs_stats_yaml)},
     {"specs/teleporter.yaml", "text/plain", (const char*)specs_teleporter_yaml, sizeof(specs_teleporter_yaml)},
     {"specs/action.yaml", "text/plain", (const char*)specs_action_yaml, sizeof(specs_action_yaml)},
+    {"specs/padd.yaml", "text/plain", (const char*)specs_padd_yaml, sizeof(specs_padd_yaml)},
 };
 
 #endif // API_DOCS_H

@@ -20,16 +20,17 @@ while pidof -s pihole-FTL > /dev/null; do
 done
 
 # Clean up possible old files from earlier test runs
-rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole/pihole.log /var/log/pihole/FTL.log /dev/shm/FTL-*
+rm -rf /etc/pihole /var/log/pihole /dev/shm/FTL-*
 
 # Create necessary directories and files
-mkdir -p /home/pihole /etc/pihole /run/pihole /var/log/pihole
+mkdir -p /home/pihole /etc/pihole /run/pihole /var/log/pihole /etc/pihole/config_backups /var/www/html
 echo "" > /var/log/pihole/FTL.log
 echo "" > /var/log/pihole/pihole.log
-touch /run/pihole-FTL.pid /run/pihole-FTL.port dig.log ptr.log
-touch /var/log/pihole/HTTP_info.log /var/log/pihole/PH7.log /etc/pihole/dhcp.leases
-chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole/pihole.log /var/log/pihole/FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
-chown pihole:pihole /var/log/pihole/HTTP_info.log /var/log/pihole/PH7.log /etc/pihole/dhcp.leases
+echo "" > /var/log/pihole/webserver.log
+touch /run/pihole-FTL.pid dig.log ptr.log
+touch /etc/pihole/dhcp.leases
+chown -R pihole:pihole /etc/pihole /run/pihole /var/log/pihole
+chown pihole:pihole /run/pihole-FTL.pid
 
 # Copy binary into a location the new user pihole can access
 cp ./pihole-FTL /home/pihole/pihole-FTL
@@ -61,12 +62,24 @@ cp test/01-pihole-tests.conf /etc/dnsmasq.d/01-pihole-tests.conf
 # Prepare versions file (read by /api/version)
 cp test/versions /etc/pihole/versions
 
+# Prepare Lua test script
+cp test/broken_lua.lp /var/www/html/broken_lua.lp
+cp test/broken_lua_2.lp /var/www/html/broken_lua_2.lp
+
 # Prepare local powerDNS resolver
 bash test/pdns/setup.sh
 
 # Set restrictive umask
 OLDUMASK=$(umask)
 umask 0022
+
+# Set exemplary config value by environment variable
+export FTLCONF_misc_nice="-11"
+export FTLCONF_dns_upstrrr="-11"
+export FTLCONF_debug_api="not_a_bool"
+
+# Prepare gdb session
+echo "handle SIGHUP nostop SIGPIPE nostop SIGTERM nostop SIG32 nostop SIG33 nostop SIG34 nostop SIG35 nostop SIG41 nostop" > /root/.gdbinit
 
 # Start FTL
 if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
@@ -84,6 +97,10 @@ fi
 # Give FTL some time for startup preparations
 sleep 2
 
+# Attach debugger and immediately continue running the binary
+# In case a non-ignored signal occurs (a crash), create a full backtrace
+gdb -p $(cat /run/pihole-FTL.pid) --ex continue --ex "bt full" &
+
 # Print versions of pihole-FTL
 echo -n "FTL version (DNS): "
 dig TXT CHAOS version.FTL @127.0.0.1 +short
@@ -93,7 +110,7 @@ echo -n "Contained dnsmasq version (DNS): "
 dig TXT CHAOS version.bind @127.0.0.1 +short
 
 # Run tests
-$BATS "test/test_suite.bats"
+$BATS -p "test/test_suite.bats"
 RET=$?
 
 curl_to_tricorder() {
@@ -113,11 +130,8 @@ if [[ $RET != 0 ]]; then
   echo -n "ptr.log: "
   curl_to_tricorder ./ptr.log
   echo ""
-  echo -n "HTTP_info.log: "
-  curl_to_tricorder /var/log/pihole/HTTP_info.log
-  echo ""
-  echo -n "PH7.log: "
-  curl_to_tricorder /var/log/pihole/PH7.log
+  echo -n "webserver.log: "
+  curl_to_tricorder /var/log/pihole/webserver.log
   echo ""
   echo -n "pihole.toml: "
   curl_to_tricorder /etc/pihole/pihole.toml
@@ -125,6 +139,7 @@ if [[ $RET != 0 ]]; then
 fi
 
 # Kill pihole-FTL after having completed tests
+# This will also shut down the debugger
 kill "$(pidof pihole-FTL)"
 
 # Restore umask

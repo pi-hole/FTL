@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -33,6 +33,10 @@
 #ifdef HAVE_LINUX_NETWORK
 #include <sys/utsname.h>
 #endif
+
+/****** Pi-hole modification ******/
+extern int is_shm_fd(const int fd);
+/**********************************/
 
 /* SURF random number generator */
 
@@ -119,7 +123,7 @@ int rr_on_list(struct rrlist *list, unsigned short rr)
 {
   while (list)
     {
-      if (list->rr == rr || list->rr == T_ANY)
+      if (list->rr == rr)
 	return 1;
 
       list = list->next;
@@ -815,6 +819,11 @@ void close_fds(long max_fd, int spare1, int spare2, int spare3)
 	      fd == spare1 || fd == spare2 || fd == spare3)
 	    continue;
 	  
+	  /****** Pi-hole modification ******/
+	  if(is_shm_fd(fd))
+	    continue;
+	  /**********************************/
+
 	  close(fd);
 	}
       

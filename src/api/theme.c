@@ -11,59 +11,59 @@
 // NULL
 #include <stddef.h>
 // strcasecmp()
-#include <string.h>
+#include <strings.h>
 
 #include "theme.h"
 
 struct web_themes webthemes[THEME_MAX] = {
 	{
-		/* id */ THEME_DEFAULT_AUTO,
 		/* name */ "default-auto",
 		/* description */ "Pi-hole auto",
+		/* color */ "#367fa9",
+		/* id */ THEME_DEFAULT_AUTO,
 		/* dark */ true,
-		/* color */ "#367fa9"
 	},
 	{
-		/* id */ THEME_DEFAULT_LIGHT,
 		/* name */ "default-light",
 		/* description */ "Pi-hole day",
+		/* color */ "#367fa9",
+		/* id */ THEME_DEFAULT_LIGHT,
 		/* dark */ false,
-		/* color */ "#367fa9"
 	},
 	{
-		/* id */ THEME_DEFAULT_DARK,
 		/* name */ "default-dark",
 		/* description */ "Pi-hole midnight",
+		/* color */ "#272c30",
+		/* id */ THEME_DEFAULT_DARK,
 		/* dark */ true,
-		/* color */ "#272c30"
 	},
 	{
-		/* id */ THEME_DEFAULT_DARKER,
 		/* name */ "default-darker",
 		/* description */ "Pi-hole deep-midnight",
+		/* color */ "#2e6786",
+		/* id */ THEME_DEFAULT_DARKER,
 		/* dark */ true,
-		/* color */ "#2e6786"
 	},
 	{
-		/* id */ THEME_HIGH_CONTRAST,
 		/* name */ "high-contrast",
 		/* description */ "High-contrast light",
+		/* color */ "#0078a0",
+		/* id */ THEME_HIGH_CONTRAST,
 		/* dark */ false,
-		/* color */ "#0078a0"
 	},
 	{
-		/* id */ THEME_HIGH_CONTRAST_DARK,
 		/* name */ "high-contrast-dark",
 		/* description */ "High-contrast dark",
+		/* color */ "#0077c7",
+		/* id */ THEME_HIGH_CONTRAST_DARK,
 		/* dark */ true,
-		/* color */ "#0077c7"
 	},
 	{
-		/* id */ THEME_LCARS,
 		/* name */ "lcars",
 		/* description */ "Star Trek LCARS",
+		/* color */ "#4488FF",
+		/* id */ THEME_LCARS,
 		/* dark */ true,
-		/* color */ "#4488FF"
 	},
 };
 

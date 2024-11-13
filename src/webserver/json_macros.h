@@ -12,10 +12,10 @@
 // logging routines
 #include "log.h"
 
-#define JSON_NEW_OBJECT() cJSON_CreateObject();
-#define JSON_NEW_ARRAY() cJSON_CreateArray();
+#define JSON_NEW_OBJECT() cJSON_CreateObject()
+#define JSON_NEW_ARRAY() cJSON_CreateArray()
 
-#define JSON_ADD_ITEM_TO_ARRAY(array, item) cJSON_AddItemToArray(array, item);
+#define JSON_ADD_ITEM_TO_ARRAY(array, item) cJSON_AddItemToArray(array, item)
 
 #define JSON_COPY_STR_TO_OBJECT(object, key, string)({ \
 	cJSON *string_item = NULL; \
@@ -52,6 +52,29 @@
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
 		log_err("JSON_REF_STR_IN_OBJECT FAILED (key: \"%s\", string: \"%s\")!", key, string); \
+		return 500; \
+	} \
+	cJSON_AddItemToObject(object, key, string_item); \
+})
+
+// Hand over allocated string to cJSON - it will thereafter take care of freeing
+// it when the cJSON object is deleted
+#define JSON_GIVE_STR_TO_OBJECT(object, key, string)({ \
+	cJSON *string_item = NULL; \
+	if(string != NULL) \
+	{ \
+		string_item = cJSON_CreateStringReference((const char*)(string)); \
+		string_item->type &= ~cJSON_IsReference; \
+	} \
+	else \
+	{ \
+		string_item = cJSON_CreateNull(); \
+	} \
+	if(string_item == NULL) \
+	{ \
+		cJSON_Delete(object); \
+		send_http_internal_error(api); \
+		log_err("JSON_GIVE_STR_TO_OBJECT FAILED (key: \"%s\", string: \"%s\")!", key, string); \
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, string_item); \
@@ -200,7 +223,10 @@
 })
 
 #define JSON_SEND_OBJECT_CODE(object, code)({ \
-	cJSON_AddNumberToObject(object, "took", double_time() - api->now);\
+	if((code) != 204) \
+	{ \
+		cJSON_AddNumberToObject(object, "took", double_time() - api->now); \
+	} \
 	char *json_string = json_formatter(object); \
 	if(json_string == NULL) \
 	{ \
@@ -247,3 +273,25 @@
 	return code; \
 })
 */
+
+#define JSON_INCREMENT_NUMBER(number_obj, inc)({ \
+	cJSON_SetNumberHelper(number_obj, number_obj->valuedouble + inc); \
+})
+
+// Returns true if the key exists and is true, otherwise false
+#define JSON_KEY_TRUE(obj, key)({ \
+	cJSON *elem = cJSON_GetObjectItemCaseSensitive(obj, key); \
+	elem != NULL ? cJSON_IsTrue(elem) : false; \
+})
+
+#define cJSON_AddStringReferenceToObject(object, key, string) \
+	cJSON_AddItemToObject(object, key, cJSON_CreateStringReference((const char*)(string)))
+
+#define cJSON_AddStringReferenceToArray(array, string) \
+	cJSON_AddItemToArray(array, cJSON_CreateStringReference((const char*)(string)))
+
+#define cJSON_AddNumberToArray(array, num) \
+	cJSON_AddItemToArray(array, cJSON_CreateNumber(num))
+
+#define cJSON_AddStringToArray(array, string) \
+	cJSON_AddItemToArray(array, cJSON_CreateString(string))

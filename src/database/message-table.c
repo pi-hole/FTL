@@ -27,6 +27,47 @@
 #include "gc.h"
 // get_filesystem_details()
 #include "files.h"
+// get_memdb()
+#include "database/query-table.h"
+// escape_html()
+#include "webserver/http-common.h"
+// GIT_HASH, FTL_ARCH
+#include "version.h"
+
+// Number of arguments in a variadic macro
+// Credit: https://stackoverflow.com/a/35693080/2087442
+#define PP_NARG(...) \
+         PP_NARG_(__VA_ARGS__,PP_RSEQ_N())
+#define PP_NARG_(...) \
+         PP_128TH_ARG(__VA_ARGS__)
+#define PP_128TH_ARG( \
+          _1, _2, _3, _4, _5, _6, _7, _8, _9,_10, \
+         _11,_12,_13,_14,_15,_16,_17,_18,_19,_20, \
+         _21,_22,_23,_24,_25,_26,_27,_28,_29,_30, \
+         _31,_32,_33,_34,_35,_36,_37,_38,_39,_40, \
+         _41,_42,_43,_44,_45,_46,_47,_48,_49,_50, \
+         _51,_52,_53,_54,_55,_56,_57,_58,_59,_60, \
+         _61,_62,_63,_64,_65,_66,_67,_68,_69,_70, \
+         _71,_72,_73,_74,_75,_76,_77,_78,_79,_80, \
+         _81,_82,_83,_84,_85,_86,_87,_88,_89,_90, \
+         _91,_92,_93,_94,_95,_96,_97,_98,_99,_100, \
+         _101,_102,_103,_104,_105,_106,_107,_108,_109,_110, \
+         _111,_112,_113,_114,_115,_116,_117,_118,_119,_120, \
+         _121,_122,_123,_124,_125,_126,_127,N,...) N
+#define PP_RSEQ_N() \
+         127,126,125,124,123,122,121,120, \
+         119,118,117,116,115,114,113,112,111,110, \
+         109,108,107,106,105,104,103,102,101,100, \
+         99,98,97,96,95,94,93,92,91,90, \
+         89,88,87,86,85,84,83,82,81,80, \
+         79,78,77,76,75,74,73,72,71,70, \
+         69,68,67,66,65,64,63,62,61,60, \
+         59,58,57,56,55,54,53,52,51,50, \
+         49,48,47,46,45,44,43,42,41,40, \
+         39,38,37,36,35,34,33,32,31,30, \
+         29,28,27,26,25,24,23,22,21,20, \
+         19,18,17,16,15,14,13,12,11,10, \
+         9,8,7,6,5,4,3,2,1,0
 
 static const char *get_message_type_str(const enum message_type type)
 {
@@ -51,9 +92,17 @@ static const char *get_message_type_str(const enum message_type type)
 		case DISK_MESSAGE:
 			return "DISK";
 		case INACCESSIBLE_ADLIST_MESSAGE:
-			return "ADLIST";
+			return "LIST";
 		case DISK_MESSAGE_EXTENDED:
 			return "DISK_EXTENDED";
+		case CERTIFICATE_DOMAIN_MISMATCH_MESSAGE:
+			return "CERTIFICATE_DOMAIN_MISMATCH";
+		case CONNECTION_ERROR_MESSAGE:
+			return "CONNECTION_ERROR";
+		case NTP_MESSAGE:
+			return "NTP";
+		case VERIFY_MESSAGE:
+			return "VERIFY";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
@@ -80,19 +129,27 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return SHMEM_MESSAGE;
 	else if (strcmp(typestr, "DISK") == 0)
 		return DISK_MESSAGE;
-	else if (strcmp(typestr, "ADLIST") == 0)
+	else if (strcmp(typestr, "LIST") == 0)
 		return INACCESSIBLE_ADLIST_MESSAGE;
 	else if (strcmp(typestr, "DISK_EXTENDED") == 0)
 		return DISK_MESSAGE_EXTENDED;
+	else if (strcmp(typestr, "CERTIFICATE_DOMAIN_MISMATCH") == 0)
+		return CERTIFICATE_DOMAIN_MISMATCH_MESSAGE;
+	else if (strcmp(typestr, "CONNECTION_ERROR") == 0)
+		return CONNECTION_ERROR_MESSAGE;
+	else if (strcmp(typestr, "NTP") == 0)
+		return NTP_MESSAGE;
+	else if (strcmp(typestr, "VERIFY") == 0)
+		return VERIFY_MESSAGE;
 	else
 		return MAX_MESSAGE;
 }
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
-		{	// REGEX_MESSAGE: The message column contains the regex warning text
+		{	// REGEX_MESSAGE: The message column contains the regex text (the erroring regex filter itself)
 			SQLITE_TEXT, // regex type ("deny", "allow")
-			SQLITE_TEXT, // regex text (the erroring regex filter itself)
+			SQLITE_TEXT, // regex warning text
 			SQLITE_INTEGER, // database index of regex (so the dashboard can show a link)
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
@@ -167,11 +224,46 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_TEXT, // File system type
 			SQLITE_TEXT, // Directory mounted on
 			SQLITE_NULL // not used
+		},
+		{
+			// CERTIFICATE_DOMAIN_MISMATCH_MESSAGE: The message column contains the certificate file
+			SQLITE_TEXT, // domain
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
+		},
+		{
+			// CONNECTION_ERROR_MESSAGE: The message column contains the server address
+			SQLITE_TEXT, // reason
+			SQLITE_TEXT, // error message
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
+		},
+		{
+			// NTP: The message column contains the warning/error
+			SQLITE_TEXT, // level (warning/error)
+			SQLITE_TEXT, // component (server/client)
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
+		},
+		{
+			// VERIFY_MESSAGE: The message column contains the error
+			SQLITE_TEXT, // expected checksum
+			SQLITE_TEXT, // actual checksum
+			SQLITE_TEXT, // FTL commit hash
+			SQLITE_TEXT, // FTL architecture
+			SQLITE_NULL // not used
 		}
 	};
 // Create message table in the database
 bool create_message_table(sqlite3 *db)
 {
+	// Start transaction
+	SQL_bool(db, "BEGIN TRANSACTION");
+
 	// The blob fields can hold arbitrary data. Their type is specified through the type.
 	SQL_bool(db, "CREATE TABLE message ( id INTEGER PRIMARY KEY AUTOINCREMENT, "
 	                                    "timestamp INTEGER NOT NULL, "
@@ -190,48 +282,76 @@ bool create_message_table(sqlite3 *db)
 		return false;
 	}
 
+	// End transaction
+	SQL_bool(db, "COMMIT");
+
 	return true;
 }
 
 // Flush message table
 bool flush_message_table(void)
 {
-	// Return early if database is known to be broken
-	if(FTLDBerror())
-		return false;
-
-	sqlite3 *db;
-	// Open database connection
-	if((db = dbopen(false, false)) == NULL)
-	{
-		log_err("flush_message_table() - Failed to open DB");
-		return false;
-	}
+	sqlite3 *memdb = get_memdb();
 
 	// Flush message table
-	SQL_bool(db, "DELETE FROM message;");
-
-	// Close database connection
-	dbclose(&db);
+	SQL_bool(memdb, "DELETE FROM disk.message;");
 
 	return true;
 }
 
-static int add_message(const enum message_type type,
-                       const char *message, const int count,...)
+static int _add_message(const enum message_type type,
+                        const char *message, const size_t count, ...);
+#define add_message(type, message, ...) _add_message(type, message, PP_NARG(__VA_ARGS__), __VA_ARGS__)
+#define add_message_no_args(type, message) _add_message(type, message, 0)
+
+static int _add_message(const enum message_type type,
+                        const char *message, const size_t count,...)
 {
+	// Log to database only if not in CLI mode
+	if(cli_mode)
+		return -1;
+
 	int rowid = -1;
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return rowid;
+		return -1;
+
+	// Check if message type is known
+	if(type >= MAX_MESSAGE)
+	{
+		log_err("add_message(type=%u, message=%s) - Invalid message type with %zu arguments",
+		        type, message, count);
+		return -1;
+	}
+
+	// Check if number of arguments is valid
+	// Total number of arguments
+	if(count > 5)
+	{
+		log_err("add_message(type=%u, message=%s) - Too many arguments (%zu), expected at most 5",
+		        type, message, count);
+		return -1;
+	}
+	// No arguments check
+	if(count == 0 && message_blob_types[type][0] != SQLITE_NULL)
+	{
+		log_err("add_message(type=%u, message=%s) - Invalid number of arguments: No arguments passed for message type requiring arguments",
+		        type, message);
+		return -1;
+	}
+	// Non-zero arguments check
+	else if(count > 1 && message_blob_types[type][count - 2] == SQLITE_NULL)
+	{
+		log_err("add_message(type=%u, message=%s) - Invalid number of arguments: Too many (%zu) arguments passed for this message type",
+		        type, message, count);
+		return -1;
+	}
 
 	sqlite3 *db;
 	// Open database connection
 	if((db = dbopen(false, false)) == NULL)
-	{
-		log_err("add_message() - Failed to open DB");
-		return rowid;
-	}
+		// Reason for failure is logged in dbopen()
+		return -1;
 
 	// Ensure there are no duplicates when adding messages
 	sqlite3_stmt* stmt = NULL;
@@ -308,7 +428,7 @@ static int add_message(const enum message_type type,
 
 	va_list ap;
 	va_start(ap, count);
-	for (int j = 0; j < count; j++)
+	for (size_t j = 0; j < count; j++)
 	{
 		const unsigned char datatype = message_blob_types[type][j];
 		switch (datatype)
@@ -327,6 +447,8 @@ static int add_message(const enum message_type type,
 
 			case SQLITE_NULL: /* Fall through */
 			default:
+				log_warn("add_message(type=%s, message=%s) - Excess property, binding NULL",
+				         get_message_type_str(type), message);
 				rc = sqlite3_bind_null(stmt, 3 + j);
 				break;
 		}
@@ -334,7 +456,7 @@ static int add_message(const enum message_type type,
 		// Bind message to prepared statement
 		if(rc != SQLITE_OK)
 		{
-			log_err("add_message(type=%u, message=%s) - Failed to bind argument %d (type %u): %s",
+			log_err("add_message(type=%u, message=%s) - Failed to bind argument %zu (type %u): %s",
 			        type, message, 3 + j, datatype, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
@@ -369,7 +491,7 @@ end_of_add_message: // Close database connection
 	return rowid;
 }
 
-bool delete_message(cJSON *ids)
+bool delete_message(cJSON *ids, int *deleted)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -404,6 +526,10 @@ bool delete_message(cJSON *ids)
 			log_err("SQL error (%i): %s", sqlite3_errcode(db), sqlite3_errmsg(db));
 			return false;
 		}
+
+		// Add to deleted count
+		*deleted += sqlite3_changes(db);
+
 		sqlite3_reset(res);
 		sqlite3_clear_bindings(res);
 	}
@@ -428,14 +554,22 @@ static void format_regex_message(char *plain, const int sizeof_plain, char *html
 	char *escaped_regex = escape_html(regex);
 	char *escaped_warning = escape_html(warning);
 
+	// Return early if memory allocation failed
+	if(escaped_regex == NULL || escaped_warning == NULL)
+	{
+		if(escaped_regex != NULL)
+			free(escaped_regex);
+		if(escaped_warning != NULL)
+			free(escaped_warning);
+		return;
+	}
+
 	if(snprintf(html, sizeof_html, "Encountered an error when processing <a href=\"groups-domains.lp?domainid=%d\">regex %s filter with ID %d</a>: <pre>%s</pre>Error message: <pre>%s</pre>",
-	            dbindex, type, dbindex, escaped_regex, escaped_warning))
+	            dbindex, type, dbindex, escaped_regex, escaped_warning) > sizeof_html)
 		log_warn("format_regex_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_regex != NULL)
-		free(escaped_regex);
-	if(escaped_warning != NULL)
-		free(escaped_warning);
+	free(escaped_regex);
+	free(escaped_warning);
 }
 
 static void format_subnet_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *ip, const int matching_count, const char *names, const char *matching_ids, const char *chosen_match_text, const int chosen_match_id)
@@ -454,40 +588,85 @@ static void format_subnet_message(char *plain, const int sizeof_plain, char *htm
 	char *escaped_ids = escape_html(matching_ids);
 	char *escaped_names = escape_html(names);
 
+	// Return early if memory allocation failed
+	if(escaped_ip == NULL || escaped_ids == NULL || escaped_names == NULL)
+	{
+		if(escaped_ip != NULL)
+			free(escaped_ip);
+		if(escaped_ids != NULL)
+			free(escaped_ids);
+		if(escaped_names != NULL)
+			free(escaped_names);
+		return;
+	}
+
 	if(snprintf(html, sizeof_html, "Client <code>%s</code> is managed by %i groups (IDs [%s]), all describing the same subnet:<pre>%s</pre>"
 	            "FTL chose the most recent entry (ID %i) to obtain the group configuration for this client.",
 	            escaped_ip, matching_count, escaped_ids, escaped_names, chosen_match_id) > sizeof_html)
 		log_warn("format_subnet_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_ip != NULL)
-		free(escaped_ip);
-	if(escaped_ids != NULL)
-		free(escaped_ids);
-	if(escaped_names != NULL)
-		free(escaped_names);
+	free(escaped_ip);
+	free(escaped_ids);
+	free(escaped_names);
 }
 
 static void format_hostname_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *ip, const char *name, const int pos)
 {
-	if(snprintf(plain, sizeof_plain, "Host name of client \"%s\" => \"%s\" contains (at least) one invalid character at position %i",
-			ip, name, pos) > sizeof_plain)
+	char *namep = escape_json(name);
+	if(namep == NULL)
+	{
+		log_err("format_hostname_message(): Failed to JSON escape host name \"%s\" of client \"%s\"", name, ip);
+		return;
+	}
+
+	// Check if the position is within the string before proceeding
+	// This is a safety measure to prevent buffer overflows caused by
+	// malicious database records
+	if(pos > (int)strlen(name))
+	{
+		log_err("format_hostname_message(): Invalid position %i for host name \"%s\" of client \"%s\"", pos, namep, ip);
+		if(namep != NULL)
+			free(namep);
+		return;
+	}
+
+	// Format the plain text message (the JSON string is already escaped and
+	// contains "" around the string)
+	if(snprintf(plain, sizeof_plain, "Host name of client \"%s\" => %s contains (at least) one invalid character (hex %02x) at position %i",
+			ip, namep, (unsigned char)name[pos], pos) > sizeof_plain)
 		log_warn("format_hostname_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
 	if(sizeof_html < 1 || html == NULL)
+	{
+		if(namep != NULL)
+			free(namep);
 		return;
+	}
 
 	char *escaped_ip = escape_html(ip);
-	char *escaped_name = escape_html(name);
+	char *escaped_name = escape_html(namep);
 
-	if(snprintf(html, sizeof_html, "Host name of client <code>%s</code> => <code>%s</code> contains (at least) one invalid character at position %i",
-			escaped_ip, escaped_name, pos) > sizeof_html)
+	// Return early if memory allocation failed
+	if(escaped_ip == NULL || escaped_name == NULL)
+	{
+		if(escaped_ip != NULL)
+			free(escaped_ip);
+		if(escaped_name != NULL)
+			free(escaped_name);
+		if(namep != NULL)
+			free(namep);
+		return;
+	}
+
+	if(snprintf(html, sizeof_html, "Host name of client <code>%s</code> => <code>%s</code> contains (at least) one invalid character (hex %02x) at position %i",
+			escaped_ip, escaped_name, (unsigned char)name[pos], pos) > sizeof_html)
 		log_warn("format_hostname_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_ip != NULL)
-		free(escaped_ip);
-	if(escaped_name != NULL)
-		free(escaped_name);
+	free(escaped_ip);
+	free(escaped_name);
+	if(namep != NULL)
+		free(namep);
 }
 
 static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
@@ -501,11 +680,14 @@ static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, c
 
 	char *escaped_message = escape_html(message);
 
+	// Return early if memory allocation failed
+	if(escaped_message == NULL)
+		return;
+
 	if(snprintf(html, sizeof_html, "FTL failed to start due to %s.", escaped_message) > sizeof_html)
 		log_warn("format_dnsmasq_config_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_message != NULL)
-		free(escaped_message);
+	free(escaped_message);
 }
 
 static void format_rate_limit_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *clientIP, const unsigned int count, const unsigned int interval, const time_t turnaround)
@@ -520,12 +702,15 @@ static void format_rate_limit_message(char *plain, const int sizeof_plain, char 
 
 	char *escaped_clientIP = escape_html(clientIP);
 
+	// Return early if memory allocation failed
+	if(escaped_clientIP == NULL)
+		return;
+
 	if(snprintf(html, sizeof_html, "Client <code>%s</code> has been rate-limited for at least %lu second%s (current limit: %u queries per %u seconds)",
 			escaped_clientIP, (unsigned long int)turnaround, turnaround == 1 ? "" : "s", count, interval) > sizeof_html)
 		log_warn("format_rate_limit_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_clientIP != NULL)
-		free(escaped_clientIP);
+	free(escaped_clientIP);
 }
 
 static void format_dnsmasq_warn_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
@@ -569,14 +754,22 @@ static void format_shmem_message(char *plain, const int sizeof_plain, char *html
 	char *escaped_path = escape_html(path);
 	char *escaped_msg = escape_html(msg);
 
+	// Return early if memory allocation failed
+	if(escaped_path == NULL || escaped_msg == NULL)
+	{
+		if(escaped_path != NULL)
+			free(escaped_path);
+		if(escaped_msg != NULL)
+			free(escaped_msg);
+		return;
+	}
+
 	if(snprintf(html, sizeof_html, "Shared memory shortage (<code>%s</code>) ahead: <strong>%d%%</strong> is used<br>%s",
 	            escaped_path, shmem, escaped_msg) > sizeof_html)
 		log_warn("log_resource_shortage(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_path != NULL)
-		free(escaped_path);
-	if(escaped_msg != NULL)
-		free(escaped_msg);
+	free(escaped_path);
+	free(escaped_msg);
 }
 
 static void format_disk_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
@@ -593,10 +786,22 @@ static void format_disk_message(char *plain, const int sizeof_plain, char *html,
 	char *escaped_path = escape_html(path);
 	char *escaped_msg = escape_html(msg);
 
+	// Return early if memory allocation failed
+	if(escaped_path == NULL || escaped_msg == NULL)
+	{
+		if(escaped_path != NULL)
+			free(escaped_path);
+		if(escaped_msg != NULL)
+			free(escaped_msg);
+		return;
+	}
 
 	if(snprintf(html, sizeof_html, "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on partition containing the file <code>%s</code>",
 	            disk, escaped_msg, escaped_path) > sizeof_html)
 		log_warn("format_disk_message(): Buffer too small to hold HTML message, warning truncated");
+
+	free(escaped_path);
+	free(escaped_msg);
 }
 
 static void format_disk_message_extended(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
@@ -614,22 +819,31 @@ static void format_disk_message_extended(char *plain, const int sizeof_plain, ch
 	char *escaped_mnt_dir = escape_html(mnt_dir);
 	char *escaped_msg = escape_html(msg);
 
+	// Return early if memory allocation failed
+	if(escaped_mnt_type == NULL || escaped_mnt_dir == NULL || escaped_msg == NULL)
+	{
+		if(escaped_mnt_type != NULL)
+			free(escaped_mnt_type);
+		if(escaped_mnt_dir != NULL)
+			free(escaped_mnt_dir);
+		if(escaped_msg != NULL)
+			free(escaped_msg);
+		return;
+	}
+
 	if(snprintf(html, sizeof_html, "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on %s filesystem mounted at <code>%s</code>",
 	            disk, escaped_msg, escaped_mnt_type, escaped_mnt_dir) > sizeof_html)
 		log_warn("format_disk_message_extended(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_mnt_type != NULL)
-		free(escaped_mnt_type);
-	if(escaped_mnt_dir != NULL)
-		free(escaped_mnt_dir);
-	if(escaped_msg != NULL)
-		free(escaped_msg);
+	free(escaped_mnt_type);
+	free(escaped_mnt_dir);
+	free(escaped_msg);
 }
 
 static void format_inaccessible_adlist_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
                                                const char *address, int dbindex)
 {
-	if(snprintf(plain, sizeof_plain, "Adlist with ID %d (%s) was inaccessible during last gravity run",
+	if(snprintf(plain, sizeof_plain, "List with ID %d (%s) was inaccessible during last gravity run",
 	        dbindex, address) > sizeof_plain)
 		log_warn("format_inaccessible_adlist_message(): Buffer too small to hold plain message, warning truncated");
 
@@ -639,12 +853,126 @@ static void format_inaccessible_adlist_message(char *plain, const int sizeof_pla
 
 	char *escaped_address = escape_html(address);
 
-	if(snprintf(html, sizeof_html, "<a href=\"groups-adlists.lp?adlist=%i\">Adlist with ID <strong>%d</strong> (<code>%s</code>)</a> was inaccessible during last gravity run",
+	// Return early if memory allocation failed
+	if(escaped_address == NULL)
+		return;
+
+	if(snprintf(html, sizeof_html, "<a href=\"groups/lists?listid=%i\">List with ID <strong>%d</strong> (<code>%s</code>)</a> was inaccessible during last gravity run",
 	            dbindex, dbindex, escaped_address) > sizeof_html)
 		log_warn("format_inaccessible_adlist_message(): Buffer too small to hold HTML message, warning truncated");
 
-	if(escaped_address != NULL)
-		free(escaped_address);
+	free(escaped_address);
+}
+
+static void format_certificate_domain_mismatch(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                               const char *certfile, const char*domain)
+{
+	if(snprintf(plain, sizeof_plain, "SSL/TLS certificate %s does not match domain %s!", certfile, domain) > sizeof_plain)
+		log_warn("format_certificate_domain_mismatch(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_certfile = escape_html(certfile);
+	char *escaped_domain = escape_html(domain);
+
+	// Return early if memory allocation failed
+	if(escaped_certfile == NULL || escaped_domain == NULL)
+	{
+		if(escaped_certfile != NULL)
+			free(escaped_certfile);
+		if(escaped_domain != NULL)
+			free(escaped_domain);
+		return;
+	}
+
+	if(snprintf(html, sizeof_html, "SSL/TLS certificate %s does not match domain <strong>%s</strong>!", escaped_certfile, escaped_domain) > sizeof_html)
+		log_warn("format_certificate_domain_mismatch(): Buffer too small to hold HTML message, warning truncated");
+
+	free(escaped_certfile);
+	free(escaped_domain);
+}
+
+static void format_connection_error(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                    const char *server, const char *reason, const char *error)
+{
+	if(snprintf(plain, sizeof_plain, "Connection error (%s): %s (%s)", server, reason, error) > sizeof_plain)
+		log_warn("format_connection_error(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_reason = escape_html(reason);
+	char *escaped_error = escape_html(error);
+	char *escaped_server = escape_html(server);
+
+	// Return early if memory allocation failed
+	if(escaped_reason == NULL || escaped_error == NULL || escaped_server == NULL)
+	{
+		if(escaped_reason != NULL)
+			free(escaped_reason);
+		if(escaped_error != NULL)
+			free(escaped_error);
+		if(escaped_server != NULL)
+			free(escaped_server);
+		return;
+	}
+
+	if(snprintf(html, sizeof_html, "Connection error (<strong>%s</strong>): %s (<strong>%s</strong>)", server, reason, error) > sizeof_html)
+		log_warn("format_connection_error(): Buffer too small to hold HTML message, warning truncated");
+
+	free(escaped_reason);
+	free(escaped_error);
+	free(escaped_server);
+}
+
+static void format_ntp_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                               const char *message, const char *level, const char *who)
+{
+	if(snprintf(plain, sizeof_plain, "%s NTP %s: %s", level, who, message) > sizeof_plain)
+		log_warn("format_ntp_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	if(snprintf(html, sizeof_html, "%s in NTP %s:<pre>%s</pre>", level, who, message) > sizeof_html)
+		log_warn("format_ntp_message(): Buffer too small to hold HTML message, warning truncated");
+}
+
+static void format_verify_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                  const char *message, const char *expected, const char *actual,
+                                  const char *commit, const char *arch)
+{
+	if(snprintf(plain, sizeof_plain, "%s - expected \"%s\", but got \"%s\" - FTL commit is %s on %s",
+	            message, expected, actual, commit, arch) > sizeof_plain)
+		log_warn("format_verify_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_message = escape_html(message);
+	char *escaped_expected = escape_html(expected);
+	char *escaped_actual = escape_html(actual);
+	char *escaped_commit = escape_html(commit);
+	char *escaped_arch = escape_html(arch);
+
+	// Return early if memory allocation failed
+	if(escaped_message == NULL || escaped_expected == NULL || escaped_actual == NULL || escaped_commit == NULL || escaped_arch == NULL)
+		return;
+
+	if(snprintf(html, sizeof_html, "%s<br>Expected: <pre>%s</pre><br>Actual: <pre>%s</pre><br>FTL commit is <code>%s</code> on <code>%s</code>",
+	            escaped_message, escaped_expected, escaped_actual, escaped_commit, escaped_arch) > sizeof_html)
+		log_warn("format_verify_message(): Buffer too small to hold HTML message, warning truncated");
+
+	free(escaped_message);
+	free(escaped_expected);
+	free(escaped_actual);
+	free(escaped_commit);
+	free(escaped_arch);
 }
 
 int count_messages(const bool filter_dnsmasq_warnings)
@@ -735,14 +1063,14 @@ bool format_messages(cJSON *array)
 
 		// Generate messages
 		char plain[1024] = { 0 }, html[2048] = { 0 };
-		const int mtype = get_message_type_from_string(mtypestr);
+		const enum message_type mtype = get_message_type_from_string(mtypestr);
 		switch(mtype)
 		{
 			case REGEX_MESSAGE:
 			{
-				const char *warning = (const char*)sqlite3_column_text(stmt, 3);
+				const char *regex = (const char*)sqlite3_column_text(stmt, 3);
 				const char *type = (const char*)sqlite3_column_text(stmt, 4);
-				const char *regex = (const char*)sqlite3_column_text(stmt, 5);
+				const char *warning = (const char*)sqlite3_column_text(stmt, 5);
 				const int dbindex = sqlite3_column_int(stmt, 6);
 
 				format_regex_message(plain, sizeof(plain), html, sizeof(html),
@@ -870,6 +1198,60 @@ bool format_messages(cJSON *array)
 
 				break;
 			}
+
+			case CERTIFICATE_DOMAIN_MISMATCH_MESSAGE:
+			{
+				const char *certfile = (const char*)sqlite3_column_text(stmt, 3);
+				const char *domain = (const char*)sqlite3_column_text(stmt, 4);
+
+				format_certificate_domain_mismatch(plain, sizeof(plain), html, sizeof(html),
+				                                   certfile, domain);
+
+				break;
+			}
+
+			case CONNECTION_ERROR_MESSAGE:
+			{
+				const char *server = (const char*)sqlite3_column_text(stmt, 3);
+				const char *reason = (const char*)sqlite3_column_text(stmt, 4);
+				const char *error = (const char*)sqlite3_column_text(stmt, 5);
+
+				format_connection_error(plain, sizeof(plain), html, sizeof(html),
+				                        server, reason, error);
+
+				break;
+			}
+
+			case NTP_MESSAGE:
+			{
+				const char *message = (const char*)sqlite3_column_text(stmt, 3);
+				const char *level = (const char*)sqlite3_column_text(stmt, 4);
+				const char *who = (const char*)sqlite3_column_text(stmt, 5);
+
+				format_ntp_message(plain, sizeof(plain), html, sizeof(html),
+				                   message, level, who);
+
+				break;
+			}
+
+			case VERIFY_MESSAGE:
+			{
+				const char *message = (const char*)sqlite3_column_text(stmt, 3);
+				const char *expected = (const char*)sqlite3_column_text(stmt, 4);
+				const char *actual = (const char*)sqlite3_column_text(stmt, 5);
+				const char *hash = (const char*)sqlite3_column_text(stmt, 6);
+				const char *arch = (const char*)sqlite3_column_text(stmt, 7);
+
+				format_verify_message(plain, sizeof(plain), html, sizeof(html),
+				                      message, expected, actual, hash, arch);
+
+				break;
+			}
+
+			case MAX_MESSAGE: // Fall through
+			default:
+				log_warn("format_messages() - Unknown message type: %s", mtypestr);
+				break;
 		}
 
 		// Add the plain message
@@ -920,14 +1302,8 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 	// Log to FTL.log
 	log_warn("%s", buf);
 
-	// Log to database only if not in CLI mode
-	if(cli_mode)
-		return;
-
 	// Add to database
-	const int rowid = add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
-	if(rowid == -1)
-		log_err("logg_regex_warning(): Failed to add message to database");
+	add_message(REGEX_MESSAGE, regex, type, warning, dbindex);
 }
 
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,
@@ -945,10 +1321,8 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(SUBNET_MESSAGE, ip, 5, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
+	add_message(SUBNET_MESSAGE, ip, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
 
-	if(rowid == -1)
-		log_err("logg_subnet_warning(): Failed to add message to database");
 
 	free(names);
 }
@@ -956,17 +1330,19 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 void logg_hostname_warning(const char *ip, const char *name, const unsigned int pos)
 {
 	// Create message
-	char buf[2048];
+	char buf[2048] = { 0 };
 	format_hostname_message(buf, sizeof(buf), NULL, 0, ip, name, pos);
+
+	// Return early if we did not generate a message
+	if(buf[0] == '\0')
+		return;
 
 	// Log to FTL.log
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(HOSTNAME_MESSAGE, ip, 2, name, (const int)pos);
+	add_message(HOSTNAME_MESSAGE, ip, name, (const int)pos);
 
-	if(rowid == -1)
-		log_err("logg_hostname_warning(): Failed to add message to database");
 }
 
 void logg_fatal_dnsmasq_message(const char *message)
@@ -979,10 +1355,8 @@ void logg_fatal_dnsmasq_message(const char *message)
 	log_crit("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(DNSMASQ_CONFIG_MESSAGE, message, 0);
+	add_message_no_args(DNSMASQ_CONFIG_MESSAGE, message);
 
-	if(rowid == -1)
-		log_err("logg_fatal_dnsmasq_message(): Failed to add message to database");
 }
 
 void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit_count)
@@ -997,10 +1371,8 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 	log_info("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(RATE_LIMIT_MESSAGE, clientIP, 3, config.dns.rateLimit.count.v.ui, config.dns.rateLimit.interval.v.ui, turnaround);
+	add_message(RATE_LIMIT_MESSAGE, clientIP, config.dns.rateLimit.count.v.ui, config.dns.rateLimit.interval.v.ui, turnaround);
 
-	if(rowid == -1)
-		log_err("logg_rate_limit_message(): Failed to add message to database");
 }
 
 void logg_warn_dnsmasq_message(char *message)
@@ -1013,10 +1385,8 @@ void logg_warn_dnsmasq_message(char *message)
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(DNSMASQ_WARN_MESSAGE, message, 0);
+	add_message_no_args(DNSMASQ_WARN_MESSAGE, message);
 
-	if(rowid == -1)
-		log_err("logg_warn_dnsmasq_message(): Failed to add message to database");
 }
 
 void log_resource_shortage(const double load, const int nprocs, const int shmem, const int disk, const char *path, const char *msg)
@@ -1032,10 +1402,9 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		log_warn("%s", buf);
 
 		// Log to database
-		const int rowid = add_message(LOAD_MESSAGE, "excessive load", 2, load, nprocs);
+		add_message(LOAD_MESSAGE, "excessive load", load, nprocs);
 
-		if(rowid == -1)
-			log_err("log_resource_shortage(): Failed to add message to database");
+
 	}
 	else if(shmem > -1)
 	{
@@ -1045,15 +1414,31 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		log_warn("%s", buf);
 
 		// Log to database
-		const int rowid = add_message(SHMEM_MESSAGE, path, 2, shmem, msg);
+		add_message(SHMEM_MESSAGE, path, shmem, msg);
 
-		if(rowid == -1)
-			log_err("log_resource_shortage(): Failed to add message to database");
+
 	}
 	else if(disk > -1)
 	{
 		// Get filesystem details for this path
 		struct mntent *fsdetails = get_filesystem_details(path);
+
+		// Log filesystem details if in debug mode
+		if(config.debug.gc.v.b)
+		{
+			if(fsdetails != NULL)
+			{
+				log_debug(DEBUG_GC, "Disk details for path \"%s\":", path);
+				log_debug(DEBUG_GC, "  Device or server for filesystem: %s", fsdetails->mnt_fsname);
+				log_debug(DEBUG_GC, "  Directory mounted on: %s", fsdetails->mnt_dir);
+				log_debug(DEBUG_GC, "  Type of filesystem: %s", fsdetails->mnt_type);
+				log_debug(DEBUG_GC, "  Comma-separated options for fs: %s", fsdetails->mnt_opts);
+				log_debug(DEBUG_GC, "  Dump frequency (in days): %d", fsdetails->mnt_freq);
+				log_debug(DEBUG_GC, "  Pass number for `fsck': %d", fsdetails->mnt_passno);
+			}
+			else
+				log_debug(DEBUG_GC, "Failed to get filesystem details for path \"%s\"", path);
+		}
 
 		// Create plain message
 		if(fsdetails != NULL)
@@ -1065,12 +1450,11 @@ void log_resource_shortage(const double load, const int nprocs, const int shmem,
 		log_warn("%s", buf);
 
 		// Log to database
-		const int rowid = fsdetails != NULL ?
-			add_message(DISK_MESSAGE_EXTENDED, path, 4, disk, fsdetails->mnt_type, fsdetails->mnt_dir) :
-			add_message(DISK_MESSAGE, path, 2, disk, msg);
+		fsdetails != NULL ?
+			add_message(DISK_MESSAGE_EXTENDED, path, disk, msg, fsdetails->mnt_type, fsdetails->mnt_dir) :
+			add_message(DISK_MESSAGE, path, disk, msg);
 
-		if(rowid == -1)
-			log_err("log_resource_shortage(): Failed to add message to database");
+
 	}
 }
 
@@ -1084,8 +1468,68 @@ void logg_inaccessible_adlist(const int dbindex, const char *address)
 	log_warn("%s", buf);
 
 	// Log to database
-	const int rowid = add_message(INACCESSIBLE_ADLIST_MESSAGE, address, 1, dbindex);
+	add_message(INACCESSIBLE_ADLIST_MESSAGE, address, dbindex);
 
-	if(rowid == -1)
-		log_err("logg_inaccessible_adlist(): Failed to add message to database");
+}
+
+void log_certificate_domain_mismatch(const char *certfile, const char *domain)
+{
+	// Create message
+	char buf[2048];
+	format_certificate_domain_mismatch(buf, sizeof(buf), NULL, 0, certfile, domain);
+
+	// Log to FTL.log
+	log_warn("%s", buf);
+
+	// Log to database
+	add_message(CERTIFICATE_DOMAIN_MISMATCH_MESSAGE, certfile, domain);
+
+}
+
+void log_connection_error(const char *server, const char *reason, const char *error)
+{
+	// Create message
+	char buf[2048];
+	format_connection_error(buf, sizeof(buf), NULL, 0, server, reason, error);
+
+	// Log to FTL.log
+	log_warn("%s", buf);
+
+	// Log to database
+	add_message(CONNECTION_ERROR_MESSAGE, server, reason, error);
+
+}
+
+void log_ntp_message(const bool error, const bool server, const char *message)
+{
+	const char *who = server ? "server" : "client";
+	const char *level = error ? "Error" : "Warning";
+
+	// Create message
+	char buf[2048];
+	format_ntp_message(buf, sizeof(buf), NULL, 0, message, level, who);
+
+	// Log to FTL.log
+	if(error)
+		log_err("%s", buf);
+	else
+		log_warn("%s", buf);
+
+	// Log to database
+	add_message(NTP_MESSAGE, message, level, who);
+
+}
+
+void log_verify_message(const char *expected, const char *actual)
+{
+	// Create message
+	char buf[2048];
+	snprintf(buf, sizeof(buf), "Corrupt binary detected - this may lead to unexpected behaviour!");
+
+	// Log to FTL.log
+	log_crit("%s", buf);
+
+	// Log to database
+	add_message(VERIFY_MESSAGE, buf, expected, actual, GIT_HASH, FTL_ARCH);
+
 }

@@ -19,41 +19,49 @@
 #include "datastructure.h"
 // watch_config()
 #include "config/inotify.h"
+// files_different()
+#include "files.h"
+
+// defined in config/config.c
+extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
 
 bool writeFTLtoml(const bool verbose)
 {
-	// Stop watching for changes in the config file
-	watch_config(false);
+	// Return early without writing if we are in config read-only mode
+	if(config.misc.readOnly.v.b)
+	{
+		log_debug(DEBUG_CONFIG, "Config file is read-only, not writing");
 
-	// Try to open global config file
+		// We need to (re-)calculate the checksum here as it'd otherwise
+		// be outdated (in non-read-only mode, it's calculated at the
+		// end of this function)
+		if(!sha256sum(GLOBALTOMLPATH, last_checksum, false))
+			log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
+		return true;
+	}
+
+	// Try to open a temporary config file for writing
 	FILE *fp;
-	if((fp = openFTLtoml("w")) == NULL)
+	if((fp = openFTLtoml("w", 0)) == NULL)
 	{
 		log_warn("Cannot write to FTL config file (%s), content not updated", strerror(errno));
-		// Restart watching for changes in the config file
-		watch_config(true);
 		return false;
 	}
 
-	// Log that we are (re-)writing the config file if either in verbose or
-	// debug mode
-	if(verbose || config.debug.config.v.b)
-		log_info("Writing config file");
-
 	// Write header
-	fputs("# This file is managed by pihole-FTL\n#\n", fp);
-	fputs("# Do not edit the file while FTL is\n", fp);
-	fputs("# running or your changes may be overwritten\n#\n", fp);
-	char timestring[TIMESTR_SIZE] = "";
+	fprintf(fp, "# Pi-hole configuration file (%s)\n", get_FTL_version());
+	fputs("# Encoding: UTF-8\n", fp);
+	fputs("# This file is managed by pihole-FTL\n", fp);
+	char timestring[TIMESTR_SIZE];
 	get_timestr(timestring, time(NULL), false, false);
 	fputs("# Last updated on ", fp);
 	fputs(timestring, fp);
-	fputs("\n# by FTL ", fp);
-	fputs(get_FTL_version(), fp);
 	fputs("\n\n", fp);
 
 	// Iterate over configuration and store it into the file
 	char *last_path = (char*)"";
+	unsigned int modified = 0;
+	cJSON *env_vars = cJSON_CreateArray();
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
@@ -104,19 +112,105 @@ bool writeFTLtoml(const bool verbose)
 
 		if(changed)
 		{
-			fprintf(fp, " ### CHANGED, default = ");
+
+			// Print info if this value is overwritten by an env var
+			if(conf_item->f & FLAG_ENV_VAR)
+				cJSON_AddItemToArray(env_vars, cJSON_CreateStringReference(conf_item->k));
+
+			fprintf(fp, " ### CHANGED%s, default = ", conf_item->f & FLAG_ENV_VAR ? " (env)" : "");
 			writeTOMLvalue(fp, -1, conf_item->t, &conf_item->d);
+			modified++;
 		}
 
 		// Add newlines after each entry
 		fputs("\n\n", fp);
 	}
 
+	// Print config file statistics at the end of the file as comment
+	fputs("# Configuration statistics:\n", fp);
+	fprintf(fp, "# %zu total entries out of which %zu %s default\n",
+	        CONFIG_ELEMENTS, CONFIG_ELEMENTS - modified,
+		CONFIG_ELEMENTS - modified == 1 ? "entry is" : "entries are");
+	fprintf(fp, "# --> %u %s modified\n",
+	        modified, modified == 1 ? "entry is" : "entries are");
+
+	const unsigned int num_env_vars = cJSON_GetArraySize(env_vars);
+	if(num_env_vars > 0)
+	{
+		fprintf(fp, "# %u %s forced through environment:\n",
+			num_env_vars, num_env_vars == 1 ? "entry is" : "entries are");
+
+		for(unsigned int i = 0; i < num_env_vars; i++)
+		{
+			const char *env_var = cJSON_GetArrayItem(env_vars, i)->valuestring;
+			fprintf(fp, "#   - %s\n", env_var);
+		}
+	}
+	else
+		fputc('\n', fp);
+
+	// Log some statistics in verbose mode
+	if(verbose || config.debug.config.v.b)
+	{
+		log_info("Wrote config file:");
+		log_info(" - %zu total entries", CONFIG_ELEMENTS);
+		log_info(" - %zu %s default", CONFIG_ELEMENTS - modified,
+		         CONFIG_ELEMENTS - modified == 1 ? "entry is" : "entries are");
+		log_info(" - %u %s modified", modified,
+		         modified == 1 ? "entry is" : "entries are");
+		log_info(" - %u %s forced through environment", num_env_vars,
+		         num_env_vars == 1 ? "entry is" : "entries are");
+	}
+
+	// Free cJSON array
+	cJSON_Delete(env_vars);
+
 	// Close file and release exclusive lock
 	closeFTLtoml(fp);
 
-	// Restart watching for changes in the config file
-	watch_config(true);
+	// Move temporary file to the final location if it is different
+	// We skip the first 8 lines as they contain the header and will always
+	// be different
+	if(files_different(GLOBALTOMLPATH".tmp", GLOBALTOMLPATH, 8))
+	{
+		// Stop watching for changes in the config file
+		watch_config(false);
+
+		// Rotate config file
+		rotate_files(GLOBALTOMLPATH, NULL);
+
+		// Move file
+		if(rename(GLOBALTOMLPATH".tmp", GLOBALTOMLPATH) != 0)
+		{
+			log_warn("Cannot move temporary config file to final location (%s), content not updated", strerror(errno));
+			// Restart watching for changes in the config file
+			watch_config(true);
+			return false;
+		}
+
+		// Restart watching for changes in the config file
+		watch_config(true);
+
+		// Log that we have written the config file if either in verbose or
+		// debug mode
+		if(verbose || config.debug.config.v.b)
+			log_info("Config file written to %s", GLOBALTOMLPATH);
+	}
+	else
+	{
+		// Remove temporary file
+		if(unlink(GLOBALTOMLPATH".tmp") != 0)
+		{
+			log_warn("Cannot remove temporary config file (%s), content not updated", strerror(errno));
+			return false;
+		}
+
+		// Log that the config file has not changed if in debug mode
+		log_debug(DEBUG_CONFIG, "pihole.toml unchanged");
+	}
+
+	if(!sha256sum(GLOBALTOMLPATH, last_checksum, false))
+		log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
 
 	return true;
 }

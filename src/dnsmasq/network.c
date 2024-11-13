@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2023 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,8 +15,8 @@
 */
 
 #include "dnsmasq.h"
-#include "../dnsmasq_interface.h"
-#include "../log.h"
+#include "dnsmasq_interface.h"
+#include "log.h"
 
 #ifdef HAVE_LINUX_NETWORK
 
@@ -929,15 +929,24 @@ static int make_sock(union mysockaddr *addr, int type, int dienow)
 	
       errno = errsave;
 
-      if (dienow)
+      /* Failure to bind addresses given by --listen-address at this point
+	 because there's no interface with the address is OK if we're doing bind-dynamic.
+	 If/when an interface is created with the relevant address we'll notice
+	 and attempt to bind it then. This is in the generic error path so we  close the socket,
+	 but EADDRNOTAVAIL is only a possible error from bind() 
+	 
+	 When a new address is created and we call this code again (dienow == 0) there
+	 may still be configured addresses when don't exist, (consider >1 --listen-address,
+	 when the first is created, the second will still be missing) so we suppress
+	 EADDRNOTAVAIL even in that case to avoid confusing log entries.
+      */
+      if (!option_bool(OPT_CLEVERBIND) || errno != EADDRNOTAVAIL)
 	{
-	  /* failure to bind addresses given by --listen-address at this point
-	     is OK if we're doing bind-dynamic */
-	  if (!option_bool(OPT_CLEVERBIND))
+	  if (dienow)
 	    die(s, daemon->addrbuff, EC_BADNET);
+	  else
+	    my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
 	}
-      else
-	my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
       
       return -1;
     }	
@@ -1852,3 +1861,46 @@ void newaddress(time_t now)
     relay->iface_index = 0;
 #endif
 }
+
+
+static int callback_v4(struct in_addr local, int if_index, char *label,
+			    struct in_addr netmask, struct in_addr broadcast, void *vparam)
+			    {
+            log_info("callback_v4");
+            // Log the interface information
+            log_info("Interface: %s", label);
+            log_info("IP Address: %s", inet_ntoa(local));
+            log_info("Netmask: %s", inet_ntoa(netmask));
+            log_info("Broadcast: %s", inet_ntoa(broadcast));
+            log_info("Interface Index: %d", if_index);
+				return 1;
+			    }
+
+
+static int callback_v6(struct in6_addr *local, int prefix, 
+			    int scope, int if_index, int flags, 
+			    int preferred, int valid, void *vparam)
+			    {
+            log_info("callback_v6");
+            // Log the interface information
+            char ip[INET6_ADDRSTRLEN];
+            inet_ntop(AF_INET6, local, ip, INET6_ADDRSTRLEN);
+            log_info("IP Address: %s", ip);
+            log_info("Prefix: %d", prefix);
+            log_info("Scope: %d", scope);
+            log_info("Interface Index: %d", if_index);
+            log_info("Flags: %d", flags);
+            log_info("Preferred: %d", preferred);
+            log_info("Valid: %d", valid);
+				return 1;
+			    }
+
+extern int iface_enumerate(int family, void *parm, int (*callback)());
+void test_enumerate(void)
+{
+  log_info("test_enumerate 4");
+	iface_enumerate(AF_INET, NULL, callback_v4);
+  log_info("test_enumerate 6");
+	iface_enumerate(AF_INET6, NULL, callback_v6);
+  log_info("test_enumerate done");
+};

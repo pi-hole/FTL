@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "legacy_reader.h"
 #include "config.h"
-#include "setupVars.h"
+#include "config/setupVars.h"
 #include "log.h"
 // nice()
 #include <unistd.h>
@@ -28,7 +28,7 @@ static pthread_mutex_t lock;
 // Private prototypes
 static char *parseFTLconf(FILE *fp, const char *key);
 static void releaseConfigMemory(void);
-static char *getPath(FILE* fp, const char *option, char *ptr);
+static char *__attribute__((nonnull(1,2,3), malloc, warn_unused_result)) getPath(FILE* fp, const char *option, char *ptr);
 static bool parseBool(const char *option, bool *ptr);
 static void readDebugingSettingsLegacy(FILE *fp);
 static void getBlockingModeLegacy(FILE *fp);
@@ -43,7 +43,7 @@ static FILE * __attribute__((nonnull(1), malloc, warn_unused_result)) openFTLcon
 		return fp;
 
 	// Local file not present, try system file
-	*path = "/etc/pihole/pihole-FTL.conf";
+	*path = GLOBALCONFFILE_LEGACY;
 	fp = fopen(*path, "r");
 
 	return fp;
@@ -66,6 +66,10 @@ bool getLogFilePathLegacy(struct config *conf, FILE *fp)
 	// No option set => use default log location
 	if(buffer == NULL)
 	{
+		// Free previously allocated memory (if any)
+		if(conf->files.log.ftl.t == CONF_STRING_ALLOCATED)
+			free(conf->files.log.ftl.v.s);
+
 		// Use standard path if no custom path was obtained from the config file
 		conf->files.log.ftl.v.s = strdup("/var/log/pihole/FTL.log");
 		conf->files.log.ftl.t = CONF_STRING_ALLOCATED;
@@ -77,9 +81,12 @@ bool getLogFilePathLegacy(struct config *conf, FILE *fp)
 			       strerror(errno), errno);
 			exit(EXIT_FAILURE);
 		}
+
+		fclose(fp);
+		return true;
 	}
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	else if(sscanf(buffer, "%127ms", &val_buffer) == 0)
+	else if((val_buffer = calloc(128, sizeof(char))) == NULL || sscanf(buffer, "%127s", val_buffer) == 0)
 	{
 		// Free previously allocated memory (if any)
 		if(conf->files.log.ftl.t == CONF_STRING_ALLOCATED)
@@ -89,9 +96,14 @@ bool getLogFilePathLegacy(struct config *conf, FILE *fp)
 		conf->files.log.ftl.v.s = NULL;
 		conf->files.log.ftl.t = CONF_STRING;
 		log_info("Using syslog facility");
+
+		// Free buffer
+		if(val_buffer != NULL)
+			free(val_buffer);
 	}
 
-	if(val_buffer)
+	// Set string if memory allocation was successful and a value was read
+	if(val_buffer != NULL && strlen(val_buffer) > 0)
 	{
 		// Free previously allocated memory (if any)
 		if(conf->files.log.ftl.t == CONF_STRING_ALLOCATED)
@@ -113,9 +125,12 @@ const char *readFTLlegacy(struct config *conf)
 	const char *path = NULL;
 	FILE *fp = openFTLconf(&path);
 	if(fp == NULL)
+	{
+		log_warn("No readable FTL config file found, using default settings");
 		return NULL;
+	}
 
-	log_notice("Reading legacy config file");
+	log_info("Reading legacy config files from %s", path);
 
 	// MAXDBDAYS
 	// defaults to: 365 days
@@ -129,9 +144,9 @@ const char *readFTLlegacy(struct config *conf)
 		if(value > maxdbdays_max)
 			value = maxdbdays_max;
 
-		// Only use valid values
-		if(value == -1 || value >= 0)
-			conf->database.maxDBdays.v.i = value;
+		// Import value if it is >= than 0, convert negative values
+		// to 0 to disable the database
+		conf->database.maxDBdays.v.ui = value >= 0 ? value : 0;
 	}
 
 	// RESOLVE_IPV6
@@ -174,7 +189,7 @@ const char *readFTLlegacy(struct config *conf)
 		// Use standard path if path was set to zero but override
 		// MAXDBDAYS=0 to ensure no queries are stored in the database
 		conf->files.database.v.s = conf->files.database.d.s;
-		conf->database.maxDBdays.v.i = 0;
+		conf->database.maxDBdays.v.ui = 0;
 	}
 
 	// MAXLOGAGE
@@ -253,7 +268,7 @@ const char *readFTLlegacy(struct config *conf)
 	buffer = parseFTLconf(fp, "DELAY_STARTUP");
 
 	unsigned int unum;
-	if(buffer != NULL && sscanf(buffer, "%u", &unum) && unum > 0 && unum <= 300)
+	if(buffer != NULL && sscanf(buffer, "%u", &unum) == 1 && unum > 0 && unum <= 300)
 		conf->misc.delay_startup.v.ui = unum;
 
 	// BLOCK_ESNI
@@ -302,11 +317,6 @@ const char *readFTLlegacy(struct config *conf)
 	if(buffer != NULL)
 		conf->webserver.acl.v.s = strdup(buffer);
 
-	// API_AUTH_FOR_LOCALHOST
-	// defaults to: true
-	buffer = parseFTLconf(fp, "API_AUTH_FOR_LOCALHOST");
-	parseBool(buffer, &conf->webserver.api.localAPIauth.v.b);
-
 	// API_SESSION_TIMEOUT
 	// How long should a session be considered valid after login?
 	// defaults to: 300 seconds
@@ -314,7 +324,7 @@ const char *readFTLlegacy(struct config *conf)
 
 	value = 0;
 	if(buffer != NULL && sscanf(buffer, "%i", &value) && value > 0)
-		conf->webserver.sessionTimeout.v.ui = value;
+		conf->webserver.session.timeout.v.ui = value;
 
 	// API_PRETTY_JSON
 	// defaults to: false
@@ -336,6 +346,10 @@ const char *readFTLlegacy(struct config *conf)
 	// systems, the range is -20..20. Very early Linux kernels (Before Linux
 	// 2.0) had the range -infinity..15.
 	buffer = parseFTLconf(fp, "NICE");
+
+	value = 0;
+	if(buffer != NULL && sscanf(buffer, "%i", &value) && value >= -20 && value <= 19)
+		conf->misc.nice.v.i = value;
 
 	// MAXNETAGE
 	// IP addresses (and associated host names) older than the specified number
@@ -401,7 +415,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.host.force4.v.b = false;
 	conf->dns.reply.host.v4.v.in_addr.s_addr = 0;
 	buffer = parseFTLconf(fp, "LOCAL_IPV4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &conf->dns.reply.host.v4.v.in_addr))
+	if(buffer != NULL && strlen(buffer) > 0 && inet_pton(AF_INET, buffer, &conf->dns.reply.host.v4.v.in_addr))
 		conf->dns.reply.host.force4.v.b = true;
 
 	// LOCAL_IPV6
@@ -411,7 +425,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.host.force6.v.b = false;
 	memset(&conf->dns.reply.host.v6.v.in6_addr, 0, sizeof(conf->dns.reply.host.v6.v.in6_addr));
 	buffer = parseFTLconf(fp, "LOCAL_IPV6");
-	if(buffer != NULL && inet_pton(AF_INET6, buffer, &conf->dns.reply.host.v6.v.in6_addr))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET6, buffer, &conf->dns.reply.host.v6.v.in6_addr))
 		conf->dns.reply.host.force6.v.b = true;
 
 	// BLOCK_IPV4
@@ -420,7 +434,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.blocking.force4.v.b = false;
 	conf->dns.reply.blocking.v4.v.in_addr.s_addr = 0;
 	buffer = parseFTLconf(fp, "BLOCK_IPV4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &conf->dns.reply.blocking.v4.v.in_addr))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET, buffer, &conf->dns.reply.blocking.v4.v.in_addr))
 		conf->dns.reply.blocking.force4.v.b = true;
 
 	// BLOCK_IPV6
@@ -429,7 +443,7 @@ const char *readFTLlegacy(struct config *conf)
 	conf->dns.reply.blocking.force6.v.b = false;
 	memset(&conf->dns.reply.blocking.v6.v.in6_addr, 0, sizeof(conf->dns.reply.host.v6.v.in6_addr));
 	buffer = parseFTLconf(fp, "BLOCK_IPV6");
-	if(buffer != NULL && inet_pton(AF_INET6, buffer, &conf->dns.reply.blocking.v6.v.in6_addr))
+	if(buffer != NULL &&  strlen(buffer) > 0 && inet_pton(AF_INET6, buffer, &conf->dns.reply.blocking.v6.v.in6_addr))
 		conf->dns.reply.blocking.force6.v.b = true;
 
 	// REPLY_ADDR4 (deprecated setting)
@@ -438,7 +452,7 @@ const char *readFTLlegacy(struct config *conf)
 	// defaults to: not set
 	struct in_addr reply_addr4;
 	buffer = parseFTLconf(fp, "REPLY_ADDR4");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr4))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET, buffer, &reply_addr4))
 	{
 		if(conf->dns.reply.host.force4.v.b || conf->dns.reply.blocking.force4.v.b)
 		{
@@ -459,7 +473,7 @@ const char *readFTLlegacy(struct config *conf)
 	// defaults to: not set
 	struct in6_addr reply_addr6;
 	buffer = parseFTLconf(fp, "REPLY_ADDR6");
-	if(buffer != NULL && inet_pton(AF_INET, buffer, &reply_addr6))
+	if(buffer != NULL && strlen(buffer) > 0 &&  inet_pton(AF_INET, buffer, &reply_addr6))
 	{
 		if(conf->dns.reply.host.force6.v.b || conf->dns.reply.blocking.force6.v.b)
 		{
@@ -576,41 +590,44 @@ const char *readFTLlegacy(struct config *conf)
 	// Release memory
 	releaseConfigMemory();
 
-	if(fp != NULL)
-		fclose(fp);
+	// Close file
+	fclose(fp);
 
 	return path;
 }
 
-static char* getPath(FILE* fp, const char *option, char *ptr)
+static char *__attribute__((nonnull(1,2,3), malloc, warn_unused_result)) getPath(FILE* fp, const char *option, char *path_default)
 {
 	// This subroutine is used to read paths from pihole-FTL.conf
-	// fp:         File ptr to opened and readable config file
-	// option:     Option string ("key") to try to read
-	// ptr:        Location where read (or default) parameter is stored
+	// fp:           File path to opened and readable config file
+	// option:       Option string ("key") to try to read
+	// path_default: Location where read (or default) parameter is stored
 	char *buffer = parseFTLconf(fp, option);
 
 	errno = 0;
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	if(buffer == NULL || sscanf(buffer, "%127ms", &ptr) != 1)
-	{
-		// Use standard path if no custom path was obtained from the config file
-		return ptr;
-	}
+	char *val_ptr = calloc(128, sizeof(char));
 
 	// Test if memory allocation was successful
-	if(ptr == NULL)
+	if(val_ptr == NULL)
 	{
-		log_crit("Allocating memory for %s failed (%s, %i). Exiting.", option, strerror(errno), errno);
+		log_crit("Allocating memory for %s failed (%s, %i). Exiting.",
+		         option, strerror(errno), errno);
 		exit(EXIT_FAILURE);
 	}
-	else if(strlen(ptr) == 0)
+
+	if(buffer == NULL || sscanf(buffer, "%127s", val_ptr) != 1 || strlen(val_ptr) == 0)
 	{
+		// Use standard path if no custom path was obtained from the config file
 		log_info("   %s: Empty path is not possible, using default",
 		         option);
+
+		strncpy(val_ptr, path_default, 127);
+		val_ptr[127] = '\0';
+		return val_ptr;
 	}
 
-	return ptr;
+	return val_ptr;
 }
 
 static char *parseFTLconf(FILE *fp, const char * key)
@@ -696,7 +713,7 @@ void releaseConfigMemory(void)
 void init_config_mutex(void)
 {
 	// Initialize the lock attributes
-	pthread_mutexattr_t lock_attr = {};
+	pthread_mutexattr_t lock_attr;
 	pthread_mutexattr_init(&lock_attr);
 
 	// Initialize the lock
@@ -824,12 +841,7 @@ static void readDebugingSettingsLegacy(FILE *fp)
 	setDebugOption(fp, "DEBUG_ALL", ~(enum debug_flag)0);
 
 	for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
-	{
-		// DEBUG_DATABASE
-		const char *name;
-		debugstr(flag, &name);
-		setDebugOption(fp, name, flag);
-	}
+		setDebugOption(fp, debugstr(flag), flag);
 
 	// Parse debug options
 	set_debug_flags(&config);

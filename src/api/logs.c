@@ -15,6 +15,8 @@
 // struct fifologData
 #include "log.h"
 #include "config/config.h"
+// main_pid()
+#include "signals.h"
 
 // fifologData is allocated in shared memory for cross-fork compatibility
 int api_logs(struct ftl_conn *api)
@@ -66,10 +68,12 @@ int api_logs(struct ftl_conn *api)
 		cJSON *entry = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(entry, "timestamp", fifo_log->logs[api->opts.which].timestamp[i]);
 		JSON_REF_STR_IN_OBJECT(entry, "message", fifo_log->logs[api->opts.which].message[i]);
+		JSON_REF_STR_IN_OBJECT(entry, "prio", fifo_log->logs[api->opts.which].prio[i]);
 		JSON_ADD_ITEM_TO_ARRAY(log, entry);
 	}
 	JSON_ADD_ITEM_TO_OBJECT(json, "log", log);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "nextID", fifo_log->logs[api->opts.which].next_id);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "pid", main_pid());
 
 	// Add file name
 	const char *logfile = NULL;

@@ -11,6 +11,8 @@
 set(sources
         gzip.c
         gzip.h
+        tar.c
+        tar.h
         teleporter.c
         teleporter.h
         )

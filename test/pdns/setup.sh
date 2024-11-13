@@ -25,6 +25,7 @@ else
   exit 1
 fi
 
+cp test/pdns/luadns.lua /etc/pdns/luadns.lua
 cp test/pdns/recursor.conf $RECURSOR_CONF
 
 # Create zone database
@@ -113,6 +114,47 @@ pdnsutil add-record ftl. regex-multiple A 192.168.3.12
 pdnsutil add-record ftl. regex-multiple AAAA fe80::3f41
 pdnsutil add-record ftl. regex-notMultiple A 192.168.3.12
 pdnsutil add-record ftl. regex-notMultiple AAAA fe80::3f41
+
+# TXT
+pdnsutil add-record ftl. any TXT "\"Some example text\""
+
+# NOERROR
+pdnsutil add-record ftl. noerror A
+
+# Blocked Cisco Umbrella IP (https://support.opendns.com/hc/en-us/articles/227986927-What-are-the-Cisco-Umbrella-Block-Page-IP-Addresses)
+pdnsutil add-record ftl. umbrella A 146.112.61.104
+pdnsutil add-record ftl. umbrella AAAA ::ffff:146.112.61.104
+
+# Special record which consists of both blocked and non-blocked IP
+pdnsutil add-record ftl. umbrella-multi A 1.2.3.4
+pdnsutil add-record ftl. umbrella-multi A 146.112.61.104
+pdnsutil add-record ftl. umbrella-multi A 8.8.8.8
+
+# Null address
+pdnsutil add-record ftl. null A 0.0.0.0
+pdnsutil add-record ftl. null AAAA ::
+
+# Create valid internal DNSSEC zone
+pdnsutil create-zone dnssec ns1.ftl
+pdnsutil add-record dnssec. a A 192.168.4.1
+pdnsutil add-record dnssec. aaaa AAAA fe80::4c01
+pdnsutil secure-zone dnssec
+# Export zone DS records and convert to dnsmasq trust-anchor format
+# Example:
+#   dnssec. IN DS 42206 8 2 6d2007e292483fa061db37011676d9592649d1600e5b2ece1326f792ebedd412 ; ( SHA256 digest )
+# --->
+#   trust-anchor=dnssec.,42206,8,2,6d2007e292483fa061db37011676d9592649d1600e5b2ece1326f792ebedd412
+pdnsutil export-zone-ds dnssec. | head -n1 | awk '{FS=" "; OFS=""; print "trust-anchor=",$1,",",$4,",",$5,",",$6,",",$7}' > /etc/dnsmasq.d/02-trust-anchor.conf
+
+# Create intentionally broken DNSSEC (BOGUS) zone
+# The only difference to above is that this zone is signed with a key that is
+# not in the trust chain
+# It will cause the DNSSEC validation to fail with error message:
+#   unsupported DS digest
+pdnsutil create-zone bogus ns1.ftl
+pdnsutil add-record bogus. a A 192.168.5.1
+pdnsutil add-record bogus. aaaa AAAA fe80::5c01
+pdnsutil secure-zone bogus
 
 # Create reverse lookup zone
 pdnsutil create-zone arpa ns1.ftl

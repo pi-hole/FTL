@@ -16,12 +16,20 @@
 
 void sha256_raw_to_hex(uint8_t *data, char *buffer);
 char *create_password(const char *password) __attribute__((malloc));
-char verify_password(const char *password, const char *pwhash, const bool rate_limiting);
+enum password_result verify_login(const char *password);
+enum password_result verify_password(const char *password, const char *pwhash, const bool rate_limiting);
 int run_performance_test(void);
+bool set_and_check_password(struct conf_item *conf_item, const char *password);
+bool generate_password(char **password, char **pwhash);
+bool create_cli_password(void);
+bool remove_cli_password(void);
 
 enum password_result {
 	PASSWORD_INCORRECT = 0,
 	PASSWORD_CORRECT = 1,
+	APPPASSWORD_CORRECT = 2,
+	CLIPASSWORD_CORRECT = 3,
+	NO_PASSWORD_SET = 4,
 	PASSWORD_RATE_LIMITED = -1
 } __attribute__((packed));
 

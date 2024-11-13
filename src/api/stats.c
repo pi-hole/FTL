@@ -8,26 +8,33 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "../FTL.h"
-#include "../webserver/http-common.h"
-#include "../webserver/json_macros.h"
-#include "api.h"
-#include "../shmem.h"
-#include "../datastructure.h"
-// read_setupVarsconf()
-#include "../setupVars.h"
+#include "FTL.h"
+#include "webserver/http-common.h"
+#include "webserver/json_macros.h"
+#include "api/api.h"
+#include "shmem.h"
+#include "datastructure.h"
 // logging routines
-#include "../log.h"
+#include "log.h"
 // config struct
-#include "../config/config.h"
-// in_auditlist()
-#include "../database/gravity-db.h"
+#include "config/config.h"
 // overTime data
-#include "../overTime.h"
+#include "overTime.h"
 // enum REGEX
-#include "../regex_r.h"
+#include "regex_r.h"
 // sqrt()
 #include <math.h>
+
+struct top_entries {
+	int count;
+	unsigned int responses;
+	in_port_t port;
+	size_t namepos;
+	size_t ippos;
+	double rtime;
+	double rtuncertainty;
+
+};
 
 /* qsort comparison function (count field), sort ASC
 static int __attribute__((pure)) cmpasc(const void *a, const void *b)
@@ -44,7 +51,7 @@ static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 } */
 
 // qsort subroutine, sort DESC
-static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
+int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 {
 	const int *elem1 = (int*)a;
 	const int *elem2 = (int*)b;
@@ -52,6 +59,20 @@ static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 	if (elem1[1] > elem2[1])
 		return -1;
 	else if (elem1[1] < elem2[1])
+		return 1;
+	else
+		return 0;
+}
+
+// qsort subroutine, sort DESC
+static int __attribute__((pure)) cmpdesc_te(const void *a, const void *b)
+{
+	const struct top_entries *elem1 = (struct top_entries*)a;
+	const struct top_entries *elem2 = (struct top_entries*)b;
+
+	if (elem1->count > elem2->count)
+		return -1;
+	else if (elem1->count < elem2->count)
 		return 1;
 	else
 		return 0;
@@ -71,28 +92,58 @@ static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 	return 0;
 }
 
+// shmem needs to be locked while calling this function
+unsigned int get_active_clients(void)
+{
+	unsigned int activeclients = 0;
+	for(unsigned int clientID=0; clientID < counters->clients; clientID++)
+	{
+		// Get client pointer
+		const clientsData *client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
+		if(client->count > 0)
+			activeclients++;
+	}
+
+	return activeclients;
+}
+
 int api_stats_summary(struct ftl_conn *api)
 {
-	const int blocked =  get_blocked_count();
-	const int forwarded =  get_forwarded_count();
-	const int cached =  get_cached_count();
-	const int total = counters->queries;
-	float percent_blocked = 0.0f;
+	// Lock shared memory
+	lock_shm();
 
+	const int blocked = get_blocked_count();
+	const int forwarded = get_forwarded_count();
+	const int cached = get_cached_count();
+	const int total = counters->queries;
+	const int num_gravity = counters->database.gravity;
+	const int num_clients = counters->clients;
+	const int num_domains = counters->domains;
+
+	// Count clients that have been active within the most recent 24 hours
+	unsigned int activeclients = get_active_clients();
+
+	// Unlock shared memory
+	unlock_shm();
+
+	// Calculate percentage of blocked queries
+	float percent_blocked = 0.0f;
 	// Avoid 1/0 condition
 	if(total > 0)
 		percent_blocked = 1e2f*blocked/total;
-
-	// Lock shared memory
-	lock_shm();
 
 	cJSON *queries = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "total", total);
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "blocked", blocked);
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "percent_blocked", percent_blocked);
-	JSON_ADD_NUMBER_TO_OBJECT(queries, "unique_domains", counters->domains);
+	JSON_ADD_NUMBER_TO_OBJECT(queries, "unique_domains", num_domains);
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "forwarded", forwarded);
 	JSON_ADD_NUMBER_TO_OBJECT(queries, "cached", cached);
+
+	JSON_ADD_NUMBER_TO_OBJECT(queries, "frequency", get_qps());
 
 	cJSON *types = JSON_NEW_OBJECT();
 	int ret = get_query_types_obj(api, types);
@@ -100,6 +151,10 @@ int api_stats_summary(struct ftl_conn *api)
 		return ret;
 	JSON_ADD_ITEM_TO_OBJECT(queries, "types", types);
 
+	cJSON *statuses = JSON_NEW_OBJECT();
+	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
+		JSON_ADD_NUMBER_TO_OBJECT(statuses, get_query_status_str(status), counters->status[status]);
+	JSON_ADD_ITEM_TO_OBJECT(queries, "status", statuses);
 
 	cJSON *replies = JSON_NEW_OBJECT();
 	for(enum reply_type reply = 0; reply <QUERY_REPLY_MAX; reply++)
@@ -107,29 +162,23 @@ int api_stats_summary(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(queries, "replies", replies);
 
 	cJSON *clients = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(clients, "total", counters->clients);
+	JSON_ADD_NUMBER_TO_OBJECT(clients, "active", activeclients);
+	JSON_ADD_NUMBER_TO_OBJECT(clients, "total", num_clients);
 
 	cJSON *gravity = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(gravity, "domains_being_blocked", counters->database.gravity);
+	JSON_ADD_NUMBER_TO_OBJECT(gravity, "domains_being_blocked", num_gravity);
+	JSON_ADD_NUMBER_TO_OBJECT(gravity, "last_update", gravity_last_updated());
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
 	JSON_ADD_ITEM_TO_OBJECT(json, "gravity", gravity);
-	JSON_SEND_OBJECT_UNLOCK(json);
+	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_top_domains(struct ftl_conn *api)
+cJSON *get_top_domains(struct ftl_conn *api, const int count,
+                       const bool blocked, const bool domains_only)
 {
-	int count = 10;
-	bool audit = false;
-	int *temparray = calloc(2*counters->domains, sizeof(int*));
-	if(temparray == NULL)
-	{
-		log_err("Memory allocation failed in %s()", __FUNCTION__);
-		return 0;
-	}
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
 	{
@@ -138,155 +187,171 @@ int api_stats_top_domains(struct ftl_conn *api)
 
 		// Minimum structure is
 		// {"top_domains":[]}
-		cJSON *json = JSON_NEW_OBJECT();
-		cJSON *top_domains = JSON_NEW_ARRAY();
-		JSON_ADD_ITEM_TO_OBJECT(json, "top_domains", top_domains);
-		free(temparray);
-		JSON_SEND_OBJECT(json);
+		if(domains_only)
+			return cJSON_CreateArray();
+
+		cJSON *json = cJSON_CreateObject();
+		cJSON_AddItemToObject(json, "domains", cJSON_CreateArray());
+		cJSON_AddNumberToObject(json, "total_queries", -1);
+		cJSON_AddNumberToObject(json, "blocked_queries", -1);
+		return json;
 	}
 
+	// Get domains which the user doesn't want to see
+	regex_t *regex_domains = NULL;
+	unsigned int N_regex_domains = 0;
+	compile_filter_regex(api, "webserver.api.excludeDomains",
+	                     config.webserver.api.excludeDomains.v.json,
+	                     &regex_domains, &N_regex_domains);
+
+	// Lock shared memory
+	lock_shm();
+
+	const unsigned int domains = counters->domains;
+	const unsigned int total_queries = counters->queries;
+	const unsigned int blocked_count = get_blocked_count();
+	struct top_entries *top_domains = calloc(domains, sizeof(struct top_entries));
+	if(top_domains == NULL)
+	{
+		log_err("Memory allocation failed in %s()", __FUNCTION__);
+		return NULL;
+	}
+
+	unsigned int added_domains = 0u;
+	for(unsigned int domainID = 0; domainID < domains; domainID++)
+	{
+		// Get domain pointer
+		const domainsData *domain = getDomain(domainID, true);
+		if(domain == NULL)
+			continue;
+
+		const char *domain_name = getstr(domain->domainpos);
+
+		// Hidden domain, probably due to privacy level. Skip this in the top lists
+		if(strcmp(domain_name, HIDDEN_DOMAIN) == 0)
+			continue;
+
+		// Use either blocked or total count based on request string
+		top_domains[added_domains].count = blocked ? domain->blockedcount : domain->count - domain->blockedcount;
+
+		// Get domain name
+		top_domains[added_domains].namepos = domain->domainpos;
+
+		// Increment counter
+		added_domains++;
+	}
+
+	// Unlock shared memory
+	unlock_shm();
+
+	// Sort temporary array
+	qsort(top_domains, added_domains, sizeof(*top_domains), cmpdesc_te);
+
+	int n = 0;
+	cJSON *jtop_domains = cJSON_CreateArray();
+
+	// Lock shared memory
+	lock_shm();
+
+	for(unsigned int i = 0; i < added_domains; i++)
+	{
+		// Skip e.g. recycled domains
+		if(top_domains[i].namepos == 0)
+			continue;
+
+		const char *domain = getstr(top_domains[i].namepos);
+
+		// Skip this client if there is a filter on it
+		bool skip_domain = false;
+		if(N_regex_domains > 0)
+		{
+			// Iterate over all regex filters
+			for(unsigned int j = 0; j < N_regex_domains; j++)
+			{
+				// Check if the domain matches the regex
+				if(regexec(&regex_domains[j], domain, 0, NULL, 0) == 0)
+				{
+					// Domain matches
+					skip_domain = true;
+					break;
+				}
+			}
+		}
+
+		if(skip_domain || top_domains[i].count < 1)
+			continue;
+
+		if(domains_only)
+		{
+			cJSON_AddStringToArray(jtop_domains, domain);
+		}
+		else
+		{
+			cJSON *domain_item = cJSON_CreateObject();
+			cJSON_AddStringToObject(domain_item, "domain", domain);
+			cJSON_AddNumberToObject(domain_item, "count", top_domains[i].count);
+			cJSON_AddItemToArray(jtop_domains, domain_item);
+		}
+
+		// Only count entries that are actually sent and return when we have send enough data
+		if(++n >= count)
+			break;
+	}
+
+	// Unlock shared memory
+	unlock_shm();
+
+	// Free temporary array
+	free(top_domains);
+
+	// Free regexes
+	if(N_regex_domains > 0)
+	{
+		// Free individual regexes
+		for(unsigned int i = 0; i < N_regex_domains; i++)
+			regfree(&regex_domains[i]);
+
+		// Free array of regex pointers
+		free(regex_domains);
+	}
+
+	if(domains_only)
+	{
+		// Return the array of domains only
+		return jtop_domains;
+	}
+
+	// else: Build and return full object
+	cJSON *json = cJSON_CreateObject();
+	cJSON_AddItemToObject(json, "domains", jtop_domains);
+	cJSON_AddNumberToObject(json, "total_queries", total_queries);
+	cJSON_AddNumberToObject(json, "blocked_queries", blocked_count);
+	return json;
+}
+
+int api_stats_top_domains(struct ftl_conn *api)
+{
 	bool blocked = false; // Can be overwritten by query string
+	int count = 10;
 	// /api/stats/top_domains?blocked=true
 	if(api->request->query_string != NULL)
 	{
-		// Should blocked clients be shown?
+		// Should blocked domains be shown?
 		get_bool_var(api->request->query_string, "blocked", &blocked);
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
 		get_int_var(api->request->query_string, "count", &count);
-
-		// Apply Audit Log filtering?
-		get_bool_var(api->request->query_string, "audit", &audit);
 	}
 
-	// Lock shared memory
-	lock_shm();
-
-	for(int domainID=0; domainID < counters->domains; domainID++)
-	{
-		// Get domain pointer
-		const domainsData* domain = getDomain(domainID, true);
-		if(domain == NULL)
-			continue;
-
-		temparray[2*domainID + 0] = domainID;
-		if(blocked)
-			temparray[2*domainID + 1] = domain->blockedcount;
-		else
-			// Count only permitted queries
-			temparray[2*domainID + 1] = (domain->count - domain->blockedcount);
-	}
-
-	// Sort temporary array
-	qsort(temparray, counters->domains, sizeof(int[2]), cmpdesc);
-
-	// Get filter
-	const char* filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
-	bool showpermitted = true, showblocked = true;
-	if(filter != NULL)
-	{
-		if((strcmp(filter, "permittedonly")) == 0)
-			showblocked = false;
-		else if((strcmp(filter, "blockedonly")) == 0)
-			showpermitted = false;
-		else if((strcmp(filter, "nothing")) == 0)
-		{
-			showpermitted = false;
-			showblocked = false;
-		}
-	}
-	clearSetupVarsArray();
-
-	// Get domains which the user doesn't want to see
-	unsigned int excludeDomains = cJSON_GetArraySize(config.webserver.api.excludeDomains.v.json);
-
-	int n = 0;
-	cJSON *top_domains = JSON_NEW_ARRAY();
-	for(int i = 0; i < counters->domains; i++)
-	{
-		// Get sorted index
-		const int domainID = temparray[2*i + 0];
-		// Get domain pointer
-		const domainsData* domain = getDomain(domainID, true);
-		if(domain == NULL)
-			continue;
-
-		// Skip this domain if there is a filter on it (but only if not in audit mode)
-		if(!audit)
-		{
-			// Check if this client should be skipped
-			bool skip_domain = false;
-			for(unsigned int j = 0; j < excludeDomains; j++)
-			{
-				cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeDomains.v.json, j);
-				if(strcmp(getstr(domain->domainpos), item->valuestring) == 0)
-				{
-					skip_domain = true;
-					break;
-				}
-			}
-			if(skip_domain)
-				continue;
-		}
-
-		// Skip this domain if already audited
-		if(audit && in_auditlist(getstr(domain->domainpos)) > 0)
-		{
-			log_debug(DEBUG_API, "API: %s has been audited.", getstr(domain->domainpos));
-			continue;
-		}
-
-		// Hidden domain, probably due to privacy level. Skip this in the top lists
-		if(strcmp(getstr(domain->domainpos), HIDDEN_DOMAIN) == 0)
-			continue;
-
-		int domain_count = -1;
-		if(blocked && showblocked && domain->blockedcount > 0)
-		{
-			domain_count = domain->blockedcount;
-			n++;
-		}
-		else if(!blocked && showpermitted && (domain->count - domain->blockedcount) > 0)
-		{
-			domain_count = domain->count - domain->blockedcount;
-			n++;
-		}
-		if(domain_count > -1)
-		{
-			cJSON *domain_item = JSON_NEW_OBJECT();
-			JSON_REF_STR_IN_OBJECT(domain_item, "domain", getstr(domain->domainpos));
-			JSON_ADD_NUMBER_TO_OBJECT(domain_item, "count", domain_count);
-			JSON_ADD_ITEM_TO_ARRAY(top_domains, domain_item);
-		}
-
-		// Only count entries that are actually sent and return when we have send enough data
-		if(n >= count)
-			break;
-	}
-	free(temparray);
-
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "domains", top_domains);
-
-	const int blocked_queries = get_blocked_count();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
-
-	JSON_SEND_OBJECT_UNLOCK(json);
+	cJSON *json = get_top_domains(api, count, blocked, false);
+	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_top_clients(struct ftl_conn *api)
+cJSON *get_top_clients(struct ftl_conn *api, const int count,
+                       const bool blocked, const bool clients_only,
+                       const bool names_only, const bool ip_if_no_name)
 {
-	int count = 10;
-	bool includezeroclients = false;
-	int *temparray = calloc(2*counters->clients, sizeof(int*));
-	if(temparray == NULL)
-	{
-		log_err("Memory allocation failed in api_stats_top_clients()");
-		return 0;
-	}
-
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
@@ -295,14 +360,190 @@ int api_stats_top_clients(struct ftl_conn *api)
 
 		// Minimum structure is
 		// {"top_clients":[]}
-		cJSON *json = JSON_NEW_OBJECT();
-		cJSON *top_clients = JSON_NEW_ARRAY();
-		JSON_ADD_ITEM_TO_OBJECT(json, "top_clients", top_clients);
-		free(temparray);
-		JSON_SEND_OBJECT(json);
+		if(clients_only)
+			return cJSON_CreateArray();
+
+		cJSON *json = cJSON_CreateObject();
+		cJSON_AddItemToObject(json, "clients", cJSON_CreateArray());
+		cJSON_AddNumberToObject(json, "total_queries", -1);
+		cJSON_AddNumberToObject(json, "blocked_queries", -1);
+		return json;
 	}
 
-	bool blocked = false; // /api/stats/top_clients?blocked=true
+	// Lock shared memory
+	lock_shm();
+
+	const unsigned int clients = counters->clients;
+	const int total_queries = counters->queries;
+	const int blocked_count = get_blocked_count();
+	struct top_entries *top_clients = calloc(clients, sizeof(struct top_entries));
+	if(top_clients == NULL)
+	{
+		log_err("Memory allocation failed in %s()", __FUNCTION__);
+		return 0;
+	}
+
+	unsigned int added_clients = 0;
+	for(unsigned int clientID = 0; clientID < clients; clientID++)
+	{
+		// Get client pointer
+		const clientsData *client = getClient(clientID, true);
+
+		// Skip invalid clients and also those managed by alias clients
+		if(client == NULL || (!client->flags.aliasclient && client->aliasclient_id >= 0))
+		{
+			log_debug(DEBUG_API, "Skipping client %u because %s", clientID,
+			          client == NULL ? "it is invalid" : "it is an alias client");
+			continue;
+		}
+
+		// Skip recycled clients
+		if(client->ippos == 0)
+		{
+			log_debug(DEBUG_API, "Skipping client %u because it is recycled", clientID);
+			continue;
+		}
+
+		const char *client_ip = getstr(client->ippos);
+		// Hidden client, probably due to privacy level. Skip this in the top lists
+		if(strcmp(client_ip, HIDDEN_CLIENT) == 0)
+		{
+			log_debug(DEBUG_API, "Skipping client %u because it is hidden", clientID);
+			continue;
+		}
+
+		// Use either blocked or total count based on request string
+		top_clients[added_clients].count = blocked ? client->blockedcount : client->count;
+
+		// Get client name and IP
+		top_clients[added_clients].ippos = client->ippos;
+		top_clients[added_clients].namepos = client->namepos;
+
+		added_clients++;
+	}
+
+	log_debug(DEBUG_API, "Found %u clients", added_clients);
+
+	// Unlock shared memory
+	unlock_shm();
+
+	// Sort temporary array
+	qsort(top_clients, added_clients, sizeof(*top_clients), cmpdesc_te);
+
+	// Get clients which the user doesn't want to see
+	regex_t *regex_clients = NULL;
+	unsigned int N_regex_clients = 0;
+	compile_filter_regex(api, "webserver.api.excludeClients",
+	                     config.webserver.api.excludeClients.v.json,
+	                     &regex_clients, &N_regex_clients);
+
+	int n = 0;
+	cJSON *jtop_clients = JSON_NEW_ARRAY();
+
+	// Lock shared memory
+	lock_shm();
+
+	for(unsigned int i = 0; i < added_clients; i++)
+	{
+		const char *client_ip = getstr(top_clients[i].ippos);
+		const char *client_name = getstr(top_clients[i].namepos);
+
+		// Skip this client if there is a filter on it
+		bool skip_client = false;
+		if(N_regex_clients > 0)
+		{
+			// Iterate over all regex filters
+			for(unsigned int j = 0; j < N_regex_clients; j++)
+			{
+				// Check if the domain matches the regex
+				if(regexec(&regex_clients[j], client_ip, 0, NULL, 0) == 0)
+				{
+					// Client IP matches
+					skip_client = true;
+					break;
+				}
+				else if(client_name != NULL && regexec(&regex_clients[j], client_name, 0, NULL, 0) == 0)
+				{
+					// Client name matches
+					skip_client = true;
+					break;
+				}
+			}
+		}
+
+		if(skip_client || top_clients[i].count < 1)
+		{
+			log_debug(DEBUG_API, "Skipping client %s because it %s", client_ip,
+			          skip_client ? "matches a filter" : "has no queries");
+			continue;
+		}
+
+		if(clients_only)
+		{
+			if(ip_if_no_name)
+			{
+				if(strlen(client_name) > 0)
+					cJSON_AddStringToArray(jtop_clients, client_name);
+				else
+					cJSON_AddStringToArray(jtop_clients, client_ip);
+			}
+			else if(names_only)
+			{
+				if(strlen(client_name) > 0)
+					cJSON_AddStringToArray(jtop_clients, client_name);
+			}
+			else
+				cJSON_AddStringToArray(jtop_clients, client_ip);
+		}
+		else
+		{
+			cJSON *client_item = cJSON_CreateObject();
+			cJSON_AddStringToObject(client_item, "name", client_name);
+			cJSON_AddStringToObject(client_item, "ip", client_ip);
+			cJSON_AddNumberToObject(client_item, "count", top_clients[i].count);
+			cJSON_AddItemToArray(jtop_clients, client_item);
+		}
+
+		if(++n == count)
+			break;
+	}
+
+	// Unlock shared memory
+	unlock_shm();
+
+	// Free temporary array
+	free(top_clients);
+
+	// Free regexes
+	if(N_regex_clients > 0)
+	{
+		// Free individual regexes
+		for(unsigned int i = 0; i < N_regex_clients; i++)
+			regfree(&regex_clients[i]);
+
+		// Free array of regex pointers
+		free(regex_clients);
+	}
+
+	if(clients_only)
+	{
+		// Return the array of clients only
+		return jtop_clients;
+	}
+
+	// else: Build and return full object
+	cJSON *json = cJSON_CreateObject();
+	cJSON_AddItemToObject(json, "clients", jtop_clients);
+	cJSON_AddNumberToObject(json, "total_queries", total_queries);
+	cJSON_AddNumberToObject(json, "blocked_queries", blocked_count);
+	return json;
+}
+
+int api_stats_top_clients(struct ftl_conn *api)
+{
+	bool blocked = false; // Can be overwritten by query string
+	int count = 10;
+	// /api/stats/top_clients?blocked=true
 	if(api->request->query_string != NULL)
 	{
 		// Should blocked clients be shown?
@@ -311,104 +552,19 @@ int api_stats_top_clients(struct ftl_conn *api)
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
 		get_int_var(api->request->query_string, "count", &count);
-
-		// Show also clients which have not been active recently?
-		get_bool_var(api->request->query_string, "withzero", &includezeroclients);
 	}
 
-	// Lock shared memory
-	lock_shm();
-
-	for(int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		// Get client pointer
-		const clientsData* client = getClient(clientID, true);
-
-		// Skip invalid clients and also those managed by alias clients
-		if(client == NULL || (!client->flags.aliasclient && client->aliasclient_id >= 0))
-			continue;
-
-		temparray[2*clientID + 0] = clientID;
-		// Use either blocked or total count based on request string
-		temparray[2*clientID + 1] = blocked ? client->blockedcount : client->count;
-	}
-
-	// Sort temporary array
-	qsort(temparray, counters->clients, sizeof(int[2]), cmpdesc);
-
-	// Get clients which the user doesn't want to see
-	unsigned int excludeClients = cJSON_GetArraySize(config.webserver.api.excludeClients.v.json);
-
-	int n = 0;
-	cJSON *top_clients = JSON_NEW_ARRAY();
-	for(int i=0; i < counters->clients; i++)
-	{
-		// Get sorted indices and counter values (may be either total or blocked count)
-		const int clientID = temparray[2*i + 0];
-		const int client_count = temparray[2*i + 1];
-		// Get client pointer
-		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
-			continue;
-
-		// Skip this client if there is a filter on it
-		bool skip_domain = false;
-		for(unsigned int j = 0; j < excludeClients; j++)
-		{
-			cJSON *item = cJSON_GetArrayItem(config.webserver.api.excludeClients.v.json, j);
-			if(strcmp(getstr(client->ippos), item->valuestring) == 0 ||
-			   strcmp(getstr(client->namepos), item->valuestring) == 0)
-			{
-				skip_domain = true;
-				break;
-			}
-		}
-		if(skip_domain)
-			continue;
-
-		// Hidden client, probably due to privacy level. Skip this in the top lists
-		if(strcmp(getstr(client->ippos), HIDDEN_CLIENT) == 0)
-			continue;
-
-		// Get client IP and name
-		const char *client_ip = getstr(client->ippos);
-		const char *client_name = getstr(client->namepos);
-
-		// Return this client if either
-		// - "withzero" option is set, and/or
-		// - the client made at least one query within the most recent 24 hours
-		if(includezeroclients || count > 0)
-		{
-			cJSON *client_item = JSON_NEW_OBJECT();
-			JSON_REF_STR_IN_OBJECT(client_item, "name", client_name);
-			JSON_REF_STR_IN_OBJECT(client_item, "ip", client_ip);
-			JSON_ADD_NUMBER_TO_OBJECT(client_item, "count", client_count);
-			JSON_ADD_ITEM_TO_ARRAY(top_clients, client_item);
-			n++;
-		}
-
-		if(n == count)
-			break;
-	}
-	// Free temporary array
-	free(temparray);
-
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "clients", top_clients);
-
-	const int blocked_queries = get_blocked_count();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "blocked_queries", blocked_queries);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
-	JSON_SEND_OBJECT_UNLOCK(json);
+	cJSON *json = get_top_clients(api, count, blocked, false, false, false);
+	JSON_SEND_OBJECT(json);
 }
 
-
-int api_stats_upstreams(struct ftl_conn *api)
+cJSON *get_top_upstreams(struct ftl_conn *api, const bool upstreams_only)
 {
-	const int forwarded = get_forwarded_count();
-	unsigned int totalcount = 0;
-	int *temparray = calloc(2*forwarded, sizeof(int*));
-	if(temparray == NULL)
+	const int upstreams = counters->upstreams;
+	const int forwarded_count = get_forwarded_count();
+	const int total_queries = counters->queries;
+	struct top_entries *top_upstreams = calloc(upstreams, sizeof(struct top_entries));
+	if(top_upstreams == NULL)
 	{
 		log_err("Memory allocation failed in api_stats_upstreams()");
 		return 0;
@@ -417,32 +573,42 @@ int api_stats_upstreams(struct ftl_conn *api)
 	// Lock shared memory
 	lock_shm();
 
-	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
+	unsigned int added_upstreams = 0;
+	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
 		// Get upstream pointer
-		const upstreamsData* upstream = getUpstream(upstreamID, true);
+		const upstreamsData *upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 			continue;
 
-		temparray[2*upstreamID + 0] = upstreamID;
+		top_upstreams[added_upstreams].count = upstream->count;
+		top_upstreams[added_upstreams].ippos = upstream->ippos;
+		top_upstreams[added_upstreams].namepos = upstream->namepos;
+		top_upstreams[added_upstreams].port = upstream->port;
+		top_upstreams[added_upstreams].responses = upstream->responses;
+		top_upstreams[added_upstreams].rtime = upstream->rtime;
+		top_upstreams[added_upstreams].rtuncertainty = upstream->rtuncertainty;
 
-		unsigned int count = 0;
-		for(unsigned i = 0; i < ArraySize(upstream->overTime); i++)
-			count += upstream->overTime[i];
-		temparray[2*upstreamID + 1] = count;
-		totalcount += count;
+		added_upstreams++;
 	}
 
+	// Unlock shared memory
+	unlock_shm();
+
 	// Sort temporary array in descending order
-	qsort(temparray, counters->upstreams, sizeof(int[2]), cmpdesc);
+	qsort(top_upstreams, added_upstreams, sizeof(*top_upstreams), cmpdesc);
 
 	// Loop over available forward destinations
-	cJSON *upstreams = JSON_NEW_ARRAY();
-	for(int i = -2; i < min(counters->upstreams, 8); i++)
+	cJSON *jtop_upstreams = JSON_NEW_ARRAY();
+
+	// Lock shared memory
+	lock_shm();
+
+	for(int i = -2; i < (int)added_upstreams; i++)
 	{
 		int count = 0;
 		const char* ip, *name;
-		int port = -1;
+		int port = -1; // Need signed data type here as -1 means: no port applicable
 		double responsetime = 0.0, uncertainty = 0.0;
 
 		if(i == -2)
@@ -462,67 +628,80 @@ int api_stats_upstreams(struct ftl_conn *api)
 		else
 		{
 			// Regular upstream destination
-			// Get sorted indices
-			const int upstreamID = temparray[2*i + 0];
-
-			// Get upstream pointer
-			const upstreamsData *upstream = getUpstream(upstreamID, true);
-			if(upstream == NULL)
-				continue;
-
-			// Get IP and host name of upstream destination if available
-			ip = getstr(upstream->ippos);
-			name = getstr(upstream->namepos);
-			port = upstream->port;
-
-			// Get percentage
-			count = upstream->count;
+			ip = getstr(top_upstreams[i].ippos);
+			name = getstr(top_upstreams[i].namepos);
+			port = top_upstreams[i].port;
+			count = top_upstreams[i].count;
 
 			// Compute average response time and uncertainty (unit: seconds)
-			if(upstream->responses > 0)
+			if(top_upstreams[i].responses > 0)
 			{
 				// Simple average of the response times
-				responsetime = upstream->rtime / upstream->responses;
+				responsetime = top_upstreams[i].rtime / top_upstreams[i].responses;
 			}
-			if(upstream->responses > 1)
+			if(top_upstreams[i].responses > 1)
 			{
 				// The actual value will be somewhere in a neighborhood around the mean value.
 				// This neighborhood of values is the uncertainty in the mean.
-				uncertainty = sqrt(upstream->rtuncertainty / upstream->responses / (upstream->responses-1));
+				uncertainty = sqrt(top_upstreams[i].rtuncertainty / top_upstreams[i].responses / (top_upstreams[i].responses-1));
 			}
 		}
 
 		// Send data:
 		// - always if i < 0 (special upstreams: blocklist and cache)
 		// - only if there are any queries for all others (i > 0)
-		if(count > 0 || i < 0)
+		if(count < 1 && i >= 0)
+			continue;
+
+		if(upstreams_only)
+		{
+			cJSON_AddStringToArray(jtop_upstreams, name);
+		}
+		else
 		{
 			cJSON *upstream = JSON_NEW_OBJECT();
-			JSON_REF_STR_IN_OBJECT(upstream, "ip", ip);
-			JSON_REF_STR_IN_OBJECT(upstream, "name", name);
-			JSON_ADD_NUMBER_TO_OBJECT(upstream, "port", port);
-			JSON_ADD_NUMBER_TO_OBJECT(upstream, "count", count);
+			cJSON_AddStringToObject(upstream, "ip", ip);
+			cJSON_AddStringToObject(upstream, "name", name);
+			cJSON_AddNumberToObject(upstream, "port", port);
+			cJSON_AddNumberToObject(upstream, "count", count);
 			cJSON *statistics = JSON_NEW_OBJECT();
-			JSON_ADD_NUMBER_TO_OBJECT(statistics, "response", responsetime);
-			JSON_ADD_NUMBER_TO_OBJECT(statistics, "variance", uncertainty);
-			JSON_ADD_ITEM_TO_OBJECT(upstream, "statistics", statistics);
-			JSON_ADD_ITEM_TO_ARRAY(upstreams, upstream);
+			cJSON_AddNumberToObject(statistics, "response", responsetime);
+			cJSON_AddNumberToObject(statistics, "variance", uncertainty);
+			cJSON_AddItemToObject(upstream, "statistics", statistics);
+			cJSON_AddItemToArray(jtop_upstreams, upstream);
 		}
 	}
 
-	// Free temporary array
-	free(temparray);
+	// Unlock shared memory
+	unlock_shm();
 
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_ADD_ITEM_TO_OBJECT(json, "upstreams", upstreams);
-	const int forwarded_queries = get_forwarded_count();
-	JSON_ADD_NUMBER_TO_OBJECT(json, "forwarded_queries", forwarded_queries);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "total_queries", counters->queries);
-	JSON_SEND_OBJECT_UNLOCK(json);
+	// Free temporary array
+	free(top_upstreams);
+
+	if(upstreams_only)
+	{
+		// Return the array of upstreams only
+		return jtop_upstreams;
+	}
+
+	// else: Build and return full object
+	cJSON *json = cJSON_CreateObject();
+	cJSON_AddItemToObject(json, "upstreams", jtop_upstreams);
+	cJSON_AddNumberToObject(json, "total_queries", total_queries);
+	cJSON_AddNumberToObject(json, "forwarded_queries", forwarded_count);
+
+	return json;
+}
+
+int api_stats_upstreams(struct ftl_conn *api)
+{
+	cJSON *json = get_top_upstreams(api, false);
+	JSON_SEND_OBJECT(json);
 }
 
 int api_stats_query_types(struct ftl_conn *api)
 {
+	// Lock shared memory
 	lock_shm();
 
 	cJSON *types = JSON_NEW_OBJECT();
@@ -533,11 +712,14 @@ int api_stats_query_types(struct ftl_conn *api)
 		return ret;
 	}
 
+	// Unlock shared memory
+	unlock_shm();
+
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "types", types);
 
 	// Send response
-	JSON_SEND_OBJECT_UNLOCK(json);
+	JSON_SEND_OBJECT(json);
 }
 
 int api_stats_recentblocked(struct ftl_conn *api)
@@ -569,7 +751,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 	cJSON *blocked = JSON_NEW_ARRAY();
 	for(int queryID = counters->queries - 1; queryID > 0 ; queryID--)
 	{
-		const queriesData* query = getQuery(queryID, true);
+		const queriesData *query = getQuery(queryID, true);
 		if(query == NULL)
 			continue;
 
@@ -591,7 +773,10 @@ int api_stats_recentblocked(struct ftl_conn *api)
 			break;
 	}
 
+	// Unlock shared memory
+	unlock_shm();
+
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "blocked", blocked);
-	JSON_SEND_OBJECT_UNLOCK(json);
+	JSON_SEND_OBJECT(json);
 }

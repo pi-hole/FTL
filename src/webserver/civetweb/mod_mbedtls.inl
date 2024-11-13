@@ -87,18 +87,22 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	mbedtls_ssl_conf_dbg(conf, FTL_mbed_debug, NULL);
 	/****************************************************/
 
-#ifdef MBEDTLS_SSL_PROTO_TLS1_3
-	psa_status_t status = psa_crypto_init();
+	/* Initialize TLS key and cert */
+	mbedtls_pk_init(&ctx->pkey);
+	mbedtls_ctr_drbg_init(&ctx->ctr);
+	mbedtls_x509_crt_init(&ctx->cert);
+
+#ifdef MBEDTLS_PSA_CRYPTO_C
+	/* Initialize PSA crypto (mandatory with TLS 1.3)
+	 * This must be done before calling any other PSA Crypto
+	 * functions or they will fail with PSA_ERROR_BAD_STATE
+	 */
+	const psa_status_t status = psa_crypto_init();
 	if (status != PSA_SUCCESS) {
 		DEBUG_TRACE("Failed to initialize PSA crypto, returned %d\n", (int) status);
 		return -1;
 	}
 #endif
-
-	/* Initialize TLS key and cert */
-	mbedtls_pk_init(&ctx->pkey);
-	mbedtls_ctr_drbg_init(&ctx->ctr);
-	mbedtls_x509_crt_init(&ctx->cert);
 
 	rc = mbedtls_ctr_drbg_seed(&ctx->ctr,
 	                           mbedtls_entropy_func,
@@ -135,7 +139,7 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	rc = mbedtls_ssl_config_defaults(conf,
 	                                 MBEDTLS_SSL_IS_SERVER,
 	                                 MBEDTLS_SSL_TRANSPORT_STREAM,
-	                                 MBEDTLS_SSL_PRESET_SUITEB);
+	                                 MBEDTLS_SSL_PRESET_DEFAULT);
 	if (rc != 0) {
 		DEBUG_TRACE("TLS set defaults failed (%i)", rc);
 		return -1;
@@ -153,19 +157,6 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 		DEBUG_TRACE("TLS cannot set certificate and private key (%i)", rc);
 		return -1;
 	}
-
-//	/* Set ciphersuites */
-//	static const int tls_cipher_suites[] = {
-//		MBEDTLS_CIPHER_CHACHA20_POLY1305,
-//		MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-//		MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-//		0
-//	};
-//	mbedtls_ssl_conf_ciphersuites(conf, tls_cipher_suites);
-//
-//	/* Set protocol version */
-//	mbedtls_ssl_conf_min_version(conf, MBEDTLS_SSL_MAJOR_VERSION_3, MBEDTLS_SSL_MINOR_VERSION_3);
-
 	return 0;
 }
 
@@ -213,7 +204,13 @@ mbed_ssl_accept(mbedtls_ssl_context **ssl,
 		return -1;
 	}
 
+#if MBEDTLS_VERSION_NUMBER >= 0x03000000
+	DEBUG_TRACE("TLS connection %p accepted, state: %d",
+	            ssl,
+	            (*ssl)->MBEDTLS_PRIVATE(state));
+#else
 	DEBUG_TRACE("TLS connection %p accepted, state: %d", ssl, (*ssl)->state);
+#endif
 	return 0;
 }
 
@@ -239,7 +236,13 @@ mbed_ssl_handshake(mbedtls_ssl_context *ssl)
 		}
 	}
 
+#if MBEDTLS_VERSION_NUMBER >= 0x03000000
+	DEBUG_TRACE("TLS handshake rc: %d, state: %d",
+	            rc,
+	            ssl->MBEDTLS_PRIVATE(state));
+#else
 	DEBUG_TRACE("TLS handshake rc: %d, state: %d", rc, ssl->state);
+#endif
 	return rc;
 }
 
@@ -249,13 +252,6 @@ mbed_ssl_read(mbedtls_ssl_context *ssl, unsigned char *buf, int len)
 {
 	int rc = mbedtls_ssl_read(ssl, buf, len);
 	/* DEBUG_TRACE("mbedtls_ssl_read: %d", rc); */
-
-#if defined(MBEDTLS_SSL_PROTO_TLS1_3) && defined(MBEDTLS_CLIENT_SSL_SESSION_TICKETS)
-	if (ret == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET) {
-		DEBUG_TRACE("got session ticket in TLS 1.3 connection, retrying read");
-		rc = mbedtls_ssl_read(ssl, buf, len);
-	}
-#endif
 	return rc;
 }
 

@@ -22,38 +22,12 @@
 // free()
 #include <stdlib.h>
 // logging routines
-#include "../log.h"
+#include "log.h"
 // struct config
-#include "../config/config.h"
+#include "config/config.h"
 
 // isMAC()
 #include "network-table.h"
-
-// Counting number of occurrences of a specific char in a string
-static size_t __attribute__ ((pure)) count_char(const char *haystack, const char needle)
-{
-	size_t count = 0u;
-	while(*haystack)
-		if (*haystack++ == needle)
-			++count;
-	return count;
-}
-
-// Identify MAC addresses using a set of suitable criteria
-static bool __attribute__ ((pure)) isMAC(const char *input)
-{
-	if(input != NULL &&                // Valid input
-	   strlen(input) == 17u &&         // MAC addresses are always 17 chars long (6 bytes + 5 colons)
-	   count_char(input, ':') == 5u && // MAC addresses always have 5 colons
-	   strstr(input, "::") == NULL)    // No double-colons (IPv6 address abbreviation)
-	   {
-		// This is a MAC address of the form AA:BB:CC:DD:EE:FF
-		return true;
-	   }
-
-	// Not a MAC address
-	return false;
-}
 
 static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
@@ -104,6 +78,14 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	int cidr = isIPv6_DB ? 128 : 32;
 	char *addrDB = NULL;
 	const int rt = sscanf(addrDBcidr, "%m[^/]/%i", &addrDB, &cidr);
+
+	// Limit CIDR to valid values
+	if(cidr < 0 || cidr > (isIPv6_DB ? 128 : 32))
+	{
+		log_err("SQL: Invalid CIDR value %d in database entry: %s", cidr, addrDBcidr);
+		sqlite3_result_int(context, 0);
+		return;
+	}
 
 	// Skip if database row seems to be a CIDR but does not contain an address ('/32' is invalid)
 	// Passing an invalid IP address to inet_pton() causes a SEGFAULT
@@ -204,18 +186,21 @@ static void isIPv6_impl(sqlite3_context *context, int argc, sqlite3_value **argv
 		return;
 	}
 
-	struct in6_addr addr;
+	struct in6_addr addr = { 0 };
 	if(inet_pton(AF_INET6, input, &addr) == 1)
+	{
+		// IPv6 address, return 1 and exit
 		sqlite3_result_int(context, 1);
+		return;
+	}
 
-	// Not an IPv6 address
+	// Not an IPv6 address, return 0
 	sqlite3_result_int(context, 0);
 }
 
-int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const struct sqlite3_api_routines *pApi)
+// Initialize Pi-hole SQLite3 extension
+static int sqlite3_pihole_extensions_init(sqlite3 *db, char **pzErrMsg, const struct sqlite3_api_routines *pApi)
 {
-	(void)pzErrMsg;  /* Unused parameter */
-
 	// Register new sqlite function subnet_match taking 2 arguments in UTF8 format.
 	// The function is deterministic in the sense of always returning the same output for the same input.
 	// We define a scalar function here so the last two pointers are NULL.
@@ -240,5 +225,23 @@ int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const str
 		        sqlite3_errstr(rc));
 	}
 
+	// Initialize the percentile extension
+	sqlite3_percentile_init(db, pzErrMsg, pApi);
+
 	return rc;
+}
+
+/**
+ * @brief Initializes the Pi-hole SQLite3 extensions and the SQLite3 engine.
+ *
+ * This function registers the Pi-hole provided SQLite3 extensions and initializes
+ * the SQLite3 engine. It should be called before any SQLite3 operations are performed.
+ */
+void pihole_sqlite3_initalize(void)
+{
+	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
+	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
+
+	// Initialize the SQLite3 engine
+	sqlite3_initialize();
 }

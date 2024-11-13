@@ -17,7 +17,10 @@ enum memory_type {
 	DOMAINS,
 	OVERTIME,
 	DNS_CACHE,
-	STRINGS
+	STRINGS,
+	CLIENTS_LOOKUP,
+	DOMAINS_LOOKUP,
+	DNS_CACHE_LOOKUP,
 } __attribute__ ((packed));
 
 enum dnssec_status {
@@ -49,6 +52,7 @@ enum query_status {
 	QUERY_DBBUSY,
 	QUERY_SPECIAL_DOMAIN,
 	QUERY_CACHE_STALE,
+	QUERY_EXTERNAL_BLOCKED_EDE15,
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 
@@ -120,21 +124,9 @@ enum blocking_status {
 	BLOCKING_UNKNOWN
 } __attribute__ ((packed));
 
-// Blocking status constants used by the dns_cache->blocking_status vector
-// We explicitly force UNKNOWN_BLOCKED to zero on all platforms as this is the
-// default value set initially with calloc
-enum domain_client_status {
-	UNKNOWN_BLOCKED = 0,
-	GRAVITY_BLOCKED,
-	DENYLIST_BLOCKED,
-	REGEX_BLOCKED,
-	ALLOWED,
-	SPECIAL_DOMAIN,
-	NOT_BLOCKED
-} __attribute__ ((packed));
-
 enum debug_flag {
-	DEBUG_DATABASE = 1,
+	DEBUG_NONE = 0,
+	DEBUG_DATABASE,
 	DEBUG_NETWORKING,
 	DEBUG_LOCKS,
 	DEBUG_QUERIES,
@@ -158,8 +150,10 @@ enum debug_flag {
 	DEBUG_HELPER,
 	DEBUG_CONFIG,
 	DEBUG_INOTIFY,
+	DEBUG_WEBSERVER,
 	DEBUG_EXTRA,
 	DEBUG_RESERVED,
+	DEBUG_NTP,
 	DEBUG_MAX
 } __attribute__ ((packed));
 
@@ -170,6 +164,7 @@ enum events {
 	RERESOLVE_HOSTNAMES_FORCE,
 	REIMPORT_ALIASCLIENTS,
 	PARSE_NEIGHBOR_CACHE,
+	SEARCH_LOOKUP_HASH_COLLISIONS,
 	EVENTS_MAX
 } __attribute__ ((packed));
 
@@ -188,7 +183,9 @@ enum gravity_list_type {
 	GRAVITY_ADLISTS,
 	GRAVITY_CLIENTS,
 	GRAVITY_GRAVITY,
-	GRAVITY_ANTIGRAVITY
+	GRAVITY_ANTIGRAVITY,
+	GRAVITY_ADLISTS_BLOCK,
+	GRAVITY_ADLISTS_ALLOW
 } __attribute__ ((packed));
 
 enum gravity_tables {
@@ -200,8 +197,6 @@ enum gravity_tables {
 	CLIENTS_TABLE,
 	GROUPS_TABLE,
 	ADLISTS_TABLE,
-	DENIED_DOMAINS_TABLE,
-	ALLOWED_DOMAINS_TABLE,
 	UNKNOWN_TABLE
 } __attribute__ ((packed));
 
@@ -224,8 +219,7 @@ enum refresh_hostnames {
 
 enum api_auth_status {
 	API_AUTH_UNAUTHORIZED  = -1,
-	API_AUTH_LOCALHOST  = -2,
-	API_AUTH_EMPTYPASS  = -3,
+	API_AUTH_EMPTYPASS  = -2,
 } __attribute__ ((packed));
 
 enum db_result {
@@ -245,8 +239,10 @@ enum thread_types {
 	DB,
 	GC,
 	DNSclient,
-	CONF_READER,
 	TIMER,
+	NTP_CLIENT,
+	NTP_SERVER4,
+	NTP_SERVER6,
 	THREADS_MAX
 } __attribute__ ((packed));
 
@@ -269,6 +265,10 @@ enum message_type {
 	DISK_MESSAGE,
 	INACCESSIBLE_ADLIST_MESSAGE,
 	DISK_MESSAGE_EXTENDED,
+	CERTIFICATE_DOMAIN_MISMATCH_MESSAGE,
+	CONNECTION_ERROR_MESSAGE,
+	NTP_MESSAGE,
+	VERIFY_MESSAGE,
 	MAX_MESSAGE,
 } __attribute__ ((packed));
 
@@ -281,14 +281,15 @@ enum ptr_type {
 
 enum addinfo_type {
 	ADDINFO_CNAME_DOMAIN = 1,
-	ADDINFO_REGEX_ID
+	ADDINFO_LIST_ID
 } __attribute__ ((packed));
 
 enum listening_mode {
 	LISTEN_LOCAL,
 	LISTEN_ALL,
 	LISTEN_SINGLE,
-	LISTEN_BIND
+	LISTEN_BIND,
+	LISTEN_NONE
 } __attribute__ ((packed));
 
 enum fifo_logs {
@@ -304,9 +305,48 @@ enum temp_unit {
 	TEMP_UNIT_K
 } __attribute__ ((packed));
 
+enum edns_mode {
+	EDNS_MODE_NONE = 0,
+	EDNS_MODE_CODE,
+	EDNS_MODE_TEXT,
+} __attribute__ ((packed));
+
 enum adlist_type {
 	ADLIST_BLOCK = 0,
 	ADLIST_ALLOW
+} __attribute__ ((packed));
+
+enum cert_check {
+	CERT_FILE_NOT_FOUND,
+	CERT_CANNOT_PARSE_CERT,
+	CERT_CANNOT_PARSE_KEY,
+	CERT_DOMAIN_MISMATCH,
+	CERT_DOMAIN_MATCH,
+	CERT_OKAY
+} __attribute__ ((packed));
+
+enum http_method {
+	HTTP_UNKNOWN = 0,
+	HTTP_GET = 1 << 0,
+	HTTP_POST = 1 << 1,
+	HTTP_PUT = 1 << 2,
+	HTTP_PATCH = 1 << 3,
+	HTTP_DELETE = 1 << 4,
+	HTTP_OPTIONS = 1 << 5,
+};
+
+enum api_flags {
+	API_FLAG_NONE = 0,
+	API_DOMAINS = 1 << 0,
+	API_PARSE_JSON = 1 << 1,
+	API_BATCHDELETE = 1 << 2,
+};
+
+enum verify_result {
+	VERIFY_OK = 0, // EXIT_SUCCESS
+	VERIFY_FAILED,
+	VERIFY_ERROR,
+	VERIFY_NO_CHECKSUM
 } __attribute__ ((packed));
 
 #endif // ENUMS_H

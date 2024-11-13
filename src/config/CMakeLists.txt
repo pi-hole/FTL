@@ -15,18 +15,26 @@ set(sources
         config.h
         dnsmasq_config.c
         dnsmasq_config.h
+        env.c
+        env.h
         inotify.c
         inotify.h
         legacy_reader.c
         legacy_reader.h
         password.c
         password.h
+        suggest.c
+        suggest.h
+        setupVars.c
+        setupVars.h
         toml_writer.c
         toml_writer.h
         toml_reader.c
         toml_reader.h
         toml_helper.c
         toml_helper.h
+        validator.c
+        validator.h
         )
 
 add_library(config OBJECT ${sources})
