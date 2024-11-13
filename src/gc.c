@@ -233,6 +233,8 @@ static void recycle(void)
 
 		log_debug(DEBUG_GC, "Recycled %u clients, %u domains, and %u cache records (scanned %u queries)",
 		          clients_recycled, domains_recycled, cache_recycled, counters->queries);
+
+		dump_strings();
 	}
 }
 
@@ -530,6 +532,8 @@ static bool check_files_on_same_device(const char *path1, const char *path2)
 
 void *GC_thread(void *val)
 {
+	(void)val; // Mark parameter as unused
+
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[GC], 0, 0, 0);
 

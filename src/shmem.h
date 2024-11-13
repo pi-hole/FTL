@@ -30,7 +30,7 @@ typedef struct {
 	int version;
 	pid_t pid;
 	unsigned int global_shm_counter;
-	unsigned int next_str_pos;
+	size_t next_str_pos;
 	unsigned int qps[QPS_AVGLEN];
 } ShmSettings;
 
@@ -201,5 +201,7 @@ double get_qps(void) __attribute__((pure));
 bool set_next_recycled_ID(const enum memory_type type, const unsigned int id);
 bool get_next_recycled_ID(const enum memory_type type, unsigned int *id);
 void print_recycle_list_fullness(void);
+
+void dump_strings(void);
 
 #endif //SHARED_MEMORY_SERVER_H

@@ -245,7 +245,7 @@ size_t _addstr(const char *input, const char *func, const int line, const char *
 	}
 
 	// Debugging output
-	log_debug(DEBUG_SHMEM, "Adding \"%s\" (len %zu) to buffer in %s() (%s:%i), next_str_pos is %u",
+	log_debug(DEBUG_SHMEM, "Adding \"%s\" (len %zu) to buffer in %s() (%s:%i), next_str_pos is %zu",
 	          input, len, func, short_path(file), line, shmSettings->next_str_pos);
 
 	// Copy the C string pointed by input into the shared string buffer
@@ -266,7 +266,8 @@ const char *_getstr(const size_t pos, const char *func, const int line, const ch
 		return &((const char*)shm_strings.ptr)[pos];
 	else
 	{
-		log_warn("Tried to access %zu in %s() (%s:%i) but next_str_pos is %u", pos, func, file, line, shmSettings->next_str_pos);
+		log_warn("Tried to access %zu in %s() (%s:%i) but next_str_pos is %zu",
+		         pos, func, file, line, shmSettings->next_str_pos);
 		return "";
 	}
 }
@@ -1470,4 +1471,83 @@ void print_recycle_list_fullness(void)
 	log_info("  Clients: %u/%u (%.2f%%)", recycler->client.count, RECYCLE_ARRAY_LEN, (double)recycler->client.count / RECYCLE_ARRAY_LEN * 100.0);
 	log_info("  Domains: %u/%u (%.2f%%)", recycler->domain.count, RECYCLE_ARRAY_LEN, (double)recycler->domain.count / RECYCLE_ARRAY_LEN * 100.0);
 	log_info("  DNS Cache: %u/%u (%.2f%%)", recycler->dns_cache.count, RECYCLE_ARRAY_LEN, (double)recycler->dns_cache.count / RECYCLE_ARRAY_LEN * 100.0);
+}
+
+/**
+ * @brief Dumps the string table to a temporary file.
+ *
+ * This function iterates over the string table and writes each string to a temporary file
+ * located at "/tmp/stringdump.txt". It checks if each string is printable and escapes
+ * non-printable strings before writing them to the file. Additionally, it logs the number
+ * of non-printable strings and includes a human-readable timestamp in the output.
+ *
+ * The format of each line in the output file is:
+ * "    " or "NONP" <string_index>: "<string_content>" (<current_position>/<string_length>)
+ *
+ * If the file cannot be opened for writing, an error message is logged.
+ */
+#define STRING_DUMPFILE "/tmp/stringdump.txt"
+void dump_strings(void)
+{
+	// Dump string table to temporary file
+	FILE *str_dumpfile = fopen(STRING_DUMPFILE, "a");
+	if(str_dumpfile != NULL)
+	{
+		char timestring[TIMESTR_SIZE] = { 0 };
+		get_timestr(timestring, time(NULL), true, false);
+		fprintf(str_dumpfile, "String dump starting at %s\n", timestring);
+		log_info("String dump to "STRING_DUMPFILE);
+
+		size_t j = 0, non_print = 0;
+		for(size_t i = 0; i < shmSettings->next_str_pos; i++)
+		{
+			char *sstr = (char*)getstr(i);
+			const size_t len = strlen(sstr);
+			char *buffer = sstr;
+			i += len;
+			j++;
+
+			// Check if the string is printable
+			bool string_is_printable = true;
+			for(size_t k = 0; k < len; k++)
+			{
+				if(!isprint(sstr[k]))
+				{
+					string_is_printable = false;
+					non_print++;
+					break;
+				}
+			}
+
+			// If the string is not printable, we escape it
+			if(!string_is_printable)
+			{
+				buffer = calloc(len * 4 + 1, sizeof(char));
+				if(buffer == NULL)
+				{
+					log_err("Failed to allocate memory for string buffer");
+					break;
+				}
+				binbuf_to_escaped_C_literal(sstr, len, buffer, len * 4 + 1);
+			}
+
+			// Print string to file
+			fprintf(str_dumpfile, "%s %04zu: \"%s\" (%zu/%zu)\n", string_is_printable ? "    " : "NONP",
+			        j, buffer, i, len);
+
+			// Free buffer if it was allocated
+			if(!string_is_printable)
+				free(buffer);
+		}
+
+		// Print human-readable timestamp and number of strings which are not printable
+		fprintf(str_dumpfile, "Summary: %zu strings\n", j);
+		fprintf(str_dumpfile, "         %zu non-printable strings\n", non_print);
+		fprintf(str_dumpfile, "\n");
+
+		// Close file
+		fclose(str_dumpfile);
+	}
+	else
+		log_err("Cannot open "STRING_DUMPFILE" for writing: %s", strerror(errno));
 }
