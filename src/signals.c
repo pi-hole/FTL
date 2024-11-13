@@ -39,6 +39,7 @@ volatile sig_atomic_t killed = 0;
 static volatile pid_t mpid = 0;
 static time_t FTLstarttime = 0;
 static char bin_name[256] = { 0 };
+void *base_addr = NULL;
 volatile int exit_code = EXIT_SUCCESS;
 
 volatile sig_atomic_t thread_cancellable[THREADS_MAX] = { false };
@@ -50,12 +51,16 @@ const char * const thread_names[THREADS_MAX] = {
 	"ntp-client",
 	"ntp-server4",
 	"ntp-server6",
- };
+};
+
+static void *get_base_addr(void);
 
 void set_bin_name(const char *name)
 {
 	strncpy(bin_name, name, sizeof(bin_name)-1);
 	bin_name[sizeof(bin_name)-1] = '\0';
+
+	get_base_addr();
 }
 
 // Return the (null-terminated) name of the calling thread
@@ -106,7 +111,6 @@ static void print_addr2line(const char *symbol, const void *addr)
 }
 
 // Inspired by https://stackoverflow.com/a/8876887
-void *base_addr = NULL;
 static int phdr_callback(struct dl_phdr_info *info, size_t size, void *data)
 {
 	static int once = 0;
@@ -124,7 +128,45 @@ static int phdr_callback(struct dl_phdr_info *info, size_t size, void *data)
 	}
 	return 0;
 }
+
+static void *get_base_addr(void)
+{
+	dl_iterate_phdr(phdr_callback, NULL);
+	return base_addr;
+}
 #endif
+
+/*
+#if defined(__GLIBC__)
+// Get base address from parsing /proc/self/maps
+static void *get_base_addr(void)
+{
+	FILE *fp = fopen("/proc/self/maps", "r");
+	if(fp == NULL)
+	{
+		log_err("Unable to open /proc/self/maps");
+		return NULL;
+	}
+
+	char line[256];
+	void *base_addr = NULL;
+	while(fgets(line, sizeof(line), fp) != NULL)
+	{
+		if(strstr(line, BINARY_NAME) != NULL)
+		{
+			// Parse the line
+			unsigned long start, end;
+			sscanf(line, "%lx-%lx", &start, &end);
+			base_addr = (void*)start;
+			break;
+		}
+	}
+	fclose(fp);
+
+	return base_addr;
+}
+#endif
+*/
 
 void generate_backtrace(void) {
 #ifdef USE_UNWIND
@@ -134,7 +176,6 @@ void generate_backtrace(void) {
 	log_info(" ");
 
 	// Get the base address of the main executable
-	dl_iterate_phdr(phdr_callback, NULL);
 	log_info("Generating backtrace (unwinding, base address: %p)...", base_addr);
 
 	// Get unwind context
@@ -159,8 +200,8 @@ void generate_backtrace(void) {
 		int ret = unw_get_proc_name(&cursor, sname, sizeof(sname), &offset);
 		if (ret && ret != -UNW_ENOMEM)
 		{
-			if (ret != -UNW_EUNSPEC)
-				log_err("unw_get_proc_name: %s [%d]", unw_strerror(ret), ret);
+			if (ret != -UNW_EUNSPEC && ret != -UNW_ENOINFO)
+				log_err("  * unw_get_proc_name: %s [%d]", unw_strerror(ret), ret);
 			strcpy(sname, "?");
 		}
 
@@ -186,14 +227,9 @@ void generate_backtrace(void) {
 				sname_dl = dlinfo.dli_sname;
 		}
 
-		// Compute the offset of the address from the base address to get
-		// the offset within the PIE binary/library (needed for addr2line)
-		// Note: We only do this for the main binary, not for libraries
-		void *ptr_off = strstr(fname_dl, BINARY_NAME) != NULL ? (void*)(ptr-base_addr) : ptr;
-
 		// Print this stack frame's details
-		log_info("  %02u: %s(%s+0x%p) [%p -> %p]", i++, fname_dl, sname_dl, (void*)offset, ptr, ptr_off);
-		print_addr2line(fname_dl, ptr_off);
+		log_info("  %02u: %s(%s+%p) [%p / %p]", i++, fname_dl, sname_dl, (void*)offset, (void*)ip, ptr);
+		print_addr2line(fname_dl, ptr);
 		print_addr2line(fname_dl, (void*)ip);
 		log_info(" ");
 	} while(unw_step(&cursor) > 0);
@@ -209,8 +245,6 @@ void generate_backtrace(void) {
 		log_warn("Unable to obtain backtrace symbols!");
 		return;
 	}
-
-	dl_iterate_phdr(phdr_callback, NULL);
 
 	// Print backtrace
 	for(int j = 0; j < calls; j++)

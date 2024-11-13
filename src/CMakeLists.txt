@@ -326,12 +326,15 @@ find_library(LIBUNISTRING NAMES libunistring${LIBRARY_SUFFIX} unistring)
 
 target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN2} ${LIBUNISTRING})
 
+# for unwinding we need the libunwind library which in turn depends on the lzma
+# library. We only enable unwinding support if both libraries are available
 find_library(LIBUNWIND NAMES libunwind${CMAKE_STATIC_LIBRARY_SUFFIX} unwind)
-if(LIBUNWIND)
+find_library(LIBLZMA NAMES liblzma${LIBRARY_SUFFIX} lzma)
+if(LIBUNWIND AND LIBLZMA)
     message(STATUS "Building FTL with unwinding support: YES")
     target_compile_definitions(core PRIVATE USE_UNWIND)
     target_compile_definitions(pihole-FTL PRIVATE USE_UNWIND)
-    target_link_libraries(pihole-FTL ${LIBUNWIND})
+    target_link_libraries(pihole-FTL ${LIBUNWIND} ${LIBLZMA})
 else()
     message(STATUS "Building FTL with unwinding support: NO")
 endif()
