@@ -41,7 +41,7 @@ int main (int argc, char *argv[])
 	timer_start(EXIT_TIMER);
 
 	// Set binary name
-	set_bin_name(argv[0]);
+	init_backtrace(argv[0]);
 
 	// Initialize locale (needed for libidn)
 	init_locale();

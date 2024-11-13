@@ -24,9 +24,9 @@
 #include "config/config.h"
 
 // For backtrace
-#if defined(USE_UNWIND)
-#define UNW_LOCAL_ONLY
-#include <libunwind.h>
+#if defined(USE_BACKTRACE)
+#include <backtrace.h>
+#include <backtrace-supported.h>
 #include <dlfcn.h>
 #elif defined(__GLIBC__)
 #include <execinfo.h>
@@ -53,14 +53,28 @@ const char * const thread_names[THREADS_MAX] = {
 	"ntp-server6",
 };
 
-static void *get_base_addr(void);
+//static void *get_base_addr(void);
 
-void set_bin_name(const char *name)
+#if defined(USE_BACKTRACE)
+struct backtrace_state *state = NULL;
+
+static void error_callback_create(void *data, const char *msg, int errnum)
+{
+	(void)data;
+	fprintf(stderr, "libbacktrace: %s (%d, %s)", msg, errnum, strerror (errnum));
+}
+#endif
+
+void init_backtrace(const char *name)
 {
 	strncpy(bin_name, name, sizeof(bin_name)-1);
 	bin_name[sizeof(bin_name)-1] = '\0';
 
-	get_base_addr();
+//	get_base_addr();
+
+#if defined(USE_BACKTRACE)
+	state = backtrace_create_state(name, BACKTRACE_SUPPORTS_THREADS, error_callback_create, NULL);
+#endif
 }
 
 // Return the (null-terminated) name of the calling thread
@@ -71,7 +85,7 @@ static char * __attribute__ ((nonnull (1))) getthread_name(char buffer[16])
 	return buffer;
 }
 
-#if defined(USE_UNWIND) || defined(__GLIBC__)
+#if !defined(USE_BACKTRACE) && defined(__GLIBC__)
 static void print_addr2line(const char *symbol, const void *addr)
 {
 	// Only do this analysis for our own binary (skip trying to analyse libc.so, etc.)
@@ -168,71 +182,35 @@ static void *get_base_addr(void)
 #endif
 */
 
-void generate_backtrace(void) {
-#ifdef USE_UNWIND
-	unw_cursor_t cursor; unw_context_t uc;
-	unw_word_t ip, sp;
+#ifdef USE_BACKTRACE
+static void error_callback(void *data, const char *msg, int errnum)
+{
+	(void)data;
+	log_err("libbacktrace: %s (%d, %s)", msg, errnum, strerror(errnum));
+}
+
+static int backtrace_callback(void *data, uintptr_t pc,
+                              const char *filename, int lineno,
+                              const char *function)
+{
+	(void)data;
+	log_info("  %s:%d -> %s() [%p]", filename, lineno, function, (void*)pc);
+	return 0;
+}
+#endif
+
+void generate_backtrace(void)
+{
+#ifdef USE_BACKTRACE
 
 	log_info(" ");
 
 	// Get the base address of the main executable
-	log_info("Generating backtrace (unwinding, base address: %p)...", base_addr);
+	log_info("Generating backtrace (base address: %p)...", base_addr);
 
-	// Get unwind context
-	unw_getcontext(&uc);
-	unw_init_local(&cursor, &uc);
+	// Print backtrace
+	backtrace_full(state, 1, backtrace_callback, error_callback, NULL);
 
-	// Skip the first frame (this function)
-	unw_step(&cursor);
-
-	// Iterate over the stack frames
-	unsigned int i = 1;
-	do
-	{
-		// Get the program counter
-		unw_get_reg(&cursor, UNW_REG_IP, &ip);
-		// Get the stack pointer
-		unw_get_reg(&cursor, UNW_REG_SP, &sp);
-
-		// Get the name of the shared object
-		char sname[256];
-		unw_word_t offset;
-		int ret = unw_get_proc_name(&cursor, sname, sizeof(sname), &offset);
-		if (ret && ret != -UNW_ENOMEM)
-		{
-			if (ret != -UNW_EUNSPEC && ret != -UNW_ENOINFO)
-				log_err("  * unw_get_proc_name: %s [%d]", unw_strerror(ret), ret);
-			strcpy(sname, "?");
-		}
-
-		// Get the procedure information
-		unw_proc_info_t pip;
-		ret = unw_get_proc_info(&cursor, &pip);
-		if (ret)
-		{
-			log_err("unw_get_proc_info: %s [%d]", unw_strerror(ret), ret);
-			continue;
-		}
-
-		// Get the file name of defining object (binary/library name,
-		// fname_dl) and the name of the nearest symbol (sname_dl)
-		void *ptr = (void *)(pip.start_ip + offset);
-		Dl_info dlinfo;
-		const char *fname_dl = bin_name, *sname_dl = sname;
-		if (dladdr(ptr, &dlinfo))
-		{
-			if(dlinfo.dli_fname && *dlinfo.dli_fname)
-				fname_dl = dlinfo.dli_fname;
-			if(dlinfo.dli_sname && *dlinfo.dli_sname)
-				sname_dl = dlinfo.dli_sname;
-		}
-
-		// Print this stack frame's details
-		log_info("  %02u: %s(%s+%p) [%p / %p]", i++, fname_dl, sname_dl, (void*)offset, (void*)ip, ptr);
-		print_addr2line(fname_dl, ptr);
-		print_addr2line(fname_dl, (void*)ip);
-		log_info(" ");
-	} while(unw_step(&cursor) > 0);
 #elif defined(__GLIBC__)
 	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
 	void *buffer[255];

@@ -505,6 +505,14 @@ void parse_args(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	if(argc == 2 && strcmp(argv[1], "backtrace") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		generate_backtrace();
+		exit(EXIT_SUCCESS);
+	}
+
 	// IDN2 conversion mode
 	if(argc > 1 && strcmp(argv[1], "idn2") == 0)
 	{
