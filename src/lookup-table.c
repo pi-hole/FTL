@@ -75,8 +75,8 @@ static inline int cmp_hash(const uint32_t a, const uint32_t b)
  * found element or NULL (!) if the element is not found which provides no
  * information about the position where the element would need to be inserted.
  */
-static bool binsearch(const struct lookup_table *base, const uint32_t hash,
-                      size_t size, const struct lookup_table **try)
+static bool binsearch(struct lookup_table *base, const uint32_t hash,
+                      size_t size, struct lookup_table **try)
 {
 	// Initialize the base pointer to the start of the array
 	*try = base;
@@ -207,7 +207,7 @@ bool lookup_insert(const enum memory_type type, const unsigned int id, const uin
 	// Find the correct position in the lookup_table array
 	// We do not check the return value as we are inserting a new element
 	// and don't care if elements with the same hash value exist already
-	const struct lookup_table *try = table;
+	struct lookup_table *try = table;
 	binsearch(table, hash, *size, &try);
 
 	// Calculate the position where the element would be inserted
@@ -217,7 +217,7 @@ bool lookup_insert(const enum memory_type type, const unsigned int id, const uin
 	// one position to the right to make space for the new element
 	// Don't move anything if the element is added at the end of the array
 	if(pos < *size)
-		memmove((void*)(try + 1), try, (*size - pos) * sizeof(struct lookup_table));
+		memmove(try + 1, try, (*size - pos) * sizeof(struct lookup_table));
 
 	// Prepare the new lookup_table element and insert it at the correct
 	// position
@@ -253,7 +253,7 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 		return false;
 
 	// Find the correct position in the lookup_table array
-	const struct lookup_table *try = NULL;
+	struct lookup_table *try = NULL;
 	if(!binsearch(table, hash, *size, &try))
 	{
 		// The element is not in the array
@@ -283,13 +283,14 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 			// one position to the left to remove the element
 			// Don't move anything if the element is removed from the end of the array
 			if(pos < *size - 1)
-				memmove(&table[pos], &table[pos + 1], (*size - pos - 1) * sizeof(struct lookup_table));
+				memmove(table + pos, table + pos + 1,
+				        (*size - pos - 1) * sizeof(struct lookup_table));
 
 			// Decrease the number of elements in the array
 			(*size)--;
 
 			// Zero out the memory of the removed element
-			memset(&table[*size], 0, sizeof(struct lookup_table));
+			memset(table + *size, 0, sizeof(struct lookup_table));
 
 			return true;
 		}
@@ -332,7 +333,7 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 		return false;
 
 	// Find the correct position in the lookup_table array
-	const struct lookup_table *try = NULL;
+	struct lookup_table *try = NULL;
 	if(!binsearch(table, hash, *size, &try))
 		return false;
 
