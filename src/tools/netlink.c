@@ -1128,6 +1128,7 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 	if(!nlrequest(fd, &sa, type))
 	{
 		log_info("nlrequest error: %s", strerror(errno));
+		close(fd);
 		return -1;
 	}
 
@@ -1138,6 +1139,7 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 		nl_msg_type = parse_nl_msg(buf, len, json, detailed);
 	} while (nl_msg_type != NLMSG_DONE && nl_msg_type != NLMSG_ERROR);
 
+	close(fd);
 	return 0;
 
 }
