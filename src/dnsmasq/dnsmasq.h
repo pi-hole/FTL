@@ -293,6 +293,11 @@ struct event_desc {
 #define option_val(x) ((1u) << ((x) % OPTION_BITS))
 #define option_bool(x) (option_var(x) & option_val(x))
 
+/***** Pi-hole modification *****/
+#define option_set(x) (option_var(x) |= option_val(x))
+#define option_clear(x) (option_var(x) &= ~option_val(x))
+/********************************/
+
 /* extra flags for my_syslog, we use facilities since they are known 
    not to occupy the same bits as priorities, no matter how syslog.h is set up. 
    MS_DEBUG messages are suppressed unless --log-debug is set. */

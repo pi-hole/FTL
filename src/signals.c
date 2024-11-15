@@ -139,8 +139,9 @@ void generate_backtrace(void)
 #endif
 }
 
-static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, void *unused)
+static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, void *context)
 {
+	(void)context;
 	log_info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 	log_info("---------------------------->  FTL crashed!  <----------------------------");
 	log_info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
@@ -270,8 +271,10 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	exit(EXIT_FAILURE);
 }
 
-static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
+static void SIGRT_handler(int signum, siginfo_t *si, void *context)
 {
+	(void)context;
+	(void)si;
 	// Backup errno
 	const int _errno = errno;
 
@@ -334,8 +337,9 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	errno = _errno;
 }
 
-static void SIGTERM_handler(int signum, siginfo_t *si, void *unused)
+static void SIGTERM_handler(int signum, siginfo_t *si, void *context)
 {
+	(void)context;
 	// Ignore SIGTERM outside of the main process (TCP forks)
 	if(mpid != getpid())
 	{
@@ -497,7 +501,7 @@ void thread_sleepms(const enum thread_types thread, const int milliseconds)
 	thread_cancellable[thread] = false;
 }
 
-static void print_signal(int signum, siginfo_t *si, void *unused)
+static void print_signal(int signum, siginfo_t *si, void *context)
 {
 	printf("Received signal %d: \"%s\"\n", signum, strsignal(signum));
 	fflush(stdin);
@@ -535,4 +539,37 @@ void restart_ftl(const char *reason)
 	exit_code = RESTART_FTL_CODE;
 	// Send SIGTERM to FTL
 	kill(main_pid(), SIGTERM);
+}
+
+/**
+ * @brief Checks if the current process is being debugged.
+ *
+ * This function reads the /proc/self/status file to determine if the current
+ * process is being debugged by looking for the TracerPid field. If the field
+ * is found and has a non-zero value, it indicates that the process is being
+ * debugged.
+ *
+ * @return The PID of the debugger if the process is being debugged, otherwise 0.
+ */
+pid_t debugger(void)
+{
+	FILE *status = fopen("/proc/self/status", "r");
+	if(status == NULL)
+	{
+		log_warn("Unable to open /proc/self/status");
+		return 0;
+	}
+
+	char line[256] = { 0 };
+	while(fgets(line, sizeof(line), status) != NULL)
+	{
+		if(strncmp(line, "TracerPid:", 10) == 0)
+		{
+			// TracerPid field found
+			fclose(status);
+			return atoi(line + 10);
+		}
+	}
+	fclose(status);
+	return 0;
 }

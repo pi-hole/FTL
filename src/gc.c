@@ -528,6 +528,7 @@ static bool check_files_on_same_device(const char *path1, const char *path2)
 	return s1.st_dev == s2.st_dev;
 }
 
+static bool is_debugged = false;
 void *GC_thread(void *val)
 {
 	// Set thread name
@@ -635,6 +636,15 @@ void *GC_thread(void *val)
 		// Intermediate cancellation-point
 		if(killed)
 			break;
+
+		// Check if FTL is being debugged and set dnsmasq's debug mode
+		// accordingly
+		const pid_t dpid = debugger();
+		if((dpid > 0) != is_debugged)
+		{
+			is_debugged = dpid > 0;
+			set_dnsmasq_debug(is_debugged, dpid);
+		}
 
 		// Sleep for the remaining time of the interval (if any)
 		const double time_end = double_time();

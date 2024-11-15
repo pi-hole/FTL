@@ -19,7 +19,6 @@
 #include "config/config.h"
 
 #define PROCESS_NAME   "pihole-FTL"
-#define PROC_PATH_SIZ  32
 
 // This function tries to obtain the process name of a given PID
 // It returns true on success, false otherwise and stores the process name in
@@ -28,7 +27,7 @@
 // to parse /proc/<pid>/comm. The latter is not guaranteed to be correct (e.g.
 // processes can easily change it themselves using prctl with PR_SET_NAME), but
 // it is better than nothing.
-static bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
+bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
 {
 	if(pid == 0)
 	{

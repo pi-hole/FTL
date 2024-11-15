@@ -51,6 +51,8 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint);
 
 void FTL_connection_error(const char *reason, const union mysockaddr *addr);
 
+bool get_dnsmasq_debug(void) __attribute__ ((pure));
+
 // defined in src/dnsmasq/cache.c
 extern char *querystr(char *desc, unsigned short type);
 

@@ -56,6 +56,8 @@
 #include "main.h"
 // ntp_server_start()
 #include "ntp/ntp.h"
+// get_process_name()
+#include "procps.h"
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
@@ -3386,7 +3388,7 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 volatile atomic_flag worker_already_terminating = ATOMIC_FLAG_INIT;
 void FTL_TCP_worker_terminating(bool finished)
 {
-	if(dnsmasq_debug)
+	if(get_dnsmasq_debug())
 	{
 		// Nothing to be done here, forking does not happen in debug mode
 		return;
@@ -3431,7 +3433,7 @@ void FTL_TCP_worker_terminating(bool finished)
 // to ending up with a corrupted database.
 void FTL_TCP_worker_created(const int confd)
 {
-	if(dnsmasq_debug)
+	if(get_dnsmasq_debug())
 	{
 		// Nothing to be done here, TCP worker forking does not happen
 		// in debug mode
@@ -3763,5 +3765,52 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr)
 		log_connection_error(server, reason, error);
 		if(server != NULL)
 			free(server);
+	}
+}
+
+/**
+ * @brief Retrieves the debug status of dnsmasq.
+ *
+ * @return true if the debug option is enabled, false otherwise.
+ */
+bool __attribute__ ((pure)) get_dnsmasq_debug(void)
+{
+	return option_bool(OPT_DEBUG);
+}
+
+static bool enabled = false;
+/**
+ * @brief Set the dnsmasq debug mode based on the enable flag and process ID.
+ *
+ * This function enables or disables the dnsmasq debug mode. When enabling,
+ * it logs the process ID and name, sets the debug option, and marks the
+ * debug mode as enabled. When disabling, it logs the detachment and clears
+ * the debug option. If the debug mode is already enabled, it does nothing.
+ *
+ * @param enable A boolean flag indicating whether to enable or disable debug mode.
+ * @param pid The process ID of the process to attach or detach the debugger.
+ */
+void set_dnsmasq_debug(const bool enable, const pid_t pid)
+{
+	// Get debugger process' name
+	char name[PROC_PATH_SIZ] = "???";
+	get_process_name(pid, name);
+
+	// Only enable or disable if the debug mode is not already set
+	if(enable && !get_dnsmasq_debug())
+	{
+		// Enable debug mode
+		log_info("Debugger attached (%d: %s), entering dnsmasq debug mode",
+		         pid, name);
+		option_set(OPT_DEBUG);
+		enabled = true;
+
+		return;
+	}
+	else if(enabled)
+	{
+		// Disable debug mode
+		log_info("Debugger detached, leaving dnsmasq debug mode");
+		option_clear(OPT_DEBUG);
 	}
 }
