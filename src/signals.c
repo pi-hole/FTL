@@ -556,7 +556,8 @@ pid_t debugger(void)
 	FILE *status = fopen("/proc/self/status", "r");
 	if(status == NULL)
 	{
-		log_warn("Unable to open /proc/self/status");
+		// Failed to open status file, assume not being debugged
+		log_debug(DEBUG_ANY, "Failed to open /proc/self/status: %s", strerror(errno));
 		return 0;
 	}
 
