@@ -1010,7 +1010,7 @@ void shm_ensure_size(void)
 			exit(EXIT_FAILURE);
 		}
 	}
-	if(counters->clients >= counters->clients_lookup_MAX-1)
+	if(counters->clients_lookup_size >= counters->clients_lookup_MAX-1)
 	{
 		// Have to reallocate shared memory
 		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP);
@@ -1020,7 +1020,7 @@ void shm_ensure_size(void)
 			exit(EXIT_FAILURE);
 		}
 	}
-	if(counters->domains >= counters->domains_lookup_MAX-1)
+	if(counters->domains_lookup_size >= counters->domains_lookup_MAX-1)
 	{
 		// Have to reallocate shared memory
 		domains_lookup = enlarge_shmem_struct(DOMAINS_LOOKUP);
@@ -1030,7 +1030,7 @@ void shm_ensure_size(void)
 			exit(EXIT_FAILURE);
 		}
 	}
-	if(counters->dns_cache_size >= counters->dns_cache_lookup_MAX-1)
+	if(counters->dns_cache_lookup_size >= counters->dns_cache_lookup_MAX-1)
 	{
 		// Have to reallocate shared memory
 		dns_cache_lookup = enlarge_shmem_struct(DNS_CACHE_LOOKUP);
