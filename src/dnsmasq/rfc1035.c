@@ -16,6 +16,7 @@
 
 #include "dnsmasq.h"
 #include "dnsmasq_interface.h"
+#include "dnsmasq_net.h"
 
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
 		 char *name, int isExtract, int extrabytes)
@@ -366,7 +367,7 @@ int private_net(struct in_addr addr, int ban_localhost)
     ((ip_addr & 0xFFFFFFFF) == 0xFFFFFFFF)  /* 255.255.255.255/32 (broadcast)*/ ;
 }
 
-static int private_net6(struct in6_addr *a, int ban_localhost)
+int private_net6(struct in6_addr *a, int ban_localhost)
 {
   /* Block IPv4-mapped IPv6 addresses in private IPv4 address space */
   if (IN6_IS_ADDR_V4MAPPED(a))

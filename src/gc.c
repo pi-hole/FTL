@@ -36,6 +36,8 @@
 #include "lookup-table.h"
 // get_and_clear_event()
 #include "events.h"
+// private_net(6)()
+#include "dnsmasq_net.h"
 
 // Resource checking interval
 // default: 300 seconds
@@ -236,22 +238,54 @@ static void recycle(void)
 	}
 }
 
+/**
+ * @brief Check if the given IP address is a public IP address.
+ *
+ * This function determines whether the provided IP address is a public IP address.
+ * It first checks if the address is a private IPv4 address, and if not, it checks
+ * if it is a private IPv6 address. If the address is neither a private IPv4 nor
+ * a private IPv6 address, it is considered a public IP address.
+ *
+ * @param addr The IP address to check, as a null-terminated string.
+ * @return true if the IP address is public, false if it is private or invalid.
+ */
+static bool is_public_ip(const char *addr)
+{
+	// Check if the IP address is a private IPv4 address
+	struct in_addr ip;
+	if(inet_pton(AF_INET, addr, &ip) == 1)
+		return private_net(ip, 1) == 0;
+
+	// Check if the IP address is a private IPv6 address
+	struct in6_addr ip6;
+	if(inet_pton(AF_INET6, addr, &ip6) == 1)
+		return private_net6(&ip6, 1) == 0;
+
+	return false;
+}
+
 // Subtract rate-limitation count from individual client counters
 // As long as client->rate_limit is still larger than the allowed
 // maximum count, the rate-limitation will just continue
 static void reset_rate_limiting(void)
 {
+	unsigned int public_clients = 0;
 	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
 		if(!client)
 			continue;
 
+		// Get client's IP address
+		const char *clientIP = getstr(client->ippos);
+
+		// Check if client is a public IP address
+		if(is_public_ip(clientIP))
+			public_clients++;
+
 		// Check if we are currently rate-limiting this client
 		if(client->flags.rate_limited)
 		{
-			const char *clientIP = getstr(client->ippos);
-
 			// Check if we want to continue rate limiting
 			if(client->rate_limit > config.dns.rateLimit.count.v.ui)
 			{
@@ -268,6 +302,10 @@ static void reset_rate_limiting(void)
 		// Reset counter
 		client->rate_limit = 0;
 	}
+
+	// Print warning if we have public clients
+	if(public_clients > 0)
+		log_warn("Found %u public client%s! Check your firewall!", public_clients, public_clients == 1 ? "" : "s");
 }
 
 static time_t lastRateLimitCleaner = 0;

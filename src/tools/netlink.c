@@ -17,8 +17,8 @@
 #include <string.h>
 #include <errno.h>
 
-// defined in src/dnsmasq/rfc1035.c
-extern int private_net(struct in_addr addr, int ban_localhost);
+// private_net()
+#include "dnsmasq_net.h"
 
 static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 {
