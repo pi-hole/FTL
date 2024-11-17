@@ -96,7 +96,7 @@ static bool create_shm(const char *name, SharedMemory *sharedMemory, const size_
 /// \param sharedMemory the shared memory struct
 /// \param size1 the new size (factor 1)
 /// \param size2 the new size (factor 2)
-/// \param resize whether the object should be resized or only remapped
+/// \param resize whether the object should be resized (true) or only remapped (false)
 /// \return if reallocation was successful
 static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize);
 

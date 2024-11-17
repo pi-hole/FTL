@@ -333,6 +333,15 @@ static void remap_shm(void)
 	realloc_shm(&shm_strings, counters->strings_MAX, sizeof(char), false);
 	// strings are not exposed by a global pointer
 
+	realloc_shm(&shm_domains_lookup, counters->domains_lookup_MAX, sizeof(struct lookup_table), false);
+	domains_lookup = (struct lookup_table*)shm_domains_lookup.ptr;
+
+	realloc_shm(&shm_clients_lookup, counters->clients_lookup_MAX, sizeof(struct lookup_table), false);
+	clients_lookup = (struct lookup_table*)shm_clients_lookup.ptr;
+
+	realloc_shm(&shm_dns_cache_lookup, counters->dns_cache_lookup_MAX, sizeof(struct lookup_table), false);
+	dns_cache_lookup = (struct lookup_table*)shm_dns_cache_lookup.ptr;
+
 	// Update local counter to reflect that we absorbed this change
 	local_shm_counter = shmSettings->global_shm_counter;
 }
