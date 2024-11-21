@@ -739,13 +739,14 @@ int add_update_server(int flags,
 	serv->addr = *addr;
       if (source_addr)
 	serv->source_addr = *source_addr;
+
+      serv->tcpfd = -1;
     }
     
   serv->flags = flags;
   serv->domain = alloc_domain;
   serv->domain_len = strlen(alloc_domain);
-  serv->tcpfd = -1;
-  
+    
   return 1;
 }
 
