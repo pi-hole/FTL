@@ -541,9 +541,9 @@ static int order_qsort(const void *a, const void *b)
 
   /* Finally, order by appearance in /etc/resolv.conf etc, for --strict-order */
   if (rc == 0)
-    if (!(s1->flags & SERV_LITERAL_ADDRESS))
+    if (!(s1->flags & SERV_IS_LOCAL) && !(s2->flags & SERV_IS_LOCAL))
       rc = s1->serial - s2->serial;
-
+  
   return rc;
 }
 
