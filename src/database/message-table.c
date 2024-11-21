@@ -103,6 +103,8 @@ static const char *get_message_type_str(const enum message_type type)
 			return "NTP";
 		case VERIFY_MESSAGE:
 			return "VERIFY";
+		case PUBLIC_CLIENTS_MESSAGE:
+			return "PUBLIC_CLIENTS";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
@@ -141,6 +143,8 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return NTP_MESSAGE;
 	else if (strcmp(typestr, "VERIFY") == 0)
 		return VERIFY_MESSAGE;
+	else if (strcmp(typestr, "PUBLIC_CLIENTS") == 0)
+		return PUBLIC_CLIENTS_MESSAGE;
 	else
 		return MAX_MESSAGE;
 }
@@ -255,6 +259,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_TEXT, // actual checksum
 			SQLITE_TEXT, // FTL commit hash
 			SQLITE_TEXT, // FTL architecture
+			SQLITE_NULL // not used
+		},
+		{
+			// PUBLIC_CLIENTS_MESSAGE: The message column contains the number of public clients
+			SQLITE_INTEGER, // number of public clients
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
 		}
 	};
@@ -974,6 +986,19 @@ static void format_verify_message(char *plain, const int sizeof_plain, char *htm
 	free(escaped_commit);
 	free(escaped_arch);
 }
+static void format_public_clients_warning(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                          const unsigned int num)
+{
+	if(snprintf(plain, sizeof_plain, "Detected queries from %u public clients. Check your firewall settings for unwanted traffic.", num) > sizeof_plain)
+		log_warn("format_public_clients_warning(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	if(snprintf(html, sizeof_html, "Detected queries from <strong>%u</strong> public clients.<br>Check your firewall settings - you may be running a public resolver!<br><br>A public resolver is a DNS server that is accessible by anyone on the internet. It can be exploited for malicious activities, such as DNS amplification attacks, and may expose details about your internal network. It is highly recommended to restrict DNS queries to trusted clients only.", num) > sizeof_html)
+		log_warn("format_public_clients_warning(): Buffer too small to hold HTML message, warning truncated");
+}
 
 int count_messages(const bool filter_dnsmasq_warnings)
 {
@@ -1244,6 +1269,15 @@ bool format_messages(cJSON *array)
 
 				format_verify_message(plain, sizeof(plain), html, sizeof(html),
 				                      message, expected, actual, hash, arch);
+
+				break;
+			}
+
+			case PUBLIC_CLIENTS_MESSAGE:
+			{
+				const unsigned int num = sqlite3_column_int(stmt, 4);
+
+				format_public_clients_warning(plain, sizeof(plain), html, sizeof(html), num);
 
 				break;
 			}
@@ -1524,12 +1558,26 @@ void log_verify_message(const char *expected, const char *actual)
 {
 	// Create message
 	char buf[2048];
-	snprintf(buf, sizeof(buf), "Corrupt binary detected - this may lead to unexpected behaviour!");
+	format_verify_message(buf, sizeof(buf), NULL, 0, "Verification failed", expected, actual, GIT_HASH, FTL_ARCH);
 
 	// Log to FTL.log
 	log_crit("%s", buf);
 
 	// Log to database
 	add_message(VERIFY_MESSAGE, buf, expected, actual, GIT_HASH, FTL_ARCH);
+
+}
+
+void log_public_clients_warning(const unsigned int num)
+{
+	// Create message
+	char buf[2048];
+	format_public_clients_warning(buf, sizeof(buf), NULL, 0, num);
+
+	// Log to FTL.log
+	log_warn("%s", buf);
+
+	// Log to database
+	add_message(PUBLIC_CLIENTS_MESSAGE, buf, num);
 
 }

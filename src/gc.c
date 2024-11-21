@@ -47,6 +47,10 @@
 // default: 10 seconds
 #define CPU_AVERAGE_INTERVAL 10
 
+// How often to check for public clients
+// default: 300 seconds (5 minutes)
+# define PUBLIC_CLIENTS_INTERVAL 300
+
 bool doGC = false;
 
 // Recycle old clients and domains in our internal data structure
@@ -269,7 +273,6 @@ static bool is_public_ip(const char *addr)
 // maximum count, the rate-limitation will just continue
 static void reset_rate_limiting(void)
 {
-	unsigned int public_clients = 0;
 	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
@@ -278,10 +281,6 @@ static void reset_rate_limiting(void)
 
 		// Get client's IP address
 		const char *clientIP = getstr(client->ippos);
-
-		// Check if client is a public IP address
-		if(is_public_ip(clientIP))
-			public_clients++;
 
 		// Check if we are currently rate-limiting this client
 		if(client->flags.rate_limited)
@@ -302,10 +301,30 @@ static void reset_rate_limiting(void)
 		// Reset counter
 		client->rate_limit = 0;
 	}
+}
+
+static void check_public_clients(void)
+{
+	unsigned int public_clients = 0;
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		clientsData *client = getClient(clientID, true);
+		if(!client)
+			continue;
+
+		// Get client's IP address
+		const char *clientIP = getstr(client->ippos);
+
+		log_info("Checking if %s is a public IP address (%u)", clientIP, public_clients);
+
+		// Check if client is a public IP address
+		if(is_public_ip(clientIP))
+			public_clients++;
+	}
 
 	// Print warning if we have public clients
 	if(public_clients > 0)
-		log_warn("Found %u public client%s! Check your firewall!", public_clients, public_clients == 1 ? "" : "s");
+		log_public_clients_warning(public_clients);
 }
 
 static time_t lastRateLimitCleaner = 0;
@@ -576,6 +595,7 @@ void *GC_thread(void *val)
 	lastRateLimitCleaner = time(NULL);
 	time_t lastResourceCheck = 0;
 	time_t lastCPUcheck = 0;
+	time_t lastPublicClientsCheck = 0;
 
 	// Remember disk usage
 	unsigned int LastLogStorageUsage = 0;
@@ -598,6 +618,18 @@ void *GC_thread(void *val)
 			lastRateLimitCleaner = now;
 			lock_shm();
 			reset_rate_limiting();
+			unlock_shm();
+		}
+
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
+		if(now - lastPublicClientsCheck >= PUBLIC_CLIENTS_INTERVAL)
+		{
+			lastPublicClientsCheck = now;
+			lock_shm();
+			check_public_clients();
 			unlock_shm();
 		}
 

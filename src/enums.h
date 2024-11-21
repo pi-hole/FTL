@@ -269,6 +269,7 @@ enum message_type {
 	CONNECTION_ERROR_MESSAGE,
 	NTP_MESSAGE,
 	VERIFY_MESSAGE,
+	PUBLIC_CLIENTS_MESSAGE,
 	MAX_MESSAGE,
 } __attribute__ ((packed));
 
