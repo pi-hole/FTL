@@ -1111,7 +1111,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	      if ((serverind = dnssec_server(forward->sentto, daemon->keyname, NULL, NULL)) != -1 &&
 		  (server = daemon->serverarray[serverind]) &&
 		  (nn = dnssec_generate_query(header, ((unsigned char *) header) + server->edns_pktsz,
-					      daemon->keyname, forward->class,
+					      daemon->keyname, forward->class, get_id(),
 					      STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz)) && 
 		  (fd = allocate_rfd(&rfds, server)) != -1 &&
 		  (newstash = blockdata_alloc((char *)header, nn)) &&
@@ -1141,8 +1141,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  forward->stash_len = plen;
 		  forward->stash = stash;
 		  
-		  new->new_id = get_id();
-		  header->id = htons(new->new_id);
+		  new->new_id = ntohs(header->id);
 		  /* Save query for retransmission and de-dup */
 		  new->stash = newstash;
 		  new->stash_len = nn;
@@ -2348,7 +2347,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 	  break;
 	}
       
-      m = dnssec_generate_query(new_header, ((unsigned char *) new_header) + 65536, keyname, class, 
+      m = dnssec_generate_query(new_header, ((unsigned char *) new_header) + 65536, keyname, class, 0,
 				STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz);
       
       if ((start = dnssec_server(server, keyname, &first, &last)) == -1)

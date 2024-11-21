@@ -1437,7 +1437,7 @@ int in_zone(struct auth_zone *zone, char *name, char **cut);
 
 /* dnssec.c */
 #ifdef HAVE_DNSSEC
-size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char *name, int class, int type, int edns_pktsz);
+size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char *name, int class, int id, int type, int edns_pktsz);
 int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, char *name,
 			  char *keyname, int class, int *validate_count);
 int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name,

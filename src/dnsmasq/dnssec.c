@@ -2203,8 +2203,8 @@ int dnskey_keytag(int alg, int flags, unsigned char *key, int keylen)
     }
 }
 
-size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char *name, int class, 
-			     int type, int edns_pktsz)
+size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char *name,
+			     int class, int id, int type, int edns_pktsz)
 {
   unsigned char *p;
   size_t ret;
@@ -2213,7 +2213,8 @@ size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char
   header->ancount = htons(0);
   header->nscount = htons(0);
   header->arcount = htons(0);
-
+  header->id = htons(id);
+  
   header->hb3 = HB3_RD; 
   SET_OPCODE(header, QUERY);
   /* For debugging, set Checking Disabled, otherwise, have the upstream check too,
