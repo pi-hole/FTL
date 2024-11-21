@@ -150,6 +150,10 @@ void lease_init(time_t now)
 #ifdef HAVE_SCRIPT
       if (daemon->lease_change_command)
 	{
+	  /* 6 == strlen(" init") plus terminator */
+	  if (strlen(daemon->lease_change_command) + 6 > DHCP_BUFF_SZ)
+	    die(_("lease-change script name is too long"), NULL, EC_FILE);
+	  
 	  strcpy(daemon->dhcp_buff, daemon->lease_change_command);
 	  strcat(daemon->dhcp_buff, " init");
 	  leasestream = popen(daemon->dhcp_buff, "r");
