@@ -36,7 +36,7 @@
 #include "daemon.h"
 
 
-int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
+int run_lua_interpreter(const int argc, char **argv, bool debug)
 {
 	if(argc == 1) // No arguments after this one
 		printf("Pi-hole FTL %s\n", get_FTL_version());
@@ -48,7 +48,7 @@ int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 	{
 		history_file = word.we_wordv[0];
 		const int ret_r = read_history(history_file);
-		if(dnsmasq_debug)
+		if(debug)
 		{
 			printf("Reading history ... ");
 			if(ret_r == 0)
@@ -60,7 +60,7 @@ int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 		// The history file may not exist, try to create an empty one in this case
 		if(ret_r == ENOENT)
 		{
-			if(dnsmasq_debug)
+			if(debug)
 			{
 				printf("Creating new history file: %s\n", history_file);
 			}
@@ -70,7 +70,7 @@ int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 		}
 	}
 #else
-	if(dnsmasq_debug)
+	if(debug)
 		printf("No readline available!\n");
 #endif
 	const int ret = lua_main(argc, argv);
@@ -78,7 +78,7 @@ int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 	if(history_file != NULL)
 	{
 		const int ret_w = write_history(history_file);
-		if(dnsmasq_debug)
+		if(debug)
 		{
 			printf("Writing history ... ");
 			if(ret_w == 0)

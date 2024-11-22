@@ -80,7 +80,7 @@ extern int sqlite3_shell_main(int argc, char **argv);
 // defined in database/sqlite3_rsync.c
 extern int sqlite3_rsync_main(int argc, char **argv);
 
-bool dnsmasq_debug = false;
+bool debug_mode = false;
 bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
@@ -611,7 +611,7 @@ void parse_args(int argc, char *argv[])
 		if(strcmp(argv[i], "lua") == 0 ||
 		   strcmp(argv[i], "--lua") == 0)
 		{
-			exit(run_lua_interpreter(argc - i, &argv[i], dnsmasq_debug));
+			exit(run_lua_interpreter(argc - i, &argv[i], debug_mode));
 		}
 
 		// Expose internal lua compiler
@@ -729,7 +729,7 @@ void parse_args(int argc, char *argv[])
 			argv_dnsmasq = calloc(argc_dnsmasq, sizeof(const char*));
 			argv_dnsmasq[0] = "";
 
-			if(dnsmasq_debug)
+			if(debug_mode)
 			{
 				argv_dnsmasq[1] = "-d";
 				argv_dnsmasq[2] = "--log-debug";
@@ -740,7 +740,7 @@ void parse_args(int argc, char *argv[])
 				argv_dnsmasq[2] = "";
 			}
 
-			if(dnsmasq_debug)
+			if(debug_mode)
 			{
 				printf("dnsmasq options: [0]: %s\n", argv_dnsmasq[0]);
 				printf("dnsmasq options: [1]: %s\n", argv_dnsmasq[1]);
@@ -751,7 +751,7 @@ void parse_args(int argc, char *argv[])
 			while(i < argc)
 			{
 				argv_dnsmasq[j++] = strdup(argv[i++]);
-				if(dnsmasq_debug)
+				if(debug_mode)
 					printf("dnsmasq options: [%i]: %s\n", j-1, argv_dnsmasq[j-1]);
 			}
 
@@ -764,11 +764,11 @@ void parse_args(int argc, char *argv[])
 		if(strcmp(argv[i], "d") == 0 ||
 		   strcmp(argv[i], "debug") == 0)
 		{
-			dnsmasq_debug = true;
+			debug_mode = true;
 			daemonmode = false;
 			ok = true;
 
-			// Replace "-k" by "-d" (dnsmasq_debug mode implies nofork)
+			// Replace "-k" by "-d" (debug_mode mode implies nofork)
 			argv_dnsmasq[1] = "-d";
 		}
 
@@ -951,9 +951,9 @@ void parse_args(int argc, char *argv[])
 			// Enable stdout printing
 			cli_mode = true;
 			if(argc == i + 2)
-				exit(regex_test(dnsmasq_debug, quiet, argv[i + 1], NULL));
+				exit(regex_test(debug_mode, quiet, argv[i + 1], NULL));
 			else if(argc == i + 3)
-				exit(regex_test(dnsmasq_debug, quiet, argv[i + 1], argv[i + 2]));
+				exit(regex_test(debug_mode, quiet, argv[i + 1], argv[i + 2]));
 			else
 			{
 				printf("pihole-FTL: invalid option -- '%s' need either one or two parameters\nTry '%s --help' for more information\n", argv[i], argv[0]);
