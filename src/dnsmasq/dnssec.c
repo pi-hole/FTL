@@ -2221,8 +2221,6 @@ size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char
      this allows it to select auth servers when one is returning bad data. */
   header->hb4 = option_bool(OPT_DNSSEC_DEBUG) ? HB4_CD : 0;
 
-  /* ID filled in later */
-
   p = (unsigned char *)(header+1);
 	
   p = do_rfc1035_name(p, name, NULL);
