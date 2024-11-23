@@ -793,7 +793,7 @@ struct frec {
     union all_addr dest;
     unsigned int iface, log_id;
     int fd;
-    unsigned short orig_id;
+    unsigned short orig_id, udp_pkt_size;
     struct frec_src *next;
   } frec_src;
   struct server *sentto; /* NULL means free */
@@ -1413,8 +1413,7 @@ void report_addresses(struct dns_header *header, size_t len, u32 mark);
 #endif
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
-		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader,
-		      int *stale, int *filtered);
+		      time_t now, int ad_reqd, int do_bit, int *stale, int *filtered);
 int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name, 
 			     time_t now);
 int check_for_ignored_address(struct dns_header *header, size_t qlen);
@@ -1437,7 +1436,7 @@ int in_zone(struct auth_zone *zone, char *name, char **cut);
 
 /* dnssec.c */
 #ifdef HAVE_DNSSEC
-size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char *name, int class, int id, int type, int edns_pktsz);
+size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char *name, int class, int id, int type);
 int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, char *name,
 			  char *keyname, int class, int *validate_count);
 int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name,

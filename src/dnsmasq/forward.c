@@ -173,7 +173,7 @@ static int domain_no_rebind(char *domain)
 
 static int forward_query(int udpfd, union mysockaddr *udpaddr,
 			 union all_addr *dst_addr, unsigned int dst_iface,
-			 struct dns_header *header, size_t plen,  char *limit, time_t now, 
+			 struct dns_header *header, size_t plen,  size_t replylimit, time_t now, 
 			 struct frec *forward, int ad_reqd, int do_bit, int fast_retry)
 {
   unsigned int flags = 0;
@@ -184,8 +184,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   int old_src = 0, old_reply = 0;
   int first, last, start = 0;
   int cacheable, forwarded = 0;
-  size_t edns0_len;
-  unsigned char *pheader, *oph;
+  unsigned char *oph;
   int ede = EDE_UNSET;
   (void)do_bit;
   unsigned short rrtype;
@@ -271,6 +270,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  src->log_id = daemon->log_id;
 	  src->iface = dst_iface;
 	  src->fd = udpfd;
+	  src->udp_pkt_size = (unsigned short)replylimit;
 
 	  /* closely spaced identical queries cannot be a try and a retry, so
 	     it's safe to wait for the reply from the first without
@@ -324,8 +324,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (!(forward = get_new_frec(now, master, 0)))
 	goto reply;
       /* table full - flags == 0, return REFUSED */
-      
-      plen = add_edns0_config(header, plen, ((unsigned char *)header) + PACKETSZ, &forward->frec_src.source, now, &cacheable);
+
+      forward->flags = fwd_flags;
+
+      plen = add_edns0_config(header, plen, ((unsigned char *)header) + daemon->edns_pktsz, &forward->frec_src.source, now, &cacheable);
       
       if (!cacheable)
 	forward->flags |= FREC_NO_CACHE;
@@ -333,7 +335,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 #ifdef HAVE_DNSSEC
       if (option_bool(OPT_DNSSEC_VALID) && (master->flags & SERV_DO_DNSSEC))
 	{
-	  plen = add_do_bit(header, plen, ((unsigned char *) header) + PACKETSZ);
+	  plen = add_do_bit(header, plen, ((unsigned char *) header) + daemon->edns_pktsz);
 	  
 	  /* For debugging, set Checking Disabled, otherwise, have the upstream check too,
 	     this allows it to select auth servers when one is returning bad data. */
@@ -342,17 +344,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	}
 #endif
       
-      if (find_pseudoheader(header, plen, &edns0_len, &pheader, NULL, NULL))
-	{
-	  /* If there wasn't a PH before, and there is now, we added it. */
-	  if (!oph)
-	    forward->flags |= FREC_ADDED_PHEADER;
-	  
-	  /* Reduce udp size on retransmits. */
-	  if (forward->flags & FREC_TEST_PKTSZ)
-	    PUTSHORT(SAFE_PKTSZ, pheader);
-	}
-      
+      /* If there wasn't a PH before, and there is now, we added it. */
+      if (!oph && find_pseudoheader(header, plen, NULL, NULL, NULL, NULL))
+	forward->flags |= FREC_ADDED_PHEADER;
+	      
       /* Do these before saving query. */
       forward->frec_src.orig_id = ntohs(header->id);
       forward->new_id = get_id();
@@ -372,8 +367,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       forward->frec_src.iface = dst_iface;
       forward->frec_src.next = NULL;
       forward->frec_src.fd = udpfd;
+      forward->frec_src.udp_pkt_size = (unsigned short)replylimit;
       forward->forwardall = 0;
-      forward->flags = fwd_flags;
       if (domain_no_rebind(daemon->namebuff))
 	forward->flags |= FREC_NOREBIND;
       if (header->hb4 & HB4_CD)
@@ -416,20 +411,13 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 
       if (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY))
 	{
-	  int is_sign;
-	  unsigned char *pheader;
-	  
 	  /* log_id should match previous DNSSEC query. */
 	  daemon->log_display_id = forward->frec_src.log_id;
 	  
 	  blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
 	  plen = forward->stash_len;
 	  /* get query for logging. */
-	  extract_request(header, plen, daemon->namebuff, NULL);
-	  
-	  /* Use go-anywhere size limit, as it's a retry. */
-	  if (find_pseudoheader(header, plen, NULL, &pheader, &is_sign, NULL) && !is_sign)
-	    PUTSHORT(SAFE_PKTSZ, pheader);
+	  gotname = extract_request(header, plen, daemon->namebuff, NULL);
 
 	  FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_display_id, true);
 	  
@@ -513,22 +501,9 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  if (option_bool(OPT_CONNTRACK))
 	    set_outgoing_mark(forward, fd);
 #endif
-	  
-#ifdef HAVE_DNSSEC
-	  if (option_bool(OPT_DNSSEC_VALID) && (forward->flags & FREC_ADDED_PHEADER))
-	    {
-	      /* Difficult one here. If our client didn't send EDNS0, we will have set the UDP
-		 packet size to 512. But that won't provide space for the RRSIGS in many cases.
-		 The RRSIGS will be stripped out before the answer goes back, so the packet should
-		 shrink again. So, if we added a do-bit, bump the udp packet size to the value
-		 known to be OK for this server. We check returned size after stripping and set
-		 the truncated bit if it's still too big. */		  
-	      unsigned char *pheader;
-	      int is_sign;
-	      if (find_pseudoheader(header, plen, NULL, &pheader, &is_sign, NULL) && !is_sign)
-		PUTSHORT(srv->edns_pktsz, pheader);
-	    }
-#endif
+
+	  /* send EDNS0 packet size to the maximum size we believe the link allows at this time. */
+	  plen = add_pseudoheader(header, plen, (unsigned char *)(header + daemon->edns_pktsz), srv->edns_pktsz, 0, NULL, 0, 0, 0);
 	  
 	  if (retry_send(sendto(fd, (char *)header, plen, 0,
 				&srv->addr.sa,
@@ -546,17 +521,16 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	      daemon->packet_len = plen;
 	      daemon->fd_save = fd;
 	      
-	      if (!(forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)))
-		{
-		  if (!gotname)
-		    strcpy(daemon->namebuff, "query");
-		  log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff,
-				       &srv->addr, NULL, 0);
-		}
+	       if (!gotname)
+		 strcpy(daemon->namebuff, "query");
+	       
+	       if (!(forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)))
+		 log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff,
+				      &srv->addr, NULL, 0);
 #ifdef HAVE_DNSSEC
-	      else
-		log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, daemon->namebuff, &srv->addr,
-				     (forward->flags & FREC_DNSKEY_QUERY) ? "dnssec-retry[DNSKEY]" : "dnssec-retry[DS]", 0);
+	       else
+		 log_query_mysockaddr(F_NOEXTRA | F_DNSSEC | F_SERVER, daemon->namebuff, &srv->addr,
+				      (forward->flags & FREC_DNSKEY_QUERY) ? "dnssec-retry[DNSKEY]" : "dnssec-retry[DS]", 0);
 #endif
 
 	      srv->queries++;
@@ -592,7 +566,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
  reply:
   if (udpfd != -1)
     {
-      if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, limit, first, last, ede)))
+      if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, (char *)(header + replylimit), first, last, ede)))
 	return 0;
       
       if (oph)
@@ -600,9 +574,9 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  u16 swap = htons((u16)ede);
 
 	  if (ede != EDE_UNSET)
-	    plen = add_pseudoheader(header, plen, (unsigned char *)limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	    plen = add_pseudoheader(header, plen, (unsigned char *)(header + replylimit), 0, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
 	  else
-	    plen = add_pseudoheader(header, plen, (unsigned char *)limit, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+	    plen = add_pseudoheader(header, plen, (unsigned char *)(header + replylimit), 0, 0, NULL, 0, do_bit, 0);
 	}
       
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
@@ -647,8 +621,6 @@ int fast_retry(time_t now)
 	      to_run = f->forward_delay - t;
 	    else
 	      {
-		unsigned char *udpsz;
-		unsigned short udp_size =  PACKETSZ; /* default if no EDNS0 */
 		struct dns_header *header = (struct dns_header *)daemon->packet;
 		
 		/* packet buffer overwritten */
@@ -656,16 +628,12 @@ int fast_retry(time_t now)
 		
 		blockdata_retrieve(f->stash, f->stash_len, (void *)header);
 		
-		/* UDP size already set in saved query. */
-		if (find_pseudoheader(header, f->stash_len, NULL, &udpsz, NULL, NULL))
-		  GETSHORT(udp_size, udpsz);
-		
 		daemon->log_display_id = f->frec_src.log_id;
 		daemon->log_source_addr = NULL;
 		
-		forward_query(-1, NULL, NULL, 0, header, f->stash_len, ((char *) header) + udp_size, now, f,
+		forward_query(-1, NULL, NULL, 0, header, f->stash_len, 0, now, f,
 			      f->flags & FREC_AD_QUESTION, f->flags & FREC_DO_QUESTION, 1);
-
+		
 		to_run = f->forward_delay = 2 * f->forward_delay;
 	      }
 
@@ -733,7 +701,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       // Pi-hole modification: Interpret the pseudoheader before
       // it might get stripped off below (added_pheader == true)
       FTL_parse_pseudoheaders(pheader, (size_t)plen);
-
+      
       if (option_bool(OPT_CLIENT_SUBNET) && !check_source(header, plen, pheader, query_source))
 	{
 	  my_syslog(LOG_WARNING, _("discarding DNS reply: subnet option mismatch"));
@@ -750,17 +718,9 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	    }
 	  else
 	    {
-	      /* If upstream is advertising a larger UDP packet size
-		 than we allow, trim it so that we don't get overlarge
-		 requests for the client. We can't do this for signed packets. */
-	      unsigned short udpsz;
-	      GETSHORT(udpsz, sizep);
-	      if (udpsz > daemon->edns_pktsz)
-		{
-		  sizep -= 2;
-		  PUTSHORT(daemon->edns_pktsz, sizep);
-		}
-
+	      /* Advertise our max UDP packet to the client. */
+	      PUTSHORT(daemon->edns_pktsz, sizep);
+	      
 #ifdef HAVE_DNSSEC
 	      /* If the client didn't set the do bit, but we did, reset it. */
 	      if (option_bool(OPT_DNSSEC_VALID) && !do_bit)
@@ -930,11 +890,11 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   if (pheader && (ede != EDE_UNSET || ede_len > 0))
     {
       if (ede_len > 0)
-	  n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 1);
+	  n = add_pseudoheader(header, n, limit, 0, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 1);
 	else
 	  {
 	    u16 swap = htons((u16)ede);
-	    n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
+	    n = add_pseudoheader(header, n, limit, 0, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
 	  }
     }
   /**************************************/
@@ -1079,6 +1039,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	      struct randfd_list *rfds = NULL;
 	      struct frec *new = NULL;
 	      struct blockdata *newstash = NULL;
+	      unsigned char *p;
 	      
 	      /* Make sure we don't expire and free the orig frec during the
 		 allocation of a new one: third arg of get_new_frec() does that. */
@@ -1086,7 +1047,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  (server = daemon->serverarray[serverind]) &&
 		  (nn = dnssec_generate_query(header, ((unsigned char *) header) + server->edns_pktsz,
 					      daemon->keyname, forward->class, get_id(),
-					      STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz)) && 
+					      STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS)) && 
 		  (fd = allocate_rfd(&rfds, server)) != -1 &&
 		  (newstash = blockdata_alloc((char *)header, nn)) &&
 		  (new = get_new_frec(now, server, 1)))
@@ -1129,6 +1090,10 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  if (option_bool(OPT_CONNTRACK))
 		    set_outgoing_mark(orig, fd);
 #endif
+
+		  /* Maximum packet size depends on the server */
+		  if (find_pseudoheader(header, nn, NULL, &p, NULL, NULL))
+		    PUTSHORT(server->edns_pktsz, p);
 		  
 		  server_send(server, fd, header, nn, 0);
 		  server->queries++;
@@ -1294,9 +1259,6 @@ void reply_query(int fd, time_t now)
   if ((RCODE(header) == REFUSED || RCODE(header) == SERVFAIL) && forward->forwardall == 0)
     /* for broken servers, attempt to send to another one. */
     {
-      unsigned char *udpsz;
-      unsigned short udp_size =  PACKETSZ; /* default if no EDNS0 */
-      
 #ifdef HAVE_DNSSEC
       /* The query MAY have got a good answer, and be awaiting
 	 the results of further queries, in which case
@@ -1308,11 +1270,7 @@ void reply_query(int fd, time_t now)
       /* Get the saved query back. */
       blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
       
-      /* UDP size already set in saved query. */
-      if (find_pseudoheader(header, (size_t)forward->stash_len, NULL, &udpsz, NULL, NULL))
-	GETSHORT(udp_size, udpsz);
-	      
-      forward_query(-1, NULL, NULL, 0, header, forward->stash_len, ((char *) header) + udp_size, now, forward,
+      forward_query(-1, NULL, NULL, 0, header, forward->stash_len, 0, now, forward,
 		    forward->flags & FREC_AD_QUESTION, forward->flags & FREC_DO_QUESTION, 0);
       return;
     }
@@ -1328,9 +1286,9 @@ void reply_query(int fd, time_t now)
 
   /* We tried resending to this server with a smaller maximum size and got an answer.
      Make that permanent. To avoid reduxing the packet size for a single dropped packet,
-     only do this when we get a truncated answer, or one larger than the safe size. */
+     only do this when we get a truncated answer, or one that fits the safe size. */
   if (server->edns_pktsz > SAFE_PKTSZ && (forward->flags & FREC_TEST_PKTSZ) && 
-      ((header->hb3 & HB3_TC) || n >= SAFE_PKTSZ))
+      ((header->hb3 & HB3_TC) || n <= SAFE_PKTSZ))
     {
       server->edns_pktsz = SAFE_PKTSZ;
       server->pktsz_reduced = now;
@@ -1399,7 +1357,7 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 	  union all_addr a;
 
 	  a.log.ede = ede = errflags_to_ede(status);
-
+	  
 	  if (STAT_ISEQUAL(status, STAT_ABANDONED))
 	    {
 	      result = "ABANDONED";
@@ -1422,10 +1380,10 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 	  log_query(F_SECSTAT, domain, &a, result, 0);
 	}
     }
-
+  
   if ((daemon->limit[LIMIT_CRYPTO] - forward->validate_counter) > (int)daemon->metrics[METRIC_CRYPTO_HWM])
     daemon->metrics[METRIC_CRYPTO_HWM] = daemon->limit[LIMIT_CRYPTO] - forward->validate_counter;
-
+  
   if ((daemon->limit[LIMIT_WORK] - forward->work_counter) > (int)daemon->metrics[METRIC_WORK_HWM])
     daemon->metrics[METRIC_WORK_HWM] = daemon->limit[LIMIT_WORK] - forward->work_counter;
 #endif
@@ -1450,23 +1408,9 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 			  ((unsigned char *)header) + daemon->edns_pktsz, ede)))
     {
       struct frec_src *src;
+      int do_trunc;
       
-      header->id = htons(forward->frec_src.orig_id);
-#ifdef HAVE_DNSSEC
-      /* We added an EDNSO header for the purpose of getting DNSSEC RRs, and set the value of the UDP payload size
-	 greater than the no-EDNS0-implied 512 to have space for the RRSIGS. If, having stripped them and the EDNS0
-	 header, the answer is still bigger than 512, truncate it and mark it so. The client then retries with TCP. */
-      if (option_bool(OPT_DNSSEC_VALID) && (forward->flags & FREC_ADDED_PHEADER) && (nn > PACKETSZ))
-	{
-	  header->ancount = htons(0);
-	  header->nscount = htons(0);
-	  header->arcount = htons(0);
-	  header->hb3 |= HB3_TC;
-	  nn = resize_packet(header, nn, NULL, 0);
-	}
-#endif
-      
-      for (src = &forward->frec_src; src; src = src->next)
+      for (do_trunc = 0, src = &forward->frec_src; src; src = src->next)
 	{
 	  header->id = htons(src->orig_id);
 	  
@@ -1485,8 +1429,18 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 	  
 	  if (src->fd != -1)
 	    {
-	      send_from(src->fd, option_bool(OPT_NOWILD) || option_bool (OPT_CLEVERBIND), daemon->packet, nn, 
-			&src->source, &src->dest, src->iface);
+	      /* Only send packets that fit what the requestor allows.
+		 We'll send a truncated packet to others below. */
+	      if (nn <= src->udp_pkt_size)
+		{
+		  send_from(src->fd, option_bool(OPT_NOWILD) || option_bool (OPT_CLEVERBIND), daemon->packet, nn, 
+			    &src->source, &src->dest, src->iface);
+#ifdef HAVE_DUMPFILE
+		  dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source, src->fd);
+#endif
+		}
+	      else
+		do_trunc = 1;
 	      
 	      if (option_bool(OPT_EXTRALOG) && src != &forward->frec_src)
 		{
@@ -1494,19 +1448,44 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 		  daemon->log_source_addr = &src->source;
 		  log_query(F_UPSTREAM, "query", NULL, "duplicate", 0);
 		}
-
-#ifdef HAVE_DUMPFILE
-	      dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source, src->fd);
-#endif 
 	    }
+	}
+      
+      /* The packet is too big for one or more requestors, send them a truncated answer. */
+      if (do_trunc)
+	{
+	  size_t hlen, new;
+	  unsigned char *pheader = find_pseudoheader(header, nn, &hlen, NULL, NULL, NULL);
+	  
+	  header->ancount = htons(0);
+	  header->nscount = htons(0);
+	  header->arcount = htons(0);
+	  header->hb3 |= HB3_TC;
+	  new = resize_packet(header, nn, pheader, hlen);
+
+	  daemon->log_display_id = forward->frec_src.log_id;
+	  daemon->log_source_addr = &forward->frec_src.source;
+	  log_query(F_UPSTREAM, "query", NULL, "truncated", 0);
+
+	  for (src = &forward->frec_src; src; src = src->next)
+	    if (src->fd != -1 && nn > src->udp_pkt_size)
+	      {
+		header->id = htons(src->orig_id);
+		send_from(src->fd, option_bool(OPT_NOWILD) || option_bool (OPT_CLEVERBIND), daemon->packet, new, 
+			  &src->source, &src->dest, src->iface);
+		
+#ifdef HAVE_DUMPFILE
+		dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source, src->fd);
+#endif
+	      }
 	  /* Pi-hole modification */
 	  FTL_multiple_replies(src->log_id, &first_ID);
 	}
     }
-
+      
   free_frec(forward); /* cancel */
 }
-
+  
 
 #ifdef HAVE_CONNTRACK
 static int is_query_allowed_for_mark(u32 mark, const char *name)
@@ -1550,7 +1529,7 @@ static size_t answer_disallowed(struct dns_header *header, size_t qlen, u32 mark
   return p - (unsigned char *)header;
 }
 #endif
-
+ 
 void receive_query(struct listener *listen, time_t now)
 {
   struct dns_header *header = (struct dns_header *)daemon->packet;
@@ -1867,9 +1846,6 @@ void receive_query(struct listener *listen, time_t now)
 	udp_size = daemon->edns_pktsz;
       else if (udp_size < PACKETSZ)
 	udp_size = PACKETSZ; /* Sanity check - can't reduce below default. RFC 6891 6.2.3 */
-
-      pheader -= 6; /* ext_class */
-      PUTSHORT(udp_size, pheader); /* Bounding forwarded queries to maximum configured */
     }
   
 #ifdef HAVE_CONNTRACK
@@ -1889,7 +1865,7 @@ void receive_query(struct listener *listen, time_t now)
       m = answer_disallowed(header, (size_t)n, (u32)mark, is_single_query ? daemon->namebuff : NULL);
       
       if (have_pseudoheader && m != 0)
-	m = add_pseudoheader(header,  m,  ((unsigned char *) header) + udp_size, daemon->edns_pktsz,
+	m = add_pseudoheader(header,  m,  ((unsigned char *) header) + deamon->edns_pktsz, 0,
 			     EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
       
       if (m >= 1)
@@ -1966,7 +1942,7 @@ void receive_query(struct listener *listen, time_t now)
       /**********************************************/
       
       m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
-			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale, &filtered);
+			 dst_addr_4, netmask, now, ad_reqd, do_bit, &stale, &filtered);
       
       if (m >= 1)
 	{
@@ -1982,9 +1958,12 @@ void receive_query(struct listener *listen, time_t now)
 		{
 		  u16 swap = htons(ede);
 		  
-		  m = add_pseudoheader(header,  m,  ((unsigned char *) header) + udp_size, daemon->edns_pktsz,
+		  m = add_pseudoheader(header,  m,  ((unsigned char *) header) + daemon->edns_pktsz, 0,
 				       EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
 		}
+	      else
+		m = add_pseudoheader(header,  m,  ((unsigned char *) header) + daemon->edns_pktsz, 0,
+				     0, NULL, 0, do_bit, 0);
 	    }
 	  
 #ifdef HAVE_DUMPFILE
@@ -2023,7 +2002,7 @@ void receive_query(struct listener *listen, time_t now)
 	      blockdata_retrieve(saved_question, (size_t)n, (void *)header);
 	      blockdata_free(saved_question);
 	      if (forward_query(fd, &source_addr, &dst_addr, if_index, header, (size_t)n,
-				((char *) header) + udp_size, now, NULL, ad_reqd, do_bit, 0))
+				udp_size, now, NULL, ad_reqd, do_bit, 0))
 		daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
 	      else
 		daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
@@ -2033,7 +2012,7 @@ void receive_query(struct listener *listen, time_t now)
 	}
     }
 }
-
+ 
 /* Send query in packet, qsize to a server determined by first,last,start and
    get the reply. return reply size. */
 static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  size_t qsize,
@@ -2325,7 +2304,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 	}
       
       m = dnssec_generate_query(new_header, ((unsigned char *) new_header) + 65536, keyname, class, 0,
-				STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz);
+				STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS);
       
       if ((start = dnssec_server(server, keyname, &first, &last)) == -1)
 	{
@@ -2565,7 +2544,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	  m = answer_disallowed(header, size, (u32)mark, is_single_query ? daemon->namebuff : NULL);
 	  
 	  if (have_pseudoheader && m != 0)
-	    m = add_pseudoheader(header,  m, ((unsigned char *) header) + 65536, daemon->edns_pktsz,
+	    m = add_pseudoheader(header,  m, ((unsigned char *) header) + 65536, 0,
 				 EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
 	}
 #endif
@@ -2618,7 +2597,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	       
 	       /* m > 0 if answered from cache */
 	       m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
-				  dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader, &stale, &filtered);
+				  dst_addr_4, netmask, now, ad_reqd, do_bit, &stale, &filtered);
 	     }
 	  /* Do this by steam now we're not in the select() loop */
 	  check_log_writer(1); 
@@ -2762,34 +2741,27 @@ unsigned char *tcp_request(int confd, time_t now,
 	  if (!(m = make_local_answer(flags, gotname, size, header, daemon->namebuff,
 				      ((char *) header) + 65536, first, last, ede)))
 	    break;
-	  
-	  if (have_pseudoheader)
-	    {
-	      u16 swap = htons((u16)ede);
-	      
-	      if (ede != EDE_UNSET)
-		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
-	      else
-		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
-	    }
 	}
-      else if (have_pseudoheader)
+      else
 	{
 	  ede = EDE_UNSET;
-	  
+
 	  if (filtered)
 	    ede = EDE_FILTERED;
 	  else if (stale)
 	    ede = EDE_STALE;
+	}
+      
+      if (have_pseudoheader)
+	{
+	  u16 swap = htons((u16)ede);
 	  
 	  if (ede != EDE_UNSET)
-	    {
-	      u16 swap = htons((u16)ede);
-	      
-	      m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
-	    }
+	    m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, 0, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	  else
+	    m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, 0, 0, NULL, 0, do_bit, 0);
 	}
-	  
+		  
       check_log_writer(1);
       
       *length = htons(m);

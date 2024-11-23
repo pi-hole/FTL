@@ -1349,7 +1349,7 @@ static int check_bad_address(struct dns_header *header, size_t qlen, struct bogu
       GETSHORT(qtype, p); 
       GETSHORT(qclass, p);
       GETLONG(ttl, p);
-      GETSHORT(rdlen, p)
+      GETSHORT(rdlen, p);
       if (ttlp)
 	*ttlp = ttl;
       
@@ -1598,8 +1598,7 @@ static int cache_validated(const struct crec *crecp)
 /* return zero if we can't answer from cache, or packet size if we can */
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
-		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader,
-		      int *stale, int *filtered) 
+		      time_t now, int ad_reqd, int do_bit, int *stale, int *filtered) 
 {
   char *name = daemon->namebuff;
   unsigned char *p, *ansp;
@@ -2389,10 +2388,6 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   header->arcount = htons(addncount);
 
   len = ansp - (unsigned char *)header;
-  
-  /* Advertise our packet size limit in our reply */
-  if (have_pseudoheader)
-    len = add_pseudoheader(header, len, (unsigned char *)limit, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
   
   if (ad_reqd && sec_data)
     header->hb4 |= HB4_AD;
