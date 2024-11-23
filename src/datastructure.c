@@ -679,6 +679,9 @@ void FTL_reload_all_domainlists(void)
 	// Check for inaccessible adlist URLs
 	check_inaccessible_adlists();
 
+	// Check for restored gravity database
+	check_restored_gravity();
+
 	// Reset FTL's internal DNS cache storing whether a specific domain
 	// has already been validated for a specific user
 	FTL_reset_per_client_domain_data();

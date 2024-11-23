@@ -50,6 +50,7 @@ char* get_client_names_from_ids(const char *group_ids) __attribute__ ((malloc));
 void gravityDB_finalizeTable(void);
 int gravityDB_count(const enum gravity_tables list);
 void check_inaccessible_adlists(void);
+void check_restored_gravity(void);
 bool gravity_updated(void);
 
 cJSON *gen_abp_patterns(const char *domain, const bool antigravity);
