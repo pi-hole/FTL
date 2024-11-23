@@ -1865,7 +1865,7 @@ void receive_query(struct listener *listen, time_t now)
       m = answer_disallowed(header, (size_t)n, (u32)mark, is_single_query ? daemon->namebuff : NULL);
       
       if (have_pseudoheader && m != 0)
-	m = add_pseudoheader(header,  m,  ((unsigned char *) header) + deamon->edns_pktsz, 0,
+	m = add_pseudoheader(header,  m,  ((unsigned char *) header) + daemon->edns_pktsz, 0,
 			     EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
       
       if (m >= 1)
