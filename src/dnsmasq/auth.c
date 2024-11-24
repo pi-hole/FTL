@@ -96,8 +96,8 @@ int in_zone(struct auth_zone *zone, char *name, char **cut)
 }
 
 
-size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t now, union mysockaddr *peer_addr, 
-		   int local_query, int do_bit, int have_pseudoheader) 
+size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t now,
+		   union mysockaddr *peer_addr, int local_query) 
 {
   char *name = daemon->namebuff;
   unsigned char *p, *ansp;
@@ -890,10 +890,6 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
       return resize_packet(header,  ansp - (unsigned char *)header, NULL, 0);
     }
   
-  /* Advertise our packet size limit in our reply */
-  if (have_pseudoheader)
-    return add_pseudoheader(header,  ansp - (unsigned char *)header, (unsigned char *)limit, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
-
   return ansp - (unsigned char *)header;
 }
   

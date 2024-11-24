@@ -1429,8 +1429,7 @@ int private_net(struct in_addr addr, int ban_localhost);
 /* auth.c */
 #ifdef HAVE_AUTH
 size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, 
-		   time_t now, union mysockaddr *peer_addr, int local_query,
-		   int do_bit, int have_pseudoheader);
+		   time_t now, union mysockaddr *peer_addr, int local_query);
 int in_zone(struct auth_zone *zone, char *name, char **cut);
 #endif
 
