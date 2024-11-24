@@ -605,8 +605,7 @@ struct server {
   char interface[IF_NAMESIZE+1];
   unsigned int ifindex; /* corresponding to interface, above */
   struct serverfd *sfd; 
-  int tcpfd, edns_pktsz;
-  time_t pktsz_reduced;
+  int tcpfd;
   unsigned int queries, failed_queries, nxdomain_replies, retrys;
   unsigned int query_latency, mma_latency;
   time_t forwardtime;
@@ -783,9 +782,8 @@ struct dyndir {
 #define FREC_AD_QUESTION       32
 #define FREC_DO_QUESTION       64
 #define FREC_ADDED_PHEADER    128
-#define FREC_TEST_PKTSZ       256
-#define FREC_HAS_PHEADER      512
-#define FREC_GONE_TO_TCP     1024
+#define FREC_HAS_PHEADER      256
+#define FREC_GONE_TO_TCP      512
 
 struct frec {
   struct frec_src {
@@ -1893,7 +1891,7 @@ void from_wire(char *name);
 unsigned char *find_pseudoheader(struct dns_header *header, size_t plen,
 				   size_t *len, unsigned char **p, int *is_sign, int *is_last);
 size_t add_pseudoheader(struct dns_header *header, size_t plen, unsigned char *limit, 
-			unsigned short udp_sz, int optno, unsigned char *opt, size_t optlen, int set_do, int replace);
+			int optno, unsigned char *opt, size_t optlen, int set_do, int replace);
 size_t add_do_bit(struct dns_header *header, size_t plen, unsigned char *limit);
 size_t add_edns0_config(struct dns_header *header, size_t plen, unsigned char *limit, 
 			union mysockaddr *source, time_t now, int *cacheable);

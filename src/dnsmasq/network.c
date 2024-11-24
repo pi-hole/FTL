@@ -1607,10 +1607,6 @@ void check_servers(int no_loop_check)
 
   for (count = 0, serv = daemon->servers; serv; serv = serv->next)
     {
-      /* Init edns_pktsz for newly created server records. */
-      if (serv->edns_pktsz == 0)
-	serv->edns_pktsz = daemon->edns_pktsz;
-      
 #ifdef HAVE_DNSSEC
       if (option_bool(OPT_DNSSEC_VALID))
 	{ 

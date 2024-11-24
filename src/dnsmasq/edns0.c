@@ -99,11 +99,9 @@ unsigned char *find_pseudoheader(struct dns_header *header, size_t plen, size_t 
 /* replace == 0 ->don't replace existing option
    replace == 1 ->replace existing or add option
    replace == 2 ->relpace existing option only.
-
-   udp_sz == 0 -> leave unchanged in existing EDNS0 or set to deamon->edns_pksz in a new one.
 */
 size_t add_pseudoheader(struct dns_header *header, size_t plen, unsigned char *limit, 
-			unsigned short udp_sz, int optno, unsigned char *opt, size_t optlen, int set_do, int replace)
+			int optno, unsigned char *opt, size_t optlen, int set_do, int replace)
 { 
   unsigned char *lenp, *datap, *p, *udp_len, *buff = NULL;
   int rdlen = 0, is_sign, is_last;
@@ -122,11 +120,7 @@ size_t add_pseudoheader(struct dns_header *header, size_t plen, unsigned char *l
       
       p = udp_len;
 
-      if (udp_sz == 0)
-	GETSHORT(udp_sz, p);
-      else
-	PUTSHORT(udp_sz, p);
-      
+      PUTSHORT(daemon->edns_pktsz, p);
       GETSHORT(rcode, p);
       GETSHORT(flags, p);
 
@@ -208,12 +202,9 @@ size_t add_pseudoheader(struct dns_header *header, size_t plen, unsigned char *l
 	  return plen; /* bad packet */
 	}
 
-      if (udp_sz == 0)
-	udp_sz = daemon->edns_pktsz;
-	
       *p++ = 0; /* empty name */
       PUTSHORT(T_OPT, p);
-      PUTSHORT(udp_sz, p); /* max packet length, 512 if not given in EDNS0 header */
+      PUTSHORT(daemon->edns_pktsz, p); /* max packet length, 512 if not given in EDNS0 header */
       PUTSHORT(rcode, p);  /* extended RCODE and version */
       PUTSHORT(flags, p);  /* DO flag */
       lenp = p;
@@ -258,7 +249,7 @@ size_t add_pseudoheader(struct dns_header *header, size_t plen, unsigned char *l
 
 size_t add_do_bit(struct dns_header *header, size_t plen, unsigned char *limit)
 {
-  return add_pseudoheader(header, plen, (unsigned char *)limit, 0, 0, NULL, 0, 1, 0);
+  return add_pseudoheader(header, plen, (unsigned char *)limit, 0, NULL, 0, 1, 0);
 }
 
 static unsigned char char64(unsigned char c)
@@ -303,7 +294,7 @@ static size_t add_dns_client(struct dns_header *header, size_t plen, unsigned ch
     replace = 2;
 
   if (replace != 0 || maclen == 6)
-    plen = add_pseudoheader(header, plen, limit, 0, EDNS0_OPTION_NOMDEVICEID, (unsigned char *)encode, strlen(encode), 0, replace);
+    plen = add_pseudoheader(header, plen, limit, EDNS0_OPTION_NOMDEVICEID, (unsigned char *)encode, strlen(encode), 0, replace);
 
   return plen;
 }
@@ -328,7 +319,7 @@ static size_t add_mac(struct dns_header *header, size_t plen, unsigned char *lim
     replace = 2;
   
   if (replace != 0 || maclen != 0)
-    plen = add_pseudoheader(header, plen, limit, 0, EDNS0_OPTION_MAC, mac, maclen, 0, replace);
+    plen = add_pseudoheader(header, plen, limit, EDNS0_OPTION_MAC, mac, maclen, 0, replace);
 
   return plen; 
 }
@@ -428,7 +419,7 @@ static size_t add_source_addr(struct dns_header *header, size_t plen, unsigned c
   else
     return plen;
 
-  return add_pseudoheader(header, plen, (unsigned char *)limit, 0, EDNS0_OPTION_CLIENT_SUBNET, (unsigned char *)&opt, len, 0, replace);
+  return add_pseudoheader(header, plen, (unsigned char *)limit, EDNS0_OPTION_CLIENT_SUBNET, (unsigned char *)&opt, len, 0, replace);
 }
 
 int check_source(struct dns_header *header, size_t plen, unsigned char *pseudoheader, union mysockaddr *peer)
@@ -528,7 +519,7 @@ static size_t add_umbrella_opt(struct dns_header *header, size_t plen, unsigned 
       PUTLONG(daemon->umbrella_asset, u);
     }
   
-  return add_pseudoheader(header, plen, (unsigned char *)limit, 0, EDNS0_OPTION_UMBRELLA, (unsigned char *)&opt, u - (u8 *)&opt, 0, 1);
+  return add_pseudoheader(header, plen, (unsigned char *)limit, EDNS0_OPTION_UMBRELLA, (unsigned char *)&opt, u - (u8 *)&opt, 0, 1);
 }
 
 /* Set *check_subnet if we add a client subnet option, which needs to checked 
@@ -543,7 +534,7 @@ size_t add_edns0_config(struct dns_header *header, size_t plen, unsigned char *l
   plen = add_dns_client(header, plen, limit, source, now, cacheable);
   
   if (daemon->dns_client_id)
-    plen = add_pseudoheader(header, plen, limit, 0, EDNS0_OPTION_NOMCPEID, 
+    plen = add_pseudoheader(header, plen, limit, EDNS0_OPTION_NOMCPEID, 
 			    (unsigned char *)daemon->dns_client_id, strlen(daemon->dns_client_id), 0, 1);
 
   if (option_bool(OPT_UMBRELLA))
