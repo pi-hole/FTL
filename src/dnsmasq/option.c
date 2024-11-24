@@ -6036,6 +6036,15 @@ void read_opts(int argc, char **argv, char *compile_opts)
     }
 #endif
 
+#ifdef HAVE_DNSSEC
+  /* Default fast retry on when doing DNSSEC */
+  if (option_bool(OPT_DNSSEC_VALID) && daemon->fast_retry_time == 0)
+    {
+      daemon->fast_retry_timeout = TIMEOUT;
+      daemon->fast_retry_time = DEFAULT_FAST_RETRY;
+    }
+#endif
+  
   /* port might not be known when the address is parsed - fill in here */
   if (daemon->servers)
     {
