@@ -873,6 +873,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
       if (!(ansp = skip_questions(header, qlen)))
 	return 0; /* bad packet */
       anscount = authcount = 0;
+      log_query(F_AUTH, "query", NULL, "truncated", 0);
     }
   
   if ((auth || local_query) && nxdomain)

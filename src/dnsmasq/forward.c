@@ -769,7 +769,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
     }  
 
   if (header->hb3 & HB3_TC)
-    log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
+    log_query(F_UPSTREAM, "query", NULL, "truncated", 0);
   else if (!bogusanswer || (header->hb4 & HB4_CD))
     {
       if (rcode == NXDOMAIN && extract_request(header, n, daemon->namebuff, NULL) &&

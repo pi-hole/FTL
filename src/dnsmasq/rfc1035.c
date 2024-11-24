@@ -2380,6 +2380,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
       if (!(ansp = skip_questions(header, qlen)))
 	return 0; /* bad packet */
       anscount = nscount = addncount = 0;
+      log_query(F_CONFIG, "query", NULL, "truncated", 0);
     }
 
   if (nxdomain)
