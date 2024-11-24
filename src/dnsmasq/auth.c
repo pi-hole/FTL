@@ -868,7 +868,12 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
   
   /* truncation */
   if (trunc)
-    header->hb3 |= HB3_TC;
+    {
+      header->hb3 |= HB3_TC;
+      if (!(ansp = skip_questions(header, qlen)))
+	return 0; /* bad packet */
+      anscount = authcount = 0;
+    }
   
   if ((auth || local_query) && nxdomain)
     SET_RCODE(header, NXDOMAIN);

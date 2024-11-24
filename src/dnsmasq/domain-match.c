@@ -444,7 +444,13 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
       }
 
   if (trunc)
-    header->hb3 |= HB3_TC;
+    {
+      header->hb3 |= HB3_TC;
+      if (!(p = skip_questions(header, size)))
+	return 0; /* bad packet */
+      anscount  = 0;
+    }
+  
   header->ancount = htons(anscount);
   
   return p - (unsigned char *)header;

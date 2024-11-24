@@ -2375,14 +2375,20 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   
   /* truncation */
   if (trunc)
-    header->hb3 |= HB3_TC;
-  
+    {
+      header->hb3 |= HB3_TC;
+      if (!(ansp = skip_questions(header, qlen)))
+	return 0; /* bad packet */
+      anscount = nscount = addncount = 0;
+    }
+
   if (nxdomain)
     SET_RCODE(header, NXDOMAIN);
   else if (notimp)
     SET_RCODE(header, NOTIMP);
   else
     SET_RCODE(header, NOERROR); /* no error */
+
   header->ancount = htons(anscount);
   header->nscount = htons(nscount);
   header->arcount = htons(addncount);
