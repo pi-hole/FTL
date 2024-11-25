@@ -462,7 +462,7 @@ char *sqlite3_fgets(char *buf, int sz, FILE *in){
     ** that into UTF-8.  Otherwise, non-ASCII characters all get translated
     ** into '?'.
     */
-    wchar_t *b1 = malloc( sz*sizeof(wchar_t) );
+    wchar_t *b1 = sqlite3_malloc( sz*sizeof(wchar_t) );
     if( b1==0 ) return 0;
     _setmode(_fileno(in), IsConsole(in) ? _O_WTEXT : _O_U8TEXT);
     if( fgetws(b1, sz/4, in)==0 ){
@@ -528,7 +528,7 @@ int sqlite3_fputs(const char *z, FILE *out){
     ** use O_U8TEXT for everything in text mode.
     */
     int sz = (int)strlen(z);
-    wchar_t *b1 = malloc( (sz+1)*sizeof(wchar_t) );
+    wchar_t *b1 = sqlite3_malloc( (sz+1)*sizeof(wchar_t) );
     if( b1==0 ) return 0;
     sz = MultiByteToWideChar(CP_UTF8, 0, z, sz, b1, sz);
     b1[sz] = 0;
@@ -6835,7 +6835,7 @@ static int seriesBestIndex(
       continue;
     }
     if( pConstraint->iColumn<SERIES_COLUMN_START ){
-      if( pConstraint->iColumn==SERIES_COLUMN_VALUE ){
+      if( pConstraint->iColumn==SERIES_COLUMN_VALUE && pConstraint->usable ){
         switch( op ){
           case SQLITE_INDEX_CONSTRAINT_EQ:
           case SQLITE_INDEX_CONSTRAINT_IS: {
@@ -6843,7 +6843,9 @@ static int seriesBestIndex(
             idxNum &= ~0x3300;
             aIdx[5] = i;
             aIdx[6] = -1;
+#ifndef ZERO_ARGUMENT_GENERATE_SERIES
             bStartSeen = 1;
+#endif
             break;
           }
           case SQLITE_INDEX_CONSTRAINT_GE: {
@@ -6851,7 +6853,9 @@ static int seriesBestIndex(
             idxNum |=  0x0100;
             idxNum &= ~0x0200;
             aIdx[5] = i;
+#ifndef ZERO_ARGUMENT_GENERATE_SERIES
             bStartSeen = 1;
+#endif
             break;
           }
           case SQLITE_INDEX_CONSTRAINT_GT: {
@@ -6859,7 +6863,9 @@ static int seriesBestIndex(
             idxNum |=  0x0200;
             idxNum &= ~0x0100;
             aIdx[5] = i;
+#ifndef ZERO_ARGUMENT_GENERATE_SERIES
             bStartSeen = 1;
+#endif
             break;
           }
           case SQLITE_INDEX_CONSTRAINT_LE: {
@@ -14171,7 +14177,7 @@ static int idxCreateVtabSchema(sqlite3expert *p, char **pzErrmsg){
     }else{
       IdxTable *pTab;
       rc = idxGetTableInfo(p->db, zName, &pTab, pzErrmsg);
-      if( rc==SQLITE_OK ){
+      if( rc==SQLITE_OK && ALWAYS(pTab!=0) ){
         int i;
         char *zInner = 0;
         char *zOuter = 0;
@@ -31842,7 +31848,6 @@ static QuickScanState quickscan(char *zLine, QuickScanState qss,
   char cWait = (char)qss; /* intentional narrowing loss */
   if( cWait==0 ){
   PlainScan:
-    assert( cWait==0 );
     while( (cin = *zLine++)!=0 ){
       if( IsSpace(cin) )
         continue;
@@ -31894,7 +31899,6 @@ static QuickScanState quickscan(char *zLine, QuickScanState qss,
           if( *zLine != '/' )
             continue;
           ++zLine;
-          cWait = 0;
           CONTINUE_PROMPT_AWAITC(pst, 0);
           qss = QSS_SETV(qss, 0);
           goto PlainScan;
@@ -31906,7 +31910,6 @@ static QuickScanState quickscan(char *zLine, QuickScanState qss,
           }
           deliberate_fall_through;
         case ']':
-          cWait = 0;
           CONTINUE_PROMPT_AWAITC(pst, 0);
           qss = QSS_SETV(qss, 0);
           goto PlainScan;
