@@ -50,8 +50,8 @@ void rand_init()
   int fd = open(RANDFILE, O_RDONLY);
   
   if (fd == -1 ||
-      !read_write(fd, (unsigned char *)&seed, sizeof(seed), 1) ||
-      !read_write(fd, (unsigned char *)&in, sizeof(in), 1))
+      !read_write(fd, (unsigned char *)&seed, sizeof(seed), RW_READ) ||
+      !read_write(fd, (unsigned char *)&in, sizeof(in), RW_READ))
     die(_("failed to seed the random number generator: %s"), NULL, EC_MISC);
   
   close(fd);
@@ -769,6 +769,14 @@ int retry_send(ssize_t rc)
   return 0;
 }
 
+/* rw = 0 -> write
+   rw = 1 -> read
+   rw = 2 -> read once
+   rw = 3 -> write once
+
+   "once" fail if all the data doesn't arrive/go in a single read/write.
+   This indicates a timeout of a TCP socket.
+*/
 int read_write(int fd, unsigned char *packet, int size, int rw)
 {
   ssize_t n, done;
@@ -776,17 +784,25 @@ int read_write(int fd, unsigned char *packet, int size, int rw)
   for (done = 0; done < size; done += n)
     {
       do { 
-	if (rw)
+	if (rw & 1)
 	  n = read(fd, &packet[done], (size_t)(size - done));
 	else
 	  n = write(fd, &packet[done], (size_t)(size - done));
 	
 	if (n == 0)
 	  return 0;
-	
-      } while (retry_send(n) || errno == ENOMEM || errno == ENOBUFS);
 
-      if (errno != 0)
+	if (n == -1 && errno == EINTR)
+	  continue;
+
+	/* "once" variant */
+	if ((rw & 2) && n != size)
+	  return 0;
+	
+      } while (n == -1 && (errno == EINTR || errno == ENOMEM || errno == ENOBUFS ||
+			   errno == EAGAIN || errno == EWOULDBLOCK));
+      
+      if (n == -1)
 	return 0;
     }
      

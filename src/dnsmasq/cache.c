@@ -815,11 +815,11 @@ void cache_end_insert(void)
 	      u16 class = new_chain->uid;
 #endif
 	      
-	      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
-	      read_write(daemon->pipe_to_parent, (unsigned char *)name, m, 0);
-	      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->ttd, sizeof(new_chain->ttd), 0);
-	      read_write(daemon->pipe_to_parent, (unsigned  char *)&flags, sizeof(flags), 0);
-	      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr, sizeof(new_chain->addr), 0);
+	      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
+	      read_write(daemon->pipe_to_parent, (unsigned char *)name, m, RW_WRITE);
+	      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->ttd, sizeof(new_chain->ttd), RW_WRITE);
+	      read_write(daemon->pipe_to_parent, (unsigned  char *)&flags, sizeof(flags), RW_WRITE);
+	      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr, sizeof(new_chain->addr), RW_WRITE);
 	      
 	      if (flags & F_RR)
 		{
@@ -830,12 +830,12 @@ void cache_end_insert(void)
 #ifdef HAVE_DNSSEC
 	      if (flags & F_DNSKEY)
 		{
-		  read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
+		  read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), RW_WRITE);
 		  blockdata_write(new_chain->addr.key.keydata, new_chain->addr.key.keylen, daemon->pipe_to_parent);
 		}
 	      else if (flags & F_DS)
 		{
-		  read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
+		  read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), RW_WRITE);
 		  /* A negative DS entry is possible and has no data, obviously. */
 		  if (!(flags & F_NEG))
 		    blockdata_write(new_chain->addr.ds.keydata, new_chain->addr.ds.keylen, daemon->pipe_to_parent);
@@ -852,16 +852,16 @@ void cache_end_insert(void)
     {
       ssize_t m = -1;
 
-      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
+      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
 
 #ifdef HAVE_DNSSEC
       /* Sneak out possibly updated crypto HWM values. */
       m = daemon->metrics[METRIC_CRYPTO_HWM];
-      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
+      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
       m = daemon->metrics[METRIC_SIG_FAIL_HWM];
-      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
+      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
       m = daemon->metrics[METRIC_WORK_HWM];
-      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
+      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
 #endif
     }
       
@@ -884,22 +884,22 @@ int cache_recv_insert(time_t now, int fd)
   while (1)
     {
  
-      if (!read_write(fd, (unsigned char *)&m, sizeof(m), 1))
+      if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
 	return 0;
       
       if (m == -1)
 	{
 #ifdef HAVE_DNSSEC
 	  /* Sneak in possibly updated crypto HWM. */
-	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), 1))
+	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
 	    return 0;
 	  if (m > daemon->metrics[METRIC_CRYPTO_HWM])
 	    daemon->metrics[METRIC_CRYPTO_HWM] = m;
-	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), 1))
+	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
 	    return 0;
 	  if (m > daemon->metrics[METRIC_SIG_FAIL_HWM])
 	    daemon->metrics[METRIC_SIG_FAIL_HWM] = m;
-	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), 1))
+	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
 	    return 0;
 	  if (m > daemon->metrics[METRIC_WORK_HWM])
 	    daemon->metrics[METRIC_WORK_HWM] = m;
@@ -919,23 +919,23 @@ int cache_recv_insert(time_t now, int fd)
 	  
 	  struct frec *forward;
 	  
-	  if (!read_write(fd, (unsigned char *)&status, sizeof(status), 1))
+	  if (!read_write(fd, (unsigned char *)&status, sizeof(status), RW_READ))
 	    return 0;
-	  if (!read_write(fd, (unsigned char *)&ret_len, sizeof(ret_len), 1))
+	  if (!read_write(fd, (unsigned char *)&ret_len, sizeof(ret_len), RW_READ))
 	    return 0;
-	  if (!read_write(fd, (unsigned char *)daemon->packet, ret_len, 1))
+	  if (!read_write(fd, (unsigned char *)daemon->packet, ret_len, RW_READ))
 	    return 0;
-	  if (!read_write(fd, (unsigned char *)&forward, sizeof(forward), 1))
+	  if (!read_write(fd, (unsigned char *)&forward, sizeof(forward), RW_READ))
 	    return 0;
-	  if (!read_write(fd, (unsigned char *)&uid, sizeof(uid), 1))
+	  if (!read_write(fd, (unsigned char *)&uid, sizeof(uid), RW_READ))
 	    return 0;
-	  if (!read_write(fd, (unsigned char *)&keycount, sizeof(keycount), 1))
+	  if (!read_write(fd, (unsigned char *)&keycount, sizeof(keycount), RW_READ))
 	    return 0;
-	  if (!read_write(fd, (unsigned char *)&keycountp, sizeof(keycountp), 1))
+	  if (!read_write(fd, (unsigned char *)&keycountp, sizeof(keycountp), RW_READ))
 	    return 0;
-	  if (!read_write(fd, (unsigned char *)&validatecount, sizeof(validatecount), 1))
+	  if (!read_write(fd, (unsigned char *)&validatecount, sizeof(validatecount), RW_READ))
 	    return 0;
-	  if (!read_write(fd, (unsigned char *)&validatecountp, sizeof(validatecountp), 1))
+	  if (!read_write(fd, (unsigned char *)&validatecountp, sizeof(validatecountp), RW_READ))
 	    return 0;
 	  
 	  /* There's a tiny chance that the frec may have been freed 
@@ -957,10 +957,10 @@ int cache_recv_insert(time_t now, int fd)
 	}
 #endif
        
-      if (!read_write(fd, (unsigned char *)daemon->namebuff, m, 1) ||
-	  !read_write(fd, (unsigned char *)&ttd, sizeof(ttd), 1) ||
-	  !read_write(fd, (unsigned char *)&flags, sizeof(flags), 1) ||
-	  !read_write(fd, (unsigned char *)&addr, sizeof(addr), 1))
+      if (!read_write(fd, (unsigned char *)daemon->namebuff, m, RW_READ) ||
+	  !read_write(fd, (unsigned char *)&ttd, sizeof(ttd), RW_READ) ||
+	  !read_write(fd, (unsigned char *)&flags, sizeof(flags), RW_READ) ||
+	  !read_write(fd, (unsigned char *)&addr, sizeof(addr), RW_READ))
 	return 0;
 
       daemon->namebuff[m] = 0;
@@ -997,13 +997,13 @@ int cache_recv_insert(time_t now, int fd)
 #ifdef HAVE_DNSSEC
 	  if (flags & F_DNSKEY)
 	    {
-	      if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
+	      if (!read_write(fd, (unsigned char *)&class, sizeof(class), RW_READ) ||
 		  !(addr.key.keydata = blockdata_read(fd, addr.key.keylen)))
 		return 0;
 	    }
 	  else  if (flags & F_DS)
 	    {
-	      if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
+	      if (!read_write(fd, (unsigned char *)&class, sizeof(class), RW_READ) ||
 		  (!(flags & F_NEG) && !(addr.key.keydata = blockdata_read(fd, addr.key.keylen))))
 		return 0;
 	    }

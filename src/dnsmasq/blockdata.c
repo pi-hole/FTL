@@ -101,7 +101,7 @@ static struct blockdata *blockdata_alloc_real(int fd, char *data, size_t len)
 	      memcpy(block->key, data, blen);
 	      data += blen;
 	    }
-	  else if (!read_write(fd, block->key, blen, 1))
+	  else if (!read_write(fd, block->key, blen, RW_READ))
 	    {
 	      /* failed read free partial chain */
 	      blockdata_free(ret);
@@ -228,7 +228,7 @@ void blockdata_write(struct blockdata *block, size_t len, int fd)
   for (; len > 0 && block; block = block->next)
     {
       size_t blen = len > KEYBLOCK_LEN ? KEYBLOCK_LEN : len;
-      read_write(fd, block->key, blen, 0);
+      read_write(fd, block->key, blen, RW_WRITE);
       len -= blen;
     }
 }

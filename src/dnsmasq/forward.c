@@ -1991,11 +1991,11 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
   u16 *length = (u16 *)packet;
   unsigned char *payload = &packet[2];
   struct dns_header *header = (struct dns_header *)payload;
-  unsigned char c1, c2;
   unsigned int rsize;
   int class, rclass, type, rtype;
   unsigned char *p;
   struct blockdata *saved_question;
+  struct timeval tv;
   
   (void)mark;
   (void)have_mark;
@@ -2013,7 +2013,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
   
   while (1) 
     {
-      int data_sent = 0, timedout = 0;
+      int data_sent = 0, fatal = 0;
       struct server *serv;
 
       if (firstsendto == -1)
@@ -2054,12 +2054,17 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	      continue;
 	    }
 
-#ifdef TCP_SYNCNT
-	  /* TCP connections by default take ages to time out. 
-	     At least on Linux, we can reduce that to only two attempts
-	     to get a reply. For DNS, that's more sensible. */
-	  mark = 2;
-	  setsockopt(serv->tcpfd, IPPROTO_TCP, TCP_SYNCNT, &mark, sizeof(unsigned int));
+#if defined(SO_SNDTIMEO) && defined(SO_RCVTIMEO)
+	  /* TCP connections by default take ages to time out.
+	     Set shorter timeouts more appropriate for a DNS server.
+	     We set the recieve timeout as twice the send timeout; we
+	     want to fail quickly on a non-responsive server, but give it time to get an
+	     answer. */
+	  tv.tv_sec = TCP_TIMEOUT;
+	  tv.tv_usec = 0;
+	  setsockopt(serv->tcpfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+	  tv.tv_sec += TCP_TIMEOUT;
+	  setsockopt(serv->tcpfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 #endif
 	  
 #ifdef MSG_FASTOPEN
@@ -2067,8 +2072,8 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  
 	  if (errno == 0)
 	    data_sent = 1;
-	  else if (errno == ETIMEDOUT || errno == EHOSTUNREACH)
-	    timedout = 1;
+	  else if (errno == ETIMEDOUT || errno == EHOSTUNREACH || errno == EINPROGRESS || errno == ECONNREFUSED)
+	    fatal = 1;
 	  /**** Pi-hole modification ****/
 	  if (errno != 0)
 	    FTL_connection_error("failed to send TCP(fast-open) packet", &serv->addr);
@@ -2077,7 +2082,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  
 	  /* If fastopen failed due to lack of reply, then there's no point in
 	     trying again in non-FASTOPEN mode. */
-	  if (timedout || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
+	  if (fatal || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
 	    {
 	      /**** Pi-hole modification ****/
 	      FTL_connection_error("failed to send TCP(connect) packet", &serv->addr);
@@ -2091,10 +2096,11 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  serv->flags &= ~SERV_GOT_TCP;
 	}
       
-      if ((!data_sent && !read_write(serv->tcpfd, packet, qsize + sizeof(u16), 0)) ||
-	  !read_write(serv->tcpfd, &c1, 1, 1) ||
-	  !read_write(serv->tcpfd, &c2, 1, 1) ||
-	  !read_write(serv->tcpfd, payload, (rsize = (c1 << 8) | c2), 1))
+      /* We us the _ONCE veriant of read_write() here because we've set a timeout on the tcp socket
+	 and wish to abort if the whole data is not read/written within the timeout. */      
+	if ((!data_sent && !read_write(serv->tcpfd, (unsigned char *)packet, qsize + sizeof(u16), RW_WRITE_ONCE)) ||
+	  !read_write(serv->tcpfd, (unsigned char *)length, sizeof (*length), RW_READ_ONCE) ||
+	  !read_write(serv->tcpfd, payload, (rsize = ntohs(*length)), RW_READ_ONCE))
 	{
 	  /**** Pi-hole modification ****/
 	  FTL_connection_error("failed to send TCP(read_write) packet", &serv->addr);
@@ -2335,7 +2341,7 @@ unsigned char *tcp_request(int confd, time_t now,
   /* Max TCP packet + slop + size */
   unsigned char *packet = whine_malloc(65536 + MAXDNAME + RRFIXEDSZ + sizeof(u16));
   unsigned char *payload = &packet[2];
-  unsigned char c1, c2;
+  u16 tcp_len;
   /* largest field in header is 16-bits, so this is still sufficiently aligned */
   struct dns_header *header = (struct dns_header *)payload;
   u16 *length = (u16 *)packet;
@@ -2412,9 +2418,9 @@ unsigned char *tcp_request(int confd, time_t now,
 	  if (query_count >= TCP_MAX_QUERIES)
 	    break;
 	  
-	  if (!read_write(confd, &c1, 1, 1) || !read_write(confd, &c2, 1, 1) ||
-	      !(size = c1 << 8 | c2) ||
-	      !read_write(confd, payload, size, 1))
+	  if (!read_write(confd, (unsigned char *)&tcp_len, sizeof(tcp_len), RW_READ) ||
+	      !(size = ntohs(tcp_len)) ||
+	      !read_write(confd, payload, size, RW_READ))
 	    break;
 	}
       
@@ -2750,7 +2756,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
 	  report_addresses(header, m, mark);
 #endif
-      if (!read_write(confd, packet, m + sizeof(u16), 0))
+      if (!read_write(confd, packet, m + sizeof(u16), RW_WRITE))
 	break;
       
       /* If we answered with stale data, this process will now try and get fresh data into

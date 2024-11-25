@@ -690,7 +690,7 @@ int main_dnsmasq (int argc, char **argv)
 	      if (getuid() == 0 && ent_pw && ent_pw->pw_uid != 0 && fchown(fd, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 		chown_warn = errno;
 
-	      if (!read_write(fd, (unsigned char *)daemon->namebuff, strlen(daemon->namebuff), 0))
+	      if (!read_write(fd, (unsigned char *)daemon->namebuff, strlen(daemon->namebuff), RW_WRITE))
 		err = 1;
 	      else
 		{
@@ -1416,14 +1416,14 @@ static int read_event(int fd, struct event_desc *evp, char **msg)
 {
   char *buf;
 
-  if (!read_write(fd, (unsigned char *)evp, sizeof(struct event_desc), 1))
+  if (!read_write(fd, (unsigned char *)evp, sizeof(struct event_desc), RW_READ))
     return 0;
   
   *msg = NULL;
   
   if (evp->msg_sz != 0 && 
       (buf = malloc(evp->msg_sz + 1)) &&
-      read_write(fd, (unsigned char *)buf, evp->msg_sz, 1))
+      read_write(fd, (unsigned char *)buf, evp->msg_sz, RW_READ))
     {
       buf[evp->msg_sz] = 0;
       *msg = buf;
@@ -2011,7 +2011,7 @@ static void check_dns_listeners(time_t now)
 		     netlink socket. */
 		  
 		  unsigned char a;
-		  read_write(pipefd[0], &a, 1, 1);
+		  read_write(pipefd[0], &a, 1, RW_READ);
 #endif
 
 		  /* i holds index of free slot */
@@ -2059,7 +2059,7 @@ static void check_dns_listeners(time_t now)
 		  unsigned char a = 0;
 
 		  close(daemon->netlinkfd);
-		  read_write(pipefd[1], &a, 1, 0);
+		  read_write(pipefd[1], &a, 1, RW_WRITE);
 #endif		  
 		  alarm(CHILD_LIFETIME);
 		  close(pipefd[0]); /* close read end in child. */
@@ -2162,7 +2162,7 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 	     single byte comes back up the pipe, which
 	     is sent by the child after it has closed the
 	     netlink socket. */
-	  read_write(pipefd[0], &a, 1, 1);
+	  read_write(pipefd[0], &a, 1, RW_READ);
 #endif
 	  
 	  /* i holds index of free slot */
@@ -2184,7 +2184,7 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 #ifdef HAVE_LINUX_NETWORK
 	  /* See comment above re: netlink socket. */
 	  close(daemon->netlinkfd);
-	  read_write(pipefd[1], &a, 1, 0);
+	  read_write(pipefd[1], &a, 1, RW_WRITE);
 #endif		  
 	  close(pipefd[0]); /* close read end in child. */
 	  daemon->pipe_to_parent = pipefd[1];	  
@@ -2208,16 +2208,16 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
        ssize_t m = -2;
 
        /* tell our parent we're done, and what the result was then exit. */
-       read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), 0);
-       read_write(daemon->pipe_to_parent, (unsigned char *)&status, sizeof(status), 0);
-       read_write(daemon->pipe_to_parent, (unsigned char *)plen, sizeof(*plen), 0);
-       read_write(daemon->pipe_to_parent, (unsigned char *)header, *plen, 0);
-       read_write(daemon->pipe_to_parent, (unsigned char *)&forward, sizeof(forward), 0);
-       read_write(daemon->pipe_to_parent, (unsigned char *)&forward->uid, sizeof(forward->uid), 0);
-       read_write(daemon->pipe_to_parent, (unsigned char *)keycount, sizeof(*keycount), 0);
-       read_write(daemon->pipe_to_parent, (unsigned char *)&keycount, sizeof(keycount), 0);
-       read_write(daemon->pipe_to_parent, (unsigned char *)validatecount, sizeof(*validatecount), 0);
-       read_write(daemon->pipe_to_parent, (unsigned char *)&validatecount, sizeof(validatecount), 0);
+       read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
+       read_write(daemon->pipe_to_parent, (unsigned char *)&status, sizeof(status), RW_WRITE);
+       read_write(daemon->pipe_to_parent, (unsigned char *)plen, sizeof(*plen), RW_WRITE);
+       read_write(daemon->pipe_to_parent, (unsigned char *)header, *plen, RW_WRITE);
+       read_write(daemon->pipe_to_parent, (unsigned char *)&forward, sizeof(forward), RW_WRITE);
+       read_write(daemon->pipe_to_parent, (unsigned char *)&forward->uid, sizeof(forward->uid), RW_WRITE);
+       read_write(daemon->pipe_to_parent, (unsigned char *)keycount, sizeof(*keycount), RW_WRITE);
+       read_write(daemon->pipe_to_parent, (unsigned char *)&keycount, sizeof(keycount), RW_WRITE);
+       read_write(daemon->pipe_to_parent, (unsigned char *)validatecount, sizeof(*validatecount), RW_WRITE);
+       read_write(daemon->pipe_to_parent, (unsigned char *)&validatecount, sizeof(validatecount), RW_WRITE);
        close(daemon->pipe_to_parent);
        
        flush_log();

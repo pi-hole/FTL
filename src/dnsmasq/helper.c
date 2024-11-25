@@ -201,7 +201,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	}
       
       /* we read zero bytes when pipe closed: this is our signal to exit */ 
-      if (!read_write(pipefd[0], (unsigned char *)&data, sizeof(data), 1))
+      if (!read_write(pipefd[0], (unsigned char *)&data, sizeof(data), RW_READ))
 	{
 #ifdef HAVE_LUASCRIPT
 	  if (daemon->luascript)
@@ -267,7 +267,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	continue;
       
       if (!read_write(pipefd[0], buf, 
-		      data.hostname_len + data.ed_len + data.clid_len, 1))
+		      data.hostname_len + data.ed_len + data.clid_len, RW_READ))
 	continue;
 
       /* CLID into packet */

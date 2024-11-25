@@ -465,6 +465,11 @@ struct host_record {
 #define INP4 4
 #define INP6 8
 
+#define RW_WRITE      0
+#define RW_READ       1
+#define RW_WRITE_ONCE 2
+#define RW_READ_ONCE  3
+
 struct interface_name {
   char *name; /* domain name */
   char *intr; /* interface name */
