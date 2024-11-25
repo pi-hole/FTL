@@ -762,7 +762,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
     }  
 
   if (header->hb3 & HB3_TC)
-    log_query(F_UPSTREAM, "query", NULL, "truncated", 0);
+    log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
   else if (!bogusanswer || (header->hb4 & HB4_CD))
     {
       if (rcode == NXDOMAIN && extract_request(header, n, daemon->namebuff, NULL) &&
@@ -1431,7 +1431,7 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 
 	  daemon->log_display_id = forward->frec_src.log_id;
 	  daemon->log_source_addr = &forward->frec_src.source;
-	  log_query(F_UPSTREAM, "query", NULL, "truncated", 0);
+	  log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
 
 	  for (src = &forward->frec_src; src; src = src->next)
 	    if (src->fd != -1 && nn > src->udp_pkt_size)
