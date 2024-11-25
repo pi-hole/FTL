@@ -1001,7 +1001,7 @@ static void format_gravity_restored_message(char *plain, const int sizeof_plain,
 
 	if(failed)
 	{
-		if(snprintf(html, sizeof_html, "Gravity database damaged, restore attempt <strong>failed</strong><br><br>Please check your filesystem for corruption, and your disk space for availability.") > sizeof_html)
+		if(snprintf(html, sizeof_html, "Gravity database damaged, restore attempt <strong class=\"log-red\">failed</strong><br><br>Please check your filesystem for corruption, and your disk space for availability.") > sizeof_html)
 			log_warn("format_gravity_restored_message(): Buffer too small to hold HTML message, warning truncated");
 	}
 	else
@@ -1012,7 +1012,7 @@ static void format_gravity_restored_message(char *plain, const int sizeof_plain,
 		if(escaped_status == NULL)
 			return;
 
-		if(snprintf(html, sizeof_html, "Gravity database damaged, restore attempt <strong>successful</strong><br>The gravity database was restored using the backup file <code>%s</code><br><br>Please check your filesystem for corruption, and your disk space for availability.", escaped_status) > sizeof_html)
+		if(snprintf(html, sizeof_html, "Gravity database damaged, restore attempt <strong class=\"log-green\">successful</strong><br>The gravity database was restored using the backup file <code>%s</code><br><br>Please check your filesystem for corruption, and your disk space for availability.", escaped_status) > sizeof_html)
 
 		free(escaped_status);
 	}
