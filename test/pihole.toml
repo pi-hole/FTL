@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v5.25.2-1921-gd3948088-dirty)
+# Pi-hole configuration file (v5.25.2-2330-g84780798-dirty)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2024-06-15 09:10:13 UTC
+# Last updated on 2024-11-26 12:35:26 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -881,6 +881,18 @@
   #     <any writable pcap file>
   pcap = ""
 
+  # The location of the shared memory files used by FTL
+  # This setting is only used on systems where shared memory should not be created in
+  # the default location (/dev/shm on most systems). The directory specified here must
+  # be writable by the user running FTL (typically pihole). It is highly recommended to
+  # leave this setting empty (= automatic default location) to avoid performance issues
+  # caused by slow shared memory access - especially for on-disk locations. Network
+  # filesystems (NFS, SMB, ...) are not supported for shared memory.
+  #
+  # Possible values are:
+  #     <any writable directory> or empty string
+  sharedMemoryLocation = ""
+
   [files.log]
     # The location of FTL's log file
     #
@@ -1117,7 +1129,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 150 total entries out of which 95 entries are default
+# 151 total entries out of which 96 entries are default
 # --> 55 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

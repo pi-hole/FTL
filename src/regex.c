@@ -19,8 +19,6 @@
 // add_per_client_regex_client()
 #include "shmem.h"
 #include "database/message-table.h"
-// init_shmem()
-#include "shmem.h"
 // readFTLconf()
 #include "config/config.h"
 // cli_stuff()

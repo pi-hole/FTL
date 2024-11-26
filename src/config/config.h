@@ -287,6 +287,7 @@ struct config {
 		struct conf_item macvendor;
 		struct conf_item setupVars;
 		struct conf_item pcap;
+		struct conf_item sharedMemoryLocation;
 		struct {
 			struct conf_item ftl;
 			struct conf_item dnsmasq;

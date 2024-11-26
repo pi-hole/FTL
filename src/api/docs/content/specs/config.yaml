@@ -494,6 +494,8 @@ components:
                   type: string
                 pcap:
                   type: string
+                sharedMemoryLocation:
+                  type: string
                 log:
                   type: object
                   properties:
@@ -776,6 +778,7 @@ components:
             macvendor: "/etc/pihole/macvendor.db"
             setupVars: "/etc/pihole/setupVars.conf"
             pcap: ""
+            sharedMemoryLocation: ""
             log:
               ftl: "/var/log/pihole/FTL.log"
               dnsmasq: "/var/log/pihole/pihole.log"

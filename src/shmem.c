@@ -38,8 +38,9 @@
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 14
 
-/// The name of the shared memory. Use this when connecting to the shared memory.
+// The shared memory path is defined by POSIX, see man 7 shm_overview
 #define SHMEM_PATH "/dev/shm"
+// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_LOCK_NAME "FTL-lock"
 #define SHARED_STRINGS_NAME "FTL-strings"
 #define SHARED_COUNTERS_NAME "FTL-counters"
@@ -154,7 +155,9 @@ static void *enlarge_shmem_struct(const char type);
 static int get_dev_shm_usage(char buffer[64])
 {
 	char buffer2[64] = { 0 };
-	const int percentage = get_path_usage(SHMEM_PATH, buffer2);
+	const char *path = strlen(config.files.sharedMemoryLocation.v.s) > 0 ?
+	                   config.files.sharedMemoryLocation.v.s : SHMEM_PATH;
+	const int percentage = get_path_usage(path, buffer2);
 
 	// Generate human-readable "used by FTL" size
 	char prefix_FTL[2] = { 0 };
@@ -173,7 +176,11 @@ static int get_dev_shm_usage(char buffer[64])
 static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
 {
 	// Open shared memory object
-	const int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
+	int fd;
+	if(sharedMemory->shm_open)
+		fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
+	else
+		fd = open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
 	log_debug(DEBUG_SHMEM, "Changing %s (%d) to %u:%u", sharedMemory->name, fd, ent_pw->pw_uid, ent_pw->pw_gid);
 
 	if(fd == -1)
@@ -445,7 +452,7 @@ bool is_our_lock(void)
 	return false;
 }
 
-bool init_shmem()
+bool init_shmem(void)
 {
 	// Get kernel's page size
 	pagesize = getpagesize();
@@ -636,16 +643,31 @@ static bool create_shm(const char *name, SharedMemory *sharedMemory, const size_
 {
 	char df[64] = { 0 };
 	const unsigned int percentage = get_dev_shm_usage(df);
+	char full_name[PATH_MAX] = { 0 };
+	const bool custom_shm_loc = strlen(config.files.sharedMemoryLocation.v.s) > 0;
+	if(custom_shm_loc)
+	{
+		// Use the user-defined shared memory location
+		strncpy(full_name, config.files.sharedMemoryLocation.v.s, PATH_MAX);
+		strncat(full_name, "/", PATH_MAX);
+		strncat(full_name, name, PATH_MAX);
+	}
+	else
+	{
+		// Use the default shared memory location
+		strncpy(full_name, name, PATH_MAX);
+	}
 	if(config.debug.shmem.v.b || (config.misc.check.shmem.v.ui > 0 && percentage > config.misc.check.shmem.v.ui))
-		log_info("Creating shared memory with name \"%s\" and size %zu (%s)", name, size, df);
+		log_info("Creating shared memory with name \"%s\" and size %zu (%s)", full_name, size, df);
 
 	if(config.misc.check.shmem.v.ui > 0 && percentage > config.misc.check.shmem.v.ui)
 		log_resource_shortage(-1.0, 0, percentage, -1, SHMEM_PATH, df);
 
 	// Initialize shared memory object
-	sharedMemory->name = name;
+	sharedMemory->name = strdup(full_name);
 	sharedMemory->size = size;
 	sharedMemory->ptr = NULL;
+	sharedMemory->shm_open = !custom_shm_loc;
 
 	// Create the shared memory file in read/write mode with 600 (u+rw) permissions
 	// and the following open flags:
@@ -653,9 +675,12 @@ static bool create_shm(const char *name, SharedMemory *sharedMemory, const size_
 	// - O_CREAT: Create the shared memory object if it does not exist.
 	// - O_EXCL: Return an error if a shared memory object with the given name already exists.
 	errno = 0;
-	sharedMemory->fd = shm_open(sharedMemory->name, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+	if(sharedMemory->shm_open)
+		sharedMemory->fd = shm_open(sharedMemory->name, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+	else
+		sharedMemory->fd = open(sharedMemory->name, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
 
-	// Check for `shm_open` error
+	// Check for `open` error
 	if(sharedMemory->fd == -1)
 	{
 		log_err("create_shm(): Failed to create shared memory object \"%s\": %s",
@@ -896,11 +921,15 @@ static void delete_shm(SharedMemory *sharedMemory)
 		log_warn("delete_shm(): close(%i) failed: %s", sharedMemory->fd, strerror(errno));
 	sharedMemory->fd = -1;
 
-	// Now you can no longer `shm_open` the memory, and once all others
+	// Now you can no longer `open` the memory, and once all others
 	// unlink, it will be destroyed.
-	if(shm_unlink(sharedMemory->name) != 0)
-		log_warn("delete_shm(): shm_unlink(%s) failed: %s",
+	if((sharedMemory->shm_open && shm_unlink(sharedMemory->name) != 0) ||
+	   unlink(sharedMemory->name) != 0)
+		log_warn("delete_shm(): unlink(%s) failed: %s",
 		         sharedMemory->name, strerror(errno));
+
+	// Free the name of the shared memory object
+	free(sharedMemory->name);
 }
 
 // Euclidean algorithm to return greatest common divisor of the numbers

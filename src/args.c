@@ -32,8 +32,6 @@
 #include "signals.h"
 // regex_speedtest()
 #include "regex_r.h"
-// init_shmem()
-#include "shmem.h"
 // LUA dependencies
 #include "lua/ftl_lua.h"
 // gravity_parseList()

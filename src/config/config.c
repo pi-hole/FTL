@@ -1239,6 +1239,14 @@ static void initConfig(struct config *conf)
 	conf->files.pcap.d.s = (char*)"";
 	conf->files.pcap.c = validate_filepath_empty;
 
+	conf->files.sharedMemoryLocation.k = "files.sharedMemoryLocation";
+	conf->files.sharedMemoryLocation.h = "The location of the shared memory files used by FTL\n This setting is only used on systems where shared memory should not be created in the default location (/dev/shm on most systems). The directory specified here must be writable by the user running FTL (typically pihole). It is highly recommended to leave this setting empty (= automatic default location) to avoid performance issues caused by slow shared memory access - especially for on-disk locations. Network filesystems (NFS, SMB, ...) are not supported for shared memory.";
+	conf->files.sharedMemoryLocation.a = cJSON_CreateStringReference("<any writable directory> or empty string");
+	conf->files.sharedMemoryLocation.t = CONF_STRING;
+	conf->files.sharedMemoryLocation.f = FLAG_RESTART_FTL;
+	conf->files.sharedMemoryLocation.d.s = (char*)"";
+	conf->files.sharedMemoryLocation.c = validate_filepath_empty;
+
 	// sub-struct files.log
 	// conf->files.log.ftl is set in a separate function
 

@@ -19,11 +19,12 @@
 #include "datastructure.h"
 
 typedef struct {
-	const char *name;
+	char *name;
 	size_t size;
 	void *ptr;
 	int fd;
 	struct flock lock;
+	bool shm_open;
 } SharedMemory;
 
 typedef struct {
