@@ -581,7 +581,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	    report_addresses(header, plen, mark);
 	}
 #endif
-      
+
+#ifdef HAVE_DUMPFILE
+      dump_packet_udp(DUMP_REPLY, (void *)header, plen, NULL, udpaddr, udpfd);
+#endif
       send_from(udpfd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, plen, udpaddr, dst_addr, dst_iface);
     }
   
