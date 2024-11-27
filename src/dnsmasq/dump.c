@@ -51,21 +51,29 @@ void dump_init(void)
 
   packet_count = 0;
   
+  header.magic_number = 0xa1b2c3d4;
+  header.version_major = 2;
+  header.version_minor = 4;
+  header.thiszone = 0;
+  header.sigfigs = 0;
+  header.snaplen = daemon->edns_pktsz + 200; /* slop for IP/UDP headers */
+  header.network = 101; /* DLT_RAW http://www.tcpdump.org/linktypes.html */
+
   if (stat(daemon->dump_file, &buf) == -1)
     {
       /* doesn't exist, create and add header */
-      header.magic_number = 0xa1b2c3d4;
-      header.version_major = 2;
-      header.version_minor = 4;
-      header.thiszone = 0;
-      header.sigfigs = 0;
-      header.snaplen = daemon->edns_pktsz + 200; /* slop for IP/UDP headers */
-      header.network = 101; /* DLT_RAW http://www.tcpdump.org/linktypes.html */
-
       if (errno != ENOENT ||
 	  (daemon->dumpfd = creat(daemon->dump_file, S_IRUSR | S_IWUSR)) == -1 ||
 	  !read_write(daemon->dumpfd, (void *)&header, sizeof(header), RW_WRITE))
 	die(_("cannot create %s: %s"), daemon->dump_file, EC_FILE);
+    }
+  else if (S_ISFIFO(buf.st_mode))
+    {
+      /* File is named pipe (with wireshark on the other end, probably.)
+	 Send header. */
+      if  ((daemon->dumpfd = open(daemon->dump_file, O_APPEND | O_RDWR)) == -1 ||
+	   !read_write(daemon->dumpfd, (void *)&header, sizeof(header), RW_WRITE))
+	die(_("cannot open pipe %s: %s"), daemon->dump_file, EC_FILE);
     }
   else if ((daemon->dumpfd = open(daemon->dump_file, O_APPEND | O_RDWR)) == -1 ||
 	   !read_write(daemon->dumpfd, (void *)&header, sizeof(header), RW_READ))
