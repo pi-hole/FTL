@@ -2639,8 +2639,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			  {
 			    if (option != 's')
 			      {
+				/* IPv6 address is longest and represented as
+				   xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx
+				   which is 39 chars */
 				if (!(new->prefix = canonicalise_opt(arg)) ||
-				    strlen(new->prefix) > MAXLABEL - INET_ADDRSTRLEN)
+				    strlen(new->prefix) > (MAXLABEL - 39))
 				  ret_err_free(_("bad prefix"), new);
 			      }
 			    else if (strcmp(arg, "local") != 0)
