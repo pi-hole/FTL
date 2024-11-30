@@ -52,6 +52,29 @@ struct ntp_sync
 	double precision;
 };
 
+// Kiss codes as defined in RFC 5905, Section 7.4
+static struct {
+	const char *code;
+	const char *meaning;
+} kiss_codes[] =
+{
+	{ "ACST", "The association belongs to a unicast server." },
+	{ "AUTH", "Server authentication failed." },
+	{ "AUTO", "Autokey sequence failed." },
+	{ "BCST", "The association belongs to a broadcast server." },
+	{ "CRYP", "Cryptographic authentication or identification failed." },
+	{ "DENY", "Access denied by remote server." },
+	{ "DROP", "Lost peer in symmetric mode." },
+	{ "RSTR", "Access denied due to local policy." },
+	{ "INIT", "The association has not yet synchronized for the first time." },
+	{ "MCST", "The association belongs to a dynamically discovered server." },
+	{ "NKEY", "No key found. Either the key was never installed or is not trusted." },
+	{ "RATE", "Rate exceeded. The server has temporarily denied access because the client exceeded the rate threshold." },
+	{ "RMOT", "Alteration of association from a remote host running ntpdc." },
+	{ "STEP", "A step change in system time has occurred, but the association has not yet resynchronized." },
+	{ NULL, NULL }
+};
+
 // Create minimal NTP request, see server implementation for details about the
 // packet structure
 static bool request(int fd, const char *server, struct addrinfo *saddr, struct ntp_sync *ntp)
@@ -257,6 +280,10 @@ static bool reply(int fd, const char *server, struct addrinfo *saddr, struct ntp
 	memcpy(&srv_root_delay, &buf[4], sizeof(srv_root_delay));
 	memcpy(&srv_root_dispersion, &buf[8], sizeof(srv_root_dispersion));
 
+	// Extract reference ID (Kiss code)
+	char kiss_code[4];
+	memcpy(kiss_code, &buf[12], sizeof(kiss_code));
+
 	// Extract Transmit Timestamp
 	uint64_t netbuffer;
 	// ref = Reference Timestamp (Time at which the clock was last set or corrected)
@@ -289,6 +316,17 @@ static bool reply(int fd, const char *server, struct addrinfo *saddr, struct ntp
 	// Check stratum, mode, version, etc.
 	if((buf[0] & 0x07) != 4)
 	{
+		// Check for possible Kiss code
+		for(size_t i = 0; kiss_codes[i].code != NULL; i++)
+		{
+			if(memcmp(kiss_code, kiss_codes[i].code, sizeof(kiss_code)) == 0)
+			{
+				log_warn("Received NTP reply has Kiss code %s: %s, ignoring",
+				         kiss_codes[i].code, kiss_codes[i].meaning);
+				return false;
+			}
+		}
+		// else:
 		log_warn("Received NTP reply has invalid version, ignoring");
 		return false;
 	}
