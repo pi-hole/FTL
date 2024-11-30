@@ -225,7 +225,7 @@ static bool reply(int fd, const char *server, struct addrinfo *saddr, struct ntp
 	unsigned char buf[48];
 
 	// Receive reply
-	if(recv(fd, buf, 48, 0) < 48)
+	if(recv_nowarn(fd, buf, 48, 0) < 48)
 	{
 		// Get IP address of server
 		char ip[INET6_ADDRSTRLEN];
