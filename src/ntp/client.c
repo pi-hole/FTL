@@ -54,7 +54,7 @@ struct ntp_sync
 
 // Create minimal NTP request, see server implementation for details about the
 // packet structure
-static bool request(int fd, const char *server, struct ntp_sync *ntp)
+static bool request(int fd, const char *server, struct addrinfo *saddr, struct ntp_sync *ntp)
 {
 	// NTP Packet buffer
 	unsigned char buf[48] = {0};
@@ -77,8 +77,13 @@ static bool request(int fd, const char *server, struct ntp_sync *ntp)
 	// Send request
 	if(send(fd, buf, 48, 0) != 48)
 	{
-		log_err("Failed to send data to NTP server %s: %s",
-		        server, errno == EAGAIN ? "Timeout" : strerror(errno));
+		// Get IP address of server
+		char ip[INET6_ADDRSTRLEN];
+		if(getnameinfo(saddr->ai_addr, saddr->ai_addrlen, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST) != 0)
+			strncpy(ip, server, sizeof(ip));
+
+		log_err("Failed to send data to NTP server %s (%s): %s",
+		        server, ip, errno == EAGAIN ? "Timeout" : strerror(errno));
 		return false;
 	}
 
@@ -214,7 +219,7 @@ static bool settime_skew(const double offset)
 	return true;
 }
 
-static bool reply(int fd, const char *server, struct ntp_sync *ntp, const bool verbose)
+static bool reply(int fd, const char *server, struct addrinfo *saddr, struct ntp_sync *ntp, const bool verbose)
 {
 	// NTP Packet buffer
 	unsigned char buf[48];
@@ -222,8 +227,13 @@ static bool reply(int fd, const char *server, struct ntp_sync *ntp, const bool v
 	// Receive reply
 	if(recv(fd, buf, 48, 0) < 48)
 	{
-		log_err("Failed to receive data from NTP server %s: %s",
-		        server, errno == EAGAIN ? "Timeout" : strerror(errno));
+		// Get IP address of server
+		char ip[INET6_ADDRSTRLEN];
+		if(getnameinfo(saddr->ai_addr, saddr->ai_addrlen, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST) != 0)
+			strncpy(ip, server, sizeof(ip));
+
+		log_err("Failed to receive data from NTP server %s (%s): %s",
+		        server, ip, errno == EAGAIN ? "Timeout" : strerror(errno));
 		return false;
 	}
 
@@ -425,7 +435,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 			continue;
 
 		// Send request
-		if(!request(s, server, &ntp[i]))
+		if(!request(s, server, saddr, &ntp[i]))
 		{
 			close(s);
 			free(ntp);
@@ -433,7 +443,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 			return false;
 		}
 		// Get reply
-		if(!reply(s, server, &ntp[i], false))
+		if(!reply(s, server, saddr, &ntp[i], false))
 		{
 			close(s);
 			continue;
