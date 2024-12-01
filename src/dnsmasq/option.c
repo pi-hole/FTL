@@ -4158,7 +4158,12 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		      }
 		    else if (strcmp(arg, "ignore") == 0)
 		      new->flags |= CONFIG_DISABLE;
-		    else
+		    if (new->hostname)
+		      {
+			dhcp_config_free(new);
+			ret_err(_("DHCP host has multiple names"));
+		      }
+ 		    else
 		      {
 			if (!(new->hostname = canonicalise_opt(arg)) ||
 			    !legal_hostname(new->hostname))
