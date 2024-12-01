@@ -152,7 +152,7 @@ int find_mac(union mysockaddr *addr, unsigned char *mac, int lazy, time_t now)
 	 if (arp->status != ARP_EMPTY)
 	   arp->status = ARP_MARK;
        
-       iface_enumerate(AF_UNSPEC, NULL, filter_mac);
+       iface_enumerate(AF_UNSPEC, NULL, (callback_t){.af_unspec=filter_mac});
        
        /* Remove all unconfirmed entries to old list. */
        for (arp = arps, up = &arps; arp; arp = tmp)

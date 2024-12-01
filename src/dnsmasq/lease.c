@@ -411,7 +411,7 @@ static int find_interface_v4(struct in_addr local, int if_index, char *label,
 #ifdef HAVE_DHCP6
 static int find_interface_v6(struct in6_addr *local,  int prefix,
 			     int scope, int if_index, int flags, 
-			     int preferred, int valid, void *vparam)
+			     unsigned int preferred, unsigned int valid, void *vparam)
 {
   struct dhcp_lease *lease;
 
@@ -468,9 +468,9 @@ void lease_find_interfaces(time_t now)
   for (lease = leases; lease; lease = lease->next)
     lease->new_prefixlen = lease->new_interface = 0;
 
-  iface_enumerate(AF_INET, &now, find_interface_v4);
+  iface_enumerate(AF_INET, &now, (callback_t){.af_inet=find_interface_v4});
 #ifdef HAVE_DHCP6
-  iface_enumerate(AF_INET6, &now, find_interface_v6);
+  iface_enumerate(AF_INET6, &now, (callback_t){.af_inet6=find_interface_v6});
 #endif
 
   for (lease = leases; lease; lease = lease->next)

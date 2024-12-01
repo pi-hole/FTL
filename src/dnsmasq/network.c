@@ -602,7 +602,7 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
 
 static int iface_allowed_v6(struct in6_addr *local, int prefix, 
 			    int scope, int if_index, int flags, 
-			    int preferred, int valid, void *vparam)
+			    unsigned int preferred, unsigned int valid, void *vparam)
 {
   union mysockaddr addr;
   struct in_addr netmask; /* dummy */
@@ -842,12 +842,12 @@ again:
 
   param.spare = spare;
   
-  ret = iface_enumerate(AF_INET6, &param, iface_allowed_v6);
+  ret = iface_enumerate(AF_INET6, &param, (callback_t){.af_inet6=iface_allowed_v6});
   if (ret < 0)
     goto again;
   else if (ret)
     {
-      ret = iface_enumerate(AF_INET, &param, iface_allowed_v4);
+      ret = iface_enumerate(AF_INET, &param, (callback_t){.af_inet=iface_allowed_v4});
       if (ret < 0)
 	goto again;
     }

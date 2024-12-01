@@ -47,7 +47,7 @@ static union all_addr del_addr;
 
 #if defined(HAVE_BSD_NETWORK) && !defined(__APPLE__)
 
-int arp_enumerate(void *parm, int (*callback)())
+int arp_enumerate(void *parm, callback_t callback)
 {
   int mib[6];
   size_t needed;
@@ -91,7 +91,7 @@ int arp_enumerate(void *parm, int (*callback)())
       rtm = (struct rt_msghdr *)next;
       sin2 = (struct sockaddr_inarp *)(rtm + 1);
       sdl = (struct sockaddr_dl *)((char *)sin2 + SA_SIZE(sin2));
-      if (!(*callback)(AF_INET, &sin2->sin_addr, LLADDR(sdl), sdl->sdl_alen, parm))
+      if (!callback.af_unspec(AF_INET, &sin2->sin_addr, LLADDR(sdl), sdl->sdl_alen, parm))
 	return 0;
     }
 
@@ -107,7 +107,7 @@ int iface_enumerate(int family, void *parm, int (*callback)())
 
   if (family == AF_UNSPEC)
 #if defined(HAVE_BSD_NETWORK) && !defined(__APPLE__)
-    return  arp_enumerate(parm, callback);
+    return  arp_enumerate(parm, callback.af_unspec);
 #else
   return 0; /* need code for Solaris and MacOS*/
 #endif
@@ -147,7 +147,7 @@ int iface_enumerate(int family, void *parm, int (*callback)())
 		broadcast = ((struct sockaddr_in *) addrs->ifa_broadaddr)->sin_addr; 
 	      else 
 		broadcast.s_addr = 0;	      
-	      if (!((*callback)(addr, iface_index, NULL, netmask, broadcast, parm)))
+	      if (!callback.af_inet(addr, iface_index, NULL, netmask, broadcast, parm))
 		goto err;
 	    }
 	  else if (family == AF_INET6)
@@ -212,8 +212,8 @@ int iface_enumerate(int family, void *parm, int (*callback)())
 		  addr->s6_addr[3] = 0;
 		} 
 	     
-	      if (!((*callback)(addr, prefix, scope_id, iface_index, flags,
-				(int) preferred, (int)valid, parm)))
+	      if (!callback.af_inet6(addr, prefix, scope_id, iface_index, flags,
+				(unsigned int) preferred, (unsigned int)valid, parm))
 		goto err;	      
 	    }
 
@@ -223,7 +223,7 @@ int iface_enumerate(int family, void *parm, int (*callback)())
 	      /* Assume ethernet again here */
 	      struct sockaddr_dl *sdl = (struct sockaddr_dl *) addrs->ifa_addr;
 	      if (sdl->sdl_alen != 0 && 
-		  !((*callback)(iface_index, ARPHRD_ETHER, LLADDR(sdl), sdl->sdl_alen, parm)))
+		  !callback.af_local(iface_index, ARPHRD_ETHER, LLADDR(sdl), sdl->sdl_alen, parm))
 		goto err;
 	    }
 #endif 
