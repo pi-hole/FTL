@@ -1393,9 +1393,6 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 	    }
 #endif
 	  
-	  /* Pi-hole modification */
-	  int first_ID = -1;
-	  
 	  if (src->fd != -1)
 	    {
 	      /* Only send packets that fit what the requestor allows.
@@ -1435,6 +1432,9 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 	  daemon->log_display_id = forward->frec_src.log_id;
 	  daemon->log_source_addr = &forward->frec_src.source;
 	  log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
+	  
+	  /* Pi-hole modification */
+	  int first_ID = -1;
 
 	  for (src = &forward->frec_src; src; src = src->next)
 	    if (src->fd != -1 && nn > src->udp_pkt_size)
@@ -1901,10 +1901,10 @@ void receive_query(struct listener *listen, time_t now)
 	  {
 	    if (ede_len > 0) // Add EDNS0 option EDE if applicable
 	      n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
-				   daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
+				   EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
 	    else
 	      n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
-				   daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+				   0, NULL, 0, do_bit, 0);
 	  }
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
 		    (char *)header, (size_t)n, &source_addr, &dst_addr, if_index);
@@ -2557,10 +2557,10 @@ unsigned char *tcp_request(int confd, time_t now,
 	    {
 	      if (ede_len > 0) // Add EDNS0 option EDE if applicable
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
-				     daemon->edns_pktsz, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
+				     EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
 	      else
 		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
-				     daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+				     0, NULL, 0, do_bit, 0);
 	    }
 	  }
 	  else
