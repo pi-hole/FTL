@@ -21,9 +21,9 @@
 }
 
 @test "dnsmasq options as expected" {
-  run bash -c './pihole-FTL -vv | grep "cryptohash"'
+  run bash -c './pihole-FTL -vv | grep "dumpfile"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "Features:        IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN2 DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth cryptohash DNSSEC loop-detect inotify dumpfile" ]]
+  [[ ${lines[0]} == "Features:        IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN2 DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth DNSSEC loop-detect inotify dumpfile" ]]
   [[ ${lines[1]} == "" ]]
 }
 
