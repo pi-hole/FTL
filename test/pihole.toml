@@ -960,7 +960,7 @@
   # with an individual query, and the IP address of the requestor. This setting is only
   # effective if dns.queryLogging is enabled, too. This option is only useful for
   # debugging and is not recommended for normal use.
-  extraLogging = false
+  extraLogging = true ### CHANGED, default = false
 
   # Put configuration into read-only mode. This will prevent any changes to the
   # configuration file via the API or CLI. This setting useful when a configuration is
@@ -1117,8 +1117,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 150 total entries out of which 95 entries are default
-# --> 55 entries are modified
+# 150 total entries out of which 94 entries are default
+# --> 56 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice
 #   - debug.api

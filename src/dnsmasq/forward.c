@@ -419,7 +419,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  /* get query for logging. */
 	  gotname = extract_request(header, plen, daemon->namebuff, NULL);
 
-	  FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_display_id, true);
+	  FTL_forwarding_retried(forward, daemon->log_display_id, true);
 	  
 	  /* Find suitable servers: should never fail. */
 	  if (!filter_servers(forward->sentto->arrayposn, F_DNSSECOK, &first, &last))
@@ -437,7 +437,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  else
 	    forward->sentto->retrys++;
 
-	  FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_display_id, false);
+	  FTL_forwarding_retried(forward, daemon->log_display_id, false);
 	  
 	  if (!filter_servers(forward->sentto->arrayposn, F_SERVER, &first, &last))
 	    goto reply;

@@ -6,8 +6,7 @@
     "vscode": {
       "extensions": [
         "jetmartin.bats",
-        "ms-vscode.cpptools",
-        "ms-vscode.cmake-tools",
+        "ms-vscode.cpptools-extension-pack",
         "eamodio.gitlens",
         "github.copilot",
         "ms-python.python"
