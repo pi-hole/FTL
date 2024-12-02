@@ -10,6 +10,13 @@
 
 #ifndef PROCPS_H
 #define PROCPS_H
+
+#include <stdbool.h>
+#include <sys/types.h>
+
+#define PROC_PATH_SIZ  32
+
+bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ]);
 bool another_FTL(void);
 
 struct proc_mem {
@@ -39,7 +46,6 @@ struct proc_meminfo {
 	unsigned long cached;
 };
 
-bool read_self_memory_status(struct statm_t *result);
 bool getProcessMemory(struct proc_mem *mem, const unsigned long total_memory);
 bool parse_proc_meminfo(struct proc_meminfo *mem);
 

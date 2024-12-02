@@ -15,6 +15,12 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
     endif()
 endif()
 
+# Do not add run time path information
+# This ensures CMake does not add rpath information to the binary and
+# subsequently strip it from the binary during install causing the binary
+# validation to fail. RPATH is not needed for the FTL binary
+SET(CMAKE_SKIP_RPATH TRUE)
+
 # Put runtime output, i.e. pihole-FTL, in the root of the build dir
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 
@@ -38,7 +44,7 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
-# -Wp,-D_FORTIFY_SOURCE=2 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts
+# -Wp,-D_FORTIFY_SOURCE=3 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts. We may have to undefine _FORTIFY_SOURCE to avoid a warning about the redefinition of this macro
 # -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
 # -g3: More debugging information
@@ -51,7 +57,7 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 # -Wl,-z,relro: Read-only segments after relocation
 # -fno-common: Emit globals without explicit initializer from `.bss` to `.data`. This causes GCC to reject multiple definitions of global variables. This is the new default from GCC-10 on.
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
+    set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=3 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
     set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
 endif()
 
@@ -237,6 +243,8 @@ set(sources
         gc.h
         log.c
         log.h
+        lookup-table.c
+        lookup-table.h
         main.c
         main.h
         metrics.h
@@ -252,8 +260,6 @@ set(sources
         shmem.h
         signals.c
         signals.h
-        struct_size.c
-        struct_size.h
         timers.c
         timers.h
         vector.c
@@ -371,16 +377,23 @@ else()
     target_compile_definitions(civetweb PRIVATE NO_SSL)
 endif()
 
-# After finishing building the FTL binary, we append the sha256sum of the binary in raw form to itself
-add_custom_command(TARGET pihole-FTL POST_BUILD
+# After finishing building the FTL binary, we append the sha256sum of the binary
+# in raw form to itself and print the checksum to the console
+add_custom_command(TARGET pihole-FTL POST_BUILD COMMENT "Appending sha256sum to pihole-FTL"
+        COMMAND echo -n "SHA256 checksum of pihole-FTL: " && sha256sum $<TARGET_FILE:pihole-FTL> | cut -d ' ' -f 1
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pihole-FTL> $<TARGET_FILE_DIR:pihole-FTL>/pihole-FTL.tmp
+        COMMAND echo -n "sha256sum" >> $<TARGET_FILE:pihole-FTL>.tmp
         COMMAND sha256sum $<TARGET_FILE:pihole-FTL>.tmp | cut -d ' ' -f 1 | xxd -r -p >> $<TARGET_FILE:pihole-FTL>.tmp
         COMMAND mv $<TARGET_FILE:pihole-FTL>.tmp $<TARGET_FILE:pihole-FTL>
         )
 
-find_program(SETCAP setcap)
+######### Installation target ############
+# Install the binary
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN,CAP_SYS_TIME+eip \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
-
+find_program(SETCAP setcap)
+# After installing the binary, we set the capabilities on the binary ...
+install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN,CAP_SYS_TIME+eip \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
+# ... and verify the binary integrity
+install(CODE "execute_process(COMMAND \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL verify)")

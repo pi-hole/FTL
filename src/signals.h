@@ -10,6 +10,9 @@
 #ifndef SIGNALS_H
 #define SIGNALS_H
 
+// pid_t
+#include <sys/types.h>
+
 #include "enums.h"
 
 #define SIGUSR6 (SIGRTMIN + 6)
@@ -22,6 +25,7 @@ void thread_sleepms(const enum thread_types thread, const int milliseconds);
 void generate_backtrace(void);
 int sigtest(void);
 void restart_ftl(const char *reason);
+pid_t debugger(void);
 
 extern volatile int exit_code;
 extern volatile sig_atomic_t killed;

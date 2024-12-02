@@ -66,13 +66,6 @@ void free_api(void)
 	auth_data = NULL;
 }
 
-// Is this client connecting from localhost?
-bool __attribute__((pure)) is_local_api_user(const char *remote_addr)
-{
-	return strcmp(remote_addr, LOCALHOSTv4) == 0 ||
-	       strcmp(remote_addr, LOCALHOSTv6) == 0;
-}
-
 // Can we validate this client?
 // Returns -1 if not authenticated or expired
 // Returns >= 0 for any valid authentication

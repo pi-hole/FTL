@@ -32,6 +32,10 @@
 #include "daemon.h"
 // create_inotify_watcher()
 #include "config/inotify.h"
+// lookup_remove()
+#include "lookup-table.h"
+// get_and_clear_event()
+#include "events.h"
 
 // Resource checking interval
 // default: 300 seconds
@@ -49,6 +53,11 @@ bool doGC = false;
 // by any query (only head and tail of the CNAME chain are)
 static void recycle(void)
 {
+	// Get current time
+	const double now = double_time();
+	const double twentyfour_hrs_ago = now - 24*3600;
+
+	// Allocate memory for recycling
 	bool *client_used = calloc(counters->clients, sizeof(bool));
 	bool *domain_used = calloc(counters->domains, sizeof(bool));
 	bool *cache_used = calloc(counters->dns_cache_size, sizeof(bool));
@@ -60,9 +69,9 @@ static void recycle(void)
 
 	// Find list of client and domain IDs no active query is referencing anymore
 	// and recycle them
-	for(int queryID = 0; queryID < counters->queries; queryID++)
+	for(unsigned int queryID = 0; queryID < counters->queries; queryID++)
 	{
-		queriesData *query = getQuery(queryID, true);
+		const queriesData *query = getQuery(queryID, true);
 		if(query == NULL)
 			continue;
 
@@ -81,12 +90,12 @@ static void recycle(void)
 
 	// Recycle clients
 	unsigned int clients_recycled = 0;
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		if(client_used[clientID])
 			continue;
 
-		clientsData* client = getClient(clientID, true);
+		clientsData *client = getClient(clientID, true);
 		if(client == NULL)
 			continue;
 
@@ -95,8 +104,20 @@ static void recycle(void)
 		if(client->flags.aliasclient)
 			continue;
 
-		log_debug(DEBUG_GC, "Recycling client %s (ID %d, lastQuery at %.3f)",
-		          getstr(client->ippos), clientID, client->lastQuery);
+		if(config.debug.gc.v.b)
+		{
+			char timestring[TIMESTR_SIZE];
+			get_timestr(timestring, client->lastQuery, true, false);
+
+			log_debug(DEBUG_GC, "Recycling client %s (ID %u, last query was %s)",
+			          getstr(client->ippos), clientID, timestring);
+		}
+
+		// Remove client from lookup table
+		lookup_remove(CLIENTS_LOOKUP, clientID, client->hash);
+
+		// Add ID of recycled client to recycle table
+		set_next_recycled_ID(CLIENTS, clientID);
 
 		// Wipe client's memory
 		memset(client, 0, sizeof(clientsData));
@@ -106,17 +127,36 @@ static void recycle(void)
 
 	// Recycle domains
 	unsigned int domains_recycled = 0;
-	for(int domainID = 0; domainID < counters->domains; domainID++)
+	for(unsigned int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		if(domain_used[domainID])
 			continue;
 
-		domainsData* domain = getDomain(domainID, true);
+		domainsData *domain = getDomain(domainID, true);
 		if(domain == NULL)
 			continue;
 
-		log_debug(DEBUG_GC, "Recycling domain %s (ID %d, lastQuery at %.3f)",
-		          getstr(domain->domainpos), domainID, domain->lastQuery);
+		// Only recycle domains when their last query was more than 24
+		// hours ago. This ensures that we do not recycle domains that
+		// have recently been seen but which are not part of any query
+		// (e.g., intermediate domains during CNAME inspection)
+		if(domain->lastQuery > twentyfour_hrs_ago)
+			continue;
+
+		if(config.debug.gc.v.b)
+		{
+			char timestring[TIMESTR_SIZE];
+			get_timestr(timestring, domain->lastQuery, true, false);
+
+			log_debug(DEBUG_GC, "Recycling domain %s (ID %u, last query was %s)",
+			          getstr(domain->domainpos), domainID, timestring);
+		}
+
+		// Remove domain from lookup table
+		lookup_remove(DOMAINS_LOOKUP, domainID, domain->hash);
+
+		// Add ID of recycled domain to recycle table
+		set_next_recycled_ID(DOMAINS, domainID);
 
 		// Wipe domain's memory
 		memset(domain, 0, sizeof(domainsData));
@@ -126,7 +166,7 @@ static void recycle(void)
 
 	// Recycle cache records
 	unsigned int cache_recycled = 0;
-	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		if(cache_used[cacheID])
 			continue;
@@ -135,7 +175,13 @@ static void recycle(void)
 		if(cache == NULL)
 			continue;
 
-		log_debug(DEBUG_GC, "Recycling cache entry with ID %d", cacheID);
+		log_debug(DEBUG_GC, "Recycling cache entry with ID %u", cacheID);
+
+		// Remove cache entry from lookup table
+		lookup_remove(DNS_CACHE_LOOKUP, cacheID, cache->hash);
+
+		// Add ID of recycled domain to recycle table
+		set_next_recycled_ID(DNS_CACHE, cacheID);
 
 		// Wipe cache entry's memory
 		memset(cache, 0, sizeof(DNSCacheData));
@@ -152,41 +198,43 @@ static void recycle(void)
 	if(config.debug.gc.v.b)
 	{
 		unsigned int free_domains = 0, free_clients = 0, free_cache = 0;
-		for(int clientID = 0; clientID < counters->clients; clientID++)
+		for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 		{
 			// Do not check magic to avoid skipping recycled clients
-			clientsData *client = getClient(clientID, false);
+			const clientsData *client = getClient(clientID, false);
 			if(client == NULL)
 				continue;
 			if(client->magic == 0x00)
 				free_clients++;
 		}
-		for(int domainID = 0; domainID < counters->domains; domainID++)
+		for(unsigned int domainID = 0; domainID < counters->domains; domainID++)
 		{
 			// Do not check magic to avoid skipping recycled domains
-			domainsData *domain = getDomain(domainID, false);
+			const domainsData *domain = getDomain(domainID, false);
 			if(domain == NULL)
 				continue;
 			if(domain->magic == 0x00)
 				free_domains++;
 		}
-		for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+		for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 		{
 			// Do not check magic to avoid skipping recycled cache entries
-			DNSCacheData *cache = getDNSCache(cacheID, false);
+			const DNSCacheData *cache = getDNSCache(cacheID, false);
 			if(cache == NULL)
 				continue;
 			if(cache->magic == 0x00)
 				free_cache++;
 		}
 
-		log_debug(DEBUG_GC, "%d/%d clients, %d/%d domains and %d/%d cache records are free",
-		          counters->clients_MAX + (int)free_clients - counters->clients, counters->clients_MAX,
-		          counters->domains_MAX + (int)free_domains - counters->domains_MAX, counters->domains_MAX,
-		          counters->dns_cache_MAX + (int)free_cache - counters->dns_cache_MAX, counters->dns_cache_MAX);
+		log_debug(DEBUG_GC, "%u/%u clients, %u/%u domains and %u/%u cache records are free",
+		          counters->clients_MAX + free_clients - counters->clients, counters->clients_MAX,
+		          counters->domains_MAX + free_domains - counters->domains, counters->domains_MAX,
+		          counters->dns_cache_MAX + free_cache - counters->dns_cache_size, counters->dns_cache_MAX);
 
-		log_debug(DEBUG_GC, "Recycled additional %u clients, %u domains, and %u cache records (scanned %d queries)",
+		log_debug(DEBUG_GC, "Recycled %u clients, %u domains, and %u cache records (scanned %u queries)",
 		          clients_recycled, domains_recycled, cache_recycled, counters->queries);
+
+		dump_strings();
 	}
 }
 
@@ -195,7 +243,7 @@ static void recycle(void)
 // maximum count, the rate-limitation will just continue
 static void reset_rate_limiting(void)
 {
-	for(int clientID = 0; clientID < counters->clients; clientID++)
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
 		if(!client)
@@ -300,13 +348,13 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		timer_start(GC_TIMER);
 		char timestring[TIMESTR_SIZE];
 		get_timestr(timestring, mintime, false, false);
-		log_debug(DEBUG_GC, "GC starting, mintime: %s (%lu), counters->queries = %d",
+		log_debug(DEBUG_GC, "GC starting, mintime: %s (%lu), counters->queries = %u",
 		          timestring, (unsigned long)mintime, counters->queries);
 	}
 
 	// Process all queries
 	unsigned int removed = 0;
-	for(long int i = 0; i < counters->queries; i++)
+	for(unsigned int i = 0; i < counters->queries; i++)
 	{
 		queriesData *query = getQuery(i, true);
 		if(query == NULL)
@@ -318,7 +366,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 		// Adjust client counter (total and overTime)
 		const int timeidx = getOverTimeID(query->timestamp);
-		clientsData* client = getClient(query->clientID, true);
+		clientsData *client = getClient(query->clientID, true);
 		if(client != NULL)
 			change_clientcount(client, -1, 0, timeidx, -1);
 
@@ -328,10 +376,13 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 			domain->count--;
 
 		// Adjust upstream counter (no overTime information)
-		upstreamsData *upstream = getUpstream(query->upstreamID, true);
-		if(upstream != NULL)
-			// Adjust upstream counter
-			upstream->count--;
+		if(query->upstreamID > -1)
+		{
+			upstreamsData *upstream = getUpstream(query->upstreamID, true);
+			if(upstream != NULL)
+				// Adjust upstream counter
+				upstream->count--;
+		}
 
 		// Change other counters according to status of this query
 		switch(query->status)
@@ -375,17 +426,17 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 		// Update reply counters
 		counters->reply[query->reply]--;
-		log_debug(DEBUG_STATUS, "reply type %d removed (GC), ID = %d, new count = %d", query->reply, query->id, counters->reply[query->reply]);
+		log_debug(DEBUG_STATUS, "reply type %u removed (GC), ID = %d, new count = %u", query->reply, query->id, counters->reply[query->reply]);
 
 		// Update type counters
 		counters->querytype[query->type]--;
-		log_debug(DEBUG_STATUS, "query type %d removed (GC), ID = %d, new count = %d", query->type, query->id, counters->querytype[query->type]);
+		log_debug(DEBUG_STATUS, "query type %u removed (GC), ID = %d, new count = %u", query->type, query->id, counters->querytype[query->type]);
 
 		// Subtract UNKNOWN from the counters before
 		// setting the status if different.
 		// Minus one here and plus one below = net zero
 		counters->status[QUERY_UNKNOWN]--;
-		log_debug(DEBUG_STATUS, "status %d removed (GC), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
+		log_debug(DEBUG_STATUS, "status %d removed (GC), ID = %d, new count = %u", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
 
 		// Set query again to UNKNOWN to reset the counters
 		query_set_status(query, QUERY_UNKNOWN);
@@ -479,8 +530,11 @@ static bool check_files_on_same_device(const char *path1, const char *path2)
 	return s1.st_dev == s2.st_dev;
 }
 
+static bool is_debugged = false;
 void *GC_thread(void *val)
 {
+	(void)val; // Mark parameter as unused
+
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[GC], 0, 0, 0);
 
@@ -504,6 +558,7 @@ void *GC_thread(void *val)
 	while(!killed)
 	{
 		const time_t now = time(NULL);
+		const double time_start = double_time();
 		if(config.dns.rateLimit.interval.v.ui > 0 &&
 		   (unsigned int)(now - lastRateLimitCleaner) >= config.dns.rateLimit.interval.v.ui)
 		{
@@ -560,7 +615,48 @@ void *GC_thread(void *val)
 			reread_config();
 		}
 
-		thread_sleepms(GC, 1000);
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
+		// Reset the queries-per-second counter
+		lock_shm();
+		reset_qps(now);
+		unlock_shm();
+
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
+		// Check if we need to search for hash collisions
+		if(get_and_clear_event(SEARCH_LOOKUP_HASH_COLLISIONS))
+		{
+			lock_shm();
+			lookup_find_hash_collisions();
+			print_recycle_list_fullness();
+			unlock_shm();
+		}
+
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
+		// Check if FTL is being debugged and set dnsmasq's debug mode
+		// accordingly
+		const pid_t dpid = debugger();
+		if((dpid > 0) != is_debugged)
+		{
+			is_debugged = dpid > 0;
+			set_dnsmasq_debug(is_debugged, dpid);
+		}
+
+		// Sleep for the remaining time of the interval (if any)
+		const double time_end = double_time();
+		const double time_diff = time_end - time_start;
+		const double sleep_time = 1.0 - time_diff; // 1.0 second interval
+
+		if(sleep_time > 0)
+			thread_sleepms(GC, (unsigned int)(sleep_time*1000));
 	}
 
 	// Close inotify watcher

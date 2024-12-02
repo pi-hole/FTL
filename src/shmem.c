@@ -32,6 +32,8 @@
 #include "files.h"
 // log_resource_shortage()
 #include "database/message-table.h"
+// struct lookup_table
+#include "lookup-table.h"
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 14
@@ -49,6 +51,10 @@
 #define SHARED_SETTINGS_NAME "FTL-settings"
 #define SHARED_DNS_CACHE "FTL-dns-cache"
 #define SHARED_PER_CLIENT_REGEX "FTL-per-client-regex"
+#define SHARED_CLIENTS_LOOKUP_NAME "FTL-clients-lookup"
+#define SHARED_DOMAINS_LOOKUP_NAME "FTL-domains-lookup"
+#define SHARED_DNS_CACHE_LOOKUP_NAME "FTL-dns-cache-lookup"
+#define SHARED_RECYCLER_NAME "FTL-recycler"
 
 // Allocation step for FTL-strings bucket. This is somewhat special as we use
 // this as a general-purpose storage which should always be large enough. If,
@@ -74,6 +80,10 @@ static SharedMemory shm_settings = { 0 };
 static SharedMemory shm_dns_cache = { 0 };
 static SharedMemory shm_per_client_regex = { 0 };
 static SharedMemory shm_fifo_log = { 0 };
+static SharedMemory shm_clients_lookup = { 0 };
+static SharedMemory shm_domains_lookup = { 0 };
+static SharedMemory shm_dns_cache_lookup = { 0 };
+static SharedMemory shm_recycler = { 0 };
 
 static SharedMemory *sharedMemories[] = { &shm_lock,
                                           &shm_strings,
@@ -86,7 +96,11 @@ static SharedMemory *sharedMemories[] = { &shm_lock,
                                           &shm_settings,
                                           &shm_dns_cache,
                                           &shm_per_client_regex,
-                                          &shm_fifo_log };
+                                          &shm_fifo_log,
+                                          &shm_clients_lookup,
+                                          &shm_domains_lookup,
+                                          &shm_dns_cache_lookup,
+                                          &shm_recycler };
 
 // Variable size array structs
 static queriesData *queries = NULL;
@@ -95,13 +109,21 @@ static domainsData *domains = NULL;
 static upstreamsData *upstreams = NULL;
 static DNSCacheData *dns_cache = NULL;
 fifologData *fifo_log = NULL;
+struct lookup_table *clients_lookup = NULL;
+struct lookup_table *domains_lookup = NULL;
+struct lookup_table *dns_cache_lookup = NULL;
+struct recycler_tables *recycler = NULL;
 
 static void **global_pointers[] = {(void**)&queries,
                                    (void**)&clients,
                                    (void**)&domains,
                                    (void**)&upstreams,
                                    (void**)&dns_cache,
-                                   (void**)&fifo_log };
+                                   (void**)&fifo_log,
+                                   (void**)&clients_lookup,
+                                   (void**)&domains_lookup,
+                                   (void**)&dns_cache_lookup,
+                                   (void**)&recycler};
 
 typedef struct {
 	struct {
@@ -223,7 +245,7 @@ size_t _addstr(const char *input, const char *func, const int line, const char *
 	}
 
 	// Debugging output
-	log_debug(DEBUG_SHMEM, "Adding \"%s\" (len %zu) to buffer in %s() (%s:%i), next_str_pos is %u",
+	log_debug(DEBUG_SHMEM, "Adding \"%s\" (len %zu) to buffer in %s() (%s:%i), next_str_pos is %zu",
 	          input, len, func, short_path(file), line, shmSettings->next_str_pos);
 
 	// Copy the C string pointed by input into the shared string buffer
@@ -244,7 +266,8 @@ const char *_getstr(const size_t pos, const char *func, const int line, const ch
 		return &((const char*)shm_strings.ptr)[pos];
 	else
 	{
-		log_warn("Tried to access %zu in %s() (%s:%i) but next_str_pos is %u", pos, func, file, line, shmSettings->next_str_pos);
+		log_warn("Tried to access %zu in %s() (%s:%i) but next_str_pos is %zu",
+		         pos, func, file, line, shmSettings->next_str_pos);
 		return "";
 	}
 }
@@ -311,6 +334,15 @@ static void remap_shm(void)
 	realloc_shm(&shm_strings, counters->strings_MAX, sizeof(char), false);
 	// strings are not exposed by a global pointer
 
+	realloc_shm(&shm_domains_lookup, counters->domains_lookup_MAX, sizeof(struct lookup_table), false);
+	domains_lookup = (struct lookup_table*)shm_domains_lookup.ptr;
+
+	realloc_shm(&shm_clients_lookup, counters->clients_lookup_MAX, sizeof(struct lookup_table), false);
+	clients_lookup = (struct lookup_table*)shm_clients_lookup.ptr;
+
+	realloc_shm(&shm_dns_cache_lookup, counters->dns_cache_lookup_MAX, sizeof(struct lookup_table), false);
+	dns_cache_lookup = (struct lookup_table*)shm_dns_cache_lookup.ptr;
+
 	// Update local counter to reflect that we absorbed this change
 	local_shm_counter = shmSettings->global_shm_counter;
 }
@@ -376,7 +408,7 @@ void _lock_shm(const char *func, const int line, const char *file)
 }
 
 // Release SHM lock
-void _unlock_shm(const char* func, const int line, const char * file)
+void _unlock_shm(const char *func, const int line, const char * file)
 {
 	// There is no need to unlock if we are the only thread
 	// (e.g., when running pihole-FTL --config a.b.c def)
@@ -534,6 +566,40 @@ bool init_shmem()
 		return false;
 	fifo_log = (fifologData*)shm_fifo_log.ptr;
 
+	/****************************** shared clients_lookup struct ******************************/
+	size = get_optimal_object_size(sizeof(struct lookup_table), 1);
+	// Try to create shared memory object
+	create_shm(SHARED_CLIENTS_LOOKUP_NAME, &shm_clients_lookup, size*sizeof(struct lookup_table));
+	if(shm_clients_lookup.ptr == NULL)
+		return false;
+	clients_lookup = (struct lookup_table*)shm_clients_lookup.ptr;
+	counters->clients_lookup_MAX = size;
+
+	/****************************** shared domains_lookup struct ******************************/
+	size = get_optimal_object_size(sizeof(struct lookup_table), 1);
+	// Try to create shared memory object
+	create_shm(SHARED_DOMAINS_LOOKUP_NAME, &shm_domains_lookup, size*sizeof(struct lookup_table));
+	if(shm_domains_lookup.ptr == NULL)
+		return false;
+	domains_lookup = (struct lookup_table*)shm_domains_lookup.ptr;
+	counters->domains_lookup_MAX = size;
+
+	/****************************** shared dns_cache_lookup struct ******************************/
+	size = get_optimal_object_size(sizeof(struct lookup_table), 1);
+	// Try to create shared memory object
+	create_shm(SHARED_DNS_CACHE_LOOKUP_NAME, &shm_dns_cache_lookup, size*sizeof(struct lookup_table));
+	if(shm_dns_cache_lookup.ptr == NULL)
+		return false;
+	dns_cache_lookup = (struct lookup_table*)shm_dns_cache_lookup.ptr;
+	counters->dns_cache_lookup_MAX = size;
+
+	/****************************** shared recycler struct ******************************/
+	// Try to create shared memory object
+	create_shm(SHARED_RECYCLER_NAME, &shm_recycler, sizeof(struct recycler_tables));
+	if(shm_recycler.ptr == NULL)
+		return false;
+	recycler = (struct recycler_tables*)shm_recycler.ptr;
+
 	return true;
 }
 
@@ -651,7 +717,7 @@ static void *enlarge_shmem_struct(const char type)
 {
 	SharedMemory *sharedMemory = NULL;
 	size_t sizeofobj, allocation_step;
-	int *counter = NULL;
+	unsigned int *size = NULL;
 
 	// Select type of struct that should be enlarged
 	switch(type)
@@ -660,37 +726,55 @@ static void *enlarge_shmem_struct(const char type)
 			sharedMemory = &shm_queries;
 			allocation_step = pagesize;
 			sizeofobj = sizeof(queriesData);
-			counter = &counters->queries_MAX;
+			size = &counters->queries_MAX;
 			break;
 		case CLIENTS:
 			sharedMemory = &shm_clients;
 			allocation_step = get_optimal_object_size(sizeof(clientsData), 1);
 			sizeofobj = sizeof(clientsData);
-			counter = &counters->clients_MAX;
+			size = &counters->clients_MAX;
 			break;
 		case DOMAINS:
 			sharedMemory = &shm_domains;
 			allocation_step = get_optimal_object_size(sizeof(domainsData), 1);
 			sizeofobj = sizeof(domainsData);
-			counter = &counters->domains_MAX;
+			size = &counters->domains_MAX;
 			break;
 		case UPSTREAMS:
 			sharedMemory = &shm_upstreams;
 			allocation_step = get_optimal_object_size(sizeof(upstreamsData), 1);
 			sizeofobj = sizeof(upstreamsData);
-			counter = &counters->upstreams_MAX;
+			size = &counters->upstreams_MAX;
 			break;
 		case DNS_CACHE:
 			sharedMemory = &shm_dns_cache;
 			allocation_step = get_optimal_object_size(sizeof(DNSCacheData), 1);
 			sizeofobj = sizeof(DNSCacheData);
-			counter = &counters->dns_cache_MAX;
+			size = &counters->dns_cache_MAX;
 			break;
 		case STRINGS:
 			sharedMemory = &shm_strings;
 			allocation_step = STRINGS_ALLOC_STEP;
 			sizeofobj = 1;
-			counter = &counters->strings_MAX;
+			size = &counters->strings_MAX;
+			break;
+		case CLIENTS_LOOKUP:
+			sharedMemory = &shm_clients_lookup;
+			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), 1);
+			sizeofobj = sizeof(struct lookup_table);
+			size = &counters->clients_lookup_MAX;
+			break;
+		case DOMAINS_LOOKUP:
+			sharedMemory = &shm_domains_lookup;
+			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), 1);
+			sizeofobj = sizeof(struct lookup_table);
+			size = &counters->domains_lookup_MAX;
+			break;
+		case DNS_CACHE_LOOKUP:
+			sharedMemory = &shm_dns_cache_lookup;
+			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), 1);
+			sizeofobj = sizeof(struct lookup_table);
+			size = &counters->dns_cache_lookup_MAX;
 			break;
 		default:
 			log_err("Invalid argument in enlarge_shmem_struct(%i)", type);
@@ -701,8 +785,8 @@ static void *enlarge_shmem_struct(const char type)
 	const size_t current = sharedMemory->size/sizeofobj;
 	realloc_shm(sharedMemory, current + allocation_step, sizeofobj, true);
 
-	// Add allocated memory to corresponding counter
-	*counter += allocation_step;
+	// Add allocated memory to corresponding size
+	*size += allocation_step;
 
 	return sharedMemory->ptr;
 }
@@ -936,9 +1020,39 @@ void shm_ensure_size(void)
 			exit(EXIT_FAILURE);
 		}
 	}
+	if(counters->clients_lookup_size >= counters->clients_lookup_MAX-1)
+	{
+		// Have to reallocate shared memory
+		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP);
+		if(clients_lookup == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->domains_lookup_size >= counters->domains_lookup_MAX-1)
+	{
+		// Have to reallocate shared memory
+		domains_lookup = enlarge_shmem_struct(DOMAINS_LOOKUP);
+		if(domains_lookup == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->dns_cache_lookup_size >= counters->dns_cache_lookup_MAX-1)
+	{
+		// Have to reallocate shared memory
+		dns_cache_lookup = enlarge_shmem_struct(DNS_CACHE_LOOKUP);
+		if(dns_cache_lookup == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
 }
 
-void reset_per_client_regex(const int clientID)
+void reset_per_client_regex(const unsigned int clientID)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	for(unsigned int i = 0u; i < num_regex_tot; i++)
@@ -948,7 +1062,7 @@ void reset_per_client_regex(const int clientID)
 	}
 }
 
-void add_per_client_regex(unsigned int clientID)
+void add_per_client_regex(const unsigned int clientID)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const size_t size = get_optimal_object_size(1, (size_t)counters->clients * num_regex_tot);
@@ -960,14 +1074,14 @@ void add_per_client_regex(unsigned int clientID)
 	}
 }
 
-bool get_per_client_regex(const int clientID, const int regexID)
+bool get_per_client_regex(const unsigned int clientID, const unsigned int regexID)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		log_err("get_per_client_regex(%d, %d): Out of bounds (%u > %d * %u, shm_per_client_regex.size = %zu)!",
+		log_err("get_per_client_regex(%u, %u): Out of bounds (%u > %u * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID,
 		        id, counters->clients, num_regex_tot, maxval);
 		return false;
@@ -975,14 +1089,14 @@ bool get_per_client_regex(const int clientID, const int regexID)
 	return ((bool*) shm_per_client_regex.ptr)[id];
 }
 
-void set_per_client_regex(const int clientID, const int regexID, const bool value)
+void set_per_client_regex(const unsigned int clientID, const unsigned int regexID, const bool value)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		log_err("set_per_client_regex(%d, %d, %s): Out of bounds (%u > %d * %u, shm_per_client_regex.size = %zu)!",
+		log_err("set_per_client_regex(%u, %u, %s): Out of bounds (%u > %u * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID, value ? "true" : "false",
 		        id, counters->clients, num_regex_tot, maxval);
 		return;
@@ -990,14 +1104,14 @@ void set_per_client_regex(const int clientID, const int regexID, const bool valu
 	((bool*) shm_per_client_regex.ptr)[id] = value;
 }
 
-static inline bool check_range(int ID, int MAXID, const char* type, const char *func, int line, const char *file)
+static inline bool check_range(unsigned int ID, unsigned int MAXID, const char *type, const char *func, int line, const char *file)
 {
 	// Check bounds
-	if(ID < 0 || ID > MAXID)
+	if(ID > MAXID)
 	{
 		if(debug_flags[DEBUG_ANY])
 		{
-			log_err("Trying to access %s ID %i, but maximum is %i", type, ID, MAXID);
+			log_err("Trying to access %s ID %u, but maximum is %u", type, ID, MAXID);
 			log_err("found in %s() (%s:%i)", func, short_path(file), line);
 		}
 		return false;
@@ -1007,14 +1121,14 @@ static inline bool check_range(int ID, int MAXID, const char* type, const char *
 	return true;
 }
 
-static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, const char *type, const char *func, int line, const char *file)
+static inline bool check_magic(const unsigned int ID, const bool checkMagic, const unsigned char magic, const char *type, const char *func, const int line, const char *file)
 {
 	// Check magic only if requested (skipped for new entries which are uninitialized)
 	if(checkMagic && magic != MAGICBYTE)
 	{
 		if(debug_flags[DEBUG_ANY])
 		{
-			log_err("Trying to access %s ID %i, but magic byte is %x", type, ID, magic);
+			log_err("Trying to access %s ID %u, but magic byte is %x", type, ID, magic);
 			log_err("found in %s() (%s:%i)", func, short_path(file), line);
 		}
 		return false;
@@ -1024,12 +1138,8 @@ static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, con
 	return true;
 }
 
-queriesData *_getQuery(int queryID, bool checkMagic, int line, const char *func, const char *file)
+queriesData *_getQuery(const unsigned int queryID, const bool checkMagic, const int line, const char *func, const char *file)
 {
-	// This does not exist, return a NULL pointer
-	if(queryID == -1)
-		return NULL;
-
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
@@ -1058,12 +1168,8 @@ queriesData *_getQuery(int queryID, bool checkMagic, int line, const char *func,
 	return NULL;
 }
 
-clientsData* _getClient(int clientID, bool checkMagic, int line, const char *func, const char *file)
+clientsData *_getClient(const unsigned int clientID, const bool checkMagic, const int line, const char *func, const char *file)
 {
-	// This does not exist, we return a NULL pointer
-	if(clientID == -1)
-		return NULL;
-
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
@@ -1092,12 +1198,8 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char *fun
 	return NULL;
 }
 
-domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *func, const char *file)
+domainsData *_getDomain(const unsigned int domainID, const bool checkMagic, const int line, const char *func, const char *file)
 {
-	// This does not exist, we return a NULL pointer
-	if(domainID == -1)
-		return NULL;
-
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
@@ -1126,12 +1228,8 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char *fun
 	return NULL;
 }
 
-upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char *func, const char *file)
+upstreamsData *_getUpstream(const unsigned int upstreamID, const bool checkMagic, const int line, const char *func, const char *file)
 {
-	// This does not exist, we return a NULL pointer
-	if(upstreamID == -1)
-		return NULL;
-
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
@@ -1160,12 +1258,8 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 	return NULL;
 }
 
-DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char *func, const char *file)
+DNSCacheData *_getDNSCache(const unsigned int cacheID, const bool checkMagic, const int line, const char *func, const char *file)
 {
-	// This does not exist, we return a NULL pointer
-	if(cacheID == -1)
-		return NULL;
-
 	// We are not in a locked situation, return a NULL pointer
 	if(config.debug.locks.v.b && !is_our_lock())
 	{
@@ -1210,29 +1304,24 @@ int __attribute__((pure)) is_shm_fd(const int fd)
 // Update queries per second (qps) value
 // This is done in shared memory to allow for both UDP and TCP workers to
 // contribute.
-void update_qps(const double timestamp)
+void update_qps(const time_t timestamp)
 {
 	// Get the timeslot for the current timestamp
-	const unsigned int slot = (unsigned int)timestamp % QPS_AVGLEN;
-
-	// Check if the timestamp is in the same slot as the last one
-	if(shmSettings->qps.last != slot)
-	{
-		// Reset all the slots in between
-		// This is relevant if less than one query per second is
-		// received and the intermediate slots are not updated
-		for(unsigned int i = (shmSettings->qps.last + 1) % QPS_AVGLEN; i != slot; i = (i + 1) % QPS_AVGLEN)
-			shmSettings->qps.buf[i] = 0;
-
-		// Reset the current slot
-		shmSettings->qps.buf[slot] = 0;
-
-		// Update the last slot index
-		shmSettings->qps.last = slot;
-	}
+	const unsigned int slot = timestamp % QPS_AVGLEN;
 
 	// Add the query
-	shmSettings->qps.buf[slot]++;
+	shmSettings->qps[slot]++;
+}
+
+// Reset queries per second (qps) value for the timeslot following the current
+// one
+void reset_qps(const time_t timestamp)
+{
+	// Get the timeslot for the current timestamp
+	const unsigned int slot = (timestamp + 1) % QPS_AVGLEN;
+
+	// Reset the query count
+	shmSettings->qps[slot] = 0;
 }
 
 // Compute queries per second (qps) value
@@ -1245,7 +1334,229 @@ double __attribute__((pure)) get_qps(void)
 	//
 	double qps = 0.0;
 	for(unsigned int i = 0; i < QPS_AVGLEN; i++)
-		qps += shmSettings->qps.buf[i];
+		qps += shmSettings->qps[i];
 
+	// Return the computed value divided by N (the number of slots)
 	return qps / QPS_AVGLEN;
+}
+
+/**
+ * @brief Retrieves the recycle table based on the specified memory type.
+ *
+ * This function returns a pointer to the appropriate recycle table
+ * corresponding to the given memory type. The memory types can be
+ * CLIENTS, DOMAINS, or DNS_CACHE. If the memory type does not match
+ * any of these, the function returns NULL.
+ *
+ * @param type The memory type for which the recycle table is requested.
+ *             It can be one of the following:
+ *             - CLIENTS: Recycle table for clients.
+ *             - DOMAINS: Recycle table for domains.
+ *             - DNS_CACHE: Recycle table for DNS cache.
+ * @param name A pointer to a string that will be set to the name of the
+ *             recycle table corresponding to the given memory type.
+ *
+ * @return A pointer to the recycle table corresponding to the given
+ *         memory type, or NULL if the memory type is not recognized.
+ */
+static struct recycle_table *get_recycle_table(const enum memory_type type, const char **name)
+{
+	if(type == CLIENTS)
+	{
+		*name = "clients";
+		return &recycler->client;
+	}
+	else if(type == DOMAINS)
+	{
+		*name = "domains";
+		return &recycler->domain;
+	}
+	else if(type == DNS_CACHE)
+	{
+		*name = "dns_cache";
+		return &recycler->dns_cache;
+	}
+
+	return NULL;
+}
+
+/**
+ * @brief Sets the next recycled ID for a given memory type.
+ *
+ * This function adds a new ID to the recycle table for the specified memory type.
+ * If the recycle table is full or the memory type is invalid, the function will
+ * log an appropriate message and return false.
+ *
+ * @param type The memory type for which the ID is being set.
+ * @param id The ID to be added to the recycle table.
+ * @return true if the ID was successfully added to the recycle table, false otherwise.
+ */
+bool set_next_recycled_ID(const enum memory_type type, const unsigned int id)
+{
+	// Get the correct table
+	const char *name = NULL;
+	struct recycle_table *rp = get_recycle_table(type, &name);
+
+	if(rp == NULL)
+	{
+		log_err("set_next_recycled_ID(): Invalid memory type %i", type);
+		return false;
+	}
+
+	// Check if we already have the maximum number of recycled entries
+	if(rp->count >= RECYCLE_ARRAY_LEN)
+	{
+		// This is not strictly an error, but it is worth noting if in
+		// debug mode as increasing RECYCLE_ARRAY_LEN may be useful in
+		// this environment
+		log_debug(DEBUG_SHMEM, "set_next_recycled_ID(): Recycle table[%s] is full", name);
+		return false;
+	}
+
+	log_debug(DEBUG_GC, "RECYCLE[%s][%u] = %u SET", name, rp->count, id);
+
+	// Set the id of the recycled entry and increment the count
+	rp->id[rp->count] = id;
+	rp->count++;
+
+	return true;
+}
+
+/**
+ * @brief Retrieves the next recycled ID from the recycle table for the specified memory type.
+ *
+ * This function fetches the next available recycled ID from the recycle table associated with the given memory type.
+ * If there are no recycled IDs available or the memory type is invalid, the function returns false.
+ *
+ * @param type The memory type for which to retrieve the recycled ID.
+ * @param id A pointer to an unsigned int where the retrieved recycled ID will be stored.
+ * @return true if a recycled ID was successfully retrieved, false otherwise.
+ */
+bool get_next_recycled_ID(const enum memory_type type, unsigned int *id)
+{
+	// Get the correct table
+	const char *name = NULL;
+	struct recycle_table *rp = get_recycle_table(type, &name);
+
+	if(rp == NULL)
+	{
+		log_err("get_next_recycled_ID(): Invalid memory type %i", type);
+		return false;
+	}
+
+
+	// Check if we have any recycled entries
+	if(rp->count == 0)
+	{
+		log_debug(DEBUG_GC, "RECYCLE[%s] is empty", name);
+		return false;
+	}
+
+	// Take one away from the array
+	rp->count--;
+
+	// Get the ID of the recycled entry and decrement the count
+	*id = rp->id[rp->count];
+
+	// Unset the ID of the element just used
+	rp->id[rp->count] = 0;
+
+	log_debug(DEBUG_GC, "RECYCLE[%s][%u] = %u TAKE", name, rp->count, *id);
+
+	return true;
+}
+
+/**
+ * @brief Logs the fullness of various recycle lists.
+ *
+ * This function logs the fullness of the recycle lists for clients, domains,
+ * and DNS cache. It provides the current count, the maximum capacity, and the
+ * percentage of fullness for each list.
+ *
+ */
+void print_recycle_list_fullness(void)
+{
+	log_info("Recycle list fullness:");
+	log_info("  Clients: %u/%u (%.2f%%)", recycler->client.count, RECYCLE_ARRAY_LEN, (double)recycler->client.count / RECYCLE_ARRAY_LEN * 100.0);
+	log_info("  Domains: %u/%u (%.2f%%)", recycler->domain.count, RECYCLE_ARRAY_LEN, (double)recycler->domain.count / RECYCLE_ARRAY_LEN * 100.0);
+	log_info("  DNS Cache: %u/%u (%.2f%%)", recycler->dns_cache.count, RECYCLE_ARRAY_LEN, (double)recycler->dns_cache.count / RECYCLE_ARRAY_LEN * 100.0);
+}
+
+/**
+ * @brief Dumps the string table to a temporary file.
+ *
+ * This function iterates over the string table and writes each string to a temporary file
+ * located at "/tmp/stringdump.txt". It checks if each string is printable and escapes
+ * non-printable strings before writing them to the file. Additionally, it logs the number
+ * of non-printable strings and includes a human-readable timestamp in the output.
+ *
+ * The format of each line in the output file is:
+ * "    " or "NONP" <string_index>: "<string_content>" (<current_position>/<string_length>)
+ *
+ * If the file cannot be opened for writing, an error message is logged.
+ */
+#define STRING_DUMPFILE "/tmp/stringdump.txt"
+void dump_strings(void)
+{
+	// Dump string table to temporary file
+	FILE *str_dumpfile = fopen(STRING_DUMPFILE, "a");
+	if(str_dumpfile != NULL)
+	{
+		char timestring[TIMESTR_SIZE] = { 0 };
+		get_timestr(timestring, time(NULL), true, false);
+		fprintf(str_dumpfile, "String dump starting at %s\n", timestring);
+		log_info("String dump to "STRING_DUMPFILE);
+
+		size_t j = 0, non_print = 0;
+		for(size_t i = 0; i < shmSettings->next_str_pos; i++)
+		{
+			char *sstr = (char*)getstr(i);
+			const size_t len = strlen(sstr);
+			char *buffer = sstr;
+			i += len;
+			j++;
+
+			// Check if the string is printable
+			bool string_is_printable = true;
+			for(size_t k = 0; k < len; k++)
+			{
+				if(!isprint(sstr[k]))
+				{
+					string_is_printable = false;
+					non_print++;
+					break;
+				}
+			}
+
+			// If the string is not printable, we escape it
+			if(!string_is_printable)
+			{
+				buffer = calloc(len * 4 + 1, sizeof(char));
+				if(buffer == NULL)
+				{
+					log_err("Failed to allocate memory for string buffer");
+					break;
+				}
+				binbuf_to_escaped_C_literal(sstr, len, buffer, len * 4 + 1);
+			}
+
+			// Print string to file
+			fprintf(str_dumpfile, "%s %04zu: \"%s\" (%zu/%zu)\n", string_is_printable ? "    " : "NONP",
+			        j, buffer, i, len);
+
+			// Free buffer if it was allocated
+			if(!string_is_printable)
+				free(buffer);
+		}
+
+		// Print human-readable timestamp and number of strings which are not printable
+		fprintf(str_dumpfile, "Summary: %zu strings\n", j);
+		fprintf(str_dumpfile, "         %zu non-printable strings\n", non_print);
+		fprintf(str_dumpfile, "\n");
+
+		// Close file
+		fclose(str_dumpfile);
+	}
+	else
+		log_err("Cannot open "STRING_DUMPFILE" for writing: %s", strerror(errno));
 }

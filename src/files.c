@@ -168,10 +168,10 @@ void get_permission_string(char permissions[10], struct stat *st)
 	         st->st_mode & S_IXOTH ? "x":"-");
 }
 
-void ls_dir(const char* path)
+void ls_dir(const char *path)
 {
 	// Open directory stream
-	DIR* dirp = opendir(path);
+	DIR *dirp = opendir(path);
 	if(dirp == NULL)
 	{
 		log_warn("opendir(\"%s\") failed with %s", path, strerror(errno));
@@ -626,7 +626,7 @@ char * __attribute__((malloc)) get_hwmon_target(const char *path)
 
 // Returns true if the files have different contents
 // from specifies from which line number the files should be compared
-bool files_different(const char *pathA, const char* pathB, unsigned int from)
+bool files_different(const char *pathA, const char *pathB, unsigned int from)
 {
 	// Check if both files exist
 	if(!file_exists(pathA) || !file_exists(pathB))
@@ -735,25 +735,25 @@ bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE], const boo
 	size_t filesize = ftell(fp);
 	fseek(fp, 0, SEEK_SET);
 
+	if(skip_end)
+	{
+		// Skip the checksum at the end
+		filesize -= SHA256_DIGEST_SIZE;
+	}
+
 	// Determine chunk size
 	size_t chunksize = getpagesize();
 
 	// Read file in chunks
 	unsigned char *buf = calloc(chunksize, sizeof(char));
 	size_t len;
-	while((len = fread(buf, sizeof(char), chunksize, fp)) > 0)
+	while((len = fread(buf, sizeof(char), min(chunksize, filesize), fp)) > 0)
 	{
 		// Update SHA256 context
 		sha256_update(&ctx, len, buf);
 
 		// Reduce filesize by the number of bytes read
 		filesize -= len;
-
-		// If we want to skip the end of the file, we have to adjust the
-		// chunk size to the remaining bytes minus the size of the SHA256
-		// checksum itself
-		if(skip_end && filesize <= chunksize + SHA256_DIGEST_SIZE)
-			chunksize = filesize - SHA256_DIGEST_SIZE;
 	}
 
 	// Finalize SHA256 context
@@ -778,38 +778,54 @@ bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE], const boo
  * @return Returns true if the checksum matches the expected value, false
  * otherwise.
  */
-bool verify_FTL(bool verbose)
+enum verify_result verify_FTL(bool verbose)
 {
 	// Get the filename of the current executable
 	char filename[PATH_MAX] = { 0 };
 	if(readlink("/proc/self/exe", filename, sizeof(filename)) == -1)
 	{
 		log_err("Failed to read self filename: %s", strerror(errno));
-		return -1;
+		return VERIFY_ERROR;
 	}
 
-	// Read the pre-computed hash - it is stored in the last 8 bytes of the
-	// binary itself
+	// Read the pre-computed hash as well as the checksum mark from the
+	// binary (last 9 + 32 bytes)
 	uint8_t self_hash[SHA256_DIGEST_SIZE];
+	uint8_t checksum_mark[9] = { 0 };
 	FILE *f = fopen(filename, "r");
 	if(f == NULL)
 	{
 		log_err("Failed to open self file \"%s\": %s", filename, strerror(errno));
-		return -1;
+		return VERIFY_ERROR;
 	}
-	if(fseek(f, -SHA256_DIGEST_SIZE, SEEK_END) != 0)
+	if(fseek(f, -(SHA256_DIGEST_SIZE + 9), SEEK_END) != 0)
 	{
 		log_err("Failed to seek to hash: %s", strerror(errno));
 		fclose(f);
-		return -1;
+		return VERIFY_ERROR;
+	}
+	if(fread(checksum_mark, 9, 1, f) != 1)
+	{
+		log_err("Failed to read checksum mark: %s", strerror(errno));
+		fclose(f);
+		return VERIFY_ERROR;
 	}
 	if(fread(self_hash, SHA256_DIGEST_SIZE, 1, f) != 1)
 	{
 		log_err("Failed to read hash: %s", strerror(errno));
 		fclose(f);
-		return -1;
+		return VERIFY_ERROR;
 	}
 	fclose(f);
+
+	// Verify checksum mark matches magic string "sha256sum"
+	if(memcmp(checksum_mark, "sha256sum", 9) != 0)
+	{
+		log_warn("Binary integrity check not possible: No checksum mark found");
+		// This is not an error, as the binary may not have a checksum mark
+		// if it was built with a different toolchain
+		return VERIFY_NO_CHECKSUM;
+	}
 
 	// Calculate the hash of the binary
 	// Skip the last 256 bit as it contains the hast itself
@@ -840,5 +856,5 @@ bool verify_FTL(bool verbose)
 		}
 	}
 
-	return success;
+	return success ? VERIFY_OK : VERIFY_FAILED;
 }

@@ -155,6 +155,20 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 	return true;
 }
 
+// Validate dns.domain string
+// Accepts an empty string or a valid domain
+bool validate_dns_domain(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if domain is valid
+	if(strlen(val->s)!=0 && !valid_domain(val->s, strlen(val->s), false))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
+		return false;
+	}
+
+	return true;
+}
+
 // Validate IPs in CIDR notation
 bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
@@ -203,57 +217,6 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 		else if(ip6 && (cidr_int < 0 || cidr_int > 128))
 		{
 			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv6 CIDR (\"%s\")", key, cidr);
-			free(str);
-			return false;
-		}
-	}
-
-	free(str);
-	return true;
-}
-
-// Validate IP address optionally followed by a port (separator is "#")
-bool validate_ip_port(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
-{
-	// Check if it's a valid IP
-	char *str = strdup(val->s);
-	char *tmp = str;
-	char *ip = strsep(&tmp, "#");
-	char *port = strsep(&tmp, "#");
-	char *tail = strsep(&tmp, "#");
-
-	// Check if there is an IP and no tail
-	if(!ip || !*ip || tail)
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IP (\"%s\")", key, val->s);
-		free(str);
-		return false;
-	}
-
-	// Check if IP is valid
-	struct in_addr addr;
-	struct in6_addr addr6;
-	int ip4 = 0, ip6 = 0;
-	if((ip4 = inet_pton(AF_INET, ip, &addr) != 1) && (ip6 = inet_pton(AF_INET6, ip, &addr6)) != 1)
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv4 nor IPv6 address (\"%s\")", key, ip);
-		free(str);
-		return false;
-	}
-
-	// Check if port is valid
-	if(port)
-	{
-		if(strlen(port) == 0)
-		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: empty port value", key);
-			free(str);
-			return false;
-		}
-		int port_int = atoi(port);
-		if(port_int < 0 || port_int > 65535)
-		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid port (\"%s\")", key, port);
 			free(str);
 			return false;
 		}
@@ -369,7 +332,7 @@ bool validate_regex_array(union conf_value *val, const char *key, char err[VALID
 }
 
 // Validate dns.revServers array
-// Each entry has to be of form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>"
+// Each entry has to be of form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>"]
 bool validate_dns_revServers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if it's an array
@@ -392,9 +355,9 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			return false;
 		}
 
-		// Check if it's in the form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>"
-		// Mandatory elements are: <enabled>, <ip-address>, <server>, and <domain>
-		// Optional elements are: [/<prefix-len>] and [#<port>]
+		// Check if it's in the form "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>]"
+		// Mandatory elements are: <enabled>, <ip-address>, and <server>
+		// Optional elements are: [/<prefix-len>] and [#<port>], and [,<domain>]
 		char *str = strdup(item->valuestring);
 		char *tmp = str, *s = NULL;
 		unsigned int e = 0;
@@ -513,7 +476,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			{
 				if(!valid_domain(s, strlen(s), false))
 				{
-					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <domain> not a valid domain (\"%s\")", key, i, s);
+					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: specified <domain> not a valid domain (\"%s\")", key, i, s);
 					free(str);
 					return false;
 				}
@@ -531,9 +494,9 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 		}
 
 		// Check if there are all required elements
-		if(e < 4)
+		if(e < 3)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: entry does not have all required elements (<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>)", key, i);
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: entry does not have all required elements (<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>])", key, i);
 			free(str);
 			return false;
 		}

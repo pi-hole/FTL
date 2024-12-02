@@ -507,7 +507,7 @@ static void initConfig(struct config *conf)
 	conf->dns.domain.t = CONF_STRING;
 	conf->dns.domain.f = FLAG_RESTART_FTL;
 	conf->dns.domain.d.s = (char*)"lan";
-	conf->dns.domain.c = validate_domain;
+	conf->dns.domain.c = validate_dns_domain;
 
 	conf->dns.bogusPriv.k = "dns.bogusPriv";
 	conf->dns.bogusPriv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
@@ -640,8 +640,8 @@ static void initConfig(struct config *conf)
 	conf->dns.blocking.edns.c = validate_stub; // Only type-based checking
 
 	conf->dns.revServers.k = "dns.revServers";
-	conf->dns.revServers.h = "Reverse server (former also called \"conditional forwarding\") feature\n Array of reverse servers each one in one of the following forms: \"<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>\"\n\n Individual components:\n\n <enabled>: either \"true\" or \"false\"\n\n <ip-address>[/<prefix-len>]: Address range for the reverse server feature in CIDR notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are substituted (exact address match). This is almost certainly not what you want here.\n Example: \"192.168.0.0/24\" for the range 192.168.0.1 - 192.168.0.255\n\n <server>[#<port>]: Target server to be used for the reverse server feature\n Example: \"192.168.0.1#53\"\n\n <domain>: Domain used for the reverse server feature (e.g., \"fritz.box\")\n Example: \"fritz.box\"";
-	conf->dns.revServers.a = cJSON_CreateStringReference("array of reverse servers each one in one of the following forms: \"<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>\", e.g., \"true,192.168.0.0/24,192.168.0.1,fritz.box\"");
+	conf->dns.revServers.h = "Reverse server (former also called \"conditional forwarding\") feature\n Array of reverse servers each one in one of the following forms: \"<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>]\"\n\n Individual components:\n\n <enabled>: either \"true\" or \"false\"\n\n <ip-address>[/<prefix-len>]: Address range for the reverse server feature in CIDR notation. If the prefix length is omitted, either 32 (IPv4) or 128 (IPv6) are substituted (exact address match). This is almost certainly not what you want here.\n Example: \"192.168.0.0/24\" for the range 192.168.0.1 - 192.168.0.255\n\n <server>[#<port>]: Target server to be used for the reverse server feature\n Example: \"192.168.0.1#53\"\n\n <domain>: Domain used for the reverse server feature (e.g., \"fritz.box\")\n Example: \"fritz.box\"";
+	conf->dns.revServers.a = cJSON_CreateStringReference("array of reverse servers each one in one of the following forms: \"<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>]\", e.g., \"true,192.168.0.0/24,192.168.0.1,fritz.box\"");
 	conf->dns.revServers.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.revServers.d.json = cJSON_CreateArray();
 	conf->dns.revServers.c = validate_dns_revServers;
@@ -878,7 +878,7 @@ static void initConfig(struct config *conf)
 	conf->ntp.sync.rtc.set.k = "ntp.sync.rtc.set";
 	conf->ntp.sync.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
 	conf->ntp.sync.rtc.set.t = CONF_BOOL;
-	conf->ntp.sync.rtc.set.d.b = true;
+	conf->ntp.sync.rtc.set.d.b = false;
 	conf->ntp.sync.rtc.set.c = validate_stub; // Only type-based checking
 
 	conf->ntp.sync.rtc.device.k = "ntp.sync.rtc.device";
@@ -939,7 +939,7 @@ static void initConfig(struct config *conf)
 	conf->database.DBimport.c = validate_stub; // Only type-based checking
 
 	conf->database.maxDBdays.k = "database.maxDBdays";
-	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?";
+	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?\n Setting this value to 0 will disable the database.";
 	conf->database.maxDBdays.t = CONF_INT;
 	conf->database.maxDBdays.d.i = (365/4);
 	conf->database.maxDBdays.c = validate_stub; // Only type-based checking
@@ -1008,7 +1008,7 @@ static void initConfig(struct config *conf)
 	conf->webserver.port.c = validate_stub; // Type-based checking + civetweb syntax checking
 
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
-	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
+	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
 	conf->webserver.tls.cert.a = cJSON_CreateStringReference("<valid TLS certificate file (*.pem)>");
 	conf->webserver.tls.cert.f = FLAG_RESTART_FTL;
 	conf->webserver.tls.cert.t = CONF_STRING;

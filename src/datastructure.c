@@ -28,6 +28,8 @@
 #include "overTime.h"
 // short_path()
 #include "files.h"
+// lookup_insert
+#include "lookup-table.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
@@ -36,22 +38,76 @@ void strtolower(char *str)
 	while(str[i]){ str[i] = tolower(str[i]); i++; }
 }
 
-// creates a simple hash of a string that fits into a uint32_t
-uint32_t __attribute__ ((pure)) hashStr(const char *s)
+/**
+ * @brief Computes a hash value for a given string using Jenkins' One-at-a-Time
+ * hash algorithm.
+ *
+ * This function is marked as pure, indicating that it has no side effects and
+ * its return value depends only on the input parameters.
+ *
+ * @param s The input string to be hashed.
+ * @return The computed hash value as a 32-bit unsigned integer.
+ *
+ * @note Jenkins' One-at-a-Time hash is a simple and effective hash function for
+ *       strings. More details can be found at:
+ *       http://www.burtleburtle.net/bob/hash/doobs.html
+ */
+static uint32_t __attribute__ ((pure)) hashStr(const char *s)
 {
-        uint32_t hash = 0;
-        // Jenkins' One-at-a-Time hash (http://www.burtleburtle.net/bob/hash/doobs.html)
-        for(; *s; ++s)
-        {
-                hash += *s;
-                hash += hash << 10;
-                hash ^= hash >> 6;
-        }
+	// Jenkins' One-at-a-Time hash
+	// (http://www.burtleburtle.net/bob/hash/doobs.html)
+	uint32_t hash = 0;
+	for(; *s; ++s)
+	{
+		hash += *s;
+		hash += hash << 10;
+		hash ^= hash >> 6;
+	}
 
-        hash += hash << 3;
-        hash ^= hash >> 11;
-        hash += hash << 15;
-        return hash;
+	hash += hash << 3;
+	hash ^= hash >> 11;
+	hash += hash << 15;
+	return hash;
+}
+
+/**
+ * @brief Computes a hash value for the cache IDs using a simple XOR operation.
+ *
+ * This function is marked as pure, indicating that it has no side effects and
+ * its return value depends only on the input parameters.
+ *
+ * @param a The first unsigned integer (domain ID).
+ * @param b The second unsigned integer (client ID).
+ * @param c The third unsigned integer (enum query_type ID).
+ * @return The computed hash value as a 32-bit unsigned integer.
+ */
+static uint32_t __attribute__ ((pure)) hashCacheIDs(const unsigned int domainID,
+                                                    const unsigned int clientID,
+                                                    const enum query_type query_type)
+{
+	// We distribute the available bits as follows:
+	// - 16 bits for the domain ID (2^16 = 65536 unique domains)
+	// - 11 bits for the client ID (2^11 = 2048 unique clients)
+	// -  	5 bits for the query type (2^5 = 32 unique query types)
+	//
+	// It is unlikely that we will ever reach these number of unique domains
+	// or clients due to recycling, so this hash function should always
+	// return unique hash values.
+	//
+	// Even if more than 65536 domains or more than 2048 clients are used,
+	// the hash works as our binsearch implementation handles collisions
+	// gracefully. Furthermore, it is rather unlikely that collisions will
+	// ever really occur in practice even if the numbers above are exceeded
+	// as not every single domain will be queried by every single client for
+	// every possible query type.
+	//
+	// We use the XOR operation to combine the three values into a single
+	// hash value. XOR uses less transistors than other operations, making
+	// it possibly slightly more efficient on embedded systems. Both XOR and
+	// addition happen faster than a single clock cycle on pretty much every
+	// CPU, so the performance difference is negligible.
+
+	return (((uint32_t)domainID) << 16) ^ ((uint32_t)(clientID) << 5) ^ query_type;
 }
 
 int findQueryID(const int id)
@@ -63,20 +119,21 @@ int findQueryID(const int id)
 	// We iterate from the most recent query down to at most MAXITER queries in the past to avoid
 	// iterating through the entire array of queries
 	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
-	const int until = MAX(0, counters->queries-MAXITER);
-	const int start = MAX(0, counters->queries-1);
+	const unsigned int until = counters->queries > MAXITER ? counters->queries - MAXITER : 0;
+	const unsigned int start = counters->queries > 0 ? counters->queries - 1 : 0;
 
 	// Check UUIDs of queries
-	for(int i = start; i >= until; i--)
+	for(unsigned int i = start; i >= until; i--)
 	{
 		const queriesData *query = getQuery(i, true);
 
 		// Check if the returned pointer is valid before trying to access it
-		if(query == NULL)
-			continue;
-
-		if(query->id == id)
+		if(query != NULL && query->id == id)
 			return i;
+
+		// If we reached the beginning of the array, we can stop
+		if(i == 0)
+			break;
 	}
 
 	// If not found
@@ -86,10 +143,10 @@ int findQueryID(const int id)
 int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, const char *func, const char *file)
 {
 	// Go through already knows upstream servers and see if we used one of those
-	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
+	for(unsigned int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
 		// Get upstream pointer
-		upstreamsData* upstream = _getUpstream(upstreamID, false, line, func, file);
+		const upstreamsData *upstream = _getUpstream(upstreamID, true, line, func, file);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(upstream == NULL)
@@ -100,11 +157,11 @@ int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, 
 	}
 	// This upstream server is not known
 	// Store ID
-	const int upstreamID = counters->upstreams;
-	log_debug(DEBUG_GC, "New upstream server: %s:%u (ID %i)", upstreamString, port, upstreamID);
+	const unsigned int upstreamID = counters->upstreams;
+	log_debug(DEBUG_GC, "New upstream server: %s:%u (ID %u)", upstreamString, port, upstreamID);
 
 	// Get upstream pointer
-	upstreamsData* upstream = _getUpstream(upstreamID, false, line, func, file);
+	upstreamsData *upstream = _getUpstream(upstreamID, false, line, func, file);
 	if(upstream == NULL)
 	{
 		log_err("Encountered serious memory error in findupstreamID()");
@@ -139,66 +196,68 @@ int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, 
 
 static int get_next_free_domainID(void)
 {
-	// Compare content of domain against known domain IP addresses
-	for(int domainID = 0; domainID < counters->domains; domainID++)
-	{
-		// Get domain pointer
-		domainsData* domain = getDomain(domainID, false);
-
-		// Check if the returned pointer is valid before trying to access it
-		if(domain == NULL)
-			continue;
-
-		// Check if the magic byte is set
-		if(domain->magic == 0x00)
-			return domainID;
-	}
+	// First, try to obtain a previously recycled domain ID
+	unsigned int domainID = 0;
+	if(get_next_recycled_ID(DOMAINS, &domainID))
+		return domainID;
 
 	// If we did not return until here, then we need to allocate a new domain ID
 	return counters->domains;
 }
 
+static bool cmp_domain(const struct lookup_table *entry, const struct lookup_data *lookup_data)
+{
+	// Get domain pointer
+	const domainsData *domain = getDomain(entry->id, true);
+
+	// Check if the returned pointer is valid before trying to access it
+	if(domain == NULL)
+		return false;
+
+	// Compare domain strings
+	return strcmp(getstr(domain->domainpos), lookup_data->domain) == 0;
+}
+
 int _findDomainID(const char *domainString, const bool count, int line, const char *func, const char *file)
 {
-	uint32_t domainHash = hashStr(domainString);
-	for(int domainID = 0; domainID < counters->domains; domainID++)
+	// Get domain hash
+	const uint32_t hash = hashStr(domainString);
+
+	// Use lookup table to speed up domain lookups
+	const struct lookup_data lookup_data = { .domain = domainString	};
+	unsigned int domainID = 0;
+	if(lookup_find_id(DOMAINS_LOOKUP, hash, &lookup_data, &domainID, cmp_domain))
 	{
 		// Get domain pointer
-		domainsData* domain = _getDomain(domainID, false, line, func, file);
+		domainsData *domain = getDomain(domainID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(domain == NULL)
-			continue;
+			return -1;
 
-		// Quicker test: Does the domain match the pre-computed hash?
-		if(domain->domainhash != domainHash)
-			continue;
-
-		// If so, compare the full domain using strcmp
-		if(strcmp(getstr(domain->domainpos), domainString) == 0)
-		{
-			if(count)
-			{
-				domain->count++;
-				domain->lastQuery = double_time();
-			}
-			return domainID;
-		}
+		// Add one if count == true (do not add one, e.g., during CNAME inspection)
+		if(count) domain->count++;
+		return domainID;
 	}
 
-	// If we did not return until here, then this domain is not known
-	// Store ID
-	const int domainID = get_next_free_domainID();
+	// If we did not return until here, then this domain is not known and we
+	// need to create a new domain entry
+
+	// Get new domain ID
+	domainID = get_next_free_domainID();
 
 	// Get domain pointer
-	domainsData* domain = _getDomain(domainID, false, line, func, file);
+	domainsData *domain = _getDomain(domainID, false, line, func, file);
 	if(domain == NULL)
 	{
 		log_err("Encountered serious memory error in findDomainID()");
 		return -1;
 	}
 
-	log_debug(DEBUG_GC, "New domain: %s (ID %d)", domainString, domainID);
+	log_debug(DEBUG_GC, "New domain: %s (ID %u)", domainString, domainID);
+
+	// Insert domain into lookup table
+	lookup_insert(DOMAINS_LOOKUP, domainID, hash);
 
 	// Set magic byte
 	domain->magic = MAGICBYTE;
@@ -209,8 +268,8 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domain->domainpos = addstr(domainString);
-	// Store pre-computed hash of domain for faster lookups later on
-	domain->domainhash = hashStr(domainString);
+	// Store pre-computed hash for faster lookups later on
+	domain->hash = hash;
 	domain->lastQuery = 0.0;
 	// Increase counter by one
 	counters->domains++;
@@ -220,49 +279,49 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 
 static int get_next_free_clientID(void)
 {
-	// Compare content of client against known client IP addresses
-	for(int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		// Get client pointer
-		clientsData* client = getClient(clientID, false);
-
-		// Check if the returned pointer is valid before trying to access it
-		if(client == NULL)
-			continue;
-
-		// Check if the magic byte is unset
-		if(client->magic == 0x00)
-			return clientID;
-	}
+	// First, try to obtain a previously recycled client ID
+	unsigned int clientID = 0;
+	if(get_next_recycled_ID(CLIENTS, &clientID))
+		return clientID;
 
 	// If we did not return until here, then we need to allocate a new client ID
 	return counters->clients;
 }
 
+static bool cmp_client(const struct lookup_table *entry, const struct lookup_data *lookup_data)
+{
+	// Get client pointer
+	const clientsData *client = getClient(entry->id, true);
+
+	// Check if the returned pointer is valid before trying to access it
+	if(client == NULL)
+		return false;
+
+	// Compare client strings
+	return strcmp(getstr(client->ippos), lookup_data->client) == 0;
+}
+
 int _findClientID(const char *clientIP, const bool count, const bool aliasclient,
                   const double now, int line, const char *func, const char *file)
 {
-	// Compare content of client against known client IP addresses
-	for(int clientID=0; clientID < counters->clients; clientID++)
+	// Get client hash
+	const uint32_t hash = hashStr(clientIP);
+
+	// Use lookup table to speed up domain lookups
+	const struct lookup_data lookup_data = { .client = clientIP };
+	unsigned int clientID = 0;
+	if(lookup_find_id(CLIENTS_LOOKUP, hash, &lookup_data, &clientID, cmp_client))
 	{
 		// Get client pointer
-		clientsData* client = _getClient(clientID, true, line, func, file);
+		clientsData *client = getClient(clientID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(client == NULL)
-			continue;
+			return -1;
 
-		// Quick test: Does the clients IP start with the same character?
-		if(getstr(client->ippos)[0] != clientIP[0])
-			continue;
-
-		// If so, compare the full IP using strcmp
-		if(strcmp(getstr(client->ippos), clientIP) == 0)
-		{
-			// Add one if count == true (do not add one, e.g., during ARP table processing)
-			if(count && !aliasclient) change_clientcount(client, 1, 0, -1, 0);
-			return clientID;
-		}
+		// Add one if count == true (do not add one, e.g., during ARP table processing)
+		if(count && !aliasclient) change_clientcount(client, 1, 0, -1, 0);
+		return clientID;
 	}
 
 	// Return -1 (= not found) if count is false because we do not want to create a new client here
@@ -271,18 +330,21 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 		return -1;
 
 	// If we did not return until here, then this client is definitely new
-	// Store ID
-	const int clientID = get_next_free_clientID();
+	// Get new client ID
+	clientID = get_next_free_clientID();
 
 	// Get client pointer
-	clientsData* client = _getClient(clientID, false, line, func, file);
+	clientsData *client = _getClient(clientID, false, line, func, file);
 	if(client == NULL)
 	{
 		log_err("Encountered serious memory error in findClientID()");
 		return -1;
 	}
 
-	log_debug(DEBUG_GC, "New client: %s (ID %d)", clientIP, clientID);
+	log_debug(DEBUG_GC, "New client: %s (ID %u)", clientIP, clientID);
+
+	// Insert domain into lookup table
+	lookup_insert(CLIENTS_LOOKUP, clientID, hash);
 
 	// Set magic byte
 	client->magic = MAGICBYTE;
@@ -292,6 +354,8 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
 	client->ippos = addstr(clientIP);
+	// Store pre-computed hash for faster lookups later on
+	client->hash = hash;
 	// Initialize client hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
@@ -375,54 +439,59 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 
 static int get_next_free_cacheID(void)
 {
-	// Compare content of cache against known cache IP addresses
-	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
-	{
-		// Get cache pointer
-		DNSCacheData* cache = getDNSCache(cacheID, false);
-
-		// Check if the returned pointer is valid before trying to access it
-		if(cache == NULL)
-			continue;
-
-		// Check if the magic byte is set
-		if(cache->magic == 0x00)
-			return cacheID;
-	}
+	// First, try to obtain a previously recycled cache ID
+	unsigned int cacheID = 0;
+	if(get_next_recycled_ID(DNS_CACHE, &cacheID))
+		return cacheID;
 
 	// If we did not return until here, then we need to allocate a new cache ID
 	return counters->dns_cache_size;
 }
 
-int _findCacheID(const int domainID, const int clientID, const enum query_type query_type,
+static bool cmp_cache(const struct lookup_table *entry, const struct lookup_data *lookup_data)
+{
+	// Get cache pointer
+	const DNSCacheData *cache = getDNSCache(entry->id, true);
+
+	// Check if the returned pointer is valid before trying to access it
+	if(cache == NULL)
+		return false;
+
+	// Compare cache data
+	return cache->domainID == lookup_data->domainID &&
+	       cache->clientID == lookup_data->clientID &&
+	       cache->query_type == lookup_data->query_type;
+}
+
+int _findCacheID(const unsigned int domainID, const unsigned int clientID, const enum query_type query_type,
                  const bool create_new, const char *func, int line, const char *file)
 {
-	// Compare content of client against known client IP addresses
-	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	// Get cache hash
+	const uint32_t hash = hashCacheIDs(domainID, clientID, query_type);
+
+	// Use lookup table to speed up cache lookups
+	const struct lookup_data lookup_data = { .domainID = domainID, .clientID = clientID, .query_type = query_type };
+	unsigned int cacheID = 0;
+	if(lookup_find_id(DNS_CACHE_LOOKUP, hash, &lookup_data, &cacheID, cmp_cache))
 	{
 		// Get cache pointer
-		DNSCacheData* dns_cache = _getDNSCache(cacheID, true, line, func, file);
+		DNSCacheData *cache = getDNSCache(cacheID, true);
 
 		// Check if the returned pointer is valid before trying to access it
-		if(dns_cache == NULL)
-			continue;
+		if(cache == NULL)
+			return -1;
 
-		if(dns_cache->domainID == domainID &&
-		   dns_cache->clientID == clientID &&
-		   dns_cache->query_type == query_type)
-		{
-			return cacheID;
-		}
+		return cacheID;
 	}
 
 	if(!create_new)
 		return -1;
 
 	// Get ID of new cache entry
-	const int cacheID = get_next_free_cacheID();
+	cacheID = get_next_free_cacheID();
 
 	// Get client pointer
-	DNSCacheData* dns_cache = _getDNSCache(cacheID, false, line, func, file);
+	DNSCacheData *dns_cache = _getDNSCache(cacheID, false, line, func, file);
 
 	if(dns_cache == NULL)
 	{
@@ -430,13 +499,17 @@ int _findCacheID(const int domainID, const int clientID, const enum query_type q
 		return -1;
 	}
 
-	log_debug(DEBUG_GC, "New cache entry: domainID %d, clientID %d, query_type %d (ID %d)",
+	log_debug(DEBUG_GC, "New cache entry: domainID %u, clientID %u, query_type %u (ID %u)",
 	          domainID, clientID, query_type, cacheID);
+
+	// Insert cache into lookup table
+	lookup_insert(DNS_CACHE_LOOKUP, cacheID, hash);
 
 	// Initialize cache entry
 	dns_cache->magic = MAGICBYTE;
 	dns_cache->blocking_status = QUERY_UNKNOWN;
 	dns_cache->expires = 0;
+	dns_cache->hash = hash;
 	dns_cache->domainID = domainID;
 	dns_cache->clientID = clientID;
 	dns_cache->query_type = query_type;
@@ -466,13 +539,13 @@ bool isValidIPv6(const char *addr)
 const char *getDomainString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL || query->domainID < 0)
+	if(query == NULL)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
 		// Get domain pointer
-		const domainsData* domain = getDomain(query->domainID, true);
+		const domainsData *domain = getDomain(query->domainID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(domain == NULL)
@@ -496,7 +569,7 @@ const char *getCNAMEDomainString(const queriesData *query)
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
 		// Get domain pointer
-		const domainsData* domain = getDomain(query->CNAME_domainID, true);
+		const domainsData *domain = getDomain(query->CNAME_domainID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(domain == NULL)
@@ -514,13 +587,13 @@ const char *getCNAMEDomainString(const queriesData *query)
 const char *getClientIPString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL || query->clientID < 0)
+	if(query == NULL)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(query->clientID, true);
+		const clientsData *client = getClient(query->clientID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(client == NULL)
@@ -538,13 +611,13 @@ const char *getClientIPString(const queriesData *query)
 const char *getClientNameString(const queriesData *query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL || query->clientID < 0)
+	if(query == NULL)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(query->clientID, true);
+		const clientsData *client = getClient(query->clientID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(client == NULL)
@@ -559,12 +632,12 @@ const char *getClientNameString(const queriesData *query)
 
 void FTL_reset_per_client_domain_data(void)
 {
-	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
+	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache, size is %u", counters->dns_cache_size);
 
-	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Get cache pointer
-		DNSCacheData* dns_cache = getDNSCache(cacheID, true);
+		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 
 		// Check if the returned pointer is valid before trying to access it
 		if(dns_cache == NULL)
@@ -935,7 +1008,7 @@ const char * __attribute__ ((pure)) get_cached_statuslist(void)
 	return cached_list;
 }
 
-int __attribute__ ((pure)) get_blocked_count(void)
+unsigned int __attribute__ ((pure)) get_blocked_count(void)
 {
 	int blocked = 0;
 	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
@@ -945,14 +1018,14 @@ int __attribute__ ((pure)) get_blocked_count(void)
 	return blocked;
 }
 
-int __attribute__ ((pure)) get_forwarded_count(void)
+unsigned int __attribute__ ((pure)) get_forwarded_count(void)
 {
 	return counters->status[QUERY_FORWARDED] +
 	       counters->status[QUERY_RETRIED] +
 	       counters->status[QUERY_RETRIED_DNSSEC];
 }
 
-int __attribute__ ((pure)) get_cached_count(void)
+unsigned int __attribute__ ((pure)) get_cached_count(void)
 {
 	return counters->status[QUERY_CACHE] + counters->status[QUERY_CACHE_STALE];
 }
@@ -1083,7 +1156,7 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	   new_status != QUERY_RETRIED &&
 	   new_status != QUERY_RETRIED_DNSSEC)
 	{
-		const int cacheID = findCacheID(query->domainID, query->clientID, query->type, true);
+		const unsigned int cacheID = query->cacheID > 0 ? query->cacheID : findCacheID(query->domainID, query->clientID, query->type, true);
 		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 		if(dns_cache != NULL && dns_cache->blocking_status != new_status)
 		{
@@ -1131,10 +1204,10 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	if(!init)
 	{
 		counters->status[old_status]--;
-		log_debug(DEBUG_STATUS, "status %d removed (!init), ID = %d, new count = %d", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
+		log_debug(DEBUG_STATUS, "status %d removed (!init), ID = %d, new count = %u", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
 	}
 	counters->status[new_status]++;
-	log_debug(DEBUG_STATUS, "status %d set, ID = %d, new count = %d", new_status, query->id, counters->status[new_status]);
+	log_debug(DEBUG_STATUS, "status %d set, ID = %d, new count = %u", new_status, query->id, counters->status[new_status]);
 
 	// ... update overTime counters, ...
 	const int timeidx = getOverTimeID(query->timestamp);

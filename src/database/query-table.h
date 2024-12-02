@@ -23,7 +23,7 @@
                                                        "client TEXT NOT NULL, " \
                                                        "forward TEXT );"
 
-#define MEMDB_VERSION 19
+#define MEMDB_VERSION 20
 #define CREATE_QUERY_STORAGE_TABLE "CREATE TABLE query_storage ( id INTEGER PRIMARY KEY AUTOINCREMENT, " \
                                                                 "timestamp INTEGER NOT NULL, " \
                                                                 "type INTEGER NOT NULL, " \

@@ -206,7 +206,7 @@
 
   # Reverse server (former also called "conditional forwarding") feature
   # Array of reverse servers each one in one of the following forms:
-  # "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>"
+  # "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>]"
   #
   # Individual components:
   #
@@ -225,7 +225,7 @@
   #
   # Possible values are:
   #     array of reverse servers each one in one of the following forms:
-  #     "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>],<domain>", e.g.,
+  #     "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>]", e.g.,
   #     "true,192.168.0.0/24,192.168.0.1,fritz.box"
   revServers = []
 
@@ -518,7 +518,7 @@
 
     [ntp.sync.rtc]
       # Should FTL update a real-time clock (RTC) if available?
-      set = true
+      set = false
 
       # Path to the RTC device to update. Leave empty for auto-discovery
       #
@@ -573,6 +573,7 @@
   DBimport = true
 
   # How long should queries be stored in the database [days]?
+  # Setting this value to 0 will disable the database.
   maxDBdays = 91
 
   # How often do we store queries in FTL's database [seconds]?
@@ -667,10 +668,11 @@
     restore = true
 
   [webserver.tls]
-    # Path to the TLS (SSL) certificate file. This option is only required when at least
-    # one of webserver.port is TLS. The file must be in PEM format, and it must have both,
-    # private key and certificate (the *.pem file created must contain a 'CERTIFICATE'
-    # section as well as a 'RSA PRIVATE KEY' section).
+    # Path to the TLS (SSL) certificate file. All directories along the path must be
+    # readable and accessible by the user running FTL (typically 'pihole'). This option is
+    # only required when at least one of webserver.port is TLS. The file must be in PEM
+    # format, and it must have both, private key and certificate (the *.pem file created
+    # must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).
     # The *.pem file can be created using
     #     cp server.crt server.pem
     #     cat server.key >> server.pem

@@ -17,7 +17,10 @@ enum memory_type {
 	DOMAINS,
 	OVERTIME,
 	DNS_CACHE,
-	STRINGS
+	STRINGS,
+	CLIENTS_LOOKUP,
+	DOMAINS_LOOKUP,
+	DNS_CACHE_LOOKUP,
 } __attribute__ ((packed));
 
 enum dnssec_status {
@@ -161,6 +164,7 @@ enum events {
 	RERESOLVE_HOSTNAMES_FORCE,
 	REIMPORT_ALIASCLIENTS,
 	PARSE_NEIGHBOR_CACHE,
+	SEARCH_LOOKUP_HASH_COLLISIONS,
 	EVENTS_MAX
 } __attribute__ ((packed));
 
@@ -337,5 +341,12 @@ enum api_flags {
 	API_PARSE_JSON = 1 << 1,
 	API_BATCHDELETE = 1 << 2,
 };
+
+enum verify_result {
+	VERIFY_OK = 0, // EXIT_SUCCESS
+	VERIFY_FAILED,
+	VERIFY_ERROR,
+	VERIFY_NO_CHECKSUM
+} __attribute__ ((packed));
 
 #endif // ENUMS_H

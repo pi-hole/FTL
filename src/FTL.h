@@ -26,7 +26,7 @@
 #include <sys/socket.h>
 // struct sockaddr_in
 #include <netinet/in.h>
-// char* inet_ntoa(struct in_addr in)
+// char *inet_ntoa(struct in_addr in)
 #include <arpa/inet.h>
 // getnameinfo();
 #include <netdb.h>

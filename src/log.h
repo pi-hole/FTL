@@ -56,7 +56,6 @@ const char *debugstr(const enum debug_flag flag) __attribute__((const));
 void log_web(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 void print_FTL_version(void);
-unsigned int countchar(const char *str, const char c) __attribute__ ((pure));
 void dnsmasq_diagnosis_warning(char *message);
 
 // The actual logging routine can take extra options for specialized logging
@@ -66,6 +65,7 @@ void dnsmasq_diagnosis_warning(char *message);
 #define log_warn(format, ...) _FTL_log(LOG_WARNING, 0, format, ## __VA_ARGS__)
 #define log_notice(format, ...) _FTL_log(LOG_NOTICE, 0, format, ## __VA_ARGS__)
 #define log_info(format, ...) _FTL_log(LOG_INFO, 0, format, ## __VA_ARGS__)
+#define log_lvl(priority, format, ...) _FTL_log(priority, 0, format, ## __VA_ARGS__)
 #define log_debug(flag, format, ...) \
 	if(flag > -1 && flag < DEBUG_MAX && debug_flags[flag]) \
 		_FTL_log(LOG_DEBUG, flag, format, ## __VA_ARGS__)
@@ -75,10 +75,6 @@ void log_ctrl(bool vlog, bool vstdout);
 void FTL_log_helper(const unsigned int n, ...);
 
 int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz, char *dst_str, size_t dst_sz);
-
-int forwarded_queries(void)  __attribute__ ((pure));
-int cached_queries(void)  __attribute__ ((pure));
-int blocked_queries(void)  __attribute__ ((pure));
 
 const char *short_path(const char *full_path) __attribute__ ((pure));
 

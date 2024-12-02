@@ -49,7 +49,7 @@ static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 	else if(nlmsg_type == RTM_GETLINK)
 	{
 		// Request link information
-		nl->nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+		nl->nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
 
 		struct ifinfomsg *link;
 		link = (struct ifinfomsg*)NLMSG_DATA(nl);
@@ -1114,6 +1114,13 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 		return -1;
 	}
 
+	// Set the buffer size for the socket (this is the maximum size of the
+	// message that can be received). The buffer size is set to 32 KiB as
+	// this is the maximum size of a netlink message.
+	const int buffer_size = 32768;
+	setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buffer_size, sizeof(buffer_size));
+	setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &buffer_size, sizeof(buffer_size));
+
 	struct sockaddr_nl sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.nl_family = AF_NETLINK;
@@ -1121,6 +1128,7 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 	if(!nlrequest(fd, &sa, type))
 	{
 		log_info("nlrequest error: %s", strerror(errno));
+		close(fd);
 		return -1;
 	}
 
@@ -1131,6 +1139,7 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 		nl_msg_type = parse_nl_msg(buf, len, json, detailed);
 	} while (nl_msg_type != NLMSG_DONE && nl_msg_type != NLMSG_ERROR);
 
+	close(fd);
 	return 0;
 
 }

@@ -24,7 +24,6 @@
 // killed
 #include "signals.h"
 
-// Private prototypes
 static char *getMACVendor(const char *hwaddr) __attribute__ ((malloc));
 enum arp_status { CLIENT_NOT_HANDLED, CLIENT_ARP_COMPLETE, CLIENT_ARP_INCOMPLETE } __attribute__ ((packed));
 
@@ -203,6 +202,25 @@ bool create_network_addresses_with_names_table(sqlite3 *db)
 	return true;
 }
 
+bool create_network_addresses_network_id_index(sqlite3 *db)
+{
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return false;
+
+	// Create index on network_id column in network_addresses table
+	SQL_bool(db, "CREATE INDEX IF NOT EXISTS network_addresses_network_id_index ON network_addresses (network_id);");
+
+	// Update database version to 20
+	if(!db_set_FTL_property(db, DB_VERSION, 20))
+	{
+		log_warn("create_network_addresses_with_names_table(): Failed to update database version!");
+		return false;
+	}
+
+	return true;
+}
+
 // Try to find device by recent usage of this IP address
 static int find_device_by_recent_ip(sqlite3 *db, const char *ipaddr)
 {
@@ -276,17 +294,25 @@ static int find_recent_device_by_mock_hwaddr(sqlite3 *db, const char *ipaddr)
 	return db_query_int_str(db, querystr, ipaddr);
 }
 
-// Store hostname of device identified by dbID
-static int update_netDB_name(sqlite3 *db, const char *ip, const char *name)
+/**
+ * @brief Updates the name associated with a given IP address in the network database.
+ *
+ * @param db A pointer to the SQLite database connection.
+ * @param ip The IP address whose associated name is to be updated.
+ * @param name The new name to associate with the given IP address.
+ * @return true if the operation was successful, false otherwise.
+ */
+static bool update_netDB_name(sqlite3 *db, const char *ip, const char *name)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return SQLITE_ERROR;
+		return false;
 
 	// Skip if hostname is NULL or an empty string (= no result)
 	if(name == NULL || strlen(name) < 1)
-		return SQLITE_OK;
+		return true;
 
+	bool success = false;
 	sqlite3_stmt *query_stmt = NULL;
 	const char querystr[] = "UPDATE network_addresses SET name = ?1, "
 	                               "nameUpdated = (cast(strftime('%s', 'now') as int)) "
@@ -297,8 +323,7 @@ static int update_netDB_name(sqlite3 *db, const char *ip, const char *name)
 	{
 		log_err("update_netDB_name(%s, \"%s\") - SQL error prepare (%i): %s",
 		        ip, name, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		return rc;
+		goto update_netDB_name_end;
 	}
 
 	log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments 1 = \"%s\" and 2 = \"%s\"",
@@ -311,9 +336,7 @@ static int update_netDB_name(sqlite3 *db, const char *ip, const char *name)
 	{
 		log_err("update_netDB_name(%s, \"%s\"): Failed to bind ip (error %d): %s",
 		        ip, name, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(query_stmt);
-		return rc;
+		goto update_netDB_name_end;
 	}
 	// Bind ip (unique key) to prepared statement (2nd argument)
 	// We can do this as name has dynamic scope that exceeds that of the binding.
@@ -321,9 +344,7 @@ static int update_netDB_name(sqlite3 *db, const char *ip, const char *name)
 	{
 		log_err("update_netDB_name(%s, \"%s\"): Failed to bind name (error %d): %s",
 		        ip, name, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(query_stmt);
-		return rc;
+		goto update_netDB_name_end;
 	}
 
 	// Perform step
@@ -331,79 +352,105 @@ static int update_netDB_name(sqlite3 *db, const char *ip, const char *name)
 	{
 		log_err("update_netDB_name(%s, \"%s\"): Failed to step (error %d): %s",
 		        ip, name, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(query_stmt);
-		return rc;
+		goto update_netDB_name_end;
 	}
+
+	success = true;
+
+update_netDB_name_end:
+	if(!success)
+		checkFTLDBrc(rc);
 
 	// Finalize statement
-	if ((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
-	{
-		log_err("update_netDB_name(%s, \"%s\"): Failed to finalize (error %d): %s",
-		        ip, name, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(query_stmt);
-		return rc;
-	}
+	sqlite3_reset(query_stmt);
+	sqlite3_finalize(query_stmt);
 
-	return SQLITE_OK;
+	return success;
 }
 
-// Updates lastQuery. Only use new value if larger than zero.
-// client->lastQuery may be zero if this client is only known
-// from a database entry but has not been seen since then (skip in this case)
-static int update_netDB_lastQuery(sqlite3 *db, const int network_id, const time_t lastQuery)
+/**
+ * @brief Updates the last query time for a specific network in the database.
+ *
+ * This function updates the `lastQuery` field for a network identified by `network_id`
+ * in the database. It ensures that the `lastQuery` field is set to the maximum of its
+ * current value and the provided `lastQuery` value.
+ *
+ * @param db Pointer to the SQLite database connection.
+ * @param network_id The ID of the network to update.
+ * @param lastQuery The new last query time to set.
+ * @return true if the operation was successful, false otherwise.
+ */
+static bool update_netDB_lastQuery(sqlite3 *db, const int network_id, const time_t lastQuery)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return SQLITE_ERROR;
+		return false;
+
+	// Check for invalid network ID
+	if(network_id < 0)
+		return false;
 
 	// Return early if there is nothing to update
 	if(lastQuery < 1)
-		return SQLITE_OK;
+		return true;
 
 	const int ret = dbquery(db, "UPDATE network "\
 	                            "SET lastQuery = MAX(lastQuery, %lu) "\
 	                            "WHERE id = %i;",
 	                            (unsigned long)lastQuery, network_id);
 
-	return ret;
+	return ret == SQLITE_OK;
 }
 
-
-// Update numQueries.
-// Add queries seen since last update and reset counter afterwards
-static int update_netDB_numQueries(sqlite3 *db, const int dbID, const int numQueries)
+/**
+ * @brief Updates the number of queries for a specific network entry in the database.
+ *
+ * @param db Pointer to the SQLite database connection.
+ * @param dbID The ID of the network entry to update.
+ * @param numQueries The number of queries to add to the current count.
+ * @return true if the operation was successful, false otherwise.
+ */
+static bool update_netDB_numQueries(sqlite3 *db, const int dbID, const int numQueries)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return SQLITE_ERROR;
+		return false;
 
 	// Return early if there is nothing to update
 	if(numQueries < 1)
-		return SQLITE_OK;
+		return true;
 
 	const int ret = dbquery(db, "UPDATE network "
 	                            "SET numQueries = numQueries + %i "
 	                            "WHERE id = %i;",
 	                            numQueries, dbID);
 
-	return ret;
+	return ret == SQLITE_OK;
 }
 
-// Add IP address record if it does not exist (INSERT). If it already exists,
-// the UNIQUE(ip) trigger becomes active and the line is instead REPLACEd.
-// We preserve a possibly existing IP -> host name association here
-static int add_netDB_network_address(sqlite3 *db, const int network_id, const char *ip)
+/**
+ * @brief Adds or updates a network address in the database.
+ *
+ * @param db Pointer to the SQLite database connection.
+ * @param network_id The ID of the network to which the IP address belongs.
+ * @param ip The IP address to be added or updated in the database.
+ * @return true if the operation was successful or if there was nothing to be done, false otherwise.
+ */
+static bool add_netDB_network_address(sqlite3 *db, const int network_id, const char *ip)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return SQLITE_ERROR;
+		return false;
+
+	// Check for invalid network ID
+	if(network_id < 0)
+		return false;
 
 	// Return early if there is nothing to be done in here
 	if(ip == NULL || strlen(ip) == 0)
-		return SQLITE_OK;
+		return true;
 
+	bool success = false;
 	sqlite3_stmt *query_stmt = NULL;
 	const char querystr[] = "INSERT OR REPLACE INTO network_addresses "
 	                        "(network_id,ip,lastSeen,name,nameUpdated) VALUES "
@@ -418,8 +465,7 @@ static int add_netDB_network_address(sqlite3 *db, const int network_id, const ch
 	{
 		log_err("add_netDB_network_address(%i, \"%s\") - SQL error prepare (%i): %s",
 		        network_id, ip, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		return rc;
+		goto add_netDB_network_address_end;
 	}
 
 	log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments ?1 = %i and ?2 = \"%s\"",
@@ -430,18 +476,14 @@ static int add_netDB_network_address(sqlite3 *db, const int network_id, const ch
 	{
 		log_err("add_netDB_network_address(%i, \"%s\"): Failed to bind network_id (error %d): %s",
 		        network_id, ip, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(query_stmt);
-		return rc;
+		goto add_netDB_network_address_end;
 	}
 	// Bind ip to prepared statement (2nd argument)
 	if((rc = sqlite3_bind_text(query_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		log_err("add_netDB_network_address(%i, \"%s\"): Failed to bind name (error %d): %s",
 		        network_id, ip, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(query_stmt);
-		return rc;
+		goto add_netDB_network_address_end;
 	}
 
 	// Perform step
@@ -449,32 +491,42 @@ static int add_netDB_network_address(sqlite3 *db, const int network_id, const ch
 	{
 		log_err("add_netDB_network_address(%i, \"%s\"): Failed to step (error %d): %s",
 		        network_id, ip, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(query_stmt);
-		return rc;
+		goto add_netDB_network_address_end;
 	}
+
+	success = true;
+
+add_netDB_network_address_end:
+	if(!success)
+		checkFTLDBrc(rc);
 
 	// Finalize statement
-	if ((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
-	{
-		log_err("add_netDB_network_address(%i, \"%s\"): Failed to finalize (error %d): %s",
-		        network_id, ip, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(query_stmt);
-		return rc;
-	}
+	sqlite3_reset(query_stmt);
+	sqlite3_finalize(query_stmt);
 
-	return SQLITE_OK;
+	return success;
 }
 
-// Insert a new record into the network table
-static int insert_netDB_device(sqlite3 *db, const char *hwaddr, const time_t firstSeen, const time_t lastQuery,
-                               const unsigned int numQueriesARP, const char *macVendor)
+/**
+ * @brief Inserts a network device record into the database.
+ *
+ * @param db Pointer to the SQLite database connection.
+ * @param hwaddr Hardware address (MAC address) of the network device.
+ * @param firstSeen Timestamp of when the device was first seen.
+ * @param lastQuery Timestamp of the last query made to the device.
+ * @param numQueriesARP Number of ARP queries made to the device.
+ * @param macVendor Vendor of the MAC address.
+ * @param new_id Pointer to store the new ID of the inserted device.
+ * @return true if the insertion was successful, false otherwise.
+ */
+static bool insert_netDB_device(sqlite3 *db, const char *hwaddr, const time_t firstSeen, const time_t lastQuery,
+                               const unsigned int numQueriesARP, const char *macVendor, int *new_id)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return SQLITE_ERROR;
+		return false;
 
+	bool success = false;
 	sqlite3_stmt *query_stmt = NULL;
 	const char querystr[] = "INSERT INTO network "\
 	                        "(hwaddr,interface,firstSeen,lastQuery,numQueries,macVendor) "\
@@ -485,8 +537,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, const time_t fir
 	{
 		log_err("insert_netDB_device(\"%s\", %lu, %lu, %u, \"%s\") - SQL error prepare (%i): %s",
 		        hwaddr, (unsigned long)firstSeen, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		return rc;
+		goto insert_netDB_device_end;
 	}
 
 	log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments ?1-?5 = (\"%s\", %lu, %lu, %u, \"%s\")",
@@ -497,9 +548,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, const time_t fir
 	{
 		log_err("insert_netDB_device(\"%s\", %lu, %lu, %u, \"%s\"): Failed to bind hwaddr (error %d): %s",
 		        hwaddr, (unsigned long)firstSeen, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto insert_netDB_device_end;
 	}
 
 	// Bind firstSeen to prepared statement (2nd argument)
@@ -507,9 +556,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, const time_t fir
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind firstSeen (error %d): %s",
 		        hwaddr, (unsigned long)firstSeen, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto insert_netDB_device_end;
 	}
 
 	// Bind lastQuery to prepared statement (3rd argument)
@@ -517,9 +564,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, const time_t fir
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind lastQuery (error %d): %s",
 		        hwaddr, (unsigned long)firstSeen, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto insert_netDB_device_end;
 	}
 
 	// Bind numQueriesARP to prepared statement (4th argument)
@@ -527,9 +572,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, const time_t fir
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind numQueriesARP (error %d): %s",
 		        hwaddr, (unsigned long)firstSeen, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto insert_netDB_device_end;
 	}
 
 	// Bind macVendor to prepared statement (5th argument) - the macVendor can be NULL here
@@ -537,9 +580,7 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, const time_t fir
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind macVendor (error %d): %s",
 		        hwaddr, (unsigned long)firstSeen, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto insert_netDB_device_end;
 	}
 
 	// Perform step
@@ -547,31 +588,45 @@ static int insert_netDB_device(sqlite3 *db, const char *hwaddr, const time_t fir
 	{
 		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to step (error %d): %s",
 		        hwaddr, (unsigned long)firstSeen, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto insert_netDB_device_end;
 	}
+
+	// Get the ID of the newly inserted row
+	*new_id = sqlite3_last_insert_rowid(db);
+
+	success = true;
+
+insert_netDB_device_end:
+	if(!success)
+		checkFTLDBrc(rc);
 
 	// Finalize statement
-	if ((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
-	{
-		log_err("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to finalize (error %d): %s",
-		        hwaddr, (unsigned long)firstSeen, (unsigned long)lastQuery, numQueriesARP, macVendor, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
-	}
+	sqlite3_reset(query_stmt);
+	sqlite3_finalize(query_stmt);
 
-	return SQLITE_OK;
+	return success;
 }
 
-// Convert mock-device into a real one by changing the hardware address (and possibly adding a vendor string)
-static int unmock_netDB_device(sqlite3 *db, const char *hwaddr, const char *macVendor, const int dbID)
+/**
+ * @brief Updates the network table in the database with the provided hardware address and MAC vendor.
+ *
+ * @param db A pointer to the SQLite database.
+ * @param hwaddr The hardware address to update in the network table.
+ * @param macVendor The MAC vendor to update in the network table. This can be NULL.
+ * @param dbID The database ID of the entry to update.
+ * @return true if the update is successful, false otherwise.
+ */
+static bool unmock_netDB_device(sqlite3 *db, const char *hwaddr, const char *macVendor, const int dbID)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return SQLITE_ERROR;
+		return false;
 
+	// Check for invalid network ID
+	if(dbID < 0)
+		return false;
+
+	bool success = false;
 	sqlite3_stmt *query_stmt = NULL;
 	const char querystr[] = "UPDATE network SET "\
 	                        "hwaddr = ?1, macVendor=?2 WHERE id = ?3;";
@@ -581,8 +636,7 @@ static int unmock_netDB_device(sqlite3 *db, const char *hwaddr, const char *macV
 	{
 		log_err("unmock_netDB_device(\"%s\", \"%s\", %i) - SQL error prepare (%i): %s",
 		        hwaddr, macVendor, dbID, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		return rc;
+		goto unmock_netDB_device_end;
 	}
 
 	log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments ?1 = \"%s\", ?2 = \"%s\", ?3 = %i",
@@ -593,9 +647,7 @@ static int unmock_netDB_device(sqlite3 *db, const char *hwaddr, const char *macV
 	{
 		log_err("unmock_netDB_device(\"%s\", \"%s\", %i): Failed to bind hwaddr (error %d): %s",
 		        hwaddr, macVendor, dbID, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto unmock_netDB_device_end;
 	}
 
 	// Bind macVendor to prepared statement (2nd argument) - the macVendor can be NULL here
@@ -603,9 +655,7 @@ static int unmock_netDB_device(sqlite3 *db, const char *hwaddr, const char *macV
 	{
 		log_err("unmock_netDB_device(\"%s\", \"%s\", %i): Failed to bind macVendor (error %d): %s",
 		        hwaddr, macVendor, dbID, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto unmock_netDB_device_end;
 	}
 
 	// Bind now to prepared statement (3rd argument)
@@ -613,9 +663,7 @@ static int unmock_netDB_device(sqlite3 *db, const char *hwaddr, const char *macV
 	{
 		log_err("unmock_netDB_device(\"%s\", \"%s\", %i): Failed to bind now (error %d): %s",
 		        hwaddr, macVendor, dbID, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto unmock_netDB_device_end;
 	}
 
 	// Perform step
@@ -623,35 +671,45 @@ static int unmock_netDB_device(sqlite3 *db, const char *hwaddr, const char *macV
 	{
 		log_err("unmock_netDB_device(\"%s\", \"%s\", %i): Failed to step (error %d): %s",
 		        hwaddr, macVendor, dbID, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto unmock_netDB_device_end;
 	}
+
+	success = true;
+
+unmock_netDB_device_end:
+	if(!success)
+		checkFTLDBrc(rc);
 
 	// Finalize statement
-	if ((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
-	{
-		log_err("unmock_netDB_device(\"%s\", \"%s\", %i): Failed to finalize (error %d): %s",
-		        hwaddr, macVendor, dbID, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
-	}
+	sqlite3_reset(query_stmt);
+	sqlite3_finalize(query_stmt);
 
-	return SQLITE_OK;
+	return success;
 }
 
-// Update interface of device
-static int update_netDB_interface(sqlite3 *db, const int network_id, const char *iface)
+/**
+ * @brief Updates the network interface in the database for a given network ID.
+ *
+ * @param db Pointer to the SQLite database connection.
+ * @param network_id The ID of the network to update.
+ * @param iface The new interface value to set.
+ * @return true if the update was successful, false otherwise.
+ */
+static bool update_netDB_interface(sqlite3 *db, const int network_id, const char *iface)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return SQLITE_ERROR;
+		return false;
+
+	// Check for invalid network ID
+	if(network_id < 0)
+		return false;
 
 	// Return early if there is nothing to be done in here
 	if(iface == NULL || strlen(iface) == 0)
-		return SQLITE_OK;
+		return true;
 
+	bool success = false;
 	sqlite3_stmt *query_stmt = NULL;
 	const char querystr[] = "UPDATE network SET interface = ?1 WHERE id = ?2";
 
@@ -660,8 +718,7 @@ static int update_netDB_interface(sqlite3 *db, const int network_id, const char 
 	{
 		log_err("update_netDB_interface(%i, \"%s\") - SQL error prepare (%i): %s",
 		        network_id, iface, rc, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		return rc;
+		goto update_netDB_interface_end;
 	}
 
 	log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments ?1 = \"%s\" and ?2 = %i",
@@ -672,18 +729,14 @@ static int update_netDB_interface(sqlite3 *db, const int network_id, const char 
 	{
 		log_err("update_netDB_interface(%i, \"%s\"): Failed to bind iface (error %d): %s",
 		        network_id, iface, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto update_netDB_interface_end;
 	}
 	// Bind network_id to prepared statement (2nd argument)
 	if((rc = sqlite3_bind_int(query_stmt, 2, network_id)) != SQLITE_OK)
 	{
 		log_err("update_netDB_interface(%i, \"%s\"): Failed to bind name (error %d): %s",
 		        network_id, iface, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto update_netDB_interface_end;
 	}
 
 	// Perform step
@@ -691,27 +744,25 @@ static int update_netDB_interface(sqlite3 *db, const int network_id, const char 
 	{
 		log_err("update_netDB_interface(%i, \"%s\"): Failed to step (error %d): %s",
 		        network_id, iface, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
+		goto update_netDB_interface_end;
 	}
+
+	success = true;
+
+update_netDB_interface_end:
+	if(!success)
+		checkFTLDBrc(rc);
 
 	// Finalize statement
-	if ((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
-	{
-		log_err("update_netDB_interface(%i, \"%s\"): Failed to finalize (error %d): %s",
-		        network_id, iface, rc, sqlite3_errstr(rc));
-		sqlite3_reset(query_stmt);
-		checkFTLDBrc(rc);
-		return rc;
-	}
+	sqlite3_reset(query_stmt);
+	sqlite3_finalize(query_stmt);
 
-	return SQLITE_OK;
+	return true;
 }
 
 // Loop over all clients known to FTL and ensure we add them all to the database
 static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status *client_status,
-                                             const int clients, const time_t now, unsigned int *additional_entries)
+                                             const unsigned int clients, const time_t now, unsigned int *additional_entries)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -719,7 +770,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 
 	int rc = SQLITE_OK;
 	char hwaddr[128];
-	for(int clientID = 0; clientID < clients; clientID++)
+	for(unsigned int clientID = 0; clientID < clients; clientID++)
 	{
 		// Check thread cancellation
 		if(killed)
@@ -730,7 +781,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		clientsData *client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			log_debug(DEBUG_ARP, "Network table: Client %d returned NULL pointer", clientID);
+			log_debug(DEBUG_ARP, "Network table: Client %u returned NULL pointer", clientID);
 			unlock_shm();
 			continue;
 		}
@@ -798,10 +849,10 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 			// Reacquire client pointer (if may have changed when unlocking above)
 			client = getClient(clientID, true);
 
-			if(dbID >= 0)
+			if(dbID > DB_NODATA)
 			{
 				log_debug(DEBUG_ARP, "Network table: Client with IP %s has no MAC info but was recently be seen for network ID %i",
-						ipaddr, dbID);
+				          ipaddr, dbID);
 			}
 
 			//
@@ -817,7 +868,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 				// Reacquire client pointer (if may have changed when unlocking above)
 				client = getClient(clientID, true);
 
-				if(dbID >= 0)
+				if(dbID > DB_NODATA)
 				{
 					log_debug(DEBUG_ARP, "Network table: Client with IP %s has no MAC info but is known as mock-hwaddr client with network ID %i",
 					          ipaddr, dbID);
@@ -862,7 +913,13 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 			const time_t firstSeen = client->firstSeen;
 			const unsigned int numQueries = client->count;
 			unlock_shm();
-			insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor);
+			if(!insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor, &dbID))
+			{
+				if(ipaddr) free(ipaddr);
+				if(hostname) free(hostname);
+				if(interface) free(interface);
+				break;
+			}
 			lock_shm();
 
 			// Reacquire client pointer (if may have changed when unlocking above)
@@ -877,9 +934,6 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 				free(macVendor);
 				macVendor = NULL;
 			}
-
-			// Obtain ID which was given to this new entry
-			dbID = sqlite3_last_insert_rowid(db);
 		}
 		else	// Device already in database
 		{
@@ -890,8 +944,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 			const time_t lastQuery = client->lastQuery;
 			const unsigned int numQueriesARP = client->numQueriesARP;
 			unlock_shm();
-			rc = update_netDB_lastQuery(db, dbID, lastQuery);
-			if(rc != SQLITE_OK)
+			if(!update_netDB_lastQuery(db, dbID, lastQuery))
 			{
 				if(ipaddr) free(ipaddr);
 				if(hostname) free(hostname);
@@ -900,8 +953,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 			}
 
 			// Update number of queries if applicable
-			rc = update_netDB_numQueries(db, dbID, numQueriesARP);
-			if(rc != SQLITE_OK)
+			if(!update_netDB_numQueries(db, dbID, numQueriesARP))
 			{
 				if(ipaddr) free(ipaddr);
 				if(hostname) free(hostname);
@@ -917,10 +969,19 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 
 		unlock_shm();
 
+		// Break early if we failed to add the new device to the
+		// database above, continuing is not possible anymore
+		if(dbID < 0)
+		{
+			if(ipaddr) free(ipaddr);
+			if(hostname) free(hostname);
+			if(interface) free(interface);
+			break;
+		}
+
 		// Add unique IP address / mock-MAC pair to network_addresses table
 		// ipaddr is a local copy
-		rc = add_netDB_network_address(db, dbID, ipaddr);
-		if(rc != SQLITE_OK)
+		if(!add_netDB_network_address(db, dbID, ipaddr))
 		{
 			if(ipaddr) free(ipaddr);
 			if(hostname) free(hostname);
@@ -930,8 +991,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 
 		// Update hostname if available
 		// hostname is a local copy
-		rc = update_netDB_name(db, ipaddr, hostname);
-		if(rc != SQLITE_OK)
+		if(!update_netDB_name(db, ipaddr, hostname))
 		{
 			if(ipaddr) free(ipaddr);
 			if(hostname) free(hostname);
@@ -941,8 +1001,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 
 		// Update interface if available
 		// interface is a local copy
-		rc = update_netDB_interface(db, dbID, interface);
-		if(rc != SQLITE_OK)
+		if(!update_netDB_interface(db, dbID, interface))
 		{
 			if(ipaddr) free(ipaddr);
 			if(hostname) free(hostname);
@@ -995,7 +1054,7 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 	// Buffers
 	char *linebuffer = NULL;
 	size_t linebuffersize = 0u;
-	int iface_no, rc;
+	int iface_no;
 	bool has_iface = false, has_hwaddr = false;
 	char ipaddr[128], hwaddr[128], iface[128];
 
@@ -1101,10 +1160,8 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 			}
 
 			// Add new device to database
-			insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor);
-
-			// Obtain ID which was given to this new entry
-			dbID = sqlite3_last_insert_rowid(db);
+			if(!insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor, &dbID))
+				break;
 		}
 		else	// Device already in database
 		{
@@ -1114,19 +1171,14 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 
 		//Free allocated memory
 		if(macVendor != NULL)
-		{
 			free(macVendor);
-			macVendor = NULL;
-		}
 
 		// Add unique IP address / mock-MAC pair to network_addresses table
-		rc = add_netDB_network_address(db, dbID, ipaddr);
-		if(rc != SQLITE_OK)
+		if(!add_netDB_network_address(db, dbID, ipaddr))
 			break;
 
 		// Update interface if available
-		rc = update_netDB_interface(db, dbID, iface);
-		if(rc != SQLITE_OK)
+		if(!update_netDB_interface(db, dbID, iface))
 			break;
 
 		// Add to number of processed ARP cache entries
@@ -1141,7 +1193,22 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 	return true;
 }
 
-static bool clean_network_table(sqlite3* db)
+/**
+ * @brief Cleans the network table in the database by removing outdated entries.
+ *
+ * This function performs two main tasks:
+ * 1. Deletes IP addresses that have not been seen for more than a specified time.
+ * 2. Sets the name field to NULL for entries where the name was last updated before a specified time.
+ *
+ * The time limit for these operations is determined by the configuration setting
+ * `config.database.network.expire.v.ui`. If this setting is zero, the function
+ * will not perform any cleaning and will return true immediately.
+ *
+ * @param db A pointer to the SQLite database connection.
+ * @return true if the cleaning operations were successful or if cleaning is disabled.
+ * @return false if any of the cleaning operations failed.
+ */
+static bool clean_network_table(sqlite3 *db)
 {
 	// Do not clean if disabled
 	if(config.database.network.expire.v.ui == 0)
@@ -1156,12 +1223,18 @@ static bool clean_network_table(sqlite3* db)
 
 	rc = dbquery(db, "UPDATE network_addresses SET name = NULL "
 	                 "WHERE nameUpdated < %lu;", (unsigned long)limit);
-	if(rc != SQLITE_OK)
-		return false;
 
-	return true;
+	return rc == SQLITE_OK;
 }
 
+/**
+ * @brief Flushes the network table by removing all IP addresses and devices.
+ *
+ * This function opens the database, deletes all entries from the
+ * `network_addresses` and `network` tables, and then closes the database.
+ *
+ * @return true if the operation was successful, false otherwise.
+ */
 bool flush_network_table(void)
 {
 	sqlite3 *db = dbopen(false, false);
@@ -1183,7 +1256,7 @@ bool flush_network_table(void)
 }
 
 // Parse kernel's neighbor cache
-void parse_neighbor_cache(sqlite3* db)
+void parse_neighbor_cache(sqlite3 *db)
 {
 	// Prepare buffers
 	char *linebuffer = NULL;
@@ -1202,14 +1275,12 @@ void parse_neighbor_cache(sqlite3* db)
 	int rc = dbquery(db, sql);
 	if(rc != SQLITE_OK)
 	{
-		const char *text;
-		if( rc == SQLITE_BUSY )
-			text = "WARNING";
-		else
-			text = "ERROR";
-
 		// dbquery() above already logs the reason for why the query failed
-		log_warn("%s: Storing devices in network table (\"%s\") failed", text, sql);
+		if( rc == SQLITE_BUSY )
+			log_warn("Storing devices in network table (\"%s\") failed", sql);
+		else
+			log_err("Storing devices in network table (\"%s\") failed", sql);
+
 		return;
 	}
 
@@ -1227,7 +1298,7 @@ void parse_neighbor_cache(sqlite3* db)
 		client_status[i] = CLIENT_NOT_HANDLED;
 
 	// Try to access the kernel's neighbor cache
-	if (config.database.network.parseARPcache.v.b)
+	if(config.database.network.parseARPcache.v.b)
 	{
 		// Parse ARP cache and add new entries to network table
 		FILE *arpfp = NULL;
@@ -1310,7 +1381,7 @@ void parse_neighbor_cache(sqlite3* db)
 			//              is unknown (only DNS requesting clients
 			//              do this), the now value is ignored
 			lock_shm();
-			int clientID = findClientID(ip, false, false, 0.0);
+			const int clientID = findClientID(ip, false, false, 0.0);
 
 			// Set default values for a new device, may be updated
 			// below if the client is known to pihole-FTL
@@ -1348,7 +1419,7 @@ void parse_neighbor_cache(sqlite3* db)
 			unlock_shm();
 
 			// Device not in database, add new entry
-			if(dbID == DB_NODATA)
+			if(client_valid && dbID == DB_NODATA)
 			{
 				// Try to obtain vendor from MAC database
 				char *macVendor = getMACVendor(hwaddr);
@@ -1373,27 +1444,27 @@ void parse_neighbor_cache(sqlite3* db)
 					          hwaddr, ip, hostname, macVendor);
 
 					// Create new record (INSERT)
-					insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor);
+					if(!insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor, &dbID))
+					{
+						// Free allocated memory
+						free(hostname);
+						free(macVendor);
+						break;
+					}
 
 					lock_shm();
 					clientsData *client = getClient(clientID, true);
 					if(client != NULL)
 					{
-						// Reacquire client pointer (if may have changed when unlocking above)
-						client = getClient(clientID, true);
 						// Reset client ARP counter (we stored the entry in the database)
 						client->numQueriesARP = 0;
 					}
 					unlock_shm();
 
-					// Obtain ID which was given to this new entry
-					dbID = sqlite3_last_insert_rowid(db);
-
 					// Store hostname in the appropriate network_address record (if available)
 					if(strlen(hostname) > 0)
 					{
-						rc = update_netDB_name(db, ip, hostname);
-						if(rc != SQLITE_OK)
+						if(!update_netDB_name(db, ip, hostname))
 						{
 							// Free allocated memory
 							free(hostname);
@@ -1409,7 +1480,13 @@ void parse_neighbor_cache(sqlite3* db)
 					          hwaddr, ip, hostname, macVendor);
 
 					// Update/replace important device properties
-					unmock_netDB_device(db, hwaddr, macVendor, dbID);
+					if(!unmock_netDB_device(db, hwaddr, macVendor, dbID))
+					{
+						// Free allocated memory
+						free(hostname);
+						free(macVendor);
+						break;
+					}
 
 					// Host name, count and last query timestamp will be set in the next
 					// loop iteration for the sake of simplicity
@@ -1425,8 +1502,7 @@ void parse_neighbor_cache(sqlite3* db)
 				          hwaddr, ip, hostname);
 
 				// Update timestamp of last query if applicable
-				rc = update_netDB_lastQuery(db, dbID, lastQuery);
-				if(rc != SQLITE_OK)
+				if(!update_netDB_lastQuery(db, dbID, lastQuery))
 				{
 					// Free allocated memory
 					free(hostname);
@@ -1434,8 +1510,7 @@ void parse_neighbor_cache(sqlite3* db)
 				}
 
 				// Update number of queries if applicable
-				rc = update_netDB_numQueries(db, dbID, numQueries);
-				if(rc != SQLITE_OK)
+				if(!update_netDB_numQueries(db, dbID, numQueries))
 				{
 					// Free allocated memory
 					free(hostname);
@@ -1453,8 +1528,7 @@ void parse_neighbor_cache(sqlite3* db)
 				unlock_shm();
 
 				// Update hostname if available
-				rc = update_netDB_name(db, ip, hostname);
-				if(rc != SQLITE_OK)
+				if(!update_netDB_name(db, ip, hostname))
 				{
 					// Free allocated memory
 					free(hostname);
@@ -1467,13 +1541,11 @@ void parse_neighbor_cache(sqlite3* db)
 			hostname = NULL;
 
 			// Store interface if available
-			rc = update_netDB_interface(db, dbID, iface);
-			if(rc != SQLITE_OK)
+			if(dbID > DB_NODATA && !update_netDB_interface(db, dbID, iface))
 				break;
 
 			// Add unique IP address / mock-MAC pair to network_addresses table
-			rc = add_netDB_network_address(db, dbID, ip);
-			if(rc != SQLITE_OK)
+			if(dbID > DB_NODATA && !add_netDB_network_address(db, dbID, ip))
 				break;
 
 			// Count number of processed ARP cache entries
@@ -1538,14 +1610,13 @@ void parse_neighbor_cache(sqlite3* db)
 	}
 
 	// Actually update the database
-	if((rc = dbquery(db, "END TRANSACTION")) != SQLITE_OK) {
-		const char *text;
+	if((rc = dbquery(db, "END TRANSACTION")) != SQLITE_OK)
+	{
 		if( rc == SQLITE_BUSY )
-			text = "WARNING";
+			log_warn("Storing devices in network table failed: %s", sqlite3_errstr(rc));
 		else
-			text = "ERROR";
+			log_err("Storing devices in network table failed: %s", sqlite3_errstr(rc));
 
-		log_err("%s: Storing devices in network table failed: %s", text, sqlite3_errstr(rc));
 		checkFTLDBrc(rc);
 		return;
 	}
@@ -1581,6 +1652,7 @@ bool unify_hwaddr(sqlite3 *db)
 	SQL_bool(db, "BEGIN TRANSACTION");
 
 	// Perform SQL query
+	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
@@ -1597,8 +1669,7 @@ bool unify_hwaddr(sqlite3 *db)
 		if(rc != SQLITE_ROW)
 		{
 			log_err("unify_hwaddr(\"%s\") - SQL error step: %s", querystr, sqlite3_errstr(rc));
-			checkFTLDBrc(rc);
-			return false;
+			goto unify_hwaddr_end;
 		}
 
 		// Obtain id and hwaddr of the most recent entry for this particular client
@@ -1626,19 +1697,45 @@ bool unify_hwaddr(sqlite3 *db)
 		free(hwaddr);
 	}
 
-	// Finalize statement
-	sqlite3_finalize(stmt);
-
 	// Update database version to 4
 	if(!db_set_FTL_property(db, DB_VERSION, 4))
-		return false;
+		goto unify_hwaddr_end;
+
+	success = true;
+
+unify_hwaddr_end:
+
+	if(!success)
+		checkFTLDBrc(rc);
+
+	// Reset statement
+	sqlite3_reset(stmt);
+
+	// Finalize statement
+	sqlite3_finalize(stmt);
 
 	// End transaction
 	SQL_bool(db, "COMMIT");
 
-	return true;
+	return success;
 }
 
+/**
+ * @brief Retrieves the vendor name associated with a given MAC address.
+ *
+ * This function queries a local SQLite database to find the vendor name
+ * corresponding to the provided MAC address. It handles special cases such as
+ * loopback interfaces and invalid MAC addresses.
+ *
+ * @param hwaddr The MAC address to look up, in the format "XX:XX:XX:XX:XX:XX".
+ * @return A dynamically allocated string containing the vendor name. The caller
+ *         is responsible for freeing this string. If the vendor name is not found
+ *         or an error occurs, an empty string is returned.
+ *
+ * Special cases:
+ * - If the MAC address is "00:00:00:00:00:00", the function returns "virtual interface".
+ * - If the MAC address is invalid (not 17 characters long or contains "ip-"), an empty string is returned.
+ */
 static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 {
 	// Special handling for the loopback interface
@@ -1659,6 +1756,7 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 		return strdup("");
 	}
 
+	bool success = false;
 	sqlite3 *macvendor_db = NULL;
 	int rc = sqlite3_open_v2(config.files.macvendor.v.s, &macvendor_db, SQLITE_OPEN_READONLY, NULL);
 	if(rc != SQLITE_OK)
@@ -1674,13 +1772,13 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 	hwaddrshort[8] = '\0';
 	const char querystr[] = "SELECT vendor FROM macvendor WHERE mac LIKE ?;";
 
+	char *vendor = NULL;
 	sqlite3_stmt *stmt = NULL;
 	rc = sqlite3_prepare_v2(macvendor_db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
 		log_err("getMACVendor(\"%s\") - SQL error prepare \"%s\": %s", hwaddr, querystr, sqlite3_errstr(rc));
-		sqlite3_close(macvendor_db);
-		return strdup("");
+		goto getMACVendor_end;
 	}
 
 	// Bind hwaddrshort to prepared statement
@@ -1688,22 +1786,13 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 	{
 		log_err("getMACVendor(\"%s\" -> \"%s\"): Failed to bind hwaddrshort: %s",
 		        hwaddr, hwaddrshort, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		sqlite3_close(macvendor_db);
-		return strdup("");
+		goto getMACVendor_end;
 	}
 
-	char *vendor = NULL;
 	rc = sqlite3_step(stmt);
 	if(rc == SQLITE_ROW)
 	{
 		vendor = strdup((char*)sqlite3_column_text(stmt, 0));
-	}
-	else
-	{
-		// Not found
-		vendor = strdup("");
 	}
 
 	if(rc != SQLITE_DONE && rc != SQLITE_ROW)
@@ -1711,7 +1800,19 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 		// Error
 		log_err("getMACVendor(\"%s\") - SQL error step: %s", hwaddr, sqlite3_errstr(rc));
 	}
+	else
+		success = true;
 
+getMACVendor_end:
+
+	if(!success)
+		checkFTLDBrc(rc);
+
+	if(vendor == NULL)
+		vendor = strdup("");
+
+	// Finalize statement and close database
+	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 	sqlite3_close(macvendor_db);
 
@@ -1720,28 +1821,33 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 	return vendor;
 }
 
-void updateMACVendorRecords(sqlite3 *db)
+/**
+ * @brief Updates the MAC vendor records in the database
+ *
+ * @param db A pointer to the SQLite database.
+ */
+bool updateMACVendorRecords(sqlite3 *db)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return;
+		return false;
 
 	struct stat st;
 	if(stat(config.files.macvendor.v.s, &st) != 0)
 	{
 		// File does not exist
 		log_debug(DEBUG_ARP, "updateMACVendorRecords(): \"%s\" does not exist", config.files.macvendor.v.s);
-		return;
+		return false;
 	}
 
+	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	const char *selectstr = "SELECT id,hwaddr FROM network;";
 	int rc = sqlite3_prepare_v2(db, selectstr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
 		log_err("updateMACVendorRecords() - SQL error prepare \"%s\": %s", selectstr, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		return;
+		goto updateMACVendorRecords_end;
 	}
 
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
@@ -1763,29 +1869,24 @@ void updateMACVendorRecords(sqlite3 *db)
 		if(rc != SQLITE_OK)
 		{
 			log_err("updateMACVendorRecords() - SQL error prepare \"%s\": %s", updatestr, sqlite3_errstr(rc));
-			checkFTLDBrc(rc);
 			free(vendor);
-			break;
+			goto updateMACVendorRecords_end;
 		}
 
 		// Bind vendor to prepared statement
 		if((rc = sqlite3_bind_text(stmt2, 1, vendor, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
 			log_err("updateMACVendorRecords() - Failed to bind vendor: %s", sqlite3_errstr(rc));
-			sqlite3_reset(stmt2);
-			sqlite3_finalize(stmt2);
 			free(vendor);
-			break;
+			goto updateMACVendorRecords_end;
 		}
 
 		// Bind id to prepared statement
 		if((rc = sqlite3_bind_int(stmt2, 2, id)) != SQLITE_OK)
 		{
 			log_err("updateMACVendorRecords() - Failed to bind id: %s", sqlite3_errstr(rc));
-			sqlite3_reset(stmt2);
-			sqlite3_finalize(stmt2);
 			free(vendor);
-			break;
+			goto updateMACVendorRecords_end;
 		}
 
 		// Execute statement
@@ -1793,11 +1894,8 @@ void updateMACVendorRecords(sqlite3 *db)
 		if(rc != SQLITE_DONE)
 		{
 			log_err("updateMACVendorRecords() - SQL error step: %s", sqlite3_errstr(rc));
-			checkFTLDBrc(rc);
-			sqlite3_reset(stmt2);
-			sqlite3_finalize(stmt2);
 			free(vendor);
-			break;
+			goto updateMACVendorRecords_end;
 		}
 
 		// Free allocated memory
@@ -1807,15 +1905,26 @@ void updateMACVendorRecords(sqlite3 *db)
 	{
 		// Error
 		log_err("updateMACVendorRecords() - SQL error step: %s", sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		return;
+		goto updateMACVendorRecords_end;
 	}
 
+	success = true;
+
+updateMACVendorRecords_end:
+	if(!success)
+		checkFTLDBrc(rc);
+
+	// Reset statement
+	sqlite3_reset(stmt);
+
+	// Finalize statement
 	sqlite3_finalize(stmt);
+
+	return success;
 }
 
 // Get hardware address of device identified by IP address
-char *__attribute__((malloc)) getMACfromIP(sqlite3* db, const char *ipaddr)
+char *__attribute__((malloc)) getMACfromIP(sqlite3 *db, const char *ipaddr)
 {
 	// Return early if database is known to be broken
 	if(FTLDBerror())
@@ -1838,6 +1947,8 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3* db, const char *ipaddr)
 	// Prepare SQLite statement
 	// We request the most recent IP entry in case there an IP appears
 	// multiple times in the network_addresses table
+	char *hwaddr = NULL;
+	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT hwaddr FROM network WHERE id = "
 	                       "(SELECT network_id FROM network_addresses "
@@ -1847,11 +1958,7 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3* db, const char *ipaddr)
 	{
 		log_err("getMACfromIP(\"%s\") - SQL error prepare: %s",
 		        ipaddr, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-
-		if(db_opened) dbclose(&db);
-
-		return NULL;
+		goto getMACfromIP_end;
 	}
 
 	// Bind ipaddr to prepared statement
@@ -1859,16 +1966,9 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3* db, const char *ipaddr)
 	{
 		log_err("getMACfromIP(\"%s\"): Failed to bind ip: %s",
 		        ipaddr, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-
-		if(db_opened) dbclose(&db);
-
-		return NULL;
+		goto getMACfromIP_end;
 	}
 
-	char *hwaddr = NULL;
 	rc = sqlite3_step(stmt);
 	if(rc == SQLITE_ROW)
 	{
@@ -1884,19 +1984,27 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3* db, const char *ipaddr)
 	{
 		log_err("getMACfromIP(\"%s\"): Failed step: %s",
 		        ipaddr, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		return NULL;
+		goto getMACfromIP_end;
 	}
 
 	if(hwaddr != NULL)
 		log_debug(DEBUG_DATABASE, "Found database hardware address %s -> %s", ipaddr, hwaddr);
 
+	success = true;
+
+getMACfromIP_end:
+
+	if(!success)
+		checkFTLDBrc(rc);
+
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
-	if(db_opened) dbclose(&db);
+	if(db_opened)
+		dbclose(&db);
 
+	// Return hardware address, may be NULL on error
 	return hwaddr;
 }
 
@@ -1924,7 +2032,9 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr)
 	// Prepare SQLite statement
 	// We request the most recent IP entry in case there an IP appears
 	// multiple times in the network_addresses table
+	bool success = false;
 	sqlite3_stmt *stmt = NULL;
+	int aliasclient_id = DB_FAILED;
 	const char *querystr = "SELECT aliasclient_id FROM network WHERE id = "
 	                       "(SELECT network_id FROM network_addresses "
 	                       "WHERE ip = ? "
@@ -1935,11 +2045,7 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr)
 	{
 		log_err("getAliasclientIDfromIP(\"%s\") - SQL error prepare: %s",
 		        ipaddr, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-
-		if(db_opened) dbclose(&db);
-
-		return DB_FAILED;
+		goto getAliasclientIDfromIP_end;
 	}
 
 	// Bind ipaddr to prepared statement
@@ -1947,16 +2053,9 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr)
 	{
 		log_warn("getAliasclientIDfromIP(\"%s\"): Failed to bind ip: %s",
 		         ipaddr, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-
-		if(db_opened) dbclose(&db);
-
-		return DB_FAILED;
+		goto getAliasclientIDfromIP_end;
 	}
 
-	int aliasclient_id = DB_NODATA;
 	rc = sqlite3_step(stmt);
 	if(rc == SQLITE_ROW)
 	{
@@ -1965,19 +2064,31 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr)
 	}
 	else if(rc != SQLITE_DONE)
 	{
-		// Error, check for database corruption
-		checkFTLDBrc(rc);
-		return DB_FAILED;
+		// Error
+		goto getAliasclientIDfromIP_end;
+	}
+	else
+	{
+		// Not found
+		aliasclient_id = DB_NODATA;
 	}
 
 	log_debug(DEBUG_ALIASCLIENTS, "   Aliasclient ID %s -> %i%s", ipaddr, aliasclient_id,
-	          (aliasclient_id == DB_NODATA) ? " (NOT FOUND)" : "");
+	          aliasclient_id < 0 ? " (NOT FOUND)" : "");
+
+	success = true;
+
+getAliasclientIDfromIP_end:
+
+	if(!success)
+		checkFTLDBrc(rc);
 
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
-	if(db_opened) dbclose(&db);
+	if(db_opened)
+		dbclose(&db);
 
 	return aliasclient_id;
 }
@@ -2012,6 +2123,8 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	}
 
 	// Check for a host name associated with the same IP address
+	char *name = NULL;
+	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT name FROM network_addresses WHERE name IS NOT NULL AND ip = ?;";
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
@@ -2019,11 +2132,7 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	{
 		log_err("getNameFromIP(\"%s\") - SQL error prepare: %s",
 		        ipaddr, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-
-		if(db_opened) dbclose(&db);
-
-		return NULL;
+		goto getNameFromIP_end;
 	}
 
 	// Bind ipaddr to prepared statement
@@ -2031,18 +2140,11 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	{
 		log_warn("getNameFromIP(\"%s\"): Failed to bind ip: %s",
 		         ipaddr, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-
-		if(db_opened) dbclose(&db);
-
-		return NULL;
+		goto getNameFromIP_end;
 	}
 
 	log_debug(DEBUG_RESOLVER, "Check for a host name associated with IP address %s", ipaddr);
 
-	char *name = NULL;
 	rc = sqlite3_step(stmt);
 	if(rc == SQLITE_ROW)
 	{
@@ -2054,8 +2156,9 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	else if(rc != SQLITE_DONE)
 	{
 		// Error
-		checkFTLDBrc(rc);
-		return NULL;
+		log_err("getNameFromIP(\"%s\") - SQL error step: %s",
+		        ipaddr, sqlite3_errstr(rc));
+		goto getNameFromIP_end;
 	}
 
 	// Finalize statement
@@ -2065,8 +2168,10 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	// Return here if we found the name
 	if(name != NULL)
 	{
-		if(db_opened) dbclose(&db);
+		if(db_opened)
+			dbclose(&db);
 
+		// Return early
 		return name;
 	}
 
@@ -2084,8 +2189,7 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	{
 		log_err("getNameFromIP(\"%s\") - SQL error prepare: %s",
 		        ipaddr, sqlite3_errstr(rc));
-		if(db_opened) dbclose(&db);
-		return NULL;
+		goto getNameFromIP_end;
 	}
 
 	// Bind ipaddr to prepared statement
@@ -2093,13 +2197,7 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	{
 		log_warn("getNameFromIP(\"%s\"): Failed to bind ip: %s",
 		         ipaddr, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-
-		if(db_opened) dbclose(&db);
-
-		return NULL;
+		goto getNameFromIP_end;
 	}
 
 	log_debug(DEBUG_RESOLVER, "Checking for a host name associated with the same device (but another IP address)");
@@ -2123,15 +2221,24 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	else
 	{
 		// Error
-		checkFTLDBrc(rc);
-		return NULL;
+		log_err("getNameFromIP(\"%s\") - SQL error step: %s",
+		        ipaddr, sqlite3_errstr(rc));
+		goto getNameFromIP_end;
 	}
 
-	// Finalize statement and close database handle
+	success = true;
+
+getNameFromIP_end:
+
+	if(!success)
+		checkFTLDBrc(rc);
+
+	// Finalize statement and close database handle (if opened)
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
-	if(db_opened) dbclose(&db);
+	if(db_opened)
+		dbclose(&db);
 
 	return name;
 }
@@ -2157,14 +2264,15 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 	                               "WHERE name IS NOT NULL AND "
 	                                     "network_id = (SELECT id FROM network WHERE hwaddr = ? COLLATE NOCASE) "
 	                               "ORDER BY lastSeen DESC LIMIT 1";
+	char *name = NULL;
+	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
 		log_err("getNameFromMAC(\"%s\") - SQL error prepare: %s",
 		        client, sqlite3_errstr(rc));
-		dbclose(&db);
-		return NULL;
+		goto getNameFromMAC_end;
 	}
 
 	// Bind client to prepared statement
@@ -2172,17 +2280,11 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 	{
 		log_warn("getNameFromMAC(\"%s\"): Failed to bind ip: %s",
 		         client, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-
-		dbclose(&db);
-		return NULL;
+		goto getNameFromMAC_end;
 	}
 
 	log_debug(DEBUG_RESOLVER, "Check for a host name associated with MAC address %s", client);
 
-	char *name = NULL;
 	rc = sqlite3_step(stmt);
 	if(rc == SQLITE_ROW)
 	{
@@ -2202,9 +2304,17 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 	else
 	{
 		// Error
-		checkFTLDBrc(rc);
-		return NULL;
+		log_err("getNameFromMAC(\"%s\") - SQL error step: %s",
+		        client, sqlite3_errstr(rc));
+		goto getNameFromMAC_end;
 	}
+
+	success = true;
+
+getNameFromMAC_end:
+
+	if(!success)
+		checkFTLDBrc(rc);
 
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
@@ -2236,6 +2346,8 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	}
 
 	// Prepare SQLite statement
+	char *iface = NULL;
+	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT interface FROM network "
 	                               "JOIN network_addresses "
@@ -2248,8 +2360,7 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	{
 		log_err("getIfaceFromIP(\"%s\") - SQL error prepare: %s",
 		        ipaddr, sqlite3_errstr(rc));
-		if(db_opened) dbclose(&db);
-		return NULL;
+		goto getIfaceFromIP_end;
 	}
 
 	log_debug(DEBUG_DATABASE, "getIfaceFromIP(): \"%s\" with ? = \"%s\"",
@@ -2260,16 +2371,9 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	{
 		log_warn("getIfaceFromIP(\"%s\"): Failed to bind ip: %s",
 		         ipaddr, sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-
-		if(db_opened) dbclose(&db);
-
-		return NULL;
+		goto getIfaceFromIP_end;
 	}
 
-	char *iface = NULL;
 	rc = sqlite3_step(stmt);
 	if(rc == SQLITE_ROW)
 	{
@@ -2279,38 +2383,48 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	else if(rc != SQLITE_DONE)
 	{
 		// Error
-		checkFTLDBrc(rc);
-		return NULL;
+		log_err("getIfaceFromIP(\"%s\") - SQL error step: %s",
+		        ipaddr, sqlite3_errstr(rc));
+		goto getIfaceFromIP_end;
 	}
 
 	if(iface != NULL)
 		log_debug(DEBUG_DATABASE, "Found database interface %s -> %s", ipaddr, iface);
 
+	success = true;
+
+getIfaceFromIP_end:
+
+	if(!success)
+		checkFTLDBrc(rc);
+
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
-	if(db_opened) dbclose(&db);
+	if(db_opened)
+		dbclose(&db);
 
 	return iface;
 }
 
+// Select records from the network table
 bool networkTable_readDevices(sqlite3 *db, sqlite3_stmt **read_stmt, const char **message)
 {
 	// Prepare SQLite statement
 	const char *querystr = "SELECT id,hwaddr,interface,firstSeen,lastQuery,numQueries,macVendor FROM network ORDER BY lastQuery DESC;";
-	int rc = sqlite3_prepare_v2(db, querystr, -1, read_stmt, NULL);
-	if( rc != SQLITE_OK ){
+	const int rc = sqlite3_prepare_v2(db, querystr, -1, read_stmt, NULL);
+	if(rc != SQLITE_OK){
 		*message = sqlite3_errstr(rc);
 		log_err("networkTable_readDevices() - SQL error prepare (%i): %s",
 		        rc, *message);
-		dbclose(&db);
 		return false;
 	}
 
 	return true;
 }
 
+// Get a record from the network table
 bool networkTable_readDevicesGetRecord(sqlite3_stmt *read_stmt, network_record *network, const char **message)
 {
 	// Perform step
@@ -2351,6 +2465,7 @@ void networkTable_readDevicesFinalize(sqlite3_stmt *read_stmt)
 	sqlite3_finalize(read_stmt);
 }
 
+// Select records from the network table (IPs)
 bool networkTable_readIPs(sqlite3 *db, sqlite3_stmt **read_stmt, const int id, const char **message)
 {
 	// Prepare SQLite statement
@@ -2369,14 +2484,13 @@ bool networkTable_readIPs(sqlite3 *db, sqlite3_stmt **read_stmt, const int id, c
 		*message = sqlite3_errstr(rc);
 		log_err("networkTable_readIPs(%i): Failed to bind domain (error %d) - %s",
 		        id, rc, *message);
-		sqlite3_reset(*read_stmt);
-		sqlite3_finalize(*read_stmt);
 		return false;
 	}
 
 	return true;
 }
 
+// Get a record from the network_addresses table (IPs)
 bool networkTable_readIPsGetRecord(sqlite3_stmt *read_stmt, network_addresses_record *network_addresses, const char **message)
 {
 	// Perform step
@@ -2414,12 +2528,14 @@ void networkTable_readIPsFinalize(sqlite3_stmt *read_stmt)
 	sqlite3_finalize(read_stmt);
 }
 
+// Delete a device from the network table
 bool networkTable_deleteDevice(sqlite3 *db, const int id, int *deleted, const char **message)
 {
 	// First step: Delete all associated IPs of this device
 	// Prepare SQLite statement
 	const char *querystr = "DELETE FROM network_addresses WHERE network_id = ?;";
-	sqlite3_stmt *stmt;
+	bool success = false;
+	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		*message = sqlite3_errstr(rc);
@@ -2434,9 +2550,7 @@ bool networkTable_deleteDevice(sqlite3 *db, const int id, int *deleted, const ch
 		*message = sqlite3_errstr(rc);
 		log_err("networkTable_deleteDevice(%i): Failed to bind id (error %d) - %s",
 		        id, rc, *message);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		return false;
+		goto networkTable_deleteDevice_end;
 	}
 
 	// Execute statement
@@ -2446,9 +2560,7 @@ bool networkTable_deleteDevice(sqlite3 *db, const int id, int *deleted, const ch
 		*message = sqlite3_errstr(rc);
 		log_err("networkTable_deleteDevice(%i) - SQL error step (%i): %s",
 		        id, rc, *message);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		return false;
+		goto networkTable_deleteDevice_end;
 	}
 
 	// Check if we deleted any rows
@@ -2464,7 +2576,7 @@ bool networkTable_deleteDevice(sqlite3 *db, const int id, int *deleted, const ch
 		*message = sqlite3_errstr(rc);
 		log_err("networkTable_deleteDevice(%i) - SQL error prepare (%i): %s",
 		        id, rc, *message);
-		return false;
+		goto networkTable_deleteDevice_end;
 	}
 
 	// Bind id to prepared statement
@@ -2473,9 +2585,7 @@ bool networkTable_deleteDevice(sqlite3 *db, const int id, int *deleted, const ch
 		*message = sqlite3_errstr(rc);
 		log_err("networkTable_deleteDevice(%i): Failed to bind id (error %d) - %s",
 		        id, rc, *message);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		return false;
+		goto networkTable_deleteDevice_end;
 	}
 
 	// Execute statement
@@ -2485,18 +2595,21 @@ bool networkTable_deleteDevice(sqlite3 *db, const int id, int *deleted, const ch
 		*message = sqlite3_errstr(rc);
 		log_err("networkTable_deleteDevice(%i) - SQL error step (%i): %s",
 		        id, rc, *message);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		return false;
+		goto networkTable_deleteDevice_end;
 	}
 
 	// Check if we deleted any rows
 	*deleted += sqlite3_changes(db);
 
+	success = true;
+
+networkTable_deleteDevice_end:
+
 	// Finalize statement
+	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
-	return true;
+	return success;
 }
 
 // Counting number of occurrences of a specific char in a string

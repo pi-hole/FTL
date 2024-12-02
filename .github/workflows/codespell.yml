@@ -19,5 +19,5 @@ jobs:
       uses: codespell-project/actions-codespell@master
       with:
         ignore_words_file: .github/.codespellignore
-        skip: ./src/database/sqlite3.c,./src/database/sqlite3.h,./src/database/shell.c,./src/lua,./src/dnsmasq,./src/tre-regex,./.git,./test/libs,./src/webserver/civetweb,./src/zip/miniz,./src/api/docs/content/external
+        skip: ./src/database/sqlite3.c,./src/database/sqlite3.h,./src/database/shell.c,./src/lua,./src/dnsmasq,./src/tre-regex,./.git,./test/libs,./src/webserver/civetweb,./src/zip/miniz,./src/api/docs/content/external,./src/database/sqlite3_rsync.c
         exclude_file: .github/.codespellignore_lines

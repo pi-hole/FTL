@@ -10,8 +10,14 @@
 #ifndef GC_H
 #define GC_H
 
+#include <stdbool.h>
+#include <time.h>
+
 void *GC_thread(void *val);
 void runGC(const time_t now, time_t *lastGCrun, const bool flush);
 time_t get_rate_limit_turnaround(const unsigned int rate_limit_count);
+
+// Defined in src/dnsmasq_interface.c
+void set_dnsmasq_debug(const bool debug, const pid_t pid);
 
 #endif //GC_H

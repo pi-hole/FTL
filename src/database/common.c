@@ -33,7 +33,6 @@
 
 bool DBdeleteoldqueries = false;
 static bool DBerror = false;
-long int lastdbindex = 0;
 
 bool __attribute__ ((pure)) FTLDBerror(void)
 {
@@ -277,8 +276,9 @@ void db_init(void)
 	// explicitly check for failures to have happened
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
 
-	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
-	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
+	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c) and
+	// initialize SQLite3 engine
+	pihole_sqlite3_initalize();
 
 	// Check if database exists, if not create empty database
 	if(!file_exists(config.files.database.v.s))
@@ -601,6 +601,21 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 20 if lower
+	if(dbversion < 20)
+	{
+		// Update to version 20: Add additional column for the network table
+		log_info("Updating long-term database to version 20");
+		if(!create_network_addresses_network_id_index(db))
+		{
+			log_info("Network addresses network_id index cannot be added, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
 	/* * * * * * * * * * * * * IMPORTANT * * * * * * * * * * * * *
 	 * If you add a new database version, check if the in-memory
 	 * schema needs to be update as well (always recreated from
@@ -643,25 +658,6 @@ int db_get_int(sqlite3* db, const enum ftl_table_props ID)
 	}
 
 	int value = db_query_int(db, querystr);
-	free(querystr);
-
-	return value;
-}
-
-double db_get_FTL_property_double(sqlite3 *db, const enum ftl_table_props ID)
-{
-	// Prepare SQL statement
-	char* querystr = NULL;
-	int ret = asprintf(&querystr, "SELECT VALUE FROM ftl WHERE id = %u;", ID);
-
-	if(querystr == NULL || ret < 0)
-	{
-		log_err("Memory allocation failed in db_get_FTL_property with ID = %u (%i)", ID, ret);
-		checkFTLDBrc(ret);
-		return DB_FAILED;
-	}
-
-	double value = db_query_double(db, querystr);
 	free(querystr);
 
 	return value;

@@ -641,6 +641,11 @@ bool export_queries_to_disk(bool final)
 	// Prepare SQLite3 statement
 	log_debug(DEBUG_DATABASE, "Accessing in-memory database");
 	rc = sqlite3_prepare_v2(memdb, "SELECT MAX(id) FROM disk.query_storage;", -1, &stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		log_err("export_queries_to_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
+		return false;
+	}
 
 	// Perform step
 	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
@@ -1194,20 +1199,20 @@ void DB_read_queries(void)
 			query->qtype = type - 100;
 		}
 		counters->querytype[query->type]++;
-		log_debug(DEBUG_STATUS, "query type %d set (database), ID = %d, new count = %d", query->type, counters->queries, counters->querytype[query->type]);
+		log_debug(DEBUG_STATUS, "query type %d set (database), ID = %u, new count = %u", query->type, counters->queries, counters->querytype[query->type]);
 
 		// Status is set below
 		query->domainID = domainID;
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
-		query->cacheID = findCacheID(domainID, clientID, query->type, true);
+		query->cacheID = -1;
 		query->id = counters->queries;
 		query->response = 0;
 		query->flags.response_calculated = reply_time_avail;
 		query->dnssec = dnssec;
 		query->reply = reply;
 		counters->reply[query->reply]++;
-		log_debug(DEBUG_STATUS, "reply type %d set (database), ID = %d, new count = %d", query->reply, counters->queries, counters->reply[query->reply]);
+		log_debug(DEBUG_STATUS, "reply type %u set (database), ID = %u, new count = %u", query->reply, counters->queries, counters->reply[query->reply]);
 		query->response = reply_time;
 		query->CNAME_domainID = -1;
 		// Initialize flags
@@ -1246,6 +1251,11 @@ void DB_read_queries(void)
 				// it was queried intentionally.
 				const int CNAMEdomainID = findDomainID(CNAMEdomain, false);
 				query->CNAME_domainID = CNAMEdomainID;
+
+				// Get domain pointer and update lastQuery timer
+				domainsData *cdomain = getDomain(CNAMEdomainID, true);
+				if(cdomain != NULL)
+					cdomain->lastQuery = queryTimeStamp;
 			}
 		}
 		else if(sqlite3_column_bytes(stmt, 7) != 0)
@@ -1253,6 +1263,7 @@ void DB_read_queries(void)
 			// Set ID of the domainlist entry that was the reason for permitting/blocking this query
 			// We assume the value in this field is said ID when it is not a CNAME-related domain
 			// (checked above) and the value of additional_info is not NULL (0 bytes storage size)
+			query->cacheID = findCacheID(domainID, clientID, query->type, true);
 			DNSCacheData *cache = getDNSCache(query->cacheID, true);
 			// Only load if
 			//  a) we have a cache entry
@@ -1321,7 +1332,7 @@ void DB_read_queries(void)
 		}
 
 		if(counters->queries % 10000 == 0)
-			log_info("  %d queries parsed...", counters->queries);
+			log_info("  %u queries parsed...", counters->queries);
 	}
 
 	// Release shared memory
@@ -1336,7 +1347,7 @@ void DB_read_queries(void)
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
 
-	log_info("Imported %i queries from the long-term database", counters->queries);
+	log_info("Imported %u queries from the long-term database", counters->queries);
 }
 
 void update_disk_db_idx(void)
@@ -1490,11 +1501,11 @@ bool queries_to_database(void)
 		if(query->upstreamID > -1)
 		{
 			// Get forward pointer
-			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
-			const char *forwardIP = getstr(upstream->ippos);
-			if(upstream && forwardIP)
+			const upstreamsData *upstream = getUpstream(query->upstreamID, true);
+			if(upstream != NULL)
 			{
 				char *buffer = NULL;
+				const char *forwardIP = getstr(upstream->ippos);
 				int len = 0; // The length of the string WITHOUT the NUL byte. This is what sqlite3_bind_text() expects.
 				if((len = asprintf(&buffer, "%s#%u", forwardIP, upstream->port)) > 0)
 				{
@@ -1529,7 +1540,7 @@ bool queries_to_database(void)
 		}
 
 		// Get cache entry for this query
-		const int cacheID = query->cacheID >= 0 ? query->cacheID : findCacheID(query->domainID, query->clientID, query->type, false);
+		const unsigned int cacheID = query->cacheID > -1 ? query->cacheID : findCacheID(query->domainID, query->clientID, query->type, false);
 		DNSCacheData *cache = getDNSCache(cacheID, true);
 
 		// ADDITIONAL_INFO

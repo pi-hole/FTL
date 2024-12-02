@@ -18,7 +18,6 @@ bool create_aliasclients_table(sqlite3 *db);
 bool import_aliasclients(sqlite3 *db);
 void reimport_aliasclients(sqlite3 *db);
 
-int *get_aliasclient_list(const int aliasclientID);
 void reset_aliasclient(sqlite3 *db, clientsData *client);
 
 #endif //ALIASCLIENTS_TABLE_H

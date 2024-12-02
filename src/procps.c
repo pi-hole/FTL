@@ -19,7 +19,6 @@
 #include "config/config.h"
 
 #define PROCESS_NAME   "pihole-FTL"
-#define PROC_PATH_SIZ  32
 
 // This function tries to obtain the process name of a given PID
 // It returns true on success, false otherwise and stores the process name in
@@ -28,7 +27,7 @@
 // to parse /proc/<pid>/comm. The latter is not guaranteed to be correct (e.g.
 // processes can easily change it themselves using prctl with PR_SET_NAME), but
 // it is better than nothing.
-static bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
+bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
 {
 	if(pid == 0)
 	{
@@ -291,28 +290,6 @@ bool another_FTL(void)
 
 	closedir(dirPos);
 	return already_running;
-}
-
-bool read_self_memory_status(struct statm_t *result)
-{
-	const char* statm_path = "/proc/self/statm";
-
-	FILE *f = fopen(statm_path,"r");
-	if(!f){
-		perror(statm_path);
-		return false;
-	}
-	if(fscanf(f,"%lu %lu %lu %lu %lu %lu %lu",
-	   &result->size, &result->resident, &result->shared,
-	   &result->text, &result->lib, &result->data,
-	   &result->dirty) != 7)
-	{
-		perror(statm_path);
-		return false;
-	}
-	fclose(f);
-
-	return true;
 }
 
 bool getProcessMemory(struct proc_mem *mem, const unsigned long total_memory)
