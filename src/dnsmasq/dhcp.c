@@ -1125,6 +1125,9 @@ static int relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz)
 	to.sa.sa_family = AF_INET;
 	to.in.sin_addr = relay->server.addr4;
 	to.in.sin_port = htons(relay->port);
+#ifdef HAVE_SOCKADDR_SA_LEN
+	to.in.sin_len = sizeof(struct sockaddr_in);
+#endif
 	
 	/* Broadcasting to server. */
 	if (relay->server.addr4.s_addr == 0)
