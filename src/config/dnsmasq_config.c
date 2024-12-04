@@ -460,13 +460,20 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	for(unsigned int i = 0; i < revServers; i++)
 	{
 		cJSON *revServer = cJSON_GetArrayItem(conf->dns.revServers.v.json, i);
+		if(revServer == NULL || !cJSON_IsString(revServer))
+		{
+			log_err("Skipped invalid dns.revServers[%u]: %s (not a string)",
+			        i, cJSON_Print(revServer));
+			continue;
+		}
 
 		// Split comma-separated string into its components
 		char *copy = strdup(revServer->valuestring);
-		char *active = strtok(copy, ",");
-		char *cidr = strtok(NULL, ",");
-		char *target = strtok(NULL, ",");
-		char *domain = strtok(NULL, ",");
+		char *saveptr = NULL;
+		char *active = strtok_r(copy, ",", &saveptr);
+		char *cidr = strtok_r(NULL, ",", &saveptr);
+		char *target = strtok_r(NULL, ",", &saveptr);
+		char *domain = strtok_r(NULL, ",", &saveptr);
 
 		// Skip inactive reverse servers
 		if(active != NULL &&

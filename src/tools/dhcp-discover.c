@@ -13,6 +13,8 @@
 #undef __USE_XOPEN
 #include "FTL.h"
 #include "dhcp-discover.h"
+// dhcpv6_discover_iface()
+#include "dhcpv6-discover.h"
 // format_time()
 #include "log.h"
 // readFTLconf()
@@ -47,7 +49,8 @@
 
 // Maximum time we wait for incoming DHCPOFFERs
 // (seconds)
-#define DHCPOFFER_TIMEOUT 10
+#define DHCPOFFER_TIMEOUT 6
+#define DHCPV6_TIMEOUT 4
 
 // How many threads do we spawn at maximum?
 // This is also the limit for interfaces
@@ -59,6 +62,17 @@
 
 // Global lock used by all threads
 static pthread_mutex_t lock;
+
+void start_lock(void)
+{
+	pthread_mutex_init(&lock, NULL);
+}
+
+void end_lock(void)
+{
+	pthread_mutex_destroy(&lock);
+}
+
 static void __attribute__((format(printf, 1, 2))) printf_locked(const char *format, ...)
 {
 	va_list args;
@@ -649,10 +663,10 @@ static void get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		valid_responses++;
 	}
 	if(responses == valid_responses)
-		printf("DHCP packets received on %s%s%s: %u\n",
+		printf("DHCPv4 packets received on %s%s%s: %u\n",
 		       cli_bold(), iface, cli_normal(), valid_responses);
 	else
-		printf("DHCP packets received on %s%s%s: %u (%u seen for other machines)\n",
+		printf("DHCPv4 packets received on %s%s%s: %u (%u seen for other machines)\n",
 		       cli_bold(), iface, cli_normal(), valid_responses, responses);
 
 #ifdef DEBUG
@@ -696,6 +710,12 @@ end_dhcp_discover_iface:
 	if(dhcp_socket > 0)
 		close(dhcp_socket);
 
+	// Perform the same scan for DHCPv6
+	const int responses = dhcpv6_discover_iface(iface, DHCPV6_TIMEOUT);
+	if(responses > -1)
+		printf("DHCPv6 packets received on %s%s%s: %i\n",
+		       cli_bold(), iface, cli_normal(), responses);
+
 	pthread_exit(NULL);
 }
 
@@ -708,6 +728,11 @@ int run_dhcp_discover(void)
 		puts("Error: Insufficient permissions or capabilities (needs CAP_NET_BIND_SERVICE). Try running as root (sudo)");
 		return EXIT_FAILURE;
 	}
+	if(!check_capability(CAP_NET_RAW))
+	{
+		puts("Error: Insufficient permissions or capabilities (needs CAP_NET_RAW). Try running as root (sudo)");
+		return EXIT_FAILURE;
+	}
 
 	// Disable terminal output during config config file parsing
 	log_ctrl(false, false);
@@ -716,8 +741,8 @@ int run_dhcp_discover(void)
 	// Only print to terminal, disable log file
 	log_ctrl(false, true);
 
-	printf("Scanning all your interfaces for DHCP servers\n");
-	printf("Timeout: %d seconds\n", DHCPOFFER_TIMEOUT);
+	printf("Scanning all your interfaces for DHCPv4 and DHCPv6 servers\n");
+	printf("Timeout: %d + %d seconds\n", DHCPOFFER_TIMEOUT, DHCPV6_TIMEOUT);
 
 	// Get interface names for available interfaces on this machine
 	// and launch a thread for each one

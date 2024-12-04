@@ -13,5 +13,7 @@
 
 int run_dhcp_discover(void);
 int get_hardware_address(const int sock, const char *iname, unsigned char *mac);
+void start_lock(void);
+void end_lock(void);
 
 #endif // DHCP_DISCOVER_H

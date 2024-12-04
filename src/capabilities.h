@@ -10,6 +10,7 @@
 #ifndef CAPABILITIES_H
 #define CAPABILITIES_H
 
+#include <stdbool.h>
 #include <linux/capability.h>
 
 bool check_capability(const unsigned int cap);
