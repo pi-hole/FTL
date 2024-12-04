@@ -195,8 +195,8 @@ static int parse_prefix(const struct nd_opt_prefix_info *pi, size_t optlen)
 	print_u32_time(pi->nd_opt_pi_valid_time);
 	printf("   Preferred lifetime: ");
 	print_u32_time(pi->nd_opt_pi_preferred_time);
-	printf("   On-link: %3s\n", (opt & ND_OPT_PI_FLAG_ONLINK) ? "Yes" : "No");
-	printf("   Autonomous address conf.: %3s\n",(opt & ND_OPT_PI_FLAG_AUTO) ? "Yes" : "No");
+	printf("   On-link: %s\n", (opt & ND_OPT_PI_FLAG_ONLINK) ? "Yes" : "No");
+	printf("   Autonomous address conf.: %s\n",(opt & ND_OPT_PI_FLAG_AUTO) ? "Yes" : "No");
 
 	return 0;
 }
@@ -213,7 +213,8 @@ static int parse_prefix(const struct nd_opt_prefix_info *pi, size_t optlen)
 static void parse_mtu(const struct nd_opt_mtu *m)
 {
 	const uint32_t mtu = ntohl (m->nd_opt_mtu_mtu);
-	printf("  MTU: %5u bytes (%s)\n", mtu, (mtu >= 1280) ? "valid" : "invalid");
+	// Minimum of 1280 bytes for IPv6 is defined in RFC8200, Section 5
+	printf("  MTU: %u bytes (%s)\n", mtu, (mtu >= 1280) ? "valid" : "invalid");
 }
 
 /**
@@ -442,7 +443,7 @@ static int parse_ra(const uint8_t *buf, size_t len)
 
 	printf("  Hop limit: ");
 	if (ra->nd_ra_curhoplimit != 0)
-		printf("%3u\n", ra->nd_ra_curhoplimit);
+		printf("%u\n", ra->nd_ra_curhoplimit);
 	else
 		puts("undefined");
 
@@ -589,8 +590,23 @@ static ssize_t recvfromLL(int fd, void *buf, size_t len, int flags, struct socka
 	if (val == -1)
 		return val;
 
-	// Ensure the hop limit is 255
-	for(struct cmsghdr *cmsg = CMSG_FIRSTHDR (&hdr); cmsg != NULL; cmsg = CMSG_NXTHDR (&hdr, cmsg))
+// Circumvent a warning from inside sys/socket.h preventing clang from compiling
+// the code with -Wsign-compare
+// /app/src/tools/dhcpv6-discover.c:593:72: error: comparison of integers of different signs: 'unsigned long' and 'long' [-Werror,-Wsign-compare]
+//   593 |         for(struct cmsghdr *cmsg = CMSG_FIRSTHDR (&hdr); cmsg != NULL; cmsg = CMSG_NXTHDR (&hdr, cmsg))
+//       |                                                                               ^~~~~~~~~~~~~~~~~~~~~~~~
+// /usr/include/sys/socket.h:358:44: note: expanded from macro 'CMSG_NXTHDR'
+//   358 |         __CMSG_LEN(cmsg) + sizeof(struct cmsghdr) >= __MHDR_END(mhdr) - (unsigned char *)(cmsg)
+//       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ^  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// 1 error generated.
+//
+#ifdef __clang__
+# pragma clang diagnostic push
+# pragma clang diagnostic ignored "-Wsign-compare"
+#endif // __clang__
+
+	// Loop through the control data to find the hop limit value
+	for(struct cmsghdr *cmsg = CMSG_FIRSTHDR(&hdr); cmsg != NULL; cmsg = CMSG_NXTHDR(&hdr, cmsg))
 	{
 		if((cmsg->cmsg_level == IPPROTO_IPV6) && (cmsg->cmsg_type == IPV6_HOPLIMIT))
 		{
@@ -605,6 +621,9 @@ static ssize_t recvfromLL(int fd, void *buf, size_t len, int flags, struct socka
 			}
 		}
 	}
+#ifdef __clang__
+# pragma clang diagnostic pop
+#endif // __clang__
 
 	return val;
 }
