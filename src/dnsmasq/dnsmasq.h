@@ -972,6 +972,7 @@ struct dhcp_opt {
 #define DHOPT_TAGOK           4096
 #define DHOPT_ADDR6           8192
 #define DHOPT_VENDOR_PXE     16384
+#define DHOPT_PXE_OPT        32768
 
 struct dhcp_boot {
   char *file, *sname, *tftp_sname;
@@ -1800,8 +1801,9 @@ int do_snoop_script_run(void);
 void dhcp_common_init(void);
 ssize_t recv_dhcp_packet(int fd, struct msghdr *msg);
 struct dhcp_netid *run_tag_if(struct dhcp_netid *tags);
+int pxe_ok(struct dhcp_opt *opt, int pxemode);
 struct dhcp_netid *option_filter(struct dhcp_netid *tags, struct dhcp_netid *context_tags,
-				 struct dhcp_opt *opts);
+				 struct dhcp_opt *opts, int pxemode);
 int match_netid(struct dhcp_netid *check, struct dhcp_netid *pool, int tagnotneeded);
 char *strip_hostname(char *hostname);
 void log_tags(struct dhcp_netid *netid, u32 xid);

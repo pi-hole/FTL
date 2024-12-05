@@ -452,7 +452,7 @@ static void send_ra_alias(time_t now, int iface, char *iface_name, struct in6_ad
   iface_enumerate(AF_LOCAL, &send_iface, (callback_t){.af_local=add_lla});
  
   /* RDNSS, RFC 6106, use relevant DHCP6 options */
-  (void)option_filter(parm.tags, NULL, daemon->dhcp_opts6);
+  (void)option_filter(parm.tags, NULL, daemon->dhcp_opts6, 0);
   
   for (opt_cfg = daemon->dhcp_opts6; opt_cfg; opt_cfg = opt_cfg->next)
     {
