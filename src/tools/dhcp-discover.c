@@ -49,8 +49,7 @@
 
 // Maximum time we wait for incoming DHCPOFFERs
 // (seconds)
-#define DHCPOFFER_TIMEOUT 6
-#define DHCPV6_TIMEOUT 4
+#define SCAN_TIMEOUT 6
 
 // How many threads do we spawn at maximum?
 // This is also the limit for interfaces
@@ -571,7 +570,7 @@ static void get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 	time(&start_time);
 
 	// receive as many responses as we can
-	while(time(&current_time) && (current_time-start_time) < DHCPOFFER_TIMEOUT)
+	while(time(&current_time) && (current_time-start_time) < SCAN_TIMEOUT)
 	{
 		memset(&source, 0, sizeof(source));
 		memset(&offer_packet, 0, sizeof(offer_packet));
@@ -675,10 +674,16 @@ static void get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 #endif
 }
 
-static void *dhcp_discover_iface(void *args)
+static void *dhcp_discover_iface_v4(void *args)
 {
 	// Get interface details
 	const char *iface = ((struct ifaddrs*)args)->ifa_name;
+	char *thread_name = malloc(strlen(iface) + 4);
+	sprintf(thread_name, "%s-v4", iface);
+
+	// Set interface name as thread name
+	prctl(PR_SET_NAME, thread_name, 0, 0, 0);
+	free(thread_name);
 
 	// Set interface name as thread name
 	prctl(PR_SET_NAME, iface, 0, 0, 0);
@@ -710,11 +715,24 @@ end_dhcp_discover_iface:
 	if(dhcp_socket > 0)
 		close(dhcp_socket);
 
+	pthread_exit(NULL);
+}
+
+static void *dhcp_discover_iface_v6(void *args)
+{
+	// Get interface details
+	const char *iface = ((struct ifaddrs*)args)->ifa_name;
+	char *thread_name = malloc(strlen(iface) + 4);
+	sprintf(thread_name, "%s-v6", iface);
+
+	// Set interface name as thread name
+	prctl(PR_SET_NAME, thread_name, 0, 0, 0);
+	free(thread_name);
+
 	// Perform the same scan for DHCPv6
-	const int responses = dhcpv6_discover_iface(iface, DHCPV6_TIMEOUT);
-	if(responses > -1)
-		printf("DHCPv6 packets received on %s%s%s: %i\n",
-		       cli_bold(), iface, cli_normal(), responses);
+	const int responses = dhcpv6_discover_iface(iface, SCAN_TIMEOUT);
+	printf("RAs received on %s%s%s: %i\n",
+	       cli_bold(), iface, cli_normal(), responses);
 
 	pthread_exit(NULL);
 }
@@ -741,12 +759,12 @@ int run_dhcp_discover(void)
 	// Only print to terminal, disable log file
 	log_ctrl(false, true);
 
-	printf("Scanning all your interfaces for DHCPv4 and DHCPv6 servers\n");
-	printf("Timeout: %d + %d seconds\n", DHCPOFFER_TIMEOUT, DHCPV6_TIMEOUT);
+	printf("Scanning all your interfaces for DHCP servers and IPv6 routers\n");
+	printf("Timeout: %d seconds\n", SCAN_TIMEOUT);
 
 	// Get interface names for available interfaces on this machine
 	// and launch a thread for each one
-	pthread_t scanthread[MAXTHREADS];
+	pthread_t scanthread[2*MAXTHREADS];
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
 	pthread_attr_init(&attr);
@@ -784,10 +802,19 @@ int run_dhcp_discover(void)
 				continue;
 			}
 
-			// Create a probing thread for this interface
-			if(pthread_create(&scanthread[tid], &attr, dhcp_discover_iface, tmp ) != 0)
+			// Create a DHCP probing thread for this interface
+			if(pthread_create(&scanthread[tid], &attr, dhcp_discover_iface_v4, tmp ) != 0)
 			{
-				printf_locked("Unable to launch thread for interface %s, skipping...",
+				printf_locked("Unable to launch DHCP thread for interface %s, skipping...",
+				              tmp->ifa_name);
+				tmp = tmp->ifa_next;
+				continue;
+			}
+
+			// Create a RA probing thread for this interface
+			if(pthread_create(&scanthread[2*tid], &attr, dhcp_discover_iface_v6, tmp ) != 0)
+			{
+				printf_locked("Unable to launch RA thread for interface %s, skipping...",
 				              tmp->ifa_name);
 				tmp = tmp->ifa_next;
 				continue;
@@ -803,7 +830,10 @@ int run_dhcp_discover(void)
 
 	// Wait for all threads to join back with us
 	for(tid--; tid > -1; tid--)
+	{
 		pthread_join(scanthread[tid], NULL);
+		pthread_join(scanthread[2*tid], NULL);
+	}
 
 	// Free linked-list of interfaces on this client
 	freeifaddrs(addrs);

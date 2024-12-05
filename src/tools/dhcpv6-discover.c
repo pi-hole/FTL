@@ -647,7 +647,7 @@ static ssize_t recv_adv(int fd, const struct sockaddr_in6 *tgt, const char *ifna
 	unsigned responses = 0;
 
 	// Get the current time and add the timeout
-	clock_gettime (CLOCK_MONOTONIC, &end);
+	clock_gettime(CLOCK_MONOTONIC, &end);
 	end.tv_sec += timeout;
 
 	// Receiving packets until timeout
@@ -665,16 +665,21 @@ static ssize_t recv_adv(int fd, const struct sockaddr_in6 *tgt, const char *ifna
 			if (val < 0) val = 0;
 		}
 
-		// Wait for reply
+		// Wait for reply (retries on EINTR)
 		struct pollfd pollfd = { .fd = fd, .events = POLLIN, .revents = 0 };
-		val = poll(&pollfd, 1, val);
+		do {
+			val = poll(&pollfd, 1, val);
+		} while (val == -1 && errno == EINTR);
 
 		// Check for errors
-		if (val < 0)
+		if(val < 0)
+		{
+			perror("Polling for ICMPv6 packet");
 			break;
+		}
 
 		// Check for timeout
-		if (val == 0)
+		if(val == 0)
 			return responses;
 
 		// Received a packet
@@ -721,7 +726,6 @@ static ssize_t recv_adv(int fd, const struct sockaddr_in6 *tgt, const char *ifna
  */
 static int do_discoverv6(const int fd, const char *ifname, const unsigned int timeout)
 {
-	unsigned int retry = 3;
 	struct sockaddr_in6 tgt = { 0 };
 
 	// Automatically close the socket on exec
@@ -749,7 +753,10 @@ static int do_discoverv6(const int fd, const char *ifname, const unsigned int ti
 	// Resolves target's IPv6 address
 	const char *hostname = "ff02::2"; // All routers multicast address
 	if(get_ipv6_by_name(hostname, ifname, &tgt) != 0)
-		goto error;
+	{
+		close(fd);
+		return -1;
+	}
 
 	char s[INET6_ADDRSTRLEN] = { 0 };
 	inet_ntop (AF_INET6, &tgt.sin6_addr, s, sizeof (s));
@@ -762,39 +769,40 @@ static int do_discoverv6(const int fd, const char *ifname, const unsigned int ti
 	// Build a Router Solicitation message
 	const ssize_t plen = build_solicit(&packet);
 	if(plen == -1)
-		goto error;
-
-	while(retry > 0)
 	{
-		/* sends a Solitication */
-		if(sendto(fd, &packet, plen, 0,
-				(const struct sockaddr *)&dst,
-				sizeof(dst)) != plen)
-		{
-			perror("Sending ICMPv6 packet");
-			goto error;
-		}
-		retry--;
-
-		/* receives an Advertisement */
-		const ssize_t val = recv_adv(fd, &tgt, ifname, timeout);
-		if(val > 0)
-		{
-			close(fd);
-			return val;
-		}
-//		else if(val == 0) // Timed out
-		if(val < 0)
-			goto error;
+		close(fd);
+		return -1;
 	}
 
-	close(fd);
-	// No DHCPv6 responses received
-	return 0;
+	/* sends a Solitication */
+	if(sendto(fd, &packet, plen, 0,
+	   (const struct sockaddr *)&dst,
+	   sizeof(dst)) != plen)
+	{
+		perror("Sending ICMPv6 packet");
+		close(fd);
+		return -1;
+	}
 
-error:
+	/* receives an Advertisement */
+	const ssize_t val = recv_adv(fd, &tgt, ifname, timeout);
+	if(val > 0)
+	{
+		close(fd);
+		return val;
+	}
+//	else if(val == 0) // Timed out
+	if(val < 0)
+	{
+		// Error
+		perror("Receiving ICMPv6 packet");
+		close(fd);
+		return -1;
+	}
+
+	// No DHCPv6 responses received
 	close(fd);
-	return -1;
+	return 0;
 }
 
 int dhcpv6_discover_iface(const char *ifname, const unsigned int timeout)
