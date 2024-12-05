@@ -32,7 +32,7 @@ static int complete_context(struct in_addr local, int if_index, char *label,
 			    struct in_addr netmask, struct in_addr broadcast, void *vparam);
 static int check_listen_addrs(struct in_addr local, int if_index, char *label,
 			      struct in_addr netmask, struct in_addr broadcast, void *vparam);
-static int relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz);
+static void relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz);
 static struct dhcp_relay *relay_reply4(struct dhcp_packet *mess, char *arrival_interface);
 
 static int make_fd(int port)
@@ -327,17 +327,10 @@ void dhcp_packet(time_t now, int pxe_fd)
 	  complete_context(match.addr, iface_index, NULL, match.netmask, match.broadcast, &parm);
 	}    
             
-      if (relay_upstream4(iface_index, mess, (size_t)sz))
-	return;
-      
       if (!iface_enumerate(AF_INET, &parm, (callback_t){.af_inet=complete_context}))
 	return;
 
-      /* Check for a relay again after iface_enumerate/complete_context has had
-	 chance to fill in relay->iface_index fields. This handles first time through
-	 and any changes in interface config. */
-       if (relay_upstream4(iface_index, mess, (size_t)sz))
-	return;
+      relay_upstream4(iface_index, mess, (size_t)sz);
        
       /* May have configured relay, but not DHCP server */
       if (!daemon->dhcp)
@@ -1077,14 +1070,14 @@ char *host_from_dns(struct in_addr addr)
   return NULL;
 }
 
-static int relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz)
+static void relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz)
 {
   struct in_addr giaddr = mess->giaddr;
   u8 hops = mess->hops;
   struct dhcp_relay *relay;
 
   if (mess->op != BOOTREQUEST)
-    return 0;
+    return;
 
   for (relay = daemon->relay4; relay; relay = relay->next)
     if (relay->iface_index != 0 && relay->iface_index == iface_index)
@@ -1092,7 +1085,7 @@ static int relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz)
 
   /* No relay config. */
   if (!relay)
-    return 0;
+    return;
   
   for (; relay; relay = relay->next)
     if (relay->iface_index != 0 && relay->iface_index == iface_index)
@@ -1171,7 +1164,8 @@ static int relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz)
 	   }
       }
   
-  return 1;
+  /* restore in case of a local reply. */
+  mess->giaddr = giaddr;
 }
 
 
