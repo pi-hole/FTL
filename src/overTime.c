@@ -15,6 +15,8 @@
 #include "log.h"
 // data getter functions
 #include "datastructure.h"
+// set_gc_interval()
+#include "gc.h"
 
 overTimeData *overTime = NULL;
 
@@ -61,6 +63,9 @@ void initOverTime(void)
 {
 	// Get current timestamp
 	time_t now = time(NULL);
+
+	// Get the garbage collection interval
+	const unsigned int GCinterval = set_gc_interval();
 
 	// Get the centered timestamp of the end of the next garbage collection interval
 	// This is necessary to construct all slots until the point where we are moving
