@@ -662,10 +662,10 @@ static void get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		valid_responses++;
 	}
 	if(responses == valid_responses)
-		printf("DHCPv4 packets received on %s%s%s: %u\n",
+		printf("DHCP packets received on %s%s%s: %u\n",
 		       cli_bold(), iface, cli_normal(), valid_responses);
 	else
-		printf("DHCPv4 packets received on %s%s%s: %u (%u seen for other machines)\n",
+		printf("DHCP packets received on %s%s%s: %u (%u seen for other machines)\n",
 		       cli_bold(), iface, cli_normal(), valid_responses, responses);
 
 #ifdef DEBUG

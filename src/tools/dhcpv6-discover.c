@@ -234,10 +234,10 @@ static void parse_mtu(const struct nd_opt_mtu *m)
 static const char *parse_pref(unsigned int val)
 {
 	static const char *values[] = { "Medium", "High", "Medium (invalid)", "Low" };
-	unsigned int index = (val >> 3) & 3;
-	if(index < sizeof(values) / sizeof(values[0]))
-		return values[index];
-	return "Unknown";
+	// Returning right away here is safe as the value is only 2 bits so the
+	// result will be in the range [0, 3] which is a valid index for the
+	// array above.
+	return values[(val >> 3) & 3];
 }
 
 
@@ -344,22 +344,27 @@ static int parse_dnssl(const uint8_t *opt)
 	{
 		char str[256] = { 0 };
 
+		// Check if the base is empty
 		if (!base[i])
 			break;
 
 		do
 		{
+			// Check if the base is too long
 			if (base[i] + i + 1 >= optlen)
 			{
 				printf("\n");
 				return -1;
 			}
 
+			// Copy the domain name to the string
 			memcpy(str, &base[i + 1], base[i]);
 			str[base[i]] = 0;
 
+			// Move to the next domain name
 			i += base[i] + 1;
 
+			// Print the domain name
 			printf("%s%s", str, base[i] ? "." : "");
 
 		} while(base[i]);
@@ -758,15 +763,11 @@ static int do_discoverv6(const int fd, const char *ifname, const unsigned int ti
 		return -1;
 	}
 
-	char s[INET6_ADDRSTRLEN] = { 0 };
-	inet_ntop (AF_INET6, &tgt.sin6_addr, s, sizeof (s));
-	// printf("Soliciting %s (%s) on %s...\n", hostname, s, ifname);
-
+	// Initialize and build the Router Solicitation message
 	struct nd_router_solicit packet = { 0 };
 	struct sockaddr_in6 dst = { 0 };
 	memcpy(&dst, &tgt, sizeof(dst));
 
-	// Build a Router Solicitation message
 	const ssize_t plen = build_solicit(&packet);
 	if(plen == -1)
 	{

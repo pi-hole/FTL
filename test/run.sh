@@ -99,7 +99,7 @@ sleep 2
 
 # Attach debugger and immediately continue running the binary
 # In case a non-ignored signal occurs (a crash), create a full backtrace
-#gdb -p $(cat /run/pihole-FTL.pid) --ex continue --ex "bt full" &
+gdb -p $(cat /run/pihole-FTL.pid) --ex continue --ex "bt full" &
 
 # Print versions of pihole-FTL
 echo -n "FTL version (DNS): "
