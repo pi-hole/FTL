@@ -138,6 +138,12 @@
 // Default: 30 (seconds)
 #define QPS_AVGLEN 30
 
+// How long should IPv6 client host name resolution be postponed?
+// This is done to ensure that the network table had time to catch up on new
+// clients in the network
+// Default: 2 x database.DBinterval (seconds) = 120 s
+#define DELAY_V6_RESOLUTION 2*config.database.DBinterval.v.ui
+
 // Use out own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crash
 // caused by insufficient memory or by code bugs (not properly dealing
