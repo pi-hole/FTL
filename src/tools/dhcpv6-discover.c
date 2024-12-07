@@ -66,7 +66,8 @@ static int get_ipv6_by_name(const char *name, const char *ifname, struct sockadd
 	addr->sin6_scope_id = if_nametoindex(ifname);
 	if(addr->sin6_scope_id == 0)
 	{
-		perror(ifname);
+		printf("Error while trying to resolve interface %s: %s\n",
+		       ifname, strerror(errno));
 		return -1;
 	}
 
@@ -676,12 +677,9 @@ static ssize_t recv_adv(int fd, const struct sockaddr_in6 *tgt, const char *ifna
 			val = poll(&pollfd, 1, val);
 		} while (val == -1 && errno == EINTR);
 
-		// Check for errors
+		// Check for errors, logging happens in the calling function
 		if(val < 0)
-		{
-			perror("Polling for ICMPv6 packet");
 			break;
-		}
 
 		// Check for timeout
 		if(val == 0)
@@ -695,7 +693,8 @@ static ssize_t recv_adv(int fd, const struct sockaddr_in6 *tgt, const char *ifna
 		{
 			// Ignore EAGAIN as we can retry
 			if (errno != EAGAIN)
-				perror("Receiving ICMPv6 packet");
+				printf("Error while receiving Router Advertisements on %s: %s\n",
+				       ifname, strerror(errno));
 			continue;
 		}
 
@@ -780,7 +779,8 @@ static int do_discoverv6(const int fd, const char *ifname, const unsigned int ti
 	   (const struct sockaddr *)&dst,
 	   sizeof(dst)) != plen)
 	{
-		perror("Sending ICMPv6 packet");
+		printf("Error while sending Router Solicitation on %s: %s\n",
+		       ifname, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -796,7 +796,8 @@ static int do_discoverv6(const int fd, const char *ifname, const unsigned int ti
 	if(val < 0)
 	{
 		// Error
-		perror("Receiving ICMPv6 packet");
+		printf("Error while receiving Router Advertisements on %s: %s\n",
+		       ifname, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -808,7 +809,7 @@ static int do_discoverv6(const int fd, const char *ifname, const unsigned int ti
 
 int dhcpv6_discover_iface(const char *ifname, const unsigned int timeout)
 {
-	const int fd = socket (PF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
+	const int fd = socket(PF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
 	const int errval = errno;
 
 	// Drop root privileges after creating the raw socket for security

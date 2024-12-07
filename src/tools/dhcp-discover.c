@@ -731,8 +731,9 @@ static void *dhcp_discover_iface_v6(void *args)
 
 	// Perform the same scan for DHCPv6
 	const int responses = dhcpv6_discover_iface(iface, SCAN_TIMEOUT);
-	printf("RAs received on %s%s%s: %i\n",
-	       cli_bold(), iface, cli_normal(), responses);
+	if(responses > 0)
+		printf("RAs received on %s%s%s: %i\n",
+		       cli_bold(), iface, cli_normal(), responses);
 
 	pthread_exit(NULL);
 }
