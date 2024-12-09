@@ -111,7 +111,7 @@ elif [[ "${CI_ARCH}" == "linux/386" ]]; then
   check_machine "ELF32" "Intel 80386"
   check_static # Binary should not rely on any dynamic interpreter
   check_libs "" # No dependency on any shared library is intended
-  check_file "ELF 32-bit LSB executable, Intel 80386, version 1 (SYSV), statically linked, with debug_info, not stripped"
+  check_file "ELF 32-bit LSB executable, Intel i386, version 1 (SYSV), statically linked, with debug_info, not stripped"
 
 elif [[ "${CI_ARCH}" == "linux/arm/v5" ]]; then
 
