@@ -30,16 +30,20 @@ static const char*        capabilityNames[] = {"CAP_CHOWN", "CAP_DAC_OVERRIDE", 
  *             will be stored. The memory for this structure is allocated within
  *             the function and should be freed by the caller.
  */
-static void get_caps(cap_user_data_t *data)
+static bool get_caps(cap_user_data_t *data)
 {
-	// First assume header version 1
-	int capsize = 1; // VFS_CAP_U32_1
-	cap_user_header_t hdr = calloc(capsize, sizeof(*hdr));
+	cap_user_header_t hdr = calloc(1, sizeof(*hdr));
 
 	// Determine capabilities version used by the current kernel
-	capget(hdr, NULL);
+	if(capget(hdr, NULL) != 0)
+	{
+		log_err("Failed to retrieve capabilities header: %s", strerror(errno));
+		free(hdr);
+		return false;
+	}
 
-	// Check version
+	// Get size of capabilities
+	int capsize = 1; // VFS_CAP_U32_1
 	if (hdr->version != LINUX_CAPABILITY_VERSION_1)
 	{
 		// If unknown version, use largest supported version (3)
@@ -58,10 +62,18 @@ static void get_caps(cap_user_data_t *data)
 
 	// Get current capabilities
 	*data = calloc(capsize, sizeof(**data));
-	capget(hdr, *data);
+	if(capget(hdr, *data) != 0)
+	{
+		log_err("Failed to retrieve capabilities data: %s", strerror(errno));
+		free(hdr);
+		free(*data);
+		return false;
+	}
 
 	// Free allocated memory
 	free(hdr);
+
+	return true;
 }
 
 /**
@@ -76,7 +88,8 @@ static void get_caps(cap_user_data_t *data)
 bool check_capability(const unsigned int cap)
 {
 	cap_user_data_t data = NULL;
-	get_caps(&data);
+	if(!get_caps(&data))
+		return false;
 
 	// Check if the capability is available
 	const bool available = ((data->permitted & (1 << cap)) && (data->effective & (1 << cap)));
@@ -100,7 +113,8 @@ bool check_capability(const unsigned int cap)
 bool check_capabilities(void)
 {
 	cap_user_data_t data = NULL;
-	get_caps(&data);
+	if(!get_caps(&data))
+		return false;
 
 	log_debug(DEBUG_CAPS, "***************************************");
 	log_debug(DEBUG_CAPS, "* Linux capability debugging enabled  *");
