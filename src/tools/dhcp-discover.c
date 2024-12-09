@@ -765,7 +765,7 @@ int run_dhcp_discover(void)
 
 	// Get interface names for available interfaces on this machine
 	// and launch a thread for each one
-	pthread_t scanthread[2*MAXTHREADS];
+	pthread_t scanthread[2*MAXTHREADS] = { 0 };
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
 	pthread_attr_init(&attr);
@@ -832,8 +832,10 @@ int run_dhcp_discover(void)
 	// Wait for all threads to join back with us
 	for(tid--; tid > -1; tid--)
 	{
-		pthread_join(scanthread[tid], NULL);
-		pthread_join(scanthread[2*tid], NULL);
+		if(scanthread[tid] != 0)
+			pthread_join(scanthread[tid], NULL);
+		if(scanthread[2*tid] != 0)
+			pthread_join(scanthread[2*tid], NULL);
 	}
 
 	// Free linked-list of interfaces on this client
