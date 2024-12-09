@@ -189,15 +189,15 @@ static int parse_prefix(const struct nd_opt_prefix_info *pi, size_t optlen)
 	if(inet_ntop(AF_INET6, &pi->nd_opt_pi_prefix, str, sizeof (str)) == NULL)
 		return -1;
 
-	printf("  Prefix: %s/%u\n", str, pi->nd_opt_pi_prefix_len);
+	printf("  - Prefix: %s/%u\n", str, pi->nd_opt_pi_prefix_len);
 
 	const uint8_t opt = pi->nd_opt_pi_flags_reserved;
-	printf("   Valid lifetime: ");
+	printf("    Valid lifetime: ");
 	print_u32_time(pi->nd_opt_pi_valid_time);
-	printf("   Preferred lifetime: ");
+	printf("    Preferred lifetime: ");
 	print_u32_time(pi->nd_opt_pi_preferred_time);
-	printf("   On-link: %s\n", (opt & ND_OPT_PI_FLAG_ONLINK) ? "Yes" : "No");
-	printf("   Autonomous address conf.: %s\n",(opt & ND_OPT_PI_FLAG_AUTO) ? "Yes" : "No");
+	printf("    On-link: %s\n", (opt & ND_OPT_PI_FLAG_ONLINK) ? "Yes" : "No");
+	printf("    Autonomous address conf.: %s\n",(opt & ND_OPT_PI_FLAG_AUTO) ? "Yes" : "No");
 
 	return 0;
 }
@@ -276,9 +276,9 @@ static int parse_route(const uint8_t *opt)
 	if(inet_ntop (AF_INET6, &dst, str, sizeof (str)) == NULL)
 		return -1;
 
-	printf("  Route: %s/%"PRIu8"\n", str, plen);
-	printf("   Route preference: %s\n", parse_pref(opt[3]));
-	printf("   Route lifetime: ");
+	printf("  - Route: %s/%"PRIu8"\n", str, plen);
+	printf("    Route preference: %s\n", parse_pref(opt[3]));
+	printf("    Route lifetime: ");
 	print_u8_time(opt);
 	return 0;
 }
@@ -374,7 +374,7 @@ static int parse_dnssl(const uint8_t *opt)
 
 	}
 
-	printf("\n");
+	puts("");
 
 	printf("   DNS search list lifetime: ");
 	print_u8_time(opt);
@@ -453,26 +453,26 @@ static int parse_ra(const uint8_t *buf, size_t len)
 	else
 		puts("undefined");
 
-	printf("   Stateful address conf.: %s\n", (ra->nd_ra_flags_reserved & ND_RA_FLAG_MANAGED) ? "Yes" : "No");
-	printf("   Stateful other conf.: %s\n", (ra->nd_ra_flags_reserved & ND_RA_FLAG_OTHER) ? "Yes" : "No");
-	printf("   Mobile home agent: %s\n", (ra->nd_ra_flags_reserved & ND_RA_FLAG_HOME_AGENT) ? "Yes" : "No");
-	printf("   Router preference: %s\n", parse_pref(ra->nd_ra_flags_reserved));
-	printf("   Neighbor discovery proxy: %s\n", (ra->nd_ra_flags_reserved & 0x04) ? "Yes" : "No");
+	printf("  Stateful address conf.: %s\n", (ra->nd_ra_flags_reserved & ND_RA_FLAG_MANAGED) ? "Yes" : "No");
+	printf("  Stateful other conf.: %s\n", (ra->nd_ra_flags_reserved & ND_RA_FLAG_OTHER) ? "Yes" : "No");
+	printf("  Mobile home agent: %s\n", (ra->nd_ra_flags_reserved & ND_RA_FLAG_HOME_AGENT) ? "Yes" : "No");
+	printf("  Router preference: %s\n", parse_pref(ra->nd_ra_flags_reserved));
+	printf("  Neighbor discovery proxy: %s\n", (ra->nd_ra_flags_reserved & 0x04) ? "Yes" : "No");
 
 	/* Router lifetime */
 	const uint16_t router_lifetime = ntohs(ra->nd_ra_router_lifetime);
-	printf("   Router lifetime: %u s\n", router_lifetime);
+	printf("  Router lifetime: %u s\n", router_lifetime);
 
 	/* ND Reachable time */
 	const uint16_t reachable = ntohs(ra->nd_ra_reachable);
-	printf("   Reachable time: ");
+	printf("  Reachable time: ");
 	if(reachable != 0)
 		printf("%u ms\n", reachable);
 	else
 		puts("N/A");
 
 	/* ND Retransmit time */
-	printf("   Retransmit time: ");
+	printf("  Retransmit time: ");
 	const uint16_t retransmit = ntohl (ra->nd_ra_retransmit);
 	if (retransmit != 0)
 		printf("%u ms\n", retransmit);
@@ -668,7 +668,8 @@ static ssize_t recv_adv(int fd, const struct sockaddr_in6 *tgt, const char *ifna
 		{
 			// Calculate the remaining time
 			val = (end.tv_sec - now.tv_sec) * 1000 + (int)((end.tv_nsec - now.tv_nsec) / 1000000);
-			if (val < 0) val = 0;
+			if (val <= 0) // Timeout
+				return responses;
 		}
 
 		// Wait for reply (retries on EINTR)
@@ -705,10 +706,10 @@ static ssize_t recv_adv(int fd, const struct sockaddr_in6 *tgt, const char *ifna
 		// Print the received packet's size and the source address
 		char str[INET6_ADDRSTRLEN] = { 0 };
 		inet_ntop(AF_INET6, &addr.sin6_addr, str,sizeof (str));
+		start_lock();
 		printf("* Received %zd bytes from %s @ %s\n", val, str, ifname);
 
 		// Parse the Router Advertisement
-		start_lock();
 		if(parse_ra(buf, val) == 0)
 			responses++;
 		end_lock();
