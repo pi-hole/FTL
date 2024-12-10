@@ -968,7 +968,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	  else
 	    status = dnssec_validate_reply(now, header, plen, daemon->namebuff, daemon->keyname, &forward->class, 
 					   !option_bool(OPT_DNSSEC_IGN_NS) && (forward->sentto->flags & SERV_DO_DNSSEC),
-				       NULL, NULL, NULL, &orig->validate_counter);
+					   NULL, NULL, NULL, &orig->validate_counter);
 	  
 	  if (STAT_ISEQUAL(status, STAT_ABANDONED))
 	    log_resource = 1;
@@ -1284,10 +1284,15 @@ void reply_query(int fd, time_t now)
   
   
 #ifdef HAVE_DNSSEC
-  if ((forward->sentto->flags & SERV_DO_DNSSEC) && 
-      option_bool(OPT_DNSSEC_VALID) &&
-      !(forward->flags & FREC_CHECKING_DISABLED))
-    dnssec_validate(forward, header, n, STAT_OK, now);
+  if (option_bool(OPT_DNSSEC_VALID))
+    {
+      /* Clear this in case we don't call dnssec_validate() below */
+      memset(daemon->rr_status, 0, sizeof(*daemon->rr_status) * daemon->rr_status_sz);
+      
+      if ((forward->sentto->flags & SERV_DO_DNSSEC) && 
+	  !(forward->flags & FREC_CHECKING_DISABLED))
+	dnssec_validate(forward, header, n, STAT_OK, now);
+    }
   else
 #endif
     return_reply(now, forward, header, n, STAT_OK); 
@@ -2654,46 +2659,52 @@ unsigned char *tcp_request(int confd, time_t now,
 		  log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff, &serv->addr, NULL, 0);
 		  
 #ifdef HAVE_DNSSEC
-		  if (option_bool(OPT_DNSSEC_VALID) && !checking_disabled && (master->flags & SERV_DO_DNSSEC))
+		  if (option_bool(OPT_DNSSEC_VALID))
 		    {
-		      int keycount = daemon->limit[LIMIT_WORK]; /* Limit to number of DNSSEC questions, to catch loops and avoid filling cache. */
-		      int validatecount = daemon->limit[LIMIT_CRYPTO]; 
-		      int status = tcp_key_recurse(now, STAT_OK, header, m, 0, daemon->namebuff, daemon->keyname, 
-						   serv, have_mark, mark, &keycount, &validatecount);
-		      char *result, *domain = "result";
+		      /* Clear this in case we don't call tcp_key_recurse() below */
+		      memset(daemon->rr_status, 0, sizeof(*daemon->rr_status) * daemon->rr_status_sz);
 		      
-		      union all_addr a;
-		      a.log.ede = ede = errflags_to_ede(status);
-		      
-		      if (STAT_ISEQUAL(status, STAT_ABANDONED))
+		      if (!checking_disabled && (master->flags & SERV_DO_DNSSEC))
 			{
-			  result = "ABANDONED";
-			  status = STAT_BOGUS;
-			}
-		      else
-			result = (STAT_ISEQUAL(status, STAT_SECURE) ? "SECURE" : (STAT_ISEQUAL(status, STAT_INSECURE) ? "INSECURE" : "BOGUS"));
-		      
-		      if (STAT_ISEQUAL(status, STAT_SECURE))
-			cache_secure = 1;
-		      else if (STAT_ISEQUAL(status, STAT_BOGUS))
-			{
-			  no_cache_dnssec = 1;
-			  bogusanswer = 1;
+			  int keycount = daemon->limit[LIMIT_WORK]; /* Limit to number of DNSSEC questions, to catch loops and avoid filling cache. */
+			  int validatecount = daemon->limit[LIMIT_CRYPTO]; 
+			  int status = tcp_key_recurse(now, STAT_OK, header, m, 0, daemon->namebuff, daemon->keyname, 
+						       serv, have_mark, mark, &keycount, &validatecount);
+			  char *result, *domain = "result";
 			  
-			  if (extract_request(header, m, daemon->namebuff, NULL))
-			    domain = daemon->namebuff;
+			  union all_addr a;
+			  a.log.ede = ede = errflags_to_ede(status);
+			  
+			  if (STAT_ISEQUAL(status, STAT_ABANDONED))
+			    {
+			      result = "ABANDONED";
+			      status = STAT_BOGUS;
+			    }
+			  else
+			    result = (STAT_ISEQUAL(status, STAT_SECURE) ? "SECURE" : (STAT_ISEQUAL(status, STAT_INSECURE) ? "INSECURE" : "BOGUS"));
+			  
+			  if (STAT_ISEQUAL(status, STAT_SECURE))
+			    cache_secure = 1;
+			  else if (STAT_ISEQUAL(status, STAT_BOGUS))
+			    {
+			      no_cache_dnssec = 1;
+			      bogusanswer = 1;
+			      
+			      if (extract_request(header, m, daemon->namebuff, NULL))
+				domain = daemon->namebuff;
+			    }
+			  
+			  log_query(F_SECSTAT, domain, &a, result, 0);
+			  
+			  if ((daemon->limit[LIMIT_CRYPTO] - validatecount) > (int)daemon->metrics[METRIC_CRYPTO_HWM])
+			    daemon->metrics[METRIC_CRYPTO_HWM] = daemon->limit[LIMIT_CRYPTO] - validatecount;
+			  
+			  if ((daemon->limit[LIMIT_WORK] - keycount) > (int)daemon->metrics[METRIC_WORK_HWM])
+			    daemon->metrics[METRIC_WORK_HWM] = daemon->limit[LIMIT_WORK] - keycount;
+			  
+			  /* include DNSSEC queries in the limit for a connection. */
+			  query_count += daemon->limit[LIMIT_WORK] - keycount;
 			}
-		      
-		      log_query(F_SECSTAT, domain, &a, result, 0);
-		    
-		      if ((daemon->limit[LIMIT_CRYPTO] - validatecount) > (int)daemon->metrics[METRIC_CRYPTO_HWM])
-			daemon->metrics[METRIC_CRYPTO_HWM] = daemon->limit[LIMIT_CRYPTO] - validatecount;
-
-		      if ((daemon->limit[LIMIT_WORK] - keycount) > (int)daemon->metrics[METRIC_WORK_HWM])
-			daemon->metrics[METRIC_WORK_HWM] = daemon->limit[LIMIT_WORK] - keycount;
-
-		      /* include DNSSEC queries in the limit for a connection. */
-		      query_count += daemon->limit[LIMIT_WORK] - keycount;
 		    }
 #endif
 		  
