@@ -52,14 +52,6 @@
 // Constant socket buffer length
 #define SOCKETBUFFERLEN 1024
 
-// How often do we garbage collect (to ensure we only have data fitting to the MAXLOGAGE defined above)? [seconds]
-// Default: 600 (10 minute intervals)
-#define GCinterval 600
-
-// Delay applied to the garbage collecting [seconds]
-// Default: -60 (one minute before the end of the interval set above)
-#define GCdelay (-60)
-
 // How many client connection do we accept at once?
 #define MAXCONNS 255
 
@@ -70,8 +62,8 @@
 #define MAXLOGAGE 24
 
 // Interval for overTime data [seconds]
-// Default: same as GCinterval
-#define OVERTIME_INTERVAL GCinterval
+// Default: 600 (10 minutes)
+#define OVERTIME_INTERVAL 600
 
 // How many overTime slots do we need?
 // This is the maximum log age divided by the overtime interval
