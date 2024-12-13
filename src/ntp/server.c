@@ -266,17 +266,9 @@ static void request_process_loop(const int fd, const char *ipstr, const int prot
 			}
 		}
 
-		// Fork a child to handle the request
-		const pid_t pid = fork();
-		if (pid == 0) {
-			// Child
-			ntp_reply(fd, &src_addr , src_addrlen, buf, &recv_time);
-			exit(0);
-		} else if (pid == -1) {
-			log_err("fork() error");
-			return;
-		}
-		// return to parent
+		// Handle the request
+		ntp_reply(fd, &src_addr, src_addrlen, buf, &recv_time);
+		log_debug(DEBUG_NTP, "NTP reply sent");
 	}
 }
 
