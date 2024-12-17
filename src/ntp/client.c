@@ -101,9 +101,9 @@ static bool request(int fd, const char *server, struct addrinfo *saddr, struct n
 	if(send(fd, buf, 48, 0) != 48)
 	{
 		// Get IP address of server
-		char ip[INET6_ADDRSTRLEN];
+		char ip[INET6_ADDRSTRLEN] = { 0 };
 		if(getnameinfo(saddr->ai_addr, saddr->ai_addrlen, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST) != 0)
-			strncpy(ip, server, sizeof(ip));
+			strncpy(ip, server, sizeof(ip) - 1);
 
 		log_err("Failed to send data to NTP server %s (%s): %s",
 		        server, ip, errno == EAGAIN ? "Timeout" : strerror(errno));
@@ -242,7 +242,7 @@ static bool settime_skew(const double offset)
 	return true;
 }
 
-static bool reply(int fd, const char *server, struct addrinfo *saddr, struct ntp_sync *ntp, const bool verbose)
+static bool reply(const int fd, const char *server, struct addrinfo *saddr, struct ntp_sync *ntp)
 {
 	// NTP Packet buffer
 	unsigned char buf[48];
@@ -251,9 +251,9 @@ static bool reply(int fd, const char *server, struct addrinfo *saddr, struct ntp
 	if(recv_nowarn(fd, buf, 48, 0) < 48)
 	{
 		// Get IP address of server
-		char ip[INET6_ADDRSTRLEN];
+		char ip[INET6_ADDRSTRLEN] = { 0 };
 		if(getnameinfo(saddr->ai_addr, saddr->ai_addrlen, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST) != 0)
-			strncpy(ip, server, sizeof(ip));
+			strncpy(ip, server, sizeof(ip) - 1);
 
 		log_err("Failed to receive data from NTP server %s (%s): %s",
 		        server, ip, errno == EAGAIN ? "Timeout" : strerror(errno));
@@ -481,7 +481,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 			return false;
 		}
 		// Get reply
-		if(!reply(s, server, saddr, &ntp[i], false))
+		if(!reply(s, server, saddr, &ntp[i]))
 		{
 			close(s);
 			continue;
@@ -638,6 +638,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 
 static void *ntp_client_thread(void *arg)
 {
+	(void)arg;
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[NTP_CLIENT], 0, 0, 0);
 
