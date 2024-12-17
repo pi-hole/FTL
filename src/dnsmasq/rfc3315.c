@@ -2210,6 +2210,9 @@ int relay_upstream6(int iface_index, ssize_t sz,
 	
 	to.sa.sa_family = AF_INET6;
 	to.in6.sin6_addr = relay->server.addr6;
+#ifdef HAVE_SOCKADDR_SA_LEN
+	to.in6.sin6_len = sizeof(struct sockaddr_in6);
+#endif 
 	to.in6.sin6_port = htons(relay->port);
 	to.in6.sin6_flowinfo = 0;
 	to.in6.sin6_scope_id = 0;
