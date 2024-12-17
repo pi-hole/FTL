@@ -106,7 +106,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		// Try to extract SID from root of a possibly included JSON payload
 		else if(api->payload.json != NULL)
 		{
-			cJSON *sid_obj = cJSON_GetObjectItem(api->payload.json, "sid");
+			const cJSON *sid_obj = cJSON_GetObjectItem(api->payload.json, "sid");
 			if(cJSON_IsString(sid_obj))
 			{
 				// Copy SID string

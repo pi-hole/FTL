@@ -83,6 +83,7 @@ void get_blockingmode_timer(double *delay, bool *target_status)
 #define SLEEPING_TIME 0.1 // seconds
 void *timer(void *val)
 {
+	(void)val;
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[TIMER], 0, 0, 0);
 
