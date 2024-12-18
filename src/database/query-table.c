@@ -184,7 +184,8 @@ bool init_memory_database(void)
 	                                 "?11," \
 	                                 "?12," \
 	                                 "?13," \
-	                                 "?14)", -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
+	                                 "?14,"
+	                                 "?15)", -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("init_memory_database(query_storage) - SQL error step: %s", sqlite3_errstr(rc));
@@ -343,7 +344,6 @@ static void log_in_memory_usage(void)
 		          num, prefix, queries);
 	}
 }
-
 
 // Attach database using specified path and alias
 bool attach_database(sqlite3* db, const char **message, const char *path, const char *alias)
@@ -908,6 +908,38 @@ bool rename_query_storage_column_regex_id(sqlite3 *db)
 	if(!db_set_FTL_property(db, DB_VERSION, 17))
 	{
 		log_err("rename_query_storage_column_regex_id(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool(db, "COMMIT");
+
+	return true;
+}
+
+bool add_query_storage_column_ede(sqlite3 *db)
+{
+	// Start transaction of database update
+	SQL_bool(db, "BEGIN TRANSACTION");
+
+	// Add additional column to the query_storage table
+	SQL_bool(db, "ALTER TABLE query_storage ADD COLUMN ede INTEGER");
+
+	// Update VIEW queries
+	SQL_bool(db, "DROP VIEW queries");
+	SQL_bool(db, "CREATE VIEW queries AS "
+	                     "SELECT id, timestamp, type, status, "
+	                       "CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,"
+	                       "CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,"
+	                       "CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,"
+	                       "CASE typeof(additional_info) WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, "
+	                       "reply_type, reply_time, dnssec, list_id, ede "
+	                       "FROM query_storage q");
+
+	// Update database version to 21
+	if(!db_set_FTL_property(db, DB_VERSION, 21))
+	{
+		log_err("add_query_storage_column_ede(): Failed to update database version!");
 		return false;
 	}
 
@@ -1611,6 +1643,9 @@ bool queries_to_database(void)
 		else
 			// Not applicable, setting NULL
 			sqlite3_bind_null(query_stmt, 14);
+
+		// EDE
+		sqlite3_bind_int(query_stmt, 15, query->ede);
 
 		// Step and check if successful
 		rc = sqlite3_step(query_stmt);
