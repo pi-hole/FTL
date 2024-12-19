@@ -1291,15 +1291,19 @@ void reply_query(int fd, time_t now)
 #ifdef HAVE_DNSSEC
   if (option_bool(OPT_DNSSEC_VALID))
     {
-      /* Clear this in case we don't call dnssec_validate() below */
-      memset(daemon->rr_status, 0, sizeof(*daemon->rr_status) * daemon->rr_status_sz);
+      if ((forward->sentto->flags & SERV_DO_DNSSEC) && !(forward->flags & FREC_CHECKING_DISABLED))
+	{
+	  dnssec_validate(forward, header, n, STAT_OK, now);
+	  return;
+	}
       
-      if ((forward->sentto->flags & SERV_DO_DNSSEC) && 
-	  !(forward->flags & FREC_CHECKING_DISABLED))
-	dnssec_validate(forward, header, n, STAT_OK, now);
+      /* If dnssec_validate() not called, rr_status{} is not valid
+	 Clear it so we don't erroneously mark RRs as secure using stale data from
+	 previous queries. */
+      memset(daemon->rr_status, 0, sizeof(*daemon->rr_status) * daemon->rr_status_sz);
     }
-  else
 #endif
+  
     return_reply(now, forward, header, n, STAT_OK); 
 }
 
