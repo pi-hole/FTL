@@ -1224,7 +1224,7 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
   
   if (ntohs(header->qdcount) != 1 || OPCODE(header) != QUERY)
     return 0; /* must be exactly one query. */
-  
+
   if (!(header->hb3 & HB3_QR) && (ntohs(header->ancount) != 0 || ntohs(header->nscount) != 0))
     return 0; /* non-standard query. */
   

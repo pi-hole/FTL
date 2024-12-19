@@ -1527,7 +1527,7 @@ void receive_query(struct listener *listen, time_t now)
 #ifdef HAVE_CONNTRACK
   unsigned int mark = 0;
   int have_mark = 0;
-  int is_single_query = 0, allowed = 1;
+  int allowed = 1;
 #endif
 #ifdef HAVE_AUTH
   int local_auth = 0;
@@ -1788,10 +1788,6 @@ void receive_query(struct listener *listen, time_t now)
       piholeblocked = FTL_new_query(F_QUERY | F_FORWARD , daemon->namebuff,
 				    &source_addr, auth_dns ? "auth" : "query", type, daemon->log_display_id, UDP);
       
-#ifdef HAVE_CONNTRACK
-      is_single_query = 1;
-#endif
-
 #ifdef HAVE_AUTH
       /* find queries for zones we're authoritative for, and answer them directly */
       if (!auth_dns && !option_bool(OPT_LOCALISE))
@@ -1838,7 +1834,7 @@ void receive_query(struct listener *listen, time_t now)
   if (!auth_dns || local_auth)
 #endif
     if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
-      allowed = is_query_allowed_for_mark((u32)mark, is_single_query ? daemon->namebuff : NULL);
+      allowed = is_query_allowed_for_mark((u32)mark, daemon->namebuff);
 #endif
   
   if (0);
@@ -1847,7 +1843,7 @@ void receive_query(struct listener *listen, time_t now)
     {
       u16 swap = htons(EDE_BLOCKED);
 
-      m = answer_disallowed(header, (size_t)n, (u32)mark, is_single_query ? daemon->namebuff : NULL);
+      m = answer_disallowed(header, (size_t)n, (u32)mark, daemon->namebuff);
       
       if (have_pseudoheader && m != 0)
 	m = add_pseudoheader(header,  m,  ((unsigned char *) header) + daemon->edns_pktsz,
@@ -2346,14 +2342,12 @@ unsigned char *tcp_request(int confd, time_t now,
   size_t size = 0, saved_size = 0;
   int norebind;
 #ifdef HAVE_CONNTRACK
-  int is_single_query = 0, allowed = 1;
+  int allowed = 1;
 #endif
 #ifdef HAVE_AUTH
   int local_auth = 0;
 #endif
-  int checking_disabled, do_bit, added_pheader = 0, have_pseudoheader = 0;
-  int cacheable, no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
-  size_t m;
+  int checking_disabled, do_bit, ad_reqd, added_pheader = 0, have_pseudoheader = 0;
   struct blockdata *saved_question = NULL;
   unsigned short qtype;
   unsigned int gotname;
@@ -2372,9 +2366,8 @@ unsigned char *tcp_request(int confd, time_t now,
   unsigned char *pheader;
   unsigned int mark = 0;
   int have_mark = 0;
-  int first, last, filtered, stale, do_stale = 0;
-  unsigned int flags = 0;
-    
+  int first, last, filtered, do_stale = 0;
+      
   /************ Pi-hole modification ************/
   bool piholeblocked = false;
   /**********************************************/
@@ -2430,10 +2423,13 @@ unsigned char *tcp_request(int confd, time_t now,
 
   while (1)
     {
-      int ede = EDE_UNSET;
-
-      stale = 0;
-
+      int stale = 0, ede = EDE_UNSET;
+      size_t m = 0;
+      unsigned int flags = 0;
+#ifdef HAVE_AUTH
+      struct auth_zone *zone;
+#endif
+	  
       if (!do_stale)
 	{
 	  if (query_count >= TCP_MAX_QUERIES)
@@ -2443,52 +2439,43 @@ unsigned char *tcp_request(int confd, time_t now,
 	      !(size = ntohs(tcp_len)) ||
 	      !read_write(confd, payload, size, RW_READ))
 	    break;
-	}
-      
-      if (size < (int)sizeof(struct dns_header))
-	continue;
-
-      /* Clear buffer beyond request to avoid risk of
-	 information disclosure. */
-      memset(payload + size, 0, 65536 - size);
-      
-      query_count++;
-
-      /* log_query gets called indirectly all over the place, so 
-	 pass these in global variables - sorry. 
-	 log_display_id is negative for TCP connections. */
-      daemon->log_display_id = -(++daemon->log_id);
-      daemon->log_source_addr = &peer_addr;
-      
-      /* save state of "cd" flag in query */
-      if ((checking_disabled = header->hb4 & HB4_CD))
-	no_cache_dnssec = 1;
-
-      //********************** Pi-hole modification **********************//
-      pheader = find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL);
-      FTL_parse_pseudoheaders(pheader, (size_t)size);
-      //******************************************************************//
-       
-      if (OPCODE(header) != QUERY)
-	{
-	  log_query_mysockaddr(F_QUERY | F_FORWARD, "opcode", &peer_addr, "non-query", 0);
-	  gotname = 0;
-	  m = 0;
-	  flags = F_RCODE;
-	}
-      else if ((gotname = extract_request(header, (unsigned int)size, daemon->namebuff, &qtype)))
-	 {
-#ifdef HAVE_AUTH
-	  struct auth_zone *zone;
-#endif
-
+	      
+	  if (size < (int)sizeof(struct dns_header))
+	    continue;
 	  
-#ifdef HAVE_CONNTRACK
-	  is_single_query = 1;
-#endif
+	  /* Clear buffer beyond request to avoid risk of
+	     information disclosure. */
+	  memset(payload + size, 0, 65536 - size);
+	  
+	  query_count++;
+	  
+	  /* log_query gets called indirectly all over the place, so 
+	     pass these in global variables - sorry. 
+	     log_display_id is negative for TCP connections. */
+	  daemon->log_display_id = -(++daemon->log_id);
+	  daemon->log_source_addr = &peer_addr;
 
-	  if (!do_stale)
+	  //********************** Pi-hole modification **********************//
+	  pheader = find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL);
+	  FTL_parse_pseudoheaders(pheader, (size_t)size);
+	  //******************************************************************//
+	  
+	  if (OPCODE(header) != QUERY)
 	    {
+	      log_query_mysockaddr(F_QUERY | F_FORWARD, "opcode", &peer_addr, "non-query", 0);
+	      gotname = 0;
+	      flags = F_RCODE;
+	    }
+	  else if (!(gotname = extract_request(header, (unsigned int)size, daemon->namebuff, &qtype)))
+	    ede = EDE_INVALID_DATA;
+	  else
+	    {
+	      if (saved_question)
+		blockdata_free(saved_question);
+	      
+	      saved_question = blockdata_alloc((char *)header, (size_t)size);
+	      saved_size = size;
+	      
 	      log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 				   &peer_addr, auth_dns ? "auth" : "query", qtype);
 	      
@@ -2506,148 +2493,121 @@ unsigned char *tcp_request(int confd, time_t now,
 		      break;
 		    }
 #endif
-	    }
-	       
-	  norebind = domain_no_rebind(daemon->namebuff);
-	  
-	  if (local_addr->sa.sa_family == AF_INET)
-	    dst_addr_4 = local_addr->in.sin_addr;
-	  else
-	    dst_addr_4.s_addr = 0;
-	  
-	  do_bit = 0;
-	  
-	  if (find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL))
-	    { 
-	      unsigned short flags;
 	      
-	      have_pseudoheader = 1;
-	      pheader += 4; /* udp_size, ext_rcode */
-	      GETSHORT(flags, pheader);
-	      
-	      if (flags & 0x8000)
-		do_bit = 1; /* do bit */ 
-	    }
+	      norebind = domain_no_rebind(daemon->namebuff);
 	  
-#ifdef HAVE_CONNTRACK
-#ifdef HAVE_AUTH
-	  if (!auth_dns || local_auth)
-#endif
-	    if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
-	      allowed = is_query_allowed_for_mark((u32)mark, is_single_query ? daemon->namebuff : NULL);
-#endif
-	  
-	  if (0);
-#ifdef HAVE_CONNTRACK
-	  else if (!allowed)
-	    {
-	      u16 swap = htons(EDE_BLOCKED);
+	      if (local_addr->sa.sa_family == AF_INET)
+		dst_addr_4 = local_addr->in.sin_addr;
+	      else
+		dst_addr_4.s_addr = 0;
 	      
-	      m = answer_disallowed(header, size, (u32)mark, is_single_query ? daemon->namebuff : NULL);
+	      do_bit = 0;
 	      
-	      if (have_pseudoheader && m != 0)
-		m = add_pseudoheader(header,  m, ((unsigned char *) header) + 65536, 
-				     EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
-	    }
-#endif
-#ifdef HAVE_AUTH
-	  else if (auth_dns)
-	    {
-	      m = answer_auth(header, ((char *) header) + 65536, (size_t)size, now, &peer_addr, local_auth);
-	      if (m >= 1 && have_pseudoheader)
-		m = add_pseudoheader(header,  m,  ((unsigned char *) header) + 65536,
-				     0, NULL, 0, do_bit, 0);
-	    }
-#endif
-	  else
-	    {
-	      int ad_reqd = do_bit;
+	      if (find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL))
+		{ 
+		  unsigned short ede_flags;
+		  
+		  have_pseudoheader = 1;
+		  pheader += 4; /* udp_size, ext_rcode */
+		  GETSHORT(ede_flags, pheader);
+		  
+		  if (ede_flags & 0x8000)
+		    do_bit = 1; /* do bit */ 
+		}
+
+	      ad_reqd = do_bit;
 	      /* RFC 6840 5.7 */
 	      if (header->hb4 & HB4_AD)
 		ad_reqd = 1;
-	      
-	      if (do_stale)
-		m = 0;
+
+#ifdef HAVE_CONNTRACK
+#ifdef HAVE_AUTH
+	      if (!auth_dns || local_auth)
+#endif
+		if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
+		  allowed = is_query_allowed_for_mark((u32)mark, daemon->namebuff);
+#endif
+	  
+	      if (0);
+#ifdef HAVE_CONNTRACK
+	      else if (!allowed)
+		{
+		  ede = EDE_BLOCKED;
+		  m = answer_disallowed(header, size, (u32)mark, daemon->namebuff);
+		}
+#endif
+#ifdef HAVE_AUTH
+	      else if (auth_dns)
+		m = answer_auth(header, ((char *) header) + 65536, (size_t)size, now, &peer_addr, local_auth);
+#endif
+	      else
+		m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
+				   dst_addr_4, netmask, now, ad_reqd, do_bit, &stale, &filtered);
+	    }
+	}
+      
+      /* Do this by steam now we're not in the select() loop */
+      check_log_writer(1); 
+      
+      if (m == 0 && ede == EDE_UNSET && saved_question)
+	{
+	  struct server *master;
+	  int start;
+	  int cacheable, no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
+
+	  blockdata_retrieve(saved_question, (size_t)saved_size, header);
+	  size = saved_size;
+
+	  /* save state of "cd" flag in query */
+	  if ((checking_disabled = header->hb4 & HB4_CD))
+	    no_cache_dnssec = 1;
+
+	  if (lookup_domain(daemon->namebuff, gotname, &first, &last))
+	    flags = is_local_answer(now, first, daemon->namebuff);
+	  else
+	    ede = EDE_NOT_READY;
+	  
+	  if (!flags && ede == EDE_UNSET)
+	    {
+	      /* don't forward A or AAAA queries for simple names, except the empty name */
+	      if (option_bool(OPT_NODOTS_LOCAL) &&
+		  (gotname & (F_IPV4 | F_IPV6)) &&
+		  !strchr(daemon->namebuff, '.') &&
+		  strlen(daemon->namebuff) != 0)
+		flags = check_for_local_domain(daemon->namebuff, now) ? F_NOERR : F_NXDOMAIN;
 	      else
 		{
-		  if (saved_question)
-		    blockdata_free(saved_question);
+		  master = daemon->serverarray[first];
 		  
-		  saved_question = blockdata_alloc((char *)header, (size_t)size);
-		  saved_size = size;
+		  if (option_bool(OPT_ORDER) || master->last_server == -1)
+		    start = first;
+		  else
+		    start = master->last_server;
 		  
-		  /* m > 0 if answered from cache */
-		  m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
-				     dst_addr_4, netmask, now, ad_reqd, do_bit, &stale, &filtered);
+		  size = add_edns0_config(header, size, ((unsigned char *) header) + 65536, &peer_addr, now, &cacheable);
 		  
-		  if (m >= 1 && have_pseudoheader)
-		    m = add_pseudoheader(header,  m,  ((unsigned char *) header) + 65536,
-					 0, NULL, 0, do_bit, 0);
-		}
-
-	      /* Do this by steam now we're not in the select() loop */
-	      check_log_writer(1); 
-	      
-	      if (m == 0 && saved_question)
-		{
-		  struct server *master;
-		  int start;
+#ifdef HAVE_DNSSEC
+		  if (option_bool(OPT_DNSSEC_VALID) && (master->flags & SERV_DO_DNSSEC))
+		    {
+		      size = add_do_bit(header, size, ((unsigned char *) header) + 65536);
+		      
+		      /* For debugging, set Checking Disabled, otherwise, have the upstream check too,
+			 this allows it to select auth servers when one is returning bad data. */
+		      if (option_bool(OPT_DNSSEC_DEBUG))
+			header->hb4 |= HB4_CD;
+		    }
+#endif
 		  
-		  blockdata_retrieve(saved_question, (size_t)saved_size, header);
-		  size = saved_size;
+		  /* Check if we added a pheader on forwarding - may need to
+		     strip it from the reply. */
+		  if (!have_pseudoheader && find_pseudoheader(header, size, NULL, NULL, NULL, NULL))
+		    added_pheader = 1;
 		  
-		  if (lookup_domain(daemon->namebuff, gotname, &first, &last))
-		    flags = is_local_answer(now, first, daemon->namebuff);
+		  /* Loop round available servers until we succeed in connecting to one. */
+		  if ((m = tcp_talk(first, last, start, packet, size, have_mark, mark, &serv)) == 0)
+		    ede = EDE_NETERR;
 		  else
 		    {
-		      /* No configured servers */
-		      ede = EDE_NOT_READY;
-		      flags = 0;
-		    }
-		  
-		  /* don't forward A or AAAA queries for simple names, except the empty name */
-		  if (!flags &&
-		      option_bool(OPT_NODOTS_LOCAL) &&
-		      (gotname & (F_IPV4 | F_IPV6)) &&
-		      !strchr(daemon->namebuff, '.') &&
-		      strlen(daemon->namebuff) != 0)
-		    flags = check_for_local_domain(daemon->namebuff, now) ? F_NOERR : F_NXDOMAIN;
-		  
-		  if (!flags && ede != EDE_NOT_READY)
-		    {
-		      master = daemon->serverarray[first];
-		      
-		      if (option_bool(OPT_ORDER) || master->last_server == -1)
-			start = first;
-		      else
-			start = master->last_server;
-		      
-		      size = add_edns0_config(header, size, ((unsigned char *) header) + 65536, &peer_addr, now, &cacheable);
-		      
-#ifdef HAVE_DNSSEC
-		      if (option_bool(OPT_DNSSEC_VALID) && (master->flags & SERV_DO_DNSSEC))
-			{
-			  size = add_do_bit(header, size, ((unsigned char *) header) + 65536);
-			  
-			  /* For debugging, set Checking Disabled, otherwise, have the upstream check too,
-			     this allows it to select auth servers when one is returning bad data. */
-			  if (option_bool(OPT_DNSSEC_DEBUG))
-			    header->hb4 |= HB4_CD;
-			}
-#endif
-		      
-		      /* Check if we added a pheader on forwarding - may need to
-			 strip it from the reply. */
-		      if (!have_pseudoheader && find_pseudoheader(header, size, NULL, NULL, NULL, NULL))
-			added_pheader = 1;
-		      
-		      /* Loop round available servers until we succeed in connecting to one. */
-		      if ((m = tcp_talk(first, last, start, packet, size, have_mark, mark, &serv)) == 0)
-			{
-			  ede = EDE_NETERR;
-			  break;
-			}
-		      
 		      /* get query name again for logging - may have been overwritten */
 		      if (!(gotname = extract_request(header, (unsigned int)size, daemon->namebuff, &qtype)))
 			strcpy(daemon->namebuff, "query");
@@ -2702,7 +2662,8 @@ unsigned char *tcp_request(int confd, time_t now,
 			    }
 			}
 #endif
-		      
+
+		    
 		      /* restore CD bit to the value in the query */
 		      if (checking_disabled)
 			header->hb4 |= HB4_CD;
@@ -2716,11 +2677,14 @@ unsigned char *tcp_request(int confd, time_t now,
 		      
 		      m = process_reply(header, now, serv, (unsigned int)m, 
 					option_bool(OPT_NO_REBIND) && !norebind, no_cache_dnssec, cache_secure, bogusanswer,
-					ad_reqd, do_bit, added_pheader, &peer_addr, ((unsigned char *)header) + 65536, ede); 
+					ad_reqd, do_bit, added_pheader, &peer_addr, ((unsigned char *)header) + 65536, ede);
+
+		      /* process_reply() adds pheader itself */
+		      have_pseudoheader = 0; 
 		    }
 		}
 	    }
-	 }
+	}
 
 	  /************ Pi-hole modification ************/
 	  }
@@ -2735,10 +2699,8 @@ unsigned char *tcp_request(int confd, time_t now,
 				      ((char *) header) + 65536, first, last, ede)))
 	    break;
 	}
-      else
+      else if (ede == EDE_UNSET)
 	{
-	  ede = EDE_UNSET;
-
 	  if (filtered)
 	    ede = EDE_FILTERED;
 	  else if (stale)
@@ -2766,6 +2728,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
 	  report_addresses(header, m, mark);
 #endif
+      
       if (!read_write(confd, packet, m + sizeof(u16), RW_WRITE))
 	break;
       
@@ -2778,6 +2741,8 @@ unsigned char *tcp_request(int confd, time_t now,
 	  shutdown(confd, SHUT_RDWR);
 	  close(confd);
 	  do_stale = 1;
+	  /* Don't mark the query with the source when refreshing stale data. */
+	  daemon->log_source_addr = NULL;
 	}
     }
 
