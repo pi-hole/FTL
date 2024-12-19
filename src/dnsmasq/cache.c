@@ -2377,12 +2377,12 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     }
   else if (flags & F_AUTH)
     source = "auth";
-   else if (flags & F_DNSSEC)
+  else if (flags & F_DNSSEC)
     {
       source = arg;
       verb = "to";
     }
-   else if (flags & F_SERVER)
+  else if (flags & F_SERVER)
     {
       source = "forwarded";
       verb = "to";

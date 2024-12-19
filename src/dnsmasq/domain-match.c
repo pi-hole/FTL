@@ -405,11 +405,19 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
   int start;
   union all_addr addr;
   
+  setup_reply(header, flags, ede);
+
   if (flags & (F_NXDOMAIN | F_NOERR))
     log_query(flags | gotname | F_NEG | F_CONFIG | F_FORWARD, name, NULL, NULL, 0);
-	  
-  setup_reply(header, flags, ede);
-	  
+
+  if (flags & F_RCODE)
+     {
+       union all_addr a;
+       a.log.rcode = RCODE(header);
+       a.log.ede = ede;
+       log_query(F_UPSTREAM | F_RCODE, "opcode", &a, NULL, 0);
+     }
+  
   if (!(p = skip_questions(header, size)))
     return 0;
 	  
