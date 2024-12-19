@@ -2757,7 +2757,7 @@ static void handle_encap(struct dhcp_packet *mess, unsigned char *end, unsigned 
 
   struct dhcp_opt *opt, *config_opts = daemon->dhcp_opts;
   unsigned char *p;
-  int i, len;
+  int len;
 
   for (opt = config_opts; opt; opt = opt->next)
     opt->flags &= ~DHOPT_ENCAP_DONE;
