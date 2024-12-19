@@ -220,16 +220,6 @@ void *DB_thread(void *val)
 		// Intermediate cancellation-point
 		BREAK_IF_KILLED();
 
-		// Import alias-clients
-		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
-		{
-			lock_shm();
-			reimport_aliasclients(db);
-			unlock_shm();
-		}
-
-		BREAK_IF_KILLED();
-
 		// Sleep 0.1 sec
 		thread_sleepms(DB, 100);
 	}

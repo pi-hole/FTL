@@ -108,6 +108,11 @@ static struct {
 
 int api_handler(struct mg_connection *conn, void *ignored)
 {
+	// Unused, but required by CivetWeb
+	// This is a no-op but suppresses the warning "unused parameter
+	// 'ignored'" on modern compilers
+	(void)ignored;
+
 	// Prepare API info struct
 	struct ftl_conn api = {
 		conn,
