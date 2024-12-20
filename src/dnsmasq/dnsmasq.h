@@ -1139,7 +1139,10 @@ struct tftp_prefix {
 };
 
 struct dhcp_relay {
-  union all_addr local, server;
+  union {
+    struct in_addr addr4;
+    struct in6_addr addr6;
+  } local, server;
   char *interface; /* Allowable interface for replies from server, and dest for IPv6 multicast */
   int iface_index; /* working - interface in which requests arrived, for return */
   int port;        /* Port of relay we forward to. */
