@@ -2049,7 +2049,7 @@
   [[ "${lines[0]}" == "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]" ]]
   run bash -c './pihole-FTL --config webserver.port'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "80,[::]:80,443s,[::]:443s" ]]
+  [[ "${lines[0]}" == "80o,[::]:80o,443so,[::]:443so" ]]
 }
 
 @test "Create, verify and re-import Teleporter file via CLI" {

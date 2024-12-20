@@ -1004,7 +1004,7 @@ static void initConfig(struct config *conf)
 	conf->webserver.port.a = cJSON_CreateStringReference("comma-separated list of <[ip_address:]port>");
 	conf->webserver.port.f = FLAG_RESTART_FTL;
 	conf->webserver.port.t = CONF_STRING;
-	conf->webserver.port.d.s = (char*)"80,[::]:80,443s,[::]:443s";
+	conf->webserver.port.d.s = (char*)"80o,[::]:80o,443so,[::]:443so";
 	conf->webserver.port.c = validate_stub; // Type-based checking + civetweb syntax checking
 
 	conf->webserver.threads.k = "webserver.threads";
