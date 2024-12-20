@@ -814,11 +814,25 @@ void close_fds(long max_fd, int spare1, int spare2, int spare3)
 {
   /* On Linux, use the /proc/ filesystem to find which files
      are actually open, rather than iterate over the whole space,
-     for efficiency reasons. If this fails we drop back to the dumb code. */
-#ifdef HAVE_LINUX_NETWORK 
+     for efficiency reasons.
+
+     On *BSD, the same facility is found at /dev/fd.
+
+     If this fails we drop back to the dumb code.
+  */
+
+#ifdef HAVE_LINUX_NETWORK
+#define FDESCFS "/proc/self/fd"
+#endif
+
+#ifdef HAVE_BSD_NETWORK
+#define FDESCFS "/dev/fd"
+#endif
+
+#ifdef FDESCFS
   DIR *d;
   
-  if ((d = opendir("/proc/self/fd")))
+  if ((d = opendir(FDESCFS)))
     {
       struct dirent *de;
 
