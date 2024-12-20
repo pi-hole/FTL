@@ -643,6 +643,7 @@ static void *ntp_client_thread(void *arg)
 	prctl(PR_SET_NAME, thread_names[NTP_CLIENT], 0, 0, 0);
 
 	// Run NTP client
+	unsigned int retry_count = 0;
 	bool ntp_server_started = false;
 	bool first_run = true;
 	while(!killed)
@@ -667,22 +668,36 @@ static void *ntp_client_thread(void *arg)
 			restart_ftl("System time updated");
 		}
 
+		// Calculate time to sleep
+		unsigned int sleep_time = config.ntp.sync.interval.v.ui - (unsigned int)time_delta;
+
 		// Set first run to false
 		first_run = false;
 
-		if(success && !ntp_server_started)
+		if(!ntp_server_started)
 		{
-			// Initialize NTP server only after first NTP
-			// synchronization to ensure that the time is set
-			// correctly
-			ntp_server_started = ntp_server_start();
+			if(success)
+			{
+				// Initialize NTP server only after first high
+				// accuracy NTP synchronization to ensure that
+				// the time is set correctly
+				ntp_server_started = ntp_server_start();
+			}
+			else
+			{
+				log_debug(DEBUG_NTP, "Local time is too inaccurate, retrying before launching NTP server");
+
+				// Reduce retry time to 10 seconds (at most three times)
+				if(retry_count++ < 3)
+					sleep_time = 10;
+			}
 		}
 
 		// Intermediate cancellation-point
 		BREAK_IF_KILLED();
 
 		// Sleep before retrying
-		thread_sleepms(NTP_CLIENT, 1000 * config.ntp.sync.interval.v.ui);
+		thread_sleepms(NTP_CLIENT, 1000 * sleep_time);
 	}
 
 	log_info("Terminating NTP thread");
