@@ -2330,17 +2330,17 @@ unsigned char *tcp_request(int confd, time_t now,
 			   union mysockaddr *local_addr, struct in_addr netmask, int auth_dns)
 {
   size_t size = 0, saved_size = 0;
-  int norebind;
+  int norebind = 0;
 #ifdef HAVE_CONNTRACK
   int allowed = 1;
 #endif
 #ifdef HAVE_AUTH
   int local_auth = 0;
 #endif
-  int checking_disabled, do_bit, ad_reqd, added_pheader = 0, have_pseudoheader = 0;
+  int checking_disabled, do_bit = 0, ad_reqd = 0, added_pheader = 0, have_pseudoheader = 0;
   struct blockdata *saved_question = NULL;
   unsigned short qtype;
-  unsigned int gotname;
+  unsigned int gotname = 0;
   /* Max TCP packet + slop + size */
   unsigned char *packet = whine_malloc(65536 + MAXDNAME + RRFIXEDSZ + sizeof(u16));
   unsigned char *payload = &packet[2];
