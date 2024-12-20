@@ -1524,10 +1524,16 @@ void receive_query(struct listener *listen, time_t now)
   size_t m;
   ssize_t n;
   int if_index = 0, auth_dns = 0, do_bit = 0, have_pseudoheader = 0;
+  int stale = 0, filtered = 0, ede = EDE_UNSET, do_forward = 0;
+  int metric, ad_reqd, fd; 
+  struct blockdata *saved_question = NULL;
 #ifdef HAVE_CONNTRACK
   unsigned int mark = 0;
   int have_mark = 0;
   int allowed = 1;
+#  ifdef HAVE_UBUS
+  int report = 0;
+#  endif
 #endif
 #ifdef HAVE_AUTH
   int local_auth = 0;
@@ -1828,6 +1834,13 @@ void receive_query(struct listener *listen, time_t now)
       else if (udp_size < PACKETSZ)
 	udp_size = PACKETSZ; /* Sanity check - can't reduce below default. RFC 6891 6.2.3 */
     }
+
+  ad_reqd = do_bit;
+  /* RFC 6840 5.7 */
+  if (header->hb4 & HB4_AD)
+    ad_reqd = 1;
+
+  fd = listen->fd;
   
 #ifdef HAVE_CONNTRACK
 #ifdef HAVE_AUTH
@@ -1841,106 +1854,83 @@ void receive_query(struct listener *listen, time_t now)
 #ifdef HAVE_CONNTRACK
   else if (!allowed)
     {
-      u16 swap = htons(EDE_BLOCKED);
-
+      ede = EDE_BLOCKED;
       m = answer_disallowed(header, (size_t)n, (u32)mark, daemon->namebuff);
-      
-      if (have_pseudoheader && m != 0)
-	m = add_pseudoheader(header,  m,  ((unsigned char *) header) + daemon->edns_pktsz,
-			     EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
-      
-      if (m >= 1)
-	{
-#ifdef HAVE_DUMPFILE
-	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
-#endif
-	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
-		    (char *)header, m, &source_addr, &dst_addr, if_index);
-	  daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
-	}
+      metric = METRIC_DNS_LOCAL_ANSWERED;
     }
 #endif
 #ifdef HAVE_AUTH
   else if (auth_dns)
     {
       m = answer_auth(header, ((char *) header) + udp_size, (size_t)n, now, &source_addr, local_auth);
-      if (m >= 1)
-	{
-	  if (have_pseudoheader)
-	    m = add_pseudoheader(header,  m,  ((unsigned char *) header) + udp_size,
-				 0, NULL, 0, do_bit, 0);
-	  
-#ifdef HAVE_DUMPFILE
-	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
-#endif
+      metric = METRIC_DNS_AUTH_ANSWERED;
+
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
-	  if (local_auth)
-	    if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
-	      report_addresses(header, m, mark);
+      if (local_auth)
+	report = 1;
 #endif
-	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
-		    (char *)header, m, &source_addr, &dst_addr, if_index);
-	  daemon->metrics[METRIC_DNS_AUTH_ANSWERED]++;
-	}
     }
 #endif
   else
     {
-      int stale, filtered;
-      int ad_reqd = do_bit;
-      int fd = listen->fd;
-      struct blockdata *saved_question = blockdata_alloc((char *) header, (size_t)n);
+      saved_question = blockdata_alloc((char *) header, (size_t)n);
       
-      /* RFC 6840 5.7 */
-      if (header->hb4 & HB4_AD)
-	ad_reqd = 1;
-
       m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
 			 dst_addr_4, netmask, now, ad_reqd, do_bit, &stale, &filtered);
       
-      if (m >= 1)
+      metric = stale ? METRIC_DNS_STALE_ANSWERED : METRIC_DNS_LOCAL_ANSWERED;
+      
+      if (m == 0)
+	do_forward = 1;
+      else
 	{
-	  if (have_pseudoheader)
-	    {
-	      int ede = EDE_UNSET;
-
-	      if (filtered)
-		ede = EDE_FILTERED;
-	      else if (stale)
-		ede = EDE_STALE;
-
-	      if (ede != EDE_UNSET)
-		{
-		  u16 swap = htons(ede);
-		  
-		  m = add_pseudoheader(header,  m,  ((unsigned char *) header) + daemon->edns_pktsz,
-				       EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
-		}
-	      else
-		m = add_pseudoheader(header,  m,  ((unsigned char *) header) + daemon->edns_pktsz,
-				     0, NULL, 0, do_bit, 0);
-	    }
-	  
-#ifdef HAVE_DUMPFILE
-	  dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
-#endif
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
-	  if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
-	    report_addresses(header, m, mark);
+	  report = 1;
 #endif
-	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
-		    (char *)header, m, &source_addr, &dst_addr, if_index);
-	  daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
-	  if (stale)
-	    daemon->metrics[METRIC_DNS_STALE_ANSWERED]++;
+
+	  if (filtered)
+	    ede = EDE_FILTERED;
+	  else if (stale)
+	    ede = EDE_STALE;
 	}
+    }
+  
+  if (m != 0)
+    {
+      if (have_pseudoheader)
+	{
+	  if (ede != EDE_UNSET)
+	    {
+	      u16 swap = htons(ede);
+	      
+	      m = add_pseudoheader(header,  m,  ((unsigned char *) header) + daemon->edns_pktsz,
+				   EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	    }
+	  else
+	    m = add_pseudoheader(header,  m,  ((unsigned char *) header) + daemon->edns_pktsz,
+				 0, NULL, 0, do_bit, 0);
+	}
+  
+#ifdef HAVE_DUMPFILE
+      dump_packet_udp(DUMP_REPLY, daemon->packet, m, NULL, &source_addr, listen->fd);
+#endif
+      
+#if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
+      if (report)
+	report_addresses(header, m, mark);
+#endif
+      
+      send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
+		(char *)header, m, &source_addr, &dst_addr, if_index);
+
+      daemon->metrics[metric]++;
       
       if (stale)
 	{
 	  /* We answered with stale cache data, so forward the query anyway to
 	     refresh that. */
-	  m = 0;
-
+	  do_forward = 1;
+	  
 	  /* Don't mark the query with the source in this case. */
 	  daemon->log_source_addr = NULL;
 	  
@@ -1948,25 +1938,25 @@ void receive_query(struct listener *listen, time_t now)
 	     when it comes back. */
 	  fd = -1;
 	}
-      
-      if (saved_question)
-	{
-	  if (m == 0)
-	    {
-	      /* Get the question back, since it may have been mangled by answer_request() */
-	      blockdata_retrieve(saved_question, (size_t)n, (void *)header);
-	      blockdata_free(saved_question);
-	      if (forward_query(fd, &source_addr, &dst_addr, if_index, header, (size_t)n,
-				udp_size, now, NULL, ad_reqd, do_bit, 0))
-		daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
-	      else
-		daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
-	    }
-	  else
-	    blockdata_free(saved_question);
-	}
     }
+  
+  if (do_forward && saved_question)
+    {
+      /* Get the question back, since it may have been mangled by answer_request() */
+      blockdata_retrieve(saved_question, (size_t)n, (void *)header);
+      blockdata_free(saved_question);
+      saved_question = NULL;
+      
+      if (forward_query(fd, &source_addr, &dst_addr, if_index, header, (size_t)n,
+			udp_size, now, NULL, ad_reqd, do_bit, 0))
+	daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
+      else
+	daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+    }
+
+  blockdata_free(saved_question);
 }
+
  
 /* Send query in packet, qsize to a server determined by first,last,start and
    get the reply. return reply size. */
