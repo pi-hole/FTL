@@ -2566,30 +2566,6 @@ unsigned char *tcp_request(int confd, time_t now,
 	      if (header->hb4 & HB4_AD)
 		ad_reqd = 1;
 	      
-	  /************ Pi-hole modification ************/
-	  // Interface name is known from before forking
-	  if(piholeblocked)
-	  {
-	    unsigned char ede_data[MAX_EDE_DATA] = { 0 };
-	    size_t ede_len = 0;
-	    stale = 0;
-	    // Generate DNS packet for reply
-	    m = FTL_make_answer(header, ((char *) header) + 65536, size, ede_data, &ede_len);
-	    // The pseudoheader may contain important information such as EDNS0 version important for
-	    // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
-	    if (have_pseudoheader && m > 0)
-	    {
-	      if (ede_len > 0) // Add EDNS0 option EDE if applicable
-		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
-				     EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
-	      else
-		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
-				     0, NULL, 0, do_bit, 0);
-	    }
-	  }
-	  else
-	  {
-	  /**********************************************/
 	      if (do_stale)
 		m = 0;
 	      else
