@@ -1840,6 +1840,35 @@ void receive_query(struct listener *listen, time_t now)
   if (header->hb4 & HB4_AD)
     ad_reqd = 1;
 
+  /************ Pi-hole modification ************/
+  if(piholeblocked)
+  {
+    // Generate DNS packet for reply
+    unsigned char ede_data[MAX_EDE_DATA] = { 0 };
+    size_t ede_len = 0;
+    n = FTL_make_answer(header, ((char *) header) + udp_size, n, ede_data, &ede_len);
+    // The pseudoheader may contain important information such as EDNS0 version important for
+    // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.    
+    // Check if this query is to be dropped. If so, return immediately without sending anything
+    if(n == 0)
+      return;
+
+    if (have_pseudoheader)
+    {
+      if (ede_len > 0) // Add EDNS0 option EDE if applicable
+	n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
+			     EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
+    else
+	n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
+			     0, NULL, 0, do_bit, 0);
+    }
+    send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
+	      (char *)header, (size_t)n, &source_addr, &dst_addr, if_index);
+    daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+    return;
+  }
+  /**********************************************/
+
   fd = listen->fd;
   
 #ifdef HAVE_CONNTRACK
