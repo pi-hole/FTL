@@ -40,7 +40,6 @@
  *
  * @param name The hostname to resolve.
  * @param ifname The name of the network interface.
- * @param numeric A flag indicating whether the hostname is a numeric IPv6 address.
  * @param addr A pointer to a sockaddr_in6 structure to be filled with the resolved address.
  * @return 0 on success, -1 on failure.
  */
