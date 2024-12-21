@@ -2540,6 +2540,28 @@ unsigned char *tcp_request(int confd, time_t now,
 	      else if (auth_dns)
 		m = answer_auth(header, ((char *) header) + 65536, (size_t)size, now, &peer_addr, local_auth);
 #endif
+	      /************ Pi-hole modification ************/
+	      // Interface name is known from before forking
+	      else if(piholeblocked)
+	      {
+		unsigned char ede_data[MAX_EDE_DATA] = { 0 };
+		size_t ede_len = 0;
+		stale = 0;
+		// Generate DNS packet for reply
+		m = FTL_make_answer(header, ((char *) header) + 65536, size, ede_data, &ede_len);
+		// The pseudoheader may contain important information such as EDNS0 version important for
+		// some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
+		if (have_pseudoheader && m > 0)
+		{
+		  if (ede_len > 0) // Add EDNS0 option EDE if applicable
+		    m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
+		                         EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 0);
+		  else
+		    m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
+		                         0, NULL, 0, do_bit, 0);
+		}
+	      }
+	      /**********************************************/
 	      else
 		m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
 				   dst_addr_4, netmask, now, ad_reqd, do_bit, &stale, &filtered);
@@ -2686,9 +2708,6 @@ unsigned char *tcp_request(int confd, time_t now,
 	    }
 	}
 
-	  /************ Pi-hole modification ************/
-	  }
-	  /**********************************************/
       if (do_stale)
 	break;
       
