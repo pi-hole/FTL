@@ -42,6 +42,19 @@
 // check_capability()
 #include "capabilities.h"
 
+// Required accuracy of the NTP sync in seconds in order to start the NTP server
+// thread. If the NTP sync is less accurate than this value, the NTP server
+// thread will only be started after later NTP syncs have reached this accuracy.
+// Default: 0.5 (seconds)
+#define ACCURACY 0.5
+
+// Interval between successive NTP sync attempts in seconds in case of
+// not-yet-sufficient accuracy of the NTP sync
+// Default: 600 (seconds) = 10 minutes
+#define RETRY_INTERVAL 600
+// Maximum number of NTP syncs to attempt before giving up
+#define RETRY_ATTEMPTS 5
+
 struct ntp_sync
 {
 	bool valid;
@@ -631,9 +644,9 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 			ntp_sync_rtc();
 	}
 
-	// Offset and delay larger than 0.1 seconds are considered as invalid
+	// Offset and delay larger than ACCURACY seconds are considered as invalid
 	// during local testing (e.g., when the server is on the same machine)
-	return theta_avg < 0.1 && delta_avg < 0.1;
+	return theta_trim < ACCURACY && delta_trim < ACCURACY;
 }
 
 static void *ntp_client_thread(void *arg)
@@ -687,9 +700,10 @@ static void *ntp_client_thread(void *arg)
 			{
 				log_debug(DEBUG_NTP, "Local time is too inaccurate, retrying before launching NTP server");
 
-				// Reduce retry time to 10 seconds (at most three times)
-				if(retry_count++ < 3)
-					sleep_time = 10;
+				// Reduce retry time if the time is not accurate enough
+				if(retry_count++ < RETRY_INTERVAL &&
+				   sleep_time > RETRY_INTERVAL)
+					sleep_time = RETRY_INTERVAL;
 			}
 		}
 
