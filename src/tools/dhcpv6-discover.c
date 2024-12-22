@@ -726,7 +726,7 @@ static ssize_t recv_adv(int fd, const struct sockaddr_in6 *tgt, const char *ifna
  * @param fd The file descriptor of the socket to use for sending and receiving messages.
  * @param ifname The name of the network interface to use for sending the message.
  *
- * @return 0 on success, -1 on error, -2 if no response is received after retries.
+ * @return 0 on success, -1 on error.
  */
 static int do_discoverv6(const int fd, const char *ifname, const unsigned int timeout)
 {
