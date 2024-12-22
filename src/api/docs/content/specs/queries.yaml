@@ -224,6 +224,17 @@ components:
                 type: string
                 description: IP or name + port of upstream server
                 nullable: true
+              ede:
+                type: object
+                description: Extended DNS Error (EDE) information
+                properties:
+                  code:
+                    type: integer
+                    description: EDE code
+                  text:
+                    type: string
+                    nullable: true
+                    description: EDE message (if available)
           example:
             - time: 1581907991.539157
               type: "A"
@@ -240,6 +251,9 @@ components:
               list_id: NULL
               upstream: "localhost#5353"
               dbid: 112421354
+              ede:
+                code: 0
+                text: null
             - time: 1581907871.583821
               type: "AAAA"
               domain: "api.github.com"
@@ -255,6 +269,9 @@ components:
               list_id: NULL
               upstream: "localhost#5353"
               dbid: 112421355
+              ede:
+                code: 0
+                text: null
         cursor:
           type: integer
           description: Database ID of most recent query to show

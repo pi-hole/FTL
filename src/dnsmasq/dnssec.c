@@ -16,6 +16,7 @@
 */
 
 #include "dnsmasq.h"
+#include "log.h"
 
 #ifdef HAVE_DNSSEC
 
@@ -512,12 +513,18 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 	{
 	  /* We must explicitly check against wanted values, because of SERIAL_UNDEF */
 	  if (serial_compare_32(curtime, sig_inception) == SERIAL_LT)
+	  {
+	    log_debug(DEBUG_DNSSEC, "Signature inception time is %f seconds in the future", difftime(sig_inception, curtime));
 	    continue;
+	  }
 	  else
 	    failflags &= ~DNSSEC_FAIL_NYV;
 	  
 	  if (serial_compare_32(curtime, sig_expiration) == SERIAL_GT)
+	  {
+	    log_debug(DEBUG_DNSSEC, "Signature expiration time is %f seconds in the past", difftime(curtime, sig_expiration));
 	    continue;
+	  }
 	  else
 	    failflags &= ~DNSSEC_FAIL_EXP;
 	}

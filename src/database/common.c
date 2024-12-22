@@ -616,6 +616,21 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 21 if lower
+	if(dbversion < 21)
+	{
+		// Update to version 21: Add additional column "ede" in the query_storage table
+		log_info("Updating long-term database to version 21");
+		if(!add_query_storage_column_ede(db))
+		{
+			log_info("Additional column 'ede' in the query_storage table cannot be added, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
 	/* * * * * * * * * * * * * IMPORTANT * * * * * * * * * * * * *
 	 * If you add a new database version, check if the in-memory
 	 * schema needs to be update as well (always recreated from
