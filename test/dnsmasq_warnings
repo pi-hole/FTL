@@ -94,8 +94,6 @@ src/dnsmasq/forward.c
 	my_syslog(LOG_WARNING, _("validation of %s failed: resource limit exceeded."),
 		  daemon->namebuff[0] ? daemon->namebuff : ".");
 src/dnsmasq/forward.c
-      my_syslog(LOG_WARNING, _("reducing DNS packet size for nameserver %s to %d"), daemon->addrbuff, SAFE_PKTSZ);
-src/dnsmasq/forward.c
 	      my_syslog(LOG_WARNING, _("ignoring query from non-local network %s (logged only once)"), daemon->addrbuff);
 src/dnsmasq/forward.c
 	  my_syslog(LOG_WARNING, _("limit exceeded: per-query subqueries"));

@@ -196,6 +196,7 @@ struct myoption {
 #define LOPT_NO_DHCP4      383
 #define LOPT_MAX_PROCS     384
 #define LOPT_DNSSEC_LIMITS 385
+#define LOPT_PXE_OPT       386
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -301,6 +302,7 @@ static const struct myoption opts[] =
     { "bridge-interface", 1, 0 , LOPT_BRIDGE },
     { "shared-network", 1, 0, LOPT_SHARED_NET },
     { "dhcp-option-force", 1, 0, LOPT_FORCE },
+    { "dhcp-option-pxe", 1, 0, LOPT_PXE_OPT },
     { "tftp-no-blocksize", 0, 0, LOPT_NOBLOCK },
     { "log-dhcp", 0, 0, LOPT_LOG_OPTS },
     { "log-async", 2, 0, LOPT_MAX_LOGS },
@@ -454,6 +456,7 @@ static struct {
   { 'o', OPT_ORDER, NULL, gettext_noop("Use nameservers strictly in the order given in %s."), RESOLVFILE },
   { 'O', ARG_DUP, "<optspec>", gettext_noop("Specify options to be sent to DHCP clients."), NULL },
   { LOPT_FORCE, ARG_DUP, "<optspec>", gettext_noop("DHCP option sent even if the client does not request it."), NULL},
+  { LOPT_PXE_OPT, ARG_DUP, "<optspec>", gettext_noop("DHCP option sent only to PXE clients."), NULL},
   { 'p', ARG_ONE, "<integer>", gettext_noop("Specify port to listen for DNS requests on (defaults to 53)."), NULL },
   { 'P', ARG_ONE, "<integer>", gettext_noop("Maximum supported UDP packet size for EDNS.0 (defaults to %s)."), "*" },
   { 'q', ARG_DUP, NULL, gettext_noop("Log DNS queries."), NULL },
@@ -1339,7 +1342,7 @@ static void dhcp_netid_free(struct dhcp_netid *nid)
 
 /* Parse one or more tag:s before parameters.
  * Moves arg to the end of tags. */
-static struct dhcp_netid * dhcp_tags(char **arg)
+static struct dhcp_netid *dhcp_tags(char **arg)
 {
   struct dhcp_netid *id = NULL;
 
@@ -1363,7 +1366,13 @@ static void dhcp_netid_list_free(struct dhcp_netid_list *netid)
     {
       struct dhcp_netid_list *tmplist = netid;
       netid = netid->next;
-      dhcp_netid_free(tmplist->list);
+      /* Note: don't use dhcp_netid_free() here, since that 
+	 frees a list linked on netid->next. Where a netid_list
+	 is used that's because the the ->next pointers in the
+	 netids are being used to temporarily construct 
+	 a list of valid tags. */
+      free(tmplist->list->net);
+      free(tmplist->list);
       free(tmplist);
     }
 }
@@ -1938,7 +1947,10 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
       (new->len > 253 && (new->flags & (DHOPT_VENDOR | DHOPT_ENCAPSULATE))) ||
        (new->len > 250 && (new->flags & DHOPT_RFC3925))))
     goto_err(_("dhcp-option too long"));
-  
+
+  if (flags == DHOPT_PXE_OPT &&  (new->flags & DHOPT_VENDOR))
+    goto_err(_("No vendor-encap options allowed in dhcp-option-pxe")); 
+      
   if (flags == DHOPT_MATCH)
     {
       if ((new->flags & (DHOPT_ENCAPSULATE | DHOPT_VENDOR)) ||
@@ -2633,8 +2645,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			  {
 			    if (option != 's')
 			      {
+				/* IPv6 address is longest and represented as
+				   xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx
+				   which is 39 chars */
 				if (!(new->prefix = canonicalise_opt(arg)) ||
-				    strlen(new->prefix) > MAXLABEL - INET_ADDRSTRLEN)
+				    strlen(new->prefix) > (MAXLABEL - 39))
 				  ret_err_free(_("bad prefix"), new);
 			      }
 			    else if (strcmp(arg, "local") != 0)
@@ -3408,8 +3423,16 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
     
     case 'q': /* --log-queries */
       set_option_bool(OPT_LOG);
-      if (arg && strcmp(arg, "extra") == 0)
-	set_option_bool(OPT_EXTRALOG);
+      if (arg)
+	{
+	  if (strcmp(arg, "extra") == 0)
+	    set_option_bool(OPT_EXTRALOG);
+	  else if (strcmp(arg, "proto") == 0)
+	    {
+	      set_option_bool(OPT_EXTRALOG);
+	      set_option_bool(OPT_LOG_PROTO);
+	    }
+	}
       break;
 
     case LOPT_MAX_LOGS:  /* --log-async */
@@ -4141,7 +4164,12 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		      }
 		    else if (strcmp(arg, "ignore") == 0)
 		      new->flags |= CONFIG_DISABLE;
-		    else
+		    if (new->hostname)
+		      {
+			dhcp_config_free(new);
+			ret_err(_("DHCP host has multiple names"));
+		      }
+ 		    else
 		      {
 			if (!(new->hostname = canonicalise_opt(arg)) ||
 			    !legal_hostname(new->hostname))
@@ -4242,12 +4270,14 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       
     case 'O':           /* --dhcp-option */
     case LOPT_FORCE:    /* --dhcp-option-force */
+    case LOPT_PXE_OPT:  /* --dhcp-option-pxe */
     case LOPT_OPTS:
     case LOPT_MATCH:    /* --dhcp-match */
       return parse_dhcp_opt(errstr, arg, 
 			    option == LOPT_FORCE ? DHOPT_FORCE : 
 			    (option == LOPT_MATCH ? DHOPT_MATCH :
-			     (option == LOPT_OPTS ? DHOPT_BANK : 0)));
+			     (option == LOPT_OPTS ? DHOPT_BANK :
+			      (option == LOPT_PXE_OPT ? DHOPT_PXE_OPT : 0))));
 
     case LOPT_NAME_MATCH: /* --dhcp-name-match */
       {
@@ -4642,8 +4672,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	daemon->override_relays = new;
 	arg = comma;
 	}
-	  break;
-
+      break;
+      
     case LOPT_PXE_VENDOR: /* --dhcp-pxe-vendor */
       {
         while (arg) {
@@ -6022,6 +6052,15 @@ void read_opts(int argc, char **argv, char *compile_opts)
     }
 #endif
 
+#ifdef HAVE_DNSSEC
+  /* Default fast retry on when doing DNSSEC */
+  if (option_bool(OPT_DNSSEC_VALID) && daemon->fast_retry_time == 0)
+    {
+      daemon->fast_retry_timeout = TIMEOUT;
+      daemon->fast_retry_time = DEFAULT_FAST_RETRY;
+    }
+#endif
+  
   /* port might not be known when the address is parsed - fill in here */
   if (daemon->servers)
     {

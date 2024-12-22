@@ -1317,7 +1317,7 @@ static struct dhcp_netid *add_options(struct state *state, int do_refresh)
 {
   void *oro;
   /* filter options based on tags, those we want get DHOPT_TAGOK bit set */
-  struct dhcp_netid *tagif = option_filter(state->tags, state->context_tags, daemon->dhcp_opts6);
+  struct dhcp_netid *tagif = option_filter(state->tags, state->context_tags, daemon->dhcp_opts6, 0);
   struct dhcp_opt *opt_cfg;
   int done_dns = 0, done_refresh = !do_refresh, do_encap = 0;
   int i, o, o1;
@@ -2210,6 +2210,9 @@ int relay_upstream6(int iface_index, ssize_t sz,
 	
 	to.sa.sa_family = AF_INET6;
 	to.in6.sin6_addr = relay->server.addr6;
+#ifdef HAVE_SOCKADDR_SA_LEN
+	to.in6.sin6_len = sizeof(struct sockaddr_in6);
+#endif 
 	to.in6.sin6_port = htons(relay->port);
 	to.in6.sin6_flowinfo = 0;
 	to.in6.sin6_scope_id = 0;

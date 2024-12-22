@@ -96,8 +96,8 @@ int in_zone(struct auth_zone *zone, char *name, char **cut)
 }
 
 
-size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t now, union mysockaddr *peer_addr, 
-		   int local_query, int do_bit, int have_pseudoheader) 
+size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t now,
+		   union mysockaddr *peer_addr, int local_query) 
 {
   char *name = daemon->namebuff;
   unsigned char *p, *ansp;
@@ -868,7 +868,13 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
   
   /* truncation */
   if (trunc)
-    header->hb3 |= HB3_TC;
+    {
+      header->hb3 |= HB3_TC;
+      if (!(ansp = skip_questions(header, qlen)))
+	return 0; /* bad packet */
+      anscount = authcount = 0;
+      log_query(F_AUTH, "reply", NULL, "truncated", 0);
+    }
   
   if ((auth || local_query) && nxdomain)
     SET_RCODE(header, NXDOMAIN);
@@ -890,10 +896,6 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
       return resize_packet(header,  ansp - (unsigned char *)header, NULL, 0);
     }
   
-  /* Advertise our packet size limit in our reply */
-  if (have_pseudoheader)
-    return add_pseudoheader(header,  ansp - (unsigned char *)header, (unsigned char *)limit, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
-
   return ansp - (unsigned char *)header;
 }
   
