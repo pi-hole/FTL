@@ -1460,9 +1460,9 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 #ifdef HAVE_DUMPFILE
 		dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source, src->fd);
 #endif
+		/* Pi-hole modification */
+		FTL_multiple_replies(src->log_id, &first_ID);
 	      }
-	  /* Pi-hole modification */
-	  FTL_multiple_replies(src->log_id, &first_ID);
 	}
     }
       
