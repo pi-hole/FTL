@@ -605,7 +605,7 @@ void parse_args(int argc, char *argv[])
 	if(argc == 3 && strcmp(argv[1], "migrate") == 0 && strcmp(argv[2], "v6") == 0)
 	{
 		cli_mode = true;
-		log_ctrl(false, false);
+		log_ctrl(false, true);
 		exit(migrate_config_v6() ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
