@@ -45,7 +45,7 @@ static u32 in[12];
 static u32 out[8];
 static int outleft = 0;
 
-void rand_init()
+void rand_init(void)
 {
   int fd = open(RANDFILE, O_RDONLY);
   
