@@ -103,6 +103,7 @@ static const struct {
   { 63,  "ZONEMD" }, /* Message Digest Over Zone Data [RFC8976] ZONEMD/zonemd-completed-template 2018-12-12*/
   { 64,  "SVCB" }, /* Service Binding [draft-ietf-dnsop-svcb-https-00] SVCB/svcb-completed-template 2020-06-30*/
   { 65,  "HTTPS" }, /* HTTPS Binding [draft-ietf-dnsop-svcb-https-00] HTTPS/https-completed-template 2020-06-30*/
+  { 66,  "DSYNC" }, /* Endpoint discovery for delegation synchronization [draft-ietf-dnsop-generalized-notify-03] DSYNC/dsync-completed-template 2024-12-10 */
   { 99,  "SPF" }, /* [RFC7208] */
   { 100, "UINFO" }, /* [IANA-Reserved] */
   { 101, "UID" }, /* [IANA-Reserved] */
@@ -114,6 +115,7 @@ static const struct {
   { 107, "LP" }, /* [RFC6742] ILNP/lp-completed-template */
   { 108, "EUI48" }, /* an EUI-48 address [RFC7043] EUI48/eui48-completed-template 2013-03-27*/
   { 109, "EUI64" }, /* an EUI-64 address [RFC7043] EUI64/eui64-completed-template 2013-03-27*/
+  { 128, "NXNAME" }, /* NXDOMAIN indicator for Compact Denial of Existence https://www.iana.org/go/draft-ietf-dnsop-compact-denial-of-existence-04 */
   { 249, "TKEY" }, /* Transaction Key [RFC2930] */
   { 250, "TSIG" }, /* Transaction Signature [RFC8945] */
   { 251, "IXFR" }, /* incremental transfer [RFC1995] */
@@ -127,6 +129,9 @@ static const struct {
   { 259, "DOA" }, /* Digital Object Architecture [draft-durand-doa-over-dns] DOA/doa-completed-template 2017-08-30*/
   { 260, "AMTRELAY" }, /* Automatic Multicast Tunneling Relay [RFC8777] AMTRELAY/amtrelay-completed-template 2019-02-06*/
   { 261, "RESINFO" }, /* Resolver Information as Key/Value Pairs https://datatracker.ietf.org/doc/draft-ietf-add-resolver-info/06/ */
+  { 262, "WALLET" }, /* Public wallet address https://www.iana.org/assignments/dns-parameters/WALLET/wallet-completed-template */
+  { 263, "CLA" }, /*  BP Convergence Layer Adapter https://www.iana.org/go/draft-johnson-dns-ipn-cla-07 */
+  { 264, "IPN" }, /* BP Node Number https://www.iana.org/go/draft-johnson-dns-ipn-cla-07 */
   { 32768,  "TA" }, /* DNSSEC Trust Authorities [Sam_Weiler][http://cameo.library.cmu.edu/][ Deploying DNSSEC Without a Signed Root. Technical Report 1999-19, Information Networking Institute, Carnegie Mellon University, April 2004.] 2005-12-13*/
   { 32769,  "DLV" }, /* DNSSEC Lookaside Validation (OBSOLETE) [RFC8749][RFC4431] */
 };
