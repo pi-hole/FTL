@@ -184,7 +184,8 @@ static int api_list_write(struct ftl_conn *api,
 	if(json_ret != 0)
 		return json_ret;
 
-	bool spaces_allowed = false;
+	// Spaces are allowed in groups
+	const bool spaces_allowed = listtype == GRAVITY_GROUPS;
 	bool allocated_json = false;
 	if(api->method == HTTP_POST)
 	{
@@ -218,7 +219,6 @@ static int api_list_write(struct ftl_conn *api,
 
 			case GRAVITY_GROUPS:
 			{
-				spaces_allowed = true;
 				cJSON *json_name = cJSON_GetObjectItemCaseSensitive(api->payload.json, "name");
 				if(cJSON_IsString(json_name) && strlen(json_name->valuestring) > 0)
 				{
