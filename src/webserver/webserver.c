@@ -397,15 +397,7 @@ void http_init(void)
 	//   A referrer will be sent for same-site origins, but cross-origin requests will
 	//   send no referrer information.
 	// The latter four headers are set as expected by https://securityheaders.io
-	char num_threads[3] = { 0 };
-	// Use 16 threads if more than 8 cores are available, otherwise use
-	// 2*cores. This is to prevent overloading the system with too many
-	// threads.
-	// We use the number of available (= online) cores which may be less
-	// than the total number of cores in the system, e.g., if a
-	// virtualization environment is used and fewer cores are assigned to
-	// the VM than are available on the host.
-	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
+	const char *num_threads = "2";
 	const char *options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
 		"error_pages", error_pages,
