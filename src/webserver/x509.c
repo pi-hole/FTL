@@ -240,7 +240,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	tm->tm_year += 30; // 30 years from now
 	// Check for leap year, and adjust the date accordingly
 	const bool isLeapYear = tm->tm_year % 4 == 0 && (tm->tm_year % 100 != 0 || tm->tm_year % 400 == 0);
-	tm->tm_mday = tm->tm_mon == 2 && tm->tm_mday == 29 && !isLeapYear ? 28 : tm->tm_mday;
+	tm->tm_mday = tm->tm_mon == 1 && tm->tm_mday == 29 && !isLeapYear ? 28 : tm->tm_mday;
 	strftime(not_after, sizeof(not_after), "%Y%m%d%H%M%S", tm);
 
 	// 1. Create CA certificate
