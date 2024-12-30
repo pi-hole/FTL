@@ -15,6 +15,8 @@
 #include "datastructure.h"
 // flock(), LOCK_SH
 #include <sys/file.h>
+// fcntl(), O_ACCMODE, O_RDONLY
+#include <fcntl.h>
 // rotate_files()
 #include "files.h"
 //set_and_check_password()
