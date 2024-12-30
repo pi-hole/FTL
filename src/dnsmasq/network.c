@@ -653,7 +653,7 @@ static int iface_allowed_v4(struct in_addr local, int if_index, char *label,
 /*
  * Clean old interfaces no longer found.
  */
-static void clean_interfaces()
+static void clean_interfaces(void)
 {
   struct irec *iface;
   struct irec **up = &daemon->interfaces;

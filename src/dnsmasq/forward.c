@@ -3213,7 +3213,7 @@ static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int
 }
 
 /* Send query packet again, if we can. */
-void resend_query()
+void resend_query(void)
 {
   if (daemon->srv_save)
     server_send(daemon->srv_save, daemon->fd_save,
