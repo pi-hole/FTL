@@ -89,16 +89,22 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 void closeFTLtoml(FILE *fp)
 {
 	// Release file lock
-	if(flock(fileno(fp), LOCK_UN) != 0)
+	int fn = fileno(fp);
+	if(flock(fn, LOCK_UN) != 0)
 		log_err("Cannot release lock on FTL's config file: %s", strerror(errno));
+
+	// Get access mode
+	int mode = fcntl(fn, F_GETFL);
+	if (mode == -1)
+		log_err("Cannot get access mode for FTL's config file: %s", strerror(errno));
 
 	// Close file
 	if(fclose(fp) != 0)
 		log_err("Cannot close FTL's config file: %s", strerror(errno));
 
 	// Chown file if we are root
-	if(geteuid() == 0)
-		chown_pihole(GLOBALTOMLPATH, NULL);
+	if(geteuid() == 0 && mode != -1)
+		chown_pihole(((mode & O_ACCMODE) == O_RDONLY) ? GLOBALTOMLPATH : GLOBALTOMLPATH".tmp", NULL);
 
 	return;
 }

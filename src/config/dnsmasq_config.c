@@ -749,6 +749,10 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		return false;
 	}
 
+	// Chown file if we are root
+	if(geteuid() == 0)
+		chown_pihole(DNSMASQ_TEMP_CONF, NULL);
+
 	log_debug(DEBUG_CONFIG, "Testing "DNSMASQ_TEMP_CONF);
 	if(test_config && !test_dnsmasq_config(errbuf))
 	{
