@@ -354,39 +354,23 @@ void http_init(void)
 	char num_threads[3] = { 0 };
 	// Calculate number of threads for the web server
 	// any positive number = number of threads (limited to at most MAX_WEBTHREADS)
-	//  0 = web server not available
-	// -1 = the number of online processors (at least 1, no more than 16)
-	// -2 = two times the number of online processors (at least 1, no more
-	//      than 16)
-	// any other negative number = web server not available
-	// For the automatic options, we use the number of available (= online)
+	// 0 = the number of online processors (at least 1, no more than 16)
+	// For the automatic option, we use the number of available (= online)
 	// cores which may be less than the total number of cores in the system,
 	// e.g., if a virtualization environment is used and fewer cores are
 	// assigned to the VM than are available on the host.
 	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
 
-	if(config.webserver.threads.v.i > 0)
+	if(config.webserver.threads.v.ui > 0)
 	{
-		const unsigned int threads = LIMIT_MIN_MAX(config.webserver.threads.v.i, 1, MAX_WEBTHREADS);
+		const unsigned int threads = LIMIT_MIN_MAX(config.webserver.threads.v.ui, 1, MAX_WEBTHREADS);
 		snprintf(num_threads, sizeof(num_threads), "%u", threads);
 	}
-	else if(config.webserver.threads.v.i == -1)
+	else // Automatic thread calculation
 	{
 		const int nprocs = get_nprocs();
 		const unsigned int threads = LIMIT_MIN_MAX(nprocs - 1, 1, 16);
 		snprintf(num_threads, sizeof(num_threads), "%u", threads);
-	}
-	else if(config.webserver.threads.v.i == -2)
-	{
-		const int nprocs = 2 * get_nprocs();
-		const unsigned int threads = LIMIT_MIN_MAX(nprocs - 1, 1, 16);
-		snprintf(num_threads, sizeof(num_threads), "%u", threads);
-	}
-	else
-	{
-		log_info("Web server not available as webserver.threads is set to %d. API will not be available!",
-		         config.webserver.threads.v.i);
-		return;
 	}
 
 	/* Initialize the library */
