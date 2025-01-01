@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v5.25.2-1921-gd3948088-dirty)
+# Pi-hole configuration file (v5.25.2-2439-g93521615-dirty)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2024-06-15 09:10:13 UTC
+# Last updated on 2025-01-01 12:33:13 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -659,6 +659,19 @@
   #     comma-separated list of <[ip_address:]port>
   port = "80,[::]:80,443s,[::]:443s"
 
+  # Maximum number of worker threads allowed.
+  # The Pi-hole web server handles each incoming connection in a separate thread.
+  # Therefore, the value of this option is effectively the number of concurrent HTTP
+  # connections that can be handled. Any other connections are queued until they can be
+  # processed by a unoccupied thread.
+  # The default value of 0 means that the number of threads is automatically determined
+  # by the number of online CPU cores minus 1 (e.g., launching up to 8-1 = 7 threads on
+  # 8 cores). Any other value specifies the number of threads explicitly. A hard-coded
+  # maximum of 64 threads is enforced for this option.
+  # The total number of threads you see may be lower than the configured value as
+  # threads are only created when needed due to incoming connections.
+  threads = 0
+
   [webserver.session]
     # Session timeout in seconds. If a session is inactive for more than this time, it will
     # be terminated. Sessions are continuously refreshed by the web interface, preventing
@@ -1124,7 +1137,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 150 total entries out of which 94 entries are default
+# 151 total entries out of which 95 entries are default
 # --> 56 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice

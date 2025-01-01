@@ -351,6 +351,28 @@ void http_init(void)
 		return;
 	}
 
+	char num_threads[3] = { 0 };
+	// Calculate number of threads for the web server
+	// any positive number = number of threads (limited to at most MAX_WEBTHREADS)
+	// 0 = the number of online processors (at least 1, no more than 16)
+	// For the automatic option, we use the number of available (= online)
+	// cores which may be less than the total number of cores in the system,
+	// e.g., if a virtualization environment is used and fewer cores are
+	// assigned to the VM than are available on the host.
+	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
+
+	if(config.webserver.threads.v.ui > 0)
+	{
+		const unsigned int threads = LIMIT_MIN_MAX(config.webserver.threads.v.ui, 1, MAX_WEBTHREADS);
+		snprintf(num_threads, sizeof(num_threads), "%u", threads);
+	}
+	else // Automatic thread calculation
+	{
+		const int nprocs = get_nprocs();
+		const unsigned int threads = LIMIT_MIN_MAX(nprocs - 1, 1, 16);
+		snprintf(num_threads, sizeof(num_threads), "%u", threads);
+	}
+
 	/* Initialize the library */
 	log_web("Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
 	unsigned int features = MG_FEATURES_FILES |
@@ -397,15 +419,6 @@ void http_init(void)
 	//   A referrer will be sent for same-site origins, but cross-origin requests will
 	//   send no referrer information.
 	// The latter four headers are set as expected by https://securityheaders.io
-	char num_threads[3] = { 0 };
-	// Use 16 threads if more than 8 cores are available, otherwise use
-	// 2*cores. This is to prevent overloading the system with too many
-	// threads.
-	// We use the number of available (= online) cores which may be less
-	// than the total number of cores in the system, e.g., if a
-	// virtualization environment is used and fewer cores are assigned to
-	// the VM than are available on the host.
-	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
 	const char *options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
 		"error_pages", error_pages,
