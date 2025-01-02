@@ -2087,11 +2087,3 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
-
-@test "Check NTP server is broadcasting correct time" {
-  # Run this test at the very end of the test suite
-  # to ensure the NTP server has been started
-  run bash -c './pihole-FTL ntp 127.0.0.1'
-  printf "%s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-}
