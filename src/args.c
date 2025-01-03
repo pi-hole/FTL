@@ -668,7 +668,7 @@ void parse_args(int argc, char *argv[])
 		}
 
 		// Implement dnsmasq's test function, no need to prepare the entire FTL
-		// environment (initialize shared memory, lead queries from long-term
+		// environment (initialize shared memory, load queries from long-term
 		// database, ...) when the task is a simple (dnsmasq) syntax check
 		if(strcmp(argv[i], "dnsmasq-test") == 0 ||
 		   strcmp(argv[i], "--test") == 0)
