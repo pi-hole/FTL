@@ -3118,7 +3118,8 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		log_crit("Cannot initialize in-memory database.");
 
 	// Flush messages stored in the long-term database
-	flush_message_table();
+	if(!FTLDBerror())
+		flush_message_table();
 
 	// Verify checksum of this binary early on to ensure that the binary is
 	// not corrupted and that the binary is not tampered with. We can only
@@ -3127,7 +3128,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	verify_FTL(false);
 
 	// Initialize in-memory database starting index
-	update_disk_db_idx();
+	init_disk_db_idx();
 
 	// Handle real-time signals in this process (and its children)
 	// Helper processes are already split from the main instance

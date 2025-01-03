@@ -25,6 +25,8 @@
 #include "config/password.h"
 // database session functions
 #include "database/session-table.h"
+// FTLDBerror()
+#include "database/common.h"
 
 static uint16_t max_sessions = 0;
 static struct session *auth_data = NULL;
@@ -51,7 +53,9 @@ void init_api(void)
 		log_crit("Could not allocate memory for API sessions, check config value of webserver.api.max_sessions");
 		exit(EXIT_FAILURE);
 	}
-	restore_db_sessions(auth_data, max_sessions);
+
+	if(!FTLDBerror())
+		restore_db_sessions(auth_data, max_sessions);
 }
 
 void free_api(void)
