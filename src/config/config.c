@@ -1666,13 +1666,6 @@ bool migrate_config_v6(void)
 	// Teleporter files
 	create_migration_target_v6();
 
-	// If the migration target exists, we have already migrated the config
-	if(file_exists(MIGRATION_TARGET_V6))
-	{
-		log_info("Migration target %s exists, skipping migration", MIGRATION_TARGET_V6);
-		return false;
-	}
-
 	// If the migration target does not exist, we need to migrate the config
 	log_info("Migrating config to Pi-hole v6.0 format");
 
@@ -1690,6 +1683,8 @@ bool migrate_config_v6(void)
 		if(rename(path, target) != 0)
 			log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
 	}
+	else
+		log_info("No legacy config file found, using defaults");
 
 	// Import bits and pieces from legacy config files
 	// setupVars.conf

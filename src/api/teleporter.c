@@ -834,6 +834,9 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	// Free allocated memory
 	free_upload_data(data);
 
+	// Migrate the config to v6
+	migrate_config_v6();
+
 	// Signal FTL we want to restart for re-import
 	api->ftl.restart_reason = "Teleporter (TAR.GZ) import";
 	api->ftl.restart = true;
