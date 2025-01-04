@@ -14,7 +14,7 @@
     }
   },
   "mounts": [
-    "type=bind,source=/home/${localEnv:USER}/.ssh,target=/root/.ssh,readonly",
+    "type=bind,source=${localEnv:HOME}/.ssh,target=/root/.ssh,readonly",
     "type=bind,source=/var/www/html/admin,target=/var/www/html/admin,readonly"
   ]
 
