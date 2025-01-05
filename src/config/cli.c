@@ -548,16 +548,19 @@ int get_config_from_CLI(const char *key, const bool quiet)
 	// We first loop over all config options to check if the one we are
 	// looking for is an exact match, use partial match otherwise
 	bool exactMatch = false;
-	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	if(key != NULL)
 	{
-		// Get pointer to memory location of this conf_item
-		struct conf_item *item = get_conf_item(&config, i);
-
-		// Check if item.k is identical with key
-		if(strcmp(item->k, key) == 0)
+		for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 		{
-			exactMatch = true;
-			break;
+			// Get pointer to memory location of this conf_item
+			struct conf_item *item = get_conf_item(&config, i);
+
+			// Check if item.k is identical with key
+			if(strcmp(item->k, key) == 0)
+			{
+				exactMatch = true;
+				break;
+			}
 		}
 	}
 
