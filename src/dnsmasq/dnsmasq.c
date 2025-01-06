@@ -2134,11 +2134,11 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 	if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
 	  break;
       
-      /* No slots */
-      if (i < 0)
-	return STAT_ABANDONED;
-      
-      if (pipe(pipefd) == 0 && (p = fork()) != 0)
+      /* No slots or no pipe */
+      if (i < 0 || pipe(pipefd) != 0)
+	return STAT_ABANDONED;`
+				
+      if ((p = fork()) != 0)
 	{
 	  close(pipefd[1]); /* parent needs read pipe end. */
 	  if (p == -1)
