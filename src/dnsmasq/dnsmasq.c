@@ -2136,7 +2136,7 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
       
       /* No slots or no pipe */
       if (i < 0 || pipe(pipefd) != 0)
-	return STAT_ABANDONED;`
+	return STAT_ABANDONED;
 				
       if ((p = fork()) != 0)
 	{
