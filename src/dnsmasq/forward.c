@@ -198,6 +198,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
     {
       old_src = 1;
       old_reply = 1;
+      fwd_flags = forward->flags;
     }
   else if (gotname && (forward = lookup_frec(daemon->namebuff, C_IN, (int)rrtype, -1, fwd_flags,
 					     FREC_CHECKING_DISABLED | FREC_AD_QUESTION | FREC_DO_QUESTION |
@@ -537,7 +538,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, (char *)(header + replylimit), first, last, ede)))
 	return 0;
       
-      if (forward->flags & FREC_HAS_PHEADER)
+      if (fwd_flags & FREC_HAS_PHEADER)
 	{
 	  u16 swap = htons((u16)ede);
 
