@@ -85,6 +85,11 @@ static bool create_teleporter_database(const char *filename, const char **tables
 
 	snprintf(attach_stmt, sizeof(attach_stmt), "ATTACH DATABASE '%s' AS \"disk\";", filename);
 
+	// Set busy timeout to 1 second to access the database in a
+	// multi-threaded environment
+	if(sqlite3_busy_timeout(db, 1000) != SQLITE_OK)
+		log_warn("Failed to set busy timeout during creation of in-memory Teleporter database: %s", sqlite3_errmsg(db));
+
 	if(sqlite3_exec(db, attach_stmt, NULL, NULL, &err) != SQLITE_OK)
 	{
 		log_warn("Failed to attach database \"%s\" to in-memory database: %s", filename, err);
