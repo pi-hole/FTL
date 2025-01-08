@@ -48,7 +48,7 @@ src/dnsmasq/dhcp-common.c
 src/dnsmasq/dnsmasq.c
 	    my_syslog(LOG_WARNING, _("cache size greater than 10000 may cause performance issues, and is unlikely to be useful."));
 src/dnsmasq/dnsmasq.c
-    my_syslog(LOG_WARNING, "chown of PID file %s failed: %s", daemon->runfile, strerror(chown_warn));
+      my_syslog(LOG_WARNING, "chown of PID file %s failed: %s", daemon->runfile, strerror(chown_warn));
 src/dnsmasq/dnsmasq.c
     my_syslog(LOG_WARNING, _("warning: failed to change owner of %s: %s"), 
 	      daemon->log_file, strerror(log_err));
