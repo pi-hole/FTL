@@ -174,34 +174,19 @@ static int domain_no_rebind(char *domain)
 static int forward_query(int udpfd, union mysockaddr *udpaddr,
 			 union all_addr *dst_addr, unsigned int dst_iface,
 			 struct dns_header *header, size_t plen,  size_t replylimit, time_t now, 
-			 struct frec *forward, int ad_reqd, int do_bit, int fast_retry)
+			 struct frec *forward, unsigned int fwd_flags, int fast_retry)
 {
   unsigned int flags = 0;
-  unsigned int fwd_flags = 0;
   int is_dnssec = forward && (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY));
   struct server *master;
   unsigned int gotname;
   int old_src = 0, old_reply = 0;
   int first, last, start = 0;
-  int cacheable, forwarded = 0;
-  unsigned char *oph;
+  int forwarded = 0;
   int ede = EDE_UNSET;
-  (void)do_bit;
   unsigned short rrtype;
 
   gotname = extract_request(header, plen, daemon->namebuff, &rrtype);
-  oph = find_pseudoheader(header, plen, NULL, NULL, NULL, NULL);
-
-  if (header->hb4 & HB4_CD)
-    fwd_flags |= FREC_CHECKING_DISABLED;
-  if (ad_reqd)
-    fwd_flags |= FREC_AD_QUESTION;
-  if (oph)
-    fwd_flags |= FREC_HAS_PHEADER;
-#ifdef HAVE_DNSSEC
-  if (do_bit)
-    fwd_flags |= FREC_DO_QUESTION;
-#endif
   
   /* Check for retry on existing query.
      FREC_DNSKEY and FREC_DS_QUERY are never set in flags, so the test below 
@@ -213,6 +198,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
     {
       old_src = 1;
       old_reply = 1;
+      fwd_flags = forward->flags;
     }
   else if (gotname && (forward = lookup_frec(daemon->namebuff, C_IN, (int)rrtype, -1, fwd_flags,
 					     FREC_CHECKING_DISABLED | FREC_AD_QUESTION | FREC_DO_QUESTION |
@@ -332,11 +318,6 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 
       forward->flags = fwd_flags;
 
-      plen = add_edns0_config(header, plen, ((unsigned char *)header) + daemon->edns_pktsz, &forward->frec_src.source, now, &cacheable);
-      
-      if (!cacheable)
-	forward->flags |= FREC_NO_CACHE;
-      
 #ifdef HAVE_DNSSEC
       if (option_bool(OPT_DNSSEC_VALID) && (master->flags & SERV_DO_DNSSEC))
 	{
@@ -349,10 +330,6 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	}
 #endif
       
-      /* If there wasn't a PH before, and there is now, we added it. */
-      if (!oph && find_pseudoheader(header, plen, NULL, NULL, NULL, NULL))
-	forward->flags |= FREC_ADDED_PHEADER;
-	      
       /* Do these before saving query. */
       forward->frec_src.orig_id = ntohs(header->id);
       forward->new_id = get_id();
@@ -376,15 +353,9 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       forward->forwardall = 0;
       if (domain_no_rebind(daemon->namebuff))
 	forward->flags |= FREC_NOREBIND;
-      if (header->hb4 & HB4_CD)
-	forward->flags |= FREC_CHECKING_DISABLED;
-      if (ad_reqd)
-	forward->flags |= FREC_AD_QUESTION;
 #ifdef HAVE_DNSSEC
       forward->work_counter = daemon->limit[LIMIT_WORK];
       forward->validate_counter = daemon->limit[LIMIT_CRYPTO]; 
-      if (do_bit)
-	forward->flags |= FREC_DO_QUESTION;
 #endif
       
       start = first;
@@ -567,14 +538,14 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, (char *)(header + replylimit), first, last, ede)))
 	return 0;
       
-      if (oph)
+      if (fwd_flags & FREC_HAS_PHEADER)
 	{
 	  u16 swap = htons((u16)ede);
 
 	  if (ede != EDE_UNSET)
-	    plen = add_pseudoheader(header, plen, (unsigned char *)(header + replylimit), EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	    plen = add_pseudoheader(header, plen, (unsigned char *)(header + replylimit), EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, 0, 0);
 	  else
-	    plen = add_pseudoheader(header, plen, (unsigned char *)(header + replylimit), 0, NULL, 0, do_bit, 0);
+	    plen = add_pseudoheader(header, plen, (unsigned char *)(header + replylimit), 0, NULL, 0, 0, 0);
 	}
       
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
@@ -632,8 +603,7 @@ int fast_retry(time_t now)
 		daemon->log_display_id = f->frec_src.log_id;
 		daemon->log_source_addr = NULL;
 		
-		forward_query(-1, NULL, NULL, 0, header, f->stash_len, 0, now, f,
-			      f->flags & FREC_AD_QUESTION, f->flags & FREC_DO_QUESTION, 1);
+		forward_query(-1, NULL, NULL, 0, header, f->stash_len, 0, now, f, 0, 1);
 		
 		to_run = f->forward_delay = 2 * f->forward_delay;
 	      }
@@ -1256,8 +1226,7 @@ void reply_query(int fd, time_t now)
       /* Get the saved query back. */
       blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
       
-      forward_query(-1, NULL, NULL, 0, header, forward->stash_len, 0, now, forward,
-		    forward->flags & FREC_AD_QUESTION, forward->flags & FREC_DO_QUESTION, 0);
+      forward_query(-1, NULL, NULL, 0, header, forward->stash_len, 0, now, forward, 0, 0);
       return;
     }
 
@@ -1379,7 +1348,7 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
     header->hb4 |= HB4_CD;
   else
     header->hb4 &= ~HB4_CD;
-  
+
   /* Never cache answers which are contingent on the source or MAC address EDSN0 option,
      since the cache is ignorant of such things. */
   if (forward->flags & FREC_NO_CACHE)
@@ -1387,7 +1356,7 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
   
   if ((nn = process_reply(header, now, forward->sentto, (size_t)n, check_rebind, no_cache_dnssec, cache_secure, bogusanswer, 
 			  forward->flags & FREC_AD_QUESTION, forward->flags & FREC_DO_QUESTION, 
-			  forward->flags & FREC_ADDED_PHEADER, &forward->frec_src.source,
+			  !(forward->flags & FREC_HAS_PHEADER), &forward->frec_src.source,
 			  ((unsigned char *)header) + daemon->edns_pktsz, ede)))
     {
       struct frec_src *src;
@@ -1458,7 +1427,7 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 			  &src->source, &src->dest, src->iface);
 		
 #ifdef HAVE_DUMPFILE
-		dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source, src->fd);
+		dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)new, NULL, &src->source, src->fd);
 #endif
 		/* Pi-hole modification */
 		FTL_multiple_replies(src->log_id, &first_ID);
@@ -1523,9 +1492,10 @@ void receive_query(struct listener *listen, time_t now)
   struct in_addr netmask, dst_addr_4;
   size_t m;
   ssize_t n;
-  int if_index = 0, auth_dns = 0, do_bit = 0, have_pseudoheader = 0;
+  int if_index = 0, auth_dns = 0, do_bit = 0;
+  unsigned int fwd_flags = 0;
   int stale = 0, filtered = 0, ede = EDE_UNSET, do_forward = 0;
-  int metric, ad_reqd, fd; 
+  int metric, fd; 
   struct blockdata *saved_question = NULL;
 #ifdef HAVE_CONNTRACK
   unsigned int mark = 0;
@@ -1817,7 +1787,8 @@ void receive_query(struct listener *listen, time_t now)
     { 
       unsigned short flags;
       
-      have_pseudoheader = 1;
+      fwd_flags |= FREC_HAS_PHEADER;
+      
       GETSHORT(udp_size, pheader);
       pheader += 2; /* ext_rcode */
       GETSHORT(flags, pheader);
@@ -1835,10 +1806,15 @@ void receive_query(struct listener *listen, time_t now)
 	udp_size = PACKETSZ; /* Sanity check - can't reduce below default. RFC 6891 6.2.3 */
     }
 
-  ad_reqd = do_bit;
   /* RFC 6840 5.7 */
-  if (header->hb4 & HB4_AD)
-    ad_reqd = 1;
+  if (do_bit || (header->hb4 & HB4_AD))
+    fwd_flags |= FREC_AD_QUESTION;
+
+  if (do_bit)
+    fwd_flags |= FREC_DO_QUESTION;
+
+  if (header->hb4 & HB4_CD)
+    fwd_flags |= FREC_CHECKING_DISABLED;
 
   /************ Pi-hole modification ************/
   if(piholeblocked)
@@ -1853,7 +1829,7 @@ void receive_query(struct listener *listen, time_t now)
     if(n == 0)
       return;
 
-    if (have_pseudoheader)
+    if (fwd_flags & FREC_HAS_PHEADER)
     {
       if (ede_len > 0) // Add EDNS0 option EDE if applicable
 	n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
@@ -1902,10 +1878,16 @@ void receive_query(struct listener *listen, time_t now)
 #endif
   else
     {
+      int cacheable;
+
+      n = add_edns0_config(header, n, ((unsigned char *)header) + daemon->edns_pktsz, &source_addr, now, &cacheable);
       saved_question = blockdata_alloc((char *) header, (size_t)n);
-      
+
+      if (!cacheable)
+	fwd_flags |= FREC_NO_CACHE;
+
       m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
-			 dst_addr_4, netmask, now, ad_reqd, do_bit, &stale, &filtered);
+			 dst_addr_4, netmask, now, fwd_flags & FREC_AD_QUESTION, do_bit, !cacheable, &stale, &filtered);
       
       metric = stale ? METRIC_DNS_STALE_ANSWERED : METRIC_DNS_LOCAL_ANSWERED;
       
@@ -1926,7 +1908,7 @@ void receive_query(struct listener *listen, time_t now)
   
   if (m != 0)
     {
-      if (have_pseudoheader)
+      if (fwd_flags & FREC_HAS_PHEADER)
 	{
 	  if (ede != EDE_UNSET)
 	    {
@@ -1975,9 +1957,9 @@ void receive_query(struct listener *listen, time_t now)
       blockdata_retrieve(saved_question, (size_t)n, (void *)header);
       blockdata_free(saved_question);
       saved_question = NULL;
-      
+
       if (forward_query(fd, &source_addr, &dst_addr, if_index, header, (size_t)n,
-			udp_size, now, NULL, ad_reqd, do_bit, 0))
+			udp_size, now, NULL, fwd_flags, 0))
 	daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
       else
 	daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
@@ -2337,7 +2319,7 @@ unsigned char *tcp_request(int confd, time_t now,
 #ifdef HAVE_AUTH
   int local_auth = 0;
 #endif
-  int checking_disabled, do_bit = 0, ad_reqd = 0, added_pheader = 0, have_pseudoheader = 0;
+  int checking_disabled, do_bit = 0, ad_reqd = 0, have_pseudoheader = 0;
   struct blockdata *saved_question = NULL;
   unsigned short qtype;
   unsigned int gotname = 0;
@@ -2413,7 +2395,7 @@ unsigned char *tcp_request(int confd, time_t now,
 
   while (1)
     {
-      int stale = 0, ede = EDE_UNSET;
+      int cacheable = 1, stale = 0, ede = EDE_UNSET;
       size_t m = 0;
       unsigned int flags = 0;
 #ifdef HAVE_AUTH
@@ -2463,6 +2445,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	      if (saved_question)
 		blockdata_free(saved_question);
 	      
+	      size = add_edns0_config(header, size, ((unsigned char *) header) + 65536, &peer_addr, now, &cacheable);
 	      saved_question = blockdata_alloc((char *)header, (size_t)size);
 	      saved_size = size;
 	      
@@ -2554,7 +2537,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	      /**********************************************/
 	      else
 		m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
-				   dst_addr_4, netmask, now, ad_reqd, do_bit, &stale, &filtered);
+				   dst_addr_4, netmask, now, ad_reqd, do_bit, !cacheable, &stale, &filtered);
 	    }
 	}
       
@@ -2565,7 +2548,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	{
 	  struct server *master;
 	  int start;
-	  int cacheable, no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
+	  int no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
 
 	  blockdata_retrieve(saved_question, (size_t)saved_size, header);
 	  size = saved_size;
@@ -2596,8 +2579,6 @@ unsigned char *tcp_request(int confd, time_t now,
 		  else
 		    start = master->last_server;
 		  
-		  size = add_edns0_config(header, size, ((unsigned char *) header) + 65536, &peer_addr, now, &cacheable);
-		  
 #ifdef HAVE_DNSSEC
 		  if (option_bool(OPT_DNSSEC_VALID) && (master->flags & SERV_DO_DNSSEC))
 		    {
@@ -2609,11 +2590,6 @@ unsigned char *tcp_request(int confd, time_t now,
 			header->hb4 |= HB4_CD;
 		    }
 #endif
-		  
-		  /* Check if we added a pheader on forwarding - may need to
-		     strip it from the reply. */
-		  if (!have_pseudoheader && find_pseudoheader(header, size, NULL, NULL, NULL, NULL))
-		    added_pheader = 1;
 		  
 		  /* Loop round available servers until we succeed in connecting to one. */
 		  if ((m = tcp_talk(first, last, start, packet, size, have_mark, mark, &serv)) == 0)
@@ -2689,7 +2665,7 @@ unsigned char *tcp_request(int confd, time_t now,
 		      
 		      m = process_reply(header, now, serv, (unsigned int)m, 
 					option_bool(OPT_NO_REBIND) && !norebind, no_cache_dnssec, cache_secure, bogusanswer,
-					ad_reqd, do_bit, added_pheader, &peer_addr, ((unsigned char *)header) + 65536, ede);
+					ad_reqd, do_bit, !have_pseudoheader, &peer_addr, ((unsigned char *)header) + 65536, ede);
 
 		      /* process_reply() adds pheader itself */
 		      have_pseudoheader = 0; 

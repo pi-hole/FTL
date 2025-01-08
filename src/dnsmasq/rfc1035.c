@@ -1600,7 +1600,7 @@ static int cache_validated(const struct crec *crecp)
 /* return zero if we can't answer from cache, or packet size if we can */
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
-		      time_t now, int ad_reqd, int do_bit, int *stale, int *filtered) 
+		      time_t now, int ad_reqd, int do_bit, int no_cache, int *stale, int *filtered) 
 {
   char *name = daemon->namebuff;
   unsigned char *p, *ansp;
@@ -1615,6 +1615,10 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   size_t len;
   int rd_bit = (header->hb3 & HB3_RD);
   int count = 255; /* catch loops */
+
+  /* Suppress cached answers of no_cache set. */
+  if (no_cache)
+    rd_bit = 0;
   
   if (stale)
     *stale = 0;

@@ -417,21 +417,34 @@ static size_t add_source_addr(struct dns_header *header, size_t plen, unsigned c
   else if (option_bool(OPT_STRIP_ECS))
     replace = 2;
   else
-    return plen;
-
+    {
+      unsigned char *pheader;
+      /* If we still think the data is cacheable, and we're not
+	 messing with EDNS client subnet ourselves, see if the client
+	 sent a client subnet. If so, mark the data as uncacheable */
+      if (*cacheable &&
+	  (pheader = find_pseudoheader(header, plen, NULL, NULL, NULL, NULL)) &&
+	  !check_source(header, plen, pheader, NULL))
+	*cacheable = 0;
+      
+      return plen;
+    }
+  
   return add_pseudoheader(header, plen, (unsigned char *)limit, EDNS0_OPTION_CLIENT_SUBNET, (unsigned char *)&opt, len, 0, replace);
 }
 
 int check_source(struct dns_header *header, size_t plen, unsigned char *pseudoheader, union mysockaddr *peer)
 {
-  /* Section 9.2, Check that subnet option in reply matches. */
+  /* Section 9.2, Check that subnet option (if any) in reply matches.
+     if peer == NULL, this degrades to a check for the existence of and EDNS0 client-subnet option. */
   
   int len, calc_len;
   struct subnet_opt opt;
   unsigned char *p;
   int code, i, rdlen;
   
-  calc_len = calc_subnet_opt(&opt, peer, NULL);
+  if (peer)
+    calc_len = calc_subnet_opt(&opt, peer, NULL);
    
   if (!(p = skip_name(pseudoheader, header, plen, 10)))
     return 1;
@@ -443,21 +456,26 @@ int check_source(struct dns_header *header, size_t plen, unsigned char *pseudohe
     return 1; /* bad packet */
   
   /* check if option there */
-   for (i = 0; i + 4 < rdlen; i += len + 4)
+  for (i = 0; i + 4 < rdlen; i += len + 4)
      {
        GETSHORT(code, p);
        GETSHORT(len, p);
        if (code == EDNS0_OPTION_CLIENT_SUBNET)
 	 {
-	   /* make sure this doesn't mismatch. */
-	   opt.scope_netmask = p[3];
-	   if (len != calc_len || memcmp(p, &opt, len) != 0)
+	   if (peer)
+	     {
+	       /* make sure this doesn't mismatch. */
+	       opt.scope_netmask = p[3];
+	       if (len != calc_len || memcmp(p, &opt, len) != 0)
+		 return 0;
+	     }
+	   else if (((struct subnet_opt *)p)->source_netmask != 0)
 	     return 0;
 	 }
        p += len;
      }
-   
-   return 1;
+  
+  return 1;
 }
 
 /* See https://docs.umbrella.com/umbrella-api/docs/identifying-dns-traffic for
@@ -541,6 +559,6 @@ size_t add_edns0_config(struct dns_header *header, size_t plen, unsigned char *l
     plen = add_umbrella_opt(header, plen, limit, source, cacheable);
   
   plen = add_source_addr(header, plen, limit, source, cacheable);
-  	  
+
   return plen;
 }

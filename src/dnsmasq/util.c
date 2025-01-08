@@ -771,10 +771,10 @@ int retry_send(ssize_t rc)
 
 /* rw = 0 -> write
    rw = 1 -> read
-   rw = 2 -> read once
-   rw = 3 -> write once
+   rw = 2 -> write once
+   rw = 3 -> read once
 
-   "once" fail if all the data doesn't arrive/go in a single read/write.
+   "once" fails on EAGAIN, as this a timeout.
    This indicates a timeout of a TCP socket.
 */
 int read_write(int fd, unsigned char *packet, int size, int rw)
@@ -783,29 +783,34 @@ int read_write(int fd, unsigned char *packet, int size, int rw)
   
   for (done = 0; done < size; done += n)
     {
-      do { 
-	if (rw & 1)
-	  n = read(fd, &packet[done], (size_t)(size - done));
-	else
-	  n = write(fd, &packet[done], (size_t)(size - done));
-	
-	if (n == 0)
-	  return 0;
-
-	if (n == -1 && errno == EINTR)
-	  continue;
-
-	/* "once" variant */
-	if ((rw & 2) && n != size)
-	  return 0;
-	
-      } while (n == -1 && (errno == EINTR || errno == ENOMEM || errno == ENOBUFS ||
-			   errno == EAGAIN || errno == EWOULDBLOCK));
+      if (rw & 1)
+	n = read(fd, &packet[done], (size_t)(size - done));
+      else
+	n = write(fd, &packet[done], (size_t)(size - done));
       
-      if (n == -1)
+      if (n == 0)
 	return 0;
+
+      if (n == -1)
+	{
+	  n = 0; /* don't mess with counter when we loop. */
+
+	  if (errno == EINTR || errno == ENOMEM || errno == ENOBUFS)
+	    continue;
+
+	  if (errno == EAGAIN || errno == EWOULDBLOCK)
+	    {
+	      /* "once" variant */
+	      if (rw & 2)
+		return 0;
+
+	      continue;
+	    }
+
+	  return 0;
+	}
     }
-     
+          
   return 1;
 }
 

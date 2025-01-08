@@ -68,6 +68,7 @@ int main_dnsmasq (int argc, char **argv)
   int need_cap_net_admin = 0;
   int need_cap_net_raw = 0;
   int need_cap_net_bind_service = 0;
+  int have_cap_chown = 0;
   char *bound_device = NULL;
   int did_bind = 0;
   struct server *serv;
@@ -563,6 +564,8 @@ int main_dnsmasq (int argc, char **argv)
   data = safe_malloc(sizeof(*data) * capsize);
   capget(hdr, data); /* Get current values, for verification */
 
+  have_cap_chown = data->permitted & (1 << CAP_CHOWN);
+
   if (need_cap_net_admin && !(data->permitted & (1 << CAP_NET_ADMIN)))
     fail = "NET_ADMIN";
   else if (need_cap_net_raw && !(data->permitted & (1 << CAP_NET_RAW)))
@@ -878,7 +881,14 @@ int main_dnsmasq (int argc, char **argv)
   my_syslog(LOG_INFO, _("compile time options: %s"), compile_opts);
 
   if (chown_warn != 0)
-    my_syslog(LOG_WARNING, "chown of PID file %s failed: %s", daemon->runfile, strerror(chown_warn));
+    {
+#if defined(HAVE_LINUX_NETWORK)
+      if (chown_warn == EPERM && !have_cap_chown)
+        my_syslog(LOG_INFO, "chown of PID file %s failed: please add capability CAP_CHOWN", daemon->runfile);
+      else
+#endif
+      my_syslog(LOG_WARNING, "chown of PID file %s failed: %s", daemon->runfile, strerror(chown_warn));
+    }
   
 #ifdef HAVE_DBUS
   if (option_bool(OPT_DBUS))
@@ -2134,11 +2144,11 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 	if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
 	  break;
       
-      /* No slots */
-      if (i < 0)
+      /* No slots or no pipe */
+      if (i < 0 || pipe(pipefd) != 0)
 	return STAT_ABANDONED;
-      
-      if (pipe(pipefd) == 0 && (p = fork()) != 0)
+				
+      if ((p = fork()) != 0)
 	{
 	  close(pipefd[1]); /* parent needs read pipe end. */
 	  if (p == -1)
