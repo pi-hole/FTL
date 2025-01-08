@@ -1828,7 +1828,7 @@ void receive_query(struct listener *listen, time_t now)
     if(n == 0)
       return;
 
-    if (have_pseudoheader)
+    if (fwd_flags & FREC_HAS_PHEADER)
     {
       if (ede_len > 0) // Add EDNS0 option EDE if applicable
 	n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
