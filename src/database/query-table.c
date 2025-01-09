@@ -124,15 +124,14 @@ bool init_memory_database(void)
 		}
 	}
 
-	// Attach disk database
-	if(!attach_database(_memdb, NULL, config.files.database.v.s, "disk"))
-		return false;
+	// Attach disk database. This may fail if the database is unavailable
+	const bool attached = attach_database(_memdb, NULL, config.files.database.v.s, "disk");
 
 	// Enable WAL mode for the on-disk database (pihole-FTL.db) if
 	// configured (default is yes). User may not want to enable WAL
 	// mode if the database is on a network share as all processes
 	// accessing the database must be on the same host in WAL mode.
-	if(config.database.useWAL.v.b)
+	if(config.database.useWAL.v.b && attached)
 	{
 		// Change journal mode to WAL
 		// - WAL is significantly faster in most scenarios.
@@ -149,7 +148,7 @@ bool init_memory_database(void)
 			return false;
 		}
 	}
-	else
+	else if(attached)
 	{
 		// Unlike the other journaling modes, PRAGMA journal_mode=WAL is
 		// persistent. If a process sets WAL mode, then closes and
@@ -224,7 +223,11 @@ bool init_memory_database(void)
 		return false;
 	}
 
-	load_queries_from_disk();
+	// Attach disk database
+	if(attached)
+		load_queries_from_disk();
+	else
+		log_err("init_memory_database(): Failed to attach disk database");
 
 	// Everything went well
 	return true;
@@ -351,6 +354,10 @@ bool attach_database(sqlite3* db, const char **message, const char *path, const 
 	int rc;
 	bool okay = false;
 	sqlite3_stmt *stmt = NULL;
+
+	// Only try to attach database if it is not known to be broken
+	if(FTLDBerror())
+		return false;
 
 	log_debug(DEBUG_DATABASE, "ATTACH %s AS %s", path, alias);
 
@@ -583,6 +590,11 @@ bool export_queries_to_disk(bool final)
 {
 	bool okay = false;
 	const double time = double_time() - (final ? 0.0 : REPLY_TIMEOUT);
+
+	// Only try to export to database if it is known to not be broken
+	if(FTLDBerror())
+		return false;
+
 	const char *querystr = "INSERT INTO disk.query_storage SELECT * FROM query_storage WHERE id > ? AND timestamp < ?";
 
 	log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE id > %lu (max is %lu) and timestamp < %f",
@@ -1064,6 +1076,10 @@ void DB_read_queries(void)
 	                              "dnssec "\
 	                       "FROM queries WHERE timestamp >= ?";
 
+	// Only try to import from database if it is known to not be broken
+	if(FTLDBerror())
+		return;
+
 	log_info("Parsing queries in database");
 
 	// Prepare SQLite3 statement
@@ -1382,11 +1398,21 @@ void DB_read_queries(void)
 	log_info("Imported %u queries from the long-term database", counters->queries);
 }
 
-void update_disk_db_idx(void)
+void init_disk_db_idx(void)
 {
 	// Query the database to get the maximum database ID is important to avoid
 	// starting counting from zero (would result in a UNIQUE constraint violation)
 	const char *querystr = "SELECT MAX(id) FROM disk.query_storage";
+
+	// If the disk database is broken, we cannot import queries from it,
+	// however, as we will also never export any queries, we can safely
+	// assume any index
+	if(FTLDBerror())
+	{
+		last_disk_db_idx = 0;
+		last_mem_db_idx = 0;
+		return;
+	}
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *stmt = NULL;
@@ -1397,7 +1423,7 @@ void update_disk_db_idx(void)
 	if(rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW)
 		last_disk_db_idx = sqlite3_column_int64(stmt, 0);
 	else
-		log_err("update_disk_db_idx(): Failed to get MAX(id) from disk.query_storage: %s",
+		log_err("init_disk_db_idx(): Failed to get MAX(id) from disk.query_storage: %s",
 		        sqlite3_errstr(rc));
 
 	// Finalize statement
@@ -1415,6 +1441,10 @@ bool queries_to_database(void)
 	int rc;
 	unsigned int added = 0, updated = 0;
 	sqlite3_int64 idx = 0;
+
+	// Only try to export to database if it is known to not be broken
+	if(FTLDBerror())
+		return false;
 
 	// Skip, we never store nor count queries recorded while have been in
 	// maximum privacy mode in the database

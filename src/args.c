@@ -309,7 +309,6 @@ void parse_args(int argc, char *argv[])
 		}
 	}
 
-
 	// Set config option through CLI
 	if(argc == 2 && strcmp(argv[1], "--totp") == 0)
 	{
@@ -320,7 +319,6 @@ void parse_args(int argc, char *argv[])
 		clear_debug_flags(); // No debug printing wanted
 		exit(printTOTP());
 	}
-
 
 	// Create teleporter archive through CLI
 	if(argc == 2 && strcmp(argv[1], "--teleporter") == 0)
@@ -600,6 +598,15 @@ void parse_args(int argc, char *argv[])
 		printf("%s\n", name);
 		free(name);
 		exit(EXIT_SUCCESS);
+	}
+
+
+	// Set config option through CLI
+	if(argc == 3 && strcmp(argv[1], "migrate") == 0 && strcmp(argv[2], "v6") == 0)
+	{
+		cli_mode = true;
+		log_ctrl(false, true);
+		exit(migrate_config_v6() ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// start from 1, as argv[0] is the executable name

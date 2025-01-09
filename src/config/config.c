@@ -1611,6 +1611,103 @@ static void reset_config_default(struct conf_item *conf_item)
 	}
 }
 
+
+/**
+ * @brief Determine and set default webserver ports if not imported from setupVars.conf.
+ *
+ * @param conf Pointer to the configuration structure.
+ */
+static void get_web_port(struct config *conf)
+{
+	// Determine default webserver ports if not imported from setupVars.conf
+	if(config.webserver.port.f & FLAG_CONF_IMPORTED)
+	{
+		log_info("Webserver ports already imported from setupVars.conf, skipping default port detection");
+		return;
+	}
+
+	// else:
+	// Check if ports 80/TCP and 443/TCP are already in use
+	const in_port_t http_port = port_in_use(80) ? 8080 : 80;
+	const in_port_t https_port = port_in_use(443) ? 8443 : 443;
+
+	// Create a string with the default ports
+	// Allocate memory for the string
+	char *ports = calloc(32, sizeof(char));
+	if(ports == NULL)
+	{
+		log_err("Unable to allocate memory for default ports string");
+		return;
+	}
+	// Create the string
+	snprintf(ports, 32, "%d,%ds", http_port, https_port);
+
+	// Append IPv6 ports if IPv6 is enabled
+	const bool have_ipv6 = ipv6_enabled();
+	if(have_ipv6)
+		snprintf(ports + strlen(ports), 32 - strlen(ports),
+			",[::]:%d,[::]:%ds", http_port, https_port);
+
+	// Set default values for webserver ports
+	if(conf->webserver.port.t == CONF_STRING_ALLOCATED)
+		free(conf->webserver.port.v.s);
+	conf->webserver.port.v.s = ports;
+	conf->webserver.port.t = CONF_STRING_ALLOCATED;
+
+	log_info("Config initialized with webserver ports %d (HTTP) and %d (HTTPS), IPv6 support is %s",
+	         http_port, https_port, have_ipv6 ? "enabled" : "disabled");
+}
+
+bool migrate_config_v6(void)
+{
+	// Check if MIGRATION_TARGET_V6 exists and is a directory
+	// Ideally, this directory should be created by the installer but users
+	// may have deleted it manually and it is necessary for restoring
+	// Teleporter files
+	create_migration_target_v6();
+
+	// If the migration target does not exist, we need to migrate the config
+	log_info("Migrating config to Pi-hole v6.0 format");
+
+	// Initialize config with default values
+	initConfig(&config);
+
+	// If no previous config file could be read, we are likely either running
+	// for the first time or we are upgrading from a version prior to v6.0
+	// In this case, we try to read the legacy config files
+	const char *path = "";
+	if((path = readFTLlegacy(&config)) != NULL)
+	{
+		const char *target = MIGRATION_TARGET_V6"/pihole-FTL.conf";
+		log_info("Moving %s to %s", path, target);
+		if(rename(path, target) != 0)
+			log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
+	}
+	else
+		log_info("No legacy config file found, using defaults");
+
+	// Import bits and pieces from legacy config files
+	// setupVars.conf
+	importsetupVarsConf();
+	// 04-pihole-static-dhcp.conf
+	read_legacy_dhcp_static_config();
+	// 05-pihole-custom-cname.conf
+	read_legacy_cnames_config();
+	// custom.list
+	read_legacy_custom_hosts_config();
+
+	// Determine and set default webserver ports if not imported from
+	// setupVars.conf
+	get_web_port(&config);
+
+	// Initialize the TOML config file
+	writeFTLtoml(true);
+	write_dnsmasq_config(&config, false, NULL);
+	write_custom_list();
+
+	return true;
+}
+
 bool readFTLconf(struct config *conf, const bool rewrite)
 {
 	// Initialize config with default values
@@ -1649,33 +1746,6 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	if(!rewrite)
 		return false;
 
-	// Check if MIGRATION_TARGET_V6 exists and is a directory
-	// Ideally, this directory should be created by the installer but users
-	// may have deleted it manually and it is necessary for restoring
-	// Teleporter files
-	create_migration_target_v6();
-
-	// If no previous config file could be read, we are likely either running
-	// for the first time or we are upgrading from a version prior to v6.0
-	// In this case, we try to read the legacy config files
-	const char *path = "";
-	if((path = readFTLlegacy(conf)) != NULL)
-	{
-		const char *target = MIGRATION_TARGET_V6"/pihole-FTL.conf";
-		log_info("Moving %s to %s", path, target);
-		if(rename(path, target) != 0)
-			log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
-	}
-	// Import bits and pieces from legacy config files
-	// setupVars.conf
-	importsetupVarsConf();
-	// 04-pihole-static-dhcp.conf
-	read_legacy_dhcp_static_config();
-	// 05-pihole-custom-cname.conf
-	read_legacy_cnames_config();
-	// custom.list
-	read_legacy_custom_hosts_config();
-
 	// When we reach this point but the FTL TOML config file exists, it may
 	// contain errors such as syntax errors, etc. We move it into a
 	// ".broken" location so it can be revisited later
@@ -1686,39 +1756,9 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 		rename(GLOBALTOMLPATH, new_name);
 	}
 
-	// Determine default webserver ports if not imported from setupVars.conf
-	if(!(config.webserver.port.f & FLAG_CONF_IMPORTED))
-	{
-		// Check if ports 80/TCP and 443/TCP are already in use
-		const in_port_t http_port = port_in_use(80) ? 8080 : 80;
-		const in_port_t https_port = port_in_use(443) ? 8443 : 443;
-
-		// Create a string with the default ports
-		// Allocate memory for the string
-		char *ports = calloc(32, sizeof(char));
-		if(ports == NULL)
-		{
-			log_err("Unable to allocate memory for default ports string");
-			return false;
-		}
-		// Create the string
-		snprintf(ports, 32, "%d,%ds", http_port, https_port);
-
-		// Append IPv6 ports if IPv6 is enabled
-		const bool have_ipv6 = ipv6_enabled();
-		if(have_ipv6)
-			snprintf(ports + strlen(ports), 32 - strlen(ports),
-				",[::]:%d,[::]:%ds", http_port, https_port);
-
-		// Set default values for webserver ports
-		if(conf->webserver.port.t == CONF_STRING_ALLOCATED)
-			free(conf->webserver.port.v.s);
-		conf->webserver.port.v.s = ports;
-		conf->webserver.port.t = CONF_STRING_ALLOCATED;
-
-		log_info("Config initialized with webserver ports %d (HTTP) and %d (HTTPS), IPv6 support is %s",
-		         http_port, https_port, have_ipv6 ? "enabled" : "disabled");
-	}
+	// Determine and set default webserver ports if not imported from
+	// setupVars.conf
+	get_web_port(&config);
 
 	// Initialize the TOML config file
 	writeFTLtoml(true);

@@ -454,6 +454,11 @@ bool chown_pihole(const char *path, struct passwd *pwd)
 	// Change ownership of file to pihole user
 	if(chown(path, pwd->pw_uid, pwd->pw_gid) < 0)
 	{
+		if(errno == ENOENT) // ENOENT = No such file or directory
+		{
+			log_debug(DEBUG_CONFIG, "File \"%s\" does not exist, not changing ownership", path);
+			return true;
+		}
 		log_warn("Failed to change ownership of \"%s\" to %s:%s (%u:%u): %s",
 		         path, pwd->pw_name, grp_name, pwd->pw_uid, pwd->pw_gid,
 		         errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));

@@ -127,10 +127,6 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 
 int dbquery(sqlite3* db, const char *format, ...)
 {
-	// Return early if the database is known to be broken
-	if(FTLDBerror())
-		return SQLITE_ERROR;
-
 	va_list args;
 	va_start(args, format);
 	char *query = sqlite3_vmprintf(format, args);
@@ -311,6 +307,7 @@ void db_init(void)
 	{
 		log_warn("Database not available, please ensure the database is unlocked when starting pihole-FTL !");
 		dbclose(&db);
+		DBerror = true;
 		return;
 	}
 	else
@@ -328,6 +325,7 @@ void db_init(void)
 		{
 			log_err("Counter table not initialized, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -343,6 +341,7 @@ void db_init(void)
 		{
 			log_err("Network table not initialized, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -358,6 +357,7 @@ void db_init(void)
 		{
 			log_err("Unable to unify clients in network table, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -373,6 +373,7 @@ void db_init(void)
 		{
 			log_err("Network-addresses table not initialized, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -388,6 +389,7 @@ void db_init(void)
 		{
 			log_err("Message table not initialized, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -403,6 +405,7 @@ void db_init(void)
 		{
 			log_err("Column additional_info not initialized, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -418,6 +421,7 @@ void db_init(void)
 		{
 			log_err("Network addresses table not initialized, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -433,6 +437,7 @@ void db_init(void)
 		{
 			log_err("Aliasclients table not initialized, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -448,6 +453,7 @@ void db_init(void)
 		{
 			log_info("Queries table not optimized, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 
@@ -469,6 +475,7 @@ void db_init(void)
 		{
 			log_info("Link table for additional_info not generated, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 
@@ -490,6 +497,7 @@ void db_init(void)
 		{
 			log_info("Additional records not generated, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -505,6 +513,7 @@ void db_init(void)
 		{
 			log_info("Additional records not generated, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -520,6 +529,7 @@ void db_init(void)
 		{
 			log_info("FTL table description cannot be added, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -535,6 +545,7 @@ void db_init(void)
 		{
 			log_info("Session table cannot be created, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -550,6 +561,7 @@ void db_init(void)
 		{
 			log_info("Session table cannot be updated, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -565,6 +577,7 @@ void db_init(void)
 		{
 			log_info("regex_id cannot be renamed to list_id, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -580,6 +593,7 @@ void db_init(void)
 		{
 			log_info("Session table cannot be updated, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -595,6 +609,7 @@ void db_init(void)
 		{
 			log_info("Session table cannot be updated, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -610,6 +625,7 @@ void db_init(void)
 		{
 			log_info("Network addresses network_id index cannot be added, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -625,6 +641,7 @@ void db_init(void)
 		{
 			log_info("Additional column 'ede' in the query_storage table cannot be added, database not available");
 			dbclose(&db);
+			DBerror = true;
 			return;
 		}
 		// Get updated version
@@ -642,7 +659,12 @@ void db_init(void)
 	// Last check after all migrations, if this happens, it will cause the
 	// CI to fail the tests
 	if(dbversion != MEMDB_VERSION)
-		log_err("Expected query database version %d but found %d", MEMDB_VERSION, dbversion);
+	{
+		log_err("Expected query database version %d but found %d, database not available", MEMDB_VERSION, dbversion);
+		dbclose(&db);
+		DBerror = true;
+		return;
+	}
 
 	lock_shm();
 	import_aliasclients(db);

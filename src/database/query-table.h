@@ -118,7 +118,7 @@ bool export_queries_to_disk(bool final);
 bool delete_old_queries_from_db(const bool use_memdb, const double mintime);
 bool add_additional_info_column(sqlite3 *db);
 void DB_read_queries(void);
-void update_disk_db_idx(void);
+void init_disk_db_idx(void);
 bool queries_to_database(void);
 
 bool optimize_queries_table(sqlite3 *db);
