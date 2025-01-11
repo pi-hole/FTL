@@ -242,6 +242,7 @@ struct config {
 		struct conf_item domain;
 		struct conf_item acl;
 		struct conf_item port;
+		struct conf_item threads;
 		struct {
 			struct conf_item timeout;
 			struct conf_item restore;
@@ -355,6 +356,7 @@ extern struct config config;
 // Defined in config.c
 void set_debug_flags(struct config *conf);
 void set_all_debug(struct config *conf, const bool status);
+bool migrate_config_v6(void);
 bool readFTLconf(struct config *conf, const bool rewrite);
 bool getLogFilePath(void);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);

@@ -111,6 +111,10 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 	log_debug(DEBUG_FLAGS, "Processing FTL hook from %s:%d (type: %s, name: \"%s\", id: %i)...", path, line, types, name, id);
 	print_flags(flags);
 
+	// The query ID may be negative if this is a TCP query
+	if(id < 0)
+		id = -id;
+
 	// Check domain name received from dnsmasq
 	name = check_dnsmasq_name(name);
 
@@ -580,8 +584,8 @@ static bool is_pihole_domain(const char *domain)
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     union mysockaddr *addr, char *arg,
-                    const unsigned short qtype, const int id,
-                    const enum protocol proto,
+                    const unsigned short qtype, int id,
+                    enum protocol proto,
                     const char *file, const int line)
 {
 	// Create new query in data structure
@@ -787,6 +791,20 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// Do not further process this query, Pi-hole has never seen it
 		unlock_shm();
 		return true;
+	}
+
+	// The query ID is negative if this is a TCP query
+	if(id < 0)
+	{
+		id = -id;
+
+		// Safety check: If the query ID is negative, the protocol
+		// should be TCP
+		if(proto != TCP)
+		{
+			proto = TCP;
+			log_debug(DEBUG_ANY, "Query %d has negative ID, but protocol is not TCP", id);
+		}
 	}
 
 	// Log new query if in debug mode
@@ -3100,7 +3118,8 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		log_crit("Cannot initialize in-memory database.");
 
 	// Flush messages stored in the long-term database
-	flush_message_table();
+	if(!FTLDBerror())
+		flush_message_table();
 
 	// Verify checksum of this binary early on to ensure that the binary is
 	// not corrupted and that the binary is not tampered with. We can only
@@ -3109,7 +3128,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	verify_FTL(false);
 
 	// Initialize in-memory database starting index
-	update_disk_db_idx();
+	init_disk_db_idx();
 
 	// Handle real-time signals in this process (and its children)
 	// Helper processes are already split from the main instance
@@ -3293,10 +3312,11 @@ static char *get_ptrname(const struct in_addr *addr)
 	return ptrname;
 }
 
-void FTL_forwarding_retried(const struct server *serv, const int oldID, const int newID, const bool dnssec)
+void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dnssec)
 {
 	// Forwarding to upstream server failed
-
+	const struct server *serv = forward->sentto;
+	const int oldID = forward->frec_src.log_id;
 	if(oldID == newID)
 	{
 		log_debug(DEBUG_QUERIES, "%d: Ignoring self-retry", oldID);
@@ -3737,8 +3757,9 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr)
 	if(addr != NULL)
 		mysockaddr_extract_ip_port(addr, ip, &port);
 
+	// Get query ID, may be negative if this is a TCP query
+	const int id = daemon->log_display_id > 0 ? daemon->log_display_id : -daemon->log_display_id;
 	// Log to FTL.log
-	const int id = daemon->log_display_id;
 	log_debug(DEBUG_QUERIES, "Connection error (%s#%u, ID %d): %s (%s)", ip, port, id, reason, error);
 
 	// Log to pihole.log

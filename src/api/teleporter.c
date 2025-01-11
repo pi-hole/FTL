@@ -461,6 +461,11 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 		return false;
 	}
 
+	// Set busy timeout to 1 second to access the database in a
+	// multi-threaded environment
+	if(sqlite3_busy_timeout(db, 1000) != SQLITE_OK)
+		log_warn("import_json_table(%s): Unable to set busy timeout: %s", file->filename, sqlite3_errmsg(db));
+
 	// Disable foreign key constraints
 	if(sqlite3_exec(db, "PRAGMA foreign_keys = OFF;", NULL, NULL, NULL) != SQLITE_OK)
 	{
@@ -833,6 +838,9 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 
 	// Free allocated memory
 	free_upload_data(data);
+
+	// Migrate the config to v6
+	migrate_config_v6();
 
 	// Signal FTL we want to restart for re-import
 	api->ftl.restart_reason = "Teleporter (TAR.GZ) import";

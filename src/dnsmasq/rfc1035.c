@@ -708,7 +708,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      if (aqclass == C_IN && res != 2 && (aqtype == T_CNAME || aqtype == T_PTR))
 		{
 #ifdef HAVE_DNSSEC
-		  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[j] != 0)
+		  if (option_bool(OPT_DNSSEC_VALID) && j < daemon->rr_status_sz && daemon->rr_status[j] != 0)
 		    {
 		      /* validated RR anywhere in CNAME chain, don't cache. */
 		      if (cname_short || aqtype == T_CNAME)
@@ -837,7 +837,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    }
 	  
 #ifdef HAVE_DNSSEC
-	  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[j] != 0)
+	  if (option_bool(OPT_DNSSEC_VALID) && j < daemon->rr_status_sz && daemon->rr_status[j] != 0)
 	    {
 	      secflag = F_DNSSECOK;
 	      
@@ -1224,7 +1224,7 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
   
   if (ntohs(header->qdcount) != 1 || OPCODE(header) != QUERY)
     return 0; /* must be exactly one query. */
-  
+
   if (!(header->hb3 & HB3_QR) && (ntohs(header->ancount) != 0 || ntohs(header->nscount) != 0))
     return 0; /* non-standard query. */
   
@@ -1273,6 +1273,8 @@ void setup_reply(struct dns_header *header, unsigned int flags, int ede)
     SET_RCODE(header, NOERROR); /* empty domain */
   else if (flags == F_NXDOMAIN)
     SET_RCODE(header, NXDOMAIN);
+  else if (flags == F_RCODE)
+    SET_RCODE(header, NOTIMP);
   else if (flags & ( F_IPV4 | F_IPV6))
     {
       SET_RCODE(header, NOERROR);
@@ -1349,7 +1351,7 @@ static int check_bad_address(struct dns_header *header, size_t qlen, struct bogu
       GETSHORT(qtype, p); 
       GETSHORT(qclass, p);
       GETLONG(ttl, p);
-      GETSHORT(rdlen, p)
+      GETSHORT(rdlen, p);
       if (ttlp)
 	*ttlp = ttl;
       
@@ -1598,8 +1600,7 @@ static int cache_validated(const struct crec *crecp)
 /* return zero if we can't answer from cache, or packet size if we can */
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
-		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader,
-		      int *stale, int *filtered) 
+		      time_t now, int ad_reqd, int do_bit, int no_cache, int *stale, int *filtered) 
 {
   char *name = daemon->namebuff;
   unsigned char *p, *ansp;
@@ -1614,6 +1615,10 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   size_t len;
   int rd_bit = (header->hb3 & HB3_RD);
   int count = 255; /* catch loops */
+
+  /* Suppress cached answers of no_cache set. */
+  if (no_cache)
+    rd_bit = 0;
   
   if (stale)
     *stale = 0;
@@ -2231,7 +2236,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    if (flags & F_NXDOMAIN)
 		      nxdomain = 1;
 		    else if (qtype != T_ANY && rr_on_list(daemon->filter_rr, qtype))
-		      flags |=  F_NEG | F_CONFIG;
+		      flags |= F_NEG | F_CONFIG;
 		    
 		    auth = 0;
 		    ans = 1;
@@ -2259,8 +2264,8 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      anscount++;
 		    
 		    /* log after cache insertion as log_txt mangles rrdata */
-		    if (qtype == T_TXT && !(crecp->flags & F_NEG))
-		      log_txt(name, (unsigned char *)rrdata, rrlen, crecp->flags & F_DNSSECOK);
+		    if (qtype == T_TXT && !(flags & F_NEG))
+		      log_txt(name, (unsigned char *)rrdata, rrlen, flags & (F_DNSSECOK | F_STALE));
 		    else
 		      log_query(flags, name, &crecp->addr, NULL, 0);
 		  }
@@ -2376,23 +2381,26 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   
   /* truncation */
   if (trunc)
-    header->hb3 |= HB3_TC;
-  
+    {
+      header->hb3 |= HB3_TC;
+      if (!(ansp = skip_questions(header, qlen)))
+	return 0; /* bad packet */
+      anscount = nscount = addncount = 0;
+      log_query(F_CONFIG, "reply", NULL, "truncated", 0);
+    }
+
   if (nxdomain)
     SET_RCODE(header, NXDOMAIN);
   else if (notimp)
     SET_RCODE(header, NOTIMP);
   else
     SET_RCODE(header, NOERROR); /* no error */
+
   header->ancount = htons(anscount);
   header->nscount = htons(nscount);
   header->arcount = htons(addncount);
 
   len = ansp - (unsigned char *)header;
-  
-  /* Advertise our packet size limit in our reply */
-  if (have_pseudoheader)
-    len = add_pseudoheader(header, len, (unsigned char *)limit, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
   
   if (ad_reqd && sec_data)
     header->hb4 |= HB4_AD;

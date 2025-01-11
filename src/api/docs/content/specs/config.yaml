@@ -407,6 +407,8 @@ components:
                   type: string
                 port:
                   type: string
+                threads:
+                  type: integer
                 session:
                   type: object
                   properties:
@@ -739,6 +741,7 @@ components:
             domain: pi.hole
             acl: "+0.0.0.0/0,::/0"
             port: 80,[::]:80
+            threads: 0
             session:
               timeout: 300
               restore: true

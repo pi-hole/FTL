@@ -2743,6 +2743,12 @@ bool gravity_updated(void)
 		return false;
 	}
 
+	// Set busy timeout to 1 second to access the database in a
+	// multi-threaded environment and other threads may be writing to the
+	// database (e.g. Teleporter restoring a backup)
+	if(sqlite3_busy_timeout(db, 1000) != SQLITE_OK)
+		log_warn("gravity_updated(): %s - Failed to set busy timeout", config.files.gravity.v.s);
+
 	// Get *updated* timestamp from gravity database
 	const char *querystr = "SELECT value FROM info WHERE property = 'updated';";
 	rc = sqlite3_prepare_v2(db, querystr, -1, &query_stmt, NULL);
