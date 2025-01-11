@@ -953,7 +953,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
-	if(client->hwlen < 1)
+	// Don't do this for internally generated queries (e.g., DNSSEC), if the
+	// MAC address is already known or if the netlink socket is not available
+	// (e.g., when retrying a query using TCP after UDP truncation)
+	if(!internal_query && client->hwlen < 1 && daemon->netlinkfd > 0)
 	{
 		client->hwlen = find_mac(addr, client->hwaddr, 1, time(NULL));
 		if(config.debug.arp.v.b)

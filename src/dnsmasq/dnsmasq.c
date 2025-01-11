@@ -2195,6 +2195,9 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 	  /* See comment above re: netlink socket. */
 	  close(daemon->netlinkfd);
 	  read_write(pipefd[1], &a, 1, RW_WRITE);
+
+    // Pi-hole modification
+    daemon->netlinkfd = -1;
 #endif		  
 	  close(pipefd[0]); /* close read end in child. */
 	  daemon->pipe_to_parent = pipefd[1];	  
