@@ -943,6 +943,20 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		if(strstr(ipaddr, ":") != NULL)
 			IPv6 = true;
 
+		// If onlynew flag is set, we will only resolve new clients.
+		// However, if this is a IPv6 client, we postpone the resolution
+		// slightly to ensure the network table has had time to possibly
+		// correlate the IPv6 address via a related other address (e.g.,
+		// IPv4 address) though an identical MAC address.
+		if(onlynew && newflag && IPv6 && client->firstSeen + DELAY_V6_RESOLUTION > now)
+		{
+			log_debug(DEBUG_RESOLVER, "Postponing resolution of new client %s (IPv6) for at least %.0f more seconds",
+			          getstr(ippos), now - client->firstSeen + DELAY_V6_RESOLUTION);
+
+			unlock_shm();
+			skipped++;
+			continue;
+		}
 
 		// If we're in refreshing mode (onlynew == false), we skip clients if
 		// 1. We should not refresh any hostnames
