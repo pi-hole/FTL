@@ -833,7 +833,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	      header->arcount = htons(0);
 	    }
 	}
-      else if (!(header->hb4 & HB4_CD) && ad_reqd && cache_secure)
+      else if (ad_reqd && cache_secure)
 	header->hb4 |= HB4_AD;
       
       /* If the requestor didn't set the DO bit, don't return DNSSEC info. */
@@ -2559,9 +2559,8 @@ unsigned char *tcp_request(int confd, time_t now,
 	  size = saved_size;
 
 	  /* save state of "cd" flag in query */
-	  if ((checking_disabled = header->hb4 & HB4_CD))
-	    no_cache_dnssec = 1;
-
+	  checking_disabled = header->hb4 & HB4_CD;
+	  
 	  if (lookup_domain(daemon->namebuff, gotname, &first, &last))
 	    flags = is_local_answer(now, first, daemon->namebuff);
 	  else
@@ -2612,7 +2611,9 @@ unsigned char *tcp_request(int confd, time_t now,
 			  /* Clear this in case we don't call tcp_key_recurse() below */
 			  memset(daemon->rr_status, 0, sizeof(*daemon->rr_status) * daemon->rr_status_sz);
 			  
-			  if (!checking_disabled && (master->flags & SERV_DO_DNSSEC))
+			  if (checking_disabled || (header->hb4 & HB4_CD))
+			    no_cache_dnssec = 1;
+			  else if (master->flags & SERV_DO_DNSSEC)
 			    {
 			      int keycount = daemon->limit[LIMIT_WORK]; /* Limit to number of DNSSEC questions, to catch loops and avoid filling cache. */
 			      int validatecount = daemon->limit[LIMIT_CRYPTO]; 
