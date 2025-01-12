@@ -268,9 +268,6 @@ static void get_server_ports(void)
 		// Increase number of available ports
 		ports_avail++;
 	}
-
-	if(ports_avail == 0)
-		log_warn("No web server ports available!");
 }
 
 in_port_t __attribute__((pure)) get_https_port(void)
