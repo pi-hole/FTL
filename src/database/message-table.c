@@ -1021,7 +1021,10 @@ end_of_count_messages: // Close database connection
 bool format_messages(cJSON *array)
 {
 	if(FTLDBerror())
+	{
+		log_err("format_messages() - Database not available");
 		return false;
+	}
 
 	sqlite3 *db;
 	// Open database connection
@@ -1047,7 +1050,10 @@ bool format_messages(cJSON *array)
 		// Create JSON object
 		cJSON *item = cJSON_CreateObject();
 		if(item == NULL)
+		{
+			log_err("format_messages() - Failed to create JSON object");
 			break;
+		}
 
 		// Add ID
 		cJSON_AddNumberToObject(item, "id", sqlite3_column_int(stmt, 0));
@@ -1257,13 +1263,21 @@ bool format_messages(cJSON *array)
 		// Add the plain message
 		cJSON *pstring = cJSON_CreateString(plain);
 		if(pstring == NULL)
-			return item;
+		{
+			log_err("format_messages() - Failed to create plain message string from %s", plain);
+			cJSON_Delete(item);
+			break;
+		}
 		cJSON_AddItemToObject(item, "plain", pstring);
 
 		// Add the HTML message
 		cJSON *hstring = cJSON_CreateString(html);
 		if(hstring == NULL)
-			return item;
+		{
+			log_err("format_messages() - Failed to create HTML message string from %s", html);
+			cJSON_Delete(item);
+			break;
+		}
 		cJSON_AddItemToObject(item, "html", hstring);
 
 		// Add the message to the array
