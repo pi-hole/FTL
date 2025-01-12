@@ -703,7 +703,7 @@ static void *ntp_client_thread(void *arg)
 				if(retry_count++ < RETRY_ATTEMPTS &&
 				   sleep_time > RETRY_INTERVAL)
 					sleep_time = RETRY_INTERVAL;
-									log_info("Local time is too inaccurate, retrying in  %u seconds before launching NTP server", sleep_time);
+									log_info("Local time is too inaccurate, retrying in %u seconds before launching NTP server", sleep_time);
 			}
 		}
 
