@@ -291,7 +291,7 @@ static time_t lastRateLimitCleaner = 0;
 int get_rate_limit_turnaround(const unsigned int rate_limit_count)
 {
 	const unsigned int how_often = rate_limit_count/config.dns.rateLimit.count.v.ui;
-	return (int)config.dns.rateLimit.interval.v.ui*how_often - (time(NULL) - lastRateLimitCleaner);
+	return (int)((long)config.dns.rateLimit.interval.v.ui * how_often) - (time(NULL) - lastRateLimitCleaner);
 }
 
 static int check_space(const char *file, unsigned int LastUsage)
