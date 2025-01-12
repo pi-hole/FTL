@@ -71,9 +71,6 @@ jobs:
           - platform: linux/386
             bin_name: pihole-FTL-386
             build_opts: ""
-          - platform: linux/riscv64
-            bin_name: pihole-FTL-riscv64
-            build_opts: ""
     env:
       CI_ARCH: ${{ matrix.platform }}
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
@@ -100,8 +97,8 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
 
-  self-hosted:
-    runs-on: self-hosted
+  self-hosted-arm:
+    runs-on: ARM64
     needs: smoke-tests
     strategy:
       fail-fast: false
@@ -113,6 +110,40 @@ jobs:
             bin_name: pihole-FTL-armv7
           - platform: linux/arm64/v8
             bin_name: pihole-FTL-arm64
+    env:
+      CI_ARCH: ${{ matrix.platform }}
+      GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
+      GIT_TAG: ${{ needs.smoke-tests.outputs.GIT_TAG }}
+    steps:
+      -
+        name: Checkout code
+        uses: actions/checkout@v4.1.7
+      -
+        name: Build and test and deploy FTL
+        uses: ./.github/actions/build-and-test
+        with:
+          platform: ${{ matrix.platform }}
+          bin_name: ${{ matrix.bin_name }}
+          artifact_name: ${{ matrix.bin_name }}-binary
+          target_dir: ${{ needs.smoke-tests.outputs.OUTPUT_DIR }}
+          git_branch: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
+          git_tag: ${{ needs.smoke-tests.outputs.GIT_TAG }}
+          event_name: ${{ github.event_name }}
+          actor: ${{ github.actor }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+
+  self-hosted-riscv64:
+    runs-on: RISCV64
+    needs: smoke-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/riscv64
+            bin_name: pihole-FTL-riscv64
     env:
       CI_ARCH: ${{ matrix.platform }}
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
