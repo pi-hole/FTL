@@ -171,10 +171,10 @@ static int domain_no_rebind(char *domain)
   return 0;
 }
 
-static int forward_query(int udpfd, union mysockaddr *udpaddr,
-			 union all_addr *dst_addr, unsigned int dst_iface,
-			 struct dns_header *header, size_t plen,  size_t replylimit, time_t now, 
-			 struct frec *forward, unsigned int fwd_flags, int fast_retry)
+static void forward_query(int udpfd, union mysockaddr *udpaddr,
+			  union all_addr *dst_addr, unsigned int dst_iface,
+			  struct dns_header *header, size_t plen,  size_t replylimit, time_t now, 
+			  struct frec *forward, unsigned int fwd_flags, int fast_retry)
 {
   unsigned int flags = 0;
   int is_dnssec = forward && (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY));
@@ -264,7 +264,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  if (difftime(now, forward->time) < 2)
 	    {
 	      FTL_query_in_progress(daemon->log_display_id);
-	      return 0;
+	      return;
 	    }
 	}
       
@@ -387,6 +387,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 
       if (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY))
 	{
+	  /* Don't retry if we've already sent it via TCP. */
+	  if (forward->flags & FREC_GONE_TO_TCP)
+	    return;
+
 	  /* log_id should match previous DNSSEC query. */
 	  daemon->log_display_id = forward->frec_src.log_id;
 	  
@@ -399,8 +403,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  
 	  /* Find suitable servers: should never fail. */
 	  if (!filter_servers(forward->sentto->arrayposn, F_DNSSECOK, &first, &last))
-	    return 0;
-	    	  
+	    return;
+	  
 	  is_dnssec = 1;
 	  forward->forwardall = 1;
 	}
@@ -523,8 +527,9 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   
   if (forwarded || is_dnssec)
     {
+      daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
       forward->forward_timestamp = dnsmasq_milliseconds();
-      return 1;
+      return;
     }
   
   /* could not send on, prepare to return */ 
@@ -536,7 +541,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   if (udpfd != -1)
     {
       if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, (char *)(header + replylimit), first, last, ede)))
-	return 0;
+	return;
       
       if (fwd_flags & FREC_HAS_PHEADER)
 	{
@@ -564,7 +569,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       send_from(udpfd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, plen, udpaddr, dst_addr, dst_iface);
     }
   
-  return 0;
+  daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+  return;
 }
 
 /* Check if any frecs need to do a retry, and action that if so. 
@@ -1963,11 +1969,8 @@ void receive_query(struct listener *listen, time_t now)
       blockdata_free(saved_question);
       saved_question = NULL;
 
-      if (forward_query(fd, &source_addr, &dst_addr, if_index, header, (size_t)n,
-			udp_size, now, NULL, fwd_flags, 0))
-	daemon->metrics[METRIC_DNS_QUERIES_FORWARDED]++;
-      else
-	daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+      forward_query(fd, &source_addr, &dst_addr, if_index, header, (size_t)n,
+		    udp_size, now, NULL, fwd_flags, 0);
     }
 
   blockdata_free(saved_question);
