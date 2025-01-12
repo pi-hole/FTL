@@ -39,6 +39,7 @@ static volatile int pipewrite;
 static void set_dns_listeners(void);
 static void set_tftp_listeners(void);
 static void check_dns_listeners(time_t now);
+static void do_tcp_connection(struct listener *listener, time_t now);
 static void sig_handler(int sig);
 static void async_event(int pipe, time_t now);
 static void fatal_event(struct event_desc *ev, char *msg);
@@ -1865,245 +1866,282 @@ static void check_dns_listeners(time_t now)
   struct randfd_list *rfl;
   int i;
   int pipefd[2];
-  
+
+  /* Note that handling events here can create or destroy fds and
+     render the result of the last poll() call invalid. Once
+     we find an fd that needs service, do it, then return to go around the
+     poll() loop again. This avoid really, really, wierd bugs. */
+
+  if (!option_bool(OPT_DEBUG))
+    for (i = 0; i < daemon->max_procs; i++)
+      if (daemon->tcp_pipes[i] != -1 &&
+	  poll_check(daemon->tcp_pipes[i], POLLIN | POLLHUP))
+	{
+	   /* Races. The child process can die before we read all of the data from the
+	      pipe, or vice versa. Therefore send tcp_pids to zero when we wait() the 
+	      process, and tcp_pipes to -1 and close the FD when we read the last
+	      of the data - indicated by cache_recv_insert returning zero.
+	      The order of these events is indeterminate, and both are needed
+	      to free the process slot. Once the child process has gone, poll()
+	      returns POLLHUP, not POLLIN, so have to check for both here. */
+	  if (!cache_recv_insert(now, daemon->tcp_pipes[i]))
+	    {
+	      close(daemon->tcp_pipes[i]);
+	      daemon->tcp_pipes[i] = -1;	
+	      /* tcp_pipes == -1 && tcp_pids == 0 required to free slot */
+	      if (daemon->tcp_pids[i] == 0)
+		daemon->metrics[METRIC_TCP_CONNECTIONS]--;
+	    }
+	  return;
+	}
+
   for (serverfdp = daemon->sfds; serverfdp; serverfdp = serverfdp->next)
     if (poll_check(serverfdp->fd, POLLIN))
-      reply_query(serverfdp->fd, now);
+      {
+	reply_query(serverfdp->fd, now);
+	return;
+      }
   
   for (i = 0; i < daemon->numrrand; i++)
     if (daemon->randomsocks[i].refcount != 0 && 
 	poll_check(daemon->randomsocks[i].fd, POLLIN))
-      reply_query(daemon->randomsocks[i].fd, now);
-
+      {
+	reply_query(daemon->randomsocks[i].fd, now);
+	return;
+      }
+  
   /* Check overflow random sockets too. */
   for (rfl = daemon->rfl_poll; rfl; rfl = rfl->next)
     if (poll_check(rfl->rfd->fd, POLLIN))
-      reply_query(rfl->rfd->fd, now);
-
-  /* Races. The child process can die before we read all of the data from the
-     pipe, or vice versa. Therefore send tcp_pids to zero when we wait() the 
-     process, and tcp_pipes to -1 and close the FD when we read the last
-     of the data - indicated by cache_recv_insert returning zero.
-     The order of these events is indeterminate, and both are needed
-     to free the process slot. Once the child process has gone, poll()
-     returns POLLHUP, not POLLIN, so have to check for both here. */
-  if (!option_bool(OPT_DEBUG))
-    for (i = 0; i < daemon->max_procs; i++)
-      if (daemon->tcp_pipes[i] != -1 &&
-	  poll_check(daemon->tcp_pipes[i], POLLIN | POLLHUP) &&
-	  !cache_recv_insert(now, daemon->tcp_pipes[i]))
-	{
-	  close(daemon->tcp_pipes[i]);
-	  daemon->tcp_pipes[i] = -1;	
-	  /* tcp_pipes == -1 && tcp_pids == 0 required to free slot */
-	  if (daemon->tcp_pids[i] == 0)
-	    daemon->metrics[METRIC_TCP_CONNECTIONS]--;
-	}
-	
+      {
+	reply_query(rfl->rfd->fd, now);
+	return;
+      }
+  
   for (listener = daemon->listeners; listener; listener = listener->next)
-    {
-      if (listener->fd != -1 && poll_check(listener->fd, POLLIN))
+    if (listener->fd != -1 && poll_check(listener->fd, POLLIN))
+      {
 	receive_query(listener, now); 
-      
-      /* check to see if we have a free tcp process slot.
-	 Note that we can't assume that because we had
-	 at least one a poll() time, that we still do.
-	 There may be more waiting connections after
-	 poll() returns then free process slots. */
-      for (i = daemon->max_procs - 1; i >= 0; i--)
-	if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
-	  break;
+	return;
+      }
+  
+  /* check to see if we have a free tcp process slot.
+     Note that we can't assume that because we had
+     at least one a poll() time, that we still do.
+     There may be more waiting connections after
+     poll() returns then free process slots. */
+  for (i = daemon->max_procs - 1; i >= 0; i--)
+    if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
+      break;
 
-      if (listener->tcpfd != -1 && i >= 0 && poll_check(listener->tcpfd, POLLIN))
+  if (i >= 0)
+    for (listener = daemon->listeners; listener; listener = listener->next)
+      if (listener->tcpfd != -1 && poll_check(listener->tcpfd, POLLIN))
 	{
-	  int confd, client_ok = 1;
-	  struct irec *iface = NULL;
-	  pid_t p;
-	  union mysockaddr tcp_addr;
-	  socklen_t tcp_len = sizeof(union mysockaddr);
+	  do_tcp_connection(listener, now);
+	  return;
+	}
+}
 
-	  while ((confd = accept(listener->tcpfd, NULL, NULL)) == -1 && errno == EINTR);
-	  
-	  if (confd == -1)
-	    continue;
-	  
-	  if (getsockname(confd, (struct sockaddr *)&tcp_addr, &tcp_len) == -1)
-	    {
-	      close(confd);
-	      continue;
-	    }
-	  
-	  /* Make sure that the interface list is up-to-date.
-	     
-	     We do this here as we may need the results below, and
-	     the DNS code needs them for --interface-name stuff.
+static void do_tcp_connection(struct listener *listener, time_t now)
+{
+  int confd, client_ok = 1;
+  struct irec *iface = NULL;
+  pid_t p;
+  union mysockaddr tcp_addr;
+  socklen_t tcp_len = sizeof(union mysockaddr);
+  unsigned char *buff;
+  struct server *s; 
+  int flags, auth_dns, i;
+  struct in_addr netmask;
+  int pipefd[2];
 
-	     Multiple calls to enumerate_interfaces() per select loop are
-	     inhibited, so calls to it in the child process (which doesn't select())
-	     have no effect. This avoids two processes reading from the same
-	     netlink fd and screwing the pooch entirely.
-	  */
- 
-	  enumerate_interfaces(0);
+  while ((confd = accept(listener->tcpfd, NULL, NULL)) == -1 && errno == EINTR);
+  
+  if (confd == -1)
+    return;
+  
+  if (getsockname(confd, (struct sockaddr *)&tcp_addr, &tcp_len) == -1)
+    {
+    closeconandreturn:
+      shutdown(confd, SHUT_RDWR);
+      close(confd);
+      return;
+    }
+  
+  /* Make sure that the interface list is up-to-date.
+     
+     We do this here as we may need the results below, and
+     the DNS code needs them for --interface-name stuff.
+     
+     Multiple calls to enumerate_interfaces() per select loop are
+     inhibited, so calls to it in the child process (which doesn't select())
+     have no effect. This avoids two processes reading from the same
+     netlink fd and screwing the pooch entirely.
+  */
+  
+  enumerate_interfaces(0);
+  
+  if (option_bool(OPT_NOWILD))
+    iface = listener->iface; /* May be NULL */
+  else 
+    {
+      int if_index;
+      char intr_name[IF_NAMESIZE];
+      
+      /* if we can find the arrival interface, check it's one that's allowed */
+      if ((if_index = tcp_interface(confd, tcp_addr.sa.sa_family)) != 0 &&
+	  indextoname(listener->tcpfd, if_index, intr_name))
+	{
+	  union all_addr addr;
 	  
-	  if (option_bool(OPT_NOWILD))
-	    iface = listener->iface; /* May be NULL */
-	  else 
-	    {
-	      int if_index;
-	      char intr_name[IF_NAMESIZE];
-	      
-	      /* if we can find the arrival interface, check it's one that's allowed */
-	      if ((if_index = tcp_interface(confd, tcp_addr.sa.sa_family)) != 0 &&
-		  indextoname(listener->tcpfd, if_index, intr_name))
-		{
-		  union all_addr addr;
-		  
-		  if (tcp_addr.sa.sa_family == AF_INET6)
-		    addr.addr6 = tcp_addr.in6.sin6_addr;
-		  else
-		    addr.addr4 = tcp_addr.in.sin_addr;
-		  
-		  for (iface = daemon->interfaces; iface; iface = iface->next)
-		    if (iface->index == if_index &&
-		        iface->addr.sa.sa_family == tcp_addr.sa.sa_family)
-		      break;
-		  
-		  if (!iface && !loopback_exception(listener->tcpfd, tcp_addr.sa.sa_family, &addr, intr_name))
-		    client_ok = 0;
-		}
-	      
-	      if (option_bool(OPT_CLEVERBIND))
-		iface = listener->iface; /* May be NULL */
-	      else
-		{
-		  /* Check for allowed interfaces when binding the wildcard address:
-		     we do this by looking for an interface with the same address as 
-		     the local address of the TCP connection, then looking to see if that's
-		     an allowed interface. As a side effect, we get the netmask of the
-		     interface too, for localisation. */
-		  
-		  for (iface = daemon->interfaces; iface; iface = iface->next)
-		    if (sockaddr_isequal(&iface->addr, &tcp_addr))
-		      break;
-		  
-		  if (!iface)
-		    client_ok = 0;
-		}
-	    }
-	  
-	  if (!client_ok)
-	    {
-	      shutdown(confd, SHUT_RDWR);
-	      close(confd);
-	    }
-	  else if (!option_bool(OPT_DEBUG) && pipe(pipefd) == 0 && (p = fork()) != 0)
-	    {
-	      close(pipefd[1]); /* parent needs read pipe end. */
-	      if (p == -1)
-		close(pipefd[0]);
-	      else
-		{
-#ifdef HAVE_LINUX_NETWORK
-		  /* The child process inherits the netlink socket, 
-		     which it never uses, but when the parent (us) 
-		     uses it in the future, the answer may go to the 
-		     child, resulting in the parent blocking
-		     forever awaiting the result. To avoid this
-		     the child closes the netlink socket, but there's
-		     a nasty race, since the parent may use netlink
-		     before the child has done the close.
-		     
-		     To avoid this, the parent blocks here until a 
-		     single byte comes back up the pipe, which
-		     is sent by the child after it has closed the
-		     netlink socket. */
-		  
-		  unsigned char a;
-		  read_write(pipefd[0], &a, 1, RW_READ);
-#endif
-
-		  /* i holds index of free slot */
-		  daemon->tcp_pids[i] = p;
-		  daemon->tcp_pipes[i] = pipefd[0];
-		  daemon->metrics[METRIC_TCP_CONNECTIONS]++;
-		  if (daemon->metrics[METRIC_TCP_CONNECTIONS] > daemon->max_procs_used)
-		    daemon->max_procs_used = daemon->metrics[METRIC_TCP_CONNECTIONS];
-		}
-	      close(confd);
-
-	      /* The child can use up to TCP_MAX_QUERIES ids, so skip that many. */
-	      daemon->log_id += TCP_MAX_QUERIES;
-#ifdef HAVE_DNSSEC
-	      /* It can do more if making DNSSEC queries too. */
-	      if (option_bool(OPT_DNSSEC_VALID))
-		daemon->log_id += daemon->limit[LIMIT_WORK];
-#endif
-	    }
+	  if (tcp_addr.sa.sa_family == AF_INET6)
+	    addr.addr6 = tcp_addr.in6.sin6_addr;
 	  else
-	    {
-	      unsigned char *buff;
-	      struct server *s; 
-	      int flags;
-	      struct in_addr netmask;
-	      int auth_dns;
-	   
-	      if (iface)
-		{
-		  netmask = iface->netmask;
-		  auth_dns = iface->dns_auth;
-		}
-	      else
-		{
-		  netmask.s_addr = 0;
-		  auth_dns = 0;
-		}
-
-	      /* Arrange for SIGALRM after CHILD_LIFETIME seconds to
-		 terminate the process. */
-	      if (!option_bool(OPT_DEBUG))
-		{
-#ifdef HAVE_LINUX_NETWORK
-		  /* See comment above re: netlink socket. */
-		  unsigned char a = 0;
-
-		  close(daemon->netlinkfd);
-		  read_write(pipefd[1], &a, 1, RW_WRITE);
-#endif		  
-		  alarm(CHILD_LIFETIME);
-		  close(pipefd[0]); /* close read end in child. */
-		  daemon->pipe_to_parent = pipefd[1];
-		}
-
-	      /* The connected socket inherits non-blocking
-		 attribute from the listening socket. 
-		 Reset that here. */
-	      if ((flags = fcntl(confd, F_GETFL, 0)) != -1)
-		while(retry_send(fcntl(confd, F_SETFL, flags & ~O_NONBLOCK)));
-	      
-	      buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);
-	       
-	      if (buff)
-		free(buff);
-	      
-	      for (s = daemon->servers; s; s = s->next)
-		if (s->tcpfd != -1)
-		  {
-		    shutdown(s->tcpfd, SHUT_RDWR);
-		    close(s->tcpfd);
-		    s->tcpfd = -1;
-		  }
-	      
-	      if (!option_bool(OPT_DEBUG))
-		{
-		  close(daemon->pipe_to_parent);
-		  flush_log();
-		  _exit(0);
-		}
-	    }
+	    addr.addr4 = tcp_addr.in.sin_addr;
+	  
+	  for (iface = daemon->interfaces; iface; iface = iface->next)
+	    if (iface->index == if_index &&
+		iface->addr.sa.sa_family == tcp_addr.sa.sa_family)
+	      break;
+	  
+	  if (!iface && !loopback_exception(listener->tcpfd, tcp_addr.sa.sa_family, &addr, intr_name))
+	    client_ok = 0;
+	}
+      
+      if (option_bool(OPT_CLEVERBIND))
+	iface = listener->iface; /* May be NULL */
+      else
+	{
+	  /* Check for allowed interfaces when binding the wildcard address:
+	     we do this by looking for an interface with the same address as 
+	     the local address of the TCP connection, then looking to see if that's
+	     an allowed interface. As a side effect, we get the netmask of the
+	     interface too, for localisation. */
+	  
+	  for (iface = daemon->interfaces; iface; iface = iface->next)
+	    if (sockaddr_isequal(&iface->addr, &tcp_addr))
+	      break;
+	  
+	  if (!iface)
+	    client_ok = 0;
 	}
     }
+  
+  if (!client_ok)
+    goto closeconandreturn;
+  
+  if (!option_bool(OPT_DEBUG))
+    {
+      if (pipe(pipefd) == -1)
+	goto closeconandreturn; /* pipe failed */
+            
+      if ((p = fork()) == -1)
+	{
+	  /* fork failed */
+	  close(pipefd[0]);
+	  close(pipefd[1]);
+	  goto closeconandreturn;
+	}
+
+      if (p != 0)
+	{
+	  /* fork() done: parent side */
+	  close(pipefd[1]); /* parent needs read pipe end. */
+      
+#ifdef HAVE_LINUX_NETWORK
+	  /* The child process inherits the netlink socket, 
+	     which it never uses, but when the parent (us) 
+	     uses it in the future, the answer may go to the 
+	     child, resulting in the parent blocking
+	     forever awaiting the result. To avoid this
+	     the child closes the netlink socket, but there's
+	     a nasty race, since the parent may use netlink
+	     before the child has done the close.
+	     
+	     To avoid this, the parent blocks here until a 
+	     single byte comes back up the pipe, which
+	     is sent by the child after it has closed the
+	     netlink socket. */
+	  
+	  read_write(pipefd[0], buff, 1, RW_READ);
+#endif
+	  
+	  /* i holds index of free slot */
+	  daemon->tcp_pids[i] = p;
+	  daemon->tcp_pipes[i] = pipefd[0];
+	  daemon->metrics[METRIC_TCP_CONNECTIONS]++;
+	  if (daemon->metrics[METRIC_TCP_CONNECTIONS] > daemon->max_procs_used)
+	    daemon->max_procs_used = daemon->metrics[METRIC_TCP_CONNECTIONS];
+	
+	  close(confd);
+	  
+	  /* The child can use up to TCP_MAX_QUERIES ids, so skip that many. */
+	  daemon->log_id += TCP_MAX_QUERIES;
+#ifdef HAVE_DNSSEC
+	  /* It can do more if making DNSSEC queries too. */
+	  if (option_bool(OPT_DNSSEC_VALID))
+	    daemon->log_id += daemon->limit[LIMIT_WORK];
+#endif
+	  
+	  return;
+	}
+    }
+         
+  if (iface)
+    {
+      netmask = iface->netmask;
+      auth_dns = iface->dns_auth;
+    }
+  else
+    {
+      netmask.s_addr = 0;
+      auth_dns = 0;
+    }
+  
+  /* Arrange for SIGALRM after CHILD_LIFETIME seconds to
+     terminate the process. */
+  if (!option_bool(OPT_DEBUG))
+    {
+#ifdef HAVE_LINUX_NETWORK
+      /* See comment above re: netlink socket. */
+      unsigned char a = 0;
+      
+      close(daemon->netlinkfd);
+      read_write(pipefd[1], &a, 1, RW_WRITE);
+#endif		  
+      alarm(CHILD_LIFETIME);
+      close(pipefd[0]); /* close read end in child. */
+      daemon->pipe_to_parent = pipefd[1];
+    }
+
+  /* The connected socket inherits non-blocking
+     attribute from the listening socket. 
+     Reset that here. */
+  if ((flags = fcntl(confd, F_GETFL, 0)) != -1)
+    while(retry_send(fcntl(confd, F_SETFL, flags & ~O_NONBLOCK)));
+  
+  buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);
+	      
+  if (buff)
+    free(buff);
+  
+  for (s = daemon->servers; s; s = s->next)
+    if (s->tcpfd != -1)
+      {
+	shutdown(s->tcpfd, SHUT_RDWR);
+	close(s->tcpfd);
+	s->tcpfd = -1;
+      }
+  
+  if (!option_bool(OPT_DEBUG))
+    {
+      close(daemon->pipe_to_parent);
+      flush_log();
+      _exit(0);
+    }
 }
+
 
 #ifdef HAVE_DNSSEC
 /* If a DNSSEC query over UDP returns a truncated answer,

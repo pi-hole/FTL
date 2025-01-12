@@ -18,7 +18,7 @@
 #define MAX_PROCS 60 /* default max no children for TCP requests */
 #define CHILD_LIFETIME 300 /* secs 'till terminated (RFC1035 suggests > 120s) */
 #define TCP_MAX_QUERIES 100 /* Maximum number of queries per incoming TCP connection */
-#define TCP_TIMEOUT 1 /* timeout waiting to connect to an upstream server - double this for answer */
+#define TCP_TIMEOUT 5 /* timeout waiting to connect to an upstream server - double this for answer */
 #define TCP_BACKLOG 32  /* kernel backlog limit for TCP connections */
 #define EDNS_PKTSZ 1232 /* default max EDNS.0 UDP packet from from  /dnsflagday.net/2020 */
 #define KEYBLOCK_LEN 40 /* choose to minimise fragmentation when storing DNSSEC keys */
