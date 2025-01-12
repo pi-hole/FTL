@@ -39,7 +39,7 @@ static volatile int pipewrite;
 static void set_dns_listeners(void);
 static void set_tftp_listeners(void);
 static void check_dns_listeners(time_t now);
-static void do_tcp_connection(struct listener *listener, time_t now);
+static void do_tcp_connection(struct listener *listener, time_t now, int slot);
 static void sig_handler(int sig);
 static void async_event(int pipe, time_t now);
 static void fatal_event(struct event_desc *ev, char *msg);
@@ -1938,12 +1938,12 @@ static void check_dns_listeners(time_t now)
     for (listener = daemon->listeners; listener; listener = listener->next)
       if (listener->tcpfd != -1 && poll_check(listener->tcpfd, POLLIN))
 	{
-	  do_tcp_connection(listener, now);
+	  do_tcp_connection(listener, now, i);
 	  return;
 	}
 }
 
-static void do_tcp_connection(struct listener *listener, time_t now)
+static void do_tcp_connection(struct listener *listener, time_t now, int slot)
 {
   int confd, client_ok = 1;
   struct irec *iface = NULL;
@@ -1952,7 +1952,7 @@ static void do_tcp_connection(struct listener *listener, time_t now)
   socklen_t tcp_len = sizeof(union mysockaddr);
   unsigned char *buff;
   struct server *s; 
-  int flags, auth_dns, i;
+  int flags, auth_dns;
   struct in_addr netmask;
   int pipefd[2];
 
@@ -2067,9 +2067,9 @@ static void do_tcp_connection(struct listener *listener, time_t now)
 	  read_write(pipefd[0], buff, 1, RW_READ);
 #endif
 	  
-	  /* i holds index of free slot */
-	  daemon->tcp_pids[i] = p;
-	  daemon->tcp_pipes[i] = pipefd[0];
+
+	  daemon->tcp_pids[slot] = p;
+	  daemon->tcp_pipes[slot] = pipefd[0];
 	  daemon->metrics[METRIC_TCP_CONNECTIONS]++;
 	  if (daemon->metrics[METRIC_TCP_CONNECTIONS] > daemon->max_procs_used)
 	    daemon->max_procs_used = daemon->metrics[METRIC_TCP_CONNECTIONS];
