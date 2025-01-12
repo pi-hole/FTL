@@ -100,8 +100,8 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
 
-  self-hosted:
-    runs-on: self-hosted
+  self-hosted-arm64:
+    runs-on: ARM64
     needs: smoke-tests
     strategy:
       fail-fast: false
