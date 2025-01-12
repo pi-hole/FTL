@@ -230,7 +230,6 @@ static void get_server_ports(void)
 
 	// Loop over all listening ports
 	struct mg_server_port mgports[MAXPORTS] = { 0 };
-	unsigned int ports_avail = 0;
 	const int ports = mg_get_server_ports(ctx, MAXPORTS, mgports);
 
 	// Stop if no ports are configured
@@ -258,15 +257,13 @@ static void get_server_ports(void)
 			https_port = mgports[i].port;
 
 		// Print port information
-		if(ports_avail == 0)
+		if(i == 0)
 			log_info("Web server ports:");
 		log_info("  - %d (HTTP%s, IPv%s%s)",
 		         mgports[i].port, mgports[i].is_ssl ? "S" : "",
 		         mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"),
 		         mgports[i].is_redirect ? ", redirecting" : "");
 
-		// Increase number of available ports
-		ports_avail++;
 	}
 }
 
