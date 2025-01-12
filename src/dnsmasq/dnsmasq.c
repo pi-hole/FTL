@@ -971,7 +971,14 @@ int main_dnsmasq (int argc, char **argv)
 	my_syslog(LOG_WARNING, _("warning: ignoring resolv-file flag because no-resolv is set"));
       daemon->resolv_files = NULL;
       if (!daemon->servers)
-	my_syslog(LOG_WARNING, _("warning: no upstream servers configured"));
+	{
+#ifdef HAVE_DBUS
+	  if (option_bool(OPT_DBUS))
+	    my_syslog(LOG_INFO, _("no upstream servers configured - please set them from DBus"));
+	  else
+#endif
+	  my_syslog(LOG_WARNING, _("warning: no upstream servers configured"));
+	}
     } 
 
   if (daemon->max_logs != 0)
