@@ -698,7 +698,6 @@ static void *ntp_client_thread(void *arg)
 			}
 			else
 			{
-				log_debug(DEBUG_NTP, "Local time is too inaccurate, retrying before launching NTP server");
 
 				// Reduce retry time if the time is not accurate enough
 				if(retry_count++ < RETRY_ATTEMPTS &&

@@ -125,7 +125,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	      send_event(err_fd, EVENT_USER_ERR, errno, daemon->scriptuser);
 	    }
 	  /**** Pi-hole modification ****/
-	  log_info("Starting script helper FAILED");
+	  log_err("Starting script helper FAILED");
 	  /******************************/
 	  _exit(0);
 	}
