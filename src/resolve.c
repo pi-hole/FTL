@@ -37,8 +37,8 @@
 #include "dnsmasq/config.h"
 
 // Function Prototypes
-static void name_toDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen) __attribute__((nonnull(1,3)));
-static unsigned char *name_fromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count) __attribute__((malloc)) __attribute__((nonnull(1,2,3)));
+static void nameToDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen) __attribute__((nonnull(1,3)));
+static unsigned char *nameFromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count) __attribute__((malloc)) __attribute__((nonnull(1,2,3)));
 
 // Avoid "error: packed attribute causes inefficient alignment for ..." on ARM32
 // builds due to the use of __attribute__((packed)) in the following structs
@@ -329,7 +329,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 	strncat(hname, ".", hnamelen - strlen(hname));
 	hname[hnamelen - 1] = '\0';
 
-	name_toDNS(qname, sizeof(buf) - sizeof(struct DNS_HEADER), hname, hnamelen);
+	nameToDNS(qname, sizeof(buf) - sizeof(struct DNS_HEADER), hname, hnamelen);
 	free(hname);
 	qinfo = (void*)&buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1)];
 
@@ -427,14 +427,14 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 	char *name = NULL;
 	for(uint16_t i = 0; i < min(ntohs(dns->ans_count), ArraySize(answers)); i++)
 	{
-		answers[i].name = name_fromDNS(reader, buf, &stop);
+		answers[i].name = nameFromDNS(reader, buf, &stop);
 		reader = reader + stop;
 
 		answers[i].resource = (struct R_DATA*)(reader);
 		reader = reader + sizeof(struct R_DATA);
 
 		// Read the answer and convert from network to host representation
-		answers[i].rdata = name_fromDNS(reader, buf, &stop);
+		answers[i].rdata = nameFromDNS(reader, buf, &stop);
 		reader = reader + stop;
 
 		// We only care about PTR answers and ignore all others
@@ -485,12 +485,17 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 // Convert hostname from network to host representation
 // This routine supports DNS compression pointers
 // 3www6google3com -> www.google.com
-static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count)
+static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) nameFromDNS(unsigned char *reader, unsigned char *buffer, uint16_t *count)
 {
 	const size_t MAXNAMELEN = 256;
 	unsigned char *name = calloc(MAXNAMELEN, sizeof(char));
-	unsigned int p = 0, jumped = 0;
+	if(name == NULL)
+	{
+		log_err("Unable to allocate memory in nameFromDNS");
+		return NULL;
+	}
 
+	unsigned int p = 0, jumped = 0;
 	// Initialize count
 	*count = 1;
 
@@ -530,6 +535,12 @@ static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fro
 			// restricted to 63 octets or less. See the referenced
 			// RFC for more details.
 			const unsigned int offset = ((*reader - 0xC0) << 8) + *(reader + 1);
+			if(offset >= MAXNAMELEN)
+			{
+				log_err("DNS compression pointer out of bounds: %u", offset);
+				free(name);
+				return NULL;
+			}
 			reader = buffer + offset - 1;
 			jumped = 1; // We have jumped to another location so counting won't go up
 		}
@@ -573,26 +584,28 @@ static u_char * __attribute__((malloc)) __attribute__((nonnull(1,2,3))) name_fro
 // www.google.com -> 3www6google3com
 // We do not use DNS compression pointers here as we do not know if the DNS
 // server we are talking to supports them
-static void __attribute__((nonnull(1,3))) name_toDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen)
+static void __attribute__((nonnull(1,3))) nameToDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen)
 {
 	unsigned int lock = 0;
+	const unsigned char *dns_start = dns;
 
-	// Iterate over hostname characters
-	for(unsigned int i = 0 ; i < strlen((char*)host); i++)
+	// Iterate over hostname characters and convert to DNS format
+	// Also check for buffer overflow of the DNS buffer
+	for(unsigned int i = 0; i < hostlen && (const size_t)(dns - dns_start) < dnslen; i++)
 	{
 		// If we encounter a dot, write the number of characters since the last dot
 		// and then write the characters themselves
 		if(host[i] == '.')
 		{
 			*dns++ = i - lock;
-			for(;lock < i; lock++)
+			for(;lock < i && (const size_t)(dns - dns_start) < dnslen; lock++)
 				*dns++ = host[lock];
 			lock++;
 		}
 	}
 
 	// Terminate the string at the end
-	*dns++='\0';
+	*dns++ = '\0';
 }
 
 char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, struct sockaddr_in *dest,
@@ -607,7 +620,10 @@ char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, st
 		log_debug(DEBUG_RESOLVER, "Configured to not resolve host name for %s", addr);
 
 		// Return an empty host name
-		return strdup("");
+		hostn = strdup("");
+		if(hostn == NULL)
+			log_err("Unable to allocate memory for empty host name");
+		return hostn;
 	}
 
 	log_debug(DEBUG_RESOLVER, "Trying to resolve %s", addr);
@@ -617,6 +633,8 @@ char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, st
 	if(strcmp(addr, "0.0.0.0") == 0)
 	{
 		hostn = strdup("hidden");
+		if(hostn == NULL)
+			log_err("Unable to allocate memory for hidden host name");
 		log_debug(DEBUG_RESOLVER, "---> \"%s\" (privacy settings)", hostn);
 		return hostn;
 	}
@@ -626,6 +644,8 @@ char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, st
 	if(strcmp(addr, "::") == 0)
 	{
 		hostn = strdup("pi.hole");
+		if(hostn == NULL)
+			log_err("Unable to allocate memory for internal host name");
 		log_debug(DEBUG_RESOLVER, "---> \"%s\" (special)", hostn);
 		return hostn;
 	}
@@ -696,7 +716,10 @@ char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, st
 		if(!inet_pton(ss.ss_family, addr, &(((struct sockaddr_in *)&ss)->sin_addr)))
 		{
 			log_warn("Invalid IPv4 address when trying to resolve hostname: %s", addr);
-			return strdup("");
+			hostn = strdup("");
+			if(hostn == NULL)
+				log_err("Unable to allocate memory for empty host name");
+			return hostn;
 		}
 
 		// Need extra space for ".in-addr.arpa" suffix
@@ -739,6 +762,21 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 	char *oldname = strdup(getstr(oldnamepos));
 	unlock_shm();
 
+	if(ipaddr == NULL || oldname == NULL)
+	{
+		log_err("Unable to allocate memory for IP address or host name");
+
+		// Free allocated memory
+		if(ipaddr != NULL)
+			free(ipaddr);
+		if(oldname != NULL)
+			free(oldname);
+
+		// Return old namepos
+		*success = false;
+		return oldnamepos;
+	}
+
 	// Test if we want to resolve host names, otherwise all calls to resolveHostname()
 	// and getNameFromIP() can be skipped as they will all return empty names (= no records)
 	if(!resolve_this_name(ipaddr))
@@ -761,15 +799,22 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 	{
 		// Retry with TCP if UDP failed due to truncation (RFC 7766)
 		const int tcp_sock = create_socket(true, dest);
-		newname = resolveHostname(tcp_sock, true, dest, ipaddr, false, NULL);
-		close(tcp_sock);
+		if(tcp_sock > 0)
+		{
+			// Only attempt to resolve the hostname if we have a
+			// valid socket
+			newname = resolveHostname(tcp_sock, true, dest, ipaddr, false, NULL);
+			close(tcp_sock);
+		}
+		else
+			log_warn("Unable to create TCP socket for DNS resolution");
 	}
 
 	if(newname == NULL)
 	{
 		// We could not resolve the hostname, so we keep the old one
 		// and mark the entry as not new
-		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (failed to resolve via UDP, too)", oldname);
+		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (failed to resolve via TCP, too)", oldname);
 
 		// Free allocated memory
 		*success = false;
@@ -794,7 +839,8 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 	if(newname != NULL && strcmp(oldname, newname) != 0)
 	{
 		lock_shm();
-		size_t newnamepos = addstr(newname);
+		const size_t newnamepos = addstr(newname);
+		unlock_shm();
 
 		// Free allocated memory
 		// newname has already been checked against NULL
@@ -802,7 +848,6 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 		free(newname);
 		free(ipaddr);
 		free(oldname);
-		unlock_shm();
 		return newnamepos;
 	}
 	else
@@ -826,7 +871,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
-	unsigned int clientscount = counters->clients;
+	const unsigned int clientscount = counters->clients;
 	unlock_shm();
 
 	// Create DNS client socket
@@ -889,10 +934,13 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			continue;
 		}
 
+		// Get IP address of client
+		const char *ipaddr = getstr(ippos);
+		unlock_shm();
+
 		// Check if we want to resolve an IPv6 address
 		bool IPv6 = false;
-		const char *ipaddr = NULL;
-		if((ipaddr = getstr(ippos)) != NULL && strstr(ipaddr,":") != NULL)
+		if(strstr(ipaddr, ":") != NULL)
 			IPv6 = true;
 
 		// If onlynew flag is set, we will only resolve new clients.
@@ -909,8 +957,6 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			skipped++;
 			continue;
 		}
-
-		unlock_shm();
 
 		// If we're in refreshing mode (onlynew == false), we skip clients if
 		// 1. We should not refresh any hostnames
@@ -996,7 +1042,7 @@ static void resolveUpstreams(const bool onlynew)
 	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
-	int upstreams = counters->upstreams;
+	const int upstreams = counters->upstreams;
 	unlock_shm();
 
 	// Create socket

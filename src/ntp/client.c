@@ -42,6 +42,19 @@
 // check_capability()
 #include "capabilities.h"
 
+// Required accuracy of the NTP sync in seconds in order to start the NTP server
+// thread. If the NTP sync is less accurate than this value, the NTP server
+// thread will only be started after later NTP syncs have reached this accuracy.
+// Default: 0.5 (seconds)
+#define ACCURACY 0.5
+
+// Interval between successive NTP sync attempts in seconds in case of
+// not-yet-sufficient accuracy of the NTP sync
+// Default: 600 (seconds) = 10 minutes
+#define RETRY_INTERVAL 600
+// Maximum number of NTP syncs to attempt before giving up
+#define RETRY_ATTEMPTS 5
+
 struct ntp_sync
 {
 	bool valid;
@@ -52,9 +65,32 @@ struct ntp_sync
 	double precision;
 };
 
+// Kiss codes as defined in RFC 5905, Section 7.4
+static struct {
+	const char *code;
+	const char *meaning;
+} kiss_codes[] =
+{
+	{ "ACST", "The association belongs to a unicast server." },
+	{ "AUTH", "Server authentication failed." },
+	{ "AUTO", "Autokey sequence failed." },
+	{ "BCST", "The association belongs to a broadcast server." },
+	{ "CRYP", "Cryptographic authentication or identification failed." },
+	{ "DENY", "Access denied by remote server." },
+	{ "DROP", "Lost peer in symmetric mode." },
+	{ "RSTR", "Access denied due to local policy." },
+	{ "INIT", "The association has not yet synchronized for the first time." },
+	{ "MCST", "The association belongs to a dynamically discovered server." },
+	{ "NKEY", "No key found. Either the key was never installed or is not trusted." },
+	{ "RATE", "Rate exceeded. The server has temporarily denied access because the client exceeded the rate threshold." },
+	{ "RMOT", "Alteration of association from a remote host running ntpdc." },
+	{ "STEP", "A step change in system time has occurred, but the association has not yet resynchronized." },
+	{ NULL, NULL }
+};
+
 // Create minimal NTP request, see server implementation for details about the
 // packet structure
-static bool request(int fd, const char *server, struct ntp_sync *ntp)
+static bool request(int fd, const char *server, struct addrinfo *saddr, struct ntp_sync *ntp)
 {
 	// NTP Packet buffer
 	unsigned char buf[48] = {0};
@@ -77,8 +113,13 @@ static bool request(int fd, const char *server, struct ntp_sync *ntp)
 	// Send request
 	if(send(fd, buf, 48, 0) != 48)
 	{
-		log_err("Failed to send data to NTP server %s: %s",
-		        server, errno == EAGAIN ? "Timeout" : strerror(errno));
+		// Get IP address of server
+		char ip[INET6_ADDRSTRLEN] = { 0 };
+		if(getnameinfo(saddr->ai_addr, saddr->ai_addrlen, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST) != 0)
+			strncpy(ip, server, sizeof(ip) - 1);
+
+		log_err("Failed to send data to NTP server %s (%s): %s",
+		        server, ip, errno == EAGAIN ? "Timeout" : strerror(errno));
 		return false;
 	}
 
@@ -214,16 +255,21 @@ static bool settime_skew(const double offset)
 	return true;
 }
 
-static bool reply(int fd, const char *server, struct ntp_sync *ntp, const bool verbose)
+static bool reply(const int fd, const char *server, struct addrinfo *saddr, struct ntp_sync *ntp)
 {
 	// NTP Packet buffer
 	unsigned char buf[48];
 
 	// Receive reply
-	if(recv(fd, buf, 48, 0) < 48)
+	if(recv_nowarn(fd, buf, 48, 0) < 48)
 	{
-		log_err("Failed to receive data from NTP server %s: %s",
-		        server, errno == EAGAIN ? "Timeout" : strerror(errno));
+		// Get IP address of server
+		char ip[INET6_ADDRSTRLEN] = { 0 };
+		if(getnameinfo(saddr->ai_addr, saddr->ai_addrlen, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST) != 0)
+			strncpy(ip, server, sizeof(ip) - 1);
+
+		log_err("Failed to receive data from NTP server %s (%s): %s",
+		        server, ip, errno == EAGAIN ? "Timeout" : strerror(errno));
 		return false;
 	}
 
@@ -246,6 +292,10 @@ static bool reply(int fd, const char *server, struct ntp_sync *ntp, const bool v
 	uint32_t srv_root_delay, srv_root_dispersion;
 	memcpy(&srv_root_delay, &buf[4], sizeof(srv_root_delay));
 	memcpy(&srv_root_dispersion, &buf[8], sizeof(srv_root_dispersion));
+
+	// Extract reference ID (Kiss code)
+	char kiss_code[4];
+	memcpy(kiss_code, &buf[12], sizeof(kiss_code));
 
 	// Extract Transmit Timestamp
 	uint64_t netbuffer;
@@ -279,6 +329,17 @@ static bool reply(int fd, const char *server, struct ntp_sync *ntp, const bool v
 	// Check stratum, mode, version, etc.
 	if((buf[0] & 0x07) != 4)
 	{
+		// Check for possible Kiss code
+		for(size_t i = 0; kiss_codes[i].code != NULL; i++)
+		{
+			if(memcmp(kiss_code, kiss_codes[i].code, sizeof(kiss_code)) == 0)
+			{
+				log_warn("Received NTP reply has Kiss code %s: %s, ignoring",
+				         kiss_codes[i].code, kiss_codes[i].meaning);
+				return false;
+			}
+		}
+		// else:
 		log_warn("Received NTP reply has invalid version, ignoring");
 		return false;
 	}
@@ -425,7 +486,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 			continue;
 
 		// Send request
-		if(!request(s, server, &ntp[i]))
+		if(!request(s, server, saddr, &ntp[i]))
 		{
 			close(s);
 			free(ntp);
@@ -433,7 +494,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 			return false;
 		}
 		// Get reply
-		if(!reply(s, server, &ntp[i], false))
+		if(!reply(s, server, saddr, &ntp[i]))
 		{
 			close(s);
 			continue;
@@ -583,17 +644,19 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 			ntp_sync_rtc();
 	}
 
-	// Offset and delay larger than 0.1 seconds are considered as invalid
+	// Offset and delay larger than ACCURACY seconds are considered as invalid
 	// during local testing (e.g., when the server is on the same machine)
-	return theta_avg < 0.1 && delta_avg < 0.1;
+	return theta_trim < ACCURACY && delta_trim < ACCURACY;
 }
 
 static void *ntp_client_thread(void *arg)
 {
+	(void)arg;
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[NTP_CLIENT], 0, 0, 0);
 
 	// Run NTP client
+	unsigned int retry_count = 0;
 	bool ntp_server_started = false;
 	bool first_run = true;
 	while(!killed)
@@ -618,22 +681,37 @@ static void *ntp_client_thread(void *arg)
 			restart_ftl("System time updated");
 		}
 
+		// Calculate time to sleep
+		unsigned int sleep_time = config.ntp.sync.interval.v.ui - (unsigned int)time_delta;
+
 		// Set first run to false
 		first_run = false;
 
-		if(success && !ntp_server_started)
+		if(!ntp_server_started)
 		{
-			// Initialize NTP server only after first NTP
-			// synchronization to ensure that the time is set
-			// correctly
-			ntp_server_started = ntp_server_start();
+			if(success)
+			{
+				// Initialize NTP server only after first high
+				// accuracy NTP synchronization to ensure that
+				// the time is set correctly
+				ntp_server_started = ntp_server_start();
+			}
+			else
+			{
+
+				// Reduce retry time if the time is not accurate enough
+				if(retry_count++ < RETRY_ATTEMPTS &&
+				   sleep_time > RETRY_INTERVAL)
+					sleep_time = RETRY_INTERVAL;
+									log_info("Local time is too inaccurate, retrying in %u seconds before launching NTP server", sleep_time);
+			}
 		}
 
 		// Intermediate cancellation-point
 		BREAK_IF_KILLED();
 
 		// Sleep before retrying
-		thread_sleepms(NTP_CLIENT, 1000 * config.ntp.sync.interval.v.ui);
+		thread_sleepms(NTP_CLIENT, 1000 * sleep_time);
 	}
 
 	log_info("Terminating NTP thread");

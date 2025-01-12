@@ -98,10 +98,6 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
       return pipefd[1];
     }
 
-  /**** Pi-hole modification ****/
-  log_info("Started script helper");
-  /******************************/
-
   /* ignore SIGTERM and SIGINT, so that we can clean up when the main process gets hit
      and SIGALRM so that we can use sleep() */
   sigact.sa_handler = SIG_IGN;
@@ -128,9 +124,16 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	      /* return error */
 	      send_event(err_fd, EVENT_USER_ERR, errno, daemon->scriptuser);
 	    }
+	  /**** Pi-hole modification ****/
+	  log_err("Starting script helper FAILED");
+	  /******************************/
 	  _exit(0);
 	}
     }
+
+  /**** Pi-hole modification ****/
+  log_info("Started script helper");
+  /******************************/
 
   /* close all the sockets etc, we don't need them here. 
      Don't close err_fd, in case the lua-init fails.

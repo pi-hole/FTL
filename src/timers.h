@@ -12,6 +12,8 @@
 
 #include "enums.h"
 
+#include <stdbool.h>
+
 #define NUMTIMERS LAST_TIMER
 
 void timer_start(const enum timers i);
