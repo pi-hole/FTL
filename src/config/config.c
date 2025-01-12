@@ -1004,7 +1004,7 @@ static void initConfig(struct config *conf)
 	conf->webserver.port.a = cJSON_CreateStringReference("comma-separated list of <[ip_address:]port>");
 	conf->webserver.port.f = FLAG_RESTART_FTL;
 	conf->webserver.port.t = CONF_STRING;
-	conf->webserver.port.d.s = (char*)"80,[::]:80,443s,[::]:443s";
+	conf->webserver.port.d.s = (char*)"80o,[::]:80o,443so,[::]:443so";
 	conf->webserver.port.c = validate_stub; // Type-based checking + civetweb syntax checking
 
 	conf->webserver.threads.k = "webserver.threads";
@@ -1640,13 +1640,13 @@ static void get_web_port(struct config *conf)
 		return;
 	}
 	// Create the string
-	snprintf(ports, 32, "%d,%ds", http_port, https_port);
+	snprintf(ports, 32, "%do,%dos", http_port, https_port);
 
 	// Append IPv6 ports if IPv6 is enabled
 	const bool have_ipv6 = ipv6_enabled();
 	if(have_ipv6)
 		snprintf(ports + strlen(ports), 32 - strlen(ports),
-			",[::]:%d,[::]:%ds", http_port, https_port);
+			",[::]:%do,[::]:%dos", http_port, https_port);
 
 	// Set default values for webserver ports
 	if(conf->webserver.port.t == CONF_STRING_ALLOCATED)

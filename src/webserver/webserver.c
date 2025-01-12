@@ -210,6 +210,19 @@ static struct serverports
 	in_port_t port;
 } server_ports[MAXPORTS] = { 0 };
 static in_port_t https_port = 0;
+/**
+ * @brief Retrieves and logs the server ports configuration.
+ *
+ * This function checks if the server context is initialized and then retrieves
+ * the configured server ports. It logs the port information and stores the
+ * details in the `server_ports` array. It also identifies and stores the first
+ * HTTPS port if available.
+ *
+ * @note If no ports are configured, a warning is logged and the function returns.
+ *
+ * @param void This function does not take any parameters.
+ * @return void This function does not return any value.
+ */
 static void get_server_ports(void)
 {
 	if(ctx == NULL)
@@ -217,30 +230,40 @@ static void get_server_ports(void)
 
 	// Loop over all listening ports
 	struct mg_server_port mgports[MAXPORTS] = { 0 };
-	if(mg_get_server_ports(ctx, MAXPORTS, mgports) > 0)
+	const int ports = mg_get_server_ports(ctx, MAXPORTS, mgports);
+
+	// Stop if no ports are configured
+	if(ports < 1)
 	{
-		// Loop over all ports
-		for(unsigned int i = 0; i < MAXPORTS; i++)
-		{
-			// Stop if no more ports are configured
-			if(mgports[i].protocol == 0)
-				break;
+		log_warn("No web server ports configured!");
+		return;
+	}
 
-			// Store port information
-			server_ports[i].port = mgports[i].port;
-			server_ports[i].is_secure = mgports[i].is_ssl;
-			server_ports[i].is_redirect = mgports[i].is_redirect;
-			server_ports[i].protocol = mgports[i].protocol;
+	// Loop over all ports
+	for(unsigned int i = 0; i < (unsigned int)ports; i++)
+	{
+		// Stop if no more ports are configured
+		if(mgports[i].protocol == 0)
+			break;
 
-			// Store HTTPS port if not already set
-			if(mgports[i].is_ssl && https_port == 0)
-				https_port = mgports[i].port;
+		// Store port information
+		server_ports[i].port = mgports[i].port;
+		server_ports[i].is_secure = mgports[i].is_ssl;
+		server_ports[i].is_redirect = mgports[i].is_redirect;
+		server_ports[i].protocol = mgports[i].protocol;
 
-			// Print port information
-			log_debug(DEBUG_API, "Listening on port %d (HTTP%s, IPv%s)",
-			          mgports[i].port, mgports[i].is_ssl ? "S" : "",
-			          mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"));
-		}
+		// Store (first) HTTPS port if not already set
+		if(mgports[i].is_ssl && https_port == 0)
+			https_port = mgports[i].port;
+
+		// Print port information
+		if(i == 0)
+			log_info("Web server ports:");
+		log_info("  - %d (HTTP%s, IPv%s%s)",
+		         mgports[i].port, mgports[i].is_ssl ? "S" : "",
+		         mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"),
+		         mgports[i].is_redirect ? ", redirecting" : "");
+
 	}
 }
 
@@ -532,6 +555,9 @@ void http_init(void)
 		return;
 	}
 
+	// Get server ports
+	get_server_ports();
+
 	// Register API handler
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
@@ -560,9 +586,6 @@ void http_init(void)
 
 	// Prepare prerequisites for Lua
 	allocate_lua();
-
-	// Get server ports
-	get_server_ports();
 
 	// Restore sessions from database
 	init_api();
