@@ -2121,7 +2121,17 @@ static void do_tcp_connection(struct listener *listener, time_t now)
   if ((flags = fcntl(confd, F_GETFL, 0)) != -1)
     while(retry_send(fcntl(confd, F_SETFL, flags & ~O_NONBLOCK)));
   
+  /************ Pi-hole modification ************/
+  FTL_TCP_worker_created(confd);
+  // Store interface this fork is handling exclusively
+  FTL_iface(iface, NULL, 0);
+  /**********************************************/
+
   buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);
+
+  /************ Pi-hole modification ************/
+  FTL_TCP_worker_terminating(true);
+  /**********************************************/
 	      
   if (buff)
     free(buff);
