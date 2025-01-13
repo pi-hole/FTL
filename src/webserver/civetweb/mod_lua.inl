@@ -10,6 +10,7 @@
 #include "civetweb_lua.h"
 #include "civetweb_private_lua.h"
 
+/* Prototypes */
 static int
 lua_error_handler(lua_State *L);
 
@@ -652,7 +653,6 @@ run_lsp_kepler(struct mg_connection *conn,
 		/* Add additional headers */
 		send_no_cache_header(conn);
 		send_additional_header(conn);
-		send_cors_header(conn);
 
 		/* Add content type */
 		mg_response_header_add(conn, "Content-Type", "text/html; charset=utf-8", -1);
@@ -798,7 +798,7 @@ run_lsp_civetweb(struct mg_connection *conn,
 						/* Syntax error or OOM.
 						 * Error message is pushed on stack. */
 						lua_pcall(L, 1, 0, 0);
-						lua_cry(conn, lua_ok, L, "LSP", "call");
+						lua_cry(conn, lua_ok, L, "LSP", "execute");
 						lua_error_handler(L);
 						return 1;
 					} else {
@@ -806,7 +806,7 @@ run_lsp_civetweb(struct mg_connection *conn,
 						lua_ok = lua_pcall(L, 0, 0, 0);
 						if(lua_ok != LUA_OK)
 						{
-							lua_cry(conn, lua_ok, L, "LSP", "execute");
+							lua_cry(conn, lua_ok, L, "LSP", "call");
 							lua_error_handler(L);
 							return 1;
 						}
@@ -2824,7 +2824,7 @@ lua_error_handler(lua_State *L)
 			lua_call(L, 2, 0); /* call mg.write(traceback + \n) */
 			lua_pop(L, 2); /* pop mg and traceback */
 		} else {
-			lua_pop(L, 3); /* pop mg, traceback and write */
+			lua_pop(L, 3); /* pop mg, traceback and error message */
 		}
 
 	} else {

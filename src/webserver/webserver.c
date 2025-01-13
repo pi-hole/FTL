@@ -204,8 +204,9 @@ void FTL_mbed_debug(void *user_param, int level, const char *file, int line, con
 #define MAXPORTS 8
 static struct serverports
 {
-	bool is_secure;
-	bool is_redirect;
+	bool is_secure :1;
+	bool is_redirect :1;
+	bool is_optional :1;
 	unsigned char protocol; // 1 = IPv4, 2 = IPv4+IPv6, 3 = IPv6
 	in_port_t port;
 } server_ports[MAXPORTS] = { 0 };
@@ -250,6 +251,7 @@ static void get_server_ports(void)
 		server_ports[i].port = mgports[i].port;
 		server_ports[i].is_secure = mgports[i].is_ssl;
 		server_ports[i].is_redirect = mgports[i].is_redirect;
+		server_ports[i].is_optional = mgports[i].is_optional;
 		server_ports[i].protocol = mgports[i].protocol;
 
 		// Store (first) HTTPS port if not already set
@@ -259,10 +261,11 @@ static void get_server_ports(void)
 		// Print port information
 		if(i == 0)
 			log_info("Web server ports:");
-		log_info("  - %d (HTTP%s, IPv%s%s)",
+		log_info("  - %d (HTTP%s, IPv%s%s%s)",
 		         mgports[i].port, mgports[i].is_ssl ? "S" : "",
 		         mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"),
-		         mgports[i].is_redirect ? ", redirecting" : "");
+		         mgports[i].is_redirect ? ", redirecting" : "",
+		         mgports[i].is_optional ? ", optional" : "");
 
 	}
 }
