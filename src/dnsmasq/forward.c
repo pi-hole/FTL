@@ -385,12 +385,12 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       while (forward->blocking_query)
 	forward = forward->blocking_query;
 
+      /* Don't retry if we've already sent it via TCP. */
+      if (forward->flags & FREC_GONE_TO_TCP)
+	return;
+      
       if (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY))
 	{
-	  /* Don't retry if we've already sent it via TCP. */
-	  if (forward->flags & FREC_GONE_TO_TCP)
-	    return;
-
 	  /* log_id should match previous DNSSEC query. */
 	  daemon->log_display_id = forward->frec_src.log_id;
 	  
