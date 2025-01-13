@@ -59,7 +59,7 @@ src/dnsmasq/dnsmasq.c
 src/dnsmasq/dnsmasq.c
 	my_syslog(LOG_WARNING, _("warning: ignoring resolv-file flag because no-resolv is set"));
 src/dnsmasq/dnsmasq.c
-	my_syslog(LOG_WARNING, _("warning: no upstream servers configured"));
+	  my_syslog(LOG_WARNING, _("warning: no upstream servers configured"));
 src/dnsmasq/dnsmasq.c
     my_syslog(LOG_WARNING, netlink_warn);
 src/dnsmasq/dnsmasq.c
@@ -70,6 +70,8 @@ src/dnsmasq/dnsmasq.c
 	  my_syslog(MS_TFTP | LOG_WARNING, 
 		    _("restricting maximum simultaneous TFTP transfers to %d"), 
 		    daemon->tftp_max);
+src/dnsmasq/dnsmasq.c
+		      my_syslog(LOG_WARNING, _("TCP helper process %u died unexpectedly"), (unsigned int)p);
 src/dnsmasq/dnsmasq.c
 	my_syslog(LOG_WARNING, _("script process killed by signal %d"), ev.data);
 src/dnsmasq/dnsmasq.c
