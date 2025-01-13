@@ -884,10 +884,6 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 
   daemon->log_display_id = forward->frec_src.log_id;
     
-  /* We've had a reply already, which we're validating. Ignore this duplicate */
-  if (forward->blocking_query || (forward->flags & FREC_GONE_TO_TCP))
-    return;
-
   /* Find the original query that started it all.... */
   for (orig = forward; orig->dependent; orig = orig->dependent);
   
@@ -1216,18 +1212,20 @@ void reply_query(int fd, time_t now)
   if (daemon->ignore_addr && RCODE(header) == NOERROR &&
       check_for_ignored_address(header, n))
     return;
-  
-  if ((RCODE(header) == REFUSED || RCODE(header) == SERVFAIL) && forward->forwardall == 0)
-    /* for broken servers, attempt to send to another one. */
-    {
+
 #ifdef HAVE_DNSSEC
       /* The query MAY have got a good answer, and be awaiting
 	 the results of further queries, in which case
-	 The Stash contains something else and we don't need to retry anyway. */
+	 the stash contains something else and we don't need to retry anyway.
+	 We may also have already got a truncated reply, and be in the process
+	 of doing the query by TCP so can ignore further, probably truncated, UDP answers. */
       if (forward->blocking_query || (forward->flags & FREC_GONE_TO_TCP))
 	return;
 #endif
       
+  if ((RCODE(header) == REFUSED || RCODE(header) == SERVFAIL) && forward->forwardall == 0)
+    /* for broken servers, attempt to send to another one. */
+    {
       /* Get the saved query back. */
       blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
       
