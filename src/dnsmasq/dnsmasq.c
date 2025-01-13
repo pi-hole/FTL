@@ -1504,7 +1504,7 @@ static void async_event(int pipe, time_t now)
 {
   pid_t p;
   struct event_desc ev;
-  int i, check = 0;
+  int wstatus, i, check = 0;
   char *msg;
   
   /* NOTE: the memory used to return msg is leaked: use msgs in events only
@@ -1567,7 +1567,7 @@ static void async_event(int pipe, time_t now)
 		
       case EVENT_CHILD:
 	/* See Stevens 5.10 */
-	while ((p = waitpid(-1, NULL, WNOHANG)) != 0)
+	while ((p = waitpid(-1, &wstatus, WNOHANG)) != 0)
 	  if (p == -1)
 	    {
 	      if (errno != EINTR)
@@ -1578,6 +1578,20 @@ static void async_event(int pipe, time_t now)
 	      if (daemon->tcp_pids[i] == p)
 		{
 		  daemon->tcp_pids[i] = 0;
+
+		  if (!WIFEXITED(wstatus))
+		    {
+		      /* If a helper process dies, (eg with SIGSEV)
+			 log that and attempt to patch things up so that the 
+			 parent can continue to function. */
+		      my_syslog(LOG_WARNING, _("TCP helper process %u died unexpectedly"), (unsigned int)p);
+		      if (daemon->tcp_pipes[i] != -1)
+			{
+			  close(daemon->tcp_pipes[i]);
+			  daemon->tcp_pipes[i] = -1;
+			}
+		    }
+		  
 		  /* tcp_pipes == -1 && tcp_pids == 0 required to free slot */
 		  if (daemon->tcp_pipes[i] == -1)
 		    daemon->metrics[METRIC_TCP_CONNECTIONS]--;
@@ -2124,7 +2138,7 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
      Reset that here. */
   if ((flags = fcntl(confd, F_GETFL, 0)) != -1)
     while(retry_send(fcntl(confd, F_SETFL, flags & ~O_NONBLOCK)));
-  
+
   /************ Pi-hole modification ************/
   FTL_TCP_worker_created(confd);
   // Store interface this fork is handling exclusively
