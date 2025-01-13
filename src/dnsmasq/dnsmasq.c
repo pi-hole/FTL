@@ -1872,8 +1872,7 @@ static void check_dns_listeners(time_t now)
   struct listener *listener;
   struct randfd_list *rfl;
   int i;
-  int pipefd[2];
-
+  
   /* Note that handling events here can create or destroy fds and
      render the result of the last poll() call invalid. Once
      we find an fd that needs service, do it, then return to go around the
@@ -1957,7 +1956,7 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
   pid_t p;
   union mysockaddr tcp_addr;
   socklen_t tcp_len = sizeof(union mysockaddr);
-  unsigned char *buff;
+  unsigned char a = 0, *buff;
   struct server *s; 
   int flags, auth_dns;
   struct in_addr netmask;
@@ -2071,7 +2070,7 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
 	     is sent by the child after it has closed the
 	     netlink socket. */
 	  
-	  read_write(pipefd[0], buff, 1, RW_READ);
+	  read_write(pipefd[0], &a, 1, RW_READ);
 #endif
 	  
 
@@ -2112,8 +2111,6 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
     {
 #ifdef HAVE_LINUX_NETWORK
       /* See comment above re: netlink socket. */
-      unsigned char a = 0;
-      
       close(daemon->netlinkfd);
       read_write(pipefd[1], &a, 1, RW_WRITE);
 #endif		  
