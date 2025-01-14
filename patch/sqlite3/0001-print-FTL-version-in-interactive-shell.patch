@@ -11,7 +11,7 @@ index 6280ebf6..a5e82f70 100644
  
  #if !defined(_WIN32) && !defined(WIN32)
  # include <signal.h>
-@@ -25855,7 +25857,7 @@ static char *cmdline_option_value(int argc, char **argv, int i){
+@@ -32902,7 +32904,7 @@ static char *cmdline_option_value(int argc, char **argv, int i){
  #endif
  
  #if SQLITE_SHELL_IS_UTF8
@@ -20,11 +20,11 @@ index 6280ebf6..a5e82f70 100644
  #else
  int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
    char **argv;
-@@ -26377,6 +26379,7 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
+@@ -33467,6 +33469,7 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
        char *zHome;
        char *zHistory;
        int nHistory;
 +      print_FTL_version();
- #if CIO_WIN_WC_XLATE
- # define SHELL_CIO_CHAR_SET (stdout_is_console? " (UTF-16 console I/O)" : "")
- #else
+       sqlite3_fprintf(stdout,
+             "SQLite version %s %.19s\n" /*extra-version-info*/
+             "Enter \".help\" for usage hints.\n",
