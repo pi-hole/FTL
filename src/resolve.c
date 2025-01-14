@@ -953,7 +953,6 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			log_debug(DEBUG_RESOLVER, "Postponing resolution of new client %s (IPv6) for at least %.0f more seconds",
 			          getstr(ippos), now - client->firstSeen + DELAY_V6_RESOLUTION);
 
-			unlock_shm();
 			skipped++;
 			continue;
 		}
