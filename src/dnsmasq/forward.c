@@ -1774,15 +1774,27 @@ void receive_query(struct listener *listen, time_t now)
 				    &source_addr, auth_dns ? "auth" : "query", type, daemon->log_display_id, UDP);
       
 #ifdef HAVE_AUTH
-      /* find queries for zones we're authoritative for, and answer them directly */
+      /* Find queries for zones we're authoritative for, and answer them directly.
+	 The exception to this is DS queries for the zone route. They
+	 have to come from the parent zone. Since dnsmasq's auth server
+	 can't do DNSSEC, the zone will be unsigned, and anything using
+	 dnsmasq as a forwarder and doing validation will be expecting to
+	 see the proof of non-existence from the parent. */
       if (!auth_dns && !option_bool(OPT_LOCALISE))
 	for (zone = daemon->auth_zones; zone; zone = zone->next)
-	  if (in_zone(zone, daemon->namebuff, NULL))
-	    {
-	      auth_dns = 1;
-	      local_auth = 1;
-	      break;
-	    }
+	  {
+	    char *cut;
+	    
+	    if (in_zone(zone, daemon->namebuff, &cut))
+	      {
+		if (type != T_DS || cut)
+		  {
+		    auth_dns = 1;
+		    local_auth = 1;
+		  }
+		break;
+	      }
+	  }
 #endif
       
 #ifdef HAVE_LOOP
@@ -2462,15 +2474,27 @@ unsigned char *tcp_request(int confd, time_t now,
 					    &peer_addr, auth_dns ? "auth" : "query", qtype, daemon->log_display_id, TCP);
 
 #ifdef HAVE_AUTH
-	      /* find queries for zones we're authoritative for, and answer them directly */
+	      /* Find queries for zones we're authoritative for, and answer them directly.
+		 The exception to this is DS queries for the zone route. They
+		 have to come from the parent zone. Since dnsmasq's auth server
+		 can't do DNSSEC, the zone will be unsigned, and anything using
+		 dnsmasq as a forwarder and doing validation will be expecting to
+		 see the proof of non-existence from the parent. */
 	      if (!auth_dns && !option_bool(OPT_LOCALISE))
 		for (zone = daemon->auth_zones; zone; zone = zone->next)
-		  if (in_zone(zone, daemon->namebuff, NULL))
-		    {
-		      auth_dns = 1;
-		      local_auth = 1;
-		      break;
-		    }
+		  {
+		    char *cut;
+		    
+		    if (in_zone(zone, daemon->namebuff, &cut))
+		      {
+			if (qtype != T_DS || cut)
+			  {
+			    auth_dns = 1;
+			    local_auth = 1;
+			  }
+			break;
+		      }
+		  }
 #endif
 	      
 	      norebind = domain_no_rebind(daemon->namebuff);
