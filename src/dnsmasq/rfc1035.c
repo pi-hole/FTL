@@ -1594,8 +1594,6 @@ static unsigned long crec_ttl(struct crec *crecp, time_t now)
 
 static int cache_validated(const struct crec *crecp)
 {
-  /* return 0; */
-  
   return (option_bool(OPT_DNSSEC_VALID) && !(crecp->flags & F_DNSSECOK));
 }
 
@@ -2207,19 +2205,19 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
       
       if (!ans)
 	{
-	  if ((crecp = cache_find_by_name(NULL, name, now, F_RR | F_NXDOMAIN)) &&
-	      rd_bit && (!do_bit || cache_validated(crecp)))
+	  if ((crecp = cache_find_by_name(NULL, name, now, F_RR | F_NXDOMAIN)) && rd_bit)
 	    do
 	      {
 		int flags = crecp->flags;
 		unsigned short rrtype;
-		
+
 		if (flags & F_KEYTAG)
 		  rrtype = crecp->addr.rrblock.rrtype;
 		else
 		  rrtype = crecp->addr.rrdata.rrtype;
 		
-		if ((flags & F_NXDOMAIN) || rrtype == qtype)
+		if (((flags & F_NXDOMAIN) || rrtype == qtype) &&
+		    (!do_bit || cache_validated(crecp)))
 		  {
 		    char *rrdata = NULL;
 		    unsigned short rrlen = 0;
