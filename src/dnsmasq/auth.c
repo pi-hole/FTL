@@ -513,7 +513,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 		 nxdomain = 0;
 		 if ((crecp->flags & flag) && (local_query || filter_zone(zone, flag, &(crecp->addr))))
 		   {
-		     log_query(crecp->flags, name, &crecp->addr, record_source(crecp->uid), 0);
+		     log_query(crecp->flags & ~F_REVERSE, name, &crecp->addr, record_source(crecp->uid), 0);
 		     if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					     daemon->auth_ttl, NULL, qtype, C_IN, 
 					     qtype == T_A ? "4" : "6", &crecp->addr))
