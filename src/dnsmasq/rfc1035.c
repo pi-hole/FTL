@@ -1594,6 +1594,8 @@ static unsigned long crec_ttl(struct crec *crecp, time_t now)
 
 static int cache_validated(const struct crec *crecp)
 {
+  /* return 0; */
+  
   return (option_bool(OPT_DNSSEC_VALID) && !(crecp->flags & F_DNSSECOK));
 }
 
@@ -2280,14 +2282,15 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	}
       
       
-      if (qtype != T_ANY && !ans && rr_on_list(daemon->filter_rr, qtype))
+      if (qtype != T_ANY && !ans && rr_on_list(daemon->filter_rr, qtype) && !do_bit)
 	{
 	  /* We don't have a cached answer and when we get an answer from upstream we're going to
 	     filter it anyway. If we have a cached answer for the domain for another RRtype then
 	     that may be enough to tell us if the answer should be NODATA and save the round trip.
 	     Cached NXDOMAIN has already been handled, so here we look for any record for the domain,
 	     since its existence allows us to return a NODATA answer. Note that we never set the AD flag,
-	     since we didn't authenticate the record. */
+	     since we didn't authenticate the record; this doesn't work if we want auth data, so
+	     don't use this shortcut in that case. */
 	  
 	  if (cache_find_by_name(NULL, name, now, F_IPV4 | F_IPV6 | F_RR | F_CNAME))
 	    {
