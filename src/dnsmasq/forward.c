@@ -2122,12 +2122,14 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	    continue;
 	}
 
-      /* If the question section of the reply doesn't match the crc we sent, then
+      /* If the question section of the reply doesn't match the question we sent, then
 	 someone might be attempting to insert bogus values into the cache by 
-	 sending replies containing questions and bogus answers. 
+	 sending replies containing questions and bogus answers.
+	 We compare the query name in a case sensitive manner, so that
+	 DNS-0x20 encoding is effective.
 	 Try another server, or give up */
       p = (unsigned char *)(header+1);
-      if (extract_name(header, rsize, &p, daemon->namebuff, 0, 4) != 1)
+      if (extract_name(header, rsize, &p, daemon->namebuff, -1, 4) != 1)
 	continue;
       GETSHORT(rtype, p); 
       GETSHORT(rclass, p);
@@ -3204,8 +3206,9 @@ static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int
       {
 	unsigned char *p = (unsigned char *)(header+1);
 	int hclass, hrrtype;
-		   
-	if (extract_name(header, f->stash_len, &p, target, 0, 4) != 1)
+
+	/* Case sensitive compare for DNS-0x20 encoding. */
+	if (extract_name(header, f->stash_len, &p, target, -1, 4) != 1)
 	  continue;
 		   
 	GETSHORT(hrrtype, p);

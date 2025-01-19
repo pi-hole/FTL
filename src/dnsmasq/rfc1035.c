@@ -17,14 +17,24 @@
 #include "dnsmasq.h"
 #include "dnsmasq_interface.h"
 
+/* isExtract == 1 -> extract name
+   isExtract == 0 -> compare name, case insensitive
+   isExtract == -1 -> compare name, case sensitive
+
+   return = 0 -> error
+   return = 1 -> extract OK, compare OK
+   return = 2 -> extract OK, compare failed.
+*/
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
 		 char *name, int isExtract, int extrabytes)
 {
   unsigned char *cp = (unsigned char *)name, *p = *pp, *p1 = NULL;
   unsigned int j, l, namelen = 0, hops = 0;
-  int retvalue = 1;
-  
-  if (isExtract)
+  int retvalue = 1, case_insens = 1;
+
+  if (isExtract == -1)
+    isExtract = case_insens = 0;
+  else if (isExtract)
     *cp = 0;
 
   while (1)
@@ -108,13 +118,13 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 		else 
 		  {
 		    cp++;
-		    if (c1 >= 'A' && c1 <= 'Z')
+		    if (case_insens && c1 >= 'A' && c1 <= 'Z')
 		      c1 += 'a' - 'A';
 
 		    if (c1 == NAME_ESCAPE)
 		      c1 = (*cp++)-1;
 		    
-		    if (c2 >= 'A' && c2 <= 'Z')
+		    if (case_insens && c2 >= 'A' && c2 <= 'Z')
 		      c2 += 'a' - 'A';
 		     
 		    if (c1 != c2)
