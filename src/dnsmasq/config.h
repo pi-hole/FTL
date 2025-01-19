@@ -375,6 +375,11 @@ HAVE_SOCKADDR_SA_LEN
 #define HAVE_INOTIFY
 #endif
 
+/* This never compiles code, it's only used by the makefile to fingerprint builds. */
+#ifdef DNSMASQ_COMPILE_FLAGS
+static char *compile_flags = DNSMASQ_COMPILE_FLAGS;
+#endif
+
 /* Define a string indicating which options are in use.
    DNSMASQ_COMPILE_OPTS is only defined in dnsmasq.c */
 

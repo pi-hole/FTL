@@ -1592,7 +1592,7 @@ static unsigned long crec_ttl(struct crec *crecp, time_t now)
     return daemon->max_ttl;
 }
 
-static int cache_validated(const struct crec *crecp)
+static int cache_not_validated(const struct crec *crecp)
 {
   return (option_bool(OPT_DNSSEC_VALID) && !(crecp->flags & F_DNSSECOK));
 }
@@ -1693,7 +1693,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	
 	/* If the client asked for DNSSEC  don't use cached data. */
 	if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) ||
-	    (rd_bit && (!do_bit || cache_validated(crecp))))
+	    (rd_bit && (!do_bit || cache_not_validated(crecp))))
 	  {
 	    if (crecp->flags & F_CONFIG || qtype == T_CNAME)
 	      ans = 1;
@@ -1852,7 +1852,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		 the zone is unsigned, which implies that we're doing
 		 validation. */
 	      if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) ||
-		  (rd_bit && (!do_bit || cache_validated(crecp)) ))
+		  (rd_bit && (!do_bit || cache_not_validated(crecp)) ))
 		{
 		  do 
 		    { 
@@ -2008,7 +2008,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	      
 	      /* If the client asked for DNSSEC  don't use cached data. */
 	      if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) ||
-		  (rd_bit && (!do_bit || cache_validated(crecp)) ))
+		  (rd_bit && (!do_bit || cache_not_validated(crecp)) ))
 		do
 		  { 
 		    int stale_flag = 0;
@@ -2205,19 +2205,19 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
       
       if (!ans)
 	{
-	  if ((crecp = cache_find_by_name(NULL, name, now, F_RR | F_NXDOMAIN)) &&
-	      rd_bit && (!do_bit || cache_validated(crecp)))
+	  if ((crecp = cache_find_by_name(NULL, name, now, F_RR | F_NXDOMAIN)) && rd_bit)
 	    do
 	      {
 		int flags = crecp->flags;
 		unsigned short rrtype;
-		
+
 		if (flags & F_KEYTAG)
 		  rrtype = crecp->addr.rrblock.rrtype;
 		else
 		  rrtype = crecp->addr.rrdata.rrtype;
 		
-		if ((flags & F_NXDOMAIN) || rrtype == qtype)
+		if (((flags & F_NXDOMAIN) || rrtype == qtype) &&
+		    (!do_bit || cache_not_validated(crecp)))
 		  {
 		    char *rrdata = NULL;
 		    unsigned short rrlen = 0;
@@ -2280,14 +2280,15 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	}
       
       
-      if (qtype != T_ANY && !ans && rr_on_list(daemon->filter_rr, qtype))
+      if (qtype != T_ANY && !ans && rr_on_list(daemon->filter_rr, qtype) && !do_bit)
 	{
 	  /* We don't have a cached answer and when we get an answer from upstream we're going to
 	     filter it anyway. If we have a cached answer for the domain for another RRtype then
 	     that may be enough to tell us if the answer should be NODATA and save the round trip.
 	     Cached NXDOMAIN has already been handled, so here we look for any record for the domain,
 	     since its existence allows us to return a NODATA answer. Note that we never set the AD flag,
-	     since we didn't authenticate the record. */
+	     since we didn't authenticate the record; this doesn't work if we want auth data, so
+	     don't use this shortcut in that case. */
 	  
 	  if (cache_find_by_name(NULL, name, now, F_IPV4 | F_IPV6 | F_RR | F_CNAME))
 	    {
