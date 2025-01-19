@@ -275,6 +275,8 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
   /* new query */
   if (!forward)
     {
+      unsigned char *p;
+
       if (OPCODE(header) != QUERY)
 	{
 	  flags = F_RCODE;
@@ -334,7 +336,12 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       forward->frec_src.orig_id = ntohs(header->id);
       forward->new_id = get_id();
       header->id = ntohs(forward->new_id);
-            
+      
+      forward->encode_bitmap = rand32();
+      p = (unsigned char *)(header+1);
+      if (!extract_name(header, plen, &p, NULL, EXTR_NAME_FLIP, forward->encode_bitmap))
+	goto reply;
+      
       /* Keep copy of query for retries and move to TCP */
       if (!(forward->stash = blockdata_alloc((char *)header, plen)))
 	{
@@ -1030,7 +1037,8 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  new->flags &= ~(FREC_DNSKEY_QUERY | FREC_DS_QUERY);
 		  new->flags |= flags;
 		  new->forwardall = 0;
-		  
+		  new->encode_bitmap = 0;
+
 		  forward->next_dependent = NULL;
 		  new->dependent = forward; /* to find query awaiting new one. */
 		  
@@ -1147,7 +1155,7 @@ void reply_query(int fd, time_t now)
     return;
 
   p = (unsigned char *)(header+1);
-  if (!extract_name(header, n, &p, daemon->namebuff, 1, 4))
+  if (!extract_name(header, n, &p, daemon->namebuff, EXTR_NAME_EXTRACT, 4))
     return; /* bad packet */
   GETSHORT(rrtype, p); 
   GETSHORT(class, p);
@@ -1259,7 +1267,11 @@ void reply_query(int fd, time_t now)
   /* denominator controls how many queries we average over. */
   server->query_latency = server->mma_latency/128;
   
-  
+  /* Flip the bits back in the query name. */
+  p = (unsigned char *)(header+1);
+  if (!extract_name(header, n, &p, NULL, EXTR_NAME_FLIP, forward->encode_bitmap))
+    return;
+      
 #ifdef HAVE_DNSSEC
   if (option_bool(OPT_DNSSEC_VALID))
     {
@@ -2007,7 +2019,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 
   /* Save the query to make sure we get the answer we expect. */
   p = (unsigned char *)(header+1);
-  if (!extract_name(header, qsize, &p, daemon->namebuff, 1, 4))
+  if (!extract_name(header, qsize, &p, daemon->namebuff, EXTR_NAME_EXTRACT, 4))
     return 0;
   GETSHORT(type, p); 
   GETSHORT(class, p);
@@ -2129,7 +2141,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	 DNS-0x20 encoding is effective.
 	 Try another server, or give up */
       p = (unsigned char *)(header+1);
-      if (extract_name(header, rsize, &p, daemon->namebuff, -1, 4) != 1)
+      if (extract_name(header, rsize, &p, daemon->namebuff, EXTR_NAME_NOCASE, 4) != 1)
 	continue;
       GETSHORT(rtype, p); 
       GETSHORT(rclass, p);
@@ -3208,7 +3220,7 @@ static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int
 	int hclass, hrrtype;
 
 	/* Case sensitive compare for DNS-0x20 encoding. */
-	if (extract_name(header, f->stash_len, &p, target, -1, 4) != 1)
+	if (extract_name(header, f->stash_len, &p, target, EXTR_NAME_NOCASE, 4) != 1)
 	  continue;
 		   
 	GETSHORT(hrrtype, p);

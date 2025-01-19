@@ -137,7 +137,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
       nameoffset = p - (unsigned char *)header;
 
       /* now extract name as .-concatenated string into name */
-      if (!extract_name(header, qlen, &p, name, 1, 4))
+      if (!extract_name(header, qlen, &p, name, EXTR_NAME_EXTRACT, 4))
 	return 0; /* bad packet */
  
       GETSHORT(qtype, p); 

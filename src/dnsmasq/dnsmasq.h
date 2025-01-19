@@ -804,6 +804,7 @@ struct frec {
   int forwardall, flags;
   time_t time;
   u32 forward_timestamp;
+  unsigned int encode_bitmap;
   int forward_delay;
   struct blockdata *stash; /* saved query or saved reply, whilst we validate */
   size_t stash_len;
@@ -1404,7 +1405,7 @@ int is_rev_synth(int flag, union all_addr *addr, char *name);
 /* rfc1035.c */
 int do_doctor(struct dns_header *header, size_t qlen, char *namebuff);
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
-                 char *name, int isExtract, int extrabytes);
+                 char *name, int func, unsigned int parm);
 unsigned char *skip_name(unsigned char *ansp, struct dns_header *header, size_t plen, int extrabytes);
 unsigned char *skip_questions(struct dns_header *header, size_t plen);
 unsigned char *skip_section(unsigned char *ansp, int count, struct dns_header *header, size_t plen);
@@ -1431,6 +1432,11 @@ int add_resource_record(struct dns_header *header, char *limit, int *truncp,
 			int *offset, unsigned short type, unsigned short class, char *format, ...);
 int in_arpa_name_2_addr(char *namein, union all_addr *addrp);
 int private_net(struct in_addr addr, int ban_localhost);
+/* extract_name ops */
+#define EXTR_NAME_EXTRACT   1
+#define EXTR_NAME_COMPARE   2
+#define EXTR_NAME_NOCASE    3
+#define EXTR_NAME_FLIP      4
 
 /* auth.c */
 #ifdef HAVE_AUTH
