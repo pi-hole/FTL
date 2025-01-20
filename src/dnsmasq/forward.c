@@ -2137,8 +2137,6 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
       /* If the question section of the reply doesn't match the question we sent, then
 	 someone might be attempting to insert bogus values into the cache by 
 	 sending replies containing questions and bogus answers.
-	 We compare the query name in a case sensitive manner, so that
-	 DNS-0x20 encoding is effective.
 	 Try another server, or give up */
       p = (unsigned char *)(header+1);
       if (extract_name(header, rsize, &p, daemon->namebuff, EXTR_NAME_NOCASE, 4) != 1)
