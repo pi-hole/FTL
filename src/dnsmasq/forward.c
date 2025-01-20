@@ -102,9 +102,10 @@ int send_from(int fd, int nowild, char *packet, size_t len,
       /* If interface is still in DAD, EINVAL results - ignore that. */
       if (errno != EINVAL)
 	{
+	  const int errnum = errno;
 	  my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
 	  /********** Pi-hole modification **********/
-	  FTL_connection_error("failed to send UDP reply", to);
+	  FTL_connection_error("failed to send UDP reply", to, errnum);
 	  /******************************************/
 	}
 #endif
@@ -516,7 +517,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	    /**** Pi-hole modification ****/
 	    else
 	    {
-	      FTL_connection_error("failed to send UDP request", &srv->addr);
+	      FTL_connection_error("failed to send UDP request", &srv->addr, errno);
 	    }
 	    /******************************/
 	}
@@ -2081,7 +2082,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	    fatal = 1;
 	  /**** Pi-hole modification ****/
 	  if (errno != 0)
-	    FTL_connection_error("failed to send TCP(fast-open) packet", &serv->addr);
+	    FTL_connection_error("failed to send TCP(fast-open) packet", &serv->addr, errno);
 	  /******************************/
 #endif
 	  
@@ -2090,7 +2091,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  if (fatal || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
 	    {
 	      /**** Pi-hole modification ****/
-	      FTL_connection_error("failed to send TCP(connect) packet", &serv->addr);
+	      FTL_connection_error("failed to send TCP(connect) packet", &serv->addr, errno);
 	      /******************************/
 	      close(serv->tcpfd);
 	      serv->tcpfd = -1;
@@ -2107,10 +2108,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  !read_write(serv->tcpfd, (unsigned char *)length, sizeof (*length), RW_READ_ONCE) ||
 	  !read_write(serv->tcpfd, payload, (rsize = ntohs(*length)), RW_READ_ONCE))
 	{
-	  /**** Pi-hole modification ****/
-	  FTL_connection_error("failed to send TCP(read_write) packet", &serv->addr);
-	  /******************************/
-
+	  const int errnum = errno;
 	  close(serv->tcpfd);
 	  serv->tcpfd = -1;
 	  /* We get data then EOF, reopen connection to same server,
@@ -2119,7 +2117,12 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  if (serv->flags & SERV_GOT_TCP)
 	    goto retry;
 	  else
+	  /**** Pi-hole modification ****/
+	  {
+	    FTL_connection_error("failed to send TCP(read_write) packet", &serv->addr, errnum);
 	    continue;
+	  }
+	  /******************************/
 	}
 
       /* If the question section of the reply doesn't match the crc we sent, then
