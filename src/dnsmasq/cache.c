@@ -1886,15 +1886,31 @@ int cache_make_stat(struct txt_record *t)
 #endif
 
 /* There can be names in the cache containing control chars, don't 
-   mess up logging or open security holes. */
+   mess up logging or open security holes. Also convert to all-LC
+   so that 0x20-encoding doesn't make logs look like ransom notes
+   made out of letters cut from a newspaper.
+   Overwrites daemon->workspacename */
 static char *sanitise(char *name)
 {
-  unsigned char *r;
+  unsigned char *r = (unsigned char *)name;
+  
   if (name)
-    for (r = (unsigned char *)name; *r; r++)
-      if (!isprint((int)*r))
-	return "<name unprintable>";
-
+    {
+      char *d = name = daemon->workspacename;
+      
+      for (; *r; r++, d++)
+	if (!isprint((int)*r))
+	  return "<name unprintable>";
+	else
+	  {
+	    unsigned char c = *r;
+	    
+	    *d = (char)((c >= 'A' && c <= 'Z') ? c + 'a' - 'A' : c);
+	  }
+      
+      *d = 0;
+    }
+  
   return name;
 }
 
