@@ -813,7 +813,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		const char *types = querystr(arg, qtype);
 		log_debug(DEBUG_QUERIES, "**** new %sIPv%d %s query \"%s\" from %s/%s#%d (ID %i, FTL %i, %s:%i)",
 		          proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
-		          family == AF_INET ? 4 : 6, types, domainString, interface,
+		          family == AF_INET ? 4 : 6, types, name, interface,
 		          internal_query ? "<internal>" : clientIP, clientPort,
 		          id, queryID, short_path(file), line);
 	}
