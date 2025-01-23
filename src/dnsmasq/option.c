@@ -4046,10 +4046,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		      }
 
 		    new_addr = opt_malloc(sizeof(struct addrlist));
-		    new_addr->next = new->addr6;
 		    new_addr->flags = 0;
 		    new_addr->addr.addr6 = in6;
-		    new->addr6 = new_addr;
 		    
 		    if (pref)
 		      {
@@ -4060,7 +4058,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			    ((((u64)1<<(128-new_addr->prefixlen))-1) & addrpart) != 0)
 			  {
 			    dhcp_config_free(new);
-			    ret_err(_("bad IPv6 prefix"));
+			    ret_err_free(_("bad IPv6 prefix"), new_addr);
 			  }
 			
 			new_addr->flags |= ADDRLIST_PREFIX;
@@ -4074,6 +4072,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		    if (i == 8)
 		      new_addr->flags |= ADDRLIST_WILDCARD;
 		    
+		    new_addr->next = new->addr6;
+		    new->addr6 = new_addr;
 		    new->flags |= CONFIG_ADDR6;
 		  }
 #endif
