@@ -1122,7 +1122,7 @@ void DB_read_queries(void)
 		}
 
 		const int type = sqlite3_column_int(stmt, 2);
-		const bool mapped_type = type >= TYPE_A && type < TYPE_MAX;
+		const bool mapped_type = type >= TYPE_NONE && type < TYPE_MAX;
 		const bool offset_type = type > 100 && type < (100 + UINT16_MAX);
 		if(!mapped_type && !offset_type)
 		{

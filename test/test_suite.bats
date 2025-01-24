@@ -1524,6 +1524,56 @@
   [[ "${lines[0]}" == "1.1.1.1" ]]
 }
 
+@test "Zone update (non-query) is rejected with NOTIMP (UDP)" {
+  # Get number of lines in the log before the test
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # Run test command
+  run bash -c "python3 test/zone_update.py udp"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "UDP response: NOTIMP" ]]
+  [[ "${lines[1]}" == "" ]]
+
+  # Get number of lines in the log after the test
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # Extract relevant log lines
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
+
+  # Check for expected log lines
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"new UDP IPv4 non-query[type=0] \"opcode\" from lo/127.0.0.1"* ]]
+  [[ "${lines[@]}" == *"**** got cache reply: opcode is (null) "* ]]
+}
+
+@test "Zone update (non-query) is rejected with NOTIMP (TCP)" {
+  # Get number of lines in the log before the test
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # Run test command
+  run bash -c "python3 test/zone_update.py tcp"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "TCP response: NOTIMP" ]]
+  [[ "${lines[1]}" == "" ]]
+
+  # Get number of lines in the log after the test
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # Extract relevant log lines
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
+
+  # Check for expected log lines
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"new TCP IPv4 non-query[type=0] \"opcode\" from lo/127.0.0.1"* ]]
+  [[ "${lines[@]}" == *"**** got cache reply: opcode is (null) "* ]]
+}
+
+@test "Mixed-case DNS queries are returned in the same case" {
+  run bash -c "dig AAAA AaaA.fTL @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"AaaA.fTL."*"IN"*"AAAA"*"fe80::1c01"* ]]
+}
+
 @test "Custom DNS records: International domains are converted to IDN form" {
   # äste.com ---> xn--ste-pla.com
   run bash -c "dig A xn--ste-pla.com +short @127.0.0.1"

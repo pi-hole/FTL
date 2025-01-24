@@ -690,6 +690,8 @@ const char *get_query_type_str(const enum query_type type, const queriesData *qu
 {
 	switch (type)
 	{
+		case TYPE_NONE:
+			return "NONE";
 		case TYPE_A:
 			return "A";
 		case TYPE_AAAA:
