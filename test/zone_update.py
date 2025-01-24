@@ -28,5 +28,5 @@ elif sys.argv[1] == 'tcp':
 	response = dns.query.tcp(update, '127.0.0.1')
 	print("TCP response: " + dns.rcode.to_text(response.rcode()))
 else:
-	print("Invalid agument, use 'udp' or 'tcp'")
+	print("Invalid argument, use 'udp' or 'tcp'")
 	sys.exit(1)
