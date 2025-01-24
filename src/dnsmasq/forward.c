@@ -1774,7 +1774,11 @@ void receive_query(struct listener *listen, time_t now)
   //******************************************************************//
 
   if (OPCODE(header) != QUERY)
-    log_query_mysockaddr(F_QUERY | F_FORWARD, "opcode", &source_addr, "non-query", 0);
+  {
+      log_query_mysockaddr(F_QUERY | F_FORWARD, "opcode", &source_addr, "non-query", 0);
+      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD , "opcode",
+				    &source_addr, "non-query", 0, daemon->log_display_id, UDP);
+  }
   else if (extract_request(header, (size_t)n, daemon->namebuff, &type))
     {
 #ifdef HAVE_AUTH
@@ -2467,6 +2471,8 @@ unsigned char *tcp_request(int confd, time_t now,
 	      log_query_mysockaddr(F_QUERY | F_FORWARD, "opcode", &peer_addr, "non-query", 0);
 	      gotname = 0;
 	      flags = F_RCODE;
+	      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD , "opcode",
+					    &peer_addr, "non-query", 0, daemon->log_display_id, TCP);
 	    }
 	  else if (!(gotname = extract_request(header, (unsigned int)size, daemon->namebuff, &qtype)))
 	    ede = EDE_INVALID_DATA;

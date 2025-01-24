@@ -77,6 +77,7 @@ static void check_pihole_PTR(char *domain);
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line);
 static char *get_ptrname(const struct in_addr *addr);
 static const char *check_dnsmasq_name(const char *name);
+static void get_rcode(const unsigned short rcode, const char **rcodestr, enum reply_type *reply);
 
 // Static blocking metadata
 static bool aabit = false, adbit = false, rabit = false;
@@ -601,6 +602,14 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	enum query_type querytype;
 	switch(qtype)
 	{
+		case 0:
+			// Non-query, e.g., zone update
+			// dnsmasq does not support such non-queries. RFC5625
+			// does not specify how a resolver should behave when it
+			// does not support them. dnsmasq decided to reply with
+			// a NOTIMP reply to such non-queries
+			querytype = TYPE_NONE;
+			break;
 		case T_A:
 			querytype = TYPE_A;
 			break;
@@ -656,7 +665,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
-	if(is_pihole_domain(name))
+	if(querytype != TYPE_NONE && is_pihole_domain(name))
 	{
 		if(querytype == TYPE_A || querytype == TYPE_AAAA || querytype == TYPE_ANY)
 		{
@@ -811,9 +820,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(config.debug.queries.v.b)
 	{
 		const char *types = querystr(arg, qtype);
-		log_debug(DEBUG_QUERIES, "**** new %sIPv%d %s query \"%s\" from %s/%s#%d (ID %i, FTL %i, %s:%i)",
-		          proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
-		          family == AF_INET ? 4 : 6, types, name, interface,
+		log_debug(DEBUG_QUERIES, "**** new %sIPv%d %s%s \"%s\" from %s/%s#%d (ID %i, FTL %i, %s:%i)",
+		          proto == TCP ? "TCP " : proto == UDP ? "UDP " : "", family == AF_INET ? 4 : 6,
+		          types, querytype == TYPE_NONE ? "" : " query", name, interface,
 		          internal_query ? "<internal>" : clientIP, clientPort,
 		          id, queryID, short_path(file), line);
 	}
@@ -827,10 +836,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	{
 		// Don't process this query further here, we already counted it
 		if(config.debug.queries.v.b)
-		{
-			const char *types = querystr(arg, qtype);
-			log_debug(DEBUG_QUERIES, "Skipping new query: %s (%i)", types, id);
-		}
+			log_debug(DEBUG_QUERIES, "Skipping new query (%i)", id);
+
 		free(domainString);
 		unlock_shm();
 		return false;
@@ -979,7 +986,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	bool blockDomain = false;
 	// Check if this should be blocked only for active queries
 	// (skipped for internally generated ones, e.g., DNSSEC)
-	if(!internal_query)
+	if(!internal_query && querytype != TYPE_NONE)
 		blockDomain = FTL_check_blocking(queryID, domainID, clientID);
 
 	// Free allocated memory
@@ -2137,9 +2144,9 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		return;
 	}
 
-	// Check if this reply came from our local cache
+	// Check if this reply came from our local cache (type == 0 is non-query but has F_UPSTREAM)
 	bool cached = false;
-	if(!(flags & F_UPSTREAM))
+	if(!(flags & F_UPSTREAM) || type == 0)
 	{
 		cached = true;
 		if((flags & F_HOSTS) || // hostname.list, /etc/hosts and others
@@ -2225,13 +2232,23 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		}
 		else
 		{
-			char ip[ADDRSTRLEN+1] = { 0 };
+			char ip[ADDRSTRLEN + 1] = { 0 };
 			in_port_t port = 0;
 			mysockaddr_extract_ip_port(&last_server, ip, &port);
 			// Log server which replied to our request
 			log_debug(DEBUG_QUERIES, "**** got %s%s reply from %s#%d: %s is %s (ID %i, %s:%i)",
 			          stale ? "stale ": "", cached ? "cache" : "upstream",
 			          ip, port, dispname, answer, id, file, line);
+		}
+
+		if(flags & F_RCODE && addr != NULL)
+		{
+			// Translate dnsmasq's rcode into something we can use
+			const char *rcodestr = NULL;
+			enum reply_type reply = REPLY_UNKNOWN;
+			get_rcode(addr->log.rcode, &rcodestr, &reply);
+			// Log RCODE if available
+			log_debug(DEBUG_QUERIES, "     RCODE: %s (%d)", rcodestr, addr->log.rcode);
 		}
 	}
 
@@ -2343,9 +2360,10 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Mark query for updating in the database
 		query->flags.database.changed = true;
 	}
-	else if((flags & (F_FORWARD | F_UPSTREAM)) && isExactMatch)
+	else if((flags & (F_FORWARD | F_UPSTREAM)) && isExactMatch && type != 0)
 	{
-		// Answered from upstream server
+		// type != 0: Answered from upstream server
+		// type == 0: Answered from cache (probably a non-query reply)
 		if(query->upstreamID < 0)
 		{
 			// This should not happen, but if it does, we skip this
@@ -2436,6 +2454,21 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 		// Save reply type and update individual reply counters
 		query_set_reply(pflags, 0, addr, query, now);
+
+		// Hereby, this query is now fully determined
+		query->flags.complete = true;
+
+		// Mark query for updating in the database
+		query->flags.database.changed = true;
+	}
+	else if(flags & F_UPSTREAM && flags & F_RCODE)
+	{
+		// Non-query reply synthesized locally
+		query_set_reply(flags, 0, addr, query, now);
+
+		// Set status of this query
+		if(!is_blocked(query->status))
+			query_set_status(query, QUERY_CACHE);
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
@@ -2673,6 +2706,30 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 	unlock_shm();
 }
 
+static void get_rcode(const unsigned short rcode, const char **rcodestr, enum reply_type *reply)
+{
+	// Translate dnsmasq's rcode into something we can use
+	switch(rcode)
+	{
+		case SERVFAIL:
+			*rcodestr = "SERVFAIL";
+			*reply = REPLY_SERVFAIL;
+			break;
+		case REFUSED:
+			*rcodestr = "REFUSED";
+			*reply = REPLY_REFUSED;
+			break;
+		case NOTIMP:
+			*rcodestr = "NOT IMPLEMENTED";
+			*reply = REPLY_NOTIMP;
+			break;
+		default:
+			*rcodestr = "UNKNOWN";
+			*reply = REPLY_OTHER;
+			break;
+	}
+}
+
 static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char *file, const int line)
 {
 	// Process local and upstream errors
@@ -2712,26 +2769,8 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 
 	// Translate dnsmasq's rcode into something we can use
 	const char *rcodestr = NULL;
-	enum reply_type reply;
-	switch(addr->log.rcode)
-	{
-		case SERVFAIL:
-			rcodestr = "SERVFAIL";
-			reply = REPLY_SERVFAIL;
-			break;
-		case REFUSED:
-			rcodestr = "REFUSED";
-			reply = REPLY_REFUSED;
-			break;
-		case NOTIMP:
-			rcodestr = "NOT IMPLEMENTED";
-			reply = REPLY_NOTIMP;
-			break;
-		default:
-			rcodestr = "UNKNOWN";
-			reply = REPLY_OTHER;
-			break;
-	}
+	enum reply_type reply = REPLY_UNKNOWN;
+	get_rcode(addr->log.rcode, &rcodestr, &reply);
 
 	// Get EDNS data (if available)
 	ednsData *edns = getEDNS();
@@ -3054,6 +3093,16 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 		{
 			// SERVFAIL query
 			new_reply = REPLY_SERVFAIL;
+		}
+		else if(addr != NULL && addr->log.rcode == NOTIMP)
+		{
+			// NOTIMP query
+			new_reply = REPLY_NOTIMP;
+		}
+		else
+		{
+			// Other RCODE
+			new_reply = REPLY_OTHER;
 		}
 	}
 	else if(flags & F_KEYTAG && flags & F_NOEXTRA)
