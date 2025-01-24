@@ -1568,6 +1568,12 @@
   [[ "${lines[@]}" == *"**** got cache reply: opcode is (null) "* ]]
 }
 
+@test "Mixed-case DNS queries are returned in the same case" {
+  run bash -c "dig AAAA AaaA.fTL @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"AaaA.fTL."*"IN"*"AAAA"*"fe80::1c01"* ]]
+}
+
 @test "Custom DNS records: International domains are converted to IDN form" {
   # äste.com ---> xn--ste-pla.com
   run bash -c "dig A xn--ste-pla.com +short @127.0.0.1"
