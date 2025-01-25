@@ -343,6 +343,7 @@ struct config {
 		struct conf_item extra;
 		struct conf_item reserved;
 		struct conf_item ntp;
+		struct conf_item netlink;
 		// all must be the last item in this struct
 		struct conf_item all;
 	} debug;

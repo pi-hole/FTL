@@ -12,6 +12,8 @@
 #include "netlink.h"
 #include "netlink_consts.h"
 #include "log.h"
+// struct config
+#include "config/config.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -26,7 +28,7 @@ static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 	// Assemble the message according to the netlink protocol
 	struct nlmsghdr *nl;
 	nl = (struct nlmsghdr*)(void*)buf;
-	nl->nlmsg_flags = NLM_F_REQUEST | NLM_F_ROOT;
+	nl->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
 
 	if(nlmsg_type == RTM_GETADDR)
 	{
@@ -279,6 +281,18 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 	if(cJSON_GetObjectItem(route, "dst") == NULL)
 		cJSON_AddStringToObject(route, "dst", "default");
 
+	// Debug output
+	if(config.debug.netlink.v.b)
+	{
+		const cJSON* dst = cJSON_GetObjectItem(route, "dst");
+		const cJSON *via = cJSON_GetObjectItem(route, "via");
+
+		log_debug(DEBUG_NETLINK, "Parsing IPv%d route: table %u is %s via %s",
+		          rt->rtm_family == AF_INET ? 4 : 6,
+		          rt->rtm_table, dst ? dst->valuestring : "N/A",
+		          via ? via->valuestring : "direct");
+	}
+
 	cJSON_AddItemToArray(routes, route);
 	return 0;
 }
@@ -472,12 +486,22 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 	if(!ifname[0])
 		if_indextoname(ifa->ifa_index, ifname);
 
-	log_info("Parsing address %u of %s", ifa->ifa_index, ifname);
+	// Debug output
+	if(config.debug.netlink.v.b)
+	{
+		const cJSON *address = cJSON_GetObjectItem(addr, "address");
+		const cJSON *prefixlen = cJSON_GetObjectItem(addr, "prefixlen");
+		log_debug(DEBUG_NETLINK, "Parsing %s address of iface %s (%u): %s/%d",
+		          family_name(ifa->ifa_family), ifname, ifa->ifa_index,
+		          address ? address->valuestring : "N/A",
+		          prefixlen ? prefixlen->valueint : -1);
+	}
 
 	// Return early if the interface is not in the list of known interfaces
 	cJSON *ifobj = cJSON_GetObjectItem(links, ifname);
 	if(ifobj == NULL)
 	{
+		log_debug(DEBUG_NETLINK, "Interface %s undefined, skipping", ifname);
 		cJSON_Delete(addr);
 		return 0;
 	}
@@ -501,7 +525,6 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 	// Add ifname at the top of the JSON object
 	char ifname[IF_NAMESIZE] = { 0 };
 	if_indextoname(ifi->ifi_index, ifname);
-	log_info("Parsing link %d -> %s", ifi->ifi_index, ifname);
 	cJSON_AddStringToObject(link, "name", ifname);
 
 	// Add interface ID and family if detailed
@@ -1061,6 +1084,9 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 	else if(jstats)
 		cJSON_AddItemToObject(link, "stats", jstats);
 
+	log_debug(DEBUG_NETLINK, "Parsing %s link %d -> %s",
+	          family_name(ifi->ifi_family), ifi->ifi_index, ifname);
+
 	// Add the link to the object
 	cJSON_AddItemToObject(links, ifname, link);
 
@@ -1072,41 +1098,49 @@ static uint32_t parse_nl_msg(void *buf, size_t len, cJSON *json, const bool deta
 	struct nlmsghdr *nl = NULL;
 	for_each_nlmsg(nl, buf, len)
 	{
+		log_debug(DEBUG_NETLINK, "Parsing Netlink message (type %u, len %u/%zu, flags 0x%x, sqe %u)",
+		          nl->nlmsg_type, nl->nlmsg_len, len, nl->nlmsg_flags, nl->nlmsg_seq);
+
 		if (nl->nlmsg_type == NLMSG_ERROR)
 		{
-			log_info("error");
-			return -1;
+			// Evaluate the error (negative errno or 0 for acknowledgements)
+			const struct nlmsgerr *msgerr = (struct nlmsgerr*)NLMSG_DATA(nl);
+			log_err("netlink error: %s (%d)", strerror(-msgerr->error), msgerr->error);
+
+			// Check the type of the contained nlmsg
+			log_err("message that caused the error: type %u, len %u, flags 0x%x, seq %u",
+			        msgerr->msg.nlmsg_type, msgerr->msg.nlmsg_len,
+			        msgerr->msg.nlmsg_flags, msgerr->msg.nlmsg_seq);
+			break;
 		}
 		else if (nl->nlmsg_type == RTM_NEWROUTE)
 		{
-			struct rtmsg *rt;
-			rt = (struct rtmsg*)NLMSG_DATA(nl);
-			log_info("parse route");
+			struct rtmsg *rt = (struct rtmsg*)NLMSG_DATA(nl);
+			log_debug(DEBUG_NETLINK, "parsing route");
 			nlparsemsg_route(rt, RTM_RTA(rt), RTM_PAYLOAD(nl), json, detailed);
 			continue;
 		}
 		else if (nl->nlmsg_type == RTM_NEWADDR)
 		{
-			struct ifaddrmsg *ifa;
-			ifa = (struct ifaddrmsg*)NLMSG_DATA(nl);
-			log_info("parse addr");
+			struct ifaddrmsg *ifa = (struct ifaddrmsg*)NLMSG_DATA(nl);
+			log_debug(DEBUG_NETLINK, "parsing address");
 			nlparsemsg_address(ifa, IFA_RTA(ifa), IFA_PAYLOAD(nl), json, detailed);
 			continue;
 		}
 		else if (nl->nlmsg_type == RTM_NEWLINK)
 		{
-			struct ifinfomsg *ifi;
-			ifi = (struct ifinfomsg*)NLMSG_DATA(nl);
-			log_info("parse link");
+			struct ifinfomsg *ifi = (struct ifinfomsg*)NLMSG_DATA(nl);
+			log_debug(DEBUG_NETLINK, "parsing link");
 			nlparsemsg_link(ifi, IFLA_RTA(ifi), IFLA_PAYLOAD(nl), json, detailed);
 			continue;
 		}
 		else
 		{
-			log_err("unknown nlmsg_type: %d", nl->nlmsg_type);
+			log_warn("Unknown Netlink message type: %d", nl->nlmsg_type);
 		}
 
 	}
+
 	return nl->nlmsg_type;
 }
 
@@ -1116,7 +1150,7 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 	const int fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 	if(fd < 0)
 	{
-		log_info("socket error: %s", strerror(errno));
+		log_err("netlink socket error: %s", strerror(errno));
 		return -1;
 	}
 
@@ -1127,33 +1161,50 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 	setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buffer_size, sizeof(buffer_size));
 	setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &buffer_size, sizeof(buffer_size));
 
+	// Prepare source address
 	struct sockaddr_nl sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.nl_family = AF_NETLINK;
+	sa.nl_pid = getpid();
+	sa.nl_groups = 0; // unicast
+
+	// Prepare destination address
+	struct sockaddr_nl da = { 0 };
+	memset(&da, 0, sizeof(da));
+	da.nl_family = AF_NETLINK;
+	da.nl_pid = 0;  // Kernel
+	da.nl_groups = 0;  // unicast
+
+	// Bind the socket to the netlink address
+	bind(fd, (struct sockaddr*)&sa, sizeof(sa));
 
 	// Send the request
-	log_info("nlrequest");
-	if(!nlrequest(fd, &sa, type))
+	log_debug(DEBUG_NETLINK, "nlrequest");
+	if(!nlrequest(fd, &da, type))
 	{
-		log_info("nlrequest error: %s", strerror(errno));
+		log_err("nlrequest error: %s", strerror(errno));
 		close(fd);
 		return -1;
 	}
 
 	uint32_t nl_msg_type;
 	do {
-		char buf[BUFLEN];
-		log_info("nlgetmsg");
-		ssize_t len = nlgetmsg(fd, &sa, buf, BUFLEN);
+		char buf[BUFLEN] = { 0 };
+		log_debug(DEBUG_NETLINK, "Calling nlgetmsg");
+		ssize_t len = nlgetmsg(fd, &da, buf, BUFLEN);
 		if(len < 0)
 		{
-			log_info("nlgetmsg error: %s", strerror(errno));
+			log_err("nlgetmsg error: %s", strerror(errno));
 			close(fd);
 			return -1;
 		}
-		log_info("parse_nl_msg(%zd)", len);
+
+		// Parse the next message
+		log_debug(DEBUG_NETLINK, "Calling parse_nl_msg (%zd)", len);
 		nl_msg_type = parse_nl_msg(buf, len, json, detailed);
-	} while (nl_msg_type != NLMSG_DONE && nl_msg_type != NLMSG_ERROR);
+		log_debug(DEBUG_NETLINK, "Next nl_msg_type: %u", (unsigned int)nl_msg_type);
+	}
+	while (nl_msg_type != NLMSG_DONE && nl_msg_type != NLMSG_ERROR);
 
 	close(fd);
 	return 0;
@@ -1162,18 +1213,18 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 
 bool nlroutes(cJSON *routes, const bool detailed)
 {
-	log_info("called nlroutes");
+	log_debug(DEBUG_NETLINK, "Called nlroutes");
 	return nlquery(RTM_GETROUTE, routes, detailed);
 }
 
 bool nladdrs(cJSON *interfaces, const bool detailed)
 {
-	log_info("called nladdrs");
+	log_debug(DEBUG_NETLINK, "Called nladdrs");
 	return nlquery(RTM_GETADDR, interfaces, detailed);
 }
 
 bool nllinks(cJSON *interfaces, const bool detailed)
 {
-	log_info("called nllinks");
+	log_debug(DEBUG_NETLINK, "Called nllinks");
 	return nlquery(RTM_GETLINK, interfaces, detailed);
 }

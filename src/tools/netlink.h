@@ -28,7 +28,7 @@ bool nladdrs(cJSON *interfaces, const bool detailed);
 bool nllinks(cJSON *interfaces, const bool detailed);
 
 
-#define BUFLEN		4096
+#define BUFLEN		NLMSG_SPACE(4096)
 
 #define for_each_nlmsg(n, buf, len)					\
 	for (n = (struct nlmsghdr*)buf;					\
