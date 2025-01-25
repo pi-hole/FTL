@@ -27,8 +27,9 @@ bool nlroutes(cJSON *routes, const bool detailed);
 bool nladdrs(cJSON *interfaces, const bool detailed);
 bool nllinks(cJSON *interfaces, const bool detailed);
 
-
-#define BUFLEN		NLMSG_SPACE(4096)
+// define the maximum buffer length for netlink messages
+#define RAW_BUFLEN	8192
+#define BUFLEN		NLMSG_SPACE(RAW_BUFLEN)
 
 #define for_each_nlmsg(n, buf, len)					\
 	for (n = (struct nlmsghdr*)buf;					\
