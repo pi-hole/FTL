@@ -124,15 +124,14 @@ bool init_memory_database(void)
 		}
 	}
 
-	// Attach disk database
-	if(!attach_database(_memdb, NULL, config.files.database.v.s, "disk"))
-		return false;
+	// Attach disk database. This may fail if the database is unavailable
+	const bool attached = attach_database(_memdb, NULL, config.files.database.v.s, "disk");
 
 	// Enable WAL mode for the on-disk database (pihole-FTL.db) if
 	// configured (default is yes). User may not want to enable WAL
 	// mode if the database is on a network share as all processes
 	// accessing the database must be on the same host in WAL mode.
-	if(config.database.useWAL.v.b)
+	if(config.database.useWAL.v.b && attached)
 	{
 		// Change journal mode to WAL
 		// - WAL is significantly faster in most scenarios.
@@ -149,7 +148,7 @@ bool init_memory_database(void)
 			return false;
 		}
 	}
-	else
+	else if(attached)
 	{
 		// Unlike the other journaling modes, PRAGMA journal_mode=WAL is
 		// persistent. If a process sets WAL mode, then closes and
@@ -184,7 +183,8 @@ bool init_memory_database(void)
 	                                 "?11," \
 	                                 "?12," \
 	                                 "?13," \
-	                                 "?14)", -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
+	                                 "?14,"
+	                                 "?15)", -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("init_memory_database(query_storage) - SQL error step: %s", sqlite3_errstr(rc));
@@ -223,7 +223,11 @@ bool init_memory_database(void)
 		return false;
 	}
 
-	load_queries_from_disk();
+	// Attach disk database
+	if(attached)
+		load_queries_from_disk();
+	else
+		log_err("init_memory_database(): Failed to attach disk database");
 
 	// Everything went well
 	return true;
@@ -344,13 +348,16 @@ static void log_in_memory_usage(void)
 	}
 }
 
-
 // Attach database using specified path and alias
 bool attach_database(sqlite3* db, const char **message, const char *path, const char *alias)
 {
 	int rc;
 	bool okay = false;
 	sqlite3_stmt *stmt = NULL;
+
+	// Only try to attach database if it is not known to be broken
+	if(FTLDBerror())
+		return false;
 
 	log_debug(DEBUG_DATABASE, "ATTACH %s AS %s", path, alias);
 
@@ -583,6 +590,11 @@ bool export_queries_to_disk(bool final)
 {
 	bool okay = false;
 	const double time = double_time() - (final ? 0.0 : REPLY_TIMEOUT);
+
+	// Only try to export to database if it is known to not be broken
+	if(FTLDBerror())
+		return false;
+
 	const char *querystr = "INSERT INTO disk.query_storage SELECT * FROM query_storage WHERE id > ? AND timestamp < ?";
 
 	log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE id > %lu (max is %lu) and timestamp < %f",
@@ -917,6 +929,38 @@ bool rename_query_storage_column_regex_id(sqlite3 *db)
 	return true;
 }
 
+bool add_query_storage_column_ede(sqlite3 *db)
+{
+	// Start transaction of database update
+	SQL_bool(db, "BEGIN TRANSACTION");
+
+	// Add additional column to the query_storage table
+	SQL_bool(db, "ALTER TABLE query_storage ADD COLUMN ede INTEGER");
+
+	// Update VIEW queries
+	SQL_bool(db, "DROP VIEW queries");
+	SQL_bool(db, "CREATE VIEW queries AS "
+	                     "SELECT id, timestamp, type, status, "
+	                       "CASE typeof(domain) WHEN 'integer' THEN (SELECT domain FROM domain_by_id d WHERE d.id = q.domain) ELSE domain END domain,"
+	                       "CASE typeof(client) WHEN 'integer' THEN (SELECT ip FROM client_by_id c WHERE c.id = q.client) ELSE client END client,"
+	                       "CASE typeof(forward) WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward,"
+	                       "CASE typeof(additional_info) WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, "
+	                       "reply_type, reply_time, dnssec, list_id, ede "
+	                       "FROM query_storage q");
+
+	// Update database version to 21
+	if(!db_set_FTL_property(db, DB_VERSION, 21))
+	{
+		log_err("add_query_storage_column_ede(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool(db, "COMMIT");
+
+	return true;
+}
+
 bool optimize_queries_table(sqlite3 *db)
 {
 	// Start transaction of database update
@@ -1032,6 +1076,10 @@ void DB_read_queries(void)
 	                              "dnssec "\
 	                       "FROM queries WHERE timestamp >= ?";
 
+	// Only try to import from database if it is known to not be broken
+	if(FTLDBerror())
+		return;
+
 	log_info("Parsing queries in database");
 
 	// Prepare SQLite3 statement
@@ -1074,7 +1122,7 @@ void DB_read_queries(void)
 		}
 
 		const int type = sqlite3_column_int(stmt, 2);
-		const bool mapped_type = type >= TYPE_A && type < TYPE_MAX;
+		const bool mapped_type = type >= TYPE_NONE && type < TYPE_MAX;
 		const bool offset_type = type > 100 && type < (100 + UINT16_MAX);
 		if(!mapped_type && !offset_type)
 		{
@@ -1350,11 +1398,21 @@ void DB_read_queries(void)
 	log_info("Imported %u queries from the long-term database", counters->queries);
 }
 
-void update_disk_db_idx(void)
+void init_disk_db_idx(void)
 {
 	// Query the database to get the maximum database ID is important to avoid
 	// starting counting from zero (would result in a UNIQUE constraint violation)
 	const char *querystr = "SELECT MAX(id) FROM disk.query_storage";
+
+	// If the disk database is broken, we cannot import queries from it,
+	// however, as we will also never export any queries, we can safely
+	// assume any index
+	if(FTLDBerror())
+	{
+		last_disk_db_idx = 0;
+		last_mem_db_idx = 0;
+		return;
+	}
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *stmt = NULL;
@@ -1365,7 +1423,7 @@ void update_disk_db_idx(void)
 	if(rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW)
 		last_disk_db_idx = sqlite3_column_int64(stmt, 0);
 	else
-		log_err("update_disk_db_idx(): Failed to get MAX(id) from disk.query_storage: %s",
+		log_err("init_disk_db_idx(): Failed to get MAX(id) from disk.query_storage: %s",
 		        sqlite3_errstr(rc));
 
 	// Finalize statement
@@ -1383,6 +1441,10 @@ bool queries_to_database(void)
 	int rc;
 	unsigned int added = 0, updated = 0;
 	sqlite3_int64 idx = 0;
+
+	// Only try to export to database if it is known to not be broken
+	if(FTLDBerror())
+		return false;
 
 	// Skip, we never store nor count queries recorded while have been in
 	// maximum privacy mode in the database
@@ -1611,6 +1673,9 @@ bool queries_to_database(void)
 		else
 			// Not applicable, setting NULL
 			sqlite3_bind_null(query_stmt, 14);
+
+		// EDE
+		sqlite3_bind_int(query_stmt, 15, query->ede);
 
 		// Step and check if successful
 		rc = sqlite3_step(query_stmt);

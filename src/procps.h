@@ -10,6 +10,13 @@
 
 #ifndef PROCPS_H
 #define PROCPS_H
+
+#include <stdbool.h>
+#include <sys/types.h>
+
+#define PROC_PATH_SIZ  32
+
+bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ]);
 bool another_FTL(void);
 
 struct proc_mem {

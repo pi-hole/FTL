@@ -56,6 +56,8 @@
 #include "main.h"
 // ntp_server_start()
 #include "ntp/ntp.h"
+// get_process_name()
+#include "procps.h"
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
@@ -75,6 +77,7 @@ static void check_pihole_PTR(char *domain);
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line);
 static char *get_ptrname(const struct in_addr *addr);
 static const char *check_dnsmasq_name(const char *name);
+static void get_rcode(const unsigned short rcode, const char **rcodestr, enum reply_type *reply);
 
 // Static blocking metadata
 static bool aabit = false, adbit = false, rabit = false;
@@ -108,6 +111,10 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 	const char *types = (flags & F_RR) ? querystr(arg, type) : "?";
 	log_debug(DEBUG_FLAGS, "Processing FTL hook from %s:%d (type: %s, name: \"%s\", id: %i)...", path, line, types, name, id);
 	print_flags(flags);
+
+	// The query ID may be negative if this is a TCP query
+	if(id < 0)
+		id = -id;
 
 	// Check domain name received from dnsmasq
 	name = check_dnsmasq_name(name);
@@ -578,8 +585,8 @@ static bool is_pihole_domain(const char *domain)
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     union mysockaddr *addr, char *arg,
-                    const unsigned short qtype, const int id,
-                    const enum protocol proto,
+                    const unsigned short qtype, int id,
+                    enum protocol proto,
                     const char *file, const int line)
 {
 	// Create new query in data structure
@@ -595,6 +602,14 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	enum query_type querytype;
 	switch(qtype)
 	{
+		case 0:
+			// Non-query, e.g., zone update
+			// dnsmasq does not support such non-queries. RFC5625
+			// does not specify how a resolver should behave when it
+			// does not support them. dnsmasq decided to reply with
+			// a NOTIMP reply to such non-queries
+			querytype = TYPE_NONE;
+			break;
 		case T_A:
 			querytype = TYPE_A;
 			break;
@@ -650,7 +665,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
-	if(is_pihole_domain(name))
+	if(querytype != TYPE_NONE && is_pihole_domain(name))
 	{
 		if(querytype == TYPE_A || querytype == TYPE_AAAA || querytype == TYPE_ANY)
 		{
@@ -787,13 +802,27 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		return true;
 	}
 
+	// The query ID is negative if this is a TCP query
+	if(id < 0)
+	{
+		id = -id;
+
+		// Safety check: If the query ID is negative, the protocol
+		// should be TCP
+		if(proto != TCP)
+		{
+			proto = TCP;
+			log_debug(DEBUG_ANY, "Query %d has negative ID, but protocol is not TCP", id);
+		}
+	}
+
 	// Log new query if in debug mode
 	if(config.debug.queries.v.b)
 	{
 		const char *types = querystr(arg, qtype);
-		log_debug(DEBUG_QUERIES, "**** new %sIPv%d %s query \"%s\" from %s/%s#%d (ID %i, FTL %i, %s:%i)",
-		          proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
-		          family == AF_INET ? 4 : 6, types, domainString, interface,
+		log_debug(DEBUG_QUERIES, "**** new %sIPv%d %s%s \"%s\" from %s/%s#%d (ID %i, FTL %i, %s:%i)",
+		          proto == TCP ? "TCP " : proto == UDP ? "UDP " : "", family == AF_INET ? 4 : 6,
+		          types, querytype == TYPE_NONE ? "" : " query", name, interface,
 		          internal_query ? "<internal>" : clientIP, clientPort,
 		          id, queryID, short_path(file), line);
 	}
@@ -807,10 +836,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	{
 		// Don't process this query further here, we already counted it
 		if(config.debug.queries.v.b)
-		{
-			const char *types = querystr(arg, qtype);
-			log_debug(DEBUG_QUERIES, "Skipping new query: %s (%i)", types, id);
-		}
+			log_debug(DEBUG_QUERIES, "Skipping new query (%i)", id);
+
 		free(domainString);
 		unlock_shm();
 		return false;
@@ -933,7 +960,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
-	if(client->hwlen < 1)
+	// Don't do this for internally generated queries (e.g., DNSSEC), if the
+	// MAC address is already known or if the netlink socket is not available
+	// (e.g., when retrying a query using TCP after UDP truncation)
+	if(!internal_query && client->hwlen < 1 && daemon->netlinkfd > 0)
 	{
 		client->hwlen = find_mac(addr, client->hwaddr, 1, time(NULL));
 		if(config.debug.arp.v.b)
@@ -956,7 +986,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	bool blockDomain = false;
 	// Check if this should be blocked only for active queries
 	// (skipped for internally generated ones, e.g., DNSSEC)
-	if(!internal_query)
+	if(!internal_query && querytype != TYPE_NONE)
 		blockDomain = FTL_check_blocking(queryID, domainID, clientID);
 
 	// Free allocated memory
@@ -1803,12 +1833,12 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		else if(query->status == QUERY_REGEX)
 		{
 			// Get parent and child DNS cache entries
-			const unsigned int parent_cacheID = query->cacheID > -1 ? query->cacheID : findCacheID(parent_domainID, clientID, query->type, false);
-			const unsigned int child_cacheID = findCacheID(child_domainID, clientID, query->type, false);
+			const int parent_cacheID = query->cacheID > -1 ? query->cacheID : findCacheID(parent_domainID, clientID, query->type, false);
+			const int child_cacheID = findCacheID(child_domainID, clientID, query->type, false);
 
 			// Get cache pointers
-			DNSCacheData *parent_cache = getDNSCache(parent_cacheID, true);
-			const DNSCacheData *child_cache = getDNSCache(child_cacheID, true);
+			DNSCacheData *parent_cache = parent_cacheID < 0 ? NULL : getDNSCache(parent_cacheID, true);
+			const DNSCacheData *child_cache = child_cacheID < 0 ? NULL : getDNSCache(child_cacheID, true);
 
 			// Propagate ID of responsible regex up from the child to the parent
 			// domain (but only if set)
@@ -2114,9 +2144,9 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		return;
 	}
 
-	// Check if this reply came from our local cache
+	// Check if this reply came from our local cache (type == 0 is non-query but has F_UPSTREAM)
 	bool cached = false;
-	if(!(flags & F_UPSTREAM))
+	if(!(flags & F_UPSTREAM) || type == 0)
 	{
 		cached = true;
 		if((flags & F_HOSTS) || // hostname.list, /etc/hosts and others
@@ -2202,13 +2232,23 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		}
 		else
 		{
-			char ip[ADDRSTRLEN+1] = { 0 };
+			char ip[ADDRSTRLEN + 1] = { 0 };
 			in_port_t port = 0;
 			mysockaddr_extract_ip_port(&last_server, ip, &port);
 			// Log server which replied to our request
 			log_debug(DEBUG_QUERIES, "**** got %s%s reply from %s#%d: %s is %s (ID %i, %s:%i)",
 			          stale ? "stale ": "", cached ? "cache" : "upstream",
 			          ip, port, dispname, answer, id, file, line);
+		}
+
+		if(flags & F_RCODE && addr != NULL)
+		{
+			// Translate dnsmasq's rcode into something we can use
+			const char *rcodestr = NULL;
+			enum reply_type reply = REPLY_UNKNOWN;
+			get_rcode(addr->log.rcode, &rcodestr, &reply);
+			// Log RCODE if available
+			log_debug(DEBUG_QUERIES, "     RCODE: %s (%d)", rcodestr, addr->log.rcode);
 		}
 	}
 
@@ -2320,9 +2360,10 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Mark query for updating in the database
 		query->flags.database.changed = true;
 	}
-	else if((flags & (F_FORWARD | F_UPSTREAM)) && isExactMatch)
+	else if((flags & (F_FORWARD | F_UPSTREAM)) && isExactMatch && type != 0)
 	{
-		// Answered from upstream server
+		// type != 0: Answered from upstream server
+		// type == 0: Answered from cache (probably a non-query reply)
 		if(query->upstreamID < 0)
 		{
 			// This should not happen, but if it does, we skip this
@@ -2413,6 +2454,21 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 		// Save reply type and update individual reply counters
 		query_set_reply(pflags, 0, addr, query, now);
+
+		// Hereby, this query is now fully determined
+		query->flags.complete = true;
+
+		// Mark query for updating in the database
+		query->flags.database.changed = true;
+	}
+	else if(flags & F_UPSTREAM && flags & F_RCODE)
+	{
+		// Non-query reply synthesized locally
+		query_set_reply(flags, 0, addr, query, now);
+
+		// Set status of this query
+		if(!is_blocked(query->status))
+			query_set_status(query, QUERY_CACHE);
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
@@ -2650,6 +2706,30 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 	unlock_shm();
 }
 
+static void get_rcode(const unsigned short rcode, const char **rcodestr, enum reply_type *reply)
+{
+	// Translate dnsmasq's rcode into something we can use
+	switch(rcode)
+	{
+		case SERVFAIL:
+			*rcodestr = "SERVFAIL";
+			*reply = REPLY_SERVFAIL;
+			break;
+		case REFUSED:
+			*rcodestr = "REFUSED";
+			*reply = REPLY_REFUSED;
+			break;
+		case NOTIMP:
+			*rcodestr = "NOT IMPLEMENTED";
+			*reply = REPLY_NOTIMP;
+			break;
+		default:
+			*rcodestr = "UNKNOWN";
+			*reply = REPLY_OTHER;
+			break;
+	}
+}
+
 static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char *file, const int line)
 {
 	// Process local and upstream errors
@@ -2689,26 +2769,8 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 
 	// Translate dnsmasq's rcode into something we can use
 	const char *rcodestr = NULL;
-	enum reply_type reply;
-	switch(addr->log.rcode)
-	{
-		case SERVFAIL:
-			rcodestr = "SERVFAIL";
-			reply = REPLY_SERVFAIL;
-			break;
-		case REFUSED:
-			rcodestr = "REFUSED";
-			reply = REPLY_REFUSED;
-			break;
-		case NOTIMP:
-			rcodestr = "NOT IMPLEMENTED";
-			reply = REPLY_NOTIMP;
-			break;
-		default:
-			rcodestr = "UNKNOWN";
-			reply = REPLY_OTHER;
-			break;
-	}
+	enum reply_type reply = REPLY_UNKNOWN;
+	get_rcode(addr->log.rcode, &rcodestr, &reply);
 
 	// Get EDNS data (if available)
 	ednsData *edns = getEDNS();
@@ -3032,6 +3094,16 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 			// SERVFAIL query
 			new_reply = REPLY_SERVFAIL;
 		}
+		else if(addr != NULL && addr->log.rcode == NOTIMP)
+		{
+			// NOTIMP query
+			new_reply = REPLY_NOTIMP;
+		}
+		else
+		{
+			// Other RCODE
+			new_reply = REPLY_OTHER;
+		}
 	}
 	else if(flags & F_KEYTAG && flags & F_NOEXTRA)
 	{
@@ -3098,7 +3170,8 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		log_crit("Cannot initialize in-memory database.");
 
 	// Flush messages stored in the long-term database
-	flush_message_table();
+	if(!FTLDBerror())
+		flush_message_table();
 
 	// Verify checksum of this binary early on to ensure that the binary is
 	// not corrupted and that the binary is not tampered with. We can only
@@ -3107,7 +3180,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	verify_FTL(false);
 
 	// Initialize in-memory database starting index
-	update_disk_db_idx();
+	init_disk_db_idx();
 
 	// Handle real-time signals in this process (and its children)
 	// Helper processes are already split from the main instance
@@ -3291,10 +3364,11 @@ static char *get_ptrname(const struct in_addr *addr)
 	return ptrname;
 }
 
-void FTL_forwarding_retried(const struct server *serv, const int oldID, const int newID, const bool dnssec)
+void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dnssec)
 {
 	// Forwarding to upstream server failed
-
+	const struct server *serv = forward->sentto;
+	const int oldID = forward->frec_src.log_id;
 	if(oldID == newID)
 	{
 		log_debug(DEBUG_QUERIES, "%d: Ignoring self-retry", oldID);
@@ -3386,7 +3460,7 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 volatile atomic_flag worker_already_terminating = ATOMIC_FLAG_INIT;
 void FTL_TCP_worker_terminating(bool finished)
 {
-	if(dnsmasq_debug)
+	if(get_dnsmasq_debug())
 	{
 		// Nothing to be done here, forking does not happen in debug mode
 		return;
@@ -3431,7 +3505,7 @@ void FTL_TCP_worker_terminating(bool finished)
 // to ending up with a corrupted database.
 void FTL_TCP_worker_created(const int confd)
 {
-	if(dnsmasq_debug)
+	if(get_dnsmasq_debug())
 	{
 		// Nothing to be done here, TCP worker forking does not happen
 		// in debug mode
@@ -3735,8 +3809,9 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr)
 	if(addr != NULL)
 		mysockaddr_extract_ip_port(addr, ip, &port);
 
+	// Get query ID, may be negative if this is a TCP query
+	const int id = daemon->log_display_id > 0 ? daemon->log_display_id : -daemon->log_display_id;
 	// Log to FTL.log
-	const int id = daemon->log_display_id;
 	log_debug(DEBUG_QUERIES, "Connection error (%s#%u, ID %d): %s (%s)", ip, port, id, reason, error);
 
 	// Log to pihole.log
@@ -3763,5 +3838,52 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr)
 		log_connection_error(server, reason, error);
 		if(server != NULL)
 			free(server);
+	}
+}
+
+/**
+ * @brief Retrieves the debug status of dnsmasq.
+ *
+ * @return true if the debug option is enabled, false otherwise.
+ */
+bool __attribute__ ((pure)) get_dnsmasq_debug(void)
+{
+	return option_bool(OPT_DEBUG);
+}
+
+static bool enabled = false;
+/**
+ * @brief Set the dnsmasq debug mode based on the enable flag and process ID.
+ *
+ * This function enables or disables the dnsmasq debug mode. When enabling,
+ * it logs the process ID and name, sets the debug option, and marks the
+ * debug mode as enabled. When disabling, it logs the detachment and clears
+ * the debug option. If the debug mode is already enabled, it does nothing.
+ *
+ * @param enable A boolean flag indicating whether to enable or disable debug mode.
+ * @param pid The process ID of the process to attach or detach the debugger.
+ */
+void set_dnsmasq_debug(const bool enable, const pid_t pid)
+{
+	// Get debugger process' name
+	char name[PROC_PATH_SIZ] = "???";
+	get_process_name(pid, name);
+
+	// Only enable or disable if the debug mode is not already set
+	if(enable && !get_dnsmasq_debug())
+	{
+		// Enable debug mode
+		log_info("Debugger attached (%d: %s), entering dnsmasq debug mode",
+		         pid, name);
+		option_set(OPT_DEBUG);
+		enabled = true;
+
+		return;
+	}
+	else if(enabled)
+	{
+		// Disable debug mode
+		log_info("Debugger detached, leaving dnsmasq debug mode");
+		option_clear(OPT_DEBUG);
 	}
 }

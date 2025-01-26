@@ -295,6 +295,11 @@ class ResponseVerifyer():
 			return False
 		YAMLprop = YAMLprops[props[-1]]
 
+		# Check if FTL returned null when an object was expected
+		if FTLprops is None:
+			self.errors.append("FTL's response is null in " + flat_path)
+			return False
+
 		# Check if the property is defined in the FTL response
 		if props[-1] not in FTLprops:
 			self.errors.append("Property '" + flat_path + "' missing in FTL's response")

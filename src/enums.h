@@ -98,6 +98,7 @@ enum regex_type {
 } __attribute__ ((packed));
 
 enum query_type {
+	TYPE_NONE = 0,
 	TYPE_A = 1,
 	TYPE_AAAA,
 	TYPE_ANY,

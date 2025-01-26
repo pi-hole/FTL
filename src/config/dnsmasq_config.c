@@ -108,7 +108,20 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 
 		// Wait until child has exited to get its return code
 		int status;
-		waitpid(cpid, &status, 0);
+		while(waitpid(cpid, &status, 0) == -1)
+		{
+			const int err = errno;
+			log_debug(DEBUG_CONFIG, "Waiting for dnsmasq test returned: %s", strerror(err));
+
+			// We can ignore EINTR as it just means that the wait
+			// was interrupted, so we just try again. All other
+			// errors are fatal and we break out of the loop
+			if(err != EINTR)
+			{
+				log_err("Cannot wait for dnsmasq test: %s", strerror(err));
+				break;
+			}
+		}
 
 		// Get return code if child exited normally
 		if(WIFEXITED(status))
@@ -123,6 +136,8 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 			        WCOREDUMP(status) ? "(core dumped)" : "");
 		}
 
+		// Check if the error message contains a line number. If so, we
+		// can append the offending line to the error message
 		if(code != EXIT_SUCCESS)
 		{
 			int lineno = get_lineno_from_string(errbuf);
@@ -345,7 +360,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	{
 		fputs("# Enable query logging\n", pihole_conf);
 		if(conf->misc.extraLogging.v.b)
-			fputs("log-queries=extra\n", pihole_conf);
+			fputs("log-queries=proto\n", pihole_conf);
 		else
 			fputs("log-queries\n", pihole_conf);
 		fputs("log-async\n", pihole_conf);
@@ -748,6 +763,10 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
 		return false;
 	}
+
+	// Chown file if we are root
+	if(geteuid() == 0)
+		chown_pihole(DNSMASQ_TEMP_CONF, NULL);
 
 	log_debug(DEBUG_CONFIG, "Testing "DNSMASQ_TEMP_CONF);
 	if(test_config && !test_dnsmasq_config(errbuf))

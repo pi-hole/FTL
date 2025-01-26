@@ -24,7 +24,7 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_family_t addrfamily, const char *file, const int line);
 
 #define FTL_new_query(flags, name, addr, arg, qtype, id, proto) _FTL_new_query(flags, name, addr, arg, qtype, id, proto, __FILE__, __LINE__)
-bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, char *arg, const unsigned short qtype, const int id, enum protocol proto, const char *file, const int line);
+bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, char *arg, const unsigned short qtype, int id, enum protocol proto, const char *file, const int line);
 
 #define FTL_header_analysis(header, server, id) _FTL_header_analysis(header, server, id, __FILE__, __LINE__)
 void _FTL_header_analysis(const struct dns_header *header, const struct server *server, const int id, const char *file, const int line);
@@ -32,7 +32,7 @@ void _FTL_header_analysis(const struct dns_header *header, const struct server *
 #define FTL_check_reply(rcode, flags, addr, id) _FTL_check_reply(rcode, flags, addr, id, __FILE__, __LINE__)
 int _FTL_check_reply(const unsigned int rcode, const unsigned short flags, const union all_addr *addr, const int id, const char *file, const int line);
 
-void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec);
+void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dnssec);
 
 #define MAX_EDE_DATA 128
 #define FTL_make_answer(header, limit, len, ede_data, ede_len) _FTL_make_answer(header, limit, len, ede_data, ede_len, __FILE__, __LINE__)
@@ -50,6 +50,8 @@ void FTL_TCP_worker_terminating(bool finished);
 bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint);
 
 void FTL_connection_error(const char *reason, const union mysockaddr *addr);
+
+bool get_dnsmasq_debug(void) __attribute__ ((pure));
 
 // defined in src/dnsmasq/cache.c
 extern char *querystr(char *desc, unsigned short type);

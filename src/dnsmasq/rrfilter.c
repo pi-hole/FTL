@@ -345,9 +345,6 @@ int expand_workspace(unsigned char ***wkspc, int *szp, int new)
   if (old >= new+1)
     return 1;
 
-  if (new >= 100)
-    return 0;
-
   new += 5;
 
   if (!(p = whine_realloc(*wkspc, new * sizeof(unsigned char *))))

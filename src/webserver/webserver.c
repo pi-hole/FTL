@@ -204,12 +204,26 @@ void FTL_mbed_debug(void *user_param, int level, const char *file, int line, con
 #define MAXPORTS 8
 static struct serverports
 {
-	bool is_secure;
-	bool is_redirect;
+	bool is_secure :1;
+	bool is_redirect :1;
+	bool is_optional :1;
 	unsigned char protocol; // 1 = IPv4, 2 = IPv4+IPv6, 3 = IPv6
 	in_port_t port;
 } server_ports[MAXPORTS] = { 0 };
 static in_port_t https_port = 0;
+/**
+ * @brief Retrieves and logs the server ports configuration.
+ *
+ * This function checks if the server context is initialized and then retrieves
+ * the configured server ports. It logs the port information and stores the
+ * details in the `server_ports` array. It also identifies and stores the first
+ * HTTPS port if available.
+ *
+ * @note If no ports are configured, a warning is logged and the function returns.
+ *
+ * @param void This function does not take any parameters.
+ * @return void This function does not return any value.
+ */
 static void get_server_ports(void)
 {
 	if(ctx == NULL)
@@ -217,30 +231,42 @@ static void get_server_ports(void)
 
 	// Loop over all listening ports
 	struct mg_server_port mgports[MAXPORTS] = { 0 };
-	if(mg_get_server_ports(ctx, MAXPORTS, mgports) > 0)
+	const int ports = mg_get_server_ports(ctx, MAXPORTS, mgports);
+
+	// Stop if no ports are configured
+	if(ports < 1)
 	{
-		// Loop over all ports
-		for(unsigned int i = 0; i < MAXPORTS; i++)
-		{
-			// Stop if no more ports are configured
-			if(mgports[i].protocol == 0)
-				break;
+		log_warn("No web server ports configured!");
+		return;
+	}
 
-			// Store port information
-			server_ports[i].port = mgports[i].port;
-			server_ports[i].is_secure = mgports[i].is_ssl;
-			server_ports[i].is_redirect = mgports[i].is_redirect;
-			server_ports[i].protocol = mgports[i].protocol;
+	// Loop over all ports
+	for(unsigned int i = 0; i < (unsigned int)ports; i++)
+	{
+		// Stop if no more ports are configured
+		if(mgports[i].protocol == 0)
+			break;
 
-			// Store HTTPS port if not already set
-			if(mgports[i].is_ssl && https_port == 0)
-				https_port = mgports[i].port;
+		// Store port information
+		server_ports[i].port = mgports[i].port;
+		server_ports[i].is_secure = mgports[i].is_ssl;
+		server_ports[i].is_redirect = mgports[i].is_redirect;
+		server_ports[i].is_optional = mgports[i].is_optional;
+		server_ports[i].protocol = mgports[i].protocol;
 
-			// Print port information
-			log_debug(DEBUG_API, "Listening on port %d (HTTP%s, IPv%s)",
-			          mgports[i].port, mgports[i].is_ssl ? "S" : "",
-			          mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"));
-		}
+		// Store (first) HTTPS port if not already set
+		if(mgports[i].is_ssl && https_port == 0)
+			https_port = mgports[i].port;
+
+		// Print port information
+		if(i == 0)
+			log_info("Web server ports:");
+		log_info("  - %d (HTTP%s, IPv%s%s%s)",
+		         mgports[i].port, mgports[i].is_ssl ? "S" : "",
+		         mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"),
+		         mgports[i].is_redirect ? ", redirecting" : "",
+		         mgports[i].is_optional ? ", optional" : "");
+
 	}
 }
 
@@ -351,8 +377,30 @@ void http_init(void)
 		return;
 	}
 
+	char num_threads[3] = { 0 };
+	// Calculate number of threads for the web server
+	// any positive number = number of threads (limited to at most MAX_WEBTHREADS)
+	// 0 = the number of online processors (at least 1, no more than 16)
+	// For the automatic option, we use the number of available (= online)
+	// cores which may be less than the total number of cores in the system,
+	// e.g., if a virtualization environment is used and fewer cores are
+	// assigned to the VM than are available on the host.
+	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
+
+	if(config.webserver.threads.v.ui > 0)
+	{
+		const unsigned int threads = LIMIT_MIN_MAX(config.webserver.threads.v.ui, 1, MAX_WEBTHREADS);
+		snprintf(num_threads, sizeof(num_threads), "%u", threads);
+	}
+	else // Automatic thread calculation
+	{
+		const int nprocs = get_nprocs();
+		const unsigned int threads = LIMIT_MIN_MAX(nprocs - 1, 1, 16);
+		snprintf(num_threads, sizeof(num_threads), "%u", threads);
+	}
+
 	/* Initialize the library */
-	log_web("Initializing HTTP server on port %s", config.webserver.port.v.s);
+	log_web("Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
 	unsigned int features = MG_FEATURES_FILES |
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
@@ -397,15 +445,6 @@ void http_init(void)
 	//   A referrer will be sent for same-site origins, but cross-origin requests will
 	//   send no referrer information.
 	// The latter four headers are set as expected by https://securityheaders.io
-	char num_threads[3] = { 0 };
-	// Use 16 threads if more than 8 cores are available, otherwise use
-	// 2*cores. This is to prevent overloading the system with too many
-	// threads.
-	// We use the number of available (= online) cores which may be less
-	// than the total number of cores in the system, e.g., if a
-	// virtualization environment is used and fewer cores are assigned to
-	// the VM than are available on the host.
-	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
 	const char *options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
 		"error_pages", error_pages,
@@ -519,6 +558,9 @@ void http_init(void)
 		return;
 	}
 
+	// Get server ports
+	get_server_ports();
+
 	// Register API handler
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
@@ -547,9 +589,6 @@ void http_init(void)
 
 	// Prepare prerequisites for Lua
 	allocate_lua();
-
-	// Get server ports
-	get_server_ports();
 
 	// Restore sessions from database
 	init_api();

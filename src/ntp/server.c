@@ -266,17 +266,9 @@ static void request_process_loop(const int fd, const char *ipstr, const int prot
 			}
 		}
 
-		// Fork a child to handle the request
-		const pid_t pid = fork();
-		if (pid == 0) {
-			// Child
-			ntp_reply(fd, &src_addr , src_addrlen, buf, &recv_time);
-			exit(0);
-		} else if (pid == -1) {
-			log_err("fork() error");
-			return;
-		}
-		// return to parent
+		// Handle the request
+		ntp_reply(fd, &src_addr, src_addrlen, buf, &recv_time);
+		log_debug(DEBUG_NTP, "NTP reply sent");
 	}
 }
 
@@ -301,6 +293,15 @@ static void *ntp_bind_and_listen(void *param)
 		log_ntp_message(true, true, errbuf);
 		return NULL;
 	}
+
+#ifdef SO_REUSEPORT
+	// Set socket option to allow multiple sockets to bind to the same port
+	// (SO_REUSEPORT). This is necessary to ensure pihole-FTL can rebind to
+	// the NTP port after a restart without waiting for the kernel to release
+	// the port. This feature is available since Linux 3.9.
+	int optval = 1;
+	setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+#endif
 
 	// Bind the socket to the NTP port
 	char ipstr[INET6_ADDRSTRLEN + 1];
